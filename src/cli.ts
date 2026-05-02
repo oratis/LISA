@@ -32,7 +32,11 @@ Usage:
   lisa resume <id> [prompt]    Resume a previous session by id.
   lisa sessions                List recent sessions.
   lisa serve --web [--port N]  Start the web UI (default port 5757).
-  lisa serve --imessage        Start the iMessage channel adapter (macOS).
+  lisa serve --channels <list> Start IM channel adapters (comma-separated, or "all").
+                                  Built-in: telegram, discord, slack, webhook, imessage.
+                                  Config: ~/.lisa/channels.json
+  lisa serve --imessage        Shortcut for --channels imessage (macOS).
+  lisa channels                List available channel adapters.
   lisa heartbeat run [name]    Run heartbeat tasks once (incl. self-driven desires).
   lisa heartbeat install [--load] [--every <30m|1h|...>]
                                 Install macOS launchd plist (or print cron line).
@@ -87,10 +91,12 @@ interface ParsedArgs {
     | "heartbeat"
     | "search"
     | "birth"
-    | "soul";
+    | "soul"
+    | "channels";
   subargs: string[];
   serveWeb: boolean;
   serveImessage: boolean;
+  serveChannels: string[];
   port: number;
   prompt: string | null;
 }
@@ -109,6 +115,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     subargs: [],
     serveWeb: false,
     serveImessage: false,
+    serveChannels: [],
     port: 5757,
     prompt: null,
   };
@@ -124,6 +131,18 @@ function parseArgs(argv: string[]): ParsedArgs {
     else if (arg === "--voice") out.voice = true;
     else if (arg === "--web") out.serveWeb = true;
     else if (arg === "--imessage") out.serveImessage = true;
+    else if (arg === "--channels") {
+      out.serveChannels = mustNext(argv, ++i, "--channels")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    } else if (arg.startsWith("--channels=")) {
+      out.serveChannels = arg
+        .slice("--channels=".length)
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
     else if (arg === "--model") out.model = mustNext(argv, ++i, "--model");
     else if (arg.startsWith("--model=")) out.model = arg.slice("--model=".length);
     else if (arg === "--provider") {
@@ -152,7 +171,8 @@ function parseArgs(argv: string[]): ParsedArgs {
       first === "heartbeat" ||
       first === "search" ||
       first === "birth" ||
-      first === "soul"
+      first === "soul" ||
+      first === "channels"
     ) {
       out.subcommand = first;
       out.subargs = positional.slice(1);
@@ -203,6 +223,27 @@ async function main(): Promise<void> {
       return;
     }
     printSoulSummary(summary);
+    return;
+  }
+
+  if (args.subcommand === "channels") {
+    const { listAvailableChannels, registerBuiltins } = await import("./channels/registry.js");
+    const { loadChannelsConfig, CHANNELS_CONFIG_PATH } = await import("./channels/config.js");
+    await registerBuiltins();
+    const available = listAvailableChannels();
+    const cfg = await loadChannelsConfig();
+    console.log("Available channel adapters:\n");
+    for (const name of available) {
+      const entry = cfg.channels[name];
+      const status = !entry
+        ? "(not configured)"
+        : entry.enabled === false
+          ? "(disabled)"
+          : "configured ✓";
+      console.log(`  ${name.padEnd(12)} ${status}`);
+    }
+    console.log(`\nConfig: ${CHANNELS_CONFIG_PATH}`);
+    console.log(`Start: lisa serve --channels <comma-list>  (or --channels all)`);
     return;
   }
 
@@ -354,45 +395,68 @@ async function main(): Promise<void> {
       await new Promise<void>(() => {});
       return;
     }
-    if (args.serveImessage) {
-      const { IMessageChannel } = await import("./channels/imessage.js");
-      const channel = new IMessageChannel();
-      console.error(
-        `Lisa iMessage channel started — polling for incoming messages.`,
-      );
-      const session = await SessionStore.create({ cwd, model: args.model });
-      const snapshot = await buildSystemPromptSnapshot();
-      const history: StoredMessage[] = [];
-      await channel.start(async (incoming) => {
-        console.error(`[imessage] from ${incoming.from}: ${incoming.text}`);
-        const result = await runAgent({
-          provider,
-          systemPrompt: snapshot.text,
-          tools: composedTools,
-          toolCtx: { cwd, signal: abortController.signal, log: () => {} },
-          history,
-          userMessage: incoming.text,
-          model: args.model,
-          thinking: args.thinking,
-          compaction: args.compaction,
-          onMessagePersist: (m) => session.appendMessage(m),
-        });
-        history.length = 0;
-        history.push(...result.history);
-        try {
-          await channel.send({
-            channel: "imessage",
-            to: incoming.from,
-            text: result.finalText || "(no reply)",
-          });
-        } catch (err) {
-          console.error(`[imessage] send failed: ${(err as Error).message}`);
+    if (args.serveImessage) args.serveChannels.push("imessage");
+    if (args.serveChannels.length > 0) {
+      const { ChannelRouter } = await import("./channels/router.js");
+      const { loadChannelsConfig } = await import("./channels/config.js");
+      const { makeChannel, registerBuiltins, listAvailableChannels } = await import("./channels/registry.js");
+      await registerBuiltins();
+      const cfg = await loadChannelsConfig();
+      let names = args.serveChannels;
+      if (names.includes("all")) {
+        names = Object.keys(cfg.channels).filter(
+          (n) => cfg.channels[n]!.enabled !== false,
+        );
+      }
+      if (names.length === 0) {
+        console.error(
+          `No channels selected. Built-in adapters: ${listAvailableChannels().join(", ")}\nDefine them in ~/.lisa/channels.json then run \`lisa serve --channels <list>\`.`,
+        );
+        process.exit(2);
+      }
+      const adapters = [];
+      for (const n of names) {
+        const entry = cfg.channels[n] ?? {};
+        if (entry.enabled === false) {
+          console.error(`[router] ${n} disabled in config, skipping`);
+          continue;
         }
+        try {
+          adapters.push(await makeChannel(n, entry));
+        } catch (err) {
+          console.error(`[router] ${n} failed to init: ${(err as Error).message}`);
+        }
+      }
+      if (adapters.length === 0) {
+        console.error("no channels could be started — check config and credentials");
+        process.exit(1);
+      }
+      const router = new ChannelRouter({
+        channels: adapters,
+        tools: composedTools,
+        cwd,
+        signal: abortController.signal,
+        model: args.model,
+        thinking: args.thinking,
+        compaction: args.compaction,
       });
+      await router.start();
+      console.error(
+        `Lisa is now reachable on: ${adapters.map((a) => a.name).join(", ")}`,
+      );
+      const shutdown = async () => {
+        console.error("\n[router] shutting down…");
+        await router.stop();
+        if (args.reflect) await router.reflectAll();
+        await Promise.all(mcpConnections.map((c) => c.close()));
+        process.exit(0);
+      };
+      process.on("SIGINT", shutdown);
+      process.on("SIGTERM", shutdown);
       await new Promise<void>(() => {});
       return;
     }
-    console.error("usage: lisa serve --web [--port N]  |  lisa serve --imessage");
+    console.error("usage: lisa serve --web [--port N]  |  lisa serve --channels <list>");
     process.exit(2);
   }
 

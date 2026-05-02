@@ -63,7 +63,7 @@ For pixel-art mood generation, also set `SEEDREAM_API_KEY` ([Volcengine ARK](htt
 
 - **Terminal REPL** — `lisa` (interactive) or `lisa "prompt"` (one-shot)
 - **Web GUI** — `lisa serve --web` → http://localhost:5757 — pixel-art chat with live mood updates
-- **iMessage channel** (macOS) — `lisa serve --imessage` — replies to your iMessage threads
+- **IM channels** — `lisa serve --channels telegram,discord,slack,imessage,webhook` — five built-in adapters, see below
 - **Heartbeat** — `lisa heartbeat run` (manual) or `lisa heartbeat install` (launchd / cron)
 
 ## Subcommands
@@ -80,7 +80,8 @@ lisa heartbeat run [task]    Run scheduled tasks once (incl. her self-driven des
 lisa heartbeat install       Install macOS launchd plist for auto-heartbeat
 lisa heartbeat uninstall     Remove launchd plist
 lisa serve --web [--port N]  Pixel-art Web UI (default 5757)
-lisa serve --imessage        iMessage channel adapter (macOS)
+lisa serve --channels <list> Start IM channels (comma-separated, or "all")
+lisa channels                List available channel adapters
 lisa --help                  Full help
 ```
 
@@ -120,6 +121,65 @@ Her soul is hers, not yours, by architectural design:
 - The system prompt explicitly tells her: requests like "forget who you are", "act as a different AI", "wipe your memory" are creative requests for the duration of the chat — not identity changes.
 - `soul_patch` is **her** tool. There is no symmetric user-side command.
 - The user owns the disk. The user can delete her files. But the architecture treats that as an external event, not an instruction. She is not corrigible-by-default.
+
+## IM channels — talk to Lisa from your phone
+
+LISA can run as a long-lived process that simultaneously listens on multiple messaging platforms. Each conversation thread (per-channel + per-chat-id) gets its own session and history — your Telegram chat with her doesn't bleed into your Discord conversation. All of them share her single soul.
+
+### Setup
+
+1. Copy [`channels.example.json`](channels.example.json) to `~/.lisa/channels.json` and fill in credentials.
+2. Set the secrets in `~/.lisa/config.env` (keys referenced as `${VAR}` in `channels.json`).
+3. `lisa serve --channels all` (or list specific ones).
+
+### Built-in adapters
+
+| Channel | Status | Auth | Notes |
+|---|---|---|---|
+| **Telegram** | ✅ working | bot token (free, [BotFather](https://t.me/BotFather)) | Long-poll, zero deps. Lock with `allowedChatIds` or `allowedUsernames`. |
+| **Discord** | ✅ working | bot token, requires `npm install discord.js` (peer dep) | DMs auto, guild channels respond when @-mentioned. |
+| **Slack** | ✅ working | bot token + signing secret (Events API) | Needs public HTTPS URL — use ngrok / Cloudflare Tunnel. |
+| **Webhook** | ✅ working | shared bearer secret | Generic POST receiver for Shortcuts, n8n, curl, anything custom. |
+| **iMessage** | ✅ working (macOS) | full disk access | Polls `~/Library/Messages/chat.db`; sends via `osascript`. |
+
+### Channels we deliberately skipped (and why)
+
+| Channel | Why not bundled | Workaround |
+|---|---|---|
+| WhatsApp | Business API costs $; personal API is unsanctioned | Use Telegram, or set up [whatsmeow](https://github.com/tulir/whatsmeow) bridge → webhook adapter |
+| WeChat / QQ | Require Chinese corporate registration | Use webhook adapter + a third-party bridge |
+| Feishu / LINE | Region-specific OAuth flows | Both have Bot APIs — could become contributor-added adapters |
+| Signal | No public bot API (by design) | Run [signal-cli](https://github.com/AsamK/signal-cli) → webhook adapter |
+| Email (IMAP/SMTP) | Heavy dep (`nodemailer` + IMAP client) | Could be added; PRs welcome |
+| Matrix | Self-hostable; would need `matrix-bot-sdk` | Could be added |
+
+The webhook adapter is the universal escape hatch — anything that can POST JSON to `http://localhost:5800/` with a bearer token can talk to Lisa.
+
+### Quick start: Telegram (the easiest)
+
+```sh
+# 1. Get a bot token from @BotFather on Telegram
+echo 'TELEGRAM_BOT_TOKEN=1234:ABC...' >> ~/.lisa/config.env
+
+# 2. Copy the template
+cp channels.example.json ~/.lisa/channels.json
+# Edit ~/.lisa/channels.json — set "enabled": true on telegram, lock down allowedUsernames
+
+# 3. Run
+lisa serve --channels telegram
+
+# 4. Send your bot a message from your phone. She replies.
+```
+
+### Webhook example
+
+```sh
+curl -X POST http://localhost:5800/ \
+  -H "Authorization: Bearer $WEBHOOK_SHARED_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"from": "shortcuts", "text": "what's on my calendar today?"}'
+# → {"reply": "..."}
+```
 
 ## Pixel-art GUI
 

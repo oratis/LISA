@@ -1,0 +1,36 @@
+{
+  "_README": "Copy this to ~/.lisa/channels.json and fill in the credentials. ${ENV_VAR} placeholders are expanded from process.env (so secrets can stay in ~/.lisa/config.env).",
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "token": "${TELEGRAM_BOT_TOKEN}",
+      "allowedChatIds": [],
+      "allowedUsernames": ["your_telegram_username"]
+    },
+    "discord": {
+      "enabled": false,
+      "token": "${DISCORD_BOT_TOKEN}",
+      "allowedGuildIds": [],
+      "allowedChannelIds": [],
+      "allowDms": true
+    },
+    "slack": {
+      "enabled": false,
+      "botToken": "${SLACK_BOT_TOKEN}",
+      "signingSecret": "${SLACK_SIGNING_SECRET}",
+      "port": 5810,
+      "allowedChannelIds": [],
+      "allowedUserIds": []
+    },
+    "webhook": {
+      "enabled": false,
+      "port": 5800,
+      "token": "${WEBHOOK_SHARED_SECRET}",
+      "replyUrl": ""
+    },
+    "imessage": {
+      "enabled": false,
+      "intervalMs": 5000
+    }
+  }
+}

@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs/promises";
+import { registerChannel } from "./registry.js";
 import type {
   ChannelAdapter,
   IncomingMessage,
@@ -138,3 +139,8 @@ end tell`;
     });
   }
 }
+
+registerChannel("imessage", (cfg) => {
+  const intervalMs = typeof cfg.intervalMs === "number" ? cfg.intervalMs : undefined;
+  return new IMessageChannel(intervalMs ? { intervalMs } : {});
+});
