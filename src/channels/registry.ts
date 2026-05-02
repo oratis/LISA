@@ -39,4 +39,5 @@ export async function registerBuiltins(): Promise<void> {
   await import("./webhook.js");
   await import("./slack.js");
   await import("./discord.js");
+  await import("./feishu.js");
 }

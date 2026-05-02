@@ -31,6 +31,15 @@
     "imessage": {
       "enabled": false,
       "intervalMs": 5000
+    },
+    "feishu": {
+      "enabled": false,
+      "appId": "${FEISHU_APP_ID}",
+      "appSecret": "${FEISHU_APP_SECRET}",
+      "encryptKey": "${FEISHU_ENCRYPT_KEY}",
+      "verificationToken": "${FEISHU_VERIFICATION_TOKEN}",
+      "port": 5820,
+      "allowedUserIds": []
     }
   }
 }

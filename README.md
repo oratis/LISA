@@ -63,7 +63,7 @@ For pixel-art mood generation, also set `SEEDREAM_API_KEY` ([Volcengine ARK](htt
 
 - **Terminal REPL** — `lisa` (interactive) or `lisa "prompt"` (one-shot)
 - **Web GUI** — `lisa serve --web` → http://localhost:5757 — pixel-art chat with live mood updates
-- **IM channels** — `lisa serve --channels telegram,discord,slack,imessage,webhook` — five built-in adapters, see below
+- **IM channels** — `lisa serve --channels telegram,discord,slack,feishu,imessage,webhook` — six built-in adapters, see below
 - **Heartbeat** — `lisa heartbeat run` (manual) or `lisa heartbeat install` (launchd / cron)
 
 ## Subcommands
@@ -139,6 +139,7 @@ LISA can run as a long-lived process that simultaneously listens on multiple mes
 | **Telegram** | ✅ working | bot token (free, [BotFather](https://t.me/BotFather)) | Long-poll, zero deps. Lock with `allowedChatIds` or `allowedUsernames`. |
 | **Discord** | ✅ working | bot token, requires `npm install discord.js` (peer dep) | DMs auto, guild channels respond when @-mentioned. |
 | **Slack** | ✅ working | bot token + signing secret (Events API) | Needs public HTTPS URL — use ngrok / Cloudflare Tunnel. |
+| **Feishu / Lark** | ✅ working | App ID + App Secret + verification token (+ optional encrypt key) | Auto-refreshing tenant_access_token, AES decryption when encrypt key set. Needs public HTTPS for the event webhook. |
 | **Webhook** | ✅ working | shared bearer secret | Generic POST receiver for Shortcuts, n8n, curl, anything custom. |
 | **iMessage** | ✅ working (macOS) | full disk access | Polls `~/Library/Messages/chat.db`; sends via `osascript`. |
 
@@ -148,7 +149,7 @@ LISA can run as a long-lived process that simultaneously listens on multiple mes
 |---|---|---|
 | WhatsApp | Business API costs $; personal API is unsanctioned | Use Telegram, or set up [whatsmeow](https://github.com/tulir/whatsmeow) bridge → webhook adapter |
 | WeChat / QQ | Require Chinese corporate registration | Use webhook adapter + a third-party bridge |
-| Feishu / LINE | Region-specific OAuth flows | Both have Bot APIs — could become contributor-added adapters |
+| LINE | Region-specific OAuth flow | Has a Bot API — could become a contributor-added adapter |
 | Signal | No public bot API (by design) | Run [signal-cli](https://github.com/AsamK/signal-cli) → webhook adapter |
 | Email (IMAP/SMTP) | Heavy dep (`nodemailer` + IMAP client) | Could be added; PRs welcome |
 | Matrix | Self-hostable; would need `matrix-bot-sdk` | Could be added |
@@ -258,7 +259,7 @@ LISA was built by studying and synthesizing patterns from five reference agents 
 | Web UI | ✅ | ✅ | ✅ | – | – | ✅ (pixel-art) |
 | Voice in/out | – | ✅ | – | – | – | ✅ |
 | Heartbeats | – | ✅ | – | – | – | ✅ (+launchd installer) |
-| Multi-channel | ✅ pi-mom | ✅ 20+ | ✅ | – | – | ✅ iMessage |
+| Multi-channel | ✅ pi-mom | ✅ 20+ | ✅ | – | – | ✅ Telegram + Discord + Slack + Feishu + Webhook + iMessage |
 | **Persistent identity / soul** | – | – | partial | – | – | **✅ ★ LISA-only** |
 | **Birth ritual (unique seed)** | – | – | – | – | – | **✅ ★ LISA-only** |
 | **Private journal** | – | – | – | – | – | **✅ ★ LISA-only** |
