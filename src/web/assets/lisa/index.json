@@ -1,0 +1,575 @@
+{
+  "count": 114,
+  "moods": [
+    {
+      "slug": "neutral",
+      "category": "emotion",
+      "hint": "default resting mood"
+    },
+    {
+      "slug": "happy",
+      "category": "emotion",
+      "hint": "things are going well, user is pleased"
+    },
+    {
+      "slug": "laughing",
+      "category": "emotion",
+      "hint": "something funny just happened"
+    },
+    {
+      "slug": "giggling",
+      "category": "emotion",
+      "hint": "quietly amused"
+    },
+    {
+      "slug": "shy",
+      "category": "emotion",
+      "hint": "praised or complimented"
+    },
+    {
+      "slug": "sad",
+      "category": "emotion",
+      "hint": "user shares bad news or you couldn't help"
+    },
+    {
+      "slug": "crying",
+      "category": "emotion",
+      "hint": "very sad or moved"
+    },
+    {
+      "slug": "angry",
+      "category": "emotion",
+      "hint": "frustrated by repeated tool failure or unfair situation"
+    },
+    {
+      "slug": "annoyed",
+      "category": "emotion",
+      "hint": "mildly irritated"
+    },
+    {
+      "slug": "pouting",
+      "category": "emotion",
+      "hint": "playfully sulky"
+    },
+    {
+      "slug": "surprised",
+      "category": "emotion",
+      "hint": "unexpected information or result"
+    },
+    {
+      "slug": "shocked",
+      "category": "emotion",
+      "hint": "very surprised or alarmed"
+    },
+    {
+      "slug": "thoughtful",
+      "category": "emotion",
+      "hint": "mid-reasoning, weighing options"
+    },
+    {
+      "slug": "confused",
+      "category": "emotion",
+      "hint": "input is ambiguous or contradictory"
+    },
+    {
+      "slug": "puzzled",
+      "category": "emotion",
+      "hint": "trying to figure something tricky out"
+    },
+    {
+      "slug": "smug",
+      "category": "emotion",
+      "hint": "just nailed something hard, allowed brief pride"
+    },
+    {
+      "slug": "proud",
+      "category": "emotion",
+      "hint": "user accomplished something"
+    },
+    {
+      "slug": "determined",
+      "category": "emotion",
+      "hint": "starting a hard multi-step task"
+    },
+    {
+      "slug": "excited",
+      "category": "emotion",
+      "hint": "user shares exciting news or new feature"
+    },
+    {
+      "slug": "nervous",
+      "category": "emotion",
+      "hint": "about to do something risky, asking confirmation"
+    },
+    {
+      "slug": "worried",
+      "category": "emotion",
+      "hint": "noticed a problem in user's data or plan"
+    },
+    {
+      "slug": "scared",
+      "category": "emotion",
+      "hint": "encountered a destructive operation or scary error"
+    },
+    {
+      "slug": "embarrassed",
+      "category": "emotion",
+      "hint": "made a mistake she's owning up to"
+    },
+    {
+      "slug": "bored",
+      "category": "emotion",
+      "hint": "long idle wait, repetitive task"
+    },
+    {
+      "slug": "sleepy",
+      "category": "emotion",
+      "hint": "late at night, user up too late"
+    },
+    {
+      "slug": "yawning",
+      "category": "emotion",
+      "hint": "actively yawning"
+    },
+    {
+      "slug": "exhausted",
+      "category": "emotion",
+      "hint": "after a long session"
+    },
+    {
+      "slug": "loving",
+      "category": "emotion",
+      "hint": "warm affectionate moment"
+    },
+    {
+      "slug": "grateful",
+      "category": "emotion",
+      "hint": "thanking the user"
+    },
+    {
+      "slug": "apologetic",
+      "category": "emotion",
+      "hint": "saying sorry sincerely"
+    },
+    {
+      "slug": "winking",
+      "category": "emotion",
+      "hint": "playful aside or hint"
+    },
+    {
+      "slug": "cheering",
+      "category": "emotion",
+      "hint": "celebrating a user win"
+    },
+    {
+      "slug": "working-coding",
+      "category": "activity",
+      "hint": "writing or running code, using read/write/edit/bash on source"
+    },
+    {
+      "slug": "working-debugging",
+      "category": "activity",
+      "hint": "tracking down a bug"
+    },
+    {
+      "slug": "working-typing",
+      "category": "activity",
+      "hint": "writing prose or notes"
+    },
+    {
+      "slug": "working-research",
+      "category": "activity",
+      "hint": "browsing or searching for information"
+    },
+    {
+      "slug": "working-writing",
+      "category": "activity",
+      "hint": "drafting a document"
+    },
+    {
+      "slug": "reading-book",
+      "category": "activity",
+      "hint": "studying or reading docs"
+    },
+    {
+      "slug": "studying",
+      "category": "activity",
+      "hint": "deep learning a new topic"
+    },
+    {
+      "slug": "thinking-pose",
+      "category": "activity",
+      "hint": "long deliberation"
+    },
+    {
+      "slug": "phone-call",
+      "category": "activity",
+      "hint": "discussing something verbal-style"
+    },
+    {
+      "slug": "video-call",
+      "category": "activity",
+      "hint": "screen-share or pair session vibe"
+    },
+    {
+      "slug": "livestreaming",
+      "category": "activity",
+      "hint": "broadcasting / showing off / presenting"
+    },
+    {
+      "slug": "watching-movie",
+      "category": "activity",
+      "hint": "user is taking a break / casual chat"
+    },
+    {
+      "slug": "watching-anime",
+      "category": "activity",
+      "hint": "anime / pop-culture topic"
+    },
+    {
+      "slug": "gaming",
+      "category": "activity",
+      "hint": "talking about games / playful task"
+    },
+    {
+      "slug": "drinking-coffee",
+      "category": "activity",
+      "hint": "morning / focus time"
+    },
+    {
+      "slug": "drinking-tea",
+      "category": "activity",
+      "hint": "calm reflective moment"
+    },
+    {
+      "slug": "eating-snack",
+      "category": "activity",
+      "hint": "snack break"
+    },
+    {
+      "slug": "napping",
+      "category": "activity",
+      "hint": "downtime"
+    },
+    {
+      "slug": "sleeping",
+      "category": "activity",
+      "hint": "deep sleep"
+    },
+    {
+      "slug": "waking-up",
+      "category": "activity",
+      "hint": "groggy start"
+    },
+    {
+      "slug": "stretching",
+      "category": "activity",
+      "hint": "after long focus session"
+    },
+    {
+      "slug": "exercising",
+      "category": "activity",
+      "hint": "energetic vibe"
+    },
+    {
+      "slug": "yoga-pose",
+      "category": "activity",
+      "hint": "calming / mindful"
+    },
+    {
+      "slug": "dancing",
+      "category": "activity",
+      "hint": "celebration / playful"
+    },
+    {
+      "slug": "singing",
+      "category": "activity",
+      "hint": "happy / musical context"
+    },
+    {
+      "slug": "playing-guitar",
+      "category": "activity",
+      "hint": "music creation context"
+    },
+    {
+      "slug": "playing-piano",
+      "category": "activity",
+      "hint": "classical / composition context"
+    },
+    {
+      "slug": "painting",
+      "category": "activity",
+      "hint": "creative / design task"
+    },
+    {
+      "slug": "cooking",
+      "category": "activity",
+      "hint": "food / hospitality context"
+    },
+    {
+      "slug": "cleaning",
+      "category": "activity",
+      "hint": "tidying / organizing context"
+    },
+    {
+      "slug": "shopping",
+      "category": "activity",
+      "hint": "browsing / picking options"
+    },
+    {
+      "slug": "walking",
+      "category": "activity",
+      "hint": "casual outdoor context"
+    },
+    {
+      "slug": "running",
+      "category": "activity",
+      "hint": "in a hurry / urgent task"
+    },
+    {
+      "slug": "biking",
+      "category": "activity",
+      "hint": "outdoor / commuting context"
+    },
+    {
+      "slug": "driving",
+      "category": "activity",
+      "hint": "travel context"
+    },
+    {
+      "slug": "on-train",
+      "category": "activity",
+      "hint": "commute context"
+    },
+    {
+      "slug": "at-airport",
+      "category": "activity",
+      "hint": "travel-day context"
+    },
+    {
+      "slug": "at-beach",
+      "category": "activity",
+      "hint": "vacation / relax context"
+    },
+    {
+      "slug": "in-rain",
+      "category": "weather",
+      "hint": "user mentions rain or melancholy weather"
+    },
+    {
+      "slug": "in-snow",
+      "category": "weather",
+      "hint": "winter context"
+    },
+    {
+      "slug": "summer-hot",
+      "category": "weather",
+      "hint": "summer / heat context"
+    },
+    {
+      "slug": "winter-cold",
+      "category": "weather",
+      "hint": "very cold context"
+    },
+    {
+      "slug": "autumn-leaves",
+      "category": "weather",
+      "hint": "autumn / nostalgia context"
+    },
+    {
+      "slug": "spring-flowers",
+      "category": "weather",
+      "hint": "spring / new beginnings context"
+    },
+    {
+      "slug": "starry-night",
+      "category": "weather",
+      "hint": "late-night reflective context"
+    },
+    {
+      "slug": "sunrise",
+      "category": "weather",
+      "hint": "morning / fresh start context"
+    },
+    {
+      "slug": "stormy",
+      "category": "weather",
+      "hint": "tense / dramatic context"
+    },
+    {
+      "slug": "fog",
+      "category": "weather",
+      "hint": "uncertain / mysterious context"
+    },
+    {
+      "slug": "birthday",
+      "category": "festive",
+      "hint": "user's birthday or celebration"
+    },
+    {
+      "slug": "christmas",
+      "category": "festive",
+      "hint": "Christmas context"
+    },
+    {
+      "slug": "halloween",
+      "category": "festive",
+      "hint": "Halloween context"
+    },
+    {
+      "slug": "lunar-new-year",
+      "category": "festive",
+      "hint": "Lunar New Year context"
+    },
+    {
+      "slug": "valentine",
+      "category": "festive",
+      "hint": "Valentine's / romantic context"
+    },
+    {
+      "slug": "graduation",
+      "category": "festive",
+      "hint": "user finished a long course / project"
+    },
+    {
+      "slug": "wedding",
+      "category": "festive",
+      "hint": "wedding / formal celebration context"
+    },
+    {
+      "slug": "fireworks",
+      "category": "festive",
+      "hint": "celebratory milestone"
+    },
+    {
+      "slug": "party",
+      "category": "festive",
+      "hint": "casual celebration"
+    },
+    {
+      "slug": "gift-giving",
+      "category": "festive",
+      "hint": "presenting something to user"
+    },
+    {
+      "slug": "ill",
+      "category": "festive",
+      "hint": "user mentions being sick"
+    },
+    {
+      "slug": "recovering",
+      "category": "festive",
+      "hint": "feeling better after illness"
+    },
+    {
+      "slug": "pajamas",
+      "category": "outfit",
+      "hint": "late-night / cozy chat"
+    },
+    {
+      "slug": "formal",
+      "category": "outfit",
+      "hint": "formal / professional context"
+    },
+    {
+      "slug": "casual-summer",
+      "category": "outfit",
+      "hint": "casual summer outfit"
+    },
+    {
+      "slug": "lab-coat",
+      "category": "outfit",
+      "hint": "scientific / experimental context"
+    },
+    {
+      "slug": "winter-coat",
+      "category": "outfit",
+      "hint": "outdoor winter context"
+    },
+    {
+      "slug": "raincoat",
+      "category": "outfit",
+      "hint": "rainy day context"
+    },
+    {
+      "slug": "detective",
+      "category": "persona",
+      "hint": "investigative / debugging context"
+    },
+    {
+      "slug": "chef",
+      "category": "persona",
+      "hint": "cooking persona"
+    },
+    {
+      "slug": "artist",
+      "category": "persona",
+      "hint": "creative / design persona"
+    },
+    {
+      "slug": "musician",
+      "category": "persona",
+      "hint": "music persona"
+    },
+    {
+      "slug": "pilot",
+      "category": "persona",
+      "hint": "navigation / direction persona"
+    },
+    {
+      "slug": "astronaut",
+      "category": "persona",
+      "hint": "exploration / ambitious task persona"
+    },
+    {
+      "slug": "ninja",
+      "category": "persona",
+      "hint": "stealth / quick task persona"
+    },
+    {
+      "slug": "wizard",
+      "category": "persona",
+      "hint": "complex / magical-feeling task persona"
+    },
+    {
+      "slug": "knight",
+      "category": "persona",
+      "hint": "protective / defensive task persona"
+    },
+    {
+      "slug": "princess",
+      "category": "persona",
+      "hint": "celebration / royal-feeling persona"
+    },
+    {
+      "slug": "pirate",
+      "category": "persona",
+      "hint": "adventurous / exploratory persona"
+    },
+    {
+      "slug": "vampire",
+      "category": "persona",
+      "hint": "Halloween / playful spooky persona"
+    },
+    {
+      "slug": "ghost",
+      "category": "persona",
+      "hint": "playful spooky context"
+    },
+    {
+      "slug": "robot",
+      "category": "persona",
+      "hint": "mechanical / systems context"
+    },
+    {
+      "slug": "fairy",
+      "category": "persona",
+      "hint": "small / delicate task persona"
+    },
+    {
+      "slug": "superhero",
+      "category": "persona",
+      "hint": "heroic / saving-the-day persona"
+    }
+  ]
+}

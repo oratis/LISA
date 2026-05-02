@@ -1,0 +1,32 @@
+{
+  "name": "lisa",
+  "version": "0.1.0",
+  "description": "Lisa — a self-evolving AI personal assistant.",
+  "type": "module",
+  "bin": {
+    "lisa": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && npm run copy-assets",
+    "copy-assets": "mkdir -p dist/web && rm -rf dist/web/assets && ln -s ../../src/web/assets dist/web/assets",
+    "dev": "tsc -p tsconfig.json --watch",
+    "start": "node dist/cli.js",
+    "lisa": "node --enable-source-maps dist/cli.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "generate-assets": "tsx scripts/generate-pixel-assets.ts"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.92.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "openai": "^6.35.0",
+    "sharp": "^0.34.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.7.0"
+  }
+}

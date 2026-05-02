@@ -1,0 +1,98 @@
+import Anthropic from "@anthropic-ai/sdk";
+import type {
+  Provider,
+  ProviderResult,
+  ProviderRunOpts,
+} from "./types.js";
+
+export class AnthropicProvider implements Provider {
+  readonly name = "anthropic";
+  private client: Anthropic;
+
+  constructor(opts: { apiKey?: string } = {}) {
+    this.client = new Anthropic({ apiKey: opts.apiKey });
+  }
+
+  async runTurn(opts: ProviderRunOpts): Promise<ProviderResult> {
+    const messages = withCacheBreakpoint(opts.messages);
+    const tools = opts.tools.map((t) => ({
+      name: t.name,
+      description: t.description,
+      input_schema: t.inputSchema,
+    }));
+
+    const params: Anthropic.MessageCreateParamsStreaming = {
+      model: opts.model,
+      max_tokens: opts.maxTokens ?? 16_000,
+      system: [
+        { type: "text", text: opts.systemPrompt, cache_control: { type: "ephemeral" } },
+      ],
+      tools,
+      messages,
+      stream: true,
+    };
+    if (opts.thinking) {
+      params.thinking = { type: "adaptive" };
+    }
+    const extras: { betas?: string[]; context_management?: object } = {};
+    if (opts.compaction) {
+      extras.betas = ["compact-2026-01-12"];
+      extras.context_management = { edits: [{ type: "compact_20260112" }] };
+    }
+
+    const onText = (delta: string) => opts.handlers?.onTextDelta?.(delta);
+    const onThinking = (delta: string) =>
+      opts.handlers?.onThinkingDelta?.(delta);
+
+    let message: Anthropic.Message;
+    if (opts.compaction) {
+      const stream = this.client.beta.messages.stream({
+        ...params,
+        ...extras,
+      } as Anthropic.Beta.MessageCreateParamsStreaming);
+      if (opts.handlers?.onTextDelta) stream.on("text", onText);
+      if (opts.handlers?.onThinkingDelta) stream.on("thinking", onThinking);
+      message = (await stream.finalMessage()) as unknown as Anthropic.Message;
+    } else {
+      const stream = this.client.messages.stream(params);
+      if (opts.handlers?.onTextDelta) stream.on("text", onText);
+      if (opts.handlers?.onThinkingDelta) stream.on("thinking", onThinking);
+      message = await stream.finalMessage();
+    }
+    return {
+      content: message.content as Anthropic.ContentBlock[],
+      stopReason: message.stop_reason ?? "end_turn",
+      usage: {
+        inputTokens: message.usage?.input_tokens ?? 0,
+        outputTokens: message.usage?.output_tokens ?? 0,
+        cacheReadTokens: message.usage?.cache_read_input_tokens ?? 0,
+        cacheWriteTokens: message.usage?.cache_creation_input_tokens ?? 0,
+      },
+    };
+  }
+}
+
+function withCacheBreakpoint(
+  messages: Anthropic.MessageParam[],
+): Anthropic.MessageParam[] {
+  if (messages.length === 0) return messages;
+  const out = messages.slice();
+  const last = out[out.length - 1]!;
+  if (typeof last.content === "string") return out;
+  const content = last.content as Anthropic.ContentBlockParam[];
+  if (content.length === 0) return out;
+  const cloned = content.map((block, idx) => {
+    if (idx !== content.length - 1) return block;
+    if (
+      block.type === "text" ||
+      block.type === "tool_result" ||
+      block.type === "image" ||
+      block.type === "document"
+    ) {
+      return { ...block, cache_control: { type: "ephemeral" as const } };
+    }
+    return block;
+  });
+  out[out.length - 1] = { ...last, content: cloned };
+  return out;
+}
