@@ -56,6 +56,8 @@ Flags:
   --no-mcp              Skip loading MCP servers.
   --no-plugins          Skip loading plugins.
   --voice               Enable speak/transcribe tools.
+  --idle <minutes>      Trigger idle mode after N min of no input (default: 60).
+  --no-idle             Disable idle mode entirely.
 
 REPL slash commands:
   /help, /exit, /quit
@@ -84,6 +86,7 @@ interface ParsedArgs {
   loadMcp: boolean;
   loadPlugins: boolean;
   voice: boolean;
+  idleMinutes: number;
   subcommand?:
     | "resume"
     | "sessions"
@@ -112,6 +115,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     loadMcp: true,
     loadPlugins: true,
     voice: false,
+    idleMinutes: 60,
     subargs: [],
     serveWeb: false,
     serveImessage: false,
@@ -129,6 +133,13 @@ function parseArgs(argv: string[]): ParsedArgs {
     else if (arg === "--no-mcp") out.loadMcp = false;
     else if (arg === "--no-plugins") out.loadPlugins = false;
     else if (arg === "--voice") out.voice = true;
+    else if (arg === "--no-idle") out.idleMinutes = 0;
+    else if (arg === "--idle") {
+      const v = mustNext(argv, ++i, "--idle");
+      const n = parseInt(v, 10);
+      if (!Number.isFinite(n) || n < 0) throw new Error(`bad --idle: ${v}`);
+      out.idleMinutes = n;
+    }
     else if (arg === "--web") out.serveWeb = true;
     else if (arg === "--imessage") out.serveImessage = true;
     else if (arg === "--channels") {
@@ -389,6 +400,7 @@ async function main(): Promise<void> {
         model: args.model,
         thinking: args.thinking,
         reflect: args.reflect,
+        idleMinutes: args.idleMinutes,
       });
       console.error(`Lisa web UI listening on http://localhost:${args.port}`);
       // Keep alive until SIGINT.
@@ -580,8 +592,42 @@ async function main(): Promise<void> {
     cwd,
   );
 
+  // Idle watcher in REPL mode: fire silently (writes journal/skills only —
+  // we don't want a popup interrupting an active terminal session).
+  if (args.idleMinutes > 0) {
+    const { getIdleWatcher } = await import("./idle/watcher.js");
+    const { runIdleOnce } = await import("./idle/runner.js");
+    const watcher = getIdleWatcher(args.idleMinutes * 60_000);
+    let busy = false;
+    watcher.on("idle", async () => {
+      if (busy) return;
+      busy = true;
+      try {
+        const r = await runIdleOnce({
+          tools: composedTools,
+          cwd,
+          signal: abortController.signal,
+          model: args.model,
+          idleMs: watcher.idleFor(),
+        });
+        if (!r.silent) {
+          process.stderr.write(`\n\n[★ while you were away]\n${r.text}\n\nyou> `);
+        }
+      } catch (err) {
+        process.stderr.write(`\n[idle] error: ${(err as Error).message}\n`);
+      } finally {
+        busy = false;
+      }
+    });
+    watcher.start();
+  }
+
   await runRepl({
     onLine: async (line) => {
+      try {
+        const { getIdleWatcher } = await import("./idle/watcher.js");
+        getIdleWatcher(args.idleMinutes * 60_000 || 60 * 60_000).tick();
+      } catch {}
       const r = await fireHooks(
         "UserPromptSubmit",
         allHooks,

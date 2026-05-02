@@ -3,6 +3,8 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { runAgent } from "../agent.js";
+import { runIdleOnce } from "../idle/runner.js";
+import { getIdleWatcher } from "../idle/watcher.js";
 import { moodBus } from "../mood-bus.js";
 import { providerForModel } from "../providers/registry.js";
 import { buildSystemPromptSnapshot } from "../prompt.js";
@@ -366,6 +368,40 @@ const HTML = `<!doctype html>
   .msg { display: block; }
   @keyframes blink { 50% { opacity: 0; } }
 
+  .idle-block {
+    margin: 14px 0;
+    padding: 10px 12px;
+    background: rgba(108, 246, 225, 0.06);
+    border-left: 3px solid var(--you);
+    border-radius: 0;
+    font-size: 19px;
+    color: var(--text);
+    font-family: 'VT323', monospace;
+    animation: idleFade 0.6s ease-out;
+  }
+  @keyframes idleFade {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .idle-block .idle-head {
+    color: var(--you);
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px;
+    margin-bottom: 6px;
+    letter-spacing: 2px;
+  }
+  .idle-block .idle-time {
+    color: var(--text-dim);
+    font-size: 13px;
+    margin-left: 6px;
+  }
+  .idle-pulse {
+    color: var(--text-dim);
+    font-style: italic;
+    margin: 8px 0;
+    animation: pulse 1.5s steps(3) infinite;
+  }
+
   form#form {
     grid-area: input;
     display: grid;
@@ -648,6 +684,56 @@ const sessionEl = document.getElementById('sessionId');
 
 // Surface session id from server header on first request
 fetch('/session').then(r => r.json()).then(s => sessionEl.textContent = s.id);
+
+// ── Persistent /events SSE: mood updates + idle messages, lifetime of page
+function connectEvents() {
+  const es = new EventSource('/events');
+  let idlePulseEl = null;
+  es.addEventListener('message', (e) => {
+    const ev = JSON.parse(e.data);
+    if (ev.type === 'mood') {
+      setMood(ev.slug);
+    } else if (ev.type === 'idle_start') {
+      if (!idlePulseEl) {
+        idlePulseEl = document.createElement('div');
+        idlePulseEl.className = 'idle-pulse';
+        idlePulseEl.textContent = '⋯ Lisa is thinking on her own time ⋯';
+        log.appendChild(idlePulseEl);
+        log.scrollTop = log.scrollHeight;
+      }
+    } else if (ev.type === 'idle_message') {
+      if (idlePulseEl) { idlePulseEl.remove(); idlePulseEl = null; }
+      const block = document.createElement('div');
+      block.className = 'idle-block';
+      const head = document.createElement('div');
+      head.className = 'idle-head';
+      head.textContent = '★ WHILE YOU WERE AWAY';
+      const time = document.createElement('span');
+      time.className = 'idle-time';
+      try { time.textContent = new Date(ev.at).toLocaleTimeString(); } catch {}
+      head.appendChild(time);
+      block.appendChild(head);
+      const body = document.createElement('div');
+      body.textContent = ev.text;
+      block.appendChild(body);
+      log.appendChild(block);
+      log.scrollTop = log.scrollHeight;
+    } else if (ev.type === 'idle_done') {
+      if (idlePulseEl) { idlePulseEl.remove(); idlePulseEl = null; }
+    } else if (ev.type === 'idle_error') {
+      if (idlePulseEl) { idlePulseEl.remove(); idlePulseEl = null; }
+      const e2 = document.createElement('div');
+      e2.className = 'err';
+      e2.textContent = '[idle error] ' + ev.message;
+      log.appendChild(e2);
+    }
+  });
+  es.onerror = () => {
+    es.close();
+    setTimeout(connectEvents, 3000); // reconnect
+  };
+}
+connectEvents();
 
 // ── Birth ritual: show overlay if Lisa hasn't been born yet ───────
 const birthOverlay = document.getElementById('birthOverlay');
@@ -1113,6 +1199,8 @@ export interface WebServerOptions {
   model: string;
   thinking: boolean;
   reflect: boolean;
+  /** Minutes of inactivity before idle mode fires. 0 disables. */
+  idleMinutes?: number;
 }
 
 export async function startWebServer(opts: WebServerOptions): Promise<http.Server> {
@@ -1127,6 +1215,65 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   const history: StoredMessage[] = [...savedMessages];
   const abort = new AbortController();
 
+  // ── Persistent /events SSE subscribers (mood + idle broadcasts) ─────
+  const eventClients = new Set<http.ServerResponse>();
+  const broadcast = (event: object) => {
+    const data = `data: ${JSON.stringify(event)}\n\n`;
+    for (const c of eventClients) {
+      try { c.write(data); } catch { /* dead conn */ }
+    }
+  };
+  moodBus.on("mood", (slug) => broadcast({ type: "mood", slug }));
+
+  // ── Idle mode ───────────────────────────────────────────────────────
+  let idleRunning = false;
+  if (opts.idleMinutes && opts.idleMinutes > 0) {
+    const watcher = getIdleWatcher(opts.idleMinutes * 60_000);
+    watcher.on("idle", async () => {
+      if (idleRunning) return;
+      idleRunning = true;
+      const startedAt = new Date().toISOString();
+      console.error(
+        `[idle] firing after ${Math.round(watcher.idleFor() / 60_000)}m of inactivity`,
+      );
+      broadcast({ type: "idle_start", at: startedAt });
+      try {
+        const result = await runIdleOnce({
+          tools: opts.tools,
+          cwd: process.cwd(),
+          signal: abort.signal,
+          model: opts.model,
+          idleMs: watcher.idleFor(),
+        });
+        if (result.silent) {
+          console.error("[idle] (silent)");
+          broadcast({ type: "idle_done", silent: true });
+        } else {
+          console.error(`[idle] → ${result.text.slice(0, 120)}`);
+          await session.appendMessage({
+            role: "assistant",
+            content: [{ type: "text", text: `[while you were away]\n${result.text}` }],
+          });
+          history.push({
+            role: "assistant",
+            content: [{ type: "text", text: `[while you were away]\n${result.text}` }],
+          });
+          broadcast({ type: "idle_message", text: result.text, at: startedAt });
+        }
+      } catch (err) {
+        const msg = (err as Error).message;
+        console.error(`[idle] error: ${msg}`);
+        broadcast({ type: "idle_error", message: msg });
+      } finally {
+        idleRunning = false;
+      }
+    });
+    watcher.start();
+    console.error(
+      `[idle] watching — will fire after ${opts.idleMinutes}m of no input`,
+    );
+  }
+
   const server = http.createServer(async (req, res) => {
     const url = req.url ?? "/";
 
@@ -1139,6 +1286,20 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     if (req.method === "GET" && url === "/session") {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ id: session.id, model: opts.model }));
+      return;
+    }
+
+    if (req.method === "GET" && url === "/events") {
+      res.writeHead(200, {
+        "content-type": "text/event-stream",
+        "cache-control": "no-cache",
+        connection: "keep-alive",
+      });
+      res.write(`data: ${JSON.stringify({ type: "hello", session: session.id })}\n\n`);
+      // Send current mood right away
+      res.write(`data: ${JSON.stringify({ type: "mood", slug: moodBus.current() })}\n\n`);
+      eventClients.add(res);
+      req.on("close", () => eventClients.delete(res));
       return;
     }
 
@@ -1269,6 +1430,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       let body = "";
       for await (const chunk of req) body += chunk.toString("utf8");
       const { message } = JSON.parse(body) as { message: string };
+      // User just talked — reset the idle watcher.
+      try { getIdleWatcher(60 * 60_000).tick(); } catch {}
       res.writeHead(200, {
         "content-type": "text/event-stream",
         "cache-control": "no-cache",

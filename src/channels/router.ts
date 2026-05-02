@@ -1,4 +1,5 @@
 import { runAgent } from "../agent.js";
+import { getIdleWatcher } from "../idle/watcher.js";
 import { providerForModel } from "../providers/registry.js";
 import { buildSystemPromptSnapshot, type PromptSnapshot } from "../prompt.js";
 import { reflectOnSession } from "../reflect.js";
@@ -85,6 +86,8 @@ export class ChannelRouter {
     channel: ChannelAdapter,
     msg: IncomingMessage,
   ): Promise<void> {
+    // Any inbound message resets the idle clock.
+    try { getIdleWatcher(60 * 60_000).tick(); } catch {}
     const ctx = await this.getOrCreateThread(channel.name, msg);
     if (ctx.busy) {
       ctx.queue.push(msg);
