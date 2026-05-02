@@ -586,7 +586,7 @@ const HTML = `<!doctype html>
   <header class="panel">
     <div class="logo"><span class="star">★</span> LISA <span class="star">★</span></div>
     <div class="badges">
-      <button class="badge" type="button" data-panel="soul">★ SOUL</button>
+      <button class="badge" type="button" data-panel="soul"><img src="/assets/icon-soul.png" alt=""> SOUL</button>
       <button class="badge" type="button" data-panel="skills"><img src="/assets/icon-skill.png" alt=""> SKILLS</button>
       <button class="badge" type="button" data-panel="memory"><img src="/assets/icon-memory.png" alt=""> MEMORY</button>
       <button class="badge" type="button" data-panel="tools"><img src="/assets/icon-tool.png" alt=""> TOOLS</button>

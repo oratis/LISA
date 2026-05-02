@@ -87,6 +87,14 @@ const ASSETS: Asset[] = [
     prompt:
       "16-bit pixel art icon of a crossed wrench and gear, vintage workshop palette (orange, brown, steel grey). Centered, filling ~70% of frame. Clean 1px outlines. Pure white background (#FFFFFF) for chroma key. No text.",
   },
+  {
+    filename: "icon-soul.png",
+    size: "2K",
+    cutout: true,
+    downscaleTo: 256,
+    prompt:
+      "16-bit pixel art icon of a glowing soul orb — a translucent teal-and-cyan flame held inside an open palm-shaped silhouette, surrounded by faint sparkle particles and tiny floating stars. Mystical and warm, suggesting an inner life. Centered, filling ~70% of frame. Clean 1px outlines, classic JRPG inventory icon vibe. Pure white background (#FFFFFF) for chroma key. No text.",
+  },
 ];
 
 interface SeedreamResponse {
