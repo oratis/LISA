@@ -156,21 +156,49 @@ async function chromaKeyWhite(input: Buffer): Promise<Buffer> {
     .toBuffer({ resolveWithObject: true });
   const { width, height, channels } = info;
   const out = Buffer.from(data);
-  const threshold = 240; // pixels with R/G/B all >= threshold become transparent
-  const feather = 20; // and pixels in [threshold-feather, threshold] get partial alpha
+  const threshold = 235;
+  const feather = 15;
+  const N = width * height;
+  const candidate = new Uint8Array(N);
+  for (let i = 0, p = 0; i < N; i++, p += channels) {
+    const minVal = Math.min(out[p]!, out[p + 1]!, out[p + 2]!);
+    if (minVal >= threshold - feather) candidate[i] = 1;
+  }
+  // Flood fill from edges so interior whites (eye whites, teeth, highlights) survive.
+  const reached = new Uint8Array(N);
+  const queue = new Int32Array(N);
+  let qHead = 0;
+  let qTail = 0;
+  const enqueue = (idx: number) => {
+    if (reached[idx] || !candidate[idx]) return;
+    reached[idx] = 1;
+    queue[qTail++] = idx;
+  };
+  for (let x = 0; x < width; x++) {
+    enqueue(x);
+    enqueue((height - 1) * width + x);
+  }
   for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const idx = (y * width + x) * channels;
-      const r = out[idx]!;
-      const g = out[idx + 1]!;
-      const b = out[idx + 2]!;
-      const minVal = Math.min(r, g, b);
-      if (minVal >= threshold) {
-        out[idx + 3] = 0;
-      } else if (minVal >= threshold - feather) {
-        const t = (minVal - (threshold - feather)) / feather;
-        out[idx + 3] = Math.round((1 - t) * 255);
-      }
+    enqueue(y * width);
+    enqueue(y * width + width - 1);
+  }
+  while (qHead < qTail) {
+    const idx = queue[qHead++]!;
+    const x = idx % width;
+    const y = (idx - x) / width;
+    if (x > 0)          enqueue(idx - 1);
+    if (x < width - 1)  enqueue(idx + 1);
+    if (y > 0)          enqueue(idx - width);
+    if (y < height - 1) enqueue(idx + width);
+  }
+  for (let i = 0, p = 0; i < N; i++, p += channels) {
+    if (!reached[i]) continue;
+    const minVal = Math.min(out[p]!, out[p + 1]!, out[p + 2]!);
+    if (minVal >= threshold) {
+      out[p + 3] = 0;
+    } else if (minVal >= threshold - feather) {
+      const t = (minVal - (threshold - feather)) / feather;
+      out[p + 3] = Math.round((1 - t) * 255);
     }
   }
   return await sharp(out, { raw: { width, height, channels } })
