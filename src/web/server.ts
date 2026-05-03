@@ -402,11 +402,62 @@ const HTML = `<!doctype html>
     animation: pulse 1.5s steps(3) infinite;
   }
 
+  #attachPreview {
+    grid-area: input;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 0 4px 4px;
+    min-height: 0;
+  }
+  #attachPreview:empty { display: none; }
+  .attach-chip {
+    background: var(--panel-light);
+    border: 2px solid var(--border);
+    color: var(--text);
+    font-size: 9px;
+    padding: 3px 6px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-family: 'Press Start 2P', monospace;
+  }
+  .attach-rm {
+    background: none;
+    border: none;
+    color: var(--you);
+    cursor: pointer;
+    font-size: 11px;
+    padding: 0;
+    line-height: 1;
+    box-shadow: none;
+    font-family: inherit;
+  }
+  .attach-rm:hover { background: none; color: #f55; }
+  #attachBtn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 4px 8px;
+    background: var(--panel);
+    border: 4px solid var(--border);
+    box-shadow:
+      inset 2px 2px 0 #000,
+      inset -2px -2px 0 var(--border-light),
+      0 0 0 2px #000;
+    user-select: none;
+    flex-shrink: 0;
+  }
+  #attachBtn:hover { background: var(--border); }
+  .attach-label { font-size: 9px; opacity: 0.7; margin-left: 4px; }
   form#form {
     grid-area: input;
     display: grid;
-    grid-template-columns: 1fr 120px;
+    grid-template-columns: auto 1fr 120px;
     gap: 16px;
+    align-items: start;
   }
   textarea {
     background: var(--panel);
@@ -666,7 +717,12 @@ const HTML = `<!doctype html>
     <div id="log"></div>
   </main>
 
+  <div id="attachPreview"></div>
   <form id="form">
+    <label id="attachBtn" title="Attach file">
+      <input type="file" id="fileInput" accept="image/*,.pdf,.txt,.md,.csv,.json" multiple style="display:none">
+      📎
+    </label>
     <textarea id="input" placeholder="Talk to Lisa…  (Enter to send · Shift+Enter for newline)" autofocus></textarea>
     <button type="submit" id="sendBtn">
       <img src="/assets/icon-send.png" alt="">
@@ -681,6 +737,56 @@ const input = document.getElementById('input');
 const form = document.getElementById('form');
 const sendBtn = document.getElementById('sendBtn');
 const sessionEl = document.getElementById('sessionId');
+const fileInput = document.getElementById('fileInput');
+const attachPreview = document.getElementById('attachPreview');
+
+// ── Attached files state ──────────────────────────────────────────
+let pendingFiles = []; // Array of {name, mediaType, data (base64)}
+
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result;
+      const base64 = dataUrl.split(',')[1];
+      resolve(base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function inferMediaType(file) {
+  if (file.type) return file.type;
+  const ext = file.name.split('.').pop().toLowerCase();
+  const map = { pdf: 'application/pdf', txt: 'text/plain', md: 'text/plain', csv: 'text/csv', json: 'application/json' };
+  return map[ext] || 'application/octet-stream';
+}
+
+function renderAttachPreview() {
+  attachPreview.innerHTML = '';
+  pendingFiles.forEach((f, i) => {
+    const chip = document.createElement('span');
+    chip.className = 'attach-chip';
+    chip.textContent = f.name;
+    const rm = document.createElement('button');
+    rm.type = 'button';
+    rm.className = 'attach-rm';
+    rm.textContent = '×';
+    rm.onclick = () => { pendingFiles.splice(i, 1); renderAttachPreview(); };
+    chip.appendChild(rm);
+    attachPreview.appendChild(chip);
+  });
+}
+
+fileInput.addEventListener('change', async () => {
+  for (const file of fileInput.files) {
+    const data = await readFileAsBase64(file);
+    pendingFiles.push({ name: file.name, mediaType: inferMediaType(file), data });
+  }
+  fileInput.value = '';
+  renderAttachPreview();
+});
 
 // Surface session id from server header on first request
 fetch('/session').then(r => r.json()).then(s => sessionEl.textContent = s.id);
@@ -1096,7 +1202,14 @@ async function send(message) {
   input.style.height = 'auto';
   sendBtn.disabled = true;
   el('div', 'role you', 'YOU');
-  el('span', 'msg', message);
+  el('span', 'msg', message || '(attachment)');
+  if (pendingFiles.length) {
+    const names = pendingFiles.map(f => f.name).join(', ');
+    el('span', 'msg attach-label', '📎 ' + names);
+  }
+  const filesToSend = [...pendingFiles];
+  pendingFiles = [];
+  renderAttachPreview();
   // Reset state for this turn
   currentLisaSpan = null;
   pendingTools.clear();
@@ -1105,7 +1218,7 @@ async function send(message) {
     const res = await fetch('/chat', {
       method: 'POST',
       headers: {'content-type': 'application/json'},
-      body: JSON.stringify({message}),
+      body: JSON.stringify({message, files: filesToSend}),
     });
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
@@ -1177,7 +1290,7 @@ async function send(message) {
 form.addEventListener('submit', (ev) => {
   ev.preventDefault();
   const msg = input.value.trim();
-  if (msg) send(msg);
+  if (msg || pendingFiles.length) send(msg);
 });
 
 input.addEventListener('keydown', (ev) => {
@@ -1429,7 +1542,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     if (req.method === "POST" && url === "/chat") {
       let body = "";
       for await (const chunk of req) body += chunk.toString("utf8");
-      const { message } = JSON.parse(body) as { message: string };
+      const { message, files } = JSON.parse(body) as { message: string; files?: Array<{ name: string; mediaType: string; data: string }> };
       // User just talked — reset the idle watcher.
       try { getIdleWatcher(60 * 60_000).tick(); } catch {}
       res.writeHead(200, {
@@ -1455,6 +1568,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           },
           history,
           userMessage: message,
+          userFiles: files,
           model: opts.model,
           thinking: opts.thinking,
           onEvent: (ev) => {

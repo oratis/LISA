@@ -23,6 +23,7 @@ export interface RunAgentOptions {
   toolCtx: { cwd: string; signal: AbortSignal; log: (msg: string) => void };
   history: StoredMessage[];
   userMessage: string;
+  userFiles?: Array<{ name: string; mediaType: string; data: string }>;
   model: string;
   maxTokens?: number;
   thinking?: boolean;
@@ -71,11 +72,31 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
 
   const toolMap = new Map(tools.map((t) => [t.name, t]));
   const messages: StoredMessage[] = [...opts.history];
-  if (opts.userMessage) {
-    const firstUser: StoredMessage = {
-      role: "user",
-      content: [{ type: "text", text: opts.userMessage }],
-    };
+  if (opts.userMessage || (opts.userFiles && opts.userFiles.length)) {
+    const content: Anthropic.ContentBlockParam[] = [];
+    if (opts.userMessage) {
+      content.push({ type: "text", text: opts.userMessage });
+    }
+    for (const f of opts.userFiles ?? []) {
+      const isImage = f.mediaType.startsWith("image/");
+      if (isImage) {
+        content.push({
+          type: "image",
+          source: {
+            type: "base64",
+            media_type: f.mediaType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+            data: f.data,
+          },
+        });
+      } else {
+        // Non-image files: send as document block (supported for PDFs) or text
+        content.push({
+          type: "text",
+          text: `[Attached file: ${f.name} (${f.mediaType}) — base64 data follows]\n${f.data}`,
+        });
+      }
+    }
+    const firstUser: StoredMessage = { role: "user", content };
     messages.push(firstUser);
     await onMessagePersist?.(firstUser);
   }
