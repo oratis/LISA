@@ -1,5 +1,7 @@
 # LISA
 
+> English ｜ [中文](./README.zh-CN.md)
+
 A self-evolving local AI personal assistant — with a soul.
 
 LISA isn't just an LLM wrapper. She is born once, on your machine, with a unique seed. She has a name she chose, an identity she wrote, a purpose she anchors herself to, a constitution of operating principles, accumulating values + opinions + desires, an emotional state that decays over time, a private journal you can't read, and a 16-bit pixel-art portrait that shifts with her mood.
