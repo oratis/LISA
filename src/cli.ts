@@ -287,22 +287,29 @@ async function main(): Promise<void> {
   }
 
   // Most paths from here need the API key.
+  // Exception: `serve --web` defers the key check to the browser UI, which
+  // shows a popup that writes the key to ~/.lisa/config.env on save.
+  const isWebServe = args.subcommand === "serve" && args.serveWeb;
   const provider = providerForModel(args.model);
-  if (provider.name === "anthropic" && !process.env.ANTHROPIC_API_KEY) {
-    console.error(
-      `Lisa needs ANTHROPIC_API_KEY. Set it in your shell or in ${CONFIG_ENV_PATH}:\n\n  ANTHROPIC_API_KEY=sk-ant-...\n\nGet a key at https://console.anthropic.com/.`,
-    );
-    process.exit(1);
-  }
-  if (provider.name === "openai" && !process.env.OPENAI_API_KEY) {
-    console.error(
-      `Lisa needs OPENAI_API_KEY for the OpenAI provider. Set it in your shell or in ${CONFIG_ENV_PATH}.`,
-    );
-    process.exit(1);
+  if (!isWebServe) {
+    if (provider.name === "anthropic" && !process.env.ANTHROPIC_API_KEY) {
+      console.error(
+        `Lisa needs ANTHROPIC_API_KEY. Set it in your shell or in ${CONFIG_ENV_PATH}:\n\n  ANTHROPIC_API_KEY=sk-ant-...\n\nGet a key at https://console.anthropic.com/.`,
+      );
+      process.exit(1);
+    }
+    if (provider.name === "openai" && !process.env.OPENAI_API_KEY) {
+      console.error(
+        `Lisa needs OPENAI_API_KEY for the OpenAI provider. Set it in your shell or in ${CONFIG_ENV_PATH}.`,
+      );
+      process.exit(1);
+    }
   }
 
   // ── auto-birth on first launch ──────────────────────────────────────
-  if (!(await isBorn())) {
+  // Skipped for `serve --web` — the browser UI runs the birth ritual itself
+  // (and only after the API key has been entered via the config popup).
+  if (!isWebServe && !(await isBorn())) {
     console.error(
       "\nLisa hasn't been born yet — running her birth ritual now (one-time, ~30s).\nIf you'd rather skip this, hit Ctrl-C and run `lisa birth` later.\n",
     );

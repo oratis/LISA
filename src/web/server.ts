@@ -3,6 +3,7 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { runAgent } from "../agent.js";
+import { saveConfigEnv } from "../env.js";
 import { runIdleOnce } from "../idle/runner.js";
 import { getIdleWatcher } from "../idle/watcher.js";
 import { moodBus } from "../mood-bus.js";
@@ -667,6 +668,158 @@ const HTML = `<!doctype html>
     font-family: 'Press Start 2P', monospace;
     font-size: 11px;
   }
+
+  /* ── API key config overlay (shown when no key is set yet) ─────────── */
+  .cfg-overlay {
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(ellipse at center, rgba(40, 30, 80, 0.95) 0%, rgba(5, 5, 20, 1) 70%),
+      url('/assets/background-tile.png');
+    background-size: cover, 256px 256px;
+    background-repeat: no-repeat, repeat;
+    z-index: 9998;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 32px;
+    image-rendering: pixelated;
+  }
+  .cfg-overlay.open { display: flex; }
+  .cfg-overlay::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      to bottom,
+      rgba(0,0,0,0) 0,
+      rgba(0,0,0,0) 2px,
+      rgba(0,0,0,0.25) 3px,
+      rgba(0,0,0,0) 4px
+    );
+    z-index: 1;
+  }
+  .cfg-card {
+    position: relative;
+    z-index: 2;
+    width: min(560px, 95vw);
+    background: var(--panel);
+    border: 4px solid var(--border);
+    box-shadow: inset 2px 2px 0 var(--border-light), inset -2px -2px 0 #000, 0 0 0 2px #000, 0 0 24px rgba(108, 246, 225, 0.25);
+    padding: 28px 32px;
+    image-rendering: pixelated;
+  }
+  .cfg-stars {
+    text-align: center;
+    color: var(--lisa);
+    font-family: 'Press Start 2P', monospace;
+    font-size: 12px;
+    letter-spacing: 6px;
+    text-shadow: 0 0 8px var(--lisa);
+    animation: starBlink 1.5s steps(3) infinite;
+  }
+  .cfg-title {
+    text-align: center;
+    color: var(--you);
+    font-family: 'Press Start 2P', monospace;
+    font-size: 16px;
+    letter-spacing: 4px;
+    margin: 16px 0 6px;
+    text-shadow: 2px 2px 0 #000, 0 0 10px var(--you);
+  }
+  .cfg-sub {
+    text-align: center;
+    color: var(--text-dim);
+    font-family: 'VT323', monospace;
+    font-size: 18px;
+    margin-bottom: 22px;
+    line-height: 1.35;
+  }
+  .cfg-sub a { color: var(--lisa); text-decoration: underline; }
+  .cfg-field {
+    display: block;
+    margin: 14px 0;
+  }
+  .cfg-label {
+    display: block;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    color: var(--lisa);
+    margin-bottom: 6px;
+    letter-spacing: 1px;
+  }
+  .cfg-label .opt {
+    color: var(--text-dim);
+    font-size: 8px;
+    margin-left: 6px;
+    letter-spacing: 0;
+  }
+  .cfg-input {
+    width: 100%;
+    background: var(--panel);
+    border: 3px solid var(--border);
+    box-shadow:
+      inset 2px 2px 0 #000,
+      inset -2px -2px 0 var(--border-light),
+      0 0 0 2px #000;
+    color: var(--text);
+    font-family: 'VT323', monospace;
+    font-size: 18px;
+    padding: 10px 12px;
+    image-rendering: pixelated;
+  }
+  .cfg-input:focus {
+    outline: none;
+    border-color: var(--you);
+  }
+  .cfg-help {
+    color: var(--text-dim);
+    font-family: 'VT323', monospace;
+    font-size: 14px;
+    margin-top: 4px;
+  }
+  .cfg-actions {
+    margin-top: 22px;
+    display: flex;
+    justify-content: center;
+  }
+  .cfg-save {
+    background: var(--panel-light);
+    border: 4px solid var(--lisa);
+    box-shadow: inset 2px 2px 0 #fff5, inset -2px -2px 0 #0008, 0 0 12px var(--lisa);
+    color: var(--lisa);
+    font-family: 'Press Start 2P', monospace;
+    font-size: 12px;
+    padding: 12px 28px;
+    cursor: pointer;
+    letter-spacing: 3px;
+    image-rendering: pixelated;
+  }
+  .cfg-save:hover { background: var(--lisa); color: #000; }
+  .cfg-save:active { transform: translate(2px, 2px); }
+  .cfg-save:disabled { opacity: 0.55; cursor: wait; }
+  .cfg-error {
+    color: var(--error);
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    text-align: center;
+    margin-top: 14px;
+    min-height: 14px;
+  }
+  .cfg-foot {
+    margin-top: 18px;
+    text-align: center;
+    color: var(--text-dim);
+    font-family: 'VT323', monospace;
+    font-size: 14px;
+    line-height: 1.4;
+  }
+  .cfg-foot code {
+    color: var(--text);
+    background: rgba(0, 0, 0, 0.3);
+    padding: 1px 4px;
+  }
 </style>
 </head><body>
 <div class="frame">
@@ -687,6 +840,37 @@ const HTML = `<!doctype html>
         <button class="modal-close" id="modalClose">CLOSE [esc]</button>
       </div>
       <div class="modal-body" id="modalBody">…</div>
+    </div>
+  </div>
+
+  <!-- API key config overlay (shown if no key is configured yet) -->
+  <div class="cfg-overlay" id="cfgOverlay">
+    <div class="cfg-card">
+      <div class="cfg-stars">✦  ✦  ✦  ✦  ✦</div>
+      <div class="cfg-title">SET · API · KEY</div>
+      <div class="cfg-sub">
+        Lisa needs an Anthropic API key to wake up.<br>
+        <a href="https://console.anthropic.com/" target="_blank" rel="noopener">Get one at console.anthropic.com</a>
+      </div>
+      <form id="cfgForm">
+        <label class="cfg-field">
+          <span class="cfg-label">ANTHROPIC_API_KEY</span>
+          <input class="cfg-input" id="cfgAnthropic" type="password" autocomplete="off"
+                 spellcheck="false" placeholder="sk-ant-..." required>
+        </label>
+        <label class="cfg-field">
+          <span class="cfg-label">OPENAI_API_KEY <span class="opt">(optional · for gpt-* models)</span></span>
+          <input class="cfg-input" id="cfgOpenai" type="password" autocomplete="off"
+                 spellcheck="false" placeholder="sk-...">
+        </label>
+        <div class="cfg-help">
+          Saved to <code>~/.lisa/config.env</code> with mode 0600. Stays on this machine.
+        </div>
+        <div class="cfg-actions">
+          <button class="cfg-save" id="cfgSave" type="submit">SAVE &amp; CONTINUE</button>
+        </div>
+        <div class="cfg-error" id="cfgError"></div>
+      </form>
     </div>
   </div>
 
@@ -841,6 +1025,46 @@ function connectEvents() {
 }
 connectEvents();
 
+// ── API key config gate: show overlay if no key is configured ─────
+const cfgOverlay = document.getElementById('cfgOverlay');
+const cfgForm = document.getElementById('cfgForm');
+const cfgAnthropic = document.getElementById('cfgAnthropic');
+const cfgOpenai = document.getElementById('cfgOpenai');
+const cfgSaveBtn = document.getElementById('cfgSave');
+const cfgError = document.getElementById('cfgError');
+
+cfgForm.addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  cfgError.textContent = '';
+  const anthropic = cfgAnthropic.value.trim();
+  const openai = cfgOpenai.value.trim();
+  if (!anthropic) {
+    cfgError.textContent = 'ANTHROPIC_API_KEY is required.';
+    return;
+  }
+  cfgSaveBtn.disabled = true;
+  try {
+    const res = await fetch('/api/config/save', {
+      method: 'POST',
+      headers: {'content-type': 'application/json'},
+      body: JSON.stringify({ anthropicKey: anthropic, openaiKey: openai || undefined }),
+    });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      cfgError.textContent = 'Save failed: HTTP ' + res.status + (txt ? ' — ' + txt.slice(0, 120) : '');
+      cfgSaveBtn.disabled = false;
+      return;
+    }
+    cfgAnthropic.value = '';
+    cfgOpenai.value = '';
+    cfgOverlay.classList.remove('open');
+    maybeBirth();
+  } catch (err) {
+    cfgError.textContent = 'Save failed: ' + err.message;
+    cfgSaveBtn.disabled = false;
+  }
+});
+
 // ── Birth ritual: show overlay if Lisa hasn't been born yet ───────
 const birthOverlay = document.getElementById('birthOverlay');
 const birthStepsEl = document.getElementById('birthSteps');
@@ -966,7 +1190,22 @@ async function startBirthStream() {
   }
 }
 
-maybeBirth();
+async function startupGate() {
+  let cfg;
+  try {
+    cfg = await fetch('/api/config/status').then(r => r.json());
+  } catch {
+    // server unreachable — let the user retry by reloading; no overlay
+    return;
+  }
+  if (!cfg.configured) {
+    cfgOverlay.classList.add('open');
+    setTimeout(() => cfgAnthropic.focus(), 50);
+    return;
+  }
+  maybeBirth();
+}
+startupGate();
 
 // ── history load & infinite-scroll ──────────────────────────────────
 let historyPage = 0;
@@ -1462,6 +1701,80 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           })),
         }),
       );
+      return;
+    }
+
+    if (req.method === "GET" && url === "/api/config/status") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          configured: !!process.env.ANTHROPIC_API_KEY,
+          anthropic: !!process.env.ANTHROPIC_API_KEY,
+          openai: !!process.env.OPENAI_API_KEY,
+        }),
+      );
+      return;
+    }
+
+    if (req.method === "POST" && url === "/api/config/save") {
+      // Defence in depth: only accept the key from a loopback caller, even
+      // if the listener happens to be on a public interface. Writes the key
+      // to disk and into process.env, so spoofed remote calls would be
+      // very bad.
+      const remote = req.socket.remoteAddress ?? "";
+      const isLoopback =
+        remote === "127.0.0.1" ||
+        remote === "::1" ||
+        remote === "::ffff:127.0.0.1" ||
+        remote.startsWith("127.");
+      if (!isLoopback) {
+        res.writeHead(403, { "content-type": "text/plain" });
+        res.end("config save only accepted from localhost");
+        return;
+      }
+      let body = "";
+      for await (const chunk of req) body += chunk.toString("utf8");
+      let payload: { anthropicKey?: unknown; openaiKey?: unknown };
+      try {
+        payload = JSON.parse(body || "{}");
+      } catch {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("bad json");
+        return;
+      }
+      const updates: Record<string, string> = {};
+      const anthropic = typeof payload.anthropicKey === "string" ? payload.anthropicKey.trim() : "";
+      const openai = typeof payload.openaiKey === "string" ? payload.openaiKey.trim() : "";
+      if (!anthropic && !openai) {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("no keys provided");
+        return;
+      }
+      if (anthropic) {
+        if (!/^[\x21-\x7e]{20,}$/.test(anthropic)) {
+          res.writeHead(400, { "content-type": "text/plain" });
+          res.end("anthropic key looks malformed");
+          return;
+        }
+        updates.ANTHROPIC_API_KEY = anthropic;
+      }
+      if (openai) {
+        if (!/^[\x21-\x7e]{20,}$/.test(openai)) {
+          res.writeHead(400, { "content-type": "text/plain" });
+          res.end("openai key looks malformed");
+          return;
+        }
+        updates.OPENAI_API_KEY = openai;
+      }
+      try {
+        await saveConfigEnv(updates);
+      } catch (err) {
+        res.writeHead(500, { "content-type": "text/plain" });
+        res.end((err as Error).message);
+        return;
+      }
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, saved: Object.keys(updates) }));
       return;
     }
 

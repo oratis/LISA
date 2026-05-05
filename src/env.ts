@@ -1,8 +1,71 @@
 import fs from "node:fs";
+import fsp from "node:fs/promises";
 import path from "node:path";
 import { LISA_HOME } from "./paths.js";
+import { ensureDir } from "./fs-utils.js";
 
 export const CONFIG_ENV_PATH = path.join(LISA_HOME, "config.env");
+
+/**
+ * Update or insert keys in ~/.lisa/config.env, preserving other variables,
+ * comments, and ordering. Also updates process.env so the running process
+ * sees the new values without restart. File mode is 0600.
+ */
+export async function saveConfigEnv(updates: Record<string, string>): Promise<void> {
+  let raw = "";
+  try {
+    raw = await fsp.readFile(CONFIG_ENV_PATH, "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+  }
+
+  const remaining = new Map(Object.entries(updates));
+  const lines = raw.length > 0 ? raw.split(/\r?\n/) : [];
+  const out: string[] = [];
+  for (const line of lines) {
+    const stripped = stripInlineComment(line).trim();
+    if (!stripped || stripped.startsWith("#")) {
+      out.push(line);
+      continue;
+    }
+    const eq = stripped.indexOf("=");
+    if (eq <= 0) {
+      out.push(line);
+      continue;
+    }
+    const key = stripped.slice(0, eq).trim().replace(/^export\s+/, "");
+    if (remaining.has(key)) {
+      out.push(`${key}=${quoteValue(remaining.get(key)!)}`);
+      remaining.delete(key);
+    } else {
+      out.push(line);
+    }
+  }
+  for (const [key, value] of remaining) {
+    out.push(`${key}=${quoteValue(value)}`);
+  }
+
+  let serialized = out.join("\n");
+  if (!serialized.endsWith("\n")) serialized += "\n";
+
+  await ensureDir(path.dirname(CONFIG_ENV_PATH));
+  await fsp.writeFile(CONFIG_ENV_PATH, serialized, { mode: 0o600 });
+  try {
+    await fsp.chmod(CONFIG_ENV_PATH, 0o600);
+  } catch {
+    // best effort — non-POSIX filesystems may reject chmod
+  }
+
+  for (const [key, value] of Object.entries(updates)) {
+    process.env[key] = value;
+  }
+}
+
+function quoteValue(value: string): string {
+  if (value === "") return '""';
+  if (/^[A-Za-z0-9_\-./:+@]+$/.test(value)) return value;
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n")}"`;
+}
 
 export function loadConfigEnv(): void {
   let raw: string;
