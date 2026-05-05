@@ -1561,7 +1561,15 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     cwd: process.cwd(),
     model: opts.model,
   });
-  const provider = providerForModel(opts.model);
+  // Lazy provider — the SDK reads ANTHROPIC_API_KEY at construction time,
+  // so we can't build it before the user has set the key via the GUI popup.
+  // Rebuilt after /api/config/save so the in-memory client picks up the
+  // new key without restarting the server.
+  let cachedProvider: ReturnType<typeof providerForModel> | null = null;
+  const getProvider = () => {
+    if (!cachedProvider) cachedProvider = providerForModel(opts.model);
+    return cachedProvider;
+  };
   // Restore full history from the session file on startup (so context survives page refresh)
   const { messages: savedMessages } = await session.readMessagePage(0, 9999);
   const history: StoredMessage[] = [...savedMessages];
@@ -1773,6 +1781,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end((err as Error).message);
         return;
       }
+      // Force the next /chat to rebuild the provider so the new key is read.
+      cachedProvider = null;
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, saved: Object.keys(updates) }));
       return;
@@ -1871,7 +1881,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       send({ type: "mood", slug: moodBus.current() });
       try {
         const result = await runAgent({
-          provider,
+          provider: getProvider(),
           systemPrompt: snapshot.text,
           tools: opts.tools,
           toolCtx: {
