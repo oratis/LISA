@@ -9,6 +9,11 @@ import { getIdleWatcher } from "../idle/watcher.js";
 import { moodBus } from "../mood-bus.js";
 import { providerForModel } from "../providers/registry.js";
 import { buildSystemPromptSnapshot } from "../prompt.js";
+import {
+  readActiveWebSession,
+  writeActiveWebSession,
+} from "../sessions/active.js";
+import { listSessionsOnDisk } from "../sessions/list.js";
 import { SessionStore } from "../sessions/store.js";
 import { reflectOnSession } from "../reflect.js";
 import type { ToolDefinition, StoredMessage } from "../types.js";
@@ -1555,12 +1560,54 @@ export interface WebServerOptions {
   idleMinutes?: number;
 }
 
+async function resumeOrCreateWebSession(model: string): Promise<SessionStore> {
+  const lastId = await readActiveWebSession();
+  if (lastId) {
+    try {
+      const s = await SessionStore.open(lastId);
+      console.error(`[web] resuming session ${lastId} (from pointer)`);
+      return s;
+    } catch (err) {
+      console.error(
+        `[web] pointer ${lastId} unreadable (${(err as Error).message}) — falling back to most recent session`,
+      );
+    }
+  }
+  // Pointer missing or stale: pick the latest session whose cwd matches
+  // this project. This catches the case where the user chatted before the
+  // pointer mechanism existed, or the file was lost.
+  try {
+    const cwd = process.cwd();
+    const sessions = await listSessionsOnDisk();
+    const candidate = sessions.find(
+      (s) => s.cwd === cwd && s.messageCount > 0,
+    );
+    if (candidate) {
+      const s = await SessionStore.open(candidate.id);
+      console.error(
+        `[web] resuming session ${candidate.id} (most recent in ${cwd}, ${candidate.messageCount} msgs)`,
+      );
+      return s;
+    }
+  } catch (err) {
+    console.error(`[web] could not scan sessions: ${(err as Error).message}`);
+  }
+  const s = await SessionStore.create({ cwd: process.cwd(), model });
+  console.error(`[web] starting fresh session ${s.id}`);
+  return s;
+}
+
 export async function startWebServer(opts: WebServerOptions): Promise<http.Server> {
   const snapshot = await buildSystemPromptSnapshot();
-  const session = await SessionStore.create({
-    cwd: process.cwd(),
-    model: opts.model,
-  });
+  // Resume previous chat across restarts. Three-tier fallback:
+  //  1. ~/.lisa/active-web-session.txt (set on every web startup)
+  //  2. Most recent session on disk in this cwd (catches the case where the
+  //     pointer was lost or the very first launch happened pre-pointer)
+  //  3. Fresh session
+  // Whichever wins, we always update the pointer so the next launch is clean.
+  const session = await resumeOrCreateWebSession(opts.model);
+  await writeActiveWebSession(session.id);
+  process.env.LISA_SESSION_ID = session.id;
   // Lazy provider — the SDK reads ANTHROPIC_API_KEY at construction time,
   // so we can't build it before the user has set the key via the GUI popup.
   // Rebuilt after /api/config/save so the in-memory client picks up the

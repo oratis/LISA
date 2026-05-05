@@ -15,7 +15,10 @@ import { editTool } from "./edit.js";
 import { grepTool } from "./grep.js";
 import { lsTool } from "./ls.js";
 import { readTool } from "./read.js";
+import { redeployTool } from "./redeploy.js";
 import { setMoodTool } from "./set_mood.js";
+import { webFetchTool } from "./web_fetch.js";
+import { webSearchTool } from "./web_search.js";
 import { writeTool } from "./write.js";
 
 export interface ToolRegistryOptions {
@@ -39,6 +42,9 @@ export function buildToolRegistry(opts: ToolRegistryOptions = {}): ToolDefinitio
     soulJournalTool as ToolDefinition,
     soulReadTool as ToolDefinition,
     soulFeelTool as ToolDefinition,
+    webFetchTool as ToolDefinition,
+    webSearchTool as ToolDefinition,
+    redeployTool as ToolDefinition,
   ];
   if (opts.includeVoice) {
     tools.push(speakTool as ToolDefinition, transcribeTool as ToolDefinition);
@@ -52,6 +58,8 @@ export const READ_ONLY_TOOL_NAMES = new Set([
   "grep",
   "ls",
   "memory_search",
+  "web_fetch",
+  "web_search",
 ]);
 
 export function readOnlySubset(tools: ToolDefinition[]): ToolDefinition[] {
