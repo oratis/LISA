@@ -1,0 +1,50 @@
+name: 💡 Feature request
+description: Suggest a new capability or improvement
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What's the problem?
+      description: What pain are you actually trying to solve? Skip the solution for now.
+      placeholder: I want Lisa to reach me on WhatsApp because that's where my family is.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What's your proposed solution?
+      description: One paragraph is enough. We'll discuss specifics in the thread.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which area does this touch?
+      multiple: true
+      options:
+        - "Soul / personality / birth"
+        - "Skills / memory / journal"
+        - "Channels (IM)"
+        - "Web GUI / pixel art"
+        - "Heartbeat / idle"
+        - "Tools (read/write/edit/bash/etc.)"
+        - "Plugin system"
+        - "MCP integration"
+        - "Provider / models"
+        - "Sandbox / approval / safety"
+        - "CLI / DX"
+        - "Docs"
+        - "Other"
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered (optional)
+  - type: textarea
+    id: would-you
+    attributes:
+      label: Would you build this yourself?
+      description: We love when feature requests come with "and I'd take a stab at the PR if pointed at the right file."
+      placeholder: e.g. "Yes if you point me at the right adapter file" / "No, just suggesting"

@@ -1,0 +1,26 @@
+name: ❓ Question
+description: Use Discussions instead — but if you're sure it's an issue, here's the form
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For most "how do I do X" questions, please open a [Discussion](https://github.com/oratis/LISA/discussions) — they're easier for the next person to find.
+
+        Use this template if you've checked Discussions and the README and you're stuck.
+  - type: textarea
+    id: question
+    attributes:
+      label: What's the question?
+    validations:
+      required: true
+  - type: textarea
+    id: tried
+    attributes:
+      label: What have you tried?
+      placeholder: Searched X, read Y, ran Z and got...
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything we should know?
+      description: Setup specifics, OS, model, channels, etc.

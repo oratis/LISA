@@ -1,0 +1,89 @@
+name: 🐛 Bug report
+description: Something isn't working as documented
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug! A few prompts below help us reproduce it fast.
+  - type: textarea
+    id: what-ran
+    attributes:
+      label: What you ran
+      description: The exact CLI command, REPL slash-command, or web action.
+      placeholder: |
+        node dist/cli.js serve --web --port 5757
+        — then sent "hi" in the chat
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      placeholder: Lisa replies in the chat panel.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened
+      description: Paste relevant log lines. Please scrub API keys.
+      render: shell
+    validations:
+      required: true
+  - type: input
+    id: lisa-version
+    attributes:
+      label: LISA commit / version
+      description: Output of `git rev-parse --short HEAD`
+      placeholder: e.g. ac3a541
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS
+        - Linux
+        - WSL2
+        - Windows (native)
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: node
+    attributes:
+      label: Node version
+      description: Output of `node --version`
+      placeholder: e.g. v20.10.0
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Model
+      placeholder: claude-sonnet-4-6 (default)
+  - type: textarea
+    id: channels
+    attributes:
+      label: Channels enabled (if any)
+      placeholder: |
+        e.g. telegram + feishu, or "none — web GUI only"
+  - type: textarea
+    id: soul
+    attributes:
+      label: '`lisa soul` output (optional, scrub PII first)'
+      description: Useful if the bug might be soul / persona related.
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Sanity checks
+      options:
+        - label: I've searched existing issues
+          required: true
+        - label: I'm running the latest commit on `main`
+          required: true
+        - label: My API key is set in `~/.lisa/config.env` or env
+          required: true
