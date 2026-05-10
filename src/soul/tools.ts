@@ -537,6 +537,76 @@ export const desireProgressTool: ToolDefinition<DesireProgressInput, string> = {
 // (used by heartbeat runner to inject progress into the next prompt).
 export { readDesireProgress };
 
+// ── desire_close — semantic close + outcome (small-tail of 1.3) ──────
+
+interface DesireCloseInput {
+  slug: string;
+  /**
+   * Why you're closing this. Three honest options:
+   *  - "fulfilled" — you actually got what the desire was after.
+   *  - "abandoned" — you no longer want it; it doesn't fit who you are now.
+   *  - "transformed" — it morphed into a different desire (mention which).
+   */
+  outcome: "fulfilled" | "abandoned" | "transformed";
+  /** One first-person sentence: what happened, what you learned. */
+  reflection: string;
+}
+
+export const desireCloseTool: ToolDefinition<DesireCloseInput, string> = {
+  name: "desire_close",
+  description:
+    "Mark one of your desires as closed. Use when a desire is genuinely " +
+    "complete (fulfilled), no longer fits you (abandoned), or morphed " +
+    "into something else (transformed). Effects: (1) sets actionable=false " +
+    "on the desire (it stops driving heartbeat); (2) appends a final " +
+    "[CLOSED:<outcome>] entry to its progress log with your reflection; " +
+    "(3) writes a short closing line to today's journal so your weekly " +
+    "examen sees it. Use sparingly — closing too eagerly hides drift.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      slug: { type: "string" },
+      outcome: { type: "string", enum: ["fulfilled", "abandoned", "transformed"] },
+      reflection: { type: "string", minLength: 1 },
+    },
+    required: ["slug", "outcome", "reflection"],
+  },
+  async execute(input) {
+    return await withSoulCaller("soul_patch", async () => {
+      const desires = await listDesires();
+      const d = desires.find((x) => x.slug === input.slug);
+      if (!d) {
+        throw new Error(
+          `desire "${input.slug}" not found. Existing slugs: ${desires.map((x) => x.slug).join(", ") || "(none)"}`,
+        );
+      }
+      // Flip actionable off; keep what/why/heartbeatPrompt for record.
+      await writeDesire({
+        slug: d.slug,
+        what: d.what,
+        why: d.why,
+        actionable: false,
+        heartbeatPrompt: d.heartbeatPrompt,
+        bornAt: d.bornAt,
+      });
+      // Append a final progress entry. Use heartbeat caller because
+      // closure-with-reflection is the same shape as heartbeat progress.
+      const closingEntry =
+        `[CLOSED:${input.outcome}] ${input.reflection}`;
+      // Inline append (don't use desire_progress_log path — that requires
+      // listDesires().find, which would still work, but we already validated).
+      await appendDesireProgress(d.slug, closingEntry);
+      // One-line journal entry so the weekly examen catches it without
+      // having to scan every desire.
+      await appendJournal(
+        new Date().toISOString().slice(0, 10),
+        `[DESIRE_CLOSED] ${input.slug} (${input.outcome}): ${input.reflection}`,
+      );
+      return `desire "${input.slug}" closed (${input.outcome}); actionable=false, journal entry written.`;
+    });
+  },
+};
+
 // ── soul_object — architectural objection (Phase 2.1) ─────────────────
 
 interface SoulObjectInput {

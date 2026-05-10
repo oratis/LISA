@@ -3,6 +3,7 @@ import { memoryTool } from "../memory/tool.js";
 import { memorySearchTool } from "../memory/search_tool.js";
 import { skillManageTool } from "../skills/tool.js";
 import {
+  desireCloseTool,
   desireProgressTool,
   soulDiffTool,
   soulFeelTool,
@@ -57,6 +58,7 @@ export function buildToolRegistry(opts: ToolRegistryOptions = {}): ToolDefinitio
     soulDiffTool as ToolDefinition,
     soulObjectTool as ToolDefinition,
     desireProgressTool as ToolDefinition,
+    desireCloseTool as ToolDefinition,
     webFetchTool as ToolDefinition,
     webSearchTool as ToolDefinition,
     redeployTool as ToolDefinition,
