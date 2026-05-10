@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.92.0",
+    "@google/genai": "^2.0.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "openai": "^6.35.0",
     "sharp": "^0.34.5",

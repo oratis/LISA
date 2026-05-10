@@ -1,8 +1,9 @@
 import { AnthropicProvider } from "./anthropic.js";
+import { GeminiProvider } from "./gemini.js";
 import { OpenAIProvider } from "./openai.js";
 import type { Provider } from "./types.js";
 
-export type ProviderName = "anthropic" | "openai";
+export type ProviderName = "anthropic" | "openai" | "gemini";
 
 /**
  * OpenAI-compatible third-party preset table.
@@ -81,6 +82,7 @@ function findPreset(model: string): OpenAICompatPreset | null {
 
 export function detectProvider(model: string): ProviderName {
   if (model.startsWith("claude-")) return "anthropic";
+  if (model.startsWith("gemini-")) return "gemini";
   if (
     model.startsWith("gpt-") ||
     model.startsWith("o1") ||
@@ -96,6 +98,7 @@ export function detectProvider(model: string): ProviderName {
   // through OpenAI provider regardless of model name.
   if (process.env.LISA_BASE_URL) return "openai";
   if (process.env.LISA_PROVIDER === "openai") return "openai";
+  if (process.env.LISA_PROVIDER === "gemini") return "gemini";
   return "anthropic";
 }
 
@@ -111,6 +114,11 @@ export function makeProvider(name: ProviderName): Provider {
         apiKey: process.env.OPENAI_API_KEY,
         baseURL: process.env.OPENAI_BASE_URL,
       });
+    case "gemini":
+      return new GeminiProvider({
+        apiKey: process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY,
+        baseURL: process.env.GEMINI_BASE_URL,
+      });
   }
 }
 
@@ -124,6 +132,12 @@ export function providerForModel(model: string): Provider {
     return new AnthropicProvider({
       apiKey: process.env.ANTHROPIC_API_KEY,
       baseURL: process.env.ANTHROPIC_BASE_URL,
+    });
+  }
+  if (provider === "gemini") {
+    return new GeminiProvider({
+      apiKey: process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY,
+      baseURL: process.env.GEMINI_BASE_URL,
     });
   }
   // OpenAI / OpenAI-compatible. Three nested fallbacks for baseURL + apiKey:
@@ -154,6 +168,10 @@ export function listConfiguredProviders(): Array<{ name: string; configured: boo
   const out: Array<{ name: string; configured: boolean }> = [
     { name: "Anthropic", configured: !!process.env.ANTHROPIC_API_KEY },
     { name: "OpenAI", configured: !!process.env.OPENAI_API_KEY },
+    {
+      name: "Google Gemini",
+      configured: !!(process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY),
+    },
   ];
   for (const p of OPENAI_COMPAT_PRESETS) {
     out.push({ name: p.name, configured: !!process.env[p.apiKeyEnv] });

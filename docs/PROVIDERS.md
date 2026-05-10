@@ -16,6 +16,7 @@ Lisa routes requests by **model name prefix**:
 | Model name starts with… | Routes to | API |
 |---|---|---|
 | `claude-` | Anthropic | Anthropic Messages |
+| `gemini-` | Google | Gemini (own protocol) |
 | `gpt-` / `o1` / `o3` / `o4` / `chatgpt-` | OpenAI | OpenAI Chat Completions |
 | `deepseek-` | DeepSeek | OpenAI-compat |
 | `doubao-` / `ep-` | Volcengine Ark | OpenAI-compat |
@@ -37,6 +38,7 @@ Pass model with `--model <name>` or `LISA_MODEL=...` (set globally) or via the R
 |---|---|
 | Anthropic | `claude-sonnet-4-5-20250929` and up |
 | OpenAI | `gpt-4o`, `gpt-5`, `o3`, `o4` |
+| Google Gemini | `gemini-2.5-pro` / `gemini-2.5-flash` (and up) |
 | DeepSeek | `deepseek-chat` (V3.x) |
 | Volcengine | `doubao-1.5-pro-32k` and up |
 | Aliyun | `qwen3-72b-instruct` and up |
@@ -74,6 +76,30 @@ For Azure OpenAI, point `OPENAI_BASE_URL` at your Azure endpoint:
 ```sh
 echo 'OPENAI_BASE_URL=https://YOUR-RESOURCE.openai.azure.com/openai/v1' >> ~/.lisa/config.env
 ```
+
+---
+
+## Recipe 2.5: Google Gemini
+
+```sh
+echo 'GEMINI_API_KEY=...' >> ~/.lisa/config.env
+# (GOOGLE_API_KEY also accepted — Google ships under both names.)
+lisa --model gemini-2.5-pro
+lisa --model gemini-2.5-flash         # fast & cheap, birth-capable
+lisa --model gemini-2.0-flash         # earlier gen
+```
+
+Gemini uses its **own protocol** (not OpenAI-compatible), so Lisa ships
+a dedicated provider class. Tool-use, system-instruction, and streaming
+all work; tool-result text is wrapped as `{output: text}` (Gemini's
+functionResponse needs a JSON object, not a string).
+
+Limitations vs Anthropic / OpenAI:
+- No prompt caching (Gemini has its own caching API but Lisa doesn't wire it yet)
+- Single function-call per turn on some Gemini variants — Lisa handles
+  multiple if emitted but doesn't rely on it.
+
+To route through a Gemini-compatible relay, set `GEMINI_BASE_URL`.
 
 ---
 
@@ -215,6 +241,7 @@ Her soul / journal / desires don't care which model wrote them. The birth artifa
 |---|---|
 | Anthropic | Best tool-use fidelity. Native streaming. Birth ritual most reliable. |
 | OpenAI | Equal tool-use. Rate limits more aggressive on free tier. |
+| Google Gemini | Tool-use + streaming OK. No prompt caching wired (yet). Some models emit at most one function call per turn. |
 | DeepSeek | Good tool-use as of V3. Birth works. Streaming OK. |
 | Volcengine | Tool-use varies by model. Doubao-1.5-pro tested. China-direct. |
 | Ollama | Tool-use depends on model. `qwen2.5` and `llama3.1` work. Smaller models often fake tool calls. |
