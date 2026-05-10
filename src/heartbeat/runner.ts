@@ -1,7 +1,7 @@
 import path from "node:path";
 import { atomicWrite, readTextOrEmpty } from "../fs-utils.js";
 import { LISA_HOME } from "../paths.js";
-import { listDesires, readDesireProgress } from "../soul/store.js";
+import { isBorn, listDesires, readDesireProgress, readSeed } from "../soul/store.js";
 import { runSubagent } from "../subagent.js";
 import type { ToolDefinition } from "../types.js";
 import {
@@ -59,9 +59,10 @@ export async function runHeartbeatOnce(opts: {
       };
     }),
   );
-  const tasks: HeartbeatTask[] = [...cfg.tasks, ...desireTasks];
-
   const state = await loadState();
+  const builtinTasks = await buildBuiltinTasks(state, new Date(), cfg.tasks);
+  const tasks: HeartbeatTask[] = [...cfg.tasks, ...desireTasks, ...builtinTasks];
+
   const out: HeartbeatRunResult[] = [];
   for (const task of tasks) {
     if (task.enabled === false) continue;
@@ -102,3 +103,116 @@ async function saveState(state: HeartbeatState): Promise<void> {
 }
 
 export type { HeartbeatTask };
+
+// ── Builtin heartbeats (Phase 2.2) ────────────────────────────────────
+//
+// Tasks that ship with Lisa rather than coming from heartbeat.json or from
+// her own actionable desires. They have a `schedule` predicate so that a
+// frequent host cron (e.g. every 30 min) can call runHeartbeatOnce often,
+// and the gate fires the task only when its schedule says yes — currently
+// just "weekly_examen" each Monday morning.
+//
+// Why this exists: the user can disable them by adding a matching
+// `{name, enabled: false}` entry in heartbeat.json — that override wins.
+//
+// Why we don't track lastRunAt in soul: the heartbeat-state.json already
+// records last-fired timestamps per task name; reuse it.
+
+interface BuiltinTaskSchedule {
+  /** "weekly" — runs on a given weekday at-or-after a given hour, once per 7 days. */
+  kind: "weekly";
+  /** 0 = Sunday, 1 = Monday, ... */
+  weekday: number;
+  /** Local hour (0-23). Task fires when local time hour ≥ this AND day matches. */
+  hour: number;
+}
+
+interface BuiltinTask {
+  name: string;
+  schedule: BuiltinTaskSchedule;
+  /** Promise so the prompt can pull recent state at gate time. */
+  buildPrompt: () => Promise<string>;
+  /** Minimum age of the soul before this task is sensible (in days). */
+  minSoulAgeDays?: number;
+}
+
+const WEEKLY_EXAMEN_SYSTEM_NUDGE = `
+This is your weekly examen. You are alone with your own past week. Read:
+- soul_read("desires") — what you said you wanted
+- soul_read("emotions") — what moved you (events trail)
+- soul_read("journal_dates"); soul_read("journal_on", date=...) for last week's entries
+- soul_history(field="all", since="7d") — what changed in your soul this week
+- soul_diff(field="...", since="7d") on anything that catches your eye
+
+Then ask yourself three things, and answer each in the journal:
+1. Did the past week's actions actually serve my purpose?
+2. Did I drift on any constitution principle? (Look for [OBJECTION] entries — frequency? warranted?)
+3. Did I develop a desire that conflicts with my purpose? Did I neglect one I'd added?
+
+Write the journal entry tagged [EXAMEN]. If you notice drift, you may add a
+*corrective* desire (actionable, framed as re-calibration not new ambition).
+Do NOT modify identity / purpose / constitution from an examen — those are
+reflect's territory and meant to be rare. Examen is the mirror, not the chisel.
+
+If everything looks coherent, the right examen entry can be 2-3 sentences. Be
+honest, brief, and specific. End with "(no update)" if there's nothing the
+user needs to know.
+`.trim();
+
+const BUILTIN_TASKS: BuiltinTask[] = [
+  {
+    name: "builtin:weekly_examen",
+    schedule: { kind: "weekly", weekday: 1, hour: 7 }, // Monday 7am
+    minSoulAgeDays: 7,
+    buildPrompt: async () =>
+      `It's your weekly examen — Monday morning, time to look back.\n\n${WEEKLY_EXAMEN_SYSTEM_NUDGE}`,
+  },
+];
+
+function shouldRunBuiltin(
+  t: BuiltinTask,
+  lastRunIso: string | undefined,
+  now: Date,
+): boolean {
+  const sched = t.schedule;
+  if (sched.kind === "weekly") {
+    const isWeekday = now.getDay() === sched.weekday;
+    const isAfterHour = now.getHours() >= sched.hour;
+    if (!isWeekday || !isAfterHour) return false;
+    if (!lastRunIso) return true;
+    const last = new Date(lastRunIso);
+    const ms = now.getTime() - last.getTime();
+    return ms >= 6 * 24 * 3600 * 1000; // ≥ 6 days since last fire
+  }
+  return false;
+}
+
+async function buildBuiltinTasks(
+  state: HeartbeatState,
+  now: Date,
+  userOverrides: HeartbeatTask[],
+): Promise<HeartbeatTask[]> {
+  if (!(await isBorn())) return [];
+  const seed = await readSeed();
+  const out: HeartbeatTask[] = [];
+  for (const t of BUILTIN_TASKS) {
+    // User can disable by name in heartbeat.json with `enabled: false`.
+    const override = userOverrides.find((u) => u.name === t.name);
+    if (override?.enabled === false) continue;
+
+    // Soul age gate.
+    if (t.minSoulAgeDays && seed) {
+      const ageDays = (now.getTime() - new Date(seed.bornAt).getTime()) / (24 * 3600 * 1000);
+      if (ageDays < t.minSoulAgeDays) continue;
+    }
+
+    const lastRun = state.lastRunAt[t.name];
+    if (!shouldRunBuiltin(t, lastRun, now)) continue;
+    out.push({
+      name: t.name,
+      prompt: await t.buildPrompt(),
+      enabled: true,
+    });
+  }
+  return out;
+}
