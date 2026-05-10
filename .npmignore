@@ -1,0 +1,28 @@
+# Belt-and-suspenders to the `files` allowlist in package.json.
+# Anything not in `files` is excluded by default, but we list big
+# directories here too for clarity and to catch accidental future
+# additions.
+
+src/
+scripts/
+docs/
+website/
+reference/
+node_modules/
+.git/
+.github/
+.vscode/
+
+# Tests / dev artifacts
+*.test.ts
+*.test.js
+.tsbuildinfo
+*.tgz
+.DS_Store
+*.log
+
+# Environment / secrets — never publish
+.env
+.env.*
+config.env
+~/.lisa/

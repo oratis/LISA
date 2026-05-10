@@ -1,11 +1,43 @@
 {
-  "name": "lisa",
-  "version": "0.1.0",
-  "description": "Lisa — a self-evolving AI personal assistant.",
+  "name": "@oratis/lisa",
+  "version": "0.2.0",
+  "description": "An AI agent with a real self — runs locally, has desires, keeps a journal, evolves over time.",
+  "keywords": [
+    "ai",
+    "agent",
+    "anthropic",
+    "openai",
+    "gemini",
+    "deepseek",
+    "ollama",
+    "personal-assistant",
+    "self-evolving",
+    "sovereign-ai",
+    "pixel-art",
+    "mcp"
+  ],
+  "homepage": "https://github.com/oratis/LISA#readme",
+  "bugs": {
+    "url": "https://github.com/oratis/LISA/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/oratis/LISA.git"
+  },
+  "license": "MIT",
+  "author": "oratis",
   "type": "module",
   "bin": {
     "lisa": "./dist/cli.js"
   },
+  "files": [
+    "dist/",
+    "channels.example.json",
+    "completions/",
+    "LICENSE",
+    "README.md",
+    "README.zh-CN.md"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json && npm run copy-assets",
     "copy-assets": "mkdir -p dist/web && rm -rf dist/web/assets && ln -s ../../src/web/assets dist/web/assets",
@@ -13,7 +45,9 @@
     "start": "node dist/cli.js",
     "lisa": "node --enable-source-maps dist/cli.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "generate-assets": "tsx scripts/generate-pixel-assets.ts"
+    "generate-assets": "tsx scripts/generate-pixel-assets.ts",
+    "prepublishOnly": "npm run build && rm -rf dist/web/assets && cp -R src/web/assets dist/web/assets",
+    "postpublish": "npm run copy-assets"
   },
   "engines": {
     "node": ">=20.0.0"
