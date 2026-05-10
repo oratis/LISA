@@ -32,38 +32,54 @@ import type { AgentEvent, StoredMessage, ToolDefinition } from "./types.js";
 
 const HELP = `Lisa — your self-evolving local AI assistant.
 
-Usage:
-  lisa                         Start an interactive session.
+CHAT
+  lisa                         Start an interactive REPL session.
   lisa "prompt"                Run one prompt and exit.
   lisa resume <id> [prompt]    Resume a previous session by id.
   lisa sessions                List recent sessions.
+  lisa search "<query>"        Search past sessions (TF-IDF).
+
+INSPECTION
+  lisa status                  One-shot snapshot: identity, mood, recent commits,
+                               desires, sessions, providers, heartbeat last-run.
+  lisa doctor                  Health check (config, network, git, providers).
+                               Exits non-zero on critical issues.
+  lisa monitor                 TUI live dashboard (mood + soul commits + events
+                               + heartbeat). Polls every 2s. Ctrl-C to quit.
+  lisa soul                    Print full soul summary.
+  lisa wishlist                Print Lisa's own feedback about her toolset
+                               (meta-wishlist desire + journal [WISHLIST]).
+
+LIFECYCLE
+  lisa birth                   Run the birth ritual (auto-runs on first launch).
+  lisa heartbeat run [name]    Run heartbeat tasks once (incl. self-driven desires).
+  lisa heartbeat install [--load] [--every <30m|1h|...>]
+                               Install macOS launchd plist (or print cron line).
+  lisa heartbeat uninstall     Remove the launchd plist (macOS).
+
+SERVE (long-lived)
   lisa serve --web [--port N]  Start the web UI (default port 5757).
   lisa serve --channels <list> Start IM channel adapters (comma-separated, or "all").
-                                  Built-in: telegram, discord, slack, webhook, imessage.
-                                  Config: ~/.lisa/channels.json
+                               Built-in: telegram, discord, slack, feishu, webhook, imessage.
+                               Config: ~/.lisa/channels.json
   lisa serve --imessage        Shortcut for --channels imessage (macOS).
   lisa channels                List available channel adapters.
+
+SKILLS (executable, Phase 3.1)
   lisa skills list             List executable skills (~/.lisa/skills/<slug>/tool.js).
   lisa skills approve <slug>   Review the source of a skill's tool.js and approve it.
   lisa skills disable <slug> [reason]   Block an approved skill from loading.
   lisa skills enable <slug>    Remove a disable flag.
   lisa skills audit <slug>     Show the audit trail.
-  lisa wishlist                Print Lisa's own feedback about her toolset/
-                                architecture (her "meta-wishlist" desire +
-                                journal [WISHLIST] mentions). Read at sprint-
-                                planning time to weight what to build next.
-  lisa heartbeat run [name]    Run heartbeat tasks once (incl. self-driven desires).
-  lisa heartbeat install [--load] [--every <30m|1h|...>]
-                                Install macOS launchd plist (or print cron line).
-  lisa heartbeat uninstall      Remove the launchd plist (macOS).
-  lisa search "<query>"        Search past sessions (TF-IDF).
-  lisa birth                   Run the birth ritual (auto-runs on first launch).
-  lisa soul                    Print Lisa's current soul summary.
+
   lisa --help                  Show this message.
 
-Flags:
+FLAGS
   --model <id>          Override default (${DEFAULT_MODEL}).
-  --provider <name>     anthropic | openai (else inferred from model).
+                        Lisa auto-routes by prefix: claude-* / gpt-* / o3-* /
+                        deepseek-* / doubao-* / qwen-* / moonshot-* / kimi-* /
+                        grok-* / glm-*. See docs/PROVIDERS.md for recipes.
+  --provider <name>     anthropic | openai  (else inferred from model).
   --think               Enable adaptive thinking each turn.
   --no-reflect          Skip end-of-session reflection.
   --compact             Enable Anthropic context compaction beta.
@@ -112,7 +128,10 @@ interface ParsedArgs {
     | "soul"
     | "channels"
     | "skills"
-    | "wishlist";
+    | "wishlist"
+    | "status"
+    | "doctor"
+    | "monitor";
   subargs: string[];
   serveWeb: boolean;
   serveImessage: boolean;
@@ -202,7 +221,10 @@ function parseArgs(argv: string[]): ParsedArgs {
       first === "soul" ||
       first === "channels" ||
       first === "skills" ||
-      first === "wishlist"
+      first === "wishlist" ||
+      first === "status" ||
+      first === "doctor" ||
+      first === "monitor"
     ) {
       out.subcommand = first;
       out.subargs = positional.slice(1);
@@ -287,6 +309,24 @@ async function main(): Promise<void> {
 
   if (args.subcommand === "wishlist") {
     await handleWishlistSubcommand();
+    return;
+  }
+
+  if (args.subcommand === "status") {
+    const { runStatus } = await import("./cli/status.js");
+    await runStatus();
+    return;
+  }
+
+  if (args.subcommand === "doctor") {
+    const { runDoctor } = await import("./cli/doctor.js");
+    await runDoctor();
+    return;
+  }
+
+  if (args.subcommand === "monitor") {
+    const { runMonitor } = await import("./cli/monitor.js");
+    await runMonitor();
     return;
   }
 

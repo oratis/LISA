@@ -188,7 +188,10 @@ function parseOpinionFile(slug: string, raw: string): OpinionEntry {
 // ── desires ───────────────────────────────────────────────────────────
 
 export async function listDesires(): Promise<DesireEntry[]> {
-  return await listMarkdownDir<DesireEntry>(SOUL_DESIRES_DIR, parseDesireFile);
+  // Filter out *.progress.md files — they live in the same directory but
+  // belong to their parent desire, not as standalone desires.
+  const all = await listMarkdownDir<DesireEntry>(SOUL_DESIRES_DIR, parseDesireFile);
+  return all.filter((d) => !d.slug.endsWith(".progress"));
 }
 
 export async function writeDesire(entry: DesireEntry): Promise<void> {
