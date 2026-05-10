@@ -1,0 +1,101 @@
+name: Release — build artifacts on tag
+
+# Triggered when a tag matching v*.*.* is pushed. Builds three artifacts and
+# attaches them to a GitHub Release (creating it if it doesn't exist).
+#
+# To cut a release:
+#   1. Bump version in package.json (e.g. via `npm version patch`).
+#   2. Push the tag: git push --follow-tags
+#   3. This workflow runs and posts the release.
+#
+# The release notes are pulled from docs/RELEASE_v<version>.md if it exists,
+# otherwise auto-generated from the tag's commit list.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build (e.g. v0.2.0)"
+        required: true
+
+permissions:
+  contents: write   # needed to create releases + upload assets
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # If triggered manually with a tag input, fetch that ref;
+          # otherwise the default ref (the pushed tag) is fine.
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Resolve version
+        id: ver
+        run: |
+          # Strip leading 'v' from the tag.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          VERSION="${TAG#v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Building release for $TAG (version $VERSION)"
+
+      - name: Verify package.json matches tag
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [ "$PKG_VERSION" != "${{ steps.ver.outputs.version }}" ]; then
+            echo "✗ package.json version $PKG_VERSION != tag ${{ steps.ver.outputs.version }}" >&2
+            exit 1
+          fi
+
+      - name: Build release artifacts
+        run: bash scripts/build-release.sh
+
+      - name: Resolve release notes
+        id: notes
+        run: |
+          NOTES_FILE="docs/RELEASE_v${{ steps.ver.outputs.version }}.md"
+          if [ -f "$NOTES_FILE" ]; then
+            echo "file=$NOTES_FILE" >> "$GITHUB_OUTPUT"
+            echo "✓ found $NOTES_FILE"
+          else
+            echo "file=" >> "$GITHUB_OUTPUT"
+            echo "⚠ no $NOTES_FILE — release will use auto-generated notes."
+          fi
+
+      - name: Generate checksums
+        run: |
+          cd dist-release
+          shasum -a 256 *.tar.gz *.zip > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create / update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: Lisa ${{ steps.ver.outputs.tag }}
+          body_path: ${{ steps.notes.outputs.file }}
+          generate_release_notes: ${{ steps.notes.outputs.file == '' }}
+          files: |
+            dist-release/lisa-source-v${{ steps.ver.outputs.version }}.tar.gz
+            dist-release/lisa-mac-bundle-v${{ steps.ver.outputs.version }}.zip
+            dist-release/lisa-linux-bundle-v${{ steps.ver.outputs.version }}.tar.gz
+            dist-release/SHA256SUMS.txt
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

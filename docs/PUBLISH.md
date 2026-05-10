@@ -1,7 +1,75 @@
 # Publishing Lisa
 
-How to push a new release to npm and (when ready) Homebrew. **You** run these
-commands; nothing is automated yet.
+How to push a new release. The **GitHub Release** flow is automated —
+you just push a tag and the workflow builds three artifacts and posts
+them. The **npm + Homebrew** flow is still manual (intentionally — they
+need account credentials I shouldn't ever see).
+
+## Quick reference
+
+```sh
+# 1. Bump version in package.json + create the tag.
+npm version patch    # or: minor / major / 0.3.0
+
+# 2. (Optional) Write release notes:
+#    docs/RELEASE_v0.X.Y.md  (otherwise auto-generated from commits)
+
+# 3. Push the tag → triggers the GitHub Release workflow.
+git push --follow-tags
+# → the release.yml workflow builds + uploads:
+#     lisa-source-v0.X.Y.tar.gz
+#     lisa-mac-bundle-v0.X.Y.zip
+#     lisa-linux-bundle-v0.X.Y.tar.gz
+#     SHA256SUMS.txt
+
+# 4. Then publish to npm:
+npm publish --access public
+
+# 5. Then update the Homebrew tap formula (separate repo).
+```
+
+Total: ~10 minutes per release.
+
+## 0. GitHub Release artifacts (automated)
+
+Triggered by `git push --follow-tags` after `npm version`. The
+[release.yml](../.github/workflows/release.yml) workflow does the work:
+
+1. Validates that `package.json` version matches the tag.
+2. Runs [scripts/build-release.sh](../scripts/build-release.sh) to produce three artifacts in `dist-release/`:
+   - **`lisa-source-vX.Y.Z.tar.gz`** — the npm-style tarball (~28 MB).
+     Same content as `npm publish` ships. For users who want clean source.
+   - **`lisa-mac-bundle-vX.Y.Z.zip`** — self-contained "drop-and-go" bundle (~80 MB):
+     - `bin/lisa` (CLI shim)
+     - `bin/lisa-gui.command` (Mac users double-click → opens browser to web UI)
+     - `dist/` (compiled JS + 114 mood portraits)
+     - `node_modules/` (runtime deps, no devDependencies)
+     - `QUICKSTART.txt` + README
+   - **`lisa-linux-bundle-vX.Y.Z.tar.gz`** — same as Mac minus the .command launcher.
+3. Computes SHA-256 checksums (`SHA256SUMS.txt`).
+4. If `docs/RELEASE_v<version>.md` exists, uses it as release body; otherwise GitHub auto-generates from commit messages.
+5. Posts the GitHub Release.
+
+User caveat for the Mac/Linux bundles: they still need **Node.js 20+**
+on PATH. The bundles include all npm deps but not Node itself.
+Bundling Node would mean a 130-150 MB tarball *per platform* and
+fighting the `sharp` native dep across architectures — trade-off
+deferred.
+
+To trigger manually (e.g. re-build a release):
+
+```sh
+gh workflow run release.yml -f tag=v0.2.0
+```
+
+To run the build locally without pushing:
+
+```sh
+./scripts/build-release.sh
+ls dist-release/
+```
+
+---
 
 ## 1. npm — `@oratis/lisa`
 

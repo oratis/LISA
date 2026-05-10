@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# `lisa` shim for the self-contained release bundle.
+#
+# Lives at: bin/lisa in the release tarball.
+# Resolves the bundle root, then runs `node dist/cli.js` with all args.
+
+set -e
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BUNDLE_ROOT="$(dirname "$HERE")"
+
+# Sanity: Node must be on PATH.
+if ! command -v node &>/dev/null; then
+  echo "✗ Node.js not found. Install Node 20+ first (brew install node)." >&2
+  exit 1
+fi
+
+NODE_MAJOR=$(node --version | sed -E 's/v([0-9]+).*/\1/')
+if [ "$NODE_MAJOR" -lt 20 ]; then
+  echo "✗ Node.js $(node --version) is too old. Lisa needs Node 20+ (brew upgrade node)." >&2
+  exit 1
+fi
+
+exec node "$BUNDLE_ROOT/dist/cli.js" "$@"
