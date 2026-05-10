@@ -1,7 +1,15 @@
 import path from "node:path";
 import { atomicWrite, readTextOrEmpty } from "../fs-utils.js";
 import { LISA_HOME } from "../paths.js";
-import { isBorn, listDesires, readDesireProgress, readSeed } from "../soul/store.js";
+import {
+  appendDesireProgress,
+  isBorn,
+  listDesires,
+  parseDesireProgress,
+  readDesireProgress,
+  readSeed,
+} from "../soul/store.js";
+import { withSoulCaller } from "../soul/git.js";
 import { runSubagent } from "../subagent.js";
 import type { ToolDefinition } from "../types.js";
 import {
@@ -67,6 +75,16 @@ export async function runHeartbeatOnce(opts: {
   for (const task of tasks) {
     if (task.enabled === false) continue;
     if (opts.taskFilter && task.name !== opts.taskFilter) continue;
+
+    // For desire tasks, snapshot the progress entry count before so we can
+    // detect whether Lisa actually called desire_progress_log during the run.
+    const desireSlug = task.name.startsWith("desire:")
+      ? task.name.slice("desire:".length)
+      : null;
+    const progressBefore = desireSlug
+      ? (await parseDesireProgress(desireSlug)).entries.length
+      : 0;
+
     const result = await runSubagent({
       prompt: task.prompt,
       systemPrompt: HEARTBEAT_SYSTEM,
@@ -77,6 +95,24 @@ export async function runHeartbeatOnce(opts: {
     });
     state.lastRunAt[task.name] = new Date().toISOString();
     const trimmed = result.text.trim();
+
+    // Auto-fallback: if a desire heartbeat finished but Lisa didn't log
+    // progress, write a stub entry so we don't silently lose the run.
+    // (Multi-day pursuits depend on each run leaving a trace; one missed
+    // log can cascade into "where was I?" forever.)
+    if (desireSlug) {
+      const progressAfter = (await parseDesireProgress(desireSlug)).entries.length;
+      if (progressAfter === progressBefore) {
+        await withSoulCaller("heartbeat", async () => {
+          const fallbackBody =
+            `[FALLBACK] Heartbeat ran but desire_progress_log was not called. ` +
+            `Future-me: re-derive context from the journal / git history if you can. ` +
+            (trimmed ? `Final agent text: "${trimmed.slice(0, 400)}"` : `(no final text emitted)`);
+          await appendDesireProgress(desireSlug, fallbackBody);
+        });
+      }
+    }
+
     out.push({
       task: task.name,
       output: trimmed,
