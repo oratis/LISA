@@ -26,6 +26,9 @@ export function opinionFile(slug: string): string {
 export function desireFile(slug: string): string {
   return path.join(SOUL_DESIRES_DIR, `${slug}.md`);
 }
+export function desireProgressFile(slug: string): string {
+  return path.join(SOUL_DESIRES_DIR, `${slug}.progress.md`);
+}
 export function journalFile(date: string): string {
   return path.join(SOUL_JOURNAL_DIR, `${date}.md`);
 }

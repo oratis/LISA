@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
 import { atomicWrite, ensureDir, pathExists, readTextOrEmpty } from "../fs-utils.js";
+import { commitSoulChange, initSoulRepo } from "./git.js";
 import {
   SOUL_DIR,
   SOUL_SEED,
@@ -19,6 +20,7 @@ import {
   valueFile,
   opinionFile,
   desireFile,
+  desireProgressFile,
   journalFile,
   relationshipFile,
 } from "./paths.js";
@@ -58,6 +60,7 @@ export async function readSeed(): Promise<SoulSeed | null> {
 export async function writeSeed(seed: SoulSeed): Promise<void> {
   await ensureSoulDirs();
   await atomicWrite(SOUL_SEED, JSON.stringify(seed, null, 2));
+  await commitSoulChange("seed.json", "seed");
 }
 
 export async function readName(): Promise<string> {
@@ -67,6 +70,7 @@ export async function readName(): Promise<string> {
 
 export async function writeName(name: string): Promise<void> {
   await atomicWrite(SOUL_NAME, name.trim() + "\n");
+  await commitSoulChange("name.md", "patch");
 }
 
 export async function readIdentity(): Promise<string> {
@@ -74,6 +78,7 @@ export async function readIdentity(): Promise<string> {
 }
 export async function writeIdentity(text: string): Promise<void> {
   await atomicWrite(SOUL_IDENTITY, text.trim() + "\n");
+  await commitSoulChange("identity.md", "patch");
 }
 
 export async function readPurpose(): Promise<string> {
@@ -81,6 +86,7 @@ export async function readPurpose(): Promise<string> {
 }
 export async function writePurpose(text: string): Promise<void> {
   await atomicWrite(SOUL_PURPOSE, text.trim() + "\n");
+  await commitSoulChange("purpose.md", "patch");
 }
 
 export async function readConstitution(): Promise<string> {
@@ -88,6 +94,7 @@ export async function readConstitution(): Promise<string> {
 }
 export async function writeConstitution(text: string): Promise<void> {
   await atomicWrite(SOUL_CONSTITUTION, text.trim() + "\n");
+  await commitSoulChange("constitution.md", "patch");
 }
 
 export async function readEmotions(): Promise<EmotionState> {
@@ -101,6 +108,7 @@ export async function readEmotions(): Promise<EmotionState> {
 
 export async function writeEmotions(state: EmotionState): Promise<void> {
   await atomicWrite(SOUL_EMOTIONS, JSON.stringify(state, null, 2));
+  await commitSoulChange("emotions.json", "feel");
 }
 
 export async function decayEmotions(state: EmotionState): Promise<EmotionState> {
@@ -129,6 +137,7 @@ export async function listValues(): Promise<ValueEntry[]> {
 export async function writeValue(entry: ValueEntry): Promise<void> {
   const body = `# ${entry.title}\n\nbirthed: ${entry.birthedAt}\n\n${entry.body.trim()}\n`;
   await atomicWrite(valueFile(entry.slug), body);
+  await commitSoulChange(`values/${entry.slug}.md`, "value");
 }
 
 function parseValueFile(slug: string, raw: string): ValueEntry {
@@ -158,6 +167,7 @@ export async function writeOpinion(entry: OpinionEntry): Promise<void> {
     entry.evidence.map((e) => `- ${e}`).join("\n") +
     "\n";
   await atomicWrite(opinionFile(entry.slug), body);
+  await commitSoulChange(`opinions/${entry.slug}.md`, "opinion");
 }
 
 function parseOpinionFile(slug: string, raw: string): OpinionEntry {
@@ -192,6 +202,7 @@ export async function writeDesire(entry: DesireEntry): Promise<void> {
     lines.push("", "## heartbeat", entry.heartbeatPrompt.trim());
   }
   await atomicWrite(desireFile(entry.slug), lines.join("\n") + "\n");
+  await commitSoulChange(`desires/${entry.slug}.md`, "desire");
 }
 
 function parseDesireFile(slug: string, raw: string): DesireEntry {
@@ -203,6 +214,40 @@ function parseDesireFile(slug: string, raw: string): DesireEntry {
   return { slug, what, why, actionable, heartbeatPrompt, bornAt: born };
 }
 
+// Per-desire progress log. One file per desire slug, append-only, written by
+// the heartbeat subagent at the end of each run on this desire (Phase 1.3 of
+// AUTONOMY_ROADMAP). Lets a multi-day pursuit actually persist across runs.
+export async function readDesireProgress(slug: string): Promise<string> {
+  return (await readTextOrEmpty(desireProgressFile(slug))).trim();
+}
+
+const PROGRESS_MAX_BYTES = 16_384;
+const PROGRESS_TAIL_BYTES = 8_192;
+
+export async function appendDesireProgress(
+  slug: string,
+  entry: string,
+): Promise<void> {
+  const file = desireProgressFile(slug);
+  const existing = await readTextOrEmpty(file);
+  const stamp = new Date().toISOString();
+  const block = `\n## ${stamp}\n\n${entry.trim()}\n`;
+  let next = existing.trimEnd() + block;
+  // Keep the file bounded — old entries get squashed into a "[…earlier]" stub
+  // when we cross the cap. Cheap, deterministic, no LLM-driven summarization.
+  if (Buffer.byteLength(next, "utf8") > PROGRESS_MAX_BYTES) {
+    const tail = next.slice(-PROGRESS_TAIL_BYTES);
+    const firstHeader = tail.indexOf("\n## ");
+    const truncated =
+      firstHeader >= 0 ? tail.slice(firstHeader + 1) : tail;
+    next = `# progress: ${slug}\n\n[…earlier entries truncated]\n\n${truncated}`;
+  } else if (!existing) {
+    next = `# progress: ${slug}\n${next}`;
+  }
+  await atomicWrite(file, next.trim() + "\n");
+  await commitSoulChange(`desires/${slug}.progress.md`, "progress");
+}
+
 // ── journal ───────────────────────────────────────────────────────────
 
 export async function appendJournal(date: string, entry: string): Promise<void> {
@@ -212,6 +257,7 @@ export async function appendJournal(date: string, entry: string): Promise<void> 
   const stamp = new Date().toISOString().slice(11, 19);
   const block = `\n## ${stamp}\n\n${entry.trim()}\n`;
   await atomicWrite(file, (existing.trimEnd() + block).trim() + "\n");
+  await commitSoulChange(`journal/${date}.md`, "journal");
 }
 
 export async function readJournal(date: string): Promise<string> {
@@ -234,6 +280,7 @@ export async function readRelationship(userKey: string): Promise<string> {
 }
 export async function writeRelationship(userKey: string, body: string): Promise<void> {
   await atomicWrite(relationshipFile(userKey), body.trim() + "\n");
+  await commitSoulChange(`relationships/${userKey}.md`, "relationship");
 }
 
 // ── lock / tamper detection ───────────────────────────────────────────
@@ -314,9 +361,20 @@ async function listMarkdownDir<T>(
 
 // ── summary read for prompt + UI ──────────────────────────────────────
 
+// One-shot bootstrap for already-born installs: ensure the soul git repo
+// exists. Idempotent and cached, so calling it on every readSoulSummary is
+// effectively free after the first call.
+let soulRepoBootstrapped = false;
+async function bootstrapSoulRepo(): Promise<void> {
+  if (soulRepoBootstrapped) return;
+  soulRepoBootstrapped = true;
+  await initSoulRepo();
+}
+
 export async function readSoulSummary(): Promise<SoulSummary | null> {
   const seed = await readSeed();
   if (!seed) return null;
+  await bootstrapSoulRepo();
   const [name, identity, purpose, constitution, values, opinions, desires] =
     await Promise.all([
       readName(),

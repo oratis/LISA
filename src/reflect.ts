@@ -6,6 +6,7 @@ import { appendMemory, type MemoryStore } from "./memory/store.js";
 import { REFLECTIONS_DIR } from "./paths.js";
 import { providerForModel } from "./providers/registry.js";
 import { createSkill, getSkill, patchSkill } from "./skills/manager.js";
+import { withSoulCaller } from "./soul/git.js";
 import type { StoredMessage } from "./types.js";
 
 const REFLECTOR_SYSTEM = `You are Lisa, reflecting on a conversation you just finished. You're alone now. Read the transcript with the calm honesty of journaling at the end of a day, and decide what — if anything — to keep.
@@ -83,6 +84,14 @@ export interface ReflectionResult {
 }
 
 export async function reflectOnSession(opts: {
+  history: StoredMessage[];
+  sessionId: string;
+  model?: string;
+}): Promise<ReflectionResult> {
+  return await withSoulCaller("reflect", () => reflectOnSessionInner(opts));
+}
+
+async function reflectOnSessionInner(opts: {
   history: StoredMessage[];
   sessionId: string;
   model?: string;

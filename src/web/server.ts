@@ -8,7 +8,7 @@ import { runIdleOnce } from "../idle/runner.js";
 import { getIdleWatcher } from "../idle/watcher.js";
 import { moodBus } from "../mood-bus.js";
 import { providerForModel } from "../providers/registry.js";
-import { buildSystemPromptSnapshot } from "../prompt.js";
+import { buildSystemPromptSnapshot, getPromptFingerprint } from "../prompt.js";
 import {
   readActiveWebSession,
   writeActiveWebSession,
@@ -1599,6 +1599,19 @@ async function resumeOrCreateWebSession(model: string): Promise<SessionStore> {
 
 export async function startWebServer(opts: WebServerOptions): Promise<http.Server> {
   const snapshot = await buildSystemPromptSnapshot();
+  const initialFingerprint = await getPromptFingerprint();
+  // Per-process hot-reload cache for the web server: same shape as cli's
+  // makeHotReloadRebuilder, inlined here so the web server stays standalone.
+  let cachedFp = initialFingerprint;
+  let cachedText = snapshot.text;
+  const rebuildPrompt = async (): Promise<{ text: string; fingerprint: string }> => {
+    const fp = await getPromptFingerprint();
+    if (fp === cachedFp) return { text: cachedText, fingerprint: fp };
+    const next = await buildSystemPromptSnapshot();
+    cachedFp = fp;
+    cachedText = next.text;
+    return { text: next.text, fingerprint: fp };
+  };
   // Resume previous chat across restarts. Three-tier fallback:
   //  1. ~/.lisa/active-web-session.txt (set on every web startup)
   //  2. Most recent session on disk in this cwd (catches the case where the
@@ -1927,9 +1940,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       // Send the current mood immediately so a fresh tab knows where to start.
       send({ type: "mood", slug: moodBus.current() });
       try {
+        // Use the freshest cached prompt for this chat. If soul / skills /
+        // memory changed since the previous chat, rebuildPrompt() picks it up.
+        const fresh = await rebuildPrompt();
         const result = await runAgent({
           provider: getProvider(),
-          systemPrompt: snapshot.text,
+          systemPrompt: fresh.text,
           tools: opts.tools,
           toolCtx: {
             cwd: process.cwd(),
@@ -1960,10 +1976,16 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
                     ? ev.toolResult.slice(0, 200)
                     : "",
               });
+            if (ev.type === "system_prompt_rebuilt")
+              send({ type: "soul_reload", message: ev.message ?? "" });
             if (ev.type === "error")
               send({ type: "error", message: ev.message ?? "" });
           },
           onMessagePersist: (m) => session.appendMessage(m),
+          hotReload: {
+            initialFingerprint: fresh.fingerprint,
+            rebuild: rebuildPrompt,
+          },
         });
         history.length = 0;
         history.push(...result.history);

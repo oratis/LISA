@@ -54,7 +54,8 @@ export interface AgentEvent {
     | "tool_call_end"
     | "turn_end"
     | "error"
-    | "info";
+    | "info"
+    | "system_prompt_rebuilt";
   text?: string;
   toolName?: string;
   toolInput?: unknown;

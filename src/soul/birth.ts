@@ -17,6 +17,7 @@ import {
   writeValue,
   writeDesire,
 } from "./store.js";
+import { initSoulRepo, withSoulCaller } from "./git.js";
 import {
   DEFAULT_EMOTIONS,
   type BigFiveSeed,
@@ -68,6 +69,10 @@ export async function birth(opts: BirthOptions = {}): Promise<void> {
       "Lisa is already born. To rebirth, manually delete ~/.lisa/soul/seed.json (this is irreversible).",
     );
   }
+  return await withSoulCaller("birth", () => birthInner(opts));
+}
+
+async function birthInner(opts: BirthOptions): Promise<void> {
   const onStep = opts.onStep ?? (() => {});
   await ensureSoulDirs();
 
@@ -75,6 +80,10 @@ export async function birth(opts: BirthOptions = {}): Promise<void> {
   await onStep({ step: "seed", detail: "rolling the dice…" });
   const seed = generateSeed();
   await writeSeed(seed);
+  // Initialize the soul git repo now that the seed + dirs exist. This makes
+  // the initial commit capture "she has been seeded but not yet shaped",
+  // and every subsequent write gets its own commit attributed to "birth".
+  await initSoulRepo();
   await onStep({
     step: "seed",
     detail: `born ${seed.bornAt} on host:${seed.bornOn.slice(0, 8)} · big5(O${(seed.bigFive.openness * 100) | 0} C${(seed.bigFive.conscientiousness * 100) | 0} E${(seed.bigFive.extraversion * 100) | 0} A${(seed.bigFive.agreeableness * 100) | 0} N${(seed.bigFive.neuroticism * 100) | 0})`,

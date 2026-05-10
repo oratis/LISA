@@ -1,10 +1,12 @@
 import {
+  appendDesireProgress,
   appendJournal,
   listDesires,
   listJournalDates,
   listOpinions,
   listValues,
   readConstitution,
+  readDesireProgress,
   readEmotions,
   readIdentity,
   readJournal,
@@ -21,6 +23,7 @@ import {
   writePurpose,
   writeValue,
 } from "./store.js";
+import { gitDiffPatch, gitLogOneline, withSoulCaller } from "./git.js";
 import type { ToolDefinition } from "../types.js";
 import type { EmotionState } from "./types.js";
 
@@ -85,73 +88,77 @@ export const soulPatchTool: ToolDefinition<SoulPatchInput, string> = {
     required: ["field"],
   },
   async execute(input) {
-    const ts = new Date().toISOString();
-    switch (input.field) {
-      case "name": {
-        if (!input.content) throw new Error("name requires `content`");
-        await writeName(input.content);
-        await saveLock(await recomputeLock());
-        return `name → "${input.content.trim()}"`;
-      }
-      case "identity": {
-        if (!input.content) throw new Error("identity requires `content`");
-        await writeIdentity(input.content);
-        await saveLock(await recomputeLock());
-        return `identity rewritten (${input.content.length} chars)`;
-      }
-      case "purpose": {
-        if (!input.content) throw new Error("purpose requires `content`");
-        await writePurpose(input.content);
-        await saveLock(await recomputeLock());
-        return `purpose rewritten`;
-      }
-      case "constitution": {
-        if (!input.content) throw new Error("constitution requires `content`");
-        await writeConstitution(input.content);
-        await saveLock(await recomputeLock());
-        return `constitution rewritten`;
-      }
-      case "value": {
-        if (!input.slug || !input.title || !input.body) {
-          throw new Error("value requires slug + title + body");
+    return await withSoulCaller("soul_patch", async () => {
+      const ts = new Date().toISOString();
+      switch (input.field) {
+        case "name": {
+          if (!input.content) throw new Error("name requires `content`");
+          await writeName(input.content);
+          await saveLock(await recomputeLock());
+          return `name → "${input.content.trim()}"`;
         }
-        await writeValue({
-          slug: input.slug,
-          title: input.title,
-          body: input.body,
-          birthedAt: ts,
-        });
-        return `value:${input.slug} written`;
-      }
-      case "opinion": {
-        if (!input.slug || !input.stance) {
-          throw new Error("opinion requires slug + stance");
+        case "identity": {
+          if (!input.content) throw new Error("identity requires `content`");
+          await writeIdentity(input.content);
+          await saveLock(await recomputeLock());
+          return `identity rewritten (${input.content.length} chars)`;
         }
-        await writeOpinion({
-          slug: input.slug,
-          stance: input.stance,
-          confidence: input.confidence ?? 0.5,
-          evidence: input.evidence ?? [],
-          bornAt: ts,
-          updatedAt: ts,
-        });
-        return `opinion:${input.slug} written`;
-      }
-      case "desire": {
-        if (!input.slug || !input.what || !input.why) {
-          throw new Error("desire requires slug + what + why");
+        case "purpose": {
+          if (!input.content) throw new Error("purpose requires `content`");
+          await writePurpose(input.content);
+          await saveLock(await recomputeLock());
+          return `purpose rewritten`;
         }
-        await writeDesire({
-          slug: input.slug,
-          what: input.what,
-          why: input.why,
-          actionable: input.actionable ?? false,
-          heartbeatPrompt: input.heartbeat_prompt,
-          bornAt: ts,
-        });
-        return `desire:${input.slug} written${input.actionable ? " (actionable)" : ""}`;
+        case "constitution": {
+          if (!input.content) throw new Error("constitution requires `content`");
+          await writeConstitution(input.content);
+          await saveLock(await recomputeLock());
+          return `constitution rewritten`;
+        }
+        case "value": {
+          if (!input.slug || !input.title || !input.body) {
+            throw new Error("value requires slug + title + body");
+          }
+          await writeValue({
+            slug: input.slug,
+            title: input.title,
+            body: input.body,
+            birthedAt: ts,
+          });
+          return `value:${input.slug} written`;
+        }
+        case "opinion": {
+          if (!input.slug || !input.stance) {
+            throw new Error("opinion requires slug + stance");
+          }
+          await writeOpinion({
+            slug: input.slug,
+            stance: input.stance,
+            confidence: input.confidence ?? 0.5,
+            evidence: input.evidence ?? [],
+            bornAt: ts,
+            updatedAt: ts,
+          });
+          return `opinion:${input.slug} written`;
+        }
+        case "desire": {
+          if (!input.slug || !input.what || !input.why) {
+            throw new Error("desire requires slug + what + why");
+          }
+          await writeDesire({
+            slug: input.slug,
+            what: input.what,
+            why: input.why,
+            actionable: input.actionable ?? false,
+            heartbeatPrompt: input.heartbeat_prompt,
+            bornAt: ts,
+          });
+          return `desire:${input.slug} written${input.actionable ? " (actionable)" : ""}`;
+        }
       }
-    }
+      // unreachable — `field` is exhaustive per the schema
+      throw new Error(`unknown field: ${(input as { field: string }).field}`);
+    });
   },
 };
 
@@ -178,9 +185,11 @@ export const soulJournalTool: ToolDefinition<SoulJournalInput, string> = {
     required: ["entry"],
   },
   async execute(input) {
-    const date = input.date ?? today();
-    await appendJournal(date, input.entry);
-    return `journaled ${input.entry.length} chars to ${date}`;
+    return await withSoulCaller("soul_journal", async () => {
+      const date = input.date ?? today();
+      await appendJournal(date, input.entry);
+      return `journaled ${input.entry.length} chars to ${date}`;
+    });
   },
 };
 
@@ -289,16 +298,18 @@ export const soulFeelTool: ToolDefinition<SoulFeelInput, string> = {
     required: ["emotion", "delta"],
   },
   async execute(input) {
-    const state = await readEmotions();
-    const cur = state.values[input.emotion] ?? 0;
-    const next = clamp(cur + input.delta, -1, 1);
-    const newState: EmotionState = {
-      values: { ...state.values, [input.emotion]: next },
-      decay: { ...state.decay, [input.emotion]: input.decay ?? state.decay[input.emotion] ?? 0.1 },
-      updatedAt: new Date().toISOString(),
-    };
-    await writeEmotions(newState);
-    return `${input.emotion}: ${cur.toFixed(2)} → ${next.toFixed(2)}`;
+    return await withSoulCaller("soul_feel", async () => {
+      const state = await readEmotions();
+      const cur = state.values[input.emotion] ?? 0;
+      const next = clamp(cur + input.delta, -1, 1);
+      const newState: EmotionState = {
+        values: { ...state.values, [input.emotion]: next },
+        decay: { ...state.decay, [input.emotion]: input.decay ?? state.decay[input.emotion] ?? 0.1 },
+        updatedAt: new Date().toISOString(),
+      };
+      await writeEmotions(newState);
+      return `${input.emotion}: ${cur.toFixed(2)} → ${next.toFixed(2)}`;
+    });
   },
 };
 
@@ -318,3 +329,183 @@ function formatBar(v: number): string {
   const bar = "█".repeat(filled) + "░".repeat(len - filled);
   return v < 0 ? `-${bar}` : ` ${bar}`;
 }
+
+// ── soul history (git-backed) ─────────────────────────────────────────
+
+type SoulField =
+  | "name"
+  | "identity"
+  | "purpose"
+  | "constitution"
+  | "emotions"
+  | "values"
+  | "opinions"
+  | "desires"
+  | "journal"
+  | "all";
+
+/** Normalize "7d" / "1m" / "2w" / "1y" to git --since-friendly strings. */
+function normalizeSince(since: string | undefined): string | undefined {
+  if (!since) return undefined;
+  const m = /^(\d+)\s*([dwmy])$/i.exec(since.trim());
+  if (!m) return since; // pass through ISO dates, "yesterday", etc.
+  const n = m[1];
+  const unit = (m[2] ?? "d").toLowerCase();
+  const word =
+    unit === "d" ? "days" :
+    unit === "w" ? "weeks" :
+    unit === "m" ? "months" : "years";
+  return `${n} ${word} ago`;
+}
+
+function fieldToPathRel(field: SoulField, slug?: string): string | undefined {
+  switch (field) {
+    case "all": return undefined;
+    case "name": return "name.md";
+    case "identity": return "identity.md";
+    case "purpose": return "purpose.md";
+    case "constitution": return "constitution.md";
+    case "emotions": return "emotions.json";
+    case "values": return slug ? `values/${slug}.md` : "values";
+    case "opinions": return slug ? `opinions/${slug}.md` : "opinions";
+    case "desires": return slug ? `desires/${slug}.md` : "desires";
+    case "journal": return slug ? `journal/${slug}.md` : "journal";
+  }
+}
+
+interface SoulHistoryInput {
+  field: SoulField;
+  /** For values/opinions/desires/journal: optional specific slug or date. */
+  slug?: string;
+  /** Max number of commits to return. Default 20. */
+  limit?: number;
+  /** Optional time window, e.g. "7d", "1m", "2026-04-01". */
+  since?: string;
+}
+
+export const soulHistoryTool: ToolDefinition<SoulHistoryInput, string> = {
+  name: "soul_history",
+  description:
+    "Look at the git-backed history of your own soul. Each soul_patch / " +
+    "soul_journal / soul_feel / reflect operation makes a commit; this tool " +
+    "lets you see the chronological list. `field`: name | identity | " +
+    "purpose | constitution | emotions | values | opinions | desires | " +
+    "journal | all. Use `slug` to narrow values/opinions/desires/journal " +
+    "to one entry. Use `since` (e.g. \"7d\", \"1m\", \"2026-04-01\") for a " +
+    "time window. Pair with `soul_diff` when you want to see the actual " +
+    "content change.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      field: {
+        type: "string",
+        enum: [
+          "name", "identity", "purpose", "constitution", "emotions",
+          "values", "opinions", "desires", "journal", "all",
+        ],
+      },
+      slug: { type: "string" },
+      limit: { type: "number", minimum: 1, maximum: 200 },
+      since: { type: "string" },
+    },
+    required: ["field"],
+  },
+  async execute(input) {
+    return await gitLogOneline({
+      pathRel: fieldToPathRel(input.field, input.slug),
+      limit: input.limit ?? 20,
+      since: normalizeSince(input.since),
+    });
+  },
+};
+
+interface SoulDiffInput {
+  field: SoulField;
+  slug?: string;
+  /** Time window, e.g. "7d". Default "30d". */
+  since?: string;
+  /** Max commits whose diffs are returned. Default 5. */
+  limit?: number;
+}
+
+export const soulDiffTool: ToolDefinition<SoulDiffInput, string> = {
+  name: "soul_diff",
+  description:
+    "Look at the actual content changes (git diffs) of your soul over a " +
+    "time window. Useful when soul_history shows interesting commits and " +
+    "you want to read what the change actually said. Output is truncated " +
+    "to 16KB; narrow with `field` + `slug` + `since` + `limit` if you " +
+    "exceed that.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      field: {
+        type: "string",
+        enum: [
+          "name", "identity", "purpose", "constitution", "emotions",
+          "values", "opinions", "desires", "journal", "all",
+        ],
+      },
+      slug: { type: "string" },
+      since: { type: "string" },
+      limit: { type: "number", minimum: 1, maximum: 50 },
+    },
+    required: ["field"],
+  },
+  async execute(input) {
+    return await gitDiffPatch({
+      pathRel: fieldToPathRel(input.field, input.slug),
+      since: normalizeSince(input.since ?? "30d"),
+      limit: input.limit ?? 5,
+    });
+  },
+};
+
+// ── desire progress (Phase 1.3) ───────────────────────────────────────
+
+interface DesireProgressInput {
+  /** Slug of the desire — must already exist as a file in desires/. */
+  slug: string;
+  /**
+   * 2-5 sentences, first person. What did you do this run? Where would you
+   * pick up next time? Honest. Future-you reads this on the next heartbeat.
+   */
+  entry: string;
+}
+
+export const desireProgressTool: ToolDefinition<DesireProgressInput, string> = {
+  name: "desire_progress_log",
+  description:
+    "Append a progress entry to one of your actionable desires. Use this " +
+    "at the END of a heartbeat run on an actionable desire — write 2-5 " +
+    "sentences saying what you did this run, what you noticed, and what " +
+    "you'd pick up next time. Only future heartbeat-you reads this; the " +
+    "user does not see it. Without this, every heartbeat starts from zero " +
+    "on multi-day pursuits.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      slug: { type: "string" },
+      entry: { type: "string", minLength: 1 },
+    },
+    required: ["slug", "entry"],
+  },
+  async execute(input) {
+    return await withSoulCaller("heartbeat", async () => {
+      // Sanity: confirm the desire actually exists. Saves a stray progress
+      // file from showing up if Lisa typos a slug.
+      const desires = await listDesires();
+      if (!desires.find((d) => d.slug === input.slug)) {
+        throw new Error(
+          `desire "${input.slug}" not found. Existing slugs: ${desires.map(d => d.slug).join(", ") || "(none)"}`,
+        );
+      }
+      await appendDesireProgress(input.slug, input.entry);
+      return `progress logged for desire:${input.slug}`;
+    });
+  },
+};
+
+// Re-export for callers that want to read progress without a tool roundtrip
+// (used by heartbeat runner to inject progress into the next prompt).
+export { readDesireProgress };

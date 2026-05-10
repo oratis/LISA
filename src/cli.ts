@@ -12,7 +12,7 @@ import { loadMcpConfig } from "./mcp/config.js";
 import { LISA_HOME } from "./paths.js";
 import { loadAllPlugins, PLUGINS_ROOT } from "./plugins/loader.js";
 import type { HookSpec } from "./plugins/types.js";
-import { buildSystemPromptSnapshot } from "./prompt.js";
+import { buildSystemPromptSnapshot, getPromptFingerprint } from "./prompt.js";
 import { providerForModel } from "./providers/registry.js";
 import { reflectOnSession } from "./reflect.js";
 import { runRepl } from "./cli/repl.js";
@@ -499,6 +499,7 @@ async function main(): Promise<void> {
   }
 
   const snapshot = await buildSystemPromptSnapshot();
+  const initialFingerprint = await getPromptFingerprint();
   const totalSkills = snapshot.skillCount + plugins.flatMap((p) => p.skills).length;
   console.error(
     `Lisa session ${session.id} — ${totalSkills} skills, ${snapshot.memoryBytes}B memory, ${composedTools.length} tools, ${mcpConnections.length} mcp, ${plugins.length} plugins, model=${args.model}${args.thinking ? ", thinking=adaptive" : ""}${args.compaction ? ", compaction=on" : ""}, approval=${args.approval}`,
@@ -509,11 +510,17 @@ async function main(): Promise<void> {
     mutatingTools: DEFAULT_MUTATING_TOOLS,
   });
 
+  const rebuildPrompt = makeHotReloadRebuilder(initialFingerprint, snapshot.text);
+
   const turn = async (prompt: string): Promise<void> => {
     process.stdout.write("\nLisa> ");
+    // Per-turn freshness: pick up any cross-session writes to soul / skills /
+    // memory (e.g. she patched her own soul during the previous turn). The
+    // closure caches by fingerprint so this is cheap when nothing changed.
+    const fresh = await rebuildPrompt();
     const result = await runAgent({
       provider,
-      systemPrompt: snapshot.text,
+      systemPrompt: fresh.text,
       tools: composedTools,
       toolCtx: { cwd, signal: abortController.signal, log: () => {} },
       history,
@@ -550,6 +557,10 @@ async function main(): Promise<void> {
       },
       onEvent: renderEvent,
       onMessagePersist: (msg) => session.appendMessage(msg),
+      hotReload: {
+        initialFingerprint: fresh.fingerprint,
+        rebuild: rebuildPrompt,
+      },
     });
     process.stdout.write("\n");
     history.length = 0;
@@ -743,12 +754,41 @@ function renderEvent(event: AgentEvent): void {
         process.stderr.write(`[tool ${event.toolName} ✗ ${event.toolResult}]\n`);
       }
       break;
+    case "system_prompt_rebuilt":
+      process.stderr.write(`[soul] ${event.message}\n`);
+      break;
     case "error":
       process.stderr.write(`\n[error] ${event.message}\n`);
       break;
     default:
       break;
   }
+}
+
+/**
+ * Make a hot-reload rebuild closure that maintains its own (fingerprint, text)
+ * cache. Called once per session; the agent loop calls it once per turn.
+ *
+ * Cheap path: if the fingerprint hasn't moved, return the cached text without
+ * re-running buildSystemPromptSnapshot (which does several I/O calls). Slow
+ * path: rebuild + cache.
+ */
+function makeHotReloadRebuilder(
+  initialFingerprint: string,
+  initialText: string,
+): () => Promise<{ text: string; fingerprint: string }> {
+  let cachedFp = initialFingerprint;
+  let cachedText = initialText;
+  return async () => {
+    const fp = await getPromptFingerprint();
+    if (fp === cachedFp) {
+      return { text: cachedText, fingerprint: fp };
+    }
+    const next = await buildSystemPromptSnapshot();
+    cachedFp = fp;
+    cachedText = next.text;
+    return { text: next.text, fingerprint: fp };
+  };
 }
 
 // ── Birth ceremony (CLI rendering) ────────────────────────────────────

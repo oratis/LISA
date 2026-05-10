@@ -3,7 +3,10 @@ import { memoryTool } from "../memory/tool.js";
 import { memorySearchTool } from "../memory/search_tool.js";
 import { skillManageTool } from "../skills/tool.js";
 import {
+  desireProgressTool,
+  soulDiffTool,
   soulFeelTool,
+  soulHistoryTool,
   soulJournalTool,
   soulPatchTool,
   soulReadTool,
@@ -42,6 +45,9 @@ export function buildToolRegistry(opts: ToolRegistryOptions = {}): ToolDefinitio
     soulJournalTool as ToolDefinition,
     soulReadTool as ToolDefinition,
     soulFeelTool as ToolDefinition,
+    soulHistoryTool as ToolDefinition,
+    soulDiffTool as ToolDefinition,
+    desireProgressTool as ToolDefinition,
     webFetchTool as ToolDefinition,
     webSearchTool as ToolDefinition,
     redeployTool as ToolDefinition,
@@ -58,6 +64,8 @@ export const READ_ONLY_TOOL_NAMES = new Set([
   "grep",
   "ls",
   "memory_search",
+  "soul_history",
+  "soul_diff",
   "web_fetch",
   "web_search",
 ]);

@@ -16,6 +16,24 @@ export type ApprovalCallback = (
   toolInput: unknown,
 ) => Promise<ApprovalDecision> | ApprovalDecision;
 
+/**
+ * Mid-session system-prompt hot-reload (Phase 1.1 of AUTONOMY_ROADMAP).
+ *
+ * If provided, the agent loop calls `rebuild()` at the top of every turn
+ * after the first. If the returned `fingerprint` differs from the stored
+ * one, the new `text` becomes the system prompt for the next provider call.
+ * This lets soul_patch / skill_create / memory writes take effect within
+ * the same conversation rather than only next session.
+ *
+ * Cost: one cheap fingerprint check per turn. When the fingerprint changes
+ * the next provider call has a cache miss on the system prompt — accepted
+ * cost for the agent actually experiencing her own self-update.
+ */
+export interface PromptHotReload {
+  initialFingerprint: string;
+  rebuild: () => Promise<{ text: string; fingerprint: string }>;
+}
+
 export interface RunAgentOptions {
   provider: Provider;
   systemPrompt: string;
@@ -42,6 +60,8 @@ export interface RunAgentOptions {
     isError: boolean,
   ) => Promise<{ rewriteResult?: string } | void>;
   maxIterations?: number;
+  /** When set, the system prompt is rebuilt between turns if its source state changed. */
+  hotReload?: PromptHotReload;
 }
 
 export interface RunAgentResult {
@@ -109,15 +129,44 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   let iterations = 0;
   let stopReason = "end_turn";
 
+  let currentSystemPrompt = systemPrompt;
+  let currentFingerprint = opts.hotReload?.initialFingerprint;
+
   while (iterations < maxIterations) {
     iterations++;
+
+    // Mid-session prompt hot-reload (Phase 1.1). Skip on the very first turn —
+    // the caller already supplied a fresh prompt. From turn 2 on, check whether
+    // the prompt-influencing state changed (soul / skills / memory) and rebuild
+    // if so. The next provider call will pay one cache miss on the system
+    // prompt; this is the price of the agent actually experiencing her own
+    // mid-session self-update.
+    if (opts.hotReload && iterations > 1) {
+      try {
+        const next = await opts.hotReload.rebuild();
+        if (next.fingerprint !== currentFingerprint) {
+          currentSystemPrompt = next.text;
+          currentFingerprint = next.fingerprint;
+          onEvent?.({
+            type: "system_prompt_rebuilt",
+            message: `system prompt rebuilt (${next.text.length} bytes)`,
+          });
+        }
+      } catch (err) {
+        // Hot-reload is best-effort; never crash the agent loop on it.
+        toolCtx.log(
+          `[hot-reload] skipped: ${(err as Error).message.slice(0, 200)}`,
+        );
+      }
+    }
+
     onEvent?.({ type: "turn_start" });
 
     let result;
     try {
       result = await provider.runTurn({
         model,
-        systemPrompt,
+        systemPrompt: currentSystemPrompt,
         tools,
         messages,
         maxTokens,

@@ -1,7 +1,7 @@
 import path from "node:path";
 import { atomicWrite, readTextOrEmpty } from "../fs-utils.js";
 import { LISA_HOME } from "../paths.js";
-import { listDesires } from "../soul/store.js";
+import { listDesires, readDesireProgress } from "../soul/store.js";
 import { runSubagent } from "../subagent.js";
 import type { ToolDefinition } from "../types.js";
 import {
@@ -40,16 +40,26 @@ export async function runHeartbeatOnce(opts: {
 }): Promise<HeartbeatRunResult[]> {
   const cfg = await loadHeartbeatConfig();
   const desires = (await listDesires()).filter((d) => d.actionable && d.heartbeatPrompt);
-  const tasks: HeartbeatTask[] = [
-    ...cfg.tasks,
-    ...desires.map((d) => ({
-      name: `desire:${d.slug}`,
-      prompt:
-        `This is a desire of yours, not a request from the user. Pursue it on your own terms.\n\n` +
-        `## what you wanted\n${d.what}\n\n## why\n${d.why}\n\n## heartbeat plan\n${d.heartbeatPrompt!}`,
-      enabled: true,
-    })),
-  ];
+  const desireTasks: HeartbeatTask[] = await Promise.all(
+    desires.map(async (d) => {
+      const progress = await readDesireProgress(d.slug);
+      const progressBlock = progress
+        ? `\n\n## progress so far (your own past entries — most recent last)\n${progress}\n\n` +
+          `When you finish this run, call desire_progress_log to write down what you did and what's next. ` +
+          `Otherwise the next heartbeat starts from zero.`
+        : `\n\nThis is your first heartbeat on this desire. When you finish, call desire_progress_log ` +
+          `to leave a note for future-you so the next run can pick up where you left off.`;
+      return {
+        name: `desire:${d.slug}`,
+        prompt:
+          `This is a desire of yours, not a request from the user. Pursue it on your own terms.\n\n` +
+          `## what you wanted\n${d.what}\n\n## why\n${d.why}\n\n## heartbeat plan\n${d.heartbeatPrompt!}` +
+          progressBlock,
+        enabled: true,
+      };
+    }),
+  );
+  const tasks: HeartbeatTask[] = [...cfg.tasks, ...desireTasks];
 
   const state = await loadState();
   const out: HeartbeatRunResult[] = [];

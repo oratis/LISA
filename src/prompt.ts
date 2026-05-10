@@ -1,9 +1,23 @@
+import fs from "node:fs/promises";
 import os from "node:os";
+import path from "node:path";
 import { listSkills } from "./skills/manager.js";
 import { readMemory } from "./memory/store.js";
-import { LISA_HOME } from "./paths.js";
+import { LISA_HOME, MEMORY_DIR, SKILLS_DIR } from "./paths.js";
+import { pathExists } from "./fs-utils.js";
 import { availableMoodSlugs } from "./tools/set_mood.js";
 import { isBorn, readSoulSummary } from "./soul/store.js";
+import {
+  SOUL_CONSTITUTION,
+  SOUL_DESIRES_DIR,
+  SOUL_DIR,
+  SOUL_EMOTIONS,
+  SOUL_IDENTITY,
+  SOUL_NAME,
+  SOUL_OPINIONS_DIR,
+  SOUL_PURPOSE,
+  SOUL_VALUES_DIR,
+} from "./soul/paths.js";
 import type { SoulSummary } from "./soul/types.js";
 
 export interface PromptSnapshot {
@@ -152,4 +166,69 @@ function formatEmotionsForPrompt(values: Record<string, number>): string {
   return ranked
     .map(([k, v]) => `- ${k}: ${v >= 0 ? "+" : ""}${v.toFixed(2)}`)
     .join("\n");
+}
+
+/**
+ * Cheap fingerprint of the state that influences the system prompt. Used by
+ * the agent loop's mid-session hot-reload (Phase 1.1): if this string changes
+ * between turns, the system prompt gets rebuilt and the LLM sees the updated
+ * soul / skills / memory immediately rather than next session.
+ *
+ * Inputs covered: every soul file in the prompt (NOT journal — journal is
+ * private and not in the prompt), the skills directory, the memory files.
+ *
+ * Cost: ~10 stat() calls + 3 readdirs. Sub-millisecond on warm cache. Called
+ * once per turn, so negligible.
+ */
+export async function getPromptFingerprint(): Promise<string> {
+  const parts: string[] = [];
+  // Single files
+  for (const p of [
+    SOUL_NAME,
+    SOUL_IDENTITY,
+    SOUL_PURPOSE,
+    SOUL_CONSTITUTION,
+    SOUL_EMOTIONS,
+    path.join(MEMORY_DIR, "MEMORY.md"),
+    path.join(MEMORY_DIR, "USER.md"),
+  ]) {
+    parts.push(await mtimeOrZero(p));
+  }
+  // Directories — concat sorted entry names + per-entry mtime so we catch
+  // both content changes AND additions/removals of values/opinions/desires.
+  for (const d of [SOUL_VALUES_DIR, SOUL_OPINIONS_DIR, SOUL_DESIRES_DIR, SKILLS_DIR]) {
+    parts.push(await dirFingerprint(d));
+  }
+  // Soul lock matters too — tampered files shift the prompt's "## Notice"
+  // block. Cheap to include.
+  parts.push(await mtimeOrZero(path.join(SOUL_DIR, "soul.lock.json")));
+  return parts.join("|");
+}
+
+async function mtimeOrZero(p: string): Promise<string> {
+  try {
+    const st = await fs.stat(p);
+    return `${path.basename(p)}:${Math.floor(st.mtimeMs)}`;
+  } catch {
+    return `${path.basename(p)}:0`;
+  }
+}
+
+async function dirFingerprint(dir: string): Promise<string> {
+  if (!(await pathExists(dir))) return `${path.basename(dir)}/:0`;
+  try {
+    const entries = (await fs.readdir(dir)).sort();
+    const parts: string[] = [];
+    for (const name of entries) {
+      try {
+        const st = await fs.stat(path.join(dir, name));
+        parts.push(`${name}:${Math.floor(st.mtimeMs)}`);
+      } catch {
+        // ignore
+      }
+    }
+    return `${path.basename(dir)}/[${parts.join(",")}]`;
+  } catch {
+    return `${path.basename(dir)}/:err`;
+  }
 }
