@@ -2,7 +2,7 @@
 
 Static, bilingual (EN + zh-CN) marketing + docs site for Lisa.
 
-Built with [Astro 5](https://astro.build). No client-side JS by default. Pixel-art aesthetic matches the chat UI in `src/web/server.ts`.
+Built with [Astro 6](https://astro.build). No client-side JS by default. Pixel-art aesthetic matches the chat UI in `src/web/server.ts`.
 
 ## Local dev
 
