@@ -62,19 +62,24 @@
 
 | # | 名称 | 状态 | 依赖 |
 |---|---|---|---|
-| 2.1 | `soul_object` 自我异议工具 | TODO | 1.2（异议要写进有版本的 journal） |
-| 2.2 | Weekly examen heartbeat | TODO | 1.2 |
-| 2.3 | Emotion event trail | TODO | — |
+| 2.1 | `soul_object` 自我异议工具 | **DONE** | 1.2（异议要写进有版本的 journal） |
+| 2.2 | Weekly examen heartbeat | **DONE** | 1.2 |
+| 2.3 | Emotion event trail | **DONE** | — |
 
 完成 Phase 2 后，自由度增长被三种压力稳定住：可异议、可自检、情绪有因果。
 
-### Phase 3 — Capability self-extension（可选）
+### Phase 3 — Capability self-extension
 
 | # | 名称 | 状态 | 依赖 |
 |---|---|---|---|
-| 3.1 | Executable skills（自写工具） | DEFERRED | Phase 1 + 2 全部完成；需要用户显式 opt-in |
+| 3.1 | Executable skills（自写工具） | **DONE** (no-sandbox; approval-gated) | Phase 1 + 2 全部完成 |
 
-这一步把破坏面打开，只在前两阶段全部稳定后再考虑。
+实现说明（与原始计划的偏离）：
+
+- **沙箱**：原计划讨论 worker_threads / 子进程隔离，最终决定**不做**。理由是半成品沙箱比没有更危险。trust boundary 改为"人工 SHA256 审批"——
+  每次代码变更都让审批失效，必须重新审。Lisa 不能给自己审批。
+- **TS 编译**：不在启动时做。loader 只接受 `tool.js`（编译后的 ESM），不接受 `tool.ts`。`tool.ts` 仍可作为人类可读的源摆在同目录。Lisa 想加新工具，要么自己 `tsc` 出 `tool.js` 再 redeploy，要么让用户帮她 build。
+- **真实 isolation 留给未来**：当 N 个用户实际运行 executable skills 一段时间，看实际操作面再设计沙箱。半年内不动。
 
 ---
 
@@ -230,11 +235,18 @@ async function runGit(args: string[]): Promise<{ code: number; stdout: string; s
 ```ts
 export async function writeIdentity(text: string): Promise<void> {
   await atomicWrite(SOUL_IDENTITY, text.trim() + "\n");
-  void commitSoulChange("identity.md", "patch", currentCaller());
+  // IMPORTANT: must be `await`, not `void`. See note below.
+  await commitSoulChange("identity.md", "patch");
 }
 ```
 
 注：`currentCaller()` 通过 [AsyncLocalStorage](https://nodejs.org/api/async_context.html) 传 caller 标签，避免每个 write 函数都加参数。在 `soulPatchTool.execute` 入口 `als.run({caller: "soul_patch"}, ...)` 包一层。
+
+> **实现踩坑**：原始草图写的是 `void commitSoulChange(...)`（fire-and-forget）。实测发现：先后两次 write 同一文件（例如 birth 写一次 identity，紧接着 soul_patch 又改一次），两个 enqueue 完成时**磁盘上的内容已经是第二次的值** —— 队列里第一个 commit job stage 的 diff = 第二次的内容、attribution = 第一次的 caller，第二个 commit job stage 时已经无 diff，被跳过。结果：两次写入塌陷成一条 commit，attribution 错给了第一个 caller。
+>
+> 修法：所有 `commitSoulChange` 调用必须 `await`。性能损失：每次 write 多 ~50-200ms（git commit），可接受（soul write 不在热路径）。
+>
+> 队列本身保留：用 in-process Promise chain serialize 写入，避免并发触发 `.git/index.lock` 竞争（不同 caller 在 worker 上下文里同时写有可能撞）。
 
 #### 边界情形
 
@@ -683,9 +695,11 @@ await writeEmotions({
 |---|---|
 | 1.1 热更新让她在一次会话里反复改 identity，对话变得不连贯 | prompt 描述限制 + reflect 监控频率 + 必要时加 cooldown |
 | 1.2 git 仓库出错（损坏、磁盘满） | commit 失败只 warn，主流程不阻塞 |
+| 1.2 ⚠ **commitSoulChange 必须 await**（不是 void），否则连续两次写同文件会塌陷成一条 commit，attribution 错给前一个 caller。implementation 已修正，文档草图已同步。 | 任何后续维护者按文档复刻时务必保持 `await` 语义 |
 | 2.1 objection 工具被她滥用，每个请求都 object | weekly_examen 监控 objection 率；超阈值触发 reflect 自检 |
 | 2.2 examen 写出错误的自我评价，把她带跑偏 | examen 不能直接改 identity/purpose/constitution（架构限制） |
 | 2.3 events 暴露过多内部状态 | events 不进系统提示，只通过 soul_read 拉；和 journal 同级敏感 |
+| 3.1 ⚠ **没有运行时沙箱** —— 已审批的 tool.js 在 Lisa 进程里跑、有完整权限 | trust boundary 是 SHA256 + 人工审批；任何代码变更都让审批失效；audit.log 留痕；用户可一键 disable |
 | 通用：跨平台（Linux/Windows）git 行为差异 | 所有 git 调用通过单一 helper，Windows 暂不官方支持（README 已声明） |
 
 ### 开放问题（需要使用者反馈再决定）
