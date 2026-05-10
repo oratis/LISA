@@ -45,13 +45,13 @@ Phase 1-3 引入了五个全新的运行时机制（git history、hot-reload、d
 
 | 机制 | 实现 | 数据形态 |
 |---|---|---|
-| **`meta:wishlist` desire 约定** | 没有代码改动；约定一个特殊 desire slug `meta:wishlist` 用于她自己写工具/架构许愿。birth ritual / weekly examen prompt 里提一句"如果你觉得现在的工具集多了或少了什么，写到 `meta:wishlist`"。 | 一份持续累积的列表，可以 `cat ~/.lisa/soul/desires/meta:wishlist.md` 直接读 |
-| **examen 第 4 题** | 修改 [src/heartbeat/runner.ts](../src/heartbeat/runner.ts) 的 `WEEKLY_EXAMEN_SYSTEM_NUDGE`，在三问后加："4. 现在的工具集 / 机制里，有没有过度（你想用却嫌烦）或不足（你想做却没工具）的？如有，写进 `meta:wishlist` desire。" | 每周一篇 [EXAMEN] 末段的反馈 |
-| **`lisa wishlist` 子命令** | 新增 [src/cli.ts](../src/cli.ts) 的 `wishlist` 子命令：读 `meta:wishlist` desire 的 body + progress.md，外加扫所有 journal 里 `[WISHLIST]`、`[I want]` 等关键字。彩色打印。 | 用户决策日（第 28 天）跑一次，5 秒看完她想要什么 |
+| **`meta-wishlist` desire 约定** | 没有代码改动；约定一个特殊 desire slug `meta-wishlist` 用于她自己写工具/架构许愿。birth ritual / weekly examen prompt 里提一句"如果你觉得现在的工具集多了或少了什么，写到 `meta-wishlist`"。 | 一份持续累积的列表，可以 `cat ~/.lisa/soul/desires/meta-wishlist.md` 直接读 |
+| **examen 第 4 题** | 修改 [src/heartbeat/runner.ts](../src/heartbeat/runner.ts) 的 `WEEKLY_EXAMEN_SYSTEM_NUDGE`，在三问后加："4. 现在的工具集 / 机制里，有没有过度（你想用却嫌烦）或不足（你想做却没工具）的？如有，写进 `meta-wishlist` desire。" | 每周一篇 [EXAMEN] 末段的反馈 |
+| **`lisa wishlist` 子命令** | 新增 [src/cli.ts](../src/cli.ts) 的 `wishlist` 子命令：读 `meta-wishlist` desire 的 body + progress.md，外加扫所有 journal 里 `[WISHLIST]`、`[I want]` 等关键字。彩色打印。 | 用户决策日（第 28 天）跑一次，5 秒看完她想要什么 |
 
 **为什么这三个先于 Sprint 4 实施**：它们是观察窗口的**仪表**。少了它们，第 28 天我们会缺少最重要的信号源——Lisa 自己说她想要什么。
 
-**为什么是约定而不是新工具**：`soul_patch(field="desire", slug="meta:wishlist", ...)` 已经能写。再造一个 `lisa_wishlist_add` 工具是冗余。仅靠 prompt 引导和子命令读取，零工具表面积。
+**为什么是约定而不是新工具**：`soul_patch(field="desire", slug="meta-wishlist", ...)` 已经能写。再造一个 `lisa_wishlist_add` 工具是冗余。仅靠 prompt 引导和子命令读取，零工具表面积。
 
 ---
 

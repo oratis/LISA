@@ -112,6 +112,10 @@ lisa heartbeat uninstall     卸载
 lisa serve --web [--port N]  像素 Web UI（默认 5757）
 lisa serve --channels <list> 启 IM 通道（逗号分隔，或 "all"）
 lisa channels                列出可用通道
+lisa skills <list|approve|disable|enable|audit> [slug]
+                             管理 executable skills（Phase 3.1）
+lisa wishlist                打印 Lisa 自己对工具集/架构的反馈
+                             （meta-wishlist desire + journal 关键字）
 lisa --help                  完整帮助
 ```
 

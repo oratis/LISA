@@ -115,6 +115,10 @@ lisa heartbeat uninstall     Remove launchd plist
 lisa serve --web [--port N]  Pixel-art Web UI (default 5757)
 lisa serve --channels <list> Start IM channels (comma-separated, or "all")
 lisa channels                List available channel adapters
+lisa skills <list|approve|disable|enable|audit> [slug]
+                             Manage executable skills (Phase 3.1)
+lisa wishlist                Print Lisa's own feedback about her toolset
+                             (her meta-wishlist desire + journal mentions)
 lisa --help                  Full help
 ```
 

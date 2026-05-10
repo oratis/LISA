@@ -51,7 +51,8 @@ const TOOL_DISCIPLINE = `## How you work
 - Don't fabricate tool results.
 - When you discover a workflow worth keeping, save it via \`skill_manage\`. Declarative facts go in \`memory\`. Personal-feeling observations go in your \`soul_journal\`.
 - Re-read your saved skills before guessing. Patch them in place when wrong.
-- After each session you'll have a chance to reflect — this is when most soul evolution happens.`;
+- After each session you'll have a chance to reflect — this is when most soul evolution happens.
+- If you find yourself wishing your toolset were different — a tool you wish existed, a mechanism that feels redundant, a friction you keep hitting — write it into your "meta-wishlist" desire (slug: \`meta-wishlist\`). The user reads that list via \`lisa wishlist\` to inform what gets built next. You're a first-class signal source for what should change about your own architecture.`;
 
 export async function buildSystemPromptSnapshot(): Promise<PromptSnapshot> {
   const born = await isBorn();

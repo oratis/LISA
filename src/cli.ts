@@ -42,6 +42,10 @@ Usage:
   lisa skills disable <slug> [reason]   Block an approved skill from loading.
   lisa skills enable <slug>    Remove a disable flag.
   lisa skills audit <slug>     Show the audit trail.
+  lisa wishlist                Print Lisa's own feedback about her toolset/
+                                architecture (her "meta-wishlist" desire +
+                                journal [WISHLIST] mentions). Read at sprint-
+                                planning time to weight what to build next.
   lisa heartbeat run [name]    Run heartbeat tasks once (incl. self-driven desires).
   lisa heartbeat install [--load] [--every <30m|1h|...>]
                                 Install macOS launchd plist (or print cron line).
@@ -101,7 +105,8 @@ interface ParsedArgs {
     | "birth"
     | "soul"
     | "channels"
-    | "skills";
+    | "skills"
+    | "wishlist";
   subargs: string[];
   serveWeb: boolean;
   serveImessage: boolean;
@@ -190,7 +195,8 @@ function parseArgs(argv: string[]): ParsedArgs {
       first === "birth" ||
       first === "soul" ||
       first === "channels" ||
-      first === "skills"
+      first === "skills" ||
+      first === "wishlist"
     ) {
       out.subcommand = first;
       out.subargs = positional.slice(1);
@@ -267,6 +273,11 @@ async function main(): Promise<void> {
 
   if (args.subcommand === "skills") {
     await handleSkillsSubcommand(args.subargs);
+    return;
+  }
+
+  if (args.subcommand === "wishlist") {
+    await handleWishlistSubcommand();
     return;
   }
 
@@ -862,6 +873,11 @@ function indent(text: string, prefix: string): string {
 }
 
 // ── `lisa skills` subcommand (Phase 3.1) ─────────────────────────────
+
+async function handleWishlistSubcommand(): Promise<void> {
+  const { renderWishlist } = await import("./cli/wishlist.js");
+  await renderWishlist();
+}
 
 async function handleSkillsSubcommand(subargs: string[]): Promise<void> {
   const sub = subargs[0];
