@@ -1,5 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
+import { proxyAwareFetch } from "../proxy-bootstrap.js";
 import type { StoredMessage } from "../types.js";
 import type {
   Provider,
@@ -12,7 +13,11 @@ export class OpenAIProvider implements Provider {
   private client: OpenAI;
 
   constructor(opts: { apiKey?: string; baseURL?: string } = {}) {
-    this.client = new OpenAI({ apiKey: opts.apiKey, baseURL: opts.baseURL });
+    this.client = new OpenAI({
+      apiKey: opts.apiKey,
+      baseURL: opts.baseURL,
+      fetch: proxyAwareFetch,
+    });
   }
 
   async runTurn(opts: ProviderRunOpts): Promise<ProviderResult> {

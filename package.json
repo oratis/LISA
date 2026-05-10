@@ -22,7 +22,8 @@
     "@anthropic-ai/sdk": "^0.92.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "openai": "^6.35.0",
-    "sharp": "^0.34.5"
+    "sharp": "^0.34.5",
+    "undici": "^8.2.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

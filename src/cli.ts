@@ -1,5 +1,11 @@
 #!/usr/bin/env node
 import process from "node:process";
+// Bridge HTTPS_PROXY / HTTP_PROXY env to undici BEFORE any module reads/uses
+// fetch — handles the case where the shell already exports a proxy. We also
+// re-call this after config.env loads (inside main()) to handle proxies set
+// in ~/.lisa/config.env.
+import { configureProxyFromEnv } from "./proxy-bootstrap.js";
+configureProxyFromEnv({ log: (m) => console.error(m) });
 import { runAgent } from "./agent.js";
 import { buildApprovalCallback, type ApprovalMode, DEFAULT_MUTATING_TOOLS } from "./approval.js";
 import { CONFIG_ENV_PATH, loadConfigEnv } from "./env.js";
@@ -229,6 +235,9 @@ async function main(): Promise<void> {
 
   await ensureDir(LISA_HOME);
   loadConfigEnv();
+  // Re-bridge proxy in case HTTPS_PROXY was set in config.env rather than
+  // the shell. configureProxyFromEnv is idempotent.
+  configureProxyFromEnv({ log: (m) => console.error(m) });
 
   // ── soul-only subcommands (don't need agent loop) ─────────────────────
   if (args.subcommand === "birth") {

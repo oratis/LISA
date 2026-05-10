@@ -81,6 +81,8 @@ lisa
 For OpenAI models (`gpt-*`), also set `OPENAI_API_KEY`.
 For pixel-art mood generation, also set `SEEDREAM_API_KEY` ([Volcengine ARK](https://www.volcengine.com/product/ark)).
 
+**Other LLM providers** (DeepSeek, Volcengine Doubao, Aliyun Qwen, Moonshot Kimi, xAI Grok, Zhipu GLM, Ollama for local, ...) work out of the box — Lisa auto-routes by model-name prefix to the right OpenAI-compatible endpoint. See [docs/PROVIDERS.md](docs/PROVIDERS.md) for 10 ready-to-use recipes.
+
 ## What's special
 
 | Most LLM agents | LISA |

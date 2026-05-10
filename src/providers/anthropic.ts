@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { proxyAwareFetch } from "../proxy-bootstrap.js";
 import type {
   Provider,
   ProviderResult,
@@ -9,8 +10,18 @@ export class AnthropicProvider implements Provider {
   readonly name = "anthropic";
   private client: Anthropic;
 
-  constructor(opts: { apiKey?: string } = {}) {
-    this.client = new Anthropic({ apiKey: opts.apiKey });
+  constructor(opts: { apiKey?: string; baseURL?: string } = {}) {
+    // proxyAwareFetch passes through cleanly when no proxy is installed;
+    // when one is, it re-injects Content-Type for proxies (Clash et al)
+    // that strip response headers through CONNECT tunnels.
+    // baseURL overrides the default https://api.anthropic.com — used to
+    // route through an Anthropic-compatible proxy (one-api, openrouter,
+    // self-hosted relay) when direct access is blocked.
+    this.client = new Anthropic({
+      apiKey: opts.apiKey,
+      baseURL: opts.baseURL,
+      fetch: proxyAwareFetch,
+    });
   }
 
   async runTurn(opts: ProviderRunOpts): Promise<ProviderResult> {
