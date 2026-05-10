@@ -1,0 +1,186 @@
+---
+/**
+ * Base layout — pixel-art aesthetic matching Lisa's chat UI.
+ *
+ * Press Start 2P + VT323 from Google Fonts. Same color palette as
+ * src/web/server.ts. Bilingual nav (EN ↔ zh-CN).
+ */
+export interface Props {
+  title: string;
+  lang?: "en" | "zh-CN";
+  description?: string;
+}
+const { title, lang = "en", description = "An AI agent with a real self." } = Astro.props;
+
+const navItems = lang === "zh-CN"
+  ? [
+      { href: "/zh-CN/", label: "首页" },
+      { href: "/zh-CN/install", label: "安装" },
+      { href: "/zh-CN/moods", label: "表情画廊" },
+      { href: "https://github.com/oratis/LISA", label: "GitHub", external: true },
+    ]
+  : [
+      { href: "/", label: "Home" },
+      { href: "/install", label: "Install" },
+      { href: "/moods", label: "Mood gallery" },
+      { href: "https://github.com/oratis/LISA", label: "GitHub", external: true },
+    ];
+
+const altLangPath =
+  lang === "zh-CN"
+    ? Astro.url.pathname.replace(/^\/zh-CN/, "") || "/"
+    : "/zh-CN" + (Astro.url.pathname === "/" ? "/" : Astro.url.pathname);
+---
+<!doctype html>
+<html lang={lang}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>{title} · LISA</title>
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#0a0d2b" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet" />
+    <link rel="icon" href="/assets/lisa-mascot.png" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href={lang === "zh-CN" ? "/zh-CN/" : "/"}>
+        <img src="/assets/lisa-mascot.png" alt="" />
+        <span>LISA</span>
+      </a>
+      <nav class="nav">
+        {navItems.map(item => (
+          <a href={item.href} target={item.external ? "_blank" : null} rel={item.external ? "noopener" : null}>{item.label}</a>
+        ))}
+      </nav>
+      <a class="lang" href={altLangPath}>{lang === "zh-CN" ? "EN" : "中文"}</a>
+    </header>
+
+    <main class="main">
+      <slot />
+    </main>
+
+    <footer class="footer">
+      <p class="footer-text">
+        {lang === "zh-CN"
+          ? "Lisa · MIT 开源 · 主权属于用户的 AI"
+          : "Lisa · MIT open source · sovereign AI on your machine"}
+      </p>
+    </footer>
+
+    <style is:global>
+      :root {
+        --bg: #0a0d2b;
+        --panel: #1a1f4d;
+        --panel-light: #2a3270;
+        --border: #6a7ad9;
+        --border-light: #a4b2ff;
+        --text: #e7ecff;
+        --text-dim: #8090c0;
+        --you: #6cf6e1;
+        --lisa: #ffd167;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: 'VT323', monospace;
+        font-size: 18px;
+        line-height: 1.5;
+        min-height: 100vh;
+      }
+      body {
+        background-image:
+          linear-gradient(rgba(0,0,0,0.06) 50%, transparent 50%),
+          url('/assets/background-tile.png');
+        background-size: 100% 4px, 256px 256px;
+        background-repeat: repeat, repeat;
+        image-rendering: pixelated;
+      }
+      a { color: var(--you); text-decoration: none; }
+      a:hover { color: var(--lisa); }
+      h1, h2, h3 { font-family: 'Press Start 2P', monospace; line-height: 1.4; color: var(--lisa); }
+      h1 { font-size: 22px; margin: 0 0 16px; }
+      h2 { font-size: 16px; margin: 24px 0 12px; }
+      h3 { font-size: 12px; margin: 16px 0 8px; color: var(--border-light); }
+      p { margin: 8px 0 16px; }
+      code, pre {
+        font-family: 'VT323', monospace;
+        background: var(--panel);
+        border: 2px solid var(--border);
+        padding: 2px 6px;
+      }
+      pre {
+        padding: 12px;
+        overflow-x: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      pre code { background: transparent; border: none; padding: 0; }
+
+      /* Layout */
+      .topbar {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 16px 24px;
+        background: var(--panel);
+        border-bottom: 4px solid var(--border-light);
+        font-family: 'Press Start 2P', monospace;
+        font-size: 11px;
+      }
+      .brand {
+        display: flex; align-items: center; gap: 8px;
+        font-size: 14px;
+        color: var(--lisa);
+      }
+      .brand img {
+        width: 32px; height: 32px;
+        image-rendering: pixelated;
+      }
+      .nav {
+        display: flex; flex-wrap: wrap; gap: 16px;
+        margin-left: 16px;
+      }
+      .nav a { color: var(--text); }
+      .nav a:hover { color: var(--lisa); }
+      .lang { margin-left: auto; color: var(--text-dim); }
+
+      .main {
+        max-width: 880px;
+        margin: 0 auto;
+        padding: 32px 24px 64px;
+      }
+
+      .footer {
+        text-align: center;
+        padding: 24px;
+        border-top: 2px solid var(--border);
+        background: var(--panel);
+      }
+      .footer-text {
+        font-family: 'Press Start 2P', monospace;
+        font-size: 9px;
+        color: var(--text-dim);
+        margin: 0;
+      }
+
+      /* Pixel-art image rendering everywhere */
+      img { image-rendering: pixelated; }
+
+      /* Mobile */
+      @media (max-width: 720px) {
+        .topbar { flex-wrap: wrap; padding: 12px 16px; gap: 8px; }
+        .nav { margin-left: 0; gap: 12px; font-size: 10px; }
+        .lang { margin-left: 0; }
+        .brand { font-size: 12px; }
+        h1 { font-size: 16px; }
+        .main { padding: 16px 12px 32px; }
+      }
+    </style>
+  </body>
+</html>

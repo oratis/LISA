@@ -1,0 +1,101 @@
+---
+import Base from "../layouts/Base.astro";
+---
+<Base title="Install" lang="en" description="Install Lisa locally on macOS or Linux.">
+  <h1>Install</h1>
+
+  <p>
+    Lisa runs on your own machine. Three steps: clone, install deps, run.
+    Total ~2 minutes.
+  </p>
+
+  <h2>Prerequisites</h2>
+  <ul>
+    <li>Node.js ≥ 20 (<code>node --version</code> to check)</li>
+    <li>git</li>
+    <li>macOS or Linux (Windows untested; iMessage channel is macOS-only)</li>
+    <li>An API key for at least one LLM provider — see <a href="https://github.com/oratis/LISA/blob/main/docs/PROVIDERS.md">PROVIDERS.md</a></li>
+  </ul>
+
+  <h2>From source</h2>
+  <pre><code>git clone https://github.com/oratis/LISA.git
+cd LISA
+npm install
+npm run build
+
+mkdir -p ~/.lisa
+echo 'ANTHROPIC_API_KEY=sk-ant-...' &gt; ~/.lisa/config.env
+
+# REPL:
+node dist/cli.js
+
+# Web UI (default :5757):
+node dist/cli.js serve --web
+
+# (After `npm link`, the `lisa` shorthand works globally.)</code></pre>
+
+  <h2>Other LLM providers</h2>
+  <p>
+    Skip Anthropic if you can't reach it — Lisa auto-routes by model-name prefix:
+  </p>
+  <pre><code># DeepSeek (cheap, OpenAI-compatible)
+echo 'DEEPSEEK_API_KEY=sk-...' &gt;&gt; ~/.lisa/config.env
+lisa --model deepseek-chat
+
+# Google Gemini
+echo 'GEMINI_API_KEY=...' &gt;&gt; ~/.lisa/config.env
+lisa --model gemini-2.5-flash
+
+# Local Ollama (fully offline)
+echo 'LISA_BASE_URL=http://localhost:11434/v1' &gt;&gt; ~/.lisa/config.env
+echo 'LISA_API_KEY=ollama' &gt;&gt; ~/.lisa/config.env
+lisa --model qwen2.5-32b-instruct</code></pre>
+
+  <p>
+    See <a href="https://github.com/oratis/LISA/blob/main/docs/PROVIDERS.md">PROVIDERS.md</a> for 10 ready-to-use recipes (DeepSeek, Volcengine Doubao, Aliyun Qwen, Moonshot Kimi, xAI Grok, Zhipu GLM, Ollama, …).
+  </p>
+
+  <h2>Behind a corporate / region-blocked network</h2>
+  <p>
+    If your shell <code>curl</code> works through a proxy but Lisa fails with
+    "403 forbidden", set the proxy env when starting Lisa — undici's global
+    dispatcher will be auto-bridged on startup.
+  </p>
+  <pre><code>HTTPS_PROXY=http://127.0.0.1:7897 lisa serve --web
+
+# Persist instead:
+echo 'HTTPS_PROXY=http://127.0.0.1:7897' &gt;&gt; ~/.lisa/config.env</code></pre>
+
+  <h2>Heartbeat (autonomous time)</h2>
+  <pre><code>lisa heartbeat install --every 30m --load
+# Removes: lisa heartbeat uninstall</code></pre>
+
+  <h2>IM channels (talk to Lisa from your phone)</h2>
+  <p>
+    The simplest path is <strong>Telegram</strong> (free, zero deps):
+  </p>
+  <pre><code># 1. Get a bot token from @BotFather on Telegram
+echo 'TELEGRAM_BOT_TOKEN=1234:ABC...' &gt;&gt; ~/.lisa/config.env
+
+# 2. Copy + edit the config
+cp channels.example.json ~/.lisa/channels.json
+# Edit ~/.lisa/channels.json — set "enabled": true on telegram
+
+# 3. Run
+lisa serve --channels telegram</code></pre>
+
+  <h2>Diagnostics</h2>
+  <pre><code>lisa status            # one-shot snapshot
+lisa doctor            # checks config / network / git / providers
+lisa monitor           # live TUI dashboard (Ctrl-C to quit)</code></pre>
+
+  <h2>Source</h2>
+  <p>
+    All code is on GitHub: <a href="https://github.com/oratis/LISA">github.com/oratis/LISA</a>. MIT license. PRs welcome.
+  </p>
+</Base>
+
+<style>
+  pre { font-size: 16px; }
+  ul, ol { padding-left: 24px; }
+</style>

@@ -1,0 +1,90 @@
+---
+import Base from "../../layouts/Base.astro";
+import data from "../../data/moods.json";
+
+const { styleLock, moods } = data as {
+  styleLock: string;
+  moods: Array<{ slug: string; category: string; hint: string; prompt: string }>;
+};
+
+const grouped = moods.reduce<Record<string, typeof moods>>((acc, m) => {
+  (acc[m.category] ??= []).push(m);
+  return acc;
+}, {});
+
+const categoryOrder = ["emotion", "activity", "weather", "festive", "outfit", "persona"];
+const categoryLabels: Record<string, string> = {
+  emotion: "情绪",
+  activity: "活动",
+  weather: "天气",
+  festive: "节日",
+  outfit: "穿搭",
+  persona: "角色",
+};
+---
+<Base title="表情画廊" lang="zh-CN" description="Lisa 全部 114 张 mood 头像 —— 像素艺术、风格锁定、prompt 公开。">
+  <h1>表情画廊</h1>
+
+  <p>
+    Lisa 在对话里用 <code>set_mood</code> 工具实时切换头像。一共
+    <strong>{moods.length}</strong> 张风格锁定的变体 —— 同一个角色，不同状态、穿搭、场景、角色扮演。
+  </p>
+
+  <p class="meta">
+    用 <a href="https://www.volcengine.com/product/ark" target="_blank" rel="noopener">Seedream</a>
+    生成，<code>sharp</code> chroma-key 抠成带透明通道的 PNG。所有 prompt 都公开 ——
+    可以拷走、改造、跑你自己的 <code>generate-lisa-moods.ts</code> 生成属于你自己的头像集。
+  </p>
+
+  <details class="style-lock">
+    <summary>风格锁定模板（每条 prompt 共用的前缀）</summary>
+    <pre>{styleLock}</pre>
+  </details>
+
+  {categoryOrder.map((cat) => grouped[cat] && (
+    <section>
+      <h2>{categoryLabels[cat]}（{grouped[cat]!.length}）</h2>
+      <div class="grid">
+        {grouped[cat]!.map((m) => (
+          <figure class="mood">
+            <img src={`/assets/lisa/${m.slug}.png`} alt={m.slug} loading="lazy" />
+            <figcaption>
+              <strong>{m.slug}</strong>
+              <em>{m.hint}</em>
+              <details>
+                <summary>prompt</summary>
+                <p>{m.prompt}</p>
+              </details>
+            </figcaption>
+          </figure>
+        ))}
+      </div>
+    </section>
+  ))}
+
+  <h2>复刻你自己的</h2>
+  <pre><code>SEEDREAM_API_KEY=ark-... \
+  npx tsx scripts/generate-lisa-moods.ts</code></pre>
+  <p>
+    catalog 在
+    <a href="https://github.com/oratis/LISA/blob/main/scripts/lisa-moods.ts"><code>scripts/lisa-moods.ts</code></a>。
+    改 slug / prompt 就能做出一个不同的角色。
+  </p>
+</Base>
+
+<style>
+  .meta { color: var(--text-dim); font-size: 17px; }
+  .style-lock { background: var(--panel); border: 4px solid var(--border); padding: 12px 16px; margin: 24px 0; font-size: 17px; }
+  .style-lock summary { cursor: pointer; color: var(--lisa); font-family: 'Press Start 2P', monospace; font-size: 11px; }
+  .style-lock pre { margin-top: 12px; border: 2px solid var(--border-light); background: var(--bg); padding: 12px; font-size: 15px; white-space: pre-wrap; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin: 16px 0 32px; }
+  .mood { background: var(--panel); border: 4px solid var(--border); padding: 8px; margin: 0; text-align: center; transition: border-color .15s; }
+  .mood:hover { border-color: var(--lisa); }
+  .mood img { width: 100%; aspect-ratio: 1; object-fit: contain; background: var(--bg); image-rendering: pixelated; }
+  .mood figcaption { margin-top: 8px; font-size: 15px; }
+  .mood figcaption strong { display: block; color: var(--lisa); font-family: 'Press Start 2P', monospace; font-size: 10px; margin-bottom: 4px; word-break: break-all; }
+  .mood figcaption em { color: var(--text-dim); font-style: italic; font-size: 14px; }
+  .mood details { margin-top: 8px; text-align: left; font-size: 13px; }
+  .mood details summary { cursor: pointer; color: var(--you); font-size: 12px; }
+  .mood details p { margin: 6px 0 0; font-size: 13px; color: var(--text-dim); }
+</style>
