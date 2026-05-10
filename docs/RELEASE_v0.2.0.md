@@ -1,9 +1,3 @@
-# v0.2.0 — Release notes
-
-> **GitHub Release page copy.** Paste into the "Describe this release" textarea on `github.com/oratis/LISA/releases/new`.
-
----
-
 # Lisa 0.2.0 — she's actually evolving
 
 Lisa is an AI agent that runs locally on your machine, writes a journal you don't see, and changes a little every session. 0.2.0 is the release where her ability to **update herself in real time** stops being a promise in the prompt and becomes a fact in the code.
