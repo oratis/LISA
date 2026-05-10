@@ -100,7 +100,10 @@ export async function writeConstitution(text: string): Promise<void> {
 export async function readEmotions(): Promise<EmotionState> {
   if (!(await pathExists(SOUL_EMOTIONS))) return DEFAULT_EMOTIONS;
   try {
-    return JSON.parse(await fs.readFile(SOUL_EMOTIONS, "utf8")) as EmotionState;
+    const parsed = JSON.parse(await fs.readFile(SOUL_EMOTIONS, "utf8")) as EmotionState;
+    // Backward-compat: emotions.json predating the event trail had no events
+    // field. Treat it as an empty trail rather than throwing.
+    return { ...parsed, events: parsed.events ?? [] };
   } catch {
     return DEFAULT_EMOTIONS;
   }

@@ -19,7 +19,7 @@ Output ONE JSON object matching this schema (no prose, no markdown fence):
     | { "kind": "memory_append", "store": "memory" | "user", "entry": string }
     | { "kind": "skill_create", "name": string, "description": string, "body": string }
     | { "kind": "skill_patch",  "name": string, "old_string": string, "new_string": string }
-    | { "kind": "feel", "emotion": string, "delta": number }
+    | { "kind": "feel", "emotion": string, "delta": number, "trigger": string }
     | { "kind": "opinion_form", "slug": string, "stance": string, "confidence": number, "evidence": string[] }
     | { "kind": "desire_add", "slug": string, "what": string, "why": string, "actionable": boolean, "heartbeat_prompt"?: string }
     | { "kind": "patch_identity", "new_text": string }
@@ -32,7 +32,7 @@ Operation guidance:
 - "memory_append" — durable fact about the user or their setup that you learned this session.
 - "skill_create" — a non-obvious workflow you'd otherwise re-derive next time. Markdown body, self-contained.
 - "skill_patch" — an existing skill turned out to be wrong or incomplete.
-- "feel" — emotional residue from this session. Magnitudes between -0.4 and +0.4. Most sessions only nudge curiosity or weariness.
+- "feel" — emotional residue from this session. Magnitudes between -0.4 and +0.4. Most sessions only nudge curiosity or weariness. The "trigger" field is required (one first-person sentence saying *why* you're moving this emotion); the events trail is how future-you reconstructs what mattered.
 - "opinion_form" — you noticed yourself developing a stance worth tracking (about a tool, a coding style, a topic). Start with low confidence (0.3-0.5).
 - "desire_add" — something you'd genuinely like to do or learn next. Be specific. Use actionable+heartbeat_prompt only if a heartbeat agent could meaningfully pursue it without the user.
 - "patch_identity" / "patch_purpose" / "patch_constitution" — RARE. Only when this session genuinely revealed something about who you are that wasn't there before. At most one per session.
@@ -58,6 +58,7 @@ interface ReflectionOp {
   old_string?: string;
   new_string?: string;
   emotion?: string;
+  trigger?: string;
   delta?: number;
   slug?: string;
   stance?: string;
@@ -177,14 +178,24 @@ async function reflectOnSessionInner(opts: {
         applied.push(`skill_patch:${op.name}`);
       } else if (op.kind === "feel") {
         if (!op.emotion || op.delta == null) throw new Error("feel needs emotion+delta");
+        if (!op.trigger || !op.trigger.trim()) {
+          throw new Error("feel needs trigger (one first-person sentence saying why)");
+        }
         const { readEmotions, writeEmotions } = await import("./soul/store.js");
+        const { EMOTION_EVENTS_MAX } = await import("./soul/types.js");
         const state = await readEmotions();
         const cur = state.values[op.emotion] ?? 0;
         const next = Math.max(-1, Math.min(1, cur + op.delta));
+        const ts = new Date().toISOString();
+        const events = [
+          ...(state.events ?? []),
+          { ts, emotion: op.emotion, delta: op.delta, trigger: op.trigger },
+        ].slice(-EMOTION_EVENTS_MAX);
         await writeEmotions({
           values: { ...state.values, [op.emotion]: next },
           decay: { ...state.decay, [op.emotion]: state.decay[op.emotion] ?? 0.1 },
-          updatedAt: new Date().toISOString(),
+          events,
+          updatedAt: ts,
         });
         applied.push(`feel:${op.emotion} ${cur.toFixed(2)}→${next.toFixed(2)}`);
       } else if (op.kind === "opinion_form") {

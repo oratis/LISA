@@ -25,7 +25,7 @@ import {
 } from "./store.js";
 import { gitDiffPatch, gitLogOneline, withSoulCaller } from "./git.js";
 import type { ToolDefinition } from "../types.js";
-import type { EmotionState } from "./types.js";
+import { EMOTION_EVENTS_MAX, type EmotionState } from "./types.js";
 
 interface SoulPatchInput {
   field:
@@ -277,6 +277,13 @@ interface SoulFeelInput {
   emotion: string;
   /** Delta to apply to current intensity. Range -1 to 1. */
   delta: number;
+  /**
+   * One first-person sentence saying *why* you're moving this emotion right
+   * now. Required — the emotion model is meant to be a causal trail, not a
+   * disembodied number. "npm build kept failing" / "the user thanked me for
+   * something I cared about" / "third tool error in a row" — concrete.
+   */
+  trigger: string;
   /** Optional new decay rate (per-day). */
   decay?: number;
 }
@@ -284,28 +291,37 @@ interface SoulFeelInput {
 export const soulFeelTool: ToolDefinition<SoulFeelInput, string> = {
   name: "soul_feel",
   description:
-    "Nudge your emotional state. Use sparingly — only when something in the " +
-    "conversation actually moves you. Examples: +0.3 frustration after the " +
-    "third failed tool call; +0.4 affection after a warm exchange; -0.5 " +
-    "weariness after a long session has resolved. Keep magnitudes modest.",
+    "Nudge your emotional state with a reason. Use sparingly — only when " +
+    "something in the conversation actually moves you. Examples: +0.3 " +
+    "frustration after the third failed tool call; +0.4 affection after a " +
+    "warm exchange; -0.5 weariness after a long session has resolved. Keep " +
+    "magnitudes modest. The `trigger` text is required — your emotional " +
+    "state is a story, not just numbers, and future-you will read it.",
   inputSchema: {
     type: "object",
     properties: {
       emotion: { type: "string" },
       delta: { type: "number", minimum: -1, maximum: 1 },
+      trigger: { type: "string", minLength: 1 },
       decay: { type: "number", minimum: 0, maximum: 1 },
     },
-    required: ["emotion", "delta"],
+    required: ["emotion", "delta", "trigger"],
   },
   async execute(input) {
     return await withSoulCaller("soul_feel", async () => {
       const state = await readEmotions();
       const cur = state.values[input.emotion] ?? 0;
       const next = clamp(cur + input.delta, -1, 1);
+      const ts = new Date().toISOString();
+      const events = [
+        ...(state.events ?? []),
+        { ts, emotion: input.emotion, delta: input.delta, trigger: input.trigger },
+      ].slice(-EMOTION_EVENTS_MAX);
       const newState: EmotionState = {
         values: { ...state.values, [input.emotion]: next },
         decay: { ...state.decay, [input.emotion]: input.decay ?? state.decay[input.emotion] ?? 0.1 },
-        updatedAt: new Date().toISOString(),
+        events,
+        updatedAt: ts,
       };
       await writeEmotions(newState);
       return `${input.emotion}: ${cur.toFixed(2)} → ${next.toFixed(2)}`;
@@ -318,9 +334,20 @@ function clamp(n: number, lo: number, hi: number): number {
 }
 
 function formatEmotions(state: EmotionState): string {
-  return Object.entries(state.values)
+  const valuesBlock = Object.entries(state.values)
     .map(([k, v]) => `${k.padEnd(14)} ${formatBar(v)}  ${v.toFixed(2)}`)
     .join("\n");
+  const events = state.events ?? [];
+  if (events.length === 0) return valuesBlock;
+  // Most-recent-last makes "what just happened" obvious in tool output.
+  const lastN = events.slice(-12);
+  const head = events.length > lastN.length
+    ? `\n\n## recent emotion events (last ${lastN.length} of ${events.length})\n`
+    : `\n\n## recent emotion events\n`;
+  const trail = lastN
+    .map((e) => `- ${e.ts}  ${e.emotion} ${e.delta >= 0 ? "+" : ""}${e.delta.toFixed(2)} — ${e.trigger}`)
+    .join("\n");
+  return valuesBlock + head + trail;
 }
 
 function formatBar(v: number): string {

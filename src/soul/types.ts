@@ -34,11 +34,32 @@ export interface BigFiveSeed {
   neuroticism: number;
 }
 
+/**
+ * One emotional moment with its causal context. soul_feel records these so
+ * the emotion model is more than just "current numbers" — it carries a trail
+ * of what actually moved her, which she (and weekly_examen) can re-read.
+ *
+ * Bounded ring buffer of length EMOTION_EVENTS_MAX in EmotionState.
+ */
+export interface EmotionEvent {
+  /** ISO 8601. */
+  ts: string;
+  emotion: string;
+  /** delta applied at this moment (the value field is the running total) */
+  delta: number;
+  /** First-person, one sentence, why this happened. Required at log time. */
+  trigger: string;
+}
+
+export const EMOTION_EVENTS_MAX = 50;
+
 export interface EmotionState {
   /** Current intensity in [-1,1] for valence-style, [0,1] for unipolar feels. */
   values: Record<string, number>;
   /** Per-emotion exponential decay rate (per-day). */
   decay: Record<string, number>;
+  /** Most recent up to EMOTION_EVENTS_MAX events, oldest first. */
+  events?: EmotionEvent[];
   /** Last update timestamp (ISO 8601). */
   updatedAt: string;
 }
@@ -110,5 +131,6 @@ export const DEFAULT_EMOTIONS: EmotionState = {
     frustration: 0.40,
     awe: 0.20,
   },
+  events: [],
   updatedAt: new Date(0).toISOString(),
 };
