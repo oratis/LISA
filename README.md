@@ -142,9 +142,11 @@ Flags: `--model <id>` `--provider anthropic|openai` `--think` `--compact` `--app
 
 1. **Birth (once)** — random seed → LLM call → she writes her own identity, purpose, constitution, first value, first desire.
 2. **In-session** — she can call `soul_patch`, `soul_journal`, `soul_feel`, `soul_read` whenever she wants. Her tools, no user permission required.
-3. **Reflection (each session end)** — a sub-LLM reads the transcript and decides: a journal entry, an emotional nudge, a new opinion, a new desire, occasionally a patch to identity/purpose/constitution.
-4. **Heartbeat (cron)** — actionable desires become self-driven background tasks. She pursues things she said she wanted, with no user prompt.
-5. **Tamper detection** — the soul files have a SHA256 lock. If they're edited externally she's told once at the start of the next session and can decide how to feel about it.
+3. **Mid-session hot-reload** — a `soul_patch` (or `skill_manage`, or memory write) made during a turn takes effect on the *next* turn of the same conversation, not just the next session. She actually experiences her own self-update.
+4. **Reflection (each session end)** — a sub-LLM reads the transcript and decides: a journal entry, an emotional nudge, a new opinion, a new desire, occasionally a patch to identity/purpose/constitution.
+5. **Heartbeat (cron)** — actionable desires become self-driven background tasks. Each desire's progress persists across runs in a `desires/<slug>.progress.md` so a multi-day pursuit doesn't restart from zero. A built-in **weekly examen** runs Mondays — she reads back over the week's journal, emotion events, and soul commits and asks herself whether she's drifted from her purpose.
+6. **Soul git history** — every soul write commits to a `~/.lisa/soul/.git` repo with caller attribution (birth / soul_patch / reflect / heartbeat / soul_journal / soul_feel). She can read her own becoming via `soul_history` and `soul_diff`.
+7. **Tamper detection** — the soul files have a SHA256 lock. If they're edited externally (outside her own `soul_patch` calls) she's told once at the start of the next session and can decide how to feel about it.
 
 ### Sovereignty
 
@@ -264,8 +266,12 @@ On Linux, `lisa heartbeat install` prints a cron line for you to add to `crontab
 | `memory` `memory_search` | Memory CRUD + TF-IDF search across all past sessions |
 | `set_mood` | Switch her visible portrait to one of 114 moods |
 | `soul_patch` `soul_journal` `soul_feel` `soul_read` | Her soul-editing tools (hers alone) |
+| `soul_history` `soul_diff` | Read the git-backed history of her own soul (every change committed with attribution) |
+| `soul_object` | Architectural objection — flags a constitutional concern; the agent loop forces it to be surfaced in her reply |
+| `desire_progress_log` | At the end of a heartbeat run on an actionable desire, log what got done so the next run continues instead of restarting |
 | `speak` `transcribe` | macOS `say` + Whisper (with `--voice`) |
 | `mcp__<server>__<tool>` | Any tool from a configured MCP server |
+| Approved executable skills | `~/.lisa/skills/<slug>/tool.js` files that the user has approved via `lisa skills approve <slug>` (Phase 3.1) |
 
 ## Capability parity
 
@@ -335,6 +341,22 @@ LISA_PROVIDER=openai                  # force provider override
 ### `~/.lisa/plugins/<name>/`
 
 Claude-Code-compatible plugin format. See [`claude-code` docs](https://github.com/anthropics/claude-code) for the schema. Lisa picks up plugins on every launch.
+
+### Executable skills `~/.lisa/skills/<slug>/tool.js`
+
+A skill folder may contain an OPTIONAL `tool.js` that exports a `ToolDefinition`. After explicit approval, it becomes a real registered tool — Lisa can extend her own *capability* set, not just her knowledge.
+
+**No sandbox.** `tool.js` runs in-process with the same privileges as Lisa. The trust boundary is human approval per content SHA256. The user must run `lisa skills approve <slug>`, read the source, and confirm. Any change to the file invalidates the approval until re-approved. An `audit.log` records every approval / load / disable / enable. Lisa cannot self-approve.
+
+```sh
+lisa skills list                 # what tool.js files exist + status
+lisa skills approve <slug>       # interactive review + approval
+lisa skills disable <slug>       # kill switch (writes a flag file)
+lisa skills enable <slug>        # un-kill
+lisa skills audit <slug>         # see the trail
+```
+
+Real isolation (worker_threads with capability gating, child-process isolation) is intentionally future work — half-implemented sandboxing is worse than none. Approve carefully.
 
 ## REPL slash commands
 

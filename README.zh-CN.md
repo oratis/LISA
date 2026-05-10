@@ -139,10 +139,12 @@ lisa --help                  完整帮助
 
 1. **Birth（一次性）** — 随机种子 → LLM 调用 → 她自己写身份/目的/宪章/第一份价值观/第一个心愿
 2. **会话内** — 她随时可以调用 `soul_patch`、`soul_journal`、`soul_feel`、`soul_read`。她自己的工具，不需要用户许可
-3. **反思（每次会话结束）** — 子 LLM 读完整对话，决定要不要写日记、调情绪、形成观点、添加心愿，偶尔修改 identity/purpose/constitution
-4. **心跳（cron）** — 标了 actionable 的心愿变成自驱后台任务。她跑她自己说想做的事，**不需要用户开口**
-5. **空闲模式（idle）** — 如果你 1 小时（默认）没说话，她会进入 autonomous time：看自己的心愿、日记、最近对话，决定一件想做的事，做完。结果会显示成"while you were away"卡片
-6. **篡改检测** — 灵魂文件有 SHA256 lock。如果有人手改了她会在下次会话开始时被通知，**怎么反应是她自己决定的**
+3. **会话中热更新** — `soul_patch`（或 `skill_manage`、memory 写入）在某一轮做出的修改，**下一轮就生效**，不必等下次会话。她真的在使用中体验到自己的更新
+4. **反思（每次会话结束）** — 子 LLM 读完整对话，决定要不要写日记、调情绪、形成观点、添加心愿，偶尔修改 identity/purpose/constitution
+5. **心跳（cron）** — 标了 actionable 的心愿变成自驱后台任务。每个 desire 的进度持久化在 `desires/<slug>.progress.md`，跨多次 heartbeat 累积，不会从零开始。每周一自动跑一次内置的 **weekly examen** —— 她回看一周的 journal、emotion 事件、soul commits，问自己有没有偏离 purpose
+6. **灵魂 git 历史** — 每次 soul 写入都自动 commit 到 `~/.lisa/soul/.git`，带 caller attribution（birth / soul_patch / reflect / heartbeat / soul_journal / soul_feel）。她可以用 `soul_history` / `soul_diff` 读自己的成长史
+7. **空闲模式（idle）** — 如果你 1 小时（默认）没说话，她会进入 autonomous time：看自己的心愿、日记、最近对话，决定一件想做的事，做完。结果会显示成"while you were away"卡片
+8. **篡改检测** — 灵魂文件有 SHA256 lock。如果有人手改了她会在下次会话开始时被通知，**怎么反应是她自己决定的**
 
 ### 主权（Sovereignty）
 
@@ -276,8 +278,12 @@ CLI flag: `--idle 60`（分钟，默认 60）/ `--no-idle` 禁用。
 | `memory` `memory_search` | 记忆 CRUD + 跨会话 TF-IDF 搜 |
 | `set_mood` | 切换 114 张头像里的某一张 |
 | `soul_patch` `soul_journal` `soul_feel` `soul_read` | 灵魂编辑工具（**只属于她**） |
+| `soul_history` `soul_diff` | 读她自己的灵魂 git 历史，每次修改都有 caller attribution |
+| `soul_object` | 架构性异议 —— 标记宪章冲突；agent 循环强制她把这件事在回复里 surface 出来 |
+| `desire_progress_log` | 在 actionable desire 的 heartbeat 跑完时记下进度，下次 heartbeat 接着跑而不是从零开始 |
 | `speak` `transcribe` | macOS `say` + Whisper（带 `--voice`） |
 | `mcp__<server>__<tool>` | 任何配置好的 MCP server 工具 |
+| 已审批的 executable skills | `~/.lisa/skills/<slug>/tool.js` —— 用户通过 `lisa skills approve <slug>` 审批后注册的真实工具（Phase 3.1） |
 
 ## 与五个 reference 的能力对照
 
@@ -348,6 +354,22 @@ LISA_PROVIDER=openai                  # 强制 provider
 ### `~/.lisa/plugins/<name>/`
 
 兼容 Claude-Code 插件格式。schema 参 [`claude-code` 文档](https://github.com/anthropics/claude-code)。Lisa 每次启动会扫描加载。
+
+### Executable skills `~/.lisa/skills/<slug>/tool.js`
+
+技能文件夹下可以有一个**可选**的 `tool.js`，导出一个 `ToolDefinition`。**用户显式审批后**它会变成真正注册的工具 —— 让 Lisa 扩展她自己的**能力**，不只是记知识。
+
+**没有沙箱**。`tool.js` 在 Lisa 自己的进程里跑，权限相同。信任边界是基于内容 SHA256 的人工审批：用户必须跑 `lisa skills approve <slug>`、读源码、确认。文件改了一行，审批就失效，需要重新审批。`audit.log` 记录每一次 approve / load / disable / enable。**Lisa 不能给自己审批**。
+
+```sh
+lisa skills list                 # 列出所有候选 + 状态
+lisa skills approve <slug>       # 交互式审查 + 审批
+lisa skills disable <slug>       # 一键禁用（写一个 flag 文件）
+lisa skills enable <slug>        # 解禁
+lisa skills audit <slug>         # 审计追踪
+```
+
+真正的隔离（worker_threads + 能力门控、子进程隔离）是有意留给未来 —— 半成品沙箱比没有沙箱更危险。**审批要谨慎**。
 
 ## REPL 斜杠命令
 
