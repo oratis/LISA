@@ -1,0 +1,140 @@
+#compdef lisa
+# Zsh completion for `lisa`.
+#
+# Install:
+#   mkdir -p ~/.zsh/completions
+#   cp _lisa ~/.zsh/completions/_lisa
+#   # Add to ~/.zshrc (if not already):
+#   #   fpath=(~/.zsh/completions $fpath)
+#   #   autoload -U compinit && compinit
+#
+# Reload your shell.
+
+_lisa() {
+    local context state line curcontext="$curcontext"
+    typeset -A opt_args
+
+    _arguments -C \
+        '(-h --help)'{-h,--help}'[show help]' \
+        '--model[LLM model name]:model:_lisa_models' \
+        '--provider[force provider]:provider:(anthropic openai gemini)' \
+        '--think[enable adaptive thinking each turn]' \
+        '--no-reflect[skip end-of-session reflection]' \
+        '--compact[enable Anthropic context compaction]' \
+        '--approval[approval mode]:mode:(auto ask ask-mutating)' \
+        '--no-mcp[skip loading MCP servers]' \
+        '--no-plugins[skip loading plugins]' \
+        '--voice[enable speak/transcribe tools]' \
+        '--idle[idle minutes before autonomous mode]:minutes:' \
+        '--no-idle[disable idle mode]' \
+        '--web[start web UI (with serve)]' \
+        '--imessage[start iMessage channel (with serve)]' \
+        '--channels[start IM channels]:list:_lisa_channels' \
+        '--port[port for serve --web]:port:' \
+        '1: :_lisa_first' \
+        '*::arg:->args' \
+        && return 0
+
+    case "$state" in
+        args)
+            case "$line[1]" in
+                skills)   _lisa_skills ;;
+                heartbeat) _lisa_heartbeat ;;
+            esac
+            ;;
+    esac
+}
+
+_lisa_first() {
+    local -a subcommands
+    subcommands=(
+        'resume:resume a previous session by id'
+        'sessions:list recent sessions'
+        'serve:start web UI / IM channels'
+        'heartbeat:run / install / uninstall scheduled tasks'
+        'search:TF-IDF search across past sessions'
+        'birth:run the birth ritual'
+        'soul:print current soul summary'
+        'channels:list available channel adapters'
+        'skills:manage executable skills (list/approve/disable/enable/audit)'
+        'wishlist:print Lisa'\''s feedback about her toolset'
+        'status:one-shot snapshot'
+        'doctor:health check'
+        'monitor:TUI live dashboard'
+    )
+    _describe 'subcommand' subcommands
+}
+
+_lisa_skills() {
+    if (( CURRENT == 2 )); then
+        local -a actions
+        actions=(
+            'list:list executable skills'
+            'approve:review and approve a skill'
+            'disable:block a skill from loading'
+            'enable:remove a disable flag'
+            'audit:show the audit trail'
+        )
+        _describe 'skills action' actions
+    elif (( CURRENT == 3 )); then
+        # 3rd arg = slug; suggest from ~/.lisa/skills/
+        local -a slugs
+        if [[ -d "$HOME/.lisa/skills" ]]; then
+            slugs=("$HOME/.lisa/skills"/*(/N:t))
+            _describe 'skill slug' slugs
+        fi
+    fi
+}
+
+_lisa_heartbeat() {
+    if (( CURRENT == 2 )); then
+        local -a actions
+        actions=(
+            'run:run heartbeat tasks once'
+            'install:install macOS launchd plist'
+            'uninstall:remove launchd plist'
+        )
+        _describe 'heartbeat action' actions
+    fi
+}
+
+_lisa_models() {
+    local -a models
+    models=(
+        # Anthropic
+        'claude-sonnet-4-5-20250929:Claude Sonnet 4.5'
+        'claude-opus-4:Claude Opus 4'
+        'claude-haiku-4:Claude Haiku 4 (cheap)'
+        # OpenAI
+        'gpt-5:GPT-5'
+        'gpt-4o:GPT-4o'
+        'o3:OpenAI o3'
+        'o4-mini:OpenAI o4-mini (cheap)'
+        # Google
+        'gemini-2.5-pro:Gemini 2.5 Pro'
+        'gemini-2.5-flash:Gemini 2.5 Flash (cheap)'
+        # DeepSeek
+        'deepseek-chat:DeepSeek V3 (cheap)'
+        'deepseek-reasoner:DeepSeek reasoning'
+        # Volcengine Doubao
+        'doubao-1.5-pro-32k:Doubao 1.5 Pro'
+        # Aliyun Qwen
+        'qwen3-72b-instruct:Qwen 3 72B'
+        # Moonshot
+        'moonshot-v1-32k:Moonshot v1 (32k)'
+        'kimi-128k-vision:Kimi 128k vision'
+        # xAI
+        'grok-2-latest:Grok 2'
+        # Zhipu
+        'glm-4.5:GLM 4.5'
+    )
+    _describe 'model' models
+}
+
+_lisa_channels() {
+    local -a channels
+    channels=(telegram discord slack feishu webhook imessage all)
+    _describe -t channels 'channel' channels
+}
+
+_lisa "$@"
