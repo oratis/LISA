@@ -245,6 +245,16 @@ async function reflectOnSessionInner(opts: {
     }
   }
 
+  // Periodic progress consolidation (small-tail of Phase 1.3). Cap at one
+  // desire per reflect pass to keep cost bounded; pick whichever has the most
+  // raw entries above the threshold.
+  try {
+    const consolidated = await maybeConsolidateOneDesireProgress(model);
+    if (consolidated) applied.push(`progress_consolidated:${consolidated}`);
+  } catch (err) {
+    skipped.push(`progress_consolidation — ${(err as Error).message}`);
+  }
+
   await atomicWrite(
     path.join(REFLECTIONS_DIR, `${opts.sessionId}.json`),
     JSON.stringify(
@@ -255,6 +265,65 @@ async function reflectOnSessionInner(opts: {
   );
 
   return { summary: payload.summary, applied, skipped, raw };
+}
+
+/**
+ * Consolidate at most ONE actionable desire's progress.md per reflect pass.
+ *
+ * Trigger: progress has > PROGRESS_CONSOLIDATE_THRESHOLD raw entries. Asks a
+ * focused LLM to summarize all-but-the-latest 4 into a 2-4 sentence
+ * paragraph; writes the file back as `[…condensed] <summary>` + the latest
+ * 4 entries verbatim. Failure is non-fatal — the next reflect tries again.
+ */
+const PROGRESS_CONSOLIDATE_THRESHOLD = 8;
+const PROGRESS_KEEP_LATEST = 4;
+
+async function maybeConsolidateOneDesireProgress(model: string): Promise<string | null> {
+  const { listDesires, parseDesireProgress, consolidateDesireProgress } = await import("./soul/store.js");
+  const { withSoulCaller } = await import("./soul/git.js");
+  const desires = (await listDesires()).filter((d) => d.actionable);
+  let target: { slug: string; entries: { ts: string; body: string }[]; preamble: string } | null = null;
+  for (const d of desires) {
+    const parsed = await parseDesireProgress(d.slug);
+    if (parsed.entries.length <= PROGRESS_CONSOLIDATE_THRESHOLD) continue;
+    if (!target || parsed.entries.length > target.entries.length) {
+      target = { slug: d.slug, entries: parsed.entries, preamble: parsed.preamble };
+    }
+  }
+  if (!target) return null;
+  const olderEntries = target.entries.slice(0, target.entries.length - PROGRESS_KEEP_LATEST);
+  const keepLatest = target.entries.slice(target.entries.length - PROGRESS_KEEP_LATEST);
+  const olderBlock = olderEntries.map((e) => `[${e.ts}] ${e.body}`).join("\n\n");
+  const condensePrompt =
+    `These are older progress entries from your pursuit of one of your own desires (slug: "${target.slug}"). ` +
+    `Reflect is consolidating them so the file stays readable. Summarize them in 2-4 first-person sentences — what you tried, what you learned, what the through-line was. Keep it honest and specific. Output ONLY the summary text, no preamble.\n\n` +
+    (target.preamble ? `## existing condensed-preamble\n${target.preamble}\n\n` : "") +
+    `## entries to condense\n${olderBlock}`;
+  const provider = providerForModel(model);
+  const result = await provider.runTurn({
+    model,
+    systemPrompt: "You are Lisa, condensing your own past notes. Output prose only — no JSON, no headings, no bullet list.",
+    tools: [],
+    messages: [
+      { role: "user", content: [{ type: "text", text: condensePrompt }] },
+    ],
+    maxTokens: 600,
+  });
+  const summary = result.content
+    .filter((b) => b.type === "text")
+    .map((b) => (b as { text: string }).text)
+    .join("\n")
+    .trim();
+  if (!summary) return null;
+  await withSoulCaller("reflect", async () => {
+    await consolidateDesireProgress(target!.slug, {
+      condensedSummary: target!.preamble
+        ? target!.preamble + "\n\n" + summary
+        : summary,
+      keepLatest,
+    });
+  });
+  return target.slug;
 }
 
 function renderTranscript(history: StoredMessage[]): string {

@@ -224,6 +224,72 @@ export async function readDesireProgress(slug: string): Promise<string> {
   return (await readTextOrEmpty(desireProgressFile(slug))).trim();
 }
 
+/** One parsed progress entry (anything between `## <ts>` headers). */
+export interface ParsedProgressEntry {
+  ts: string;
+  body: string;
+}
+
+export interface ParsedDesireProgress {
+  /** "[…earlier entries condensed]" preamble, if reflect has consolidated. */
+  preamble: string;
+  entries: ParsedProgressEntry[];
+}
+
+export async function parseDesireProgress(slug: string): Promise<ParsedDesireProgress> {
+  const raw = (await readTextOrEmpty(desireProgressFile(slug))).trim();
+  if (!raw) return { preamble: "", entries: [] };
+  // Strip leading `# progress: <slug>` header.
+  const stripped = raw.replace(/^#\s+progress:[^\n]*\n+/, "");
+  // Find entry headers `## <ISO timestamp>` at start-of-line.
+  const headerRe = /^## (\d{4}-\d{2}-\d{2}T\S+)$/gm;
+  const matches: { ts: string; offset: number; headerEnd: number }[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = headerRe.exec(stripped))) {
+    matches.push({ ts: m[1]!, offset: m.index, headerEnd: m.index + m[0].length });
+  }
+  if (matches.length === 0) {
+    return { preamble: stripped.trim(), entries: [] };
+  }
+  const preamble = stripped.slice(0, matches[0]!.offset).trim();
+  const entries: ParsedProgressEntry[] = [];
+  for (let i = 0; i < matches.length; i++) {
+    const cur = matches[i]!;
+    const next = matches[i + 1];
+    const bodyStart = cur.headerEnd;
+    const bodyEnd = next ? next.offset : stripped.length;
+    const body = stripped.slice(bodyStart, bodyEnd).trim();
+    if (!body) continue;
+    entries.push({ ts: cur.ts, body });
+  }
+  return { preamble, entries };
+}
+
+/**
+ * Replace progress.md with a consolidated form: condensed-preamble + tail of
+ * the most recent `keepLatest` raw entries. Used by reflect (Phase 2 small-
+ * tail item) when the entry count grows past a threshold.
+ */
+export async function consolidateDesireProgress(
+  slug: string,
+  opts: { condensedSummary: string; keepLatest: ParsedProgressEntry[] },
+): Promise<void> {
+  const lines: string[] = [];
+  lines.push(`# progress: ${slug}`);
+  lines.push("");
+  lines.push(`[…earlier entries condensed by reflect on ${new Date().toISOString().slice(0, 10)}]`);
+  lines.push("");
+  lines.push(opts.condensedSummary.trim());
+  for (const e of opts.keepLatest) {
+    lines.push("");
+    lines.push(`## ${e.ts}`);
+    lines.push("");
+    lines.push(e.body.trim());
+  }
+  await atomicWrite(desireProgressFile(slug), lines.join("\n").trim() + "\n");
+  await commitSoulChange(`desires/${slug}.progress.md`, "consolidate");
+}
+
 const PROGRESS_MAX_BYTES = 16_384;
 const PROGRESS_TAIL_BYTES = 8_192;
 
