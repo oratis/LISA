@@ -24,8 +24,17 @@ const ASSETS_DIR = path.join(__dirname, "assets");
 const HTML = `<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>LISA</title>
+<!-- PWA manifest + theming. Lets users add Lisa to their home screen on
+     iOS Safari / Android Chrome and run her as a standalone app shell. -->
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#0a0d2b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="LISA">
+<link rel="apple-touch-icon" href="/assets/lisa-mascot.png">
+<link rel="icon" type="image/png" href="/assets/lisa-mascot.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
@@ -519,15 +528,46 @@ const HTML = `<!doctype html>
     cursor: not-allowed;
   }
 
-  /* Mobile */
+  /* Mobile + PWA standalone */
   @media (max-width: 720px) {
+    body {
+      /* Honor iOS safe area when running standalone (notch / home indicator). */
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: env(safe-area-inset-bottom);
+    }
     .frame {
       grid-template-columns: 1fr;
-      grid-template-rows: 64px 120px 1fr 80px;
+      grid-template-rows: 56px auto 1fr auto;
       grid-template-areas: "header" "side" "chat" "input";
+      /* Account for safe areas inside the frame too, so input never hides
+         behind iOS home indicator. */
+      min-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
     }
-    aside.panel { flex-direction: row; }
-    .mascot { width: 96px; }
+    aside.panel {
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 8px;
+    }
+    .mascot { width: 80px; }
+    /* Inputs grow with content on mobile; keep cap so it doesn't cover chat. */
+    .input-area textarea {
+      min-height: 44px;
+      max-height: 35vh;
+      font-size: 16px; /* prevents iOS Safari auto-zoom on focus */
+    }
+    /* Chat scroll area uses dynamic viewport height to handle the
+       ever-changing iOS Safari toolbar without the bottom getting cut off. */
+    .chat {
+      max-height: calc(100dvh - 240px);
+    }
+    /* Header inspector buttons get tighter on narrow screens. */
+    .badge { padding: 4px 6px; font-size: 10px; }
+    .badge img { width: 14px; height: 14px; }
+  }
+  /* PWA standalone-specific tweaks (also fires on installed Lisa). */
+  @media (display-mode: standalone) {
+    body { background: var(--bg); }
   }
 
   /* ── Birth ritual full-screen overlay ──────────────────────────────── */
@@ -1547,6 +1587,37 @@ input.addEventListener('input', () => {
   input.style.height = 'auto';
   input.style.height = Math.min(input.scrollHeight, 200) + 'px';
 });
+
+// ─── PWA: register service worker + iOS install hint ─────────────────
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(err => {
+    console.warn('[pwa] sw register failed:', err);
+  });
+}
+// iOS Safari doesn't fire beforeinstallprompt. Show a one-time hint to
+// the user instead. Suppress if already running standalone (after add).
+(function() {
+  const isiOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+    || /** @type {any} */ (window.navigator).standalone === true;
+  if (!isiOS || isStandalone) return;
+  if (localStorage.getItem('lisa.pwa.dismissed') === '1') return;
+  // Defer 5s so the chat UI shows first.
+  setTimeout(() => {
+    const banner = document.createElement('div');
+    banner.style.cssText = 'position:fixed;bottom:8px;left:8px;right:8px;background:var(--panel);border:2px solid var(--border-light);padding:8px 10px;font-family:VT323,monospace;color:var(--text);font-size:14px;z-index:9999;display:flex;gap:8px;align-items:center;';
+    banner.innerHTML = '✦ Add Lisa to Home Screen: Share button → "Add to Home Screen"';
+    const dismiss = document.createElement('button');
+    dismiss.textContent = '✕';
+    dismiss.style.cssText = 'background:transparent;border:none;color:var(--text);cursor:pointer;font-size:16px;margin-left:auto;';
+    dismiss.onclick = () => {
+      localStorage.setItem('lisa.pwa.dismissed', '1');
+      banner.remove();
+    };
+    banner.appendChild(dismiss);
+    document.body.appendChild(banner);
+  }, 5000);
+})();
 </script>
 </body></html>`;
 
@@ -1700,6 +1771,104 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     if (req.method === "GET" && url === "/") {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       res.end(HTML);
+      return;
+    }
+
+    // PWA manifest. Lets users add Lisa to the home screen on iOS / Android
+    // and run her as a standalone app shell.
+    if (req.method === "GET" && url === "/manifest.webmanifest") {
+      res.writeHead(200, {
+        "content-type": "application/manifest+json; charset=utf-8",
+        "cache-control": "public, max-age=86400",
+      });
+      res.end(JSON.stringify({
+        name: "LISA",
+        short_name: "Lisa",
+        description: "An AI agent with a real self.",
+        start_url: "/",
+        scope: "/",
+        display: "standalone",
+        orientation: "any",
+        background_color: "#0a0d2b",
+        theme_color: "#0a0d2b",
+        icons: [
+          { src: "/assets/lisa-mascot.png", sizes: "any", type: "image/png", purpose: "any" },
+          { src: "/assets/lisa-mascot.png", sizes: "any", type: "image/png", purpose: "maskable" },
+        ],
+      }));
+      return;
+    }
+
+    // Service worker. Cache-first for /assets/* (mood portraits, icons,
+    // fonts) so the UI runs offline once cached. Network-only for live
+    // endpoints (/chat, /events, /session, /api/*) — we never want stale
+    // chat state.
+    if (req.method === "GET" && url === "/sw.js") {
+      res.writeHead(200, {
+        "content-type": "application/javascript; charset=utf-8",
+        "service-worker-allowed": "/",
+      });
+      res.end(`
+const CACHE = 'lisa-v1';
+const ASSET_PATHS = ['/assets/lisa-mascot.png', '/assets/background-tile.png',
+  '/assets/icon-soul.png', '/assets/icon-skill.png', '/assets/icon-memory.png',
+  '/assets/icon-tool.png', '/assets/icon-send.png'];
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE).then((cache) => cache.addAll(ASSET_PATHS).catch(() => {}))
+  );
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
+    )
+  );
+  self.clients.claim();
+});
+
+self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url);
+  // Never cache live endpoints — chat state must not stale.
+  if (url.pathname === '/chat' || url.pathname === '/events' ||
+      url.pathname === '/session' || url.pathname.startsWith('/api/') ||
+      url.pathname === '/reflect') {
+    return; // default network behavior
+  }
+  // Cache-first for /assets/* (mood portraits 50MB will fill cache lazily).
+  if (url.pathname.startsWith('/assets/')) {
+    event.respondWith(
+      caches.open(CACHE).then((cache) =>
+        cache.match(event.request).then((hit) => {
+          if (hit) return hit;
+          return fetch(event.request).then((res) => {
+            if (res.ok) cache.put(event.request, res.clone());
+            return res;
+          });
+        })
+      )
+    );
+    return;
+  }
+  // Stale-while-revalidate for / and the manifest — the app shell.
+  if (url.pathname === '/' || url.pathname === '/manifest.webmanifest') {
+    event.respondWith(
+      caches.open(CACHE).then((cache) =>
+        cache.match(event.request).then((hit) => {
+          const networked = fetch(event.request).then((res) => {
+            if (res.ok) cache.put(event.request, res.clone());
+            return res;
+          }).catch(() => hit);
+          return hit || networked;
+        })
+      )
+    );
+  }
+});
+`);
       return;
     }
 
