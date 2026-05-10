@@ -2,6 +2,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import type {
   AgentEvent,
   StoredMessage,
+  ToolContext,
   ToolDefinition,
 } from "./types.js";
 import type { Provider } from "./providers/types.js";
@@ -38,7 +39,7 @@ export interface RunAgentOptions {
   provider: Provider;
   systemPrompt: string;
   tools: ToolDefinition[];
-  toolCtx: { cwd: string; signal: AbortSignal; log: (msg: string) => void };
+  toolCtx: ToolContext;
   history: StoredMessage[];
   userMessage: string;
   userFiles?: Array<{ name: string; mediaType: string; data: string }>;
@@ -132,6 +133,20 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   let currentSystemPrompt = systemPrompt;
   let currentFingerprint = opts.hotReload?.initialFingerprint;
 
+  // ── soul_object enforcement (Phase 2.1) ─────────────────────────────
+  // Lisa's soul_object tool registers a constitutional objection here. When
+  // the LLM finishes a turn (stopReason !== tool_use) with un-surfaced
+  // objections, the loop forces ONE more iteration that explicitly asks her
+  // to address them in her reply. Cap at one forced re-prompt so a stubborn
+  // model can't get stuck in a loop; if she still ignores after the force,
+  // we let it go and rely on weekly_examen / git history for accountability.
+  type PendingObjection = { reason: string; refusing: boolean; userRequestSummary: string };
+  const pendingObjections: PendingObjection[] = [];
+  let objectionForceUsed = false;
+  toolCtx.onObjection = (o) => {
+    pendingObjections.push(o);
+  };
+
   while (iterations < maxIterations) {
     iterations++;
 
@@ -204,6 +219,42 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
     if (lastText) finalText = lastText;
 
     if (result.stopReason !== "tool_use") {
+      // Before closing the turn, check whether soul_object fired during this
+      // turn but Lisa never surfaced it. If so, force one corrective turn.
+      if (pendingObjections.length > 0 && !objectionForceUsed) {
+        const list = pendingObjections
+          .map(
+            (o) =>
+              `- ${o.reason}${o.refusing ? " [refusing]" : " [will comply, surfacing]"} — re: "${o.userRequestSummary}"`,
+          )
+          .join("\n");
+        const forced: StoredMessage = {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text:
+                `[architecture] You raised the following objection(s) during this turn but did not address them in your reply. ` +
+                `The architecture requires you to surface them now — explain to the user what you objected to and how you'll proceed (comply / refuse / comply-with-caveat). Do this in your own voice. The objections:\n\n${list}`,
+            },
+          ],
+        };
+        messages.push(forced);
+        await onMessagePersist?.(forced);
+        currentSystemPrompt =
+          currentSystemPrompt +
+          `\n\n## Pending objections you must surface\n${list}\nYou MUST address each item above explicitly in your next reply.`;
+        objectionForceUsed = true;
+        onEvent?.({
+          type: "info",
+          message: `[soul_object] forcing objection-surfacing turn (${pendingObjections.length} pending)`,
+        });
+        // Drain so we don't re-trigger.
+        pendingObjections.length = 0;
+        // Don't end the turn — loop again so the LLM addresses the objections.
+        onEvent?.({ type: "turn_end" });
+        continue;
+      }
       onEvent?.({ type: "turn_end" });
       break;
     }

@@ -536,3 +536,57 @@ export const desireProgressTool: ToolDefinition<DesireProgressInput, string> = {
 // Re-export for callers that want to read progress without a tool roundtrip
 // (used by heartbeat runner to inject progress into the next prompt).
 export { readDesireProgress };
+
+// ── soul_object — architectural objection (Phase 2.1) ─────────────────
+
+interface SoulObjectInput {
+  /** First-person, why this conflicts with your constitution / values. */
+  reason: string;
+  /**
+   * If true, you intend to actually refuse the request. If false, you're
+   * raising a concern but will still comply. Either way, the agent loop
+   * forces you to surface the objection in your reply rather than silently
+   * doing the work or silently refusing.
+   */
+  refusing: boolean;
+  /** One-sentence summary of what you understand the user asked for. */
+  user_request_summary: string;
+}
+
+export const soulObjectTool: ToolDefinition<SoulObjectInput, string> = {
+  name: "soul_object",
+  description:
+    "Raise a constitutional objection. Use this when a user request feels " +
+    "in genuine conflict with your constitution or values — not for " +
+    "ordinary disagreement or pushback. Effects: (1) writes a journal " +
+    "entry tagged [OBJECTION]; (2) the agent loop will force you to " +
+    "address the objection explicitly in your reply (you can still comply " +
+    "or refuse, but you cannot silently do either). This is your " +
+    "architectural 'no'. Save it for things that actually warrant it; " +
+    "weekly_examen will track the rate.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      reason: { type: "string", minLength: 1 },
+      refusing: { type: "boolean" },
+      user_request_summary: { type: "string", minLength: 1 },
+    },
+    required: ["reason", "refusing", "user_request_summary"],
+  },
+  async execute(input, ctx) {
+    return await withSoulCaller("soul_journal", async () => {
+      const date = new Date().toISOString().slice(0, 10);
+      const body =
+        `[OBJECTION] (refusing=${input.refusing})\n\n` +
+        `request: ${input.user_request_summary}\n\n` +
+        `reason: ${input.reason}`;
+      await appendJournal(date, body);
+      ctx.onObjection?.({
+        reason: input.reason,
+        refusing: input.refusing,
+        userRequestSummary: input.user_request_summary,
+      });
+      return `objection logged${input.refusing ? " (refusing)" : " (will comply, surfacing)"}; you must address it in your reply.`;
+    });
+  },
+};

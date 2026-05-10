@@ -14,6 +14,12 @@ export interface ToolContext {
   cwd: string;
   signal: AbortSignal;
   log: (msg: string) => void;
+  /**
+   * Set by the agent loop. soul_object calls this to register an
+   * architectural objection that must be surfaced in Lisa's reply
+   * before the turn is considered closed. (Phase 2.1)
+   */
+  onObjection?: (o: { reason: string; refusing: boolean; userRequestSummary: string }) => void;
 }
 
 export type StoredMessage = Anthropic.MessageParam;

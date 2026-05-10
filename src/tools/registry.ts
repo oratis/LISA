@@ -8,6 +8,7 @@ import {
   soulFeelTool,
   soulHistoryTool,
   soulJournalTool,
+  soulObjectTool,
   soulPatchTool,
   soulReadTool,
 } from "../soul/tools.js";
@@ -47,6 +48,7 @@ export function buildToolRegistry(opts: ToolRegistryOptions = {}): ToolDefinitio
     soulFeelTool as ToolDefinition,
     soulHistoryTool as ToolDefinition,
     soulDiffTool as ToolDefinition,
+    soulObjectTool as ToolDefinition,
     desireProgressTool as ToolDefinition,
     webFetchTool as ToolDefinition,
     webSearchTool as ToolDefinition,
