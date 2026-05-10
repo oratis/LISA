@@ -27,6 +27,13 @@ import { writeTool } from "./write.js";
 
 export interface ToolRegistryOptions {
   includeVoice?: boolean;
+  /**
+   * Extra tools merged into the registry — typically the approved
+   * executable skills loaded from ~/.lisa/skills/<slug>/tool.js
+   * (Phase 3.1). Conflicts (same .name as a builtin) are dropped with
+   * a warning by the caller, not here.
+   */
+  extra?: ToolDefinition[];
 }
 
 export function buildToolRegistry(opts: ToolRegistryOptions = {}): ToolDefinition[] {
@@ -56,6 +63,14 @@ export function buildToolRegistry(opts: ToolRegistryOptions = {}): ToolDefinitio
   ];
   if (opts.includeVoice) {
     tools.push(speakTool as ToolDefinition, transcribeTool as ToolDefinition);
+  }
+  if (opts.extra && opts.extra.length > 0) {
+    const seen = new Set(tools.map((t) => t.name));
+    for (const t of opts.extra) {
+      if (seen.has(t.name)) continue; // builtin wins; caller logged the conflict
+      tools.push(t);
+      seen.add(t.name);
+    }
   }
   tools.sort((a, b) => a.name.localeCompare(b.name));
   return tools;

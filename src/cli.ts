@@ -37,6 +37,11 @@ Usage:
                                   Config: ~/.lisa/channels.json
   lisa serve --imessage        Shortcut for --channels imessage (macOS).
   lisa channels                List available channel adapters.
+  lisa skills list             List executable skills (~/.lisa/skills/<slug>/tool.js).
+  lisa skills approve <slug>   Review the source of a skill's tool.js and approve it.
+  lisa skills disable <slug> [reason]   Block an approved skill from loading.
+  lisa skills enable <slug>    Remove a disable flag.
+  lisa skills audit <slug>     Show the audit trail.
   lisa heartbeat run [name]    Run heartbeat tasks once (incl. self-driven desires).
   lisa heartbeat install [--load] [--every <30m|1h|...>]
                                 Install macOS launchd plist (or print cron line).
@@ -95,7 +100,8 @@ interface ParsedArgs {
     | "search"
     | "birth"
     | "soul"
-    | "channels";
+    | "channels"
+    | "skills";
   subargs: string[];
   serveWeb: boolean;
   serveImessage: boolean;
@@ -183,7 +189,8 @@ function parseArgs(argv: string[]): ParsedArgs {
       first === "search" ||
       first === "birth" ||
       first === "soul" ||
-      first === "channels"
+      first === "channels" ||
+      first === "skills"
     ) {
       out.subcommand = first;
       out.subargs = positional.slice(1);
@@ -258,6 +265,11 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (args.subcommand === "skills") {
+    await handleSkillsSubcommand(args.subargs);
+    return;
+  }
+
   if (args.subcommand === "sessions") {
     const sessions = await listSessionsOnDisk();
     for (const s of sessions) {
@@ -317,7 +329,23 @@ async function main(): Promise<void> {
     console.error("\n");
   }
 
-  const baseTools = buildToolRegistry({ includeVoice: args.voice });
+  // Executable skills (Phase 3.1): tool.js files in ~/.lisa/skills/<slug>/
+  // that have been explicitly approved by SHA. Sandbox is the user's review,
+  // not the runtime — these run in-process. Unapproved or stale ones are
+  // surfaced as a startup notice; the user runs `lisa skills approve <slug>`.
+  const { discoverExecutableSkills, loadApprovedExecutableTools, summarizeCandidate } =
+    await import("./skills/executable.js");
+  const skillCandidates = await discoverExecutableSkills();
+  const executableTools = await loadApprovedExecutableTools((m) => console.error(m));
+  if (skillCandidates.length > 0) {
+    const pending = skillCandidates.filter((c) => c.status !== "approved-current");
+    if (pending.length > 0) {
+      console.error(`\n[skills] ${executableTools.length} executable tool(s) loaded; ${pending.length} pending:`);
+      for (const c of pending) console.error(summarizeCandidate(c));
+      console.error(`Run \`lisa skills approve <slug>\` to review and approve.\n`);
+    }
+  }
+  const baseTools = buildToolRegistry({ includeVoice: args.voice, extra: executableTools });
 
   // Load plugins (skills/commands/agents/hooks/mcp).
   const plugins = args.loadPlugins ? await loadAllPlugins() : [];
@@ -831,6 +859,112 @@ function printSoulSummary(s: Awaited<ReturnType<typeof readSoulSummary>> & objec
 
 function indent(text: string, prefix: string): string {
   return text.split("\n").map((l) => prefix + l).join("\n");
+}
+
+// ── `lisa skills` subcommand (Phase 3.1) ─────────────────────────────
+
+async function handleSkillsSubcommand(subargs: string[]): Promise<void> {
+  const sub = subargs[0];
+  const skillsMod = await import("./skills/executable.js");
+  if (!sub || sub === "list" || sub === "list-executable") {
+    const candidates = await skillsMod.discoverExecutableSkills();
+    if (candidates.length === 0) {
+      console.log("No executable skills found.\n(An executable skill is a ~/.lisa/skills/<slug>/tool.js that exports `tool: ToolDefinition`.)");
+      return;
+    }
+    console.log("Executable skills:");
+    for (const c of candidates) console.log(skillsMod.summarizeCandidate(c));
+    console.log("\nNext: `lisa skills approve <slug>` to review + approve.");
+    return;
+  }
+  const slug = subargs[1];
+  if (!slug) {
+    console.error(`usage: lisa skills <approve|disable|enable|audit> <slug>`);
+    process.exit(2);
+  }
+  if (sub === "approve") {
+    await approveExecutableSkillInteractive(slug);
+    return;
+  }
+  if (sub === "disable") {
+    const reason = subargs[2];
+    await skillsMod.disableExecutableSkill(slug, reason);
+    console.log(`Disabled ${slug}.`);
+    return;
+  }
+  if (sub === "enable") {
+    await skillsMod.enableExecutableSkill(slug);
+    console.log(`Enabled ${slug}.`);
+    return;
+  }
+  if (sub === "audit") {
+    const log = await skillsMod.readAudit(slug);
+    console.log(log || "(no audit entries)");
+    return;
+  }
+  console.error(`unknown skills subcommand: ${sub}`);
+  process.exit(2);
+}
+
+async function approveExecutableSkillInteractive(slug: string): Promise<void> {
+  const skillsMod = await import("./skills/executable.js");
+  const src = await skillsMod.readToolSource(slug);
+  if (!src) {
+    console.error(`No tool source found for skill "${slug}".`);
+    process.exit(1);
+  }
+  const candidates = await skillsMod.discoverExecutableSkills();
+  const c = candidates.find((x) => x.slug === slug);
+  if (!c) {
+    console.error(`Skill "${slug}" has no tool.js — cannot approve.`);
+    process.exit(1);
+  }
+  console.log(`\n── ${slug} (sha=${c.currentSha.slice(0, 16)}) ──\n`);
+  console.log(src);
+  console.log(`\n── end of source ──\n`);
+  if (c.approved) {
+    console.log(`Previously approved at ${c.approved.approvedAt} (sha=${c.approved.sha256.slice(0, 16)}).`);
+    if (c.approved.sha256 !== c.currentSha) {
+      console.log(`⚠ Source has changed since approval.`);
+    }
+  }
+  // Try to extract the tool.name without importing (regex on the source) so
+  // we can show the user what tool name they're approving. Falls back to slug.
+  const nameMatch = /name\s*:\s*["']([^"']+)["']/.exec(src);
+  const toolName = nameMatch?.[1] ?? slug;
+  console.log(`This tool will be registered as: "${toolName}"`);
+  console.log(`It runs in-process with no sandbox. Only approve code you've read.\n`);
+  const yes = await promptYesNo(`Approve and load on next launch? [y/N] `);
+  if (!yes) {
+    console.log("Not approved.");
+    return;
+  }
+  const note = await promptLine(`Optional one-line note (enter to skip): `);
+  await skillsMod.approveExecutableSkill(slug, { toolName, note: note.trim() || undefined });
+  console.log(`\n✓ Approved ${slug}.`);
+}
+
+async function promptYesNo(q: string): Promise<boolean> {
+  const ans = (await promptLine(q)).trim().toLowerCase();
+  return ans === "y" || ans === "yes";
+}
+
+function promptLine(q: string): Promise<string> {
+  process.stdout.write(q);
+  return new Promise<string>((resolve) => {
+    let data = "";
+    const onData = (chunk: Buffer): void => {
+      const s = chunk.toString("utf8");
+      data += s;
+      if (data.includes("\n")) {
+        process.stdin.off("data", onData);
+        process.stdin.pause();
+        resolve(data.replace(/\r?\n.*/s, ""));
+      }
+    };
+    process.stdin.resume();
+    process.stdin.on("data", onData);
+  });
 }
 
 main().catch((err) => {
