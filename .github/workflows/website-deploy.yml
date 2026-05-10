@@ -1,0 +1,100 @@
+name: Website — build + deploy
+
+# Build the Astro site at /website on every push to main, and (when secrets
+# are configured) deploy to Cloudflare Pages.
+#
+# Status: build runs unconditionally. Deploy step only runs when CF_API_TOKEN
+# and CF_ACCOUNT_ID secrets are present — so this workflow is safe to ship
+# even before the user has bought a domain or wired Cloudflare. When you're
+# ready, add those two secrets in repo Settings → Secrets and the deploy step
+# will go live on the next push.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "website/**"
+      - "src/web/assets/**"
+      - "scripts/lisa-moods.ts"
+      - ".github/workflows/website-deploy.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      have-secrets: ${{ steps.check-secrets.outputs.have }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install
+        working-directory: website
+        run: npm ci
+
+      - name: Pre-build (snapshot moods + symlink assets)
+        working-directory: website
+        run: node scripts/prebuild.mjs
+
+      - name: Build Astro
+        working-directory: website
+        run: npm run build
+
+      - name: Sanity check
+        working-directory: website
+        run: |
+          test -f dist/index.html
+          test -f dist/zh-CN/index.html
+          test -f dist/moods/index.html
+          test -d dist/_astro || true   # Astro 5/6 names the bundle dir
+          echo "✓ pages built"
+          ls -la dist/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: website-dist
+          path: website/dist/
+          if-no-files-found: error
+          retention-days: 14
+
+      - id: check-secrets
+        run: |
+          if [ -n "${{ secrets.CF_API_TOKEN }}" ] && [ -n "${{ secrets.CF_ACCOUNT_ID }}" ]; then
+            echo "have=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "have=no" >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy:
+    needs: build
+    if: needs.build.outputs.have-secrets == 'yes'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: website-dist
+          path: website/dist/
+
+      # Cloudflare Pages deploy via official Wrangler action. The project
+      # name `lisa-website` must already exist in the user's Cloudflare
+      # account; first-time setup is documented in docs/PUBLISH.md §3.
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          accountId: ${{ secrets.CF_ACCOUNT_ID }}
+          command: pages deploy website/dist --project-name=lisa-website --commit-dirty=true
