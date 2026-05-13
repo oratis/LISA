@@ -34,12 +34,33 @@ interface OpenAICompatPreset {
 }
 
 export const OPENAI_COMPAT_PRESETS: OpenAICompatPreset[] = [
+  // ── International ─────────────────────────────────────────────────
   {
     name: "DeepSeek",
     modelPrefixes: ["deepseek-"],
     baseURL: "https://api.deepseek.com/v1",
     apiKeyEnv: "DEEPSEEK_API_KEY",
   },
+  {
+    name: "Mistral AI",
+    // mistral-*, codestral-*, magistral-*, ministral-*, pixtral-*
+    modelPrefixes: ["mistral-", "codestral-", "magistral-", "ministral-", "pixtral-"],
+    baseURL: "https://api.mistral.ai/v1",
+    apiKeyEnv: "MISTRAL_API_KEY",
+  },
+  {
+    name: "Perplexity (Sonar)",
+    modelPrefixes: ["sonar-", "sonar"],
+    baseURL: "https://api.perplexity.ai",
+    apiKeyEnv: "PERPLEXITY_API_KEY",
+  },
+  {
+    name: "xAI Grok",
+    modelPrefixes: ["grok-"],
+    baseURL: "https://api.x.ai/v1",
+    apiKeyEnv: "XAI_API_KEY",
+  },
+  // ── Chinese ──────────────────────────────────────────────────────
   {
     // Volcengine Ark uses arbitrary "endpoint IDs" (ep-...) and the doubao-* family.
     name: "Volcengine Ark (Doubao)",
@@ -60,35 +81,68 @@ export const OPENAI_COMPAT_PRESETS: OpenAICompatPreset[] = [
     apiKeyEnv: "MOONSHOT_API_KEY",
   },
   {
-    name: "xAI Grok",
-    modelPrefixes: ["grok-"],
-    baseURL: "https://api.x.ai/v1",
-    apiKeyEnv: "XAI_API_KEY",
-  },
-  {
     name: "Zhipu (GLM)",
     modelPrefixes: ["glm-", "chatglm-"],
     baseURL: "https://open.bigmodel.cn/api/paas/v4",
     apiKeyEnv: "ZHIPU_API_KEY",
   },
+  {
+    name: "Stepfun (Step)",
+    modelPrefixes: ["step-"],
+    baseURL: "https://api.stepfun.com/v1",
+    apiKeyEnv: "STEPFUN_API_KEY",
+  },
+  {
+    name: "01.AI (Yi)",
+    modelPrefixes: ["yi-"],
+    baseURL: "https://api.lingyiwanwu.com/v1",
+    apiKeyEnv: "LINGYI_API_KEY",
+  },
+  {
+    name: "Baichuan",
+    // Model IDs ship in title-case (Baichuan2-Turbo, Baichuan4); match is case-insensitive.
+    modelPrefixes: ["baichuan-", "baichuan2", "baichuan3", "baichuan4"],
+    baseURL: "https://api.baichuan-ai.com/v1",
+    apiKeyEnv: "BAICHUAN_API_KEY",
+  },
+  {
+    name: "MiniMax",
+    // abab- family + the newer MiniMax-* models; case-insensitive.
+    modelPrefixes: ["abab", "minimax-"],
+    baseURL: "https://api.minimax.io/v1",
+    apiKeyEnv: "MINIMAX_API_KEY",
+  },
+  {
+    name: "Tencent Hunyuan",
+    modelPrefixes: ["hunyuan-"],
+    baseURL: "https://api.hunyuan.cloud.tencent.com/v1",
+    apiKeyEnv: "HUNYUAN_API_KEY",
+  },
 ];
 
+/**
+ * Case-insensitive prefix match. Several Chinese providers ship model IDs in
+ * mixed case (Baichuan2-Turbo, MiniMax-Text-01) and users typing the canonical
+ * lowercase form shouldn't have to remember a vendor-specific capitalization.
+ */
 function findPreset(model: string): OpenAICompatPreset | null {
+  const lower = model.toLowerCase();
   for (const p of OPENAI_COMPAT_PRESETS) {
-    if (p.modelPrefixes.some((pre) => model.startsWith(pre))) return p;
+    if (p.modelPrefixes.some((pre) => lower.startsWith(pre.toLowerCase()))) return p;
   }
   return null;
 }
 
 export function detectProvider(model: string): ProviderName {
-  if (model.startsWith("claude-")) return "anthropic";
-  if (model.startsWith("gemini-")) return "gemini";
+  const m = model.toLowerCase();
+  if (m.startsWith("claude-")) return "anthropic";
+  if (m.startsWith("gemini-")) return "gemini";
   if (
-    model.startsWith("gpt-") ||
-    model.startsWith("o1") ||
-    model.startsWith("o3") ||
-    model.startsWith("o4") ||
-    model.startsWith("chatgpt-")
+    m.startsWith("gpt-") ||
+    m.startsWith("o1") ||
+    m.startsWith("o3") ||
+    m.startsWith("o4") ||
+    m.startsWith("chatgpt-")
   ) {
     return "openai";
   }

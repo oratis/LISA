@@ -129,7 +129,14 @@ lisa
 OpenAI 模型 (`gpt-*`) 还需要 `OPENAI_API_KEY`。
 重新生成像素头像还需要 `SEEDREAM_API_KEY`（[火山引擎 ARK](https://www.volcengine.com/product/ark)）。
 
-**其他 LLM**（DeepSeek、火山豆包、阿里 Qwen、月之暗面 Kimi、xAI Grok、智谱 GLM、本地 Ollama……）开箱即用 —— Lisa 按模型名前缀自动路由到对应的 OpenAI 兼容 endpoint。详见 [docs/PROVIDERS.md](docs/PROVIDERS.md)，10 个可直接 copy 的配方。
+**16+ 个其他 LLM** 开箱即用 —— Lisa 按模型名前缀（大小写不敏感）自动路由：
+
+- **国际**：Google Gemini · DeepSeek · Mistral · Perplexity Sonar · xAI Grok
+- **国内**：火山豆包 · 阿里 Qwen · 月之暗面 Kimi · 智谱 GLM · 阶跃 Step · 零一万物 Yi · 百川 Baichuan · MiniMax · 腾讯混元 Hunyuan
+- **本地**：Ollama · LM Studio · vLLM · llama.cpp
+- **聚合**：Groq · Together AI · Fireworks AI · OpenRouter · Azure OpenAI · one-api
+
+完整配方见 [docs/PROVIDERS.md](docs/PROVIDERS.md)。
 
 ## 她特殊在哪
 

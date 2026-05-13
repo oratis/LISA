@@ -5,13 +5,13 @@
 > the other. This doc lists configurations that work out of the box plus
 > a generic catch-all path for anything else.
 >
-> Last updated: 2026-05-10.
+> Last updated: 2026-05-13.
 
 ---
 
 ## Picking a model
 
-Lisa routes requests by **model name prefix**:
+Lisa routes requests by **model name prefix** (case-insensitive):
 
 | Model name starts with… | Routes to | API |
 |---|---|---|
@@ -19,14 +19,23 @@ Lisa routes requests by **model name prefix**:
 | `gemini-` | Google | Gemini (own protocol) |
 | `gpt-` / `o1` / `o3` / `o4` / `chatgpt-` | OpenAI | OpenAI Chat Completions |
 | `deepseek-` | DeepSeek | OpenAI-compat |
-| `doubao-` / `ep-` | Volcengine Ark | OpenAI-compat |
-| `qwen-` / `qwen2*` / `qwen3*` | Aliyun DashScope | OpenAI-compat |
-| `moonshot-` / `kimi-` | Moonshot | OpenAI-compat |
+| `mistral-` / `codestral-` / `magistral-` / `ministral-` / `pixtral-` | Mistral AI | OpenAI-compat |
+| `sonar` / `sonar-` | Perplexity (Sonar) | OpenAI-compat |
 | `grok-` | xAI | OpenAI-compat |
+| `doubao-` / `ep-` | Volcengine Ark (Doubao) | OpenAI-compat |
+| `qwen-` / `qwen2*` / `qwen3*` | Aliyun DashScope | OpenAI-compat |
+| `moonshot-` / `kimi-` | Moonshot (Kimi) | OpenAI-compat |
 | `glm-` / `chatglm-` | Zhipu | OpenAI-compat |
+| `step-` | Stepfun | OpenAI-compat |
+| `yi-` | 01.AI (Yi) | OpenAI-compat |
+| `baichuan-` / `baichuan2*` / `baichuan3*` / `baichuan4*` | Baichuan | OpenAI-compat |
+| `abab*` / `minimax-` | MiniMax | OpenAI-compat |
+| `hunyuan-` | Tencent Hunyuan | OpenAI-compat |
 | anything else (with `LISA_BASE_URL` set) | catch-all | OpenAI-compat |
 
 Pass model with `--model <name>` or `LISA_MODEL=...` (set globally) or via the REPL.
+
+**Providers without unique prefixes** (Groq / Together / Fireworks / OpenRouter etc. — they all host third-party models like Llama / Qwen / DeepSeek) → use the **catch-all path** (Recipe 10).
 
 ---
 
@@ -40,9 +49,18 @@ Pass model with `--model <name>` or `LISA_MODEL=...` (set globally) or via the R
 | OpenAI | `gpt-4o`, `gpt-5`, `o3`, `o4` |
 | Google Gemini | `gemini-2.5-pro` / `gemini-2.5-flash` (and up) |
 | DeepSeek | `deepseek-chat` (V3.x) |
+| Mistral | `mistral-large-latest`, `magistral-large-latest` |
+| Perplexity | `sonar-pro`, `sonar-reasoning-pro` |
+| xAI Grok | `grok-2`, `grok-3` |
 | Volcengine | `doubao-1.5-pro-32k` and up |
 | Aliyun | `qwen3-72b-instruct` and up |
 | Moonshot | `moonshot-v1-32k` and up |
+| Zhipu | `glm-4.5`, `glm-4-plus` |
+| Stepfun | `step-2-16k`, `step-1-256k` |
+| 01.AI | `yi-large`, `yi-lightning` |
+| Baichuan | `Baichuan4` |
+| MiniMax | `MiniMax-Text-01`, `abab6.5s-chat` |
+| Hunyuan | `hunyuan-large`, `hunyuan-turbo-latest` |
 | Local Ollama | `qwen2.5-32b-instruct`, `llama3.1-70b-instruct` and up |
 
 After birth completes (one-time), daily conversations can use a cheaper / smaller model — the birth artifact (her seed and identity) is durable.
@@ -199,9 +217,97 @@ Routes to `https://open.bigmodel.cn/api/paas/v4`.
 
 ---
 
-## Recipe 10: Anything else (catch-all)
+## Recipe 10: Mistral AI
 
-Any OpenAI-compatible endpoint works via the catch-all override:
+```sh
+echo 'MISTRAL_API_KEY=...' >> ~/.lisa/config.env
+lisa --model mistral-large-latest
+lisa --model magistral-large-latest    # reasoning
+lisa --model codestral-latest          # code
+lisa --model ministral-8b-latest       # cheap & fast
+```
+
+Routes to `https://api.mistral.ai/v1`. Strong on European-language work; good tool-use fidelity from `mistral-large` upward.
+
+---
+
+## Recipe 11: Perplexity (Sonar)
+
+```sh
+echo 'PERPLEXITY_API_KEY=pplx-...' >> ~/.lisa/config.env
+lisa --model sonar              # cheap online search
+lisa --model sonar-pro          # better quality
+lisa --model sonar-reasoning-pro
+```
+
+Routes to `https://api.perplexity.ai`. Sonar models include built-in web search — useful when Lisa needs current information and you don't want her to spin up `web_search` separately.
+
+---
+
+## Recipe 12: Stepfun (Step, China)
+
+```sh
+echo 'STEPFUN_API_KEY=...' >> ~/.lisa/config.env
+lisa --model step-2-16k
+lisa --model step-1-256k        # very long context
+```
+
+Routes to `https://api.stepfun.com/v1`. Stepfun is one of the newer Chinese labs; tool-use solid in `step-2`.
+
+---
+
+## Recipe 13: 01.AI (Yi, China)
+
+```sh
+echo 'LINGYI_API_KEY=...' >> ~/.lisa/config.env
+lisa --model yi-large
+lisa --model yi-lightning       # cheap
+lisa --model yi-vision          # multi-modal
+```
+
+Routes to `https://api.lingyiwanwu.com/v1`. (env var is `LINGYI_API_KEY` per 01.ai's docs; company name is 零一万物 / Lingyi Wanwu.)
+
+---
+
+## Recipe 14: Baichuan (China)
+
+```sh
+echo 'BAICHUAN_API_KEY=sk-...' >> ~/.lisa/config.env
+lisa --model Baichuan4
+lisa --model Baichuan2-Turbo
+```
+
+Routes to `https://api.baichuan-ai.com/v1`. Model IDs ship in title-case; Lisa's prefix match is case-insensitive so `--model Baichuan4` works directly.
+
+---
+
+## Recipe 15: MiniMax (China)
+
+```sh
+echo 'MINIMAX_API_KEY=...' >> ~/.lisa/config.env
+lisa --model MiniMax-Text-01        # newer flagship
+lisa --model abab6.5s-chat          # cheap & fast
+```
+
+Routes to `https://api.minimax.io/v1`. Both the `abab*` family (older naming) and the `MiniMax-*` family (newer) work.
+
+---
+
+## Recipe 16: Tencent Hunyuan
+
+```sh
+echo 'HUNYUAN_API_KEY=...' >> ~/.lisa/config.env
+lisa --model hunyuan-large
+lisa --model hunyuan-turbo-latest
+```
+
+Routes to `https://api.hunyuan.cloud.tencent.com/v1`. Tencent's flagship; direct from mainland China with no proxy.
+
+---
+
+## Recipe 17: Anything else (catch-all)
+
+Any OpenAI-compatible endpoint works via the catch-all override — set `LISA_BASE_URL` and use any model name your endpoint accepts:
 
 ```sh
 echo 'LISA_BASE_URL=https://your-endpoint.example/v1' >> ~/.lisa/config.env
@@ -209,13 +315,84 @@ echo 'LISA_API_KEY=...' >> ~/.lisa/config.env
 lisa --model whatever-model-name
 ```
 
-This route fires when the model name doesn't match any preset prefix. Useful for:
-- `one-api` self-hosted relay
-- `openrouter` (proxy)
-- Internal company LLM gateways
-- Any new provider not yet in the preset table
+This route fires when the model name doesn't match any preset prefix. Common configurations:
 
-If you'd like a new provider added to the preset table, send a PR or open an issue with: provider name, baseURL, API key env var, model name pattern.
+### Groq (very fast inference of open-weight models)
+
+```sh
+echo 'LISA_BASE_URL=https://api.groq.com/openai/v1' >> ~/.lisa/config.env
+echo 'LISA_API_KEY=gsk_...' >> ~/.lisa/config.env
+lisa --model llama-3.3-70b-versatile     # birth-capable
+lisa --model llama-3.1-8b-instant        # too small for birth, fine for chat
+lisa --model mixtral-8x7b-32768
+```
+
+Sub-second token latency on Llama / Mixtral / Gemma — great for daily chat once Lisa is born.
+
+### Together AI
+
+```sh
+echo 'LISA_BASE_URL=https://api.together.xyz/v1' >> ~/.lisa/config.env
+echo 'LISA_API_KEY=...' >> ~/.lisa/config.env
+lisa --model meta-llama/Llama-3.3-70B-Instruct-Turbo
+lisa --model deepseek-ai/DeepSeek-V3
+lisa --model Qwen/Qwen2.5-72B-Instruct-Turbo
+```
+
+Together hosts a huge model catalog. Use their exact slug (quote it — contains a `/`).
+
+### Fireworks AI
+
+```sh
+echo 'LISA_BASE_URL=https://api.fireworks.ai/inference/v1' >> ~/.lisa/config.env
+echo 'LISA_API_KEY=fw_...' >> ~/.lisa/config.env
+lisa --model accounts/fireworks/models/llama-v3p3-70b-instruct
+lisa --model accounts/fireworks/models/qwen2p5-72b-instruct
+```
+
+### OpenRouter (one key, 100+ models)
+
+```sh
+echo 'LISA_BASE_URL=https://openrouter.ai/api/v1' >> ~/.lisa/config.env
+echo 'LISA_API_KEY=sk-or-...' >> ~/.lisa/config.env
+lisa --model "anthropic/claude-sonnet-4-5"
+lisa --model "google/gemini-2.5-pro"
+lisa --model "deepseek/deepseek-chat"
+```
+
+⚠ OpenRouter's slugs contain `/`. Quote the model name. Also: `LISA_BASE_URL` being set means Lisa **doesn't** re-route based on the slug's prefix — `anthropic/claude-...` goes through OpenRouter, not directly to Anthropic.
+
+### Azure OpenAI
+
+```sh
+echo 'OPENAI_BASE_URL=https://YOUR-RESOURCE.openai.azure.com/openai/v1' >> ~/.lisa/config.env
+echo 'OPENAI_API_KEY=...' >> ~/.lisa/config.env
+lisa --model gpt-4o
+```
+
+### one-api / new-api / self-hosted relay
+
+```sh
+echo 'LISA_BASE_URL=https://your-one-api.example/v1' >> ~/.lisa/config.env
+echo 'LISA_API_KEY=sk-...' >> ~/.lisa/config.env
+lisa --model <whatever-channel-name>
+```
+
+If `curl https://your-one-api/v1/models` works, Lisa works.
+
+### LM Studio / vLLM / llama.cpp server (local)
+
+```sh
+echo 'LISA_BASE_URL=http://localhost:1234/v1' >> ~/.lisa/config.env   # LM Studio default
+echo 'LISA_API_KEY=lm-studio' >> ~/.lisa/config.env
+lisa --model qwen2.5-coder-32b-instruct
+```
+
+Same idea as Ollama (Recipe 5); only the port + key string differs.
+
+---
+
+If you'd like a new provider added to the preset table (no `LISA_BASE_URL` needed), send a PR or open an issue with: provider name, baseURL, API key env var, the unique model-name prefix(es).
 
 ---
 
@@ -249,6 +426,16 @@ Her soul / journal / desires don't care which model wrote them. The birth artifa
 | Aliyun Qwen | Tool-use OK on Qwen 2.5+ / Qwen 3. |
 | Grok | Tool-use OK. Streaming OK. |
 | Zhipu | Tool-use OK on GLM-4.5+. |
+| Mistral | Tool-use solid from `mistral-large`+. EU-hosted. |
+| Perplexity Sonar | Built-in web search; tool-use limited (the model already retrieves). Use for current-events queries. |
+| Stepfun | Tool-use solid on `step-2`. Long context up to 256k on `step-1`. |
+| 01.AI Yi | Tool-use OK on `yi-large`. `yi-vision` for multimodal. |
+| Baichuan | Tool-use OK on `Baichuan4`. Older `Baichuan2-Turbo` is text-only. |
+| MiniMax | Tool-use stable on `MiniMax-Text-01`+. `abab*` legacy. |
+| Hunyuan | Tool-use OK on `hunyuan-large`/`hunyuan-turbo-latest`. China-direct. |
+| Groq | OpenAI-compat. Llama/Mixtral/Gemma. Sub-second latency. Tool-use depends on model. |
+| Together / Fireworks | Open-weight aggregators. Tool-use depends on the specific model you select. |
+| OpenRouter | Routes to many providers behind one API. Tool-use depends on the underlying model. |
 
 If birth or a tool-heavy session fails on a given provider, fall back to Claude or GPT for that session.
 

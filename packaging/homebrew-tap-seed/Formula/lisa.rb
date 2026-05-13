@@ -13,7 +13,7 @@ class Lisa < Formula
   homepage "https://github.com/oratis/LISA"
   # Bump per release:
   url "https://github.com/oratis/LISA/archive/refs/tags/v0.2.0.tar.gz"
-  sha256 "REPLACE_WITH_RELEASE_TARBALL_SHA256"
+  sha256 "e0ec43a75932dfa2bed5be44bf171af7c83ef3612c8e936affaad1a5ae081d91"
   license "MIT"
   head "https://github.com/oratis/LISA.git", branch: "main"
 

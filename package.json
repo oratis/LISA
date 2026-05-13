@@ -9,6 +9,16 @@
     "openai",
     "gemini",
     "deepseek",
+    "mistral",
+    "perplexity",
+    "grok",
+    "qwen",
+    "doubao",
+    "moonshot",
+    "kimi",
+    "glm",
+    "hunyuan",
+    "minimax",
     "ollama",
     "personal-assistant",
     "self-evolving",
@@ -28,7 +38,7 @@
   "author": "oratis",
   "type": "module",
   "bin": {
-    "lisa": "./dist/cli.js"
+    "lisa": "dist/cli.js"
   },
   "files": [
     "dist/",

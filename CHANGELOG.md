@@ -5,7 +5,20 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
-—
+### Added
+
+- **7 new LLM provider presets** — Lisa now auto-routes 7 additional providers by model-name prefix, no `LISA_BASE_URL` plumbing needed:
+  - **Mistral AI** (`mistral-` / `codestral-` / `magistral-` / `ministral-` / `pixtral-`) → `api.mistral.ai/v1`, key `MISTRAL_API_KEY`
+  - **Perplexity Sonar** (`sonar` / `sonar-`) → `api.perplexity.ai`, key `PERPLEXITY_API_KEY` — built-in web search
+  - **Stepfun** (`step-`) → `api.stepfun.com/v1`, key `STEPFUN_API_KEY`
+  - **01.AI / Yi** (`yi-`) → `api.lingyiwanwu.com/v1`, key `LINGYI_API_KEY`
+  - **Baichuan** (`baichuan-` / `baichuan2*` / `baichuan3*` / `baichuan4*`) → `api.baichuan-ai.com/v1`, key `BAICHUAN_API_KEY`
+  - **MiniMax** (`abab*` / `minimax-`) → `api.minimax.io/v1`, key `MINIMAX_API_KEY`
+  - **Tencent Hunyuan** (`hunyuan-`) → `api.hunyuan.cloud.tencent.com/v1`, key `HUNYUAN_API_KEY`
+- **Case-insensitive prefix matching** — `--model Baichuan4` and `--model MiniMax-Text-01` now route correctly without the user needing to remember vendor-specific capitalization. The top-level provider check (`claude-` / `gemini-` / `gpt-` / `o1-3-4` / `chatgpt-`) is also case-insensitive now.
+- **Catch-all recipes** in `docs/PROVIDERS.md` for providers without unique model-name prefixes: **Groq**, **Together AI**, **Fireworks AI**, **OpenRouter**, **Azure OpenAI**, **LM Studio / vLLM / llama.cpp**, **one-api / new-api self-hosted relays** — each with a copy-paste config snippet.
+
+Total provider count: **3 native protocols** (Anthropic / OpenAI / Gemini) + **13 OpenAI-compat presets** + **catch-all** for the rest = effectively any major LLM endpoint.
 
 ## [0.2.0] — 2026-05-11
 
