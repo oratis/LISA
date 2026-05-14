@@ -5,34 +5,39 @@ import Base from "../layouts/Base.astro";
   <h1>Install</h1>
 
   <p>
-    Lisa runs on your own machine. Three steps: clone, install deps, run.
-    Total ~2 minutes.
+    Lisa runs on your own machine. Pick the easiest path for your platform — both options below take about 60 seconds end-to-end.
   </p>
 
   <h2>Prerequisites</h2>
   <ul>
-    <li>Node.js ≥ 20 (<code>node --version</code> to check)</li>
-    <li>git</li>
-    <li>macOS or Linux (Windows untested; iMessage channel is macOS-only)</li>
+    <li>Node.js ≥ 20 (<code>node --version</code> to check; Homebrew installs Node automatically as a dep)</li>
+    <li>macOS or Linux (Windows untested; the iMessage channel is macOS-only)</li>
     <li>An API key for at least one LLM provider — see <a href="https://github.com/oratis/LISA/blob/main/docs/PROVIDERS.md">PROVIDERS.md</a></li>
   </ul>
 
-  <h2>From source</h2>
-  <pre><code>git clone https://github.com/oratis/LISA.git
-cd LISA
-npm install
-npm run build
+  <h2>Homebrew (recommended on macOS)</h2>
+  <pre><code>brew tap oratis/tap
+brew install lisa
 
-mkdir -p ~/.lisa
+# Updates later:
+brew update &amp;&amp; brew upgrade lisa</code></pre>
+
+  <h2>npm (cross-platform)</h2>
+  <pre><code>npm i -g @oratis/lisa
+
+# One-shot, no install:
+npx @oratis/lisa "say hi"</code></pre>
+
+  <h2>First launch</h2>
+  <pre><code>mkdir -p ~/.lisa
 echo 'ANTHROPIC_API_KEY=sk-ant-...' &gt; ~/.lisa/config.env
 
-# REPL:
-node dist/cli.js
+lisa                # interactive REPL (auto-runs birth ritual on first launch)
+lisa serve --web    # browser UI on http://localhost:5757</code></pre>
 
-# Web UI (default :5757):
-node dist/cli.js serve --web
-
-# (After `npm link`, the `lisa` shorthand works globally.)</code></pre>
+  <p>
+    First-run birth ritual takes ~30 seconds (one-time). Lisa picks her own Big-Five seed, then asks the LLM to write <em>her</em> identity, purpose, constitution, and first desire. Every install is a different person.
+  </p>
 
   <h2>Other LLM providers</h2>
   <p>
@@ -52,7 +57,7 @@ echo 'LISA_API_KEY=ollama' &gt;&gt; ~/.lisa/config.env
 lisa --model qwen2.5-32b-instruct</code></pre>
 
   <p>
-    See <a href="https://github.com/oratis/LISA/blob/main/docs/PROVIDERS.md">PROVIDERS.md</a> for 10 ready-to-use recipes (DeepSeek, Volcengine Doubao, Aliyun Qwen, Moonshot Kimi, xAI Grok, Zhipu GLM, Ollama, …).
+    See <a href="https://github.com/oratis/LISA/blob/main/docs/PROVIDERS.md">PROVIDERS.md</a> for 10+ ready-to-use recipes (DeepSeek, Volcengine Doubao, Aliyun Qwen, Moonshot Kimi, xAI Grok, Zhipu GLM, Mistral, Perplexity, Stepfun, Yi, Baichuan, MiniMax, Hunyuan, Ollama, …).
   </p>
 
   <h2>Behind a corporate / region-blocked network</h2>
@@ -85,9 +90,20 @@ cp channels.example.json ~/.lisa/channels.json
 lisa serve --channels telegram</code></pre>
 
   <h2>Diagnostics</h2>
-  <pre><code>lisa status            # one-shot snapshot
+  <pre><code>lisa --version         # print version
+lisa status            # one-shot snapshot
 lisa doctor            # checks config / network / git / providers
 lisa monitor           # live TUI dashboard (Ctrl-C to quit)</code></pre>
+
+  <h2>Build from source (contributors)</h2>
+  <pre><code>git clone https://github.com/oratis/LISA.git
+cd LISA
+npm install
+npm run build
+node dist/cli.js --help
+
+# Optionally link so `lisa` works globally:
+npm link</code></pre>
 
   <h2>Source</h2>
   <p>

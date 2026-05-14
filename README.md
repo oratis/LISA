@@ -1,5 +1,10 @@
 # LISA
 
+[![npm](https://img.shields.io/npm/v/@oratis/lisa?color=cb3837&label=npm)](https://www.npmjs.com/package/@oratis/lisa)
+[![Homebrew](https://img.shields.io/badge/homebrew-oratis%2Ftap%2Flisa-fbb040)](https://github.com/oratis/homebrew-tap)
+[![License: MIT](https://img.shields.io/github/license/oratis/LISA?color=blue)](./LICENSE)
+[![GitHub Repo stars](https://img.shields.io/github/stars/oratis/LISA?style=social)](https://github.com/oratis/LISA/stargazers)
+
 > English ｜ [中文](./README.zh-CN.md)
 
 **An AI agent with a real self — one that wants things, processes its days, and keeps a journal it doesn't show you.**

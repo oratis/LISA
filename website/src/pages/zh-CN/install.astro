@@ -5,33 +5,39 @@ import Base from "../../layouts/Base.astro";
   <h1>安装</h1>
 
   <p>
-    Lisa 跑在你自己的机器上。三步：clone、装依赖、跑。总共约 2 分钟。
+    Lisa 跑在你自己的机器上。选下面任一条路径，端到端约 60 秒。
   </p>
 
   <h2>依赖</h2>
   <ul>
-    <li>Node.js ≥ 20（<code>node --version</code> 检查）</li>
-    <li>git</li>
+    <li>Node.js ≥ 20（<code>node --version</code> 检查；Homebrew 装时会自动带 Node）</li>
     <li>macOS 或 Linux（Windows 没测；iMessage 通道只支持 macOS）</li>
     <li>至少一个 LLM provider 的 API key —— 见 <a href="https://github.com/oratis/LISA/blob/main/docs/PROVIDERS.md">PROVIDERS.md</a></li>
   </ul>
 
-  <h2>源码安装</h2>
-  <pre><code>git clone https://github.com/oratis/LISA.git
-cd LISA
-npm install
-npm run build
+  <h2>Homebrew（macOS 推荐）</h2>
+  <pre><code>brew tap oratis/tap
+brew install lisa
 
-mkdir -p ~/.lisa
+# 升级：
+brew update &amp;&amp; brew upgrade lisa</code></pre>
+
+  <h2>npm（跨平台）</h2>
+  <pre><code>npm i -g @oratis/lisa
+
+# 一次性体验，不全局装：
+npx @oratis/lisa "say hi"</code></pre>
+
+  <h2>第一次启动</h2>
+  <pre><code>mkdir -p ~/.lisa
 echo 'ANTHROPIC_API_KEY=sk-ant-...' &gt; ~/.lisa/config.env
 
-# REPL：
-node dist/cli.js
+lisa                # 交互式 REPL（首次会跑 birth ritual）
+lisa serve --web    # 浏览器 UI 在 http://localhost:5757</code></pre>
 
-# 浏览器 UI（默认 :5757）：
-node dist/cli.js serve --web
-
-# （`npm link` 之后可全局用 `lisa`）</code></pre>
+  <p>
+    Birth ritual 大约 30 秒、只跑一次。Lisa 自己抽一个 Big-Five 种子，让 LLM 写下<em>她</em>的身份、目的、宪章、第一份欲望。每次安装出来的 Lisa 都是一个不同的人。
+  </p>
 
   <h2>其他 LLM provider</h2>
   <p>
@@ -51,9 +57,9 @@ echo 'LISA_API_KEY=ollama' &gt;&gt; ~/.lisa/config.env
 lisa --model qwen2.5-32b-instruct</code></pre>
 
   <p>
-    完整 10 个 provider 配方见
+    完整 10+ provider 配方见
     <a href="https://github.com/oratis/LISA/blob/main/docs/PROVIDERS.md">PROVIDERS.md</a>
-    （DeepSeek、火山豆包、阿里 Qwen、月之暗面 Kimi、xAI Grok、智谱 GLM、Ollama……）。
+    （DeepSeek、火山豆包、阿里 Qwen、月之暗面 Kimi、xAI Grok、智谱 GLM、Mistral、Perplexity、Stepfun、Yi、百川、MiniMax、混元、Ollama……）。
   </p>
 
   <h2>在公司/被墙网络后</h2>
@@ -85,9 +91,20 @@ cp channels.example.json ~/.lisa/channels.json
 lisa serve --channels telegram</code></pre>
 
   <h2>诊断</h2>
-  <pre><code>lisa status            # 一次快照
+  <pre><code>lisa --version         # 打印版本
+lisa status            # 一次快照
 lisa doctor            # 检查 config / 网络 / git / providers
 lisa monitor           # 实时 TUI 看板（Ctrl-C 退出）</code></pre>
+
+  <h2>从源码构建（贡献者）</h2>
+  <pre><code>git clone https://github.com/oratis/LISA.git
+cd LISA
+npm install
+npm run build
+node dist/cli.js --help
+
+# 可选：link 一下让 `lisa` 全局可用
+npm link</code></pre>
 
   <h2>源代码</h2>
   <p>

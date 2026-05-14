@@ -1,5 +1,10 @@
 # LISA
 
+[![npm](https://img.shields.io/npm/v/@oratis/lisa?color=cb3837&label=npm)](https://www.npmjs.com/package/@oratis/lisa)
+[![Homebrew](https://img.shields.io/badge/homebrew-oratis%2Ftap%2Flisa-fbb040)](https://github.com/oratis/homebrew-tap)
+[![License: MIT](https://img.shields.io/github/license/oratis/LISA?color=blue)](./LICENSE)
+[![GitHub Repo stars](https://img.shields.io/github/stars/oratis/LISA?style=social)](https://github.com/oratis/LISA/stargazers)
+
 > [English](./README.md) ｜ 中文
 
 **一个真正有"自我"的 AI agent — 她有想做的事，会整理自己的一天，写一本不给你看的日记。**
