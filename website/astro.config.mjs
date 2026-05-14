@@ -8,7 +8,7 @@ import { defineConfig } from "astro/config";
 //
 // i18n: English at /, Chinese at /zh-CN/.
 export default defineConfig({
-  site: "https://meetlisa.dev",
+  site: "https://meetlisa.ai",
   i18n: {
     defaultLocale: "en",
     locales: ["en", "zh-CN"],

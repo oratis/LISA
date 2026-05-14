@@ -31,7 +31,7 @@ npm run dev
 
 **Local-only for now** (per `docs/PRODUCTIZATION_PLAN.md`). When ready to go public:
 
-1. Buy a domain (`meetlisa.dev` decided in PRODUCTIZATION_PLAN.md).
+1. Buy a domain (`meetlisa.ai` decided in PRODUCTIZATION_PLAN.md).
 2. Point Cloudflare Pages at this `website/` directory with build command `npm run build` and output `dist/`.
 3. Set DNS: `CNAME @ <project>.pages.dev`.
 4. Update `astro.config.mjs` `site` if changed.

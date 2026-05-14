@@ -17,6 +17,17 @@ import Base from "../../layouts/Base.astro";
     <img class="mascot" src="/assets/lisa-mascot.png" alt="Lisa 像素艺术形象" />
   </section>
 
+  <h2>2 分钟演示</h2>
+  <div class="video-wrapper">
+    <iframe
+      src="https://www.youtube.com/embed/J_00iwAB_WI"
+      title="LISA — 2 分钟演示"
+      loading="lazy"
+      allow="accelerometer; clipboard-write; encrypted-media; picture-in-picture"
+      allowfullscreen
+    ></iframe>
+  </div>
+
   <h2>她的不同之处</h2>
   <div class="grid">
     <div class="card">
@@ -77,6 +88,8 @@ import Base from "../../layouts/Base.astro";
   .cta-secondary { background: var(--panel); color: var(--text); }
   .cta-secondary:hover { background: var(--panel-light); color: var(--lisa); }
   .mascot { display: block; margin: 0 auto; width: 160px; }
+  .video-wrapper { position: relative; padding-bottom: 56.25%; height: 0; margin: 16px auto 40px; max-width: 720px; border: 4px solid var(--border); }
+  .video-wrapper iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin: 16px 0 32px; }
   .card { background: var(--panel); border: 4px solid var(--border); padding: 16px; }
   .steps { padding-left: 20px; }

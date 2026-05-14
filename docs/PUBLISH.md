@@ -185,17 +185,17 @@ The formula installs Node as a dep and links the `lisa` bin into Homebrew's pref
 
 ---
 
-## 3. Cloudflare Pages — `meetlisa.dev`
+## 3. Cloudflare Pages — `meetlisa.ai`
 
-Status: domain not purchased yet, infrastructure already wired. The
-GitHub Actions workflow [.github/workflows/website-deploy.yml](../.github/workflows/website-deploy.yml)
-builds the site on every push to `main` (under `website/` paths). The
-deploy step only fires when both `CF_API_TOKEN` and `CF_ACCOUNT_ID`
-secrets are set, so it's safe to merge before flipping the switch.
+Status: `meetlisa.ai` purchased. Cloudflare Pages setup pending —
+secrets not yet wired, so the deploy step in [.github/workflows/website-deploy.yml](../.github/workflows/website-deploy.yml)
+is still skipped on push. The workflow builds the Astro site on every
+push to `main` (under `website/` paths) regardless, so the build is
+known-good before flipping the deploy switch.
 
-### One-time setup (when ready to go public)
+### One-time setup (now that the domain is registered)
 
-1. **Buy the domain.** Cloudflare Registrar / Namecheap / Porkbun / etc. — your call. Per PRODUCTIZATION_PLAN, decided: `meetlisa.dev`.
+1. **Domain.** ✅ Already purchased: `meetlisa.ai` (Cloudflare Registrar / Namecheap / Porkbun all work).
 
 2. **Create the Cloudflare Pages project.**
    - Sign in to Cloudflare → Workers & Pages → Create → Pages → Connect to Git.
@@ -225,7 +225,7 @@ secrets are set, so it's safe to merge before flipping the switch.
 
    Watch GitHub Actions → "Website — build + deploy" → both jobs should complete green. The deploy job posts the live URL.
 
-6. **Custom domain.** Cloudflare Pages project → Custom domains → Set up a custom domain → enter `meetlisa.dev`. Cloudflare auto-creates the CNAME / TLS cert.
+6. **Custom domain.** Cloudflare Pages project → Custom domains → Set up a custom domain → enter `meetlisa.ai`. Cloudflare auto-creates the CNAME / TLS cert.
 
 ### Updates
 

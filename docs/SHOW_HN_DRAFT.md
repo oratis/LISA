@@ -70,8 +70,8 @@ npm i -g @oratis/lisa
 Then `lisa birth`, give it an Anthropic or OpenAI key, watch her introduce herself.
 
 Repo: https://github.com/oratis/LISA
-Site: https://meetlisa.dev   (still warming up — DNS propagating)
-Demo video: [30s screen-recording, embedded in README]
+Site: https://meetlisa.ai
+Demo (2 min): https://www.youtube.com/watch?v=J_00iwAB_WI — also embedded in the README and on the landing page.
 
 Happy to answer architecture questions, defend the design tradeoffs, or get told the soul framing is too much. Both are useful feedback.
 
@@ -109,11 +109,11 @@ Stay engaged in the comment thread for the first ~4 hours after posting. HN rank
 
 ## Pre-flight checklist (all must be ✅ before posting)
 
-- [ ] `meetlisa.dev` resolves to the Astro landing page and HTTPS is green
+- [ ] `meetlisa.ai` resolves to the Astro landing page and HTTPS is green
 - [ ] `brew install oratis/tap/lisa` works on a freshly-tested macOS account
 - [ ] `npm i -g @oratis/lisa` followed by `lisa --help` works on the same fresh account
-- [ ] 30s demo video uploaded to a CDN (cloudflare stream / vimeo / a raw mp4 on the site), linked in README
-- [ ] README has demo video embedded at top + screenshot gallery linked
+- [x] Demo video — 2 min on YouTube (`J_00iwAB_WI`) — embedded in README + landing page
+- [x] README has demo video at top + screenshot gallery linked
 - [ ] At least 3 GitHub Discussions seeded (FAQ-style) so the repo doesn't look empty
 - [ ] A second pair of eyes (you or a friend) has read the post for tone — soul framing is OK, gushing isn't
 - [ ] You're available to answer comments for the next 4 hours
