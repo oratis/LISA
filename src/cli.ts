@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 import process from "node:process";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve as resolvePath } from "node:path";
 // Bridge HTTPS_PROXY / HTTP_PROXY env to undici BEFORE any module reads/uses
 // fetch — handles the case where the shell already exports a proxy. We also
 // re-call this after config.env loads (inside main()) to handle proxies set
@@ -73,6 +76,7 @@ SKILLS (executable, Phase 3.1)
   lisa skills audit <slug>     Show the audit trail.
 
   lisa --help                  Show this message.
+  lisa --version               Print the installed Lisa version.
 
 FLAGS
   --model <id>          Override default (${DEFAULT_MODEL}).
@@ -241,7 +245,26 @@ function mustNext(argv: string[], idx: number, flag: string): string {
   return v;
 }
 
+function readPackageVersion(): string {
+  try {
+    const here = dirname(fileURLToPath(import.meta.url));
+    // dist/cli.js → ../package.json (works both in dev and in the installed npm tarball,
+    // where dist/ and package.json are siblings under the package root).
+    const pkgPath = resolvePath(here, "..", "package.json");
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as { version?: string };
+    return pkg.version ?? "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
 async function main(): Promise<void> {
+  // --version / -v: print and exit before any heavy startup (proxy, config, soul).
+  const rawArgv = process.argv.slice(2);
+  if (rawArgv.includes("--version") || rawArgv.includes("-v")) {
+    console.log(readPackageVersion());
+    return;
+  }
   let args: ParsedArgs;
   try {
     args = parseArgs(process.argv.slice(2));
