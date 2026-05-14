@@ -225,6 +225,14 @@ function parseBirthOutput(raw: string): BirthOutput {
   if (!parsed.first_value?.slug || !parsed.first_desire?.slug) {
     throw new Error("birth output missing first_value or first_desire");
   }
+  // Smaller models sometimes return `constitution` as an array of strings
+  // when the prompt asks for a "markdown list". Coerce to a numbered
+  // markdown block so downstream string ops work uniformly.
+  if (Array.isArray(parsed.constitution)) {
+    parsed.constitution = (parsed.constitution as unknown[])
+      .map((line, i) => `${i + 1}. ${String(line).replace(/^\s*\d+[.)]\s*/, "")}`)
+      .join("\n");
+  }
   return parsed;
 }
 
