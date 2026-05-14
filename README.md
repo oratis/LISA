@@ -386,6 +386,11 @@ SEEDREAM_API_KEY=...                  # optional — for asset regeneration
 LISA_SANDBOX=1                        # opt-in macOS Seatbelt for `bash`
 LISA_SANDBOX_NETWORK=0                # block network in sandbox
 LISA_PROVIDER=openai                  # force provider override
+LISA_IDLE_COMMITMENT_AWARE=1          # opt-in: bias idle-time toward upcoming user commitments
+                                      # before personal reflection. Recommended if your
+                                      # workflow involves recurring scheduled work (weekly
+                                      # summaries, daily check-ins). Default unset = LISA's
+                                      # self-reflective idle.
 ```
 
 ### `~/.lisa/mcp.json`
