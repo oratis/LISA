@@ -141,26 +141,34 @@ Create a separate GitHub repo: `https://github.com/oratis/homebrew-tap`. The rep
 
 ### Per-release
 
+The formula points at the **npm tarball** (not the GitHub source archive), because
+the npm tarball ships pre-built `dist/` — that avoids needing TypeScript at brew
+install time. So step 1 of the release ritual is `npm publish` (§1 above), and
+step 2 pins the formula to the freshly-published npm tarball.
+
 ```sh
-# 1. Tag a release in this repo (also pushes a GitHub Release with .tar.gz).
-git tag v0.2.0
-git push --tags
-# Then go to GitHub → Releases → "Draft a new release" → use the v0.2.0 tag → publish.
+# 0. Make sure npm publish (§1 above) has run — the npm tarball must exist.
 
-# 2. Compute the sha256 of the release tarball.
-RELEASE_URL="https://github.com/oratis/LISA/archive/refs/tags/v0.2.0.tar.gz"
-SHA=$(curl -sL "$RELEASE_URL" | shasum -a 256 | cut -d' ' -f1)
-echo "$SHA"
+# 1. Compute the sha256 of the npm tarball.
+VERSION=$(node -p 'require("./package.json").version')
+NPM_TARBALL="https://registry.npmjs.org/@oratis/lisa/-/lisa-${VERSION}.tgz"
+SHA=$(curl -sL "$NPM_TARBALL" | shasum -a 256 | cut -d' ' -f1)
+echo "version=$VERSION"
+echo "sha256=$SHA"
 
-# 3. Update the version + sha in the formula in the homebrew-tap repo.
-#    See packaging/homebrew/lisa.rb for the template.
+# 2. Edit packaging/homebrew/lisa.rb in this repo:
+#      url    "https://registry.npmjs.org/@oratis/lisa/-/lisa-${VERSION}.tgz"
+#      sha256 "${SHA}"
+#    Then copy the same file to the homebrew-tap repo at Formula/lisa.rb.
 
-# 4. Commit + push the formula.
+# 3. Commit + push the tap repo.
 cd ../homebrew-tap
 git add Formula/lisa.rb
-git commit -m "lisa 0.2.0"
+git commit -m "lisa ${VERSION}"
 git push
 ```
+
+Users running `brew update` (next time their auto-update fires) will see the new version.
 
 ### Install path for users
 

@@ -3,17 +3,19 @@
 # This file is the master template. The actual formula that users install
 # lives in a separate tap repository: github.com/oratis/homebrew-tap
 # at Formula/lisa.rb. Per release, copy this file there and update:
-#   - `version`
-#   - `url`  (matching the tag)
-#   - `sha256`  (sha256 of the tagged .tar.gz)
+#   - `url`     (npm tarball URL pinned to the new version)
+#   - `sha256`  (sha256 of that tarball — compute with curl|shasum -a 256)
 #
 # See docs/PUBLISH.md for the full release ritual.
 class Lisa < Formula
   desc "AI agent with a real self — sovereign, evolving, OSS"
   homepage "https://github.com/oratis/LISA"
-  # Bump per release:
-  url "https://github.com/oratis/LISA/archive/refs/tags/v0.2.0.tar.gz"
-  sha256 "e0ec43a75932dfa2bed5be44bf171af7c83ef3612c8e936affaad1a5ae081d91"
+  # Use the npm tarball, NOT the GitHub source tarball — it ships pre-built
+  # dist/ (compiled JS + 114 pixel-art mood portraits) so the formula doesn't
+  # need to run `tsc` (which would require TypeScript devDependencies that
+  # `npm install --global` skips).
+  url "https://registry.npmjs.org/@oratis/lisa/-/lisa-0.2.0.tgz"
+  sha256 "3acaa5a5efd27b64e1143441a8040405f8b3d4bb060b41b513f3f1971c632971"
   license "MIT"
   head "https://github.com/oratis/LISA.git", branch: "main"
 
@@ -23,11 +25,18 @@ class Lisa < Formula
   uses_from_macos "git"
 
   def install
-    # Install npm deps, build TypeScript, prep assets for the bundled CLI.
-    system "npm", "install", *std_npm_args(prepend_node_path: true)
-    system "npm", "run", "build"
+    # The npm tarball ships pre-built dist/ but no node_modules/. Install
+    # runtime deps only (no devDeps needed since we don't compile here).
+    system "npm", "install", "--omit=dev", "--no-audit", "--no-fund",
+                             "--no-package-lock", "--ignore-scripts"
 
-    # Install everything via libexec so we don't pollute the prefix.
+    # IMPORTANT: completions must be installed BEFORE libexec.install Dir["*"]
+    # because that move-step consumes the buildpath's `completions/` dir.
+    bash_completion.install "completions/lisa.bash" => "lisa"
+    zsh_completion.install "completions/_lisa"
+    (prefix/"share/fish/vendor_completions.d").install "completions/lisa.fish"
+
+    # Everything else (dist/, node_modules/, package.json, README) → libexec.
     libexec.install Dir["*"]
 
     # Wire `lisa` into the bin path with a shim that runs the bundled CLI.
@@ -36,13 +45,6 @@ class Lisa < Formula
       exec "#{Formula["node"].opt_bin}/node" "#{libexec}/dist/cli.js" "$@"
     SHIM
     chmod 0755, bin/"lisa"
-
-    # Shell completions (zsh + bash). Fish completion can be opted-in by
-    # symlinking ~/.config/fish/completions/lisa.fish manually — Homebrew
-    # doesn't have a standard fish-completion install path on every platform.
-    bash_completion.install "completions/lisa.bash" => "lisa"
-    zsh_completion.install "completions/_lisa"
-    (prefix/"share/fish/vendor_completions.d").install "completions/lisa.fish"
   end
 
   def caveats
