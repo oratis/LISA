@@ -10,3 +10,6 @@ reference/
 # Internal growth/marketing playbook — strategic docs that aren't public-friendly
 docs/GROWTH.md
 docs/launch/
+
+# Paper / research track — private until publication
+docs/paper/
