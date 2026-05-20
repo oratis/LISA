@@ -13,7 +13,7 @@ _lisa_completion() {
     _init_completion -n : 2>/dev/null || _get_comp_words_by_ref -n : cur prev words cword
 
     local subcommands="resume sessions serve heartbeat search birth soul channels skills wishlist status doctor monitor"
-    local global_flags="--model --provider --think --no-reflect --compact --approval --no-mcp --no-plugins --voice --idle --no-idle --help -h"
+    local global_flags="--model --provider --think --no-reflect --compact --approval --no-mcp --no-plugins --voice --idle --no-idle --help -h --version -v"
     local serve_flags="--web --imessage --channels --port"
     local skills_actions="list approve disable enable audit"
     local heartbeat_actions="run install uninstall"
