@@ -16,6 +16,7 @@ _lisa() {
 
     _arguments -C \
         '(-h --help)'{-h,--help}'[show help]' \
+        '(-v --version)'{-v,--version}'[print version and exit]' \
         '--model[LLM model name]:model:_lisa_models' \
         '--provider[force provider]:provider:(anthropic openai gemini)' \
         '--think[enable adaptive thinking each turn]' \

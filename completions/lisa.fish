@@ -66,6 +66,7 @@ complete -c lisa -n "__lisa_using_subcommand heartbeat" -f -a uninstall -d "remo
 
 # ── global flags ────────────────────────────────────────────────────
 complete -c lisa -l help         -s h -d "show help"
+complete -c lisa -l version      -s v -d "print version and exit"
 complete -c lisa -l think              -d "enable adaptive thinking"
 complete -c lisa -l no-reflect         -d "skip end-of-session reflection"
 complete -c lisa -l compact            -d "enable Anthropic context compaction"
