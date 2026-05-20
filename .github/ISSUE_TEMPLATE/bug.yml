@@ -34,9 +34,9 @@ body:
   - type: input
     id: lisa-version
     attributes:
-      label: LISA commit / version
-      description: Output of `git rev-parse --short HEAD`
-      placeholder: e.g. ac3a541
+      label: LISA version
+      description: Output of `lisa --version` (or `git rev-parse --short HEAD` if you're running from a clone)
+      placeholder: e.g. 0.2.0
     validations:
       required: true
   - type: dropdown
