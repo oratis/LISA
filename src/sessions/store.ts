@@ -62,20 +62,6 @@ export class SessionStore {
     await appendLine(this.path, JSON.stringify(entry));
   }
 
-  async readAll(): Promise<{
-    header: SessionHeader;
-    entries: SessionEntry[];
-  }> {
-    const raw = await fs.readFile(this.path, "utf8");
-    const lines = raw.split("\n").filter(Boolean);
-    if (lines.length === 0) throw new Error("empty session file");
-    const header = JSON.parse(lines[0]!) as SessionHeader;
-    const entries = lines
-      .slice(1)
-      .map((line) => JSON.parse(line) as SessionEntry);
-    return { header, entries };
-  }
-
   /**
    * Read a page of message entries (newest-first within the page).
    * page=0 = latest PAGE_SIZE messages, page=1 = older ones, etc.
