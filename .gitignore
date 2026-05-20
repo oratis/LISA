@@ -2,9 +2,11 @@ node_modules/
 dist/
 dist-release/
 *.log
+*.tsbuildinfo
 .DS_Store
 .env
 .env.local
+.claude/
 reference/
 
 # Internal growth/marketing playbook — strategic docs that aren't public-friendly
