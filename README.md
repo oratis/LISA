@@ -116,7 +116,7 @@ She is yours. The code is open source. **This particular Lisa is sovereign.**
 
 ## Install
 
-Requires Node ≥ 20 and an Anthropic API key.
+Requires Node ≥ 20 and a key for **at least one LLM provider** — Anthropic is the default, but any of the 20+ alternatives listed below works just as well (`--model gpt-4o`, `--model deepseek-chat`, `LISA_BASE_URL=http://localhost:11434/v1` for Ollama, etc.).
 
 ```sh
 git clone https://github.com/oratis/LISA.git
@@ -124,7 +124,7 @@ cd LISA
 npm install
 npm run build
 
-# Configure your key
+# Configure a key — Anthropic is the default model, swap for any provider below
 mkdir -p ~/.lisa
 echo 'ANTHROPIC_API_KEY=sk-ant-...' > ~/.lisa/config.env
 
