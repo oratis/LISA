@@ -72,7 +72,3 @@ export function createTaskTool(deps: {
     },
   };
 }
-
-export function readOnlyToolNames(): Set<string> {
-  return new Set(["read", "grep", "ls"]);
-}
