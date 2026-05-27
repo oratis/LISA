@@ -161,6 +161,7 @@ See [docs/PROVIDERS.md](docs/PROVIDERS.md) for ready-to-use recipes for all of t
 
 - **Terminal REPL** — `lisa` (interactive) or `lisa "prompt"` (one-shot)
 - **Web GUI** — `lisa serve --web` → http://localhost:5757 — pixel-art chat with live mood updates
+- **Island widget** — `lisa serve --web` → http://localhost:5757/island — a small pill with her current mood + status; open in a tiny browser window and dock it to your screen edge. Phase 1 (web-only) is shipped; a native Mac container with notch-aware positioning is planned ([docs/MAC_ISLAND_PLAN.md](docs/MAC_ISLAND_PLAN.md)).
 - **IM channels** — `lisa serve --channels telegram,discord,slack,feishu,imessage,webhook` — six built-in adapters, see below
 - **Heartbeat** — `lisa heartbeat run` (manual) or `lisa heartbeat install` (launchd / cron)
 
