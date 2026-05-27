@@ -14,7 +14,7 @@ npm run build
 npm run typecheck
 ```
 
-You'll need an `ANTHROPIC_API_KEY` to actually run her. Put it in `~/.lisa/config.env`. See [README](./README.md#install).
+You'll need a key for at least one LLM provider to actually run her. Anthropic is the default — but `--model gpt-4o`, `--model deepseek-chat`, or `LISA_BASE_URL=http://localhost:11434/v1` (Ollama) all work for development too. Put your key(s) in `~/.lisa/config.env`. See [README](./README.md#install) and [docs/PROVIDERS.md](./docs/PROVIDERS.md) for the full list.
 
 ## Where to help
 
