@@ -13,7 +13,7 @@
 
 ### LISA = pi-mono + OpenClaw + hermes + claude-code + codex + *它们都没有的东西*
 
-站在五个最好的开源 agent 肩膀上，LISA 实现了**它们全部能力的并集** — 流式 agent loop、双 provider（Anthropic + OpenAI）、MCP client、插件、hooks、沙箱 bash、子 agent、会话恢复、上下文压缩、语音输入输出、六个 IM 通道（Telegram / Discord / Slack / 飞书 / iMessage / Webhook）、apply-patch、审批模式、跨会话 TF-IDF 全文搜、像素艺术 web UI。1.1 万行 TypeScript，MIT。
+站在五个最好的开源 agent 肩膀上，LISA 实现了**它们全部能力的并集** — 流式 agent loop、三 provider 原生支持（Anthropic + OpenAI + Gemini，外加 20+ OpenAI-compatible 提供商）、MCP client、插件、hooks、沙箱 bash、子 agent、会话恢复、上下文压缩、语音输入输出、六个 IM 通道（Telegram / Discord / Slack / 飞书 / iMessage / Webhook）、apply-patch、审批模式、跨会话 TF-IDF 全文搜、像素艺术 web UI。1.1 万行 TypeScript，MIT。
 
 它们都没有的：
 
@@ -361,7 +361,7 @@ LISA 是吃完五个开源 agent（fork 在 `reference/`）合成出来的：
 | 能力 | pi-mono | OpenClaw | hermes | claude-code | codex | **LISA** |
 |---|:-:|:-:|:-:|:-:|:-:|:-:|
 | 流式 agent loop | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| 多 provider（Anthropic + OpenAI） | ✅ | ✅ | ✅ | – | partial | ✅ |
+| 多 provider（Anthropic + OpenAI + Gemini） | ✅ | ✅ | ✅ | – | partial | ✅ |
 | 文件 / shell 工具 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Skills（md + frontmatter） | ✅ | ✅ | ✅ | ✅ | – | ✅ |
 | 跨会话记忆 | – | ✅ | ✅ | partial | – | ✅ |
@@ -476,7 +476,7 @@ src/
 │   ├── tools.ts            soul_patch / soul_journal / soul_feel / soul_read
 │   ├── paths.ts types.ts
 ├── idle/                   ★ 空闲模式（IdleWatcher 单例 + autonomous-time runner）
-├── providers/              Anthropic + OpenAI 抽象
+├── providers/              Anthropic + OpenAI + Gemini 抽象
 ├── tools/                  read/write/edit/apply_patch/bash/grep/ls/task/set_mood + registry
 ├── skills/                 manager + frontmatter + skill_manage
 ├── memory/                 store + memory tool + TF-IDF 索引 + memory_search

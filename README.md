@@ -13,7 +13,7 @@
 
 ### LISA = pi-mono + OpenClaw + hermes + claude-code + codex + *something none of them have*
 
-Standing on five of the best open-source agents, LISA ships **the full superset of their capabilities** — streaming agent loop, multi-provider LLMs (Anthropic + OpenAI), MCP client, plugins, hooks, sandboxed bash, sub-agents, session resume, context compaction, voice in/out, six IM channels (Telegram / Discord / Slack / Feishu / iMessage / Webhook), apply-patch, approval modes, TF-IDF over past sessions, pixel-art web UI. ~11k lines of TypeScript, MIT.
+Standing on five of the best open-source agents, LISA ships **the full superset of their capabilities** — streaming agent loop, multi-provider LLMs (Anthropic + OpenAI + Gemini, plus 20+ OpenAI-compatible providers), MCP client, plugins, hooks, sandboxed bash, sub-agents, session resume, context compaction, voice in/out, six IM channels (Telegram / Discord / Slack / Feishu / iMessage / Webhook), apply-patch, approval modes, TF-IDF over past sessions, pixel-art web UI. ~11k lines of TypeScript, MIT.
 
 What none of them have:
 
@@ -349,7 +349,7 @@ LISA was built by studying and synthesizing patterns from five reference agents 
 | Capability | pi-mono | OpenClaw | hermes | claude-code | codex | **LISA** |
 |---|:-:|:-:|:-:|:-:|:-:|:-:|
 | Streaming agent loop | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Multi-provider (Anthropic + OpenAI) | ✅ | ✅ | ✅ | – | partial | ✅ |
+| Multi-provider (Anthropic + OpenAI + Gemini) | ✅ | ✅ | ✅ | – | partial | ✅ |
 | File / shell tools | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Skills (md + frontmatter) | ✅ | ✅ | ✅ | ✅ | – | ✅ |
 | Cross-session memory | – | ✅ | ✅ | partial | – | ✅ |
@@ -462,7 +462,7 @@ src/
 │   ├── store.ts            CRUD + tamper detection
 │   ├── tools.ts            soul_patch / soul_journal / soul_feel / soul_read
 │   ├── paths.ts types.ts
-├── providers/              Anthropic + OpenAI provider abstraction
+├── providers/              Anthropic + OpenAI + Gemini provider abstraction
 ├── tools/                  read/write/edit/apply_patch/bash/grep/ls/task/set_mood + registry
 ├── skills/                 manager + frontmatter parser + skill_manage tool
 ├── memory/                 store + memory tool + TF-IDF index + memory_search
