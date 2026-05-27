@@ -1,0 +1,14 @@
+# SwiftPM build cache
+.build/
+Package.resolved
+
+# Built bundle — local build artifact, distributed via GitHub Releases
+LisaIsland.app/
+
+# Xcode (in case anyone opens this dir as a project)
+*.xcodeproj/
+*.xcworkspace/
+DerivedData/
+
+# macOS
+.DS_Store
