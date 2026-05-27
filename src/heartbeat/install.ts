@@ -69,17 +69,26 @@ export async function installHeartbeat(
   }
 
   // Linux / WSL → cron snippet (do not write to user's crontab automatically)
-  const cronExpr = secondsToCronApprox(intervalSec);
+  const approx = secondsToCronApprox(intervalSec);
   const cmd = `${binPath} heartbeat run >> ${HEARTBEAT_LOG} 2>&1`;
+  const lines = [
+    `Lisa doesn't auto-edit your crontab on this platform. Add this line manually:`,
+    ``,
+    `  ${approx.cron}  ${cmd}`,
+    ``,
+  ];
+  if (approx.snapped) {
+    lines.push(
+      `Note: requested ${formatSec(intervalSec)} doesn't map cleanly to a single cron expression`,
+      `(cron can't span midnight evenly with hour-divisors other than 1,2,3,4,6,8,12).`,
+      `Snapped to the nearest safe divisor: ${formatSec(approx.effectiveSec)}.`,
+      ``,
+    );
+  }
+  lines.push(`Run \`crontab -e\` and append it. Verify with \`crontab -l\`.`);
   return {
     platform,
-    instructions: [
-      `Lisa doesn't auto-edit your crontab on this platform. Add this line manually:`,
-      ``,
-      `  ${cronExpr}  ${cmd}`,
-      ``,
-      `Run \`crontab -e\` and append it. Verify with \`crontab -l\`.`,
-    ].join("\n"),
+    instructions: lines.join("\n"),
   };
 }
 
@@ -154,16 +163,89 @@ function parseSchedule(spec: string): number {
   return 1800; // default 30 min
 }
 
-function secondsToCronApprox(sec: number): string {
-  if (sec >= 3600 && sec % 3600 === 0) {
-    const hours = sec / 3600;
-    return hours === 1 ? "0 * * * *" : `0 */${hours} * * *`;
+/** Cron field divisors that span the field cleanly (no wrap-around gap). */
+const SAFE_MIN_DIVISORS = [1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30];
+const SAFE_HOUR_DIVISORS = [1, 2, 3, 4, 6, 8, 12];
+
+function pickClosest(target: number, choices: readonly number[]): number {
+  return choices.reduce((best, v) =>
+    Math.abs(v - target) < Math.abs(best - target) ? v : best,
+  );
+}
+
+/**
+ * Convert an interval in seconds to a cron expression.
+ *
+ * cron's `*\/N` syntax only spans a field evenly when N divides the field's
+ * range (60 for minutes, 24 for hours). For other values cron wraps at the
+ * field boundary, producing a short final gap (e.g. `*\/5` on hours fires at
+ * 0,5,10,15,20 then 0 — only 4h between 20 and 0). For minute values >59 or
+ * hour values >23 cron silently ignores the field. To keep the printed line
+ * valid and the schedule even, we snap to the nearest safe divisor and let the
+ * caller report the rounding to the user.
+ */
+function secondsToCronApprox(sec: number): {
+  cron: string;
+  snapped: boolean;
+  effectiveSec: number;
+} {
+  // <1 minute → fall back to every-minute (cron's smallest granularity)
+  if (sec < 60) {
+    return { cron: "* * * * *", snapped: sec !== 60, effectiveSec: 60 };
   }
-  if (sec >= 60 && sec % 60 === 0) {
-    const mins = sec / 60;
-    return mins === 1 ? "* * * * *" : `*/${mins} * * * *`;
+
+  // 1m–<1h → minute granularity, snap to divisor of 60
+  if (sec < 3600) {
+    const requestedMin = sec / 60;
+    const min = pickClosest(requestedMin, SAFE_MIN_DIVISORS);
+    return {
+      cron: min === 1 ? "* * * * *" : `*/${min} * * * *`,
+      snapped: min !== requestedMin,
+      effectiveSec: min * 60,
+    };
   }
-  return `*/${Math.max(1, Math.round(sec / 60))} * * * *`;
+
+  // 1h–24h → hour granularity, snap to divisor of 24
+  if (sec <= 24 * 3600) {
+    const requestedH = sec / 3600;
+    const hours = pickClosest(requestedH, SAFE_HOUR_DIVISORS);
+    if (sec === 24 * 3600) {
+      return { cron: "0 0 * * *", snapped: false, effectiveSec: 24 * 3600 };
+    }
+    return {
+      cron: hours === 1 ? "0 * * * *" : `0 */${hours} * * *`,
+      snapped: hours !== requestedH,
+      effectiveSec: hours * 3600,
+    };
+  }
+
+  // >24h → day granularity
+  const requestedD = sec / 86400;
+  if (requestedD >= 7) {
+    return { cron: "0 0 * * 0", snapped: true, effectiveSec: 7 * 86400 };
+  }
+  const days = Math.max(1, Math.round(requestedD));
+  return {
+    cron: days === 1 ? "0 0 * * *" : `0 0 */${days} * *`,
+    snapped: days !== requestedD,
+    effectiveSec: days * 86400,
+  };
+}
+
+function formatSec(sec: number): string {
+  if (sec % 86400 === 0) {
+    const d = sec / 86400;
+    return d === 1 ? "1 day" : `${d} days`;
+  }
+  if (sec % 3600 === 0) {
+    const h = sec / 3600;
+    return h === 1 ? "1 hour" : `${h} hours`;
+  }
+  if (sec % 60 === 0) {
+    const m = sec / 60;
+    return m === 1 ? "1 minute" : `${m} minutes`;
+  }
+  return `${sec} seconds`;
 }
 
 async function resolveLisaBin(): Promise<string> {
