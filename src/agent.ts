@@ -6,6 +6,7 @@ import type {
   ToolDefinition,
 } from "./types.js";
 import type { Provider } from "./providers/types.js";
+import { moodBus } from "./mood-bus.js";
 
 export interface ApprovalDecision {
   allow: boolean;
@@ -77,6 +78,17 @@ export interface RunAgentResult {
 }
 
 export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
+  // Surface "thinking" state to any subscriber (web GUI, island widget, etc).
+  // try/finally guarantees chat_end fires even on throw / cancel.
+  moodBus.chatStart();
+  try {
+    return await runAgentLoop(opts);
+  } finally {
+    moodBus.chatEnd();
+  }
+}
+
+async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
   const {
     provider,
     systemPrompt,

@@ -16,6 +16,8 @@ import {
 import { listSessionsOnDisk } from "../sessions/list.js";
 import { SessionStore } from "../sessions/store.js";
 import { reflectOnSession } from "../reflect.js";
+import { listDesires } from "../soul/store.js";
+import { ISLAND_HTML } from "./island.js";
 import type { ToolDefinition, StoredMessage } from "../types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1715,6 +1717,20 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     }
   };
   moodBus.on("mood", (slug) => broadcast({ type: "mood", slug }));
+  // Surface "thinking" to long-lived viewers (web GUI, island widget). Each
+  // event is one tick — surfaces toggle their own indicator. Multiple
+  // concurrent turns (e.g. heartbeat + user) overlap; first chatStart wins
+  // the visual, last chatEnd clears it. Best-effort.
+  moodBus.on("chat_start", () => broadcast({ type: "chat_start" }));
+  moodBus.on("chat_end", () => broadcast({ type: "chat_end" }));
+
+  // ── Island unread tracking (Phase 1 of MAC_ISLAND_PLAN) ─────────────
+  // The island widget caches "last idle_message" so a fresh tab opening
+  // mid-conversation knows there's something to read. Cleared via
+  // POST /api/island/dismiss-unread. Per design doc §6 Q2: latest wins,
+  // no inbox-style accumulation.
+  let lastIdleMessage: { text: string; at: string } | null = null;
+  let serverStartedAt = Date.now();
 
   // ── Idle mode ───────────────────────────────────────────────────────
   let idleRunning = false;
@@ -1749,6 +1765,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
             role: "assistant",
             content: [{ type: "text", text: `[while you were away]\n${result.text}` }],
           });
+          lastIdleMessage = { text: result.text, at: startedAt };
           broadcast({ type: "idle_message", text: result.text, at: startedAt });
         }
       } catch (err) {
@@ -1771,6 +1788,45 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     if (req.method === "GET" && url === "/") {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       res.end(HTML);
+      return;
+    }
+
+    // Island widget — designed to be opened in a tiny browser window
+    // (Arc, Vivaldi PWA, Safari split). See docs/MAC_ISLAND_PLAN.md.
+    if (req.method === "GET" && url === "/island") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end(ISLAND_HTML);
+      return;
+    }
+
+    // Light status endpoint for the island. Polled every 5–30s as a
+    // fallback when SSE has been quiet.
+    if (req.method === "GET" && url === "/api/island/ping") {
+      let currentDesire: string | null = null;
+      try {
+        const desires = await listDesires();
+        const actionable = desires.find((d) => d.actionable);
+        currentDesire = (actionable ?? desires[0])?.what ?? null;
+      } catch {
+        // listDesires can fail before soul is born; that's fine.
+      }
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({
+        online: true,
+        mood: moodBus.current(),
+        has_unread_idle_message: lastIdleMessage !== null,
+        last_idle_message_at: lastIdleMessage?.at ?? null,
+        last_idle_message_text: lastIdleMessage?.text ?? null,
+        current_desire: currentDesire,
+        uptime_sec: Math.round((Date.now() - serverStartedAt) / 1000),
+      }));
+      return;
+    }
+
+    if (req.method === "POST" && url === "/api/island/dismiss-unread") {
+      lastIdleMessage = null;
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
       return;
     }
 
