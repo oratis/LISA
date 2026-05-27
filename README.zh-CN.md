@@ -113,7 +113,7 @@
 
 ## 安装
 
-要 Node ≥ 20 + Anthropic API key。
+要 Node ≥ 20 + **任一 LLM provider 的 key** —— 默认走 Anthropic，但下面列的 20+ 个 provider 任何一个都行（`--model gpt-4o`、`--model deepseek-chat`、Ollama 走 `LISA_BASE_URL=http://localhost:11434/v1` 等）。
 
 ```sh
 git clone https://github.com/oratis/LISA.git
@@ -121,7 +121,7 @@ cd LISA
 npm install
 npm run build
 
-# 配置 key
+# 配置 key —— 默认模型走 Anthropic；想换 provider 看下面那张表
 mkdir -p ~/.lisa
 echo 'ANTHROPIC_API_KEY=sk-ant-...' > ~/.lisa/config.env
 
