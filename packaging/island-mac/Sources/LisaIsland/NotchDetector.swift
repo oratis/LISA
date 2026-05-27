@@ -2,10 +2,16 @@
 //  NotchDetector.swift
 //  LisaIsland — Phase 2.2 of MAC_ISLAND_PLAN.md
 //
-//  Computes where to anchor the island pill on a given NSScreen so that on
-//  notched Macs (MBP 14"/16" 2021+, MBA 2022+) the pill appears to "extend"
-//  the notch downward, and on non-notched Macs it sits flush with the top
-//  of the screen.
+//  Computes where to anchor the island pill on a given NSScreen.
+//
+//  IMPORTANT: on notched Macs (MBP 14"/16" 2021+, MBA 2022+) the physical
+//  notch is opaque hardware — the camera/sensor cluster — and anything we
+//  draw underneath it is invisible. So the pill's top edge anchors to the
+//  BOTTOM of the safe area (just below the notch / menu bar), not to the
+//  physical top of the screen. That way the avatar is always visible.
+//
+//  Horizontal: centered at screen midX, which on notched Macs aligns with
+//  the notch center so the pill visually "hangs from" the notch.
 //
 //  Key macOS 12+ NSScreen APIs:
 //    - safeAreaInsets.top    — height of the menu bar region the notch
@@ -13,9 +19,6 @@
 //    - auxiliaryTopLeftArea  — clickable menu bar to the left of the notch;
 //                              nil on Macs without notch.
 //    - auxiliaryTopRightArea — clickable menu bar to the right of the notch.
-//
-//  The notch itself occupies the gap between left and right auxiliary
-//  areas, centered at screen.frame.midX.
 //
 
 import AppKit
@@ -32,20 +35,18 @@ struct NotchAnchor {
 enum NotchDetector {
 
     /// Decide where to place a window of `size` on `screen` so the pill at
-    /// the top of the window sits at the very top edge of the screen —
-    /// overlapping the menu bar on notched Macs, flush with it on others.
+    /// the top of the window sits just below the menu bar (and below the
+    /// notch on notched Macs), horizontally centered.
     static func anchor(for size: CGSize, on screen: NSScreen) -> NotchAnchor {
-        let frame = screen.frame  // includes menu bar area
+        // visibleFrame already excludes both the menu bar and the notch
+        // region — so its top edge is exactly where we want the pill's
+        // top edge to be. The pill itself sits at the top of the window
+        // (CSS aligns to flex-start), so window.origin.y must place the
+        // window's TOP edge at visibleFrame.maxY.
+        let visible = screen.visibleFrame
 
-        // Horizontal center: always at screen midX. On notched Macs the
-        // notch itself is centered at midX, so this aligns the pill with
-        // the notch.
-        let x = frame.midX - size.width / 2
-
-        // Vertical: pill's TOP edge at the top of the physical screen.
-        // (AppKit's origin is bottom-left of the window, so we subtract
-        // the window's height from the top of the screen.)
-        let y = frame.maxY - size.height
+        let x = visible.midX - size.width / 2
+        let y = visible.maxY - size.height
 
         let (hasNotch, notchWidth) = detectNotch(on: screen)
 
@@ -61,7 +62,6 @@ enum NotchDetector {
         if #available(macOS 12.0, *) {
             // safeAreaInsets.top is non-zero on notched Macs.
             if screen.safeAreaInsets.top > 0 {
-                // Notch width = gap between auxiliary areas
                 let leftRight = screen.auxiliaryTopRightArea?.minX
                     ?? screen.frame.midX
                 let rightLeft = screen.auxiliaryTopLeftArea?.maxX
