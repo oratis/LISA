@@ -115,7 +115,12 @@ function unquote(value: string): string {
     const last = value[value.length - 1];
     if (first === last && (first === '"' || first === "'")) {
       const inner = value.slice(1, -1);
-      return first === '"' ? inner.replace(/\\"/g, '"').replace(/\\n/g, "\n") : inner;
+      // Reverse the escaping done by quoteValue: \\ → \, \" → ", \n → newline.
+      // Single-pass via callback so a literal backslash before n (`\\n` in the
+      // file) decodes to `\n` (two chars) rather than a newline.
+      return first === '"'
+        ? inner.replace(/\\(["\\n])/g, (_, c) => (c === "n" ? "\n" : c))
+        : inner;
     }
   }
   return value;
