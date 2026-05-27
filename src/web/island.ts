@@ -248,7 +248,17 @@ export const ISLAND_HTML = `<!doctype html>
   }
 
   function expandPanel(open) {
+    if (body.classList.contains('expanded') === open) return;
     body.classList.toggle('expanded', open);
+    // Tell the native container (LisaIsland.app, Phase 2.2+) so it can
+    // resize its NSWindow — the pill window is sized just for the pill
+    // when collapsed, and grows to host the expand panel on open.
+    // Falls back gracefully when running in a plain browser tab.
+    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.island) {
+      window.webkit.messageHandlers.island.postMessage({
+        type: open ? 'expand' : 'collapse'
+      });
+    }
   }
 
   // ── Interaction ────────────────────────────────────────────────────

@@ -1,41 +1,42 @@
 //
 //  IslandWindow.swift
-//  LisaIsland — Phase 2.1
+//  LisaIsland — Phase 2.1 + 2.2
 //
-//  Borderless, transparent, status-bar-level NSPanel that hosts the
-//  WKWebView. NSPanel (rather than NSWindow) because we need
-//  `nonactivatingPanel` style so clicking the pill doesn't deactivate
-//  whatever app the user was in.
+//  Borderless, transparent NSPanel that hosts the WKWebView. Sits at the
+//  top edge of the screen, drawing OVER the menu bar at .popUpMenu level —
+//  on notched Macs it visually extends the notch downward; on non-notched
+//  Macs it sits flush with the top edge like a Dynamic Island clone.
 //
-//  Placement here is "top-center of main screen". Notch-aware anchoring
-//  on MBP 14/16 lives in Phase 2.2 (NotchDetector).
+//  Window sizing is dynamic: starts collapsed (pill-only ~50pt tall) so
+//  it doesn't block menu bar clicks. Grows to expanded size when the web
+//  widget tells us (via postMessage) the user hovered/clicked the pill.
 //
-//  Phase 2.4 (ScreenContextWatcher) will hide the window when a
-//  fullscreen app is active or the screen is being captured.
+//  NSPanel (rather than NSWindow) because we need `nonactivatingPanel`
+//  style so clicking the pill doesn't deactivate the foreground app.
 //
 
 import AppKit
 
 final class IslandWindow: NSPanel {
-    // Default pill footprint — chosen to comfortably fit the Phase 1 web
-    // widget's pill + expanded panel (~308pt wide, up to ~240pt tall).
-    private static let defaultSize = CGSize(width: 330, height: 260)
+    // Collapsed: just the pill (avatar + "Lisa" + status dot)
+    // Expanded: pill + ~250pt panel below for desire / idle message
+    private static let collapsedSize = CGSize(width: 160, height: 50)
+    private static let expandedSize  = CGSize(width: 330, height: 300)
 
-    // How far below the top of visibleFrame the window sits.
-    // visibleFrame already excludes the menu bar, so 0 = flush with menu bar.
-    private static let topGap: CGFloat = 0
+    private(set) var isExpanded = false
+    private var notchAnchor: NotchAnchor?
 
     init() {
-        let frame = NSRect(origin: .zero, size: Self.defaultSize)
+        let initialFrame = NSRect(origin: .zero, size: Self.collapsedSize)
         super.init(
-            contentRect: frame,
+            contentRect: initialFrame,
             styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
 
         configureWindow()
-        positionAtTopCenter()
+        positionAtTopAnchor(animated: false)
         mountWebView()
 
         // Reposition on screen geometry changes (lid open/close, plugging
@@ -55,8 +56,12 @@ final class IslandWindow: NSPanel {
     // MARK: - Window config
 
     private func configureWindow() {
-        // Top z-order: above ordinary windows, below the real menu bar.
-        level = .statusBar
+        // ABOVE the menu bar — Dynamic-Island-style apps draw over it so
+        // the pill can appear to extend the notch. Lower levels
+        // (.statusBar = 25, .mainMenu = 24) sit at the menu bar and on
+        // notched Macs would be eclipsed by the system notch.
+        level = .popUpMenu
+
         // Persist across spaces, ignore ⌘` cycling, behave nicely with
         // fullscreen apps.
         collectionBehavior = [
@@ -75,45 +80,62 @@ final class IslandWindow: NSPanel {
         titleVisibility = .hidden
         titlebarAppearsTransparent = true
         isMovableByWindowBackground = false
-        // The pill responds to clicks; clicks outside the pill (e.g. on the
-        // transparent surrounding area) should pass through to the app below.
-        // CSS `pointer-events: none` on body + `auto` on the pill itself
-        // handles that purely in the webview — the window itself stays
-        // mouse-active so clicks on the pill register.
         ignoresMouseEvents = false
 
         // Suppress the panel's natural shadow / vibrancy.
         isFloatingPanel = true
         hidesOnDeactivate = false
+
+        // Smooth resize animation when toggling expanded.
+        animationBehavior = .utilityWindow
     }
 
     // NSPanel becomes key by default when clicked. We never want focus —
     // the user is browsing / coding / whatever, the island is a passive
-    // observer. Overriding canBecomeKey returning false stops focus theft.
+    // observer.
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 
+    // AppKit's default `constrainFrameRect(_:to:)` snaps the window into
+    // `visibleFrame` — i.e., below the menu bar. That's the WHOLE problem
+    // we're trying to defeat: Dynamic-Island-style placement means the
+    // pill sits AT the menu bar / over the notch. Returning the rect
+    // unchanged lets us put the window wherever we want above the
+    // visible area.
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        return frameRect
+    }
+
     // MARK: - Positioning
 
-    private func positionAtTopCenter() {
+    private func positionAtTopAnchor(animated: Bool) {
         guard let screen = NSScreen.main else { return }
-        let visible = screen.visibleFrame
-        let size = frame.size
-        let origin = NSPoint(
-            x: visible.midX - size.width / 2,
-            y: visible.maxY - size.height - Self.topGap
-        )
-        setFrameOrigin(origin)
+        let size = isExpanded ? Self.expandedSize : Self.collapsedSize
+        let anchor = NotchDetector.anchor(for: size, on: screen)
+        notchAnchor = anchor
+        let target = NSRect(origin: anchor.origin, size: size)
+        setFrame(target, display: true, animate: animated)
     }
 
     @objc private func handleScreenChange() {
-        positionAtTopCenter()
+        positionAtTopAnchor(animated: false)
+    }
+
+    // MARK: - Expand / collapse
+
+    /// Called by IslandContent when the web widget reports a hover/click
+    /// expand or a mouse-leave collapse. We resize the window so the
+    /// expand panel rendered in the WebView isn't clipped.
+    func setExpanded(_ expanded: Bool) {
+        guard expanded != isExpanded else { return }
+        isExpanded = expanded
+        positionAtTopAnchor(animated: true)
     }
 
     // MARK: - WebView mount
 
     private func mountWebView() {
-        let content = IslandContent()
+        let content = IslandContent(window: self)
         contentView = content.view
     }
 }

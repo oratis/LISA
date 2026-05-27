@@ -1,16 +1,16 @@
 //
 //  IslandContent.swift
-//  LisaIsland — Phase 2.1
+//  LisaIsland — Phase 2.1 + 2.2
 //
 //  Wraps the WKWebView. Loads http://localhost:5757/island (the Phase 1
-//  widget) and exposes the `island` message handler the page already
-//  checks for (see src/web/island.ts — when present, btnOpen routes
-//  `open_full_gui` here instead of `window.open('/')`).
+//  widget) and bridges three messages from the page:
+//
+//    - open_full_gui  → open default browser to /
+//    - expand         → grow window so the expand panel isn't clipped
+//    - collapse       → shrink window back to pill size
 //
 //  Auto-reload on failure: if the LISA server is down at launch time, the
-//  webview shows a blank page. Phase 2.3 (LisaProbe) will add a proper
-//  offline overlay; for now we just retry the load every 4 seconds when
-//  the page reports a failure.
+//  webview retries the load every 4 seconds.
 //
 
 import AppKit
@@ -19,15 +19,23 @@ import WebKit
 final class IslandContent: NSViewController, WKNavigationDelegate, WKScriptMessageHandler {
     static let lisaURL = URL(string: "http://localhost:5757/island")!
 
+    private weak var hostWindow: IslandWindow?
     private var webView: WKWebView!
     private var reloadTimer: Timer?
 
+    init(window: IslandWindow) {
+        self.hostWindow = window
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("not implemented")
+    }
+
     override func loadView() {
         let config = WKWebViewConfiguration()
-        // Receive `open_full_gui` from window.webkit.messageHandlers.island
+        // Receive postMessage from window.webkit.messageHandlers.island.
         config.userContentController.add(self, name: "island")
-        // Prefer a fast, JIT-enabled WebKit process pool; share with other
-        // webviews this app might create later.
         config.processPool = WKProcessPool()
 
         let preferences = WKWebpagePreferences()
@@ -40,8 +48,6 @@ final class IslandContent: NSViewController, WKNavigationDelegate, WKScriptMessa
         // Transparent: the page's CSS draws the rounded pill, the rest of
         // the rectangle should show what's underneath.
         wv.setValue(false, forKey: "drawsBackground")
-
-        // Cosmetics: kill the bounce + selection rings, we're not a webpage.
         wv.allowsBackForwardNavigationGestures = false
         wv.allowsLinkPreview = false
 
@@ -75,7 +81,6 @@ final class IslandContent: NSViewController, WKNavigationDelegate, WKScriptMessa
     // MARK: - WKNavigationDelegate
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-        // Most common: LISA isn't running yet — keep retrying quietly.
         scheduleReload()
     }
 
@@ -93,6 +98,10 @@ final class IslandContent: NSViewController, WKNavigationDelegate, WKScriptMessa
             if let fullURL = URL(string: "http://localhost:5757/") {
                 NSWorkspace.shared.open(fullURL)
             }
+        case "expand":
+            hostWindow?.setExpanded(true)
+        case "collapse":
+            hostWindow?.setExpanded(false)
         default:
             // Unknown message — ignore, don't crash. Future phases add more.
             break
