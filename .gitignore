@@ -12,3 +12,4 @@ reference/
 # Internal growth/marketing playbook — strategic docs that aren't public-friendly
 docs/GROWTH.md
 docs/launch/
+.loop-state.json

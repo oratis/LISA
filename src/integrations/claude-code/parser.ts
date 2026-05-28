@@ -63,6 +63,10 @@ const META_TYPES = new Set([
   "last-prompt",
   "queue-operation",
   "attachment",
+  // pr-link entries are written when Claude Code creates a PR. They
+  // appear after the actual conversation activity and would otherwise
+  // mask the real last-state if we stopped at the bottom-most line.
+  "pr-link",
 ]);
 
 const TAIL_BYTES = 32 * 1024;

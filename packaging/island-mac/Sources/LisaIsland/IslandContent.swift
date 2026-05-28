@@ -50,6 +50,11 @@ final class IslandContent: NSViewController, WKNavigationDelegate, WKScriptMessa
         wv.setValue(false, forKey: "drawsBackground")
         wv.allowsBackForwardNavigationGestures = false
         wv.allowsLinkPreview = false
+        // Enable right-click → Inspect Element on macOS 13.3+ so we can
+        // debug runtime issues without a separate browser session.
+        if #available(macOS 13.3, *) {
+            wv.isInspectable = true
+        }
 
         webView = wv
         view = wv
@@ -88,6 +93,23 @@ final class IslandContent: NSViewController, WKNavigationDelegate, WKScriptMessa
         scheduleReload()
     }
 
+    // MARK: - Launch Lisa.app
+
+    private func openLisaAppOrBrowser() {
+        let ws = NSWorkspace.shared
+        // Look up the installed Lisa.app by bundle id.
+        if let appURL = ws.urlForApplication(withBundleIdentifier: "ai.meetlisa.app") {
+            let cfg = NSWorkspace.OpenConfiguration()
+            cfg.activates = true
+            ws.openApplication(at: appURL, configuration: cfg, completionHandler: nil)
+            return
+        }
+        // Fall back to the browser.
+        if let fullURL = URL(string: "http://localhost:5757/") {
+            ws.open(fullURL)
+        }
+    }
+
     // MARK: - WKScriptMessageHandler
 
     func userContentController(_ uc: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -95,9 +117,12 @@ final class IslandContent: NSViewController, WKNavigationDelegate, WKScriptMessa
         guard let type = body["type"] as? String else { return }
         switch type {
         case "open_full_gui":
-            if let fullURL = URL(string: "http://localhost:5757/") {
-                NSWorkspace.shared.open(fullURL)
-            }
+            // Prefer launching the native Lisa.app (bundle id
+            // ai.meetlisa.app) if it's installed. Falls back to the
+            // browser at http://localhost:5757/ when the app isn't
+            // present — keeps the island useful for users who only
+            // run the web widget.
+            openLisaAppOrBrowser()
         case "expand":
             // Page-side expand state — Swift uses this to size the
             // click-through "hot rect" (whole window when expanded,

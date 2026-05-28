@@ -30,8 +30,11 @@ import WebKit
 
 final class IslandWindow: NSPanel {
     // Fixed window footprint. Pill renders in the top 50pt; expand
-    // panel renders below (visible only via CSS).
-    static let windowSize = CGSize(width: 330, height: 300)
+    // panel renders below (visible only via CSS). Sized to comfortably
+    // fit 5 Claude session rows + desire text + actions without
+    // clipping — the architecture comment above explains why the
+    // window stays constant rather than resizing on expand/collapse.
+    static let windowSize = CGSize(width: 360, height: 440)
     static let pillHeight: CGFloat = 50
 
     // 4pt deadband: cursor must move at least this much before we treat
@@ -231,9 +234,19 @@ final class IslandWindow: NSPanel {
     // MARK: - Swift-side drag (mouseDown intercepted at sendEvent)
 
     override func sendEvent(_ event: NSEvent) {
+        // Only intercept clicks that land on the pill rect. Clicks
+        // elsewhere (expand panel: Open chat / Dismiss / Claude rows /
+        // Open in Finder / Copy resume / notify CTA) need to reach the
+        // WKWebView so their JS click handlers fire normally. Without
+        // this hit-test every click was being rewritten into a
+        // pill.click() — which just toggled the expand panel,
+        // appearing to do nothing.
         if event.type == .leftMouseDown {
-            handleMouseDown(event)
-            return
+            let mouse = NSEvent.mouseLocation
+            if NSPointInRect(mouse, pillScreenRect) {
+                handleMouseDown(event)
+                return
+            }
         }
         super.sendEvent(event)
     }
@@ -285,9 +298,20 @@ final class IslandWindow: NSPanel {
     }
 
     private func forwardPillClick() {
-        guard let wv = contentView as? WKWebView else { return }
-        wv.evaluateJavaScript("document.getElementById('pill')?.click();",
-                              completionHandler: nil)
+        guard let wv = contentView as? WKWebView else {
+            FileHandle.standardError.write(
+                Data("[island] forwardPillClick: contentView not WKWebView\n".utf8)
+            )
+            return
+        }
+        FileHandle.standardError.write(Data("[island] forwarding click\n".utf8))
+        wv.evaluateJavaScript("document.getElementById('pill')?.click();") { _, err in
+            if let err = err {
+                FileHandle.standardError.write(
+                    Data("[island] evalJS error: \(err)\n".utf8)
+                )
+            }
+        }
     }
 
     // MARK: - WebView mount

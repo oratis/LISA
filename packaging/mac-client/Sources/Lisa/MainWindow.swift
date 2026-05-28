@@ -37,12 +37,19 @@ final class MainWindow: NSWindow {
         toolbarStyle = .unified
         isReleasedWhenClosed = false   // AppDelegate keeps a strong reference
 
-        // Persist last frame across launches. The name is namespaced so we
-        // don't clash with anything else the user has in defaults.
-        setFrameAutosaveName("ai.meetlisa.app.MainWindow")
+        // Persist last frame across launches. The autosave key is
+        // versioned — bumping it forces every user (including ones who
+        // had a small window on the old pixel-art shell) to land back on
+        // the 1200×800 default once when they pick up the redesign.
+        // After this single reset, subsequent resizes are remembered.
+        let autosaveKey = "ai.meetlisa.app.MainWindow.v2-redesign"
+        setFrameAutosaveName(autosaveKey)
 
-        // Center on first launch (autosave restores subsequent launches).
-        if !setFrameUsingName("ai.meetlisa.app.MainWindow") {
+        if !setFrameUsingName(autosaveKey) {
+            // Fresh user / first run after the namespace bump: ensure
+            // we're really at 1200×800 (init's contentRect can be
+            // overridden by AppKit on some HiDPI setups), then center.
+            setContentSize(Self.defaultSize)
             center()
         }
 
