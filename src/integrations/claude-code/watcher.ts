@@ -49,6 +49,32 @@ const ACTIVE_WINDOW_MS  = 30 * 60_000;
 const MAX_LISTED        = 10;
 
 /**
+ * After Claude Code writes an `assistant` line with stop_reason=tool_use
+ * the file stops growing until the tool returns. For auto-approved tools
+ * that's <1s. For tools requiring user permission it's however long the
+ * user takes to click "approve" in the Claude Code TUI.
+ *
+ * Crucially, Claude Code does NOT log a system entry or subtype event
+ * for the permission prompt — the prompt lives entirely in the TUI and
+ * never touches the jsonl. So the only signal we have that "Claude is
+ * waiting for the user" is: last line is tool_use AND the file hasn't
+ * grown in a while.
+ *
+ * 5s is a tuned compromise: short enough to surface real permission
+ * prompts promptly in the island pill, long enough that fast tools
+ * (Read / Grep / etc, normally <1s) don't false-trigger.
+ */
+const TOOL_USE_PERMISSION_THRESHOLD_MS = 5_000;
+
+/**
+ * Polling interval for the periodic re-evaluation that catches stale
+ * tool_use sessions. The fs.watch event stream alone is insufficient
+ * because the file isn't growing during the wait — no event fires —
+ * so we periodically re-derive state for active sessions.
+ */
+const REPOLL_INTERVAL_MS = 3_000;
+
+/**
  * One row in the in-memory session map. We hold mtime + size only —
  * never any jsonl content.
  */
@@ -67,6 +93,12 @@ export interface ClaudeSessionInfo {
   state: ClaudeSessionState;
   /** Short reason label for the derived state (debugging / tooltip). */
   stateReason: string;
+  /**
+   * Phase 3.5: cwd from Claude Code's top-level jsonl `.cwd` field.
+   * Used by the island UI for "Open in Finder" / "Copy resume
+   * command". Undefined if the jsonl didn't record it.
+   */
+  cwd?: string;
 }
 
 export interface ClaudeSessionUpdate {
@@ -76,6 +108,7 @@ export interface ClaudeSessionUpdate {
   sessionId: string;
   state: ClaudeSessionState;
   stateReason: string;
+  cwd?: string;
   ts: string; // ISO
 }
 
@@ -85,6 +118,7 @@ export class ClaudeCodeWatcher extends EventEmitter {
   private sessions = new Map<string, ClaudeSessionInfo>(); // key = full path
   private watcher: fs.FSWatcher | null = null;
   private retryTimer: NodeJS.Timeout | null = null;
+  private repollTimer: NodeJS.Timeout | null = null;
   private pendingChanges = new Map<string, NodeJS.Timeout>();
   private readonly log: Log;
   private started = false;
@@ -101,6 +135,7 @@ export class ClaudeCodeWatcher extends EventEmitter {
     this.started = true;
     await this.initialScan();
     await this.attachWatcher();
+    this.startRepollLoop();
   }
 
   stop(): void {
@@ -108,6 +143,8 @@ export class ClaudeCodeWatcher extends EventEmitter {
     this.watcher?.close();
     this.watcher = null;
     if (this.retryTimer) clearTimeout(this.retryTimer);
+    if (this.repollTimer) clearInterval(this.repollTimer);
+    this.repollTimer = null;
     for (const t of this.pendingChanges.values()) clearTimeout(t);
     this.pendingChanges.clear();
   }
@@ -157,8 +194,9 @@ export class ClaudeCodeWatcher extends EventEmitter {
     try {
       const st = await fsp.stat(filePath);
       if (!st.isFile()) return;
-      const { state, reason } = await parseSessionState(filePath);
-      const info = this.makeInfo(filePath, st.mtimeMs, st.size, state, reason);
+      const parsed = await parseSessionState(filePath);
+      const info = this.makeInfo(filePath, st.mtimeMs, st.size,
+                                 parsed.state, parsed.reason, parsed.cwd);
       this.sessions.set(filePath, info);
     } catch {
       // ignore — file disappeared between readdir and stat
@@ -234,8 +272,9 @@ export class ClaudeCodeWatcher extends EventEmitter {
     if (!st.isFile()) return;
 
     const prev = this.sessions.get(fullPath);
-    const { state, reason } = await parseSessionState(fullPath);
-    const info = this.makeInfo(fullPath, st.mtimeMs, st.size, state, reason);
+    const parsed = await parseSessionState(fullPath);
+    const info = this.makeInfo(fullPath, st.mtimeMs, st.size,
+                               parsed.state, parsed.reason, parsed.cwd);
     this.sessions.set(fullPath, info);
 
     if (!prev) {
@@ -262,6 +301,7 @@ export class ClaudeCodeWatcher extends EventEmitter {
       sessionId: info.sessionId,
       state: info.state,
       stateReason: info.stateReason,
+      cwd: info.cwd,
       ts: new Date().toISOString(),
     };
     this.emit("update", payload);
@@ -273,18 +313,90 @@ export class ClaudeCodeWatcher extends EventEmitter {
     size: number,
     state: ClaudeSessionState,
     stateReason: string,
+    cwd: string | undefined,
   ): ClaudeSessionInfo {
     const sessionId = path.basename(filePath, ".jsonl");
     const projectEncoded = path.basename(path.dirname(filePath));
+    // Staleness heuristic: any "working" session whose jsonl hasn't
+    // grown in TOOL_USE_PERMISSION_THRESHOLD_MS gets promoted to
+    // "waiting". Three real-world cases all map to this:
+    //
+    //   - tool_use + stale  → Claude is waiting for the user to
+    //                          approve a tool in the Claude Code TUI
+    //                          (the prompt lives in the TUI, never on
+    //                          disk — staleness is the only signal)
+    //   - assistant + stale → API stream stalled or Claude is mid-
+    //                          thinking on a hard turn
+    //   - user + stale      → tool result came back but Claude never
+    //                          wrote the follow-up — usually means
+    //                          the user cancelled Claude Code
+    //
+    // For all three the user benefit is the same: solid orange dot in
+    // the island pill ("not making progress, check on it") instead of
+    // a pulsing one ("actively working"). Reason "idle" is honest about
+    // what we know — we can't actually distinguish these from on-disk
+    // metadata alone.
+    const ageMs = Date.now() - mtimeMs;
+    let finalState = state;
+    let finalReason = stateReason;
+    if (state === "working" && ageMs >= TOOL_USE_PERMISSION_THRESHOLD_MS) {
+      finalState = "waiting";
+      finalReason = stateReason === "tool_use" ? "permission" : "idle";
+    }
     return {
       projectEncoded,
       projectLabel: decodeProjectLabel(projectEncoded),
       sessionId,
       lastMtime: mtimeMs,
       size,
-      state,
-      stateReason,
+      state: finalState,
+      stateReason: finalReason,
+      cwd,
     };
+  }
+
+  /**
+   * Periodic re-evaluation of active sessions' state. The fs.watch
+   * stream only fires when the file changes — but the very condition
+   * we want to detect (Claude waiting for permission) is "the file
+   * STOPPED changing". So we sweep every few seconds: for each session
+   * with a recent mtime, re-stat + re-parse + emit `state_changed` if
+   * the derived state has flipped.
+   *
+   * Cheap: stat is O(1), parser reads only the file's tail.
+   */
+  private startRepollLoop(): void {
+    if (this.repollTimer) return;
+    this.repollTimer = setInterval(() => {
+      void this.repollActive();
+    }, REPOLL_INTERVAL_MS);
+    // Don't keep the process alive purely for this poll — the HTTP
+    // server's listening sockets are the real lifecycle holders.
+    if (this.repollTimer.unref) this.repollTimer.unref();
+  }
+
+  private async repollActive(): Promise<void> {
+    const cutoff = Date.now() - ACTIVE_WINDOW_MS;
+    const candidates = [...this.sessions.entries()]
+      .filter(([, info]) => info.lastMtime >= cutoff);
+    for (const [filePath, prev] of candidates) {
+      let st: fs.Stats;
+      try {
+        st = await fsp.stat(filePath);
+      } catch {
+        continue; // file gone — let the fs.watch flow handle removal
+      }
+      if (!st.isFile()) continue;
+      const parsed = await parseSessionState(filePath);
+      const info = this.makeInfo(filePath, st.mtimeMs, st.size,
+                                 parsed.state, parsed.reason, parsed.cwd);
+      // No file growth here — only re-emit when the DERIVED state
+      // changed (tool_use → waiting/permission after staleness).
+      if (info.state !== prev.state || info.stateReason !== prev.stateReason) {
+        this.sessions.set(filePath, info);
+        this.emitUpdate("state_changed", info);
+      }
+    }
   }
 }
 

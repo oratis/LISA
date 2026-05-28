@@ -2,6 +2,7 @@
 
 [![npm](https://img.shields.io/npm/v/@oratis/lisa?color=cb3837&label=npm)](https://www.npmjs.com/package/@oratis/lisa)
 [![Homebrew](https://img.shields.io/badge/homebrew-oratis%2Ftap%2Flisa-fbb040)](https://github.com/oratis/homebrew-tap)
+[![Mac DMG](https://img.shields.io/github/v/release/oratis/LISA?label=Mac%20app&color=000000&logo=apple)](https://github.com/oratis/LISA/releases/latest)
 [![License: MIT](https://img.shields.io/github/license/oratis/LISA?color=blue)](./LICENSE)
 [![GitHub Repo stars](https://img.shields.io/github/stars/oratis/LISA?style=social)](https://github.com/oratis/LISA/stargazers)
 
@@ -113,17 +114,45 @@
 
 ## 安装
 
-要 Node ≥ 20 + **任一 LLM provider 的 key** —— 默认走 Anthropic，但下面列的 20+ 个 provider 任何一个都行（`--model gpt-4o`、`--model deepseek-chat`、Ollama 走 `LISA_BASE_URL=http://localhost:11434/v1` 等）。
+三种方式，任选其一。都需要至少一个 LLM provider 的 key —— 默认 Anthropic，下面列的 20+ 个 provider 都行（`--model gpt-4o`、`--model deepseek-chat`、Ollama 走 `LISA_BASE_URL=http://localhost:11434/v1` 等）。
+
+```sh
+# 1. 配置 provider key（只需要做一次，与下面装哪种无关）
+mkdir -p ~/.lisa
+echo 'ANTHROPIC_API_KEY=sk-ant-...' > ~/.lisa/config.env
+```
+
+### 🍎 Mac 原生 App（macOS 推荐）
+
+从 GitHub Release 下载**已签名 + 已公证**的 DMG —— 没有 Gatekeeper 警告，无需 `xattr` 解除隔离：
+
+**→ [下载 `Lisa-Suite.dmg`](https://github.com/oratis/LISA/releases/latest)**
+
+DMG 里有两个 app：
+- **Lisa.app** —— 完整聊天客户端（侧边栏 + 玻璃拟态界面）
+- **LisaIsland.app** —— 灵动岛风格的菜单栏/刘海下小条，一眼看到 Lisa 心情 + 你那边 Claude Code 的状态
+
+都是 universal binary（Intel + Apple Silicon）。拖到 `/Applications` 之后，装 backend 并启动：
+
+```sh
+npm install -g @oratis/lisa
+lisa serve --web                # 两个 app 都从 http://localhost:5757 读
+```
+
+### 📟 Homebrew（只装 CLI）
+
+```sh
+brew install oratis/tap/lisa
+lisa                            # 第一次跑会触发 birth ritual
+```
+
+### 🛠 从源码（完全控制）
 
 ```sh
 git clone https://github.com/oratis/LISA.git
 cd LISA
 npm install
 npm run build
-
-# 配置 key —— 默认模型走 Anthropic；想换 provider 看下面那张表
-mkdir -p ~/.lisa
-echo 'ANTHROPIC_API_KEY=sk-ant-...' > ~/.lisa/config.env
 
 # 第一次跑会自动触发 birth ritual（约 30 秒，一次性）
 node dist/cli.js

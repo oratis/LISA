@@ -50,6 +50,11 @@ final class IslandContent: NSViewController, WKNavigationDelegate, WKScriptMessa
         wv.setValue(false, forKey: "drawsBackground")
         wv.allowsBackForwardNavigationGestures = false
         wv.allowsLinkPreview = false
+        // Enable right-click → Inspect Element on macOS 13.3+ so we can
+        // debug runtime issues without a separate browser session.
+        if #available(macOS 13.3, *) {
+            wv.isInspectable = true
+        }
 
         webView = wv
         view = wv
@@ -88,6 +93,23 @@ final class IslandContent: NSViewController, WKNavigationDelegate, WKScriptMessa
         scheduleReload()
     }
 
+    // MARK: - Launch Lisa.app
+
+    private func openLisaAppOrBrowser() {
+        let ws = NSWorkspace.shared
+        // Look up the installed Lisa.app by bundle id.
+        if let appURL = ws.urlForApplication(withBundleIdentifier: "ai.meetlisa.app") {
+            let cfg = NSWorkspace.OpenConfiguration()
+            cfg.activates = true
+            ws.openApplication(at: appURL, configuration: cfg, completionHandler: nil)
+            return
+        }
+        // Fall back to the browser.
+        if let fullURL = URL(string: "http://localhost:5757/") {
+            ws.open(fullURL)
+        }
+    }
+
     // MARK: - WKScriptMessageHandler
 
     func userContentController(_ uc: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -95,9 +117,12 @@ final class IslandContent: NSViewController, WKNavigationDelegate, WKScriptMessa
         guard let type = body["type"] as? String else { return }
         switch type {
         case "open_full_gui":
-            if let fullURL = URL(string: "http://localhost:5757/") {
-                NSWorkspace.shared.open(fullURL)
-            }
+            // Prefer launching the native Lisa.app (bundle id
+            // ai.meetlisa.app) if it's installed. Falls back to the
+            // browser at http://localhost:5757/ when the app isn't
+            // present — keeps the island useful for users who only
+            // run the web widget.
+            openLisaAppOrBrowser()
         case "expand":
             // Page-side expand state — Swift uses this to size the
             // click-through "hot rect" (whole window when expanded,
@@ -105,6 +130,33 @@ final class IslandContent: NSViewController, WKNavigationDelegate, WKScriptMessa
             hostWindow?.setExpanded(true)
         case "collapse":
             hostWindow?.setExpanded(false)
+        case "ensure_notify_permission":
+            // Page is asking us to request macOS notification
+            // permission (idempotent; system handles repeats).
+            Task { @MainActor in
+                Notifier.shared.ensurePermission()
+            }
+        case "notify":
+            // Page detected a Claude session transitioning to
+            // waiting/error/etc. and wants to surface it as a native
+            // notification. Title + body are constructed page-side
+            // from projectLabel + sessionId — never message content.
+            guard let title = body["title"] as? String,
+                  let bodyText = body["body"] as? String else { return }
+            let sessionId = (body["sessionId"] as? String) ?? ""
+            Task { @MainActor in
+                Notifier.shared.notify(title: title, body: bodyText, sessionId: sessionId)
+            }
+        case "open_path":
+            // Open a Finder window at the cwd of a Claude session
+            // (Phase 3.5 B). Path is page-supplied; we restrict to
+            // absolute paths under the user's home for safety.
+            guard let raw = body["path"] as? String else { return }
+            let path = (raw as NSString).expandingTildeInPath
+            if path.hasPrefix("/") {
+                let url = URL(fileURLWithPath: path, isDirectory: true)
+                NSWorkspace.shared.open(url)
+            }
         default:
             // Drag is handled entirely Swift-side now (sendEvent
             // intercept + nextEvent loop), so we no longer expect

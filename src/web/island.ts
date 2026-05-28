@@ -66,16 +66,29 @@ export const ISLAND_HTML = `<!doctype html>
   }
   #pill:hover { transform: translateY(1px); }
 
+  /* Avatar is an <img> not a background-image — more reliable in
+     WKWebView and lets us crop into the face via object-position.
+     The 512×512 source has ~15% transparent padding around the
+     character; we scale up via object-fit + anchor toward the top
+     so the face dominates the small circle.
+     pointer-events: none + draggable=false so the img never steals
+     or hijacks mouse events from the pill (HTML <img> default is
+     draggable, which interferes with our Swift-side click/drag
+     resolution). */
   #avatar {
-    width: 30px;
-    height: 30px;
+    width: 36px;
+    height: 36px;
     border-radius: 50%;
-    background-color: #15192a;
-    background-size: cover;
-    background-position: center;
+    object-fit: cover;
+    object-position: 50% 22%;
+    background: #15192a;
     flex-shrink: 0;
     image-rendering: pixelated;
-    border: 1px solid var(--border);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    box-shadow: 0 0 0 2px rgba(106, 212, 255, 0.10);
+    pointer-events: none;
+    -webkit-user-drag: none;
+    user-select: none;
   }
 
   #label {
@@ -109,17 +122,17 @@ export const ISLAND_HTML = `<!doctype html>
 
   /* Expanded panel — appears below the pill on hover/click */
   #expand {
-    margin-top: 8px;
-    width: 308px;
+    margin-top: 10px;
+    width: 336px;
     background: var(--bg-strong);
     border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 12px 14px;
+    border-radius: 18px;
+    padding: 16px 18px;
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
-    font-size: 12px;
-    line-height: 1.5;
+    font-size: 12.5px;
+    line-height: 1.55;
     box-sizing: border-box;
     opacity: 0;
     transform: translateY(-4px);
@@ -132,31 +145,31 @@ export const ISLAND_HTML = `<!doctype html>
     pointer-events: auto;
   }
 
+  /* Stack section blocks with consistent vertical rhythm. */
+  #expand > div + div { margin-top: 14px; }
+
   .section-label {
     color: var(--accent);
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
-    font-size: 10px;
-    margin-bottom: 4px;
+    letter-spacing: 0.10em;
+    font-size: 10.5px;
+    margin-bottom: 8px;
   }
   .section-body {
     color: var(--fg-dim);
-    margin-bottom: 10px;
     word-wrap: break-word;
   }
-  .section-body:last-child { margin-bottom: 0; }
 
   #idle-section { display: none; }
   body.has-unread #idle-section { display: block; }
   #idle-body {
     background: rgba(255, 208, 102, 0.07);
     border-left: 2px solid var(--accent-warm);
-    padding: 6px 10px;
-    margin-bottom: 10px;
-    border-radius: 4px;
+    padding: 8px 12px;
+    border-radius: 6px;
     color: var(--fg);
-    max-height: 96px;
+    max-height: 110px;
     overflow-y: auto;
     white-space: pre-wrap;
   }
@@ -167,55 +180,87 @@ export const ISLAND_HTML = `<!doctype html>
   #claude-section .section-label { color: var(--accent-claude); }
   #claude-list {
     list-style: none;
-    padding: 0;
-    margin: 0 0 10px;
+    padding: 4px 0;
+    margin: 0;
     border-left: 2px solid var(--accent-claude);
     background: rgba(255, 140, 66, 0.06);
-    border-radius: 4px;
-    overflow: hidden;
+    border-radius: 6px;
+    overflow-y: auto;
+    max-height: 200px;
   }
   #claude-list li {
-    padding: 5px 10px;
+    padding: 8px 12px;
     color: var(--fg);
-    font-size: 11px;
+    font-size: 11.5px;
     display: flex;
-    justify-content: space-between;
-    gap: 8px;
+    flex-direction: column;
+    gap: 4px;
     cursor: pointer;
     transition: background 120ms ease;
   }
   #claude-list li:hover { background: rgba(255, 140, 66, 0.10); }
   #claude-list li + li { border-top: 1px solid rgba(255, 140, 66, 0.10); }
+  /* Row "head" — the pip + project + relative-time line. Always rendered.
+     Stays as a horizontal flex strip even when the row is expanded; the
+     trail + actions render BELOW it because the parent <li> is flex-column. */
+  #claude-list .head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
   #claude-list .proj { font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #claude-list .when { color: var(--fg-dim); flex-shrink: 0; font-variant-numeric: tabular-nums; }
-  #claude-list .empty { padding: 6px 10px; color: var(--fg-faint); font-style: italic; }
+  #claude-list .when { color: var(--fg-dim); flex-shrink: 0; font-variant-numeric: tabular-nums; font-size: 11px; }
+  #claude-list .empty { padding: 8px 12px; color: var(--fg-faint); font-style: italic; }
 
   /* Phase 2 — per-session state pip prefix */
   #claude-list .pip {
-    width: 6px;
-    height: 6px;
+    width: 7px;
+    height: 7px;
     border-radius: 50%;
     flex-shrink: 0;
     background: var(--fg-faint);
-    margin-right: 2px;
+    margin-right: 4px;
   }
   #claude-list .pip.working { background: var(--accent-claude); animation: pulse 1.8s ease-in-out infinite; }
   #claude-list .pip.waiting { background: var(--accent-claude); }
   #claude-list .pip.error   { background: #ff5577; }
   #claude-list .pip.unknown { background: var(--fg-faint); }
 
-  /* Phase 3 — state transition trail, shown below the row when its
-     parent <li> has the .expanded class. */
+  /* Phase 3 — state transition trail, shown below the row head when
+     the parent <li> has the .row-open class. */
   #claude-list .trail {
     display: none;
     margin: 4px 0 0 14px;
-    padding: 4px 0 0;
+    padding: 6px 0 2px;
     border-top: 1px dashed rgba(255, 140, 66, 0.18);
     font-size: 10px;
     color: var(--fg-faint);
-    line-height: 1.6;
+    line-height: 1.7;
+    word-spacing: 0.05em;
   }
   #claude-list li.row-open .trail { display: block; }
+
+  /* Phase 3.5 — inline action row when the session is expanded */
+  #claude-list .actions {
+    display: none;
+    margin: 6px 0 0 14px;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  #claude-list li.row-open .actions { display: flex; }
+  #claude-list .actions button {
+    flex: 0 0 auto;
+    background: rgba(255, 140, 66, 0.10);
+    border: 1px solid rgba(255, 140, 66, 0.22);
+    color: var(--fg);
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 10.5px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  #claude-list .actions button:hover { background: rgba(255, 140, 66, 0.16); }
+  #claude-list .actions button:disabled { opacity: 0.35; cursor: not-allowed; }
   #claude-list .trail .tdot {
     display: inline-block;
     width: 5px;
@@ -228,17 +273,17 @@ export const ISLAND_HTML = `<!doctype html>
   #claude-list .trail .tdot.working { background: var(--accent-claude); }
   #claude-list .trail .tdot.waiting { background: var(--accent-claude); opacity: 0.7; }
   #claude-list .trail .tdot.error   { background: #ff5577; }
-  #claude-list li > .head { display: contents; }
+  /* (older stub removed — .head is a real flex strip now, see above) */
 
   /* Phase 3 — notification opt-in chip */
   #notify-cta {
     display: none;
-    margin-top: 8px;
-    padding: 6px 10px;
-    border-radius: 8px;
+    margin-top: 10px;
+    padding: 8px 12px;
+    border-radius: 10px;
     background: rgba(255, 140, 66, 0.12);
     border: 1px solid rgba(255, 140, 66, 0.30);
-    font-size: 10.5px;
+    font-size: 11px;
     color: var(--fg);
     text-align: center;
     cursor: pointer;
@@ -249,17 +294,16 @@ export const ISLAND_HTML = `<!doctype html>
 
   #actions {
     display: flex;
-    gap: 6px;
-    margin-top: 4px;
+    gap: 8px;
   }
   button {
     flex: 1;
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid var(--border);
     color: var(--fg);
-    padding: 6px 10px;
-    border-radius: 8px;
-    font-size: 11px;
+    padding: 8px 12px;
+    border-radius: 10px;
+    font-size: 11.5px;
     cursor: pointer;
     font-family: inherit;
     transition: background 150ms ease;
@@ -275,7 +319,7 @@ export const ISLAND_HTML = `<!doctype html>
 </head>
 <body>
   <div id="pill" role="button" tabindex="0" aria-label="Lisa island">
-    <div id="avatar" aria-hidden="true"></div>
+    <img id="avatar" alt="" draggable="false" src="/assets/lisa/neutral.png" />
     <div id="label">Lisa</div>
     <div id="dot" aria-hidden="true"></div>
   </div>
@@ -350,24 +394,41 @@ export const ISLAND_HTML = `<!doctype html>
     return true; // transition happened
   }
 
-  // ── Phase 3 — Notification API ───────────────────────────────────
-  // Fires "Claude needs you in <project>" notifications when a session
-  // transitions INTO waiting (i.e., Claude finished and the user is
-  // expected to respond). Throttled per session so a flaky tool that
-  // bounces between waiting/working doesn't spam. Permission opt-in
-  // via the chip in the expand panel.
+  // ── Phase 3 — notifications (native via LisaIsland.app, or web fallback)
+  // Fires "Claude is waiting in <project>" alerts when a session
+  // transitions INTO waiting. Throttled per session so a flaky tool
+  // that bounces between waiting/working doesn't spam.
+  //
+  // Phase 3.5: when running inside LisaIsland.app, we delegate to the
+  // native UNUserNotificationCenter via postMessage — better permission
+  // flow, integrates with macOS Focus / DnD. In a plain browser tab we
+  // fall back to the Notification API.
   const NOTIFY_THROTTLE_MS = 60_000;
   const lastNotifyAt = new Map();
+  const hasBridge = !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.island);
 
   function notifPermission() {
+    if (hasBridge) return 'granted'; // native side asks the user; we just request and trust
     return ('Notification' in window) ? Notification.permission : 'unsupported';
   }
 
   function refreshNotifyCta() {
+    // The 🔔 chip is only needed when running in a browser AND
+    // permission hasn't been answered yet. Native bridge handles its
+    // own permission prompt.
+    if (hasBridge) {
+      body.classList.remove('notify-default');
+      return;
+    }
     body.classList.toggle('notify-default', notifPermission() === 'default');
   }
 
   function requestNotificationPermission() {
+    if (hasBridge) {
+      window.webkit.messageHandlers.island.postMessage({ type: 'ensure_notify_permission' });
+      refreshNotifyCta();
+      return;
+    }
     if (!('Notification' in window) || Notification.permission !== 'default') {
       refreshNotifyCta();
       return;
@@ -378,27 +439,30 @@ export const ISLAND_HTML = `<!doctype html>
   function maybeNotifyWaiting(prevState, info) {
     if (info.state !== 'waiting') return;
     if (prevState === 'waiting') return;     // already in this state
-    if (notifPermission() !== 'granted') return;
     const last = lastNotifyAt.get(info.sessionId) || 0;
     if (Date.now() - last < NOTIFY_THROTTLE_MS) return;
     lastNotifyAt.set(info.sessionId, Date.now());
+    const reasonLabel = info.stateReason === 'permission' ? 'needs permission' : 'is waiting';
+    const title = 'Claude ' + reasonLabel + ' in ' + info.project;
+    const bodyText = info.sessionId.slice(0, 8) + ' · click to open Lisa';
+    if (hasBridge) {
+      window.webkit.messageHandlers.island.postMessage({
+        type: 'notify',
+        title: title,
+        body: bodyText,
+        sessionId: info.sessionId,
+      });
+      return;
+    }
+    if (notifPermission() !== 'granted') return;
     try {
-      const reasonLabel = info.reason === 'permission' ? 'needs permission' : 'is waiting';
-      const n = new Notification('Claude ' + reasonLabel + ' in ' + info.project, {
-        body: info.sessionId.slice(0, 8) + ' · click to open Lisa',
-        tag: 'lisa-claude-' + info.sessionId, // replaces older for same session
+      const n = new Notification(title, {
+        body: bodyText,
+        tag: 'lisa-claude-' + info.sessionId,
         icon: '/assets/lisa-mascot.png',
         silent: false,
       });
-      n.onclick = () => {
-        window.focus();
-        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.island) {
-          window.webkit.messageHandlers.island.postMessage({ type: 'open_full_gui' });
-        } else {
-          window.open('/', '_blank');
-        }
-        n.close();
-      };
+      n.onclick = () => { window.focus(); window.open('/', '_blank'); n.close(); };
     } catch (_) { /* unsupported, ignore */ }
   }
   function recentSessions() {
@@ -426,7 +490,10 @@ export const ISLAND_HTML = `<!doctype html>
   function setAvatar(slug) {
     if (!slug) return;
     state.mood = slug;
-    avatar.style.backgroundImage = "url('/assets/lisa/" + encodeURIComponent(slug) + ".png')";
+    // Use the <img> src attribute — far more reliable than CSS
+    // background-image in WKWebView, and lets the browser's standard
+    // image cache + retry logic do its thing.
+    avatar.src = '/assets/lisa/' + encodeURIComponent(slug) + '.png';
   }
 
   function refreshDot() {
@@ -485,6 +552,11 @@ export const ISLAND_HTML = `<!doctype html>
     for (const s of rows) {
       const li = document.createElement('li');
       if (rowOpen.has(s.sessionId)) li.classList.add('row-open');
+      // pip + project + relative-time render as a single horizontal
+      // .head strip. The trail + actions render BELOW the head when
+      // the row is open (li is flex-column).
+      const head = document.createElement('div');
+      head.className = 'head';
       const pip = document.createElement('span');
       pip.className = 'pip ' + (s.state || 'unknown');
       const proj = document.createElement('span');
@@ -493,9 +565,10 @@ export const ISLAND_HTML = `<!doctype html>
       const when = document.createElement('span');
       when.className = 'when';
       when.textContent = relativeTime(s.lastMtime);
-      li.appendChild(pip);
-      li.appendChild(proj);
-      li.appendChild(when);
+      head.appendChild(pip);
+      head.appendChild(proj);
+      head.appendChild(when);
+      li.appendChild(head);
 
       // Phase 3 — collapsible state-transition trail
       const trail = document.createElement('div');
@@ -503,9 +576,15 @@ export const ISLAND_HTML = `<!doctype html>
       renderTrail(trail, s);
       li.appendChild(trail);
 
+      // Phase 3.5 — action buttons (Open in Finder / Copy resume)
+      const actions = document.createElement('div');
+      actions.className = 'actions';
+      renderActions(actions, s);
+      li.appendChild(actions);
+
       li.title = s.state + (s.stateReason ? ' (' + s.stateReason + ')' : '')
                + ' · ' + s.sessionId
-               + '\nclick: expand timeline · double-click: copy sessionId';
+               + '\\nclick: expand timeline · double-click: copy sessionId';
       li.addEventListener('click', () => {
         if (rowOpen.has(s.sessionId)) rowOpen.delete(s.sessionId);
         else rowOpen.add(s.sessionId);
@@ -517,6 +596,57 @@ export const ISLAND_HTML = `<!doctype html>
       });
       claudeList.appendChild(li);
     }
+  }
+
+  /**
+   * Phase 3.5 — render the inline action buttons for one Claude session.
+   * Each session has a cwd (from .cwd top-level field in the jsonl)
+   * and a sessionId. We expose two actions:
+   *   - Open in Finder  — opens the cwd folder
+   *   - Copy resume cmd — clipboard: cd "<cwd>" && claude --resume <sid>
+   */
+  function renderActions(container, s) {
+    const cwd = s.cwd || '';
+    const hasCwd = cwd.startsWith('/');
+
+    const openBtn = document.createElement('button');
+    openBtn.type = 'button';
+    openBtn.textContent = '📁 Open folder';
+    openBtn.disabled = !hasCwd;
+    openBtn.title = hasCwd ? cwd : 'No cwd recorded in this session';
+    openBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!hasCwd) return;
+      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.island) {
+        window.webkit.messageHandlers.island.postMessage({
+          type: 'open_path',
+          path: cwd,
+        });
+      } else {
+        // Browser fallback: copy the path so the user can paste in Finder.
+        navigator.clipboard.writeText(cwd).catch(() => {});
+      }
+    });
+    container.appendChild(openBtn);
+
+    const copyBtn = document.createElement('button');
+    copyBtn.type = 'button';
+    copyBtn.textContent = '📋 Resume cmd';
+    copyBtn.disabled = !hasCwd;
+    const cmd = hasCwd
+      ? 'cd ' + JSON.stringify(cwd) + ' && claude --resume ' + s.sessionId
+      : 'claude --resume ' + s.sessionId;
+    copyBtn.title = cmd;
+    copyBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      try {
+        await navigator.clipboard.writeText(cmd);
+        const orig = copyBtn.textContent;
+        copyBtn.textContent = '✓ copied';
+        setTimeout(() => { copyBtn.textContent = orig; }, 1200);
+      } catch (_) {}
+    });
+    container.appendChild(copyBtn);
   }
 
   function renderTrail(container, s) {
@@ -682,9 +812,6 @@ export const ISLAND_HTML = `<!doctype html>
           );
           break;
         case 'claude_session_update':
-          // Watcher noticed activity in ~/.claude/projects/. Splice the
-          // updated session into our local list (with its newly-derived
-          // state) and re-render.
           upsertClaudeSession({
             project: m.projectLabel,
             projectEncoded: m.projectEncoded,
@@ -692,6 +819,7 @@ export const ISLAND_HTML = `<!doctype html>
             lastMtime: m.ts,
             state: m.state || 'unknown',
             stateReason: m.stateReason || '',
+            cwd: m.cwd || '',
           });
           refreshDot();
           refreshPanel();
@@ -747,6 +875,7 @@ export const ISLAND_HTML = `<!doctype html>
           lastMtime: s.lastMtime,
           state: s.state || 'unknown',
           stateReason: s.stateReason || '',
+          cwd: s.cwd || '',
         }));
         // Phase 3 — seed each session's history with its current state
         // so the trail isn't empty on first open. Doesn't notify (no

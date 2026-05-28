@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Entitlements for LisaIsland.app — the pill widget.
+
+  Same minimal surface as Lisa.app: network client (loads localhost:5757),
+  JIT (WKWebView), and the defensive allow-unsigned-executable-memory
+  needed on some macOS versions when WebKit spawns sub-processes.
+
+  LisaIsland.app also requests notification entitlements at runtime via
+  UNUserNotificationCenter — those are granted by the user on first prompt
+  and don't need a static entitlement here.
+-->
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.network.client</key>
+    <true/>
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+</dict>
+</plist>

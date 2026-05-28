@@ -11,8 +11,12 @@ import Base from "../../layouts/Base.astro";
       反思、形成观点、追求她自己的心愿，慢慢长成她。
     </p>
     <p class="actions">
-      <a class="cta" href="/zh-CN/install">立即安装 →</a>
+      <a class="cta" href="https://github.com/oratis/LISA/releases/latest" target="_blank" rel="noopener">🍎 下载 Mac 版</a>
+      <a class="cta-secondary" href="/zh-CN/install">所有安装方式 →</a>
       <a class="cta-secondary" href="https://github.com/oratis/LISA" target="_blank" rel="noopener">在 GitHub 看代码</a>
+    </p>
+    <p class="actions-note">
+      已签名 + Apple 公证的 DMG，universal 双架构，打开无 Gatekeeper 警告。也在 npm + Homebrew 上。
     </p>
     <img class="mascot" src="/assets/lisa-mascot.png" alt="Lisa 像素艺术形象" />
   </section>
@@ -87,6 +91,7 @@ import Base from "../../layouts/Base.astro";
   .cta:hover { background: var(--you); color: var(--bg); }
   .cta-secondary { background: var(--panel); color: var(--text); }
   .cta-secondary:hover { background: var(--panel-light); color: var(--lisa); }
+  .actions-note { margin: -12px auto 32px; font-size: 13px; color: var(--text); opacity: 0.7; max-width: 540px; }
   .mascot { display: block; margin: 0 auto; width: 160px; }
   .video-wrapper { position: relative; padding-bottom: 56.25%; height: 0; margin: 16px auto 40px; max-width: 720px; border: 4px solid var(--border); }
   .video-wrapper iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }

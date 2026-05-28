@@ -1,0 +1,168 @@
+name: Release — Mac apps (.app + DMG)
+
+# Tag-triggered macOS build that produces a single DMG containing both
+# Lisa.app (native chat client) and LisaIsland.app (pill widget), attached
+# to the same GitHub Release as the CLI bundles produced by release.yml.
+#
+# Signing + notarization run automatically WHEN all six Developer ID secrets
+# are populated. When they're missing the workflow still ships an ad-hoc
+# signed DMG — downloaders just need to clear the quarantine flag manually
+# (one-liner shown in the release notes).
+#
+# Required secrets for the signed path (gated on APPLE_TEAM_ID since it's
+# the last one to provision):
+#   APPLE_CERTIFICATE_BASE64    .p12 with the Developer ID Application cert
+#                               + private key, base64-encoded.
+#                                 macOS:  base64 -i cert.p12 | pbcopy
+#                                 Linux:  base64 -w0 cert.p12 | xclip
+#   APPLE_CERTIFICATE_PASSWORD  passphrase set when exporting the .p12.
+#   APPLE_SIGNING_IDENTITY      e.g. "Developer ID Application: Name (TEAMID)"
+#                               — the literal --sign value passed to codesign.
+#   APPLE_ID                    the developer's Apple ID email.
+#   APPLE_PASSWORD              app-specific password from appleid.apple.com.
+#   APPLE_TEAM_ID               10-char team id from developer.apple.com.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build (e.g. v0.2.1)"
+        required: true
+
+permissions:
+  contents: write   # needed to attach assets to the GitHub Release
+
+jobs:
+  mac-apps:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    env:
+      # GitHub Actions forbids `secrets.*` in step-level `if:` conditionals,
+      # so we promote the gate to a job-level env var. "true" iff all six
+      # Apple Developer ID secrets are wired.
+      HAS_APPLE_SIGNING: ${{ secrets.APPLE_TEAM_ID != '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # workflow_dispatch may target a different tag than the default ref
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Resolve version from tag
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          VERSION="${TAG#v}"
+          echo "tag=$TAG"         >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Verify package.json matches tag
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [ "$PKG_VERSION" != "${{ steps.ver.outputs.version }}" ]; then
+            echo "✗ package.json version $PKG_VERSION != tag ${{ steps.ver.outputs.version }}" >&2
+            exit 1
+          fi
+
+      - name: Import Apple Developer ID certificate
+        # Ephemeral keychain — created here, deleted at job end. Lifted
+        # from the Markup workflow with cosmetic renames.
+        if: ${{ env.HAS_APPLE_SIGNING == 'true' }}
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN_PATH="$RUNNER_TEMP/lisa-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+          echo "$APPLE_CERTIFICATE_BASE64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$RUNNER_TEMP/cert.p12" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: \
+            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+          security default-keychain -s "$KEYCHAIN_PATH"
+          rm -f "$RUNNER_TEMP/cert.p12"
+          echo "LISA_KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
+      - name: Build Lisa.app + LisaIsland.app + DMG
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          set -euo pipefail
+          # When the secret is empty, build-mac-apps.sh sees an empty
+          # APPLE_SIGNING_IDENTITY and falls back to ad-hoc signing —
+          # same script, two paths, no branching needed here.
+          bash scripts/build-mac-apps.sh
+
+      - name: Notarize DMG with Apple notary
+        if: ${{ env.HAS_APPLE_SIGNING == 'true' }}
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          DMG="dist-release/Lisa-Suite-v${{ steps.ver.outputs.version }}.dmg"
+          echo "→ Submitting $DMG to Apple notary…"
+          xcrun notarytool submit "$DMG" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+          # Stapling lets Gatekeeper accept the DMG offline (without
+          # contacting Apple), so users on planes / locked-down networks
+          # still see "trusted developer".
+          xcrun stapler staple "$DMG"
+          # Spot-check one of the contained .apps for posterity.
+          xcrun stapler staple "packaging/mac-client/Lisa.app" || true
+          xcrun stapler staple "packaging/island-mac/LisaIsland.app" || true
+          spctl --assess --type execute --verbose=2 "packaging/mac-client/Lisa.app" || true
+
+      - name: Re-checksum after notarization staple
+        # `stapler staple` rewrites the DMG, so the SHA computed in
+        # build-mac-apps.sh is stale. Recompute.
+        run: |
+          set -euo pipefail
+          cd dist-release
+          DMG="Lisa-Suite-v${{ steps.ver.outputs.version }}.dmg"
+          shasum -a 256 "$DMG" > "${DMG}.sha256"
+          cat "${DMG}.sha256"
+
+      - name: Clean up signing keychain
+        if: always() && env.LISA_KEYCHAIN_PATH != ''
+        run: |
+          security delete-keychain "$LISA_KEYCHAIN_PATH" || true
+          rm -f "$LISA_KEYCHAIN_PATH" || true
+
+      - name: Attach DMG to GitHub Release
+        # Tolerates the release already existing (created by release.yml
+        # on the same tag). action-gh-release appends/updates assets when
+        # called with a tag that already has a release.
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: Lisa ${{ steps.ver.outputs.tag }}
+          fail_on_unmatched_files: true
+          files: |
+            dist-release/Lisa-Suite-v${{ steps.ver.outputs.version }}.dmg
+            dist-release/Lisa-Suite-v${{ steps.ver.outputs.version }}.dmg.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
