@@ -248,10 +248,34 @@ export const ISLAND_HTML = `<!doctype html>
   }
 
   function expandPanel(open) {
+    if (body.classList.contains('expanded') === open) return;
     body.classList.toggle('expanded', open);
+    // Tell the native container (LisaIsland.app, Phase 2.2+) so it can
+    // resize its NSWindow — the pill window is sized just for the pill
+    // when collapsed, and grows to host the expand panel on open.
+    // Falls back gracefully when running in a plain browser tab.
+    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.island) {
+      window.webkit.messageHandlers.island.postMessage({
+        type: open ? 'expand' : 'collapse'
+      });
+    }
   }
 
   // ── Interaction ────────────────────────────────────────────────────
+  //
+  // When running inside LisaIsland.app (Phase 2.1+), the native window
+  // owns drag and click-vs-drag resolution: Swift's IslandWindow
+  // intercepts mouseDown in sendEvent and runs a synchronous
+  // mouseDragged loop. If movement > 4px → drag (setFrameOrigin each
+  // tick, no IPC roundtrip). If no movement → Swift synthesizes
+  // pill.click() here so this click handler still fires.
+  //
+  // In a plain browser tab there's no native container — the click
+  // handler runs normally. Hover-to-expand also works in both modes:
+  // when the native window is in "passthrough" state for the
+  // non-pill area, mouseenter still fires on the WKWebView once the
+  // cursor crosses INTO the pill region.
+
   let hoverTimer = null;
   pill.addEventListener('mouseenter', () => {
     clearTimeout(hoverTimer);
