@@ -48,6 +48,13 @@ export interface SessionStateInfo {
   state: ClaudeSessionState;
   /** Short label for tooltips / debugging — never user content. */
   reason: string;
+  /**
+   * Working directory recorded by Claude Code in the jsonl's `.cwd`
+   * field (top-level, schema metadata — not message content). Used
+   * by the island UI for the "Open in Finder" / "Copy resume command"
+   * actions. May be undefined if the jsonl doesn't include it.
+   */
+  cwd?: string;
 }
 
 const META_TYPES = new Set([
@@ -93,11 +100,43 @@ export async function parseSessionState(filePath: string): Promise<SessionStateI
   if (size > TAIL_BYTES && lines.length > 0) lines.shift();
 
   // Walk bottom-up, skip meta entries, decide on the first real one.
+  // While walking, also harvest `cwd` (top-level metadata field set
+  // by Claude Code at session start) — it's commonly present on every
+  // line, so we'll find it quickly.
+  let foundCwd: string | undefined;
+  let decision: SessionStateInfo | null = null;
   for (let i = lines.length - 1; i >= 0; i--) {
-    const decision = decide(lines[i]!);
-    if (decision !== null) return decision;
+    const line = lines[i]!;
+    if (!foundCwd) {
+      foundCwd = sniffCwd(line);
+    }
+    if (decision === null) {
+      decision = decide(line);
+    }
+    if (decision !== null && foundCwd) break;
   }
-  return { state: "unknown", reason: "only-meta" };
+  if (decision !== null) {
+    return { ...decision, cwd: foundCwd };
+  }
+  return { state: "unknown", reason: "only-meta", cwd: foundCwd };
+}
+
+/**
+ * Extract only the top-level `.cwd` string from a line, without
+ * parsing the rest. We do a full JSON.parse here for safety (the
+ * `cwd` could in theory contain `}` chars), but immediately discard
+ * everything except the cwd field. Same privacy rule: structural
+ * metadata only, never `content` / `text`.
+ */
+function sniffCwd(line: string): string | undefined {
+  try {
+    const obj = JSON.parse(line);
+    if (obj && typeof obj === "object") {
+      const cwd = (obj as Record<string, unknown>).cwd;
+      if (typeof cwd === "string" && cwd.startsWith("/")) return cwd;
+    }
+  } catch { /* skip */ }
+  return undefined;
 }
 
 /**

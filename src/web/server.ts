@@ -1855,6 +1855,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         size: s.size,
         state: s.state,
         stateReason: s.stateReason,
+        cwd: s.cwd,
       }));
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ sessions }));

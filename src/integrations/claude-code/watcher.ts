@@ -67,6 +67,12 @@ export interface ClaudeSessionInfo {
   state: ClaudeSessionState;
   /** Short reason label for the derived state (debugging / tooltip). */
   stateReason: string;
+  /**
+   * Phase 3.5: cwd from Claude Code's top-level jsonl `.cwd` field.
+   * Used by the island UI for "Open in Finder" / "Copy resume
+   * command". Undefined if the jsonl didn't record it.
+   */
+  cwd?: string;
 }
 
 export interface ClaudeSessionUpdate {
@@ -76,6 +82,7 @@ export interface ClaudeSessionUpdate {
   sessionId: string;
   state: ClaudeSessionState;
   stateReason: string;
+  cwd?: string;
   ts: string; // ISO
 }
 
@@ -157,8 +164,9 @@ export class ClaudeCodeWatcher extends EventEmitter {
     try {
       const st = await fsp.stat(filePath);
       if (!st.isFile()) return;
-      const { state, reason } = await parseSessionState(filePath);
-      const info = this.makeInfo(filePath, st.mtimeMs, st.size, state, reason);
+      const parsed = await parseSessionState(filePath);
+      const info = this.makeInfo(filePath, st.mtimeMs, st.size,
+                                 parsed.state, parsed.reason, parsed.cwd);
       this.sessions.set(filePath, info);
     } catch {
       // ignore — file disappeared between readdir and stat
@@ -234,8 +242,9 @@ export class ClaudeCodeWatcher extends EventEmitter {
     if (!st.isFile()) return;
 
     const prev = this.sessions.get(fullPath);
-    const { state, reason } = await parseSessionState(fullPath);
-    const info = this.makeInfo(fullPath, st.mtimeMs, st.size, state, reason);
+    const parsed = await parseSessionState(fullPath);
+    const info = this.makeInfo(fullPath, st.mtimeMs, st.size,
+                               parsed.state, parsed.reason, parsed.cwd);
     this.sessions.set(fullPath, info);
 
     if (!prev) {
@@ -262,6 +271,7 @@ export class ClaudeCodeWatcher extends EventEmitter {
       sessionId: info.sessionId,
       state: info.state,
       stateReason: info.stateReason,
+      cwd: info.cwd,
       ts: new Date().toISOString(),
     };
     this.emit("update", payload);
@@ -273,6 +283,7 @@ export class ClaudeCodeWatcher extends EventEmitter {
     size: number,
     state: ClaudeSessionState,
     stateReason: string,
+    cwd: string | undefined,
   ): ClaudeSessionInfo {
     const sessionId = path.basename(filePath, ".jsonl");
     const projectEncoded = path.basename(path.dirname(filePath));
@@ -284,6 +295,7 @@ export class ClaudeCodeWatcher extends EventEmitter {
       size,
       state,
       stateReason,
+      cwd,
     };
   }
 }
