@@ -2,6 +2,7 @@
 
 [![npm](https://img.shields.io/npm/v/@oratis/lisa?color=cb3837&label=npm)](https://www.npmjs.com/package/@oratis/lisa)
 [![Homebrew](https://img.shields.io/badge/homebrew-oratis%2Ftap%2Flisa-fbb040)](https://github.com/oratis/homebrew-tap)
+[![Mac DMG](https://img.shields.io/github/v/release/oratis/LISA?label=Mac%20app&color=000000&logo=apple)](https://github.com/oratis/LISA/releases/latest)
 [![License: MIT](https://img.shields.io/github/license/oratis/LISA?color=blue)](./LICENSE)
 [![GitHub Repo stars](https://img.shields.io/github/stars/oratis/LISA?style=social)](https://github.com/oratis/LISA/stargazers)
 
@@ -116,17 +117,45 @@ She is yours. The code is open source. **This particular Lisa is sovereign.**
 
 ## Install
 
-Requires Node ≥ 20 and a key for **at least one LLM provider** — Anthropic is the default, but any of the 20+ alternatives listed below works just as well (`--model gpt-4o`, `--model deepseek-chat`, `LISA_BASE_URL=http://localhost:11434/v1` for Ollama, etc.).
+Three ways, pick one. All of them need an LLM key — Anthropic is the default, but any of the 20+ alternatives listed below works just as well (`--model gpt-4o`, `--model deepseek-chat`, `LISA_BASE_URL=http://localhost:11434/v1` for Ollama, etc.).
+
+```sh
+# 1. Configure a provider key (do this once, regardless of which install you pick)
+mkdir -p ~/.lisa
+echo 'ANTHROPIC_API_KEY=sk-ant-...' > ~/.lisa/config.env
+```
+
+### 🍎 Mac apps (recommended on macOS)
+
+Download the **signed + notarized** disk image from the latest GitHub Release — no Gatekeeper warning, no `xattr` workaround:
+
+**→ [Download `Lisa-Suite.dmg`](https://github.com/oratis/LISA/releases/latest)**
+
+The DMG contains:
+- **Lisa.app** — full chat client (sidebar + glass-morphism UI)
+- **LisaIsland.app** — pill widget that lives by the menu bar / notch, shows her mood + Claude Code activity at a glance
+
+Both are universal binaries (Intel + Apple Silicon). After dragging them to `/Applications`, install the LISA backend and start it:
+
+```sh
+npm install -g @oratis/lisa
+lisa serve --web                # apps load http://localhost:5757
+```
+
+### 📟 Homebrew (CLI only)
+
+```sh
+brew install oratis/tap/lisa
+lisa                            # birth ritual on first run
+```
+
+### 🛠 From source (full control)
 
 ```sh
 git clone https://github.com/oratis/LISA.git
 cd LISA
 npm install
 npm run build
-
-# Configure a key — Anthropic is the default model, swap for any provider below
-mkdir -p ~/.lisa
-echo 'ANTHROPIC_API_KEY=sk-ant-...' > ~/.lisa/config.env
 
 # First run triggers the birth ritual automatically (~30s, one-time)
 node dist/cli.js

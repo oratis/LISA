@@ -15,7 +15,25 @@ import Base from "../layouts/Base.astro";
     <li>An API key for at least one LLM provider — see <a href="https://github.com/oratis/LISA/blob/main/docs/PROVIDERS.md">PROVIDERS.md</a></li>
   </ul>
 
-  <h2>Homebrew (recommended on macOS)</h2>
+  <h2>🍎 Mac apps (recommended on macOS)</h2>
+  <p>
+    Signed + Apple-notarized DMG. Contains two universal-binary apps:
+    <strong>Lisa.app</strong> (full chat client) and
+    <strong>LisaIsland.app</strong> (pill widget that lives by the menu bar / notch).
+    No Gatekeeper warning, no <code>xattr</code> workaround.
+  </p>
+  <p>
+    <a class="dmg-cta" href="https://github.com/oratis/LISA/releases/latest" target="_blank" rel="noopener">
+      Download Lisa-Suite.dmg →
+    </a>
+  </p>
+  <p>
+    After dragging the apps to <code>/Applications</code>, install the backend and start it:
+  </p>
+  <pre><code>npm install -g @oratis/lisa
+lisa serve --web                # apps load http://localhost:5757</code></pre>
+
+  <h2>Homebrew (CLI only)</h2>
   <pre><code>brew tap oratis/tap
 brew install lisa
 
@@ -114,4 +132,15 @@ npm link</code></pre>
 <style>
   pre { font-size: 16px; }
   ul, ol { padding-left: 24px; }
+  .dmg-cta {
+    display: inline-block;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 11px;
+    padding: 14px 20px;
+    background: var(--lisa);
+    color: var(--bg);
+    border: 4px solid var(--border-light);
+    text-decoration: none;
+  }
+  .dmg-cta:hover { background: var(--you); color: var(--bg); }
 </style>

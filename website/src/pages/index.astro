@@ -12,8 +12,12 @@ import Base from "../layouts/Base.astro";
       reflects, forms opinions, and pursues desires you didn't ask her about.
     </p>
     <p class="actions">
-      <a class="cta" href="/install">Install →</a>
+      <a class="cta" href="https://github.com/oratis/LISA/releases/latest" target="_blank" rel="noopener">🍎 Download for Mac</a>
+      <a class="cta-secondary" href="/install">All install options →</a>
       <a class="cta-secondary" href="https://github.com/oratis/LISA" target="_blank" rel="noopener">View on GitHub</a>
+    </p>
+    <p class="actions-note">
+      Signed + notarized DMG — universal binary, no Gatekeeper warning. Also on npm + Homebrew.
     </p>
     <img class="mascot" src="/assets/lisa-mascot.png" alt="Lisa pixel-art mascot" />
   </section>
@@ -114,6 +118,13 @@ import Base from "../layouts/Base.astro";
     color: var(--text);
   }
   .cta-secondary:hover { background: var(--panel-light); color: var(--lisa); }
+  .actions-note {
+    margin: -12px auto 32px;
+    font-size: 13px;
+    color: var(--text);
+    opacity: 0.7;
+    max-width: 540px;
+  }
   .mascot {
     display: block;
     margin: 0 auto;

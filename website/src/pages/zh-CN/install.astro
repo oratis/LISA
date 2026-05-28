@@ -15,7 +15,25 @@ import Base from "../../layouts/Base.astro";
     <li>至少一个 LLM provider 的 API key —— 见 <a href="https://github.com/oratis/LISA/blob/main/docs/PROVIDERS.md">PROVIDERS.md</a></li>
   </ul>
 
-  <h2>Homebrew（macOS 推荐）</h2>
+  <h2>🍎 Mac 原生 App（macOS 推荐）</h2>
+  <p>
+    已签名 + Apple 公证的 DMG，里面有两个 universal 二进制 app：
+    <strong>Lisa.app</strong>（完整聊天客户端）和
+    <strong>LisaIsland.app</strong>（菜单栏/刘海下的灵动岛风格小条）。
+    打开无 Gatekeeper 警告，不用 <code>xattr</code> 解隔离。
+  </p>
+  <p>
+    <a class="dmg-cta" href="https://github.com/oratis/LISA/releases/latest" target="_blank" rel="noopener">
+      下载 Lisa-Suite.dmg →
+    </a>
+  </p>
+  <p>
+    把两个 app 拖到 <code>/Applications</code> 之后，装 backend 并启动：
+  </p>
+  <pre><code>npm install -g @oratis/lisa
+lisa serve --web                # 两个 app 都从 http://localhost:5757 读</code></pre>
+
+  <h2>Homebrew（只装 CLI）</h2>
   <pre><code>brew tap oratis/tap
 brew install lisa
 
@@ -115,4 +133,15 @@ npm link</code></pre>
 <style>
   pre { font-size: 16px; }
   ul, ol { padding-left: 24px; }
+  .dmg-cta {
+    display: inline-block;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 11px;
+    padding: 14px 20px;
+    background: var(--lisa);
+    color: var(--bg);
+    border: 4px solid var(--border-light);
+    text-decoration: none;
+  }
+  .dmg-cta:hover { background: var(--you); color: var(--bg); }
 </style>
