@@ -130,13 +130,121 @@ final class WebContent: NSViewController, WKNavigationDelegate, WKUIDelegate {
         }
     }
 
+    /// Show a styled "backend not running" placeholder inside the WebView
+    /// when localhost:5757 isn't reachable. Visually consistent with the
+    /// real chat UI's dark theme; replaced atomically when the next
+    /// retry succeeds (the actual page load replaces the entire document).
+    private func loadOfflineSplash(error: Error) {
+        let html = Self.offlineHTML(errorMessage: error.localizedDescription)
+        webView.loadHTMLString(html, baseURL: nil)
+    }
+
+    static func offlineHTML(errorMessage: String) -> String {
+        // Bridge from JS → Swift via window.webkit.messageHandlers.island
+        // isn't wired here, so the retry button just reloads the WebView's
+        // current URL — which, since baseURL is nil and the document is
+        // synthetic, falls through to a no-op. We instead navigate back
+        // to localhost:5757 directly with location.assign — that triggers
+        // a fresh load attempt.
+        let escaped = errorMessage
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        return """
+        <!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">
+        <title>LISA — backend offline</title>
+        <style>
+          :root { color-scheme: dark; }
+          html, body { margin:0; padding:0; height:100%; background: #07091a;
+            font-family: -apple-system, BlinkMacSystemFont, \"SF Pro Text\",
+                         \"Inter\", system-ui, sans-serif;
+            color: #e8eaff; -webkit-font-smoothing: antialiased; user-select: none; }
+          body { display: flex; align-items: center; justify-content: center;
+            background:
+              radial-gradient(ellipse at 30% 20%, #1a1238 0%, transparent 50%),
+              radial-gradient(ellipse at 80% 70%, #0a1f3a 0%, transparent 60%),
+              linear-gradient(180deg, #0b1024 0%, #07091a 100%); }
+          .card { width: min(560px, 88vw); padding: 32px 36px;
+            background: rgba(20, 26, 64, 0.65);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: 18px; backdrop-filter: blur(30px); }
+          h1 { font-size: 22px; margin: 0 0 6px;
+               letter-spacing: 0.01em; color: #ffd066; }
+          p.sub { margin: 0 0 22px; color: #aeb5d3; font-size: 14px; line-height: 1.5; }
+          h2 { font-size: 11px; font-weight: 700; letter-spacing: 0.10em;
+               text-transform: uppercase; color: #6ad4ff; margin: 18px 0 8px; }
+          pre { margin: 0; padding: 12px 14px; background: rgba(0, 0, 0, 0.30);
+               border-radius: 10px; font-family: ui-monospace, \"SF Mono\", Menlo, monospace;
+               font-size: 12.5px; color: #e8eaff; line-height: 1.55;
+               white-space: pre-wrap; word-break: break-all;
+               cursor: copy; transition: background 120ms ease; user-select: all; }
+          pre:hover { background: rgba(106, 212, 255, 0.10); }
+          .row { display: flex; gap: 10px; margin-top: 24px; }
+          button { flex: 1; padding: 11px 14px; font-family: inherit;
+                   font-size: 12.5px; font-weight: 700; letter-spacing: 0.06em;
+                   border-radius: 12px; cursor: pointer;
+                   background: linear-gradient(180deg, #6ad4ff 0%, #4eb8e5 100%);
+                   color: #0a1024; border: 0;
+                   box-shadow: 0 4px 14px rgba(106, 212, 255, 0.25);
+                   transition: transform 120ms ease, box-shadow 120ms ease; }
+          button:hover { transform: translateY(-1px);
+                         box-shadow: 0 6px 18px rgba(106, 212, 255, 0.35); }
+          .err { margin-top: 18px; padding: 10px 12px; border-radius: 8px;
+                 background: rgba(255, 85, 119, 0.08); color: #ff95a8;
+                 border: 1px solid rgba(255, 85, 119, 0.30);
+                 font-size: 11.5px; font-family: ui-monospace, Menlo, monospace; }
+          .hint { color: #6c7398; font-size: 11.5px; margin-top: 18px; line-height: 1.5; }
+        </style></head><body>
+        <div class=\"card\">
+          <h1>LISA backend offline</h1>
+          <p class=\"sub\">
+            Lisa.app loads its chat from <code>http://localhost:5757</code> — but
+            that server isn't responding right now. Start it in a terminal:
+          </p>
+
+          <h2>1. Install (one-time)</h2>
+          <pre>npm install -g @oratis/lisa</pre>
+
+          <h2>2. Configure a provider key (one-time)</h2>
+          <pre>mkdir -p ~/.lisa
+        echo 'ANTHROPIC_API_KEY=sk-ant-...' &gt; ~/.lisa/config.env</pre>
+
+          <h2>3. Start the backend</h2>
+          <pre>lisa serve --web</pre>
+
+          <div class=\"row\">
+            <button onclick=\"location.assign('http://localhost:5757/')\">Retry now</button>
+          </div>
+
+          <div class=\"err\">Last error: \(escaped)</div>
+          <p class=\"hint\">
+            Lisa.app will also retry automatically every 4 seconds.
+            Once the backend is up, this page disappears on its own.
+          </p>
+        </div>
+        </body></html>
+        """
+    }
+
     // MARK: - WKNavigationDelegate
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        // Only swap to the offline splash if the URL we were trying was
+        // our real backend — synthetic loads (loadHTMLString) shouldn't
+        // recurse into "show offline" themselves.
+        let nsErr = error as NSError
+        let isOurUrl = (nsErr.userInfo[NSURLErrorFailingURLErrorKey] as? URL)?.host == "localhost"
+        if isOurUrl {
+            loadOfflineSplash(error: error)
+        }
         scheduleReload()
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        let nsErr = error as NSError
+        let isOurUrl = (nsErr.userInfo[NSURLErrorFailingURLErrorKey] as? URL)?.host == "localhost"
+        if isOurUrl {
+            loadOfflineSplash(error: error)
+        }
         scheduleReload()
     }
 

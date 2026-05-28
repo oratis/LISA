@@ -86,11 +86,54 @@ final class IslandContent: NSViewController, WKNavigationDelegate, WKScriptMessa
     // MARK: - WKNavigationDelegate
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        loadOfflineSplash()
         scheduleReload()
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        loadOfflineSplash()
         scheduleReload()
+    }
+
+    /// Pill-sized "offline" placeholder shown when localhost:5757 is
+    /// unreachable. Visually consistent with the real pill so users
+    /// understand at a glance that the app's alive but the backend isn't.
+    /// Replaced atomically the next time the real page loads.
+    private func loadOfflineSplash() {
+        let html = """
+        <!doctype html><html><head><meta charset=\"utf-8\"><style>
+          html, body { margin: 0; padding: 0; background: transparent;
+            font-family: -apple-system, BlinkMacSystemFont, \"SF Pro Text\", system-ui, sans-serif;
+            color: #e4e4e6; -webkit-font-smoothing: antialiased; user-select: none; }
+          body { display: flex; flex-direction: column; align-items: center;
+                 padding: 4px 8px; }
+          .pill { display: inline-flex; align-items: center; gap: 8px;
+            background: rgba(8, 12, 24, 0.92);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 22px; padding: 5px 14px 5px 5px;
+            backdrop-filter: blur(20px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4); }
+          /* No avatar image — baseURL is nil on the offline splash, so
+             relative URLs don't resolve. A muted circle with a "Z" mark
+             ("she's sleeping") communicates offline without a broken icon. */
+          .av { width: 36px; height: 36px; border-radius: 50%;
+                background: #15192a; opacity: 0.55;
+                border: 1px solid rgba(255, 255, 255, 0.10);
+                display: grid; place-items: center;
+                color: #6b7280; font-size: 16px; font-weight: 700; }
+          .label { font-size: 13px; font-weight: 600; color: #9ba3b8;
+                   letter-spacing: 0.02em; }
+          .dot { width: 7px; height: 7px; border-radius: 50%;
+                 background: #6b7280; flex-shrink: 0; }
+        </style></head><body>
+          <div class=\"pill\" title=\"LISA backend offline — start: lisa serve --web\">
+            <div class=\"av\">z</div>
+            <div class=\"label\">offline</div>
+            <div class=\"dot\"></div>
+          </div>
+        </body></html>
+        """
+        webView.loadHTMLString(html, baseURL: nil)
     }
 
     // MARK: - Launch Lisa.app
