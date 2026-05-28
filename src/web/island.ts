@@ -204,6 +204,49 @@ export const ISLAND_HTML = `<!doctype html>
   #claude-list .pip.error   { background: #ff5577; }
   #claude-list .pip.unknown { background: var(--fg-faint); }
 
+  /* Phase 3 — state transition trail, shown below the row when its
+     parent <li> has the .expanded class. */
+  #claude-list .trail {
+    display: none;
+    margin: 4px 0 0 14px;
+    padding: 4px 0 0;
+    border-top: 1px dashed rgba(255, 140, 66, 0.18);
+    font-size: 10px;
+    color: var(--fg-faint);
+    line-height: 1.6;
+  }
+  #claude-list li.row-open .trail { display: block; }
+  #claude-list .trail .tdot {
+    display: inline-block;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    margin-right: 4px;
+    vertical-align: 0;
+    background: var(--fg-faint);
+  }
+  #claude-list .trail .tdot.working { background: var(--accent-claude); }
+  #claude-list .trail .tdot.waiting { background: var(--accent-claude); opacity: 0.7; }
+  #claude-list .trail .tdot.error   { background: #ff5577; }
+  #claude-list li > .head { display: contents; }
+
+  /* Phase 3 — notification opt-in chip */
+  #notify-cta {
+    display: none;
+    margin-top: 8px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    background: rgba(255, 140, 66, 0.12);
+    border: 1px solid rgba(255, 140, 66, 0.30);
+    font-size: 10.5px;
+    color: var(--fg);
+    text-align: center;
+    cursor: pointer;
+    transition: background 120ms ease;
+  }
+  #notify-cta:hover { background: rgba(255, 140, 66, 0.18); }
+  body.notify-default #notify-cta { display: block; }
+
   #actions {
     display: flex;
     gap: 6px;
@@ -248,6 +291,7 @@ export const ISLAND_HTML = `<!doctype html>
     <div id="claude-section">
       <div class="section-label">claude code · <span id="claude-count">0</span> active</div>
       <ul id="claude-list"></ul>
+      <div id="notify-cta" role="button" tabindex="0">🔔 Notify me when Claude is waiting</div>
     </div>
     <div id="actions">
       <button id="btn-open">Open chat</button>
@@ -265,6 +309,7 @@ export const ISLAND_HTML = `<!doctype html>
   const idleBody     = document.getElementById('idle-body');
   const claudeList   = document.getElementById('claude-list');
   const claudeCount  = document.getElementById('claude-count');
+  const notifyCta    = document.getElementById('notify-cta');
   const btnOpen      = document.getElementById('btn-open');
   const btnDismiss   = document.getElementById('btn-dismiss');
   const body         = document.body;
@@ -282,6 +327,80 @@ export const ISLAND_HTML = `<!doctype html>
 
   // 30-min activity window matches the watcher's ACTIVE_WINDOW_MS.
   const CLAUDE_ACTIVE_WINDOW_MS = 30 * 60 * 1000;
+
+  // Phase 3 — in-memory state transition history per session.
+  // Map<sessionId, [{state, reason, ts}, …]> capped at MAX_HISTORY.
+  // Pure UI memory; not persisted, not transmitted.
+  const stateHistory = new Map();
+  const MAX_HISTORY = 8;
+  // Per-session opened-state for the inline trail in the expand list.
+  const rowOpen = new Set();
+
+  function recordStateHistory(sessionId, info) {
+    let h = stateHistory.get(sessionId);
+    if (!h) { h = []; stateHistory.set(sessionId, h); }
+    const last = h[h.length - 1];
+    if (last && last.state === info.state && last.reason === info.reason) {
+      // Same state, just refresh timestamp — collapse repeats.
+      last.ts = info.lastMtime;
+      return false;
+    }
+    h.push({ state: info.state, reason: info.reason, ts: info.lastMtime });
+    while (h.length > MAX_HISTORY) h.shift();
+    return true; // transition happened
+  }
+
+  // ── Phase 3 — Notification API ───────────────────────────────────
+  // Fires "Claude needs you in <project>" notifications when a session
+  // transitions INTO waiting (i.e., Claude finished and the user is
+  // expected to respond). Throttled per session so a flaky tool that
+  // bounces between waiting/working doesn't spam. Permission opt-in
+  // via the chip in the expand panel.
+  const NOTIFY_THROTTLE_MS = 60_000;
+  const lastNotifyAt = new Map();
+
+  function notifPermission() {
+    return ('Notification' in window) ? Notification.permission : 'unsupported';
+  }
+
+  function refreshNotifyCta() {
+    body.classList.toggle('notify-default', notifPermission() === 'default');
+  }
+
+  function requestNotificationPermission() {
+    if (!('Notification' in window) || Notification.permission !== 'default') {
+      refreshNotifyCta();
+      return;
+    }
+    Notification.requestPermission().then(() => refreshNotifyCta()).catch(() => {});
+  }
+
+  function maybeNotifyWaiting(prevState, info) {
+    if (info.state !== 'waiting') return;
+    if (prevState === 'waiting') return;     // already in this state
+    if (notifPermission() !== 'granted') return;
+    const last = lastNotifyAt.get(info.sessionId) || 0;
+    if (Date.now() - last < NOTIFY_THROTTLE_MS) return;
+    lastNotifyAt.set(info.sessionId, Date.now());
+    try {
+      const reasonLabel = info.reason === 'permission' ? 'needs permission' : 'is waiting';
+      const n = new Notification('Claude ' + reasonLabel + ' in ' + info.project, {
+        body: info.sessionId.slice(0, 8) + ' · click to open Lisa',
+        tag: 'lisa-claude-' + info.sessionId, // replaces older for same session
+        icon: '/assets/lisa-mascot.png',
+        silent: false,
+      });
+      n.onclick = () => {
+        window.focus();
+        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.island) {
+          window.webkit.messageHandlers.island.postMessage({ type: 'open_full_gui' });
+        } else {
+          window.open('/', '_blank');
+        }
+        n.close();
+      };
+    } catch (_) { /* unsupported, ignore */ }
+  }
   function recentSessions() {
     const cutoff = Date.now() - CLAUDE_ACTIVE_WINDOW_MS;
     return state.claudeSessions.filter(
@@ -365,6 +484,7 @@ export const ISLAND_HTML = `<!doctype html>
     }).slice(0, 5);
     for (const s of rows) {
       const li = document.createElement('li');
+      if (rowOpen.has(s.sessionId)) li.classList.add('row-open');
       const pip = document.createElement('span');
       pip.className = 'pip ' + (s.state || 'unknown');
       const proj = document.createElement('span');
@@ -376,14 +496,51 @@ export const ISLAND_HTML = `<!doctype html>
       li.appendChild(pip);
       li.appendChild(proj);
       li.appendChild(when);
+
+      // Phase 3 — collapsible state-transition trail
+      const trail = document.createElement('div');
+      trail.className = 'trail';
+      renderTrail(trail, s);
+      li.appendChild(trail);
+
       li.title = s.state + (s.stateReason ? ' (' + s.stateReason + ')' : '')
-               + ' · ' + s.sessionId;
-      li.addEventListener('click', async () => {
-        // Phase 2 still copies sessionId; Phase 3 will URL-scheme handoff
-        // to iTerm / Warp at the right pane.
+               + ' · ' + s.sessionId
+               + '\nclick: expand timeline · double-click: copy sessionId';
+      li.addEventListener('click', () => {
+        if (rowOpen.has(s.sessionId)) rowOpen.delete(s.sessionId);
+        else rowOpen.add(s.sessionId);
+        renderClaudeList();
+      });
+      li.addEventListener('dblclick', async (ev) => {
+        ev.stopPropagation();
         try { await navigator.clipboard.writeText(s.sessionId); } catch (_) {}
       });
       claudeList.appendChild(li);
+    }
+  }
+
+  function renderTrail(container, s) {
+    const h = stateHistory.get(s.sessionId) || [];
+    if (h.length === 0) {
+      container.textContent = '(no transitions recorded yet)';
+      return;
+    }
+    // Render newest first so the right-most reads as "right now".
+    const ordered = h.slice();
+    for (let i = 0; i < ordered.length; i++) {
+      const entry = ordered[i];
+      const tdot = document.createElement('span');
+      tdot.className = 'tdot ' + (entry.state || 'unknown');
+      container.appendChild(tdot);
+      const span = document.createElement('span');
+      span.textContent = entry.state + ' · ' + relativeTime(entry.ts);
+      container.appendChild(span);
+      if (i < ordered.length - 1) {
+        const sep = document.createElement('span');
+        sep.textContent = '  →  ';
+        sep.style.color = 'rgba(255,255,255,0.15)';
+        container.appendChild(sep);
+      }
     }
   }
 
@@ -532,9 +689,18 @@ export const ISLAND_HTML = `<!doctype html>
     const idx = state.claudeSessions.findIndex(
       (x) => x.sessionId === s.sessionId
     );
+    const prevState = idx >= 0 ? state.claudeSessions[idx].state : null;
     if (idx >= 0) state.claudeSessions[idx] = s;
     else state.claudeSessions.push(s);
     pruneClaudeSessions();
+
+    // Phase 3 — record transition + maybe notify on entering "waiting".
+    const transitioned = recordStateHistory(s.sessionId, {
+      state: s.state,
+      reason: s.stateReason,
+      lastMtime: s.lastMtime,
+    });
+    if (transitioned) maybeNotifyWaiting(prevState, s);
   }
 
   function pruneClaudeSessions() {
@@ -558,17 +724,38 @@ export const ISLAND_HTML = `<!doctype html>
           state: s.state || 'unknown',
           stateReason: s.stateReason || '',
         }));
+        // Phase 3 — seed each session's history with its current state
+        // so the trail isn't empty on first open. Doesn't notify (no
+        // transition implied by initial load).
+        for (const s of state.claudeSessions) {
+          recordStateHistory(s.sessionId, {
+            state: s.state,
+            reason: s.stateReason,
+            lastMtime: s.lastMtime,
+          });
+        }
       }
     } catch (_) {
       // server might not yet have the endpoint (older LISA) — silent
     }
   }
 
+  // Phase 3 — notification permission opt-in. The CTA is only visible
+  // when permission is in the default (un-asked) state.
+  notifyCta.addEventListener('click', (e) => {
+    e.stopPropagation();
+    requestNotificationPermission();
+  });
+  notifyCta.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') requestNotificationPermission();
+  });
+
   // ── Bootstrap ──────────────────────────────────────────────────────
   setAvatar('neutral');
   pollPing();
   fetchClaudeSessions().then(() => { refreshDot(); refreshPanel(); });
   subscribe();
+  refreshNotifyCta();
   // Lightweight resync — covers cases where SSE silently disconnected
   // (laptop sleep, network blip) and we need to refresh state.
   setInterval(pollPing, 30_000);
