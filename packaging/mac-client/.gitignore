@@ -1,0 +1,14 @@
+# SwiftPM
+.build/
+Package.resolved
+
+# Built bundle — local artifact, distributed via GitHub Releases
+Lisa.app/
+
+# Xcode
+*.xcodeproj/
+*.xcworkspace/
+DerivedData/
+
+# macOS
+.DS_Store
