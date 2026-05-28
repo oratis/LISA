@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Entitlements for Lisa.app — the native Mac chat client.
+
+  Notarization requires hardened runtime, which in turn requires an
+  entitlements file declaring the privileges the app needs. We keep the
+  list minimal:
+
+    - network.client       talk to the local LISA server (localhost:5757)
+                            and load mood portraits / icons over http
+    - allow-jit            WKWebView's JIT for chat HTML
+    - cs.allow-unsigned-…  defensive: needed on some macOS versions when
+                            WebKit loads sub-frames or workers
+-->
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.network.client</key>
+    <true/>
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+</dict>
+</plist>
