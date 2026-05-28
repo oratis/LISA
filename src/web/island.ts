@@ -27,6 +27,7 @@ export const ISLAND_HTML = `<!doctype html>
     --accent: #6ad4ff;
     --accent-warm: #ffd066;
     --accent-dream: #b487ff;
+    --accent-claude: #ff8c42;
     --border: rgba(255, 255, 255, 0.06);
   }
   html, body {
@@ -91,10 +92,11 @@ export const ISLAND_HTML = `<!doctype html>
     background: transparent;
     flex-shrink: 0;
   }
-  #dot.thinking { background: var(--accent);     animation: pulse 1.2s ease-in-out infinite; }
-  #dot.dreaming { background: var(--accent-dream); animation: pulse 2.4s ease-in-out infinite; }
-  #dot.unread   { background: var(--accent-warm); }
-  #dot.offline  { background: var(--fg-faint); }
+  #dot.thinking      { background: var(--accent);        animation: pulse 1.2s ease-in-out infinite; }
+  #dot.dreaming      { background: var(--accent-dream);  animation: pulse 2.4s ease-in-out infinite; }
+  #dot.unread        { background: var(--accent-warm); }
+  #dot.claude-active { background: var(--accent-claude); animation: pulse 1.8s ease-in-out infinite; }
+  #dot.offline       { background: var(--fg-faint); }
 
   @keyframes pulse {
     0%, 100% { opacity: 0.35; }
@@ -155,6 +157,35 @@ export const ISLAND_HTML = `<!doctype html>
     white-space: pre-wrap;
   }
 
+  /* Claude Code section — appears when there's active Claude Code activity */
+  #claude-section { display: none; }
+  body.has-claude #claude-section { display: block; }
+  #claude-section .section-label { color: var(--accent-claude); }
+  #claude-list {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 10px;
+    border-left: 2px solid var(--accent-claude);
+    background: rgba(255, 140, 66, 0.06);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  #claude-list li {
+    padding: 5px 10px;
+    color: var(--fg);
+    font-size: 11px;
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    cursor: pointer;
+    transition: background 120ms ease;
+  }
+  #claude-list li:hover { background: rgba(255, 140, 66, 0.10); }
+  #claude-list li + li { border-top: 1px solid rgba(255, 140, 66, 0.10); }
+  #claude-list .proj { font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #claude-list .when { color: var(--fg-dim); flex-shrink: 0; font-variant-numeric: tabular-nums; }
+  #claude-list .empty { padding: 6px 10px; color: var(--fg-faint); font-style: italic; }
+
   #actions {
     display: flex;
     gap: 6px;
@@ -196,6 +227,10 @@ export const ISLAND_HTML = `<!doctype html>
       <div class="section-label">★ while you were away</div>
       <div id="idle-body"></div>
     </div>
+    <div id="claude-section">
+      <div class="section-label">claude code · <span id="claude-count">0</span> active</div>
+      <ul id="claude-list"></ul>
+    </div>
     <div id="actions">
       <button id="btn-open">Open chat</button>
       <button id="btn-dismiss" class="muted">Dismiss ★</button>
@@ -204,15 +239,17 @@ export const ISLAND_HTML = `<!doctype html>
 
 <script>
 (() => {
-  const pill        = document.getElementById('pill');
-  const avatar      = document.getElementById('avatar');
-  const dot         = document.getElementById('dot');
-  const expand      = document.getElementById('expand');
-  const desireBody  = document.getElementById('desire-body');
-  const idleBody    = document.getElementById('idle-body');
-  const btnOpen     = document.getElementById('btn-open');
-  const btnDismiss  = document.getElementById('btn-dismiss');
-  const body        = document.body;
+  const pill         = document.getElementById('pill');
+  const avatar       = document.getElementById('avatar');
+  const dot          = document.getElementById('dot');
+  const expand       = document.getElementById('expand');
+  const desireBody   = document.getElementById('desire-body');
+  const idleBody     = document.getElementById('idle-body');
+  const claudeList   = document.getElementById('claude-list');
+  const claudeCount  = document.getElementById('claude-count');
+  const btnOpen      = document.getElementById('btn-open');
+  const btnDismiss   = document.getElementById('btn-dismiss');
+  const body         = document.body;
 
   const state = {
     mood: 'neutral',
@@ -222,7 +259,16 @@ export const ISLAND_HTML = `<!doctype html>
     desire: null,
     thinking: false,
     dreaming: false,
+    claudeSessions: [],  // [{project, sessionId, lastMtime}, …]
   };
+
+  // 30-min activity window matches the watcher's ACTIVE_WINDOW_MS.
+  const CLAUDE_ACTIVE_WINDOW_MS = 30 * 60 * 1000;
+  function isClaudeActive() {
+    return state.claudeSessions.some((s) =>
+      Date.now() - new Date(s.lastMtime).getTime() < CLAUDE_ACTIVE_WINDOW_MS
+    );
+  }
 
   function setAvatar(slug) {
     if (!slug) return;
@@ -232,19 +278,69 @@ export const ISLAND_HTML = `<!doctype html>
 
   function refreshDot() {
     dot.className = '';
-    if (!state.online)      { dot.classList.add('offline');  return; }
-    if (state.thinking)     { dot.classList.add('thinking'); return; }
-    if (state.dreaming)     { dot.classList.add('dreaming'); return; }
-    if (state.unread)       { dot.classList.add('unread');   return; }
+    // Priority: LISA's own state (offline / thinking / dreaming / unread)
+    // always wins over the Claude-Code-monitor indicator — the pill is
+    // primarily about her, the orange dot is a quieter "by the way".
+    if (!state.online)             { dot.classList.add('offline');       return; }
+    if (state.thinking)            { dot.classList.add('thinking');      return; }
+    if (state.dreaming)            { dot.classList.add('dreaming');      return; }
+    if (state.unread)              { dot.classList.add('unread');        return; }
+    if (isClaudeActive())          { dot.classList.add('claude-active'); return; }
   }
 
   function refreshPanel() {
     body.classList.toggle('offline',   !state.online);
     body.classList.toggle('has-unread', state.unread);
+    body.classList.toggle('has-claude', state.claudeSessions.length > 0);
     desireBody.textContent = state.desire || '(nothing actively pursued)';
     idleBody.textContent   = state.idleText || '';
     btnDismiss.classList.toggle('muted', !state.unread);
     btnDismiss.disabled = !state.unread;
+    renderClaudeList();
+  }
+
+  function relativeTime(iso) {
+    const ms = Date.now() - new Date(iso).getTime();
+    if (ms < 30_000)             return 'just now';
+    if (ms < 60_000)             return Math.round(ms / 1000) + 's ago';
+    if (ms < 3600_000)           return Math.round(ms / 60_000) + 'm ago';
+    return Math.round(ms / 3600_000) + 'h ago';
+  }
+
+  function renderClaudeList() {
+    const n = state.claudeSessions.length;
+    claudeCount.textContent = String(n);
+    while (claudeList.firstChild) claudeList.removeChild(claudeList.firstChild);
+    if (n === 0) {
+      const li = document.createElement('li');
+      li.className = 'empty';
+      li.textContent = '(idle)';
+      claudeList.appendChild(li);
+      return;
+    }
+    // Sort newest first, cap at 5.
+    const rows = state.claudeSessions
+      .slice()
+      .sort((a, b) => new Date(b.lastMtime).getTime() - new Date(a.lastMtime).getTime())
+      .slice(0, 5);
+    for (const s of rows) {
+      const li = document.createElement('li');
+      const proj = document.createElement('span');
+      proj.className = 'proj';
+      proj.textContent = s.project;
+      const when = document.createElement('span');
+      when.className = 'when';
+      when.textContent = relativeTime(s.lastMtime);
+      li.appendChild(proj);
+      li.appendChild(when);
+      li.title = s.sessionId;
+      li.addEventListener('click', async () => {
+        // Phase 1: copy session id to clipboard. Phase 2 will add a
+        // URL-scheme handoff for "open in iTerm at this session".
+        try { await navigator.clipboard.writeText(s.sessionId); } catch (_) {}
+      });
+      claudeList.appendChild(li);
+    }
   }
 
   function expandPanel(open) {
@@ -360,6 +456,20 @@ export const ISLAND_HTML = `<!doctype html>
             { duration: 600, iterations: 2 },
           );
           break;
+        case 'claude_session_update':
+          // Watcher noticed activity in ~/.claude/projects/. Splice the
+          // updated session into our local list and re-render. The list
+          // is kept short — we cap on render — so unbounded growth isn't
+          // a concern, but we still drop stale entries from time to time.
+          upsertClaudeSession({
+            project: m.projectLabel,
+            projectEncoded: m.projectEncoded,
+            sessionId: m.sessionId,
+            lastMtime: m.ts,
+          });
+          refreshDot();
+          refreshPanel();
+          break;
       }
     });
     es.addEventListener('error', () => {
@@ -371,13 +481,58 @@ export const ISLAND_HTML = `<!doctype html>
     });
   }
 
+  // ── Claude Code session helpers ────────────────────────────────────
+
+  function upsertClaudeSession(s) {
+    const idx = state.claudeSessions.findIndex(
+      (x) => x.sessionId === s.sessionId
+    );
+    if (idx >= 0) state.claudeSessions[idx] = s;
+    else state.claudeSessions.push(s);
+    pruneClaudeSessions();
+  }
+
+  function pruneClaudeSessions() {
+    const cutoff = Date.now() - CLAUDE_ACTIVE_WINDOW_MS;
+    state.claudeSessions = state.claudeSessions.filter(
+      (s) => new Date(s.lastMtime).getTime() >= cutoff
+    );
+  }
+
+  async function fetchClaudeSessions() {
+    try {
+      const r = await fetch('/api/claude/sessions', { cache: 'no-store' });
+      if (!r.ok) return;
+      const j = await r.json();
+      if (Array.isArray(j.sessions)) {
+        state.claudeSessions = j.sessions.map((s) => ({
+          project: s.project,
+          projectEncoded: s.projectEncoded,
+          sessionId: s.sessionId,
+          lastMtime: s.lastMtime,
+        }));
+      }
+    } catch (_) {
+      // server might not yet have the endpoint (older LISA) — silent
+    }
+  }
+
   // ── Bootstrap ──────────────────────────────────────────────────────
   setAvatar('neutral');
   pollPing();
+  fetchClaudeSessions().then(() => { refreshDot(); refreshPanel(); });
   subscribe();
   // Lightweight resync — covers cases where SSE silently disconnected
   // (laptop sleep, network blip) and we need to refresh state.
   setInterval(pollPing, 30_000);
+  setInterval(fetchClaudeSessions, 60_000);
+  // Re-render every 15s so "Xs ago" / "Xm ago" labels stay fresh and
+  // stale sessions fall off the list without a fresh update event.
+  setInterval(() => {
+    pruneClaudeSessions();
+    refreshDot();
+    refreshPanel();
+  }, 15_000);
 })();
 </script>
 </body>

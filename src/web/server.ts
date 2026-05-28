@@ -18,6 +18,7 @@ import { SessionStore } from "../sessions/store.js";
 import { reflectOnSession } from "../reflect.js";
 import { listDesires } from "../soul/store.js";
 import { ISLAND_HTML } from "./island.js";
+import { ClaudeCodeWatcher } from "../integrations/claude-code/watcher.js";
 import type { ToolDefinition, StoredMessage } from "../types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1724,6 +1725,18 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   moodBus.on("chat_start", () => broadcast({ type: "chat_start" }));
   moodBus.on("chat_end", () => broadcast({ type: "chat_end" }));
 
+  // ── Claude Code session monitoring (issue #27) ──────────────────────
+  // Watches ~/.claude/projects/ for jsonl activity and forwards updates
+  // to the same /events SSE. Privacy: only mtime + size + filename, never
+  // message contents (see src/integrations/claude-code/watcher.ts).
+  const claudeWatcher = new ClaudeCodeWatcher({
+    log: (msg) => console.error(msg),
+  });
+  claudeWatcher.on("update", (payload) => {
+    broadcast({ type: "claude_session_update", ...payload });
+  });
+  void claudeWatcher.start();
+
   // ── Island unread tracking (Phase 1 of MAC_ISLAND_PLAN) ─────────────
   // The island widget caches "last idle_message" so a fresh tab opening
   // mid-conversation knows there's something to read. Cleared via
@@ -1827,6 +1840,21 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       lastIdleMessage = null;
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+
+    // Claude Code session monitoring (issue #27). Returns sessions
+    // with activity in the last 30 minutes.
+    if (req.method === "GET" && url === "/api/claude/sessions") {
+      const sessions = claudeWatcher.listActive().map((s) => ({
+        project: s.projectLabel,
+        projectEncoded: s.projectEncoded,
+        sessionId: s.sessionId,
+        lastMtime: new Date(s.lastMtime).toISOString(),
+        size: s.size,
+      }));
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ sessions }));
       return;
     }
 
