@@ -105,6 +105,33 @@ final class IslandContent: NSViewController, WKNavigationDelegate, WKScriptMessa
             hostWindow?.setExpanded(true)
         case "collapse":
             hostWindow?.setExpanded(false)
+        case "ensure_notify_permission":
+            // Page is asking us to request macOS notification
+            // permission (idempotent; system handles repeats).
+            Task { @MainActor in
+                Notifier.shared.ensurePermission()
+            }
+        case "notify":
+            // Page detected a Claude session transitioning to
+            // waiting/error/etc. and wants to surface it as a native
+            // notification. Title + body are constructed page-side
+            // from projectLabel + sessionId — never message content.
+            guard let title = body["title"] as? String,
+                  let bodyText = body["body"] as? String else { return }
+            let sessionId = (body["sessionId"] as? String) ?? ""
+            Task { @MainActor in
+                Notifier.shared.notify(title: title, body: bodyText, sessionId: sessionId)
+            }
+        case "open_path":
+            // Open a Finder window at the cwd of a Claude session
+            // (Phase 3.5 B). Path is page-supplied; we restrict to
+            // absolute paths under the user's home for safety.
+            guard let raw = body["path"] as? String else { return }
+            let path = (raw as NSString).expandingTildeInPath
+            if path.hasPrefix("/") {
+                let url = URL(fileURLWithPath: path, isDirectory: true)
+                NSWorkspace.shared.open(url)
+            }
         default:
             // Drag is handled entirely Swift-side now (sendEvent
             // intercept + nextEvent loop), so we no longer expect
