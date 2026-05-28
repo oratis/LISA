@@ -1844,7 +1844,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     }
 
     // Claude Code session monitoring (issue #27). Returns sessions
-    // with activity in the last 30 minutes.
+    // with activity in the last 30 minutes plus their derived state
+    // (Phase 2: working / waiting / error / unknown).
     if (req.method === "GET" && url === "/api/claude/sessions") {
       const sessions = claudeWatcher.listActive().map((s) => ({
         project: s.projectLabel,
@@ -1852,6 +1853,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         sessionId: s.sessionId,
         lastMtime: new Date(s.lastMtime).toISOString(),
         size: s.size,
+        state: s.state,
+        stateReason: s.stateReason,
       }));
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ sessions }));

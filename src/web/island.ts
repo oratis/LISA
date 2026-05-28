@@ -92,11 +92,15 @@ export const ISLAND_HTML = `<!doctype html>
     background: transparent;
     flex-shrink: 0;
   }
-  #dot.thinking      { background: var(--accent);        animation: pulse 1.2s ease-in-out infinite; }
-  #dot.dreaming      { background: var(--accent-dream);  animation: pulse 2.4s ease-in-out infinite; }
-  #dot.unread        { background: var(--accent-warm); }
-  #dot.claude-active { background: var(--accent-claude); animation: pulse 1.8s ease-in-out infinite; }
-  #dot.offline       { background: var(--fg-faint); }
+  #dot.thinking       { background: var(--accent);         animation: pulse 1.2s ease-in-out infinite; }
+  #dot.dreaming       { background: var(--accent-dream);   animation: pulse 2.4s ease-in-out infinite; }
+  #dot.unread         { background: var(--accent-warm); }
+  /* Phase 2: pill dot reflects the strongest signal across all
+     Claude sessions. */
+  #dot.claude-working { background: var(--accent-claude);  animation: pulse 1.8s ease-in-out infinite; }
+  #dot.claude-waiting { background: var(--accent-claude); }  /* solid — "needs you" */
+  #dot.claude-error   { background: #ff5577;               animation: pulse 0.8s ease-in-out infinite; }
+  #dot.offline        { background: var(--fg-faint); }
 
   @keyframes pulse {
     0%, 100% { opacity: 0.35; }
@@ -186,6 +190,20 @@ export const ISLAND_HTML = `<!doctype html>
   #claude-list .when { color: var(--fg-dim); flex-shrink: 0; font-variant-numeric: tabular-nums; }
   #claude-list .empty { padding: 6px 10px; color: var(--fg-faint); font-style: italic; }
 
+  /* Phase 2 — per-session state pip prefix */
+  #claude-list .pip {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: var(--fg-faint);
+    margin-right: 2px;
+  }
+  #claude-list .pip.working { background: var(--accent-claude); animation: pulse 1.8s ease-in-out infinite; }
+  #claude-list .pip.waiting { background: var(--accent-claude); }
+  #claude-list .pip.error   { background: #ff5577; }
+  #claude-list .pip.unknown { background: var(--fg-faint); }
+
   #actions {
     display: flex;
     gap: 6px;
@@ -264,10 +282,26 @@ export const ISLAND_HTML = `<!doctype html>
 
   // 30-min activity window matches the watcher's ACTIVE_WINDOW_MS.
   const CLAUDE_ACTIVE_WINDOW_MS = 30 * 60 * 1000;
-  function isClaudeActive() {
-    return state.claudeSessions.some((s) =>
-      Date.now() - new Date(s.lastMtime).getTime() < CLAUDE_ACTIVE_WINDOW_MS
+  function recentSessions() {
+    const cutoff = Date.now() - CLAUDE_ACTIVE_WINDOW_MS;
+    return state.claudeSessions.filter(
+      (s) => new Date(s.lastMtime).getTime() >= cutoff
     );
+  }
+  /**
+   * Phase 2: aggregate Claude state for the pill dot. Priority is
+   * "loudest signal wins": an error anywhere dominates everything;
+   * otherwise a "waiting" session beats a "working" session (because
+   * "waiting" means Claude needs the user — more attention-worthy
+   * than "working" which is passive observing).
+   */
+  function aggregateClaudeState() {
+    const recent = recentSessions();
+    if (recent.length === 0) return null;
+    if (recent.some((s) => s.state === 'error'))   return 'error';
+    if (recent.some((s) => s.state === 'waiting')) return 'waiting';
+    if (recent.some((s) => s.state === 'working')) return 'working';
+    return null;
   }
 
   function setAvatar(slug) {
@@ -280,12 +314,15 @@ export const ISLAND_HTML = `<!doctype html>
     dot.className = '';
     // Priority: LISA's own state (offline / thinking / dreaming / unread)
     // always wins over the Claude-Code-monitor indicator — the pill is
-    // primarily about her, the orange dot is a quieter "by the way".
-    if (!state.online)             { dot.classList.add('offline');       return; }
-    if (state.thinking)            { dot.classList.add('thinking');      return; }
-    if (state.dreaming)            { dot.classList.add('dreaming');      return; }
-    if (state.unread)              { dot.classList.add('unread');        return; }
-    if (isClaudeActive())          { dot.classList.add('claude-active'); return; }
+    // primarily about her, the Claude dot is a quieter "by the way".
+    if (!state.online)  { dot.classList.add('offline');  return; }
+    if (state.thinking) { dot.classList.add('thinking'); return; }
+    if (state.dreaming) { dot.classList.add('dreaming'); return; }
+    if (state.unread)   { dot.classList.add('unread');   return; }
+    const claude = aggregateClaudeState();
+    if (claude === 'error')   { dot.classList.add('claude-error');   return; }
+    if (claude === 'waiting') { dot.classList.add('claude-waiting'); return; }
+    if (claude === 'working') { dot.classList.add('claude-working'); return; }
   }
 
   function refreshPanel() {
@@ -308,35 +345,42 @@ export const ISLAND_HTML = `<!doctype html>
   }
 
   function renderClaudeList() {
-    const n = state.claudeSessions.length;
-    claudeCount.textContent = String(n);
+    const recent = recentSessions();
+    claudeCount.textContent = String(recent.length);
     while (claudeList.firstChild) claudeList.removeChild(claudeList.firstChild);
-    if (n === 0) {
+    if (recent.length === 0) {
       const li = document.createElement('li');
       li.className = 'empty';
       li.textContent = '(idle)';
       claudeList.appendChild(li);
       return;
     }
-    // Sort newest first, cap at 5.
-    const rows = state.claudeSessions
-      .slice()
-      .sort((a, b) => new Date(b.lastMtime).getTime() - new Date(a.lastMtime).getTime())
-      .slice(0, 5);
+    // Sort: errors first, then waiting, then working, then by mtime.
+    const stateRank = { error: 0, waiting: 1, working: 2, unknown: 3 };
+    const rows = recent.slice().sort((a, b) => {
+      const ra = stateRank[a.state] ?? 9;
+      const rb = stateRank[b.state] ?? 9;
+      if (ra !== rb) return ra - rb;
+      return new Date(b.lastMtime).getTime() - new Date(a.lastMtime).getTime();
+    }).slice(0, 5);
     for (const s of rows) {
       const li = document.createElement('li');
+      const pip = document.createElement('span');
+      pip.className = 'pip ' + (s.state || 'unknown');
       const proj = document.createElement('span');
       proj.className = 'proj';
       proj.textContent = s.project;
       const when = document.createElement('span');
       when.className = 'when';
       when.textContent = relativeTime(s.lastMtime);
+      li.appendChild(pip);
       li.appendChild(proj);
       li.appendChild(when);
-      li.title = s.sessionId;
+      li.title = s.state + (s.stateReason ? ' (' + s.stateReason + ')' : '')
+               + ' · ' + s.sessionId;
       li.addEventListener('click', async () => {
-        // Phase 1: copy session id to clipboard. Phase 2 will add a
-        // URL-scheme handoff for "open in iTerm at this session".
+        // Phase 2 still copies sessionId; Phase 3 will URL-scheme handoff
+        // to iTerm / Warp at the right pane.
         try { await navigator.clipboard.writeText(s.sessionId); } catch (_) {}
       });
       claudeList.appendChild(li);
@@ -458,14 +502,15 @@ export const ISLAND_HTML = `<!doctype html>
           break;
         case 'claude_session_update':
           // Watcher noticed activity in ~/.claude/projects/. Splice the
-          // updated session into our local list and re-render. The list
-          // is kept short — we cap on render — so unbounded growth isn't
-          // a concern, but we still drop stale entries from time to time.
+          // updated session into our local list (with its newly-derived
+          // state) and re-render.
           upsertClaudeSession({
             project: m.projectLabel,
             projectEncoded: m.projectEncoded,
             sessionId: m.sessionId,
             lastMtime: m.ts,
+            state: m.state || 'unknown',
+            stateReason: m.stateReason || '',
           });
           refreshDot();
           refreshPanel();
@@ -510,6 +555,8 @@ export const ISLAND_HTML = `<!doctype html>
           projectEncoded: s.projectEncoded,
           sessionId: s.sessionId,
           lastMtime: s.lastMtime,
+          state: s.state || 'unknown',
+          stateReason: s.stateReason || '',
         }));
       }
     } catch (_) {

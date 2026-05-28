@@ -40,6 +40,7 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { EventEmitter } from "node:events";
+import { parseSessionState, type ClaudeSessionState } from "./parser.js";
 
 const CLAUDE_HOME       = process.env.CLAUDE_HOME ?? path.join(os.homedir(), ".claude");
 const PROJECTS_DIR      = path.join(CLAUDE_HOME, "projects");
@@ -62,13 +63,19 @@ export interface ClaudeSessionInfo {
   lastMtime: number;
   /** Size in bytes (rough indicator of message volume) */
   size: number;
+  /** Derived state — Phase 2; see parser.ts. */
+  state: ClaudeSessionState;
+  /** Short reason label for the derived state (debugging / tooltip). */
+  stateReason: string;
 }
 
 export interface ClaudeSessionUpdate {
-  event: "new" | "message";
+  event: "new" | "message" | "state_changed";
   projectEncoded: string;
   projectLabel: string;
   sessionId: string;
+  state: ClaudeSessionState;
+  stateReason: string;
   ts: string; // ISO
 }
 
@@ -150,7 +157,8 @@ export class ClaudeCodeWatcher extends EventEmitter {
     try {
       const st = await fsp.stat(filePath);
       if (!st.isFile()) return;
-      const info = this.makeInfo(filePath, st.mtimeMs, st.size);
+      const { state, reason } = await parseSessionState(filePath);
+      const info = this.makeInfo(filePath, st.mtimeMs, st.size, state, reason);
       this.sessions.set(filePath, info);
     } catch {
       // ignore — file disappeared between readdir and stat
@@ -226,30 +234,46 @@ export class ClaudeCodeWatcher extends EventEmitter {
     if (!st.isFile()) return;
 
     const prev = this.sessions.get(fullPath);
-    const info = this.makeInfo(fullPath, st.mtimeMs, st.size);
+    const { state, reason } = await parseSessionState(fullPath);
+    const info = this.makeInfo(fullPath, st.mtimeMs, st.size, state, reason);
     this.sessions.set(fullPath, info);
 
     if (!prev) {
       this.emitUpdate("new", info);
       return;
     }
-    if (st.size !== prev.size || st.mtimeMs !== prev.lastMtime) {
+    const grew = st.size !== prev.size || st.mtimeMs !== prev.lastMtime;
+    const stateChanged = prev.state !== info.state;
+    if (grew) {
+      // A "message" event implicitly reports the new state too.
       this.emitUpdate("message", info);
+    } else if (stateChanged) {
+      // Rare path: file mtime/size unchanged but parse derived a
+      // different state. Emit a state-only event so the UI can react.
+      this.emitUpdate("state_changed", info);
     }
   }
 
-  private emitUpdate(event: "new" | "message", info: ClaudeSessionInfo): void {
+  private emitUpdate(event: "new" | "message" | "state_changed", info: ClaudeSessionInfo): void {
     const payload: ClaudeSessionUpdate = {
       event,
       projectEncoded: info.projectEncoded,
       projectLabel: info.projectLabel,
       sessionId: info.sessionId,
+      state: info.state,
+      stateReason: info.stateReason,
       ts: new Date().toISOString(),
     };
     this.emit("update", payload);
   }
 
-  private makeInfo(filePath: string, mtimeMs: number, size: number): ClaudeSessionInfo {
+  private makeInfo(
+    filePath: string,
+    mtimeMs: number,
+    size: number,
+    state: ClaudeSessionState,
+    stateReason: string,
+  ): ClaudeSessionInfo {
     const sessionId = path.basename(filePath, ".jsonl");
     const projectEncoded = path.basename(path.dirname(filePath));
     return {
@@ -258,6 +282,8 @@ export class ClaudeCodeWatcher extends EventEmitter {
       sessionId,
       lastMtime: mtimeMs,
       size,
+      state,
+      stateReason,
     };
   }
 }
