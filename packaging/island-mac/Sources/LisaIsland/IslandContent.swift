@@ -99,22 +99,17 @@ final class IslandContent: NSViewController, WKNavigationDelegate, WKScriptMessa
                 NSWorkspace.shared.open(fullURL)
             }
         case "expand":
+            // Page-side expand state — Swift uses this to size the
+            // click-through "hot rect" (whole window when expanded,
+            // just the pill when collapsed). No window resize happens.
             hostWindow?.setExpanded(true)
         case "collapse":
             hostWindow?.setExpanded(false)
-        case "drag_delta":
-            // JS sends per-frame deltas in browser screen coords during a
-            // pointermove drag. Swift moves the window directly — no
-            // performDrag, no AppKit drag tracking loop, smooth as the
-            // mouse hardware allows.
-            guard let dx = body["dx"] as? Double,
-                  let dy = body["dy"] as? Double else { return }
-            hostWindow?.translateOriginByScreenDelta(dx: CGFloat(dx), dy: CGFloat(dy))
-        case "drag_end":
-            // Save the new anchor so it survives restart + state changes.
-            hostWindow?.saveCurrentPositionAsAnchor()
         default:
-            // Unknown message — ignore, don't crash.
+            // Drag is handled entirely Swift-side now (sendEvent
+            // intercept + nextEvent loop), so we no longer expect
+            // drag_delta / drag_end from the page. Unknown messages
+            // are tolerated for forward-compat with future phases.
             break
         }
     }

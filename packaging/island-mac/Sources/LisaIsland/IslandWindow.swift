@@ -2,56 +2,69 @@
 //  IslandWindow.swift
 //  LisaIsland — Phase 2.1 + 2.2
 //
-//  Borderless, transparent NSPanel that hosts the WKWebView. Sits just
-//  below the menu bar / notch by default (so the avatar isn't eclipsed
-//  by the physical notch hardware), horizontally centered. User can
-//  click-and-drag anywhere on the pill to reposition. The chosen
-//  position is persisted to UserDefaults and restored at next launch.
+//  Borderless, transparent NSPanel that hosts the WKWebView.
 //
-//  Window sizing is dynamic: starts collapsed (~50pt tall, pill-only)
-//  and grows downward to expanded size when the web widget tells us
-//  (via postMessage) the user clicked/hovered. The resize is INSTANT
-//  (no animation) so the pill's screen position never visually drifts
-//  during state changes; the in-page CSS fade animates the panel's
-//  appearance instead.
+//  Architecture (after the post-flicker rework):
 //
-//  Persisted anchor is normalized to the COLLAPSED-state origin —
-//  regardless of which state the user dragged in, we recover the pill's
-//  top edge and re-derive a fresh origin for any size. This kills the
-//  "click → window jumps 250pt up" drift.
+//   • Window is a CONSTANT 330×300. We never resize it on expand /
+//     collapse — that was the source of the click-flicker.
+//   • The pill renders in the TOP 50pt of the window (CSS aligns it to
+//     flex-start). The bottom 250pt is for the expand panel, hidden via
+//     CSS when collapsed.
+//   • Click-through outside the pill: a polling timer checks the cursor
+//     against the "hot rect" (just the pill when collapsed, the whole
+//     window when expanded) and toggles `ignoresMouseEvents`. So the
+//     250pt transparent area below the pill doesn't steal menu-bar or
+//     content clicks when the user isn't actively engaging with Lisa.
+//   • Drag is Swift-side, not JS: `sendEvent(_:)` intercepts
+//     `.leftMouseDown` and runs a synchronous nextEvent loop tracking
+//     mouseDragged / mouseUp. Movement > 4px ⇒ drag (setFrameOrigin
+//     each tick, no IPC roundtrip). No movement ⇒ click (forward
+//     `pill.click()` into the WKWebView).
+//   • The pill's screen position is persisted as the window origin
+//     (since the window is a fixed size, the origin IS the anchor).
 //
 
 import AppKit
+import WebKit
 
 final class IslandWindow: NSPanel {
-    // Collapsed: just the pill (avatar + "Lisa" + status dot)
-    // Expanded: pill + ~250pt panel below for desire / idle message
-    static let collapsedSize = CGSize(width: 160, height: 50)
-    static let expandedSize  = CGSize(width: 330, height: 300)
+    // Fixed window footprint. Pill renders in the top 50pt; expand
+    // panel renders below (visible only via CSS).
+    static let windowSize = CGSize(width: 330, height: 300)
+    static let pillHeight: CGFloat = 50
 
-    // UserDefaults keys for the drag-saved anchor.
+    // 4pt deadband: cursor must move at least this much before we treat
+    // the mousedown as a drag rather than a click.
+    private static let dragThreshold: CGFloat = 4
+
+    // UserDefaults keys.
     private enum DefaultsKey {
         static let hasUserOrigin = "ai.meetlisa.island.hasUserOrigin"
-        // Anchor is stored as the COLLAPSED-state bottom-left origin,
-        // so the same value reconstructs any size correctly.
         static let userOriginX   = "ai.meetlisa.island.userOriginX"
         static let userOriginY   = "ai.meetlisa.island.userOriginY"
     }
 
-    private(set) var isExpanded = false
+    /// Tracked from CSS expand state via postMessage from island.ts.
+    /// When expanded, the hover-hot-rect is the entire window; when
+    /// collapsed, it's just the pill.
+    private var expandedHot = false
+
+    private var hoverTimer: Timer?
 
     init() {
-        let initialFrame = NSRect(origin: .zero, size: Self.collapsedSize)
+        let frame = NSRect(origin: .zero, size: Self.windowSize)
         super.init(
-            contentRect: initialFrame,
+            contentRect: frame,
             styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
 
         configureWindow()
-        repositionForCurrentState()
+        repositionWindow()
         mountWebView()
+        startHoverPolling()
 
         NotificationCenter.default.addObserver(
             self,
@@ -62,10 +75,11 @@ final class IslandWindow: NSPanel {
     }
 
     deinit {
+        hoverTimer?.invalidate()
         NotificationCenter.default.removeObserver(self)
     }
 
-    // MARK: - Window config
+    // MARK: - Config
 
     private func configureWindow() {
         level = NSWindow.Level(Int(NSWindow.Level.mainMenu.rawValue) + 3)
@@ -81,7 +95,9 @@ final class IslandWindow: NSPanel {
         titleVisibility = .hidden
         titlebarAppearsTransparent = true
         isMovableByWindowBackground = false
-        ignoresMouseEvents = false
+        // Start in pass-through; hoverPoll will flip this on/off based
+        // on cursor position vs hot-rect.
+        ignoresMouseEvents = true
         isFloatingPanel = true
         hidesOnDeactivate = false
     }
@@ -90,14 +106,12 @@ final class IslandWindow: NSPanel {
     override var canBecomeMain: Bool { false }
 
     override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
-        // Don't snap into visibleFrame — the user is allowed to drag
-        // anywhere, including overlapping menu bar / corners.
         return frameRect
     }
 
-    // MARK: - Anchor persistence (always collapsed-equivalent)
+    // MARK: - Position
 
-    private func savedCollapsedOrigin() -> NSPoint? {
+    private func savedOrigin() -> NSPoint? {
         let d = UserDefaults.standard
         guard d.bool(forKey: DefaultsKey.hasUserOrigin) else { return nil }
         return NSPoint(
@@ -106,25 +120,11 @@ final class IslandWindow: NSPanel {
         )
     }
 
-    private func saveCollapsedOrigin(_ origin: NSPoint) {
+    private func saveCurrentOrigin() {
         let d = UserDefaults.standard
         d.set(true, forKey: DefaultsKey.hasUserOrigin)
-        d.set(Double(origin.x), forKey: DefaultsKey.userOriginX)
-        d.set(Double(origin.y), forKey: DefaultsKey.userOriginY)
-    }
-
-    /// Snapshot the pill's current screen position as a collapsed-state
-    /// origin. Call this after a user drag completes so the next state
-    /// transition (collapse ↔ expand) reconstructs from the same pill
-    /// position rather than the window's current origin.
-    func saveCurrentPositionAsAnchor() {
-        // Pill's top edge = window's top edge (CSS aligns to flex-start)
-        // Pill's center x = window's center x
-        let pillTopY    = frame.maxY
-        let pillCenterX = frame.midX
-        let collapsedX  = pillCenterX - Self.collapsedSize.width / 2
-        let collapsedY  = pillTopY    - Self.collapsedSize.height
-        saveCollapsedOrigin(NSPoint(x: collapsedX, y: collapsedY))
+        d.set(Double(frame.origin.x), forKey: DefaultsKey.userOriginX)
+        d.set(Double(frame.origin.y), forKey: DefaultsKey.userOriginY)
     }
 
     func resetSavedOrigin() {
@@ -132,79 +132,162 @@ final class IslandWindow: NSPanel {
         d.removeObject(forKey: DefaultsKey.hasUserOrigin)
         d.removeObject(forKey: DefaultsKey.userOriginX)
         d.removeObject(forKey: DefaultsKey.userOriginY)
-        repositionForCurrentState()
+        repositionWindow()
     }
 
-    // MARK: - Position resolution
-
-    private func defaultCollapsedOrigin(on screen: NSScreen) -> NSPoint {
-        return NotchDetector.anchor(for: Self.collapsedSize, on: screen).origin
-    }
-
-    /// Compute the window origin for the given size given the current
-    /// state. The pill's top edge stays at the same screen y whether
-    /// collapsed or expanded; the expanded window simply extends
-    /// downward.
-    private func originForCurrentState(size: CGSize, on screen: NSScreen) -> NSPoint {
-        let collapsedOrigin: NSPoint
-        if let saved = savedCollapsedOrigin() {
-            collapsedOrigin = clamp(saved, to: screen)
-        } else {
-            collapsedOrigin = defaultCollapsedOrigin(on: screen)
-        }
-        let pillTopY    = collapsedOrigin.y + Self.collapsedSize.height
-        let pillCenterX = collapsedOrigin.x + Self.collapsedSize.width / 2
+    /// Default: pill's top edge sits at visibleFrame.maxY (just below
+    /// menu bar / notch), horizontally centered on the screen midX.
+    /// Since the pill is in the top 50pt of a 300pt-tall window, the
+    /// window's TOP edge equals visibleFrame.maxY, so origin.y =
+    /// visibleFrame.maxY - windowHeight.
+    private func defaultOrigin(on screen: NSScreen) -> NSPoint {
+        let visible = screen.visibleFrame
         return NSPoint(
-            x: pillCenterX - size.width / 2,
-            y: pillTopY    - size.height
+            x: visible.midX - Self.windowSize.width / 2,
+            y: visible.maxY - Self.windowSize.height
         )
     }
 
-    /// Allow positioning anywhere on screen but keep at least 40pt of
-    /// the COLLAPSED pill on screen so it can't be lost.
-    private func clamp(_ origin: NSPoint, to screen: NSScreen) -> NSPoint {
-        let s = Self.collapsedSize
+    private func clampedOrigin(_ origin: NSPoint, on screen: NSScreen) -> NSPoint {
         let bounds = screen.frame
-        let margin: CGFloat = 40
+        let pillVisibleMargin: CGFloat = 40
+        // Keep at least 40pt of the PILL on screen, so the user can't
+        // lose it. The pill is in the top 50pt of the window.
+        let minX = bounds.minX - Self.windowSize.width + pillVisibleMargin
+        let maxX = bounds.maxX - pillVisibleMargin
+        // Lower bound: pill top must still be inside the screen.
+        // Pill top y in AppKit coords = origin.y + windowHeight.
+        // Need pill top > bounds.minY + pillVisibleMargin → origin.y >
+        // bounds.minY + pillVisibleMargin - windowHeight.
+        let minY = bounds.minY + pillVisibleMargin - Self.windowSize.height
+        // Upper bound: window can sit up to screen-top.
+        let maxY = bounds.maxY - Self.windowSize.height + Self.pillHeight - pillVisibleMargin
         return NSPoint(
-            x: min(max(origin.x, bounds.minX - s.width + margin), bounds.maxX - margin),
-            y: min(max(origin.y, bounds.minY - s.height + margin), bounds.maxY - margin)
+            x: min(max(origin.x, minX), maxX),
+            y: min(max(origin.y, minY), maxY)
         )
     }
 
-    func repositionForCurrentState() {
+    private func repositionWindow() {
         guard let screen = NSScreen.main else { return }
-        let size = isExpanded ? Self.expandedSize : Self.collapsedSize
-        let origin = originForCurrentState(size: size, on: screen)
-        // No animation. The page's CSS fades in the expand panel; the
-        // window itself swaps instantly so the pill never visually
-        // drifts during expand/collapse.
-        setFrame(NSRect(origin: origin, size: size), display: true, animate: false)
+        let origin: NSPoint
+        if let saved = savedOrigin() {
+            origin = clampedOrigin(saved, on: screen)
+        } else {
+            origin = defaultOrigin(on: screen)
+        }
+        setFrame(NSRect(origin: origin, size: Self.windowSize),
+                 display: true,
+                 animate: false)
     }
 
     @objc private func handleScreenChange() {
-        repositionForCurrentState()
+        repositionWindow()
     }
 
-    // MARK: - Expand / collapse
+    // MARK: - Hot rect + click-through polling
 
+    /// Called by IslandContent on receipt of an `expand` / `collapse`
+    /// postMessage from the page. Updates which rect is "hot" for
+    /// click-passthrough decisions.
     func setExpanded(_ expanded: Bool) {
-        guard expanded != isExpanded else { return }
-        isExpanded = expanded
-        repositionForCurrentState()
+        expandedHot = expanded
     }
 
-    // MARK: - Direct origin translation (driven by JS drag)
+    /// Pill rect in screen-space (top 50pt of the window).
+    private var pillScreenRect: NSRect {
+        let top = frame.origin.y + frame.height
+        return NSRect(
+            x: frame.origin.x,
+            y: top - Self.pillHeight,
+            width: frame.width,
+            height: Self.pillHeight
+        )
+    }
 
-    /// Move the window by (dx, dy) in **screen-coordinate deltas** (y
-    /// positive = down, matching browser screenY). Called once per
-    /// pointermove from the JS drag tracker. We invert y to AppKit
-    /// (bottom-left origin where y positive = up).
-    func translateOriginByScreenDelta(dx: CGFloat, dy: CGFloat) {
-        var newOrigin = frame.origin
-        newOrigin.x += dx
-        newOrigin.y -= dy   // screen y → AppKit y
-        setFrameOrigin(newOrigin)
+    private func startHoverPolling() {
+        // 50ms = 20Hz. Cheap. Adequate for "cursor over pill" detection.
+        hoverTimer = Timer.scheduledTimer(
+            withTimeInterval: 0.05,
+            repeats: true
+        ) { [weak self] _ in
+            self?.updateClickPassthrough()
+        }
+    }
+
+    private func updateClickPassthrough() {
+        let mouse = NSEvent.mouseLocation
+        // When expanded, the whole window is hot (so the user can
+        // click buttons in the expand panel). When collapsed, only the
+        // pill rectangle is hot.
+        let hot: NSRect = expandedHot ? frame : pillScreenRect
+        let inHot = NSPointInRect(mouse, hot)
+        let shouldIgnore = !inHot
+        if ignoresMouseEvents != shouldIgnore {
+            ignoresMouseEvents = shouldIgnore
+        }
+    }
+
+    // MARK: - Swift-side drag (mouseDown intercepted at sendEvent)
+
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .leftMouseDown {
+            handleMouseDown(event)
+            return
+        }
+        super.sendEvent(event)
+    }
+
+    private func handleMouseDown(_ down: NSEvent) {
+        let initialOrigin   = frame.origin
+        let downScreen      = NSEvent.mouseLocation
+        var moved           = false
+
+        while true {
+            // Pull the next mouse-drag-or-up event off the queue.
+            // .eventTracking run loop mode keeps us in the active drag
+            // tracking phase without interleaving non-mouse events.
+            guard let evt = NSApplication.shared.nextEvent(
+                matching: [.leftMouseDragged, .leftMouseUp],
+                until: .distantFuture,
+                inMode: .eventTracking,
+                dequeue: true
+            ) else { return }
+
+            let now = NSEvent.mouseLocation
+            let dx = now.x - downScreen.x
+            let dy = now.y - downScreen.y
+
+            switch evt.type {
+            case .leftMouseDragged:
+                if !moved && (abs(dx) > Self.dragThreshold || abs(dy) > Self.dragThreshold) {
+                    moved = true
+                }
+                if moved {
+                    setFrameOrigin(NSPoint(
+                        x: initialOrigin.x + dx,
+                        y: initialOrigin.y + dy
+                    ))
+                }
+            case .leftMouseUp:
+                if moved {
+                    saveCurrentOrigin()
+                } else {
+                    // It was a click. Synthesize the pill click in JS so
+                    // expand-toggle / button handlers run as normal.
+                    forwardPillClick()
+                }
+                return
+            default:
+                break
+            }
+        }
+    }
+
+    private func forwardPillClick() {
+        guard let wv = contentView as? WKWebView else { return }
+        wv.evaluateJavaScript("document.getElementById('pill')?.click();",
+                              completionHandler: nil)
     }
 
     // MARK: - WebView mount
