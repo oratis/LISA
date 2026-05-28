@@ -262,8 +262,26 @@ export const ISLAND_HTML = `<!doctype html>
   }
 
   // ── Interaction ────────────────────────────────────────────────────
+  //
+  // Drag vs click resolution: every pill mousedown starts a pointer
+  // capture. If the cursor moves > 4px before release, we treat it as
+  // a drag (post per-frame screen deltas to the native container so it
+  // can move the window). If it releases without moving, we treat it
+  // as a click (toggle expand). The bridge falls back gracefully when
+  // running in a plain browser tab — postMessages are no-ops.
+  //
+  // Why screen coordinates: as the native window moves, the mouse stays
+  // at the same SCREEN position (the user's hand is in screen space),
+  // so deltas of screenX/Y between successive pointermove events give
+  // us the actual physical motion to apply.
+
+  const hasBridge = !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.island);
+  let dragTracking = null;
+  let lastDragEndAt = 0;
+
   let hoverTimer = null;
   pill.addEventListener('mouseenter', () => {
+    if (dragTracking && dragTracking.moved) return;
     clearTimeout(hoverTimer);
     hoverTimer = setTimeout(() => expandPanel(true), 250);
   });
@@ -276,7 +294,71 @@ export const ISLAND_HTML = `<!doctype html>
   });
   expand.addEventListener('mouseleave', () => expandPanel(false));
 
+  pill.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    dragTracking = {
+      pointerId: e.pointerId,
+      startX: e.screenX,
+      startY: e.screenY,
+      lastX: e.screenX,
+      lastY: e.screenY,
+      moved: false,
+    };
+    try { pill.setPointerCapture(e.pointerId); } catch (_) {}
+  });
+
+  pill.addEventListener('pointermove', (e) => {
+    if (!dragTracking || e.pointerId !== dragTracking.pointerId) return;
+    if (!dragTracking.moved) {
+      const totalDx = e.screenX - dragTracking.startX;
+      const totalDy = e.screenY - dragTracking.startY;
+      if (Math.abs(totalDx) > 4 || Math.abs(totalDy) > 4) {
+        dragTracking.moved = true;
+        // Cancel any pending hover-expand so the window doesn't grow
+        // mid-drag.
+        clearTimeout(hoverTimer);
+        expandPanel(false);
+      }
+    }
+    if (dragTracking.moved) {
+      const dx = e.screenX - dragTracking.lastX;
+      const dy = e.screenY - dragTracking.lastY;
+      if (dx !== 0 || dy !== 0) {
+        if (hasBridge) {
+          window.webkit.messageHandlers.island.postMessage({
+            type: 'drag_delta',
+            dx: dx,
+            dy: dy,
+          });
+        }
+        dragTracking.lastX = e.screenX;
+        dragTracking.lastY = e.screenY;
+      }
+    }
+  });
+
+  function endDrag(e) {
+    if (!dragTracking || e.pointerId !== dragTracking.pointerId) return;
+    const wasDrag = dragTracking.moved;
+    try { pill.releasePointerCapture(e.pointerId); } catch (_) {}
+    dragTracking = null;
+    if (wasDrag) {
+      lastDragEndAt = Date.now();
+      if (hasBridge) {
+        window.webkit.messageHandlers.island.postMessage({ type: 'drag_end' });
+      }
+    }
+  }
+  pill.addEventListener('pointerup', endDrag);
+  pill.addEventListener('pointercancel', endDrag);
+
   pill.addEventListener('click', (e) => {
+    // Suppress the click that follows a drag-end.
+    if (Date.now() - lastDragEndAt < 250) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     e.preventDefault();
     expandPanel(!body.classList.contains('expanded'));
   });

@@ -102,8 +102,19 @@ final class IslandContent: NSViewController, WKNavigationDelegate, WKScriptMessa
             hostWindow?.setExpanded(true)
         case "collapse":
             hostWindow?.setExpanded(false)
+        case "drag_delta":
+            // JS sends per-frame deltas in browser screen coords during a
+            // pointermove drag. Swift moves the window directly — no
+            // performDrag, no AppKit drag tracking loop, smooth as the
+            // mouse hardware allows.
+            guard let dx = body["dx"] as? Double,
+                  let dy = body["dy"] as? Double else { return }
+            hostWindow?.translateOriginByScreenDelta(dx: CGFloat(dx), dy: CGFloat(dy))
+        case "drag_end":
+            // Save the new anchor so it survives restart + state changes.
+            hostWindow?.saveCurrentPositionAsAnchor()
         default:
-            // Unknown message — ignore, don't crash. Future phases add more.
+            // Unknown message — ignore, don't crash.
             break
         }
     }
