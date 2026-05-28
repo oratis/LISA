@@ -21,6 +21,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         installMenu()
         showMainWindow()
+
+        // Phase 3.5 — menu bar mirror of Claude Code activity.
+        // Click the status item to bring the main window to front.
+        MenuBarController.shared.install { [weak self] in
+            self?.showMainWindow()
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
