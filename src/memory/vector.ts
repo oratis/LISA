@@ -1,6 +1,7 @@
 import path from "node:path";
 import fs from "node:fs/promises";
 import { listSessionsOnDisk, loadSessionMessages } from "../sessions/list.js";
+import { SESSIONS_DIR } from "../paths.js";
 import { extractTextFromContent } from "../agent.js";
 
 interface Document {
@@ -24,7 +25,61 @@ const STOPWORDS = new Set([
   "lisa", "tool", "use", "user", "assistant",
 ]);
 
-export async function buildIndex(): Promise<Index> {
+// ── index cache ───────────────────────────────────────────────────────────
+// buildIndex re-reads + re-tokenizes EVERY past session, which is O(total
+// transcript bytes). memory_search was calling it fresh on every invocation,
+// so a chat that searches its memory N times in one session paid that cost N
+// times even when nothing changed. We cache the built index keyed by a cheap
+// fingerprint of the sessions directory (each .jsonl's mtime + size). The
+// fingerprint changes the instant any session is appended to or a new one
+// appears, so the cache is correct, not just fast.
+let cachedIndex: Index | null = null;
+let cachedFingerprint = "";
+
+async function sessionsFingerprint(): Promise<string> {
+  let files: string[];
+  try {
+    files = await fs.readdir(SESSIONS_DIR);
+  } catch {
+    // Missing dir and empty dir must fingerprint identically: buildIndex →
+    // listSessionsOnDisk → ensureDir CREATES the dir as a side effect, so a
+    // distinct "no-dir" sentinel would spuriously miss the cache on the very
+    // next call. Both collapse to the empty fingerprint.
+    return "";
+  }
+  const parts: string[] = [];
+  for (const f of files.sort()) {
+    if (!f.endsWith(".jsonl")) continue;
+    try {
+      const st = await fs.stat(path.join(SESSIONS_DIR, f));
+      parts.push(`${f}:${st.mtimeMs}:${st.size}`);
+    } catch {
+      // file vanished between readdir and stat — ignore
+    }
+  }
+  return parts.join("|");
+}
+
+/** Drop the cached index (test hook / explicit invalidation). */
+export function clearIndexCache(): void {
+  cachedIndex = null;
+  cachedFingerprint = "";
+}
+
+export async function buildIndex(opts: { cache?: boolean } = {}): Promise<Index> {
+  const useCache = opts.cache !== false;
+  if (useCache) {
+    const fp = await sessionsFingerprint();
+    if (cachedIndex && fp === cachedFingerprint) return cachedIndex;
+    const built = await buildIndexUncached();
+    cachedIndex = built;
+    cachedFingerprint = fp;
+    return built;
+  }
+  return buildIndexUncached();
+}
+
+async function buildIndexUncached(): Promise<Index> {
   const sessions = await listSessionsOnDisk();
   const docs: Document[] = [];
   const docFreq = new Map<string, number>();
