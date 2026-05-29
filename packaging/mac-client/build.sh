@@ -94,6 +94,12 @@ cp "$BIN" "$APP/Contents/MacOS/Lisa"
 chmod +x "$APP/Contents/MacOS/Lisa"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 cp "$ICNS" "$APP/Contents/Resources/AppIcon.icns"
+# Menu bar icon — small face crop loaded by MenuBarController. Bundled
+# at 36×36 (we set image.size to 18pt at runtime so AppKit treats it
+# as a retina-ready image source).
+if [ -f Resources/MenuBarIcon.png ]; then
+    cp Resources/MenuBarIcon.png "$APP/Contents/Resources/MenuBarIcon.png"
+fi
 
 # ── 4. ad-hoc sign ──────────────────────────────────────────────────
 # Proper signing (Developer ID + notarization) is Phase 4.
