@@ -3,6 +3,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { atomicWrite, ensureDir, pathExists, readTextOrEmpty } from "../fs-utils.js";
 import { commitSoulChange, initSoulRepo } from "./git.js";
+import { withSoulLock } from "./lock.js";
 import {
   SOUL_DIR,
   SOUL_SEED,
@@ -315,23 +316,27 @@ export async function appendDesireProgress(
   entry: string,
 ): Promise<void> {
   const file = desireProgressFile(slug);
-  const existing = await readTextOrEmpty(file);
-  const stamp = new Date().toISOString();
-  const block = `\n## ${stamp}\n\n${entry.trim()}\n`;
-  let next = existing.trimEnd() + block;
-  // Keep the file bounded — old entries get squashed into a "[…earlier]" stub
-  // when we cross the cap. Cheap, deterministic, no LLM-driven summarization.
-  if (Buffer.byteLength(next, "utf8") > PROGRESS_MAX_BYTES) {
-    const tail = next.slice(-PROGRESS_TAIL_BYTES);
-    const firstHeader = tail.indexOf("\n## ");
-    const truncated =
-      firstHeader >= 0 ? tail.slice(firstHeader + 1) : tail;
-    next = `# progress: ${slug}\n\n[…earlier entries truncated]\n\n${truncated}`;
-  } else if (!existing) {
-    next = `# progress: ${slug}\n${next}`;
-  }
-  await atomicWrite(file, next.trim() + "\n");
-  await commitSoulChange(`desires/${slug}.progress.md`, "progress");
+  // Read-modify-write under the cross-process soul lock: two heartbeat/idle
+  // runs (or a heartbeat racing a chat turn) appending to the same progress
+  // file would otherwise lose one append (last-writer-wins on stale reads).
+  await withSoulLock(async () => {
+    const existing = await readTextOrEmpty(file);
+    const stamp = new Date().toISOString();
+    const block = `\n## ${stamp}\n\n${entry.trim()}\n`;
+    let next = existing.trimEnd() + block;
+    // Keep the file bounded — old entries get squashed into a "[…earlier]"
+    // stub when we cross the cap. Cheap, deterministic, no LLM summarization.
+    if (Buffer.byteLength(next, "utf8") > PROGRESS_MAX_BYTES) {
+      const tail = next.slice(-PROGRESS_TAIL_BYTES);
+      const firstHeader = tail.indexOf("\n## ");
+      const truncated = firstHeader >= 0 ? tail.slice(firstHeader + 1) : tail;
+      next = `# progress: ${slug}\n\n[…earlier entries truncated]\n\n${truncated}`;
+    } else if (!existing) {
+      next = `# progress: ${slug}\n${next}`;
+    }
+    await atomicWrite(file, next.trim() + "\n");
+    await commitSoulChange(`desires/${slug}.progress.md`, "progress");
+  });
 }
 
 // ── journal ───────────────────────────────────────────────────────────
