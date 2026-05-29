@@ -1,5 +1,6 @@
 import path from "node:path";
 import { LISA_HOME } from "../paths.js";
+import { assertSafeSlug } from "./slug.js";
 
 export const SOUL_DIR = path.join(LISA_HOME, "soul");
 
@@ -17,21 +18,26 @@ export const SOUL_DESIRES_DIR = path.join(SOUL_DIR, "desires");
 export const SOUL_JOURNAL_DIR = path.join(SOUL_DIR, "journal");
 export const SOUL_RELATIONSHIPS_DIR = path.join(SOUL_DIR, "relationships");
 
+// Every slug-bearing path helper runs the slug through assertSafeSlug first.
+// This is the single chokepoint for path-traversal defense: a slug like
+// "../../../etc/x" or "a/b" throws here rather than escaping the soul dir.
 export function valueFile(slug: string): string {
-  return path.join(SOUL_VALUES_DIR, `${slug}.md`);
+  return path.join(SOUL_VALUES_DIR, `${assertSafeSlug(slug)}.md`);
 }
 export function opinionFile(slug: string): string {
-  return path.join(SOUL_OPINIONS_DIR, `${slug}.md`);
+  return path.join(SOUL_OPINIONS_DIR, `${assertSafeSlug(slug)}.md`);
 }
 export function desireFile(slug: string): string {
-  return path.join(SOUL_DESIRES_DIR, `${slug}.md`);
+  return path.join(SOUL_DESIRES_DIR, `${assertSafeSlug(slug)}.md`);
 }
 export function desireProgressFile(slug: string): string {
-  return path.join(SOUL_DESIRES_DIR, `${slug}.progress.md`);
+  return path.join(SOUL_DESIRES_DIR, `${assertSafeSlug(slug)}.progress.md`);
 }
 export function journalFile(date: string): string {
-  return path.join(SOUL_JOURNAL_DIR, `${date}.md`);
+  // Journal keys are dates (YYYY-MM-DD), which assertSafeSlug accepts (no
+  // separators/dots-leading), so this guards against a malformed date too.
+  return path.join(SOUL_JOURNAL_DIR, `${assertSafeSlug(date)}.md`);
 }
 export function relationshipFile(userKey: string): string {
-  return path.join(SOUL_RELATIONSHIPS_DIR, `${userKey}.md`);
+  return path.join(SOUL_RELATIONSHIPS_DIR, `${assertSafeSlug(userKey)}.md`);
 }
