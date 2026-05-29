@@ -10,6 +10,7 @@ import {
   readSeed,
 } from "../soul/store.js";
 import { withSoulCaller } from "../soul/git.js";
+import { withFileLock } from "../soul/lock.js";
 import { runSubagent } from "../subagent.js";
 import type { ToolDefinition } from "../types.js";
 import {
@@ -18,6 +19,7 @@ import {
 } from "./config.js";
 
 const STATE_FILE = path.join(LISA_HOME, "heartbeat-state.json");
+const RUN_LOCK = path.join(LISA_HOME, "heartbeat.lock");
 
 interface HeartbeatState {
   lastRunAt: Record<string, string>;
@@ -46,7 +48,33 @@ export async function runHeartbeatOnce(opts: {
   model: string;
   taskFilter?: string;
 }): Promise<HeartbeatRunResult[]> {
+  // Run-level lock: if launchd/cron fires a new heartbeat while the previous
+  // one is still running (long desires + short interval), skip rather than
+  // double-run and race on soul state. timeoutMs:0 → fail fast, don't wait.
+  try {
+    return await withFileLock(RUN_LOCK, () => runHeartbeatInner(opts), {
+      timeoutMs: 0,
+      staleMs: 6 * 60 * 60_000, // 6h: a heartbeat that's been "running" longer is surely dead
+    });
+  } catch (err) {
+    if ((err as Error).message?.includes("timed out acquiring lock")) {
+      console.error("[heartbeat] another heartbeat is already running — skipping this tick");
+      return [];
+    }
+    throw err;
+  }
+}
+
+async function runHeartbeatInner(opts: {
+  tools: ToolDefinition[];
+  cwd: string;
+  signal: AbortSignal;
+  model: string;
+  taskFilter?: string;
+}): Promise<HeartbeatRunResult[]> {
   const cfg = await loadHeartbeatConfig();
+  const budget = cfg.budgetTokens && cfg.budgetTokens > 0 ? cfg.budgetTokens : Infinity;
+  let tokensSpent = 0;
   const desires = (await listDesires()).filter((d) => d.actionable && d.heartbeatPrompt);
   const desireTasks: HeartbeatTask[] = await Promise.all(
     desires.map(async (d) => {
@@ -76,6 +104,16 @@ export async function runHeartbeatOnce(opts: {
     if (task.enabled === false) continue;
     if (opts.taskFilter && task.name !== opts.taskFilter) continue;
 
+    // Token budget: stop launching tasks once we've spent the per-run
+    // ceiling. We check BEFORE each task (not mid-task) so a single task can
+    // overshoot slightly, but a long queue of desires can't run unbounded.
+    if (tokensSpent >= budget) {
+      console.error(
+        `[heartbeat] token budget reached (${tokensSpent}/${budget}) — skipping remaining tasks`,
+      );
+      break;
+    }
+
     // For desire tasks, snapshot the progress entry count before so we can
     // detect whether Lisa actually called desire_progress_log during the run.
     const desireSlug = task.name.startsWith("desire:")
@@ -93,6 +131,7 @@ export async function runHeartbeatOnce(opts: {
       signal: opts.signal,
       model: opts.model,
     });
+    tokensSpent += (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
     state.lastRunAt[task.name] = new Date().toISOString();
     const trimmed = result.text.trim();
 
