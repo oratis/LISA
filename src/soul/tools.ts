@@ -8,6 +8,7 @@ import {
   readConstitution,
   readDesireProgress,
   readEmotions,
+  decayEmotions,
   readIdentity,
   readJournal,
   readName,
@@ -259,7 +260,10 @@ export const soulReadTool: ToolDefinition<SoulReadInput, string> = {
           .map((d) => `- ${d.what}${d.actionable ? " [actionable]" : ""}\n  why: ${d.why}`)
           .join("\n\n") || "(none)";
       case "emotions": {
-        const e = await readEmotions();
+        // Decay before display so soul_read agrees with the system-prompt
+        // view (readSoulSummary also decays). Otherwise the two surfaces
+        // would show different intensities for the same emotion.
+        const e = decayEmotions(await readEmotions());
         return formatEmotions(e);
       }
       case "journal_today":
@@ -309,7 +313,11 @@ export const soulFeelTool: ToolDefinition<SoulFeelInput, string> = {
   },
   async execute(input) {
     return await withSoulCaller("soul_feel", async () => {
-      const state = await readEmotions();
+      // Decay first: bring every intensity up to "now" before adding the new
+      // delta, so the baseline reflects time elapsed since the last feel.
+      // Without this, a delta added after a week-long gap would stack on a
+      // stale value and the stored intensity would be months out of date.
+      const state = decayEmotions(await readEmotions());
       const cur = state.values[input.emotion] ?? 0;
       const next = clamp(cur + input.delta, -1, 1);
       const ts = new Date().toISOString();

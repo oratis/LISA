@@ -114,11 +114,24 @@ export async function writeEmotions(state: EmotionState): Promise<void> {
   await commitSoulChange("emotions.json", "feel");
 }
 
-export async function decayEmotions(state: EmotionState): Promise<EmotionState> {
-  const now = Date.now();
+/**
+ * Apply exponential decay to all emotion intensities based on elapsed time
+ * since `state.updatedAt`. Pure modulo the clock: pass `nowMs` to make it
+ * deterministic (tests / replay). Preserves the `events` trail and the
+ * per-emotion `decay` rates — only the `values` and `updatedAt` change.
+ *
+ * Called BOTH on read (display) and at the start of soul_feel (so the
+ * persisted baseline is always decay-correct before a new delta is added).
+ * Previously decay only ran on read, so soul_feel added deltas onto a stale
+ * (un-decayed) value and the stored intensity could be months out of date.
+ */
+export function decayEmotions(
+  state: EmotionState,
+  nowMs: number = Date.now(),
+): EmotionState {
   const last = Date.parse(state.updatedAt);
-  const days = Math.max(0, (now - last) / (1000 * 60 * 60 * 24));
-  if (days === 0) return state;
+  const days = Math.max(0, (nowMs - last) / (1000 * 60 * 60 * 24));
+  if (!Number.isFinite(days) || days === 0) return state;
   const newVals: Record<string, number> = {};
   for (const [k, v] of Object.entries(state.values)) {
     const rate = state.decay[k] ?? 0.1;
@@ -128,7 +141,8 @@ export async function decayEmotions(state: EmotionState): Promise<EmotionState> 
   return {
     values: newVals,
     decay: state.decay,
-    updatedAt: new Date().toISOString(),
+    events: state.events ?? [],
+    updatedAt: new Date(nowMs).toISOString(),
   };
 }
 
@@ -459,7 +473,7 @@ export async function readSoulSummary(): Promise<SoulSummary | null> {
     ]);
   const tampered = await detectTampering();
   let emotions = await readEmotions();
-  emotions = await decayEmotions(emotions);
+  emotions = decayEmotions(emotions);
   return {
     seed,
     name,
