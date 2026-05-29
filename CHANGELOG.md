@@ -5,6 +5,35 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Security & hardening (v0.3.1 sprint)
+
+Following a full product/code review (`docs/PRODUCT_REVIEW_v0.3.md`), the
+engineering-hardness gaps were addressed — the project went from **zero
+automated tests** to a 114-test regression net (Node's built-in `node:test`
+via tsx, no new dependencies) plus a CI gate.
+
+- **Tests + CI** — `npm test` runs `src/**/*.test.ts`; new `.github/workflows/ci.yml`
+  gates every push/PR on typecheck + tests + build. Test files excluded from `dist/`.
+- **SSRF redirect bypass closed** (`web_fetch`) — the private-IP check ran only on
+  the initial URL; a public URL could 302 → `127.0.0.1` / the cloud metadata IP and
+  be followed. Redirects are now followed manually with every hop re-validated.
+- **AppleScript injection closed** (`iMessage`) — outbound text was interpolated into
+  the AppleScript source with only quote-escaping; a newline or crafted payload could
+  inject script. Text now passes as positional `argv`, never parsed as source.
+- **Path traversal blocked** (soul slugs) — value/opinion/desire/journal/relationship
+  slugs are validated at the single path chokepoint; `../`, separators, control chars,
+  and leading dots are rejected.
+- **Cross-process soul lock** — desire-progress appends (read-modify-write) now run
+  under an advisory file lock, so a heartbeat/idle run can't interleave with a chat
+  turn and lose data.
+- **Heartbeat token budget + run-lock** — per-run token ceiling (`budgetTokens`,
+  default 500k) stops runaway autonomous cost; a run-lock skips overlapping heartbeat
+  ticks instead of double-running.
+- **Continuous emotion decay** — decay now applies on write (soul_feel) and in
+  soul_read, not just in the system-prompt view, and no longer drops the event trail.
+- **Memory index cache** — the TF-IDF index is cached and rebuilt only when the
+  sessions dir changes, instead of on every `memory_search`.
+
 ### Added
 
 - **7 new LLM provider presets** — Lisa now auto-routes 7 additional providers by model-name prefix, no `LISA_BASE_URL` plumbing needed:

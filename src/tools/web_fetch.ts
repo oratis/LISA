@@ -32,24 +32,14 @@ export const webFetchTool: ToolDefinition<WebFetchInput, string> = {
     } catch {
       throw new Error(`bad URL: ${input.url}`);
     }
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-      throw new Error(`only http(s) URLs allowed (got ${parsed.protocol})`);
-    }
-    const host = parsed.hostname.toLowerCase();
-    if (isPrivateHost(host)) {
-      throw new Error(`refusing to fetch private/loopback host: ${host}`);
-    }
+    assertAllowedUrl(parsed);
 
     const max = Math.min(input.max_chars ?? DEFAULT_MAX, HARD_MAX);
-    const res = await fetch(input.url, {
-      signal: ctx.signal,
-      redirect: "follow",
-      headers: {
-        "user-agent": "Lisa/0.1 (web_fetch)",
-        accept:
-          "text/html,application/xhtml+xml,application/json,text/plain,*/*;q=0.8",
-      },
-    });
+    // Follow redirects MANUALLY so every hop's host is re-validated. With
+    // redirect:"follow" a public URL could 301 → http://127.0.0.1:8000 and
+    // the fetch would reach the internal service (SSRF). We re-run the
+    // private-host + protocol check on each Location before following.
+    const res = await fetchFollowingSafeRedirects(input.url, ctx?.signal);
     const ct = res.headers.get("content-type") ?? "";
     let body = await res.text();
     if (input.format !== "raw" && /html|xml/i.test(ct)) {
@@ -62,7 +52,53 @@ export const webFetchTool: ToolDefinition<WebFetchInput, string> = {
   },
 };
 
-function isPrivateHost(host: string): boolean {
+const MAX_REDIRECTS = 5;
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+
+/** Throw if the URL isn't http(s) or resolves to a private/loopback host. */
+export function assertAllowedUrl(u: URL): void {
+  if (u.protocol !== "http:" && u.protocol !== "https:") {
+    throw new Error(`only http(s) URLs allowed (got ${u.protocol})`);
+  }
+  const host = u.hostname.toLowerCase().replace(/^\[|\]$/g, ""); // strip IPv6 brackets
+  if (isPrivateHost(host)) {
+    throw new Error(`refusing to fetch private/loopback host: ${host}`);
+  }
+}
+
+/**
+ * fetch() with manual redirect handling. Validates the host of EACH hop
+ * (initial + every Location) against the private-IP blocklist before
+ * issuing the request — closing the SSRF redirect bypass. Caps at
+ * MAX_REDIRECTS to avoid loops.
+ */
+export async function fetchFollowingSafeRedirects(
+  startUrl: string,
+  signal: AbortSignal | undefined,
+): Promise<Response> {
+  let current = startUrl;
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    assertAllowedUrl(new URL(current));
+    const res = await fetch(current, {
+      signal,
+      redirect: "manual",
+      headers: {
+        "user-agent": "Lisa/0.1 (web_fetch)",
+        accept:
+          "text/html,application/xhtml+xml,application/json,text/plain,*/*;q=0.8",
+      },
+    });
+    if (!REDIRECT_STATUSES.has(res.status)) return res;
+    const location = res.headers.get("location");
+    if (!location) return res; // redirect with no target — return as-is
+    // Resolve relative Location against the current URL, then loop to
+    // re-validate the new host before following.
+    current = new URL(location, current).toString();
+  }
+  throw new Error(`too many redirects (>${MAX_REDIRECTS}) starting from ${startUrl}`);
+}
+
+export function isPrivateHost(host: string): boolean {
   if (host === "localhost") return true;
   if (host === "::1" || host === "0:0:0:0:0:0:0:1") return true;
   if (/^127\./.test(host)) return true;

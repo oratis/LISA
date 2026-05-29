@@ -1,0 +1,38 @@
+name: CI — typecheck + tests
+
+# Gates every push and PR with the regression net. Tests use Node's built-in
+# runner (node --test) via the tsx loader — no extra test deps to install.
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build (verify dist compiles, no test files emitted)
+        run: |
+          npm run build
+          if find dist -name '*.test.js' | grep -q .; then
+            echo "::error ::test files leaked into dist/"; exit 1
+          fi

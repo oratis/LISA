@@ -60,15 +60,9 @@ export class IMessageChannel implements ChannelAdapter {
   }
 
   async send(msg: OutgoingMessage): Promise<void> {
-    const recipient = msg.to.replace(/"/g, '\\"');
-    const text = msg.text.replace(/"/g, '\\"');
-    const script = `tell application "Messages"
-  set targetService to first service whose service type = iMessage
-  set targetBuddy to buddy "${recipient}" of targetService
-  send "${text}" to targetBuddy
-end tell`;
+    const args = buildOsascriptArgs(msg.to, msg.text);
     await new Promise<void>((resolve, reject) => {
-      const child = spawn("/usr/bin/osascript", ["-e", script]);
+      const child = spawn("/usr/bin/osascript", args);
       let stderr = "";
       child.stderr.on("data", (b) => (stderr += b.toString("utf8")));
       child.on("error", reject);
@@ -138,6 +132,34 @@ end tell`;
       );
     });
   }
+}
+
+/**
+ * Build the osascript argv for sending an iMessage WITHOUT interpolating
+ * user/LLM text into the AppleScript source.
+ *
+ * The old approach (`send "${text}"`) only escaped double-quotes, so a
+ * message containing a newline — or a crafted `" & (do shell script "...")`
+ * payload — could break out of the string literal and inject AppleScript.
+ * Inbound iMessage text is untrusted (anyone who can text the user), so this
+ * was a real injection vector.
+ *
+ * Instead the script is a STATIC `on run argv` program; recipient and text
+ * arrive as positional argv items (`item 1`/`item 2 of argv`) that AppleScript
+ * never parses as source. No escaping needed; newlines/quotes/backslashes
+ * survive verbatim.
+ */
+export function buildOsascriptArgs(recipient: string, text: string): string[] {
+  const script = `on run argv
+  set theRecipient to item 1 of argv
+  set theText to item 2 of argv
+  tell application "Messages"
+    set targetService to first service whose service type = iMessage
+    set targetBuddy to buddy theRecipient of targetService
+    send theText to targetBuddy
+  end tell
+end run`;
+  return ["-e", script, recipient, text];
 }
 
 registerChannel("imessage", (cfg) => {
