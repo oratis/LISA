@@ -55,6 +55,8 @@
     "start": "node dist/cli.js",
     "lisa": "node --enable-source-maps dist/cli.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "test:watch": "node --import tsx --test --watch \"src/**/*.test.ts\"",
     "generate-assets": "tsx scripts/generate-pixel-assets.ts",
     "prepublishOnly": "npm run build && rm -rf dist/web/assets && cp -R src/web/assets dist/web/assets",
     "postpublish": "npm run copy-assets"
