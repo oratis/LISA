@@ -120,10 +120,19 @@ export const ISLAND_HTML = `<!doctype html>
     50%      { opacity: 1; }
   }
 
-  /* Expanded panel — appears below the pill on hover/click */
+  /* Expanded panel — appears below the pill on hover/click.
+     The native LisaIsland.app window is a fixed 360×440 pt; the pill
+     takes the top ~58pt (height + 8pt margin around). The expand
+     panel fills the rest. When content (long ★ reflection + many
+     active Claude sessions + their state trails when row-open)
+     exceeds that, the panel scrolls internally rather than letting
+     anything clip out of the window. */
   #expand {
     margin-top: 10px;
     width: 336px;
+    max-height: calc(100vh - 70px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
     background: var(--bg-strong);
     border: 1px solid var(--border);
     border-radius: 18px;
@@ -143,6 +152,17 @@ export const ISLAND_HTML = `<!doctype html>
     opacity: 1;
     transform: none;
     pointer-events: auto;
+  }
+  /* Subtle scrollbar — visible only while scrolling/hovering. The
+     default WKWebView scrollbar is too chunky for a 336px panel. */
+  #expand::-webkit-scrollbar { width: 6px; }
+  #expand::-webkit-scrollbar-track { background: transparent; }
+  #expand::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.10);
+    border-radius: 3px;
+  }
+  #expand::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.20);
   }
 
   /* Stack section blocks with consistent vertical rhythm. */
@@ -169,8 +189,8 @@ export const ISLAND_HTML = `<!doctype html>
     padding: 8px 12px;
     border-radius: 6px;
     color: var(--fg);
-    max-height: 110px;
-    overflow-y: auto;
+    /* No inner max-height — the outer #expand panel scrolls if total
+       content overflows the window. One scrollbar, not nested. */
     white-space: pre-wrap;
   }
 
@@ -185,8 +205,9 @@ export const ISLAND_HTML = `<!doctype html>
     border-left: 2px solid var(--accent-claude);
     background: rgba(255, 140, 66, 0.06);
     border-radius: 6px;
-    overflow-y: auto;
-    max-height: 200px;
+    /* No inner overflow either — outer #expand scrolls. Avoids the
+       nested-scrollbar UX where the user scrolls inside this card by
+       accident and can't reach the action buttons below. */
   }
   #claude-list li {
     padding: 8px 12px;
