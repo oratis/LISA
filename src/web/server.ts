@@ -19,7 +19,9 @@ import { reflectOnSession } from "../reflect.js";
 import { listDesires } from "../soul/store.js";
 import { ISLAND_HTML } from "./island.js";
 import { MAIN_HTML } from "./lisa-html.js";
-import { ClaudeCodeWatcher } from "../integrations/claude-code/watcher.js";
+import { OrchestratorHub, loadOrchestratorConfig } from "../integrations/hub.js";
+import type { AgentSession } from "../integrations/types.js";
+import { LISA_HOME } from "../paths.js";
 import type { ToolDefinition, StoredMessage } from "../types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -127,17 +129,35 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   moodBus.on("chat_start", () => broadcast({ type: "chat_start" }));
   moodBus.on("chat_end", () => broadcast({ type: "chat_end" }));
 
-  // ── Claude Code session monitoring (issue #27) ──────────────────────
-  // Watches ~/.claude/projects/ for jsonl activity and forwards updates
-  // to the same /events SSE. Privacy: only mtime + size + filename, never
-  // message contents (see src/integrations/claude-code/watcher.ts).
-  const claudeWatcher = new ClaudeCodeWatcher({
+  // ── Cross-agent orchestration hub (O1) ──────────────────────────────
+  // The hub fans out over every enabled integration (Claude Code today;
+  // Codex/OpenCode/… as adapters land) and merges their sessions into one
+  // normalized stream. Privacy: structural metadata only (see types.ts +
+  // each adapter). Replaces the single-purpose ClaudeCodeWatcher wiring.
+  const orchestratorCfg = await loadOrchestratorConfig(
+    path.join(LISA_HOME, "agents.json"),
+  );
+  const hub = new OrchestratorHub(orchestratorCfg, {
     log: (msg) => console.error(msg),
   });
-  claudeWatcher.on("update", (payload) => {
-    broadcast({ type: "claude_session_update", ...payload });
+  hub.on("update", (session: AgentSession) => {
+    // New generalized event for the multi-agent UI.
+    broadcast({ type: "agent_session_update", ...session });
+    // Back-compat: the island still listens for claude_session_update as a
+    // "something changed, refetch" trigger. Keep emitting it for Claude Code.
+    if (session.agent === "claude-code") {
+      broadcast({
+        type: "claude_session_update",
+        sessionId: session.sessionId,
+        projectLabel: session.project,
+        state: session.state,
+        stateReason: session.stateReason,
+        cwd: session.cwd,
+        ts: new Date(session.lastMtime).toISOString(),
+      });
+    }
   });
-  void claudeWatcher.start();
+  void hub.start();
 
   // ── Island unread tracking (Phase 1 of MAC_ISLAND_PLAN) ─────────────
   // The island widget caches "last idle_message" so a fresh tab opening
@@ -245,19 +265,32 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       return;
     }
 
-    // Claude Code session monitoring (issue #27). Returns sessions
-    // with activity in the last 30 minutes plus their derived state
-    // (Phase 2: working / waiting / error / unknown).
+    // Cross-agent session snapshot (O1). Returns every active session
+    // across all integrations, normalized. activity (Tier 2) is present
+    // when the integration runs at visibility ≥ "activity".
+    if (req.method === "GET" && url === "/api/agents/sessions") {
+      const sessions = hub.list().map((s) => ({
+        ...s,
+        lastMtime: new Date(s.lastMtime).toISOString(),
+      }));
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ sessions }));
+      return;
+    }
+
+    // Back-compat alias: the island still calls /api/claude/sessions and
+    // expects the legacy field shape. Derive it from the hub's Claude Code
+    // sessions so there's a single source of truth.
     if (req.method === "GET" && url === "/api/claude/sessions") {
-      const sessions = claudeWatcher.listActive().map((s) => ({
-        project: s.projectLabel,
-        projectEncoded: s.projectEncoded,
+      const sessions = hub.listByAgent("claude-code").map((s) => ({
+        project: s.project,
+        projectEncoded: s.project, // legacy field; UI only uses `project`
         sessionId: s.sessionId,
         lastMtime: new Date(s.lastMtime).toISOString(),
-        size: s.size,
         state: s.state,
         stateReason: s.stateReason,
         cwd: s.cwd,
+        activity: s.activity, // new in O2; older UI ignores unknown fields
       }));
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ sessions }));

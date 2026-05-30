@@ -41,6 +41,7 @@ import path from "node:path";
 import os from "node:os";
 import { EventEmitter } from "node:events";
 import { parseSessionState, type ClaudeSessionState } from "./parser.js";
+import type { SessionActivity } from "../types.js";
 
 const CLAUDE_HOME       = process.env.CLAUDE_HOME ?? path.join(os.homedir(), ".claude");
 const PROJECTS_DIR      = path.join(CLAUDE_HOME, "projects");
@@ -99,6 +100,12 @@ export interface ClaudeSessionInfo {
    * command". Undefined if the jsonl didn't record it.
    */
   cwd?: string;
+  /**
+   * O2 (Tier-2): structural activity (tool names, files touched, last
+   * command, error, tokens). Populated when visibility ≥ "activity".
+   * Privacy: structural metadata only — never conversation content.
+   */
+  activity?: SessionActivity;
 }
 
 export interface ClaudeSessionUpdate {
