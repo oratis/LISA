@@ -33,9 +33,14 @@ export class ClaudeCodeObserver implements AgentObserver {
   readonly agent = "claude-code";
   private watcher: ClaudeCodeWatcher;
 
-  constructor(_cfg: AgentIntegrationConfig) {
+  constructor(cfg: AgentIntegrationConfig) {
+    // Tier 2: compute structural activity when visibility is "activity" or
+    // "intent". At "metadata"/"off" we stay metadata-only (cheaper, and the
+    // privacy-minimal default).
+    const computeActivity = cfg.visibility === "activity" || cfg.visibility === "intent";
     this.watcher = new ClaudeCodeWatcher({
       log: (m) => console.error(m),
+      computeActivity,
     });
   }
 

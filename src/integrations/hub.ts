@@ -38,10 +38,15 @@ export class OrchestratorHub extends EventEmitter {
   private readonly log: Log;
   private started = false;
 
-  constructor(cfg: OrchestratorConfig, opts: { log?: Log } = {}) {
+  private readonly registerBuiltins: boolean;
+
+  constructor(cfg: OrchestratorConfig, opts: { log?: Log; registerBuiltins?: boolean } = {}) {
     super();
     this.cfg = cfg;
     this.log = opts.log ?? (() => {});
+    // Tests pre-register fake observers and set this false so start() doesn't
+    // pull in (and clobber with) the real builtin adapters.
+    this.registerBuiltins = opts.registerBuiltins ?? true;
     this.setMaxListeners(64);
   }
 
@@ -49,7 +54,7 @@ export class OrchestratorHub extends EventEmitter {
   async start(): Promise<void> {
     if (this.started) return;
     this.started = true;
-    await registerBuiltinIntegrations();
+    if (this.registerBuiltins) await registerBuiltinIntegrations();
 
     for (const [name, entry] of Object.entries(this.cfg.integrations)) {
       if (entry.enabled === false) continue;

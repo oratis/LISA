@@ -57,15 +57,24 @@ describe("withFileLock", () => {
 
   test("times out if the lock is held and never released", async () => {
     const lp = lockPath();
-    // Hold the lock with a long-running critical section.
+    // Hold the lock with a long-running critical section. Signal once we're
+    // actually INSIDE it, so the contender below can't race ahead of the
+    // holder acquiring the lock (which made this flaky under parallel load).
     let release!: () => void;
     const held = new Promise<void>((r) => (release = r));
+    let acquired!: () => void;
+    const inside = new Promise<void>((r) => (acquired = r));
     const holder = withFileLock(lp, async () => {
+      acquired();
       await held;
     }, { staleMs: 60_000 });
-    // A second acquirer with a tiny timeout should give up.
+    await inside; // holder definitely owns the lock now
+
+    // A second acquirer should give up after its timeout. Generous timeout so
+    // CI/parallel-load jitter can't make it spuriously succeed; correctness is
+    // that it rejects, not how fast.
     await assert.rejects(
-      () => withFileLock(lp, async () => "never", { timeoutMs: 120, pollMs: 10, staleMs: 60_000 }),
+      () => withFileLock(lp, async () => "never", { timeoutMs: 300, pollMs: 10, staleMs: 60_000 }),
       /timed out acquiring lock/,
     );
     release();

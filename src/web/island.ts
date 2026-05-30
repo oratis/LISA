@@ -232,6 +232,16 @@ export const ISLAND_HTML = `<!doctype html>
   #claude-list .proj { font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #claude-list .when { color: var(--fg-dim); flex-shrink: 0; font-variant-numeric: tabular-nums; font-size: 11px; }
   #claude-list .empty { padding: 8px 12px; color: var(--fg-faint); font-style: italic; }
+  /* O2 — Tier-2 activity line: what the session is structurally doing. */
+  #claude-list .act {
+    margin: 2px 0 0 18px;
+    font-size: 10.5px;
+    color: var(--fg-dim);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 
   /* Phase 2 — per-session state pip prefix */
   #claude-list .pip {
@@ -551,6 +561,29 @@ export const ISLAND_HTML = `<!doctype html>
     return Math.round(ms / 3600_000) + 'h ago';
   }
 
+  // O2 — compact one-line summary of a session's Tier-2 activity. Structural
+  // only (tool names, last command, basename of a touched file). Returns ''
+  // when there's no activity (e.g. visibility=metadata).
+  function basename(p) {
+    if (!p) return '';
+    const parts = String(p).split('/');
+    return parts[parts.length - 1] || p;
+  }
+  function formatActivity(s) {
+    const a = s.activity;
+    if (!a) return '';
+    if (a.pendingPermission) return '⚠ wants to run ' + a.pendingPermission;
+    const bits = [];
+    if (a.lastError) bits.push('✗ ' + a.lastError);
+    if (a.lastCommandName) bits.push('$ ' + a.lastCommandName);
+    const tool = a.lastTools && a.lastTools.length ? a.lastTools[a.lastTools.length - 1] : '';
+    const file = a.filesTouched && a.filesTouched.length ? basename(a.filesTouched[a.filesTouched.length - 1]) : '';
+    if (tool && file) bits.push(tool + ' ' + file);
+    else if (tool) bits.push(tool);
+    else if (file) bits.push(file);
+    return bits.join(' · ');
+  }
+
   function renderClaudeList() {
     const recent = recentSessions();
     claudeCount.textContent = String(recent.length);
@@ -590,6 +623,16 @@ export const ISLAND_HTML = `<!doctype html>
       head.appendChild(proj);
       head.appendChild(when);
       li.appendChild(head);
+
+      // O2 (Tier 2) — one-line structural activity under the row head.
+      // "what it's doing" without any conversation content.
+      const actLine = formatActivity(s);
+      if (actLine) {
+        const act = document.createElement('div');
+        act.className = 'act';
+        act.textContent = actLine;
+        li.appendChild(act);
+      }
 
       // Phase 3 — collapsible state-transition trail
       const trail = document.createElement('div');

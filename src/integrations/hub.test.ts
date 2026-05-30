@@ -20,9 +20,19 @@ function makeFake(agent: string, sessions: AgentSession[]) {
   return { obs, push: (s: AgentSession) => emitFn?.(s) };
 }
 
-function session(agent: string, id: string, mtime: number, state: AgentSession["state"] = "working"): AgentSession {
+function session(
+  agent: string,
+  id: string,
+  mtime: number,
+  state: AgentSession["state"] = "working",
+): AgentSession {
   return { agent, sessionId: id, project: id, state, stateReason: "x", lastMtime: mtime };
 }
+
+// All hubs in these tests pass registerBuiltins:false so start() uses ONLY
+// the fakes we register, not the real claude-code adapter (which would
+// clobber a fake registered under the same name).
+const NO_BUILTINS = { registerBuiltins: false };
 
 describe("OrchestratorHub", () => {
   test("merges + sorts sessions from multiple observers, newest first", async () => {
@@ -31,10 +41,10 @@ describe("OrchestratorHub", () => {
     registerIntegration("claude-code", () => a.obs);
     registerIntegration("codex", () => b.obs);
 
-    const hub = new OrchestratorHub({
-      integrations: { "claude-code": { enabled: true }, codex: { enabled: true } },
-      visibility: "activity",
-    });
+    const hub = new OrchestratorHub(
+      { integrations: { "claude-code": { enabled: true }, codex: { enabled: true } }, visibility: "activity" },
+      NO_BUILTINS,
+    );
     await hub.start();
 
     const ids = hub.list().map((s) => s.sessionId);
@@ -44,7 +54,7 @@ describe("OrchestratorHub", () => {
   test("re-emits observer updates as hub 'update' events", async () => {
     const a = makeFake("claude-code", []);
     registerIntegration("claude-code", () => a.obs);
-    const hub = new OrchestratorHub({ integrations: { "claude-code": {} }, visibility: "metadata" });
+    const hub = new OrchestratorHub({ integrations: { "claude-code": {} }, visibility: "metadata" }, NO_BUILTINS);
     const seen: AgentSession[] = [];
     hub.on("update", (s) => seen.push(s));
     await hub.start();
@@ -60,10 +70,10 @@ describe("OrchestratorHub", () => {
     const b = makeFake("codex", [session("codex", "x1", 2)]);
     registerIntegration("claude-code", () => a.obs);
     registerIntegration("codex", () => b.obs);
-    const hub = new OrchestratorHub({
-      integrations: { "claude-code": { enabled: true }, codex: { enabled: false } },
-      visibility: "metadata",
-    });
+    const hub = new OrchestratorHub(
+      { integrations: { "claude-code": { enabled: true }, codex: { enabled: false } }, visibility: "metadata" },
+      NO_BUILTINS,
+    );
     await hub.start();
     assert.deepEqual(hub.list().map((s) => s.agent), ["claude-code"]);
   });
@@ -74,10 +84,10 @@ describe("OrchestratorHub", () => {
     registerIntegration("broken", () => {
       throw new Error("boom");
     });
-    const hub = new OrchestratorHub({
-      integrations: { "claude-code": {}, broken: {} },
-      visibility: "metadata",
-    });
+    const hub = new OrchestratorHub(
+      { integrations: { "claude-code": {}, broken: {} }, visibility: "metadata" },
+      NO_BUILTINS,
+    );
     await hub.start(); // must not throw
     assert.deepEqual(hub.list().map((s) => s.sessionId), ["c1"]);
   });
@@ -87,7 +97,10 @@ describe("OrchestratorHub", () => {
     const b = makeFake("codex", [session("codex", "x1", 2)]);
     registerIntegration("claude-code", () => a.obs);
     registerIntegration("codex", () => b.obs);
-    const hub = new OrchestratorHub({ integrations: { "claude-code": {}, codex: {} }, visibility: "metadata" });
+    const hub = new OrchestratorHub(
+      { integrations: { "claude-code": {}, codex: {} }, visibility: "metadata" },
+      NO_BUILTINS,
+    );
     await hub.start();
     assert.deepEqual(hub.listByAgent("codex").map((s) => s.sessionId), ["x1"]);
   });
@@ -98,10 +111,10 @@ describe("OrchestratorHub", () => {
       seenVisibility = cfg.visibility;
       return makeFake("claude-code", []).obs;
     });
-    const hub = new OrchestratorHub({
-      integrations: { "claude-code": { visibility: "intent" } },
-      visibility: "metadata",
-    });
+    const hub = new OrchestratorHub(
+      { integrations: { "claude-code": { visibility: "intent" } }, visibility: "metadata" },
+      NO_BUILTINS,
+    );
     await hub.start();
     assert.equal(seenVisibility, "intent", "per-entry visibility wins over global");
   });
