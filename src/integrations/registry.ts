@@ -53,5 +53,6 @@ export async function registerBuiltinIntegrations(): Promise<void> {
   if (builtinsRegistered) return;
   builtinsRegistered = true;
   await import("./claude-code/observer.js");
-  // Additional adapters register here as they land (codex, opencode, …).
+  await import("./codex/observer.js");
+  // Additional adapters register here as they land (opencode, aider, …).
 }

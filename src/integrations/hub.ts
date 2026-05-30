@@ -26,7 +26,12 @@ export interface OrchestratorConfig {
 /** Default config when ~/.lisa/agents.json is absent: just Claude Code, at
  *  the "activity" tier (Tier 2 — structural, no conversation content). */
 export const DEFAULT_ORCHESTRATOR_CONFIG: OrchestratorConfig = {
-  integrations: { "claude-code": { enabled: true } },
+  integrations: {
+    "claude-code": { enabled: true },
+    // Available but off by default — enable in ~/.lisa/agents.json once you
+    // use Codex. Graceful no-op if ~/.codex/sessions is absent anyway.
+    codex: { enabled: false },
+  },
   visibility: "activity",
 };
 
