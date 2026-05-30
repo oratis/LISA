@@ -607,12 +607,12 @@ export const MAIN_HTML = `<!doctype html>
     -webkit-backdrop-filter: blur(30px);
     border-top: 1px solid var(--border-new);
     display: grid;
-    grid-template-columns: 36px 1fr 96px;
+    grid-template-columns: 36px 36px 1fr 96px;
     gap: 10px;
     align-items: end;
   }
 
-  #attachBtn {
+  #attachBtn, #captureBtn {
     align-self: stretch;
     display: flex;
     align-items: center;
@@ -625,8 +625,10 @@ export const MAIN_HTML = `<!doctype html>
     border-radius: 10px;
     transition: background 120ms ease, color 120ms ease;
     min-height: 44px;
+    padding: 0;
   }
-  #attachBtn:hover { background: var(--bg-card); color: var(--fg); }
+  #attachBtn:hover, #captureBtn:hover { background: var(--bg-card); color: var(--fg); }
+  #captureBtn.flash { background: var(--accent); color: var(--bg-deep); }
   /* Off-screen the file input instead of display:none. WKWebView's
      implicit <label>→<input type=file> click forward doesn't fire on a
      fully display:none input — the OS file picker silently no-ops.
@@ -706,7 +708,7 @@ export const MAIN_HTML = `<!doctype html>
       gap: 14px;
     }
     #form {
-      grid-template-columns: 36px 1fr 84px;
+      grid-template-columns: 36px 36px 1fr 84px;
       padding: 10px 14px 14px;
     }
     #input { font-size: 16px; /* prevents iOS Safari auto-zoom */ }

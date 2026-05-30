@@ -297,47 +297,28 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // Escape. 501 on non-macOS. Body: { mode?: "interactive" | "full" }.
 
     if (req.method === "POST" && url === "/api/vision/capture") {
-
       if (!captureSupported()) {
-
         res.writeHead(501, { "content-type": "application/json" });
-
         res.end(JSON.stringify({ error: "screen capture is only supported on macOS" }));
-
         return;
-
       }
-
+      let visionBody = "";
+      for await (const chunk of req) visionBody += chunk.toString("utf8");
       let mode: CaptureMode = "interactive";
-
       try {
-
-        const parsed = body ? (JSON.parse(body) as { mode?: CaptureMode }) : {};
-
+        const parsed = visionBody ? (JSON.parse(visionBody) as { mode?: CaptureMode }) : {};
         if (parsed.mode === "full" || parsed.mode === "interactive") mode = parsed.mode;
-
       } catch { /* default interactive */ }
-
       try {
-
         const shot = await captureScreenshot(mode);
-
         res.writeHead(200, { "content-type": "application/json" });
-
         res.end(JSON.stringify(shot ? { file: shot } : { cancelled: true }));
-
       } catch (err) {
-
         res.writeHead(500, { "content-type": "application/json" });
-
         res.end(JSON.stringify({ error: (err as Error).message }));
-
       }
-
       return;
-
     }
-
 
     if (req.method === "POST" && url === "/api/island/dismiss-unread") {
       lastIdleMessage = null;
