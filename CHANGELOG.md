@@ -5,6 +5,42 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-05-30
+
+**LISA becomes a cross-agent orchestrator.** She observes every CLI agent on the
+machine, understands what each session is doing (structural metadata only — never
+your conversations), periodically advises you, and can dispatch + coordinate work.
+Full notes: `docs/RELEASE_v0.4.0.md`.
+
+### Added — Orchestration (L1–L5 of docs/ORCHESTRATOR_PLAN.md)
+
+- **Integration registry + OrchestratorHub** — pluggable `AgentObserver` adapters
+  (mirrors the channel registry); the hub fans out over all enabled agents, merges
+  their sessions, emits one update stream. `GET /api/agents/sessions` (with
+  `/api/claude/sessions` kept as a back-compat alias).
+- **Codex CLI adapter** — second agent via the same registry (off by default),
+  proving generalization.
+- **Tier-2 activity** — `parseSessionActivity` surfaces what a session is doing
+  (tool names, file paths, last command name, errors, git branch, tokens) under a
+  tiered visibility model (off/metadata/activity/intent, default activity). A
+  privacy test asserts no prompt/reply/file-content ever leaks.
+- **Advisor** — periodic proactive suggestions across all agents (stuck, same-repo
+  conflict, repeated failure, cost spike, ready-for-review, idle capacity), gated
+  by a relevance bar + 3h digest throttle + dedup + dismiss-as-signal learning so
+  it isn't noisy. Surfaces via the "while you were away" card; `advise_now` tool
+  for on-demand pull.
+- **dispatch_agent tool (L3)** — LISA launches another CLI agent headlessly
+  (`claude -p` / `codex exec` / `opencode run` / `aider --message`), detached and
+  tracked via the hub. Task passed as a single argv element (no shell injection);
+  explicit-permission.
+- **Same-cwd conflict guard (L4)** — dispatch refuses to launch into a directory
+  another agent is already working in (override with `force`).
+
+### Changed
+
+- Test suite 130 → **164** (registry, hub, Tier-2 + privacy, advisor, Codex,
+  dispatch). Still zero new runtime dependencies.
+
 ### Security & hardening (v0.3.1 sprint)
 
 Following a full product/code review (`docs/PRODUCT_REVIEW_v0.3.md`), the
