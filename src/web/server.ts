@@ -23,6 +23,7 @@ import { OrchestratorHub, loadOrchestratorConfig } from "../integrations/hub.js"
 import { setCurrentHub } from "../integrations/current-hub.js";
 import { advise, formatDigest } from "../advisor/engine.js";
 import type { AgentSession } from "../integrations/types.js";
+import { captureScreenshot, captureSupported, type CaptureMode } from "../vision/capture.js";
 import { LISA_HOME } from "../paths.js";
 import type { ToolDefinition, StoredMessage } from "../types.js";
 
@@ -289,6 +290,37 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       return;
     }
 
+    // Vision: capture a screenshot via the macOS screencapture utility and
+
+    // return it as a chat attachment. {cancelled:true} when the user hits
+
+    // Escape. 501 on non-macOS. Body: { mode?: "interactive" | "full" }.
+
+    if (req.method === "POST" && url === "/api/vision/capture") {
+      if (!captureSupported()) {
+        res.writeHead(501, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "screen capture is only supported on macOS" }));
+        return;
+      }
+      let visionBody = "";
+      for await (const chunk of req) visionBody += chunk.toString("utf8");
+      console.error("[vision] capture requested");
+      let mode: CaptureMode = "interactive";
+      try {
+        const parsed = visionBody ? (JSON.parse(visionBody) as { mode?: CaptureMode }) : {};
+        if (parsed.mode === "full" || parsed.mode === "interactive") mode = parsed.mode;
+      } catch { /* default interactive */ }
+      try {
+        const shot = await captureScreenshot(mode);
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify(shot ? { file: shot } : { cancelled: true }));
+      } catch (err) {
+        res.writeHead(500, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: (err as Error).message }));
+      }
+      return;
+    }
+
     if (req.method === "POST" && url === "/api/island/dismiss-unread") {
       lastIdleMessage = null;
       res.writeHead(200, { "content-type": "application/json" });
@@ -363,7 +395,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         "service-worker-allowed": "/",
       });
       res.end(`
-const CACHE = 'lisa-v2-redesign';
+const CACHE = 'lisa-v3-vision';
 const ASSET_PATHS = ['/assets/lisa-mascot.png', '/assets/background-tile.png',
   '/assets/icon-soul.png', '/assets/icon-skill.png', '/assets/icon-memory.png',
   '/assets/icon-tool.png', '/assets/icon-send.png'];

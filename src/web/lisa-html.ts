@@ -607,12 +607,12 @@ export const MAIN_HTML = `<!doctype html>
     -webkit-backdrop-filter: blur(30px);
     border-top: 1px solid var(--border-new);
     display: grid;
-    grid-template-columns: 36px 1fr 96px;
+    grid-template-columns: 36px 36px 1fr 96px;
     gap: 10px;
     align-items: end;
   }
 
-  #attachBtn {
+  #attachBtn, #captureBtn {
     align-self: stretch;
     display: flex;
     align-items: center;
@@ -625,8 +625,10 @@ export const MAIN_HTML = `<!doctype html>
     border-radius: 10px;
     transition: background 120ms ease, color 120ms ease;
     min-height: 44px;
+    padding: 0;
   }
-  #attachBtn:hover { background: var(--bg-card); color: var(--fg); }
+  #attachBtn:hover, #captureBtn:hover { background: var(--bg-card); color: var(--fg); }
+  #captureBtn.flash { background: var(--accent); color: var(--bg-deep); }
   /* Off-screen the file input instead of display:none. WKWebView's
      implicit <label>→<input type=file> click forward doesn't fire on a
      fully display:none input — the OS file picker silently no-ops.
@@ -706,7 +708,7 @@ export const MAIN_HTML = `<!doctype html>
       gap: 14px;
     }
     #form {
-      grid-template-columns: 36px 1fr 84px;
+      grid-template-columns: 36px 36px 1fr 84px;
       padding: 10px 14px 14px;
     }
     #input { font-size: 16px; /* prevents iOS Safari auto-zoom */ }
@@ -1136,6 +1138,7 @@ export const MAIN_HTML = `<!doctype html>
         <input type="file" id="fileInput" accept="image/*,.pdf,.txt,.md,.csv,.json" multiple>
         📎
       </label>
+      <button type="button" id="captureBtn" title="Screenshot for Lisa (⌃⌥S anywhere)">📷</button>
       <textarea id="input" placeholder="Talk to Lisa…  (Enter to send · Shift+Enter for newline)" autofocus></textarea>
       <button type="submit" id="sendBtn">
         <img src="/assets/icon-send.png" alt="">
@@ -1233,6 +1236,54 @@ function inferMediaType(file) {
   return map[ext] || 'application/octet-stream';
 }
 
+// ── Vision: screenshot → composer ──────────────────────────────────
+// lisaAttachImage adds an already-encoded {name,mediaType,data} object to
+// the pending attachments — used by both the in-page 📷 button and the
+// native global hotkey (Lisa.app calls lisaCaptureAndAttach via JS bridge).
+window.lisaAttachImage = function (file) {
+  if (!file || !file.data) return;
+  pendingFiles.push({
+    name: file.name || 'screenshot.png',
+    mediaType: file.mediaType || 'image/png',
+    data: file.data,
+  });
+  renderAttachPreview();
+  try { input.focus(); } catch (_) {}
+};
+
+// lisaCaptureAndAttach asks the server to run a screen capture, then
+// attaches the result. mode: 'interactive' (crosshair, default) | 'full'.
+// Returns true if an image was attached, false if cancelled/failed.
+// Exposed on window so the native app's global hotkey can invoke it.
+let capturing = false;
+window.lisaCaptureAndAttach = async function (mode) {
+  if (capturing) return false;
+  capturing = true;
+  const btn = document.getElementById('captureBtn');
+  if (btn) btn.classList.add('flash');
+  try {
+    const res = await fetch('/api/vision/capture', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ mode: mode || 'interactive' }),
+    });
+    if (!res.ok) {
+      console.warn('[vision] capture failed: HTTP ' + res.status);
+      return false;
+    }
+    const data = await res.json();
+    if (data.cancelled || !data.file) return false;
+    window.lisaAttachImage(data.file);
+    return true;
+  } catch (err) {
+    console.warn('[vision] capture error:', err);
+    return false;
+  } finally {
+    capturing = false;
+    if (btn) setTimeout(() => btn.classList.remove('flash'), 200);
+  }
+};
+
 function renderAttachPreview() {
   attachPreview.innerHTML = '';
   pendingFiles.forEach((f, i) => {
@@ -1264,6 +1315,12 @@ fileInput.addEventListener('change', async () => {
 // listener that forwards the click synchronously (preserving the
 // user-gesture context) and logs to console so we can verify in the
 // inspector if it ever silently no-ops again.
+// 📷 capture button → interactive crosshair screenshot into the composer.
+const captureBtnEl = document.getElementById('captureBtn');
+if (captureBtnEl) {
+  captureBtnEl.addEventListener('click', () => { void window.lisaCaptureAndAttach('interactive'); });
+}
+
 const attachBtnEl = document.getElementById('attachBtn');
 if (attachBtnEl) {
   attachBtnEl.addEventListener('click', (ev) => {

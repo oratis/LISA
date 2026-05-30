@@ -59,4 +59,10 @@ final class MainWindow: NSWindow {
     func reload() {
         content.reload()
     }
+
+    /// Fire the screenshot→composer flow in the hosted page; `onAttached`
+    /// reports whether a shot was actually captured (vs cancelled).
+    func triggerCapture(onAttached: @escaping (Bool) -> Void) {
+        content.triggerCapture(onAttached: onAttached)
+    }
 }

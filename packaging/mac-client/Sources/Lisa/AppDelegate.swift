@@ -27,6 +27,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         MenuBarController.shared.install { [weak self] in
             self?.showMainWindow()
         }
+
+        // Vision — global ⌃⌥S: screenshot straight into Lisa's composer,
+        // from anywhere. Brings the window forward, then runs the page's
+        // capture bridge (server-side screencapture → attachment).
+        HotkeyManager.shared.register { [weak self] in
+            self?.captureForLisa(nil)
+        }
+    }
+
+    @objc func captureForLisa(_ sender: Any?) {
+        // Do NOT raise the Lisa window first — that would cover whatever the
+        // user is trying to screenshot. screencapture's crosshair is a
+        // system-level overlay that works regardless of which app is frontmost,
+        // and the WKWebView keeps running while backgrounded, so the JS bridge
+        // fires fine. We bring the window forward only AFTER a shot is actually
+        // attached (so the user sees it land), and leave everything untouched
+        // if they cancelled with Escape.
+        let fireCapture: () -> Void = { [weak self] in
+            self?.mainWindow?.triggerCapture { attached in
+                if attached { self?.bringWindowToFront() }
+            }
+        }
+        if mainWindow != nil {
+            fireCapture()
+        } else {
+            // First run: create the window to host the WebView/bridge but
+            // order it BEHIND the frontmost app so it doesn't obscure the
+            // capture target; give it a beat to load before firing.
+            showMainWindowInBackground()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: fireCapture)
+        }
+    }
+
+    /// Bring the chat window forward — called after a screenshot is attached,
+    /// so the user sees the shot land in the composer.
+    func bringWindowToFront() {
+        showMainWindow()
+    }
+
+    private func showMainWindowInBackground() {
+        if mainWindow == nil {
+            mainWindow = MainWindow()
+        }
+        // orderFront (not makeKeyAndOrderFront) + no app activation: the
+        // window exists to host the bridge but stays behind the capture target.
+        mainWindow?.orderFront(nil)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -144,6 +190,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             action: #selector(reloadChat(_:)),
             keyEquivalent: "r"
         ))
+        // Vision — also reachable from the menu (global ⌃⌥S works anywhere).
+        let captureItem = NSMenuItem(
+            title: "Screenshot for Lisa",
+            action: #selector(captureForLisa(_:)),
+            keyEquivalent: "s"
+        )
+        captureItem.keyEquivalentModifierMask = [.control, .option]
+        viewMenu.addItem(captureItem)
         viewMenu.addItem(.separator())
         viewMenu.addItem(NSMenuItem(
             title: "Enter Full Screen",

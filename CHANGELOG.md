@@ -5,6 +5,30 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-05-30
+
+**LISA can see.** Hand her a screenshot and talk about it — from anywhere, one
+keystroke. Full notes: `docs/RELEASE_v0.5.0.md`.
+
+### Added — Vision
+
+- **Global hotkey ⌃⌥S** (Lisa.app, system-wide via Carbon RegisterEventHotKey):
+  press it in any app, drag a region, the shot lands in Lisa's composer. The
+  window stays out of the way during capture and comes forward only once the
+  shot is attached.
+- **📷 composer button** + **View ▸ Screenshot for Lisa** menu item.
+- **`POST /api/vision/capture`** shells out to macOS `screencapture`
+  (interactive crosshair or full-screen) and returns the PNG as the attachment
+  shape `/chat` already accepts, so the screenshot rides LISA's normal image
+  path into the model. Escape cancels cleanly; 501 on non-macOS.
+- Privacy: nothing captured/sent until you press the hotkey/button; the
+  screenshot only leaves the machine when you send the message it's attached to.
+
+### Notes
+
+- macOS asks for Screen Recording permission for Lisa.app on first use.
+- Test suite 164 → **170**. Still zero new runtime dependencies.
+
 ## [0.4.0] — 2026-05-30
 
 **LISA becomes a cross-agent orchestrator.** She observes every CLI agent on the
