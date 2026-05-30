@@ -59,4 +59,9 @@ final class MainWindow: NSWindow {
     func reload() {
         content.reload()
     }
+
+    /// Fire the screenshot→composer flow in the hosted page.
+    func triggerCapture() {
+        content.triggerCapture()
+    }
 }

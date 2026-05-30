@@ -120,6 +120,21 @@ final class WebContent: NSViewController, WKNavigationDelegate, WKUIDelegate {
         webView.reloadFromOrigin()
     }
 
+    /// Invoke the page's screenshot→composer bridge (defined in lisa-html.ts).
+    /// Called by the global hotkey: the page asks the server to run
+    /// screencapture (the familiar crosshair), then attaches the result to
+    /// the chat composer for the user to talk to Lisa about.
+    func triggerCapture() {
+        webView.evaluateJavaScript(
+            "window.lisaCaptureAndAttach && window.lisaCaptureAndAttach('interactive');"
+        ) { _, err in
+            if let err = err {
+                FileHandle.standardError.write(
+                    Data("[lisa] capture bridge error: \(err)\n".utf8))
+            }
+        }
+    }
+
     private func scheduleReload() {
         reloadTimer?.invalidate()
         reloadTimer = Timer.scheduledTimer(

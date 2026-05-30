@@ -27,6 +27,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         MenuBarController.shared.install { [weak self] in
             self?.showMainWindow()
         }
+
+        // Vision — global ⌃⌥S: screenshot straight into Lisa's composer,
+        // from anywhere. Brings the window forward, then runs the page's
+        // capture bridge (server-side screencapture → attachment).
+        HotkeyManager.shared.register { [weak self] in
+            self?.captureForLisa(nil)
+        }
+    }
+
+    @objc func captureForLisa(_ sender: Any?) {
+        showMainWindow()
+        // Give the window a beat to come forward before the crosshair opens,
+        // so the user's screenshot isn't of Lisa being raised.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+            self?.mainWindow?.triggerCapture()
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -144,6 +160,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             action: #selector(reloadChat(_:)),
             keyEquivalent: "r"
         ))
+        // Vision — also reachable from the menu (global ⌃⌥S works anywhere).
+        let captureItem = NSMenuItem(
+            title: "Screenshot for Lisa",
+            action: #selector(captureForLisa(_:)),
+            keyEquivalent: "s"
+        )
+        captureItem.keyEquivalentModifierMask = [.control, .option]
+        viewMenu.addItem(captureItem)
         viewMenu.addItem(.separator())
         viewMenu.addItem(NSMenuItem(
             title: "Enter Full Screen",
