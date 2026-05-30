@@ -5,6 +5,28 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-05-30
+
+**LISA can listen.** Record audio in the chat → she transcribes it and
+summarizes in her own voice. Full notes: `docs/RELEASE_v0.6.0.md`.
+
+### Added — Voice recording
+
+- **🎙 composer button** toggles a browser `MediaRecorder` (pulsing ⏹ while
+  live). On stop, the clip is transcribed and handed to Lisa with a
+  "summarize this" framing — she replies with key points / decisions / action
+  items as a normal, persisted chat turn.
+- **`POST /api/voice/transcribe`** `{data(base64), mediaType}` → `{transcript}`;
+  writes a temp file, runs the existing Whisper transcriber, deletes the temp.
+  Summarization is the model's job via the normal chat (no special endpoint),
+  so it inherits soul/memory/context. Clear error if `OPENAI_API_KEY` is unset.
+- Privacy: nothing recorded until 🎙 pressed; clip leaves the machine only for
+  transcription on stop; temp deleted immediately.
+
+### Requirements
+
+- `OPENAI_API_KEY` (Whisper) for transcription.
+
 ## [0.5.0] — 2026-05-30
 
 **LISA can see.** Hand her a screenshot and talk about it — from anywhere, one
