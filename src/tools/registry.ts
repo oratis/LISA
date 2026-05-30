@@ -2,6 +2,7 @@ import type { ToolDefinition } from "../types.js";
 import { memoryTool } from "../memory/tool.js";
 import { memorySearchTool } from "../memory/search_tool.js";
 import { adviseNowTool } from "./advise_now.js";
+import { dispatchAgentTool } from "./dispatch_agent.js";
 import { skillManageTool } from "../skills/tool.js";
 import {
   desireCloseTool,
