@@ -41,6 +41,7 @@
  */
 
 import fsp from "node:fs/promises";
+import type { SessionActivity } from "../types.js";
 
 export type ClaudeSessionState = "working" | "waiting" | "error" | "unknown";
 
@@ -236,4 +237,158 @@ function readNestedStopReason(e: Record<string, unknown>): string | undefined {
     return readString(m.stop_reason) ?? readString(m.stopReason);
   }
   return undefined;
+}
+
+// ── O2 (Tier 2): structural activity extraction ─────────────────────────────
+//
+// PRIVACY BOUNDARY (tested in parser.test.ts): this function reads ONLY
+// structural metadata from the jsonl:
+//   - tool NAMES        (tool_use block `.name`)
+//   - file PATHS        (tool_use `.input.file_path` / `.path` / `.notebook_path`)
+//   - command argv[0]   (first token of a Bash tool's `.input.command`)
+//   - error flags       (`is_error`, `hookErrors`)
+//   - git branch        (top-level `.gitBranch`)
+//   - token counts      (`.message.usage`)
+// It NEVER extracts or returns: any text block, user prompts, assistant
+// replies, Write/Edit content (`new_string`/`old_string`/`content`), full
+// Bash commands beyond argv[0], Grep patterns, or todo text. The privacy
+// test asserts a unique secret planted in all of those never appears in the
+// output. Keeps the "60-second audit" property of the metadata parser.
+
+const ACTIVITY_TAIL_BYTES = 64 * 1024;
+const MAX_TOOLS = 6;
+const MAX_FILES = 10;
+const PATH_KEYS = ["file_path", "path", "notebook_path"];
+
+export async function parseSessionActivity(
+  filePath: string,
+): Promise<SessionActivity | undefined> {
+  let size: number;
+  try {
+    const st = await fsp.stat(filePath);
+    if (!st.isFile() || st.size === 0) return undefined;
+    size = st.size;
+  } catch {
+    return undefined;
+  }
+
+  let tail: string;
+  try {
+    const fd = await fsp.open(filePath, "r");
+    try {
+      const length = Math.min(ACTIVITY_TAIL_BYTES, size);
+      const buf = Buffer.alloc(length);
+      await fd.read(buf, 0, length, size - length);
+      tail = buf.toString("utf8");
+    } finally {
+      await fd.close();
+    }
+  } catch {
+    return undefined;
+  }
+
+  const lines = tail.split("\n").filter(Boolean);
+  if (size > ACTIVITY_TAIL_BYTES && lines.length > 0) lines.shift();
+
+  let turnCount = 0;
+  const toolsInOrder: string[] = [];
+  const files: string[] = [];
+  let lastCommandName: string | undefined;
+  let lastError: string | undefined;
+  let gitBranch: string | undefined;
+  let inTok = 0;
+  let outTok = 0;
+
+  for (const line of lines) {
+    let e: unknown;
+    try {
+      e = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (!e || typeof e !== "object") continue;
+    const obj = e as Record<string, unknown>;
+
+    const type = readString(obj.type);
+    if (type && META_TYPES.has(type)) continue;
+
+    if (!gitBranch) gitBranch = readString(obj.gitBranch);
+    if (type === "assistant" || type === "user") turnCount++;
+
+    if (obj.is_error === true || obj.error === true) lastError = "tool error";
+    if (typeof obj.hookErrors === "number" && obj.hookErrors > 0) {
+      lastError = `${obj.hookErrors} hook error(s)`;
+    }
+
+    const msg = obj.message;
+    if (!msg || typeof msg !== "object") continue;
+    const m = msg as Record<string, unknown>;
+
+    const usage = m.usage;
+    if (usage && typeof usage === "object") {
+      const u = usage as Record<string, unknown>;
+      inTok += toNum(u.input_tokens);
+      outTok += toNum(u.output_tokens);
+    }
+
+    const content = m.content;
+    if (!Array.isArray(content)) continue;
+    for (const block of content) {
+      if (!block || typeof block !== "object") continue;
+      const b = block as Record<string, unknown>;
+      // ONLY tool_use blocks. "text" blocks (prompts/replies) are skipped
+      // entirely — we never read their `.text`.
+      if (b.type !== "tool_use") continue;
+      const name = readString(b.name);
+      if (!name) continue;
+      toolsInOrder.push(name);
+      const input = b.input;
+      if (!input || typeof input !== "object") continue;
+      const inp = input as Record<string, unknown>;
+      for (const k of PATH_KEYS) {
+        const p = inp[k];
+        if (typeof p === "string" && p) {
+          files.push(p);
+          break;
+        }
+      }
+      if (name.toLowerCase() === "bash") {
+        const cmd = inp.command;
+        if (typeof cmd === "string" && cmd.trim()) {
+          // argv[0] ONLY — never the full command line.
+          lastCommandName = cmd.trim().split(/\s+/)[0];
+        }
+      }
+    }
+  }
+
+  if (turnCount === 0 && toolsInOrder.length === 0) return undefined;
+
+  return {
+    turnCount,
+    lastTools: toolsInOrder.slice(-MAX_TOOLS),
+    filesTouched: dedupeKeepRecent(files, MAX_FILES),
+    lastCommandName,
+    lastError,
+    gitBranch,
+    tokens: inTok || outTok ? { input: inTok, output: outTok } : undefined,
+  };
+}
+
+function toNum(v: unknown): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : 0;
+}
+
+/** Dedupe paths keeping each one's most-recent position; cap to `max`. */
+function dedupeKeepRecent(items: string[], max: number): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (let i = items.length - 1; i >= 0; i--) {
+    const it = items[i]!;
+    if (!seen.has(it)) {
+      seen.add(it);
+      out.unshift(it);
+    }
+  }
+  return out.slice(-max);
 }

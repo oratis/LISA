@@ -40,7 +40,8 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { EventEmitter } from "node:events";
-import { parseSessionState, type ClaudeSessionState } from "./parser.js";
+import { parseSessionState, parseSessionActivity, type ClaudeSessionState } from "./parser.js";
+import type { SessionActivity } from "../types.js";
 
 const CLAUDE_HOME       = process.env.CLAUDE_HOME ?? path.join(os.homedir(), ".claude");
 const PROJECTS_DIR      = path.join(CLAUDE_HOME, "projects");
@@ -99,6 +100,12 @@ export interface ClaudeSessionInfo {
    * command". Undefined if the jsonl didn't record it.
    */
   cwd?: string;
+  /**
+   * O2 (Tier-2): structural activity (tool names, files touched, last
+   * command, error, tokens). Populated when visibility ≥ "activity".
+   * Privacy: structural metadata only — never conversation content.
+   */
+  activity?: SessionActivity;
 }
 
 export interface ClaudeSessionUpdate {
@@ -121,11 +128,15 @@ export class ClaudeCodeWatcher extends EventEmitter {
   private repollTimer: NodeJS.Timeout | null = null;
   private pendingChanges = new Map<string, NodeJS.Timeout>();
   private readonly log: Log;
+  private readonly computeActivity: boolean;
   private started = false;
 
-  constructor(opts: { log?: Log } = {}) {
+  constructor(opts: { log?: Log; computeActivity?: boolean } = {}) {
     super();
     this.log = opts.log ?? (() => {});
+    // O2: only extract Tier-2 structural activity when asked (visibility ≥
+    // "activity"). Default off preserves the metadata-only behavior.
+    this.computeActivity = opts.computeActivity ?? false;
     this.setMaxListeners(32);
   }
 
@@ -195,8 +206,11 @@ export class ClaudeCodeWatcher extends EventEmitter {
       const st = await fsp.stat(filePath);
       if (!st.isFile()) return;
       const parsed = await parseSessionState(filePath);
+      const activity = this.computeActivity
+        ? await parseSessionActivity(filePath)
+        : undefined;
       const info = this.makeInfo(filePath, st.mtimeMs, st.size,
-                                 parsed.state, parsed.reason, parsed.cwd);
+                                 parsed.state, parsed.reason, parsed.cwd, activity);
       this.sessions.set(filePath, info);
     } catch {
       // ignore — file disappeared between readdir and stat
@@ -273,8 +287,11 @@ export class ClaudeCodeWatcher extends EventEmitter {
 
     const prev = this.sessions.get(fullPath);
     const parsed = await parseSessionState(fullPath);
+    const activity = this.computeActivity
+      ? await parseSessionActivity(fullPath)
+      : undefined;
     const info = this.makeInfo(fullPath, st.mtimeMs, st.size,
-                               parsed.state, parsed.reason, parsed.cwd);
+                               parsed.state, parsed.reason, parsed.cwd, activity);
     this.sessions.set(fullPath, info);
 
     if (!prev) {
@@ -314,6 +331,7 @@ export class ClaudeCodeWatcher extends EventEmitter {
     state: ClaudeSessionState,
     stateReason: string,
     cwd: string | undefined,
+    activity?: SessionActivity,
   ): ClaudeSessionInfo {
     const sessionId = path.basename(filePath, ".jsonl");
     const projectEncoded = path.basename(path.dirname(filePath));
@@ -343,6 +361,16 @@ export class ClaudeCodeWatcher extends EventEmitter {
       finalState = "waiting";
       finalReason = stateReason === "tool_use" ? "permission" : "idle";
     }
+    // When the session is blocked on a permission decision, surface which
+    // tool it's waiting on (the most recent tool name) — drives the advisor's
+    // "Codex wants to run X — approve?" prompts.
+    let finalActivity = activity;
+    if (finalActivity && finalReason === "permission" && finalActivity.lastTools.length) {
+      finalActivity = {
+        ...finalActivity,
+        pendingPermission: finalActivity.lastTools[finalActivity.lastTools.length - 1],
+      };
+    }
     return {
       projectEncoded,
       projectLabel: decodeProjectLabel(projectEncoded),
@@ -352,6 +380,7 @@ export class ClaudeCodeWatcher extends EventEmitter {
       state: finalState,
       stateReason: finalReason,
       cwd,
+      activity: finalActivity,
     };
   }
 
