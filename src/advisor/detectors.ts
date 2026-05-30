@@ -53,31 +53,65 @@ export function detectPermission(input: AdvisorInput): Suggestion[] {
   return out;
 }
 
-/** waiting/error with no activity for STUCK_MS → notice. */
+/**
+ * "Stuck" = a session that looks like it needs attention but isn't making
+ * progress. The trap (and the v1 noise bug) is that a `waiting` session is
+ * USUALLY fine — Claude finished its turn (end_turn) and is just idle waiting
+ * for the user. That's not stuck, it's normal, and flagging every >10min idle
+ * session buries the real signal.
+ *
+ * So a session counts as stuck only when:
+ *   - state is `error` (something actually broke), OR
+ *   - state is `waiting` with a reason that means "blocked / not cleanly
+ *     finished" — i.e. NOT end_turn/stop_sequence/max_tokens (clean stops,
+ *     surfaced quietly by detectReady instead).
+ * AND it's been quiet for ≥ STUCK_MS. If more than COLLAPSE_THRESHOLD qualify,
+ * emit ONE rolled-up line so the digest stays scannable.
+ */
+const CLEAN_STOP_REASONS = new Set(["end_turn", "stop_sequence", "max_tokens"]);
+const COLLAPSE_THRESHOLD = 3;
+
 export function detectStuck(input: AdvisorInput): Suggestion[] {
-  const out: Suggestion[] = [];
-  for (const s of input.sessions) {
-    if (s.state !== "waiting" && s.state !== "error") continue;
-    if (s.activity?.pendingPermission) continue; // covered by detectPermission
-    const ageMs = input.now - s.lastMtime;
-    if (ageMs < STUCK_MS) continue;
-    const mins = Math.round(ageMs / 60_000);
-    const cmd = s.activity?.lastCommandName;
-    const why = s.state === "error" ? "errored" : "has been stuck";
-    const on = cmd ? ` on \`${cmd}\`` : "";
-    out.push(
+  const stuck = input.sessions.filter((s) => {
+    if (s.activity?.pendingPermission) return false; // detectPermission owns these
+    if (input.now - s.lastMtime < STUCK_MS) return false;
+    if (s.state === "error") return true;
+    if (s.state === "waiting") return !CLEAN_STOP_REASONS.has(s.stateReason);
+    return false;
+  });
+  if (stuck.length === 0) return [];
+
+  if (stuck.length > COLLAPSE_THRESHOLD) {
+    const errs = stuck.filter((s) => s.state === "error").length;
+    const detail = errs > 0 ? ` (${errs} errored)` : "";
+    return [
       mk(
-        `stuck:${s.agent}:${s.sessionId}`,
+        `stuck-many:${stuck.length}`,
         "stuck",
         "notice",
-        `${s.project} ${why}${on} for ${mins}m — want me to look, or cancel it?`,
-        `stuck:${s.state}:${cmd ?? ""}`,
+        `${stuck.length} agent sessions look stuck or stalled${detail} — want the list?`,
+        `stuck-many:${stuck.length}:${errs}`,
         input.now,
-        { label: "Look", kind: "look", arg: s.sessionId },
+        { label: "List", kind: "look", arg: "stuck" },
       ),
-    );
+    ];
   }
-  return out;
+
+  return stuck.map((s) => {
+    const mins = Math.round((input.now - s.lastMtime) / 60_000);
+    const cmd = s.activity?.lastCommandName;
+    const why = s.state === "error" ? "errored" : "has stalled";
+    const on = cmd ? ` on \`${cmd}\`` : "";
+    return mk(
+      `stuck:${s.agent}:${s.sessionId}`,
+      "stuck",
+      "notice",
+      `${s.project} ${why}${on} (idle ${mins}m) — want me to look, or cancel it?`,
+      `stuck:${s.state}:${s.stateReason}:${cmd ?? ""}`,
+      input.now,
+      { label: "Look", kind: "look", arg: s.sessionId },
+    );
+  });
 }
 
 /** Two+ active sessions sharing a cwd (or an overlapping touched file). */

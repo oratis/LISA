@@ -42,24 +42,48 @@ describe("detectors — permission", () => {
 });
 
 describe("detectors — stuck", () => {
-  test("waiting + stale beyond STUCK_MS → notice", () => {
+  test("waiting with a non-clean reason + stale → stuck", () => {
     const s = sess({ state: "waiting", stateReason: "idle", lastMtime: NOW - STUCK_MS - 1000 });
     const out = detectStuck(input([s]));
     assert.equal(out.length, 1);
     assert.equal(out[0]!.category, "stuck");
-    assert.match(out[0]!.text, /stuck/);
+  });
+  test("error + stale → stuck", () => {
+    const s = sess({ state: "error", stateReason: "is_error", lastMtime: NOW - STUCK_MS - 1000 });
+    const out = detectStuck(input([s]));
+    assert.equal(out.length, 1);
+    assert.match(out[0]!.text, /errored/);
+  });
+  test("waiting/end_turn (cleanly finished) is NOT stuck — the v1 noise bug", () => {
+    // This is the fix: a finished-and-idle session is normal, not stuck.
+    const s = sess({ state: "waiting", stateReason: "end_turn", lastMtime: NOW - STUCK_MS - 999_999 });
+    assert.equal(detectStuck(input([s])).length, 0);
+  });
+  test("working session is never stuck (it's progressing)", () => {
+    const s = sess({ state: "working", lastMtime: NOW - STUCK_MS - 1000 });
+    assert.equal(detectStuck(input([s])).length, 0);
   });
   test("fresh waiting session → no stuck", () => {
-    const s = sess({ state: "waiting", lastMtime: NOW - 1000 });
+    const s = sess({ state: "waiting", stateReason: "idle", lastMtime: NOW - 1000 });
     assert.equal(detectStuck(input([s])).length, 0);
   });
   test("pending permission is NOT double-reported as stuck", () => {
     const s = sess({
       state: "waiting",
+      stateReason: "permission",
       lastMtime: NOW - STUCK_MS - 1,
       activity: { turnCount: 1, lastTools: ["Bash"], filesTouched: [], pendingPermission: "Bash" },
     });
     assert.equal(detectStuck(input([s])).length, 0);
+  });
+  test("more than the collapse threshold → one rolled-up suggestion", () => {
+    const many = Array.from({ length: 5 }, (_, i) =>
+      sess({ sessionId: "s" + i, state: "error", stateReason: "is_error", lastMtime: NOW - STUCK_MS - 1000 }),
+    );
+    const out = detectStuck(input(many));
+    assert.equal(out.length, 1, "collapsed into a single line");
+    assert.match(out[0]!.text, /5 agent sessions/);
+    assert.match(out[0]!.text, /5 errored/);
   });
 });
 
