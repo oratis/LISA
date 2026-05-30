@@ -162,6 +162,20 @@ export async function advise(
   });
 }
 
+/**
+ * On-demand ("pull") advice: run the detectors against the current snapshot
+ * and return everything above the bar, sorted — WITHOUT the throttle/dedup
+ * (the user explicitly asked, so don't suppress) and WITHOUT mutating state.
+ * Used by the advise_now tool.
+ */
+export function adviseNow(input: AdvisorInput, state: AdvisorState = emptyAdvisorState()): Suggestion[] {
+  const cands = runAllDetectors(input);
+  for (const c of cands) c.score = scoreSuggestion(c, state);
+  return cands
+    .filter((c) => c.urgency === "urgent" || c.score >= MIN_SCORE)
+    .sort((a, b) => b.score - a.score);
+}
+
 /** Render surfaced suggestions into one digest card (markdown-ish text). */
 export function formatDigest(suggestions: Suggestion[]): string {
   if (suggestions.length === 0) return "";

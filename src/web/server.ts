@@ -20,6 +20,8 @@ import { listDesires } from "../soul/store.js";
 import { ISLAND_HTML } from "./island.js";
 import { MAIN_HTML } from "./lisa-html.js";
 import { OrchestratorHub, loadOrchestratorConfig } from "../integrations/hub.js";
+import { setCurrentHub } from "../integrations/current-hub.js";
+import { advise, formatDigest } from "../advisor/engine.js";
 import type { AgentSession } from "../integrations/types.js";
 import { LISA_HOME } from "../paths.js";
 import type { ToolDefinition, StoredMessage } from "../types.js";
@@ -158,6 +160,35 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     }
   });
   void hub.start();
+  // Expose the live hub to the advise_now tool (same process).
+  setCurrentHub(hub);
+
+  // ── Advisor (L5): periodic proactive suggestions ────────────────────
+  // Every interval, run the cross-agent detectors against the live hub
+  // snapshot. The engine applies the relevance bar + 3h digest throttle +
+  // dedup (urgent items bypass the throttle), so most ticks surface
+  // nothing. Survivors land in the idle_message "while you were away"
+  // card — pull-friendly, not an interrupt. lastIdleMessage is assigned
+  // inside the async callback (runs after all locals init; no TDZ issue).
+  const ADVISE_INTERVAL_MS = 5 * 60_000;
+  const adviseTimer = setInterval(() => {
+    void (async () => {
+      try {
+        const sessions = hub.list();
+        if (sessions.length === 0) return;
+        const { surface } = await advise({ sessions, now: Date.now() });
+        if (surface.length === 0) return;
+        const text = formatDigest(surface);
+        const at = new Date().toISOString();
+        lastIdleMessage = { text, at };
+        broadcast({ type: "idle_message", text, at, source: "advisor" });
+        console.error(`[advisor] surfaced ${surface.length} suggestion(s)`);
+      } catch (err) {
+        console.error(`[advisor] tick failed: ${(err as Error).message}`);
+      }
+    })();
+  }, ADVISE_INTERVAL_MS);
+  if (adviseTimer.unref) adviseTimer.unref();
 
   // ── Island unread tracking (Phase 1 of MAC_ISLAND_PLAN) ─────────────
   // The island widget caches "last idle_message" so a fresh tab opening
