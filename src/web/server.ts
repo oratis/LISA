@@ -304,6 +304,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       }
       let visionBody = "";
       for await (const chunk of req) visionBody += chunk.toString("utf8");
+      console.error("[vision] capture requested");
       let mode: CaptureMode = "interactive";
       try {
         const parsed = visionBody ? (JSON.parse(visionBody) as { mode?: CaptureMode }) : {};
@@ -394,7 +395,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         "service-worker-allowed": "/",
       });
       res.end(`
-const CACHE = 'lisa-v2-redesign';
+const CACHE = 'lisa-v3-vision';
 const ASSET_PATHS = ['/assets/lisa-mascot.png', '/assets/background-tile.png',
   '/assets/icon-soul.png', '/assets/icon-skill.png', '/assets/icon-memory.png',
   '/assets/icon-tool.png', '/assets/icon-send.png'];

@@ -37,12 +37,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func captureForLisa(_ sender: Any?) {
-        showMainWindow()
-        // Give the window a beat to come forward before the crosshair opens,
-        // so the user's screenshot isn't of Lisa being raised.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
-            self?.mainWindow?.triggerCapture()
+        // Do NOT raise the Lisa window first — that would cover whatever the
+        // user is trying to screenshot. screencapture's crosshair is a
+        // system-level overlay that works regardless of which app is frontmost,
+        // and the WKWebView keeps running while backgrounded, so the JS bridge
+        // fires fine. We bring the window forward only AFTER a shot is actually
+        // attached (so the user sees it land), and leave everything untouched
+        // if they cancelled with Escape.
+        let fireCapture: () -> Void = { [weak self] in
+            self?.mainWindow?.triggerCapture { attached in
+                if attached { self?.bringWindowToFront() }
+            }
         }
+        if mainWindow != nil {
+            fireCapture()
+        } else {
+            // First run: create the window to host the WebView/bridge but
+            // order it BEHIND the frontmost app so it doesn't obscure the
+            // capture target; give it a beat to load before firing.
+            showMainWindowInBackground()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: fireCapture)
+        }
+    }
+
+    /// Bring the chat window forward — called after a screenshot is attached,
+    /// so the user sees the shot land in the composer.
+    func bringWindowToFront() {
+        showMainWindow()
+    }
+
+    private func showMainWindowInBackground() {
+        if mainWindow == nil {
+            mainWindow = MainWindow()
+        }
+        // orderFront (not makeKeyAndOrderFront) + no app activation: the
+        // window exists to host the bridge but stays behind the capture target.
+        mainWindow?.orderFront(nil)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

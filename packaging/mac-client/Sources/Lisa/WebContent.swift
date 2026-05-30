@@ -120,18 +120,34 @@ final class WebContent: NSViewController, WKNavigationDelegate, WKUIDelegate {
         webView.reloadFromOrigin()
     }
 
-    /// Invoke the page's screenshot→composer bridge (defined in lisa-html.ts).
-    /// Called by the global hotkey: the page asks the server to run
-    /// screencapture (the familiar crosshair), then attaches the result to
-    /// the chat composer for the user to talk to Lisa about.
-    func triggerCapture() {
-        webView.evaluateJavaScript(
-            "window.lisaCaptureAndAttach && window.lisaCaptureAndAttach('interactive');"
-        ) { _, err in
-            if let err = err {
-                FileHandle.standardError.write(
-                    Data("[lisa] capture bridge error: \(err)\n".utf8))
+    /// Invoke the page's screenshot→composer bridge (defined in lisa-html.ts)
+    /// and call `onAttached(true)` once a screenshot was actually captured +
+    /// attached (false if the user pressed Escape / it failed).
+    ///
+    /// We AWAIT the page's Promise via callAsyncJavaScript so the window is
+    /// raised only AFTER the shot is taken — raising it earlier would cover
+    /// whatever the user is trying to screenshot. callAsyncJavaScript (macOS
+    /// 11+) resolves with the JS return value; older macOS falls back to the
+    /// fire-and-forget path (window already handled by the caller).
+    func triggerCapture(onAttached: @escaping (Bool) -> Void) {
+        let js = "return await (window.lisaCaptureAndAttach ? window.lisaCaptureAndAttach('interactive') : false);"
+        if #available(macOS 11.0, *) {
+            webView.callAsyncJavaScript(
+                js, arguments: [:], in: nil, in: .page
+            ) { result in
+                switch result {
+                case .success(let value):
+                    onAttached((value as? Bool) ?? false)
+                case .failure(let err):
+                    FileHandle.standardError.write(
+                        Data("[lisa] capture bridge error: \(err)\n".utf8))
+                    onAttached(false)
+                }
             }
+        } else {
+            webView.evaluateJavaScript(
+                "window.lisaCaptureAndAttach && window.lisaCaptureAndAttach('interactive');"
+            ) { _, _ in onAttached(true) }
         }
     }
 
