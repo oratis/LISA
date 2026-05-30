@@ -24,6 +24,8 @@ import { setCurrentHub } from "../integrations/current-hub.js";
 import { advise, formatDigest } from "../advisor/engine.js";
 import type { AgentSession } from "../integrations/types.js";
 import { captureScreenshot, captureSupported, type CaptureMode } from "../vision/capture.js";
+import { transcribeAudio } from "../voice/transcribe.js";
+import os from "node:os";
 import { LISA_HOME } from "../paths.js";
 import type { ToolDefinition, StoredMessage } from "../types.js";
 
@@ -317,6 +319,55 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       } catch (err) {
         res.writeHead(500, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: (err as Error).message }));
+      }
+      return;
+    }
+
+    // Voice: transcribe an audio clip recorded in the browser. Body is JSON
+    // { data: <base64>, mediaType?: string }. Writes a temp file, runs the
+    // existing Whisper transcriber, returns { transcript } and deletes the
+    // temp. The browser records via MediaRecorder; LISA then summarizes the
+    // transcript through the normal chat flow (server-side summarization is
+    // the model's job, not a special endpoint). 400 on missing data; the
+    // transcriber itself errors clearly if OPENAI_API_KEY is unset.
+    if (req.method === "POST" && url === "/api/voice/transcribe") {
+      let voiceBody = "";
+      for await (const chunk of req) voiceBody += chunk.toString("utf8");
+      let payload: { data?: string; mediaType?: string };
+      try {
+        payload = JSON.parse(voiceBody || "{}");
+      } catch {
+        res.writeHead(400, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "invalid JSON body" }));
+        return;
+      }
+      if (!payload.data) {
+        res.writeHead(400, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "missing audio data" }));
+        return;
+      }
+      // Pick an extension Whisper accepts based on the recorder's mimeType.
+      const mt = payload.mediaType ?? "audio/webm";
+      const ext = mt.includes("mp4") || mt.includes("m4a")
+        ? "m4a"
+        : mt.includes("ogg")
+          ? "ogg"
+          : mt.includes("wav")
+            ? "wav"
+            : "webm";
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+      const tmp = path.join(os.tmpdir(), `lisa-rec-${stamp}-${process.pid}.${ext}`);
+      try {
+        await fs.writeFile(tmp, Buffer.from(payload.data, "base64"));
+        console.error(`[voice] transcribing ${Buffer.from(payload.data, "base64").length} bytes (${ext})`);
+        const transcript = await transcribeAudio({ audioPath: tmp });
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ transcript }));
+      } catch (err) {
+        res.writeHead(500, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: (err as Error).message }));
+      } finally {
+        await fs.rm(tmp, { force: true }).catch(() => {});
       }
       return;
     }

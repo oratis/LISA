@@ -607,12 +607,12 @@ export const MAIN_HTML = `<!doctype html>
     -webkit-backdrop-filter: blur(30px);
     border-top: 1px solid var(--border-new);
     display: grid;
-    grid-template-columns: 36px 36px 1fr 96px;
+    grid-template-columns: 36px 36px 36px 1fr 96px;
     gap: 10px;
     align-items: end;
   }
 
-  #attachBtn, #captureBtn {
+  #attachBtn, #captureBtn, #recordBtn {
     align-self: stretch;
     display: flex;
     align-items: center;
@@ -627,8 +627,15 @@ export const MAIN_HTML = `<!doctype html>
     min-height: 44px;
     padding: 0;
   }
-  #attachBtn:hover, #captureBtn:hover { background: var(--bg-card); color: var(--fg); }
+  #attachBtn:hover, #captureBtn:hover, #recordBtn:hover { background: var(--bg-card); color: var(--fg); }
   #captureBtn.flash { background: var(--accent); color: var(--bg-deep); }
+  /* Pulsing red while recording. */
+  #recordBtn.recording {
+    background: var(--err-color);
+    color: #fff;
+    animation: rec-pulse 1.1s ease-in-out infinite;
+  }
+  @keyframes rec-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.55; } }
   /* Off-screen the file input instead of display:none. WKWebView's
      implicit <label>→<input type=file> click forward doesn't fire on a
      fully display:none input — the OS file picker silently no-ops.
@@ -708,7 +715,7 @@ export const MAIN_HTML = `<!doctype html>
       gap: 14px;
     }
     #form {
-      grid-template-columns: 36px 36px 1fr 84px;
+      grid-template-columns: 36px 36px 36px 1fr 84px;
       padding: 10px 14px 14px;
     }
     #input { font-size: 16px; /* prevents iOS Safari auto-zoom */ }
@@ -1139,6 +1146,7 @@ export const MAIN_HTML = `<!doctype html>
         📎
       </label>
       <button type="button" id="captureBtn" title="Screenshot for Lisa (⌃⌥S anywhere)">📷</button>
+      <button type="button" id="recordBtn" title="Record audio — Lisa will transcribe + summarize it">🎙</button>
       <textarea id="input" placeholder="Talk to Lisa…  (Enter to send · Shift+Enter for newline)" autofocus></textarea>
       <button type="submit" id="sendBtn">
         <img src="/assets/icon-send.png" alt="">
@@ -1319,6 +1327,105 @@ fileInput.addEventListener('change', async () => {
 const captureBtnEl = document.getElementById('captureBtn');
 if (captureBtnEl) {
   captureBtnEl.addEventListener('click', () => { void window.lisaCaptureAndAttach('interactive'); });
+}
+
+// ── Audio recording → transcribe → Lisa summarizes ─────────────────
+// 🎙 toggles a MediaRecorder. On stop: POST the clip to /api/voice/transcribe
+// (server-side Whisper), then send the transcript into the normal chat with a
+// "summarize this" framing — so Lisa produces the summary in her own voice and
+// it's persisted + discussable like any turn. First click prompts mic
+// permission (browser-native).
+const recordBtnEl = document.getElementById('recordBtn');
+let mediaRecorder = null;
+let recordedChunks = [];
+let recordStream = null;
+
+function pickAudioMime() {
+  const prefs = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'];
+  for (const m of prefs) {
+    try { if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m; } catch (_) {}
+  }
+  return '';
+}
+
+async function startRecording() {
+  if (!navigator.mediaDevices || !window.MediaRecorder) {
+    el('div', 'err', '[voice] recording not supported in this browser');
+    return;
+  }
+  try {
+    recordStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    el('div', 'err', '[voice] microphone access denied or unavailable');
+    return;
+  }
+  const mimeType = pickAudioMime();
+  recordedChunks = [];
+  mediaRecorder = mimeType ? new MediaRecorder(recordStream, { mimeType }) : new MediaRecorder(recordStream);
+  mediaRecorder.addEventListener('dataavailable', (e) => { if (e.data && e.data.size > 0) recordedChunks.push(e.data); });
+  mediaRecorder.addEventListener('stop', () => { void finishRecording(); });
+  mediaRecorder.start();
+  if (recordBtnEl) { recordBtnEl.classList.add('recording'); recordBtnEl.textContent = '⏹'; recordBtnEl.title = 'Stop recording'; }
+}
+
+function stopRecordingTracks() {
+  if (recordStream) { recordStream.getTracks().forEach((t) => t.stop()); recordStream = null; }
+  if (recordBtnEl) { recordBtnEl.classList.remove('recording'); recordBtnEl.textContent = '🎙'; recordBtnEl.title = 'Record audio — Lisa will transcribe + summarize it'; }
+}
+
+async function finishRecording() {
+  const mime = (mediaRecorder && mediaRecorder.mimeType) || 'audio/webm';
+  stopRecordingTracks();
+  const blob = new Blob(recordedChunks, { type: mime });
+  recordedChunks = [];
+  if (blob.size === 0) return;
+  // Show a transient "transcribing…" line in the log.
+  const pending = el('div', 'thinking', '⋯ transcribing recording');
+  try {
+    const data = await blobToBase64(blob);
+    const res = await fetch('/api/voice/transcribe', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ data, mediaType: mime }),
+    });
+    const out = await res.json();
+    if (pending) pending.remove();
+    if (!res.ok || out.error) {
+      el('div', 'err', '[voice] ' + (out.error || ('HTTP ' + res.status)));
+      return;
+    }
+    const transcript = (out.transcript || '').trim();
+    if (!transcript) { el('div', 'err', '[voice] (empty transcript)'); return; }
+    // Hand the transcript to Lisa with a summarize framing. send() handles the
+    // chat turn, persistence, and her response in her own voice.
+    const framed =
+      "I just recorded some audio. Here's the transcript — please give me a clear, " +
+      "useful summary (key points, decisions, action items if any), then I might ask follow-ups.\n\n" +
+      "--- transcript ---\n" + transcript;
+    send(framed);
+  } catch (err) {
+    if (pending) pending.remove();
+    el('div', 'err', '[voice] ' + (err && err.message ? err.message : 'transcription failed'));
+  }
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+if (recordBtnEl) {
+  recordBtnEl.addEventListener('click', () => {
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+      mediaRecorder.stop();
+    } else {
+      void startRecording();
+    }
+  });
 }
 
 const attachBtnEl = document.getElementById('attachBtn');
