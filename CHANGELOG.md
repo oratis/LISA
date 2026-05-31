@@ -5,6 +5,12 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-05-31
+
+**LISA can stop the agents she starts.** Completes the orchestrator's DISPATCH
+layer (O5, active control) — and fixes a v0.4.0 bug where the dispatch/advise
+tools were never actually callable.
+
 ### Added — `signal_agent` tool (orchestrator O5: active control)
 
 - **`signal_agent`** completes the dispatch loop: `action:"list"` shows the
