@@ -3,6 +3,7 @@ import { memoryTool } from "../memory/tool.js";
 import { memorySearchTool } from "../memory/search_tool.js";
 import { adviseNowTool } from "./advise_now.js";
 import { dispatchAgentTool } from "./dispatch_agent.js";
+import { signalAgentTool } from "./signal_agent.js";
 import { skillManageTool } from "../skills/tool.js";
 import {
   desireCloseTool,
@@ -64,6 +65,10 @@ export function buildToolRegistry(opts: ToolRegistryOptions = {}): ToolDefinitio
     webFetchTool as ToolDefinition,
     webSearchTool as ToolDefinition,
     redeployTool as ToolDefinition,
+    // Orchestration (docs/ORCHESTRATOR_PLAN.md): observe → advise → dispatch → control.
+    adviseNowTool as ToolDefinition,
+    dispatchAgentTool as ToolDefinition,
+    signalAgentTool as ToolDefinition,
   ];
   if (opts.includeVoice) {
     tools.push(speakTool as ToolDefinition, transcribeTool as ToolDefinition);

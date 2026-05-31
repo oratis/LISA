@@ -24,6 +24,7 @@
 import { spawn } from "node:child_process";
 import type { ToolDefinition } from "../types.js";
 import { getCurrentHub } from "../integrations/current-hub.js";
+import { recordDispatch } from "../integrations/dispatch-ledger.js";
 
 interface DispatchInput {
   agent: "claude" | "codex" | "opencode" | "aider";
@@ -161,11 +162,23 @@ export const dispatchAgentTool: ToolDefinition<DispatchInput, string> = {
 
     const pid = child.pid;
     child.unref(); // don't keep LISA's event loop alive for it
+
+    // Record it so signal_agent can list/cancel it from a later turn (the
+    // detached child outlives this turn's handle). Never fatal to the dispatch.
+    if (typeof pid === "number") {
+      try {
+        recordDispatch({ agent: input.agent, pid, cwd, task: input.task });
+      } catch (err) {
+        ctx.log(`[dispatch] ledger write failed (non-fatal): ${(err as Error).message}`);
+      }
+    }
+
     ctx.log(`[dispatch] launched ${input.agent} (pid ${pid}) in ${cwd}: ${input.task.slice(0, 80)}`);
     return (
       `Launched ${input.agent} (pid ${pid}) in ${cwd}.\n` +
       `It's running autonomously and will appear in the agent session monitor. ` +
-      `I won't block on it — ask me "what's running?" (advise_now) to check progress.`
+      `I won't block on it — ask me "what's running?" (advise_now) to check progress, ` +
+      `or signal_agent to list/cancel it.`
     );
   },
 };
