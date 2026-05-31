@@ -5,6 +5,28 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — `signal_agent` tool (orchestrator O5: active control)
+
+- **`signal_agent`** completes the dispatch loop: `action:"list"` shows the
+  agents LISA launched via `dispatch_agent` that are still running (id, agent,
+  pid, uptime, cwd, task); `action:"cancel"` stops one — SIGTERM to its process
+  *group*, escalating to SIGKILL after a grace period (`force:true` kills
+  immediately). It can only target agents LISA herself dispatched (the ledger
+  holds their pids); the user's own sessions carry no pid and are unreachable.
+- **Dispatch ledger** (`~/.lisa/dispatches.json`) — `dispatch_agent` now records
+  each launch so it can be controlled from a later turn or after a restart
+  (detached agents outlive the spawning turn's handle). Dead pids are pruned on
+  read.
+
+### Fixed
+
+- **`advise_now` and `dispatch_agent` were never registered.** Both were
+  imported into the tool registry but never added to the tool array (and
+  `tsconfig` has no `noUnusedLocals` to catch it), so the model could not call
+  either one — `dispatch_agent` shipped dead in v0.4.0. Both are now wired up,
+  with a registry regression test asserting all three orchestration tools are
+  present.
+
 ## [0.6.1] — 2026-05-31
 
 **Release hardening — fully notarized + stapled Mac apps.** No app/runtime
