@@ -77,29 +77,40 @@ describe("signal_agent — cancel guards", () => {
 });
 
 describe("signal_agent — cancel actually kills the process", () => {
-  test("force-cancel terminates a dispatched process and clears the ledger", async () => {
+  test("force-cancel terminates a dispatched process and clears the ledger", { timeout: 10_000 }, async () => {
     // A real, long-lived child as its own process-group leader (detached),
-    // mirroring how dispatch_agent spawns agents.
+    // mirroring how dispatch_agent spawns agents. NOTE: we deliberately do NOT
+    // unref() it — the live handle keeps the event loop alive until the 'exit'
+    // event fires, so the runner can't drain and cancel this test mid-await
+    // (which is racy in CI). libuv reaps the child on exit.
     const child = spawn("sleep", ["30"], { detached: true, stdio: "ignore" });
     assert.ok(typeof child.pid === "number", "spawned with a pid");
     const pid = child.pid;
-    child.unref();
     const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
 
     const entry = recordDispatch({ agent: "claude", pid, cwd: TMP, task: "long-running" });
     assert.equal(isAlive(pid), true);
 
-    const out = await signalAgentTool.execute(
-      { action: "cancel", target: entry.id, force: true },
-      ctx(),
-    );
-    assert.match(out, /Cancelled/);
+    try {
+      const out = await signalAgentTool.execute(
+        { action: "cancel", target: entry.id, force: true },
+        ctx(),
+      );
+      assert.match(out, /Cancelled/);
 
-    await exited; // libuv reaps the child once it dies under SIGKILL
-    assert.equal(
-      loadLedger().find((e) => e.id === entry.id),
-      undefined,
-      "entry removed from ledger after cancel",
-    );
+      await exited; // resolves once the SIGKILL'd child dies and is reaped
+      assert.equal(
+        loadLedger().find((e) => e.id === entry.id),
+        undefined,
+        "entry removed from ledger after cancel",
+      );
+    } finally {
+      // Safety net: if the cancel path failed, don't leave a stray process.
+      try {
+        process.kill(-pid, "SIGKILL");
+      } catch {
+        /* already gone */
+      }
+    }
   });
 });
