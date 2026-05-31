@@ -5,6 +5,24 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.1] — 2026-05-31
+
+**Release hardening — fully notarized + stapled Mac apps.** No app/runtime
+changes; this is a packaging fix.
+
+### Fixed — DMG signing pipeline
+
+- The signed-DMG flow now notarizes and **staples the `.app` bundles before**
+  they are assembled into the DMG, so `Lisa.app` / `LisaIsland.app` carry their
+  own stapled notarization ticket and pass `xcrun stapler validate` even fully
+  offline. Previously only the DMG was stapled; the contained apps were
+  Gatekeeper-accepted online but not individually stapled (the old step stapled
+  a runner-side copy that never made it into the DMG).
+- `scripts/build-mac-apps.sh` split into `apps` / `dmg` / `full` phases so CI can
+  notarize the apps between build and DMG assembly. `full` (default) keeps the
+  one-command local dev path unchanged. The `dmg` phase never re-signs the apps
+  (which would strip the staple); `cp -R` preserves the ticket.
+
 ## [0.6.0] — 2026-05-30
 
 **LISA can listen.** Record audio in the chat → she transcribes it and
