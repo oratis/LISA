@@ -21,14 +21,24 @@ export const ISLAND_HTML = `<!doctype html>
     color-scheme: dark;
     --bg: rgba(8, 12, 24, 0.92);
     --bg-strong: rgba(8, 12, 24, 0.96);
-    --fg: #e4e4e6;
+    --fg: #e6e8ee;
     --fg-dim: #9ba3b8;
     --fg-faint: #6b7280;
     --accent: #6ad4ff;
     --accent-warm: #ffd066;
     --accent-dream: #b487ff;
     --accent-claude: #ff8c42;
-    --border: rgba(255, 255, 255, 0.06);
+    --border: rgba(255, 255, 255, 0.08);
+    /* 1px top inner highlight that reads as a glass bevel */
+    --hairline: rgba(255, 255, 255, 0.12);
+    /* Layered materials — a soft vertical gradient gives the panels depth
+       instead of a flat fill, closer to the macOS Notch look. */
+    --pill-grad: linear-gradient(180deg, rgba(28, 35, 56, 0.94) 0%, rgba(10, 14, 28, 0.94) 100%);
+    --panel-grad: linear-gradient(180deg, rgba(22, 28, 46, 0.96) 0%, rgba(9, 13, 25, 0.97) 72%);
+    --shadow-pill: 0 8px 24px rgba(0, 0, 0, 0.45), 0 1px 0 var(--hairline) inset;
+    --shadow-panel: 0 18px 50px rgba(0, 0, 0, 0.55), 0 1px 0 var(--hairline) inset;
+    /* Gentle overshoot easing for a springy, alive feel. */
+    --spring: cubic-bezier(0.22, 1, 0.36, 1);
   }
   html, body {
     margin: 0;
@@ -53,18 +63,24 @@ export const ISLAND_HTML = `<!doctype html>
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    background: var(--bg);
+    background: var(--pill-grad);
     border: 1px solid var(--border);
     border-radius: 22px;
     padding: 5px 14px 5px 5px;
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(20px) saturate(1.4);
+    -webkit-backdrop-filter: blur(20px) saturate(1.4);
+    box-shadow: var(--shadow-pill);
     cursor: pointer;
-    transition: transform 200ms ease, opacity 200ms ease;
+    transition: transform 260ms var(--spring), box-shadow 260ms var(--spring);
     max-width: 280px;
   }
-  #pill:hover { transform: translateY(1px); }
+  /* Lift toward the cursor (the old rule pushed it *down*, which read as
+     a press). Subtle scale + deeper shadow sells the float. */
+  #pill:hover {
+    transform: translateY(-1px) scale(1.015);
+    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.5), 0 1px 0 rgba(255, 255, 255, 0.16) inset;
+  }
+  #pill:active { transform: translateY(0) scale(0.99); }
 
   /* Avatar is an <img> not a background-image — more reliable in
      WKWebView and lets us crop into the face via object-position.
@@ -133,20 +149,21 @@ export const ISLAND_HTML = `<!doctype html>
     max-height: calc(100vh - 70px);
     overflow-y: auto;
     overscroll-behavior: contain;
-    background: var(--bg-strong);
+    background: var(--panel-grad);
     border: 1px solid var(--border);
     border-radius: 18px;
     padding: 16px 18px;
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(24px) saturate(1.4);
+    -webkit-backdrop-filter: blur(24px) saturate(1.4);
+    box-shadow: var(--shadow-panel);
     font-size: 12.5px;
     line-height: 1.55;
     box-sizing: border-box;
     opacity: 0;
-    transform: translateY(-4px);
+    transform: translateY(-6px) scale(0.985);
+    transform-origin: top center;
     pointer-events: none;
-    transition: opacity 200ms ease, transform 200ms ease;
+    transition: opacity 240ms var(--spring), transform 240ms var(--spring);
   }
   body.expanded #expand {
     opacity: 1;
@@ -230,14 +247,32 @@ export const ISLAND_HTML = `<!doctype html>
     gap: 10px;
   }
   #claude-list .proj { font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #claude-list .when { color: var(--fg-dim); flex-shrink: 0; font-variant-numeric: tabular-nums; font-size: 11px; }
+  /* Relative-time reads as a small pill chip (cf. the "<1m" chip in the
+     reference) — sits cleaner against the row than bare text. */
+  #claude-list .when {
+    color: var(--fg-dim);
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+  }
   #claude-list .empty { padding: 8px 12px; color: var(--fg-faint); font-style: italic; }
   /* O2 — Tier-2 activity line: what the session is structurally doing. */
   #claude-list .act {
-    margin: 2px 0 0 18px;
+    margin: 4px 0 0 18px;
+    padding: 5px 9px;
     font-size: 10.5px;
     color: var(--fg-dim);
     font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    /* Inset monospace card with an accent rail — echoes the reference's
+       code-diff panel without needing the actual diff content. */
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-left: 2px solid rgba(255, 140, 66, 0.5);
+    border-radius: 7px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -326,22 +361,36 @@ export const ISLAND_HTML = `<!doctype html>
   #actions {
     display: flex;
     gap: 8px;
+    margin-top: 4px;
   }
   button {
     flex: 1;
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(255, 255, 255, 0.06);
     border: 1px solid var(--border);
     color: var(--fg);
-    padding: 8px 12px;
-    border-radius: 10px;
+    padding: 9px 12px;
+    border-radius: 11px;
     font-size: 11.5px;
+    font-weight: 550;
     cursor: pointer;
     font-family: inherit;
-    transition: background 150ms ease;
+    transition: background 160ms var(--spring), transform 160ms var(--spring), box-shadow 160ms var(--spring);
   }
-  button:hover  { background: rgba(255, 255, 255, 0.10); }
-  button:active { background: rgba(255, 255, 255, 0.15); }
-  button.muted  { opacity: 0.5; }
+  button:hover  { background: rgba(255, 255, 255, 0.11); transform: translateY(-1px); }
+  button:active { background: rgba(255, 255, 255, 0.16); transform: translateY(0); }
+  button.muted  { opacity: 0.6; }
+  /* Primary CTA — accent-filled with a soft glow, the way the reference
+     elevates its main action above the secondary ones. */
+  #btn-open {
+    background: linear-gradient(180deg, rgba(106, 212, 255, 0.22), rgba(106, 212, 255, 0.12));
+    border-color: rgba(106, 212, 255, 0.35);
+    color: #d6f3ff;
+    box-shadow: 0 4px 14px rgba(106, 212, 255, 0.12);
+  }
+  #btn-open:hover {
+    background: linear-gradient(180deg, rgba(106, 212, 255, 0.30), rgba(106, 212, 255, 0.16));
+    box-shadow: 0 6px 18px rgba(106, 212, 255, 0.22);
+  }
 
   /* Offline state — desaturate + dim */
   body.offline #avatar { filter: grayscale(1); opacity: 0.5; }
