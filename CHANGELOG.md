@@ -41,6 +41,15 @@ versioning follows [SemVer](https://semver.org/).
 
 ### Fixed
 
+- **The entire web GUI's JavaScript was dead since v0.6.0.** The voice
+  feature's transcript-framing string was written with `\n` *inside the page's
+  outer template literal*, so it expanded to a raw newline inside a
+  double-quoted JS string in the served HTML — a `SyntaxError` that made the
+  browser discard the page's single `<script>` wholesale. Result: no chat send,
+  no SSE mood/idle updates, and the Claude-Code monitor stuck at "0 / idle"
+  even with active sessions. Fixed the escaping (`\\n`), and added a
+  compile-only test (`html-syntax.test.ts`) that parses both inline scripts so
+  this class of break can't ship again.
 - **`heartbeat install --load` / `--every` threw `unknown flag`.** The arg
   parser validated unknown `--flags` globally before subcommand args were split
   out, so the heartbeat installer's own flags never reached its handler. Flags
