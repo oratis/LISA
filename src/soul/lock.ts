@@ -9,10 +9,13 @@
  *   - lose a desire-progress append (read-modify-write race), or
  *   - collide on .git/index.lock (one commit fails).
  *
- * withFileLock implements a portable advisory mutex via exclusive file
- * creation (`open(..., "wx")` succeeds only if the file doesn't exist). It
- * self-heals from a crashed holder via a staleness timeout + a best-effort
- * liveness check on the recorded pid.
+ * withFileLock implements a portable advisory mutex by writing the lock body to
+ * a private temp file and then `link()`-ing it into place — link() fails if the
+ * target exists, so the lock is created exclusively AND already holds its full
+ * content (no window where a contender can read a half-written file and mistake
+ * it for stale). It self-heals from a crashed holder via a staleness timeout +
+ * a best-effort liveness check on the recorded pid, stealing atomically by
+ * renaming the stale file away so racing contenders can't clobber each other.
  */
 
 import fsp from "node:fs/promises";
@@ -45,7 +48,12 @@ async function isStale(lockPath: string, staleMs: number): Promise<boolean> {
   let body: LockBody;
   try {
     body = JSON.parse(await fsp.readFile(lockPath, "utf8")) as LockBody;
-  } catch {
+  } catch (e) {
+    // The file vanished between the failed create and our read — the holder
+    // released it. There's nothing to steal; let the caller retry the create
+    // race. (Treating this as "stale" would race a concurrent acquirer into an
+    // unconditional rm that could delete a *different* holder's fresh lock.)
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return false;
     // Unreadable / malformed lock file → treat as stale so we can recover.
     return true;
   }
@@ -78,19 +86,34 @@ export async function withFileLock<T>(
 
   // ── acquire ──
   for (;;) {
+    // Write the lock body to a private temp file first, then atomically link it
+    // into place. link() fails with EEXIST if the lock already exists, so
+    // exclusive creation and "the lock file always has complete content" hold
+    // simultaneously — a contender can never observe a half-written lock and
+    // mistake it for malformed/stale. The temp name is unique per attempt so
+    // concurrent acquirers in the *same* process don't clobber each other.
+    const tmp = `${lockPath}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
     try {
-      const fh = await fsp.open(lockPath, "wx");
+      await fsp.writeFile(tmp, JSON.stringify({ pid: process.pid, ts: Date.now() } satisfies LockBody));
       try {
-        await fh.writeFile(JSON.stringify({ pid: process.pid, ts: Date.now() } satisfies LockBody));
+        await fsp.link(tmp, lockPath);
       } finally {
-        await fh.close();
+        await fsp.rm(tmp, { force: true }).catch(() => {});
       }
       break; // acquired
     } catch (e) {
+      await fsp.rm(tmp, { force: true }).catch(() => {});
       if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
       // Held by someone. Steal if stale, else wait.
       if (await isStale(lockPath, staleMs)) {
-        await fsp.rm(lockPath, { force: true }).catch(() => {});
+        // Steal atomically: rename the stale file to a unique name so only one
+        // contender can claim it. Losers get ENOENT and just retry the link
+        // race — nobody unconditionally rm's a path that may already hold a
+        // fresh lock from a concurrent acquirer.
+        await fsp
+          .rename(lockPath, tmp)
+          .then(() => fsp.rm(tmp, { force: true }))
+          .catch(() => {});
         continue; // retry immediately
       }
       if (Date.now() >= deadline) {
