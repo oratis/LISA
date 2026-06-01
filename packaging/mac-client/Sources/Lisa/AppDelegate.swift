@@ -15,7 +15,7 @@
 
 import AppKit
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var mainWindow: MainWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -34,6 +34,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         HotkeyManager.shared.register { [weak self] in
             self?.captureForLisa(nil)
         }
+
+        // Lisa Island — the notch pill, now a feature of this app rather than
+        // a separate LisaIsland.app. Toggle it from View ▸ Show Lisa Island;
+        // the on/off choice is remembered across launches.
+        IslandController.shared.applyInitialState()
+        // The island's "open full chat" bridge posts this so we can bring the
+        // chat window forward in-process.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleShowMainWindow),
+            name: IslandContent.showMainWindowNotification,
+            object: nil
+        )
+    }
+
+    @objc private func handleShowMainWindow() {
+        showMainWindow()
     }
 
     @objc func captureForLisa(_ sender: Any?) {
@@ -104,6 +121,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func reloadChat(_ sender: Any?) {
         mainWindow?.reload()
+    }
+
+    // MARK: - Lisa Island
+
+    @objc func toggleIsland(_ sender: Any?) {
+        IslandController.shared.toggle()
+    }
+
+    @objc func resetIslandPosition(_ sender: Any?) {
+        IslandController.shared.resetPosition()
+    }
+
+    /// Tick the "Show Lisa Island" item when the island is on, and disable
+    /// "Reset Island Position" while it's off (nothing to reset).
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.action == #selector(toggleIsland(_:)) {
+            item.state = IslandController.shared.isEnabled ? .on : .off
+        } else if item.action == #selector(resetIslandPosition(_:)) {
+            return IslandController.shared.isEnabled
+        }
+        return true
     }
 
     @objc func newWindowAction(_ sender: Any?) {
@@ -198,6 +236,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         captureItem.keyEquivalentModifierMask = [.control, .option]
         viewMenu.addItem(captureItem)
+
+        // ── Lisa Island toggle (the in-app notch pill) ──────────────
+        viewMenu.addItem(.separator())
+        let islandItem = NSMenuItem(
+            title: "Show Lisa Island",
+            action: #selector(toggleIsland(_:)),
+            keyEquivalent: "i"
+        )
+        islandItem.keyEquivalentModifierMask = [.command, .shift]
+        islandItem.target = self
+        viewMenu.addItem(islandItem)
+        let resetIslandItem = NSMenuItem(
+            title: "Reset Island Position",
+            action: #selector(resetIslandPosition(_:)),
+            keyEquivalent: ""
+        )
+        resetIslandItem.target = self
+        viewMenu.addItem(resetIslandItem)
+
         viewMenu.addItem(.separator())
         viewMenu.addItem(NSMenuItem(
             title: "Enter Full Screen",

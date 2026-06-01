@@ -5,6 +5,16 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — Lisa Island built into Lisa.app
+
+- The notch pill is now a **feature of Lisa.app**, not a separate
+  `LisaIsland.app` you launch by hand. Toggle it from **View ▸ Show Lisa
+  Island** (⌘⇧I); the choice persists across launches (off by default), and
+  **Reset Island Position** re-centres it. The island's "open full chat" now
+  brings the in-process chat window forward instead of launching another app.
+  (The standalone `LisaIsland.app` still ships for now; it can be retired
+  later.)
+
 ### Changed — app icon
 
 - **New Lisa.app icon**: a cute chibi catgirl avatar (Lisa's signature cyan
