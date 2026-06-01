@@ -1,10 +1,12 @@
 #!/usr/bin/env tsx
 /**
- * Generate Lisa's macOS app icon — a simple pixel-art girl on a solid
- * background. No image API needed: the sprite is drawn from primitives on a
- * small grid, then nearest-neighbour upscaled so the pixels stay crisp.
+ * Generate Lisa's macOS app icon via Seedream — a cute chibi catgirl avatar
+ * in the style of the supplied reference, Lisa-flavoured (her signature
+ * cyan/teal hair), on a clean solid background with native rounded corners.
  *
- *   npx tsx scripts/generate-app-icon.ts
+ *   SEEDREAM_API_KEY=... npx tsx scripts/generate-app-icon.ts
+ *   ICON_BG=#EAF2FF ...  # override the solid background colour
+ *   ICON_PROMPT="..."    # override the whole prompt
  *
  * Output: packaging/mac-client/Resources/app-icon-1024.png
  * build.sh turns that into AppIcon.icns.
@@ -13,111 +15,92 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 
+const API_KEY = process.env.SEEDREAM_API_KEY;
+if (!API_KEY) {
+  console.error(
+    "SEEDREAM_API_KEY is not set.\n" +
+      "Get a key at https://www.volcengine.com/product/ark and either export it\n" +
+      "in your shell or add it to ~/.lisa/config.env, then re-run.",
+  );
+  process.exit(1);
+}
+
+const SEEDREAM_URL = "https://ark.cn-beijing.volces.com/api/v3/images/generations";
+const SEEDREAM_MODEL = "doubao-seedream-5-0-260128";
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.resolve(__dirname, "../packaging/mac-client/Resources/app-icon-1024.png");
 
-// ── palette (RGB) ────────────────────────────────────────────────────
-const C = {
-  bg:        [0xf4, 0xe8, 0xd0], // solid warm cream
-  hair:      [0x5c, 0xd0, 0xda], // cyan — her canonical hair
-  hairDark:  [0x33, 0xa6, 0xb3],
-  skin:      [0xff, 0xd9, 0xb4],
-  skinDark:  [0xf0, 0xbc, 0x95],
-  eye:       [0x26, 0x31, 0x4c],
-  blush:     [0xff, 0x9f, 0xa0],
-  mouth:     [0xd2, 0x72, 0x8a],
-  sweater:   [0x3e, 0x4f, 0x97],
-  sweaterD:  [0x2f, 0x3c, 0x76],
-  outline:   [0x1e, 0x24, 0x36],
-} as const;
-type Col = readonly [number, number, number];
+const SIZE = 1024;
+const RADIUS = 224; // macOS squircle-ish corner radius
 
-const N = 22; // sprite grid (kept small → "simpler", crisp pixels)
-const grid: (Col | null)[] = new Array(N * N).fill(null); // null = background
+function hexToRGB(hex: string) {
+  const h = hex.replace("#", "");
+  return { r: parseInt(h.slice(0, 2), 16), g: parseInt(h.slice(2, 4), 16), b: parseInt(h.slice(4, 6), 16) };
+}
+const BG = hexToRGB(process.env.ICON_BG ?? "#F2F1EC");
 
-const idx = (x: number, y: number) => y * N + x;
-function set(x: number, y: number, c: Col) {
-  if (x < 0 || y < 0 || x >= N || y >= N) return;
-  grid[idx(x, y)] = c;
-}
-/** Draw + mirror across the vertical centre line (cx = (N-1)/2 = 10.5). */
-function setM(x: number, y: number, c: Col) {
-  set(x, y, c);
-  set(N - 1 - x, y, c);
-}
-function ellipse(cx: number, cy: number, rx: number, ry: number, c: Col, pred?: (x: number, y: number) => boolean) {
-  for (let y = 0; y < N; y++) {
-    for (let x = 0; x < N; x++) {
-      const dx = (x - cx) / rx;
-      const dy = (y - cy) / ry;
-      if (dx * dx + dy * dy <= 1 && (!pred || pred(x, y))) set(x, y, c);
-    }
-  }
+// Prompt tuned to the reference: cute chibi catgirl avatar, big glossy teal
+// eyes, soft bangs, fluffy cat ears, blush, a tiny black cat hair-clip, small
+// white paw-print accents — kept "Lisa" via her cyan/teal hair. Plain solid
+// background + centred head-and-shoulders = clean app-icon composition.
+const PROMPT =
+  process.env.ICON_PROMPT ??
+  [
+    "Cute chibi anime girl avatar icon, kawaii profile-picture style.",
+    "Big round sparkling teal-blue eyes with bright highlights, tiny gentle smile, soft pink blush on the cheeks.",
+    "Chin-length fluffy CYAN / TEAL hair with soft straight bangs (this is the recurring character LISA).",
+    "Fluffy matching cat ears with pale-pink inner ears; a small black cat-shaped hair clip.",
+    "A few little white paw-print marks floating near the top corners.",
+    "Centered head-and-shoulders bust, facing forward.",
+    "Clean thick outlines, soft cel shading, gentle pastel palette.",
+    "Plain solid off-white background, flat, no scene, no props.",
+    "Absolutely no text, no signature, no watermark, no logo.",
+  ].join(" ");
+
+interface SeedreamResponse {
+  data?: { url?: string }[];
+  error?: { message?: string };
 }
 
-const CX = 10.5;
-
-// 1. hair (back) — frames the face and falls to chin length
-ellipse(CX, 9.0, 7.2, 7.6, C.hair);
-// 2. sweater / shoulders — wide ellipse at the bottom
-ellipse(CX, 23, 9.5, 5.5, C.sweater, (_, y) => y >= 16);
-// 3. face
-ellipse(CX, 10, 5.4, 6.4, C.skin);
-// 4. neck
-for (let y = 15; y <= 16; y++) for (let x = 9; x <= 12; x++) set(x, y, C.skin);
-// 5. fringe / bangs — hair covering the top of the forehead, side-swept
-ellipse(CX, 10, 5.4, 6.4, C.hair, (_, y) => y <= 6);
-setM(5, 7, C.hair); // a little fringe sweeping down the sides
-setM(5, 8, C.hair);
-// 6. eyes — clean symmetric 2×2 blocks (mirrored across centre)
-for (const ex of [7, 8]) {
-  setM(ex, 10, C.eye);
-  setM(ex, 11, C.eye);
-}
-// 7. blush — on the cheeks, just under/outside the eyes
-setM(6, 12, C.blush);
-setM(7, 12, C.blush);
-// 9. mouth — small smile
-set(10, 13, C.mouth); set(11, 13, C.mouth);
-// 10. chin shading
-setM(7, 14, C.skinDark);
-
-// 11. 1px dark outline around the whole silhouette (sticker look)
-const isFig = (x: number, y: number) => x >= 0 && y >= 0 && x < N && y < N && grid[idx(x, y)] !== null;
-const outlinePts: [number, number][] = [];
-for (let y = 0; y < N; y++) {
-  for (let x = 0; x < N; x++) {
-    if (grid[idx(x, y)] !== null) continue;
-    if (isFig(x - 1, y) || isFig(x + 1, y) || isFig(x, y - 1) || isFig(x, y + 1)) {
-      outlinePts.push([x, y]);
-    }
-  }
-}
-for (const [x, y] of outlinePts) grid[idx(x, y)] = C.outline;
-
-// ── rasterise grid → RGBA buffer on the solid background ──────────────
-const buf = Buffer.alloc(N * N * 4);
-for (let i = 0; i < N * N; i++) {
-  const c = grid[i] ?? C.bg;
-  buf[i * 4 + 0] = c[0];
-  buf[i * 4 + 1] = c[1];
-  buf[i * 4 + 2] = c[2];
-  buf[i * 4 + 3] = 255;
+async function callSeedream(prompt: string): Promise<string> {
+  const res = await fetch(SEEDREAM_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${API_KEY}` },
+    body: JSON.stringify({
+      model: SEEDREAM_MODEL,
+      prompt,
+      sequential_image_generation: "disabled",
+      response_format: "url",
+      size: "2K",
+      stream: false,
+      watermark: false,
+    }),
+  });
+  const text = await res.text();
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${text.slice(0, 300)}`);
+  const payload = JSON.parse(text) as SeedreamResponse;
+  const url = payload.data?.[0]?.url;
+  if (!url) throw new Error(`no url in response: ${text.slice(0, 200)}`);
+  return url;
 }
 
-// ASCII preview to stdout for a quick sanity check
-let preview = "";
-for (let y = 0; y < N; y++) {
-  for (let x = 0; x < N; x++) {
-    const c = grid[idx(x, y)];
-    preview += c === null ? "·" : c === C.hair || c === C.hairDark ? "#" : c === C.skin || c === C.skinDark ? "o" : c === C.outline ? " " : c === C.sweater ? "=" : c === C.eye ? "e" : "*";
-  }
-  preview += "\n";
-}
-console.log(preview);
+console.log("→ generating icon via Seedream…");
+const url = await callSeedream(PROMPT);
+const raw = Buffer.from(await (await fetch(url)).arrayBuffer());
 
-await sharp(buf, { raw: { width: N, height: N, channels: 4 } })
-  .resize(1024, 1024, { kernel: "nearest" })
+// Square-crop to centre, resize, composite onto the solid background (in case
+// the art has any transparency / off-square), then clip to rounded corners.
+const art = await sharp(raw)
+  .resize(SIZE, SIZE, { fit: "cover", position: "top" })
+  .toBuffer();
+
+const mask = Buffer.from(
+  `<svg width="${SIZE}" height="${SIZE}"><rect width="${SIZE}" height="${SIZE}" rx="${RADIUS}" ry="${RADIUS}"/></svg>`,
+);
+
+await sharp({ create: { width: SIZE, height: SIZE, channels: 4, background: { ...BG, alpha: 1 } } })
+  .composite([{ input: art }, { input: mask, blend: "dest-in" }])
   .png()
   .toFile(OUT);
 
