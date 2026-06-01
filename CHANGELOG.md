@@ -7,6 +7,9 @@ versioning follows [SemVer](https://semver.org/).
 
 ### Added — integrations
 
+- **`npm_info`** — npm registry: view a package (latest/desc/license/deprecation),
+  list a repo's outdated deps, or audit it for known vulnerabilities. No auth.
+
 - **`github`** — gh-backed GitHub operations a coding agent needs beyond pr_status
   / github_link: issues (list/view/create/comment), PRs (view/create/comment/
   merge), CI runs (list/view), releases. Read actions are safe; create/comment/

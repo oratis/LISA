@@ -13,6 +13,7 @@ import { scheduledDispatchTool } from "./scheduled_dispatch.js";
 import { compareAgentsTool } from "./compare_agents.js";
 import { githubLinkTool } from "./github_link.js";
 import { githubTool } from "./github.js";
+import { npmInfoTool } from "./npm_info.js";
 import { signalAgentTool } from "./signal_agent.js";
 import { agentRecapTool } from "./agent_recap.js";
 import { skillManageTool } from "../skills/tool.js";
@@ -89,6 +90,7 @@ export function buildToolRegistry(opts: ToolRegistryOptions = {}): ToolDefinitio
     compareAgentsTool as ToolDefinition,
     githubLinkTool as ToolDefinition,
     githubTool as ToolDefinition,
+    npmInfoTool as ToolDefinition,
     signalAgentTool as ToolDefinition,
     agentRecapTool as ToolDefinition,
   ];
