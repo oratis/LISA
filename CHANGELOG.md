@@ -5,6 +5,14 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — vibe-coding tools
+
+- **`repo_digest`** — what actually changed in a repo (or every repo your agents
+  touch): recent commits in a window, branch, uncommitted count + diff stat,
+  ahead/behind. Answers "what did <agent> do today" with git truth (the
+  orchestrator only sees structural activity). Read-only.
+
+
 ### Added — list_agents tool
 
 - **`list_agents`** lets LISA enumerate the agent sessions she observes (Claude
