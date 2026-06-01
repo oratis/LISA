@@ -65,4 +65,10 @@ final class MainWindow: NSWindow {
     func triggerCapture(onAttached: @escaping (Bool) -> Void) {
         content.triggerCapture(onAttached: onAttached)
     }
+
+    /// Pre-fill the chat composer (never auto-sends) — used by the
+    /// screen-advisor suggestion card via the island bridge.
+    func prefillComposer(_ text: String) {
+        content.prefillComposer(text)
+    }
 }

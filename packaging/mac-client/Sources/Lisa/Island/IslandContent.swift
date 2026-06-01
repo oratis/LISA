@@ -142,8 +142,10 @@ final class IslandContent: NSViewController, WKNavigationDelegate, WKScriptMessa
     /// AppDelegate to bring it forward (rather than launching a separate app).
     static let showMainWindowNotification = Notification.Name("ai.meetlisa.showMainWindow")
 
-    private func openLisaAppOrBrowser() {
-        NotificationCenter.default.post(name: Self.showMainWindowNotification, object: nil)
+    private func openLisaAppOrBrowser(prefill: String = "") {
+        let info: [AnyHashable: Any] = prefill.isEmpty ? [:] : ["prefill": prefill]
+        NotificationCenter.default.post(
+            name: Self.showMainWindowNotification, object: nil, userInfo: info)
     }
 
     // MARK: - WKScriptMessageHandler
@@ -153,12 +155,11 @@ final class IslandContent: NSViewController, WKNavigationDelegate, WKScriptMessa
         guard let type = body["type"] as? String else { return }
         switch type {
         case "open_full_gui":
-            // Prefer launching the native Lisa.app (bundle id
-            // ai.meetlisa.app) if it's installed. Falls back to the
-            // browser at http://localhost:5757/ when the app isn't
-            // present — keeps the island useful for users who only
-            // run the web widget.
-            openLisaAppOrBrowser()
+            // Bring the in-process chat window forward. An optional `prefill`
+            // (from the screen-advisor "Optimize ▸" card) is carried along so
+            // the chat composer can be pre-filled — never auto-sent.
+            let prefill = (body["prefill"] as? String) ?? ""
+            openLisaAppOrBrowser(prefill: prefill)
         case "expand":
             // Page-side expand state — Swift uses this to size the
             // click-through "hot rect" (whole window when expanded,

@@ -395,6 +395,20 @@ export const ISLAND_HTML = `<!doctype html>
   /* Offline state — desaturate + dim */
   body.offline #avatar { filter: grayscale(1); opacity: 0.5; }
   body.offline #label  { color: var(--fg-faint); }
+
+  /* Screen-advisor suggestion card */
+  #suggestion-section { display: none; }
+  body.has-suggestion #suggestion-section { display: block; }
+  #suggestion-title { font-weight: 600; margin: 2px 0 3px; }
+  #suggestion-rationale { font-size: 11px; color: var(--fg-faint); margin-bottom: 6px; }
+  #suggestion-act {
+    width: 100%; padding: 6px 8px; border: 0; border-radius: 7px; cursor: pointer;
+    font: inherit; font-size: 12px; font-weight: 600;
+    background: var(--accent, #5b8cff); color: #fff;
+  }
+  #suggestion-act:hover { filter: brightness(1.08); }
+  /* a soft glow on the pill dot when a fresh suggestion is waiting */
+  body.has-suggestion #dot { background: var(--accent, #5b8cff); opacity: 1; }
 </style>
 </head>
 <body>
@@ -411,6 +425,12 @@ export const ISLAND_HTML = `<!doctype html>
     <div id="idle-section">
       <div class="section-label">★ while you were away</div>
       <div id="idle-body"></div>
+    </div>
+    <div id="suggestion-section">
+      <div class="section-label">💡 suggested next step</div>
+      <div id="suggestion-title"></div>
+      <div id="suggestion-rationale"></div>
+      <button id="suggestion-act" type="button">Optimize ▸</button>
     </div>
     <div id="claude-section">
       <div class="section-label">claude code · <span id="claude-count">0</span> active</div>
@@ -436,6 +456,9 @@ export const ISLAND_HTML = `<!doctype html>
   const notifyCta    = document.getElementById('notify-cta');
   const btnOpen      = document.getElementById('btn-open');
   const btnDismiss   = document.getElementById('btn-dismiss');
+  const suggTitle    = document.getElementById('suggestion-title');
+  const suggRationale= document.getElementById('suggestion-rationale');
+  const suggAct      = document.getElementById('suggestion-act');
   const body         = document.body;
 
   const state = {
@@ -447,6 +470,7 @@ export const ISLAND_HTML = `<!doctype html>
     thinking: false,
     dreaming: false,
     claudeSessions: [],  // [{project, sessionId, lastMtime}, …]
+    suggestion: null,    // {title, rationale, task, at} from the screen advisor
   };
 
   // 30-min activity window matches the watcher's ACTIVE_WINDOW_MS.
@@ -599,6 +623,11 @@ export const ISLAND_HTML = `<!doctype html>
     idleBody.textContent   = state.idleText || '';
     btnDismiss.classList.toggle('muted', !state.unread);
     btnDismiss.disabled = !state.unread;
+    body.classList.toggle('has-suggestion', !!state.suggestion);
+    if (state.suggestion) {
+      suggTitle.textContent = state.suggestion.title || '';
+      suggRationale.textContent = state.suggestion.rationale || '';
+    }
     renderClaudeList();
   }
 
@@ -839,15 +868,31 @@ export const ISLAND_HTML = `<!doctype html>
     openFull();
   });
 
-  function openFull() {
-    // If a Swift container is present (Phase 2), prefer to delegate.
+  function openFull(prefill) {
+    // If a Swift container is present (Phase 2), prefer to delegate. Pass the
+    // optional prefill text so the app can drop it into the chat composer.
     if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.island) {
-      window.webkit.messageHandlers.island.postMessage({ type: 'open_full_gui' });
+      window.webkit.messageHandlers.island.postMessage({ type: 'open_full_gui', prefill: prefill || '' });
     } else {
-      window.open('/', '_blank');
+      window.open(prefill ? '/?prefill=' + encodeURIComponent(prefill) : '/', '_blank');
     }
   }
   btnOpen.addEventListener('click', (e) => { e.stopPropagation(); openFull(); });
+
+  // Optimize ▸ — prefill the suggested task into the chat for the user to
+  // confirm (and then Lisa can dispatch a coding agent). Never auto-runs.
+  if (suggAct) {
+    suggAct.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const s = state.suggestion;
+      if (!s) return;
+      const prompt =
+        s.task +
+        '\\n\\n(Suggested from my screen: "' + s.title + '". ' +
+        'If this is worth doing, dispatch a coding agent for it — confirm the repo/dir with me first.)';
+      openFull(prompt);
+    });
+  }
   btnDismiss.addEventListener('click', async (e) => {
     e.stopPropagation();
     if (!state.unread) return;
@@ -923,6 +968,18 @@ export const ISLAND_HTML = `<!doctype html>
             [{ opacity: 0.7 }, { opacity: 1 }, { opacity: 0.85 }],
             { duration: 600, iterations: 2 },
           );
+          break;
+        case 'screen_suggestion':
+          if (m.title && m.task) {
+            state.suggestion = { title: m.title, rationale: m.rationale || '', task: m.task, at: m.at };
+            refreshPanel();
+            // gentle pulse + auto-expand so a watching user notices
+            expandPanel(true);
+            document.body.animate(
+              [{ opacity: 0.75 }, { opacity: 1 }],
+              { duration: 500, iterations: 2 },
+            );
+          }
           break;
         case 'claude_session_update':
           upsertClaudeSession({
@@ -1022,6 +1079,12 @@ export const ISLAND_HTML = `<!doctype html>
   fetchClaudeSessions().then(() => { refreshDot(); refreshPanel(); });
   subscribe();
   refreshNotifyCta();
+  // A fresh island picks up the most recent screen-advisor suggestion (if the
+  // feature is on and one was made before this widget loaded).
+  fetch('/api/screen-advisor/latest', { cache: 'no-store' })
+    .then((r) => r.ok ? r.json() : null)
+    .then((j) => { if (j && j.suggestion) { state.suggestion = j.suggestion; refreshPanel(); } })
+    .catch(() => {});
   // Lightweight resync — covers cases where SSE silently disconnected
   // (laptop sleep, network blip) and we need to refresh state.
   setInterval(pollPing, 30_000);
