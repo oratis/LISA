@@ -248,6 +248,18 @@ final class IslandWindow: NSPanel {
                 return
             }
         }
+        // Right-click on the pill → a tiny context menu whose only item
+        // closes the island. The pill is the always-visible handle, so it's
+        // where users reach to make the island go away. Without this the only
+        // way to dismiss it is the Settings toggle (⌘,), which isn't
+        // discoverable from the pill itself.
+        if event.type == .rightMouseDown {
+            let mouse = NSEvent.mouseLocation
+            if NSPointInRect(mouse, pillScreenRect) {
+                showCloseMenu(for: event)
+                return
+            }
+        }
         super.sendEvent(event)
     }
 
@@ -311,6 +323,39 @@ final class IslandWindow: NSPanel {
                     Data("[island] evalJS error: \(err)\n".utf8)
                 )
             }
+        }
+    }
+
+    // MARK: - Right-click menu
+
+    private func showCloseMenu(for event: NSEvent) {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        let close = NSMenuItem(
+            title: "Close Lisa Island",
+            action: #selector(closeIslandFromMenu),
+            keyEquivalent: ""
+        )
+        close.target = self
+        menu.addItem(close)
+
+        // Pop the menu at the cursor. locationInWindow is in window coords;
+        // contentView is full-size, so converting from nil (the window) lands
+        // the menu under the pointer.
+        let view = contentView
+        let location = view?.convert(event.locationInWindow, from: nil)
+            ?? event.locationInWindow
+        menu.popUp(positioning: nil, at: location, in: view)
+    }
+
+    @objc private func closeIslandFromMenu() {
+        // Defer the teardown: setEnabled(false) → IslandController.hide() sets
+        // `window = nil`, dropping the last strong ref to self. Doing that
+        // synchronously inside our own menu-action call stack would dealloc
+        // self mid-method. Hop to the next runloop tick so this event finishes
+        // unwinding first; the closure captures only the singleton, not self.
+        DispatchQueue.main.async {
+            IslandController.shared.setEnabled(false)
         }
     }
 
