@@ -12,6 +12,7 @@ import { dispatchAgentTool } from "./dispatch_agent.js";
 import { scheduledDispatchTool } from "./scheduled_dispatch.js";
 import { compareAgentsTool } from "./compare_agents.js";
 import { signalAgentTool } from "./signal_agent.js";
+import { agentRecapTool } from "./agent_recap.js";
 import { skillManageTool } from "../skills/tool.js";
 import {
   desireCloseTool,
@@ -85,6 +86,7 @@ export function buildToolRegistry(opts: ToolRegistryOptions = {}): ToolDefinitio
     scheduledDispatchTool as ToolDefinition,
     compareAgentsTool as ToolDefinition,
     signalAgentTool as ToolDefinition,
+    agentRecapTool as ToolDefinition,
   ];
   if (opts.includeVoice) {
     tools.push(speakTool as ToolDefinition, transcribeTool as ToolDefinition);
@@ -110,6 +112,7 @@ export const READ_ONLY_TOOL_NAMES = new Set([
   "soul_diff",
   "web_fetch",
   "web_search",
+  "agent_recap",
 ]);
 
 export function readOnlySubset(tools: ToolDefinition[]): ToolDefinition[] {

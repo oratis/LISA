@@ -22,6 +22,8 @@ import { MAIN_HTML } from "./lisa-html.js";
 import { OrchestratorHub, loadOrchestratorConfig } from "../integrations/hub.js";
 import { setCurrentHub } from "../integrations/current-hub.js";
 import { advise, formatDigest } from "../advisor/engine.js";
+import { recordEvent } from "../orchestrator/journal.js";
+import { buildRecap, formatRecap } from "../orchestrator/recap.js";
 import type { AgentSession } from "../integrations/types.js";
 import { captureScreenshot, captureSupported, type CaptureMode } from "../vision/capture.js";
 import { transcribeAudio } from "../voice/transcribe.js";
@@ -146,6 +148,10 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     log: (msg) => console.error(msg),
   });
   hub.on("update", (session: AgentSession) => {
+    // L6 — record the transition in the orchestrator journal so the
+    // cross-agent recap can answer "what happened while I was away?" even for
+    // sessions that have since ended. (Dedups consecutive same-state events.)
+    recordEvent(session);
     // New generalized event for the multi-agent UI.
     broadcast({ type: "agent_session_update", ...session });
     // Back-compat: the island still listens for claude_session_update as a
@@ -389,6 +395,19 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       }));
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ sessions }));
+      return;
+    }
+
+    // L6 — cross-agent "while you were away" recap, synthesized from the
+    // journal. ?sinceMinutes=N (default 120) bounds the window.
+    if (req.method === "GET" && url.startsWith("/api/agents/recap")) {
+      const q = new URL(url, "http://localhost").searchParams;
+      const mins = Math.max(1, Math.min(1440, Number(q.get("sinceMinutes")) || 120));
+      const { eventsSince } = await import("../orchestrator/journal.js");
+      const now = Date.now();
+      const recap = buildRecap(eventsSince(now - mins * 60_000), now - mins * 60_000, now);
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ recap, text: formatRecap(recap), sinceMinutes: mins }));
       return;
     }
 
