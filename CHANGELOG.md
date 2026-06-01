@@ -5,6 +5,16 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — list_agents tool
+
+- **`list_agents`** lets LISA enumerate the agent sessions she observes (Claude
+  Code, Codex, …) with their structural activity — state, project, git branch,
+  last tool/command name, files touched, pending permission, errors. Fills the
+  gap where she could only give the relevance-gated `advise_now` summary or list
+  her *own* dispatched agents (`signal_agent`), so "what are my agents doing?"
+  is answerable in chat. Structural metadata only — never conversation content.
+
+
 ### Added — Lisa Island built into Lisa.app
 
 - The notch pill is now a **feature of Lisa.app**, not a separate
