@@ -39,3 +39,37 @@ export async function loadMcpConfig(): Promise<McpServerSpec[]> {
 }
 
 export const MCP_CONFIG_PATH = CONFIG_PATH;
+
+/** Add or replace a server in mcp.json (upsert by name). Returns the spec. */
+export async function saveMcpServer(
+  name: string,
+  spec: Omit<McpServerSpec, "name">,
+): Promise<void> {
+  let config: McpConfig = { mcpServers: {} };
+  if (await pathExists(CONFIG_PATH)) {
+    try {
+      config = JSON.parse(await fs.readFile(CONFIG_PATH, "utf8")) as McpConfig;
+    } catch {
+      // start fresh on a corrupt file rather than lose the add
+    }
+  }
+  if (!config.mcpServers) config.mcpServers = {};
+  config.mcpServers[name] = spec;
+  await fs.mkdir(path.dirname(CONFIG_PATH), { recursive: true });
+  await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 2));
+}
+
+/** Remove a server from mcp.json. Returns false if it wasn't there. */
+export async function deleteMcpServer(name: string): Promise<boolean> {
+  if (!(await pathExists(CONFIG_PATH))) return false;
+  let config: McpConfig;
+  try {
+    config = JSON.parse(await fs.readFile(CONFIG_PATH, "utf8")) as McpConfig;
+  } catch {
+    return false;
+  }
+  if (!config.mcpServers || !(name in config.mcpServers)) return false;
+  delete config.mcpServers[name];
+  await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 2));
+  return true;
+}

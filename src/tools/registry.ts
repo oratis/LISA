@@ -14,6 +14,7 @@ import { compareAgentsTool } from "./compare_agents.js";
 import { githubLinkTool } from "./github_link.js";
 import { githubTool } from "./github.js";
 import { npmInfoTool } from "./npm_info.js";
+import { mcpTool } from "./mcp.js";
 import { signalAgentTool } from "./signal_agent.js";
 import { agentRecapTool } from "./agent_recap.js";
 import { skillManageTool } from "../skills/tool.js";
@@ -91,6 +92,7 @@ export function buildToolRegistry(opts: ToolRegistryOptions = {}): ToolDefinitio
     githubLinkTool as ToolDefinition,
     githubTool as ToolDefinition,
     npmInfoTool as ToolDefinition,
+    mcpTool as ToolDefinition,
     signalAgentTool as ToolDefinition,
     agentRecapTool as ToolDefinition,
   ];
