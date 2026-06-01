@@ -10,6 +10,7 @@ import { runChecksTool } from "./run_checks.js";
 import { prStatusTool } from "./pr_status.js";
 import { dispatchAgentTool } from "./dispatch_agent.js";
 import { scheduledDispatchTool } from "./scheduled_dispatch.js";
+import { compareAgentsTool } from "./compare_agents.js";
 import { signalAgentTool } from "./signal_agent.js";
 import { skillManageTool } from "../skills/tool.js";
 import {
@@ -82,6 +83,7 @@ export function buildToolRegistry(opts: ToolRegistryOptions = {}): ToolDefinitio
     adviseNowTool as ToolDefinition,
     dispatchAgentTool as ToolDefinition,
     scheduledDispatchTool as ToolDefinition,
+    compareAgentsTool as ToolDefinition,
     signalAgentTool as ToolDefinition,
   ];
   if (opts.includeVoice) {
