@@ -79,6 +79,11 @@ new sensing capability is off by default.
 
 ### Added — vibe-coding tools
 
+- **`github_link`** — turn the local git context into a shareable GitHub URL:
+  repo, branch, commit, file (with optional line range), or pr/issue by number.
+  So LISA hands you a clickable link instead of a bare path. Pure git (parses
+  origin, GitHub + Enterprise hosts); no gh needed; open:true opens the browser.
+
 - **`compare_agents`** — run the same task across multiple agents in isolated
   git worktrees and compare results (a workflow: agents run for minutes).
   start → launch each in its own worktree; status → live state + files changed;
