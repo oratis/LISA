@@ -48,7 +48,7 @@ const PROMPT =
     "a young woman with chin-length cyan / teal hair and a side-swept fringe, kind blue eyes,",
     "fair skin with a faint pink blush, a gentle closed-mouth smile,",
     "wearing a soft hooded sweater with a subtle circuit-board pattern in cool tones (navy / cyan / purple).",
-    "Centered front-facing head-and-shoulders bust.",
+    "Tight close-up head-and-shoulders bust that FILLS the frame, cropped close, minimal background margin.",
     "Limited ~24-colour palette, crisp 1px outlines, clean dithering, Stardew-Valley / Celeste portrait sprite style.",
     `IMPORTANT: a completely FLAT plain solid ${BG_NAME} background.`,
     "Absolutely NO glow, NO aura, NO halo, NO gradient, NO rim light, NO sparkles, no scene.",
@@ -83,7 +83,16 @@ console.log(`→ generating icon via Seedream (bg=${BG_NAME} ${BG_HEX})…`);
 const url = await callSeedream(PROMPT);
 const raw = Buffer.from(await (await fetch(url)).arrayBuffer());
 
-const art = await sharp(raw).resize(SIZE, SIZE, { fit: "cover", position: "top" }).toBuffer();
+// Zoom the subject so Lisa fills more of the icon: crop a centred (slightly
+// top-biased, to keep the head) fraction of the art before fitting to 1024.
+const meta = await sharp(raw).metadata();
+const ZOOM = parseFloat(process.env.ICON_ZOOM ?? "1.35");
+const cw = Math.round((meta.width ?? SIZE) / ZOOM);
+const ch = Math.round((meta.height ?? SIZE) / ZOOM);
+const cl = Math.round(((meta.width ?? SIZE) - cw) / 2);
+const ct = Math.round(((meta.height ?? SIZE) - ch) * 0.15);
+const zoomed = await sharp(raw).extract({ left: cl, top: ct, width: cw, height: ch }).toBuffer();
+const art = await sharp(zoomed).resize(SIZE, SIZE, { fit: "cover", position: "top" }).toBuffer();
 const mask = Buffer.from(
   `<svg width="${SIZE}" height="${SIZE}"><rect width="${SIZE}" height="${SIZE}" rx="${RADIUS}" ry="${RADIUS}"/></svg>`,
 );
