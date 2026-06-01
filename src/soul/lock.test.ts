@@ -34,24 +34,49 @@ describe("withFileLock", () => {
     await assert.rejects(() => fsp.stat(lp), /ENOENT/, "lock released on error too");
   });
 
-  test("mutual exclusion: concurrent holders run serially, never interleave", async () => {
+  test("mutual exclusion: concurrent holders never overlap (structural)", async () => {
     const lp = lockPath();
+    // Prove mutual exclusion by STRUCTURE, not by timing margins, so the test
+    // can't flake on a slow/loaded runner:
+    //   1. A live counter of holders currently inside the critical section. A
+    //      correct lock keeps it at exactly 1; a broken lock that lets two in
+    //      pushes it to 2 and trips the assertion immediately — regardless of
+    //      how long anyone sleeps or how loaded the machine is.
+    //   2. An enter/exit event log that must be strictly paired: every holder's
+    //      "-enter" is immediately followed by its own "-exit", never another
+    //      holder's marker.
+    // The short sleep below only creates a yield point where a *broken* lock
+    // could interleave; the assertions never depend on its duration.
+    let inside = 0;
+    let maxInside = 0;
     const events: string[] = [];
     async function critical(tag: string) {
       await withFileLock(lp, async () => {
+        inside++;
+        maxInside = Math.max(maxInside, inside);
+        assert.equal(inside, 1, `holder ${tag} entered while another holder was inside the lock`);
         events.push(`${tag}-enter`);
-        await new Promise((r) => setTimeout(r, 30));
+        await new Promise((r) => setTimeout(r, 5)); // yield: a broken lock would interleave here
         events.push(`${tag}-exit`);
-      }, { pollMs: 5 });
+        inside--;
+      }, { pollMs: 1 });
     }
-    await Promise.all([critical("A"), critical("B")]);
-    // Whichever ran first, its enter/exit must be adjacent — no interleaving.
-    const a = events.indexOf("A-enter");
-    const b = events.indexOf("B-enter");
-    if (a < b) {
-      assert.deepEqual(events, ["A-enter", "A-exit", "B-enter", "B-exit"]);
-    } else {
-      assert.deepEqual(events, ["B-enter", "B-exit", "A-enter", "A-exit"]);
+    // Several real contenders (not just two) — more contention, stronger proof.
+    const tags = ["A", "B", "C", "D", "E"];
+    await Promise.all(tags.map(critical));
+
+    assert.equal(maxInside, 1, "at most one holder may be inside the lock at any instant");
+    // Strict pairing: enter_i immediately followed by that same holder's exit_i.
+    assert.equal(events.length, tags.length * 2, "every holder enters and exits exactly once");
+    for (let i = 0; i < events.length; i += 2) {
+      const enter = events[i];
+      assert.ok(enter.endsWith("-enter"), `expected an enter marker at index ${i}, got "${enter}"`);
+      const tag = enter.slice(0, -"-enter".length);
+      assert.equal(
+        events[i + 1],
+        `${tag}-exit`,
+        `holder ${tag}'s enter must be immediately followed by its own exit (no interleaving)`,
+      );
     }
   });
 
