@@ -8,12 +8,15 @@ versioning follows [SemVer](https://semver.org/).
 ### Added — Lisa Island built into Lisa.app
 
 - The notch pill is now a **feature of Lisa.app**, not a separate
-  `LisaIsland.app` you launch by hand. Toggle it from **View ▸ Show Lisa
-  Island** (⌘⇧I); the choice persists across launches (off by default), and
-  **Reset Island Position** re-centres it. The island's "open full chat" now
-  brings the in-process chat window forward instead of launching another app.
-  (The standalone `LisaIsland.app` still ships for now; it can be retired
-  later.)
+  `LisaIsland.app` you launch by hand. Toggle it from the **Settings…** window
+  (⌘,) → *Show Lisa Island*; the choice persists across launches (off by
+  default), with a *Reset Island Position* button. The island's "open full
+  chat" brings the in-process chat window forward instead of launching another
+  app.
+- **Standalone `LisaIsland.app` retired.** The DMG now ships only `Lisa.app`;
+  the `packaging/island-mac/` package is removed (its window code lives under
+  `Sources/Lisa/Island/`). Release signing/notarization and the install docs
+  are updated to the single app.
 
 ### Changed — app icon
 
