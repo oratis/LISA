@@ -7,6 +7,10 @@ versioning follows [SemVer](https://semver.org/).
 
 ### Added — vibe-coding tools
 
+- **`run_checks`** — the quality gate: auto-detects typecheck/lint/test/build
+  from package.json scripts and runs them, reporting pass/fail + the tail of any
+  failure. "Does the agent's work pass?" before merge.
+
 - **`review_diff`** — show the actual code diff in a repo (uncommitted vs HEAD,
   working/staged, any ref/range, or a GitHub PR via `gh`) so LISA can review an
   agent's work before merge. Read-only, output capped.
