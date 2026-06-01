@@ -18,6 +18,24 @@ versioning follows [SemVer](https://semver.org/).
   unauthenticated. Privacy: only your own PR metadata (number, title, branch,
   check/review status) — never diff or review content.
 
+### Added — OpenCode + Aider observers (orchestrator O3/O4)
+
+- **`opencode` integration** reads OpenCode's SQLite session DB
+  (`~/.local/share/opencode/opencode.db`) via the system `sqlite3` CLI (no new
+  dependency). State from the session row + its newest message: archived →
+  `done`, compacting → `working`, last message errored → `error`, assistant
+  replied → `waiting`, mid-turn / user turn → `working`.
+- **`aider` integration** watches the per-project `.aider.chat.history.md`
+  transcripts under the `watchRoots` you configure (Aider keeps no central
+  store). State is a tolerant tail heuristic: an error after the last `####`
+  user turn → `error`, an assistant reply after it → `waiting`, none yet →
+  `working`.
+- Both off by default; opt in via `~/.lisa/agents.json`
+  (`"opencode": { "enabled": true }`, `"aider": { "enabled": true, "watchRoots": ["~/code"] }`).
+  Graceful no-op when the tool/DB/roots are absent. Privacy: only structural
+  metadata (session title, dir, token counts, role/error) — never transcript or
+  message text. Verified against real OpenCode + Aider sessions on-device.
+
 ### Added — Lisa Island built into Lisa.app
 
 - The notch pill is now a **feature of Lisa.app**, not a separate

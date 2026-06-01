@@ -35,6 +35,12 @@ export const DEFAULT_ORCHESTRATOR_CONFIG: OrchestratorConfig = {
     // the `gh` CLI. Off by default; opt in, optionally with
     // `{ "enabled": true, "repos": ["owner/repo"] }`. No-op if `gh` is absent.
     "github-pr": { enabled: false },
+    // OpenCode: reads its SQLite session DB via the `sqlite3` CLI. Off by
+    // default; no-op if sqlite3 or the DB is absent.
+    opencode: { enabled: false },
+    // Aider has no central store — point it at the dirs you run it in:
+    // `{ "enabled": true, "watchRoots": ["~/code/foo"] }`. Off by default.
+    aider: { enabled: false },
   },
   visibility: "activity",
 };
