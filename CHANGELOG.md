@@ -5,6 +5,15 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-06-02
+
+**Mission control + new senses.** The orchestrator is complete end-to-end —
+LISA now observes every coding agent on the machine (Claude Code, Codex,
+OpenCode, Aider, GitHub PRs), understands, advises, dispatches, controls, and
+recaps. Plus an opt-in Screen Advisor that suggests your next coding step from
+what's on screen. All agent-observation is structural-metadata-only and every
+new sensing capability is off by default.
+
 ### Added — Cross-agent recap (orchestrator L6: "while you were away")
 
 - **`agent_recap` tool** + **`GET /api/agents/recap?sinceMinutes=N`** synthesize
