@@ -7,6 +7,11 @@ versioning follows [SemVer](https://semver.org/).
 
 ### Added — integrations
 
+- **`mcp`** — manage MCP server connections (list/add/remove ~/.lisa/mcp.json),
+  so LISA can connect any integration that ships an MCP server (GitHub, Linear,
+  Sentry, Postgres, filesystem, …); their tools then auto-appear in her toolset.
+  The standard route for "all integrations an agent might use."
+
 - **`npm_info`** — npm registry: view a package (latest/desc/license/deprecation),
   list a repo's outdated deps, or audit it for known vulnerabilities. No auth.
 
