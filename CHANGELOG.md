@@ -7,6 +7,10 @@ versioning follows [SemVer](https://semver.org/).
 
 ### Added — vibe-coding tools
 
+- **`pr_status`** — open PRs with each one's CI rollup (✓/✗/⏳) and review
+  decision, sorted failing-first. For when several agents have PRs open. Needs
+  `gh`; read-only.
+
 - **`run_checks`** — the quality gate: auto-detects typecheck/lint/test/build
   from package.json scripts and runs them, reporting pass/fail + the tail of any
   failure. "Does the agent's work pass?" before merge.
