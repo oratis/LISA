@@ -17,9 +17,9 @@ import Base from "../../layouts/Base.astro";
 
   <h2>🍎 Mac 原生 App（macOS 推荐）</h2>
   <p>
-    已签名 + Apple 公证的 DMG，里面有两个 universal 二进制 app：
-    <strong>Lisa.app</strong>（完整聊天客户端）和
-    <strong>LisaIsland.app</strong>（菜单栏/刘海下的灵动岛风格小条）。
+    已签名 + Apple 公证的 DMG，内含 universal 二进制
+    <strong>Lisa.app</strong>（完整聊天客户端）。菜单栏/刘海下的灵动岛小条
+    （Lisa Island）已内置——在 <em>Lisa ▸ 设置… ▸ Show Lisa Island</em> 打开。
     打开无 Gatekeeper 警告，不用 <code>xattr</code> 解隔离。
   </p>
   <p>
@@ -28,10 +28,10 @@ import Base from "../../layouts/Base.astro";
     </a>
   </p>
   <p>
-    把两个 app 拖到 <code>/Applications</code> 之后，装 backend 并启动：
+    把 Lisa.app 拖到 <code>/Applications</code> 之后，装 backend 并启动：
   </p>
   <pre><code>npm install -g @oratis/lisa
-lisa serve --web                # 两个 app 都从 http://localhost:5757 读</code></pre>
+lisa serve --web                # app 从 http://localhost:5757 读</code></pre>
 
   <h2>Homebrew（只装 CLI）</h2>
   <pre><code>brew tap oratis/tap

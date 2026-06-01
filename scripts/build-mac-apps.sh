@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 #
-# Build Lisa.app + LisaIsland.app and package both into a single DMG for
-# distribution via GitHub Releases.
+# Build Lisa.app and package it into a DMG for distribution via GitHub
+# Releases. (The island pill is now a feature of Lisa.app — Settings ▸ Show
+# Lisa Island — so there's no separate LisaIsland.app to ship.)
 #
 # Output (in dist-release/):
-#   - Lisa-Suite-v<VERSION>.dmg   one disk image containing both .apps and
-#                                  an /Applications drag target
+#   - Lisa-Suite-v<VERSION>.dmg   disk image with Lisa.app + an /Applications
+#                                  drag target (name kept for release/link
+#                                  back-compat)
 #   - Lisa-Suite-v<VERSION>.dmg.sha256
 #
 # Phases (first positional arg, default "full"):
@@ -45,16 +47,14 @@ DMG_NAME="Lisa-Suite-v${VERSION}"
 APPLE_SIGNING_IDENTITY="${APPLE_SIGNING_IDENTITY:-}"
 
 LISA_APP="packaging/mac-client/Lisa.app"
-ISLAND_APP="packaging/island-mac/LisaIsland.app"
 LISA_ENTITLEMENTS="packaging/mac-client/Resources/Entitlements.plist"
-ISLAND_ENTITLEMENTS="packaging/island-mac/Resources/Entitlements.plist"
 
 case "$PHASE" in
     apps|dmg|full) ;;
     *) echo "✗ unknown phase '$PHASE' (expected: apps | dmg | full)" >&2; exit 2 ;;
 esac
 
-echo "=== Lisa.app + LisaIsland.app DMG ==="
+echo "=== Lisa.app DMG ==="
 echo "    phase:    $PHASE"
 echo "    version:  $VERSION"
 echo "    output:   $OUT/$DMG_NAME.dmg"
@@ -70,24 +70,16 @@ build_and_sign_apps() {
     echo "→ Building Lisa.app (universal)…"
     ( cd packaging/mac-client && bash build.sh )
 
-    echo
-    echo "→ Building LisaIsland.app (universal)…"
-    ( cd packaging/island-mac && bash build.sh )
+    if [ ! -d "$LISA_APP" ]; then
+        echo "✗ $LISA_APP missing — build step failed" >&2
+        exit 1
+    fi
 
-    for app in "$LISA_APP" "$ISLAND_APP"; do
-        if [ ! -d "$app" ]; then
-            echo "✗ $app missing — build step failed" >&2
-            exit 1
-        fi
-    done
-
-    # Re-sign with Developer ID + hardened runtime. Each app has its own
-    # Entitlements.plist (network.client + JIT for the embedded WKWebView).
-    # Hardened runtime is a notarization prerequisite; notarytool wants the
-    # entitlements embedded so it knows what privileges the binary requests.
+    # Re-sign with Developer ID + hardened runtime. The app's own
+    # Entitlements.plist (network.client + JIT for the embedded WKWebView) is
+    # embedded so notarytool knows what privileges the binary requests.
     if [ -n "$APPLE_SIGNING_IDENTITY" ]; then
-        sign_one "$LISA_APP"   "$LISA_ENTITLEMENTS"
-        sign_one "$ISLAND_APP" "$ISLAND_ENTITLEMENTS"
+        sign_one "$LISA_APP" "$LISA_ENTITLEMENTS"
     fi
 }
 
@@ -109,33 +101,32 @@ sign_one() {
 # their notarization ticket by this point, and re-codesigning strips it.
 # cp -R preserves the stapled ticket (it lives inside the bundle).
 assemble_dmg() {
-    for app in "$LISA_APP" "$ISLAND_APP"; do
-        if [ ! -d "$app" ]; then
-            echo "✗ $app missing — run the 'apps' phase first" >&2
-            exit 1
-        fi
-    done
+    if [ ! -d "$LISA_APP" ]; then
+        echo "✗ $LISA_APP missing — run the 'apps' phase first" >&2
+        exit 1
+    fi
 
     mkdir -p "$OUT"
 
     local staging
     staging="$(mktemp -d)/Lisa-Suite"
     mkdir -p "$staging"
-    cp -R "$LISA_APP"   "$staging/Lisa.app"
-    cp -R "$ISLAND_APP" "$staging/LisaIsland.app"
+    cp -R "$LISA_APP" "$staging/Lisa.app"
     ln -s /Applications "$staging/Applications"
 
     cat > "$staging/README.txt" <<EOF
-Lisa Suite — v${VERSION}
-========================
+Lisa — v${VERSION}
+==================
 
-Drag both apps onto Applications:
+Drag Lisa.app onto Applications:
 
     Lisa.app          — full chat client (window)
-    LisaIsland.app    — pill widget that lives by the menu bar / notch
-    Applications →    — drop both here
+    Applications →    — drop it here
 
-Before launching either app, install + start the LISA backend:
+The notch pill ("Lisa Island") is built in — turn it on from
+Lisa ▸ Settings… ▸ Show Lisa Island.
+
+Before launching the app, install + start the LISA backend:
 
     # macOS, with Node 20+:
     npm install -g @oratis/lisa

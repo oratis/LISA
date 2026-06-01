@@ -17,10 +17,10 @@ import Base from "../layouts/Base.astro";
 
   <h2>🍎 Mac apps (recommended on macOS)</h2>
   <p>
-    Signed + Apple-notarized DMG. Contains two universal-binary apps:
-    <strong>Lisa.app</strong> (full chat client) and
-    <strong>LisaIsland.app</strong> (pill widget that lives by the menu bar / notch).
-    No Gatekeeper warning, no <code>xattr</code> workaround.
+    Signed + Apple-notarized DMG with the universal-binary
+    <strong>Lisa.app</strong> (full chat client). The menu-bar / notch pill
+    ("Lisa Island") is built in — turn it on from <em>Lisa ▸ Settings… ▸ Show
+    Lisa Island</em>. No Gatekeeper warning, no <code>xattr</code> workaround.
   </p>
   <p>
     <a class="dmg-cta" href="https://github.com/oratis/LISA/releases/latest" target="_blank" rel="noopener">
@@ -28,10 +28,10 @@ import Base from "../layouts/Base.astro";
     </a>
   </p>
   <p>
-    After dragging the apps to <code>/Applications</code>, install the backend and start it:
+    After dragging Lisa.app to <code>/Applications</code>, install the backend and start it:
   </p>
   <pre><code>npm install -g @oratis/lisa
-lisa serve --web                # apps load http://localhost:5757</code></pre>
+lisa serve --web                # the app loads http://localhost:5757</code></pre>
 
   <h2>Homebrew (CLI only)</h2>
   <pre><code>brew tap oratis/tap

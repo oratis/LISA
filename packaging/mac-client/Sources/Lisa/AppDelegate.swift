@@ -15,7 +15,7 @@
 
 import AppKit
 
-final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
+final class AppDelegate: NSObject, NSApplicationDelegate {
     private var mainWindow: MainWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -123,25 +123,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         mainWindow?.reload()
     }
 
-    // MARK: - Lisa Island
+    // MARK: - Settings
 
-    @objc func toggleIsland(_ sender: Any?) {
-        IslandController.shared.toggle()
-    }
-
-    @objc func resetIslandPosition(_ sender: Any?) {
-        IslandController.shared.resetPosition()
-    }
-
-    /// Tick the "Show Lisa Island" item when the island is on, and disable
-    /// "Reset Island Position" while it's off (nothing to reset).
-    func validateMenuItem(_ item: NSMenuItem) -> Bool {
-        if item.action == #selector(toggleIsland(_:)) {
-            item.state = IslandController.shared.isEnabled ? .on : .off
-        } else if item.action == #selector(resetIslandPosition(_:)) {
-            return IslandController.shared.isEnabled
-        }
-        return true
+    @objc func openPreferences(_ sender: Any?) {
+        PreferencesController.shared.show()
     }
 
     @objc func newWindowAction(_ sender: Any?) {
@@ -162,6 +147,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
             keyEquivalent: ""
         ))
+        appMenu.addItem(.separator())
+        let settingsItem = NSMenuItem(
+            title: "Settings…",
+            action: #selector(openPreferences(_:)),
+            keyEquivalent: ","
+        )
+        settingsItem.target = self
+        appMenu.addItem(settingsItem)
         appMenu.addItem(.separator())
         appMenu.addItem(NSMenuItem(
             title: "Hide Lisa",
@@ -236,25 +229,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         )
         captureItem.keyEquivalentModifierMask = [.control, .option]
         viewMenu.addItem(captureItem)
-
-        // ── Lisa Island toggle (the in-app notch pill) ──────────────
-        viewMenu.addItem(.separator())
-        let islandItem = NSMenuItem(
-            title: "Show Lisa Island",
-            action: #selector(toggleIsland(_:)),
-            keyEquivalent: "i"
-        )
-        islandItem.keyEquivalentModifierMask = [.command, .shift]
-        islandItem.target = self
-        viewMenu.addItem(islandItem)
-        let resetIslandItem = NSMenuItem(
-            title: "Reset Island Position",
-            action: #selector(resetIslandPosition(_:)),
-            keyEquivalent: ""
-        )
-        resetIslandItem.target = self
-        viewMenu.addItem(resetIslandItem)
-
         viewMenu.addItem(.separator())
         viewMenu.addItem(NSMenuItem(
             title: "Enter Full Screen",

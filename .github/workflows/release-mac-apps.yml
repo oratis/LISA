@@ -112,14 +112,12 @@ jobs:
           set -euo pipefail
           bash scripts/build-mac-apps.sh apps
 
-      # ── Notarize + staple the .apps BEFORE they go into the DMG ──
-      # This is what gives each contained .app its own stapled ticket, so
-      # `stapler validate Lisa.app` passes even fully offline. We notarize
-      # both apps in one submission (a zip holding both), then staple each
-      # bundle in place — the later "Assemble DMG" phase copies these
-      # stapled bundles verbatim (cp -R preserves the ticket; it never
-      # re-signs them, which would strip it).
-      - name: Notarize + staple the apps
+      # ── Notarize + staple Lisa.app BEFORE it goes into the DMG ──
+      # This is what gives the contained .app its own stapled ticket, so
+      # `stapler validate Lisa.app` passes even fully offline. The later
+      # "Assemble DMG" phase copies the stapled bundle verbatim (cp -R
+      # preserves the ticket; it never re-signs it, which would strip it).
+      - name: Notarize + staple the app
         if: ${{ env.HAS_APPLE_SIGNING == 'true' }}
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -127,24 +125,18 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
-          APPS_DIR="$RUNNER_TEMP/notarize-apps"
-          rm -rf "$APPS_DIR"; mkdir -p "$APPS_DIR"
-          cp -R "packaging/mac-client/Lisa.app"   "$APPS_DIR/Lisa.app"
-          cp -R "packaging/island-mac/LisaIsland.app" "$APPS_DIR/LisaIsland.app"
-          # ditto -c -k --keepParent is Apple's prescribed way to zip .app
-          # bundles for notarytool (preserves symlinks + resource forks).
-          ditto -c -k --keepParent "$APPS_DIR" "$RUNNER_TEMP/apps.zip"
-          echo "→ Submitting both apps to Apple notary…"
-          xcrun notarytool submit "$RUNNER_TEMP/apps.zip" \
+          # ditto -c -k --keepParent is Apple's prescribed way to zip an .app
+          # bundle for notarytool (preserves symlinks + resource forks).
+          ditto -c -k --keepParent "packaging/mac-client/Lisa.app" "$RUNNER_TEMP/Lisa.zip"
+          echo "→ Submitting Lisa.app to Apple notary…"
+          xcrun notarytool submit "$RUNNER_TEMP/Lisa.zip" \
             --apple-id "$APPLE_ID" \
             --password "$APPLE_PASSWORD" \
             --team-id "$APPLE_TEAM_ID" \
             --wait
-          # Staple the in-tree bundles (the ones the DMG is built from).
+          # Staple the in-tree bundle (the one the DMG is built from).
           xcrun stapler staple "packaging/mac-client/Lisa.app"
-          xcrun stapler staple "packaging/island-mac/LisaIsland.app"
           xcrun stapler validate "packaging/mac-client/Lisa.app"
-          xcrun stapler validate "packaging/island-mac/LisaIsland.app"
           spctl --assess --type execute --verbose=2 "packaging/mac-client/Lisa.app"
 
       # ── Phase 2: assemble + sign the DMG from the stapled .apps ──

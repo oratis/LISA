@@ -1,19 +1,18 @@
 # Lisa.app — native Mac client
 
-Dockable macOS app hosting the LISA chat GUI. Sibling to
-[`packaging/island-mac/`](../island-mac/) which makes the always-on-top
-pill.
+Dockable macOS app hosting the LISA chat GUI. The always-on-top notch pill
+("Lisa Island") is built in — toggle it from **Lisa ▸ Settings… ▸ Show Lisa
+Island**. (It used to be a separate `LisaIsland.app`; its window code now
+lives under [`Sources/Lisa/Island/`](Sources/Lisa/Island/).)
 
-| | LisaIsland.app | **Lisa.app** |
+| | Chat window | Lisa Island (built-in) |
 |---|---|---|
-| What it is | Passive observer (small pill at top of screen) | Active conversation window |
-| Dock icon | no | yes |
-| Window chrome | borderless | standard (titlebar, traffic lights) |
-| Z-order | always on top | normal |
-| Loads | `/island` | `/` (the chat GUI) |
-| When to use | Always running in background | Open when you want to chat |
+| What it is | Active conversation window | Passive observer (small pill at the notch) |
+| Window chrome | standard (titlebar, traffic lights) | borderless, always on top |
+| Loads | `/` (the chat GUI) | `/island` |
+| How to show | opens at launch | Settings… ▸ Show Lisa Island |
 
-Two apps; install one, both, or neither. Both talk only to `localhost:5757`.
+Talks only to `localhost:5757`.
 
 ## Requirements
 
