@@ -31,6 +31,10 @@ export const DEFAULT_ORCHESTRATOR_CONFIG: OrchestratorConfig = {
     // Available but off by default — enable in ~/.lisa/agents.json once you
     // use Codex. Graceful no-op if ~/.codex/sessions is absent anyway.
     codex: { enabled: false },
+    // Cloud agent: watches your open GitHub PRs (checks / review / merge) via
+    // the `gh` CLI. Off by default; opt in, optionally with
+    // `{ "enabled": true, "repos": ["owner/repo"] }`. No-op if `gh` is absent.
+    "github-pr": { enabled: false },
   },
   visibility: "activity",
 };

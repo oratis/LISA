@@ -5,6 +5,19 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — GitHub PR observer (orchestrator O4: cloud agents)
+
+- **`github-pr` integration** treats your open pull requests as agent sessions:
+  CI running → `working`, checks failed → `error`, awaiting/declined review →
+  `waiting`, merged/closed → `done`. It's the first **polling** observer (no
+  files to tail) — proving the `AgentObserver` registry generalizes from local
+  CLI agents to cloud/API work. Off by default; opt in via `~/.lisa/agents.json`
+  (`"github-pr": { "enabled": true }`), optionally scoped to
+  `"repos": ["owner/repo"]` for full check/review state. With no repos it lists
+  your open PRs across GitHub via `gh search`. No-op if `gh` is missing or
+  unauthenticated. Privacy: only your own PR metadata (number, title, branch,
+  check/review status) — never diff or review content.
+
 ### Added — Lisa Island built into Lisa.app
 
 - The notch pill is now a **feature of Lisa.app**, not a separate
