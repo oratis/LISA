@@ -23,10 +23,15 @@ fi
 
 cd "$(dirname "$0")"
 REPO_ROOT="$(cd ../.. && pwd)"
-MASCOT="$REPO_ROOT/src/web/assets/lisa-mascot.png"
+# App icon: the dedicated pixel-girl icon (scripts/generate-app-icon.ts),
+# falling back to the website mascot if it hasn't been generated.
+MASCOT="$(dirname "$0")/Resources/app-icon-1024.png"
+if [ ! -f "$MASCOT" ]; then
+    MASCOT="$REPO_ROOT/src/web/assets/lisa-mascot.png"
+fi
 
 if [ ! -f "$MASCOT" ]; then
-    echo "✗ mascot PNG not found at $MASCOT" >&2
+    echo "✗ icon PNG not found at $MASCOT" >&2
     echo "  (this script expects to be run from packaging/mac-client/ inside the LISA repo)" >&2
     exit 1
 fi
