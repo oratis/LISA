@@ -36,6 +36,35 @@ versioning follows [SemVer](https://semver.org/).
   metadata (session title, dir, token counts, role/error) — never transcript or
   message text. Verified against real OpenCode + Aider sessions on-device.
 
+### Added — vibe-coding tools
+
+- **`pr_status`** — open PRs with each one's CI rollup (✓/✗/⏳) and review
+  decision, sorted failing-first. For when several agents have PRs open. Needs
+  `gh`; read-only.
+
+- **`run_checks`** — the quality gate: auto-detects typecheck/lint/test/build
+  from package.json scripts and runs them, reporting pass/fail + the tail of any
+  failure. "Does the agent's work pass?" before merge.
+
+- **`review_diff`** — show the actual code diff in a repo (uncommitted vs HEAD,
+  working/staged, any ref/range, or a GitHub PR via `gh`) so LISA can review an
+  agent's work before merge. Read-only, output capped.
+
+- **`repo_digest`** — what actually changed in a repo (or every repo your agents
+  touch): recent commits in a window, branch, uncommitted count + diff stat,
+  ahead/behind. Answers "what did <agent> do today" with git truth (the
+  orchestrator only sees structural activity). Read-only.
+
+
+### Added — list_agents tool
+
+- **`list_agents`** lets LISA enumerate the agent sessions she observes (Claude
+  Code, Codex, …) with their structural activity — state, project, git branch,
+  last tool/command name, files touched, pending permission, errors. Fills the
+  gap where she could only give the relevance-gated `advise_now` summary or list
+  her *own* dispatched agents (`signal_agent`), so "what are my agents doing?"
+  is answerable in chat. Structural metadata only — never conversation content.
+
 ### Added — Lisa Island built into Lisa.app
 
 - The notch pill is now a **feature of Lisa.app**, not a separate

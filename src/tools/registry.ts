@@ -2,6 +2,11 @@ import type { ToolDefinition } from "../types.js";
 import { memoryTool } from "../memory/tool.js";
 import { memorySearchTool } from "../memory/search_tool.js";
 import { adviseNowTool } from "./advise_now.js";
+import { listAgentsTool } from "./list_agents.js";
+import { repoDigestTool } from "./repo_digest.js";
+import { reviewDiffTool } from "./review_diff.js";
+import { runChecksTool } from "./run_checks.js";
+import { prStatusTool } from "./pr_status.js";
 import { dispatchAgentTool } from "./dispatch_agent.js";
 import { signalAgentTool } from "./signal_agent.js";
 import { skillManageTool } from "../skills/tool.js";
@@ -66,6 +71,11 @@ export function buildToolRegistry(opts: ToolRegistryOptions = {}): ToolDefinitio
     webSearchTool as ToolDefinition,
     redeployTool as ToolDefinition,
     // Orchestration (docs/ORCHESTRATOR_PLAN.md): observe → advise → dispatch → control.
+    listAgentsTool as ToolDefinition,
+    repoDigestTool as ToolDefinition,
+    reviewDiffTool as ToolDefinition,
+    runChecksTool as ToolDefinition,
+    prStatusTool as ToolDefinition,
     adviseNowTool as ToolDefinition,
     dispatchAgentTool as ToolDefinition,
     signalAgentTool as ToolDefinition,
