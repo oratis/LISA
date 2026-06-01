@@ -7,6 +7,12 @@ versioning follows [SemVer](https://semver.org/).
 
 ### Added — vibe-coding tools
 
+- **`scheduled_dispatch`** — schedule an agent to run a task recurringly
+  (every:30m / every:2h / every:1d / daily:HH:MM), fired by the heartbeat. For
+  standing autonomous work (nightly issue triage, periodic sync). Auto-launches
+  unattended, so each entry has a maxRuns cap (default 30). add/list/remove.
+  (Shared `launchAgent()` extracted from dispatch_agent.)
+
 - **`inspect_agent`** — deep-dive one observed session (by id/prefix or project):
   full structural activity — state+reason, branch, turns, every tool run, all
   files touched, last command, pending permission, errors, tokens. The detail
