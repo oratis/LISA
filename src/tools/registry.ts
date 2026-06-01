@@ -5,6 +5,7 @@ import { adviseNowTool } from "./advise_now.js";
 import { listAgentsTool } from "./list_agents.js";
 import { repoDigestTool } from "./repo_digest.js";
 import { reviewDiffTool } from "./review_diff.js";
+import { runChecksTool } from "./run_checks.js";
 import { dispatchAgentTool } from "./dispatch_agent.js";
 import { signalAgentTool } from "./signal_agent.js";
 import { skillManageTool } from "../skills/tool.js";
@@ -72,6 +73,7 @@ export function buildToolRegistry(opts: ToolRegistryOptions = {}): ToolDefinitio
     listAgentsTool as ToolDefinition,
     repoDigestTool as ToolDefinition,
     reviewDiffTool as ToolDefinition,
+    runChecksTool as ToolDefinition,
     adviseNowTool as ToolDefinition,
     dispatchAgentTool as ToolDefinition,
     signalAgentTool as ToolDefinition,
