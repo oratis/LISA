@@ -5,6 +5,37 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — GitHub PR observer (orchestrator O4: cloud agents)
+
+- **`github-pr` integration** treats your open pull requests as agent sessions:
+  CI running → `working`, checks failed → `error`, awaiting/declined review →
+  `waiting`, merged/closed → `done`. It's the first **polling** observer (no
+  files to tail) — proving the `AgentObserver` registry generalizes from local
+  CLI agents to cloud/API work. Off by default; opt in via `~/.lisa/agents.json`
+  (`"github-pr": { "enabled": true }`), optionally scoped to
+  `"repos": ["owner/repo"]` for full check/review state. With no repos it lists
+  your open PRs across GitHub via `gh search`. No-op if `gh` is missing or
+  unauthenticated. Privacy: only your own PR metadata (number, title, branch,
+  check/review status) — never diff or review content.
+
+### Added — OpenCode + Aider observers (orchestrator O3/O4)
+
+- **`opencode` integration** reads OpenCode's SQLite session DB
+  (`~/.local/share/opencode/opencode.db`) via the system `sqlite3` CLI (no new
+  dependency). State from the session row + its newest message: archived →
+  `done`, compacting → `working`, last message errored → `error`, assistant
+  replied → `waiting`, mid-turn / user turn → `working`.
+- **`aider` integration** watches the per-project `.aider.chat.history.md`
+  transcripts under the `watchRoots` you configure (Aider keeps no central
+  store). State is a tolerant tail heuristic: an error after the last `####`
+  user turn → `error`, an assistant reply after it → `waiting`, none yet →
+  `working`.
+- Both off by default; opt in via `~/.lisa/agents.json`
+  (`"opencode": { "enabled": true }`, `"aider": { "enabled": true, "watchRoots": ["~/code"] }`).
+  Graceful no-op when the tool/DB/roots are absent. Privacy: only structural
+  metadata (session title, dir, token counts, role/error) — never transcript or
+  message text. Verified against real OpenCode + Aider sessions on-device.
+
 ### Added — vibe-coding tools
 
 - **`inspect_agent`** — deep-dive one observed session (by id/prefix or project):
@@ -38,7 +69,6 @@ versioning follows [SemVer](https://semver.org/).
   gap where she could only give the relevance-gated `advise_now` summary or list
   her *own* dispatched agents (`signal_agent`), so "what are my agents doing?"
   is answerable in chat. Structural metadata only — never conversation content.
-
 
 ### Added — Lisa Island built into Lisa.app
 

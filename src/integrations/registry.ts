@@ -54,5 +54,7 @@ export async function registerBuiltinIntegrations(): Promise<void> {
   builtinsRegistered = true;
   await import("./claude-code/observer.js");
   await import("./codex/observer.js");
-  // Additional adapters register here as they land (opencode, aider, …).
+  await import("./github-pr/observer.js");
+  await import("./opencode/observer.js");
+  await import("./aider/observer.js");
 }
