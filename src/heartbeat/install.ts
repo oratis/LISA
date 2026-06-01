@@ -1,9 +1,9 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { spawn } from "node:child_process";
 import { atomicWrite } from "../fs-utils.js";
 import { LISA_HOME } from "../paths.js";
+import { escapeXml, resolveLisaArgv, resolveLisaBin, runCmd } from "../launchd.js";
 
 export interface InstallOptions {
   /** Cron-like spec: "*\/30 * * * *" or shorthand like "every:30m". Default: every 30 min. */
@@ -129,12 +129,6 @@ ${argvXml}
 `;
 }
 
-function escapeXml(s: string): string {
-  return s.replace(/[<>&"']/g, (c) =>
-    ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&apos;" }[c]!),
-  );
-}
-
 export async function uninstallHeartbeat(): Promise<string> {
   if (process.platform !== "darwin") {
     return "Auto-uninstall only supported on macOS. Edit your crontab manually.";
@@ -248,43 +242,3 @@ function formatSec(sec: number): string {
   return `${sec} seconds`;
 }
 
-async function resolveLisaBin(): Promise<string> {
-  // Used for the human-readable `instructions` line + the cron snippet.
-  try {
-    const out = await runCmd("which", ["lisa"]);
-    const trimmed = out.trim();
-    if (trimmed) return trimmed;
-  } catch {}
-  const here = path.resolve(process.cwd(), "dist", "cli.js");
-  try {
-    await fs.access(here);
-    return `node ${here}`;
-  } catch {}
-  return "lisa";
-}
-
-/** Returns argv elements for launchd plist (one entry per array slot). */
-async function resolveLisaArgv(displayedBin: string): Promise<string[]> {
-  // If displayedBin starts with "node ", split it.
-  if (displayedBin.startsWith("node ")) {
-    const nodePath = (await runCmd("which", ["node"]).catch(() => "node")).trim() || "node";
-    return [nodePath, displayedBin.slice("node ".length)];
-  }
-  return [displayedBin];
-}
-
-function runCmd(cmd: string, args: string[]): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args);
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (b) => (stdout += b.toString("utf8")));
-    child.stderr.on("data", (b) => (stderr += b.toString("utf8")));
-    child.on("error", reject);
-    child.on("close", (code) =>
-      code === 0
-        ? resolve(stdout)
-        : reject(new Error(`${cmd} exited ${code}: ${stderr.trim()}`)),
-    );
-  });
-}

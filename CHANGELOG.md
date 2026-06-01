@@ -5,6 +5,26 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — login autostart
+
+- **`lisa autostart install`** keeps the backend (`lisa serve --web`) running
+  from login onward, so the Mac apps / island / channels find it already up.
+  On macOS it writes a `ai.lisa.autostart` LaunchAgent with `RunAtLoad` +
+  `KeepAlive` (starts at login, restarts on crash) and loads it immediately
+  (`--no-load` to only write it). Flags pass through: `--port N`,
+  `--channels <list>`, `--imessage`. On Linux it prints a ready-to-paste
+  `systemd --user` unit (hands-off, like the heartbeat's crontab stance).
+- **`lisa autostart status`** / **`lisa autostart uninstall`** to inspect and
+  remove it. Logs at `~/.lisa/autostart.log`.
+
+### Fixed
+
+- **`heartbeat install --load` / `--every` threw `unknown flag`.** The arg
+  parser validated unknown `--flags` globally before subcommand args were split
+  out, so the heartbeat installer's own flags never reached its handler. Flags
+  after a raw-args subcommand (`heartbeat`, `autostart`) are now collected
+  verbatim. Shared launchd helpers extracted to `src/launchd.ts`.
+
 ## [0.7.0] — 2026-05-31
 
 **LISA can stop the agents she starts.** Completes the orchestrator's DISPATCH
