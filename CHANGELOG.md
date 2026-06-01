@@ -7,6 +7,11 @@ versioning follows [SemVer](https://semver.org/).
 
 ### Added — vibe-coding tools
 
+- **`inspect_agent`** — deep-dive one observed session (by id/prefix or project):
+  full structural activity — state+reason, branch, turns, every tool run, all
+  files touched, last command, pending permission, errors, tokens. The detail
+  view to list_agents' roster.
+
 - **`pr_status`** — open PRs with each one's CI rollup (✓/✗/⏳) and review
   decision, sorted failing-first. For when several agents have PRs open. Needs
   `gh`; read-only.
