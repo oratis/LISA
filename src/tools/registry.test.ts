@@ -8,7 +8,7 @@ describe("buildToolRegistry", () => {
     // registry but never pushed into the array, so the model couldn't call
     // them. tsconfig has no noUnusedLocals to catch that, so guard it here.
     const names = new Set(buildToolRegistry().map((t) => t.name));
-    for (const required of ["list_agents", "advise_now", "dispatch_agent", "signal_agent"]) {
+    for (const required of ["list_agents", "advise_now", "dispatch_agent", "signal_agent", "agent_recap"]) {
       assert.ok(names.has(required), `${required} must be registered`);
     }
   });

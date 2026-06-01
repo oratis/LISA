@@ -5,6 +5,21 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — Cross-agent recap (orchestrator L6: "while you were away")
+
+- **`agent_recap` tool** + **`GET /api/agents/recap?sinceMinutes=N`** synthesize
+  what happened across *all* observed agents (Claude Code, Codex, OpenCode,
+  Aider, GitHub PRs) over a time window — grouped by project, tallying what
+  finished, errored, or is still running, with the notable moments. The
+  temporal counterpart to `advise_now` (alerts *now*) and `list_agents` (the
+  current roster): it answers "what did my agents do since I left?", including
+  sessions that have since ended and dropped out of the live list.
+- **Orchestrator journal** (`src/orchestrator/journal.ts`) — every hub state
+  transition is appended to a capped in-memory ring buffer (consecutive
+  same-state events collapsed), which `recap.ts` reduces into the digest
+  deterministically (no LLM). Structural metadata only — agent, project, state,
+  tool/file names, errors; never prompts or content.
+
 ### Added — Screen Advisor (opt-in proactive next-step coaching)
 
 - When enabled, every N minutes (default 10) LISA captures a full-screen
