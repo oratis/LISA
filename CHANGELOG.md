@@ -5,6 +5,13 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed — app icon
+
+- **New Lisa.app icon**: a simple pixel-art girl on a solid background,
+  replacing the detailed mascot render. Generated from primitives by
+  `scripts/generate-app-icon.ts` (no image API needed); `build.sh` builds the
+  `.icns` from it and falls back to the website mascot if it's absent.
+
 ### Added — login autostart
 
 - **`lisa autostart install`** keeps the backend (`lisa serve --web`) running
