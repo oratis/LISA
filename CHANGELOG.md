@@ -5,6 +5,13 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — integrations
+
+- **`github`** — gh-backed GitHub operations a coding agent needs beyond pr_status
+  / github_link: issues (list/view/create/comment), PRs (view/create/comment/
+  merge), CI runs (list/view), releases. Read actions are safe; create/comment/
+  merge are writes. Args passed as discrete argv (no shell interpolation).
+
 ## [0.8.0] — 2026-06-02
 
 **Mission control + new senses.** The orchestrator is complete end-to-end —
