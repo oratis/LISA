@@ -1,15 +1,15 @@
 #!/usr/bin/env tsx
 /**
- * Generate Lisa's macOS app icon via Seedream — a cute chibi catgirl avatar
- * in the style of the supplied reference, Lisa-flavoured (her signature
- * cyan/teal hair), on a clean solid background with native rounded corners.
+ * Generate Lisa's macOS app icon via Seedream — the canonical pixel-art
+ * hoodie girl (same character/style as the website mascot), but on a FLAT
+ * solid non-white background with NO glow / aura, plus native rounded corners.
  *
  *   SEEDREAM_API_KEY=... npx tsx scripts/generate-app-icon.ts
- *   ICON_BG=#EAF2FF ...  # override the solid background colour
- *   ICON_PROMPT="..."    # override the whole prompt
+ *   ICON_BG=#16323a ...    # the solid background colour (also named in prompt)
+ *   ICON_BG_NAME="dark teal"
+ *   ICON_PROMPT="..."      # override the whole prompt
  *
  * Output: packaging/mac-client/Resources/app-icon-1024.png
- * build.sh turns that into AppIcon.icns.
  */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,9 +18,7 @@ import sharp from "sharp";
 const API_KEY = process.env.SEEDREAM_API_KEY;
 if (!API_KEY) {
   console.error(
-    "SEEDREAM_API_KEY is not set.\n" +
-      "Get a key at https://www.volcengine.com/product/ark and either export it\n" +
-      "in your shell or add it to ~/.lisa/config.env, then re-run.",
+    "SEEDREAM_API_KEY is not set. Export it or add it to ~/.lisa/config.env, then re-run.",
   );
   process.exit(1);
 }
@@ -32,36 +30,32 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.resolve(__dirname, "../packaging/mac-client/Resources/app-icon-1024.png");
 
 const SIZE = 1024;
-const RADIUS = 224; // macOS squircle-ish corner radius
+const RADIUS = 224;
 
 function hexToRGB(hex: string) {
   const h = hex.replace("#", "");
   return { r: parseInt(h.slice(0, 2), 16), g: parseInt(h.slice(2, 4), 16), b: parseInt(h.slice(4, 6), 16) };
 }
-const BG = hexToRGB(process.env.ICON_BG ?? "#F2F1EC");
+const BG_HEX = process.env.ICON_BG ?? "#16323A";
+const BG_NAME = process.env.ICON_BG_NAME ?? "dark teal-blue";
+const BG = hexToRGB(BG_HEX);
 
-// Prompt tuned to the reference: cute chibi catgirl avatar, big glossy teal
-// eyes, soft bangs, fluffy cat ears, blush, a tiny black cat hair-clip, small
-// white paw-print accents — kept "Lisa" via her cyan/teal hair. Plain solid
-// background + centred head-and-shoulders = clean app-icon composition.
+// Same character as the mascot / STYLE_LOCK, but explicitly FLAT + no glow.
 const PROMPT =
   process.env.ICON_PROMPT ??
   [
-    "Cute chibi anime girl avatar icon, kawaii profile-picture style.",
-    "Big round sparkling teal-blue eyes with bright highlights, tiny gentle smile, soft pink blush on the cheeks.",
-    "Chin-length fluffy CYAN / TEAL hair with soft straight bangs (this is the recurring character LISA).",
-    "Fluffy matching cat ears with pale-pink inner ears; a small black cat-shaped hair clip.",
-    "A few little white paw-print marks floating near the top corners.",
-    "Centered head-and-shoulders bust, facing forward.",
-    "Clean thick outlines, soft cel shading, gentle pastel palette.",
-    "Plain solid off-white background, flat, no scene, no props.",
-    "Absolutely no text, no signature, no watermark, no logo.",
+    "16-bit pixel-art portrait of the recurring character LISA:",
+    "a young woman with chin-length cyan / teal hair and a side-swept fringe, kind blue eyes,",
+    "fair skin with a faint pink blush, a gentle closed-mouth smile,",
+    "wearing a soft hooded sweater with a subtle circuit-board pattern in cool tones (navy / cyan / purple).",
+    "Centered front-facing head-and-shoulders bust.",
+    "Limited ~24-colour palette, crisp 1px outlines, clean dithering, Stardew-Valley / Celeste portrait sprite style.",
+    `IMPORTANT: a completely FLAT plain solid ${BG_NAME} background.`,
+    "Absolutely NO glow, NO aura, NO halo, NO gradient, NO rim light, NO sparkles, no scene.",
+    "No text, no signature, no watermark, no logo.",
   ].join(" ");
 
-interface SeedreamResponse {
-  data?: { url?: string }[];
-  error?: { message?: string };
-}
+interface SeedreamResponse { data?: { url?: string }[]; error?: { message?: string } }
 
 async function callSeedream(prompt: string): Promise<string> {
   const res = await fetch(SEEDREAM_URL, {
@@ -85,16 +79,11 @@ async function callSeedream(prompt: string): Promise<string> {
   return url;
 }
 
-console.log("→ generating icon via Seedream…");
+console.log(`→ generating icon via Seedream (bg=${BG_NAME} ${BG_HEX})…`);
 const url = await callSeedream(PROMPT);
 const raw = Buffer.from(await (await fetch(url)).arrayBuffer());
 
-// Square-crop to centre, resize, composite onto the solid background (in case
-// the art has any transparency / off-square), then clip to rounded corners.
-const art = await sharp(raw)
-  .resize(SIZE, SIZE, { fit: "cover", position: "top" })
-  .toBuffer();
-
+const art = await sharp(raw).resize(SIZE, SIZE, { fit: "cover", position: "top" }).toBuffer();
 const mask = Buffer.from(
   `<svg width="${SIZE}" height="${SIZE}"><rect width="${SIZE}" height="${SIZE}" rx="${RADIUS}" ry="${RADIUS}"/></svg>`,
 );
