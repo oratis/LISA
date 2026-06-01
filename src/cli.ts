@@ -60,6 +60,13 @@ LIFECYCLE
                                Install macOS launchd plist (or print cron line).
   lisa heartbeat uninstall     Remove the launchd plist (macOS).
 
+AUTOSTART (run the backend from login)
+  lisa autostart install [--no-load] [--port N] [--channels <list>] [--imessage]
+                               Keep \`serve --web\` running at login + on crash
+                               (macOS LaunchAgent; Linux prints a systemd unit).
+  lisa autostart status        Show whether autostart is installed / loaded.
+  lisa autostart uninstall     Stop starting Lisa at login.
+
 SERVE (long-lived)
   lisa serve --web [--port N]  Start the web UI (default port 5757).
   lisa serve --channels <list> Start IM channel adapters (comma-separated, or "all").
@@ -127,6 +134,7 @@ interface ParsedArgs {
     | "sessions"
     | "serve"
     | "heartbeat"
+    | "autostart"
     | "search"
     | "birth"
     | "soul"
@@ -143,6 +151,9 @@ interface ParsedArgs {
   port: number;
   prompt: string | null;
 }
+
+/** Subcommands whose trailing flags are command-specific, not global. */
+const RAW_SUBCOMMANDS = new Set(["heartbeat", "autostart"]);
 
 function parseArgs(argv: string[]): ParsedArgs {
   const out: ParsedArgs = {
@@ -208,7 +219,15 @@ function parseArgs(argv: string[]): ParsedArgs {
     } else if (arg === "--port") {
       out.port = parseInt(mustNext(argv, ++i, "--port"), 10);
     } else if (arg.startsWith("--")) {
-      throw new Error(`unknown flag: ${arg}`);
+      // Flags after a raw-args subcommand (heartbeat/autostart) are
+      // command-specific, not global — collect them verbatim instead of
+      // rejecting. (Without this, `heartbeat install --load` threw before
+      // its handler ever saw the flag.)
+      if (positional.some((p) => RAW_SUBCOMMANDS.has(p))) {
+        positional.push(arg);
+      } else {
+        throw new Error(`unknown flag: ${arg}`);
+      }
     } else {
       positional.push(arg);
     }
@@ -220,6 +239,7 @@ function parseArgs(argv: string[]): ParsedArgs {
       first === "sessions" ||
       first === "serve" ||
       first === "heartbeat" ||
+      first === "autostart" ||
       first === "search" ||
       first === "birth" ||
       first === "soul" ||
@@ -328,6 +348,38 @@ async function main(): Promise<void> {
   if (args.subcommand === "skills") {
     await handleSkillsSubcommand(args.subargs);
     return;
+  }
+
+  if (args.subcommand === "autostart") {
+    const sub = args.subargs[0];
+    if (sub === "install") {
+      const { installAutostart } = await import("./autostart/install.js");
+      // Default to loading immediately — the point of autostart is "running
+      // now and at every login". `--no-load` writes the agent without starting.
+      const load = !args.subargs.includes("--no-load");
+      const result = await installAutostart({
+        load,
+        port: args.port,
+        channels: args.serveChannels,
+        imessage: args.serveImessage,
+      });
+      console.log(`platform: ${result.platform}\n${result.instructions}`);
+      return;
+    }
+    if (sub === "uninstall") {
+      const { uninstallAutostart } = await import("./autostart/install.js");
+      console.log(await uninstallAutostart());
+      return;
+    }
+    if (sub === "status") {
+      const { autostartStatus } = await import("./autostart/install.js");
+      console.log(await autostartStatus());
+      return;
+    }
+    console.error(
+      "usage: lisa autostart <install|uninstall|status> [--no-load] [--port N] [--channels <list>] [--imessage]",
+    );
+    process.exit(2);
   }
 
   if (args.subcommand === "wishlist") {
