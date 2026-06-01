@@ -1400,8 +1400,8 @@ async function finishRecording() {
     // chat turn, persistence, and her response in her own voice.
     const framed =
       "I just recorded some audio. Here's the transcript — please give me a clear, " +
-      "useful summary (key points, decisions, action items if any), then I might ask follow-ups.\n\n" +
-      "--- transcript ---\n" + transcript;
+      "useful summary (key points, decisions, action items if any), then I might ask follow-ups.\\n\\n" +
+      "--- transcript ---\\n" + transcript;
     send(framed);
   } catch (err) {
     if (pending) pending.remove();
