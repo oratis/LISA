@@ -20,6 +20,23 @@ versioning follows [SemVer](https://semver.org/).
   deterministically (no LLM). Structural metadata only — agent, project, state,
   tool/file names, errors; never prompts or content.
 
+### Added — Screen Advisor (opt-in proactive next-step coaching)
+
+- When enabled, every N minutes (default 10) LISA captures a full-screen
+  screenshot, asks the model for the single best next **coding** step grounded
+  in what's on screen, and shows it as a **💡 suggested next step** card on the
+  Lisa Island. Clicking **Optimize ▸** prefills that task into the chat composer
+  (it does **not** auto-run) — you confirm by sending, then Lisa can dispatch a
+  coding agent.
+- **Privacy — this is a sensitive capability, built accordingly:** OFF by
+  default; the screenshot leaves the machine only for the one analysis call and
+  is never persisted (the capture layer deletes its temp file); only the short
+  text suggestion is cached in memory. macOS-only (uses `screencapture -x`).
+- **Settings** (toggle + interval, clamped 2–240 min) live in **both** the
+  Lisa.app ⌘, window and the server config (`~/.lisa/screen-advisor.json`).
+  New endpoints: `GET`/`POST /api/screen-advisor/config` (POST is loopback-only),
+  `GET /api/screen-advisor/latest`; SSE event `screen_suggestion`.
+
 ### Added — GitHub PR observer (orchestrator O4: cloud agents)
 
 - **`github-pr` integration** treats your open pull requests as agent sessions:

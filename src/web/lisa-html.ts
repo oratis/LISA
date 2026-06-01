@@ -1259,6 +1259,27 @@ window.lisaAttachImage = function (file) {
   try { input.focus(); } catch (_) {}
 };
 
+// lisaPrefillComposer drops text into the composer WITHOUT sending — the user
+// reads it and hits Enter to send (that send is the confirmation). Used by the
+// island's screen-advisor "Optimize ▸" card (via the Swift bridge) and by the
+// ?prefill= URL param (plain browser tabs).
+window.lisaPrefillComposer = function (text) {
+  if (!text || !input) return;
+  input.value = String(text);
+  try { input.dispatchEvent(new Event('input', { bubbles: true })); } catch (_) {}
+  try { input.focus(); input.setSelectionRange(input.value.length, input.value.length); } catch (_) {}
+};
+
+// On load, honour ?prefill=… (the island opens /?prefill=<task> in a browser
+// tab). Strip it from the URL afterwards so a refresh doesn't re-fill.
+try {
+  var _pf = new URLSearchParams(location.search).get('prefill');
+  if (_pf) {
+    window.lisaPrefillComposer(_pf);
+    history.replaceState(null, '', location.pathname);
+  }
+} catch (_) {}
+
 // lisaCaptureAndAttach asks the server to run a screen capture, then
 // attaches the result. mode: 'interactive' (crosshair, default) | 'full'.
 // Returns true if an image was attached, false if cancelled/failed.
