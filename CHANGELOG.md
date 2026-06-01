@@ -38,6 +38,12 @@ versioning follows [SemVer](https://semver.org/).
 
 ### Added — vibe-coding tools
 
+- **`compare_agents`** — run the same task across multiple agents in isolated
+  git worktrees and compare results (a workflow: agents run for minutes).
+  start → launch each in its own worktree; status → live state + files changed;
+  collect → diff each result side by side; cleanup → remove worktrees. Pick the
+  best output.
+
 - **`scheduled_dispatch`** — schedule an agent to run a task recurringly
   (every:30m / every:2h / every:1d / daily:HH:MM), fired by the heartbeat. For
   standing autonomous work (nightly issue triage, periodic sync). Auto-launches
