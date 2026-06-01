@@ -7,6 +7,10 @@ versioning follows [SemVer](https://semver.org/).
 
 ### Added — vibe-coding tools
 
+- **`review_diff`** — show the actual code diff in a repo (uncommitted vs HEAD,
+  working/staged, any ref/range, or a GitHub PR via `gh`) so LISA can review an
+  agent's work before merge. Read-only, output capped.
+
 - **`repo_digest`** — what actually changed in a repo (or every repo your agents
   touch): recent commits in a window, branch, uncommitted count + diff stat,
   ahead/behind. Answers "what did <agent> do today" with git truth (the
