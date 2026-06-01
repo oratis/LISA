@@ -151,6 +151,20 @@ final class WebContent: NSViewController, WKNavigationDelegate, WKUIDelegate {
         }
     }
 
+    /// Drop text into the page's chat composer via window.lisaPrefillComposer
+    /// (defined in lisa-html.ts). Never sends. The text is JSON-encoded (as a
+    /// 1-element array, taking [0] in JS) so quotes/newlines can't break out.
+    func prefillComposer(_ text: String) {
+        guard
+            let data = try? JSONSerialization.data(withJSONObject: [text]),
+            let json = String(data: data, encoding: .utf8)
+        else { return }
+        webView.evaluateJavaScript(
+            "window.lisaPrefillComposer && window.lisaPrefillComposer(\(json)[0]);",
+            completionHandler: nil
+        )
+    }
+
     private func scheduleReload() {
         reloadTimer?.invalidate()
         reloadTimer = Timer.scheduledTimer(

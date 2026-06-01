@@ -25,6 +25,15 @@ import { advise, formatDigest } from "../advisor/engine.js";
 import type { AgentSession } from "../integrations/types.js";
 import { captureScreenshot, captureSupported, type CaptureMode } from "../vision/capture.js";
 import { transcribeAudio } from "../voice/transcribe.js";
+import {
+  loadScreenAdvisorConfig,
+  saveScreenAdvisorConfig,
+  normalizeConfig,
+  analyzeScreenshot,
+  type ScreenAdvisorConfig,
+  type ScreenSuggestion,
+  type SuggestionProvider,
+} from "../screen_advisor/engine.js";
 import os from "node:os";
 import { LISA_HOME } from "../paths.js";
 import type { ToolDefinition, StoredMessage } from "../types.js";
@@ -193,6 +202,60 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   }, ADVISE_INTERVAL_MS);
   if (adviseTimer.unref) adviseTimer.unref();
 
+  // ── Screen advisor (opt-in): periodic screen-grounded next-step ─────
+  // When enabled, every N minutes capture a full-screen shot, ask the model
+  // for the single best next coding step, and push it to the island as a
+  // suggestion card. PRIVACY: disabled by default; the screenshot leaves the
+  // machine only for the one analysis call and is never persisted (capture
+  // deletes its temp file); only the short text suggestion is cached. Nothing
+  // auto-runs — clicking the card just prefills chat.
+  let screenCfg: ScreenAdvisorConfig = await loadScreenAdvisorConfig();
+  let lastScreenSuggestion: ScreenSuggestion | null = null;
+  let screenTimer: NodeJS.Timeout | null = null;
+  let screenTickRunning = false;
+
+  const screenTick = async (): Promise<void> => {
+    if (screenTickRunning || !screenCfg.enabled || !captureSupported()) return;
+    screenTickRunning = true;
+    try {
+      const shot = await captureScreenshot("full");
+      if (!shot) return;
+      const suggestion = await analyzeScreenshot({
+        provider: getProvider() as unknown as SuggestionProvider,
+        model: opts.model,
+        imageBase64: shot.data,
+        mediaType: shot.mediaType,
+      });
+      if (!suggestion) {
+        console.error("[screen-advisor] nothing actionable on screen");
+        return;
+      }
+      lastScreenSuggestion = { ...suggestion, at: new Date().toISOString() };
+      broadcast({ type: "screen_suggestion", ...lastScreenSuggestion });
+      console.error(`[screen-advisor] suggested: ${suggestion.title}`);
+    } catch (err) {
+      console.error(`[screen-advisor] tick failed: ${(err as Error).message}`);
+    } finally {
+      screenTickRunning = false;
+    }
+  };
+
+  const restartScreenTimer = (): void => {
+    if (screenTimer) {
+      clearInterval(screenTimer);
+      screenTimer = null;
+    }
+    if (!screenCfg.enabled) return;
+    // First capture fires after one interval — never immediately on (re)start,
+    // so flipping the toggle doesn't grab the screen the same instant.
+    screenTimer = setInterval(() => void screenTick(), screenCfg.intervalMinutes * 60_000);
+    if (screenTimer.unref) screenTimer.unref();
+  };
+  restartScreenTimer();
+  if (screenCfg.enabled) {
+    console.error(`[screen-advisor] enabled — every ${screenCfg.intervalMinutes}m`);
+  }
+
   // ── Island unread tracking (Phase 1 of MAC_ISLAND_PLAN) ─────────────
   // The island widget caches "last idle_message" so a fresh tab opening
   // mid-conversation knows there's something to read. Cleared via
@@ -289,6 +352,58 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         current_desire: currentDesire,
         uptime_sec: Math.round((Date.now() - serverStartedAt) / 1000),
       }));
+      return;
+    }
+
+    // Screen advisor config — GET current, POST to update (loopback only,
+    // since it controls periodic screen capture). GET also reports `supported`
+    // (macOS only) and the latest suggestion so a fresh island can render it.
+    if (req.method === "GET" && url === "/api/screen-advisor/config") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ...screenCfg, supported: captureSupported() }));
+      return;
+    }
+    if (req.method === "GET" && url === "/api/screen-advisor/latest") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ suggestion: lastScreenSuggestion }));
+      return;
+    }
+    if (req.method === "POST" && url === "/api/screen-advisor/config") {
+      const remote = req.socket.remoteAddress ?? "";
+      const isLoopback =
+        remote === "127.0.0.1" ||
+        remote === "::1" ||
+        remote === "::ffff:127.0.0.1" ||
+        remote.startsWith("127.");
+      if (!isLoopback) {
+        res.writeHead(403, { "content-type": "text/plain" });
+        res.end("screen-advisor config only accepted from localhost");
+        return;
+      }
+      let saBody = "";
+      for await (const chunk of req) saBody += chunk.toString("utf8");
+      let payload: Partial<ScreenAdvisorConfig>;
+      try {
+        payload = JSON.parse(saBody || "{}") as Partial<ScreenAdvisorConfig>;
+      } catch {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("bad json");
+        return;
+      }
+      screenCfg = normalizeConfig({ ...screenCfg, ...payload });
+      try {
+        await saveScreenAdvisorConfig(screenCfg);
+      } catch (err) {
+        res.writeHead(500, { "content-type": "text/plain" });
+        res.end((err as Error).message);
+        return;
+      }
+      restartScreenTimer();
+      console.error(
+        `[screen-advisor] config: enabled=${screenCfg.enabled} every=${screenCfg.intervalMinutes}m`,
+      );
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, ...screenCfg, supported: captureSupported() }));
       return;
     }
 

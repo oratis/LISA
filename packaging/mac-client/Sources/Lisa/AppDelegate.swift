@@ -43,14 +43,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // chat window forward in-process.
         NotificationCenter.default.addObserver(
             self,
-            selector: #selector(handleShowMainWindow),
+            selector: #selector(handleShowMainWindow(_:)),
             name: IslandContent.showMainWindowNotification,
             object: nil
         )
     }
 
-    @objc private func handleShowMainWindow() {
+    @objc private func handleShowMainWindow(_ note: Notification) {
+        let hadWindow = mainWindow != nil
         showMainWindow()
+        // Screen-advisor "Optimize ▸" carries a prefill — drop it into the
+        // chat composer (never auto-send). A freshly-created window needs a
+        // beat for its WebView to finish loading before the JS bridge is live.
+        if let prefill = note.userInfo?["prefill"] as? String, !prefill.isEmpty {
+            let delay: TimeInterval = hadWindow ? 0.15 : 0.6
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                self?.mainWindow?.prefillComposer(prefill)
+            }
+        }
     }
 
     @objc func captureForLisa(_ sender: Any?) {
