@@ -539,6 +539,16 @@ self.addEventListener('fetch', (event) => {
       return;
     }
 
+    if (req.method === "GET" && url === "/api/sessions") {
+      // Lisa's own chat sessions on disk — drives the sidebar footer count
+      // badge. (Was missing → the badge fetch 404'd and stayed a placeholder.)
+      const { listSessionsOnDisk } = await import("../sessions/list.js");
+      const sessions = await listSessionsOnDisk();
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ sessions }));
+      return;
+    }
+
     if (req.method === "GET" && url === "/api/skills") {
       const { listSkills } = await import("../skills/manager.js");
       const skills = await listSkills();
