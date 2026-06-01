@@ -74,6 +74,61 @@ export function buildDispatchArgv(
   }
 }
 
+export type DispatchAgentKind = DispatchInput["agent"];
+
+export interface LaunchResult {
+  pid?: number;
+  /** Present when the launch failed (binary missing, spawn error). */
+  error?: string;
+  cmd: string;
+}
+
+/**
+ * Spawn a CLI agent headlessly, detached, and record it in the dispatch ledger.
+ * Shared by dispatch_agent (interactive), scheduled_dispatch (heartbeat-timed),
+ * and compare_agents (parallel). Never throws — returns {pid} or {error}.
+ */
+export async function launchAgent(
+  agent: DispatchAgentKind,
+  task: string,
+  cwd: string,
+  log?: (m: string) => void,
+): Promise<LaunchResult> {
+  const { cmd, args } = buildDispatchArgv(agent, task);
+  let child;
+  try {
+    child = spawn(cmd, args, { cwd, detached: true, stdio: "ignore" });
+  } catch (err) {
+    return { error: `Failed to launch ${agent}: ${(err as Error).message}. Is "${cmd}" installed and on PATH?`, cmd };
+  }
+
+  const launchError = await new Promise<string | null>((resolve) => {
+    let settled = false;
+    child.once("error", (e: NodeJS.ErrnoException) => {
+      if (settled) return;
+      settled = true;
+      resolve(e.code === "ENOENT" ? `"${cmd}" not found on PATH — is ${agent} installed?` : `launch error: ${e.message}`);
+    });
+    setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      resolve(null);
+    }, 150);
+  });
+  if (launchError) return { error: launchError, cmd };
+
+  const pid = child.pid;
+  child.unref();
+  if (typeof pid === "number") {
+    try {
+      recordDispatch({ agent, pid, cwd, task });
+    } catch (err) {
+      log?.(`[dispatch] ledger write failed (non-fatal): ${(err as Error).message}`);
+    }
+  }
+  return { pid, cmd };
+}
+
 export const dispatchAgentTool: ToolDefinition<DispatchInput, string> = {
   name: "dispatch_agent",
   description:
@@ -124,54 +179,8 @@ export const dispatchAgentTool: ToolDefinition<DispatchInput, string> = {
       }
     }
 
-    const { cmd, args } = buildDispatchArgv(input.agent, input.task);
-
-    let child;
-    try {
-      child = spawn(cmd, args, {
-        cwd,
-        detached: true, // survive LISA; the agent runs on its own
-        stdio: "ignore",
-      });
-    } catch (err) {
-      return `Failed to launch ${input.agent}: ${(err as Error).message}. Is "${cmd}" installed and on PATH?`;
-    }
-
-    // If the binary is missing, spawn emits 'error' asynchronously. Surface a
-    // useful message in that case rather than silently "succeeding".
-    const launchError = await new Promise<string | null>((resolve) => {
-      let settled = false;
-      child.once("error", (e: NodeJS.ErrnoException) => {
-        if (settled) return;
-        settled = true;
-        resolve(
-          e.code === "ENOENT"
-            ? `"${cmd}" not found on PATH — is ${input.agent} installed?`
-            : `launch error: ${e.message}`,
-        );
-      });
-      // Give the spawn a tick to fail fast; if it doesn't, assume it started.
-      setTimeout(() => {
-        if (settled) return;
-        settled = true;
-        resolve(null);
-      }, 150);
-    });
-
-    if (launchError) return launchError;
-
-    const pid = child.pid;
-    child.unref(); // don't keep LISA's event loop alive for it
-
-    // Record it so signal_agent can list/cancel it from a later turn (the
-    // detached child outlives this turn's handle). Never fatal to the dispatch.
-    if (typeof pid === "number") {
-      try {
-        recordDispatch({ agent: input.agent, pid, cwd, task: input.task });
-      } catch (err) {
-        ctx.log(`[dispatch] ledger write failed (non-fatal): ${(err as Error).message}`);
-      }
-    }
+    const { pid, error } = await launchAgent(input.agent, input.task, cwd, ctx.log);
+    if (error) return error;
 
     ctx.log(`[dispatch] launched ${input.agent} (pid ${pid}) in ${cwd}: ${input.task.slice(0, 80)}`);
     return (

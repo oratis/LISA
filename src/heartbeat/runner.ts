@@ -72,6 +72,16 @@ async function runHeartbeatInner(opts: {
   model: string;
   taskFilter?: string;
 }): Promise<HeartbeatRunResult[]> {
+  // Fire any due scheduled dispatches first (cheap, no LLM turn — just spawns).
+  try {
+    const { fireDue } = await import("../integrations/scheduled-dispatch.js");
+    const { launchAgent } = await import("../tools/dispatch_agent.js");
+    const fired = await fireDue(Date.now(), (e) => launchAgent(e.agent, e.task, e.cwd));
+    for (const f of fired) console.error(`[scheduled-dispatch] fired ${f}`);
+  } catch (err) {
+    console.error(`[scheduled-dispatch] error: ${(err as Error).message}`);
+  }
+
   const cfg = await loadHeartbeatConfig();
   const budget = cfg.budgetTokens && cfg.budgetTokens > 0 ? cfg.budgetTokens : Infinity;
   let tokensSpent = 0;
