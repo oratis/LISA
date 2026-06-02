@@ -244,77 +244,197 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         popover = p
     }
 
+    private let popoverWidth: CGFloat = 300
+
     private func makePopover() -> NSPopover {
         let p = NSPopover()
         p.behavior = .transient   // closes on click-outside
         p.delegate = self
-        p.contentViewController = makePopoverContent()
-        p.contentSize = NSSize(width: 280, height: 220)
+        let vc = makePopoverContent()
+        p.contentViewController = vc
+        p.contentSize = vc.view.fittingSize
         return p
     }
 
     private func makePopoverContent() -> NSViewController {
+        let pad: CGFloat = 16
+        let inner = popoverWidth - pad * 2
+        let offline = (ping == nil)
+
+        let stack = NSStackView()
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 12
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.edgeInsets = NSEdgeInsets(top: pad, left: pad, bottom: pad, right: pad)
+
+        stack.addArrangedSubview(headerView(inner: inner))
+
+        if offline {
+            stack.addArrangedSubview(wrappedLabel("Backend not running — start it:  lisa serve --web",
+                                                  size: 12, color: .secondaryLabelColor, width: inner))
+        } else {
+            if let d = ping?.current_desire, !d.isEmpty {
+                stack.addArrangedSubview(sectionView(title: "CURRENTLY WANTING", body: oneLine(d, 160), inner: inner))
+            }
+            if !sessions.isEmpty {
+                stack.addArrangedSubview(claudeView(inner: inner))
+            }
+            if let t = ping?.last_idle_message_text, !t.isEmpty {
+                stack.addArrangedSubview(sectionView(title: "★ LAST REFLECTION", body: oneLine(t, 160), inner: inner))
+            }
+        }
+
+        stack.addArrangedSubview(buttonsView(inner: inner))
+
+        let container = NSView()
+        container.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            stack.topAnchor.constraint(equalTo: container.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            container.widthAnchor.constraint(equalToConstant: popoverWidth),
+        ])
         let vc = NSViewController()
-        let view = NSView(frame: NSRect(x: 0, y: 0, width: 280, height: 220))
-        view.wantsLayer = true
-        view.layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.85).cgColor
-
-        // Compose a single multi-line label — quickest path to something
-        // useful without recreating the full island UI in native code.
-        let label = NSTextField(labelWithString: composePopoverText())
-        label.usesSingleLineMode = false
-        label.lineBreakMode = .byWordWrapping
-        label.maximumNumberOfLines = 0
-        label.font = NSFont.systemFont(ofSize: 12)
-        label.frame = NSRect(x: 16, y: 56, width: 248, height: 148)
-        label.autoresizingMask = [.width, .height]
-        view.addSubview(label)
-
-        // Bottom button strip
-        let openBtn = NSButton(title: "Open chat", target: self, action: #selector(openWindow))
-        openBtn.bezelStyle = .rounded
-        openBtn.frame = NSRect(x: 16, y: 12, width: 120, height: 32)
-        view.addSubview(openBtn)
-
-        let refreshBtn = NSButton(title: "Refresh", target: self, action: #selector(refreshFromPopover))
-        refreshBtn.bezelStyle = .rounded
-        refreshBtn.frame = NSRect(x: 144, y: 12, width: 120, height: 32)
-        view.addSubview(refreshBtn)
-
-        vc.view = view
+        vc.view = container
         return vc
     }
 
-    private func composePopoverText() -> String {
-        guard let ping = ping else {
-            return "LISA backend offline.\n\nStart it in a terminal:\n  lisa serve --web"
+    // MARK: - Popover view helpers
+
+    private func headerView(inner: CGFloat) -> NSView {
+        let h = NSStackView()
+        h.orientation = .horizontal
+        h.alignment = .centerY
+        h.spacing = 10
+        h.translatesAutoresizingMaskIntoConstraints = false
+
+        let avatar = NSImageView()
+        if let path = Bundle.main.path(forResource: "MenuBarIcon", ofType: "png"),
+           let img = NSImage(contentsOfFile: path) {
+            avatar.image = img
         }
-        var lines: [String] = []
-        lines.append("Lisa · mood: \(ping.mood ?? "—")")
-        if let d = ping.current_desire, !d.isEmpty {
-            // Trim to one short line for the popover.
-            let oneLine = d.replacingOccurrences(of: "\n", with: " ")
-            let trimmed = oneLine.count > 120 ? String(oneLine.prefix(117)) + "…" : oneLine
-            lines.append("")
-            lines.append("Wants: \(trimmed)")
+        avatar.imageScaling = .scaleProportionallyUpOrDown
+        avatar.wantsLayer = true
+        avatar.layer?.cornerRadius = 13
+        avatar.layer?.masksToBounds = true
+        avatar.widthAnchor.constraint(equalToConstant: 26).isActive = true
+        avatar.heightAnchor.constraint(equalToConstant: 26).isActive = true
+
+        let name = NSTextField(labelWithString: "Lisa")
+        name.font = .systemFont(ofSize: 14, weight: .semibold)
+
+        let mood = NSTextField(labelWithString: ping?.mood.map { "· \($0)" } ?? "")
+        mood.font = .systemFont(ofSize: 11)
+        mood.textColor = .secondaryLabelColor
+
+        h.addArrangedSubview(avatar)
+        h.addArrangedSubview(name)
+        h.addArrangedSubview(mood)
+        h.widthAnchor.constraint(equalToConstant: inner).isActive = true
+        return h
+    }
+
+    private func sectionView(title: String, body: String, inner: CGFloat) -> NSView {
+        let v = NSStackView()
+        v.orientation = .vertical
+        v.alignment = .leading
+        v.spacing = 3
+        v.translatesAutoresizingMaskIntoConstraints = false
+        let t = NSTextField(labelWithString: title)
+        t.font = .systemFont(ofSize: 10, weight: .semibold)
+        t.textColor = .tertiaryLabelColor
+        v.addArrangedSubview(t)
+        v.addArrangedSubview(wrappedLabel(body, size: 12, color: .labelColor, width: inner))
+        v.widthAnchor.constraint(equalToConstant: inner).isActive = true
+        return v
+    }
+
+    private func claudeView(inner: CGFloat) -> NSView {
+        let waiting = sessions.filter { $0.state == "waiting" }.count
+        let working = sessions.filter { $0.state == "working" }.count
+        let errors  = sessions.filter { $0.state == "error" }.count
+
+        let v = NSStackView()
+        v.orientation = .vertical
+        v.alignment = .leading
+        v.spacing = 6
+        v.translatesAutoresizingMaskIntoConstraints = false
+        let t = NSTextField(labelWithString: "CLAUDE CODE · \(sessions.count) ACTIVE")
+        t.font = .systemFont(ofSize: 10, weight: .semibold)
+        t.textColor = .tertiaryLabelColor
+        v.addArrangedSubview(t)
+
+        let row = NSStackView()
+        row.orientation = .horizontal
+        row.spacing = 6
+        let orange = NSColor(srgbRed: 1.0, green: 0.55, blue: 0.26, alpha: 1)
+        let red    = NSColor(srgbRed: 1.0, green: 0.33, blue: 0.47, alpha: 1)
+        if waiting > 0 { row.addArrangedSubview(chip("\(waiting) waiting", color: orange)) }
+        if working > 0 { row.addArrangedSubview(chip("\(working) working", color: orange.withAlphaComponent(0.72))) }
+        if errors  > 0 { row.addArrangedSubview(chip("\(errors) errored", color: red)) }
+        if waiting == 0 && working == 0 && errors == 0 {
+            row.addArrangedSubview(chip("idle", color: .systemGray))
         }
-        if !sessions.isEmpty {
-            let waiting = sessions.filter { $0.state == "waiting" }.count
-            let working = sessions.filter { $0.state == "working" }.count
-            let errors  = sessions.filter { $0.state == "error" }.count
-            var parts: [String] = []
-            if waiting > 0 { parts.append("\(waiting) waiting") }
-            if working > 0 { parts.append("\(working) working") }
-            if errors > 0  { parts.append("\(errors) errored") }
-            lines.append("")
-            lines.append("Claude Code (\(sessions.count) active): \(parts.joined(separator: " · "))")
-        }
-        if let text = ping.last_idle_message_text, !text.isEmpty {
-            let trimmed = text.count > 100 ? String(text.prefix(97)) + "…" : text
-            lines.append("")
-            lines.append("★ Last reflection: \(trimmed)")
-        }
-        return lines.joined(separator: "\n")
+        v.addArrangedSubview(row)
+        return v
+    }
+
+    /// A small rounded status chip (tinted background + colored label).
+    private func chip(_ text: String, color: NSColor) -> NSView {
+        let label = NSTextField(labelWithString: text)
+        label.font = .systemFont(ofSize: 11, weight: .medium)
+        label.textColor = color
+        label.translatesAutoresizingMaskIntoConstraints = false
+
+        let box = NSView()
+        box.wantsLayer = true
+        box.layer?.backgroundColor = color.withAlphaComponent(0.14).cgColor
+        box.layer?.cornerRadius = 7
+        box.layer?.borderWidth = 1
+        box.layer?.borderColor = color.withAlphaComponent(0.30).cgColor
+        box.translatesAutoresizingMaskIntoConstraints = false
+        box.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 9),
+            label.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -9),
+            label.topAnchor.constraint(equalTo: box.topAnchor, constant: 3),
+            label.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -3),
+        ])
+        return box
+    }
+
+    private func buttonsView(inner: CGFloat) -> NSView {
+        let row = NSStackView()
+        row.orientation = .horizontal
+        row.distribution = .fillEqually
+        row.spacing = 10
+        row.translatesAutoresizingMaskIntoConstraints = false
+        let open = NSButton(title: "Open chat", target: self, action: #selector(openWindow))
+        open.bezelStyle = .rounded
+        open.keyEquivalent = "\r"   // default (accent-tinted) button
+        let refresh = NSButton(title: "Refresh", target: self, action: #selector(refreshFromPopover))
+        refresh.bezelStyle = .rounded
+        row.addArrangedSubview(open)
+        row.addArrangedSubview(refresh)
+        row.widthAnchor.constraint(equalToConstant: inner).isActive = true
+        return row
+    }
+
+    private func wrappedLabel(_ s: String, size: CGFloat, color: NSColor, width: CGFloat) -> NSTextField {
+        let l = NSTextField(wrappingLabelWithString: s)
+        l.font = .systemFont(ofSize: size)
+        l.textColor = color
+        l.isSelectable = false
+        l.preferredMaxLayoutWidth = width
+        l.widthAnchor.constraint(equalToConstant: width).isActive = true
+        return l
+    }
+
+    private func oneLine(_ s: String, _ maxLen: Int) -> String {
+        let one = s.replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespaces)
+        return one.count > maxLen ? String(one.prefix(maxLen - 1)) + "…" : one
     }
 
     @objc private func openWindow() {
@@ -325,9 +445,11 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     @objc private func refreshFromPopover() {
         Task { @MainActor in
             await refreshOnce()
-            // Rebuild popover view with fresh data
+            // Rebuild popover view with fresh data + resize to fit it.
             if let p = popover, p.isShown {
-                p.contentViewController = makePopoverContent()
+                let vc = makePopoverContent()
+                p.contentViewController = vc
+                p.contentSize = vc.view.fittingSize
             }
         }
     }
