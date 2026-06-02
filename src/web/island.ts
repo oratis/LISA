@@ -126,14 +126,27 @@ export const ISLAND_HTML = `<!doctype html>
   #dot.unread         { background: var(--accent-warm); }
   /* Phase 2: pill dot reflects the strongest signal across all
      Claude sessions. */
-  #dot.claude-working { background: var(--accent-claude);  animation: pulse 1.8s ease-in-out infinite; }
-  #dot.claude-waiting { background: var(--accent-claude); }  /* solid — "needs you" */
+  /* working = a calm slow breathe (it's running, not actionable);
+     waiting = solid + a soft halo that draws the eye ("needs you"). */
+  #dot.claude-working { background: var(--accent-claude);  opacity: 1; animation: breathe 2.6s ease-in-out infinite; }
+  #dot.claude-waiting { background: var(--accent-claude);  opacity: 1; animation: needsYou 2s ease-in-out infinite; }
   #dot.claude-error   { background: #ff5577;               animation: pulse 0.8s ease-in-out infinite; }
   #dot.offline        { background: var(--fg-faint); }
 
   @keyframes pulse {
     0%, 100% { opacity: 0.35; }
     50%      { opacity: 1; }
+  }
+  /* Gentle breathing for "working" — present but not jumpy. */
+  @keyframes breathe {
+    0%, 100% { opacity: 0.55; }
+    50%      { opacity: 1; }
+  }
+  /* "needs you" — solid dot with a pulsing warm halo, more prominent than
+     working without the harsh on/off flash. */
+  @keyframes needsYou {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255, 140, 66, 0); }
+    50%      { box-shadow: 0 0 7px 2px rgba(255, 140, 66, 0.65); }
   }
 
   /* Expanded panel — appears below the pill on hover/click.
@@ -287,8 +300,8 @@ export const ISLAND_HTML = `<!doctype html>
     background: var(--fg-faint);
     margin-right: 4px;
   }
-  #claude-list .pip.working { background: var(--accent-claude); animation: pulse 1.8s ease-in-out infinite; }
-  #claude-list .pip.waiting { background: var(--accent-claude); }
+  #claude-list .pip.working { background: var(--accent-claude); opacity: 1; animation: breathe 2.6s ease-in-out infinite; }
+  #claude-list .pip.waiting { background: var(--accent-claude); opacity: 1; animation: needsYou 2s ease-in-out infinite; }
   #claude-list .pip.error   { background: #ff5577; }
   #claude-list .pip.unknown { background: var(--fg-faint); }
 
