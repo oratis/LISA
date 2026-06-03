@@ -42,6 +42,9 @@ cd "$REPO_ROOT"
 
 PHASE="${1:-full}"
 VERSION="${VERSION:-$(node -p "require('./package.json').version")}"
+# Hand the resolved version to the per-app build so the .app's Info.plist
+# version matches the DMG/release version exactly.
+export LISA_APP_VERSION="$VERSION"
 OUT="${OUT:-dist-release}"
 DMG_NAME="Lisa-Suite-v${VERSION}"
 APPLE_SIGNING_IDENTITY="${APPLE_SIGNING_IDENTITY:-}"

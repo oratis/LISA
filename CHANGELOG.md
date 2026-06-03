@@ -5,6 +5,14 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Lisa.app showed version `0.1.0`** in its About box regardless of the
+  release. `build.sh` now stamps `CFBundleShortVersionString` /
+  `CFBundleVersion` from `LISA_APP_VERSION` (set by `build-mac-apps.sh`) or the
+  repo's `package.json`, so the app version tracks the release automatically
+  (static Info.plist value is now just a fallback).
+
 ### Added — integrations
 
 - **`mcp`** — manage MCP server connections (list/add/remove ~/.lisa/mcp.json),

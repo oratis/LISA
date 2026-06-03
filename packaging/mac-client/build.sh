@@ -98,6 +98,16 @@ mkdir -p "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/Lisa"
 chmod +x "$APP/Contents/MacOS/Lisa"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
+# Stamp the real version into the bundle (the static plist value is only a
+# fallback). Single source of truth: LISA_APP_VERSION (set by build-mac-apps.sh)
+# else the repo's package.json — so the About box tracks the release instead of
+# being stuck at a hardcoded number.
+APP_VERSION="${LISA_APP_VERSION:-$(node -p "require('../../package.json').version" 2>/dev/null || echo "")}"
+if [ -n "$APP_VERSION" ]; then
+    /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $APP_VERSION" "$APP/Contents/Info.plist" 2>/dev/null || true
+    /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $APP_VERSION" "$APP/Contents/Info.plist" 2>/dev/null || true
+    echo "    version:  $APP_VERSION"
+fi
 cp "$ICNS" "$APP/Contents/Resources/AppIcon.icns"
 # Menu bar icon — small face crop loaded by MenuBarController. Bundled
 # at 36×36 (we set image.size to 18pt at runtime so AppKit treats it
