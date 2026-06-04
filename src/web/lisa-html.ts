@@ -1159,7 +1159,7 @@ export const MAIN_HTML = `<!doctype html>
         📎
       </label>
       <button type="button" id="captureBtn" title="Screenshot for Lisa (⌃⌥S anywhere)">📷</button>
-      <button type="button" id="recordBtn" title="Record audio — Lisa will transcribe + summarize it">🎙</button>
+      <button type="button" id="recordBtn" title="Dictate — speak and Lisa drops polished text in the box (hold to record a summary)">🎙</button>
       <textarea id="input" placeholder="Talk to Lisa…  (Enter to send · Shift+Enter for newline)" autofocus></textarea>
       <button type="submit" id="sendBtn">
         <img src="/assets/icon-send.png" alt="">
@@ -1373,6 +1373,9 @@ const recordBtnEl = document.getElementById('recordBtn');
 let mediaRecorder = null;
 let recordedChunks = [];
 let recordStream = null;
+// 'dictation' (default): polish speech → composer for you to edit + send.
+// 'summary' (long-press 🎙): the original record→Lisa-summarizes flow.
+let recordMode = 'dictation';
 
 function pickAudioMime() {
   const prefs = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'];
@@ -1404,23 +1407,24 @@ async function startRecording() {
 
 function stopRecordingTracks() {
   if (recordStream) { recordStream.getTracks().forEach((t) => t.stop()); recordStream = null; }
-  if (recordBtnEl) { recordBtnEl.classList.remove('recording'); recordBtnEl.textContent = '🎙'; recordBtnEl.title = 'Record audio — Lisa will transcribe + summarize it'; }
+  if (recordBtnEl) { recordBtnEl.classList.remove('recording'); recordBtnEl.textContent = '🎙'; recordBtnEl.title = 'Dictate — speak and Lisa drops polished text in the box (hold to record a summary)'; }
 }
 
 async function finishRecording() {
   const mime = (mediaRecorder && mediaRecorder.mimeType) || 'audio/webm';
   stopRecordingTracks();
+  const mode = recordMode;
   const blob = new Blob(recordedChunks, { type: mime });
   recordedChunks = [];
   if (blob.size === 0) return;
-  // Show a transient "transcribing…" line in the log.
-  const pending = el('div', 'thinking', '⋯ transcribing recording');
+  // Transient status line: dictation polishes; summary transcribes.
+  const pending = el('div', 'thinking', mode === 'dictation' ? '⋯ transcribing + polishing' : '⋯ transcribing recording');
   try {
     const data = await blobToBase64(blob);
     const res = await fetch('/api/voice/transcribe', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ data, mediaType: mime }),
+      body: JSON.stringify({ data, mediaType: mime, mode }),
     });
     const out = await res.json();
     if (pending) pending.remove();
@@ -1428,10 +1432,21 @@ async function finishRecording() {
       el('div', 'err', '[voice] ' + (out.error || ('HTTP ' + res.status)));
       return;
     }
+    if (mode === 'dictation') {
+      // Typeless-style: drop the polished text into the composer (cursor at end)
+      // for you to review and send. Never auto-sends. Appends if you'd already
+      // started typing.
+      const text = (out.text || out.transcript || '').trim();
+      if (!text) { el('div', 'err', '[voice] (nothing dictated)'); return; }
+      const existing = input.value.trimEnd();
+      input.value = existing ? existing + '\\n' + text : text;
+      try { input.dispatchEvent(new Event('input', { bubbles: true })); } catch (_) {}
+      try { input.focus(); input.setSelectionRange(input.value.length, input.value.length); } catch (_) {}
+      return;
+    }
+    // summary mode: hand the transcript to Lisa with a summarize framing.
     const transcript = (out.transcript || '').trim();
     if (!transcript) { el('div', 'err', '[voice] (empty transcript)'); return; }
-    // Hand the transcript to Lisa with a summarize framing. send() handles the
-    // chat turn, persistence, and her response in her own voice.
     const framed =
       "I just recorded some audio. Here's the transcript — please give me a clear, " +
       "useful summary (key points, decisions, action items if any), then I might ask follow-ups.\\n\\n" +
@@ -1453,12 +1468,30 @@ function blobToBase64(blob) {
 }
 
 if (recordBtnEl) {
+  // Short click → dictation (polished text into the composer). Press-and-hold
+  // (≥500ms) → summary (record → Lisa summarizes). A click always follows
+  // pointerup, so we just flag long-presses and read the flag on click.
+  let longPress = false;
+  let holdTimer = null;
+  const clearHold = () => { if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; } };
+  recordBtnEl.addEventListener('pointerdown', () => {
+    longPress = false;
+    clearHold();
+    holdTimer = setTimeout(() => { longPress = true; }, 500);
+  });
+  recordBtnEl.addEventListener('pointerup', clearHold);
+  recordBtnEl.addEventListener('pointercancel', clearHold);
+  recordBtnEl.addEventListener('pointerleave', clearHold);
   recordBtnEl.addEventListener('click', () => {
     if (mediaRecorder && mediaRecorder.state === 'recording') {
       mediaRecorder.stop();
-    } else {
-      void startRecording();
+      longPress = false;
+      return;
     }
+    recordMode = longPress ? 'summary' : 'dictation';
+    longPress = false;
+    if (recordBtnEl) recordBtnEl.title = recordMode === 'summary' ? 'Recording for summary — click to stop' : 'Dictating — click to stop';
+    void startRecording();
   });
 }
 
