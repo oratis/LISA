@@ -27,6 +27,7 @@ import { buildRecap, formatRecap } from "../orchestrator/recap.js";
 import type { AgentSession } from "../integrations/types.js";
 import { captureScreenshot, captureSupported, type CaptureMode } from "../vision/capture.js";
 import { transcribeAudio } from "../voice/transcribe.js";
+import { polishDictation, type DictationProvider } from "../voice/dictation.js";
 import {
   loadScreenAdvisorConfig,
   saveScreenAdvisorConfig,
@@ -454,7 +455,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     if (req.method === "POST" && url === "/api/voice/transcribe") {
       let voiceBody = "";
       for await (const chunk of req) voiceBody += chunk.toString("utf8");
-      let payload: { data?: string; mediaType?: string };
+      let payload: { data?: string; mediaType?: string; mode?: string };
       try {
         payload = JSON.parse(voiceBody || "{}");
       } catch {
@@ -482,8 +483,25 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         await fs.writeFile(tmp, Buffer.from(payload.data, "base64"));
         console.error(`[voice] transcribing ${Buffer.from(payload.data, "base64").length} bytes (${ext})`);
         const transcript = await transcribeAudio({ audioPath: tmp });
+        // Dictation mode (Typeless-equivalent): polish the raw transcript into
+        // the clean text the speaker intended (filler/repetition removed,
+        // self-corrections applied, punctuation + formatting), to drop into the
+        // composer. Falls back to the raw transcript if the polish call fails.
+        let text: string | undefined;
+        if (payload.mode === "dictation") {
+          try {
+            text = await polishDictation({
+              provider: getProvider() as unknown as DictationProvider,
+              model: opts.model,
+              transcript,
+            });
+          } catch (err) {
+            console.error(`[voice] dictation polish failed: ${(err as Error).message}`);
+            text = transcript;
+          }
+        }
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({ transcript }));
+        res.end(JSON.stringify(text !== undefined ? { transcript, text } : { transcript }));
       } catch (err) {
         res.writeHead(500, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: (err as Error).message }));

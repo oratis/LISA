@@ -16,6 +16,29 @@ versioning follows [SemVer](https://semver.org/).
   backend is up. Start command resolves `~/.lisa/serve-command.txt` (override for
   running from source) then `lisa serve --web`.
 
+### Added — Voice dictation (Typeless-style polish)
+
+- The 🎙 button now **dictates**: speak, and the raw Whisper transcript is
+  polished into the clean text you intended — filler words and stutters removed,
+  repetition cleaned, **spoken self-corrections applied** ("send it to Bob, no,
+  Alice" → "Alice"), natural punctuation + paragraphs, and spoken formatting
+  commands ("new paragraph", "bullet point") turned into real formatting. The
+  result lands **in the composer for you to review and send** (never auto-sent),
+  the way a dictation tool feeds any text field. Language preserved; it cleans,
+  never answers/translates.
+- **Press-and-hold 🎙** keeps the original record→Lisa-summarizes flow.
+- New `src/voice/dictation.ts` (`polishDictation` + output cleanup, unit-tested);
+  `POST /api/voice/transcribe` gains `mode:"dictation"` → `{transcript, text}`.
+  Live-verified end-to-end on a real model.
+
+### Fixed
+
+- **Lisa.app showed version `0.1.0`** in its About box regardless of the
+  release. `build.sh` now stamps `CFBundleShortVersionString` /
+  `CFBundleVersion` from `LISA_APP_VERSION` (set by `build-mac-apps.sh`) or the
+  repo's `package.json`, so the app version tracks the release automatically
+  (static Info.plist value is now just a fallback).
+
 ### Added — integrations
 
 - **`mcp`** — manage MCP server connections (list/add/remove ~/.lisa/mcp.json),
