@@ -19,6 +19,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var mainWindow: MainWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Auto-start the local backend if it isn't already up, so opening the
+        // app "just works" without a separate `lisa serve --web` in a terminal.
+        BackendController.shared.ensureRunning()
+
         installMenu()
         showMainWindow()
 

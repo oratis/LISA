@@ -65,6 +65,9 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             applyIcon(button: button, offline: false)
         }
         statusItem = item
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(backendStatusChanged),
+            name: BackendController.statusChanged, object: nil)
         start()
     }
 
@@ -271,8 +274,23 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         stack.addArrangedSubview(headerView(inner: inner))
 
         if offline {
-            stack.addArrangedSubview(wrappedLabel("Backend not running — start it:  lisa serve --web",
-                                                  size: 12, color: .secondaryLabelColor, width: inner))
+            let v = NSStackView()
+            v.orientation = .vertical
+            v.alignment = .leading
+            v.spacing = 9
+            v.translatesAutoresizingMaskIntoConstraints = false
+            let starting = BackendController.shared.isStarting
+            v.addArrangedSubview(wrappedLabel(
+                starting ? "Starting the Lisa backend…" : "The Lisa backend isn't running.",
+                size: 12, color: .secondaryLabelColor, width: inner))
+            let start = NSButton(title: starting ? "Starting…" : "Start Lisa backend",
+                                 target: self, action: #selector(startBackend))
+            start.bezelStyle = .rounded
+            start.keyEquivalent = "\r"
+            start.isEnabled = !starting
+            v.addArrangedSubview(start)
+            v.widthAnchor.constraint(equalToConstant: inner).isActive = true
+            stack.addArrangedSubview(v)
         } else {
             if let d = ping?.current_desire, !d.isEmpty {
                 stack.addArrangedSubview(sectionView(title: "CURRENTLY WANTING", body: oneLine(d, 160), inner: inner))
@@ -440,6 +458,26 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     @objc private func openWindow() {
         bringToFront?()
         popover?.close()
+    }
+
+    @objc private func startBackend() {
+        BackendController.shared.start()
+        // Rebuild so the button flips to "Starting…" immediately.
+        if let p = popover, p.isShown {
+            let vc = makePopoverContent()
+            p.contentViewController = vc
+            p.contentSize = vc.view.fittingSize
+        }
+    }
+
+    @objc private func backendStatusChanged() {
+        // Re-poll + rebuild the popover when a start attempt resolves.
+        Task { @MainActor in await refreshOnce() }
+        if let p = popover, p.isShown {
+            let vc = makePopoverContent()
+            p.contentViewController = vc
+            p.contentSize = vc.view.fittingSize
+        }
     }
 
     @objc private func refreshFromPopover() {

@@ -42,7 +42,7 @@ final class DragHandleView: NSView {
     }
 }
 
-final class WebContent: NSViewController, WKNavigationDelegate, WKUIDelegate {
+final class WebContent: NSViewController, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
     static let lisaURL = URL(string: "http://localhost:5757/")!
     static let titlebarHeight: CGFloat = 36
 
@@ -56,6 +56,9 @@ final class WebContent: NSViewController, WKNavigationDelegate, WKUIDelegate {
         let preferences = WKWebpagePreferences()
         preferences.allowsContentJavaScript = true
         config.defaultWebpagePreferences = preferences
+
+        // Bridge so the offline splash's "Start backend" button can reach Swift.
+        config.userContentController.add(self, name: "lisa")
 
         let wv = WKWebView(frame: .zero, configuration: config)
         wv.navigationDelegate = self
@@ -102,6 +105,7 @@ final class WebContent: NSViewController, WKNavigationDelegate, WKUIDelegate {
         webView = wv
         view = container
 
+        observeBackend()
         load()
     }
 
@@ -175,6 +179,26 @@ final class WebContent: NSViewController, WKNavigationDelegate, WKUIDelegate {
         }
     }
 
+    // MARK: - WKScriptMessageHandler (offline splash → Swift)
+
+    func userContentController(_ uc: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard let body = message.body as? [String: Any],
+              let type = body["type"] as? String else { return }
+        if type == "start_backend" {
+            BackendController.shared.start()
+        }
+    }
+
+    /// Reload the chat as soon as the backend reports up (snappier than waiting
+    /// for the 4s retry). Call once from loadView.
+    private func observeBackend() {
+        NotificationCenter.default.addObserver(
+            forName: BackendController.statusChanged, object: nil, queue: .main
+        ) { [weak self] note in
+            if (note.userInfo?["up"] as? Bool) == true { self?.load() }
+        }
+    }
+
     /// Show a styled "backend not running" placeholder inside the WebView
     /// when localhost:5757 isn't reachable. Visually consistent with the
     /// real chat UI's dark theme; replaced atomically when the next
@@ -233,6 +257,9 @@ final class WebContent: NSViewController, WKNavigationDelegate, WKUIDelegate {
                    transition: transform 120ms ease, box-shadow 120ms ease; }
           button:hover { transform: translateY(-1px);
                          box-shadow: 0 6px 18px rgba(106, 212, 255, 0.35); }
+          button.ghost { background: rgba(255,255,255,0.06); color: #cdd3f0;
+                         box-shadow: none; border: 1px solid rgba(255,255,255,0.16); }
+          button:disabled { opacity: 0.6; cursor: default; transform: none; }
           .err { margin-top: 18px; padding: 10px 12px; border-radius: 8px;
                  background: rgba(255, 85, 119, 0.08); color: #ff95a8;
                  border: 1px solid rgba(255, 85, 119, 0.30);
@@ -243,22 +270,24 @@ final class WebContent: NSViewController, WKNavigationDelegate, WKUIDelegate {
           <h1>LISA backend offline</h1>
           <p class=\"sub\">
             Lisa.app loads its chat from <code>http://localhost:5757</code> — but
-            that server isn't responding right now. Start it in a terminal:
+            that server isn't responding right now.
           </p>
 
-          <h2>1. Install (one-time)</h2>
-          <pre>npm install -g @oratis/lisa</pre>
-
-          <h2>2. Configure a provider key (one-time)</h2>
-          <pre>mkdir -p ~/.lisa
-        echo 'ANTHROPIC_API_KEY=sk-ant-...' &gt; ~/.lisa/config.env</pre>
-
-          <h2>3. Start the backend</h2>
-          <pre>lisa serve --web</pre>
-
           <div class=\"row\">
-            <button onclick=\"location.assign('http://localhost:5757/')\">Retry now</button>
+            <button id=\"startBtn\" onclick=\"startBackend()\">▶&nbsp;&nbsp;Start Lisa backend</button>
+            <button class=\"ghost\" onclick=\"location.assign('http://localhost:5757/')\">Retry</button>
           </div>
+          <script>
+            function startBackend() {
+              var b = document.getElementById('startBtn');
+              if (b) { b.textContent = 'Starting…'; b.disabled = true; }
+              try { window.webkit.messageHandlers.lisa.postMessage({ type: 'start_backend' }); } catch (e) {}
+            }
+          </script>
+
+          <h2>Or start it manually</h2>
+          <pre>npm install -g @oratis/lisa     # one-time
+        lisa serve --web                # start the backend</pre>
 
           <div class=\"err\">Last error: \(escaped)</div>
           <p class=\"hint\">
