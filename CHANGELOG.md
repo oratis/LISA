@@ -5,6 +5,17 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — Mac app backend lifecycle
+
+- **Auto-start the backend on launch.** Lisa.app now probes `localhost:5757` at
+  startup and, if nothing answers, launches `lisa serve --web` (login shell,
+  detached) so opening the app just works without a separate terminal.
+- **"Start backend" fallback in every offline surface** — the menu-bar popover,
+  the main-window offline splash (prominent button), and the island offline pill
+  (restyled "sleeping" pill, click to start). All recover automatically once the
+  backend is up. Start command resolves `~/.lisa/serve-command.txt` (override for
+  running from source) then `lisa serve --web`.
+
 ### Added — integrations
 
 - **`mcp`** — manage MCP server connections (list/add/remove ~/.lisa/mcp.json),
