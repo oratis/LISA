@@ -1,9 +1,11 @@
 ---
 /**
- * Base layout — pixel-art aesthetic matching Lisa's chat UI.
+ * Base layout — pixel + geek (CRT terminal) aesthetic.
  *
- * Press Start 2P + VT323 from Google Fonts. Same color palette as
- * src/web/server.ts. Bilingual nav (EN ↔ zh-CN).
+ * Press Start 2P (display) + VT323 (body) from Google Fonts. Palette matches
+ * Lisa's chat UI (cyan #6cf6e1 / amber #ffd167 on deep indigo). The whole page
+ * sits behind a subtle CRT overlay (scanlines + vignette + flicker), all
+ * disabled under prefers-reduced-motion. Bilingual nav (EN ↔ zh-CN).
  */
 export interface Props {
   title: string;
@@ -20,16 +22,21 @@ const navItems = lang === "zh-CN"
       { href: "https://github.com/oratis/LISA", label: "GitHub", external: true },
     ]
   : [
-      { href: "/", label: "Home" },
-      { href: "/install", label: "Install" },
-      { href: "/moods", label: "Mood gallery" },
-      { href: "https://github.com/oratis/LISA", label: "GitHub", external: true },
+      { href: "/", label: "home" },
+      { href: "/install", label: "install" },
+      { href: "/moods", label: "moods" },
+      { href: "https://github.com/oratis/LISA", label: "github", external: true },
     ];
+
+const here = Astro.url.pathname;
+const isActive = (href: string) => href === here || (href !== "/" && href !== "/zh-CN/" && here.startsWith(href));
 
 const altLangPath =
   lang === "zh-CN"
     ? Astro.url.pathname.replace(/^\/zh-CN/, "") || "/"
     : "/zh-CN" + (Astro.url.pathname === "/" ? "/" : Astro.url.pathname);
+
+const promptHost = lang === "zh-CN" ? "lisa@meetlisa" : "lisa@meetlisa";
 ---
 <!doctype html>
 <html lang={lang}>
@@ -38,24 +45,33 @@ const altLangPath =
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>{title} · LISA</title>
     <meta name="description" content={description} />
-    <meta name="theme-color" content="#0a0d2b" />
+    <meta name="theme-color" content="#07091a" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet" />
     <link rel="icon" href="/assets/lisa-mascot.png" />
   </head>
   <body>
+    <!-- CRT overlay: scanlines + flicker. Purely decorative. -->
+    <div class="crt" aria-hidden="true"></div>
+
     <header class="topbar">
       <a class="brand" href={lang === "zh-CN" ? "/zh-CN/" : "/"}>
         <img src="/assets/lisa-mascot.png" alt="" />
-        <span>LISA</span>
+        <span class="brand-name">LISA</span>
+        <span class="brand-caret">_</span>
       </a>
       <nav class="nav">
         {navItems.map(item => (
-          <a href={item.href} target={item.external ? "_blank" : null} rel={item.external ? "noopener" : null}>{item.label}</a>
+          <a
+            href={item.href}
+            class={isActive(item.href) ? "navlink active" : "navlink"}
+            target={item.external ? "_blank" : null}
+            rel={item.external ? "noopener" : null}
+          >{item.label}{item.external ? " ↗" : ""}</a>
         ))}
       </nav>
-      <a class="lang" href={altLangPath}>{lang === "zh-CN" ? "EN" : "中文"}</a>
+      <a class="lang" href={altLangPath}>{lang === "zh-CN" ? "[EN]" : "[中文]"}</a>
     </header>
 
     <main class="main">
@@ -63,123 +79,240 @@ const altLangPath =
     </main>
 
     <footer class="footer">
-      <p class="footer-text">
+      <span class="dotgreen" aria-hidden="true"></span>
+      <span class="footer-text">
         {lang === "zh-CN"
-          ? "Lisa · MIT 开源 · 主权属于用户的 AI"
-          : "Lisa · MIT open source · sovereign AI on your machine"}
-      </p>
+          ? "lisa · MIT 开源 · 主权属于用户的本地 AI · 运行于 ~/.lisa"
+          : "lisa · MIT open source · sovereign AI on your machine · lives in ~/.lisa"}
+      </span>
     </footer>
 
     <style is:global>
       :root {
-        --bg: #0a0d2b;
-        --panel: #1a1f4d;
-        --panel-light: #2a3270;
-        --border: #6a7ad9;
-        --border-light: #a4b2ff;
+        --bg: #07091a;
+        --bg2: #0a0d2b;
+        --panel: #121738;
+        --panel2: #1b2256;
+        --border: #34409a;
+        --border-bright: #6a7ad9;
+        --border-glow: #a4b2ff;
         --text: #e7ecff;
-        --text-dim: #8090c0;
-        --you: #6cf6e1;
-        --lisa: #ffd167;
+        --text-dim: #8a97cf;
+        --cyan: #6cf6e1;
+        --amber: #ffd167;
+        --magenta: #ff7bd5;
+        --green: #6bff9d;
+        --shadow: 4px 4px 0 #05030f;
       }
       * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
       html, body {
         margin: 0;
         padding: 0;
         background: var(--bg);
         color: var(--text);
         font-family: 'VT323', monospace;
-        font-size: 18px;
+        font-size: 20px;
         line-height: 1.5;
         min-height: 100vh;
       }
       body {
         background-image:
-          linear-gradient(rgba(0,0,0,0.06) 50%, transparent 50%),
+          radial-gradient(900px 600px at 50% -10%, rgba(108,246,225,0.10), transparent 70%),
+          radial-gradient(700px 500px at 100% 0%, rgba(255,209,103,0.07), transparent 70%),
           url('/assets/background-tile.png');
-        background-size: 100% 4px, 256px 256px;
-        background-repeat: repeat, repeat;
+        background-size: auto, auto, 256px 256px;
+        background-attachment: fixed, fixed, fixed;
+        background-repeat: no-repeat, no-repeat, repeat;
         image-rendering: pixelated;
+        position: relative;
       }
-      a { color: var(--you); text-decoration: none; }
-      a:hover { color: var(--lisa); }
-      h1, h2, h3 { font-family: 'Press Start 2P', monospace; line-height: 1.4; color: var(--lisa); }
-      h1 { font-size: 22px; margin: 0 0 16px; }
-      h2 { font-size: 16px; margin: 24px 0 12px; }
-      h3 { font-size: 12px; margin: 16px 0 8px; color: var(--border-light); }
-      p { margin: 8px 0 16px; }
+      /* faint vignette so edges fall into the dark */
+      body::before {
+        content: "";
+        position: fixed; inset: 0; z-index: 0; pointer-events: none;
+        background: radial-gradient(120% 120% at 50% 40%, transparent 55%, rgba(2,3,12,0.75) 100%);
+      }
+      /* CRT scanlines + flicker overlay */
+      .crt {
+        position: fixed; inset: 0; z-index: 9999; pointer-events: none;
+        background: repeating-linear-gradient(
+          to bottom,
+          rgba(0,0,0,0) 0px,
+          rgba(0,0,0,0) 2px,
+          rgba(0,0,0,0.16) 3px,
+          rgba(0,0,0,0.16) 4px
+        );
+        mix-blend-mode: multiply;
+        animation: flicker 5s steps(60) infinite;
+      }
+      @keyframes flicker { 0%,100% { opacity: 0.55; } 50% { opacity: 0.42; } }
+
+      a { color: var(--cyan); text-decoration: none; }
+      a:hover { color: var(--amber); }
+
+      h1, h2, h3 {
+        font-family: 'Press Start 2P', monospace;
+        line-height: 1.45;
+        color: var(--amber);
+        text-shadow: 0 0 12px rgba(255,209,103,0.35);
+      }
+      h1 { font-size: 26px; margin: 0 0 18px; }
+      h2 {
+        font-size: 17px; margin: 48px 0 18px; color: var(--cyan);
+        text-shadow: 0 0 12px rgba(108,246,225,0.35);
+      }
+      /* section headers read like terminal commands */
+      h2::before { content: "> "; color: var(--magenta); }
+      h2::after {
+        content: "_"; color: var(--cyan); margin-left: 2px;
+        animation: blink 1.1s steps(1) infinite;
+      }
+      h3 { font-size: 12px; margin: 16px 0 10px; color: var(--border-glow); }
+      @keyframes blink { 0%,49% { opacity: 1; } 50%,100% { opacity: 0; } }
+      @media (prefers-reduced-motion: reduce) {
+        .crt { animation: none; opacity: 0.5; }
+        h2::after { animation: none; }
+        html { scroll-behavior: auto; }
+      }
+
+      p { margin: 10px 0 18px; }
+      strong { color: var(--text); }
+      em { color: var(--cyan); font-style: normal; }
+
       code, pre {
         font-family: 'VT323', monospace;
-        background: var(--panel);
+        font-size: 18px;
+        background: #0b1030;
         border: 2px solid var(--border);
-        padding: 2px 6px;
+        color: var(--cyan);
       }
+      code { padding: 1px 6px; }
       pre {
-        padding: 12px;
+        padding: 14px 16px;
         overflow-x: auto;
         white-space: pre-wrap;
         word-break: break-word;
+        box-shadow: var(--shadow);
       }
-      pre code { background: transparent; border: none; padding: 0; }
+      pre code { background: transparent; border: none; padding: 0; color: var(--text); }
 
-      /* Layout */
+      main, .topbar, .footer { position: relative; z-index: 1; }
+
+      /* ── Top bar ──────────────────────────────────────────────── */
       .topbar {
-        display: flex;
-        align-items: center;
-        gap: 16px;
-        padding: 16px 24px;
-        background: var(--panel);
-        border-bottom: 4px solid var(--border-light);
-        font-family: 'Press Start 2P', monospace;
-        font-size: 11px;
+        display: flex; align-items: center; gap: 18px;
+        padding: 14px 24px;
+        background: linear-gradient(180deg, rgba(18,23,56,0.96), rgba(10,13,43,0.96));
+        border-bottom: 3px solid var(--border-bright);
+        box-shadow: 0 4px 0 rgba(106,122,217,0.2), 0 12px 30px rgba(0,0,0,0.5);
+        position: sticky; top: 0; z-index: 50;
+        backdrop-filter: blur(6px);
       }
       .brand {
-        display: flex; align-items: center; gap: 8px;
-        font-size: 14px;
-        color: var(--lisa);
+        display: flex; align-items: center; gap: 10px;
+        font-family: 'Press Start 2P', monospace; font-size: 15px; color: var(--amber);
       }
-      .brand img {
-        width: 32px; height: 32px;
-        image-rendering: pixelated;
+      .brand img { width: 34px; height: 34px; image-rendering: pixelated;
+        filter: drop-shadow(0 0 6px rgba(255,209,103,0.45)); }
+      .brand-caret { color: var(--cyan); animation: blink 1.1s steps(1) infinite; margin-left: -4px; }
+      .nav { display: flex; flex-wrap: wrap; gap: 10px; margin-left: 12px;
+        font-family: 'Press Start 2P', monospace; font-size: 10px; }
+      .navlink {
+        color: var(--text-dim); padding: 7px 10px;
+        border: 2px solid transparent;
       }
-      .nav {
-        display: flex; flex-wrap: wrap; gap: 16px;
-        margin-left: 16px;
+      .navlink:hover { color: var(--cyan); border-color: var(--border); background: rgba(108,246,225,0.06); }
+      .navlink.active { color: var(--bg); background: var(--cyan); border-color: var(--border-glow); }
+      .lang {
+        margin-left: auto; font-family: 'Press Start 2P', monospace; font-size: 10px;
+        color: var(--text-dim); padding: 7px 10px; border: 2px solid var(--border);
       }
-      .nav a { color: var(--text); }
-      .nav a:hover { color: var(--lisa); }
-      .lang { margin-left: auto; color: var(--text-dim); }
+      .lang:hover { color: var(--amber); border-color: var(--amber); }
 
-      .main {
-        max-width: 880px;
-        margin: 0 auto;
-        padding: 32px 24px 64px;
-      }
+      .main { max-width: 920px; margin: 0 auto; padding: 40px 24px 72px; }
 
+      /* ── Footer ───────────────────────────────────────────────── */
       .footer {
-        text-align: center;
-        padding: 24px;
-        border-top: 2px solid var(--border);
-        background: var(--panel);
+        display: flex; align-items: center; justify-content: center; gap: 10px;
+        padding: 22px; border-top: 2px solid var(--border);
+        background: rgba(10,13,43,0.9);
       }
-      .footer-text {
-        font-family: 'Press Start 2P', monospace;
-        font-size: 9px;
-        color: var(--text-dim);
-        margin: 0;
+      .footer-text { font-family: 'Press Start 2P', monospace; font-size: 9px; color: var(--text-dim); }
+      .dotgreen { width: 9px; height: 9px; background: var(--green);
+        box-shadow: 0 0 8px var(--green); display: inline-block; }
+      @media (prefers-reduced-motion: no-preference) {
+        .dotgreen { animation: pulse 1.6s ease-in-out infinite; }
       }
+      @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
 
-      /* Pixel-art image rendering everywhere */
+      /* ── Shared components (used across pages) ────────────────── */
       img { image-rendering: pixelated; }
+
+      /* Chunky pixel buttons */
+      .btn, .btn-amber, .btn-ghost {
+        display: inline-block;
+        font-family: 'Press Start 2P', monospace; font-size: 11px; line-height: 1.4;
+        padding: 15px 20px; border: 3px solid var(--border-glow);
+        box-shadow: var(--shadow);
+        transition: transform 80ms steps(2), box-shadow 80ms steps(2), background 120ms, color 120ms;
+      }
+      .btn:active, .btn-amber:active, .btn-ghost:active {
+        transform: translate(4px,4px); box-shadow: 0 0 0 #05030f;
+      }
+      .btn-amber { background: var(--amber); color: #1a1300; }
+      .btn-amber:hover { background: var(--cyan); color: #00201c; }
+      .btn { background: var(--panel2); color: var(--text); }
+      .btn:hover { background: var(--panel); color: var(--cyan); border-color: var(--cyan); }
+      .btn-ghost { background: transparent; color: var(--text-dim); border-color: var(--border); box-shadow: none; }
+      .btn-ghost:hover { color: var(--amber); border-color: var(--amber); }
+
+      /* Module cards */
+      .card {
+        background: linear-gradient(180deg, var(--panel), var(--bg2));
+        border: 2px solid var(--border); box-shadow: var(--shadow);
+        padding: 18px; position: relative; overflow: hidden;
+        transition: transform 120ms steps(3), border-color 120ms, box-shadow 120ms;
+      }
+      .card::before {
+        content: ""; position: absolute; top: 0; left: 0; right: 0; height: 4px;
+        background: linear-gradient(90deg, var(--cyan), var(--amber));
+        opacity: 0.65;
+      }
+      .card:hover { transform: translateY(-3px); border-color: var(--border-bright);
+        box-shadow: 6px 6px 0 #05030f; }
+      .card h3 { margin-top: 6px; color: var(--cyan); }
+
+      /* Terminal window chrome */
+      .term {
+        background: #060814; border: 2px solid var(--border-bright);
+        box-shadow: var(--shadow); margin: 18px 0;
+      }
+      .term-bar {
+        display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+        background: var(--panel); border-bottom: 2px solid var(--border);
+        font-family: 'Press Start 2P', monospace; font-size: 8px; color: var(--text-dim);
+      }
+      .term-dot { width: 11px; height: 11px; image-rendering: pixelated; }
+      .term-dot.r { background: #ff5f56; } .term-dot.y { background: #ffbd2e; } .term-dot.g { background: #27c93f; }
+      .term-title { margin-left: 8px; letter-spacing: 1px; }
+      .term-body { padding: 16px; }
+      .term-body .pl { color: var(--magenta); } /* prompt */
+      .term-body .ok { color: var(--green); }
+
+      ul, ol { padding-left: 24px; }
+      li { margin-bottom: 8px; }
 
       /* Mobile */
       @media (max-width: 720px) {
-        .topbar { flex-wrap: wrap; padding: 12px 16px; gap: 8px; }
-        .nav { margin-left: 0; gap: 12px; font-size: 10px; }
-        .lang { margin-left: 0; }
-        .brand { font-size: 12px; }
-        h1 { font-size: 16px; }
-        .main { padding: 16px 12px 32px; }
+        html, body { font-size: 18px; }
+        .topbar { flex-wrap: wrap; padding: 12px 14px; gap: 10px; }
+        .nav { margin-left: 0; gap: 6px; }
+        .lang { margin-left: auto; }
+        .brand { font-size: 13px; }
+        h1 { font-size: 19px; }
+        h2 { font-size: 14px; margin-top: 36px; }
+        .main { padding: 24px 14px 40px; }
       }
     </style>
   </body>
