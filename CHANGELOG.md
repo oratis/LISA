@@ -5,6 +5,14 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-06-07
+
+**Voice dictation, a self-sufficient Mac app, and agent tooling.** 🎙 now
+dictates (Typeless-style polish into the composer); Lisa.app auto-starts its own
+backend; new `mcp` / `npm_info` / `github` tools; and the app finally reports
+its real version. (The meetlisa.ai website also got a pixel/CRT redesign — see
+`website/`.)
+
 ### Added — Mac app backend lifecycle
 
 - **Auto-start the backend on launch.** Lisa.app now probes `localhost:5757` at
