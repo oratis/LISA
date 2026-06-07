@@ -29,12 +29,28 @@ npm run dev
 
 ## Deployment
 
-**Local-only for now** (per `docs/PRODUCTIZATION_PLAN.md`). When ready to go public:
+**Live at [meetlisa.ai](https://meetlisa.ai).** Hosting + routing:
 
-1. Buy a domain (`meetlisa.ai` decided in PRODUCTIZATION_PLAN.md).
-2. Point Cloudflare Pages at this `website/` directory with build command `npm run build` and output `dist/`.
-3. Set DNS: `CNAME @ <project>.pages.dev`.
-4. Update `astro.config.mjs` `site` if changed.
+- **Origin**: GCP **Cloud Run** service `lisa-web` (`oratis-491316` / `us-central1`),
+  built from this `website/` via [`deploy/Dockerfile`](deploy/Dockerfile)
+  (static build → `serve` on `$PORT`).
+- **Edge**: `meetlisa.ai` is on **Cloudflare (Free)**. The Free plan can't
+  rewrite origin Host/SNI (Origin Rules' Host Header + SNI overrides are
+  Enterprise-only), which Cloud Run requires — so a tiny **Cloudflare Worker**
+  (`meetlisa-proxy`, routes `meetlisa.ai/*` + `www/*`) reverse-proxies to the
+  `run.app` origin, where `fetch()` makes Host + SNI correct automatically.
+
+### Deploy
+
+```sh
+website/deploy/deploy.sh --canary   # build a no-traffic 'canary' revision to verify
+website/deploy/deploy.sh            # build + promote to 100% traffic
+```
+
+The script stages a self-contained build context (this `website/` + the
+repo-root `scripts/lisa-moods.ts` and `src/web/assets/` that `prebuild` needs)
+so the asset symlink resolves inside the image. Env overrides: `PROJECT`,
+`REGION`, `SERVICE`.
 
 ## Editing
 
