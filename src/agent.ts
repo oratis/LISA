@@ -74,6 +74,11 @@ export interface RunAgentResult {
   cacheWriteTokens: number;
   inputTokens: number;
   outputTokens: number;
+  /**
+   * The provider's stop reason from the final turn ("end_turn", "max_tokens",
+   * …), or "max_iterations" when the loop hit `maxIterations` while the model
+   * still wanted to call tools (the run was truncated, not finished).
+   */
   stopReason: string;
 }
 
@@ -218,12 +223,19 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
     outputTokens += result.usage.outputTokens;
     stopReason = result.stopReason;
 
-    const assistant: StoredMessage = {
-      role: "assistant",
-      content: result.content,
-    };
-    messages.push(assistant);
-    await onMessagePersist?.(assistant);
+    // OpenAI/Gemini turns can yield neither text nor tool calls, i.e. an
+    // empty content array. Anthropic's API rejects assistant messages with
+    // empty content (400), so keep them out of history/persistence entirely.
+    // Safe to skip: an empty message carries no tool_use blocks, so no
+    // tool_result pairing depends on it.
+    if (result.content.length > 0) {
+      const assistant: StoredMessage = {
+        role: "assistant",
+        content: result.content,
+      };
+      messages.push(assistant);
+      await onMessagePersist?.(assistant);
+    }
 
     const lastText =
       (result.content.find((b) => b.type === "text") as Anthropic.TextBlock | undefined)
@@ -382,6 +394,18 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
     messages.push(toolMessage);
     await onMessagePersist?.(toolMessage);
     onEvent?.({ type: "turn_end" });
+  }
+
+  // The loop breaks whenever a turn ends with stopReason !== "tool_use", so
+  // landing here with "tool_use" means the iteration cap truncated a run the
+  // model wanted to continue. Make that visible to callers and the UI instead
+  // of silently reporting the last provider stop reason.
+  if (iterations >= maxIterations && stopReason === "tool_use") {
+    stopReason = "max_iterations";
+    onEvent?.({
+      type: "info",
+      message: `[agent] stopped after ${maxIterations} iterations with tool calls still pending (stopReason=max_iterations)`,
+    });
   }
 
   return {

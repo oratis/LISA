@@ -24,26 +24,39 @@
  *     handle multiple if present, but don't rely on it.
  */
 import type Anthropic from "@anthropic-ai/sdk";
-import { GoogleGenAI } from "@google/genai";
-import type { Content, Part } from "@google/genai";
+import type { Content, GoogleGenAI, Part } from "@google/genai";
 import type { StoredMessage } from "../types.js";
 import type { Provider, ProviderResult, ProviderRunOpts } from "./types.js";
 
 export class GeminiProvider implements Provider {
   readonly name = "gemini";
-  private client: GoogleGenAI;
+  // Lazily constructed on first runTurn so that merely importing the provider
+  // registry (Anthropic-only users, unit tests) doesn't load @google/genai.
+  private client: GoogleGenAI | null = null;
+  private readonly clientOpts: { apiKey?: string; baseURL?: string };
 
   constructor(opts: { apiKey?: string; baseURL?: string } = {}) {
-    // GoogleGenAI doesn't accept a custom fetch; relies on undici globally,
-    // which proxy-bootstrap.ts has already configured. baseURL is supported
-    // via httpOptions.
-    this.client = new GoogleGenAI({
-      apiKey: opts.apiKey,
-      ...(opts.baseURL ? { httpOptions: { baseUrl: opts.baseURL } } : {}),
-    });
+    this.clientOpts = opts;
+  }
+
+  private async getClient(): Promise<GoogleGenAI> {
+    if (!this.client) {
+      const { GoogleGenAI } = await import("@google/genai");
+      // GoogleGenAI doesn't accept a custom fetch; relies on undici globally,
+      // which proxy-bootstrap.ts has already configured. baseURL is supported
+      // via httpOptions.
+      this.client = new GoogleGenAI({
+        apiKey: this.clientOpts.apiKey,
+        ...(this.clientOpts.baseURL
+          ? { httpOptions: { baseUrl: this.clientOpts.baseURL } }
+          : {}),
+      });
+    }
+    return this.client;
   }
 
   async runTurn(opts: ProviderRunOpts): Promise<ProviderResult> {
+    const client = await this.getClient();
     const contents = anthropicToGemini(opts.messages);
     const tools =
       opts.tools.length > 0
@@ -58,10 +71,12 @@ export class GeminiProvider implements Provider {
           ]
         : undefined;
 
-    const stream = await this.client.models.generateContentStream({
+    const stream = await client.models.generateContentStream({
       model: opts.model,
       contents,
       config: {
+        // Aborts the in-flight request (the SDK then throws an abort error).
+        abortSignal: opts.signal,
         systemInstruction: opts.systemPrompt,
         tools,
         maxOutputTokens: opts.maxTokens ?? 16_000,
