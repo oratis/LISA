@@ -126,3 +126,58 @@ export const READ_ONLY_TOOL_NAMES = new Set([
 export function readOnlySubset(tools: ToolDefinition[]): ToolDefinition[] {
   return tools.filter((t) => READ_ONLY_TOOL_NAMES.has(t.name));
 }
+
+/**
+ * Tools that must NOT be available to self-driven autonomous runs (desire
+ * heartbeats, idle/dreams). These runs execute unattended on a timer with
+ * prompts that Lisa wrote herself — if an indirect prompt injection (e.g. via
+ * web_fetch content) plants a malicious actionable desire, these are the tools
+ * that would turn it into persistent code execution. Soul / memory / journal /
+ * skill tools stay available: autonomous time is for self-work, not ops.
+ *
+ * User-defined heartbeat tasks (~/.lisa/heartbeat.json) keep the full toolset —
+ * those prompts are authored by the user, same trust as typing into the REPL.
+ *
+ * Escape hatch: LISA_AUTONOMOUS_FULL_TOOLS=1 restores the old behavior.
+ */
+export const AUTONOMOUS_BLOCKED_TOOL_NAMES = new Set([
+  "bash",
+  "write",
+  "edit",
+  "apply_patch",
+  "redeploy",
+  "task",
+  "dispatch_agent",
+  "signal_agent",
+  "scheduled_dispatch",
+  "compare_agents",
+  "run_checks",
+  "github",
+  "mcp",
+]);
+
+export function autonomousSubset(tools: ToolDefinition[]): ToolDefinition[] {
+  if (process.env.LISA_AUTONOMOUS_FULL_TOOLS === "1") return tools;
+  return tools.filter((t) => !AUTONOMOUS_BLOCKED_TOOL_NAMES.has(t.name));
+}
+
+/**
+ * Tools that must NOT be reachable from remote-origin surfaces (IM channels:
+ * Telegram / Discord / Slack / Feishu / iMessage / webhook) by default.
+ * A channel message comes from whoever can reach the bot — with an empty
+ * allow-list that can be anyone, and even with one it's a remote, replayable
+ * surface. Mutating fs / shell / process-spawning / GitHub-writing tools turn
+ * a single hostile message into local code execution, so they're off unless
+ * the channel entry opts in with `"unsafeFullTools": true`.
+ *
+ * skill_manage is also blocked: a remotely planted skill becomes persistent
+ * prompt material for later full-tool local sessions.
+ */
+export const REMOTE_BLOCKED_TOOL_NAMES = new Set([
+  ...AUTONOMOUS_BLOCKED_TOOL_NAMES,
+  "skill_manage",
+]);
+
+export function remoteSafeSubset(tools: ToolDefinition[]): ToolDefinition[] {
+  return tools.filter((t) => !REMOTE_BLOCKED_TOOL_NAMES.has(t.name));
+}

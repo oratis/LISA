@@ -1,8 +1,11 @@
 import http from "node:http";
 import path from "node:path";
 import fs from "node:fs/promises";
+import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { runAgent } from "../agent.js";
+import { fireHooks } from "../hooks/runner.js";
+import type { HookSpec } from "../plugins/types.js";
 import { saveConfigEnv } from "../env.js";
 import { runIdleOnce } from "../idle/runner.js";
 import { getIdleWatcher } from "../idle/watcher.js";
@@ -21,7 +24,8 @@ import { ISLAND_HTML } from "./island.js";
 import { MAIN_HTML } from "./lisa-html.js";
 import { OrchestratorHub, loadOrchestratorConfig } from "../integrations/hub.js";
 import { setCurrentHub } from "../integrations/current-hub.js";
-import { advise, formatDigest } from "../advisor/engine.js";
+import { advise, dismissSuggestion, formatDigest } from "../advisor/engine.js";
+import type { SuggestionCategory, SuggestedAction, Urgency } from "../advisor/types.js";
 import { recordEvent } from "../orchestrator/journal.js";
 import { buildRecap, formatRecap } from "../orchestrator/recap.js";
 import type { AgentSession } from "../integrations/types.js";
@@ -53,6 +57,49 @@ export interface WebServerOptions {
   reflect: boolean;
   /** Minutes of inactivity before idle mode fires. 0 disables. */
   idleMinutes?: number;
+  /**
+   * Bind address. Defaults to 127.0.0.1 — the server drives a full-tool agent
+   * with no per-request auth, so it must not be reachable from the LAN unless
+   * the user explicitly opts in. Binding to a non-loopback address requires
+   * LISA_WEB_TOKEN to be set; non-loopback requests must then present the
+   * token (Authorization: Bearer / ?token= / cookie).
+   */
+  host?: string;
+  /** PreToolUse/PostToolUse hook specs from loaded plugins. */
+  hooks?: HookSpec[];
+}
+
+/** True for loopback peer/bind addresses (v4, v6, and v4-mapped-v6 forms). */
+export function isLoopbackAddress(addr: string): boolean {
+  const a = addr.startsWith("::ffff:") ? addr.slice("::ffff:".length) : addr;
+  return a === "::1" || a === "localhost" || a.startsWith("127.");
+}
+
+function timingSafeEqualStr(a: string, b: string): boolean {
+  // Hash both sides so the comparison is constant-time regardless of length.
+  const ha = crypto.createHash("sha256").update(a).digest();
+  const hb = crypto.createHash("sha256").update(b).digest();
+  return crypto.timingSafeEqual(ha, hb);
+}
+
+/**
+ * Extract a presented web token from Authorization header, lisa_token cookie,
+ * or ?token= query param (the query form exists so a phone can bootstrap the
+ * cookie by opening http://host:5757/?token=...).
+ */
+function presentedToken(req: http.IncomingMessage, url: string): string | null {
+  const auth = req.headers.authorization;
+  if (auth?.startsWith("Bearer ")) return auth.slice("Bearer ".length).trim();
+  const cookies = req.headers.cookie ?? "";
+  const m = /(?:^|;\s*)lisa_token=([^;]+)/.exec(cookies);
+  if (m) return decodeURIComponent(m[1]!);
+  try {
+    const q = new URL(url, "http://localhost").searchParams.get("token");
+    if (q) return q;
+  } catch {
+    /* fall through */
+  }
+  return null;
 }
 
 async function resumeOrCreateWebSession(model: string): Promise<SessionStore> {
@@ -93,6 +140,16 @@ async function resumeOrCreateWebSession(model: string): Promise<SessionStore> {
 }
 
 export async function startWebServer(opts: WebServerOptions): Promise<http.Server> {
+  const host = opts.host ?? "127.0.0.1";
+  const webToken = process.env.LISA_WEB_TOKEN?.trim() || null;
+  if (!isLoopbackAddress(host) && !webToken) {
+    throw new Error(
+      `refusing to bind ${host} without LISA_WEB_TOKEN — every endpoint drives a ` +
+        `full-tool agent on this machine. Set LISA_WEB_TOKEN (e.g. ` +
+        `\`LISA_WEB_TOKEN=$(openssl rand -hex 24)\` in ~/.lisa/config.env), then open ` +
+        `http://<host>:${opts.port}/?token=<value> from the remote device.`,
+    );
+  }
   const snapshot = await buildSystemPromptSnapshot();
   const initialFingerprint = await getPromptFingerprint();
   // Per-process hot-reload cache for the web server: same shape as cli's
@@ -129,6 +186,13 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   const { messages: savedMessages } = await session.readMessagePage(0, 9999);
   const history: StoredMessage[] = [...savedMessages];
   const abort = new AbortController();
+  const hooks = opts.hooks ?? [];
+  // Serialize chat turns. The whole process shares ONE history array and ONE
+  // session file — two tabs (or a tab + the island) POSTing /chat concurrently
+  // would run two agents against the same history reference and clobber each
+  // other's `history.length = 0; history.push(...)` at the end. Same model as
+  // the channels router's per-thread busy+queue, with a promise chain.
+  let chatChain: Promise<void> = Promise.resolve();
 
   // ── Persistent /events SSE subscribers (mood + idle broadcasts) ─────
   const eventClients = new Set<http.ServerResponse>();
@@ -190,6 +254,16 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // card — pull-friendly, not an interrupt. lastIdleMessage is assigned
   // inside the async callback (runs after all locals init; no TDZ issue).
   const ADVISE_INTERVAL_MS = 5 * 60_000;
+  // The latest surfaced suggestions, kept so a freshly opened island can pull
+  // them (GET /api/advisor/latest) instead of waiting for the next SSE tick.
+  interface AdvisorCardSuggestion {
+    id: string;
+    category: SuggestionCategory;
+    urgency: Urgency;
+    text: string;
+    action: SuggestedAction | null;
+  }
+  let lastAdvisorSuggestions: { suggestions: AdvisorCardSuggestion[]; at: string } | null = null;
   const adviseTimer = setInterval(() => {
     void (async () => {
       try {
@@ -201,6 +275,18 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         const at = new Date().toISOString();
         lastIdleMessage = { text, at };
         broadcast({ type: "idle_message", text, at, source: "advisor" });
+        // Structured twin of the digest: same suggestions with id / urgency /
+        // action attached so the island can render per-suggestion buttons
+        // (act → prefill chat, ✕ → dismiss feeds the learning loop).
+        const suggestions: AdvisorCardSuggestion[] = surface.map((s) => ({
+          id: s.id,
+          category: s.category,
+          urgency: s.urgency,
+          text: s.text,
+          action: s.action ?? null,
+        }));
+        lastAdvisorSuggestions = { suggestions, at };
+        broadcast({ type: "advisor_suggestions", suggestions, at });
         console.error(`[advisor] surfaced ${surface.length} suggestion(s)`);
       } catch (err) {
         console.error(`[advisor] tick failed: ${(err as Error).message}`);
@@ -324,7 +410,31 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   const server = http.createServer(async (req, res) => {
     const url = req.url ?? "/";
 
-    if (req.method === "GET" && url === "/") {
+    // ── Auth gate ────────────────────────────────────────────────────────
+    // Loopback callers are the local user — no token needed (the default
+    // 127.0.0.1 bind means this is the only case unless the user opted in
+    // via --host). Anything else must present LISA_WEB_TOKEN; /chat drives a
+    // full-tool agent and /api/vision/capture grabs the screen, so an
+    // unauthenticated non-loopback request is a remote-code-execution hole.
+    const remoteAddr = req.socket.remoteAddress ?? "";
+    if (!isLoopbackAddress(remoteAddr)) {
+      const presented = webToken ? presentedToken(req, url) : null;
+      if (!webToken || !presented || !timingSafeEqualStr(presented, webToken)) {
+        res.writeHead(401, { "content-type": "text/plain" });
+        res.end("unauthorized");
+        return;
+      }
+      // Token arrived via query param (first open from a phone): pin it as a
+      // cookie so subsequent same-origin fetch/EventSource calls authenticate.
+      if (!req.headers.cookie?.includes("lisa_token=")) {
+        res.setHeader(
+          "set-cookie",
+          `lisa_token=${encodeURIComponent(presented)}; HttpOnly; SameSite=Strict; Path=/`,
+        );
+      }
+    }
+
+    if (req.method === "GET" && (url === "/" || url.startsWith("/?"))) {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       res.end(MAIN_HTML);
       return;
@@ -332,7 +442,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
 
     // Island widget — designed to be opened in a tiny browser window
     // (Arc, Vivaldi PWA, Safari split). See docs/MAC_ISLAND_PLAN.md.
-    if (req.method === "GET" && url === "/island") {
+    if (req.method === "GET" && (url === "/island" || url.startsWith("/island?"))) {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       res.end(ISLAND_HTML);
       return;
@@ -513,6 +623,50 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
 
     if (req.method === "POST" && url === "/api/island/dismiss-unread") {
       lastIdleMessage = null;
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+
+    // Latest advisor suggestions, for a freshly opened island.
+    if (req.method === "GET" && url === "/api/advisor/latest") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify(lastAdvisorSuggestions ?? { suggestions: [], at: null }));
+      return;
+    }
+
+    // ✕ on an advisor suggestion: persist the dismissal so the category
+    // down-weights over time ("learns to shut up"), and drop it from the
+    // cached card so a refreshed island doesn't resurrect it.
+    if (req.method === "POST" && url === "/api/advisor/dismiss") {
+      let dBody = "";
+      for await (const chunk of req) dBody += chunk.toString("utf8");
+      let payload: { id?: unknown; category?: unknown };
+      try {
+        payload = JSON.parse(dBody || "{}");
+      } catch {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("bad json");
+        return;
+      }
+      if (typeof payload.id !== "string" || typeof payload.category !== "string") {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("id and category required");
+        return;
+      }
+      try {
+        await dismissSuggestion(payload.id, payload.category as SuggestionCategory);
+      } catch (err) {
+        res.writeHead(500, { "content-type": "text/plain" });
+        res.end((err as Error).message);
+        return;
+      }
+      if (lastAdvisorSuggestions) {
+        lastAdvisorSuggestions = {
+          ...lastAdvisorSuggestions,
+          suggestions: lastAdvisorSuggestions.suggestions.filter((s) => s.id !== payload.id),
+        };
+      }
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true }));
       return;
@@ -893,7 +1047,25 @@ self.addEventListener('fetch', (event) => {
     if (req.method === "POST" && url === "/chat") {
       let body = "";
       for await (const chunk of req) body += chunk.toString("utf8");
-      const { message, files } = JSON.parse(body) as { message: string; files?: Array<{ name: string; mediaType: string; data: string }> };
+      let message: string;
+      let files: Array<{ name: string; mediaType: string; data: string }> | undefined;
+      try {
+        // Every other endpoint guards its JSON.parse — this one used to be the
+        // only one that didn't, and a malformed body left the socket hanging.
+        const parsed = JSON.parse(body) as {
+          message?: unknown;
+          files?: Array<{ name: string; mediaType: string; data: string }>;
+        };
+        if (typeof parsed.message !== "string" || !parsed.message.trim()) {
+          throw new Error("missing message");
+        }
+        message = parsed.message;
+        files = parsed.files;
+      } catch (err) {
+        res.writeHead(400, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: `bad request: ${(err as Error).message}` }));
+        return;
+      }
       // User just talked — reset the idle watcher.
       try { getIdleWatcher(60 * 60_000).tick(); } catch {}
       res.writeHead(200, {
@@ -907,63 +1079,102 @@ self.addEventListener('fetch', (event) => {
       moodBus.on("mood", onMood);
       // Send the current mood immediately so a fresh tab knows where to start.
       send({ type: "mood", slug: moodBus.current() });
-      try {
-        // Use the freshest cached prompt for this chat. If soul / skills /
-        // memory changed since the previous chat, rebuildPrompt() picks it up.
-        const fresh = await rebuildPrompt();
-        const result = await runAgent({
-          provider: getProvider(),
-          systemPrompt: fresh.text,
-          tools: opts.tools,
-          toolCtx: {
-            cwd: process.cwd(),
-            signal: abort.signal,
-            log: () => {},
-          },
-          history,
-          userMessage: message,
-          userFiles: files,
-          model: opts.model,
-          thinking: opts.thinking,
-          onEvent: (ev) => {
-            if (ev.type === "text_delta" && ev.text)
-              send({ type: "text", text: ev.text });
-            if (ev.type === "tool_call_start")
-              send({
-                type: "tool_start",
-                name: ev.toolName,
-                input: ev.toolInput,
-              });
-            if (ev.type === "tool_call_end")
-              send({
-                type: "tool_end",
-                name: ev.toolName,
-                isError: ev.isError === true,
-                resultPreview:
-                  typeof ev.toolResult === "string"
-                    ? ev.toolResult.slice(0, 200)
-                    : "",
-              });
-            if (ev.type === "system_prompt_rebuilt")
-              send({ type: "soul_reload", message: ev.message ?? "" });
-            if (ev.type === "error")
-              send({ type: "error", message: ev.message ?? "" });
-          },
-          onMessagePersist: (m) => session.appendMessage(m),
-          hotReload: {
-            initialFingerprint: fresh.fingerprint,
-            rebuild: rebuildPrompt,
-          },
-        });
-        history.length = 0;
-        history.push(...result.history);
-        send({ type: "done" });
-      } catch (err) {
-        send({ type: "error", message: (err as Error).message });
-      } finally {
-        moodBus.off("mood", onMood);
-        res.end();
-      }
+      const runTurn = async (): Promise<void> => {
+        try {
+          // Use the freshest cached prompt for this chat. If soul / skills /
+          // memory changed since the previous chat, rebuildPrompt() picks it up.
+          const fresh = await rebuildPrompt();
+          const result = await runAgent({
+            provider: getProvider(),
+            systemPrompt: fresh.text,
+            tools: opts.tools,
+            toolCtx: {
+              cwd: process.cwd(),
+              signal: abort.signal,
+              log: () => {},
+            },
+            history,
+            userMessage: message,
+            userFiles: files,
+            model: opts.model,
+            thinking: opts.thinking,
+            onEvent: (ev) => {
+              if (ev.type === "text_delta" && ev.text)
+                send({ type: "text", text: ev.text });
+              if (ev.type === "tool_call_start")
+                send({
+                  type: "tool_start",
+                  name: ev.toolName,
+                  input: ev.toolInput,
+                });
+              if (ev.type === "tool_call_end")
+                send({
+                  type: "tool_end",
+                  name: ev.toolName,
+                  isError: ev.isError === true,
+                  resultPreview:
+                    typeof ev.toolResult === "string"
+                      ? ev.toolResult.slice(0, 200)
+                      : "",
+                });
+              if (ev.type === "system_prompt_rebuilt")
+                send({ type: "soul_reload", message: ev.message ?? "" });
+              if (ev.type === "error")
+                send({ type: "error", message: ev.message ?? "" });
+            },
+            // Same plugin hook wiring as the CLI turn — PreToolUse can block,
+            // PostToolUse can rewrite. (Was CLI-only; web tool calls bypassed
+            // every configured hook.)
+            preToolHook: hooks.length === 0 ? undefined : async (name, input) => {
+              const r = await fireHooks(
+                "PreToolUse",
+                hooks,
+                { TOOL_NAME: name, TOOL_INPUT: JSON.stringify(input), SESSION_ID: session.id, LISA_HOME, CLAUDE_PROJECT_DIR: process.cwd() },
+                process.cwd(),
+              );
+              if (r.blocked.length > 0) return { block: r.blocked.join("; ") };
+            },
+            postToolHook: hooks.length === 0 ? undefined : async (name, input, result, isError) => {
+              const r = await fireHooks(
+                "PostToolUse",
+                hooks,
+                {
+                  TOOL_NAME: name,
+                  TOOL_INPUT: JSON.stringify(input),
+                  TOOL_RESULT: result,
+                  TOOL_ERROR: isError ? "1" : "",
+                  SESSION_ID: session.id,
+                  LISA_HOME,
+                  CLAUDE_PROJECT_DIR: process.cwd(),
+                },
+                process.cwd(),
+              );
+              if (r.rewriteResult != null) return { rewriteResult: r.rewriteResult };
+            },
+            onMessagePersist: (m) => session.appendMessage(m),
+            hotReload: {
+              initialFingerprint: fresh.fingerprint,
+              rebuild: rebuildPrompt,
+            },
+          });
+          history.length = 0;
+          history.push(...result.history);
+          send({ type: "done" });
+        } catch (err) {
+          send({ type: "error", message: (err as Error).message });
+        } finally {
+          moodBus.off("mood", onMood);
+          res.end();
+        }
+      };
+      // Queue behind any in-flight turn; the SSE stream stays open while we
+      // wait, so the second tab just sees its reply start a little later.
+      const job = chatChain.then(runTurn, runTurn);
+      chatChain = job.then(
+        () => {},
+        () => {},
+      );
+      await job;
       return;
     }
 
@@ -986,6 +1197,6 @@ self.addEventListener('fetch', (event) => {
     res.writeHead(404);
     res.end();
   });
-  server.listen(opts.port);
+  server.listen(opts.port, host);
   return server;
 }
