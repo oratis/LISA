@@ -5,6 +5,99 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+**Security hardening + advisor trust, from the v0.9 product review**
+([docs/PRODUCT_REVIEW_v0.9.md](docs/PRODUCT_REVIEW_v0.9.md)). The review found
+one cross-cutting hole — `serve --web` bound every interface with zero auth in
+front of a full-tool agent — plus two advisor false alarms and a batch of
+unlocked soul writes. All closed below.
+
+### Security
+
+- **`serve --web` now binds 127.0.0.1 by default** (was: all interfaces while
+  *printing* "localhost"). Binding anything else requires `--host <addr>` AND
+  `LISA_WEB_TOKEN`; non-loopback requests must present the token
+  (`Authorization: Bearer` / `?token=` once per device → HttpOnly cookie).
+  Closes the LAN-RCE: `/chat` drives a full-tool agent and
+  `/api/vision/capture` grabs the screen, and neither had any auth.
+- **IM channels run a remote-safe toolset by default** — no `bash` / `write` /
+  `edit` / `apply_patch` / `task` / `redeploy` / `dispatch_agent` /
+  `signal_agent` / `scheduled_dispatch` / `compare_agents` / `run_checks` /
+  `github` / `mcp` / `skill_manage` on remote-origin messages. Per-channel
+  opt-back-in: `"unsafeFullTools": true`. The router now also warns loudly at
+  startup for any channel without an allow-list.
+- **Self-driven autonomous runs are tool-bounded** — desire heartbeats, the
+  weekly examen, and idle/dreams (prompts Lisa wrote for herself, executing
+  unattended) lose shell / fs-mutation / dispatch tools; soul, memory, journal,
+  skills, and web reading remain. User-authored `heartbeat.json` tasks keep the
+  full toolset. Escape hatch: `LISA_AUTONOMOUS_FULL_TOOLS=1`. This breaks the
+  "indirect prompt injection → actionable desire → persistent unattended code
+  execution every 30 minutes" chain.
+- **Feishu events are now verified** — `verificationToken` (stored but never
+  checked before) is required and compared with `timingSafeEqual`;
+  `X-Lark-Signature` + a 5-minute timestamp window are enforced when
+  `encryptKey` is set. Matches the Slack adapter's posture.
+- **Plugin hooks fire on the web path** — `serve --web` now wires
+  PreToolUse/PostToolUse like the CLI does (they were silently skipped).
+
+### Fixed
+
+- **Advisor false alarm #1**: a tool running >5s with a quiet transcript was
+  reported as "waiting for permission" and escalated **urgent** (every long
+  `npm test` / `Bash` call tripped it). Stall <60s now stays `working`; longer
+  stalls surface as a normal-severity "stalled on <tool>" via detectStuck;
+  `pendingPermission` only ever comes from an explicit permission record.
+- **Advisor false alarm #2**: an open PR with >14 days of inactivity was
+  reported as "merged/closed". The activity window now only limits what's
+  listed, never what's considered closed.
+- **Abort actually cancels LLM streams** — all three providers now forward
+  `AbortSignal` to their SDKs (Anthropic/OpenAI request options, Gemini
+  `config.abortSignal`). Ctrl-C used to stop tools but let the stream burn on.
+- **`maxIterations` truncation is explicit** — `stopReason: "max_iterations"`
+  + an info event, instead of silently returning stale text.
+- **Empty assistant turns no longer poison history** — OpenAI/Gemini empty
+  rounds produced `content: []` messages that a later Anthropic call rejects.
+- **Concurrent `/chat` no longer corrupts history** — turns are serialized
+  (two tabs used to run two agents against the same history array); malformed
+  JSON gets a 400 instead of a hung socket.
+- **Soul writes are cross-process safe** — `appendJournal`, emotion updates
+  (now via a shared decay-first `applyEmotionDelta` used by both `soul_feel`
+  and reflect — reflect used to skip decay), and git commits all run under
+  cross-process locks; idle gained a run-lock like heartbeat's. Fixes lost
+  journal appends / emotion events and soul-history commits silently swallowed
+  on `.git/index.lock` collisions.
+- **Tamper detection sees deletions** — wiping `identity.md` now flags
+  `identity.md (deleted)` instead of passing silently; missing `emotions.json`
+  no longer decays everything to zero ("since 1970").
+- Gemini SDK is lazily imported — Anthropic-only users no longer pay for
+  `@google/genai` at registry import time.
+
+### Added
+
+- **Island advisor cards with real actions** — cross-agent suggestions render
+  with per-suggestion buttons: the action prefills the chat with a concrete
+  ask (nothing auto-runs; `open` reveals the folder natively) and ✕ persists a
+  dismissal that down-weights the category over time (the previously dead
+  `applyDismissal` learning loop is now wired: `POST /api/advisor/dismiss`,
+  `GET /api/advisor/latest`, SSE `advisor_suggestions`).
+- `--host <addr>` flag for `serve --web` (see Security).
+- Tests for the new boundaries: loopback gate, autonomous/remote tool subsets,
+  Feishu verification (token, signature, replay), watcher staleness, PR-window
+  semantics, abort passthrough, max-iterations, empty-content guard.
+
+### Docs & packaging
+
+- README (EN/zh) stops claiming the DMG contains a separate LisaIsland.app
+  (folded into Lisa.app in v0.7), corrects "~11k" → "~22k lines", documents
+  the new security defaults, and adds an honest orchestrator scope note:
+  **deep activity observation is Claude Code only today; Codex / OpenCode /
+  Aider / GitHub PRs are state-level**. PITCH.md now leads with the soul hook
+  and scopes the orchestrator claim the same way.
+- Release gates: `release.yml` runs `npm test` before building;
+  `prepublishOnly` runs `typecheck && test`. Release bundles prune
+  devDependencies (~59MB smaller unpacked). Homebrew master formulas, the
+  launcher banner, and `Info.plist` fallback no longer pin stale versions;
+  completions learn `autostart`; CONTRIBUTING points at the real test layout.
+
 ## [0.9.0] — 2026-06-07
 
 **Voice dictation, a self-sufficient Mac app, and agent tooling.** 🎙 now

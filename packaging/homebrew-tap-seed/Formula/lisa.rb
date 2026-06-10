@@ -1,5 +1,8 @@
 # Homebrew formula for Lisa.
 #
+# NOTE: the live tap (github.com/oratis/homebrew-tap) is the source of truth —
+# this file is a template, synced there per release via the docs/PUBLISH.md flow.
+#
 # This file is the master template. The actual formula that users install
 # lives in a separate tap repository: github.com/oratis/homebrew-tap
 # at Formula/lisa.rb. Per release, copy this file there and update:
@@ -14,8 +17,8 @@ class Lisa < Formula
   # dist/ (compiled JS + 114 pixel-art mood portraits) so the formula doesn't
   # need to run `tsc` (which would require TypeScript devDependencies that
   # `npm install --global` skips).
-  url "https://registry.npmjs.org/@oratis/lisa/-/lisa-0.2.0.tgz"
-  sha256 "3acaa5a5efd27b64e1143441a8040405f8b3d4bb060b41b513f3f1971c632971"
+  url "https://registry.npmjs.org/@oratis/lisa/-/lisa-0.9.0.tgz"
+  sha256 "da8d56dcbad0d8f7a5f36b0d04f2e7ffac8ef9dee2af3fe3333b700bc69e69c4"
   license "MIT"
   head "https://github.com/oratis/LISA.git", branch: "main"
 

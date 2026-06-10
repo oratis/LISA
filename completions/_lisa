@@ -41,6 +41,7 @@ _lisa() {
             case "$line[1]" in
                 skills)   _lisa_skills ;;
                 heartbeat) _lisa_heartbeat ;;
+                autostart) _lisa_autostart ;;
             esac
             ;;
     esac
@@ -53,6 +54,7 @@ _lisa_first() {
         'sessions:list recent sessions'
         'serve:start web UI / IM channels'
         'heartbeat:run / install / uninstall scheduled tasks'
+        'autostart:run the backend from login (install/uninstall/status)'
         'search:TF-IDF search across past sessions'
         'birth:run the birth ritual'
         'soul:print current soul summary'
@@ -96,6 +98,18 @@ _lisa_heartbeat() {
             'uninstall:remove launchd plist'
         )
         _describe 'heartbeat action' actions
+    fi
+}
+
+_lisa_autostart() {
+    if (( CURRENT == 2 )); then
+        local -a actions
+        actions=(
+            'install:keep serve --web running at login + on crash'
+            'uninstall:stop starting Lisa at login'
+            'status:show whether autostart is installed / loaded'
+        )
+        _describe 'autostart action' actions
     fi
 }
 

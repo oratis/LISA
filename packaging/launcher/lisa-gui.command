@@ -42,12 +42,15 @@ EOF
   exit 1
 fi
 
-# Banner.
+# Banner. Version is read from the bundle's package.json at runtime;
+# if it can't be read, the banner just omits it (never a stale hardcode).
 clear
-cat <<'EOF'
+LISA_VERSION="$(node -p "require(process.argv[1]).version || ''" "$BUNDLE_ROOT/package.json" 2>/dev/null || true)"
+TITLE_LINE="$(printf '  ║%-38s║' "          L I S A${LISA_VERSION:+   v$LISA_VERSION}")"
+cat <<EOF
   ╔══════════════════════════════════════╗
   ║                                      ║
-  ║          L I S A   v0.2.0            ║
+$TITLE_LINE
   ║                                      ║
   ║   web UI: http://localhost:5757      ║
   ║                                      ║

@@ -4,14 +4,15 @@ How to cut a new release that ships:
 
 - The npm package (`@oratis/lisa`)
 - Source + self-contained CLI bundles (Mac / Linux) via GitHub Releases
-- **Lisa.app + LisaIsland.app DMG** via GitHub Releases (this doc's focus)
+- **Lisa.app DMG** via GitHub Releases (this doc's focus — the Lisa Island
+  pill is built into Lisa.app, there's no separate LisaIsland.app anymore)
 
 There are three GitHub Actions workflows involved, all tag-triggered on `v*.*.*`:
 
 | Workflow | Runner | Produces |
 |---|---|---|
 | `release.yml` | ubuntu-latest | source tarball, mac/linux CLI bundles |
-| `release-mac-apps.yml` | macos-latest | `Lisa-Suite-vX.Y.Z.dmg` (Lisa.app + LisaIsland.app) |
+| `release-mac-apps.yml` | macos-latest | `Lisa-Suite-vX.Y.Z.dmg` (Lisa.app) |
 | (npm publish — manual) | local | npm package |
 
 All three attach to the same `vX.Y.Z` GitHub Release.
@@ -57,12 +58,12 @@ All three attach to the same `vX.Y.Z` GitHub Release.
 
 ## Signing + notarization (optional but recommended)
 
-Without signing, `Lisa-Suite.dmg` is ad-hoc signed: the apps work locally,
+Without signing, `Lisa-Suite.dmg` is ad-hoc signed: the app works locally,
 but downloaded copies are quarantined by Gatekeeper. Users need to either
 right-click → Open the first time, or run:
 
 ```bash
-xattr -d com.apple.quarantine /Applications/Lisa.app /Applications/LisaIsland.app
+xattr -d com.apple.quarantine /Applications/Lisa.app
 ```
 
 To make the download "just work" — no warnings, no quarantine clearing —
@@ -101,10 +102,10 @@ Passwords → generate one labeled "lisa-notarytool".
 
 ## What the DMG looks like
 
-`Lisa-Suite-vX.Y.Z.dmg` opens to a window with three things:
+`Lisa-Suite-vX.Y.Z.dmg` opens to a window with two things:
 
-- `Lisa.app` — drag to /Applications
-- `LisaIsland.app` — drag to /Applications
+- `Lisa.app` — drag to /Applications (the Lisa Island pill is built in:
+  Settings… → Show Lisa Island)
 - `Applications` — drop target
 
 Plus a `README.txt` with the prerequisite (running `lisa serve --web`
@@ -116,7 +117,7 @@ bundle from the same release).
 ## Trying it locally before tagging
 
 ```bash
-# Build both apps + DMG with ad-hoc signing
+# Build the app + DMG with ad-hoc signing
 bash scripts/build-mac-apps.sh
 
 # Or with your local Developer ID cert in the system keychain:

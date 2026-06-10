@@ -17,7 +17,7 @@ end
 # ── helper: did the user already type a subcommand? ─────────────────
 function __lisa_no_subcommand
     set cmd (commandline -opc)
-    set sub resume sessions serve heartbeat search birth soul channels skills wishlist status doctor monitor
+    set sub resume sessions serve heartbeat autostart search birth soul channels skills wishlist status doctor monitor
     for word in $cmd[2..-1]
         if contains -- $word $sub
             return 1
@@ -41,6 +41,7 @@ complete -c lisa -n __lisa_no_subcommand -f -a resume     -d "resume a previous 
 complete -c lisa -n __lisa_no_subcommand -f -a sessions   -d "list recent sessions"
 complete -c lisa -n __lisa_no_subcommand -f -a serve      -d "start web UI / IM channels"
 complete -c lisa -n __lisa_no_subcommand -f -a heartbeat  -d "run / install scheduled tasks"
+complete -c lisa -n __lisa_no_subcommand -f -a autostart  -d "run the backend from login"
 complete -c lisa -n __lisa_no_subcommand -f -a search     -d "search past sessions"
 complete -c lisa -n __lisa_no_subcommand -f -a birth      -d "run birth ritual"
 complete -c lisa -n __lisa_no_subcommand -f -a soul       -d "print soul summary"
@@ -63,6 +64,11 @@ complete -c lisa -n "__lisa_using_subcommand skills" -f -a "(__lisa_skill_slugs)
 complete -c lisa -n "__lisa_using_subcommand heartbeat" -f -a run       -d "run once"
 complete -c lisa -n "__lisa_using_subcommand heartbeat" -f -a install   -d "install launchd plist"
 complete -c lisa -n "__lisa_using_subcommand heartbeat" -f -a uninstall -d "remove plist"
+
+# ── autostart sub-actions ───────────────────────────────────────────
+complete -c lisa -n "__lisa_using_subcommand autostart" -f -a install   -d "keep serve --web running at login"
+complete -c lisa -n "__lisa_using_subcommand autostart" -f -a uninstall -d "stop starting Lisa at login"
+complete -c lisa -n "__lisa_using_subcommand autostart" -f -a status    -d "show install / load state"
 
 # ── global flags ────────────────────────────────────────────────────
 complete -c lisa -l help         -s h -d "show help"

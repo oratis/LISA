@@ -62,6 +62,14 @@ jobs:
             exit 1
           fi
 
+      # Test gate: full dev install just for the suite — build-release.sh
+      # re-runs `npm ci --omit=dev` itself for the actual artifacts.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
       - name: Build release artifacts
         run: bash scripts/build-release.sh
 

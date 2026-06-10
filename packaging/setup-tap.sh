@@ -47,7 +47,7 @@ echo "     (or via the web UI: github.com/new → name 'homebrew-tap' → public
 echo
 echo "  2. After the remote is set + pushed, install + test:"
 echo "     brew tap oratis/tap"
-echo "     brew install lisa  # will fail until v0.2.0 release tarball + sha256 are wired"
+echo "     brew install lisa  # will fail until the release tarball + sha256 are wired"
 echo
 echo "  3. Per-release flow lives in:"
 echo "     $LISA_ROOT/docs/PUBLISH.md  (section 2)"

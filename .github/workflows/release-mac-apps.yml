@@ -1,8 +1,8 @@
 name: Release — Mac apps (.app + DMG)
 
-# Tag-triggered macOS build that produces a single DMG containing both
-# Lisa.app (native chat client) and LisaIsland.app (pill widget), attached
-# to the same GitHub Release as the CLI bundles produced by release.yml.
+# Tag-triggered macOS build that produces a single DMG containing Lisa.app
+# (native chat client — the Lisa Island pill is built in), attached to the
+# same GitHub Release as the CLI bundles produced by release.yml.
 #
 # Signing + notarization run automatically WHEN all six Developer ID secrets
 # are populated. When they're missing the workflow still ships an ad-hoc
@@ -102,10 +102,10 @@ jobs:
           echo "LISA_KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
           security find-identity -v -p codesigning "$KEYCHAIN_PATH"
 
-      # ── Phase 1: build + Developer-ID-sign both .apps (no DMG yet) ──
+      # ── Phase 1: build + Developer-ID-sign Lisa.app (no DMG yet) ──
       # Empty APPLE_SIGNING_IDENTITY → the script falls back to ad-hoc
       # signing, same path, no branching needed here.
-      - name: Build + sign Lisa.app + LisaIsland.app
+      - name: Build + sign Lisa.app
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         run: |
