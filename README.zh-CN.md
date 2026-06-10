@@ -190,7 +190,7 @@ OpenAI 模型 (`gpt-*`) 还需要 `OPENAI_API_KEY`。
 
 ## 看着你其它的 agent（编排器）
 
-LISA 还能观察你机器上跑着的 coding agent，把你会错过的事告诉你——哪个会话卡在同一个报错上、哪两个要在同一个仓库里打架、哪个早就跑完在干等。诚实地说明范围：**深度活动观察（工具/文件/等待权限/成本）目前只对 Claude Code 实现；Codex、OpenCode、Aider、GitHub PR 是状态级观察**（running / waiting / error / done）。她可以 `dispatch_agent` 无头派发（拒绝把新 agent 丢进已被占用的目录）、在并行 worktree 里对比多个 agent 做同一任务，并在灵动岛上给出顾问建议——每条带一个一键动作（预填到聊天框，**绝不自动执行**）和一个 ✕（教她少唠叨这一类）。
+LISA 还能观察你机器上跑着的 coding agent，把你会错过的事告诉你——哪个会话卡在同一个报错上、哪两个要在同一个仓库里打架、哪个早就跑完在干等。诚实地说明范围：**五个 observer（Claude Code、Codex、OpenCode、Aider、GitHub PR）现在都能产出结构化活动——工具、改动的文件、最近命令、错误——由每个集成的 `visibility` 档位门控；精细度取决于各 agent 在磁盘上记录了什么**（Claude Code 最丰富；Aider 的 markdown 日志只给文件 + 轮次、没有工具流；每个 adapter 都有隐私测试断言提示词/回复/文件内容绝不泄漏）。她可以 `dispatch_agent` 无头派发（拒绝把新 agent 丢进已被占用的目录）、在并行 worktree 里对比多个 agent 做同一任务，并在灵动岛上给出顾问建议——每条带一个一键动作（预填到聊天框，**绝不自动执行**）和一个 ✕（教她少唠叨这一类）。
 
 ## 子命令
 
