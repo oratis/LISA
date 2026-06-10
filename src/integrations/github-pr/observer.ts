@@ -291,8 +291,13 @@ export class GithubPrObserver extends EventEmitter implements AgentObserver {
 
     for (const pr of prs) {
       const s = mapPrToSession(pr);
-      if (s.lastMtime && s.lastMtime < cutoff) continue; // stale PR — ignore
+      // Everything the fetcher returned still exists upstream (the fetchers
+      // only list OPEN PRs), so mark it seen BEFORE the activity-window
+      // check — a dormant-but-open PR must never trip the "dropped out →
+      // closed/merged" inference below. The window only governs what gets
+      // tracked/listed, not what counts as closed.
       seen.add(s.sessionId);
+      if (s.lastMtime && s.lastMtime < cutoff) continue; // dormant PR — don't track/emit
       const prev = this.sessions.get(s.sessionId);
       this.sessions.set(s.sessionId, s);
       if (this.emitFn && (!prev || prev.state !== s.state || prev.lastMtime !== s.lastMtime)) {

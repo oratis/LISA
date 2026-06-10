@@ -39,6 +39,20 @@ describe("detectors — permission", () => {
     assert.equal(out[0]!.urgency, "urgent");
     assert.equal(out[0]!.action?.kind, "approve");
   });
+  test("a long-running auto-approved tool (10s mtime stall) → NO urgent permission alarm", () => {
+    // The watcher no longer fabricates pendingPermission from staleness: a
+    // tool that has merely been running for 10s is still working/tool_use
+    // with plain activity. Neither the permission nor the stuck detector
+    // may fire for it.
+    const s = sess({
+      state: "working",
+      stateReason: "tool_use",
+      lastMtime: NOW - 10_000,
+      activity: { turnCount: 5, lastTools: ["Bash"], filesTouched: [] },
+    });
+    assert.equal(detectPermission(input([s])).length, 0);
+    assert.equal(detectStuck(input([s])).length, 0);
+  });
 });
 
 describe("detectors — stuck", () => {
@@ -66,6 +80,22 @@ describe("detectors — stuck", () => {
   test("fresh waiting session → no stuck", () => {
     const s = sess({ state: "waiting", stateReason: "idle", lastMtime: NOW - 1000 });
     assert.equal(detectStuck(input([s])).length, 0);
+  });
+  test("a genuinely long tool stall (waiting/'stalled on …') → ordinary notice, never urgent", () => {
+    // What the watcher emits for a tool whose jsonl has been quiet a long
+    // time. After STUCK_MS it surfaces — but only as a notice via
+    // detectStuck, not as an urgent permission alarm.
+    const s = sess({
+      state: "waiting",
+      stateReason: "stalled on Bash",
+      lastMtime: NOW - STUCK_MS - 5 * 60_000,
+      activity: { turnCount: 5, lastTools: ["Bash"], filesTouched: [], lastCommandName: "npm" },
+    });
+    assert.equal(detectPermission(input([s])).length, 0, "no urgent permission alarm");
+    const out = detectStuck(input([s]));
+    assert.equal(out.length, 1);
+    assert.equal(out[0]!.urgency, "notice");
+    assert.match(out[0]!.text, /stalled/);
   });
   test("pending permission is NOT double-reported as stuck", () => {
     const s = sess({
