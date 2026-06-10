@@ -12,7 +12,22 @@ import { spawn } from "node:child_process";
 import { AsyncLocalStorage } from "node:async_hooks";
 import path from "node:path";
 import { pathExists } from "../fs-utils.js";
+import { withFileLock } from "./lock.js";
 import { SOUL_DIR } from "./paths.js";
+
+/**
+ * Cross-process lock around the add→diff→commit sequence. The in-process
+ * enqueueCommit queue only serializes commits within ONE process; the web
+ * server, the CLI, and a launchd heartbeat all write the same soul repo, and
+ * two processes committing concurrently collide on .git/index.lock — the
+ * loser's commit was silently swallowed (file written, history entry lost).
+ *
+ * Deliberately a DIFFERENT file from SOUL_LOCK_PATH (.write.lock): store-level
+ * writers hold the soul write-lock *while* awaiting commitSoulChange, so
+ * reusing the same lock here would self-deadlock. Ordering is always
+ * write-lock → git-lock, never the reverse, so the two can't deadlock.
+ */
+const SOUL_GIT_LOCK_PATH = path.join(SOUL_DIR, ".git-write.lock");
 
 export type SoulCaller =
   | "birth"
@@ -124,7 +139,7 @@ export async function initSoulRepo(): Promise<void> {
     if (!(await pathExists(ignorePath))) {
       await fs.writeFile(
         ignorePath,
-        ["*.tmp", "*.swp", ".DS_Store", ""].join("\n"),
+        ["*.tmp", "*.swp", ".DS_Store", ".write.lock", ".git-write.lock", ""].join("\n"),
         "utf8",
       );
     }
@@ -168,22 +183,30 @@ export function commitSoulChange(
     const dotGit = path.join(SOUL_DIR, ".git");
     if (!(await pathExists(dotGit))) return; // not initialized yet (pre-birth)
     try {
-      const add = await runGit(["add", "--", relPath]);
-      if (add.code !== 0) {
-        // file might not exist yet (deletion case) — try -A on the relPath
-        // dirname instead. If still nothing, give up quietly.
-        return;
-      }
-      const diff = await runGit(["diff", "--cached", "--quiet", "--", relPath]);
-      // exit 0 = no diff, exit 1 = diff present.
-      if (diff.code === 0) return;
-      const msg = formatCommitMessage(relPath, opKind, caller);
-      const commit = await runGit(["commit", "-q", "-m", msg]);
-      if (commit.code !== 0) {
-        console.warn(
-          `[soul-git] commit failed for ${relPath}: ${commit.stderr.trim().slice(0, 200)}`,
-        );
-      }
+      await withFileLock(
+        SOUL_GIT_LOCK_PATH,
+        async () => {
+          const add = await runGit(["add", "--", relPath]);
+          if (add.code !== 0) {
+            // file might not exist yet (deletion case) — try -A on the relPath
+            // dirname instead. If still nothing, give up quietly.
+            return;
+          }
+          const diff = await runGit(["diff", "--cached", "--quiet", "--", relPath]);
+          // exit 0 = no diff, exit 1 = diff present.
+          if (diff.code === 0) return;
+          const msg = formatCommitMessage(relPath, opKind, caller);
+          const commit = await runGit(["commit", "-q", "-m", msg]);
+          if (commit.code !== 0) {
+            console.warn(
+              `[soul-git] commit failed for ${relPath}: ${commit.stderr.trim().slice(0, 200)}`,
+            );
+          }
+        },
+        // Waiting out another process's commit is cheap; a commit that holds
+        // the lock >30s is presumed crashed and stolen.
+        { timeoutMs: 15_000, staleMs: 30_000 },
+      );
     } catch (err) {
       console.warn(
         `[soul-git] commit error for ${relPath}: ${(err as Error).message.slice(0, 200)}`,

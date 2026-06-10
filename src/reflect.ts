@@ -181,23 +181,17 @@ async function reflectOnSessionInner(opts: {
         if (!op.trigger || !op.trigger.trim()) {
           throw new Error("feel needs trigger (one first-person sentence saying why)");
         }
-        const { readEmotions, writeEmotions } = await import("./soul/store.js");
+        // Same locked decay-first path as soul_feel — reflect used to skip the
+        // decay and stack the delta on a stale baseline.
+        const { applyEmotionDelta } = await import("./soul/store.js");
         const { EMOTION_EVENTS_MAX } = await import("./soul/types.js");
-        const state = await readEmotions();
-        const cur = state.values[op.emotion] ?? 0;
-        const next = Math.max(-1, Math.min(1, cur + op.delta));
-        const ts = new Date().toISOString();
-        const events = [
-          ...(state.events ?? []),
-          { ts, emotion: op.emotion, delta: op.delta, trigger: op.trigger },
-        ].slice(-EMOTION_EVENTS_MAX);
-        await writeEmotions({
-          values: { ...state.values, [op.emotion]: next },
-          decay: { ...state.decay, [op.emotion]: state.decay[op.emotion] ?? 0.1 },
-          events,
-          updatedAt: ts,
+        const { previous, next } = await applyEmotionDelta({
+          emotion: op.emotion,
+          delta: op.delta,
+          trigger: op.trigger,
+          maxEvents: EMOTION_EVENTS_MAX,
         });
-        applied.push(`feel:${op.emotion} ${cur.toFixed(2)}→${next.toFixed(2)}`);
+        applied.push(`feel:${op.emotion} ${previous.toFixed(2)}→${next.toFixed(2)}`);
       } else if (op.kind === "opinion_form") {
         if (!op.slug || !op.stance) throw new Error("opinion_form needs slug+stance");
         const { writeOpinion } = await import("./soul/store.js");
