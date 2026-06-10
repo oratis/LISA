@@ -34,6 +34,7 @@ import type {
   AgentObserver,
   AgentSession,
   AgentSessionState,
+  SessionActivity,
 } from "../types.js";
 
 const HISTORY_FILE = ".aider.chat.history.md";
@@ -72,6 +73,115 @@ export function parseAiderState(tail: string): {
   return replied
     ? { state: "waiting", reason: "assistant" }
     : { state: "working", reason: "user" };
+}
+
+const ACTIVITY_MAX_FILES = 10;
+const ACTIVITY_ERROR_CAP = 80;
+
+// aider's diff edit format writes the file path on the line just before the
+// fenced code block, e.g.
+//     mathweb/flask/app.py
+//     ```python
+//     <<<<<<< SEARCH
+// So a path "looks like" a bare token (no whitespace) that either contains a
+// "/" or ends in a known source-file extension. This deliberately excludes
+// prose, fence lines, and the diff markers themselves — we only ever surface
+// the PATH, never a single byte of the SEARCH/REPLACE code body.
+const PATHISH_RE =
+  /^[\w.\-/@]+\.(?:ts|tsx|js|jsx|mjs|cjs|py|go|rs|md|json|ya?ml|toml|sh|c|h|cpp|hpp|java|rb|php|css|scss|html|sql)$|^[\w.\-/@]+\/[\w.\-/@]+$/;
+
+// A line that opens/closes a fenced code block, optionally with a language tag.
+const FENCE_RE = /^\s*(```|~~~)/;
+// aider error lines — keep in sync with ERROR_RE but tuned for class extraction.
+const ACTIVITY_ERROR_RE = /(litellm\.\w*error|\w*APIError|exception|error:)/i;
+
+function looksLikePath(token: string): boolean {
+  const t = token.trim().replace(/^`+|`+$/g, "").trim();
+  if (!t || /\s/.test(t)) return false;
+  return PATHISH_RE.test(t);
+}
+
+/**
+ * Tier-2 structural activity for an Aider transcript. PURE — the unit under
+ * test. Input is Markdown chat-history text (the observer feeds the same tail
+ * it already read for state derivation, so there is no extra IO).
+ *
+ * Aider is a Markdown agent with NO structured tool calls, so we only extract
+ * what's reliably present:
+ *   - filesTouched: the path labels that precede SEARCH/REPLACE edit blocks.
+ *   - turnCount:    "#### " user-turn lines.
+ *   - lastError:    a short class summary of the last error line (capped).
+ *   - lastTools:    INTENTIONALLY [] — aider has no tool abstraction to read,
+ *                   so inventing tool names would be dishonest. See contract:
+ *                   SessionActivity.lastTools may be [].
+ * tokens / gitBranch / pendingPermission are unavailable here → undefined.
+ *
+ * PRIVACY: we surface only file PATHS, a turn count, and an error *class* — we
+ * never read prompt text, assistant prose, or the code inside an edit block.
+ */
+export function parseAiderActivity(markdown: string): SessionActivity {
+  const lines = markdown.split("\n");
+
+  let turnCount = 0;
+  const files: string[] = [];
+  let lastError: string | undefined;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+
+    if (line.startsWith("#### ")) turnCount++;
+
+    // A SEARCH marker anchors an edit block. Walk backward past an optional
+    // fence line to the nearest non-empty line, and keep it iff it's path-ish.
+    // We read ONLY that path line — never the block body below the marker.
+    if (/^\s*<{5,}\s*SEARCH\b/.test(line)) {
+      let j = i - 1;
+      while (j >= 0 && lines[j]!.trim() === "") j--;
+      if (j >= 0 && FENCE_RE.test(lines[j]!)) {
+        j--;
+        while (j >= 0 && lines[j]!.trim() === "") j--;
+      }
+      if (j >= 0 && looksLikePath(lines[j]!)) {
+        files.push(lines[j]!.trim().replace(/^`+|`+$/g, "").trim());
+      }
+    }
+
+    if (ACTIVITY_ERROR_RE.test(line)) {
+      lastError = summarizeError(line);
+    }
+  }
+
+  return {
+    turnCount,
+    // Intentionally empty: aider exposes no tool calls (see doc above).
+    lastTools: [],
+    filesTouched: dedupeKeepRecent(files, ACTIVITY_MAX_FILES),
+    lastError,
+    // tokens / gitBranch / pendingPermission: not derivable from the transcript.
+  };
+}
+
+/** Take just the error class/prefix from a noisy line; cap length, no stack. */
+function summarizeError(line: string): string {
+  // Strip aider's "> " info prefix, then keep up to the first sentence/segment
+  // boundary so we surface the error class, not a full message or traceback.
+  const stripped = line.replace(/^\s*>\s*/, "").trim();
+  const head = stripped.split(/[—–\-]{1,2}\s|[.{[]|,\s/)[0]!.trim() || stripped;
+  return head.slice(0, ACTIVITY_ERROR_CAP).trim();
+}
+
+/** Dedupe paths keeping each one's most-recent position; cap to `max`. */
+function dedupeKeepRecent(items: string[], max: number): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (let i = items.length - 1; i >= 0; i--) {
+    const it = items[i]!;
+    if (!seen.has(it)) {
+      seen.add(it);
+      out.unshift(it);
+    }
+  }
+  return out.slice(-max);
 }
 
 /** Recursively collect .aider.chat.history.md under a root (bounded depth). */
@@ -116,6 +226,7 @@ interface AiderSessionInfo {
   lastMtime: number;
   state: AgentSessionState;
   stateReason: string;
+  activity?: SessionActivity;
 }
 
 export class AiderObserver extends EventEmitter implements AgentObserver {
@@ -125,6 +236,7 @@ export class AiderObserver extends EventEmitter implements AgentObserver {
   private watchers: fs.FSWatcher[] = [];
   private pending = new Map<string, NodeJS.Timeout>();
   private emitFn: ((s: AgentSession) => void) | null = null;
+  private readonly computeActivity: boolean;
 
   constructor(cfg: AgentIntegrationConfig) {
     super();
@@ -132,6 +244,10 @@ export class AiderObserver extends EventEmitter implements AgentObserver {
     this.roots = raw
       .filter((r): r is string => typeof r === "string")
       .map((r) => r.replace(/^~/, os.homedir()));
+    // Tier 2: derive structural activity only at visibility "activity"/"intent".
+    // At "metadata"/"off" we stay metadata-only (the privacy-minimal default).
+    this.computeActivity =
+      cfg.visibility === "activity" || cfg.visibility === "intent";
   }
 
   async start(emit: (s: AgentSession) => void): Promise<void> {
@@ -187,7 +303,10 @@ export class AiderObserver extends EventEmitter implements AgentObserver {
     try {
       const st = await fsp.stat(full);
       if (!st.isFile()) return;
-      const { state, reason } = parseAiderState(await readTail(full));
+      // Single read: the same tail feeds both state derivation and (when the
+      // tier is high enough) Tier-2 activity — no duplicate IO.
+      const tail = await readTail(full);
+      const { state, reason } = parseAiderState(tail);
       const cwd = path.dirname(full);
       this.sessions.set(full, {
         sessionId: full,
@@ -196,6 +315,7 @@ export class AiderObserver extends EventEmitter implements AgentObserver {
         lastMtime: st.mtimeMs,
         state,
         stateReason: reason,
+        activity: this.computeActivity ? parseAiderActivity(tail) : undefined,
       });
     } catch {
       this.sessions.delete(full);
@@ -212,6 +332,7 @@ function toAgentSession(i: AiderSessionInfo): AgentSession {
     state: i.state,
     stateReason: i.stateReason,
     lastMtime: i.lastMtime,
+    activity: i.activity,
   };
 }
 
