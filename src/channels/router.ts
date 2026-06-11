@@ -20,6 +20,13 @@ export interface RouterOptions {
   compaction?: boolean;
   /** Reply with this prefix on transient errors so user knows something failed. */
   errorPrefix?: string;
+  /**
+   * Per-channel toolset resolver. Channels are remote-origin surfaces, so the
+   * caller (cli serve) passes the remote-safe subset by default and the full
+   * set only for channels that opted in via `"unsafeFullTools": true`.
+   * Falls back to `tools` when absent.
+   */
+  toolsFor?: (channelName: string) => ToolDefinition[];
 }
 
 interface ThreadContext {
@@ -116,7 +123,7 @@ export class ChannelRouter {
       const result = await runAgent({
         provider,
         systemPrompt: this.snapshot.text,
-        tools: this.opts.tools,
+        tools: this.opts.toolsFor?.(channel.name) ?? this.opts.tools,
         toolCtx: {
           cwd: this.opts.cwd,
           signal: this.opts.signal,

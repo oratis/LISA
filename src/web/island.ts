@@ -409,6 +409,23 @@ export const ISLAND_HTML = `<!doctype html>
   body.offline #avatar { filter: grayscale(1); opacity: 0.5; }
   body.offline #label  { color: var(--fg-faint); }
 
+  /* Agents-advisor card (cross-agent suggestions with actions) */
+  #advisor-section { display: none; }
+  body.has-advisor #advisor-section { display: block; }
+  #advisor-list { list-style: none; margin: 0; padding: 0; }
+  #advisor-list li { display: flex; flex-direction: column; gap: 4px; padding: 4px 0; }
+  #advisor-list .advisor-text { font-size: 11px; line-height: 1.35; }
+  #advisor-list .advisor-text.urgent { font-weight: 600; }
+  #advisor-list .advisor-actions { display: flex; gap: 6px; }
+  #advisor-list .advisor-actions button {
+    font: inherit; font-size: 10px; padding: 2px 8px; border-radius: 6px;
+    border: 1px solid var(--line, rgba(255,255,255,0.15));
+    background: transparent; color: inherit; cursor: pointer;
+  }
+  #advisor-list .advisor-actions button.primary {
+    background: var(--accent, #5b8cff); border-color: transparent; color: #fff;
+  }
+  #advisor-list .advisor-actions button:hover { filter: brightness(1.1); }
   /* Screen-advisor suggestion card */
   #suggestion-section { display: none; }
   body.has-suggestion #suggestion-section { display: block; }
@@ -444,6 +461,10 @@ export const ISLAND_HTML = `<!doctype html>
       <div id="suggestion-title"></div>
       <div id="suggestion-rationale"></div>
       <button id="suggestion-act" type="button">Optimize ▸</button>
+    </div>
+    <div id="advisor-section">
+      <div class="section-label">🛰 across your agents</div>
+      <ul id="advisor-list"></ul>
     </div>
     <div id="claude-section">
       <div class="section-label">claude code · <span id="claude-count">0</span> active</div>
@@ -484,6 +505,7 @@ export const ISLAND_HTML = `<!doctype html>
     dreaming: false,
     claudeSessions: [],  // [{project, sessionId, lastMtime}, …]
     suggestion: null,    // {title, rationale, task, at} from the screen advisor
+    advisor: [],         // [{id, category, urgency, text, action}] from the cross-agent advisor
   };
 
   // 30-min activity window matches the watcher's ACTIVE_WINDOW_MS.
@@ -641,7 +663,99 @@ export const ISLAND_HTML = `<!doctype html>
       suggTitle.textContent = state.suggestion.title || '';
       suggRationale.textContent = state.suggestion.rationale || '';
     }
+    body.classList.toggle('has-advisor', state.advisor.length > 0);
+    renderAdvisorList();
     renderClaudeList();
+  }
+
+  // ── Cross-agent advisor card ───────────────────────────────────────
+  // Each suggestion gets at most two buttons: the action (never auto-runs —
+  // "open" reveals the folder, everything else prefills the chat composer
+  // with a concrete ask so the user confirms by sending) and ✕ dismiss
+  // (persisted server-side; repeated dismissals down-weight the category).
+  function advisorPrefill(s) {
+    const a = s.action || {};
+    const arg = a.arg || '';
+    switch (a.kind) {
+      case 'approve':
+        return 'One of my agent sessions is waiting for permission: "' + s.text + '". ' +
+          'Inspect it' + (arg ? ' (inspect_agent ' + arg + ')' : '') +
+          ' and tell me exactly what it wants to run and whether it looks safe.';
+      case 'serialize':
+        return 'Two of my agents may be about to collide: "' + s.text + '". ' +
+          'Propose how to serialize them — do not schedule or cancel anything until I confirm.';
+      case 'dispatch':
+        return s.text + ' — list the pending actionable desires and propose a dispatch plan. ' +
+          'Do not dispatch anything until I confirm.';
+      case 'cancel':
+        return 'Consider cancelling this: "' + s.text + '". Show me the dispatch details first ' +
+          'and wait for my confirmation.';
+      default: // 'look' and anything new
+        return 'Look into this for me: "' + s.text + '"' +
+          (arg && arg !== 'stuck' ? ' (session ' + arg + ')' : '') + ' — and report back.';
+    }
+  }
+
+  function renderAdvisorList() {
+    const list = document.getElementById('advisor-list');
+    if (!list) return;
+    while (list.firstChild) list.removeChild(list.firstChild);
+    for (const s of state.advisor.slice(0, 3)) {
+      const li = document.createElement('li');
+      const text = document.createElement('div');
+      text.className = 'advisor-text' + (s.urgency === 'urgent' ? ' urgent' : '');
+      text.textContent = (s.urgency === 'urgent' ? '⚠ ' : '') + s.text;
+      li.appendChild(text);
+      const actions = document.createElement('div');
+      actions.className = 'advisor-actions';
+      const a = s.action || null;
+      if (a && a.kind === 'open' && a.arg && String(a.arg).startsWith('/')) {
+        const openBtn = document.createElement('button');
+        openBtn.type = 'button';
+        openBtn.className = 'primary';
+        openBtn.textContent = '📁 ' + (a.label || 'Open');
+        openBtn.title = a.arg;
+        openBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (hasBridge) {
+            window.webkit.messageHandlers.island.postMessage({ type: 'open_path', path: a.arg });
+          } else {
+            navigator.clipboard.writeText(a.arg).catch(() => {});
+          }
+        });
+        actions.appendChild(openBtn);
+      } else if (a) {
+        const actBtn = document.createElement('button');
+        actBtn.type = 'button';
+        actBtn.className = 'primary';
+        actBtn.textContent = (a.label || 'Ask Lisa') + ' ▸';
+        actBtn.title = 'Prefills the chat — nothing runs until you send';
+        actBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openFull(advisorPrefill(s));
+        });
+        actions.appendChild(actBtn);
+      }
+      const dismissBtn = document.createElement('button');
+      dismissBtn.type = 'button';
+      dismissBtn.textContent = '✕';
+      dismissBtn.title = 'Dismiss — repeated dismissals teach the advisor to quiet this category';
+      dismissBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        state.advisor = state.advisor.filter((x) => x.id !== s.id);
+        refreshPanel();
+        try {
+          await fetch('/api/advisor/dismiss', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ id: s.id, category: s.category }),
+          });
+        } catch (_) {}
+      });
+      actions.appendChild(dismissBtn);
+      li.appendChild(actions);
+      list.appendChild(li);
+    }
   }
 
   function relativeTime(iso) {
@@ -994,6 +1108,10 @@ export const ISLAND_HTML = `<!doctype html>
             );
           }
           break;
+        case 'advisor_suggestions':
+          state.advisor = Array.isArray(m.suggestions) ? m.suggestions : [];
+          refreshPanel();
+          break;
         case 'claude_session_update':
           upsertClaudeSession({
             project: m.projectLabel,
@@ -1097,6 +1215,16 @@ export const ISLAND_HTML = `<!doctype html>
   fetch('/api/screen-advisor/latest', { cache: 'no-store' })
     .then((r) => r.ok ? r.json() : null)
     .then((j) => { if (j && j.suggestion) { state.suggestion = j.suggestion; refreshPanel(); } })
+    .catch(() => {});
+  // …and the latest cross-agent advisor suggestions.
+  fetch('/api/advisor/latest', { cache: 'no-store' })
+    .then((r) => r.ok ? r.json() : null)
+    .then((j) => {
+      if (j && Array.isArray(j.suggestions) && j.suggestions.length) {
+        state.advisor = j.suggestions;
+        refreshPanel();
+      }
+    })
     .catch(() => {});
   // Lightweight resync — covers cases where SSE silently disconnected
   // (laptop sleep, network blip) and we need to refresh state.

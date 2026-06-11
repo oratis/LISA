@@ -169,6 +169,42 @@ describe("GithubPrObserver — polling + emit", () => {
     await obs.stop();
   });
 
+  test("an open PR that goes quiet past the activity window is NOT reported closed/merged", async () => {
+    const DAY = 24 * 60 * 60_000;
+    let now = Date.parse("2026-06-10T00:00:00Z");
+    const quiet = pr({ number: 3, updatedAt: "2026-06-09T00:00:00Z" }); // 1 day old at start
+    const polls: RawPr[][] = [
+      [quiet], // poll 1: active → tracked
+      [quiet], // poll 2: STILL OPEN, but 16 days quiet by then
+      [],      // poll 3: actually merged/closed (gone from the open set)
+    ];
+    let i = 0;
+    const emitted: { state: string; reason: string }[] = [];
+    const obs = new GithubPrObserver({
+      enabled: true,
+      fetchPrs: async () => polls[Math.min(i++, polls.length - 1)] ?? [],
+      now: () => now,
+      activeWindowMs: 14 * DAY,
+    });
+    await obs.start((s) => emitted.push({ state: s.state, reason: s.stateReason }));
+    assert.equal(obs.list().length, 1, "tracked while active");
+
+    now += 15 * DAY; // the PR ages out of the window but the fetcher still returns it
+    await obs.poll();
+    assert.equal(
+      emitted.filter((e) => e.state === "done").length,
+      0,
+      "no false closed/merged for a dormant-but-open PR",
+    );
+    assert.equal(obs.list().length, 0, "merely hidden from the active list");
+
+    await obs.poll(); // now it really disappears from the open set
+    const dones = emitted.filter((e) => e.state === "done");
+    assert.equal(dones.length, 1, "a real disappearance still reports done");
+    assert.equal(dones[0]!.reason, "closed/merged");
+    await obs.stop();
+  });
+
   test("fetcher throwing is swallowed (no crash into the hub)", async () => {
     const obs = new GithubPrObserver({
       enabled: true,

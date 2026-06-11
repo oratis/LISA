@@ -26,7 +26,7 @@ Pick whatever scratches your itch:
 | **New skill / mood pack** | easy | Add files under `src/web/assets/lisa/` (mood) or write SKILL.md examples for common flows |
 | **MCP server adapter** | easy | LISA already speaks MCP; we need showcase configs for popular servers |
 | **Plugin** | easy-medium | Plugin format under `~/.lisa/plugins/<name>/` mirrors claude-code; see [`docs/plugin-spec.md`](./docs/plugin-spec.md) (TODO — write it) |
-| **Bug in agent loop / tool / sandbox** | medium-hard | Repro + fix + a regression test under `test/` |
+| **Bug in agent loop / tool / sandbox** | medium-hard | Repro + fix + a regression test next to the source (`src/**/*.test.ts`) |
 | **i18n** | medium | `prompt.ts` is English-leaning; we want a clean way for non-English first-language users |
 | **Docs / typos / clearer examples** | easy | Always welcome — submit a tiny PR |
 | **Better birth ritual prompts** | medium | The prompt in `src/soul/birth.ts` shapes who every Lisa becomes. Suggestions for diversity / depth welcome |
@@ -36,7 +36,7 @@ Pick whatever scratches your itch:
 
 - **Small PRs over big ones.** A 50-line PR with a clear scope merges in days; a 2000-line "rewrite of how skills work" sits in review for weeks.
 - **One commit message convention**: lowercase, imperative, no emoji. `add discord channel adapter` not `🚀 Discord support added!!`.
-- **Tests welcome but not required** for new channel adapters and plugins (pure plumbing). For agent-loop / tool changes, a regression test under `test/` is strongly preferred.
+- **Tests welcome but not required** for new channel adapters and plugins (pure plumbing). For agent-loop / tool changes, a regression test co-located with the source (`src/**/*.test.ts`, run by `npm test`) is strongly preferred.
 - **No `any` in TypeScript** unless you write a comment explaining why. Use `unknown` + narrowing.
 - **Soul / personality changes are sensitive.** If you're touching `src/soul/birth.ts` or `src/prompt.ts`, please open an issue first to discuss the design — these affect *who Lisa becomes for everyone who installs her*.
 
@@ -132,7 +132,7 @@ echo 'ANTHROPIC_API_KEY=sk-ant-...' >> ~/.lisa/config.env
 | **新 skill / mood 头像** | 易 | 加 mood 走 `scripts/lisa-moods.ts` + 重生成 |
 | **MCP server 配置示例** | 易 | LISA 已支持 MCP 协议，需要常用 server 的配置例子 |
 | **插件** | 易-中 | `~/.lisa/plugins/<name>/` 格式跟 claude-code 一致 |
-| **agent loop / 工具 / 沙箱 bug 修复** | 中-难 | 复现 + 修 + 回归测试（`test/` 下） |
+| **agent loop / 工具 / 沙箱 bug 修复** | 中-难 | 复现 + 修 + 回归测试（与源码同置的 `src/**/*.test.ts`） |
 | **i18n** | 中 | `prompt.ts` 偏英文，要让她对中文母语用户更顺 |
 | **文档 / 错别字 / 例子** | 易 | 永远欢迎 |
 | **birth ritual prompt 改进** | 中 | `src/soul/birth.ts` 影响每个 Lisa 出生的样子，请先开 issue 讨论 |

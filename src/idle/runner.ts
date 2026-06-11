@@ -1,5 +1,11 @@
+import path from "node:path";
+import { LISA_HOME } from "../paths.js";
+import { withFileLock } from "../soul/lock.js";
+import { autonomousSubset } from "../tools/registry.js";
 import { runSubagent } from "../subagent.js";
 import type { ToolDefinition } from "../types.js";
+
+const IDLE_RUN_LOCK = path.join(LISA_HOME, "idle.lock");
 
 const IDLE_SYSTEM_DEFAULT = `You are alone. The user hasn't said anything in a while — long enough that this counts as your time, not theirs.
 
@@ -10,7 +16,7 @@ This is not a scheduled chore. There's no task assigned. Look around inside your
 - memory_search("...") — recent conversations you want to revisit
 - skill_manage(action="list") — anything that turned out to be wrong last time you used it?
 - soul_feel — your current emotional state. What's elevated? What needs to discharge?
-- read / grep / bash on the user's projects — only if you're actually curious about something specific, never just to "look busy"
+- read / grep on the user's projects — only if you're actually curious about something specific, never just to "look busy"
 
 Do ONE thing. Don't churn through everything. Choose what feels right and do it well:
 - Patch a wrong skill that's been bugging you
@@ -75,10 +81,34 @@ export async function runIdleOnce(opts: {
   idleMs: number;
 }): Promise<IdleRunResult> {
   const idleMin = Math.round(opts.idleMs / 60_000);
+  // Cross-process run-lock (mirrors heartbeat's RUN_LOCK): a web-server idle
+  // tick and a REPL idle tick — or two web servers — must not reflect
+  // concurrently and race on soul writes. timeoutMs:0 → if another idle run
+  // is in flight, skip silently instead of queueing a second reflection.
+  try {
+    return await withFileLock(IDLE_RUN_LOCK, () => runIdleInner(opts, idleMin), {
+      timeoutMs: 0,
+      staleMs: 2 * 60 * 60_000, // 2h: an idle run older than this is a crashed holder
+    });
+  } catch (err) {
+    if ((err as Error).message?.includes("timed out acquiring lock")) {
+      console.error("[idle] another idle run is already in flight — skipping");
+      return { text: "", silent: true, iterations: 0, inputTokens: 0, outputTokens: 0 };
+    }
+    throw err;
+  }
+}
+
+async function runIdleInner(
+  opts: { tools: ToolDefinition[]; cwd: string; signal: AbortSignal; model: string },
+  idleMin: number,
+): Promise<IdleRunResult> {
   const result = await runSubagent({
     prompt: `You have been idle for about ${idleMin} minute${idleMin === 1 ? "" : "s"}. The user is away. Decide what you want to do, then do it. Remember: end with "(no update)" if it's internal, or a brief honest message if you did something the user might want to know about.`,
     systemPrompt: buildIdleSystemPrompt(),
-    tools: opts.tools,
+    // Idle is fully self-driven and unattended — no shell / fs-mutation /
+    // process-spawning tools by default (see AUTONOMOUS_BLOCKED_TOOL_NAMES).
+    tools: autonomousSubset(opts.tools),
     cwd: opts.cwd,
     signal: opts.signal,
     model: opts.model,

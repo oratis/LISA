@@ -124,6 +124,23 @@ export function applyDismissal(
   };
 }
 
+/**
+ * Persisted dismissal: load → applyDismissal → save, under the same state
+ * lock advise() uses. Called by POST /api/advisor/dismiss when the user
+ * ✕'es a suggestion on the island — this is what makes the "stop telling me
+ * about X" learning loop real.
+ */
+export async function dismissSuggestion(
+  id: string,
+  category: SuggestionCategory,
+  statePath: string = ADVISOR_STATE_PATH,
+): Promise<void> {
+  await withFileLock(statePath + ".lock", async () => {
+    const state = await loadAdvisorState(statePath);
+    await saveAdvisorState(applyDismissal(state, id, category), statePath);
+  });
+}
+
 // ── I/O ─────────────────────────────────────────────────────────────────
 
 export async function loadAdvisorState(

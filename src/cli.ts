@@ -68,10 +68,16 @@ AUTOSTART (run the backend from login)
   lisa autostart uninstall     Stop starting Lisa at login.
 
 SERVE (long-lived)
-  lisa serve --web [--port N]  Start the web UI (default port 5757).
+  lisa serve --web [--port N]  Start the web UI (default port 5757, bound to
+                               127.0.0.1). To reach it from another device:
+                               set LISA_WEB_TOKEN and pass --host 0.0.0.0,
+                               then open http://<host>:<port>/?token=<value>.
   lisa serve --channels <list> Start IM channel adapters (comma-separated, or "all").
                                Built-in: telegram, discord, slack, feishu, webhook, imessage.
                                Config: ~/.lisa/channels.json
+                               Channels run with a remote-safe toolset (no bash /
+                               file edits / dispatch); set "unsafeFullTools": true
+                               on a channel entry to opt that channel into all tools.
   lisa serve --imessage        Shortcut for --channels imessage (macOS).
   lisa channels                List available channel adapters.
 
@@ -100,6 +106,8 @@ FLAGS
   --voice               Enable speak/transcribe tools.
   --idle <minutes>      Trigger idle mode after N min of no input (default: 60).
   --no-idle             Disable idle mode entirely.
+  --host <addr>         Bind address for serve --web (default: 127.0.0.1).
+                        Non-loopback binds require LISA_WEB_TOKEN to be set.
 
 REPL slash commands:
   /help, /exit, /quit
@@ -149,6 +157,7 @@ interface ParsedArgs {
   serveImessage: boolean;
   serveChannels: string[];
   port: number;
+  host: string;
   prompt: string | null;
 }
 
@@ -172,6 +181,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     serveImessage: false,
     serveChannels: [],
     port: 5757,
+    host: "127.0.0.1",
     prompt: null,
   };
   const positional: string[] = [];
@@ -218,6 +228,10 @@ function parseArgs(argv: string[]): ParsedArgs {
       out.approval = v;
     } else if (arg === "--port") {
       out.port = parseInt(mustNext(argv, ++i, "--port"), 10);
+    } else if (arg === "--host") {
+      out.host = mustNext(argv, ++i, "--host");
+    } else if (arg.startsWith("--host=")) {
+      out.host = arg.slice("--host=".length);
     } else if (arg.startsWith("--")) {
       // Flags after a raw-args subcommand (heartbeat/autostart) are
       // command-specific, not global — collect them verbatim instead of
@@ -563,16 +577,27 @@ async function main(): Promise<void> {
   // Serve sub-command — web or imessage.
   if (args.subcommand === "serve") {
     if (args.serveWeb) {
-      const { startWebServer } = await import("./web/server.js");
+      const { startWebServer, isLoopbackAddress } = await import("./web/server.js");
       await startWebServer({
         port: args.port,
+        host: args.host,
         tools: composedTools,
         model: args.model,
         thinking: args.thinking,
         reflect: args.reflect,
         idleMinutes: args.idleMinutes,
+        hooks: allHooks,
       });
-      console.error(`Lisa web UI listening on http://localhost:${args.port}`);
+      // Print the real bind address — this used to claim "localhost" while
+      // Node was actually listening on every interface.
+      const display = isLoopbackAddress(args.host) ? "localhost" : args.host;
+      console.error(`Lisa web UI listening on http://${display}:${args.port} (bound to ${args.host})`);
+      if (!isLoopbackAddress(args.host)) {
+        console.error(
+          `[web] non-loopback bind: requests from other machines must present LISA_WEB_TOKEN ` +
+            `(open http://${args.host}:${args.port}/?token=<value> once per device)`,
+        );
+      }
       // Keep alive until SIGINT.
       await new Promise<void>(() => {});
       return;
@@ -597,6 +622,7 @@ async function main(): Promise<void> {
         process.exit(2);
       }
       const adapters = [];
+      const fullToolChannels = new Set<string>();
       for (const n of names) {
         const entry = cfg.channels[n] ?? {};
         if (entry.enabled === false) {
@@ -607,15 +633,39 @@ async function main(): Promise<void> {
           adapters.push(await makeChannel(n, entry));
         } catch (err) {
           console.error(`[router] ${n} failed to init: ${(err as Error).message}`);
+          continue;
+        }
+        // Remote-origin tool boundary: a channel message comes from whoever
+        // can reach the bot, so bash / file mutation / dispatch / github-write
+        // are excluded unless this channel explicitly opts in.
+        if (entry.unsafeFullTools === true) {
+          fullToolChannels.add(n);
+          console.error(
+            `[router] ${n}: unsafeFullTools=true — remote messages on this channel get the FULL toolset (incl. bash)`,
+          );
+        }
+        // Loud nudge when a channel has no allow-list at all: combined with
+        // the agent toolset, an open channel means strangers can drive Lisa.
+        const hasAllowList = Object.entries(entry).some(
+          ([k, v]) => /^allowed/i.test(k) && Array.isArray(v) && v.length > 0,
+        );
+        if (!hasAllowList && n !== "webhook") {
+          console.error(
+            `[router] ⚠ ${n} has no allow-list configured — anyone who can message the bot can talk to Lisa. ` +
+              `Lock it down in ~/.lisa/channels.json (e.g. allowedUsernames / allowedChatIds / allowedUserIds).`,
+          );
         }
       }
       if (adapters.length === 0) {
         console.error("no channels could be started — check config and credentials");
         process.exit(1);
       }
+      const { remoteSafeSubset } = await import("./tools/registry.js");
+      const remoteSafeTools = remoteSafeSubset(composedTools);
       const router = new ChannelRouter({
         channels: adapters,
-        tools: composedTools,
+        tools: remoteSafeTools,
+        toolsFor: (name) => (fullToolChannels.has(name) ? composedTools : remoteSafeTools),
         cwd,
         signal: abortController.signal,
         model: args.model,

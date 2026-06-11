@@ -51,21 +51,31 @@ const MAX_LISTED        = 10;
 
 /**
  * After Claude Code writes an `assistant` line with stop_reason=tool_use
- * the file stops growing until the tool returns. For auto-approved tools
- * that's <1s. For tools requiring user permission it's however long the
- * user takes to click "approve" in the Claude Code TUI.
+ * the file stops growing until the tool returns. Crucially, Claude Code
+ * does NOT log a system entry or subtype event for permission prompts —
+ * the prompt lives entirely in the TUI and never touches the jsonl. So
+ * on disk, a tool waiting for approval is INDISTINGUISHABLE from a tool
+ * that is simply still running (npm test, a long Bash command, a slow
+ * WebFetch).
  *
- * Crucially, Claude Code does NOT log a system entry or subtype event
- * for the permission prompt — the prompt lives entirely in the TUI and
- * never touches the jsonl. So the only signal we have that "Claude is
- * waiting for the user" is: last line is tool_use AND the file hasn't
- * grown in a while.
+ * Because we can't tell those apart, staleness is never reported as
+ * "waiting for permission" (doing so used to fire the advisor's urgent
+ * "approve?" alarm for every auto-approved tool that ran >5s). Instead:
  *
- * 5s is a tuned compromise: short enough to surface real permission
- * prompts promptly in the island pill, long enough that fast tools
- * (Read / Grep / etc, normally <1s) don't false-trigger.
+ *   - working + tool_use, stale < TOOL_STALL_THRESHOLD_MS
+ *       → stays "working" (the tool is presumably just running)
+ *   - working + tool_use, stale ≥ TOOL_STALL_THRESHOLD_MS
+ *       → waiting/"stalled on <tool>" — a soft hint only; the advisor's
+ *         detectStuck escalates it to an ordinary notice after its own,
+ *         much longer threshold, never to urgent
+ *   - working + non-tool reason, stale ≥ IDLE_THRESHOLD_MS
+ *       → waiting/"idle" (stream stalled, or the user cancelled)
+ *
+ * The "permission" reason survives only for the parser's EXPLICIT
+ * signal (a system entry with a permission subtype — see parser.ts).
  */
-const TOOL_USE_PERMISSION_THRESHOLD_MS = 5_000;
+const IDLE_THRESHOLD_MS = 5_000;
+export const TOOL_STALL_THRESHOLD_MS = 60_000;
 
 /**
  * Polling interval for the periodic re-evaluation that catches stale
@@ -335,62 +345,27 @@ export class ClaudeCodeWatcher extends EventEmitter {
   ): ClaudeSessionInfo {
     const sessionId = path.basename(filePath, ".jsonl");
     const projectEncoded = path.basename(path.dirname(filePath));
-    // Staleness heuristic: any "working" session whose jsonl hasn't
-    // grown in TOOL_USE_PERMISSION_THRESHOLD_MS gets promoted to
-    // "waiting". Three real-world cases all map to this:
-    //
-    //   - tool_use + stale  → Claude is waiting for the user to
-    //                          approve a tool in the Claude Code TUI
-    //                          (the prompt lives in the TUI, never on
-    //                          disk — staleness is the only signal)
-    //   - assistant + stale → API stream stalled or Claude is mid-
-    //                          thinking on a hard turn
-    //   - user + stale      → tool result came back but Claude never
-    //                          wrote the follow-up — usually means
-    //                          the user cancelled Claude Code
-    //
-    // For all three the user benefit is the same: solid orange dot in
-    // the island pill ("not making progress, check on it") instead of
-    // a pulsing one ("actively working"). Reason "idle" is honest about
-    // what we know — we can't actually distinguish these from on-disk
-    // metadata alone.
-    const ageMs = Date.now() - mtimeMs;
-    let finalState = state;
-    let finalReason = stateReason;
-    if (state === "working" && ageMs >= TOOL_USE_PERMISSION_THRESHOLD_MS) {
-      finalState = "waiting";
-      finalReason = stateReason === "tool_use" ? "permission" : "idle";
-    }
-    // When the session is blocked on a permission decision, surface which
-    // tool it's waiting on (the most recent tool name) — drives the advisor's
-    // "Codex wants to run X — approve?" prompts.
-    let finalActivity = activity;
-    if (finalActivity && finalReason === "permission" && finalActivity.lastTools.length) {
-      finalActivity = {
-        ...finalActivity,
-        pendingPermission: finalActivity.lastTools[finalActivity.lastTools.length - 1],
-      };
-    }
+    const derived = applyStaleness(state, stateReason, Date.now() - mtimeMs, activity);
     return {
       projectEncoded,
       projectLabel: decodeProjectLabel(projectEncoded),
       sessionId,
       lastMtime: mtimeMs,
       size,
-      state: finalState,
-      stateReason: finalReason,
+      state: derived.state,
+      stateReason: derived.stateReason,
       cwd,
-      activity: finalActivity,
+      activity: derived.activity,
     };
   }
 
   /**
    * Periodic re-evaluation of active sessions' state. The fs.watch
    * stream only fires when the file changes — but the very condition
-   * we want to detect (Claude waiting for permission) is "the file
-   * STOPPED changing". So we sweep every few seconds: for each session
-   * with a recent mtime, re-stat + re-parse + emit `state_changed` if
-   * the derived state has flipped.
+   * we want to detect (a session going idle, a tool stalling) is "the
+   * file STOPPED changing". So we sweep every few seconds: for each
+   * session with a recent mtime, re-stat + re-parse + emit
+   * `state_changed` if the derived state has flipped.
    *
    * Cheap: stat is O(1), parser reads only the file's tail.
    */
@@ -417,16 +392,83 @@ export class ClaudeCodeWatcher extends EventEmitter {
       }
       if (!st.isFile()) continue;
       const parsed = await parseSessionState(filePath);
+      // Carry over the previously parsed activity: the file hasn't
+      // grown (that's why we're sweeping), so re-extracting would be
+      // wasted I/O — and dropping it would lose the tool names that
+      // label a stall ("stalled on <tool>").
       const info = this.makeInfo(filePath, st.mtimeMs, st.size,
-                                 parsed.state, parsed.reason, parsed.cwd);
+                                 parsed.state, parsed.reason, parsed.cwd,
+                                 prev.activity);
       // No file growth here — only re-emit when the DERIVED state
-      // changed (tool_use → waiting/permission after staleness).
+      // changed (working → waiting after staleness).
       if (info.state !== prev.state || info.stateReason !== prev.stateReason) {
         this.sessions.set(filePath, info);
         this.emitUpdate("state_changed", info);
       }
     }
   }
+}
+
+/**
+ * Staleness heuristic, applied on top of the parsed (on-disk) state.
+ * Pure — the unit under test in watcher.test.ts.
+ *
+ * A "working" session whose jsonl has stopped growing means one of:
+ *
+ *   - tool_use + stale  → a tool call is in flight. Usually it's just a
+ *                          slow tool (npm test, a long Bash command) —
+ *                          and Claude Code writes nothing to the jsonl
+ *                          for permission prompts, so "still running"
+ *                          and "waiting for approval" look identical on
+ *                          disk. Short stalls stay "working"; only a
+ *                          markedly long one flips to a soft
+ *                          waiting/"stalled on <tool>" that detectStuck
+ *                          may later escalate to an ordinary notice —
+ *                          never the urgent "approve?" path.
+ *   - assistant + stale → API stream stalled or Claude is mid-thinking
+ *                          on a hard turn
+ *   - user + stale      → tool result came back but Claude never wrote
+ *                          the follow-up — usually means the user
+ *                          cancelled Claude Code
+ *
+ * The last two flip to waiting/"idle" — honest about what we know.
+ *
+ * `pendingPermission` is attached ONLY when the parser saw an explicit
+ * permission entry (reason "permission") — never inferred from
+ * staleness. A pendingPermission baked into a carried-over activity
+ * snapshot is stripped once the reason no longer says permission.
+ */
+export function applyStaleness(
+  state: ClaudeSessionState,
+  stateReason: string,
+  ageMs: number,
+  activity?: SessionActivity,
+): { state: ClaudeSessionState; stateReason: string; activity?: SessionActivity } {
+  let finalState = state;
+  let finalReason = stateReason;
+  if (state === "working" && stateReason === "tool_use") {
+    if (ageMs >= TOOL_STALL_THRESHOLD_MS) {
+      const tools = activity?.lastTools ?? [];
+      const lastTool = tools[tools.length - 1];
+      finalState = "waiting";
+      finalReason = lastTool ? `stalled on ${lastTool}` : "stalled";
+    }
+  } else if (state === "working" && ageMs >= IDLE_THRESHOLD_MS) {
+    finalState = "waiting";
+    finalReason = "idle";
+  }
+  let finalActivity = activity;
+  if (finalActivity) {
+    if (finalReason === "permission" && finalActivity.lastTools.length) {
+      finalActivity = {
+        ...finalActivity,
+        pendingPermission: finalActivity.lastTools[finalActivity.lastTools.length - 1],
+      };
+    } else if (finalActivity.pendingPermission) {
+      finalActivity = { ...finalActivity, pendingPermission: undefined };
+    }
+  }
+  return { state: finalState, stateReason: finalReason, activity: finalActivity };
 }
 
 /**

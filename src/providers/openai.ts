@@ -31,14 +31,19 @@ export class OpenAIProvider implements Provider {
       },
     }));
 
-    const stream = await this.client.chat.completions.create({
-      model: opts.model,
-      messages,
-      tools: tools.length ? tools : undefined,
-      max_tokens: opts.maxTokens ?? 16_000,
-      stream: true,
-      stream_options: { include_usage: true },
-    });
+    const stream = await this.client.chat.completions.create(
+      {
+        model: opts.model,
+        messages,
+        tools: tools.length ? tools : undefined,
+        max_tokens: opts.maxTokens ?? 16_000,
+        stream: true,
+        stream_options: { include_usage: true },
+      },
+      // Per-request options; `signal` aborts the in-flight HTTP stream
+      // (the SDK then throws APIUserAbortError).
+      { signal: opts.signal },
+    );
 
     let text = "";
     const toolCalls = new Map<

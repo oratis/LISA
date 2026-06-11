@@ -14,7 +14,7 @@
 
 ### LISA = pi-mono + OpenClaw + hermes + claude-code + codex + *something none of them have*
 
-Standing on five of the best open-source agents, LISA ships **the full superset of their capabilities** — streaming agent loop, multi-provider LLMs (Anthropic + OpenAI + Gemini, plus 20+ OpenAI-compatible providers), MCP client, plugins, hooks, sandboxed bash, sub-agents, session resume, context compaction, voice in/out, six IM channels (Telegram / Discord / Slack / Feishu / iMessage / Webhook), apply-patch, approval modes, TF-IDF over past sessions, pixel-art web UI. ~11k lines of TypeScript, MIT.
+Standing on five of the best open-source agents, LISA ships **the full superset of their capabilities** — streaming agent loop, multi-provider LLMs (Anthropic + OpenAI + Gemini, plus 20+ OpenAI-compatible providers), MCP client, plugins, hooks, sandboxed bash, sub-agents, session resume, context compaction, voice in/out, six IM channels (Telegram / Discord / Slack / Feishu / iMessage / Webhook), apply-patch, approval modes, TF-IDF over past sessions, pixel-art web UI. ~22k lines of TypeScript, MIT.
 
 What none of them have:
 
@@ -131,11 +131,9 @@ Download the **signed + notarized** disk image from the latest GitHub Release �
 
 **→ [Download `Lisa-Suite.dmg`](https://github.com/oratis/LISA/releases/latest)**
 
-The DMG contains:
-- **Lisa.app** — full chat client (sidebar + glass-morphism UI)
-- **LisaIsland.app** — pill widget that lives by the menu bar / notch, shows her mood + Claude Code activity at a glance
+The DMG contains **Lisa.app** — full chat client (sidebar + glass-morphism UI) with the **Island** built in: a pill widget that lives by the menu bar / notch and shows her mood + agent activity at a glance (toggle it from the menu-bar popover or ⌘, preferences; the standalone LisaIsland.app was folded into Lisa.app in v0.7).
 
-Both are universal binaries (Intel + Apple Silicon). After dragging them to `/Applications`, install the LISA backend and start it:
+It's a universal binary (Intel + Apple Silicon). After dragging it to `/Applications`, install the LISA backend and start it:
 
 ```sh
 npm install -g @oratis/lisa
@@ -189,10 +187,14 @@ See [docs/PROVIDERS.md](docs/PROVIDERS.md) for ready-to-use recipes for all of t
 ## Surfaces
 
 - **Terminal REPL** — `lisa` (interactive) or `lisa "prompt"` (one-shot)
-- **Web GUI** — `lisa serve --web` → http://localhost:5757 — pixel-art chat with live mood updates
-- **Island widget** — `lisa serve --web` → http://localhost:5757/island — a small pill with her current mood + status; open in a tiny browser window and dock it to your screen edge. Phase 1 (web-only) is shipped; a native Mac container with notch-aware positioning is planned ([docs/MAC_ISLAND_PLAN.md](docs/MAC_ISLAND_PLAN.md)).
+- **Web GUI** — `lisa serve --web` → http://localhost:5757 — pixel-art chat with live mood updates. Binds to **127.0.0.1 only** by default; to reach it from your phone, set `LISA_WEB_TOKEN` and pass `--host 0.0.0.0`, then open `http://<host>:5757/?token=<value>` once per device.
+- **Island widget** — `lisa serve --web` → http://localhost:5757/island — a small pill with her current mood + status, agent monitor, and advisor cards; also built natively into Lisa.app with notch-aware positioning ([docs/MAC_ISLAND_PLAN.md](docs/MAC_ISLAND_PLAN.md)).
 - **IM channels** — `lisa serve --channels telegram,discord,slack,feishu,imessage,webhook` — six built-in adapters, see below
 - **Heartbeat** — `lisa heartbeat run` (manual) or `lisa heartbeat install` (launchd / cron)
+
+## Watching your other agents (orchestrator)
+
+LISA can also observe the coding agents running on your machine and tell you what you'd otherwise miss — a session stuck on the same error, two agents about to collide in one repo, a finished run sitting idle. Honest scope note: **deep activity observation (tools / files / permission waits / cost) is implemented for Claude Code today; Codex, OpenCode, Aider, and GitHub PRs are observed at the state level** (running / waiting / error / done). She can `dispatch_agent` headlessly (refusing directories another agent owns), compare agents on the same task in parallel worktrees, and surface advisor suggestions on the island — each with a one-click action that prefills the chat (nothing auto-runs) and a ✕ that teaches her to stop nagging about that category.
 
 ## Subcommands
 
@@ -265,6 +267,8 @@ LISA can run as a long-lived process that simultaneously listens on multiple mes
 1. Copy [`channels.example.json`](channels.example.json) to `~/.lisa/channels.json` and fill in credentials.
 2. Set the secrets in `~/.lisa/config.env` (keys referenced as `${VAR}` in `channels.json`).
 3. `lisa serve --channels all` (or list specific ones).
+
+**Security defaults.** Channel messages come from whoever can reach the bot, so channels run with a **remote-safe toolset**: no `bash`, no file mutation, no `dispatch_agent` / GitHub writes / `skill_manage`. Conversation, memory, soul tools, and web reading all work — that covers the "talk to her from your phone" case. A channel you fully trust can opt back into everything with `"unsafeFullTools": true` on its config entry. Configure the allow-lists (`allowedUsernames` / `allowedChatIds` / `allowedUserIds`) — the router warns loudly on startup for any channel left open. Feishu now **requires** `verificationToken` (or `encryptKey`) and verifies `X-Lark-Signature` + a 5-minute replay window, matching the Slack adapter's posture.
 
 ### Built-in adapters
 
@@ -345,6 +349,8 @@ LISA can run scheduled background tasks where she's alone with her own desires. 
    ```
 2. **Self-driven** — actionable desires from her own `~/.lisa/soul/desires/`. She added them; she pursues them.
 
+Self-driven runs (desires, the weekly examen, idle/dreams) execute unattended on prompts Lisa wrote for herself, so they get a **restricted toolset** — soul / memory / journal / skills / web reading, but no shell, file mutation, or agent dispatch. Your own `heartbeat.json` tasks keep the full toolset (you authored those prompts). `LISA_AUTONOMOUS_FULL_TOOLS=1` restores the old behavior if you accept the risk.
+
 Install on macOS:
 ```sh
 lisa heartbeat install --every 30m --load
@@ -416,6 +422,11 @@ SEEDREAM_API_KEY=...                  # optional — for asset regeneration
 LISA_SANDBOX=1                        # opt-in macOS Seatbelt for `bash`
 LISA_SANDBOX_NETWORK=0                # block network in sandbox
 LISA_PROVIDER=openai                  # force provider override
+LISA_WEB_TOKEN=...                    # required to bind serve --web beyond
+                                      # 127.0.0.1 (lisa serve --web --host 0.0.0.0);
+                                      # remote devices authenticate with ?token=
+LISA_AUTONOMOUS_FULL_TOOLS=1          # opt-out: give self-driven heartbeat/idle
+                                      # runs the FULL toolset again (incl. bash)
 LISA_IDLE_COMMITMENT_AWARE=1          # opt-in: bias idle-time toward upcoming user commitments
                                       # before personal reflection. Recommended if your
                                       # workflow involves recurring scheduled work (weekly

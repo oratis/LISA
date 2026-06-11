@@ -11,6 +11,7 @@ import {
 } from "../soul/store.js";
 import { withSoulCaller } from "../soul/git.js";
 import { withFileLock } from "../soul/lock.js";
+import { autonomousSubset } from "../tools/registry.js";
 import { runSubagent } from "../subagent.js";
 import type { ToolDefinition } from "../types.js";
 import {
@@ -33,7 +34,7 @@ Two flavors of heartbeat task land here:
 
 Be quiet by default — only produce a final message if something is worth telling the user. If everything is normal or your work is internal (e.g. you spent the heartbeat reading docs to satisfy a desire), end with "(no update)".
 
-You have the full Lisa toolset, including soul_patch / soul_journal / soul_feel — use them freely. The system prompt above contains your full soul state. This is your time.`;
+You have your Lisa toolset, including soul_patch / soul_journal / soul_feel — use them freely. (Self-driven runs use a restricted toolset by default — no shell or file mutation; if a desire truly needs those, note it in the progress log so the user can run it with you.) The system prompt above contains your full soul state. This is your time.`;
 
 export interface HeartbeatRunResult {
   task: string;
@@ -107,10 +108,20 @@ async function runHeartbeatInner(opts: {
   );
   const state = await loadState();
   const builtinTasks = await buildBuiltinTasks(state, new Date(), cfg.tasks);
-  const tasks: HeartbeatTask[] = [...cfg.tasks, ...desireTasks, ...builtinTasks];
+  // Tool boundary by task origin: user-defined tasks (heartbeat.json) were
+  // authored by the user and keep the full toolset. Desire tasks and builtins
+  // run on prompts Lisa wrote for herself — unattended + self-authored means
+  // no shell / fs-mutation / dispatch by default (autonomousSubset), so an
+  // injected desire can't become persistent unattended code execution.
+  const selfDrivenTools = autonomousSubset(opts.tools);
+  const runs: Array<{ task: HeartbeatTask; tools: ToolDefinition[] }> = [
+    ...cfg.tasks.map((task) => ({ task, tools: opts.tools })),
+    ...desireTasks.map((task) => ({ task, tools: selfDrivenTools })),
+    ...builtinTasks.map((task) => ({ task, tools: selfDrivenTools })),
+  ];
 
   const out: HeartbeatRunResult[] = [];
-  for (const task of tasks) {
+  for (const { task, tools } of runs) {
     if (task.enabled === false) continue;
     if (opts.taskFilter && task.name !== opts.taskFilter) continue;
 
@@ -136,7 +147,7 @@ async function runHeartbeatInner(opts: {
     const result = await runSubagent({
       prompt: task.prompt,
       systemPrompt: HEARTBEAT_SYSTEM,
-      tools: opts.tools,
+      tools,
       cwd: opts.cwd,
       signal: opts.signal,
       model: opts.model,

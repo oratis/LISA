@@ -54,6 +54,12 @@ mkdir -p dist/web
 rm -rf dist/web/assets
 cp -R src/web/assets dist/web/assets
 
+# TypeScript was only needed for the compile above — prune it back out so the
+# bundles' node_modules/ ships runtime deps only (dist/cli.js needs nothing
+# else; keeping the compiler would add ~22 MB per bundle).
+echo "→ npm prune --omit=dev (drop the build-only TypeScript)…"
+npm prune --omit=dev > /dev/null
+
 # ─── 2. source tarball (matches npm publish) ───────────────────────
 echo
 echo "→ Source tarball (npm-style)…"
@@ -77,7 +83,7 @@ chmod +x "$MAC_DIR/bin/lisa" "$MAC_DIR/bin/lisa-gui.command"
 # Compiled JS + assets
 cp -R dist "$MAC_DIR/dist"
 
-# Runtime deps (already pruned by npm ci --omit=dev)
+# Runtime deps (npm ci --omit=dev + the post-build prune above)
 cp -R node_modules "$MAC_DIR/node_modules"
 cp package.json "$MAC_DIR/package.json"
 

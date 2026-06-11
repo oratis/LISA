@@ -59,6 +59,15 @@ export class FeishuChannel implements ChannelAdapter {
     if (!opts.appId || !opts.appSecret) {
       throw new Error("feishu: appId and appSecret are required");
     }
+    // Without either credential we cannot authenticate inbound events at all —
+    // anyone who can reach the webhook port could impersonate Feishu and feed
+    // arbitrary messages to the agent. Both values live on the same console
+    // page as the app secret (事件订阅 → Verification Token / Encrypt Key).
+    if (!opts.verificationToken && !opts.encryptKey) {
+      throw new Error(
+        "feishu: verificationToken (or encryptKey) is required — without one, inbound events are unauthenticated",
+      );
+    }
     this.opts = opts;
   }
 
@@ -126,6 +135,36 @@ export class FeishuChannel implements ChannelAdapter {
 
     const rawBody = await readBody(req);
 
+    // ── Signature check (when encryptKey is configured) ─────────────────────
+    // Feishu signs every delivery with X-Lark-Signature =
+    // sha256(timestamp + nonce + encryptKey + rawBody) hex, alongside
+    // X-Lark-Request-Timestamp / X-Lark-Request-Nonce. Verify it (and a 5min
+    // freshness window against replays) whenever the headers are present.
+    if (this.opts.encryptKey) {
+      const sig = headerString(req, "x-lark-signature");
+      const ts = headerString(req, "x-lark-request-timestamp");
+      const nonce = headerString(req, "x-lark-request-nonce");
+      if (sig && ts && nonce) {
+        const expected = crypto
+          .createHash("sha256")
+          .update(ts + nonce + this.opts.encryptKey + rawBody)
+          .digest("hex");
+        if (!timingSafeEqualStr(sig, expected)) {
+          console.error("[feishu] rejected event: bad X-Lark-Signature");
+          res.writeHead(403);
+          res.end("bad signature");
+          return;
+        }
+        const ageMs = Math.abs(Date.now() - Number(ts) * 1000);
+        if (!Number.isFinite(ageMs) || ageMs > 5 * 60_000) {
+          console.error("[feishu] rejected event: stale timestamp (replay?)");
+          res.writeHead(403);
+          res.end("stale timestamp");
+          return;
+        }
+      }
+    }
+
     let payload: Record<string, unknown>;
     try {
       payload = this.opts.encryptKey
@@ -136,6 +175,27 @@ export class FeishuChannel implements ChannelAdapter {
       res.writeHead(400);
       res.end("bad payload");
       return;
+    }
+
+    // ── Verification-token check ─────────────────────────────────────────────
+    // The token rides in the payload itself: top-level `token` on the URL
+    // challenge (v1), `header.token` on v2 events. It was stored in config but
+    // never actually checked — making the webhook spoofable by anyone who
+    // could reach the port.
+    if (this.opts.verificationToken) {
+      const header = payload.header as Record<string, unknown> | undefined;
+      const presented =
+        typeof payload.token === "string"
+          ? payload.token
+          : typeof header?.token === "string"
+            ? (header.token as string)
+            : "";
+      if (!presented || !timingSafeEqualStr(presented, this.opts.verificationToken)) {
+        console.error("[feishu] rejected event: verification token mismatch");
+        res.writeHead(403);
+        res.end("bad token");
+        return;
+      }
     }
 
     // ── URL verification challenge ──────────────────────────────────────────
@@ -276,6 +336,18 @@ export class FeishuChannel implements ChannelAdapter {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function headerString(req: http.IncomingMessage, name: string): string {
+  const v = req.headers[name];
+  return typeof v === "string" ? v : Array.isArray(v) ? (v[0] ?? "") : "";
+}
+
+function timingSafeEqualStr(a: string, b: string): boolean {
+  // Hash both sides so the comparison is constant-time regardless of length.
+  const ha = crypto.createHash("sha256").update(a).digest();
+  const hb = crypto.createHash("sha256").update(b).digest();
+  return crypto.timingSafeEqual(ha, hb);
+}
 
 function readBody(req: http.IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {

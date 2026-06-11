@@ -1,6 +1,7 @@
 import {
   appendDesireProgress,
   appendJournal,
+  applyEmotionDelta,
   listDesires,
   listJournalDates,
   listOpinions,
@@ -17,7 +18,6 @@ import {
   saveLock,
   writeConstitution,
   writeDesire,
-  writeEmotions,
   writeIdentity,
   writeName,
   writeOpinion,
@@ -313,33 +313,21 @@ export const soulFeelTool: ToolDefinition<SoulFeelInput, string> = {
   },
   async execute(input) {
     return await withSoulCaller("soul_feel", async () => {
-      // Decay first: bring every intensity up to "now" before adding the new
-      // delta, so the baseline reflects time elapsed since the last feel.
-      // Without this, a delta added after a week-long gap would stack on a
-      // stale value and the stored intensity would be months out of date.
-      const state = decayEmotions(await readEmotions());
-      const cur = state.values[input.emotion] ?? 0;
-      const next = clamp(cur + input.delta, -1, 1);
-      const ts = new Date().toISOString();
-      const events = [
-        ...(state.events ?? []),
-        { ts, emotion: input.emotion, delta: input.delta, trigger: input.trigger },
-      ].slice(-EMOTION_EVENTS_MAX);
-      const newState: EmotionState = {
-        values: { ...state.values, [input.emotion]: next },
-        decay: { ...state.decay, [input.emotion]: input.decay ?? state.decay[input.emotion] ?? 0.1 },
-        events,
-        updatedAt: ts,
-      };
-      await writeEmotions(newState);
-      return `${input.emotion}: ${cur.toFixed(2)} → ${next.toFixed(2)}`;
+      // applyEmotionDelta decays every intensity up to "now" before adding the
+      // delta (so a nudge after a week-long gap doesn't stack on a stale
+      // baseline), appends the causal event, and runs the whole read-modify-
+      // write under the cross-process soul lock.
+      const { previous, next } = await applyEmotionDelta({
+        emotion: input.emotion,
+        delta: input.delta,
+        trigger: input.trigger,
+        decay: input.decay,
+        maxEvents: EMOTION_EVENTS_MAX,
+      });
+      return `${input.emotion}: ${previous.toFixed(2)} → ${next.toFixed(2)}`;
     });
   },
 };
-
-function clamp(n: number, lo: number, hi: number): number {
-  return Math.min(hi, Math.max(lo, n));
-}
 
 function formatEmotions(state: EmotionState): string {
   const valuesBlock = Object.entries(state.values)

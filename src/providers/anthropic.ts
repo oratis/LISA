@@ -55,17 +55,24 @@ export class AnthropicProvider implements Provider {
     const onThinking = (delta: string) =>
       opts.handlers?.onThinkingDelta?.(delta);
 
+    // Second argument is the SDK's per-request options; `signal` aborts the
+    // in-flight HTTP stream (the SDK then throws APIUserAbortError).
+    const requestOpts = { signal: opts.signal };
+
     let message: Anthropic.Message;
     if (opts.compaction) {
-      const stream = this.client.beta.messages.stream({
-        ...params,
-        ...extras,
-      } as Anthropic.Beta.MessageCreateParamsStreaming);
+      const stream = this.client.beta.messages.stream(
+        {
+          ...params,
+          ...extras,
+        } as Anthropic.Beta.MessageCreateParamsStreaming,
+        requestOpts,
+      );
       if (opts.handlers?.onTextDelta) stream.on("text", onText);
       if (opts.handlers?.onThinkingDelta) stream.on("thinking", onThinking);
       message = (await stream.finalMessage()) as unknown as Anthropic.Message;
     } else {
-      const stream = this.client.messages.stream(params);
+      const stream = this.client.messages.stream(params, requestOpts);
       if (opts.handlers?.onTextDelta) stream.on("text", onText);
       if (opts.handlers?.onThinkingDelta) stream.on("thinking", onThinking);
       message = await stream.finalMessage();

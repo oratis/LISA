@@ -99,20 +99,61 @@ export async function writeConstitution(text: string): Promise<void> {
 }
 
 export async function readEmotions(): Promise<EmotionState> {
-  if (!(await pathExists(SOUL_EMOTIONS))) return DEFAULT_EMOTIONS;
+  // When the file is missing/corrupt, stamp the defaults with NOW — the
+  // catalog default is epoch-0, and decaying "since 1970" zeroes every value.
+  if (!(await pathExists(SOUL_EMOTIONS))) {
+    return { ...DEFAULT_EMOTIONS, updatedAt: new Date().toISOString() };
+  }
   try {
     const parsed = JSON.parse(await fs.readFile(SOUL_EMOTIONS, "utf8")) as EmotionState;
     // Backward-compat: emotions.json predating the event trail had no events
     // field. Treat it as an empty trail rather than throwing.
     return { ...parsed, events: parsed.events ?? [] };
   } catch {
-    return DEFAULT_EMOTIONS;
+    return { ...DEFAULT_EMOTIONS, updatedAt: new Date().toISOString() };
   }
 }
 
 export async function writeEmotions(state: EmotionState): Promise<void> {
   await atomicWrite(SOUL_EMOTIONS, JSON.stringify(state, null, 2));
   await commitSoulChange("emotions.json", "feel");
+}
+
+/**
+ * The one true way to nudge an emotion: read → decay-to-now → add delta →
+ * append the causal event → persist, all under the cross-process soul lock.
+ * Both soul_feel and reflect's `feel` op go through here so the two paths
+ * can't diverge (reflect used to skip the decay step and stack deltas on a
+ * stale baseline) and so two processes can't interleave the read-modify-write
+ * and lose an event.
+ */
+export async function applyEmotionDelta(opts: {
+  emotion: string;
+  delta: number;
+  trigger: string;
+  decay?: number;
+  maxEvents: number;
+}): Promise<{ previous: number; next: number }> {
+  return await withSoulLock(async () => {
+    const state = decayEmotions(await readEmotions());
+    const cur = state.values[opts.emotion] ?? 0;
+    const next = Math.max(-1, Math.min(1, cur + opts.delta));
+    const ts = new Date().toISOString();
+    const events = [
+      ...(state.events ?? []),
+      { ts, emotion: opts.emotion, delta: opts.delta, trigger: opts.trigger },
+    ].slice(-opts.maxEvents);
+    await writeEmotions({
+      values: { ...state.values, [opts.emotion]: next },
+      decay: {
+        ...state.decay,
+        [opts.emotion]: opts.decay ?? state.decay[opts.emotion] ?? 0.1,
+      },
+      events,
+      updatedAt: ts,
+    });
+    return { previous: cur, next };
+  });
 }
 
 /**
@@ -344,11 +385,16 @@ export async function appendDesireProgress(
 export async function appendJournal(date: string, entry: string): Promise<void> {
   await ensureDir(SOUL_JOURNAL_DIR);
   const file = journalFile(date);
-  const existing = await readTextOrEmpty(file);
-  const stamp = new Date().toISOString().slice(11, 19);
-  const block = `\n## ${stamp}\n\n${entry.trim()}\n`;
-  await atomicWrite(file, (existing.trimEnd() + block).trim() + "\n");
-  await commitSoulChange(`journal/${date}.md`, "journal");
+  // Read-modify-write under the cross-process soul lock: reflect / soul_journal
+  // / idle / heartbeat can all append to the same day's file from different
+  // processes; without the lock one append silently wins over the other.
+  await withSoulLock(async () => {
+    const existing = await readTextOrEmpty(file);
+    const stamp = new Date().toISOString().slice(11, 19);
+    const block = `\n## ${stamp}\n\n${entry.trim()}\n`;
+    await atomicWrite(file, (existing.trimEnd() + block).trim() + "\n");
+    await commitSoulChange(`journal/${date}.md`, "journal");
+  });
 }
 
 export async function readJournal(date: string): Promise<string> {
@@ -420,7 +466,13 @@ export async function detectTampering(): Promise<string[]> {
   const tampered: string[] = [];
   for (const rel of LOCKED_FILES) {
     const cur = await hashFileIfPresent(path.join(SOUL_DIR, rel));
-    if (!cur) continue;
+    if (!cur) {
+      // The lock says this file should exist but it's gone — deletion is
+      // tampering too, not a pass. (Previously `continue`d, so wiping
+      // identity.md was invisible while editing it tripped the alarm.)
+      if (lock.hashes[rel]) tampered.push(`${rel} (deleted)`);
+      continue;
+    }
     if (lock.hashes[rel] && lock.hashes[rel] !== cur) {
       tampered.push(rel);
     }
