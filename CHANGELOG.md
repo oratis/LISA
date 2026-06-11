@@ -5,6 +5,8 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.1] — 2026-06-11
+
 **Security hardening + advisor trust, from the v0.9 product review**
 ([docs/PRODUCT_REVIEW_v0.9.md](docs/PRODUCT_REVIEW_v0.9.md)). The review found
 one cross-cutting hole — `serve --web` bound every interface with zero auth in
@@ -79,19 +81,39 @@ unlocked soul writes. All closed below.
   dismissal that down-weights the category over time (the previously dead
   `applyDismissal` learning loop is now wired: `POST /api/advisor/dismiss`,
   `GET /api/advisor/latest`, SSE `advisor_suggestions`).
+- **Tier-2 structural activity for Codex / OpenCode / Aider** — `SessionActivity`
+  (tools / files touched / last command / errors) used to come only from Claude
+  Code, so 4 of 6 advisor detectors never fired for the other agents. Now all
+  five observers emit activity, gated behind each integration's `visibility`
+  tier. Codex tails the rollout JSONL (function-call names, path-key args only,
+  shell argv[0]); OpenCode reads a recent-message `json_group_array` column
+  built only when activity is wanted; Aider extracts files from the path label
+  above each SEARCH/REPLACE block (`lastTools` honestly `[]` — no tool protocol).
+  Each adapter has a planted-secret privacy test asserting prompts / replies /
+  file-contents never leak. Fidelity varies by what each agent records on disk;
+  the non-Claude depth is new and not yet battle-tested against live agents.
 - `--host <addr>` flag for `serve --web` (see Security).
 - Tests for the new boundaries: loopback gate, autonomous/remote tool subsets,
   Feishu verification (token, signature, replay), watcher staleness, PR-window
   semantics, abort passthrough, max-iterations, empty-content guard.
 
+### Changed
+
+- **`src/web/lisa-html.ts` split 2326 → 196 lines** — the inlined GUI's CSS
+  moved to `lisa-css.ts` and its client script to `lisa-client.ts`. The served
+  `MAIN_HTML` is byte-for-byte identical (sha256 pinned by a snapshot test), so
+  this is pure decomposition of the file the review flagged as near the
+  single-file maintainable limit.
+
 ### Docs & packaging
 
 - README (EN/zh) stops claiming the DMG contains a separate LisaIsland.app
   (folded into Lisa.app in v0.7), corrects "~11k" → "~22k lines", documents
-  the new security defaults, and adds an honest orchestrator scope note:
-  **deep activity observation is Claude Code only today; Codex / OpenCode /
-  Aider / GitHub PRs are state-level**. PITCH.md now leads with the soul hook
-  and scopes the orchestrator claim the same way.
+  the new security defaults, and adds an honest orchestrator scope note: **all
+  five observers now emit structural activity, but fidelity varies by what each
+  agent records (Claude Code richest; Aider gives files + turns, no tool
+  stream), and the non-Claude depth is new**. PITCH.md now leads with the soul
+  hook and scopes the orchestrator claim the same way.
 - Release gates: `release.yml` runs `npm test` before building;
   `prepublishOnly` runs `typecheck && test`. Release bundles prune
   devDependencies (~59MB smaller unpacked). Homebrew master formulas, the
