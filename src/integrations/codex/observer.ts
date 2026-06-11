@@ -10,11 +10,15 @@
  *
  * PRIVACY: identical contract to claude-code — only structural metadata
  * (entry `type`/`role`, error flags, file mtime). Never message content.
+ * The Tier-2 activity extractor (parseCodexActivity) extends this with
+ * tool NAMES, file PATHS, and command argv[0] — but, crucially, NEVER the
+ * `arguments` JSON itself, reasoning text, or message bodies. See the
+ * planted-secret privacy test in observer.test.ts.
  *
- * NOTE: Codex's exact rollout schema varies by version; the state parse is
- * deliberately tolerant (unknown shapes → "unknown") and the integration is
- * DISABLED by default (opt in via ~/.lisa/agents.json). It graceful-no-ops
- * when $CODEX_HOME/sessions is absent.
+ * NOTE: Codex's exact rollout schema varies by version; both the state parse
+ * and the activity parse are deliberately tolerant (unknown shapes → skipped /
+ * "unknown") and the integration is DISABLED by default (opt in via
+ * ~/.lisa/agents.json). It graceful-no-ops when $CODEX_HOME/sessions is absent.
  */
 
 import fs from "node:fs";
@@ -28,6 +32,7 @@ import type {
   AgentObserver,
   AgentSession,
   AgentSessionState,
+  SessionActivity,
 } from "../types.js";
 
 const ACTIVE_WINDOW_MS = 30 * 60_000;
@@ -42,6 +47,8 @@ interface CodexSessionInfo {
   lastMtime: number;
   state: AgentSessionState;
   stateReason: string;
+  /** Tier-2 structural activity; present only when visibility ≥ "activity". */
+  activity?: SessionActivity;
 }
 
 export class CodexObserver extends EventEmitter implements AgentObserver {
@@ -51,6 +58,7 @@ export class CodexObserver extends EventEmitter implements AgentObserver {
   private watcher: fs.FSWatcher | null = null;
   private pending = new Map<string, NodeJS.Timeout>();
   private emitFn: ((s: AgentSession) => void) | null = null;
+  private readonly computeActivity: boolean;
 
   constructor(cfg: AgentIntegrationConfig) {
     super();
@@ -58,6 +66,11 @@ export class CodexObserver extends EventEmitter implements AgentObserver {
       ? (cfg.home as string).replace(/^~/, os.homedir())
       : process.env.CODEX_HOME ?? path.join(os.homedir(), ".codex");
     this.sessionsRoot = path.join(home, "sessions");
+    // Tier 2: compute structural activity when visibility is "activity" or
+    // "intent". At "metadata"/"off" we stay metadata-only (cheaper, and the
+    // privacy-minimal default) — mirrors the claude-code observer.
+    this.computeActivity =
+      cfg.visibility === "activity" || cfg.visibility === "intent";
   }
 
   async start(emit: (s: AgentSession) => void): Promise<void> {
@@ -126,6 +139,9 @@ export class CodexObserver extends EventEmitter implements AgentObserver {
       const st = await fsp.stat(full);
       if (!st.isFile()) return;
       const { state, reason, cwd } = await parseCodexState(full);
+      const activity = this.computeActivity
+        ? await parseCodexActivity(full)
+        : undefined;
       this.sessions.set(full, {
         sessionId: path.basename(full, ".jsonl").replace(/^rollout-/, ""),
         project: cwd ? path.basename(cwd) : path.basename(path.dirname(full)),
@@ -133,6 +149,7 @@ export class CodexObserver extends EventEmitter implements AgentObserver {
         lastMtime: st.mtimeMs,
         state,
         stateReason: reason,
+        activity,
       });
     } catch {
       this.sessions.delete(full);
@@ -149,6 +166,7 @@ function toAgentSession(i: CodexSessionInfo): AgentSession {
     state: i.state,
     stateReason: i.stateReason,
     lastMtime: i.lastMtime,
+    activity: i.activity,
   };
 }
 
@@ -229,6 +247,215 @@ export async function parseCodexState(
     }
   }
   return { state: "unknown", reason: "no-decision", cwd };
+}
+
+// ── O2 (Tier 2): structural activity extraction ─────────────────────────────
+//
+// PRIVACY BOUNDARY (tested in observer.test.ts): this reads ONLY structural
+// metadata from a Codex rollout:
+//   - tool NAMES        (function_call `.name`)
+//   - file PATHS        (a known path key INSIDE the parsed `arguments` JSON:
+//                        `path` / `file_path` / `filename`)
+//   - command argv[0]   (first token of a shell function_call's command)
+//   - error flags       (`is_error` / `error`)
+//   - token counts      (`usage` / `token_usage` on any entry)
+// It NEVER extracts or returns: the raw `arguments` string, apply_patch bodies,
+// reasoning text, message content, assistant replies, user prompts, or any
+// command beyond argv[0]. `arguments` is parsed solely to pull the few path /
+// command keys above; on parse failure or absence we take nothing. The privacy
+// test plants a unique secret in arguments, reasoning, and message content and
+// asserts it never appears in the output.
+
+const ACTIVITY_TAIL_BYTES = 64 * 1024;
+const MAX_TOOLS = 6;
+const MAX_FILES = 10;
+/** Known path-bearing keys inside a function_call's parsed arguments. */
+const PATH_KEYS = ["file_path", "path", "filename"];
+/** function_call name substrings that denote a shell/exec call. */
+const SHELL_NAME_RE = /shell|bash|exec/i;
+
+export async function parseCodexActivity(
+  filePath: string,
+): Promise<SessionActivity | undefined> {
+  let size: number;
+  try {
+    const st = await fsp.stat(filePath);
+    if (!st.isFile() || st.size === 0) return undefined;
+    size = st.size;
+  } catch {
+    return undefined;
+  }
+
+  let tail: string;
+  try {
+    const fd = await fsp.open(filePath, "r");
+    try {
+      const length = Math.min(ACTIVITY_TAIL_BYTES, size);
+      const buf = Buffer.alloc(length);
+      await fd.read(buf, 0, length, size - length);
+      tail = buf.toString("utf8");
+    } finally {
+      await fd.close();
+    }
+  } catch {
+    return undefined;
+  }
+
+  const lines = tail.split("\n").filter(Boolean);
+  if (size > ACTIVITY_TAIL_BYTES && lines.length > 0) lines.shift();
+
+  let turnCount = 0;
+  const toolsInOrder: string[] = [];
+  const files: string[] = [];
+  let lastCommandName: string | undefined;
+  let lastError: string | undefined;
+  let inTok = 0;
+  let outTok = 0;
+
+  for (const line of lines) {
+    let e: unknown;
+    try {
+      e = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (!e || typeof e !== "object") continue;
+    const obj = e as Record<string, unknown>;
+
+    if (obj.is_error === true || obj.error === true) lastError = "tool error";
+
+    // Token usage may live top-level or under .message — read both shapes,
+    // tolerate either snake_case spelling.
+    accumulateUsage(obj.usage, obj.token_usage);
+    const msg = obj.message;
+    if (msg && typeof msg === "object") {
+      const m = msg as Record<string, unknown>;
+      accumulateUsage(m.usage, m.token_usage);
+    }
+
+    // Rough turn counter: assistant/user/response entries (by type OR role).
+    const type = readString(obj.type);
+    const role =
+      readString(obj.role) ??
+      (msg && typeof msg === "object"
+        ? readString((msg as Record<string, unknown>).role)
+        : undefined);
+    if (
+      type === "assistant" ||
+      type === "user" ||
+      type === "response" ||
+      role === "assistant" ||
+      role === "user"
+    ) {
+      turnCount++;
+    }
+
+    // Tool activity: Codex records tool calls as `type: "function_call"`.
+    if (type !== "function_call") continue;
+    const name = readString(obj.name);
+    if (!name) continue;
+    toolsInOrder.push(name);
+
+    // `arguments` is a JSON *string* that may contain sensitive content
+    // (e.g. an apply_patch body). We parse it ONLY to look up the few known
+    // path / command keys below; we never push the raw string anywhere.
+    const args = parseArguments(obj.arguments);
+    if (!args) continue;
+
+    for (const k of PATH_KEYS) {
+      const p = args[k];
+      if (typeof p === "string" && p) {
+        files.push(p);
+        break;
+      }
+    }
+
+    if (SHELL_NAME_RE.test(name)) {
+      const argv0 = shellArgv0(args.command);
+      if (argv0) lastCommandName = argv0;
+    }
+  }
+
+  if (turnCount === 0 && toolsInOrder.length === 0) return undefined;
+
+  return {
+    turnCount,
+    lastTools: toolsInOrder.slice(-MAX_TOOLS),
+    filesTouched: dedupeKeepRecent(files, MAX_FILES),
+    lastCommandName,
+    lastError,
+    // Codex rollouts don't carry a git branch or a permission gate in this
+    // shape; leave them undefined rather than guessing.
+    gitBranch: undefined,
+    pendingPermission: undefined,
+    tokens: inTok || outTok ? { input: inTok, output: outTok } : undefined,
+  };
+
+  function accumulateUsage(...candidates: unknown[]): void {
+    for (const c of candidates) {
+      if (!c || typeof c !== "object") continue;
+      const u = c as Record<string, unknown>;
+      inTok += toNum(u.input_tokens);
+      outTok += toNum(u.output_tokens);
+    }
+  }
+}
+
+/**
+ * Parse a function_call's `arguments`. Codex stores it as a JSON string; some
+ * versions/entries may already hand us an object. Returns a plain record on
+ * success, or undefined (we then extract nothing — never the raw value).
+ */
+function parseArguments(raw: unknown): Record<string, unknown> | undefined {
+  let parsed: unknown = raw;
+  if (typeof raw === "string") {
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return undefined;
+    }
+  }
+  return parsed && typeof parsed === "object"
+    ? (parsed as Record<string, unknown>)
+    : undefined;
+}
+
+/**
+ * argv[0] of a shell command. Codex may give `command` as an array
+ * (["bash","-lc","…"]) or a string. We return ONLY the first token — never
+ * the rest of the command line.
+ */
+function shellArgv0(command: unknown): string | undefined {
+  if (Array.isArray(command)) {
+    const first = command.find((c) => typeof c === "string" && c.trim());
+    return typeof first === "string" ? first.trim().split(/\s+/)[0] : undefined;
+  }
+  if (typeof command === "string" && command.trim()) {
+    return command.trim().split(/\s+/)[0];
+  }
+  return undefined;
+}
+
+function readString(v: unknown): string | undefined {
+  return typeof v === "string" ? v : undefined;
+}
+
+function toNum(v: unknown): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : 0;
+}
+
+/** Dedupe paths keeping each one's most-recent position; cap to `max`. */
+function dedupeKeepRecent(items: string[], max: number): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (let i = items.length - 1; i >= 0; i--) {
+    const it = items[i]!;
+    if (!seen.has(it)) {
+      seen.add(it);
+      out.unshift(it);
+    }
+  }
+  return out.slice(-max);
 }
 
 registerIntegration("codex", (cfg) => new CodexObserver(cfg));

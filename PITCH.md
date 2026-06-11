@@ -9,12 +9,14 @@ Updated after the v0.9 product review. **One primary hook, one supporting hook:*
    loop that survives across days), emotionally differentiated, and that no
    other agent has. Lead with this everywhere.
 2. **The orchestrator hook (supporting)** — she also watches the coding agents
-   on your machine. **Honest scope: deep activity observation is Claude Code
-   only today; Codex / OpenCode / Aider / GitHub PRs are state-level.** Pitch
-   it as "she keeps an eye on your Claude Code sessions (more agents
-   deepening)", not "watches all of them" — overclaiming here costs trust with
-   exactly the audience that will read the code. Promote it back to a co-lead
-   once ≥3 agents have Tier-2 depth and advisor actions are battle-tested.
+   on your machine. **Honest scope: all five observers (Claude Code, Codex,
+   OpenCode, Aider, GitHub PRs) now emit structural activity — tools / files /
+   commands / errors — but fidelity varies by what each agent records on disk
+   (Claude Code richest; Aider gives files + turns, no tool stream), and the
+   non-Claude depth is brand new / not yet battle-tested in the wild.** Pitch it
+   as "she watches your whole agent fleet — deepest on Claude Code", not "knows
+   everything every agent does." Promote it back to a co-lead once the
+   non-Claude observers have real field mileage and advisor actions are proven.
 
 Both link the same repo.
 
@@ -62,9 +64,9 @@ fleet. That's the gap LISA started filling in v0.4.
 
 **LISA is a local AI agent that orchestrates your other agents.** She observes
 agent sessions on your machine (structural metadata only — never your
-conversations; deep tool/file/permission/cost observation for Claude Code today,
-state-level for Codex / OpenCode / Aider / GitHub PRs), and proactively tells
-you the things you'd otherwise miss: this session has been stuck on the same
+conversations; all five observers — Claude Code, Codex, OpenCode, Aider, GitHub
+PRs — emit tool/file/command/error activity, richest on Claude Code), and
+proactively tells you the things you'd otherwise miss: this session has been stuck on the same
 error for 20 minutes; these two are both editing the same repo and about to
 conflict; this one's been done for an hour and is just idle. She can also
 *dispatch* a new agent headlessly and refuse to launch it into a directory
@@ -145,9 +147,10 @@ github.com/oratis/LISA
 Codex，分支上还挂着 aider。没人在盯这支"舰队"。这正是 LISA 从 v0.4 开始补的洞。
 
 **LISA 是一个能编排你其它 agent 的本地 AI agent。** 她观察你机器上的 agent
-会话（只看结构化元数据——绝不碰你的对话内容；深度的工具/文件/权限/成本观察
-目前覆盖 Claude Code，Codex / OpenCode / Aider / GitHub PR 为状态级），主动告
-诉你那些你本来会错过的事：这个会话已经在同一个报错上卡了 20 分钟；这两个都在
+会话（只看结构化元数据——绝不碰你的对话内容；五个 observer——Claude Code、
+Codex、OpenCode、Aider、GitHub PR——都能产出工具/文件/命令/错误活动，Claude
+Code 最丰富），主动告诉你那些你本来会错过的事：这个会话已经在同一个报错上卡了
+20 分钟；这两个都在
 改同一个仓库，马上要冲突；那个一小时前就跑完了，一直闲着。她还能**派发**一个
 新 agent（headless），并拒绝把它丢进另一个 agent 已经在用的目录里。
 
