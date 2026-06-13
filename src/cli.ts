@@ -52,6 +52,9 @@ INSPECTION
   lisa soul                    Print full soul summary.
   lisa wishlist                Print Lisa's own feedback about her toolset
                                (meta-wishlist desire + journal [WISHLIST]).
+  lisa autonomy [days]         Digest of self-driven runs (idle / heartbeat /
+                               desire / examen / reflect): outcome, cost, cadence.
+                               Defaults to the last 7 days.
 
 LIFECYCLE
   lisa birth                   Run the birth ritual (auto-runs on first launch).
@@ -151,7 +154,8 @@ interface ParsedArgs {
     | "wishlist"
     | "status"
     | "doctor"
-    | "monitor";
+    | "monitor"
+    | "autonomy";
   subargs: string[];
   serveWeb: boolean;
   serveImessage: boolean;
@@ -262,7 +266,8 @@ function parseArgs(argv: string[]): ParsedArgs {
       first === "wishlist" ||
       first === "status" ||
       first === "doctor" ||
-      first === "monitor"
+      first === "monitor" ||
+      first === "autonomy"
     ) {
       out.subcommand = first;
       out.subargs = positional.slice(1);
@@ -416,6 +421,14 @@ async function main(): Promise<void> {
   if (args.subcommand === "monitor") {
     const { runMonitor } = await import("./cli/monitor.js");
     await runMonitor();
+    return;
+  }
+
+  if (args.subcommand === "autonomy") {
+    const { readAutonomyRuns, summarizeAutonomyRuns } = await import("./autonomy/runs.js");
+    const days = parseInt(args.subargs[0] ?? "7", 10);
+    const sinceMs = (Number.isFinite(days) && days > 0 ? days : 7) * 24 * 60 * 60_000;
+    console.log(summarizeAutonomyRuns(await readAutonomyRuns(sinceMs)));
     return;
   }
 

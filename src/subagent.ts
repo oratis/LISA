@@ -12,6 +12,8 @@ export interface SubagentOptions {
   model?: string;
   log?: (msg: string) => void;
   thinking?: boolean;
+  /** Cumulative (input+output) token ceiling; stops the run early when reached. */
+  budgetTokens?: number;
 }
 
 export interface SubagentResult {
@@ -19,6 +21,8 @@ export interface SubagentResult {
   toolCallCount: number;
   inputTokens: number;
   outputTokens: number;
+  /** "end_turn" | "max_iterations" | "budget_exceeded" | … — lets callers see truncation. */
+  stopReason: string;
 }
 
 export async function runSubagent(opts: SubagentOptions): Promise<SubagentResult> {
@@ -42,11 +46,13 @@ export async function runSubagent(opts: SubagentOptions): Promise<SubagentResult
       if (event.type === "tool_call_start") toolCallCount++;
     },
     maxIterations: 32,
+    budgetTokens: opts.budgetTokens,
   });
   return {
     text: result.finalText,
     toolCallCount,
     inputTokens: result.inputTokens,
     outputTokens: result.outputTokens,
+    stopReason: result.stopReason,
   };
 }
