@@ -41,6 +41,10 @@ export const DEFAULT_ORCHESTRATOR_CONFIG: OrchestratorConfig = {
     // Aider has no central store — point it at the dirs you run it in:
     // `{ "enabled": true, "watchRoots": ["~/code/foo"] }`. Off by default.
     aider: { enabled: false },
+    // Git: surfaces the user's OWN repo work (branch / uncommitted / unpushed)
+    // under `watchRoots`, not just AI agents. Off by default; opt in with
+    // `{ "enabled": true, "watchRoots": ["~/code"] }`.
+    git: { enabled: false },
   },
   visibility: "activity",
 };
