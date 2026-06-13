@@ -3,8 +3,9 @@ import fs from "node:fs/promises";
 import { listSessionsOnDisk, loadSessionMessages } from "../sessions/list.js";
 import { SESSIONS_DIR } from "../paths.js";
 import { extractTextFromContent } from "../agent.js";
+import { cosineSimilarity, type Embedder } from "./embedding.js";
 
-interface Document {
+export interface Document {
   sessionId: string;
   startedAt: string;
   text: string;
@@ -13,9 +14,12 @@ interface Document {
   termFreq: Map<string, number>;
 }
 
-interface Index {
+export interface Index {
   docs: Document[];
   idf: Map<string, number>;
+  /** Lazily-populated dense doc vectors (M2), keyed by sessionId; cached per embedderId. */
+  embeddings?: Map<string, number[]>;
+  embedderId?: string;
 }
 
 const STOPWORDS = new Set([
@@ -145,6 +149,53 @@ export function search(index: Index, query: string, k = 5): SearchHit[] {
     score: s.score,
     excerpt: excerptAround(s.doc.text, qTokens, 200),
   }));
+}
+
+const SEMANTIC_DOC_CHARS = 2000;
+
+/** Populate (and cache on the index) a dense vector per doc, once per embedder. */
+async function ensureEmbeddings(index: Index, embedder: Embedder): Promise<void> {
+  if (index.embedderId === embedder.id && index.embeddings) return;
+  const vecs = await embedder.embed(index.docs.map((d) => d.text.slice(0, SEMANTIC_DOC_CHARS)));
+  const map = new Map<string, number[]>();
+  index.docs.forEach((d, i) => map.set(d.sessionId, vecs[i] ?? []));
+  index.embeddings = map;
+  index.embedderId = embedder.id;
+}
+
+/**
+ * Semantic search: rank docs by cosine similarity to the query embedding, so
+ * paraphrases TF-IDF misses ("connection failed" ↔ "network error") still
+ * match. Doc vectors are computed once and cached on the (fingerprint-cached)
+ * index, so steady-state cost is one query embedding per search. Falls back to
+ * TF-IDF if the embedding backend is unreachable — memory_search never breaks.
+ */
+export async function semanticSearch(
+  index: Index,
+  query: string,
+  embedder: Embedder,
+  k = 5,
+): Promise<SearchHit[]> {
+  if (index.docs.length === 0 || !query.trim()) return [];
+  try {
+    await ensureEmbeddings(index, embedder);
+    const [qv] = await embedder.embed([query]);
+    if (!qv) return search(index, query, k);
+    const qTokens = tokenize(query);
+    const scored = index.docs.map((d) => ({
+      doc: d,
+      score: cosineSimilarity(qv, index.embeddings!.get(d.sessionId) ?? []),
+    }));
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, k).map((s) => ({
+      sessionId: s.doc.sessionId,
+      startedAt: s.doc.startedAt,
+      score: s.score,
+      excerpt: excerptAround(s.doc.text, qTokens, 200),
+    }));
+  } catch {
+    return search(index, query, k);
+  }
 }
 
 function tokenize(text: string): string[] {

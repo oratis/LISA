@@ -22,7 +22,7 @@ import { LISA_HOME } from "./paths.js";
 import { loadAllPlugins, PLUGINS_ROOT } from "./plugins/loader.js";
 import type { HookSpec } from "./plugins/types.js";
 import { buildSystemPromptSnapshot, getPromptFingerprint } from "./prompt.js";
-import { providerForModel } from "./providers/registry.js";
+import { providerForModel, resolveDefaultModel } from "./providers/registry.js";
 import { reflectOnSession } from "./reflect.js";
 import { runRepl } from "./cli/repl.js";
 import { listSessionsOnDisk, loadSessionMessages } from "./sessions/list.js";
@@ -333,11 +333,11 @@ async function main(): Promise<void> {
 
   await ensureDir(LISA_HOME);
   loadConfigEnv();
-  // If the user didn't pass --model, honor a LISA_MODEL default from config.env
-  // (set by `lisa model use local://…`). Done after loadConfigEnv so the file's
-  // value is in process.env; --model still wins.
-  if (!args.modelExplicit && process.env.LISA_MODEL?.trim()) {
-    args.model = process.env.LISA_MODEL.trim();
+  // If the user didn't pass --model, resolve the default now that config.env is
+  // loaded: an explicit LISA_MODEL (e.g. `lisa model use`) wins, else auto-detect
+  // from the single configured cloud key. An explicit --model always overrides.
+  if (!args.modelExplicit) {
+    args.model = resolveDefaultModel();
   }
   // Re-bridge proxy in case HTTPS_PROXY was set in config.env rather than
   // the shell. configureProxyFromEnv is idempotent.
@@ -478,9 +478,11 @@ async function main(): Promise<void> {
       console.error("usage: lisa search <query>");
       process.exit(2);
     }
-    const { buildIndex, search } = await import("./memory/vector.js");
+    const { buildIndex, search, semanticSearch } = await import("./memory/vector.js");
+    const { getConfiguredEmbedder } = await import("./memory/embedding.js");
     const index = await buildIndex();
-    const hits = search(index, query, 10);
+    const embedder = getConfiguredEmbedder();
+    const hits = embedder ? await semanticSearch(index, query, embedder, 10) : search(index, query, 10);
     if (hits.length === 0) console.log("(no matches)");
     for (const h of hits) {
       console.log(
