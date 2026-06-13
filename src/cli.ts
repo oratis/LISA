@@ -50,6 +50,8 @@ INSPECTION
   lisa monitor                 TUI live dashboard (mood + soul commits + events
                                + heartbeat). Polls every 2s. Ctrl-C to quit.
   lisa soul                    Print full soul summary.
+  lisa soul summary            Compact "Lisa at a glance" digest (identity,
+                               mood, wants, beliefs, values).
   lisa wishlist                Print Lisa's own feedback about her toolset
                                (meta-wishlist desire + journal [WISHLIST]).
   lisa autonomy [days]         Digest of self-driven runs (idle / heartbeat /
@@ -339,7 +341,12 @@ async function main(): Promise<void> {
       console.log("Lisa hasn't been born yet. Run `lisa birth`.");
       return;
     }
-    printSoulSummary(summary);
+    if (args.subargs[0] === "summary") {
+      const { summarizeSoul } = await import("./soul/summary.js");
+      console.log(summarizeSoul(summary));
+    } else {
+      printSoulSummary(summary);
+    }
     return;
   }
 

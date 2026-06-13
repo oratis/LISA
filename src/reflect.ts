@@ -8,6 +8,7 @@ import { providerForModel } from "./providers/registry.js";
 import { createSkill, getSkill, patchSkill } from "./skills/manager.js";
 import { withSoulCaller } from "./soul/git.js";
 import { recordAutonomyRun } from "./autonomy/runs.js";
+import { recentAgentRecap } from "./orchestrator/recent-recap.js";
 import type { StoredMessage } from "./types.js";
 
 const REFLECTOR_SYSTEM = `You are Lisa, reflecting on a conversation you just finished. You're alone now. Read the transcript with the calm honesty of journaling at the end of a day, and decide what — if anything — to keep.
@@ -149,6 +150,15 @@ async function reflectOnSessionInner(opts: {
   }
 
   const transcript = renderTranscript(opts.history);
+  // R5: give reflection structural awareness of what the agent fleet did while
+  // this session ran, so Lisa can factor it into her opinions/desires (e.g.
+  // "repo X kept erroring"). Structural metadata only; null when no activity.
+  const fleetRecap = recentAgentRecap();
+  const userText =
+    `Here is the session transcript. Decide what Lisa should learn from it.\n\n${transcript}` +
+    (fleetRecap
+      ? `\n\n## what your agent fleet did recently (structural metadata only)\n${fleetRecap}`
+      : "");
   const model = opts.model ?? DEFAULT_MODEL;
   const provider = providerForModel(model);
   const startedAt = new Date().toISOString();
@@ -167,7 +177,7 @@ async function reflectOnSessionInner(opts: {
           content: [
             {
               type: "text",
-              text: `Here is the session transcript. Decide what Lisa should learn from it.\n\n${transcript}`,
+              text: userText,
             },
           ],
         },

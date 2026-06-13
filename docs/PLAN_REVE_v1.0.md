@@ -6,9 +6,12 @@
 > 这与 [PRODUCT_REVIEW_v0.9.md](./PRODUCT_REVIEW_v0.9.md) 的结论一致，也直接喂[论文](#7-与-roadmap--论文衔接)。
 > 上游设计见 [AUTONOMY_ROADMAP.md](./AUTONOMY_ROADMAP.md)（Phase 1–3 已落地）。
 >
-> **实现状态（branch `feat/reve-hardening`，0.10）**：R1（reflect 质量门禁：坏 JSON 重试 + error 落盘 + underreflect 信号）、
-> R2（`src/autonomy/runs.ts` 统一 `AutonomyRun` 账本 + idle 成本断路器 + `lisa autonomy` 摘要；agent loop 新增 `budgetTokens`/`budget_exceeded`）
-> 已实现并测试（autonomy/runs.test.ts、reflect.test.ts、agent.test.ts budget 用例；全套 447 测试绿）。R3/R4/R5/R6 待做。
+> **实现状态（branch `feat/reve-hardening`，0.10）**：
+> - **R1** reflect 质量门禁（坏 JSON 重试 + `<id>.error.json` 落盘 + underreflect 信号）✅
+> - **R2** `src/autonomy/runs.ts` 统一 `AutonomyRun` 账本 + idle 成本断路器（agent loop 新增 `budgetTokens`/`budget_exceeded`）+ `lisa autonomy` 摘要 ✅
+> - **R3** `lisa soul summary` 人可读速览（`src/soul/summary.ts`）✅；**锁铺全（R3b）已核对在 0.9.1 完成**——`appendJournal`(store.ts:391)、`applyEmotionDelta`(store.ts:137) 均已 `withSoulLock`，`commitSoulChange` 走 withFileLock+串行队列。
+> - **R5** `recentAgentRecap`（`src/orchestrator/recent-recap.ts`）接进 reflect 用户消息 + heartbeat 系统提示 ✅
+> 全部已测试（summary/recent-recap/autonomy/reflect/agent budget 用例；全套 **455 测试绿**）。**R4（desire 中间态，0.11）、R6（Dreams→Reve 更名）待做。**
 
 ---
 
@@ -84,7 +87,7 @@ interface AutonomyRun {
 
 ### R3 · 灵魂可观测 + 锁铺全
 - `lisa soul summary` / GUI 卡片：从 `SoulSummary` 渲染 "Lisa 今天：好奇 0.45 · 想做 [X,Y] · 相信 [A,B] · 近期情绪事件 N 条"。现在情绪/欲望/opinion/git 历史只有 LLM 自己读（review §4.2：营销权重 > 可感效用）。
-- **并发锁铺全**：`appendJournal` / 情绪写入 / `commitSoulChange` 都包 `withSoulLock`（`src/soul/lock.ts`）；复核 0.9.1 已修一批后，确认 git commit 不再被 swallow（review §4.2 指出跨进程撞 `index.lock` 时 commit 被吞，打脸"every change has a commit"）。
+- **并发锁铺全（R3b）— 已核对在 0.9.1 完成**：`appendJournal`（store.ts:391）、`applyEmotionDelta`（store.ts:137）均已包 `withSoulLock`，注释明确针对 review §4.2 的竞态；`commitSoulChange` 走 withFileLock + 串行队列。仅余：对"git commit 被 swallow"做一次跨进程压力回归测试以确认彻底。
 - 验收：
   - [ ] `lisa soul summary` 输出人可读速览。
   - [ ] 两进程并发写 journal / emotions / git → 无丢条、commit 齐全（压力测试）。
@@ -127,14 +130,14 @@ interface DesireEntry {
 
 ## 3. 分阶段（映射里程碑）
 
-| 阶段 | 内容 | 里程碑 | 风险 |
-|---|---|---|---|
-| R1 | 反思质量门禁 | 0.10 | 低 |
-| R2 | heartbeat/idle 可观测 + idle 断路器 + 收敛 | 0.10 | 低 |
-| R3 | 灵魂速览 + 锁铺全 | 0.10 | 低 |
-| R5 | recap 接进反思 | 0.10 | 低 |
-| R4 | desire 中间态 | 0.11 | 低 |
-| R6 | Dreams→Reve 更名 | 0.10（随手） | 低 |
+| 阶段 | 内容 | 里程碑 | 风险 | 状态 |
+|---|---|---|---|---|
+| R1 | 反思质量门禁 | 0.10 | 低 | ✅ |
+| R2 | heartbeat/idle 可观测 + idle 断路器 + 收敛 | 0.10 | 低 | ✅（收敛 K 值策略待调） |
+| R3 | 灵魂速览 + 锁铺全 | 0.10 | 低 | ✅（锁 0.9.1 已完成） |
+| R5 | recap 接进反思 | 0.10 | 低 | ✅ |
+| R4 | desire 中间态 | 0.11 | 低 | 待做 |
+| R6 | Dreams→Reve 更名 | 0.10（随手） | 低 | 待做 |
 
 > Reve 整体是 0.10 的"先打深"主轴——低风险、高可信、兑现承诺，给 1.0 打信任地基。
 

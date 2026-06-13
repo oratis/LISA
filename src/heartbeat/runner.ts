@@ -14,6 +14,7 @@ import { withFileLock } from "../soul/lock.js";
 import { autonomousSubset } from "../tools/registry.js";
 import { runSubagent } from "../subagent.js";
 import { recordAutonomyRun, type AutonomyKind } from "../autonomy/runs.js";
+import { recentAgentRecap } from "../orchestrator/recent-recap.js";
 import type { ToolDefinition } from "../types.js";
 import {
   loadHeartbeatConfig,
@@ -121,6 +122,13 @@ async function runHeartbeatInner(opts: {
     ...builtinTasks.map((task) => ({ task, tools: selfDrivenTools })),
   ];
 
+  // R5: structural awareness of recent fleet activity, appended once for the
+  // whole heartbeat run so Lisa can factor it into self-driven work.
+  const fleetRecap = recentAgentRecap();
+  const heartbeatSystem = fleetRecap
+    ? `${HEARTBEAT_SYSTEM}\n\n## recent agent-fleet activity (structural metadata, for your awareness)\n${fleetRecap}`
+    : HEARTBEAT_SYSTEM;
+
   const out: HeartbeatRunResult[] = [];
   for (const { task, tools } of runs) {
     if (task.enabled === false) continue;
@@ -156,7 +164,7 @@ async function runHeartbeatInner(opts: {
     try {
       result = await runSubagent({
         prompt: task.prompt,
-        systemPrompt: HEARTBEAT_SYSTEM,
+        systemPrompt: heartbeatSystem,
         tools,
         cwd: opts.cwd,
         signal: opts.signal,
