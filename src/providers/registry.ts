@@ -206,11 +206,12 @@ function resolveProvider(model: string): Provider {
     });
   }
   if (process.env.LISA_BASE_URL) {
-    // Catch-all (Ollama, self-hosted, unknown providers).
+    // Catch-all (Ollama, self-hosted, the TakoAPI gateway, unknown providers).
     return new OpenAIProvider({
       baseURL: process.env.LISA_BASE_URL,
-      // LISA_API_KEY first, fall back to OPENAI_API_KEY for compatibility.
-      apiKey: process.env.LISA_API_KEY ?? process.env.OPENAI_API_KEY,
+      // LISA_API_KEY first, then TAKO_KEY (so pointing LISA_BASE_URL at
+      // https://takoapi.com/v1 just works), then OPENAI_API_KEY for compat.
+      apiKey: process.env.LISA_API_KEY ?? process.env.TAKO_KEY ?? process.env.OPENAI_API_KEY,
     });
   }
   // Vanilla OpenAI.

@@ -40,6 +40,7 @@ import { redeployTool } from "./redeploy.js";
 import { setMoodTool } from "./set_mood.js";
 import { webFetchTool } from "./web_fetch.js";
 import { webSearchTool } from "./web_search.js";
+import { takoapiTool } from "./takoapi.js";
 import { writeTool } from "./write.js";
 
 export interface ToolRegistryOptions {
@@ -77,6 +78,7 @@ export function buildToolRegistry(opts: ToolRegistryOptions = {}): ToolDefinitio
     desireCloseTool as ToolDefinition,
     webFetchTool as ToolDefinition,
     webSearchTool as ToolDefinition,
+    takoapiTool as ToolDefinition,
     redeployTool as ToolDefinition,
     // Orchestration (docs/ORCHESTRATOR_PLAN.md): observe → advise → dispatch → control.
     listAgentsTool as ToolDefinition,
@@ -154,6 +156,9 @@ export const AUTONOMOUS_BLOCKED_TOOL_NAMES = new Set([
   "run_checks",
   "github",
   "mcp",
+  // takoapi calls spend the user's TAKO_KEY and send data to a remote agent —
+  // not something an unattended/remote-origin run should do on its own.
+  "takoapi",
 ]);
 
 export function autonomousSubset(tools: ToolDefinition[]): ToolDefinition[] {

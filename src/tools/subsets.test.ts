@@ -28,6 +28,7 @@ const SAMPLE = [
   "run_checks",
   "github",
   "mcp",
+  "takoapi",
   "skill_manage",
   "memory",
   "memory_search",
