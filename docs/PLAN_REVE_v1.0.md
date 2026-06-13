@@ -11,7 +11,8 @@
 > - **R2** `src/autonomy/runs.ts` 统一 `AutonomyRun` 账本 + idle 成本断路器（agent loop 新增 `budgetTokens`/`budget_exceeded`）+ `lisa autonomy` 摘要 ✅
 > - **R3** `lisa soul summary` 人可读速览（`src/soul/summary.ts`）✅；**锁铺全（R3b）已核对在 0.9.1 完成**——`appendJournal`(store.ts:391)、`applyEmotionDelta`(store.ts:137) 均已 `withSoulLock`，`commitSoulChange` 走 withFileLock+串行队列。
 > - **R5** `recentAgentRecap`（`src/orchestrator/recent-recap.ts`）接进 reflect 用户消息 + heartbeat 系统提示 ✅
-> 全部已测试（summary/recent-recap/autonomy/reflect/agent budget 用例；全套 **455 测试绿**）。**R4（desire 中间态，0.11）、R6（Dreams→Reve 更名）待做。**
+> - **R6** Dreams→Reve 更名 ✅：公开文案 README/PITCH 英文 Dreams→Reve（中文「梦境」保留为本地化名）；偶发用法（Seedream 品牌、birth「dreaming」文学化措辞、CSS `--dream` 色名、island `dreaming` 代码标识）保留；README 完整四支柱（Sense·Dispatch·Reve·Model）大改版留待 1.0 发布，避免半改名的不一致状态。
+> 全部已测试（summary/recent-recap/autonomy/reflect/agent budget 用例；全套 **455 测试绿**）。**仅 R4（desire `pursuit:needs-user` 中间态）留到 0.11。**
 
 ---
 
@@ -137,7 +138,7 @@ interface DesireEntry {
 | R3 | 灵魂速览 + 锁铺全 | 0.10 | 低 | ✅（锁 0.9.1 已完成） |
 | R5 | recap 接进反思 | 0.10 | 低 | ✅ |
 | R4 | desire 中间态 | 0.11 | 低 | 待做 |
-| R6 | Dreams→Reve 更名 | 0.10（随手） | 低 | 待做 |
+| R6 | Dreams→Reve 更名 | 0.10（随手） | 低 | ✅（公开文案；README 大改版留待 1.0） |
 
 > Reve 整体是 0.10 的"先打深"主轴——低风险、高可信、兑现承诺，给 1.0 打信任地基。
 

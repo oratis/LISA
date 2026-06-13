@@ -4,7 +4,7 @@ Copy-paste blurbs for promoting LISA on social, forums, and chat groups.
 Updated after the v0.9 product review. **One primary hook, one supporting hook:**
 
 1. **The soul hook (PRIMARY)** — an agent with a persistent inner self:
-   **Soul · Desires · Heartbeat · Dreams**. This is the part that is fully
+   **Soul · Desires · Heartbeat · Reve**. This is the part that is fully
    backed by code (birth ritual, git-versioned soul, desire→heartbeat→progress
    loop that survives across days), emotionally differentiated, and that no
    other agent has. Lead with this everywhere.
@@ -44,7 +44,7 @@ Repo: https://github.com/oratis/LISA · Site: https://meetlisa.ai · Demo: https
 > 🧬 a Soul she wrote at birth
 > 💭 Desires that actually drive her
 > 💓 a Heartbeat — she acts on her own clock
-> 🌙 Dreams — she processes her day while you're away
+> 🌙 Reve — she processes her day while you're away
 >
 > She can also see your screen, hear your voice, and orchestrate your other agents.
 >
@@ -98,7 +98,7 @@ actionable ones feed the heartbeat. She has motivation.
 own desires + your standing chores, and stays silent if there's nothing worth
 saying.
 
-🌙 **DREAMS** — away for 1h+, she reflects: reads her unprocessed journal,
+🌙 **REVE** — away for 1h+, she reflects: reads her unprocessed journal,
 patches her own broken skills, decides one thing to do. You come back to a
 "★ WHILE YOU WERE AWAY" card. It's not a toggle — it's wired in as her default
 idle behavior.
@@ -199,7 +199,7 @@ github.com/oratis/LISA
 | Tagline (EN) — orchestrator | The agent that watches your agents |
 | Tagline (EN) — soul | An AI agent with a real self |
 | Tagline (CN) | 替你盯住整支 agent 舰队的、有灵魂的本地 AI |
-| 核心 4 字 | Soul · Desires · Heartbeat · Dreams / 灵魂 · 欲望 · 心跳 · 梦境 |
+| 核心 4 字 | Soul · Desires · Heartbeat · Reve / 灵魂 · 欲望 · 心跳 · 梦境 |
 | 能力定位 | Orchestrates your other CLI agents + capability superset of pi-mono / OpenClaw / hermes / claude-code / codex |
 | 新增 (v0.4–v0.6) | Cross-agent orchestrator · Vision (screenshot) · Voice (record→transcribe) |
 | Hashtags | `#opensource` `#AI` `#agent` `#LLM` `#anthropic` `#claude` `#typescript` `#localfirst` `#devtools` |
