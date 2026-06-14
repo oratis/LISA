@@ -1,5 +1,6 @@
 import type { ToolDefinition } from "../types.js";
-import { buildIndex, search } from "./vector.js";
+import { buildIndex, search, semanticSearch } from "./vector.js";
+import { getConfiguredEmbedder } from "./embedding.js";
 
 interface SearchInput {
   query: string;
@@ -23,7 +24,10 @@ export const memorySearchTool: ToolDefinition<SearchInput, string> = {
   },
   async execute(input) {
     const index = await buildIndex();
-    const hits = search(index, input.query, input.limit ?? 5);
+    const embedder = getConfiguredEmbedder();
+    const hits = embedder
+      ? await semanticSearch(index, input.query, embedder, input.limit ?? 5)
+      : search(index, input.query, input.limit ?? 5);
     if (hits.length === 0) return "(no matches)";
     return hits
       .map(

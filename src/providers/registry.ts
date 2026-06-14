@@ -1,6 +1,8 @@
 import { AnthropicProvider } from "./anthropic.js";
 import { GeminiProvider } from "./gemini.js";
 import { OpenAIProvider } from "./openai.js";
+import { FallbackProvider } from "./fallback.js";
+import { DEFAULT_MODEL } from "../llm.js";
 import type { Provider } from "./types.js";
 
 export type ProviderName = "anthropic" | "openai" | "gemini";
@@ -177,10 +179,11 @@ export function makeProvider(name: ProviderName): Provider {
 }
 
 /**
- * Resolve a Provider instance for a given model name. Looks up preset →
- * LISA_BASE_URL override → vanilla provider, in that order.
+ * Resolve a SINGLE Provider instance for a model name. Looks up preset →
+ * LISA_BASE_URL override → vanilla provider, in that order. (No fallback chain —
+ * that's providerForModel's job.)
  */
-export function providerForModel(model: string): Provider {
+function resolveProvider(model: string): Provider {
   const provider = detectProvider(model);
   if (provider === "anthropic") {
     return new AnthropicProvider({
@@ -215,6 +218,33 @@ export function providerForModel(model: string): Provider {
     baseURL: process.env.OPENAI_BASE_URL,
     apiKey: process.env.OPENAI_API_KEY,
   });
+}
+
+/**
+ * Resolve the provider for a model, wrapping it in a FallbackProvider when
+ * LISA_MODEL_FALLBACK lists alternate models to try if the primary errors.
+ * Drop-in for the old single-provider behavior (no env → identical).
+ */
+export function providerForModel(model: string): Provider {
+  const fallbacks = (process.env.LISA_MODEL_FALLBACK ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (fallbacks.length === 0) return resolveProvider(model);
+  const chain = [model, ...fallbacks].map((m) => ({ model: m, provider: resolveProvider(m) }));
+  return new FallbackProvider(chain);
+}
+
+/**
+ * Pick the default model when the user didn't pass --model. An explicit local
+ * default (LISA_MODEL, e.g. set by `lisa model use`) wins; otherwise auto-detect
+ * from the single configured cloud key so a one-key setup works with no flags.
+ */
+export function resolveDefaultModel(): string {
+  if (process.env.LISA_MODEL?.trim()) return process.env.LISA_MODEL.trim();
+  if (process.env.ANTHROPIC_API_KEY) return DEFAULT_MODEL;
+  if (process.env.OPENAI_API_KEY) return "gpt-4o";
+  return DEFAULT_MODEL;
 }
 
 /** For docs / CLI listing. */

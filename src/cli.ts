@@ -22,7 +22,7 @@ import { LISA_HOME } from "./paths.js";
 import { loadAllPlugins, PLUGINS_ROOT } from "./plugins/loader.js";
 import type { HookSpec } from "./plugins/types.js";
 import { buildSystemPromptSnapshot, getPromptFingerprint } from "./prompt.js";
-import { providerForModel } from "./providers/registry.js";
+import { providerForModel, resolveDefaultModel } from "./providers/registry.js";
 import { reflectOnSession } from "./reflect.js";
 import { runRepl } from "./cli/repl.js";
 import { listSessionsOnDisk, loadSessionMessages } from "./sessions/list.js";
@@ -57,6 +57,8 @@ INSPECTION
   lisa autonomy [days]         Digest of self-driven runs (idle / heartbeat /
                                desire / examen / reflect): outcome, cost, cadence.
                                Defaults to the last 7 days.
+  lisa model <sub>             Local model lifecycle (Ollama): list, install
+                               <model>, use local://<model> to switch, health.
 
 LIFECYCLE
   lisa birth                   Run the birth ritual (auto-runs on first launch).
@@ -142,6 +144,8 @@ interface ParsedArgs {
   loadPlugins: boolean;
   voice: boolean;
   idleMinutes: number;
+  /** True when --model was passed, so a LISA_MODEL default from config.env won't override it. */
+  modelExplicit: boolean;
   subcommand?:
     | "resume"
     | "sessions"
@@ -157,7 +161,8 @@ interface ParsedArgs {
     | "status"
     | "doctor"
     | "monitor"
-    | "autonomy";
+    | "autonomy"
+    | "model";
   subargs: string[];
   serveWeb: boolean;
   serveImessage: boolean;
@@ -177,6 +182,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     thinking: false,
     compaction: false,
     model: DEFAULT_MODEL,
+    modelExplicit: false,
     approval: "auto",
     loadMcp: true,
     loadPlugins: true,
@@ -221,8 +227,13 @@ function parseArgs(argv: string[]): ParsedArgs {
         .map((s) => s.trim())
         .filter(Boolean);
     }
-    else if (arg === "--model") out.model = mustNext(argv, ++i, "--model");
-    else if (arg.startsWith("--model=")) out.model = arg.slice("--model=".length);
+    else if (arg === "--model") {
+      out.model = mustNext(argv, ++i, "--model");
+      out.modelExplicit = true;
+    } else if (arg.startsWith("--model=")) {
+      out.model = arg.slice("--model=".length);
+      out.modelExplicit = true;
+    }
     else if (arg === "--provider") {
       const v = mustNext(argv, ++i, "--provider");
       process.env.LISA_PROVIDER = v;
@@ -269,7 +280,8 @@ function parseArgs(argv: string[]): ParsedArgs {
       first === "status" ||
       first === "doctor" ||
       first === "monitor" ||
-      first === "autonomy"
+      first === "autonomy" ||
+      first === "model"
     ) {
       out.subcommand = first;
       out.subargs = positional.slice(1);
@@ -321,6 +333,12 @@ async function main(): Promise<void> {
 
   await ensureDir(LISA_HOME);
   loadConfigEnv();
+  // If the user didn't pass --model, resolve the default now that config.env is
+  // loaded: an explicit LISA_MODEL (e.g. `lisa model use`) wins, else auto-detect
+  // from the single configured cloud key. An explicit --model always overrides.
+  if (!args.modelExplicit) {
+    args.model = resolveDefaultModel();
+  }
   // Re-bridge proxy in case HTTPS_PROXY was set in config.env rather than
   // the shell. configureProxyFromEnv is idempotent.
   configureProxyFromEnv({ log: (m) => console.error(m) });
@@ -439,6 +457,11 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (args.subcommand === "model") {
+    const { runModelCommand } = await import("./cli/model.js");
+    process.exit(await runModelCommand(args.subargs));
+  }
+
   if (args.subcommand === "sessions") {
     const sessions = await listSessionsOnDisk();
     for (const s of sessions) {
@@ -455,9 +478,11 @@ async function main(): Promise<void> {
       console.error("usage: lisa search <query>");
       process.exit(2);
     }
-    const { buildIndex, search } = await import("./memory/vector.js");
+    const { buildIndex, search, semanticSearch } = await import("./memory/vector.js");
+    const { getConfiguredEmbedder } = await import("./memory/embedding.js");
     const index = await buildIndex();
-    const hits = search(index, query, 10);
+    const embedder = getConfiguredEmbedder();
+    const hits = embedder ? await semanticSearch(index, query, embedder, 10) : search(index, query, 10);
     if (hits.length === 0) console.log("(no matches)");
     for (const h of hits) {
       console.log(
