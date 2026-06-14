@@ -71,6 +71,7 @@ _lisa_first() {
         'model:local model lifecycle (list/install/use/health)'
         'consent:consent for sensitive ambient signals'
         'sense:recent ambient sense events'
+        'agents:snapshot of agent sessions across observers'
     )
     _describe 'subcommand' subcommands
 }
