@@ -1,6 +1,7 @@
 import { runAgent } from "./agent.js";
 import { DEFAULT_MODEL } from "./llm.js";
 import { providerForModel } from "./providers/registry.js";
+import type { Provider } from "./providers/types.js";
 import type { ToolDefinition } from "./types.js";
 
 export interface SubagentOptions {
@@ -14,6 +15,8 @@ export interface SubagentOptions {
   thinking?: boolean;
   /** Cumulative (input+output) token ceiling; stops the run early when reached. */
   budgetTokens?: number;
+  /** Injectable provider (tests); defaults to providerForModel(model). */
+  provider?: Provider;
 }
 
 export interface SubagentResult {
@@ -27,7 +30,7 @@ export interface SubagentResult {
 
 export async function runSubagent(opts: SubagentOptions): Promise<SubagentResult> {
   const model = opts.model ?? DEFAULT_MODEL;
-  const provider = providerForModel(model);
+  const provider = opts.provider ?? providerForModel(model);
   let toolCallCount = 0;
   const result = await runAgent({
     provider,

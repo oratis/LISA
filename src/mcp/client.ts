@@ -56,7 +56,7 @@ async function connectOne(
   };
 }
 
-function mcpToolToLisaTool(
+export function mcpToolToLisaTool(
   serverName: string,
   client: Client,
   mcpTool: { name: string; description?: string; inputSchema?: object },
