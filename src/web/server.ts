@@ -32,6 +32,7 @@ import type { AgentSession } from "../integrations/types.js";
 import { captureScreenshot, captureSupported, type CaptureMode } from "../vision/capture.js";
 import { transcribeAudio } from "../voice/transcribe.js";
 import { polishDictation, type DictationProvider } from "../voice/dictation.js";
+import { listGrants, grant, revoke, revokeAll, SENSE_SIGNALS, SIGNAL_DESCRIPTIONS } from "../consent/store.js";
 import {
   loadScreenAdvisorConfig,
   saveScreenAdvisorConfig,
@@ -669,6 +670,53 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       }
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+
+    // ── Consent (FOUNDATIONS §1) ────────────────────────────────────────
+    // The island's "always visible + one-tap stop" surface. GET lists every
+    // sense signal + status; the POSTs grant/revoke/stop-all. Sources gate on
+    // isGranted() server-side regardless — this is control, not the gate.
+    if (req.method === "GET" && url === "/api/consent") {
+      const grants = listGrants().map((g) => ({
+        ...g,
+        description: SIGNAL_DESCRIPTIONS[g.signal] ?? "",
+      }));
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ grants }));
+      return;
+    }
+    if (req.method === "POST" && url === "/api/consent/revoke-all") {
+      revokeAll();
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, grants: listGrants() }));
+      return;
+    }
+    if (
+      req.method === "POST" &&
+      (url === "/api/consent/grant" || url === "/api/consent/revoke")
+    ) {
+      let cBody = "";
+      for await (const chunk of req) cBody += chunk.toString("utf8");
+      let payload: { signal?: unknown };
+      try {
+        payload = JSON.parse(cBody || "{}");
+      } catch {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("bad json");
+        return;
+      }
+      const signal = payload.signal;
+      // Only the canonical sense signals are togglable from the UI.
+      if (typeof signal !== "string" || !SENSE_SIGNALS.includes(signal)) {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end(`signal must be one of: ${SENSE_SIGNALS.join(", ")}`);
+        return;
+      }
+      if (url === "/api/consent/grant") grant(signal);
+      else revoke(signal);
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, grants: listGrants() }));
       return;
     }
 
