@@ -301,6 +301,22 @@ export const MAIN_CSS = `  :root {
     white-space: nowrap;
     text-overflow: ellipsis;
   }
+  /* D4a — agent-kind chip rendered inline before the project name, so the
+     multi-agent sidebar reads which tool each row belongs to. */
+  .session-row .agent-badge {
+    display: inline-block;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: lowercase;
+    color: var(--claude);
+    background: rgba(255, 140, 66, 0.12);
+    border: 1px solid rgba(255, 140, 66, 0.22);
+    border-radius: 999px;
+    padding: 0 5px;
+    margin-right: 5px;
+    vertical-align: 1px;
+  }
   .session-row .when {
     color: var(--fg-3);
     font-variant-numeric: tabular-nums;

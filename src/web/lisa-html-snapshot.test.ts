@@ -12,13 +12,15 @@ import { MAIN_HTML } from "./lisa-html.js";
  * the real GUI, the safety net for that refactor is "the served bytes did not
  * change": identical output ⇒ identical browser behavior.
  *
- * These constants were captured from the pre-split MAIN_HTML. If you
- * intentionally change the GUI markup/CSS/JS, recompute them:
- *   node --import tsx -e 'import("./src/web/lisa-html.ts").then(m=>{const c=require("crypto");console.log(m.MAIN_HTML.length, c.createHash("sha256").update(m.MAIN_HTML).digest("hex"))})'
+ * These constants track the current served MAIN_HTML. If you intentionally
+ * change the GUI markup/CSS/JS, recompute them:
+ *   node --import tsx -e 'import("./src/web/lisa-html.ts").then(async m=>{const {createHash}=await import("node:crypto");console.log(m.MAIN_HTML.length, createHash("sha256").update(m.MAIN_HTML).digest("hex"))})'
+ *
+ * Last updated: D4a multi-agent sidebar (agent-kind badge CSS + JS, /api/agents/sessions).
  */
-const EXPECTED_LENGTH = 76071;
+const EXPECTED_LENGTH = 77174;
 const EXPECTED_SHA256 =
-  "77d2bc88b3bdb0bf0d595831dcc95118af456866d40ec1743966b92a80c80c17";
+  "f02520ca19159dc033c4b1f5f96e2ea7d90cb8b328d9207043a17e46d28f62e5";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);
