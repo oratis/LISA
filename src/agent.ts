@@ -7,6 +7,7 @@ import type {
 } from "./types.js";
 import type { Provider } from "./providers/types.js";
 import { moodBus } from "./mood-bus.js";
+import { validateToolInput } from "./tools/validate.js";
 
 export interface ApprovalDecision {
   allow: boolean;
@@ -371,6 +372,26 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
           });
           continue;
         }
+      }
+
+      // FOUNDATIONS §2.3 — validate the model's input against the tool's schema
+      // before running it. Malformed input never reaches execute(); the model
+      // gets a friendly error to correct on the next turn.
+      const valid = validateToolInput(tool.inputSchema, call.input);
+      if (!valid.ok) {
+        toolResults.push({
+          type: "tool_result",
+          tool_use_id: call.id,
+          content: `[invalid input] ${valid.error}`,
+          is_error: true,
+        });
+        onEvent?.({
+          type: "tool_call_end",
+          toolName: call.name,
+          isError: true,
+          toolResult: valid.error ?? "invalid input",
+        });
+        continue;
       }
 
       try {
