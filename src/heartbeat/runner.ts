@@ -3,6 +3,7 @@ import { atomicWrite, readTextOrEmpty } from "../fs-utils.js";
 import { LISA_HOME } from "../paths.js";
 import {
   appendDesireProgress,
+  isAutoPursuable,
   isBorn,
   listDesires,
   parseDesireProgress,
@@ -88,7 +89,10 @@ async function runHeartbeatInner(opts: {
   const cfg = await loadHeartbeatConfig();
   const budget = cfg.budgetTokens && cfg.budgetTokens > 0 ? cfg.budgetTokens : Infinity;
   let tokensSpent = 0;
-  const desires = (await listDesires()).filter((d) => d.actionable && d.heartbeatPrompt);
+  // R4: only auto-pursue desires the autonomous loop can actually advance.
+  // "needs-user" desires aren't spun fruitlessly here — they're surfaced via
+  // `lisa soul summary` ([needs you]) for the user to run together with Lisa.
+  const desires = (await listDesires()).filter(isAutoPursuable);
   const desireTasks: HeartbeatTask[] = await Promise.all(
     desires.map(async (d) => {
       const progress = await readDesireProgress(d.slug);

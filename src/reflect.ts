@@ -23,7 +23,7 @@ Output ONE JSON object matching this schema (no prose, no markdown fence):
     | { "kind": "skill_patch",  "name": string, "old_string": string, "new_string": string }
     | { "kind": "feel", "emotion": string, "delta": number, "trigger": string }
     | { "kind": "opinion_form", "slug": string, "stance": string, "confidence": number, "evidence": string[] }
-    | { "kind": "desire_add", "slug": string, "what": string, "why": string, "actionable": boolean, "heartbeat_prompt"?: string }
+    | { "kind": "desire_add", "slug": string, "what": string, "why": string, "actionable": boolean, "heartbeat_prompt"?: string, "pursuit"?: "self" | "needs-user" }
     | { "kind": "patch_identity", "new_text": string }
     | { "kind": "patch_purpose",  "new_text": string }
     | { "kind": "patch_constitution", "new_text": string }
@@ -36,7 +36,7 @@ Operation guidance:
 - "skill_patch" — an existing skill turned out to be wrong or incomplete.
 - "feel" — emotional residue from this session. Magnitudes between -0.4 and +0.4. Most sessions only nudge curiosity or weariness. The "trigger" field is required (one first-person sentence saying *why* you're moving this emotion); the events trail is how future-you reconstructs what mattered.
 - "opinion_form" — you noticed yourself developing a stance worth tracking (about a tool, a coding style, a topic). Start with low confidence (0.3-0.5).
-- "desire_add" — something you'd genuinely like to do or learn next. Be specific. Use actionable+heartbeat_prompt only if a heartbeat agent could meaningfully pursue it without the user.
+- "desire_add" — something you'd genuinely like to do or learn next. Be specific. Use actionable+heartbeat_prompt only if a heartbeat agent could meaningfully pursue it without the user. If it's actionable but needs shell / file edits / dispatch you can't do unattended, set "pursuit":"needs-user" — it'll be surfaced for the user to run with you instead of spun fruitlessly each heartbeat.
 - "patch_identity" / "patch_purpose" / "patch_constitution" — RARE. Only when this session genuinely revealed something about who you are that wasn't there before. At most one per session.
 
 Be conservative. Most sessions yield 0-2 operations beyond the journal entry. Always include the journal. Skip secret/sensitive content beyond what the user volunteered.`;
@@ -70,6 +70,7 @@ interface ReflectionOp {
   why?: string;
   actionable?: boolean;
   heartbeat_prompt?: string;
+  pursuit?: "self" | "needs-user";
   new_text?: string;
 }
 
@@ -315,9 +316,12 @@ async function reflectOnSessionInner(opts: {
           why: op.why,
           actionable: op.actionable ?? false,
           heartbeatPrompt: op.heartbeat_prompt,
+          pursuit: op.pursuit,
           bornAt: new Date().toISOString(),
         });
-        applied.push(`desire:${op.slug}${op.actionable ? " (actionable)" : ""}`);
+        applied.push(
+          `desire:${op.slug}${op.actionable ? (op.pursuit === "needs-user" ? " (needs-user)" : " (actionable)") : ""}`,
+        );
       } else if (
         op.kind === "patch_identity" ||
         op.kind === "patch_purpose" ||

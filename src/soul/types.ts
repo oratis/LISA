@@ -95,6 +95,15 @@ export interface DesireEntry {
   actionable: boolean;
   /** Heartbeat prompt for actionable desires. */
   heartbeatPrompt?: string;
+  /**
+   * For actionable desires, who can actually advance it (R4):
+   *   "self"       — the autonomous loop can pursue it unattended (default).
+   *   "needs-user" — it needs shell / fs / dispatch the autonomous toolset
+   *                  lacks, so it is NOT auto-spun; it's surfaced for the user
+   *                  to run with Lisa instead of accumulating fruitless runs.
+   * Undefined is treated as "self" for backward compatibility.
+   */
+  pursuit?: "self" | "needs-user";
   bornAt: string;
 }
 

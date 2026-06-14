@@ -48,7 +48,12 @@ export function summarizeSoul(s: SoulSummary, nowMs: number = Date.now()): strin
   if (s.desires.length) {
     lines.push("", "wants");
     for (const d of s.desires.slice(0, 6)) {
-      lines.push(`  • ${oneLine(d.what, 80)}${d.actionable ? " [actionable]" : ""}`);
+      const tag = d.actionable
+        ? d.pursuit === "needs-user"
+          ? " [needs you]"
+          : " [actionable]"
+        : "";
+      lines.push(`  • ${oneLine(d.what, 80)}${tag}`);
     }
   }
   if (s.opinions.length) {

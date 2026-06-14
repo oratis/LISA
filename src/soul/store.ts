@@ -255,11 +255,13 @@ export async function writeDesire(entry: DesireEntry): Promise<void> {
     `# ${entry.what}`,
     "",
     `actionable: ${entry.actionable ? "yes" : "no"}`,
-    `born: ${entry.bornAt}`,
-    "",
-    `## why`,
-    entry.why.trim(),
   ];
+  // Only meaningful for actionable desires; omit the default ("self") to keep
+  // existing files byte-stable.
+  if (entry.actionable && entry.pursuit === "needs-user") {
+    lines.push(`pursuit: needs-user`);
+  }
+  lines.push(`born: ${entry.bornAt}`, "", `## why`, entry.why.trim());
   if (entry.actionable && entry.heartbeatPrompt) {
     lines.push("", "## heartbeat", entry.heartbeatPrompt.trim());
   }
@@ -273,7 +275,18 @@ function parseDesireFile(slug: string, raw: string): DesireEntry {
   const born = raw.match(/^born:\s*(.+)$/m)?.[1] ?? new Date().toISOString();
   const why = (raw.match(/## why([\s\S]*?)(?:\n## |\n*$)/)?.[1] ?? "").trim();
   const heartbeatPrompt = (raw.match(/## heartbeat([\s\S]*)$/)?.[1] ?? "").trim() || undefined;
-  return { slug, what, why, actionable, heartbeatPrompt, bornAt: born };
+  const pursuit = /^pursuit:\s*needs-user\s*$/im.test(raw) ? "needs-user" : undefined;
+  return { slug, what, why, actionable, heartbeatPrompt, pursuit, bornAt: born };
+}
+
+/** Can the autonomous heartbeat pursue this desire unattended? Pure (R4). */
+export function isAutoPursuable(d: DesireEntry): boolean {
+  return !!(d.actionable && d.heartbeatPrompt) && d.pursuit !== "needs-user";
+}
+
+/** An actionable desire that needs the user to run something Lisa can't do unattended. */
+export function needsUserHelp(d: DesireEntry): boolean {
+  return !!d.actionable && d.pursuit === "needs-user";
 }
 
 // Per-desire progress log. One file per desire slug, append-only, written by
