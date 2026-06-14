@@ -6,6 +6,8 @@ export type ApprovalMode = "auto" | "ask" | "ask-mutating";
 export interface ApprovalConfig {
   mode: ApprovalMode;
   mutatingTools: Set<string>;
+  /** Injectable prompt reader (tests); defaults to reading one stdin line. */
+  readLine?: () => Promise<string>;
 }
 
 export const DEFAULT_MUTATING_TOOLS = new Set([
@@ -27,7 +29,7 @@ export function buildApprovalCallback(
     process.stderr.write(
       `\n[approval] ${toolName}(${preview})\n  [y]es / [n]o (default n) > `,
     );
-    const answer = await readSingleLine();
+    const answer = await (cfg.readLine ?? readSingleLine)();
     if (/^y(es)?$/i.test(answer.trim())) {
       return { allow: true };
     }
