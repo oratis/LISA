@@ -83,3 +83,21 @@
 
 ## 7. 一句话
 > 把屏幕/语音变成 Sense 的 ambient 信号 —— 但**先建 consent 框架、一切本地优先、默认全关**;这块的成败不在能不能采,而在隐私故事能不能让人信。
+
+---
+
+## 8. 落地状态(narrative = code,2026-06)
+
+**已落地**:
+- **F-consent 框架**(`src/consent/`):`isGranted` 闸、默认全关、fail-closed、`revokeAll`、黑名单(app/路径/PII)、`lisa consent` CLI + island 开关。
+- **SenseSource 抽象 + SenseService 常驻循环**(`src/sense/`)。
+- **S2-screen(前台 app 信号)**:`ScreenSource` 只采 app 名(不截屏)、逐 tick 查 consent、黑名单整帧跳过、窗口标题红act。
+- **S2-voice(push-to-talk 转写)**:`VoiceSource` 复用现有转写管线,consent-gated、不存音频、PII 红act。
+- **screenshot→model 路径(screen-advisor)现已纳入 consent 闸**:必须同时 `screen` 授权 + advisor enabled;`revoke-all` 一并停。
+- **可观测**:`lisa sense` + island "recently sensed" feed + `sense_event` SSE。
+
+**有意推迟(诚实标注,非偷工)**:
+- **可选低频截图的"本地优先判定"**:目前 screen-advisor 按间隔无条件送模型;在送之前先本地判"是否值得"(前台 app 变了/出错对话框)是下一步优化。
+- **always-on 语音**:默认 push-to-talk;常听是隐私面最危险、需更强 consent 故事,推迟。
+- **本地 STT(whisper.cpp)**:离机转写优选,但需打包二进制 + 下模型;v1 仍用云 Whisper。
+- **clipboard / selection 两个 consent 信号**:已在框架里登记(默认关),但对应 source 尚未实现。
