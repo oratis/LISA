@@ -167,6 +167,10 @@ lisa --model qwen2.5-32b-instruct
 
 Ollama's OpenAI-compat is at `/v1`. Tool use depends on the underlying model — `qwen2.5` and `llama3.1` both support it; smaller models often don't.
 
+**Two ways to use local models, to be clear about what LISA does:**
+- **Bring your own endpoint** (above) — you run Ollama / LM Studio / vLLM and point `LISA_BASE_URL` at it. LISA is just an OpenAI-compat client; it does not manage the server.
+- **Managed lifecycle** — `lisa model list / install <model> / use local://<model> / health` drives a local Ollama backend for you (pull + switch). Same runtime as above; it just automates the pull and the config switch. It does **not** bundle or fine-tune a model.
+
 ---
 
 ## Recipe 6: Moonshot (Kimi, China)

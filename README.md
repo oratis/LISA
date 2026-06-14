@@ -14,7 +14,7 @@
 
 ### LISA = pi-mono + OpenClaw + hermes + claude-code + codex + *something none of them have*
 
-Standing on five of the best open-source agents, LISA ships **the full superset of their capabilities** — streaming agent loop, multi-provider LLMs (Anthropic + OpenAI + Gemini, plus 20+ OpenAI-compatible providers), MCP client, plugins, hooks, sandboxed bash, sub-agents, session resume, context compaction, voice in/out, six IM channels (Telegram / Discord / Slack / Feishu / iMessage / Webhook), apply-patch, approval modes, TF-IDF over past sessions, pixel-art web UI. ~22k lines of TypeScript, MIT.
+Standing on five of the best open-source agents, LISA ships **the full superset of their capabilities** — streaming agent loop, multi-provider LLMs (Anthropic + OpenAI + Gemini, plus 20+ OpenAI-compatible providers), MCP client, plugins, hooks, sandboxed bash, sub-agents, session resume, context compaction, voice in/out, six IM channels (Telegram / Discord / Slack / Feishu / iMessage / Webhook), apply-patch, approval modes, TF-IDF over past sessions, pixel-art web UI. ~27k lines of TypeScript, MIT.
 
 What none of them have:
 
