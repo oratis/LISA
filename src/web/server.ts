@@ -33,6 +33,7 @@ import { captureScreenshot, captureSupported, type CaptureMode } from "../vision
 import { transcribeAudio } from "../voice/transcribe.js";
 import { polishDictation, type DictationProvider } from "../voice/dictation.js";
 import { listGrants, grant, revoke, revokeAll, isGranted, SENSE_SIGNALS, SIGNAL_DESCRIPTIONS } from "../consent/store.js";
+import { signalAgentTool } from "../tools/signal_agent.js";
 import { SenseService } from "../sense/service.js";
 import { ScreenSource } from "../sense/screen.js";
 import { VoiceSource } from "../sense/voice.js";
@@ -733,6 +734,39 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       res.end(JSON.stringify({ grants }));
       return;
     }
+    // D4b — list/cancel LISA's OWN dispatched agents over HTTP. Behind the auth
+    // gate like every endpoint (loopback or token). Reuses signal_agent, so it
+    // can ONLY touch dispatch-ledger pids — never an arbitrary process.
+    if (req.method === "POST" && url === "/api/agent/signal") {
+      let sigBody = "";
+      for await (const chunk of req) sigBody += chunk.toString("utf8");
+      let payload: { action?: unknown; target?: unknown; force?: unknown };
+      try {
+        payload = JSON.parse(sigBody || "{}");
+      } catch {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("bad json");
+        return;
+      }
+      const action = payload.action === "list" ? "list" : payload.action === "cancel" ? "cancel" : null;
+      if (!action) {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("action must be 'list' or 'cancel'");
+        return;
+      }
+      const result = await signalAgentTool.execute(
+        {
+          action,
+          target: typeof payload.target === "string" ? payload.target : undefined,
+          force: payload.force === true,
+        },
+        { cwd: process.cwd(), signal: new AbortController().signal, log: () => {} },
+      );
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, result }));
+      return;
+    }
+
     // Recent ambient sense events, for the island's "recently sensed" list.
     if (req.method === "GET" && url === "/api/sense/recent") {
       const events = readSenseEvents().slice(-30).reverse(); // newest first
