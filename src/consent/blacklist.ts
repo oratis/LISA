@@ -29,9 +29,11 @@ export const DEFAULT_APP_BLACKLIST: string[] = [
 ];
 
 /** Path/title patterns for sensitive files (secrets, keys, credentials). */
+// Word-boundary (not just path-anchored) so these also catch a secret named in
+// free text — e.g. a voice transcript "open my .env file", not only a path.
 export const DEFAULT_PATH_BLACKLIST: RegExp[] = [
-  /(^|[./])\.env($|[./])/i,
-  /\.(key|pem|p12|pfx|keystore)$/i,
+  /(^|[\s./])\.env\b/i,
+  /\.(key|pem|p12|pfx|keystore)\b/i,
   /id_(rsa|ed25519|ecdsa)\b/i,
   /\bsecrets?\b/i,
   /\bcredentials?\b/i,

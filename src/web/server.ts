@@ -35,6 +35,7 @@ import { polishDictation, type DictationProvider } from "../voice/dictation.js";
 import { listGrants, grant, revoke, revokeAll, SENSE_SIGNALS, SIGNAL_DESCRIPTIONS } from "../consent/store.js";
 import { SenseService } from "../sense/service.js";
 import { ScreenSource } from "../sense/screen.js";
+import { VoiceSource } from "../sense/voice.js";
 import { appendSenseEvent } from "../sense/log.js";
 import {
   loadScreenAdvisorConfig,
@@ -359,7 +360,11 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // each tick), so this is a no-op by default. On-change foreground-app events
   // are distilled to the bounded sense log; nothing raw is persisted.
   const senseService = new SenseService();
+  // VoiceSource is event-driven (fed by the transcribe endpoint when `voice` is
+  // granted); ScreenSource polls. Both no-op until their signal is granted.
+  const voiceSource = new VoiceSource();
   senseService.register(new ScreenSource());
+  senseService.register(voiceSource);
   void senseService.start((e) => {
     appendSenseEvent(e);
     broadcast({ type: "sense_event", ...e });
@@ -609,6 +614,10 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         await fs.writeFile(tmp, Buffer.from(payload.data, "base64"));
         console.error(`[voice] transcribing ${Buffer.from(payload.data, "base64").length} bytes (${ext})`);
         const transcript = await transcribeAudio({ audioPath: tmp });
+        // S2-voice: when `voice` is granted, distill this push-to-talk transcript
+        // into the ambient sense log (PII-redacted, no audio). No-op otherwise,
+        // so dictation works unchanged when voice consent is off.
+        voiceSource.ingest(transcript);
         // Dictation mode (Typeless-equivalent): polish the raw transcript into
         // the clean text the speaker intended (filler/repetition removed,
         // self-corrections applied, punctuation + formatting), to drop into the
