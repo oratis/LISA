@@ -57,4 +57,5 @@ export async function registerBuiltinIntegrations(): Promise<void> {
   await import("./github-pr/observer.js");
   await import("./opencode/observer.js");
   await import("./aider/observer.js");
+  await import("./git/observer.js");
 }
