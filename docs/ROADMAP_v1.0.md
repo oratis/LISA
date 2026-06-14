@@ -23,7 +23,16 @@
 | [PLAN_MODEL_v1.0.md](./PLAN_MODEL_v1.0.md) | 模型：本地生命周期、本地 embedding、容错+自检、provider 欠账 | §6 |
 | [PLAN_FOUNDATIONS_v1.0.md](./PLAN_FOUNDATIONS_v1.0.md) | 横切：consent/隐私、安全地板、测试门禁、可观测、footprint、叙事诚实 | §7 |
 
-> 阅读顺序建议：先本文（为什么 + 顺序），再 FOUNDATIONS（地基），再按里程碑顺序读 REVE → MODEL → DISPATCH → SENSE。
+**深化子计划（剩余 hard items，2026-06-14，各含"已做 vs 仍缺"核查）：**
+
+| 文档 | 覆盖 | 关键核查结论 |
+|---|---|---|
+| [PLAN_DISPATCH_D4_v1.0.md](./PLAN_DISPATCH_D4_v1.0.md) | 多 agent 监控 + advisor 动作 | advisor 可点**已是 0.9.1 完成**；真缺口=前端消费 `agent_session_update` |
+| [PLAN_OBSERVER_DEEPENING_v1.0.md](./PLAN_OBSERVER_DEEPENING_v1.0.md) | codex/opencode/aider Tier-2 字段 | Tier-2 **0.9.1 已铺开**(5/8、3/8)；剩 gitBranch + 窗口 + **活验证** |
+| [PLAN_DISPATCH_D2B_v1.0.md](./PLAN_DISPATCH_D2B_v1.0.md) | A2A adapter（远程 agent 进 hub） | 只 surface "叫过的"，不塞 200 registry；依赖 D4a；TaskState 映射 |
+| [PLAN_SENSE_S2_v1.0.md](./PLAN_SENSE_S2_v1.0.md) | ambient 屏幕/语音 | **硬前置 = consent 框架(FOUNDATIONS §1)**；本地优先、默认全关 |
+
+> 阅读顺序建议：先本文（为什么 + 顺序），再 FOUNDATIONS（地基），再按里程碑顺序读 REVE → MODEL → DISPATCH → SENSE；剩余 hard items 见上面四个子计划。
 
 ---
 
