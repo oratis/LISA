@@ -32,7 +32,7 @@ import type { AgentSession } from "../integrations/types.js";
 import { captureScreenshot, captureSupported, type CaptureMode } from "../vision/capture.js";
 import { transcribeAudio } from "../voice/transcribe.js";
 import { polishDictation, type DictationProvider } from "../voice/dictation.js";
-import { listGrants, grant, revoke, revokeAll, SENSE_SIGNALS, SIGNAL_DESCRIPTIONS } from "../consent/store.js";
+import { listGrants, grant, revoke, revokeAll, isGranted, SENSE_SIGNALS, SIGNAL_DESCRIPTIONS } from "../consent/store.js";
 import { SenseService } from "../sense/service.js";
 import { ScreenSource } from "../sense/screen.js";
 import { VoiceSource } from "../sense/voice.js";
@@ -313,7 +313,11 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   let screenTickRunning = false;
 
   const screenTick = async (): Promise<void> => {
-    if (screenTickRunning || !screenCfg.enabled || !captureSupported()) return;
+    // S2: a screenshot → model IS screen capture, so it requires the `screen`
+    // consent grant (re-checked each tick so revoke-all stops it within one
+    // interval) IN ADDITION to the advisor's own enabled flag. This unifies all
+    // screen capture under the consent framework (FOUNDATIONS §1).
+    if (screenTickRunning || !screenCfg.enabled || !captureSupported() || !isGranted("screen")) return;
     screenTickRunning = true;
     try {
       const shot = await captureScreenshot("full");
@@ -352,6 +356,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   restartScreenTimer();
   if (screenCfg.enabled) {
     console.error(`[screen-advisor] enabled — every ${screenCfg.intervalMinutes}m`);
+    if (!isGranted("screen")) {
+      console.error("[screen-advisor] waiting on `screen` consent — grant it (`lisa consent grant screen`) to start capturing.");
+    }
   }
 
   // ── Sense ambient sources (S2) ──────────────────────────────────────
