@@ -88,6 +88,20 @@ function timingSafeEqualStr(a: string, b: string): boolean {
 }
 
 /**
+ * The web auth decision (the unit the red-team script + tests target): a request
+ * is authorized iff it's loopback (the local user) OR it presents the correct
+ * LISA_WEB_TOKEN. No token configured ⇒ no non-loopback request can pass. Pure.
+ */
+export function isRequestAuthorized(
+  remoteAddr: string,
+  webToken: string | null,
+  presented: string | null,
+): boolean {
+  if (isLoopbackAddress(remoteAddr)) return true;
+  return !!webToken && !!presented && timingSafeEqualStr(presented, webToken);
+}
+
+/**
  * Extract a presented web token from Authorization header, lisa_token cookie,
  * or ?token= query param (the query form exists so a phone can bootstrap the
  * cookie by opening http://host:5757/?token=...).
@@ -447,14 +461,16 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     const remoteAddr = req.socket.remoteAddress ?? "";
     if (!isLoopbackAddress(remoteAddr)) {
       const presented = webToken ? presentedToken(req, url) : null;
-      if (!webToken || !presented || !timingSafeEqualStr(presented, webToken)) {
+      if (!isRequestAuthorized(remoteAddr, webToken, presented)) {
         res.writeHead(401, { "content-type": "text/plain" });
         res.end("unauthorized");
         return;
       }
       // Token arrived via query param (first open from a phone): pin it as a
       // cookie so subsequent same-origin fetch/EventSource calls authenticate.
-      if (!req.headers.cookie?.includes("lisa_token=")) {
+      // presented is non-null here — isRequestAuthorized returned true for a
+      // non-loopback caller, which requires a matching token.
+      if (presented && !req.headers.cookie?.includes("lisa_token=")) {
         res.setHeader(
           "set-cookie",
           `lisa_token=${encodeURIComponent(presented)}; HttpOnly; SameSite=Strict; Path=/`,

@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { isLoopbackAddress } from "./server.js";
+import { isLoopbackAddress, isRequestAuthorized } from "./server.js";
 
 describe("isLoopbackAddress — the web auth gate's loopback check", () => {
   test("accepts v4, v6, and v4-mapped-v6 loopback forms", () => {
@@ -25,5 +25,34 @@ describe("isLoopbackAddress — the web auth gate's loopback check", () => {
     // 1271.x / 12.7.x style lookalikes must not pass.
     assert.equal(isLoopbackAddress("1271.0.0.1"), false);
     assert.equal(isLoopbackAddress("12.70.0.1"), false);
+  });
+});
+
+describe("isRequestAuthorized — the RCE gate (red-team)", () => {
+  const TOKEN = "s3cret-web-token";
+
+  test("loopback is always allowed, token or not", () => {
+    assert.equal(isRequestAuthorized("127.0.0.1", null, null), true);
+    assert.equal(isRequestAuthorized("::1", TOKEN, null), true);
+    assert.equal(isRequestAuthorized("::ffff:127.0.0.1", null, "anything"), true);
+  });
+
+  test("a LAN request with NO token is rejected", () => {
+    assert.equal(isRequestAuthorized("192.168.1.20", TOKEN, null), false);
+    assert.equal(isRequestAuthorized("10.0.0.5", TOKEN, ""), false);
+  });
+
+  test("a LAN request with the WRONG token is rejected", () => {
+    assert.equal(isRequestAuthorized("192.168.1.20", TOKEN, "guess"), false);
+    assert.equal(isRequestAuthorized("192.168.1.20", TOKEN, TOKEN + "x"), false);
+  });
+
+  test("no token configured ⇒ NO non-loopback request can pass", () => {
+    assert.equal(isRequestAuthorized("192.168.1.20", null, "anything"), false);
+    assert.equal(isRequestAuthorized("8.8.8.8", null, null), false);
+  });
+
+  test("a LAN request with the correct token is allowed", () => {
+    assert.equal(isRequestAuthorized("192.168.1.20", TOKEN, TOKEN), true);
   });
 });
