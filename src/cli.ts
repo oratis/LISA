@@ -63,6 +63,7 @@ INSPECTION
                                all off): list, grant <signal>, revoke <signal>,
                                revoke-all.
   lisa sense [list]            Recent ambient sense events + granted signals.
+  lisa agents                  Snapshot of agent sessions across all observers.
 
 LIFECYCLE
   lisa birth                   Run the birth ritual (auto-runs on first launch).
@@ -168,7 +169,8 @@ interface ParsedArgs {
     | "autonomy"
     | "model"
     | "consent"
-    | "sense";
+    | "sense"
+    | "agents";
   subargs: string[];
   serveWeb: boolean;
   serveImessage: boolean;
@@ -289,7 +291,8 @@ function parseArgs(argv: string[]): ParsedArgs {
       first === "autonomy" ||
       first === "model" ||
       first === "consent" ||
-      first === "sense"
+      first === "sense" ||
+      first === "agents"
     ) {
       out.subcommand = first;
       out.subargs = positional.slice(1);
@@ -478,6 +481,11 @@ async function main(): Promise<void> {
   if (args.subcommand === "sense") {
     const { runSenseCommand } = await import("./cli/sense.js");
     process.exit(await runSenseCommand(args.subargs));
+  }
+
+  if (args.subcommand === "agents") {
+    const { runAgentsCommand } = await import("./cli/agents.js");
+    process.exit(await runAgentsCommand(args.subargs));
   }
 
   if (args.subcommand === "sessions") {

@@ -17,7 +17,7 @@ end
 # ── helper: did the user already type a subcommand? ─────────────────
 function __lisa_no_subcommand
     set cmd (commandline -opc)
-    set sub resume sessions serve heartbeat autostart search birth soul channels skills wishlist status doctor monitor autonomy model consent sense
+    set sub resume sessions serve heartbeat autostart search birth soul channels skills wishlist status doctor monitor autonomy model consent sense agents
     for word in $cmd[2..-1]
         if contains -- $word $sub
             return 1
@@ -55,6 +55,7 @@ complete -c lisa -n __lisa_no_subcommand -f -a autonomy   -d "summarize autonomo
 complete -c lisa -n __lisa_no_subcommand -f -a model      -d "local model lifecycle"
 complete -c lisa -n __lisa_no_subcommand -f -a consent    -d "consent for ambient signals"
 complete -c lisa -n __lisa_no_subcommand -f -a sense      -d "recent ambient sense events"
+complete -c lisa -n __lisa_no_subcommand -f -a agents     -d "agent sessions snapshot"
 
 # ── model / consent / sense sub-actions ─────────────────────────────
 complete -c lisa -n "__lisa_using_subcommand model" -f -a "list install use health" -d "model action"

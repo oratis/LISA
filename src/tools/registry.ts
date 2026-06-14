@@ -133,7 +133,7 @@ export function readOnlySubset(tools: ToolDefinition[]): ToolDefinition[] {
 
 /**
  * Tools that must NOT be available to self-driven autonomous runs (desire
- * heartbeats, idle/dreams). These runs execute unattended on a timer with
+ * heartbeats, idle reflection / Reve). These runs execute unattended on a timer with
  * prompts that Lisa wrote herself — if an indirect prompt injection (e.g. via
  * web_fetch content) plants a malicious actionable desire, these are the tools
  * that would turn it into persistent code execution. Soul / memory / journal /

@@ -12,7 +12,7 @@ _lisa_completion() {
     local cur prev words cword
     _init_completion -n : 2>/dev/null || _get_comp_words_by_ref -n : cur prev words cword
 
-    local subcommands="resume sessions serve heartbeat autostart search birth soul channels skills wishlist status doctor monitor autonomy model consent sense"
+    local subcommands="resume sessions serve heartbeat autostart search birth soul channels skills wishlist status doctor monitor autonomy model consent sense agents"
     local global_flags="--model --provider --think --no-reflect --compact --approval --no-mcp --no-plugins --voice --idle --no-idle --help -h --version -v"
     local serve_flags="--web --imessage --channels --port"
     local skills_actions="list approve disable enable audit"

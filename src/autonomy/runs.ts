@@ -1,7 +1,7 @@
 /**
  * Autonomy run ledger (PLAN_REVE_v1.0 R2).
  *
- * Every self-driven run — idle/dreams, heartbeat tasks, desire pursuits, the
+ * Every self-driven run — idle reflection (Reve), heartbeat tasks, desire pursuits, the
  * weekly examen, end-of-session reflection — appends one structured record
  * here. Before this, autonomy was a black box: idle/heartbeat logged their
  * final text and a `silent` boolean, so you couldn't tell "did real work" from
