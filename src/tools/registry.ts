@@ -9,6 +9,7 @@ import { reviewDiffTool } from "./review_diff.js";
 import { runChecksTool } from "./run_checks.js";
 import { prStatusTool } from "./pr_status.js";
 import { dispatchAgentTool } from "./dispatch_agent.js";
+import { dispatchStatusTool } from "./dispatch_status.js";
 import { scheduledDispatchTool } from "./scheduled_dispatch.js";
 import { compareAgentsTool } from "./compare_agents.js";
 import { githubLinkTool } from "./github_link.js";
@@ -89,6 +90,7 @@ export function buildToolRegistry(opts: ToolRegistryOptions = {}): ToolDefinitio
     prStatusTool as ToolDefinition,
     adviseNowTool as ToolDefinition,
     dispatchAgentTool as ToolDefinition,
+    dispatchStatusTool as ToolDefinition,
     scheduledDispatchTool as ToolDefinition,
     compareAgentsTool as ToolDefinition,
     githubLinkTool as ToolDefinition,
@@ -181,6 +183,11 @@ export function autonomousSubset(tools: ToolDefinition[]): ToolDefinition[] {
 export const REMOTE_BLOCKED_TOOL_NAMES = new Set([
   ...AUTONOMOUS_BLOCKED_TOOL_NAMES,
   "skill_manage",
+  // dispatch_status surfaces the raw output of dispatched agents — read-only,
+  // but richer content than the structural observers and not for remote-origin
+  // (channel) callers. NOT autonomous-blocked: an autonomous run may read the
+  // result of work it dispatched.
+  "dispatch_status",
 ]);
 
 export function remoteSafeSubset(tools: ToolDefinition[]): ToolDefinition[] {

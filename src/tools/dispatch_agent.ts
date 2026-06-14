@@ -22,9 +22,12 @@
  */
 
 import { spawn } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import crypto from "node:crypto";
 import type { ToolDefinition } from "../types.js";
 import { getCurrentHub } from "../integrations/current-hub.js";
-import { recordDispatch } from "../integrations/dispatch-ledger.js";
+import { recordDispatch, dispatchLogDir } from "../integrations/dispatch-ledger.js";
 
 interface DispatchInput {
   agent: "claude" | "codex" | "opencode" | "aider";
@@ -81,6 +84,10 @@ export interface LaunchResult {
   /** Present when the launch failed (binary missing, spawn error). */
   error?: string;
   cmd: string;
+  /** Dispatch ledger id (for dispatch_status / signal_agent), when launched. */
+  id?: string;
+  /** Captured-output log path, when capture succeeded. */
+  logPath?: string;
 }
 
 /**
@@ -95,12 +102,40 @@ export async function launchAgent(
   log?: (m: string) => void,
 ): Promise<LaunchResult> {
   const { cmd, args } = buildDispatchArgv(agent, task);
+
+  // Capture the agent's stdout+stderr so dispatch isn't fire-and-forget: LISA
+  // can read back what the agent SHE launched produced (D1 feedback). Detached
+  // + a real file fd keeps capturing after LISA's own process exits. Reading a
+  // self-dispatched agent's own output is hers to read — distinct from the
+  // observers, which deliberately never read another session's content.
+  const startedAt = Date.now();
+  let logPath: string | undefined;
+  let outFd: number | undefined;
+  try {
+    fs.mkdirSync(dispatchLogDir(), { recursive: true });
+    logPath = path.join(
+      dispatchLogDir(),
+      `${agent}-${startedAt.toString(36)}-${crypto.randomBytes(3).toString("hex")}.log`,
+    );
+    outFd = fs.openSync(logPath, "a");
+  } catch {
+    logPath = undefined;
+    outFd = undefined;
+  }
+
   let child;
   try {
-    child = spawn(cmd, args, { cwd, detached: true, stdio: "ignore" });
+    child = spawn(cmd, args, {
+      cwd,
+      detached: true,
+      stdio: outFd !== undefined ? ["ignore", outFd, outFd] : "ignore",
+    });
   } catch (err) {
+    if (outFd !== undefined) try { fs.closeSync(outFd); } catch { /* ignore */ }
     return { error: `Failed to launch ${agent}: ${(err as Error).message}. Is "${cmd}" installed and on PATH?`, cmd };
   }
+  // The child dup'd the fd for its stdio; close our copy.
+  if (outFd !== undefined) try { fs.closeSync(outFd); } catch { /* ignore */ }
 
   const launchError = await new Promise<string | null>((resolve) => {
     let settled = false;
@@ -115,18 +150,22 @@ export async function launchAgent(
       resolve(null);
     }, 150);
   });
-  if (launchError) return { error: launchError, cmd };
+  if (launchError) {
+    if (logPath) try { fs.unlinkSync(logPath); } catch { /* ignore */ }
+    return { error: launchError, cmd };
+  }
 
   const pid = child.pid;
   child.unref();
+  let id: string | undefined;
   if (typeof pid === "number") {
     try {
-      recordDispatch({ agent, pid, cwd, task });
+      id = recordDispatch({ agent, pid, cwd, task, logPath, now: startedAt }).id;
     } catch (err) {
       log?.(`[dispatch] ledger write failed (non-fatal): ${(err as Error).message}`);
     }
   }
-  return { pid, cmd };
+  return { pid, cmd, id, logPath };
 }
 
 export const dispatchAgentTool: ToolDefinition<DispatchInput, string> = {
@@ -179,15 +218,14 @@ export const dispatchAgentTool: ToolDefinition<DispatchInput, string> = {
       }
     }
 
-    const { pid, error } = await launchAgent(input.agent, input.task, cwd, ctx.log);
+    const { pid, error, id } = await launchAgent(input.agent, input.task, cwd, ctx.log);
     if (error) return error;
 
     ctx.log(`[dispatch] launched ${input.agent} (pid ${pid}) in ${cwd}: ${input.task.slice(0, 80)}`);
     return (
       `Launched ${input.agent} (pid ${pid}) in ${cwd}.\n` +
-      `It's running autonomously and will appear in the agent session monitor. ` +
-      `I won't block on it — ask me "what's running?" (advise_now) to check progress, ` +
-      `or signal_agent to list/cancel it.`
+      `Running autonomously — I won't block on it. Check whether it finished and read ` +
+      `its output with dispatch_status${id ? ` (id ${id})` : ""}; signal_agent lists/cancels it.`
     );
   },
 };
