@@ -80,7 +80,7 @@ client, plugins, hooks, sandboxed bash, sub-agents, session resume + TF-IDF
 search across past sessions, context compaction, **vision** (global-hotkey
 screenshot → talk about it), **voice** (record → she transcribes + summarizes),
 six IM channels (Telegram / Discord / Slack / Feishu / iMessage / Webhook), a
-native Mac app + Dynamic-Island widget, pixel-art web UI. ~22k lines of
+native Mac app + Dynamic-Island widget, pixel-art web UI. ~27k lines of
 TypeScript, MIT, no hosted backend, no telemetry, no account.
 
 But capability parity is just admission. The reason people remember LISA is the

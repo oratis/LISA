@@ -42,6 +42,9 @@ _lisa() {
                 skills)   _lisa_skills ;;
                 heartbeat) _lisa_heartbeat ;;
                 autostart) _lisa_autostart ;;
+                model)    _lisa_model ;;
+                consent)  _lisa_consent ;;
+                sense)    _lisa_sense ;;
             esac
             ;;
     esac
@@ -64,6 +67,10 @@ _lisa_first() {
         'status:one-shot snapshot'
         'doctor:health check'
         'monitor:TUI live dashboard'
+        'autonomy:summarize recent autonomous runs'
+        'model:local model lifecycle (list/install/use/health)'
+        'consent:consent for sensitive ambient signals'
+        'sense:recent ambient sense events'
     )
     _describe 'subcommand' subcommands
 }
@@ -110,6 +117,40 @@ _lisa_autostart() {
             'status:show whether autostart is installed / loaded'
         )
         _describe 'autostart action' actions
+    fi
+}
+
+_lisa_model() {
+    if (( CURRENT == 2 )); then
+        local -a actions
+        actions=(
+            'list:list installed local models + backend health'
+            'install:pull a local model'
+            'use:switch to local://<model>'
+            'health:check the local backend'
+        )
+        _describe 'model action' actions
+    fi
+}
+
+_lisa_consent() {
+    if (( CURRENT == 2 )); then
+        local -a actions
+        actions=(
+            'list:show signals + status'
+            'grant:grant a signal'
+            'revoke:revoke a signal'
+            'revoke-all:stop all sensing'
+        )
+        _describe 'consent action' actions
+    elif (( CURRENT == 3 )) && [[ "$line[2]" == (grant|revoke) ]]; then
+        _describe 'signal' '(screen voice clipboard selection)'
+    fi
+}
+
+_lisa_sense() {
+    if (( CURRENT == 2 )); then
+        _describe 'sense action' '(list:show recent ambient events + granted signals)'
     fi
 }
 

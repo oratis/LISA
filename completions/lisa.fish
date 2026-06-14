@@ -17,7 +17,7 @@ end
 # ── helper: did the user already type a subcommand? ─────────────────
 function __lisa_no_subcommand
     set cmd (commandline -opc)
-    set sub resume sessions serve heartbeat autostart search birth soul channels skills wishlist status doctor monitor
+    set sub resume sessions serve heartbeat autostart search birth soul channels skills wishlist status doctor monitor autonomy model consent sense
     for word in $cmd[2..-1]
         if contains -- $word $sub
             return 1
@@ -51,6 +51,16 @@ complete -c lisa -n __lisa_no_subcommand -f -a wishlist   -d "Lisa's own toolset
 complete -c lisa -n __lisa_no_subcommand -f -a status     -d "one-shot snapshot"
 complete -c lisa -n __lisa_no_subcommand -f -a doctor     -d "health check"
 complete -c lisa -n __lisa_no_subcommand -f -a monitor    -d "TUI live dashboard"
+complete -c lisa -n __lisa_no_subcommand -f -a autonomy   -d "summarize autonomous runs"
+complete -c lisa -n __lisa_no_subcommand -f -a model      -d "local model lifecycle"
+complete -c lisa -n __lisa_no_subcommand -f -a consent    -d "consent for ambient signals"
+complete -c lisa -n __lisa_no_subcommand -f -a sense      -d "recent ambient sense events"
+
+# ── model / consent / sense sub-actions ─────────────────────────────
+complete -c lisa -n "__lisa_using_subcommand model" -f -a "list install use health" -d "model action"
+complete -c lisa -n "__lisa_using_subcommand consent" -f -a "list grant revoke revoke-all" -d "consent action"
+complete -c lisa -n "__lisa_using_subcommand consent" -f -a "screen voice clipboard selection" -d "signal"
+complete -c lisa -n "__lisa_using_subcommand sense" -f -a list -d "recent events"
 
 # ── skills sub-actions ──────────────────────────────────────────────
 complete -c lisa -n "__lisa_using_subcommand skills" -f -a list     -d "list executable skills"

@@ -12,12 +12,16 @@ _lisa_completion() {
     local cur prev words cword
     _init_completion -n : 2>/dev/null || _get_comp_words_by_ref -n : cur prev words cword
 
-    local subcommands="resume sessions serve heartbeat autostart search birth soul channels skills wishlist status doctor monitor"
+    local subcommands="resume sessions serve heartbeat autostart search birth soul channels skills wishlist status doctor monitor autonomy model consent sense"
     local global_flags="--model --provider --think --no-reflect --compact --approval --no-mcp --no-plugins --voice --idle --no-idle --help -h --version -v"
     local serve_flags="--web --imessage --channels --port"
     local skills_actions="list approve disable enable audit"
     local heartbeat_actions="run install uninstall"
     local autostart_actions="install uninstall status"
+    local model_actions="list install use health"
+    local consent_actions="list grant revoke revoke-all"
+    local consent_signals="screen voice clipboard selection"
+    local sense_actions="list"
     local approval_modes="auto ask ask-mutating"
     local providers="anthropic openai gemini"
     local models="claude-sonnet-4-5-20250929 claude-opus-4 claude-haiku-4 gpt-5 gpt-4o o3 o4-mini gemini-2.5-pro gemini-2.5-flash deepseek-chat deepseek-reasoner doubao-1.5-pro-32k qwen3-72b-instruct moonshot-v1-32k kimi-128k grok-2-latest glm-4.5"
@@ -83,6 +87,29 @@ _lisa_completion() {
         autostart)
             if [ ${cword} -eq 2 ]; then
                 COMPREPLY=( $(compgen -W "${autostart_actions}" -- "${cur}") )
+                return 0
+            fi
+            ;;
+        model)
+            if [ ${cword} -eq 2 ]; then
+                COMPREPLY=( $(compgen -W "${model_actions}" -- "${cur}") )
+                return 0
+            fi
+            ;;
+        consent)
+            if [ ${cword} -eq 2 ]; then
+                COMPREPLY=( $(compgen -W "${consent_actions}" -- "${cur}") )
+                return 0
+            fi
+            # `grant`/`revoke` take a signal
+            if [ "${words[2]}" = "grant" ] || [ "${words[2]}" = "revoke" ]; then
+                COMPREPLY=( $(compgen -W "${consent_signals}" -- "${cur}") )
+                return 0
+            fi
+            ;;
+        sense)
+            if [ ${cword} -eq 2 ]; then
+                COMPREPLY=( $(compgen -W "${sense_actions}" -- "${cur}") )
                 return 0
             fi
             ;;
