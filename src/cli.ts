@@ -62,6 +62,7 @@ INSPECTION
   lisa consent <sub>           Consent for sensitive ambient signals (default
                                all off): list, grant <signal>, revoke <signal>,
                                revoke-all.
+  lisa sense [list]            Recent ambient sense events + granted signals.
 
 LIFECYCLE
   lisa birth                   Run the birth ritual (auto-runs on first launch).
@@ -166,7 +167,8 @@ interface ParsedArgs {
     | "monitor"
     | "autonomy"
     | "model"
-    | "consent";
+    | "consent"
+    | "sense";
   subargs: string[];
   serveWeb: boolean;
   serveImessage: boolean;
@@ -286,7 +288,8 @@ function parseArgs(argv: string[]): ParsedArgs {
       first === "monitor" ||
       first === "autonomy" ||
       first === "model" ||
-      first === "consent"
+      first === "consent" ||
+      first === "sense"
     ) {
       out.subcommand = first;
       out.subargs = positional.slice(1);
@@ -470,6 +473,11 @@ async function main(): Promise<void> {
   if (args.subcommand === "consent") {
     const { runConsentCommand } = await import("./cli/consent.js");
     process.exit(await runConsentCommand(args.subargs));
+  }
+
+  if (args.subcommand === "sense") {
+    const { runSenseCommand } = await import("./cli/sense.js");
+    process.exit(await runSenseCommand(args.subargs));
   }
 
   if (args.subcommand === "sessions") {
