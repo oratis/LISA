@@ -7,7 +7,13 @@
  * unread flag). See docs/MAC_ISLAND_PLAN.md.
  *
  * No build step, no framework — single string of inline HTML/CSS/JS.
+ *
+ * D4a: the multi-agent roster logic (merge/aggregate) lives in agent-roster.ts
+ * and is SOURCE-INJECTED into the inline <script> below via `${mergeAgentSession}`
+ * so the browser runs the exact unit-tested code instead of a drifting copy.
  */
+
+import { mergeAgentSession, aggregateAgentState } from "./agent-roster.js";
 
 export const ISLAND_HTML = `<!doctype html>
 <html lang="en">
@@ -272,6 +278,24 @@ export const ISLAND_HTML = `<!doctype html>
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid rgba(255, 255, 255, 0.07);
   }
+  /* D4a — agent-kind chip (codex / opencode / git / …) so the multi-agent
+     roster reads at a glance which tool each row belongs to. */
+  #claude-list .agent-badge {
+    flex-shrink: 0;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: lowercase;
+    color: var(--accent-claude);
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: rgba(255, 140, 66, 0.12);
+    border: 1px solid rgba(255, 140, 66, 0.22);
+    max-width: 84px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   #claude-list .empty { padding: 8px 12px; color: var(--fg-faint); font-style: italic; }
   /* O2 — Tier-2 activity line: what the session is structurally doing. */
   #claude-list .act {
@@ -479,6 +503,19 @@ export const ISLAND_HTML = `<!doctype html>
 
 <script>
 (() => {
+  // ── Multi-agent roster reducer (Dispatch D4a) ──────────────────────
+  // Source-injected from agent-roster.ts so the browser runs the exact,
+  // unit-tested merge/aggregate logic instead of a hand-maintained copy.
+  // These must stay self-contained (no imports / closure refs) — the
+  // injection-safety test in agent-roster.test.ts guards that.
+  ${mergeAgentSession}
+  ${aggregateAgentState}
+  // Composite identity for a roster row: the same sessionId seen under two
+  // agents (e.g. a git + a shell observer) are DISTINCT rows. Mirrors the
+  // key mergeAgentSession uses; the UI keys per-row history, open-state, and
+  // notify throttling by it too.
+  function agentKey(s) { return (s.agent || 'agent') + '::' + s.sessionId; }
+
   const pill         = document.getElementById('pill');
   const avatar       = document.getElementById('avatar');
   const dot          = document.getElementById('dot');
@@ -503,7 +540,7 @@ export const ISLAND_HTML = `<!doctype html>
     desire: null,
     thinking: false,
     dreaming: false,
-    claudeSessions: [],  // [{project, sessionId, lastMtime}, …]
+    agentSessions: [],   // [{agent, project, sessionId, lastMtime, state, activity}, …] — all agents, not just Claude
     suggestion: null,    // {title, rationale, task, at} from the screen advisor
     advisor: [],         // [{id, category, urgency, text, action}] from the cross-agent advisor
   };
@@ -578,11 +615,13 @@ export const ISLAND_HTML = `<!doctype html>
   function maybeNotifyWaiting(prevState, info) {
     if (info.state !== 'waiting') return;
     if (prevState === 'waiting') return;     // already in this state
-    const last = lastNotifyAt.get(info.sessionId) || 0;
+    const nk = agentKey(info);
+    const last = lastNotifyAt.get(nk) || 0;
     if (Date.now() - last < NOTIFY_THROTTLE_MS) return;
-    lastNotifyAt.set(info.sessionId, Date.now());
+    lastNotifyAt.set(nk, Date.now());
     const reasonLabel = info.stateReason === 'permission' ? 'needs permission' : 'is waiting';
-    const title = 'Claude ' + reasonLabel + ' in ' + info.project;
+    const who = info.agent && info.agent !== 'claude-code' ? info.agent : 'Claude';
+    const title = who + ' ' + reasonLabel + ' in ' + info.project;
     const bodyText = info.sessionId.slice(0, 8) + ' · click to open Lisa';
     if (hasBridge) {
       window.webkit.messageHandlers.island.postMessage({
@@ -606,24 +645,18 @@ export const ISLAND_HTML = `<!doctype html>
   }
   function recentSessions() {
     const cutoff = Date.now() - CLAUDE_ACTIVE_WINDOW_MS;
-    return state.claudeSessions.filter(
+    return state.agentSessions.filter(
       (s) => new Date(s.lastMtime).getTime() >= cutoff
     );
   }
   /**
-   * Phase 2: aggregate Claude state for the pill dot. Priority is
-   * "loudest signal wins": an error anywhere dominates everything;
-   * otherwise a "waiting" session beats a "working" session (because
-   * "waiting" means Claude needs the user — more attention-worthy
-   * than "working" which is passive observing).
+   * Aggregate state across all agent sessions for the pill dot. Priority is
+   * "loudest signal wins": an error anywhere dominates; otherwise "waiting"
+   * (an agent needs the user) beats "working" (passive observing). Delegates
+   * to the source-injected, unit-tested reducer so the dot and the tests agree.
    */
   function aggregateClaudeState() {
-    const recent = recentSessions();
-    if (recent.length === 0) return null;
-    if (recent.some((s) => s.state === 'error'))   return 'error';
-    if (recent.some((s) => s.state === 'waiting')) return 'waiting';
-    if (recent.some((s) => s.state === 'working')) return 'working';
-    return null;
+    return aggregateAgentState(state.agentSessions, Date.now(), CLAUDE_ACTIVE_WINDOW_MS);
   }
 
   function setAvatar(slug) {
@@ -653,7 +686,7 @@ export const ISLAND_HTML = `<!doctype html>
   function refreshPanel() {
     body.classList.toggle('offline',   !state.online);
     body.classList.toggle('has-unread', state.unread);
-    body.classList.toggle('has-claude', state.claudeSessions.length > 0);
+    body.classList.toggle('has-claude', state.agentSessions.length > 0);
     desireBody.textContent = state.desire || '(nothing actively pursued)';
     idleBody.textContent   = state.idleText || '';
     btnDismiss.classList.toggle('muted', !state.unread);
@@ -810,7 +843,7 @@ export const ISLAND_HTML = `<!doctype html>
     }).slice(0, 5);
     for (const s of rows) {
       const li = document.createElement('li');
-      if (rowOpen.has(s.sessionId)) li.classList.add('row-open');
+      if (rowOpen.has(agentKey(s))) li.classList.add('row-open');
       // pip + project + relative-time render as a single horizontal
       // .head strip. The trail + actions render BELOW the head when
       // the row is open (li is flex-column).
@@ -825,6 +858,15 @@ export const ISLAND_HTML = `<!doctype html>
       when.className = 'when';
       when.textContent = relativeTime(s.lastMtime);
       head.appendChild(pip);
+      // D4a — agent-kind chip; omitted for plain Claude so existing rows read
+      // unchanged, shown for every other agent (codex / opencode / git / …).
+      if (s.agent && s.agent !== 'claude-code') {
+        const badge = document.createElement('span');
+        badge.className = 'agent-badge';
+        badge.textContent = s.agent;
+        badge.title = s.agent;
+        head.appendChild(badge);
+      }
       head.appendChild(proj);
       head.appendChild(when);
       li.appendChild(head);
@@ -855,8 +897,9 @@ export const ISLAND_HTML = `<!doctype html>
                + ' · ' + s.sessionId
                + '\\nclick: expand timeline · double-click: copy sessionId';
       li.addEventListener('click', () => {
-        if (rowOpen.has(s.sessionId)) rowOpen.delete(s.sessionId);
-        else rowOpen.add(s.sessionId);
+        const k = agentKey(s);
+        if (rowOpen.has(k)) rowOpen.delete(k);
+        else rowOpen.add(k);
         renderClaudeList();
       });
       li.addEventListener('dblclick', async (ev) => {
@@ -919,7 +962,7 @@ export const ISLAND_HTML = `<!doctype html>
   }
 
   function renderTrail(container, s) {
-    const h = stateHistory.get(s.sessionId) || [];
+    const h = stateHistory.get(agentKey(s)) || [];
     if (h.length === 0) {
       container.textContent = '(no transitions recorded yet)';
       return;
@@ -1112,15 +1155,19 @@ export const ISLAND_HTML = `<!doctype html>
           state.advisor = Array.isArray(m.suggestions) ? m.suggestions : [];
           refreshPanel();
           break;
-        case 'claude_session_update':
+        case 'agent_session_update':
+          // D4a — generalized multi-agent event (claude-code + codex + …).
+          // Payload is the normalized AgentSession (lastMtime is epoch ms;
+          // the reducer's new Date() handles that and the ISO fetch shape).
           upsertClaudeSession({
-            project: m.projectLabel,
-            projectEncoded: m.projectEncoded,
+            agent: m.agent,
+            project: m.project,
             sessionId: m.sessionId,
-            lastMtime: m.ts,
+            lastMtime: m.lastMtime,
             state: m.state || 'unknown',
             stateReason: m.stateReason || '',
             cwd: m.cwd || '',
+            activity: m.activity || null,
           });
           refreshDot();
           refreshPanel();
@@ -1139,16 +1186,17 @@ export const ISLAND_HTML = `<!doctype html>
   // ── Claude Code session helpers ────────────────────────────────────
 
   function upsertClaudeSession(s) {
-    const idx = state.claudeSessions.findIndex(
-      (x) => x.sessionId === s.sessionId
+    const k = agentKey(s);
+    const prev = state.agentSessions.find((x) => agentKey(x) === k);
+    const prevState = prev ? prev.state : null;
+    // Source-injected reducer: upserts by (agent, sessionId) and prunes the
+    // window in one pass, returning a fresh array.
+    state.agentSessions = mergeAgentSession(
+      state.agentSessions, s, Date.now(), CLAUDE_ACTIVE_WINDOW_MS,
     );
-    const prevState = idx >= 0 ? state.claudeSessions[idx].state : null;
-    if (idx >= 0) state.claudeSessions[idx] = s;
-    else state.claudeSessions.push(s);
-    pruneClaudeSessions();
 
     // Phase 3 — record transition + maybe notify on entering "waiting".
-    const transitioned = recordStateHistory(s.sessionId, {
+    const transitioned = recordStateHistory(k, {
       state: s.state,
       reason: s.stateReason,
       lastMtime: s.lastMtime,
@@ -1158,31 +1206,33 @@ export const ISLAND_HTML = `<!doctype html>
 
   function pruneClaudeSessions() {
     const cutoff = Date.now() - CLAUDE_ACTIVE_WINDOW_MS;
-    state.claudeSessions = state.claudeSessions.filter(
+    state.agentSessions = state.agentSessions.filter(
       (s) => new Date(s.lastMtime).getTime() >= cutoff
     );
   }
 
   async function fetchClaudeSessions() {
     try {
-      const r = await fetch('/api/claude/sessions', { cache: 'no-store' });
+      // D4a — the multi-agent snapshot (all agents), lastMtime as ISO string.
+      const r = await fetch('/api/agents/sessions', { cache: 'no-store' });
       if (!r.ok) return;
       const j = await r.json();
       if (Array.isArray(j.sessions)) {
-        state.claudeSessions = j.sessions.map((s) => ({
+        state.agentSessions = j.sessions.map((s) => ({
+          agent: s.agent,
           project: s.project,
-          projectEncoded: s.projectEncoded,
           sessionId: s.sessionId,
           lastMtime: s.lastMtime,
           state: s.state || 'unknown',
           stateReason: s.stateReason || '',
           cwd: s.cwd || '',
+          activity: s.activity || null,
         }));
         // Phase 3 — seed each session's history with its current state
         // so the trail isn't empty on first open. Doesn't notify (no
         // transition implied by initial load).
-        for (const s of state.claudeSessions) {
-          recordStateHistory(s.sessionId, {
+        for (const s of state.agentSessions) {
+          recordStateHistory(agentKey(s), {
             state: s.state,
             reason: s.stateReason,
             lastMtime: s.lastMtime,

@@ -425,9 +425,10 @@ function connectEvents() {
       e2.className = 'err';
       e2.textContent = '[idle error] ' + ev.message;
       log.appendChild(e2);
-    } else if (ev.type === 'claude_session_update') {
-      // Sidebar Claude monitor card refresh — defined later in the
-      // "sidebar live wiring" block.
+    } else if (ev.type === 'agent_session_update') {
+      // D4a — sidebar multi-agent monitor refresh (defined later in the
+      // "sidebar live wiring" block). Generalized from claude_session_update
+      // so codex / opencode / git / … sessions update the sidebar too.
       if (typeof refreshClaudeSessions === 'function') refreshClaudeSessions();
     }
   });
@@ -1040,7 +1041,16 @@ if ('serviceWorker' in navigator) {
       pip.className = 'pip ' + (s.state || 'unknown');
       const name = document.createElement('div');
       name.className = 'name';
-      name.textContent = s.project;
+      // D4a — agent-kind chip inline before the project; omitted for plain
+      // Claude so existing rows read unchanged.
+      if (s.agent && s.agent !== 'claude-code') {
+        const badge = document.createElement('span');
+        badge.className = 'agent-badge';
+        badge.textContent = s.agent;
+        badge.title = s.agent;
+        name.appendChild(badge);
+      }
+      name.appendChild(document.createTextNode(s.project));
       const when = document.createElement('div');
       when.className = 'when';
       when.textContent = relativeTime(s.lastMtime);
@@ -1065,10 +1075,11 @@ if ('serviceWorker' in navigator) {
   }
 
   // Exposed so the SSE handler above can call this on
-  // claude_session_update events without redeclaring the helper.
+  // agent_session_update events without redeclaring the helper. D4a — the
+  // multi-agent snapshot (all agents), not just Claude Code.
   window.refreshClaudeSessions = async function () {
     try {
-      const r = await fetch('/api/claude/sessions');
+      const r = await fetch('/api/agents/sessions');
       if (!r.ok) return;
       const data = await r.json();
       setClaudeSessions(data.sessions || []);
