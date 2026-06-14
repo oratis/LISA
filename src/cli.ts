@@ -59,6 +59,9 @@ INSPECTION
                                Defaults to the last 7 days.
   lisa model <sub>             Local model lifecycle (Ollama): list, install
                                <model>, use local://<model> to switch, health.
+  lisa consent <sub>           Consent for sensitive ambient signals (default
+                               all off): list, grant <signal>, revoke <signal>,
+                               revoke-all.
 
 LIFECYCLE
   lisa birth                   Run the birth ritual (auto-runs on first launch).
@@ -162,7 +165,8 @@ interface ParsedArgs {
     | "doctor"
     | "monitor"
     | "autonomy"
-    | "model";
+    | "model"
+    | "consent";
   subargs: string[];
   serveWeb: boolean;
   serveImessage: boolean;
@@ -281,7 +285,8 @@ function parseArgs(argv: string[]): ParsedArgs {
       first === "doctor" ||
       first === "monitor" ||
       first === "autonomy" ||
-      first === "model"
+      first === "model" ||
+      first === "consent"
     ) {
       out.subcommand = first;
       out.subargs = positional.slice(1);
@@ -460,6 +465,11 @@ async function main(): Promise<void> {
   if (args.subcommand === "model") {
     const { runModelCommand } = await import("./cli/model.js");
     process.exit(await runModelCommand(args.subargs));
+  }
+
+  if (args.subcommand === "consent") {
+    const { runConsentCommand } = await import("./cli/consent.js");
+    process.exit(await runConsentCommand(args.subargs));
   }
 
   if (args.subcommand === "sessions") {
