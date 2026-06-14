@@ -378,6 +378,64 @@ export const ISLAND_HTML = `<!doctype html>
   #claude-list .trail .tdot.error   { background: #ff5577; }
   /* (older stub removed — .head is a real flex strip now, see above) */
 
+  /* ── Sense consent (FOUNDATIONS §1) — "always visible + one-tap stop" ── */
+  #sense-list { list-style: none; margin: 6px 0 0; padding: 0; }
+  #sense-list li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 4px;
+    font-size: 11.5px;
+  }
+  #sense-list li + li { border-top: 1px solid rgba(255, 255, 255, 0.05); }
+  #sense-list .s-name { font-weight: 600; flex-shrink: 0; }
+  #sense-list .s-desc {
+    color: var(--fg-faint);
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 10px;
+  }
+  /* Toggle pill: off is muted, on is amber. Click flips it (grant shows the
+     description inline so the user sees what they're enabling). */
+  #sense-list .s-toggle {
+    flex-shrink: 0;
+    cursor: pointer;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--fg-dim);
+  }
+  #sense-list .s-toggle.on {
+    color: #0b0e18;
+    background: var(--accent-warm);
+    border-color: var(--accent-warm);
+  }
+  /* The label glows amber while anything is being sensed. */
+  body.sensing #sense-label { color: var(--accent-warm); }
+  #sense-stop {
+    display: none;
+    margin-top: 8px;
+    width: 100%;
+    padding: 7px 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 85, 119, 0.35);
+    background: rgba(255, 85, 119, 0.12);
+    color: #ffd6de;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  #sense-stop:hover { background: rgba(255, 85, 119, 0.2); }
+  body.sensing #sense-stop { display: block; }
+
   /* Phase 3 — notification opt-in chip */
   #notify-cta {
     display: none;
@@ -495,6 +553,11 @@ export const ISLAND_HTML = `<!doctype html>
       <ul id="claude-list"></ul>
       <div id="notify-cta" role="button" tabindex="0">🔔 Notify me when Claude is waiting</div>
     </div>
+    <div id="sense-section">
+      <div class="section-label" id="sense-label">👁 sense · <span id="sense-summary">all off</span></div>
+      <ul id="sense-list"></ul>
+      <button id="sense-stop" type="button">Stop all sensing</button>
+    </div>
     <div id="actions">
       <button id="btn-open">Open chat</button>
       <button id="btn-dismiss" class="muted">Dismiss ★</button>
@@ -530,6 +593,9 @@ export const ISLAND_HTML = `<!doctype html>
   const suggTitle    = document.getElementById('suggestion-title');
   const suggRationale= document.getElementById('suggestion-rationale');
   const suggAct      = document.getElementById('suggestion-act');
+  const senseList    = document.getElementById('sense-list');
+  const senseSummary = document.getElementById('sense-summary');
+  const senseStop    = document.getElementById('sense-stop');
   const body         = document.body;
 
   const state = {
@@ -543,6 +609,7 @@ export const ISLAND_HTML = `<!doctype html>
     agentSessions: [],   // [{agent, project, sessionId, lastMtime, state, activity}, …] — all agents, not just Claude
     suggestion: null,    // {title, rationale, task, at} from the screen advisor
     advisor: [],         // [{id, category, urgency, text, action}] from the cross-agent advisor
+    sense: [],           // [{signal, granted, grantedAt}] from /api/consent (FOUNDATIONS §1)
   };
 
   // 30-min activity window matches the watcher's ACTIVE_WINDOW_MS.
@@ -699,6 +766,7 @@ export const ISLAND_HTML = `<!doctype html>
     body.classList.toggle('has-advisor', state.advisor.length > 0);
     renderAdvisorList();
     renderClaudeList();
+    renderSense();
   }
 
   // ── Cross-agent advisor card ───────────────────────────────────────
@@ -1244,6 +1312,70 @@ export const ISLAND_HTML = `<!doctype html>
     }
   }
 
+  // ── Sense consent (FOUNDATIONS §1) ─────────────────────────────────
+  // "Always visible + one-tap stop": list each sensitive signal with a
+  // toggle; the label + Stop-all button light up while anything is on.
+  function renderSense() {
+    const grants = state.sense || [];
+    const onCount = grants.filter((g) => g.granted).length;
+    senseSummary.textContent = onCount > 0 ? (onCount + ' on') : 'all off';
+    body.classList.toggle('sensing', onCount > 0);
+    while (senseList.firstChild) senseList.removeChild(senseList.firstChild);
+    for (const g of grants) {
+      const li = document.createElement('li');
+      const name = document.createElement('span');
+      name.className = 's-name';
+      name.textContent = g.signal;
+      const desc = document.createElement('span');
+      desc.className = 's-desc';
+      desc.textContent = g.description || '';
+      desc.title = g.description || '';
+      const toggle = document.createElement('span');
+      toggle.className = 's-toggle' + (g.granted ? ' on' : '');
+      toggle.textContent = g.granted ? 'on' : 'off';
+      toggle.setAttribute('role', 'button');
+      toggle.tabIndex = 0;
+      toggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        setSenseSignal(g.signal, !g.granted);
+      });
+      li.appendChild(name);
+      li.appendChild(desc);
+      li.appendChild(toggle);
+      senseList.appendChild(li);
+    }
+  }
+
+  function applyConsent(j) {
+    if (j && Array.isArray(j.grants)) { state.sense = j.grants; renderSense(); }
+  }
+
+  async function fetchConsent() {
+    try {
+      const r = await fetch('/api/consent', { cache: 'no-store' });
+      if (r.ok) applyConsent(await r.json());
+    } catch (_) { /* older server without /api/consent — silent */ }
+  }
+
+  async function setSenseSignal(signal, on) {
+    try {
+      const r = await fetch('/api/consent/' + (on ? 'grant' : 'revoke'), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ signal: signal }),
+      });
+      if (r.ok) applyConsent(await r.json());
+    } catch (_) {}
+  }
+
+  async function stopAllSensing() {
+    try {
+      const r = await fetch('/api/consent/revoke-all', { method: 'POST' });
+      if (r.ok) applyConsent(await r.json());
+    } catch (_) {}
+  }
+  senseStop.addEventListener('click', (e) => { e.stopPropagation(); stopAllSensing(); });
+
   // Phase 3 — notification permission opt-in. The CTA is only visible
   // when permission is in the default (un-asked) state.
   notifyCta.addEventListener('click', (e) => {
@@ -1258,6 +1390,7 @@ export const ISLAND_HTML = `<!doctype html>
   setAvatar('neutral');
   pollPing();
   fetchClaudeSessions().then(() => { refreshDot(); refreshPanel(); });
+  fetchConsent();
   subscribe();
   refreshNotifyCta();
   // A fresh island picks up the most recent screen-advisor suggestion (if the
@@ -1280,6 +1413,8 @@ export const ISLAND_HTML = `<!doctype html>
   // (laptop sleep, network blip) and we need to refresh state.
   setInterval(pollPing, 30_000);
   setInterval(fetchClaudeSessions, 60_000);
+  // Pick up consent changes made elsewhere (e.g. the lisa consent CLI).
+  setInterval(fetchConsent, 30_000);
   // Re-render every 15s so "Xs ago" / "Xm ago" labels stay fresh and
   // stale sessions fall off the list without a fresh update event.
   setInterval(() => {
