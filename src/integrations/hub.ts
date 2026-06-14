@@ -45,6 +45,10 @@ export const DEFAULT_ORCHESTRATOR_CONFIG: OrchestratorConfig = {
     // under `watchRoots`, not just AI agents. Off by default; opt in with
     // `{ "enabled": true, "watchRoots": ["~/code"] }`.
     git: { enabled: false },
+    // Shell: surfaces WHICH programs you run at the terminal (argv[0] only —
+    // never command content). Off by default (history is sensitive); opt in
+    // with `{ "enabled": true }` (auto-detects ~/.zsh_history & ~/.bash_history).
+    shell: { enabled: false },
   },
   visibility: "activity",
 };
