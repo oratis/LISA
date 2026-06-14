@@ -2,12 +2,19 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
   buildApprovalCallback,
+  isMutatingCall,
   DEFAULT_MUTATING_TOOLS,
+  DEFAULT_MUTATING_ACTIONS,
   type ApprovalConfig,
 } from "./approval.js";
 
 function cfg(over: Partial<ApprovalConfig> = {}): ApprovalConfig {
-  return { mode: "ask", mutatingTools: new Set(DEFAULT_MUTATING_TOOLS), ...over };
+  return {
+    mode: "ask",
+    mutatingTools: new Set(DEFAULT_MUTATING_TOOLS),
+    mutatingActions: DEFAULT_MUTATING_ACTIONS,
+    ...over,
+  };
 }
 
 describe("buildApprovalCallback — mode gating", () => {
@@ -28,11 +35,45 @@ describe("buildApprovalCallback — mode gating", () => {
     assert.deepEqual(await cb("bash", { cmd: "ls" }), { allow: true });
   });
 
-  test("DEFAULT_MUTATING_TOOLS covers the write/exec tools", () => {
-    for (const t of ["write", "edit", "apply_patch", "bash"]) {
+  test("DEFAULT_MUTATING_TOOLS covers write/exec + dispatch/signal", () => {
+    for (const t of ["write", "edit", "apply_patch", "bash", "dispatch_agent", "signal_agent"]) {
       assert.ok(DEFAULT_MUTATING_TOOLS.has(t), `expected ${t} to be mutating`);
     }
     assert.equal(DEFAULT_MUTATING_TOOLS.has("read"), false);
+  });
+
+  test("dispatch_agent / signal_agent prompt under ask-mutating", async () => {
+    for (const t of ["dispatch_agent", "signal_agent"]) {
+      let prompted = false;
+      const cb = buildApprovalCallback(cfg({ mode: "ask-mutating", readLine: async () => { prompted = true; return "y"; } }))!;
+      await cb(t, {});
+      assert.equal(prompted, true, `${t} should prompt`);
+    }
+  });
+});
+
+describe("action-aware mutating gate (github reads safe, writes gated)", () => {
+  test("isMutatingCall: github writes mutate, reads don't", () => {
+    const c = cfg();
+    assert.equal(isMutatingCall(c, "github", { action: "pr_merge" }), true);
+    assert.equal(isMutatingCall(c, "github", { action: "pr_create" }), true);
+    assert.equal(isMutatingCall(c, "github", { action: "pr_view" }), false);
+    assert.equal(isMutatingCall(c, "github", { action: "issue_list" }), false);
+    assert.equal(isMutatingCall(c, "github", {}), false, "no action → not mutating");
+    assert.equal(isMutatingCall(c, "dispatch_agent", {}), true, "whole-tool mutating still works");
+  });
+
+  test("under ask-mutating: a github read auto-allows, a github write prompts", async () => {
+    let prompted = false;
+    const reader = async () => { prompted = true; return "y"; };
+
+    const readCb = buildApprovalCallback(cfg({ mode: "ask-mutating", readLine: reader }))!;
+    assert.deepEqual(await readCb("github", { action: "pr_view" }), { allow: true });
+    assert.equal(prompted, false, "a github read must not prompt");
+
+    const writeCb = buildApprovalCallback(cfg({ mode: "ask-mutating", readLine: reader }))!;
+    await writeCb("github", { action: "pr_merge" });
+    assert.equal(prompted, true, "a github write must prompt");
   });
 });
 

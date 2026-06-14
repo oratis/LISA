@@ -10,7 +10,7 @@ import { dirname, resolve as resolvePath } from "node:path";
 import { configureProxyFromEnv } from "./proxy-bootstrap.js";
 configureProxyFromEnv({ log: (m) => console.error(m) });
 import { runAgent } from "./agent.js";
-import { buildApprovalCallback, type ApprovalMode, DEFAULT_MUTATING_TOOLS } from "./approval.js";
+import { buildApprovalCallback, type ApprovalMode, DEFAULT_MUTATING_TOOLS, DEFAULT_MUTATING_ACTIONS } from "./approval.js";
 import { CONFIG_ENV_PATH, loadConfigEnv } from "./env.js";
 import { ensureDir } from "./fs-utils.js";
 import { runHeartbeatOnce } from "./heartbeat/runner.js";
@@ -784,6 +784,7 @@ async function main(): Promise<void> {
   const approval = buildApprovalCallback({
     mode: args.approval,
     mutatingTools: DEFAULT_MUTATING_TOOLS,
+    mutatingActions: DEFAULT_MUTATING_ACTIONS,
   });
 
   const rebuildPrompt = makeHotReloadRebuilder(initialFingerprint, snapshot.text);
