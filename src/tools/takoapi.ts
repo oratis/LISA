@@ -13,6 +13,8 @@
  * injectable so the logic is unit-testable without hitting the network.
  */
 import type { ToolDefinition } from "../types.js";
+import { extractTaskState } from "../integrations/takoapi/a2a.js";
+import { recordTakoCall } from "../integrations/takoapi/ledger.js";
 
 const DEFAULT_BASE = "https://takoapi.com";
 function base(): string {
@@ -117,6 +119,59 @@ export async function takoDiscover(query: string, f: TakoFetcher = defaultFetche
   return formatRegistry(res.body);
 }
 
+export interface TakoCallResult {
+  /** Did we reach the agent and get a non-error response? */
+  ok: boolean;
+  status: number;
+  /** Formatted reply (or a human error string) — what the tool returns to LISA. */
+  reply: string;
+  /** A2A TaskState observed for the call (D2b ledger). "completed" for a plain
+   *  sync reply; the agent's own task state if the response carried a Task. */
+  taskState: string;
+  /** A2A task id, if the response carried one. */
+  taskId?: string;
+}
+
+/**
+ * Call an agent via the A2A message endpoint with the user's key, returning both
+ * the reply and the observed A2A task state (for the D2b call ledger). Pure
+ * w.r.t. fs — recording is the caller's job, so existing `takoCall` tests stay
+ * side-effect-free.
+ */
+export async function takoCallDetailed(
+  slug: string,
+  text: string,
+  key: string,
+  f: TakoFetcher = defaultFetcher,
+): Promise<TakoCallResult> {
+  const url = `${base()}/v1/agents/${encodeURIComponent(slug)}/message`;
+  const res = await f.postJson(url, { text }, { authorization: `Bearer ${key}` });
+  if (res.status === 401) {
+    return {
+      ok: false,
+      status: 401,
+      reply: "TakoAPI rejected the key (401). Check TAKO_KEY at https://takoapi.com/dashboard.",
+      taskState: "rejected",
+    };
+  }
+  if (!res.ok) {
+    return {
+      ok: false,
+      status: res.status,
+      reply: `TakoAPI call to "${slug}" failed (status ${res.status || "network error"}).`,
+      taskState: "failed",
+    };
+  }
+  const task = extractTaskState(res.body); // {state, taskId} | null
+  return {
+    ok: true,
+    status: res.status,
+    reply: extractAgentReply(res.body),
+    taskState: task?.state ?? "completed",
+    ...(task?.taskId ? { taskId: task.taskId } : {}),
+  };
+}
+
 /** Call an agent via the A2A message endpoint with the user's key. */
 export async function takoCall(
   slug: string,
@@ -124,13 +179,7 @@ export async function takoCall(
   key: string,
   f: TakoFetcher = defaultFetcher,
 ): Promise<string> {
-  const url = `${base()}/v1/agents/${encodeURIComponent(slug)}/message`;
-  const res = await f.postJson(url, { text }, { authorization: `Bearer ${key}` });
-  if (res.status === 401) {
-    return "TakoAPI rejected the key (401). Check TAKO_KEY at https://takoapi.com/dashboard.";
-  }
-  if (!res.ok) return `TakoAPI call to "${slug}" failed (status ${res.status || "network error"}).`;
-  return extractAgentReply(res.body);
+  return (await takoCallDetailed(slug, text, key, f)).reply;
 }
 
 interface TakoInput {
@@ -165,7 +214,20 @@ export const takoapiTool: ToolDefinition<TakoInput, string> = {
       if (!key) {
         return "TAKO_KEY is not set — create one at https://takoapi.com/dashboard and add it to ~/.lisa/config.env.";
       }
-      return await takoCall(input.slug, input.text, key);
+      const r = await takoCallDetailed(input.slug, input.text, key);
+      // D2b — record the delegation so the agent shows up as a session in the
+      // hub (with its A2A TaskState). Best-effort: a ledger write must never
+      // break the reply. Only successful calls are recorded (so transient
+      // transport errors don't manufacture error-sessions); a genuine agent
+      // task failure arrives as ok=true with taskState="failed".
+      if (r.ok) {
+        try {
+          recordTakoCall({ slug: input.slug, state: r.taskState, taskId: r.taskId });
+        } catch {
+          /* ledger unavailable — surface the reply anyway */
+        }
+      }
+      return r.reply;
     }
     return `unknown action "${(input as { action: string }).action}" — use "discover" or "call".`;
   },

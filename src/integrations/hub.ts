@@ -49,6 +49,11 @@ export const DEFAULT_ORCHESTRATOR_CONFIG: OrchestratorConfig = {
     // never command content). Off by default (history is sensitive); opt in
     // with `{ "enabled": true }` (auto-detects ~/.zsh_history & ~/.bash_history).
     shell: { enabled: false },
+    // TakoAPI: surfaces REMOTE agents LISA has CALLED via the `takoapi` tool
+    // (D2b), with their A2A TaskState — never the registry. Off by default; opt
+    // in with `{ "enabled": true, "pin": ["slug-a"] }`. Needs a TAKO_KEY to make
+    // any calls, so it's empty until you delegate to a remote agent.
+    takoapi: { enabled: false },
   },
   visibility: "activity",
 };
