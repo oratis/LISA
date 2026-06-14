@@ -62,6 +62,14 @@ export interface RunAgentOptions {
     isError: boolean,
   ) => Promise<{ rewriteResult?: string } | void>;
   maxIterations?: number;
+  /**
+   * Optional cumulative (input+output) token ceiling for the whole run. Checked
+   * at each turn boundary; once exceeded the loop stops before the next provider
+   * call with stopReason "budget_exceeded". Used by self-driven runs (idle /
+   * heartbeat) as a cost circuit-breaker so a runaway tool loop can't burn
+   * unbounded tokens unattended. Unset = no ceiling.
+   */
+  budgetTokens?: number;
   /** When set, the system prompt is rebuilt between turns if its source state changed. */
   hotReload?: PromptHotReload;
 }
@@ -77,7 +85,8 @@ export interface RunAgentResult {
   /**
    * The provider's stop reason from the final turn ("end_turn", "max_tokens",
    * …), or "max_iterations" when the loop hit `maxIterations` while the model
-   * still wanted to call tools (the run was truncated, not finished).
+   * still wanted to call tools, or "budget_exceeded" when `budgetTokens` was
+   * reached (both mean the run was truncated, not finished).
    */
   stopReason: string;
 }
@@ -106,6 +115,7 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
     thinking = false,
     compaction = false,
     maxIterations = 32,
+    budgetTokens,
   } = opts;
 
   const toolMap = new Map(tools.map((t) => [t.name, t]));
@@ -165,6 +175,19 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
   };
 
   while (iterations < maxIterations) {
+    // Token budget circuit-breaker (cost guard for unattended self-driven runs).
+    // Checked at the turn boundary — before the next provider call — so we never
+    // pre-empt mid-turn and leave a tool_use without its tool_result. The prior
+    // turn's tools have already run and their results are in history, so this is
+    // a clean stop point.
+    if (budgetTokens && iterations > 0 && inputTokens + outputTokens >= budgetTokens) {
+      stopReason = "budget_exceeded";
+      onEvent?.({
+        type: "info",
+        message: `[agent] token budget ${budgetTokens} reached after ${iterations} iteration(s) — stopping (stopReason=budget_exceeded)`,
+      });
+      break;
+    }
     iterations++;
 
     // Mid-session prompt hot-reload (Phase 1.1). Skip on the very first turn —

@@ -13,6 +13,8 @@ import { withSoulCaller } from "../soul/git.js";
 import { withFileLock } from "../soul/lock.js";
 import { autonomousSubset } from "../tools/registry.js";
 import { runSubagent } from "../subagent.js";
+import { recordAutonomyRun, type AutonomyKind } from "../autonomy/runs.js";
+import { recentAgentRecap } from "../orchestrator/recent-recap.js";
 import type { ToolDefinition } from "../types.js";
 import {
   loadHeartbeatConfig,
@@ -120,6 +122,13 @@ async function runHeartbeatInner(opts: {
     ...builtinTasks.map((task) => ({ task, tools: selfDrivenTools })),
   ];
 
+  // R5: structural awareness of recent fleet activity, appended once for the
+  // whole heartbeat run so Lisa can factor it into self-driven work.
+  const fleetRecap = recentAgentRecap();
+  const heartbeatSystem = fleetRecap
+    ? `${HEARTBEAT_SYSTEM}\n\n## recent agent-fleet activity (structural metadata, for your awareness)\n${fleetRecap}`
+    : HEARTBEAT_SYSTEM;
+
   const out: HeartbeatRunResult[] = [];
   for (const { task, tools } of runs) {
     if (task.enabled === false) continue;
@@ -144,17 +153,40 @@ async function runHeartbeatInner(opts: {
       ? (await parseDesireProgress(desireSlug)).entries.length
       : 0;
 
-    const result = await runSubagent({
-      prompt: task.prompt,
-      systemPrompt: HEARTBEAT_SYSTEM,
-      tools,
-      cwd: opts.cwd,
-      signal: opts.signal,
-      model: opts.model,
-    });
+    const startedAt = new Date().toISOString();
+    const t0 = Date.now();
+    const runKind: AutonomyKind = desireSlug
+      ? "desire"
+      : task.name === "builtin:weekly_examen"
+        ? "examen"
+        : "heartbeat";
+    let result;
+    try {
+      result = await runSubagent({
+        prompt: task.prompt,
+        systemPrompt: heartbeatSystem,
+        tools,
+        cwd: opts.cwd,
+        signal: opts.signal,
+        model: opts.model,
+      });
+    } catch (err) {
+      await recordAutonomyRun({
+        kind: runKind,
+        task: task.name,
+        startedAt,
+        durationMs: Date.now() - t0,
+        inputTokens: 0,
+        outputTokens: 0,
+        outcome: "error",
+        note: (err as Error).message?.slice(0, 200),
+      });
+      throw err;
+    }
     tokensSpent += (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
     state.lastRunAt[task.name] = new Date().toISOString();
     const trimmed = result.text.trim();
+    const silent = trimmed === "" || /^\(no update\)$/i.test(trimmed);
 
     // Auto-fallback: if a desire heartbeat finished but Lisa didn't log
     // progress, write a stub entry so we don't silently lose the run.
@@ -173,10 +205,21 @@ async function runHeartbeatInner(opts: {
       }
     }
 
+    await recordAutonomyRun({
+      kind: runKind,
+      task: task.name,
+      startedAt,
+      durationMs: Date.now() - t0,
+      inputTokens: result.inputTokens ?? 0,
+      outputTokens: result.outputTokens ?? 0,
+      toolCalls: result.toolCallCount,
+      outcome: silent ? "no-update" : "done",
+    });
+
     out.push({
       task: task.name,
       output: trimmed,
-      silent: trimmed === "" || /^\(no update\)$/i.test(trimmed),
+      silent,
     });
   }
   await saveState(state);

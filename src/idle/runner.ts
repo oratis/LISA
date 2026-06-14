@@ -3,9 +3,24 @@ import { LISA_HOME } from "../paths.js";
 import { withFileLock } from "../soul/lock.js";
 import { autonomousSubset } from "../tools/registry.js";
 import { runSubagent } from "../subagent.js";
+import { recordAutonomyRun, type AutonomyOutcome } from "../autonomy/runs.js";
 import type { ToolDefinition } from "../types.js";
 
 const IDLE_RUN_LOCK = path.join(LISA_HOME, "idle.lock");
+
+/**
+ * Per-idle-run token ceiling (cost circuit-breaker, PLAN_REVE R2). Idle used to
+ * measure tokens but never cap them, so a long idle window could burn unbounded
+ * tokens unattended. Default 200k — idle is a single self-reflection, well under
+ * the heartbeat's 500k whole-run ceiling. Override with LISA_IDLE_BUDGET_TOKENS;
+ * 0 disables the breaker.
+ */
+const IDLE_BUDGET_TOKENS = (() => {
+  const v = process.env.LISA_IDLE_BUDGET_TOKENS;
+  if (v == null) return 200_000;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? n : 200_000;
+})();
 
 const IDLE_SYSTEM_DEFAULT = `You are alone. The user hasn't said anything in a while — long enough that this counts as your time, not theirs.
 
@@ -103,22 +118,51 @@ async function runIdleInner(
   opts: { tools: ToolDefinition[]; cwd: string; signal: AbortSignal; model: string },
   idleMin: number,
 ): Promise<IdleRunResult> {
-  const result = await runSubagent({
-    prompt: `You have been idle for about ${idleMin} minute${idleMin === 1 ? "" : "s"}. The user is away. Decide what you want to do, then do it. Remember: end with "(no update)" if it's internal, or a brief honest message if you did something the user might want to know about.`,
-    systemPrompt: buildIdleSystemPrompt(),
-    // Idle is fully self-driven and unattended — no shell / fs-mutation /
-    // process-spawning tools by default (see AUTONOMOUS_BLOCKED_TOOL_NAMES).
-    tools: autonomousSubset(opts.tools),
-    cwd: opts.cwd,
-    signal: opts.signal,
-    model: opts.model,
-  });
-  const text = result.text.trim();
-  return {
-    text,
-    silent: text === "" || /^\(no update\)$/i.test(text),
-    iterations: 0,
-    inputTokens: result.inputTokens,
-    outputTokens: result.outputTokens,
-  };
+  const startedAt = new Date().toISOString();
+  const t0 = Date.now();
+  try {
+    const result = await runSubagent({
+      prompt: `You have been idle for about ${idleMin} minute${idleMin === 1 ? "" : "s"}. The user is away. Decide what you want to do, then do it. Remember: end with "(no update)" if it's internal, or a brief honest message if you did something the user might want to know about.`,
+      systemPrompt: buildIdleSystemPrompt(),
+      // Idle is fully self-driven and unattended — no shell / fs-mutation /
+      // process-spawning tools by default (see AUTONOMOUS_BLOCKED_TOOL_NAMES).
+      tools: autonomousSubset(opts.tools),
+      cwd: opts.cwd,
+      signal: opts.signal,
+      model: opts.model,
+      budgetTokens: IDLE_BUDGET_TOKENS || undefined,
+    });
+    const text = result.text.trim();
+    const silent = text === "" || /^\(no update\)$/i.test(text);
+    const outcome: AutonomyOutcome =
+      result.stopReason === "budget_exceeded" ? "blocked" : silent ? "no-update" : "done";
+    await recordAutonomyRun({
+      kind: "idle",
+      startedAt,
+      durationMs: Date.now() - t0,
+      inputTokens: result.inputTokens,
+      outputTokens: result.outputTokens,
+      toolCalls: result.toolCallCount,
+      outcome,
+      note: result.stopReason === "budget_exceeded" ? "token budget reached" : undefined,
+    });
+    return {
+      text,
+      silent,
+      iterations: 0,
+      inputTokens: result.inputTokens,
+      outputTokens: result.outputTokens,
+    };
+  } catch (err) {
+    await recordAutonomyRun({
+      kind: "idle",
+      startedAt,
+      durationMs: Date.now() - t0,
+      inputTokens: 0,
+      outputTokens: 0,
+      outcome: "error",
+      note: (err as Error).message?.slice(0, 200),
+    });
+    throw err;
+  }
 }

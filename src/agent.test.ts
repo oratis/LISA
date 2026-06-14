@@ -306,3 +306,57 @@ describe("runAgent — abort signal plumbing", () => {
     );
   });
 });
+
+describe("runAgent — token budget circuit-breaker (stopReason=budget_exceeded)", () => {
+  const USAGE_200 = { inputTokens: 100, outputTokens: 100, cacheReadTokens: 0, cacheWriteTokens: 0 };
+
+  test("stops at the turn boundary once cumulative tokens reach budgetTokens", async () => {
+    // Each tool_use turn spends 200 tokens. With a 300 budget: after turn 1
+    // (200) the loop continues, turn 2 pushes the total to 400, and the breaker
+    // fires at the next turn boundary — before a 3rd provider call.
+    const { provider, calls } = makeFakeProvider([
+      { content: [toolUseBlock("tu")], stopReason: "tool_use", usage: USAGE_200 },
+    ]);
+    const events: AgentEvent[] = [];
+
+    const result = await runAgent({
+      provider,
+      systemPrompt: "sys",
+      tools: [echoTool],
+      toolCtx: makeToolCtx(),
+      history: [],
+      userMessage: "go",
+      model: "fake-model",
+      maxIterations: 32,
+      budgetTokens: 300,
+      onEvent: (e) => events.push(e),
+    });
+
+    assert.equal(result.stopReason, "budget_exceeded");
+    assert.equal(result.iterations, 2);
+    assert.equal(calls.length, 2, "should stop before a third provider call");
+    assert.equal(result.inputTokens + result.outputTokens, 400);
+    const info = events.filter(
+      (e) => e.type === "info" && e.message?.includes("budget_exceeded"),
+    );
+    assert.equal(info.length, 1, "expected one budget_exceeded info event");
+  });
+
+  test("no budgetTokens → runs to maxIterations unchanged", async () => {
+    const { provider, calls } = makeFakeProvider([
+      { content: [toolUseBlock("tu")], stopReason: "tool_use", usage: USAGE_200 },
+    ]);
+    const result = await runAgent({
+      provider,
+      systemPrompt: "sys",
+      tools: [echoTool],
+      toolCtx: makeToolCtx(),
+      history: [],
+      userMessage: "go",
+      model: "fake-model",
+      maxIterations: 3,
+    });
+    assert.equal(result.stopReason, "max_iterations");
+    assert.equal(calls.length, 3);
+  });
+});

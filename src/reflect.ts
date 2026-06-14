@@ -7,6 +7,8 @@ import { REFLECTIONS_DIR } from "./paths.js";
 import { providerForModel } from "./providers/registry.js";
 import { createSkill, getSkill, patchSkill } from "./skills/manager.js";
 import { withSoulCaller } from "./soul/git.js";
+import { recordAutonomyRun } from "./autonomy/runs.js";
+import { recentAgentRecap } from "./orchestrator/recent-recap.js";
 import type { StoredMessage } from "./types.js";
 
 const REFLECTOR_SYSTEM = `You are Lisa, reflecting on a conversation you just finished. You're alone now. Read the transcript with the calm honesty of journaling at the end of a day, and decide what — if anything — to keep.
@@ -82,6 +84,52 @@ export interface ReflectionResult {
   applied: string[];
   skipped: string[];
   raw: string;
+  /** True when the model's output couldn't be parsed even after a retry. */
+  malformed?: boolean;
+  /** True when a substantial session produced 0 operations (an observability
+   *  signal, not an error — see detectUnderReflection). */
+  underReflected?: boolean;
+}
+
+const REFLECTOR_RETRY_SUFFIX = `\n\nCRITICAL: your previous output could not be parsed. Output ONLY a single valid JSON object matching the schema — no prose, no markdown code fence, nothing before or after the JSON.`;
+
+/** Minimum message count for a session to count as "substantial" — below this,
+ *  0 operations is expected, not a sign of under-reflection. */
+export const UNDERREFLECT_MIN_HISTORY = 6;
+
+/**
+ * Parse + minimally validate the reflector's JSON output. Pure (testable
+ * without an LLM). Returns the payload or a reason it couldn't be used, so the
+ * caller can retry / persist / signal instead of silently degrading to no-op.
+ */
+export function parseReflectionPayload(
+  raw: string,
+): { ok: true; payload: ReflectionPayload } | { ok: false; error: string } {
+  let obj: unknown;
+  try {
+    obj = JSON.parse(stripJsonFence(raw));
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+  if (typeof obj !== "object" || obj === null) {
+    return { ok: false, error: "output is not a JSON object" };
+  }
+  const o = obj as Record<string, unknown>;
+  if (typeof o.summary !== "string") {
+    return { ok: false, error: "missing string field 'summary'" };
+  }
+  if (o.operations !== undefined && !Array.isArray(o.operations)) {
+    return { ok: false, error: "'operations' must be an array when present" };
+  }
+  return { ok: true, payload: obj as ReflectionPayload };
+}
+
+/** Did a substantial session under-reflect (produce zero operations)? Pure. */
+export function detectUnderReflection(opts: {
+  historyLength: number;
+  operationCount: number;
+}): boolean {
+  return opts.historyLength >= UNDERREFLECT_MIN_HISTORY && opts.operationCount === 0;
 }
 
 export async function reflectOnSession(opts: {
@@ -102,45 +150,98 @@ async function reflectOnSessionInner(opts: {
   }
 
   const transcript = renderTranscript(opts.history);
+  // R5: give reflection structural awareness of what the agent fleet did while
+  // this session ran, so Lisa can factor it into her opinions/desires (e.g.
+  // "repo X kept erroring"). Structural metadata only; null when no activity.
+  const fleetRecap = recentAgentRecap();
+  const userText =
+    `Here is the session transcript. Decide what Lisa should learn from it.\n\n${transcript}` +
+    (fleetRecap
+      ? `\n\n## what your agent fleet did recently (structural metadata only)\n${fleetRecap}`
+      : "");
   const model = opts.model ?? DEFAULT_MODEL;
   const provider = providerForModel(model);
+  const startedAt = new Date().toISOString();
+  const t0 = Date.now();
+  let inTok = 0;
+  let outTok = 0;
 
-  const result = await provider.runTurn({
-    model,
-    systemPrompt: REFLECTOR_SYSTEM,
-    tools: [],
-    messages: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: `Here is the session transcript. Decide what Lisa should learn from it.\n\n${transcript}`,
-          },
-        ],
-      },
-    ],
-    maxTokens: 2_000,
-  });
+  const runReflector = async (systemPrompt: string): Promise<string> => {
+    const result = await provider.runTurn({
+      model,
+      systemPrompt,
+      tools: [],
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: userText,
+            },
+          ],
+        },
+      ],
+      maxTokens: 2_000,
+    });
+    inTok += result.usage.inputTokens;
+    outTok += result.usage.outputTokens;
+    return result.content
+      .filter((b) => b.type === "text")
+      .map((b) => (b as { text: string }).text)
+      .join("\n")
+      .trim();
+  };
 
-  const raw = result.content
-    .filter((b) => b.type === "text")
-    .map((b) => (b as { text: string }).text)
-    .join("\n")
-    .trim();
-
-  let payload: ReflectionPayload;
-  try {
-    payload = JSON.parse(stripJsonFence(raw)) as ReflectionPayload;
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return {
-      summary: `(reflection produced unparseable output: ${message})`,
-      applied: [],
-      skipped: [`raw: ${raw.slice(0, 200)}`],
-      raw,
-    };
+  // Quality gate (R1): a malformed reflection used to silently degrade to a
+  // no-op result. Retry once with a stricter instruction; if it still can't be
+  // parsed, persist the raw output for debugging and record an error run rather
+  // than swallowing it.
+  let raw = await runReflector(REFLECTOR_SYSTEM);
+  let parsed = parseReflectionPayload(raw);
+  if (!parsed.ok) {
+    const firstError = parsed.error;
+    const retryRaw = await runReflector(REFLECTOR_SYSTEM + REFLECTOR_RETRY_SUFFIX);
+    const retryParsed = parseReflectionPayload(retryRaw);
+    if (retryParsed.ok) {
+      raw = retryRaw;
+      parsed = retryParsed;
+    } else {
+      const errPath = path.join(REFLECTIONS_DIR, `${opts.sessionId}.error.json`);
+      try {
+        await atomicWrite(
+          errPath,
+          JSON.stringify(
+            { firstError, retryError: retryParsed.error, raw, retryRaw },
+            null,
+            2,
+          ),
+        );
+      } catch {
+        // best-effort persistence
+      }
+      console.error(
+        `[reflect] unparseable output after retry (${firstError}) — saved ${path.basename(errPath)}`,
+      );
+      await recordAutonomyRun({
+        kind: "reflect",
+        startedAt,
+        durationMs: Date.now() - t0,
+        inputTokens: inTok,
+        outputTokens: outTok,
+        outcome: "error",
+        note: `malformed: ${firstError}`.slice(0, 200),
+      });
+      return {
+        summary: `(reflection produced unparseable output: ${firstError})`,
+        applied: [],
+        skipped: [`raw: ${raw.slice(0, 200)}`],
+        raw,
+        malformed: true,
+      };
+    }
   }
+  const payload = parsed.payload;
 
   const applied: string[] = [];
   const skipped: string[] = [];
@@ -249,16 +350,39 @@ async function reflectOnSessionInner(opts: {
     skipped.push(`progress_consolidation — ${(err as Error).message}`);
   }
 
+  const underReflected = detectUnderReflection({
+    historyLength: opts.history.length,
+    operationCount: payload.operations?.length ?? 0,
+  });
+  if (underReflected) {
+    console.error(
+      `[reflect] underreflected: ${opts.history.length}-message session yielded 0 operations beyond the journal`,
+    );
+  }
+
   await atomicWrite(
     path.join(REFLECTIONS_DIR, `${opts.sessionId}.json`),
     JSON.stringify(
-      { summary: payload.summary, operations: payload.operations, applied, skipped },
+      { summary: payload.summary, operations: payload.operations, applied, skipped, underReflected },
       null,
       2,
     ),
   );
 
-  return { summary: payload.summary, applied, skipped, raw };
+  // Observability (R2): record the reflect pass. "done" when at least one
+  // operation beyond the journal landed; "no-update" otherwise.
+  const opsApplied = applied.filter((a) => !a.startsWith("journal")).length;
+  await recordAutonomyRun({
+    kind: "reflect",
+    startedAt,
+    durationMs: Date.now() - t0,
+    inputTokens: inTok,
+    outputTokens: outTok,
+    outcome: opsApplied > 0 ? "done" : "no-update",
+    note: underReflected ? "underreflected" : undefined,
+  });
+
+  return { summary: payload.summary, applied, skipped, raw, underReflected };
 }
 
 /**
