@@ -29,12 +29,25 @@ export interface DispatchEntry {
   task: string;
   /** Epoch ms when dispatched. */
   startedAt: number;
+  /** Captured stdout+stderr file for this agent (D1 feedback), if any. */
+  logPath?: string;
+}
+
+/** How long a finished dispatch (and its output log) is retained for readback. */
+const RETAIN_MS = 24 * 60 * 60_000;
+
+function lisaHome(): string {
+  return process.env.LISA_HOME ?? path.join(os.homedir(), ".lisa");
 }
 
 /** Resolved lazily (reads env at call time) so tests can point LISA_HOME at a tmp dir. */
 function ledgerPath(): string {
-  const home = process.env.LISA_HOME ?? path.join(os.homedir(), ".lisa");
-  return path.join(home, "dispatches.json");
+  return path.join(lisaHome(), "dispatches.json");
+}
+
+/** Directory for per-dispatch captured-output logs. */
+export function dispatchLogDir(): string {
+  return path.join(lisaHome(), "dispatches");
 }
 
 /** Read the ledger; tolerant of a missing or corrupt file (returns []). */
@@ -86,6 +99,8 @@ export function recordDispatch(d: {
   pid: number;
   cwd: string;
   task: string;
+  /** Captured-output log file for this agent (D1 feedback). */
+  logPath?: string;
   /** Override the clock (tests). */
   now?: number;
 }): DispatchEntry {
@@ -97,20 +112,66 @@ export function recordDispatch(d: {
     cwd: d.cwd,
     task: d.task.slice(0, 200),
     startedAt,
+    ...(d.logPath ? { logPath: d.logPath } : {}),
   };
-  // Drop any stale entry that reused this pid before appending.
-  const entries = loadLedger().filter((e) => e.pid !== d.pid);
+  // Drop any stale same-pid entry, and age out finished dispatches older than
+  // the retention window so the file (and its logs) don't grow unbounded.
+  const cutoff = startedAt - RETAIN_MS;
+  const entries = loadLedger().filter(
+    (e) => e.pid !== d.pid && (isAlive(e.pid) || e.startedAt >= cutoff),
+  );
   entries.push(entry);
   saveLedger(entries);
   return entry;
 }
 
-/** Live dispatched agents, pruning any that have since exited. */
+/**
+ * Live dispatched agents. Rewrites the ledger to retain live agents AND
+ * recently-finished ones (so their captured output stays readable via
+ * dispatch_status); only truly-aged-out entries (and their logs) are dropped.
+ */
 export function listLiveDispatches(): DispatchEntry[] {
   const all = loadLedger();
-  const live = all.filter((e) => isAlive(e.pid));
-  if (live.length !== all.length) saveLedger(live); // prune the dead
-  return live;
+  const now = Date.now();
+  const keep = all.filter((e) => isAlive(e.pid) || now - e.startedAt < RETAIN_MS);
+  if (keep.length !== all.length) {
+    for (const e of all) {
+      if (!keep.includes(e) && e.logPath) {
+        try {
+          fs.unlinkSync(e.logPath);
+        } catch {
+          // log already gone — ignore
+        }
+      }
+    }
+    saveLedger(keep);
+  }
+  return all.filter((e) => isAlive(e.pid));
+}
+
+/** All retained dispatches (live + recently-finished). For status / result readback. */
+export function listRecentDispatches(): DispatchEntry[] {
+  return loadLedger();
+}
+
+/** Tail (up to maxBytes) of a dispatch's captured output. "" if none/unreadable. */
+export function readDispatchOutput(entry: DispatchEntry, maxBytes = 2000): string {
+  if (!entry.logPath) return "";
+  try {
+    const st = fs.statSync(entry.logPath);
+    if (st.size === 0) return "";
+    const fd = fs.openSync(entry.logPath, "r");
+    try {
+      const len = Math.min(maxBytes, st.size);
+      const buf = Buffer.alloc(len);
+      fs.readSync(fd, buf, 0, len, st.size - len);
+      return (st.size > len ? "…" : "") + buf.toString("utf8");
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return "";
+  }
 }
 
 /** Find a *live* dispatch by id or by pid (as a string). Null if absent/dead. */
