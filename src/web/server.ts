@@ -36,7 +36,7 @@ import { listGrants, grant, revoke, revokeAll, SENSE_SIGNALS, SIGNAL_DESCRIPTION
 import { SenseService } from "../sense/service.js";
 import { ScreenSource } from "../sense/screen.js";
 import { VoiceSource } from "../sense/voice.js";
-import { appendSenseEvent } from "../sense/log.js";
+import { appendSenseEvent, readSenseEvents } from "../sense/log.js";
 import {
   loadScreenAdvisorConfig,
   saveScreenAdvisorConfig,
@@ -708,6 +708,13 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       }));
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ grants }));
+      return;
+    }
+    // Recent ambient sense events, for the island's "recently sensed" list.
+    if (req.method === "GET" && url === "/api/sense/recent") {
+      const events = readSenseEvents().slice(-30).reverse(); // newest first
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ events }));
       return;
     }
     if (req.method === "POST" && url === "/api/consent/revoke-all") {

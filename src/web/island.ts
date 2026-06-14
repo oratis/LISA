@@ -435,6 +435,19 @@ export const ISLAND_HTML = `<!doctype html>
   }
   #sense-stop:hover { background: rgba(255, 85, 119, 0.2); }
   body.sensing #sense-stop { display: block; }
+  /* Live "recently sensed" feed — structural summaries only. */
+  #sense-events { list-style: none; margin: 8px 0 0; padding: 0; }
+  #sense-events li {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+    padding: 3px 4px;
+    font-size: 10.5px;
+    color: var(--fg-dim);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  #sense-events .se-when { color: var(--fg-faint); flex-shrink: 0; font-variant-numeric: tabular-nums; }
+  #sense-events .se-sum { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* Phase 3 — notification opt-in chip */
   #notify-cta {
@@ -557,6 +570,7 @@ export const ISLAND_HTML = `<!doctype html>
       <div class="section-label" id="sense-label">👁 sense · <span id="sense-summary">all off</span></div>
       <ul id="sense-list"></ul>
       <button id="sense-stop" type="button">Stop all sensing</button>
+      <ul id="sense-events"></ul>
     </div>
     <div id="actions">
       <button id="btn-open">Open chat</button>
@@ -596,6 +610,7 @@ export const ISLAND_HTML = `<!doctype html>
   const senseList    = document.getElementById('sense-list');
   const senseSummary = document.getElementById('sense-summary');
   const senseStop    = document.getElementById('sense-stop');
+  const senseEvents  = document.getElementById('sense-events');
   const body         = document.body;
 
   const state = {
@@ -610,6 +625,7 @@ export const ISLAND_HTML = `<!doctype html>
     suggestion: null,    // {title, rationale, task, at} from the screen advisor
     advisor: [],         // [{id, category, urgency, text, action}] from the cross-agent advisor
     sense: [],           // [{signal, granted, grantedAt}] from /api/consent (FOUNDATIONS §1)
+    senseEvents: [],     // [{signal, summary, ts}] recent ambient events (S2)
   };
 
   // 30-min activity window matches the watcher's ACTIVE_WINDOW_MS.
@@ -1223,6 +1239,11 @@ export const ISLAND_HTML = `<!doctype html>
           state.advisor = Array.isArray(m.suggestions) ? m.suggestions : [];
           refreshPanel();
           break;
+        case 'sense_event':
+          // Newest first; cap the in-memory feed.
+          state.senseEvents = [m].concat(state.senseEvents || []).slice(0, 30);
+          renderSenseEvents();
+          break;
         case 'agent_session_update':
           // D4a — generalized multi-agent event (claude-code + codex + …).
           // Payload is the normalized AgentSession (lastMtime is epoch ms;
@@ -1376,6 +1397,33 @@ export const ISLAND_HTML = `<!doctype html>
   }
   senseStop.addEventListener('click', (e) => { e.stopPropagation(); stopAllSensing(); });
 
+  // Recently-sensed feed (structural summaries only).
+  function renderSenseEvents() {
+    while (senseEvents.firstChild) senseEvents.removeChild(senseEvents.firstChild);
+    for (const e of (state.senseEvents || []).slice(0, 8)) {
+      const li = document.createElement('li');
+      const when = document.createElement('span');
+      when.className = 'se-when';
+      when.textContent = relativeTime(e.ts);
+      const sum = document.createElement('span');
+      sum.className = 'se-sum';
+      sum.textContent = '[' + (e.signal || '?') + '] ' + (e.summary || '');
+      sum.title = sum.textContent;
+      li.appendChild(when);
+      li.appendChild(sum);
+      senseEvents.appendChild(li);
+    }
+  }
+
+  async function fetchSenseEvents() {
+    try {
+      const r = await fetch('/api/sense/recent', { cache: 'no-store' });
+      if (!r.ok) return;
+      const j = await r.json();
+      if (Array.isArray(j.events)) { state.senseEvents = j.events; renderSenseEvents(); }
+    } catch (_) { /* older server without the endpoint — silent */ }
+  }
+
   // Phase 3 — notification permission opt-in. The CTA is only visible
   // when permission is in the default (un-asked) state.
   notifyCta.addEventListener('click', (e) => {
@@ -1391,6 +1439,7 @@ export const ISLAND_HTML = `<!doctype html>
   pollPing();
   fetchClaudeSessions().then(() => { refreshDot(); refreshPanel(); });
   fetchConsent();
+  fetchSenseEvents();
   subscribe();
   refreshNotifyCta();
   // A fresh island picks up the most recent screen-advisor suggestion (if the
