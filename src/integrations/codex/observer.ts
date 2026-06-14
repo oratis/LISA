@@ -27,6 +27,7 @@ import path from "node:path";
 import os from "node:os";
 import { EventEmitter } from "node:events";
 import { registerIntegration } from "../registry.js";
+import { cwdGitBranch, type GitBranchResolver } from "../git/branch.js";
 import type {
   AgentIntegrationConfig,
   AgentObserver,
@@ -34,6 +35,11 @@ import type {
   AgentSessionState,
   SessionActivity,
 } from "../types.js";
+
+/** Constructor options — config plus an injectable branch resolver (tests). */
+export interface CodexObserverOptions extends AgentIntegrationConfig {
+  gitBranch?: GitBranchResolver;
+}
 
 const ACTIVE_WINDOW_MS = 30 * 60_000;
 const MAX_LISTED = 10;
@@ -59,8 +65,10 @@ export class CodexObserver extends EventEmitter implements AgentObserver {
   private pending = new Map<string, NodeJS.Timeout>();
   private emitFn: ((s: AgentSession) => void) | null = null;
   private readonly computeActivity: boolean;
+  /** O-D1: derive gitBranch from a session's cwd (Codex rollouts don't store one). */
+  private readonly resolveBranch: GitBranchResolver;
 
-  constructor(cfg: AgentIntegrationConfig) {
+  constructor(cfg: CodexObserverOptions) {
     super();
     const home = cfg.home
       ? (cfg.home as string).replace(/^~/, os.homedir())
@@ -71,6 +79,7 @@ export class CodexObserver extends EventEmitter implements AgentObserver {
     // privacy-minimal default) — mirrors the claude-code observer.
     this.computeActivity =
       cfg.visibility === "activity" || cfg.visibility === "intent";
+    this.resolveBranch = cfg.gitBranch ?? cwdGitBranch;
   }
 
   async start(emit: (s: AgentSession) => void): Promise<void> {
@@ -139,9 +148,16 @@ export class CodexObserver extends EventEmitter implements AgentObserver {
       const st = await fsp.stat(full);
       if (!st.isFile()) return;
       const { state, reason, cwd } = await parseCodexState(full);
-      const activity = this.computeActivity
+      let activity = this.computeActivity
         ? await parseCodexActivity(full)
         : undefined;
+      // O-D1: enrich with the branch derived from cwd (Codex doesn't record one).
+      if (this.computeActivity && cwd) {
+        const gitBranch = await this.resolveBranch(cwd);
+        if (gitBranch) {
+          activity = { ...(activity ?? { turnCount: 0, lastTools: [], filesTouched: [] }), gitBranch };
+        }
+      }
       this.sessions.set(full, {
         sessionId: path.basename(full, ".jsonl").replace(/^rollout-/, ""),
         project: cwd ? path.basename(cwd) : path.basename(path.dirname(full)),
@@ -266,7 +282,8 @@ export async function parseCodexState(
 // test plants a unique secret in arguments, reasoning, and message content and
 // asserts it never appears in the output.
 
-const ACTIVITY_TAIL_BYTES = 64 * 1024;
+// O-D2: 128KB tail (was 64KB) so long sessions don't under-count tools/files.
+const ACTIVITY_TAIL_BYTES = 128 * 1024;
 const MAX_TOOLS = 6;
 const MAX_FILES = 10;
 /** Known path-bearing keys inside a function_call's parsed arguments. */
