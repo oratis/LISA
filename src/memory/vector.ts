@@ -3,7 +3,13 @@ import fs from "node:fs/promises";
 import { listSessionsOnDisk, loadSessionMessages } from "../sessions/list.js";
 import { SESSIONS_DIR } from "../paths.js";
 import { extractTextFromContent } from "../agent.js";
-import { cosineSimilarity, type Embedder } from "./embedding.js";
+import {
+  cosineSimilarity,
+  embedWithCache,
+  loadEmbeddingCache,
+  saveEmbeddingCache,
+  type Embedder,
+} from "./embedding.js";
 
 export interface Document {
   sessionId: string;
@@ -156,9 +162,14 @@ const SEMANTIC_DOC_CHARS = 2000;
 /** Populate (and cache on the index) a dense vector per doc, once per embedder. */
 async function ensureEmbeddings(index: Index, embedder: Embedder): Promise<void> {
   if (index.embedderId === embedder.id && index.embeddings) return;
-  const vecs = await embedder.embed(index.docs.map((d) => d.text.slice(0, SEMANTIC_DOC_CHARS)));
+  const texts = index.docs.map((d) => d.text.slice(0, SEMANTIC_DOC_CHARS));
+  // Reuse the persistent cache so a rebuild (triggered by ANY session change)
+  // only re-embeds docs whose content actually changed, not all of them.
+  const cache = await loadEmbeddingCache(embedder.id);
+  const { vectors, updated, misses } = await embedWithCache(texts, embedder, cache);
+  if (misses > 0) await saveEmbeddingCache(embedder.id, updated);
   const map = new Map<string, number[]>();
-  index.docs.forEach((d, i) => map.set(d.sessionId, vecs[i] ?? []));
+  index.docs.forEach((d, i) => map.set(d.sessionId, vectors[i] ?? []));
   index.embeddings = map;
   index.embedderId = embedder.id;
 }

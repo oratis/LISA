@@ -1,13 +1,18 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import {
-  cosineSimilarity,
-  parseOllamaEmbedding,
-  OllamaEmbedder,
-  type Embedder,
-  type PostJson,
-} from "./embedding.js";
-import { semanticSearch, type Index, type Document } from "./vector.js";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import type { Embedder, PostJson } from "./embedding.js";
+import type { Index, Document } from "./vector.js";
+
+// semanticSearch → ensureEmbeddings now reads/writes the on-disk embedding
+// cache; point it at a throwaway LISA_HOME so the suite never touches the real
+// ~/.lisa. Set before importing the modules (paths.js captures LISA_HOME once).
+process.env.LISA_HOME = fs.mkdtempSync(path.join(os.tmpdir(), "lisa-emb-"));
+
+const { cosineSimilarity, parseOllamaEmbedding, OllamaEmbedder } = await import("./embedding.js");
+const { semanticSearch } = await import("./vector.js");
 
 describe("cosineSimilarity", () => {
   test("identical → 1", () => assert.equal(cosineSimilarity([1, 2, 3], [1, 2, 3]), 1));
