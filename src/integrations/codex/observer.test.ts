@@ -281,3 +281,77 @@ describe("CodexObserver — visibility gating of activity", () => {
     }
   });
 });
+
+describe("CodexObserver — O-D1 gitBranch from cwd", () => {
+  async function homeWithCwd(label: string, cwd: string | null): Promise<string> {
+    const home = await fsp.mkdtemp(path.join(os.tmpdir(), `lisa-codex-od1-${label}-`));
+    const roll = path.join(home, "sessions", "2026", "06", "10", "rollout-b.jsonl");
+    await fsp.mkdir(path.dirname(roll), { recursive: true });
+    const user: Record<string, unknown> = { type: "message", role: "user", content: "go" };
+    const asst: Record<string, unknown> = { type: "response", role: "assistant" };
+    if (cwd) { user.cwd = cwd; asst.cwd = cwd; }
+    await fsp.writeFile(roll, [user, asst].map((l) => JSON.stringify(l)).join("\n") + "\n");
+    return home;
+  }
+
+  test("enriches activity.gitBranch from the session cwd (tier ≥ activity)", async () => {
+    const home = await homeWithCwd("on", "/Users/me/proj");
+    try {
+      const obs = new CodexObserver({
+        home,
+        visibility: "activity",
+        gitBranch: async (cwd) => (cwd ? "feat-od1" : undefined),
+      });
+      await obs.start(() => {});
+      const listed = obs.list();
+      await obs.stop();
+      assert.equal(listed[0]!.activity!.gitBranch, "feat-od1");
+    } finally {
+      await fsp.rm(home, { recursive: true, force: true });
+    }
+  });
+
+  test("resolver is never consulted at metadata tier (no activity)", async () => {
+    const home = await homeWithCwd("meta", "/Users/me/proj");
+    try {
+      let called = false;
+      const obs = new CodexObserver({
+        home,
+        visibility: "metadata",
+        gitBranch: async () => { called = true; return "nope"; },
+      });
+      await obs.start(() => {});
+      const listed = obs.list();
+      await obs.stop();
+      assert.equal(listed[0]!.activity, undefined);
+      assert.equal(called, false, "branch resolver must not run when activity is off");
+    } finally {
+      await fsp.rm(home, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("parseCodexActivity — O-D2 widened 128KB tail", () => {
+  test("captures a file touched early in a >64KB session", async () => {
+    const lines: object[] = [
+      { type: "function_call", name: "Read", arguments: JSON.stringify({ file_path: "early.ts" }) },
+    ];
+    const pad = "x".repeat(220);
+    for (let i = 0; i < 400; i++) lines.push({ type: "user", note: pad });
+    lines.push({ type: "function_call", name: "Edit", arguments: JSON.stringify({ file_path: "late.ts" }) });
+    const f = await writeRollout("od2/rollout-long.jsonl", lines);
+
+    const size = (await fsp.stat(f)).size;
+    assert.ok(
+      size > 64 * 1024 && size < 128 * 1024,
+      `fixture should sit in the 64–128KB widened-only band, got ${size}`,
+    );
+    const a = await parseCodexActivity(f);
+    assert.ok(a, "activity present");
+    assert.ok(
+      a!.filesTouched.includes("early.ts"),
+      "early file (only reachable with the 128KB tail) captured",
+    );
+    assert.ok(a!.filesTouched.includes("late.ts"), "late file captured");
+  });
+});

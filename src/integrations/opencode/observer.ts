@@ -37,6 +37,7 @@ import { EventEmitter } from "node:events";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { registerIntegration } from "../registry.js";
+import { cwdGitBranch, type GitBranchResolver } from "../git/branch.js";
 import type {
   AgentIntegrationConfig,
   AgentObserver,
@@ -54,8 +55,9 @@ const MAX_LISTED = 12;
 // Tier-2 extraction caps (mirror the Claude Code parser).
 const MAX_TOOLS = 6;
 const MAX_FILES = 10;
-/** How many of a session's most-recent messages to scan for activity. */
-const RECENT_MSGS = 20;
+/** How many of a session's most-recent messages to scan for activity.
+ *  O-D2: 40 (was 20) so long sessions don't under-count tools/files. */
+const RECENT_MSGS = 40;
 /** Known path-bearing keys in a tool part's input. We NEVER read other keys. */
 const PATH_KEYS = ["path", "filePath", "file", "filename"];
 
@@ -356,7 +358,7 @@ const COL_RECENT_MSGS =
   `(SELECT m.data AS d FROM message m WHERE m.session_id = s.id ORDER BY m.time_created DESC LIMIT ${RECENT_MSGS}) ` +
   "ORDER BY rowid DESC) AS recent_msgs";
 
-function buildQuery(withActivity: boolean): string {
+export function buildQuery(withActivity: boolean): string {
   const cols = [
     "s.id AS id",
     "s.directory AS directory",
@@ -398,6 +400,8 @@ export interface OpencodeObserverOptions extends AgentIntegrationConfig {
   pollMs?: number;
   activeWindowMs?: number;
   now?: () => number;
+  /** O-D1: derive gitBranch from a session's directory (injectable for tests). */
+  gitBranch?: GitBranchResolver;
 }
 
 export class OpencodeObserver extends EventEmitter implements AgentObserver {
@@ -411,6 +415,8 @@ export class OpencodeObserver extends EventEmitter implements AgentObserver {
   private readonly now: () => number;
   /** Tier-2 gate: only at visibility ≥ "activity" do we deep-extract. */
   private readonly computeActivity: boolean;
+  /** O-D1: derive gitBranch from a session's directory (OpenCode stores none). */
+  private readonly resolveBranch: GitBranchResolver;
 
   constructor(cfg: OpencodeObserverOptions) {
     super();
@@ -419,6 +425,7 @@ export class OpencodeObserver extends EventEmitter implements AgentObserver {
     // "intent". At "metadata"/"off" we stay metadata-only (cheaper, and the
     // privacy-minimal default) — same gate as the Claude Code observer.
     this.computeActivity = cfg.visibility === "activity" || cfg.visibility === "intent";
+    this.resolveBranch = cfg.gitBranch ?? cwdGitBranch;
     this.fetcher = cfg.fetchRows ?? (() => sqliteFetch(db, this.computeActivity));
     this.pollMs = typeof cfg.pollMs === "number" && cfg.pollMs > 0 ? cfg.pollMs : POLL_MS_DEFAULT;
     this.windowMs =
@@ -458,6 +465,13 @@ export class OpencodeObserver extends EventEmitter implements AgentObserver {
     }
     for (const row of rows) {
       const s = mapOpencodeSession(row, this.computeActivity);
+      // O-D1: enrich with the branch derived from the session's cwd.
+      if (this.computeActivity && s.cwd) {
+        const gitBranch = await this.resolveBranch(s.cwd);
+        if (gitBranch) {
+          s.activity = { ...(s.activity ?? { turnCount: 0, lastTools: [], filesTouched: [] }), gitBranch };
+        }
+      }
       const prev = this.sessions.get(s.sessionId);
       this.sessions.set(s.sessionId, s);
       if (this.emitFn && (!prev || prev.state !== s.state || prev.lastMtime !== s.lastMtime)) {

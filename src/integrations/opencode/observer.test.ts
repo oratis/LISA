@@ -5,6 +5,7 @@ import {
   parseLastMessage,
   parseRecentMessages,
   extractActivity,
+  buildQuery,
   OpencodeObserver,
   type OpencodeRow,
 } from "./observer.js";
@@ -367,5 +368,43 @@ describe("OpencodeObserver — visibility wiring", () => {
     const s = obs.list()[0]!;
     // recent_msgs is ignored at metadata tier; no tokens here → no activity.
     assert.equal(s.activity, undefined);
+  });
+});
+
+describe("OpencodeObserver — O-D1 gitBranch from directory", () => {
+  const row: OpencodeRow = { id: "ses_b", directory: "/Users/me/proj", title: "t", time_updated: 1 };
+
+  test("enriches activity.gitBranch from the session directory (tier ≥ activity)", async () => {
+    const obs = new OpencodeObserver({
+      enabled: true,
+      visibility: "activity",
+      fetchRows: async () => [row],
+      gitBranch: async (cwd) => (cwd ? "feat-od1" : undefined),
+      activeWindowMs: 10 ** 12,
+      now: () => 2,
+    });
+    await obs.poll();
+    assert.equal(obs.list()[0]!.activity!.gitBranch, "feat-od1");
+  });
+
+  test("resolver is never consulted at metadata tier", async () => {
+    let called = false;
+    const obs = new OpencodeObserver({
+      enabled: true,
+      visibility: "metadata",
+      fetchRows: async () => [row],
+      gitBranch: async () => { called = true; return "nope"; },
+      activeWindowMs: 10 ** 12,
+      now: () => 2,
+    });
+    await obs.poll();
+    assert.equal(obs.list()[0]!.activity, undefined);
+    assert.equal(called, false, "branch resolver must not run when activity is off");
+  });
+});
+
+describe("buildQuery — O-D2 widened message window", () => {
+  test("fetches 40 recent messages per session (was 20)", () => {
+    assert.match(buildQuery(true), /LIMIT 40\)/, "per-session recent-message LIMIT should be 40");
   });
 });
