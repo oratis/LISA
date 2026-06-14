@@ -33,6 +33,9 @@ import { captureScreenshot, captureSupported, type CaptureMode } from "../vision
 import { transcribeAudio } from "../voice/transcribe.js";
 import { polishDictation, type DictationProvider } from "../voice/dictation.js";
 import { listGrants, grant, revoke, revokeAll, SENSE_SIGNALS, SIGNAL_DESCRIPTIONS } from "../consent/store.js";
+import { SenseService } from "../sense/service.js";
+import { ScreenSource } from "../sense/screen.js";
+import { appendSenseEvent } from "../sense/log.js";
 import {
   loadScreenAdvisorConfig,
   saveScreenAdvisorConfig,
@@ -349,6 +352,18 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   if (screenCfg.enabled) {
     console.error(`[screen-advisor] enabled — every ${screenCfg.intervalMinutes}m`);
   }
+
+  // ── Sense ambient sources (S2) ──────────────────────────────────────
+  // The resident loop owns consent-gated ambient sources. ScreenSource ticks
+  // continuously but captures NOTHING until `screen` is granted (it re-checks
+  // each tick), so this is a no-op by default. On-change foreground-app events
+  // are distilled to the bounded sense log; nothing raw is persisted.
+  const senseService = new SenseService();
+  senseService.register(new ScreenSource());
+  void senseService.start((e) => {
+    appendSenseEvent(e);
+    broadcast({ type: "sense_event", ...e });
+  });
 
   // ── Island unread tracking (Phase 1 of MAC_ISLAND_PLAN) ─────────────
   // The island widget caches "last idle_message" so a fresh tab opening
