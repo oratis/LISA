@@ -45,12 +45,12 @@ jobs:
       # Apple Developer ID secrets are wired.
       HAS_APPLE_SIGNING: ${{ secrets.APPLE_TEAM_ID != '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           # workflow_dispatch may target a different tag than the default ref
           ref: ${{ github.event.inputs.tag || github.ref }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: "22"
           cache: "npm"
@@ -189,7 +189,7 @@ jobs:
         # Tolerates the release already existing (created by release.yml
         # on the same tag). action-gh-release appends/updates assets when
         # called with a tag that already has a release.
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.ver.outputs.tag }}
           name: Lisa ${{ steps.ver.outputs.tag }}
