@@ -63,3 +63,23 @@ export function aggregateAgentState(
   if (recent.some((x) => x.state === "working")) return "working";
   return null;
 }
+
+/**
+ * Display label for a roster row. Prefers the git branch — far more meaningful
+ * than a worktree-hash cwd basename like "2cffa8" — with the ubiquitous
+ * "claude/" prefix stripped; falls back to the project name. Pure +
+ * self-contained (the island injects this function's source; the
+ * injection-safety test guards it, so no imports / closure refs).
+ *
+ * (Claude Code's human-written session TITLE isn't in the transcript JSONL the
+ * observer reads, so the branch is the best title-like label we actually have.)
+ */
+export function rosterLabel(s: RosterSession): string {
+  const a = s.activity;
+  const branch =
+    a && typeof a === "object" ? (a as { gitBranch?: unknown }).gitBranch : undefined;
+  if (typeof branch === "string" && branch) {
+    return branch.replace(/^claude\//, "");
+  }
+  return s.project;
+}

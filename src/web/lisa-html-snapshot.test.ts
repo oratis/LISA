@@ -16,11 +16,11 @@ import { MAIN_HTML } from "./lisa-html.js";
  * change the GUI markup/CSS/JS, recompute them:
  *   node --import tsx -e 'import("./src/web/lisa-html.ts").then(async m=>{const {createHash}=await import("node:crypto");console.log(m.MAIN_HTML.length, createHash("sha256").update(m.MAIN_HTML).digest("hex"))})'
  *
- * Last updated: D4a multi-agent sidebar (agent-kind badge CSS + JS, /api/agents/sessions).
+ * Last updated: sidebar rows labelled by git branch (rosterLabel) + project in tooltip.
  */
-const EXPECTED_LENGTH = 77174;
+const EXPECTED_LENGTH = 77677;
 const EXPECTED_SHA256 =
-  "f02520ca19159dc033c4b1f5f96e2ea7d90cb8b328d9207043a17e46d28f62e5";
+  "2c806033b5bf4ec839088a35e220d1214a2b328785f406197646042132f88195";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);

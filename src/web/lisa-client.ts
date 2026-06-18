@@ -1050,14 +1050,23 @@ if ('serviceWorker' in navigator) {
         badge.title = s.agent;
         name.appendChild(badge);
       }
-      name.appendChild(document.createTextNode(s.project));
+      // Label by git branch when available (more meaningful than a worktree
+      // hash), stripping the claude/ prefix; fall back to the project name.
+      // (String ops, not a regex — a /\// here would be mangled by the outer
+      // template literal that wraps this client script.)
+      let label = s.project;
+      if (s.activity && s.activity.gitBranch) {
+        const br = String(s.activity.gitBranch);
+        label = br.indexOf('claude/') === 0 ? br.slice(7) : br;
+      }
+      name.appendChild(document.createTextNode(label));
       const when = document.createElement('div');
       when.className = 'when';
       when.textContent = relativeTime(s.lastMtime);
       row.appendChild(pip);
       row.appendChild(name);
       row.appendChild(when);
-      row.title = (s.stateReason ? s.state + ' · ' + s.stateReason : s.state) + ' · ' + s.sessionId;
+      row.title = (s.stateReason ? s.state + ' · ' + s.stateReason : s.state) + ' · ' + s.project + ' · ' + s.sessionId;
       sbClaudeRows.appendChild(row);
     }
   }

@@ -13,7 +13,7 @@
  * so the browser runs the exact unit-tested code instead of a drifting copy.
  */
 
-import { mergeAgentSession, aggregateAgentState } from "./agent-roster.js";
+import { mergeAgentSession, aggregateAgentState, rosterLabel } from "./agent-roster.js";
 
 export const ISLAND_HTML = `<!doctype html>
 <html lang="en">
@@ -587,6 +587,7 @@ export const ISLAND_HTML = `<!doctype html>
   // injection-safety test in agent-roster.test.ts guards that.
   ${mergeAgentSession}
   ${aggregateAgentState}
+  ${rosterLabel}
   // Composite identity for a roster row: the same sessionId seen under two
   // agents (e.g. a git + a shell observer) are DISTINCT rows. Mirrors the
   // key mergeAgentSession uses; the UI keys per-row history, open-state, and
@@ -937,7 +938,9 @@ export const ISLAND_HTML = `<!doctype html>
       pip.className = 'pip ' + (s.state || 'unknown');
       const proj = document.createElement('span');
       proj.className = 'proj';
-      proj.textContent = s.project;
+      // Label by git branch when available (more meaningful than a worktree
+      // hash); the project/cwd stays visible in the row tooltip below.
+      proj.textContent = rosterLabel(s);
       const when = document.createElement('span');
       when.className = 'when';
       when.textContent = relativeTime(s.lastMtime);
@@ -978,6 +981,7 @@ export const ISLAND_HTML = `<!doctype html>
       li.appendChild(actions);
 
       li.title = s.state + (s.stateReason ? ' (' + s.stateReason + ')' : '')
+               + ' · ' + s.project
                + ' · ' + s.sessionId
                + '\\nclick: expand timeline · double-click: copy sessionId';
       li.addEventListener('click', () => {
