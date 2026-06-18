@@ -1,0 +1,42 @@
+---
+import Base from "../layouts/Base.astro";
+import { fetchReleases } from "../lib/releases";
+
+// Fetched at build time (fail-safe → [] → GitHub fallback below).
+const releases = await fetchReleases();
+---
+<Base title="Changelog" lang="en" description="What's new in Lisa — release notes by version.">
+  <h1>Changelog</h1>
+  <p>
+    Every Lisa release, newest first. Grab the latest from <a href="/install">install</a>,
+    or browse <a href="https://github.com/oratis/LISA/releases/latest" target="_blank" rel="noopener">GitHub Releases ↗</a>.
+    The Mac app checks here too — <em>Lisa ▸ About ▸ Check for Updates</em>.
+  </p>
+
+  {releases.length === 0 ? (
+    <p>
+      Couldn't load releases right now — see them on
+      <a href="https://github.com/oratis/LISA/releases" target="_blank" rel="noopener">GitHub ↗</a>.
+    </p>
+  ) : (
+    releases.map((r) => (
+      <section class="term release">
+        <div class="term-bar">
+          <span class="term-dot r"></span><span class="term-dot y"></span><span class="term-dot g"></span>
+          <span class="term-title">{r.tag || r.name}{r.date ? ` · ${r.date}` : ""}</span>
+        </div>
+        <div class="term-body">
+          {r.body
+            ? <pre>{r.body}</pre>
+            : <p>No notes for this release.</p>}
+          <p><a href={r.url} target="_blank" rel="noopener">View {r.tag || "release"} on GitHub ↗</a></p>
+        </div>
+      </section>
+    ))
+  )}
+
+  <style>
+    .release { margin: 22px 0; }
+    .release .term-body pre { margin: 0 0 14px; }
+  </style>
+</Base>
