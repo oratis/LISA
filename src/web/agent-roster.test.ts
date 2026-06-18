@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { mergeAgentSession, aggregateAgentState, rosterLabel, type RosterSession } from "./agent-roster.js";
+import { mergeAgentSession, aggregateAgentState, rosterLabel, formatActivity, type RosterSession } from "./agent-roster.js";
 
 const NOW = 1_700_000_000_000;
 const WINDOW = 30 * 60_000;
@@ -57,7 +57,7 @@ describe("source-injection safety (island injects these verbatim)", () => {
   // island.ts embeds `${mergeAgentSession}` into the page; the browser eval's
   // the function source. Assert each is self-contained: its source eval's to a
   // working function with no external references.
-  for (const fn of [mergeAgentSession, aggregateAgentState, rosterLabel]) {
+  for (const fn of [mergeAgentSession, aggregateAgentState, rosterLabel, formatActivity]) {
     test(`${fn.name} source eval's to a working function`, () => {
       // eslint-disable-next-line @typescript-eslint/no-implied-eval
       const rebuilt = new Function(`return (${fn.toString()})`)() as (...a: unknown[]) => unknown;
@@ -66,11 +66,41 @@ describe("source-injection safety (island injects these verbatim)", () => {
         assert.equal(rebuilt([s({ state: "error" })], NOW, WINDOW), "error");
       } else if (fn === rosterLabel) {
         assert.equal(rebuilt(s({ project: "p" })), "p");
+      } else if (fn === formatActivity) {
+        assert.equal(rebuilt(s({ activity: { pendingPermission: "bash" } })), "⚠ wants to run bash");
       } else {
         assert.equal((rebuilt([], s(), NOW, WINDOW) as RosterSession[]).length, 1);
       }
     });
   }
+});
+
+describe("formatActivity", () => {
+  test("no activity → empty", () => {
+    assert.equal(formatActivity(s({ activity: undefined })), "");
+  });
+  test("pendingPermission wins over everything", () => {
+    assert.equal(
+      formatActivity(s({ activity: { pendingPermission: "Bash", lastError: "x", turnCount: 5 } })),
+      "⚠ wants to run Bash",
+    );
+  });
+  test("error · progress · cmd · tool file, in order", () => {
+    const out = formatActivity(s({ activity: {
+      lastError: "ENOENT",
+      turnCount: 12,
+      tokens: { input: 1200, output: 800 },
+      lastCommandName: "npm",
+      lastTools: ["Read", "Edit"],
+      filesTouched: ["/a/b/foo.ts"],
+    } }));
+    assert.equal(out, "✗ ENOENT · turn 12 2k tok · $ npm · Edit foo.ts");
+  });
+  test("tokens under 1000 shown raw; only-tools / only-files handled", () => {
+    assert.equal(formatActivity(s({ activity: { turnCount: 1, tokens: { input: 300, output: 100 } } })), "turn 1 400 tok");
+    assert.equal(formatActivity(s({ activity: { lastTools: ["Grep"] } })), "Grep");
+    assert.equal(formatActivity(s({ activity: { filesTouched: ["/x/y/bar.py"] } })), "bar.py");
+  });
 });
 
 describe("rosterLabel", () => {

@@ -83,3 +83,52 @@ export function rosterLabel(s: RosterSession): string {
   }
   return s.project;
 }
+
+/**
+ * One-line structural summary of a session's Tier-2 activity — what it's *doing*
+ * and how far along, never conversation content: a pending-permission warning,
+ * else "✗ error · turn N · Mk tok · $ cmd · Tool file". Returns "" when there's
+ * no activity. Pure + self-contained (island injects this source; the
+ * injection-safety test guards it — no imports, no named const-arrows).
+ */
+export function formatActivity(s: RosterSession): string {
+  const a = s.activity as
+    | {
+        pendingPermission?: unknown;
+        lastError?: unknown;
+        turnCount?: unknown;
+        tokens?: { input?: unknown; output?: unknown };
+        lastCommandName?: unknown;
+        lastTools?: unknown;
+        filesTouched?: unknown;
+      }
+    | undefined;
+  if (!a || typeof a !== "object") return "";
+  if (typeof a.pendingPermission === "string" && a.pendingPermission) {
+    return "⚠ wants to run " + a.pendingPermission;
+  }
+  const bits: string[] = [];
+  if (typeof a.lastError === "string" && a.lastError) bits.push("✗ " + a.lastError);
+
+  const prog: string[] = [];
+  if (typeof a.turnCount === "number" && a.turnCount > 0) prog.push("turn " + a.turnCount);
+  if (a.tokens && typeof a.tokens === "object") {
+    const tin = typeof a.tokens.input === "number" ? a.tokens.input : 0;
+    const tout = typeof a.tokens.output === "number" ? a.tokens.output : 0;
+    const tot = tin + tout;
+    if (tot > 0) prog.push(tot >= 1000 ? Math.round(tot / 1000) + "k tok" : tot + " tok");
+  }
+  if (prog.length) bits.push(prog.join(" "));
+
+  if (typeof a.lastCommandName === "string" && a.lastCommandName) bits.push("$ " + a.lastCommandName);
+
+  const tools = Array.isArray(a.lastTools) ? (a.lastTools as unknown[]) : [];
+  const tool = tools.length ? String(tools[tools.length - 1]) : "";
+  const files = Array.isArray(a.filesTouched) ? (a.filesTouched as unknown[]) : [];
+  const file = files.length ? String(files[files.length - 1]).split("/").pop() || "" : "";
+  if (tool && file) bits.push(tool + " " + file);
+  else if (tool) bits.push(tool);
+  else if (file) bits.push(file);
+
+  return bits.join(" · ");
+}

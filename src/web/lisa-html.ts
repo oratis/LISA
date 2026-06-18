@@ -77,7 +77,7 @@ ${MAIN_CSS}
     <!-- Claude Code monitor -->
     <div class="card tint-claude" id="sbClaudeCard">
       <div class="h">
-        <div class="left">claude code</div>
+        <div class="left">agents</div>
         <div class="count">▶︎ <span id="sbClaudeCount">0</span></div>
       </div>
       <div id="sbClaudeRows">
