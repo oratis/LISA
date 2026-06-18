@@ -1039,14 +1039,25 @@ if ('serviceWorker' in navigator) {
     return bits.join(' · ');
   }
 
-  // POST a managed-agent control action (start/send/cancel/approve), then refresh.
-  function managedAction(id, action, body) {
-    fetch('/api/agents/managed/' + encodeURIComponent(id) + '/' + action, {
+  // POST a control action to the right agent family (managed|pty), then refresh.
+  function agentAction(fam, id, action, body) {
+    fetch('/api/agents/' + fam + '/' + encodeURIComponent(id) + '/' + action, {
       method: 'POST',
       headers: body ? { 'content-type': 'application/json' } : {},
       body: body ? JSON.stringify(body) : undefined,
     }).then(function () {
       if (typeof refreshClaudeSessions === 'function') refreshClaudeSessions();
+    }).catch(function () {});
+  }
+
+  // Show a PTY agent's captured terminal tail in the modal — explicit + on
+  // demand (it's content, so it's never folded into the structural roster).
+  function ptyOutput(id) {
+    fetch('/api/agents/pty/' + encodeURIComponent(id) + '/output').then(function (r) {
+      return r.ok ? r.json() : null;
+    }).then(function (d) {
+      if (!d) return;
+      openModal('agent output', '<pre>' + escapeHtml(d.output || '(no output yet)') + '</pre>');
     }).catch(function () {});
   }
 
@@ -1111,34 +1122,43 @@ if ('serviceWorker' in navigator) {
         act.title = actText;
         row.appendChild(act);
       }
-      // Managed agents are controllable: approve/deny a pending tool, send a
-      // follow-up, or cancel. (Externally-started CLIs aren't — observe only.)
-      if (s.agent === 'managed') {
+      // Controllable agents get inline controls: managed → approve/deny a pending
+      // tool, send a follow-up, cancel; pty (real CLI under a PTY) → send, view
+      // terminal output, cancel. Externally-started CLIs have no control channel
+      // (no s.controllable) → observe only.
+      const fam = s.controllable;
+      if (fam) {
         const id = s.sessionId;
         const ctrl = document.createElement('div');
         ctrl.className = 'session-ctrl';
-        const pending = s.activity && s.activity.pendingPermission;
+        const pending = fam === 'managed' && s.activity && s.activity.pendingPermission;
         if (pending) {
           const ap = document.createElement('button');
           ap.className = 'mc approve'; ap.textContent = '✓ approve';
-          ap.addEventListener('click', function (e) { e.stopPropagation(); managedAction(id, 'approve', { allow: true }); });
+          ap.addEventListener('click', function (e) { e.stopPropagation(); agentAction('managed', id, 'approve', { allow: true }); });
           const dn = document.createElement('button');
           dn.className = 'mc deny'; dn.textContent = '✕ deny';
-          dn.addEventListener('click', function (e) { e.stopPropagation(); managedAction(id, 'approve', { allow: false }); });
+          dn.addEventListener('click', function (e) { e.stopPropagation(); agentAction('managed', id, 'approve', { allow: false }); });
           ctrl.appendChild(ap); ctrl.appendChild(dn);
         } else if (s.state !== 'done') {
           const inp = document.createElement('input');
-          inp.className = 'mc-send'; inp.type = 'text'; inp.placeholder = 'send a follow-up…';
+          inp.className = 'mc-send'; inp.type = 'text'; inp.placeholder = fam === 'pty' ? 'type into the CLI…' : 'send a follow-up…';
           inp.addEventListener('click', function (e) { e.stopPropagation(); });
           inp.addEventListener('keydown', function (e) {
-            if (e.key === 'Enter' && inp.value.trim()) { e.preventDefault(); managedAction(id, 'send', { text: inp.value.trim() }); inp.value = ''; }
+            if (e.key === 'Enter' && inp.value.trim()) { e.preventDefault(); agentAction(fam, id, 'send', { text: inp.value.trim() }); inp.value = ''; }
           });
           ctrl.appendChild(inp);
+        }
+        if (fam === 'pty') {
+          const out = document.createElement('button');
+          out.className = 'mc'; out.textContent = '▤'; out.title = 'View terminal output';
+          out.addEventListener('click', function (e) { e.stopPropagation(); ptyOutput(id); });
+          ctrl.appendChild(out);
         }
         if (s.state !== 'done') {
           const cancel = document.createElement('button');
           cancel.className = 'mc cancel'; cancel.textContent = '⏹'; cancel.title = 'Cancel agent';
-          cancel.addEventListener('click', function (e) { e.stopPropagation(); managedAction(id, 'cancel', null); });
+          cancel.addEventListener('click', function (e) { e.stopPropagation(); agentAction(fam, id, 'cancel', null); });
           ctrl.appendChild(cancel);
         }
         if (ctrl.childNodes.length) row.appendChild(ctrl);
@@ -1172,19 +1192,26 @@ if ('serviceWorker' in navigator) {
     } catch {}
   };
 
-  // "Delegate a task" → start a managed agent (LISA-run, controllable).
+  // "Delegate a task" → start an agent. managed = LISA-run (controllable);
+  // claude/codex = a real CLI under a PTY (Stage C spike, needs LISA_PTY_AGENTS=1
+  // — a 503 surfaces its hint in the modal).
   const sbDelegate = document.getElementById('sbDelegate');
   if (sbDelegate) {
     sbDelegate.addEventListener('submit', function (e) {
       e.preventDefault();
       const inp = document.getElementById('sbDelegateTask');
+      const kindEl = document.getElementById('sbDelegateKind');
       const task = inp && inp.value.trim();
       if (!task) return;
-      fetch('/api/agents/managed/start', {
+      const kind = kindEl ? kindEl.value : 'managed';
+      const url = kind === 'managed' ? '/api/agents/managed/start' : '/api/agents/pty/start';
+      const body = kind === 'managed' ? { task: task } : { agent: kind, task: task };
+      fetch(url, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ task: task }),
-      }).then(function () {
+        body: JSON.stringify(body),
+      }).then(function (r) {
+        if (!r.ok) { return r.text().then(function (t) { openModal('agent', '<pre>' + escapeHtml(t) + '</pre>'); }); }
         if (inp) inp.value = '';
         if (typeof refreshClaudeSessions === 'function') refreshClaudeSessions();
       }).catch(function () {});

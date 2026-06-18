@@ -75,6 +75,14 @@ export interface AgentSession {
   lastMtime: number;
   /** L2 activity, present when the adapter runs at tier ≥ "activity". */
   activity?: SessionActivity;
+  /**
+   * If LISA can CONTROL this session (not just observe it), which control-endpoint
+   * family drives it: POST /api/agents/<controllable>/<sessionId>/{send,cancel,…}.
+   *  - "managed" — LISA runs the agent loop itself (send/cancel/approve).
+   *  - "pty"     — a real CLI LISA spawned under a pseudo-terminal (send/cancel).
+   * Absent ⇒ observe-only (an externally-started CLI; no control channel).
+   */
+  controllable?: "managed" | "pty";
 }
 
 /** Visibility tier — how deeply LISA may inspect a session. See plan §3. */

@@ -35,6 +35,7 @@ import { polishDictation, type DictationProvider } from "../voice/dictation.js";
 import { listGrants, grant, revoke, revokeAll, isGranted, SENSE_SIGNALS, SIGNAL_DESCRIPTIONS } from "../consent/store.js";
 import { signalAgentTool } from "../tools/signal_agent.js";
 import { managedRegistry } from "../agents/managed.js";
+import { ptyRegistry, ptyEnabled } from "../agents/pty.js";
 import { SenseService } from "../sense/service.js";
 import { ScreenSource } from "../sense/screen.js";
 import { VoiceSource } from "../sense/voice.js";
@@ -816,6 +817,70 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       else {
         res.writeHead(400, { "content-type": "text/plain" });
         res.end("action must be send|cancel|approve");
+        return;
+      }
+      res.writeHead(ok ? 200 : 404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok }));
+      return;
+    }
+
+    // ── PTY agents (Stage C spike, off unless LISA_PTY_AGENTS=1) ─────────
+    // Real `claude`/`codex` CLIs LISA spawns under a pseudo-terminal: it types
+    // your task + follow-ups and can read the terminal tail. Behind the same
+    // auth gate; 503 when the spike flag is off / node-pty is absent.
+    if (req.method === "POST" && url === "/api/agents/pty/start") {
+      let pBody = "";
+      for await (const chunk of req) pBody += chunk.toString("utf8");
+      let payload: { agent?: unknown; task?: unknown; cwd?: unknown };
+      try { payload = JSON.parse(pBody || "{}"); } catch {
+        res.writeHead(400, { "content-type": "text/plain" }); res.end("bad json"); return;
+      }
+      if (!ptyEnabled()) {
+        res.writeHead(503, { "content-type": "text/plain" });
+        res.end("PTY agents are disabled — set LISA_PTY_AGENTS=1 to enable this spike");
+        return;
+      }
+      const agent = typeof payload.agent === "string" && payload.agent.trim() ? payload.agent : "claude";
+      if (typeof payload.task !== "string" || !payload.task.trim()) {
+        res.writeHead(400, { "content-type": "text/plain" }); res.end("task required"); return;
+      }
+      const cwd = typeof payload.cwd === "string" && payload.cwd.startsWith("/") ? payload.cwd : process.cwd();
+      try {
+        const view = await ptyRegistry.start({ agent, task: payload.task, cwd });
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true, agent: view }));
+      } catch (err) {
+        res.writeHead(503, { "content-type": "text/plain" });
+        res.end((err as Error).message);
+      }
+      return;
+    }
+    if (req.method === "GET" && url.startsWith("/api/agents/pty/") && url.endsWith("/output")) {
+      const id = url.slice("/api/agents/pty/".length, -"/output".length);
+      const out = ptyRegistry.output(decodeURIComponent(id));
+      if (out === null) {
+        res.writeHead(404, { "content-type": "application/json" }); res.end(JSON.stringify({ ok: false }));
+        return;
+      }
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, output: out }));
+      return;
+    }
+    if (req.method === "POST" && url.startsWith("/api/agents/pty/")) {
+      const rest = url.slice("/api/agents/pty/".length);
+      const slash = rest.indexOf("/");
+      const id = decodeURIComponent(slash >= 0 ? rest.slice(0, slash) : rest);
+      const action = slash >= 0 ? rest.slice(slash + 1) : "";
+      let pBody = "";
+      for await (const chunk of req) pBody += chunk.toString("utf8");
+      let payload: { text?: unknown } = {};
+      try { payload = pBody ? JSON.parse(pBody) : {}; } catch { /* tolerate */ }
+      let ok = false;
+      if (action === "send" && typeof payload.text === "string") ok = ptyRegistry.send(id, payload.text);
+      else if (action === "cancel") ok = ptyRegistry.cancel(id);
+      else {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("action must be send|cancel");
         return;
       }
       res.writeHead(ok ? 200 : 404, { "content-type": "application/json" });

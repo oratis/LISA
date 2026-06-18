@@ -76,5 +76,8 @@
     "sharp": "^0.34.5",
     "tsx": "^4.21.0",
     "typescript": "^5.7.0"
+  },
+  "optionalDependencies": {
+    "node-pty": "^1.1.0"
   }
 }

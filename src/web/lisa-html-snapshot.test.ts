@@ -16,11 +16,12 @@ import { MAIN_HTML } from "./lisa-html.js";
  * change the GUI markup/CSS/JS, recompute them:
  *   node --import tsx -e 'import("./src/web/lisa-html.ts").then(async m=>{const {createHash}=await import("node:crypto");console.log(m.MAIN_HTML.length, createHash("sha256").update(m.MAIN_HTML).digest("hex"))})'
  *
- * Last updated: managed-agent controls (delegate form + per-row approve/deny/send/cancel).
+ * Last updated: PTY-agent spike controls (delegate kind picker + per-row pty
+ * send/output/cancel + controllable-family routing).
  */
-const EXPECTED_LENGTH = 84648;
+const EXPECTED_LENGTH = 86661;
 const EXPECTED_SHA256 =
-  "e6ec7da0e4d36c462839c4078a4588735c18d718d71ff421ea6607087e2b924d";
+  "6443ecf6afae341ce84ac6d3301a45420dd351e466692ea880a4340da9676037";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);
