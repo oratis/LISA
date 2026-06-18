@@ -34,6 +34,7 @@ import { transcribeAudio } from "../voice/transcribe.js";
 import { polishDictation, type DictationProvider } from "../voice/dictation.js";
 import { listGrants, grant, revoke, revokeAll, isGranted, SENSE_SIGNALS, SIGNAL_DESCRIPTIONS } from "../consent/store.js";
 import { signalAgentTool } from "../tools/signal_agent.js";
+import { managedRegistry } from "../agents/managed.js";
 import { SenseService } from "../sense/service.js";
 import { ScreenSource } from "../sense/screen.js";
 import { VoiceSource } from "../sense/voice.js";
@@ -764,6 +765,61 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       );
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, result }));
+      return;
+    }
+
+    // ── Managed agents (control plane) ──────────────────────────────────
+    // LISA's own controllable agents: start a task, send follow-ups, cancel,
+    // and approve/deny each mutating tool. Behind the auth gate like every
+    // endpoint. They appear in the roster via the "managed" hub observer.
+    if (req.method === "POST" && url === "/api/agents/managed/start") {
+      let mBody = "";
+      for await (const chunk of req) mBody += chunk.toString("utf8");
+      let payload: { task?: unknown; cwd?: unknown; model?: unknown };
+      try { payload = JSON.parse(mBody || "{}"); } catch {
+        res.writeHead(400, { "content-type": "text/plain" }); res.end("bad json"); return;
+      }
+      if (typeof payload.task !== "string" || !payload.task.trim()) {
+        res.writeHead(400, { "content-type": "text/plain" }); res.end("task required"); return;
+      }
+      const cwd = typeof payload.cwd === "string" && payload.cwd.startsWith("/") ? payload.cwd : process.cwd();
+      // A managed agent doesn't control other agents — drop dispatch/signal.
+      const tools = opts.tools.filter((t) => t.name !== "dispatch_agent" && t.name !== "signal_agent");
+      const systemPrompt =
+        `You are a delegated agent working in ${cwd}, launched by the user through Lisa. ` +
+        `Complete the user's task using the available tools, then report what you did concisely. ` +
+        `Mutating actions (writes, shell, etc.) pause for the user's approval — keep going after each decision.`;
+      const view = managedRegistry.start({
+        task: payload.task,
+        cwd,
+        systemPrompt,
+        tools,
+        model: typeof payload.model === "string" ? payload.model : opts.model,
+      });
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, agent: view }));
+      return;
+    }
+    if (req.method === "POST" && url.startsWith("/api/agents/managed/")) {
+      const rest = url.slice("/api/agents/managed/".length);
+      const slash = rest.indexOf("/");
+      const id = slash >= 0 ? rest.slice(0, slash) : rest;
+      const action = slash >= 0 ? rest.slice(slash + 1) : "";
+      let mBody = "";
+      for await (const chunk of req) mBody += chunk.toString("utf8");
+      let payload: { text?: unknown; allow?: unknown } = {};
+      try { payload = mBody ? JSON.parse(mBody) : {}; } catch { /* tolerate empty/none */ }
+      let ok = false;
+      if (action === "send" && typeof payload.text === "string") ok = managedRegistry.send(id, payload.text);
+      else if (action === "cancel") ok = managedRegistry.cancel(id);
+      else if (action === "approve") ok = managedRegistry.decide(id, payload.allow !== false);
+      else {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("action must be send|cancel|approve");
+        return;
+      }
+      res.writeHead(ok ? 200 : 404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok }));
       return;
     }
 

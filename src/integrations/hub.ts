@@ -54,6 +54,10 @@ export const DEFAULT_ORCHESTRATOR_CONFIG: OrchestratorConfig = {
     // in with `{ "enabled": true, "pin": ["slug-a"] }`. Needs a TAKO_KEY to make
     // any calls, so it's empty until you delegate to a remote agent.
     takoapi: { enabled: false },
+    // Managed: LISA's OWN controllable agents (start/send/cancel/approve). On by
+    // default — it just reflects the in-process registry (empty until you start
+    // one), so it adds nothing at rest.
+    managed: { enabled: true },
   },
   visibility: "activity",
 };
