@@ -26,6 +26,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         installMenu()
         showMainWindow()
 
+        // Quiet update discovery — throttled to once/day and surfaced at most
+        // once per version, so it never nags. Only fires when a newer GitHub
+        // release exists than this bundle's version.
+        Updater.shared.discoverInBackground { [weak self] info in
+            self?.presentUpdatePrompt(info)
+        }
+
         // Phase 3.5 — menu bar mirror of Claude Code activity.
         // Click the status item to bring the main window to front.
         MenuBarController.shared.install { [weak self] in
@@ -137,6 +144,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         mainWindow?.reload()
     }
 
+    // MARK: - About / Updates
+
+    @objc func showAbout(_ sender: Any?) {
+        AboutWindowController.shared.show()
+    }
+
+    @objc func checkForUpdatesMenu(_ sender: Any?) {
+        AboutWindowController.shared.show()
+        AboutWindowController.shared.checkForUpdates()
+    }
+
+    /// A gentle, once-per-version prompt when launch discovery finds a newer
+    /// release. Download installs the notarized DMG (Gatekeeper verifies it).
+    private func presentUpdatePrompt(_ info: UpdateInfo) {
+        let alert = NSAlert()
+        alert.messageText = "Lisa \(info.tag) is available"
+        alert.informativeText = "You have \(Updater.shared.currentVersion). Download the new version, or see what changed."
+        alert.addButton(withTitle: "Download")
+        alert.addButton(withTitle: "Changelog")
+        alert.addButton(withTitle: "Later")
+        switch alert.runModal() {
+        case .alertFirstButtonReturn: NSWorkspace.shared.open(info.downloadURL)
+        case .alertSecondButtonReturn: NSWorkspace.shared.open(Updater.changelogURL)
+        default: break
+        }
+    }
+
     // MARK: - Settings
 
     @objc func openPreferences(_ sender: Any?) {
@@ -156,11 +190,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // ── App menu ────────────────────────────────────────────────
         let appMenuItem = NSMenuItem()
         let appMenu = NSMenu()
-        appMenu.addItem(NSMenuItem(
+        let aboutItem = NSMenuItem(
             title: "About Lisa",
-            action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
+            action: #selector(showAbout(_:)),
             keyEquivalent: ""
-        ))
+        )
+        aboutItem.target = self
+        appMenu.addItem(aboutItem)
+        let updatesItem = NSMenuItem(
+            title: "Check for Updates…",
+            action: #selector(checkForUpdatesMenu(_:)),
+            keyEquivalent: ""
+        )
+        updatesItem.target = self
+        appMenu.addItem(updatesItem)
         appMenu.addItem(.separator())
         let settingsItem = NSMenuItem(
             title: "Settings…",

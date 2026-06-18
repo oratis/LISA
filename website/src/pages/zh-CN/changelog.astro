@@ -1,0 +1,42 @@
+---
+import Base from "../../layouts/Base.astro";
+import { fetchReleases } from "../../lib/releases";
+
+// 构建时拉取(失败安全 → [] → 回退到 GitHub)。
+const releases = await fetchReleases();
+---
+<Base title="更新日志" lang="zh-CN" description="Lisa 各版本的更新内容。">
+  <h1>更新日志</h1>
+  <p>
+    每个 Lisa 版本,最新在前。最新版从 <a href="/zh-CN/install">安装页</a> 获取,
+    或浏览 <a href="https://github.com/oratis/LISA/releases/latest" target="_blank" rel="noopener">GitHub Releases ↗</a>。
+    Mac 应用也会查这里 —— <em>Lisa ▸ 关于 ▸ 检查更新</em>。
+  </p>
+
+  {releases.length === 0 ? (
+    <p>
+      暂时无法加载发布信息 —— 请到
+      <a href="https://github.com/oratis/LISA/releases" target="_blank" rel="noopener">GitHub ↗</a> 查看。
+    </p>
+  ) : (
+    releases.map((r) => (
+      <section class="term release">
+        <div class="term-bar">
+          <span class="term-dot r"></span><span class="term-dot y"></span><span class="term-dot g"></span>
+          <span class="term-title">{r.tag || r.name}{r.date ? ` · ${r.date}` : ""}</span>
+        </div>
+        <div class="term-body">
+          {r.body
+            ? <pre>{r.body}</pre>
+            : <p>该版本无发布说明。</p>}
+          <p><a href={r.url} target="_blank" rel="noopener">在 GitHub 查看 {r.tag || "release"} ↗</a></p>
+        </div>
+      </section>
+    ))
+  )}
+
+  <style>
+    .release { margin: 22px 0; }
+    .release .term-body pre { margin: 0 0 14px; }
+  </style>
+</Base>
