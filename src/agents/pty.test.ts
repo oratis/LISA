@@ -35,13 +35,22 @@ function fakePty() {
       killed = true;
     },
   };
-  const module: PtyModuleLike = { spawn: () => proc };
+  let spawnFile = "";
+  let spawnArgs: string[] = [];
+  const module: PtyModuleLike = {
+    spawn: (file, args) => {
+      spawnFile = file;
+      spawnArgs = args;
+      return proc;
+    },
+  };
   return {
     module,
     written,
     emitData: (s: string) => dataCb?.(s),
     emitExit: (code: number) => exitCb?.({ exitCode: code }),
     isKilled: () => killed,
+    getSpawn: () => ({ file: spawnFile, args: spawnArgs }),
   };
 }
 
@@ -110,6 +119,7 @@ test("start types the task; send appends; data drives state; cancel kills", asyn
       agent: "claude",
       task: "do the thing",
       cwd: "/Users/me/myproj",
+      cli: "claude", // pin so the assertion doesn't depend on a host claude install
       ptyModule: f.module,
       now: () => clock.t,
     });
@@ -143,6 +153,32 @@ test("start types the task; send appends; data drives state; cancel kills", asyn
     assert.equal(f.written.length, writes);
     reg.cancel(v.id); // idempotent, no throw
     assert.equal(reg.list()[0].state, "done");
+  });
+});
+
+test("resumeSessionId adopts an existing session via `--resume <id>`", async () => {
+  await withFlag(async () => {
+    const f = fakePty();
+    const reg = new PtyRegistry();
+    await reg.start({
+      agent: "claude",
+      task: "", // adopt: continue the conversation, no initial message
+      cwd: "/tmp/p",
+      resumeSessionId: "abc-123",
+      cli: "claude",
+      ptyModule: f.module,
+    });
+    assert.deepEqual(f.getSpawn().args.slice(0, 2), ["--resume", "abc-123"]);
+    assert.equal(f.written.length, 0); // empty task ⇒ nothing typed
+  });
+});
+
+test("resume is claude-only (codex ignores resumeSessionId)", async () => {
+  await withFlag(async () => {
+    const f = fakePty();
+    const reg = new PtyRegistry();
+    await reg.start({ agent: "codex", task: "", cwd: "/tmp/p", resumeSessionId: "abc-123", cli: "codex", ptyModule: f.module });
+    assert.equal(f.getSpawn().args.includes("--resume"), false);
   });
 });
 

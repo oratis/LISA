@@ -83,6 +83,12 @@ export interface AgentSession {
    * Absent ⇒ observe-only (an externally-started CLI; no control channel).
    */
   controllable?: "managed" | "pty";
+  /**
+   * Observe-only claude session that LISA can ADOPT — it's idle (its process is
+   * gone), so `claude --resume <sessionId>` can safely continue it under LISA's
+   * control. Set by the API layer for claude-code sessions not currently live.
+   */
+  resumable?: boolean;
 }
 
 /** Visibility tier — how deeply LISA may inspect a session. See plan §3. */

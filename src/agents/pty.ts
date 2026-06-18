@@ -19,6 +19,9 @@
  *    folded into the structural cross-agent roster.
  */
 import { EventEmitter } from "node:events";
+import { readdirSync, existsSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 
 export type PtyState = "working" | "waiting" | "error" | "done";
 
@@ -43,6 +46,13 @@ export interface PtyStartOpts {
   agent: string;
   task: string;
   cwd: string;
+  /**
+   * Adopt an EXISTING claude session by id — spawns `claude --resume <id>` so
+   * LISA drives a continuation of a session the user started elsewhere. The
+   * caller MUST ensure the session is idle (see liveClaudeSessionIds) — resuming
+   * a live one corrupts its transcript.
+   */
+  resumeSessionId?: string;
   /** Override the binary (else resolved from `agent`). */
   cli?: string;
   /** Override argv (else interactive: []). */
@@ -96,6 +106,38 @@ export function normalizeAgentKind(agent: string): string {
   if (a === "codex") return "codex";
   if (a === "claude" || a === "claude-code") return "claude-code";
   return agent;
+}
+
+/**
+ * Best binary to drive a claude session: env override → the newest app-bundled
+ * claude (matches the version that wrote the sessions, best for --resume) → the
+ * PATH `claude`. The app-bundle probe is macOS-specific and silently no-ops
+ * elsewhere. Falls back to resolveCli for non-claude agents.
+ */
+export function detectClaudeBinary(): string {
+  if (process.env.LISA_PTY_CLAUDE_CMD) return process.env.LISA_PTY_CLAUDE_CMD;
+  try {
+    const root = join(homedir(), "Library", "Application Support", "Claude", "claude-code");
+    const versions = readdirSync(root)
+      .filter((v) => /^\d+\.\d+\.\d+/.test(v))
+      .sort((a, b) => cmpVersion(b, a)); // newest first
+    for (const v of versions) {
+      const bin = join(root, v, "claude.app", "Contents", "MacOS", "claude");
+      if (existsSync(bin)) return bin;
+    }
+  } catch {
+    /* not macOS / not installed → fall through */
+  }
+  return "claude";
+}
+
+function cmpVersion(a: string, b: string): number {
+  const pa = a.split(".").map((n) => parseInt(n, 10) || 0);
+  const pb = b.split(".").map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < 3; i++) {
+    if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) - (pb[i] || 0);
+  }
+  return 0;
 }
 
 // Strip ANSI / VT100 escape sequences so the captured tail is plain-ish text.
@@ -188,9 +230,13 @@ export class PtyAgent {
     if (!pty) {
       throw new Error("node-pty is not installed — run `npm i node-pty` to enable PTY agents");
     }
-    const cli = opts.cli ?? resolveCli(opts.agent);
+    const kind = normalizeAgentKind(opts.agent);
+    const cli = opts.cli ?? (kind === "claude-code" ? detectClaudeBinary() : resolveCli(opts.agent));
+    // Adopt an existing session by id (claude only): `claude --resume <id>`.
+    const resumeArgs = opts.resumeSessionId && kind === "claude-code" ? ["--resume", opts.resumeSessionId] : [];
+    const args = [...resumeArgs, ...(opts.args ?? [])];
     const now = opts.now ?? Date.now;
-    const proc = pty.spawn(cli, opts.args ?? [], {
+    const proc = pty.spawn(cli, args, {
       name: "xterm-256color",
       cols: opts.cols ?? 120,
       rows: opts.rows ?? 32,

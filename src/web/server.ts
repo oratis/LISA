@@ -36,6 +36,7 @@ import { listGrants, grant, revoke, revokeAll, isGranted, SENSE_SIGNALS, SIGNAL_
 import { signalAgentTool } from "../tools/signal_agent.js";
 import { managedRegistry } from "../agents/managed.js";
 import { ptyRegistry, ptyEnabled } from "../agents/pty.js";
+import { liveClaudeSessionIds } from "../integrations/claude-code/liveness.js";
 import { SenseService } from "../sense/service.js";
 import { ScreenSource } from "../sense/screen.js";
 import { VoiceSource } from "../sense/voice.js";
@@ -831,7 +832,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     if (req.method === "POST" && url === "/api/agents/pty/start") {
       let pBody = "";
       for await (const chunk of req) pBody += chunk.toString("utf8");
-      let payload: { agent?: unknown; task?: unknown; cwd?: unknown };
+      let payload: { agent?: unknown; task?: unknown; cwd?: unknown; resumeSessionId?: unknown };
       try { payload = JSON.parse(pBody || "{}"); } catch {
         res.writeHead(400, { "content-type": "text/plain" }); res.end("bad json"); return;
       }
@@ -841,12 +842,26 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         return;
       }
       const agent = typeof payload.agent === "string" && payload.agent.trim() ? payload.agent : "claude";
-      if (typeof payload.task !== "string" || !payload.task.trim()) {
+      const resumeSessionId =
+        typeof payload.resumeSessionId === "string" && payload.resumeSessionId ? payload.resumeSessionId : undefined;
+      // Adopting an existing session needs no task (it continues the convo); a
+      // fresh agent does. Guard: never resume a session that's currently live.
+      if (!resumeSessionId && (typeof payload.task !== "string" || !payload.task.trim())) {
         res.writeHead(400, { "content-type": "text/plain" }); res.end("task required"); return;
+      }
+      if (resumeSessionId && liveClaudeSessionIds().has(resumeSessionId)) {
+        res.writeHead(409, { "content-type": "text/plain" });
+        res.end("that session is currently live (open in the app/terminal) — close it first; resuming a live session would corrupt its transcript");
+        return;
       }
       const cwd = typeof payload.cwd === "string" && payload.cwd.startsWith("/") ? payload.cwd : process.cwd();
       try {
-        const view = await ptyRegistry.start({ agent, task: payload.task, cwd });
+        const view = await ptyRegistry.start({
+          agent,
+          task: typeof payload.task === "string" ? payload.task : "",
+          cwd,
+          resumeSessionId,
+        });
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ ok: true, agent: view }));
       } catch (err) {
@@ -933,9 +948,15 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // across all integrations, normalized. activity (Tier 2) is present
     // when the integration runs at visibility ≥ "activity".
     if (req.method === "GET" && url === "/api/agents/sessions") {
+      // Mark idle claude sessions as adoptable: not currently live (no running
+      // owner ⇒ `claude --resume` is safe) and not already a LISA-controlled row.
+      const live = liveClaudeSessionIds();
       const sessions = hub.list().map((s) => ({
         ...s,
         lastMtime: new Date(s.lastMtime).toISOString(),
+        ...(s.agent === "claude-code" && !s.controllable && !live.has(s.sessionId)
+          ? { resumable: true }
+          : {}),
       }));
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ sessions }));
