@@ -58,6 +58,10 @@ export const DEFAULT_ORCHESTRATOR_CONFIG: OrchestratorConfig = {
     // default — it just reflects the in-process registry (empty until you start
     // one), so it adds nothing at rest.
     managed: { enabled: true },
+    // PTY (Stage C spike): real `claude`/`codex` CLIs LISA spawns under a
+    // pseudo-terminal (send/cancel). On by default but inert unless the spike
+    // flag LISA_PTY_AGENTS=1 is set — the registry stays empty otherwise.
+    pty: { enabled: true },
   },
   visibility: "activity",
 };

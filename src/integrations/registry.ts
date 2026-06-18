@@ -61,4 +61,5 @@ export async function registerBuiltinIntegrations(): Promise<void> {
   await import("./shell/observer.js");
   await import("./takoapi/observer.js");
   await import("./managed/observer.js");
+  await import("./pty/observer.js");
 }

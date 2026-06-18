@@ -380,6 +380,15 @@ export const MAIN_CSS = `  :root {
     background: rgba(0,0,0,0.25);
     color: var(--fg);
   }
+  .delegate select {
+    font-size: 10.5px;
+    padding: 3px 4px;
+    border-radius: 7px;
+    border: 1px solid var(--border);
+    background: rgba(0,0,0,0.25);
+    color: var(--fg-2);
+    cursor: pointer;
+  }
   .delegate button {
     font-size: 11px;
     padding: 4px 10px;

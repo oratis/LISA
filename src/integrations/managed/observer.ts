@@ -18,6 +18,7 @@ function toSession(v: ManagedView): AgentSession {
     state: v.state,
     stateReason: v.stateReason,
     lastMtime: v.lastMtime,
+    controllable: "managed",
     activity: {
       turnCount: v.turnCount,
       lastTools: v.lastTools,
