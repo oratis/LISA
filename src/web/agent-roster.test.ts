@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { mergeAgentSession, aggregateAgentState, type RosterSession } from "./agent-roster.js";
+import { mergeAgentSession, aggregateAgentState, rosterLabel, type RosterSession } from "./agent-roster.js";
 
 const NOW = 1_700_000_000_000;
 const WINDOW = 30 * 60_000;
@@ -57,16 +57,30 @@ describe("source-injection safety (island injects these verbatim)", () => {
   // island.ts embeds `${mergeAgentSession}` into the page; the browser eval's
   // the function source. Assert each is self-contained: its source eval's to a
   // working function with no external references.
-  for (const fn of [mergeAgentSession, aggregateAgentState]) {
+  for (const fn of [mergeAgentSession, aggregateAgentState, rosterLabel]) {
     test(`${fn.name} source eval's to a working function`, () => {
       // eslint-disable-next-line @typescript-eslint/no-implied-eval
       const rebuilt = new Function(`return (${fn.toString()})`)() as (...a: unknown[]) => unknown;
       assert.equal(typeof rebuilt, "function");
       if (fn === aggregateAgentState) {
         assert.equal(rebuilt([s({ state: "error" })], NOW, WINDOW), "error");
+      } else if (fn === rosterLabel) {
+        assert.equal(rebuilt(s({ project: "p" })), "p");
       } else {
         assert.equal((rebuilt([], s(), NOW, WINDOW) as RosterSession[]).length, 1);
       }
     });
   }
+});
+
+describe("rosterLabel", () => {
+  test("prefers the git branch, stripping the claude/ prefix", () => {
+    assert.equal(rosterLabel(s({ activity: { gitBranch: "claude/fix-sentry-build-upload" } })), "fix-sentry-build-upload");
+    assert.equal(rosterLabel(s({ activity: { gitBranch: "feature/foo" } })), "feature/foo");
+  });
+  test("falls back to project when there's no branch", () => {
+    assert.equal(rosterLabel(s({ project: "kind-bhaskara-2cffa8", activity: undefined })), "kind-bhaskara-2cffa8");
+    assert.equal(rosterLabel(s({ project: "p", activity: { lastTools: [] } })), "p");
+    assert.equal(rosterLabel(s({ project: "p", activity: { gitBranch: "" } })), "p");
+  });
 });
