@@ -13,7 +13,7 @@
  * so the browser runs the exact unit-tested code instead of a drifting copy.
  */
 
-import { mergeAgentSession, aggregateAgentState, rosterLabel } from "./agent-roster.js";
+import { mergeAgentSession, aggregateAgentState, rosterLabel, formatActivity } from "./agent-roster.js";
 
 export const ISLAND_HTML = `<!doctype html>
 <html lang="en">
@@ -562,7 +562,7 @@ export const ISLAND_HTML = `<!doctype html>
       <ul id="advisor-list"></ul>
     </div>
     <div id="claude-section">
-      <div class="section-label">claude code · <span id="claude-count">0</span> active</div>
+      <div class="section-label">agents · <span id="claude-count">0</span> active</div>
       <ul id="claude-list"></ul>
       <div id="notify-cta" role="button" tabindex="0">🔔 Notify me when Claude is waiting</div>
     </div>
@@ -588,6 +588,7 @@ export const ISLAND_HTML = `<!doctype html>
   ${mergeAgentSession}
   ${aggregateAgentState}
   ${rosterLabel}
+  ${formatActivity}
   // Composite identity for a roster row: the same sessionId seen under two
   // agents (e.g. a git + a shell observer) are DISTINCT rows. Mirrors the
   // key mergeAgentSession uses; the UI keys per-row history, open-state, and
@@ -884,28 +885,9 @@ export const ISLAND_HTML = `<!doctype html>
     return Math.round(ms / 3600_000) + 'h ago';
   }
 
-  // O2 — compact one-line summary of a session's Tier-2 activity. Structural
-  // only (tool names, last command, basename of a touched file). Returns ''
-  // when there's no activity (e.g. visibility=metadata).
-  function basename(p) {
-    if (!p) return '';
-    const parts = String(p).split('/');
-    return parts[parts.length - 1] || p;
-  }
-  function formatActivity(s) {
-    const a = s.activity;
-    if (!a) return '';
-    if (a.pendingPermission) return '⚠ wants to run ' + a.pendingPermission;
-    const bits = [];
-    if (a.lastError) bits.push('✗ ' + a.lastError);
-    if (a.lastCommandName) bits.push('$ ' + a.lastCommandName);
-    const tool = a.lastTools && a.lastTools.length ? a.lastTools[a.lastTools.length - 1] : '';
-    const file = a.filesTouched && a.filesTouched.length ? basename(a.filesTouched[a.filesTouched.length - 1]) : '';
-    if (tool && file) bits.push(tool + ' ' + file);
-    else if (tool) bits.push(tool);
-    else if (file) bits.push(file);
-    return bits.join(' · ');
-  }
+  // O2 — compact one-line Tier-2 activity summary is the source-injected
+  // formatActivity (from agent-roster.ts, above) — structural only, now also
+  // surfacing turn count + tokens. Shared with the GUI sidebar.
 
   function renderClaudeList() {
     const recent = recentSessions();
@@ -925,7 +907,7 @@ export const ISLAND_HTML = `<!doctype html>
       const rb = stateRank[b.state] ?? 9;
       if (ra !== rb) return ra - rb;
       return new Date(b.lastMtime).getTime() - new Date(a.lastMtime).getTime();
-    }).slice(0, 5);
+    }).slice(0, 8);
     for (const s of rows) {
       const li = document.createElement('li');
       if (rowOpen.has(agentKey(s))) li.classList.add('row-open');

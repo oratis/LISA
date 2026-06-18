@@ -1014,6 +1014,31 @@ if ('serviceWorker' in navigator) {
     sbReflectionBody.textContent = '"' + text.replace(/^["“”]+|["“”]+$/g, '').trim() + '"';
   };
 
+  // Compact one-line activity summary — mirrors agent-roster.ts formatActivity
+  // (kept inline because this client script is a no-interpolation template
+  // literal; the island uses the source-injected shared version).
+  function sbActivity(s) {
+    const a = s.activity;
+    if (!a || typeof a !== 'object') return '';
+    if (a.pendingPermission) return '⚠ wants to run ' + a.pendingPermission;
+    const bits = [];
+    if (a.lastError) bits.push('✗ ' + a.lastError);
+    const prog = [];
+    if (typeof a.turnCount === 'number' && a.turnCount > 0) prog.push('turn ' + a.turnCount);
+    if (a.tokens && (a.tokens.input || a.tokens.output)) {
+      const tot = (a.tokens.input || 0) + (a.tokens.output || 0);
+      prog.push(tot >= 1000 ? Math.round(tot / 1000) + 'k tok' : tot + ' tok');
+    }
+    if (prog.length) bits.push(prog.join(' '));
+    if (a.lastCommandName) bits.push('$ ' + a.lastCommandName);
+    const tool = a.lastTools && a.lastTools.length ? a.lastTools[a.lastTools.length - 1] : '';
+    const file = a.filesTouched && a.filesTouched.length ? (String(a.filesTouched[a.filesTouched.length - 1]).split('/').pop() || '') : '';
+    if (tool && file) bits.push(tool + ' ' + file);
+    else if (tool) bits.push(tool);
+    else if (file) bits.push(file);
+    return bits.join(' · ');
+  }
+
   function setClaudeSessions(sessions) {
     const cutoff = Date.now() - ACTIVE_WINDOW_MS;
     const recent = sessions.filter(s => new Date(s.lastMtime).getTime() >= cutoff);
@@ -1025,7 +1050,7 @@ if ('serviceWorker' in navigator) {
       const rb = rank[b.state] ?? 9;
       if (ra !== rb) return ra - rb;
       return new Date(b.lastMtime).getTime() - new Date(a.lastMtime).getTime();
-    }).slice(0, 5);
+    }).slice(0, 8);
     while (sbClaudeRows.firstChild) sbClaudeRows.removeChild(sbClaudeRows.firstChild);
     if (rows.length === 0) {
       const empty = document.createElement('div');
@@ -1066,6 +1091,15 @@ if ('serviceWorker' in navigator) {
       row.appendChild(pip);
       row.appendChild(name);
       row.appendChild(when);
+      // Second line: structural activity (turns/tokens/tool·file, ⚠pending, ✗err).
+      const actText = sbActivity(s);
+      if (actText) {
+        const act = document.createElement('div');
+        act.className = 'session-act';
+        act.textContent = actText;
+        act.title = actText;
+        row.appendChild(act);
+      }
       row.title = (s.stateReason ? s.state + ' · ' + s.stateReason : s.state) + ' · ' + s.project + ' · ' + s.sessionId;
       sbClaudeRows.appendChild(row);
     }

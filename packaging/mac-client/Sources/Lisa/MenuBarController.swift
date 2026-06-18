@@ -93,9 +93,9 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
 
     private func refreshOnce() async {
         // Two parallel requests — ping (mood + desire + idle message) and
-        // sessions (Claude Code active). Either failing means "offline".
+        // sessions (ALL observed agents). Either failing means "offline".
         let pingURL = URL(string: "http://localhost:5757/api/island/ping")!
-        let sessURL = URL(string: "http://localhost:5757/api/claude/sessions")!
+        let sessURL = URL(string: "http://localhost:5757/api/agents/sessions")!
         let cfg = URLRequest.CachePolicy.reloadIgnoringLocalCacheData
 
         async let pingResult: PingDTO? = await Self.fetch(PingDTO.self, url: pingURL, cachePolicy: cfg)
@@ -379,7 +379,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         v.alignment = .leading
         v.spacing = 6
         v.translatesAutoresizingMaskIntoConstraints = false
-        let t = NSTextField(labelWithString: "CLAUDE CODE · \(sessions.count) ACTIVE")
+        let t = NSTextField(labelWithString: "AGENTS · \(sessions.count) ACTIVE")
         t.font = .systemFont(ofSize: 10, weight: .semibold)
         t.textColor = .tertiaryLabelColor
         v.addArrangedSubview(t)
@@ -387,16 +387,103 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         let row = NSStackView()
         row.orientation = .horizontal
         row.spacing = 6
-        let orange = NSColor(srgbRed: 1.0, green: 0.55, blue: 0.26, alpha: 1)
-        let red    = NSColor(srgbRed: 1.0, green: 0.33, blue: 0.47, alpha: 1)
-        if waiting > 0 { row.addArrangedSubview(chip("\(waiting) waiting", color: orange)) }
-        if working > 0 { row.addArrangedSubview(chip("\(working) working", color: orange.withAlphaComponent(0.72))) }
-        if errors  > 0 { row.addArrangedSubview(chip("\(errors) errored", color: red)) }
+        if waiting > 0 { row.addArrangedSubview(chip("\(waiting) waiting", color: Self.stateOrange)) }
+        if working > 0 { row.addArrangedSubview(chip("\(working) working", color: Self.stateOrange.withAlphaComponent(0.72))) }
+        if errors  > 0 { row.addArrangedSubview(chip("\(errors) errored", color: Self.stateRed)) }
         if waiting == 0 && working == 0 && errors == 0 {
             row.addArrangedSubview(chip("idle", color: .systemGray))
         }
         v.addArrangedSubview(row)
+
+        // Per-agent rows, attention-sorted (error > waiting > working), capped.
+        let rank: [String: Int] = ["error": 0, "waiting": 1, "working": 2]
+        let sorted = sessions.sorted { (rank[$0.state] ?? 9) < (rank[$1.state] ?? 9) }
+        let cap = 6
+        for s in sorted.prefix(cap) { v.addArrangedSubview(agentRow(s, inner: inner)) }
+        if sorted.count > cap {
+            let more = NSTextField(labelWithString: "+\(sorted.count - cap) more")
+            more.font = .systemFont(ofSize: 10)
+            more.textColor = .tertiaryLabelColor
+            v.addArrangedSubview(more)
+        }
         return v
+    }
+
+    private static let stateOrange = NSColor(srgbRed: 1.0, green: 0.55, blue: 0.26, alpha: 1)
+    private static let stateRed    = NSColor(srgbRed: 1.0, green: 0.33, blue: 0.47, alpha: 1)
+
+    /// One agent's row: ● state-dot · kind · branch/project label, with the
+    /// structural activity line beneath. Mirrors the GUI roster row.
+    private func agentRow(_ s: SessionDTO, inner: CGFloat) -> NSView {
+        let dotColor: NSColor = s.state == "error" ? Self.stateRed
+            : (s.state == "waiting" || s.state == "working") ? Self.stateOrange : .systemGray
+
+        let dot = NSView()
+        dot.wantsLayer = true
+        dot.layer?.backgroundColor = dotColor.cgColor
+        dot.layer?.cornerRadius = 3.5
+        dot.translatesAutoresizingMaskIntoConstraints = false
+        dot.widthAnchor.constraint(equalToConstant: 7).isActive = true
+        dot.heightAnchor.constraint(equalToConstant: 7).isActive = true
+
+        let kind = NSTextField(labelWithString: (s.agent ?? "agent"))
+        kind.font = .systemFont(ofSize: 9, weight: .semibold)
+        kind.textColor = .tertiaryLabelColor
+
+        let label = NSTextField(labelWithString: oneLine(agentLabel(s), 40))
+        label.font = .systemFont(ofSize: 12, weight: .medium)
+        label.textColor = .labelColor
+        label.lineBreakMode = .byTruncatingTail
+
+        let top = NSStackView(views: [dot, kind, label])
+        top.orientation = .horizontal
+        top.spacing = 6
+        top.alignment = .centerY
+
+        let col = NSStackView(views: [top])
+        col.orientation = .vertical
+        col.alignment = .leading
+        col.spacing = 1
+
+        let act = agentActivity(s)
+        if !act.isEmpty {
+            let actLabel = NSTextField(labelWithString: oneLine(act, 52))
+            actLabel.font = .systemFont(ofSize: 10)
+            actLabel.textColor = .secondaryLabelColor
+            actLabel.lineBreakMode = .byTruncatingTail
+            col.addArrangedSubview(actLabel)
+        }
+        return col
+    }
+
+    /// Branch label (strip "claude/"), else project. Mirrors rosterLabel.
+    private func agentLabel(_ s: SessionDTO) -> String {
+        if let b = s.activity?.gitBranch, !b.isEmpty {
+            return b.hasPrefix("claude/") ? String(b.dropFirst("claude/".count)) : b
+        }
+        return s.project ?? "agent"
+    }
+
+    /// One-line structural activity. Mirrors agent-roster.ts formatActivity.
+    private func agentActivity(_ s: SessionDTO) -> String {
+        guard let a = s.activity else { return "" }
+        if let p = a.pendingPermission, !p.isEmpty { return "⚠ wants to run " + p }
+        var bits: [String] = []
+        if let e = a.lastError, !e.isEmpty { bits.append("✗ " + e) }
+        var prog: [String] = []
+        if let n = a.turnCount, n > 0 { prog.append("turn \(n)") }
+        if let tk = a.tokens {
+            let tot = (tk.input ?? 0) + (tk.output ?? 0)
+            if tot > 0 { prog.append(tot >= 1000 ? "\(Int((Double(tot) / 1000).rounded()))k tok" : "\(tot) tok") }
+        }
+        if !prog.isEmpty { bits.append(prog.joined(separator: " ")) }
+        if let c = a.lastCommandName, !c.isEmpty { bits.append("$ " + c) }
+        let tool = a.lastTools?.last ?? ""
+        let file = (a.filesTouched?.last).map { String($0.split(separator: "/").last ?? "") } ?? ""
+        if !tool.isEmpty && !file.isEmpty { bits.append(tool + " " + file) }
+        else if !tool.isEmpty { bits.append(tool) }
+        else if !file.isEmpty { bits.append(file) }
+        return bits.joined(separator: " · ")
     }
 
     /// A small rounded status chip (tinted background + colored label).
@@ -499,6 +586,23 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     }
     private struct SessionDTO: Decodable {
         let state: String
+        var agent: String?
+        var project: String?
+        var activity: ActivityDTO?
+    }
+    private struct ActivityDTO: Decodable {
+        var gitBranch: String?
+        var turnCount: Int?
+        var tokens: TokensDTO?
+        var lastTools: [String]?
+        var filesTouched: [String]?
+        var lastCommandName: String?
+        var lastError: String?
+        var pendingPermission: String?
+    }
+    private struct TokensDTO: Decodable {
+        var input: Int?
+        var output: Int?
     }
     private struct PingDTO: Decodable {
         let online: Bool?

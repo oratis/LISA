@@ -322,6 +322,17 @@ export const MAIN_CSS = `  :root {
     font-variant-numeric: tabular-nums;
     font-size: 10.5px;
   }
+  /* Second line under name/when: structural activity (turns/tokens/tool·file). */
+  .session-row .session-act {
+    grid-column: 2 / -1;
+    margin-top: 2px;
+    font-size: 10px;
+    color: var(--fg-3);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .session-empty {
     color: var(--fg-faint);
     font-size: 11.5px;
