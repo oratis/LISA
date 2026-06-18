@@ -80,6 +80,10 @@ ${MAIN_CSS}
         <div class="left">agents</div>
         <div class="count">▶︎ <span id="sbClaudeCount">0</span></div>
       </div>
+      <form id="sbDelegate" class="delegate" autocomplete="off">
+        <input id="sbDelegateTask" type="text" placeholder="delegate a task to a managed agent…" />
+        <button type="submit" title="Start a managed agent">▶</button>
+      </form>
       <div id="sbClaudeRows">
         <div class="session-empty">(idle)</div>
       </div>

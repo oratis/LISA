@@ -333,6 +333,63 @@ export const MAIN_CSS = `  :root {
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  /* Managed-agent controls (approve/deny · send follow-up · cancel). */
+  .session-row .session-ctrl {
+    grid-column: 2 / -1;
+    margin-top: 4px;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .session-ctrl .mc {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--panel2, rgba(255,255,255,0.05));
+    color: var(--fg);
+    cursor: pointer;
+  }
+  .session-ctrl .mc.approve { color: var(--green, #6bff9d); border-color: rgba(107,255,157,0.4); }
+  .session-ctrl .mc.deny,
+  .session-ctrl .mc.cancel { color: var(--err-color, #ff5577); border-color: rgba(255,85,119,0.4); }
+  .session-ctrl .mc:hover { background: rgba(255,255,255,0.10); }
+  .session-ctrl .mc-send {
+    flex: 1;
+    min-width: 90px;
+    font-size: 10.5px;
+    padding: 2px 7px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: rgba(0,0,0,0.25);
+    color: var(--fg);
+  }
+  /* "Delegate a task" composer at the top of the agents card. */
+  .delegate {
+    display: flex;
+    gap: 6px;
+    margin: 2px 0 8px;
+  }
+  .delegate input {
+    flex: 1;
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 7px;
+    border: 1px solid var(--border);
+    background: rgba(0,0,0,0.25);
+    color: var(--fg);
+  }
+  .delegate button {
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 7px;
+    border: 1px solid var(--claude, #ff8c42);
+    background: rgba(255,140,66,0.16);
+    color: var(--claude, #ff8c42);
+    cursor: pointer;
+  }
+  .delegate button:hover { background: rgba(255,140,66,0.28); }
   .session-empty {
     color: var(--fg-faint);
     font-size: 11.5px;

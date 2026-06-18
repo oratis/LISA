@@ -1039,6 +1039,17 @@ if ('serviceWorker' in navigator) {
     return bits.join(' · ');
   }
 
+  // POST a managed-agent control action (start/send/cancel/approve), then refresh.
+  function managedAction(id, action, body) {
+    fetch('/api/agents/managed/' + encodeURIComponent(id) + '/' + action, {
+      method: 'POST',
+      headers: body ? { 'content-type': 'application/json' } : {},
+      body: body ? JSON.stringify(body) : undefined,
+    }).then(function () {
+      if (typeof refreshClaudeSessions === 'function') refreshClaudeSessions();
+    }).catch(function () {});
+  }
+
   function setClaudeSessions(sessions) {
     const cutoff = Date.now() - ACTIVE_WINDOW_MS;
     const recent = sessions.filter(s => new Date(s.lastMtime).getTime() >= cutoff);
@@ -1100,6 +1111,38 @@ if ('serviceWorker' in navigator) {
         act.title = actText;
         row.appendChild(act);
       }
+      // Managed agents are controllable: approve/deny a pending tool, send a
+      // follow-up, or cancel. (Externally-started CLIs aren't — observe only.)
+      if (s.agent === 'managed') {
+        const id = s.sessionId;
+        const ctrl = document.createElement('div');
+        ctrl.className = 'session-ctrl';
+        const pending = s.activity && s.activity.pendingPermission;
+        if (pending) {
+          const ap = document.createElement('button');
+          ap.className = 'mc approve'; ap.textContent = '✓ approve';
+          ap.addEventListener('click', function (e) { e.stopPropagation(); managedAction(id, 'approve', { allow: true }); });
+          const dn = document.createElement('button');
+          dn.className = 'mc deny'; dn.textContent = '✕ deny';
+          dn.addEventListener('click', function (e) { e.stopPropagation(); managedAction(id, 'approve', { allow: false }); });
+          ctrl.appendChild(ap); ctrl.appendChild(dn);
+        } else if (s.state !== 'done') {
+          const inp = document.createElement('input');
+          inp.className = 'mc-send'; inp.type = 'text'; inp.placeholder = 'send a follow-up…';
+          inp.addEventListener('click', function (e) { e.stopPropagation(); });
+          inp.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' && inp.value.trim()) { e.preventDefault(); managedAction(id, 'send', { text: inp.value.trim() }); inp.value = ''; }
+          });
+          ctrl.appendChild(inp);
+        }
+        if (s.state !== 'done') {
+          const cancel = document.createElement('button');
+          cancel.className = 'mc cancel'; cancel.textContent = '⏹'; cancel.title = 'Cancel agent';
+          cancel.addEventListener('click', function (e) { e.stopPropagation(); managedAction(id, 'cancel', null); });
+          ctrl.appendChild(cancel);
+        }
+        if (ctrl.childNodes.length) row.appendChild(ctrl);
+      }
       row.title = (s.stateReason ? s.state + ' · ' + s.stateReason : s.state) + ' · ' + s.project + ' · ' + s.sessionId;
       sbClaudeRows.appendChild(row);
     }
@@ -1128,6 +1171,25 @@ if ('serviceWorker' in navigator) {
       setClaudeSessions(data.sessions || []);
     } catch {}
   };
+
+  // "Delegate a task" → start a managed agent (LISA-run, controllable).
+  const sbDelegate = document.getElementById('sbDelegate');
+  if (sbDelegate) {
+    sbDelegate.addEventListener('submit', function (e) {
+      e.preventDefault();
+      const inp = document.getElementById('sbDelegateTask');
+      const task = inp && inp.value.trim();
+      if (!task) return;
+      fetch('/api/agents/managed/start', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ task: task }),
+      }).then(function () {
+        if (inp) inp.value = '';
+        if (typeof refreshClaudeSessions === 'function') refreshClaudeSessions();
+      }).catch(function () {});
+    });
+  }
 
   async function refreshIdentity() {
     try {
