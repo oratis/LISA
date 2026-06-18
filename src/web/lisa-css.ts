@@ -354,6 +354,7 @@ export const MAIN_CSS = `  :root {
   .session-ctrl .mc.approve { color: var(--green, #6bff9d); border-color: rgba(107,255,157,0.4); }
   .session-ctrl .mc.deny,
   .session-ctrl .mc.cancel { color: var(--err-color, #ff5577); border-color: rgba(255,85,119,0.4); }
+  .session-ctrl .mc.adopt { color: var(--brand, #6ad4ff); border-color: rgba(106,212,255,0.4); }
   .session-ctrl .mc:hover { background: rgba(255,255,255,0.10); }
   .session-ctrl .mc-send {
     flex: 1;

@@ -1163,6 +1163,29 @@ if ('serviceWorker' in navigator) {
         }
         if (ctrl.childNodes.length) row.appendChild(ctrl);
       }
+      // Idle external claude session → adopt it: LISA resumes it under a PTY and
+      // drives the continuation (then it shows as a controllable pty row). Only
+      // offered for idle sessions; a live one can't be resumed without corrupting
+      // its transcript (the server 409s, surfaced in the modal).
+      if (s.resumable) {
+        const ctrl = document.createElement('div');
+        ctrl.className = 'session-ctrl';
+        const adopt = document.createElement('button');
+        adopt.className = 'mc adopt'; adopt.textContent = '⇲ adopt';
+        adopt.title = 'Resume this session under LISA — then send / answer / cancel / view it';
+        adopt.addEventListener('click', function (e) {
+          e.stopPropagation();
+          fetch('/api/agents/pty/start', {
+            method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ agent: 'claude', resumeSessionId: s.sessionId, cwd: s.cwd || '' }),
+          }).then(function (r) {
+            if (!r.ok) { return r.text().then(function (t) { openModal('adopt', '<pre>' + escapeHtml(t) + '</pre>'); }); }
+            if (typeof refreshClaudeSessions === 'function') refreshClaudeSessions();
+          }).catch(function () {});
+        });
+        ctrl.appendChild(adopt);
+        row.appendChild(ctrl);
+      }
       row.title = (s.stateReason ? s.state + ' · ' + s.stateReason : s.state) + ' · ' + s.project + ' · ' + s.sessionId;
       sbClaudeRows.appendChild(row);
     }

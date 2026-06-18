@@ -19,6 +19,28 @@ In the GUI agents card these appear under their **real kind** (`claude-code` /
 `codex`), marked controllable: a **type-into-the-CLI** box, a **▤ output** button
 (shows the captured terminal tail in a modal), and **⏹ cancel**.
 
+## Adopting sessions LISA didn't start (`--resume`)
+
+The headline of this spike: controlling `claude` sessions **LISA never spawned** —
+your own from the app/terminal. You can't tap a *live* session's pipe (the app
+owns its stdin/stdout), but every session has a stable `sessionId`, and
+`claude --resume <id>` continues that exact transcript in a fresh process. So:
+
+- In the agents card, an **idle** claude session (its owning process is gone)
+  shows an **⇲ adopt** button. Click it → LISA spawns `claude --resume <id>`
+  under its own PTY → you now drive a *continuation* of that conversation
+  (send / answer / cancel / ▤ output). New turns append to the same transcript,
+  so they show up in the app's history too.
+- **Liveness guard (important):** LISA refuses (`409`) to adopt a session that's
+  currently live — two writers to one JSONL transcript interleave and corrupt it.
+  `liveClaudeSessionIds()` reads `~/.claude/sessions/<pid>.json` and checks the
+  pid; only sessions with no running owner are marked `resumable` / adoptable.
+- **Honest limit:** a session **open and running in the app right now** still
+  can't be commanded from outside — close it first, then adopt. (Live control
+  would require the app's undocumented `peerProtocol`, which we don't touch.)
+- Binary: LISA resumes with `LISA_PTY_CLAUDE_CMD` → the newest app-bundled
+  `claude` (version-matched to your sessions) → PATH `claude`.
+
 ## Enabling it
 
 1. Install the optional native dep (it has zero JS deps; if your machine can't
@@ -56,7 +78,8 @@ Binary resolution is env-overridable: `LISA_PTY_CLAUDE_CMD`, `LISA_PTY_CODEX_CMD
 
 | Method + path | Body | Effect |
 | --- | --- | --- |
-| `POST /api/agents/pty/start` | `{ agent, task, cwd? }` | spawn a PTY agent (503 if flag off) |
+| `POST /api/agents/pty/start` | `{ agent, task, cwd? }` | spawn a fresh PTY agent (503 if flag off) |
+| `POST /api/agents/pty/start` | `{ agent:"claude", resumeSessionId, cwd? }` | **adopt** an idle session (409 if it's live) |
 | `POST /api/agents/pty/<id>/send` | `{ text }` | type a line into the CLI |
 | `POST /api/agents/pty/<id>/cancel` | — | kill the CLI |
 | `GET /api/agents/pty/<id>/output` | — | ANSI-stripped terminal tail |
@@ -68,6 +91,8 @@ Binary resolution is env-overridable: `LISA_PTY_CLAUDE_CMD`, `LISA_PTY_CODEX_CMD
   fallback, flag gate.
 - `src/integrations/pty/observer.ts` — surfaces PTY agents in the hub roster
   (real kind, `controllable: "pty"`).
+- `src/integrations/claude-code/liveness.ts` — `liveClaudeSessionIds()` (the
+  adopt guard) + `resumable` enrichment in `/api/agents/sessions`.
 - `src/web/server.ts` — the endpoints above.
 - GUI: delegate kind picker + `controllable`-family row controls in
   `lisa-html.ts` / `lisa-client.ts` / `lisa-css.ts`.

@@ -16,12 +16,12 @@ import { MAIN_HTML } from "./lisa-html.js";
  * change the GUI markup/CSS/JS, recompute them:
  *   node --import tsx -e 'import("./src/web/lisa-html.ts").then(async m=>{const {createHash}=await import("node:crypto");console.log(m.MAIN_HTML.length, createHash("sha256").update(m.MAIN_HTML).digest("hex"))})'
  *
- * Last updated: PTY-agent spike controls (delegate kind picker + per-row pty
- * send/output/cancel + controllable-family routing).
+ * Last updated: adopt-idle-session control (⇲ adopt button on resumable
+ * external claude rows → claude --resume under a PTY).
  */
-const EXPECTED_LENGTH = 86661;
+const EXPECTED_LENGTH = 88080;
 const EXPECTED_SHA256 =
-  "6443ecf6afae341ce84ac6d3301a45420dd351e466692ea880a4340da9676037";
+  "fe6ff9c8dd9c279297d15709e9d1862f2484aec7a96a4c990a39204c6407c763";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);
