@@ -1,0 +1,139 @@
+import { test, describe, beforeEach } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import type { AgentSession } from "../integrations/types.js";
+
+const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "lisa-push-"));
+process.env.LISA_HOME = TMP;
+const FILE = path.join(TMP, "push.json");
+
+const {
+  defaultPushPrefs,
+  normalizePushPrefs,
+  agentPushEvents,
+  sendNtfy,
+  PushBridge,
+  registerPush,
+  unregisterPush,
+  listPush,
+  setPushPrefs,
+} = await import("./push.js");
+
+beforeEach(() => fs.rmSync(FILE, { force: true }));
+
+const sess = (o: Partial<AgentSession>): AgentSession => ({
+  agent: "claude-code",
+  sessionId: "s1",
+  project: "proj",
+  state: "working",
+  stateReason: "",
+  lastMtime: 0,
+  ...o,
+});
+const withPending = (p: string) =>
+  sess({ activity: { turnCount: 1, lastTools: [], filesTouched: [], pendingPermission: p } });
+
+describe("push prefs", () => {
+  test("defaults: done/error/permission/idle on, advisor off", () => {
+    assert.deepEqual(defaultPushPrefs(), { done: true, error: true, permission: true, idle: true, advisor: false });
+  });
+  test("normalize coerces non-bool / missing / null to defaults", () => {
+    assert.deepEqual(normalizePushPrefs({ advisor: true }), { ...defaultPushPrefs(), advisor: true });
+    assert.deepEqual(normalizePushPrefs({ done: "no" as unknown as boolean }), defaultPushPrefs());
+    assert.deepEqual(normalizePushPrefs(null), defaultPushPrefs());
+  });
+});
+
+describe("agentPushEvents (pure trigger)", () => {
+  test("working→done fires done", () => {
+    assert.deepEqual(agentPushEvents(sess({ state: "working" }), sess({ state: "done" })).map((e) => e.pref), ["done"]);
+  });
+  test("working→error fires error (high) with the reason", () => {
+    const [e] = agentPushEvents(sess({ state: "working" }), sess({ state: "error", stateReason: "build failed" }));
+    assert.equal(e.pref, "error");
+    assert.equal(e.priority, "high");
+    assert.match(e.body, /build failed/);
+  });
+  test("pendingPermission appearing fires permission", () => {
+    const [e] = agentPushEvents(sess({}), withPending("Bash"));
+    assert.equal(e.pref, "permission");
+    assert.match(e.body, /Bash/);
+  });
+  test("no transition / unchanged pending → nothing", () => {
+    assert.deepEqual(agentPushEvents(sess({ state: "working" }), sess({ state: "working" })), []);
+    assert.deepEqual(agentPushEvents(withPending("Bash"), withPending("Bash")), []);
+  });
+  test("first sight already done (prev undefined) → fires", () => {
+    assert.equal(agentPushEvents(undefined, sess({ state: "done" }))[0]!.pref, "done");
+  });
+});
+
+describe("sendNtfy", () => {
+  test("POSTs body + Title/Priority headers to <server>/<topic>", async () => {
+    let captured: { url: string; init: { body: string; headers: Record<string, string> } } | null = null;
+    const ok = await sendNtfy(
+      "https://ntfy.sh/",
+      "my-topic",
+      { title: "T", body: "B", priority: "high" },
+      async (url, init) => {
+        captured = { url, init };
+        return { ok: true };
+      },
+    );
+    assert.equal(ok, true);
+    assert.equal(captured!.url, "https://ntfy.sh/my-topic");
+    assert.equal(captured!.init.body, "B");
+    assert.equal(captured!.init.headers.Title, "T");
+    assert.equal(captured!.init.headers.Priority, "high");
+  });
+  test("network throw → false", async () => {
+    const ok = await sendNtfy("https://x", "t", { title: "a", body: "b", priority: "default" }, async () => {
+      throw new Error("net");
+    });
+    assert.equal(ok, false);
+  });
+});
+
+describe("PushBridge", () => {
+  test("delivers to subs whose pref is on; skips pref-off subs", () => {
+    const delivered: Array<{ id: string; tag: string }> = [];
+    const subs = [
+      { id: "a", kind: "ntfy" as const, target: "ta", prefs: defaultPushPrefs(), createdAt: 0 },
+      { id: "b", kind: "ntfy" as const, target: "tb", prefs: { ...defaultPushPrefs(), done: false }, createdAt: 0 },
+    ];
+    const bridge = new PushBridge({ subs: () => subs, now: () => 1000, deliver: (s, ev) => void delivered.push({ id: s.id, tag: ev.tag }) });
+    bridge.onAgentUpdate(sess({ state: "working" }));
+    bridge.onAgentUpdate(sess({ state: "done" }));
+    assert.deepEqual(delivered, [{ id: "a", tag: "done" }]); // only "a" (b has done:false)
+  });
+
+  test("throttles a repeat of the same tag within the window", () => {
+    const delivered: string[] = [];
+    const subs = [{ id: "a", kind: "ntfy" as const, target: "t", prefs: defaultPushPrefs(), createdAt: 0 }];
+    let t = 0;
+    const bridge = new PushBridge({ subs: () => subs, now: () => t, throttleMs: 1000, deliver: (_s, ev) => void delivered.push(ev.tag) });
+    bridge.onAgentUpdate(withPending("Bash")); // fires permission @0
+    t = 100;
+    bridge.onAgentUpdate(withPending("Write")); // new pending → event, but throttled (<1000)
+    t = 2000;
+    bridge.onAgentUpdate(withPending("Edit")); // throttle elapsed → fires
+    assert.deepEqual(delivered, ["permission", "permission"]);
+  });
+});
+
+describe("push storage", () => {
+  test("register → list; same target replaces; unregister; setPrefs", () => {
+    const a = registerPush({ kind: "ntfy", target: "topic-1", prefs: { advisor: true } }, 1);
+    assert.equal(listPush().length, 1);
+    assert.equal(listPush()[0]!.prefs.advisor, true);
+    registerPush({ kind: "ntfy", target: "topic-1" }, 2); // same target → replace
+    assert.equal(listPush().length, 1);
+    const updated = setPushPrefs(listPush()[0]!.id, { error: false });
+    assert.equal(updated!.prefs.error, false);
+    assert.equal(unregisterPush(a.target), true);
+    assert.equal(listPush().length, 0);
+    assert.equal(unregisterPush("nope"), false);
+  });
+});
