@@ -16,12 +16,12 @@ import { MAIN_HTML } from "./lisa-html.js";
  * change the GUI markup/CSS/JS, recompute them:
  *   node --import tsx -e 'import("./src/web/lisa-html.ts").then(async m=>{const {createHash}=await import("node:crypto");console.log(m.MAIN_HTML.length, createHash("sha256").update(m.MAIN_HTML).digest("hex"))})'
  *
- * Last updated: coding-plan web picker (PLANS badge → CODING PLANS modal that
- * fetches /api/plans and POSTs /api/plans/select).
+ * Last updated: first-run safety net (lisaBanner + global error/rejection
+ * guards + retrying startupGate) so the boot never dead-ends silently.
  */
-const EXPECTED_LENGTH = 91055;
+const EXPECTED_LENGTH = 93016;
 const EXPECTED_SHA256 =
-  "7a7c9a41e65ccbe6467807adb40a626e1971a8eb9736c5bdb29afaf169cd8b48";
+  "eb15c942d0260b6da7c3ea4e212a3e8d603dc9c70bf83b0e6018fe217a9cb594";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);

@@ -17,7 +17,30 @@
  * is a plain template literal with no ${} placeholders.
  */
 
-export const MAIN_CLIENT_JS = `const log = document.getElementById('log');
+export const MAIN_CLIENT_JS = `// ── First-run safety net: never leave the user with a silent dead UI. Any
+// uncaught error / unreachable backend surfaces as a banner instead of nothing.
+function lisaBanner(msg) {
+  var el = document.getElementById('lisaBanner');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'lisaBanner';
+    el.style.cssText = 'position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:99999;max-width:min(700px,92vw);padding:11px 16px;border-radius:12px;background:rgba(255,85,119,.14);border:1px solid rgba(255,85,119,.5);color:#ffc2cf;font:13px/1.5 -apple-system,system-ui,sans-serif;box-shadow:0 8px 30px rgba(0,0,0,.5);user-select:text';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.hidden = false;
+}
+function lisaClearBanner() { var el = document.getElementById('lisaBanner'); if (el) el.hidden = true; }
+function lisaSleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+window.addEventListener('error', function (e) {
+  if (e && e.message) lisaBanner('Lisa UI error: ' + e.message + ' — reload (Cmd-R); restart the backend if it persists.');
+});
+window.addEventListener('unhandledrejection', function (e) {
+  var r = e && e.reason;
+  lisaBanner('Lisa task failed: ' + ((r && r.message) ? r.message : String(r)));
+});
+
+const log = document.getElementById('log');
 const input = document.getElementById('input');
 const form = document.getElementById('form');
 const sendBtn = document.getElementById('sendBtn');
@@ -602,18 +625,30 @@ async function startBirthStream() {
 }
 
 async function startupGate() {
-  let cfg;
-  try {
-    cfg = await fetch('/api/config/status').then(r => r.json());
-  } catch {
+  // Retry: the page can render a hair before the backend's API routes answer,
+  // and a transient miss must not silently skip onboarding (the old bug — a
+  // bare catch+return left a dead UI with no key prompt, no birth, no message).
+  let cfg = null;
+  for (let i = 0; i < 6 && !cfg; i++) {
+    try { cfg = await fetch('/api/config/status').then(r => r.json()); }
+    catch (e) { if (i < 5) await lisaSleep(700); }
+  }
+  if (!cfg) {
+    lisaBanner('Cannot reach Lisa backend on localhost:5757. Start it:  lisa serve --web  (install once: npm i -g @oratis/lisa). Retrying…');
+    setTimeout(startupGate, 3000);
     return;
   }
+  lisaClearBanner();
   if (!cfg.configured) {
     cfgOverlay.classList.add('open');
     setTimeout(() => cfgAnthropic.focus(), 50);
     return;
   }
-  maybeBirth();
+  try {
+    await maybeBirth();
+  } catch (e) {
+    lisaBanner('Birth check failed: ' + ((e && e.message) ? e.message : e) + ' — reload to retry.');
+  }
 }
 startupGate();
 

@@ -34,6 +34,10 @@ final class MainWindow: NSWindow {
         // Title bar transparent so the chat's pixel-art background can extend
         // edge-to-edge underneath the traffic lights.
         titlebarAppearsTransparent = true
+        // Hide the NATIVE title text: the hosted page draws its own branded
+        // ".titlebar" ("Lisa") in that strip, so showing the native title too
+        // rendered a duplicate "Lisa Lisa" in the title bar.
+        titleVisibility = .hidden
         toolbarStyle = .unified
         isReleasedWhenClosed = false   // AppDelegate keeps a strong reference
 
