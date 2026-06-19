@@ -133,6 +133,10 @@ final class LisaClient {
     }
 
     // ── push ──
+    /// Register (token non-empty) a Live Activity push token for a session.
+    func registerLiveActivity(sessionId: String, token: String) async throws {
+        try await fire("/api/push/live-activity", json: ["sessionId": sessionId, "token": token])
+    }
     func pushRegister(kind: String, target: String, prefs: PushPrefs) async throws {
         let p: [String: Any] = ["done": prefs.done, "error": prefs.error, "permission": prefs.permission, "idle": prefs.idle, "advisor": prefs.advisor]
         try await fire("/api/push/register", json: ["kind": kind, "target": target, "prefs": p])

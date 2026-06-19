@@ -236,7 +236,7 @@ struct SessionDetailView: View {
             controlSection
             Section("Glance") {
                 Button {
-                    if LiveActivityController.start(for: session) != nil {
+                    if LiveActivityController.start(for: session, client: app.client) != nil {
                         status = "Pinned to the Live Activity."
                     } else {
                         status = "Live Activities are unavailable here (enable in iOS Settings, or run on a device)."

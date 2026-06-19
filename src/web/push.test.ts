@@ -20,6 +20,12 @@ const {
   buildApnsJwt,
   buildApnsPayload,
   sendApns,
+  liveActivityState,
+  buildLiveActivityPayload,
+  sendLiveActivityUpdate,
+  registerLiveActivity,
+  unregisterLiveActivity,
+  listLiveActivities,
   PushBridge,
   registerPush,
   unregisterPush,
@@ -228,5 +234,72 @@ describe("APNs", () => {
     const bad = await sendApns(cfg, "devtoken", { title: "T", body: "B", priority: "default" },
       async () => ({ status: 400 }), 1000);
     assert.equal(bad, false);
+  });
+});
+
+describe("Live Activity remote updates", () => {
+  const kp = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const pem = kp.privateKey.export({ type: "pkcs8", format: "pem" }) as string;
+  const cfg = { keyId: "K1", teamId: "T1", key: pem, topic: "ai.meetlisa.pocket", host: "api.sandbox.push.apple.com" };
+
+  test("liveActivityState mirrors the app's content-state + detail()", () => {
+    assert.deepEqual(
+      liveActivityState(withPending("Bash")),
+      { state: "working", detail: "⚠ Bash", turns: 1 },
+    );
+    assert.deepEqual(
+      liveActivityState(sess({ state: "error", stateReason: "boom" })),
+      { state: "error", detail: "boom", turns: 0 },
+    );
+  });
+
+  test("buildLiveActivityPayload: aps event + content-state; end adds dismissal-date", () => {
+    const up = buildLiveActivityPayload({ state: "working", detail: "x", turns: 3 }, "update", 1000);
+    const aps = up.aps as Record<string, unknown>;
+    assert.equal(aps.event, "update");
+    assert.equal(aps.timestamp, 1000);
+    assert.deepEqual(aps["content-state"], { state: "working", detail: "x", turns: 3 });
+    assert.equal(aps["dismissal-date"], undefined);
+    const end = buildLiveActivityPayload({ state: "done", detail: "x", turns: 3 }, "end", 1000);
+    assert.equal((end.aps as Record<string, unknown>)["dismissal-date"], 1000);
+  });
+
+  test("sendLiveActivityUpdate: liveactivity push-type + topic suffix", async () => {
+    let captured: { path: string; headers: Record<string, string>; body: string } | null = null;
+    const ok = await sendLiveActivityUpdate(
+      cfg, "latoken", { state: "working", detail: "x", turns: 1 }, "update",
+      async (o) => { captured = o; return { status: 200 }; }, 1000,
+    );
+    assert.equal(ok, true);
+    assert.equal(captured!.path, "/3/device/latoken");
+    assert.equal(captured!.headers["apns-topic"], "ai.meetlisa.pocket.push-type.liveactivity");
+    assert.equal(captured!.headers["apns-push-type"], "liveactivity");
+  });
+
+  test("store: register replaces per session; unregister removes", () => {
+    registerLiveActivity("sess-A", "tok1", 1);
+    registerLiveActivity("sess-A", "tok2", 2); // same session → replace
+    const a = listLiveActivities().filter((r) => r.sessionId === "sess-A");
+    assert.equal(a.length, 1);
+    assert.equal(a[0]!.token, "tok2");
+    assert.equal(unregisterLiveActivity("sess-A"), true);
+    assert.equal(listLiveActivities().some((r) => r.sessionId === "sess-A"), false);
+  });
+
+  test("PushBridge pushes an LA update for a registered session; ends + clears on done", () => {
+    const events: Array<{ token: string; event: string; state: string }> = [];
+    const regs = [{ sessionId: "s1", token: "tokX", createdAt: 0 }];
+    const bridge = new PushBridge({
+      subs: () => [],
+      liveActivities: () => regs.filter((r) => regs.includes(r)),
+      now: () => 100000,
+      liveDeliver: (token, cs, event) => void events.push({ token, event, state: cs.state }),
+    });
+    bridge.onAgentUpdate(sess({ state: "working" }));        // → update
+    bridge.onAgentUpdate(sess({ state: "done" }));           // → end (terminal, not throttled)
+    assert.deepEqual(events, [
+      { token: "tokX", event: "update", state: "working" },
+      { token: "tokX", event: "end", state: "done" },
+    ]);
   });
 });
