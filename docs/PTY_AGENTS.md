@@ -98,6 +98,10 @@ a full arrow-key TUI. Raw attach is future work.
   (streaming → working, quiet → waiting), not from parsed intent.
 - **Native dep.** `node-pty` is an `optionalDependency`; installs and CI never
   fail if it can't build — PTY agents are simply unavailable then.
+- **Local-dev caveat.** `node-pty`'s native binding throws `posix_spawnp failed`
+  under **Node 26**, so the live PTY path (and `lisa agents pty` end-to-end) can't
+  be exercised on a Node-26 machine. CI runs Node 24, where it works; the pure
+  helpers and lifecycle are unit-tested with an injected fake pty regardless.
 - **Privacy.** A PTY agent captures the full terminal, including model replies.
   That content is shown to **you** on demand (`/api/agents/pty/<id>/output`) and
   is **never** folded into the structural cross-agent roster, which stays
