@@ -83,6 +83,14 @@ describe("agentPushEvents (pure trigger)", () => {
     assert.equal(u.searchParams.get("agent"), "codex");
     assert.equal(u.searchParams.get("id"), "s9");
   });
+  test("agentDeepLink encodes spaces as %20 (not +) so iOS round-trips them", () => {
+    const link = agentDeepLink("claude code", "s 9");
+    assert.ok(!link.includes("+"), "no + encoding");
+    assert.match(link, /%20/);
+    const u = new URL(link);
+    assert.equal(u.searchParams.get("agent"), "claude code");
+    assert.equal(u.searchParams.get("id"), "s 9");
+  });
 });
 
 describe("sendNtfy", () => {
@@ -214,6 +222,7 @@ describe("APNs", () => {
     assert.equal(captured!.headers["apns-topic"], "ai.meetlisa.pocket");
     assert.equal(captured!.headers["apns-push-type"], "alert");
     assert.equal(captured!.headers["apns-priority"], "10");
+    assert.equal(captured!.headers["apns-expiration"], "0"); // high-priority → deliver-now-or-drop
     assert.match(captured!.headers.authorization, /^bearer /);
 
     const bad = await sendApns(cfg, "devtoken", { title: "T", body: "B", priority: "default" },

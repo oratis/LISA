@@ -122,8 +122,10 @@ export const POCKET_SCHEME = "lisapocket";
 /** Deep-link that opens Lisa Pocket at a specific roster session. Pure. The app
  *  routes on host="session" + the agent/id query (Lisa Pocket's URL handler). */
 export function agentDeepLink(agent: string, sessionId: string): string {
-  const q = new URLSearchParams({ agent, id: sessionId });
-  return `${POCKET_SCHEME}://session?${q.toString()}`;
+  // URLSearchParams encodes spaces as "+", which iOS URLComponents reads literally
+  // (not as a space); use %20 so values round-trip on the app side.
+  const q = new URLSearchParams({ agent, id: sessionId }).toString().replace(/\+/g, "%20");
+  return `${POCKET_SCHEME}://session?${q}`;
 }
 
 export interface PushEvent {
@@ -245,22 +247,33 @@ export type ApnsPoster = (o: {
   body: string;
 }) => Promise<{ status: number }>;
 
-/** Real APNs POST over HTTP/2. Resolves status 0 on a connection error. */
+/** Real APNs POST over HTTP/2. Settles exactly once and always closes the client;
+ *  resolves status 0 on a connection error or a 10s timeout. */
 const realApnsPost: ApnsPoster = (o) =>
   new Promise((resolve) => {
     const client = http2.connect(`https://${o.host}`);
     let status = 0;
-    client.on("error", () => resolve({ status: 0 }));
+    let settled = false;
+    const done = (s: number) => {
+      if (settled) return;
+      settled = true;
+      try { client.close(); } catch { /* already closing */ }
+      resolve({ status: s });
+    };
+    client.on("error", () => done(0));
     const req = client.request({ ":method": "POST", ":path": o.path, ...o.headers });
     req.setEncoding("utf8");
+    req.setTimeout(10_000, () => done(0)); // don't leak a hung connection
     req.on("response", (h) => { status = Number(h[":status"]) || 0; });
     req.on("data", () => {});
-    req.on("end", () => { client.close(); resolve({ status }); });
-    req.on("error", () => { try { client.close(); } catch { /* */ } resolve({ status: 0 }); });
+    req.on("end", () => done(status));
+    req.on("error", () => done(0));
     req.end(o.body);
   });
 
-let cachedApnsJwt: { token: string; at: number } | null = null;
+// JWT cache keyed by config identity (not just time) — a different key/team must
+// not reuse a stale token (wrong kid/iss → APNs 403).
+let cachedApnsJwt: { token: string; at: number; id: string } | null = null;
 
 /** Send one APNs notification. The provider JWT is cached ~50min (Apple rate-
  *  limits regeneration). `post` is injectable for tests. */
@@ -271,8 +284,9 @@ export async function sendApns(
   post: ApnsPoster = realApnsPost,
   nowSec: number = Math.floor(Date.now() / 1000),
 ): Promise<boolean> {
-  if (!cachedApnsJwt || nowSec - cachedApnsJwt.at > 50 * 60) {
-    cachedApnsJwt = { token: buildApnsJwt(cfg, nowSec), at: nowSec };
+  const cacheId = `${cfg.keyId}/${cfg.teamId}`;
+  if (!cachedApnsJwt || cachedApnsJwt.id !== cacheId || nowSec - cachedApnsJwt.at > 50 * 60) {
+    cachedApnsJwt = { token: buildApnsJwt(cfg, nowSec), at: nowSec, id: cacheId };
   }
   const res = await post({
     host: cfg.host,
@@ -282,6 +296,9 @@ export async function sendApns(
       "apns-topic": cfg.topic,
       "apns-push-type": "alert",
       "apns-priority": ev.priority === "high" ? "10" : "5",
+      // Operational alerts are time-sensitive — don't let APNs store & deliver
+      // a stale one later if the device is offline.
+      "apns-expiration": ev.priority === "high" ? "0" : String(nowSec + 3600),
     },
     body: JSON.stringify(buildApnsPayload(ev)),
   });

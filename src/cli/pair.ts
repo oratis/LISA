@@ -70,8 +70,9 @@ export function detectLanHost(
 
 /** Build the `lisa-pair://` deep-link the phone scans/pastes. Pure. */
 export function buildPairUrl(host: string, port: number, token: string, name: string): string {
-  const q = new URLSearchParams({ host, port: String(port), token, name });
-  return `lisa-pair://v1?${q.toString()}`;
+  // %20 (not "+") for spaces so the device label round-trips through iOS URLComponents.
+  const q = new URLSearchParams({ host, port: String(port), token, name }).toString().replace(/\+/g, "%20");
+  return `lisa-pair://v1?${q}`;
 }
 
 export async function runPairCommand(argv: string[]): Promise<number> {
