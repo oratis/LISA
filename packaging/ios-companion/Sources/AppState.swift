@@ -1,5 +1,7 @@
 import Foundation
 import SwiftUI
+import UIKit
+import UserNotifications
 import LocalAuthentication
 
 /// A roster session a deep-link wants to open (agent + sessionId).
@@ -23,6 +25,8 @@ final class AppState: ObservableObject {
     /// Optional Face ID / passcode gate over the app (token grants full control).
     @Published var biometricLockEnabled: Bool
     @Published var locked: Bool
+    /// Last APNs registration outcome, shown in Settings.
+    @Published var pushStatus = ""
 
     init() {
         let d = UserDefaults.standard
@@ -34,6 +38,37 @@ final class AppState: ObservableObject {
         let lockOn = d.bool(forKey: "lisa.biometricLock")
         self.biometricLockEnabled = lockOn
         self.locked = lockOn && cfg.token != nil  // require unlock at launch when armed
+        // The AppDelegate posts the APNs device token here once it arrives.
+        NotificationCenter.default.addObserver(forName: .apnsToken, object: nil, queue: .main) { [weak self] note in
+            let hex = note.object as? String
+            Task { @MainActor in await self?.onApnsToken(hex) }
+        }
+    }
+
+    // ── APNs registration (client half; delivery needs the Mac's APNs key) ──
+    func enablePush() async {
+        do {
+            let granted = try await UNUserNotificationCenter.current()
+                .requestAuthorization(options: [.alert, .sound, .badge])
+            guard granted else { pushStatus = "Notifications not allowed in iOS Settings."; return }
+            UIApplication.shared.registerForRemoteNotifications()
+            pushStatus = "Registering for push…"
+        } catch {
+            pushStatus = error.localizedDescription
+        }
+    }
+
+    private func onApnsToken(_ hex: String?) async {
+        guard let hex, !hex.isEmpty else {
+            pushStatus = "APNs unavailable here (no token — e.g. the Simulator)."
+            return
+        }
+        do {
+            try await client.pushRegister(kind: "apns", target: hex, prefs: PushPrefs())
+            pushStatus = "Push registered (APNs)."
+        } catch {
+            pushStatus = (error as? LocalizedError)?.errorDescription ?? "\(error)"
+        }
     }
 
     func update(host: String, port: Int, token: String?) {

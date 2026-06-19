@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct LisaPocketApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var app = AppState()
 
     var body: some Scene {

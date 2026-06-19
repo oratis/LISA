@@ -45,6 +45,7 @@ targets:
       properties:
         com.apple.security.application-groups:
           - group.ai.meetlisa.pocket
+        aps-environment: development
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ai.meetlisa.pocket

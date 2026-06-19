@@ -69,6 +69,15 @@ struct SettingsView: View {
                     .disabled(ntfyTopic.isEmpty)
                 }
 
+                Section("Push (APNs)") {
+                    Button("Enable push notifications") { Task { await app.enablePush() } }
+                    if !app.pushStatus.isEmpty {
+                        Text(app.pushStatus).font(.caption).foregroundStyle(.secondary)
+                    }
+                    Text("Native Apple Push. Delivery needs an APNs key set on the Mac; ntfy works without one.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+
                 Section("Remote-control policy (set on the Mac)") {
                     if let p = policy {
                         LabeledContent("Control own agents", value: p.remoteControl ? "allowed" : "blocked")
