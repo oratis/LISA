@@ -264,3 +264,24 @@ export function planPreflight(status: PlanStatus): PlanPreflight {
     return { ok: false, reason: `${status.cli} is installed but not logged in — ${status.detail}` };
   return { ok: true };
 }
+
+// ── surfacing (CODING_PLANS Phase 4) ─────────────────────────────────────────
+
+/** Status glyph: ✓ logged in · ✗ unavailable/logged-out · ? installed, login unknown. Pure. */
+export function planMark(s: PlanStatus): "✓" | "✗" | "?" {
+  if (!s.available || s.loggedIn === false) return "✗";
+  if (s.loggedIn === true) return "✓";
+  return "?";
+}
+
+/**
+ * One-line coding-plan summary for surfaces like `lisa agents`. Pure. Shows the
+ * selected delegation target (★) and each plan's glyph. Headroom/rate-limit
+ * numbers are intentionally omitted — they'd need version-fragile parsing of the
+ * vendor CLI's output, and a wrong number is worse than none.
+ */
+export function planSummaryLine(statuses: PlanStatus[], selected: PlanId | null): string {
+  const bits = statuses.map((s) => `${s.label} ${planMark(s)}${s.id === selected ? " ★" : ""}`);
+  const head = selected ? `coding plan → ${selected}` : "coding plan → none selected";
+  return `${head}  ·  ${bits.join("  ·  ")}`;
+}

@@ -8,10 +8,25 @@ import {
   detectPlans,
   planDispatchKind,
   planPreflight,
+  planMark,
+  planSummaryLine,
   PLAN_IDS,
   type PlanProbe,
   type PlanStatus,
 } from "./plans.js";
+
+function mkStatus(over: Partial<PlanStatus>): PlanStatus {
+  return {
+    id: "claude",
+    label: "Claude Pro/Max",
+    cli: "claude",
+    binary: "claude",
+    available: true,
+    loggedIn: true,
+    detail: "ready",
+    ...over,
+  };
+}
 
 /** A probe that finds nothing, overridable per test. Pure inputs only. */
 function fakeProbe(over: Partial<PlanProbe> = {}): PlanProbe {
@@ -161,16 +176,32 @@ describe("planDispatchKind", () => {
   });
 });
 
+describe("planMark", () => {
+  test("✓ logged in · ? unknown · ✗ unavailable/out", () => {
+    assert.equal(planMark(mkStatus({ loggedIn: true })), "✓");
+    assert.equal(planMark(mkStatus({ loggedIn: null })), "?");
+    assert.equal(planMark(mkStatus({ available: false, binary: null })), "✗");
+    assert.equal(planMark(mkStatus({ loggedIn: false })), "✗");
+  });
+});
+
+describe("planSummaryLine", () => {
+  test("marks the selected plan with ★ and names it in the head", () => {
+    const line = planSummaryLine(
+      [mkStatus({ id: "claude" }), mkStatus({ id: "codex", label: "ChatGPT plan (Codex)", available: false, binary: null })],
+      "claude",
+    );
+    assert.match(line, /coding plan → claude/);
+    assert.match(line, /Claude Pro\/Max ✓ ★/);
+    assert.match(line, /ChatGPT plan \(Codex\) ✗/);
+  });
+  test("says 'none selected' when no target is set", () => {
+    assert.match(planSummaryLine([mkStatus({})], null), /none selected/);
+  });
+});
+
 describe("planPreflight", () => {
-  const base: PlanStatus = {
-    id: "claude",
-    label: "Claude Pro/Max",
-    cli: "claude",
-    binary: "claude",
-    available: true,
-    loggedIn: true,
-    detail: "ready",
-  };
+  const base = mkStatus({});
   test("ready when available + logged in", () => {
     assert.deepEqual(planPreflight(base), { ok: true });
   });

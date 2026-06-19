@@ -1,12 +1,14 @@
 # Coding plans — running LISA's work on a subscription, not just an API key
 
-**Status: Phase 1 shipped (detection + picker); rest is DESIGN.** `lisa model
-list` now detects installed plan CLIs and `lisa model use plan://<id>` selects a
-delegation target — no auth code, no secrets read. Everything below the
-detection/picker layer (actually routing coding work to the selected plan) builds
-on the flagged PTY-agent bridge (`LISA_PTY_AGENTS=1`, see
-[PTY_AGENTS.md](./PTY_AGENTS.md)) and is still design. This doc records the
-mechanism, the constraints that shape it, and the phased plan.
+**Status: Phases 1–4 shipped; GUI picker + true headroom remain.** `lisa model
+list` detects installed plan CLIs and `lisa model use plan://<id>` selects a
+delegation target; the `run_on_plan` tool delegates a coding task to the selected
+(or named) plan by running the vendor's own CLI headlessly (`claude -p` /
+`codex exec` / `copilot -p`), reusing the same `launchAgent` path as
+`dispatch_agent`; `lisa agents` surfaces the selected plan + detection. No auth
+code, no secrets read — the sanctioned out-of-process delegation. Still open: a
+web/island plan picker and honest rate-limit/headroom surfacing. This doc records
+the mechanism, the constraints that shape it, and the phased plan.
 
 ## TL;DR
 
@@ -241,10 +243,12 @@ master switch `LISA_PTY_AGENTS=1` until the bridge graduates from "spike."
 | Observe/control via hub + `/api/agents/*` | ✅ exists |
 | **Presence detection (`src/model/plans.ts`)** | ✅ Phase 1 |
 | **`plan://` refs + `lisa model` picker** | ✅ Phase 1 (CLI; web/island picker ⬜) |
-| **Headless one-shot (`claude -p` / `codex exec`) backend** | ⬜ build |
-| **`PlanBackend.run()` wired to `dispatch_agent`** | ⬜ build |
-| **Copilot CLI delegate** | ⬜ build |
-| **Headroom/usage surfacing** | ⬜ build |
+| **Headless delegation (`run_on_plan` → `launchAgent`)** | ✅ Phase 2 |
+| **`claude -p` / `codex exec` delegate** | ✅ Phase 2 (reuses `dispatch_agent`) |
+| **Copilot CLI delegate (`copilot -p`)** | ✅ Phase 3 |
+| **Plan surfaced in `lisa agents`** | ✅ Phase 4 |
+| **Web/island plan picker** | ⬜ build |
+| **True headroom / rate-limit surfacing** | ⬜ build (version-fragile) |
 
 ### Suggested phasing
 
@@ -252,12 +256,20 @@ master switch `LISA_PTY_AGENTS=1` until the bridge graduates from "spike."
    (presence-only, injectable probe, unit-tested); `lisa model list` shows each
    plan's status; `lisa model use plan://<id>` stores the target in
    `LISA_CODING_PLAN` without touching `LISA_MODEL`. No auth code, no secrets read.
-2. **Headless delegate.** Wrap `claude -p --output-format json` / `codex exec` as
-   `run()`; wire `dispatch_agent` / a "run on my plan" action to it. Graduate the
-   PTY flag.
-3. **Copilot.** Add the GitHub `copilot` CLI delegate (or document the
-   community-proxy route with its ToS caveat, opt-in only).
-4. **Headroom surfacing** in the autonomy ledger + agents card.
+2. **Headless delegate.** ✅ *Shipped.* `run_on_plan` resolves the plan, preflights
+   it, and hands off to `launchAgent` — which already runs `claude -p` / `codex
+   exec` and captures output to the dispatch log. No separate `run()` class was
+   needed: the existing `dispatch_agent` path *is* the delegate, so this is a thin
+   plan-aware front door. Gated like `dispatch_agent` (autonomous/remote-blocked,
+   approval-required). No PTY, no flag.
+3. **Copilot.** ✅ *Shipped.* The official `copilot` CLI runs a task via
+   `copilot -p "<task>"` (GitHub documents this for automation), so it's a
+   first-class delegate alongside claude/codex — no proxy, no token handling. The
+   community-proxy route stays out of scope (ToS).
+4. **Surfacing.** ✅ *Plan status shipped* — `lisa agents` shows the selected plan
+   + each plan's glyph (`planSummaryLine`). ⬜ *Still open:* a web/island picker
+   and honest rate-limit/headroom numbers (deliberately not faked — see note in
+   §"Surfacing usage").
 
 ---
 
