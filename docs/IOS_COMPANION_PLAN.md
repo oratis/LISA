@@ -376,6 +376,8 @@ GET/POST /api/control/policy    # {remoteControl:bool, remoteAdoptExternal:bool}
 // 不含 prompt/模型回复/完整命令/文件内容/PTY 输出。E2E 时这部分是密文。
 ```
 
+**深链（已落地，ntfy 侧）**：agent 事件推送带一个 `Click` 深链 `lisapocket://session?agent=&id=`（`src/web/push.ts` 的 `agentDeepLink`），点通知直接跳到对应 roster session。iOS 侧需注册 `lisapocket://` scheme 并路由（待建，见 Appendix B `Push/`）。同一 scheme 复用于主屏 Widget 点按。
+
 ---
 
 ## 7. 隐私与安全（守住地板）

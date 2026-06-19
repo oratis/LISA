@@ -112,6 +112,16 @@ export function setPushPrefs(id: string, prefs: Partial<PushPrefs>): PushSubscri
 }
 
 // ── pure trigger ──────────────────────────────────────────────────────────
+/** Custom URL scheme Lisa Pocket registers for push / widget deep-links. */
+export const POCKET_SCHEME = "lisapocket";
+
+/** Deep-link that opens Lisa Pocket at a specific roster session. Pure. The app
+ *  routes on host="session" + the agent/id query (Lisa Pocket's URL handler). */
+export function agentDeepLink(agent: string, sessionId: string): string {
+  const q = new URLSearchParams({ agent, id: sessionId });
+  return `${POCKET_SCHEME}://session?${q.toString()}`;
+}
+
 export interface PushEvent {
   pref: keyof PushPrefs;
   title: string;
@@ -119,19 +129,22 @@ export interface PushEvent {
   priority: "high" | "default";
   /** Throttle/dedup tag within a session. */
   tag: string;
+  /** Optional deep-link opened when the notification is tapped (ntfy `Click`). */
+  click?: string;
 }
 
 /** Which notifications a session's prev→next transition warrants. Pure. */
 export function agentPushEvents(prev: AgentSession | undefined, next: AgentSession): PushEvent[] {
   const out: PushEvent[] = [];
   const who = `${next.agent} · ${next.project || next.agent}`;
+  const click = agentDeepLink(next.agent, next.sessionId);
   if (next.state === "done" && prev?.state !== "done")
-    out.push({ pref: "done", title: `${who} — done`, body: "Finished.", priority: "default", tag: "done" });
+    out.push({ pref: "done", title: `${who} — done`, body: "Finished.", priority: "default", tag: "done", click });
   if (next.state === "error" && prev?.state !== "error")
-    out.push({ pref: "error", title: `${who} — error`, body: next.stateReason || "errored", priority: "high", tag: "error" });
+    out.push({ pref: "error", title: `${who} — error`, body: next.stateReason || "errored", priority: "high", tag: "error", click });
   const pend = next.activity?.pendingPermission;
   if (pend && pend !== prev?.activity?.pendingPermission)
-    out.push({ pref: "permission", title: `${who} — needs permission`, body: `waiting on: ${pend}`, priority: "high", tag: "permission" });
+    out.push({ pref: "permission", title: `${who} — needs permission`, body: `waiting on: ${pend}`, priority: "high", tag: "permission", click });
   return out;
 }
 
@@ -144,7 +157,7 @@ type FetchLike = (
 export async function sendNtfy(
   server: string,
   topic: string,
-  ev: { title: string; body: string; priority: "high" | "default" },
+  ev: { title: string; body: string; priority: "high" | "default"; click?: string },
   fetchImpl: FetchLike = fetch as unknown as FetchLike,
 ): Promise<boolean> {
   try {
@@ -152,7 +165,13 @@ export async function sendNtfy(
     const res = await fetchImpl(`${base}/${encodeURIComponent(topic)}`, {
       method: "POST",
       body: ev.body,
-      headers: { Title: ev.title, Priority: ev.priority === "high" ? "high" : "default" },
+      headers: {
+        Title: ev.title,
+        Priority: ev.priority === "high" ? "high" : "default",
+        // ntfy opens this URL when the notification is tapped — a lisapocket://
+        // deep-link routes into the app (see agentDeepLink).
+        ...(ev.click ? { Click: ev.click } : {}),
+      },
     });
     return res.ok;
   } catch {
