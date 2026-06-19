@@ -129,3 +129,21 @@ struct NamedItem: Codable, Identifiable, Hashable {
 }
 struct SkillsResponse: Codable { var skills: [NamedItem] }
 struct ToolsResponse: Codable { var tools: [NamedItem] }
+
+// ── Reve (/api/agents/recap, /api/advisor/latest) ──
+
+struct RecapResponse: Codable {
+    var text: String
+    var sinceMinutes: Int?
+}
+
+struct AdvisorSuggestion: Codable, Identifiable {
+    var id: String
+    var category: String?
+    var urgency: String?
+    var text: String
+}
+struct AdvisorResponse: Codable {
+    var suggestions: [AdvisorSuggestion]
+    var at: String?
+}

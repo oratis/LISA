@@ -78,6 +78,15 @@ final class LisaClient {
     func skills() async throws -> [NamedItem] { try await decode("/api/skills", as: SkillsResponse.self).skills }
     func tools() async throws -> [NamedItem] { try await decode("/api/tools", as: ToolsResponse.self).tools }
 
+    // ── read: Reve ──
+    func recap(sinceMinutes: Int = 120) async throws -> RecapResponse {
+        try await decode("/api/agents/recap?sinceMinutes=\(sinceMinutes)", as: RecapResponse.self)
+    }
+    func advisorLatest() async throws -> AdvisorResponse { try await decode("/api/advisor/latest", as: AdvisorResponse.self) }
+    func advisorDismiss(id: String, category: String?) async throws {
+        try await fire("/api/advisor/dismiss", json: ["id": id, "category": category ?? ""])
+    }
+
     // ── control: managed agents ──
     func managedStart(task: String) async throws { try await fire("/api/agents/managed/start", json: ["task": task]) }
     func managedSend(_ id: String, _ text: String) async throws { try await fire("/api/agents/managed/\(id)/send", json: ["text": text]) }
