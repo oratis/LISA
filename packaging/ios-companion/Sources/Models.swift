@@ -147,3 +147,25 @@ struct AdvisorResponse: Codable {
     var suggestions: [AdvisorSuggestion]
     var at: String?
 }
+
+// ── Sense (/api/consent, /api/sense/recent) ──
+
+struct ConsentRow: Codable, Identifiable {
+    var signal: String
+    var granted: Bool
+    var grantedAt: String?
+    var description: String?
+    var id: String { signal }
+}
+struct ConsentResponse: Codable { var grants: [ConsentRow] }
+
+struct SenseEvent: Codable, Identifiable {
+    var signal: String
+    var kind: String
+    var app: String?
+    var title: String?
+    var summary: String
+    var ts: Double
+    var id: String { "\(signal)/\(kind)/\(ts)" }
+}
+struct SenseResponse: Codable { var events: [SenseEvent] }

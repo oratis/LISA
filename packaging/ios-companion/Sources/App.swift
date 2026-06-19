@@ -20,6 +20,8 @@ struct RootView: View {
                 .tabItem { Label("Chat", systemImage: "bubble.left.and.bubble.right") }
             ReveView()
                 .tabItem { Label("Reve", systemImage: "moon.stars") }
+            SenseView()
+                .tabItem { Label("Sense", systemImage: "sensor.tag.radiowaves.forward") }
             SettingsView()
                 .tabItem { Label("Settings", systemImage: "gearshape") }
         }

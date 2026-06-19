@@ -87,6 +87,12 @@ final class LisaClient {
         try await fire("/api/advisor/dismiss", json: ["id": id, "category": category ?? ""])
     }
 
+    // ── Sense: consent (revoke-only from a phone) + events ──
+    func consent() async throws -> [ConsentRow] { try await decode("/api/consent", as: ConsentResponse.self).grants }
+    func consentRevoke(signal: String) async throws { try await fire("/api/consent/revoke", json: ["signal": signal]) }
+    func consentRevokeAll() async throws { try await fire("/api/consent/revoke-all") }
+    func senseRecent() async throws -> [SenseEvent] { try await decode("/api/sense/recent", as: SenseResponse.self).events }
+
     // ── control: managed agents ──
     func managedStart(task: String) async throws { try await fire("/api/agents/managed/start", json: ["task": task]) }
     func managedSend(_ id: String, _ text: String) async throws { try await fire("/api/agents/managed/\(id)/send", json: ["text": text]) }
