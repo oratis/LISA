@@ -25,7 +25,8 @@ git push --follow-tags
 # 4. Then publish to npm:
 npm publish --access public
 
-# 5. Then update the Homebrew tap formula (separate repo).
+# 5. Then bump the Homebrew tap (after npm publish lands):
+gh workflow run "Release — Homebrew tap"
 ```
 
 Total: ~10 minutes per release.
@@ -137,14 +138,45 @@ npx @oratis/lisa "say hi"
 
 ### Prerequisites (one-time)
 
-Create a separate GitHub repo: `https://github.com/oratis/homebrew-tap`. The repo only needs a single file: `Formula/lisa.rb` (a copy of [`packaging/homebrew/lisa.rb`](../packaging/homebrew/lisa.rb) from this repo).
+1. Create a separate GitHub repo `https://github.com/oratis/homebrew-tap` with a
+   single file `Formula/lisa.rb` (a copy of
+   [`packaging/homebrew/lisa.rb`](../packaging/homebrew/lisa.rb) from this repo).
+2. **For the automated bump (recommended):** add a repo secret
+   `HOMEBREW_TAP_TOKEN` to **this** repo — a token with *write* access to the tap
+   repo (the per-repo `GITHUB_TOKEN` can't push to a different repo):
+   - Fine-grained PAT: **Only select repositories → `oratis/homebrew-tap`**,
+     Repository permissions → **Contents: Read and write**; or a classic token
+     with `repo` scope.
+   - Settings → Secrets and variables → Actions → New repository secret →
+     `HOMEBREW_TAP_TOKEN`.
 
-### Per-release
+### Per-release (automated)
 
 The formula points at the **npm tarball** (not the GitHub source archive), because
 the npm tarball ships pre-built `dist/` — that avoids needing TypeScript at brew
-install time. So step 1 of the release ritual is `npm publish` (§1 above), and
-step 2 pins the formula to the freshly-published npm tarball.
+install time. So the tap bump must come **after `npm publish`** (§1 above): it
+pins the `sha256` of the *freshly-published* npm tarball, which must already exist
+on the registry (a hash computed any other way risks not matching the registry
+bytes and breaking `brew install`).
+
+Once `HOMEBREW_TAP_TOKEN` is set, just run the workflow after `npm publish`:
+
+```sh
+# After `npm publish` has landed @oratis/lisa@<version> on the registry:
+gh workflow run "Release — Homebrew tap"            # uses the latest v* tag
+# or pin explicitly:
+gh workflow run "Release — Homebrew tap" -f version=0.11.0
+```
+
+[`.github/workflows/release-homebrew.yml`](../.github/workflows/release-homebrew.yml)
+fetches the published tarball, computes its sha256, and pushes
+`Formula/lisa.rb` (`lisa <version>`) to the tap repo. (Also keep the in-repo
+template [`packaging/homebrew/lisa.rb`](../packaging/homebrew/lisa.rb) in sync when
+convenient — it's the reference copy, not what users install.)
+
+### Per-release (manual fallback)
+
+If the token isn't set up, do it by hand:
 
 ```sh
 # 0. Make sure npm publish (§1 above) has run — the npm tarball must exist.

@@ -1,0 +1,98 @@
+name: Release — Homebrew tap
+
+# Bumps the formula in the oratis/homebrew-tap repo to a published version.
+#
+# WHY manual (workflow_dispatch) and not tag-triggered: the formula pins the
+# sha256 of the *npm tarball*, and `npm publish` is a manual local step (it needs
+# npm credentials CI never sees). So this must run AFTER `npm publish` — it
+# fetches the real published tarball and hashes it. A hash computed any other way
+# (e.g. a CI rebuild) risks not matching the registry bytes, which would break
+# `brew install` for everyone.
+#
+# ONE-TIME SETUP: add a repo secret `HOMEBREW_TAP_TOKEN` — a PAT with write
+# access to oratis/homebrew-tap (fine-grained: Contents → Read and write on that
+# repo; or a classic token with `repo`). See docs/PUBLISH.md §2.
+#
+# PER RELEASE: after `npm publish`, run this workflow (Actions tab → Run workflow,
+# or `gh workflow run "Release — Homebrew tap"`). Leave `version` blank to use the
+# latest `v*` tag.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to pin, e.g. 0.11.0 (blank = latest v* tag). Run AFTER `npm publish`."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  bump-tap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need tags for the default-version lookup
+
+      - name: Resolve version
+        id: ver
+        run: |
+          set -euo pipefail
+          V="${{ github.event.inputs.version }}"
+          if [ -z "$V" ]; then
+            V="$(git describe --tags --abbrev=0 | sed 's/^v//')"
+          fi
+          # strip a leading v if the user typed one
+          V="${V#v}"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "Version: $V"
+
+      - name: Compute sha256 from the published npm tarball
+        id: sha
+        run: |
+          set -euo pipefail
+          V="${{ steps.ver.outputs.version }}"
+          URL="https://registry.npmjs.org/@oratis/lisa/-/lisa-${V}.tgz"
+          echo "Fetching $URL"
+          if ! curl -fsSL "$URL" -o /tmp/lisa.tgz; then
+            echo "::error::$URL not found on npm — run \`npm publish\` first, then re-run this workflow."
+            exit 1
+          fi
+          SHA="$(sha256sum /tmp/lisa.tgz | cut -d' ' -f1)"
+          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
+          echo "sha256: $SHA"
+
+      - name: Update + push the tap formula
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          V: ${{ steps.ver.outputs.version }}
+          SHA: ${{ steps.sha.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TAP_TOKEN:-}" ]; then
+            echo "::error::HOMEBREW_TAP_TOKEN secret is not set (PAT with write access to oratis/homebrew-tap). See docs/PUBLISH.md §2."
+            exit 1
+          fi
+          git clone --depth 1 "https://x-access-token:${TAP_TOKEN}@github.com/oratis/homebrew-tap.git" tap
+          cd tap
+          sed -i "s|lisa-[0-9][0-9.]*\.tgz|lisa-${V}.tgz|" Formula/lisa.rb
+          sed -i "s|sha256 \"[0-9a-f]\{64\}\"|sha256 \"${SHA}\"|" Formula/lisa.rb
+          if git diff --quiet; then
+            echo "Formula already pins ${V} — nothing to do."
+            exit 0
+          fi
+          grep -E 'url "https|sha256 "' Formula/lisa.rb
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -aqm "lisa ${V}"
+          git push
+          {
+            echo "### Homebrew tap bumped to lisa ${V} :beer:"
+            echo ""
+            echo "- \`url\` → \`lisa-${V}.tgz\`"
+            echo "- \`sha256\` → \`${SHA}\`"
+            echo ""
+            echo "Users get it on their next \`brew update && brew upgrade lisa\`."
+          } >> "$GITHUB_STEP_SUMMARY"
