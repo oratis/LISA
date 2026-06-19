@@ -89,6 +89,9 @@ export interface AgentSession {
    * control. Set by the API layer for claude-code sessions not currently live.
    */
   resumable?: boolean;
+  /** When a controllable PTY is a resume-adopt, the real claude sessionId it
+   *  continues — lets the roster drop the observe-only duplicate of that session. */
+  adoptedSessionId?: string;
 }
 
 /** Visibility tier — how deeply LISA may inspect a session. See plan §3. */

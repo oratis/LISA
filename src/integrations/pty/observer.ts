@@ -27,6 +27,7 @@ function toSession(v: PtyView): AgentSession {
     stateReason: v.stateReason,
     lastMtime: v.lastMtime,
     controllable: "pty",
+    ...(v.adoptedSessionId ? { adoptedSessionId: v.adoptedSessionId } : {}),
   };
 }
 

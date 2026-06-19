@@ -68,6 +68,22 @@ export const DEFAULT_ORCHESTRATOR_CONFIG: OrchestratorConfig = {
 
 type Log = (msg: string) => void;
 
+/**
+ * Drop observe-only sessions that a controllable session already represents.
+ * When LISA resume-adopts an idle claude session under a PTY, that same real
+ * session is ALSO seen by the claude-code observer (a JSONL transcript). The PTY
+ * entry carries the adopted sessionId, so we drop the observe-only twin and keep
+ * the controllable one. Pure — operates on the merged list. See PTY_AGENTS.md.
+ */
+export function dedupeAdoptedSessions(sessions: AgentSession[]): AgentSession[] {
+  const adopted = new Set<string>();
+  for (const s of sessions) {
+    if (s.controllable && s.adoptedSessionId) adopted.add(s.adoptedSessionId);
+  }
+  if (adopted.size === 0) return sessions;
+  return sessions.filter((s) => !(s.controllable == null && adopted.has(s.sessionId)));
+}
+
 export class OrchestratorHub extends EventEmitter {
   private observers: AgentObserver[] = [];
   private readonly cfg: OrchestratorConfig;
@@ -129,7 +145,7 @@ export class OrchestratorHub extends EventEmitter {
         // one flaky observer shouldn't break the merge
       }
     }
-    return all.sort((a, b) => b.lastMtime - a.lastMtime);
+    return dedupeAdoptedSessions(all).sort((a, b) => b.lastMtime - a.lastMtime);
   }
 
   /** Sessions for one agent kind. */
