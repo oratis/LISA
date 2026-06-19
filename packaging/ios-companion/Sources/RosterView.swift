@@ -106,9 +106,10 @@ struct RosterView: View {
     @EnvironmentObject var app: AppState
     @StateObject private var model = RosterModel()
     @Environment(\.scenePhase) private var scenePhase
+    @State private var path: [AgentSession] = []
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             Group {
                 if !app.config.isConfigured {
                     ContentUnavailableView("Not paired", systemImage: "wifi.slash",
@@ -137,6 +138,7 @@ struct RosterView: View {
             .refreshable { await model.load(app.client) }
             .task(id: app.config) {
                 await model.load(app.client)
+                resolvePending()
                 model.startStream(app.client)
             }
             .onChange(of: scenePhase) { _, phase in
@@ -145,8 +147,21 @@ struct RosterView: View {
                 guard phase == .active, app.config.isConfigured else { return }
                 Task { await model.load(app.client); model.startStream(app.client) }
             }
+            // Deep-link (push Click / widget): open the requested session once it's
+            // in the roster — handle either arrival order (link before/after load).
+            .onChange(of: app.pendingSession) { _, _ in resolvePending() }
+            .onChange(of: model.sessions) { _, _ in resolvePending() }
             .onDisappear { model.stopStream() }
         }
+    }
+
+    /// If a deep-link is pending and its session is in the roster, push it once.
+    private func resolvePending() {
+        guard let p = app.pendingSession,
+              let match = model.sessions.first(where: { $0.agent == p.agent && $0.sessionId == p.id })
+        else { return }
+        path = [match]
+        app.pendingSession = nil
     }
 }
 
