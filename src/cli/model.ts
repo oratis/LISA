@@ -3,10 +3,25 @@
  * Thin CLI over src/model/local.ts; `use` writes config.env via env.ts.
  */
 import { OllamaBackend, localEndpoint, parseLocalRef } from "../model/local.js";
+import {
+  detectPlan,
+  detectPlans,
+  parsePlanRef,
+  selectedPlan,
+  type PlanStatus,
+} from "../model/plans.js";
 import { saveConfigEnv } from "../env.js";
 
 function gb(bytes?: number): string {
   return bytes ? `  (${(bytes / 1e9).toFixed(1)} GB)` : "";
+}
+
+/** One row in `lisa model list`'s coding-plans section. */
+function planLine(p: PlanStatus, selected: boolean): string {
+  const mark = !p.available ? "✗" : p.loggedIn === true ? "✓" : p.loggedIn === false ? "✗" : "?";
+  const exp = p.experimental ? " (experimental)" : "";
+  const star = selected ? "  ★ selected" : "";
+  return `${mark} ${p.label.padEnd(22)} plan://${p.id.padEnd(8)} — ${p.detail}${exp}${star}`;
 }
 
 export async function runModelCommand(subargs: string[]): Promise<number> {
@@ -37,6 +52,13 @@ export async function runModelCommand(subargs: string[]): Promise<number> {
     console.log(
       `\nconfigured: ${base ? `${base}${model ? ` · model=${model}` : ""}` : "(cloud provider — no local endpoint set)"}`,
     );
+
+    // Coding plans — delegate coding work to a subscription CLI (detection only;
+    // delegation wiring is a later phase, see docs/CODING_PLANS.md).
+    const sel = selectedPlan();
+    console.log("\ncoding plans (run coding work on a subscription, not an API key):");
+    for (const p of detectPlans()) console.log("  " + planLine(p, sel === p.id));
+    console.log("  switch with:  lisa model use plan://<claude|codex|copilot>");
     return 0;
   }
 
@@ -60,9 +82,30 @@ export async function runModelCommand(subargs: string[]): Promise<number> {
 
   if (sub === "use") {
     const ref = subargs[1];
+
+    // `plan://<id>` selects a coding-plan delegation target. This does NOT touch
+    // LISA_MODEL — her own loop keeps its provider; the plan is only the default
+    // target for delegated coding work (docs/CODING_PLANS.md).
+    const planId = ref ? parsePlanRef(ref) : null;
+    if (planId) {
+      await saveConfigEnv({ LISA_CODING_PLAN: planId });
+      const status = detectPlan(planId);
+      console.log(`✓ coding-plan target → ${status.label} (plan://${planId}).`);
+      if (!status.available) console.log(`⚠ ${status.cli} isn't installed yet — ${status.detail}.`);
+      else if (status.loggedIn === false) console.log(`⚠ ${status.detail}.`);
+      console.log(
+        "  Detection + selection only in this build — delegation runs on the existing\n" +
+          "  CLI bridge in a later phase (docs/CODING_PLANS.md). Your own model is unchanged.",
+      );
+      return 0;
+    }
+
     const parsed = ref ? parseLocalRef(ref) : null;
     if (!parsed) {
-      console.error("usage: lisa model use local://<model>   (e.g. local://qwen2.5-coder:32b)");
+      console.error(
+        "usage: lisa model use local://<model>   (e.g. local://qwen2.5-coder:32b)\n" +
+          "   or: lisa model use plan://<claude|codex|copilot>",
+      );
       return 2;
     }
     const ep = localEndpoint(parsed.backend);
@@ -84,6 +127,8 @@ export async function runModelCommand(subargs: string[]): Promise<number> {
     return 0;
   }
 
-  console.error("usage: lisa model <list | install <model> | use local://<model> | health>");
+  console.error(
+    "usage: lisa model <list | install <model> | use local://<model> | use plan://<claude|codex|copilot> | health>",
+  );
   return 2;
 }

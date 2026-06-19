@@ -14,7 +14,7 @@
 
 ### LISA = pi-mono + OpenClaw + hermes + claude-code + codex + *它们都没有的东西*
 
-站在五个最好的开源 agent 肩膀上，LISA 实现了**它们全部能力的并集** — 流式 agent loop、三 provider 原生支持（Anthropic + OpenAI + Gemini，外加 20+ OpenAI-compatible 提供商）、MCP client、插件、hooks、沙箱 bash、子 agent、会话恢复、上下文压缩、语音输入输出、六个 IM 通道（Telegram / Discord / Slack / 飞书 / iMessage / Webhook）、apply-patch、审批模式、跨会话 TF-IDF 全文搜、像素艺术 web UI。2.2 万行 TypeScript，MIT。
+站在五个最好的开源 agent 肩膀上，LISA 实现了**它们全部能力的并集** — 流式 agent loop、三 provider 原生支持（Anthropic + OpenAI + Gemini，外加 20+ OpenAI-compatible 提供商）、MCP client、插件、hooks、沙箱 bash、子 agent、会话恢复、上下文压缩、语音输入输出、六个 IM 通道（Telegram / Discord / Slack / 飞书 / iMessage / Webhook）、apply-patch、审批模式、跨会话 TF-IDF 全文搜、像素艺术 web UI —— 外加一个**编排器**，观察*并操纵*你机器上其它的 coding agent（Claude Code、Codex、Aider……），还能把 coding 工作跑在订阅制 **coding plan** 上而不是计量 key。2.8 万行 TypeScript，MIT。
 
 它们都没有的：
 
@@ -161,7 +161,7 @@ lisa
 OpenAI 模型 (`gpt-*`) 还需要 `OPENAI_API_KEY`。
 重新生成像素头像还需要 `SEEDREAM_API_KEY`（[火山引擎 ARK](https://www.volcengine.com/product/ark)）。
 
-**16+ 个其他 LLM** 开箱即用 —— Lisa 按模型名前缀（大小写不敏感）自动路由：
+**20+ 个其他 LLM** 开箱即用 —— Lisa 按模型名前缀（大小写不敏感）自动路由：
 
 - **国际**：Google Gemini · DeepSeek · Mistral · Perplexity Sonar · xAI Grok
 - **国内**：火山豆包 · 阿里 Qwen · 月之暗面 Kimi · 智谱 GLM · 阶跃 Step · 零一万物 Yi · 百川 Baichuan · MiniMax · 腾讯混元 Hunyuan
@@ -169,6 +169,8 @@ OpenAI 模型 (`gpt-*`) 还需要 `OPENAI_API_KEY`。
 - **聚合**：Groq · Together AI · Fireworks AI · OpenRouter · Azure OpenAI · one-api
 
 完整配方见 [docs/PROVIDERS.md](docs/PROVIDERS.md)。
+
+**没有计量 key？用 coding plan。** 如果你已经在付 **Claude Pro/Max**、**ChatGPT 套餐**（含 Codex）或 **GitHub Copilot**，LISA 能把 coding 工作跑在这份订阅上 —— 不是去抽取你的 token（Anthropic 的条款禁止这么做，并已对 OpenClaw 实施了法律要求），而是**操纵厂商自己的 CLI**（它本来就持有那份授权）。见 [Coding plans](#coding-plans--用订阅代替-api-key) 和 [docs/CODING_PLANS.md](docs/CODING_PLANS.md)。
 
 ## 她特殊在哪
 
@@ -187,10 +189,26 @@ OpenAI 模型 (`gpt-*`) 还需要 `OPENAI_API_KEY`。
 - **Web GUI** — `lisa serve --web` → http://localhost:5757 — 像素艺术聊天界面，头像跟着她的心情实时切。默认**只绑 127.0.0.1**；要从手机访问，先设 `LISA_WEB_TOKEN` 并加 `--host 0.0.0.0`，然后每台设备第一次打开 `http://<主机>:5757/?token=<值>`。
 - **IM 通道** — `lisa serve --channels telegram,discord,slack,feishu,imessage,webhook` — 6 个内置 adapter，下面有详情
 - **心跳** — `lisa heartbeat run`（手动）或 `lisa heartbeat install`（macOS launchd / Linux cron）
+- **开机自启** — `lisa autostart install` 让 `lisa serve --web` 从登录起就常驻（macOS launchd；Linux 打印 `systemd --user` unit），这样 app、灵动岛、通道随时在线。`lisa autostart status` / `uninstall` 查看 / 移除。
+- **Mac 菜单栏** — Lisa.app 常驻菜单栏，带心情字形 + 实时 agent 状态、一个带 changelog + 更新发现的 About 窗口，以及 ⌘, 偏好面板（灵动岛开关、screen-advisor 间隔、backend 控制）。
 
-## 看着你其它的 agent（编排器）
+## 看着——并操纵——你其它的 agent（编排器）
 
-LISA 还能观察你机器上跑着的 coding agent，把你会错过的事告诉你——哪个会话卡在同一个报错上、哪两个要在同一个仓库里打架、哪个早就跑完在干等。诚实地说明范围：**五个 observer（Claude Code、Codex、OpenCode、Aider、GitHub PR）现在都能产出结构化活动——工具、改动的文件、最近命令、错误——由每个集成的 `visibility` 档位门控；精细度取决于各 agent 在磁盘上记录了什么**（Claude Code 最丰富；Aider 的 markdown 日志只给文件 + 轮次、没有工具流；每个 adapter 都有隐私测试断言提示词/回复/文件内容绝不泄漏）。她可以 `dispatch_agent` 无头派发（拒绝把新 agent 丢进已被占用的目录）、在并行 worktree 里对比多个 agent 做同一任务，并在灵动岛上给出顾问建议——每条带一个一键动作（预填到聊天框，**绝不自动执行**）和一个 ✕（教她少唠叨这一类）。
+LISA 也是你机器上*其它* coding agent 的一个控制面。三层，对它们的介入逐层加深：
+
+**1. 观察。** 她看着已经在跑的 agent，把你会错过的事告诉你——哪个会话卡在同一个报错上、哪两个要在同一个仓库里打架、哪个早就跑完在干等。诚实地说明范围：**五个 observer（Claude Code、Codex、OpenCode、Aider、GitHub PR）都能产出结构化活动——工具、改动的文件、最近命令、错误——由每个集成的 `visibility` 档位门控；精细度取决于各 agent 在磁盘上记录了什么**（Claude Code 最丰富；Aider 的 markdown 日志只给文件 + 轮次、没有工具流；每个 adapter 都有隐私测试断言提示词/回复/文件内容绝不泄漏）。`lisa agents` 打印一次性快照，灵动岛实时显示。她可以 `dispatch_agent` 无头派发（拒绝把新 agent 丢进已被占用的目录）、`compare_agents` 在并行 worktree 里对比多个 agent 做同一任务，并给出**顾问卡片**——每条带一个一键动作（预填到聊天框，**绝不自动执行**）和一个 ✕（教她少唠叨这一类）。
+
+**2. 控制她自己的 agent。** **managed agent** 跑的是 LISA *自己*的 agent loop，在一个她完全驱动的子上下文里：派发任务、逐个审批/拒绝改写类工具、追加追问、取消——从 GUI 的 agents 卡片或 `POST /api/agents/managed/<id>/{send,approve,cancel}`。它们是她的，所以用的模型和 provider 也是她的。
+
+**3. 操纵真实 CLI（实验性，flag 门控）。** 开 `LISA_PTY_AGENTS=1` 后，**PTY agent** 在伪终端里拉起真正的 `claude` / `codex` 二进制——你拿到那个 CLI 的完整配置（它的 skills、MCP server、模型），同时 LISA 掌管 stdin/stdout：她把任务打进去，你可以回答它的提问，她读流得到粗粒度实时状态 + 可查看的输出尾巴（▤）。她甚至能**接管你自己开的、已空闲的 `claude` 会话**——`claude --resume <id>`（带 liveness 守卫，避免两个写入者把同一份 transcript 写花；*正在跑*的会话必须先关掉）。捕获的终端只按需给**你**看，绝不并入仅含元数据的 roster。见 [docs/PTY_AGENTS.md](docs/PTY_AGENTS.md)。
+
+### Coding plans — 用订阅代替 API key
+
+LISA 自己的"大脑"跑在计量 key 或本地模型上（见上）。但繁重的 *coding* 那部分——恰恰最吃 token——可以跑在**你已经在付的订阅**上：Claude Pro/Max、ChatGPT 套餐（Codex）或 GitHub Copilot。
+
+机制是刻意设计的：**LISA 不抽取、不重放你的订阅 token。** Anthropic 的条款把订阅 OAuth 限定为"Claude Code 的普通个人使用"，而且他们真的执行了——一纸法律要求让 **OpenClaw**（LISA 自己的 reference agent 之一）删掉了这个能力。LISA 改为**操纵厂商自己的 CLI**，由它持有那份订阅授权：上面的第 3 层（PTY agent / `claude --resume`）正是这条路——当你驱动一个用你的套餐登录过的 `claude`/`codex` 时，活儿就记在你的套餐上，而不是 API key 上。
+
+**现在就能用：** `lisa model list` 探测你已安装的套餐 CLI（Claude Code / Codex / Copilot）及登录状态,`lisa model use plan://claude` 选一个作为委托目标 —— 只做探测 + 选择,不读任何 token。剩下的设计（无头 `claude -p` / `codex exec` 委托、web/灵动岛选择器、余量展示）—— 以及为什么否决"进程内复用 token"—— 写在 **[docs/CODING_PLANS.md](docs/CODING_PLANS.md)**。
 
 ## 子命令
 
@@ -199,12 +217,25 @@ lisa                         交互式 REPL
 lisa "一句话"                 一次性
 lisa birth                   触发 birth ritual（首次启动会自动跑）
 lisa soul                    打印她当前灵魂状态
-lisa resume <id>             恢复某次会话
+lisa resume <id> [prompt]    按 id 恢复某次会话
 lisa sessions                列最近会话
 lisa search "<关键词>"       TF-IDF 全文搜过去所有对话
-lisa heartbeat run [task]    跑一次定时任务（含她自己的心愿）
+lisa status                  一次性快照：身份、心情、最近 commit
+lisa doctor                  健康检查（配置、网络、git、provider）
+lisa monitor                 TUI 实时面板（心情 + soul commit + 事件）
+lisa agents                  跨所有 observer 的 agent 会话快照
+lisa autonomy [days]         自驱运行摘要（空闲 / 心跳 / examen / desire / reflect）
+lisa model <list|install|use|health>
+                             本地模型（Ollama / LM Studio / llama.cpp）+
+                             coding-plan 探测/选择（`use plan://<id>`）
+lisa consent <list|grant|revoke|revoke-all> [signal]
+                             敏感环境信号的授权（屏幕 / 语音 / …；默认全关）
+lisa sense [list]            最近的环境感知事件 + 已授权信号
+lisa heartbeat run [name]    跑一次定时任务（含她自己的心愿）
 lisa heartbeat install       注册 macOS launchd 自动调度
 lisa heartbeat uninstall     卸载
+lisa autostart <install|uninstall|status>
+                             让 `serve --web` 从登录起常驻（launchd / systemd）
 lisa serve --web [--port N]  像素 Web UI（默认 5757）
 lisa serve --channels <list> 启 IM 通道（逗号分隔，或 "all"）
 lisa channels                列出可用通道
@@ -215,7 +246,7 @@ lisa wishlist                打印 Lisa 自己对工具集/架构的反馈
 lisa --help                  完整帮助
 ```
 
-常用 flag：`--model <id>` `--provider anthropic|openai` `--think` `--compact` `--approval auto|ask|ask-mutating` `--no-mcp` `--no-plugins` `--voice` `--no-reflect` `--idle <分钟>` `--no-idle`
+常用 flag：`--model <id>` `--provider anthropic|openai` `--think` `--compact` `--approval auto|ask|ask-mutating` `--no-mcp` `--no-plugins` `--voice` `--no-reflect` `--host <addr>`（`serve --web` 的绑定地址；非 loopback 需要 `LISA_WEB_TOKEN`） `--idle <分钟>` `--no-idle`
 
 ## 灵魂系统（Soul）
 
@@ -378,6 +409,12 @@ CLI flag: `--idle 60`（分钟，默认 60）/ `--no-idle` 禁用。
 | `bash` | shell（可选 macOS Seatbelt 沙箱：`LISA_SANDBOX=1`） |
 | `grep` `ls` | 搜 + 列 |
 | `task` | 派生子 agent 跑独立 context window 的任务 |
+| `dispatch_agent` `signal_agent` `dispatch_status` | 启动 / 停止 / 追踪她跑的 agent（managed + PTY）；拒绝别的 agent 占着的目录 |
+| `list_agents` `inspect_agent` `compare_agents` `agent_recap` | 观察其它 coding agent；深挖某个会话；在 worktree 里让多个 agent 赛同一任务；"你不在的时候"回顾 |
+| `advise_now` `scheduled_dispatch` | 按需弹顾问卡片；通过心跳跑周期性派发任务 |
+| `pr_status` `run_checks` `review_diff` `repo_digest` `github` `github_link` `npm_info` | 仓库 / GitHub / CI 辅助（读安全，写显式） |
+| `web_search` `web_fetch` | 读网页 |
+| `mcp` | 管理 MCP server 连接（列出 / 添加 / 删除） |
 | `skill_manage` | `~/.lisa/skills/` 增删改查 |
 | `memory` `memory_search` | 记忆 CRUD + 跨会话 TF-IDF 搜 |
 | `set_mood` | 切换 114 张头像里的某一张 |
@@ -415,6 +452,8 @@ LISA 是吃完五个开源 agent（fork 在 `reference/`）合成出来的：
 | 语音输入输出 | – | ✅ | – | – | – | ✅ |
 | 心跳 | – | ✅ | – | – | – | ✅（自带 launchd 安装器） |
 | 多通道 IM | ✅ pi-mom | ✅ 20+ | ✅ | – | – | ✅ Telegram + Discord + Slack + Feishu + Webhook + iMessage |
+| **编排其它 agent（观察 + 操纵它们的 CLI）** | – | – | – | – | – | **✅ ★ LISA 独有** |
+| **Coding-plan 委托（订阅，而非只有 API key）** | – | – | – | – | – | **✅ ★ LISA 独有** |
 | **持久身份 / 灵魂** | – | – | partial | – | – | **✅ ★ LISA 独有** |
 | **Birth ritual（独特种子）** | – | – | – | – | – | **✅ ★ LISA 独有** |
 | **私人日记** | – | – | – | – | – | **✅ ★ LISA 独有** |
@@ -431,15 +470,39 @@ LISA 是吃完五个开源 agent（fork 在 `reference/`）合成出来的：
 ANTHROPIC_API_KEY=sk-ant-...
 OPENAI_API_KEY=sk-...                 # 可选 — 用 gpt-* 模型时
 SEEDREAM_API_KEY=...                  # 可选 — 重生成头像用
+
+# Provider / 模型路由
+LISA_PROVIDER=openai                  # 强制 provider
+LISA_MODEL=claude-sonnet-4-6          # 默认模型（也由 `lisa model use` 设置）
+LISA_MODEL_FALLBACK=gpt-4o,...        # 主模型失败时按序尝试的模型列表
+LISA_BASE_URL=http://localhost:11434/v1   # OpenAI 兼容端点（Ollama、vLLM、网关）
+LISA_API_KEY=...                      # LISA_BASE_URL 用的 key（回退到 OPENAI_API_KEY）
+ANTHROPIC_AUTH_TOKEN=...              # Anthropic 兼容网关/代理的 Bearer token
+                                      # （区别于 ANTHROPIC_API_KEY 的 x-api-key）；
+                                      # 不是订阅 token —— 见 docs/CODING_PLANS.md
+
+# Coding-plan 委托（操纵真实 CLI —— 见 docs/CODING_PLANS.md）
+LISA_PTY_AGENTS=1                     # 启用操纵真实 claude/codex CLI（实验性）
+LISA_PTY_CLAUDE_CMD=claude            # 覆盖 `claude` 二进制路径
+LISA_PTY_CODEX_CMD=codex             # 覆盖 `codex` 二进制路径
+
+# 沙箱
 LISA_SANDBOX=1                        # 可选 — bash 走 macOS Seatbelt
 LISA_SANDBOX_NETWORK=0                # 沙箱内禁网
-LISA_PROVIDER=openai                  # 强制 provider
+
+# Web
 LISA_WEB_TOKEN=...                    # serve --web 绑定到 127.0.0.1 之外
                                       # （--host 0.0.0.0）时必须设置；远程设备
                                       # 首次用 ?token= 认证
+
+# 自主（心跳 / 空闲 / 梦境）
 LISA_AUTONOMOUS_FULL_TOOLS=1          # 选择退出：让自驱心跳/空闲运行重新拿
                                       # 全部工具（含 bash）
+LISA_IDLE_BUDGET_TOKENS=200000        # 单次空闲运行的 token 上限（0 = 禁用空闲）
+LISA_IDLE_COMMITMENT_AWARE=1          # 选择加入：空闲时先看你即将到来的约定，再做个人反思
 ```
+
+环境信号（屏幕 / 语音 / 剪贴板 / 选区）**默认全关**，由 `lisa consent grant <signal>` 门控 —— 在你授权前绝不捕获。见 `lisa consent list`。
 
 ### `~/.lisa/mcp.json`
 
@@ -515,9 +578,9 @@ src/
 │   ├── store.ts            CRUD + 篡改检测
 │   ├── tools.ts            soul_patch / soul_journal / soul_feel / soul_read
 │   ├── paths.ts types.ts
-├── idle/                   ★ 空闲模式（IdleWatcher 单例 + autonomous-time runner）
-├── providers/              Anthropic + OpenAI + Gemini 抽象
-├── tools/                  read/write/edit/apply_patch/bash/grep/ls/task/set_mood + registry
+├── providers/              Anthropic + OpenAI + Gemini 抽象 + 模型名路由（registry.ts）
+├── model/                  本地模型生命周期（Ollama / LM Studio / llama.cpp），供 `lisa model`
+├── tools/                  文件/bash/grep/task/set_mood + 编排 + 仓库/github + 网页 + registry
 ├── skills/                 manager + frontmatter + skill_manage
 ├── memory/                 store + memory tool + TF-IDF 索引 + memory_search
 ├── sessions/               JSONL store + list + resume + 分页读
@@ -526,6 +589,17 @@ src/
 ├── plugins/                claude-code 风格插件加载器
 ├── hooks/                  PreToolUse / PostToolUse / SessionStart / 等
 ├── heartbeat/              定时任务 + launchd 安装器
+├── autostart/              开机自启安装器（launchd / systemd），供 `lisa autostart`
+├── idle/                   空闲自主反思（梦境 Reve）
+├── autonomy/               run ledger —— 自驱运行的可观察日志（`lisa autonomy`）
+├── agents/                 managed agent（LISA 自己的 loop）+ PTY agent（操纵真实 claude/codex）
+├── integrations/           observer：claude-code · codex · opencode · aider · github-pr · pty · managed · …
+├── orchestrator/           跨 agent 日志 + "你不在的时候"回顾合成
+├── advisor/                主动顾问卡片（卡住 / 冲突 / 就绪 / 空闲）+ 关闭学习
+├── consent/                环境信号的统一授权门控（默认全关）
+├── sense/                  环境信号源（前台 app / 窗口标题），授权门控
+├── vision/                 用户发起的截图捕获（macOS）
+├── screen_advisor/         可选的、周期性从截图给出"下一步 coding"建议
 ├── voice/                  speak（macOS say）+ transcribe（Whisper）
 ├── channels/               channel 抽象 + 6 个 adapter（含飞书）+ router
 └── web/                    像素艺术 HTTP + SSE web UI

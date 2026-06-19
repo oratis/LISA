@@ -59,6 +59,8 @@ INSPECTION
                                Defaults to the last 7 days.
   lisa model <sub>             Local model lifecycle (Ollama): list, install
                                <model>, use local://<model> to switch, health.
+                               Also detects coding plans (Claude/Codex/Copilot):
+                               use plan://<id> to run coding work on a subscription.
   lisa consent <sub>           Consent for sensitive ambient signals (default
                                all off): list, grant <signal>, revoke <signal>,
                                revoke-all.
