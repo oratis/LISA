@@ -13,6 +13,7 @@ const {
   defaultPushPrefs,
   normalizePushPrefs,
   agentPushEvents,
+  agentDeepLink,
   sendNtfy,
   PushBridge,
   registerPush,
@@ -68,6 +69,15 @@ describe("agentPushEvents (pure trigger)", () => {
   test("first sight already done (prev undefined) → fires", () => {
     assert.equal(agentPushEvents(undefined, sess({ state: "done" }))[0]!.pref, "done");
   });
+  test("events carry a lisapocket:// deep-link to the session", () => {
+    const [e] = agentPushEvents(sess({ state: "working" }), sess({ state: "done", agent: "codex", sessionId: "s9" }));
+    assert.equal(e!.click, agentDeepLink("codex", "s9"));
+    const u = new URL(e!.click!);
+    assert.equal(u.protocol, "lisapocket:");
+    assert.equal(u.host, "session");
+    assert.equal(u.searchParams.get("agent"), "codex");
+    assert.equal(u.searchParams.get("id"), "s9");
+  });
 });
 
 describe("sendNtfy", () => {
@@ -87,6 +97,20 @@ describe("sendNtfy", () => {
     assert.equal(captured!.init.body, "B");
     assert.equal(captured!.init.headers.Title, "T");
     assert.equal(captured!.init.headers.Priority, "high");
+    assert.equal(captured!.init.headers.Click, undefined); // omitted when no click
+  });
+  test("sets the Click header when the event has a deep-link", async () => {
+    let headers: Record<string, string> = {};
+    await sendNtfy(
+      "https://ntfy.sh",
+      "t",
+      { title: "T", body: "B", priority: "default", click: "lisapocket://session?agent=codex&id=s9" },
+      async (_url, init) => {
+        headers = init.headers;
+        return { ok: true };
+      },
+    );
+    assert.equal(headers.Click, "lisapocket://session?agent=codex&id=s9");
   });
   test("network throw → false", async () => {
     const ok = await sendNtfy("https://x", "t", { title: "a", body: "b", priority: "default" }, async () => {

@@ -66,6 +66,8 @@ INSPECTION
                                revoke-all.
   lisa sense [list]            Recent ambient sense events + granted signals.
   lisa agents                  Snapshot of agent sessions across all observers.
+  lisa pair [--host H]         Show a QR to pair a phone (Lisa Pocket) — mints a
+                               per-device token via a running serve (localhost).
 
 LIFECYCLE
   lisa birth                   Run the birth ritual (auto-runs on first launch).
@@ -172,7 +174,8 @@ interface ParsedArgs {
     | "model"
     | "consent"
     | "sense"
-    | "agents";
+    | "agents"
+    | "pair";
   subargs: string[];
   serveWeb: boolean;
   serveImessage: boolean;
@@ -294,7 +297,8 @@ function parseArgs(argv: string[]): ParsedArgs {
       first === "model" ||
       first === "consent" ||
       first === "sense" ||
-      first === "agents"
+      first === "agents" ||
+      first === "pair"
     ) {
       out.subcommand = first;
       out.subargs = positional.slice(1);
@@ -488,6 +492,11 @@ async function main(): Promise<void> {
   if (args.subcommand === "agents") {
     const { runAgentsCommand } = await import("./cli/agents.js");
     process.exit(await runAgentsCommand(args.subargs));
+  }
+
+  if (args.subcommand === "pair") {
+    const { runPairCommand } = await import("./cli/pair.js");
+    process.exit(await runPairCommand(args.subargs));
   }
 
   if (args.subcommand === "sessions") {
