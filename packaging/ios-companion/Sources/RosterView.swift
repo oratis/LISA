@@ -118,6 +118,13 @@ struct RosterView: View {
             }
             .navigationTitle("Dispatch")
             .navigationDestination(for: AgentSession.self) { SessionDetailView(session: $0) }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink { DispatchLedgerView() } label: {
+                        Image(systemName: "list.bullet.rectangle")
+                    }
+                }
+            }
             .refreshable { await model.load(app.client) }
             .task(id: app.config) {
                 await model.load(app.client)

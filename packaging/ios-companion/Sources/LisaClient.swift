@@ -69,6 +69,10 @@ final class LisaClient {
     // ── read ──
     func sessions() async throws -> [AgentSession] { try await decode("/api/agents/sessions", as: SessionsResponse.self).sessions }
     func dispatchList() async throws -> [DispatchView] { try await decode("/api/dispatch/list", as: DispatchListResponse.self).dispatches }
+    func dispatchStatus(id: String) async throws -> DispatchStatus {
+        let enc = id.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? id
+        return try await decode("/api/dispatch/status?id=\(enc)", as: DispatchStatus.self)
+    }
     func islandPing() async throws -> IslandPing { try await decode("/api/island/ping", as: IslandPing.self) }
     func controlPolicy() async throws -> ControlPolicy { try await decode("/api/control/policy", as: ControlPolicy.self) }
 

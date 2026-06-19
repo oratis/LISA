@@ -59,6 +59,17 @@ struct DispatchListResponse: Codable {
     var dispatches: [DispatchView]
 }
 
+/// /api/dispatch/status?id= — a DispatchView plus a captured log tail.
+struct DispatchStatus: Codable {
+    var ok: Bool
+    var id: String?
+    var agent: String?
+    var task: String?
+    var startedAt: String?
+    var alive: Bool?
+    var tail: String?
+}
+
 struct IslandPing: Codable {
     var online: Bool
     var mood: String
