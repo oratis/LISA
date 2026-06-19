@@ -17,9 +17,14 @@
 > 对**用户自己起的** CLI / IDE 客户端会话，按 §4 分层接管。对话、心情、Reve 回顾、Sense 同意一并覆盖。
 > 后端**控制面已建好**，iOS 侧主要工作是：**配对、推送、控制 UI、（可选）远程通道**，外加 §4 的"接管非 LISA 会话"后端补强。
 >
-> **实现进展（2026-06-18，本分支）**：已并入 PR #111（resume-adopt 空闲会话）并新增三个增量，过 typecheck/build/728 测试——
-> ①`GET /api/dispatch/list`（结构化 ledger，§6.2）；②`GET /api/agents/pty/<id>/stream`（PTY 实时输出 SSE）；
-> ③`lisa agents pty <agent> <task>`（§4.1 **接管即启**，`src/cli/agents-pty.ts`）+ `--resume <id>`（接通 #111 的 §4.2 **resume-adopt**）。详见 [PTY_AGENTS.md](./PTY_AGENTS.md)。
+> **实现进展（2026-06-18/19）**：**iOS 面向的后端已基本就绪**（一串 stacked PR，均过 typecheck/build/全量测试）：
+> - **#113**：`GET /api/dispatch/list`（结构化 ledger）+ `GET /api/agents/pty/<id>/stream`（PTY 实时输出 SSE）+ `lisa agents pty <agent> <task>`（§4.1 接管即启）+ `--resume <id>`（接通 #111 的 §4.2 resume-adopt）。
+> - **#114**：**远程控制 gating**（§7.2）—— `src/control/policy.ts` + `/api/control/policy`；远程默认可控 LISA 自有 agent，**不可**接管外部会话（`remoteAdoptExternal` 默认关）。
+> - **#115**：roster **去重**（resume-adopt 的观察态孪生，§8）+ `GET /api/dispatch/status`（受 gating 的日志尾）。
+> - **#117**：**每设备配对 token**（§5.3）—— `src/web/devices.ts` + `/api/pair/start`、`/api/devices[/revoke]`；仅存哈希、可单独吊销。
+> - **#119**：**运维推送**（§5.5）—— `src/web/push.ts`（ntfy 已可用、APNs 留桩）+ `PushBridge` + `/api/push/{register,unregister,prefs,list}`。
+>
+> **仍缺 / 受限**：iOS 原生 app（SwiftUI/ActivityKit/WidgetKit/APNs，需 Xcode，**本仓库内无法编译验证**）；`lisa agents pty` 裸键透传（需 node-pty，本机 Node 26 跑不了，见下）；APNs 真机投递（需 Apple push key）。详见各节与 [PTY_AGENTS.md](./PTY_AGENTS.md)。
 
 ---
 
@@ -429,14 +434,13 @@ SwiftUI app：roster（`/api/agents/sessions` + SSE 增量，**按 `controllable
 QR 配对 + Keychain；新增 `/api/pair/start`、`/api/devices`、`/api/dispatch/list`。取消 LISA 自有 agent（`/api/agent/signal` cancel，二次确认）。
 **验收**：扫码配对；roster 实时反映 Mac 上 `claude -p`/`codex exec` 的状态跃迁，可控/只读区分正确。
 
-### M2 — 系统级一瞥 + 推送（差异化核心）
-ActivityKit 实时活动 + 灵动岛；WidgetKit 小/中 Widget。APNs：`/api/push/register` + Mac 端 push-bridge + 触发矩阵（§5.5）+ E2E payload。
-**验收**：锁屏看到钉住 agent 进度；`done/error/permission` 在 app 关闭时收到推送；点推送深链到卡片。
+### M2 — 系统级一瞥 + 推送（差异化核心）·后端 ✅（#119），iOS 表面待建
+**推送后端已落地**（#119）：`POST /api/push/register` + `PushBridge` + 触发矩阵（§5.5），**ntfy 现可端到端工作**（无需 Apple）。**仍缺**：ActivityKit 实时活动 + 灵动岛、WidgetKit Widget、APNs 真机投递（需 Apple push key）—— 这些是 iOS 原生层，需 Xcode。
+**验收**：（后端）`done/error/permission` 跃迁触发推送、可经 ntfy 收到；（iOS）锁屏看到钉住 agent 进度、点推送深链 —— 待 app。
 
-### M3 — 控制 LISA 自己的 agent + 接管即启 + 远程 gating
-iOS 控制 UI（后端已就绪）：delegate（kind picker: managed / claude / codex）、`send` 跟进、**approve/deny**（managed）、cancel、PTY `output` 查看。
-§4.1 **接管即启**：`lisa claude`/`lisa codex` 子命令 + shell 集成，把用户终端会话变成 `controllable:"pty"`。`/api/control/policy` 远程控制开关。
-**验收**：手机上 delegate 一个 managed agent，逐步 approve/deny 跑完；`lisa claude` 起的会话在手机上可 send/取消/看输出；远程控制默认禁、开启后才生效。
+### M3 — 控制 LISA 自己的 agent + 接管即启 + 远程 gating ·后端/CLI ✅（#114），iOS UI 待建
+**远程 gating 已落地**（#114，`/api/control/policy`）；**接管即启已落地**（#113，`lisa agents pty`）。**仍缺**：iOS 控制 UI（delegate / approve-deny / send / cancel / output —— 后端就绪，只差 SwiftUI）。
+**验收**：（后端）远程控制默认按策略放行、接管外部会话默认禁——已实测 403；（iOS）手机上 delegate + 逐步 approve/deny —— 待 app。
 
 ### M4 — resume-adopt 空闲会话（用户点名"控制非 LISA 会话"的真正解）✅ 后端/GUI/CLI 已落地（#111 + 本次）
 `src/integrations/claude-code/liveness.ts`（`liveClaudeSessionIds()` 守卫）+ `POST /api/agents/pty/start {resumeSessionId}`（`claude --resume`，活会话 409）+ `resumable` 字段 + GUI 接管按钮 + `lisa agents pty --resume <id>`。**剩**：`remoteAdoptExternal` 远程 gating + iOS 接管 UI。
