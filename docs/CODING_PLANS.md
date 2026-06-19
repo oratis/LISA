@@ -1,14 +1,15 @@
 # Coding plans — running LISA's work on a subscription, not just an API key
 
-**Status: Phases 1–4 shipped; GUI picker + true headroom remain.** `lisa model
+**Status: Phases 1–5a shipped; web plan picker (5b) remains.** `lisa model
 list` detects installed plan CLIs and `lisa model use plan://<id>` selects a
 delegation target; the `run_on_plan` tool delegates a coding task to the selected
 (or named) plan by running the vendor's own CLI headlessly (`claude -p` /
 `codex exec` / `copilot -p`), reusing the same `launchAgent` path as
 `dispatch_agent`; `lisa agents` surfaces the selected plan + detection. No auth
-code, no secrets read — the sanctioned out-of-process delegation. Still open: a
-web/island plan picker and honest rate-limit/headroom surfacing. This doc records
-the mechanism, the constraints that shape it, and the phased plan.
+code, no secrets read — the sanctioned out-of-process delegation. `lisa model
+list` also shows **real usage** (rolling-window token consumption from local
+transcripts). Still open: a web plan picker (5b). This doc records the mechanism,
+the constraints that shape it, and the phased plan.
 
 ## TL;DR
 
@@ -209,13 +210,19 @@ provider/local model for her soul-driven turns); it sets the **default delegatio
 target** for her coding-dispatch tools (`dispatch_agent`, `compare_agents`, the
 PTY start endpoints), so "run this on my plan" becomes one click / one tool call.
 
-### 3. Surfacing usage
+### 3. Surfacing usage (✅ Phase 5a)
 
-Coding plans are rate-limited, not metered, so "usage" means *headroom*, not
-dollars. Cheapest honest signal: surface what the vendor's own CLI reports
-(`/status`, rate-limit lines in output) and LISA's own dispatch count, in the
-existing autonomy ledger ([`src/autonomy/`](../src/autonomy/)) and the agents card.
-No scraping of private billing endpoints.
+Coding plans are rate-limited, not metered, and the per-window limit isn't
+published in token terms — so we do **not** invent a "headroom %". What we *can*
+show truthfully is **consumption**: [`src/model/plan-usage.ts`](../src/model/plan-usage.ts)
+reads Claude Code's local transcripts (`~/.claude/projects/**​/*.jsonl`), each line
+stamped with a `timestamp` + a `message.usage`, and sums gross tokens (input +
+output + cache) over Claude's rolling ~5h limit window and since local midnight.
+`lisa model list` shows it (`… ↳ usage: 1.2M tok in 5h · 4.8M today`). Same `usage`
+field the claude-code observer already reads, so the metadata-not-payload posture
+holds (counts + timestamps only, never content). Codex/Copilot have no comparable
+standard local token log, so usage is `null` for them rather than guessed. No
+scraping of private billing endpoints.
 
 ### 4. Config
 
@@ -247,8 +254,8 @@ master switch `LISA_PTY_AGENTS=1` until the bridge graduates from "spike."
 | **`claude -p` / `codex exec` delegate** | ✅ Phase 2 (reuses `dispatch_agent`) |
 | **Copilot CLI delegate (`copilot -p`)** | ✅ Phase 3 |
 | **Plan surfaced in `lisa agents`** | ✅ Phase 4 |
-| **Web/island plan picker** | ⬜ build |
-| **True headroom / rate-limit surfacing** | ⬜ build (version-fragile) |
+| **Real usage (rolling-window tokens) in `lisa model list`** | ✅ Phase 5a |
+| **Web plan picker** | ⬜ Phase 5b |
 
 ### Suggested phasing
 
@@ -266,10 +273,11 @@ master switch `LISA_PTY_AGENTS=1` until the bridge graduates from "spike."
    `copilot -p "<task>"` (GitHub documents this for automation), so it's a
    first-class delegate alongside claude/codex — no proxy, no token handling. The
    community-proxy route stays out of scope (ToS).
-4. **Surfacing.** ✅ *Plan status shipped* — `lisa agents` shows the selected plan
-   + each plan's glyph (`planSummaryLine`). ⬜ *Still open:* a web/island picker
-   and honest rate-limit/headroom numbers (deliberately not faked — see note in
-   §"Surfacing usage").
+4. **Surfacing.** ✅ *Shipped.* `lisa agents` shows the selected plan + each plan's
+   glyph (`planSummaryLine`); `lisa model list` shows **real rolling-window token
+   usage** (`plan-usage.ts`, Phase 5a) — honest consumption from local transcripts,
+   not a faked %. ⬜ *Still open:* a **web** plan picker (Phase 5b; the island
+   deliberately stays status-only).
 
 ---
 
