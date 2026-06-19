@@ -72,6 +72,12 @@ final class LisaClient {
     func islandPing() async throws -> IslandPing { try await decode("/api/island/ping", as: IslandPing.self) }
     func controlPolicy() async throws -> ControlPolicy { try await decode("/api/control/policy", as: ControlPolicy.self) }
 
+    // ── read: inspection ──
+    func soul() async throws -> SoulResponse { try await decode("/api/soul", as: SoulResponse.self) }
+    func memory() async throws -> MemoryResponse { try await decode("/api/memory", as: MemoryResponse.self) }
+    func skills() async throws -> [NamedItem] { try await decode("/api/skills", as: SkillsResponse.self).skills }
+    func tools() async throws -> [NamedItem] { try await decode("/api/tools", as: ToolsResponse.self).tools }
+
     // ── control: managed agents ──
     func managedStart(task: String) async throws { try await fire("/api/agents/managed/start", json: ["task": task]) }
     func managedSend(_ id: String, _ text: String) async throws { try await fire("/api/agents/managed/\(id)/send", json: ["text": text]) }

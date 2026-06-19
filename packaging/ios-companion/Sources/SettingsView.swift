@@ -79,6 +79,17 @@ struct SettingsView: View {
                     Text("Change these on the Mac (localhost only).").font(.caption).foregroundStyle(.secondary)
                 }
 
+                Section("Inspect Lisa") {
+                    NavigationLink { SoulView() } label: { Label("Soul", systemImage: "sparkles") }
+                    NavigationLink { MemoryView() } label: { Label("Memory", systemImage: "brain") }
+                    NavigationLink { NamedListView(title: "Skills", load: { try await app.client.skills() }) } label: {
+                        Label("Skills", systemImage: "wand.and.stars")
+                    }
+                    NavigationLink { NamedListView(title: "Tools", load: { try await app.client.tools() }) } label: {
+                        Label("Tools", systemImage: "hammer")
+                    }
+                }
+
                 if !status.isEmpty {
                     Section { Text(status).font(.caption).foregroundStyle(.secondary) }
                 }

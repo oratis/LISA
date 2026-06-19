@@ -80,3 +80,52 @@ struct PushPrefs: Codable, Equatable {
     var idle: Bool = true
     var advisor: Bool = false
 }
+
+// ── read-only inspection (/api/soul, /api/memory, /api/skills, /api/tools) ──
+
+struct SoulResponse: Codable {
+    var born: Bool
+    var summary: SoulSummary?
+}
+
+/// Mirrors src/soul/types.ts SoulSummary, but lenient (optional) — a roster
+/// glance should render whatever the server sends, not fail on a missing field.
+struct SoulSummary: Codable {
+    var name: String?
+    var identity: String?
+    var purpose: String?
+    var constitution: String?
+    var emotions: Emotions?
+    var values: [SoulItem]?
+    var opinions: [SoulItem]?
+    var desires: [SoulItem]?
+    var tampered: [String]?
+}
+
+struct Emotions: Codable {
+    var values: [String: Double]?
+}
+
+/// A values/opinions/desires row. Their exact key varies, so accept several and
+/// surface the first present (see ValueEntry/OpinionEntry/DesireEntry server-side).
+struct SoulItem: Codable, Hashable {
+    var name: String?
+    var statement: String?
+    var what: String?
+    var text: String?
+    var summary: String?
+    var label: String { statement ?? what ?? text ?? summary ?? name ?? "—" }
+}
+
+struct MemoryResponse: Codable {
+    var user: String
+    var memory: String
+}
+
+struct NamedItem: Codable, Identifiable, Hashable {
+    var name: String
+    var description: String?
+    var id: String { name }
+}
+struct SkillsResponse: Codable { var skills: [NamedItem] }
+struct ToolsResponse: Codable { var tools: [NamedItem] }
