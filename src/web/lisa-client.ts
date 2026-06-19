@@ -750,6 +750,47 @@ async function showTools() {
   ).join('');
 }
 
+async function showPlans() {
+  openModal('CODING PLANS', '<div class="empty">loading…</div>');
+  let data;
+  try { data = await fetch('/api/plans').then(r => r.json()); }
+  catch (e) { modalBody.innerHTML = '<div class="empty">failed to load plans</div>'; return; }
+  const intro = '<div class="empty">Run coding work on a subscription you already pay for (Claude Pro/Max · ChatGPT/Codex · Copilot) instead of a metered API key. LISA drives the vendor CLI you are logged into, so it bills your plan, not a key. This does not change her own model.</div>';
+  const rows = (data.plans || []).map(function (p) {
+    const star = p.selected ? ' — selected' : '';
+    const usage = p.usage ? '<div class="desc">usage: ' + escapeHtml(p.usage) + '</div>' : '';
+    let btn;
+    if (p.selected) btn = '<button class="plan-select" data-plan="' + escapeHtml(p.id) + '" disabled>selected</button>';
+    else if (p.available) btn = '<button class="plan-select" data-plan="' + escapeHtml(p.id) + '">use this</button>';
+    else btn = '<button class="plan-select" data-plan="' + escapeHtml(p.id) + '" disabled>not installed</button>';
+    return '<div class="item"><div class="name">' + escapeHtml(p.mark + ' ' + p.label + star) + '</div><div class="desc">' + escapeHtml(p.detail) + '</div>' + usage + btn + '</div>';
+  }).join('');
+  const clear = '<div class="item"><button class="plan-select" data-plan="none">clear selection</button></div>';
+  modalBody.innerHTML = intro + rows + clear;
+  document.querySelectorAll('.plan-select').forEach(function (btn) {
+    if (btn.disabled) return;
+    btn.addEventListener('click', function () { selectPlan(btn.dataset.plan); });
+  });
+}
+
+async function selectPlan(plan) {
+  try {
+    const res = await fetch('/api/plans/select', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ plan: plan }),
+    });
+    if (!res.ok) {
+      const t = await res.text().catch(function () { return ''; });
+      modalBody.insertAdjacentHTML('afterbegin', '<div class="empty" style="color:var(--err-color)">select failed: ' + escapeHtml(String(res.status) + (t ? ' — ' + t : '')) + '</div>');
+      return;
+    }
+    showPlans();
+  } catch (e) {
+    modalBody.insertAdjacentHTML('afterbegin', '<div class="empty" style="color:var(--err-color)">select error: ' + escapeHtml(e.message) + '</div>');
+  }
+}
+
 async function showSoul() {
   openModal('★ SOUL', '<div class="empty">loading…</div>');
   const data = await fetch('/api/soul').then(r => r.json());
@@ -799,6 +840,7 @@ document.querySelectorAll('.badge').forEach(b => {
     else if (which === 'skills') showSkills();
     else if (which === 'memory') showMemory();
     else if (which === 'tools') showTools();
+    else if (which === 'plans') showPlans();
   });
 });
 

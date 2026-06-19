@@ -1,6 +1,6 @@
 # Coding plans — running LISA's work on a subscription, not just an API key
 
-**Status: Phases 1–5a shipped; web plan picker (5b) remains.** `lisa model
+**Status: Phases 1–5 shipped (full mechanism).** `lisa model
 list` detects installed plan CLIs and `lisa model use plan://<id>` selects a
 delegation target; the `run_on_plan` tool delegates a coding task to the selected
 (or named) plan by running the vendor's own CLI headlessly (`claude -p` /
@@ -8,8 +8,9 @@ delegation target; the `run_on_plan` tool delegates a coding task to the selecte
 `dispatch_agent`; `lisa agents` surfaces the selected plan + detection. No auth
 code, no secrets read — the sanctioned out-of-process delegation. `lisa model
 list` also shows **real usage** (rolling-window token consumption from local
-transcripts). Still open: a web plan picker (5b). This doc records the mechanism,
-the constraints that shape it, and the phased plan.
+transcripts), and the web UI has a **PLANS** picker (`/api/plans` +
+`/api/plans/select`; the island stays status-only, by request). This doc records
+the mechanism, the constraints that shape it, and the phased plan.
 
 ## TL;DR
 
@@ -255,7 +256,7 @@ master switch `LISA_PTY_AGENTS=1` until the bridge graduates from "spike."
 | **Copilot CLI delegate (`copilot -p`)** | ✅ Phase 3 |
 | **Plan surfaced in `lisa agents`** | ✅ Phase 4 |
 | **Real usage (rolling-window tokens) in `lisa model list`** | ✅ Phase 5a |
-| **Web plan picker** | ⬜ Phase 5b |
+| **Web plan picker (`/api/plans` + PLANS modal)** | ✅ Phase 5b |
 
 ### Suggested phasing
 
@@ -276,8 +277,9 @@ master switch `LISA_PTY_AGENTS=1` until the bridge graduates from "spike."
 4. **Surfacing.** ✅ *Shipped.* `lisa agents` shows the selected plan + each plan's
    glyph (`planSummaryLine`); `lisa model list` shows **real rolling-window token
    usage** (`plan-usage.ts`, Phase 5a) — honest consumption from local transcripts,
-   not a faked %. ⬜ *Still open:* a **web** plan picker (Phase 5b; the island
-   deliberately stays status-only).
+   not a faked %. The **web UI** has a **PLANS** picker (Phase 5b: `GET /api/plans`
+   with status + usage, `POST /api/plans/select`); the island deliberately stays
+   status-only, by request.
 
 ---
 
