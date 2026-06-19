@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import crypto from "node:crypto";
 import type { AgentSession } from "../integrations/types.js";
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "lisa-push-"));
@@ -15,6 +16,10 @@ const {
   agentPushEvents,
   agentDeepLink,
   sendNtfy,
+  apnsConfigFromEnv,
+  buildApnsJwt,
+  buildApnsPayload,
+  sendApns,
   PushBridge,
   registerPush,
   unregisterPush,
@@ -159,5 +164,60 @@ describe("push storage", () => {
     assert.equal(unregisterPush(a.target), true);
     assert.equal(listPush().length, 0);
     assert.equal(unregisterPush("nope"), false);
+  });
+});
+
+describe("APNs", () => {
+  // Throwaway P-256 key so we can sign + verify without a real Apple key.
+  const kp = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const pem = kp.privateKey.export({ type: "pkcs8", format: "pem" }) as string;
+
+  test("apnsConfigFromEnv: null without env; populated + host by env", () => {
+    assert.equal(apnsConfigFromEnv({} as NodeJS.ProcessEnv), null);
+    const cfg = apnsConfigFromEnv({
+      LISA_APNS_KEY_ID: "K1", LISA_APNS_TEAM_ID: "T1", LISA_APNS_KEY: pem, LISA_APNS_ENV: "production",
+    } as unknown as NodeJS.ProcessEnv);
+    assert.equal(cfg?.keyId, "K1");
+    assert.equal(cfg?.topic, "ai.meetlisa.pocket");
+    assert.equal(cfg?.host, "api.push.apple.com");
+  });
+
+  test("buildApnsJwt: ES256 header/claims + a verifiable signature", () => {
+    const jwt = buildApnsJwt({ keyId: "K1", teamId: "T1", key: pem }, 1000);
+    const [h, c, s] = jwt.split(".");
+    assert.equal(JSON.parse(Buffer.from(h!, "base64url").toString()).alg, "ES256");
+    assert.equal(JSON.parse(Buffer.from(h!, "base64url").toString()).kid, "K1");
+    const claims = JSON.parse(Buffer.from(c!, "base64url").toString());
+    assert.equal(claims.iss, "T1");
+    assert.equal(claims.iat, 1000);
+    const verifier = crypto.createVerify("SHA256");
+    verifier.update(`${h}.${c}`);
+    assert.equal(verifier.verify({ key: kp.publicKey, dsaEncoding: "ieee-p1363" }, Buffer.from(s!, "base64url")), true);
+  });
+
+  test("buildApnsPayload: aps.alert + optional deep-link", () => {
+    const p = buildApnsPayload({ title: "T", body: "B", click: "lisapocket://session?id=s" });
+    assert.deepEqual((p.aps as { alert: unknown }).alert, { title: "T", body: "B" });
+    assert.equal(p.link, "lisapocket://session?id=s");
+    assert.equal(buildApnsPayload({ title: "T", body: "B" }).link, undefined);
+  });
+
+  test("sendApns: POSTs /3/device/<token> with apns headers; 200→true, 4xx→false", async () => {
+    const cfg = { keyId: "K1", teamId: "T1", key: pem, topic: "ai.meetlisa.pocket", host: "api.sandbox.push.apple.com" };
+    let captured: { host: string; path: string; headers: Record<string, string>; body: string } | null = null;
+    const ok = await sendApns(
+      cfg, "devtoken", { title: "T", body: "B", priority: "high", click: "lisapocket://x" },
+      async (o) => { captured = o; return { status: 200 }; }, 1000,
+    );
+    assert.equal(ok, true);
+    assert.equal(captured!.path, "/3/device/devtoken");
+    assert.equal(captured!.headers["apns-topic"], "ai.meetlisa.pocket");
+    assert.equal(captured!.headers["apns-push-type"], "alert");
+    assert.equal(captured!.headers["apns-priority"], "10");
+    assert.match(captured!.headers.authorization, /^bearer /);
+
+    const bad = await sendApns(cfg, "devtoken", { title: "T", body: "B", priority: "default" },
+      async () => ({ status: 400 }), 1000);
+    assert.equal(bad, false);
   });
 });
