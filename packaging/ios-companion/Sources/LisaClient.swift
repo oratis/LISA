@@ -34,6 +34,19 @@ final class LisaClient {
         self.session = session
     }
 
+    /// URL for a server asset (e.g. a mood portrait at /assets/lisa/<slug>.png),
+    /// carrying the token as a query param so AsyncImage — which can't set an
+    /// Authorization header — still authenticates against a non-loopback server.
+    func assetURL(_ path: String) -> URL? {
+        guard config.isConfigured, let base = config.baseURL,
+              let abs = URL(string: path, relativeTo: base),
+              var comps = URLComponents(url: abs, resolvingAgainstBaseURL: true) else { return nil }
+        if let token = config.token, !token.isEmpty {
+            comps.queryItems = (comps.queryItems ?? []) + [URLQueryItem(name: "token", value: token)]
+        }
+        return comps.url
+    }
+
     func makeRequest(_ path: String, method: String = "GET", json: [String: Any]? = nil) throws -> URLRequest {
         guard config.isConfigured, let base = config.baseURL, let url = URL(string: path, relativeTo: base) else {
             throw LisaError.notConfigured
@@ -69,8 +82,36 @@ final class LisaClient {
     // ── read ──
     func sessions() async throws -> [AgentSession] { try await decode("/api/agents/sessions", as: SessionsResponse.self).sessions }
     func dispatchList() async throws -> [DispatchView] { try await decode("/api/dispatch/list", as: DispatchListResponse.self).dispatches }
+    func dispatchStatus(id: String) async throws -> DispatchStatus {
+        let enc = id.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? id
+        return try await decode("/api/dispatch/status?id=\(enc)", as: DispatchStatus.self)
+    }
     func islandPing() async throws -> IslandPing { try await decode("/api/island/ping", as: IslandPing.self) }
     func controlPolicy() async throws -> ControlPolicy { try await decode("/api/control/policy", as: ControlPolicy.self) }
+
+    // ── read: inspection ──
+    func soul() async throws -> SoulResponse { try await decode("/api/soul", as: SoulResponse.self) }
+    func memory() async throws -> MemoryResponse { try await decode("/api/memory", as: MemoryResponse.self) }
+    func skills() async throws -> [NamedItem] { try await decode("/api/skills", as: SkillsResponse.self).skills }
+    func tools() async throws -> [NamedItem] { try await decode("/api/tools", as: ToolsResponse.self).tools }
+
+    // ── read: Reve ──
+    func recap(sinceMinutes: Int = 120) async throws -> RecapResponse {
+        try await decode("/api/agents/recap?sinceMinutes=\(sinceMinutes)", as: RecapResponse.self)
+    }
+    func advisorLatest() async throws -> AdvisorResponse { try await decode("/api/advisor/latest", as: AdvisorResponse.self) }
+    func advisorDismiss(id: String, category: String?) async throws {
+        try await fire("/api/advisor/dismiss", json: ["id": id, "category": category ?? ""])
+    }
+
+    // ── Sense: consent (revoke-only from a phone) + events ──
+    func consent() async throws -> [ConsentRow] { try await decode("/api/consent", as: ConsentResponse.self).grants }
+    func consentRevoke(signal: String) async throws { try await fire("/api/consent/revoke", json: ["signal": signal]) }
+    func consentRevokeAll() async throws { try await fire("/api/consent/revoke-all") }
+    func senseRecent() async throws -> [SenseEvent] { try await decode("/api/sense/recent", as: SenseResponse.self).events }
+
+    // ── read: paired devices (revoke is a Mac-only action) ──
+    func devices() async throws -> [DeviceInfo] { try await decode("/api/devices", as: DevicesResponse.self).devices }
 
     // ── control: managed agents ──
     func managedStart(task: String) async throws { try await fire("/api/agents/managed/start", json: ["task": task]) }

@@ -20,15 +20,23 @@ final class RosterModel: ObservableObject {
     func startStream(_ client: LisaClient) {
         streamTask?.cancel()
         streamTask = Task { @MainActor in
-            do {
-                for try await msg in client.eventsStream() {
-                    if (msg.type == "agent_session_update" || msg.type == "claude_session_update"),
-                       let s = msg.agentSession {
-                        merge(s)
+            var backoffSec: UInt64 = 1
+            while !Task.isCancelled {
+                do {
+                    for try await msg in client.eventsStream() {
+                        backoffSec = 1  // healthy traffic resets the backoff
+                        if (msg.type == "agent_session_update" || msg.type == "claude_session_update"),
+                           let s = msg.agentSession {
+                            merge(s)
+                        }
                     }
+                } catch {
+                    // dropped — fall through to a full resync + backed-off reconnect
                 }
-            } catch {
-                // stream ended / dropped — the view reloads on next appear
+                if Task.isCancelled { break }
+                await load(client)  // catch transitions missed during the gap
+                try? await Task.sleep(nanoseconds: backoffSec * 1_000_000_000)
+                backoffSec = min(backoffSec * 2, 30)  // 1,2,4,…,30s cap
             }
         }
     }
@@ -51,17 +59,21 @@ final class RosterModel: ObservableObject {
     /// Mirror the roster's counts (metadata only — no session content) to the App
     /// Group so the home-screen Widget can render them, then nudge it to reload.
     private func publishSnapshot() {
-        var working = 0, waiting = 0, error = 0
-        for s in sessions {
-            if s.activity?.pendingPermission != nil || s.state == "waiting" { waiting += 1 }
-            else if s.state == "error" { error += 1 }
-            else if s.state == "working" { working += 1 }
-        }
-        SharedStore.writeSnapshot(AgentSnapshot(
-            working: working, waiting: waiting, error: error,
-            total: sessions.count, updatedAt: Date()))
+        SharedStore.writeSnapshot(rosterCounts(sessions))
         WidgetCenter.shared.reloadAllTimelines()
     }
+}
+
+/// Bucket roster sessions into the Widget's counts (pending-permission and
+/// "waiting" both count as needs-you). Pure — unit-tested.
+func rosterCounts(_ sessions: [AgentSession], at now: Date = Date()) -> AgentSnapshot {
+    var working = 0, waiting = 0, error = 0
+    for s in sessions {
+        if s.activity?.pendingPermission != nil || s.state == "waiting" { waiting += 1 }
+        else if s.state == "error" { error += 1 }
+        else if s.state == "working" { working += 1 }
+    }
+    return AgentSnapshot(working: working, waiting: waiting, error: error, total: sessions.count, updatedAt: now)
 }
 
 /// Permission/error first, then waiting, then working, then the rest. Newest within a bucket.
@@ -97,9 +109,11 @@ func stateColor(_ s: AgentSession) -> Color {
 struct RosterView: View {
     @EnvironmentObject var app: AppState
     @StateObject private var model = RosterModel()
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var path: [AgentSession] = []
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             Group {
                 if !app.config.isConfigured {
                     ContentUnavailableView("Not paired", systemImage: "wifi.slash",
@@ -118,13 +132,41 @@ struct RosterView: View {
             }
             .navigationTitle("Dispatch")
             .navigationDestination(for: AgentSession.self) { SessionDetailView(session: $0) }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink { DispatchLedgerView() } label: {
+                        Image(systemName: "list.bullet.rectangle")
+                    }
+                }
+            }
             .refreshable { await model.load(app.client) }
             .task(id: app.config) {
                 await model.load(app.client)
+                resolvePending()
                 model.startStream(app.client)
             }
+            .onChange(of: scenePhase) { _, phase in
+                // iOS suspends SSE in the background; on return to foreground do a
+                // full resync and reconnect so the roster is correct + live again.
+                // Skip while the Face ID lock is up — don't fetch behind the gate.
+                guard phase == .active, app.config.isConfigured, !app.locked else { return }
+                Task { await model.load(app.client); model.startStream(app.client) }
+            }
+            // Deep-link (push Click / widget): open the requested session once it's
+            // in the roster — handle either arrival order (link before/after load).
+            .onChange(of: app.pendingSession) { _, _ in resolvePending() }
+            .onChange(of: model.sessions) { _, _ in resolvePending() }
             .onDisappear { model.stopStream() }
         }
+    }
+
+    /// If a deep-link is pending and its session is in the roster, push it once.
+    private func resolvePending() {
+        guard let p = app.pendingSession,
+              let match = model.sessions.first(where: { $0.agent == p.agent && $0.sessionId == p.id })
+        else { return }
+        path = [match]
+        app.pendingSession = nil
     }
 }
 

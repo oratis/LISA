@@ -69,6 +69,15 @@ struct SettingsView: View {
                     .disabled(ntfyTopic.isEmpty)
                 }
 
+                Section("Push (APNs)") {
+                    Button("Enable push notifications") { Task { await app.enablePush() } }
+                    if !app.pushStatus.isEmpty {
+                        Text(app.pushStatus).font(.caption).foregroundStyle(.secondary)
+                    }
+                    Text("Native Apple Push. Delivery needs an APNs key set on the Mac; ntfy works without one.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+
                 Section("Remote-control policy (set on the Mac)") {
                     if let p = policy {
                         LabeledContent("Control own agents", value: p.remoteControl ? "allowed" : "blocked")
@@ -77,6 +86,29 @@ struct SettingsView: View {
                         Text("—").foregroundStyle(.secondary)
                     }
                     Text("Change these on the Mac (localhost only).").font(.caption).foregroundStyle(.secondary)
+                }
+
+                Section {
+                    NavigationLink { DevicesView() } label: { Label("Paired devices", systemImage: "iphone.gen3") }
+                }
+
+                Section("Security") {
+                    Toggle("Require Face ID / passcode", isOn: Binding(
+                        get: { app.biometricLockEnabled },
+                        set: { app.setBiometricLock($0) }))
+                    Text("Locks the app behind biometrics — the device token grants full control of your Mac's agents.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+
+                Section("Inspect Lisa") {
+                    NavigationLink { SoulView() } label: { Label("Soul", systemImage: "sparkles") }
+                    NavigationLink { MemoryView() } label: { Label("Memory", systemImage: "brain") }
+                    NavigationLink { NamedListView(title: "Skills", load: { try await app.client.skills() }) } label: {
+                        Label("Skills", systemImage: "wand.and.stars")
+                    }
+                    NavigationLink { NamedListView(title: "Tools", load: { try await app.client.tools() }) } label: {
+                        Label("Tools", systemImage: "hammer")
+                    }
                 }
 
                 if !status.isEmpty {
