@@ -5,6 +5,22 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.1] — 2026-06-19
+
+**First-run polish for the Mac app** ([docs/RELEASE_v0.11.1.md](docs/RELEASE_v0.11.1.md)). No features, no breaking changes.
+
+### Fixed
+
+- Title bar no longer renders a duplicate "Lisa Lisa" — the native window title
+  is hidden (`titleVisibility = .hidden`) so only the page's branded title strip
+  shows.
+- The first-run UI never dead-ends silently. `startupGate`'s bare `catch { return }`
+  used to leave a blank window with no key prompt, birth, or message. Now a banner
+  surfaces any uncaught error / unreachable backend (with the
+  `lisa serve --web` + `npm i -g @oratis/lisa` hint), `startupGate` retries
+  `/api/config/status`, and the API-key overlay + birth ritual reliably appear for
+  a fresh user.
+
 ## [0.11.0] — 2026-06-19
 
 **Coding plans + the iOS-companion control plane.** Run coding work on a
