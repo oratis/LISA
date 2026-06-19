@@ -37,6 +37,7 @@ import { signalAgentTool } from "../tools/signal_agent.js";
 import { managedRegistry } from "../agents/managed.js";
 import { ptyRegistry, ptyEnabled } from "../agents/pty.js";
 import { liveClaudeSessionIds } from "../integrations/claude-code/liveness.js";
+import { listRecentDispatches, isAlive, toDispatchView } from "../integrations/dispatch-ledger.js";
 import { SenseService } from "../sense/service.js";
 import { ScreenSource } from "../sense/screen.js";
 import { VoiceSource } from "../sense/voice.js";
@@ -774,6 +775,16 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // LISA's own controllable agents: start a task, send follow-ups, cancel,
     // and approve/deny each mutating tool. Behind the auth gate like every
     // endpoint. They appear in the roster via the "managed" hub observer.
+    // Structured view of the agents LISA dispatched fire-and-forget (the ledger).
+    // Complements /api/agent/signal's action:"list" (which returns prose): this is
+    // JSON for clients (the iOS roster). Structural only — never the captured log.
+    if (req.method === "GET" && url === "/api/dispatch/list") {
+      const dispatches = listRecentDispatches().map((e) => toDispatchView(e, isAlive(e.pid)));
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ dispatches }));
+      return;
+    }
+
     if (req.method === "POST" && url === "/api/agents/managed/start") {
       let mBody = "";
       for await (const chunk of req) mBody += chunk.toString("utf8");
@@ -879,6 +890,49 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       }
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, output: out }));
+      return;
+    }
+    // Live attach stream for a PTY agent: the current output tail (snapshot), then
+    // each new ANSI-stripped chunk as it arrives. Drives `lisa agents pty`
+    // (adopt-at-launch) and a remote live-output view. Same auth gate; 404 if unknown.
+    if (req.method === "GET" && url.startsWith("/api/agents/pty/") && url.endsWith("/stream")) {
+      const id = decodeURIComponent(url.slice("/api/agents/pty/".length, -"/stream".length));
+      const initial = ptyRegistry.output(id);
+      if (initial === null) {
+        res.writeHead(404, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: false }));
+        return;
+      }
+      res.writeHead(200, {
+        "content-type": "text/event-stream",
+        "cache-control": "no-cache",
+        connection: "keep-alive",
+      });
+      res.write(`data: ${JSON.stringify({ type: "snapshot", text: initial })}\n\n`);
+      const onOut = (e: { id: string; chunk: string }) => {
+        if (e.id !== id) return;
+        try {
+          res.write(`data: ${JSON.stringify({ type: "chunk", text: e.chunk })}\n\n`);
+        } catch {
+          /* dead connection — cleaned up on close */
+        }
+      };
+      // End the stream when the agent finishes, so an attach client exits cleanly.
+      const onUpdate = (v: { id: string; state: string }) => {
+        if (v.id !== id || v.state !== "done") return;
+        try {
+          res.write(`data: ${JSON.stringify({ type: "end", state: v.state })}\n\n`);
+          res.end();
+        } catch {
+          /* already closed */
+        }
+      };
+      ptyRegistry.on("output", onOut);
+      ptyRegistry.on("update", onUpdate);
+      req.on("close", () => {
+        ptyRegistry.off("output", onOut);
+        ptyRegistry.off("update", onUpdate);
+      });
       return;
     }
     if (req.method === "POST" && url.startsWith("/api/agents/pty/")) {

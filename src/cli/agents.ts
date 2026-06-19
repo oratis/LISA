@@ -17,7 +17,14 @@ function rel(ms: number): string {
   return `${Math.round(ms / 3_600_000)}h`;
 }
 
-export async function runAgentsCommand(_subargs: string[]): Promise<number> {
+export async function runAgentsCommand(subargs: string[]): Promise<number> {
+  // `lisa agents pty <agent> <task…>` — adopt-at-launch: start a real CLI under a
+  // PTY through the running server so it's controllable from the roster / phone.
+  if (subargs[0] === "pty" || subargs[0] === "attach") {
+    const { runAgentPtyAttach } = await import("./agents-pty.js");
+    return runAgentPtyAttach(subargs.slice(1));
+  }
+
   await registerBuiltinIntegrations();
   const cfg = await loadOrchestratorConfig(path.join(LISA_HOME, "agents.json"));
   const hub = new OrchestratorHub(cfg, { log: () => {} });

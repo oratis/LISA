@@ -52,11 +52,40 @@ owns its stdin/stdout), but every session has a stable `sessionId`, and
    ```sh
    LISA_PTY_AGENTS=1 lisa serve --web
    ```
-3. In the agents card, pick `claude` or `codex` in the delegate picker, type a
-   task, hit ▶. (Without the flag the start endpoint returns `503` and the GUI
-   shows the hint.)
+3. Either:
+   - **GUI** — in the agents card, pick `claude` or `codex` in the delegate
+     picker, type a task, hit ▶; or
+   - **Terminal** — `lisa agents pty claude "<task>"` (see below).
+   (Without the flag the start endpoint returns `503` and both surfaces show the hint.)
 
 Binary resolution is env-overridable: `LISA_PTY_CLAUDE_CMD`, `LISA_PTY_CODEX_CMD`.
+
+## Adopt-at-launch from your terminal (`lisa agents pty`)
+
+The honest way to "control a CLI session LISA didn't start": don't try to attach
+to a `claude`/`codex` you already opened (that needs the undocumented
+`peerProtocol`) — **start one through LISA** so it's born controllable.
+
+```sh
+lisa agents pty claude "refactor the auth gate"   # new agent (or: codex), with --port N
+lisa agents pty --resume <session-id> [follow-up…] # adopt an IDLE claude session you started elsewhere
+```
+
+`lisa agents pty` is a thin client to the running `lisa serve --web` (loopback, no
+token): it `POST`s `/api/agents/pty/start` so the CLI spawns **inside the server**
+(thus in the roster, steerable from the island / GUI / phone), then mirrors the
+agent's output here (SSE `/stream`) and forwards each line you type (`/send`).
+Ctrl-C cancels it. Requires the server to run with `LISA_PTY_AGENTS=1`.
+
+The `--resume <session-id>` form drives the **resume-adopt** path: it passes
+`resumeSessionId` so the server runs `claude --resume <id>` (a continuation that
+shares the transcript). The server's liveness guard refuses a session that's still
+live (HTTP **409**) — close it first; resuming a live session corrupts its transcript.
+Grab the id from a `resumable` roster row.
+
+**Limitation (v1):** input is line-oriented (one typed line → one line into the
+CLI), not a raw keystroke passthrough — good for task-style runs, not for driving
+a full arrow-key TUI. Raw attach is future work.
 
 ## Honest limits (why it's a flagged spike, not a shipped feature)
 
@@ -82,7 +111,8 @@ Binary resolution is env-overridable: `LISA_PTY_CLAUDE_CMD`, `LISA_PTY_CODEX_CMD
 | `POST /api/agents/pty/start` | `{ agent:"claude", resumeSessionId, cwd? }` | **adopt** an idle session (409 if it's live) |
 | `POST /api/agents/pty/<id>/send` | `{ text }` | type a line into the CLI |
 | `POST /api/agents/pty/<id>/cancel` | — | kill the CLI |
-| `GET /api/agents/pty/<id>/output` | — | ANSI-stripped terminal tail |
+| `GET /api/agents/pty/<id>/output` | — | ANSI-stripped terminal tail (one-shot) |
+| `GET /api/agents/pty/<id>/stream` | — | SSE: current tail (`snapshot`) then each new `chunk` — the live attach feed |
 
 ## Code
 
@@ -93,7 +123,9 @@ Binary resolution is env-overridable: `LISA_PTY_CLAUDE_CMD`, `LISA_PTY_CODEX_CMD
   (real kind, `controllable: "pty"`).
 - `src/integrations/claude-code/liveness.ts` — `liveClaudeSessionIds()` (the
   adopt guard) + `resumable` enrichment in `/api/agents/sessions`.
-- `src/web/server.ts` — the endpoints above.
+- `src/cli/agents-pty.ts` — `lisa agents pty` adopt-at-launch client (+ pure
+  `parsePtyArgs` / `parseSseEvents`, unit-tested).
+- `src/web/server.ts` — the endpoints above (incl. the `/stream` SSE feed).
 - GUI: delegate kind picker + `controllable`-family row controls in
   `lisa-html.ts` / `lisa-client.ts` / `lisa-css.ts`.
 - Tests: `src/agents/pty.test.ts` (pure helpers + lifecycle via an injected fake
