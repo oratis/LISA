@@ -41,6 +41,7 @@ import { ptyRegistry, ptyEnabled } from "../agents/pty.js";
 import { liveClaudeSessionIds } from "../integrations/claude-code/liveness.js";
 import { listRecentDispatches, isAlive, toDispatchView, readDispatchOutput } from "../integrations/dispatch-ledger.js";
 import { loadControlPolicy, saveControlPolicy, type ControlPolicy } from "../control/policy.js";
+import { mintDevice, verifyDeviceToken, touchDevice, listDevices, revokeDevice } from "./devices.js";
 import { SenseService } from "../sense/service.js";
 import { ScreenSource } from "../sense/screen.js";
 import { VoiceSource } from "../sense/voice.js";
@@ -469,7 +470,16 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     const remoteAddr = req.socket.remoteAddress ?? "";
     if (!isLoopbackAddress(remoteAddr)) {
       const presented = webToken ? presentedToken(req, url) : null;
-      if (!isRequestAuthorized(remoteAddr, webToken, presented)) {
+      // Authorized by the global LISA_WEB_TOKEN OR a non-revoked per-device token.
+      let authed = isRequestAuthorized(remoteAddr, webToken, presented);
+      if (!authed && presented) {
+        const device = verifyDeviceToken(presented);
+        if (device) {
+          authed = true;
+          touchDevice(device.id);
+        }
+      }
+      if (!authed) {
         res.writeHead(401, { "content-type": "text/plain" });
         res.end("unauthorized");
         return;
@@ -800,6 +810,48 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // LISA's own controllable agents: start a task, send follow-ups, cancel,
     // and approve/deny each mutating tool. Behind the auth gate like every
     // endpoint. They appear in the roster via the "managed" hub observer.
+    // Device pairing: mint a per-device token (loopback-only — the Mac owner
+    // pairs a phone by showing the returned token as a QR). The raw token is
+    // returned ONCE; only its hash is stored. The phone then authenticates with
+    // it like the global token (Bearer / ?token= / cookie).
+    if (req.method === "POST" && url === "/api/pair/start") {
+      if (!isLoopbackAddress(remoteAddr)) {
+        res.writeHead(403, { "content-type": "text/plain" });
+        res.end("pairing can only be started from the Mac (localhost)");
+        return;
+      }
+      let prBody = "";
+      for await (const chunk of req) prBody += chunk.toString("utf8");
+      let payload: { name?: unknown; platform?: unknown } = {};
+      try { payload = prBody ? JSON.parse(prBody) : {}; } catch { /* tolerate */ }
+      const name = typeof payload.name === "string" ? payload.name : "device";
+      const platform = typeof payload.platform === "string" ? payload.platform : "ios";
+      const { id, token, device } = mintDevice(name, platform);
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, id, token, port: opts.port, device }));
+      return;
+    }
+    if (req.method === "GET" && url === "/api/devices") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ devices: listDevices() }));
+      return;
+    }
+    if (req.method === "POST" && url === "/api/devices/revoke") {
+      if (!isLoopbackAddress(remoteAddr)) {
+        res.writeHead(403, { "content-type": "text/plain" });
+        res.end("device revocation is a Mac-owner action (localhost only)");
+        return;
+      }
+      let rvBody = "";
+      for await (const chunk of req) rvBody += chunk.toString("utf8");
+      let payload: { id?: unknown } = {};
+      try { payload = rvBody ? JSON.parse(rvBody) : {}; } catch { /* tolerate */ }
+      const removed = revokeDevice(typeof payload.id === "string" ? payload.id : "");
+      res.writeHead(removed ? 200 : 404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: removed }));
+      return;
+    }
+
     // Remote-control policy: GET (any authed caller) reports it; POST sets it,
     // but only from localhost (the Mac owner) — like the API-key save.
     if (req.method === "GET" && url === "/api/control/policy") {
