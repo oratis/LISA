@@ -40,6 +40,7 @@ import { managedRegistry } from "../agents/managed.js";
 import { ptyRegistry, ptyEnabled } from "../agents/pty.js";
 import { liveClaudeSessionIds } from "../integrations/claude-code/liveness.js";
 import { listRecentDispatches, isAlive, toDispatchView } from "../integrations/dispatch-ledger.js";
+import { loadControlPolicy, saveControlPolicy, type ControlPolicy } from "../control/policy.js";
 import { SenseService } from "../sense/service.js";
 import { ScreenSource } from "../sense/screen.js";
 import { VoiceSource } from "../sense/voice.js";
@@ -485,6 +486,27 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       }
     }
 
+    // Per-request gate for high-risk control actions from REMOTE callers. The Mac
+    // owner (loopback) is never gated; a remote (token) device may take only what
+    // the Mac-side policy permits. denyRemote() writes the 403 and returns true
+    // when blocked, so call sites read `if (denyRemote(...)) return;`. See
+    // src/control/policy.ts (default: control own agents yes, adopt external no).
+    const remoteControlAllowed = (need: "control" | "adoptExternal"): boolean => {
+      if (isLoopbackAddress(remoteAddr)) return true;
+      const pol = loadControlPolicy();
+      return need === "adoptExternal" ? pol.remoteAdoptExternal : pol.remoteControl;
+    };
+    const denyRemote = (need: "control" | "adoptExternal"): boolean => {
+      if (remoteControlAllowed(need)) return false;
+      res.writeHead(403, { "content-type": "text/plain" });
+      res.end(
+        need === "adoptExternal"
+          ? "adopting external sessions from a remote device is disabled — enable remoteAdoptExternal on the Mac (POST /api/control/policy from localhost)"
+          : "remote control is disabled — enable remoteControl on the Mac (POST /api/control/policy from localhost)",
+      );
+      return true;
+    };
+
     if (req.method === "GET" && (url === "/" || url.startsWith("/?"))) {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       res.end(MAIN_HTML);
@@ -760,6 +782,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end("action must be 'list' or 'cancel'");
         return;
       }
+      if (action === "cancel" && denyRemote("control")) return;
       const result = await signalAgentTool.execute(
         {
           action,
@@ -777,6 +800,36 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // LISA's own controllable agents: start a task, send follow-ups, cancel,
     // and approve/deny each mutating tool. Behind the auth gate like every
     // endpoint. They appear in the roster via the "managed" hub observer.
+    // Remote-control policy: GET (any authed caller) reports it; POST sets it,
+    // but only from localhost (the Mac owner) — like the API-key save.
+    if (req.method === "GET" && url === "/api/control/policy") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify(loadControlPolicy()));
+      return;
+    }
+    if (req.method === "POST" && url === "/api/control/policy") {
+      if (!isLoopbackAddress(remoteAddr)) {
+        res.writeHead(403, { "content-type": "text/plain" });
+        res.end("control policy can only be changed from the Mac (localhost)");
+        return;
+      }
+      let cpBody = "";
+      for await (const chunk of req) cpBody += chunk.toString("utf8");
+      let payload: Partial<ControlPolicy>;
+      try { payload = JSON.parse(cpBody || "{}"); } catch {
+        res.writeHead(400, { "content-type": "text/plain" }); res.end("bad json"); return;
+      }
+      try {
+        const saved = saveControlPolicy({ ...loadControlPolicy(), ...payload });
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true, ...saved }));
+      } catch (err) {
+        res.writeHead(500, { "content-type": "text/plain" });
+        res.end((err as Error).message);
+      }
+      return;
+    }
+
     // Structured view of the agents LISA dispatched fire-and-forget (the ledger).
     // Complements /api/agent/signal's action:"list" (which returns prose): this is
     // JSON for clients (the iOS roster). Structural only — never the captured log.
@@ -788,6 +841,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     }
 
     if (req.method === "POST" && url === "/api/agents/managed/start") {
+      if (denyRemote("control")) return;
       let mBody = "";
       for await (const chunk of req) mBody += chunk.toString("utf8");
       let payload: { task?: unknown; cwd?: unknown; model?: unknown };
@@ -816,6 +870,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       return;
     }
     if (req.method === "POST" && url.startsWith("/api/agents/managed/")) {
+      if (denyRemote("control")) return;
       const rest = url.slice("/api/agents/managed/".length);
       const slash = rest.indexOf("/");
       const id = slash >= 0 ? rest.slice(0, slash) : rest;
@@ -857,6 +912,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const agent = typeof payload.agent === "string" && payload.agent.trim() ? payload.agent : "claude";
       const resumeSessionId =
         typeof payload.resumeSessionId === "string" && payload.resumeSessionId ? payload.resumeSessionId : undefined;
+      // Adopting an external session is the highest-risk control action — gate it
+      // behind remoteAdoptExternal; starting a fresh agent is ordinary control.
+      if (denyRemote(resumeSessionId ? "adoptExternal" : "control")) return;
       // Adopting an existing session needs no task (it continues the convo); a
       // fresh agent does. Guard: never resume a session that's currently live.
       if (!resumeSessionId && (typeof payload.task !== "string" || !payload.task.trim())) {
@@ -884,6 +942,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       return;
     }
     if (req.method === "GET" && url.startsWith("/api/agents/pty/") && url.endsWith("/output")) {
+      if (denyRemote("control")) return;
       const id = url.slice("/api/agents/pty/".length, -"/output".length);
       const out = ptyRegistry.output(decodeURIComponent(id));
       if (out === null) {
@@ -898,6 +957,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // each new ANSI-stripped chunk as it arrives. Drives `lisa agents pty`
     // (adopt-at-launch) and a remote live-output view. Same auth gate; 404 if unknown.
     if (req.method === "GET" && url.startsWith("/api/agents/pty/") && url.endsWith("/stream")) {
+      if (denyRemote("control")) return;
       const id = decodeURIComponent(url.slice("/api/agents/pty/".length, -"/stream".length));
       const initial = ptyRegistry.output(id);
       if (initial === null) {
@@ -938,6 +998,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       return;
     }
     if (req.method === "POST" && url.startsWith("/api/agents/pty/")) {
+      if (denyRemote("control")) return;
       const rest = url.slice("/api/agents/pty/".length);
       const slash = rest.indexOf("/");
       const id = decodeURIComponent(slash >= 0 ? rest.slice(0, slash) : rest);
