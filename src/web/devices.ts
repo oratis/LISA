@@ -52,8 +52,17 @@ export function loadDevices(): DeviceRecord[] {
 
 function saveDevices(list: DeviceRecord[]): void {
   const file = devicesPath();
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(list, null, 2));
+  // Records hold per-device token HASHES — credentials. Keep the store private
+  // (0600 file inside a 0700 dir), matching how config.env is written in env.ts.
+  // writeFileSync's mode only applies on create, so chmod after to tighten a
+  // pre-existing loose file.
+  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+  fs.writeFileSync(file, JSON.stringify(list, null, 2), { mode: 0o600 });
+  try {
+    fs.chmodSync(file, 0o600);
+  } catch {
+    // best effort — non-POSIX filesystems may reject chmod
+  }
 }
 
 export function toPublicDevice(d: DeviceRecord): PublicDevice {

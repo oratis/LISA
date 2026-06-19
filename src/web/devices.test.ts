@@ -30,6 +30,11 @@ describe("device tokens", () => {
     assert.match(raw, /tokenHash/);
   });
 
+  test("the token-hash store is written private (0600), like config.env", { skip: process.platform === "win32" }, () => {
+    mintDevice("x", "ios");
+    assert.equal(fs.statSync(FILE).mode & 0o777, 0o600);
+  });
+
   test("revoke → token no longer verifies; revoking an unknown id → false", () => {
     const { id, token } = mintDevice("x", "ios");
     assert.ok(verifyDeviceToken(token));
