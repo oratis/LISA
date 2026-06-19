@@ -46,10 +46,17 @@ describe("planRunPreCheck", () => {
     const r = planRunPreCheck("codex", status({ id: "codex", cli: "codex" }));
     assert.deepEqual(r, { ok: true, kind: "codex" });
   });
-  test("copilot is not wired yet → refusal", () => {
-    const r = planRunPreCheck("copilot", status({ id: "copilot", cli: "copilot" }));
+  test("copilot (when available) → ok with copilot kind", () => {
+    const r = planRunPreCheck("copilot", status({ id: "copilot", cli: "copilot", binary: "copilot", loggedIn: null }));
+    assert.deepEqual(r, { ok: true, kind: "copilot" });
+  });
+  test("copilot not installed → refusal", () => {
+    const r = planRunPreCheck(
+      "copilot",
+      status({ id: "copilot", cli: "copilot", available: false, binary: null, detail: "install it" }),
+    );
     assert.equal(r.ok, false);
-    assert.match((r as { message: string }).message, /isn't wired yet/);
+    assert.match((r as { message: string }).message, /Can't run on your copilot plan/);
   });
   test("not installed → refusal mentions the plan", () => {
     const r = planRunPreCheck("claude", status({ available: false, binary: null, detail: "install it" }));

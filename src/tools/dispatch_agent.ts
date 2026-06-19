@@ -7,6 +7,7 @@
  *   codex     → codex exec "<task>"
  *   opencode  → opencode run "<task>"
  *   aider     → aider --message "<task>" --yes
+ *   copilot   → copilot -p "<task>"
  *
  * The agent is spawned detached so it keeps running independently; it then
  * shows up in the orchestrator hub via its normal session file (the same
@@ -30,7 +31,7 @@ import { getCurrentHub } from "../integrations/current-hub.js";
 import { recordDispatch, dispatchLogDir } from "../integrations/dispatch-ledger.js";
 
 interface DispatchInput {
-  agent: "claude" | "codex" | "opencode" | "aider";
+  agent: "claude" | "codex" | "opencode" | "aider" | "copilot";
   task: string;
   cwd?: string;
   /** Override the L4 same-cwd conflict guard (default false). */
@@ -69,6 +70,8 @@ export function buildDispatchArgv(
       return { cmd: "opencode", args: ["run", task] };
     case "aider":
       return { cmd: "aider", args: ["--message", task, "--yes"] };
+    case "copilot":
+      return { cmd: "copilot", args: ["-p", task] };
     default: {
       // exhaustiveness guard
       const _never: never = agent;
@@ -171,7 +174,7 @@ export async function launchAgent(
 export const dispatchAgentTool: ToolDefinition<DispatchInput, string> = {
   name: "dispatch_agent",
   description:
-    "Launch another CLI coding agent (claude, codex, opencode, aider) to work on a task " +
+    "Launch another CLI coding agent (claude, codex, opencode, aider, copilot) to work on a task " +
     "autonomously in a given directory. The agent runs in the background and appears in " +
     "the agent session monitor. Use when the user asks you to hand work to another agent, " +
     "or to pursue a desire by dispatching one. Returns a handle; it does NOT wait for the " +
@@ -182,7 +185,7 @@ export const dispatchAgentTool: ToolDefinition<DispatchInput, string> = {
     properties: {
       agent: {
         type: "string",
-        enum: ["claude", "codex", "opencode", "aider"],
+        enum: ["claude", "codex", "opencode", "aider", "copilot"],
         description: "Which CLI agent to launch.",
       },
       task: {

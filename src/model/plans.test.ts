@@ -137,11 +137,12 @@ describe("detectPlan: codex", () => {
 });
 
 describe("detectPlan: copilot", () => {
-  test("is experimental; falls back to gh", () => {
-    const s = detectPlan("copilot", fakeProbe({ onPath: (c) => c === "gh" }));
-    assert.equal(s.experimental, true);
-    assert.equal(s.binary, "gh");
-    assert.equal(s.loggedIn, null);
+  test("the standalone `copilot` CLI is the delegate; gh alone doesn't count", () => {
+    assert.equal(detectPlan("copilot", fakeProbe({ onPath: (c) => c === "gh" })).available, false);
+    const s = detectPlan("copilot", fakeProbe({ onPath: (c) => c === "copilot" }));
+    assert.equal(s.available, true);
+    assert.equal(s.binary, "copilot");
+    assert.equal(s.loggedIn, null); // login behind GitHub auth — not probed
   });
 });
 
@@ -153,10 +154,10 @@ describe("detectPlans", () => {
 });
 
 describe("planDispatchKind", () => {
-  test("claude/codex map to their headless CLI kind; copilot is not yet wired", () => {
+  test("each plan id maps to its headless CLI kind", () => {
     assert.equal(planDispatchKind("claude"), "claude");
     assert.equal(planDispatchKind("codex"), "codex");
-    assert.equal(planDispatchKind("copilot"), null);
+    assert.equal(planDispatchKind("copilot"), "copilot");
   });
 });
 

@@ -20,6 +20,9 @@ describe("buildDispatchArgv — headless invocations", () => {
       args: ["--message", "do x", "--yes"],
     });
   });
+  test("copilot → copilot -p <task>", () => {
+    assert.deepEqual(buildDispatchArgv("copilot", "do x"), { cmd: "copilot", args: ["-p", "do x"] });
+  });
 
   test("task is a single argv element — no shell injection surface", () => {
     // A task containing shell metacharacters must NOT be split or interpreted;

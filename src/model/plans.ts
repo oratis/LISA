@@ -43,8 +43,6 @@ export interface PlanStatus {
   loggedIn: boolean | null;
   /** Short human hint about state / how to enable. */
   detail: string;
-  /** Not a first-class shipped path yet (copilot). */
-  experimental?: boolean;
 }
 
 /** Injectable view of the host used for presence-only detection. Pure inputs. */
@@ -193,18 +191,23 @@ function detectCodex(probe: PlanProbe): PlanStatus {
 }
 
 function detectCopilot(probe: PlanProbe): PlanStatus {
-  const binary = probe.onPath("copilot") ? "copilot" : probe.onPath("gh") ? "gh" : null;
+  // The delegate target is the standalone agentic `copilot` CLI, which runs a
+  // task non-interactively via `copilot -p "<task>"`. The older `gh copilot`
+  // (suggest/explain) is NOT agentic and can't run a task, so it doesn't count.
+  const binary = probe.onPath("copilot") ? "copilot" : null;
+  // Copilot login sits behind GitHub auth — not cheaply checkable without
+  // spawning, so: installed → unknown, absent → false.
+  const loggedIn = binary ? null : false;
   return {
     id: "copilot",
     label: "GitHub Copilot",
     cli: "copilot",
     binary,
     available: binary !== null,
-    loggedIn: null, // needs `gh auth status` / token exchange — not probed in Phase 1
+    loggedIn,
     detail: binary
-      ? "experimental — needs the GitHub Copilot CLI; login state not checked yet"
+      ? "installed — login state unknown (GitHub auth)"
       : "install the GitHub Copilot CLI (`copilot`) to enable",
-    experimental: true,
   };
 }
 
@@ -235,14 +238,12 @@ export function detectPlans(probe: PlanProbe = defaultPlanProbe()): PlanStatus[]
 // ── delegation (CODING_PLANS Phase 2) ────────────────────────────────────────
 
 /**
- * The headless dispatch CLI kind a plan delegates through, or null if not yet
- * delegate-capable. claude → `claude -p`, codex → `codex exec` (both already in
- * launchAgent); copilot is detection-only until its CLI delegate lands (Phase 3).
+ * The headless dispatch CLI kind a plan delegates through. Each plan id is also
+ * its CLI kind in launchAgent: claude → `claude -p`, codex → `codex exec`,
+ * copilot → `copilot -p`.
  */
-export function planDispatchKind(id: PlanId): "claude" | "codex" | null {
-  if (id === "claude") return "claude";
-  if (id === "codex") return "codex";
-  return null;
+export function planDispatchKind(id: PlanId): "claude" | "codex" | "copilot" {
+  return id; // each plan id is also its headless dispatch CLI kind
 }
 
 export interface PlanPreflight {

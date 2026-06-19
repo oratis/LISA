@@ -59,25 +59,19 @@ export type PlanRunCheck =
  * dispatch kind to launch, or a user-facing refusal message.
  */
 export function planRunPreCheck(planId: PlanId, status: PlanStatus): PlanRunCheck {
-  const kind = planDispatchKind(planId);
-  if (!kind) {
-    return {
-      ok: false,
-      message: `Delegating to the ${planId} plan isn't wired yet — use plan "claude" or "codex", or dispatch_agent directly.`,
-    };
-  }
   const pf = planPreflight(status);
   if (!pf.ok) return { ok: false, message: `Can't run on your ${planId} plan: ${pf.reason}.` };
-  return { ok: true, kind };
+  return { ok: true, kind: planDispatchKind(planId) };
 }
 
 export const runOnPlanTool: ToolDefinition<RunOnPlanInput, string> = {
   name: "run_on_plan",
   description:
-    "Delegate a coding task to the user's subscription coding plan (Claude Pro/Max, or " +
-    "ChatGPT/Codex) instead of a metered API key. Runs the vendor's own CLI that the user " +
-    "is logged into (claude -p / codex exec), so the work bills to their subscription, not " +
-    "an API key. Uses the plan selected via `lisa model use plan://…` unless you pass one " +
+    "Delegate a coding task to the user's subscription coding plan (Claude Pro/Max, " +
+    "ChatGPT/Codex, or GitHub Copilot) instead of a metered API key. Runs the vendor's own " +
+    "CLI that the user is logged into (claude -p / codex exec / copilot -p), so the work " +
+    "bills to their subscription, not an API key. Uses the plan selected via " +
+    "`lisa model use plan://…` unless you pass one " +
     "in `plan`. The agent runs autonomously in the background and appears in the session " +
     "monitor; this returns a handle and does NOT wait for it to finish (check dispatch_status). " +
     "Spawns an autonomous process, so it requires user approval. Use when the user wants " +
@@ -93,7 +87,7 @@ export const runOnPlanTool: ToolDefinition<RunOnPlanInput, string> = {
       plan: {
         type: "string",
         description:
-          "Which coding plan to use: \"claude\" or \"codex\" (or plan://<id>). " +
+          "Which coding plan to use: \"claude\", \"codex\", or \"copilot\" (or plan://<id>). " +
           "Defaults to the plan selected with `lisa model use plan://…`.",
       },
       cwd: {
