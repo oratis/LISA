@@ -224,9 +224,11 @@ own CLI**, which already holds that subscription auth: layer 3 above (PTY agents
 `claude --resume`) is precisely this path — when you drive a `claude`/`codex` you
 logged into with your plan, the work bills to your plan, not an API key.
 
-The design for making this first-class (plan detection, a `plan://claude` target in
-the model picker, headless `claude -p` / `codex exec` delegation, headroom
-surfacing) — plus why in-process token reuse is rejected — is written up in
+**Today:** `lisa model list` detects your installed plan CLIs (Claude Code / Codex
+/ Copilot) and their login state, and `lisa model use plan://claude` picks one as
+the delegation target — detection + selection only, no tokens read. The rest of the
+design (headless `claude -p` / `codex exec` delegation, web/island picker, usage
+surfacing) — plus why in-process token reuse is rejected — is in
 **[docs/CODING_PLANS.md](docs/CODING_PLANS.md)**.
 
 ## Subcommands
@@ -245,7 +247,8 @@ lisa monitor                 TUI live dashboard (mood + soul commits + events)
 lisa agents                  Snapshot of agent sessions across all observers
 lisa autonomy [days]         Digest of self-driven runs (idle / heartbeat / examen / desire / reflect)
 lisa model <list|install|use|health>
-                             Local model lifecycle (Ollama / LM Studio / llama.cpp)
+                             Local models (Ollama / LM Studio / llama.cpp) +
+                             coding-plan detect/select (`use plan://<id>`)
 lisa consent <list|grant|revoke|revoke-all> [signal]
                              Consent for ambient signals (screen / voice / …; default all off)
 lisa sense [list]            Recent ambient sense events + granted signals

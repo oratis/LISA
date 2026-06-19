@@ -1,9 +1,12 @@
 # Coding plans — running LISA's work on a subscription, not just an API key
 
-**Status: RESEARCH / DESIGN.** Nothing here ships yet beyond what the flagged
-PTY-agent bridge (`LISA_PTY_AGENTS=1`, see [PTY_AGENTS.md](./PTY_AGENTS.md))
-already does. This doc records the mechanism, the constraints that shape it, and a
-phased plan.
+**Status: Phase 1 shipped (detection + picker); rest is DESIGN.** `lisa model
+list` now detects installed plan CLIs and `lisa model use plan://<id>` selects a
+delegation target — no auth code, no secrets read. Everything below the
+detection/picker layer (actually routing coding work to the selected plan) builds
+on the flagged PTY-agent bridge (`LISA_PTY_AGENTS=1`, see
+[PTY_AGENTS.md](./PTY_AGENTS.md)) and is still design. This doc records the
+mechanism, the constraints that shape it, and the phased plan.
 
 ## TL;DR
 
@@ -236,16 +239,19 @@ master switch `LISA_PTY_AGENTS=1` until the bridge graduates from "spike."
 | Adopt idle `claude` sessions (`--resume`) | ✅ exists (`liveness.ts`) |
 | Binary resolution / env overrides | ✅ exists (`resolveCli`) |
 | Observe/control via hub + `/api/agents/*` | ✅ exists |
+| **Presence detection (`src/model/plans.ts`)** | ✅ Phase 1 |
+| **`plan://` refs + `lisa model` picker** | ✅ Phase 1 (CLI; web/island picker ⬜) |
 | **Headless one-shot (`claude -p` / `codex exec`) backend** | ⬜ build |
-| **`PlanBackend` + presence detection** | ⬜ build |
-| **`plan://` model refs + picker integration** | ⬜ build |
+| **`PlanBackend.run()` wired to `dispatch_agent`** | ⬜ build |
 | **Copilot CLI delegate** | ⬜ build |
 | **Headroom/usage surfacing** | ⬜ build |
 
 ### Suggested phasing
 
-1. **Detection + picker.** `PlanBackend.detect()` for claude/codex; `lisa model
-   list` shows plans; `plan://` selection stored in config. (No new auth code.)
+1. **Detection + picker.** ✅ *Shipped.* `detectPlans()` in `src/model/plans.ts`
+   (presence-only, injectable probe, unit-tested); `lisa model list` shows each
+   plan's status; `lisa model use plan://<id>` stores the target in
+   `LISA_CODING_PLAN` without touching `LISA_MODEL`. No auth code, no secrets read.
 2. **Headless delegate.** Wrap `claude -p --output-format json` / `codex exec` as
    `run()`; wire `dispatch_agent` / a "run on my plan" action to it. Graduate the
    PTY flag.
