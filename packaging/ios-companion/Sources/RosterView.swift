@@ -1,4 +1,5 @@
 import SwiftUI
+import WidgetKit
 
 @MainActor
 final class RosterModel: ObservableObject {
@@ -10,6 +11,7 @@ final class RosterModel: ObservableObject {
         do {
             sessions = sortRows(try await client.sessions())
             error = nil
+            publishSnapshot()
         } catch {
             self.error = (error as? LocalizedError)?.errorDescription ?? "\(error)"
         }
@@ -43,6 +45,22 @@ final class RosterModel: ObservableObject {
             sessions.append(s)
         }
         sessions = sortRows(sessions)
+        publishSnapshot()
+    }
+
+    /// Mirror the roster's counts (metadata only — no session content) to the App
+    /// Group so the home-screen Widget can render them, then nudge it to reload.
+    private func publishSnapshot() {
+        var working = 0, waiting = 0, error = 0
+        for s in sessions {
+            if s.activity?.pendingPermission != nil || s.state == "waiting" { waiting += 1 }
+            else if s.state == "error" { error += 1 }
+            else if s.state == "working" { working += 1 }
+        }
+        SharedStore.writeSnapshot(AgentSnapshot(
+            working: working, waiting: waiting, error: error,
+            total: sessions.count, updatedAt: Date()))
+        WidgetCenter.shared.reloadAllTimelines()
     }
 }
 

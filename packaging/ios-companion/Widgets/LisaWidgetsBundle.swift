@@ -5,5 +5,6 @@ import WidgetKit
 struct LisaWidgetsBundle: WidgetBundle {
     var body: some Widget {
         AgentLiveActivity()
+        AgentCountWidget()
     }
 }

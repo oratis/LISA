@@ -23,11 +23,18 @@ iOS 17+ target). It covers:
   `lisa-pair://…` / `?token=` string → Keychain), ntfy push registration, and a
   read-only view of the remote-control policy.
 - **Glance** — a **Live Activity / Dynamic Island** for a pinned agent (Lock Screen +
-  compact / expanded / minimal Dynamic Island), via a WidgetKit extension target.
+  compact / expanded / minimal Dynamic Island) and a **home-screen Widget** showing
+  active / stuck agent counts, both in a WidgetKit extension target. The Widget renders
+  a counts-only snapshot the app shares through an App Group — the auth token stays in
+  the Keychain and no session content ever reaches the extension.
 
-**Not yet** (follow-ups): live Live-Activity updates via APNs (so a pinned agent stays
-fresh while backgrounded — needs an Apple push key; ntfy push works today) and a
-home-screen Widget.
+**Not yet** (follow-ups): live Live-Activity updates via APNs, so a pinned agent stays
+fresh while backgrounded — needs an Apple push key; ntfy push works today.
+
+> Like the Live Activity, the home-screen Widget is **compile-verified on the
+> Simulator**. Its data only flows on a **signed** build: App Group capabilities aren't
+> applied to unsigned Simulator builds, so without signing the Widget shows its "Open
+> Lisa Pocket" placeholder rather than live counts.
 
 ## Build / verify
 

@@ -2,6 +2,8 @@
 *.xcodeproj/
 Sources/Info.plist
 Widgets/Info.plist
+Sources/LisaPocket.entitlements
+Widgets/LisaPocketWidgets.entitlements
 # Build output / Xcode cruft.
 .build/
 DerivedData/
