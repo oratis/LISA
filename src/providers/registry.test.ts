@@ -1,6 +1,6 @@
 import { test, describe, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { detectProvider, OPENAI_COMPAT_PRESETS } from "./registry.js";
+import { detectProvider, resolveAnthropicAuth, OPENAI_COMPAT_PRESETS } from "./registry.js";
 
 // detectProvider reads a few env vars as fallbacks. Snapshot + restore them
 // so tests are hermetic regardless of the dev's shell.
@@ -84,6 +84,29 @@ describe("detectProvider — env overrides", () => {
     // claude model still routes to anthropic even if the env says gemini.
     process.env.LISA_PROVIDER = "gemini";
     assert.equal(detectProvider("claude-sonnet-4-6"), "anthropic");
+  });
+});
+
+describe("resolveAnthropicAuth — Bearer gateway vs x-api-key", () => {
+  test("ANTHROPIC_AUTH_TOKEN → authToken (Bearer), no apiKey", () => {
+    assert.deepEqual(resolveAnthropicAuth({ ANTHROPIC_AUTH_TOKEN: "tok" }), { authToken: "tok" });
+  });
+  test("only ANTHROPIC_API_KEY → apiKey (x-api-key)", () => {
+    assert.deepEqual(resolveAnthropicAuth({ ANTHROPIC_API_KEY: "sk-ant" }), { apiKey: "sk-ant" });
+  });
+  test("AUTH_TOKEN wins when both are set (Claude Code precedence)", () => {
+    assert.deepEqual(
+      resolveAnthropicAuth({ ANTHROPIC_AUTH_TOKEN: "tok", ANTHROPIC_API_KEY: "sk-ant" }),
+      { authToken: "tok" },
+    );
+  });
+  test("blank/whitespace AUTH_TOKEN is ignored → falls back to apiKey", () => {
+    assert.deepEqual(resolveAnthropicAuth({ ANTHROPIC_AUTH_TOKEN: "  ", ANTHROPIC_API_KEY: "sk" }), {
+      apiKey: "sk",
+    });
+  });
+  test("neither set → apiKey undefined", () => {
+    assert.deepEqual(resolveAnthropicAuth({}), { apiKey: undefined });
   });
 });
 
