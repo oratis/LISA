@@ -158,11 +158,24 @@ export function detectProvider(model: string): ProviderName {
   return "anthropic";
 }
 
+/**
+ * Anthropic auth from env. ANTHROPIC_AUTH_TOKEN (sent as `Authorization: Bearer`,
+ * for an Anthropic-compatible gateway/proxy) takes precedence over
+ * ANTHROPIC_API_KEY (`x-api-key`), matching Claude Code's precedence. Pure.
+ */
+export function resolveAnthropicAuth(
+  env: Record<string, string | undefined> = process.env,
+): { apiKey?: string; authToken?: string } {
+  const authToken = env.ANTHROPIC_AUTH_TOKEN?.trim();
+  if (authToken) return { authToken };
+  return { apiKey: env.ANTHROPIC_API_KEY };
+}
+
 export function makeProvider(name: ProviderName): Provider {
   switch (name) {
     case "anthropic":
       return new AnthropicProvider({
-        apiKey: process.env.ANTHROPIC_API_KEY,
+        ...resolveAnthropicAuth(),
         baseURL: process.env.ANTHROPIC_BASE_URL,
       });
     case "openai":
@@ -187,7 +200,7 @@ function resolveProvider(model: string): Provider {
   const provider = detectProvider(model);
   if (provider === "anthropic") {
     return new AnthropicProvider({
-      apiKey: process.env.ANTHROPIC_API_KEY,
+      ...resolveAnthropicAuth(),
       baseURL: process.env.ANTHROPIC_BASE_URL,
     });
   }
@@ -243,7 +256,7 @@ export function providerForModel(model: string): Provider {
  */
 export function resolveDefaultModel(): string {
   if (process.env.LISA_MODEL?.trim()) return process.env.LISA_MODEL.trim();
-  if (process.env.ANTHROPIC_API_KEY) return DEFAULT_MODEL;
+  if (process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN) return DEFAULT_MODEL;
   if (process.env.OPENAI_API_KEY) return "gpt-4o";
   return DEFAULT_MODEL;
 }
@@ -251,7 +264,10 @@ export function resolveDefaultModel(): string {
 /** For docs / CLI listing. */
 export function listConfiguredProviders(): Array<{ name: string; configured: boolean }> {
   const out: Array<{ name: string; configured: boolean }> = [
-    { name: "Anthropic", configured: !!process.env.ANTHROPIC_API_KEY },
+    {
+      name: "Anthropic",
+      configured: !!(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN),
+    },
     { name: "OpenAI", configured: !!process.env.OPENAI_API_KEY },
     {
       name: "Google Gemini",

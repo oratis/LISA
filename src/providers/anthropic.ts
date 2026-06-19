@@ -10,15 +10,20 @@ export class AnthropicProvider implements Provider {
   readonly name = "anthropic";
   private client: Anthropic;
 
-  constructor(opts: { apiKey?: string; baseURL?: string } = {}) {
+  constructor(opts: { apiKey?: string; authToken?: string; baseURL?: string } = {}) {
     // proxyAwareFetch passes through cleanly when no proxy is installed;
     // when one is, it re-injects Content-Type for proxies (Clash et al)
     // that strip response headers through CONNECT tunnels.
     // baseURL overrides the default https://api.anthropic.com — used to
     // route through an Anthropic-compatible proxy (one-api, openrouter,
     // self-hosted relay) when direct access is blocked.
+    // authToken sends `Authorization: Bearer …` instead of the default
+    // `x-api-key` header — the sanctioned path for an Anthropic-compatible
+    // LLM gateway / proxy (matches Claude Code's ANTHROPIC_AUTH_TOKEN). When
+    // set it takes precedence over apiKey, so callers pass one or the other.
     this.client = new Anthropic({
       apiKey: opts.apiKey,
+      authToken: opts.authToken,
       baseURL: opts.baseURL,
       fetch: proxyAwareFetch,
     });
