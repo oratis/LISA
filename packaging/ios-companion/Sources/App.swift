@@ -13,6 +13,7 @@ struct LisaPocketApp: App {
 
 struct RootView: View {
     @EnvironmentObject var app: AppState
+    @Environment(\.scenePhase) private var scenePhase
     var body: some View {
         TabView(selection: $app.selectedTab) {
             RosterView()
@@ -27,5 +28,9 @@ struct RootView: View {
                 .tabItem { Label("Settings", systemImage: "gearshape") }.tag(4)
         }
         .onOpenURL { app.handleDeepLink($0) }
+        .overlay { if app.locked { LockView() } }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .background { app.lockIfEnabled() }  // re-arm when leaving foreground
+        }
     }
 }

@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import LocalAuthentication
 
 /// A roster session a deep-link wants to open (agent + sessionId).
 struct PendingNav: Equatable { var agent: String; var id: String }
@@ -12,6 +13,9 @@ final class AppState: ObservableObject {
     @Published var selectedTab = 0
     /// Set by a `lisapocket://session?…` deep-link; RosterView consumes + clears it.
     @Published var pendingSession: PendingNav?
+    /// Optional Face ID / passcode gate over the app (token grants full control).
+    @Published var biometricLockEnabled: Bool
+    @Published var locked: Bool
 
     init() {
         let d = UserDefaults.standard
@@ -20,6 +24,9 @@ final class AppState: ObservableObject {
         let cfg = ServerConfig(host: host, port: storedPort == 0 ? 5757 : storedPort, token: TokenStore.load())
         self.config = cfg
         self.client = LisaClient(config: cfg)
+        let lockOn = d.bool(forKey: "lisa.biometricLock")
+        self.biometricLockEnabled = lockOn
+        self.locked = lockOn && cfg.token != nil  // require unlock at launch when armed
     }
 
     func update(host: String, port: Int, token: String?) {
@@ -58,6 +65,29 @@ final class AppState: ObservableObject {
         let id = items.first { $0.name == "id" }?.value
         if let agent, let id, !agent.isEmpty, !id.isEmpty {
             pendingSession = PendingNav(agent: agent, id: id)
+        }
+    }
+
+    // ── biometric lock ──
+    func setBiometricLock(_ on: Bool) {
+        biometricLockEnabled = on
+        UserDefaults.standard.set(on, forKey: "lisa.biometricLock")
+        if !on { locked = false }
+    }
+
+    /// Re-arm the lock when the app leaves the foreground (called on background).
+    func lockIfEnabled() {
+        if biometricLockEnabled && config.token != nil { locked = true }
+    }
+
+    /// Prompt Face ID / Touch ID (falling back to the device passcode). If no auth
+    /// is available at all, don't trap the user — just unlock.
+    func unlock() async {
+        let ctx = LAContext()
+        var err: NSError?
+        guard ctx.canEvaluatePolicy(.deviceOwnerAuthentication, error: &err) else { locked = false; return }
+        if let ok = try? await ctx.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Unlock Lisa Pocket"), ok {
+            locked = false
         }
     }
 }

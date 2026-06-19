@@ -33,6 +33,7 @@ targets:
         UILaunchScreen: {}
         NSSupportsLiveActivities: true
         NSCameraUsageDescription: "Scan the pairing QR code Lisa shows on your Mac."
+        NSFaceIDUsageDescription: "Unlock Lisa Pocket with Face ID."
         CFBundleURLTypes:
           - CFBundleURLName: ai.meetlisa.pocket
             CFBundleURLSchemes:

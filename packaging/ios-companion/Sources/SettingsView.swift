@@ -83,6 +83,14 @@ struct SettingsView: View {
                     NavigationLink { DevicesView() } label: { Label("Paired devices", systemImage: "iphone.gen3") }
                 }
 
+                Section("Security") {
+                    Toggle("Require Face ID / passcode", isOn: Binding(
+                        get: { app.biometricLockEnabled },
+                        set: { app.setBiometricLock($0) }))
+                    Text("Locks the app behind biometrics — the device token grants full control of your Mac's agents.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+
                 Section("Inspect Lisa") {
                     NavigationLink { SoulView() } label: { Label("Soul", systemImage: "sparkles") }
                     NavigationLink { MemoryView() } label: { Label("Memory", systemImage: "brain") }
