@@ -69,10 +69,12 @@
     "@google/genai": "^2.0.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "openai": "^6.35.0",
+    "qrcode-terminal": "^0.12.0",
     "undici": "^8.2.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "@types/qrcode-terminal": "^0.12.2",
     "sharp": "^0.34.5",
     "tsx": "^4.21.0",
     "typescript": "^5.7.0"
