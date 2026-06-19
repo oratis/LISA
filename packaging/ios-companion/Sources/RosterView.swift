@@ -20,15 +20,23 @@ final class RosterModel: ObservableObject {
     func startStream(_ client: LisaClient) {
         streamTask?.cancel()
         streamTask = Task { @MainActor in
-            do {
-                for try await msg in client.eventsStream() {
-                    if (msg.type == "agent_session_update" || msg.type == "claude_session_update"),
-                       let s = msg.agentSession {
-                        merge(s)
+            var backoffSec: UInt64 = 1
+            while !Task.isCancelled {
+                do {
+                    for try await msg in client.eventsStream() {
+                        backoffSec = 1  // healthy traffic resets the backoff
+                        if (msg.type == "agent_session_update" || msg.type == "claude_session_update"),
+                           let s = msg.agentSession {
+                            merge(s)
+                        }
                     }
+                } catch {
+                    // dropped — fall through to a full resync + backed-off reconnect
                 }
-            } catch {
-                // stream ended / dropped — the view reloads on next appear
+                if Task.isCancelled { break }
+                await load(client)  // catch transitions missed during the gap
+                try? await Task.sleep(nanoseconds: backoffSec * 1_000_000_000)
+                backoffSec = min(backoffSec * 2, 30)  // 1,2,4,…,30s cap
             }
         }
     }
@@ -97,6 +105,7 @@ func stateColor(_ s: AgentSession) -> Color {
 struct RosterView: View {
     @EnvironmentObject var app: AppState
     @StateObject private var model = RosterModel()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         NavigationStack {
@@ -129,6 +138,12 @@ struct RosterView: View {
             .task(id: app.config) {
                 await model.load(app.client)
                 model.startStream(app.client)
+            }
+            .onChange(of: scenePhase) { _, phase in
+                // iOS suspends SSE in the background; on return to foreground do a
+                // full resync and reconnect so the roster is correct + live again.
+                guard phase == .active, app.config.isConfigured else { return }
+                Task { await model.load(app.client); model.startStream(app.client) }
             }
             .onDisappear { model.stopStream() }
         }
