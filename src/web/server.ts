@@ -37,7 +37,7 @@ import { polishDictation, type DictationProvider } from "../voice/dictation.js";
 import { listGrants, grant, revoke, revokeAll, isGranted, SENSE_SIGNALS, SIGNAL_DESCRIPTIONS } from "../consent/store.js";
 import { signalAgentTool } from "../tools/signal_agent.js";
 import { managedRegistry } from "../agents/managed.js";
-import { ptyRegistry, ptyEnabled } from "../agents/pty.js";
+import { ptyRegistry, ptyEnabled, normalizeAgentKind } from "../agents/pty.js";
 import { liveClaudeSessionIds } from "../integrations/claude-code/liveness.js";
 import { listRecentDispatches, isAlive, toDispatchView, readDispatchOutput } from "../integrations/dispatch-ledger.js";
 import { loadControlPolicy, saveControlPolicy, type ControlPolicy } from "../control/policy.js";
@@ -1043,6 +1043,14 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       // Adopting an external session is the highest-risk control action — gate it
       // behind remoteAdoptExternal; starting a fresh agent is ordinary control.
       if (denyRemote(resumeSessionId ? "adoptExternal" : "control")) return;
+      // Resume-adopt is claude-only (docs/PTY_AGENTS.md). Codex has no liveness
+      // signal, so we can't guard against resuming a *live* rollout and corrupting
+      // it — refuse with a clear 400 rather than silently spawning a fresh session.
+      if (resumeSessionId && normalizeAgentKind(agent) !== "claude-code") {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end(`resume-adopt is only supported for claude sessions (got "${agent}"); start a fresh agent instead`);
+        return;
+      }
       // Adopting an existing session needs no task (it continues the convo); a
       // fresh agent does. Guard: never resume a session that's currently live.
       if (!resumeSessionId && (typeof payload.task !== "string" || !payload.task.trim())) {

@@ -241,9 +241,22 @@ export class PtyAgent {
       throw new Error("node-pty is not installed — run `npm i node-pty` to enable PTY agents");
     }
     const kind = normalizeAgentKind(opts.agent);
+    // Resume-adopt is claude-only. The codex CLI *does* support `codex resume
+    // <id>`, but LISA can't adopt it SAFELY: unlike claude (which writes
+    // ~/.claude/sessions/<pid>.json), codex leaves no liveness signal, so we
+    // can't tell whether a rollout is idle vs. open right now — and resuming a
+    // live session double-writes its transcript and corrupts it. Refuse rather
+    // than silently dropping the id and spawning a fresh session. See
+    // docs/PTY_AGENTS.md ("Why codex resume-adopt isn't supported (yet)").
+    if (opts.resumeSessionId && kind !== "claude-code") {
+      throw new Error(
+        `resume-adopt is only supported for claude sessions (got "${opts.agent}") — ` +
+          "codex has no liveness signal to guard against transcript corruption",
+      );
+    }
     const cli = opts.cli ?? (kind === "claude-code" ? detectClaudeBinary() : resolveCli(opts.agent));
-    // Adopt an existing session by id (claude only): `claude --resume <id>`.
-    const resumeArgs = opts.resumeSessionId && kind === "claude-code" ? ["--resume", opts.resumeSessionId] : [];
+    // Adopt an existing session by id: `claude --resume <id>` (claude-only, guarded above).
+    const resumeArgs = opts.resumeSessionId ? ["--resume", opts.resumeSessionId] : [];
     const args = [...resumeArgs, ...(opts.args ?? [])];
     const now = opts.now ?? Date.now;
     const proc = pty.spawn(cli, args, {

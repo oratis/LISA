@@ -197,6 +197,11 @@ lisa agents pty codex "跑测试"      # codex 同理；--port N 指定非默认
   resume 一个**还活着**的会话会损坏 transcript，端点直接 **409**。`detectClaudeBinary()` 还优先用 app 内置的 claude（版本对得上 transcript）。
 - **入口**：①GUI roster 对 `resumable` 会话给"接管"按钮（#111）；②**终端** `lisa agents pty --resume <session-id>`（本次接通，复用 §4.1 attach 客户端；命中 409 会提示"先关掉它"）；③岛仍保留手动"复制 `claude --resume`"。
 - 覆盖：**用户已起、现已空闲**的 claude 会话："我之前那个会话，手机上让它接着干。"
+- **codex 对等？已查、暂不做（诚实记账，2026-06-19）**：codex CLI **支持续写**（`codex resume <id>`，会话存 `$CODEX_HOME/sessions/YYYY/MM/DD/rollout-*.jsonl`），
+  但 resume-adopt 的 **liveness 守卫对 codex 不成立**——codex **不写 pid 锁**（claude 有 `~/.claude/sessions/<pid>.json`），
+  只能从 rollout 文件 mtime 猜"最近"而非"空闲"，无法防"续写一个还活着的会话 → 双写损坏 transcript"；且 rollout 文件名→resume-id 映射未经证实，本机也无 codex 可验。
+  故 LISA **显式拒绝** codex resume：`PtyAgent.start` 抛错、`POST /api/agents/pty/start` 对非 claude 的 `resumeSessionId` 返回 **400**（旧行为是悄悄起个新会话——已修为诚实拒绝）。
+  codex 的**接管即启**（§4.1，新起）不受影响。解锁条件：codex 给出可靠的 liveness 信号 + 确认 id 映射。详见 [PTY_AGENTS.md](./PTY_AGENTS.md)。
 
 ### 4.3 为什么 tmux / peer 协议不是这里的答案（诚实记账）
 
@@ -211,6 +216,7 @@ lisa agents pty codex "跑测试"      # codex 同理；--port N 指定非默认
 |---|---|---|
 | 我想**新起**一个 claude/codex，且手机可控 | §4.1 接管即启（`lisa agents pty`） | ✅ 已建 |
 | 我**之前起过、现在空闲**的 claude 会话，想接着指挥 | §4.2 resume-adopt（`claude --resume` + liveness 守卫） | ✅ 已落地（#111 后端/GUI + `lisa agents pty --resume`） |
+| 我**之前起过、现在空闲**的 **codex** 会话，想接着指挥 | 暂不支持——codex 无 liveness 信号，无法防双写损坏（§4.2） | ⛔ 已查/显式拒绝（400） |
 | 一个**正在跑**的桌面 app / IDE 会话 | **不可控**，只能观察；等它空闲再 §4.2 | —— |
 
 **iOS 侧零特判**：两条可行路都产出 `controllable:"pty"` + 现成 `/api/agents/pty/*`。app 控制 UI 仍只 key off `controllable`，
