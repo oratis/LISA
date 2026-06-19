@@ -34,6 +34,19 @@ final class LisaClient {
         self.session = session
     }
 
+    /// URL for a server asset (e.g. a mood portrait at /assets/lisa/<slug>.png),
+    /// carrying the token as a query param so AsyncImage — which can't set an
+    /// Authorization header — still authenticates against a non-loopback server.
+    func assetURL(_ path: String) -> URL? {
+        guard config.isConfigured, let base = config.baseURL,
+              let abs = URL(string: path, relativeTo: base),
+              var comps = URLComponents(url: abs, resolvingAgainstBaseURL: true) else { return nil }
+        if let token = config.token, !token.isEmpty {
+            comps.queryItems = (comps.queryItems ?? []) + [URLQueryItem(name: "token", value: token)]
+        }
+        return comps.url
+    }
+
     func makeRequest(_ path: String, method: String = "GET", json: [String: Any]? = nil) throws -> URLRequest {
         guard config.isConfigured, let base = config.baseURL, let url = URL(string: path, relativeTo: base) else {
             throw LisaError.notConfigured

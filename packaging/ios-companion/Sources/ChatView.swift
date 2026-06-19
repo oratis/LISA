@@ -49,8 +49,7 @@ struct ChatView: View {
         NavigationStack {
             VStack(spacing: 0) {
                 if !model.mood.isEmpty {
-                    MoodChip(mood: model.mood)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    MoodPortrait(mood: model.mood)
                         .padding(.horizontal).padding(.vertical, 6)
                     Divider()
                 }
@@ -82,9 +81,40 @@ struct ChatView: View {
     }
 }
 
-/// Lisa's current mood as a small chip. A stand-in for the mood *portrait* —
-/// the data is wired (mood SSE); bundling the mac-client's portrait art is a
-/// follow-up (the iOS app has no asset catalog yet).
+/// Lisa's current mood as a real portrait + label. The portrait is the server's
+/// own art (`/assets/lisa/<slug>.png`, the same set the web island uses), loaded
+/// over the existing connection — no bundling, always in sync. Falls back to the
+/// mood chip while loading or if the slug has no art.
+struct MoodPortrait: View {
+    @EnvironmentObject var app: AppState
+    let mood: String
+
+    var body: some View {
+        let slug = mood.isEmpty ? "neutral" : mood
+        HStack(spacing: 10) {
+            Group {
+                if let url = app.client.assetURL("/assets/lisa/\(slug).png") {
+                    AsyncImage(url: url) { phase in
+                        if case .success(let img) = phase {
+                            img.resizable().scaledToFit()
+                        } else {
+                            Image(systemName: "person.crop.circle.fill").resizable().scaledToFit().foregroundStyle(.secondary)
+                        }
+                    }
+                } else {
+                    Image(systemName: "person.crop.circle.fill").resizable().scaledToFit().foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: 48, height: 48)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            MoodChip(mood: slug)
+            Spacer()
+        }
+    }
+}
+
+/// Lisa's current mood as a small labeled chip — the caption beside the portrait,
+/// and the fallback while/if the portrait can't load.
 struct MoodChip: View {
     let mood: String
     var body: some View {
