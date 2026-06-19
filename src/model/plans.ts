@@ -43,8 +43,6 @@ export interface PlanStatus {
   loggedIn: boolean | null;
   /** Short human hint about state / how to enable. */
   detail: string;
-  /** Not a first-class shipped path yet (copilot). */
-  experimental?: boolean;
 }
 
 /** Injectable view of the host used for presence-only detection. Pure inputs. */
@@ -193,18 +191,23 @@ function detectCodex(probe: PlanProbe): PlanStatus {
 }
 
 function detectCopilot(probe: PlanProbe): PlanStatus {
-  const binary = probe.onPath("copilot") ? "copilot" : probe.onPath("gh") ? "gh" : null;
+  // The delegate target is the standalone agentic `copilot` CLI, which runs a
+  // task non-interactively via `copilot -p "<task>"`. The older `gh copilot`
+  // (suggest/explain) is NOT agentic and can't run a task, so it doesn't count.
+  const binary = probe.onPath("copilot") ? "copilot" : null;
+  // Copilot login sits behind GitHub auth — not cheaply checkable without
+  // spawning, so: installed → unknown, absent → false.
+  const loggedIn = binary ? null : false;
   return {
     id: "copilot",
     label: "GitHub Copilot",
     cli: "copilot",
     binary,
     available: binary !== null,
-    loggedIn: null, // needs `gh auth status` / token exchange — not probed in Phase 1
+    loggedIn,
     detail: binary
-      ? "experimental — needs the GitHub Copilot CLI; login state not checked yet"
+      ? "installed — login state unknown (GitHub auth)"
       : "install the GitHub Copilot CLI (`copilot`) to enable",
-    experimental: true,
   };
 }
 
@@ -230,4 +233,55 @@ export function detectPlan(id: PlanId, probe: PlanProbe = defaultPlanProbe()): P
 /** Detect every known plan. */
 export function detectPlans(probe: PlanProbe = defaultPlanProbe()): PlanStatus[] {
   return PLAN_IDS.map((id) => detectPlan(id, probe));
+}
+
+// ── delegation (CODING_PLANS Phase 2) ────────────────────────────────────────
+
+/**
+ * The headless dispatch CLI kind a plan delegates through. Each plan id is also
+ * its CLI kind in launchAgent: claude → `claude -p`, codex → `codex exec`,
+ * copilot → `copilot -p`.
+ */
+export function planDispatchKind(id: PlanId): "claude" | "codex" | "copilot" {
+  return id; // each plan id is also its headless dispatch CLI kind
+}
+
+export interface PlanPreflight {
+  ok: boolean;
+  /** Why delegation can't proceed (only when ok=false). */
+  reason?: string;
+}
+
+/**
+ * Can we delegate coding work to this detected plan right now? Pure. A null
+ * (unknown) login passes — on macOS the credential lives in the Keychain and
+ * "installed but login unverifiable" should not block; the CLI itself will
+ * prompt if truly logged out.
+ */
+export function planPreflight(status: PlanStatus): PlanPreflight {
+  if (!status.available) return { ok: false, reason: `${status.cli} isn't installed — ${status.detail}` };
+  if (status.loggedIn === false)
+    return { ok: false, reason: `${status.cli} is installed but not logged in — ${status.detail}` };
+  return { ok: true };
+}
+
+// ── surfacing (CODING_PLANS Phase 4) ─────────────────────────────────────────
+
+/** Status glyph: ✓ logged in · ✗ unavailable/logged-out · ? installed, login unknown. Pure. */
+export function planMark(s: PlanStatus): "✓" | "✗" | "?" {
+  if (!s.available || s.loggedIn === false) return "✗";
+  if (s.loggedIn === true) return "✓";
+  return "?";
+}
+
+/**
+ * One-line coding-plan summary for surfaces like `lisa agents`. Pure. Shows the
+ * selected delegation target (★) and each plan's glyph. Headroom/rate-limit
+ * numbers are intentionally omitted — they'd need version-fragile parsing of the
+ * vendor CLI's output, and a wrong number is worse than none.
+ */
+export function planSummaryLine(statuses: PlanStatus[], selected: PlanId | null): string {
+  const bits = statuses.map((s) => `${s.label} ${planMark(s)}${s.id === selected ? " ★" : ""}`);
+  const head = selected ? `coding plan → ${selected}` : "coding plan → none selected";
+  return `${head}  ·  ${bits.join("  ·  ")}`;
 }

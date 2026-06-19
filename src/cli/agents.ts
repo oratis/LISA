@@ -8,6 +8,7 @@ import path from "node:path";
 import { OrchestratorHub, loadOrchestratorConfig } from "../integrations/hub.js";
 import { registerBuiltinIntegrations } from "../integrations/registry.js";
 import type { AgentSession } from "../integrations/types.js";
+import { detectPlans, planSummaryLine, selectedPlan } from "../model/plans.js";
 
 const LISA_HOME = process.env.LISA_HOME ?? path.join(os.homedir(), ".lisa");
 
@@ -25,6 +26,9 @@ export async function runAgentsCommand(_subargs: string[]): Promise<number> {
   await new Promise((r) => setTimeout(r, 600)); // let file-watch / poll settle
   const sessions = hub.list();
   await hub.stop();
+
+  // Coding-plan delegation target + detection (CODING_PLANS Phase 4).
+  console.log(planSummaryLine(detectPlans(), selectedPlan()));
 
   if (sessions.length === 0) {
     console.log("No active agent sessions in the last window.");

@@ -22,6 +22,7 @@ const SAMPLE = [
   "task",
   "redeploy",
   "dispatch_agent",
+  "run_on_plan",
   "signal_agent",
   "scheduled_dispatch",
   "compare_agents",

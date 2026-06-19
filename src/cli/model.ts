@@ -7,9 +7,11 @@ import {
   detectPlan,
   detectPlans,
   parsePlanRef,
+  planMark,
   selectedPlan,
   type PlanStatus,
 } from "../model/plans.js";
+import { planUsage, formatUsage } from "../model/plan-usage.js";
 import { saveConfigEnv } from "../env.js";
 
 function gb(bytes?: number): string {
@@ -18,10 +20,8 @@ function gb(bytes?: number): string {
 
 /** One row in `lisa model list`'s coding-plans section. */
 function planLine(p: PlanStatus, selected: boolean): string {
-  const mark = !p.available ? "✗" : p.loggedIn === true ? "✓" : p.loggedIn === false ? "✗" : "?";
-  const exp = p.experimental ? " (experimental)" : "";
   const star = selected ? "  ★ selected" : "";
-  return `${mark} ${p.label.padEnd(22)} plan://${p.id.padEnd(8)} — ${p.detail}${exp}${star}`;
+  return `${planMark(p)} ${p.label.padEnd(22)} plan://${p.id.padEnd(8)} — ${p.detail}${star}`;
 }
 
 export async function runModelCommand(subargs: string[]): Promise<number> {
@@ -56,9 +56,17 @@ export async function runModelCommand(subargs: string[]): Promise<number> {
     // Coding plans — delegate coding work to a subscription CLI (detection only;
     // delegation wiring is a later phase, see docs/CODING_PLANS.md).
     const sel = selectedPlan();
+    const now = Date.now();
     console.log("\ncoding plans (run coding work on a subscription, not an API key):");
-    for (const p of detectPlans()) console.log("  " + planLine(p, sel === p.id));
+    for (const p of detectPlans()) {
+      console.log("  " + planLine(p, sel === p.id));
+      if (p.available) {
+        const u = planUsage(p.id, now);
+        if (u && (u.windowTokens || u.todayTokens)) console.log("      ↳ usage: " + formatUsage(u));
+      }
+    }
     console.log("  switch with:  lisa model use plan://<claude|codex|copilot>");
+    console.log("  (usage = gross tokens incl. cache, from local transcripts; rolling window)");
     return 0;
   }
 

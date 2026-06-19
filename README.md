@@ -225,10 +225,11 @@ own CLI**, which already holds that subscription auth: layer 3 above (PTY agents
 logged into with your plan, the work bills to your plan, not an API key.
 
 **Today:** `lisa model list` detects your installed plan CLIs (Claude Code / Codex
-/ Copilot) and their login state, and `lisa model use plan://claude` picks one as
-the delegation target — detection + selection only, no tokens read. The rest of the
-design (headless `claude -p` / `codex exec` delegation, web/island picker, usage
-surfacing) — plus why in-process token reuse is rejected — is in
+/ Copilot) and their login state, `lisa model use plan://claude` picks a delegation
+target, and the **`run_on_plan`** tool runs a coding task on that plan by driving
+its CLI headlessly (`claude -p` / `codex exec` / `copilot -p`) — no tokens read;
+`lisa agents` shows the selected plan. What's left (a web/island picker, honest
+rate-limit headroom) — plus why in-process token reuse is rejected — is in
 **[docs/CODING_PLANS.md](docs/CODING_PLANS.md)**.
 
 ## Subcommands
@@ -416,6 +417,7 @@ On Linux, `lisa heartbeat install` prints a cron line for you to add to `crontab
 | `grep` `ls` | Search + listing |
 | `task` | Spawn a focused sub-agent in its own context window |
 | `dispatch_agent` `signal_agent` `dispatch_status` | Launch / stop / track agents she runs (managed + PTY); refuses directories another agent owns |
+| `run_on_plan` | Delegate a coding task to your subscription **coding plan** (Claude Pro/Max · ChatGPT/Codex · Copilot) by driving its CLI — bills your plan, not an API key |
 | `list_agents` `inspect_agent` `compare_agents` `agent_recap` | Observe other coding agents; deep-dive one session; race the same task across agents in worktrees; "while you were away" recap |
 | `advise_now` `scheduled_dispatch` | Proactive advisor cards on demand; recurring dispatched tasks via heartbeat |
 | `pr_status` `run_checks` `review_diff` `repo_digest` `github` `github_link` `npm_info` | Repo / GitHub / CI helpers (read-safe, write-explicit) |

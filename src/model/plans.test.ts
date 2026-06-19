@@ -6,9 +6,27 @@ import {
   selectedPlan,
   detectPlan,
   detectPlans,
+  planDispatchKind,
+  planPreflight,
+  planMark,
+  planSummaryLine,
   PLAN_IDS,
   type PlanProbe,
+  type PlanStatus,
 } from "./plans.js";
+
+function mkStatus(over: Partial<PlanStatus>): PlanStatus {
+  return {
+    id: "claude",
+    label: "Claude Pro/Max",
+    cli: "claude",
+    binary: "claude",
+    available: true,
+    loggedIn: true,
+    detail: "ready",
+    ...over,
+  };
+}
 
 /** A probe that finds nothing, overridable per test. Pure inputs only. */
 function fakeProbe(over: Partial<PlanProbe> = {}): PlanProbe {
@@ -134,11 +152,12 @@ describe("detectPlan: codex", () => {
 });
 
 describe("detectPlan: copilot", () => {
-  test("is experimental; falls back to gh", () => {
-    const s = detectPlan("copilot", fakeProbe({ onPath: (c) => c === "gh" }));
-    assert.equal(s.experimental, true);
-    assert.equal(s.binary, "gh");
-    assert.equal(s.loggedIn, null);
+  test("the standalone `copilot` CLI is the delegate; gh alone doesn't count", () => {
+    assert.equal(detectPlan("copilot", fakeProbe({ onPath: (c) => c === "gh" })).available, false);
+    const s = detectPlan("copilot", fakeProbe({ onPath: (c) => c === "copilot" }));
+    assert.equal(s.available, true);
+    assert.equal(s.binary, "copilot");
+    assert.equal(s.loggedIn, null); // login behind GitHub auth — not probed
   });
 });
 
@@ -146,5 +165,57 @@ describe("detectPlans", () => {
   test("returns all known plans, in order", () => {
     const all = detectPlans(fakeProbe());
     assert.deepEqual(all.map((p) => p.id), [...PLAN_IDS]);
+  });
+});
+
+describe("planDispatchKind", () => {
+  test("each plan id maps to its headless CLI kind", () => {
+    assert.equal(planDispatchKind("claude"), "claude");
+    assert.equal(planDispatchKind("codex"), "codex");
+    assert.equal(planDispatchKind("copilot"), "copilot");
+  });
+});
+
+describe("planMark", () => {
+  test("✓ logged in · ? unknown · ✗ unavailable/out", () => {
+    assert.equal(planMark(mkStatus({ loggedIn: true })), "✓");
+    assert.equal(planMark(mkStatus({ loggedIn: null })), "?");
+    assert.equal(planMark(mkStatus({ available: false, binary: null })), "✗");
+    assert.equal(planMark(mkStatus({ loggedIn: false })), "✗");
+  });
+});
+
+describe("planSummaryLine", () => {
+  test("marks the selected plan with ★ and names it in the head", () => {
+    const line = planSummaryLine(
+      [mkStatus({ id: "claude" }), mkStatus({ id: "codex", label: "ChatGPT plan (Codex)", available: false, binary: null })],
+      "claude",
+    );
+    assert.match(line, /coding plan → claude/);
+    assert.match(line, /Claude Pro\/Max ✓ ★/);
+    assert.match(line, /ChatGPT plan \(Codex\) ✗/);
+  });
+  test("says 'none selected' when no target is set", () => {
+    assert.match(planSummaryLine([mkStatus({})], null), /none selected/);
+  });
+});
+
+describe("planPreflight", () => {
+  const base = mkStatus({});
+  test("ready when available + logged in", () => {
+    assert.deepEqual(planPreflight(base), { ok: true });
+  });
+  test("unknown login (macOS Keychain) still passes — CLI prompts if truly out", () => {
+    assert.equal(planPreflight({ ...base, loggedIn: null }).ok, true);
+  });
+  test("blocks when not installed", () => {
+    const r = planPreflight({ ...base, available: false, binary: null, detail: "install it" });
+    assert.equal(r.ok, false);
+    assert.match(r.reason!, /isn't installed/);
+  });
+  test("blocks when explicitly logged out", () => {
+    const r = planPreflight({ ...base, loggedIn: false });
+    assert.equal(r.ok, false);
+    assert.match(r.reason!, /not logged in/);
   });
 });

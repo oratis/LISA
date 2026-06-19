@@ -9,6 +9,7 @@ import { reviewDiffTool } from "./review_diff.js";
 import { runChecksTool } from "./run_checks.js";
 import { prStatusTool } from "./pr_status.js";
 import { dispatchAgentTool } from "./dispatch_agent.js";
+import { runOnPlanTool } from "./run_on_plan.js";
 import { dispatchStatusTool } from "./dispatch_status.js";
 import { scheduledDispatchTool } from "./scheduled_dispatch.js";
 import { compareAgentsTool } from "./compare_agents.js";
@@ -90,6 +91,7 @@ export function buildToolRegistry(opts: ToolRegistryOptions = {}): ToolDefinitio
     prStatusTool as ToolDefinition,
     adviseNowTool as ToolDefinition,
     dispatchAgentTool as ToolDefinition,
+    runOnPlanTool as ToolDefinition,
     dispatchStatusTool as ToolDefinition,
     scheduledDispatchTool as ToolDefinition,
     compareAgentsTool as ToolDefinition,
@@ -152,6 +154,7 @@ export const AUTONOMOUS_BLOCKED_TOOL_NAMES = new Set([
   "redeploy",
   "task",
   "dispatch_agent",
+  "run_on_plan",
   "signal_agent",
   "scheduled_dispatch",
   "compare_agents",
