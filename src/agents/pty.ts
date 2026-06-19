@@ -196,6 +196,9 @@ export class PtyAgent {
   readonly cwd: string;
   readonly project: string;
   onChange: () => void = () => {};
+  /** Called with each ANSI-stripped output chunk — drives the live attach stream
+   *  (GET /api/agents/pty/<id>/stream). Distinct from onChange (state snapshots). */
+  onOutput: (chunk: string) => void = () => {};
 
   private readonly proc: IPtyLike;
   private readonly now: () => number;
@@ -307,8 +310,10 @@ export class PtyAgent {
   // ── internals ──
   private onData(d: string): void {
     this.bytesOut += d.length;
-    this.ring = (this.ring + stripAnsi(d)).slice(-RING_MAX);
+    const clean = stripAnsi(d);
+    this.ring = (this.ring + clean).slice(-RING_MAX);
     this.lastChunkAt = this.now();
+    if (clean) this.onOutput(clean);
     this.touch();
   }
 
@@ -331,6 +336,7 @@ export class PtyRegistry extends EventEmitter {
   async start(opts: PtyStartOpts): Promise<PtyView> {
     const a = await PtyAgent.start(opts);
     a.onChange = () => this.emit("update", a.view());
+    a.onOutput = (chunk) => this.emit("output", { id: a.id, chunk });
     this.agents.set(a.id, a);
     this.emit("update", a.view());
     return a.view();

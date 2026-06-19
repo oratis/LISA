@@ -18,6 +18,7 @@ const {
   findDispatch,
   removeDispatch,
   isAlive,
+  toDispatchView,
 } = await import("./dispatch-ledger.js");
 
 /** A pid that is essentially never a running process. */
@@ -116,5 +117,33 @@ describe("findDispatch / removeDispatch", () => {
     const e = recordDispatch({ agent: "claude", pid: process.pid, cwd: "/a", task: "t" });
     removeDispatch(e.id);
     assert.deepEqual(loadLedger(), []);
+  });
+});
+
+describe("toDispatchView", () => {
+  test("maps a ledger entry to a structural, ISO-timestamped view", () => {
+    const view = toDispatchView(
+      { id: "48213-x", agent: "claude", pid: 48213, cwd: "/p", task: "t", startedAt: 0, logPath: "/l.log" },
+      true,
+    );
+    assert.deepEqual(view, {
+      id: "48213-x",
+      agent: "claude",
+      pid: 48213,
+      cwd: "/p",
+      task: "t",
+      startedAt: "1970-01-01T00:00:00.000Z",
+      alive: true,
+      hasLog: true,
+    });
+  });
+  test("hasLog false when no logPath; alive reflects the arg (no raw path leaks)", () => {
+    const view = toDispatchView(
+      { id: "1-y", agent: "codex", pid: 1, cwd: "/q", task: "u", startedAt: 0 },
+      false,
+    );
+    assert.equal(view.hasLog, false);
+    assert.equal(view.alive, false);
+    assert.equal("logPath" in view, false);
   });
 });

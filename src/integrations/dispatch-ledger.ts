@@ -154,6 +154,34 @@ export function listRecentDispatches(): DispatchEntry[] {
   return loadLedger();
 }
 
+/** Serializable view of a ledger entry for the HTTP API (GET /api/dispatch/list).
+ *  Structural only — task is already a 200-char snippet; logPath is reduced to a
+ *  boolean so the raw capture path never leaks to a remote client. Pure. */
+export interface DispatchView {
+  id: string;
+  agent: string;
+  pid: number;
+  cwd: string;
+  task: string;
+  /** ISO-8601, matching /api/agents/sessions' lastMtime serialization. */
+  startedAt: string;
+  alive: boolean;
+  hasLog: boolean;
+}
+
+export function toDispatchView(e: DispatchEntry, alive: boolean): DispatchView {
+  return {
+    id: e.id,
+    agent: e.agent,
+    pid: e.pid,
+    cwd: e.cwd,
+    task: e.task,
+    startedAt: new Date(e.startedAt).toISOString(),
+    alive,
+    hasLog: !!e.logPath,
+  };
+}
+
 /** Tail (up to maxBytes) of a dispatch's captured output. "" if none/unreadable. */
 export function readDispatchOutput(entry: DispatchEntry, maxBytes = 2000): string {
   if (!entry.logPath) return "";

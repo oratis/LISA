@@ -195,6 +195,20 @@ test("process exit marks the agent done", async () => {
   });
 });
 
+test("registry emits 'output' chunks (ANSI-stripped) for the live attach stream", async () => {
+  await withFlag(async () => {
+    const f = fakePty();
+    const reg = new PtyRegistry();
+    const chunks: Array<{ id: string; chunk: string }> = [];
+    reg.on("output", (e) => chunks.push(e as { id: string; chunk: string }));
+    const v = await reg.start({ agent: "claude", task: "go", cwd: "/tmp/p", ptyModule: f.module });
+    // The initial task is a write (stdin), not output — no chunk yet.
+    assert.equal(chunks.length, 0);
+    f.emitData(ESC + "[32mhello" + ESC + "[0m world");
+    assert.deepEqual(chunks, [{ id: v.id, chunk: "hello world" }]);
+  });
+});
+
 test("registry actions on an unknown id are no-ops", () => {
   const reg = new PtyRegistry();
   assert.equal(reg.send("nope", "x"), false);
