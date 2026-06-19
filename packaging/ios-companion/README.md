@@ -19,14 +19,22 @@ iOS 17+ target). It covers:
   send · cancel, PTY send · **output** · cancel, and **adopt (resume)** for idle
   claude sessions (handles the 409/403 the server returns).
 - **Chat** — streams `POST /chat`.
-- **Settings** — pairing (paste a `lisa-pair://…` / `?token=` string → Keychain),
-  ntfy push registration, and a read-only view of the remote-control policy.
+- **Settings** — pairing (**scan** the Mac's QR code via the camera, or paste a
+  `lisa-pair://…` / `?token=` string → Keychain), ntfy push registration, and a
+  read-only view of the remote-control policy.
 - **Glance** — a **Live Activity / Dynamic Island** for a pinned agent (Lock Screen +
-  compact / expanded / minimal Dynamic Island), via a WidgetKit extension target.
+  compact / expanded / minimal Dynamic Island) and a **home-screen Widget** showing
+  active / stuck agent counts, both in a WidgetKit extension target. The Widget renders
+  a counts-only snapshot the app shares through an App Group — the auth token stays in
+  the Keychain and no session content ever reaches the extension.
 
-**Not yet** (follow-ups): live Live-Activity updates via APNs (so a pinned agent stays
-fresh while backgrounded — needs an Apple push key; ntfy push works today), a home-screen
-Widget, and a QR scanner (you can paste the pairing string for now).
+**Not yet** (follow-ups): live Live-Activity updates via APNs, so a pinned agent stays
+fresh while backgrounded — needs an Apple push key; ntfy push works today.
+
+> Like the Live Activity, the home-screen Widget is **compile-verified on the
+> Simulator**. Its data only flows on a **signed** build: App Group capabilities aren't
+> applied to unsigned Simulator builds, so without signing the Widget shows its "Open
+> Lisa Pocket" placeholder rather than live counts.
 
 ## Build / verify
 
@@ -43,6 +51,7 @@ here, like the Markup project's EAS flow).
 
 1. On the Mac: `LISA_WEB_TOKEN=$(openssl rand -hex 24) lisa serve --web --host 0.0.0.0`
    (and `POST /api/pair/start` from localhost to mint a per-device token).
-2. In the app's **Settings → Pair**, paste `http://<mac-ip-or-tailnet>:5757/?token=<token>`
-   (or a `lisa-pair://v1?host=&port=&token=` string). The token goes to the Keychain.
+2. In the app's **Settings → Pair**, tap **Scan QR code** and point it at the code the
+   Mac shows — or paste `http://<mac-ip-or-tailnet>:5757/?token=<token>` (or a
+   `lisa-pair://v1?host=&port=&token=` string). The token goes to the Keychain.
 3. Out of the house? Put both devices on Tailscale and use the tailnet name as the host.

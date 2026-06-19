@@ -1,0 +1,101 @@
+import WidgetKit
+import SwiftUI
+
+/// Home-screen / Lock-screen glance at the roster: how many agents are active vs.
+/// stuck (docs/IOS_COMPANION_PLAN.md §G5). It renders the last snapshot the app wrote
+/// to the App Group — no network, no token in the extension. Freshness therefore
+/// tracks the last time the app refreshed the roster; the app nudges the timeline via
+/// `WidgetCenter.reloadAllTimelines()`, and we re-read on a fallback cadence too.
+struct AgentCountEntry: TimelineEntry {
+    let date: Date
+    let snapshot: AgentSnapshot?
+}
+
+struct AgentCountProvider: TimelineProvider {
+    func placeholder(in context: Context) -> AgentCountEntry {
+        AgentCountEntry(date: Date(), snapshot: AgentSnapshot(working: 2, waiting: 1, error: 0, total: 3, updatedAt: Date()))
+    }
+
+    func getSnapshot(in context: Context, completion: @escaping (AgentCountEntry) -> Void) {
+        completion(AgentCountEntry(date: Date(), snapshot: SharedStore.readSnapshot()))
+    }
+
+    func getTimeline(in context: Context, completion: @escaping (Timeline<AgentCountEntry>) -> Void) {
+        let entry = AgentCountEntry(date: Date(), snapshot: SharedStore.readSnapshot())
+        let next = Date().addingTimeInterval(15 * 60)  // fallback re-read; app reloads sooner when it can
+        completion(Timeline(entries: [entry], policy: .after(next)))
+    }
+}
+
+struct AgentCountWidgetView: View {
+    var entry: AgentCountEntry
+    @Environment(\.widgetFamily) private var family
+
+    var body: some View {
+        if let snap = entry.snapshot, snap.updatedAt > .distantPast {
+            populated(snap)
+        } else {
+            unconfigured
+        }
+    }
+
+    @ViewBuilder
+    private func populated(_ snap: AgentSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: family == .systemMedium ? 10 : 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "cpu").font(.caption2)
+                Text("Dispatch").font(.caption.bold())
+                Spacer()
+                Text(snap.updatedAt, style: .time)
+                    .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+            }
+            HStack(spacing: family == .systemMedium ? 20 : 12) {
+                stat(snap.working, "active", .blue)
+                stat(snap.stuck, "stuck", snap.stuck > 0 ? .orange : .secondary)
+                if family == .systemMedium {
+                    stat(snap.total, "total", .secondary)
+                }
+            }
+            if family == .systemMedium {
+                Text(summary(snap)).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func stat(_ value: Int, _ label: String, _ color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("\(value)").font(.system(.title, design: .rounded).weight(.bold)).foregroundStyle(color)
+            Text(label).font(.caption2).foregroundStyle(.secondary)
+        }
+    }
+
+    private func summary(_ snap: AgentSnapshot) -> String {
+        if snap.error > 0 { return "\(snap.error) errored · \(snap.waiting) waiting" }
+        if snap.waiting > 0 { return "\(snap.waiting) waiting on you" }
+        if snap.working > 0 { return "all running smoothly" }
+        return "nothing running"
+    }
+
+    private var unconfigured: some View {
+        VStack(spacing: 4) {
+            Image(systemName: "wifi.slash").foregroundStyle(.secondary)
+            Text("Open Lisa Pocket").font(.caption).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+struct AgentCountWidget: Widget {
+    let kind = "AgentCountWidget"
+
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: kind, provider: AgentCountProvider()) { entry in
+            AgentCountWidgetView(entry: entry)
+                .containerBackground(.fill.tertiary, for: .widget)
+        }
+        .configurationDisplayName("Agent activity")
+        .description("Active and stuck agents on your Mac.")
+        .supportedFamilies([.systemSmall, .systemMedium])
+    }
+}

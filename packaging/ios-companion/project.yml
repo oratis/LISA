@@ -32,8 +32,14 @@ targets:
         CFBundleDisplayName: Lisa Pocket
         UILaunchScreen: {}
         NSSupportsLiveActivities: true
+        NSCameraUsageDescription: "Scan the pairing QR code Lisa shows on your Mac."
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+    entitlements:
+      path: Sources/LisaPocket.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.ai.meetlisa.pocket
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ai.meetlisa.pocket
@@ -50,6 +56,11 @@ targets:
         CFBundleDisplayName: Lisa Widgets
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: Widgets/LisaPocketWidgets.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.ai.meetlisa.pocket
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ai.meetlisa.pocket.widgets
