@@ -42,6 +42,7 @@ import { liveClaudeSessionIds } from "../integrations/claude-code/liveness.js";
 import { listRecentDispatches, isAlive, toDispatchView, readDispatchOutput } from "../integrations/dispatch-ledger.js";
 import { loadControlPolicy, saveControlPolicy, type ControlPolicy } from "../control/policy.js";
 import { mintDevice, verifyDeviceToken, touchDevice, listDevices, revokeDevice } from "./devices.js";
+import { PushBridge, listPush, registerPush, unregisterPush, setPushPrefs, type PushPrefs } from "./push.js";
 import { SenseService } from "../sense/service.js";
 import { ScreenSource } from "../sense/screen.js";
 import { VoiceSource } from "../sense/voice.js";
@@ -249,11 +250,15 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   const hub = new OrchestratorHub(orchestratorCfg, {
     log: (msg) => console.error(msg),
   });
+  // Operational push: notify subscribed phones on agent done/error/permission +
+  // Reve idle messages. Opt-in, ntfy by default (apns is a stub). See push.ts.
+  const pushBridge = new PushBridge({ log: (m) => console.error(m) });
   hub.on("update", (session: AgentSession) => {
     // L6 — record the transition in the orchestrator journal so the
     // cross-agent recap can answer "what happened while I was away?" even for
     // sessions that have since ended. (Dedups consecutive same-state events.)
     recordEvent(session);
+    pushBridge.onAgentUpdate(session);
     // New generalized event for the multi-agent UI.
     broadcast({ type: "agent_session_update", ...session });
     // Back-compat: the island still listens for claude_session_update as a
@@ -303,6 +308,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         const at = new Date().toISOString();
         lastIdleMessage = { text, at };
         broadcast({ type: "idle_message", text, at, source: "advisor" });
+        pushBridge.onIdleMessage(text);
         // Structured twin of the digest: same suggestions with id / urgency /
         // action attached so the island can render per-suggestion buttons
         // (act → prefill chat, ✕ → dismiss feeds the learning loop).
@@ -443,6 +449,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           });
           lastIdleMessage = { text: result.text, at: startedAt };
           broadcast({ type: "idle_message", text: result.text, at: startedAt });
+          pushBridge.onIdleMessage(result.text);
         }
       } catch (err) {
         const msg = (err as Error).message;
@@ -849,6 +856,54 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const removed = revokeDevice(typeof payload.id === "string" ? payload.id : "");
       res.writeHead(removed ? 200 : 404, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: removed }));
+      return;
+    }
+
+    // Push registration: a phone registers its own delivery target (ntfy topic or
+    // APNs token) + prefs — authed (the device does this remotely). Low-sensitivity
+    // metadata only; see push.ts.
+    if (req.method === "POST" && url === "/api/push/register") {
+      let puBody = "";
+      for await (const chunk of req) puBody += chunk.toString("utf8");
+      let payload: { kind?: unknown; target?: unknown; server?: unknown; prefs?: Partial<PushPrefs> } = {};
+      try { payload = puBody ? JSON.parse(puBody) : {}; } catch { /* tolerate */ }
+      if (typeof payload.target !== "string" || !payload.target.trim()) {
+        res.writeHead(400, { "content-type": "text/plain" }); res.end("target required (ntfy topic or apns token)"); return;
+      }
+      const sub = registerPush({
+        kind: typeof payload.kind === "string" ? payload.kind : "ntfy",
+        target: payload.target,
+        server: typeof payload.server === "string" ? payload.server : undefined,
+        prefs: payload.prefs,
+      });
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, subscription: sub }));
+      return;
+    }
+    if (req.method === "POST" && url === "/api/push/unregister") {
+      let puBody = "";
+      for await (const chunk of req) puBody += chunk.toString("utf8");
+      let payload: { id?: unknown; target?: unknown } = {};
+      try { payload = puBody ? JSON.parse(puBody) : {}; } catch { /* tolerate */ }
+      const key = typeof payload.id === "string" ? payload.id : typeof payload.target === "string" ? payload.target : "";
+      const removed = unregisterPush(key);
+      res.writeHead(removed ? 200 : 404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: removed }));
+      return;
+    }
+    if (req.method === "GET" && url === "/api/push/list") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ subscriptions: listPush() }));
+      return;
+    }
+    if (req.method === "POST" && url === "/api/push/prefs") {
+      let puBody = "";
+      for await (const chunk of req) puBody += chunk.toString("utf8");
+      let payload: { id?: unknown; prefs?: Partial<PushPrefs> } = {};
+      try { payload = puBody ? JSON.parse(puBody) : {}; } catch { /* tolerate */ }
+      const sub = typeof payload.id === "string" ? setPushPrefs(payload.id, payload.prefs ?? {}) : null;
+      res.writeHead(sub ? 200 : 404, { "content-type": "application/json" });
+      res.end(JSON.stringify(sub ? { ok: true, subscription: sub } : { ok: false }));
       return;
     }
 
