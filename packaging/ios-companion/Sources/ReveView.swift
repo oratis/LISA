@@ -6,6 +6,7 @@ import SwiftUI
 /// server's "learn to shut up" loop).
 struct ReveView: View {
     @EnvironmentObject var app: AppState
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var ping: IslandPing?
     @State private var recap: String = ""
@@ -70,6 +71,7 @@ struct ReveView: View {
             .navigationTitle("Reve")
             .refreshable { await load() }
             .task(id: ReveLoadKey(window: window, configured: app.config.isConfigured)) { await load() }
+            .onChange(of: scenePhase) { _, p in if p == .active { Task { await load() } } }
         }
     }
 

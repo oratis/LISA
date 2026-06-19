@@ -7,6 +7,7 @@ import SwiftUI
 /// and point grants at the Mac.
 struct SenseView: View {
     @EnvironmentObject var app: AppState
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var grants: [ConsentRow] = []
     @State private var events: [SenseEvent] = []
@@ -66,6 +67,7 @@ struct SenseView: View {
             .navigationTitle("Sense")
             .refreshable { await load() }
             .task(id: app.config) { await load() }
+            .onChange(of: scenePhase) { _, p in if p == .active { Task { await load() } } }
         }
     }
 
