@@ -231,3 +231,35 @@ export function detectPlan(id: PlanId, probe: PlanProbe = defaultPlanProbe()): P
 export function detectPlans(probe: PlanProbe = defaultPlanProbe()): PlanStatus[] {
   return PLAN_IDS.map((id) => detectPlan(id, probe));
 }
+
+// ── delegation (CODING_PLANS Phase 2) ────────────────────────────────────────
+
+/**
+ * The headless dispatch CLI kind a plan delegates through, or null if not yet
+ * delegate-capable. claude → `claude -p`, codex → `codex exec` (both already in
+ * launchAgent); copilot is detection-only until its CLI delegate lands (Phase 3).
+ */
+export function planDispatchKind(id: PlanId): "claude" | "codex" | null {
+  if (id === "claude") return "claude";
+  if (id === "codex") return "codex";
+  return null;
+}
+
+export interface PlanPreflight {
+  ok: boolean;
+  /** Why delegation can't proceed (only when ok=false). */
+  reason?: string;
+}
+
+/**
+ * Can we delegate coding work to this detected plan right now? Pure. A null
+ * (unknown) login passes — on macOS the credential lives in the Keychain and
+ * "installed but login unverifiable" should not block; the CLI itself will
+ * prompt if truly logged out.
+ */
+export function planPreflight(status: PlanStatus): PlanPreflight {
+  if (!status.available) return { ok: false, reason: `${status.cli} isn't installed — ${status.detail}` };
+  if (status.loggedIn === false)
+    return { ok: false, reason: `${status.cli} is installed but not logged in — ${status.detail}` };
+  return { ok: true };
+}

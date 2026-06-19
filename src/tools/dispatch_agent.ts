@@ -43,7 +43,7 @@ interface DispatchInput {
  * setups clobber a repo, so dispatch refuses by default (overridable with
  * force). Returns the conflicting session's label, or null if clear.
  */
-function activeAgentInCwd(cwd: string): string | null {
+export function activeAgentInCwd(cwd: string): string | null {
   const hub = getCurrentHub();
   if (!hub) return null; // no monitor → can't check; allow
   const clash = hub

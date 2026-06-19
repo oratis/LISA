@@ -6,8 +6,11 @@ import {
   selectedPlan,
   detectPlan,
   detectPlans,
+  planDispatchKind,
+  planPreflight,
   PLAN_IDS,
   type PlanProbe,
+  type PlanStatus,
 } from "./plans.js";
 
 /** A probe that finds nothing, overridable per test. Pure inputs only. */
@@ -146,5 +149,41 @@ describe("detectPlans", () => {
   test("returns all known plans, in order", () => {
     const all = detectPlans(fakeProbe());
     assert.deepEqual(all.map((p) => p.id), [...PLAN_IDS]);
+  });
+});
+
+describe("planDispatchKind", () => {
+  test("claude/codex map to their headless CLI kind; copilot is not yet wired", () => {
+    assert.equal(planDispatchKind("claude"), "claude");
+    assert.equal(planDispatchKind("codex"), "codex");
+    assert.equal(planDispatchKind("copilot"), null);
+  });
+});
+
+describe("planPreflight", () => {
+  const base: PlanStatus = {
+    id: "claude",
+    label: "Claude Pro/Max",
+    cli: "claude",
+    binary: "claude",
+    available: true,
+    loggedIn: true,
+    detail: "ready",
+  };
+  test("ready when available + logged in", () => {
+    assert.deepEqual(planPreflight(base), { ok: true });
+  });
+  test("unknown login (macOS Keychain) still passes — CLI prompts if truly out", () => {
+    assert.equal(planPreflight({ ...base, loggedIn: null }).ok, true);
+  });
+  test("blocks when not installed", () => {
+    const r = planPreflight({ ...base, available: false, binary: null, detail: "install it" });
+    assert.equal(r.ok, false);
+    assert.match(r.reason!, /isn't installed/);
+  });
+  test("blocks when explicitly logged out", () => {
+    const r = planPreflight({ ...base, loggedIn: false });
+    assert.equal(r.ok, false);
+    assert.match(r.reason!, /not logged in/);
   });
 });
