@@ -879,6 +879,24 @@ export const MAIN_CSS = `  :root {
     font-size: 12px;
   }
   .modal-body .desc { color: var(--fg-3); margin-top: 2px; }
+  .modal-body .plan-select {
+    margin-top: 6px;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 4px 12px;
+    border: 0;
+    border-radius: 8px;
+    cursor: pointer;
+    background: var(--accent);
+    color: #07091a;
+  }
+  .modal-body .plan-select:hover { filter: brightness(1.08); }
+  .modal-body .plan-select[disabled] {
+    background: var(--fg-faint);
+    color: var(--fg-3);
+    cursor: default;
+  }
   .modal-body pre {
     background: rgba(0, 0, 0, 0.30);
     padding: 10px 12px;

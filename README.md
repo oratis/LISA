@@ -227,10 +227,11 @@ logged into with your plan, the work bills to your plan, not an API key.
 **Today:** `lisa model list` detects your installed plan CLIs (Claude Code / Codex
 / Copilot) and their login state, `lisa model use plan://claude` picks a delegation
 target, and the **`run_on_plan`** tool runs a coding task on that plan by driving
-its CLI headlessly (`claude -p` / `codex exec` / `copilot -p`) — no tokens read;
-`lisa agents` shows the selected plan. What's left (a web/island picker, honest
-rate-limit headroom) — plus why in-process token reuse is rejected — is in
-**[docs/CODING_PLANS.md](docs/CODING_PLANS.md)**.
+its CLI headlessly (`claude -p` / `codex exec` / `copilot -p`) — no tokens read.
+`lisa model list` shows **real usage** (rolling-window token consumption from local
+transcripts, e.g. `1.2M tok in 5h`), and the **web UI** has a **PLANS** picker to
+select a plan and see its status/usage. Why in-process token reuse is rejected — and
+the full design — is in **[docs/CODING_PLANS.md](docs/CODING_PLANS.md)**.
 
 ## Subcommands
 

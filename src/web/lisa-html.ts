@@ -108,6 +108,7 @@ ${MAIN_CSS}
       <button class="badge" type="button" data-panel="skills"><img src="/assets/icon-skill.png" alt="">SKILLS</button>
       <button class="badge" type="button" data-panel="memory"><img src="/assets/icon-memory.png" alt="">MEMORY</button>
       <button class="badge" type="button" data-panel="tools"><img src="/assets/icon-tool.png" alt="">TOOLS</button>
+      <button class="badge" type="button" data-panel="plans"><img src="/assets/icon-tool.png" alt="">PLANS</button>
     </div>
 
     <!-- Footer: current session id -->

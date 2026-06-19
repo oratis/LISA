@@ -7,6 +7,8 @@ import { runAgent } from "../agent.js";
 import { fireHooks } from "../hooks/runner.js";
 import type { HookSpec } from "../plugins/types.js";
 import { saveConfigEnv } from "../env.js";
+import { detectPlans, selectedPlan, parsePlanRef, planMark, PLAN_IDS } from "../model/plans.js";
+import { planUsage, formatUsage } from "../model/plan-usage.js";
 import { runIdleOnce } from "../idle/runner.js";
 import { getIdleWatcher } from "../idle/watcher.js";
 import { moodBus } from "../mood-bus.js";
@@ -1169,6 +1171,67 @@ self.addEventListener('fetch', (event) => {
           })),
         }),
       );
+      return;
+    }
+
+    // ── Coding plans (CODING_PLANS Phase 5b): detect, show usage, pick a
+    //    delegation target. Detection is presence-only (no secrets read); the
+    //    POST writes LISA_CODING_PLAN, not the model — her own loop is unchanged.
+    if (req.method === "GET" && url === "/api/plans") {
+      const nowMs = Date.now();
+      const sel = selectedPlan();
+      const plans = detectPlans().map((p) => {
+        const row: Record<string, unknown> = {
+          id: p.id,
+          label: p.label,
+          cli: p.cli,
+          detail: p.detail,
+          available: p.available,
+          loggedIn: p.loggedIn,
+          mark: planMark(p),
+          selected: p.id === sel,
+        };
+        if (p.available) {
+          const u = planUsage(p.id, nowMs);
+          if (u && (u.windowTokens || u.todayTokens)) row.usage = formatUsage(u);
+        }
+        return row;
+      });
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ plans, selected: sel }));
+      return;
+    }
+
+    if (req.method === "POST" && url === "/api/plans/select") {
+      let body = "";
+      for await (const chunk of req) body += chunk.toString("utf8");
+      let payload: { plan?: unknown };
+      try {
+        payload = JSON.parse(body || "{}");
+      } catch {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("bad json");
+        return;
+      }
+      const raw = typeof payload.plan === "string" ? payload.plan.trim().toLowerCase() : "";
+      const planId =
+        raw === "" || raw === "none"
+          ? ""
+          : (parsePlanRef(raw) ?? ((PLAN_IDS as readonly string[]).includes(raw) ? raw : null));
+      if (planId === null) {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("unknown plan — use claude | codex | copilot | none");
+        return;
+      }
+      try {
+        await saveConfigEnv({ LISA_CODING_PLAN: planId });
+      } catch (err) {
+        res.writeHead(500, { "content-type": "text/plain" });
+        res.end((err as Error).message);
+        return;
+      }
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, selected: planId || null }));
       return;
     }
 
