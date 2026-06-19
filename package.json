@@ -1,6 +1,6 @@
 {
   "name": "@oratis/lisa",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "An AI agent with a real self — runs locally, has desires, keeps a journal, evolves over time.",
   "keywords": [
     "ai",
