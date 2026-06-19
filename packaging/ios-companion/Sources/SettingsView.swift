@@ -10,6 +10,7 @@ struct SettingsView: View {
     @State private var ntfyTopic = ""
     @State private var prefs = PushPrefs()
     @State private var status = ""
+    @State private var showScanner = false
 
     var body: some View {
         NavigationStack {
@@ -28,6 +29,11 @@ struct SettingsView: View {
                 }
 
                 Section("Pair from QR / URL") {
+                    Button {
+                        showScanner = true
+                    } label: {
+                        Label("Scan QR code", systemImage: "qrcode.viewfinder")
+                    }
                     TextField("lisa-pair://… or http://host:port/?token=", text: $pairText)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
@@ -80,6 +86,9 @@ struct SettingsView: View {
             .navigationTitle("Settings")
             .onAppear(perform: syncFromConfig)
             .task { policy = try? await app.client.controlPolicy() }
+            .sheet(isPresented: $showScanner) {
+                QRScanSheet(onScanned: handleScan, onError: { status = $0 })
+            }
         }
     }
 
@@ -87,5 +96,58 @@ struct SettingsView: View {
         host = app.config.host
         portText = String(app.config.port)
         token = app.config.token ?? ""
+    }
+
+    /// Apply a scanned code the same way pasted text is applied; on a parse failure,
+    /// drop it into the text field so the user can see/fix what was scanned.
+    func handleScan(_ value: String) {
+        if app.applyPairing(value) {
+            syncFromConfig()
+            status = "Paired."
+        } else {
+            pairText = value
+            status = "Scanned a code, but couldn't parse it as a pairing string."
+        }
+    }
+}
+
+/// The scanner presented as a sheet: a viewfinder plus a Cancel button. Fires at
+/// most one outcome, then dismisses itself (which flips the parent's binding back).
+private struct QRScanSheet: View {
+    let onScanned: (String) -> Void
+    let onError: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var finished = false
+
+    var body: some View {
+        NavigationStack {
+            QRScannerView(
+                onScan: { value in finish { onScanned(value) } },
+                onError: { reason in finish { onError(reason) } }
+            )
+            .ignoresSafeArea()
+            .overlay(alignment: .bottom) {
+                Text("Point at the QR code Lisa shows on your Mac.")
+                    .font(.caption)
+                    .padding(8)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .padding(.bottom, 24)
+            }
+            .navigationTitle("Scan to pair")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+        }
+    }
+
+    /// Run the outcome once (the camera can fire repeatedly), then dismiss.
+    private func finish(_ action: () -> Void) {
+        guard !finished else { return }
+        finished = true
+        action()
+        dismiss()
     }
 }

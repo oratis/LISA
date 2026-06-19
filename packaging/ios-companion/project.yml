@@ -32,6 +32,7 @@ targets:
         CFBundleDisplayName: Lisa Pocket
         UILaunchScreen: {}
         NSSupportsLiveActivities: true
+        NSCameraUsageDescription: "Scan the pairing QR code Lisa shows on your Mac."
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
     settings:
