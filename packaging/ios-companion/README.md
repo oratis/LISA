@@ -21,10 +21,12 @@ iOS 17+ target). It covers:
 - **Chat** — streams `POST /chat`.
 - **Settings** — pairing (paste a `lisa-pair://…` / `?token=` string → Keychain),
   ntfy push registration, and a read-only view of the remote-control policy.
+- **Glance** — a **Live Activity / Dynamic Island** for a pinned agent (Lock Screen +
+  compact / expanded / minimal Dynamic Island), via a WidgetKit extension target.
 
-**Not yet** (follow-ups): Live Activity / Dynamic Island + Widgets (a separate
-widget-extension target), APNs (needs an Apple push key — ntfy works today), and
-a QR scanner (you can paste the pairing string for now).
+**Not yet** (follow-ups): live Live-Activity updates via APNs (so a pinned agent stays
+fresh while backgrounded — needs an Apple push key; ntfy push works today), a home-screen
+Widget, and a QR scanner (you can paste the pairing string for now).
 
 ## Build / verify
 

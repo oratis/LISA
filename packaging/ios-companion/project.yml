@@ -1,7 +1,7 @@
 # XcodeGen spec for Lisa Pocket — the iOS companion (docs/IOS_COMPANION_PLAN.md).
-# Generate the project with `xcodegen generate` (or ./build.sh), then build/verify
-# for the simulator (no signing needed). Single app target for now; a Live Activity
-# / Widget extension is a follow-up target.
+# Two targets: the app + a WidgetKit extension that hosts the Live Activity /
+# Dynamic Island. `AgentActivityAttributes` (Shared/) is compiled into both.
+# Generate + build/verify with ./build.sh (simulator, no signing).
 name: LisaPocket
 options:
   bundleIdPrefix: ai.meetlisa
@@ -14,7 +14,6 @@ settings:
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
     TARGETED_DEVICE_FAMILY: "1,2"
-    # Simulator verification needs no code signing.
     CODE_SIGNING_REQUIRED: NO
     CODE_SIGNING_ALLOWED: NO
     CODE_SIGN_IDENTITY: ""
@@ -24,14 +23,33 @@ targets:
     platform: iOS
     sources:
       - path: Sources
+      - path: Shared
+    dependencies:
+      - target: LisaPocketWidgets
     info:
       path: Sources/Info.plist
       properties:
         CFBundleDisplayName: Lisa Pocket
         UILaunchScreen: {}
-        # The companion talks HTTP to the user's own Mac on the local network.
+        NSSupportsLiveActivities: true
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ai.meetlisa.pocket
+
+  LisaPocketWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Widgets
+      - path: Shared
+    info:
+      path: Widgets/Info.plist
+      properties:
+        CFBundleDisplayName: Lisa Widgets
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.meetlisa.pocket.widgets

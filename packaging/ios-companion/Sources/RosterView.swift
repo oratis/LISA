@@ -174,6 +174,17 @@ struct SessionDetailView: View {
                 if let cwd = session.cwd { LabeledContent("cwd", value: cwd) }
             }
             controlSection
+            Section("Glance") {
+                Button {
+                    if LiveActivityController.start(for: session) != nil {
+                        status = "Pinned to the Live Activity."
+                    } else {
+                        status = "Live Activities are unavailable here (enable in iOS Settings, or run on a device)."
+                    }
+                } label: {
+                    Label("Pin to Live Activity", systemImage: "pin")
+                }
+            }
             if !status.isEmpty {
                 Section { Text(status).font(.caption).foregroundStyle(.secondary) }
             }
