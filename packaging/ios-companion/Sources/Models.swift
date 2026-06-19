@@ -11,7 +11,10 @@ struct AgentSession: Codable, Identifiable, Hashable {
     var cwd: String?
     var state: String
     var stateReason: String
-    /// ISO-8601 string from /api/agents/sessions (the server serializes lastMtime).
+    /// Normalized to an ISO-8601 string. The REST `/api/agents/sessions` already
+    /// serializes it as ISO, but the `agent_session_update` SSE sends raw epoch-ms
+    /// (a number) — so decode tolerates both (a number → ISO), else a present-but-
+    /// wrong-type value would throw and silently drop every live roster update.
     var lastMtime: String?
     var activity: SessionActivity?
     /// "managed" | "pty" — which control-endpoint family drives it. Absent ⇒ observe-only.
@@ -22,6 +25,42 @@ struct AgentSession: Codable, Identifiable, Hashable {
     var adoptedSessionId: String?
 
     var id: String { "\(agent)/\(sessionId)" }
+
+    init(agent: String, sessionId: String, project: String, cwd: String? = nil,
+         state: String, stateReason: String, lastMtime: String? = nil,
+         activity: SessionActivity? = nil, controllable: String? = nil,
+         resumable: Bool? = nil, adoptedSessionId: String? = nil) {
+        self.agent = agent; self.sessionId = sessionId; self.project = project; self.cwd = cwd
+        self.state = state; self.stateReason = stateReason; self.lastMtime = lastMtime
+        self.activity = activity; self.controllable = controllable
+        self.resumable = resumable; self.adoptedSessionId = adoptedSessionId
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case agent, sessionId, project, cwd, state, stateReason, lastMtime
+        case activity, controllable, resumable, adoptedSessionId
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        agent = try c.decode(String.self, forKey: .agent)
+        sessionId = try c.decode(String.self, forKey: .sessionId)
+        project = (try? c.decode(String.self, forKey: .project)) ?? ""
+        cwd = try? c.decodeIfPresent(String.self, forKey: .cwd)
+        state = (try? c.decode(String.self, forKey: .state)) ?? "idle"
+        stateReason = (try? c.decode(String.self, forKey: .stateReason)) ?? ""
+        if let s = try? c.decodeIfPresent(String.self, forKey: .lastMtime) {
+            lastMtime = s
+        } else if let n = try? c.decodeIfPresent(Double.self, forKey: .lastMtime) {
+            lastMtime = ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: n / 1000))
+        } else {
+            lastMtime = nil
+        }
+        activity = try? c.decodeIfPresent(SessionActivity.self, forKey: .activity)
+        controllable = try? c.decodeIfPresent(String.self, forKey: .controllable)
+        resumable = try? c.decodeIfPresent(Bool.self, forKey: .resumable)
+        adoptedSessionId = try? c.decodeIfPresent(String.self, forKey: .adoptedSessionId)
+    }
 }
 
 struct SessionActivity: Codable, Hashable {

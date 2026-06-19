@@ -67,4 +67,25 @@ final class LisaPocketTests: XCTestCase {
     func testParseDeepLinkIgnoresForeignScheme() {
         XCTAssertEqual(AppState.parseDeepLink(URL(string: "https://example.com")!), .ignore)
     }
+
+    // ── AgentSession.lastMtime tolerates both shapes (regression for the SSE bug) ──
+    func testDecodesNumericLastMtimeFromSSE() throws {
+        // agent_session_update broadcasts raw epoch-ms; must not throw.
+        let json = #"{"agent":"codex","sessionId":"s1","project":"p","state":"working","stateReason":"","lastMtime":1718800000000,"activity":{"pendingPermission":"Bash"}}"#
+        let s = try JSONDecoder().decode(AgentSession.self, from: Data(json.utf8))
+        XCTAssertEqual(s.agent, "codex")
+        XCTAssertNotNil(s.lastMtime)                 // number normalized to a string
+        XCTAssertFalse(s.lastMtime!.isEmpty)
+        XCTAssertEqual(s.activity?.pendingPermission, "Bash")
+    }
+    func testDecodesIsoLastMtimeFromREST() throws {
+        let json = #"{"agent":"claude-code","sessionId":"s2","project":"p","state":"done","stateReason":"","lastMtime":"2026-06-19T10:00:00.000Z"}"#
+        let s = try JSONDecoder().decode(AgentSession.self, from: Data(json.utf8))
+        XCTAssertEqual(s.lastMtime, "2026-06-19T10:00:00.000Z")
+    }
+    func testDecodesMissingLastMtime() throws {
+        let json = #"{"agent":"aider","sessionId":"s3","project":"p","state":"idle","stateReason":""}"#
+        let s = try JSONDecoder().decode(AgentSession.self, from: Data(json.utf8))
+        XCTAssertNil(s.lastMtime)
+    }
 }

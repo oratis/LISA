@@ -8,16 +8,24 @@ final class ChatModel: ObservableObject {
     private var task: Task<Void, Never>?
     private var moodTask: Task<Void, Never>?
 
-    /// Seed the mood from a ping, then track the `mood` SSE for live changes.
+    /// Seed the mood from a ping, then track the `mood` SSE — reconnecting with
+    /// backoff so a mid-session drop doesn't leave the portrait stale forever.
     func startMood(_ client: LisaClient) {
         moodTask?.cancel()
         moodTask = Task { @MainActor in
-            if let p = try? await client.islandPing() { mood = p.mood }
-            do {
-                for try await msg in client.eventsStream() where msg.type == "mood" {
-                    if let s = msg.slug { mood = s }
-                }
-            } catch { /* stream dropped — reseeded on next appear */ }
+            var backoffSec: UInt64 = 1
+            while !Task.isCancelled {
+                if let p = try? await client.islandPing() { mood = p.mood }
+                do {
+                    for try await msg in client.eventsStream() where msg.type == "mood" {
+                        backoffSec = 1
+                        if let s = msg.slug { mood = s }
+                    }
+                } catch { /* dropped → backoff + reconnect below */ }
+                if Task.isCancelled { break }
+                try? await Task.sleep(nanoseconds: backoffSec * 1_000_000_000)
+                backoffSec = min(backoffSec * 2, 30)
+            }
         }
     }
     func stopMood() { moodTask?.cancel(); moodTask = nil }
@@ -91,14 +99,15 @@ struct MoodPortrait: View {
 
     var body: some View {
         let slug = mood.isEmpty ? "neutral" : mood
+        let safe = slug.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? slug
         HStack(spacing: 10) {
             Group {
-                if let url = app.client.assetURL("/assets/lisa/\(slug).png") {
+                if let url = app.client.assetURL("/assets/lisa/\(safe).png") {
                     AsyncImage(url: url) { phase in
-                        if case .success(let img) = phase {
-                            img.resizable().scaledToFit()
-                        } else {
-                            Image(systemName: "person.crop.circle.fill").resizable().scaledToFit().foregroundStyle(.secondary)
+                        switch phase {
+                        case .success(let img): img.resizable().scaledToFit()
+                        case .empty: ProgressView()
+                        default: Image(systemName: "person.crop.circle.fill").resizable().scaledToFit().foregroundStyle(.secondary)
                         }
                     }
                 } else {

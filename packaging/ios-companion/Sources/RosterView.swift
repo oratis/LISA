@@ -148,7 +148,8 @@ struct RosterView: View {
             .onChange(of: scenePhase) { _, phase in
                 // iOS suspends SSE in the background; on return to foreground do a
                 // full resync and reconnect so the roster is correct + live again.
-                guard phase == .active, app.config.isConfigured else { return }
+                // Skip while the Face ID lock is up — don't fetch behind the gate.
+                guard phase == .active, app.config.isConfigured, !app.locked else { return }
                 Task { await model.load(app.client); model.startStream(app.client) }
             }
             // Deep-link (push Click / widget): open the requested session once it's
