@@ -42,7 +42,7 @@ import { liveClaudeSessionIds } from "../integrations/claude-code/liveness.js";
 import { listRecentDispatches, isAlive, toDispatchView, readDispatchOutput } from "../integrations/dispatch-ledger.js";
 import { loadControlPolicy, saveControlPolicy, type ControlPolicy } from "../control/policy.js";
 import { mintDevice, verifyDeviceToken, touchDevice, listDevices, revokeDevice } from "./devices.js";
-import { PushBridge, listPush, registerPush, unregisterPush, setPushPrefs, type PushPrefs } from "./push.js";
+import { PushBridge, listPush, registerPush, unregisterPush, setPushPrefs, registerLiveActivity, unregisterLiveActivity, type PushPrefs } from "./push.js";
 import { SenseService } from "../sense/service.js";
 import { ScreenSource } from "../sense/screen.js";
 import { VoiceSource } from "../sense/voice.js";
@@ -889,6 +889,25 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const removed = unregisterPush(key);
       res.writeHead(removed ? 200 : 404, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: removed }));
+      return;
+    }
+    // Register/unregister a Live Activity push token for a pinned session — the
+    // push-bridge then refreshes that activity over APNs as the agent updates.
+    if (req.method === "POST" && url === "/api/push/live-activity") {
+      let laBody = "";
+      for await (const chunk of req) laBody += chunk.toString("utf8");
+      let payload: { sessionId?: unknown; token?: unknown } = {};
+      try { payload = laBody ? JSON.parse(laBody) : {}; } catch { /* tolerate */ }
+      if (typeof payload.sessionId !== "string" || !payload.sessionId) {
+        res.writeHead(400, { "content-type": "text/plain" }); res.end("sessionId required"); return;
+      }
+      if (typeof payload.token === "string" && payload.token) {
+        registerLiveActivity(payload.sessionId, payload.token);
+      } else {
+        unregisterLiveActivity(payload.sessionId);
+      }
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
       return;
     }
     if (req.method === "GET" && url === "/api/push/list") {

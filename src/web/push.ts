@@ -115,6 +115,43 @@ export function setPushPrefs(id: string, prefs: Partial<PushPrefs>): PushSubscri
   return s;
 }
 
+// ── Live Activity push tokens (one per pinned session) ─────────────────────
+export interface LiveActivityReg {
+  sessionId: string;
+  /** The ActivityKit push token (hex) for this session's Live Activity. */
+  token: string;
+  createdAt: number;
+}
+function liveActivitiesPath(): string {
+  return path.join(lisaHome(), "live-activities.json");
+}
+export function listLiveActivities(): LiveActivityReg[] {
+  try {
+    const parsed: unknown = JSON.parse(fs.readFileSync(liveActivitiesPath(), "utf8"));
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (r): r is LiveActivityReg =>
+        !!r && typeof (r as LiveActivityReg).sessionId === "string" && typeof (r as LiveActivityReg).token === "string",
+    );
+  } catch {
+    return [];
+  }
+}
+export function registerLiveActivity(sessionId: string, token: string, now: number = Date.now()): void {
+  const list = listLiveActivities().filter((r) => r.sessionId !== sessionId);
+  list.push({ sessionId, token, createdAt: now });
+  const file = liveActivitiesPath();
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(list, null, 2));
+}
+export function unregisterLiveActivity(sessionId: string): boolean {
+  const list = listLiveActivities();
+  const next = list.filter((r) => r.sessionId !== sessionId);
+  if (next.length === list.length) return false;
+  fs.writeFileSync(liveActivitiesPath(), JSON.stringify(next, null, 2));
+  return true;
+}
+
 // ── pure trigger ──────────────────────────────────────────────────────────
 /** Custom URL scheme Lisa Pocket registers for push / widget deep-links. */
 export const POCKET_SCHEME = "lisapocket";
@@ -305,11 +342,75 @@ export async function sendApns(
   return res.status === 200;
 }
 
+// ── Live Activity remote updates (ActivityKit over APNs) ───────────────────
+export interface LiveActivityState {
+  state: string;
+  detail: string;
+  turns: number;
+}
+
+/** Content-state for a session's Live Activity — mirrors the app's
+ *  AgentActivityAttributes.ContentState + its detail() logic. Pure. */
+export function liveActivityState(s: AgentSession): LiveActivityState {
+  const a = s.activity;
+  const last = a?.lastTools && a.lastTools.length ? a.lastTools[a.lastTools.length - 1] : undefined;
+  const detail = a?.pendingPermission ? `⚠ ${a.pendingPermission}` : (s.stateReason || last || s.state);
+  return { state: s.state, detail, turns: a?.turnCount ?? 0 };
+}
+
+/** APNs Live Activity payload — `event:"update"` refreshes, `"end"` dismisses. Pure. */
+export function buildLiveActivityPayload(
+  cs: LiveActivityState,
+  event: "update" | "end",
+  nowSec: number,
+): Record<string, unknown> {
+  return {
+    aps: {
+      timestamp: nowSec,
+      event,
+      "content-state": { state: cs.state, detail: cs.detail, turns: cs.turns },
+      ...(event === "end" ? { "dismissal-date": nowSec } : {}),
+    },
+  };
+}
+
+/** Push a Live Activity update/end over APNs (push-type liveactivity). `post`
+ *  injectable for tests. Reuses the cached provider JWT. */
+export async function sendLiveActivityUpdate(
+  cfg: ApnsConfig,
+  laToken: string,
+  cs: LiveActivityState,
+  event: "update" | "end",
+  post: ApnsPoster = realApnsPost,
+  nowSec: number = Math.floor(Date.now() / 1000),
+): Promise<boolean> {
+  const cacheId = `${cfg.keyId}/${cfg.teamId}`;
+  if (!cachedApnsJwt || cachedApnsJwt.id !== cacheId || nowSec - cachedApnsJwt.at > 50 * 60) {
+    cachedApnsJwt = { token: buildApnsJwt(cfg, nowSec), at: nowSec, id: cacheId };
+  }
+  const res = await post({
+    host: cfg.host,
+    path: `/3/device/${laToken}`,
+    headers: {
+      authorization: `bearer ${cachedApnsJwt.token}`,
+      "apns-topic": `${cfg.topic}.push-type.liveactivity`,
+      "apns-push-type": "liveactivity",
+      "apns-priority": "10",
+    },
+    body: JSON.stringify(buildLiveActivityPayload(cs, event, nowSec)),
+  });
+  return res.status === 200;
+}
+
 // ── bridge: hub/idle events → throttled per-subscription delivery ──────────
 export interface PushBridgeOpts {
   subs?: () => PushSubscription[];
   /** Injected delivery (tests). Default: real ntfy / apns-stub. */
   deliver?: (sub: PushSubscription, ev: PushEvent) => void | Promise<void>;
+  /** Registered Live Activity tokens (tests). Default: the on-disk store. */
+  liveActivities?: () => LiveActivityReg[];
+  /** Injected Live Activity delivery (tests). Default: real APNs liveactivity. */
+  liveDeliver?: (token: string, cs: LiveActivityState, event: "update" | "end") => void | Promise<void>;
   now?: () => number;
   log?: (m: string) => void;
   throttleMs?: number;
@@ -320,9 +421,12 @@ export class PushBridge {
   private readonly lastSent = new Map<string, number>();
   private readonly subs: () => PushSubscription[];
   private readonly deliverFn: (sub: PushSubscription, ev: PushEvent) => void | Promise<void>;
+  private readonly liveActivities: () => LiveActivityReg[];
+  private readonly liveDeliverFn: (token: string, cs: LiveActivityState, event: "update" | "end") => void | Promise<void>;
   private readonly now: () => number;
   private readonly log: (m: string) => void;
   private readonly throttleMs: number;
+  private readonly liveThrottleMs = 3000;
 
   constructor(opts: PushBridgeOpts = {}) {
     this.subs = opts.subs ?? listPush;
@@ -330,6 +434,8 @@ export class PushBridge {
     this.log = opts.log ?? (() => {});
     this.throttleMs = opts.throttleMs ?? 30_000;
     this.deliverFn = opts.deliver ?? ((sub, ev) => this.defaultDeliver(sub, ev));
+    this.liveActivities = opts.liveActivities ?? listLiveActivities;
+    this.liveDeliverFn = opts.liveDeliver ?? ((token, cs, event) => this.defaultLiveDeliver(token, cs, event));
   }
 
   onAgentUpdate(next: AgentSession): void {
@@ -337,6 +443,21 @@ export class PushBridge {
     const events = agentPushEvents(this.prev.get(key), next);
     this.prev.set(key, next);
     for (const ev of events) this.fire(ev, `${key}#${ev.tag}`);
+    this.updateLiveActivity(next);
+  }
+
+  /** Refresh a pinned session's Live Activity (throttled), ending it on a
+   *  terminal state. No-op unless an LA token is registered for the session. */
+  private updateLiveActivity(next: AgentSession): void {
+    const reg = this.liveActivities().find((r) => r.sessionId === next.sessionId);
+    if (!reg) return;
+    const terminal = next.state === "done" || next.state === "error";
+    const key = `la#${next.sessionId}`;
+    // Throttle progress refreshes, but always let a terminal "end" through.
+    if (!terminal && this.now() - (this.lastSent.get(key) ?? -Infinity) < this.liveThrottleMs) return;
+    this.lastSent.set(key, this.now());
+    void Promise.resolve(this.liveDeliverFn(reg.token, liveActivityState(next), terminal ? "end" : "update")).catch(() => {});
+    if (terminal) unregisterLiveActivity(next.sessionId);
   }
 
   onIdleMessage(text: string): void {
@@ -368,5 +489,15 @@ export class PushBridge {
       const ok = await sendApns(cfg, sub.target, ev);
       if (!ok) this.log(`[push] apns send failed for ${sub.id}`);
     }
+  }
+
+  private async defaultLiveDeliver(token: string, cs: LiveActivityState, event: "update" | "end"): Promise<void> {
+    const cfg = apnsConfigFromEnv();
+    if (!cfg) {
+      this.log(`[push] live-activity ${event} skipped (no APNs key)`);
+      return;
+    }
+    const ok = await sendLiveActivityUpdate(cfg, token, cs, event);
+    if (!ok) this.log(`[push] live-activity ${event} failed`);
   }
 }

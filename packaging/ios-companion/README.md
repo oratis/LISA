@@ -38,9 +38,15 @@ iOS 17+ target). It covers:
 - **Deep-links** — `lisapocket://` opens the app from a Widget tap, an ntfy push, or an
   APNs push tap (the push carries the link to the relevant session).
 
-**Not yet** (follow-ups): live **Live-Activity** updates via APNs (so a pinned agent
-stays fresh while backgrounded). Plain APNs alerts are wired end-to-end (registration +
-sender) but **delivery needs an Apple push key**; ntfy works today with no Apple infra.
+- **Live-Activity remote refresh** — a pinned activity requests a push token (forwarded
+  to the Mac), and the push-bridge refreshes it over APNs (`liveactivity`) as the agent
+  updates, ending it on done/error — so it stays fresh while backgrounded.
+
+**Needs an Apple push key** (the only remaining external dependency): APNs alert delivery
+*and* the Live-Activity refresh are wired end-to-end (iOS registration + token capture, a
+token-auth APNs sender) but **inert until `LISA_APNS_*` is set on the Mac**; ntfy works
+today with no Apple infra. Live APNs behavior is therefore unit-/compile-verified here,
+not exercised against Apple.
 
 > Like the Live Activity, the home-screen Widget is **compile-verified on the
 > Simulator**. Its data only flows on a **signed** build: App Group capabilities aren't
