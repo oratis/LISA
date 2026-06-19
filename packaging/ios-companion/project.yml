@@ -69,3 +69,27 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ai.meetlisa.pocket.widgets
+
+  # Logic tests for the pure helpers (parsing / bucketing / sorting). Hosted by the
+  # app so `@testable import LisaPocket` resolves; run with: ./build.sh test (or
+  # xcodebuild test). XcodeGen sets TEST_HOST from the app dependency.
+  LisaPocketTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests
+    dependencies:
+      - target: LisaPocket
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.meetlisa.pocket.tests
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  LisaPocket:
+    build:
+      targets:
+        LisaPocket: all
+    test:
+      targets:
+        - LisaPocketTests

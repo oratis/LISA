@@ -20,13 +20,17 @@ export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Develope
 
 command -v xcodegen >/dev/null || { echo "✗ need xcodegen — run: brew install xcodegen" >&2; exit 1; }
 
+# Action: `build` (default) or `test` (runs the LisaPocketTests logic tests).
+ACTION="build"
+if [ "${1:-}" = "test" ]; then ACTION="test"; shift; fi
+
 echo "==> xcodegen generate"
 xcodegen generate
 
 DEST="${1:-platform=iOS Simulator,name=iPhone 17 Pro}"
-echo "==> xcodebuild ($DEST)"
+echo "==> xcodebuild $ACTION ($DEST)"
 xcodebuild -project LisaPocket.xcodeproj -scheme LisaPocket \
   -sdk iphonesimulator -destination "$DEST" \
-  -derivedDataPath .build build CODE_SIGNING_ALLOWED=NO
+  -derivedDataPath .build "$ACTION" CODE_SIGNING_ALLOWED=NO
 
-echo "✓ Lisa Pocket built for the simulator."
+echo "✓ Lisa Pocket $ACTION succeeded (simulator)."

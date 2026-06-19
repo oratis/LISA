@@ -5,6 +5,13 @@ import LocalAuthentication
 /// A roster session a deep-link wants to open (agent + sessionId).
 struct PendingNav: Equatable { var agent: String; var id: String }
 
+/// Where a `lisapocket://` deep-link points.
+enum DeepLinkRoute: Equatable {
+    case ignore                              // not our scheme
+    case roster                              // lisapocket://roster (or unknown host)
+    case session(agent: String, id: String)  // lisapocket://session?agent=&id=
+}
+
 @MainActor
 final class AppState: ObservableObject {
     @Published var config: ServerConfig
@@ -57,15 +64,27 @@ final class AppState: ObservableObject {
     /// `lisapocket://roster` → Dispatch tab; `lisapocket://session?agent=&id=` →
     /// Dispatch tab + ask RosterView to open that session.
     func handleDeepLink(_ url: URL) {
-        guard url.scheme == "lisapocket" else { return }
-        selectedTab = 0  // Dispatch
-        guard url.host == "session" else { return }
+        switch AppState.parseDeepLink(url) {
+        case .ignore: return
+        case .roster: selectedTab = 0
+        case .session(let agent, let id):
+            selectedTab = 0
+            pendingSession = PendingNav(agent: agent, id: id)
+        }
+    }
+
+    /// Pure parse of a deep-link into a route. `nonisolated` so it's testable off
+    /// the main actor. Unknown lisapocket hosts fall back to the roster.
+    nonisolated static func parseDeepLink(_ url: URL) -> DeepLinkRoute {
+        guard url.scheme == "lisapocket" else { return .ignore }
+        guard url.host == "session" else { return .roster }
         let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
         let agent = items.first { $0.name == "agent" }?.value
         let id = items.first { $0.name == "id" }?.value
         if let agent, let id, !agent.isEmpty, !id.isEmpty {
-            pendingSession = PendingNav(agent: agent, id: id)
+            return .session(agent: agent, id: id)
         }
+        return .roster
     }
 
     // ── biometric lock ──

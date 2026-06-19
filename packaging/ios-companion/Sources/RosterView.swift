@@ -59,17 +59,21 @@ final class RosterModel: ObservableObject {
     /// Mirror the roster's counts (metadata only — no session content) to the App
     /// Group so the home-screen Widget can render them, then nudge it to reload.
     private func publishSnapshot() {
-        var working = 0, waiting = 0, error = 0
-        for s in sessions {
-            if s.activity?.pendingPermission != nil || s.state == "waiting" { waiting += 1 }
-            else if s.state == "error" { error += 1 }
-            else if s.state == "working" { working += 1 }
-        }
-        SharedStore.writeSnapshot(AgentSnapshot(
-            working: working, waiting: waiting, error: error,
-            total: sessions.count, updatedAt: Date()))
+        SharedStore.writeSnapshot(rosterCounts(sessions))
         WidgetCenter.shared.reloadAllTimelines()
     }
+}
+
+/// Bucket roster sessions into the Widget's counts (pending-permission and
+/// "waiting" both count as needs-you). Pure — unit-tested.
+func rosterCounts(_ sessions: [AgentSession], at now: Date = Date()) -> AgentSnapshot {
+    var working = 0, waiting = 0, error = 0
+    for s in sessions {
+        if s.activity?.pendingPermission != nil || s.state == "waiting" { waiting += 1 }
+        else if s.state == "error" { error += 1 }
+        else if s.state == "working" { working += 1 }
+    }
+    return AgentSnapshot(working: working, waiting: waiting, error: error, total: sessions.count, updatedAt: now)
 }
 
 /// Permission/error first, then waiting, then working, then the rest. Newest within a bucket.
