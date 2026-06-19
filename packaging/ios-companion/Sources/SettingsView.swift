@@ -79,6 +79,10 @@ struct SettingsView: View {
                     Text("Change these on the Mac (localhost only).").font(.caption).foregroundStyle(.secondary)
                 }
 
+                Section {
+                    NavigationLink { DevicesView() } label: { Label("Paired devices", systemImage: "iphone.gen3") }
+                }
+
                 Section("Inspect Lisa") {
                     NavigationLink { SoulView() } label: { Label("Soul", systemImage: "sparkles") }
                     NavigationLink { MemoryView() } label: { Label("Memory", systemImage: "brain") }

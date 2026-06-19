@@ -169,3 +169,13 @@ struct SenseEvent: Codable, Identifiable {
     var id: String { "\(signal)/\(kind)/\(ts)" }
 }
 struct SenseResponse: Codable { var events: [SenseEvent] }
+
+// ── Devices (/api/devices) — list is token-auth; revoke is Mac-only ──
+struct DeviceInfo: Codable, Identifiable {
+    var id: String
+    var name: String
+    var platform: String
+    var createdAt: Double?
+    var lastSeenAt: Double?
+}
+struct DevicesResponse: Codable { var devices: [DeviceInfo] }

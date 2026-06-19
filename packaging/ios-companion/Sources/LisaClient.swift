@@ -93,6 +93,9 @@ final class LisaClient {
     func consentRevokeAll() async throws { try await fire("/api/consent/revoke-all") }
     func senseRecent() async throws -> [SenseEvent] { try await decode("/api/sense/recent", as: SenseResponse.self).events }
 
+    // ── read: paired devices (revoke is a Mac-only action) ──
+    func devices() async throws -> [DeviceInfo] { try await decode("/api/devices", as: DevicesResponse.self).devices }
+
     // ── control: managed agents ──
     func managedStart(task: String) async throws { try await fire("/api/agents/managed/start", json: ["task": task]) }
     func managedSend(_ id: String, _ text: String) async throws { try await fire("/api/agents/managed/\(id)/send", json: ["text": text]) }

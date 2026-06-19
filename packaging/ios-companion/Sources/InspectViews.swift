@@ -94,6 +94,39 @@ struct MemoryView: View {
     }
 }
 
+struct DevicesView: View {
+    @EnvironmentObject var app: AppState
+    var body: some View {
+        AsyncContent(load: { try await app.client.devices() }) { devices in
+            List {
+                Section {
+                    if devices.isEmpty {
+                        Text("No paired devices.").font(.caption).foregroundStyle(.secondary)
+                    } else {
+                        ForEach(devices) { d in
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(d.name).font(.headline)
+                                Text(d.platform + (d.lastSeenAt.map { " · seen \(Self.rel($0))" } ?? ""))
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                } footer: {
+                    Text("Each device has its own revocable token. Revoke one on the Mac (localhost only).")
+                }
+            }
+        }
+        .navigationTitle("Paired devices")
+    }
+
+    /// Relative time from an epoch-ms timestamp.
+    static func rel(_ ms: Double) -> String {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .abbreviated
+        return f.localizedString(for: Date(timeIntervalSince1970: ms / 1000), relativeTo: Date())
+    }
+}
+
 struct NamedListView: View {
     let title: String
     let load: () async throws -> [NamedItem]
