@@ -14,22 +14,32 @@ uses all live in `src/web/server.ts`.
 **Compile-verified MVP.** The app builds clean for the iOS Simulator (Xcode 26,
 iOS 17+ target). It covers:
 
-- **Dispatch** — roster from `/api/agents/sessions` + live `/events` SSE; rows keyed
-  off `controllable` / `resumable`; per-session control: managed **approve/deny** ·
-  send · cancel, PTY send · **output** · cancel, and **adopt (resume)** for idle
-  claude sessions (handles the 409/403 the server returns).
-- **Chat** — streams `POST /chat`.
-- **Settings** — pairing (**scan** the Mac's QR code via the camera, or paste a
-  `lisa-pair://…` / `?token=` string → Keychain), ntfy push registration, and a
-  read-only view of the remote-control policy.
-- **Glance** — a **Live Activity / Dynamic Island** for a pinned agent (Lock Screen +
-  compact / expanded / minimal Dynamic Island) and a **home-screen Widget** showing
-  active / stuck agent counts, both in a WidgetKit extension target. The Widget renders
-  a counts-only snapshot the app shares through an App Group — the auth token stays in
-  the Keychain and no session content ever reaches the extension.
+- **Dispatch** — roster from `/api/agents/sessions` + live `/events` SSE (auto-reconnect
+  with backoff + a full resync on foreground); rows keyed off `controllable` /
+  `resumable`; per-session control: managed **approve/deny** · send · cancel, PTY send ·
+  **output** · cancel, and **adopt (resume)** for idle claude sessions (handles the
+  409/403 the server returns). The toolbar opens the **dispatch ledger** (Lisa's own
+  fire-and-forget runs, with a per-entry log tail).
+- **Chat** — streams `POST /chat`, with a live **mood** indicator (mood SSE).
+- **Reve** — "while you were away" note + current desire, an agent-activity **recap**
+  (2h/8h/24h), and dismissable advisor suggestions.
+- **Sense** — ambient-signal **consent** (revoke-only from the phone; granting stays a
+  Mac action) + recent sense events.
+- **Settings** — pairing (**scan** the Mac's QR code, or paste a `lisa-pair://…` /
+  `?token=` string → Keychain), ntfy push, read-only remote-control policy, **paired
+  devices**, an optional **Face ID / passcode** lock, and read-only **Inspect Lisa**
+  (Soul / Memory / Skills / Tools).
+- **Glance** — a **Live Activity / Dynamic Island** for a pinned agent and a
+  **home-screen / lock-screen Widget** (systemSmall/Medium + accessory families) showing
+  active / stuck counts, in a WidgetKit extension. The Widget renders a counts-only
+  snapshot the app shares through an App Group — the token stays in the Keychain and no
+  session content reaches the extension — and tapping it deep-links into the app.
+- **Deep-links** — `lisapocket://` opens the app from a Widget tap or an ntfy push
+  (the push carries a `Click` to the relevant session).
 
 **Not yet** (follow-ups): live Live-Activity updates via APNs, so a pinned agent stays
-fresh while backgrounded — needs an Apple push key; ntfy push works today.
+fresh while backgrounded — needs an Apple push key; ntfy push works today. A real mood
+**portrait** (the chip is a stand-in; the iOS app has no asset catalog yet).
 
 > Like the Live Activity, the home-screen Widget is **compile-verified on the
 > Simulator**. Its data only flows on a **signed** build: App Group capabilities aren't
@@ -41,6 +51,7 @@ fresh while backgrounded — needs an Apple push key; ntfy push works today.
 ```sh
 brew install xcodegen     # one-time
 ./build.sh                # xcodegen generate + xcodebuild for the simulator
+./build.sh test           # run the LisaPocketTests logic tests on a simulator
 ```
 
 The Xcode project is generated from `project.yml` (not committed). Simulator builds
