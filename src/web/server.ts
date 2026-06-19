@@ -37,7 +37,7 @@ import { signalAgentTool } from "../tools/signal_agent.js";
 import { managedRegistry } from "../agents/managed.js";
 import { ptyRegistry, ptyEnabled } from "../agents/pty.js";
 import { liveClaudeSessionIds } from "../integrations/claude-code/liveness.js";
-import { listRecentDispatches, isAlive, toDispatchView } from "../integrations/dispatch-ledger.js";
+import { listRecentDispatches, isAlive, toDispatchView, readDispatchOutput } from "../integrations/dispatch-ledger.js";
 import { loadControlPolicy, saveControlPolicy, type ControlPolicy } from "../control/policy.js";
 import { SenseService } from "../sense/service.js";
 import { ScreenSource } from "../sense/screen.js";
@@ -835,6 +835,27 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const dispatches = listRecentDispatches().map((e) => toDispatchView(e, isAlive(e.pid)));
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ dispatches }));
+      return;
+    }
+
+    // Status + captured-output tail of ONE dispatched agent. The tail is raw
+    // stdout (potentially sensitive), so it's behind the remote-control gate
+    // (loopback always; remote per policy). ?id=<dispatch id>.
+    if (req.method === "GET" && url.startsWith("/api/dispatch/status")) {
+      if (denyRemote("control")) return;
+      const id = new URL(url, "http://localhost").searchParams.get("id") ?? "";
+      const entry = id ? listRecentDispatches().find((e) => e.id === id) : undefined;
+      if (!entry) {
+        res.writeHead(id ? 404 : 400, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: id ? "no such dispatch" : "id required" }));
+        return;
+      }
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({
+        ok: true,
+        ...toDispatchView(entry, isAlive(entry.pid)),
+        tail: readDispatchOutput(entry, 4000),
+      }));
       return;
     }
 

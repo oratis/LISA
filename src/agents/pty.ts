@@ -39,6 +39,9 @@ export interface PtyView {
   lastMtime: number;
   /** Bytes of terminal output seen so far — a rough liveness signal. */
   bytesOut: number;
+  /** When this PTY is a resume-adopt, the real claude session id it continues
+   *  (so the roster can drop the observe-only duplicate of the same session). */
+  adoptedSessionId?: string;
 }
 
 export interface PtyStartOpts {
@@ -195,6 +198,8 @@ export class PtyAgent {
   readonly cli: string;
   readonly cwd: string;
   readonly project: string;
+  /** Real claude session id, when this agent is a resume-adopt (claude only). */
+  readonly adoptedSessionId?: string;
   onChange: () => void = () => {};
   /** Called with each ANSI-stripped output chunk — drives the live attach stream
    *  (GET /api/agents/pty/<id>/stream). Distinct from onChange (state snapshots). */
@@ -216,6 +221,8 @@ export class PtyAgent {
     this.cli = cli;
     this.cwd = opts.cwd;
     this.project = opts.cwd.split("/").filter(Boolean).pop() || opts.cwd;
+    this.adoptedSessionId =
+      opts.resumeSessionId && this.agent === "claude-code" ? opts.resumeSessionId : undefined;
     this.proc = proc;
     this.now = now;
     this.lastChunkAt = now();
@@ -304,6 +311,7 @@ export class PtyAgent {
       stateReason: reason,
       lastMtime: this.lastMtime,
       bytesOut: this.bytesOut,
+      ...(this.adoptedSessionId ? { adoptedSessionId: this.adoptedSessionId } : {}),
     };
   }
 
