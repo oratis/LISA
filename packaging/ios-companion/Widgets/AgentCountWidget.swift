@@ -32,10 +32,32 @@ struct AgentCountWidgetView: View {
     @Environment(\.widgetFamily) private var family
 
     var body: some View {
-        if let snap = entry.snapshot, snap.updatedAt > .distantPast {
-            populated(snap)
+        switch family {
+        case .accessoryInline:
+            Text(inlineText)
+        case .accessoryRectangular:
+            rectangular
+        default:
+            if let snap = entry.snapshot, snap.updatedAt > .distantPast { populated(snap) }
+            else { unconfigured }
+        }
+    }
+
+    // Lock-screen accessory families: terse, no background (system styles them).
+    private var inlineText: String {
+        guard let s = entry.snapshot, s.updatedAt > .distantPast else { return "Lisa — open to pair" }
+        return "▶ \(s.working) active · ⏸ \(s.stuck) stuck"
+    }
+
+    @ViewBuilder private var rectangular: some View {
+        if let s = entry.snapshot, s.updatedAt > .distantPast {
+            VStack(alignment: .leading, spacing: 2) {
+                Label("Dispatch", systemImage: "cpu").font(.caption2.bold())
+                Text("\(s.working) active · \(s.stuck) stuck").font(.caption)
+                Text(summary(s)).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+            }
         } else {
-            unconfigured
+            Text("Open Lisa Pocket").font(.caption)
         }
     }
 
@@ -93,9 +115,10 @@ struct AgentCountWidget: Widget {
         StaticConfiguration(kind: kind, provider: AgentCountProvider()) { entry in
             AgentCountWidgetView(entry: entry)
                 .containerBackground(.fill.tertiary, for: .widget)
+                .widgetURL(URL(string: "lisapocket://roster"))  // tap → open the Dispatch tab
         }
         .configurationDisplayName("Agent activity")
         .description("Active and stuck agents on your Mac.")
-        .supportedFamilies([.systemSmall, .systemMedium])
+        .supportedFamilies([.systemSmall, .systemMedium, .accessoryRectangular, .accessoryInline])
     }
 }
