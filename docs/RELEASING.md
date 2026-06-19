@@ -6,16 +6,18 @@ How to cut a new release that ships:
 - Source + self-contained CLI bundles (Mac / Linux) via GitHub Releases
 - **Lisa.app DMG** via GitHub Releases (this doc's focus — the Lisa Island
   pill is built into Lisa.app, there's no separate LisaIsland.app anymore)
+- The **Homebrew tap** formula (`oratis/homebrew-tap`)
 
-There are three GitHub Actions workflows involved, all tag-triggered on `v*.*.*`:
-
-| Workflow | Runner | Produces |
+| Workflow / step | Trigger | Produces |
 |---|---|---|
-| `release.yml` | ubuntu-latest | source tarball, mac/linux CLI bundles |
-| `release-mac-apps.yml` | macos-latest | `Lisa-Suite-vX.Y.Z.dmg` (Lisa.app) |
-| (npm publish — manual) | local | npm package |
+| `release.yml` | tag `v*.*.*` | source tarball, mac/linux CLI bundles |
+| `release-mac-apps.yml` | tag `v*.*.*` | `Lisa-Suite-vX.Y.Z.dmg` (Lisa.app) |
+| `npm publish` | manual (local) | npm package |
+| `release-homebrew.yml` | manual (`workflow_dispatch`) | bumped `oratis/homebrew-tap` formula |
 
-All three attach to the same `vX.Y.Z` GitHub Release.
+The two tag-triggered workflows attach to the same `vX.Y.Z` GitHub Release. The
+npm publish and Homebrew bump are manual and run *after* the tag (the tap formula
+hashes the published npm tarball, so npm must go first).
 
 ---
 
@@ -51,8 +53,23 @@ All three attach to the same `vX.Y.Z` GitHub Release.
 5. **Publish to npm** (manual)
 
    ```bash
-   npm publish
+   npm publish --access public
    ```
+
+   `--access public` is required: the package is scoped (`@oratis/lisa`), and
+   scoped packages default to *restricted* — without the flag npm 404s on the
+   `PUT`. `prepublishOnly` runs typecheck + test + build first.
+
+6. **Bump the Homebrew tap** (manual — after npm publish lands on the registry)
+
+   ```bash
+   gh workflow run "Release — Homebrew tap"
+   ```
+
+   Pins `Formula/lisa.rb` in `oratis/homebrew-tap` to the freshly-published npm
+   tarball + its sha256. Needs the one-time `HOMEBREW_TAP_TOKEN` secret (and has a
+   manual fallback) — see [PUBLISH.md §2](PUBLISH.md). It must run *after* `npm
+   publish` because it hashes the real published tarball.
 
 ---
 
