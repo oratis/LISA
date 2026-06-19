@@ -43,6 +43,11 @@ final class AppState: ObservableObject {
             let hex = note.object as? String
             Task { @MainActor in await self?.onApnsToken(hex) }
         }
+        // A tapped push routes its lisapocket:// link through the deep-link handler.
+        NotificationCenter.default.addObserver(forName: .apnsTapLink, object: nil, queue: .main) { [weak self] note in
+            guard let link = note.object as? String, let url = URL(string: link) else { return }
+            Task { @MainActor in self?.handleDeepLink(url) }
+        }
     }
 
     // ── APNs registration (client half; delivery needs the Mac's APNs key) ──
