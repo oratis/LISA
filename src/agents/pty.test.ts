@@ -37,8 +37,10 @@ function fakePty() {
   };
   let spawnFile = "";
   let spawnArgs: string[] = [];
+  let spawnCount = 0;
   const module: PtyModuleLike = {
     spawn: (file, args) => {
+      spawnCount++;
       spawnFile = file;
       spawnArgs = args;
       return proc;
@@ -51,6 +53,9 @@ function fakePty() {
     emitExit: (code: number) => exitCb?.({ exitCode: code }),
     isKilled: () => killed,
     getSpawn: () => ({ file: spawnFile, args: spawnArgs }),
+    get spawnCount() {
+      return spawnCount;
+    },
   };
 }
 
@@ -173,12 +178,18 @@ test("resumeSessionId adopts an existing session via `--resume <id>`", async () 
   });
 });
 
-test("resume is claude-only (codex ignores resumeSessionId)", async () => {
+test("resume-adopt is claude-only — codex resume is refused, not silently downgraded", async () => {
   await withFlag(async () => {
     const f = fakePty();
     const reg = new PtyRegistry();
-    await reg.start({ agent: "codex", task: "", cwd: "/tmp/p", resumeSessionId: "abc-123", cli: "codex", ptyModule: f.module });
-    assert.equal(f.getSpawn().args.includes("--resume"), false);
+    // Codex has no liveness signal, so adopting one can't be guarded against
+    // transcript corruption. Refusing (vs. silently starting a fresh session)
+    // keeps the API honest. See docs/PTY_AGENTS.md.
+    await assert.rejects(
+      () => reg.start({ agent: "codex", task: "", cwd: "/tmp/p", resumeSessionId: "abc-123", cli: "codex", ptyModule: f.module }),
+      /only supported for claude/i,
+    );
+    assert.equal(f.spawnCount, 0); // never spawned anything
   });
 });
 

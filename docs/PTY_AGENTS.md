@@ -41,6 +41,40 @@ owns its stdin/stdout), but every session has a stable `sessionId`, and
 - Binary: LISA resumes with `LISA_PTY_CLAUDE_CMD` → the newest app-bundled
   `claude` (version-matched to your sessions) → PATH `claude`.
 
+## Why codex resume-adopt isn't supported (yet)
+
+Resume-adopt is **claude-only by design** — not an oversight. The codex CLI *does*
+support continuation (`codex resume <session-id> [prompt]`; sessions live at
+`$CODEX_HOME/sessions/YYYY/MM/DD/rollout-*.jsonl`), so in principle LISA could spawn
+`codex resume <id>` under a PTY the same way it spawns `claude --resume <id>`. The
+blocker is **safety, not capability**:
+
+- **No liveness signal.** The adopt guard refuses resuming a session that's still
+  *live* — two writers to one JSONL transcript interleave and corrupt it. For claude
+  we read `~/.claude/sessions/<pid>.json` and `kill -0` the owning pid
+  (`liveClaudeSessionIds()`): an authoritative "is it running right now?" check. Codex
+  leaves **no equivalent** — its rollout carries no pid/lock, and the observer can
+  only infer "recent" from file mtime, which is *not* "idle". An mtime heuristic
+  would let a paused-but-live session look adoptable and then get corrupted —
+  precisely what the guard must prevent.
+- **Unverified id mapping.** Our observer derives a codex `sessionId` from the rollout
+  filename (`rollout-<id>.jsonl` → `<id>`); whether that's the exact token
+  `codex resume <id>` wants is unconfirmed, and codex isn't installed here to check.
+- **Can't be exercised here.** node-pty won't spawn under Node 26 (see the local-dev
+  caveat), so a speculative implementation couldn't be verified end-to-end anyway.
+
+Rather than ship a guessed, unguarded path on a transcript-**corruption** surface,
+LISA refuses codex resume explicitly: `PtyAgent.start` throws, and
+`POST /api/agents/pty/start` returns **400** when `resumeSessionId` is set for a
+non-claude agent. (It previously dropped the id silently and started a *fresh*
+session — honest-by-refusal beats silently-wrong.) codex **adopt-at-launch**
+(`lisa agents pty codex "<task>"`, a brand-new session) is unaffected and works.
+
+**What would unblock it:** a reliable codex liveness check — codex writing a pid/lock
+we can `kill -0`, or an `is-live` signal it exposes — plus a confirmed
+rollout→resume-id mapping. Then the guard generalizes and the PTY arg-builder simply
+adds the `codex resume <id>` form.
+
 ## Enabling it
 
 1. Install the optional native dep (it has zero JS deps; if your machine can't
@@ -112,7 +146,7 @@ a full arrow-key TUI. Raw attach is future work.
 | Method + path | Body | Effect |
 | --- | --- | --- |
 | `POST /api/agents/pty/start` | `{ agent, task, cwd? }` | spawn a fresh PTY agent (503 if flag off) |
-| `POST /api/agents/pty/start` | `{ agent:"claude", resumeSessionId, cwd? }` | **adopt** an idle session (409 if it's live) |
+| `POST /api/agents/pty/start` | `{ agent:"claude", resumeSessionId, cwd? }` | **adopt** an idle session (claude-only: **400** for other agents; **409** if it's live) |
 | `POST /api/agents/pty/<id>/send` | `{ text }` | type a line into the CLI |
 | `POST /api/agents/pty/<id>/cancel` | — | kill the CLI |
 | `GET /api/agents/pty/<id>/output` | — | ANSI-stripped terminal tail (one-shot) |
