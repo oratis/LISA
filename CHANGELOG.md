@@ -5,6 +5,39 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.0] — 2026-06-19
+
+**Coding plans + the iOS-companion control plane.** Run coding work on a
+subscription instead of metered API tokens, and watch/steer your Mac's agents
+from your phone. 112 new tests (692 → 804), no breaking changes. Full notes:
+[docs/RELEASE_v0.11.0.md](docs/RELEASE_v0.11.0.md).
+
+### Added
+
+- **Coding plans.** Detect installed plan CLIs (Claude Code / Codex / Copilot)
+  and login state (`lisa model list`); select a delegation target
+  (`lisa model use plan://<id>`, stored as `LISA_CODING_PLAN`). The `run_on_plan`
+  tool delegates a coding task to that plan by driving the vendor CLI headlessly
+  (`claude -p` / `codex exec` / `copilot -p`) — bills your subscription, not an
+  API key, and never reads/replays subscription tokens (the sanctioned
+  out-of-process path; see [docs/CODING_PLANS.md](docs/CODING_PLANS.md)). Real
+  rolling-window token usage in `lisa model list`; a **PLANS** picker in the web UI.
+- **`ANTHROPIC_AUTH_TOKEN`** — Bearer auth for an Anthropic-compatible gateway/
+  proxy, taking precedence over `ANTHROPIC_API_KEY` (matches Claude Code).
+- **iOS companion (Lisa Pocket).** Native SwiftUI app + Live Activity / Dynamic
+  Island under `packaging/ios-companion/`. Backend: `lisa agents pty` pocket-
+  control CLI, PTY-output SSE (`/api/agents/pty/<id>/stream`), structural
+  `/api/dispatch/list`, per-device pairing tokens (`/api/pair/start`,
+  `/api/devices`), and operational push via ntfy (`/api/push/*`, metadata-only).
+
+### Security
+
+- **Remote-control policy** (`/api/control/policy`) gates high-risk actions from
+  remote callers: adopting an *external* (non-LISA) session is off by default;
+  policy fails safe to the locked-down default.
+- **Pairing tokens** are 192-bit CSPRNG, stored as hashes only in a `0600` file,
+  constant-time compared, revocable per device, layered on `LISA_WEB_TOKEN`.
+
 ## [0.9.1] — 2026-06-11
 
 **Security hardening + advisor trust, from the v0.9 product review**
