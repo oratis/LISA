@@ -5,6 +5,31 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.12.0] — 2026-06-19
+
+**Lisa Pocket goes real** — the iOS companion + real APNs push, on the v0.11
+control plane ([docs/RELEASE_v0.12.0.md](docs/RELEASE_v0.12.0.md)). 823 tests
+(804 → 823), no breaking changes.
+
+### Added
+
+- **Lisa Pocket (iOS).** Pair by QR (`lisa pair` shows a QR; the app scans it →
+  per-device token); live agent roster (SSE w/ auto-reconnect + foreground
+  resync), chat with a live mood portrait, dispatch-ledger view; a home-screen
+  Widget (active/stuck counts), lock-screen accessories, and a Live Activity that
+  refreshes remotely over APNs; read-only Soul/Memory/Skills/Tools, a Reve tab and
+  a Sense tab (consent revoke + events); optional Face ID / passcode lock;
+  `lisapocket://` deep-links; paired-devices list.
+- **Push (APNs).** Real token-auth APNs delivery for `done`/`error`/`permission`
+  transitions — inert without a push key. ntfy notifications deep-link to the
+  session.
+- **`lisa pair [--host H]`** — show a QR to pair a phone via a running `serve`.
+
+### Fixed
+
+- Codex resume-adopt now refuses explicitly instead of silently downgrading.
+- Carries the v0.11.1 first-run polish (single title bar, never-silent boot).
+
 ## [0.11.1] — 2026-06-19
 
 **First-run polish for the Mac app** ([docs/RELEASE_v0.11.1.md](docs/RELEASE_v0.11.1.md)). No features, no breaking changes.
