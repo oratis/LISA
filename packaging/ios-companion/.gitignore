@@ -6,6 +6,9 @@ Sources/LisaPocket.entitlements
 Widgets/LisaPocketWidgets.entitlements
 # Build output / Xcode cruft.
 .build/
+build/
 DerivedData/
+*.xcarchive
+ExportOptions.plist
 *.xcuserstate
 .DS_Store
