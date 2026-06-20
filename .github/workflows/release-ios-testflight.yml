@@ -1,0 +1,100 @@
+name: Release — iOS TestFlight (Lisa Pocket)
+
+# Build Lisa Pocket (native SwiftUI, packaging/ios-companion) and upload it to
+# TestFlight. The native-app analogue of Markup's EAS submit; modeled on the
+# secret-gated, ephemeral-keychain pattern of release-mac-apps.yml.
+#
+# Runs automatically WHEN the App Store Connect API-key secrets are populated
+# (gated on ASC_KEY_ID). When they're missing it's a no-op with a hint, so the
+# repo stays green for contributors without Apple credentials.
+#
+# Required secrets (see packaging/ios-companion/RELEASE.md):
+#   ASC_KEY_ID            App Store Connect API Key ID.
+#   ASC_ISSUER_ID         API Key Issuer ID (UUID).
+#   ASC_API_KEY_BASE64    the AuthKey_<id>.p8, base64-encoded:
+#                           base64 -i AuthKey_XXXX.p8 | pbcopy
+#   IOS_DIST_CERT_BASE64  an "Apple Distribution" cert .p12 (cert + key), base64.
+#   IOS_DIST_CERT_PASSWORD  passphrase set when exporting that .p12.
+#   APPLE_TEAM_ID         10-char team id (reused from the mac workflow).
+
+on:
+  push:
+    tags:
+      - "pocket-v*.*.*"
+  workflow_dispatch:
+    inputs:
+      build_number:
+        description: "Override build number (default: timestamp)"
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  testflight:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      # GitHub Actions forbids secrets.* in step-level `if:`, so promote the
+      # gate to a job-level env var. "true" iff the ASC API key is wired.
+      HAS_IOS_SIGNING: ${{ secrets.ASC_KEY_ID != '' }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Skip notice (no Apple credentials)
+        if: ${{ env.HAS_IOS_SIGNING != 'true' }}
+        run: echo "::notice::ASC_KEY_ID not set — skipping TestFlight upload. Populate the App Store Connect secrets to enable."
+
+      - name: Install XcodeGen
+        if: ${{ env.HAS_IOS_SIGNING == 'true' }}
+        run: brew install xcodegen
+
+      - name: Import Apple Distribution certificate
+        if: ${{ env.HAS_IOS_SIGNING == 'true' }}
+        env:
+          IOS_DIST_CERT_BASE64: ${{ secrets.IOS_DIST_CERT_BASE64 }}
+          IOS_DIST_CERT_PASSWORD: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN_PATH="$RUNNER_TEMP/pocket-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+          echo "$IOS_DIST_CERT_BASE64" | base64 --decode > "$RUNNER_TEMP/dist.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$RUNNER_TEMP/dist.p12" -P "$IOS_DIST_CERT_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: \
+            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+          security default-keychain -s "$KEYCHAIN_PATH"
+          rm -f "$RUNNER_TEMP/dist.p12"
+          echo "POCKET_KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
+      - name: Write App Store Connect API key
+        if: ${{ env.HAS_IOS_SIGNING == 'true' }}
+        env:
+          ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/asc"
+          echo "$ASC_API_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/asc/AuthKey_${ASC_KEY_ID}.p8"
+          echo "ASC_KEY_PATH=$RUNNER_TEMP/asc/AuthKey_${ASC_KEY_ID}.p8" >> "$GITHUB_ENV"
+
+      - name: Archive + upload to TestFlight
+        if: ${{ env.HAS_IOS_SIGNING == 'true' }}
+        working-directory: packaging/ios-companion
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          BUILD_NUMBER: ${{ github.event.inputs.build_number }}
+        run: ./testflight.sh
+
+      - name: Clean up signing keychain
+        if: ${{ always() && env.POCKET_KEYCHAIN_PATH != '' }}
+        run: |
+          security delete-keychain "$POCKET_KEYCHAIN_PATH" || true
+          rm -f "$POCKET_KEYCHAIN_PATH" || true
