@@ -80,15 +80,9 @@ ${MAIN_CSS}
         <div class="left">agents</div>
         <div class="count">▶︎ <span id="sbClaudeCount">0</span></div>
       </div>
-      <form id="sbDelegate" class="delegate" autocomplete="off">
-        <select id="sbDelegateKind" title="Agent type — managed (LISA-run) or a real CLI under a PTY (spike)">
-          <option value="managed">managed</option>
-          <option value="claude">claude</option>
-          <option value="codex">codex</option>
-        </select>
-        <input id="sbDelegateTask" type="text" placeholder="delegate a task…" />
-        <button type="submit" title="Start an agent">▶</button>
-      </form>
+      <button id="sbDelegateBtn" class="delegate-btn" type="button" title="Start an agent">
+        ＋ delegate a task
+      </button>
       <div id="sbClaudeRows">
         <div class="session-empty">(idle)</div>
       </div>
