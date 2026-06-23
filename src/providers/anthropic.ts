@@ -1,10 +1,17 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { proxyAwareFetch } from "../proxy-bootstrap.js";
+import { withStreamRetry } from "./stream-retry.js";
 import type {
   Provider,
   ProviderResult,
   ProviderRunOpts,
 } from "./types.js";
+
+/** Structural shape shared by `messages.stream` and `beta.messages.stream`. */
+interface StreamLike {
+  on(event: "text" | "thinking", cb: (delta: string) => void): unknown;
+  finalMessage(): Promise<unknown>;
+}
 
 export class AnthropicProvider implements Provider {
   readonly name = "anthropic";
@@ -64,24 +71,35 @@ export class AnthropicProvider implements Provider {
     // in-flight HTTP stream (the SDK then throws APIUserAbortError).
     const requestOpts = { signal: opts.signal };
 
-    let message: Anthropic.Message;
-    if (opts.compaction) {
-      const stream = this.client.beta.messages.stream(
-        {
-          ...params,
-          ...extras,
-        } as Anthropic.Beta.MessageCreateParamsStreaming,
-        requestOpts,
-      );
-      if (opts.handlers?.onTextDelta) stream.on("text", onText);
-      if (opts.handlers?.onThinkingDelta) stream.on("thinking", onThinking);
-      message = (await stream.finalMessage()) as unknown as Anthropic.Message;
-    } else {
-      const stream = this.client.messages.stream(params, requestOpts);
-      if (opts.handlers?.onTextDelta) stream.on("text", onText);
-      if (opts.handlers?.onThinkingDelta) stream.on("thinking", onThinking);
-      message = await stream.finalMessage();
-    }
+    // Retry transient empty-stream failures ("request ended without sending any
+    // chunks" and proxy-induced connection drops). The SDK's request-level
+    // retries don't cover these — they're thrown while iterating a 200 stream —
+    // so without this a momentary proxy/network blip surfaces as a hard error.
+    // Safe because we only retry while no delta has been forwarded yet.
+    const message = await withStreamRetry(
+      { signal: opts.signal },
+      async (markEmitted) => {
+        const stream: StreamLike = opts.compaction
+          ? (this.client.beta.messages.stream(
+              { ...params, ...extras } as Anthropic.Beta.MessageCreateParamsStreaming,
+              requestOpts,
+            ) as unknown as StreamLike)
+          : (this.client.messages.stream(params, requestOpts) as unknown as StreamLike);
+        if (opts.handlers?.onTextDelta) {
+          stream.on("text", (t) => {
+            markEmitted();
+            onText(t);
+          });
+        }
+        if (opts.handlers?.onThinkingDelta) {
+          stream.on("thinking", (t) => {
+            markEmitted();
+            onThinking(t);
+          });
+        }
+        return (await stream.finalMessage()) as Anthropic.Message;
+      },
+    );
     return {
       content: message.content as Anthropic.ContentBlock[],
       stopReason: message.stop_reason ?? "end_turn",

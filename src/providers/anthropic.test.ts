@@ -94,3 +94,60 @@ describe("AnthropicProvider — abort signal passthrough", () => {
     assert.equal(captured.options?.signal, undefined);
   });
 });
+
+describe("AnthropicProvider — transient empty-stream retry", () => {
+  test("retries when finalMessage dies with no chunks, then succeeds", async () => {
+    const provider = new AnthropicProvider({ apiKey: "test-key" });
+    let calls = 0;
+    (provider as unknown as { client: unknown }).client = {
+      messages: {
+        stream: () => ({
+          on: () => {},
+          finalMessage: async () => {
+            calls++;
+            if (calls === 1) {
+              throw new Error("request ended without sending any chunks");
+            }
+            return fakeFinalMessage();
+          },
+        }),
+      },
+    };
+
+    const result = await provider.runTurn(baseOpts());
+
+    assert.equal(calls, 2); // failed once, reopened the stream, succeeded
+    assert.equal(result.stopReason, "end_turn");
+  });
+
+  test("does NOT retry once a text delta has been forwarded", async () => {
+    const provider = new AnthropicProvider({ apiKey: "test-key" });
+    let calls = 0;
+    (provider as unknown as { client: unknown }).client = {
+      messages: {
+        stream: () => ({
+          // Emit a delta synchronously on registration to mark output started.
+          on: (event: string, cb: (t: string) => void) => {
+            if (event === "text") cb("partial");
+          },
+          finalMessage: async () => {
+            calls++;
+            throw new Error("request ended without sending any chunks");
+          },
+        }),
+      },
+    };
+
+    const deltas: string[] = [];
+    await assert.rejects(
+      provider.runTurn({
+        ...baseOpts(),
+        handlers: { onTextDelta: (t) => deltas.push(t) },
+      }),
+      /any chunks/,
+    );
+
+    assert.equal(calls, 1); // surfaced, not retried — output already streamed
+    assert.deepEqual(deltas, ["partial"]);
+  });
+});
