@@ -609,6 +609,44 @@ export const MAIN_CSS = `  :root {
     font-size: 12px;
     padding: 6px 2px;
   }
+  /* Failed-turn block: error detail + retry button (replaces the old bare
+     [error] line so the user can read what happened and re-run the turn). */
+  .err-block {
+    background: linear-gradient(180deg, rgba(255, 85, 119, 0.10), rgba(255, 85, 119, 0.02));
+    border: 1px solid rgba(255, 85, 119, 0.30);
+    border-radius: 14px;
+    padding: 10px 12px;
+    margin: 6px 0;
+  }
+  .err-block .err-head {
+    color: var(--err-color);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    margin-bottom: 4px;
+  }
+  .err-block .err-detail {
+    color: var(--err-color);
+    font-size: 12px;
+    line-height: 1.45;
+    word-break: break-word;
+    white-space: pre-wrap;
+    opacity: 0.9;
+  }
+  .err-block .err-retry {
+    margin-top: 8px;
+    padding: 4px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border: 1px solid rgba(106, 212, 255, 0.40);
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .err-block .err-retry:hover {
+    background: var(--accent-glow);
+  }
 
   /* Idle pulse + while-you-were-away banner injected into #log */
   .idle-pulse {

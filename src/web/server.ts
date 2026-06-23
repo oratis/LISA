@@ -1691,6 +1691,10 @@ self.addEventListener('fetch', (event) => {
       // Send the current mood immediately so a fresh tab knows where to start.
       send({ type: "mood", slug: moodBus.current() });
       const runTurn = async (): Promise<void> => {
+        // runAgent emits an error event for a failed turn AND rethrows; without
+        // this guard the catch below would send a second, identical error event
+        // (the client used to render the same error twice).
+        let errorSent = false;
         try {
           // Use the freshest cached prompt for this chat. If soul / skills /
           // memory changed since the previous chat, rebuildPrompt() picks it up.
@@ -1730,8 +1734,10 @@ self.addEventListener('fetch', (event) => {
                 });
               if (ev.type === "system_prompt_rebuilt")
                 send({ type: "soul_reload", message: ev.message ?? "" });
-              if (ev.type === "error")
+              if (ev.type === "error") {
+                errorSent = true;
                 send({ type: "error", message: ev.message ?? "" });
+              }
             },
             // Same plugin hook wiring as the CLI turn — PreToolUse can block,
             // PostToolUse can rewrite. (Was CLI-only; web tool calls bypassed
@@ -1772,7 +1778,7 @@ self.addEventListener('fetch', (event) => {
           history.push(...result.history);
           send({ type: "done" });
         } catch (err) {
-          send({ type: "error", message: (err as Error).message });
+          if (!errorSent) send({ type: "error", message: (err as Error).message });
         } finally {
           moodBus.off("mood", onMood);
           res.end();

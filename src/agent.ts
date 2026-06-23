@@ -121,6 +121,11 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
 
   const toolMap = new Map(tools.map((t) => [t.name, t]));
   const messages: StoredMessage[] = [...opts.history];
+  // Persisted to disk only once the first provider response commits the turn
+  // (see flush below). Persisting up-front orphaned the user message in the
+  // session file when the very first stream died (e.g. a transient empty
+  // stream), and that orphan then duplicated when the user hit retry.
+  let pendingUserPersist: StoredMessage | null = null;
   if (opts.userMessage || (opts.userFiles && opts.userFiles.length)) {
     const content: Anthropic.ContentBlockParam[] = [];
     if (opts.userMessage) {
@@ -147,7 +152,7 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
     }
     const firstUser: StoredMessage = { role: "user", content };
     messages.push(firstUser);
-    await onMessagePersist?.(firstUser);
+    pendingUserPersist = firstUser;
   }
 
   let cacheReadTokens = 0;
@@ -239,6 +244,15 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
       const message = err instanceof Error ? err.message : String(err);
       onEvent?.({ type: "error", message });
       throw err;
+    }
+
+    // The turn is committed (the provider responded). Flush the deferred user
+    // message now, before the assistant message, so file order stays
+    // user→assistant and an immediate stream failure leaves nothing to
+    // duplicate on retry.
+    if (pendingUserPersist) {
+      await onMessagePersist?.(pendingUserPersist);
+      pendingUserPersist = null;
     }
 
     cacheReadTokens += result.usage.cacheReadTokens;
