@@ -1292,31 +1292,64 @@ if ('serviceWorker' in navigator) {
     } catch {}
   };
 
-  // "Delegate a task" → start an agent. managed = LISA-run (controllable);
-  // claude/codex = a real CLI under a PTY (Stage C spike, needs LISA_PTY_AGENTS=1
-  // — a 503 surfaces its hint in the modal).
-  const sbDelegate = document.getElementById('sbDelegate');
-  if (sbDelegate) {
-    sbDelegate.addEventListener('submit', function (e) {
-      e.preventDefault();
-      const inp = document.getElementById('sbDelegateTask');
-      const kindEl = document.getElementById('sbDelegateKind');
-      const task = inp && inp.value.trim();
-      if (!task) return;
+  // "Delegate a task" → open a modal to pick the agent kind + write the task.
+  // (A roomy dialog beats the cramped 280px sidebar.) managed = LISA-run
+  // (controllable); claude/codex = a real CLI under a PTY (needs LISA_PTY_AGENTS=1
+  // — a 503/error surfaces inline in the dialog).
+  function openDelegateModal() {
+    openModal(
+      'Delegate a task',
+      '<div class="delegate-modal">' +
+        '<label class="dm-label">Agent</label>' +
+        '<select id="dmKind" class="dm-kind">' +
+          '<option value="managed">managed — LISA runs it (approve each step)</option>' +
+          '<option value="claude">claude — real CLI under a PTY</option>' +
+          '<option value="codex">codex — real CLI under a PTY</option>' +
+        '</select>' +
+        '<label class="dm-label">Task</label>' +
+        '<textarea id="dmTask" class="dm-task" rows="5" placeholder="Describe the task… (⌘/Ctrl+Enter to start)"></textarea>' +
+        '<div class="dm-actions"><button id="dmStart" class="dm-start" type="button">Start agent →</button></div>' +
+        '<div id="dmErr" class="dm-err"></div>' +
+      '</div>'
+    );
+    const kindEl = document.getElementById('dmKind');
+    const taskEl = document.getElementById('dmTask');
+    const startEl = document.getElementById('dmStart');
+    const errEl = document.getElementById('dmErr');
+    if (taskEl) taskEl.focus();
+    function submitDelegate() {
+      const task = taskEl && taskEl.value.trim();
+      if (!task) { if (taskEl) taskEl.focus(); return; }
       const kind = kindEl ? kindEl.value : 'managed';
       const url = kind === 'managed' ? '/api/agents/managed/start' : '/api/agents/pty/start';
       const body = kind === 'managed' ? { task: task } : { agent: kind, task: task };
+      if (errEl) errEl.textContent = '';
+      if (startEl) { startEl.disabled = true; startEl.textContent = 'Starting…'; }
       fetch(url, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(body),
       }).then(function (r) {
-        if (!r.ok) { return r.text().then(function (t) { openModal('agent', '<pre>' + escapeHtml(t) + '</pre>'); }); }
-        if (inp) inp.value = '';
+        if (!r.ok) {
+          return r.text().then(function (t) {
+            if (errEl) errEl.textContent = t || ('failed (' + r.status + ')');
+            if (startEl) { startEl.disabled = false; startEl.textContent = 'Start agent →'; }
+          });
+        }
+        closeModal();
         if (typeof refreshClaudeSessions === 'function') refreshClaudeSessions();
-      }).catch(function () {});
+      }).catch(function () {
+        if (errEl) errEl.textContent = 'network error';
+        if (startEl) { startEl.disabled = false; startEl.textContent = 'Start agent →'; }
+      });
+    }
+    if (startEl) startEl.addEventListener('click', submitDelegate);
+    if (taskEl) taskEl.addEventListener('keydown', function (e) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); submitDelegate(); }
     });
   }
+  const sbDelegateBtn = document.getElementById('sbDelegateBtn');
+  if (sbDelegateBtn) sbDelegateBtn.addEventListener('click', openDelegateModal);
 
   async function refreshIdentity() {
     try {

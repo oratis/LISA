@@ -366,40 +366,42 @@ export const MAIN_CSS = `  :root {
     background: rgba(0,0,0,0.25);
     color: var(--fg);
   }
-  /* "Delegate a task" composer at the top of the agents card. */
-  .delegate {
-    display: flex;
-    gap: 6px;
+  /* "Delegate a task" → a single full-width button that opens a modal. */
+  .delegate-btn {
+    width: 100%;
     margin: 2px 0 8px;
-  }
-  .delegate input {
-    flex: 1;
-    font-size: 11px;
-    padding: 4px 8px;
-    border-radius: 7px;
-    border: 1px solid var(--border);
-    background: rgba(0,0,0,0.25);
-    color: var(--fg);
-  }
-  .delegate select {
-    font-size: 10.5px;
-    padding: 3px 4px;
-    border-radius: 7px;
-    border: 1px solid var(--border);
-    background: rgba(0,0,0,0.25);
-    color: var(--fg-2);
-    cursor: pointer;
-  }
-  .delegate button {
-    font-size: 11px;
-    padding: 4px 10px;
-    border-radius: 7px;
+    font-size: 11.5px;
+    padding: 6px 10px;
+    border-radius: 8px;
     border: 1px solid var(--claude, #ff8c42);
-    background: rgba(255,140,66,0.16);
+    background: rgba(255,140,66,0.14);
     color: var(--claude, #ff8c42);
     cursor: pointer;
+    transition: background 0.12s ease;
   }
-  .delegate button:hover { background: rgba(255,140,66,0.28); }
+  .delegate-btn:hover { background: rgba(255,140,66,0.26); }
+  /* Delegate dialog (rendered in the shared modal). */
+  .delegate-modal { display: flex; flex-direction: column; gap: 8px; }
+  .delegate-modal .dm-label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--fg-2); margin-top: 4px;
+  }
+  .delegate-modal .dm-kind,
+  .delegate-modal .dm-task {
+    width: 100%; box-sizing: border-box;
+    font-size: 13px; padding: 8px 10px; border-radius: 8px;
+    border: 1px solid var(--border); background: rgba(0,0,0,0.25); color: var(--fg);
+  }
+  .delegate-modal .dm-task { resize: vertical; min-height: 88px; font-family: inherit; }
+  .delegate-modal .dm-actions { display: flex; justify-content: flex-end; margin-top: 4px; }
+  .delegate-modal .dm-start {
+    font-size: 13px; padding: 8px 16px; border-radius: 8px;
+    border: 1px solid var(--brand, #6ad4ff); background: rgba(106,212,255,0.16);
+    color: var(--brand, #6ad4ff); cursor: pointer;
+  }
+  .delegate-modal .dm-start:hover { background: rgba(106,212,255,0.28); }
+  .delegate-modal .dm-start:disabled { opacity: 0.5; cursor: default; }
+  .delegate-modal .dm-err { color: var(--err-color, #ff5577); font-size: 12px; white-space: pre-wrap; }
   .session-empty {
     color: var(--fg-faint);
     font-size: 11.5px;
