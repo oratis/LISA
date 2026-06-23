@@ -120,6 +120,11 @@ final class LisaClient {
     func managedApprove(_ id: String, allow: Bool) async throws { try await fire("/api/agents/managed/\(id)/approve", json: ["allow": allow]) }
 
     // ── control: PTY agents ──
+    /// Spawn a fresh real CLI under a PTY (agent = "claude" | "codex"). Returns
+    /// the HTTP code (503 ⇒ the PTY spike is off on the Mac: LISA_PTY_AGENTS=1).
+    func ptyStart(agent: String, task: String) async throws -> Int {
+        try await fire("/api/agents/pty/start", json: ["agent": agent, "task": task])
+    }
     func ptySend(_ id: String, _ text: String) async throws { try await fire("/api/agents/pty/\(id)/send", json: ["text": text]) }
     func ptyCancel(_ id: String) async throws { try await fire("/api/agents/pty/\(id)/cancel") }
     func ptyOutput(_ id: String) async throws -> String {

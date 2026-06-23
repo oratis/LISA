@@ -111,6 +111,7 @@ struct RosterView: View {
     @StateObject private var model = RosterModel()
     @Environment(\.scenePhase) private var scenePhase
     @State private var path: [AgentSession] = []
+    @State private var showDelegate = false
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -134,10 +135,18 @@ struct RosterView: View {
             .navigationDestination(for: AgentSession.self) { SessionDetailView(session: $0) }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
+                    Button { showDelegate = true } label: { Image(systemName: "plus") }
+                        .disabled(!app.config.isConfigured)
+                        .accessibilityLabel("Delegate a task")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
                     NavigationLink { DispatchLedgerView() } label: {
                         Image(systemName: "list.bullet.rectangle")
                     }
                 }
+            }
+            .sheet(isPresented: $showDelegate) {
+                DelegateSheet(client: app.client) { Task { await model.load(app.client) } }
             }
             .refreshable { await model.load(app.client) }
             .task(id: app.config) {
@@ -215,6 +224,77 @@ struct Pill: View {
             .background(color.opacity(0.15))
             .foregroundStyle(color)
             .clipShape(Capsule())
+    }
+}
+
+/// Start a new agent: managed (Lisa runs it) or a real claude/codex CLI under a
+/// PTY. Mirrors the Mac GUI's "delegate a task" modal.
+struct DelegateSheet: View {
+    let client: LisaClient
+    var onStarted: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var kind = "managed"
+    @State private var task = ""
+    @State private var status = ""
+    @State private var busy = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Agent") {
+                    Picker("Agent", selection: $kind) {
+                        Text("managed — Lisa runs it").tag("managed")
+                        Text("claude — real CLI (PTY)").tag("claude")
+                        Text("codex — real CLI (PTY)").tag("codex")
+                    }
+                    .pickerStyle(.menu)
+                }
+                Section("Task") {
+                    TextField("Describe the task…", text: $task, axis: .vertical)
+                        .lineLimit(3...8)
+                }
+                if !status.isEmpty {
+                    Section { Text(status).font(.caption).foregroundStyle(.red) }
+                }
+            }
+            .navigationTitle("Delegate a task")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Start") { start() }
+                        .disabled(busy || task.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+    }
+
+    private func start() {
+        let t = task.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return }
+        busy = true
+        status = ""
+        Task { @MainActor in
+            do {
+                if kind == "managed" {
+                    try await client.managedStart(task: t)
+                } else {
+                    let code = try await client.ptyStart(agent: kind, task: t)
+                    if !(200..<300).contains(code) {
+                        busy = false
+                        status = code == 503
+                            ? "PTY agents are disabled on the Mac (set LISA_PTY_AGENTS=1)."
+                            : "Couldn't start (HTTP \(code))."
+                        return
+                    }
+                }
+                onStarted()
+                dismiss()
+            } catch {
+                busy = false
+                status = (error as? LocalizedError)?.errorDescription ?? "\(error)"
+            }
+        }
     }
 }
 
