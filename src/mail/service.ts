@@ -112,3 +112,41 @@ export async function sweepAll(opts: SweepOpts = {}): Promise<SweepResult> {
   saveDigest(digest);
   return { items: allItems, digest, newItems: allNew };
 }
+
+/**
+ * Lightweight intraday poll: fetch, classify ONLY the unseen messages, mark seen.
+ * Returns just the freshly-classified items (for important-mail alerts). Does NOT
+ * rebuild/save the digest — that stays a daily artifact (or a manual sweep).
+ */
+export async function pollNewMail(opts: SweepOpts = {}): Promise<MailItem[]> {
+  const now = opts.now ?? Date.now;
+  const sinceMs = opts.sinceMs ?? now() - 24 * 60 * 60 * 1000;
+  const limit = opts.limit ?? 200;
+  const factory = opts.connectorFactory ?? defaultConnector;
+  if (!isGranted("mail")) return [];
+
+  const out: MailItem[] = [];
+  for (const account of loadAccounts().filter((a) => a.enabled)) {
+    const secret = getSecret(account.id);
+    if (!secret) continue;
+    let connector: MailConnector | null = null;
+    try {
+      connector = factory(account, secret);
+      const raws = (await connector.listSince({ sinceMs, limit })).map((r) => ({ ...r, accountId: account.id }));
+      const seen = loadSeen(account.id);
+      const fresh = raws.filter((r) => !seen.has(r.uid));
+      if (fresh.length) {
+        out.push(
+          ...(await classifyMail(fresh, { provider: opts.provider, model: opts.model, now, signal: opts.signal })),
+        );
+      }
+      markSeen(account.id, raws.map((r) => r.uid));
+      markSwept(account.id, now());
+    } catch {
+      // skip a failing account
+    } finally {
+      if (connector) await connector.close().catch(() => {});
+    }
+  }
+  return out;
+}

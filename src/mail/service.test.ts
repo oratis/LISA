@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { sweepAll, type ConnectorFactory } from "./service.js";
+import { sweepAll, pollNewMail, type ConnectorFactory } from "./service.js";
 import { addAccount } from "./accounts.js";
 import { latestDigest } from "./store.js";
 import { grant } from "../consent/store.js";
@@ -107,6 +107,27 @@ test("a second sweep marks nothing new (seen-uid dedup)", async () => {
     const second = await sweepAll({ connectorFactory: fakeConnector(raws), provider: fakeProvider(json) });
     assert.equal(second.items.length, 1); // still classified for the digest
     assert.equal(second.newItems.length, 0); // but nothing NEW
+  });
+});
+
+test("pollNewMail returns only freshly-classified items and is empty on re-poll", async () => {
+  await withHome(async () => {
+    grant("mail");
+    addAccount({ provider: "imap", email: "me@qq.com", host: "imap.qq.com" }, { password: "pw" });
+    const raws = [raw("1", { subject: "Pay invoice" })];
+    const json = '[{"uid":"1","category":"finance","importance":3,"reason":"due"}]';
+    const first = await pollNewMail({ connectorFactory: fakeConnector(raws), provider: fakeProvider(json) });
+    assert.equal(first.length, 1);
+    assert.equal(first[0].importance, 3);
+    const second = await pollNewMail({ connectorFactory: fakeConnector(raws), provider: fakeProvider(json) });
+    assert.equal(second.length, 0); // already seen ⇒ no re-alert
+  });
+});
+
+test("pollNewMail returns nothing without consent", async () => {
+  await withHome(async () => {
+    const res = await pollNewMail({ connectorFactory: fakeConnector([raw("1")]), provider: fakeProvider("[]") });
+    assert.equal(res.length, 0);
   });
 });
 

@@ -39,7 +39,8 @@ import { signalAgentTool } from "../tools/signal_agent.js";
 import { managedRegistry } from "../agents/managed.js";
 import { ptyRegistry, ptyEnabled, normalizeAgentKind } from "../agents/pty.js";
 import { liveClaudeSessionIds } from "../integrations/claude-code/liveness.js";
-import { sweepAll } from "../mail/service.js";
+import { sweepAll, pollNewMail } from "../mail/service.js";
+import { pickImportant, formatAlert, alertLevel, pollMinutes } from "../mail/alerts.js";
 import { latestDigest } from "../mail/store.js";
 import { formatDigestText } from "../mail/digest.js";
 import { isDigestDue, digestHour } from "../mail/scheduler.js";
@@ -359,6 +360,11 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     try {
       const { digest } = await sweepAll();
       afterMailDigest(digest);
+      // Post the digest into the chat too (the "here's your mail" moment), in
+      // addition to the push — but only on the scheduled daily run, not manual.
+      if (!force && digest.total > 0) {
+        broadcast({ type: "idle_message", text: formatDigestText(digest), at: new Date().toISOString(), source: "mail" });
+      }
       console.error(`[mail] digest ${digest.date}: ${digest.total} mail · ${digest.needsYou.length} need-you`);
       return digest;
     } catch (err) {
@@ -373,6 +379,38 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // Catch a restart that happens after the target hour (don't wait 30m).
   const mailKick = setTimeout(() => void runMailDigest(false), 20_000);
   if (mailKick.unref) mailKick.unref();
+
+  // ── Important-mail alerts (intraday) ────────────────────────────────
+  // Every LISA_MAIL_POLL_MINUTES (default 30; 0 disables), incrementally read
+  // NEW mail; for items at/above the alert level, fire a high-priority push +
+  // a proactive chat message. Inert without consent + an account.
+  const mailPollMin = pollMinutes();
+  if (mailPollMin > 0) {
+    let mailPollRunning = false;
+    const mailPoll = setInterval(() => {
+      void (async () => {
+        if (mailPollRunning || !isGranted("mail")) return;
+        if (loadAccounts().filter((a) => a.enabled).length === 0) return;
+        mailPollRunning = true;
+        try {
+          const important = pickImportant(await pollNewMail(), alertLevel());
+          if (important.length === 0) return;
+          for (const item of important.slice(0, 3)) {
+            const alert = formatAlert(item);
+            pushBridge.onMailImportant({ title: alert.title, body: alert.body, tag: alert.tag });
+            broadcast({ type: "idle_message", text: alert.chat, at: new Date().toISOString(), source: "mail" });
+          }
+          broadcast({ type: "mail_digest_update", at: new Date().toISOString() });
+          console.error(`[mail] ${important.length} important new mail (alerted ${Math.min(3, important.length)})`);
+        } catch (err) {
+          console.error(`[mail] poll failed: ${(err as Error).message}`);
+        } finally {
+          mailPollRunning = false;
+        }
+      })();
+    }, mailPollMin * 60_000);
+    if (mailPoll.unref) mailPoll.unref();
+  }
 
   // ── Screen advisor (opt-in): periodic screen-grounded next-step ─────
   // When enabled, every N minutes capture a full-screen shot, ask the model
