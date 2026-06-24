@@ -243,6 +243,11 @@ export const MAIN_CSS = `  :root {
     border-color: rgba(255, 208, 102, 0.22);
     background: linear-gradient(180deg, rgba(255, 208, 102, 0.07), rgba(255, 208, 102, 0.02));
   }
+  .card.tint-mail {
+    border-color: rgba(106, 212, 255, 0.20);
+    background: linear-gradient(180deg, rgba(106, 212, 255, 0.06), rgba(106, 212, 255, 0.02));
+  }
+  .card.tint-mail .h .left { color: var(--brand, #6ad4ff); }
   .card .h {
     display: flex;
     justify-content: space-between;
@@ -402,6 +407,19 @@ export const MAIN_CSS = `  :root {
   .delegate-modal .dm-start:hover { background: rgba(106,212,255,0.28); }
   .delegate-modal .dm-start:disabled { opacity: 0.5; cursor: default; }
   .delegate-modal .dm-err { color: var(--err-color, #ff5577); font-size: 12px; white-space: pre-wrap; }
+  .delegate-modal .dm-note { font-size: 11px; color: var(--fg-faint); line-height: 1.4; margin-top: 2px; }
+  /* Mail card body */
+  #sbMailBody { margin: 2px 0 6px; }
+  .mail-summary { font-size: 11.5px; color: var(--fg-2); line-height: 1.45; margin-bottom: 6px; }
+  .mail-row { display: flex; gap: 6px; align-items: baseline; padding: 1px 0; }
+  .mail-bang { color: var(--brand, #6ad4ff); font-weight: 700; font-size: 11px; flex: none; }
+  .mail-bang.urgent { color: var(--err-color, #ff5577); }
+  .mail-subj { font-size: 11.5px; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mail-sweep {
+    margin-top: 6px; font-size: 10.5px; background: none; border: none;
+    color: var(--brand, #6ad4ff); cursor: pointer; padding: 2px 0;
+  }
+  .mail-sweep:hover { text-decoration: underline; }
   .session-empty {
     color: var(--fg-faint);
     font-size: 11.5px;

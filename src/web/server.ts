@@ -39,6 +39,13 @@ import { signalAgentTool } from "../tools/signal_agent.js";
 import { managedRegistry } from "../agents/managed.js";
 import { ptyRegistry, ptyEnabled, normalizeAgentKind } from "../agents/pty.js";
 import { liveClaudeSessionIds } from "../integrations/claude-code/liveness.js";
+import { sweepAll } from "../mail/service.js";
+import { latestDigest } from "../mail/store.js";
+import { formatDigestText } from "../mail/digest.js";
+import { isDigestDue, digestHour } from "../mail/scheduler.js";
+import { loadAccounts, addAccount, removeAccount, setAccountEnabled } from "../mail/accounts.js";
+import { inferHost } from "../mail/hosts.js";
+import type { DailyDigest } from "../mail/types.js";
 import { listRecentDispatches, isAlive, toDispatchView, readDispatchOutput } from "../integrations/dispatch-ledger.js";
 import { loadControlPolicy, saveControlPolicy, type ControlPolicy } from "../control/policy.js";
 import { mintDevice, verifyDeviceToken, touchDevice, listDevices, revokeDevice } from "./devices.js";
@@ -328,6 +335,44 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     })();
   }, ADVISE_INTERVAL_MS);
   if (adviseTimer.unref) adviseTimer.unref();
+
+  // ── Mail digest (daily) ─────────────────────────────────────────────
+  // Once past the target hour, if not already done today, sweep all mailboxes,
+  // build + push the classified digest. Inert unless `mail` consent is granted
+  // and at least one account is connected.
+  let mailSweepRunning = false;
+  const afterMailDigest = (digest: DailyDigest): void => {
+    broadcast({
+      type: "mail_digest_update",
+      date: digest.date,
+      total: digest.total,
+      needsYou: digest.needsYou.length,
+      at: new Date().toISOString(),
+    });
+    pushBridge.onMailDigest(formatDigestText(digest));
+  };
+  const runMailDigest = async (force: boolean): Promise<DailyDigest | null> => {
+    if (mailSweepRunning || !isGranted("mail")) return null;
+    if (loadAccounts().filter((a) => a.enabled).length === 0) return null;
+    if (!force && !isDigestDue(latestDigest()?.date ?? null, new Date(), digestHour())) return null;
+    mailSweepRunning = true;
+    try {
+      const { digest } = await sweepAll();
+      afterMailDigest(digest);
+      console.error(`[mail] digest ${digest.date}: ${digest.total} mail · ${digest.needsYou.length} need-you`);
+      return digest;
+    } catch (err) {
+      console.error(`[mail] digest sweep failed: ${(err as Error).message}`);
+      return null;
+    } finally {
+      mailSweepRunning = false;
+    }
+  };
+  const mailTimer = setInterval(() => void runMailDigest(false), 30 * 60_000);
+  if (mailTimer.unref) mailTimer.unref();
+  // Catch a restart that happens after the target hour (don't wait 30m).
+  const mailKick = setTimeout(() => void runMailDigest(false), 20_000);
+  if (mailKick.unref) mailKick.unref();
 
   // ── Screen advisor (opt-in): periodic screen-grounded next-step ─────
   // When enabled, every N minutes capture a full-screen shot, ask the model
@@ -923,6 +968,79 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const sub = typeof payload.id === "string" ? setPushPrefs(payload.id, payload.prefs ?? {}) : null;
       res.writeHead(sub ? 200 : 404, { "content-type": "application/json" });
       res.end(JSON.stringify(sub ? { ok: true, subscription: sub } : { ok: false }));
+      return;
+    }
+
+    // ── Mail module (read-only): accounts, connect, sweep, digest ───────
+    if (req.method === "GET" && url === "/api/mail/accounts") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ accounts: loadAccounts(), consent: isGranted("mail") }));
+      return;
+    }
+    if (req.method === "GET" && url === "/api/mail/digest") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ digest: latestDigest() }));
+      return;
+    }
+    if (req.method === "POST" && url === "/api/mail/connect") {
+      let mBody = "";
+      for await (const chunk of req) mBody += chunk.toString("utf8");
+      let p: { email?: unknown; host?: unknown; port?: unknown; password?: unknown; label?: unknown };
+      try { p = JSON.parse(mBody || "{}"); } catch {
+        res.writeHead(400, { "content-type": "text/plain" }); res.end("bad json"); return;
+      }
+      const email = typeof p.email === "string" ? p.email.trim() : "";
+      const password = typeof p.password === "string" ? p.password : "";
+      if (!email.includes("@") || !password) {
+        res.writeHead(400, { "content-type": "text/plain" }); res.end("email + password required"); return;
+      }
+      const host = typeof p.host === "string" && p.host ? p.host : inferHost(email);
+      if (!host) {
+        res.writeHead(400, { "content-type": "text/plain" }); res.end("couldn't infer IMAP host — pass host"); return;
+      }
+      const account = addAccount(
+        {
+          provider: "imap",
+          email,
+          host,
+          port: typeof p.port === "number" ? p.port : 993,
+          label: typeof p.label === "string" ? p.label : undefined,
+        },
+        { password },
+      );
+      grant("mail"); // connecting a mailbox is the consent act
+      broadcast({ type: "mail_accounts_update", at: new Date().toISOString() });
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, account }));
+      return;
+    }
+    if (req.method === "POST" && url.startsWith("/api/mail/accounts/")) {
+      const rest = url.slice("/api/mail/accounts/".length);
+      const slash = rest.indexOf("/");
+      const id = decodeURIComponent(slash >= 0 ? rest.slice(0, slash) : rest);
+      const action = slash >= 0 ? rest.slice(slash + 1) : "";
+      let ok = false;
+      if (action === "remove") ok = removeAccount(id);
+      else if (action === "enable") ok = setAccountEnabled(id, true);
+      else if (action === "disable") ok = setAccountEnabled(id, false);
+      else {
+        res.writeHead(400, { "content-type": "text/plain" }); res.end("action must be remove|enable|disable"); return;
+      }
+      if (ok) broadcast({ type: "mail_accounts_update", at: new Date().toISOString() });
+      res.writeHead(ok ? 200 : 404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok }));
+      return;
+    }
+    if (req.method === "POST" && url === "/api/mail/sweep") {
+      if (!isGranted("mail")) {
+        res.writeHead(409, { "content-type": "text/plain" });
+        res.end("mail consent not granted");
+        return;
+      }
+      const swept = await sweepAll();
+      if (!swept.blocked) afterMailDigest(swept.digest);
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: !swept.blocked, digest: swept.digest, newItems: swept.newItems.length }));
       return;
     }
 

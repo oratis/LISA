@@ -16,12 +16,12 @@ import { MAIN_HTML } from "./lisa-html.js";
  * change the GUI markup/CSS/JS, recompute them:
  *   node --import tsx -e 'import("./src/web/lisa-html.ts").then(async m=>{const {createHash}=await import("node:crypto");console.log(m.MAIN_HTML.length, createHash("sha256").update(m.MAIN_HTML).digest("hex"))})'
  *
- * Last updated: delegate-a-task moved from a cramped sidebar form to a single
- * button that opens a roomy modal (agent picker + task textarea).
+ * Last updated: Mail card (connect-mailbox modal + daily classified digest +
+ * needs-you list + sweep-now) added to the sidebar.
  */
-const EXPECTED_LENGTH = 95181;
+const EXPECTED_LENGTH = 102331;
 const EXPECTED_SHA256 =
-  "057b3c90dfd99d1a2bec6ce1233f547e466265a7abd4271e9ff1ac66f947a655";
+  "c14af5253ba023e34df61639ac35eaa449c1b70339d5c4ad1dcd944acd00a2d7";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);
