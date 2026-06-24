@@ -68,6 +68,7 @@
     "@anthropic-ai/sdk": "^0.92.0",
     "@google/genai": "^2.0.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "imapflow": "^1.4.2",
     "openai": "^6.35.0",
     "qrcode-terminal": "^0.12.0",
     "undici": "^8.2.0"
