@@ -7,11 +7,12 @@
  * unit-testable without a real mailbox or a live model.
  */
 import { isGranted } from "../consent/store.js";
-import { loadAccounts, getSecret, markSwept } from "./accounts.js";
+import { loadAccounts, getSecret, markSwept, setSecret } from "./accounts.js";
 import { classifyMail } from "./classify.js";
 import { buildDigest } from "./digest.js";
 import { saveDigest, loadSeen, markSeen } from "./store.js";
 import { ImapConnector } from "./connectors/imap.js";
+import { GmailConnector } from "./connectors/gmail.js";
 import type { Provider } from "../providers/types.js";
 import type { DailyDigest, MailAccount, MailConnector, MailItem, MailSecret } from "./types.js";
 
@@ -19,7 +20,10 @@ export type ConnectorFactory = (account: MailAccount, secret: MailSecret) => Mai
 
 function defaultConnector(account: MailAccount, secret: MailSecret): MailConnector {
   if (account.provider === "imap") return new ImapConnector(account, secret);
-  if (account.provider === "gmail") throw new Error("gmail connector not available yet (M4)");
+  if (account.provider === "gmail") {
+    // Persist refreshed access tokens back to the 0600 secrets file.
+    return new GmailConnector(account, secret, { onTokenRefresh: (t) => setSecret(account.id, t) });
+  }
   throw new Error(`unknown mail provider: ${account.provider}`);
 }
 

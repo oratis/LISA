@@ -56,6 +56,7 @@ struct SettingsView: View {
                     Toggle("Agent error", isOn: $prefs.error)
                     Toggle("Needs permission", isOn: $prefs.permission)
                     Toggle("Reve notes", isOn: $prefs.idle)
+                    Toggle("Mail digest + alerts", isOn: $prefs.mail)
                     Button("Register push") {
                         Task { @MainActor in
                             do {
