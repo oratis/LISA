@@ -24,10 +24,11 @@ export type ConsentSignal =
   | "voice"
   | "clipboard"
   | "selection"
+  | "mail"
   | (string & {});
 
-/** The ambient-sense signals — all OFF until the user explicitly grants each. */
-export const SENSE_SIGNALS: ConsentSignal[] = ["screen", "voice", "clipboard", "selection"];
+/** The consent-gated signals — all OFF until the user explicitly grants each. */
+export const SENSE_SIGNALS: ConsentSignal[] = ["screen", "voice", "clipboard", "selection", "mail"];
 
 /** Human-facing "what does enabling this capture?" — shown on the consent card. */
 export const SIGNAL_DESCRIPTIONS: Record<string, string> = {
@@ -35,6 +36,7 @@ export const SIGNAL_DESCRIPTIONS: Record<string, string> = {
   voice: "microphone audio for push-to-talk transcription",
   clipboard: "clipboard contents when you copy",
   selection: "text you select / point at",
+  mail: "headers + a short snippet of your inbox mail, to classify it and build a daily digest",
 };
 
 export interface ConsentGrant {
