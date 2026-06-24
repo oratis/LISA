@@ -13,6 +13,7 @@ import { addAccount, loadAccounts, removeAccount, setAccountEnabled } from "../m
 import { sweepAll } from "../mail/service.js";
 import { latestDigest } from "../mail/store.js";
 import { formatDigestText } from "../mail/digest.js";
+import { inferHost } from "../mail/hosts.js";
 
 function parseFlags(args: string[]): Record<string, string> {
   const out: Record<string, string> = {};
@@ -29,26 +30,6 @@ function parseFlags(args: string[]): Record<string, string> {
     }
   }
   return out;
-}
-
-/** Infer the IMAP host from the email domain (common providers). */
-export function inferHost(email: string): string | undefined {
-  const domain = (email.split("@")[1] ?? "").toLowerCase();
-  const map: Record<string, string> = {
-    "qq.com": "imap.qq.com",
-    "163.com": "imap.163.com",
-    "126.com": "imap.126.com",
-    "gmail.com": "imap.gmail.com",
-    "googlemail.com": "imap.gmail.com",
-    "outlook.com": "outlook.office365.com",
-    "hotmail.com": "outlook.office365.com",
-    "live.com": "outlook.office365.com",
-    "icloud.com": "imap.mail.me.com",
-    "me.com": "imap.mail.me.com",
-    "yahoo.com": "imap.mail.yahoo.com",
-  };
-  if (map[domain]) return map[domain];
-  return domain ? `imap.${domain}` : undefined;
 }
 
 function ask(question: string): Promise<string> {
