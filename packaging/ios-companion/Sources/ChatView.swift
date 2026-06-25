@@ -65,6 +65,7 @@ struct ChatView: View {
                     Text(model.transcript.isEmpty ? "Say hi to Lisa." : model.transcript)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .textSelection(.enabled)
+                        .foregroundStyle(Theme.text)
                         .padding()
                 }
                 Divider()
@@ -82,6 +83,7 @@ struct ChatView: View {
                 }
                 .padding()
             }
+            .background(Theme.bgDeep.ignoresSafeArea())
             .navigationTitle("Chat")
             .task(id: app.config) { model.startMood(app.client) }
             .onDisappear { model.stopMood() }
@@ -149,13 +151,13 @@ struct MoodChip: View {
     }
     private var color: Color {
         switch mood.lowercased() {
-        case "happy", "content", "joyful", "playful": return .green
-        case "curious", "intrigued", "awe", "wonder": return .blue
-        case "proud": return .yellow
-        case "weary", "tired": return .gray
-        case "frustrated", "annoyed": return .red
+        case "happy", "content", "joyful", "playful": return Theme.green
+        case "curious", "intrigued", "awe", "wonder": return Theme.accent
+        case "proud": return Theme.gold
+        case "weary", "tired": return Theme.idle
+        case "frustrated", "annoyed": return Theme.danger
         case "affectionate", "warm": return .pink
-        default: return .secondary
+        default: return Theme.secondary
         }
     }
 }

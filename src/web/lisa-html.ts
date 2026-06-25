@@ -56,6 +56,13 @@ ${MAIN_CSS}
   <!-- ╔════════════════ Sidebar ════════════════╗ -->
   <aside class="sidebar">
 
+    <!-- LISA workspace -->
+    <div class="ws-pill">
+      <span class="ws-dot"></span>
+      <span class="ws-name">LISA workspace</span>
+      <span class="ws-ico">⌄</span>
+    </div>
+
     <!-- Identity card -->
     <div class="identity">
       <div class="avatar-wrap">
@@ -67,6 +74,16 @@ ${MAIN_CSS}
         <div class="mood" id="mascotTag">neutral</div>
       </div>
     </div>
+
+    <!-- Primary navigation (view switcher — wired in setupConsole) -->
+    <nav class="nav-list" id="navList">
+      <button class="nav-item active" type="button" data-view="chat"><span class="nav-ico">◍</span>Chat</button>
+      <button class="nav-item" type="button" data-view="dashboard"><span class="nav-ico">▦</span>Dashboard</button>
+      <button class="nav-item" type="button" data-view="control"><span class="nav-ico">⌘</span>Control<span class="nav-tag" id="navAgentCount">0</span></button>
+      <button class="nav-item" type="button" data-view="reve"><span class="nav-ico">☾</span>Rêve</button>
+      <button class="nav-item" type="button" data-view="sense"><span class="nav-ico">◉</span>Sense</button>
+      <button class="nav-item" type="button" data-view="memory"><span class="nav-ico">✦</span>Memory</button>
+    </nav>
 
     <!-- Currently wanting -->
     <div class="sb-section">
@@ -119,6 +136,12 @@ ${MAIN_CSS}
       <button class="badge" type="button" data-panel="plans"><img src="/assets/icon-tool.png" alt="">PLANS</button>
     </div>
 
+    <!-- Proactive autonomy toggle (master switch — wired in setupConsole) -->
+    <div class="proactive-toggle" id="proactiveToggle" role="switch" aria-checked="false" tabindex="0" title="Let Lisa watch and act on her own when you're away">
+      <span class="pt-label">Proactive</span>
+      <span class="pt-track"><span class="pt-knob"></span></span>
+    </div>
+
     <!-- Footer: current session id -->
     <div class="sb-footer">
       <span class="session-id" id="sessionId">—</span>
@@ -128,6 +151,9 @@ ${MAIN_CSS}
 
   <!-- ╔════════════════ Main pane ════════════════╗ -->
   <div class="main">
+
+    <!-- Chat view (default home) — log + attachments + composer -->
+    <div class="view active" id="viewChat">
 
     <!-- Chat log (messages, tool blocks, idle blocks injected here) -->
     <div id="log"></div>
@@ -149,6 +175,14 @@ ${MAIN_CSS}
         SEND →
       </button>
     </form>
+    </div><!-- /#viewChat -->
+
+    <!-- Console views (populated lazily by setupConsole in lisa-client.ts) -->
+    <section class="view" id="viewDashboard"></section>
+    <section class="view" id="viewControl"></section>
+    <section class="view" id="viewReve"></section>
+    <section class="view" id="viewSense"></section>
+    <section class="view" id="viewMemory"></section>
   </div>
 </div>
 

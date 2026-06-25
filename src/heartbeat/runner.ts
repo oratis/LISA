@@ -12,6 +12,7 @@ import {
 } from "../soul/store.js";
 import { withSoulCaller } from "../soul/git.js";
 import { withFileLock } from "../soul/lock.js";
+import { getAutonomyEnabled } from "../autonomy/state.js";
 import { autonomousSubset } from "../tools/registry.js";
 import { runSubagent } from "../subagent.js";
 import { recordAutonomyRun, type AutonomyKind } from "../autonomy/runs.js";
@@ -52,6 +53,13 @@ export async function runHeartbeatOnce(opts: {
   model: string;
   taskFilter?: string;
 }): Promise<HeartbeatRunResult[]> {
+  // Proactive-mode master switch (web/iOS "Proactive" toggle → ~/.lisa/autonomy/
+  // state.json). When autonomy is off, the heartbeat no-ops entirely — no
+  // scheduled dispatches, desires, or chores run unattended until it's back on.
+  if (!getAutonomyEnabled()) {
+    console.error("[heartbeat] proactive mode is off — skipping this tick");
+    return [];
+  }
   // Run-level lock: if launchd/cron fires a new heartbeat while the previous
   // one is still running (long desires + short interval), skip rather than
   // double-run and race on soul state. timeoutMs:0 → fail fast, don't wait.

@@ -123,6 +123,11 @@ struct ControlPolicy: Codable, Equatable {
     var remoteAdoptExternal: Bool
 }
 
+/// /api/autonomy/state — the "Proactive mode" master switch (idle + heartbeat).
+struct AutonomyState: Codable, Equatable {
+    var enabled: Bool
+}
+
 struct PushPrefs: Codable, Equatable {
     var done: Bool = true
     var error: Bool = true

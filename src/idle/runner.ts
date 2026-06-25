@@ -4,6 +4,7 @@ import { withFileLock } from "../soul/lock.js";
 import { autonomousSubset } from "../tools/registry.js";
 import { runSubagent } from "../subagent.js";
 import { recordAutonomyRun, type AutonomyOutcome } from "../autonomy/runs.js";
+import { getAutonomyEnabled } from "../autonomy/state.js";
 import type { ToolDefinition } from "../types.js";
 
 const IDLE_RUN_LOCK = path.join(LISA_HOME, "idle.lock");
@@ -95,6 +96,12 @@ export async function runIdleOnce(opts: {
   model: string;
   idleMs: number;
 }): Promise<IdleRunResult> {
+  // Proactive-mode master switch (web/iOS "Proactive" toggle → ~/.lisa/autonomy/
+  // state.json). When autonomy is off, idle reflection no-ops: Lisa only acts on
+  // direct user input. The watcher keeps ticking, so flipping it back on resumes.
+  if (!getAutonomyEnabled()) {
+    return { text: "", silent: true, iterations: 0, inputTokens: 0, outputTokens: 0 };
+  }
   const idleMin = Math.round(opts.idleMs / 60_000);
   // Cross-process run-lock (mirrors heartbeat's RUN_LOCK): a web-server idle
   // tick and a REPL idle tick — or two web servers — must not reflect

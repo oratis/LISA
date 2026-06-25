@@ -16,12 +16,17 @@ import { MAIN_HTML } from "./lisa-html.js";
  * change the GUI markup/CSS/JS, recompute them:
  *   node --import tsx -e 'import("./src/web/lisa-html.ts").then(async m=>{const {createHash}=await import("node:crypto");console.log(m.MAIN_HTML.length, createHash("sha256").update(m.MAIN_HTML).digest("hex"))})'
  *
- * Last updated: Mail card (connect-mailbox modal + daily classified digest +
- * needs-you list + sweep-now) added to the sidebar.
+ * Last updated: "agent console" redesign (left-rail nav — Chat / Dashboard /
+ * Control / Reve / Sense / Memory — switching a main view-stack, a workspace
+ * pill, and a Proactive autonomy toggle, all additive beside the untouched chat
+ * pipeline) merged on top of the sidebar Mail card (connect-mailbox modal +
+ * daily classified digest + needs-you list + sweep-now). Plus review cleanups:
+ * the 60s refresh tick resolves the wrapped refreshClaudeSessions at call time,
+ * and an unused .pp-tag.you rule was dropped.
  */
-const EXPECTED_LENGTH = 102331;
+const EXPECTED_LENGTH = 137838;
 const EXPECTED_SHA256 =
-  "c14af5253ba023e34df61639ac35eaa449c1b70339d5c4ad1dcd944acd00a2d7";
+  "c8fa55e841433252d5a78f0d11e3109a6c19eb081dbd6c56dd39766b9786b6eb";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);
