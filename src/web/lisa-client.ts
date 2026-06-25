@@ -115,7 +115,7 @@ let capturing = false;
 window.lisaCaptureAndAttach = async function (mode) {
   if (capturing) return false;
   capturing = true;
-  const btn = document.getElementById('captureBtn');
+  const btn = document.getElementById('plusBtn');
   if (btn) btn.classList.add('flash');
   try {
     const res = await fetch('/api/vision/capture', {
@@ -171,10 +171,26 @@ fileInput.addEventListener('change', async () => {
 // listener that forwards the click synchronously (preserving the
 // user-gesture context) and logs to console so we can verify in the
 // inspector if it ever silently no-ops again.
-// 📷 capture button → interactive crosshair screenshot into the composer.
-const captureBtnEl = document.getElementById('captureBtn');
-if (captureBtnEl) {
-  captureBtnEl.addEventListener('click', () => { void window.lisaCaptureAndAttach('interactive'); });
+// ── ＋ composer menu: merges 📎 attach + 📷 screenshot into one button ──
+const plusBtnEl = document.getElementById('plusBtn');
+const plusMenuEl = document.getElementById('plusMenu');
+function closePlusMenu() { if (plusMenuEl) plusMenuEl.classList.remove('open'); }
+if (plusBtnEl && plusMenuEl) {
+  plusBtnEl.addEventListener('click', (e) => { e.stopPropagation(); plusMenuEl.classList.toggle('open'); });
+  document.addEventListener('click', (e) => {
+    if (plusMenuEl.classList.contains('open') && !plusMenuEl.contains(e.target) && e.target !== plusBtnEl) closePlusMenu();
+  });
+}
+const pmAttachEl = document.getElementById('pmAttach');
+if (pmAttachEl) {
+  pmAttachEl.addEventListener('click', () => {
+    closePlusMenu();
+    try { fileInput.click(); } catch (err) { console.error('[attach] fileInput.click failed:', err); }
+  });
+}
+const pmShotEl = document.getElementById('pmShot');
+if (pmShotEl) {
+  pmShotEl.addEventListener('click', () => { closePlusMenu(); void window.lisaCaptureAndAttach('interactive'); });
 }
 
 // ── Audio recording → transcribe → Lisa summarizes ─────────────────
@@ -309,21 +325,7 @@ if (recordBtnEl) {
   });
 }
 
-const attachBtnEl = document.getElementById('attachBtn');
-if (attachBtnEl) {
-  attachBtnEl.addEventListener('click', (ev) => {
-    // Don't preventDefault — that cancels the implicit label-forward
-    // and removes the redundant gesture path. Letting both fire is
-    // fine because <input type=file>.click() fires the picker only
-    // once per user gesture.
-    console.log('[attach] click forwarded to fileInput');
-    try {
-      fileInput.click();
-    } catch (err) {
-      console.error('[attach] fileInput.click failed:', err);
-    }
-  });
-}
+// (📎 attach is now an item in the ＋ composer menu — see pmAttach above.)
 
 // Paste-to-attach: when the user has copied an image (screenshot,
 // image from a webpage, etc.) and presses ⌘V, pull the image off the
@@ -870,7 +872,8 @@ async function showSoul() {
   modalBody.innerHTML = html;
 }
 
-document.querySelectorAll('.badge').forEach(b => {
+// Panel openers — the top function bar (.fbtn) + any legacy .badge share this.
+document.querySelectorAll('[data-panel]').forEach(b => {
   b.addEventListener('click', () => {
     const which = b.dataset.panel;
     if (which === 'soul') showSoul();
@@ -880,6 +883,28 @@ document.querySelectorAll('.badge').forEach(b => {
     else if (which === 'plans') showPlans();
   });
 });
+
+// Find in conversation — toggle a filter box that hides non-matching log rows.
+const fnSearchBtn = document.getElementById('fnSearchBtn');
+const fnFind = document.getElementById('fnFind');
+function filterLog(q) {
+  const logEl = document.getElementById('log');
+  if (!logEl) return;
+  for (const child of logEl.children) {
+    child.style.display = !q || (child.textContent || '').toLowerCase().includes(q) ? '' : 'none';
+  }
+}
+if (fnSearchBtn && fnFind) {
+  fnSearchBtn.addEventListener('click', () => {
+    const show = fnFind.style.display === 'none';
+    fnFind.style.display = show ? '' : 'none';
+    if (show) { fnFind.focus(); } else { fnFind.value = ''; filterLog(''); }
+  });
+  fnFind.addEventListener('input', () => filterLog(fnFind.value.trim().toLowerCase()));
+  fnFind.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { fnFind.value = ''; filterLog(''); fnFind.style.display = 'none'; }
+  });
+}
 
 let currentLisaSpan = null;
 let pendingTools = new Map();
