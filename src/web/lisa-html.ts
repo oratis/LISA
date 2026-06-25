@@ -157,13 +157,13 @@ ${MAIN_CSS}
 
     <!-- Top icon function bar (功能区): quick panels + find -->
     <div class="fnbar" id="fnbar">
-      <button class="fbtn" type="button" data-panel="soul" title="Soul"><img src="/assets/icon-soul.png" alt="Soul"></button>
-      <button class="fbtn" type="button" data-panel="skills" title="Skills"><img src="/assets/icon-skill.png" alt="Skills"></button>
-      <button class="fbtn" type="button" data-panel="tools" title="Tools"><img src="/assets/icon-tool.png" alt="Tools"></button>
-      <button class="fbtn" type="button" data-panel="plans" title="Coding plans"><img src="/assets/icon-tool.png" alt="Plans"></button>
+      <button class="fbtn" type="button" data-panel="soul" title="Soul" aria-label="Soul"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.2 6.6L21 12l-6.8 2.4L12 21l-2.2-6.6L3 12l6.8-2.4z"/></svg></button>
+      <button class="fbtn" type="button" data-panel="skills" title="Skills" aria-label="Skills"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 10-12h-7z"/></svg></button>
+      <button class="fbtn" type="button" data-panel="tools" title="Tools" aria-label="Tools"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></button>
+      <button class="fbtn" type="button" data-panel="plans" title="Coding plans" aria-label="Coding plans"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg></button>
       <span class="fbar-spacer"></span>
       <input id="fnFind" class="fn-find" type="text" placeholder="find in chat…" autocomplete="off" style="display:none">
-      <button class="fbtn" type="button" id="fnSearchBtn" title="Find in conversation">⌕</button>
+      <button class="fbtn" type="button" id="fnSearchBtn" title="Find in conversation" aria-label="Find"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button>
     </div>
 
     <!-- Chat log (messages, tool blocks, idle blocks injected here) -->

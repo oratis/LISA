@@ -338,6 +338,22 @@ final class WebContent: NSViewController, WKNavigationDelegate, WKUIDelegate, WK
         return nil
     }
 
+    // Grant the web UI's getUserMedia request (🎙 voice dictation). Without this
+    // delegate, WKWebView denies capture by default and the page sees no
+    // mediaDevices ("recording not supported"). We only ever load our own
+    // localhost UI; the OS TCC prompt (NSMicrophoneUsageDescription) still gates
+    // actual access, and the audio-input entitlement is declared for the
+    // hardened runtime.
+    func webView(
+        _ webView: WKWebView,
+        requestMediaCapturePermissionFor origin: WKSecurityOrigin,
+        initiatedByFrame frame: WKFrameInfo,
+        type: WKMediaCaptureType,
+        decisionHandler: @escaping (WKPermissionDecision) -> Void
+    ) {
+        decisionHandler(.grant)
+    }
+
     /// WKWebView on macOS does NOT provide a default file picker for
     /// `<input type="file">` clicks — without this delegate method,
     /// clicking the paperclip in the chat composer is a silent no-op.

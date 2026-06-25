@@ -26,9 +26,9 @@ import { MAIN_HTML } from "./lisa-html.js";
  * Then: composer ＋ menu (merged attach+screenshot) + a top icon function bar
  * (功能区: soul/skills/tools/plans + find) in #viewChat; bottom badges removed.
  */
-const EXPECTED_LENGTH = 143278;
+const EXPECTED_LENGTH = 144313;
 const EXPECTED_SHA256 =
-  "c7061e2586e4de82f1ff774f9cef2ce6dac4ed07f762842201da1f096aa2dd7b";
+  "e462cd93950f1e1f9528381bc70e3b739fe617a34cd4b45e643dcdef33b909eb";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);
