@@ -1128,20 +1128,20 @@ export const MAIN_CSS = `  :root {
 
   /* Top icon function bar (功能区) inside #viewChat */
   .fnbar {
-    display: flex; align-items: center; gap: 4px;
-    padding: 6px 14px;
+    display: flex; align-items: center; gap: 6px;
+    padding: 7px 16px;
     border-bottom: 1px solid var(--border-new, rgba(255,255,255,.08));
     background: rgba(255,255,255,.02);
   }
   .fbtn {
-    width: 32px; height: 32px; flex: none;
+    width: 34px; height: 34px; flex: none;
     display: flex; align-items: center; justify-content: center;
-    background: transparent; border: 1px solid transparent; border-radius: 8px;
-    color: var(--fg-2); font-size: 15px; cursor: pointer;
-    transition: background 120ms ease;
+    background: transparent; border: 1px solid transparent; border-radius: 9px;
+    color: var(--fg-2); cursor: pointer;
+    transition: background 120ms ease, color 120ms ease;
   }
-  .fbtn:hover { background: var(--bg-card, rgba(255,255,255,.06)); }
-  .fbtn img { width: 17px; height: 17px; object-fit: contain; image-rendering: pixelated; }
+  .fbtn:hover { background: var(--bg-card, rgba(255,255,255,.06)); color: var(--fg); }
+  .fbtn svg { width: 19px; height: 19px; display: block; }
   .fbar-spacer { flex: 1; }
   .fn-find {
     height: 28px; width: 150px; font-size: 12px; padding: 0 9px;

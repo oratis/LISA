@@ -28,6 +28,10 @@
     <string>NSApplication</string>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <!-- Microphone — for 🎙 voice dictation in the chat composer (getUserMedia
+         in the embedded WKWebView). Audio is transcribed via the local server. -->
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Lisa uses the microphone for voice dictation — speak and Lisa turns it into text.</string>
     <!-- ATS exception: we only ever talk to localhost. -->
     <key>NSAppTransportSecurity</key>
     <dict>
