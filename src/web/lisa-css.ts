@@ -71,7 +71,7 @@ export const MAIN_CSS = `  :root {
     height: 100vh;
     width: 100vw;
     display: grid;
-    grid-template-columns: 280px 1fr;
+    grid-template-columns: 300px 1fr;
     grid-template-rows: 36px 1fr;
     grid-template-areas:
       "titlebar titlebar"
@@ -120,15 +120,18 @@ export const MAIN_CSS = `  :root {
     letter-spacing: 0;
   }
 
-  /* ── Sidebar ───────────────────────────────────────────────── */
+  /* ── Sidebar (floating panel — Claude-Code-style detached card) ──── */
   .sidebar {
     grid-area: sidebar;
-    background: rgba(7, 9, 26, 0.4);
+    margin: 8px 6px 10px 10px;
+    background: linear-gradient(180deg, rgba(18, 23, 48, 0.62), rgba(10, 13, 33, 0.6));
     backdrop-filter: blur(30px);
     -webkit-backdrop-filter: blur(30px);
-    border-right: 1px solid var(--border-new);
+    border: 1px solid var(--border-new);
+    border-radius: 16px;
+    box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
     overflow-y: auto;
-    padding: 20px 16px 16px;
+    padding: 18px 14px 14px;
     display: flex;
     flex-direction: column;
     gap: 18px;
@@ -512,35 +515,6 @@ export const MAIN_CSS = `  :root {
     font-variant-numeric: tabular-nums;
     flex-shrink: 0;
   }
-
-  /* ── Workspace pill (top of sidebar) ───────────────────────── */
-  .ws-pill {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 11px;
-    background: var(--bg-card);
-    border: 1px solid var(--border-new);
-    border-radius: 11px;
-  }
-  .ws-pill .ws-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--proactive);
-    box-shadow: 0 0 6px var(--proactive-glow);
-    flex-shrink: 0;
-  }
-  .ws-pill .ws-name {
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    color: var(--fg-2);
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-  }
-  .ws-pill .ws-ico { margin-left: auto; color: var(--fg-faint); font-size: 13px; }
 
   /* ── Primary nav (vertical list in the sidebar) ────────────── */
   .nav-list { display: flex; flex-direction: column; gap: 2px; }
