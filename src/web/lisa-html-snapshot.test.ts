@@ -25,10 +25,12 @@ import { MAIN_HTML } from "./lisa-html.js";
  * and an unused .pp-tag.you rule was dropped.
  * Then: composer ＋ menu (merged attach+screenshot) + a top icon function bar
  * (功能区: soul/skills/tools/plans + find) in #viewChat; bottom badges removed.
+ * Then: removed the "LISA workspace" pill (markup + .ws-pill CSS) from the top
+ * of the sidebar — redundant chrome; the identity card is now the first block.
  */
-const EXPECTED_LENGTH = 144465;
+const EXPECTED_LENGTH = 143704;
 const EXPECTED_SHA256 =
-  "50106ac69deb60c674e4a1ce35ac106e0233f63b09490db3ebd39b4cb617bff1";
+  "9fbd62a96ed2ee95efeaa28dbb92a7b5167935110d142537f5226bd6f59b091b";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);

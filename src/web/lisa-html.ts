@@ -56,13 +56,6 @@ ${MAIN_CSS}
   <!-- ╔════════════════ Sidebar ════════════════╗ -->
   <aside class="sidebar">
 
-    <!-- LISA workspace -->
-    <div class="ws-pill">
-      <span class="ws-dot"></span>
-      <span class="ws-name">LISA workspace</span>
-      <span class="ws-ico">⌄</span>
-    </div>
-
     <!-- Identity card -->
     <div class="identity">
       <div class="avatar-wrap">
