@@ -135,6 +135,13 @@ ${MAIN_CSS}
       <span class="pt-track"><span class="pt-knob"></span></span>
     </div>
 
+    <!-- Compact / sidebar-mode toggle (client-side; forces the narrow stacked
+         layout at any width so Lisa can dock as a skinny panel) -->
+    <div class="proactive-toggle" id="compactToggle" role="switch" aria-checked="false" tabindex="0" title="Compact / sidebar mode — dock Lisa as a narrow panel (also auto on a small window)">
+      <span class="pt-label">Compact</span>
+      <span class="pt-track"><span class="pt-knob"></span></span>
+    </div>
+
     <!-- Footer: current session id -->
     <div class="sb-footer">
       <span class="session-id" id="sessionId">—</span>
