@@ -41,6 +41,7 @@ import { ptyRegistry, ptyEnabled, normalizeAgentKind } from "../agents/pty.js";
 import { liveClaudeSessionIds } from "../integrations/claude-code/liveness.js";
 import { listRecentDispatches, isAlive, toDispatchView, readDispatchOutput } from "../integrations/dispatch-ledger.js";
 import { loadControlPolicy, saveControlPolicy, type ControlPolicy } from "../control/policy.js";
+import { loadAutonomyState, saveAutonomyState, type AutonomyState } from "../autonomy/state.js";
 import { mintDevice, verifyDeviceToken, touchDevice, listDevices, revokeDevice } from "./devices.js";
 import { PushBridge, listPush, registerPush, unregisterPush, setPushPrefs, registerLiveActivity, unregisterLiveActivity, type PushPrefs } from "./push.js";
 import { SenseService } from "../sense/service.js";
@@ -949,6 +950,34 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         const saved = saveControlPolicy({ ...loadControlPolicy(), ...payload });
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ ok: true, ...saved }));
+      } catch (err) {
+        res.writeHead(500, { "content-type": "text/plain" });
+        res.end((err as Error).message);
+      }
+      return;
+    }
+
+    // Autonomy on/off — the "Proactive mode" master switch surfaced in the web
+    // GUI + iOS as the Proactive toggle. GET reports it (any authed caller);
+    // POST sets it. Unlike the control policy (loopback-only), this is allowed
+    // from any authed device — letting Lisa rest is low-risk, and pausing her
+    // from the phone is a primary use case. The token gate (above) still applies.
+    if (req.method === "GET" && url === "/api/autonomy/state") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify(loadAutonomyState()));
+      return;
+    }
+    if (req.method === "POST" && url === "/api/autonomy/state") {
+      let asBody = "";
+      for await (const chunk of req) asBody += chunk.toString("utf8");
+      let payload: Partial<AutonomyState>;
+      try { payload = JSON.parse(asBody || "{}"); } catch {
+        res.writeHead(400, { "content-type": "text/plain" }); res.end("bad json"); return;
+      }
+      try {
+        const saved = saveAutonomyState({ ...loadAutonomyState(), ...payload });
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify(saved));
       } catch (err) {
         res.writeHead(500, { "content-type": "text/plain" });
         res.end((err as Error).message);

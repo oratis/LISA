@@ -16,12 +16,14 @@ import { MAIN_HTML } from "./lisa-html.js";
  * change the GUI markup/CSS/JS, recompute them:
  *   node --import tsx -e 'import("./src/web/lisa-html.ts").then(async m=>{const {createHash}=await import("node:crypto");console.log(m.MAIN_HTML.length, createHash("sha256").update(m.MAIN_HTML).digest("hex"))})'
  *
- * Last updated: delegate-a-task moved from a cramped sidebar form to a single
- * button that opens a roomy modal (agent picker + task textarea).
+ * Last updated: "agent console" redesign — left-rail nav (Chat / Dashboard /
+ * Control / Reve / Sense / Memory) switching a main view-stack, a workspace
+ * pill, and a Proactive autonomy toggle, all added additively beside the
+ * untouched chat pipeline.
  */
-const EXPECTED_LENGTH = 95181;
+const EXPECTED_LENGTH = 130493;
 const EXPECTED_SHA256 =
-  "057b3c90dfd99d1a2bec6ce1233f547e466265a7abd4271e9ff1ac66f947a655";
+  "c8c263615b33e7a3f0f73560254bbad5a35a23141ad3f5e04c3b44eac5507666";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);

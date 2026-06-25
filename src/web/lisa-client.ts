@@ -1350,6 +1350,8 @@ if ('serviceWorker' in navigator) {
   }
   const sbDelegateBtn = document.getElementById('sbDelegateBtn');
   if (sbDelegateBtn) sbDelegateBtn.addEventListener('click', openDelegateModal);
+  // Exposed so the console Dashboard / Control views reuse the same dialog.
+  window.lisaOpenDelegate = openDelegateModal;
 
   async function refreshIdentity() {
     try {
@@ -1388,4 +1390,382 @@ if ('serviceWorker' in navigator) {
   setInterval(refreshPing, 30_000);
   setInterval(window.refreshClaudeSessions, 60_000);
   setInterval(refreshSessionsBadge, 5 * 60_000);
+})();
+
+// ════════════════════════════════════════════════════════════════════
+// Console view-switcher — adds Dashboard / Control / Reve / Sense /
+// Memory views beside the default Chat. Purely additive: the chat
+// pipeline and every existing id stay untouched. Each non-chat view is
+// built lazily from the real endpoints on first activation, and the live
+// agent stream (refreshClaudeSessions) is wrapped to re-render the active
+// console view. No backticks / no template placeholders in this block.
+// ════════════════════════════════════════════════════════════════════
+(function setupConsole() {
+  var navList = document.getElementById('navList');
+  if (!navList) return;
+  var views = {
+    chat: document.getElementById('viewChat'),
+    dashboard: document.getElementById('viewDashboard'),
+    control: document.getElementById('viewControl'),
+    reve: document.getElementById('viewReve'),
+    sense: document.getElementById('viewSense'),
+    memory: document.getElementById('viewMemory'),
+  };
+  var loaded = {};
+  var active = 'chat';
+  var proactiveOn = true;
+
+  function esc(s) { return (typeof escapeHtml === 'function') ? escapeHtml(s) : String(s == null ? '' : s); }
+  function getJSON(u) { return fetch(u).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; }); }
+
+  function statusClass(state) {
+    if (state === 'working') return 'working';
+    if (state === 'waiting') return 'waiting';
+    if (state === 'error') return 'error';
+    if (state === 'done' || state === 'idle') return 'done';
+    return '';
+  }
+  function statusLabel(state) {
+    if (state === 'working') return 'Working';
+    if (state === 'waiting') return 'Waiting';
+    if (state === 'error') return 'Error';
+    if (state === 'done') return 'Done';
+    if (state === 'idle') return 'Idle';
+    return 'Unknown';
+  }
+  // Compact activity line (local copy of the sidebar helper — kept decoupled).
+  function actLine(s) {
+    var a = s && s.activity;
+    if (!a || typeof a !== 'object') return '';
+    if (a.pendingPermission) return 'wants to run ' + a.pendingPermission;
+    var bits = [];
+    if (a.lastError) bits.push(a.lastError);
+    if (typeof a.turnCount === 'number' && a.turnCount > 0) bits.push('turn ' + a.turnCount);
+    if (a.tokens && (a.tokens.input || a.tokens.output)) {
+      var tot = (a.tokens.input || 0) + (a.tokens.output || 0);
+      bits.push(tot >= 1000 ? Math.round(tot / 1000) + 'k tok' : tot + ' tok');
+    }
+    var tool = a.lastTools && a.lastTools.length ? a.lastTools[a.lastTools.length - 1] : '';
+    var file = a.filesTouched && a.filesTouched.length ? (String(a.filesTouched[a.filesTouched.length - 1]).split('/').pop() || '') : '';
+    if (tool && file) bits.push(tool + ' ' + file);
+    else if (tool) bits.push(tool);
+    else if (file) bits.push(file);
+    return bits.join(' · ');
+  }
+  function updateAgentCount(n) {
+    var c = document.getElementById('navAgentCount');
+    if (c) c.textContent = String(n);
+  }
+
+  // ── view switching ──────────────────────────────────────────────
+  function loadView(name) {
+    if (loaded[name]) return;
+    loaded[name] = true;
+    if (name === 'dashboard') loadDashboard();
+    else if (name === 'control') loadControl();
+    else if (name === 'reve') loadReve();
+    else if (name === 'sense') loadSense();
+    else if (name === 'memory') loadMemory();
+  }
+  function showView(name) {
+    if (!views[name]) name = 'chat';
+    active = name;
+    for (var k in views) { if (views[k]) views[k].classList.toggle('active', k === name); }
+    var items = navList.querySelectorAll('.nav-item');
+    for (var i = 0; i < items.length; i++) {
+      items[i].classList.toggle('active', items[i].getAttribute('data-view') === name);
+    }
+    if (name !== 'chat') loadView(name);
+    else { try { document.getElementById('input').focus(); } catch (e) {} }
+    try { history.replaceState(null, '', name === 'chat' ? location.pathname + location.search : '#' + name); } catch (e) {}
+  }
+  navList.addEventListener('click', function (e) {
+    var btn = e.target && e.target.closest ? e.target.closest('.nav-item') : null;
+    if (btn && btn.getAttribute('data-view')) showView(btn.getAttribute('data-view'));
+  });
+  window.lisaShowView = showView;
+
+  // ── proactive toggle ────────────────────────────────────────────
+  var ptEl = document.getElementById('proactiveToggle');
+  function setProactiveUI(on) {
+    proactiveOn = !!on;
+    if (ptEl) { ptEl.classList.toggle('on', proactiveOn); ptEl.setAttribute('aria-checked', proactiveOn ? 'true' : 'false'); }
+    var pp = document.getElementById('ppPanel');
+    if (pp) {
+      pp.classList.toggle('off', !proactiveOn);
+      var st = document.getElementById('ppState');
+      if (st) st.textContent = proactiveOn ? 'On · watching' : 'Paused';
+      var sd = document.getElementById('ppDesc');
+      if (sd) sd.textContent = proactiveOn ? 'Lisa watches your agents, tasks and signals for blockers and next steps.' : 'Resting — she will only act when you talk to her.';
+    }
+  }
+  function syncProactive() {
+    getJSON('/api/autonomy/state').then(function (s) { if (s && typeof s.enabled === 'boolean') setProactiveUI(s.enabled); });
+  }
+  function toggleProactive() {
+    var on = !proactiveOn;
+    setProactiveUI(on);
+    fetch('/api/autonomy/state', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ enabled: on }) })
+      .then(function (r) { return r && r.ok ? r.json() : null; })
+      .then(function (j) { if (j && typeof j.enabled === 'boolean') setProactiveUI(j.enabled); else setProactiveUI(!on); })
+      .catch(function () { setProactiveUI(!on); });
+  }
+  if (ptEl) {
+    ptEl.addEventListener('click', toggleProactive);
+    ptEl.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleProactive(); } });
+  }
+  syncProactive();
+
+  // ── Dashboard ───────────────────────────────────────────────────
+  function agentCardHTML(s) {
+    var cls = statusClass(s.state);
+    var act = actLine(s);
+    return '<div class="ac">' +
+      '<div class="ac-top"><span>' + esc(s.agent || 'agent') + '</span><span class="ac-status ' + cls + '">' + esc(statusLabel(s.state)) + '</span></div>' +
+      '<div class="ac-title">' + esc(s.project || s.agent || 'agent') + '</div>' +
+      '<div class="ac-desc">' + (act ? esc(act) : 'no recent activity') + '</div>' +
+      '</div>';
+  }
+  function taskCardHTML(d) {
+    return '<div class="ac">' +
+      '<div class="ac-top"><span>' + esc(d.agent || 'dispatch') + '</span><span class="ac-status ' + (d.alive ? 'working' : 'done') + '">' + (d.alive ? 'Running' : 'Done') + '</span></div>' +
+      '<div class="ac-title">' + esc(String(d.task || 'task').slice(0, 80)) + '</div>' +
+      '<div class="ac-meta">' + esc(d.cwd ? String(d.cwd).split('/').pop() : 'dispatch') + '</div>' +
+      '</div>';
+  }
+  function loadDashboard() {
+    views.dashboard.innerHTML =
+      '<div class="view-head"><div><h2>Dashboard</h2><div class="vh-sub">Operations at a glance</div></div>' +
+      '<button class="view-act" id="dashDelegate">+ Delegate a task</button></div>' +
+      '<div class="view-scroll" id="dashScroll"><div class="view-empty">loading…</div></div>';
+    var del = document.getElementById('dashDelegate');
+    if (del) del.addEventListener('click', function () { if (typeof window.lisaOpenDelegate === 'function') window.lisaOpenDelegate(); });
+    renderDashboard();
+  }
+  function renderDashboard() {
+    var scroll = document.getElementById('dashScroll');
+    if (!scroll) return;
+    Promise.all([
+      getJSON('/api/agents/sessions'), getJSON('/api/dispatch/list'),
+      getJSON('/api/sense/recent'), getJSON('/api/island/ping'),
+    ]).then(function (res) {
+      var sessions = (res[0] && res[0].sessions) || [];
+      var dispatches = (res[1] && res[1].dispatches) || [];
+      var events = (res[2] && res[2].events) || [];
+      var ping = res[3] || {};
+      updateAgentCount(sessions.length);
+      var aliveTasks = dispatches.filter(function (d) { return d.alive; }).length;
+      var waiting = sessions.filter(function (s) { return s.state === 'waiting'; }).length;
+      var errored = sessions.filter(function (s) { return s.state === 'error'; }).length;
+      var desire = ping.current_desire || '';
+      var html = '';
+      html += '<div class="stat-bar">' +
+        '<div class="stat"><div class="n">' + sessions.length + '</div><div class="k">Agents</div></div>' +
+        '<div class="stat"><div class="n">' + aliveTasks + '</div><div class="k">Tasks</div></div>' +
+        '<div class="stat"><div class="n">' + dispatches.length + '</div><div class="k">Dispatched</div></div>' +
+        '<div class="stat"><div class="n">' + events.length + '</div><div class="k">Signals</div></div></div>';
+      html += '<div class="proactive-panel' + (proactiveOn ? '' : ' off') + '" id="ppPanel"><div class="pp-head"><span class="pp-dot"></span>' +
+        '<div><div class="pp-title">Proactive mode <b id="ppState">' + (proactiveOn ? 'On · watching' : 'Paused') + '</b></div>' +
+        '<div class="pp-desc" id="ppDesc">' + (proactiveOn ? 'Lisa watches your agents, tasks and signals for blockers and next steps.' : 'Resting — she will only act when you talk to her.') + '</div></div></div>' +
+        '<div class="pp-tags"><span class="pp-tag">' + sessions.length + ' agents</span><span class="pp-tag">' + aliveTasks + ' tasks</span>' +
+        (waiting ? '<span class="pp-tag warn">' + waiting + ' waiting</span>' : '') +
+        (errored ? '<span class="pp-tag warn">' + errored + ' errored</span>' : '') +
+        '<span class="pp-tag">owner-routed</span><span class="pp-tag">quiet on waits</span></div></div>';
+      html += '<div class="view-sec-label">Focus · currently pursuing</div>';
+      if (desire) {
+        html += '<div class="focus-card"><div class="fc-top"><div>' +
+          '<div class="fc-title">' + esc(desire) + '</div>' +
+          '<div class="fc-desc">A self-driven desire Lisa is pursuing on her own time.</div></div>' +
+          '<span class="fc-pill">Active</span></div>' +
+          '<div class="fc-meta"><span>self-driven</span><span>' + sessions.length + ' agents live</span></div></div>';
+      } else {
+        html += '<div class="focus-card"><div class="fc-desc">Nothing actively pursued right now.</div></div>';
+      }
+      html += '<div class="view-sec-label">Agents &amp; tasks</div>';
+      var cards = sessions.map(agentCardHTML).concat(dispatches.slice(0, 6).map(taskCardHTML));
+      html += cards.length ? '<div class="card-scroll">' + cards.join('') + '</div>'
+                           : '<div class="view-empty">No active agents or tasks. Delegate one to get started.</div>';
+      scroll.innerHTML = html;
+    });
+  }
+
+  // ── Control ─────────────────────────────────────────────────────
+  function controlRowHTML(s) {
+    var act = actLine(s);
+    var fam = s.controllable === 'pty' ? 'pty' : (s.controllable === 'managed' ? 'managed' : '');
+    var pend = s.activity && s.activity.pendingPermission;
+    var id = esc(s.sessionId);
+    var ctrl = '';
+    if (fam && pend) {
+      ctrl += '<button class="mc approve" data-fam="' + fam + '" data-id="' + id + '" data-act="approve">approve</button>';
+      ctrl += '<button class="mc deny" data-fam="' + fam + '" data-id="' + id + '" data-act="deny">deny</button>';
+    }
+    if (fam) ctrl += '<button class="mc cancel" data-fam="' + fam + '" data-id="' + id + '" data-act="cancel">cancel</button>';
+    if (fam === 'pty') ctrl += '<button class="mc" data-id="' + id + '" data-act="output">output</button>';
+    var badge = (s.agent && s.agent !== 'claude-code') ? '<span class="agent-badge">' + esc(s.agent) + '</span>' : '';
+    return '<div class="session-row">' +
+      '<div class="pip ' + (s.state || 'unknown') + '"></div>' +
+      '<div class="name">' + badge + esc(s.project || s.agent || 'agent') + '</div>' +
+      '<div class="when">' + (s.controllable ? esc(s.controllable) : esc(statusLabel(s.state))) + '</div>' +
+      (act ? '<div class="session-act">' + esc(act) + '</div>' : '') +
+      (ctrl ? '<div class="session-ctrl">' + ctrl + '</div>' : '') +
+      '</div>';
+  }
+  function controlAction(fam, id, action) {
+    return fetch('/api/agents/' + fam + '/' + encodeURIComponent(id) + '/' + action, { method: 'POST' })
+      .then(function (r) { if (!r.ok) return r.text().then(function (t) { throw new Error(String(r.status) + (t ? ' ' + t : '')); }); });
+  }
+  function ctrlPtyOutput(id) {
+    getJSON('/api/agents/pty/' + encodeURIComponent(id) + '/output').then(function (d) {
+      if (typeof openModal === 'function') openModal('agent output', '<pre>' + esc(d && d.output ? d.output : '(no output yet)') + '</pre>');
+    });
+  }
+  function loadControl() {
+    views.control.innerHTML =
+      '<div class="view-head"><div><h2>Control</h2><div class="vh-sub">Live agents &amp; control plane</div></div>' +
+      '<button class="view-act" id="ctrlDelegate">+ Delegate a task</button></div>' +
+      '<div class="view-scroll" id="ctrlScroll"><div class="view-empty">loading…</div></div>';
+    var del = document.getElementById('ctrlDelegate');
+    if (del) del.addEventListener('click', function () { if (typeof window.lisaOpenDelegate === 'function') window.lisaOpenDelegate(); });
+    renderControl();
+  }
+  function renderControl() {
+    var scroll = document.getElementById('ctrlScroll');
+    if (!scroll) return;
+    Promise.all([getJSON('/api/agents/sessions'), getJSON('/api/control/policy')]).then(function (res) {
+      var sessions = (res[0] && res[0].sessions) || [];
+      var policy = res[1] || {};
+      updateAgentCount(sessions.length);
+      var html = '<div class="pp-tags" style="margin-bottom:14px">' +
+        '<span class="pp-tag">remote control: ' + (policy.remoteControl ? 'on' : 'off') + '</span>' +
+        '<span class="pp-tag">adopt external: ' + (policy.remoteAdoptExternal ? 'on' : 'off') + '</span></div>';
+      if (!sessions.length) { scroll.innerHTML = html + '<div class="view-empty">No agents running. Delegate a task to start one.</div>'; return; }
+      sessions.forEach(function (s) { html += controlRowHTML(s); });
+      scroll.innerHTML = html;
+      var btns = scroll.querySelectorAll('[data-act]');
+      for (var i = 0; i < btns.length; i++) {
+        btns[i].addEventListener('click', function () {
+          var act = this.getAttribute('data-act');
+          var fam = this.getAttribute('data-fam');
+          var id = this.getAttribute('data-id');
+          if (act === 'output') { ctrlPtyOutput(id); return; }
+          controlAction(fam, id, act).then(function () { renderControl(); }).catch(function (err) {
+            scroll.insertAdjacentHTML('afterbegin', '<div class="view-empty" style="color:var(--err-color)">' + esc(err.message) + '</div>');
+          });
+        });
+      }
+    });
+  }
+
+  // ── Reve ────────────────────────────────────────────────────────
+  function loadReve() {
+    views.reve.innerHTML =
+      '<div class="view-head"><div><h2>Rêve</h2><div class="vh-sub">Reflections from her own time</div></div>' +
+      '<select class="v-sel" id="reveWindow"><option value="120">last 2h</option><option value="480">last 8h</option><option value="1440">last 24h</option></select></div>' +
+      '<div class="view-scroll" id="reveScroll"><div class="view-empty">loading…</div></div>';
+    var sel = document.getElementById('reveWindow');
+    if (sel) sel.addEventListener('change', function () { renderReve(sel.value); });
+    renderReve('120');
+  }
+  function renderReve(mins) {
+    var scroll = document.getElementById('reveScroll');
+    if (!scroll) return;
+    Promise.all([getJSON('/api/island/ping'), getJSON('/api/agents/recap?sinceMinutes=' + encodeURIComponent(mins))]).then(function (res) {
+      var ping = res[0] || {}; var recap = res[1] || {};
+      var html = '';
+      if (ping.last_idle_message_text) html += '<div class="v-card"><h3>While you were away</h3><div style="font-size:13px;color:var(--fg);line-height:1.55">' + esc(ping.last_idle_message_text) + '</div></div>';
+      if (ping.current_desire) html += '<div class="v-card"><h3>Currently pursuing</h3><div style="font-size:13px;color:var(--fg)">' + esc(ping.current_desire) + '</div></div>';
+      html += '<div class="v-card"><h3>Recap</h3><pre class="v-pre">' + esc(recap.text || 'No activity in this window.') + '</pre></div>';
+      scroll.innerHTML = html;
+    });
+  }
+
+  // ── Sense ───────────────────────────────────────────────────────
+  function loadSense() {
+    views.sense.innerHTML =
+      '<div class="view-head"><div><h2>Sense</h2><div class="vh-sub">Ambient signals Lisa may see</div></div></div>' +
+      '<div class="view-scroll" id="senseScroll"><div class="view-empty">loading…</div></div>';
+    renderSense();
+  }
+  function renderSense() {
+    var scroll = document.getElementById('senseScroll');
+    if (!scroll) return;
+    Promise.all([getJSON('/api/consent'), getJSON('/api/sense/recent')]).then(function (res) {
+      var grants = (res[0] && res[0].grants) || [];
+      var events = (res[1] && res[1].events) || [];
+      var html = '<div class="view-sec-label">Consent</div><div class="v-card">';
+      if (!grants.length) html += '<div class="view-empty" style="padding:6px 0">No signals configured.</div>';
+      grants.forEach(function (g) {
+        html += '<div class="v-row"><div class="v-main"><div class="v-name">' + esc(g.signal) + '</div>' +
+          (g.description ? '<div class="v-sub">' + esc(g.description) + '</div>' : '') + '</div>' +
+          '<button class="v-toggle' + (g.granted ? ' on' : '') + '" data-signal="' + esc(g.signal) + '" data-on="' + (g.granted ? '1' : '0') + '">' + (g.granted ? 'on' : 'off') + '</button></div>';
+      });
+      html += '</div><div class="view-sec-label">Recently sensed</div><div class="v-card">';
+      if (!events.length) html += '<div class="view-empty" style="padding:6px 0">Nothing captured.</div>';
+      events.slice(0, 30).forEach(function (e) {
+        html += '<div class="v-row"><div class="v-main"><div class="v-name" style="font-weight:400">' + esc(e.summary || '') + '</div>' +
+          '<div class="v-sub">' + esc([e.signal, e.kind, e.app].filter(Boolean).join(' · ')) + '</div></div></div>';
+      });
+      html += '</div>';
+      scroll.innerHTML = html;
+      var tgs = scroll.querySelectorAll('.v-toggle');
+      for (var i = 0; i < tgs.length; i++) {
+        tgs[i].addEventListener('click', function () {
+          var sig = this.getAttribute('data-signal');
+          var on = this.getAttribute('data-on') === '1';
+          fetch(on ? '/api/consent/revoke' : '/api/consent/grant', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ signal: sig }) })
+            .then(function () { renderSense(); }).catch(function () {});
+        });
+      }
+    });
+  }
+
+  // ── Memory (launchers for the existing modal panels) ────────────
+  function memBtn(key, ico, title, sub) {
+    return '<button class="mem-btn" data-mem="' + key + '"><span class="mem-ico">' + ico + '</span>' + title + '<span class="mem-sub">' + sub + '</span></button>';
+  }
+  function loadMemory() {
+    views.memory.innerHTML =
+      '<div class="view-head"><div><h2>Memory</h2><div class="vh-sub">Soul · skills · memory · tools</div></div></div>' +
+      '<div class="view-scroll">' +
+      memBtn('soul', '★', 'Soul', 'identity · values · emotions') +
+      memBtn('skills', '✦', 'Skills', 'saved workflows') +
+      memBtn('memory', '▤', 'Memory', 'USER.md · MEMORY.md') +
+      memBtn('tools', '⚒', 'Tools', 'capabilities') +
+      memBtn('plans', '◆', 'Coding plans', 'subscription CLIs') +
+      '</div>';
+    var mbs = views.memory.querySelectorAll('.mem-btn');
+    for (var i = 0; i < mbs.length; i++) {
+      mbs[i].addEventListener('click', function () {
+        var w = this.getAttribute('data-mem');
+        if (w === 'soul' && typeof showSoul === 'function') showSoul();
+        else if (w === 'skills' && typeof showSkills === 'function') showSkills();
+        else if (w === 'memory' && typeof showMemory === 'function') showMemory();
+        else if (w === 'tools' && typeof showTools === 'function') showTools();
+        else if (w === 'plans' && typeof showPlans === 'function') showPlans();
+      });
+    }
+  }
+
+  // ── live refresh: wrap the agent-session refresh so the active console
+  //    view + the Control nav count update on SSE agent_session_update.
+  var origRefresh = window.refreshClaudeSessions;
+  window.refreshClaudeSessions = function () {
+    var r = origRefresh ? origRefresh.apply(this, arguments) : undefined;
+    Promise.resolve(r).then(function () {
+      if (active === 'dashboard') renderDashboard();
+      else if (active === 'control') renderControl();
+      else getJSON('/api/agents/sessions').then(function (d) { updateAgentCount((d && d.sessions) ? d.sessions.length : 0); });
+    });
+    return r;
+  };
+  getJSON('/api/agents/sessions').then(function (d) { updateAgentCount((d && d.sessions) ? d.sessions.length : 0); });
+
+  // ── init: honor a deep-link hash, else default to chat ──────────
+  var initial = (location.hash || '').replace('#', '');
+  showView(views[initial] ? initial : 'chat');
+  window.addEventListener('hashchange', function () {
+    var h = (location.hash || '').replace('#', '');
+    if (views[h] && h !== active) showView(h);
+  });
 })();`;

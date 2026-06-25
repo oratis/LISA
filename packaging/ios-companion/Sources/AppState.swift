@@ -149,4 +149,37 @@ final class AppState: ObservableObject {
             locked = false
         }
     }
+
+    // ── proactive mode (autonomy on/off), mirrored from /api/autonomy/state ──
+    /// Whether Lisa self-drives (idle + heartbeat) when you're away.
+    @Published var proactiveEnabled = true
+    /// Disables the toggle mid-flight so a double-tap can't race.
+    @Published var proactiveBusy = false
+    /// False when the Mac is too old to expose /api/autonomy/state (404) — the
+    /// toggle then renders disabled rather than lying about a state it can't set.
+    @Published var proactiveAvailable = true
+
+    func loadProactive() async {
+        do {
+            proactiveEnabled = try await client.autonomyState()
+            proactiveAvailable = true
+        } catch LisaError.http(404) {
+            proactiveAvailable = false
+        } catch {
+            // transient (offline / timeout) — keep the last-known state, don't flip the UI
+        }
+    }
+
+    /// Optimistic flip with rollback on failure (mirrors how fire() actions behave).
+    func setProactive(_ on: Bool) {
+        guard !proactiveBusy else { return }
+        let previous = proactiveEnabled
+        proactiveEnabled = on
+        proactiveBusy = true
+        Task { @MainActor in
+            defer { proactiveBusy = false }
+            do { try await client.setAutonomyState(on) }
+            catch { proactiveEnabled = previous }
+        }
+    }
 }

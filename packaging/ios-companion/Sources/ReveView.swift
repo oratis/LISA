@@ -68,6 +68,7 @@ struct ReveView: View {
                     }
                 }
             }
+            .consoleBackground()
             .navigationTitle("Reve")
             .refreshable { await load() }
             .task(id: ReveLoadKey(window: window, configured: app.config.isConfigured)) { await load() }

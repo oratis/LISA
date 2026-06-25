@@ -89,6 +89,10 @@ final class LisaClient {
     func islandPing() async throws -> IslandPing { try await decode("/api/island/ping", as: IslandPing.self) }
     func controlPolicy() async throws -> ControlPolicy { try await decode("/api/control/policy", as: ControlPolicy.self) }
 
+    // ── proactive mode (autonomy on/off) ──
+    func autonomyState() async throws -> Bool { try await decode("/api/autonomy/state", as: AutonomyState.self).enabled }
+    func setAutonomyState(_ enabled: Bool) async throws { try await fire("/api/autonomy/state", json: ["enabled": enabled]) }
+
     // ── read: inspection ──
     func soul() async throws -> SoulResponse { try await decode("/api/soul", as: SoulResponse.self) }
     func memory() async throws -> MemoryResponse { try await decode("/api/memory", as: MemoryResponse.self) }

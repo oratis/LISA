@@ -96,13 +96,13 @@ func sortRows(_ rows: [AgentSession]) -> [AgentSession] {
 }
 
 func stateColor(_ s: AgentSession) -> Color {
-    if s.activity?.pendingPermission != nil { return .orange }
+    if s.activity?.pendingPermission != nil { return Theme.waiting }
     switch s.state {
-    case "working": return .blue
-    case "waiting": return .yellow
-    case "error": return .red
-    case "done": return .green
-    default: return .gray
+    case "working": return Theme.working
+    case "waiting": return Theme.waiting
+    case "error": return Theme.danger
+    case "done": return Theme.done
+    default: return Theme.idle
     }
 }
 
@@ -115,22 +115,31 @@ struct RosterView: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            Group {
-                if !app.config.isConfigured {
-                    ContentUnavailableView("Not paired", systemImage: "wifi.slash",
-                                           description: Text("Add your Mac in Settings."))
-                } else if let err = model.error, model.sessions.isEmpty {
-                    ContentUnavailableView("Can't reach Lisa", systemImage: "exclamationmark.triangle",
-                                           description: Text(err))
-                } else if model.sessions.isEmpty {
-                    ContentUnavailableView("No agents", systemImage: "moon.zzz",
-                                           description: Text("Nothing running right now."))
-                } else {
-                    List(model.sessions) { session in
-                        NavigationLink(value: session) { RosterRow(session: session) }
+            VStack(spacing: 0) {
+                if app.config.isConfigured {
+                    ProactiveBanner()
+                    StatStrip(counts: rosterCounts(model.sessions))
+                }
+                Group {
+                    if !app.config.isConfigured {
+                        ContentUnavailableView("Not paired", systemImage: "wifi.slash",
+                                               description: Text("Add your Mac in Settings."))
+                    } else if let err = model.error, model.sessions.isEmpty {
+                        ContentUnavailableView("Can't reach Lisa", systemImage: "exclamationmark.triangle",
+                                               description: Text(err))
+                    } else if model.sessions.isEmpty {
+                        ContentUnavailableView("No agents", systemImage: "moon.zzz",
+                                               description: Text("Nothing running right now."))
+                    } else {
+                        List(model.sessions) { session in
+                            NavigationLink(value: session) { RosterRow(session: session) }
+                                .listRowBackground(Theme.card)
+                        }
+                        .consoleBackground()
                     }
                 }
             }
+            .background(Theme.bgDeep.ignoresSafeArea())
             .navigationTitle("Dispatch")
             .navigationDestination(for: AgentSession.self) { SessionDetailView(session: $0) }
             .toolbar {
@@ -151,6 +160,7 @@ struct RosterView: View {
             .refreshable { await model.load(app.client) }
             .task(id: app.config) {
                 await model.load(app.client)
+                await app.loadProactive()
                 resolvePending()
                 model.startStream(app.client)
             }
@@ -159,7 +169,7 @@ struct RosterView: View {
                 // full resync and reconnect so the roster is correct + live again.
                 // Skip while the Face ID lock is up — don't fetch behind the gate.
                 guard phase == .active, app.config.isConfigured, !app.locked else { return }
-                Task { await model.load(app.client); model.startStream(app.client) }
+                Task { await model.load(app.client); await app.loadProactive(); model.startStream(app.client) }
             }
             // Deep-link (push Click / widget): open the requested session once it's
             // in the roster — handle either arrival order (link before/after load).
@@ -183,22 +193,22 @@ struct RosterRow: View {
     let session: AgentSession
     var body: some View {
         HStack(spacing: 10) {
-            Circle().fill(stateColor(session)).frame(width: 10, height: 10)
+            StatusDot(color: stateColor(session))
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    Text(session.project).font(.headline).lineLimit(1)
-                    Text(session.agent).font(.caption2).foregroundStyle(.secondary)
+                    Text(session.project).font(.headline).foregroundStyle(Theme.text).lineLimit(1)
+                    Text(session.agent).font(.caption2).foregroundStyle(Theme.secondary)
                     if let c = session.controllable {
-                        Pill(text: c, color: .blue)
+                        ThemePill(text: c, color: Theme.accent)
                     } else if session.resumable == true {
-                        Pill(text: "resumable", color: .orange)
+                        ThemePill(text: "resumable", color: Theme.waiting)
                     }
                 }
-                Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Text(subtitle).font(.caption).foregroundStyle(Theme.secondary).lineLimit(1)
             }
             Spacer()
             if session.activity?.pendingPermission != nil {
-                Image(systemName: "exclamationmark.shield.fill").foregroundStyle(.orange)
+                Image(systemName: "exclamationmark.shield.fill").foregroundStyle(Theme.waiting)
             }
         }
         .padding(.vertical, 2)
@@ -224,6 +234,45 @@ struct Pill: View {
             .background(color.opacity(0.15))
             .foregroundStyle(color)
             .clipShape(Capsule())
+    }
+}
+
+/// Green "Proactive mode" banner at the top of Dispatch — echoes the web app's
+/// proactive panel. The toggle controls real autonomy via /api/autonomy/state.
+struct ProactiveBanner: View {
+    @EnvironmentObject var app: AppState
+    var body: some View {
+        HStack(spacing: 12) {
+            StatusDot(color: app.proactiveEnabled ? Theme.green : Theme.idle, size: 11)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Proactive").font(.subheadline.weight(.medium)).foregroundStyle(Theme.text)
+                Text(app.proactiveEnabled ? "Lisa acts on her own when idle" : "Lisa waits for you")
+                    .font(.caption).foregroundStyle(Theme.secondary)
+            }
+            Spacer()
+            Toggle("", isOn: Binding(get: { app.proactiveEnabled }, set: { app.setProactive($0) }))
+                .labelsHidden()
+                .tint(Theme.green)
+                .disabled(app.proactiveBusy || !app.proactiveAvailable)
+        }
+        .padding(14)
+        .background(Theme.green.opacity(0.10), in: RoundedRectangle(cornerRadius: Theme.cardRadius))
+        .overlay(RoundedRectangle(cornerRadius: Theme.cardRadius).strokeBorder(Theme.green.opacity(0.35), lineWidth: Theme.hairline))
+        .padding(.horizontal).padding(.top, 8).padding(.bottom, 4)
+    }
+}
+
+/// Agents · Working · Needs-you stat strip — counts derived from the already-loaded
+/// roster via the pure `rosterCounts` helper (no extra network call).
+struct StatStrip: View {
+    let counts: AgentSnapshot
+    var body: some View {
+        HStack(spacing: 10) {
+            StatCell(value: counts.total, label: "Agents", tint: Theme.accent)
+            StatCell(value: counts.working, label: "Working", tint: Theme.green)
+            StatCell(value: counts.waiting, label: "Needs you", tint: Theme.waiting)
+        }
+        .padding(.horizontal).padding(.bottom, 8)
     }
 }
 

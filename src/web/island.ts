@@ -34,6 +34,7 @@ export const ISLAND_HTML = `<!doctype html>
     --accent-warm: #ffd066;
     --accent-dream: #b487ff;
     --accent-claude: #ff8c42;
+    --accent-proactive: #3ddc97;
     --border: rgba(255, 255, 255, 0.08);
     /* 1px top inner highlight that reads as a glass bevel */
     --hairline: rgba(255, 255, 255, 0.12);
