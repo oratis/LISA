@@ -23,10 +23,12 @@ import { MAIN_HTML } from "./lisa-html.js";
  * daily classified digest + needs-you list + sweep-now). Plus review cleanups:
  * the 60s refresh tick resolves the wrapped refreshClaudeSessions at call time,
  * and an unused .pp-tag.you rule was dropped.
+ * Then: composer ＋ menu (merged attach+screenshot) + a top icon function bar
+ * (功能区: soul/skills/tools/plans + find) in #viewChat; bottom badges removed.
  */
-const EXPECTED_LENGTH = 137838;
+const EXPECTED_LENGTH = 141400;
 const EXPECTED_SHA256 =
-  "c8fa55e841433252d5a78f0d11e3109a6c19eb081dbd6c56dd39766b9786b6eb";
+  "26e94cfe385fdd7b75f98751d490aec9de209965af409fdd6f29798af7c5e0e8";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);

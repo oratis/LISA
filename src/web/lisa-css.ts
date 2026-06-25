@@ -659,7 +659,7 @@ export const MAIN_CSS = `  :root {
   }
   #viewChat.view.active {
     display: grid;
-    grid-template-rows: 1fr auto auto;
+    grid-template-rows: auto 1fr auto auto;
   }
 
   /* ── Console views (dashboard / control / reve / sense / memory) ── */
@@ -1078,12 +1078,12 @@ export const MAIN_CSS = `  :root {
     -webkit-backdrop-filter: blur(30px);
     border-top: 1px solid var(--border-new);
     display: grid;
-    grid-template-columns: 36px 36px 36px 1fr 96px;
+    grid-template-columns: 36px 36px 1fr 96px;
     gap: 10px;
     align-items: end;
   }
 
-  #attachBtn, #captureBtn, #recordBtn {
+  #plusBtn, #recordBtn {
     align-self: stretch;
     display: flex;
     align-items: center;
@@ -1098,8 +1098,56 @@ export const MAIN_CSS = `  :root {
     min-height: 44px;
     padding: 0;
   }
-  #attachBtn:hover, #captureBtn:hover, #recordBtn:hover { background: var(--bg-card); color: var(--fg); }
-  #captureBtn.flash { background: var(--accent); color: var(--bg-deep); }
+  #plusBtn { font-size: 22px; }
+  #plusBtn:hover, #recordBtn:hover { background: var(--bg-card); color: var(--fg); }
+  #plusBtn.flash { background: var(--accent); color: var(--bg-deep); }
+
+  /* ＋ composer menu (merged attach + screenshot) */
+  .plus-wrap { position: relative; align-self: stretch; display: flex; }
+  .plus-menu {
+    display: none;
+    position: absolute;
+    left: 0;
+    bottom: calc(100% + 8px);
+    min-width: 168px;
+    background: var(--bg-deep, #0c1024);
+    border: 1px solid var(--border-new, rgba(255,255,255,.1));
+    border-radius: 11px;
+    padding: 5px;
+    box-shadow: 0 14px 34px rgba(0,0,0,.5);
+    z-index: 30;
+  }
+  .plus-menu.open { display: block; }
+  .plus-menu button {
+    display: flex; align-items: center; gap: 9px; width: 100%;
+    background: transparent; border: 0; color: var(--fg); font-size: 13px;
+    padding: 9px 10px; border-radius: 8px; cursor: pointer; text-align: left;
+  }
+  .plus-menu button:hover { background: var(--bg-card); }
+  .plus-menu .g { width: 18px; text-align: center; }
+
+  /* Top icon function bar (功能区) inside #viewChat */
+  .fnbar {
+    display: flex; align-items: center; gap: 4px;
+    padding: 6px 14px;
+    border-bottom: 1px solid var(--border-new, rgba(255,255,255,.08));
+    background: rgba(255,255,255,.02);
+  }
+  .fbtn {
+    width: 32px; height: 32px; flex: none;
+    display: flex; align-items: center; justify-content: center;
+    background: transparent; border: 1px solid transparent; border-radius: 8px;
+    color: var(--fg-2); font-size: 15px; cursor: pointer;
+    transition: background 120ms ease;
+  }
+  .fbtn:hover { background: var(--bg-card, rgba(255,255,255,.06)); }
+  .fbtn img { width: 17px; height: 17px; object-fit: contain; image-rendering: pixelated; }
+  .fbar-spacer { flex: 1; }
+  .fn-find {
+    height: 28px; width: 150px; font-size: 12px; padding: 0 9px;
+    border-radius: 8px; border: 1px solid var(--border-strong, rgba(255,255,255,.14));
+    background: rgba(0,0,0,.3); color: var(--fg);
+  }
   /* Pulsing red while recording. */
   #recordBtn.recording {
     background: var(--err-color);
@@ -1187,7 +1235,7 @@ export const MAIN_CSS = `  :root {
       gap: 14px;
     }
     #form {
-      grid-template-columns: 36px 36px 36px 1fr 84px;
+      grid-template-columns: 36px 36px 1fr 84px;
       padding: 10px 14px 14px;
     }
     #input { font-size: 16px; /* prevents iOS Safari auto-zoom */ }
