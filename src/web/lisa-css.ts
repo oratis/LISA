@@ -1228,6 +1228,10 @@ export const MAIN_CSS = `  :root {
       grid-template-columns: 1fr;
       /* titlebar · sidebar (capped, scrolls) · main view-stack (fills rest) */
       grid-template-rows: auto auto 1fr;
+      grid-template-areas:
+        "titlebar"
+        "sidebar"
+        "main";
     }
     .sidebar {
       max-height: 38vh;
@@ -1247,6 +1251,10 @@ export const MAIN_CSS = `  :root {
   body.force-compact .frame {
     grid-template-columns: 1fr;
     grid-template-rows: auto auto 1fr;
+    grid-template-areas:
+      "titlebar"
+      "sidebar"
+      "main";
   }
   body.force-compact .sidebar {
     max-height: 38vh;
