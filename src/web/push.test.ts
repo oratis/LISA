@@ -48,8 +48,8 @@ const withPending = (p: string) =>
   sess({ activity: { turnCount: 1, lastTools: [], filesTouched: [], pendingPermission: p } });
 
 describe("push prefs", () => {
-  test("defaults: done/error/permission/idle on, advisor off", () => {
-    assert.deepEqual(defaultPushPrefs(), { done: true, error: true, permission: true, idle: true, advisor: false });
+  test("defaults: done/error/permission/idle/mail on, advisor off", () => {
+    assert.deepEqual(defaultPushPrefs(), { done: true, error: true, permission: true, idle: true, advisor: false, mail: true });
   });
   test("normalize coerces non-bool / missing / null to defaults", () => {
     assert.deepEqual(normalizePushPrefs({ advisor: true }), { ...defaultPushPrefs(), advisor: true });

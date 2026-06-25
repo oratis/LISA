@@ -453,6 +453,8 @@ function connectEvents() {
       // "sidebar live wiring" block). Generalized from claude_session_update
       // so codex / opencode / git / … sessions update the sidebar too.
       if (typeof refreshClaudeSessions === 'function') refreshClaudeSessions();
+    } else if (ev.type === 'mail_digest_update' || ev.type === 'mail_accounts_update') {
+      if (typeof window.refreshMail === 'function') window.refreshMail();
     }
   });
   es.onerror = () => {
@@ -1381,10 +1383,110 @@ if ('serviceWorker' in navigator) {
     }
   }
 
+  // ── Mail card: connect a mailbox + show the daily classified digest ──
+  function renderMail(accounts, digest) {
+    const body = document.getElementById('sbMailBody');
+    const count = document.getElementById('sbMailCount');
+    const connectBtn = document.getElementById('sbMailConnectBtn');
+    if (!body) return;
+    while (body.firstChild) body.removeChild(body.firstChild);
+    const hasAccounts = accounts && accounts.length > 0;
+    if (connectBtn) connectBtn.textContent = hasAccounts ? '＋ add mailbox' : '＋ connect mailbox';
+    if (!hasAccounts) {
+      const empty = document.createElement('div');
+      empty.className = 'session-empty';
+      empty.textContent = '(not connected)';
+      body.appendChild(empty);
+      if (count) count.textContent = '';
+      return;
+    }
+    const sum = document.createElement('div');
+    sum.className = 'mail-summary';
+    sum.textContent = digest && digest.summary ? digest.summary : 'No digest yet — sweep to build one.';
+    body.appendChild(sum);
+    const needs = digest && digest.needsYou ? digest.needsYou : [];
+    if (count) count.textContent = needs.length ? ('✦ ' + needs.length) : '';
+    for (const i of needs.slice(0, 5)) {
+      const row = document.createElement('div');
+      row.className = 'mail-row';
+      const bang = document.createElement('span');
+      bang.className = 'mail-bang' + (i.importance >= 3 ? ' urgent' : '');
+      bang.textContent = i.importance >= 3 ? '‼' : '!';
+      const subj = document.createElement('span');
+      subj.className = 'mail-subj';
+      subj.textContent = i.subject || '(no subject)';
+      subj.title = (i.from || '') + ' — ' + (i.reason || '');
+      row.appendChild(bang);
+      row.appendChild(subj);
+      body.appendChild(row);
+    }
+    const sweep = document.createElement('button');
+    sweep.className = 'mail-sweep';
+    sweep.type = 'button';
+    sweep.textContent = 'sweep now';
+    sweep.addEventListener('click', function () {
+      sweep.disabled = true; sweep.textContent = 'sweeping…';
+      fetch('/api/mail/sweep', { method: 'POST' }).then(function () {
+        if (window.refreshMail) window.refreshMail();
+      }).catch(function () {}).then(function () { sweep.disabled = false; sweep.textContent = 'sweep now'; });
+    });
+    body.appendChild(sweep);
+  }
+
+  window.refreshMail = async function () {
+    try {
+      const a = await fetch('/api/mail/accounts').then(function (r) { return r.ok ? r.json() : null; });
+      const d = await fetch('/api/mail/digest').then(function (r) { return r.ok ? r.json() : null; });
+      renderMail(a ? a.accounts : [], d ? d.digest : null);
+    } catch (e) {}
+  };
+
+  function openMailModal() {
+    openModal('Connect a mailbox',
+      '<div class="delegate-modal">' +
+        '<label class="dm-label">Email</label>' +
+        '<input id="mmEmail" class="dm-kind" type="email" placeholder="you@qq.com" autocomplete="off" />' +
+        '<label class="dm-label">App-password / authorization code</label>' +
+        '<input id="mmPass" class="dm-kind" type="password" placeholder="not your login password" autocomplete="off" />' +
+        '<label class="dm-label">IMAP host (optional — auto-detected)</label>' +
+        '<input id="mmHost" class="dm-kind" type="text" placeholder="imap.qq.com" autocomplete="off" />' +
+        '<div class="dm-actions"><button id="mmStart" class="dm-start" type="button">Connect →</button></div>' +
+        '<div id="mmErr" class="dm-err"></div>' +
+        '<div class="dm-note">Read-only. Stored locally (0600). Most providers need an app-password, not your login password.</div>' +
+      '</div>');
+    const emailEl = document.getElementById('mmEmail');
+    const passEl = document.getElementById('mmPass');
+    const hostEl = document.getElementById('mmHost');
+    const startEl = document.getElementById('mmStart');
+    const errEl = document.getElementById('mmErr');
+    if (emailEl) emailEl.focus();
+    function submitMail() {
+      const email = emailEl && emailEl.value.trim();
+      const pass = passEl && passEl.value;
+      if (!email || !pass) { if (errEl) errEl.textContent = 'email + app-password required'; return; }
+      const body = { email: email, password: pass };
+      if (hostEl && hostEl.value.trim()) body.host = hostEl.value.trim();
+      if (errEl) errEl.textContent = '';
+      if (startEl) { startEl.disabled = true; startEl.textContent = 'Connecting…'; }
+      fetch('/api/mail/connect', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+        .then(function (r) {
+          if (!r.ok) { return r.text().then(function (t) { if (errEl) errEl.textContent = t || ('failed (' + r.status + ')'); if (startEl) { startEl.disabled = false; startEl.textContent = 'Connect →'; } }); }
+          closeModal();
+          if (window.refreshMail) window.refreshMail();
+        })
+        .catch(function () { if (errEl) errEl.textContent = 'network error'; if (startEl) { startEl.disabled = false; startEl.textContent = 'Connect →'; } });
+    }
+    if (startEl) startEl.addEventListener('click', submitMail);
+    if (passEl) passEl.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); submitMail(); } });
+  }
+  var sbMailConnectBtn = document.getElementById('sbMailConnectBtn');
+  if (sbMailConnectBtn) sbMailConnectBtn.addEventListener('click', openMailModal);
+
   // Bootstrap + periodic resync. SSE handles the fast-path updates;
   // these timers are belt-and-braces in case the stream silently dies.
   refreshPing();
   window.refreshClaudeSessions();
+  window.refreshMail();
   refreshIdentity();
   refreshSessionsBadge();
   setInterval(refreshPing, 30_000);
@@ -1392,6 +1494,7 @@ if ('serviceWorker' in navigator) {
   // later wraps window.refreshClaudeSessions to re-render the active console
   // view + nav count, and the wrapper must win on this 60s tick too.
   setInterval(() => window.refreshClaudeSessions(), 60_000);
+  setInterval(window.refreshMail, 5 * 60_000);
   setInterval(refreshSessionsBadge, 5 * 60_000);
 })();
 

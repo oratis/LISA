@@ -105,6 +105,20 @@ ${MAIN_CSS}
       </div>
     </div>
 
+    <!-- Mail digest (connect a mailbox → daily classified digest) -->
+    <div class="card tint-mail" id="sbMailCard">
+      <div class="h">
+        <div class="left">mail</div>
+        <div class="count" id="sbMailCount"></div>
+      </div>
+      <div id="sbMailBody">
+        <div class="session-empty">(not connected)</div>
+      </div>
+      <button id="sbMailConnectBtn" class="delegate-btn" type="button" title="Connect a mailbox">
+        ＋ connect mailbox
+      </button>
+    </div>
+
     <!-- Last reflection (collapsed pointer to the most recent ★) -->
     <div class="card tint-idle" id="sbReflection" style="display:none;">
       <div class="h">

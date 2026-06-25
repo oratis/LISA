@@ -14,6 +14,8 @@ struct ReveView: View {
     @State private var window = 120          // minutes
     @State private var error: String?
     @State private var loading = false
+    @State private var mailDigest: MailDigest?
+    @State private var mailAccounts = 0
 
     private let windows: [(String, Int)] = [("2h", 120), ("8h", 480), ("24h", 1440)]
 
@@ -32,6 +34,23 @@ struct ReveView: View {
                             if let desire = p.current_desire, !desire.isEmpty {
                                 Section("Current desire") {
                                     Label(desire, systemImage: "scope").font(.callout)
+                                }
+                            }
+                        }
+
+                        if mailAccounts > 0, let m = mailDigest {
+                            Section("📬 Mail · \(m.date)") {
+                                Text(m.summary).font(.callout)
+                                ForEach(m.needsYou.prefix(5)) { i in
+                                    HStack(alignment: .top, spacing: 6) {
+                                        Text(i.importance >= 3 ? "‼" : "!")
+                                            .font(.caption.bold())
+                                            .foregroundStyle(i.importance >= 3 ? .red : .orange)
+                                        VStack(alignment: .leading, spacing: 1) {
+                                            Text(i.subject.isEmpty ? "(no subject)" : i.subject).font(.callout).lineLimit(1)
+                                            Text(i.reason).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -83,9 +102,13 @@ struct ReveView: View {
         async let pingResult = app.client.islandPing()
         async let recapResult = app.client.recap(sinceMinutes: window)
         async let advisorResult = app.client.advisorLatest()
+        async let mailDigestResult = app.client.mailDigest()
+        async let mailAccountsResult = app.client.mailAccounts()
         ping = try? await pingResult
         recap = (try? await recapResult)?.text ?? ""
         suggestions = (try? await advisorResult)?.suggestions ?? []
+        mailDigest = try? await mailDigestResult
+        mailAccounts = (try? await mailAccountsResult)?.accounts.count ?? 0
         error = nil
     }
 

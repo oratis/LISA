@@ -87,6 +87,10 @@ final class LisaClient {
         return try await decode("/api/dispatch/status?id=\(enc)", as: DispatchStatus.self)
     }
     func islandPing() async throws -> IslandPing { try await decode("/api/island/ping", as: IslandPing.self) }
+
+    // ── read: mail (read-only digest) ──
+    func mailDigest() async throws -> MailDigest? { try await decode("/api/mail/digest", as: MailDigestResponse.self).digest }
+    func mailAccounts() async throws -> MailAccountsResponse { try await decode("/api/mail/accounts", as: MailAccountsResponse.self) }
     func controlPolicy() async throws -> ControlPolicy { try await decode("/api/control/policy", as: ControlPolicy.self) }
 
     // ── proactive mode (autonomy on/off) ──
