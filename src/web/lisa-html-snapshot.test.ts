@@ -16,12 +16,12 @@ import { MAIN_HTML } from "./lisa-html.js";
  * change the GUI markup/CSS/JS, recompute them:
  *   node --import tsx -e 'import("./src/web/lisa-html.ts").then(async m=>{const {createHash}=await import("node:crypto");console.log(m.MAIN_HTML.length, createHash("sha256").update(m.MAIN_HTML).digest("hex"))})'
  *
- * Last updated: Mail card (connect-mailbox modal + daily classified digest +
- * needs-you list + sweep-now) added to the sidebar.
+ * Last updated: composer ＋ menu (merged attach+screenshot) + top icon function
+ * bar (功能区: soul/skills/memory/tools/plans + find); bottom badges removed.
  */
-const EXPECTED_LENGTH = 102331;
+const EXPECTED_LENGTH = 106010;
 const EXPECTED_SHA256 =
-  "c14af5253ba023e34df61639ac35eaa449c1b70339d5c4ad1dcd944acd00a2d7";
+  "a087cdfe5f63ab981cf68e31fecb0042878231e3113f553c061329c34d0c3365";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);

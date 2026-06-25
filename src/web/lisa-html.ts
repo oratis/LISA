@@ -110,14 +110,7 @@ ${MAIN_CSS}
       <p style="margin:0; font-size:11.5px; color:var(--fg-2); line-height:1.5;" id="sbReflectionBody"></p>
     </div>
 
-    <!-- SOUL / SKILLS / MEMORY / TOOLS row -->
-    <div class="badges">
-      <button class="badge" type="button" data-panel="soul"><img src="/assets/icon-soul.png" alt="">SOUL</button>
-      <button class="badge" type="button" data-panel="skills"><img src="/assets/icon-skill.png" alt="">SKILLS</button>
-      <button class="badge" type="button" data-panel="memory"><img src="/assets/icon-memory.png" alt="">MEMORY</button>
-      <button class="badge" type="button" data-panel="tools"><img src="/assets/icon-tool.png" alt="">TOOLS</button>
-      <button class="badge" type="button" data-panel="plans"><img src="/assets/icon-tool.png" alt="">PLANS</button>
-    </div>
+    <!-- (SOUL/SKILLS/MEMORY/TOOLS/PLANS moved to the top icon function bar) -->
 
     <!-- Footer: current session id -->
     <div class="sb-footer">
@@ -129,6 +122,18 @@ ${MAIN_CSS}
   <!-- ╔════════════════ Main pane ════════════════╗ -->
   <div class="main">
 
+    <!-- Top icon function bar (功能区): panels + find -->
+    <div class="fnbar" id="fnbar">
+      <button class="fbtn" type="button" data-panel="soul" title="Soul"><img src="/assets/icon-soul.png" alt="Soul"></button>
+      <button class="fbtn" type="button" data-panel="skills" title="Skills"><img src="/assets/icon-skill.png" alt="Skills"></button>
+      <button class="fbtn" type="button" data-panel="memory" title="Memory"><img src="/assets/icon-memory.png" alt="Memory"></button>
+      <button class="fbtn" type="button" data-panel="tools" title="Tools"><img src="/assets/icon-tool.png" alt="Tools"></button>
+      <button class="fbtn" type="button" data-panel="plans" title="Coding plans"><img src="/assets/icon-tool.png" alt="Plans"></button>
+      <span class="fbar-spacer"></span>
+      <input id="fnFind" class="fn-find" type="text" placeholder="find in chat…" autocomplete="off" style="display:none">
+      <button class="fbtn" type="button" id="fnSearchBtn" title="Find in conversation">⌕</button>
+    </div>
+
     <!-- Chat log (messages, tool blocks, idle blocks injected here) -->
     <div id="log"></div>
 
@@ -137,11 +142,14 @@ ${MAIN_CSS}
 
     <!-- Composer -->
     <form id="form">
-      <label id="attachBtn" title="Attach file (or paste images directly into the textarea)">
-        <input type="file" id="fileInput" accept="image/*,.pdf,.txt,.md,.csv,.json" multiple>
-        📎
-      </label>
-      <button type="button" id="captureBtn" title="Screenshot for Lisa (⌃⌥S anywhere)">📷</button>
+      <input type="file" id="fileInput" accept="image/*,.pdf,.txt,.md,.csv,.json" multiple>
+      <div class="plus-wrap">
+        <button type="button" id="plusBtn" title="Attach or screenshot">＋</button>
+        <div class="plus-menu" id="plusMenu">
+          <button type="button" id="pmAttach"><span class="g">📎</span> Attach file</button>
+          <button type="button" id="pmShot"><span class="g">📷</span> Screenshot</button>
+        </div>
+      </div>
       <button type="button" id="recordBtn" title="Dictate — speak and Lisa drops polished text in the box (hold to record a summary)">🎙</button>
       <textarea id="input" placeholder="Talk to Lisa…  (Enter to send · Shift+Enter for newline)" autofocus></textarea>
       <button type="submit" id="sendBtn">
