@@ -738,7 +738,6 @@ export const MAIN_CSS = `  :root {
     padding: 2px 9px;
   }
   .pp-tag.warn { color: var(--warm); }
-  .pp-tag.you { color: var(--accent); }
 
   /* "Focus" big card (current desire / objective analog) */
   .focus-card {

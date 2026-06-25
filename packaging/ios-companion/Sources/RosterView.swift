@@ -224,19 +224,6 @@ struct RosterRow: View {
     }
 }
 
-struct Pill: View {
-    let text: String
-    let color: Color
-    var body: some View {
-        Text(text)
-            .font(.caption2)
-            .padding(.horizontal, 6).padding(.vertical, 1)
-            .background(color.opacity(0.15))
-            .foregroundStyle(color)
-            .clipShape(Capsule())
-    }
-}
-
 /// Green "Proactive mode" banner at the top of Dispatch — echoes the web app's
 /// proactive panel. The toggle controls real autonomy via /api/autonomy/state.
 struct ProactiveBanner: View {

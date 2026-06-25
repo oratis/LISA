@@ -19,11 +19,13 @@ import { MAIN_HTML } from "./lisa-html.js";
  * Last updated: "agent console" redesign — left-rail nav (Chat / Dashboard /
  * Control / Reve / Sense / Memory) switching a main view-stack, a workspace
  * pill, and a Proactive autonomy toggle, all added additively beside the
- * untouched chat pipeline.
+ * untouched chat pipeline. Then: review cleanups — 60s refresh tick resolves
+ * the wrapped refreshClaudeSessions at call time, dropped an unused .pp-tag.you
+ * rule.
  */
-const EXPECTED_LENGTH = 130493;
+const EXPECTED_LENGTH = 130688;
 const EXPECTED_SHA256 =
-  "c8c263615b33e7a3f0f73560254bbad5a35a23141ad3f5e04c3b44eac5507666";
+  "a106d2de2b3c160f61b05944118159205b916f4e532438819ffeca9bb116781c";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);

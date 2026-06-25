@@ -1388,7 +1388,10 @@ if ('serviceWorker' in navigator) {
   refreshIdentity();
   refreshSessionsBadge();
   setInterval(refreshPing, 30_000);
-  setInterval(window.refreshClaudeSessions, 60_000);
+  // Resolve refreshClaudeSessions at call time (arrow), not now: setupConsole
+  // later wraps window.refreshClaudeSessions to re-render the active console
+  // view + nav count, and the wrapper must win on this 60s tick too.
+  setInterval(() => window.refreshClaudeSessions(), 60_000);
   setInterval(refreshSessionsBadge, 5 * 60_000);
 })();
 
