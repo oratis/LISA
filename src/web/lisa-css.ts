@@ -1241,6 +1241,20 @@ export const MAIN_CSS = `  :root {
     #input { font-size: 16px; /* prevents iOS Safari auto-zoom */ }
   }
 
+  /* ── Forced compact / "sidebar mode" ─────────────────────────────
+     Same stacked layout as the narrow breakpoint, but toggled on at ANY
+     width (persisted client-side) so Lisa can be docked as a skinny panel. */
+  body.force-compact .frame {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto 1fr;
+  }
+  body.force-compact .sidebar {
+    max-height: 38vh;
+    padding: 14px 14px 12px;
+    gap: 14px;
+  }
+  body.force-compact #form { grid-template-columns: 36px 36px 1fr 84px; }
+
   /* ===================================================================
      Modal panel (skills / memory / tools / soul) — unchanged from the
      legacy pixel-art shell. Uses the legacy CSS vars declared above.

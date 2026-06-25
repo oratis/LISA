@@ -906,6 +906,28 @@ if (fnSearchBtn && fnFind) {
   });
 }
 
+// Compact / sidebar mode — force the narrow stacked layout at any width, persisted.
+const compactToggleEl = document.getElementById('compactToggle');
+if (compactToggleEl) {
+  let compactOn = false;
+  try { compactOn = localStorage.getItem('lisaCompact') === '1'; } catch (e) {}
+  const applyCompact = () => {
+    document.body.classList.toggle('force-compact', compactOn);
+    compactToggleEl.classList.toggle('on', compactOn);
+    compactToggleEl.setAttribute('aria-checked', compactOn ? 'true' : 'false');
+  };
+  applyCompact();
+  const toggleCompact = () => {
+    compactOn = !compactOn;
+    try { localStorage.setItem('lisaCompact', compactOn ? '1' : '0'); } catch (e) {}
+    applyCompact();
+  };
+  compactToggleEl.addEventListener('click', toggleCompact);
+  compactToggleEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleCompact(); }
+  });
+}
+
 let currentLisaSpan = null;
 let pendingTools = new Map();
 let thinkingEl = null;
