@@ -1,14 +1,16 @@
 # PLAN — LISA Cloud (GCP) v1.0
 
-**Status: M0 DEPLOYED — reviewer demo, live on GLM.** Project `oratis-491316`.
-C1 (edition flag + cloud auth gate + `/api/edition`) and M0 (Cloud Run service
-`lisa-cloud`, us-central1, a GLM-`glm-4.6`-birthed demo soul) are live and
-verified (401/401/200 auth gate, cloud edition, end-to-end chat). The live URL +
-demo token are NOT committed — they live in the Cloud Run env. Includes a 正反方
-debate (below) whose verdict is a **Conditional GO — M0 (reviewer demo) only,
-defer public multi-tenant**. Still in force: **C2 (`CloudHome` GCS persistence)
-is required before any real (non-reviewer) user**, since the demo soul is held in
-a single warm instance and resets on cold start.
+**Status: M0 DEPLOYED + DURABLE — reviewer demo, live on GLM.** Project
+`oratis-491316`. C1 (edition flag + cloud auth gate + `/api/edition`) and M0
+(Cloud Run `lisa-cloud`, us-central1, a GLM-`glm-4.6` demo soul) are live and
+verified (401/401/200 auth gate, cloud edition, end-to-end chat). **Persistence
+is done (basic C2):** a GCS bucket (`<project>-lisa-cloud-data`) is mounted at
+`/data`, single-writer (`min=max=1`); a forced restart confirmed the soul is
+detected and re-birth is skipped. The live URL + demo token are NOT committed —
+they live in the Cloud Run env. Includes a 正反方 debate (below) whose verdict is a
+**Conditional GO — M0 (reviewer demo) only, defer public multi-tenant**. Remaining
+before real (non-reviewer) users: **per-user isolation** — today it's a single
+shared soul/bucket; multi-tenant needs a per-`uid` home + auth (full C2/C3).
 
 ## Why
 
@@ -262,13 +264,15 @@ drops loopback trust, `GET /api/edition`). The container + deploy glue lives in
 | --- | --- |
 | `deploy/Dockerfile` | multi-stage `node:22-slim`; builds `dist/`, ships assets, `ENV LISA_EDITION=cloud LISA_HOME=/data`, runs `entrypoint.sh`. |
 | `deploy/entrypoint.sh` | first-boot: seed a demo soul (`lisa birth`, idempotent via `isBorn()`) using whichever provider key is set, then `lisa serve --web --host 0.0.0.0`. |
-| `deploy/deploy.sh` | `gcloud run deploy lisa-cloud --source .` to `oratis-491316/us-central1`, `--min-instances 1` (keep the demo warm + stateful on the ephemeral Cloud Run FS), secrets via env (comma-safe `^##^` delimiter). |
+| `deploy/deploy.sh` | ensures a GCS bucket + the Cloud Run SA's access, then `gcloud run deploy lisa-cloud --source .` to `oratis-491316/us-central1` with the bucket mounted at `/data` (gen2), `min=max=1` (single writer), secrets via env (comma-safe `^##^` delimiter). |
 
-**State caveat.** Cloud Run's container FS is ephemeral. `--min-instances 1`
-keeps one warm instance so the seeded soul/sessions survive between requests; a
-cold start (or scale-to-2) re-births a fresh demo soul. That's acceptable for an
-M0 *reviewer demo* but **not** for real users — C2 (`CloudHome` on GCS) is the
-prerequisite before anyone but a reviewer touches it.
+**State (basic C2 done).** Cloud Run's own FS is ephemeral, so `/data` (=`$LISA_HOME`)
+is a **GCS bucket mounted via the gen2 cloud-storage volume** — the soul +
+sessions are durable across restarts/redeploys (verified: a forced new revision
+logged `soul already present — skipping birth`). `min=max=1` keeps a single warm
+writer (two instances mounting one bucket could race the soul files). **Still
+single-tenant**: one shared soul/bucket — per-`uid` isolation + auth is the
+remaining work before real (non-reviewer) users.
 
 **Auth.** Cloud Run IAM is `--allow-unauthenticated` (the reviewer needs to reach
 the URL), and the *app's own* `LISA_WEB_TOKEN` gate is the real auth — in cloud
