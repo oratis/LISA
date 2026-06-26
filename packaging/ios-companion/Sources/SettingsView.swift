@@ -35,9 +35,10 @@ struct SettingsView: View {
                     } label: {
                         Label("Scan QR code", systemImage: "qrcode.viewfinder")
                     }
-                    TextField("lisa-pair://… or http://host:port/?token=", text: $pairText)
+                    TextField("LAN http://host:port/?token= or cloud https://…/?token=", text: $pairText)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
+                        .keyboardType(.URL)
                     Button("Apply pairing") {
                         if app.applyPairing(pairText) {
                             syncFromConfig()
@@ -47,6 +48,8 @@ struct SettingsView: View {
                         }
                     }
                     .disabled(pairText.isEmpty)
+                    Text("Paste your Mac's pairing URL, or a LISA Cloud URL (https://…run.app/?token=…) to use the hosted demo without a Mac.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
 
                 Section("Push (ntfy)") {

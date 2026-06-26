@@ -68,6 +68,30 @@ final class LisaPocketTests: XCTestCase {
         XCTAssertEqual(AppState.parseDeepLink(URL(string: "https://example.com")!), .ignore)
     }
 
+    // ── parsePairing: LAN http, cloud https, lisa-pair:// ──
+    func testParsePairingCloudHTTPS() {
+        let cfg = AppState.parsePairing("https://lisa-cloud-xxx.run.app/?token=abc")
+        XCTAssertEqual(cfg, ServerConfig(host: "lisa-cloud-xxx.run.app", port: 443, token: "abc", scheme: "https"))
+        // baseURL drops the default :443 → a clean cloud URL.
+        XCTAssertEqual(cfg?.baseURL?.absoluteString, "https://lisa-cloud-xxx.run.app")
+    }
+    func testParsePairingLANHTTP() {
+        let cfg = AppState.parsePairing("http://192.168.3.162:5757/?token=abc")
+        XCTAssertEqual(cfg, ServerConfig(host: "192.168.3.162", port: 5757, token: "abc", scheme: "http"))
+        XCTAssertEqual(cfg?.baseURL?.absoluteString, "http://192.168.3.162:5757")
+    }
+    func testParsePairingLisaPairWithScheme() {
+        let cfg = AppState.parsePairing("lisa-pair://v1?host=lisa-cloud.run.app&port=443&token=abc&scheme=https")
+        XCTAssertEqual(cfg, ServerConfig(host: "lisa-cloud.run.app", port: 443, token: "abc", scheme: "https"))
+    }
+    func testParsePairingLisaPairDefaultsToLAN() {
+        let cfg = AppState.parsePairing("lisa-pair://v1?host=mac.local&token=abc")
+        XCTAssertEqual(cfg, ServerConfig(host: "mac.local", port: 5757, token: "abc", scheme: "http"))
+    }
+    func testParsePairingRejectsMissingToken() {
+        XCTAssertNil(AppState.parsePairing("https://lisa-cloud.run.app/"))
+    }
+
     // ── AgentSession.lastMtime tolerates both shapes (regression for the SSE bug) ──
     func testDecodesNumericLastMtimeFromSSE() throws {
         // agent_session_update broadcasts raw epoch-ms; must not throw.

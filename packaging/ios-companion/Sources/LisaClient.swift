@@ -1,12 +1,18 @@
 import Foundation
 
 struct ServerConfig: Equatable {
-    var host: String          // "192.168.3.162" or "mac.tailnet.ts.net"
+    var host: String          // "192.168.3.162", "mac.tailnet.ts.net", or "lisa-cloud-xxx.run.app"
     var port: Int
     var token: String?        // device or global token (nil only for loopback, unused from a phone)
+    var scheme: String = "http"  // "http" for a LAN Mac; "https" for a cloud URL
 
     var isConfigured: Bool { !host.isEmpty && port > 0 }
-    var baseURL: URL? { URL(string: "http://\(host):\(port)") }
+    /// Base URL. Drop the port when it's the scheme's default (so a cloud URL is
+    /// `https://host`, not `https://host:443`).
+    var baseURL: URL? {
+        let standardPort = (scheme == "https" && port == 443) || (scheme == "http" && port == 80)
+        return URL(string: standardPort ? "\(scheme)://\(host)" : "\(scheme)://\(host):\(port)")
+    }
 }
 
 enum LisaError: LocalizedError {
