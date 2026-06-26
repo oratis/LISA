@@ -34,6 +34,15 @@ struct RootView: View {
         .toolbarBackground(.visible, for: .tabBar)
         .onOpenURL { app.handleDeepLink($0) }
         .overlay { if app.locked { LockView() } }
+        .fullScreenCover(isPresented: $app.showOnboarding) {
+            OnboardingFlow().environmentObject(app)
+        }
+        .safeAreaInset(edge: .top) {
+            // Persistent nudge after a skip, while still unpaired — taps re-enter the flow.
+            if app.needsSetup && !app.showOnboarding {
+                SetupBanner { app.presentOnboarding() }
+            }
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase == .background { app.lockIfEnabled() }  // re-arm when leaving foreground
         }

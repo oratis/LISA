@@ -29,6 +29,14 @@ struct SettingsView: View {
                          : "Use hosted LISA Cloud — no Mac needed.")
                 }
 
+                Section {
+                    Button { app.presentOnboarding() } label: {
+                        Label("Set up / re-pair…", systemImage: "wand.and.stars")
+                    }
+                } footer: {
+                    Text("Walk through installing LISA on your Mac and pairing this iPhone.")
+                }
+
                 if app.connectionMode == .mac {
                     Section("Connection") {
                         TextField("Host (IP or tailnet name)", text: $host)
