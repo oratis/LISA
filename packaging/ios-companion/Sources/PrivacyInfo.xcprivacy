@@ -3,13 +3,20 @@
 <!--
   Privacy manifest for Lisa Pocket (required by Apple since May 2024).
 
-  Lisa Pocket is a thin client to the user's OWN Lisa backend (their Mac, or
-  later their private LISA Cloud instance). It does not track users and does not
-  ship data to a third-party analytics/ads service, so NSPrivacyTracking is false
-  and NSPrivacyCollectedDataTypes is empty. The only required-reason API is
-  UserDefaults, used for the app's own settings + the App Group snapshot the
-  home-screen widget reads (reason CA92.1 — access to info from the app itself /
-  its app group).
+  Required-reason API set mirrors Telloria's proven manifest
+  (telloria-web/apps/mobile/plugins/withPrivacyManifest.js): UserDefaults,
+  file-timestamp, system-boot-time, disk-space — the APIs Foundation / URLSession
+  pull in. Reason codes: CA92.1 (UserDefaults, app-internal state + the App Group
+  snapshot the widget reads), C617.1 (file timestamps, app-owned files), 35F9.1
+  (boot time, session age), 85F4.1 (disk space, cache management).
+
+  DIFFERS from Telloria on data collection: Telloria collects email / user-id /
+  purchase / analytics / crash data to its own backend, so it declares them.
+  Lisa Pocket is a THIN CLIENT to the user's OWN Lisa backend (their Mac, or
+  later their own LISA Cloud instance, BYO key) — nothing is collected to a
+  Lisa-operated server and there is no tracking. So NSPrivacyTracking is false,
+  NSPrivacyTrackingDomains is empty, and NSPrivacyCollectedDataTypes is empty.
+  (Revisit if/when a Lisa-operated multi-tenant cloud ships.)
 -->
 <plist version="1.0">
 <dict>
@@ -25,9 +32,25 @@
             <key>NSPrivacyAccessedAPIType</key>
             <string>NSPrivacyAccessedAPICategoryUserDefaults</string>
             <key>NSPrivacyAccessedAPITypeReasons</key>
-            <array>
-                <string>CA92.1</string>
-            </array>
+            <array><string>CA92.1</string></array>
+        </dict>
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array><string>C617.1</string></array>
+        </dict>
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategorySystemBootTime</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array><string>35F9.1</string></array>
+        </dict>
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryDiskSpace</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array><string>85F4.1</string></array>
         </dict>
     </array>
 </dict>
