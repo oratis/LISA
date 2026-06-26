@@ -34,6 +34,8 @@ targets:
         NSSupportsLiveActivities: true
         NSCameraUsageDescription: "Scan the pairing QR code Lisa shows on your Mac."
         NSFaceIDUsageDescription: "Unlock Lisa Pocket with Face ID."
+        NSLocalNetworkUsageDescription: "Connect to the Lisa backend running on your Mac over your local network."
+        ITSAppUsesNonExemptEncryption: false
         CFBundleURLTypes:
           - CFBundleURLName: ai.meetlisa.pocket
             CFBundleURLSchemes:

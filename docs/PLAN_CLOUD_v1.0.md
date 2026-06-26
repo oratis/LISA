@@ -1,6 +1,8 @@
 # PLAN — LISA Cloud (GCP) v1.0
 
-**Status: DESIGN, for review. Nothing built yet.**
+**Status: DESIGN, for review. Nothing built yet.** Project pinned to
+`oratis-491316` (reuse). Includes a 正反方 debate (below) whose verdict is a
+**Conditional GO — build M0 (reviewer demo) only, defer public multi-tenant**.
 
 ## Why
 
@@ -38,6 +40,74 @@ fits a stateless autoscaling box directly. So v1 makes two decisions:
   subset. Local-machine features (PTY adopt, dispatch to local CLIs, Sense
   screen/voice, on-device mail sweep) are **Mac-only** and hidden/disabled in
   cloud mode.
+
+## 正反方辩论 / Pro–Con debate (should we build LISA Cloud at all?)
+
+A steelman of each side before committing, because this decision touches the
+product's founding thesis — not just engineering.
+
+### 正方 — FOR building it
+
+- **It's the only thing that unblocks the App Store.** Reviewers can't pair a
+  Mac, so without a no-Mac path the iOS app is effectively un-shippable
+  (Guideline 2.1). If shipping iOS matters, this is on the critical path.
+- **Market.** Mac-only caps LISA to Mac power users; the overwhelming majority of
+  phone users can't touch it. Cloud is the on-ramp — and an upsell funnel to the
+  Mac "full power" tier.
+- **Small delta, not a rewrite.** The server + iOS client already exist; cloud is
+  *containerize + verify-token + per-user home*, and Cloud Run scale-to-zero
+  keeps idle cost ≈ $0. We're reusing `oratis-491316`, already wired for deploys.
+- **Forcing function for multi-user hygiene** (auth, isolation, account deletion)
+  that the product will eventually need anyway.
+
+### 反方 — AGAINST (the honest risks)
+
+- **It contradicts the founding thesis.** LISA's whole identity — and the
+  research framing (a *local*, long-horizon, privacy-first evolving companion) —
+  is "your soul/memory stays on your machine." Storing users' soul + chat + API
+  keys on Google servers is the opposite promise. This is the heaviest weight,
+  and it's a *narrative/credibility* cost, not just a technical one.
+- **You become a data processor.** Holding chat + provider API keys in a
+  multi-tenant box = a breach target + real legal surface (GDPR/CCPA, deletion,
+  incident response, a privacy policy you must honor). v1's isolation is
+  *logical only* (one Cloud Run service) — a single cross-tenant bug leaks
+  everyone.
+- **Ops drift for a solo researcher.** Even scale-to-zero, you now run prod
+  infra (LB, Cloud Armor, Firestore, Secret Manager, monitoring, on-call). Time
+  spent here is time not spent on the thesis/paper.
+- **The cloud edition is the gutted edition.** No PTY / dispatch / Sense / agent
+  control plane — i.e. none of the differentiators. Cloud LISA risks being
+  judged as "another chat app with memory," anchoring perception to the weakest
+  tier.
+- **The unblock has cheaper alternatives.** (a) ship iOS *later*, TestFlight-only
+  for Mac owners now; (b) expose a seeded demo Mac backend to App Review over a
+  tunnel; (c) frame the app honestly as "a companion to your Mac" (remote-desktop
+  -style apps do pass review). None of these require running a business.
+- **Stateful soul vs stateless box.** Hydrate/flush a per-user `~/.lisa` to GCS
+  on every cold start is fiddly + race-prone — and continuity-over-months is
+  exactly the property the thesis cares most about getting right.
+
+### 裁决 / Synthesis — Conditional GO, scoped tight
+
+The App-Store-unblock is real but overstated as a *forcing* reason (cheaper
+paths exist). The brand/thesis + liability tension is the dominant consideration.
+Net recommendation:
+
+1. **Build M0 only, now** — the smallest thing that yields a **reviewer-usable
+   demo**: C1 (containerize + `LISA_EDITION=cloud` + verify-token gate) + a single
+   **seeded demo account**. **Do NOT open public multi-tenant signups yet.** This
+   gets the App Store unblock without committing to a data-processor business.
+2. **Re-evaluate the full multi-tenant cloud (C2–C5) separately**, only after the
+   iOS app is otherwise ready and you've explicitly accepted the brand/liability
+   trade. It's a real fork, not an automatic follow-on.
+3. **Guardrails if it proceeds past M0** — BYO API key only (never resell
+   tokens); a cross-tenant isolation test in CI; keep **local-first the flagship
+   and cloud the explicitly-"lite" tier** in all copy; in-app account deletion;
+   move to a dedicated `lisa-cloud-prod` project before real signups; published
+   privacy policy.
+
+This keeps the thesis intact (local stays the headline), clears review, and
+defers the heavy commitment until it's a deliberate choice.
 
 ## Feature matrix — Mac vs Cloud (v1)
 
@@ -154,7 +224,8 @@ hides Mac-only surfaces (Control tab's PTY/adopt, Sense capture toggles).
 - Secrets only in Secret Manager; never logged. Mail stays metadata+snippet.
 - TLS everywhere (LB). Cloud Armor rate-limits + blocks abuse.
 - Data residency: single region v1 (us-central1, matching the existing
-  `<your-gcp-project>` project / Cloud Run site deploy).
+  `oratis-491316` project / Cloud Run site deploy — where meetlisa.ai's
+  `lisa-web` service already runs).
 - Privacy policy must disclose: account (Apple uid), chat content stored to
   provide the service, the user's API key, optional mail metadata. Feeds the App
   Privacy nutrition label.
@@ -185,7 +256,10 @@ hides Mac-only surfaces (Control tab's PTY/adopt, Sense capture toggles).
    email/Google (more friction + Apple then *requires* Sign in with Apple too).
 4. **Autonomy in cloud** — allow proactive/idle loops (cost) or chat-only until a
    paid tier?
-5. **Region / project** — reuse `<your-gcp-project>` + us-central1?
+5. **Region / project** — ✅ DECIDED: reuse **`oratis-491316` + us-central1** for
+   v1 (a new Cloud Run service `lisa-cloud` next to `lisa-web`). Graduate to a
+   dedicated `lisa-cloud-prod` project before opening real multi-tenant signups,
+   to isolate user secrets + agent workloads from the marketing site.
 6. **Pricing** — free beta, or a hosting fee from day one?
 
 ---
