@@ -46,7 +46,7 @@ Capability by capability:
 | Lisa Mac capability | Code | Sandbox verdict |
 | --- | --- | --- |
 | WKWebView chat GUI | `WebContent.swift` | ✅ fine (Markup proves it) |
-| Start the backend by shelling out | `BackendController.swift:72` — `/bin/zsh -lc "nohup lisa serve --web … & disown"` | ❌ spawning an external, PATH-resolved (`npm`/Homebrew) binary — forbidden |
+| Start the backend by shelling out | `BackendController.start()` — `/bin/zsh -lc "nohup lisa serve --web … & disown"` | ❌ spawning an external, PATH-resolved (`npm`/Homebrew) binary — forbidden |
 | Detached survival (`nohup … & disown`) | same | ❌ sandbox reaps child processes on app exit; outliving the app is forbidden |
 | Backend writes `~/.lisa` | `NSHomeDirectory()/.lisa` | ❌ sandbox confines writes to the container (`~/Library/Containers/…`) + user-selected paths |
 | Backend spawns the user's `claude`/`codex` | `dispatch_agent`, adopt-idle `claude --resume` | ❌ executing arbitrary non-bundled executables — forbidden |
@@ -127,9 +127,15 @@ local app stays a notarized DMG, by design and in good company.
 ## 5. Open questions for review
 
 1. **Bundle id collision** — if a user could have *both* the MAS cloud-client and
-   the DMG full app, they need distinct ids. Proposal: MAS client keeps the
-   canonical `ai.meetlisa.app`; the off-store full app takes `ai.meetlisa.studio`
-   (or `.desktop`). Or accept "one or the other" and share `ai.meetlisa.app`.
+   the DMG full app, they need distinct ids. Note the current allocation: the
+   **full Mac app already uses `ai.meetlisa.app`** (`packaging/mac-client/Resources/Info.plist`),
+   and **iOS standardized on `ai.meetlisa.main`** (the app group, widgets, and
+   `PRODUCT_BUNDLE_IDENTIFIER`, aligned to the ASC app record). So `ai.meetlisa.app`
+   is *not* free to hand a new MAS client — either the MAS cloud client takes a new
+   id (e.g. `ai.meetlisa.cloud`) and the full app keeps `ai.meetlisa.app`, or the
+   full app migrates (e.g. to `ai.meetlisa.studio`) and the cloud client inherits
+   `ai.meetlisa.app`. Given iOS is `…main`, also decide whether the family's
+   canonical root should be `.main` rather than `.app`.
 2. **Sequencing** — ship the notarized DMG (Option A) for v1.0 and defer the MAS
    client (Option B) until Cloud C2 lands? (Recommended.)
 3. **Naming in the store** — "Lisa" (cloud client) vs "Lisa Studio" (full DMG), to
