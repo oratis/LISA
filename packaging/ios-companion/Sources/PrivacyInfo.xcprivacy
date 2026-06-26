@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Privacy manifest for Lisa Pocket (required by Apple since May 2024).
+
+  Lisa Pocket is a thin client to the user's OWN Lisa backend (their Mac, or
+  later their private LISA Cloud instance). It does not track users and does not
+  ship data to a third-party analytics/ads service, so NSPrivacyTracking is false
+  and NSPrivacyCollectedDataTypes is empty. The only required-reason API is
+  UserDefaults, used for the app's own settings + the App Group snapshot the
+  home-screen widget reads (reason CA92.1 — access to info from the app itself /
+  its app group).
+-->
+<plist version="1.0">
+<dict>
+    <key>NSPrivacyTracking</key>
+    <false/>
+    <key>NSPrivacyTrackingDomains</key>
+    <array/>
+    <key>NSPrivacyCollectedDataTypes</key>
+    <array/>
+    <key>NSPrivacyAccessedAPITypes</key>
+    <array>
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>CA92.1</string>
+            </array>
+        </dict>
+    </array>
+</dict>
+</plist>
