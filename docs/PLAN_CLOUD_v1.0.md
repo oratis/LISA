@@ -246,6 +246,42 @@ hides Mac-only surfaces (Control tab's PTY/adopt, Sense capture toggles).
 - **C5 — harden + demo**: Cloud Armor, budgets, the App-Review demo account, the
   privacy policy page.
 
+## M0 deploy runbook (C1 — reviewer demo) ✅ scaffolded
+
+The C1 code is merged (`src/edition.ts` edition flag, the cloud auth gate that
+drops loopback trust, `GET /api/edition`). The container + deploy glue lives in
+`deploy/`:
+
+| File | Role |
+| --- | --- |
+| `deploy/Dockerfile` | multi-stage `node:22-slim`; builds `dist/`, ships assets, `ENV LISA_EDITION=cloud LISA_HOME=/data`, runs `entrypoint.sh`. |
+| `deploy/entrypoint.sh` | first-boot: seed a demo soul (`lisa birth`, idempotent via `hasSeed()`) if `ANTHROPIC_API_KEY` is set, then `lisa serve --web --host 0.0.0.0`. |
+| `deploy/deploy.sh` | `gcloud run deploy lisa-cloud --source .` to `oratis-491316/us-central1`, `--min-instances 1` (keep the demo warm + stateful on the ephemeral Cloud Run FS), secrets via env. |
+
+**State caveat.** Cloud Run's container FS is ephemeral. `--min-instances 1`
+keeps one warm instance so the seeded soul/sessions survive between requests; a
+cold start (or scale-to-2) re-births a fresh demo soul. That's acceptable for an
+M0 *reviewer demo* but **not** for real users — C2 (`CloudHome` on GCS) is the
+prerequisite before anyone but a reviewer touches it.
+
+**Auth.** Cloud Run IAM is `--allow-unauthenticated` (the reviewer needs to reach
+the URL), and the *app's own* `LISA_WEB_TOKEN` gate is the real auth — in cloud
+edition loopback is no longer trusted, so every request needs the token. Hand the
+reviewer `https://<service-url>/?token=<LISA_WEB_TOKEN>` (opens authed, pins a
+cookie). The token + a rate-limited `ANTHROPIC_API_KEY` are the only secrets.
+
+**Run it (you, with your secrets — this is real prod GCP + spends money):**
+
+```sh
+LISA_WEB_TOKEN='<demo-password>' \
+ANTHROPIC_API_KEY='<rate-limited-demo-key>' \
+deploy/deploy.sh
+```
+
+Overrides: `PROJECT` (default `oratis-491316`), `REGION` (`us-central1`),
+`SERVICE` (`lisa-cloud`). For production-grade secret handling, swap the
+`--set-env-vars` for Secret Manager (`--set-secrets`) before M1.
+
 ## Open questions for review
 
 1. **API key model** — bring-your-own (v1, simplest) vs LISA-billed managed tier
