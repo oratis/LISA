@@ -255,8 +255,8 @@ drops loopback trust, `GET /api/edition`). The container + deploy glue lives in
 | File | Role |
 | --- | --- |
 | `deploy/Dockerfile` | multi-stage `node:22-slim`; builds `dist/`, ships assets, `ENV LISA_EDITION=cloud LISA_HOME=/data`, runs `entrypoint.sh`. |
-| `deploy/entrypoint.sh` | first-boot: seed a demo soul (`lisa birth`, idempotent via `hasSeed()`) if `ANTHROPIC_API_KEY` is set, then `lisa serve --web --host 0.0.0.0`. |
-| `deploy/deploy.sh` | `gcloud run deploy lisa-cloud --source .` to `oratis-491316/us-central1`, `--min-instances 1` (keep the demo warm + stateful on the ephemeral Cloud Run FS), secrets via env. |
+| `deploy/entrypoint.sh` | first-boot: seed a demo soul (`lisa birth`, idempotent via `isBorn()`) using whichever provider key is set, then `lisa serve --web --host 0.0.0.0`. |
+| `deploy/deploy.sh` | `gcloud run deploy lisa-cloud --source .` to `oratis-491316/us-central1`, `--min-instances 1` (keep the demo warm + stateful on the ephemeral Cloud Run FS), secrets via env (comma-safe `^##^` delimiter). |
 
 **State caveat.** Cloud Run's container FS is ephemeral. `--min-instances 1`
 keeps one warm instance so the seeded soul/sessions survive between requests; a
@@ -268,19 +268,26 @@ prerequisite before anyone but a reviewer touches it.
 the URL), and the *app's own* `LISA_WEB_TOKEN` gate is the real auth — in cloud
 edition loopback is no longer trusted, so every request needs the token. Hand the
 reviewer `https://<service-url>/?token=<LISA_WEB_TOKEN>` (opens authed, pins a
-cookie). The token + a rate-limited `ANTHROPIC_API_KEY` are the only secrets.
+cookie). The two secrets are `LISA_WEB_TOKEN` + one rate-limited LLM key.
+
+**Provider/model.** The birth + run gates are provider-aware
+(`hasCredentialsForModel`), so any one of these funds the demo and picks the
+model: `ZHIPU_API_KEY` → GLM (`LISA_MODEL=glm-4.6`, defaulted), `ANTHROPIC_API_KEY`
+→ Claude, `OPENAI_API_KEY` → GPT. **The M0 demo runs on GLM** (`glm-4.6`,
+bigmodel.cn OpenAI-compatible endpoint, LISA's built-in Zhipu preset).
 
 **Run it (you, with your secrets — this is real prod GCP + spends money):**
 
 ```sh
+# GLM (the M0 demo):
 LISA_WEB_TOKEN='<demo-password>' \
-ANTHROPIC_API_KEY='<rate-limited-demo-key>' \
+ZHIPU_API_KEY='<rate-limited-glm-key>' \
 deploy/deploy.sh
 ```
 
 Overrides: `PROJECT` (default `oratis-491316`), `REGION` (`us-central1`),
-`SERVICE` (`lisa-cloud`). For production-grade secret handling, swap the
-`--set-env-vars` for Secret Manager (`--set-secrets`) before M1.
+`SERVICE` (`lisa-cloud`), `LISA_MODEL`. For production-grade secret handling,
+swap the `--set-env-vars` for Secret Manager (`--set-secrets`) before M1.
 
 ## Open questions for review
 
