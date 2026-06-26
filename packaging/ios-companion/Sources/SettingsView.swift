@@ -11,6 +11,7 @@ struct SettingsView: View {
     @State private var prefs = PushPrefs()
     @State private var status = ""
     @State private var showScanner = false
+    @State private var showUnpairConfirm = false
 
     var body: some View {
         NavigationStack {
@@ -113,6 +114,13 @@ struct SettingsView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
 
+                Section("Disconnect") {
+                    Button("Unpair this Mac", role: .destructive) { showUnpairConfirm = true }
+                        .disabled(!app.config.isConfigured)
+                    Text("Removes the saved connection + device token from this iPhone. Your Mac and its data are untouched — pair again any time.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+
                 Section("Inspect Lisa") {
                     NavigationLink { SoulView() } label: { Label("Soul", systemImage: "sparkles") }
                     NavigationLink { MemoryView() } label: { Label("Memory", systemImage: "brain") }
@@ -134,6 +142,16 @@ struct SettingsView: View {
             .task { policy = try? await app.client.controlPolicy(); await app.loadProactive() }
             .sheet(isPresented: $showScanner) {
                 QRScanSheet(onScanned: handleScan, onError: { status = $0 })
+            }
+            .confirmationDialog("Unpair this Mac?", isPresented: $showUnpairConfirm, titleVisibility: .visible) {
+                Button("Unpair", role: .destructive) {
+                    app.update(host: "", port: 5757, token: nil)
+                    syncFromConfig()
+                    status = "Unpaired — the device token was removed from this iPhone."
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Removes the connection + device token from this iPhone. Your Mac is untouched.")
             }
         }
     }
