@@ -31,7 +31,7 @@ npm run dev
 
 **Live at [meetlisa.ai](https://meetlisa.ai).** Hosting + routing:
 
-- **Origin**: GCP **Cloud Run** service `lisa-web` (`oratis-491316` / `us-central1`),
+- **Origin**: GCP **Cloud Run** service `lisa-web` (`<your-gcp-project>` / `us-central1`),
   built from this `website/` via [`deploy/Dockerfile`](deploy/Dockerfile)
   (static build → `serve` on `$PORT`).
 - **Edge**: `meetlisa.ai` is on **Cloudflare (Free)**. The Free plan can't

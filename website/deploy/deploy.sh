@@ -13,7 +13,7 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
-PROJECT="${PROJECT:-oratis-491316}"; REGION="${REGION:-us-central1}"; SERVICE="${SERVICE:-lisa-web}"
+PROJECT="${PROJECT:?set your GCP project id, e.g. PROJECT=my-project website/deploy/deploy.sh}"; REGION="${REGION:-us-central1}"; SERVICE="${SERVICE:-lisa-web}"
 
 STAGE="$(mktemp -d)/lisa-web"
 mkdir -p "$STAGE/website" "$STAGE/scripts" "$STAGE/src/web"
