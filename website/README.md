@@ -32,8 +32,8 @@ npm run dev
 **Live at [meetlisa.ai](https://meetlisa.ai).** Hosting + routing:
 
 - **Origin**: GCP **Cloud Run** service `lisa-web` (`<your-gcp-project>` / `us-central1`),
-  built from this `website/` via [`deploy/Dockerfile`](deploy/Dockerfile)
-  (static build → `serve` on `$PORT`).
+  built from this `website/` via [`Dockerfile`](Dockerfile) — nginx serving the
+  pre-built static Astro `dist/`.
 - **Edge**: `meetlisa.ai` is on **Cloudflare (Free)**. The Free plan can't
   rewrite origin Host/SNI (Origin Rules' Host Header + SNI overrides are
   Enterprise-only), which Cloud Run requires — so a tiny **Cloudflare Worker**
@@ -42,15 +42,22 @@ npm run dev
 
 ### Deploy
 
-```sh
-website/deploy/deploy.sh --canary   # build a no-traffic 'canary' revision to verify
-website/deploy/deploy.sh            # build + promote to 100% traffic
-```
+Two paths, both supported:
 
-The script stages a self-contained build context (this `website/` + the
-repo-root `scripts/lisa-moods.ts` and `src/web/assets/` that `prebuild` needs)
-so the asset symlink resolves inside the image. Env overrides: `PROJECT`,
-`REGION`, `SERVICE`.
+- **Cloud Run** (origin) — build locally, then ship the nginx image:
+  ```sh
+  PROJECT=<your-gcp-project> website/deploy/deploy.sh --canary   # --no-traffic 'canary' to verify
+  PROJECT=<your-gcp-project> website/deploy/deploy.sh            # build + promote to 100%
+  ```
+  `deploy.sh` runs `npm run build` locally (`prebuild` needs the repo-root
+  `scripts/lisa-moods.ts` + `src/web/assets/`, reachable here — not inside a
+  website-only Docker context), then `gcloud run deploy --source website` builds
+  [`Dockerfile`](Dockerfile) (nginx serving `dist/`); [`.gcloudignore`](.gcloudignore)
+  trims the upload to `dist/` + the Dockerfile + `nginx.conf`. Env: `PROJECT`
+  (required), `REGION`, `SERVICE`.
+- **Cloudflare Pages** (CI) — `.github/workflows/website-deploy.yml` builds on
+  every push to `main` and, when `CF_API_TOKEN` + `CF_ACCOUNT_ID` secrets are
+  set, deploys `dist/` to Cloudflare Pages.
 
 ## Editing
 
