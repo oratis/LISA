@@ -16,40 +16,77 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Connection") {
-                    TextField("Host (IP or tailnet name)", text: $host)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                    TextField("Port", text: $portText)
-                        .keyboardType(.numberPad)
-                    SecureField("Device token", text: $token)
-                    Button("Save") {
-                        app.update(host: host, port: Int(portText) ?? 5757, token: token.isEmpty ? nil : token)
-                        status = "Saved."
+                Section {
+                    Picker("Connect to", selection: Binding(
+                        get: { app.connectionMode },
+                        set: { app.setConnectionMode($0) })) {
+                        ForEach(ConnectionMode.allCases) { m in Text(m.label).tag(m) }
                     }
+                    .pickerStyle(.segmented)
+                } footer: {
+                    Text(app.connectionMode == .myMac
+                         ? "Talk to your own Mac running Lisa — your data stays on your Mac."
+                         : "Use hosted LISA Cloud — no Mac needed.")
                 }
 
-                Section("Pair from QR / URL") {
-                    Button {
-                        showScanner = true
-                    } label: {
-                        Label("Scan QR code", systemImage: "qrcode.viewfinder")
-                    }
-                    TextField("LAN http://host:port/?token= or cloud https://…/?token=", text: $pairText)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                        .keyboardType(.URL)
-                    Button("Apply pairing") {
-                        if app.applyPairing(pairText) {
-                            syncFromConfig()
-                            status = "Paired."
-                        } else {
-                            status = "Couldn't parse that pairing string."
+                if app.connectionMode == .myMac {
+                    Section("Connection") {
+                        TextField("Host (IP or tailnet name)", text: $host)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                        TextField("Port", text: $portText)
+                            .keyboardType(.numberPad)
+                        SecureField("Device token", text: $token)
+                        Button("Save") {
+                            app.update(host: host, port: Int(portText) ?? 5757, token: token.isEmpty ? nil : token)
+                            status = "Saved."
                         }
                     }
-                    .disabled(pairText.isEmpty)
-                    Text("Paste your Mac's pairing URL, or a LISA Cloud URL (https://…run.app/?token=…) to use the hosted demo without a Mac.")
-                        .font(.caption).foregroundStyle(.secondary)
+
+                    Section("Pair from QR / URL") {
+                        Button {
+                            showScanner = true
+                        } label: {
+                            Label("Scan QR code", systemImage: "qrcode.viewfinder")
+                        }
+                        TextField("lisa-pair://… or http://host:port/?token=", text: $pairText)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                            .keyboardType(.URL)
+                        Button("Apply pairing") {
+                            if app.applyPairing(pairText) {
+                                syncFromConfig()
+                                status = "Paired."
+                            } else {
+                                status = "Couldn't parse that pairing string."
+                            }
+                        }
+                        .disabled(pairText.isEmpty)
+                        Text("Run `lisa pair` on your Mac and scan the QR — over the same Wi-Fi (LAN) or a Tailscale tailnet name.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                } else {
+                    Section("LISA Cloud") {
+                        TextField("https://…run.app/?token=", text: $pairText)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                            .keyboardType(.URL)
+                        Button("Connect") {
+                            if app.applyPairing(pairText) {
+                                syncFromConfig()
+                                status = "Connected to LISA Cloud."
+                            } else {
+                                status = "Couldn't parse that cloud URL."
+                            }
+                        }
+                        .disabled(pairText.isEmpty)
+                        Button {} label: {
+                            Label("Sign in with Apple (coming soon)", systemImage: "person.crop.circle")
+                        }
+                        .disabled(true)
+                        Text("Paste your LISA Cloud URL + token. Sign in with Apple is coming.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 }
 
                 Section("Push (ntfy)") {

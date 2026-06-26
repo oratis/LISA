@@ -92,6 +92,14 @@ final class LisaPocketTests: XCTestCase {
         XCTAssertNil(AppState.parsePairing("https://lisa-cloud.run.app/"))
     }
 
+    // ── ConnectionMode persists by rawValue (the "lisa.mode" UserDefaults key) ──
+    func testConnectionModeRawValues() {
+        XCTAssertEqual(ConnectionMode(rawValue: "myMac"), .myMac)
+        XCTAssertEqual(ConnectionMode(rawValue: "cloud"), .cloud)
+        XCTAssertNil(ConnectionMode(rawValue: "bogus"))
+        XCTAssertEqual(ConnectionMode.allCases.count, 2)
+    }
+
     // ── AgentSession.lastMtime tolerates both shapes (regression for the SSE bug) ──
     func testDecodesNumericLastMtimeFromSSE() throws {
         // agent_session_update broadcasts raw epoch-ms; must not throw.
