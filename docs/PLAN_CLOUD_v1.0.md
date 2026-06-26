@@ -1,8 +1,14 @@
 # PLAN — LISA Cloud (GCP) v1.0
 
-**Status: DESIGN, for review. Nothing built yet.** Project pinned to
-`oratis-491316` (reuse). Includes a 正反方 debate (below) whose verdict is a
-**Conditional GO — build M0 (reviewer demo) only, defer public multi-tenant**.
+**Status: M0 DEPLOYED — reviewer demo, live on GLM.** Project `oratis-491316`.
+C1 (edition flag + cloud auth gate + `/api/edition`) and M0 (Cloud Run service
+`lisa-cloud`, us-central1, a GLM-`glm-4.6`-birthed demo soul) are live and
+verified (401/401/200 auth gate, cloud edition, end-to-end chat). The live URL +
+demo token are NOT committed — they live in the Cloud Run env. Includes a 正反方
+debate (below) whose verdict is a **Conditional GO — M0 (reviewer demo) only,
+defer public multi-tenant**. Still in force: **C2 (`CloudHome` GCS persistence)
+is required before any real (non-reviewer) user**, since the demo soul is held in
+a single warm instance and resets on cold start.
 
 ## Why
 
