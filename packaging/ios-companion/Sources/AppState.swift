@@ -14,10 +14,21 @@ enum DeepLinkRoute: Equatable {
     case session(agent: String, id: String)  // lisapocket://session?agent=&id=
 }
 
+/// Which data plane the app talks to — your own Mac, or hosted LISA Cloud.
+/// One identity, two data planes (see docs/PLAN_IDENTITY_v1.0.md).
+enum ConnectionMode: String, CaseIterable, Identifiable {
+    case mac, cloud
+    var id: String { rawValue }
+    var label: String { self == .mac ? "My Mac" : "LISA Cloud" }
+}
+
 @MainActor
 final class AppState: ObservableObject {
     @Published var config: ServerConfig
     @Published private(set) var client: LisaClient
+    /// User's chosen data plane (My Mac vs LISA Cloud). Persisted; UX-only for now —
+    /// the transport is the same scheme-aware ServerConfig either way.
+    @Published var connectionMode: ConnectionMode
     /// Drives the TabView selection (0=Dispatch … 4=Settings) — deep-links set it.
     @Published var selectedTab = 0
     /// Set by a `lisapocket://session?…` deep-link; RosterView consumes + clears it.
@@ -36,6 +47,7 @@ final class AppState: ObservableObject {
         let cfg = ServerConfig(host: host, port: storedPort == 0 ? 5757 : storedPort, token: TokenStore.load(), scheme: scheme)
         self.config = cfg
         self.client = LisaClient(config: cfg)
+        self.connectionMode = ConnectionMode(rawValue: d.string(forKey: "lisa.mode") ?? "") ?? .mac
         let lockOn = d.bool(forKey: "lisa.biometricLock")
         self.biometricLockEnabled = lockOn
         self.locked = lockOn && cfg.token != nil  // require unlock at launch when armed
@@ -75,6 +87,11 @@ final class AppState: ObservableObject {
         } catch {
             pushStatus = (error as? LocalizedError)?.errorDescription ?? "\(error)"
         }
+    }
+
+    func setConnectionMode(_ m: ConnectionMode) {
+        connectionMode = m
+        UserDefaults.standard.set(m.rawValue, forKey: "lisa.mode")
     }
 
     func update(host: String, port: Int, token: String?, scheme: String = "http") {
