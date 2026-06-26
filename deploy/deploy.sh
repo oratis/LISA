@@ -13,8 +13,12 @@
 #       ANTHROPIC_API_KEY→ Claude (LISA_MODEL defaults to claude-sonnet-4-6)
 #       OPENAI_API_KEY   → GPT (set LISA_MODEL=gpt-4o)
 #   RATE-LIMIT whichever key you use — it funds the public demo.
+# Persistence (C2): a GCS bucket is mounted at /data (= $LISA_HOME) so the soul +
+# sessions survive restarts/redeploys (Cloud Run's own FS is ephemeral). The
+# bucket + the runtime service account's access are ensured idempotently here.
+#
 # Overrides: PROJECT (default oratis-491316), REGION (us-central1),
-#   SERVICE (lisa-cloud), LISA_MODEL.
+#   SERVICE (lisa-cloud), LISA_MODEL, LISA_BUCKET (default <project>-lisa-cloud-data).
 #
 # Usage (GLM):
 #   LISA_WEB_TOKEN=… ZHIPU_API_KEY=… deploy/deploy.sh
@@ -43,6 +47,16 @@ ENVS="^##^LISA_EDITION=cloud##LISA_WEB_TOKEN=${LISA_WEB_TOKEN}"
 [ -n "${ZHIPU_API_KEY:-}" ]     && ENVS="${ENVS}##ZHIPU_API_KEY=${ZHIPU_API_KEY}"
 [ -n "${OPENAI_API_KEY:-}" ]    && ENVS="${ENVS}##OPENAI_API_KEY=${OPENAI_API_KEY}"
 
+# ── durable home (C2): a GCS bucket mounted at /data keeps the soul across restarts ──
+BUCKET="${LISA_BUCKET:-${PROJECT}-lisa-cloud-data}"
+echo "→ ensuring durable bucket gs://$BUCKET (+ Cloud Run SA access)"
+gcloud storage buckets describe "gs://$BUCKET" --project "$PROJECT" >/dev/null 2>&1 \
+  || gcloud storage buckets create "gs://$BUCKET" --project "$PROJECT" --location "$REGION" --uniform-bucket-level-access
+# The default Cloud Run runtime identity is the compute service account; grant it object access.
+SA="$(gcloud projects describe "$PROJECT" --format='value(projectNumber)')-compute@developer.gserviceaccount.com"
+gcloud storage buckets add-iam-policy-binding "gs://$BUCKET" --project "$PROJECT" \
+  --member "serviceAccount:$SA" --role roles/storage.objectAdmin >/dev/null
+
 cd "$ROOT"
 cp deploy/Dockerfile ./Dockerfile
 cat > .gcloudignore <<'IGN'
@@ -61,10 +75,13 @@ IGN
 cleanup() { rm -f ./Dockerfile ./.gcloudignore; }
 trap cleanup EXIT
 
-echo "→ deploying $SERVICE to $PROJECT/$REGION (model ${LISA_MODEL:-claude-default}, min-instances=1, allow-unauthenticated; the app's token gate is the auth)"
+echo "→ deploying $SERVICE to $PROJECT/$REGION (model ${LISA_MODEL:-claude-default}, /data←gs://$BUCKET, min=max=1 single-writer, allow-unauthenticated; the app's token gate is the auth)"
 gcloud run deploy "$SERVICE" \
   --source . --project "$PROJECT" --region "$REGION" --quiet \
-  --allow-unauthenticated --min-instances 1 --max-instances 2 \
+  --allow-unauthenticated --min-instances 1 --max-instances 1 \
+  --execution-environment gen2 \
+  --add-volume "name=soul,type=cloud-storage,bucket=$BUCKET" \
+  --add-volume-mount "volume=soul,mount-path=/data" \
   --memory 1Gi --cpu 1 --timeout 300 \
   --set-env-vars "$ENVS"
 
