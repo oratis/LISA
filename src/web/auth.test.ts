@@ -55,4 +55,14 @@ describe("isRequestAuthorized — the RCE gate (red-team)", () => {
   test("a LAN request with the correct token is allowed", () => {
     assert.equal(isRequestAuthorized("192.168.1.20", TOKEN, TOKEN), true);
   });
+
+  // Cloud edition: loopback is NOT a free pass — the container must not trust
+  // its own/proxy loopback, so trustLoopback=false forces a token everywhere.
+  test("trustLoopback=false (cloud) makes loopback require the token", () => {
+    assert.equal(isRequestAuthorized("127.0.0.1", TOKEN, null, false), false);
+    assert.equal(isRequestAuthorized("::1", TOKEN, "wrong", false), false);
+    assert.equal(isRequestAuthorized("127.0.0.1", TOKEN, TOKEN, false), true);
+    // default (Mac edition) still trusts loopback
+    assert.equal(isRequestAuthorized("127.0.0.1", TOKEN, null), true);
+  });
 });

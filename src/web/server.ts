@@ -67,6 +67,7 @@ import {
 } from "../screen_advisor/engine.js";
 import os from "node:os";
 import { LISA_HOME } from "../paths.js";
+import { isCloud, editionInfo } from "../edition.js";
 import type { ToolDefinition, StoredMessage } from "../types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -115,8 +116,9 @@ export function isRequestAuthorized(
   remoteAddr: string,
   webToken: string | null,
   presented: string | null,
+  trustLoopback = true,
 ): boolean {
-  if (isLoopbackAddress(remoteAddr)) return true;
+  if (trustLoopback && isLoopbackAddress(remoteAddr)) return true;
   return !!webToken && !!presented && timingSafeEqualStr(presented, webToken);
 }
 
@@ -559,10 +561,14 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // full-tool agent and /api/vision/capture grabs the screen, so an
     // unauthenticated non-loopback request is a remote-code-execution hole.
     const remoteAddr = req.socket.remoteAddress ?? "";
-    if (!isLoopbackAddress(remoteAddr)) {
+    // In the hosted cloud edition there is no trusted local user — the gate runs
+    // for EVERY request and loopback is not a free pass (the container must never
+    // trust its own/proxy loopback). Mac edition: loopback = the local owner.
+    const cloud = isCloud();
+    if (cloud || !isLoopbackAddress(remoteAddr)) {
       const presented = webToken ? presentedToken(req, url) : null;
       // Authorized by the global LISA_WEB_TOKEN OR a non-revoked per-device token.
-      let authed = isRequestAuthorized(remoteAddr, webToken, presented);
+      let authed = isRequestAuthorized(remoteAddr, webToken, presented, !cloud);
       if (!authed && presented) {
         const device = verifyDeviceToken(presented);
         if (device) {
@@ -611,6 +617,14 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     if (req.method === "GET" && (url === "/" || url.startsWith("/?"))) {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       res.end(MAIN_HTML);
+      return;
+    }
+
+    // Edition + capability descriptor — the client hides Mac-only surfaces
+    // (PTY/adopt, local dispatch, Sense, agent control) in the cloud edition.
+    if (req.method === "GET" && url === "/api/edition") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify(editionInfo()));
       return;
     }
 
