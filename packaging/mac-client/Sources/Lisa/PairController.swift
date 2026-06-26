@@ -29,6 +29,13 @@ final class PairController {
 
     /// Mint a device token and show a scannable QR (or an error alert).
     func showPairing() {
+        // Already showing a QR? Refocus it instead of minting another device token —
+        // avoids orphan device entries from repeated taps while the window is open.
+        if let window, window.isVisible {
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+            return
+        }
         Task { @MainActor in
             do { present(try await mint()) }
             catch { presentError(error) }
@@ -75,10 +82,16 @@ final class PairController {
         }
     }
 
-    // MARK: - LAN IP (mirrors pair.ts detectLanHost: first non-internal IPv4)
+    // MARK: - LAN IP (like pair.ts detectLanHost, but biased to a reachable address)
 
+    /// The Mac's LAN IPv4 to put in the QR. `pair.ts` takes the *first* non-internal
+    /// IPv4; here we additionally rank interfaces so a phone-reachable address wins:
+    /// real Ethernet/Wi-Fi (`en*`) over VPN/virtual/Internet-Sharing (`utun`, `bridge`,
+    /// `vmnet`, …) and AWDL (`awdl`/`llw`, which are up but not LAN-routable).
+    /// Link-local (169.254) is skipped. The window still shows the picked host so a
+    /// wrong guess is visible. (CLI users can override via `lisa pair --host`.)
     static func detectLanHost() -> String? {
-        var result: String?
+        var best: (rank: Int, ip: String)?
         var ifaddrPtr: UnsafeMutablePointer<ifaddrs>?
         guard getifaddrs(&ifaddrPtr) == 0, let first = ifaddrPtr else { return nil }
         defer { freeifaddrs(ifaddrPtr) }
@@ -86,12 +99,27 @@ final class PairController {
             let flags = ptr.pointee.ifa_flags
             guard (flags & UInt32(IFF_UP)) != 0, (flags & UInt32(IFF_LOOPBACK)) == 0 else { continue }
             guard let addr = ptr.pointee.ifa_addr, addr.pointee.sa_family == UInt8(AF_INET) else { continue }
+            let name = String(cString: ptr.pointee.ifa_name)
             var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
             guard getnameinfo(addr, socklen_t(addr.pointee.sa_len), &host, socklen_t(host.count), nil, 0, NI_NUMERICHOST) == 0 else { continue }
             let ip = String(cString: host)
-            if !ip.isEmpty && !ip.hasPrefix("169.254") { result = ip; break }   // skip link-local
+            guard !ip.isEmpty, !ip.hasPrefix("169.254") else { continue }   // skip link-local
+            // Strictly-greater keeps the first interface at each rank (en0 before en1),
+            // preserving getifaddrs order as the tiebreak.
+            let rank = Self.interfaceRank(name)
+            if best == nil || rank > best!.rank { best = (rank, ip) }
         }
-        return result
+        return best?.ip
+    }
+
+    /// Higher = more likely reachable by a phone on the same Wi-Fi.
+    private static func interfaceRank(_ name: String) -> Int {
+        if name.hasPrefix("awdl") || name.hasPrefix("llw") { return 0 }  // Apple wireless direct — not routable
+        for p in ["utun", "ipsec", "ppp", "bridge", "vmnet", "vnic", "tap", "tun"] {
+            if name.hasPrefix(p) { return 1 }                            // VPN / virtualization / Internet Sharing
+        }
+        if name.hasPrefix("en") { return 3 }                            // Ethernet / Wi-Fi — what we want
+        return 2                                                         // unknown: beats VPN, loses to en*
     }
 
     // MARK: - Pair URL (mirrors pair.ts buildPairUrl) + QR
