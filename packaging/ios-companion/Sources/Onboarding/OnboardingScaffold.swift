@@ -5,6 +5,14 @@ import UIKit
 // Small composable pieces rather than one big generic scaffold, so each screen
 // reads top-to-bottom and compiles cleanly.
 
+/// Tasteful haptics for the flow — a success tap on copy / connect, a warning on a
+/// failed connect, a selection tick when picking a card.
+enum Haptics {
+    static func success()   { UINotificationFeedbackGenerator().notificationOccurred(.success) }
+    static func warning()   { UINotificationFeedbackGenerator().notificationOccurred(.warning) }
+    static func selection() { UISelectionFeedbackGenerator().selectionChanged() }
+}
+
 /// Progress dots for the dotted sub-sequence (install → connect). Hidden for the
 /// pre-flow steps (welcome / mode) and the cloud branch by passing `step: nil`.
 struct OnboardingDots: View {
@@ -97,7 +105,7 @@ struct CopyCommandRow: View {
     }
     private func copy() {
         UIPasteboard.general.string = command
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        Haptics.success()
         withAnimation { copied = true }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
             withAnimation { copied = false }
@@ -116,7 +124,7 @@ struct OnboardingChoiceCard: View {
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
+        Button(action: { Haptics.selection(); action() }) {
             HStack(spacing: 14) {
                 Image(systemName: systemImage)
                     .font(.title2)

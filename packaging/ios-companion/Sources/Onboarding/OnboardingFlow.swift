@@ -255,12 +255,27 @@ struct OnboardingFlow: View {
     @ViewBuilder private var footer: some View {
         if outcome == .ok {
             OnboardingPrimaryButton(title: "Enter") { app.finishOnboarding(paired: true) }
-        } else if !verifying, outcome != nil {
+        } else if !verifying, let outcome {
+            // Outcome-specific recovery: a rejected token re-scans, an unreachable
+            // Mac retries (see VerifyOutcome.recovery).
+            let actions = outcome.recovery
             VStack(spacing: 8) {
-                OnboardingPrimaryButton(title: "Try again") { Task { await verify() } }
-                OnboardingSecondaryButton(title: "Enter manually") { openManual(.mac) }
+                if let primary = actions.first {
+                    OnboardingPrimaryButton(title: primary.label) { perform(primary) }
+                }
+                ForEach(Array(actions.dropFirst()), id: \.self) { action in
+                    OnboardingSecondaryButton(title: action.label) { perform(action) }
+                }
                 OnboardingSecondaryButton(title: "Back") { go(.pair) }
             }
+        }
+    }
+
+    private func perform(_ action: RecoveryAction) {
+        switch action {
+        case .retry:  Task { await verify() }
+        case .rescan: scanNote = nil; go(.scan)
+        case .manual: openManual(.mac)
         }
     }
 
@@ -293,8 +308,10 @@ struct OnboardingFlow: View {
     @MainActor private func verify() async {
         verifying = true
         outcome = nil
-        outcome = await app.verifyConnection()
+        let result = await app.verifyConnection()
+        outcome = result
         verifying = false
+        if result == .ok { Haptics.success() } else { Haptics.warning() }
     }
 }
 
