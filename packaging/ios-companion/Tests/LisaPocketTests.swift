@@ -94,7 +94,7 @@ final class LisaPocketTests: XCTestCase {
 
     // ── ConnectionMode persists by rawValue (the "lisa.mode" UserDefaults key) ──
     func testConnectionModeRawValues() {
-        XCTAssertEqual(ConnectionMode(rawValue: "myMac"), .myMac)
+        XCTAssertEqual(ConnectionMode(rawValue: "mac"), .mac)
         XCTAssertEqual(ConnectionMode(rawValue: "cloud"), .cloud)
         XCTAssertNil(ConnectionMode(rawValue: "bogus"))
         XCTAssertEqual(ConnectionMode.allCases.count, 2)

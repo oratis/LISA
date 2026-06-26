@@ -17,9 +17,9 @@ enum DeepLinkRoute: Equatable {
 /// Which data plane the app talks to — your own Mac, or hosted LISA Cloud.
 /// One identity, two data planes (see docs/PLAN_IDENTITY_v1.0.md).
 enum ConnectionMode: String, CaseIterable, Identifiable {
-    case myMac, cloud
+    case mac, cloud
     var id: String { rawValue }
-    var label: String { self == .myMac ? "My Mac" : "LISA Cloud" }
+    var label: String { self == .mac ? "My Mac" : "LISA Cloud" }
 }
 
 @MainActor
@@ -47,7 +47,7 @@ final class AppState: ObservableObject {
         let cfg = ServerConfig(host: host, port: storedPort == 0 ? 5757 : storedPort, token: TokenStore.load(), scheme: scheme)
         self.config = cfg
         self.client = LisaClient(config: cfg)
-        self.connectionMode = ConnectionMode(rawValue: d.string(forKey: "lisa.mode") ?? "") ?? .myMac
+        self.connectionMode = ConnectionMode(rawValue: d.string(forKey: "lisa.mode") ?? "") ?? .mac
         let lockOn = d.bool(forKey: "lisa.biometricLock")
         self.biometricLockEnabled = lockOn
         self.locked = lockOn && cfg.token != nil  // require unlock at launch when armed

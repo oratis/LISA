@@ -24,12 +24,12 @@ struct SettingsView: View {
                     }
                     .pickerStyle(.segmented)
                 } footer: {
-                    Text(app.connectionMode == .myMac
+                    Text(app.connectionMode == .mac
                          ? "Talk to your own Mac running Lisa — your data stays on your Mac."
                          : "Use hosted LISA Cloud — no Mac needed.")
                 }
 
-                if app.connectionMode == .myMac {
+                if app.connectionMode == .mac {
                     Section("Connection") {
                         TextField("Host (IP or tailnet name)", text: $host)
                             .autocorrectionDisabled()
