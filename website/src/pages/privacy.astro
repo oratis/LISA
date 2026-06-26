@@ -1,0 +1,76 @@
+---
+import Base from "../layouts/Base.astro";
+---
+<Base title="Privacy" lang="en" description="Lisa's privacy policy — a local-first AI that collects nothing to our servers.">
+  <h1>Privacy Policy</h1>
+  <p><em>Last updated: 2026-06-26</em></p>
+
+  <p>
+    Lisa is <strong>local-first</strong>. The apps — <strong>Lisa</strong> (macOS)
+    and <strong>Lisa Pocket</strong> (iOS) — are clients to a Lisa backend that
+    <em>you</em> run or choose. We do not operate a server that receives your
+    personal data in normal use, and we do not sell, rent, or share any data.
+  </p>
+
+  <h2>What we collect</h2>
+  <p>
+    <strong>Nothing — to us.</strong> Lisa Pocket and Lisa collect no analytics,
+    no advertising identifiers, and contain no third-party tracking SDKs. There is
+    no Lisa-operated account system in the default (local) mode.
+  </p>
+
+  <h2>What stays on your device</h2>
+  <ul>
+    <li>
+      <strong>Connection settings</strong> — the address of your backend and a
+      device token are stored on your device (the iOS Keychain / app preferences)
+      so the app can reconnect. They are never sent to us.
+    </li>
+    <li>
+      <strong>Your conversations and Lisa's memory ("soul")</strong> live on the
+      backend you connect to — your own Mac (under <code>~/.lisa</code>) or a Lisa
+      Cloud instance you use. The app is a window onto that backend.
+    </li>
+  </ul>
+
+  <h2>Your backend &amp; LLM providers</h2>
+  <p>
+    When you chat, your messages are processed by the large-language-model
+    provider configured on <em>your</em> backend (e.g. Anthropic, Zhipu/GLM,
+    OpenAI, Google), using <em>your</em> API key. That processing is governed by
+    that provider's privacy policy. We do not intercept or relay it.
+  </p>
+
+  <h2>Lisa Cloud (optional / demo)</h2>
+  <p>
+    If you connect to a hosted <strong>Lisa Cloud</strong> instance instead of
+    your own Mac, your messages are processed by that instance to provide the
+    service (and passed to its configured LLM provider). The public review/demo
+    instance is <strong>shared and rate-limited</strong> — please don't put
+    sensitive information into it.
+  </p>
+
+  <h2>Notifications</h2>
+  <p>
+    If you enable push notifications, a push token (Apple APNs, or an ntfy topic
+    you choose) is used <em>only</em> to deliver the alerts you opt into, routed
+    through the backend you paired with. It is not used for tracking.
+  </p>
+
+  <h2>Children</h2>
+  <p>Lisa is not directed at children under 13 and does not knowingly collect their data.</p>
+
+  <h2>Changes</h2>
+  <p>
+    We may update this policy as the apps evolve; material changes will be noted
+    here with a new date. The source is public:
+    <a href="https://github.com/oratis/LISA">github.com/oratis/LISA</a>.
+  </p>
+
+  <h2>Contact</h2>
+  <p>
+    Questions about privacy? Open an issue at
+    <a href="https://github.com/oratis/LISA/issues">github.com/oratis/LISA/issues</a>
+    or email <a href="mailto:wangharp@gmail.com">wangharp@gmail.com</a>.
+  </p>
+</Base>

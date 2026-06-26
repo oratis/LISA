@@ -87,6 +87,7 @@ const promptHost = lang === "zh-CN" ? "lisa@meetlisa" : "lisa@meetlisa";
           ? "lisa · MIT 开源 · 主权属于用户的本地 AI · 运行于 ~/.lisa"
           : "lisa · MIT open source · sovereign AI on your machine · lives in ~/.lisa"}
       </span>
+      <a class="footer-link" href={lang === "zh-CN" ? "/zh-CN/privacy" : "/privacy"}>{lang === "zh-CN" ? "隐私" : "privacy"}</a>
     </footer>
 
     <style is:global>
@@ -259,6 +260,8 @@ const promptHost = lang === "zh-CN" ? "lisa@meetlisa" : "lisa@meetlisa";
         background: rgba(10,13,43,0.9);
       }
       .footer-text { font-family: 'Press Start 2P', monospace; font-size: 9px; color: var(--text-dim); }
+      .footer-link { font-family: 'Press Start 2P', monospace; font-size: 9px; color: var(--text-dim); margin-left: 14px; }
+      .footer-link:hover { color: var(--amber); }
       .dotgreen { width: 9px; height: 9px; background: var(--green);
         box-shadow: 0 0 8px var(--green); display: inline-block; }
       @media (prefers-reduced-motion: no-preference) {
