@@ -104,3 +104,39 @@ adds these App Store Connect console steps (account actions — only you):
   archive (project.yml stays `development` for normal dev builds).
 - Live push behavior is still only verifiable on a real device with `LISA_APNS_*`
   configured; everything up to the upload is scripted here.
+
+## App Review notes (paste into ASC → App Review Information)
+
+Set **Sign-in required: YES** and point the reviewer at the hosted LISA Cloud
+demo (so they need no Mac). Fill the two placeholders from the live Cloud Run
+service (`gcloud run services describe lisa-cloud …`) — keep the real token OUT
+of this repo:
+
+```
+Lisa Pocket is a companion client for "Lisa", a personal AI. It connects to
+EITHER (a) the user's own Mac running the open-source Lisa server (local +
+private — the default), OR (b) a hosted LISA Cloud instance.
+
+A reviewer has no Mac, so please use the hosted demo:
+  1. Open the app → Settings tab.
+  2. "Connect to" → choose "LISA Cloud".
+  3. Paste this into the field and tap Connect:
+       <DEMO_URL>/?token=<DEMO_TOKEN>
+  4. Open the Chat tab and talk to Lisa.
+
+Lisa collects no personal data; the cloud demo is a shared, rate-limited
+instance provided for review.
+```
+
+## Pre-submission checklist (App Store, public)
+
+- [ ] ASC app record created (`ai.meetlisa.pocket`) + App Store Connect API key
+- [ ] LISA Cloud demo live + token filled into the review notes above
+- [ ] App Privacy → **Data Not Collected** (matches `PrivacyInfo.xcprivacy`)
+- [ ] Export compliance → covered by `ITSAppUsesNonExemptEncryption=false`
+- [ ] **Privacy-policy URL** (required) hosted on meetlisa.ai
+- [ ] Support URL
+- [ ] Screenshots — 6.7" + 6.5" iPhone (iPad if `supportsTablet`)
+- [ ] Metadata — name/subtitle/description/keywords/category/age rating
+- [ ] `testflight.sh` upload succeeded → build shows in TestFlight
+- [ ] Build attached to the version → **Submit for Review**
