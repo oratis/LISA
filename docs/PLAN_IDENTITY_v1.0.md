@@ -141,5 +141,5 @@ mode's auth in I2. Settings shows only the fields relevant to the chosen mode.
 
 - This doc.
 - **I1**: the iOS connection-mode scaffold (below). I2/I3 are sequenced; I2 is
-  blocked on you enabling "Sign in with Apple" for `ai.meetlisa.pocket` in the
+  blocked on you enabling "Sign in with Apple" for `ai.meetlisa.main` in the
   Apple Developer portal.

@@ -192,7 +192,7 @@ describe("APNs", () => {
       LISA_APNS_KEY_ID: "K1", LISA_APNS_TEAM_ID: "T1", LISA_APNS_KEY: pem, LISA_APNS_ENV: "production",
     } as unknown as NodeJS.ProcessEnv);
     assert.equal(cfg?.keyId, "K1");
-    assert.equal(cfg?.topic, "ai.meetlisa.pocket");
+    assert.equal(cfg?.topic, "ai.meetlisa.main");
     assert.equal(cfg?.host, "api.push.apple.com");
   });
 
@@ -217,7 +217,7 @@ describe("APNs", () => {
   });
 
   test("sendApns: POSTs /3/device/<token> with apns headers; 200→true, 4xx→false", async () => {
-    const cfg = { keyId: "K1", teamId: "T1", key: pem, topic: "ai.meetlisa.pocket", host: "api.sandbox.push.apple.com" };
+    const cfg = { keyId: "K1", teamId: "T1", key: pem, topic: "ai.meetlisa.main", host: "api.sandbox.push.apple.com" };
     let captured: { host: string; path: string; headers: Record<string, string>; body: string } | null = null;
     const ok = await sendApns(
       cfg, "devtoken", { title: "T", body: "B", priority: "high", click: "lisapocket://x" },
@@ -225,7 +225,7 @@ describe("APNs", () => {
     );
     assert.equal(ok, true);
     assert.equal(captured!.path, "/3/device/devtoken");
-    assert.equal(captured!.headers["apns-topic"], "ai.meetlisa.pocket");
+    assert.equal(captured!.headers["apns-topic"], "ai.meetlisa.main");
     assert.equal(captured!.headers["apns-push-type"], "alert");
     assert.equal(captured!.headers["apns-priority"], "10");
     assert.equal(captured!.headers["apns-expiration"], "0"); // high-priority → deliver-now-or-drop
@@ -240,7 +240,7 @@ describe("APNs", () => {
 describe("Live Activity remote updates", () => {
   const kp = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   const pem = kp.privateKey.export({ type: "pkcs8", format: "pem" }) as string;
-  const cfg = { keyId: "K1", teamId: "T1", key: pem, topic: "ai.meetlisa.pocket", host: "api.sandbox.push.apple.com" };
+  const cfg = { keyId: "K1", teamId: "T1", key: pem, topic: "ai.meetlisa.main", host: "api.sandbox.push.apple.com" };
 
   test("liveActivityState mirrors the app's content-state + detail()", () => {
     assert.deepEqual(
@@ -272,7 +272,7 @@ describe("Live Activity remote updates", () => {
     );
     assert.equal(ok, true);
     assert.equal(captured!.path, "/3/device/latoken");
-    assert.equal(captured!.headers["apns-topic"], "ai.meetlisa.pocket.push-type.liveactivity");
+    assert.equal(captured!.headers["apns-topic"], "ai.meetlisa.main.push-type.liveactivity");
     assert.equal(captured!.headers["apns-push-type"], "liveactivity");
   });
 

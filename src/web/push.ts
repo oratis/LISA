@@ -10,7 +10,7 @@
  *  - `apns` is the iOS-native path (token-based auth, HTTP/2). It's fully wired
  *    here but inert until you provide an Apple push key via env:
  *      LISA_APNS_KEY_ID, LISA_APNS_TEAM_ID, LISA_APNS_KEY (.p8 PEM or a path),
- *      LISA_APNS_TOPIC (default ai.meetlisa.pocket), LISA_APNS_ENV=production.
+ *      LISA_APNS_TOPIC (default ai.meetlisa.main), LISA_APNS_ENV=production.
  *    Without those, apnsConfigFromEnv() returns null and delivery logs a stub.
  * Payloads carry low-sensitivity metadata only (agent / project / state / reason)
  * — never prompts, replies, full commands, or terminal output.
@@ -237,7 +237,7 @@ export interface ApnsConfig {
   teamId: string;
   /** The .p8 auth-key contents (PEM). */
   key: string;
-  /** Bundle id, e.g. ai.meetlisa.pocket. */
+  /** Bundle id, e.g. ai.meetlisa.main. */
   topic: string;
   /** api.push.apple.com (prod) or api.sandbox.push.apple.com (dev). */
   host: string;
@@ -256,7 +256,7 @@ export function apnsConfigFromEnv(env: NodeJS.ProcessEnv = process.env): ApnsCon
   if (!raw.includes("BEGIN")) {
     try { key = fs.readFileSync(raw, "utf8"); } catch { return null; }
   }
-  const topic = env.LISA_APNS_TOPIC || "ai.meetlisa.pocket";
+  const topic = env.LISA_APNS_TOPIC || "ai.meetlisa.main";
   const host = env.LISA_APNS_ENV === "production" ? "api.push.apple.com" : "api.sandbox.push.apple.com";
   return { keyId, teamId, key, topic, host };
 }

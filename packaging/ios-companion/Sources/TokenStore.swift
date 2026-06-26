@@ -4,7 +4,7 @@ import Security
 /// The device/global token lives in the Keychain, not UserDefaults — it's the
 /// credential that authenticates this phone to the Mac.
 enum TokenStore {
-    private static let service = "ai.meetlisa.pocket.token"
+    private static let service = "ai.meetlisa.main.token"
     private static let account = "default"
 
     static func save(_ token: String) {

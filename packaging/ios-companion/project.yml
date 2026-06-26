@@ -37,7 +37,7 @@ targets:
         NSLocalNetworkUsageDescription: "Connect to the Lisa backend running on your Mac over your local network."
         ITSAppUsesNonExemptEncryption: false
         CFBundleURLTypes:
-          - CFBundleURLName: ai.meetlisa.pocket
+          - CFBundleURLName: ai.meetlisa.main
             CFBundleURLSchemes:
               - lisapocket
         NSAppTransportSecurity:
@@ -46,11 +46,11 @@ targets:
       path: Sources/LisaPocket.entitlements
       properties:
         com.apple.security.application-groups:
-          - group.ai.meetlisa.pocket
+          - group.ai.meetlisa.main
         aps-environment: development
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: ai.meetlisa.pocket
+        PRODUCT_BUNDLE_IDENTIFIER: ai.meetlisa.main
 
   LisaPocketWidgets:
     type: app-extension
@@ -68,10 +68,10 @@ targets:
       path: Widgets/LisaPocketWidgets.entitlements
       properties:
         com.apple.security.application-groups:
-          - group.ai.meetlisa.pocket
+          - group.ai.meetlisa.main
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: ai.meetlisa.pocket.widgets
+        PRODUCT_BUNDLE_IDENTIFIER: ai.meetlisa.main.widgets
 
   # Logic tests for the pure helpers (parsing / bucketing / sorting). Hosted by the
   # app so `@testable import LisaPocket` resolves; run with: ./build.sh test (or
@@ -85,7 +85,7 @@ targets:
       - target: LisaPocket
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: ai.meetlisa.pocket.tests
+        PRODUCT_BUNDLE_IDENTIFIER: ai.meetlisa.main.tests
         GENERATE_INFOPLIST_FILE: YES
 
 schemes:
