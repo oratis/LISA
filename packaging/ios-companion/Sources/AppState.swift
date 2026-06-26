@@ -32,7 +32,8 @@ final class AppState: ObservableObject {
         let d = UserDefaults.standard
         let host = d.string(forKey: "lisa.host") ?? ""
         let storedPort = d.integer(forKey: "lisa.port")
-        let cfg = ServerConfig(host: host, port: storedPort == 0 ? 5757 : storedPort, token: TokenStore.load())
+        let scheme = d.string(forKey: "lisa.scheme") ?? "http"
+        let cfg = ServerConfig(host: host, port: storedPort == 0 ? 5757 : storedPort, token: TokenStore.load(), scheme: scheme)
         self.config = cfg
         self.client = LisaClient(config: cfg)
         let lockOn = d.bool(forKey: "lisa.biometricLock")
@@ -76,28 +77,40 @@ final class AppState: ObservableObject {
         }
     }
 
-    func update(host: String, port: Int, token: String?) {
-        let cfg = ServerConfig(host: host, port: port, token: token)
+    func update(host: String, port: Int, token: String?, scheme: String = "http") {
+        let cfg = ServerConfig(host: host, port: port, token: token, scheme: scheme)
         config = cfg
         client = LisaClient(config: cfg)
         let d = UserDefaults.standard
         d.set(host, forKey: "lisa.host")
         d.set(port, forKey: "lisa.port")
+        d.set(scheme, forKey: "lisa.scheme")
         if let token, !token.isEmpty { TokenStore.save(token) } else { TokenStore.delete() }
     }
 
-    /// Parse a pairing string: `lisa-pair://v1?host=&port=&token=` or `http://host:port/?token=`.
+    /// Apply a pairing string (from QR / paste). Returns false if unparseable.
     func applyPairing(_ raw: String) -> Bool {
+        guard let cfg = AppState.parsePairing(raw) else { return false }
+        update(host: cfg.host, port: cfg.port, token: cfg.token, scheme: cfg.scheme)
+        return true
+    }
+
+    /// Pure parse of a pairing string into a ServerConfig (no side effects) — so it's
+    /// testable off the main actor. Accepts `lisa-pair://v1?host=&port=&token=&scheme=`,
+    /// `http://host:port/?token=` (LAN Mac), or `https://host/?token=` (cloud). A
+    /// literal http(s):// URL carries its own scheme; the lisa-pair:// form may pass
+    /// `?scheme=`. Port defaults to 443 for https, else 5757. Requires host + token.
+    nonisolated static func parsePairing(_ raw: String) -> ServerConfig? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let comps = URLComponents(string: trimmed) else { return false }
+        guard let comps = URLComponents(string: trimmed) else { return nil }
         let items = comps.queryItems ?? []
         func q(_ key: String) -> String? { items.first { $0.name == key }?.value }
-        let host = q("host") ?? comps.host
-        let token = q("token")
-        let port = Int(q("port") ?? "") ?? comps.port ?? 5757
-        guard let host, !host.isEmpty, let token, !token.isEmpty else { return false }
-        update(host: host, port: port, token: token)
-        return true
+        guard let host = q("host") ?? comps.host, !host.isEmpty,
+              let token = q("token"), !token.isEmpty else { return nil }
+        let urlScheme = (comps.scheme == "http" || comps.scheme == "https") ? comps.scheme : nil
+        let scheme = q("scheme") ?? urlScheme ?? "http"
+        let port = Int(q("port") ?? "") ?? comps.port ?? (scheme == "https" ? 443 : 5757)
+        return ServerConfig(host: host, port: port, token: token, scheme: scheme)
     }
 
     /// Route a `lisapocket://` deep-link (from a push Click or the home Widget).
