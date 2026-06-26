@@ -33,14 +33,27 @@ default-bind tweak (decision ②).
 ## Decisions (locked)
 
 1. **Ship the My Mac / LISA Cloud fork now** (flow step 1). The Mac path is fully
-   functional; the Cloud card routes to the `edition.ts` sign-in if ready, else a
-   "Coming soon" state. A single `ConnectionMode` threads through later steps and
-   drives `parsePairing`'s `http` (Mac) vs `https` (cloud) scheme.
+   functional. **The Cloud card is active in M1** — it routes to manual paste of an
+   `https://…?token=` cloud URL (the same `parsePairing` path), so a user with a
+   LISA Cloud endpoint can connect today; only *Sign in with Apple* is deferred
+   (shown disabled, "coming soon", wired in M4). A single `ConnectionMode` threads
+   through later steps and drives `parsePairing`'s `http` (Mac) vs `https` (cloud)
+   scheme.
 2. **The menu-bar Mac app binds LAN-reachable by default** (`--host 0.0.0.0`).
    This removes the #1 failure (forgetting the flag) for app users and lets the
    flow's "Start LISA" step branch by install method. LAN-reachable is still
    **token-gated** — someone on your Wi-Fi can attempt to connect but can't
    without the paired device token; the flow says so on-screen.
+   - *Why always-on, not "bind 0.0.0.0 only once a device is paired":* pairing is
+     loopback-only (the QR is minted on the Mac), so gate-on-first-pair is feasible
+     and is strictly more least-privilege — but it costs a backend restart at the
+     exact moment the user is mid-pair, the most failure-sensitive step. Always-on
+     keeps the port open behind the token gate; the residual exposure (a future
+     auth regression / DoS / "this Mac runs LISA" fingerprinting) is the accepted
+     trade for a restart-free pair. Revisit if we ever bind without a token.
+   - *Firewall:* the first `0.0.0.0` bind can trip the macOS Application Firewall
+     "allow incoming connections" prompt for the `node` process; if denied, pairing
+     fails. The onboarding "Can't reach your Mac" help calls this out.
 3. **Skip allowed + "Finish setup" banner.** `needsOnboarding = !isConfigured &&
    !skipped`. Skipping drops into the app's existing empty states plus a
    persistent top banner that re-enters the flow; Settings also gets a

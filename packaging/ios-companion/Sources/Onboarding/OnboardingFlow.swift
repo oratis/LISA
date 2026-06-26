@@ -278,7 +278,7 @@ struct OnboardingFlow: View {
             case .unreachable, .ok:
                 return ("wifi.exclamationmark",
                         "Can't reach your Mac",
-                        "• Is this iPhone on the same Wi-Fi as your Mac?\n• For a terminal install, did you start it with `--host 0.0.0.0`?\n• A Tailscale tailnet name works too.")
+                        "• Is this iPhone on the same Wi-Fi as your Mac?\n• For a terminal install, did you start it with `--host 0.0.0.0`?\n• If macOS asked to allow incoming connections, choose Allow.\n• A Tailscale tailnet name works too.")
             }
         }()
         VStack(spacing: 14) {
