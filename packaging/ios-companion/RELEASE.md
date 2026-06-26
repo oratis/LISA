@@ -12,6 +12,18 @@ workflow runs the same thing in CI — modeled on the secret-gated pattern of
 App identity: bundle id **`ai.meetlisa.pocket`** (+ the widget extension
 `ai.meetlisa.pocket.widgets`), team **`9LH9NBX7P4`**.
 
+**Reused from Telloria** (same Apple Developer account, **wangharp@gmail.com**):
+the Apple **team `9LH9NBX7P4`** and the **App Store Connect API key** are
+account-level, so the very key that uploads Telloria uploads Lisa Pocket too —
+no new credentials. The **privacy manifest** ([`Sources/PrivacyInfo.xcprivacy`](Sources/PrivacyInfo.xcprivacy))
+mirrors Telloria's required-reason API set (UserDefaults / file-timestamp /
+boot-time / disk-space). It differs only on data collection: Telloria declares
+email / user-id / purchase / analytics because it collects them; Lisa Pocket is
+a thin client to **your own** backend and collects nothing to a Lisa server, so
+its collected-data + tracking are empty. **iOS only** — there is no Android
+target (Lisa Pocket is native SwiftUI, not the Expo app Telloria ships to both
+stores).
+
 ## One-time setup (Apple account actions — only you can do these)
 
 1. **Register the app in App Store Connect.** App Store Connect → Apps → ➕ →
@@ -61,6 +73,27 @@ Add these repo secrets (Settings → Secrets and variables → Actions):
 
 Then push a tag `pocket-vX.Y.Z` (or run the workflow manually). With the secrets
 absent the workflow is a no-op, so the repo stays green for others.
+
+## From TestFlight to App Store (public release)
+
+TestFlight (above) gets the build to Apple. Going **public on the App Store**
+adds these App Store Connect console steps (account actions — only you):
+
+1. **App Privacy** (App → App Privacy) — answer **"Data Not Collected"** to match
+   the privacy manifest (Lisa Pocket is a thin client to your own backend; nothing
+   reaches a Lisa-operated server). No tracking.
+2. **Reviewability — the make-or-break item.** A reviewer has no Mac running
+   `lisa serve`, so a pairing-only build looks non-functional (Guideline 2.1).
+   Ship the **LISA Cloud M0 demo** (see [docs/PLAN_CLOUD_v1.0.md](../../docs/PLAN_CLOUD_v1.0.md)):
+   a hosted instance + a seeded **demo account**, and put its credentials in
+   App Review → **App Review Information → Sign-in required → demo user/pass**,
+   with a note explaining the Mac-pairing vs cloud modes.
+3. **Encryption / export compliance** — answered by `ITSAppUsesNonExemptEncryption=false`
+   in `project.yml` (standard HTTPS only), so no per-build prompt.
+4. **Metadata** — name "Lisa Pocket", subtitle, description, keywords, **support URL**
+   + **privacy-policy URL** (required; host on meetlisa.ai), category, **age rating**,
+   and **screenshots** (6.7"/6.5" iPhone at minimum; iPad if `supportsTablet`).
+5. **Submit for Review** (the build from TestFlight → "Add Build" on the app version).
 
 ## Honest limits
 
