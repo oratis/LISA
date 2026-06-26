@@ -35,10 +35,12 @@ import { MAIN_HTML } from "./lisa-html.js";
  * (browser counterpart to `lisa pair`), with its .pair-row CSS.
  * Then: a scannable QR (server-rendered SVG from /api/pair/start) at the top of
  * that modal, with .pair-qr CSS.
+ * Then: composer ＋ / 🎙 glyphs → line-style SVG icons matching the .fbtn
+ * function bar (+ #plusBtn/#recordBtn svg sizing; resting color → --fg-2).
  */
-const EXPECTED_LENGTH = 150733;
+const EXPECTED_LENGTH = 151331;
 const EXPECTED_SHA256 =
-  "f7adb8e271d8a3984a41810783f5e9918ad9c8b78b9d460cb5e3f7b122a2d6d8";
+  "72098d77767d32d5ca646a7aee675cc0cf4419f70956380cd18aa56d4ba9e19f";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);

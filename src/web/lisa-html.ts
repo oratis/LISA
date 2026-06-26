@@ -170,13 +170,13 @@ ${MAIN_CSS}
     <form id="form">
       <input type="file" id="fileInput" accept="image/*,.pdf,.txt,.md,.csv,.json" multiple>
       <div class="plus-wrap">
-        <button type="button" id="plusBtn" title="Attach or screenshot">＋</button>
+        <button type="button" id="plusBtn" title="Attach or screenshot" aria-label="Attach or screenshot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
         <div class="plus-menu" id="plusMenu">
           <button type="button" id="pmAttach"><span class="g">📎</span> Attach file</button>
           <button type="button" id="pmShot"><span class="g">📷</span> Screenshot</button>
         </div>
       </div>
-      <button type="button" id="recordBtn" title="Dictate — speak and Lisa drops polished text in the box (hold to record a summary)">🎙</button>
+      <button type="button" id="recordBtn" title="Dictate — speak and Lisa drops polished text in the box (hold to record a summary)" aria-label="Dictate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/></svg></button>
       <textarea id="input" placeholder="Talk to Lisa…  (Enter to send · Shift+Enter for newline)" autofocus></textarea>
       <button type="submit" id="sendBtn">
         <img src="/assets/icon-send.png" alt="">
