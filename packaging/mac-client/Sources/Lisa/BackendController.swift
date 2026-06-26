@@ -150,12 +150,22 @@ final class BackendController {
     }
 
     /// Read KEY=value from a flat env file (first match), unquoting a simple value.
+    /// Tolerates a leading `export ` and a trailing ` # comment` the way the backend's
+    /// own parser does (src/env.ts `parseEnv`), so a hand-edited config.env doesn't
+    /// make us miss an existing token and mint a duplicate.
     private func readEnvValue(_ key: String, from path: String) -> String? {
         guard let contents = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
         for raw in contents.split(separator: "\n") {
-            let line = raw.trimmingCharacters(in: .whitespaces)
+            var line = raw.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("export ") {
+                line = String(line.dropFirst("export ".count)).trimmingCharacters(in: .whitespaces)
+            }
             guard line.hasPrefix("\(key)=") else { continue }
-            let value = String(line.dropFirst(key.count + 1))
+            var value = String(line.dropFirst(key.count + 1)).trimmingCharacters(in: .whitespaces)
+            // Strip an inline comment, but only on an unquoted value (mirrors env.ts).
+            if !value.hasPrefix("\"") && !value.hasPrefix("'"), let hash = value.firstIndex(of: "#") {
+                value = String(value[..<hash]).trimmingCharacters(in: .whitespaces)
+            }
             return value.trimmingCharacters(in: CharacterSet(charactersIn: "\"' "))
         }
         return nil
