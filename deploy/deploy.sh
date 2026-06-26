@@ -47,6 +47,7 @@ cd "$ROOT"
 cp deploy/Dockerfile ./Dockerfile
 cat > .gcloudignore <<'IGN'
 .git
+.claude
 node_modules
 dist
 packaging
@@ -54,6 +55,8 @@ website
 docs
 reference
 build
+*.log
+.DS_Store
 IGN
 cleanup() { rm -f ./Dockerfile ./.gcloudignore; }
 trap cleanup EXIT
