@@ -38,6 +38,8 @@ final class AppState: ObservableObject {
     @Published var locked: Bool
     /// Last APNs registration outcome, shown in Settings.
     @Published var pushStatus = ""
+    /// Drives the first-run onboarding cover (docs/PLAN_IOS_ONBOARDING_v1.0.md).
+    @Published var showOnboarding = false
 
     init() {
         let d = UserDefaults.standard
@@ -51,6 +53,8 @@ final class AppState: ObservableObject {
         let lockOn = d.bool(forKey: "lisa.biometricLock")
         self.biometricLockEnabled = lockOn
         self.locked = lockOn && cfg.token != nil  // require unlock at launch when armed
+        // Guided setup auto-opens for a brand-new (unpaired, never-onboarded) install.
+        self.showOnboarding = !cfg.isConfigured && !d.bool(forKey: "lisa.onboarded")
         // The AppDelegate posts the APNs device token here once it arrives.
         NotificationCenter.default.addObserver(forName: .apnsToken, object: nil, queue: .main) { [weak self] note in
             let hex = note.object as? String
@@ -128,6 +132,46 @@ final class AppState: ObservableObject {
         let scheme = q("scheme") ?? urlScheme ?? "http"
         let port = Int(q("port") ?? "") ?? comps.port ?? (scheme == "https" ? 443 : 5757)
         return ServerConfig(host: host, port: port, token: token, scheme: scheme)
+    }
+
+    // ── first-run onboarding (docs/PLAN_IOS_ONBOARDING_v1.0.md) ──
+    /// Sticky once the user finishes or skips, so the cover doesn't reappear every
+    /// launch (UserDefaults "lisa.onboarded").
+    private var onboarded: Bool {
+        get { UserDefaults.standard.bool(forKey: "lisa.onboarded") }
+        set { UserDefaults.standard.set(newValue, forKey: "lisa.onboarded") }
+    }
+
+    /// Still unpaired — drives the persistent "Finish setup" banner.
+    var needsSetup: Bool { !config.isConfigured }
+
+    /// Re-enter the flow (from the banner or Settings).
+    func presentOnboarding() { showOnboarding = true }
+
+    /// Close the flow. `paired` true means a verified connection — land on Chat
+    /// (warmer than Dispatch). Either way mark onboarded so it won't auto-reappear.
+    func finishOnboarding(paired: Bool) {
+        onboarded = true
+        showOnboarding = false
+        if paired { selectedTab = 1 }
+    }
+
+    /// Probe the saved config before declaring success, so a bad token / unreachable
+    /// Mac surfaces during onboarding rather than on the first dead tab. Uses the
+    /// cheap authed island ping: 401/403 ⇒ token rejected, a connection error ⇒
+    /// unreachable, 404 ⇒ reachable + token accepted (just an older Mac).
+    func verifyConnection() async -> VerifyOutcome {
+        guard config.isConfigured else { return .unreachable }
+        do {
+            _ = try await client.islandPing()
+            return .ok
+        } catch LisaError.http(let code) {
+            if code == 401 || code == 403 { return .unauthorized }
+            if code == 404 { return .ok }
+            return .serverError(code)
+        } catch {
+            return .unreachable
+        }
     }
 
     /// Route a `lisapocket://` deep-link (from a push Click or the home Widget).

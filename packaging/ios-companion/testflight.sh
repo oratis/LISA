@@ -12,7 +12,7 @@
 # ── One-time setup (see RELEASE.md) ───────────────────────────────────────
 #   1. Apple Developer account; an "Apple Distribution" cert in the keychain
 #      (already present on the dev Mac; CI imports one from a secret).
-#   2. Create the app in App Store Connect with bundle id ai.meetlisa.pocket.
+#   2. Create the app in App Store Connect with bundle id ai.meetlisa.main.
 #   3. Create an App Store Connect API key (Users and Access → Integrations →
 #      App Store Connect API), role "App Manager". Note the Key ID + Issuer ID
 #      and download the AuthKey_<KEYID>.p8 once.

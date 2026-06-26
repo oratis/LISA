@@ -120,4 +120,30 @@ final class LisaPocketTests: XCTestCase {
         let s = try JSONDecoder().decode(AgentSession.self, from: Data(json.utf8))
         XCTAssertNil(s.lastMtime)
     }
+
+    // ── onboarding model: install commands are the real repo ones ──
+    func testInstallCommands() {
+        XCTAssertEqual(InstallMethod.homebrew.installCommand, "brew install oratis/tap/lisa")
+        XCTAssertEqual(InstallMethod.npm.installCommand, "npm install -g @oratis/lisa")
+        XCTAssertNil(InstallMethod.app.installCommand)            // .app downloads a .dmg instead
+        XCTAssertNotNil(InstallMethod.app.downloadURL)
+        XCTAssertNil(InstallMethod.homebrew.downloadURL)
+        XCTAssertEqual(InstallMethod.allCases.count, 3)
+    }
+
+    // CLI installs must instruct the LAN-reachable bind (the #1 pairing gotcha);
+    // the menu-bar app has nothing to type.
+    func testServeCommandReachableForCLIOnly() {
+        XCTAssertEqual(InstallMethod.npm.serveCommand, "lisa serve --web --host 0.0.0.0")
+        XCTAssertEqual(InstallMethod.homebrew.serveCommand, "lisa serve --web --host 0.0.0.0")
+        XCTAssertNil(InstallMethod.app.serveCommand)
+        XCTAssertTrue(InstallMethod.npm.isCLI)
+        XCTAssertFalse(InstallMethod.app.isCLI)
+    }
+
+    func testOnboardingDottedSequence() {
+        XCTAssertEqual(OnboardingStep.dotted, [.install, .start, .pair, .scan, .connect])
+        XCTAssertEqual(OnboardingStep.welcome.rawValue, 0)        // welcome/mode are pre-flow
+        XCTAssertLessThan(OnboardingStep.install.rawValue, OnboardingStep.connect.rawValue)
+    }
 }

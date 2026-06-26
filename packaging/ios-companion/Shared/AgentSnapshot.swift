@@ -25,7 +25,7 @@ struct AgentSnapshot: Codable, Equatable {
 /// project.yml). Reads/writes degrade to no-ops if the group is unavailable (e.g. an
 /// unsigned build with no group container), so callers never have to special-case it.
 enum SharedStore {
-    static let appGroup = "group.ai.meetlisa.pocket"
+    static let appGroup = "group.ai.meetlisa.main"
     private static let snapshotKey = "roster.snapshot"
 
     private static var defaults: UserDefaults? { UserDefaults(suiteName: appGroup) }

@@ -9,8 +9,8 @@ upload. [`testflight.sh`](testflight.sh) runs it locally; the
 workflow runs the same thing in CI — modeled on the secret-gated pattern of
 `release-mac-apps.yml` (itself lifted from Markup).
 
-App identity: bundle id **`ai.meetlisa.pocket`** (+ the widget extension
-`ai.meetlisa.pocket.widgets`), team **`9LH9NBX7P4`**.
+App identity: bundle id **`ai.meetlisa.main`** (+ the widget extension
+`ai.meetlisa.main.widgets`), team **`9LH9NBX7P4`**.
 
 **Reused from Telloria** (same Apple Developer account, **wangharp@gmail.com**):
 the Apple **team `9LH9NBX7P4`** and the **App Store Connect API key** are
@@ -27,10 +27,10 @@ stores).
 ## One-time setup (Apple account actions — only you can do these)
 
 1. **Register the app in App Store Connect.** App Store Connect → Apps → ➕ →
-   New App → iOS, bundle id `ai.meetlisa.pocket`, pick an SKU. (If the bundle
+   New App → iOS, bundle id `ai.meetlisa.main`, pick an SKU. (If the bundle
    id isn't in the list, register it first under Certificates, IDs & Profiles →
    Identifiers, with **App Groups** + **Push Notifications** capabilities; also
-   create the app group `group.ai.meetlisa.pocket`.)
+   create the app group `group.ai.meetlisa.main`.)
 2. **Create an App Store Connect API key.** Users and Access → Integrations →
    App Store Connect API → ➕, role **App Manager**. Note the **Key ID** and
    **Issuer ID**, and download `AuthKey_<KEYID>.p8` (downloadable once).
@@ -130,7 +130,7 @@ instance provided for review.
 
 ## Pre-submission checklist (App Store, public)
 
-- [ ] ASC app record created (`ai.meetlisa.pocket`) + App Store Connect API key
+- [ ] ASC app record created (`ai.meetlisa.main`) + App Store Connect API key
 - [ ] LISA Cloud demo live + token filled into the review notes above
 - [ ] App Privacy → **Data Not Collected** (matches `PrivacyInfo.xcprivacy`)
 - [ ] Export compliance → covered by `ITSAppUsesNonExemptEncryption=false`
