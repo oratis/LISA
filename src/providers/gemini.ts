@@ -26,6 +26,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { Content, GoogleGenAI, Part } from "@google/genai";
 import type { StoredMessage } from "../types.js";
+import { withStreamRetry } from "./stream-retry.js";
 import type { Provider, ProviderResult, ProviderRunOpts } from "./types.js";
 
 export class GeminiProvider implements Provider {
@@ -71,78 +72,81 @@ export class GeminiProvider implements Provider {
           ]
         : undefined;
 
-    const stream = await client.models.generateContentStream({
-      model: opts.model,
-      contents,
-      config: {
-        // Aborts the in-flight request (the SDK then throws an abort error).
-        abortSignal: opts.signal,
-        systemInstruction: opts.systemPrompt,
-        tools,
-        maxOutputTokens: opts.maxTokens ?? 16_000,
-      },
+    // Per-attempt state lives inside the retry closure so it resets cleanly on
+    // a transient empty-stream retry (see withStreamRetry).
+    return withStreamRetry({ signal: opts.signal }, async (markEmitted) => {
+      const stream = await client.models.generateContentStream({
+        model: opts.model,
+        contents,
+        config: {
+          // Aborts the in-flight request (the SDK then throws an abort error).
+          abortSignal: opts.signal,
+          systemInstruction: opts.systemPrompt,
+          tools,
+          maxOutputTokens: opts.maxTokens ?? 16_000,
+        },
+      });
+
+      let text = "";
+      const toolCalls: Array<{ id: string; name: string; args: Record<string, unknown> }> = [];
+      let inputTokens = 0;
+      let outputTokens = 0;
+
+      for await (const chunk of stream) {
+        const cand = chunk.candidates?.[0];
+        const parts = cand?.content?.parts ?? [];
+        for (const p of parts) {
+          if (typeof p.text === "string" && p.text.length > 0) {
+            markEmitted();
+            text += p.text;
+            opts.handlers?.onTextDelta?.(p.text);
+          }
+          if (p.functionCall) {
+            toolCalls.push({
+              id: p.functionCall.id ?? `call_${p.functionCall.name}_${Math.random().toString(36).slice(2)}`,
+              name: p.functionCall.name ?? "",
+              args: (p.functionCall.args ?? {}) as Record<string, unknown>,
+            });
+          }
+        }
+        // usageMetadata is on the final chunk
+        const usage = chunk.usageMetadata;
+        if (usage) {
+          inputTokens = usage.promptTokenCount ?? 0;
+          outputTokens = usage.candidatesTokenCount ?? 0;
+        }
+      }
+
+      const content: Anthropic.ContentBlock[] = [];
+      if (text) {
+        content.push({ type: "text", text, citations: null } as Anthropic.TextBlock);
+      }
+      for (const tc of toolCalls) {
+        content.push({
+          type: "tool_use",
+          id: tc.id,
+          name: tc.name,
+          input: tc.args,
+        } as Anthropic.ToolUseBlock);
+      }
+
+      // Gemini finish reasons: STOP, MAX_TOKENS, SAFETY, RECITATION, OTHER, BLOCKLIST,
+      // PROHIBITED_CONTENT, SPII, MALFORMED_FUNCTION_CALL, IMAGE_SAFETY.
+      // Tool calls are signaled by the presence of functionCall parts, NOT a
+      // distinct finishReason — so we infer from toolCalls.length.
+      const stopReason = toolCalls.length > 0 ? "tool_use" : "end_turn";
+
+      return {
+        content,
+        stopReason,
+        usage: {
+          inputTokens,
+          outputTokens,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+        },
+      };
     });
-
-    let text = "";
-    const toolCalls: Array<{ id: string; name: string; args: Record<string, unknown> }> = [];
-    let finish = "STOP";
-    let inputTokens = 0;
-    let outputTokens = 0;
-
-    for await (const chunk of stream) {
-      const cand = chunk.candidates?.[0];
-      if (cand?.finishReason) finish = cand.finishReason;
-      const parts = cand?.content?.parts ?? [];
-      for (const p of parts) {
-        if (typeof p.text === "string" && p.text.length > 0) {
-          text += p.text;
-          opts.handlers?.onTextDelta?.(p.text);
-        }
-        if (p.functionCall) {
-          toolCalls.push({
-            id: p.functionCall.id ?? `call_${p.functionCall.name}_${Math.random().toString(36).slice(2)}`,
-            name: p.functionCall.name ?? "",
-            args: (p.functionCall.args ?? {}) as Record<string, unknown>,
-          });
-        }
-      }
-      // usageMetadata is on the final chunk
-      const usage = chunk.usageMetadata;
-      if (usage) {
-        inputTokens = usage.promptTokenCount ?? 0;
-        outputTokens = usage.candidatesTokenCount ?? 0;
-      }
-    }
-
-    const content: Anthropic.ContentBlock[] = [];
-    if (text) {
-      content.push({ type: "text", text, citations: null } as Anthropic.TextBlock);
-    }
-    for (const tc of toolCalls) {
-      content.push({
-        type: "tool_use",
-        id: tc.id,
-        name: tc.name,
-        input: tc.args,
-      } as Anthropic.ToolUseBlock);
-    }
-
-    // Gemini finish reasons: STOP, MAX_TOKENS, SAFETY, RECITATION, OTHER, BLOCKLIST,
-    // PROHIBITED_CONTENT, SPII, MALFORMED_FUNCTION_CALL, IMAGE_SAFETY.
-    // Tool calls are signaled by the presence of functionCall parts, NOT a
-    // distinct finishReason — so we infer from toolCalls.length.
-    const stopReason = toolCalls.length > 0 ? "tool_use" : "end_turn";
-
-    return {
-      content,
-      stopReason,
-      usage: {
-        inputTokens,
-        outputTokens,
-        cacheReadTokens: 0,
-        cacheWriteTokens: 0,
-      },
-    };
   }
 }
 

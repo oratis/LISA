@@ -256,6 +256,42 @@ describe("runAgent — empty assistant content is filtered from history", () => 
   });
 });
 
+describe("runAgent — failed first turn defers user-message persistence", () => {
+  test("nothing is persisted when the first provider call throws", async () => {
+    const provider: Provider = {
+      name: "fake",
+      async runTurn(): Promise<ProviderResult> {
+        throw new Error("request ended without sending any chunks");
+      },
+    };
+    const persisted: StoredMessage[] = [];
+    const events: AgentEvent[] = [];
+
+    await assert.rejects(
+      runAgent({
+        provider,
+        systemPrompt: "sys",
+        tools: [],
+        toolCtx: makeToolCtx(),
+        history: [],
+        userMessage: "hi",
+        model: "fake-model",
+        onMessagePersist: (m) => {
+          persisted.push(m);
+        },
+        onEvent: (e) => events.push(e),
+      }),
+      /any chunks/,
+    );
+
+    // No orphaned user message in the session file → retrying the same message
+    // won't duplicate the user turn.
+    assert.equal(persisted.length, 0);
+    // The failure is still surfaced as an error event for the UI.
+    assert.ok(events.some((e) => e.type === "error"));
+  });
+});
+
 describe("runAgent — abort signal plumbing", () => {
   test("toolCtx.signal is forwarded to provider.runTurn opts", async () => {
     const { provider, calls } = makeFakeProvider([

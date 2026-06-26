@@ -27,10 +27,13 @@ import { MAIN_HTML } from "./lisa-html.js";
  * (功能区: soul/skills/tools/plans + find) in #viewChat; bottom badges removed.
  * Then: removed the "LISA workspace" pill (markup + .ws-pill CSS) from the top
  * of the sidebar — redundant chrome; the identity card is now the first block.
+ * Then: failed-turn error block — replaced the bare [error] line with an
+ * .err-block (detail + ↻ retry) in MAIN_CLIENT_JS plus its CSS (#135), in front
+ * of provider-level auto-retry for transient empty-stream failures.
  */
-const EXPECTED_LENGTH = 143704;
+const EXPECTED_LENGTH = 145995;
 const EXPECTED_SHA256 =
-  "9fbd62a96ed2ee95efeaa28dbb92a7b5167935110d142537f5226bd6f59b091b";
+  "4a05a2f87358d0cfe09d98b12c36f6f4b0076850d6d958d47278d51068d8a372";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);

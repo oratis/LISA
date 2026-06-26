@@ -968,7 +968,6 @@ function previewInput(name, input) {
 async function send(message) {
   input.value = '';
   input.style.height = 'auto';
-  sendBtn.disabled = true;
   el('div', 'role you', 'YOU');
   el('span', 'msg', message || '(attachment)');
   if (pendingFiles.length) {
@@ -978,9 +977,48 @@ async function send(message) {
   const filesToSend = [...pendingFiles];
   pendingFiles = [];
   renderAttachPreview();
+  await runChat(message, filesToSend);
+}
+
+// On failure, show the error detail with a retry button that re-runs the same
+// turn. Kept separate from send() so retry never re-appends the user's bubble
+// or re-reads the (already-cleared) attachment tray.
+function showError(detail, message, filesToSend) {
+  if (thinkingEl) { thinkingEl.remove(); thinkingEl = null; }
+  const block = el('div', 'err-block', null);
+  const head = document.createElement('div');
+  head.className = 'err-head';
+  head.textContent = '⚠ 请求出错';
+  block.appendChild(head);
+  const body = document.createElement('div');
+  body.className = 'err-detail';
+  body.textContent = detail || 'unknown error';
+  block.appendChild(body);
+  const retry = document.createElement('button');
+  retry.type = 'button';
+  retry.className = 'err-retry';
+  retry.textContent = '↻ 重试';
+  retry.addEventListener('click', () => {
+    block.remove();
+    runChat(message, filesToSend);
+  });
+  block.appendChild(retry);
+  log.scrollTop = log.scrollHeight;
+}
+
+async function runChat(message, filesToSend) {
+  sendBtn.disabled = true;
   currentLisaSpan = null;
   pendingTools.clear();
   thinkingEl = el('div', 'thinking', '⋯ thinking');
+  // The agent emits an error event AND the server re-sends it from its turn
+  // catch — dedupe so one failure renders exactly one error block.
+  let errored = false;
+  const fail = (detail) => {
+    if (errored) return;
+    errored = true;
+    showError(detail, message, filesToSend);
+  };
   try {
     const res = await fetch('/chat', {
       method: 'POST',
@@ -1037,7 +1075,7 @@ async function send(message) {
         } else if (ev.type === 'mood') {
           setMood(ev.slug);
         } else if (ev.type === 'error') {
-          el('div', 'err', '[error] ' + ev.message);
+          fail(ev.message);
         } else if (ev.type === 'done') {
           if (thinkingEl) { thinkingEl.remove(); thinkingEl = null; }
         }
@@ -1045,8 +1083,7 @@ async function send(message) {
     }
     if (thinkingEl) { thinkingEl.remove(); thinkingEl = null; }
   } catch (err) {
-    if (thinkingEl) { thinkingEl.remove(); thinkingEl = null; }
-    el('div', 'err', '[error] ' + err.message);
+    fail(err.message);
   } finally {
     sendBtn.disabled = false;
     input.focus();
