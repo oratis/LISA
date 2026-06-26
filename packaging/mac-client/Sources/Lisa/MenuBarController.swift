@@ -303,7 +303,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             }
         }
 
-        stack.addArrangedSubview(buttonsView(inner: inner))
+        stack.addArrangedSubview(buttonsView(inner: inner, offline: offline))
 
         let container = NSView()
         container.addSubview(stack)
@@ -510,7 +510,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         return box
     }
 
-    private func buttonsView(inner: CGFloat) -> NSView {
+    private func buttonsView(inner: CGFloat, offline: Bool) -> NSView {
         let col = NSStackView()
         col.orientation = .vertical
         col.alignment = .leading
@@ -523,6 +523,16 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         delegate.translatesAutoresizingMaskIntoConstraints = false
         delegate.widthAnchor.constraint(equalToConstant: inner).isActive = true
         col.addArrangedSubview(delegate)
+
+        // Full-width "Pair iPhone…" — shows a scannable QR. Needs the backend up
+        // (it mints a device token), so it's hidden in the offline popover.
+        if !offline {
+            let pair = NSButton(title: "Pair iPhone…", target: self, action: #selector(pairPhone))
+            pair.bezelStyle = .rounded
+            pair.translatesAutoresizingMaskIntoConstraints = false
+            pair.widthAnchor.constraint(equalToConstant: inner).isActive = true
+            col.addArrangedSubview(pair)
+        }
 
         let row = NSStackView()
         row.orientation = .horizontal
@@ -560,6 +570,11 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     @objc private func openWindow() {
         bringToFront?()
         popover?.close()
+    }
+
+    @objc private func pairPhone() {
+        popover?.close()
+        PairController.shared.showPairing()
     }
 
     @objc private func startBackend() {
