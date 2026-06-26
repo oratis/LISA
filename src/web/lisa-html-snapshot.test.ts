@@ -16,12 +16,24 @@ import { MAIN_HTML } from "./lisa-html.js";
  * change the GUI markup/CSS/JS, recompute them:
  *   node --import tsx -e 'import("./src/web/lisa-html.ts").then(async m=>{const {createHash}=await import("node:crypto");console.log(m.MAIN_HTML.length, createHash("sha256").update(m.MAIN_HTML).digest("hex"))})'
  *
- * Last updated: failed-turn error block — replaced the bare [error] line with
- * an .err-block (detail + retry button) in MAIN_CLIENT_JS plus its CSS.
+ * Last updated: "agent console" redesign (left-rail nav — Chat / Dashboard /
+ * Control / Reve / Sense / Memory — switching a main view-stack, a workspace
+ * pill, and a Proactive autonomy toggle, all additive beside the untouched chat
+ * pipeline) merged on top of the sidebar Mail card (connect-mailbox modal +
+ * daily classified digest + needs-you list + sweep-now). Plus review cleanups:
+ * the 60s refresh tick resolves the wrapped refreshClaudeSessions at call time,
+ * and an unused .pp-tag.you rule was dropped.
+ * Then: composer ＋ menu (merged attach+screenshot) + a top icon function bar
+ * (功能区: soul/skills/tools/plans + find) in #viewChat; bottom badges removed.
+ * Then: removed the "LISA workspace" pill (markup + .ws-pill CSS) from the top
+ * of the sidebar — redundant chrome; the identity card is now the first block.
+ * Then: failed-turn error block — replaced the bare [error] line with an
+ * .err-block (detail + ↻ retry) in MAIN_CLIENT_JS plus its CSS (#135), in front
+ * of provider-level auto-retry for transient empty-stream failures.
  */
-const EXPECTED_LENGTH = 95307;
+const EXPECTED_LENGTH = 145995;
 const EXPECTED_SHA256 =
-  "6bf5c0be96fab8907f6724df89c85b38b098f879abdfa2567c51db3a20040551";
+  "4a05a2f87358d0cfe09d98b12c36f6f4b0076850d6d958d47278d51068d8a372";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);

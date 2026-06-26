@@ -175,7 +175,8 @@ interface ParsedArgs {
     | "consent"
     | "sense"
     | "agents"
-    | "pair";
+    | "pair"
+    | "mail";
   subargs: string[];
   serveWeb: boolean;
   serveImessage: boolean;
@@ -298,7 +299,8 @@ function parseArgs(argv: string[]): ParsedArgs {
       first === "consent" ||
       first === "sense" ||
       first === "agents" ||
-      first === "pair"
+      first === "pair" ||
+      first === "mail"
     ) {
       out.subcommand = first;
       out.subargs = positional.slice(1);
@@ -497,6 +499,11 @@ async function main(): Promise<void> {
   if (args.subcommand === "pair") {
     const { runPairCommand } = await import("./cli/pair.js");
     process.exit(await runPairCommand(args.subargs));
+  }
+
+  if (args.subcommand === "mail") {
+    const { runMailCommand } = await import("./cli/mail.js");
+    process.exit(await runMailCommand(args.subargs));
   }
 
   if (args.subcommand === "sessions") {

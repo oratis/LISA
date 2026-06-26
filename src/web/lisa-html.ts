@@ -68,6 +68,16 @@ ${MAIN_CSS}
       </div>
     </div>
 
+    <!-- Primary navigation (view switcher — wired in setupConsole) -->
+    <nav class="nav-list" id="navList">
+      <button class="nav-item active" type="button" data-view="chat"><span class="nav-ico">◍</span>Chat</button>
+      <button class="nav-item" type="button" data-view="dashboard"><span class="nav-ico">▦</span>Dashboard</button>
+      <button class="nav-item" type="button" data-view="control"><span class="nav-ico">⌘</span>Control<span class="nav-tag" id="navAgentCount">0</span></button>
+      <button class="nav-item" type="button" data-view="reve"><span class="nav-ico">☾</span>Rêve</button>
+      <button class="nav-item" type="button" data-view="sense"><span class="nav-ico">◉</span>Sense</button>
+      <button class="nav-item" type="button" data-view="memory"><span class="nav-ico">✦</span>Memory</button>
+    </nav>
+
     <!-- Currently wanting -->
     <div class="sb-section">
       <h2>currently wanting</h2>
@@ -80,18 +90,26 @@ ${MAIN_CSS}
         <div class="left">agents</div>
         <div class="count">▶︎ <span id="sbClaudeCount">0</span></div>
       </div>
-      <form id="sbDelegate" class="delegate" autocomplete="off">
-        <select id="sbDelegateKind" title="Agent type — managed (LISA-run) or a real CLI under a PTY (spike)">
-          <option value="managed">managed</option>
-          <option value="claude">claude</option>
-          <option value="codex">codex</option>
-        </select>
-        <input id="sbDelegateTask" type="text" placeholder="delegate a task…" />
-        <button type="submit" title="Start an agent">▶</button>
-      </form>
+      <button id="sbDelegateBtn" class="delegate-btn" type="button" title="Start an agent">
+        ＋ delegate a task
+      </button>
       <div id="sbClaudeRows">
         <div class="session-empty">(idle)</div>
       </div>
+    </div>
+
+    <!-- Mail digest (connect a mailbox → daily classified digest) -->
+    <div class="card tint-mail" id="sbMailCard">
+      <div class="h">
+        <div class="left">mail</div>
+        <div class="count" id="sbMailCount"></div>
+      </div>
+      <div id="sbMailBody">
+        <div class="session-empty">(not connected)</div>
+      </div>
+      <button id="sbMailConnectBtn" class="delegate-btn" type="button" title="Connect a mailbox">
+        ＋ connect mailbox
+      </button>
     </div>
 
     <!-- Last reflection (collapsed pointer to the most recent ★) -->
@@ -102,13 +120,19 @@ ${MAIN_CSS}
       <p style="margin:0; font-size:11.5px; color:var(--fg-2); line-height:1.5;" id="sbReflectionBody"></p>
     </div>
 
-    <!-- SOUL / SKILLS / MEMORY / TOOLS row -->
-    <div class="badges">
-      <button class="badge" type="button" data-panel="soul"><img src="/assets/icon-soul.png" alt="">SOUL</button>
-      <button class="badge" type="button" data-panel="skills"><img src="/assets/icon-skill.png" alt="">SKILLS</button>
-      <button class="badge" type="button" data-panel="memory"><img src="/assets/icon-memory.png" alt="">MEMORY</button>
-      <button class="badge" type="button" data-panel="tools"><img src="/assets/icon-tool.png" alt="">TOOLS</button>
-      <button class="badge" type="button" data-panel="plans"><img src="/assets/icon-tool.png" alt="">PLANS</button>
+    <!-- (SOUL/SKILLS/TOOLS/PLANS → top function bar; MEMORY → rail view) -->
+
+    <!-- Proactive autonomy toggle (master switch — wired in setupConsole) -->
+    <div class="proactive-toggle" id="proactiveToggle" role="switch" aria-checked="false" tabindex="0" title="Let Lisa watch and act on her own when you're away">
+      <span class="pt-label">Proactive</span>
+      <span class="pt-track"><span class="pt-knob"></span></span>
+    </div>
+
+    <!-- Compact / sidebar-mode toggle (client-side; forces the narrow stacked
+         layout at any width so Lisa can dock as a skinny panel) -->
+    <div class="proactive-toggle" id="compactToggle" role="switch" aria-checked="false" tabindex="0" title="Compact / sidebar mode — dock Lisa as a narrow panel (also auto on a small window)">
+      <span class="pt-label">Compact</span>
+      <span class="pt-track"><span class="pt-knob"></span></span>
     </div>
 
     <!-- Footer: current session id -->
@@ -121,6 +145,20 @@ ${MAIN_CSS}
   <!-- ╔════════════════ Main pane ════════════════╗ -->
   <div class="main">
 
+    <!-- Chat view (default home) — function bar + log + attachments + composer -->
+    <div class="view active" id="viewChat">
+
+    <!-- Top icon function bar (功能区): quick panels + find -->
+    <div class="fnbar" id="fnbar">
+      <button class="fbtn" type="button" data-panel="soul" title="Soul" aria-label="Soul"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.2 6.6L21 12l-6.8 2.4L12 21l-2.2-6.6L3 12l6.8-2.4z"/></svg></button>
+      <button class="fbtn" type="button" data-panel="skills" title="Skills" aria-label="Skills"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 10-12h-7z"/></svg></button>
+      <button class="fbtn" type="button" data-panel="tools" title="Tools" aria-label="Tools"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></button>
+      <button class="fbtn" type="button" data-panel="plans" title="Coding plans" aria-label="Coding plans"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg></button>
+      <span class="fbar-spacer"></span>
+      <input id="fnFind" class="fn-find" type="text" placeholder="find in chat…" autocomplete="off" style="display:none">
+      <button class="fbtn" type="button" id="fnSearchBtn" title="Find in conversation" aria-label="Find"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button>
+    </div>
+
     <!-- Chat log (messages, tool blocks, idle blocks injected here) -->
     <div id="log"></div>
 
@@ -129,11 +167,14 @@ ${MAIN_CSS}
 
     <!-- Composer -->
     <form id="form">
-      <label id="attachBtn" title="Attach file (or paste images directly into the textarea)">
-        <input type="file" id="fileInput" accept="image/*,.pdf,.txt,.md,.csv,.json" multiple>
-        📎
-      </label>
-      <button type="button" id="captureBtn" title="Screenshot for Lisa (⌃⌥S anywhere)">📷</button>
+      <input type="file" id="fileInput" accept="image/*,.pdf,.txt,.md,.csv,.json" multiple>
+      <div class="plus-wrap">
+        <button type="button" id="plusBtn" title="Attach or screenshot">＋</button>
+        <div class="plus-menu" id="plusMenu">
+          <button type="button" id="pmAttach"><span class="g">📎</span> Attach file</button>
+          <button type="button" id="pmShot"><span class="g">📷</span> Screenshot</button>
+        </div>
+      </div>
       <button type="button" id="recordBtn" title="Dictate — speak and Lisa drops polished text in the box (hold to record a summary)">🎙</button>
       <textarea id="input" placeholder="Talk to Lisa…  (Enter to send · Shift+Enter for newline)" autofocus></textarea>
       <button type="submit" id="sendBtn">
@@ -141,6 +182,14 @@ ${MAIN_CSS}
         SEND →
       </button>
     </form>
+    </div><!-- /#viewChat -->
+
+    <!-- Console views (populated lazily by setupConsole in lisa-client.ts) -->
+    <section class="view" id="viewDashboard"></section>
+    <section class="view" id="viewControl"></section>
+    <section class="view" id="viewReve"></section>
+    <section class="view" id="viewSense"></section>
+    <section class="view" id="viewMemory"></section>
   </div>
 </div>
 

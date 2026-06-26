@@ -28,6 +28,10 @@ struct RootView: View {
             SettingsView()
                 .tabItem { Label("Settings", systemImage: "gearshape") }.tag(4)
         }
+        .tint(Theme.accent)                                  // cyan active tab + links + controls
+        .preferredColorScheme(.dark)                         // force the console dark look
+        .toolbarBackground(Theme.panel, for: .tabBar)
+        .toolbarBackground(.visible, for: .tabBar)
         .onOpenURL { app.handleDeepLink($0) }
         .overlay { if app.locked { LockView() } }
         .onChange(of: scenePhase) { _, phase in

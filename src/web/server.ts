@@ -39,8 +39,17 @@ import { signalAgentTool } from "../tools/signal_agent.js";
 import { managedRegistry } from "../agents/managed.js";
 import { ptyRegistry, ptyEnabled, normalizeAgentKind } from "../agents/pty.js";
 import { liveClaudeSessionIds } from "../integrations/claude-code/liveness.js";
+import { sweepAll, pollNewMail } from "../mail/service.js";
+import { pickImportant, formatAlert, alertLevel, pollMinutes } from "../mail/alerts.js";
+import { latestDigest } from "../mail/store.js";
+import { formatDigestText } from "../mail/digest.js";
+import { isDigestDue, digestHour } from "../mail/scheduler.js";
+import { loadAccounts, addAccount, removeAccount, setAccountEnabled } from "../mail/accounts.js";
+import { inferHost } from "../mail/hosts.js";
+import type { DailyDigest } from "../mail/types.js";
 import { listRecentDispatches, isAlive, toDispatchView, readDispatchOutput } from "../integrations/dispatch-ledger.js";
 import { loadControlPolicy, saveControlPolicy, type ControlPolicy } from "../control/policy.js";
+import { loadAutonomyState, saveAutonomyState, type AutonomyState } from "../autonomy/state.js";
 import { mintDevice, verifyDeviceToken, touchDevice, listDevices, revokeDevice } from "./devices.js";
 import { PushBridge, listPush, registerPush, unregisterPush, setPushPrefs, registerLiveActivity, unregisterLiveActivity, type PushPrefs } from "./push.js";
 import { SenseService } from "../sense/service.js";
@@ -328,6 +337,81 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     })();
   }, ADVISE_INTERVAL_MS);
   if (adviseTimer.unref) adviseTimer.unref();
+
+  // ── Mail digest (daily) ─────────────────────────────────────────────
+  // Once past the target hour, if not already done today, sweep all mailboxes,
+  // build + push the classified digest. Inert unless `mail` consent is granted
+  // and at least one account is connected.
+  let mailSweepRunning = false;
+  const afterMailDigest = (digest: DailyDigest): void => {
+    broadcast({
+      type: "mail_digest_update",
+      date: digest.date,
+      total: digest.total,
+      needsYou: digest.needsYou.length,
+      at: new Date().toISOString(),
+    });
+    pushBridge.onMailDigest(formatDigestText(digest));
+  };
+  const runMailDigest = async (force: boolean): Promise<DailyDigest | null> => {
+    if (mailSweepRunning || !isGranted("mail")) return null;
+    if (loadAccounts().filter((a) => a.enabled).length === 0) return null;
+    if (!force && !isDigestDue(latestDigest()?.date ?? null, new Date(), digestHour())) return null;
+    mailSweepRunning = true;
+    try {
+      const { digest } = await sweepAll();
+      afterMailDigest(digest);
+      // Post the digest into the chat too (the "here's your mail" moment), in
+      // addition to the push — but only on the scheduled daily run, not manual.
+      if (!force && digest.total > 0) {
+        broadcast({ type: "idle_message", text: formatDigestText(digest), at: new Date().toISOString(), source: "mail" });
+      }
+      console.error(`[mail] digest ${digest.date}: ${digest.total} mail · ${digest.needsYou.length} need-you`);
+      return digest;
+    } catch (err) {
+      console.error(`[mail] digest sweep failed: ${(err as Error).message}`);
+      return null;
+    } finally {
+      mailSweepRunning = false;
+    }
+  };
+  const mailTimer = setInterval(() => void runMailDigest(false), 30 * 60_000);
+  if (mailTimer.unref) mailTimer.unref();
+  // Catch a restart that happens after the target hour (don't wait 30m).
+  const mailKick = setTimeout(() => void runMailDigest(false), 20_000);
+  if (mailKick.unref) mailKick.unref();
+
+  // ── Important-mail alerts (intraday) ────────────────────────────────
+  // Every LISA_MAIL_POLL_MINUTES (default 30; 0 disables), incrementally read
+  // NEW mail; for items at/above the alert level, fire a high-priority push +
+  // a proactive chat message. Inert without consent + an account.
+  const mailPollMin = pollMinutes();
+  if (mailPollMin > 0) {
+    let mailPollRunning = false;
+    const mailPoll = setInterval(() => {
+      void (async () => {
+        if (mailPollRunning || !isGranted("mail")) return;
+        if (loadAccounts().filter((a) => a.enabled).length === 0) return;
+        mailPollRunning = true;
+        try {
+          const important = pickImportant(await pollNewMail(), alertLevel());
+          if (important.length === 0) return;
+          for (const item of important.slice(0, 3)) {
+            const alert = formatAlert(item);
+            pushBridge.onMailImportant({ title: alert.title, body: alert.body, tag: alert.tag });
+            broadcast({ type: "idle_message", text: alert.chat, at: new Date().toISOString(), source: "mail" });
+          }
+          broadcast({ type: "mail_digest_update", at: new Date().toISOString() });
+          console.error(`[mail] ${important.length} important new mail (alerted ${Math.min(3, important.length)})`);
+        } catch (err) {
+          console.error(`[mail] poll failed: ${(err as Error).message}`);
+        } finally {
+          mailPollRunning = false;
+        }
+      })();
+    }, mailPollMin * 60_000);
+    if (mailPoll.unref) mailPoll.unref();
+  }
 
   // ── Screen advisor (opt-in): periodic screen-grounded next-step ─────
   // When enabled, every N minutes capture a full-screen shot, ask the model
@@ -926,6 +1010,79 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       return;
     }
 
+    // ── Mail module (read-only): accounts, connect, sweep, digest ───────
+    if (req.method === "GET" && url === "/api/mail/accounts") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ accounts: loadAccounts(), consent: isGranted("mail") }));
+      return;
+    }
+    if (req.method === "GET" && url === "/api/mail/digest") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ digest: latestDigest() }));
+      return;
+    }
+    if (req.method === "POST" && url === "/api/mail/connect") {
+      let mBody = "";
+      for await (const chunk of req) mBody += chunk.toString("utf8");
+      let p: { email?: unknown; host?: unknown; port?: unknown; password?: unknown; label?: unknown };
+      try { p = JSON.parse(mBody || "{}"); } catch {
+        res.writeHead(400, { "content-type": "text/plain" }); res.end("bad json"); return;
+      }
+      const email = typeof p.email === "string" ? p.email.trim() : "";
+      const password = typeof p.password === "string" ? p.password : "";
+      if (!email.includes("@") || !password) {
+        res.writeHead(400, { "content-type": "text/plain" }); res.end("email + password required"); return;
+      }
+      const host = typeof p.host === "string" && p.host ? p.host : inferHost(email);
+      if (!host) {
+        res.writeHead(400, { "content-type": "text/plain" }); res.end("couldn't infer IMAP host — pass host"); return;
+      }
+      const account = addAccount(
+        {
+          provider: "imap",
+          email,
+          host,
+          port: typeof p.port === "number" ? p.port : 993,
+          label: typeof p.label === "string" ? p.label : undefined,
+        },
+        { password },
+      );
+      grant("mail"); // connecting a mailbox is the consent act
+      broadcast({ type: "mail_accounts_update", at: new Date().toISOString() });
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, account }));
+      return;
+    }
+    if (req.method === "POST" && url.startsWith("/api/mail/accounts/")) {
+      const rest = url.slice("/api/mail/accounts/".length);
+      const slash = rest.indexOf("/");
+      const id = decodeURIComponent(slash >= 0 ? rest.slice(0, slash) : rest);
+      const action = slash >= 0 ? rest.slice(slash + 1) : "";
+      let ok = false;
+      if (action === "remove") ok = removeAccount(id);
+      else if (action === "enable") ok = setAccountEnabled(id, true);
+      else if (action === "disable") ok = setAccountEnabled(id, false);
+      else {
+        res.writeHead(400, { "content-type": "text/plain" }); res.end("action must be remove|enable|disable"); return;
+      }
+      if (ok) broadcast({ type: "mail_accounts_update", at: new Date().toISOString() });
+      res.writeHead(ok ? 200 : 404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok }));
+      return;
+    }
+    if (req.method === "POST" && url === "/api/mail/sweep") {
+      if (!isGranted("mail")) {
+        res.writeHead(409, { "content-type": "text/plain" });
+        res.end("mail consent not granted");
+        return;
+      }
+      const swept = await sweepAll();
+      if (!swept.blocked) afterMailDigest(swept.digest);
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: !swept.blocked, digest: swept.digest, newItems: swept.newItems.length }));
+      return;
+    }
+
     // Remote-control policy: GET (any authed caller) reports it; POST sets it,
     // but only from localhost (the Mac owner) — like the API-key save.
     if (req.method === "GET" && url === "/api/control/policy") {
@@ -949,6 +1106,34 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         const saved = saveControlPolicy({ ...loadControlPolicy(), ...payload });
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ ok: true, ...saved }));
+      } catch (err) {
+        res.writeHead(500, { "content-type": "text/plain" });
+        res.end((err as Error).message);
+      }
+      return;
+    }
+
+    // Autonomy on/off — the "Proactive mode" master switch surfaced in the web
+    // GUI + iOS as the Proactive toggle. GET reports it (any authed caller);
+    // POST sets it. Unlike the control policy (loopback-only), this is allowed
+    // from any authed device — letting Lisa rest is low-risk, and pausing her
+    // from the phone is a primary use case. The token gate (above) still applies.
+    if (req.method === "GET" && url === "/api/autonomy/state") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify(loadAutonomyState()));
+      return;
+    }
+    if (req.method === "POST" && url === "/api/autonomy/state") {
+      let asBody = "";
+      for await (const chunk of req) asBody += chunk.toString("utf8");
+      let payload: Partial<AutonomyState>;
+      try { payload = JSON.parse(asBody || "{}"); } catch {
+        res.writeHead(400, { "content-type": "text/plain" }); res.end("bad json"); return;
+      }
+      try {
+        const saved = saveAutonomyState({ ...loadAutonomyState(), ...payload });
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify(saved));
       } catch (err) {
         res.writeHead(500, { "content-type": "text/plain" });
         res.end((err as Error).message);

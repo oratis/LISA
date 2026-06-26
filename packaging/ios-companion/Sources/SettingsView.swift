@@ -56,6 +56,7 @@ struct SettingsView: View {
                     Toggle("Agent error", isOn: $prefs.error)
                     Toggle("Needs permission", isOn: $prefs.permission)
                     Toggle("Reve notes", isOn: $prefs.idle)
+                    Toggle("Mail digest + alerts", isOn: $prefs.mail)
                     Button("Register push") {
                         Task { @MainActor in
                             do {
@@ -88,6 +89,18 @@ struct SettingsView: View {
                     Text("Change these on the Mac (localhost only).").font(.caption).foregroundStyle(.secondary)
                 }
 
+                Section("Autonomy") {
+                    Toggle("Proactive mode", isOn: Binding(
+                        get: { app.proactiveEnabled },
+                        set: { app.setProactive($0) }))
+                        .tint(Theme.green)
+                        .disabled(app.proactiveBusy || !app.proactiveAvailable)
+                    Text(app.proactiveAvailable
+                         ? "When on, Lisa reflects and pursues her desires while you're away (idle + heartbeat). Off means she only acts when you talk to her."
+                         : "This Mac doesn't expose autonomy control yet — update Lisa to toggle it from here.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+
                 Section {
                     NavigationLink { DevicesView() } label: { Label("Paired devices", systemImage: "iphone.gen3") }
                 }
@@ -115,9 +128,10 @@ struct SettingsView: View {
                     Section { Text(status).font(.caption).foregroundStyle(.secondary) }
                 }
             }
+            .consoleBackground()
             .navigationTitle("Settings")
             .onAppear(perform: syncFromConfig)
-            .task { policy = try? await app.client.controlPolicy() }
+            .task { policy = try? await app.client.controlPolicy(); await app.loadProactive() }
             .sheet(isPresented: $showScanner) {
                 QRScanSheet(onScanned: handleScan, onError: { status = $0 })
             }

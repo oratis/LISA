@@ -64,6 +64,7 @@ struct SenseView: View {
                     }
                 }
             }
+            .consoleBackground()
             .navigationTitle("Sense")
             .refreshable { await load() }
             .task(id: app.config) { await load() }

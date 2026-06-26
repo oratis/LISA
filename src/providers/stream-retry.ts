@@ -21,9 +21,25 @@ export interface StreamRetryOpts {
  * turn was cancelled on purpose and must surface, not retry.
  */
 export function isRetryableStreamError(err: unknown): boolean {
-  const name = (err as { name?: string } | null)?.name;
+  const e = err as { name?: string; cause?: { code?: string } } | null;
+  const name = e?.name;
   if (name === "APIUserAbortError" || name === "AbortError") return false;
   if (name === "APIConnectionError" || name === "APIConnectionTimeoutError") {
+    return true;
+  }
+  // undici surfaces socket failures as `TypeError: terminated` / `fetch failed`
+  // with the real reason on `.cause.code`. Match those codes precisely rather
+  // than substring-matching "terminated", which could also appear in a
+  // legitimate API error message and trigger a spurious re-send.
+  const code = e?.cause?.code;
+  if (
+    code === "ECONNRESET" ||
+    code === "ECONNREFUSED" ||
+    code === "EPIPE" ||
+    code === "ETIMEDOUT" ||
+    code === "ENOTFOUND" ||
+    code === "UND_ERR_SOCKET"
+  ) {
     return true;
   }
   const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
@@ -32,7 +48,7 @@ export function isRetryableStreamError(err: unknown): boolean {
     msg.includes("premature close") ||
     msg.includes("socket hang up") ||
     msg.includes("econnreset") ||
-    msg.includes("terminated") ||
+    msg === "terminated" ||
     msg.includes("network error") ||
     msg.includes("fetch failed")
   );
@@ -59,6 +75,9 @@ export async function withStreamRetry<T>(
 ): Promise<T> {
   const maxRetries = opts.maxRetries ?? 2;
   const baseDelayMs = opts.baseDelayMs ?? 400;
+  // Each retry reopens a fresh upstream request, so the prompt's input tokens
+  // are re-billed per attempt — maxRetries (default 2) bounds that to ≤3×. We
+  // only retry when nothing was emitted, so no output work is ever wasted.
   let lastErr: unknown;
   for (let i = 0; i <= maxRetries; i++) {
     let emitted = false;
@@ -84,5 +103,6 @@ export async function withStreamRetry<T>(
       }
     }
   }
+  // Unreachable: the final iteration (i === maxRetries) always throws above.
   throw lastErr;
 }

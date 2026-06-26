@@ -42,6 +42,21 @@ describe("isRetryableStreamError", () => {
       false,
     );
   });
+
+  test("matches undici socket failures by cause.code", () => {
+    const e = new Error("terminated");
+    (e as { cause?: unknown }).cause = { code: "ECONNRESET" };
+    assert.equal(isRetryableStreamError(e), true);
+  });
+
+  test("'terminated' is matched precisely, not as a substring", () => {
+    // A real API message that merely contains the word must NOT trigger a
+    // spurious re-send — only undici's exact `TypeError: terminated` counts.
+    assert.equal(
+      isRetryableStreamError(new Error("request terminated by content policy")),
+      false,
+    );
+  });
 });
 
 describe("withStreamRetry", () => {

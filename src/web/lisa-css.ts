@@ -17,6 +17,10 @@ export const MAIN_CSS = `  :root {
     --accent: #6ad4ff;
     --accent-soft: rgba(106, 212, 255, 0.13);
     --accent-glow: rgba(106, 212, 255, 0.27);
+    /* Proactive / autonomy "live" accent (green) — the console's watching state. */
+    --proactive: #3ddc97;
+    --proactive-soft: rgba(61, 220, 151, 0.13);
+    --proactive-glow: rgba(61, 220, 151, 0.30);
     --warm: #ffd066;
     --dream: #b487ff;
     --claude: #ff8c42;
@@ -67,7 +71,7 @@ export const MAIN_CSS = `  :root {
     height: 100vh;
     width: 100vw;
     display: grid;
-    grid-template-columns: 280px 1fr;
+    grid-template-columns: 300px 1fr;
     grid-template-rows: 36px 1fr;
     grid-template-areas:
       "titlebar titlebar"
@@ -116,15 +120,18 @@ export const MAIN_CSS = `  :root {
     letter-spacing: 0;
   }
 
-  /* ── Sidebar ───────────────────────────────────────────────── */
+  /* ── Sidebar (floating panel — Claude-Code-style detached card) ──── */
   .sidebar {
     grid-area: sidebar;
-    background: rgba(7, 9, 26, 0.4);
+    margin: 8px 6px 10px 10px;
+    background: linear-gradient(180deg, rgba(18, 23, 48, 0.62), rgba(10, 13, 33, 0.6));
     backdrop-filter: blur(30px);
     -webkit-backdrop-filter: blur(30px);
-    border-right: 1px solid var(--border-new);
+    border: 1px solid var(--border-new);
+    border-radius: 16px;
+    box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
     overflow-y: auto;
-    padding: 20px 16px 16px;
+    padding: 18px 14px 14px;
     display: flex;
     flex-direction: column;
     gap: 18px;
@@ -243,6 +250,11 @@ export const MAIN_CSS = `  :root {
     border-color: rgba(255, 208, 102, 0.22);
     background: linear-gradient(180deg, rgba(255, 208, 102, 0.07), rgba(255, 208, 102, 0.02));
   }
+  .card.tint-mail {
+    border-color: rgba(106, 212, 255, 0.20);
+    background: linear-gradient(180deg, rgba(106, 212, 255, 0.06), rgba(106, 212, 255, 0.02));
+  }
+  .card.tint-mail .h .left { color: var(--brand, #6ad4ff); }
   .card .h {
     display: flex;
     justify-content: space-between;
@@ -366,40 +378,55 @@ export const MAIN_CSS = `  :root {
     background: rgba(0,0,0,0.25);
     color: var(--fg);
   }
-  /* "Delegate a task" composer at the top of the agents card. */
-  .delegate {
-    display: flex;
-    gap: 6px;
+  /* "Delegate a task" → a single full-width button that opens a modal. */
+  .delegate-btn {
+    width: 100%;
     margin: 2px 0 8px;
-  }
-  .delegate input {
-    flex: 1;
-    font-size: 11px;
-    padding: 4px 8px;
-    border-radius: 7px;
-    border: 1px solid var(--border);
-    background: rgba(0,0,0,0.25);
-    color: var(--fg);
-  }
-  .delegate select {
-    font-size: 10.5px;
-    padding: 3px 4px;
-    border-radius: 7px;
-    border: 1px solid var(--border);
-    background: rgba(0,0,0,0.25);
-    color: var(--fg-2);
-    cursor: pointer;
-  }
-  .delegate button {
-    font-size: 11px;
-    padding: 4px 10px;
-    border-radius: 7px;
+    font-size: 11.5px;
+    padding: 6px 10px;
+    border-radius: 8px;
     border: 1px solid var(--claude, #ff8c42);
-    background: rgba(255,140,66,0.16);
+    background: rgba(255,140,66,0.14);
     color: var(--claude, #ff8c42);
     cursor: pointer;
+    transition: background 0.12s ease;
   }
-  .delegate button:hover { background: rgba(255,140,66,0.28); }
+  .delegate-btn:hover { background: rgba(255,140,66,0.26); }
+  /* Delegate dialog (rendered in the shared modal). */
+  .delegate-modal { display: flex; flex-direction: column; gap: 8px; }
+  .delegate-modal .dm-label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--fg-2); margin-top: 4px;
+  }
+  .delegate-modal .dm-kind,
+  .delegate-modal .dm-task {
+    width: 100%; box-sizing: border-box;
+    font-size: 13px; padding: 8px 10px; border-radius: 8px;
+    border: 1px solid var(--border); background: rgba(0,0,0,0.25); color: var(--fg);
+  }
+  .delegate-modal .dm-task { resize: vertical; min-height: 88px; font-family: inherit; }
+  .delegate-modal .dm-actions { display: flex; justify-content: flex-end; margin-top: 4px; }
+  .delegate-modal .dm-start {
+    font-size: 13px; padding: 8px 16px; border-radius: 8px;
+    border: 1px solid var(--brand, #6ad4ff); background: rgba(106,212,255,0.16);
+    color: var(--brand, #6ad4ff); cursor: pointer;
+  }
+  .delegate-modal .dm-start:hover { background: rgba(106,212,255,0.28); }
+  .delegate-modal .dm-start:disabled { opacity: 0.5; cursor: default; }
+  .delegate-modal .dm-err { color: var(--err-color, #ff5577); font-size: 12px; white-space: pre-wrap; }
+  .delegate-modal .dm-note { font-size: 11px; color: var(--fg-faint); line-height: 1.4; margin-top: 2px; }
+  /* Mail card body */
+  #sbMailBody { margin: 2px 0 6px; }
+  .mail-summary { font-size: 11.5px; color: var(--fg-2); line-height: 1.45; margin-bottom: 6px; }
+  .mail-row { display: flex; gap: 6px; align-items: baseline; padding: 1px 0; }
+  .mail-bang { color: var(--brand, #6ad4ff); font-weight: 700; font-size: 11px; flex: none; }
+  .mail-bang.urgent { color: var(--err-color, #ff5577); }
+  .mail-subj { font-size: 11.5px; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mail-sweep {
+    margin-top: 6px; font-size: 10.5px; background: none; border: none;
+    color: var(--brand, #6ad4ff); cursor: pointer; padding: 2px 0;
+  }
+  .mail-sweep:hover { text-decoration: underline; }
   .session-empty {
     color: var(--fg-faint);
     font-size: 11.5px;
@@ -489,16 +516,356 @@ export const MAIN_CSS = `  :root {
     flex-shrink: 0;
   }
 
+  /* ── Primary nav (vertical list in the sidebar) ────────────── */
+  .nav-list { display: flex; flex-direction: column; gap: 2px; }
+  .nav-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 11px;
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    color: var(--fg-2);
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    text-align: left;
+    cursor: pointer;
+    transition: background 120ms ease, color 120ms ease;
+  }
+  .nav-item .nav-ico { width: 18px; font-size: 15px; text-align: center; flex-shrink: 0; opacity: 0.9; }
+  .nav-item:hover { background: var(--bg-card); color: var(--fg); }
+  .nav-item.active { background: var(--accent-soft); color: var(--accent); }
+  .nav-item.active::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 18px;
+    border-radius: 0 3px 3px 0;
+    background: var(--accent);
+  }
+  .nav-item .nav-tag {
+    margin-left: auto;
+    font-size: 9.5px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--fg);
+    background: var(--bg-3);
+    border-radius: 999px;
+    padding: 1px 7px;
+    min-width: 18px;
+    text-align: center;
+  }
+  .nav-item.active .nav-tag { background: var(--accent); color: #06141b; }
+
+  /* ── Proactive toggle (sidebar footer area) ────────────────── */
+  .proactive-toggle {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 9px 11px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-new);
+    border-radius: 11px;
+    cursor: pointer;
+    user-select: none;
+    transition: border-color 140ms ease, background 140ms ease;
+  }
+  .proactive-toggle .pt-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--fg-3);
+    transition: color 140ms ease;
+  }
+  .proactive-toggle .pt-track {
+    margin-left: auto;
+    width: 34px;
+    height: 18px;
+    border-radius: 999px;
+    background: var(--bg-3);
+    border: 1px solid var(--border-new);
+    position: relative;
+    flex-shrink: 0;
+    transition: background 140ms ease, border-color 140ms ease;
+  }
+  .proactive-toggle .pt-knob {
+    position: absolute;
+    top: 1px;
+    left: 1px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--fg-3);
+    transition: transform 140ms ease, background 140ms ease;
+  }
+  .proactive-toggle.on { border-color: var(--proactive-glow); background: var(--proactive-soft); }
+  .proactive-toggle.on .pt-label { color: var(--proactive); }
+  .proactive-toggle.on .pt-track { background: var(--proactive-soft); border-color: var(--proactive-glow); }
+  .proactive-toggle.on .pt-knob { transform: translateX(16px); background: var(--proactive); }
+
   /* ── Main pane ─────────────────────────────────────────────── */
+  /* The main pane is a view stack: each .view fills the pane and only the
+     active one is shown. Chat is the default; it keeps its original
+     log / attachPreview / form 3-row grid (moved onto #viewChat). */
   .main {
     grid-area: main;
-    display: grid;
-    grid-template-rows: 1fr auto auto;
+    position: relative;
     overflow: hidden;
     background:
       radial-gradient(ellipse at 50% -30%, rgba(106, 212, 255, 0.06) 0%, transparent 60%),
       linear-gradient(180deg, transparent, rgba(106, 212, 255, 0.015));
   }
+  .view { display: none; }
+  .view.active {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  #viewChat.view.active {
+    display: grid;
+    grid-template-rows: auto 1fr auto auto;
+  }
+
+  /* ── Console views (dashboard / control / reve / sense / memory) ── */
+  .view-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border-new);
+  }
+  .view-head h2 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: 0.02em; color: var(--fg); }
+  .view-head .vh-sub { margin: 2px 0 0; font-size: 11.5px; color: var(--fg-3); }
+  .view-act {
+    flex-shrink: 0;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    color: #06140d;
+    background: var(--accent);
+    border: 0;
+    border-radius: 9px;
+    padding: 8px 13px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: filter 120ms ease, transform 120ms ease;
+  }
+  .view-act:hover { filter: brightness(1.08); }
+  .view-act:active { transform: translateY(1px); }
+  .view-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 18px 24px 26px; }
+  .view-empty { color: var(--fg-faint); font-size: 12.5px; font-style: italic; padding: 18px 4px; }
+  .view-sec-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.10em;
+    color: var(--fg-3);
+    margin: 4px 0 8px;
+  }
+
+  /* Stat bar */
+  .stat-bar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+  .stat {
+    flex: 1;
+    min-width: 92px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-new);
+    border-radius: 12px;
+    padding: 11px 13px;
+  }
+  .stat .n { font-size: 21px; font-weight: 700; color: var(--fg); font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .stat .k {
+    margin-top: 3px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--fg-3);
+  }
+
+  /* Green "proactive — watching" panel */
+  .proactive-panel {
+    border: 1px solid var(--proactive-glow);
+    background: linear-gradient(180deg, var(--proactive-soft), transparent);
+    border-radius: 14px;
+    padding: 13px 15px;
+    margin-bottom: 16px;
+  }
+  .proactive-panel .pp-head { display: flex; align-items: center; gap: 10px; }
+  .proactive-panel .pp-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--proactive);
+    box-shadow: 0 0 8px var(--proactive-glow);
+    flex-shrink: 0;
+  }
+  .proactive-panel.off .pp-dot { background: var(--fg-faint); box-shadow: none; }
+  .proactive-panel .pp-title { font-size: 13px; font-weight: 700; color: var(--fg); }
+  .proactive-panel .pp-title b { color: var(--proactive); font-weight: 700; }
+  .proactive-panel.off .pp-title b { color: var(--fg-3); }
+  .proactive-panel .pp-desc { margin: 2px 0 0; font-size: 11.5px; color: var(--fg-2); }
+  /* .pp-tags / .pp-tag are reused outside the panel (Control policy chips),
+     so they are not scoped to .proactive-panel. */
+  .pp-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .proactive-panel .pp-tags { margin-top: 10px; }
+  .pp-tag {
+    font-size: 10.5px;
+    color: var(--fg-3);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-new);
+    border-radius: 999px;
+    padding: 2px 9px;
+  }
+  .pp-tag.warn { color: var(--warm); }
+
+  /* "Focus" big card (current desire / objective analog) */
+  .focus-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-new);
+    border-radius: 14px;
+    padding: 15px;
+    margin-bottom: 18px;
+  }
+  .focus-card .fc-top { display: flex; align-items: flex-start; gap: 10px; }
+  .focus-card .fc-title { font-size: 14.5px; font-weight: 700; color: var(--fg); }
+  .focus-card .fc-desc { margin: 4px 0 0; font-size: 12px; color: var(--fg-2); line-height: 1.5; }
+  .focus-card .fc-pill {
+    margin-left: auto;
+    flex-shrink: 0;
+    font-size: 10.5px;
+    color: var(--proactive);
+    border: 1px solid var(--proactive-glow);
+    border-radius: 999px;
+    padding: 2px 10px;
+  }
+  .focus-card .fc-meta { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 11px; font-size: 11px; color: var(--fg-3); }
+
+  /* Horizontally-scrolling agent / task cards */
+  .card-scroll {
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    padding-bottom: 6px;
+    margin-bottom: 18px;
+    scroll-snap-type: x proximity;
+  }
+  .ac {
+    flex: 0 0 232px;
+    scroll-snap-align: start;
+    background: var(--bg-card);
+    border: 1px solid var(--border-new);
+    border-radius: 13px;
+    padding: 13px;
+  }
+  .ac .ac-top { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--fg-3); margin-bottom: 8px; }
+  .ac .ac-status { margin-left: auto; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+  .ac .ac-status.working { color: var(--accent); }
+  .ac .ac-status.waiting { color: var(--warm); }
+  .ac .ac-status.error   { color: var(--err-color); }
+  .ac .ac-status.done    { color: var(--proactive); }
+  .ac .ac-title { font-size: 13px; font-weight: 600; color: var(--fg); margin-bottom: 3px; word-break: break-word; }
+  .ac .ac-desc { font-size: 11.5px; color: var(--fg-2); line-height: 1.45; }
+  .ac .ac-meta {
+    margin-top: 9px;
+    padding-top: 7px;
+    border-top: 1px solid var(--border-new);
+    font-size: 10px;
+    color: var(--fg-3);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+
+  /* Simple list rows / cards used by Reve / Sense / Memory */
+  .v-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-new);
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+  }
+  .v-card h3 {
+    margin: 0 0 6px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--fg-3);
+  }
+  .v-pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 12px;
+    line-height: 1.55;
+    color: var(--fg-2);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  .v-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 0;
+    border-top: 1px solid var(--border-new);
+  }
+  .v-row:first-child { border-top: 0; }
+  .v-row .v-main { min-width: 0; flex: 1; }
+  .v-row .v-name { font-size: 12.5px; font-weight: 600; color: var(--fg); }
+  .v-row .v-sub { font-size: 11px; color: var(--fg-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .v-toggle {
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    border-radius: 7px;
+    padding: 4px 10px;
+    border: 1px solid var(--border-new);
+    background: var(--bg-3);
+    color: var(--fg-3);
+    flex-shrink: 0;
+  }
+  .v-toggle.on { color: var(--proactive); border-color: var(--proactive-glow); background: var(--proactive-soft); }
+  .v-sel {
+    font-family: inherit;
+    font-size: 12px;
+    color: var(--fg);
+    background: var(--bg-3);
+    border: 1px solid var(--border-new);
+    border-radius: 8px;
+    padding: 5px 8px;
+  }
+  .mem-btn {
+    width: 100%;
+    text-align: left;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--fg);
+    background: var(--bg-card);
+    border: 1px solid var(--border-new);
+    border-radius: 11px;
+    padding: 13px 15px;
+    margin-bottom: 9px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: background 120ms ease, border-color 120ms ease;
+  }
+  .mem-btn:hover { background: var(--bg-card-strong); border-color: var(--border-strong); }
+  .mem-btn .mem-ico { font-size: 16px; width: 20px; text-align: center; }
+  .mem-btn .mem-sub { margin-left: auto; font-size: 11px; color: var(--fg-3); font-weight: 400; }
 
   #log {
     overflow-y: auto;
@@ -723,12 +1090,12 @@ export const MAIN_CSS = `  :root {
     -webkit-backdrop-filter: blur(30px);
     border-top: 1px solid var(--border-new);
     display: grid;
-    grid-template-columns: 36px 36px 36px 1fr 96px;
+    grid-template-columns: 36px 36px 1fr 96px;
     gap: 10px;
     align-items: end;
   }
 
-  #attachBtn, #captureBtn, #recordBtn {
+  #plusBtn, #recordBtn {
     align-self: stretch;
     display: flex;
     align-items: center;
@@ -743,8 +1110,56 @@ export const MAIN_CSS = `  :root {
     min-height: 44px;
     padding: 0;
   }
-  #attachBtn:hover, #captureBtn:hover, #recordBtn:hover { background: var(--bg-card); color: var(--fg); }
-  #captureBtn.flash { background: var(--accent); color: var(--bg-deep); }
+  #plusBtn { font-size: 22px; }
+  #plusBtn:hover, #recordBtn:hover { background: var(--bg-card); color: var(--fg); }
+  #plusBtn.flash { background: var(--accent); color: var(--bg-deep); }
+
+  /* ＋ composer menu (merged attach + screenshot) */
+  .plus-wrap { position: relative; align-self: stretch; display: flex; }
+  .plus-menu {
+    display: none;
+    position: absolute;
+    left: 0;
+    bottom: calc(100% + 8px);
+    min-width: 168px;
+    background: var(--bg-deep, #0c1024);
+    border: 1px solid var(--border-new, rgba(255,255,255,.1));
+    border-radius: 11px;
+    padding: 5px;
+    box-shadow: 0 14px 34px rgba(0,0,0,.5);
+    z-index: 30;
+  }
+  .plus-menu.open { display: block; }
+  .plus-menu button {
+    display: flex; align-items: center; gap: 9px; width: 100%;
+    background: transparent; border: 0; color: var(--fg); font-size: 13px;
+    padding: 9px 10px; border-radius: 8px; cursor: pointer; text-align: left;
+  }
+  .plus-menu button:hover { background: var(--bg-card); }
+  .plus-menu .g { width: 18px; text-align: center; }
+
+  /* Top icon function bar (功能区) inside #viewChat */
+  .fnbar {
+    display: flex; align-items: center; gap: 6px;
+    padding: 7px 16px;
+    border-bottom: 1px solid var(--border-new, rgba(255,255,255,.08));
+    background: rgba(255,255,255,.02);
+  }
+  .fbtn {
+    width: 34px; height: 34px; flex: none;
+    display: flex; align-items: center; justify-content: center;
+    background: transparent; border: 1px solid transparent; border-radius: 9px;
+    color: var(--fg-2); cursor: pointer;
+    transition: background 120ms ease, color 120ms ease;
+  }
+  .fbtn:hover { background: var(--bg-card, rgba(255,255,255,.06)); color: var(--fg); }
+  .fbtn svg { width: 19px; height: 19px; display: block; }
+  .fbar-spacer { flex: 1; }
+  .fn-find {
+    height: 28px; width: 150px; font-size: 12px; padding: 0 9px;
+    border-radius: 8px; border: 1px solid var(--border-strong, rgba(255,255,255,.14));
+    background: rgba(0,0,0,.3); color: var(--fg);
+  }
   /* Pulsing red while recording. */
   #recordBtn.recording {
     background: var(--err-color);
@@ -823,7 +1238,12 @@ export const MAIN_CSS = `  :root {
     }
     .frame {
       grid-template-columns: 1fr;
-      grid-template-rows: auto 1fr auto;
+      /* titlebar · sidebar (capped, scrolls) · main view-stack (fills rest) */
+      grid-template-rows: auto auto 1fr;
+      grid-template-areas:
+        "titlebar"
+        "sidebar"
+        "main";
     }
     .sidebar {
       max-height: 38vh;
@@ -831,11 +1251,29 @@ export const MAIN_CSS = `  :root {
       gap: 14px;
     }
     #form {
-      grid-template-columns: 36px 36px 36px 1fr 84px;
+      grid-template-columns: 36px 36px 1fr 84px;
       padding: 10px 14px 14px;
     }
     #input { font-size: 16px; /* prevents iOS Safari auto-zoom */ }
   }
+
+  /* ── Forced compact / "sidebar mode" ─────────────────────────────
+     Same stacked layout as the narrow breakpoint, but toggled on at ANY
+     width (persisted client-side) so Lisa can be docked as a skinny panel. */
+  body.force-compact .frame {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto 1fr;
+    grid-template-areas:
+      "titlebar"
+      "sidebar"
+      "main";
+  }
+  body.force-compact .sidebar {
+    max-height: 38vh;
+    padding: 14px 14px 12px;
+    gap: 14px;
+  }
+  body.force-compact #form { grid-template-columns: 36px 36px 1fr 84px; }
 
   /* ===================================================================
      Modal panel (skills / memory / tools / soul) — unchanged from the

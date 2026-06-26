@@ -511,11 +511,23 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     }
 
     private func buttonsView(inner: CGFloat) -> NSView {
+        let col = NSStackView()
+        col.orientation = .vertical
+        col.alignment = .leading
+        col.spacing = 8
+        col.translatesAutoresizingMaskIntoConstraints = false
+
+        // Full-width "delegate a task" — opens a small dialog to start an agent.
+        let delegate = NSButton(title: "＋ Delegate a task", target: self, action: #selector(delegateTask))
+        delegate.bezelStyle = .rounded
+        delegate.translatesAutoresizingMaskIntoConstraints = false
+        delegate.widthAnchor.constraint(equalToConstant: inner).isActive = true
+        col.addArrangedSubview(delegate)
+
         let row = NSStackView()
         row.orientation = .horizontal
         row.distribution = .fillEqually
         row.spacing = 10
-        row.translatesAutoresizingMaskIntoConstraints = false
         let open = NSButton(title: "Open chat", target: self, action: #selector(openWindow))
         open.bezelStyle = .rounded
         open.keyEquivalent = "\r"   // default (accent-tinted) button
@@ -524,7 +536,10 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         row.addArrangedSubview(open)
         row.addArrangedSubview(refresh)
         row.widthAnchor.constraint(equalToConstant: inner).isActive = true
-        return row
+        col.addArrangedSubview(row)
+
+        col.widthAnchor.constraint(equalToConstant: inner).isActive = true
+        return col
     }
 
     private func wrappedLabel(_ s: String, size: CGFloat, color: NSColor, width: CGFloat) -> NSTextField {
@@ -570,12 +585,79 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     @objc private func refreshFromPopover() {
         Task { @MainActor in
             await refreshOnce()
-            // Rebuild popover view with fresh data + resize to fit it.
-            if let p = popover, p.isShown {
-                let vc = makePopoverContent()
-                p.contentViewController = vc
-                p.contentSize = vc.view.fittingSize
-            }
+            rebuildPopoverIfShown()
+        }
+    }
+
+    private func rebuildPopoverIfShown() {
+        if let p = popover, p.isShown {
+            let vc = makePopoverContent()
+            p.contentViewController = vc
+            p.contentSize = vc.view.fittingSize
+        }
+    }
+
+    // MARK: - Delegate a task
+
+    /// Small modal: pick an agent (managed / claude / codex) + type a task, then
+    /// POST it to the backend. (Loopback ⇒ no token needed.)
+    @objc private func delegateTask() {
+        popover?.close()
+
+        let width: CGFloat = 320
+        let kind = NSPopUpButton(frame: NSRect(x: 0, y: 62, width: width, height: 26), pullsDown: false)
+        kind.addItems(withTitles: ["managed — Lisa runs it", "claude — real CLI (PTY)", "codex — real CLI (PTY)"])
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: width, height: 52))
+        field.placeholderString = "Describe the task…"
+        field.cell?.wraps = true
+        field.cell?.isScrollable = false
+        let accessory = NSView(frame: NSRect(x: 0, y: 0, width: width, height: 96))
+        accessory.addSubview(kind)
+        accessory.addSubview(field)
+
+        let alert = NSAlert()
+        alert.messageText = "Delegate a task"
+        alert.informativeText = "Pick an agent and describe what it should do."
+        alert.accessoryView = accessory
+        alert.addButton(withTitle: "Start")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = field
+
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let task = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !task.isEmpty else { return }
+        let agent = ["managed", "claude", "codex"][max(0, min(2, kind.indexOfSelectedItem))]
+        Task { @MainActor in await startAgent(agent: agent, task: task) }
+    }
+
+    private func startAgent(agent: String, task: String) async {
+        let isManaged = (agent == "managed")
+        let path = isManaged ? "/api/agents/managed/start" : "/api/agents/pty/start"
+        let body: [String: Any] = isManaged ? ["task": task] : ["agent": agent, "task": task]
+        let result = await Self.post(url: URL(string: "http://localhost:5757\(path)")!, json: body)
+        if !result.ok {
+            let a = NSAlert()
+            a.messageText = "Couldn't start the agent"
+            a.informativeText = result.message ?? "Request failed."
+            a.runModal()
+        }
+        await refreshOnce()
+        rebuildPopoverIfShown()
+    }
+
+    private static func post(url: URL, json: [String: Any]) async -> (ok: Bool, message: String?) {
+        var req = URLRequest(url: url, timeoutInterval: 8)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "content-type")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: json)
+        do {
+            let (data, resp) = try await URLSession.shared.data(for: req)
+            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+            if (200..<300).contains(code) { return (true, nil) }
+            let msg = String(data: data, encoding: .utf8)
+            return (false, (msg?.isEmpty == false) ? msg : "HTTP \(code)")
+        } catch {
+            return (false, error.localizedDescription)
         }
     }
 

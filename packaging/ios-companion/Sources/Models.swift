@@ -123,13 +123,46 @@ struct ControlPolicy: Codable, Equatable {
     var remoteAdoptExternal: Bool
 }
 
+/// /api/autonomy/state — the "Proactive mode" master switch (idle + heartbeat).
+struct AutonomyState: Codable, Equatable {
+    var enabled: Bool
+}
+
 struct PushPrefs: Codable, Equatable {
     var done: Bool = true
     var error: Bool = true
     var permission: Bool = true
     var idle: Bool = true
     var advisor: Bool = false
+    var mail: Bool = true
 }
+
+// ── Mail (read-only digest + accounts) ──
+struct MailItemDTO: Codable, Identifiable, Hashable {
+    var uid: String
+    var accountId: String
+    var from: String
+    var subject: String
+    var importance: Int
+    var reason: String
+    var category: String
+    var id: String { accountId + ":" + uid }
+}
+struct MailDigest: Codable {
+    var date: String
+    var total: Int
+    var unread: Int
+    var summary: String
+    var needsYou: [MailItemDTO]
+}
+struct MailDigestResponse: Codable { var digest: MailDigest? }
+struct MailAccountDTO: Codable, Identifiable, Hashable {
+    var id: String
+    var email: String
+    var provider: String
+    var enabled: Bool
+}
+struct MailAccountsResponse: Codable { var accounts: [MailAccountDTO]; var consent: Bool }
 
 // ── read-only inspection (/api/soul, /api/memory, /api/skills, /api/tools) ──
 

@@ -28,15 +28,24 @@ export interface PushPrefs {
   permission: boolean;
   idle: boolean;
   advisor: boolean;
+  /** Daily mail digest + important-mail alerts. */
+  mail: boolean;
 }
 export function defaultPushPrefs(): PushPrefs {
-  return { done: true, error: true, permission: true, idle: true, advisor: false };
+  return { done: true, error: true, permission: true, idle: true, advisor: false, mail: true };
 }
 export function normalizePushPrefs(p: Partial<PushPrefs> | null | undefined): PushPrefs {
   const base = defaultPushPrefs();
   if (!p || typeof p !== "object") return base;
   const pick = (k: keyof PushPrefs): boolean => (typeof p[k] === "boolean" ? (p[k] as boolean) : base[k]);
-  return { done: pick("done"), error: pick("error"), permission: pick("permission"), idle: pick("idle"), advisor: pick("advisor") };
+  return {
+    done: pick("done"),
+    error: pick("error"),
+    permission: pick("permission"),
+    idle: pick("idle"),
+    advisor: pick("advisor"),
+    mail: pick("mail"),
+  };
 }
 
 export interface PushSubscription {
@@ -464,6 +473,22 @@ export class PushBridge {
     this.fire(
       { pref: "idle", title: "Lisa — while you were away", body: text.slice(0, 200), priority: "default", tag: "idle" },
       `idle#${this.now()}`,
+    );
+  }
+
+  /** Daily mail digest push (default priority). */
+  onMailDigest(text: string, click?: string): void {
+    this.fire(
+      { pref: "mail", title: "📬 Mail digest", body: text.slice(0, 240), priority: "default", tag: "mail-digest", click },
+      `mail-digest#${this.now()}`,
+    );
+  }
+
+  /** Important-mail alert (high priority); `tag` dedups per message. */
+  onMailImportant(ev: { title: string; body: string; click?: string; tag: string }): void {
+    this.fire(
+      { pref: "mail", title: ev.title, body: ev.body.slice(0, 240), priority: "high", tag: ev.tag, click: ev.click },
+      `mail#${ev.tag}`,
     );
   }
 
