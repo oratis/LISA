@@ -11,8 +11,16 @@
 //  Start command resolution:
 //    1. ~/.lisa/serve-command.txt — a full command line, if present (escape
 //       hatch for running from source, e.g. "node /path/dist/cli.js serve --web").
-//    2. otherwise `lisa serve --web` — resolved on the login shell's PATH
-//       (covers `npm i -g @oratis/lisa` / Homebrew installs).
+//    2. otherwise `lisa serve --web --host 0.0.0.0` — resolved on the login
+//       shell's PATH (covers `npm i -g @oratis/lisa` / Homebrew installs).
+//
+//  LAN-reachable by default (decision ②): a paired phone can reach the Mac over
+//  Wi-Fi without the user remembering `--host 0.0.0.0`. This is safe only because
+//  the backend is token-gated — the server REFUSES a non-loopback bind without
+//  LISA_WEB_TOKEN and rejects unauthenticated LAN requests (server.ts) — so we
+//  mint + persist a token (~/.lisa/config.env, 0600) and pass it in the backend's
+//  environment. Loopback (the local owner) stays tokenless; pairing
+//  (/api/pair/start) is loopback-only, so a LAN peer can't mint a device token.
 //
 //  It's launched via a login shell with nohup + disown so it fully detaches and
 //  outlives both this launcher process and the app itself (the backend is a
@@ -64,6 +72,10 @@ final class BackendController {
         isStarting = true
 
         let command = resolveCommand()
+        // The default command binds 0.0.0.0; arm the token gate so the server will
+        // accept it (and reject unauthenticated LAN callers). Harmless for a
+        // loopback override — loopback is trusted regardless.
+        let webToken = ensureWebToken()
         let logPath = lisaPath("backend.log")
         try? FileManager.default.createDirectory(
             atPath: (logPath as NSString).deletingLastPathComponent,
@@ -71,6 +83,12 @@ final class BackendController {
 
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        // Inherit the app's environment (HOME etc.) and inject the web token; the
+        // login shell rebuilds PATH. Setting `environment` replaces it wholesale,
+        // so start from the current environment rather than a bare dictionary.
+        var env = ProcessInfo.processInfo.environment
+        env["LISA_WEB_TOKEN"] = webToken
+        proc.environment = env
         // -l: login shell (PATH has npm-global / Homebrew). nohup + & + disown:
         // fully detach so the backend survives this shell, the launcher, and the app.
         proc.arguments = ["-lc", "nohup \(command) >> '\(logPath)' 2>&1 & disown"]
@@ -102,12 +120,71 @@ final class BackendController {
     // MARK: - Helpers
 
     private func resolveCommand() -> String {
+        // serve-command.txt is a full-control escape hatch (run from source, or
+        // force a different host) — we don't touch its host.
         let override = lisaPath("serve-command.txt")
         if let txt = try? String(contentsOfFile: override, encoding: .utf8) {
             let t = txt.trimmingCharacters(in: .whitespacesAndNewlines)
             if !t.isEmpty { return t }
         }
-        return "lisa serve --web"
+        // Default: bind all interfaces so a phone on the same Wi-Fi can reach it.
+        // Token-gated for non-loopback callers (see start() / the header note).
+        return "lisa serve --web --host 0.0.0.0"
+    }
+
+    // MARK: - Web token (arms the LAN auth gate)
+
+    /// The web token the backend needs to accept LAN requests. Reuses an existing
+    /// `LISA_WEB_TOKEN` from `~/.lisa/config.env` if present (stable across launches
+    /// and shared with `lisa pair` / a manual `lisa serve`), else mints one, appends
+    /// it to config.env (0600), and returns it. The phone still pairs with a separate
+    /// per-device token via `lisa pair`; this just arms the gate.
+    private func ensureWebToken() -> String {
+        let configPath = lisaPath("config.env")
+        if let existing = readEnvValue("LISA_WEB_TOKEN", from: configPath), !existing.isEmpty {
+            return existing
+        }
+        let token = randomHexToken(bytes: 24)
+        appendConfigEnvLine("LISA_WEB_TOKEN=\(token)", to: configPath)
+        return token
+    }
+
+    /// Read KEY=value from a flat env file (first match), unquoting a simple value.
+    /// Tolerates a leading `export ` and a trailing ` # comment` the way the backend's
+    /// own parser does (src/env.ts `parseEnv`), so a hand-edited config.env doesn't
+    /// make us miss an existing token and mint a duplicate.
+    private func readEnvValue(_ key: String, from path: String) -> String? {
+        guard let contents = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
+        for raw in contents.split(separator: "\n") {
+            var line = raw.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("export ") {
+                line = String(line.dropFirst("export ".count)).trimmingCharacters(in: .whitespaces)
+            }
+            guard line.hasPrefix("\(key)=") else { continue }
+            var value = String(line.dropFirst(key.count + 1)).trimmingCharacters(in: .whitespaces)
+            // Strip an inline comment, but only on an unquoted value (mirrors env.ts).
+            if !value.hasPrefix("\"") && !value.hasPrefix("'"), let hash = value.firstIndex(of: "#") {
+                value = String(value[..<hash]).trimmingCharacters(in: .whitespaces)
+            }
+            return value.trimmingCharacters(in: CharacterSet(charactersIn: "\"' "))
+        }
+        return nil
+    }
+
+    /// Append a line to ~/.lisa/config.env (creating it 0600), preserving content.
+    private func appendConfigEnvLine(_ line: String, to path: String) {
+        let dir = (path as NSString).deletingLastPathComponent
+        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        var text = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
+        if !text.isEmpty && !text.hasSuffix("\n") { text += "\n" }
+        text += line + "\n"
+        try? text.write(toFile: path, atomically: true, encoding: .utf8)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path)
+    }
+
+    /// Cryptographically-random hex token (matches `openssl rand -hex <bytes>`).
+    private func randomHexToken(bytes: Int) -> String {
+        (0..<bytes).map { _ in String(format: "%02x", UInt8.random(in: 0...255)) }.joined()
     }
 
     private func lisaPath(_ name: String) -> String {
