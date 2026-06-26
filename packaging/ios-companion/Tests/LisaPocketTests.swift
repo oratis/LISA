@@ -146,4 +146,17 @@ final class LisaPocketTests: XCTestCase {
         XCTAssertEqual(OnboardingStep.welcome.rawValue, 0)        // welcome/mode are pre-flow
         XCTAssertLessThan(OnboardingStep.install.rawValue, OnboardingStep.connect.rawValue)
     }
+
+    // ── M2: connect-failure recovery is outcome-specific ──
+    func testVerifyOutcomeRecovery() {
+        // A rejected token can't be retried — offer a fresh scan first.
+        XCTAssertEqual(VerifyOutcome.unauthorized.recovery.first, .rescan)
+        // A reachable-but-erroring or unreachable Mac is worth a retry.
+        XCTAssertEqual(VerifyOutcome.unreachable.recovery.first, .retry)
+        XCTAssertEqual(VerifyOutcome.serverError(500).recovery.first, .retry)
+        // Manual entry is always an escape hatch; success has nothing to recover.
+        XCTAssertTrue(VerifyOutcome.unauthorized.recovery.contains(.manual))
+        XCTAssertTrue(VerifyOutcome.ok.recovery.isEmpty)
+        XCTAssertEqual(RecoveryAction.rescan.label, "Scan a fresh code")
+    }
 }

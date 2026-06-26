@@ -71,3 +71,30 @@ enum VerifyOutcome: Equatable {
     case unauthorized  // reached a server but the token was rejected (expired/revoked)
     case serverError(Int)
 }
+
+/// A recovery action offered on a failed connect (drives the connect screen's
+/// buttons). Kept pure so the outcome→action mapping is unit-testable.
+enum RecoveryAction: Hashable {
+    case retry, rescan, manual
+
+    var label: String {
+        switch self {
+        case .retry:  return "Try again"
+        case .rescan: return "Scan a fresh code"
+        case .manual: return "Enter manually"
+        }
+    }
+}
+
+extension VerifyOutcome {
+    /// Recovery actions for a failed connect, most-useful first. A rejected token
+    /// can't be retried — re-scan a fresh code (run `lisa pair` again); an
+    /// unreachable / erroring Mac is worth a retry.
+    var recovery: [RecoveryAction] {
+        switch self {
+        case .ok:                        return []
+        case .unauthorized:              return [.rescan, .manual]
+        case .unreachable, .serverError: return [.retry, .manual]
+        }
+    }
+}
