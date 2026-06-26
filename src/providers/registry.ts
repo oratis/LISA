@@ -171,6 +171,35 @@ export function resolveAnthropicAuth(
   return { apiKey: env.ANTHROPIC_API_KEY };
 }
 
+/**
+ * Does `env` carry credentials for the provider that MODEL routes to? Mirrors
+ * resolveProvider's auth resolution exactly, so the CLI key-gate matches the key
+ * the provider will actually read — e.g. a `glm-*` model needs ZHIPU_API_KEY (its
+ * preset), not OPENAI_API_KEY. Used by the birth + run gates. Pure.
+ *
+ * (detectProvider consults process.env for the LISA_BASE_URL / LISA_PROVIDER
+ * routing rules; the per-key lookups below read the passed `env`.)
+ */
+export function hasCredentialsForModel(
+  model: string,
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  const provider = detectProvider(model);
+  if (provider === "anthropic") {
+    return !!(env.ANTHROPIC_AUTH_TOKEN?.trim() || env.ANTHROPIC_API_KEY);
+  }
+  if (provider === "gemini") {
+    return !!(env.GEMINI_API_KEY ?? env.GOOGLE_API_KEY);
+  }
+  // openai / openai-compatible — same precedence as resolveProvider.
+  const preset = findPreset(model);
+  if (preset) return !!env[preset.apiKeyEnv];
+  if (env.LISA_BASE_URL) {
+    return !!(env.LISA_API_KEY ?? env.TAKO_KEY ?? env.OPENAI_API_KEY);
+  }
+  return !!env.OPENAI_API_KEY;
+}
+
 export function makeProvider(name: ProviderName): Provider {
   switch (name) {
     case "anthropic":

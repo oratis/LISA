@@ -22,7 +22,7 @@ import { LISA_HOME } from "./paths.js";
 import { loadAllPlugins, PLUGINS_ROOT } from "./plugins/loader.js";
 import type { HookSpec } from "./plugins/types.js";
 import { buildSystemPromptSnapshot, getPromptFingerprint } from "./prompt.js";
-import { providerForModel, resolveDefaultModel } from "./providers/registry.js";
+import { providerForModel, resolveDefaultModel, hasCredentialsForModel } from "./providers/registry.js";
 import { reflectOnSession } from "./reflect.js";
 import { runRepl } from "./cli/repl.js";
 import { listSessionsOnDisk, loadSessionMessages } from "./sessions/list.js";
@@ -364,8 +364,11 @@ async function main(): Promise<void> {
 
   // ── soul-only subcommands (don't need agent loop) ─────────────────────
   if (args.subcommand === "birth") {
-    if (!process.env.ANTHROPIC_API_KEY) {
-      console.error("Birth ritual needs ANTHROPIC_API_KEY (an LLM dreams Lisa into existence).");
+    if (!hasCredentialsForModel(args.model)) {
+      console.error(
+        `Birth ritual needs an LLM API key for ${args.model} (an LLM dreams Lisa into existence). ` +
+          `Set the provider key — e.g. ANTHROPIC_API_KEY, or ZHIPU_API_KEY for a glm-* model.`,
+      );
       process.exit(1);
     }
     await runBirthCeremony(args.model);
@@ -540,21 +543,14 @@ async function main(): Promise<void> {
   // Exception: `serve --web` defers the key check to the browser UI, which
   // shows a popup that writes the key to ~/.lisa/config.env on save.
   const isWebServe = args.subcommand === "serve" && args.serveWeb;
-  const provider = providerForModel(args.model);
-  if (!isWebServe) {
-    if (provider.name === "anthropic" && !process.env.ANTHROPIC_API_KEY) {
-      console.error(
-        `Lisa needs ANTHROPIC_API_KEY. Set it in your shell or in ${CONFIG_ENV_PATH}:\n\n  ANTHROPIC_API_KEY=sk-ant-...\n\nGet a key at https://console.anthropic.com/.`,
-      );
-      process.exit(1);
-    }
-    if (provider.name === "openai" && !process.env.OPENAI_API_KEY) {
-      console.error(
-        `Lisa needs OPENAI_API_KEY for the OpenAI provider. Set it in your shell or in ${CONFIG_ENV_PATH}.`,
-      );
-      process.exit(1);
-    }
+  if (!isWebServe && !hasCredentialsForModel(args.model)) {
+    console.error(
+      `Lisa needs an API key for ${args.model}. Set the provider key in your shell or in ${CONFIG_ENV_PATH} ` +
+        `— e.g. ANTHROPIC_API_KEY (https://console.anthropic.com/), OPENAI_API_KEY, or a preset key like ZHIPU_API_KEY for glm-*.`,
+    );
+    process.exit(1);
   }
+  const provider = providerForModel(args.model);
 
   // ── auto-birth on first launch ──────────────────────────────────────
   // Skipped for `serve --web` — the browser UI runs the birth ritual itself

@@ -1,6 +1,11 @@
 import { test, describe, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { detectProvider, resolveAnthropicAuth, OPENAI_COMPAT_PRESETS } from "./registry.js";
+import {
+  detectProvider,
+  resolveAnthropicAuth,
+  hasCredentialsForModel,
+  OPENAI_COMPAT_PRESETS,
+} from "./registry.js";
 
 // detectProvider reads a few env vars as fallbacks. Snapshot + restore them
 // so tests are hermetic regardless of the dev's shell.
@@ -107,6 +112,34 @@ describe("resolveAnthropicAuth — Bearer gateway vs x-api-key", () => {
   });
   test("neither set → apiKey undefined", () => {
     assert.deepEqual(resolveAnthropicAuth({}), { apiKey: undefined });
+  });
+});
+
+describe("hasCredentialsForModel — the CLI key-gate matches the real provider key", () => {
+  test("glm-* needs ZHIPU_API_KEY (its preset), NOT OPENAI_API_KEY", () => {
+    assert.equal(hasCredentialsForModel("glm-4.6", { ZHIPU_API_KEY: "z" }), true);
+    // the bug we fixed: an OpenAI key must NOT satisfy a glm-* model
+    assert.equal(hasCredentialsForModel("glm-4.6", { OPENAI_API_KEY: "sk" }), false);
+    assert.equal(hasCredentialsForModel("glm-4.6", {}), false);
+  });
+
+  test("claude-* accepts ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN", () => {
+    assert.equal(hasCredentialsForModel("claude-sonnet-4-6", { ANTHROPIC_API_KEY: "sk-ant" }), true);
+    assert.equal(hasCredentialsForModel("claude-sonnet-4-6", { ANTHROPIC_AUTH_TOKEN: "tok" }), true);
+    assert.equal(hasCredentialsForModel("claude-sonnet-4-6", { ANTHROPIC_AUTH_TOKEN: "  " }), false);
+    assert.equal(hasCredentialsForModel("claude-sonnet-4-6", {}), false);
+  });
+
+  test("other presets read their own key env (deepseek, qwen)", () => {
+    assert.equal(hasCredentialsForModel("deepseek-chat", { DEEPSEEK_API_KEY: "d" }), true);
+    assert.equal(hasCredentialsForModel("qwen-max", { DASHSCOPE_API_KEY: "q" }), true);
+    assert.equal(hasCredentialsForModel("deepseek-chat", { ZHIPU_API_KEY: "z" }), false);
+  });
+
+  test("vanilla openai + gemini", () => {
+    assert.equal(hasCredentialsForModel("gpt-4o", { OPENAI_API_KEY: "sk" }), true);
+    assert.equal(hasCredentialsForModel("gemini-2.5-flash", { GOOGLE_API_KEY: "g" }), true);
+    assert.equal(hasCredentialsForModel("gemini-2.5-flash", { GEMINI_API_KEY: "g" }), true);
   });
 });
 
