@@ -149,11 +149,14 @@ final class LisaPocketTests: XCTestCase {
         XCTAssertEqual(InstallMethod.allCases.count, 3)
     }
 
-    // CLI installs must instruct the LAN-reachable bind (the #1 pairing gotcha);
+    // CLI installs must instruct the LAN-reachable bind (the #1 pairing gotcha)
+    // AND arm LISA_WEB_TOKEN (the server refuses a non-loopback bind without it);
     // the menu-bar app has nothing to type.
     func testServeCommandReachableForCLIOnly() {
-        XCTAssertEqual(InstallMethod.npm.serveCommand, "lisa serve --web --host 0.0.0.0")
-        XCTAssertEqual(InstallMethod.homebrew.serveCommand, "lisa serve --web --host 0.0.0.0")
+        let expected = "LISA_WEB_TOKEN=$(openssl rand -hex 24) lisa serve --web --host 0.0.0.0"
+        XCTAssertEqual(InstallMethod.npm.serveCommand, expected)
+        XCTAssertEqual(InstallMethod.homebrew.serveCommand, expected)
+        XCTAssertTrue(InstallMethod.npm.serveCommand!.contains("--host 0.0.0.0"))
         XCTAssertNil(InstallMethod.app.serveCommand)
         XCTAssertTrue(InstallMethod.npm.isCLI)
         XCTAssertFalse(InstallMethod.app.isCLI)
