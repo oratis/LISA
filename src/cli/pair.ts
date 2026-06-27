@@ -12,6 +12,7 @@
 // qrcode-terminal is CommonJS — Node's ESM loader only exposes its default
 // export, so import the module object and call .generate off it.
 import qrcodeTerminal from "qrcode-terminal";
+import { Agent, setGlobalDispatcher } from "undici";
 import { detectLanHost, buildPairUrl } from "../web/pairing.js";
 
 // Re-exported so existing importers (and pair.test.ts) keep working after the
@@ -60,12 +61,30 @@ export function parsePairArgs(argv: string[]): PairArgs | { error: string } {
   return { host, port, name };
 }
 
+/**
+ * A loopback-only bind address — the #1 pairing failure: the QR is minted over
+ * loopback, but a phone on the LAN can't reach a server listening only there.
+ * "0.0.0.0" / a specific LAN IP / a tailnet name are all reachable. The server
+ * reports its own bind host (authoritative — no network probe that a firewall or
+ * the outbound HTTP proxy could skew).
+ */
+function isLoopbackBind(boundHost: string): boolean {
+  const h = boundHost.trim().toLowerCase();
+  return h === "127.0.0.1" || h === "localhost" || h === "::1" || h.startsWith("127.");
+}
+
 export async function runPairCommand(argv: string[]): Promise<number> {
   const parsed = parsePairArgs(argv);
   if ("error" in parsed) {
     console.error(parsed.error);
     return 2;
   }
+  // `lisa pair` only ever talks to the local server over loopback. LISA installs
+  // a global undici ProxyAgent (src/proxy-bootstrap.ts) with no localhost bypass,
+  // so under a proxy these loopback calls would be sent through it and fail. Use a
+  // direct dispatcher for this short-lived, loopback-only command.
+  setGlobalDispatcher(new Agent());
+
   const { port, name } = parsed;
   const host = parsed.host ?? detectLanHost();
   if (!host) {
@@ -82,9 +101,10 @@ export async function runPairCommand(argv: string[]): Promise<number> {
       body: JSON.stringify({ name, platform: "ios" }),
     });
   } catch (err) {
-    console.error(
-      `Could not reach LISA at ${base} — is \`lisa serve --web\` running? (${(err as Error).message})`,
-    );
+    console.error(`Could not reach LISA at ${base}. Start the server first — in a`);
+    console.error(`separate terminal (leave it running), so this iPhone can reach it:`);
+    console.error(`\n  lisa serve --web --host 0.0.0.0\n`);
+    console.error(`then run \`lisa pair\` again. (${(err as Error).message})`);
     return 1;
   }
   if (res.status === 403) {
@@ -96,7 +116,7 @@ export async function runPairCommand(argv: string[]): Promise<number> {
     return 1;
   }
 
-  const body = (await res.json().catch(() => ({}))) as { token?: string; id?: string; port?: number };
+  const body = (await res.json().catch(() => ({}))) as { token?: string; id?: string; port?: number; boundHost?: string };
   if (!body.token) {
     console.error("server returned no token");
     return 1;
@@ -116,8 +136,17 @@ export async function runPairCommand(argv: string[]): Promise<number> {
   console.log(`  Port:  ${effPort}`);
   console.log(`  Token: ${body.token}\n`);
   console.log(`Paired device "${name}" (id ${body.id ?? "?"}). Revoke it later from the app or POST /api/devices/revoke.`);
-  console.log(
-    `The phone must reach http://${host}:${port} — run serve with --host 0.0.0.0 on the same Wi-Fi, or use a Tailscale name as --host.`,
-  );
+  // The QR is minted over loopback, but the phone connects over the LAN. If the
+  // server is bound loopback-only the phone can't reach it however good the QR is —
+  // call that out loudly instead of a generic note. (boundHost may be absent on an
+  // older server; then we can't tell, so fall back to the gentle reminder.)
+  if (body.boundHost && isLoopbackBind(body.boundHost)) {
+    console.log(`\n⚠️  LISA is only listening on localhost, so this iPhone can't reach it yet.`);
+    console.log(`   Restart it on your network (in a separate terminal, leave it running):`);
+    console.log(`     lisa serve --web --host 0.0.0.0`);
+    console.log(`   …then run \`lisa pair\` again. (A Tailscale tailnet name as --host works too.)`);
+  } else {
+    console.log(`Keep this phone on the same Wi-Fi (or tailnet) as your Mac.`);
+  }
   return 0;
 }
