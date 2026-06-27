@@ -33,10 +33,12 @@ import { MAIN_HTML } from "./lisa-html.js";
  * Then: a "Pair phone" function-bar button → showPair() modal that mints a
  * device token via /api/pair/start and shows copyable link + host/port/token
  * (browser counterpart to `lisa pair`), with its .pair-row CSS.
+ * Then: a scannable QR (server-rendered SVG from /api/pair/start) at the top of
+ * that modal, with .pair-qr CSS.
  */
-const EXPECTED_LENGTH = 150420;
+const EXPECTED_LENGTH = 150733;
 const EXPECTED_SHA256 =
-  "8a7b79c2ac406b4a79a03a2b742edfe46d121d8b6191922232bec44c0651bd03";
+  "f7adb8e271d8a3984a41810783f5e9918ad9c8b78b9d460cb5e3f7b122a2d6d8";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);
