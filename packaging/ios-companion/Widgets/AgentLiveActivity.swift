@@ -25,9 +25,13 @@ struct AgentLiveActivity: Widget {
                     Label(context.attributes.agent, systemImage: "cpu").font(.caption)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    Text(context.state.state)
-                        .font(.caption.bold())
-                        .foregroundStyle(activityColor(context.state.state))
+                    VStack(alignment: .trailing, spacing: 1) {
+                        Text(context.state.state)
+                            .font(.caption.bold())
+                            .foregroundStyle(activityColor(context.state.state))
+                        Text("\(context.state.turns) turns")     // B22 — was dropped in expanded
+                            .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+                    }
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     Text("\(context.attributes.project) — \(context.state.detail)")
@@ -44,12 +48,5 @@ struct AgentLiveActivity: Widget {
     }
 }
 
-func activityColor(_ state: String) -> Color {
-    switch state {
-    case "working": return .blue
-    case "waiting": return .yellow
-    case "error": return .red
-    case "done": return .green
-    default: return .gray
-    }
-}
+// Shared palette so the activity dot matches the roster + widget (I1/B23).
+func activityColor(_ state: String) -> Color { GlanceColors.forState(state) }

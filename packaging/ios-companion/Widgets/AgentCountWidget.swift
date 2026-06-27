@@ -35,12 +35,36 @@ struct AgentCountWidgetView: View {
         switch family {
         case .accessoryInline:
             Text(inlineText)
+        case .accessoryCircular:
+            circular
         case .accessoryRectangular:
             rectangular
         default:
             if let snap = entry.snapshot, snap.updatedAt > .distantPast { populated(snap) }
             else { unconfigured }
         }
+    }
+
+    /// Round lock-screen / StandBy slot (C10): the most urgent number — stuck if
+    /// any, else active.
+    @ViewBuilder private var circular: some View {
+        if let s = entry.snapshot, s.updatedAt > .distantPast {
+            ZStack {
+                AccessoryWidgetBackground()
+                VStack(spacing: 0) {
+                    Image(systemName: "cpu").font(.system(size: 10))
+                    Text("\(s.stuck > 0 ? s.stuck : s.working)").font(.headline.bold())
+                }
+            }
+        } else {
+            Image(systemName: "cpu")
+        }
+    }
+
+    /// A snapshot older than 10 min is shown dimmed rather than as confidently
+    /// live (review B25); relative time (below) also conveys the age.
+    private func isStale(_ snap: AgentSnapshot) -> Bool {
+        entry.date.timeIntervalSince(snap.updatedAt) > 600
     }
 
     // Lock-screen accessory families: terse, no background (system styles them).
@@ -68,12 +92,12 @@ struct AgentCountWidgetView: View {
                 Image(systemName: "cpu").font(.caption2)
                 Text("Dispatch").font(.caption.bold())
                 Spacer()
-                Text(snap.updatedAt, style: .time)
+                Text(snap.updatedAt, style: .relative)               // B24 — "3 min" reads as freshness
                     .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
             }
             HStack(spacing: family == .systemMedium ? 20 : 12) {
-                stat(snap.working, "active", .blue)
-                stat(snap.stuck, "stuck", snap.stuck > 0 ? .orange : .secondary)
+                stat(snap.working, "active", GlanceColors.working)
+                stat(snap.stuck, "stuck", snap.stuck > 0 ? (snap.error > 0 ? GlanceColors.error : GlanceColors.waiting) : .secondary)
                 if family == .systemMedium {
                     stat(snap.total, "total", .secondary)
                 }
@@ -83,6 +107,7 @@ struct AgentCountWidgetView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .opacity(isStale(snap) ? 0.55 : 1)                           // B25 — dim a stale snapshot
     }
 
     private func stat(_ value: Int, _ label: String, _ color: Color) -> some View {
@@ -119,6 +144,6 @@ struct AgentCountWidget: Widget {
         }
         .configurationDisplayName("Agent activity")
         .description("Active and stuck agents on your Mac.")
-        .supportedFamilies([.systemSmall, .systemMedium, .accessoryRectangular, .accessoryInline])
+        .supportedFamilies([.systemSmall, .systemMedium, .accessoryCircular, .accessoryRectangular, .accessoryInline])
     }
 }
