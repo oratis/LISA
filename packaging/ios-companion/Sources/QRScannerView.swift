@@ -7,19 +7,30 @@ import AVFoundation
 /// project.yml). Degrades honestly: no camera (e.g. the Simulator) or a denied
 /// permission surfaces via `onError` rather than a black screen.
 struct QRScannerView: UIViewControllerRepresentable {
-    /// Called once, on the main actor, with the decoded string of the first QR seen.
+    /// Called on the main actor with the decoded string of each accepted QR.
     var onScan: (String) -> Void
     /// Called with a human-readable reason when scanning can't start.
     var onError: (String) -> Void
+    /// Bump to re-arm after a rejected (non-LISA) scan so the user can re-aim
+    /// without the viewfinder freezing (review A10).
+    var rescanToken: Int = 0
 
     func makeUIViewController(context: Context) -> ScannerViewController {
         let vc = ScannerViewController()
         vc.onScan = onScan
         vc.onError = onError
+        vc.lastRescanToken = rescanToken
         return vc
     }
 
-    func updateUIViewController(_ vc: ScannerViewController, context: Context) {}
+    func updateUIViewController(_ vc: ScannerViewController, context: Context) {
+        vc.onScan = onScan
+        vc.onError = onError
+        if vc.lastRescanToken != rescanToken {
+            vc.lastRescanToken = rescanToken
+            vc.rearm()
+        }
+    }
 }
 
 /// AVFoundation plumbing for `QRScannerView`. A `UIViewController` (not a bare view)
@@ -30,7 +41,13 @@ final class ScannerViewController: UIViewController, AVCaptureMetadataOutputObje
 
     private let session = AVCaptureSession()
     private var preview: AVCaptureVideoPreviewLayer?
-    private var didScan = false  // single-shot: ignore everything after the first hit
+    private var didScan = false  // debounce: ignore further hits until re-armed
+    var lastRescanToken = 0
+
+    /// Re-accept scans after the caller rejected the last one (non-LISA QR). The
+    /// session keeps running (we no longer stop it on every decode), so this just
+    /// clears the debounce.
+    func rearm() { didScan = false }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -108,9 +125,10 @@ final class ScannerViewController: UIViewController, AVCaptureMetadataOutputObje
               let code = metadataObjects.first as? AVMetadataMachineReadableCodeObject,
               code.type == .qr,
               let value = code.stringValue else { return }
+        // Debounce only (don't stop the session): a rejected scan re-arms via
+        // rearm(); a accepted one navigates away → viewWillDisappear stops it.
         didScan = true
         UINotificationFeedbackGenerator().notificationOccurred(.success)
-        stop()
         onScan?(value)
     }
 }
