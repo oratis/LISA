@@ -56,21 +56,24 @@ struct OnboardingFlow: View {
     private var welcomeScreen: some View {
         VStack(spacing: 0) {
             OnboardingTopBar(step: nil, onSkip: skip)
-            Spacer()
-            VStack(spacing: 22) {
-                Image(systemName: "macbook.and.iphone")
-                    .font(.system(size: 72, weight: .light))
-                    .foregroundStyle(Theme.accent)
-                VStack(spacing: 10) {
-                    Text("Meet Lisa")
-                        .font(.largeTitle.weight(.bold)).foregroundStyle(Theme.text)
-                    Text("She lives on your Mac. This is your window to her — chat, check on her agents, and stay in the loop from anywhere.")
-                        .font(.body).foregroundStyle(Theme.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 32)
+            ScrollableCenter {
+                VStack(spacing: 22) {
+                    Image(systemName: "macbook.and.iphone")
+                        .font(.system(size: 72, weight: .light))
+                        .foregroundStyle(Theme.accent)
+                    VStack(spacing: 10) {
+                        Text("Meet Lisa")
+                            .font(.largeTitle.weight(.bold)).foregroundStyle(Theme.text)
+                        Text("She lives on your Mac. This is your window to her — chat, check on her agents, and stay in the loop from anywhere.")
+                            .font(.body).foregroundStyle(Theme.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 32)
+                    }
                 }
+                .padding(.vertical, 24)
             }
-            Spacer()
+        }
+        .safeAreaInset(edge: .bottom) {
             VStack(spacing: 8) {
                 OnboardingPrimaryButton(title: "Get started") { go(.mode) }
                 OnboardingSecondaryButton(title: "I already have LISA running") { go(.pair) }
@@ -175,16 +178,26 @@ struct OnboardingFlow: View {
             OnboardingTopBar(step: .pair, onSkip: skip)
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    OnboardingTitle(title: "Pair this iPhone",
-                                    subtitle: "Keep LISA running on your Mac. Then, in a new terminal window, run this — it prints a QR code there.")
-                    CopyCommandRow(command: pairCommand)
-                    Text("Only someone with this code can connect — and only over your Wi-Fi or tailnet.")
-                        .font(.caption).foregroundStyle(Theme.tertiary).padding(.horizontal, 24)
-                    Label("Using the Mac app? Click the Lisa icon in your menu bar → “Pair iPhone…” — no terminal needed.",
-                          systemImage: "menubar.rectangle")
-                        .font(.caption).foregroundStyle(Theme.secondary)
+                    if method == .app {
+                        // Mac-app users have no terminal — lead with the menu-bar
+                        // pairing window (review B4), CLI shown only as a fallback.
+                        OnboardingTitle(title: "Pair this iPhone",
+                                        subtitle: "LISA is in your Mac's menu bar. Click the Lisa icon → “Pair iPhone…” — it shows a QR code to scan.")
+                        Label("No terminal needed.", systemImage: "menubar.rectangle")
+                            .font(.subheadline).foregroundStyle(Theme.accent).padding(.horizontal, 24)
+                        DisclosureGroup {
+                            CopyCommandRow(command: pairCommand)
+                        } label: {
+                            Text("Prefer the terminal?").font(.caption).foregroundStyle(Theme.secondary)
+                        }
                         .padding(.horizontal, 24)
-                        .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        OnboardingTitle(title: "Pair this iPhone",
+                                        subtitle: "Keep LISA running on your Mac. Then, in a new terminal window, run this — it prints a QR code there.")
+                        CopyCommandRow(command: pairCommand)
+                        Text("Only someone with this code can connect — and only over your Wi-Fi or tailnet.")
+                            .font(.caption).foregroundStyle(Theme.tertiary).padding(.horizontal, 24)
+                    }
                 }
                 .padding(.vertical, 24)
             }
@@ -213,6 +226,10 @@ struct OnboardingFlow: View {
             .ignoresSafeArea()
             VStack {
                 OnboardingTopBar(step: .scan, onSkip: skip)
+                    .background(
+                        LinearGradient(colors: [.black.opacity(0.55), .clear], startPoint: .top, endPoint: .bottom)
+                            .ignoresSafeArea(edges: .top)
+                    )   // scrim so "Not now" reads over a bright camera scene (C5)
                 Spacer()
                 VStack(spacing: 12) {
                     if let scanNote {
@@ -238,8 +255,8 @@ struct OnboardingFlow: View {
     private var connectScreen: some View {
         VStack(spacing: 0) {
             OnboardingTopBar(step: .connect, onSkip: skip)
-            Spacer()
-            Group {
+            ScrollableCenter {
+              Group {
                 if verifying {
                     VStack(spacing: 16) {
                         ProgressView().tint(Theme.accent).scaleEffect(1.4)
@@ -255,8 +272,8 @@ struct OnboardingFlow: View {
                 } else if let outcome {
                     failureView(outcome)
                 }
+              }
             }
-            Spacer()
             footer
                 .padding(.bottom, 24)
         }

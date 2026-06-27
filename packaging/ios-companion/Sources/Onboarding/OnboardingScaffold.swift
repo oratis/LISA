@@ -7,6 +7,19 @@ import UIKit
 
 /// Tasteful haptics for the flow — a success tap on copy / connect, a warning on a
 /// failed connect, a selection tick when picking a card.
+/// Centers content when it fits, scrolls when it doesn't — so Welcome/Connect
+/// don't clip under large Dynamic Type or on small devices (review C1).
+struct ScrollableCenter<Content: View>: View {
+    @ViewBuilder var content: Content
+    var body: some View {
+        GeometryReader { geo in
+            ScrollView {
+                content.frame(maxWidth: .infinity, minHeight: geo.size.height)
+            }
+        }
+    }
+}
+
 enum Haptics {
     static func success()   { UINotificationFeedbackGenerator().notificationOccurred(.success) }
     static func warning()   { UINotificationFeedbackGenerator().notificationOccurred(.warning) }
