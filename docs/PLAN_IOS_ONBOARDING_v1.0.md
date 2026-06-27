@@ -79,9 +79,10 @@ After success the user lands on **Chat** (warmer than Dispatch).
 
 `enum ConnectionMode { case mac, cloud }`, chosen at step 1, threaded through:
 - **mac** → install/serve/pair steps above; scheme `http`, default port 5757.
-- **cloud** → sign-in (Firebase / Sign in with Apple per `PLAN_CLOUD`) → server
-  hands back an `https://…?token=` config; scheme `https`, default port 443.
-  Until the cloud edition lands, the card shows "Coming soon" and is disabled.
+- **cloud** → **Sign in with Apple** (M4, done): the app POSTs the Apple identity
+  token to `POST /api/auth/apple`; the server verifies it and hands back the
+  session token → scheme `https`, default port 443. A token-paste fallback covers
+  instances that haven't enabled sign-in (the reviewer demo) and power users.
 
 ## Pairing mechanism — 100% reuse
 
@@ -135,7 +136,13 @@ token-gated. The CLI keeps its loopback default; the flow / `lisa pair` instruct
    re-entry, copy haptics.
 3. **M3** — Mac-side GUI QR ("Pair iPhone…" menu item / window) so non-CLI users
    skip the terminal.
-4. **M4** — wire the LISA Cloud fork to the cloud-edition sign-in.
+4. **M4 ✅** — wire the LISA Cloud fork to the cloud-edition sign-in. **Sign in
+   with Apple** is live: the cloud onboarding sheet runs the native flow and
+   exchanges the Apple identity token at `POST /api/auth/apple`, which verifies it
+   against Apple's keys (`src/web/cloudAuth.ts`) and returns the cloud session
+   token. Server-side it's opt-in (`LISA_CLOUD_APPLE_SIGNIN`) and single-tenant
+   (returns the shared `LISA_WEB_TOKEN`, matching the deployed M0/C2 demo);
+   per-`uid` isolation stays deferred C3 work. Token-paste remains as a fallback.
 
 ## Open questions (non-blocking)
 

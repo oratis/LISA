@@ -1,4 +1,5 @@
 import SwiftUI
+import AuthenticationServices
 
 /// First-run guided flow: carries a brand-new user from "app installed, nothing
 /// configured" → "paired and in the app" (docs/PLAN_IOS_ONBOARDING_v1.0.md, M1).
@@ -316,8 +317,10 @@ struct OnboardingFlow: View {
 }
 
 /// Paste / manual-entry fallback for both data planes. Mac: a `lisa-pair://` or
-/// `http://host:port/?token=` link, or host/port/token fields. Cloud: an
-/// `https://…run.app/?token=` URL (Sign in with Apple is coming later).
+/// `http://host:port/?token=` link, or host/port/token fields. Cloud:
+/// **Sign in with Apple** against a LISA Cloud instance (M4 — the server verifies
+/// the Apple identity token and hands back the session token; see
+/// src/web/cloudAuth.ts), or paste an `https://…/?token=` URL directly.
 struct OnboardingManualEntry: View {
     @EnvironmentObject var app: AppState
     let mode: ConnectionMode
@@ -328,47 +331,14 @@ struct OnboardingManualEntry: View {
     @State private var host = ""
     @State private var portText = "5757"
     @State private var token = ""
+    @State private var cloudURL = ""
+    @State private var appleBusy = false
     @State private var error: String?
 
     var body: some View {
         NavigationStack {
             Form {
-                Section {
-                    TextField(mode == .cloud ? "https://…run.app/?token=" : "lisa-pair://… or http://host:port/?token=",
-                              text: $pasteText)
-                        .autocorrectionDisabled().textInputAutocapitalization(.never).keyboardType(.URL)
-                    Button(mode == .cloud ? "Connect" : "Apply") { apply(pasteText) }
-                        .disabled(pasteText.isEmpty)
-                } header: {
-                    Text(mode == .cloud ? "Cloud URL" : "Paste pairing link")
-                } footer: {
-                    Text(mode == .cloud
-                         ? "Paste your LISA Cloud URL with its token."
-                         : "Run `lisa pair` on your Mac and copy the link it prints.")
-                }
-
-                if mode == .mac {
-                    Section("Or enter manually") {
-                        TextField("Host (IP or tailnet name)", text: $host)
-                            .autocorrectionDisabled().textInputAutocapitalization(.never)
-                        TextField("Port", text: $portText).keyboardType(.numberPad)
-                        SecureField("Device token", text: $token)
-                        Button("Connect") {
-                            app.update(host: host.trimmingCharacters(in: .whitespaces),
-                                       port: Int(portText) ?? 5757,
-                                       token: token.isEmpty ? nil : token, scheme: "http")
-                            if app.config.isConfigured { finish() } else { error = "Enter a host and token." }
-                        }
-                        .disabled(host.isEmpty || token.isEmpty)
-                    }
-                }
-
-                if mode == .cloud {
-                    Section {
-                        Button {} label: { Label("Sign in with Apple (coming soon)", systemImage: "person.crop.circle") }
-                            .disabled(true)
-                    }
-                }
+                if mode == .cloud { cloudSections } else { macSections }
 
                 if let error {
                     Section { Text(error).font(.caption).foregroundStyle(Theme.danger) }
@@ -382,6 +352,98 @@ struct OnboardingManualEntry: View {
             }
         }
         .preferredColorScheme(.dark)
+    }
+
+    // ── Cloud: Sign in with Apple (primary) + paste-a-token (fallback) ──
+    @ViewBuilder private var cloudSections: some View {
+        Section {
+            TextField("https://your-instance.run.app", text: $cloudURL)
+                .autocorrectionDisabled().textInputAutocapitalization(.never).keyboardType(.URL)
+            SignInWithAppleButton(.continue,
+                onRequest: { req in req.requestedScopes = [.fullName, .email] },
+                onCompletion: handleApple)
+                .signInWithAppleButtonStyle(.white)
+                .frame(height: 46)
+                .cornerRadius(Theme.cardRadius)
+                .disabled(appleBusy || AppState.parseCloudBase(cloudURL) == nil)
+                .opacity(appleBusy ? 0.5 : 1)
+            if appleBusy { ProgressView().tint(Theme.accent) }
+        } header: {
+            Text("LISA Cloud")
+        } footer: {
+            Text("Enter your LISA Cloud URL, then sign in. Your Mac isn't needed.")
+        }
+
+        Section {
+            TextField("https://…/?token=", text: $pasteText)
+                .autocorrectionDisabled().textInputAutocapitalization(.never).keyboardType(.URL)
+            Button("Connect with token") { apply(pasteText) }
+                .disabled(pasteText.isEmpty)
+        } header: {
+            Text("Or paste a token link")
+        } footer: {
+            Text("Have a ready-made cloud URL with its token? Paste it here instead.")
+        }
+    }
+
+    // ── Mac: paste a pairing link, or enter host/port/token ──
+    @ViewBuilder private var macSections: some View {
+        Section {
+            TextField("lisa-pair://… or http://host:port/?token=", text: $pasteText)
+                .autocorrectionDisabled().textInputAutocapitalization(.never).keyboardType(.URL)
+            Button("Apply") { apply(pasteText) }
+                .disabled(pasteText.isEmpty)
+        } header: {
+            Text("Paste pairing link")
+        } footer: {
+            Text("Run `lisa pair` on your Mac and copy the link it prints.")
+        }
+
+        Section("Or enter manually") {
+            TextField("Host (IP or tailnet name)", text: $host)
+                .autocorrectionDisabled().textInputAutocapitalization(.never)
+            TextField("Port", text: $portText).keyboardType(.numberPad)
+            SecureField("Device token", text: $token)
+            Button("Connect") {
+                app.update(host: host.trimmingCharacters(in: .whitespaces),
+                           port: Int(portText) ?? 5757,
+                           token: token.isEmpty ? nil : token, scheme: "http")
+                if app.config.isConfigured { finish() } else { error = "Enter a host and token." }
+            }
+            .disabled(host.isEmpty || token.isEmpty)
+        }
+    }
+
+    /// Handle the Sign in with Apple result: pull the identity token, exchange it
+    /// at the entered cloud URL for a session token, and save the connection.
+    private func handleApple(_ result: Result<ASAuthorization, Error>) {
+        error = nil
+        switch result {
+        case .failure(let err):
+            // A user-cancelled prompt isn't an error worth shouting about.
+            if (err as? ASAuthorizationError)?.code == .canceled { return }
+            error = err.localizedDescription
+        case .success(let auth):
+            guard let cred = auth.credential as? ASAuthorizationAppleIDCredential,
+                  let data = cred.identityToken, let idToken = String(data: data, encoding: .utf8) else {
+                error = "Apple didn't return an identity token."
+                return
+            }
+            appleBusy = true
+            Task {
+                defer { appleBusy = false }
+                do {
+                    try await app.connectCloudWithApple(baseURL: cloudURL, identityToken: idToken)
+                    finish()
+                } catch LisaError.http(404) {
+                    error = "This LISA Cloud instance hasn't enabled Sign in with Apple. Paste a token link instead."
+                } catch LisaError.http(401), LisaError.http(403) {
+                    error = "Apple sign-in was rejected by this instance."
+                } catch {
+                    self.error = "Couldn't reach that LISA Cloud URL."
+                }
+            }
+        }
     }
 
     private func apply(_ raw: String) {

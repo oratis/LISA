@@ -48,6 +48,8 @@ targets:
         com.apple.security.application-groups:
           - group.ai.meetlisa.main
         aps-environment: development
+        com.apple.developer.applesignin:
+          - Default
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ai.meetlisa.main

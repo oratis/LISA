@@ -96,6 +96,26 @@ adds these App Store Connect console steps (account actions — only you):
    Copy-ready text is drafted in [`APPSTORE_METADATA.md`](APPSTORE_METADATA.md).
 5. **Submit for Review** (the build from TestFlight → "Add Build" on the app version).
 
+## Sign in with Apple (LISA Cloud) — optional
+
+The cloud onboarding path offers **Sign in with Apple** in addition to pasting a
+`?token=` URL. It's **off by default** and single-tenant — on success the server
+hands back the shared `LISA_WEB_TOKEN`, matching the M0/C2 demo (one shared soul;
+per-user isolation is deferred C3 work). Enable it on the cloud instance with:
+
+| Env | Meaning |
+| --- | --- |
+| `LISA_CLOUD_APPLE_SIGNIN` | `1`/`true` to turn the `POST /api/auth/apple` endpoint on (else 404). |
+| `LISA_CLOUD_APPLE_AUD` | Expected token audience; defaults to the app bundle id `ai.meetlisa.main`. |
+| `LISA_CLOUD_APPLE_SUBS` | Optional comma-separated allowlist of Apple `sub`s. Empty ⇒ any verified Apple ID may sign in (fine for a rate-limited demo); set it to restrict access. |
+
+The endpoint verifies the Apple identity token (issuer / audience / expiry /
+signature against `appleid.apple.com/auth/keys`) before returning the token — see
+`src/web/cloudAuth.ts`. The iOS app needs the **Sign in with Apple** capability
+(declared in `project.yml`; enable it on the App ID in the Developer portal before
+a signed build). For App Review you can leave it off and keep the token-paste demo
+flow in the review notes above, or enable it and allowlist the reviewer.
+
 ## Honest limits
 
 - The actual upload authenticates to **your** Apple account, so it can't run
