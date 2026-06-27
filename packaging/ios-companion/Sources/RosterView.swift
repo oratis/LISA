@@ -54,6 +54,7 @@ final class RosterModel: ObservableObject {
         }
         sessions = sortRows(sessions)
         publishSnapshot()
+        LiveActivityController.update(for: s)   // tick / auto-end a pinned activity (A3)
     }
 
     /// Mirror the roster's counts (metadata only — no session content) to the App
