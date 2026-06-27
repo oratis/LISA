@@ -27,6 +27,8 @@ struct ReveView: View {
                                            description: Text("Add your Mac in Settings."))
                 } else {
                     List {
+                        Section { MoodPortrait(mood: ping?.mood ?? "neutral") }
+                            .listRowBackground(Color.clear)
                         if let p = ping {
                             if let note = p.last_idle_message_text, !note.isEmpty {
                                 Section("While you were away") { Text(note).font(.callout) }
@@ -84,12 +86,19 @@ struct ReveView: View {
                             }
                         }
 
+                        Section("Inspect Lisa") {
+                            NavigationLink { SoulView() } label: { Label("Soul", systemImage: "sparkles") }
+                            NavigationLink { MemoryView() } label: { Label("Memory", systemImage: "brain") }
+                            NavigationLink { NamedListView(title: "Skills", load: { try await app.client.skills() }) } label: { Label("Skills", systemImage: "wand.and.stars") }
+                            NavigationLink { NamedListView(title: "Tools", load: { try await app.client.tools() }) } label: { Label("Tools", systemImage: "wrench.and.screwdriver") }
+                        }
+
                         if let error { Section { Text(error).font(.caption).foregroundStyle(.secondary) } }
                     }
                 }
             }
             .consoleBackground()
-            .navigationTitle("Reve")
+            .navigationTitle("Lisa")
             .refreshable { await load() }
             .task(id: ReveLoadKey(window: window, configured: app.config.isConfigured)) { await load() }
             .onChange(of: scenePhase) { _, p in if p == .active { Task { await load() } } }
@@ -105,12 +114,15 @@ struct ReveView: View {
         async let advisorResult = app.client.advisorLatest()
         async let mailDigestResult = app.client.mailDigest()
         async let mailAccountsResult = app.client.mailAccounts()
-        ping = try? await pingResult
+        let p = try? await pingResult
+        ping = p
         recap = (try? await recapResult)?.text ?? ""
         suggestions = (try? await advisorResult)?.suggestions ?? []
         mailDigest = try? await mailDigestResult
         mailAccounts = (try? await mailAccountsResult)?.accounts.count ?? 0
-        error = nil
+        // The ping is the always-present call — if it failed, surface it instead of
+        // looking like a quiet-but-healthy day (review B12).
+        error = p == nil ? "Couldn't reach Lisa." : nil
     }
 
     private func dismiss(_ s: AdvisorSuggestion) {

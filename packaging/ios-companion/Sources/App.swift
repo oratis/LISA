@@ -16,17 +16,18 @@ struct RootView: View {
     @EnvironmentObject var app: AppState
     @Environment(\.scenePhase) private var scenePhase
     var body: some View {
+        // Four primary tabs (review P4/H1): Dispatch · Chat · Lisa (overview —
+        // mood, while-away, recap, advisor, Inspect) · Settings. Sense moved into
+        // Settings (it's a consent control); Reve folded into the Lisa home.
         TabView(selection: $app.selectedTab) {
             RosterView()
                 .tabItem { Label("Dispatch", systemImage: "cpu") }.tag(0)
             ChatView()
                 .tabItem { Label("Chat", systemImage: "bubble.left.and.bubble.right") }.tag(1)
             ReveView()
-                .tabItem { Label("Reve", systemImage: "moon.stars") }.tag(2)
-            SenseView()
-                .tabItem { Label("Sense", systemImage: "sensor.tag.radiowaves.forward") }.tag(3)
+                .tabItem { Label("Lisa", systemImage: "sparkles") }.tag(2)
             SettingsView()
-                .tabItem { Label("Settings", systemImage: "gearshape") }.tag(4)
+                .tabItem { Label("Settings", systemImage: "gearshape") }.tag(3)
         }
         .tint(Theme.accent)                                  // cyan active tab + links + controls
         .preferredColorScheme(.dark)                         // force the console dark look
