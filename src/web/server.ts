@@ -75,6 +75,7 @@ import {
   subAllowed,
   AppleAuthError,
 } from "./cloudAuth.js";
+import { detectLanHost, buildPairUrl } from "./pairing.js";
 import type { ToolDefinition, StoredMessage } from "../types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -984,13 +985,21 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       }
       let prBody = "";
       for await (const chunk of req) prBody += chunk.toString("utf8");
-      let payload: { name?: unknown; platform?: unknown } = {};
+      let payload: { name?: unknown; platform?: unknown; host?: unknown } = {};
       try { payload = prBody ? JSON.parse(prBody) : {}; } catch { /* tolerate */ }
       const name = typeof payload.name === "string" ? payload.name : "device";
       const platform = typeof payload.platform === "string" ? payload.platform : "ios";
       const { id, token, device } = mintDevice(name, platform);
+      // Detect a phone-reachable LAN host server-side so every client (CLI, Mac
+      // app, web UI) can show consistent, copyable pairing details — the browser
+      // can't discover the Mac's LAN IP on its own. A caller-supplied host wins.
+      const host =
+        typeof payload.host === "string" && payload.host.trim()
+          ? payload.host.trim()
+          : detectLanHost();
+      const url = host ? buildPairUrl(host, opts.port, token, name) : undefined;
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ ok: true, id, token, port: opts.port, device }));
+      res.end(JSON.stringify({ ok: true, id, token, port: opts.port, host, url, device }));
       return;
     }
     if (req.method === "GET" && url === "/api/devices") {

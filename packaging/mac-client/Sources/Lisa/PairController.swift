@@ -25,6 +25,7 @@ final class PairController {
 
     private var window: NSWindow?
     private var lastURL = ""
+    private var lastToken = ""
     private let port = 5757
 
     /// Mint a device token and show a scannable QR (or an error alert).
@@ -44,7 +45,7 @@ final class PairController {
 
     // MARK: - Mint (mirrors pair.ts runPairCommand)
 
-    struct Pairing { let url: String; let host: String; let port: Int }
+    struct Pairing { let url: String; let host: String; let port: Int; let token: String }
 
     private func mint() async throws -> Pairing {
         guard let host = Self.detectLanHost() else { throw PairError.noLan }
@@ -66,7 +67,7 @@ final class PairController {
         guard let token = body.token, !token.isEmpty else { throw PairError.noToken }
         let effPort = body.port ?? port
         return Pairing(url: Self.buildPairUrl(host: host, port: effPort, token: token, name: "iPhone"),
-                       host: host, port: effPort)
+                       host: host, port: effPort, token: token)
     }
 
     enum PairError: LocalizedError {
@@ -155,6 +156,7 @@ final class PairController {
     private func present(_ pairing: Pairing) {
         window?.close()
         lastURL = pairing.url
+        lastToken = pairing.token
 
         let pad: CGFloat = 24
         let width: CGFloat = 320
@@ -196,9 +198,32 @@ final class PairController {
         net.textColor = .tertiaryLabelColor
         stack.addArrangedSubview(net)
 
-        let copy = NSButton(title: "Copy pairing link", target: self, action: #selector(copyLink))
+        // Can't scan? Show the same details as copyable text, so they can be typed
+        // (or pasted) into Lisa Pocket → Settings → Pair → "enter manually".
+        let manual = NSTextField(labelWithString: "Can't scan? Enter these in the app:")
+        manual.font = .systemFont(ofSize: 11)
+        manual.textColor = .secondaryLabelColor
+        stack.addArrangedSubview(manual)
+
+        let details = NSTextField(wrappingLabelWithString:
+            "Host:  \(pairing.host)\nPort:  \(pairing.port)\nToken:  \(pairing.token)")
+        details.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        details.isSelectable = true
+        details.textColor = .labelColor
+        details.alignment = .left
+        details.preferredMaxLayoutWidth = width - pad * 2
+        stack.addArrangedSubview(details)
+
+        let copyRow = NSStackView()
+        copyRow.orientation = .horizontal
+        copyRow.spacing = 8
+        let copy = NSButton(title: "Copy link", target: self, action: #selector(copyLink))
         copy.bezelStyle = .rounded
-        stack.addArrangedSubview(copy)
+        copyRow.addArrangedSubview(copy)
+        let copyToken = NSButton(title: "Copy token", target: self, action: #selector(copyTokenAction))
+        copyToken.bezelStyle = .rounded
+        copyRow.addArrangedSubview(copyToken)
+        stack.addArrangedSubview(copyRow)
 
         let done = NSButton(title: "Done", target: self, action: #selector(closeWindow))
         done.bezelStyle = .rounded
@@ -230,6 +255,11 @@ final class PairController {
     @objc private func copyLink() {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(lastURL, forType: .string)
+    }
+
+    @objc private func copyTokenAction() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(lastToken, forType: .string)
     }
 
     @objc private func closeWindow() { window?.close() }
