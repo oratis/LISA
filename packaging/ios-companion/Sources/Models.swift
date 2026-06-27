@@ -123,6 +123,10 @@ struct ControlPolicy: Codable, Equatable {
     var remoteAdoptExternal: Bool
 }
 
+// /api/history?page=N — newest page first (page 0), older pages as N grows.
+struct HistoryResponse: Codable { var messages: [HistoryMessage]; var hasMore: Bool; var page: Int }
+struct HistoryMessage: Codable { var role: String; var content: String }
+
 /// /api/autonomy/state — the "Proactive mode" master switch (idle + heartbeat).
 struct AutonomyState: Codable, Equatable {
     var enabled: Bool
