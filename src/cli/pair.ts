@@ -105,7 +105,10 @@ export async function runPairCommand(argv: string[]): Promise<number> {
   const url = buildPairUrl(host, effPort, body.token, name);
 
   console.log(`\nScan in Lisa Pocket → Settings → Scan QR code:\n`);
-  await new Promise<void>((resolve) => qrcodeTerminal.generate(url, { small: true }, () => resolve()));
+  // qrcode-terminal's generate() passes the rendered QR to the callback INSTEAD of
+  // printing it when a callback is given — so the callback must print it (an empty
+  // callback silently swallowed the QR). generate() is synchronous; no await needed.
+  qrcodeTerminal.generate(url, { small: true }, (qr) => console.log(qr));
   console.log(`\nOr paste this in Settings → Pair:\n  ${url}\n`);
   // Broken-out fields for the "enter manually" path (when the link won't paste).
   console.log(`Or type these in Settings → Pair → enter manually:`);
