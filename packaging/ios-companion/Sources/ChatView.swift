@@ -39,10 +39,20 @@ final class ChatModel: ObservableObject {
             defer { sending = false }
             do {
                 for try await msg in client.chatStream(trimmed) {
-                    if msg.type == "text", let t = msg.text { transcript += t }
+                    switch msg.type {
+                    case "text":
+                        if let t = msg.text { transcript += t }
+                    case "error":
+                        // In-band error on a 200 stream — without this the turn just
+                        // hung at "…Lisa: " with no message (review A2).
+                        let m = msg.object["message"] as? String ?? "the turn failed"
+                        transcript += "\n⚠️ \(m)"
+                    default:
+                        break   // tool_start/tool_end/done — ignored in the thin chat
+                    }
                 }
             } catch {
-                transcript += "\n[error: \((error as? LocalizedError)?.errorDescription ?? "\(error)")]"
+                transcript += "\n⚠️ \((error as? LocalizedError)?.errorDescription ?? "Couldn't reach Lisa.")"
             }
         }
     }
@@ -61,12 +71,19 @@ struct ChatView: View {
                         .padding(.horizontal).padding(.vertical, 6)
                     Divider()
                 }
-                ScrollView {
-                    Text(model.transcript.isEmpty ? "Say hi to Lisa." : model.transcript)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .textSelection(.enabled)
-                        .foregroundStyle(Theme.text)
-                        .padding()
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        transcriptView
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                            .padding()
+                        Color.clear.frame(height: 1).id(Self.bottomID)   // scroll anchor
+                    }
+                    .scrollDismissesKeyboard(.interactively)
+                    // Follow the streaming reply (review A12 — long replies scrolled off).
+                    .onChange(of: model.transcript) { _, _ in
+                        withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(Self.bottomID, anchor: .bottom) }
+                    }
                 }
                 Divider()
                 HStack {
@@ -79,7 +96,9 @@ struct ChatView: View {
                     } label: {
                         Image(systemName: "arrow.up.circle.fill").font(.title2)
                     }
-                    .disabled(input.isEmpty || model.sending)
+                    .frame(width: 44, height: 44)                       // ≥44pt tap target
+                    .accessibilityLabel("Send message")
+                    .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.sending)
                 }
                 .padding()
             }
@@ -88,6 +107,27 @@ struct ChatView: View {
             .task(id: app.config) { model.startMood(app.client) }
             .onDisappear { model.stopMood() }
         }
+    }
+
+    private static let bottomID = "chat-bottom"
+
+    /// Empty → dimmed placeholder; mid-stream → raw text (cheap as it grows);
+    /// settled → inline markdown (bold/links/`code`, newlines preserved). Full
+    /// message bubbles + code blocks are the deferred P2 redesign.
+    @ViewBuilder private var transcriptView: some View {
+        if model.transcript.isEmpty {
+            Text("Say hi to Lisa.").foregroundStyle(Theme.secondary)
+        } else if model.sending {
+            Text(model.transcript).foregroundStyle(Theme.text)
+        } else {
+            Text(renderedTranscript).foregroundStyle(Theme.text)
+        }
+    }
+
+    private var renderedTranscript: AttributedString {
+        (try? AttributedString(markdown: model.transcript,
+                               options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+            ?? AttributedString(model.transcript)
     }
 }
 
