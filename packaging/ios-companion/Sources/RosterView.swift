@@ -213,6 +213,16 @@ struct RosterRow: View {
             }
         }
         .padding(.vertical, 2)
+        // One VoiceOver element — status isn't color-only (D1/D5).
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(rowLabel)
+    }
+
+    private var rowLabel: String {
+        var s = "\(session.project), \(session.agent), \(session.state)"
+        if let p = session.activity?.pendingPermission { s += ", needs you: \(p)" }
+        else if session.resumable == true { s += ", resumable" }
+        return s
     }
 
     var subtitle: String {
