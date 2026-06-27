@@ -76,6 +76,7 @@ import {
   AppleAuthError,
 } from "./cloudAuth.js";
 import { detectLanHost, buildPairUrl } from "./pairing.js";
+import { qrSvg } from "./qr-svg.js";
 import type { ToolDefinition, StoredMessage } from "../types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1001,8 +1002,11 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       // The interface the server is actually bound to. If it's loopback-only, a
       // phone can't reach it however good the QR is — the client warns on this.
       const boundHost = opts.host ?? "127.0.0.1";
+      // A scannable QR of the pairing link, for the web "Pair phone" modal (the
+      // browser equivalent of the CLI's terminal QR). Only when we have a url.
+      const qr = url ? qrSvg(url) : undefined;
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ ok: true, id, token, port: opts.port, host, url, boundHost, device }));
+      res.end(JSON.stringify({ ok: true, id, token, port: opts.port, host, url, boundHost, qrSvg: qr, device }));
       return;
     }
     if (req.method === "GET" && url === "/api/devices") {

@@ -867,7 +867,9 @@ async function showPair() {
   const port = data.port || 5757;
   const host = data.host || '';
   const link = data.url || ('lisa-pair://v1?host=' + encodeURIComponent(host) + '&port=' + port + '&token=' + encodeURIComponent(data.token) + '&name=phone');
-  let html = '<div class="empty">In Lisa Pocket → Settings → Pair, paste the link below — or switch to “enter manually” and type the three fields. Keep the phone on the same Wi-Fi (or tailnet) as this Mac.</div>';
+  let html = '';
+  if (data.qrSvg) html += '<div class="pair-qr">' + data.qrSvg + '</div>';
+  html += '<div class="empty">Scan the code in Lisa Pocket → Settings → Scan QR — or paste the link / type the three fields below. Keep the phone on the same Wi-Fi (or tailnet) as this Mac.</div>';
   html += pairRow('Link', link);
   html += pairRow('Host', host || '(your Mac\\'s Wi-Fi IP)');
   html += pairRow('Port', String(port));

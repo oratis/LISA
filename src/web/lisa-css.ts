@@ -1355,6 +1355,18 @@ export const MAIN_CSS = `  :root {
     font-size: 12px;
   }
   .modal-body .desc { color: var(--fg-3); margin-top: 2px; }
+  .modal-body .pair-qr {
+    display: flex;
+    justify-content: center;
+    margin: 4px 0 14px;
+  }
+  .modal-body .pair-qr svg {
+    width: 200px;
+    height: 200px;
+    background: #fff;
+    padding: 10px;
+    border-radius: 12px;
+  }
   .modal-body .pair-row {
     display: flex;
     align-items: center;
