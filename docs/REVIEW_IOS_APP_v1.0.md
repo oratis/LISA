@@ -373,10 +373,26 @@ heavy/ speculative phases to data.
 
 # Implementation log
 
-Tracking execution against the verdict's launch gate (newest first).
+Execution against the verdict's launch gate. **✅ Launch gate complete** — 9 PRs
+merged (#183–#191). The deferred fast-follow (P2 full Chat redesign, P3 visual
+overhaul, P4 IA re-tab) stays held pending TestFlight usage signal, per the verdict.
 
-- _(in progress)_ **P0-A1** — `LisaClient.fire()` throws `LisaError.http` on non-2xx
-  so the ~10 control/mutation actions stop failing silently.
+| PR | Items |
+| --- | --- |
+| #183 | A1 silent action failures · A7 mail pref · A4 Soul fields |
+| #184 | A2 chat error events · A12 auto-scroll · markdown (thin Chat) |
+| #185 | A6 app-switcher token-leak privacy cover |
+| #186 | A10/A11 scanner re-arm + scan-sheet race |
+| #187 | A8/A9 Dispatch control gating (policy + terminal state) |
+| #188 | A3 Live Activity local lifecycle · A5 off-tab widget snapshot |
+| #189 | I1/B23 shared status palette · B22/B24/B25/C10 widget polish |
+| #190 | J1 toast + haptics feedback · B13 Sense revoke failure |
+| #191 | D1–D5 minimal accessibility pass |
+
+Each verified with `xcodegen` + `xcodebuild test` (build + 25 tests green).
+ActivityKit / App-Group / VoiceOver behaviors are only fully exercisable on a
+signed device build — covered by **P5.4** (on-device screenshot QA) once a paired
+TestFlight build exists.
 
 
 </content>
