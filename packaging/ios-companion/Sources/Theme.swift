@@ -30,6 +30,37 @@ enum Theme {
 
     static let cardRadius: CGFloat = 12
     static let hairline: CGFloat = 0.5
+
+    /// One spacing scale so padding/stack-spacing is consistent across screens
+    /// (review I3 — values were ad-hoc 8/12/14/18/22/… everywhere).
+    enum Space {
+        static let xs: CGFloat = 4
+        static let s: CGFloat = 8
+        static let m: CGFloat = 14
+        static let l: CGFloat = 20
+        static let xl: CGFloat = 28
+    }
+}
+
+/// One code/log block — monospaced, selectable, scrollable in both axes (so long
+/// lines don't clip), on a sunken card. Replaces the three different mono
+/// treatments (PTY output / recap / memory) the review flagged (I4).
+struct CodeBlock: View {
+    let text: String
+    var maxHeight: CGFloat? = nil
+    var body: some View {
+        ScrollView([.horizontal, .vertical]) {
+            Text(text)
+                .font(.system(.caption, design: .monospaced))
+                .foregroundStyle(Theme.text)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(10)
+        }
+        .frame(maxHeight: maxHeight)
+        .background(Color.black.opacity(0.25), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.border, lineWidth: Theme.hairline))
+    }
 }
 
 extension Color {

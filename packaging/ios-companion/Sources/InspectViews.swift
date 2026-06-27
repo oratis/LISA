@@ -86,10 +86,10 @@ struct MemoryView: View {
         AsyncContent(load: { try await app.client.memory() }) { mem in
             List {
                 if !mem.user.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Section("Who you are (user)") { Text(mem.user).font(.system(.callout, design: .monospaced)) }
+                    Section("Who you are (user)") { CodeBlock(text: mem.user, maxHeight: 240) }
                 }
                 if !mem.memory.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Section("Memory") { Text(mem.memory).font(.system(.callout, design: .monospaced)) }
+                    Section("Memory") { CodeBlock(text: mem.memory, maxHeight: 320) }
                 }
             }
         }
