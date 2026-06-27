@@ -15,6 +15,7 @@ struct OnboardingFlow: View {
     @State private var showManual = false
     @State private var manualMode: ConnectionMode = .mac
     @State private var scanNote: String?
+    @State private var rescanToken = 0
     @State private var verifying = false
     @State private var outcome: VerifyOutcome?
 
@@ -200,10 +201,14 @@ struct OnboardingFlow: View {
         ZStack {
             QRScannerView(
                 onScan: { value in
+                    guard !showManual else { return }   // ignore decodes while the manual sheet is up (A11)
                     if app.applyPairing(value) { go(.connect) }
-                    else { scanNote = "That QR isn't a LISA pairing code."; openManual(.mac) }
+                    // Stay on the scanner and let them re-aim instead of yanking
+                    // them into a form for a momentary mis-scan (A10/A11).
+                    else { scanNote = "That isn't a LISA pairing code — line it up and try again."; rescanToken += 1 }
                 },
-                onError: { reason in scanNote = reason; openManual(.mac) }
+                onError: { reason in scanNote = reason; openManual(.mac) },
+                rescanToken: rescanToken
             )
             .ignoresSafeArea()
             VStack {
