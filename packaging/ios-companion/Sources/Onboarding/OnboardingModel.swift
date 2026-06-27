@@ -46,10 +46,14 @@ enum InstallMethod: String, CaseIterable, Identifiable {
     var isCLI: Bool { self != .app }
 
     /// What the user runs to start LISA *LAN-reachable* (the "start" step). CLI
-    /// installs print a copy-able command (the `--host 0.0.0.0` is the #1 gotcha);
-    /// the menu-bar app is launched from the menu bar, so there's nothing to type.
+    /// installs print a copy-able command; the menu-bar app needs nothing typed.
+    /// Includes `LISA_WEB_TOKEN` because the server REFUSES a non-loopback bind
+    /// without one (it would expose a full-tool agent to the whole Wi-Fi) — the
+    /// `--host 0.0.0.0`-without-token fatal is the #1 gotcha. The phone still gets
+    /// its own per-device token from `lisa pair`; this just arms the gate. Matches
+    /// packaging/ios-companion/README.md.
     var serveCommand: String? {
-        isCLI ? "lisa serve --web --host 0.0.0.0" : nil
+        isCLI ? "LISA_WEB_TOKEN=$(openssl rand -hex 24) lisa serve --web --host 0.0.0.0" : nil
     }
 
     /// One-line "start" instruction shown with (or instead of) the command.
