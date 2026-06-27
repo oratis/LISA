@@ -340,6 +340,7 @@ struct SessionDetailView: View {
     @State private var followUp = ""
     @State private var output = ""
     @State private var status = ""
+    @State private var policy: ControlPolicy?   // nil = not yet loaded (optimistic)
 
     var body: some View {
         Form {
@@ -367,6 +368,20 @@ struct SessionDetailView: View {
         }
         .navigationTitle(session.project)
         .navigationBarTitleDisplayMode(.inline)
+        .task { policy = try? await app.client.controlPolicy() }   // gate remote control (A8)
+    }
+
+    /// This phone is always a remote (non-loopback) caller, so the Mac's control
+    /// policy decides whether it may control at all (A8). nil = not yet loaded ⇒
+    /// optimistic (a brief 403 is now surfaced rather than swallowed).
+    private var canControl: Bool { policy?.remoteControl ?? true }
+    private var canAdopt: Bool { policy?.remoteAdoptExternal ?? true }
+    /// A finished/idle session 404s on send/cancel — don't offer live controls (A9).
+    private var isTerminal: Bool { ["done", "idle"].contains(session.state) }
+
+    @ViewBuilder private var remoteBlockedNote: some View {
+        Text("Remote control is disabled on this Mac — enable it from the Mac (control policy).")
+            .font(.caption).foregroundStyle(Theme.waiting)
     }
 
     @ViewBuilder
@@ -374,20 +389,32 @@ struct SessionDetailView: View {
         switch session.controllable {
         case "managed":
             Section("Control · managed") {
-                if let pend = session.activity?.pendingPermission {
-                    Text("Paused on: \(pend)").font(.subheadline)
-                    HStack {
-                        Button("Approve") { act { try await app.client.managedApprove(session.sessionId, allow: true) } }
-                            .buttonStyle(.borderedProminent)
-                        Button("Deny", role: .destructive) { act { try await app.client.managedApprove(session.sessionId, allow: false) } }
+                if isTerminal {
+                    Text("This session has finished — no controls.").font(.caption).foregroundStyle(.secondary)
+                } else {
+                    if let pend = session.activity?.pendingPermission {
+                        Text("Paused on: \(pend)").font(.subheadline)
+                        HStack {
+                            Button("Approve") { act { try await app.client.managedApprove(session.sessionId, allow: true) } }
+                                .buttonStyle(.borderedProminent)
+                            Button("Deny", role: .destructive) { act { try await app.client.managedApprove(session.sessionId, allow: false) } }
+                        }
                     }
+                    sendRow { try await app.client.managedSend(session.sessionId, $0) }
+                    Button("Cancel", role: .destructive) { act { try await app.client.managedCancel(session.sessionId) } }
+                    if !canControl { remoteBlockedNote }
                 }
-                sendRow { try await app.client.managedSend(session.sessionId, $0) }
-                Button("Cancel", role: .destructive) { act { try await app.client.managedCancel(session.sessionId) } }
             }
+            .disabled(!isTerminal && !canControl)
         case "pty":
             Section("Control · CLI") {
-                sendRow { try await app.client.ptySend(session.sessionId, $0) }
+                if isTerminal {
+                    Text("This session has finished — no controls.").font(.caption).foregroundStyle(.secondary)
+                } else {
+                    sendRow { try await app.client.ptySend(session.sessionId, $0) }
+                    Button("Cancel", role: .destructive) { act { try await app.client.ptyCancel(session.sessionId) } }
+                    if !canControl { remoteBlockedNote }
+                }
                 Button("Load output") { act { output = try await app.client.ptyOutput(session.sessionId) } }
                 if !output.isEmpty {
                     ScrollView {
@@ -396,8 +423,8 @@ struct SessionDetailView: View {
                     }
                     .frame(maxHeight: 200)
                 }
-                Button("Cancel", role: .destructive) { act { try await app.client.ptyCancel(session.sessionId) } }
             }
+            .disabled(!isTerminal && !canControl)
         default:
             Section("Observe-only") {
                 if session.resumable == true {
@@ -413,6 +440,11 @@ struct SessionDetailView: View {
                             default: status = "HTTP \(code)"
                             }
                         }
+                    }
+                    .disabled(!canAdopt)
+                    if !canAdopt {
+                        Text("Remote adoption is disabled on the Mac (remoteAdoptExternal off).")
+                            .font(.caption).foregroundStyle(Theme.waiting)
                     }
                 } else {
                     Text("Live external session — observe-only (no control channel).")
