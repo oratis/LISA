@@ -20,8 +20,14 @@
 # Overrides: PROJECT (default oratis-491316), REGION (us-central1),
 #   SERVICE (lisa-cloud), LISA_MODEL, LISA_BUCKET (default <project>-lisa-cloud-data).
 #
+# Optional — Sign in with Apple for the iOS app (off unless set; src/web/cloudAuth.ts):
+#   LISA_CLOUD_APPLE_SIGNIN=1   enable POST /api/auth/apple
+#   LISA_CLOUD_APPLE_SUBS=…     optional comma-separated Apple `sub` allowlist
+#   LISA_CLOUD_APPLE_AUD=…      override the expected bundle id (default ai.meetlisa.main)
+#
 # Usage (GLM):
 #   LISA_WEB_TOKEN=… ZHIPU_API_KEY=… deploy/deploy.sh
+#   # …with iOS sign-in: append LISA_CLOUD_APPLE_SIGNIN=1
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"; ROOT="$(cd "$HERE/.." && pwd)"
 PROJECT="${PROJECT:-oratis-491316}"; REGION="${REGION:-us-central1}"; SERVICE="${SERVICE:-lisa-cloud}"
@@ -46,6 +52,12 @@ ENVS="^##^LISA_EDITION=cloud##LISA_WEB_TOKEN=${LISA_WEB_TOKEN}"
 [ -n "${ANTHROPIC_API_KEY:-}" ] && ENVS="${ENVS}##ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}"
 [ -n "${ZHIPU_API_KEY:-}" ]     && ENVS="${ENVS}##ZHIPU_API_KEY=${ZHIPU_API_KEY}"
 [ -n "${OPENAI_API_KEY:-}" ]    && ENVS="${ENVS}##OPENAI_API_KEY=${OPENAI_API_KEY}"
+# Optional: Sign in with Apple for the iOS app (src/web/cloudAuth.ts). Off unless
+# LISA_CLOUD_APPLE_SIGNIN is set; LISA_CLOUD_APPLE_SUBS is an optional allowlist of
+# Apple `sub`s, LISA_CLOUD_APPLE_AUD overrides the expected bundle id.
+[ -n "${LISA_CLOUD_APPLE_SIGNIN:-}" ] && ENVS="${ENVS}##LISA_CLOUD_APPLE_SIGNIN=${LISA_CLOUD_APPLE_SIGNIN}"
+[ -n "${LISA_CLOUD_APPLE_SUBS:-}" ]   && ENVS="${ENVS}##LISA_CLOUD_APPLE_SUBS=${LISA_CLOUD_APPLE_SUBS}"
+[ -n "${LISA_CLOUD_APPLE_AUD:-}" ]    && ENVS="${ENVS}##LISA_CLOUD_APPLE_AUD=${LISA_CLOUD_APPLE_AUD}"
 
 # ── durable home (C2): a GCS bucket mounted at /data keeps the soul across restarts ──
 BUCKET="${LISA_BUCKET:-${PROJECT}-lisa-cloud-data}"
