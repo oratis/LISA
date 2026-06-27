@@ -102,11 +102,23 @@ final class LisaClient {
         catch { throw LisaError.decode }
     }
 
+    /// Fire a mutating request and return the HTTP status WITHOUT throwing on a
+    /// non-2xx — for the few call sites that branch on a specific code (503 ⇒ PTY
+    /// off, 409 ⇒ session live, 403 ⇒ remote adoption disabled).
     @discardableResult
-    private func fire(_ path: String, method: String = "POST", json: [String: Any]? = nil) async throws -> Int {
+    private func fireCode(_ path: String, method: String = "POST", json: [String: Any]? = nil) async throws -> Int {
         let req = try makeRequest(path, method: method, json: json)
         let (_, resp) = try await session.data(for: req)
         return (resp as? HTTPURLResponse)?.statusCode ?? -1
+    }
+
+    /// Fire a mutating request that MUST succeed; throws `LisaError.http(code)` on
+    /// any non-2xx so control/mutation actions never fail silently (the #1 review
+    /// finding — a remote phone blocked by the control policy got 403 on every tap
+    /// with zero feedback). This is the default for all the action methods below.
+    private func fire(_ path: String, method: String = "POST", json: [String: Any]? = nil) async throws {
+        let code = try await fireCode(path, method: method, json: json)
+        guard (200..<300).contains(code) else { throw LisaError.http(code) }
     }
 
     // ── read ──
@@ -161,7 +173,7 @@ final class LisaClient {
     /// Spawn a fresh real CLI under a PTY (agent = "claude" | "codex"). Returns
     /// the HTTP code (503 ⇒ the PTY spike is off on the Mac: LISA_PTY_AGENTS=1).
     func ptyStart(agent: String, task: String) async throws -> Int {
-        try await fire("/api/agents/pty/start", json: ["agent": agent, "task": task])
+        try await fireCode("/api/agents/pty/start", json: ["agent": agent, "task": task])
     }
     func ptySend(_ id: String, _ text: String) async throws { try await fire("/api/agents/pty/\(id)/send", json: ["text": text]) }
     func ptyCancel(_ id: String) async throws { try await fire("/api/agents/pty/\(id)/cancel") }
@@ -172,7 +184,7 @@ final class LisaClient {
     /// Adopt an idle claude session by id (resume-adopt). Returns the HTTP code
     /// (409 ⇒ the session is still live; 403 ⇒ remote adoption disabled).
     func adopt(sessionId: String) async throws -> Int {
-        try await fire("/api/agents/pty/start", json: ["agent": "claude", "resumeSessionId": sessionId])
+        try await fireCode("/api/agents/pty/start", json: ["agent": "claude", "resumeSessionId": sessionId])
     }
 
     // ── push ──
@@ -181,7 +193,7 @@ final class LisaClient {
         try await fire("/api/push/live-activity", json: ["sessionId": sessionId, "token": token])
     }
     func pushRegister(kind: String, target: String, prefs: PushPrefs) async throws {
-        let p: [String: Any] = ["done": prefs.done, "error": prefs.error, "permission": prefs.permission, "idle": prefs.idle, "advisor": prefs.advisor]
+        let p: [String: Any] = ["done": prefs.done, "error": prefs.error, "permission": prefs.permission, "idle": prefs.idle, "advisor": prefs.advisor, "mail": prefs.mail]
         try await fire("/api/push/register", json: ["kind": kind, "target": target, "prefs": p])
     }
 

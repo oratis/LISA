@@ -194,10 +194,17 @@ struct Emotions: Codable {
 struct SoulItem: Codable, Hashable {
     var name: String?
     var statement: String?
-    var what: String?
+    var what: String?       // DesireEntry
+    var stance: String?     // OpinionEntry
+    var title: String?      // ValueEntry (headline)
+    var body: String?       // ValueEntry (detail)
     var text: String?
     var summary: String?
-    var label: String { statement ?? what ?? text ?? summary ?? name ?? "—" }
+    var slug: String?
+    // Each entry type carries a different headline key (values→title, opinions→
+    // stance, desires→what); pick the first present. Without title/stance, values
+    // and opinions rendered "—" (review A4).
+    var label: String { statement ?? what ?? stance ?? title ?? text ?? summary ?? body ?? name ?? slug ?? "—" }
 }
 
 struct MemoryResponse: Codable {
