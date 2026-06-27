@@ -470,8 +470,13 @@ struct SessionDetailView: View {
 
     func act(_ work: @escaping () async throws -> Void) {
         Task { @MainActor in
-            do { try await work() }
-            catch { status = (error as? LocalizedError)?.errorDescription ?? "\(error)" }
+            do { try await work(); Haptics.success() }
+            catch {
+                // A1 surfaces non-2xx here; make the failure land visibly (J1).
+                let msg = (error as? LocalizedError)?.errorDescription ?? "Action failed."
+                status = msg
+                app.notify(msg, ok: false)
+            }
         }
     }
 }

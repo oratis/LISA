@@ -40,6 +40,14 @@ struct RootView: View {
         // interruptions (banner, Control Center) just flash the cover — no Face ID,
         // unlike the biometric lock which arms only on a real `.background`.
         .overlay { if scenePhase != .active { PrivacyCover() } }
+        .overlay(alignment: .bottom) {
+            if let t = app.toast {
+                ToastView(message: t)
+                    .padding(.bottom, 72)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .accessibilityAddTraits(.updatesFrequently)
+            }
+        }
         .fullScreenCover(isPresented: $app.showOnboarding) {
             OnboardingFlow().environmentObject(app)
         }
@@ -54,6 +62,29 @@ struct RootView: View {
             if phase == .background { app.lockIfEnabled() }  // re-arm when leaving foreground
             if phase == .active { Task { await app.refreshWidgetSnapshot() } }
         }
+    }
+}
+
+/// A transient action-feedback toast (AppState.notify).
+struct ToastMessage: Equatable, Identifiable {
+    let id = UUID()
+    var text: String
+    var ok: Bool
+}
+
+struct ToastView: View {
+    let message: ToastMessage
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: message.ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                .foregroundStyle(message.ok ? Theme.green : Theme.danger)
+            Text(message.text).font(.subheadline).foregroundStyle(Theme.text).lineLimit(2)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 11)
+        .background(Theme.card, in: Capsule())
+        .overlay(Capsule().strokeBorder(Theme.border))
+        .shadow(color: .black.opacity(0.35), radius: 10, y: 3)
+        .padding(.horizontal, 24)
     }
 }
 

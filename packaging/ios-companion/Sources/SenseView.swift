@@ -81,10 +81,20 @@ struct SenseView: View {
         error = grants.isEmpty && events.isEmpty ? "Couldn't reach Lisa." : nil
     }
 
+    // A silently-failed revoke is dangerous — the user believes a privacy signal
+    // is off when it isn't (review B13). Surface success/failure.
     private func revoke(_ signal: String) {
-        Task { try? await app.client.consentRevoke(signal: signal); await load() }
+        Task {
+            do { try await app.client.consentRevoke(signal: signal); app.notify("Revoked \(signal).") }
+            catch { app.notify("Couldn't revoke — still granted.", ok: false) }
+            await load()
+        }
     }
     private func revokeAll() {
-        Task { try? await app.client.consentRevokeAll(); await load() }
+        Task {
+            do { try await app.client.consentRevokeAll(); app.notify("All signals revoked.") }
+            catch { app.notify("Couldn't revoke all.", ok: false) }
+            await load()
+        }
     }
 }

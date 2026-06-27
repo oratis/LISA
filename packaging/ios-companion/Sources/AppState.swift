@@ -41,6 +41,21 @@ final class AppState: ObservableObject {
     @Published var pushStatus = ""
     /// Drives the first-run onboarding cover (docs/PLAN_IOS_ONBOARDING_v1.0.md).
     @Published var showOnboarding = false
+    /// Transient toast for action feedback (so a failed control/mutation — now
+    /// that A1 surfaces non-2xx — lands visibly instead of in a buried status row).
+    @Published var toast: ToastMessage?
+    private var toastClear: Task<Void, Never>?
+
+    /// Fire a haptic + show a brief toast. Use `ok: false` for failures.
+    func notify(_ text: String, ok: Bool = true) {
+        ok ? Haptics.success() : Haptics.warning()
+        withAnimation { toast = ToastMessage(text: text, ok: ok) }
+        toastClear?.cancel()
+        toastClear = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_600_000_000)
+            if !Task.isCancelled { withAnimation { toast = nil } }
+        }
+    }
 
     init() {
         let d = UserDefaults.standard
