@@ -428,11 +428,7 @@ struct SessionDetailView: View {
                 }
                 Button("Load output") { act { output = try await app.client.ptyOutput(session.sessionId) } }
                 if !output.isEmpty {
-                    ScrollView {
-                        Text(output).font(.system(.caption, design: .monospaced))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .frame(maxHeight: 200)
+                    CodeBlock(text: output, maxHeight: 200)
                 }
             }
             .disabled(!isTerminal && !canControl)

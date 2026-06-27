@@ -65,7 +65,7 @@ struct ReveView: View {
                                 Text(loading ? "…" : "No agent activity in this window.")
                                     .font(.caption).foregroundStyle(.secondary)
                             } else {
-                                Text(recap).font(.system(.callout, design: .monospaced))
+                                CodeBlock(text: recap, maxHeight: 280)
                             }
                         } header: { Text("Recap") }
 
