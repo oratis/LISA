@@ -46,6 +46,7 @@ struct ReveView: View {
                                         Text(i.importance >= 3 ? "‼" : "!")
                                             .font(.caption.bold())
                                             .foregroundStyle(i.importance >= 3 ? .red : .orange)
+                                            .accessibilityLabel(i.importance >= 3 ? "urgent" : "important")   // D1: not color-only
                                         VStack(alignment: .leading, spacing: 1) {
                                             Text(i.subject.isEmpty ? "(no subject)" : i.subject).font(.callout).lineLimit(1)
                                             Text(i.reason).font(.caption2).foregroundStyle(.secondary).lineLimit(1)

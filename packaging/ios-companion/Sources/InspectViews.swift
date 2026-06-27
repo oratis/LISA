@@ -50,6 +50,9 @@ struct SoulView: View {
                                     Spacer()
                                     ProgressView(value: max(0, min(1, v))).frame(width: 120)
                                 }
+                                .accessibilityElement(children: .ignore)
+                                .accessibilityLabel(k)
+                                .accessibilityValue("\(Int((max(0, min(1, v))) * 100)) percent")
                             }
                         }
                     }

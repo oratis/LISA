@@ -161,6 +161,8 @@ struct MoodPortrait: View {
             MoodChip(mood: slug)
             Spacer()
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Lisa's mood: \(slug)")
     }
 }
 

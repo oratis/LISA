@@ -26,11 +26,17 @@ struct OnboardingDots: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: step)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(stepLabel)
     }
     private func isCurrent(_ s: OnboardingStep) -> Bool { s == step }
     private func isActive(_ s: OnboardingStep) -> Bool {
         guard let step else { return false }
         return s.rawValue <= step.rawValue
+    }
+    private var stepLabel: String {
+        guard let step, let i = OnboardingStep.dotted.firstIndex(of: step) else { return "Setup progress" }
+        return "Step \(i + 1) of \(OnboardingStep.dotted.count)"
     }
 }
 
@@ -93,7 +99,8 @@ struct CopyCommandRow: View {
             Button(action: copy) {
                 Image(systemName: copied ? "checkmark" : "doc.on.doc")
                     .foregroundStyle(copied ? Theme.green : Theme.accent)
-                    .frame(width: 28, height: 28)
+                    .frame(width: 44, height: 44)   // ≥44pt tap target (D4)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(copied ? "Copied" : "Copy command")
