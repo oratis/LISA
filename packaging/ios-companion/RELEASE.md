@@ -93,6 +93,7 @@ adds these App Store Connect console steps (account actions — only you):
 4. **Metadata** — name "Lisa Pocket", subtitle, description, keywords, **support URL**
    + **privacy-policy URL** (required; host on meetlisa.ai), category, **age rating**,
    and **screenshots** (6.7"/6.5" iPhone at minimum; iPad if `supportsTablet`).
+   Copy-ready text is drafted in [`APPSTORE_METADATA.md`](APPSTORE_METADATA.md).
 5. **Submit for Review** (the build from TestFlight → "Add Build" on the app version).
 
 ## Honest limits
@@ -137,6 +138,6 @@ instance provided for review.
 - [ ] **Privacy-policy URL** (required) hosted on meetlisa.ai
 - [ ] Support URL
 - [ ] Screenshots — 6.7" + 6.5" iPhone (iPad if `supportsTablet`)
-- [ ] Metadata — name/subtitle/description/keywords/category/age rating
+- [x] Metadata — name/subtitle/description/keywords/category/age rating (drafted in [`APPSTORE_METADATA.md`](APPSTORE_METADATA.md))
 - [ ] `testflight.sh` upload succeeded → build shows in TestFlight
 - [ ] Build attached to the version → **Submit for Review**
