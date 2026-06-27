@@ -3,6 +3,7 @@ import SwiftUI
 import UIKit
 import UserNotifications
 import LocalAuthentication
+import WidgetKit
 
 /// A roster session a deep-link wants to open (agent + sessionId).
 struct PendingNav: Equatable { var agent: String; var id: String }
@@ -114,6 +115,15 @@ final class AppState: ObservableObject {
         guard let cfg = AppState.parsePairing(raw) else { return false }
         update(host: cfg.host, port: cfg.port, token: cfg.token, scheme: cfg.scheme)
         return true
+    }
+
+    /// Refresh the home-Widget snapshot independent of the Dispatch tab — it used
+    /// to be written only while that tab was on screen, so the widget went stale
+    /// whenever the user lived elsewhere (review A5). Called on launch + foreground.
+    func refreshWidgetSnapshot() async {
+        guard config.isConfigured, let s = try? await client.sessions() else { return }
+        SharedStore.writeSnapshot(rosterCounts(s))
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     /// Pure parse of a pairing string into a ServerConfig (no side effects) — so it's

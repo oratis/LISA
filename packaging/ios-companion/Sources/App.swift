@@ -49,8 +49,10 @@ struct RootView: View {
                 SetupBanner { app.presentOnboarding() }
             }
         }
+        .task { await app.refreshWidgetSnapshot() }          // keep the widget fresh off-tab (A5)
         .onChange(of: scenePhase) { _, phase in
             if phase == .background { app.lockIfEnabled() }  // re-arm when leaving foreground
+            if phase == .active { Task { await app.refreshWidgetSnapshot() } }
         }
     }
 }
