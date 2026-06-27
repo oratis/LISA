@@ -30,10 +30,13 @@ import { MAIN_HTML } from "./lisa-html.js";
  * Then: failed-turn error block — replaced the bare [error] line with an
  * .err-block (detail + ↻ retry) in MAIN_CLIENT_JS plus its CSS (#135), in front
  * of provider-level auto-retry for transient empty-stream failures.
+ * Then: a "Pair phone" function-bar button → showPair() modal that mints a
+ * device token via /api/pair/start and shows copyable link + host/port/token
+ * (browser counterpart to `lisa pair`), with its .pair-row CSS.
  */
-const EXPECTED_LENGTH = 145995;
+const EXPECTED_LENGTH = 150420;
 const EXPECTED_SHA256 =
-  "4a05a2f87358d0cfe09d98b12c36f6f4b0076850d6d958d47278d51068d8a372";
+  "8a7b79c2ac406b4a79a03a2b742edfe46d121d8b6191922232bec44c0651bd03";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);

@@ -830,6 +830,63 @@ async function selectPlan(plan) {
   }
 }
 
+// ── Pair phone: mint a device token + show copyable pairing details ──────────
+// Mirrors "lisa pair" / the Mac app Pair iPhone window for browser users. The mint
+// endpoint is loopback-only, so this works from a localhost browser on the Mac
+// (a LAN browser gets 403, handled below). The server detects the Mac's LAN host
+// and returns the lisa-pair:// link + host/port/token so the phone can paste the
+// link OR type the fields into Lisa Pocket → Settings → Pair.
+function pairRow(label, value) {
+  return '<div class="pair-row"><span class="pair-label">' + escapeHtml(label) + '</span>'
+    + '<code class="pair-val">' + escapeHtml(value) + '</code>'
+    + '<button class="pair-copy" type="button">Copy</button></div>';
+}
+async function showPair() {
+  openModal('PAIR PHONE', '<div class="empty">minting a pairing code…</div>');
+  let res;
+  try {
+    res = await fetch('/api/pair/start', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'phone', platform: 'ios' }),
+    });
+  } catch (e) {
+    modalBody.innerHTML = '<div class="empty">Couldn\\'t reach the Lisa backend.</div>';
+    return;
+  }
+  if (res.status === 403) {
+    modalBody.innerHTML = '<div class="empty">Pairing can only be started on the Mac itself. Open this page at <code>http://localhost:' + escapeHtml(location.port || '5757') + '</code> on your Mac, then try again.</div>';
+    return;
+  }
+  if (!res.ok) {
+    modalBody.innerHTML = '<div class="empty">Pairing failed (HTTP ' + res.status + ').</div>';
+    return;
+  }
+  const data = await res.json().catch(function () { return {}; });
+  if (!data.token) { modalBody.innerHTML = '<div class="empty">The server returned no token.</div>'; return; }
+  const port = data.port || 5757;
+  const host = data.host || '';
+  const link = data.url || ('lisa-pair://v1?host=' + encodeURIComponent(host) + '&port=' + port + '&token=' + encodeURIComponent(data.token) + '&name=phone');
+  let html = '<div class="empty">In Lisa Pocket → Settings → Pair, paste the link below — or switch to “enter manually” and type the three fields. Keep the phone on the same Wi-Fi (or tailnet) as this Mac.</div>';
+  html += pairRow('Link', link);
+  html += pairRow('Host', host || '(your Mac\\'s Wi-Fi IP)');
+  html += pairRow('Port', String(port));
+  html += pairRow('Token', data.token);
+  if (!host) html += '<div class="empty">Couldn\\'t detect your Mac\\'s LAN address — enter its Wi-Fi IP or tailnet name on the phone.</div>';
+  modalBody.innerHTML = html;
+  const codes = modalBody.querySelectorAll('.pair-row');
+  for (let i = 0; i < codes.length; i++) {
+    const row = codes[i];
+    const btn = row.querySelector('.pair-copy');
+    const val = row.querySelector('.pair-val');
+    btn.addEventListener('click', function () {
+      navigator.clipboard.writeText(val.textContent).then(function () {
+        const prev = btn.textContent; btn.textContent = 'Copied'; setTimeout(function () { btn.textContent = prev; }, 1200);
+      }).catch(function () {});
+    });
+  }
+}
+
 async function showSoul() {
   openModal('★ SOUL', '<div class="empty">loading…</div>');
   const data = await fetch('/api/soul').then(r => r.json());
@@ -881,6 +938,7 @@ document.querySelectorAll('[data-panel]').forEach(b => {
     else if (which === 'memory') showMemory();
     else if (which === 'tools') showTools();
     else if (which === 'plans') showPlans();
+    else if (which === 'pair') showPair();
   });
 });
 

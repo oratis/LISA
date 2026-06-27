@@ -40,6 +40,30 @@ final class LisaClient {
         self.session = session
     }
 
+    /// Exchange a Sign in with Apple identity token for the cloud instance's
+    /// session token (`POST /api/auth/apple`). Unauthenticated by design — this
+    /// is the call that *mints* the token — so it's a static helper that takes the
+    /// bare cloud base (host/scheme/port, no token). Throws `LisaError.http` for a
+    /// disabled instance (404) or a rejected sign-in (401/403).
+    static func exchangeAppleToken(base: ServerConfig, identityToken: String,
+                                   session: URLSession = .shared) async throws -> String {
+        guard let baseURL = base.baseURL, let url = URL(string: "/api/auth/apple", relativeTo: baseURL) else {
+            throw LisaError.notConfigured
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["identityToken": identityToken])
+        let (data, resp) = try await session.data(for: req)
+        let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
+        guard (200..<300).contains(code) else { throw LisaError.http(code) }
+        struct R: Decodable { let token: String }
+        guard let r = try? JSONDecoder().decode(R.self, from: data), !r.token.isEmpty else {
+            throw LisaError.decode
+        }
+        return r.token
+    }
+
     /// URL for a server asset (e.g. a mood portrait at /assets/lisa/<slug>.png),
     /// carrying the token as a query param so AsyncImage — which can't set an
     /// Authorization header — still authenticates against a non-loopback server.

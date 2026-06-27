@@ -92,6 +92,24 @@ final class LisaPocketTests: XCTestCase {
         XCTAssertNil(AppState.parsePairing("https://lisa-cloud.run.app/"))
     }
 
+    // ── parseCloudBase: token-less cloud URL for the Sign in with Apple flow ──
+    func testParseCloudBaseFullURL() {
+        let cfg = AppState.parseCloudBase("https://lisa-cloud-xxx.run.app")
+        XCTAssertEqual(cfg, ServerConfig(host: "lisa-cloud-xxx.run.app", port: 443, token: nil, scheme: "https"))
+    }
+    func testParseCloudBaseBareHostAssumesHTTPS() {
+        let cfg = AppState.parseCloudBase("lisa-cloud-xxx.run.app")
+        XCTAssertEqual(cfg, ServerConfig(host: "lisa-cloud-xxx.run.app", port: 443, token: nil, scheme: "https"))
+    }
+    func testParseCloudBaseKeepsExplicitPortAndStripsToken() {
+        // A token in the URL is ignored — the server mints the real one after sign-in.
+        let cfg = AppState.parseCloudBase("https://host.example:8443/?token=ignored")
+        XCTAssertEqual(cfg, ServerConfig(host: "host.example", port: 8443, token: nil, scheme: "https"))
+    }
+    func testParseCloudBaseRejectsEmpty() {
+        XCTAssertNil(AppState.parseCloudBase("   "))
+    }
+
     // ── ConnectionMode persists by rawValue (the "lisa.mode" UserDefaults key) ──
     func testConnectionModeRawValues() {
         XCTAssertEqual(ConnectionMode(rawValue: "mac"), .mac)

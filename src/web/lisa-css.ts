@@ -1355,6 +1355,43 @@ export const MAIN_CSS = `  :root {
     font-size: 12px;
   }
   .modal-body .desc { color: var(--fg-3); margin-top: 2px; }
+  .modal-body .pair-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--line, rgba(255,255,255,0.07));
+  }
+  .modal-body .pair-row:last-child { border: none; }
+  .modal-body .pair-label {
+    flex: 0 0 52px;
+    color: var(--fg-3);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .modal-body .pair-val {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11.5px;
+    color: var(--fg-1, #e8e8ea);
+    overflow-wrap: anywhere;
+    user-select: all;
+  }
+  .modal-body .pair-copy {
+    flex: 0 0 auto;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--fg-2);
+    background: var(--btn-bg, rgba(255,255,255,0.08));
+    border: 1px solid var(--line, rgba(255,255,255,0.12));
+    border-radius: 6px;
+    padding: 3px 9px;
+    cursor: pointer;
+  }
+  .modal-body .pair-copy:hover { filter: brightness(1.12); }
   .modal-body .plan-select {
     margin-top: 6px;
     font-family: inherit;

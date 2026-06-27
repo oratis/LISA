@@ -134,6 +134,30 @@ final class AppState: ObservableObject {
         return ServerConfig(host: host, port: port, token: token, scheme: scheme)
     }
 
+    /// Parse a LISA Cloud base URL (no token) into a ServerConfig for the Sign in
+    /// with Apple flow — the token is minted by the server after sign-in, so this
+    /// only needs host/scheme/port. A bare host is assumed https. `nonisolated` +
+    /// pure so it's unit-testable. Returns nil if there's no host.
+    nonisolated static func parseCloudBase(_ raw: String) -> ServerConfig? {
+        var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !s.isEmpty else { return nil }
+        if !s.contains("://") { s = "https://" + s }
+        guard let comps = URLComponents(string: s), let host = comps.host, !host.isEmpty else { return nil }
+        let scheme = comps.scheme == "http" ? "http" : "https"
+        let port = comps.port ?? (scheme == "https" ? 443 : 5757)
+        return ServerConfig(host: host, port: port, token: nil, scheme: scheme)
+    }
+
+    /// Exchange a verified Apple identity token at a LISA Cloud instance for its
+    /// session token, then save the cloud connection. Throws on a bad cloud URL,
+    /// an instance that hasn't enabled Sign in with Apple (404), or a rejected
+    /// token (401). On success the connection is configured for `verifyConnection`.
+    func connectCloudWithApple(baseURL raw: String, identityToken: String) async throws {
+        guard let base = AppState.parseCloudBase(raw) else { throw LisaError.notConfigured }
+        let token = try await LisaClient.exchangeAppleToken(base: base, identityToken: identityToken)
+        update(host: base.host, port: base.port, token: token, scheme: base.scheme)
+    }
+
     // ── first-run onboarding (docs/PLAN_IOS_ONBOARDING_v1.0.md) ──
     /// Sticky once the user finishes or skips, so the cover doesn't reappear every
     /// launch (UserDefaults "lisa.onboarded").

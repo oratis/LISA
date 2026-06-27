@@ -68,6 +68,14 @@ import {
 import os from "node:os";
 import { LISA_HOME } from "../paths.js";
 import { isCloud, editionInfo } from "../edition.js";
+import {
+  verifyAppleIdentityToken,
+  fetchAppleKeys,
+  appleSignInConfig,
+  subAllowed,
+  AppleAuthError,
+} from "./cloudAuth.js";
+import { detectLanHost, buildPairUrl } from "./pairing.js";
 import type { ToolDefinition, StoredMessage } from "../types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -565,6 +573,56 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // for EVERY request and loopback is not a free pass (the container must never
     // trust its own/proxy loopback). Mac edition: loopback = the local owner.
     const cloud = isCloud();
+
+    // ── Sign in with Apple (cloud edition) ───────────────────────────────────
+    // Public on purpose: this endpoint *mints* access, so it runs BEFORE the
+    // token gate. The iOS app sends the Apple identity token; we verify it
+    // against Apple's keys and hand back the cloud session token (= the shared
+    // LISA_WEB_TOKEN — single-tenant, matching the M0/C2 demo). Default-OFF:
+    // disabled unless LISA_CLOUD_APPLE_SIGNIN is set, so we never leak the token.
+    // See src/web/cloudAuth.ts + docs/PLAN_CLOUD_v1.0.md.
+    if (req.method === "POST" && url === "/api/auth/apple") {
+      const cfg = appleSignInConfig();
+      if (!cloud || !cfg.enabled) {
+        res.writeHead(404, { "content-type": "text/plain" });
+        res.end("apple sign-in not available");
+        return;
+      }
+      if (!webToken) {
+        res.writeHead(503, { "content-type": "text/plain" });
+        res.end("cloud sign-in misconfigured (no session token)");
+        return;
+      }
+      let abBody = "";
+      for await (const chunk of req) abBody += chunk.toString("utf8");
+      let payload: { identityToken?: unknown } = {};
+      try { payload = abBody ? JSON.parse(abBody) : {}; } catch { /* tolerate */ }
+      const idToken = typeof payload.identityToken === "string" ? payload.identityToken : "";
+      if (!idToken) {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("identityToken required");
+        return;
+      }
+      try {
+        const id = await verifyAppleIdentityToken(idToken, {
+          audience: cfg.audience,
+          fetchKeys: fetchAppleKeys,
+        });
+        if (!subAllowed(id.sub, cfg)) {
+          res.writeHead(403, { "content-type": "text/plain" });
+          res.end("this Apple ID is not allowed on this LISA Cloud instance");
+          return;
+        }
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true, token: webToken }));
+      } catch (e) {
+        const msg = e instanceof AppleAuthError ? e.message : "verification failed";
+        res.writeHead(401, { "content-type": "text/plain" });
+        res.end(`apple sign-in rejected: ${msg}`);
+      }
+      return;
+    }
+
     if (cloud || !isLoopbackAddress(remoteAddr)) {
       const presented = webToken ? presentedToken(req, url) : null;
       // Authorized by the global LISA_WEB_TOKEN OR a non-revoked per-device token.
@@ -927,13 +985,21 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       }
       let prBody = "";
       for await (const chunk of req) prBody += chunk.toString("utf8");
-      let payload: { name?: unknown; platform?: unknown } = {};
+      let payload: { name?: unknown; platform?: unknown; host?: unknown } = {};
       try { payload = prBody ? JSON.parse(prBody) : {}; } catch { /* tolerate */ }
       const name = typeof payload.name === "string" ? payload.name : "device";
       const platform = typeof payload.platform === "string" ? payload.platform : "ios";
       const { id, token, device } = mintDevice(name, platform);
+      // Detect a phone-reachable LAN host server-side so every client (CLI, Mac
+      // app, web UI) can show consistent, copyable pairing details — the browser
+      // can't discover the Mac's LAN IP on its own. A caller-supplied host wins.
+      const host =
+        typeof payload.host === "string" && payload.host.trim()
+          ? payload.host.trim()
+          : detectLanHost();
+      const url = host ? buildPairUrl(host, opts.port, token, name) : undefined;
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ ok: true, id, token, port: opts.port, device }));
+      res.end(JSON.stringify({ ok: true, id, token, port: opts.port, host, url, device }));
       return;
     }
     if (req.method === "GET" && url === "/api/devices") {

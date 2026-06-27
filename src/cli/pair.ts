@@ -12,7 +12,11 @@
 // qrcode-terminal is CommonJS — Node's ESM loader only exposes its default
 // export, so import the module object and call .generate off it.
 import qrcodeTerminal from "qrcode-terminal";
-import os from "node:os";
+import { detectLanHost, buildPairUrl } from "../web/pairing.js";
+
+// Re-exported so existing importers (and pair.test.ts) keep working after the
+// LAN-detection / URL-building helpers moved to the dep-free shared module.
+export { detectLanHost, buildPairUrl } from "../web/pairing.js";
 
 const DEFAULT_PORT = 5757;
 
@@ -56,25 +60,6 @@ export function parsePairArgs(argv: string[]): PairArgs | { error: string } {
   return { host, port, name };
 }
 
-/** First non-internal IPv4 — a reasonable default host when --host is omitted. Pure. */
-export function detectLanHost(
-  ifaces: NodeJS.Dict<os.NetworkInterfaceInfo[]> = os.networkInterfaces(),
-): string | undefined {
-  for (const addrs of Object.values(ifaces)) {
-    for (const a of addrs ?? []) {
-      if (a.family === "IPv4" && !a.internal) return a.address;
-    }
-  }
-  return undefined;
-}
-
-/** Build the `lisa-pair://` deep-link the phone scans/pastes. Pure. */
-export function buildPairUrl(host: string, port: number, token: string, name: string): string {
-  // %20 (not "+") for spaces so the device label round-trips through iOS URLComponents.
-  const q = new URLSearchParams({ host, port: String(port), token, name }).toString().replace(/\+/g, "%20");
-  return `lisa-pair://v1?${q}`;
-}
-
 export async function runPairCommand(argv: string[]): Promise<number> {
   const parsed = parsePairArgs(argv);
   if ("error" in parsed) {
@@ -116,11 +101,17 @@ export async function runPairCommand(argv: string[]): Promise<number> {
     console.error("server returned no token");
     return 1;
   }
-  const url = buildPairUrl(host, body.port ?? port, body.token, name);
+  const effPort = body.port ?? port;
+  const url = buildPairUrl(host, effPort, body.token, name);
 
   console.log(`\nScan in Lisa Pocket → Settings → Scan QR code:\n`);
   await new Promise<void>((resolve) => qrcodeTerminal.generate(url, { small: true }, () => resolve()));
   console.log(`\nOr paste this in Settings → Pair:\n  ${url}\n`);
+  // Broken-out fields for the "enter manually" path (when the link won't paste).
+  console.log(`Or type these in Settings → Pair → enter manually:`);
+  console.log(`  Host:  ${host}`);
+  console.log(`  Port:  ${effPort}`);
+  console.log(`  Token: ${body.token}\n`);
   console.log(`Paired device "${name}" (id ${body.id ?? "?"}). Revoke it later from the app or POST /api/devices/revoke.`);
   console.log(
     `The phone must reach http://${host}:${port} — run serve with --host 0.0.0.0 on the same Wi-Fi, or use a Tailscale name as --host.`,
