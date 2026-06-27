@@ -150,8 +150,11 @@ struct SettingsView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
 
-                Section {
+                Section("Privacy") {
                     NavigationLink { DevicesView() } label: { Label("Paired devices", systemImage: "iphone.gen3") }
+                    // Sense (ambient-signal consent) — a privacy control, so it
+                    // lives in Settings now rather than its own tab (review P4/H1).
+                    NavigationLink { SenseView() } label: { Label("Sense (consent)", systemImage: "sensor.tag.radiowaves.forward") }
                 }
 
                 Section("Security") {
@@ -169,16 +172,8 @@ struct SettingsView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
 
-                Section("Inspect Lisa") {
-                    NavigationLink { SoulView() } label: { Label("Soul", systemImage: "sparkles") }
-                    NavigationLink { MemoryView() } label: { Label("Memory", systemImage: "brain") }
-                    NavigationLink { NamedListView(title: "Skills", load: { try await app.client.skills() }) } label: {
-                        Label("Skills", systemImage: "wand.and.stars")
-                    }
-                    NavigationLink { NamedListView(title: "Tools", load: { try await app.client.tools() }) } label: {
-                        Label("Tools", systemImage: "hammer")
-                    }
-                }
+                // "Inspect Lisa" (Soul/Memory/Skills/Tools) moved to the Lisa home
+                // tab — it's content about who Lisa is, not a setting (review H3).
 
                 if !status.isEmpty {
                     Section { Text(status).font(.caption).foregroundStyle(.secondary) }
