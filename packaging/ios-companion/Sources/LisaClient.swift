@@ -198,6 +198,9 @@ final class LisaClient {
     }
 
     // ── chat ──
+    func history(page: Int = 0) async throws -> HistoryResponse {
+        try await decode("/api/history?page=\(page)", as: HistoryResponse.self)
+    }
     func chatStream(_ message: String) -> AsyncThrowingStream<SSEMessage, Error> {
         sse("/chat", method: "POST", json: ["message": message])
     }
