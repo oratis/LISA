@@ -20,12 +20,13 @@ enum Theme {
     static let gold   = Color(hex: 0xFFD066)   // Lisa identity
     static let green  = Color(hex: 0x3DDC97)   // proactive / live / done
 
-    // Status pips (mirror the web .pip / .ac-status colors)
-    static let working = Color(hex: 0x5B9DFF)
-    static let waiting = Color(hex: 0xFFB84D)
-    static let danger  = Color(hex: 0xFF5D73)
-    static let done    = green
-    static let idle    = Color(hex: 0x6B7299)
+    // Status pips — defined in Shared/GlanceColors so the widget extension (which
+    // can't see Theme) renders identical status colors (review I1/B23).
+    static let working = GlanceColors.working
+    static let waiting = GlanceColors.waiting
+    static let danger  = GlanceColors.error
+    static let done    = GlanceColors.done
+    static let idle    = GlanceColors.idle
 
     static let cardRadius: CGFloat = 12
     static let hairline: CGFloat = 0.5
