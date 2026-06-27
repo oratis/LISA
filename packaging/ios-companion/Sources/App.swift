@@ -34,6 +34,12 @@ struct RootView: View {
         .toolbarBackground(.visible, for: .tabBar)
         .onOpenURL { app.handleDeepLink($0) }
         .overlay { if app.locked { LockView() } }
+        // Redact the app-switcher / multitasking snapshot: iOS captures the frame
+        // at `.inactive` (before `.background`), so a cover keyed on "not active"
+        // keeps the token field / chat out of the thumbnail (review A6). Transient
+        // interruptions (banner, Control Center) just flash the cover — no Face ID,
+        // unlike the biometric lock which arms only on a real `.background`.
+        .overlay { if scenePhase != .active { PrivacyCover() } }
         .fullScreenCover(isPresented: $app.showOnboarding) {
             OnboardingFlow().environmentObject(app)
         }
@@ -46,5 +52,19 @@ struct RootView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .background { app.lockIfEnabled() }  // re-arm when leaving foreground
         }
+    }
+}
+
+/// Opaque branded cover shown whenever the scene isn't active, so the iOS
+/// app-switcher snapshot can't expose the token field / chat (review A6).
+struct PrivacyCover: View {
+    var body: some View {
+        ZStack {
+            Theme.bgDeep.ignoresSafeArea()
+            Image(systemName: "macbook.and.iphone")
+                .font(.system(size: 56, weight: .light))
+                .foregroundStyle(Theme.accent)
+        }
+        .accessibilityHidden(true)
     }
 }
