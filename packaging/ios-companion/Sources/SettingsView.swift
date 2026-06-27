@@ -1,4 +1,5 @@
 import SwiftUI
+import AuthenticationServices
 
 struct SettingsView: View {
     @EnvironmentObject var app: AppState
@@ -12,6 +13,7 @@ struct SettingsView: View {
     @State private var status = ""
     @State private var showScanner = false
     @State private var showUnpairConfirm = false
+    @State private var appleBusy = false
 
     var body: some View {
         NavigationStack {
@@ -75,24 +77,30 @@ struct SettingsView: View {
                     }
                 } else {
                     Section("LISA Cloud") {
-                        TextField("https://…run.app/?token=", text: $pairText)
+                        TextField("https://your-instance.run.app", text: $pairText)
                             .autocorrectionDisabled()
                             .textInputAutocapitalization(.never)
                             .keyboardType(.URL)
-                        Button("Connect") {
+                        // Real Sign in with Apple against the entered cloud URL (the
+                        // backend exchange path is implemented — review F6, the dead
+                        // 'coming soon' button is gone).
+                        SignInWithAppleButton(.continue,
+                            onRequest: { req in req.requestedScopes = [.fullName, .email] },
+                            onCompletion: handleApple)
+                            .signInWithAppleButtonStyle(.white)
+                            .frame(height: 44)
+                            .disabled(appleBusy || AppState.parseCloudBase(pairText) == nil)
+                        if appleBusy { ProgressView() }
+                        Button("Connect with token") {
                             if app.applyPairing(pairText) {
                                 syncFromConfig()
-                                status = "Connected to LISA Cloud."
+                                app.notify("Connected to LISA Cloud.")
                             } else {
-                                status = "Couldn't parse that cloud URL."
+                                app.notify("Couldn't parse that cloud URL.", ok: false)
                             }
                         }
                         .disabled(pairText.isEmpty)
-                        Button {} label: {
-                            Label("Sign in with Apple (coming soon)", systemImage: "person.crop.circle")
-                        }
-                        .disabled(true)
-                        Text("Paste your LISA Cloud URL + token. Sign in with Apple is coming.")
+                        Text("Enter your LISA Cloud URL and sign in — or paste a URL that already has its ?token=.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
@@ -104,15 +112,16 @@ struct SettingsView: View {
                     Toggle("Agent done", isOn: $prefs.done)
                     Toggle("Agent error", isOn: $prefs.error)
                     Toggle("Needs permission", isOn: $prefs.permission)
-                    Toggle("Reve notes", isOn: $prefs.idle)
+                    Toggle("While-away notes", isOn: $prefs.idle)   // was mislabeled "Reve notes" (B11)
+                    Toggle("Advisor tips", isOn: $prefs.advisor)    // was hardcoded, never exposed (B11)
                     Toggle("Mail digest + alerts", isOn: $prefs.mail)
                     Button("Register push") {
                         Task { @MainActor in
                             do {
                                 try await app.client.pushRegister(kind: "ntfy", target: ntfyTopic, prefs: prefs)
-                                status = "Push registered."
+                                app.notify("Push registered.")
                             } catch {
-                                status = (error as? LocalizedError)?.errorDescription ?? "\(error)"
+                                app.notify((error as? LocalizedError)?.errorDescription ?? "Couldn't register push.", ok: false)
                             }
                         }
                     }
@@ -203,6 +212,35 @@ struct SettingsView: View {
         host = app.config.host
         portText = String(app.config.port)
         token = app.config.token ?? ""
+    }
+
+    /// Sign in with Apple against the entered cloud URL, exchange the identity
+    /// token for the session token, and save the connection (review F6).
+    private func handleApple(_ result: Result<ASAuthorization, Error>) {
+        switch result {
+        case .failure(let err):
+            if (err as? ASAuthorizationError)?.code == .canceled { return }
+            app.notify(err.localizedDescription, ok: false)
+        case .success(let auth):
+            guard let cred = auth.credential as? ASAuthorizationAppleIDCredential,
+                  let data = cred.identityToken, let idToken = String(data: data, encoding: .utf8) else {
+                app.notify("Apple didn't return an identity token.", ok: false)
+                return
+            }
+            appleBusy = true
+            Task {
+                defer { appleBusy = false }
+                do {
+                    try await app.connectCloudWithApple(baseURL: pairText, identityToken: idToken)
+                    syncFromConfig()
+                    app.notify("Signed in to LISA Cloud.")
+                } catch LisaError.http(404) {
+                    app.notify("This instance hasn't enabled Sign in with Apple — paste a token instead.", ok: false)
+                } catch {
+                    app.notify("Couldn't reach that LISA Cloud URL.", ok: false)
+                }
+            }
+        }
     }
 
     /// Apply a scanned code the same way pasted text is applied; on a parse failure,
