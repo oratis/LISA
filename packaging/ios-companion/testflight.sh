@@ -43,6 +43,12 @@ command -v xcodegen >/dev/null || { echo "✗ need xcodegen — brew install xco
 TEAM_ID="${APPLE_TEAM_ID:-9LH9NBX7P4}"
 BUILD_NUMBER="${BUILD_NUMBER:-$(date +%Y%m%d%H%M)}"
 EXPORT_METHOD="${EXPORT_METHOD:-app-store-connect}"
+# project.yml hard-disables signing for simulator dev builds (CODE_SIGN_IDENTITY="").
+# For the archive that empty identity must be overridden, or app-extension targets
+# (the widget) silently skip their CodeSign step → ValidateEmbeddedBinary fails.
+# Automatic signing re-derives the real identity from the team; this just has to be
+# non-empty. Export re-signs for distribution via ExportOptions.
+SIGN_IDENTITY="${SIGN_IDENTITY:-Apple Development}"
 BUILD_DIR="build"
 ARCHIVE="$BUILD_DIR/LisaPocket.xcarchive"
 
@@ -73,7 +79,8 @@ xcodebuild archive \
   "${AUTH[@]}" \
   CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM="$TEAM_ID" \
   CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=YES \
-  CURRENT_PROJECT_VERSION="$BUILD_NUMBER" "${MV_ARG[@]}"
+  CODE_SIGN_IDENTITY="$SIGN_IDENTITY" \
+  CURRENT_PROJECT_VERSION="$BUILD_NUMBER" ${MV_ARG[@]+"${MV_ARG[@]}"}
 
 echo "==> write ExportOptions.plist (method=$EXPORT_METHOD, destination=upload)"
 cat > "$BUILD_DIR/ExportOptions.plist" <<PLIST

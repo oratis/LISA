@@ -36,6 +36,17 @@ targets:
         NSFaceIDUsageDescription: "Unlock Lisa Pocket with Face ID."
         NSLocalNetworkUsageDescription: "Connect to the Lisa backend running on your Mac over your local network."
         ITSAppUsesNonExemptEncryption: false
+        # Portrait-only on iPhone; iPad declares all four orientations, which App
+        # Store validation requires for any iPad-capable (device family 2) app that
+        # doesn't opt out of multitasking. Without these the upload is rejected
+        # ("No orientations were specified … To support iPad multitasking …").
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
         CFBundleURLTypes:
           - CFBundleURLName: ai.meetlisa.main
             CFBundleURLSchemes:
