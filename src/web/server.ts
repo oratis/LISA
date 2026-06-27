@@ -998,8 +998,11 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           ? payload.host.trim()
           : detectLanHost();
       const url = host ? buildPairUrl(host, opts.port, token, name) : undefined;
+      // The interface the server is actually bound to. If it's loopback-only, a
+      // phone can't reach it however good the QR is — the client warns on this.
+      const boundHost = opts.host ?? "127.0.0.1";
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ ok: true, id, token, port: opts.port, host, url, device }));
+      res.end(JSON.stringify({ ok: true, id, token, port: opts.port, host, url, boundHost, device }));
       return;
     }
     if (req.method === "GET" && url === "/api/devices") {

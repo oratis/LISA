@@ -175,10 +175,15 @@ struct OnboardingFlow: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     OnboardingTitle(title: "Pair this iPhone",
-                                    subtitle: "On your Mac, run this — it prints a QR code in the terminal.")
+                                    subtitle: "Keep LISA running on your Mac. Then, in a new terminal window, run this — it prints a QR code there.")
                     CopyCommandRow(command: pairCommand)
                     Text("Only someone with this code can connect — and only over your Wi-Fi or tailnet.")
                         .font(.caption).foregroundStyle(Theme.tertiary).padding(.horizontal, 24)
+                    Label("Using the Mac app? Click the Lisa icon in your menu bar → “Pair iPhone…” — no terminal needed.",
+                          systemImage: "menubar.rectangle")
+                        .font(.caption).foregroundStyle(Theme.secondary)
+                        .padding(.horizontal, 24)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(.vertical, 24)
             }
