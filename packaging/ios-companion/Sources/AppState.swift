@@ -73,6 +73,7 @@ final class AppState: ObservableObject {
                 cfg = ServerConfig(host: p[0], port: Int(p[1]) ?? 5757, token: p[2], scheme: p.count > 3 ? p[3] : "http")
             }
         }
+        if let t = ProcessInfo.processInfo.environment["LISA_DEV_TAB"], let n = Int(t) { selectedTab = n }
         #endif
         self.config = cfg
         self.client = LisaClient(config: cfg)
