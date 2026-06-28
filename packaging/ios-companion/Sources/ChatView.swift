@@ -112,19 +112,83 @@ struct ChatView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                if !model.mood.isEmpty {
-                    MoodPortrait(mood: model.mood)
-                        .padding(.horizontal).padding(.vertical, Theme.Space.s)
-                    Divider()
-                }
                 transcript
                 Divider()
+                quickChips
                 composer
             }
             .background(Theme.bgDeep.ignoresSafeArea())
-            .navigationTitle("Chat")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) { chatHeader }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { Task { await model.loadEarlier(app.client) } } label: {
+                        Image(systemName: "clock.arrow.circlepath")
+                    }
+                    .disabled(!model.hasMore || model.loadingHistory)
+                    .accessibilityLabel("Load earlier messages")
+                }
+            }
             .task(id: app.config) { model.startMood(app.client); await model.loadHistory(app.client) }
             .onDisappear { model.stopMood() }
+        }
+    }
+
+    /// Compact inline header: small mood portrait + "Lisa · <mood>" (redesign —
+    /// replaces the big nav title + portrait row).
+    private var chatHeader: some View {
+        HStack(spacing: 8) {
+            moodAvatar(28)
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Lisa").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
+                if !model.mood.isEmpty {
+                    Text(model.mood.replacingOccurrences(of: "-", with: " "))
+                        .font(.caption2).foregroundStyle(Theme.green)
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Lisa\(model.mood.isEmpty ? "" : ", \(model.mood)")")
+    }
+
+    private func moodAvatar(_ size: CGFloat) -> some View {
+        let slug = model.mood.isEmpty ? "neutral" : model.mood
+        let safe = slug.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? slug
+        return Group {
+            if let url = app.client.assetURL("/assets/lisa/\(safe).png") {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let img): img.resizable().scaledToFit()
+                    default: Image(systemName: "person.crop.circle.fill").resizable().scaledToFit().foregroundStyle(Theme.secondary)
+                    }
+                }
+            } else {
+                Image(systemName: "person.crop.circle.fill").resizable().scaledToFit().foregroundStyle(Theme.secondary)
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private let quickCommands = ["What are the agents doing?", "Summarize today", "Any blockers?"]
+
+    /// Tappable quick-command chips above the composer — there's always a next move.
+    @ViewBuilder private var quickChips: some View {
+        if !model.sending {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: Theme.Space.s) {
+                    ForEach(quickCommands, id: \.self) { cmd in
+                        Button { model.send(cmd, client: app.client) } label: {
+                            Text(cmd).font(.caption)
+                                .padding(.horizontal, 12).padding(.vertical, 7)
+                                .background(Theme.accent.opacity(0.14), in: Capsule())
+                                .foregroundStyle(Theme.accent)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal).padding(.vertical, Theme.Space.s)
+            }
         }
     }
 
@@ -140,10 +204,15 @@ struct ChatView: View {
                 }
                 LazyVStack(spacing: Theme.Space.m) {
                     if model.messages.isEmpty {
-                        Text("Say hi to Lisa.")
-                            .foregroundStyle(Theme.secondary)
-                            .frame(maxWidth: .infinity, alignment: .center)
-                            .padding(.top, 40)
+                        VStack(spacing: 6) {
+                            Image(systemName: "bubble.left.and.text.bubble.right")
+                                .font(.largeTitle).foregroundStyle(Theme.tertiary)
+                            Text("Ask Lisa anything — or tap a suggestion below.")
+                                .font(.callout).foregroundStyle(Theme.secondary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 60)
                     }
                     ForEach(model.messages) { MessageBubble(message: $0) }
                     if model.sending {
@@ -269,77 +338,4 @@ func renderMarkdown(_ s: String) -> AttributedString {
     (try? AttributedString(markdown: s,
                            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
         ?? AttributedString(s)
-}
-
-/// Lisa's current mood as a real portrait + label. The portrait is the server's
-/// own art (`/assets/lisa/<slug>.png`, the same set the web island uses), loaded
-/// over the existing connection — no bundling, always in sync. Falls back to the
-/// mood chip while loading or if the slug has no art.
-struct MoodPortrait: View {
-    @EnvironmentObject var app: AppState
-    let mood: String
-
-    var body: some View {
-        let slug = mood.isEmpty ? "neutral" : mood
-        let safe = slug.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? slug
-        HStack(spacing: 10) {
-            Group {
-                if let url = app.client.assetURL("/assets/lisa/\(safe).png") {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let img): img.resizable().scaledToFit()
-                        case .empty: ProgressView()
-                        default: Image(systemName: "person.crop.circle.fill").resizable().scaledToFit().foregroundStyle(.secondary)
-                        }
-                    }
-                } else {
-                    Image(systemName: "person.crop.circle.fill").resizable().scaledToFit().foregroundStyle(.secondary)
-                }
-            }
-            .frame(width: 48, height: 48)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-            MoodChip(mood: slug)
-            Spacer()
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Lisa's mood: \(slug)")
-    }
-}
-
-/// Lisa's current mood as a small labeled chip — the caption beside the portrait,
-/// and the fallback while/if the portrait can't load.
-struct MoodChip: View {
-    let mood: String
-    var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: symbol).foregroundStyle(color)
-            Text(mood.capitalized).font(.subheadline.weight(.medium))
-        }
-        .padding(.horizontal, 10).padding(.vertical, 5)
-        .background(color.opacity(0.12), in: Capsule())
-    }
-
-    private var symbol: String {
-        switch mood.lowercased() {
-        case "happy", "content", "joyful", "playful": return "face.smiling"
-        case "curious", "intrigued": return "sparkle.magnifyingglass"
-        case "proud": return "star.fill"
-        case "weary", "tired": return "moon.zzz"
-        case "frustrated", "annoyed": return "exclamationmark.bubble"
-        case "affectionate", "warm": return "heart.fill"
-        case "awe", "wonder": return "sparkles"
-        default: return "circle.fill"
-        }
-    }
-    private var color: Color {
-        switch mood.lowercased() {
-        case "happy", "content", "joyful", "playful": return Theme.green
-        case "curious", "intrigued", "awe", "wonder": return Theme.accent
-        case "proud": return Theme.gold
-        case "weary", "tired": return Theme.idle
-        case "frustrated", "annoyed": return Theme.danger
-        case "affectionate", "warm": return .pink
-        default: return Theme.secondary
-        }
-    }
 }
