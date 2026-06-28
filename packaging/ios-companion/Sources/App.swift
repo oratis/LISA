@@ -16,16 +16,16 @@ struct RootView: View {
     @EnvironmentObject var app: AppState
     @Environment(\.scenePhase) private var scenePhase
     var body: some View {
-        // Four primary tabs (review P4/H1): Dispatch · Chat · Lisa (overview —
-        // mood, while-away, recap, advisor, Inspect) · Settings. Sense moved into
-        // Settings (it's a consent control); Reve folded into the Lisa home.
+        // Four primary tabs (redesign direction B): Home (glanceable dashboard of
+        // Lisa) · Chat · Agents (the roster) · Settings. Tags: Home=0, Chat=1,
+        // Agents=2, Settings=3 — deep links + the Home 'Agents' card target tag 2.
         TabView(selection: $app.selectedTab) {
-            RosterView()
-                .tabItem { Label("Dispatch", systemImage: "cpu") }.tag(0)
+            HomeView()
+                .tabItem { Label("Home", systemImage: "house") }.tag(0)
             ChatView()
                 .tabItem { Label("Chat", systemImage: "bubble.left.and.bubble.right") }.tag(1)
-            ReveView()
-                .tabItem { Label("Lisa", systemImage: "sparkles") }.tag(2)
+            RosterView()
+                .tabItem { Label("Agents", systemImage: "cpu") }.tag(2)
             SettingsView()
                 .tabItem { Label("Settings", systemImage: "gearshape") }.tag(3)
         }

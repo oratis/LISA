@@ -62,7 +62,18 @@ final class AppState: ObservableObject {
         let host = d.string(forKey: "lisa.host") ?? ""
         let storedPort = d.integer(forKey: "lisa.port")
         let scheme = d.string(forKey: "lisa.scheme") ?? "http"
-        let cfg = ServerConfig(host: host, port: storedPort == 0 ? 5757 : storedPort, token: TokenStore.load(), scheme: scheme)
+        var cfg = ServerConfig(host: host, port: storedPort == 0 ? 5757 : storedPort, token: TokenStore.load(), scheme: scheme)
+        #if DEBUG
+        // Dev/screenshot hook: launch pre-paired via `LISA_DEV_PAIR=host|port|token|scheme`
+        // (e.g. simctl --setenv) so populated screens can be captured without driving
+        // the onboarding UI. DEBUG-only — never in a release build.
+        if let dev = ProcessInfo.processInfo.environment["LISA_DEV_PAIR"] {
+            let p = dev.split(separator: "|").map(String.init)
+            if p.count >= 3 {
+                cfg = ServerConfig(host: p[0], port: Int(p[1]) ?? 5757, token: p[2], scheme: p.count > 3 ? p[3] : "http")
+            }
+        }
+        #endif
         self.config = cfg
         self.client = LisaClient(config: cfg)
         self.connectionMode = ConnectionMode(rawValue: d.string(forKey: "lisa.mode") ?? "") ?? .mac
@@ -202,7 +213,7 @@ final class AppState: ObservableObject {
     func finishOnboarding(paired: Bool) {
         onboarded = true
         showOnboarding = false
-        if paired { selectedTab = 1 }
+        if paired { selectedTab = 0 }   // land on Home (the overview)
     }
 
     /// Probe the saved config before declaring success, so a bad token / unreachable
@@ -229,9 +240,9 @@ final class AppState: ObservableObject {
     func handleDeepLink(_ url: URL) {
         switch AppState.parseDeepLink(url) {
         case .ignore: return
-        case .roster: selectedTab = 0
+        case .roster: selectedTab = 2          // Agents tab (redesign IA)
         case .session(let agent, let id):
-            selectedTab = 0
+            selectedTab = 2
             pendingSession = PendingNav(agent: agent, id: id)
         }
     }
