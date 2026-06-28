@@ -113,14 +113,12 @@ struct RosterView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var path: [AgentSession] = []
     @State private var showDelegate = false
+    @State private var policy: ControlPolicy?
 
     var body: some View {
         NavigationStack(path: $path) {
             VStack(spacing: 0) {
-                if app.config.isConfigured {
-                    ProactiveBanner()
-                    StatStrip(counts: rosterCounts(model.sessions))
-                }
+                if app.config.isConfigured { ProactiveBanner() }
                 Group {
                     if !app.config.isConfigured {
                         ContentUnavailableView("Not paired", systemImage: "wifi.slash",
@@ -132,16 +130,12 @@ struct RosterView: View {
                         ContentUnavailableView("No agents", systemImage: "moon.zzz",
                                                description: Text("Nothing running right now."))
                     } else {
-                        List(model.sessions) { session in
-                            NavigationLink(value: session) { RosterRow(session: session) }
-                                .listRowBackground(Theme.card)
-                        }
-                        .consoleBackground()
+                        agentSections
                     }
                 }
             }
             .background(Theme.bgDeep.ignoresSafeArea())
-            .navigationTitle("Dispatch")
+            .navigationTitle("Agents")
             .navigationDestination(for: AgentSession.self) { SessionDetailView(session: $0) }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -162,6 +156,7 @@ struct RosterView: View {
             .task(id: app.config) {
                 await model.load(app.client)
                 await app.loadProactive()
+                policy = try? await app.client.controlPolicy()
                 resolvePending()
                 model.startStream(app.client)
             }
@@ -187,6 +182,109 @@ struct RosterView: View {
         else { return }
         path = [match]
         app.pendingSession = nil
+    }
+
+    /// Needs-you-first sections (redesign): blocked/errored/waiting agents float to
+    /// the top as action cards (inline approve/deny), running ones are a compact
+    /// list, and idle/done collapse behind a disclosure.
+    private var agentSections: some View {
+        let needs = model.sessions.filter(needsYou)
+        let running = model.sessions.filter { $0.state == "working" && !needsYou($0) }
+        let resting = model.sessions.filter { !needsYou($0) && $0.state != "working" }
+        return List {
+            if !needs.isEmpty {
+                Section {
+                    ForEach(needs) { s in
+                        NeedsYouCard(session: s, canControl: policy?.remoteControl ?? true) { path.append(s) }
+                            .listRowBackground(Theme.card)
+                    }
+                } header: { Text("Needs you · \(needs.count)").foregroundStyle(Theme.waiting) }
+            }
+            if !running.isEmpty {
+                Section("Running · \(running.count)") {
+                    ForEach(running) { s in
+                        NavigationLink(value: s) { RosterRow(session: s) }.listRowBackground(Theme.card)
+                    }
+                }
+            }
+            if !resting.isEmpty {
+                Section {
+                    DisclosureGroup("Idle & done · \(resting.count)") {
+                        ForEach(resting) { s in
+                            NavigationLink(value: s) { RosterRow(session: s) }.listRowBackground(Theme.card)
+                        }
+                    }
+                }
+            }
+        }
+        .consoleBackground()
+    }
+
+    private func needsYou(_ s: AgentSession) -> Bool {
+        s.activity?.pendingPermission != nil || s.state == "waiting" || s.state == "error"
+    }
+}
+
+/// An agent that needs your attention, as an action card: project/agent + what
+/// it's stuck on, with inline Approve / Deny for a paused managed agent (gated by
+/// the Mac's control policy) — no drilling in. Tap "Open" for the full detail.
+struct NeedsYouCard: View {
+    @EnvironmentObject var app: AppState
+    let session: AgentSession
+    let canControl: Bool
+    let onOpen: () -> Void
+    @State private var busy = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.s) {
+            HStack(spacing: 8) {
+                StatusDot(color: stateColor(session))
+                Text(session.project).font(.subheadline.weight(.medium)).foregroundStyle(Theme.text).lineLimit(1)
+                Text(session.agent).font(.caption2).foregroundStyle(Theme.secondary)
+                Spacer()
+                Button(action: onOpen) {
+                    HStack(spacing: 2) { Text("Open"); Image(systemName: "chevron.right") }
+                        .font(.caption).foregroundStyle(Theme.accent)
+                }
+                .buttonStyle(.plain)
+            }
+            if let pend = session.activity?.pendingPermission {
+                Text("Paused on: \(pend)").font(.caption).foregroundStyle(Theme.secondary)
+                if session.controllable == "managed" {
+                    HStack(spacing: Theme.Space.s) {
+                        Button("Approve") { act(allow: true) }
+                            .buttonStyle(.borderedProminent).tint(Theme.green)
+                        Button("Deny", role: .destructive) { act(allow: false) }
+                            .buttonStyle(.bordered)
+                        if !canControl {
+                            Text("remote control off").font(.caption2).foregroundStyle(Theme.waiting)
+                        }
+                    }
+                    .disabled(!canControl || busy)
+                    .font(.caption)
+                }
+            } else if session.state == "error" {
+                Text(session.stateReason.isEmpty ? "Errored — tap Open to inspect." : session.stateReason)
+                    .font(.caption).foregroundStyle(Theme.danger)
+            } else {
+                Text("Waiting on input.").font(.caption).foregroundStyle(Theme.secondary)
+            }
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .contain)
+    }
+
+    private func act(allow: Bool) {
+        busy = true
+        Task { @MainActor in
+            defer { busy = false }
+            do {
+                try await app.client.managedApprove(session.sessionId, allow: allow)
+                app.notify(allow ? "Approved." : "Denied.")
+            } catch {
+                app.notify((error as? LocalizedError)?.errorDescription ?? "Action failed.", ok: false)
+            }
+        }
     }
 }
 
