@@ -24,7 +24,12 @@
 # ── Optional env ──────────────────────────────────────────────────────────
 #   APPLE_TEAM_ID      default 9LH9NBX7P4
 #   MARKETING_VERSION  default: whatever project.yml has
-#   BUILD_NUMBER       default: date +%Y%m%d%H%M (must increase per version)
+#   BUILD_NUMBER       default: date +%s (Unix seconds). MUST be < 2^32 per
+#                      CFBundleVersion component — a %Y%m%d%H%M stamp (12 digits,
+#                      ~2e11) is 47x over the limit, so Apple accepts the upload
+#                      but SILENTLY fails processing (ITMS-90062) and the build
+#                      never reaches TestFlight. `date +%s` (~1.8e9) is monotonic,
+#                      unique per second, and stays valid until 2106.
 #   EXPORT_METHOD      default: app-store-connect (use "app-store" on Xcode<16)
 #
 # Usage:
@@ -41,7 +46,10 @@ export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Develope
 command -v xcodegen >/dev/null || { echo "✗ need xcodegen — brew install xcodegen" >&2; exit 1; }
 
 TEAM_ID="${APPLE_TEAM_ID:-9LH9NBX7P4}"
-BUILD_NUMBER="${BUILD_NUMBER:-$(date +%Y%m%d%H%M)}"
+# Unix seconds: < 2^32 (valid CFBundleVersion), monotonic, unique per second.
+# A %Y%m%d%H%M stamp overflows the 2^32-per-component limit → ITMS-90062, upload
+# "succeeds" but never appears in TestFlight.
+BUILD_NUMBER="${BUILD_NUMBER:-$(date +%s)}"
 EXPORT_METHOD="${EXPORT_METHOD:-app-store-connect}"
 # project.yml hard-disables signing for simulator dev builds (CODE_SIGN_IDENTITY="").
 # For the archive that empty identity must be overridden, or app-extension targets
