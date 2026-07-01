@@ -14,9 +14,14 @@ settings:
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
     TARGETED_DEVICE_FAMILY: "1,2"
-    CODE_SIGNING_REQUIRED: NO
-    CODE_SIGNING_ALLOWED: NO
-    CODE_SIGN_IDENTITY: ""
+    # Automatic signing for device archives (testflight.sh): Xcode picks the
+    # Development identity for the archive and re-signs Distribution at export.
+    # Simulator builds (build.sh) pass CODE_SIGNING_ALLOWED=NO on the command
+    # line, so they need no certificate — keep the disable-flags OUT of the project
+    # so they don't clear the archive's signing identity (which left the widget
+    # unsigned and broke `testflight.sh`).
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: "9LH9NBX7P4"
 targets:
   LisaPocket:
     type: application
