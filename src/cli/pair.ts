@@ -13,11 +13,11 @@
 // export, so import the module object and call .generate off it.
 import qrcodeTerminal from "qrcode-terminal";
 import { Agent, setGlobalDispatcher } from "undici";
-import { detectLanHost, buildPairUrl } from "../web/pairing.js";
+import { detectLanHost, detectTailscaleHost, buildPairUrl } from "../web/pairing.js";
 
 // Re-exported so existing importers (and pair.test.ts) keep working after the
 // LAN-detection / URL-building helpers moved to the dep-free shared module.
-export { detectLanHost, buildPairUrl } from "../web/pairing.js";
+export { detectLanHost, detectTailscaleHost, buildPairUrl } from "../web/pairing.js";
 
 const DEFAULT_PORT = 5757;
 
@@ -147,6 +147,16 @@ export async function runPairCommand(argv: string[]): Promise<number> {
     console.log(`   …then run \`lisa pair\` again. (A Tailscale tailnet name as --host works too.)`);
   } else {
     console.log(`Keep this phone on the same Wi-Fi (or tailnet) as your Mac.`);
+  }
+  // Reachable-anywhere upsell: a LAN IP only works on the same Wi-Fi. If this Mac
+  // is on Tailscale, offer its tailnet address (the phone must join the tailnet
+  // too) so Lisa keeps working on cellular / away from home.
+  const tailscale = detectTailscaleHost();
+  if (tailscale && host !== tailscale) {
+    console.log(`\n💡 To reach Lisa away from home (cellular / other Wi-Fi):`);
+    console.log(`   put this iPhone on your Tailscale tailnet too, then re-pair with:`);
+    console.log(`     lisa pair --host ${tailscale}`);
+    console.log(`   (The address above only works on the same Wi-Fi as your Mac.)`);
   }
   return 0;
 }

@@ -4,16 +4,21 @@ import WidgetKit
 @MainActor
 final class RosterModel: ObservableObject {
     @Published var sessions: [AgentSession] = []
-    @Published var error: String?
+    @Published var problem: ConnectionProblem?
     private var streamTask: Task<Void, Never>?
 
     func load(_ client: LisaClient) async {
         do {
             sessions = sortRows(try await client.sessions())
-            error = nil
+            problem = nil
             publishSnapshot()
         } catch {
-            self.error = (error as? LocalizedError)?.errorDescription ?? "\(error)"
+            // A cancelled request (-999) is transient — a newer load/task is coming
+            // or the network just changed. Never surface it; classify the rest into
+            // a friendly, actionable message (docs/PLAN_IOS_REACHABILITY_v1.0.md).
+            let p = ConnectionProblem.classify(error, config: client.config)
+            if case .cancelled = p { return }
+            problem = p
         }
     }
 
@@ -123,9 +128,8 @@ struct RosterView: View {
                     if !app.config.isConfigured {
                         ContentUnavailableView("Not paired", systemImage: "wifi.slash",
                                                description: Text("Add your Mac in Settings."))
-                    } else if let err = model.error, model.sessions.isEmpty {
-                        ContentUnavailableView("Can't reach Lisa", systemImage: "exclamationmark.triangle",
-                                               description: Text(err))
+                    } else if let p = model.problem, let d = p.display, model.sessions.isEmpty {
+                        ContentUnavailableView(d.title, systemImage: p.icon, description: Text(d.message))
                     } else if model.sessions.isEmpty {
                         ContentUnavailableView("No agents", systemImage: "moon.zzz",
                                                description: Text("Nothing running right now."))

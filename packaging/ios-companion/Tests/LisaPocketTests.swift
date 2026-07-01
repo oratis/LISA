@@ -15,6 +15,42 @@ final class LisaPocketTests: XCTestCase {
                             resumable: nil, adoptedSessionId: nil)
     }
 
+    // ── ServerConfig.isPrivateLAN — home-Wi-Fi addresses that die off-network ──
+    func testIsPrivateLAN() {
+        func cfg(_ h: String) -> ServerConfig { ServerConfig(host: h, port: 5757, token: "t") }
+        XCTAssertTrue(cfg("192.168.3.42").isPrivateLAN)
+        XCTAssertTrue(cfg("10.0.0.5").isPrivateLAN)
+        XCTAssertTrue(cfg("172.16.0.1").isPrivateLAN)
+        XCTAssertTrue(cfg("172.31.255.254").isPrivateLAN)
+        XCTAssertFalse(cfg("172.15.0.1").isPrivateLAN)          // just below 172.16
+        XCTAssertFalse(cfg("172.32.0.1").isPrivateLAN)          // just above 172.31
+        XCTAssertFalse(cfg("100.101.102.103").isPrivateLAN)     // Tailscale — reachable anywhere
+        XCTAssertFalse(cfg("lisa-cloud.run.app").isPrivateLAN)  // hostname
+        XCTAssertFalse(cfg("8.8.8.8").isPrivateLAN)
+    }
+
+    // ── ConnectionProblem.classify — friendly + honest, and -999 stays silent ──
+    func testConnectionProblemClassify() {
+        let lan = ServerConfig(host: "192.168.3.42", port: 5757, token: "t")
+        let cloud = ServerConfig(host: "lisa-cloud.run.app", port: 443, token: "t", scheme: "https")
+
+        // -999 "cancelled" → transient, never shown (the reported bug)
+        let cancelled = NSError(domain: NSURLErrorDomain, code: NSURLErrorCancelled)
+        XCTAssertEqual(ConnectionProblem.classify(cancelled, config: lan), .cancelled)
+        XCTAssertNil(ConnectionProblem.classify(cancelled, config: lan).display)
+
+        // cannot connect + a LAN host → the off-Wi-Fi guidance; a cloud host → generic
+        let cannot = NSError(domain: NSURLErrorDomain, code: NSURLErrorCannotConnectToHost)
+        XCTAssertEqual(ConnectionProblem.classify(cannot, config: lan), .cannotReach(privateLAN: true))
+        XCTAssertEqual(ConnectionProblem.classify(cannot, config: cloud), .cannotReach(privateLAN: false))
+        XCTAssertNotNil(ConnectionProblem.classify(cannot, config: lan).display)
+
+        // auth vs server error
+        XCTAssertEqual(ConnectionProblem.classify(LisaError.http(401), config: lan), .unauthorized)
+        XCTAssertEqual(ConnectionProblem.classify(LisaError.http(403), config: lan), .unauthorized)
+        XCTAssertEqual(ConnectionProblem.classify(LisaError.http(503), config: lan), .serverError(503))
+    }
+
     // ── rosterCounts: each session lands in exactly one bucket ──
     func testRosterCountsBuckets() {
         let snap = rosterCounts([
