@@ -4,6 +4,7 @@ import UIKit
 import UserNotifications
 import LocalAuthentication
 import WidgetKit
+import Network
 
 /// A roster session a deep-link wants to open (agent + sessionId).
 struct PendingNav: Equatable { var agent: String; var id: String }
@@ -45,6 +46,11 @@ final class AppState: ObservableObject {
     /// that A1 surfaces non-2xx — lands visibly instead of in a buried status row).
     @Published var toast: ToastMessage?
     private var toastClear: Task<Void, Never>?
+    /// True when the active network path is cellular with no Wi-Fi — so a paired
+    /// LAN IP is definitely unreachable. Drives the "you've left your Mac's Wi-Fi"
+    /// banner (docs/PLAN_IOS_REACHABILITY_v1.0.md R3).
+    @Published var onCellular = false
+    private let pathMonitor = NWPathMonitor()
 
     /// Fire a haptic + show a brief toast. Use `ok: false` for failures.
     func notify(_ text: String, ok: Bool = true) {
@@ -93,6 +99,14 @@ final class AppState: ObservableObject {
             guard let link = note.object as? String, let url = URL(string: link) else { return }
             Task { @MainActor in self?.handleDeepLink(url) }
         }
+        // Watch the network path so we can warn when a LAN pairing goes unreachable
+        // (left the Mac's Wi-Fi → on cellular). Off the main actor; hops back to set.
+        pathMonitor.pathUpdateHandler = { [weak self] path in
+            let cell = path.status == .satisfied
+                && path.usesInterfaceType(.cellular) && !path.usesInterfaceType(.wifi)
+            Task { @MainActor in self?.onCellular = cell }
+        }
+        pathMonitor.start(queue: DispatchQueue(label: "ai.meetlisa.pathmonitor"))
     }
 
     // ── APNs registration (client half; delivery needs the Mac's APNs key) ──
@@ -124,6 +138,20 @@ final class AppState: ObservableObject {
     func setConnectionMode(_ m: ConnectionMode) {
         connectionMode = m
         UserDefaults.standard.set(m.rawValue, forKey: "lisa.mode")
+    }
+
+    /// One-tap escape from an unreachable LAN pairing: flip to the LISA Cloud data
+    /// plane and land on Settings, where the user signs in / enters the cloud URL.
+    /// (A seamless reconnect to a *remembered* cloud config is R4/C3.)
+    func switchToCloud() {
+        setConnectionMode(.cloud)
+        selectedTab = 3   // Settings → LISA Cloud
+    }
+
+    /// Paired to a home-Wi-Fi address but currently on cellular → that Mac is
+    /// unreachable; surface the R3 banner.
+    var lanUnreachableOnCellular: Bool {
+        config.isConfigured && config.isPrivateLAN && onCellular
     }
 
     func update(host: String, port: Int, token: String?, scheme: String = "http") {

@@ -58,6 +58,13 @@ struct RootView: View {
                 SetupBanner { app.presentOnboarding() }
             }
         }
+        .safeAreaInset(edge: .top) {
+            // Left the Mac's Wi-Fi (LAN pairing + on cellular) → the Mac is
+            // unreachable; offer the one-tap escape to LISA Cloud (R3/R4).
+            if app.lanUnreachableOnCellular && !app.showOnboarding {
+                ReachabilityBanner { app.switchToCloud() }
+            }
+        }
         .task { await app.refreshWidgetSnapshot() }          // keep the widget fresh off-tab (A5)
         .onChange(of: scenePhase) { _, phase in
             if phase == .background { app.lockIfEnabled() }  // re-arm when leaving foreground
@@ -86,6 +93,32 @@ struct ToastView: View {
         .overlay(Capsule().strokeBorder(Theme.border))
         .shadow(color: .black.opacity(0.35), radius: 10, y: 3)
         .padding(.horizontal, 24)
+    }
+}
+
+/// Top banner shown when paired to a home-Wi-Fi address but on cellular — the Mac
+/// is unreachable. Offers the one-tap escape to LISA Cloud (Tailscale is the other
+/// path, but that needs a Mac-side re-pair). See docs/PLAN_IOS_REACHABILITY R3/R4.
+struct ReachabilityBanner: View {
+    let onUseCloud: () -> Void
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "wifi.exclamationmark").foregroundStyle(.orange)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("You've left your Mac's Wi-Fi")
+                    .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
+                Text("Reach it over Tailscale, or use LISA Cloud.")
+                    .font(.caption).foregroundStyle(Theme.secondary)
+            }
+            Spacer(minLength: 8)
+            Button("Use Cloud", action: onUseCloud)
+                .font(.caption.weight(.semibold))
+                .buttonStyle(.borderedProminent).tint(Theme.accent)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 9)
+        .background(Theme.card)
+        .overlay(alignment: .bottom) { Rectangle().fill(Theme.border).frame(height: 1) }
+        .accessibilityElement(children: .combine)
     }
 }
 

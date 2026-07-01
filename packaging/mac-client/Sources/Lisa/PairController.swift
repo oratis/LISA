@@ -28,6 +28,12 @@ final class PairController {
     private var lastToken = ""
     private let port = 5757
 
+    // Rebuild state for the "Same Wi-Fi / Anywhere (Tailscale)" toggle (R2).
+    private var pLan = "", pTail: String?, pToken = "", pPort = 5757
+    private weak var qrView: NSImageView?
+    private weak var netLabel: NSTextField?
+    private weak var detailsField: NSTextField?
+
     /// Mint a device token and show a scannable QR (or an error alert).
     func showPairing() {
         // Already showing a QR? Refocus it instead of minting another device token —
@@ -45,7 +51,7 @@ final class PairController {
 
     // MARK: - Mint (mirrors pair.ts runPairCommand)
 
-    struct Pairing { let url: String; let host: String; let port: Int; let token: String }
+    struct Pairing { let url: String; let host: String; let tailscaleHost: String?; let port: Int; let token: String }
 
     private func mint() async throws -> Pairing {
         guard let host = Self.detectLanHost() else { throw PairError.noLan }
@@ -67,7 +73,7 @@ final class PairController {
         guard let token = body.token, !token.isEmpty else { throw PairError.noToken }
         let effPort = body.port ?? port
         return Pairing(url: Self.buildPairUrl(host: host, port: effPort, token: token, name: "iPhone"),
-                       host: host, port: effPort, token: token)
+                       host: host, tailscaleHost: Self.detectTailscaleHost(), port: effPort, token: token)
     }
 
     enum PairError: LocalizedError {
@@ -123,6 +129,29 @@ final class PairController {
         return 2                                                         // unknown: beats VPN, loses to en*
     }
 
+    /// The Mac's Tailscale IPv4 (the `100.64.0.0/10` range), if the tailnet is up —
+    /// a "reachable anywhere" pairing host. Mirrors pairing.ts detectTailscaleHost.
+    static func detectTailscaleHost() -> String? {
+        var ifaddrPtr: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&ifaddrPtr) == 0, let first = ifaddrPtr else { return nil }
+        defer { freeifaddrs(ifaddrPtr) }
+        for ptr in sequence(first: first, next: { $0.pointee.ifa_next }) {
+            let flags = ptr.pointee.ifa_flags
+            guard (flags & UInt32(IFF_UP)) != 0, (flags & UInt32(IFF_LOOPBACK)) == 0 else { continue }
+            guard let addr = ptr.pointee.ifa_addr, addr.pointee.sa_family == UInt8(AF_INET) else { continue }
+            var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+            guard getnameinfo(addr, socklen_t(addr.pointee.sa_len), &host, socklen_t(host.count), nil, 0, NI_NUMERICHOST) == 0 else { continue }
+            if Self.isTailscaleIPv4(String(cString: host)) { return String(cString: host) }
+        }
+        return nil
+    }
+
+    /// True for the 100.64.0.0/10 CGNAT range Tailscale assigns.
+    static func isTailscaleIPv4(_ ip: String) -> Bool {
+        let p = ip.split(separator: ".").compactMap { Int($0) }
+        return p.count == 4 && p[0] == 100 && (64...127).contains(p[1])
+    }
+
     // MARK: - Pair URL (mirrors pair.ts buildPairUrl) + QR
 
     static func buildPairUrl(host: String, port: Int, token: String, name: String) -> String {
@@ -157,6 +186,7 @@ final class PairController {
         window?.close()
         lastURL = pairing.url
         lastToken = pairing.token
+        pLan = pairing.host; pTail = pairing.tailscaleHost; pToken = pairing.token; pPort = pairing.port
 
         let pad: CGFloat = 24
         let width: CGFloat = 320
@@ -181,6 +211,17 @@ final class PairController {
         sub.preferredMaxLayoutWidth = width - pad * 2
         stack.addArrangedSubview(sub)
 
+        // Reachability toggle (R2): "Same Wi-Fi" (the LAN IP) vs "Anywhere
+        // (Tailscale)" — only shown when this Mac is on a tailnet. Flipping it
+        // regenerates the QR + details for the chosen host.
+        if pTail != nil {
+            let seg = NSSegmentedControl(labels: ["Same Wi-Fi", "Anywhere (Tailscale)"],
+                                         trackingMode: .selectOne, target: self,
+                                         action: #selector(hostModeChanged(_:)))
+            seg.selectedSegment = 0
+            stack.addArrangedSubview(seg)
+        }
+
         let qr = NSImageView()
         qr.image = Self.qrImage(pairing.url, side: qrSide * 2)   // 2× pixels → crisp on retina
         qr.imageScaling = .scaleProportionallyUpOrDown
@@ -192,11 +233,13 @@ final class PairController {
         qr.widthAnchor.constraint(equalToConstant: qrSide).isActive = true
         qr.heightAnchor.constraint(equalToConstant: qrSide).isActive = true
         stack.addArrangedSubview(qr)
+        self.qrView = qr
 
         let net = NSTextField(labelWithString: "Same Wi-Fi · \(pairing.host):\(pairing.port)")
         net.font = .systemFont(ofSize: 11)
         net.textColor = .tertiaryLabelColor
         stack.addArrangedSubview(net)
+        self.netLabel = net
 
         // Can't scan? Show the same details as copyable text, so they can be typed
         // (or pasted) into Lisa Pocket → Settings → Pair → "enter manually".
@@ -213,6 +256,7 @@ final class PairController {
         details.alignment = .left
         details.preferredMaxLayoutWidth = width - pad * 2
         stack.addArrangedSubview(details)
+        self.detailsField = details
 
         let copyRow = NSStackView()
         copyRow.orientation = .horizontal
@@ -260,6 +304,19 @@ final class PairController {
     @objc private func copyTokenAction() {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(lastToken, forType: .string)
+    }
+
+    // R2: flip the QR + details between the LAN address (same Wi-Fi) and the
+    // Tailscale address (reachable anywhere the phone is also on the tailnet).
+    @objc private func hostModeChanged(_ seg: NSSegmentedControl) {
+        render(host: seg.selectedSegment == 1 ? (pTail ?? pLan) : pLan)
+    }
+    private func render(host: String) {
+        let onTailnet = (host == pTail)
+        lastURL = Self.buildPairUrl(host: host, port: pPort, token: pToken, name: "iPhone")
+        qrView?.image = Self.qrImage(lastURL, side: 240 * 2)
+        netLabel?.stringValue = (onTailnet ? "Tailscale (anywhere) · " : "Same Wi-Fi · ") + "\(host):\(pPort)"
+        detailsField?.stringValue = "Host:  \(host)\nPort:  \(pPort)\nToken:  \(pToken)"
     }
 
     @objc private func closeWindow() { window?.close() }

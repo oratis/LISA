@@ -129,7 +129,16 @@ struct RosterView: View {
                         ContentUnavailableView("Not paired", systemImage: "wifi.slash",
                                                description: Text("Add your Mac in Settings."))
                     } else if let p = model.problem, let d = p.display, model.sessions.isEmpty {
-                        ContentUnavailableView(d.title, systemImage: p.icon, description: Text(d.message))
+                        ContentUnavailableView {
+                            Label(d.title, systemImage: p.icon)
+                        } description: {
+                            Text(d.message)
+                        } actions: {
+                            if p.offersCloud {
+                                Button("Use LISA Cloud") { app.switchToCloud() }
+                                    .buttonStyle(.borderedProminent)
+                            }
+                        }
                     } else if model.sessions.isEmpty {
                         ContentUnavailableView("No agents", systemImage: "moon.zzz",
                                                description: Text("Nothing running right now."))
