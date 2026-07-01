@@ -674,7 +674,10 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     };
 
     if (req.method === "GET" && (url === "/" || url.startsWith("/?"))) {
-      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      // no-store: never cache the shell, or a WKWebView / browser keeps rendering
+      // an old GUI after `lisa` is updated (the shell carries the current markup +
+      // asset references). Fixes the "removed element still shows" stale-cache bug.
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
       res.end(MAIN_HTML);
       return;
     }
@@ -690,7 +693,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // Island widget — designed to be opened in a tiny browser window
     // (Arc, Vivaldi PWA, Safari split). See docs/MAC_ISLAND_PLAN.md.
     if (req.method === "GET" && (url === "/island" || url.startsWith("/island?"))) {
-      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
       res.end(ISLAND_HTML);
       return;
     }
