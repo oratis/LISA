@@ -116,10 +116,10 @@ Stop dumping `NSError`. Add a shared classifier + view reused by every tab.
 
 | Phase | What | Risk |
 | --- | --- | --- |
-| **R1 (this PR)** | Mac `pairing.ts` Tailscale detect + `lisa pair` offer (+ tests); iOS `ConnectionError` classifier + friendly view; RosterView no-raw-dump + ‑999-ignore; `LisaClient` 10s timeout; `ServerConfig.isPrivateLAN` | low–med |
-| **R2** | `PairController.swift` Tailscale toggle in the Mac app's Pair window | low |
-| **R3** | `NWPathMonitor`: a live "you're off your Mac's Wi-Fi" banner + auto-suggest Cloud/Tailscale | med |
-| **R4** | One-tap "Use LISA Cloud" that carries the existing cloud config (needs the cloud account / C3 for a *seamless* switch) | med |
+| **R1** ✅ | Mac `pairing.ts` Tailscale detect + `lisa pair` offer (+ tests); iOS `ConnectionError` classifier + friendly view; RosterView no-raw-dump + ‑999-ignore; `LisaClient` 10s timeout; `ServerConfig.isPrivateLAN` | done (#202) |
+| **R2** ✅ | `PairController.swift` Tailscale detect + a "Same Wi-Fi / Anywhere (Tailscale)" toggle in the Mac Pair window that regenerates the QR | done |
+| **R3** ✅ | `NWPathMonitor` in AppState (`onCellular`) → a top `ReachabilityBanner` when paired to a private-LAN host while on cellular | done |
+| **R4** ✅ | One-tap **"Use LISA Cloud"** (`AppState.switchToCloud` → mode=cloud + Settings) from the banner and the roster error. A seamless reconnect to a *remembered* cloud config still wants C3. | done |
 
 ## Security / privacy invariants
 - Tailscale path is **E2E, no data in any LISA cloud** — preserves local-first.
@@ -127,6 +127,7 @@ Stop dumping `NSError`. Add a shared classifier + view reused by every tab.
   automatic — the local↔cloud data-plane boundary stays the user's decision.
 - No new telemetry; classification is local, from the `NSError` code only.
 
-## What R1 ships
-Mac Tailscale detection + `lisa pair` recommendation (tested); iOS honest errors +
-‑999 fix + request timeout. R2–R4 sequenced above.
+## Status
+R1–R4 all landed. R5 (future): a *seamless* "Use LISA Cloud" that reconnects to a
+remembered/authenticated cloud config without re-entry — needs the cloud account
+work (C3).

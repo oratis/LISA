@@ -31,6 +31,10 @@ enum ConnectionProblem: Equatable {
         return .cannotReach(privateLAN: config.isPrivateLAN)
     }
 
+    /// True when switching to LISA Cloud is a sensible one-tap escape (the Mac
+    /// itself is unreachable — R4). Not offered for auth/server errors.
+    var offersCloud: Bool { if case .cannotReach = self { return true }; return false }
+
     /// SF Symbol for the state (unused for `.cancelled`, which never renders).
     var icon: String {
         switch self {
