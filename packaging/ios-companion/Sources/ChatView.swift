@@ -1,14 +1,21 @@
 import SwiftUI
 
 /// One chat turn. Lisa's text accumulates during streaming; `tools` collects the
-/// tool names she invokes (rendered as chips); `isError` flags a failed turn.
+/// tool names she invokes (rendered as chips); `status` tracks how the turn ended
+/// so the UI can offer a retry instead of a dead end.
 struct ChatMessage: Identifiable, Equatable {
     enum Role { case user, lisa }
+    /// Lifecycle of a Lisa turn. `streaming` while tokens arrive; then one of the
+    /// terminal states. `empty`/`cancelled` are retryable but not failures.
+    enum Status: Equatable { case streaming, ok, empty, error, cancelled }
     let id = UUID()
     var role: Role
     var text: String = ""
     var tools: [String] = []
-    var isError: Bool = false
+    var status: Status = .ok
+    var isError: Bool { status == .error }
+    /// Terminal states the user can retry from (nothing useful landed).
+    var isRetryable: Bool { status == .error || status == .empty || status == .cancelled }
 }
 
 @MainActor
@@ -21,6 +28,9 @@ final class ChatModel: ObservableObject {
     private var page = 0
     private var task: Task<Void, Never>?
     private var moodTask: Task<Void, Never>?
+    /// The last thing the user said — replayed by `resend()` when a turn comes
+    /// back empty / errored / cancelled.
+    private var lastUserText: String?
 
     // ── history ──
     func loadHistory(_ client: LisaClient) async {
@@ -65,40 +75,88 @@ final class ChatModel: ObservableObject {
     }
     func stopMood() { moodTask?.cancel(); moodTask = nil }
 
-    // ── send ──
+    // ── send / retry / stop ──
     func send(_ text: String, client: LisaClient) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        guard !trimmed.isEmpty, !sending else { return }
         messages.append(ChatMessage(role: .user, text: trimmed))
-        messages.append(ChatMessage(role: .lisa))
+        lastUserText = trimmed
+        runTurn(trimmed, client: client)
+    }
+
+    /// Replay the last user message. Drops a trailing failed/empty Lisa bubble so
+    /// the retry visually replaces it rather than stacking a second dead end.
+    func resend(client: LisaClient) {
+        guard let text = lastUserText, !sending else { return }
+        if let last = messages.last, last.role == .lisa, last.isRetryable {
+            messages.removeLast()
+        }
+        runTurn(text, client: client)
+    }
+
+    /// Stop the in-flight turn. Cancelling the task tears down the SSE stream,
+    /// which also closes the connection so the Mac can abort the agent.
+    func cancel() { task?.cancel() }
+
+    private func runTurn(_ userText: String, client: LisaClient) {
+        messages.append(ChatMessage(role: .lisa, status: .streaming))
         let idx = messages.count - 1
         sending = true
         task = Task { @MainActor in
             defer { sending = false }
             do {
-                for try await msg in client.chatStream(trimmed) {
+                for try await msg in client.chatStream(userText) {
+                    guard messages.indices.contains(idx) else { break }
                     switch msg.type {
                     case "text":
-                        if let t = msg.text { messages[idx].text += t }
+                        if let t = msg.text, !t.isEmpty { messages[idx].text += t }
                     case "tool_start":
                         if let n = msg.object["name"] as? String, !messages[idx].tools.contains(n) {
                             messages[idx].tools.append(n)
                         }
                     case "error":
-                        messages[idx].isError = true
+                        messages[idx].status = .error
                         let m = msg.object["message"] as? String ?? "the turn failed"
                         messages[idx].text += (messages[idx].text.isEmpty ? "" : "\n") + m
+                    case "empty":
+                        // Server signals the turn produced nothing (e.g. a provider
+                        // hiccup). Resolved to `.empty` in resolveEnding below.
+                        break
                     default:
                         break
                     }
                 }
-                if messages[idx].text.isEmpty && messages[idx].tools.isEmpty && !messages[idx].isError {
-                    messages[idx].text = "(no response)"
-                }
+                resolveEnding(idx)
             } catch {
-                messages[idx].isError = true
-                messages[idx].text = (error as? LocalizedError)?.errorDescription ?? "Couldn't reach Lisa."
+                markFailed(idx, error)
             }
+        }
+    }
+
+    /// A cleanly-finished stream: decide the terminal status. Text/tools ⇒ ok;
+    /// otherwise it's an empty turn (retryable, not an error).
+    private func resolveEnding(_ idx: Int) {
+        guard messages.indices.contains(idx), messages[idx].status == .streaming else { return }
+        if messages[idx].text.isEmpty && messages[idx].tools.isEmpty {
+            messages[idx].status = .empty
+            messages[idx].text = "Lisa didn't reply."
+        } else {
+            messages[idx].status = .ok
+        }
+    }
+
+    /// A thrown stream: a user-initiated stop reads as `.cancelled`; anything else
+    /// is a real error. Either way it's retryable.
+    private func markFailed(_ idx: Int, _ error: Error) {
+        guard messages.indices.contains(idx) else { return }
+        let cancelled = error is CancellationError || (error as? URLError)?.code == .cancelled
+        if cancelled {
+            messages[idx].status = .cancelled
+            if messages[idx].text.isEmpty { messages[idx].text = "Stopped." }
+        } else {
+            messages[idx].status = .error
+            let msg = (error as? LocalizedError)?.errorDescription ?? "Couldn't reach Lisa."
+            messages[idx].text += (messages[idx].text.isEmpty ? "" : "\n") + msg
         }
     }
 }
@@ -204,18 +262,16 @@ struct ChatView: View {
                 }
                 LazyVStack(spacing: Theme.Space.m) {
                     if model.messages.isEmpty {
-                        VStack(spacing: 6) {
-                            Image(systemName: "bubble.left.and.text.bubble.right")
-                                .font(.largeTitle).foregroundStyle(Theme.tertiary)
-                            Text("Ask Lisa anything — or tap a suggestion below.")
-                                .font(.callout).foregroundStyle(Theme.secondary)
-                                .multilineTextAlignment(.center)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 60)
+                        emptyState.padding(.top, 60)
                     }
-                    ForEach(model.messages) { MessageBubble(message: $0) }
-                    if model.sending {
+                    ForEach(model.messages) { msg in
+                        // A blank streaming bubble is stood in for by the typing
+                        // indicator below — don't render an empty bubble.
+                        if !isWaitingBubble(msg) {
+                            MessageBubble(message: msg, onRetry: retryAction(for: msg))
+                        }
+                    }
+                    if showTyping {
                         TypingIndicator().frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
@@ -228,6 +284,35 @@ struct ChatView: View {
         }
     }
 
+    private var emptyState: some View {
+        VStack(spacing: 6) {
+            Image(systemName: "bubble.left.and.text.bubble.right")
+                .font(.largeTitle).foregroundStyle(Theme.tertiary)
+            Text("Ask Lisa anything — or tap a suggestion below.")
+                .font(.callout).foregroundStyle(Theme.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    /// A Lisa turn that's mid-stream with nothing to show yet.
+    private func isWaitingBubble(_ msg: ChatMessage) -> Bool {
+        msg.role == .lisa && msg.status == .streaming && msg.text.isEmpty && msg.tools.isEmpty
+    }
+
+    /// Show the typing indicator while the newest Lisa turn hasn't produced anything.
+    private var showTyping: Bool {
+        guard model.sending, let last = model.messages.last else { return false }
+        return isWaitingBubble(last)
+    }
+
+    /// Offer Retry only on the newest turn, when it ended with nothing useful.
+    private func retryAction(for msg: ChatMessage) -> (() -> Void)? {
+        guard !model.sending, msg.role == .lisa, msg.isRetryable,
+              msg.id == model.messages.last?.id else { return nil }
+        return { model.resend(client: app.client) }
+    }
+
     private func scrollToBottom(_ proxy: ScrollViewProxy) {
         withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(Self.bottomID, anchor: .bottom) }
     }
@@ -236,25 +321,41 @@ struct ChatView: View {
         HStack(spacing: Theme.Space.s) {
             TextField("Message…", text: $input, axis: .vertical)
                 .textFieldStyle(.roundedBorder)
-            Button {
-                let text = input
-                input = ""
-                model.send(text, client: app.client)
-            } label: {
-                Image(systemName: "arrow.up.circle.fill").font(.title2)
+                .lineLimit(1...5)
+                .onSubmit(sendCurrent)
+            if model.sending {
+                Button { model.cancel() } label: {
+                    Image(systemName: "stop.circle.fill").font(.title2)
+                }
+                .frame(width: 44, height: 44)
+                .foregroundStyle(Theme.danger)
+                .accessibilityLabel("Stop")
+            } else {
+                Button(action: sendCurrent) {
+                    Image(systemName: "arrow.up.circle.fill").font(.title2)
+                }
+                .frame(width: 44, height: 44)
+                .accessibilityLabel("Send message")
+                .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
-            .frame(width: 44, height: 44)
-            .accessibilityLabel("Send message")
-            .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.sending)
         }
         .padding()
+    }
+
+    private func sendCurrent() {
+        let text = input
+        input = ""
+        model.send(text, client: app.client)
     }
 }
 
 /// A user/Lisa chat bubble: markdown text segments + fenced code as CodeBlocks +
-/// tool chips for the tools Lisa ran this turn.
+/// tool chips for the tools Lisa ran this turn. An optional Retry appears when the
+/// turn came back empty / errored / stopped.
 struct MessageBubble: View {
     let message: ChatMessage
+    var onRetry: (() -> Void)? = nil
+
     var body: some View {
         HStack {
             if message.role == .user { Spacer(minLength: 36) }
@@ -274,10 +375,20 @@ struct MessageBubble: View {
                         }
                     }
                 }
+                if let onRetry {
+                    Button(action: onRetry) {
+                        Label("Retry", systemImage: "arrow.clockwise")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Theme.accent)
+                    .padding(.top, 1)
+                    .accessibilityLabel("Retry")
+                }
             }
             .padding(.horizontal, 12).padding(.vertical, 9)
             .background(bubbleBg, in: RoundedRectangle(cornerRadius: 14))
-            .foregroundStyle(message.isError ? Theme.danger : Theme.text)
+            .foregroundStyle(textColor)
             .frame(maxWidth: 320, alignment: message.role == .user ? .trailing : .leading)
             if message.role == .lisa { Spacer(minLength: 36) }
         }
@@ -288,6 +399,14 @@ struct MessageBubble: View {
 
     private var segments: [MessageSegment] { parseSegments(message.text) }
     private var bubbleBg: Color { message.role == .user ? Theme.accent.opacity(0.18) : Theme.card }
+    /// Errors read red; empty/stopped turns read muted; normal text is primary.
+    private var textColor: Color {
+        switch message.status {
+        case .error: return Theme.danger
+        case .empty, .cancelled: return Theme.secondary
+        default: return Theme.text
+        }
+    }
 }
 
 /// Animated "Lisa is typing" dots shown while a turn streams.

@@ -1959,8 +1959,17 @@ self.addEventListener('fetch', (event) => {
         "cache-control": "no-cache",
         connection: "keep-alive",
       });
-      const send = (event: object) =>
+      // Guard writes: once the client disconnects the socket is gone, and a bare
+      // res.write would throw "write after end" from inside the agent loop.
+      const send = (event: object) => {
+        if (res.writableEnded || res.destroyed) return;
         res.write(`data: ${JSON.stringify(event)}\n\n`);
+      };
+      // Per-turn cancellation: if the client disconnects (taps Stop / closes the
+      // app), abort THIS turn's agent so it stops burning tokens and the next
+      // queued turn isn't stuck behind an abandoned run.
+      const turnAbort = new AbortController();
+      req.on("close", () => turnAbort.abort());
       const onMood = (slug: string) => send({ type: "mood", slug });
       moodBus.on("mood", onMood);
       // Send the current mood immediately so a fresh tab knows where to start.
@@ -1970,6 +1979,13 @@ self.addEventListener('fetch', (event) => {
         // this guard the catch below would send a second, identical error event
         // (the client used to render the same error twice).
         let errorSent = false;
+        // Track whether the turn produced anything visible. A model call can
+        // return a clean, successful turn with zero text and zero tools (e.g. a
+        // provider hiccup returns an empty completion). Without a signal the
+        // client can only guess ("(no response)"); we emit an explicit `empty`
+        // event so it can offer a retry instead of a dead end.
+        let anyText = false;
+        let anyTool = false;
         try {
           // Use the freshest cached prompt for this chat. If soul / skills /
           // memory changed since the previous chat, rebuildPrompt() picks it up.
@@ -1980,7 +1996,8 @@ self.addEventListener('fetch', (event) => {
             tools: opts.tools,
             toolCtx: {
               cwd: process.cwd(),
-              signal: abort.signal,
+              // Abort on server shutdown OR this client disconnecting (Stop).
+              signal: AbortSignal.any([abort.signal, turnAbort.signal]),
               log: () => {},
             },
             history,
@@ -1989,8 +2006,12 @@ self.addEventListener('fetch', (event) => {
             model: opts.model,
             thinking: opts.thinking,
             onEvent: (ev) => {
-              if (ev.type === "text_delta" && ev.text)
+              if (ev.type === "text_delta" && ev.text) {
+                anyText = true;
                 send({ type: "text", text: ev.text });
+              }
+              if (ev.type === "tool_call_start")
+                anyTool = true;
               if (ev.type === "tool_call_start")
                 send({
                   type: "tool_start",
@@ -2051,6 +2072,7 @@ self.addEventListener('fetch', (event) => {
           });
           history.length = 0;
           history.push(...result.history);
+          if (!anyText && !anyTool && !errorSent) send({ type: "empty" });
           send({ type: "done" });
         } catch (err) {
           if (!errorSent) send({ type: "error", message: (err as Error).message });
