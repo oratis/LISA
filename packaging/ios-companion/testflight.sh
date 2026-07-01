@@ -70,6 +70,16 @@ if [ -f Sources/LisaPocket.entitlements ]; then
   plutil -replace aps-environment -string production Sources/LisaPocket.entitlements
 fi
 
+# xcodegen bakes a LITERAL CFBundleVersion ("1") into the generated Info.plists,
+# so `xcodebuild ... CURRENT_PROJECT_VERSION=$BUILD_NUMBER` never reaches the
+# binary — every archive shipped build "1" and App Store Connect rejected the
+# duplicates ("Redundant Binary Upload … build number 1/8"). Patch the plists
+# directly. The app extension MUST carry the same version or embedded-binary
+# validation fails.
+echo "==> set CFBundleVersion=$BUILD_NUMBER (app + widget)"
+plutil -replace CFBundleVersion -string "$BUILD_NUMBER" Sources/Info.plist
+[ -f Widgets/Info.plist ] && plutil -replace CFBundleVersion -string "$BUILD_NUMBER" Widgets/Info.plist
+
 AUTH=(-allowProvisioningUpdates
   -authenticationKeyPath "$ASC_KEY_PATH"
   -authenticationKeyID "$ASC_KEY_ID"
