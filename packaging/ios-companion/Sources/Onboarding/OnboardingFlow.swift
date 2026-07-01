@@ -381,8 +381,10 @@ struct OnboardingManualEntry: View {
         .preferredColorScheme(.dark)
     }
 
-    // ── Cloud: Sign in with Apple (primary) + paste-a-token (fallback) ──
+    // ── Cloud: paste a token link. Sign in with Apple is gated OFF for v1 (single-
+    // tenant M0 + App Store 5.1.1(v) account-deletion); re-enable via LISA_ENABLE_SIWA.
     @ViewBuilder private var cloudSections: some View {
+        #if LISA_ENABLE_SIWA
         Section {
             TextField("https://your-instance.run.app", text: $cloudURL)
                 .autocorrectionDisabled().textInputAutocapitalization(.never).keyboardType(.URL)
@@ -396,20 +398,21 @@ struct OnboardingManualEntry: View {
                 .opacity(appleBusy ? 0.5 : 1)
             if appleBusy { ProgressView().tint(Theme.accent) }
         } header: {
-            Text("LISA Cloud")
+            Text("Sign in")
         } footer: {
             Text("Enter your LISA Cloud URL, then sign in. Your Mac isn't needed.")
         }
+        #endif
 
         Section {
             TextField("https://…/?token=", text: $pasteText)
                 .autocorrectionDisabled().textInputAutocapitalization(.never).keyboardType(.URL)
-            Button("Connect with token") { apply(pasteText) }
+            Button("Connect") { apply(pasteText) }
                 .disabled(pasteText.isEmpty)
         } header: {
-            Text("Or paste a token link")
+            Text("LISA Cloud")
         } footer: {
-            Text("Have a ready-made cloud URL with its token? Paste it here instead.")
+            Text("Paste your LISA Cloud URL (including its ?token=…) — your Mac isn't needed.")
         }
     }
 
@@ -441,8 +444,10 @@ struct OnboardingManualEntry: View {
         }
     }
 
+    #if LISA_ENABLE_SIWA
     /// Handle the Sign in with Apple result: pull the identity token, exchange it
     /// at the entered cloud URL for a session token, and save the connection.
+    /// Gated OFF for v1 — see cloudSections.
     private func handleApple(_ result: Result<ASAuthorization, Error>) {
         error = nil
         switch result {
@@ -472,6 +477,7 @@ struct OnboardingManualEntry: View {
             }
         }
     }
+    #endif
 
     private func apply(_ raw: String) {
         if app.applyPairing(raw) { finish() }
