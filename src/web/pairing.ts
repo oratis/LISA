@@ -43,6 +43,34 @@ export function detectLanHost(
   return best?.ip;
 }
 
+/**
+ * True for a Tailscale IPv4 — the `100.64.0.0/10` CGNAT range Tailscale assigns
+ * (100.64.0.0 – 100.127.255.255). A phone that's ALSO on the tailnet can reach
+ * this address from anywhere (cellular, other Wi-Fi), unlike a LAN 192.168/10/172
+ * address that only works on the same Wi-Fi. Pure.
+ */
+export function isTailscaleIPv4(ip: string): boolean {
+  const m = /^(\d{1,3})\.(\d{1,3})\./.exec(ip.trim());
+  if (!m) return false;
+  return Number(m[1]) === 100 && Number(m[2]) >= 64 && Number(m[2]) <= 127;
+}
+
+/**
+ * The Mac's Tailscale IPv4, if Tailscale is up — a "reachable anywhere" pairing
+ * host (the phone must also be on the tailnet). Undefined if there's no tailnet
+ * address. Pure (interfaces injected for tests).
+ */
+export function detectTailscaleHost(
+  ifaces: NodeJS.Dict<os.NetworkInterfaceInfo[]> = os.networkInterfaces(),
+): string | undefined {
+  for (const addrs of Object.values(ifaces)) {
+    for (const a of addrs ?? []) {
+      if (a.family === "IPv4" && !a.internal && isTailscaleIPv4(a.address)) return a.address;
+    }
+  }
+  return undefined;
+}
+
 /** Build the `lisa-pair://` deep-link the phone scans/pastes. Pure. */
 export function buildPairUrl(host: string, port: number, token: string, name: string): string {
   // %20 (not "+") for spaces so the device label round-trips through iOS URLComponents.

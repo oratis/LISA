@@ -13,6 +13,18 @@ struct ServerConfig: Equatable {
         let standardPort = (scheme == "https" && port == 443) || (scheme == "http" && port == 80)
         return URL(string: standardPort ? "\(scheme)://\(host)" : "\(scheme)://\(host):\(port)")
     }
+    /// True when `host` is an RFC-1918 private LAN IPv4 (192.168/16, 10/8,
+    /// 172.16–31/12) — reachable only on that same local network, not off it. A
+    /// Tailscale `100.64/10` address is deliberately NOT counted (it's reachable
+    /// across the tailnet). Drives the "you've left your Mac's Wi-Fi" guidance.
+    var isPrivateLAN: Bool {
+        let p = host.split(separator: ".").compactMap { Int($0) }
+        guard p.count == 4, p.allSatisfy({ (0...255).contains($0) }) else { return false }
+        if p[0] == 192 && p[1] == 168 { return true }
+        if p[0] == 10 { return true }
+        if p[0] == 172 && (16...31).contains(p[1]) { return true }
+        return false
+    }
 }
 
 enum LisaError: LocalizedError {
@@ -77,11 +89,16 @@ final class LisaClient {
         return comps.url
     }
 
-    func makeRequest(_ path: String, method: String = "GET", json: [String: Any]? = nil) throws -> URLRequest {
+    /// `timeout` bounds a short REST call so an unreachable host (a paired LAN IP
+    /// off Wi-Fi) fails fast + clean instead of hanging on the 60s default. Left
+    /// nil for the long-lived SSE stream (`sse()`), which must not time out on idle.
+    func makeRequest(_ path: String, method: String = "GET", json: [String: Any]? = nil,
+                     timeout: TimeInterval? = nil) throws -> URLRequest {
         guard config.isConfigured, let base = config.baseURL, let url = URL(string: path, relativeTo: base) else {
             throw LisaError.notConfigured
         }
         var req = URLRequest(url: url)
+        if let timeout { req.timeoutInterval = timeout }
         req.httpMethod = method
         if let token = config.token, !token.isEmpty {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -93,8 +110,11 @@ final class LisaClient {
         return req
     }
 
+    /// Timeout for short REST calls (SSE opts out via nil in makeRequest).
+    private static let restTimeout: TimeInterval = 10
+
     private func decode<T: Decodable>(_ path: String, method: String = "GET", json: [String: Any]? = nil, as: T.Type) async throws -> T {
-        let req = try makeRequest(path, method: method, json: json)
+        let req = try makeRequest(path, method: method, json: json, timeout: Self.restTimeout)
         let (data, resp) = try await session.data(for: req)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
         guard (200..<300).contains(code) else { throw LisaError.http(code) }
@@ -107,7 +127,7 @@ final class LisaClient {
     /// off, 409 ⇒ session live, 403 ⇒ remote adoption disabled).
     @discardableResult
     private func fireCode(_ path: String, method: String = "POST", json: [String: Any]? = nil) async throws -> Int {
-        let req = try makeRequest(path, method: method, json: json)
+        let req = try makeRequest(path, method: method, json: json, timeout: Self.restTimeout)
         let (_, resp) = try await session.data(for: req)
         return (resp as? HTTPURLResponse)?.statusCode ?? -1
     }
