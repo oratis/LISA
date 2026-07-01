@@ -64,8 +64,11 @@ targets:
         com.apple.security.application-groups:
           - group.ai.meetlisa.main
         aps-environment: development
-        com.apple.developer.applesignin:
-          - Default
+        # Sign in with Apple entitlement is intentionally omitted for v1 — the app
+        # doesn't offer account creation (SIWA is gated off; see LISA_ENABLE_SIWA),
+        # so declaring it would only invite App Store 5.1.1(v) scrutiny. Re-add
+        # `com.apple.developer.applesignin: [Default]` when SIWA + C3 + account
+        # deletion ship.
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ai.meetlisa.main

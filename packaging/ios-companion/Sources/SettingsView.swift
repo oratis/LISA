@@ -81,9 +81,12 @@ struct SettingsView: View {
                             .autocorrectionDisabled()
                             .textInputAutocapitalization(.never)
                             .keyboardType(.URL)
-                        // Real Sign in with Apple against the entered cloud URL (the
-                        // backend exchange path is implemented — review F6, the dead
-                        // 'coming soon' button is gone).
+                        // Sign in with Apple is gated OFF for v1: the cloud is still
+                        // single-tenant (M0), and offering account creation would trip
+                        // App Store 5.1.1(v) (in-app account deletion). Re-enable by
+                        // adding LISA_ENABLE_SIWA to SWIFT_ACTIVE_COMPILATION_CONDITIONS
+                        // once per-uid isolation (C3) + account deletion land.
+                        #if LISA_ENABLE_SIWA
                         SignInWithAppleButton(.continue,
                             onRequest: { req in req.requestedScopes = [.fullName, .email] },
                             onCompletion: handleApple)
@@ -91,7 +94,8 @@ struct SettingsView: View {
                             .frame(height: 44)
                             .disabled(appleBusy || AppState.parseCloudBase(pairText) == nil)
                         if appleBusy { ProgressView() }
-                        Button("Connect with token") {
+                        #endif
+                        Button("Connect") {
                             if app.applyPairing(pairText) {
                                 syncFromConfig()
                                 app.notify("Connected to LISA Cloud.")
@@ -100,7 +104,7 @@ struct SettingsView: View {
                             }
                         }
                         .disabled(pairText.isEmpty)
-                        Text("Enter your LISA Cloud URL and sign in — or paste a URL that already has its ?token=.")
+                        Text("Paste your LISA Cloud URL (including its ?token=…) to connect.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
@@ -214,8 +218,10 @@ struct SettingsView: View {
         token = app.config.token ?? ""
     }
 
+    #if LISA_ENABLE_SIWA
     /// Sign in with Apple against the entered cloud URL, exchange the identity
-    /// token for the session token, and save the connection (review F6).
+    /// token for the session token, and save the connection (review F6). Gated OFF
+    /// for v1 — see the LISA_ENABLE_SIWA note above the button.
     private func handleApple(_ result: Result<ASAuthorization, Error>) {
         switch result {
         case .failure(let err):
@@ -242,6 +248,7 @@ struct SettingsView: View {
             }
         }
     }
+    #endif
 
     /// Apply a scanned code the same way pasted text is applied; on a parse failure,
     /// drop it into the text field so the user can see/fix what was scanned.
