@@ -1,0 +1,7 @@
+{
+  "name": "anthropic-relay",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": { "start": "node index.mjs" }
+}
