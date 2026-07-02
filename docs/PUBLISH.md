@@ -200,6 +200,22 @@ git commit -m "lisa ${VERSION}"
 git push
 ```
 
+**No-clone alternative** (used for v0.14.0 — edits `Formula/lisa.rb` straight over the
+GitHub API, so you don't need a local checkout of `homebrew-tap`; `gh` must be authed
+with write access to the tap repo). Do this only *after* `npm publish` lands the tarball:
+
+```sh
+VERSION=$(node -p 'require("./package.json").version')
+SHA=$(curl -sL "https://registry.npmjs.org/@oratis/lisa/-/lisa-${VERSION}.tgz" | shasum -a 256 | cut -d' ' -f1)
+BLOB=$(gh api repos/oratis/homebrew-tap/contents/Formula/lisa.rb --jq .sha)
+NEW=$(gh api repos/oratis/homebrew-tap/contents/Formula/lisa.rb --jq .content | base64 -d \
+  | sed -E "s#lisa-[0-9][0-9.]*\.tgz#lisa-${VERSION}.tgz#g; s#sha256 \"[a-f0-9]{64}\"#sha256 \"${SHA}\"#" | base64)
+gh api -X PUT repos/oratis/homebrew-tap/contents/Formula/lisa.rb \
+  -f message="lisa ${VERSION}" -f content="$NEW" -f sha="$BLOB"
+# Verify the pinned hash matches the live tarball before trusting it:
+gh api repos/oratis/homebrew-tap/contents/Formula/lisa.rb --jq .content | base64 -d | grep -E 'url "|sha256 "'
+```
+
 Users running `brew update` (next time their auto-update fires) will see the new version.
 
 ### Install path for users
