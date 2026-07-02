@@ -1102,15 +1102,15 @@ export const MAIN_CSS = `  :root {
     justify-content: center;
     background: transparent;
     border: 0;
-    color: var(--fg-3);
-    font-size: 17px;
+    color: var(--fg-2);
     cursor: pointer;
     border-radius: 10px;
     transition: background 120ms ease, color 120ms ease;
     min-height: 44px;
     padding: 0;
   }
-  #plusBtn { font-size: 22px; }
+  /* Line-style icons matching the .fbtn function bar above. */
+  #plusBtn svg, #recordBtn svg { width: 19px; height: 19px; display: block; }
   #plusBtn:hover, #recordBtn:hover { background: var(--bg-card); color: var(--fg); }
   #plusBtn.flash { background: var(--accent); color: var(--bg-deep); }
 
