@@ -44,11 +44,22 @@ export class AnthropicProvider implements Provider {
       input_schema: t.inputSchema,
     }));
 
+    // Cache the large, stable system prefix (soul + skills + memory) for 1h so it
+    // stays warm across normal think-time gaps in a bursty personal session,
+    // instead of paying a cold re-write every time the 5-min default expires. The
+    // conversational tail (withCacheBreakpoint) stays at the cheaper 5-min default.
+    // Heavy-continuous users can opt back to 5-min writes via LISA_CACHE_TTL=5m.
+    // GA on Sonnet 4.6 / Opus 4.x — see docs/PLAN_MODEL_TUNING_v1.0.md.
+    const systemCache: Anthropic.CacheControlEphemeral =
+      process.env.LISA_CACHE_TTL === "5m"
+        ? { type: "ephemeral" }
+        : { type: "ephemeral", ttl: "1h" };
+
     const params: Anthropic.MessageCreateParamsStreaming = {
       model: opts.model,
       max_tokens: opts.maxTokens ?? 16_000,
       system: [
-        { type: "text", text: opts.systemPrompt, cache_control: { type: "ephemeral" } },
+        { type: "text", text: opts.systemPrompt, cache_control: systemCache },
       ],
       tools,
       messages,
@@ -56,6 +67,15 @@ export class AnthropicProvider implements Provider {
     };
     if (opts.thinking) {
       params.thinking = { type: "adaptive" };
+    }
+    // Optional thinking-depth / token-spend lever (GA on Sonnet 4.6). Omitted ⇒
+    // the API default of "high". Dispatched subagents pass "low" for cheap
+    // parallel work; a global LISA_EFFORT can override for power users.
+    if (opts.effort) {
+      (params as { output_config?: { effort?: string } }).output_config = {
+        ...(params as { output_config?: { effort?: string } }).output_config,
+        effort: opts.effort,
+      };
     }
     const extras: { betas?: string[]; context_management?: object } = {};
     if (opts.compaction) {

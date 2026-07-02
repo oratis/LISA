@@ -49,6 +49,8 @@ export interface RunAgentOptions {
   maxTokens?: number;
   thinking?: boolean;
   compaction?: boolean;
+  /** Thinking-depth lever. Unset ⇒ LISA_EFFORT env, else API default ("high"). */
+  effort?: "low" | "medium" | "high" | "xhigh" | "max";
   onEvent?: (event: AgentEvent) => void;
   onMessagePersist?: (message: StoredMessage) => Promise<void> | void;
   approval?: ApprovalCallback;
@@ -118,6 +120,11 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
     maxIterations = 32,
     budgetTokens,
   } = opts;
+  // Effort precedence: explicit opt (subagents pass "low") > LISA_EFFORT env >
+  // unset (⇒ provider omits it ⇒ API default "high"). Guard against env typos.
+  const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
+  const envEffort = EFFORTS.find((e) => e === process.env.LISA_EFFORT);
+  const effort = opts.effort ?? envEffort;
 
   const toolMap = new Map(tools.map((t) => [t.name, t]));
   const messages: StoredMessage[] = [...opts.history];
@@ -233,6 +240,7 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
         maxTokens,
         thinking,
         compaction,
+        effort,
         signal: toolCtx.signal,
         handlers: {
           onTextDelta: (text) => onEvent?.({ type: "text_delta", text }),
