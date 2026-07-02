@@ -13,6 +13,8 @@ export interface SubagentOptions {
   model?: string;
   log?: (msg: string) => void;
   thinking?: boolean;
+  /** Thinking-depth lever; defaults to "low" — subagents are cheap parallel work. */
+  effort?: "low" | "medium" | "high" | "xhigh" | "max";
   /** Cumulative (input+output) token ceiling; stops the run early when reached. */
   budgetTokens?: number;
   /** Injectable provider (tests); defaults to providerForModel(model). */
@@ -45,6 +47,7 @@ export async function runSubagent(opts: SubagentOptions): Promise<SubagentResult
     userMessage: opts.prompt,
     model,
     thinking: opts.thinking ?? false,
+    effort: opts.effort ?? "low",
     onEvent: (event) => {
       if (event.type === "tool_call_start") toolCallCount++;
     },

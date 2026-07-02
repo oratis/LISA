@@ -27,6 +27,9 @@ export interface ProviderRunOpts {
   maxTokens?: number;
   thinking?: boolean;
   compaction?: boolean;
+  /** Thinking-depth / token-spend lever (Anthropic `output_config.effort`).
+   *  Omitted ⇒ API default ("high"). Subagents use "low" for cheap work. */
+  effort?: "low" | "medium" | "high" | "xhigh" | "max";
   handlers?: ProviderStreamHandlers;
   signal?: AbortSignal;
 }
