@@ -199,6 +199,7 @@ which owns that auth. See [Coding plans](#coding-plans--use-a-subscription-inste
 - **Heartbeat** — `lisa heartbeat run` (manual) or `lisa heartbeat install` (launchd / cron)
 - **Autostart** — `lisa autostart install` keeps `lisa serve --web` running from login onward (launchd on macOS; prints a `systemd --user` unit on Linux), so the apps, island, and channels are always up. `lisa autostart status` / `uninstall` to inspect / remove.
 - **Mac menu bar** — Lisa.app lives in the menu bar with a mood glyph + live agent status, an About window with changelog + update discovery, and a ⌘, preferences pane (island toggle, screen-advisor interval, backend controls).
+- **iOS — Lisa Pocket** — a thin, private companion app for iPhone & iPad: chat with Lisa and watch / approve her agents while you're away from your Mac. Connects only to your own backend (or a LISA Cloud instance you choose). *Coming to the App Store.*
 
 ## Watching — and steering — your other agents (orchestrator)
 
@@ -624,6 +625,15 @@ scripts/
 ├── generate-lisa-moods.ts  parallel-batched Seedream generator + sharp transparency
 └── generate-pixel-assets.ts 6 base UI assets
 ```
+
+## Open-source building blocks
+
+Reusable pieces extracted from LISA into standalone MIT repos — useful on their own:
+
+- **[AsyncSSE](https://github.com/oratis/AsyncSSE)** — Server-Sent Events as a Swift `async`/`await` stream, for LLM token streaming. (Powers Lisa Pocket's chat.)
+- **[llm-provider-registry](https://github.com/oratis/llm-provider-registry)** ([npm](https://www.npmjs.com/package/llm-provider-registry)) — map any model name → API base URL + key env var; 16 providers incl. the Chinese ones. LISA's model auto-routing, packaged.
+- **[undici-proxy-env](https://github.com/oratis/undici-proxy-env)** ([npm](https://www.npmjs.com/package/undici-proxy-env)) — make Node's `fetch` honor `HTTP(S)_PROXY` and survive Clash/corporate-proxy mangling. LISA's proxy bootstrap.
+- **[claude-relay](https://github.com/oratis/claude-relay)** — transparent Anthropic reverse proxy for Cloud Run (key-swap gate). LISA's relay.
 
 ## License
 

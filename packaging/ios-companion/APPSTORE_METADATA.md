@@ -90,6 +90,13 @@ LISA is open source (MIT). Learn more at meetlisa.ai.
 
 ## Notes for whoever fills ASC
 
+- **⚠️ Guideline 4.1(a) (copycat) history**: the first submission was rejected as
+  resembling a third-party "Lisa.ai." It's a name collision (several unrelated
+  "Lisa" AI apps exist) — LISA is our own open-source, self-hosted product. The
+  appeal + fallback rename options live in
+  [`REVIEW_RESPONSE_4.1a.md`](REVIEW_RESPONSE_4.1a.md). Lead the **App Review
+  Notes** with the "our own open-source product (meetlisa.ai / github.com/oratis/LISA)"
+  framing (already updated in the submission checklist §7.3).
 - **App Privacy** answer must be **"Data Not Collected"** to match
   `Sources/PrivacyInfo.xcprivacy` — see [`RELEASE.md`](RELEASE.md) §"From
   TestFlight to App Store".
