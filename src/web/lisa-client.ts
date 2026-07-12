@@ -1658,6 +1658,7 @@ if ('serviceWorker' in navigator) {
     dashboard: document.getElementById('viewDashboard'),
     control: document.getElementById('viewControl'),
     reve: document.getElementById('viewReve'),
+    room: document.getElementById('viewRoom'),
     sense: document.getElementById('viewSense'),
     memory: document.getElementById('viewMemory'),
   };
@@ -1716,6 +1717,7 @@ if ('serviceWorker' in navigator) {
     else if (name === 'reve') loadReve();
     else if (name === 'sense') loadSense();
     else if (name === 'memory') loadMemory();
+    else if (name === 'room') { var rf = document.getElementById('roomFrame'); if (rf && !rf.getAttribute('src')) rf.setAttribute('src', '/room'); }
   }
   function showView(name) {
     if (!views[name]) name = 'chat';
@@ -1734,6 +1736,12 @@ if ('serviceWorker' in navigator) {
     if (btn && btn.getAttribute('data-view')) showView(btn.getAttribute('data-view'));
   });
   window.lisaShowView = showView;
+
+  // The Room iframe asks to open chat ("Talk to her" / clicking Lisa) —
+  // switch views in place instead of spawning a second GUI tab.
+  window.addEventListener('message', function (e) {
+    if (e.origin === window.location.origin && e.data && e.data.type === 'room_open_chat') showView('chat');
+  });
 
   // ── proactive toggle ────────────────────────────────────────────
   var ptEl = document.getElementById('proactiveToggle');
