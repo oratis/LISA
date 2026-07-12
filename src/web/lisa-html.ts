@@ -74,6 +74,7 @@ ${MAIN_CSS}
       <button class="nav-item" type="button" data-view="dashboard"><span class="nav-ico">▦</span>Dashboard</button>
       <button class="nav-item" type="button" data-view="control"><span class="nav-ico">⌘</span>Control<span class="nav-tag" id="navAgentCount">0</span></button>
       <button class="nav-item" type="button" data-view="reve"><span class="nav-ico">☾</span>Rêve</button>
+      <button class="nav-item" type="button" data-view="room"><span class="nav-ico">⌂</span>Room</button>
       <button class="nav-item" type="button" data-view="sense"><span class="nav-ico">◉</span>Sense</button>
       <button class="nav-item" type="button" data-view="memory"><span class="nav-ico">✦</span>Memory</button>
     </nav>
@@ -189,6 +190,9 @@ ${MAIN_CSS}
     <section class="view" id="viewDashboard"></section>
     <section class="view" id="viewControl"></section>
     <section class="view" id="viewReve"></section>
+    <section class="view" id="viewRoom">
+      <iframe id="roomFrame" title="Lisa's room" style="flex:1;width:100%;border:0;display:block;background:#0a0e1a"></iframe>
+    </section>
     <section class="view" id="viewSense"></section>
     <section class="view" id="viewMemory"></section>
   </div>

@@ -1658,6 +1658,7 @@ if ('serviceWorker' in navigator) {
     dashboard: document.getElementById('viewDashboard'),
     control: document.getElementById('viewControl'),
     reve: document.getElementById('viewReve'),
+    room: document.getElementById('viewRoom'),
     sense: document.getElementById('viewSense'),
     memory: document.getElementById('viewMemory'),
   };
@@ -1716,6 +1717,7 @@ if ('serviceWorker' in navigator) {
     else if (name === 'reve') loadReve();
     else if (name === 'sense') loadSense();
     else if (name === 'memory') loadMemory();
+    else if (name === 'room') { var rf = document.getElementById('roomFrame'); if (rf && !rf.getAttribute('src')) rf.setAttribute('src', '/room'); }
   }
   function showView(name) {
     if (!views[name]) name = 'chat';

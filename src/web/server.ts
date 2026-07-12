@@ -23,6 +23,7 @@ import { SessionStore } from "../sessions/store.js";
 import { reflectOnSession } from "../reflect.js";
 import { listDesires } from "../soul/store.js";
 import { ISLAND_HTML } from "./island.js";
+import { ROOM_HTML } from "./room.js";
 import { MAIN_HTML } from "./lisa-html.js";
 import { OrchestratorHub, loadOrchestratorConfig } from "../integrations/hub.js";
 import { setCurrentHub } from "../integrations/current-hub.js";
@@ -695,6 +696,14 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     if (req.method === "GET" && (url === "/island" || url.startsWith("/island?"))) {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
       res.end(ISLAND_HTML);
+      return;
+    }
+
+    // Room — an ambient, state-driven pixel-art living space where Lisa "lives".
+    // Reuses /events + /api/island/ping. See docs/PLAN_ROOM_v1.0.md.
+    if (req.method === "GET" && (url === "/room" || url.startsWith("/room?"))) {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+      res.end(ROOM_HTML);
       return;
     }
 
