@@ -1737,6 +1737,12 @@ if ('serviceWorker' in navigator) {
   });
   window.lisaShowView = showView;
 
+  // The Room iframe asks to open chat ("Talk to her" / clicking Lisa) —
+  // switch views in place instead of spawning a second GUI tab.
+  window.addEventListener('message', function (e) {
+    if (e.origin === window.location.origin && e.data && e.data.type === 'room_open_chat') showView('chat');
+  });
+
   // ── proactive toggle ────────────────────────────────────────────
   var ptEl = document.getElementById('proactiveToggle');
   function setProactiveUI(on) {

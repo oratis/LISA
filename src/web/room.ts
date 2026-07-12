@@ -42,7 +42,6 @@ export const ROOM_HTML = `<!doctype html>
     --accent-dream: #b487ff;
     --ink: rgba(6, 9, 18, 0.72);
     --spring: cubic-bezier(0.22, 1, 0.36, 1);
-    --stage: min(100vh, 100vw);
   }
   * { box-sizing: border-box; }
   html, body {
@@ -97,8 +96,6 @@ export const ROOM_HTML = `<!doctype html>
     box-shadow: inset 0 0 min(18vmin,180px) min(6vmin,60px) rgba(4,6,14,0.55);
   }
 
-  /* Lisa herself — composited standing on the rug, centered. Her 512² sprite is
-     a transparent bust; we anchor her bottom near the rug and let her breathe. */
   /* Lisa — a FULL-BODY animated sprite standing on the rug (not a bust). The
      idle sheet has 2 frames (eyes open | eyes closed) side by side; breathing
      is a CSS transform, blinking flips the background frame. Pose swaps
@@ -313,6 +310,8 @@ export const ROOM_HTML = `<!doctype html>
   body.offline #offline { display: flex; }
   body.offline #stage { filter: grayscale(0.7) brightness(0.5); transition: filter 800ms; }
   #offline .z { font-size: 40px; opacity: 0.7; }
+  #offline .hint { font-size: 12.5px; color: var(--fg-faint); }
+  #offline .hint code { color: var(--fg-dim); }
 
   @media (prefers-reduced-motion: reduce) {
     #lisa, #zzz span, #glow-monitor, .drop, .flake, .fly, #letter .halo { animation: none !important; }
@@ -360,7 +359,7 @@ export const ROOM_HTML = `<!doctype html>
   <div id="offline">
     <div class="z">☾</div>
     <div>Lisa is asleep</div>
-    <div class="chip" id="chip-wake">Wake her — run <code>lisa serve --web</code></div>
+    <div class="hint">Wake her — run <code>lisa serve --web</code></div>
   </div>
 
 <script>
@@ -390,10 +389,11 @@ export const ROOM_HTML = `<!doctype html>
     'excited': 'excited', 'loving': 'happy you\\'re here', 'grateful': 'grateful',
     'sleepy': 'sleepy', 'shy': 'a little shy', 'surprised': 'surprised', 'neutral': 'at home',
   };
-  // Weather-flavored moods → particle mode.
+  // Weather-flavored moods → particle mode. Anchored so outfit sprites like
+  // 'raincoat' don't summon indoor rain.
   function weatherOf(slug) {
     if (!slug) return null;
-    if (/rain|storm/.test(slug)) return 'rain';
+    if (/rain(?!coat)|storm/.test(slug)) return 'rain';
     if (/snow|winter-cold/.test(slug)) return 'snow';
     return null;
   }
@@ -430,7 +430,8 @@ export const ROOM_HTML = `<!doctype html>
   function poseFor() {
     if (state.dreaming) return 'sleep';
     var m = state.mood || '';
-    if (/sleep|nap/.test(m)) return 'sleep';
+    // 'sleeping'/'napping' only — 'sleepy' is just drowsy, she stays on her feet.
+    if (/sleeping|napping/.test(m)) return 'sleep';
     if (/working|studying|research|typing|writing|reading|gaming|watching/.test(m)) return 'sit';
     return 'stand';
   }
@@ -472,11 +473,17 @@ export const ROOM_HTML = `<!doctype html>
 
   // ── Ambient particles (weather + night fireflies) ──────────────────────
   var weather = $('weather');
+  var ambientKey = null;
   function clearAmbient() { while (weather.firstChild) weather.removeChild(weather.firstChild); }
   function refreshWeather() { rebuildAmbient(); }
   function rebuildAmbient() {
-    clearAmbient();
     var w = weatherOf(state.mood);
+    // Mood pulses arrive often; only touch the DOM when the ambient mode
+    // actually changes (weather kind / time-of-day / dreaming).
+    var key = (w || 'none') + ':' + state.tod + ':' + state.dreaming;
+    if (key === ambientKey) return;
+    ambientKey = key;
+    clearAmbient();
     if (w === 'rain') {
       for (var i = 0; i < 70; i++) {
         var d = document.createElement('div'); d.className = 'drop';
@@ -530,27 +537,35 @@ export const ROOM_HTML = `<!doctype html>
   // Reading the letter marks it read.
   $('reader-close').addEventListener('click', dismissUnread);
 
-  // ── Open the full chat (native bridge if inside a Lisa app window). ──────
+  // ── Open the full chat (native bridge if inside a Lisa app window;
+  // when embedded in the GUI's #roomFrame, just switch the parent to chat). ──
   function openChat() {
     if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.island) {
       window.webkit.messageHandlers.island.postMessage({ type: 'open_full_gui', prefill: '' });
+    } else if (window.self !== window.top) {
+      window.parent.postMessage({ type: 'room_open_chat' }, window.location.origin);
     } else { window.open('/', '_blank'); }
   }
   $('chip-chat').addEventListener('click', openChat);
   lisa.addEventListener('click', openChat);
 
-  // ── Gentle parallax: bg drifts opposite the cursor, Lisa drifts less. ────
+  // ── Gentle parallax: bg drifts opposite the cursor, Lisa drifts less.
+  // Skips work while the tab is hidden or the target is (almost) reached,
+  // and stays off entirely under prefers-reduced-motion. ────────────────────
+  var reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var px = 0, py = 0, tx = 0, ty = 0;
   window.addEventListener('mousemove', function (e) {
     tx = (e.clientX / window.innerWidth - 0.5);
     ty = (e.clientY / window.innerHeight - 0.5);
   });
   function raf() {
-    px += (tx - px) * 0.06; py += (ty - py) * 0.06;
-    stage.style.transform = 'translateX(-50%) translate(' + (-px * 14) + 'px,' + (-py * 8) + 'px)';
+    if (!document.hidden && (Math.abs(tx - px) > 0.0005 || Math.abs(ty - py) > 0.0005)) {
+      px += (tx - px) * 0.06; py += (ty - py) * 0.06;
+      stage.style.transform = 'translateX(-50%) translate(' + (-px * 14) + 'px,' + (-py * 8) + 'px)';
+    }
     requestAnimationFrame(raf);
   }
-  requestAnimationFrame(raf);
+  if (!reducedMotion) requestAnimationFrame(raf);
 
   // ── Server state: ping snapshot + SSE pulses (shared with the Island). ───
   function applyPing(j) {
@@ -584,7 +599,7 @@ export const ROOM_HTML = `<!doctype html>
         case 'idle_message':
           state.dreaming = false; body.classList.remove('dreaming'); applyTOD(); applyPose();
           state.unread = true; state.idleText = (m.text || '').slice(0, 4000);
-          refreshDot(); refreshCaption(); refreshLetter();
+          refreshDot(); refreshCaption(); refreshDesire(); refreshLetter();
           document.body.animate([{ filter: 'brightness(1.25)' }, { filter: 'brightness(1)' }], { duration: 700 });
           break;
       }
