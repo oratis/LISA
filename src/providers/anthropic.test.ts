@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { AnthropicProvider } from "./anthropic.js";
+import { AnthropicProvider, modelSupportsEffort } from "./anthropic.js";
 import type { ProviderRunOpts } from "./types.js";
 
 /**
@@ -92,6 +92,55 @@ describe("AnthropicProvider — abort signal passthrough", () => {
     await provider.runTurn(baseOpts());
 
     assert.equal(captured.options?.signal, undefined);
+  });
+});
+
+describe("AnthropicProvider — effort gating by model", () => {
+  function runWithModelAndEffort(
+    model: string,
+    effort?: ProviderRunOpts["effort"],
+  ) {
+    const provider = new AnthropicProvider({ apiKey: "test-key" });
+    const captured: Captured = {};
+    (provider as unknown as { client: unknown }).client = {
+      messages: { stream: makeFakeStream(captured) },
+    };
+    return provider
+      .runTurn({ ...baseOpts(), model, effort })
+      .then((result) => ({ captured, result }));
+  }
+
+  test("Sonnet/Opus + effort → output_config.effort is attached", async () => {
+    const { captured } = await runWithModelAndEffort("claude-opus-4-8", "low");
+    assert.deepEqual(captured.params?.output_config, { effort: "low" });
+  });
+
+  test("Haiku + effort → output_config omitted, call still succeeds", async () => {
+    // The exact break: subagents/idle default to effort "low", and Haiku 4.5
+    // 400s on output_config.effort. The gate must drop it so the SDK sends a
+    // request Haiku accepts — and the turn completes normally.
+    const { captured, result } = await runWithModelAndEffort(
+      "claude-haiku-4-5-20251001",
+      "low",
+    );
+    assert.equal(captured.params?.output_config, undefined);
+    assert.equal(result.stopReason, "end_turn");
+  });
+
+  test("no effort → no output_config regardless of model", async () => {
+    const { captured } = await runWithModelAndEffort("claude-opus-4-8");
+    assert.equal(captured.params?.output_config, undefined);
+  });
+});
+
+describe("modelSupportsEffort", () => {
+  test("false only for the Haiku family (case-insensitive), true otherwise", () => {
+    assert.equal(modelSupportsEffort("claude-haiku-4-5-20251001"), false);
+    assert.equal(modelSupportsEffort("claude-haiku-4-5"), false);
+    assert.equal(modelSupportsEffort("Claude-HAIKU-4-5"), false);
+    assert.equal(modelSupportsEffort("claude-opus-4-8"), true);
+    assert.equal(modelSupportsEffort("claude-sonnet-5"), true);
+    assert.equal(modelSupportsEffort("claude-3-5-sonnet-20241022"), true);
   });
 });
 

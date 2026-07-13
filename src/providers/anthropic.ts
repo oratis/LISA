@@ -71,7 +71,11 @@ export class AnthropicProvider implements Provider {
     // Optional thinking-depth / token-spend lever (GA on Sonnet 4.6). Omitted ⇒
     // the API default of "high". Dispatched subagents pass "low" for cheap
     // parallel work; a global LISA_EFFORT can override for power users.
-    if (opts.effort) {
+    // Gated by model: Claude Haiku 4.5 rejects output_config.effort with a hard
+    // 400 ("This model does not support the effort parameter"). Subagents and
+    // idle/reflect calls default to effort "low", so without this gate every one
+    // of them routed to Haiku would fail outright (and the relay doesn't strip it).
+    if (opts.effort && modelSupportsEffort(opts.model)) {
       (params as { output_config?: { effort?: string } }).output_config = {
         ...(params as { output_config?: { effort?: string } }).output_config,
         effort: opts.effort,
@@ -131,6 +135,22 @@ export class AnthropicProvider implements Provider {
       },
     };
   }
+}
+
+/**
+ * Does MODEL accept the `output_config.effort` lever?
+ *
+ * Effort is GA on Sonnet 4.6 / Opus 4.x, but Claude Haiku 4.5
+ * (`claude-haiku-4-5-*`) rejects it outright:
+ *   400 invalid_request_error "This model does not support the effort parameter."
+ * Subagents and idle/reflect calls default to effort "low", so every such call
+ * routed to Haiku would hard-fail without this gate. Default-allow (Sonnet/Opus
+ * and future families keep effort) and strip only the known-incompatible Haiku
+ * family — matched case-insensitively on a substring so it covers dated ids
+ * ("claude-haiku-4-5-20251001") and relayed aliases alike.
+ */
+export function modelSupportsEffort(model: string): boolean {
+  return !/haiku/i.test(model);
 }
 
 function withCacheBreakpoint(

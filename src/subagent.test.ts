@@ -2,6 +2,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import type Anthropic from "@anthropic-ai/sdk";
 import { runSubagent, type SubagentOptions } from "./subagent.js";
+import { AnthropicProvider } from "./providers/anthropic.js";
 import type { Provider, ProviderResult, ProviderUsage } from "./providers/types.js";
 import type { ToolDefinition } from "./types.js";
 
@@ -72,5 +73,37 @@ describe("runSubagent", () => {
     const r = await runSubagent(opts({ provider }));
     assert.equal(r.stopReason, "max_iterations");
     assert.equal(r.toolCallCount, 32);
+  });
+
+  // End-to-end regression for the Haiku effort break: runSubagent hardcodes
+  // effort "low", which the real AnthropicProvider must NOT forward to Haiku 4.5
+  // (that model 400s on output_config.effort). Drive the actual provider with a
+  // faked SDK client so we observe the params the API would have received.
+  test("Haiku subagent does not send output_config.effort and still completes", async () => {
+    let capturedParams: Record<string, unknown> | undefined;
+    const provider = new AnthropicProvider({ apiKey: "test-key" });
+    (provider as unknown as { client: unknown }).client = {
+      messages: {
+        stream: (params: Record<string, unknown>) => {
+          capturedParams = params;
+          return {
+            on: () => {},
+            finalMessage: async () => ({
+              content: [{ type: "text", text: "done", citations: null }],
+              stop_reason: "end_turn",
+              usage: { input_tokens: 1, output_tokens: 1 },
+            }),
+          };
+        },
+      },
+    };
+
+    const r = await runSubagent(
+      opts({ provider, model: "claude-haiku-4-5-20251001" }),
+    );
+
+    assert.equal(r.text, "done"); // the call succeeded, not a 400
+    assert.equal(capturedParams?.model, "claude-haiku-4-5-20251001");
+    assert.equal(capturedParams?.output_config, undefined); // effort stripped
   });
 });
