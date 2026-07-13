@@ -1,67 +1,104 @@
 ---
 import Base from "../../layouts/Base.astro";
+const dl = "https://github.com/oratis/LISA/releases/latest";
+const gh = "https://github.com/oratis/LISA";
+const providers = "https://github.com/oratis/LISA/blob/main/docs/PROVIDERS.md";
 ---
-<Base title="安装" lang="zh-CN" description="在 macOS 或 Linux 上本地安装 Lisa。">
-  <h1>安装</h1>
+<Base title="安装" lang="zh-CN" description="在 macOS 或 Linux 上本地安装 Lisa —— 已签名 Mac 应用、Homebrew 或 npm，端到端约 60 秒。">
+  <!-- Header -->
+  <header class="page-head">
+    <p class="eyebrow"><span class="rule"></span> 安装 <b>· macOS / Linux</b></p>
+    <h1>安装 Lisa</h1>
+    <p class="lede">
+      Lisa 完全跑在你自己的机器上 —— 无云端账号，无需注册。
+      选下面任一条路径，多数端到端约 60 秒。
+    </p>
+    <div class="actions">
+      <a class="btn-primary" href={dl} target="_blank" rel="noopener">🍎 下载 Mac 版 (.dmg)</a>
+      <a class="btn-ghost" href={gh} target="_blank" rel="noopener">在 GitHub 看源码 →</a>
+    </div>
+    <nav class="toc" aria-label="本页导航">
+      <a href="#prereq">依赖</a>
+      <a href="#mac">Mac 应用</a>
+      <a href="#cli">Homebrew / npm</a>
+      <a href="#launch">首次启动</a>
+      <a href="#providers">LLM 供应商</a>
+      <a href="#advanced">进阶</a>
+    </nav>
+  </header>
 
-  <p>
-    Lisa 跑在你自己的机器上。选下面任一条路径，端到端约 60 秒。
-  </p>
+  <!-- Prerequisites -->
+  <section class="section" id="prereq">
+    <p class="eyebrow"><b>依赖</b></p>
+    <ul class="checklist">
+      <li><strong>Node.js ≥ 20</strong> —— 用 <code>node --version</code> 检查。Homebrew 安装时会自动带上 Node。</li>
+      <li><strong>macOS 或 Linux</strong> —— Windows 未测试；iMessage 通道仅支持 macOS。</li>
+      <li><strong>至少一个 LLM 供应商的 API key</strong> —— Anthropic、OpenAI、Gemini、DeepSeek、本地 Ollama…… 见 <a href={providers}>PROVIDERS.md</a>。</li>
+    </ul>
+  </section>
 
-  <h2>依赖</h2>
-  <ul>
-    <li>Node.js ≥ 20（<code>node --version</code> 检查；Homebrew 装时会自动带 Node）</li>
-    <li>macOS 或 Linux（Windows 没测；iMessage 通道只支持 macOS）</li>
-    <li>至少一个 LLM provider 的 API key —— 见 <a href="https://github.com/oratis/LISA/blob/main/docs/PROVIDERS.md">PROVIDERS.md</a></li>
-  </ul>
-
-  <h2>🍎 Mac 原生 App（macOS 推荐）</h2>
-  <p>
-    已签名 + Apple 公证的 DMG，内含 universal 二进制
-    <strong>Lisa.app</strong>（完整聊天客户端）。菜单栏/刘海下的灵动岛小条
-    （Lisa Island）已内置——在 <em>Lisa ▸ 设置… ▸ Show Lisa Island</em> 打开。
-    打开无 Gatekeeper 警告，不用 <code>xattr</code> 解隔离。
-  </p>
-  <p>
-    <a class="dmg-cta" href="https://github.com/oratis/LISA/releases/latest" target="_blank" rel="noopener">
-      下载 Lisa-Suite.dmg →
-    </a>
-  </p>
-  <p>
-    把 Lisa.app 拖到 <code>/Applications</code> 之后，装 backend 并启动：
-  </p>
-  <pre><code>npm install -g @oratis/lisa
+  <!-- Recommended: Mac app -->
+  <section class="section" id="mac">
+    <p class="eyebrow"><b>macOS 推荐</b></p>
+    <h2>Mac 原生应用</h2>
+    <div class="lead-card">
+      <p>
+        已签名 + Apple 公证的 DMG，内含 universal 二进制 <strong>Lisa.app</strong>
+        （完整聊天客户端）。菜单栏 / 刘海灵动岛小条（“Lisa Island”）已内置 —— 在
+        <em>Lisa ▸ 设置… ▸ Show Lisa Island</em> 打开。无 Gatekeeper 警告，无需
+        <code>xattr</code> 解隔离。
+      </p>
+      <a class="btn-primary" href={dl} target="_blank" rel="noopener">下载 Lisa-Suite.dmg →</a>
+    </div>
+    <p class="step-label">然后把 Lisa.app 拖到 <code>/Applications</code>，安装 backend 并启动：</p>
+    <pre><code>npm install -g @oratis/lisa
 lisa serve --web                # app 从 http://localhost:5757 读</code></pre>
+  </section>
 
-  <h2>Homebrew（只装 CLI）</h2>
-  <pre><code>brew tap oratis/tap
+  <!-- CLI install: Homebrew + npm -->
+  <section class="section" id="cli">
+    <p class="eyebrow"><b>命令行安装</b></p>
+    <h2>Homebrew 或 npm</h2>
+    <div class="method-grid">
+      <div class="method">
+        <div class="method-h">Homebrew <span>macOS · 仅 CLI</span></div>
+        <pre><code>brew tap oratis/tap
 brew install lisa
 
-# 升级：
+# 之后升级：
 brew update &amp;&amp; brew upgrade lisa</code></pre>
-
-  <h2>npm（跨平台）</h2>
-  <pre><code>npm i -g @oratis/lisa
+      </div>
+      <div class="method">
+        <div class="method-h">npm <span>跨平台</span></div>
+        <pre><code>npm i -g @oratis/lisa
 
 # 一次性体验，不全局装：
 npx @oratis/lisa "say hi"</code></pre>
+      </div>
+    </div>
+  </section>
 
-  <h2>第一次启动</h2>
-  <pre><code>mkdir -p ~/.lisa
+  <!-- First launch -->
+  <section class="section" id="launch">
+    <p class="eyebrow"><b>首次启动</b></p>
+    <h2>诞生她。</h2>
+    <pre><code>mkdir -p ~/.lisa
 echo 'ANTHROPIC_API_KEY=sk-ant-...' &gt; ~/.lisa/config.env
 
-lisa                # 交互式 REPL（首次会跑 birth ritual）
+lisa                # 交互式 REPL（首次会自动跑 birth ritual）
 lisa serve --web    # 浏览器 UI 在 http://localhost:5757</code></pre>
+    <p>
+      首次的 birth ritual 约 30 秒、只跑一次。Lisa 自己抽一个 Big-Five 种子，
+      再让 LLM 写下<em>她</em>的身份、目的、宪章、第一份欲望。每次安装出来的都是一个不同的人。
+    </p>
+  </section>
 
-  <p>
-    Birth ritual 大约 30 秒、只跑一次。Lisa 自己抽一个 Big-Five 种子，让 LLM 写下<em>她</em>的身份、目的、宪章、第一份欲望。每次安装出来的 Lisa 都是一个不同的人。
-  </p>
-
-  <h2>其他 LLM provider</h2>
-  <p>
-    Anthropic 不通可以跳过 —— Lisa 按模型名前缀自动路由：
-  </p>
-  <pre><code># DeepSeek（便宜、OpenAI 兼容）
+  <!-- Providers -->
+  <section class="section" id="providers">
+    <p class="eyebrow"><b>LLM 供应商</b></p>
+    <h2>用任意模型。</h2>
+    <p>Anthropic 不通就跳过 —— Lisa 按模型名前缀自动路由：</p>
+    <pre><code># DeepSeek（便宜、OpenAI 兼容）
 echo 'DEEPSEEK_API_KEY=sk-...' &gt;&gt; ~/.lisa/config.env
 lisa --model deepseek-chat
 
@@ -73,49 +110,66 @@ lisa --model gemini-2.5-flash
 echo 'LISA_BASE_URL=http://localhost:11434/v1' &gt;&gt; ~/.lisa/config.env
 echo 'LISA_API_KEY=ollama' &gt;&gt; ~/.lisa/config.env
 lisa --model qwen2.5-32b-instruct</code></pre>
+    <p>
+      完整 10+ 供应商配方见 <a href={providers}>PROVIDERS.md</a> —— DeepSeek、火山豆包、
+      阿里 Qwen、月之暗面 Kimi、xAI Grok、智谱 GLM、Mistral、Perplexity、Stepfun、Yi、
+      百川、MiniMax、混元、Ollama 等等。
+    </p>
+  </section>
 
-  <p>
-    完整 10+ provider 配方见
-    <a href="https://github.com/oratis/LISA/blob/main/docs/PROVIDERS.md">PROVIDERS.md</a>
-    （DeepSeek、火山豆包、阿里 Qwen、月之暗面 Kimi、xAI Grok、智谱 GLM、Mistral、Perplexity、Stepfun、Yi、百川、MiniMax、混元、Ollama……）。
-  </p>
+  <!-- iOS companion -->
+  <section class="section">
+    <div class="ios-card">
+      <div class="clabel">◆ iOS · Lisa Pocket</div>
+      <h3>把她带在身边</h3>
+      <p>
+        <strong>Lisa Pocket</strong> 是官方的 iPhone &amp; iPad 伴侣 app —— 一个轻薄、私密的客户端，
+        连到跑在你自己 Mac 上的 LISA backend（或你指向的 LISA&nbsp;Cloud 实例）。在路上和她聊天、
+        看她正在跑的编码 agent、在手机上批准它的下一步。它不存账号，也不向任何 Lisa 运营的服务器收集任何东西。
+      </p>
+      <p class="note">即将上架 App Store —— bundle <code>ai.meetlisa.main</code>。</p>
+    </div>
+  </section>
 
-  <h2>在公司/被墙网络后</h2>
-  <p>
-    如果你 shell 里 <code>curl</code> 通但 Lisa 报 "403 forbidden"，启动时设代理 env ——
-    undici 全局 dispatcher 会自动桥接。
-  </p>
-  <pre><code>HTTPS_PROXY=http://127.0.0.1:7897 lisa serve --web
+  <!-- Advanced -->
+  <section class="section" id="advanced">
+    <p class="eyebrow"><b>进阶与参考</b></p>
+    <h2>更进一步。</h2>
 
-# 或写进 config.env：
+    <h3>在公司 / 被墙网络后</h3>
+    <p>
+      如果你 shell 里的 <code>curl</code> 走代理能通、但 Lisa 报 “403 forbidden”，
+      启动时设代理 env —— undici 的全局 dispatcher 会在启动时自动桥接。
+    </p>
+    <pre><code>HTTPS_PROXY=http://127.0.0.1:7897 lisa serve --web
+
+# 或写进 config.env 持久化：
 echo 'HTTPS_PROXY=http://127.0.0.1:7897' &gt;&gt; ~/.lisa/config.env</code></pre>
 
-  <h2>Heartbeat（自主时间）</h2>
-  <pre><code>lisa heartbeat install --every 30m --load
+    <h3>Heartbeat（自主时间）</h3>
+    <pre><code>lisa heartbeat install --every 30m --load
 # 卸载：lisa heartbeat uninstall</code></pre>
 
-  <h2>IM 通道（手机找她聊）</h2>
-  <p>
-    最简单的是 <strong>Telegram</strong>（免费、零依赖）：
-  </p>
-  <pre><code># 1. Telegram 上找 @BotFather 拿 bot token
+    <h3>IM 通道 —— 手机上找她聊</h3>
+    <p>最简单的是 <strong>Telegram</strong>（免费、零依赖）：</p>
+    <pre><code># 1. Telegram 上找 @BotFather 拿 bot token
 echo 'TELEGRAM_BOT_TOKEN=1234:ABC...' &gt;&gt; ~/.lisa/config.env
 
 # 2. 拷贝 + 编辑配置
 cp channels.example.json ~/.lisa/channels.json
-# 把 telegram 的 "enabled" 改成 true
+# 编辑 ~/.lisa/channels.json —— 把 telegram 的 "enabled" 改成 true
 
 # 3. 启动
 lisa serve --channels telegram</code></pre>
 
-  <h2>诊断</h2>
-  <pre><code>lisa --version         # 打印版本
-lisa status            # 一次快照
-lisa doctor            # 检查 config / 网络 / git / providers
+    <h3>诊断</h3>
+    <pre><code>lisa --version         # 打印版本
+lisa status            # 一次性快照
+lisa doctor            # 检查 config / 网络 / git / 供应商
 lisa monitor           # 实时 TUI 看板（Ctrl-C 退出）</code></pre>
 
-  <h2>从源码构建（贡献者）</h2>
-  <pre><code>git clone https://github.com/oratis/LISA.git
+    <h3>从源码构建（贡献者）</h3>
+    <pre><code>git clone https://github.com/oratis/LISA.git
 cd LISA
 npm install
 npm run build
@@ -123,25 +177,102 @@ node dist/cli.js --help
 
 # 可选：link 一下让 `lisa` 全局可用
 npm link</code></pre>
+  </section>
 
-  <h2>源代码</h2>
-  <p>
-    全部在 GitHub：<a href="https://github.com/oratis/LISA">github.com/oratis/LISA</a>。MIT license。欢迎 PR。
-  </p>
+  <!-- Source CTA band -->
+  <section class="cta-band">
+    <p class="eyebrow" style="justify-content:center"><b>开源</b></p>
+    <h2>每一行都在 GitHub。</h2>
+    <p class="lede" style="margin-inline:auto">MIT 许可证。欢迎 issue 和 PR。</p>
+    <div class="actions">
+      <a class="btn-primary" href={dl} target="_blank" rel="noopener">🍎 下载 Mac 版</a>
+      <a class="btn-ghost" href={gh} target="_blank" rel="noopener">github.com/oratis/LISA ↗</a>
+    </div>
+  </section>
 </Base>
 
 <style>
-  pre { font-size: 16px; }
-  ul, ol { padding-left: 24px; }
-  .dmg-cta {
-    display: inline-block;
-    font-family: 'Press Start 2P', monospace;
-    font-size: 11px;
-    padding: 14px 20px;
-    background: var(--lisa);
-    color: var(--bg);
-    border: 4px solid var(--border-light);
-    text-decoration: none;
+  /* Header */
+  .page-head h1 { margin-bottom: .4rem; }
+  .lede { font-size: 1.15rem; color: var(--muted); max-width: 62ch; }
+  .page-head .actions { margin-top: 1.6rem; }
+
+  /* Readable prose width; panels stay full-width */
+  .section > p, .section > .checklist { max-width: 74ch; }
+  .section > h2 { margin-top: .2rem; }
+  section[id] { scroll-margin-top: 84px; }
+
+  /* On-this-page chips */
+  .toc { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1.8rem; }
+  .toc a {
+    font-family: var(--mono); font-size: .76rem; color: var(--muted);
+    border: 1px solid var(--border); border-radius: 999px; padding: .34rem .8rem;
+    transition: color .15s, border-color .15s;
   }
-  .dmg-cta:hover { background: var(--you); color: var(--bg); }
+  .toc a:hover { color: var(--accent); border-color: var(--border-lit); }
+
+  /* Code panels (replaces the inline-pill look) */
+  pre {
+    background: var(--bg-elev); border: 1px solid var(--border); border-radius: 12px;
+    padding: 1rem 1.15rem; overflow-x: auto; margin: 1rem 0;
+    box-shadow: 0 18px 44px -30px rgba(0,0,0,.85);
+  }
+  pre code {
+    font-family: var(--mono); font-size: .875rem; line-height: 1.75;
+    color: var(--ink); background: none; border: 0; padding: 0;
+    display: block; white-space: pre;
+  }
+
+  /* Prerequisite checklist */
+  .checklist { list-style: none; padding: 0; margin: 1.2rem 0 0; display: grid; gap: .7rem; }
+  .checklist li { position: relative; padding-left: 1.9rem; color: var(--muted); line-height: 1.55; }
+  .checklist li::before {
+    content: "✓"; position: absolute; left: 0; top: 0;
+    color: var(--good); font-weight: 700; font-family: var(--mono);
+  }
+  .checklist strong { color: var(--ink); }
+
+  /* Recommended (Mac app) card */
+  .lead-card {
+    background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--accent);
+    border-radius: 14px; padding: 1.3rem 1.4rem; margin-top: 1rem;
+  }
+  .lead-card p { margin: 0; max-width: 68ch; }
+  .lead-card .btn-primary { margin-top: 1.2rem; }
+  .step-label { color: var(--muted); margin-top: 1.4rem; }
+
+  /* Homebrew / npm side by side */
+  .method-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.1rem; margin-top: 1.3rem; }
+  .method { min-width: 0; }
+  .method-h {
+    font-family: var(--display); font-weight: 600; color: var(--ink);
+    display: flex; align-items: baseline; gap: .6rem;
+  }
+  .method-h span {
+    font-family: var(--mono); font-size: .66rem; text-transform: uppercase;
+    letter-spacing: .1em; color: var(--faint); font-weight: 400;
+  }
+  .method pre { margin-top: .55rem; margin-bottom: 0; }
+
+  /* Advanced subsections */
+  #advanced h3 { margin-top: 2.1rem; color: var(--ink); }
+  #advanced h3:first-of-type { margin-top: 1.4rem; }
+  #advanced > p { margin-top: .6rem; }
+
+  /* iOS card */
+  .ios-card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+    padding: 1.4rem 1.5rem;
+  }
+  .ios-card .clabel {
+    font-family: var(--mono); font-size: .68rem; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--blue);
+  }
+  .ios-card h3 { margin: .5rem 0 .3rem; }
+  .ios-card p { max-width: 72ch; }
+  .ios-card .note { margin-top: .9rem; }
+
+  @media (max-width: 720px) {
+    .method-grid { grid-template-columns: 1fr; }
+  }
 </style>
