@@ -107,6 +107,24 @@ try {
   }
 } catch (_) {}
 
+// Room (#viewRoom iframe) → parent GUI actions. Keeps every room interaction
+// in-client (this WKWebView) — never a browser window. Same-origin guarded so
+// only our own room frame can drive view switches / composer prefill.
+window.addEventListener('message', function (e) {
+  if (e.origin !== location.origin) return;
+  var d = e && e.data;
+  if (!d || d.type !== 'lisa-room') return;
+  switch (d.action) {
+    case 'open-chat':
+      if (d.prefill) { try { window.lisaPrefillComposer(d.prefill); } catch (_) {} }
+      try { window.lisaShowView('chat'); } catch (_) {}
+      break;
+    case 'switch-view':
+      if (d.view) { try { window.lisaShowView(d.view); } catch (_) {} }
+      break;
+  }
+});
+
 // lisaCaptureAndAttach asks the server to run a screen capture, then
 // attaches the result. mode: 'interactive' (crosshair, default) | 'full'.
 // Returns true if an image was attached, false if cancelled/failed.

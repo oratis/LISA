@@ -530,14 +530,37 @@ export const ROOM_HTML = `<!doctype html>
   // Reading the letter marks it read.
   $('reader-close').addEventListener('click', dismissUnread);
 
-  // ── Open the full chat (native bridge if inside a Lisa app window). ──────
-  function openChat() {
-    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.island) {
-      window.webkit.messageHandlers.island.postMessage({ type: 'open_full_gui', prefill: '' });
-    } else { window.open('/', '_blank'); }
+  // ── In-client action bridge — NEVER opens a browser. ────────────────────
+  // Room usually runs as the #viewRoom iframe inside the main GUI, so the
+  // primary path is postMessage → parent GUI (same WKWebView). Falls back to
+  // the native bridge for a standalone window, and to a same-tab navigation
+  // for a plain browser. window.open is intentionally gone (it spawned a
+  // browser window when messageHandlers.island was absent in the iframe).
+  function roomAction(action, payload) {
+    payload = payload || {};
+    // 1) Embedded in the GUI → let the parent handle it in-client.
+    if (window.parent && window.parent !== window) {
+      try {
+        window.parent.postMessage(
+          Object.assign({ type: 'lisa-room', action: action }, payload),
+          location.origin);
+        return;
+      } catch (e) { /* cross-origin? fall through */ }
+    }
+    // 2) Standalone native window with a bridge (island or main 'lisa').
+    var mh = window.webkit && window.webkit.messageHandlers;
+    var bridge = mh && (mh.island || mh.lisa);
+    if (bridge) {
+      try { bridge.postMessage({ type: 'open_full_gui', prefill: payload.prefill || '' }); return; } catch (e) {}
+    }
+    // 3) Plain browser standalone /room → navigate the SAME tab (no new window).
+    if (action === 'open-chat') {
+      location.assign(payload.prefill ? '/?prefill=' + encodeURIComponent(payload.prefill) : '/');
+    }
   }
-  $('chip-chat').addEventListener('click', openChat);
-  lisa.addEventListener('click', openChat);
+  function openChat(prefill) { roomAction('open-chat', prefill ? { prefill: prefill } : {}); }
+  $('chip-chat').addEventListener('click', function () { openChat(); });
+  lisa.addEventListener('click', function () { openChat(); });
 
   // ── Gentle parallax: bg drifts opposite the cursor, Lisa drifts less. ────
   var px = 0, py = 0, tx = 0, ty = 0;

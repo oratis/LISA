@@ -1586,7 +1586,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         "service-worker-allowed": "/",
       });
       res.end(`
-const CACHE = 'lisa-v3-vision';
+const CACHE = 'lisa-v4-room';
 const ASSET_PATHS = ['/assets/lisa-mascot.png', '/assets/background-tile.png',
   '/assets/icon-soul.png', '/assets/icon-skill.png', '/assets/icon-memory.png',
   '/assets/icon-tool.png', '/assets/icon-send.png'];
@@ -1630,17 +1630,18 @@ self.addEventListener('fetch', (event) => {
     );
     return;
   }
-  // Stale-while-revalidate for / and the manifest — the app shell.
+  // Network-first for / and the manifest — the app shell. The server sends the
+  // shell with no-store precisely so an update shows immediately; the old
+  // stale-while-revalidate here re-introduced a stale shell (a GUI update took
+  // two refreshes to appear). So: always try the network (fresh shell + refresh
+  // the cache), and fall back to the cached shell only when offline.
   if (url.pathname === '/' || url.pathname === '/manifest.webmanifest') {
     event.respondWith(
       caches.open(CACHE).then((cache) =>
-        cache.match(event.request).then((hit) => {
-          const networked = fetch(event.request).then((res) => {
-            if (res.ok) cache.put(event.request, res.clone());
-            return res;
-          }).catch(() => hit);
-          return hit || networked;
-        })
+        fetch(event.request).then((res) => {
+          if (res.ok) cache.put(event.request, res.clone());
+          return res;
+        }).catch(() => cache.match(event.request))
       )
     );
   }
