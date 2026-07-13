@@ -1,77 +1,105 @@
 ---
 import Base from "../layouts/Base.astro";
+const dl = "https://github.com/oratis/LISA/releases/latest";
+const gh = "https://github.com/oratis/LISA";
+const providers = "https://github.com/oratis/LISA/blob/main/docs/PROVIDERS.md";
 ---
-<Base title="Install" lang="en" description="Install Lisa locally on macOS or Linux.">
-  <h1>Install</h1>
+<Base title="Install" lang="en" description="Install Lisa locally on macOS or Linux — signed Mac app, Homebrew, or npm. About 60 seconds end-to-end.">
+  <!-- Header -->
+  <header class="page-head">
+    <p class="eyebrow"><span class="rule"></span> INSTALL <b>· macOS / Linux</b></p>
+    <h1>Install Lisa</h1>
+    <p class="lede">
+      Lisa runs entirely on your own machine — no cloud account, nothing to sign up for.
+      Pick a path below; most take about 60 seconds end-to-end.
+    </p>
+    <div class="actions">
+      <a class="btn-primary" href={dl} target="_blank" rel="noopener">🍎 Download for Mac (.dmg)</a>
+      <a class="btn-ghost" href={gh} target="_blank" rel="noopener">View source on GitHub →</a>
+    </div>
+    <nav class="toc" aria-label="On this page">
+      <a href="#prereq">Prerequisites</a>
+      <a href="#mac">Mac app</a>
+      <a href="#cli">Homebrew / npm</a>
+      <a href="#launch">First launch</a>
+      <a href="#providers">LLM providers</a>
+      <a href="#advanced">Advanced</a>
+    </nav>
+  </header>
 
-  <p>
-    Lisa runs on your own machine. Pick the easiest path for your platform — both options below take about 60 seconds end-to-end.
-  </p>
+  <!-- Prerequisites -->
+  <section class="section" id="prereq">
+    <p class="eyebrow"><b>Prerequisites</b></p>
+    <ul class="checklist">
+      <li><strong>Node.js ≥ 20</strong> — run <code>node --version</code> to check. Homebrew pulls Node in automatically as a dependency.</li>
+      <li><strong>macOS or Linux</strong> — Windows is untested; the iMessage channel is macOS-only.</li>
+      <li><strong>One LLM provider API key</strong> — Anthropic, OpenAI, Gemini, DeepSeek, local Ollama… see <a href={providers}>PROVIDERS.md</a>.</li>
+    </ul>
+  </section>
 
-  <h2>Prerequisites</h2>
-  <ul>
-    <li>Node.js ≥ 20 (<code>node --version</code> to check; Homebrew installs Node automatically as a dep)</li>
-    <li>macOS or Linux (Windows untested; the iMessage channel is macOS-only)</li>
-    <li>An API key for at least one LLM provider — see <a href="https://github.com/oratis/LISA/blob/main/docs/PROVIDERS.md">PROVIDERS.md</a></li>
-  </ul>
-
-  <h2>🍎 Mac apps (recommended on macOS)</h2>
-  <p>
-    Signed + Apple-notarized DMG with the universal-binary
-    <strong>Lisa.app</strong> (full chat client). The menu-bar / notch pill
-    ("Lisa Island") is built in — turn it on from <em>Lisa ▸ Settings… ▸ Show
-    Lisa Island</em>. No Gatekeeper warning, no <code>xattr</code> workaround.
-  </p>
-  <p>
-    <a class="dmg-cta" href="https://github.com/oratis/LISA/releases/latest" target="_blank" rel="noopener">
-      Download Lisa-Suite.dmg →
-    </a>
-  </p>
-  <p>
-    After dragging Lisa.app to <code>/Applications</code>, install the backend and start it:
-  </p>
-  <pre><code>npm install -g @oratis/lisa
+  <!-- Recommended: Mac app -->
+  <section class="section" id="mac">
+    <p class="eyebrow"><b>Recommended on macOS</b></p>
+    <h2>The Mac app</h2>
+    <div class="lead-card">
+      <p>
+        A signed + Apple-notarized DMG with the universal-binary <strong>Lisa.app</strong>
+        (full chat client). The menu-bar / notch pill (“Lisa Island”) is built in — turn it on
+        from <em>Lisa ▸ Settings… ▸ Show Lisa Island</em>. No Gatekeeper warning, no
+        <code>xattr</code> workaround.
+      </p>
+      <a class="btn-primary" href={dl} target="_blank" rel="noopener">Download Lisa-Suite.dmg →</a>
+    </div>
+    <p class="step-label">Then drag Lisa.app to <code>/Applications</code>, install the backend, and start it:</p>
+    <pre><code>npm install -g @oratis/lisa
 lisa serve --web                # the app loads http://localhost:5757</code></pre>
+  </section>
 
-  <h2>📱 Lisa Pocket (iOS companion)</h2>
-  <p>
-    <strong>Lisa Pocket</strong> is our official companion app for iPhone &amp;
-    iPad — a thin, private client to the LISA backend running on your own Mac
-    (or a LISA&nbsp;Cloud instance you point it at). Chat with Lisa on the go,
-    watch the coding agents she's running, and approve their next step from your
-    phone. It stores no account and collects nothing to a Lisa-operated server.
-  </p>
-  <p><em>Coming to the App Store</em> — bundle <code>ai.meetlisa.main</code>.</p>
-
-  <h2>Homebrew (CLI only)</h2>
-  <pre><code>brew tap oratis/tap
+  <!-- CLI install: Homebrew + npm -->
+  <section class="section" id="cli">
+    <p class="eyebrow"><b>CLI install</b></p>
+    <h2>Homebrew or npm</h2>
+    <div class="method-grid">
+      <div class="method">
+        <div class="method-h">Homebrew <span>macOS · CLI only</span></div>
+        <pre><code>brew tap oratis/tap
 brew install lisa
 
-# Updates later:
+# Update later:
 brew update &amp;&amp; brew upgrade lisa</code></pre>
-
-  <h2>npm (cross-platform)</h2>
-  <pre><code>npm i -g @oratis/lisa
+      </div>
+      <div class="method">
+        <div class="method-h">npm <span>cross-platform</span></div>
+        <pre><code>npm i -g @oratis/lisa
 
 # One-shot, no install:
 npx @oratis/lisa "say hi"</code></pre>
+      </div>
+    </div>
+  </section>
 
-  <h2>First launch</h2>
-  <pre><code>mkdir -p ~/.lisa
+  <!-- First launch -->
+  <section class="section" id="launch">
+    <p class="eyebrow"><b>First launch</b></p>
+    <h2>Birth her.</h2>
+    <pre><code>mkdir -p ~/.lisa
 echo 'ANTHROPIC_API_KEY=sk-ant-...' &gt; ~/.lisa/config.env
 
 lisa                # interactive REPL (auto-runs birth ritual on first launch)
 lisa serve --web    # browser UI on http://localhost:5757</code></pre>
+    <p>
+      The first-run birth ritual takes ~30 seconds, once. Lisa picks her own Big-Five seed,
+      then asks the LLM to write <em>her</em> identity, purpose, constitution, and first desire.
+      Every install is a different person.
+    </p>
+  </section>
 
-  <p>
-    First-run birth ritual takes ~30 seconds (one-time). Lisa picks her own Big-Five seed, then asks the LLM to write <em>her</em> identity, purpose, constitution, and first desire. Every install is a different person.
-  </p>
-
-  <h2>Other LLM providers</h2>
-  <p>
-    Skip Anthropic if you can't reach it — Lisa auto-routes by model-name prefix:
-  </p>
-  <pre><code># DeepSeek (cheap, OpenAI-compatible)
+  <!-- Providers -->
+  <section class="section" id="providers">
+    <p class="eyebrow"><b>LLM providers</b></p>
+    <h2>Use any model.</h2>
+    <p>Skip Anthropic if you can’t reach it — Lisa auto-routes by model-name prefix:</p>
+    <pre><code># DeepSeek (cheap, OpenAI-compatible)
 echo 'DEEPSEEK_API_KEY=sk-...' &gt;&gt; ~/.lisa/config.env
 lisa --model deepseek-chat
 
@@ -83,31 +111,50 @@ lisa --model gemini-2.5-flash
 echo 'LISA_BASE_URL=http://localhost:11434/v1' &gt;&gt; ~/.lisa/config.env
 echo 'LISA_API_KEY=ollama' &gt;&gt; ~/.lisa/config.env
 lisa --model qwen2.5-32b-instruct</code></pre>
+    <p>
+      See <a href={providers}>PROVIDERS.md</a> for 10+ ready-to-use recipes — DeepSeek,
+      Volcengine Doubao, Aliyun Qwen, Moonshot Kimi, xAI Grok, Zhipu GLM, Mistral, Perplexity,
+      Stepfun, Yi, Baichuan, MiniMax, Hunyuan, Ollama, and more.
+    </p>
+  </section>
 
-  <p>
-    See <a href="https://github.com/oratis/LISA/blob/main/docs/PROVIDERS.md">PROVIDERS.md</a> for 10+ ready-to-use recipes (DeepSeek, Volcengine Doubao, Aliyun Qwen, Moonshot Kimi, xAI Grok, Zhipu GLM, Mistral, Perplexity, Stepfun, Yi, Baichuan, MiniMax, Hunyuan, Ollama, …).
-  </p>
+  <!-- iOS companion -->
+  <section class="section">
+    <div class="ios-card">
+      <div class="clabel">◆ iOS · Lisa Pocket</div>
+      <h3>Take her with you</h3>
+      <p>
+        <strong>Lisa Pocket</strong> is the official companion app for iPhone &amp; iPad — a thin,
+        private client to the LISA backend running on your own Mac (or a LISA&nbsp;Cloud instance
+        you point it at). Chat on the go, watch the coding agents she’s running, and approve their
+        next step from your phone. It stores no account and collects nothing to a Lisa-operated server.
+      </p>
+      <p class="note">Coming to the App Store — bundle <code>ai.meetlisa.main</code>.</p>
+    </div>
+  </section>
 
-  <h2>Behind a corporate / region-blocked network</h2>
-  <p>
-    If your shell <code>curl</code> works through a proxy but Lisa fails with
-    "403 forbidden", set the proxy env when starting Lisa — undici's global
-    dispatcher will be auto-bridged on startup.
-  </p>
-  <pre><code>HTTPS_PROXY=http://127.0.0.1:7897 lisa serve --web
+  <!-- Advanced -->
+  <section class="section" id="advanced">
+    <p class="eyebrow"><b>Advanced &amp; reference</b></p>
+    <h2>Going further.</h2>
+
+    <h3>Behind a corporate / region-blocked network</h3>
+    <p>
+      If your shell <code>curl</code> works through a proxy but Lisa fails with “403 forbidden”,
+      set the proxy env when starting Lisa — undici’s global dispatcher is auto-bridged on startup.
+    </p>
+    <pre><code>HTTPS_PROXY=http://127.0.0.1:7897 lisa serve --web
 
 # Persist instead:
 echo 'HTTPS_PROXY=http://127.0.0.1:7897' &gt;&gt; ~/.lisa/config.env</code></pre>
 
-  <h2>Heartbeat (autonomous time)</h2>
-  <pre><code>lisa heartbeat install --every 30m --load
-# Removes: lisa heartbeat uninstall</code></pre>
+    <h3>Heartbeat (autonomous time)</h3>
+    <pre><code>lisa heartbeat install --every 30m --load
+# Remove: lisa heartbeat uninstall</code></pre>
 
-  <h2>IM channels (talk to Lisa from your phone)</h2>
-  <p>
-    The simplest path is <strong>Telegram</strong> (free, zero deps):
-  </p>
-  <pre><code># 1. Get a bot token from @BotFather on Telegram
+    <h3>IM channels — talk to Lisa from your phone</h3>
+    <p>The simplest path is <strong>Telegram</strong> (free, zero deps):</p>
+    <pre><code># 1. Get a bot token from @BotFather on Telegram
 echo 'TELEGRAM_BOT_TOKEN=1234:ABC...' &gt;&gt; ~/.lisa/config.env
 
 # 2. Copy + edit the config
@@ -117,14 +164,14 @@ cp channels.example.json ~/.lisa/channels.json
 # 3. Run
 lisa serve --channels telegram</code></pre>
 
-  <h2>Diagnostics</h2>
-  <pre><code>lisa --version         # print version
+    <h3>Diagnostics</h3>
+    <pre><code>lisa --version         # print version
 lisa status            # one-shot snapshot
 lisa doctor            # checks config / network / git / providers
 lisa monitor           # live TUI dashboard (Ctrl-C to quit)</code></pre>
 
-  <h2>Build from source (contributors)</h2>
-  <pre><code>git clone https://github.com/oratis/LISA.git
+    <h3>Build from source (contributors)</h3>
+    <pre><code>git clone https://github.com/oratis/LISA.git
 cd LISA
 npm install
 npm run build
@@ -132,25 +179,102 @@ node dist/cli.js --help
 
 # Optionally link so `lisa` works globally:
 npm link</code></pre>
+  </section>
 
-  <h2>Source</h2>
-  <p>
-    All code is on GitHub: <a href="https://github.com/oratis/LISA">github.com/oratis/LISA</a>. MIT license. PRs welcome.
-  </p>
+  <!-- Source CTA band -->
+  <section class="cta-band">
+    <p class="eyebrow" style="justify-content:center"><b>Open source</b></p>
+    <h2>Every line is on GitHub.</h2>
+    <p class="lede" style="margin-inline:auto">MIT license. Issues and PRs welcome.</p>
+    <div class="actions">
+      <a class="btn-primary" href={dl} target="_blank" rel="noopener">🍎 Download for Mac</a>
+      <a class="btn-ghost" href={gh} target="_blank" rel="noopener">github.com/oratis/LISA ↗</a>
+    </div>
+  </section>
 </Base>
 
 <style>
-  pre { font-size: 16px; }
-  ul, ol { padding-left: 24px; }
-  .dmg-cta {
-    display: inline-block;
-    font-family: 'Press Start 2P', monospace;
-    font-size: 11px;
-    padding: 14px 20px;
-    background: var(--lisa);
-    color: var(--bg);
-    border: 4px solid var(--border-light);
-    text-decoration: none;
+  /* Header */
+  .page-head h1 { margin-bottom: .4rem; }
+  .lede { font-size: 1.15rem; color: var(--muted); max-width: 62ch; }
+  .page-head .actions { margin-top: 1.6rem; }
+
+  /* Readable prose width; panels stay full-width */
+  .section > p, .section > .checklist { max-width: 74ch; }
+  .section > h2 { margin-top: .2rem; }
+  section[id] { scroll-margin-top: 84px; }
+
+  /* On-this-page chips */
+  .toc { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1.8rem; }
+  .toc a {
+    font-family: var(--mono); font-size: .76rem; color: var(--muted);
+    border: 1px solid var(--border); border-radius: 999px; padding: .34rem .8rem;
+    transition: color .15s, border-color .15s;
   }
-  .dmg-cta:hover { background: var(--you); color: var(--bg); }
+  .toc a:hover { color: var(--accent); border-color: var(--border-lit); }
+
+  /* Code panels (replaces the inline-pill look) */
+  pre {
+    background: var(--bg-elev); border: 1px solid var(--border); border-radius: 12px;
+    padding: 1rem 1.15rem; overflow-x: auto; margin: 1rem 0;
+    box-shadow: 0 18px 44px -30px rgba(0,0,0,.85);
+  }
+  pre code {
+    font-family: var(--mono); font-size: .875rem; line-height: 1.75;
+    color: var(--ink); background: none; border: 0; padding: 0;
+    display: block; white-space: pre;
+  }
+
+  /* Prerequisite checklist */
+  .checklist { list-style: none; padding: 0; margin: 1.2rem 0 0; display: grid; gap: .7rem; }
+  .checklist li { position: relative; padding-left: 1.9rem; color: var(--muted); line-height: 1.55; }
+  .checklist li::before {
+    content: "✓"; position: absolute; left: 0; top: 0;
+    color: var(--good); font-weight: 700; font-family: var(--mono);
+  }
+  .checklist strong { color: var(--ink); }
+
+  /* Recommended (Mac app) card */
+  .lead-card {
+    background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--accent);
+    border-radius: 14px; padding: 1.3rem 1.4rem; margin-top: 1rem;
+  }
+  .lead-card p { margin: 0; max-width: 68ch; }
+  .lead-card .btn-primary { margin-top: 1.2rem; }
+  .step-label { color: var(--muted); margin-top: 1.4rem; }
+
+  /* Homebrew / npm side by side */
+  .method-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.1rem; margin-top: 1.3rem; }
+  .method { min-width: 0; }
+  .method-h {
+    font-family: var(--display); font-weight: 600; color: var(--ink);
+    display: flex; align-items: baseline; gap: .6rem;
+  }
+  .method-h span {
+    font-family: var(--mono); font-size: .66rem; text-transform: uppercase;
+    letter-spacing: .1em; color: var(--faint); font-weight: 400;
+  }
+  .method pre { margin-top: .55rem; margin-bottom: 0; }
+
+  /* Advanced subsections */
+  #advanced h3 { margin-top: 2.1rem; color: var(--ink); }
+  #advanced h3:first-of-type { margin-top: 1.4rem; }
+  #advanced > p { margin-top: .6rem; }
+
+  /* iOS card */
+  .ios-card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+    padding: 1.4rem 1.5rem;
+  }
+  .ios-card .clabel {
+    font-family: var(--mono); font-size: .68rem; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--blue);
+  }
+  .ios-card h3 { margin: .5rem 0 .3rem; }
+  .ios-card p { max-width: 72ch; }
+  .ios-card .note { margin-top: .9rem; }
+
+  @media (max-width: 720px) {
+    .method-grid { grid-template-columns: 1fr; }
+  }
 </style>
