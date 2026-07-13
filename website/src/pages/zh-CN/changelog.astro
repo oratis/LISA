@@ -6,37 +6,49 @@ import { fetchReleases } from "../../lib/releases";
 const releases = await fetchReleases();
 ---
 <Base title="更新日志" lang="zh-CN" description="Lisa 各版本的更新内容。">
-  <h1>更新日志</h1>
-  <p>
-    每个 Lisa 版本,最新在前。最新版从 <a href="/zh-CN/install">安装页</a> 获取,
-    或浏览 <a href="https://github.com/oratis/LISA/releases/latest" target="_blank" rel="noopener">GitHub Releases ↗</a>。
-    Mac 应用也会查这里 —— <em>Lisa ▸ 关于 ▸ 检查更新</em>。
-  </p>
+  <header class="page-head">
+    <p class="eyebrow"><span class="rule"></span> 更新日志 <b>· 最新在前</b></p>
+    <h1>更新内容</h1>
+    <p class="lede">
+      每个 Lisa 版本,最新在前。最新版从 <a href="/zh-CN/install">安装页</a> 获取,
+      或浏览 <a href="https://github.com/oratis/LISA/releases/latest" target="_blank" rel="noopener">GitHub Releases ↗</a>。
+      Mac 应用也会查这里 —— <em>Lisa ▸ 关于 ▸ 检查更新</em>。
+    </p>
+  </header>
 
   {releases.length === 0 ? (
-    <p>
+    <p class="empty">
       暂时无法加载发布信息 —— 请到
       <a href="https://github.com/oratis/LISA/releases" target="_blank" rel="noopener">GitHub ↗</a> 查看。
     </p>
   ) : (
-    releases.map((r) => (
-      <section class="term release">
-        <div class="term-bar">
-          <span class="term-dot r"></span><span class="term-dot y"></span><span class="term-dot g"></span>
-          <span class="term-title">{r.tag || r.name}{r.date ? ` · ${r.date}` : ""}</span>
-        </div>
-        <div class="term-body">
-          {r.body
-            ? <pre>{r.body}</pre>
-            : <p>该版本无发布说明。</p>}
-          <p><a href={r.url} target="_blank" rel="noopener">在 GitHub 查看 {r.tag || "release"} ↗</a></p>
-        </div>
-      </section>
-    ))
+    <div class="releases">
+      {releases.map((r, i) => (
+        <section class="console release">
+          <div class="console-bar">
+            <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+            <span class="console-title">{r.tag || r.name}{r.date ? ` · ${r.date}` : ""}</span>
+            {i === 0 ? <span class="console-badge">● 最新</span> : null}
+          </div>
+          <div class="console-body">
+            {r.body ? <pre class="notes">{r.body}</pre> : <p>该版本无发布说明。</p>}
+            <p class="ghlink"><a href={r.url} target="_blank" rel="noopener">在 GitHub 查看 {r.tag || "release"} ↗</a></p>
+          </div>
+        </section>
+      ))}
+    </div>
   )}
 
   <style>
-    .release { margin: 22px 0; }
-    .release .term-body pre { margin: 0 0 14px; }
+    .page-head h1 { margin-bottom: .4rem; }
+    .lede { font-size: 1.15rem; color: var(--muted); max-width: 66ch; }
+    .releases { display: grid; gap: 1.1rem; margin-top: 2.2rem; }
+    .release { margin: 0; }
+    .release .notes {
+      margin: 0; white-space: pre-wrap; word-wrap: break-word;
+      font-family: var(--mono); font-size: .84rem; line-height: 1.7; color: var(--ink);
+    }
+    .release .ghlink { margin: 1rem 0 0; font-family: var(--mono); font-size: .8rem; }
+    .empty { max-width: 66ch; }
   </style>
 </Base>
