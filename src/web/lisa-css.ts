@@ -415,6 +415,30 @@ export const MAIN_CSS = `  :root {
   .delegate-modal .dm-start:disabled { opacity: 0.5; cursor: default; }
   .delegate-modal .dm-err { color: var(--err-color, #ff5577); font-size: 12px; white-space: pre-wrap; }
   .delegate-modal .dm-note { font-size: 11px; color: var(--fg-faint); line-height: 1.4; margin-top: 2px; }
+  .delegate-modal .mm-providers { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 2px; }
+  .delegate-modal .mm-chip {
+    font-size: 12px; padding: 4px 11px; border-radius: 999px;
+    border: 1px solid var(--border); background: rgba(255,255,255,0.03);
+    color: var(--fg-2); cursor: pointer;
+  }
+  .delegate-modal .mm-chip:hover { border-color: var(--brand, #6ad4ff); color: var(--fg); }
+  .delegate-modal .mm-chip.on {
+    border-color: var(--brand, #6ad4ff); background: rgba(106,212,255,0.16); color: var(--brand, #6ad4ff);
+  }
+  .delegate-modal .mm-help {
+    border: 1px solid var(--border); border-radius: 8px;
+    background: rgba(106,212,255,0.05); padding: 10px 12px;
+    display: flex; flex-direction: column; gap: 9px;
+  }
+  .delegate-modal .mm-steps { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+  .delegate-modal .mm-steps li { font-size: 12px; color: var(--fg-2); line-height: 1.45; }
+  .delegate-modal .mm-link {
+    align-self: flex-start; font-size: 12.5px; font-weight: 500;
+    color: var(--brand, #6ad4ff); text-decoration: none;
+    border: 1px solid var(--brand, #6ad4ff); border-radius: 8px; padding: 6px 12px;
+    background: rgba(106,212,255,0.10);
+  }
+  .delegate-modal .mm-link:hover { background: rgba(106,212,255,0.20); }
   /* Mail card body */
   #sbMailBody { margin: 2px 0 6px; }
   .mail-summary { font-size: 11.5px; color: var(--fg-2); line-height: 1.45; margin-bottom: 6px; }

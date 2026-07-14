@@ -43,10 +43,14 @@ import { MAIN_HTML } from "./lisa-html.js";
  * Then: Room v2 — the room→parent bridge moved to a richer, same-origin-guarded
  * {type:'lisa-room', action, prefill} protocol (open-chat / switch-view) at
  * module scope; the old room_open_chat listener was removed as superseded.
+ * Then: guided mail connect — the connect-mailbox modal gained a provider
+ * picker (Gmail/iCloud/QQ/163/Outlook/Other) with per-provider setup steps and
+ * an "open app-passwords" link, adaptive labels/placeholders, and email-domain
+ * auto-detect; plus its .mm-providers/.mm-chip/.mm-help/.mm-steps/.mm-link CSS.
  */
-const EXPECTED_LENGTH = 152765;
+const EXPECTED_LENGTH = 162414;
 const EXPECTED_SHA256 =
-  "10f9f81fae155277f61c110eccca9e3c7de95d455ca4b170b46d681c3b5557b2";
+  "521bb9c7d8016825b7a8cda02a41e552ddaae66fc2753a278b78e127b011fa03";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);

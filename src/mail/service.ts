@@ -27,6 +27,50 @@ function defaultConnector(account: MailAccount, secret: MailSecret): MailConnect
   throw new Error(`unknown mail provider: ${account.provider}`);
 }
 
+/**
+ * Verify an account can actually sign in, by attempting a single-message fetch.
+ * Resolves on success; throws on auth / host / network failure so the connect
+ * UI can turn that into a plain-language hint instead of silently storing an
+ * unusable mailbox. `timeoutMs` bounds a dead host so it cannot hang the caller.
+ */
+export async function probeAccount(
+  account: Pick<MailAccount, "provider" | "email" | "host" | "port">,
+  secret: MailSecret,
+  opts: { connectorFactory?: ConnectorFactory; now?: () => number; timeoutMs?: number } = {},
+): Promise<void> {
+  const now = opts.now ?? Date.now;
+  const factory = opts.connectorFactory ?? defaultConnector;
+  const full: MailAccount = {
+    id: "probe",
+    provider: account.provider,
+    email: account.email,
+    host: account.host,
+    port: account.port,
+    addedAt: now(),
+    enabled: true,
+  };
+  const connector = factory(full, secret);
+  const run = connector.listSince({ sinceMs: now() - 24 * 60 * 60 * 1000, limit: 1 });
+  run.catch(() => {}); // if the timeout wins the race, don't leak an unhandled rejection
+  try {
+    if (opts.timeoutMs && opts.timeoutMs > 0) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("timed out reaching the mail server")), opts.timeoutMs);
+      });
+      try {
+        await Promise.race([run, timeout]);
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+    } else {
+      await run;
+    }
+  } finally {
+    await connector.close().catch(() => {});
+  }
+}
+
 /** Local YYYY-MM-DD for a timestamp. */
 export function localDate(ms: number): string {
   const d = new Date(ms);
