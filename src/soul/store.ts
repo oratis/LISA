@@ -279,6 +279,58 @@ function parseDesireFile(slug: string, raw: string): DesireEntry {
   return { slug, what, why, actionable, heartbeatPrompt, pursuit, bornAt: born };
 }
 
+/**
+ * Per-slug "last activity" timestamp (ISO), from the newer of the desire file
+ * and its progress file mtime, floored at bornAt. Cheap (fs.stat) and reflects
+ * BOTH authoring (add/revise rewrite <slug>.md) and pursuit (the heartbeat
+ * appends <slug>.progress.md). Feeds pickCurrentDesire so "current" tracks real
+ * events instead of filesystem-listing accident.
+ */
+export async function desireActivity(
+  desires: DesireEntry[],
+): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  for (const d of desires) {
+    let ms = Date.parse(d.bornAt) || 0;
+    for (const f of [desireFile(d.slug), desireProgressFile(d.slug)]) {
+      try {
+        const st = await fs.stat(f);
+        ms = Math.max(ms, Math.floor(st.mtimeMs));
+      } catch {
+        // progress file often doesn't exist yet — not an error
+      }
+    }
+    out[d.slug] = new Date(ms).toISOString();
+  }
+  return out;
+}
+
+/**
+ * Pick the single desire to surface as "current". Prefers actionable desires
+ * (the ones actually driving the heartbeat); within the chosen pool, the most
+ * recently active wins. Pure — the caller passes activity timestamps (the I/O
+ * lives in desireActivity), so this stays trivially testable. null when empty.
+ *
+ * Because the ordering key is a stored timestamp, the pick is STABLE between
+ * real events and only moves when something actually happens (a desire is
+ * added, revised, pursued, or closed) — that's fidelity, not per-request
+ * flicker, and it replaces the old fs.readdir-order accident.
+ */
+export function pickCurrentDesire(
+  desires: DesireEntry[],
+  activityAt?: Record<string, string>,
+): DesireEntry | null {
+  if (desires.length === 0) return null;
+  const recency = (d: DesireEntry): number => {
+    const a = activityAt?.[d.slug];
+    const fromActivity = a ? Date.parse(a) : NaN;
+    return Number.isNaN(fromActivity) ? Date.parse(d.bornAt) || 0 : fromActivity;
+  };
+  const actionable = desires.filter((d) => d.actionable);
+  const pool = actionable.length > 0 ? actionable : desires;
+  return [...pool].sort((x, y) => recency(y) - recency(x))[0] ?? null;
+}
+
 /** Can the autonomous heartbeat pursue this desire unattended? Pure (R4). */
 export function isAutoPursuable(d: DesireEntry): boolean {
   return !!(d.actionable && d.heartbeatPrompt) && d.pursuit !== "needs-user";

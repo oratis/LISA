@@ -27,7 +27,7 @@ import {
   countUserMessages,
   decideReflect,
 } from "./reflect-scheduler.js";
-import { listDesires } from "../soul/store.js";
+import { listDesires, desireActivity, pickCurrentDesire } from "../soul/store.js";
 import { ISLAND_HTML } from "./island.js";
 import { ROOM_HTML } from "./room.js";
 import { MAIN_HTML } from "./lisa-html.js";
@@ -833,8 +833,11 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       let currentDesire: string | null = null;
       try {
         const desires = await listDesires();
-        const actionable = desires.find((d) => d.actionable);
-        currentDesire = (actionable ?? desires[0])?.what ?? null;
+        // Surface the most recently ACTIVE desire (authored or pursued), not
+        // whichever actionable one fs.readdir happened to list first — so the
+        // ticker moves when something real changes. See PLAN_DESIRE_EVOLUTION.
+        const activity = await desireActivity(desires);
+        currentDesire = pickCurrentDesire(desires, activity)?.what ?? null;
       } catch {
         // listDesires can fail before soul is born; that's fine.
       }
