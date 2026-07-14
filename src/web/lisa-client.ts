@@ -1710,6 +1710,7 @@ if ('serviceWorker' in navigator) {
     room: document.getElementById('viewRoom'),
     sense: document.getElementById('viewSense'),
     memory: document.getElementById('viewMemory'),
+    kb: document.getElementById('viewKb'),
   };
   var loaded = {};
   var active = 'chat';
@@ -1759,6 +1760,8 @@ if ('serviceWorker' in navigator) {
 
   // ── view switching ──────────────────────────────────────────────
   function loadView(name) {
+    // KB builds once, then refreshes its list on every re-show (it changes).
+    if (name === 'kb') { if (!loaded.kb) { loaded.kb = true; loadKb(); } else { loadKbList(); } return; }
     if (loaded[name]) return;
     loaded[name] = true;
     if (name === 'dashboard') loadDashboard();
@@ -2051,6 +2054,92 @@ if ('serviceWorker' in navigator) {
       });
     }
   }
+
+  // ── Knowledge base view (docs/PLAN_KNOWLEDGE_BASE_v1.0.md) ──────────
+  function kbRenderList(entries, container) {
+    if (!entries || !entries.length) {
+      container.innerHTML = '<div class="view-empty">Nothing here yet. In Chat, select messages and "Add to KB", or ask Lisa to save something.</div>';
+      return;
+    }
+    var html = '';
+    for (var i = 0; i < entries.length; i++) {
+      var e = entries[i];
+      var tags = (e.tags && e.tags.length) ? e.tags.map(function (t) { return '#' + t; }).join(' ') : '';
+      html += '<button class="kb-item" data-layer="' + esc(e.layer) + '" data-slug="' + esc(e.slug) + '">'
+        + '<span class="kb-row"><span class="kb-badge ' + esc(e.layer) + '">' + (e.layer === 'wiki' ? 'wiki' : 'source') + '</span>'
+        + '<span class="kb-title">' + esc(e.title) + '</span></span>'
+        + (tags ? '<span class="kb-tags">' + esc(tags) + '</span>' : '')
+        + (e.excerpt ? '<span class="kb-excerpt">' + esc(e.excerpt) + '</span>' : '')
+        + '</button>';
+    }
+    container.innerHTML = html;
+    var items = container.querySelectorAll('.kb-item');
+    for (var j = 0; j < items.length; j++) {
+      items[j].addEventListener('click', function () {
+        kbOpen(this.getAttribute('data-layer'), this.getAttribute('data-slug'));
+      });
+    }
+  }
+  function kbOpen(layer, slug) {
+    var reader = document.getElementById('kbReader');
+    if (!reader) return;
+    reader.classList.add('open');
+    reader.innerHTML = '<div class="view-empty">loading…</div>';
+    getJSON('/api/kb/entry?layer=' + encodeURIComponent(layer) + '&slug=' + encodeURIComponent(slug)).then(function (d) {
+      if (!d || !d.entry) { reader.innerHTML = '<div class="view-empty">not found</div>'; return; }
+      var e = d.entry;
+      var meta = [];
+      if (e.tags && e.tags.length) meta.push('tags: ' + e.tags.join(', '));
+      if (e.sources && e.sources.length) meta.push('sources: ' + e.sources.join(', '));
+      if (e.origin) meta.push('origin: ' + e.origin);
+      reader.innerHTML =
+        '<div class="kb-reader-head"><span class="kb-badge ' + esc(e.layer) + '">' + (e.layer === 'wiki' ? 'wiki' : 'source') + '</span>'
+        + '<h3>' + esc(e.title) + '</h3><button class="kb-del" title="Delete">✕</button></div>'
+        + (meta.length ? '<div class="kb-reader-meta">' + esc(meta.join('  ·  ')) + '</div>' : '')
+        + '<pre class="kb-reader-body">' + esc(e.body) + '</pre>';
+      var del = reader.querySelector('.kb-del');
+      if (del) del.addEventListener('click', function () {
+        if (window.confirm('Delete "' + e.title + '"? This removes it from your knowledge base.')) kbDelete(e.layer, e.slug);
+      });
+    });
+  }
+  function kbDelete(layer, slug) {
+    fetch('/api/kb/remove', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ layer: layer, slug: slug }) })
+      .then(function () {
+        var reader = document.getElementById('kbReader');
+        if (reader) { reader.classList.remove('open'); reader.innerHTML = ''; }
+        loadKbList();
+      });
+  }
+  var kbSearchTimer = null;
+  function loadKbList() {
+    var listEl = document.getElementById('kbList');
+    if (!listEl) return;
+    var box = document.getElementById('kbSearch');
+    var q = box ? box.value : '';
+    if (q && q.trim()) {
+      getJSON('/api/kb/search?q=' + encodeURIComponent(q)).then(function (d) {
+        kbRenderList((d && d.hits) || [], listEl);
+      });
+    } else {
+      getJSON('/api/kb').then(function (d) {
+        kbRenderList((d && d.entries) || [], listEl);
+      });
+    }
+  }
+  function loadKb() {
+    views.kb.innerHTML =
+      '<div class="view-head"><div><h2>Knowledge Base</h2><div class="vh-sub">Sources + wiki · live search</div></div></div>'
+      + '<div class="kb-searchbar"><input id="kbSearch" class="kb-search" type="text" placeholder="Search your knowledge base…" autocomplete="off"></div>'
+      + '<div class="kb-body"><div id="kbList" class="kb-list"></div><div id="kbReader" class="kb-reader"></div></div>';
+    var s = document.getElementById('kbSearch');
+    if (s) s.addEventListener('input', function () {
+      if (kbSearchTimer) clearTimeout(kbSearchTimer);
+      kbSearchTimer = setTimeout(loadKbList, 200);
+    });
+    loadKbList();
+  }
+  window.lisaReloadKb = loadKbList;
 
   // ── live refresh: wrap the agent-session refresh so the active console
   //    view + the Control nav count update on SSE agent_session_update.

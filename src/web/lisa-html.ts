@@ -77,6 +77,7 @@ ${MAIN_CSS}
       <button class="nav-item" type="button" data-view="room"><span class="nav-ico">⌂</span>Room</button>
       <button class="nav-item" type="button" data-view="sense"><span class="nav-ico">◉</span>Sense</button>
       <button class="nav-item" type="button" data-view="memory"><span class="nav-ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:block;margin:auto"><path d="M2 6h4M2 10h4M2 14h4M2 18h4"/><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M16 2v20"/></svg></span>Memory</button>
+      <button class="nav-item" type="button" data-view="kb"><span class="nav-ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:block;margin:auto"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg></span>Knowledge</button>
     </nav>
 
     <!-- Currently wanting -->
@@ -195,6 +196,7 @@ ${MAIN_CSS}
     </section>
     <section class="view" id="viewSense"></section>
     <section class="view" id="viewMemory"></section>
+    <section class="view" id="viewKb"></section>
   </div>
 </div>
 

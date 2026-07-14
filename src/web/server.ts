@@ -1740,6 +1740,73 @@ self.addEventListener('fetch', (event) => {
       return;
     }
 
+    // ── Personal knowledge base (docs/PLAN_KNOWLEDGE_BASE_v1.0.md) ──────
+    if (req.method === "GET" && url.startsWith("/api/kb/search")) {
+      const q = new URL(url, "http://localhost").searchParams.get("q") ?? "";
+      const { searchKb } = await import("../kb/search.js");
+      const hits = q.trim() ? await searchKb(q, 25) : [];
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ hits }));
+      return;
+    }
+    if (req.method === "GET" && url.startsWith("/api/kb/entry")) {
+      const p = new URL(url, "http://localhost").searchParams;
+      const layer = p.get("layer") === "wiki" ? "wiki" : "sources";
+      const { readEntry } = await import("../kb/store.js");
+      const entry = await readEntry(layer, p.get("slug") ?? "").catch(() => null);
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ entry }));
+      return;
+    }
+    if (req.method === "GET" && url === "/api/kb") {
+      const { listEntries } = await import("../kb/store.js");
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ entries: await listEntries() }));
+      return;
+    }
+    if (req.method === "POST" && url === "/api/kb/add") {
+      let body = "";
+      for await (const chunk of req) body += chunk.toString("utf8");
+      let payload: { title?: string; content?: string; tags?: string[]; origin?: string };
+      try {
+        payload = JSON.parse(body || "{}");
+      } catch {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("bad json");
+        return;
+      }
+      const content = (payload.content ?? "").trim();
+      if (!content) {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("empty content");
+        return;
+      }
+      const title = (payload.title ?? "").trim() || content.split("\n")[0]!.slice(0, 60) || "capture";
+      const { addSource } = await import("../kb/store.js");
+      const entry = await addSource({ title, body: content, tags: payload.tags, origin: payload.origin || "chat" });
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, entry: { layer: entry.layer, slug: entry.slug, title: entry.title } }));
+      return;
+    }
+    if (req.method === "POST" && url === "/api/kb/remove") {
+      let body = "";
+      for await (const chunk of req) body += chunk.toString("utf8");
+      let payload: { layer?: string; slug?: string };
+      try {
+        payload = JSON.parse(body || "{}");
+      } catch {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("bad json");
+        return;
+      }
+      const layer = payload.layer === "wiki" ? "wiki" : "sources";
+      const { removeEntry } = await import("../kb/store.js");
+      const removed = await removeEntry(layer, payload.slug ?? "").catch(() => false);
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: removed }));
+      return;
+    }
+
     if (req.method === "GET" && url === "/api/tools") {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(

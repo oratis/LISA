@@ -867,6 +867,47 @@ export const MAIN_CSS = `  :root {
   .mem-btn .mem-ico { font-size: 16px; width: 20px; text-align: center; }
   .mem-btn .mem-sub { margin-left: auto; font-size: 11px; color: var(--fg-3); font-weight: 400; }
 
+  /* ── Knowledge base view ── */
+  .kb-searchbar { padding: 12px 24px 0; }
+  .kb-search {
+    width: 100%; box-sizing: border-box; font-family: inherit; font-size: 13px;
+    padding: 9px 12px; border-radius: 9px; border: 1px solid var(--border);
+    background: var(--bg-card); color: var(--fg); outline: none;
+  }
+  .kb-search:focus { border-color: var(--accent); }
+  .kb-body { flex: 1; min-height: 0; display: flex; overflow: hidden; }
+  .kb-list { width: 320px; flex-shrink: 0; overflow-y: auto; padding: 12px 16px 20px; border-right: 1px solid var(--border); }
+  .kb-item {
+    display: block; width: 100%; text-align: left; font-family: inherit; cursor: pointer;
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 9px 11px; margin-bottom: 8px; color: var(--fg);
+  }
+  .kb-item:hover { background: var(--bg-card-strong); border-color: var(--border-strong); }
+  .kb-row { display: flex; align-items: center; gap: 7px; }
+  .kb-badge {
+    flex-shrink: 0; font-size: 9.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 2px 6px; border-radius: 5px; background: var(--accent-soft); color: var(--accent);
+  }
+  .kb-badge.sources { background: rgba(255,255,255,0.06); color: var(--fg-3); }
+  .kb-title { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .kb-tags { display: block; margin-top: 4px; font-size: 10.5px; color: var(--accent); opacity: 0.85; }
+  .kb-excerpt { display: block; margin-top: 4px; font-size: 11.5px; color: var(--fg-3); line-height: 1.45; max-height: 34px; overflow: hidden; }
+  .kb-reader { flex: 1; min-width: 0; overflow-y: auto; padding: 18px 24px 26px; display: none; }
+  .kb-reader.open { display: block; }
+  .kb-reader-head { display: flex; align-items: center; gap: 10px; }
+  .kb-reader-head h3 { margin: 0; font-size: 15px; font-weight: 700; color: var(--fg); flex: 1; }
+  .kb-del {
+    flex-shrink: 0; font-family: inherit; cursor: pointer; font-size: 12px; line-height: 1;
+    background: transparent; border: 1px solid var(--border); border-radius: 7px; color: var(--fg-3); padding: 5px 8px;
+  }
+  .kb-del:hover { border-color: #e0555f; color: #e0555f; }
+  .kb-reader-meta { margin-top: 6px; font-size: 11px; color: var(--fg-3); }
+  .kb-reader-body { margin-top: 14px; white-space: pre-wrap; word-wrap: break-word; font-family: inherit; font-size: 13px; line-height: 1.6; color: var(--fg-2); }
+  @media (max-width: 720px) {
+    .kb-body { flex-direction: column; }
+    .kb-list { width: auto; border-right: 0; border-bottom: 1px solid var(--border); max-height: 45%; }
+  }
+
   #log {
     overflow-y: auto;
     padding: 22px 28px 24px;
