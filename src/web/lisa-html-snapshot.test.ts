@@ -40,10 +40,13 @@ import { MAIN_HTML } from "./lisa-html.js";
  * Then: Lisa Room (#214) — a ⌂ Room nav item + #viewRoom with a lazily-loaded
  * /room iframe, its loadView branch, and a window "message" listener so the
  * Room iframe's "Talk to her" switches back to the chat view in place.
+ * Then: Room v2 — the room→parent bridge moved to a richer, same-origin-guarded
+ * {type:'lisa-room', action, prefill} protocol (open-chat / switch-view) at
+ * module scope; the old room_open_chat listener was removed as superseded.
  */
-const EXPECTED_LENGTH = 152122;
+const EXPECTED_LENGTH = 152765;
 const EXPECTED_SHA256 =
-  "0525ba195dec8cc853483839016d7aa60acc174901c5564c87fb168da5153c25";
+  "10f9f81fae155277f61c110eccca9e3c7de95d455ca4b170b46d681c3b5557b2";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);
