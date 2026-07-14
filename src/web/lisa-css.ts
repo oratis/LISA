@@ -920,6 +920,139 @@ export const MAIN_CSS = `  :root {
     margin-left: auto;
   }
 
+  /* ── Rendered Markdown (Lisa's chat bubbles + idle reflection cards) ──
+     .msg / .idle-block carry HTML from renderMarkdown() (source-injected in
+     lisa-html.ts). The base .msg keeps white-space:pre-wrap for the user's
+     plain-text bubble; the block children below reset to normal flow and carry
+     the hierarchy. Scoped to both so idle "★" notes render the same way. */
+  :is(.msg, .idle-block) > :first-child { margin-top: 0; }
+  :is(.msg, .idle-block) > :last-child { margin-bottom: 0; }
+  :is(.msg, .idle-block) :is(h1, h2, h3, h4, h5, h6, p, ul, ol, li, blockquote, table, td, th) { white-space: normal; }
+  :is(.msg, .idle-block) p { margin: 0 0 0.6em; }
+  :is(.msg, .idle-block) :is(h1, h2, h3, h4, h5, h6) {
+    margin: 1em 0 0.5em;
+    line-height: 1.3;
+    font-weight: 650;
+    color: var(--fg);
+    letter-spacing: 0.01em;
+  }
+  :is(.msg, .idle-block) h1 { font-size: 18px; }
+  :is(.msg, .idle-block) h2 {
+    font-size: 15.5px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid var(--border-new);
+  }
+  :is(.msg, .idle-block) h3 { font-size: 13.5px; color: #cfe9ff; }
+  :is(.msg, .idle-block) :is(h4, h5, h6) { font-size: 13px; color: var(--fg-2); }
+  :is(.msg, .idle-block) strong { font-weight: 680; color: #fff; }
+  :is(.msg, .idle-block) em { font-style: italic; color: var(--fg-2); }
+  :is(.msg, .idle-block) a {
+    color: var(--accent);
+    text-decoration: none;
+    border-bottom: 1px solid rgba(106, 212, 255, 0.35);
+  }
+  :is(.msg, .idle-block) a:hover { border-bottom-color: var(--accent); }
+  :is(.msg, .idle-block) :is(ul, ol) { margin: 0 0 0.6em; padding-left: 1.4em; }
+  :is(.msg, .idle-block) li { margin: 0.18em 0; }
+  :is(.msg, .idle-block) li::marker { color: var(--accent); }
+  :is(.msg, .idle-block) :is(ul, ol) :is(ul, ol) { margin: 0.18em 0 0; }
+  :is(.msg, .idle-block) blockquote {
+    margin: 0 0 0.6em;
+    padding: 0.35em 0 0.35em 0.9em;
+    border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+    color: var(--fg-2);
+    font-style: italic;
+    background: linear-gradient(90deg, var(--accent-soft), transparent 80%);
+  }
+  :is(.msg, .idle-block) hr {
+    border: 0;
+    height: 1px;
+    margin: 0.9em 0;
+    background: linear-gradient(90deg, transparent, var(--border-strong), transparent);
+  }
+  :is(.msg, .idle-block) :not(pre) > code {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 0.86em;
+    background: rgba(106, 212, 255, 0.10);
+    color: #a9e6ff;
+    border: 1px solid rgba(106, 212, 255, 0.16);
+    border-radius: 5px;
+    padding: 0.05em 0.36em;
+  }
+
+  /* fenced code block: header (lang + copy) over a scrollable <pre> */
+  .md-code {
+    margin: 0 0 0.6em;
+    border: 1px solid var(--border-new);
+    border-radius: 10px;
+    overflow: hidden;
+    background: rgba(3, 5, 18, 0.55);
+  }
+  .md-code-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 11px;
+    border-bottom: 1px solid var(--border-new);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 10.5px;
+    color: var(--fg-3);
+    letter-spacing: 0.05em;
+  }
+  .md-code-head .md-lang { color: var(--accent); text-transform: lowercase; }
+  .md-code .md-copy {
+    margin-left: auto;
+    font-family: inherit;
+    font-size: 10.5px;
+    color: var(--fg-3);
+    background: transparent;
+    border: 1px solid var(--border-new);
+    border-radius: 6px;
+    padding: 2px 9px;
+    cursor: pointer;
+  }
+  .md-code .md-copy:hover { color: var(--fg); border-color: var(--border-strong); }
+  .md-code pre {
+    margin: 0;
+    padding: 11px 13px;
+    overflow-x: auto;
+    white-space: pre;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    color: #d7e0ff;
+  }
+  .md-code pre code {
+    font: inherit;
+    color: inherit;
+    background: none;
+    border: 0;
+    padding: 0;
+  }
+
+  /* table */
+  .md-table {
+    margin: 0 0 0.6em;
+    overflow-x: auto;
+    border: 1px solid var(--border-new);
+    border-radius: 10px;
+  }
+  .md-table table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  .md-table th, .md-table td {
+    text-align: left;
+    padding: 7px 12px;
+    border-bottom: 1px solid var(--border-new);
+  }
+  .md-table th {
+    background: rgba(106, 212, 255, 0.07);
+    color: #bff0ff;
+    font-weight: 650;
+    letter-spacing: 0.03em;
+  }
+  .md-table tr:last-child td { border-bottom: 0; }
+  .md-table tbody tr:nth-child(even) td { background: rgba(255, 255, 255, 0.02); }
+
   /* Thinking indicator */
   .thinking {
     font-size: 12px;

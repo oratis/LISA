@@ -28,6 +28,22 @@
 
 import { MAIN_CSS } from "./lisa-css.js";
 import { MAIN_CLIENT_JS } from "./lisa-client.js";
+import { renderMarkdown } from "./md-render.js";
+
+/**
+ * Source-injected Markdown renderer (same pattern as agent-roster.ts →
+ * island.ts): the browser runs this exact, unit-tested function rather than a
+ * hand-escaped copy inside the no-interpolation MAIN_CLIENT_JS literal. It sits
+ * in the same <script> right before MAIN_CLIENT_JS, so the client can call
+ * `renderMarkdown(...)` directly.
+ *
+ * The leading `function __name(t){return t}` is an identity shim: when the
+ * server runs under tsx, esbuild's keepNames wraps this function's nested
+ * helpers in `__name(...)` calls that ride along in `.toString()`; the shim
+ * makes them no-ops. The production tsc build emits no such calls, so it's
+ * unused there. (md-render.test.ts rebuilds under the same shim.)
+ */
+const MD_RENDER_JS = `function __name(t){return t}\n${renderMarkdown}`;
 
 export const MAIN_HTML = `<!doctype html>
 <html lang="en"><head>
@@ -255,6 +271,7 @@ ${MAIN_CSS}
 </div>
 
 <script>
+${MD_RENDER_JS}
 ${MAIN_CLIENT_JS}
 </script>
 </body></html>`;

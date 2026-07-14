@@ -43,10 +43,18 @@ import { MAIN_HTML } from "./lisa-html.js";
  * Then: Room v2 — the room→parent bridge moved to a richer, same-origin-guarded
  * {type:'lisa-room', action, prefill} protocol (open-chat / switch-view) at
  * module scope; the old room_open_chat listener was removed as superseded.
+ * Then: Markdown rendering for Lisa's chat bubbles — a source-injected
+ * renderMarkdown() (md-render.ts, preceded by a `__name` shim) added to the
+ * page <script> before MAIN_CLIENT_JS, its styled-element CSS in lisa-css.ts,
+ * and the streaming + history paths now feeding her text through it instead of
+ * textContent. NB: the injected bytes are this function's `.toString()`, so
+ * they track the test transpiler (tsx/esbuild); recompute after an esbuild bump.
+ * Then: idle "★" reflection cards now render Markdown too — the chat CSS scope
+ * widened to :is(.msg, .idle-block) and buildIdleBlock feeds renderMarkdown.
  */
-const EXPECTED_LENGTH = 152765;
+const EXPECTED_LENGTH = 165212;
 const EXPECTED_SHA256 =
-  "10f9f81fae155277f61c110eccca9e3c7de95d455ca4b170b46d681c3b5557b2";
+  "6f93f27b1256e916d30b21349acfbd6cf715c5f868f43d991f7345d0115a097f";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);

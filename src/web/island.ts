@@ -14,6 +14,7 @@
  */
 
 import { mergeAgentSession, aggregateAgentState, rosterLabel, formatActivity } from "./agent-roster.js";
+import { renderMarkdown, MD_RENDER_CSS } from "./md-render.js";
 
 export const ISLAND_HTML = `<!doctype html>
 <html lang="en">
@@ -23,6 +24,7 @@ export const ISLAND_HTML = `<!doctype html>
 <title>Lisa · island</title>
 <link rel="manifest" href="/manifest.webmanifest">
 <style>
+${MD_RENDER_CSS}
   :root {
     color-scheme: dark;
     --bg: rgba(8, 12, 24, 0.92);
@@ -550,7 +552,7 @@ export const ISLAND_HTML = `<!doctype html>
     </div>
     <div id="idle-section">
       <div class="section-label">★ while you were away</div>
-      <div id="idle-body"></div>
+      <div id="idle-body" class="md-render"></div>
     </div>
     <div id="suggestion-section">
       <div class="section-label">💡 suggested next step</div>
@@ -590,6 +592,11 @@ export const ISLAND_HTML = `<!doctype html>
   ${aggregateAgentState}
   ${rosterLabel}
   ${formatActivity}
+  // Markdown renderer for Lisa's ★ reflection text (idle-body). Source-injected
+  // like the roster fns; the __name shim absorbs esbuild keepNames wrappers so
+  // the same source runs under tsx and the tsc build.
+  function __name(t){return t}
+  ${renderMarkdown}
   // Composite identity for a roster row: the same sessionId seen under two
   // agents (e.g. a git + a shell observer) are DISTINCT rows. Mirrors the
   // key mergeAgentSession uses; the UI keys per-row history, open-state, and
@@ -774,7 +781,7 @@ export const ISLAND_HTML = `<!doctype html>
     body.classList.toggle('has-unread', state.unread);
     body.classList.toggle('has-claude', state.agentSessions.length > 0);
     desireBody.textContent = state.desire || '(nothing actively pursued)';
-    idleBody.textContent   = state.idleText || '';
+    idleBody.innerHTML     = renderMarkdown(state.idleText || '');
     btnDismiss.classList.toggle('muted', !state.unread);
     btnDismiss.disabled = !state.unread;
     body.classList.toggle('has-suggestion', !!state.suggestion);

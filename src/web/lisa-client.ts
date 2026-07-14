@@ -450,7 +450,8 @@ function buildIdleBlock(text, at) {
   }
   block.appendChild(head);
   const bodyEl = document.createElement('div');
-  bodyEl.textContent = text;
+  // Idle notes are Lisa's own reflections → render their Markdown too.
+  bodyEl.innerHTML = renderMarkdown(text);
   block.appendChild(bodyEl);
   return block;
 }
@@ -725,7 +726,9 @@ function prependHistoryMessages(messages) {
     roleDiv.textContent = msg.role === 'user' ? 'YOU' : 'LISA';
     const span = document.createElement('span');
     span.className = 'msg';
-    span.textContent = text;
+    // Lisa's replies are Markdown → render; the user's own text is shown as-is.
+    if (msg.role === 'user') span.textContent = text;
+    else span.innerHTML = renderMarkdown(text);
     fragment.appendChild(roleDiv);
     fragment.appendChild(span);
   }
@@ -1053,6 +1056,44 @@ function ensureLisaSpan() {
   return currentLisaSpan;
 }
 
+// ── live Markdown render for Lisa's streaming bubble ─────────────────
+// Lisa streams standard Markdown. Accumulate the raw text on the span
+// (span._md) and re-render it to HTML with the source-injected renderMarkdown
+// (defined just above this script in lisa-html.ts), throttled to one paint per
+// animation frame so long replies stay smooth. flushLisaRender() forces a
+// final synchronous paint at segment/turn boundaries so nothing is left
+// half-parsed (e.g. an as-yet-unclosed code fence).
+let mdFrame = 0;
+function paintLisaSpan() {
+  if (currentLisaSpan && currentLisaSpan._md != null) {
+    currentLisaSpan.innerHTML = renderMarkdown(currentLisaSpan._md);
+    log.scrollTop = log.scrollHeight;
+  }
+}
+function scheduleLisaRender() {
+  if (mdFrame) return;
+  mdFrame = requestAnimationFrame(function () { mdFrame = 0; paintLisaSpan(); });
+}
+function flushLisaRender() {
+  if (mdFrame) { cancelAnimationFrame(mdFrame); mdFrame = 0; }
+  paintLisaSpan();
+}
+
+// Copy button on rendered code blocks. Event-delegated on the log container so
+// it keeps working across the streaming bubble's innerHTML re-renders.
+log.addEventListener('click', function (e) {
+  const btn = (e.target && e.target.closest) ? e.target.closest('.md-copy') : null;
+  if (!btn) return;
+  const block = btn.closest('.md-code');
+  const pre = block ? block.querySelector('pre') : null;
+  if (!pre) return;
+  navigator.clipboard.writeText(pre.textContent || '').then(function () {
+    const prev = btn.textContent;
+    btn.textContent = 'copied';
+    setTimeout(function () { btn.textContent = prev; }, 1200);
+  }).catch(function () {});
+});
+
 function previewInput(name, input) {
   if (!input || typeof input !== 'object') return '';
   const order = ['command', 'pattern', 'query', 'path', 'description', 'audio_path', 'text', 'name', 'action', 'entry'];
@@ -1144,9 +1185,12 @@ async function runChat(message, filesToSend) {
         if (!m) continue;
         const ev = JSON.parse(m[1]);
         if (ev.type === 'text') {
-          ensureLisaSpan().textContent += ev.text;
+          const span = ensureLisaSpan();
+          span._md = (span._md || '') + ev.text;
+          scheduleLisaRender();
         } else if (ev.type === 'tool_start') {
           if (thinkingEl) { thinkingEl.remove(); thinkingEl = null; }
+          flushLisaRender();
           currentLisaSpan = null;
           const block = el('div', 'tool-block', null);
           const head = document.createElement('div');
@@ -1182,6 +1226,7 @@ async function runChat(message, filesToSend) {
           fail(ev.message);
         } else if (ev.type === 'done') {
           if (thinkingEl) { thinkingEl.remove(); thinkingEl = null; }
+          flushLisaRender();
         }
       }
     }
