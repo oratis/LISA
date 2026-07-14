@@ -152,6 +152,20 @@ export const ROOM_HTML = `<!doctype html>
   #lisa-wrap.sleep #lisa.blink { background-position: 0 0; }
   #lisa-wrap.sleep #shadow { width: 26vmin; }
 
+  /* Presence beat (Phase B) — she looks up and meets your eyes. Single frame,
+     swapped in for ~1.6s when you open the room / focus the window / hover. */
+  #lisa.lookup {
+    background-image: url('/assets/room/lisa-lookup.png');
+    background-size: 100% 100%; background-position: 0 0;
+    filter: drop-shadow(0 0 14px rgba(106,212,255,0.45)) drop-shadow(0 10px 10px rgba(0,0,0,0.32));
+  }
+  /* Ambient activities at the standing spot (Phase C) — single-frame poses she
+     drifts through on her own when idle (reading / tea / music / stretch). */
+  #lisa-wrap.act-read    #lisa { background-image: url('/assets/room/lisa-read.png');    background-size: 100% 100%; background-position: 0 0; }
+  #lisa-wrap.act-tea     #lisa { background-image: url('/assets/room/lisa-tea.png');     background-size: 100% 100%; background-position: 0 0; }
+  #lisa-wrap.act-stretch #lisa { background-image: url('/assets/room/lisa-stretch.png'); background-size: 100% 100%; background-position: 0 0; }
+  #lisa-wrap.act-listen  #lisa { background-image: url('/assets/room/lisa-listen.png');  background-size: 100% 100%; background-position: 0 0; }
+
   /* Monitor glow — sits over the desk's screen; pulses while she's thinking. */
   #glow-monitor {
     position: absolute; left: 13.5%; top: 51.5%; width: 12%; height: 10%;
@@ -206,6 +220,40 @@ export const ROOM_HTML = `<!doctype html>
     animation: letterPulse 2.2s ease-in-out infinite; z-index: -1;
   }
   @keyframes letterPulse { 0%,100% { opacity: 0.35; transform: scale(0.9); } 50% { opacity: 0.9; transform: scale(1.08); } }
+
+  /* Phase D: the bookshelf is a clickable hotspot — "what she's been thinking
+     about" surfaces her REAL current desire (object-as-interface, in-client). */
+  #shelf {
+    position: absolute; left: 17%; top: 21%; width: 21%; height: 37%;
+    cursor: pointer; pointer-events: auto; border-radius: 8px;
+    transition: background 220ms ease, box-shadow 220ms ease;
+  }
+  #shelf:hover {
+    background: radial-gradient(60% 50% at 50% 50%, rgba(106,212,255,0.12), transparent 72%);
+    box-shadow: 0 0 24px rgba(106,212,255,0.10) inset;
+  }
+  #recall {
+    position: fixed; inset: 0; z-index: 40; display: none;
+    align-items: center; justify-content: center; padding: 24px;
+    background: rgba(4,6,14,0.6); backdrop-filter: blur(6px);
+  }
+  #recall.open { display: flex; }
+  #recall .rcard {
+    max-width: 420px; width: 100%;
+    background: var(--ink); border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 16px; padding: 22px 24px;
+    box-shadow: 0 30px 80px rgba(0,0,0,0.6);
+    font-size: 14.5px; line-height: 1.6; color: var(--fg);
+  }
+  #recall .rcard h3 {
+    margin: 0 0 12px; font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--accent);
+  }
+  #recall .rclose {
+    margin-top: 16px; display: inline-block; cursor: pointer;
+    padding: 7px 14px; border-radius: 10px; font-weight: 600; font-size: 13px;
+    background: rgba(106,212,255,0.16); color: var(--fg);
+  }
 
   /* Weather / ambient particles live here (built in JS). */
   #weather { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
@@ -336,6 +384,7 @@ export const ROOM_HTML = `<!doctype html>
     <div id="letter" role="button" aria-label="Read Lisa's note">
       <div class="halo"></div><div class="env"></div>
     </div>
+    <div id="shelf" role="button" aria-label="What Lisa has been thinking about" title="what she's been thinking about"></div>
     <div id="vignette"></div>
   </div>
 
@@ -357,6 +406,12 @@ export const ROOM_HTML = `<!doctype html>
     <span class="close" id="reader-close">Close</span>
   </div></div>
 
+  <div id="recall"><div class="rcard">
+    <h3>✦ on her mind</h3>
+    <div id="recall-text"></div>
+    <span class="rclose" id="recall-close">Close</span>
+  </div></div>
+
   <div id="offline">
     <div class="z">☾</div>
     <div>Lisa is asleep</div>
@@ -372,7 +427,7 @@ export const ROOM_HTML = `<!doctype html>
 
   var state = {
     mood: 'neutral', online: false, thinking: false, dreaming: false,
-    unread: false, idleText: '', desire: null, tod: null,
+    unread: false, idleText: '', desire: null, tod: null, activity: null,
   };
 
   // ── Mood → a short "what she's doing" caption. Keeps the room honest:
@@ -438,6 +493,55 @@ export const ROOM_HTML = `<!doctype html>
     var p = poseFor();
     lisaWrap.classList.toggle('sit', p === 'sit');
     lisaWrap.classList.toggle('sleep', p === 'sleep');
+    clearActivityIfBusy();
+    applyActivity();
+  }
+
+  // ── Phase C: autonomous ambient life. When she's idle-standing (no real work
+  // or Reve signal), she drifts through gentle AT-HOME activities on her own —
+  // honest "she's home, resting", never fabricated work or a fake mood. When a
+  // real signal arrives (work mood / thinking / dreaming) the activity clears. ─
+  var ACT = ['read', 'tea', 'listen', 'stretch'];
+  var ACT_CAPTION = { read: 'reading', tea: 'having some tea', listen: 'listening to music', stretch: 'stretching' };
+  function idleEligible() {
+    return state.online && !state.thinking && !state.dreaming && poseFor() === 'stand';
+  }
+  function applyActivity() {
+    ACT.forEach(function (a) { lisaWrap.classList.toggle('act-' + a, state.activity === a); });
+  }
+  function clearActivityIfBusy() {
+    if (state.activity && !idleEligible()) { state.activity = null; applyActivity(); }
+  }
+  function pickActivity() {
+    // time-weighted; null = just stand and rest; avoid immediate repeat.
+    var pool = state.tod === 'night' ? ['read', 'tea', 'listen', 'listen', null]
+             : state.tod === 'dusk'  ? ['tea', 'read', 'listen', null, 'stretch']
+             :                         ['stretch', 'read', 'listen', null, null];
+    var pick, tries = 0;
+    do { pick = pool[Math.floor(Math.random() * pool.length)]; tries++; } while (pick === state.activity && tries < 5);
+    return pick;
+  }
+  var ambientTimer = null;
+  function ambientTick() {
+    if (idleEligible()) state.activity = pickActivity();
+    else state.activity = null;
+    applyActivity(); refreshCaption();
+    scheduleAmbient();
+  }
+  function scheduleAmbient() {
+    clearTimeout(ambientTimer);
+    ambientTimer = setTimeout(ambientTick, 22000 + Math.random() * 26000);
+  }
+
+  // ── Phase B: presence beat — she looks up and meets your eyes (BSide's most
+  // praised "aliveness" moment). Fires on room open / window focus / hover,
+  // only while she's plainly standing idle. ─────────────────────────────────
+  var lookupTimer = null;
+  function presenceBeat() {
+    if (poseFor() !== 'stand' || state.activity || document.hidden) return;
+    lisa.classList.add('lookup');
+    clearTimeout(lookupTimer);
+    lookupTimer = setTimeout(function () { lisa.classList.remove('lookup'); }, 1600);
   }
   function setMood(slug) {
     if (!slug) return;
@@ -449,7 +553,9 @@ export const ROOM_HTML = `<!doctype html>
   // Blink: briefly flip to the eyes-closed frame, only while standing idle.
   function scheduleBlink() {
     setTimeout(function () {
-      if (poseFor() === 'stand' && !document.hidden) {
+      // Only the standing idle sheet has a blink frame — never during an
+      // activity pose, the look-up beat, or a sit/sleep single-frame image.
+      if (poseFor() === 'stand' && !state.activity && !lisa.classList.contains('lookup') && !document.hidden) {
         lisa.classList.add('blink');
         setTimeout(function () { lisa.classList.remove('blink'); }, 130);
       }
@@ -460,6 +566,7 @@ export const ROOM_HTML = `<!doctype html>
     if (!state.online) { doing.textContent = 'away'; return; }
     if (state.dreaming) { doing.textContent = 'dreaming…'; return; }
     if (state.thinking) { doing.textContent = 'thinking…'; return; }
+    if (state.activity) { doing.textContent = ACT_CAPTION[state.activity]; return; }
     doing.textContent = CAPTION[state.mood] || 'at home';
   }
   function refreshDot() {
@@ -530,6 +637,17 @@ export const ROOM_HTML = `<!doctype html>
   // Reading the letter marks it read.
   $('reader-close').addEventListener('click', dismissUnread);
 
+  // ── Phase D: bookshelf → recall her REAL current desire (in-client card). ──
+  $('shelf').addEventListener('click', function () {
+    $('recall-text').textContent = state.desire
+      ? ('She\\'s been wanting to ' + String(state.desire).replace(/^to\\s+/i, '').replace(/\\s*$/, ''))
+      : 'Nothing pressing on her mind right now — she\\'s just at home.';
+    $('recall').classList.add('open');
+  });
+  function closeRecall() { $('recall').classList.remove('open'); }
+  $('recall-close').addEventListener('click', closeRecall);
+  $('recall').addEventListener('click', function (e) { if (e.target === $('recall')) closeRecall(); });
+
   // ── In-client action bridge — NEVER opens a browser. ────────────────────
   // Room usually runs as the #viewRoom iframe inside the main GUI, so the
   // primary path is postMessage → parent GUI (same WKWebView). Falls back to
@@ -599,7 +717,7 @@ export const ROOM_HTML = `<!doctype html>
       var m; try { m = JSON.parse(ev.data); } catch (e) { return; }
       switch (m.type) {
         case 'mood': setMood(m.slug); break;
-        case 'chat_start': state.thinking = true; body.classList.add('thinking'); refreshDot(); refreshCaption(); break;
+        case 'chat_start': state.thinking = true; body.classList.add('thinking'); clearActivityIfBusy(); refreshDot(); refreshCaption(); break;
         case 'chat_end':   state.thinking = false; body.classList.remove('thinking'); refreshDot(); refreshCaption(); break;
         case 'idle_start': state.dreaming = true; body.classList.add('dreaming'); applyTOD(); applyPose(); refreshDot(); refreshCaption(); refreshDesire(); break;
         case 'idle_done':
@@ -620,6 +738,11 @@ export const ROOM_HTML = `<!doctype html>
   applyTOD();
   applyPose();
   scheduleBlink();
+  scheduleAmbient();                                   // Phase C: autonomous ambient life
+  setTimeout(presenceBeat, 900);                       // Phase B: greet you on open
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) presenceBeat(); });
+  window.addEventListener('focus', presenceBeat);
+  lisa.addEventListener('mouseenter', presenceBeat);
   pollPing();
   subscribe();
   setInterval(pollPing, 30000);

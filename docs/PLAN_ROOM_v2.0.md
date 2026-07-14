@@ -4,6 +4,8 @@
 >
 > 参考：BSide 深度调研（本文 §2，附源）、[docs/PLAN_ROOM_v1.0.md](PLAN_ROOM_v1.0.md)、[src/web/room.ts](../src/web/room.ts)、[src/web/island.ts](../src/web/island.ts)。
 > 编写日期：2026-07-14。本文含**现状 review + 对齐计划 + 客户端内闭环架构 + 正反方辩论 + 分阶段计划**。
+>
+> **✅ 实现状态（2026-07-14）**：Phase **A**（客户端内闭环 + SW network-first）、**B**（抬头对视 presence beat：开房间/窗口聚焦/悬停时她抬头看你）、**C**（自主活动库 read/tea/listen/stretch + 时段加权调度 + 中性字幕，守 §0 诚实线）、**D-lite**（点书架回响她真实 `current_desire`）**均已落地、验证并部署到 :5757**。房间随时间的道具堆积（Phase D 完整版）、换装/换景、ambient 声音（Phase E）留作后续。
 
 ---
 
