@@ -135,3 +135,61 @@ describe("renderMarkdown — source-injection safety (browser runs .toString())"
     assert.ok(!/\bimport\b/.test(s));
   });
 });
+
+describe("renderMarkdown — fenced code info strings (no infinite loop)", () => {
+  // Each has a 2s cap: the pre-fix opener regex /```(\w*)\s*$/ rejected these
+  // info strings while isFence() accepted them, wedging the block loop forever.
+  test("```c# renders a code block (does not hang)", { timeout: 2000 }, () => {
+    const html = renderMarkdown("```c#\nvar x = 1;\n```");
+    assert.ok(html.includes('<span class="md-lang">c#</span>'));
+    assert.ok(html.includes("<pre><code>var x = 1;</code></pre>"));
+  });
+
+  test("```objective-c / ```c++ render (do not hang)", { timeout: 2000 }, () => {
+    assert.ok(renderMarkdown("```objective-c\ncode\n```").includes('<span class="md-lang">objective-c</span>'));
+    assert.ok(renderMarkdown("```c++\ncode\n```").includes('<span class="md-lang">c++</span>'));
+  });
+
+  test("only the first info-string token is kept as the lang", { timeout: 2000 }, () => {
+    const html = renderMarkdown('```js title="app.js"\nx\n```');
+    assert.ok(html.includes('<span class="md-lang">js</span>'));
+    assert.ok(html.includes("<pre><code>x</code></pre>"));
+  });
+
+  test("an unclosed fence with an odd lang terminates", { timeout: 2000 }, () => {
+    const html = renderMarkdown("intro\n\n```c#\ndangling");
+    assert.ok(html.includes('<span class="md-lang">c#</span>'));
+    assert.ok(html.includes("<p>intro</p>"));
+  });
+
+  test("a bare fence still labels as code", { timeout: 2000 }, () => {
+    assert.ok(renderMarkdown("```\nplain\n```").includes('<span class="md-lang">code</span>'));
+  });
+});
+
+describe("renderMarkdown — links keep emphasis out of the href", () => {
+  test("markdown chars inside a URL are not rewritten into the href", () => {
+    assert.equal(
+      renderMarkdown("[x](https://e.com/a**b**c)"),
+      '<p><a href="https://e.com/a**b**c" target="_blank" rel="noopener noreferrer">x</a></p>',
+    );
+  });
+
+  test("emphasis inside link text still renders", () => {
+    const html = renderMarkdown("[**bold** and _em_](https://e.com)");
+    assert.ok(html.includes('<a href="https://e.com"'));
+    assert.ok(html.includes("<strong>bold</strong>"));
+  });
+
+  test("emphasis in surrounding text still renders alongside a link", () => {
+    const html = renderMarkdown("**before** [x](https://e.com) after");
+    assert.ok(html.startsWith("<p><strong>before</strong> <a href="));
+  });
+
+  test("a quote in a URL stays escaped and cannot break the href attribute", () => {
+    assert.equal(
+      renderMarkdown('[x](https://e.com/a"onmouseover=y)'),
+      '<p><a href="https://e.com/a&quot;onmouseover=y" target="_blank" rel="noopener noreferrer">x</a></p>',
+    );
+  });
+});

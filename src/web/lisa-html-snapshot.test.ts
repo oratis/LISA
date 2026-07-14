@@ -51,10 +51,14 @@ import { MAIN_HTML } from "./lisa-html.js";
  * they track the test transpiler (tsx/esbuild); recompute after an esbuild bump.
  * Then: idle "★" reflection cards now render Markdown too — the chat CSS scope
  * widened to :is(.msg, .idle-block) and buildIdleBlock feeds renderMarkdown.
+ * Then: fixed a renderMarkdown infinite loop on fenced code with a non-\w info
+ * string (```c# / ```c++ / ```js title="x") — the fence opener now matches any
+ * info string (first token = lang); links split out of the emphasis pass so a
+ * `*`/`_` in a URL no longer mangles the href.
  */
-const EXPECTED_LENGTH = 165212;
+const EXPECTED_LENGTH = 165450;
 const EXPECTED_SHA256 =
-  "6f93f27b1256e916d30b21349acfbd6cf715c5f868f43d991f7345d0115a097f";
+  "d0a13238319f7ae7f4e616e06740590b2e798768459da7bd8949116e9acd181b";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);

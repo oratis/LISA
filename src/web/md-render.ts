@@ -87,21 +87,37 @@ export function renderMarkdown(src: string): string {
     return "";
   }
 
-  // Apply bold / italic / links to text that is ALREADY html-escaped.
-  function fmt(s: string): string {
-    // links: [text](url) — url is already escaped, so don't re-escape it.
-    s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_m, t: string, url: string) => {
-      const href = safeHref(url);
-      if (!href) return t;
-      return (
-        '<a href="' + href + '" target="_blank" rel="noopener noreferrer">' + t + "</a>"
-      );
-    });
+  // Bold / italic on text that is ALREADY html-escaped.
+  function emphasize(s: string): string {
     s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
     s = s.replace(/__([^_]+)__/g, "<strong>$1</strong>");
     // italic: a single * not adjacent to another * or whitespace
     s = s.replace(/(^|[^*])\*(?!\s)([^*\n]+?)\*/g, "$1<em>$2</em>");
     return s;
+  }
+
+  // Apply links + emphasis to text that is ALREADY html-escaped. Links are
+  // handled by SPLITTING the string rather than a single whole-string pass, so
+  // the emphasis regexes only ever touch the surrounding text and the link TEXT
+  // -- never the href. (A whole-string pass rewrote a `*`/`_` inside a URL into
+  // <em>/<strong> tags inside the href attribute, producing dead links.) The
+  // href is already escaped + scheme-checked.
+  function fmt(s: string): string {
+    const re = /\[([^\]]+)\]\(([^)\s]+)\)/g;
+    let out = "";
+    let last = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(s)) !== null) {
+      out += emphasize(s.slice(last, m.index));
+      const href = safeHref(m[2] as string);
+      const text = emphasize(m[1] as string);
+      out += href
+        ? '<a href="' + href + '" target="_blank" rel="noopener noreferrer">' + text + "</a>"
+        : text; // unsafe scheme -> drop the link, keep the text
+      last = re.lastIndex;
+    }
+    out += emphasize(s.slice(last));
+    return out;
   }
 
   // Full inline pass: pull out `code` spans first so their contents are only
@@ -199,7 +215,12 @@ export function renderMarkdown(src: string): string {
     }
 
     // fenced code block ```lang … ```
-    const fence = line.match(/^\s*```(\w*)\s*$/);
+    // Match ANY info string (not just \w*) so this opener agrees with isFence()
+    // below — otherwise a fence like ```c# / ```objective-c / ```js title="x"
+    // matches isFence but not this, falls through to the paragraph gatherer
+    // (which refuses to consume an isFence line), and `i` never advances →
+    // infinite loop. Keep only the first token as the lang label.
+    const fence = line.match(/^\s*```(\S*)/);
     if (fence) {
       i++;
       const buf: string[] = [];
@@ -309,6 +330,14 @@ export function renderMarkdown(src: string): string {
     ) {
       buf.push(lines[i] as string);
       i++;
+    }
+    // Belt-and-suspenders: the paragraph gatherer is the only branch that can
+    // consume nothing (if the line matched a block predicate no handler claimed).
+    // With the fence opener fixed that can't happen, but guarantee forward
+    // progress regardless so a future predicate mismatch can never wedge the loop.
+    if (buf.length === 0) {
+      i++;
+      continue;
     }
     html += "<p>" + inline(buf.join("\n")).replace(/\n/g, "<br>") + "</p>";
   }
