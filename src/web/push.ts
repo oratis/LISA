@@ -470,8 +470,17 @@ export class PushBridge {
   }
 
   onIdleMessage(text: string): void {
+    // The note is written in the user's language (idle runner) — match the
+    // notification title to it. Hangul → ko; kana → ja; Han-only → zh; else en.
+    const title = /[가-힯]/.test(text)
+      ? "Lisa — 자리를 비운 사이"
+      : /[぀-ヿ]/.test(text)
+        ? "Lisa — 不在のあいだに"
+        : /[一-鿿]/.test(text)
+          ? "Lisa — 你不在的时候"
+          : "Lisa — while you were away";
     this.fire(
-      { pref: "idle", title: "Lisa — while you were away", body: text.slice(0, 200), priority: "default", tag: "idle" },
+      { pref: "idle", title, body: text.slice(0, 200), priority: "default", tag: "idle" },
       `idle#${this.now()}`,
     );
   }
