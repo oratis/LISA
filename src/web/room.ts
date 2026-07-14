@@ -738,9 +738,12 @@ export const ROOM_HTML = `<!doctype html>
     ty = (e.clientY / window.innerHeight - 0.5);
   });
   function raf() {
+    requestAnimationFrame(raf);
+    // Don't burn frames or touch layout while the room isn't visible (it runs
+    // as a hidden iframe when you're on another GUI view, or when backgrounded).
+    if (document.hidden) return;
     px += (tx - px) * 0.06; py += (ty - py) * 0.06;
     stage.style.transform = 'translateX(-50%) translate(' + (-px * 14) + 'px,' + (-py * 8) + 'px)';
-    requestAnimationFrame(raf);
   }
   requestAnimationFrame(raf);
 
@@ -783,6 +786,7 @@ export const ROOM_HTML = `<!doctype html>
           state.dreaming = false; body.classList.remove('dreaming'); applyTOD(); applyPose();
           var _txt = (m.text || '').slice(0, 4000);
           if (_txt) state.letters.push(_txt);
+          if (state.letters.length > 12) state.letters = state.letters.slice(-12);  // cap the desk pile
           state.idleText = _txt;
           refreshDot(); refreshCaption(); refreshLetter();
           document.body.animate([{ filter: 'brightness(1.25)' }, { filter: 'brightness(1)' }], { duration: 700 });
