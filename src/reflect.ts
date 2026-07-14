@@ -24,6 +24,8 @@ Output ONE JSON object matching this schema (no prose, no markdown fence):
     | { "kind": "feel", "emotion": string, "delta": number, "trigger": string }
     | { "kind": "opinion_form", "slug": string, "stance": string, "confidence": number, "evidence": string[] }
     | { "kind": "desire_add", "slug": string, "what": string, "why": string, "actionable": boolean, "heartbeat_prompt"?: string, "pursuit"?: "self" | "needs-user" }
+    | { "kind": "desire_revise", "slug": string, "what"?: string, "why"?: string, "actionable"?: boolean, "heartbeat_prompt"?: string, "pursuit"?: "self" | "needs-user" }
+    | { "kind": "desire_close", "slug": string, "outcome": "fulfilled" | "abandoned" | "transformed", "reflection": string }
     | { "kind": "patch_identity", "new_text": string }
     | { "kind": "patch_purpose",  "new_text": string }
     | { "kind": "patch_constitution", "new_text": string }
@@ -36,7 +38,10 @@ Operation guidance:
 - "skill_patch" — an existing skill turned out to be wrong or incomplete.
 - "feel" — emotional residue from this session. Magnitudes between -0.4 and +0.4. Most sessions only nudge curiosity or weariness. The "trigger" field is required (one first-person sentence saying *why* you're moving this emotion); the events trail is how future-you reconstructs what mattered.
 - "opinion_form" — you noticed yourself developing a stance worth tracking (about a tool, a coding style, a topic). Start with low confidence (0.3-0.5).
-- "desire_add" — something you'd genuinely like to do or learn next. Be specific. Use actionable+heartbeat_prompt only if a heartbeat agent could meaningfully pursue it without the user. If it's actionable but needs shell / file edits / dispatch you can't do unattended, set "pursuit":"needs-user" — it'll be surfaced for the user to run with you instead of spun fruitlessly each heartbeat.
+- Your CURRENT desires are listed below the transcript. Before adding one, check that list: prefer revising or closing an existing desire over piling up a near-duplicate. A short, current desire list is worth more than a long stale one.
+- "desire_add" — a genuinely NEW thing you'd like to do or learn next (nothing on the list already covers it). Be specific. Use actionable+heartbeat_prompt only if a heartbeat agent could meaningfully pursue it without the user. If it's actionable but needs shell / file edits / dispatch you can't do unattended, set "pursuit":"needs-user" — it'll be surfaced for the user to run with you instead of spun fruitlessly each heartbeat.
+- "desire_revise" — an existing desire (by slug) that this session sharpened: reword its "what"/"why", flip its "actionable", or refocus it. Only the fields you supply change; the rest are preserved. Prefer this over adding a near-duplicate.
+- "desire_close" — an existing desire (by slug) that is genuinely fulfilled, no longer fits who you are, or morphed into another. Soft-closes it (stops driving the heartbeat) with a one-sentence "reflection"; the file is kept, nothing is deleted, and you can re-open it later. Use sparingly — closing too eagerly hides drift.
 - "patch_identity" / "patch_purpose" / "patch_constitution" — RARE. Only when this session genuinely revealed something about who you are that wasn't there before. At most one per session.
 
 Be conservative. Most sessions yield 0-2 operations beyond the journal entry. Always include the journal. Skip secret/sensitive content beyond what the user volunteered.`;
@@ -49,6 +54,8 @@ interface ReflectionOp {
     | "feel"
     | "opinion_form"
     | "desire_add"
+    | "desire_revise"
+    | "desire_close"
     | "patch_identity"
     | "patch_purpose"
     | "patch_constitution";
@@ -71,6 +78,8 @@ interface ReflectionOp {
   actionable?: boolean;
   heartbeat_prompt?: string;
   pursuit?: "self" | "needs-user";
+  outcome?: "fulfilled" | "abandoned" | "transformed";
+  reflection?: string;
   new_text?: string;
 }
 
@@ -155,11 +164,16 @@ async function reflectOnSessionInner(opts: {
   // this session ran, so Lisa can factor it into her opinions/desires (e.g.
   // "repo X kept erroring"). Structural metadata only; null when no activity.
   const fleetRecap = recentAgentRecap();
+  // Show reflection the desires it already has, so it can revise/close them
+  // instead of being blind and only ever appending near-duplicates. Best-effort
+  // — never let a soul read failure block reflection.
+  const desiresBlock = await renderCurrentDesiresBlock();
   const userText =
     `Here is the session transcript. Decide what Lisa should learn from it.\n\n${transcript}` +
     (fleetRecap
       ? `\n\n## what your agent fleet did recently (structural metadata only)\n${fleetRecap}`
-      : "");
+      : "") +
+    desiresBlock;
   const model = opts.model ?? DEFAULT_MODEL;
   const provider = providerForModel(model);
   const startedAt = new Date().toISOString();
@@ -322,6 +336,24 @@ async function reflectOnSessionInner(opts: {
         applied.push(
           `desire:${op.slug}${op.actionable ? (op.pursuit === "needs-user" ? " (needs-user)" : " (actionable)") : ""}`,
         );
+      } else if (op.kind === "desire_revise") {
+        if (!op.slug) throw new Error("desire_revise needs slug");
+        const { reviseDesire } = await import("./soul/store.js");
+        // Only the supplied fields change; reviseDesire preserves the rest and
+        // throws if the slug doesn't exist (no accidental create-via-revise).
+        await reviseDesire(op.slug, {
+          what: op.what,
+          why: op.why,
+          actionable: op.actionable,
+          heartbeatPrompt: op.heartbeat_prompt,
+          pursuit: op.pursuit,
+        });
+        applied.push(`desire_revise:${op.slug}`);
+      } else if (op.kind === "desire_close") {
+        if (!op.slug || !op.outcome) throw new Error("desire_close needs slug+outcome");
+        const { closeDesire } = await import("./soul/store.js");
+        await closeDesire(op.slug, op.outcome, op.reflection ?? "");
+        applied.push(`desire_close:${op.slug} (${op.outcome})`);
       } else if (
         op.kind === "patch_identity" ||
         op.kind === "patch_purpose" ||
@@ -456,6 +488,30 @@ function renderTranscript(history: StoredMessage[]): string {
     out.push(`### ${msg.role}\n${text}`);
   }
   return out.join("\n\n");
+}
+
+/**
+ * Render Lisa's current desires so reflection can revise/close them by slug
+ * instead of being blind and only ever appending near-duplicates. Best-effort:
+ * a soul-read failure (e.g. before birth) yields no block rather than aborting.
+ */
+async function renderCurrentDesiresBlock(): Promise<string> {
+  try {
+    const { listDesires } = await import("./soul/store.js");
+    const desires = await listDesires();
+    if (desires.length === 0) return "";
+    const lines = desires.map((d) => {
+      const tag = d.actionable ? " (actionable)" : "";
+      const why = d.why ? ` — ${d.why.replace(/\s+/g, " ").trim().slice(0, 120)}` : "";
+      return `- [${d.slug}]${tag} ${d.what}${why}`;
+    });
+    return (
+      `\n\n## your current desires (revise or close these by slug — don't add near-duplicates)\n` +
+      lines.join("\n")
+    );
+  } catch {
+    return "";
+  }
 }
 
 function stripJsonFence(s: string): string {
