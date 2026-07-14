@@ -3,12 +3,12 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { sweepAll, pollNewMail, type ConnectorFactory } from "./service.js";
+import { sweepAll, pollNewMail, probeAccount, type ConnectorFactory } from "./service.js";
 import { addAccount } from "./accounts.js";
 import { latestDigest } from "./store.js";
 import { grant } from "../consent/store.js";
 import type { Provider } from "../providers/types.js";
-import type { MailConnector, RawMail } from "./types.js";
+import type { MailAccount, MailConnector, MailSecret, RawMail } from "./types.js";
 
 async function withHome(fn: () => Promise<void>): Promise<void> {
   const prev = process.env.LISA_HOME;
@@ -145,4 +145,38 @@ test("one failing account doesn't sink the sweep", async () => {
     assert.equal(res.blocked, undefined);
     assert.equal(res.items.length, 0); // failed account contributed nothing, no throw
   });
+});
+
+test("probeAccount defers close until the probe settles — a slow success after the timeout is not leaked", async () => {
+  let closed = 0;
+  let resolveRun: (v: RawMail[]) => void = () => {};
+  const runP = new Promise<RawMail[]>((res) => {
+    resolveRun = res;
+  });
+  // A connector whose connect/list is slower than the timeout but eventually
+  // succeeds — the exact race the 20s timeout exists for.
+  const factory = (): MailConnector => ({
+    listSince: () => runP,
+    async close() {
+      closed++;
+    },
+  });
+  const acct: Pick<MailAccount, "provider" | "email" | "host" | "port"> = {
+    provider: "imap",
+    email: "me@x.com",
+    host: "imap.x.com",
+    port: 993,
+  };
+  const p = probeAccount(acct, { password: "pw" } as MailSecret, {
+    connectorFactory: factory,
+    timeoutMs: 20,
+  });
+  await assert.rejects(p, /timed out/);
+  // The underlying op hasn't settled yet, so close must NOT have fired: closing
+  // on the race (as the first cut did) would no-op here and leak the session
+  // that listSince goes on to establish.
+  assert.equal(closed, 0);
+  resolveRun([]); // connect finally succeeds, late
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(closed, 1); // cleanup ran once the op actually settled
 });

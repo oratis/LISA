@@ -47,10 +47,14 @@ import { MAIN_HTML } from "./lisa-html.js";
  * "Knowledge" nav item + #viewKb (a live-search list/reader over /api/kb*), a
  * KB select-toggle in the function bar driving a floating capture bar (chat
  * messages → md source), and the kbCapture client block, all with their CSS.
+ * Then: guided mail connect — the connect-mailbox modal gained a provider
+ * picker (Gmail/iCloud/QQ/163/Outlook/Other) with per-provider setup steps and
+ * an "open app-passwords" link, adaptive labels/placeholders, and email-domain
+ * auto-detect; plus its .mm-providers/.mm-chip/.mm-help/.mm-steps/.mm-link CSS.
  */
-const EXPECTED_LENGTH = 168871;
+const EXPECTED_LENGTH = 176573;
 const EXPECTED_SHA256 =
-  "9b5eb6a037161133fbe1df097f00c2da0d9f4e52045e72a145436d2b3a664607";
+  "96b44636fc49b5a6e6b0db76c52e361d22395d93499cbecbdcea567090177a2a";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);
