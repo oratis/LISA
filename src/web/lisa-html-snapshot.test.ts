@@ -51,10 +51,22 @@ import { MAIN_HTML } from "./lisa-html.js";
  * picker (Gmail/iCloud/QQ/163/Outlook/Other) with per-provider setup steps and
  * an "open app-passwords" link, adaptive labels/placeholders, and email-domain
  * auto-detect; plus its .mm-providers/.mm-chip/.mm-help/.mm-steps/.mm-link CSS.
+ * Then: Markdown rendering for Lisa's chat bubbles — a source-injected
+ * renderMarkdown() (md-render.ts, preceded by a `__name` shim) added to the
+ * page <script> before MAIN_CLIENT_JS, its styled-element CSS in lisa-css.ts,
+ * and the streaming + history paths now feeding her text through it instead of
+ * textContent. NB: the injected bytes are this function's `.toString()`, so
+ * they track the test transpiler (tsx/esbuild); recompute after an esbuild bump.
+ * Then: idle "★" reflection cards now render Markdown too — the chat CSS scope
+ * widened to :is(.msg, .idle-block) and buildIdleBlock feeds renderMarkdown.
+ * Then: fixed a renderMarkdown infinite loop on fenced code with a non-\w info
+ * string (```c# / ```c++ / ```js title="x") — the fence opener now matches any
+ * info string (first token = lang); links split out of the emphasis pass so a
+ * `*`/`_` in a URL no longer mangles the href.
  */
-const EXPECTED_LENGTH = 176573;
+const EXPECTED_LENGTH = 187631;
 const EXPECTED_SHA256 =
-  "96b44636fc49b5a6e6b0db76c52e361d22395d93499cbecbdcea567090177a2a";
+  "5ce16062f71d3b8cce3a51bbe95206c6843b576f61cd4ed23a2657e0ff6acdb2";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);

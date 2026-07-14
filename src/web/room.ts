@@ -24,6 +24,8 @@
  *   - POST /api/island/dismiss-unread → mark the "letter" read
  */
 
+import { renderMarkdown, MD_RENDER_CSS } from "./md-render.js";
+
 export const ROOM_HTML = `<!doctype html>
 <html lang="en">
 <head>
@@ -32,6 +34,7 @@ export const ROOM_HTML = `<!doctype html>
 <title>Lisa · room</title>
 <link rel="manifest" href="/manifest.webmanifest">
 <style>
+${MD_RENDER_CSS}
   :root {
     color-scheme: dark;
     --fg: #eef1f8;
@@ -421,7 +424,7 @@ export const ROOM_HTML = `<!doctype html>
 
   <div id="reader"><div class="card">
     <h3 id="reader-title">★ while you were away</h3>
-    <div id="reader-text"></div>
+    <div id="reader-text" class="md-render"></div>
     <span class="close" id="reader-close">Close</span>
   </div></div>
 
@@ -438,6 +441,8 @@ export const ROOM_HTML = `<!doctype html>
   </div>
 
 <script>
+function __name(t){return t}
+${renderMarkdown}
 (() => {
   var $ = function (id) { return document.getElementById(id); };
   // Localize the reader's "while you were away" title to the UI language.
@@ -673,10 +678,12 @@ export const ROOM_HTML = `<!doctype html>
 
   $('letter').addEventListener('click', function () {
     var notes = state.letters.length ? state.letters : (state.idleText ? [state.idleText] : []);
-    // Newest first, gently divided when several have piled up.
-    $('reader-text').textContent = notes.length
-      ? notes.slice().reverse().join('\\n\\n· · ·\\n\\n')
-      : '(she left before writing anything)';
+    // Newest first, gently divided by an <hr> when several have piled up. Notes
+    // are Lisa's own Markdown reflections → render them (renderMarkdown injected
+    // above), not raw text.
+    $('reader-text').innerHTML = renderMarkdown(notes.length
+      ? notes.slice().reverse().join('\\n\\n---\\n\\n')
+      : '(she left before writing anything)');
     $('reader').classList.add('open');
   });
   $('reader-close').addEventListener('click', function () { $('reader').classList.remove('open'); });
