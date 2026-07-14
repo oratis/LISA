@@ -37,10 +37,13 @@ import { MAIN_HTML } from "./lisa-html.js";
  * that modal, with .pair-qr CSS.
  * Then: composer ＋ / 🎙 glyphs → line-style SVG icons matching the .fbtn
  * function bar (+ #plusBtn/#recordBtn svg sizing; resting color → --fg-2).
+ * Then: Lisa Room (#214) — a ⌂ Room nav item + #viewRoom with a lazily-loaded
+ * /room iframe, its loadView branch, and a window "message" listener so the
+ * Room iframe's "Talk to her" switches back to the chat view in place.
  */
-const EXPECTED_LENGTH = 151331;
+const EXPECTED_LENGTH = 152122;
 const EXPECTED_SHA256 =
-  "72098d77767d32d5ca646a7aee675cc0cf4419f70956380cd18aa56d4ba9e19f";
+  "0525ba195dec8cc853483839016d7aa60acc174901c5564c87fb168da5153c25";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);

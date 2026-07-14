@@ -2,68 +2,111 @@
 import Base from "../../layouts/Base.astro";
 ---
 <Base title="隐私" lang="zh-CN" description="Lisa 隐私政策——本地优先,不向我们的服务器收集任何数据。">
-  <h1>隐私政策</h1>
-  <p><em>最后更新:2026-06-26</em></p>
+  <header class="page-head">
+    <p class="eyebrow"><span class="rule"></span> 隐私 <b>· 更新于 2026-06-26</b></p>
+    <h1>隐私政策</h1>
+    <p class="lede">
+      Lisa 是<strong>本地优先</strong>的。两个客户端 —— <strong>Lisa</strong>(macOS)和
+      <strong>Lisa Pocket</strong>(iOS)—— 连接的是<em>你自己</em>运行或选择的 Lisa 后端。
+      在正常使用下,我们不运营任何接收你个人数据的服务器,也不会出售、出租或分享任何数据。
+    </p>
+  </header>
 
-  <p>
-    Lisa 是<strong>本地优先</strong>的。两个客户端——<strong>Lisa</strong>(macOS)
-    和 <strong>Lisa Pocket</strong>(iOS)——连接的是<em>你自己</em>运行或选择的
-    Lisa 后端。在正常使用下,我们不运营任何接收你个人数据的服务器,也不会出售、
-    出租或分享任何数据。
-  </p>
+  <div class="highlight">
+    <p class="eyebrow"><b>我们收集什么</b></p>
+    <p class="big">对我们:什么都不收集。</p>
+    <p>
+      Lisa Pocket 与 Lisa 不含任何分析统计、广告标识或第三方追踪 SDK。
+      默认(本地)模式下不存在由 Lisa 运营的账户体系。
+    </p>
+  </div>
 
-  <h2>我们收集什么</h2>
-  <p>
-    <strong>对我们而言,什么都不收集。</strong>Lisa Pocket 与 Lisa 不含任何分析统计、
-    广告标识或第三方追踪 SDK。默认(本地)模式下不存在由 Lisa 运营的账户体系。
-  </p>
+  <div class="policy">
+    <section class="pol">
+      <p class="eyebrow"><b>留在你设备上的数据</b></p>
+      <ul>
+        <li>
+          <strong>连接设置</strong> —— 你后端的地址和一个设备令牌存放在你的设备上
+          (iOS 钥匙串 / 应用偏好),用于重新连接,绝不会发送给我们。
+        </li>
+        <li>
+          <strong>你的对话与 Lisa 的记忆(“灵魂”)</strong> 存放在你连接的后端上 ——
+          你自己的 Mac(位于 <code>~/.lisa</code>)或你使用的 Lisa Cloud 实例。
+          应用只是通向该后端的一扇窗。
+        </li>
+      </ul>
+    </section>
 
-  <h2>留在你设备上的数据</h2>
-  <ul>
-    <li>
-      <strong>连接设置</strong>——你后端的地址和一个设备令牌存放在你的设备上
-      (iOS 钥匙串 / 应用偏好),用于重新连接,绝不会发送给我们。
-    </li>
-    <li>
-      <strong>你的对话与 Lisa 的记忆("灵魂")</strong>存放在你连接的后端上——
-      你自己的 Mac(位于 <code>~/.lisa</code>)或你使用的 Lisa Cloud 实例。
-      应用只是通向该后端的一扇窗。
-    </li>
-  </ul>
+    <section class="pol">
+      <p class="eyebrow"><b>你的后端与大模型提供商</b></p>
+      <p>
+        当你聊天时,消息由配置在<em>你</em>后端上的大语言模型提供商
+        (如 Anthropic、智谱/GLM、OpenAI、Google)用<em>你</em>的 API key 处理,
+        受该提供商的隐私政策约束。我们不拦截、不中转。
+      </p>
+    </section>
 
-  <h2>你的后端与大模型提供商</h2>
-  <p>
-    当你聊天时,消息由配置在<em>你</em>后端上的大语言模型提供商
-    (如 Anthropic、智谱/GLM、OpenAI、Google)用<em>你</em>的 API key 处理,
-    受该提供商的隐私政策约束。我们不拦截、不中转。
-  </p>
+    <section class="pol">
+      <p class="eyebrow"><b>Lisa Cloud(可选 / 演示)</b></p>
+      <p>
+        如果你连接的是托管的 <strong>Lisa Cloud</strong> 实例而非自己的 Mac,你的消息
+        会由该实例处理以提供服务(并交给其配置的大模型提供商)。公开的审核/演示实例
+        是<strong>共享且限流</strong>的 —— 请勿在其中输入敏感信息。
+      </p>
+    </section>
 
-  <h2>Lisa Cloud(可选 / 演示)</h2>
-  <p>
-    如果你连接的是托管的 <strong>Lisa Cloud</strong> 实例而非自己的 Mac,你的消息
-    会由该实例处理以提供服务(并交给其配置的大模型提供商)。公开的审核/演示实例
-    是<strong>共享且限流</strong>的——请勿在其中输入敏感信息。
-  </p>
+    <section class="pol">
+      <p class="eyebrow"><b>通知</b></p>
+      <p>
+        若你启用推送通知,推送令牌(Apple APNs,或你自选的 ntfy 主题)
+        <em>仅</em>用于投递你主动开启的提醒,经由你配对的后端路由,不用于追踪。
+      </p>
+    </section>
 
-  <h2>通知</h2>
-  <p>
-    若你启用推送通知,推送令牌(Apple APNs,或你自选的 ntfy 主题)
-    <em>仅</em>用于投递你主动开启的提醒,经由你配对的后端路由,不用于追踪。
-  </p>
+    <section class="pol">
+      <p class="eyebrow"><b>儿童</b></p>
+      <p>Lisa 并非面向 13 岁以下儿童,也不会有意收集他们的数据。</p>
+    </section>
 
-  <h2>儿童</h2>
-  <p>Lisa 并非面向 13 岁以下儿童,也不会有意收集他们的数据。</p>
+    <section class="pol">
+      <p class="eyebrow"><b>变更</b></p>
+      <p>
+        随着应用演进,我们可能更新本政策;重大变更会在此注明新日期。源代码公开:
+        <a href="https://github.com/oratis/LISA">github.com/oratis/LISA</a>。
+      </p>
+    </section>
 
-  <h2>变更</h2>
-  <p>
-    随着应用演进,我们可能更新本政策;重大变更会在此注明新日期。源代码公开:
-    <a href="https://github.com/oratis/LISA">github.com/oratis/LISA</a>。
-  </p>
+    <section class="pol">
+      <p class="eyebrow"><b>联系</b></p>
+      <p>
+        隐私相关问题?在
+        <a href="https://github.com/oratis/LISA/issues">github.com/oratis/LISA/issues</a>
+        提 issue,或邮件 <a href="mailto:wangharp@gmail.com">wangharp@gmail.com</a>。
+      </p>
+    </section>
+  </div>
 
-  <h2>联系</h2>
-  <p>
-    隐私相关问题?在
-    <a href="https://github.com/oratis/LISA/issues">github.com/oratis/LISA/issues</a>
-    提 issue,或邮件 <a href="mailto:wangharp@gmail.com">wangharp@gmail.com</a>。
-  </p>
+  <style>
+    .page-head h1 { margin-bottom: .4rem; }
+    .lede { font-size: 1.15rem; color: var(--muted); max-width: 68ch; }
+
+    .highlight {
+      margin: 2.2rem 0 0; background: linear-gradient(180deg, var(--panel), var(--bg-elev));
+      border: 1px solid var(--border); border-left: 3px solid var(--good);
+      border-radius: 14px; padding: 1.3rem 1.5rem;
+    }
+    .highlight .eyebrow { margin-bottom: .5rem; }
+    .highlight .big {
+      font-family: var(--display); font-weight: 700; font-size: 1.55rem;
+      color: var(--ink); margin: 0 0 .5rem; letter-spacing: -0.01em;
+    }
+    .highlight p:last-child { margin: 0; max-width: 70ch; }
+
+    .policy { display: grid; gap: 2rem; margin-top: 2.2rem; }
+    .pol .eyebrow { margin-bottom: .5rem; }
+    .pol p { margin: 0; max-width: 72ch; }
+    .pol ul { margin: 0; padding-left: 1.2rem; max-width: 72ch; }
+    .pol li { margin: .5rem 0; color: var(--muted); }
+    .pol li strong { color: var(--ink); }
+  </style>
 </Base>
