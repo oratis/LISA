@@ -44,6 +44,7 @@ import { webFetchTool } from "./web_fetch.js";
 import { webSearchTool } from "./web_search.js";
 import { takoapiTool } from "./takoapi.js";
 import { writeTool } from "./write.js";
+import { kbTools } from "../kb/tool.js";
 
 export interface ToolRegistryOptions {
   includeVoice?: boolean;
@@ -101,6 +102,9 @@ export function buildToolRegistry(opts: ToolRegistryOptions = {}): ToolDefinitio
     mcpTool as ToolDefinition,
     signalAgentTool as ToolDefinition,
     agentRecapTool as ToolDefinition,
+    // Personal knowledge base (docs/PLAN_KNOWLEDGE_BASE_v1.0.md):
+    // kb_search / kb_read / kb_list (read) + kb_add / kb_write (jailed writes).
+    ...kbTools,
   ];
   if (opts.includeVoice) {
     tools.push(speakTool as ToolDefinition, transcribeTool as ToolDefinition);
@@ -127,6 +131,9 @@ export const READ_ONLY_TOOL_NAMES = new Set([
   "web_fetch",
   "web_search",
   "agent_recap",
+  "kb_search",
+  "kb_read",
+  "kb_list",
 ]);
 
 export function readOnlySubset(tools: ToolDefinition[]): ToolDefinition[] {
@@ -191,6 +198,11 @@ export const REMOTE_BLOCKED_TOOL_NAMES = new Set([
   // (channel) callers. NOT autonomous-blocked: an autonomous run may read the
   // result of work it dispatched.
   "dispatch_status",
+  // KB writes: a remote-origin message shouldn't silently add to the user's
+  // knowledge base. NOT autonomous-blocked — idle/heartbeat reflection is
+  // exactly where Lisa tends the wiki (kb_add/kb_write are path-jailed to ~/.lisa/kb).
+  "kb_add",
+  "kb_write",
 ]);
 
 export function remoteSafeSubset(tools: ToolDefinition[]): ToolDefinition[] {
