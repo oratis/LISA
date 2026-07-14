@@ -1215,6 +1215,97 @@ input.addEventListener('input', () => {
   input.style.height = Math.min(input.scrollHeight, 200) + 'px';
 });
 
+// ── KB capture: select chat messages → save to the knowledge base ────
+// (docs/PLAN_KNOWLEDGE_BASE_v1.0.md, requirement #2). Toggle select mode from
+// the function bar, tick messages, "Add to KB" writes a Layer-1 source verbatim.
+(function kbCapture() {
+  var toggle = document.getElementById('fnKbSelect');
+  var log = document.getElementById('log');
+  if (!toggle || !log) return;
+  var selecting = false;
+  var bar = null;
+
+  function selectedMsgs() { return log.querySelectorAll('.msg.kb-sel'); }
+  function updateCount() {
+    var n = selectedMsgs().length;
+    var c = document.getElementById('kbCapCount');
+    if (c) c.textContent = n + ' selected';
+    var add = document.getElementById('kbCapAdd');
+    if (add) add.disabled = n === 0;
+  }
+  function clearSel() {
+    var s = log.querySelectorAll('.msg.kb-sel');
+    for (var i = 0; i < s.length; i++) s[i].classList.remove('kb-sel');
+  }
+  function ensureBar() {
+    if (bar) return bar;
+    bar = document.createElement('div');
+    bar.id = 'kbCaptureBar';
+    bar.className = 'kb-capture-bar';
+    bar.innerHTML = '<input id="kbCapTitle" class="kb-cap-title" type="text" placeholder="Title (optional)" autocomplete="off">'
+      + '<span id="kbCapCount" class="kb-cap-count">0 selected</span>'
+      + '<button type="button" id="kbCapAdd" class="kb-cap-add">Add to KB</button>'
+      + '<button type="button" id="kbCapCancel" class="kb-cap-cancel">Cancel</button>';
+    document.body.appendChild(bar);
+    document.getElementById('kbCapCancel').addEventListener('click', function () { setSelecting(false); });
+    document.getElementById('kbCapAdd').addEventListener('click', doAdd);
+    return bar;
+  }
+  function setSelecting(on) {
+    selecting = on;
+    log.classList.toggle('kb-selecting', on);
+    toggle.classList.toggle('active', on);
+    if (on) { ensureBar().classList.add('open'); updateCount(); }
+    else { clearSel(); if (bar) bar.classList.remove('open'); }
+  }
+  toggle.addEventListener('click', function () { setSelecting(!selecting); });
+  log.addEventListener('click', function (e) {
+    if (!selecting) return;
+    var msg = e.target && e.target.closest ? e.target.closest('.msg') : null;
+    if (!msg || !log.contains(msg)) return;
+    e.preventDefault();
+    msg.classList.toggle('kb-sel');
+    updateCount();
+  });
+  function roleOf(msgEl) {
+    var prev = msgEl.previousElementSibling;
+    while (prev && !(prev.classList && prev.classList.contains('role'))) prev = prev.previousElementSibling;
+    return prev ? (prev.textContent || '').trim() : '';
+  }
+  function doAdd() {
+    var msgs = selectedMsgs();
+    if (!msgs.length) return;
+    var parts = [];
+    for (var i = 0; i < msgs.length; i++) {
+      var role = roleOf(msgs[i]) || 'MESSAGE';
+      parts.push('**' + role + ':** ' + (msgs[i].textContent || ''));
+    }
+    var content = parts.join('\\n\\n');
+    var titleEl = document.getElementById('kbCapTitle');
+    var title = titleEl ? titleEl.value.trim() : '';
+    var add = document.getElementById('kbCapAdd');
+    if (add) { add.disabled = true; add.textContent = 'Saving…'; }
+    fetch('/api/kb/add', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: title, content: content, origin: 'chat', tags: [] }) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (add) add.textContent = 'Add to KB';
+        if (titleEl) titleEl.value = '';
+        setSelecting(false);
+        if (typeof window.lisaReloadKb === 'function') window.lisaReloadKb();
+        kbToast(d && d.ok ? 'Saved to Knowledge Base' : 'Save failed');
+      })
+      .catch(function () { if (add) { add.disabled = false; add.textContent = 'Add to KB'; } kbToast('Save failed'); });
+  }
+  function kbToast(msg) {
+    var t = document.createElement('div');
+    t.className = 'kb-toast';
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(function () { t.classList.add('show'); }, 10);
+    setTimeout(function () { t.classList.remove('show'); setTimeout(function () { t.remove(); }, 300); }, 2200);
+  }
+})();
+
 // ── PWA: register service worker + iOS install hint ─────────────────
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch(err => {
@@ -1844,6 +1935,7 @@ if ('serviceWorker' in navigator) {
     room: document.getElementById('viewRoom'),
     sense: document.getElementById('viewSense'),
     memory: document.getElementById('viewMemory'),
+    kb: document.getElementById('viewKb'),
   };
   var loaded = {};
   var active = 'chat';
@@ -1893,6 +1985,8 @@ if ('serviceWorker' in navigator) {
 
   // ── view switching ──────────────────────────────────────────────
   function loadView(name) {
+    // KB builds once, then refreshes its list on every re-show (it changes).
+    if (name === 'kb') { if (!loaded.kb) { loaded.kb = true; loadKb(); } else { loadKbList(); } return; }
     if (loaded[name]) return;
     loaded[name] = true;
     if (name === 'dashboard') loadDashboard();
@@ -2185,6 +2279,92 @@ if ('serviceWorker' in navigator) {
       });
     }
   }
+
+  // ── Knowledge base view (docs/PLAN_KNOWLEDGE_BASE_v1.0.md) ──────────
+  function kbRenderList(entries, container) {
+    if (!entries || !entries.length) {
+      container.innerHTML = '<div class="view-empty">Nothing here yet. In Chat, select messages and "Add to KB", or ask Lisa to save something.</div>';
+      return;
+    }
+    var html = '';
+    for (var i = 0; i < entries.length; i++) {
+      var e = entries[i];
+      var tags = (e.tags && e.tags.length) ? e.tags.map(function (t) { return '#' + t; }).join(' ') : '';
+      html += '<button class="kb-item" data-layer="' + esc(e.layer) + '" data-slug="' + esc(e.slug) + '">'
+        + '<span class="kb-row"><span class="kb-badge ' + esc(e.layer) + '">' + (e.layer === 'wiki' ? 'wiki' : 'source') + '</span>'
+        + '<span class="kb-title">' + esc(e.title) + '</span></span>'
+        + (tags ? '<span class="kb-tags">' + esc(tags) + '</span>' : '')
+        + (e.excerpt ? '<span class="kb-excerpt">' + esc(e.excerpt) + '</span>' : '')
+        + '</button>';
+    }
+    container.innerHTML = html;
+    var items = container.querySelectorAll('.kb-item');
+    for (var j = 0; j < items.length; j++) {
+      items[j].addEventListener('click', function () {
+        kbOpen(this.getAttribute('data-layer'), this.getAttribute('data-slug'));
+      });
+    }
+  }
+  function kbOpen(layer, slug) {
+    var reader = document.getElementById('kbReader');
+    if (!reader) return;
+    reader.classList.add('open');
+    reader.innerHTML = '<div class="view-empty">loading…</div>';
+    getJSON('/api/kb/entry?layer=' + encodeURIComponent(layer) + '&slug=' + encodeURIComponent(slug)).then(function (d) {
+      if (!d || !d.entry) { reader.innerHTML = '<div class="view-empty">not found</div>'; return; }
+      var e = d.entry;
+      var meta = [];
+      if (e.tags && e.tags.length) meta.push('tags: ' + e.tags.join(', '));
+      if (e.sources && e.sources.length) meta.push('sources: ' + e.sources.join(', '));
+      if (e.origin) meta.push('origin: ' + e.origin);
+      reader.innerHTML =
+        '<div class="kb-reader-head"><span class="kb-badge ' + esc(e.layer) + '">' + (e.layer === 'wiki' ? 'wiki' : 'source') + '</span>'
+        + '<h3>' + esc(e.title) + '</h3><button class="kb-del" title="Delete">✕</button></div>'
+        + (meta.length ? '<div class="kb-reader-meta">' + esc(meta.join('  ·  ')) + '</div>' : '')
+        + '<pre class="kb-reader-body">' + esc(e.body) + '</pre>';
+      var del = reader.querySelector('.kb-del');
+      if (del) del.addEventListener('click', function () {
+        if (window.confirm('Delete "' + e.title + '"? This removes it from your knowledge base.')) kbDelete(e.layer, e.slug);
+      });
+    });
+  }
+  function kbDelete(layer, slug) {
+    fetch('/api/kb/remove', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ layer: layer, slug: slug }) })
+      .then(function () {
+        var reader = document.getElementById('kbReader');
+        if (reader) { reader.classList.remove('open'); reader.innerHTML = ''; }
+        loadKbList();
+      });
+  }
+  var kbSearchTimer = null;
+  function loadKbList() {
+    var listEl = document.getElementById('kbList');
+    if (!listEl) return;
+    var box = document.getElementById('kbSearch');
+    var q = box ? box.value : '';
+    if (q && q.trim()) {
+      getJSON('/api/kb/search?q=' + encodeURIComponent(q)).then(function (d) {
+        kbRenderList((d && d.hits) || [], listEl);
+      });
+    } else {
+      getJSON('/api/kb').then(function (d) {
+        kbRenderList((d && d.entries) || [], listEl);
+      });
+    }
+  }
+  function loadKb() {
+    views.kb.innerHTML =
+      '<div class="view-head"><div><h2>Knowledge Base</h2><div class="vh-sub">Sources + wiki · live search</div></div></div>'
+      + '<div class="kb-searchbar"><input id="kbSearch" class="kb-search" type="text" placeholder="Search your knowledge base…" autocomplete="off"></div>'
+      + '<div class="kb-body"><div id="kbList" class="kb-list"></div><div id="kbReader" class="kb-reader"></div></div>';
+    var s = document.getElementById('kbSearch');
+    if (s) s.addEventListener('input', function () {
+      if (kbSearchTimer) clearTimeout(kbSearchTimer);
+      kbSearchTimer = setTimeout(loadKbList, 200);
+    });
+    loadKbList();
+  }
+  window.lisaReloadKb = loadKbList;
 
   // ── live refresh: wrap the agent-session refresh so the active console
   //    view + the Control nav count update on SSE agent_session_update.

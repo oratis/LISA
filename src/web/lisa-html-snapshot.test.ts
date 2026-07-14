@@ -43,14 +43,18 @@ import { MAIN_HTML } from "./lisa-html.js";
  * Then: Room v2 — the room→parent bridge moved to a richer, same-origin-guarded
  * {type:'lisa-room', action, prefill} protocol (open-chat / switch-view) at
  * module scope; the old room_open_chat listener was removed as superseded.
+ * Then: personal knowledge base (docs/PLAN_KNOWLEDGE_BASE_v1.0.md) — a
+ * "Knowledge" nav item + #viewKb (a live-search list/reader over /api/kb*), a
+ * KB select-toggle in the function bar driving a floating capture bar (chat
+ * messages → md source), and the kbCapture client block, all with their CSS.
  * Then: guided mail connect — the connect-mailbox modal gained a provider
  * picker (Gmail/iCloud/QQ/163/Outlook/Other) with per-provider setup steps and
  * an "open app-passwords" link, adaptive labels/placeholders, and email-domain
  * auto-detect; plus its .mm-providers/.mm-chip/.mm-help/.mm-steps/.mm-link CSS.
  */
-const EXPECTED_LENGTH = 162414;
+const EXPECTED_LENGTH = 176573;
 const EXPECTED_SHA256 =
-  "521bb9c7d8016825b7a8cda02a41e552ddaae66fc2753a278b78e127b011fa03";
+  "96b44636fc49b5a6e6b0db76c52e361d22395d93499cbecbdcea567090177a2a";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);
