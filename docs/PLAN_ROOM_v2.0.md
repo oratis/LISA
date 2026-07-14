@@ -5,7 +5,9 @@
 > 参考：BSide 深度调研（本文 §2，附源）、[docs/PLAN_ROOM_v1.0.md](PLAN_ROOM_v1.0.md)、[src/web/room.ts](../src/web/room.ts)、[src/web/island.ts](../src/web/island.ts)。
 > 编写日期：2026-07-14。本文含**现状 review + 对齐计划 + 客户端内闭环架构 + 正反方辩论 + 分阶段计划**。
 >
-> **✅ 实现状态（2026-07-14）**：Phase **A**（客户端内闭环 + SW network-first）、**B**（抬头对视 presence beat：开房间/窗口聚焦/悬停时她抬头看你）、**C**（自主活动库 read/tea/listen/stretch + 时段加权调度 + 中性字幕，守 §0 诚实线）、**D-lite**（点书架回响她真实 `current_desire`）**均已落地、验证并部署到 :5757**。房间随时间的道具堆积（Phase D 完整版）、换装/换景、ambient 声音（Phase E）留作后续。
+> **✅ 实现状态（2026-07-14）**：Phase **A**（客户端内闭环 + SW network-first）、**B**（抬头对视 presence beat）、**C**（自主活动库 read/tea/listen/stretch/window + 时段加权调度 + 中性字幕，守 §0 诚实线）、**D**（点书架回响真实 `current_desire`；望窗活动；夜里换睡衣；多封信累积）、**Phase E 换景**（阳光房备选主题 + ❖ 一键切换，localStorage 持久化）**均已落地、验证、部署**。分三个 PR：#221（A/B/C/D-lite 核心）、#222（房间随时间：望窗+睡衣+信件累积）、换景 PR。
+>
+> **按推荐明确不做**（美术成本 ≫ 价值 / 无合适音源，见辩题 4/5）：完整换装衣橱（每套 outfit 需整套全身姿态 sprite）、ambient 声音。房间随时间的**道具堆积**（杯子/书堆等物件级痕迹）也暂缓——已用"多封信累积 + 夜里换睡衣"表达"她的一天"，物件级留痕视觉风险高、收益边际，列为后续可选。
 
 ---
 

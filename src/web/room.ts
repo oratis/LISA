@@ -81,9 +81,7 @@ export const ROOM_HTML = `<!doctype html>
     image-rendering: pixelated;
   }
   .bg.show { opacity: 1; }
-  #bg-day   { background-image: url('/assets/room/room-day.png'); }
-  #bg-dusk  { background-image: url('/assets/room/room-dusk.png'); }
-  #bg-night { background-image: url('/assets/room/room-night.png'); }
+  /* .bg layer images are set in JS (renderBg) from the chosen room theme. */
 
   /* Lighting / mood wash over the whole scene. Tint + vignette driven by state. */
   #lighting {
@@ -411,6 +409,7 @@ export const ROOM_HTML = `<!doctype html>
       <span class="doing" id="doing">at home</span>
     </div>
     <div id="spacer"></div>
+    <div class="chip" id="chip-theme" title="Redecorate the room" aria-label="Change room theme">❖</div>
     <div class="chip" id="chip-chat">Talk to her ▸</div>
   </div>
 
@@ -444,8 +443,11 @@ export const ROOM_HTML = `<!doctype html>
   var state = {
     mood: 'neutral', online: false, thinking: false, dreaming: false,
     unread: false, idleText: '', desire: null, tod: null, activity: null,
-    letters: [],
+    letters: [], theme: 'room',
   };
+  // Room theme (换景) — persisted; the .bg layer images are built from the prefix.
+  var THEMES = ['room', 'room2'];   // asset prefixes under /assets/room/
+  try { var _t = localStorage.getItem('lisa-room-theme'); if (_t && THEMES.indexOf(_t) >= 0) state.theme = _t; } catch (e) {}
 
   // ── Mood → a short "what she's doing" caption. Keeps the room honest:
   // the caption reflects her real current sprite, nothing invented. ───────
@@ -478,14 +480,20 @@ export const ROOM_HTML = `<!doctype html>
     if ((h >= 17 && h < 20) || (h >= 5 && h < 7)) return 'dusk';
     return 'night';
   }
+  function bgUrl(t) { return "url('/assets/room/" + state.theme + "-" + t + ".png')"; }
+  function renderBg() {
+    ['day', 'dusk', 'night'].forEach(function (t) {
+      var el = $('bg-' + t);
+      el.style.backgroundImage = bgUrl(t);
+      el.classList.toggle('show', t === state.tod);
+    });
+    $('backdrop').style.backgroundImage = bgUrl(state.tod);
+  }
   function applyTOD() {
     var tod = timeOfDay();
     if (tod === state.tod) return;
     state.tod = tod;
-    ['day', 'dusk', 'night'].forEach(function (t) {
-      $('bg-' + t).classList.toggle('show', t === tod);
-    });
-    $('backdrop').style.backgroundImage = "url('/assets/room/room-" + tod + ".png')";
+    renderBg();
     // Warmth of the lighting wash by time of day.
     var light = $('lighting');
     if (!body.classList.contains('dreaming')) {
@@ -712,6 +720,15 @@ export const ROOM_HTML = `<!doctype html>
   function openChat(prefill) { roomAction('open-chat', prefill ? { prefill: prefill } : {}); }
   $('chip-chat').addEventListener('click', function () { openChat(); });
   lisa.addEventListener('click', function () { openChat(); });
+
+  // Redecorate (换景) — cycle the room theme, persisted across sessions.
+  function cycleTheme() {
+    state.theme = THEMES[(THEMES.indexOf(state.theme) + 1) % THEMES.length];
+    try { localStorage.setItem('lisa-room-theme', state.theme); } catch (e) {}
+    renderBg();
+    document.body.animate([{ opacity: 0.5 }, { opacity: 1 }], { duration: 500 });
+  }
+  $('chip-theme').addEventListener('click', cycleTheme);
 
   // ── Gentle parallax: bg drifts opposite the cursor, Lisa drifts less. ────
   var px = 0, py = 0, tx = 0, ty = 0;
