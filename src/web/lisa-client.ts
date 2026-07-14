@@ -1011,25 +1011,29 @@ if (fnSearchBtn && fnFind) {
 }
 
 // Compact / sidebar mode — force the narrow stacked layout at any width, persisted.
-const compactToggleEl = document.getElementById('compactToggle');
-if (compactToggleEl) {
+// The toggle UI now lives in the Settings rail view; this block owns the state,
+// restores it on load (always — no element dependency), and exposes get/set
+// globals the Settings switch drives + reflects.
+{
   let compactOn = false;
   try { compactOn = localStorage.getItem('lisaCompact') === '1'; } catch (e) {}
   const applyCompact = () => {
     document.body.classList.toggle('force-compact', compactOn);
-    compactToggleEl.classList.toggle('on', compactOn);
-    compactToggleEl.setAttribute('aria-checked', compactOn ? 'true' : 'false');
+    const sw = document.getElementById('setCompactToggle');
+    if (sw) {
+      sw.classList.toggle('on', compactOn);
+      sw.setAttribute('aria-checked', compactOn ? 'true' : 'false');
+    }
   };
   applyCompact();
-  const toggleCompact = () => {
-    compactOn = !compactOn;
+  window.lisaGetCompact = () => compactOn;
+  window.lisaSetCompact = (on) => {
+    const next = !!on;
+    if (next === compactOn) return;
+    compactOn = next;
     try { localStorage.setItem('lisaCompact', compactOn ? '1' : '0'); } catch (e) {}
     applyCompact();
   };
-  compactToggleEl.addEventListener('click', toggleCompact);
-  compactToggleEl.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleCompact(); }
-  });
 }
 
 let currentLisaSpan = null;
@@ -1630,7 +1634,15 @@ if ('serviceWorker' in navigator) {
     try {
       const a = await fetch('/api/mail/accounts').then(function (r) { return r.ok ? r.json() : null; });
       const d = await fetch('/api/mail/digest').then(function (r) { return r.ok ? r.json() : null; });
-      renderMail(a ? a.accounts : [], d ? d.digest : null);
+      const accounts = a ? a.accounts : [];
+      const digest = d ? d.digest : null;
+      renderMail(accounts, digest);
+      // Nav 九宫格 Mail tile badge = "needs you" count (blank when none).
+      const needs = digest && digest.needsYou ? digest.needsYou : [];
+      const nb = document.getElementById('navMailCount');
+      if (nb) nb.textContent = needs.length ? String(needs.length) : '';
+      // Keep an open Mail rail view in sync.
+      if (typeof window.lisaMailViewRender === 'function') window.lisaMailViewRender(accounts, digest);
     } catch (e) {}
   };
 
@@ -1672,6 +1684,9 @@ if ('serviceWorker' in navigator) {
     if (startEl) startEl.addEventListener('click', submitMail);
     if (passEl) passEl.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); submitMail(); } });
   }
+  // Exposed so the Mail rail view (setupConsole/loadMail) reuses the same
+  // connect-mailbox modal instead of duplicating it.
+  window.lisaOpenMailModal = openMailModal;
   var sbMailConnectBtn = document.getElementById('sbMailConnectBtn');
   if (sbMailConnectBtn) sbMailConnectBtn.addEventListener('click', openMailModal);
 
@@ -1710,6 +1725,8 @@ if ('serviceWorker' in navigator) {
     room: document.getElementById('viewRoom'),
     sense: document.getElementById('viewSense'),
     memory: document.getElementById('viewMemory'),
+    mail: document.getElementById('viewMail'),
+    settings: document.getElementById('viewSettings'),
   };
   var loaded = {};
   var active = 'chat';
@@ -1766,6 +1783,8 @@ if ('serviceWorker' in navigator) {
     else if (name === 'reve') loadReve();
     else if (name === 'sense') loadSense();
     else if (name === 'memory') loadMemory();
+    else if (name === 'mail') loadMail();
+    else if (name === 'settings') loadSettings();
     else if (name === 'room') { var rf = document.getElementById('roomFrame'); if (rf && !rf.getAttribute('src')) rf.setAttribute('src', '/room'); }
   }
   function showView(name) {
@@ -1790,11 +1809,13 @@ if ('serviceWorker' in navigator) {
   //  top of this file — it handles the richer {type:'lisa-room', action, prefill}
   //  protocol the Room now posts, superseding the old room_open_chat listener.)
 
-  // ── proactive toggle ────────────────────────────────────────────
-  var ptEl = document.getElementById('proactiveToggle');
+  // ── proactive autonomy state (the toggle UI now lives in the Settings rail
+  //    view; this owns the state + keeps the Dashboard proactive panel and the
+  //    Settings switch in sync via setProactiveUI) ─────────────────────────
   function setProactiveUI(on) {
     proactiveOn = !!on;
-    if (ptEl) { ptEl.classList.toggle('on', proactiveOn); ptEl.setAttribute('aria-checked', proactiveOn ? 'true' : 'false'); }
+    var sw = document.getElementById('setProactiveToggle');
+    if (sw) { sw.classList.toggle('on', proactiveOn); sw.setAttribute('aria-checked', proactiveOn ? 'true' : 'false'); }
     var pp = document.getElementById('ppPanel');
     if (pp) {
       pp.classList.toggle('off', !proactiveOn);
@@ -1814,10 +1835,6 @@ if ('serviceWorker' in navigator) {
       .then(function (r) { return r && r.ok ? r.json() : null; })
       .then(function (j) { if (j && typeof j.enabled === 'boolean') setProactiveUI(j.enabled); else setProactiveUI(!on); })
       .catch(function () { setProactiveUI(!on); });
-  }
-  if (ptEl) {
-    ptEl.addEventListener('click', toggleProactive);
-    ptEl.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleProactive(); } });
   }
   syncProactive();
 
@@ -2050,6 +2067,146 @@ if ('serviceWorker' in navigator) {
         else if (w === 'plans' && typeof showPlans === 'function') showPlans();
       });
     }
+  }
+
+  // ── Mail (full rail view — reuses the sidebar mail endpoints and adds the
+  //    per-account management the compact sidebar card lacks) ──────────────
+  function mailNeedsRow(i) {
+    var urgent = i.importance >= 3;
+    return '<div class="mail-row">' +
+      '<span class="mail-bang' + (urgent ? ' urgent' : '') + '">' + (urgent ? '‼' : '!') + '</span>' +
+      '<span class="mail-subj" title="' + esc((i.from || '') + ' — ' + (i.reason || '')) + '">' + esc(i.subject || '(no subject)') + '</span>' +
+      '</div>';
+  }
+  function renderMailView(accounts, digest) {
+    var scroll = document.getElementById('mailScroll');
+    if (!scroll) return;
+    accounts = accounts || [];
+    var needs = (digest && digest.needsYou) ? digest.needsYou : [];
+    var html = '';
+    if (!accounts.length) {
+      html += '<div class="v-card"><div class="view-empty" style="padding:6px 0">No mailbox connected yet. Connect one for a daily classified digest — read-only, stored locally (0600).</div></div>';
+    } else {
+      html += '<div class="view-sec-label">Digest</div><div class="v-card">';
+      html += '<div class="mail-summary">' + esc(digest && digest.summary ? digest.summary : 'No digest yet — sweep to build one.') + '</div>';
+      if (needs.length) { for (var n = 0; n < needs.length; n++) html += mailNeedsRow(needs[n]); }
+      else html += '<div class="view-empty" style="padding:6px 0">Nothing needs you right now.</div>';
+      html += '</div>';
+      html += '<div class="view-sec-label">Mailboxes</div><div class="v-card">';
+      for (var a = 0; a < accounts.length; a++) {
+        var ac = accounts[a];
+        var on = ac.enabled !== false;
+        html += '<div class="v-row"><div class="v-main">' +
+          '<div class="v-name">' + esc(ac.label || ac.email || ac.id) + '</div>' +
+          '<div class="v-sub">' + esc((ac.email || '') + (ac.host ? ' · ' + ac.host : '')) + '</div></div>' +
+          '<button class="v-toggle' + (on ? ' on' : '') + '" data-mail-id="' + esc(ac.id) + '" data-mail-act="' + (on ? 'disable' : 'enable') + '">' + (on ? 'on' : 'off') + '</button>' +
+          '<button class="v-del" data-mail-id="' + esc(ac.id) + '" data-mail-act="remove">remove</button></div>';
+      }
+      html += '</div>';
+    }
+    scroll.innerHTML = html;
+    var btns = scroll.querySelectorAll('[data-mail-act]');
+    for (var b = 0; b < btns.length; b++) {
+      btns[b].addEventListener('click', function () {
+        var id = this.getAttribute('data-mail-id');
+        var act = this.getAttribute('data-mail-act');
+        if (act === 'remove' && !window.confirm('Remove this mailbox from Lisa? Access is read-only; nothing is deleted on the server.')) return;
+        this.disabled = true;
+        fetch('/api/mail/accounts/' + encodeURIComponent(id) + '/' + act, { method: 'POST' })
+          .then(function () { if (window.refreshMail) window.refreshMail(); })
+          .catch(function () {});
+      });
+    }
+  }
+  window.lisaMailViewRender = renderMailView;
+  function loadMail() {
+    views.mail.innerHTML =
+      '<div class="view-head"><div><h2>Mail</h2><div class="vh-sub">Daily classified digest · read-only</div></div>' +
+      '<button class="view-act" id="mailConnectBtn">＋ Connect mailbox</button></div>' +
+      '<div class="view-scroll"><div id="mailScroll"><div class="view-empty">loading…</div></div>' +
+      '<div style="margin-top:14px"><button class="view-act" id="mailSweepBtn" style="background:var(--bg-3);color:var(--fg)">Sweep now</button></div></div>';
+    var cb = document.getElementById('mailConnectBtn');
+    if (cb) cb.addEventListener('click', function () { if (window.lisaOpenMailModal) window.lisaOpenMailModal(); });
+    var sb = document.getElementById('mailSweepBtn');
+    if (sb) sb.addEventListener('click', function () {
+      sb.disabled = true; sb.textContent = 'Sweeping…';
+      fetch('/api/mail/sweep', { method: 'POST' })
+        .then(function () { if (window.refreshMail) window.refreshMail(); })
+        .catch(function () {})
+        .then(function () { sb.disabled = false; sb.textContent = 'Sweep now'; });
+    });
+    if (window.refreshMail) window.refreshMail();
+  }
+
+  // ── Settings (API keys · Proactive · Compact · About) ─────────────────
+  function renderSettings(status, edition) {
+    var scroll = document.getElementById('settingsScroll');
+    if (!scroll) return;
+    status = status || {};
+    var chip = function (ok) { return '<span class="set-chip' + (ok ? ' ok' : '') + '">' + (ok ? 'configured' : 'not set') + '</span>'; };
+    var compactOn = (typeof window.lisaGetCompact === 'function') ? window.lisaGetCompact() : false;
+    var edName = (edition && edition.edition) ? edition.edition : '—';
+    var sw = function (id, on) {
+      return '<div class="set-switch' + (on ? ' on' : '') + '" id="' + id + '" role="switch" aria-checked="' + (on ? 'true' : 'false') + '" tabindex="0"><span class="knob"></span></div>';
+    };
+    var html = '';
+    html += '<div class="view-sec-label">API Keys</div><div class="set-card">';
+    html += '<div class="set-row"><div class="set-main"><div class="set-name">Anthropic</div><div class="set-sub">Required · powers Lisa</div></div>' + chip(!!status.anthropic) + '</div>';
+    html += '<div class="set-row"><div class="set-main"><div class="set-name">OpenAI</div><div class="set-sub">Optional · for gpt-* models</div></div>' + chip(!!status.openai) + '</div>';
+    html += '<div class="set-form">' +
+      '<input class="set-input" id="setAnthropicKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-… (leave blank to keep)">' +
+      '<input class="set-input" id="setOpenaiKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-… (optional)">' +
+      '<div style="display:flex;gap:10px;align-items:center"><button class="view-act" id="setKeySave">Save keys</button><span class="set-err" id="setKeyMsg"></span></div>' +
+      '<div class="set-note">Saved to ~/.lisa/config.env (0600), on this machine. Accepted from localhost only.</div></div>';
+    html += '</div>';
+    html += '<div class="view-sec-label">Automation</div><div class="set-card">';
+    html += '<div class="set-row"><div class="set-main"><div class="set-name">Proactive mode</div><div class="set-sub">Let Lisa watch your agents, tasks and signals and act when you are away</div></div>' + sw('setProactiveToggle', proactiveOn) + '</div>';
+    html += '</div>';
+    html += '<div class="view-sec-label">Display</div><div class="set-card">';
+    html += '<div class="set-row"><div class="set-main"><div class="set-name">Compact mode</div><div class="set-sub">Dock Lisa as a narrow stacked panel at any window width</div></div>' + sw('setCompactToggle', compactOn) + '</div>';
+    html += '</div>';
+    html += '<div class="view-sec-label">About</div><div class="set-card">';
+    html += '<div class="set-row"><div class="set-main"><div class="set-name">Edition</div><div class="set-sub">Runtime build</div></div><span class="set-chip">' + esc(edName) + '</span></div>';
+    html += '<div class="set-row"><div class="set-main"><div class="set-name">Anthropic Console</div><div class="set-sub">Manage billing &amp; keys</div></div><a class="set-chip" href="https://console.anthropic.com/" target="_blank" rel="noopener">open ↗</a></div>';
+    html += '</div>';
+    scroll.innerHTML = html;
+
+    var pt = document.getElementById('setProactiveToggle');
+    if (pt) {
+      pt.addEventListener('click', toggleProactive);
+      pt.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleProactive(); } });
+    }
+    var ct = document.getElementById('setCompactToggle');
+    if (ct) {
+      var flip = function () { if (window.lisaSetCompact) window.lisaSetCompact(!(window.lisaGetCompact && window.lisaGetCompact())); };
+      ct.addEventListener('click', flip);
+      ct.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip(); } });
+    }
+    var saveBtn = document.getElementById('setKeySave');
+    if (saveBtn) saveBtn.addEventListener('click', function () {
+      var aEl = document.getElementById('setAnthropicKey');
+      var oEl = document.getElementById('setOpenaiKey');
+      var msg = document.getElementById('setKeyMsg');
+      var body = {};
+      if (aEl && aEl.value.trim()) body.anthropicKey = aEl.value.trim();
+      if (oEl && oEl.value.trim()) body.openaiKey = oEl.value.trim();
+      if (!body.anthropicKey && !body.openaiKey) { if (msg) { msg.style.color = ''; msg.textContent = 'Enter a key to update.'; } return; }
+      if (msg) { msg.style.color = ''; msg.textContent = 'Saving…'; }
+      saveBtn.disabled = true;
+      fetch('/api/config/save', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+        .then(function (r) { if (!r.ok) return r.text().then(function (t) { throw new Error(t || ('failed (' + r.status + ')')); }); return r.json(); })
+        .then(function () { if (aEl) aEl.value = ''; if (oEl) oEl.value = ''; if (msg) { msg.style.color = 'var(--proactive)'; msg.textContent = 'Saved.'; } loadSettings(); })
+        .catch(function (err) { if (msg) { msg.style.color = ''; msg.textContent = (err && err.message) ? err.message : 'save failed'; } })
+        .then(function () { saveBtn.disabled = false; });
+    });
+    // Refresh Proactive state from the server so the switch reflects truth.
+    syncProactive();
+  }
+  function loadSettings() {
+    views.settings.innerHTML =
+      '<div class="view-head"><div><h2>Settings</h2><div class="vh-sub">Keys · automation · display</div></div></div>' +
+      '<div class="view-scroll"><div id="settingsScroll"><div class="view-empty">loading…</div></div></div>';
+    Promise.all([getJSON('/api/config/status'), getJSON('/api/edition')]).then(function (res) { renderSettings(res[0], res[1]); });
   }
 
   // ── live refresh: wrap the agent-session refresh so the active console

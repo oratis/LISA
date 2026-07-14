@@ -43,10 +43,16 @@ import { MAIN_HTML } from "./lisa-html.js";
  * Then: Room v2 — the room→parent bridge moved to a richer, same-origin-guarded
  * {type:'lisa-room', action, prefill} protocol (open-chat / switch-view) at
  * module scope; the old room_open_chat listener was removed as superseded.
+ * Then: nav → 九宫格 (3×3 tile grid, unified line-SVG icons) growing from 7 to 9
+ * tiles: new Mail + Settings rail views (#viewMail/#viewSettings, loadMail/
+ * loadSettings). Mail reuses /api/mail/* and adds per-account enable/disable/
+ * remove + a nav "needs-you" badge; Settings hosts API-key management
+ * (/api/config/*), the Proactive autonomy switch, and the Compact-mode switch —
+ * both toggles relocated out of the sidebar footer into Settings.
  */
-const EXPECTED_LENGTH = 152765;
+const EXPECTED_LENGTH = 171392;
 const EXPECTED_SHA256 =
-  "10f9f81fae155277f61c110eccca9e3c7de95d455ca4b170b46d681c3b5557b2";
+  "8c8972930c2e77cdeaf5d2cf46f4aebd96a9a19c892bd51be68195a5e9d44821";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);
