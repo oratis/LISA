@@ -21,6 +21,12 @@ import {
 import { listSessionsOnDisk } from "../sessions/list.js";
 import { SessionStore } from "../sessions/store.js";
 import { reflectOnSession } from "../reflect.js";
+import {
+  DEFAULT_REFLECT_DEBOUNCE_MS,
+  REFLECT_CHECK_INTERVAL_MS,
+  countUserMessages,
+  decideReflect,
+} from "./reflect-scheduler.js";
 import { listDesires } from "../soul/store.js";
 import { ISLAND_HTML } from "./island.js";
 import { ROOM_HTML } from "./room.js";
@@ -512,10 +518,16 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
 
   // ── Idle mode ───────────────────────────────────────────────────────
   let idleRunning = false;
+  // Declared here (rather than beside the reflect scheduler below) so the dream's
+  // idle handler can also defer to an in-flight reflection: PLAN §3 wants reflect
+  // to run first, before the dream mutates history with its own "[while you were
+  // away]" note. Without this the guard is asymmetric — the scheduler blocks
+  // reflect-during-dream, but a dream could still start mid-reflect.
+  let reflecting = false;
   if (opts.idleMinutes && opts.idleMinutes > 0) {
     const watcher = getIdleWatcher(opts.idleMinutes * 60_000);
     watcher.on("idle", async () => {
-      if (idleRunning) return;
+      if (idleRunning || reflecting) return;
       idleRunning = true;
       const startedAt = new Date().toISOString();
       console.error(
@@ -584,6 +596,67 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       `[idle] watching — will fire after ${opts.idleMinutes}m of no input`,
     );
   }
+
+  // ── Reflection scheduler (PLAN_DESIRE_EVOLUTION_v1.0 §3 PR1) ──────────────
+  // The web server never exits, so end-of-session reflection had nowhere to
+  // hang — which is why web conversations never updated Lisa's desires. Reflect
+  // when a stretch of conversation goes quiet instead: after a short debounce
+  // with no user input, once, provided the human actually said something new.
+  // Clamp to a positive, finite value: `Number(env) || DEFAULT` correctly
+  // rejects NaN / "" / "0", but a negative value is truthy and would make
+  // `idleMs < debounceMs` always false → reflect ~60s into any conversation.
+  const reflectDebounceEnv = Number(process.env.LISA_REFLECT_DEBOUNCE_MS);
+  const reflectDebounceMs =
+    Number.isFinite(reflectDebounceEnv) && reflectDebounceEnv > 0
+      ? reflectDebounceEnv
+      : DEFAULT_REFLECT_DEBOUNCE_MS;
+  // Reuse the process-wide idle watcher purely as an activity clock — /chat
+  // already ticks() it. idleFor() works without start(); the idleMs we pass only
+  // matters if we happen to be its first caller, and we never use its 'idle'
+  // event here (that drives the separate, hour-long "dream" idle above).
+  const reflectClock = getIdleWatcher(reflectDebounceMs);
+  // Seed from the resumed history so we never re-reflect prior sessions on the
+  // first quiet window — only conversation added while this server is live.
+  let lastReflectedUserCount = countUserMessages(history);
+  const reflectTimer = setInterval(() => {
+    const currentUserCount = countUserMessages(history);
+    const decision = decideReflect({
+      newUserMessages: currentUserCount - lastReflectedUserCount,
+      idleMs: reflectClock.idleFor(),
+      debounceMs: reflectDebounceMs,
+      inFlight: reflecting || idleRunning,
+    });
+    if (!decision.shouldReflect) return;
+    reflecting = true;
+    const snapshot = history.slice();
+    const snapshotUserCount = currentUserCount;
+    void (async () => {
+      try {
+        const r = await reflectOnSession({
+          history: snapshot,
+          sessionId: session.id,
+          model: opts.model,
+        });
+        // Advance the marker only on success, so a failed reflect retries next
+        // tick instead of silently dropping the conversation.
+        lastReflectedUserCount = snapshotUserCount;
+        await session.appendReflection(r.summary);
+        broadcast({
+          type: "reflect_done",
+          summary: r.summary,
+          at: new Date().toISOString(),
+        });
+        console.error(`[reflect] ${decision.reason} → ${r.summary}`);
+        for (const a of r.applied) console.error(`  applied: ${a}`);
+      } catch (err) {
+        console.error(`[reflect] failed: ${(err as Error).message}`);
+      } finally {
+        reflecting = false;
+      }
+    })();
+  }, REFLECT_CHECK_INTERVAL_MS);
+  // Don't let the reflection heartbeat keep the process alive on its own.
+  reflectTimer.unref();
 
   const server = http.createServer(async (req, res) => {
     const url = req.url ?? "/";
