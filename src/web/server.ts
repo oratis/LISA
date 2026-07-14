@@ -523,12 +523,36 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       );
       broadcast({ type: "idle_start", at: startedAt });
       try {
+        // Match the note's language to how the user actually writes (the most
+        // recent non-empty user message). Language-agnostic — Lisa mirrors it.
+        let userLanguageSample: string | undefined;
+        for (let i = history.length - 1; i >= 0; i--) {
+          const m = history[i];
+          if (!m || m.role !== "user") continue;
+          let t = "";
+          if (typeof m.content === "string") {
+            t = m.content;
+          } else if (Array.isArray(m.content)) {
+            t = m.content
+              .map((b) =>
+                b && typeof b === "object" && "text" in b && typeof b.text === "string"
+                  ? b.text
+                  : "",
+              )
+              .join(" ");
+          }
+          if (t.trim()) {
+            userLanguageSample = t.trim();
+            break;
+          }
+        }
         const result = await runIdleOnce({
           tools: opts.tools,
           cwd: process.cwd(),
           signal: abort.signal,
           model: opts.model,
           idleMs: watcher.idleFor(),
+          userLanguageSample,
         });
         if (result.silent) {
           console.error("[idle] (silent)");

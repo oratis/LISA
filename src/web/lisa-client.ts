@@ -424,6 +424,37 @@ fetch('/session').then(r => r.json()).then(s => {
   if (titlebarSession) titlebarSession.textContent = '· ' + s.id;
 });
 
+// ── While-you-were-away idle note: shared card builder + localized label ──
+// Idle reflections render as a distinct card — never a plain Lisa bubble — so
+// they don't blend into her actual replies, both live (SSE) and on history
+// reload. The label follows the UI language; the note body is already written
+// in the user's language by the idle runner.
+function idleHeaderLabel() {
+  var l = (navigator.language || 'en').toLowerCase();
+  if (l.indexOf('zh') === 0) return '你不在的时候';
+  if (l.indexOf('ja') === 0) return '不在のあいだに';
+  if (l.indexOf('ko') === 0) return '자리를 비운 사이';
+  return 'WHILE YOU WERE AWAY';
+}
+function buildIdleBlock(text, at) {
+  const block = document.createElement('div');
+  block.className = 'idle-block';
+  const head = document.createElement('div');
+  head.className = 'idle-head';
+  head.textContent = '★ ' + idleHeaderLabel();
+  if (at) {
+    const time = document.createElement('span');
+    time.className = 'idle-time';
+    try { time.textContent = new Date(at).toLocaleTimeString(); } catch (e) {}
+    head.appendChild(time);
+  }
+  block.appendChild(head);
+  const bodyEl = document.createElement('div');
+  bodyEl.textContent = text;
+  block.appendChild(bodyEl);
+  return block;
+}
+
 // ── Persistent /events SSE: mood updates + idle messages + Claude
 // activity, lifetime of page.
 function connectEvents() {
@@ -443,20 +474,7 @@ function connectEvents() {
       }
     } else if (ev.type === 'idle_message') {
       if (idlePulseEl) { idlePulseEl.remove(); idlePulseEl = null; }
-      const block = document.createElement('div');
-      block.className = 'idle-block';
-      const head = document.createElement('div');
-      head.className = 'idle-head';
-      head.textContent = '★ WHILE YOU WERE AWAY';
-      const time = document.createElement('span');
-      time.className = 'idle-time';
-      try { time.textContent = new Date(ev.at).toLocaleTimeString(); } catch {}
-      head.appendChild(time);
-      block.appendChild(head);
-      const bodyEl = document.createElement('div');
-      bodyEl.textContent = ev.text;
-      block.appendChild(bodyEl);
-      log.appendChild(block);
+      log.appendChild(buildIdleBlock(ev.text, ev.at));
       log.scrollTop = log.scrollHeight;
       // sidebar reflection card mirrors the latest while-you-were-away
       if (typeof updateReflection === 'function') updateReflection(ev.text);
@@ -694,6 +712,14 @@ function prependHistoryMessages(messages) {
   for (const msg of messages) {
     const text = textOfMessage(msg);
     if (!text) continue;
+    // Idle "while you were away" notes are persisted as assistant messages with
+    // a [while you were away] sentinel — render them as the distinct idle card
+    // (not a plain Lisa bubble) so they don't blend into her real replies.
+    if (msg.role !== 'user' && /^\[while you were away\]\s*/i.test(text)) {
+      const clean = text.replace(/^\[while you were away\]\s*/i, '');
+      fragment.appendChild(buildIdleBlock(clean, msg.at || msg.ts || null));
+      continue;
+    }
     const roleDiv = document.createElement('div');
     roleDiv.className = 'role ' + (msg.role === 'user' ? 'you' : 'lisa');
     roleDiv.textContent = msg.role === 'user' ? 'YOU' : 'LISA';
@@ -1175,7 +1201,11 @@ form.addEventListener('submit', (ev) => {
 });
 
 input.addEventListener('keydown', (ev) => {
-  if (ev.key === 'Enter' && !ev.shiftKey) {
+  // Enter sends — but NEVER while an IME composition is active (Chinese /
+  // Japanese / Korean input). That Enter is confirming a candidate from the
+  // IME popup, not sending the message. isComposing covers modern browsers;
+  // keyCode 229 is the legacy signal some IMEs still fire on the confirming key.
+  if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing && ev.keyCode !== 229) {
     ev.preventDefault();
     form.dispatchEvent(new Event('submit'));
   }
@@ -1386,7 +1416,8 @@ if ('serviceWorker' in navigator) {
           inp.className = 'mc-send'; inp.type = 'text'; inp.placeholder = fam === 'pty' ? 'type into the CLI…' : 'send a follow-up…';
           inp.addEventListener('click', function (e) { e.stopPropagation(); });
           inp.addEventListener('keydown', function (e) {
-            if (e.key === 'Enter' && inp.value.trim()) { e.preventDefault(); agentAction(fam, id, 'send', { text: inp.value.trim() }); inp.value = ''; }
+            // Ignore the Enter that confirms an IME candidate (see main input).
+            if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229 && inp.value.trim()) { e.preventDefault(); agentAction(fam, id, 'send', { text: inp.value.trim() }); inp.value = ''; }
           });
           ctrl.appendChild(inp);
         }
@@ -1947,7 +1978,7 @@ if ('serviceWorker' in navigator) {
     Promise.all([getJSON('/api/island/ping'), getJSON('/api/agents/recap?sinceMinutes=' + encodeURIComponent(mins))]).then(function (res) {
       var ping = res[0] || {}; var recap = res[1] || {};
       var html = '';
-      if (ping.last_idle_message_text) html += '<div class="v-card"><h3>While you were away</h3><div style="font-size:13px;color:var(--fg);line-height:1.55">' + esc(ping.last_idle_message_text) + '</div></div>';
+      if (ping.last_idle_message_text) html += '<div class="v-card"><h3>' + esc(idleHeaderLabel()) + '</h3><div style="font-size:13px;color:var(--fg);line-height:1.55">' + esc(ping.last_idle_message_text) + '</div></div>';
       if (ping.current_desire) html += '<div class="v-card"><h3>Currently pursuing</h3><div style="font-size:13px;color:var(--fg)">' + esc(ping.current_desire) + '</div></div>';
       html += '<div class="v-card"><h3>Recap</h3><pre class="v-pre">' + esc(recap.text || 'No activity in this window.') + '</pre></div>';
       scroll.innerHTML = html;

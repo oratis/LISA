@@ -95,6 +95,12 @@ export async function runIdleOnce(opts: {
   signal: AbortSignal;
   model: string;
   idleMs: number;
+  /**
+   * A recent user message, used only to tell Lisa which language to write her
+   * while-you-were-away note in (so a Chinese user doesn't get English notes).
+   * Language-agnostic: she matches the sample rather than us detecting a locale.
+   */
+  userLanguageSample?: string;
 }): Promise<IdleRunResult> {
   // Proactive-mode master switch (web/iOS "Proactive" toggle → ~/.lisa/autonomy/
   // state.json). When autonomy is off, idle reflection no-ops: Lisa only acts on
@@ -108,7 +114,7 @@ export async function runIdleOnce(opts: {
   // concurrently and race on soul writes. timeoutMs:0 → if another idle run
   // is in flight, skip silently instead of queueing a second reflection.
   try {
-    return await withFileLock(IDLE_RUN_LOCK, () => runIdleInner(opts, idleMin), {
+    return await withFileLock(IDLE_RUN_LOCK, () => runIdleInner(opts, idleMin, opts.userLanguageSample), {
       timeoutMs: 0,
       staleMs: 2 * 60 * 60_000, // 2h: an idle run older than this is a crashed holder
     });
@@ -124,12 +130,16 @@ export async function runIdleOnce(opts: {
 async function runIdleInner(
   opts: { tools: ToolDefinition[]; cwd: string; signal: AbortSignal; model: string },
   idleMin: number,
+  userLanguageSample?: string,
 ): Promise<IdleRunResult> {
   const startedAt = new Date().toISOString();
   const t0 = Date.now();
+  const langLine = userLanguageSample
+    ? ` If you do write a note, write it in the same language the user has been speaking to you in — for reference, a recent message from them was: «${userLanguageSample.slice(0, 200)}». Match that language; don't default to English.`
+    : "";
   try {
     const result = await runSubagent({
-      prompt: `You have been idle for about ${idleMin} minute${idleMin === 1 ? "" : "s"}. The user is away. Decide what you want to do, then do it. Remember: end with "(no update)" if it's internal, or a brief honest message if you did something the user might want to know about.`,
+      prompt: `You have been idle for about ${idleMin} minute${idleMin === 1 ? "" : "s"}. The user is away. Decide what you want to do, then do it. Remember: end with "(no update)" if it's internal, or a brief honest message if you did something the user might want to know about.${langLine}`,
       systemPrompt: buildIdleSystemPrompt(),
       // Idle is fully self-driven and unattended — no shell / fs-mutation /
       // process-spawning tools by default (see AUTONOMOUS_BLOCKED_TOOL_NAMES).
@@ -139,8 +149,13 @@ async function runIdleInner(
       model: opts.model,
       budgetTokens: IDLE_BUDGET_TOKENS || undefined,
     });
-    const text = result.text.trim();
-    const silent = text === "" || /^\(no update\)$/i.test(text);
+    // The model is asked to end with "(no update)" for internal-only runs, but
+    // it doesn't always emit that on its own line — sometimes it writes a real
+    // note and then appends "(no update)", or wraps it in punctuation. Strip a
+    // trailing "(no update)" so the marker never leaks into a shown note; if
+    // nothing survives, the whole run was internal → silent.
+    const text = result.text.trim().replace(/\n*\(\s*no\s+update\s*\)[.。]?\s*$/i, "").trim();
+    const silent = text === "";
     const outcome: AutonomyOutcome =
       result.stopReason === "budget_exceeded" ? "blocked" : silent ? "no-update" : "done";
     await recordAutonomyRun({
