@@ -715,8 +715,8 @@ function prependHistoryMessages(messages) {
     // Idle "while you were away" notes are persisted as assistant messages with
     // a [while you were away] sentinel — render them as the distinct idle card
     // (not a plain Lisa bubble) so they don't blend into her real replies.
-    if (msg.role !== 'user' && /^\[while you were away\]\s*/i.test(text)) {
-      const clean = text.replace(/^\[while you were away\]\s*/i, '');
+    if (msg.role !== 'user' && /^\\[while you were away\\]\\s*/i.test(text)) {
+      const clean = text.replace(/^\\[while you were away\\]\\s*/i, '');
       fragment.appendChild(buildIdleBlock(clean, msg.at || msg.ts || null));
       continue;
     }
