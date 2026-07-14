@@ -40,6 +40,21 @@ const altLangPath =
 
 const downloadHref = "https://github.com/oratis/LISA/releases/latest";
 const homeHref = lang === "zh-CN" ? "/zh-CN/" : "/";
+
+const canonical = new URL(Astro.url.pathname, Astro.site ?? "https://meetlisa.ai").href;
+const ogImage = "https://meetlisa.ai/og-cover.png";
+
+// Footer link groups
+const productLinks = navItems.filter((i) => !i.external);
+const projectLinks = [
+  { href: "https://github.com/oratis/LISA", label: "GitHub" },
+  { href: "https://github.com/oratis/LISA/releases", label: "Releases" },
+  { href: "https://github.com/oratis/LISA/blob/main/docs/PROVIDERS.md", label: "Providers" },
+  { href: lang === "zh-CN" ? "/zh-CN/privacy" : "/privacy", label: lang === "zh-CN" ? "隐私" : "Privacy" },
+];
+const foot = lang === "zh-CN"
+  ? { product: "产品", project: "项目", tagline: "主权属于用户的本地 AI · 活在 ~/.lisa", rights: "MIT 开源 · 你的机器,你做主" }
+  : { product: "Product", project: "Project", tagline: "Sovereign local AI · lives in ~/.lisa", rights: "MIT open source · your machine, your rules" };
 ---
 <!doctype html>
 <html lang={lang}>
@@ -49,11 +64,25 @@ const homeHref = lang === "zh-CN" ? "/zh-CN/" : "/";
     <title>{title} · LISA</title>
     <meta name="description" content={description} />
     <meta name="theme-color" content="#0a0b0d" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+    <link rel="preload" href="/fonts/space-grotesk-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="icon" href="/assets/lisa-app-icon.png" />
     <link rel="apple-touch-icon" href="/assets/lisa-app-icon.png" />
+    <link rel="canonical" href={canonical} />
+    <!-- Open Graph / Twitter -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="LISA" />
+    <meta property="og:title" content={`${title} · LISA`} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:locale" content={lang === "zh-CN" ? "zh_CN" : "en_US"} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={`${title} · LISA`} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
   </head>
   <body>
     <header class="topbar">
@@ -86,16 +115,34 @@ const homeHref = lang === "zh-CN" ? "/zh-CN/" : "/";
 
     <footer class="footer">
       <div class="footer-inner">
-        <span class="foot-brand"><span class="dot good" aria-hidden="true"></span> LISA</span>
-        <span class="foot-text">
-          {lang === "zh-CN"
-            ? "MIT 开源 · 主权属于用户的本地 AI · 运行于 ~/.lisa"
-            : "MIT open source · sovereign local AI · lives in ~/.lisa"}
-        </span>
-        <span class="foot-links">
-          <a href={lang === "zh-CN" ? "/zh-CN/privacy" : "/privacy"}>{lang === "zh-CN" ? "隐私" : "Privacy"}</a>
-          <a href="https://github.com/oratis/LISA" target="_blank" rel="noopener">GitHub ↗</a>
-        </span>
+        <div class="foot-lead">
+          <a class="foot-brand" href={homeHref}>
+            <img src="/assets/lisa-app-icon.png" alt="" width="26" height="26" />
+            <span>LISA</span>
+          </a>
+          <p class="foot-tag">{foot.tagline}</p>
+          <a class="btn-primary sm" href={downloadHref} target="_blank" rel="noopener">
+            {lang === "zh-CN" ? "🍎 下载" : "🍎 Download"}
+          </a>
+        </div>
+        <nav class="foot-col" aria-label={foot.product}>
+          <span class="foot-h">{foot.product}</span>
+          {productLinks.map((i) => <a href={i.href}>{i.label}</a>)}
+        </nav>
+        <nav class="foot-col" aria-label={foot.project}>
+          <span class="foot-h">{foot.project}</span>
+          {projectLinks.map((i) => (
+            <a
+              href={i.href}
+              target={i.href.startsWith("http") ? "_blank" : null}
+              rel={i.href.startsWith("http") ? "noopener" : null}
+            >{i.label}{i.href.startsWith("http") ? " ↗" : ""}</a>
+          ))}
+        </nav>
+      </div>
+      <div class="footer-bar">
+        <span>© 2026 LISA · {foot.rights}</span>
+        <a href={altLangPath}>{lang === "zh-CN" ? "English" : "中文"}</a>
       </div>
     </footer>
 
@@ -121,6 +168,18 @@ const homeHref = lang === "zh-CN" ? "/zh-CN/" : "/";
         --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
         --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
         --maxw: 1080px;
+      }
+
+      /* Self-hosted variable fonts (latin) — no third-party request, edge-cached. */
+      @font-face {
+        font-family: "Space Grotesk"; font-style: normal; font-weight: 400 700; font-display: swap;
+        src: url("/fonts/space-grotesk-latin.woff2") format("woff2");
+        unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+      }
+      @font-face {
+        font-family: "JetBrains Mono"; font-style: normal; font-weight: 400 700; font-display: swap;
+        src: url("/fonts/jetbrains-mono-latin.woff2") format("woff2");
+        unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
       }
       * { box-sizing: border-box; }
       html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
@@ -276,13 +335,30 @@ const homeHref = lang === "zh-CN" ? "/zh-CN/" : "/";
       code { font-family: var(--mono); font-size: .88em; background: var(--panel); border: 1px solid var(--border); border-radius: 5px; padding: .08em .35em; color: var(--accent); }
 
       /* ── Footer ── */
-      .footer { border-top: 1px solid var(--border); margin-top: 5rem; }
-      .footer-inner { max-width: var(--maxw); margin: 0 auto; padding: 1.8rem clamp(1rem,4vw,2.2rem); display: flex; align-items: center; gap: 1.2rem; flex-wrap: wrap; }
-      .foot-brand { font-family: var(--display); font-weight: 700; display: inline-flex; align-items: center; gap: .5rem; }
-      .foot-text { font-family: var(--mono); font-size: .78rem; color: var(--faint); }
-      .foot-links { margin-left: auto; display: flex; gap: 1rem; font-family: var(--mono); font-size: .82rem; }
-      .foot-links a { color: var(--muted); } .foot-links a:hover { color: var(--accent); }
+      .footer { border-top: 1px solid var(--border); margin-top: 6rem; }
+      .footer-inner {
+        max-width: var(--maxw); margin: 0 auto; padding: 2.6rem clamp(1rem,4vw,2.2rem) 1.8rem;
+        display: grid; grid-template-columns: 1.6fr 1fr 1fr; gap: 2rem;
+      }
+      .foot-brand { font-family: var(--display); font-weight: 700; font-size: 1.1rem; display: inline-flex; align-items: center; gap: .5rem; color: var(--ink); }
+      .foot-brand img { width: 26px; height: 26px; }
+      .foot-tag { font-family: var(--mono); font-size: .76rem; color: var(--faint); margin: .8rem 0 1.1rem; max-width: 32ch; line-height: 1.6; }
+      .foot-col { display: flex; flex-direction: column; gap: .55rem; }
+      .foot-h { font-family: var(--mono); font-size: .68rem; letter-spacing: .12em; text-transform: uppercase; color: var(--faint); margin-bottom: .2rem; }
+      .foot-col a { color: var(--muted); font-size: .9rem; width: fit-content; }
+      .foot-col a:hover { color: var(--accent); }
+      .footer-bar {
+        max-width: var(--maxw); margin: 0 auto; padding: 1.1rem clamp(1rem,4vw,2.2rem);
+        border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between;
+        gap: 1rem; flex-wrap: wrap; font-family: var(--mono); font-size: .74rem; color: var(--faint);
+      }
+      .footer-bar a { color: var(--muted); }
+      .footer-bar a:hover { color: var(--accent); }
       .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+      @media (max-width: 640px) {
+        .footer-inner { grid-template-columns: 1fr 1fr; }
+        .foot-lead { grid-column: 1 / -1; }
+      }
 
       /* ── Legacy compatibility: pre-restyle pages inherit the new system ── */
       :root {
