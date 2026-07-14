@@ -1215,6 +1215,97 @@ input.addEventListener('input', () => {
   input.style.height = Math.min(input.scrollHeight, 200) + 'px';
 });
 
+// ── KB capture: select chat messages → save to the knowledge base ────
+// (docs/PLAN_KNOWLEDGE_BASE_v1.0.md, requirement #2). Toggle select mode from
+// the function bar, tick messages, "Add to KB" writes a Layer-1 source verbatim.
+(function kbCapture() {
+  var toggle = document.getElementById('fnKbSelect');
+  var log = document.getElementById('log');
+  if (!toggle || !log) return;
+  var selecting = false;
+  var bar = null;
+
+  function selectedMsgs() { return log.querySelectorAll('.msg.kb-sel'); }
+  function updateCount() {
+    var n = selectedMsgs().length;
+    var c = document.getElementById('kbCapCount');
+    if (c) c.textContent = n + ' selected';
+    var add = document.getElementById('kbCapAdd');
+    if (add) add.disabled = n === 0;
+  }
+  function clearSel() {
+    var s = log.querySelectorAll('.msg.kb-sel');
+    for (var i = 0; i < s.length; i++) s[i].classList.remove('kb-sel');
+  }
+  function ensureBar() {
+    if (bar) return bar;
+    bar = document.createElement('div');
+    bar.id = 'kbCaptureBar';
+    bar.className = 'kb-capture-bar';
+    bar.innerHTML = '<input id="kbCapTitle" class="kb-cap-title" type="text" placeholder="Title (optional)" autocomplete="off">'
+      + '<span id="kbCapCount" class="kb-cap-count">0 selected</span>'
+      + '<button type="button" id="kbCapAdd" class="kb-cap-add">Add to KB</button>'
+      + '<button type="button" id="kbCapCancel" class="kb-cap-cancel">Cancel</button>';
+    document.body.appendChild(bar);
+    document.getElementById('kbCapCancel').addEventListener('click', function () { setSelecting(false); });
+    document.getElementById('kbCapAdd').addEventListener('click', doAdd);
+    return bar;
+  }
+  function setSelecting(on) {
+    selecting = on;
+    log.classList.toggle('kb-selecting', on);
+    toggle.classList.toggle('active', on);
+    if (on) { ensureBar().classList.add('open'); updateCount(); }
+    else { clearSel(); if (bar) bar.classList.remove('open'); }
+  }
+  toggle.addEventListener('click', function () { setSelecting(!selecting); });
+  log.addEventListener('click', function (e) {
+    if (!selecting) return;
+    var msg = e.target && e.target.closest ? e.target.closest('.msg') : null;
+    if (!msg || !log.contains(msg)) return;
+    e.preventDefault();
+    msg.classList.toggle('kb-sel');
+    updateCount();
+  });
+  function roleOf(msgEl) {
+    var prev = msgEl.previousElementSibling;
+    while (prev && !(prev.classList && prev.classList.contains('role'))) prev = prev.previousElementSibling;
+    return prev ? (prev.textContent || '').trim() : '';
+  }
+  function doAdd() {
+    var msgs = selectedMsgs();
+    if (!msgs.length) return;
+    var parts = [];
+    for (var i = 0; i < msgs.length; i++) {
+      var role = roleOf(msgs[i]) || 'MESSAGE';
+      parts.push('**' + role + ':** ' + (msgs[i].textContent || ''));
+    }
+    var content = parts.join('\\n\\n');
+    var titleEl = document.getElementById('kbCapTitle');
+    var title = titleEl ? titleEl.value.trim() : '';
+    var add = document.getElementById('kbCapAdd');
+    if (add) { add.disabled = true; add.textContent = 'Saving…'; }
+    fetch('/api/kb/add', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: title, content: content, origin: 'chat', tags: [] }) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (add) add.textContent = 'Add to KB';
+        if (titleEl) titleEl.value = '';
+        setSelecting(false);
+        if (typeof window.lisaReloadKb === 'function') window.lisaReloadKb();
+        kbToast(d && d.ok ? 'Saved to Knowledge Base' : 'Save failed');
+      })
+      .catch(function () { if (add) { add.disabled = false; add.textContent = 'Add to KB'; } kbToast('Save failed'); });
+  }
+  function kbToast(msg) {
+    var t = document.createElement('div');
+    t.className = 'kb-toast';
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(function () { t.classList.add('show'); }, 10);
+    setTimeout(function () { t.classList.remove('show'); setTimeout(function () { t.remove(); }, 300); }, 2200);
+  }
+})();
+
 // ── PWA: register service worker + iOS install hint ─────────────────
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch(err => {

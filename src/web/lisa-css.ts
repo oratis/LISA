@@ -908,6 +908,42 @@ export const MAIN_CSS = `  :root {
     .kb-list { width: auto; border-right: 0; border-bottom: 1px solid var(--border); max-height: 45%; }
   }
 
+  /* ── KB capture: select-mode highlight + floating bar + toast ── */
+  .kb-selecting .msg { cursor: pointer; }
+  .kb-selecting .msg:hover { background: rgba(255,255,255,0.04); border-radius: 6px; }
+  .msg.kb-sel { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); border-radius: 6px; }
+  .fbtn.active { background: var(--accent-soft); color: var(--accent); }
+  .kb-capture-bar {
+    position: fixed; left: 50%; bottom: 88px; transform: translateX(-50%);
+    z-index: 9998; display: none; align-items: center; gap: 10px;
+    background: var(--bg-card-strong); border: 1px solid var(--border-strong);
+    border-radius: 12px; padding: 8px 10px; box-shadow: 0 18px 44px rgba(0,0,0,0.55);
+  }
+  .kb-capture-bar.open { display: flex; }
+  .kb-cap-title {
+    font-family: inherit; font-size: 12.5px; padding: 6px 9px; width: 200px;
+    border-radius: 8px; border: 1px solid var(--border); background: var(--bg-card); color: var(--fg); outline: none;
+  }
+  .kb-cap-count { font-size: 11.5px; color: var(--fg-3); white-space: nowrap; }
+  .kb-cap-add {
+    font-family: inherit; cursor: pointer; font-size: 12.5px; font-weight: 700;
+    padding: 7px 13px; border-radius: 8px; border: 0; background: var(--accent); color: #04121f;
+  }
+  .kb-cap-add:disabled { opacity: 0.45; cursor: default; }
+  .kb-cap-cancel {
+    font-family: inherit; cursor: pointer; font-size: 12.5px; padding: 7px 10px;
+    border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--fg-3);
+  }
+  .kb-cap-cancel:hover { color: var(--fg); }
+  .kb-toast {
+    position: fixed; left: 50%; bottom: 150px; transform: translateX(-50%) translateY(10px);
+    z-index: 9999; background: var(--bg-card-strong); border: 1px solid var(--border-strong);
+    color: var(--fg); font-size: 12.5px; padding: 9px 15px; border-radius: 10px;
+    opacity: 0; transition: opacity .25s, transform .25s; pointer-events: none;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.5);
+  }
+  .kb-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
   #log {
     overflow-y: auto;
     padding: 22px 28px 24px;
