@@ -103,7 +103,7 @@ export const ROOM_HTML = `<!doctype html>
      (sit / sleep) change the image + box size. Foot-anchored so she stands
      on the floor. */
   #lisa-wrap {
-    position: absolute; left: 47%; bottom: 6.5%;
+    position: absolute; left: 49.7%; bottom: 7.5%;
     transform: translateX(-50%);
     transition: left 1000ms var(--spring), bottom 1000ms var(--spring);
     pointer-events: none;
