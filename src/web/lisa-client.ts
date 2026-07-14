@@ -716,8 +716,8 @@ function prependHistoryMessages(messages) {
     // Idle "while you were away" notes are persisted as assistant messages with
     // a [while you were away] sentinel — render them as the distinct idle card
     // (not a plain Lisa bubble) so they don't blend into her real replies.
-    if (msg.role !== 'user' && /^\[while you were away\]\s*/i.test(text)) {
-      const clean = text.replace(/^\[while you were away\]\s*/i, '');
+    if (msg.role !== 'user' && /^\\[while you were away\\]\\s*/i.test(text)) {
+      const clean = text.replace(/^\\[while you were away\\]\\s*/i, '');
       fragment.appendChild(buildIdleBlock(clean, msg.at || msg.ts || null));
       continue;
     }
@@ -1260,6 +1260,97 @@ input.addEventListener('input', () => {
   input.style.height = Math.min(input.scrollHeight, 200) + 'px';
 });
 
+// ── KB capture: select chat messages → save to the knowledge base ────
+// (docs/PLAN_KNOWLEDGE_BASE_v1.0.md, requirement #2). Toggle select mode from
+// the function bar, tick messages, "Add to KB" writes a Layer-1 source verbatim.
+(function kbCapture() {
+  var toggle = document.getElementById('fnKbSelect');
+  var log = document.getElementById('log');
+  if (!toggle || !log) return;
+  var selecting = false;
+  var bar = null;
+
+  function selectedMsgs() { return log.querySelectorAll('.msg.kb-sel'); }
+  function updateCount() {
+    var n = selectedMsgs().length;
+    var c = document.getElementById('kbCapCount');
+    if (c) c.textContent = n + ' selected';
+    var add = document.getElementById('kbCapAdd');
+    if (add) add.disabled = n === 0;
+  }
+  function clearSel() {
+    var s = log.querySelectorAll('.msg.kb-sel');
+    for (var i = 0; i < s.length; i++) s[i].classList.remove('kb-sel');
+  }
+  function ensureBar() {
+    if (bar) return bar;
+    bar = document.createElement('div');
+    bar.id = 'kbCaptureBar';
+    bar.className = 'kb-capture-bar';
+    bar.innerHTML = '<input id="kbCapTitle" class="kb-cap-title" type="text" placeholder="Title (optional)" autocomplete="off">'
+      + '<span id="kbCapCount" class="kb-cap-count">0 selected</span>'
+      + '<button type="button" id="kbCapAdd" class="kb-cap-add">Add to KB</button>'
+      + '<button type="button" id="kbCapCancel" class="kb-cap-cancel">Cancel</button>';
+    document.body.appendChild(bar);
+    document.getElementById('kbCapCancel').addEventListener('click', function () { setSelecting(false); });
+    document.getElementById('kbCapAdd').addEventListener('click', doAdd);
+    return bar;
+  }
+  function setSelecting(on) {
+    selecting = on;
+    log.classList.toggle('kb-selecting', on);
+    toggle.classList.toggle('active', on);
+    if (on) { ensureBar().classList.add('open'); updateCount(); }
+    else { clearSel(); if (bar) bar.classList.remove('open'); }
+  }
+  toggle.addEventListener('click', function () { setSelecting(!selecting); });
+  log.addEventListener('click', function (e) {
+    if (!selecting) return;
+    var msg = e.target && e.target.closest ? e.target.closest('.msg') : null;
+    if (!msg || !log.contains(msg)) return;
+    e.preventDefault();
+    msg.classList.toggle('kb-sel');
+    updateCount();
+  });
+  function roleOf(msgEl) {
+    var prev = msgEl.previousElementSibling;
+    while (prev && !(prev.classList && prev.classList.contains('role'))) prev = prev.previousElementSibling;
+    return prev ? (prev.textContent || '').trim() : '';
+  }
+  function doAdd() {
+    var msgs = selectedMsgs();
+    if (!msgs.length) return;
+    var parts = [];
+    for (var i = 0; i < msgs.length; i++) {
+      var role = roleOf(msgs[i]) || 'MESSAGE';
+      parts.push('**' + role + ':** ' + (msgs[i].textContent || ''));
+    }
+    var content = parts.join('\\n\\n');
+    var titleEl = document.getElementById('kbCapTitle');
+    var title = titleEl ? titleEl.value.trim() : '';
+    var add = document.getElementById('kbCapAdd');
+    if (add) { add.disabled = true; add.textContent = 'Saving…'; }
+    fetch('/api/kb/add', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: title, content: content, origin: 'chat', tags: [] }) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (add) add.textContent = 'Add to KB';
+        if (titleEl) titleEl.value = '';
+        setSelecting(false);
+        if (typeof window.lisaReloadKb === 'function') window.lisaReloadKb();
+        kbToast(d && d.ok ? 'Saved to Knowledge Base' : 'Save failed');
+      })
+      .catch(function () { if (add) { add.disabled = false; add.textContent = 'Add to KB'; } kbToast('Save failed'); });
+  }
+  function kbToast(msg) {
+    var t = document.createElement('div');
+    t.className = 'kb-toast';
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(function () { t.classList.add('show'); }, 10);
+    setTimeout(function () { t.classList.remove('show'); setTimeout(function () { t.remove(); }, 300); }, 2200);
+  }
+})();
+
 // ── PWA: register service worker + iOS install hint ─────────────────
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch(err => {
@@ -1679,40 +1770,174 @@ if ('serviceWorker' in navigator) {
     } catch (e) {}
   };
 
+  // Guided connect: pick a provider → see exactly where to get an app-password
+  // (a link that opens in the system browser), with labels + host tuned to it.
+  // Most people do not know an IMAP mailbox needs an app-password, not their
+  // login password — the steps + link are the whole point of this modal.
+  const MAIL_PROVIDERS = [
+    { key: 'gmail', label: 'Gmail', domains: ['gmail.com', 'googlemail.com'],
+      emailPh: 'you@gmail.com', hostPh: 'imap.gmail.com',
+      credLabel: 'App password', credPh: '16-character app password',
+      linkUrl: 'https://myaccount.google.com/apppasswords', linkText: 'Open Google App Passwords ↗',
+      steps: [
+        'Turn on 2-Step Verification for your Google account (app passwords need it).',
+        'Open Google App Passwords below and create one — name it Lisa.',
+        'Paste the 16-character code below. Your Google login password will not work.',
+      ] },
+    { key: 'icloud', label: 'iCloud', domains: ['icloud.com', 'me.com', 'mac.com'],
+      emailPh: 'you@icloud.com', hostPh: 'imap.mail.me.com',
+      credLabel: 'App-specific password', credPh: 'xxxx-xxxx-xxxx-xxxx',
+      linkUrl: 'https://account.apple.com', linkText: 'Open Apple Account ↗',
+      steps: [
+        'Open Apple Account below and go to Sign-In and Security.',
+        'Under App-Specific Passwords, generate one for Lisa.',
+        'Paste it below. Your Apple ID login password will not work.',
+      ] },
+    { key: 'qq', label: 'QQ', domains: ['qq.com', 'foxmail.com'],
+      emailPh: 'you@qq.com', hostPh: 'imap.qq.com',
+      credLabel: 'Authorization code 授权码', credPh: 'IMAP authorization code',
+      linkUrl: 'https://mail.qq.com', linkText: 'Open QQ Mail ↗',
+      steps: [
+        'In QQ Mail open 设置 → 账户 and find POP3/IMAP/SMTP 服务.',
+        'Enable IMAP 服务; QQ shows a 16-char authorization code (授权码).',
+        'Paste that 授权码 below, not your QQ login password.',
+      ] },
+    { key: 'netease', label: '163 / 126', domains: ['163.com', '126.com', 'yeah.net'],
+      emailPh: 'you@163.com', hostPh: 'imap.163.com',
+      credLabel: 'Authorization code 授权码', credPh: 'IMAP authorization code',
+      linkUrl: 'https://mail.163.com', linkText: 'Open 163 Mail ↗',
+      steps: [
+        'In 163 Mail open 设置 → POP3/SMTP/IMAP.',
+        'Enable IMAP 服务 and set a client authorization code (授权码).',
+        'Paste that 授权码 below, not your login password.',
+      ] },
+    { key: 'outlook', label: 'Outlook', domains: ['outlook.com', 'hotmail.com', 'live.com', 'msn.com'],
+      emailPh: 'you@outlook.com', hostPh: 'outlook.office365.com',
+      credLabel: 'App password', credPh: 'app password',
+      linkUrl: 'https://account.microsoft.com/security', linkText: 'Open Microsoft security ↗',
+      steps: [
+        'Turn on two-step verification for your Microsoft account.',
+        'Under Advanced security options, create an app password.',
+        'Paste it below. Some Microsoft accounts block IMAP; then this will not work.',
+      ] },
+    { key: 'other', label: 'Other', domains: [],
+      emailPh: 'you@example.com', hostPh: 'imap.example.com',
+      credLabel: 'App-password / authorization code', credPh: 'not your login password',
+      linkUrl: '', linkText: '',
+      steps: [
+        'Most providers need an app-password or authorization code, not your login password.',
+        'Find it in the security or IMAP settings of your mail provider.',
+        'If the IMAP host is not auto-detected, fill it in below.',
+      ] },
+  ];
+
   function openMailModal() {
+    function providerByKey(k) {
+      for (let i = 0; i < MAIL_PROVIDERS.length; i++) if (MAIL_PROVIDERS[i].key === k) return MAIL_PROVIDERS[i];
+      return MAIL_PROVIDERS[MAIL_PROVIDERS.length - 1];
+    }
+    let currentKey = 'gmail';
     openModal('Connect a mailbox',
-      '<div class="delegate-modal">' +
+      '<div class="delegate-modal mm-modal">' +
+        '<div class="mm-providers" id="mmProviders"></div>' +
+        '<div class="mm-help" id="mmHelp"></div>' +
         '<label class="dm-label">Email</label>' +
-        '<input id="mmEmail" class="dm-kind" type="email" placeholder="you@qq.com" autocomplete="off" />' +
-        '<label class="dm-label">App-password / authorization code</label>' +
-        '<input id="mmPass" class="dm-kind" type="password" placeholder="not your login password" autocomplete="off" />' +
-        '<label class="dm-label">IMAP host (optional — auto-detected)</label>' +
-        '<input id="mmHost" class="dm-kind" type="text" placeholder="imap.qq.com" autocomplete="off" />' +
+        '<input id="mmEmail" class="dm-kind" type="email" placeholder="you@gmail.com" autocomplete="off" />' +
+        '<label class="dm-label" id="mmPassLabel">App password</label>' +
+        '<input id="mmPass" class="dm-kind" type="password" placeholder="16-character app password" autocomplete="off" />' +
+        '<label class="dm-label">IMAP host (optional, auto-detected)</label>' +
+        '<input id="mmHost" class="dm-kind" type="text" placeholder="imap.gmail.com" autocomplete="off" />' +
         '<div class="dm-actions"><button id="mmStart" class="dm-start" type="button">Connect →</button></div>' +
         '<div id="mmErr" class="dm-err"></div>' +
-        '<div class="dm-note">Read-only. Stored locally (0600). Most providers need an app-password, not your login password.</div>' +
+        '<div class="dm-note">Read-only. Stored locally (mode 0600). Lisa reads only headers and a short preview — never full message bodies, and never sends mail.</div>' +
       '</div>');
     const emailEl = document.getElementById('mmEmail');
     const passEl = document.getElementById('mmPass');
+    const passLabelEl = document.getElementById('mmPassLabel');
     const hostEl = document.getElementById('mmHost');
     const startEl = document.getElementById('mmStart');
     const errEl = document.getElementById('mmErr');
+    const provWrap = document.getElementById('mmProviders');
+    const helpEl = document.getElementById('mmHelp');
+
+    function renderHelp(p) {
+      if (!helpEl) return;
+      while (helpEl.firstChild) helpEl.removeChild(helpEl.firstChild);
+      const ol = document.createElement('ol');
+      ol.className = 'mm-steps';
+      for (let i = 0; i < p.steps.length; i++) {
+        const li = document.createElement('li');
+        li.textContent = p.steps[i];
+        ol.appendChild(li);
+      }
+      helpEl.appendChild(ol);
+      if (p.linkUrl) {
+        const a = document.createElement('a');
+        a.className = 'mm-link';
+        a.href = p.linkUrl; a.target = '_blank'; a.rel = 'noopener';
+        a.textContent = p.linkText;
+        helpEl.appendChild(a);
+      }
+    }
+    function selectProvider(key) {
+      const p = providerByKey(key);
+      currentKey = p.key;
+      if (provWrap) {
+        const chips = provWrap.querySelectorAll('.mm-chip');
+        for (let i = 0; i < chips.length; i++) {
+          if (chips[i].getAttribute('data-key') === p.key) chips[i].classList.add('on');
+          else chips[i].classList.remove('on');
+        }
+      }
+      if (emailEl) emailEl.placeholder = p.emailPh;
+      if (hostEl) hostEl.placeholder = p.hostPh;
+      if (passLabelEl) passLabelEl.textContent = p.credLabel;
+      if (passEl) passEl.placeholder = p.credPh;
+      renderHelp(p);
+    }
+    if (provWrap) {
+      MAIL_PROVIDERS.forEach(function (p) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'mm-chip' + (p.key === currentKey ? ' on' : '');
+        b.textContent = p.label;
+        b.setAttribute('data-key', p.key);
+        b.addEventListener('click', function () { selectProvider(p.key); if (emailEl) emailEl.focus(); });
+        provWrap.appendChild(b);
+      });
+    }
+    function detectFromEmail() {
+      const v = (emailEl && emailEl.value ? emailEl.value : '').toLowerCase().trim();
+      const at = v.indexOf('@');
+      if (at < 0) return;
+      const dom = v.slice(at + 1);
+      if (!dom) return;
+      for (let i = 0; i < MAIL_PROVIDERS.length; i++) {
+        if (MAIL_PROVIDERS[i].domains.indexOf(dom) >= 0) {
+          if (MAIL_PROVIDERS[i].key !== currentKey) selectProvider(MAIL_PROVIDERS[i].key);
+          return;
+        }
+      }
+    }
+    if (emailEl) emailEl.addEventListener('input', detectFromEmail);
+    selectProvider(currentKey);
     if (emailEl) emailEl.focus();
+
     function submitMail() {
       const email = emailEl && emailEl.value.trim();
       const pass = passEl && passEl.value;
-      if (!email || !pass) { if (errEl) errEl.textContent = 'email + app-password required'; return; }
+      if (!email || !pass) { if (errEl) errEl.textContent = 'Email and app-password are required.'; return; }
       const body = { email: email, password: pass };
       if (hostEl && hostEl.value.trim()) body.host = hostEl.value.trim();
       if (errEl) errEl.textContent = '';
-      if (startEl) { startEl.disabled = true; startEl.textContent = 'Connecting…'; }
+      if (startEl) { startEl.disabled = true; startEl.textContent = 'Checking…'; }
       fetch('/api/mail/connect', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
         .then(function (r) {
           if (!r.ok) { return r.text().then(function (t) { if (errEl) errEl.textContent = t || ('failed (' + r.status + ')'); if (startEl) { startEl.disabled = false; startEl.textContent = 'Connect →'; } }); }
           closeModal();
           if (window.refreshMail) window.refreshMail();
         })
-        .catch(function () { if (errEl) errEl.textContent = 'network error'; if (startEl) { startEl.disabled = false; startEl.textContent = 'Connect →'; } });
+        .catch(function () { if (errEl) errEl.textContent = 'Network error.'; if (startEl) { startEl.disabled = false; startEl.textContent = 'Connect →'; } });
     }
     if (startEl) startEl.addEventListener('click', submitMail);
     if (passEl) passEl.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); submitMail(); } });
@@ -1755,6 +1980,7 @@ if ('serviceWorker' in navigator) {
     room: document.getElementById('viewRoom'),
     sense: document.getElementById('viewSense'),
     memory: document.getElementById('viewMemory'),
+    kb: document.getElementById('viewKb'),
   };
   var loaded = {};
   var active = 'chat';
@@ -1804,6 +2030,8 @@ if ('serviceWorker' in navigator) {
 
   // ── view switching ──────────────────────────────────────────────
   function loadView(name) {
+    // KB builds once, then refreshes its list on every re-show (it changes).
+    if (name === 'kb') { if (!loaded.kb) { loaded.kb = true; loadKb(); } else { loadKbList(); } return; }
     if (loaded[name]) return;
     loaded[name] = true;
     if (name === 'dashboard') loadDashboard();
@@ -2096,6 +2324,92 @@ if ('serviceWorker' in navigator) {
       });
     }
   }
+
+  // ── Knowledge base view (docs/PLAN_KNOWLEDGE_BASE_v1.0.md) ──────────
+  function kbRenderList(entries, container) {
+    if (!entries || !entries.length) {
+      container.innerHTML = '<div class="view-empty">Nothing here yet. In Chat, select messages and "Add to KB", or ask Lisa to save something.</div>';
+      return;
+    }
+    var html = '';
+    for (var i = 0; i < entries.length; i++) {
+      var e = entries[i];
+      var tags = (e.tags && e.tags.length) ? e.tags.map(function (t) { return '#' + t; }).join(' ') : '';
+      html += '<button class="kb-item" data-layer="' + esc(e.layer) + '" data-slug="' + esc(e.slug) + '">'
+        + '<span class="kb-row"><span class="kb-badge ' + esc(e.layer) + '">' + (e.layer === 'wiki' ? 'wiki' : 'source') + '</span>'
+        + '<span class="kb-title">' + esc(e.title) + '</span></span>'
+        + (tags ? '<span class="kb-tags">' + esc(tags) + '</span>' : '')
+        + (e.excerpt ? '<span class="kb-excerpt">' + esc(e.excerpt) + '</span>' : '')
+        + '</button>';
+    }
+    container.innerHTML = html;
+    var items = container.querySelectorAll('.kb-item');
+    for (var j = 0; j < items.length; j++) {
+      items[j].addEventListener('click', function () {
+        kbOpen(this.getAttribute('data-layer'), this.getAttribute('data-slug'));
+      });
+    }
+  }
+  function kbOpen(layer, slug) {
+    var reader = document.getElementById('kbReader');
+    if (!reader) return;
+    reader.classList.add('open');
+    reader.innerHTML = '<div class="view-empty">loading…</div>';
+    getJSON('/api/kb/entry?layer=' + encodeURIComponent(layer) + '&slug=' + encodeURIComponent(slug)).then(function (d) {
+      if (!d || !d.entry) { reader.innerHTML = '<div class="view-empty">not found</div>'; return; }
+      var e = d.entry;
+      var meta = [];
+      if (e.tags && e.tags.length) meta.push('tags: ' + e.tags.join(', '));
+      if (e.sources && e.sources.length) meta.push('sources: ' + e.sources.join(', '));
+      if (e.origin) meta.push('origin: ' + e.origin);
+      reader.innerHTML =
+        '<div class="kb-reader-head"><span class="kb-badge ' + esc(e.layer) + '">' + (e.layer === 'wiki' ? 'wiki' : 'source') + '</span>'
+        + '<h3>' + esc(e.title) + '</h3><button class="kb-del" title="Delete">✕</button></div>'
+        + (meta.length ? '<div class="kb-reader-meta">' + esc(meta.join('  ·  ')) + '</div>' : '')
+        + '<pre class="kb-reader-body">' + esc(e.body) + '</pre>';
+      var del = reader.querySelector('.kb-del');
+      if (del) del.addEventListener('click', function () {
+        if (window.confirm('Delete "' + e.title + '"? This removes it from your knowledge base.')) kbDelete(e.layer, e.slug);
+      });
+    });
+  }
+  function kbDelete(layer, slug) {
+    fetch('/api/kb/remove', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ layer: layer, slug: slug }) })
+      .then(function () {
+        var reader = document.getElementById('kbReader');
+        if (reader) { reader.classList.remove('open'); reader.innerHTML = ''; }
+        loadKbList();
+      });
+  }
+  var kbSearchTimer = null;
+  function loadKbList() {
+    var listEl = document.getElementById('kbList');
+    if (!listEl) return;
+    var box = document.getElementById('kbSearch');
+    var q = box ? box.value : '';
+    if (q && q.trim()) {
+      getJSON('/api/kb/search?q=' + encodeURIComponent(q)).then(function (d) {
+        kbRenderList((d && d.hits) || [], listEl);
+      });
+    } else {
+      getJSON('/api/kb').then(function (d) {
+        kbRenderList((d && d.entries) || [], listEl);
+      });
+    }
+  }
+  function loadKb() {
+    views.kb.innerHTML =
+      '<div class="view-head"><div><h2>Knowledge Base</h2><div class="vh-sub">Sources + wiki · live search</div></div></div>'
+      + '<div class="kb-searchbar"><input id="kbSearch" class="kb-search" type="text" placeholder="Search your knowledge base…" autocomplete="off"></div>'
+      + '<div class="kb-body"><div id="kbList" class="kb-list"></div><div id="kbReader" class="kb-reader"></div></div>';
+    var s = document.getElementById('kbSearch');
+    if (s) s.addEventListener('input', function () {
+      if (kbSearchTimer) clearTimeout(kbSearchTimer);
+      kbSearchTimer = setTimeout(loadKbList, 200);
+    });
+    loadKbList();
+  }
+  window.lisaReloadKb = loadKbList;
 
   // ── live refresh: wrap the agent-session refresh so the active console
   //    view + the Control nav count update on SSE agent_session_update.

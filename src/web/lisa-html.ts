@@ -92,7 +92,8 @@ ${MAIN_CSS}
       <button class="nav-item" type="button" data-view="reve"><span class="nav-ico">☾</span>Rêve</button>
       <button class="nav-item" type="button" data-view="room"><span class="nav-ico">⌂</span>Room</button>
       <button class="nav-item" type="button" data-view="sense"><span class="nav-ico">◉</span>Sense</button>
-      <button class="nav-item" type="button" data-view="memory"><span class="nav-ico">✦</span>Memory</button>
+      <button class="nav-item" type="button" data-view="memory"><span class="nav-ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:block;margin:auto"><path d="M2 6h4M2 10h4M2 14h4M2 18h4"/><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M16 2v20"/></svg></span>Memory</button>
+      <button class="nav-item" type="button" data-view="kb"><span class="nav-ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:block;margin:auto"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg></span>Knowledge</button>
     </nav>
 
     <!-- Currently wanting -->
@@ -172,6 +173,7 @@ ${MAIN_CSS}
       <button class="fbtn" type="button" data-panel="tools" title="Tools" aria-label="Tools"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></button>
       <button class="fbtn" type="button" data-panel="plans" title="Coding plans" aria-label="Coding plans"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg></button>
       <button class="fbtn" type="button" data-panel="pair" title="Pair phone" aria-label="Pair phone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"/><line x1="11" y1="18" x2="13" y2="18"/></svg></button>
+      <button class="fbtn" type="button" id="fnKbSelect" title="Select messages to save to your Knowledge Base" aria-label="Save messages to knowledge base"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg></button>
       <span class="fbar-spacer"></span>
       <input id="fnFind" class="fn-find" type="text" placeholder="find in chat…" autocomplete="off" style="display:none">
       <button class="fbtn" type="button" id="fnSearchBtn" title="Find in conversation" aria-label="Find"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button>
@@ -211,6 +213,7 @@ ${MAIN_CSS}
     </section>
     <section class="view" id="viewSense"></section>
     <section class="view" id="viewMemory"></section>
+    <section class="view" id="viewKb"></section>
   </div>
 </div>
 

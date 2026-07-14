@@ -551,7 +551,7 @@ ${MD_RENDER_CSS}
       <div class="section-body" id="desire-body">—</div>
     </div>
     <div id="idle-section">
-      <div class="section-label">★ while you were away</div>
+      <div class="section-label" id="idle-label">★ while you were away</div>
       <div id="idle-body" class="md-render"></div>
     </div>
     <div id="suggestion-section">
@@ -609,6 +609,13 @@ ${MD_RENDER_CSS}
   const expand       = document.getElementById('expand');
   const desireBody   = document.getElementById('desire-body');
   const idleBody     = document.getElementById('idle-body');
+  // Localize the "while you were away" label to the UI language.
+  (function () {
+    var l = (navigator.language || 'en').toLowerCase();
+    var t = l.indexOf('zh') === 0 ? '你不在的时候' : l.indexOf('ja') === 0 ? '不在のあいだに' : l.indexOf('ko') === 0 ? '자리를 비운 사이' : 'WHILE YOU WERE AWAY';
+    var el = document.getElementById('idle-label');
+    if (el) el.textContent = '★ ' + t;
+  })();
   const claudeList   = document.getElementById('claude-list');
   const claudeCount  = document.getElementById('claude-count');
   const notifyCta    = document.getElementById('notify-cta');

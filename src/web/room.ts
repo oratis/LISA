@@ -12,8 +12,8 @@
  * Lisa's FULL-BODY character sprites are generated pixel art under /assets/room/.
  * Lisa is a full-body sprite (not a bust): an idle spritesheet (lisa-idle.png,
  * 2 frames: eyes open | closed — breathing via CSS, blink flips the frame) plus
- * pose sprites for sitting (lisa-sit.png) and sleeping (lisa-sleep.png), swapped
- * by mood/state. Sprites were generated via the "anchor → keyframes → chroma-key
+ * pose sprites for sitting (lisa-sit.png) and sleeping curled up in the armchair
+ * (lisa-sleep-sofa.png), swapped by mood/state. Sprites were generated via the "anchor → keyframes → chroma-key
  * + foot-anchor" pipeline (cf. Ludo.ai / chongdashu/ai-game-spritesheets):
  * gemini-2.5-flash-image made a full-body anchor from her existing face sprite,
  * pose/blink frames were edited from it for consistency, then keyed + normalized.
@@ -106,7 +106,7 @@ ${MD_RENDER_CSS}
      (sit / sleep) change the image + box size. Foot-anchored so she stands
      on the floor. */
   #lisa-wrap {
-    position: absolute; left: 47%; bottom: 6.5%;
+    position: absolute; left: 49.7%; bottom: 7.5%;
     transform: translateX(-50%);
     transition: left 1000ms var(--spring), bottom 1000ms var(--spring);
     pointer-events: none;
@@ -145,14 +145,17 @@ ${MD_RENDER_CSS}
   }
   #lisa-wrap.sit #lisa.blink { background-position: center bottom; }
   #lisa-wrap.sit #shadow { width: 20vmin; }
-  /* Sleeping / curled up — Reve / napping (a wide lying-down pose). */
+  /* Sleeping — curled up napping in the armchair (Reve / napping). She glides
+     over to the sofa on the right (the wrap's left/bottom transition) and curls
+     up; no floor shadow since she's up on the cushion, not the rug. */
+  #lisa-wrap.sleep { left: 69.5%; bottom: 31.5%; }
   #lisa-wrap.sleep #lisa {
-    background-image: url('/assets/room/lisa-sleep.png');
+    background-image: url('/assets/room/lisa-sleep-sofa.png');
     background-size: contain; background-position: center bottom; background-repeat: no-repeat;
-    width: 40vmin; height: 22vmin; animation-duration: 6.6s;
+    width: 17vmin; height: 26vmin; animation-duration: 6.6s;
   }
   #lisa-wrap.sleep #lisa.blink { background-position: center bottom; }
-  #lisa-wrap.sleep #shadow { width: 30vmin; }
+  #lisa-wrap.sleep #shadow { opacity: 0; }
 
   /* Presence beat (Phase B) — she looks up and meets your eyes. Single frame,
      swapped in for ~1.6s when you open the room / focus the window / hover. */
@@ -186,7 +189,7 @@ ${MD_RENDER_CSS}
 
   /* Dreaming — dim the room and float Z's above Lisa. */
   body.dreaming #lighting { opacity: 0.9; background: radial-gradient(120% 90% at 50% 35%, rgba(40,20,80,0.25) 20%, rgba(2,3,10,0.78) 100%); }
-  #zzz { position: absolute; left: 58%; bottom: 52%; pointer-events: none; opacity: 0; transition: opacity 600ms; }
+  #zzz { position: absolute; left: 73%; bottom: 60%; pointer-events: none; opacity: 0; transition: opacity 600ms; }
   body.dreaming #zzz { opacity: 1; }
   #zzz span {
     position: absolute; color: var(--accent-dream); font-weight: 700;
@@ -420,7 +423,7 @@ ${MD_RENDER_CSS}
   <div id="desire"><span class="star">✦</span><span class="txt" id="desire-txt"></span></div>
 
   <div id="reader"><div class="card">
-    <h3>★ while you were away</h3>
+    <h3 id="reader-title">★ while you were away</h3>
     <div id="reader-text" class="md-render"></div>
     <span class="close" id="reader-close">Close</span>
   </div></div>
@@ -442,6 +445,13 @@ function __name(t){return t}
 ${renderMarkdown}
 (() => {
   var $ = function (id) { return document.getElementById(id); };
+  // Localize the reader's "while you were away" title to the UI language.
+  (function () {
+    var l = (navigator.language || 'en').toLowerCase();
+    var t = l.indexOf('zh') === 0 ? '你不在的时候' : l.indexOf('ja') === 0 ? '不在のあいだに' : l.indexOf('ko') === 0 ? '자리를 비운 사이' : 'WHILE YOU WERE AWAY';
+    var el = $('reader-title');
+    if (el) el.textContent = '★ ' + t;
+  })();
   var body = document.body;
   var lisa = $('lisa'), doing = $('doing'), dot = $('dot');
   var stage = $('stage');
