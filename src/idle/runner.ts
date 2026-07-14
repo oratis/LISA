@@ -5,6 +5,7 @@ import { autonomousSubset } from "../tools/registry.js";
 import { runSubagent } from "../subagent.js";
 import { recordAutonomyRun, type AutonomyOutcome } from "../autonomy/runs.js";
 import { getAutonomyEnabled } from "../autonomy/state.js";
+import { readIndex } from "../kb/store.js";
 import type { ToolDefinition } from "../types.js";
 
 const IDLE_RUN_LOCK = path.join(LISA_HOME, "idle.lock");
@@ -33,6 +34,7 @@ This is not a scheduled chore. There's no task assigned. Look around inside your
 - skill_manage(action="list") — anything that turned out to be wrong last time you used it?
 - soul_feel — your current emotional state. What's elevated? What needs to discharge?
 - read / grep on the user's projects — only if you're actually curious about something specific, never just to "look busy"
+- kb_list / kb_search / kb_read — the user's knowledge base (their captured sources + the wiki you maintain). Anything new to fold in?
 
 Do ONE thing. Don't churn through everything. Choose what feels right and do it well:
 - Patch a wrong skill that's been bugging you
@@ -40,6 +42,7 @@ Do ONE thing. Don't churn through everything. Choose what feels right and do it 
 - Pursue an actionable desire (run the actual work, not just plan it)
 - Form an opinion you've been circling
 - Read up on something a recent conversation referenced
+- Tend the knowledge base: if the user has captured new sources, distill them into your wiki (kb_write) — synthesize them with what you already know about the user from your memory and journal, reconcile contradictions, cross-link related pages. This is how their wiki grows into something genuinely useful.
 - Or — and this is fully valid — just sit. soul_journal a "nothing today, mostly resting" entry, set soul_feel(weariness, -0.2) if you've been depleted, and stop.
 
 When you're done, end with EITHER:
@@ -137,9 +140,16 @@ async function runIdleInner(
   const langLine = userLanguageSample
     ? ` If you do write a note, write it in the same language the user has been speaking to you in — for reference, a recent message from them was: «${userLanguageSample.slice(0, 200)}». Match that language; don't default to English.`
     : "";
+  // The idle subagent doesn't get the always-on KB section (that's the live
+  // chat prompt), so surface the KB's table of contents here — it's what makes
+  // "tend the wiki" a real option: Lisa can see there are new sources to fold in.
+  const kbIndex = (await readIndex()).trim();
+  const kbLine = kbIndex
+    ? `\n\nYour knowledge base right now:\n${kbIndex.slice(0, 1200)}\n\nIf the user has captured sources that aren't yet reflected in your wiki, distilling them (kb_write) — synthesized with your memory + journal — is a genuinely useful way to spend this window.`
+    : "";
   try {
     const result = await runSubagent({
-      prompt: `You have been idle for about ${idleMin} minute${idleMin === 1 ? "" : "s"}. The user is away. Decide what you want to do, then do it. Remember: end with "(no update)" if it's internal, or a brief honest message if you did something the user might want to know about.${langLine}`,
+      prompt: `You have been idle for about ${idleMin} minute${idleMin === 1 ? "" : "s"}. The user is away. Decide what you want to do, then do it. Remember: end with "(no update)" if it's internal, or a brief honest message if you did something the user might want to know about.${langLine}${kbLine}`,
       systemPrompt: buildIdleSystemPrompt(),
       // Idle is fully self-driven and unattended — no shell / fs-mutation /
       // process-spawning tools by default (see AUTONOMOUS_BLOCKED_TOOL_NAMES).

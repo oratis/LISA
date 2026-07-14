@@ -1,6 +1,6 @@
 # PLAN — Personal Knowledge Base (PKB) for LISA · v1.0
 
-**Status:** design of record · **Date:** 2026-07-15 · **Author:** Claude (for Oratis)
+**Status:** ✅ shipped (PRs #235 → #242) · **Date:** 2026-07-15 · **Author:** Claude (for Oratis)
 
 A built-in, user-owned personal knowledge base for LISA, modeled on Andrej
 Karpathy's 3-layer "LLM Wiki", woven into Lisa's existing memory, journal, and
@@ -245,6 +245,11 @@ Each PR builds + typechecks + tests green, and is independently mergeable.
 
 Ship order B→C→D→E→F. B–D are the engine; E delivers the user-visible capture+retrieve;
 F closes the memory/journal integration loop.
+
+**Shipped:** A #235 (this doc) · B #236 (storage) · C #237 (tools+search) · D #239
+(always-on prompt) · E1 #240 (web view) · E2 #241 (chat→md capture) · F #242
+(idle distillation). E was split into E1 (Knowledge view: list/search/read) and
+E2 (chat select → capture).
 
 ---
 
