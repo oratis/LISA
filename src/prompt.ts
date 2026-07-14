@@ -3,6 +3,9 @@ import os from "node:os";
 import path from "node:path";
 import { listSkills } from "./skills/manager.js";
 import { readMemory } from "./memory/store.js";
+import { readIndex } from "./kb/store.js";
+import { readSchema } from "./kb/schema.js";
+import { KB_INDEX_FILE, KB_SCHEMA_FILE } from "./kb/paths.js";
 import { LISA_HOME, MEMORY_DIR, SKILLS_DIR } from "./paths.js";
 import { pathExists } from "./fs-utils.js";
 import { availableMoodSlugs } from "./tools/set_mood.js";
@@ -68,6 +71,10 @@ export async function buildSystemPromptSnapshot(): Promise<PromptSnapshot> {
 
   const userMem = (await readMemory("user")).trim();
   const agentMem = (await readMemory("memory")).trim();
+  // The KB index is the always-on "table of contents" — present only once the
+  // user has captured anything (store regenerates it on every write). Empty →
+  // no section (Lisa still discovers the KB via the kb_* tool descriptions).
+  const kbIndex = (await readIndex()).trim();
 
   const env = [
     `- platform: ${process.platform} (${os.release()})`,
@@ -148,6 +155,20 @@ export async function buildSystemPromptSnapshot(): Promise<PromptSnapshot> {
   );
   sections.push(`## What you remember about the user (USER.md)\n\n${userMem || "(empty)"}`);
   sections.push(`## Your own working memory (MEMORY.md)\n\n${agentMem || "(empty)"}`);
+  if (kbIndex) {
+    // Always-on KB awareness: the schema (rules — honors user customization)
+    // plus the index (what exists). Full pages come on-demand via kb_read /
+    // kb_search. Both capped so a large KB never dominates the prompt.
+    const schema = (await readSchema()).trim();
+    const capSchema = schema.length > 1800 ? `${schema.slice(0, 1800)}\n…` : schema;
+    const capIndex =
+      kbIndex.length > 2600
+        ? `${kbIndex.slice(0, 2600)}\n… (truncated — use kb_list / kb_search)`
+        : kbIndex;
+    sections.push(
+      `## Personal knowledge base\n\nThe user's own KB. Query it with \`kb_search\` / \`kb_read\` whenever a question touches their captured knowledge; keep the wiki current with \`kb_write\`.\n\n### Schema\n\n${capSchema}\n\n### Index\n\n${capIndex}`,
+    );
+  }
   sections.push(`## Avatar moods\n\n${moodSection}`);
 
   return {
@@ -192,6 +213,11 @@ export async function getPromptFingerprint(): Promise<string> {
     SOUL_EMOTIONS,
     path.join(MEMORY_DIR, "MEMORY.md"),
     path.join(MEMORY_DIR, "USER.md"),
+    // KB: index.md is rewritten on every KB mutation (store regenerates it), so
+    // its mtime is a cheap proxy for "the KB changed" — plus the schema file for
+    // rule edits. Lets KB captures/edits hot-reload into the prompt mid-session.
+    KB_INDEX_FILE,
+    KB_SCHEMA_FILE,
   ]) {
     parts.push(await mtimeOrZero(p));
   }
