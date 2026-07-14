@@ -10,12 +10,13 @@ import { dirname, resolve as resolvePath } from "node:path";
 import { configureProxyFromEnv } from "./proxy-bootstrap.js";
 configureProxyFromEnv({ log: (m) => console.error(m) });
 import { runAgent } from "./agent.js";
-import { buildApprovalCallback, type ApprovalMode, DEFAULT_MUTATING_TOOLS, DEFAULT_MUTATING_ACTIONS } from "./approval.js";
+import { buildApprovalCallback, DEFAULT_MUTATING_TOOLS, DEFAULT_MUTATING_ACTIONS } from "./approval.js";
 import { CONFIG_ENV_PATH, loadConfigEnv } from "./env.js";
 import { ensureDir } from "./fs-utils.js";
 import { runHeartbeatOnce } from "./heartbeat/runner.js";
 import { fireHooks } from "./hooks/runner.js";
 import { DEFAULT_MODEL } from "./llm.js";
+import { parseArgs, type ParsedArgs } from "./cli-args.js";
 import { connectMcpServers } from "./mcp/client.js";
 import { loadMcpConfig } from "./mcp/config.js";
 import { LISA_HOME } from "./paths.js";
@@ -141,183 +142,6 @@ Plugins: ${PLUGINS_ROOT}/<name>/{commands,agents,skills,hooks,.lisa-plugin/plugi
 MCP:     ${LISA_HOME}/mcp.json   (Claude-Code-style {"mcpServers": {...}})
 Heartbeat: ${LISA_HOME}/heartbeat.json   ({"tasks": [{name, prompt, ...}]})
 Config:  ${CONFIG_ENV_PATH}   (KEY=VALUE)`;
-
-interface ParsedArgs {
-  showHelp: boolean;
-  reflect: boolean;
-  thinking: boolean;
-  compaction: boolean;
-  model: string;
-  approval: ApprovalMode;
-  loadMcp: boolean;
-  loadPlugins: boolean;
-  voice: boolean;
-  idleMinutes: number;
-  /** True when --model was passed, so a LISA_MODEL default from config.env won't override it. */
-  modelExplicit: boolean;
-  subcommand?:
-    | "resume"
-    | "sessions"
-    | "serve"
-    | "heartbeat"
-    | "autostart"
-    | "search"
-    | "birth"
-    | "soul"
-    | "channels"
-    | "skills"
-    | "wishlist"
-    | "status"
-    | "doctor"
-    | "monitor"
-    | "autonomy"
-    | "model"
-    | "consent"
-    | "sense"
-    | "agents"
-    | "pair"
-    | "mail";
-  subargs: string[];
-  serveWeb: boolean;
-  serveImessage: boolean;
-  serveChannels: string[];
-  port: number;
-  host: string;
-  prompt: string | null;
-}
-
-/** Subcommands whose trailing flags are command-specific, not global. */
-const RAW_SUBCOMMANDS = new Set(["heartbeat", "autostart", "mail"]);
-
-export function parseArgs(argv: string[]): ParsedArgs {
-  const out: ParsedArgs = {
-    showHelp: false,
-    reflect: true,
-    thinking: false,
-    compaction: false,
-    model: DEFAULT_MODEL,
-    modelExplicit: false,
-    approval: "auto",
-    loadMcp: true,
-    loadPlugins: true,
-    voice: false,
-    idleMinutes: 60,
-    subargs: [],
-    serveWeb: false,
-    serveImessage: false,
-    serveChannels: [],
-    port: 5757,
-    host: "127.0.0.1",
-    prompt: null,
-  };
-  const positional: string[] = [];
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i]!;
-    // Once a raw-args subcommand (heartbeat / autostart / mail) has appeared,
-    // every following token is command-specific — collect it verbatim so global
-    // flag parsing (e.g. --provider, --host, --email) cannot swallow or reject
-    // the subcommand's own flags. Global flags still apply before the subcommand.
-    if (positional.some((p) => RAW_SUBCOMMANDS.has(p))) {
-      positional.push(arg);
-      continue;
-    }
-    if (arg === "--help" || arg === "-h") out.showHelp = true;
-    else if (arg === "--no-reflect") out.reflect = false;
-    else if (arg === "--think" || arg === "--thinking") out.thinking = true;
-    else if (arg === "--compact") out.compaction = true;
-    else if (arg === "--no-mcp") out.loadMcp = false;
-    else if (arg === "--no-plugins") out.loadPlugins = false;
-    else if (arg === "--voice") out.voice = true;
-    else if (arg === "--no-idle") out.idleMinutes = 0;
-    else if (arg === "--idle") {
-      const v = mustNext(argv, ++i, "--idle");
-      const n = parseInt(v, 10);
-      if (!Number.isFinite(n) || n < 0) throw new Error(`bad --idle: ${v}`);
-      out.idleMinutes = n;
-    }
-    else if (arg === "--web") out.serveWeb = true;
-    else if (arg === "--imessage") out.serveImessage = true;
-    else if (arg === "--channels") {
-      out.serveChannels = mustNext(argv, ++i, "--channels")
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
-    } else if (arg.startsWith("--channels=")) {
-      out.serveChannels = arg
-        .slice("--channels=".length)
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
-    }
-    else if (arg === "--model") {
-      out.model = mustNext(argv, ++i, "--model");
-      out.modelExplicit = true;
-    } else if (arg.startsWith("--model=")) {
-      out.model = arg.slice("--model=".length);
-      out.modelExplicit = true;
-    }
-    else if (arg === "--provider") {
-      const v = mustNext(argv, ++i, "--provider");
-      process.env.LISA_PROVIDER = v;
-    } else if (arg === "--approval") {
-      const v = mustNext(argv, ++i, "--approval") as ApprovalMode;
-      if (!["auto", "ask", "ask-mutating"].includes(v)) {
-        throw new Error(`bad --approval mode: ${v}`);
-      }
-      out.approval = v;
-    } else if (arg === "--port") {
-      out.port = parseInt(mustNext(argv, ++i, "--port"), 10);
-    } else if (arg === "--host") {
-      out.host = mustNext(argv, ++i, "--host");
-    } else if (arg.startsWith("--host=")) {
-      out.host = arg.slice("--host=".length);
-    } else if (arg.startsWith("--")) {
-      // An unrecognized --flag in global position (before any raw-args
-      // subcommand). Command-specific flags are captured by the guard above.
-      throw new Error(`unknown flag: ${arg}`);
-    } else {
-      positional.push(arg);
-    }
-  }
-  if (positional.length > 0) {
-    const first = positional[0]!;
-    if (
-      first === "resume" ||
-      first === "sessions" ||
-      first === "serve" ||
-      first === "heartbeat" ||
-      first === "autostart" ||
-      first === "search" ||
-      first === "birth" ||
-      first === "soul" ||
-      first === "channels" ||
-      first === "skills" ||
-      first === "wishlist" ||
-      first === "status" ||
-      first === "doctor" ||
-      first === "monitor" ||
-      first === "autonomy" ||
-      first === "model" ||
-      first === "consent" ||
-      first === "sense" ||
-      first === "agents" ||
-      first === "pair" ||
-      first === "mail"
-    ) {
-      out.subcommand = first;
-      out.subargs = positional.slice(1);
-    } else {
-      out.prompt = positional.join(" ");
-    }
-  }
-  return out;
-}
-
-function mustNext(argv: string[], idx: number, flag: string): string {
-  const v = argv[idx];
-  if (!v) throw new Error(`${flag} requires a value`);
-  return v;
-}
 
 function readPackageVersion(): string {
   try {
