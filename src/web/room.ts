@@ -42,6 +42,7 @@ export const ROOM_HTML = `<!doctype html>
     --accent-dream: #b487ff;
     --ink: rgba(6, 9, 18, 0.72);
     --spring: cubic-bezier(0.22, 1, 0.36, 1);
+    --stage: min(100vh, 100vw);
   }
   * { box-sizing: border-box; }
   html, body {
@@ -80,9 +81,7 @@ export const ROOM_HTML = `<!doctype html>
     image-rendering: pixelated;
   }
   .bg.show { opacity: 1; }
-  #bg-day   { background-image: url('/assets/room/room-day.png'); }
-  #bg-dusk  { background-image: url('/assets/room/room-dusk.png'); }
-  #bg-night { background-image: url('/assets/room/room-night.png'); }
+  /* .bg layer images are set in JS (renderBg) from the chosen room theme. */
 
   /* Lighting / mood wash over the whole scene. Tint + vignette driven by state. */
   #lighting {
@@ -96,6 +95,8 @@ export const ROOM_HTML = `<!doctype html>
     box-shadow: inset 0 0 min(18vmin,180px) min(6vmin,60px) rgba(4,6,14,0.55);
   }
 
+  /* Lisa herself — composited standing on the rug, centered. Her 512² sprite is
+     a transparent bust; we anchor her bottom near the rug and let her breathe. */
   /* Lisa — a FULL-BODY animated sprite standing on the rug (not a bust). The
      idle sheet has 2 frames (eyes open | eyes closed) side by side; breathing
      is a CSS transform, blinking flips the background frame. Pose swaps
@@ -132,22 +133,42 @@ export const ROOM_HTML = `<!doctype html>
   }
   #lisa:hover { filter: drop-shadow(0 0 16px rgba(106,212,255,0.55)) drop-shadow(0 10px 10px rgba(0,0,0,0.4)); }
 
-  /* Sitting with her laptop — coding / reading / focused moods. */
+  /* Sitting with her laptop — coding / reading / focused moods. contain +
+     bottom-anchor keeps her slim proportions (no stretch) whatever the crop. */
   #lisa-wrap.sit #lisa {
     background-image: url('/assets/room/lisa-sit.png');
-    background-size: 100% 100%; background-position: 0 0;
+    background-size: contain; background-position: center bottom; background-repeat: no-repeat;
     width: 30vmin; height: 34vmin; animation-duration: 5.8s;
   }
-  #lisa-wrap.sit #lisa.blink { background-position: 0 0; }
-  #lisa-wrap.sit #shadow { width: 22vmin; }
-  /* Sleeping / curled up — Reve / napping. */
+  #lisa-wrap.sit #lisa.blink { background-position: center bottom; }
+  #lisa-wrap.sit #shadow { width: 20vmin; }
+  /* Sleeping / curled up — Reve / napping (a wide lying-down pose). */
   #lisa-wrap.sleep #lisa {
     background-image: url('/assets/room/lisa-sleep.png');
-    background-size: 100% 100%; background-position: 0 0;
-    width: 34vmin; height: 24vmin; animation-duration: 6.6s;
+    background-size: contain; background-position: center bottom; background-repeat: no-repeat;
+    width: 40vmin; height: 22vmin; animation-duration: 6.6s;
   }
-  #lisa-wrap.sleep #lisa.blink { background-position: 0 0; }
-  #lisa-wrap.sleep #shadow { width: 26vmin; }
+  #lisa-wrap.sleep #lisa.blink { background-position: center bottom; }
+  #lisa-wrap.sleep #shadow { width: 30vmin; }
+
+  /* Presence beat (Phase B) — she looks up and meets your eyes. Single frame,
+     swapped in for ~1.6s when you open the room / focus the window / hover. */
+  #lisa.lookup {
+    background-image: url('/assets/room/lisa-lookup.png');
+    background-size: 100% 100%; background-position: 0 0;
+    filter: drop-shadow(0 0 14px rgba(106,212,255,0.45)) drop-shadow(0 10px 10px rgba(0,0,0,0.32));
+  }
+  /* Ambient activities at the standing spot (Phase C) — single-frame poses she
+     drifts through on her own when idle (reading / tea / music / stretch). */
+  #lisa-wrap.act-read    #lisa { background-image: url('/assets/room/lisa-read.png');    background-size: 100% 100%; background-position: 0 0; }
+  #lisa-wrap.act-tea     #lisa { background-image: url('/assets/room/lisa-tea.png');     background-size: 100% 100%; background-position: 0 0; }
+  #lisa-wrap.act-stretch #lisa { background-image: url('/assets/room/lisa-stretch.png'); background-size: 100% 100%; background-position: 0 0; }
+  #lisa-wrap.act-listen  #lisa { background-image: url('/assets/room/lisa-listen.png');  background-size: 100% 100%; background-position: 0 0; }
+  #lisa-wrap.act-window  #lisa { background-image: url('/assets/room/lisa-window.png');  background-size: 100% 100%; background-position: 0 0; }
+  /* Night (Phase D): she changes into pajamas for the evening — plain standing
+     idle only; activities keep the hoodie. Single frame, so no blink. */
+  #lisa-wrap.pjs #lisa { background-image: url('/assets/room/lisa-pajamas.png'); background-size: 100% 100%; background-position: 0 0; }
+  #lisa-wrap.pjs #lisa.blink { background-position: 0 0; }
 
   /* Monitor glow — sits over the desk's screen; pulses while she's thinking. */
   #glow-monitor {
@@ -203,6 +224,50 @@ export const ROOM_HTML = `<!doctype html>
     animation: letterPulse 2.2s ease-in-out infinite; z-index: -1;
   }
   @keyframes letterPulse { 0%,100% { opacity: 0.35; transform: scale(0.9); } 50% { opacity: 0.9; transform: scale(1.08); } }
+  /* Count badge when several ★ notes have piled up on the desk (Phase D). */
+  #letter .count {
+    position: absolute; top: -34%; right: -34%;
+    min-width: 1.5em; height: 1.5em; padding: 0 0.32em; box-sizing: border-box;
+    border-radius: 999px; background: var(--accent-warm); color: #3a2a00;
+    font-size: min(1.7vmin, 15px); font-weight: 800; line-height: 1;
+    display: none; align-items: center; justify-content: center;
+    box-shadow: 0 1px 5px rgba(0,0,0,0.45);
+  }
+  body.multi #letter .count { display: flex; }
+
+  /* Phase D: the bookshelf is a clickable hotspot — "what she's been thinking
+     about" surfaces her REAL current desire (object-as-interface, in-client). */
+  #shelf {
+    position: absolute; left: 17%; top: 21%; width: 21%; height: 37%;
+    cursor: pointer; pointer-events: auto; border-radius: 8px;
+    transition: background 220ms ease, box-shadow 220ms ease;
+  }
+  #shelf:hover {
+    background: radial-gradient(60% 50% at 50% 50%, rgba(106,212,255,0.12), transparent 72%);
+    box-shadow: 0 0 24px rgba(106,212,255,0.10) inset;
+  }
+  #recall {
+    position: fixed; inset: 0; z-index: 40; display: none;
+    align-items: center; justify-content: center; padding: 24px;
+    background: rgba(4,6,14,0.6); backdrop-filter: blur(6px);
+  }
+  #recall.open { display: flex; }
+  #recall .rcard {
+    max-width: 420px; width: 100%;
+    background: var(--ink); border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 16px; padding: 22px 24px;
+    box-shadow: 0 30px 80px rgba(0,0,0,0.6);
+    font-size: 14.5px; line-height: 1.6; color: var(--fg);
+  }
+  #recall .rcard h3 {
+    margin: 0 0 12px; font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--accent);
+  }
+  #recall .rclose {
+    margin-top: 16px; display: inline-block; cursor: pointer;
+    padding: 7px 14px; border-radius: 10px; font-weight: 600; font-size: 13px;
+    background: rgba(106,212,255,0.16); color: var(--fg);
+  }
 
   /* Weather / ambient particles live here (built in JS). */
   #weather { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
@@ -310,8 +375,6 @@ export const ROOM_HTML = `<!doctype html>
   body.offline #offline { display: flex; }
   body.offline #stage { filter: grayscale(0.7) brightness(0.5); transition: filter 800ms; }
   #offline .z { font-size: 40px; opacity: 0.7; }
-  #offline .hint { font-size: 12.5px; color: var(--fg-faint); }
-  #offline .hint code { color: var(--fg-dim); }
 
   @media (prefers-reduced-motion: reduce) {
     #lisa, #zzz span, #glow-monitor, .drop, .flake, .fly, #letter .halo { animation: none !important; }
@@ -332,9 +395,11 @@ export const ROOM_HTML = `<!doctype html>
       <div id="lisa" role="img" aria-label="Lisa"></div>
       <div id="zzz"><span>Z</span><span>Z</span><span>Z</span></div>
     </div>
-    <div id="letter" role="button" aria-label="Read Lisa's note">
+    <div id="letter" role="button" aria-label="Read Lisa's notes">
       <div class="halo"></div><div class="env"></div>
+      <div class="count" id="letter-count"></div>
     </div>
+    <div id="shelf" role="button" aria-label="What Lisa has been thinking about" title="what she's been thinking about"></div>
     <div id="vignette"></div>
   </div>
 
@@ -345,6 +410,7 @@ export const ROOM_HTML = `<!doctype html>
       <span class="doing" id="doing">at home</span>
     </div>
     <div id="spacer"></div>
+    <div class="chip" id="chip-theme" title="Redecorate the room" aria-label="Change room theme">❖</div>
     <div class="chip" id="chip-chat">Talk to her ▸</div>
   </div>
 
@@ -356,10 +422,16 @@ export const ROOM_HTML = `<!doctype html>
     <span class="close" id="reader-close">Close</span>
   </div></div>
 
+  <div id="recall"><div class="rcard">
+    <h3>✦ on her mind</h3>
+    <div id="recall-text"></div>
+    <span class="rclose" id="recall-close">Close</span>
+  </div></div>
+
   <div id="offline">
     <div class="z">☾</div>
     <div>Lisa is asleep</div>
-    <div class="hint">Wake her — run <code>lisa serve --web</code></div>
+    <div class="chip" id="chip-wake">Wake her — run <code>lisa serve --web</code></div>
   </div>
 
 <script>
@@ -371,8 +443,12 @@ export const ROOM_HTML = `<!doctype html>
 
   var state = {
     mood: 'neutral', online: false, thinking: false, dreaming: false,
-    unread: false, idleText: '', desire: null, tod: null,
+    unread: false, idleText: '', desire: null, tod: null, activity: null,
+    letters: [], theme: 'room',
   };
+  // Room theme (换景) — persisted; the .bg layer images are built from the prefix.
+  var THEMES = ['room', 'room2'];   // asset prefixes under /assets/room/
+  try { var _t = localStorage.getItem('lisa-room-theme'); if (_t && THEMES.indexOf(_t) >= 0) state.theme = _t; } catch (e) {}
 
   // ── Mood → a short "what she's doing" caption. Keeps the room honest:
   // the caption reflects her real current sprite, nothing invented. ───────
@@ -389,11 +465,10 @@ export const ROOM_HTML = `<!doctype html>
     'excited': 'excited', 'loving': 'happy you\\'re here', 'grateful': 'grateful',
     'sleepy': 'sleepy', 'shy': 'a little shy', 'surprised': 'surprised', 'neutral': 'at home',
   };
-  // Weather-flavored moods → particle mode. Anchored so outfit sprites like
-  // 'raincoat' don't summon indoor rain.
+  // Weather-flavored moods → particle mode.
   function weatherOf(slug) {
     if (!slug) return null;
-    if (/rain(?!coat)|storm/.test(slug)) return 'rain';
+    if (/rain|storm/.test(slug)) return 'rain';
     if (/snow|winter-cold/.test(slug)) return 'snow';
     return null;
   }
@@ -406,14 +481,20 @@ export const ROOM_HTML = `<!doctype html>
     if ((h >= 17 && h < 20) || (h >= 5 && h < 7)) return 'dusk';
     return 'night';
   }
+  function bgUrl(t) { return "url('/assets/room/" + state.theme + "-" + t + ".png')"; }
+  function renderBg() {
+    ['day', 'dusk', 'night'].forEach(function (t) {
+      var el = $('bg-' + t);
+      el.style.backgroundImage = bgUrl(t);
+      el.classList.toggle('show', t === state.tod);
+    });
+    $('backdrop').style.backgroundImage = bgUrl(state.tod);
+  }
   function applyTOD() {
     var tod = timeOfDay();
     if (tod === state.tod) return;
     state.tod = tod;
-    ['day', 'dusk', 'night'].forEach(function (t) {
-      $('bg-' + t).classList.toggle('show', t === tod);
-    });
-    $('backdrop').style.backgroundImage = "url('/assets/room/room-" + tod + ".png')";
+    renderBg();
     // Warmth of the lighting wash by time of day.
     var light = $('lighting');
     if (!body.classList.contains('dreaming')) {
@@ -422,6 +503,7 @@ export const ROOM_HTML = `<!doctype html>
       else { light.style.opacity = '0.16'; light.style.background = 'radial-gradient(120% 90% at 60% 30%, rgba(255,244,210,0.14) 20%, rgba(10,14,26,0.3) 100%)'; }
     }
     rebuildAmbient();
+    applyOutfit();
   }
 
   // ── Full-body pose. The sprite is pose-based (stand / sit / sleep); facial
@@ -430,8 +512,7 @@ export const ROOM_HTML = `<!doctype html>
   function poseFor() {
     if (state.dreaming) return 'sleep';
     var m = state.mood || '';
-    // 'sleeping'/'napping' only — 'sleepy' is just drowsy, she stays on her feet.
-    if (/sleeping|napping/.test(m)) return 'sleep';
+    if (/sleep|nap/.test(m)) return 'sleep';
     if (/working|studying|research|typing|writing|reading|gaming|watching/.test(m)) return 'sit';
     return 'stand';
   }
@@ -439,6 +520,60 @@ export const ROOM_HTML = `<!doctype html>
     var p = poseFor();
     lisaWrap.classList.toggle('sit', p === 'sit');
     lisaWrap.classList.toggle('sleep', p === 'sleep');
+    clearActivityIfBusy();
+    applyActivity();
+  }
+
+  // ── Phase C: autonomous ambient life. When she's idle-standing (no real work
+  // or Reve signal), she drifts through gentle AT-HOME activities on her own —
+  // honest "she's home, resting", never fabricated work or a fake mood. When a
+  // real signal arrives (work mood / thinking / dreaming) the activity clears. ─
+  var ACT = ['read', 'tea', 'listen', 'stretch', 'window'];
+  var ACT_CAPTION = { read: 'reading', tea: 'having some tea', listen: 'listening to music', stretch: 'stretching', window: 'gazing out the window' };
+  function idleEligible() {
+    return state.online && !state.thinking && !state.dreaming && poseFor() === 'stand';
+  }
+  function applyActivity() {
+    ACT.forEach(function (a) { lisaWrap.classList.toggle('act-' + a, state.activity === a); });
+    applyOutfit();
+  }
+  function applyOutfit() {
+    // Evening pajamas — plain standing idle at night only (activities keep the hoodie).
+    lisaWrap.classList.toggle('pjs', state.tod === 'night' && poseFor() === 'stand' && !state.activity);
+  }
+  function clearActivityIfBusy() {
+    if (state.activity && !idleEligible()) { state.activity = null; applyActivity(); }
+  }
+  function pickActivity() {
+    // time-weighted; null = just stand and rest; avoid immediate repeat.
+    var pool = state.tod === 'night' ? ['read', 'tea', 'listen', 'window', null]
+             : state.tod === 'dusk'  ? ['tea', 'read', 'window', 'listen', 'stretch']
+             :                         ['stretch', 'read', 'window', 'listen', null];
+    var pick, tries = 0;
+    do { pick = pool[Math.floor(Math.random() * pool.length)]; tries++; } while (pick === state.activity && tries < 5);
+    return pick;
+  }
+  var ambientTimer = null;
+  function ambientTick() {
+    if (idleEligible()) state.activity = pickActivity();
+    else state.activity = null;
+    applyActivity(); refreshCaption();
+    scheduleAmbient();
+  }
+  function scheduleAmbient() {
+    clearTimeout(ambientTimer);
+    ambientTimer = setTimeout(ambientTick, 22000 + Math.random() * 26000);
+  }
+
+  // ── Phase B: presence beat — she looks up and meets your eyes (BSide's most
+  // praised "aliveness" moment). Fires on room open / window focus / hover,
+  // only while she's plainly standing idle. ─────────────────────────────────
+  var lookupTimer = null;
+  function presenceBeat() {
+    if (poseFor() !== 'stand' || state.activity || document.hidden) return;
+    lisa.classList.add('lookup');
+    clearTimeout(lookupTimer);
+    lookupTimer = setTimeout(function () { lisa.classList.remove('lookup'); }, 1600);
   }
   function setMood(slug) {
     if (!slug) return;
@@ -450,7 +585,9 @@ export const ROOM_HTML = `<!doctype html>
   // Blink: briefly flip to the eyes-closed frame, only while standing idle.
   function scheduleBlink() {
     setTimeout(function () {
-      if (poseFor() === 'stand' && !document.hidden) {
+      // Only the standing idle sheet has a blink frame — never during an
+      // activity pose, the look-up beat, or a sit/sleep single-frame image.
+      if (poseFor() === 'stand' && !state.activity && !lisa.classList.contains('lookup') && !lisaWrap.classList.contains('pjs') && !document.hidden) {
         lisa.classList.add('blink');
         setTimeout(function () { lisa.classList.remove('blink'); }, 130);
       }
@@ -461,6 +598,7 @@ export const ROOM_HTML = `<!doctype html>
     if (!state.online) { doing.textContent = 'away'; return; }
     if (state.dreaming) { doing.textContent = 'dreaming…'; return; }
     if (state.thinking) { doing.textContent = 'thinking…'; return; }
+    if (state.activity) { doing.textContent = ACT_CAPTION[state.activity]; return; }
     doing.textContent = CAPTION[state.mood] || 'at home';
   }
   function refreshDot() {
@@ -473,17 +611,11 @@ export const ROOM_HTML = `<!doctype html>
 
   // ── Ambient particles (weather + night fireflies) ──────────────────────
   var weather = $('weather');
-  var ambientKey = null;
   function clearAmbient() { while (weather.firstChild) weather.removeChild(weather.firstChild); }
   function refreshWeather() { rebuildAmbient(); }
   function rebuildAmbient() {
-    var w = weatherOf(state.mood);
-    // Mood pulses arrive often; only touch the DOM when the ambient mode
-    // actually changes (weather kind / time-of-day / dreaming).
-    var key = (w || 'none') + ':' + state.tod + ':' + state.dreaming;
-    if (key === ambientKey) return;
-    ambientKey = key;
     clearAmbient();
+    var w = weatherOf(state.mood);
     if (w === 'rain') {
       for (var i = 0; i < 70; i++) {
         var d = document.createElement('div'); d.className = 'drop';
@@ -521,10 +653,20 @@ export const ROOM_HTML = `<!doctype html>
     body.classList.toggle('has-desire', !!state.desire && state.online && !state.dreaming);
     if (state.desire) $('desire-txt').textContent = 'she wants to ' + String(state.desire).replace(/^to\\s+/i, '');
   }
-  function refreshLetter() { body.classList.toggle('unread', state.unread); }
+  function refreshLetter() {
+    var n = state.letters.length;
+    state.unread = n > 0;
+    body.classList.toggle('unread', n > 0);
+    body.classList.toggle('multi', n > 1);
+    $('letter-count').textContent = n > 1 ? String(n) : '';
+  }
 
   $('letter').addEventListener('click', function () {
-    $('reader-text').textContent = state.idleText || '(she left before writing anything)';
+    var notes = state.letters.length ? state.letters : (state.idleText ? [state.idleText] : []);
+    // Newest first, gently divided when several have piled up.
+    $('reader-text').textContent = notes.length
+      ? notes.slice().reverse().join('\\n\\n· · ·\\n\\n')
+      : '(she left before writing anything)';
     $('reader').classList.add('open');
   });
   $('reader-close').addEventListener('click', function () { $('reader').classList.remove('open'); });
@@ -532,47 +674,91 @@ export const ROOM_HTML = `<!doctype html>
 
   function dismissUnread() {
     fetch('/api/island/dismiss-unread', { method: 'POST' }).catch(function () {});
-    state.unread = false; state.idleText = ''; refreshLetter();
+    state.letters = []; state.unread = false; state.idleText = ''; refreshLetter();
   }
   // Reading the letter marks it read.
   $('reader-close').addEventListener('click', dismissUnread);
 
-  // ── Open the full chat (native bridge if inside a Lisa app window;
-  // when embedded in the GUI's #roomFrame, just switch the parent to chat). ──
-  function openChat() {
-    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.island) {
-      window.webkit.messageHandlers.island.postMessage({ type: 'open_full_gui', prefill: '' });
-    } else if (window.self !== window.top) {
-      window.parent.postMessage({ type: 'room_open_chat' }, window.location.origin);
-    } else { window.open('/', '_blank'); }
-  }
-  $('chip-chat').addEventListener('click', openChat);
-  lisa.addEventListener('click', openChat);
+  // ── Phase D: bookshelf → recall her REAL current desire (in-client card). ──
+  $('shelf').addEventListener('click', function () {
+    $('recall-text').textContent = state.desire
+      ? ('She\\'s been wanting to ' + String(state.desire).replace(/^to\\s+/i, '').replace(/\\s*$/, ''))
+      : 'Nothing pressing on her mind right now — she\\'s just at home.';
+    $('recall').classList.add('open');
+  });
+  function closeRecall() { $('recall').classList.remove('open'); }
+  $('recall-close').addEventListener('click', closeRecall);
+  $('recall').addEventListener('click', function (e) { if (e.target === $('recall')) closeRecall(); });
 
-  // ── Gentle parallax: bg drifts opposite the cursor, Lisa drifts less.
-  // Skips work while the tab is hidden or the target is (almost) reached,
-  // and stays off entirely under prefers-reduced-motion. ────────────────────
-  var reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // ── In-client action bridge — NEVER opens a browser. ────────────────────
+  // Room usually runs as the #viewRoom iframe inside the main GUI, so the
+  // primary path is postMessage → parent GUI (same WKWebView). Falls back to
+  // the native bridge for a standalone window, and to a same-tab navigation
+  // for a plain browser. window.open is intentionally gone (it spawned a
+  // browser window when messageHandlers.island was absent in the iframe).
+  function roomAction(action, payload) {
+    payload = payload || {};
+    // 1) Embedded in the GUI → let the parent handle it in-client.
+    if (window.parent && window.parent !== window) {
+      try {
+        window.parent.postMessage(
+          Object.assign({ type: 'lisa-room', action: action }, payload),
+          location.origin);
+        return;
+      } catch (e) { /* cross-origin? fall through */ }
+    }
+    // 2) Standalone native window with a bridge (island or main 'lisa').
+    var mh = window.webkit && window.webkit.messageHandlers;
+    var bridge = mh && (mh.island || mh.lisa);
+    if (bridge) {
+      try { bridge.postMessage({ type: 'open_full_gui', prefill: payload.prefill || '' }); return; } catch (e) {}
+    }
+    // 3) Plain browser standalone /room → navigate the SAME tab (no new window).
+    if (action === 'open-chat') {
+      location.assign(payload.prefill ? '/?prefill=' + encodeURIComponent(payload.prefill) : '/');
+    }
+  }
+  function openChat(prefill) { roomAction('open-chat', prefill ? { prefill: prefill } : {}); }
+  $('chip-chat').addEventListener('click', function () { openChat(); });
+  lisa.addEventListener('click', function () { openChat(); });
+
+  // Redecorate (换景) — cycle the room theme, persisted across sessions.
+  function cycleTheme() {
+    state.theme = THEMES[(THEMES.indexOf(state.theme) + 1) % THEMES.length];
+    try { localStorage.setItem('lisa-room-theme', state.theme); } catch (e) {}
+    renderBg();
+    document.body.animate([{ opacity: 0.5 }, { opacity: 1 }], { duration: 500 });
+  }
+  $('chip-theme').addEventListener('click', cycleTheme);
+
+  // ── Gentle parallax: bg drifts opposite the cursor, Lisa drifts less. ────
   var px = 0, py = 0, tx = 0, ty = 0;
   window.addEventListener('mousemove', function (e) {
     tx = (e.clientX / window.innerWidth - 0.5);
     ty = (e.clientY / window.innerHeight - 0.5);
   });
   function raf() {
-    if (!document.hidden && (Math.abs(tx - px) > 0.0005 || Math.abs(ty - py) > 0.0005)) {
-      px += (tx - px) * 0.06; py += (ty - py) * 0.06;
-      stage.style.transform = 'translateX(-50%) translate(' + (-px * 14) + 'px,' + (-py * 8) + 'px)';
-    }
     requestAnimationFrame(raf);
+    // Don't burn frames or touch layout while the room isn't visible (it runs
+    // as a hidden iframe when you're on another GUI view, or when backgrounded).
+    if (document.hidden) return;
+    px += (tx - px) * 0.06; py += (ty - py) * 0.06;
+    stage.style.transform = 'translateX(-50%) translate(' + (-px * 14) + 'px,' + (-py * 8) + 'px)';
   }
-  if (!reducedMotion) requestAnimationFrame(raf);
+  requestAnimationFrame(raf);
 
   // ── Server state: ping snapshot + SSE pulses (shared with the Island). ───
   function applyPing(j) {
     state.online = !!j.online;
-    state.unread = !!j.has_unread_idle_message;
     state.idleText = j.last_idle_message_text || '';
     state.desire = j.current_desire || null;
+    // Seed the desk pile from the server's latest unread note once; live
+    // idle_message events then accumulate on top within the session.
+    if (j.has_unread_idle_message && state.idleText && state.letters.length === 0) {
+      state.letters = [state.idleText];
+    } else if (!j.has_unread_idle_message && state.letters.length <= 1) {
+      state.letters = [];   // server cleared it and we didn't pile up live ones
+    }
     if (j.mood) setMood(j.mood);
     body.classList.toggle('offline', !state.online);
     refreshDot(); refreshCaption(); refreshDesire(); refreshLetter();
@@ -591,15 +777,18 @@ export const ROOM_HTML = `<!doctype html>
       var m; try { m = JSON.parse(ev.data); } catch (e) { return; }
       switch (m.type) {
         case 'mood': setMood(m.slug); break;
-        case 'chat_start': state.thinking = true; body.classList.add('thinking'); refreshDot(); refreshCaption(); break;
+        case 'chat_start': state.thinking = true; body.classList.add('thinking'); clearActivityIfBusy(); refreshDot(); refreshCaption(); break;
         case 'chat_end':   state.thinking = false; body.classList.remove('thinking'); refreshDot(); refreshCaption(); break;
         case 'idle_start': state.dreaming = true; body.classList.add('dreaming'); applyTOD(); applyPose(); refreshDot(); refreshCaption(); refreshDesire(); break;
         case 'idle_done':
         case 'idle_error': state.dreaming = false; body.classList.remove('dreaming'); applyTOD(); applyPose(); refreshDot(); refreshCaption(); refreshDesire(); break;
         case 'idle_message':
           state.dreaming = false; body.classList.remove('dreaming'); applyTOD(); applyPose();
-          state.unread = true; state.idleText = (m.text || '').slice(0, 4000);
-          refreshDot(); refreshCaption(); refreshDesire(); refreshLetter();
+          var _txt = (m.text || '').slice(0, 4000);
+          if (_txt) state.letters.push(_txt);
+          if (state.letters.length > 12) state.letters = state.letters.slice(-12);  // cap the desk pile
+          state.idleText = _txt;
+          refreshDot(); refreshCaption(); refreshLetter();
           document.body.animate([{ filter: 'brightness(1.25)' }, { filter: 'brightness(1)' }], { duration: 700 });
           break;
       }
@@ -612,6 +801,11 @@ export const ROOM_HTML = `<!doctype html>
   applyTOD();
   applyPose();
   scheduleBlink();
+  scheduleAmbient();                                   // Phase C: autonomous ambient life
+  setTimeout(presenceBeat, 900);                       // Phase B: greet you on open
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) presenceBeat(); });
+  window.addEventListener('focus', presenceBeat);
+  lisa.addEventListener('mouseenter', presenceBeat);
   pollPing();
   subscribe();
   setInterval(pollPing, 30000);
