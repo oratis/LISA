@@ -67,7 +67,17 @@ export async function probeAccount(
       await run;
     }
   } finally {
-    await connector.close().catch(() => {});
+    // Close once the underlying op actually settles — NOT merely when the race
+    // does. If the timeout won, connect() may still be in flight, so closing now
+    // would no-op (close() short-circuits on `!connected`) and leak the full
+    // IMAP session that listSince() goes on to establish. Chaining on `run`
+    // means the close fires after connect() resolves, when `connected` is true
+    // and logout() actually tears the session down. Fire-and-forget: the probe
+    // result is already decided; teardown is best-effort.
+    void run.then(
+      () => connector.close().catch(() => {}),
+      () => connector.close().catch(() => {}),
+    );
   }
 }
 
