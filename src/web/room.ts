@@ -417,7 +417,7 @@ export const ROOM_HTML = `<!doctype html>
   <div id="desire"><span class="star">✦</span><span class="txt" id="desire-txt"></span></div>
 
   <div id="reader"><div class="card">
-    <h3>★ while you were away</h3>
+    <h3 id="reader-title">★ while you were away</h3>
     <div id="reader-text"></div>
     <span class="close" id="reader-close">Close</span>
   </div></div>
@@ -437,6 +437,13 @@ export const ROOM_HTML = `<!doctype html>
 <script>
 (() => {
   var $ = function (id) { return document.getElementById(id); };
+  // Localize the reader's "while you were away" title to the UI language.
+  (function () {
+    var l = (navigator.language || 'en').toLowerCase();
+    var t = l.indexOf('zh') === 0 ? '你不在的时候' : l.indexOf('ja') === 0 ? '不在のあいだに' : l.indexOf('ko') === 0 ? '자리를 비운 사이' : 'WHILE YOU WERE AWAY';
+    var el = $('reader-title');
+    if (el) el.textContent = '★ ' + t;
+  })();
   var body = document.body;
   var lisa = $('lisa'), doing = $('doing'), dot = $('dot');
   var stage = $('stage');
