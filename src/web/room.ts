@@ -165,6 +165,11 @@ export const ROOM_HTML = `<!doctype html>
   #lisa-wrap.act-tea     #lisa { background-image: url('/assets/room/lisa-tea.png');     background-size: 100% 100%; background-position: 0 0; }
   #lisa-wrap.act-stretch #lisa { background-image: url('/assets/room/lisa-stretch.png'); background-size: 100% 100%; background-position: 0 0; }
   #lisa-wrap.act-listen  #lisa { background-image: url('/assets/room/lisa-listen.png');  background-size: 100% 100%; background-position: 0 0; }
+  #lisa-wrap.act-window  #lisa { background-image: url('/assets/room/lisa-window.png');  background-size: 100% 100%; background-position: 0 0; }
+  /* Night (Phase D): she changes into pajamas for the evening — plain standing
+     idle only; activities keep the hoodie. Single frame, so no blink. */
+  #lisa-wrap.pjs #lisa { background-image: url('/assets/room/lisa-pajamas.png'); background-size: 100% 100%; background-position: 0 0; }
+  #lisa-wrap.pjs #lisa.blink { background-position: 0 0; }
 
   /* Monitor glow — sits over the desk's screen; pulses while she's thinking. */
   #glow-monitor {
@@ -220,6 +225,16 @@ export const ROOM_HTML = `<!doctype html>
     animation: letterPulse 2.2s ease-in-out infinite; z-index: -1;
   }
   @keyframes letterPulse { 0%,100% { opacity: 0.35; transform: scale(0.9); } 50% { opacity: 0.9; transform: scale(1.08); } }
+  /* Count badge when several ★ notes have piled up on the desk (Phase D). */
+  #letter .count {
+    position: absolute; top: -34%; right: -34%;
+    min-width: 1.5em; height: 1.5em; padding: 0 0.32em; box-sizing: border-box;
+    border-radius: 999px; background: var(--accent-warm); color: #3a2a00;
+    font-size: min(1.7vmin, 15px); font-weight: 800; line-height: 1;
+    display: none; align-items: center; justify-content: center;
+    box-shadow: 0 1px 5px rgba(0,0,0,0.45);
+  }
+  body.multi #letter .count { display: flex; }
 
   /* Phase D: the bookshelf is a clickable hotspot — "what she's been thinking
      about" surfaces her REAL current desire (object-as-interface, in-client). */
@@ -381,8 +396,9 @@ export const ROOM_HTML = `<!doctype html>
       <div id="lisa" role="img" aria-label="Lisa"></div>
       <div id="zzz"><span>Z</span><span>Z</span><span>Z</span></div>
     </div>
-    <div id="letter" role="button" aria-label="Read Lisa's note">
+    <div id="letter" role="button" aria-label="Read Lisa's notes">
       <div class="halo"></div><div class="env"></div>
+      <div class="count" id="letter-count"></div>
     </div>
     <div id="shelf" role="button" aria-label="What Lisa has been thinking about" title="what she's been thinking about"></div>
     <div id="vignette"></div>
@@ -428,6 +444,7 @@ export const ROOM_HTML = `<!doctype html>
   var state = {
     mood: 'neutral', online: false, thinking: false, dreaming: false,
     unread: false, idleText: '', desire: null, tod: null, activity: null,
+    letters: [],
   };
 
   // ── Mood → a short "what she's doing" caption. Keeps the room honest:
@@ -477,6 +494,7 @@ export const ROOM_HTML = `<!doctype html>
       else { light.style.opacity = '0.16'; light.style.background = 'radial-gradient(120% 90% at 60% 30%, rgba(255,244,210,0.14) 20%, rgba(10,14,26,0.3) 100%)'; }
     }
     rebuildAmbient();
+    applyOutfit();
   }
 
   // ── Full-body pose. The sprite is pose-based (stand / sit / sleep); facial
@@ -501,22 +519,27 @@ export const ROOM_HTML = `<!doctype html>
   // or Reve signal), she drifts through gentle AT-HOME activities on her own —
   // honest "she's home, resting", never fabricated work or a fake mood. When a
   // real signal arrives (work mood / thinking / dreaming) the activity clears. ─
-  var ACT = ['read', 'tea', 'listen', 'stretch'];
-  var ACT_CAPTION = { read: 'reading', tea: 'having some tea', listen: 'listening to music', stretch: 'stretching' };
+  var ACT = ['read', 'tea', 'listen', 'stretch', 'window'];
+  var ACT_CAPTION = { read: 'reading', tea: 'having some tea', listen: 'listening to music', stretch: 'stretching', window: 'gazing out the window' };
   function idleEligible() {
     return state.online && !state.thinking && !state.dreaming && poseFor() === 'stand';
   }
   function applyActivity() {
     ACT.forEach(function (a) { lisaWrap.classList.toggle('act-' + a, state.activity === a); });
+    applyOutfit();
+  }
+  function applyOutfit() {
+    // Evening pajamas — plain standing idle at night only (activities keep the hoodie).
+    lisaWrap.classList.toggle('pjs', state.tod === 'night' && poseFor() === 'stand' && !state.activity);
   }
   function clearActivityIfBusy() {
     if (state.activity && !idleEligible()) { state.activity = null; applyActivity(); }
   }
   function pickActivity() {
     // time-weighted; null = just stand and rest; avoid immediate repeat.
-    var pool = state.tod === 'night' ? ['read', 'tea', 'listen', 'listen', null]
-             : state.tod === 'dusk'  ? ['tea', 'read', 'listen', null, 'stretch']
-             :                         ['stretch', 'read', 'listen', null, null];
+    var pool = state.tod === 'night' ? ['read', 'tea', 'listen', 'window', null]
+             : state.tod === 'dusk'  ? ['tea', 'read', 'window', 'listen', 'stretch']
+             :                         ['stretch', 'read', 'window', 'listen', null];
     var pick, tries = 0;
     do { pick = pool[Math.floor(Math.random() * pool.length)]; tries++; } while (pick === state.activity && tries < 5);
     return pick;
@@ -555,7 +578,7 @@ export const ROOM_HTML = `<!doctype html>
     setTimeout(function () {
       // Only the standing idle sheet has a blink frame — never during an
       // activity pose, the look-up beat, or a sit/sleep single-frame image.
-      if (poseFor() === 'stand' && !state.activity && !lisa.classList.contains('lookup') && !document.hidden) {
+      if (poseFor() === 'stand' && !state.activity && !lisa.classList.contains('lookup') && !lisaWrap.classList.contains('pjs') && !document.hidden) {
         lisa.classList.add('blink');
         setTimeout(function () { lisa.classList.remove('blink'); }, 130);
       }
@@ -621,10 +644,20 @@ export const ROOM_HTML = `<!doctype html>
     body.classList.toggle('has-desire', !!state.desire && state.online && !state.dreaming);
     if (state.desire) $('desire-txt').textContent = 'she wants to ' + String(state.desire).replace(/^to\\s+/i, '');
   }
-  function refreshLetter() { body.classList.toggle('unread', state.unread); }
+  function refreshLetter() {
+    var n = state.letters.length;
+    state.unread = n > 0;
+    body.classList.toggle('unread', n > 0);
+    body.classList.toggle('multi', n > 1);
+    $('letter-count').textContent = n > 1 ? String(n) : '';
+  }
 
   $('letter').addEventListener('click', function () {
-    $('reader-text').textContent = state.idleText || '(she left before writing anything)';
+    var notes = state.letters.length ? state.letters : (state.idleText ? [state.idleText] : []);
+    // Newest first, gently divided when several have piled up.
+    $('reader-text').textContent = notes.length
+      ? notes.slice().reverse().join('\\n\\n· · ·\\n\\n')
+      : '(she left before writing anything)';
     $('reader').classList.add('open');
   });
   $('reader-close').addEventListener('click', function () { $('reader').classList.remove('open'); });
@@ -632,7 +665,7 @@ export const ROOM_HTML = `<!doctype html>
 
   function dismissUnread() {
     fetch('/api/island/dismiss-unread', { method: 'POST' }).catch(function () {});
-    state.unread = false; state.idleText = ''; refreshLetter();
+    state.letters = []; state.unread = false; state.idleText = ''; refreshLetter();
   }
   // Reading the letter marks it read.
   $('reader-close').addEventListener('click', dismissUnread);
@@ -696,9 +729,15 @@ export const ROOM_HTML = `<!doctype html>
   // ── Server state: ping snapshot + SSE pulses (shared with the Island). ───
   function applyPing(j) {
     state.online = !!j.online;
-    state.unread = !!j.has_unread_idle_message;
     state.idleText = j.last_idle_message_text || '';
     state.desire = j.current_desire || null;
+    // Seed the desk pile from the server's latest unread note once; live
+    // idle_message events then accumulate on top within the session.
+    if (j.has_unread_idle_message && state.idleText && state.letters.length === 0) {
+      state.letters = [state.idleText];
+    } else if (!j.has_unread_idle_message && state.letters.length <= 1) {
+      state.letters = [];   // server cleared it and we didn't pile up live ones
+    }
     if (j.mood) setMood(j.mood);
     body.classList.toggle('offline', !state.online);
     refreshDot(); refreshCaption(); refreshDesire(); refreshLetter();
@@ -724,7 +763,9 @@ export const ROOM_HTML = `<!doctype html>
         case 'idle_error': state.dreaming = false; body.classList.remove('dreaming'); applyTOD(); applyPose(); refreshDot(); refreshCaption(); refreshDesire(); break;
         case 'idle_message':
           state.dreaming = false; body.classList.remove('dreaming'); applyTOD(); applyPose();
-          state.unread = true; state.idleText = (m.text || '').slice(0, 4000);
+          var _txt = (m.text || '').slice(0, 4000);
+          if (_txt) state.letters.push(_txt);
+          state.idleText = _txt;
           refreshDot(); refreshCaption(); refreshLetter();
           document.body.animate([{ filter: 'brightness(1.25)' }, { filter: 'brightness(1)' }], { duration: 700 });
           break;
