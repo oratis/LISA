@@ -187,9 +187,9 @@ interface ParsedArgs {
 }
 
 /** Subcommands whose trailing flags are command-specific, not global. */
-const RAW_SUBCOMMANDS = new Set(["heartbeat", "autostart"]);
+const RAW_SUBCOMMANDS = new Set(["heartbeat", "autostart", "mail"]);
 
-function parseArgs(argv: string[]): ParsedArgs {
+export function parseArgs(argv: string[]): ParsedArgs {
   const out: ParsedArgs = {
     showHelp: false,
     reflect: true,
@@ -213,6 +213,14 @@ function parseArgs(argv: string[]): ParsedArgs {
   const positional: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
+    // Once a raw-args subcommand (heartbeat / autostart / mail) has appeared,
+    // every following token is command-specific — collect it verbatim so global
+    // flag parsing (e.g. --provider, --host, --email) cannot swallow or reject
+    // the subcommand's own flags. Global flags still apply before the subcommand.
+    if (positional.some((p) => RAW_SUBCOMMANDS.has(p))) {
+      positional.push(arg);
+      continue;
+    }
     if (arg === "--help" || arg === "-h") out.showHelp = true;
     else if (arg === "--no-reflect") out.reflect = false;
     else if (arg === "--think" || arg === "--thinking") out.thinking = true;
@@ -264,15 +272,9 @@ function parseArgs(argv: string[]): ParsedArgs {
     } else if (arg.startsWith("--host=")) {
       out.host = arg.slice("--host=".length);
     } else if (arg.startsWith("--")) {
-      // Flags after a raw-args subcommand (heartbeat/autostart) are
-      // command-specific, not global — collect them verbatim instead of
-      // rejecting. (Without this, `heartbeat install --load` threw before
-      // its handler ever saw the flag.)
-      if (positional.some((p) => RAW_SUBCOMMANDS.has(p))) {
-        positional.push(arg);
-      } else {
-        throw new Error(`unknown flag: ${arg}`);
-      }
+      // An unrecognized --flag in global position (before any raw-args
+      // subcommand). Command-specific flags are captured by the guard above.
+      throw new Error(`unknown flag: ${arg}`);
     } else {
       positional.push(arg);
     }
