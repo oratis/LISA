@@ -518,10 +518,16 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
 
   // ── Idle mode ───────────────────────────────────────────────────────
   let idleRunning = false;
+  // Declared here (rather than beside the reflect scheduler below) so the dream's
+  // idle handler can also defer to an in-flight reflection: PLAN §3 wants reflect
+  // to run first, before the dream mutates history with its own "[while you were
+  // away]" note. Without this the guard is asymmetric — the scheduler blocks
+  // reflect-during-dream, but a dream could still start mid-reflect.
+  let reflecting = false;
   if (opts.idleMinutes && opts.idleMinutes > 0) {
     const watcher = getIdleWatcher(opts.idleMinutes * 60_000);
     watcher.on("idle", async () => {
-      if (idleRunning) return;
+      if (idleRunning || reflecting) return;
       idleRunning = true;
       const startedAt = new Date().toISOString();
       console.error(
@@ -596,14 +602,19 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // hang — which is why web conversations never updated Lisa's desires. Reflect
   // when a stretch of conversation goes quiet instead: after a short debounce
   // with no user input, once, provided the human actually said something new.
+  // Clamp to a positive, finite value: `Number(env) || DEFAULT` correctly
+  // rejects NaN / "" / "0", but a negative value is truthy and would make
+  // `idleMs < debounceMs` always false → reflect ~60s into any conversation.
+  const reflectDebounceEnv = Number(process.env.LISA_REFLECT_DEBOUNCE_MS);
   const reflectDebounceMs =
-    Number(process.env.LISA_REFLECT_DEBOUNCE_MS) || DEFAULT_REFLECT_DEBOUNCE_MS;
+    Number.isFinite(reflectDebounceEnv) && reflectDebounceEnv > 0
+      ? reflectDebounceEnv
+      : DEFAULT_REFLECT_DEBOUNCE_MS;
   // Reuse the process-wide idle watcher purely as an activity clock — /chat
   // already ticks() it. idleFor() works without start(); the idleMs we pass only
   // matters if we happen to be its first caller, and we never use its 'idle'
   // event here (that drives the separate, hour-long "dream" idle above).
   const reflectClock = getIdleWatcher(reflectDebounceMs);
-  let reflecting = false;
   // Seed from the resumed history so we never re-reflect prior sessions on the
   // first quiet window — only conversation added while this server is live.
   let lastReflectedUserCount = countUserMessages(history);
