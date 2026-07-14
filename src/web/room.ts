@@ -133,22 +133,23 @@ export const ROOM_HTML = `<!doctype html>
   }
   #lisa:hover { filter: drop-shadow(0 0 16px rgba(106,212,255,0.55)) drop-shadow(0 10px 10px rgba(0,0,0,0.4)); }
 
-  /* Sitting with her laptop — coding / reading / focused moods. */
+  /* Sitting with her laptop — coding / reading / focused moods. contain +
+     bottom-anchor keeps her slim proportions (no stretch) whatever the crop. */
   #lisa-wrap.sit #lisa {
     background-image: url('/assets/room/lisa-sit.png');
-    background-size: 100% 100%; background-position: 0 0;
+    background-size: contain; background-position: center bottom; background-repeat: no-repeat;
     width: 30vmin; height: 34vmin; animation-duration: 5.8s;
   }
-  #lisa-wrap.sit #lisa.blink { background-position: 0 0; }
-  #lisa-wrap.sit #shadow { width: 22vmin; }
-  /* Sleeping / curled up — Reve / napping. */
+  #lisa-wrap.sit #lisa.blink { background-position: center bottom; }
+  #lisa-wrap.sit #shadow { width: 20vmin; }
+  /* Sleeping / curled up — Reve / napping (a wide lying-down pose). */
   #lisa-wrap.sleep #lisa {
     background-image: url('/assets/room/lisa-sleep.png');
-    background-size: 100% 100%; background-position: 0 0;
-    width: 34vmin; height: 24vmin; animation-duration: 6.6s;
+    background-size: contain; background-position: center bottom; background-repeat: no-repeat;
+    width: 40vmin; height: 22vmin; animation-duration: 6.6s;
   }
-  #lisa-wrap.sleep #lisa.blink { background-position: 0 0; }
-  #lisa-wrap.sleep #shadow { width: 26vmin; }
+  #lisa-wrap.sleep #lisa.blink { background-position: center bottom; }
+  #lisa-wrap.sleep #shadow { width: 30vmin; }
 
   /* Presence beat (Phase B) — she looks up and meets your eyes. Single frame,
      swapped in for ~1.6s when you open the room / focus the window / hover. */
