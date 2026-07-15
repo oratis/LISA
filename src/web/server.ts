@@ -1,8 +1,10 @@
 import http from "node:http";
 import path from "node:path";
 import fs from "node:fs/promises";
+import { createReadStream } from "node:fs";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
+import { listRoomMusic, toPublicTrack } from "./room-music.js";
 import { runAgent } from "../agent.js";
 import { fireHooks } from "../hooks/runner.js";
 import type { HookSpec } from "../plugins/types.js";
@@ -93,6 +95,7 @@ import type { ToolDefinition, StoredMessage } from "../types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ASSETS_DIR = path.join(__dirname, "assets");
+const MUSIC_DIR = path.join(ASSETS_DIR, "room", "music");
 
 /**
  * Turn a raw IMAP probe failure into a plain-language hint for the connect
@@ -1742,7 +1745,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         "service-worker-allowed": "/",
       });
       res.end(`
-const CACHE = 'lisa-v7-sofa';
+const CACHE = 'lisa-v8-music';
 const ASSET_PATHS = ['/assets/lisa-mascot.png', '/assets/background-tile.png',
   '/assets/icon-soul.png', '/assets/icon-skill.png', '/assets/icon-memory.png',
   '/assets/icon-tool.png', '/assets/icon-send.png'];
@@ -2129,6 +2132,60 @@ self.addEventListener('fetch', (event) => {
       } catch (err) {
         send({ kind: "error", message: (err as Error).message });
       } finally {
+        res.end();
+      }
+      return;
+    }
+
+    // Room gramophone playlist: bundled tracks + the user's ~/.lisa/music/*.mp3.
+    if (req.method === "GET" && url === "/api/room/music") {
+      const tracks = (await listRoomMusic(MUSIC_DIR)).map(toPublicTrack);
+      res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+      res.end(JSON.stringify(tracks));
+      return;
+    }
+    // Stream one track by opaque id, with HTTP Range support so seeking works.
+    // The id is resolved back to a path only via listRoomMusic, so there is no
+    // path-traversal surface even for user drop-in files.
+    if (req.method === "GET" && url.startsWith("/api/room/music/file/")) {
+      const id = decodeURIComponent(url.slice("/api/room/music/file/".length));
+      const track = (await listRoomMusic(MUSIC_DIR)).find((t) => t.id === id);
+      if (!track) {
+        res.writeHead(404, { "content-type": "text/plain" });
+        res.end("no such track");
+        return;
+      }
+      try {
+        const total = (await fs.stat(track.filePath)).size;
+        const base = {
+          "content-type": "audio/mpeg",
+          "accept-ranges": "bytes",
+          "cache-control": "public, max-age=86400",
+        };
+        const range = req.headers.range;
+        const m = range ? /^bytes=(\d*)-(\d*)$/.exec(range.trim()) : null;
+        if (m) {
+          let start = m[1] ? parseInt(m[1], 10) : 0;
+          let end = m[2] ? parseInt(m[2], 10) : total - 1;
+          if (!Number.isFinite(start) || start < 0) start = 0;
+          if (!Number.isFinite(end) || end >= total) end = total - 1;
+          if (start > end || start >= total) {
+            res.writeHead(416, { "content-range": `bytes */${total}` });
+            res.end();
+            return;
+          }
+          res.writeHead(206, {
+            ...base,
+            "content-range": `bytes ${start}-${end}/${total}`,
+            "content-length": String(end - start + 1),
+          });
+          createReadStream(track.filePath, { start, end }).pipe(res);
+        } else {
+          res.writeHead(200, { ...base, "content-length": String(total) });
+          createReadStream(track.filePath).pipe(res);
+        }
+      } catch {
+        res.writeHead(404);
         res.end();
       }
       return;
