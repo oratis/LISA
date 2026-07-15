@@ -138,9 +138,22 @@ Closes G3.
 Files: `src/soul/store.ts`, `src/web/server.ts`, `src/cli/status.ts`,
 test `src/soul/pick-desire.test.ts`.
 
-**Recommended merge order: PR1 → PR2 → PR3.** They branch independently off `main` and touch
-disjoint regions of the two shared files (`web/server.ts`: idle handler vs ping endpoint;
-`store.ts`: revise/close vs pick helper), so conflicts are trivial-to-none.
+### PR 4 — `feat(web): surface the desire the conversation is about (intra-session focus)`
+Implements F1 (Debate 4), added at the owner's request after PR1–3. Conservative by construction.
+
+- Pure `pickFocusedDesire(desires, recentText)` + `tokenize` + `recentUserText` in
+  `src/soul/desire-focus.ts`. Lexical overlap only — **no per-turn LLM call, no persisted state.**
+- Cross-lingual: latin word-tokens **and** CJK character bigrams, so it works when Lisa and the
+  user converse in Chinese (no segmenter needed).
+- Wired into `GET /api/island/ping`: when the conversation is fresh (`idleFor() <
+  FOCUS_FRESHNESS_MS`) and *clearly* about one desire, surface it; otherwise fall back to PR3's
+  `pickCurrentDesire`. A tie or weak match returns null, so it can never invent focus.
+
+Files: `src/soul/desire-focus.ts`, `src/web/server.ts`, test `src/soul/desire-focus.test.ts`.
+
+**Merge order: PR1 → PR2 → PR3 → PR4**, landed as a stack (each branched on the previous). The
+owner also pushed a hardening commit onto PR1 (clamp the debounce env; make the "dream" idle
+defer to an in-flight reflect) — folded into the series.
 
 ---
 
@@ -215,6 +228,12 @@ current. Real-time-per-sentence is a want we invented, not one that was asked fo
 still feels frozen, and only then consider a *conservative* heuristic focus (reuse an existing
 desire via a cheap match — never mint per-turn state). Documented in §6 as a gated follow-up.
 
+> **Update (2026-07-15): implemented as PR4, conservatively, at the owner's request** ("全部进行").
+> It stays strictly inside the 反方 guardrails — pure lexical overlap (no per-turn LLM call), no
+> persisted state, display-only, and it returns null (→ recency fallback) unless the live
+> conversation *clearly* matches one existing desire. Cross-lingual (latin word-tokens + CJK
+> bigrams) and gated on conversation freshness so a stale chat can't pin a stale focus.
+
 ---
 
 ## 5. Testing & verification
@@ -234,9 +253,9 @@ desire via a cheap match — never mint per-turn state). Documented in §6 as a 
 
 ## 6. Deferred / future work
 
-- **F1. Conservative intra-session focus (Debate 4).** If pause-granularity still feels static,
-  add a cheap match from the live transcript to an *existing* desire for display only — no new
-  persisted state, no per-turn LLM call beyond what already runs.
+- **F1. Conservative intra-session focus (Debate 4). — DONE, PR4.** A cheap lexical match from
+  the live transcript to an *existing* desire, display-only, no persisted state, cross-lingual,
+  freshness-gated. `src/soul/desire-focus.ts`, wired into `GET /api/island/ping`.
 - **F2. Reflection-driven reprioritization signal to the heartbeat** (e.g. "pursue this next"),
   once revise/close data shows the list staying healthy.
 - **F3. Surface reflection outcomes in the room/island UI** ("she just realized she wants to …").
@@ -246,3 +265,6 @@ desire via a cheap match — never mint per-turn state). Documented in §6 as a 
 ## 7. Changelog
 
 - 2026-07-15 — doc created; PR1–3 scoped; debates recorded; decisions locked to recommendations.
+- 2026-07-15 — PR1–3 implemented + stacked; owner hardened PR1 (debounce clamp + symmetric
+  dream/reflect guard); F1 (intra-session focus) implemented conservatively as PR4 at owner's
+  request. Series merges PR1 → PR2 → PR3 → PR4.
