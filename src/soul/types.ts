@@ -104,6 +104,14 @@ export interface DesireEntry {
    * Undefined is treated as "self" for backward compatibility.
    */
   pursuit?: "self" | "needs-user";
+  /**
+   * Closed = deliberately finished/abandoned via reflection, distinct from a
+   * merely non-actionable "dormant" wish. Closed desires are kept on disk (git
+   * history + the record) but filtered out of the reflector's "revise or close"
+   * block and never surfaced as her current/focused desire. Re-opening (a
+   * reviseDesire that sets actionable:true) clears it.
+   */
+  closed?: boolean;
   bornAt: string;
 }
 

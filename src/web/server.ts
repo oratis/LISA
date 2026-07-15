@@ -643,6 +643,11 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // matters if we happen to be its first caller, and we never use its 'idle'
   // event here (that drives the separate, hour-long "dream" idle above).
   const reflectClock = getIdleWatcher(reflectDebounceMs);
+  // Wall-clock of the last real user message (0 until one arrives this process).
+  // Gates intra-session desire focus: unlike reflectClock.idleFor() — which reads
+  // "fresh" right after a launchd restart — this stays 0 across a restart, so a
+  // stale resumed conversation can't pin a focus. Stamped in the POST /chat path.
+  let lastUserMessageAt = 0;
   // Seed from the resumed history so we never re-reflect prior sessions on the
   // first quiet window — only conversation added while this server is live.
   let lastReflectedUserCount = countUserMessages(history);
@@ -837,13 +842,19 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     if (req.method === "GET" && url === "/api/island/ping") {
       let currentDesire: string | null = null;
       try {
-        const desires = await listDesires();
+        // Closed desires are finished — never surface one as her current/focused.
+        const desires = (await listDesires()).filter((d) => !d.closed);
         // If the conversation is live and clearly about one of her desires,
         // surface THAT (intra-session focus — tracks the turn-by-turn topic).
         // Otherwise fall back to the most recently ACTIVE desire (authored or
         // pursued), not whichever fs.readdir listed first. See PLAN_DESIRE_EVOLUTION.
+        // Freshness is measured from the last real user message (lastUserMessageAt,
+        // reset to 0 on restart) — NOT the process-wide idle clock, which starts
+        // "fresh" after a launchd restart and would pin focus onto a stale
+        // resumed conversation for up to FOCUS_FRESHNESS_MS.
         const focused =
-          reflectClock.idleFor() < FOCUS_FRESHNESS_MS
+          lastUserMessageAt > 0 &&
+          Date.now() - lastUserMessageAt < FOCUS_FRESHNESS_MS
             ? pickFocusedDesire(desires, recentUserText(history))
             : null;
         // Only compute activity (an fs.stat per desire) when we actually fall
@@ -2174,8 +2185,9 @@ self.addEventListener('fetch', (event) => {
         res.end(JSON.stringify({ error: `bad request: ${(err as Error).message}` }));
         return;
       }
-      // User just talked — reset the idle watcher.
+      // User just talked — reset the idle watcher + stamp focus freshness.
       try { getIdleWatcher(60 * 60_000).tick(); } catch {}
+      lastUserMessageAt = Date.now();
       res.writeHead(200, {
         "content-type": "text/event-stream",
         "cache-control": "no-cache",

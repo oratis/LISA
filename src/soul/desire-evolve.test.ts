@@ -99,6 +99,43 @@ describe("closeDesire", () => {
     assert.match(journal, /\[DESIRE_CLOSED\] close-journal \(abandoned\): no longer fits me/);
   });
 
+  test("marks closed:true and keeps heartbeatPrompt for a later re-open", async () => {
+    await seed("close-mark", { actionable: true, heartbeatPrompt: "ping it" });
+    await store.closeDesire("close-mark", "fulfilled", "done");
+    const onDisk = (await store.listDesires()).find((d) => d.slug === "close-mark");
+    assert.equal(onDisk?.closed, true, "distinct closed marker, not just actionable:false");
+    assert.equal(onDisk?.actionable, false);
+    assert.equal(
+      onDisk?.heartbeatPrompt,
+      "ping it",
+      "heartbeatPrompt retained so re-open restores auto-pursuit",
+    );
+  });
+
+  test("re-closing an already-closed desire is idempotent (no duplicate notes)", async () => {
+    await seed("close-twice", { actionable: true });
+    await store.closeDesire("close-twice", "fulfilled", "first");
+    await store.closeDesire("close-twice", "fulfilled", "second"); // guarded no-op
+    const progress = await store.readDesireProgress("close-twice");
+    const journal = await store.readJournal(new Date().toISOString().slice(0, 10));
+    assert.equal((progress.match(/\[CLOSED:/g) ?? []).length, 1, "one [CLOSED] progress note");
+    assert.equal(
+      (journal.match(/\[DESIRE_CLOSED\] close-twice/g) ?? []).length,
+      1,
+      "one [DESIRE_CLOSED] journal line",
+    );
+  });
+
+  test("reviseDesire re-opens a closed desire — clears closed, restores actionable", async () => {
+    await seed("reopen-me", { actionable: true, heartbeatPrompt: "keep pinging" });
+    await store.closeDesire("reopen-me", "abandoned", "then reconsidered");
+    await store.reviseDesire("reopen-me", { actionable: true });
+    const onDisk = (await store.listDesires()).find((d) => d.slug === "reopen-me");
+    assert.equal(onDisk?.closed ?? false, false, "re-opening clears the closed flag");
+    assert.equal(onDisk?.actionable, true);
+    assert.equal(onDisk?.heartbeatPrompt, "keep pinging", "auto-pursuit restored on re-open");
+  });
+
   test("throws on an unknown slug", async () => {
     await assert.rejects(
       () => store.closeDesire("ghost", "fulfilled", "x"),
