@@ -12,9 +12,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { LISA_HOME, REFLECTIONS_DIR, SESSIONS_DIR } from "../paths.js";
 import {
+  desireActivity,
   isBorn,
   listDesires,
   listJournalDates,
+  pickCurrentDesire,
   readSoulSummary,
 } from "../soul/store.js";
 import { SOUL_DIR } from "../soul/paths.js";
@@ -87,13 +89,18 @@ export async function runStatus(): Promise<void> {
   if (desires.length === 0) {
     console.log(`  ${dim("(none)")}`);
   } else {
+    // The one surfaced as "current" in the room/island — mark it so `status`
+    // and the UI agree on what she's focused on.
+    const current = pickCurrentDesire(desires, await desireActivity(desires));
+    const mark = (d: (typeof desires)[number]) =>
+      d.slug === current?.slug ? `  ${dim("← current")}` : "";
     const actionable = desires.filter((d) => d.actionable);
     const dormant = desires.filter((d) => !d.actionable);
     for (const d of actionable) {
-      console.log(`  ${green("●")} ${d.what}  ${dim("[heartbeat-active]")}`);
+      console.log(`  ${green("●")} ${d.what}  ${dim("[heartbeat-active]")}${mark(d)}`);
     }
     for (const d of dormant) {
-      console.log(`  ${grey("○")} ${d.what}`);
+      console.log(`  ${grey("○")} ${d.what}${mark(d)}`);
     }
   }
 
