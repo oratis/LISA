@@ -68,7 +68,11 @@ export function pickFocusedDesire(
   let best: DesireEntry | null = null;
   let bestScore = 0;
   let tied = false;
-  for (const d of desires) {
+  // Only actionable desires can be the conversation's focus — mirror
+  // pickCurrentDesire so a lexically-matching CLOSED/dormant desire
+  // (actionable:false, still returned by listDesires) can't get surfaced.
+  const pool = desires.filter((d) => d.actionable);
+  for (const d of pool) {
     const dt = tokenize(`${d.what} ${d.why}`);
     let score = 0;
     for (const t of dt) if (convo.has(t)) score++;
