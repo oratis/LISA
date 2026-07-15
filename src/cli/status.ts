@@ -90,8 +90,12 @@ export async function runStatus(): Promise<void> {
     console.log(`  ${dim("(none)")}`);
   } else {
     // The one surfaced as "current" in the room/island — mark it so `status`
-    // and the UI agree on what she's focused on.
-    const current = pickCurrentDesire(desires, await desireActivity(desires));
+    // and the UI agree on what she's focused on. Closed desires are excluded
+    // from the pick (they're finished) though still listed below for the record.
+    const current = pickCurrentDesire(
+      desires.filter((d) => !d.closed),
+      await desireActivity(desires),
+    );
     const mark = (d: (typeof desires)[number]) =>
       d.slug === current?.slug ? `  ${dim("← current")}` : "";
     const actionable = desires.filter((d) => d.actionable);

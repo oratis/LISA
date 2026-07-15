@@ -256,13 +256,16 @@ export async function writeDesire(entry: DesireEntry): Promise<void> {
     "",
     `actionable: ${entry.actionable ? "yes" : "no"}`,
   ];
-  // Only meaningful for actionable desires; omit the default ("self") to keep
-  // existing files byte-stable.
-  if (entry.actionable && entry.pursuit === "needs-user") {
+  if (entry.closed) lines.push(`closed: yes`);
+  // pursuit/heartbeat are serialized whenever present (not gated on actionable)
+  // so closing a desire — which flips actionable off — preserves them for the
+  // record and lets a later reviseDesire re-open it with auto-pursuit intact.
+  // (Actionable desires already had them, so existing files stay byte-stable.)
+  if (entry.pursuit === "needs-user") {
     lines.push(`pursuit: needs-user`);
   }
   lines.push(`born: ${entry.bornAt}`, "", `## why`, entry.why.trim());
-  if (entry.actionable && entry.heartbeatPrompt) {
+  if (entry.heartbeatPrompt) {
     lines.push("", "## heartbeat", entry.heartbeatPrompt.trim());
   }
   await atomicWrite(desireFile(entry.slug), lines.join("\n") + "\n");
@@ -276,7 +279,8 @@ function parseDesireFile(slug: string, raw: string): DesireEntry {
   const why = (raw.match(/## why([\s\S]*?)(?:\n## |\n*$)/)?.[1] ?? "").trim();
   const heartbeatPrompt = (raw.match(/## heartbeat([\s\S]*)$/)?.[1] ?? "").trim() || undefined;
   const pursuit = /^pursuit:\s*needs-user\s*$/im.test(raw) ? "needs-user" : undefined;
-  return { slug, what, why, actionable, heartbeatPrompt, pursuit, bornAt: born };
+  const closed = /^closed:\s*yes\s*$/im.test(raw) || undefined;
+  return { slug, what, why, actionable, heartbeatPrompt, pursuit, closed, bornAt: born };
 }
 
 /**
@@ -387,7 +391,12 @@ export async function reviseDesire(
     const next: DesireEntry = { ...existing };
     if (patch.what !== undefined) next.what = patch.what;
     if (patch.why !== undefined) next.why = patch.why;
-    if (patch.actionable !== undefined) next.actionable = patch.actionable;
+    if (patch.actionable !== undefined) {
+      next.actionable = patch.actionable;
+      // Re-opening — making a closed desire actionable again — clears the closed
+      // flag so it rejoins the reflector's block and can surface as current.
+      if (patch.actionable) next.closed = false;
+    }
     if (patch.heartbeatPrompt !== undefined) next.heartbeatPrompt = patch.heartbeatPrompt;
     if (patch.pursuit !== undefined) next.pursuit = patch.pursuit;
     await writeDesire(next);
@@ -410,7 +419,7 @@ export async function closeDesire(
   // Read-modify-write of the desire file under the soul lock (same race as
   // reviseDesire). The progress + journal appends below self-lock individually,
   // so they stay OUTSIDE this block — nesting withSoulLock would deadlock.
-  await withSoulLock(async () => {
+  const wasAlreadyClosed = await withSoulLock(async () => {
     const desires = await listDesires();
     const d = desires.find((x) => x.slug === slug);
     if (!d) {
@@ -418,11 +427,16 @@ export async function closeDesire(
         `desire "${slug}" not found. Existing slugs: ${desires.map((x) => x.slug).join(", ") || "(none)"}`,
       );
     }
-    // Soft close: just flip actionable off. (heartbeatPrompt/pursuit aren't
-    // serialized while dormant, but the soul git history retains the last
-    // actionable version, so re-opening via reviseDesire can recover them.)
-    await writeDesire({ ...d, actionable: false });
+    // Idempotent: a desire the reflector already closed stays out of its "revise
+    // or close" block, but guard anyway so a re-close can't append a duplicate
+    // [DESIRE_CLOSED] journal line + [CLOSED] progress entry.
+    if (d.closed) return true;
+    // Mark closed and drop it from the heartbeat. heartbeatPrompt/pursuit are
+    // now preserved by writeDesire, so reviseDesire can re-open it cleanly.
+    await writeDesire({ ...d, actionable: false, closed: true });
+    return false;
   });
+  if (wasAlreadyClosed) return;
   await appendDesireProgress(slug, `[CLOSED:${outcome}] ${reflection}`);
   await appendJournal(
     new Date().toISOString().slice(0, 10),

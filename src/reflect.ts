@@ -498,7 +498,9 @@ function renderTranscript(history: StoredMessage[]): string {
 async function renderCurrentDesiresBlock(): Promise<string> {
   try {
     const { listDesires } = await import("./soul/store.js");
-    const desires = await listDesires();
+    // Closed desires are done — keep them out of the "revise or close" block so
+    // the list actually shrinks and a closed one can't be re-closed each pass.
+    const desires = (await listDesires()).filter((d) => !d.closed);
     if (desires.length === 0) return "";
     const lines = desires.map((d) => {
       const tag = d.actionable ? " (actionable)" : "";
