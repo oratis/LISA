@@ -70,10 +70,13 @@ import { MAIN_HTML } from "./lisa-html.js";
  * Proactive autonomy switch, and the Compact-mode switch (both relocated out
  * of the sidebar footer). The Knowledge (kb) tile is retained, so the grid
  * holds 10 tiles (3×3 + 1).
+ * Then: locked the launcher to a clean 3×3 — the Mail tile was removed (9
+ * tiles: Chat/Dashboard/Control/Rêve/Room/Sense/Memory/Knowledge/Settings);
+ * Mail's entry moved to the sidebar Mail card, whose header now opens #viewMail.
  */
-const EXPECTED_LENGTH = 204283;
+const EXPECTED_LENGTH = 204332;
 const EXPECTED_SHA256 =
-  "2870806b9bd63cb9cd9d16fec8faa7f1dea17ea81bdc7ccc991e3c8ee209e552";
+  "1bf4ee94395153b01920c1f327f9ff2351925018a4ef6e4d9129c221345f7c5e";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);
