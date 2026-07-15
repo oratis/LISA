@@ -846,9 +846,10 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           reflectClock.idleFor() < FOCUS_FRESHNESS_MS
             ? pickFocusedDesire(desires, recentUserText(history))
             : null;
-        const activity = await desireActivity(desires);
+        // Only compute activity (an fs.stat per desire) when we actually fall
+        // back to the recency pick — `??` short-circuits it away on a focus hit.
         currentDesire =
-          (focused ?? pickCurrentDesire(desires, activity))?.what ?? null;
+          (focused ?? pickCurrentDesire(desires, await desireActivity(desires)))?.what ?? null;
       } catch {
         // listDesires can fail before soul is born; that's fine.
       }
