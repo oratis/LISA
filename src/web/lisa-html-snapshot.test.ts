@@ -43,16 +43,37 @@ import { MAIN_HTML } from "./lisa-html.js";
  * Then: Room v2 — the room→parent bridge moved to a richer, same-origin-guarded
  * {type:'lisa-room', action, prefill} protocol (open-chat / switch-view) at
  * module scope; the old room_open_chat listener was removed as superseded.
- * Then: nav → 九宫格 (3×3 tile grid, unified line-SVG icons) growing from 7 to 9
- * tiles: new Mail + Settings rail views (#viewMail/#viewSettings, loadMail/
- * loadSettings). Mail reuses /api/mail/* and adds per-account enable/disable/
- * remove + a nav "needs-you" badge; Settings hosts API-key management
- * (/api/config/*), the Proactive autonomy switch, and the Compact-mode switch —
- * both toggles relocated out of the sidebar footer into Settings.
+ * Then: personal knowledge base (docs/PLAN_KNOWLEDGE_BASE_v1.0.md) — a
+ * "Knowledge" nav item + #viewKb (a live-search list/reader over /api/kb*), a
+ * KB select-toggle in the function bar driving a floating capture bar (chat
+ * messages → md source), and the kbCapture client block, all with their CSS.
+ * Then: guided mail connect — the connect-mailbox modal gained a provider
+ * picker (Gmail/iCloud/QQ/163/Outlook/Other) with per-provider setup steps and
+ * an "open app-passwords" link, adaptive labels/placeholders, and email-domain
+ * auto-detect; plus its .mm-providers/.mm-chip/.mm-help/.mm-steps/.mm-link CSS.
+ * Then: Markdown rendering for Lisa's chat bubbles — a source-injected
+ * renderMarkdown() (md-render.ts, preceded by a `__name` shim) added to the
+ * page <script> before MAIN_CLIENT_JS, its styled-element CSS in lisa-css.ts,
+ * and the streaming + history paths now feeding her text through it instead of
+ * textContent. NB: the injected bytes are this function's `.toString()`, so
+ * they track the test transpiler (tsx/esbuild); recompute after an esbuild bump.
+ * Then: idle "★" reflection cards now render Markdown too — the chat CSS scope
+ * widened to :is(.msg, .idle-block) and buildIdleBlock feeds renderMarkdown.
+ * Then: fixed a renderMarkdown infinite loop on fenced code with a non-\w info
+ * string (```c# / ```c++ / ```js title="x") — the fence opener now matches any
+ * info string (first token = lang); links split out of the emphasis pass so a
+ * `*`/`_` in a URL no longer mangles the href.
+ * Then: nav → 九宫格 tile grid (unified line-SVG icons) with two new rail
+ * views, Mail + Settings (#viewMail/#viewSettings, loadMail/loadSettings).
+ * Mail reuses /api/mail/* and adds per-account enable/disable/remove + a nav
+ * "needs-you" badge; Settings hosts API-key management (/api/config/*), the
+ * Proactive autonomy switch, and the Compact-mode switch (both relocated out
+ * of the sidebar footer). The Knowledge (kb) tile is retained, so the grid
+ * holds 10 tiles (3×3 + 1).
  */
-const EXPECTED_LENGTH = 171392;
+const EXPECTED_LENGTH = 204283;
 const EXPECTED_SHA256 =
-  "8c8972930c2e77cdeaf5d2cf46f4aebd96a9a19c892bd51be68195a5e9d44821";
+  "2870806b9bd63cb9cd9d16fec8faa7f1dea17ea81bdc7ccc991e3c8ee209e552";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);

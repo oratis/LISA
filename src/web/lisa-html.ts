@@ -28,6 +28,22 @@
 
 import { MAIN_CSS } from "./lisa-css.js";
 import { MAIN_CLIENT_JS } from "./lisa-client.js";
+import { renderMarkdown } from "./md-render.js";
+
+/**
+ * Source-injected Markdown renderer (same pattern as agent-roster.ts →
+ * island.ts): the browser runs this exact, unit-tested function rather than a
+ * hand-escaped copy inside the no-interpolation MAIN_CLIENT_JS literal. It sits
+ * in the same <script> right before MAIN_CLIENT_JS, so the client can call
+ * `renderMarkdown(...)` directly.
+ *
+ * The leading `function __name(t){return t}` is an identity shim: when the
+ * server runs under tsx, esbuild's keepNames wraps this function's nested
+ * helpers in `__name(...)` calls that ride along in `.toString()`; the shim
+ * makes them no-ops. The production tsc build emits no such calls, so it's
+ * unused there. (md-render.test.ts rebuilds under the same shim.)
+ */
+const MD_RENDER_JS = `function __name(t){return t}\n${renderMarkdown}`;
 
 export const MAIN_HTML = `<!doctype html>
 <html lang="en"><head>
@@ -77,6 +93,7 @@ ${MAIN_CSS}
       <button class="nav-item" type="button" data-view="room"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span><span class="nav-label">Room</span></button>
       <button class="nav-item" type="button" data-view="sense"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></svg></span><span class="nav-label">Sense</span></button>
       <button class="nav-item" type="button" data-view="memory"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 6h4M2 10h4M2 14h4M2 18h4"/><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M16 2v20"/></svg></span><span class="nav-label">Memory</span></button>
+      <button class="nav-item" type="button" data-view="kb"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg></span><span class="nav-label">Knowledge</span></button>
       <button class="nav-item" type="button" data-view="mail"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 7l10 6 10-6"/></svg></span><span class="nav-label">Mail</span><span class="nav-tag" id="navMailCount"></span></button>
       <button class="nav-item" type="button" data-view="settings"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span><span class="nav-label">Settings</span></button>
     </nav>
@@ -147,6 +164,7 @@ ${MAIN_CSS}
       <button class="fbtn" type="button" data-panel="tools" title="Tools" aria-label="Tools"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></button>
       <button class="fbtn" type="button" data-panel="plans" title="Coding plans" aria-label="Coding plans"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg></button>
       <button class="fbtn" type="button" data-panel="pair" title="Pair phone" aria-label="Pair phone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"/><line x1="11" y1="18" x2="13" y2="18"/></svg></button>
+      <button class="fbtn" type="button" id="fnKbSelect" title="Select messages to save to your Knowledge Base" aria-label="Save messages to knowledge base"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg></button>
       <span class="fbar-spacer"></span>
       <input id="fnFind" class="fn-find" type="text" placeholder="find in chat…" autocomplete="off" style="display:none">
       <button class="fbtn" type="button" id="fnSearchBtn" title="Find in conversation" aria-label="Find"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button>
@@ -186,6 +204,7 @@ ${MAIN_CSS}
     </section>
     <section class="view" id="viewSense"></section>
     <section class="view" id="viewMemory"></section>
+    <section class="view" id="viewKb"></section>
     <section class="view" id="viewMail"></section>
     <section class="view" id="viewSettings"></section>
   </div>
@@ -248,6 +267,7 @@ ${MAIN_CSS}
 </div>
 
 <script>
+${MD_RENDER_JS}
 ${MAIN_CLIENT_JS}
 </script>
 </body></html>`;

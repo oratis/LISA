@@ -21,7 +21,13 @@ import {
 import { listSessionsOnDisk } from "../sessions/list.js";
 import { SessionStore } from "../sessions/store.js";
 import { reflectOnSession } from "../reflect.js";
-import { listDesires } from "../soul/store.js";
+import {
+  DEFAULT_REFLECT_DEBOUNCE_MS,
+  REFLECT_CHECK_INTERVAL_MS,
+  countUserMessages,
+  decideReflect,
+} from "./reflect-scheduler.js";
+import { listDesires, desireActivity, pickCurrentDesire } from "../soul/store.js";
 import { ISLAND_HTML } from "./island.js";
 import { ROOM_HTML } from "./room.js";
 import { MAIN_HTML } from "./lisa-html.js";
@@ -40,7 +46,7 @@ import { signalAgentTool } from "../tools/signal_agent.js";
 import { managedRegistry } from "../agents/managed.js";
 import { ptyRegistry, ptyEnabled, normalizeAgentKind } from "../agents/pty.js";
 import { liveClaudeSessionIds } from "../integrations/claude-code/liveness.js";
-import { sweepAll, pollNewMail } from "../mail/service.js";
+import { sweepAll, pollNewMail, probeAccount } from "../mail/service.js";
 import { pickImportant, formatAlert, alertLevel, pollMinutes } from "../mail/alerts.js";
 import { latestDigest } from "../mail/store.js";
 import { formatDigestText } from "../mail/digest.js";
@@ -82,6 +88,29 @@ import type { ToolDefinition, StoredMessage } from "../types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ASSETS_DIR = path.join(__dirname, "assets");
+
+/**
+ * Turn a raw IMAP probe failure into a plain-language hint for the connect
+ * modal. The single biggest cause is pasting a login password where an
+ * app-password / authorization code is required, so lead with that.
+ */
+function friendlyMailError(err: unknown, email: string, host: string): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  const m = raw.toLowerCase();
+  const isGmail = /(^|@)(gmail\.com|googlemail\.com)$/.test(email.toLowerCase()) || host === "imap.gmail.com";
+  if (/auth|credential|login|invalid|denied|not accepted|username|password/.test(m)) {
+    return isGmail
+      ? "Gmail rejected the sign-in. Use a 16-character app password (not your Google login password), and make sure 2-Step Verification is on."
+      : "Authentication failed. Use an app-password / authorization code from your mail provider — not your login password.";
+  }
+  if (/enotfound|eai_again|getaddrinfo|dns|no such host/.test(m)) {
+    return "Could not find the mail server. Check the IMAP host.";
+  }
+  if (/timed out|timeout|etimedout|econn|network|socket|refused/.test(m)) {
+    return "Could not reach the mail server (network or timeout). Check your connection and the IMAP host.";
+  }
+  return "Could not connect: " + raw.slice(0, 160);
+}
 
 
 export interface WebServerOptions {
@@ -512,10 +541,16 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
 
   // ── Idle mode ───────────────────────────────────────────────────────
   let idleRunning = false;
+  // Declared here (rather than beside the reflect scheduler below) so the dream's
+  // idle handler can also defer to an in-flight reflection: PLAN §3 wants reflect
+  // to run first, before the dream mutates history with its own "[while you were
+  // away]" note. Without this the guard is asymmetric — the scheduler blocks
+  // reflect-during-dream, but a dream could still start mid-reflect.
+  let reflecting = false;
   if (opts.idleMinutes && opts.idleMinutes > 0) {
     const watcher = getIdleWatcher(opts.idleMinutes * 60_000);
     watcher.on("idle", async () => {
-      if (idleRunning) return;
+      if (idleRunning || reflecting) return;
       idleRunning = true;
       const startedAt = new Date().toISOString();
       console.error(
@@ -584,6 +619,67 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       `[idle] watching — will fire after ${opts.idleMinutes}m of no input`,
     );
   }
+
+  // ── Reflection scheduler (PLAN_DESIRE_EVOLUTION_v1.0 §3 PR1) ──────────────
+  // The web server never exits, so end-of-session reflection had nowhere to
+  // hang — which is why web conversations never updated Lisa's desires. Reflect
+  // when a stretch of conversation goes quiet instead: after a short debounce
+  // with no user input, once, provided the human actually said something new.
+  // Clamp to a positive, finite value: `Number(env) || DEFAULT` correctly
+  // rejects NaN / "" / "0", but a negative value is truthy and would make
+  // `idleMs < debounceMs` always false → reflect ~60s into any conversation.
+  const reflectDebounceEnv = Number(process.env.LISA_REFLECT_DEBOUNCE_MS);
+  const reflectDebounceMs =
+    Number.isFinite(reflectDebounceEnv) && reflectDebounceEnv > 0
+      ? reflectDebounceEnv
+      : DEFAULT_REFLECT_DEBOUNCE_MS;
+  // Reuse the process-wide idle watcher purely as an activity clock — /chat
+  // already ticks() it. idleFor() works without start(); the idleMs we pass only
+  // matters if we happen to be its first caller, and we never use its 'idle'
+  // event here (that drives the separate, hour-long "dream" idle above).
+  const reflectClock = getIdleWatcher(reflectDebounceMs);
+  // Seed from the resumed history so we never re-reflect prior sessions on the
+  // first quiet window — only conversation added while this server is live.
+  let lastReflectedUserCount = countUserMessages(history);
+  const reflectTimer = setInterval(() => {
+    const currentUserCount = countUserMessages(history);
+    const decision = decideReflect({
+      newUserMessages: currentUserCount - lastReflectedUserCount,
+      idleMs: reflectClock.idleFor(),
+      debounceMs: reflectDebounceMs,
+      inFlight: reflecting || idleRunning,
+    });
+    if (!decision.shouldReflect) return;
+    reflecting = true;
+    const snapshot = history.slice();
+    const snapshotUserCount = currentUserCount;
+    void (async () => {
+      try {
+        const r = await reflectOnSession({
+          history: snapshot,
+          sessionId: session.id,
+          model: opts.model,
+        });
+        // Advance the marker only on success, so a failed reflect retries next
+        // tick instead of silently dropping the conversation.
+        lastReflectedUserCount = snapshotUserCount;
+        await session.appendReflection(r.summary);
+        broadcast({
+          type: "reflect_done",
+          summary: r.summary,
+          at: new Date().toISOString(),
+        });
+        console.error(`[reflect] ${decision.reason} → ${r.summary}`);
+        for (const a of r.applied) console.error(`  applied: ${a}`);
+      } catch (err) {
+        console.error(`[reflect] failed: ${(err as Error).message}`);
+      } finally {
+        reflecting = false;
+      }
+    })();
+  }, REFLECT_CHECK_INTERVAL_MS);
+  // Don't let the reflection heartbeat keep the process alive on its own.
+  reflectTimer.unref();
 
   const server = http.createServer(async (req, res) => {
     const url = req.url ?? "/";
@@ -737,8 +833,11 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       let currentDesire: string | null = null;
       try {
         const desires = await listDesires();
-        const actionable = desires.find((d) => d.actionable);
-        currentDesire = (actionable ?? desires[0])?.what ?? null;
+        // Surface the most recently ACTIVE desire (authored or pursued), not
+        // whichever actionable one fs.readdir happened to list first — so the
+        // ticker moves when something real changes. See PLAN_DESIRE_EVOLUTION.
+        const activity = await desireActivity(desires);
+        currentDesire = pickCurrentDesire(desires, activity)?.what ?? null;
       } catch {
         // listDesires can fail before soul is born; that's fine.
       }
@@ -1158,14 +1257,24 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       }
       const host = typeof p.host === "string" && p.host ? p.host : inferHost(email);
       if (!host) {
-        res.writeHead(400, { "content-type": "text/plain" }); res.end("couldn't infer IMAP host — pass host"); return;
+        res.writeHead(400, { "content-type": "text/plain" }); res.end("Could not detect the IMAP host — add it manually."); return;
+      }
+      const port = typeof p.port === "number" ? p.port : 993;
+      // Verify the credentials actually sign in before storing them: a mailbox
+      // that silently fails every sweep is exactly the confusion we avoid here.
+      try {
+        await probeAccount({ provider: "imap", email, host, port }, { password }, { timeoutMs: 20_000 });
+      } catch (err) {
+        res.writeHead(401, { "content-type": "text/plain" });
+        res.end(friendlyMailError(err, email, host));
+        return;
       }
       const account = addAccount(
         {
           provider: "imap",
           email,
           host,
-          port: typeof p.port === "number" ? p.port : 993,
+          port,
           label: typeof p.label === "string" ? p.label : undefined,
         },
         { password },
@@ -1610,7 +1719,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         "service-worker-allowed": "/",
       });
       res.end(`
-const CACHE = 'lisa-v6-fem';
+const CACHE = 'lisa-v7-sofa';
 const ASSET_PATHS = ['/assets/lisa-mascot.png', '/assets/background-tile.png',
   '/assets/icon-soul.png', '/assets/icon-skill.png', '/assets/icon-memory.png',
   '/assets/icon-tool.png', '/assets/icon-send.png'];
@@ -1737,6 +1846,73 @@ self.addEventListener('fetch', (event) => {
       ]);
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ user, memory }));
+      return;
+    }
+
+    // ── Personal knowledge base (docs/PLAN_KNOWLEDGE_BASE_v1.0.md) ──────
+    if (req.method === "GET" && url.startsWith("/api/kb/search")) {
+      const q = new URL(url, "http://localhost").searchParams.get("q") ?? "";
+      const { searchKb } = await import("../kb/search.js");
+      const hits = q.trim() ? await searchKb(q, 25) : [];
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ hits }));
+      return;
+    }
+    if (req.method === "GET" && url.startsWith("/api/kb/entry")) {
+      const p = new URL(url, "http://localhost").searchParams;
+      const layer = p.get("layer") === "wiki" ? "wiki" : "sources";
+      const { readEntry } = await import("../kb/store.js");
+      const entry = await readEntry(layer, p.get("slug") ?? "").catch(() => null);
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ entry }));
+      return;
+    }
+    if (req.method === "GET" && url === "/api/kb") {
+      const { listEntries } = await import("../kb/store.js");
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ entries: await listEntries() }));
+      return;
+    }
+    if (req.method === "POST" && url === "/api/kb/add") {
+      let body = "";
+      for await (const chunk of req) body += chunk.toString("utf8");
+      let payload: { title?: string; content?: string; tags?: string[]; origin?: string };
+      try {
+        payload = JSON.parse(body || "{}");
+      } catch {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("bad json");
+        return;
+      }
+      const content = (payload.content ?? "").trim();
+      if (!content) {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("empty content");
+        return;
+      }
+      const title = (payload.title ?? "").trim() || content.split("\n")[0]!.slice(0, 60) || "capture";
+      const { addSource } = await import("../kb/store.js");
+      const entry = await addSource({ title, body: content, tags: payload.tags, origin: payload.origin || "chat" });
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, entry: { layer: entry.layer, slug: entry.slug, title: entry.title } }));
+      return;
+    }
+    if (req.method === "POST" && url === "/api/kb/remove") {
+      let body = "";
+      for await (const chunk of req) body += chunk.toString("utf8");
+      let payload: { layer?: string; slug?: string };
+      try {
+        payload = JSON.parse(body || "{}");
+      } catch {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("bad json");
+        return;
+      }
+      const layer = payload.layer === "wiki" ? "wiki" : "sources";
+      const { removeEntry } = await import("../kb/store.js");
+      const removed = await removeEntry(layer, payload.slug ?? "").catch(() => false);
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: removed }));
       return;
     }
 

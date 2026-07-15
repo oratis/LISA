@@ -279,6 +279,70 @@ function parseDesireFile(slug: string, raw: string): DesireEntry {
   return { slug, what, why, actionable, heartbeatPrompt, pursuit, bornAt: born };
 }
 
+/**
+ * Per-slug "last activity" timestamp (ISO), from the newer of the desire file
+ * and its progress file mtime, floored at bornAt. Cheap (fs.stat) and reflects
+ * BOTH authoring (add/revise rewrite <slug>.md) and pursuit (the heartbeat
+ * appends <slug>.progress.md). Feeds pickCurrentDesire so "current" tracks real
+ * events instead of filesystem-listing accident.
+ */
+export async function desireActivity(
+  desires: DesireEntry[],
+): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  for (const d of desires) {
+    let ms = Date.parse(d.bornAt) || 0;
+    try {
+      // NB: desireFile()/desireProgressFile() run assertSafeSlug, which THROWS
+      // on an unsafe slug — and listDesires() derives slugs from raw filenames
+      // without validating. A stray file (e.g. a macOS `._x.md` AppleDouble in
+      // the git-synced soul dir) would otherwise reject the whole scan and
+      // abort `lisa status`. Keep the path construction inside the try so such
+      // a desire is simply skipped, flooring at bornAt.
+      for (const f of [desireFile(d.slug), desireProgressFile(d.slug)]) {
+        try {
+          const st = await fs.stat(f);
+          ms = Math.max(ms, Math.floor(st.mtimeMs));
+        } catch {
+          // progress file often doesn't exist yet — not an error
+        }
+      }
+    } catch {
+      // unsafe slug from a stray file — skip, keep bornAt
+    }
+    out[d.slug] = new Date(ms).toISOString();
+  }
+  return out;
+}
+
+/**
+ * Pick the single desire to surface as "current". Prefers actionable desires
+ * (the ones actually driving the heartbeat); within the chosen pool, the most
+ * recently active wins. Pure — the caller passes activity timestamps (the I/O
+ * lives in desireActivity), so this stays trivially testable. null when empty.
+ *
+ * Because the ordering key is a stored timestamp, the pick is STABLE between
+ * real events and only moves when something actually happens (a desire is
+ * added, revised, pursued, or closed) — that's fidelity, not per-request
+ * flicker, and it replaces the old fs.readdir-order accident.
+ */
+export function pickCurrentDesire(
+  desires: DesireEntry[],
+  activityAt?: Record<string, string>,
+): DesireEntry | null {
+  if (desires.length === 0) return null;
+  const recency = (d: DesireEntry): number => {
+    const a = activityAt?.[d.slug];
+    const fromActivity = a ? Date.parse(a) : NaN;
+    return Number.isNaN(fromActivity) ? Date.parse(d.bornAt) || 0 : fromActivity;
+  };
+  const actionable = desires.filter((d) => d.actionable);
+  const pool = actionable.length > 0 ? actionable : desires;
+  // Secondary key on slug so an exact recency tie is deterministic rather than
+  // decided by array (fs.readdir) order — the accident this function removes.
+  return [...pool].sort((x, y) => recency(y) - recency(x) || x.slug.localeCompare(y.slug))[0] ?? null;
+}
+
 /** Can the autonomous heartbeat pursue this desire unattended? Pure (R4). */
 export function isAutoPursuable(d: DesireEntry): boolean {
   return !!(d.actionable && d.heartbeatPrompt) && d.pursuit !== "needs-user";
@@ -287,6 +351,83 @@ export function isAutoPursuable(d: DesireEntry): boolean {
 /** An actionable desire that needs the user to run something Lisa can't do unattended. */
 export function needsUserHelp(d: DesireEntry): boolean {
   return !!d.actionable && d.pursuit === "needs-user";
+}
+
+/** Fields of an existing desire that a revision may change. slug/bornAt are
+ *  identity and never move. */
+export type DesirePatch = Partial<
+  Pick<DesireEntry, "what" | "why" | "actionable" | "heartbeatPrompt" | "pursuit">
+>;
+
+/**
+ * Revise an existing desire in place (read-modify-write by slug). Only the
+ * fields explicitly provided change; everything else — including bornAt — is
+ * preserved, so an `undefined` in the patch never wipes an existing field.
+ * Throws if the slug doesn't exist (a revise must target something real).
+ *
+ * The caller supplies the git-author context (withSoulCaller); this only does
+ * the write, matching writeDesire.
+ */
+export async function reviseDesire(
+  slug: string,
+  patch: DesirePatch,
+): Promise<DesireEntry> {
+  // Read-modify-write under the cross-process soul lock: web idle-reflect and a
+  // CLI reflect (both live since #242) can revise the same slug from different
+  // processes; without the lock one field edit is lost (last-writer-wins on a
+  // stale read). writeDesire doesn't self-lock, so this doesn't nest.
+  return await withSoulLock(async () => {
+    const desires = await listDesires();
+    const existing = desires.find((d) => d.slug === slug);
+    if (!existing) {
+      throw new Error(
+        `desire "${slug}" not found. Existing slugs: ${desires.map((d) => d.slug).join(", ") || "(none)"}`,
+      );
+    }
+    const next: DesireEntry = { ...existing };
+    if (patch.what !== undefined) next.what = patch.what;
+    if (patch.why !== undefined) next.why = patch.why;
+    if (patch.actionable !== undefined) next.actionable = patch.actionable;
+    if (patch.heartbeatPrompt !== undefined) next.heartbeatPrompt = patch.heartbeatPrompt;
+    if (patch.pursuit !== undefined) next.pursuit = patch.pursuit;
+    await writeDesire(next);
+    return next;
+  });
+}
+
+/**
+ * Soft-close a desire: flip actionable off (it stops driving the heartbeat),
+ * append a final `[CLOSED:<outcome>]` entry to its progress log, and write a
+ * one-line journal note so weekly_examen sees it. The desire file is retained
+ * and git-tracked — closing is reversible, nothing is destroyed. Throws if the
+ * slug doesn't exist. Caller supplies the git-author context.
+ */
+export async function closeDesire(
+  slug: string,
+  outcome: string,
+  reflection: string,
+): Promise<void> {
+  // Read-modify-write of the desire file under the soul lock (same race as
+  // reviseDesire). The progress + journal appends below self-lock individually,
+  // so they stay OUTSIDE this block — nesting withSoulLock would deadlock.
+  await withSoulLock(async () => {
+    const desires = await listDesires();
+    const d = desires.find((x) => x.slug === slug);
+    if (!d) {
+      throw new Error(
+        `desire "${slug}" not found. Existing slugs: ${desires.map((x) => x.slug).join(", ") || "(none)"}`,
+      );
+    }
+    // Soft close: just flip actionable off. (heartbeatPrompt/pursuit aren't
+    // serialized while dormant, but the soul git history retains the last
+    // actionable version, so re-opening via reviseDesire can recover them.)
+    await writeDesire({ ...d, actionable: false });
+  });
+  await appendDesireProgress(slug, `[CLOSED:${outcome}] ${reflection}`);
+  await appendJournal(
+    new Date().toISOString().slice(0, 10),
+    `[DESIRE_CLOSED] ${slug} (${outcome}): ${reflection}`,
+  );
 }
 
 // Per-desire progress log. One file per desire slug, append-only, written by

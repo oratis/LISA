@@ -12,8 +12,8 @@
  * Lisa's FULL-BODY character sprites are generated pixel art under /assets/room/.
  * Lisa is a full-body sprite (not a bust): an idle spritesheet (lisa-idle.png,
  * 2 frames: eyes open | closed — breathing via CSS, blink flips the frame) plus
- * pose sprites for sitting (lisa-sit.png) and sleeping (lisa-sleep.png), swapped
- * by mood/state. Sprites were generated via the "anchor → keyframes → chroma-key
+ * pose sprites for sitting (lisa-sit.png) and sleeping curled up in the armchair
+ * (lisa-sleep-sofa.png), swapped by mood/state. Sprites were generated via the "anchor → keyframes → chroma-key
  * + foot-anchor" pipeline (cf. Ludo.ai / chongdashu/ai-game-spritesheets):
  * gemini-2.5-flash-image made a full-body anchor from her existing face sprite,
  * pose/blink frames were edited from it for consistency, then keyed + normalized.
@@ -24,6 +24,8 @@
  *   - POST /api/island/dismiss-unread → mark the "letter" read
  */
 
+import { renderMarkdown, MD_RENDER_CSS } from "./md-render.js";
+
 export const ROOM_HTML = `<!doctype html>
 <html lang="en">
 <head>
@@ -32,6 +34,7 @@ export const ROOM_HTML = `<!doctype html>
 <title>Lisa · room</title>
 <link rel="manifest" href="/manifest.webmanifest">
 <style>
+${MD_RENDER_CSS}
   :root {
     color-scheme: dark;
     --fg: #eef1f8;
@@ -103,7 +106,7 @@ export const ROOM_HTML = `<!doctype html>
      (sit / sleep) change the image + box size. Foot-anchored so she stands
      on the floor. */
   #lisa-wrap {
-    position: absolute; left: 47%; bottom: 6.5%;
+    position: absolute; left: 49.7%; bottom: 7.5%;
     transform: translateX(-50%);
     transition: left 1000ms var(--spring), bottom 1000ms var(--spring);
     pointer-events: none;
@@ -142,14 +145,17 @@ export const ROOM_HTML = `<!doctype html>
   }
   #lisa-wrap.sit #lisa.blink { background-position: center bottom; }
   #lisa-wrap.sit #shadow { width: 20vmin; }
-  /* Sleeping / curled up — Reve / napping (a wide lying-down pose). */
+  /* Sleeping — curled up napping in the armchair (Reve / napping). She glides
+     over to the sofa on the right (the wrap's left/bottom transition) and curls
+     up; no floor shadow since she's up on the cushion, not the rug. */
+  #lisa-wrap.sleep { left: 69.5%; bottom: 31.5%; }
   #lisa-wrap.sleep #lisa {
-    background-image: url('/assets/room/lisa-sleep.png');
+    background-image: url('/assets/room/lisa-sleep-sofa.png');
     background-size: contain; background-position: center bottom; background-repeat: no-repeat;
-    width: 40vmin; height: 22vmin; animation-duration: 6.6s;
+    width: 17vmin; height: 26vmin; animation-duration: 6.6s;
   }
   #lisa-wrap.sleep #lisa.blink { background-position: center bottom; }
-  #lisa-wrap.sleep #shadow { width: 30vmin; }
+  #lisa-wrap.sleep #shadow { opacity: 0; }
 
   /* Presence beat (Phase B) — she looks up and meets your eyes. Single frame,
      swapped in for ~1.6s when you open the room / focus the window / hover. */
@@ -183,7 +189,7 @@ export const ROOM_HTML = `<!doctype html>
 
   /* Dreaming — dim the room and float Z's above Lisa. */
   body.dreaming #lighting { opacity: 0.9; background: radial-gradient(120% 90% at 50% 35%, rgba(40,20,80,0.25) 20%, rgba(2,3,10,0.78) 100%); }
-  #zzz { position: absolute; left: 58%; bottom: 52%; pointer-events: none; opacity: 0; transition: opacity 600ms; }
+  #zzz { position: absolute; left: 73%; bottom: 60%; pointer-events: none; opacity: 0; transition: opacity 600ms; }
   body.dreaming #zzz { opacity: 1; }
   #zzz span {
     position: absolute; color: var(--accent-dream); font-weight: 700;
@@ -418,7 +424,7 @@ export const ROOM_HTML = `<!doctype html>
 
   <div id="reader"><div class="card">
     <h3 id="reader-title">★ while you were away</h3>
-    <div id="reader-text"></div>
+    <div id="reader-text" class="md-render"></div>
     <span class="close" id="reader-close">Close</span>
   </div></div>
 
@@ -435,6 +441,8 @@ export const ROOM_HTML = `<!doctype html>
   </div>
 
 <script>
+function __name(t){return t}
+${renderMarkdown}
 (() => {
   var $ = function (id) { return document.getElementById(id); };
   // Localize the reader's "while you were away" title to the UI language.
@@ -670,10 +678,12 @@ export const ROOM_HTML = `<!doctype html>
 
   $('letter').addEventListener('click', function () {
     var notes = state.letters.length ? state.letters : (state.idleText ? [state.idleText] : []);
-    // Newest first, gently divided when several have piled up.
-    $('reader-text').textContent = notes.length
-      ? notes.slice().reverse().join('\\n\\n· · ·\\n\\n')
-      : '(she left before writing anything)';
+    // Newest first, gently divided by an <hr> when several have piled up. Notes
+    // are Lisa's own Markdown reflections → render them (renderMarkdown injected
+    // above), not raw text.
+    $('reader-text').innerHTML = renderMarkdown(notes.length
+      ? notes.slice().reverse().join('\\n\\n---\\n\\n')
+      : '(she left before writing anything)');
     $('reader').classList.add('open');
   });
   $('reader-close').addEventListener('click', function () { $('reader').classList.remove('open'); });
