@@ -1,0 +1,56 @@
+[
+  {
+    "id": "chopin-op32",
+    "title": "Nocturne Op. 32 No. 1",
+    "mood": "classical",
+    "file": "chopin-nocturne-op32.mp3",
+    "license": "CC0 1.0",
+    "attribution": "Chopin — recording Musopen (CC0)",
+    "durationSec": 301
+  },
+  {
+    "id": "canon-d",
+    "title": "Canon in D",
+    "mood": "classical",
+    "file": "canon-in-d.mp3",
+    "license": "CC BY 4.0",
+    "attribution": "Canon in D Major — Kevin MacLeod (incompetech.com), CC BY 4.0",
+    "durationSec": 355
+  },
+  {
+    "id": "morning-coffee",
+    "title": "Morning Coffee",
+    "mood": "light",
+    "file": "morning-coffee.mp3",
+    "license": "CC0 1.0",
+    "attribution": "HoliznaCC0 (CC0)",
+    "durationSec": 191
+  },
+  {
+    "id": "meditation-03",
+    "title": "Meditation Impromptu 03",
+    "mood": "light",
+    "file": "meditation-impromptu-03.mp3",
+    "license": "CC BY 4.0",
+    "attribution": "Meditation Impromptu 03 — Kevin MacLeod (incompetech.com), CC BY 4.0",
+    "durationSec": 255
+  },
+  {
+    "id": "busted-jazz",
+    "title": "Busted Jazz",
+    "mood": "classic",
+    "file": "busted-jazz.mp3",
+    "license": "CC0 1.0",
+    "attribution": "HoliznaCC0 (CC0)",
+    "durationSec": 149
+  },
+  {
+    "id": "local-forecast",
+    "title": "Local Forecast (Elevator)",
+    "mood": "classic",
+    "file": "local-forecast-elevator.mp3",
+    "license": "CC BY 4.0",
+    "attribution": "Local Forecast (Elevator) — Kevin MacLeod (incompetech.com), CC BY 4.0",
+    "durationSec": 189
+  }
+]

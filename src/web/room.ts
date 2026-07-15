@@ -275,6 +275,94 @@ ${MD_RENDER_CSS}
     background: rgba(106,212,255,0.16); color: var(--fg);
   }
 
+  /* ── Gramophone — a clickable prop that opens the music player. ── */
+  #gramophone {
+    position: absolute; left: 85%; bottom: 7.5%;
+    width: 14vmin; height: 21vmin;            /* sprite is 506:770 ≈ 0.657 */
+    background: url('/assets/room/gramophone.png') no-repeat center bottom / contain;
+    image-rendering: pixelated;
+    cursor: pointer; pointer-events: auto;
+    transform-origin: 50% 100%;
+    filter: drop-shadow(0 6px 8px rgba(0,0,0,0.4));
+    transition: transform 300ms var(--spring), filter 400ms ease;
+  }
+  #gramophone:hover, #gramophone:focus-visible {
+    transform: translateY(-2%) scale(1.03);
+    filter: drop-shadow(0 0 12px rgba(255,208,102,0.55)) drop-shadow(0 8px 8px rgba(0,0,0,0.4));
+    outline: none;
+  }
+  body.music #gramophone {
+    filter: drop-shadow(0 0 14px rgba(255,208,102,0.5)) drop-shadow(0 6px 8px rgba(0,0,0,0.4));
+    animation: gramo-bob 3.2s ease-in-out infinite;
+  }
+  @keyframes gramo-bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-1.4%); } }
+  /* musical-note motes drifting from the horn while music plays */
+  #notes { position: absolute; left: 87%; bottom: 24%; pointer-events: none; opacity: 0; transition: opacity 500ms; }
+  body.music #notes { opacity: 1; }
+  #notes span {
+    position: absolute; color: var(--accent-warm); font-weight: 700;
+    text-shadow: 0 0 6px rgba(255,208,102,0.6); opacity: 0;
+    animation: note-rise 3.6s ease-in infinite;
+  }
+  #notes span:nth-child(1) { left: 0; font-size: min(3vmin,26px); }
+  #notes span:nth-child(2) { left: 2.4vmin; animation-delay: 1.2s; font-size: min(2.2vmin,20px); }
+  #notes span:nth-child(3) { left: -1.8vmin; animation-delay: 2.4s; font-size: min(2.6vmin,22px); }
+  @keyframes note-rise {
+    0%   { transform: translateY(0) rotate(-10deg); opacity: 0; }
+    18%  { opacity: 0.95; }
+    100% { transform: translateY(-9vmin) rotate(12deg); opacity: 0; }
+  }
+
+  /* ── Music player overlay (mirrors #recall/#reader; slides up from bottom). ── */
+  #player {
+    position: fixed; inset: 0; z-index: 40; display: none;
+    align-items: flex-end; justify-content: center;
+    background: rgba(4,6,14,0.55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  }
+  #player.open { display: flex; }
+  #player .pcard {
+    width: min(92vw, 460px); max-height: 82vh; margin-bottom: max(18px, 5vh);
+    background: rgba(15,19,32,0.97); border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 20px; padding: 18px 20px 16px;
+    box-shadow: 0 24px 70px rgba(0,0,0,0.6);
+    display: flex; flex-direction: column; gap: 12px; color: var(--fg);
+    animation: pslide 320ms var(--spring);
+  }
+  @keyframes pslide { from { transform: translateY(24px); opacity: 0.4; } to { transform: none; opacity: 1; } }
+  #player .phead { display: flex; align-items: center; gap: 8px; }
+  #player .phead h3 { margin: 0; flex: 1; font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); }
+  #player .pclose { cursor: pointer; font-size: 18px; line-height: 1; color: var(--fg-faint); padding: 2px 6px; border-radius: 8px; }
+  #player .pclose:hover { color: var(--fg); background: rgba(255,255,255,0.08); }
+  .np { min-height: 2.4em; }
+  .np-title { font-weight: 700; font-size: 16px; }
+  .np-mood { color: var(--fg-faint); font-size: 12px; margin-top: 2px; }
+  .seekwrap { display: flex; flex-direction: column; gap: 3px; }
+  #player input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 4px; border-radius: 4px; background: rgba(255,255,255,0.16); cursor: pointer; }
+  #player input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 13px; height: 13px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px rgba(106,212,255,0.6); }
+  .times { display: flex; justify-content: space-between; font-size: 11px; color: var(--fg-faint); font-variant-numeric: tabular-nums; }
+  .transport { display: flex; align-items: center; justify-content: center; gap: 12px; }
+  .tbtn { border: none; background: rgba(255,255,255,0.06); color: var(--fg); width: 40px; height: 40px; border-radius: 50%; font-size: 15px; cursor: pointer; display: grid; place-items: center; transition: background 160ms, transform 160ms; }
+  .tbtn:hover { background: rgba(255,255,255,0.14); }
+  .tbtn:active { transform: scale(0.92); }
+  .tbtn.big { width: 52px; height: 52px; font-size: 20px; background: var(--accent); color: #06121a; }
+  .tbtn.on { background: rgba(106,212,255,0.22); color: var(--accent); }
+  .volwrap { display: flex; align-items: center; gap: 10px; }
+  .volwrap span { cursor: pointer; font-size: 15px; width: 20px; text-align: center; }
+  .moods { display: flex; gap: 6px; flex-wrap: wrap; }
+  .mchip { font-size: 12px; padding: 4px 10px; border-radius: 999px; background: rgba(255,255,255,0.06); color: var(--fg-dim); cursor: pointer; }
+  .mchip.on { background: rgba(106,212,255,0.2); color: var(--accent); }
+  .plist { overflow-y: auto; display: flex; flex-direction: column; gap: 1px; max-height: 34vh; margin: 0 -6px; }
+  .prow { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; cursor: pointer; font-size: 13.5px; }
+  .prow:hover { background: rgba(255,255,255,0.06); }
+  .prow.active { background: rgba(106,212,255,0.14); color: var(--accent); }
+  .prow .pi { width: 14px; font-size: 11px; color: var(--fg-faint); text-align: center; flex-shrink: 0; }
+  .prow.active .pi { color: var(--accent); }
+  .prow .pt { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .prow .pm { font-size: 10px; color: var(--fg-faint); flex-shrink: 0; }
+  .plist .pempty { padding: 14px 10px; font-size: 12.5px; color: var(--fg-faint); line-height: 1.5; }
+  .plist .pempty code { background: rgba(255,255,255,0.08); padding: 1px 5px; border-radius: 5px; }
+  .license { font-size: 10.5px; color: var(--fg-faint); line-height: 1.4; min-height: 1.3em; }
+
   /* Weather / ambient particles live here (built in JS). */
   #weather { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
   .drop {
@@ -406,6 +494,8 @@ ${MD_RENDER_CSS}
       <div class="count" id="letter-count"></div>
     </div>
     <div id="shelf" role="button" aria-label="What Lisa has been thinking about" title="what she's been thinking about"></div>
+    <div id="gramophone" role="button" tabindex="0" aria-label="Put on some music" title="Put on some music"></div>
+    <div id="notes" aria-hidden="true"><span>&#9834;</span><span>&#9835;</span><span>&#9833;</span></div>
     <div id="vignette"></div>
   </div>
 
@@ -432,6 +522,26 @@ ${MD_RENDER_CSS}
     <h3>✦ on her mind</h3>
     <div id="recall-text"></div>
     <span class="rclose" id="recall-close">Close</span>
+  </div></div>
+
+  <div id="player"><div class="pcard">
+    <div class="phead"><h3>♪ music</h3><div class="pclose" id="player-close" role="button" aria-label="Close">✕</div></div>
+    <div class="np"><div class="np-title" id="np-title">—</div><div class="np-mood" id="np-mood"></div></div>
+    <div class="seekwrap">
+      <input type="range" id="seek" min="0" max="1000" value="0" step="1" aria-label="Seek">
+      <div class="times"><span id="t-cur">0:00</span><span id="t-tot">0:00</span></div>
+    </div>
+    <div class="transport">
+      <button class="tbtn" id="btn-shuffle" aria-label="Shuffle" title="Shuffle">🔀</button>
+      <button class="tbtn" id="btn-prev" aria-label="Previous" title="Previous">⏮</button>
+      <button class="tbtn big" id="btn-play" aria-label="Play or pause" title="Play / Pause">▶</button>
+      <button class="tbtn" id="btn-next" aria-label="Next" title="Next">⏭</button>
+      <button class="tbtn" id="btn-repeat" aria-label="Repeat" title="Repeat">🔁</button>
+    </div>
+    <div class="volwrap"><span id="btn-mute" role="button" aria-label="Mute">🔊</span><input type="range" id="vol" min="0" max="100" value="55" aria-label="Volume"></div>
+    <div class="moods" id="moods"></div>
+    <div class="plist" id="plist"></div>
+    <div class="license" id="np-license"></div>
   </div></div>
 
   <div id="offline">
@@ -747,6 +857,158 @@ ${renderMarkdown}
     document.body.animate([{ opacity: 0.5 }, { opacity: 1 }], { duration: 500 });
   }
   $('chip-theme').addEventListener('click', cycleTheme);
+
+  // ── Gramophone music player ─────────────────────────────────────────────
+  // A USER affordance (object-as-interface), not a readout of her state. Audio
+  // only ever starts from a tap (the browser autoplay gate). body.music (the
+  // gramophone glow + drifting notes) reflects the REAL event that sound is on.
+  var pAudio = new Audio();
+  pAudio.preload = 'metadata';
+  var pTracks = [], pOrder = [], pOrderPos = -1, pSeeking = false, pLoaded = false;
+  var pMood = 'all', pShuffle = false, pRepeat = 'all', pTargetVol = 0.55, pMuted = false, pFade = null;
+  var PKEY = 'lisa-room-music';
+  var MOOD_LABEL = { classical: '古典 · classical', light: '轻音乐 · light', classic: '经典 · classic', mine: '我的 · mine' };
+
+  function pPrefsGet() { try { return JSON.parse(localStorage.getItem(PKEY) || '{}'); } catch (e) { return {}; } }
+  function pPrefsSave() {
+    try {
+      var cur = pTracks[pOrder[pOrderPos]];
+      localStorage.setItem(PKEY, JSON.stringify({
+        vol: pTargetVol, muted: pMuted, shuffle: pShuffle, repeat: pRepeat, mood: pMood,
+        trackId: cur ? cur.id : null, pos: pAudio.currentTime || 0
+      }));
+    } catch (e) {}
+  }
+  function fmtTime(s) { s = Math.max(0, Math.floor(s || 0)); var m = Math.floor(s / 60), r = s % 60; return m + ':' + (r < 10 ? '0' : '') + r; }
+  function effVol() { return pMuted ? 0 : pTargetVol; }
+  function pRamp(to) {
+    if (pFade) { clearInterval(pFade); pFade = null; }
+    var from = pAudio.volume, steps = 14, i = 0;
+    pFade = setInterval(function () {
+      i++; pAudio.volume = Math.max(0, Math.min(1, from + (to - from) * i / steps));
+      if (i >= steps) { clearInterval(pFade); pFade = null; pAudio.volume = Math.max(0, Math.min(1, to)); }
+    }, 35);
+  }
+  function pBuildOrder(keepId) {
+    var view = [];
+    for (var i = 0; i < pTracks.length; i++) if (pMood === 'all' || pTracks[i].mood === pMood) view.push(i);
+    pOrder = view.slice();
+    if (pShuffle) for (var j = pOrder.length - 1; j > 0; j--) { var k = Math.floor(Math.random() * (j + 1)), t = pOrder[j]; pOrder[j] = pOrder[k]; pOrder[k] = t; }
+    pOrderPos = -1;
+    if (keepId) for (var q = 0; q < pOrder.length; q++) if (pTracks[pOrder[q]].id === keepId) { pOrderPos = q; break; }
+  }
+  function pMoods() {
+    var seen = {}, list = ['all'];
+    for (var i = 0; i < pTracks.length; i++) if (!seen[pTracks[i].mood]) { seen[pTracks[i].mood] = 1; list.push(pTracks[i].mood); }
+    var box = $('moods'); box.innerHTML = '';
+    for (var m = 0; m < list.length; m++) (function (mood) {
+      var c = document.createElement('div');
+      c.className = 'mchip' + (pMood === mood ? ' on' : '');
+      c.textContent = mood === 'all' ? 'all' : (MOOD_LABEL[mood] || mood);
+      c.addEventListener('click', function () { pMood = mood; var cur = pTracks[pOrder[pOrderPos]]; pBuildOrder(cur ? cur.id : null); pRenderList(); pMoods(); pPrefsSave(); });
+      box.appendChild(c);
+    })(list[m]);
+  }
+  function pRenderList() {
+    var box = $('plist'); box.innerHTML = '';
+    if (!pOrder.length) {
+      box.innerHTML = '<div class="pempty">No tracks here yet. Drop <code>.mp3</code> files into <code>~/.lisa/music/</code> and reopen — they appear as <b>我的 / mine</b>.</div>';
+      return;
+    }
+    for (var i = 0; i < pOrder.length; i++) (function (pos) {
+      var tr = pTracks[pOrder[pos]];
+      var row = document.createElement('div');
+      row.className = 'prow' + (pos === pOrderPos ? ' active' : '');
+      row.innerHTML = '<span class="pi"></span><span class="pt"></span><span class="pm"></span>';
+      row.querySelector('.pi').textContent = pos === pOrderPos ? '♪' : (pos + 1);
+      row.querySelector('.pt').textContent = tr.title;
+      row.querySelector('.pm').textContent = (MOOD_LABEL[tr.mood] || tr.mood).split(' ')[0];
+      row.addEventListener('click', function () { pPlayAt(pos); });
+      box.appendChild(row);
+    })(i);
+  }
+  function pRenderNow() {
+    var tr = pTracks[pOrder[pOrderPos]];
+    $('np-title').textContent = tr ? tr.title : '—';
+    $('np-mood').textContent = tr ? (MOOD_LABEL[tr.mood] || tr.mood) : '';
+    $('np-license').textContent = tr && tr.attribution ? (tr.attribution + ' · ' + tr.license) : (tr && tr.license && tr.license !== 'user-provided' ? tr.license : '');
+    $('btn-shuffle').className = 'tbtn' + (pShuffle ? ' on' : '');
+    $('btn-repeat').className = 'tbtn' + (pRepeat !== 'off' ? ' on' : '');
+    $('btn-repeat').textContent = pRepeat === 'one' ? '🔂' : '🔁';
+    $('btn-mute').textContent = (pMuted || pTargetVol === 0) ? '🔇' : (pTargetVol < 0.5 ? '🔉' : '🔊');
+  }
+  function pPlayAt(pos) {
+    if (pos < 0 || pos >= pOrder.length) return;
+    pOrderPos = pos;
+    var tr = pTracks[pOrder[pos]];
+    pAudio.src = tr.url; pAudio.load(); pAudio.volume = 0;
+    var pr = pAudio.play();
+    if (pr && pr.then) pr.then(function () { pRamp(effVol()); }).catch(function () {}); else pRamp(effVol());
+    pRenderNow(); pRenderList(); pPrefsSave();
+  }
+  function pToggle() {
+    if (pOrderPos < 0) { if (pOrder.length) pPlayAt(0); return; }
+    if (pAudio.paused) { var pr = pAudio.play(); if (pr && pr.then) pr.then(function () { pRamp(effVol()); }).catch(function () {}); else pRamp(effVol()); }
+    else { pRamp(0); setTimeout(function () { if (pAudio.volume < 0.03) pAudio.pause(); }, 540); }
+  }
+  function pNext(auto) {
+    if (!pOrder.length) return;
+    if (pOrderPos + 1 < pOrder.length) pPlayAt(pOrderPos + 1);
+    else if (pRepeat !== 'off' || !auto) pPlayAt(0);
+    else { pRamp(0); setTimeout(function () { pAudio.pause(); }, 400); }
+  }
+  function pPrev() {
+    if (!pOrder.length) return;
+    if (pAudio.currentTime > 3) { pAudio.currentTime = 0; return; }
+    pPlayAt(pOrderPos - 1 >= 0 ? pOrderPos - 1 : pOrder.length - 1);
+  }
+  pAudio.addEventListener('play', function () { document.body.classList.add('music'); $('btn-play').textContent = '⏸'; });
+  pAudio.addEventListener('pause', function () { document.body.classList.remove('music'); $('btn-play').textContent = '▶'; pPrefsSave(); });
+  pAudio.addEventListener('ended', function () { if (pRepeat === 'one') pPlayAt(pOrderPos); else pNext(true); });
+  pAudio.addEventListener('timeupdate', function () {
+    var d = pAudio.duration || 0;
+    $('t-cur').textContent = fmtTime(pAudio.currentTime);
+    $('t-tot').textContent = fmtTime(d);
+    if (d && !pSeeking) $('seek').value = String(Math.round(pAudio.currentTime / d * 1000));
+  });
+  $('seek').addEventListener('input', function () { pSeeking = true; });
+  $('seek').addEventListener('change', function () { var d = pAudio.duration || 0; if (d) pAudio.currentTime = (+$('seek').value) / 1000 * d; pSeeking = false; });
+  $('vol').addEventListener('input', function () { pTargetVol = (+$('vol').value) / 100; pMuted = false; if (!pAudio.paused) pAudio.volume = effVol(); pRenderNow(); pPrefsSave(); });
+  $('btn-mute').addEventListener('click', function () { pMuted = !pMuted; if (!pAudio.paused) pRamp(effVol()); pRenderNow(); pPrefsSave(); });
+  $('btn-play').addEventListener('click', pToggle);
+  $('btn-next').addEventListener('click', function () { pNext(false); });
+  $('btn-prev').addEventListener('click', pPrev);
+  $('btn-shuffle').addEventListener('click', function () { pShuffle = !pShuffle; var cur = pTracks[pOrder[pOrderPos]]; pBuildOrder(cur ? cur.id : null); pRenderNow(); pRenderList(); pPrefsSave(); });
+  $('btn-repeat').addEventListener('click', function () { pRepeat = pRepeat === 'off' ? 'all' : (pRepeat === 'all' ? 'one' : 'off'); pRenderNow(); pPrefsSave(); });
+  function pApplyPrefs() {
+    var pr = pPrefsGet();
+    if (typeof pr.vol === 'number') pTargetVol = pr.vol;
+    pMuted = !!pr.muted; pShuffle = !!pr.shuffle;
+    if (pr.repeat === 'off' || pr.repeat === 'all' || pr.repeat === 'one') pRepeat = pr.repeat;
+    if (pr.mood) pMood = pr.mood;
+    $('vol').value = String(Math.round(pTargetVol * 100));
+    return pr;
+  }
+  function pEnsureLoaded(cb) {
+    if (pLoaded) { if (cb) cb(); return; }
+    var saved = pApplyPrefs();
+    fetch('/api/room/music').then(function (r) { return r.json(); }).then(function (data) {
+      pTracks = Array.isArray(data) ? data : []; pLoaded = true;
+      pBuildOrder(saved.trackId || null); pMoods(); pRenderList(); pRenderNow();
+      if (pOrderPos >= 0) {
+        var tr = pTracks[pOrder[pOrderPos]];
+        pAudio.src = tr.url; pAudio.volume = 0;
+        if (saved.pos) pAudio.addEventListener('loadedmetadata', function once() { pAudio.removeEventListener('loadedmetadata', once); try { pAudio.currentTime = saved.pos; } catch (e) {} });
+      }
+      if (cb) cb();
+    }).catch(function () { pLoaded = true; pTracks = []; pBuildOrder(null); pMoods(); pRenderList(); if (cb) cb(); });
+  }
+  function openPlayer() { pEnsureLoaded(); $('player').classList.add('open'); }
+  function closePlayer() { $('player').classList.remove('open'); }
+  $('gramophone').addEventListener('click', openPlayer);
+  $('gramophone').addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPlayer(); } });
+  $('player-close').addEventListener('click', closePlayer);
+  $('player').addEventListener('click', function (e) { if (e.target === $('player')) closePlayer(); });
 
   // ── Gentle parallax: bg drifts opposite the cursor, Lisa drifts less. ────
   var px = 0, py = 0, tx = 0, ty = 0;
