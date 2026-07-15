@@ -292,13 +292,23 @@ export async function desireActivity(
   const out: Record<string, string> = {};
   for (const d of desires) {
     let ms = Date.parse(d.bornAt) || 0;
-    for (const f of [desireFile(d.slug), desireProgressFile(d.slug)]) {
-      try {
-        const st = await fs.stat(f);
-        ms = Math.max(ms, Math.floor(st.mtimeMs));
-      } catch {
-        // progress file often doesn't exist yet — not an error
+    try {
+      // NB: desireFile()/desireProgressFile() run assertSafeSlug, which THROWS
+      // on an unsafe slug — and listDesires() derives slugs from raw filenames
+      // without validating. A stray file (e.g. a macOS `._x.md` AppleDouble in
+      // the git-synced soul dir) would otherwise reject the whole scan and
+      // abort `lisa status`. Keep the path construction inside the try so such
+      // a desire is simply skipped, flooring at bornAt.
+      for (const f of [desireFile(d.slug), desireProgressFile(d.slug)]) {
+        try {
+          const st = await fs.stat(f);
+          ms = Math.max(ms, Math.floor(st.mtimeMs));
+        } catch {
+          // progress file often doesn't exist yet — not an error
+        }
       }
+    } catch {
+      // unsafe slug from a stray file — skip, keep bornAt
     }
     out[d.slug] = new Date(ms).toISOString();
   }
@@ -328,7 +338,9 @@ export function pickCurrentDesire(
   };
   const actionable = desires.filter((d) => d.actionable);
   const pool = actionable.length > 0 ? actionable : desires;
-  return [...pool].sort((x, y) => recency(y) - recency(x))[0] ?? null;
+  // Secondary key on slug so an exact recency tie is deterministic rather than
+  // decided by array (fs.readdir) order — the accident this function removes.
+  return [...pool].sort((x, y) => recency(y) - recency(x) || x.slug.localeCompare(y.slug))[0] ?? null;
 }
 
 /** Can the autonomous heartbeat pursue this desire unattended? Pure (R4). */

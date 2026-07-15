@@ -4,6 +4,7 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import type { DesireEntry } from "./types.js";
 
 // PLAN_DESIRE_EVOLUTION_v1.0 §3 PR3: pick-desire.test.ts covers the PURE
 // pickCurrentDesire; this covers the I/O half — desireActivity reading real
@@ -72,5 +73,22 @@ describe("desireActivity (real fs.stat I/O)", () => {
     const activity = await store.desireActivity(desires);
     // Missing progress file is not an error; bornAt dominates.
     assert.equal(activity["gamma"]?.slice(0, 4), "2099");
+  });
+
+  test("tolerates an unsafe slug from a stray file instead of rejecting the scan", async () => {
+    // listDesires() derives slugs from raw filenames without validating, so a
+    // stray file (e.g. a macOS '._x.md' AppleDouble in the git-synced soul dir)
+    // yields a dot-leading slug that desireFile()'s assertSafeSlug rejects.
+    // desireActivity must skip it and floor at bornAt — not throw (which would
+    // abort `lisa status`).
+    const unsafe: DesireEntry = {
+      slug: "._applesauce",
+      what: "stray",
+      why: "",
+      actionable: false,
+      bornAt: "2026-03-01T00:00:00.000Z",
+    };
+    const activity = await store.desireActivity([unsafe]); // must not throw
+    assert.equal(activity["._applesauce"]?.slice(0, 7), "2026-03");
   });
 });
