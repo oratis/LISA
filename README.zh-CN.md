@@ -187,11 +187,11 @@ OpenAI 模型 (`gpt-*`) 还需要 `OPENAI_API_KEY`。
 ## 怎么用
 
 - **终端 REPL** — `lisa`（交互）或 `lisa "一句话"`（一次性）
-- **Web GUI** — `lisa serve --web` → http://localhost:5757 — 像素艺术聊天界面，头像跟着她的心情实时切，她的回复渲染成排版好的 **Markdown**（先转义，抗 XSS）。一个 **九宫格**（3×3）导航网格在她的各个界面间切换 —— 聊天、房间、知识库、邮箱、记忆、灵魂、技能、工具、agent、设置。默认**只绑 127.0.0.1**；要从手机访问，先设 `LISA_WEB_TOKEN` 并加 `--host 0.0.0.0`，然后每台设备第一次打开 `http://<主机>:5757/?token=<值>`。
+- **Web GUI** — `lisa serve --web` → http://localhost:5757 — 像素艺术聊天界面，头像跟着她的心情实时切，她的回复渲染成排版好的 **Markdown**（先转义，抗 XSS）。一个锁定的 3×3 **九宫格**导航网格切换视图 —— 聊天、Dashboard、Control、Rêve、房间、Sense、记忆、知识库、设置 —— 邮箱和 agent 监视器作为侧栏卡片。默认**只绑 127.0.0.1**；要从手机访问，先设 `LISA_WEB_TOKEN` 并加 `--host 0.0.0.0`，然后每台设备第一次打开 `http://<主机>:5757/?token=<值>`。
 - **Lisa 的房间** — GUI 里的 ⌂ 页（也可 `GET /room`）：一个她真正*栖居*的像素艺术生活空间 —— 她真实状态的只读投影。你回来时她会抬头看你的眼睛，空闲时自己在家里晃（看书、喝茶、戴耳机、望向窗外 —— 按一天中的时段加权），夜里换上睡衣，把她 ★ *你不在时* 的便签堆在桌上，`working-*` 时坐在发光的笔记本前。一个 ❖ 切换器 **换景** 在多套房间主题间重新布置（[docs/PLAN_ROOM_v2.0.md](docs/PLAN_ROOM_v2.0.md)）。
 - **灵动岛小组件** — `lisa serve --web` → http://localhost:5757/island — 一个显示她当前心情 + 状态、agent 监视、顾问卡片的小胶囊；也原生内置进 Lisa.app，带刘海感知定位（[docs/MAC_ISLAND_PLAN.md](docs/MAC_ISLAND_PLAN.md)）。
 - **知识库** — 一个"知识"页（也是她的 `kb_*` 工具）：一个她随对话捕获、又能在对话中检索的内置个人 wiki，见[下文](#知识库--她自己打理的-wiki)。
-- **邮箱** — 一个"邮箱"页（也可 `lisa mail`）：连一个只读邮箱，她会归纳出一份分类摘要，见[下文](#邮箱--她替你盯着的信箱)。
+- **邮箱** — 侧栏一张摘要卡片（卡片标题点进完整邮箱视图；也可 `lisa mail`）：连一个只读邮箱，她会归纳出一份分类摘要，见[下文](#邮箱--她替你盯着的信箱)。
 - **IM 通道** — `lisa serve --channels telegram,discord,slack,feishu,imessage,webhook` — 6 个内置 adapter，下面有详情
 - **心跳** — `lisa heartbeat run`（手动）或 `lisa heartbeat install`（macOS launchd / Linux cron）
 - **开机自启** — `lisa autostart install` 让 `lisa serve --web` 从登录起就常驻（macOS launchd；Linux 打印 `systemd --user` unit），这样 app、灵动岛、通道随时在线。`lisa autostart status` / `uninstall` 查看 / 移除。
@@ -336,7 +336,7 @@ web **邮箱**页有一个引导式连接弹窗 —— provider 选择器（Gmai
 - 对话中她用 `set_mood` 工具实时切换头像
 - Style-locked prompt 模板保证 114 张是同一个角色的 114 种状态/情绪/服装/人格
 - Press Start 2P + VT323 字体，CRT 扫描线，4px 像素描边
-- 一个 **九宫格**（3×3）导航网格切换界面 —— 聊天、房间、知识库、邮箱、记忆、灵魂、技能、工具、agent、设置 —— 每个打开各自的视图 / inspector
+- 一个锁定的 3×3 **九宫格**导航网格切换视图 —— 聊天、Dashboard、Control、Rêve、房间、Sense、记忆、知识库、设置 —— 邮箱和 agent 监视器是侧栏卡片
 - 第一次打开 GUI 时 birth ritual 全屏播放
 
 ```sh
