@@ -540,54 +540,67 @@ export const MAIN_CSS = `  :root {
     flex-shrink: 0;
   }
 
-  /* ── Primary nav (vertical list in the sidebar) ────────────── */
-  .nav-list { display: flex; flex-direction: column; gap: 2px; }
+  /* ── Primary nav (九宫格 3×3 tile grid in the sidebar) ────────── */
+  .nav-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
   .nav-item {
     position: relative;
     display: flex;
+    flex-direction: column;
     align-items: center;
-    gap: 10px;
-    width: 100%;
-    padding: 8px 11px;
-    border: 0;
-    border-radius: 9px;
-    background: transparent;
+    justify-content: center;
+    gap: 7px;
+    min-height: 64px;
+    padding: 12px 6px;
+    border: 1px solid transparent;
+    border-radius: 12px;
+    background: var(--bg-card);
     color: var(--fg-2);
     font-family: inherit;
-    font-size: 12.5px;
+    font-size: 10.5px;
     font-weight: 600;
     letter-spacing: 0.01em;
-    text-align: left;
+    text-align: center;
     cursor: pointer;
-    transition: background 120ms ease, color 120ms ease;
+    transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
   }
-  .nav-item .nav-ico { width: 18px; font-size: 15px; text-align: center; flex-shrink: 0; opacity: 0.9; }
-  .nav-item:hover { background: var(--bg-card); color: var(--fg); }
-  .nav-item.active { background: var(--accent-soft); color: var(--accent); }
-  .nav-item.active::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 3px;
-    height: 18px;
-    border-radius: 0 3px 3px 0;
-    background: var(--accent);
+  .nav-item .nav-ico {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    opacity: 0.92;
   }
+  .nav-item .nav-ico svg { display: block; width: 20px; height: 20px; }
+  .nav-item .nav-label {
+    max-width: 100%;
+    line-height: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .nav-item:hover { background: var(--bg-3); color: var(--fg); border-color: var(--border-new); }
+  .nav-item.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-glow); }
+  .nav-item.active .nav-ico { opacity: 1; }
   .nav-item .nav-tag {
-    margin-left: auto;
-    font-size: 9.5px;
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    font-size: 9px;
     font-weight: 700;
     font-variant-numeric: tabular-nums;
     color: var(--fg);
     background: var(--bg-3);
+    border: 1px solid var(--border-new);
     border-radius: 999px;
-    padding: 1px 7px;
-    min-width: 18px;
+    padding: 0 5px;
+    min-width: 16px;
+    height: 16px;
+    line-height: 14px;
     text-align: center;
   }
-  .nav-item.active .nav-tag { background: var(--accent); color: #06141b; }
+  .nav-item .nav-tag:empty { display: none; }
+  .nav-item.active .nav-tag { background: var(--accent); border-color: var(--accent); color: #06141b; }
 
   /* ── Proactive toggle (sidebar footer area) ────────────────── */
   .proactive-toggle {
@@ -891,6 +904,91 @@ export const MAIN_CSS = `  :root {
   .mem-btn .mem-ico { font-size: 16px; width: 20px; text-align: center; }
   .mem-btn .mem-sub { margin-left: auto; font-size: 11px; color: var(--fg-3); font-weight: 400; }
 
+  /* ── Settings / Mail rail views ─────────────────────────────── */
+  .set-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-new);
+    border-radius: 12px;
+    padding: 2px 14px;
+    margin-bottom: 12px;
+  }
+  .set-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 13px 0;
+    border-top: 1px solid var(--border-new);
+  }
+  .set-row:first-child { border-top: 0; }
+  .set-row .set-main { min-width: 0; flex: 1; }
+  .set-row .set-name { font-size: 12.5px; font-weight: 600; color: var(--fg); }
+  .set-row .set-sub { font-size: 11px; color: var(--fg-3); margin-top: 2px; line-height: 1.4; }
+  /* Self-contained switch (Proactive / Compact) — bare track+knob, no card */
+  .set-switch {
+    flex-shrink: 0;
+    width: 38px;
+    height: 20px;
+    border-radius: 999px;
+    background: var(--bg-3);
+    border: 1px solid var(--border-new);
+    position: relative;
+    cursor: pointer;
+    transition: background 140ms ease, border-color 140ms ease;
+  }
+  .set-switch .knob {
+    position: absolute;
+    top: 1px;
+    left: 1px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--fg-3);
+    transition: transform 140ms ease, background 140ms ease;
+  }
+  .set-switch.on { background: var(--proactive-soft); border-color: var(--proactive-glow); }
+  .set-switch.on .knob { transform: translateX(18px); background: var(--proactive); }
+  /* Status chip (key configured / edition) */
+  .set-chip {
+    flex-shrink: 0;
+    font-size: 10.5px;
+    font-weight: 700;
+    border-radius: 999px;
+    padding: 2px 9px;
+    border: 1px solid var(--border-new);
+    color: var(--fg-3);
+    background: var(--bg-3);
+  }
+  .set-chip.ok { color: var(--proactive); border-color: var(--proactive-glow); background: var(--proactive-soft); }
+  /* API-key update form */
+  .set-form { display: flex; flex-direction: column; gap: 9px; padding: 12px 0 14px; }
+  .set-input {
+    width: 100%;
+    font-family: inherit;
+    font-size: 12.5px;
+    color: var(--fg);
+    background: var(--bg-3);
+    border: 1px solid var(--border-new);
+    border-radius: 8px;
+    padding: 8px 10px;
+  }
+  .set-input:focus { outline: none; border-color: var(--accent-glow); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .set-note { font-size: 11px; color: var(--fg-3); line-height: 1.5; }
+  .set-note a { color: var(--accent); }
+  .set-err { font-size: 11.5px; color: var(--err-color); min-height: 14px; }
+  /* Small destructive row action (remove mailbox) */
+  .v-del {
+    flex-shrink: 0;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    border-radius: 7px;
+    padding: 4px 9px;
+    border: 1px solid var(--border-new);
+    background: var(--bg-3);
+    color: var(--fg-3);
+  }
+  .v-del:hover { color: var(--err-color); border-color: var(--err-color); }
   /* ── Knowledge base view ── */
   .kb-searchbar { padding: 12px 24px 0; }
   .kb-search {

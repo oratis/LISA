@@ -63,10 +63,17 @@ import { MAIN_HTML } from "./lisa-html.js";
  * string (```c# / ```c++ / ```js title="x") — the fence opener now matches any
  * info string (first token = lang); links split out of the emphasis pass so a
  * `*`/`_` in a URL no longer mangles the href.
+ * Then: nav → 九宫格 tile grid (unified line-SVG icons) with two new rail
+ * views, Mail + Settings (#viewMail/#viewSettings, loadMail/loadSettings).
+ * Mail reuses /api/mail/* and adds per-account enable/disable/remove + a nav
+ * "needs-you" badge; Settings hosts API-key management (/api/config/*), the
+ * Proactive autonomy switch, and the Compact-mode switch (both relocated out
+ * of the sidebar footer). The Knowledge (kb) tile is retained, so the grid
+ * holds 10 tiles (3×3 + 1).
  */
-const EXPECTED_LENGTH = 187631;
+const EXPECTED_LENGTH = 204283;
 const EXPECTED_SHA256 =
-  "5ce16062f71d3b8cce3a51bbe95206c6843b576f61cd4ed23a2657e0ff6acdb2";
+  "2870806b9bd63cb9cd9d16fec8faa7f1dea17ea81bdc7ccc991e3c8ee209e552";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);

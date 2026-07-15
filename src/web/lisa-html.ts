@@ -84,16 +84,18 @@ ${MAIN_CSS}
       </div>
     </div>
 
-    <!-- Primary navigation (view switcher — wired in setupConsole) -->
+    <!-- Primary navigation (九宫格 3×3 view switcher — wired in setupConsole) -->
     <nav class="nav-list" id="navList">
-      <button class="nav-item active" type="button" data-view="chat"><span class="nav-ico">◍</span>Chat</button>
-      <button class="nav-item" type="button" data-view="dashboard"><span class="nav-ico">▦</span>Dashboard</button>
-      <button class="nav-item" type="button" data-view="control"><span class="nav-ico">⌘</span>Control<span class="nav-tag" id="navAgentCount">0</span></button>
-      <button class="nav-item" type="button" data-view="reve"><span class="nav-ico">☾</span>Rêve</button>
-      <button class="nav-item" type="button" data-view="room"><span class="nav-ico">⌂</span>Room</button>
-      <button class="nav-item" type="button" data-view="sense"><span class="nav-ico">◉</span>Sense</button>
-      <button class="nav-item" type="button" data-view="memory"><span class="nav-ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:block;margin:auto"><path d="M2 6h4M2 10h4M2 14h4M2 18h4"/><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M16 2v20"/></svg></span>Memory</button>
-      <button class="nav-item" type="button" data-view="kb"><span class="nav-ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:block;margin:auto"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg></span>Knowledge</button>
+      <button class="nav-item active" type="button" data-view="chat"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg></span><span class="nav-label">Chat</span></button>
+      <button class="nav-item" type="button" data-view="dashboard"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg></span><span class="nav-label">Dashboard</span></button>
+      <button class="nav-item" type="button" data-view="control"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 3a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3H6a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3h12a3 3 0 0 0 3-3 3 3 0 0 0-3-3z"/></svg></span><span class="nav-label">Control</span><span class="nav-tag" id="navAgentCount">0</span></button>
+      <button class="nav-item" type="button" data-view="reve"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></span><span class="nav-label">Rêve</span></button>
+      <button class="nav-item" type="button" data-view="room"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span><span class="nav-label">Room</span></button>
+      <button class="nav-item" type="button" data-view="sense"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></svg></span><span class="nav-label">Sense</span></button>
+      <button class="nav-item" type="button" data-view="memory"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 6h4M2 10h4M2 14h4M2 18h4"/><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M16 2v20"/></svg></span><span class="nav-label">Memory</span></button>
+      <button class="nav-item" type="button" data-view="kb"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg></span><span class="nav-label">Knowledge</span></button>
+      <button class="nav-item" type="button" data-view="mail"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 7l10 6 10-6"/></svg></span><span class="nav-label">Mail</span><span class="nav-tag" id="navMailCount"></span></button>
+      <button class="nav-item" type="button" data-view="settings"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span><span class="nav-label">Settings</span></button>
     </nav>
 
     <!-- Currently wanting -->
@@ -140,18 +142,7 @@ ${MAIN_CSS}
 
     <!-- (SOUL/SKILLS/TOOLS/PLANS → top function bar; MEMORY → rail view) -->
 
-    <!-- Proactive autonomy toggle (master switch — wired in setupConsole) -->
-    <div class="proactive-toggle" id="proactiveToggle" role="switch" aria-checked="false" tabindex="0" title="Let Lisa watch and act on her own when you're away">
-      <span class="pt-label">Proactive</span>
-      <span class="pt-track"><span class="pt-knob"></span></span>
-    </div>
-
-    <!-- Compact / sidebar-mode toggle (client-side; forces the narrow stacked
-         layout at any width so Lisa can dock as a skinny panel) -->
-    <div class="proactive-toggle" id="compactToggle" role="switch" aria-checked="false" tabindex="0" title="Compact / sidebar mode — dock Lisa as a narrow panel (also auto on a small window)">
-      <span class="pt-label">Compact</span>
-      <span class="pt-track"><span class="pt-knob"></span></span>
-    </div>
+    <!-- (Proactive / Compact toggles moved into the Settings rail view) -->
 
     <!-- Footer: current session id -->
     <div class="sb-footer">
@@ -214,6 +205,8 @@ ${MAIN_CSS}
     <section class="view" id="viewSense"></section>
     <section class="view" id="viewMemory"></section>
     <section class="view" id="viewKb"></section>
+    <section class="view" id="viewMail"></section>
+    <section class="view" id="viewSettings"></section>
   </div>
 </div>
 
