@@ -2,6 +2,7 @@ import {
   appendDesireProgress,
   appendJournal,
   applyEmotionDelta,
+  closeDesire,
   listDesires,
   listJournalDates,
   listOpinions,
@@ -569,35 +570,10 @@ export const desireCloseTool: ToolDefinition<DesireCloseInput, string> = {
   },
   async execute(input) {
     return await withSoulCaller("soul_patch", async () => {
-      const desires = await listDesires();
-      const d = desires.find((x) => x.slug === input.slug);
-      if (!d) {
-        throw new Error(
-          `desire "${input.slug}" not found. Existing slugs: ${desires.map((x) => x.slug).join(", ") || "(none)"}`,
-        );
-      }
-      // Flip actionable off; keep what/why/heartbeatPrompt for record.
-      await writeDesire({
-        slug: d.slug,
-        what: d.what,
-        why: d.why,
-        actionable: false,
-        heartbeatPrompt: d.heartbeatPrompt,
-        bornAt: d.bornAt,
-      });
-      // Append a final progress entry. Use heartbeat caller because
-      // closure-with-reflection is the same shape as heartbeat progress.
-      const closingEntry =
-        `[CLOSED:${input.outcome}] ${input.reflection}`;
-      // Inline append (don't use desire_progress_log path — that requires
-      // listDesires().find, which would still work, but we already validated).
-      await appendDesireProgress(d.slug, closingEntry);
-      // One-line journal entry so the weekly examen catches it without
-      // having to scan every desire.
-      await appendJournal(
-        new Date().toISOString().slice(0, 10),
-        `[DESIRE_CLOSED] ${input.slug} (${input.outcome}): ${input.reflection}`,
-      );
+      // Shares one code path with reflect's desire_close op (store.closeDesire):
+      // actionable=false + [CLOSED] progress entry + journal line. Throws if the
+      // slug doesn't exist.
+      await closeDesire(input.slug, input.outcome, input.reflection);
       return `desire "${input.slug}" closed (${input.outcome}); actionable=false, journal entry written.`;
     });
   },

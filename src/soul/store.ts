@@ -289,6 +289,83 @@ export function needsUserHelp(d: DesireEntry): boolean {
   return !!d.actionable && d.pursuit === "needs-user";
 }
 
+/** Fields of an existing desire that a revision may change. slug/bornAt are
+ *  identity and never move. */
+export type DesirePatch = Partial<
+  Pick<DesireEntry, "what" | "why" | "actionable" | "heartbeatPrompt" | "pursuit">
+>;
+
+/**
+ * Revise an existing desire in place (read-modify-write by slug). Only the
+ * fields explicitly provided change; everything else — including bornAt — is
+ * preserved, so an `undefined` in the patch never wipes an existing field.
+ * Throws if the slug doesn't exist (a revise must target something real).
+ *
+ * The caller supplies the git-author context (withSoulCaller); this only does
+ * the write, matching writeDesire.
+ */
+export async function reviseDesire(
+  slug: string,
+  patch: DesirePatch,
+): Promise<DesireEntry> {
+  // Read-modify-write under the cross-process soul lock: web idle-reflect and a
+  // CLI reflect (both live since #242) can revise the same slug from different
+  // processes; without the lock one field edit is lost (last-writer-wins on a
+  // stale read). writeDesire doesn't self-lock, so this doesn't nest.
+  return await withSoulLock(async () => {
+    const desires = await listDesires();
+    const existing = desires.find((d) => d.slug === slug);
+    if (!existing) {
+      throw new Error(
+        `desire "${slug}" not found. Existing slugs: ${desires.map((d) => d.slug).join(", ") || "(none)"}`,
+      );
+    }
+    const next: DesireEntry = { ...existing };
+    if (patch.what !== undefined) next.what = patch.what;
+    if (patch.why !== undefined) next.why = patch.why;
+    if (patch.actionable !== undefined) next.actionable = patch.actionable;
+    if (patch.heartbeatPrompt !== undefined) next.heartbeatPrompt = patch.heartbeatPrompt;
+    if (patch.pursuit !== undefined) next.pursuit = patch.pursuit;
+    await writeDesire(next);
+    return next;
+  });
+}
+
+/**
+ * Soft-close a desire: flip actionable off (it stops driving the heartbeat),
+ * append a final `[CLOSED:<outcome>]` entry to its progress log, and write a
+ * one-line journal note so weekly_examen sees it. The desire file is retained
+ * and git-tracked — closing is reversible, nothing is destroyed. Throws if the
+ * slug doesn't exist. Caller supplies the git-author context.
+ */
+export async function closeDesire(
+  slug: string,
+  outcome: string,
+  reflection: string,
+): Promise<void> {
+  // Read-modify-write of the desire file under the soul lock (same race as
+  // reviseDesire). The progress + journal appends below self-lock individually,
+  // so they stay OUTSIDE this block — nesting withSoulLock would deadlock.
+  await withSoulLock(async () => {
+    const desires = await listDesires();
+    const d = desires.find((x) => x.slug === slug);
+    if (!d) {
+      throw new Error(
+        `desire "${slug}" not found. Existing slugs: ${desires.map((x) => x.slug).join(", ") || "(none)"}`,
+      );
+    }
+    // Soft close: just flip actionable off. (heartbeatPrompt/pursuit aren't
+    // serialized while dormant, but the soul git history retains the last
+    // actionable version, so re-opening via reviseDesire can recover them.)
+    await writeDesire({ ...d, actionable: false });
+  });
+  await appendDesireProgress(slug, `[CLOSED:${outcome}] ${reflection}`);
+  await appendJournal(
+    new Date().toISOString().slice(0, 10),
+    `[DESIRE_CLOSED] ${slug} (${outcome}): ${reflection}`,
+  );
+}
+
 // Per-desire progress log. One file per desire slug, append-only, written by
 // the heartbeat subagent at the end of each run on this desire (Phase 1.3 of
 // AUTONOMY_ROADMAP). Lets a multi-day pursuit actually persist across runs.
