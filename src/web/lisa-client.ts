@@ -1959,6 +1959,16 @@ if ('serviceWorker' in navigator) {
   window.lisaOpenMailModal = openMailModal;
   var sbMailConnectBtn = document.getElementById('sbMailConnectBtn');
   if (sbMailConnectBtn) sbMailConnectBtn.addEventListener('click', openMailModal);
+  // The Mail nav tile was removed to lock the launcher to a clean 3x3; the
+  // sidebar Mail card's header is now the entry into the full Mail view.
+  var sbMailHead = document.querySelector('#sbMailCard .h');
+  if (sbMailHead) {
+    sbMailHead.style.cursor = 'pointer';
+    sbMailHead.title = 'Open Mail';
+    sbMailHead.addEventListener('click', function () {
+      if (typeof window.lisaShowView === 'function') window.lisaShowView('mail');
+    });
+  }
 
   // Bootstrap + periodic resync. SSE handles the fast-path updates;
   // these timers are belt-and-braces in case the stream silently dies.
