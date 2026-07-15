@@ -308,21 +308,27 @@ export async function reviseDesire(
   slug: string,
   patch: DesirePatch,
 ): Promise<DesireEntry> {
-  const desires = await listDesires();
-  const existing = desires.find((d) => d.slug === slug);
-  if (!existing) {
-    throw new Error(
-      `desire "${slug}" not found. Existing slugs: ${desires.map((d) => d.slug).join(", ") || "(none)"}`,
-    );
-  }
-  const next: DesireEntry = { ...existing };
-  if (patch.what !== undefined) next.what = patch.what;
-  if (patch.why !== undefined) next.why = patch.why;
-  if (patch.actionable !== undefined) next.actionable = patch.actionable;
-  if (patch.heartbeatPrompt !== undefined) next.heartbeatPrompt = patch.heartbeatPrompt;
-  if (patch.pursuit !== undefined) next.pursuit = patch.pursuit;
-  await writeDesire(next);
-  return next;
+  // Read-modify-write under the cross-process soul lock: web idle-reflect and a
+  // CLI reflect (both live since #242) can revise the same slug from different
+  // processes; without the lock one field edit is lost (last-writer-wins on a
+  // stale read). writeDesire doesn't self-lock, so this doesn't nest.
+  return await withSoulLock(async () => {
+    const desires = await listDesires();
+    const existing = desires.find((d) => d.slug === slug);
+    if (!existing) {
+      throw new Error(
+        `desire "${slug}" not found. Existing slugs: ${desires.map((d) => d.slug).join(", ") || "(none)"}`,
+      );
+    }
+    const next: DesireEntry = { ...existing };
+    if (patch.what !== undefined) next.what = patch.what;
+    if (patch.why !== undefined) next.why = patch.why;
+    if (patch.actionable !== undefined) next.actionable = patch.actionable;
+    if (patch.heartbeatPrompt !== undefined) next.heartbeatPrompt = patch.heartbeatPrompt;
+    if (patch.pursuit !== undefined) next.pursuit = patch.pursuit;
+    await writeDesire(next);
+    return next;
+  });
 }
 
 /**
@@ -337,15 +343,22 @@ export async function closeDesire(
   outcome: string,
   reflection: string,
 ): Promise<void> {
-  const desires = await listDesires();
-  const d = desires.find((x) => x.slug === slug);
-  if (!d) {
-    throw new Error(
-      `desire "${slug}" not found. Existing slugs: ${desires.map((x) => x.slug).join(", ") || "(none)"}`,
-    );
-  }
-  // Keep what/why/heartbeatPrompt/pursuit for the record; just stop pursuit.
-  await writeDesire({ ...d, actionable: false });
+  // Read-modify-write of the desire file under the soul lock (same race as
+  // reviseDesire). The progress + journal appends below self-lock individually,
+  // so they stay OUTSIDE this block — nesting withSoulLock would deadlock.
+  await withSoulLock(async () => {
+    const desires = await listDesires();
+    const d = desires.find((x) => x.slug === slug);
+    if (!d) {
+      throw new Error(
+        `desire "${slug}" not found. Existing slugs: ${desires.map((x) => x.slug).join(", ") || "(none)"}`,
+      );
+    }
+    // Soft close: just flip actionable off. (heartbeatPrompt/pursuit aren't
+    // serialized while dormant, but the soul git history retains the last
+    // actionable version, so re-opening via reviseDesire can recover them.)
+    await writeDesire({ ...d, actionable: false });
+  });
   await appendDesireProgress(slug, `[CLOSED:${outcome}] ${reflection}`);
   await appendJournal(
     new Date().toISOString().slice(0, 10),
