@@ -28,6 +28,11 @@ import {
   decideReflect,
 } from "./reflect-scheduler.js";
 import { listDesires, desireActivity, pickCurrentDesire } from "../soul/store.js";
+import {
+  FOCUS_FRESHNESS_MS,
+  pickFocusedDesire,
+  recentUserText,
+} from "../soul/desire-focus.js";
 import { ISLAND_HTML } from "./island.js";
 import { ROOM_HTML } from "./room.js";
 import { MAIN_HTML } from "./lisa-html.js";
@@ -833,11 +838,17 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       let currentDesire: string | null = null;
       try {
         const desires = await listDesires();
-        // Surface the most recently ACTIVE desire (authored or pursued), not
-        // whichever actionable one fs.readdir happened to list first — so the
-        // ticker moves when something real changes. See PLAN_DESIRE_EVOLUTION.
+        // If the conversation is live and clearly about one of her desires,
+        // surface THAT (intra-session focus — tracks the turn-by-turn topic).
+        // Otherwise fall back to the most recently ACTIVE desire (authored or
+        // pursued), not whichever fs.readdir listed first. See PLAN_DESIRE_EVOLUTION.
+        const focused =
+          reflectClock.idleFor() < FOCUS_FRESHNESS_MS
+            ? pickFocusedDesire(desires, recentUserText(history))
+            : null;
         const activity = await desireActivity(desires);
-        currentDesire = pickCurrentDesire(desires, activity)?.what ?? null;
+        currentDesire =
+          (focused ?? pickCurrentDesire(desires, activity))?.what ?? null;
       } catch {
         // listDesires can fail before soul is born; that's fine.
       }
