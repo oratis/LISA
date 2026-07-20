@@ -2195,39 +2195,143 @@ if ('serviceWorker' in navigator) {
   }
 
   // ── Control ─────────────────────────────────────────────────────
-  function controlRowHTML(s) {
-    var act = actLine(s);
-    var fam = s.controllable === 'pty' ? 'pty' : (s.controllable === 'managed' ? 'managed' : '');
-    var pend = s.activity && s.activity.pendingPermission;
-    var id = esc(s.sessionId);
-    var ctrl = '';
-    if (fam && pend) {
-      ctrl += '<button class="mc approve" data-fam="' + fam + '" data-id="' + id + '" data-act="approve">approve</button>';
-      ctrl += '<button class="mc deny" data-fam="' + fam + '" data-id="' + id + '" data-act="deny">deny</button>';
+  // Progress-only activity line (turns/tokens/cmd/tool·file) — the pending
+  // and error states get their own dedicated inline lines below.
+  function ctrlProgress(s) {
+    var a = s.activity; if (!a || typeof a !== 'object') return '';
+    var bits = [];
+    if (typeof a.turnCount === 'number' && a.turnCount > 0) bits.push('turn ' + a.turnCount);
+    if (a.tokens && (a.tokens.input || a.tokens.output)) {
+      var tot = (a.tokens.input || 0) + (a.tokens.output || 0);
+      bits.push(tot >= 1000 ? Math.round(tot / 1000) + 'k tok' : tot + ' tok');
     }
-    if (fam) ctrl += '<button class="mc cancel" data-fam="' + fam + '" data-id="' + id + '" data-act="cancel">cancel</button>';
-    if (fam === 'pty') ctrl += '<button class="mc" data-id="' + id + '" data-act="output">output</button>';
-    var badge = (s.agent && s.agent !== 'claude-code') ? '<span class="agent-badge">' + esc(s.agent) + '</span>' : '';
-    return '<div class="session-row">' +
-      '<div class="pip ' + (s.state || 'unknown') + '"></div>' +
-      '<div class="name">' + badge + esc(s.project || s.agent || 'agent') + '</div>' +
-      '<div class="when">' + (s.controllable ? esc(s.controllable) : esc(statusLabel(s.state))) + '</div>' +
-      (act ? '<div class="session-act">' + esc(act) + '</div>' : '') +
-      (ctrl ? '<div class="session-ctrl">' + ctrl + '</div>' : '') +
-      '</div>';
+    if (a.lastCommandName) bits.push('$ ' + a.lastCommandName);
+    var tool = a.lastTools && a.lastTools.length ? a.lastTools[a.lastTools.length - 1] : '';
+    var file = a.filesTouched && a.filesTouched.length ? (String(a.filesTouched[a.filesTouched.length - 1]).split('/').pop() || '') : '';
+    if (tool && file) bits.push(tool + ' ' + file);
+    else if (tool) bits.push(tool);
+    else if (file) bits.push(file);
+    return bits.join(' · ');
   }
-  function controlAction(fam, id, action) {
-    return fetch('/api/agents/' + fam + '/' + encodeURIComponent(id) + '/' + action, { method: 'POST' })
-      .then(function (r) { if (!r.ok) return r.text().then(function (t) { throw new Error(String(r.status) + (t ? ' ' + t : '')); }); });
+  function ctrlRowHTML(s) {
+    var id = esc(s.sessionId);
+    var scls = statusClass(s.state);
+    var a = s.activity || {};
+    var pend = a.pendingPermission;
+    var err = a.lastError || (s.state === 'error' ? (s.stateReason || 'errored') : '');
+    var label = s.project || s.sessionId || 'agent';
+    if (a.gitBranch) { var br = String(a.gitBranch); label = br.indexOf('claude/') === 0 ? br.slice(7) : br; }
+    var badge = (s.agent && s.agent !== 'claude-code') ? '<span class="cr-badge">' + esc(s.agent) + '</span>' : '';
+    var sub = ctrlProgress(s);
+    var rowCls = 'ctrl-row' + (err ? ' problem' : (pend ? ' pending' : ''));
+    var h = '<div class="' + rowCls + '" data-sid="' + id + '" role="button" tabindex="0">';
+    h += '<div class="cr-pip ' + scls + '"></div>';
+    h += '<div class="cr-name">' + badge + '<span class="cr-id" title="' + esc(label) + '">' + esc(label) + '</span></div>';
+    h += '<span class="st-chip ' + scls + '">' + esc(statusLabel(s.state)) + '<span class="cr-arrow"> ›</span></span>';
+    if (sub) h += '<div class="cr-sub">' + esc(sub) + '</div>';
+    if (pend) {
+      h += '<div class="cr-pend">⚠ wants to run ' + esc(pend);
+      if (s.controllable === 'managed') {
+        h += '<button class="cr-quick ok" data-q="approve" data-sid="' + id + '">approve</button>';
+        h += '<button class="cr-quick no" data-q="deny" data-sid="' + id + '">deny</button>';
+      }
+      h += '</div>';
+    } else if (err) {
+      h += '<div class="cr-err" title="' + esc(err) + '">✗ ' + esc(err) + '</div>';
+    }
+    h += '</div>';
+    return h;
   }
-  function ctrlPtyOutput(id) {
-    getJSON('/api/agents/pty/' + encodeURIComponent(id) + '/output').then(function (d) {
-      if (typeof openModal === 'function') openModal('agent output', '<pre>' + esc(d && d.output ? d.output : '(no output yet)') + '</pre>');
+  // POST an action to the right agent family, surfacing the server error text.
+  function sdAction(fam, id, action, body) {
+    return fetch('/api/agents/' + fam + '/' + encodeURIComponent(id) + '/' + action, {
+      method: 'POST',
+      headers: body ? { 'content-type': 'application/json' } : {},
+      body: body ? JSON.stringify(body) : undefined,
+    }).then(function (r) {
+      if (!r.ok) return r.text().then(function (t) { throw new Error(String(r.status) + (t ? ' ' + t : '')); });
+      return r.json().catch(function () { return {}; });
+    });
+  }
+  // Click a Control row → a rich per-session inspector (status + follow-up
+  // actions + surfaced problem). Re-fetches on open so it always reflects truth.
+  function openSessionDetail(id) {
+    getJSON('/api/agents/sessions').then(function (res) {
+      var sessions = (res && res.sessions) || [];
+      var s = null;
+      for (var i = 0; i < sessions.length; i++) { if (sessions[i].sessionId === id) { s = sessions[i]; break; } }
+      if (!s) { openModal('Session', '<div class="sd"><div class="sd-note">This session is no longer active.</div></div>'); return; }
+      var a = s.activity || {};
+      var fam = s.controllable;
+      var scls = statusClass(s.state);
+      var title = (s.agent && s.agent !== 'claude-code' ? s.agent + ' · ' : '') + (s.project || 'agent');
+      function rel(iso) { var ms = Date.now() - new Date(iso).getTime(); if (ms < 60000) return 'just now'; if (ms < 3600000) return Math.round(ms / 60000) + 'm ago'; if (ms < 86400000) return Math.round(ms / 3600000) + 'h ago'; return Math.round(ms / 86400000) + 'd ago'; }
+      function row(k, v) { return '<dt>' + k + '</dt><dd>' + v + '</dd>'; }
+      var h = '<div class="sd">';
+      h += '<div class="sd-top"><span class="st-chip ' + scls + '">' + esc(statusLabel(s.state)) + '</span>';
+      if (fam) h += '<span class="sd-chip">' + esc(fam) + '</span>';
+      if (s.resumable) h += '<span class="sd-chip">adoptable</span>';
+      h += '<span class="sd-id">' + esc(s.sessionId) + '</span></div>';
+      if (a.pendingPermission) {
+        h += '<div class="sd-banner pend"><div>⚠ Waiting for approval to run <b>' + esc(a.pendingPermission) + '</b></div>';
+        if (fam === 'managed') h += '<div class="sd-b-row"><button class="sd-btn ok" data-sd="approve">Approve</button><button class="sd-btn danger" data-sd="deny">Deny</button></div>';
+        h += '</div>';
+      }
+      if (a.lastError || s.state === 'error') {
+        h += '<div class="sd-banner err">✗ ' + esc(a.lastError || s.stateReason || 'errored') + '</div>';
+      }
+      h += '<dl class="sd-grid">';
+      h += row('State', esc(statusLabel(s.state)) + (s.stateReason ? ' <span style="color:var(--fg-3)">(' + esc(s.stateReason) + ')</span>' : ''));
+      if (typeof a.turnCount === 'number' && a.turnCount > 0) h += row('Turns', String(a.turnCount));
+      if (a.tokens && (a.tokens.input || a.tokens.output)) h += row('Tokens', String(a.tokens.input || 0) + ' in · ' + String(a.tokens.output || 0) + ' out');
+      if (a.gitBranch) h += row('Branch', esc(a.gitBranch));
+      if (a.lastCommandName) h += row('Last command', esc(a.lastCommandName));
+      if (a.lastTools && a.lastTools.length) h += row('Recent tools', '<div class="sd-chips">' + a.lastTools.slice(-6).map(function (t) { return '<span class="sd-chip">' + esc(t) + '</span>'; }).join('') + '</div>');
+      if (a.filesTouched && a.filesTouched.length) h += row('Files', '<div class="sd-chips">' + a.filesTouched.slice(-8).map(function (f) { return '<span class="sd-chip">' + esc(String(f).split('/').pop() || f) + '</span>'; }).join('') + '</div>');
+      if (s.cwd) h += row('Path', esc(s.cwd));
+      h += row('Last activity', esc(rel(s.lastMtime)));
+      h += '</dl>';
+      h += '<div class="sd-actions">';
+      if (fam && s.state !== 'done' && !a.pendingPermission) {
+        h += '<input class="sd-send" id="sdSend" type="text" placeholder="' + (fam === 'pty' ? 'type into the CLI…' : 'send a follow-up…') + '">';
+        h += '<button class="sd-btn primary" data-sd="send">Send</button>';
+      }
+      if (fam === 'pty') h += '<button class="sd-btn" data-sd="output">View output</button>';
+      if (fam && s.state !== 'done') h += '<button class="sd-btn danger" data-sd="cancel">Cancel</button>';
+      if (s.resumable) h += '<button class="sd-btn ok" data-sd="adopt">⇲ Adopt</button>';
+      if (!fam && !s.resumable) h += '<span class="sd-note">Observe-only — no control channel for this session.</span>';
+      h += '</div>';
+      h += '<pre class="sd-out" id="sdOut" style="display:none"></pre>';
+      h += '</div>';
+      openModal(title, h);
+      var body = document.getElementById('modalBody');
+      if (!body) return;
+      function sdErr(err) { body.insertAdjacentHTML('afterbegin', '<div class="sd-banner err" style="margin-bottom:12px">✗ ' + esc(err && err.message ? err.message : 'action failed') + '</div>'); }
+      function afterAct(p) { p.then(function () { if (window.refreshClaudeSessions) window.refreshClaudeSessions(); openSessionDetail(id); }).catch(sdErr); }
+      function doSend() { var inp = document.getElementById('sdSend'); var t = inp && inp.value.trim(); if (t) afterAct(sdAction(fam, id, 'send', { text: t })); }
+      var btns = body.querySelectorAll('[data-sd]');
+      for (var j = 0; j < btns.length; j++) {
+        btns[j].addEventListener('click', function () {
+          var act = this.getAttribute('data-sd');
+          if (act === 'approve') afterAct(sdAction('managed', id, 'approve', { allow: true }));
+          else if (act === 'deny') afterAct(sdAction('managed', id, 'approve', { allow: false }));
+          else if (act === 'cancel') afterAct(sdAction(fam, id, 'cancel', null));
+          else if (act === 'send') doSend();
+          else if (act === 'adopt') afterAct(fetch('/api/agents/pty/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ agent: 'claude', resumeSessionId: s.sessionId, cwd: s.cwd || '' }) }).then(function (r) { if (!r.ok) return r.text().then(function (t) { throw new Error(t); }); }));
+          else if (act === 'output') {
+            var out = document.getElementById('sdOut');
+            if (out) { out.style.display = 'block'; out.textContent = 'loading…'; }
+            getJSON('/api/agents/pty/' + encodeURIComponent(id) + '/output').then(function (d) { if (out) out.textContent = (d && d.output) ? d.output : '(no output yet)'; });
+          }
+        });
+      }
+      var sendInp = document.getElementById('sdSend');
+      if (sendInp) { sendInp.focus(); sendInp.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); doSend(); } }); }
     });
   }
   function loadControl() {
     views.control.innerHTML =
-      '<div class="view-head"><div><h2>Control</h2><div class="vh-sub">Live agents &amp; control plane</div></div>' +
+      '<div class="view-head"><div><h2>Control</h2><div class="vh-sub">Live agents &amp; control plane · click a session to inspect</div></div>' +
       '<button class="view-act" id="ctrlDelegate">+ Delegate a task</button></div>' +
       '<div class="view-scroll" id="ctrlScroll"><div class="view-empty">loading…</div></div>';
     var del = document.getElementById('ctrlDelegate');
@@ -2241,23 +2345,39 @@ if ('serviceWorker' in navigator) {
       var sessions = (res[0] && res[0].sessions) || [];
       var policy = res[1] || {};
       updateAgentCount(sessions.length);
-      var html = '<div class="pp-tags" style="margin-bottom:14px">' +
+      // Surface problems first: error → waiting(needs you) → working → rest.
+      var rank = { error: 0, waiting: 1, working: 2, done: 4, idle: 5 };
+      sessions = sessions.slice().sort(function (x, y) {
+        var rx = rank[x.state]; if (rx === undefined) rx = 3;
+        var ry = rank[y.state]; if (ry === undefined) ry = 3;
+        if (rx !== ry) return rx - ry;
+        return new Date(y.lastMtime).getTime() - new Date(x.lastMtime).getTime();
+      });
+      var html = '<div class="ctrl-policy">' +
         '<span class="pp-tag">remote control: ' + (policy.remoteControl ? 'on' : 'off') + '</span>' +
         '<span class="pp-tag">adopt external: ' + (policy.remoteAdoptExternal ? 'on' : 'off') + '</span></div>';
       if (!sessions.length) { scroll.innerHTML = html + '<div class="view-empty">No agents running. Delegate a task to start one.</div>'; return; }
-      sessions.forEach(function (s) { html += controlRowHTML(s); });
+      html += '<div class="ctrl-list">';
+      sessions.forEach(function (s) { html += ctrlRowHTML(s); });
+      html += '</div>';
       scroll.innerHTML = html;
-      var btns = scroll.querySelectorAll('[data-act]');
-      for (var i = 0; i < btns.length; i++) {
-        btns[i].addEventListener('click', function () {
-          var act = this.getAttribute('data-act');
-          var fam = this.getAttribute('data-fam');
-          var id = this.getAttribute('data-id');
-          if (act === 'output') { ctrlPtyOutput(id); return; }
-          controlAction(fam, id, act).then(function () { renderControl(); }).catch(function (err) {
-            scroll.insertAdjacentHTML('afterbegin', '<div class="view-empty" style="color:var(--err-color)">' + esc(err.message) + '</div>');
-          });
+      // Inline quick approve/deny — stopPropagation so they do not open the detail.
+      var quicks = scroll.querySelectorAll('.cr-quick');
+      for (var q = 0; q < quicks.length; q++) {
+        quicks[q].addEventListener('click', function (e) {
+          e.stopPropagation();
+          var self = this;
+          self.disabled = true;
+          sdAction('managed', self.getAttribute('data-sid'), 'approve', { allow: self.getAttribute('data-q') === 'approve' })
+            .then(function () { if (window.refreshClaudeSessions) window.refreshClaudeSessions(); renderControl(); })
+            .catch(function (err) { self.disabled = false; scroll.insertAdjacentHTML('afterbegin', '<div class="view-empty" style="color:var(--err-color)">' + esc(err.message) + '</div>'); });
         });
+      }
+      // Row → detail inspector.
+      var rows = scroll.querySelectorAll('.ctrl-row');
+      for (var r = 0; r < rows.length; r++) {
+        rows[r].addEventListener('click', function () { openSessionDetail(this.getAttribute('data-sid')); });
+        rows[r].addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openSessionDetail(this.getAttribute('data-sid')); } });
       }
     });
   }

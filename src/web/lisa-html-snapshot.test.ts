@@ -73,10 +73,15 @@ import { MAIN_HTML } from "./lisa-html.js";
  * Then: locked the launcher to a clean 3×3 — the Mail tile was removed (9
  * tiles: Chat/Dashboard/Control/Rêve/Room/Sense/Memory/Knowledge/Settings);
  * Mail's entry moved to the sidebar Mail card, whose header now opens #viewMail.
+ * Then: Control view overhaul — polished clickable session rows (.ctrl-row,
+ * status chips, error/pending accents, problems-first sort), a per-session
+ * inspector modal (openSessionDetail: metadata + surfaced error/pending banner +
+ * approve/deny/send/cancel/adopt/view-output actions), and inline quick
+ * approve/deny on pending rows. Sidebar .session-row styling left untouched.
  */
-const EXPECTED_LENGTH = 204332;
+const EXPECTED_LENGTH = 219777;
 const EXPECTED_SHA256 =
-  "1bf4ee94395153b01920c1f327f9ff2351925018a4ef6e4d9129c221345f7c5e";
+  "d8483b766c3d28785437d0f47986fefdf29976aac48e3d465af10fc7a666494b";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);
