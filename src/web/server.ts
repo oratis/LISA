@@ -37,6 +37,8 @@ import {
 } from "../soul/desire-focus.js";
 import { ISLAND_HTML } from "./island.js";
 import { LOGIN_HTML } from "./login.js";
+import { recordUsage, summarizeUsage } from "../billing/meter.js";
+import { PRICES_VERSION } from "../billing/prices.js";
 import { ROOM_HTML } from "./room.js";
 import { MAIN_HTML } from "./lisa-html.js";
 import { OrchestratorHub, loadOrchestratorConfig } from "../integrations/hub.js";
@@ -994,6 +996,19 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
             : { signedIn: false },
         ),
       );
+      return;
+    }
+
+    if (req.method === "GET" && url === "/api/billing/usage") {
+      // Usage for the ACTIVE home — the signed-in account's ledger on cloud,
+      // the local ledger otherwise. 12h aligns with the quota window (B4).
+      const now = Date.now();
+      const [window12h, today] = await Promise.all([
+        summarizeUsage(now - 12 * 60 * 60 * 1000),
+        summarizeUsage(new Date(new Date(now).setHours(0, 0, 0, 0)).getTime()),
+      ]);
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ window12h, today, pricesVersion: PRICES_VERSION }));
       return;
     }
 
@@ -2608,6 +2623,17 @@ self.addEventListener('fetch', (event) => {
           });
           chat.history.length = 0;
           chat.history.push(...result.history);
+          // Metering (B3): price the turn into the ACTIVE home's ledger — the
+          // per-uid subtree for signed-in cloud accounts. Mac edition (BYO key)
+          // is not metered. Never throws.
+          if (cloud) {
+            void recordUsage("chat", opts.model, {
+              inputTokens: result.inputTokens,
+              outputTokens: result.outputTokens,
+              cacheReadTokens: result.cacheReadTokens,
+              cacheWriteTokens: result.cacheWriteTokens,
+            });
+          }
           if (!anyText && !anyTool && !errorSent) send({ type: "empty" });
           send({ type: "done" });
         } catch (err) {

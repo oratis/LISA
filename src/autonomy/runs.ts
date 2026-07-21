@@ -21,8 +21,12 @@ import { withFileLock } from "../soul/lock.js";
 export function autonomyDir(): string {
   return path.join(lisaHome(), "autonomy");
 }
-const RUNS_FILE = path.join(autonomyDir(), "runs.jsonl");
-const RUNS_LOCK = path.join(autonomyDir(), "runs.lock");
+function runsFile(): string {
+  return path.join(autonomyDir(), "runs.jsonl");
+}
+function runsLock(): string {
+  return path.join(autonomyDir(), "runs.lock");
+}
 const MAX_RUNS = 2000;
 
 /** Which self-driven mechanism produced the run. */
@@ -56,19 +60,19 @@ export interface AutonomyRun {
 /** Append one run record; trim the ledger opportunistically. Never throws. */
 export async function recordAutonomyRun(run: AutonomyRun): Promise<void> {
   try {
-    await appendLine(RUNS_FILE, JSON.stringify(run));
+    await appendLine(runsFile(), JSON.stringify(run));
   } catch {
     return; // recording is best-effort; never break the autonomy run on it
   }
   try {
-    const lineCount = (await readTextOrEmpty(RUNS_FILE)).split("\n").filter((l) => l.trim()).length;
+    const lineCount = (await readTextOrEmpty(runsFile())).split("\n").filter((l) => l.trim()).length;
     if (lineCount > MAX_RUNS) {
       await withFileLock(
-        RUNS_LOCK,
+        runsLock(),
         async () => {
-          const lines = (await readTextOrEmpty(RUNS_FILE)).split("\n").filter((l) => l.trim());
+          const lines = (await readTextOrEmpty(runsFile())).split("\n").filter((l) => l.trim());
           if (lines.length > MAX_RUNS) {
-            await atomicWrite(RUNS_FILE, lines.slice(lines.length - MAX_RUNS).join("\n") + "\n");
+            await atomicWrite(runsFile(), lines.slice(lines.length - MAX_RUNS).join("\n") + "\n");
           }
         },
         { timeoutMs: 2_000, staleMs: 60_000 },
@@ -81,7 +85,7 @@ export async function recordAutonomyRun(run: AutonomyRun): Promise<void> {
 
 /** Read run records, optionally only those within the last `sinceMs`. */
 export async function readAutonomyRuns(sinceMs?: number): Promise<AutonomyRun[]> {
-  const raw = await readTextOrEmpty(RUNS_FILE);
+  const raw = await readTextOrEmpty(runsFile());
   const cutoff = sinceMs != null ? Date.now() - sinceMs : null;
   const out: AutonomyRun[] = [];
   for (const line of raw.split("\n")) {
