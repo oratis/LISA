@@ -201,6 +201,23 @@ async function main(): Promise<void> {
     return;
   }
 
+  // Managed inference accounts (PLAN_ACCOUNTS_BILLING B6).
+  if (args.subcommand === "login") {
+    const { cmdLogin } = await import("./cli/account.js");
+    await cmdLogin(args.subargs);
+    return;
+  }
+  if (args.subcommand === "logout") {
+    const { cmdLogout } = await import("./cli/account.js");
+    await cmdLogout();
+    return;
+  }
+  if (args.subcommand === "billing") {
+    const { cmdBilling } = await import("./cli/account.js");
+    await cmdBilling(args.subargs);
+    return;
+  }
+
   if (args.subcommand === "soul") {
     const summary = await readSoulSummary();
     if (!summary) {

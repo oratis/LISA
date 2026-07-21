@@ -41,6 +41,7 @@ import { recordUsage, summarizeUsage } from "../billing/meter.js";
 import { PRICES_VERSION, tokensAffordable } from "../billing/prices.js";
 import { precheckTurn, debitTurn, quotaStatus } from "../billing/quota.js";
 import { verifyAppleJWS, validateTransaction, creditTransaction, refundTransaction, IapError } from "../billing/iap.js";
+import { handleGateway } from "./gateway.js";
 import { ROOM_HTML } from "./room.js";
 import { MAIN_HTML } from "./lisa-html.js";
 import { OrchestratorHub, loadOrchestratorConfig } from "../integrations/hub.js";
@@ -1038,6 +1039,19 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
             : { signedIn: false },
         ),
       );
+      return;
+    }
+
+    // ── Inference gateway (B6): key-free managed LLM calls from signed-in
+    // Macs/CLIs. Account sessions only — never the shared demo token.
+    if (req.method === "POST" && (url.startsWith("/gw/anthropic/") || url.startsWith("/gw/openai/"))) {
+      const acct = cloud && accountUid ? getAccount(accountUid) : null;
+      if (!acct) {
+        res.writeHead(403, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "account_session_required" }));
+        return;
+      }
+      await handleGateway(req, res, url, acct);
       return;
     }
 
