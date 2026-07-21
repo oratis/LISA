@@ -135,6 +135,21 @@ final class LisaClient {
         try await decode("/api/billing/quota", as: QuotaStatus.self)
     }
 
+    /// Submit a StoreKit 2 transaction JWS for crediting (`POST /api/billing/iap`).
+    /// `ok:false` with error "duplicate_transaction" still means the credit
+    /// happened once already — the caller should finish() the transaction.
+    struct IapResult: Decodable {
+        var ok: Bool
+        var creditedMicroUSD: Int?
+        var error: String?
+    }
+
+    func iapSubmit(jws: String) async throws -> IapResult {
+        var r = try await decode("/api/billing/iap", method: "POST", json: ["jws": jws], as: IapResult.self)
+        if r.error == "duplicate_transaction" { r.ok = true }
+        return r
+    }
+
     /// In-app account deletion (App Store 5.1.1(v)) — `DELETE /api/account`.
     /// Only works when the connection uses an account session.
     func deleteAccount() async throws {
