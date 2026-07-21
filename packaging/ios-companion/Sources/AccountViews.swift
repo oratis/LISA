@@ -155,12 +155,40 @@ struct AccountCard: View {
     @EnvironmentObject var app: AppState
     @State private var showDeleteConfirm = false
     @State private var deleting = false
+    @State private var quota: LisaClient.QuotaStatus?
+
+    private static let tierLabels: [String: String] = [
+        "free": "Free", "free-unverified": "Free (verify email for more)",
+        "tier1": "Tier 1", "tier2": "Tier 2",
+    ]
 
     var body: some View {
         Section("LISA account") {
             if let acct = app.account, acct.signedIn {
                 LabeledContent("Signed in as", value: acct.email ?? acct.uid ?? "—")
-                LabeledContent("Plan", value: (acct.plan ?? "free").capitalized)
+                if let q = quota, q.available, let window = q.windowMicroUSD, window > 0 {
+                    let spent = q.spentMicroUSD ?? 0
+                    let remaining = q.remainingMicroUSD ?? 0
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("Session allowance")
+                            Spacer()
+                            Text("\(Self.dollars(remaining)) of \(Self.dollars(window)) left")
+                                .foregroundStyle(.secondary)
+                        }
+                        .font(.subheadline)
+                        ProgressView(value: Double(min(spent, window)), total: Double(window))
+                            .tint(remaining > 0 ? Theme.green : Theme.danger)
+                        if let reset = q.resetAt, remaining <= 0 {
+                            Text("Refreshes \(Date(timeIntervalSince1970: reset / 1000), style: .relative)")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    LabeledContent("Tier", value: Self.tierLabels[q.tier ?? "free"] ?? (q.tier ?? "Free"))
+                    LabeledContent("Credits", value: Self.dollars(max(0, q.paidMicroUSD ?? 0)))
+                } else {
+                    LabeledContent("Plan", value: (acct.plan ?? "free").capitalized)
+                }
                 Button("Sign out") {
                     app.signOutCloud()
                     app.notify("Signed out.")
@@ -172,6 +200,7 @@ struct AccountCard: View {
                 LabeledContent("Signed in", value: "No (token connection)")
             }
         }
+        .task { quota = try? await app.client.billingQuota() }
         .confirmationDialog("Delete your LISA account?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
             Button("Delete account and data", role: .destructive) {
                 deleting = true
@@ -189,5 +218,9 @@ struct AccountCard: View {
         } message: {
             Text("Deletes your account and its cloud data permanently. Purchased credits are handled by Apple's refund process and are not restored by re-registering.")
         }
+    }
+
+    private static func dollars(_ micro: Int) -> String {
+        String(format: "$%.2f", Double(micro) / 1_000_000)
     }
 }

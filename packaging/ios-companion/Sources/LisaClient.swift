@@ -119,6 +119,22 @@ final class LisaClient {
         try await decode("/api/auth/me", as: AccountMe.self)
     }
 
+    /// The signed-in account's quota window + balance (`GET /api/billing/quota`).
+    /// `available == false` when the connection isn't an account session.
+    struct QuotaStatus: Decodable, Equatable {
+        var available: Bool
+        var tier: String?
+        var windowMicroUSD: Int?
+        var spentMicroUSD: Int?
+        var remainingMicroUSD: Int?
+        var paidMicroUSD: Int?
+        var resetAt: Double?
+    }
+
+    func billingQuota() async throws -> QuotaStatus {
+        try await decode("/api/billing/quota", as: QuotaStatus.self)
+    }
+
     /// In-app account deletion (App Store 5.1.1(v)) — `DELETE /api/account`.
     /// Only works when the connection uses an account session.
     func deleteAccount() async throws {

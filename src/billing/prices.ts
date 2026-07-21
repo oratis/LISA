@@ -91,3 +91,15 @@ export function costMicroUSD(model: string, usage: ProviderUsage): number {
 export function formatMicroUSD(micro: number): string {
   return `$${(micro / 1_000_000).toFixed(2)}`;
 }
+
+/**
+ * How many tokens `microUSD` can buy at this model's OUTPUT rate — the
+ * conservative per-turn breaker for the agent loop (every token priced as
+ * output). Clamped to a sane ceiling so a huge paid balance doesn't disable
+ * the breaker entirely.
+ */
+export function tokensAffordable(model: string, microUSD: number): number {
+  const p = priceForModel(model);
+  const tokens = Math.floor((microUSD / p.outPerM) * 1_000_000);
+  return Math.max(1000, Math.min(tokens, 5_000_000));
+}

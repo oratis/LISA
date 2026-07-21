@@ -38,7 +38,8 @@ import {
 import { ISLAND_HTML } from "./island.js";
 import { LOGIN_HTML } from "./login.js";
 import { recordUsage, summarizeUsage } from "../billing/meter.js";
-import { PRICES_VERSION } from "../billing/prices.js";
+import { PRICES_VERSION, tokensAffordable } from "../billing/prices.js";
+import { precheckTurn, debitTurn, quotaStatus } from "../billing/quota.js";
 import { ROOM_HTML } from "./room.js";
 import { MAIN_HTML } from "./lisa-html.js";
 import { OrchestratorHub, loadOrchestratorConfig } from "../integrations/hub.js";
@@ -996,6 +997,21 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
             : { signedIn: false },
         ),
       );
+      return;
+    }
+
+    if (req.method === "GET" && url === "/api/billing/quota") {
+      // The signed-in account's window/tier/balance — drives the quota bar +
+      // paywall in every client (same numbers everywhere, §5.5).
+      const acct = accountUid ? getAccount(accountUid) : null;
+      if (!acct) {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ available: false }));
+        return;
+      }
+      const q = await quotaStatus(acct);
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ available: true, ...q }));
       return;
     }
 
@@ -2502,6 +2518,27 @@ self.addEventListener('fetch', (event) => {
         res.end(JSON.stringify({ error: `bad request: ${(err as Error).message}` }));
         return;
       }
+      // ── Quota gate (B4) — signed-in cloud accounts only; the legacy shared-
+      // token demo stays operator-funded and ungated. Runs BEFORE the SSE
+      // handshake so exhaustion is a clean HTTP 402 the clients can route to
+      // a paywall (structured body: error + resetAt + tier).
+      let quotaBudgetMicroUSD: number | null = null;
+      const quotaAcct = cloud && accountUid ? getAccount(accountUid) : null;
+      if (quotaAcct) {
+        const pre = await precheckTurn(quotaAcct, opts.model);
+        if (!pre.ok) {
+          res.writeHead(402, { "content-type": "application/json" });
+          res.end(
+            JSON.stringify(
+              pre.error === "quota_exhausted"
+                ? { error: pre.error, resetAt: pre.resetAt, tier: pre.tier }
+                : { error: pre.error, tier: pre.tier },
+            ),
+          );
+          return;
+        }
+        quotaBudgetMicroUSD = pre.budgetMicroUSD;
+      }
       // User just talked — reset the idle watcher + stamp focus freshness.
       try { getIdleWatcher(60 * 60_000).tick(); } catch {}
       lastUserMessageAt = Date.now();
@@ -2556,6 +2593,13 @@ self.addEventListener('fetch', (event) => {
             userFiles: files,
             model: opts.model,
             thinking: opts.thinking,
+            // Pre-debit breaker (B4): a single turn can never burn past what
+            // the account could pay for. Conservatively prices every token at
+            // the output rate.
+            budgetTokens:
+              quotaBudgetMicroUSD != null
+                ? tokensAffordable(opts.model, quotaBudgetMicroUSD)
+                : undefined,
             onEvent: (ev) => {
               if (ev.type === "text_delta" && ev.text) {
                 anyText = true;
@@ -2627,12 +2671,14 @@ self.addEventListener('fetch', (event) => {
           // per-uid subtree for signed-in cloud accounts. Mac edition (BYO key)
           // is not metered. Never throws.
           if (cloud) {
-            void recordUsage("chat", opts.model, {
+            const rec = await recordUsage("chat", opts.model, {
               inputTokens: result.inputTokens,
               outputTokens: result.outputTokens,
               cacheReadTokens: result.cacheReadTokens,
               cacheWriteTokens: result.cacheWriteTokens,
             });
+            // Debit order (B4): free window first, then paid balance.
+            if (rec && quotaAcct) await debitTurn(quotaAcct, opts.model, rec.microUSD);
           }
           if (!anyText && !anyTool && !errorSent) send({ type: "empty" });
           send({ type: "done" });
