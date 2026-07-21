@@ -67,14 +67,18 @@ targets:
         com.apple.security.application-groups:
           - group.ai.meetlisa.main
         aps-environment: development
-        # Sign in with Apple entitlement is intentionally omitted for v1 — the app
-        # doesn't offer account creation (SIWA is gated off; see LISA_ENABLE_SIWA),
-        # so declaring it would only invite App Store 5.1.1(v) scrutiny. Re-add
-        # `com.apple.developer.applesignin: [Default]` when SIWA + C3 + account
-        # deletion ship.
+        # Sign in with Apple (B1, PLAN_ACCOUNTS_BILLING): accounts are now the
+        # primary cloud flow and in-app deletion ships alongside (5.1.1(v)), so
+        # the entitlement is back. Requires the capability enabled on the App ID
+        # in the Developer portal before a signed (device/TestFlight) build.
+        com.apple.developer.applesignin:
+          - Default
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ai.meetlisa.main
+        # LISA_ENABLE_SIWA: compile in the Sign in with Apple UI (B1 — accounts
+        # are the primary cloud flow now). $(inherited) keeps DEBUG etc. intact.
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LISA_ENABLE_SIWA"
 
   LisaPocketWidgets:
     type: app-extension

@@ -89,16 +89,18 @@ struct OnboardingFlow: View {
             ScrollView {
                 VStack(spacing: 18) {
                     OnboardingTitle(title: "Where does Lisa live?",
-                                    subtitle: "Lisa runs on a Mac. Connect to your own, or use hosted LISA Cloud.")
-                    OnboardingChoiceCard(systemImage: "desktopcomputer",
-                                         title: "My Mac", subtitle: "Private and local — your data never leaves your Mac.",
-                                         badge: "Recommended", selected: app.connectionMode == .mac) {
-                        app.setConnectionMode(.mac); go(.install)
-                    }
+                                    subtitle: "Sign in and go — or connect your own Mac for the fully local edition.")
+                    // Primary flow (PLAN_ACCOUNTS_BILLING B1): the hosted cloud with a
+                    // LISA account. The Mac path stays one tap away — never hidden.
                     OnboardingChoiceCard(systemImage: "cloud",
-                                         title: "LISA Cloud", subtitle: "No Mac needed. Paste a cloud URL + token for now.",
-                                         selected: app.connectionMode == .cloud) {
+                                         title: "LISA Cloud", subtitle: "Sign in with Apple or email — no Mac, no API key. Free daily allowance included.",
+                                         badge: "Recommended", selected: app.connectionMode == .cloud) {
                         app.setConnectionMode(.cloud); openManual(.cloud)
+                    }
+                    OnboardingChoiceCard(systemImage: "desktopcomputer",
+                                         title: "My Mac", subtitle: "Advanced: private and local — your data never leaves your Mac.",
+                                         selected: app.connectionMode == .mac) {
+                        app.setConnectionMode(.mac); go(.install)
                     }
                 }
                 .padding(.vertical, 24)
@@ -358,8 +360,6 @@ struct OnboardingManualEntry: View {
     @State private var host = ""
     @State private var portText = "5757"
     @State private var token = ""
-    @State private var cloudURL = ""
-    @State private var appleBusy = false
     @State private var error: String?
 
     var body: some View {
@@ -381,39 +381,23 @@ struct OnboardingManualEntry: View {
         .preferredColorScheme(.dark)
     }
 
-    // ── Cloud: paste a token link. Sign in with Apple is gated OFF for v1 (single-
-    // tenant M0 + App Store 5.1.1(v) account-deletion); re-enable via LISA_ENABLE_SIWA.
+    // ── Cloud: the shared account sign-in form (SIWA / email / advanced token
+    // link) — same component Settings uses, so the flows can't drift (B1).
     @ViewBuilder private var cloudSections: some View {
-        #if LISA_ENABLE_SIWA
-        Section {
-            TextField("https://your-instance.run.app", text: $cloudURL)
-                .autocorrectionDisabled().textInputAutocapitalization(.never).keyboardType(.URL)
-            SignInWithAppleButton(.continue,
-                onRequest: { req in req.requestedScopes = [.fullName, .email] },
-                onCompletion: handleApple)
-                .signInWithAppleButtonStyle(.white)
-                .frame(height: 46)
-                .cornerRadius(Theme.cardRadius)
-                .disabled(appleBusy || AppState.parseCloudBase(cloudURL) == nil)
-                .opacity(appleBusy ? 0.5 : 1)
-            if appleBusy { ProgressView().tint(Theme.accent) }
-        } header: {
-            Text("Sign in")
-        } footer: {
-            Text("Enter your LISA Cloud URL, then sign in. Your Mac isn't needed.")
+        CloudSignInForm { outcome in
+            if outcome == .ok {
+                finish()
+            } else {
+                error = {
+                    switch outcome {
+                    case .unauthorized: return "Signed in, but the connection was rejected — try again."
+                    case .serverError(let code): return "The server answered with an error (\(code))."
+                    default: return "Signed in, but the instance is unreachable right now."
+                    }
+                }()
+            }
         }
-        #endif
-
-        Section {
-            TextField("https://…/?token=", text: $pasteText)
-                .autocorrectionDisabled().textInputAutocapitalization(.never).keyboardType(.URL)
-            Button("Connect") { apply(pasteText) }
-                .disabled(pasteText.isEmpty)
-        } header: {
-            Text("LISA Cloud")
-        } footer: {
-            Text("Paste your LISA Cloud URL (including its ?token=…) — your Mac isn't needed.")
-        }
+        .environmentObject(app)
     }
 
     // ── Mac: paste a pairing link, or enter host/port/token ──
@@ -443,41 +427,6 @@ struct OnboardingManualEntry: View {
             .disabled(host.isEmpty || token.isEmpty)
         }
     }
-
-    #if LISA_ENABLE_SIWA
-    /// Handle the Sign in with Apple result: pull the identity token, exchange it
-    /// at the entered cloud URL for a session token, and save the connection.
-    /// Gated OFF for v1 — see cloudSections.
-    private func handleApple(_ result: Result<ASAuthorization, Error>) {
-        error = nil
-        switch result {
-        case .failure(let err):
-            // A user-cancelled prompt isn't an error worth shouting about.
-            if (err as? ASAuthorizationError)?.code == .canceled { return }
-            error = err.localizedDescription
-        case .success(let auth):
-            guard let cred = auth.credential as? ASAuthorizationAppleIDCredential,
-                  let data = cred.identityToken, let idToken = String(data: data, encoding: .utf8) else {
-                error = "Apple didn't return an identity token."
-                return
-            }
-            appleBusy = true
-            Task {
-                defer { appleBusy = false }
-                do {
-                    try await app.connectCloudWithApple(baseURL: cloudURL, identityToken: idToken)
-                    finish()
-                } catch LisaError.http(404) {
-                    error = "This LISA Cloud instance hasn't enabled Sign in with Apple. Paste a token link instead."
-                } catch LisaError.http(401), LisaError.http(403) {
-                    error = "Apple sign-in was rejected by this instance."
-                } catch {
-                    self.error = "Couldn't reach that LISA Cloud URL."
-                }
-            }
-        }
-    }
-    #endif
 
     private func apply(_ raw: String) {
         if app.applyPairing(raw) { finish() }

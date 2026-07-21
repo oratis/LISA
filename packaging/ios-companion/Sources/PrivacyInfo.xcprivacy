@@ -10,13 +10,12 @@
   snapshot the widget reads), C617.1 (file timestamps, app-owned files), 35F9.1
   (boot time, session age), 85F4.1 (disk space, cache management).
 
-  DIFFERS from Telloria on data collection: Telloria collects email / user-id /
-  purchase / analytics / crash data to its own backend, so it declares them.
-  Lisa Pocket is a THIN CLIENT to the user's OWN Lisa backend (their Mac, or
-  later their own LISA Cloud instance, BYO key) — nothing is collected to a
-  Lisa-operated server and there is no tracking. So NSPrivacyTracking is false,
-  NSPrivacyTrackingDomains is empty, and NSPrivacyCollectedDataTypes is empty.
-  (Revisit if/when a Lisa-operated multi-tenant cloud ships.)
+  Data collection (updated for B1 accounts, PLAN_ACCOUNTS_BILLING): the optional
+  LISA account (Sign in with Apple / email+password on the hosted LISA Cloud)
+  collects an email address and a user ID, linked to the user, for app
+  functionality only — no tracking, no third parties. The My Mac (local) mode
+  and BYO-token cloud mode collect nothing. ASC App Privacy answers must match:
+  "Email Address" + "User ID" (App Functionality, linked, no tracking).
 -->
 <plist version="1.0">
 <dict>
@@ -25,7 +24,28 @@
     <key>NSPrivacyTrackingDomains</key>
     <array/>
     <key>NSPrivacyCollectedDataTypes</key>
-    <array/>
+    <array>
+        <dict>
+            <key>NSPrivacyCollectedDataType</key>
+            <string>NSPrivacyCollectedDataTypeEmailAddress</string>
+            <key>NSPrivacyCollectedDataTypeLinked</key>
+            <true/>
+            <key>NSPrivacyCollectedDataTypeTracking</key>
+            <false/>
+            <key>NSPrivacyCollectedDataTypePurposes</key>
+            <array><string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string></array>
+        </dict>
+        <dict>
+            <key>NSPrivacyCollectedDataType</key>
+            <string>NSPrivacyCollectedDataTypeUserID</string>
+            <key>NSPrivacyCollectedDataTypeLinked</key>
+            <true/>
+            <key>NSPrivacyCollectedDataTypeTracking</key>
+            <false/>
+            <key>NSPrivacyCollectedDataTypePurposes</key>
+            <array><string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string></array>
+        </dict>
+    </array>
     <key>NSPrivacyAccessedAPITypes</key>
     <array>
         <dict>
