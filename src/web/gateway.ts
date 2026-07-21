@@ -25,6 +25,7 @@ import type { ProviderUsage } from "../providers/types.js";
 import type { AccountRecord } from "./accounts.js";
 import { precheckTurn, debitTurn } from "../billing/quota.js";
 import { recordUsage } from "../billing/meter.js";
+import { preflightLimits } from "../billing/limits.js";
 
 export interface UpstreamPlan {
   url: string;
@@ -157,6 +158,13 @@ export async function handleGateway(
     return;
   }
 
+  // Non-quota guards (B7): kill switch, global daily cap, per-uid RPM.
+  const limits = preflightLimits(acct.uid);
+  if (!limits.ok) {
+    res.writeHead(limits.status, { "content-type": "application/json" });
+    res.end(JSON.stringify(limits.body));
+    return;
+  }
   // Quota gate (same engine as /chat): tier decides model access; exhaustion
   // is a structured 402 the local providers surface verbatim.
   const pre = await precheckTurn(acct, model);

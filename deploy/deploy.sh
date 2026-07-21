@@ -58,6 +58,14 @@ ENVS="^##^LISA_EDITION=cloud##LISA_WEB_TOKEN=${LISA_WEB_TOKEN}"
 [ -n "${LISA_CLOUD_APPLE_SIGNIN:-}" ] && ENVS="${ENVS}##LISA_CLOUD_APPLE_SIGNIN=${LISA_CLOUD_APPLE_SIGNIN}"
 [ -n "${LISA_CLOUD_APPLE_SUBS:-}" ]   && ENVS="${ENVS}##LISA_CLOUD_APPLE_SUBS=${LISA_CLOUD_APPLE_SUBS}"
 [ -n "${LISA_CLOUD_APPLE_AUD:-}" ]    && ENVS="${ENVS}##LISA_CLOUD_APPLE_AUD=${LISA_CLOUD_APPLE_AUD}"
+# Accounts & billing era (PLAN_ACCOUNTS_BILLING B1–B7), all optional:
+#   LISA_REVIEWER_SEED="email:password"  idempotent App-Review demo account (verified, $20/Tier-2)
+#   LISA_RPM_LIMIT / LISA_DAILY_CAP_USD  abuse guards (defaults 20 rpm / $200 per day)
+#   LISA_BILLING_KILL=1                  pause ALL metered inference immediately
+[ -n "${LISA_REVIEWER_SEED:-}" ]  && ENVS="${ENVS}##LISA_REVIEWER_SEED=${LISA_REVIEWER_SEED}"
+[ -n "${LISA_RPM_LIMIT:-}" ]      && ENVS="${ENVS}##LISA_RPM_LIMIT=${LISA_RPM_LIMIT}"
+[ -n "${LISA_DAILY_CAP_USD:-}" ]  && ENVS="${ENVS}##LISA_DAILY_CAP_USD=${LISA_DAILY_CAP_USD}"
+[ -n "${LISA_BILLING_KILL:-}" ]   && ENVS="${ENVS}##LISA_BILLING_KILL=${LISA_BILLING_KILL}"
 
 # ── durable home (C2): a GCS bucket mounted at /data keeps the soul across restarts ──
 BUCKET="${LISA_BUCKET:-${PROJECT}-lisa-cloud-data}"

@@ -289,3 +289,35 @@ export function sessionAccountValid(uid: string, sv: number): boolean {
   const acct = getAccount(uid);
   return !!acct && acct.sessionVersion === sv;
 }
+
+/**
+ * Operator-seeded account (B7): the App Review demo (ASC "Sign-in required"
+ * wants user/pass). Creates the email account if missing and forces
+ * verified=true (full free window). Idempotent; never rotates an existing
+ * password. Returns the record.
+ */
+export function ensureSeededAccount(email: string, password: string, now: number = Date.now()): AccountRecord {
+  const existing = getAccountByEmail(email);
+  if (existing) {
+    if (!existing.verified) {
+      const list = loadAccounts();
+      const live = list.find((a) => a.uid === existing.uid);
+      if (live) {
+        live.verified = true;
+        saveAccounts(list);
+        live.scrypt = existing.scrypt;
+        return live;
+      }
+    }
+    return existing;
+  }
+  const rec = createEmailAccount(email, password, now);
+  const list = loadAccounts();
+  const live = list.find((a) => a.uid === rec.uid);
+  if (live) {
+    live.verified = true;
+    saveAccounts(list);
+    return live;
+  }
+  return rec;
+}
