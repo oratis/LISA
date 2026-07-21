@@ -55,7 +55,7 @@ function lisaHome(): string {
   return process.env.LISA_HOME ?? path.join(os.homedir(), ".lisa");
 }
 
-/** Resolved lazily so tests can point LISA_HOME at a tmp dir. */
+/** Resolved lazily so tests can point lisaHome() at a tmp dir. */
 function consentPath(): string {
   return path.join(lisaHome(), "consent.json");
 }

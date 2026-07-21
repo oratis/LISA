@@ -11,7 +11,7 @@
  * `sv` is the account's session version: bumping it (or deleting the account)
  * invalidates every outstanding session for that uid without any server-side
  * session store. Stateless by design — the single secret lives next to the
- * other credentials in `$LISA_HOME` (0600), auto-created on first use so the
+ * other credentials in `$lisaHome()` (0600), auto-created on first use so the
  * cloud container needs no extra env to turn accounts on.
  */
 import fs from "node:fs";
@@ -44,7 +44,7 @@ function secretPath(): string {
 
 /**
  * Load the session-signing secret, creating (and persisting, 0600) a random one
- * on first use. On the cloud image `$LISA_HOME` is the durable /data mount, so
+ * on first use. On the cloud image `$lisaHome()` is the durable /data mount, so
  * sessions survive restarts; losing the file merely signs everyone out.
  */
 export function loadOrCreateSessionSecret(): string {

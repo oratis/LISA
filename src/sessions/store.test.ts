@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import type { StoredMessage } from "../types.js";
 
-// SESSIONS_DIR is resolved from LISA_HOME at import time, so set a tmp home
+// sessionsDir() is resolved from lisaHome() at import time, so set a tmp home
 // BEFORE importing the store (dynamic import). node --test isolates each file in
 // its own process, so this env mutation can't leak to other suites.
 let SessionStore: typeof import("./store.js").SessionStore;

@@ -3,7 +3,7 @@ import { extractTextFromContent } from "./agent.js";
 import { atomicWrite } from "./fs-utils.js";
 import { DEFAULT_MODEL } from "./llm.js";
 import { appendMemory, type MemoryStore } from "./memory/store.js";
-import { REFLECTIONS_DIR } from "./paths.js";
+import { reflectionsDir } from "./paths.js";
 import { providerForModel } from "./providers/registry.js";
 import { createSkill, getSkill, patchSkill } from "./skills/manager.js";
 import { withSoulCaller } from "./soul/git.js";
@@ -222,7 +222,7 @@ async function reflectOnSessionInner(opts: {
       raw = retryRaw;
       parsed = retryParsed;
     } else {
-      const errPath = path.join(REFLECTIONS_DIR, `${opts.sessionId}.error.json`);
+      const errPath = path.join(reflectionsDir(), `${opts.sessionId}.error.json`);
       try {
         await atomicWrite(
           errPath,
@@ -397,7 +397,7 @@ async function reflectOnSessionInner(opts: {
   }
 
   await atomicWrite(
-    path.join(REFLECTIONS_DIR, `${opts.sessionId}.json`),
+    path.join(reflectionsDir(), `${opts.sessionId}.json`),
     JSON.stringify(
       { summary: payload.summary, operations: payload.operations, applied, skipped, underReflected },
       null,

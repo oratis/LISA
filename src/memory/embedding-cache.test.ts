@@ -6,7 +6,7 @@ import path from "node:path";
 import type { Embedder } from "./embedding.js";
 
 // Isolate the on-disk cache before importing the module (paths.js reads
-// LISA_HOME at import time).
+// lisaHome() at import time).
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "lisa-embcache-"));
 process.env.LISA_HOME = TMP;
 

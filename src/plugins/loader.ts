@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { LISA_HOME } from "../paths.js";
+import { lisaGlobalHome } from "../paths.js";
 import { ensureDir, pathExists } from "../fs-utils.js";
 import { parseFrontmatter } from "../skills/frontmatter.js";
 import type { Skill } from "../types.js";
@@ -12,7 +12,7 @@ import type {
   SubagentDefinition,
 } from "./types.js";
 
-const PLUGINS_DIR = path.join(LISA_HOME, "plugins");
+const PLUGINS_DIR = path.join(lisaGlobalHome(), "plugins");
 
 export async function loadAllPlugins(): Promise<LoadedPlugin[]> {
   await ensureDir(PLUGINS_DIR);

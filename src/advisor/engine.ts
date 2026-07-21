@@ -11,7 +11,7 @@
 
 import fsp from "node:fs/promises";
 import path from "node:path";
-import { LISA_HOME } from "../paths.js";
+import { lisaHome } from "../paths.js";
 import { atomicWrite } from "../fs-utils.js";
 import { withFileLock } from "../soul/lock.js";
 import { runAllDetectors } from "./detectors.js";
@@ -30,7 +30,9 @@ const MIN_SCORE = 1.5; // relevance bar: below this → journal, not user
 const DIGEST_THROTTLE_MS = 3 * 60 * 60_000; // ≤1 non-urgent digest / 3h
 const RE_ARM_MS = 24 * 60 * 60_000; // a standing condition can re-surface daily
 
-export const ADVISOR_STATE_PATH = path.join(LISA_HOME, "advisor-state.json");
+export function advisorStatePath(): string {
+  return path.join(lisaHome(), "advisor-state.json");
+}
 
 /** Relevance score = urgency × actionability × dismissal-decay. */
 export function scoreSuggestion(s: Suggestion, state: AdvisorState): number {
@@ -133,7 +135,7 @@ export function applyDismissal(
 export async function dismissSuggestion(
   id: string,
   category: SuggestionCategory,
-  statePath: string = ADVISOR_STATE_PATH,
+  statePath: string = advisorStatePath(),
 ): Promise<void> {
   await withFileLock(statePath + ".lock", async () => {
     const state = await loadAdvisorState(statePath);
@@ -144,7 +146,7 @@ export async function dismissSuggestion(
 // ── I/O ─────────────────────────────────────────────────────────────────
 
 export async function loadAdvisorState(
-  p: string = ADVISOR_STATE_PATH,
+  p: string = advisorStatePath(),
 ): Promise<AdvisorState> {
   try {
     const raw = await fsp.readFile(p, "utf8");
@@ -157,7 +159,7 @@ export async function loadAdvisorState(
 
 export async function saveAdvisorState(
   state: AdvisorState,
-  p: string = ADVISOR_STATE_PATH,
+  p: string = advisorStatePath(),
 ): Promise<void> {
   await atomicWrite(p, JSON.stringify(state, null, 2));
 }
@@ -168,7 +170,7 @@ export async function saveAdvisorState(
  */
 export async function advise(
   input: AdvisorInput,
-  statePath: string = ADVISOR_STATE_PATH,
+  statePath: string = advisorStatePath(),
 ): Promise<AdvisorDecision> {
   return withFileLock(statePath + ".lock", async () => {
     const state = await loadAdvisorState(statePath);

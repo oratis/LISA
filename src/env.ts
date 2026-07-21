@@ -1,10 +1,10 @@
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
-import { LISA_HOME } from "./paths.js";
+import { lisaGlobalHome } from "./paths.js";
 import { ensureDir } from "./fs-utils.js";
 
-export const CONFIG_ENV_PATH = path.join(LISA_HOME, "config.env");
+export const CONFIG_ENV_PATH = path.join(lisaGlobalHome(), "config.env");
 
 /**
  * Update or insert keys in ~/.lisa/config.env, preserving other variables,

@@ -1,5 +1,5 @@
 import path from "node:path";
-import { LISA_HOME } from "../paths.js";
+import { lisaHome } from "../paths.js";
 import { withFileLock } from "../soul/lock.js";
 import { autonomousSubset } from "../tools/registry.js";
 import { runSubagent } from "../subagent.js";
@@ -8,7 +8,9 @@ import { getAutonomyEnabled } from "../autonomy/state.js";
 import { readIndex } from "../kb/store.js";
 import type { ToolDefinition } from "../types.js";
 
-const IDLE_RUN_LOCK = path.join(LISA_HOME, "idle.lock");
+function idleRunLock(): string {
+  return path.join(lisaHome(), "idle.lock");
+}
 
 /**
  * Per-idle-run token ceiling (cost circuit-breaker, PLAN_REVE R2). Idle used to
@@ -117,7 +119,7 @@ export async function runIdleOnce(opts: {
   // concurrently and race on soul writes. timeoutMs:0 → if another idle run
   // is in flight, skip silently instead of queueing a second reflection.
   try {
-    return await withFileLock(IDLE_RUN_LOCK, () => runIdleInner(opts, idleMin, opts.userLanguageSample), {
+    return await withFileLock(idleRunLock(), () => runIdleInner(opts, idleMin, opts.userLanguageSample), {
       timeoutMs: 0,
       staleMs: 2 * 60 * 60_000, // 2h: an idle run older than this is a crashed holder
     });

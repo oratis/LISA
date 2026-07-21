@@ -11,7 +11,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { LISA_HOME } from "../paths.js";
+import { lisaHome } from "../paths.js";
 import { localEndpoint } from "../model/local.js";
 
 export interface Embedder {
@@ -140,9 +140,11 @@ export async function embedWithCache(
   return { vectors, updated, misses: missIdx.length };
 }
 
-const EMBED_CACHE_DIR = path.join(LISA_HOME, "embeddings");
+function embedCacheDir(): string {
+  return path.join(lisaHome(), "embeddings");
+}
 function embedCacheFile(embedderId: string): string {
-  return path.join(EMBED_CACHE_DIR, `${embedderId.replace(/[^a-zA-Z0-9._-]/g, "_")}.json`);
+  return path.join(embedCacheDir(), `${embedderId.replace(/[^a-zA-Z0-9._-]/g, "_")}.json`);
 }
 
 /** Load the on-disk cache for an embedder; {} if missing/corrupt. */
@@ -157,7 +159,7 @@ export async function loadEmbeddingCache(embedderId: string): Promise<EmbeddingC
 /** Persist the cache for an embedder. Best-effort (never throws). */
 export async function saveEmbeddingCache(embedderId: string, cache: EmbeddingCache): Promise<void> {
   try {
-    await fs.mkdir(EMBED_CACHE_DIR, { recursive: true });
+    await fs.mkdir(embedCacheDir(), { recursive: true });
     await fs.writeFile(embedCacheFile(embedderId), JSON.stringify(cache));
   } catch {
     // best-effort; a missing cache just means more re-embedding next time

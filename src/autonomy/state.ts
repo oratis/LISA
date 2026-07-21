@@ -12,7 +12,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { LISA_HOME } from "../paths.js";
+import { lisaHome } from "../paths.js";
 
 export interface AutonomyState {
   /** Whether unattended self-driven runs (idle + heartbeat) are allowed. */
@@ -30,9 +30,9 @@ export function normalizeAutonomyState(s: Partial<AutonomyState> | null | undefi
   return { enabled: typeof s.enabled === "boolean" ? s.enabled : base.enabled };
 }
 
-/** Resolved lazily so tests can point LISA_HOME at a tmp dir. */
+/** Resolved lazily so tests can point lisaHome() at a tmp dir. */
 function statePath(): string {
-  return path.join(LISA_HOME, "autonomy", "state.json");
+  return path.join(lisaHome(), "autonomy", "state.json");
 }
 
 /** Read the state, merged over defaults; tolerant of a missing/corrupt file. */

@@ -97,7 +97,7 @@ import {
   type SuggestionProvider,
 } from "../screen_advisor/engine.js";
 import os from "node:os";
-import { LISA_HOME } from "../paths.js";
+import { lisaHome, lisaGlobalHome, homeScope, homeForUid } from "../paths.js";
 import { isCloud, editionInfo } from "../edition.js";
 import {
   verifyAppleIdentityToken,
@@ -261,7 +261,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   const host = opts.host ?? "127.0.0.1";
   const webToken = process.env.LISA_WEB_TOKEN?.trim() || null;
   // Account sessions (PLAN_ACCOUNTS_BILLING B1): the signing secret lives in
-  // $LISA_HOME (auto-created 0600; durable on the cloud's /data mount). Only the
+  // $lisaHome() (auto-created 0600; durable on the cloud's /data mount). Only the
   // cloud edition mints/verifies account sessions today — the Mac edition gains
   // a client-side use in B6 (managed inference).
   const sessionSecret = isCloud() ? loadOrCreateSessionSecret() : null;
@@ -277,14 +277,17 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   const initialFingerprint = await getPromptFingerprint();
   // Per-process hot-reload cache for the web server: same shape as cli's
   // makeHotReloadRebuilder, inlined here so the web server stays standalone.
-  let cachedFp = initialFingerprint;
-  let cachedText = snapshot.text;
+  // Keyed by the ACTIVE home (B2): each cloud account gets its own soul, so the
+  // prompt snapshot must be cached per-uid, not process-wide.
+  const promptCache = new Map<string, { fp: string; text: string }>();
+  promptCache.set(lisaGlobalHome(), { fp: initialFingerprint, text: snapshot.text });
   const rebuildPrompt = async (): Promise<{ text: string; fingerprint: string }> => {
+    const key = lisaHome();
     const fp = await getPromptFingerprint();
-    if (fp === cachedFp) return { text: cachedText, fingerprint: fp };
+    const cached = promptCache.get(key);
+    if (cached && fp === cached.fp) return { text: cached.text, fingerprint: fp };
     const next = await buildSystemPromptSnapshot();
-    cachedFp = fp;
-    cachedText = next.text;
+    promptCache.set(key, { fp, text: next.text });
     return { text: next.text, fingerprint: fp };
   };
   // Resume previous chat across restarts. Three-tier fallback:
@@ -315,7 +318,60 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // would run two agents against the same history reference and clobber each
   // other's `history.length = 0; history.push(...)` at the end. Same model as
   // the channels router's per-thread busy+queue, with a promise chain.
-  let chatChain: Promise<void> = Promise.resolve();
+  //
+  // ── Per-account conversation contexts (B2 multi-tenant seam) ──────────────
+  // The module-level session/history above serve the Mac edition and legacy
+  // shared-token cloud callers (one shared conversation — unchanged). A
+  // signed-in cloud request runs inside homeScope, and gets its OWN context,
+  // created lazily INSIDE that scope so every path underneath — sessions dir,
+  // active pointer, soul, memory — resolves into the user's subtree. The
+  // background schedulers (idle/reflect) keep operating on the global context
+  // only; per-uid autonomy is gated on per-uid budgets (B4+).
+  interface ChatCtx {
+    session: SessionStore;
+    history: StoredMessage[];
+    chain: Promise<void>;
+  }
+  const globalChat: ChatCtx = { session, history, chain: Promise.resolve() };
+  const uidChats = new Map<string, ChatCtx>();
+  const ctxForRequest = async (): Promise<ChatCtx> => {
+    const scoped = homeScope.getStore();
+    if (!scoped) return globalChat;
+    let ctx = uidChats.get(scoped);
+    if (!ctx) {
+      const s = await resumeOrCreateWebSession(opts.model);
+      await writeActiveWebSession(s.id);
+      const { messages } = await s.readMessagePage(0, 9999);
+      ctx = { session: s, history: [...messages], chain: Promise.resolve() };
+      uidChats.set(scoped, ctx);
+    }
+    return ctx;
+  };
+
+  // Lazy per-user birth (B2): a signed-in user's first request seeds THEIR soul
+  // (the entrypoint's one-shot birth only covers the shared/global home). Runs
+  // in the background inside the caller's home scope; chat before it completes
+  // simply runs with the bare prompt and the soul arrives mid-conversation.
+  const birthsInFlight = new Set<string>();
+  const ensureUserBirth = (uid: string): void => {
+    if (birthsInFlight.has(uid)) return;
+    birthsInFlight.add(uid);
+    void (async () => {
+      try {
+        const { isBorn } = await import("../soul/store.js");
+        if (await isBorn()) return; // reads inside the per-uid scope
+        console.error(`[accounts] birthing a soul for ${uid}…`);
+        const { birth } = await import("../soul/birth.js");
+        await birth({ model: opts.model });
+        promptCache.delete(lisaHome()); // pick the newborn soul up next turn
+        console.error(`[accounts] soul born for ${uid}`);
+      } catch (e) {
+        console.error(`[accounts] birth failed for ${uid}: ${(e as Error).message}`);
+      } finally {
+        birthsInFlight.delete(uid);
+      }
+    })();
+  };
 
   // ── Persistent /events SSE subscribers (mood + idle broadcasts) ─────
   const eventClients = new Set<http.ServerResponse>();
@@ -339,7 +395,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // normalized stream. Privacy: structural metadata only (see types.ts +
   // each adapter). Replaces the single-purpose ClaudeCodeWatcher wiring.
   const orchestratorCfg = await loadOrchestratorConfig(
-    path.join(LISA_HOME, "agents.json"),
+    path.join(lisaHome(), "agents.json"),
   );
   const hub = new OrchestratorHub(orchestratorCfg, {
     log: (msg) => console.error(msg),
@@ -914,6 +970,16 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           `lisa_token=${encodeURIComponent(presented)}; HttpOnly; SameSite=Strict; Path=/`,
         );
       }
+      // ── Per-uid home scope (B2) ────────────────────────────────────────────
+      // From here on, every path helper — soul, sessions, memory, billing —
+      // resolves into this account's subtree, including across awaits
+      // (AsyncLocalStorage.enterWith sticks to this async chain).
+      if (cloud && accountUid) {
+        const uidHome = homeForUid(accountUid);
+        await fs.mkdir(uidHome, { recursive: true });
+        homeScope.enterWith(uidHome);
+        ensureUserBirth(accountUid);
+      }
     }
 
     // ── Account introspection + deletion (post-gate; PLAN_ACCOUNTS_BILLING B1) ──
@@ -940,16 +1006,17 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         return;
       }
       const removed = deleteAccount(accountUid);
-      // Remove the per-uid home (B2 layout; a no-op before it exists). The
-      // account record going away already killed every session via sv-check.
+      // Remove the per-uid home + in-memory context. The account record going
+      // away already killed every session via the sv-check.
       try {
-        const home = process.env.LISA_HOME ?? path.join(os.homedir(), ".lisa");
-        const userHome = path.join(home, "users", accountUid);
+        const userHome = homeForUid(accountUid);
         // Refuse to follow a surprising path — belt & braces against uid tampering
         // (uids are server-minted, but cheap to double-check).
-        if (userHome.startsWith(path.join(home, "users") + path.sep)) {
+        if (userHome.startsWith(path.join(lisaGlobalHome(), "users") + path.sep)) {
           await fs.rm(userHome, { recursive: true, force: true });
         }
+        uidChats.delete(userHome);
+        promptCache.delete(userHome);
       } catch (e) {
         console.error(`[auth] account home cleanup failed: ${(e as Error).message}`);
       }
@@ -1985,18 +2052,20 @@ self.addEventListener('fetch', (event) => {
     }
 
     if (req.method === "GET" && url === "/session") {
+      const chat = await ctxForRequest();
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ id: session.id, model: opts.model }));
+      res.end(JSON.stringify({ id: chat.session.id, model: opts.model }));
       return;
     }
 
     if (req.method === "GET" && url === "/events") {
+      const chat = await ctxForRequest();
       res.writeHead(200, {
         "content-type": "text/event-stream",
         "cache-control": "no-cache",
         connection: "keep-alive",
       });
-      res.write(`data: ${JSON.stringify({ type: "hello", session: session.id })}\n\n`);
+      res.write(`data: ${JSON.stringify({ type: "hello", session: chat.session.id })}\n\n`);
       // Send current mood right away
       res.write(`data: ${JSON.stringify({ type: "mood", slug: moodBus.current() })}\n\n`);
       eventClients.add(res);
@@ -2008,7 +2077,7 @@ self.addEventListener('fetch', (event) => {
       const qs = new URL(url, "http://localhost").searchParams;
       const page = Math.max(0, parseInt(qs.get("page") ?? "0", 10));
       const pageSize = 20;
-      const { messages, hasMore } = await session.readMessagePage(page, pageSize);
+      const { messages, hasMore } = await (await ctxForRequest()).session.readMessagePage(page, pageSize);
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ messages, hasMore, page }));
       return;
@@ -2396,6 +2465,7 @@ self.addEventListener('fetch', (event) => {
     }
 
     if (req.method === "POST" && url === "/chat") {
+      const chat = await ctxForRequest();
       let body = "";
       for await (const chunk of req) body += chunk.toString("utf8");
       let message: string;
@@ -2466,7 +2536,7 @@ self.addEventListener('fetch', (event) => {
               signal: AbortSignal.any([abort.signal, turnAbort.signal]),
               log: () => {},
             },
-            history,
+            history: chat.history,
             userMessage: message,
             userFiles: files,
             model: opts.model,
@@ -2508,7 +2578,7 @@ self.addEventListener('fetch', (event) => {
               const r = await fireHooks(
                 "PreToolUse",
                 hooks,
-                { TOOL_NAME: name, TOOL_INPUT: JSON.stringify(input), SESSION_ID: session.id, LISA_HOME, CLAUDE_PROJECT_DIR: process.cwd() },
+                { TOOL_NAME: name, TOOL_INPUT: JSON.stringify(input), SESSION_ID: chat.session.id, LISA_HOME: lisaHome(), CLAUDE_PROJECT_DIR: process.cwd() },
                 process.cwd(),
               );
               if (r.blocked.length > 0) return { block: r.blocked.join("; ") };
@@ -2522,22 +2592,22 @@ self.addEventListener('fetch', (event) => {
                   TOOL_INPUT: JSON.stringify(input),
                   TOOL_RESULT: result,
                   TOOL_ERROR: isError ? "1" : "",
-                  SESSION_ID: session.id,
-                  LISA_HOME,
+                  SESSION_ID: chat.session.id,
+                  LISA_HOME: lisaHome(),
                   CLAUDE_PROJECT_DIR: process.cwd(),
                 },
                 process.cwd(),
               );
               if (r.rewriteResult != null) return { rewriteResult: r.rewriteResult };
             },
-            onMessagePersist: (m) => session.appendMessage(m),
+            onMessagePersist: (m) => chat.session.appendMessage(m),
             hotReload: {
               initialFingerprint: fresh.fingerprint,
               rebuild: rebuildPrompt,
             },
           });
-          history.length = 0;
-          history.push(...result.history);
+          chat.history.length = 0;
+          chat.history.push(...result.history);
           if (!anyText && !anyTool && !errorSent) send({ type: "empty" });
           send({ type: "done" });
         } catch (err) {
@@ -2547,10 +2617,11 @@ self.addEventListener('fetch', (event) => {
           res.end();
         }
       };
-      // Queue behind any in-flight turn; the SSE stream stays open while we
-      // wait, so the second tab just sees its reply start a little later.
-      const job = chatChain.then(runTurn, runTurn);
-      chatChain = job.then(
+      // Queue behind any in-flight turn ON THIS CONTEXT (per-uid, so one
+      // account's long turn never blocks another's); the SSE stream stays open
+      // while we wait, so the second tab just sees its reply start later.
+      const job = chat.chain.then(runTurn, runTurn);
+      chat.chain = job.then(
         () => {},
         () => {},
       );
@@ -2559,10 +2630,11 @@ self.addEventListener('fetch', (event) => {
     }
 
     if (req.method === "POST" && url === "/reflect") {
+      const chat = await ctxForRequest();
       try {
         const r = await reflectOnSession({
-          history,
-          sessionId: session.id,
+          history: chat.history,
+          sessionId: chat.session.id,
           model: opts.model,
         });
         res.writeHead(200, { "content-type": "application/json" });

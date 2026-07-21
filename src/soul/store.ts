@@ -5,19 +5,19 @@ import { atomicWrite, ensureDir, pathExists, readTextOrEmpty } from "../fs-utils
 import { commitSoulChange, initSoulRepo } from "./git.js";
 import { withSoulLock } from "./lock.js";
 import {
-  SOUL_DIR,
-  SOUL_SEED,
-  SOUL_NAME,
-  SOUL_IDENTITY,
-  SOUL_PURPOSE,
-  SOUL_CONSTITUTION,
-  SOUL_EMOTIONS,
-  SOUL_LOCK,
-  SOUL_VALUES_DIR,
-  SOUL_OPINIONS_DIR,
-  SOUL_DESIRES_DIR,
-  SOUL_JOURNAL_DIR,
-  SOUL_RELATIONSHIPS_DIR,
+  soulDir,
+  soulSeedFile,
+  soulNameFile,
+  soulIdentityFile,
+  soulPurposeFile,
+  soulConstitutionFile,
+  soulEmotionsFile,
+  soulLockFile,
+  soulValuesDir,
+  soulOpinionsDir,
+  soulDesiresDir,
+  soulJournalDir,
+  soulRelationshipsDir,
   valueFile,
   opinionFile,
   desireFile,
@@ -39,73 +39,73 @@ import {
 export async function ensureSoulDirs(): Promise<void> {
   await Promise.all(
     [
-      SOUL_DIR,
-      SOUL_VALUES_DIR,
-      SOUL_OPINIONS_DIR,
-      SOUL_DESIRES_DIR,
-      SOUL_JOURNAL_DIR,
-      SOUL_RELATIONSHIPS_DIR,
+      soulDir(),
+      soulValuesDir(),
+      soulOpinionsDir(),
+      soulDesiresDir(),
+      soulJournalDir(),
+      soulRelationshipsDir(),
     ].map((d) => ensureDir(d)),
   );
 }
 
 export async function isBorn(): Promise<boolean> {
-  return await pathExists(SOUL_SEED);
+  return await pathExists(soulSeedFile());
 }
 
 export async function readSeed(): Promise<SoulSeed | null> {
-  if (!(await pathExists(SOUL_SEED))) return null;
-  return JSON.parse(await fs.readFile(SOUL_SEED, "utf8")) as SoulSeed;
+  if (!(await pathExists(soulSeedFile()))) return null;
+  return JSON.parse(await fs.readFile(soulSeedFile(), "utf8")) as SoulSeed;
 }
 
 export async function writeSeed(seed: SoulSeed): Promise<void> {
   await ensureSoulDirs();
-  await atomicWrite(SOUL_SEED, JSON.stringify(seed, null, 2));
+  await atomicWrite(soulSeedFile(), JSON.stringify(seed, null, 2));
   await commitSoulChange("seed.json", "seed");
 }
 
 export async function readName(): Promise<string> {
-  const raw = (await readTextOrEmpty(SOUL_NAME)).trim();
+  const raw = (await readTextOrEmpty(soulNameFile())).trim();
   return raw || "Lisa";
 }
 
 export async function writeName(name: string): Promise<void> {
-  await atomicWrite(SOUL_NAME, name.trim() + "\n");
+  await atomicWrite(soulNameFile(), name.trim() + "\n");
   await commitSoulChange("name.md", "patch");
 }
 
 export async function readIdentity(): Promise<string> {
-  return (await readTextOrEmpty(SOUL_IDENTITY)).trim();
+  return (await readTextOrEmpty(soulIdentityFile())).trim();
 }
 export async function writeIdentity(text: string): Promise<void> {
-  await atomicWrite(SOUL_IDENTITY, text.trim() + "\n");
+  await atomicWrite(soulIdentityFile(), text.trim() + "\n");
   await commitSoulChange("identity.md", "patch");
 }
 
 export async function readPurpose(): Promise<string> {
-  return (await readTextOrEmpty(SOUL_PURPOSE)).trim();
+  return (await readTextOrEmpty(soulPurposeFile())).trim();
 }
 export async function writePurpose(text: string): Promise<void> {
-  await atomicWrite(SOUL_PURPOSE, text.trim() + "\n");
+  await atomicWrite(soulPurposeFile(), text.trim() + "\n");
   await commitSoulChange("purpose.md", "patch");
 }
 
 export async function readConstitution(): Promise<string> {
-  return (await readTextOrEmpty(SOUL_CONSTITUTION)).trim();
+  return (await readTextOrEmpty(soulConstitutionFile())).trim();
 }
 export async function writeConstitution(text: string): Promise<void> {
-  await atomicWrite(SOUL_CONSTITUTION, text.trim() + "\n");
+  await atomicWrite(soulConstitutionFile(), text.trim() + "\n");
   await commitSoulChange("constitution.md", "patch");
 }
 
 export async function readEmotions(): Promise<EmotionState> {
   // When the file is missing/corrupt, stamp the defaults with NOW — the
   // catalog default is epoch-0, and decaying "since 1970" zeroes every value.
-  if (!(await pathExists(SOUL_EMOTIONS))) {
+  if (!(await pathExists(soulEmotionsFile()))) {
     return { ...DEFAULT_EMOTIONS, updatedAt: new Date().toISOString() };
   }
   try {
-    const parsed = JSON.parse(await fs.readFile(SOUL_EMOTIONS, "utf8")) as EmotionState;
+    const parsed = JSON.parse(await fs.readFile(soulEmotionsFile(), "utf8")) as EmotionState;
     // Backward-compat: emotions.json predating the event trail had no events
     // field. Treat it as an empty trail rather than throwing.
     return { ...parsed, events: parsed.events ?? [] };
@@ -115,7 +115,7 @@ export async function readEmotions(): Promise<EmotionState> {
 }
 
 export async function writeEmotions(state: EmotionState): Promise<void> {
-  await atomicWrite(SOUL_EMOTIONS, JSON.stringify(state, null, 2));
+  await atomicWrite(soulEmotionsFile(), JSON.stringify(state, null, 2));
   await commitSoulChange("emotions.json", "feel");
 }
 
@@ -191,7 +191,7 @@ export function decayEmotions(
 // ── values ────────────────────────────────────────────────────────────
 
 export async function listValues(): Promise<ValueEntry[]> {
-  return await listMarkdownDir<ValueEntry>(SOUL_VALUES_DIR, parseValueFile);
+  return await listMarkdownDir<ValueEntry>(soulValuesDir(), parseValueFile);
 }
 export async function writeValue(entry: ValueEntry): Promise<void> {
   const body = `# ${entry.title}\n\nbirthed: ${entry.birthedAt}\n\n${entry.body.trim()}\n`;
@@ -214,7 +214,7 @@ function parseValueFile(slug: string, raw: string): ValueEntry {
 // ── opinions ──────────────────────────────────────────────────────────
 
 export async function listOpinions(): Promise<OpinionEntry[]> {
-  return await listMarkdownDir<OpinionEntry>(SOUL_OPINIONS_DIR, parseOpinionFile);
+  return await listMarkdownDir<OpinionEntry>(soulOpinionsDir(), parseOpinionFile);
 }
 
 export async function writeOpinion(entry: OpinionEntry): Promise<void> {
@@ -246,7 +246,7 @@ function parseOpinionFile(slug: string, raw: string): OpinionEntry {
 export async function listDesires(): Promise<DesireEntry[]> {
   // Filter out *.progress.md files — they live in the same directory but
   // belong to their parent desire, not as standalone desires.
-  const all = await listMarkdownDir<DesireEntry>(SOUL_DESIRES_DIR, parseDesireFile);
+  const all = await listMarkdownDir<DesireEntry>(soulDesiresDir(), parseDesireFile);
   return all.filter((d) => !d.slug.endsWith(".progress"));
 }
 
@@ -551,7 +551,7 @@ export async function appendDesireProgress(
 // ── journal ───────────────────────────────────────────────────────────
 
 export async function appendJournal(date: string, entry: string): Promise<void> {
-  await ensureDir(SOUL_JOURNAL_DIR);
+  await ensureDir(soulJournalDir());
   const file = journalFile(date);
   // Read-modify-write under the cross-process soul lock: reflect / soul_journal
   // / idle / heartbeat can all append to the same day's file from different
@@ -570,8 +570,8 @@ export async function readJournal(date: string): Promise<string> {
 }
 
 export async function listJournalDates(): Promise<string[]> {
-  if (!(await pathExists(SOUL_JOURNAL_DIR))) return [];
-  const files = await fs.readdir(SOUL_JOURNAL_DIR);
+  if (!(await pathExists(soulJournalDir()))) return [];
+  const files = await fs.readdir(soulJournalDir());
   return files
     .filter((f) => /^\d{4}-\d{2}-\d{2}\.md$/.test(f))
     .map((f) => f.replace(/\.md$/, ""))
@@ -609,20 +609,20 @@ async function hashFileIfPresent(p: string): Promise<string | null> {
 export async function recomputeLock(): Promise<SoulLock> {
   const hashes: Record<string, string> = {};
   for (const rel of LOCKED_FILES) {
-    const h = await hashFileIfPresent(path.join(SOUL_DIR, rel));
+    const h = await hashFileIfPresent(path.join(soulDir(), rel));
     if (h) hashes[rel] = h;
   }
   return { hashes, savedAt: new Date().toISOString() };
 }
 
 export async function saveLock(lock: SoulLock): Promise<void> {
-  await atomicWrite(SOUL_LOCK, JSON.stringify(lock, null, 2));
+  await atomicWrite(soulLockFile(), JSON.stringify(lock, null, 2));
 }
 
 export async function readLock(): Promise<SoulLock | null> {
-  if (!(await pathExists(SOUL_LOCK))) return null;
+  if (!(await pathExists(soulLockFile()))) return null;
   try {
-    return JSON.parse(await fs.readFile(SOUL_LOCK, "utf8")) as SoulLock;
+    return JSON.parse(await fs.readFile(soulLockFile(), "utf8")) as SoulLock;
   } catch {
     return null;
   }
@@ -633,7 +633,7 @@ export async function detectTampering(): Promise<string[]> {
   if (!lock) return [];
   const tampered: string[] = [];
   for (const rel of LOCKED_FILES) {
-    const cur = await hashFileIfPresent(path.join(SOUL_DIR, rel));
+    const cur = await hashFileIfPresent(path.join(soulDir(), rel));
     if (!cur) {
       // The lock says this file should exist but it's gone — deletion is
       // tampering too, not a pass. (Previously `continue`d, so wiping

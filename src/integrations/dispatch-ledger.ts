@@ -40,7 +40,7 @@ function lisaHome(): string {
   return process.env.LISA_HOME ?? path.join(os.homedir(), ".lisa");
 }
 
-/** Resolved lazily (reads env at call time) so tests can point LISA_HOME at a tmp dir. */
+/** Resolved lazily (reads env at call time) so tests can point lisaHome() at a tmp dir. */
 function ledgerPath(): string {
   return path.join(lisaHome(), "dispatches.json");
 }

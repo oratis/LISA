@@ -1,5 +1,5 @@
 import path from "node:path";
-import { LISA_HOME } from "../paths.js";
+import { lisaHome } from "../paths.js";
 import { assertSafeSlug } from "../soul/slug.js";
 
 /**
@@ -14,17 +14,30 @@ import { assertSafeSlug } from "../soul/slug.js";
  *   SCHEMA.md — Layer 3, the rules doc telling Lisa how to work the KB
  *   index.md  — generated table-of-contents (kept small, injected always-on)
  */
-export const KB_DIR = path.join(LISA_HOME, "kb");
-export const KB_SOURCES_DIR = path.join(KB_DIR, "sources");
-export const KB_WIKI_DIR = path.join(KB_DIR, "wiki");
-export const KB_SCHEMA_FILE = path.join(KB_DIR, "SCHEMA.md");
-export const KB_INDEX_FILE = path.join(KB_DIR, "index.md");
-export const KB_LOCK_PATH = path.join(KB_DIR, ".write.lock");
+// KB paths are FUNCTIONS of the active home (per-uid under the cloud edition).
+export function kbDir(): string {
+  return path.join(lisaHome(), "kb");
+}
+export function kbSourcesDir(): string {
+  return path.join(kbDir(), "sources");
+}
+export function kbWikiDir(): string {
+  return path.join(kbDir(), "wiki");
+}
+export function kbSchemaFile(): string {
+  return path.join(kbDir(), "SCHEMA.md");
+}
+export function kbIndexFile(): string {
+  return path.join(kbDir(), "index.md");
+}
+export function kbLockPath(): string {
+  return path.join(kbDir(), ".write.lock");
+}
 
 export type KbLayer = "sources" | "wiki";
 
 export function layerDir(layer: KbLayer): string {
-  return layer === "sources" ? KB_SOURCES_DIR : KB_WIKI_DIR;
+  return layer === "sources" ? kbSourcesDir() : kbWikiDir();
 }
 
 /**

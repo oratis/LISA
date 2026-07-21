@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { recordTakoCall, listTakoCalls, loadTakoLedger } from "./ledger.js";
 
-// LISA_HOME-tmp isolation: the ledger resolves its path lazily (reads LISA_HOME
+// lisaHome()-tmp isolation: the ledger resolves its path lazily (reads lisaHome()
 // at call time), so a per-test tmp dir keeps writes off the real ~/.lisa.
 let home: string;
 let prev: string | undefined;

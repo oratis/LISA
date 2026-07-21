@@ -1,6 +1,6 @@
 import path from "node:path";
 import { atomicWrite, readTextOrEmpty } from "../fs-utils.js";
-import { LISA_HOME } from "../paths.js";
+import { lisaGlobalHome } from "../paths.js";
 import {
   appendDesireProgress,
   isAutoPursuable,
@@ -23,8 +23,8 @@ import {
   type HeartbeatTask,
 } from "./config.js";
 
-const STATE_FILE = path.join(LISA_HOME, "heartbeat-state.json");
-const RUN_LOCK = path.join(LISA_HOME, "heartbeat.lock");
+const STATE_FILE = path.join(lisaGlobalHome(), "heartbeat-state.json");
+const RUN_LOCK = path.join(lisaGlobalHome(), "heartbeat.lock");
 
 interface HeartbeatState {
   lastRunAt: Record<string, string>;

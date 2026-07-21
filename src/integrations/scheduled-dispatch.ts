@@ -11,7 +11,7 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { readFile } from "node:fs/promises";
 import { atomicWrite } from "../fs-utils.js";
-import { LISA_HOME } from "../paths.js";
+import { lisaHome } from "../paths.js";
 
 export type ScheduledAgent = "claude" | "codex" | "opencode" | "aider";
 
@@ -28,7 +28,9 @@ export interface ScheduledDispatch {
   createdAt: number;
 }
 
-const FILE = path.join(LISA_HOME, "scheduled-dispatches.json");
+function scheduleFile(): string {
+  return path.join(lisaHome(), "scheduled-dispatches.json");
+}
 export const DEFAULT_MAX_RUNS = 30;
 
 interface Store {
@@ -37,7 +39,7 @@ interface Store {
 
 export async function loadScheduled(): Promise<ScheduledDispatch[]> {
   try {
-    const raw = await readFile(FILE, "utf8");
+    const raw = await readFile(scheduleFile(), "utf8");
     const store = JSON.parse(raw) as Store;
     return Array.isArray(store.entries) ? store.entries : [];
   } catch {
@@ -46,7 +48,7 @@ export async function loadScheduled(): Promise<ScheduledDispatch[]> {
 }
 
 async function saveScheduled(entries: ScheduledDispatch[]): Promise<void> {
-  await atomicWrite(FILE, JSON.stringify({ entries }, null, 2));
+  await atomicWrite(scheduleFile(), JSON.stringify({ entries }, null, 2));
 }
 
 export async function addScheduled(

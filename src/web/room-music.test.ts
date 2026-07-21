@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-// LISA_HOME (→ the ~/.lisa/music user dir) is read at import, so set a tmp home
+// lisaHome() (→ the ~/.lisa/music user dir) is read at import, so set a tmp home
 // before the dynamic import; node --test isolates each file in its own process.
 let mod: typeof import("./room-music.js");
 let home: string;
@@ -67,7 +67,7 @@ describe("listRoomMusic", () => {
   });
 
   test("missing manifest and missing user dir → empty, never throws", async () => {
-    // LISA_HOME is a const fixed at import, so simulate "no user music" by
+    // lisaHome() is a const fixed at import, so simulate "no user music" by
     // removing the dir, and point at a bundled dir with no manifest.json.
     fs.rmSync(mod.userMusicDir(), { recursive: true, force: true });
     const empty = fs.mkdtempSync(path.join(os.tmpdir(), "lisa-music-empty-"));

@@ -7,8 +7,8 @@ import type { Embedder, PostJson } from "./embedding.js";
 import type { Index, Document } from "./vector.js";
 
 // semanticSearch → ensureEmbeddings now reads/writes the on-disk embedding
-// cache; point it at a throwaway LISA_HOME so the suite never touches the real
-// ~/.lisa. Set before importing the modules (paths.js captures LISA_HOME once).
+// cache; point it at a throwaway lisaHome() so the suite never touches the real
+// ~/.lisa. Set before importing the modules (paths.js captures lisaHome() once).
 process.env.LISA_HOME = fs.mkdtempSync(path.join(os.tmpdir(), "lisa-emb-"));
 
 const { cosineSimilarity, parseOllamaEmbedding, OllamaEmbedder } = await import("./embedding.js");

@@ -14,7 +14,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import path from "node:path";
 import { ensureDir, pathExists } from "../fs-utils.js";
-import { KB_DIR } from "./paths.js";
+import { kbDir } from "./paths.js";
 
 const pexec = promisify(execFile);
 
@@ -24,7 +24,7 @@ function gitDisabled(): boolean {
 
 async function git(args: string[]): Promise<void> {
   try {
-    await pexec("git", args, { cwd: KB_DIR, timeout: 10_000 });
+    await pexec("git", args, { cwd: kbDir(), timeout: 10_000 });
   } catch {
     // best-effort — provenance is a nicety, never a blocker
   }
@@ -37,8 +37,8 @@ export async function ensureKbRepo(): Promise<void> {
   if (repoReady || gitDisabled()) return;
   repoReady = true;
   try {
-    await ensureDir(KB_DIR);
-    if (!(await pathExists(path.join(KB_DIR, ".git")))) {
+    await ensureDir(kbDir());
+    if (!(await pathExists(path.join(kbDir(), ".git")))) {
       await git(["init", "-q"]);
       await git(["config", "user.name", "Lisa"]);
       await git(["config", "user.email", "lisa@self"]);

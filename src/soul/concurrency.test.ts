@@ -10,7 +10,7 @@ import path from "node:path";
 // under concurrency. Without the lock, concurrent RMW would clobber the events
 // array (last-writer-wins) and drop events.
 //
-// SOUL_DIR derives from LISA_HOME at import, so set a tmp home before importing
+// soulDir() derives from lisaHome() at import, so set a tmp home before importing
 // (dynamic import); node --test isolates each file in its own process.
 let store: typeof import("./store.js");
 let home: string;

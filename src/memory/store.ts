@@ -1,5 +1,5 @@
 import { atomicWrite, ensureDir, readTextOrEmpty } from "../fs-utils.js";
-import { MEMORY_DIR, MEMORY_FILE, USER_FILE } from "../paths.js";
+import { memoryDir, memoryFile, userFile } from "../paths.js";
 
 export type MemoryStore = "memory" | "user";
 
@@ -9,7 +9,7 @@ const MAX_BYTES: Record<MemoryStore, number> = {
 };
 
 function fileFor(store: MemoryStore): string {
-  return store === "memory" ? MEMORY_FILE : USER_FILE;
+  return store === "memory" ? memoryFile() : userFile();
 }
 
 export async function readMemory(store: MemoryStore): Promise<string> {
@@ -20,7 +20,7 @@ export async function writeMemory(
   store: MemoryStore,
   content: string,
 ): Promise<void> {
-  await ensureDir(MEMORY_DIR);
+  await ensureDir(memoryDir());
   const trimmed = content.replace(/\s+$/g, "") + "\n";
   if (Buffer.byteLength(trimmed, "utf8") > MAX_BYTES[store]) {
     throw new Error(

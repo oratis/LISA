@@ -5,7 +5,7 @@
  * injected always-on (see the prompt integration) so Lisa always knows the rules.
  */
 import { atomicWrite, pathExists, readTextOrEmpty } from "../fs-utils.js";
-import { KB_SCHEMA_FILE } from "./paths.js";
+import { kbSchemaFile } from "./paths.js";
 
 export const DEFAULT_SCHEMA = `# Knowledge base — schema & conventions
 
@@ -42,18 +42,18 @@ This is the user's personal knowledge base. It has three layers:
 
 /** The schema text, or the built-in default if the user hasn't customized it. */
 export async function readSchema(): Promise<string> {
-  const text = await readTextOrEmpty(KB_SCHEMA_FILE);
+  const text = await readTextOrEmpty(kbSchemaFile());
   return text.trim() ? text : DEFAULT_SCHEMA;
 }
 
 /** Write the default schema if none exists yet. Idempotent. */
 export async function ensureSchema(): Promise<void> {
-  if (!(await pathExists(KB_SCHEMA_FILE))) {
-    await atomicWrite(KB_SCHEMA_FILE, DEFAULT_SCHEMA);
+  if (!(await pathExists(kbSchemaFile()))) {
+    await atomicWrite(kbSchemaFile(), DEFAULT_SCHEMA);
   }
 }
 
 /** Replace the schema (user or Lisa editing the rules). */
 export async function writeSchema(content: string): Promise<void> {
-  await atomicWrite(KB_SCHEMA_FILE, content.trimEnd() + "\n");
+  await atomicWrite(kbSchemaFile(), content.trimEnd() + "\n");
 }

@@ -4,7 +4,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-// Point LISA_HOME at a temp dir BEFORE importing modules that resolve paths.
+// Point lisaHome() at a temp dir BEFORE importing modules that resolve paths.
 process.env.LISA_HOME = mkdtempSync(path.join(tmpdir(), "lisa-mcp-"));
 const { mcpTool } = await import("./mcp.js");
 

@@ -30,7 +30,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { atomicWrite, ensureDir, pathExists } from "../fs-utils.js";
-import { SKILLS_DIR } from "../paths.js";
+import { skillsDir } from "../paths.js";
 import type { ToolDefinition } from "../types.js";
 
 const TOOL_JS = "tool.js";
@@ -75,7 +75,7 @@ async function shaOf(p: string): Promise<string | null> {
 }
 
 async function readApproved(slug: string): Promise<ApprovedRecord | null> {
-  const f = path.join(SKILLS_DIR, slug, APPROVED_FILE);
+  const f = path.join(skillsDir(), slug, APPROVED_FILE);
   if (!(await pathExists(f))) return null;
   try {
     return JSON.parse(await fs.readFile(f, "utf8")) as ApprovedRecord;
@@ -85,15 +85,15 @@ async function readApproved(slug: string): Promise<ApprovedRecord | null> {
 }
 
 async function writeApproved(slug: string, rec: ApprovedRecord): Promise<void> {
-  await atomicWrite(path.join(SKILLS_DIR, slug, APPROVED_FILE), JSON.stringify(rec, null, 2));
+  await atomicWrite(path.join(skillsDir(), slug, APPROVED_FILE), JSON.stringify(rec, null, 2));
 }
 
 async function isDisabled(slug: string): Promise<boolean> {
-  return await pathExists(path.join(SKILLS_DIR, slug, DISABLED_FILE));
+  return await pathExists(path.join(skillsDir(), slug, DISABLED_FILE));
 }
 
 async function appendAudit(slug: string, event: string, detail?: string): Promise<void> {
-  const f = path.join(SKILLS_DIR, slug, AUDIT_FILE);
+  const f = path.join(skillsDir(), slug, AUDIT_FILE);
   await ensureDir(path.dirname(f));
   const ts = new Date().toISOString();
   const line = `${ts}\t${event}${detail ? `\t${detail}` : ""}\n`;
@@ -101,7 +101,7 @@ async function appendAudit(slug: string, event: string, detail?: string): Promis
 }
 
 export async function readAudit(slug: string): Promise<string> {
-  const f = path.join(SKILLS_DIR, slug, AUDIT_FILE);
+  const f = path.join(skillsDir(), slug, AUDIT_FILE);
   if (!(await pathExists(f))) return "";
   return await fs.readFile(f, "utf8");
 }
@@ -109,7 +109,7 @@ export async function readAudit(slug: string): Promise<string> {
 export async function readToolSource(slug: string): Promise<string | null> {
   // Prefer .ts if present (more readable); fall back to .js.
   for (const name of ["tool.ts", TOOL_JS]) {
-    const p = path.join(SKILLS_DIR, slug, name);
+    const p = path.join(skillsDir(), slug, name);
     if (await pathExists(p)) {
       return await fs.readFile(p, "utf8");
     }
@@ -119,13 +119,13 @@ export async function readToolSource(slug: string): Promise<string | null> {
 
 /** Discover all candidates with a tool.js, regardless of approval state. */
 export async function discoverExecutableSkills(): Promise<ExecutableCandidate[]> {
-  if (!(await pathExists(SKILLS_DIR))) return [];
-  const entries = await fs.readdir(SKILLS_DIR, { withFileTypes: true });
+  if (!(await pathExists(skillsDir()))) return [];
+  const entries = await fs.readdir(skillsDir(), { withFileTypes: true });
   const out: ExecutableCandidate[] = [];
   for (const e of entries) {
     if (!e.isDirectory() || e.name.startsWith(".")) continue;
     const slug = e.name;
-    const toolJsPath = path.join(SKILLS_DIR, slug, TOOL_JS);
+    const toolJsPath = path.join(skillsDir(), slug, TOOL_JS);
     const currentShaMaybe = await shaOf(toolJsPath);
     if (!currentShaMaybe) continue; // no tool.js — not an executable skill
     const approved = await readApproved(slug);
@@ -187,7 +187,7 @@ export async function approveExecutableSkill(
   slug: string,
   opts: { toolName: string; note?: string },
 ): Promise<ApprovedRecord> {
-  const toolJsPath = path.join(SKILLS_DIR, slug, TOOL_JS);
+  const toolJsPath = path.join(skillsDir(), slug, TOOL_JS);
   const sha = await shaOf(toolJsPath);
   if (!sha) throw new Error(`no tool.js found at ${toolJsPath}`);
   const rec: ApprovedRecord = {
@@ -198,7 +198,7 @@ export async function approveExecutableSkill(
   };
   await writeApproved(slug, rec);
   // Re-enable on approval if a stale .disabled flag is present.
-  const disPath = path.join(SKILLS_DIR, slug, DISABLED_FILE);
+  const disPath = path.join(skillsDir(), slug, DISABLED_FILE);
   if (await pathExists(disPath)) {
     await fs.rm(disPath, { force: true });
     await appendAudit(slug, "re_enabled");
@@ -208,7 +208,7 @@ export async function approveExecutableSkill(
 }
 
 export async function disableExecutableSkill(slug: string, reason?: string): Promise<void> {
-  const dir = path.join(SKILLS_DIR, slug);
+  const dir = path.join(skillsDir(), slug);
   if (!(await pathExists(dir))) throw new Error(`skill "${slug}" not found`);
   await ensureDir(dir);
   await fs.writeFile(path.join(dir, DISABLED_FILE), `${new Date().toISOString()}\n${reason ?? ""}\n`);
@@ -216,7 +216,7 @@ export async function disableExecutableSkill(slug: string, reason?: string): Pro
 }
 
 export async function enableExecutableSkill(slug: string): Promise<void> {
-  const dir = path.join(SKILLS_DIR, slug);
+  const dir = path.join(skillsDir(), slug);
   const f = path.join(dir, DISABLED_FILE);
   if (await pathExists(f)) {
     await fs.rm(f, { force: true });

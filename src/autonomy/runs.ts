@@ -14,13 +14,15 @@
  * cross-process lock.
  */
 import path from "node:path";
-import { LISA_HOME } from "../paths.js";
+import { lisaHome } from "../paths.js";
 import { appendLine, atomicWrite, readTextOrEmpty } from "../fs-utils.js";
 import { withFileLock } from "../soul/lock.js";
 
-export const AUTONOMY_DIR = path.join(LISA_HOME, "autonomy");
-const RUNS_FILE = path.join(AUTONOMY_DIR, "runs.jsonl");
-const RUNS_LOCK = path.join(AUTONOMY_DIR, "runs.lock");
+export function autonomyDir(): string {
+  return path.join(lisaHome(), "autonomy");
+}
+const RUNS_FILE = path.join(autonomyDir(), "runs.jsonl");
+const RUNS_LOCK = path.join(autonomyDir(), "runs.lock");
 const MAX_RUNS = 2000;
 
 /** Which self-driven mechanism produced the run. */
