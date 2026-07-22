@@ -35,6 +35,20 @@ export function homeForUid(uid: string): string {
   return path.join(lisaGlobalHome(), "users", uid);
 }
 
+/**
+ * The uid of the ACTIVE per-user scope, or null outside one. Derived from the
+ * scoped home path (…/users/<uid>) — the inverse of homeForUid, used by
+ * backends that key state by uid rather than by directory (Firestore, B9).
+ */
+export function scopedUid(): string | null {
+  const scoped = homeScope.getStore();
+  if (!scoped) return null;
+  const usersRoot = path.join(lisaGlobalHome(), "users") + path.sep;
+  if (!scoped.startsWith(usersRoot)) return null;
+  const rest = scoped.slice(usersRoot.length);
+  return rest && !rest.includes(path.sep) ? rest : null;
+}
+
 export function skillsDir(): string {
   return path.join(lisaHome(), "skills");
 }

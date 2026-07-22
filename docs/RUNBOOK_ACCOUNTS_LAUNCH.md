@@ -201,6 +201,23 @@ app now verifies the connection at sign-in time. Please review 1.1.
 - 急停：`gcloud run services update lisa-cloud --update-env-vars LISA_BILLING_KILL=1 …`
   （恢复时改回空值）。
 
+## （可选）多实例扩容 — Firestore 模式（B9）
+
+单实例（默认）什么都不用做。用户量上来后要 `max-instances > 1` 时：
+
+1. GCP 项目启用 Firestore：`gcloud services enable firestore.googleapis.com
+   --project oratis-491316`，并在 Console 里创建 **Native mode** 数据库
+   （区域选 us-central1，与 Cloud Run 同区）。
+2. Cloud Run 运行 SA（默认 compute SA）授予 `roles/datastore.user`。
+3. 部署时加：`LISA_FIRESTORE=1 MAX_INSTANCES=3 deploy/deploy.sh …`
+   （脚本会拒绝没有 LISA_FIRESTORE 的 MAX_INSTANCES>1）。
+
+切换后：账号表、余额、交易去重索引、全局日上限、per-uid turn lease 全部走
+Firestore CAS；soul/会话文件仍在 GCS per-uid 子树（turn lease 保证同一账号
+同时只有一个实例在跑 turn）。注意：从文件切 Firestore 是**空库开始**——现有
+账号需要一次性导入（`accounts.json` → `lisa-global/accounts` 文档），切换前
+问我要导入脚本即可。
+
 ## 依赖关系速查
 
 ```

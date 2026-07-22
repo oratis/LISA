@@ -72,6 +72,10 @@ ENVS="^##^LISA_EDITION=cloud##LISA_WEB_TOKEN=${LISA_WEB_TOKEN}"
 [ -n "${LISA_MAIL_FROM:-}" ]        && ENVS="${ENVS}##LISA_MAIL_FROM=${LISA_MAIL_FROM}"
 [ -n "${STRIPE_SECRET_KEY:-}" ]     && ENVS="${ENVS}##STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}"
 [ -n "${STRIPE_WEBHOOK_SECRET:-}" ] && ENVS="${ENVS}##STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}"
+#   LISA_FIRESTORE=1  move accounts/balances/tx-index/day-cap/turn-lease to Firestore
+#   (enable the API + Native-mode DB in the project first; unlocks MAX_INSTANCES>1)
+[ -n "${LISA_FIRESTORE:-}" ]         && ENVS="${ENVS}##LISA_FIRESTORE=${LISA_FIRESTORE}"
+[ -n "${LISA_FIRESTORE_PROJECT:-}" ] && ENVS="${ENVS}##LISA_FIRESTORE_PROJECT=${LISA_FIRESTORE_PROJECT}"
 [ -n "${LISA_RPM_LIMIT:-}" ]      && ENVS="${ENVS}##LISA_RPM_LIMIT=${LISA_RPM_LIMIT}"
 [ -n "${LISA_DAILY_CAP_USD:-}" ]  && ENVS="${ENVS}##LISA_DAILY_CAP_USD=${LISA_DAILY_CAP_USD}"
 [ -n "${LISA_BILLING_KILL:-}" ]   && ENVS="${ENVS}##LISA_BILLING_KILL=${LISA_BILLING_KILL}"
@@ -105,12 +109,18 @@ cleanup() { rm -f ./Dockerfile ./.gcloudignore; }
 trap cleanup EXIT
 
 # Sizing (PLAN_ACCOUNTS_BILLING §6.7): 2 vCPU / 4Gi headroom for the account era;
-# --timeout 3600 so SSE chat streams aren't cut at 5 min. min=max=1 stays until
-# the per-uid + Firestore work (B2) removes the single-writer constraint.
-echo "→ deploying $SERVICE to $PROJECT/$REGION (model ${LISA_MODEL:-claude-default}, /data←gs://$BUCKET, min=max=1 single-writer, allow-unauthenticated; the app's token gate is the auth)"
+# --timeout 3600 so SSE chat streams aren't cut at 5 min. MAX_INSTANCES stays 1
+# unless LISA_FIRESTORE=1 moved the shared state off local files (B9) — the
+# guard below refuses a footgun scale-out.
+MAX_INSTANCES="${MAX_INSTANCES:-1}"
+if [ "$MAX_INSTANCES" != "1" ] && [ -z "${LISA_FIRESTORE:-}" ]; then
+  echo "✗ MAX_INSTANCES=$MAX_INSTANCES requires LISA_FIRESTORE=1 (file-backed accounts/balances are single-writer)" >&2
+  exit 1
+fi
+echo "→ deploying $SERVICE to $PROJECT/$REGION (model ${LISA_MODEL:-claude-default}, /data←gs://$BUCKET, max-instances=$MAX_INSTANCES, allow-unauthenticated; the app's token gate is the auth)"
 gcloud run deploy "$SERVICE" \
   --source . --project "$PROJECT" --region "$REGION" --quiet \
-  --allow-unauthenticated --min-instances 1 --max-instances 1 \
+  --allow-unauthenticated --min-instances 1 --max-instances "$MAX_INSTANCES" \
   --execution-environment gen2 \
   --add-volume "name=soul,type=cloud-storage,bucket=$BUCKET" \
   --add-volume-mount "volume=soul,mount-path=/data" \

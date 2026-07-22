@@ -17,41 +17,41 @@ beforeEach(() => {
 });
 
 describe("email verification", () => {
-  test("begin → confirm levels the account to verified and clears the token", () => {
-    const rec = createEmailAccount("a@b.co", "password-123");
+  test("begin → confirm levels the account to verified and clears the token", async () => {
+    const rec = await createEmailAccount("a@b.co", "password-123");
     assert.equal(rec.verified, false);
-    const raw = beginEmailVerification(rec.uid, 1000);
+    const raw = await beginEmailVerification(rec.uid, 1000);
     assert.ok(raw && raw.length >= 32);
     // raw token never persisted, only its hash
     assert.equal(fs.readFileSync(FILE, "utf8").includes(raw!), false);
-    const confirmed = confirmEmailVerification(raw!, 2000);
+    const confirmed = await confirmEmailVerification(raw!, 2000);
     assert.equal(confirmed?.uid, rec.uid);
-    const after = getAccount(rec.uid);
+    const after = await getAccount(rec.uid);
     assert.equal(after?.verified, true);
     assert.equal(after?.verifyTokenHash, undefined);
     // replay of the used token fails
-    assert.equal(confirmEmailVerification(raw!, 3000), null);
+    assert.equal(await confirmEmailVerification(raw!, 3000), null);
   });
 
-  test("expired / wrong tokens fail; re-begin rotates the token", () => {
-    const rec = createEmailAccount("c@d.co", "password-123");
-    const raw1 = beginEmailVerification(rec.uid, 1000)!;
+  test("expired / wrong tokens fail; re-begin rotates the token", async () => {
+    const rec = await createEmailAccount("c@d.co", "password-123");
+    const raw1 = (await beginEmailVerification(rec.uid, 1000))!;
     // expired (25h later)
-    assert.equal(confirmEmailVerification(raw1, 1000 + 25 * 60 * 60 * 1000), null);
+    assert.equal(await confirmEmailVerification(raw1, 1000 + 25 * 60 * 60 * 1000), null);
     // fresh token supersedes the old one
-    const raw2 = beginEmailVerification(rec.uid, 2000)!;
+    const raw2 = (await beginEmailVerification(rec.uid, 2000))!;
     assert.notEqual(raw1, raw2);
-    assert.equal(confirmEmailVerification(raw1, 3000), null);
-    assert.ok(confirmEmailVerification(raw2, 3000));
+    assert.equal(await confirmEmailVerification(raw1, 3000), null);
+    assert.ok(await confirmEmailVerification(raw2, 3000));
   });
 
-  test("apple accounts and already-verified accounts can't begin verification", () => {
-    const apple = upsertAppleAccount("001.xyz", undefined);
-    assert.equal(beginEmailVerification(apple.uid), null);
-    const rec = createEmailAccount("e@f.co", "password-123");
-    const raw = beginEmailVerification(rec.uid)!;
-    confirmEmailVerification(raw);
-    assert.equal(beginEmailVerification(rec.uid), null);
+  test("apple accounts and already-verified accounts can't begin verification", async () => {
+    const apple = await upsertAppleAccount("001.xyz", undefined);
+    assert.equal(await beginEmailVerification(apple.uid), null);
+    const rec = await createEmailAccount("e@f.co", "password-123");
+    const raw = (await beginEmailVerification(rec.uid))!;
+    await confirmEmailVerification(raw);
+    assert.equal(await beginEmailVerification(rec.uid), null);
   });
 });
 

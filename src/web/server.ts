@@ -45,6 +45,7 @@ import { stripeConfig, verifyStripeSignature, classifyStripeEvent, createCheckou
 import { ACCOUNT_HTML } from "./account-page.js";
 import { handleGateway } from "./gateway.js";
 import { preflightLimits } from "../billing/limits.js";
+import { acquireTurnLease, releaseTurnLease } from "../cloud/turn-lease.js";
 import { ROOM_HTML } from "./room.js";
 import { MAIN_HTML } from "./lisa-html.js";
 import { OrchestratorHub, loadOrchestratorConfig } from "../integrations/hub.js";
@@ -295,7 +296,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const idx = process.env.LISA_REVIEWER_SEED.indexOf(":");
       const email = process.env.LISA_REVIEWER_SEED.slice(0, idx).trim();
       const password = process.env.LISA_REVIEWER_SEED.slice(idx + 1);
-      const acct = ensureSeededAccount(email, password);
+      const acct = await ensureSeededAccount(email, password);
       await homeScope.run(homeForUid(acct.uid), async () => {
         const bal = await readBalance();
         if (bal.paidMicroUSD < 20_000_000 && !bal.purchases.some((p) => p.transactionId === "operator-seed")) {
@@ -894,7 +895,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         }
         // B1: mint a per-uid account session (no longer the shared LISA_WEB_TOKEN).
         // The uid keys per-user isolation (B2) and billing (B3+).
-        const acct = upsertAppleAccount(id.sub, id.email);
+        const acct = await upsertAppleAccount(id.sub, id.email);
         const session = mintSession(acct.uid, sessionSecret, { sv: acct.sessionVersion });
         res.writeHead(200, {
           "content-type": "application/json",
@@ -994,8 +995,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       try {
         const acct =
           url === "/api/auth/register"
-            ? createEmailAccount(email, password)
-            : verifyEmailLogin(email, password);
+            ? await createEmailAccount(email, password)
+            : await verifyEmailLogin(email, password);
         if (!acct) {
           res.writeHead(401, { "content-type": "application/json" });
           res.end(JSON.stringify({ error: "bad_credentials" }));
@@ -1004,7 +1005,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         // First registration: kick off email verification (B8a) — verifying
         // levels the free window from $1 to the full $5. Fire-and-forget.
         if (url === "/api/auth/register") {
-          const raw = beginEmailVerification(acct.uid);
+          const raw = await beginEmailVerification(acct.uid);
           if (raw) void sendVerificationEmail(acct.email!, verifyLinkFor(req, raw));
         }
         const session = mintSession(acct.uid, sessionSecret, { sv: acct.sessionVersion });
@@ -1076,7 +1077,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       } catch {
         /* fall through */
       }
-      const acct = cloud && token ? confirmEmailVerification(token) : null;
+      const acct = cloud && token ? await confirmEmailVerification(token) : null;
       res.writeHead(acct ? 200 : 400, { "content-type": "text/html; charset=utf-8" });
       res.end(
         `<!doctype html><meta name="viewport" content="width=device-width, initial-scale=1">` +
@@ -1112,7 +1113,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       // account record, so deleted accounts lose access immediately.
       if (!authed && presented && sessionSecret && looksLikeSession(presented)) {
         const claims = verifySession(presented, sessionSecret);
-        if (claims && sessionAccountValid(claims.uid, claims.sv)) {
+        if (claims && (await sessionAccountValid(claims.uid, claims.sv))) {
           authed = true;
           accountUid = claims.uid;
           if (shouldRenew(claims)) {
@@ -1179,7 +1180,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
 
     // ── Account introspection + deletion (post-gate; PLAN_ACCOUNTS_BILLING B1) ──
     if (req.method === "GET" && url === "/api/auth/me") {
-      const acct = accountUid ? getAccount(accountUid) : null;
+      const acct = accountUid ? await getAccount(accountUid) : null;
       res.writeHead(200, { "content-type": "application/json" });
       // plan/tier is a placeholder until the quota engine (B4) lands.
       res.end(
@@ -1195,13 +1196,23 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // ── Inference gateway (B6): key-free managed LLM calls from signed-in
     // Macs/CLIs. Account sessions only — never the shared demo token.
     if (req.method === "POST" && (url.startsWith("/gw/anthropic/") || url.startsWith("/gw/openai/"))) {
-      const acct = cloud && accountUid ? getAccount(accountUid) : null;
+      const acct = cloud && accountUid ? await getAccount(accountUid) : null;
       if (!acct) {
         res.writeHead(403, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: "account_session_required" }));
         return;
       }
-      await handleGateway(req, res, url, acct);
+      const gwLease = await acquireTurnLease(acct.uid);
+      if (gwLease === null) {
+        res.writeHead(429, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "turn_in_progress", retryAfterSec: 15 }));
+        return;
+      }
+      try {
+        await handleGateway(req, res, url, acct);
+      } finally {
+        await releaseTurnLease(gwLease);
+      }
       return;
     }
 
@@ -1222,7 +1233,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         const payload = await verifyAppleJWS(jws);
         const tx = validateTransaction(payload);
         const credited = await creditTransaction(accountUid, tx);
-        const acct = getAccount(accountUid);
+        const acct = await getAccount(accountUid);
         const q = acct ? await quotaStatus(acct) : null;
         console.error(`[iap] credited ${credited} micro-USD to ${accountUid} (${tx.productId}, tx ${tx.transactionId}, ${tx.environment ?? "?"})`);
         res.writeHead(200, { "content-type": "application/json" });
@@ -1277,7 +1288,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     if (req.method === "GET" && url === "/api/billing/quota") {
       // The signed-in account's window/tier/balance — drives the quota bar +
       // paywall in every client (same numbers everywhere, §5.5).
-      const acct = accountUid ? getAccount(accountUid) : null;
+      const acct = accountUid ? await getAccount(accountUid) : null;
       if (!acct) {
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ available: false }));
@@ -1304,7 +1315,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
 
     if (req.method === "POST" && url === "/api/auth/verify/resend") {
       // Re-send the verification mail for the signed-in unverified email account.
-      const acct = accountUid ? getAccount(accountUid) : null;
+      const acct = accountUid ? await getAccount(accountUid) : null;
       if (!acct || acct.kind !== "email" || !acct.email) {
         res.writeHead(400, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: "email_account_required" }));
@@ -1315,7 +1326,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end(JSON.stringify({ ok: true, alreadyVerified: true }));
         return;
       }
-      const raw = beginEmailVerification(acct.uid);
+      const raw = await beginEmailVerification(acct.uid);
       const mail = raw ? await sendVerificationEmail(acct.email, verifyLinkFor(req, raw)) : null;
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, sent: mail?.sent ?? false }));
@@ -1330,7 +1341,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end(JSON.stringify({ error: "account_session_required" }));
         return;
       }
-      const removed = deleteAccount(accountUid);
+      const removed = await deleteAccount(accountUid);
       // Remove the per-uid home + in-memory context. The account record going
       // away already killed every session via the sv-check.
       try {
@@ -2817,7 +2828,8 @@ self.addEventListener('fetch', (event) => {
       // handshake so exhaustion is a clean HTTP 402 the clients can route to
       // a paywall (structured body: error + resetAt + tier).
       let quotaBudgetMicroUSD: number | null = null;
-      const quotaAcct = cloud && accountUid ? getAccount(accountUid) : null;
+      let turnLease: import("../cloud/turn-lease.js").TurnLease | null = "off";
+      const quotaAcct = cloud && accountUid ? await getAccount(accountUid) : null;
       if (quotaAcct) {
         // Non-quota guards first (B7): kill switch, global daily cap, per-uid RPM.
         const limits = preflightLimits(quotaAcct.uid);
@@ -2839,6 +2851,14 @@ self.addEventListener('fetch', (event) => {
           return;
         }
         quotaBudgetMicroUSD = pre.budgetMicroUSD;
+        // Cross-instance serialization (B9): one metered turn per account at a
+        // time, even with max-instances > 1. No-op ("off") without Firestore.
+        turnLease = await acquireTurnLease(quotaAcct.uid);
+        if (turnLease === null) {
+          res.writeHead(429, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "turn_in_progress", retryAfterSec: 15 }));
+          return;
+        }
       }
       // User just talked — reset the idle watcher + stamp focus freshness.
       try { getIdleWatcher(60 * 60_000).tick(); } catch {}
@@ -2998,7 +3018,11 @@ self.addEventListener('fetch', (event) => {
         () => {},
         () => {},
       );
-      await job;
+      try {
+        await job;
+      } finally {
+        await releaseTurnLease(turnLease);
+      }
       return;
     }
 
