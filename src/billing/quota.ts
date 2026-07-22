@@ -196,7 +196,17 @@ export async function quotaStatus(acct: AccountRecord, now: number = Date.now())
 export type PrecheckResult =
   | { ok: true; /** budget hint for the agent's token breaker, micro-USD */ budgetMicroUSD: number }
   | { ok: false; error: "quota_exhausted"; resetAt: number; tier: QuotaTier }
-  | { ok: false; error: "premium_requires_balance"; tier: QuotaTier };
+  | { ok: false; error: "premium_requires_balance"; tier: QuotaTier }
+  | { ok: false; error: "billing_unavailable" };
+
+// Fail-closed on serving: flipped false when a balance-store write fails (e.g. a
+// full disk), so precheckTurn refuses NEW turns until a write succeeds — no
+// accumulating unbillable turns. A successful precheck/debit write clears it.
+let storeHealthy = true;
+/** True while the balance store is writable. See debitTurn / precheckTurn. */
+export function billingStoreHealthy(): boolean {
+  return storeHealthy;
+}
 
 /**
  * Gate one turn BEFORE it runs. Opens/rolls the window as a side effect (the
@@ -207,22 +217,35 @@ export async function precheckTurn(
   model: string,
   now: number = Date.now(),
 ): Promise<PrecheckResult> {
-  return updateBalance((state) => {
-    const tier = tierFor(acct, state, now);
-    if (modelTier(model) === "premium") {
-      // Premium never draws on the free window.
-      if (state.paidMicroUSD > 0) return { ok: true, budgetMicroUSD: state.paidMicroUSD };
-      return { ok: false, error: "premium_requires_balance", tier };
-    }
-    const w = liveWindow(state, now);
-    const allowance = windowAllowance(tier);
-    const freeLeft = allowance - w.spentMicroUSD;
-    const paid = Math.max(0, state.paidMicroUSD);
-    if (freeLeft <= 0 && paid <= 0) {
-      return { ok: false, error: "quota_exhausted", resetAt: w.start + WINDOW_MS, tier };
-    }
-    return { ok: true, budgetMicroUSD: Math.max(0, freeLeft) + paid };
-  });
+  try {
+    const result = await updateBalance((state): PrecheckResult => {
+      const tier = tierFor(acct, state, now);
+      if (modelTier(model) === "premium") {
+        // Premium never draws on the free window.
+        if (state.paidMicroUSD > 0) return { ok: true, budgetMicroUSD: state.paidMicroUSD };
+        return { ok: false, error: "premium_requires_balance", tier };
+      }
+      const w = liveWindow(state, now);
+      const allowance = windowAllowance(tier);
+      const freeLeft = allowance - w.spentMicroUSD;
+      const paid = Math.max(0, state.paidMicroUSD);
+      if (freeLeft <= 0 && paid <= 0) {
+        return { ok: false, error: "quota_exhausted", resetAt: w.start + WINDOW_MS, tier };
+      }
+      return { ok: true, budgetMicroUSD: Math.max(0, freeLeft) + paid };
+    });
+    storeHealthy = true; // this precheck just wrote the balance file → store is writable
+    return result;
+  } catch (err) {
+    // The store write (precheck opens/rolls the window as a side effect) failed
+    // — e.g. a full disk. Fail CLOSED on serving: refuse the turn cleanly rather
+    // than throwing a 500 or serving a turn we then can't bill.
+    storeHealthy = false;
+    console.error(
+      `[billing] precheck: balance store unwritable — refusing turn: ${(err as Error)?.message}`,
+    );
+    return { ok: false, error: "billing_unavailable" };
+  }
 }
 
 /**
@@ -237,7 +260,7 @@ export async function debitTurn(
   now: number = Date.now(),
 ): Promise<void> {
   if (microUSD <= 0) return;
-  await updateBalance((state) => {
+  const apply = (state: BalanceState): void => {
     if (modelTier(model) === "premium") {
       state.paidMicroUSD -= microUSD;
       return;
@@ -250,7 +273,30 @@ export async function debitTurn(
     w.spentMicroUSD += fromFree;
     const rest = microUSD - fromFree;
     if (rest > 0) state.paidMicroUSD -= rest;
-  });
+  };
+  // The debit runs AFTER the answer already shipped, so a lost write is a free
+  // turn. updateBalance is atomic (temp-write + rename) so a failed attempt
+  // persisted nothing — retry is safe, no double-debit. After the retries fail
+  // (a full disk / fd exhaustion mid-turn), make it LOUD so the spend is
+  // reconcilable from logs, and mark the store unhealthy so the next precheck
+  // refuses new turns until it recovers (no accumulating free turns).
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await updateBalance(apply);
+      storeHealthy = true;
+      return;
+    } catch (err) {
+      lastErr = err;
+      if (attempt < 2) await new Promise((r) => setTimeout(r, 50 * (attempt + 1)));
+    }
+  }
+  storeHealthy = false;
+  console.error(
+    `[billing] CRITICAL: debit of ${microUSD} µUSD for ${acct.uid} (${model}) failed — ` +
+      `balance store unwritable: ${(lastErr as Error)?.message}. Refusing new turns until it recovers.`,
+  );
+  throw lastErr;
 }
 
 /** Credit a purchase (B5 IAP calls this) and prune purchases older than 60d. */

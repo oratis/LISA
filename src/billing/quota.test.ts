@@ -110,3 +110,24 @@ describe("quota engine", () => {
     assert.equal(await clawbackPurchase("nope"), false);
   });
 });
+
+test("M1: an unwritable balance store fails CLOSED — precheck refuses, debit retries+throws, then recovers", { skip: process.platform === "win32" }, async () => {
+  const billing = path.join(TMP, "billing");
+  // Plant a FILE where the billing DIR belongs, so every balance-store write
+  // fails fast (ensureDir / atomicWrite) — a full disk / unwritable store.
+  fs.rmSync(billing, { recursive: true, force: true });
+  fs.writeFileSync(billing, "not a dir");
+
+  const pre = await precheckTurn(APPLE, "glm-4.6", T0);
+  assert.equal(pre.ok, false);
+  assert.equal((pre as { error: string }).error, "billing_unavailable");
+  assert.equal(quota.billingStoreHealthy(), false);
+  // The debit (post-answer) must NOT be silently lost: it throws after retries.
+  await assert.rejects(debitTurn(APPLE, "glm-4.6", 1_000_000, T0 + 1));
+
+  // Store recovers → serving resumes, health restored.
+  fs.rmSync(billing, { force: true });
+  const ok = await precheckTurn(APPLE, "glm-4.6", T0 + 2);
+  assert.equal(ok.ok, true);
+  assert.equal(quota.billingStoreHealthy(), true);
+});

@@ -2938,12 +2938,16 @@ self.addEventListener('fetch', (event) => {
         }
         const pre = await precheckTurn(quotaAcct, opts.model);
         if (!pre.ok) {
-          res.writeHead(402, { "content-type": "application/json" });
+          res.writeHead(pre.error === "billing_unavailable" ? 503 : 402, {
+            "content-type": "application/json",
+          });
           res.end(
             JSON.stringify(
               pre.error === "quota_exhausted"
                 ? { error: pre.error, resetAt: pre.resetAt, tier: pre.tier }
-                : { error: pre.error, tier: pre.tier },
+                : pre.error === "billing_unavailable"
+                  ? { error: pre.error }
+                  : { error: pre.error, tier: pre.tier },
             ),
           );
           return;
