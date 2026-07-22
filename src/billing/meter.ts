@@ -18,6 +18,7 @@ import { appendLine, readTextOrEmpty, atomicWrite } from "../fs-utils.js";
 import { withFileLock } from "../soul/lock.js";
 import type { ProviderUsage } from "../providers/types.js";
 import { costMicroUSD, PRICES_VERSION } from "./prices.js";
+import { globalSpendAdd } from "./limits.js";
 
 export function billingDir(): string {
   return path.join(lisaHome(), "billing");
@@ -72,10 +73,33 @@ export async function recordUsage(
   try {
     await appendLine(usageFile(), JSON.stringify(rec));
     void trimIfNeeded();
+    // Global daily cap accounting + anomaly alert (B7). Best-effort.
+    globalSpendAdd(rec.microUSD, now.getTime());
+    void alertIfAnomalous(now);
     return rec;
   } catch (err) {
     console.error(`[billing] usage record failed: ${(err as Error).message}`);
     return null;
+  }
+}
+
+// One alert per home per process-day: a single account burning > $10 face in a
+// day is worth an operator's eyes (PLAN §6.5).
+const ALERT_THRESHOLD_MICRO = 10_000_000;
+const alerted = new Set<string>();
+async function alertIfAnomalous(now: Date): Promise<void> {
+  try {
+    const key = `${lisaHome()}:${now.toISOString().slice(0, 10)}`;
+    if (alerted.has(key)) return;
+    const today = await summarizeUsage(new Date(now).setUTCHours(0, 0, 0, 0));
+    if (today.microUSD > ALERT_THRESHOLD_MICRO) {
+      alerted.add(key);
+      console.error(
+        `[billing] ⚠ anomaly: ${lisaHome()} spent ${(today.microUSD / 1e6).toFixed(2)} USD face today (${today.turns} turns)`,
+      );
+    }
+  } catch {
+    /* observability only */
   }
 }
 

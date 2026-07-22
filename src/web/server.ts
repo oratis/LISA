@@ -42,6 +42,7 @@ import { PRICES_VERSION, tokensAffordable } from "../billing/prices.js";
 import { precheckTurn, debitTurn, quotaStatus } from "../billing/quota.js";
 import { verifyAppleJWS, validateTransaction, creditTransaction, refundTransaction, IapError } from "../billing/iap.js";
 import { handleGateway } from "./gateway.js";
+import { preflightLimits } from "../billing/limits.js";
 import { ROOM_HTML } from "./room.js";
 import { MAIN_HTML } from "./lisa-html.js";
 import { OrchestratorHub, loadOrchestratorConfig } from "../integrations/hub.js";
@@ -86,7 +87,9 @@ import {
   deleteAccount,
   getAccount,
   sessionAccountValid,
+  ensureSeededAccount,
 } from "./accounts.js";
+import { readBalance, creditPurchase } from "../billing/quota.js";
 import { PushBridge, listPush, registerPush, unregisterPush, setPushPrefs, registerLiveActivity, unregisterLiveActivity, type PushPrefs } from "./push.js";
 import { SenseService } from "../sense/service.js";
 import { ScreenSource } from "../sense/screen.js";
@@ -270,6 +273,27 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // cloud edition mints/verifies account sessions today — the Mac edition gains
   // a client-side use in B6 (managed inference).
   const sessionSecret = isCloud() ? loadOrCreateSessionSecret() : null;
+  // App Review demo account (B7): LISA_REVIEWER_SEED="email:password" creates
+  // (idempotently) a verified email account topped up to a $20 balance —
+  // Tier 2, premium models included — so the ASC "Sign-in required" fields are
+  // real credentials. The password itself is never rotated here.
+  if (isCloud() && process.env.LISA_REVIEWER_SEED?.includes(":")) {
+    try {
+      const idx = process.env.LISA_REVIEWER_SEED.indexOf(":");
+      const email = process.env.LISA_REVIEWER_SEED.slice(0, idx).trim();
+      const password = process.env.LISA_REVIEWER_SEED.slice(idx + 1);
+      const acct = ensureSeededAccount(email, password);
+      await homeScope.run(homeForUid(acct.uid), async () => {
+        const bal = await readBalance();
+        if (bal.paidMicroUSD < 20_000_000 && !bal.purchases.some((p) => p.transactionId === "operator-seed")) {
+          await creditPurchase({ at: Date.now(), microUSD: 20_000_000, transactionId: "operator-seed" });
+        }
+      });
+      console.error(`[accounts] reviewer demo account ready: ${email} (${acct.uid})`);
+    } catch (e) {
+      console.error(`[accounts] reviewer seed failed: ${(e as Error).message}`);
+    }
+  }
   if (!isLoopbackAddress(host) && !webToken) {
     throw new Error(
       `refusing to bind ${host} without LISA_WEB_TOKEN — every endpoint drives a ` +
@@ -2613,6 +2637,13 @@ self.addEventListener('fetch', (event) => {
       let quotaBudgetMicroUSD: number | null = null;
       const quotaAcct = cloud && accountUid ? getAccount(accountUid) : null;
       if (quotaAcct) {
+        // Non-quota guards first (B7): kill switch, global daily cap, per-uid RPM.
+        const limits = preflightLimits(quotaAcct.uid);
+        if (!limits.ok) {
+          res.writeHead(limits.status, { "content-type": "application/json" });
+          res.end(JSON.stringify(limits.body));
+          return;
+        }
         const pre = await precheckTurn(quotaAcct, opts.model);
         if (!pre.ok) {
           res.writeHead(402, { "content-type": "application/json" });
