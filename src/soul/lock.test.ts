@@ -121,4 +121,46 @@ describe("withFileLock", () => {
     const out = await withFileLock(lp, async () => "recovered", { timeoutMs: 1000 });
     assert.equal(out, "recovered");
   });
+
+  // gcsfuse (Cloud Run's /data volume) has no hard links: link() → ENOSYS.
+  // The O_EXCL fallback must keep both acquisition and mutual exclusion.
+  describe("link() unsupported (gcsfuse)", () => {
+    const realLink = fsp.link;
+    before(() => {
+      fsp.link = async () => {
+        const err = new Error("ENOSYS: function not implemented, link") as NodeJS.ErrnoException;
+        err.code = "ENOSYS";
+        throw err;
+      };
+    });
+    after(() => {
+      fsp.link = realLink;
+    });
+
+    test("acquires and releases via the O_EXCL fallback", async () => {
+      const lp = lockPath();
+      const out = await withFileLock(lp, async () => "fallback", { timeoutMs: 1000 });
+      assert.equal(out, "fallback");
+      await assert.rejects(() => fsp.stat(lp), /ENOENT/, "lock file should be gone");
+    });
+
+    test("still mutually excludes a second acquirer", async () => {
+      const lp = lockPath();
+      let release!: () => void;
+      const held = new Promise<void>((r) => (release = r));
+      let acquired!: () => void;
+      const inside = new Promise<void>((r) => (acquired = r));
+      const holder = withFileLock(lp, async () => {
+        acquired();
+        await held;
+      }, { staleMs: 60_000 });
+      await inside;
+      await assert.rejects(
+        () => withFileLock(lp, async () => "never", { timeoutMs: 300, pollMs: 10, staleMs: 60_000 }),
+        /timed out acquiring lock/,
+      );
+      release();
+      await holder;
+    });
+  });
 });
