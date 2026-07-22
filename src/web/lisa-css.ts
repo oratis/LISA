@@ -378,6 +378,108 @@ export const MAIN_CSS = `  :root {
     background: rgba(0,0,0,0.25);
     color: var(--fg);
   }
+  /* ══ Control view: session roster (polished, clickable) ══════════ */
+  .ctrl-policy { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+  .ctrl-list { display: flex; flex-direction: column; gap: 8px; }
+  .ctrl-row {
+    position: relative;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 4px 12px;
+    padding: 12px 15px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-new);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: background 120ms ease, border-color 120ms ease, transform 80ms ease;
+  }
+  .ctrl-row:hover { background: var(--bg-card-strong); border-color: var(--border-strong); }
+  .ctrl-row:active { transform: translateY(1px); }
+  .ctrl-row .cr-pip { width: 9px; height: 9px; border-radius: 50%; background: var(--fg-faint); }
+  .ctrl-row .cr-pip.working { background: var(--claude); animation: breathe 2.6s ease-in-out infinite; }
+  .ctrl-row .cr-pip.waiting { background: var(--warm); animation: needsYou 2s ease-in-out infinite; }
+  .ctrl-row .cr-pip.error { background: var(--err-color); }
+  .ctrl-row .cr-pip.done { background: var(--proactive); }
+  .ctrl-row .cr-name { display: flex; align-items: center; gap: 7px; min-width: 0; }
+  .ctrl-row .cr-id {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12.5px; font-weight: 600; color: var(--fg);
+    overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  }
+  .ctrl-row .cr-badge {
+    flex-shrink: 0;
+    font-size: 9px; font-weight: 700; letter-spacing: 0.02em; text-transform: lowercase;
+    color: var(--claude); background: rgba(255,140,66,0.12);
+    border: 1px solid rgba(255,140,66,0.22); border-radius: 999px; padding: 1px 6px;
+  }
+  .ctrl-row .cr-arrow { color: var(--fg-faint); font-size: 13px; margin-left: 2px; opacity: 0; transition: opacity 120ms ease; }
+  .ctrl-row:hover .cr-arrow { opacity: 1; }
+  .ctrl-row .cr-sub {
+    grid-column: 2 / -1; margin-top: 3px;
+    font-size: 10.5px; color: var(--fg-3);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  }
+  /* Status chip (right) */
+  .st-chip {
+    flex-shrink: 0;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+    border-radius: 999px; padding: 3px 9px;
+    border: 1px solid var(--border-new); color: var(--fg-3); background: var(--bg-3);
+  }
+  .st-chip.working { color: var(--claude); border-color: rgba(255,140,66,0.4); background: rgba(255,140,66,0.12); }
+  .st-chip.waiting { color: var(--warm); border-color: rgba(255,183,77,0.4); background: rgba(255,183,77,0.12); }
+  .st-chip.error   { color: var(--err-color); border-color: rgba(255,85,119,0.45); background: rgba(255,85,119,0.13); }
+  .st-chip.done    { color: var(--proactive); border-color: var(--proactive-glow); background: var(--proactive-soft); }
+  /* Problem / pending rows: coloured left accent + inline line */
+  .ctrl-row.problem { border-color: rgba(255,85,119,0.4); }
+  .ctrl-row.pending { border-color: rgba(255,183,77,0.45); }
+  .ctrl-row.problem::before, .ctrl-row.pending::before {
+    content: ""; position: absolute; left: 0; top: 11px; bottom: 11px; width: 3px;
+    border-radius: 0 3px 3px 0;
+  }
+  .ctrl-row.problem::before { background: var(--err-color); }
+  .ctrl-row.pending::before { background: var(--warm); }
+  .ctrl-row .cr-err {
+    grid-column: 2 / -1; margin-top: 6px;
+    font-size: 11px; color: var(--err-color);
+    overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  }
+  .ctrl-row .cr-pend { grid-column: 2 / -1; margin-top: 7px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 11px; color: var(--warm); }
+  .ctrl-row .cr-quick {
+    font-family: inherit; font-size: 10.5px; font-weight: 600;
+    padding: 3px 10px; border-radius: 7px; cursor: pointer;
+    border: 1px solid var(--border-new); background: var(--bg-3); color: var(--fg);
+  }
+  .ctrl-row .cr-quick.ok { color: var(--proactive); border-color: var(--proactive-glow); }
+  .ctrl-row .cr-quick.no { color: var(--err-color); border-color: rgba(255,85,119,0.4); }
+  .ctrl-row .cr-quick:hover { background: rgba(255,255,255,0.09); }
+
+  /* ══ Session detail (inspector modal) ════════════════════════════ */
+  .sd { display: flex; flex-direction: column; gap: 14px; }
+  .sd-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .sd-id { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; color: var(--fg-3); overflow-wrap: anywhere; }
+  .sd-banner { border-radius: 10px; padding: 11px 13px; font-size: 12.5px; line-height: 1.5; display: flex; flex-direction: column; gap: 9px; }
+  .sd-banner.err  { color: var(--err-color); background: rgba(255,85,119,0.10); border: 1px solid rgba(255,85,119,0.35); }
+  .sd-banner.pend { color: var(--warm); background: rgba(255,183,77,0.10); border: 1px solid rgba(255,183,77,0.35); }
+  .sd-banner .sd-b-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .sd-grid { display: grid; grid-template-columns: max-content 1fr; gap: 8px 16px; font-size: 12.5px; margin: 0; }
+  .sd-grid dt { color: var(--fg-3); }
+  .sd-grid dd { margin: 0; color: var(--fg); overflow-wrap: anywhere; }
+  .sd-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+  .sd-chip { font-size: 10.5px; color: var(--fg-2); background: var(--bg-3); border: 1px solid var(--border-new); border-radius: 6px; padding: 1px 7px; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .sd-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; border-top: 1px solid var(--border-new); padding-top: 13px; }
+  .sd-send { flex: 1; min-width: 150px; font-family: inherit; font-size: 12.5px; padding: 8px 11px; border-radius: 8px; border: 1px solid var(--border-new); background: var(--bg-3); color: var(--fg); }
+  .sd-send:focus { outline: none; border-color: var(--accent-glow); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .sd-btn { font-family: inherit; font-size: 12px; font-weight: 600; padding: 8px 13px; border-radius: 8px; cursor: pointer; border: 1px solid var(--border-new); background: var(--bg-3); color: var(--fg); transition: filter 120ms ease; }
+  .sd-btn.primary { background: var(--accent); border-color: var(--accent); color: #06141b; }
+  .sd-btn.danger { color: var(--err-color); border-color: rgba(255,85,119,0.4); }
+  .sd-btn.ok { color: var(--proactive); border-color: var(--proactive-glow); }
+  .sd-btn:hover { filter: brightness(1.1); }
+  .sd-out { margin: 0; max-height: 240px; overflow: auto; background: rgba(0,0,0,0.3); border: 1px solid var(--border-new); border-radius: 8px; padding: 10px; font-size: 11px; white-space: pre-wrap; word-break: break-word; color: var(--fg-2); font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .sd-note { font-size: 11.5px; color: var(--fg-3); font-style: italic; }
+
   /* "Delegate a task" → a single full-width button that opens a modal. */
   .delegate-btn {
     width: 100%;
