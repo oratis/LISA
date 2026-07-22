@@ -88,7 +88,10 @@ import {
   getAccount,
   sessionAccountValid,
   ensureSeededAccount,
+  beginEmailVerification,
+  confirmEmailVerification,
 } from "./accounts.js";
+import { sendVerificationEmail } from "./mailer.js";
 import { readBalance, creditPurchase } from "../billing/quota.js";
 import { PushBridge, listPush, registerPush, unregisterPush, setPushPrefs, registerLiveActivity, unregisterLiveActivity, type PushPrefs } from "./push.js";
 import { SenseService } from "../sense/service.js";
@@ -214,6 +217,13 @@ function presentedToken(req: http.IncomingMessage, url: string): string | null {
     /* fall through */
   }
   return null;
+}
+
+/** The absolute /verify link for a raw token, derived from the request host. */
+function verifyLinkFor(req: http.IncomingMessage, rawToken: string): string {
+  const host = req.headers.host ?? "cloud.meetlisa.ai";
+  const proto = (req.headers["x-forwarded-proto"] as string | undefined) ?? "https";
+  return `${proto}://${host}/verify?token=${rawToken}`;
 }
 
 /** Read and JSON-parse a request body (tolerant: bad/empty JSON ⇒ {}). */
@@ -902,6 +912,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           res.end(JSON.stringify({ error: "bad_credentials" }));
           return;
         }
+        // First registration: kick off email verification (B8a) — verifying
+        // levels the free window from $1 to the full $5. Fire-and-forget.
+        if (url === "/api/auth/register") {
+          const raw = beginEmailVerification(acct.uid);
+          if (raw) void sendVerificationEmail(acct.email!, verifyLinkFor(req, raw));
+        }
         const session = mintSession(acct.uid, sessionSecret, { sv: acct.sessionVersion });
         res.writeHead(200, {
           "content-type": "application/json",
@@ -959,6 +975,27 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.writeHead(401, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: code }));
       }
+      return;
+    }
+
+    // Email-verification landing (pre-gate: the token IS the credential; the
+    // user clicks it from their mail client, no session cookie there).
+    if (req.method === "GET" && url.startsWith("/verify")) {
+      let token = "";
+      try {
+        token = new URL(url, "http://localhost").searchParams.get("token")?.trim() ?? "";
+      } catch {
+        /* fall through */
+      }
+      const acct = cloud && token ? confirmEmailVerification(token) : null;
+      res.writeHead(acct ? 200 : 400, { "content-type": "text/html; charset=utf-8" });
+      res.end(
+        `<!doctype html><meta name="viewport" content="width=device-width, initial-scale=1">` +
+          `<body style="font: 16px -apple-system, sans-serif; background:#0b0e13; color:#e6e9ef; display:grid; place-items:center; min-height:95vh">` +
+          (acct
+            ? `<div style="text-align:center"><h2>✓ Email verified</h2><p>Your free session allowance is now the full amount.<br>You can close this page and return to LISA.</p></div>`
+            : `<div style="text-align:center"><h2>Link invalid or expired</h2><p>Request a fresh verification email from Settings in the app.</p></div>`),
+      );
       return;
     }
 
@@ -1137,6 +1174,26 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       ]);
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ window12h, today, pricesVersion: PRICES_VERSION }));
+      return;
+    }
+
+    if (req.method === "POST" && url === "/api/auth/verify/resend") {
+      // Re-send the verification mail for the signed-in unverified email account.
+      const acct = accountUid ? getAccount(accountUid) : null;
+      if (!acct || acct.kind !== "email" || !acct.email) {
+        res.writeHead(400, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "email_account_required" }));
+        return;
+      }
+      if (acct.verified) {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true, alreadyVerified: true }));
+        return;
+      }
+      const raw = beginEmailVerification(acct.uid);
+      const mail = raw ? await sendVerificationEmail(acct.email, verifyLinkFor(req, raw)) : null;
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, sent: mail?.sent ?? false }));
       return;
     }
 

@@ -157,6 +157,14 @@ final class LisaClient {
         _ = try await decode("/api/account", method: "DELETE", as: R.self)
     }
 
+    /// Re-send the email-verification mail (`POST /api/auth/verify/resend`).
+    /// Returns true when a mail actually went out.
+    func resendVerification() async throws -> Bool {
+        struct R: Decodable { let ok: Bool; let sent: Bool?; let alreadyVerified: Bool? }
+        let r = try await decode("/api/auth/verify/resend", method: "POST", as: R.self)
+        return r.sent ?? (r.alreadyVerified ?? false)
+    }
+
     /// URL for a server asset (e.g. a mood portrait at /assets/lisa/<slug>.png),
     /// carrying the token as a query param so AsyncImage — which can't set an
     /// Authorization header — still authenticates against a non-loopback server.
