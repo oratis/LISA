@@ -116,6 +116,7 @@ import {
   appleSignInConfig,
   subAllowed,
   AppleAuthError,
+  audienceForClient,
 } from "./cloudAuth.js";
 import { detectLanHost, buildPairUrl } from "./pairing.js";
 import { qrSvg } from "./qr-svg.js";
@@ -866,9 +867,19 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end("identityToken required");
         return;
       }
+      // Web tokens (Apple JS popup on the login page, B8b) carry the Services
+      // ID as `aud`, native ones the bundle id. Reject a surface that isn't
+      // configured rather than verifying against the wrong audience.
+      const client = payload.client === "web" ? "web" as const : "native" as const;
+      const audience = audienceForClient(cfg, client);
+      if (!audience) {
+        res.writeHead(404, { "content-type": "text/plain" });
+        res.end("apple sign-in not available for this client");
+        return;
+      }
       try {
         const id = await verifyAppleIdentityToken(idToken, {
-          audience: cfg.audience,
+          audience,
           fetchKeys: fetchAppleKeys,
         });
         if (!subAllowed(id.sub, cfg)) {
@@ -880,13 +891,33 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         // The uid keys per-user isolation (B2) and billing (B3+).
         const acct = upsertAppleAccount(id.sub, id.email);
         const session = mintSession(acct.uid, sessionSecret, { sv: acct.sessionVersion });
-        res.writeHead(200, { "content-type": "application/json" });
+        res.writeHead(200, {
+          "content-type": "application/json",
+          // Web clients continue via cookie; Bearer clients ignore it.
+          "set-cookie": `lisa_token=${encodeURIComponent(session)}; HttpOnly; SameSite=Strict; Path=/`,
+        });
         res.end(JSON.stringify({ ok: true, token: session, uid: acct.uid }));
       } catch (e) {
         const msg = e instanceof AppleAuthError ? e.message : "verification failed";
         res.writeHead(401, { "content-type": "text/plain" });
         res.end(`apple sign-in rejected: ${msg}`);
       }
+      return;
+    }
+
+    // Public sign-in surface config (pre-gate): the login page asks which
+    // buttons to draw. Never exposes secrets — just feature flags + ids.
+    if (req.method === "GET" && url === "/api/auth/config") {
+      const cfg = appleSignInConfig();
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          accounts: cloud && !!sessionSecret,
+          appleWeb: cloud && cfg.enabled && !!cfg.webServicesId
+            ? { servicesId: cfg.webServicesId }
+            : null,
+        }),
+      );
       return;
     }
 

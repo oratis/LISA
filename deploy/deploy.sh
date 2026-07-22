@@ -58,6 +58,9 @@ ENVS="^##^LISA_EDITION=cloud##LISA_WEB_TOKEN=${LISA_WEB_TOKEN}"
 [ -n "${LISA_CLOUD_APPLE_SIGNIN:-}" ] && ENVS="${ENVS}##LISA_CLOUD_APPLE_SIGNIN=${LISA_CLOUD_APPLE_SIGNIN}"
 [ -n "${LISA_CLOUD_APPLE_SUBS:-}" ]   && ENVS="${ENVS}##LISA_CLOUD_APPLE_SUBS=${LISA_CLOUD_APPLE_SUBS}"
 [ -n "${LISA_CLOUD_APPLE_AUD:-}" ]    && ENVS="${ENVS}##LISA_CLOUD_APPLE_AUD=${LISA_CLOUD_APPLE_AUD}"
+# Sign in with Apple on the WEB login page (B8b): the Services ID registered in
+# the Apple portal for cloud.meetlisa.ai (needs domain verification there).
+[ -n "${LISA_CLOUD_APPLE_WEB_SID:-}" ] && ENVS="${ENVS}##LISA_CLOUD_APPLE_WEB_SID=${LISA_CLOUD_APPLE_WEB_SID}"
 # Accounts & billing era (PLAN_ACCOUNTS_BILLING B1–B7), all optional:
 #   LISA_REVIEWER_SEED="email:password"  idempotent App-Review demo account (verified, $20/Tier-2)
 #   LISA_RPM_LIMIT / LISA_DAILY_CAP_USD  abuse guards (defaults 20 rpm / $200 per day)

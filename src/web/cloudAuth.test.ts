@@ -5,6 +5,7 @@ import {
   verifyAppleIdentityToken,
   AppleAuthError,
   appleSignInConfig,
+  audienceForClient,
   subAllowed,
   type AppleJWK,
 } from "./cloudAuth.js";
@@ -118,4 +119,18 @@ test("subAllowed: empty allowlist admits anyone; non-empty restricts", () => {
   assert.equal(subAllowed("x", { enabled: true, audience: AUD, allowedSubs: [] }), true);
   assert.equal(subAllowed("x", { enabled: true, audience: AUD, allowedSubs: ["y"] }), false);
   assert.equal(subAllowed("y", { enabled: true, audience: AUD, allowedSubs: ["y"] }), true);
+});
+
+test("webServicesId parses from env; absent → null (B8b)", () => {
+  const on = appleSignInConfig({ LISA_CLOUD_APPLE_WEB_SID: " ai.meetlisa.web " } as NodeJS.ProcessEnv);
+  assert.equal(on.webServicesId, "ai.meetlisa.web");
+  assert.equal(appleSignInConfig({} as NodeJS.ProcessEnv).webServicesId, null);
+});
+
+test("audienceForClient picks the surface's aud and rejects unconfigured web (B8b)", () => {
+  const cfg = appleSignInConfig({ LISA_CLOUD_APPLE_WEB_SID: "ai.meetlisa.web" } as NodeJS.ProcessEnv);
+  assert.equal(audienceForClient(cfg, "native"), "ai.meetlisa.main");
+  assert.equal(audienceForClient(cfg, "web"), "ai.meetlisa.web");
+  const bare = appleSignInConfig({} as NodeJS.ProcessEnv);
+  assert.equal(audienceForClient(bare, "web"), null);
 });

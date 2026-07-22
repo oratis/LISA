@@ -42,6 +42,13 @@ export const LOGIN_HTML = `<!doctype html>
   }
   button.secondary { background: transparent; color: #8a93a5; font-weight: 500; margin-top: 8px; }
   button:disabled { opacity: .5; cursor: default; }
+  #apple-wrap { display: none; margin-bottom: 18px; }
+  #apple-btn {
+    width: 100%; padding: 12px; border: 0; border-radius: 10px; cursor: pointer;
+    background: #fff; color: #000; font-size: 16px; font-weight: 600;
+  }
+  .divider { display: none; align-items: center; gap: 10px; color: #5d6575; font-size: 12px; margin-bottom: 4px; }
+  .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: #232a36; }
   .err { color: #ff7a7a; font-size: 13px; margin-top: 12px; min-height: 1.2em; }
   .hint { color: #5d6575; font-size: 12px; margin-top: 18px; }
 </style>
@@ -50,6 +57,10 @@ export const LOGIN_HTML = `<!doctype html>
 <div class="card">
   <h1>LISA Cloud</h1>
   <p class="sub">Sign in to reach your Lisa. A free usage allowance refreshes every 12 hours.</p>
+  <div id="apple-wrap">
+    <button id="apple-btn" type="button"> Sign in with Apple</button>
+  </div>
+  <div class="divider" id="divider">or use email</div>
   <form id="f">
     <label for="email">Email</label>
     <input id="email" type="email" autocomplete="username" required>
@@ -90,6 +101,46 @@ export const LOGIN_HTML = `<!doctype html>
   document.getElementById("register").addEventListener("click", () => {
     if (f.reportValidity()) auth("/api/auth/register");
   });
+
+  // Sign in with Apple on the web (B8b): drawn only when the instance has a
+  // Services ID configured (GET /api/auth/config). Apple's JS runs a popup and
+  // hands back an id_token; the server verifies it against the web audience.
+  fetch("/api/auth/config").then((r) => r.json()).then((cfg) => {
+    if (!cfg || !cfg.appleWeb || !cfg.appleWeb.servicesId) return;
+    const s = document.createElement("script");
+    s.src = "https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js";
+    s.onload = () => {
+      window.AppleID.auth.init({
+        clientId: cfg.appleWeb.servicesId,
+        scope: "name email",
+        redirectURI: location.origin,
+        usePopup: true,
+      });
+      document.getElementById("apple-wrap").style.display = "block";
+      document.getElementById("divider").style.display = "flex";
+      document.getElementById("apple-btn").addEventListener("click", async () => {
+        err.textContent = "";
+        try {
+          const auth = await window.AppleID.auth.signIn();
+          const idToken = auth && auth.authorization && auth.authorization.id_token;
+          if (!idToken) { err.textContent = "Apple didn't return a token."; return; }
+          const res = await fetch("/api/auth/apple", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ identityToken: idToken, client: "web" }),
+          });
+          if (res.ok) { location.replace("/"); return; }
+          err.textContent = "Apple sign-in was rejected (" + res.status + ").";
+        } catch (e) {
+          // popup_closed_by_user etc. — silent unless a real failure
+          if (e && e.error && e.error !== "popup_closed_by_user") {
+            err.textContent = "Apple sign-in failed.";
+          }
+        }
+      });
+    };
+    document.head.appendChild(s);
+  }).catch(() => {});
 </script>
 </body>
 </html>
