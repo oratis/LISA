@@ -501,6 +501,14 @@ export class PushBridge {
     );
   }
 
+  /** Billing anomaly (B8d): a single account crossed the daily face threshold. */
+  onBillingAnomaly(text: string): void {
+    this.fire(
+      { pref: "error", title: "LISA billing anomaly", body: text.slice(0, 240), priority: "high", tag: "billing-anomaly" },
+      "billing#anomaly",
+    );
+  }
+
   private fire(ev: PushEvent, throttleKey: string): void {
     const subs = this.subs().filter((s) => s.prefs[ev.pref]);
     if (subs.length === 0) return;

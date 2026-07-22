@@ -87,6 +87,13 @@ export async function recordUsage(
 // day is worth an operator's eyes (PLAN §6.5).
 const ALERT_THRESHOLD_MICRO = 10_000_000;
 const alerted = new Set<string>();
+
+/** Where anomaly alerts go besides the log (B8d: the server wires the push bridge). */
+let anomalySink: ((text: string) => void) | null = null;
+export function setAnomalySink(sink: ((text: string) => void) | null): void {
+  anomalySink = sink;
+}
+
 async function alertIfAnomalous(now: Date): Promise<void> {
   try {
     const key = `${lisaHome()}:${now.toISOString().slice(0, 10)}`;
@@ -94,9 +101,13 @@ async function alertIfAnomalous(now: Date): Promise<void> {
     const today = await summarizeUsage(new Date(now).setUTCHours(0, 0, 0, 0));
     if (today.microUSD > ALERT_THRESHOLD_MICRO) {
       alerted.add(key);
-      console.error(
-        `[billing] ⚠ anomaly: ${lisaHome()} spent ${(today.microUSD / 1e6).toFixed(2)} USD face today (${today.turns} turns)`,
-      );
+      const text = `${lisaHome()} spent ${(today.microUSD / 1e6).toFixed(2)} USD face today (${today.turns} turns)`;
+      console.error(`[billing] ⚠ anomaly: ${text}`);
+      try {
+        anomalySink?.(text);
+      } catch {
+        /* alerting must never break metering */
+      }
     }
   } catch {
     /* observability only */
