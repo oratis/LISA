@@ -40,6 +40,7 @@ import { LOGIN_HTML } from "./login.js";
 import { recordUsage, summarizeUsage } from "../billing/meter.js";
 import { PRICES_VERSION, tokensAffordable } from "../billing/prices.js";
 import { precheckTurn, debitTurn, quotaStatus } from "../billing/quota.js";
+import { verifyAppleJWS, validateTransaction, creditTransaction, refundTransaction, IapError } from "../billing/iap.js";
 import { ROOM_HTML } from "./room.js";
 import { MAIN_HTML } from "./lisa-html.js";
 import { OrchestratorHub, loadOrchestratorConfig } from "../integrations/hub.js";
@@ -896,6 +897,46 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       return;
     }
 
+    // ── App Store Server Notifications V2 (pre-gate: Apple can't present our
+    // tokens; the JWS signature chain IS the authentication). Refunds claw the
+    // credit back from whichever account the global index credited (B5).
+    if (req.method === "POST" && url === "/api/billing/asn") {
+      if (!cloud) {
+        res.writeHead(404, { "content-type": "text/plain" });
+        res.end("not available");
+        return;
+      }
+      try {
+        const body = await readJsonBody(req);
+        const signed = typeof body.signedPayload === "string" ? body.signedPayload : "";
+        if (!signed) throw new IapError("malformed_jws");
+        const outer = await verifyAppleJWS(signed);
+        const type = String(outer.notificationType ?? "");
+        if (type === "REFUND" || type === "REVOKE") {
+          const data = (outer.data ?? {}) as Record<string, unknown>;
+          const txJws = typeof data.signedTransactionInfo === "string" ? data.signedTransactionInfo : "";
+          if (!txJws) throw new IapError("malformed_jws");
+          const tx = await verifyAppleJWS(txJws);
+          const transactionId = String(tx.transactionId ?? "");
+          const undone = transactionId ? await refundTransaction(transactionId) : null;
+          console.error(
+            undone
+              ? `[iap] ${type}: clawed back ${undone.microUSD} micro-USD from ${undone.uid} (tx ${transactionId})`
+              : `[iap] ${type}: unknown transaction ${transactionId} — ignored`,
+          );
+        }
+        // Always 200 a verified notification — Apple retries non-2xx.
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true }));
+      } catch (e) {
+        const code = e instanceof IapError ? e.code : "verification_failed";
+        console.error(`[iap] ASN rejected: ${code}`);
+        res.writeHead(401, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: code }));
+      }
+      return;
+    }
+
     if (req.method === "POST" && url === "/api/auth/logout") {
       // Stateless sessions: logout = drop the credential client-side; here we
       // just expire the cookie for browsers. (Account-wide revocation is the
@@ -997,6 +1038,39 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
             : { signedIn: false },
         ),
       );
+      return;
+    }
+
+    if (req.method === "POST" && url === "/api/billing/iap") {
+      // Credit a StoreKit 2 purchase (B5). Session-authed: the credit lands on
+      // the SIGNED-IN account. The client calls Transaction.finish() only after
+      // this answers ok, and the global transactionId index makes StoreKit's
+      // re-delivery (crash between purchase and credit) safe to replay.
+      if (!accountUid) {
+        res.writeHead(403, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "account_session_required" }));
+        return;
+      }
+      try {
+        const body = await readJsonBody(req);
+        const jws = typeof body.jws === "string" ? body.jws : "";
+        if (!jws) throw new IapError("malformed_jws");
+        const payload = await verifyAppleJWS(jws);
+        const tx = validateTransaction(payload);
+        const credited = await creditTransaction(accountUid, tx);
+        const acct = getAccount(accountUid);
+        const q = acct ? await quotaStatus(acct) : null;
+        console.error(`[iap] credited ${credited} micro-USD to ${accountUid} (${tx.productId}, tx ${tx.transactionId}, ${tx.environment ?? "?"})`);
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true, creditedMicroUSD: credited, quota: q }));
+      } catch (e) {
+        const code = e instanceof IapError ? e.code : "verification_failed";
+        // duplicate_transaction answers 200-ok:false so the client still
+        // finishes the transaction (it WAS credited once already).
+        const status = code === "duplicate_transaction" ? 200 : 400;
+        res.writeHead(status, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: code === "duplicate_transaction", error: code }));
+      }
       return;
     }
 

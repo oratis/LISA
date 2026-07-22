@@ -156,6 +156,7 @@ struct AccountCard: View {
     @State private var showDeleteConfirm = false
     @State private var deleting = false
     @State private var quota: LisaClient.QuotaStatus?
+    @State private var showPaywall = false
 
     private static let tierLabels: [String: String] = [
         "free": "Free", "free-unverified": "Free (verify email for more)",
@@ -186,6 +187,11 @@ struct AccountCard: View {
                     }
                     LabeledContent("Tier", value: Self.tierLabels[q.tier ?? "free"] ?? (q.tier ?? "Free"))
                     LabeledContent("Credits", value: Self.dollars(max(0, q.paidMicroUSD ?? 0)))
+                    Button {
+                        showPaywall = true
+                    } label: {
+                        Label("Add credits…", systemImage: "plus.circle")
+                    }
                 } else {
                     LabeledContent("Plan", value: (acct.plan ?? "free").capitalized)
                 }
@@ -201,6 +207,11 @@ struct AccountCard: View {
             }
         }
         .task { quota = try? await app.client.billingQuota() }
+        .sheet(isPresented: $showPaywall, onDismiss: {
+            Task { quota = try? await app.client.billingQuota() }
+        }) {
+            PaywallSheet().environmentObject(app)
+        }
         .confirmationDialog("Delete your LISA account?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
             Button("Delete account and data", role: .destructive) {
                 deleting = true

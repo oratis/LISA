@@ -66,6 +66,9 @@ struct RootView: View {
             }
         }
         .task { await app.refreshWidgetSnapshot() }          // keep the widget fresh off-tab (A5)
+        // Unfinished-purchase listener (B5): StoreKit re-delivers transactions
+        // the server never credited; the server-side dedup makes replays safe.
+        .task { CreditsStore.shared.start(app: app) }
         .onChange(of: scenePhase) { _, phase in
             if phase == .background { app.lockIfEnabled() }  // re-arm when leaving foreground
             if phase == .active { Task { await app.refreshWidgetSnapshot() } }
