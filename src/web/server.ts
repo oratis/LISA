@@ -65,6 +65,22 @@ import { listRecentDispatches, isAlive, toDispatchView, readDispatchOutput } fro
 import { loadControlPolicy, saveControlPolicy, type ControlPolicy } from "../control/policy.js";
 import { loadAutonomyState, saveAutonomyState, type AutonomyState } from "../autonomy/state.js";
 import { mintDevice, verifyDeviceToken, touchDevice, listDevices, revokeDevice } from "./devices.js";
+import {
+  loadOrCreateSessionSecret,
+  mintSession,
+  verifySession,
+  looksLikeSession,
+  shouldRenew,
+} from "./sessions-auth.js";
+import {
+  AccountError,
+  createEmailAccount,
+  verifyEmailLogin,
+  upsertAppleAccount,
+  deleteAccount,
+  getAccount,
+  sessionAccountValid,
+} from "./accounts.js";
 import { PushBridge, listPush, registerPush, unregisterPush, setPushPrefs, registerLiveActivity, unregisterLiveActivity, type PushPrefs } from "./push.js";
 import { SenseService } from "../sense/service.js";
 import { ScreenSource } from "../sense/screen.js";
@@ -191,6 +207,18 @@ function presentedToken(req: http.IncomingMessage, url: string): string | null {
   return null;
 }
 
+/** Read and JSON-parse a request body (tolerant: bad/empty JSON ⇒ {}). */
+async function readJsonBody(req: http.IncomingMessage): Promise<Record<string, unknown>> {
+  let body = "";
+  for await (const chunk of req) body += chunk.toString("utf8");
+  try {
+    const parsed: unknown = body ? JSON.parse(body) : {};
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
 async function resumeOrCreateWebSession(model: string): Promise<SessionStore> {
   const lastId = await readActiveWebSession();
   if (lastId) {
@@ -231,6 +259,11 @@ async function resumeOrCreateWebSession(model: string): Promise<SessionStore> {
 export async function startWebServer(opts: WebServerOptions): Promise<http.Server> {
   const host = opts.host ?? "127.0.0.1";
   const webToken = process.env.LISA_WEB_TOKEN?.trim() || null;
+  // Account sessions (PLAN_ACCOUNTS_BILLING B1): the signing secret lives in
+  // $LISA_HOME (auto-created 0600; durable on the cloud's /data mount). Only the
+  // cloud edition mints/verifies account sessions today — the Mac edition gains
+  // a client-side use in B6 (managed inference).
+  const sessionSecret = isCloud() ? loadOrCreateSessionSecret() : null;
   if (!isLoopbackAddress(host) && !webToken) {
     throw new Error(
       `refusing to bind ${host} without LISA_WEB_TOKEN — every endpoint drives a ` +
@@ -725,15 +758,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end("apple sign-in not available");
         return;
       }
-      if (!webToken) {
+      if (!sessionSecret) {
         res.writeHead(503, { "content-type": "text/plain" });
-        res.end("cloud sign-in misconfigured (no session token)");
+        res.end("cloud sign-in misconfigured (no session secret)");
         return;
       }
-      let abBody = "";
-      for await (const chunk of req) abBody += chunk.toString("utf8");
-      let payload: { identityToken?: unknown } = {};
-      try { payload = abBody ? JSON.parse(abBody) : {}; } catch { /* tolerate */ }
+      const payload = await readJsonBody(req);
       const idToken = typeof payload.identityToken === "string" ? payload.identityToken : "";
       if (!idToken) {
         res.writeHead(400, { "content-type": "text/plain" });
@@ -750,8 +780,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           res.end("this Apple ID is not allowed on this LISA Cloud instance");
           return;
         }
+        // B1: mint a per-uid account session (no longer the shared LISA_WEB_TOKEN).
+        // The uid keys per-user isolation (B2) and billing (B3+).
+        const acct = upsertAppleAccount(id.sub, id.email);
+        const session = mintSession(acct.uid, sessionSecret, { sv: acct.sessionVersion });
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({ ok: true, token: webToken }));
+        res.end(JSON.stringify({ ok: true, token: session, uid: acct.uid }));
       } catch (e) {
         const msg = e instanceof AppleAuthError ? e.message : "verification failed";
         res.writeHead(401, { "content-type": "text/plain" });
@@ -760,10 +794,87 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       return;
     }
 
+    // ── Email accounts (cloud edition; PLAN_ACCOUNTS_BILLING B1) ─────────────
+    // Register/login mint access, so they run BEFORE the token gate — same
+    // posture as /api/auth/apple. 404 outside the cloud edition.
+    if (req.method === "POST" && (url === "/api/auth/register" || url === "/api/auth/login")) {
+      if (!cloud || !sessionSecret) {
+        res.writeHead(404, { "content-type": "text/plain" });
+        res.end("accounts not available on this edition");
+        return;
+      }
+      const body = await readJsonBody(req);
+      const email = typeof body.email === "string" ? body.email : "";
+      const password = typeof body.password === "string" ? body.password : "";
+      try {
+        const acct =
+          url === "/api/auth/register"
+            ? createEmailAccount(email, password)
+            : verifyEmailLogin(email, password);
+        if (!acct) {
+          res.writeHead(401, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "bad_credentials" }));
+          return;
+        }
+        const session = mintSession(acct.uid, sessionSecret, { sv: acct.sessionVersion });
+        res.writeHead(200, {
+          "content-type": "application/json",
+          // Pin the session for browser clients (web island); Bearer clients ignore it.
+          "set-cookie": `lisa_token=${encodeURIComponent(session)}; HttpOnly; SameSite=Strict; Path=/`,
+        });
+        res.end(JSON.stringify({ ok: true, token: session, uid: acct.uid, verified: acct.verified }));
+      } catch (e) {
+        if (e instanceof AccountError) {
+          const status = e.code === "throttled" ? 429 : e.code === "email_taken" ? 409 : 400;
+          res.writeHead(status, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: e.code }));
+          return;
+        }
+        res.writeHead(500, { "content-type": "text/plain" });
+        res.end("account operation failed");
+      }
+      return;
+    }
+
+    if (req.method === "POST" && url === "/api/auth/logout") {
+      // Stateless sessions: logout = drop the credential client-side; here we
+      // just expire the cookie for browsers. (Account-wide revocation is the
+      // sessionVersion bump; per-device logout needs no server state.)
+      res.writeHead(200, {
+        "content-type": "application/json",
+        "set-cookie": "lisa_token=; Max-Age=0; HttpOnly; SameSite=Strict; Path=/",
+      });
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+
+    // uid of the authenticated LISA account, when the caller used an account
+    // session (B1). null = legacy shared-token / device-token / loopback caller.
+    let accountUid: string | null = null;
+    let renewedCookie = false;
     if (cloud || !isLoopbackAddress(remoteAddr)) {
       const presented = presentedToken(req, url);
       // Authorized by the global LISA_WEB_TOKEN OR a non-revoked per-device token.
       let authed = isRequestAuthorized(remoteAddr, webToken, presented, !cloud);
+      // Account session (cheap prefix check first). sv must still match the
+      // account record, so deleted accounts lose access immediately.
+      if (!authed && presented && sessionSecret && looksLikeSession(presented)) {
+        const claims = verifySession(presented, sessionSecret);
+        if (claims && sessionAccountValid(claims.uid, claims.sv)) {
+          authed = true;
+          accountUid = claims.uid;
+          if (shouldRenew(claims)) {
+            // Sliding renewal for cookie clients (web). Bearer clients (iOS)
+            // keep their token until expiry and re-run sign-in then.
+            const fresh = mintSession(claims.uid, sessionSecret, { sv: claims.sv });
+            res.setHeader(
+              "set-cookie",
+              `lisa_token=${encodeURIComponent(fresh)}; HttpOnly; SameSite=Strict; Path=/`,
+            );
+            renewedCookie = true;
+          }
+        }
+      }
       if (!authed && presented) {
         const device = verifyDeviceToken(presented);
         if (device) {
@@ -787,13 +898,59 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       // Token arrived via query param (first open from a phone): pin it as a
       // cookie so subsequent same-origin fetch/EventSource calls authenticate.
       // presented is non-null here — isRequestAuthorized returned true for a
-      // non-loopback caller, which requires a matching token.
-      if (presented && !req.headers.cookie?.includes("lisa_token=")) {
+      // non-loopback caller, which requires a matching token. (Skip when the
+      // sliding renewal above already set a fresher cookie.)
+      if (presented && !renewedCookie && !req.headers.cookie?.includes("lisa_token=")) {
         res.setHeader(
           "set-cookie",
           `lisa_token=${encodeURIComponent(presented)}; HttpOnly; SameSite=Strict; Path=/`,
         );
       }
+    }
+
+    // ── Account introspection + deletion (post-gate; PLAN_ACCOUNTS_BILLING B1) ──
+    if (req.method === "GET" && url === "/api/auth/me") {
+      const acct = accountUid ? getAccount(accountUid) : null;
+      res.writeHead(200, { "content-type": "application/json" });
+      // plan/tier is a placeholder until the quota engine (B4) lands.
+      res.end(
+        JSON.stringify(
+          acct
+            ? { signedIn: true, uid: acct.uid, kind: acct.kind, email: acct.email ?? null, verified: acct.verified, plan: "free" }
+            : { signedIn: false },
+        ),
+      );
+      return;
+    }
+
+    if (req.method === "DELETE" && url === "/api/account") {
+      // App Store 5.1.1(v): in-app account deletion. Session-authed only — the
+      // shared demo token must not be able to delete accounts.
+      if (!accountUid) {
+        res.writeHead(403, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "account_session_required" }));
+        return;
+      }
+      const removed = deleteAccount(accountUid);
+      // Remove the per-uid home (B2 layout; a no-op before it exists). The
+      // account record going away already killed every session via sv-check.
+      try {
+        const home = process.env.LISA_HOME ?? path.join(os.homedir(), ".lisa");
+        const userHome = path.join(home, "users", accountUid);
+        // Refuse to follow a surprising path — belt & braces against uid tampering
+        // (uids are server-minted, but cheap to double-check).
+        if (userHome.startsWith(path.join(home, "users") + path.sep)) {
+          await fs.rm(userHome, { recursive: true, force: true });
+        }
+      } catch (e) {
+        console.error(`[auth] account home cleanup failed: ${(e as Error).message}`);
+      }
+      res.writeHead(200, {
+        "content-type": "application/json",
+        "set-cookie": "lisa_token=; Max-Age=0; HttpOnly; SameSite=Strict; Path=/",
+      });
+      res.end(JSON.stringify({ ok: true, removed }));
+      return;
     }
 
     // Per-request gate for high-risk control actions from REMOTE callers. The Mac
