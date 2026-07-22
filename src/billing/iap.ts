@@ -203,23 +203,35 @@ function writeTxIndex(list: TxIndexEntry[]): void {
 }
 
 /**
- * Credit a VERIFIED transaction to `uid`. Dedupes globally; credits the uid's
- * balance inside that uid's home scope. Returns the credited face value.
+ * Credit ANY external payment (Apple IAP, Stripe, operator grant) to `uid`
+ * exactly once: global transactionId dedup, then the uid's balance inside its
+ * home scope. Shared by the IAP and Stripe paths so cross-channel replay is
+ * impossible by construction. Returns the credited face value.
  */
-export async function creditTransaction(uid: string, tx: AppleTransaction, now: number = Date.now()): Promise<number> {
-  const microUSD = PRODUCTS[tx.productId]!;
+export async function creditExternalTransaction(
+  uid: string,
+  transactionId: string,
+  productId: string,
+  microUSD: number,
+  now: number = Date.now(),
+): Promise<number> {
   await withFileLock(txIndexLock(), async () => {
     const index = readTxIndex();
-    if (index.some((e) => e.transactionId === tx.transactionId)) {
+    if (index.some((e) => e.transactionId === transactionId)) {
       throw new IapError("duplicate_transaction");
     }
-    index.push({ transactionId: tx.transactionId, uid, productId: tx.productId, microUSD, at: now });
+    index.push({ transactionId, uid, productId, microUSD, at: now });
     writeTxIndex(index);
   });
   await homeScope.run(homeForUid(uid), () =>
-    creditPurchase({ at: now, microUSD, transactionId: tx.transactionId }, now),
+    creditPurchase({ at: now, microUSD, transactionId }, now),
   );
   return microUSD;
+}
+
+/** Credit a VERIFIED Apple transaction to `uid` (IAP flavor of the above). */
+export async function creditTransaction(uid: string, tx: AppleTransaction, now: number = Date.now()): Promise<number> {
+  return creditExternalTransaction(uid, tx.transactionId, tx.productId, PRODUCTS[tx.productId]!, now);
 }
 
 /**

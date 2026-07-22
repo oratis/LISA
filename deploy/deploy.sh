@@ -66,6 +66,12 @@ ENVS="^##^LISA_EDITION=cloud##LISA_WEB_TOKEN=${LISA_WEB_TOKEN}"
 #   LISA_RPM_LIMIT / LISA_DAILY_CAP_USD  abuse guards (defaults 20 rpm / $200 per day)
 #   LISA_BILLING_KILL=1                  pause ALL metered inference immediately
 [ -n "${LISA_REVIEWER_SEED:-}" ]  && ENVS="${ENVS}##LISA_REVIEWER_SEED=${LISA_REVIEWER_SEED}"
+#   RESEND_API_KEY / LISA_MAIL_FROM  email verification (B8a; domain verified in Resend)
+#   STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET  desktop/web top-up (B8c)
+[ -n "${RESEND_API_KEY:-}" ]        && ENVS="${ENVS}##RESEND_API_KEY=${RESEND_API_KEY}"
+[ -n "${LISA_MAIL_FROM:-}" ]        && ENVS="${ENVS}##LISA_MAIL_FROM=${LISA_MAIL_FROM}"
+[ -n "${STRIPE_SECRET_KEY:-}" ]     && ENVS="${ENVS}##STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}"
+[ -n "${STRIPE_WEBHOOK_SECRET:-}" ] && ENVS="${ENVS}##STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}"
 [ -n "${LISA_RPM_LIMIT:-}" ]      && ENVS="${ENVS}##LISA_RPM_LIMIT=${LISA_RPM_LIMIT}"
 [ -n "${LISA_DAILY_CAP_USD:-}" ]  && ENVS="${ENVS}##LISA_DAILY_CAP_USD=${LISA_DAILY_CAP_USD}"
 [ -n "${LISA_BILLING_KILL:-}" ]   && ENVS="${ENVS}##LISA_BILLING_KILL=${LISA_BILLING_KILL}"
