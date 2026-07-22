@@ -900,7 +900,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.writeHead(200, {
           "content-type": "application/json",
           // Web clients continue via cookie; Bearer clients ignore it.
-          "set-cookie": `lisa_token=${encodeURIComponent(session)}; HttpOnly; SameSite=Strict; Path=/`,
+          "set-cookie": `lisa_token=${encodeURIComponent(session)}; HttpOnly; SameSite=Strict; Path=/${isCloud() ? "; Secure" : ""}`,
         });
         res.end(JSON.stringify({ ok: true, token: session, uid: acct.uid }));
       } catch (e) {
@@ -1012,7 +1012,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.writeHead(200, {
           "content-type": "application/json",
           // Pin the session for browser clients (web island); Bearer clients ignore it.
-          "set-cookie": `lisa_token=${encodeURIComponent(session)}; HttpOnly; SameSite=Strict; Path=/`,
+          "set-cookie": `lisa_token=${encodeURIComponent(session)}; HttpOnly; SameSite=Strict; Path=/${isCloud() ? "; Secure" : ""}`,
         });
         res.end(JSON.stringify({ ok: true, token: session, uid: acct.uid, verified: acct.verified }));
       } catch (e) {
@@ -1095,7 +1095,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       // sessionVersion bump; per-device logout needs no server state.)
       res.writeHead(200, {
         "content-type": "application/json",
-        "set-cookie": "lisa_token=; Max-Age=0; HttpOnly; SameSite=Strict; Path=/",
+        "set-cookie": `lisa_token=; Max-Age=0; HttpOnly; SameSite=Strict; Path=/${isCloud() ? "; Secure" : ""}`,
       });
       res.end(JSON.stringify({ ok: true }));
       return;
@@ -1122,7 +1122,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
             const fresh = mintSession(claims.uid, sessionSecret, { sv: claims.sv });
             res.setHeader(
               "set-cookie",
-              `lisa_token=${encodeURIComponent(fresh)}; HttpOnly; SameSite=Strict; Path=/`,
+              `lisa_token=${encodeURIComponent(fresh)}; HttpOnly; SameSite=Strict; Path=/${isCloud() ? "; Secure" : ""}`,
             );
             renewedCookie = true;
           }
@@ -1163,7 +1163,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       if (presented && !renewedCookie && !req.headers.cookie?.includes("lisa_token=")) {
         res.setHeader(
           "set-cookie",
-          `lisa_token=${encodeURIComponent(presented)}; HttpOnly; SameSite=Strict; Path=/`,
+          `lisa_token=${encodeURIComponent(presented)}; HttpOnly; SameSite=Strict; Path=/${isCloud() ? "; Secure" : ""}`,
         );
       }
       // ── Per-uid home scope (B2) ────────────────────────────────────────────
@@ -1232,6 +1232,20 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         if (!jws) throw new IapError("malformed_jws");
         const payload = await verifyAppleJWS(jws);
         const tx = validateTransaction(payload);
+        // [B5 hardening] StoreKit Sandbox transactions are Apple-signed with the
+        // SAME cert chain as Production and cost the buyer $0. In the cloud
+        // edition, only real (Production) purchases may credit funded balance —
+        // otherwise a free sandbox tester Apple ID could mint credits by POSTing
+        // a sandbox JWS here. LISA_IAP_ALLOW_SANDBOX=1 re-opts a non-prod
+        // cloud/staging deploy back in for testing.
+        if (cloud && process.env.LISA_IAP_ALLOW_SANDBOX !== "1" && tx.environment !== "Production") {
+          console.error(
+            `[iap] rejected non-Production tx in cloud: env=${tx.environment ?? "?"} product=${tx.productId} tx=${tx.transactionId} uid=${accountUid}`,
+          );
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: "sandbox_rejected" }));
+          return;
+        }
         const credited = await creditTransaction(accountUid, tx);
         const acct = await getAccount(accountUid);
         const q = acct ? await quotaStatus(acct) : null;
@@ -1303,6 +1317,14 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     if (req.method === "GET" && url === "/api/billing/usage") {
       // Usage for the ACTIVE home — the signed-in account's ledger on cloud,
       // the local ledger otherwise. 12h aligns with the quota window (B4).
+      // [B3 hardening] On cloud, a shared-demo-token caller has no account and
+      // must not read the GLOBAL home's aggregate usage — mirror /quota. (Local
+      // edition has no multi-tenancy, so the local ledger stays visible there.)
+      if (cloud && !accountUid) {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ available: false }));
+        return;
+      }
       const now = Date.now();
       const [window12h, today] = await Promise.all([
         summarizeUsage(now - 12 * 60 * 60 * 1000),
@@ -1358,7 +1380,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       }
       res.writeHead(200, {
         "content-type": "application/json",
-        "set-cookie": "lisa_token=; Max-Age=0; HttpOnly; SameSite=Strict; Path=/",
+        "set-cookie": `lisa_token=; Max-Age=0; HttpOnly; SameSite=Strict; Path=/${isCloud() ? "; Secure" : ""}`,
       });
       res.end(JSON.stringify({ ok: true, removed }));
       return;
