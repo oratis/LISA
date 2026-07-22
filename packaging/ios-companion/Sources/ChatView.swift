@@ -153,6 +153,11 @@ final class ChatModel: ObservableObject {
         if cancelled {
             messages[idx].status = .cancelled
             if messages[idx].text.isEmpty { messages[idx].text = "Stopped." }
+        } else if case LisaError.http(402) = error {
+            // Quota exhausted (B4): the server refused the turn with a clean 402
+            // before streaming. Same copy as the web paywall (strings.ts).
+            messages[idx].status = .error
+            messages[idx].text = "Your free allowance for this session is used up — it refreshes every 12 hours. Add credits in Settings → LISA account to keep going now."
         } else {
             messages[idx].status = .error
             let msg = (error as? LocalizedError)?.errorDescription ?? "Couldn't reach Lisa."
