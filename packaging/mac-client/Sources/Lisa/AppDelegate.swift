@@ -146,6 +146,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - About / Updates
 
+    @objc func showAccount(_ sender: Any?) {
+        AccountWindowController.shared.show()
+    }
+
     @objc func showAbout(_ sender: Any?) {
         AboutWindowController.shared.show()
     }
@@ -212,6 +216,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         settingsItem.target = self
         appMenu.addItem(settingsItem)
+        // Managed inference (B8d): sign in once, run key-free via LISA Cloud.
+        let accountItem = NSMenuItem(
+            title: "Sign in to LISA Cloud…",
+            action: #selector(showAccount(_:)),
+            keyEquivalent: ""
+        )
+        accountItem.target = self
+        appMenu.addItem(accountItem)
         appMenu.addItem(.separator())
         appMenu.addItem(NSMenuItem(
             title: "Hide Lisa",

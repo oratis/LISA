@@ -52,6 +52,63 @@ final class BackendController {
         }
     }
 
+    // MARK: - Account (managed inference, B8d)
+
+    /// Public read of a ~/.lisa/config.env value (AccountWindow uses it).
+    func configEnvValue(_ key: String) -> String? {
+        readEnvValue(key, from: lisaPath("config.env"))
+    }
+
+    /// Upsert KEY=value in ~/.lisa/config.env (replace the existing line or
+    /// append; empty value keeps the line — the backend treats "" as unset).
+    func upsertConfigEnv(_ key: String, value: String) {
+        let path = lisaPath("config.env")
+        var lines = ((try? String(contentsOfFile: path, encoding: .utf8)) ?? "")
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map(String.init)
+        if let last = lines.last, last.isEmpty { lines.removeLast() }
+        var replaced = false
+        for i in lines.indices {
+            let stripped = lines[i].trimmingCharacters(in: .whitespaces)
+            let body = stripped.hasPrefix("export ") ? String(stripped.dropFirst(7)) : stripped
+            if body.hasPrefix("\(key)=") {
+                lines[i] = "\(key)=\(value)"
+                replaced = true
+                break
+            }
+        }
+        if !replaced { lines.append("\(key)=\(value)") }
+        let dir = (path as NSString).deletingLastPathComponent
+        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        try? (lines.joined(separator: "\n") + "\n").write(toFile: path, atomically: true, encoding: .utf8)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path)
+    }
+
+    /// Stop the (detached) backend and start a fresh one so config.env changes
+    /// apply. The backend was launched with nohup, so we match its command line;
+    /// killing only `lisa serve --web` variants keeps unrelated processes safe.
+    func restart(_ completion: @escaping (Bool) -> Void) {
+        let kill = Process()
+        kill.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
+        kill.arguments = ["-f", "serve --web"]
+        kill.terminationHandler = { _ in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+                guard let self else { return }
+                self.start()
+                // Report through the existing status notification once, then hand
+                // the outcome to the caller.
+                var observer: NSObjectProtocol?
+                observer = NotificationCenter.default.addObserver(
+                    forName: BackendController.statusChanged, object: nil, queue: .main
+                ) { note in
+                    if let observer { NotificationCenter.default.removeObserver(observer) }
+                    completion((note.userInfo?["up"] as? Bool) ?? false)
+                }
+            }
+        }
+        try? kill.run()
+    }
+
     // MARK: - Probe
 
     func probe(_ completion: @escaping (Bool) -> Void) {

@@ -37,7 +37,7 @@ import {
 } from "../soul/desire-focus.js";
 import { ISLAND_HTML } from "./island.js";
 import { LOGIN_HTML } from "./login.js";
-import { recordUsage, summarizeUsage } from "../billing/meter.js";
+import { recordUsage, summarizeUsage, setAnomalySink } from "../billing/meter.js";
 import { PRICES_VERSION, tokensAffordable } from "../billing/prices.js";
 import { precheckTurn, debitTurn, quotaStatus } from "../billing/quota.js";
 import { verifyAppleJWS, validateTransaction, creditTransaction, creditExternalTransaction, refundTransaction, IapError } from "../billing/iap.js";
@@ -445,6 +445,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // Operational push: notify subscribed phones on agent done/error/permission +
   // Reve idle messages. Opt-in, ntfy by default (apns is a stub). See push.ts.
   const pushBridge = new PushBridge({ log: (m) => console.error(m) });
+  // Billing anomalies reach the operator's phone through the same channel as
+  // agent errors (B8d) — pref "error", throttled inside the bridge.
+  setAnomalySink((text) => pushBridge.onBillingAnomaly(text));
   hub.on("update", (session: AgentSession) => {
     // L6 — record the transition in the orchestrator journal so the
     // cross-agent recap can answer "what happened while I was away?" even for
