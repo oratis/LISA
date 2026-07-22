@@ -41,10 +41,14 @@ export interface AccountRecord {
   scrypt?: ScryptParams;
   createdAt: number;
   lastLoginAt: number;
-  /** Email ownership verified (B7 wires actual mail); Apple counts as verified. */
+  /** Email ownership verified (B8a wires the mail); Apple counts as verified. */
   verified: boolean;
   /** Bump to invalidate every outstanding session for this uid. */
   sessionVersion: number;
+  /** SHA-256 of the outstanding verification token (email kind, unverified). */
+  verifyTokenHash?: string;
+  /** Verification-token expiry, ms epoch. */
+  verifyExpiresAt?: number;
 }
 
 export class AccountError extends Error {
@@ -297,27 +301,60 @@ export function sessionAccountValid(uid: string, sv: number): boolean {
  * password. Returns the record.
  */
 export function ensureSeededAccount(email: string, password: string, now: number = Date.now()): AccountRecord {
-  const existing = getAccountByEmail(email);
-  if (existing) {
-    if (!existing.verified) {
-      const list = loadAccounts();
-      const live = list.find((a) => a.uid === existing.uid);
-      if (live) {
-        live.verified = true;
-        saveAccounts(list);
-        live.scrypt = existing.scrypt;
-        return live;
-      }
-    }
-    return existing;
-  }
-  const rec = createEmailAccount(email, password, now);
+  const existing = getAccountByEmail(email) ?? createEmailAccount(email, password, now);
   const list = loadAccounts();
-  const live = list.find((a) => a.uid === rec.uid);
-  if (live) {
+  const live = list.find((a) => a.uid === existing.uid);
+  if (live && !live.verified) {
     live.verified = true;
     saveAccounts(list);
     return live;
   }
-  return rec;
+  return live ?? existing;
+}
+
+// ── email-ownership verification (B8a) ──────────────────────────────────────
+const VERIFY_TTL_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Mint (and store the hash of) a fresh verification token for an unverified
+ * email account. Returns the RAW token once — it goes into the mailed link —
+ * or null when the uid isn't an unverified email account.
+ */
+export function beginEmailVerification(uid: string, now: number = Date.now()): string | null {
+  const list = loadAccounts();
+  const acct = list.find((a) => a.uid === uid);
+  if (!acct || acct.kind !== "email" || acct.verified) return null;
+  const token = crypto.randomBytes(24).toString("hex");
+  acct.verifyTokenHash = crypto.createHash("sha256").update(token).digest("hex");
+  acct.verifyExpiresAt = now + VERIFY_TTL_MS;
+  saveAccounts(list);
+  return token;
+}
+
+/**
+ * Confirm a verification link. Constant-time hash compare; expiry enforced.
+ * On success the account is marked verified (free window levels $1 → $5) and
+ * the token is cleared. Returns the account or null.
+ */
+export function confirmEmailVerification(rawToken: string, now: number = Date.now()): AccountRecord | null {
+  if (!rawToken) return null;
+  const presented = crypto.createHash("sha256").update(rawToken).digest();
+  const list = loadAccounts();
+  for (const acct of list) {
+    if (!acct.verifyTokenHash || acct.verified) continue;
+    let stored: Buffer;
+    try {
+      stored = Buffer.from(acct.verifyTokenHash, "hex");
+    } catch {
+      continue;
+    }
+    if (stored.length !== presented.length || !crypto.timingSafeEqual(stored, presented)) continue;
+    if (!acct.verifyExpiresAt || acct.verifyExpiresAt < now) return null; // matched but stale
+    acct.verified = true;
+    delete acct.verifyTokenHash;
+    delete acct.verifyExpiresAt;
+    saveAccounts(list);
+    return acct;
+  }
+  return null;
 }

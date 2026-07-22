@@ -157,6 +157,7 @@ struct AccountCard: View {
     @State private var deleting = false
     @State private var quota: LisaClient.QuotaStatus?
     @State private var showPaywall = false
+    @State private var resendMessage: String?
 
     private static let tierLabels: [String: String] = [
         "free": "Free", "free-unverified": "Free (verify email for more)",
@@ -167,6 +168,22 @@ struct AccountCard: View {
         Section("LISA account") {
             if let acct = app.account, acct.signedIn {
                 LabeledContent("Signed in as", value: acct.email ?? acct.uid ?? "—")
+                // Unverified email = reduced ($1) session window (B8a).
+                if acct.kind == "email" && acct.verified == false {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label("Email not verified — your free allowance is limited to $1 per session.",
+                              systemImage: "envelope.badge")
+                            .font(.caption).foregroundStyle(Theme.waiting)
+                        Button(resendMessage ?? "Resend verification email") {
+                            Task {
+                                let sent = (try? await app.client.resendVerification()) ?? false
+                                resendMessage = sent ? "Sent — check your inbox." : "Couldn't send — try again later."
+                            }
+                        }
+                        .font(.caption)
+                        .disabled(resendMessage == "Sent — check your inbox.")
+                    }
+                }
                 if let q = quota, q.available, let window = q.windowMicroUSD, window > 0 {
                     let spent = q.spentMicroUSD ?? 0
                     let remaining = q.remainingMicroUSD ?? 0
