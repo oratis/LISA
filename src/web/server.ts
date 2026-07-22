@@ -111,7 +111,7 @@ import {
   type SuggestionProvider,
 } from "../screen_advisor/engine.js";
 import os from "node:os";
-import { lisaHome, lisaGlobalHome, homeScope, homeForUid } from "../paths.js";
+import { lisaHome, lisaGlobalHome, homeScope, homeForUid, scopedUid } from "../paths.js";
 import { isCloud, editionInfo } from "../edition.js";
 import {
   verifyAppleIdentityToken,
@@ -122,6 +122,7 @@ import {
   audienceForClient,
 } from "./cloudAuth.js";
 import { detectLanHost, buildPairUrl } from "./pairing.js";
+import { TenantEventBus, sameTenant } from "./event-bus.js";
 import { qrSvg } from "./qr-svg.js";
 import type { ToolDefinition, StoredMessage } from "../types.js";
 
@@ -417,13 +418,20 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   };
 
   // ── Persistent /events SSE subscribers (mood + idle broadcasts) ─────
-  const eventClients = new Set<http.ServerResponse>();
-  const broadcast = (event: object) => {
-    const data = `data: ${JSON.stringify(event)}\n\n`;
-    for (const c of eventClients) {
-      try { c.write(data); } catch { /* dead conn */ }
-    }
-  };
+  // Tenant-aware fan-out (B2): each subscriber is pinned to the account it
+  // authenticated as, and every event carries the uid of the home scope it
+  // originated in. A subscriber only receives events from its own tenant, so
+  // one cloud account's mood / thinking / idle-message TEXT never leaks to
+  // another signed-in account. Mac edition + shared-token demo are null-uid on
+  // both ends, so delivery is unchanged (one implicit user sees everything).
+  // See event-bus.ts for the isolation rule and its unit tests.
+  const eventClients = new TenantEventBus<http.ServerResponse>();
+  // Origin defaults to the CURRENT home scope: a broadcast made inside a
+  // signed-in request/turn scope carries that uid; one from the global /
+  // background scope (schedulers, orchestrator hub) carries null. So the many
+  // `broadcast({...})` call sites below need no per-site change.
+  const broadcast = (event: object, origin: string | null = scopedUid()) =>
+    eventClients.broadcast(event, origin);
   moodBus.on("mood", (slug) => broadcast({ type: "mood", slug }));
   // Surface "thinking" to long-lived viewers (web GUI, island widget). Each
   // event is one tick — surfaces toggle their own indicator. Multiple
@@ -1375,6 +1383,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         }
         uidChats.delete(userHome);
         promptCache.delete(userHome);
+        moodBus.forget(accountUid); // keyed by uid, not home path
       } catch (e) {
         console.error(`[auth] account home cleanup failed: ${(e as Error).message}`);
       }
@@ -2426,8 +2435,10 @@ self.addEventListener('fetch', (event) => {
       res.write(`data: ${JSON.stringify({ type: "hello", session: chat.session.id })}\n\n`);
       // Send current mood right away
       res.write(`data: ${JSON.stringify({ type: "mood", slug: moodBus.current() })}\n\n`);
-      eventClients.add(res);
-      req.on("close", () => eventClients.delete(res));
+      // Pin this subscriber to the account it authenticated as (B2). null on the
+      // Mac edition and the shared-token demo → one implicit user, sees all.
+      const unsubscribe = eventClients.add(res, cloud ? accountUid : null);
+      req.on("close", unsubscribe);
       return;
     }
 
@@ -2901,7 +2912,14 @@ self.addEventListener('fetch', (event) => {
       // queued turn isn't stuck behind an abandoned run.
       const turnAbort = new AbortController();
       req.on("close", () => turnAbort.abort());
-      const onMood = (slug: string) => send({ type: "mood", slug });
+      // The moodBus is process-wide: another tenant's concurrent turn emits on
+      // it too. Only forward mood ticks that originate in THIS caller's home
+      // scope (B2), so a cloud account never sees another account's mood. Mac /
+      // shared-token: ownUid is null and so is the emitting scope → always on.
+      const ownUid = cloud ? accountUid : null;
+      const onMood = (slug: string) => {
+        if (sameTenant(ownUid, scopedUid())) send({ type: "mood", slug });
+      };
       moodBus.on("mood", onMood);
       // Send the current mood immediately so a fresh tab knows where to start.
       send({ type: "mood", slug: moodBus.current() });
