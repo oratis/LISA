@@ -7,13 +7,16 @@ import path from "node:path";
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "lisa-limits-"));
 process.env.LISA_HOME = TMP;
 
-const { rpmOk, resetRpm, globalSpendAdd, globalSpendExceeded, preflightLimits, killSwitchOn, dailyCapMicroUSD } =
-  await import("./limits.js");
+const {
+  rpmOk, resetRpm, globalSpendAdd, globalSpendExceeded, preflightLimits, killSwitchOn, dailyCapMicroUSD,
+  ipRateOk, resetIpRate,
+} = await import("./limits.js");
 
 const T0 = Date.parse("2026-07-22T08:00:00Z");
 
 beforeEach(() => {
   resetRpm();
+  resetIpRate();
   fs.rmSync(path.join(TMP, "billing-global.json"), { force: true });
   delete process.env.LISA_BILLING_KILL;
   delete process.env.LISA_RPM_LIMIT;
@@ -34,6 +37,18 @@ describe("per-uid rpm", () => {
   });
 });
 
+describe("per-key sliding window (#260)", () => {
+  test("caps a key, isolates other keys, slides with the window", () => {
+    assert.ok(ipRateOk("auth:1.2.3.4", 2, 600_000, T0));
+    assert.ok(ipRateOk("auth:1.2.3.4", 2, 600_000, T0 + 1));
+    assert.equal(ipRateOk("auth:1.2.3.4", 2, 600_000, T0 + 2), false);
+    // a different IP is unaffected
+    assert.ok(ipRateOk("auth:5.6.7.8", 2, 600_000, T0 + 2));
+    // past the window the bucket has slid
+    assert.ok(ipRateOk("auth:1.2.3.4", 2, 600_000, T0 + 600_001));
+  });
+});
+
 describe("global daily cap", () => {
   test("accumulates within a UTC day, resets across days, persists on disk", () => {
     process.env.LISA_DAILY_CAP_USD = "1"; // $1 cap for the test
@@ -49,6 +64,28 @@ describe("global daily cap", () => {
 
   test("default cap is $200", () => {
     assert.equal(dailyCapMicroUSD({}), 200_000_000);
+  });
+
+  test("an unreadable counter fails CLOSED, and doesn't get clobbered (#267)", () => {
+    const file = path.join(TMP, "billing-global.json");
+    // A directory in the counter's place reads as EISDIR — an I/O error, not
+    // ENOENT. Previously that read as $0 spent and disabled the cap silently.
+    fs.mkdirSync(file, { recursive: true });
+    try {
+      assert.equal(globalSpendExceeded(T0), true);
+      const v = preflightLimits("u1", T0);
+      assert.ok(!v.ok && v.status === 402 && v.body.error === "service_paused");
+      // the write path must not replace the unreadable counter with a fresh 0
+      globalSpendAdd(1_000, T0);
+      assert.ok(fs.statSync(file).isDirectory());
+    } finally {
+      fs.rmSync(file, { recursive: true, force: true });
+    }
+  });
+
+  test("a corrupt counter file also fails closed (#267)", () => {
+    fs.writeFileSync(path.join(TMP, "billing-global.json"), "{not json");
+    assert.equal(globalSpendExceeded(T0), true);
   });
 });
 

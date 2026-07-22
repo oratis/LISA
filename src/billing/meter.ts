@@ -49,16 +49,24 @@ export interface UsageRecord {
 }
 
 /**
- * Append one usage line for the ACTIVE home (call inside the request's home
- * scope). Returns the priced record (or null when recording failed) — the
- * quota engine consumes the returned cost.
+ * Price one metered turn for the ACTIVE home (call inside the request's home
+ * scope) and append it to the audit ledger. ALWAYS returns the priced record —
+ * the quota engine consumes `microUSD` and MUST debit it regardless of whether
+ * the audit line landed.
+ *
+ * The price is computed independently of the append (#264): a full disk
+ * (ENOSPC/EDQUOT) or fd exhaustion (EMFILE) on the local usage.jsonl must lose
+ * at most the audit line, never the debit — otherwise the turn ships free and
+ * the spend is unrecoverable. In the cloud the authoritative balance ledger
+ * lives in Firestore, so a local-FS append failure never blocks the debit.
+ * Never throws (metering must not take chat down).
  */
 export async function recordUsage(
   source: string,
   model: string,
   usage: ProviderUsage,
   now: Date = new Date(),
-): Promise<UsageRecord | null> {
+): Promise<UsageRecord> {
   const rec: UsageRecord = {
     at: now.toISOString(),
     source,
@@ -70,17 +78,18 @@ export async function recordUsage(
     microUSD: costMicroUSD(model, usage),
     pricesVersion: PRICES_VERSION,
   };
+  // Audit-log append is best-effort and DECOUPLED from pricing/debit.
   try {
     await appendLine(usageFile(), JSON.stringify(rec));
     void trimIfNeeded();
-    // Global daily cap accounting + anomaly alert (B7). Best-effort.
-    globalSpendAdd(rec.microUSD, now.getTime());
-    void alertIfAnomalous(now);
-    return rec;
   } catch (err) {
-    console.error(`[billing] usage record failed: ${(err as Error).message}`);
-    return null;
+    console.error(`[billing] usage audit append failed (turn still priced + debited): ${(err as Error).message}`);
   }
+  // Global daily cap accounting + anomaly alert (B7). Best-effort, and run
+  // whether or not the audit line landed.
+  globalSpendAdd(rec.microUSD, now.getTime());
+  void alertIfAnomalous(now);
+  return rec;
 }
 
 // One alert per home per process-day: a single account burning > $10 face in a

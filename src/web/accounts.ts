@@ -142,24 +142,40 @@ export function validPassword(pw: string): boolean {
   return pw.length >= 8 && pw.length <= 256;
 }
 
-function hashPassword(pw: string): ScryptParams {
+/**
+ * Async scrypt (#260). `scryptSync` ran the whole KDF on the event loop, so a
+ * handful of concurrent unauthenticated /register or /login calls stalled every
+ * other request — a cheap DoS. The callback form runs on the libuv threadpool.
+ */
+function scryptAsync(pw: string, salt: Buffer, keyLen: number, opts: crypto.ScryptOptions): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    crypto.scrypt(pw, salt, keyLen, opts, (err, key) => (err ? reject(err) : resolve(key)));
+  });
+}
+
+async function hashPassword(pw: string): Promise<ScryptParams> {
   const salt = crypto.randomBytes(16);
-  const key = crypto.scryptSync(pw, salt, SCRYPT.keyLen, SCRYPT);
+  const key = await scryptAsync(pw, salt, SCRYPT.keyLen, SCRYPT);
   return { saltHex: salt.toString("hex"), keyHex: key.toString("hex"), N: SCRYPT.N, r: SCRYPT.r, p: SCRYPT.p };
 }
 
-function passwordMatches(pw: string, p: ScryptParams): boolean {
+async function passwordMatches(pw: string, p: ScryptParams): Promise<boolean> {
   let stored: Buffer;
   try {
     stored = Buffer.from(p.keyHex, "hex");
   } catch {
     return false;
   }
-  const derived = crypto.scryptSync(pw, Buffer.from(p.saltHex, "hex"), stored.length, {
-    N: p.N,
-    r: p.r,
-    p: p.p,
-  });
+  let derived: Buffer;
+  try {
+    derived = await scryptAsync(pw, Buffer.from(p.saltHex, "hex"), stored.length, {
+      N: p.N,
+      r: p.r,
+      p: p.p,
+    });
+  } catch {
+    return false; // corrupt stored params (bad N/r/p) — not a match
+  }
   return derived.length === stored.length && crypto.timingSafeEqual(derived, stored);
 }
 
@@ -226,7 +242,7 @@ export async function createEmailAccount(
   const email = normalizeEmail(emailRaw);
   if (!validEmail(email)) throw new AccountError("invalid_email");
   if (!validPassword(password)) throw new AccountError("weak_password");
-  const scrypt = hashPassword(password); // CPU work outside the CAS loop
+  const scrypt = await hashPassword(password); // CPU work outside the CAS loop
   const rec: AccountRecord = {
     uid: `em-${crypto.randomBytes(9).toString("hex")}`,
     kind: "email",
@@ -265,7 +281,7 @@ export async function verifyEmailLogin(
     r: SCRYPT.r,
     p: SCRYPT.p,
   };
-  const ok = passwordMatches(password, params) && !!acct;
+  const ok = (await passwordMatches(password, params)) && !!acct;
   if (!ok) {
     noteLoginFailure(email, now);
     return null;

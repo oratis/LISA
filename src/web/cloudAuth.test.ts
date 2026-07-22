@@ -7,6 +7,8 @@ import {
   appleSignInConfig,
   audienceForClient,
   subAllowed,
+  sha256hex,
+  appleRequireNonce,
   type AppleJWK,
 } from "./cloudAuth.js";
 
@@ -60,6 +62,39 @@ test("verifies a well-formed Apple identity token", async () => {
 test("accepts aud given as an array", async () => {
   const id = await verifyAppleIdentityToken(mintToken({ ...baseClaims, aud: ["other", AUD] }), opts);
   assert.equal(id.sub, "001234.abcd");
+});
+
+test("nonce: accepts the raw nonce whose hash Apple echoed back (#261)", async () => {
+  const tok = mintToken({ ...baseClaims, nonce: sha256hex("n-abc") });
+  const id = await verifyAppleIdentityToken(tok, { ...opts, expectedNonce: "n-abc" });
+  assert.equal(id.sub, "001234.abcd");
+});
+
+test("nonce: rejects a wrong, absent, or unhashed nonce (#261)", async () => {
+  // token minted for a DIFFERENT sign-in attempt — the replay this blocks
+  const other = mintToken({ ...baseClaims, nonce: sha256hex("n-other") });
+  await assert.rejects(
+    () => verifyAppleIdentityToken(other, { ...opts, expectedNonce: "n-abc" }),
+    (e: Error) => e instanceof AppleAuthError && /nonce mismatch/.test(e.message),
+  );
+  // a token with no nonce claim at all can't satisfy an expected one
+  await assert.rejects(
+    () => verifyAppleIdentityToken(mintToken(baseClaims), { ...opts, expectedNonce: "n-abc" }),
+    AppleAuthError,
+  );
+  // the claim is the HASH, not the raw value — an echoed raw nonce is rejected
+  await assert.rejects(
+    () => verifyAppleIdentityToken(mintToken({ ...baseClaims, nonce: "n-abc" }), { ...opts, expectedNonce: "n-abc" }),
+    AppleAuthError,
+  );
+});
+
+test("nonce: unchecked when the caller expects none (pre-nonce clients)", async () => {
+  const id = await verifyAppleIdentityToken(mintToken({ ...baseClaims, nonce: "whatever" }), opts);
+  assert.equal(id.sub, "001234.abcd");
+  // and the requirement flag is default-OFF so those clients still sign in
+  assert.equal(appleRequireNonce({}), false);
+  assert.equal(appleRequireNonce({ LISA_CLOUD_APPLE_REQUIRE_NONCE: "1" }), true);
 });
 
 test("rejects a tampered payload (signature mismatch)", async () => {

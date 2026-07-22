@@ -54,6 +54,45 @@ export function resetRpm(): void {
   rpmBuckets.clear();
 }
 
+// ── generic per-key sliding window (unauthenticated endpoints) ──────────────
+// Separate from rpmBuckets: that one is keyed by uid AFTER auth, this one is
+// keyed by client IP BEFORE it, so an attacker controls the key space. (#260)
+const genericBuckets = new Map<string, number[]>();
+const GENERIC_MAX_KEYS = 10_000;
+
+/**
+ * Record + check one hit for `key` in a sliding `windowMs`. False ⇒ over limit.
+ *
+ * In-memory and per-instance, and the IP behind Cloud Run comes from a header a
+ * client can spoof — so this is a coarse backstop against a single naive
+ * attacker, NOT a security boundary. The real guards on /register and /login
+ * are scrypt's cost, email uniqueness, and the per-email login throttle.
+ */
+export function ipRateOk(key: string, limit: number, windowMs: number, now: number = Date.now()): boolean {
+  const windowStart = now - windowMs;
+  if (genericBuckets.size >= GENERIC_MAX_KEYS) {
+    // Prune fully-expired keys so IP rotation can't grow the map without bound.
+    for (const [k, hits] of genericBuckets) {
+      if (hits.length === 0 || hits[hits.length - 1]! <= windowStart) genericBuckets.delete(k);
+    }
+    // Still full ⇒ everything in it is live. Refuse rather than keep growing.
+    if (genericBuckets.size >= GENERIC_MAX_KEYS && !genericBuckets.has(key)) return false;
+  }
+  const bucket = (genericBuckets.get(key) ?? []).filter((t) => t > windowStart);
+  if (bucket.length >= limit) {
+    genericBuckets.set(key, bucket);
+    return false;
+  }
+  bucket.push(now);
+  genericBuckets.set(key, bucket);
+  return true;
+}
+
+/** Test seam. */
+export function resetIpRate(): void {
+  genericBuckets.clear();
+}
+
 // ── global daily spend cap (persisted; survives restarts) ───────────────────
 interface DayCounter {
   /** UTC day, "YYYY-MM-DD". */
@@ -69,14 +108,44 @@ function utcDay(now: number): string {
   return new Date(now).toISOString().slice(0, 10);
 }
 
-function readCounter(now: number): DayCounter {
+/**
+ * Read today's counter. A MISSING file (ENOENT) or yesterday's stale file is
+ * the normal "no spend yet today" case and reads as 0. A genuine read/parse
+ * FAILURE (permission error, GCS-mount hiccup, corrupt JSON) is reported as
+ * `ok:false` so the cap check can fail CLOSED instead of silently zeroing the
+ * $200/day hard cap. (#267)
+ */
+type CounterRead = { ok: true; counter: DayCounter } | { ok: false };
+
+function readCounter(now: number): CounterRead {
+  let raw: string;
   try {
-    const parsed = JSON.parse(fs.readFileSync(counterPath(), "utf8")) as DayCounter;
-    if (parsed.day === utcDay(now) && typeof parsed.microUSD === "number") return parsed;
-  } catch {
-    /* fresh day / missing file */
+    raw = fs.readFileSync(counterPath(), "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      return { ok: true, counter: { day: utcDay(now), microUSD: 0 } }; // fresh day
+    }
+    return { ok: false }; // I/O error — the counter is UNKNOWN, not zero
   }
-  return { day: utcDay(now), microUSD: 0 };
+  try {
+    const parsed = JSON.parse(raw) as DayCounter;
+    if (typeof parsed.microUSD !== "number") return { ok: false }; // malformed shape
+    if (parsed.day !== utcDay(now)) return { ok: true, counter: { day: utcDay(now), microUSD: 0 } }; // day rolled
+    return { ok: true, counter: parsed };
+  } catch {
+    return { ok: false }; // corrupt JSON — don't silently disable the cap
+  }
+}
+
+// Throttle the fail-closed log so a persistent storage fault doesn't spam every
+// request; one line per minute is enough for an operator to notice.
+let lastCapReadWarnAt = 0;
+function warnCapReadFailure(now: number): void {
+  if (now - lastCapReadWarnAt < 60_000) return;
+  lastCapReadWarnAt = now;
+  console.error(
+    "[billing] ⚠ global daily-cap counter unreadable — failing CLOSED (service_paused) until the store recovers",
+  );
 }
 
 // B9: with Firestore on, the day counter is a shared doc
@@ -99,7 +168,13 @@ export function globalSpendAdd(microUSD: number, now: number = Date.now()): void
     return;
   }
   try {
-    const c = readCounter(now);
+    const r = readCounter(now);
+    // If the counter is unreadable (not merely absent), DON'T overwrite it with
+    // a fresh 0 — that would clobber a temporarily-unreadable-but-valid file and
+    // undercount the day. Skip the increment; accounting is best-effort and the
+    // audit ledger remains authoritative.
+    if (!r.ok) return;
+    const c = r.counter;
     c.microUSD += microUSD;
     const file = counterPath();
     fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
@@ -130,7 +205,14 @@ export function globalSpendExceeded(now: number = Date.now(), env: Record<string
     }
     return (fsCounterCache?.day === day ? fsCounterCache.microUSD : 0) >= dailyCapMicroUSD(env);
   }
-  return readCounter(now).microUSD >= dailyCapMicroUSD(env);
+  const r = readCounter(now);
+  if (!r.ok) {
+    // The counter is unreadable — fail CLOSED so a storage fault can't silently
+    // disable the hard cap (#267). Reported as "exceeded" ⇒ preflight 402s.
+    warnCapReadFailure(now);
+    return true;
+  }
+  return r.counter.microUSD >= dailyCapMicroUSD(env);
 }
 
 // ── the combined preflight the request paths call ───────────────────────────

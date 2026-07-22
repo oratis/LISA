@@ -13,7 +13,7 @@
  * preserving today's single-instance behavior byte for byte.
  */
 import crypto from "node:crypto";
-import { firestoreEnabled, acquireLease, releaseLease, type LeaseHandle } from "./firestore.js";
+import { firestoreEnabled, acquireLease, releaseLease, renewLease, type LeaseHandle } from "./firestore.js";
 
 const OWNER = `${process.pid}-${crypto.randomBytes(4).toString("hex")}`;
 const TURN_TTL_MS = 180_000;
@@ -33,6 +33,35 @@ export async function acquireTurnLease(uid: string, waitMs = 15_000): Promise<Tu
     if (Date.now() >= deadline) return null;
     await new Promise((r) => setTimeout(r, 750));
   }
+}
+
+/**
+ * Heartbeat a held lease so a long turn keeps it (#272). Chat SSE runs under
+ * `--timeout 3600` — 20× the TTL — so without this the lease expires mid-turn
+ * and a peer instance happily starts a second run of the same account. Renews
+ * at TTL/3 (two missed beats still leave a full renewal of slack), and stops
+ * renewing if ownership is ever lost. Returns a stop fn for the `finally`.
+ */
+export function startLeaseRenewal(lease: TurnLease | null): () => void {
+  if (!lease || lease === "off") return () => {};
+  let stopped = false;
+  const timer = setInterval(() => {
+    void (async () => {
+      if (stopped) return;
+      const held = await renewLease(lease, TURN_TTL_MS);
+      if (!held && !stopped) {
+        // Someone else owns it now; keeping the beat going would steal it back.
+        stopped = true;
+        clearInterval(timer);
+        console.error(`[lease] lost ${lease.path} mid-turn — renewal stopped`);
+      }
+    })();
+  }, Math.floor(TURN_TTL_MS / 3));
+  timer.unref?.(); // never hold the process open on a heartbeat
+  return () => {
+    stopped = true;
+    clearInterval(timer);
+  };
 }
 
 export async function releaseTurnLease(lease: TurnLease | null): Promise<void> {

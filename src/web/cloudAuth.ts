@@ -50,6 +50,13 @@ export interface VerifyAppleOptions {
   now?: () => number;
   /** Leeway for clock skew, seconds (default 60). */
   clockToleranceSec?: number;
+  /**
+   * Raw nonce this request minted (#261). Apple echoes SHA-256(rawNonce) into
+   * the token's `nonce` claim, so matching it proves the token was minted for
+   * THIS sign-in attempt and isn't a replayed one lifted from elsewhere.
+   * Omitted ⇒ no nonce check (pre-nonce clients).
+   */
+  expectedNonce?: string;
 }
 
 export class AppleAuthError extends Error {
@@ -64,6 +71,18 @@ const APPLE_KEYS_URL = "https://appleid.apple.com/auth/keys";
 
 function b64urlToBuffer(s: string): Buffer {
   return Buffer.from(s, "base64url");
+}
+
+/** SHA-256 as lowercase hex — the form Apple echoes back in the nonce claim. */
+export function sha256hex(s: string): string {
+  return crypto.createHash("sha256").update(s, "utf8").digest("hex");
+}
+
+/** Length-safe constant-time compare of two hex strings. */
+function timingSafeEqualHex(a: string, b: string): boolean {
+  const ab = Buffer.from(a, "utf8");
+  const bb = Buffer.from(b, "utf8");
+  return ab.length === bb.length && crypto.timingSafeEqual(ab, bb);
 }
 
 function decodeJson(segment: string): Record<string, unknown> {
@@ -119,6 +138,16 @@ export async function verifyAppleIdentityToken(
   if (exp + tolerance < nowSec) throw new AppleAuthError("token expired");
   const iat = typeof claims.iat === "number" ? claims.iat : 0;
   if (iat - tolerance > nowSec) throw new AppleAuthError("token not yet valid");
+
+  // Replay guard (#261): the client hashes its raw nonce into the auth request,
+  // Apple copies that hash into the token. Compare against our own hash of the
+  // raw nonce the client just sent us.
+  if (opts.expectedNonce !== undefined) {
+    const got = typeof claims.nonce === "string" ? claims.nonce : "";
+    if (!got || !timingSafeEqualHex(got, sha256hex(opts.expectedNonce))) {
+      throw new AppleAuthError("nonce mismatch");
+    }
+  }
 
   const sub = typeof claims.sub === "string" ? claims.sub : "";
   if (!sub) throw new AppleAuthError("missing subject");
@@ -188,6 +217,16 @@ export function appleSignInConfig(env: NodeJS.ProcessEnv = process.env): AppleSi
       .map((s) => s.trim())
       .filter(Boolean),
   };
+}
+
+/**
+ * Should a sign-in without a nonce be rejected outright (#261)? Default OFF so
+ * already-shipped clients (TestFlight builds predating nonce support) keep
+ * working; flip `LISA_CLOUD_APPLE_REQUIRE_NONCE=1` once they've all updated.
+ * When a nonce IS sent it is always verified, flag or no flag.
+ */
+export function appleRequireNonce(env: NodeJS.ProcessEnv = process.env): boolean {
+  return truthy(env.LISA_CLOUD_APPLE_REQUIRE_NONCE);
 }
 
 /**

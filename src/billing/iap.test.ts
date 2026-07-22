@@ -7,7 +7,7 @@ import path from "node:path";
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "lisa-iap-"));
 process.env.LISA_HOME = TMP;
 
-const { verifyAppleJWS, validateTransaction, creditTransaction, refundTransaction, PRODUCTS, IapError } =
+const { verifyAppleJWS, validateTransaction, creditTransaction, refundTransaction, PRODUCTS, IapError, oidToDer } =
   await import("./iap.js");
 const { homeScope, homeForUid } = await import("../paths.js");
 const { readBalance } = await import("./quota.js");
@@ -29,6 +29,18 @@ describe("JWS shape validation", () => {
     ]) {
       await assert.rejects(verifyAppleJWS(bad, { now: 0 }), (e: unknown) => (e as InstanceType<typeof IapError>).code === "malformed_jws");
     }
+  });
+});
+
+describe("OID DER encoding (#265)", () => {
+  test("encodes Apple's marker OIDs to the bytes the chain walk looks for", () => {
+    // Verified against real Apple certs: these exact TLVs appear in the leaf
+    // and the WWDR intermediate respectively.
+    assert.equal(oidToDer("1.2.840.113635.100.6.11.1").toString("hex"), "060a2a864886f76364060b01");
+    assert.equal(oidToDer("1.2.840.113635.100.6.2.1").toString("hex"), "060a2a864886f76364060201");
+    // multi-byte base-128 arcs and the packed first two arcs
+    assert.equal(oidToDer("2.5.29.19").toString("hex"), "0603551d13"); // basicConstraints
+    assert.equal(oidToDer("1.2.840.113549").toString("hex"), "06062a864886f70d"); // RSADSI
   });
 });
 

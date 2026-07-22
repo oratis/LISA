@@ -26,6 +26,17 @@ import type { AccountRecord } from "./accounts.js";
 import { precheckTurn, debitTurn } from "../billing/quota.js";
 import { recordUsage } from "../billing/meter.js";
 import { preflightLimits } from "../billing/limits.js";
+import { readCappedText, BodyTooLargeError } from "./http-body.js";
+
+/**
+ * Gateway body cap (#266). Far larger than the control-plane cap: LLM payloads
+ * legitimately carry base64 images and long transcripts. Bounded all the same —
+ * an unbounded read OOMs the instance before any quota gate runs.
+ */
+const GW_BODY_LIMIT = Number(process.env.LISA_GW_MAX_BODY_MB || 20) * 1_048_576;
+
+/** Chars-per-token used only for the missing-usage debit floor (#264). */
+const BYTES_PER_TOKEN_EST = 4;
 
 export interface UpstreamPlan {
   url: string;
@@ -114,6 +125,27 @@ function num(v: unknown): number {
   return typeof v === "number" && Number.isFinite(v) ? v : 0;
 }
 
+/**
+ * Debit floor for an upstream that answered 2xx but reported no usage (#264).
+ * Without it a provider that omits the usage block — or an SSE stream the
+ * client cut before the usage chunk — bills 0, i.e. free inference. A coarse
+ * bytes/4 estimate is wrong in the user's favour on cache-heavy turns and in
+ * ours on nothing, which is the right direction to be wrong in.
+ */
+export function estimateUsageFromBytes(requestBytes: number, responseBytes: number): ProviderUsage {
+  return {
+    inputTokens: Math.ceil(Math.max(0, requestBytes) / BYTES_PER_TOKEN_EST),
+    outputTokens: Math.ceil(Math.max(0, responseBytes) / BYTES_PER_TOKEN_EST),
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+  };
+}
+
+/** True when the upstream reported nothing billable at all. */
+function usageIsEmpty(u: ProviderUsage): boolean {
+  return u.inputTokens === 0 && u.outputTokens === 0 && u.cacheReadTokens === 0 && u.cacheWriteTokens === 0;
+}
+
 /** Extract usage from a NON-streaming upstream JSON response body. */
 export function usageFromJson(face: "anthropic" | "openai", body: Record<string, unknown>): ProviderUsage {
   if (face === "anthropic") {
@@ -141,8 +173,20 @@ export async function handleGateway(
   const face: "anthropic" | "openai" = url.startsWith("/gw/anthropic/") ? "anthropic" : "openai";
   const subpath = url.slice(face === "anthropic" ? "/gw/anthropic".length : "/gw/openai".length);
 
-  let raw = "";
-  for await (const chunk of req) raw += chunk.toString("utf8");
+  let raw: string;
+  try {
+    raw = await readCappedText(req, GW_BODY_LIMIT);
+  } catch (err) {
+    if (err instanceof BodyTooLargeError) {
+      res.writeHead(413, { "content-type": "application/json", connection: "close" });
+      res.end(JSON.stringify({ error: "payload_too_large", limitBytes: err.limitBytes }));
+    } else {
+      res.writeHead(400, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "read_failed" }));
+    }
+    return;
+  }
+  const requestBytes = Buffer.byteLength(raw, "utf8");
   let body: Record<string, unknown>;
   try {
     body = JSON.parse(raw) as Record<string, unknown>;
@@ -207,15 +251,21 @@ export async function handleGateway(
   }
 
   let usage: ProviderUsage = { ...ZERO };
+  let responseBytes = 0;
   const settle = async () => {
-    const rec = await recordUsage("gw", model, usage);
-    if (rec) await debitTurn(acct, model, rec.microUSD);
+    // A 2xx with no usage at all is a billing hole, not a free turn (#264):
+    // fall back to a byte estimate. Non-2xx settles at whatever we parsed
+    // (normally zero) — the user shouldn't pay for an upstream error.
+    const u = upstream.ok && usageIsEmpty(usage) ? estimateUsageFromBytes(requestBytes, responseBytes) : usage;
+    const rec = await recordUsage("gw", model, u);
+    await debitTurn(acct, model, rec.microUSD);
   };
 
   const contentType = upstream.headers.get("content-type") ?? "application/json";
   if (!upstream.body || !contentType.includes("text/event-stream")) {
     // Non-streaming (or error) response: buffer, meter, forward as-is.
     const text = await upstream.text();
+    responseBytes = Buffer.byteLength(text, "utf8");
     if (upstream.ok) {
       try {
         usage = usageFromJson(face, JSON.parse(text) as Record<string, unknown>);
@@ -242,6 +292,7 @@ export async function handleGateway(
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
+      responseBytes += value.length;
       res.write(Buffer.from(value));
       carry += decoder.decode(value, { stream: true });
       let nl: number;

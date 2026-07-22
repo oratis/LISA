@@ -1,8 +1,9 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 
-const { planUpstream, foldUsage, usageFromJson } = await import("./gateway.js");
+const { planUpstream, foldUsage, usageFromJson, estimateUsageFromBytes } = await import("./gateway.js");
 const { managedConfig, hasCredentialsForModel } = await import("../providers/registry.js");
+const { costMicroUSD } = await import("../billing/prices.js");
 
 const ZERO = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
 
@@ -51,6 +52,25 @@ describe("usage tee-parsing", () => {
       { inputTokens: 5, outputTokens: 7, cacheReadTokens: 0, cacheWriteTokens: 0 },
     );
     assert.equal(usageFromJson("openai", { usage: { prompt_tokens: 3, completion_tokens: 4 } }).outputTokens, 4);
+  });
+});
+
+describe("missing-usage debit floor (#264)", () => {
+  test("estimates tokens from bytes so a 2xx with no usage is never free", () => {
+    const u = estimateUsageFromBytes(4000, 800);
+    assert.equal(u.inputTokens, 1000);
+    assert.equal(u.outputTokens, 200);
+    assert.equal(u.cacheReadTokens, 0);
+    assert.equal(u.cacheWriteTokens, 0);
+    // a partial token still costs one — never round a real turn down to free
+    const tiny = estimateUsageFromBytes(1, 1);
+    assert.equal(tiny.inputTokens, 1);
+    assert.equal(tiny.outputTokens, 1);
+    // and the priced result is strictly positive
+    assert.ok(costMicroUSD("glm-4.6", tiny) > 0);
+    // degenerate inputs don't produce NaN or negative usage
+    assert.deepEqual(estimateUsageFromBytes(0, 0), ZERO);
+    assert.deepEqual(estimateUsageFromBytes(-5, -5), ZERO);
   });
 });
 
