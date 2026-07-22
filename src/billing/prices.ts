@@ -84,7 +84,11 @@ export function costMicroUSD(model: string, usage: ProviderUsage): number {
       usage.cacheWriteTokens * p.cacheWritePerM +
       usage.cacheReadTokens * p.cacheReadPerM) /
     1_000_000;
-  return Math.max(0, Math.ceil(cost));
+  // [B3 hardening] Guard against a non-finite token count (NaN/Infinity), which
+  // would otherwise propagate NaN into the ledger, balance.json, and the budget
+  // breaker (Math.max(0, NaN) === NaN).
+  const micro = Math.ceil(cost);
+  return Number.isFinite(micro) ? Math.max(0, micro) : 0;
 }
 
 /** Render micro-USD as a human dollar string ("$1.23"). */
