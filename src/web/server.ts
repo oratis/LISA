@@ -40,7 +40,9 @@ import { LOGIN_HTML } from "./login.js";
 import { recordUsage, summarizeUsage } from "../billing/meter.js";
 import { PRICES_VERSION, tokensAffordable } from "../billing/prices.js";
 import { precheckTurn, debitTurn, quotaStatus } from "../billing/quota.js";
-import { verifyAppleJWS, validateTransaction, creditTransaction, refundTransaction, IapError } from "../billing/iap.js";
+import { verifyAppleJWS, validateTransaction, creditTransaction, creditExternalTransaction, refundTransaction, IapError } from "../billing/iap.js";
+import { stripeConfig, verifyStripeSignature, classifyStripeEvent, createCheckoutSession, sessionIdForPaymentIntent, STRIPE_PACKS } from "../billing/stripe.js";
+import { ACCOUNT_HTML } from "./account-page.js";
 import { handleGateway } from "./gateway.js";
 import { preflightLimits } from "../billing/limits.js";
 import { ROOM_HTML } from "./room.js";
@@ -916,8 +918,61 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           appleWeb: cloud && cfg.enabled && !!cfg.webServicesId
             ? { servicesId: cfg.webServicesId }
             : null,
+          stripe: cloud && !!stripeConfig().secretKey,
         }),
       );
+      return;
+    }
+
+    // ── Stripe webhook (pre-gate: the signature over the RAW body is the
+    // authentication; B8c). Credits reuse the IAP global dedup index.
+    if (req.method === "POST" && url === "/api/billing/stripe/webhook") {
+      const scfg = stripeConfig();
+      if (!cloud || !scfg.webhookSecret) {
+        res.writeHead(404, { "content-type": "text/plain" });
+        res.end("not available");
+        return;
+      }
+      let raw = "";
+      for await (const chunk of req) raw += chunk.toString("utf8");
+      const sig = typeof req.headers["stripe-signature"] === "string" ? req.headers["stripe-signature"] : "";
+      if (!verifyStripeSignature(raw, sig, scfg.webhookSecret)) {
+        res.writeHead(401, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "bad_signature" }));
+        return;
+      }
+      try {
+        const summary = classifyStripeEvent(JSON.parse(raw) as Record<string, unknown>);
+        if (summary.kind === "credit" && summary.uid && summary.pack && STRIPE_PACKS[summary.pack]) {
+          try {
+            const credited = await creditExternalTransaction(
+              summary.uid,
+              `stripe-${summary.id}`,
+              `stripe.pack.${summary.pack}`,
+              STRIPE_PACKS[summary.pack]!.faceMicroUSD,
+            );
+            console.error(`[stripe] credited ${credited} micro-USD to ${summary.uid} (session ${summary.id})`);
+          } catch (e) {
+            if (!(e instanceof IapError && e.code === "duplicate_transaction")) throw e;
+            // replayed webhook — already credited, fine
+          }
+        } else if (summary.kind === "refund" && summary.id) {
+          const sessionId = await sessionIdForPaymentIntent(summary.id, scfg);
+          const undone = sessionId ? await refundTransaction(`stripe-${sessionId}`) : null;
+          console.error(
+            undone
+              ? `[stripe] refund: clawed back ${undone.microUSD} micro-USD from ${undone.uid}`
+              : `[stripe] refund for unknown payment ${summary.id} — ignored`,
+          );
+        }
+        // Verified events always 200 so Stripe stops retrying.
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true }));
+      } catch (e) {
+        console.error(`[stripe] webhook handling failed: ${(e as Error).message}`);
+        res.writeHead(500, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "handling_failed" }));
+      }
       return;
     }
 
@@ -1177,6 +1232,42 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.writeHead(status, { "content-type": "application/json" });
         res.end(JSON.stringify({ ok: code === "duplicate_transaction", error: code }));
       }
+      return;
+    }
+
+    // ── /account: desktop/web self-service page (post-gate; unauthenticated
+    // browsers land on the login page). iOS never links here (3.1.1).
+    if (req.method === "GET" && (url === "/account" || url.startsWith("/account?"))) {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end(ACCOUNT_HTML);
+      return;
+    }
+
+    if (req.method === "POST" && url === "/api/billing/stripe/checkout") {
+      // Start a hosted Checkout for the signed-in account (B8c).
+      const scfg = stripeConfig();
+      if (!cloud || !scfg.secretKey) {
+        res.writeHead(404, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "stripe_not_configured" }));
+        return;
+      }
+      if (!accountUid) {
+        res.writeHead(403, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "account_session_required" }));
+        return;
+      }
+      const body = await readJsonBody(req);
+      const pack = typeof body.pack === "string" ? body.pack : "";
+      const proto = (req.headers["x-forwarded-proto"] as string | undefined) ?? "https";
+      const base = `${proto}://${req.headers.host ?? "cloud.meetlisa.ai"}`;
+      const session = await createCheckoutSession(accountUid, pack, base, scfg);
+      if (!session) {
+        res.writeHead(400, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "checkout_failed" }));
+        return;
+      }
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, url: session.url }));
       return;
     }
 
