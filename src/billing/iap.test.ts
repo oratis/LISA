@@ -42,6 +42,17 @@ describe("OID DER encoding (#265)", () => {
     assert.equal(oidToDer("2.5.29.19").toString("hex"), "0603551d13"); // basicConstraints
     assert.equal(oidToDer("1.2.840.113549").toString("hex"), "06062a864886f70d"); // RSADSI
   });
+
+  test("refuses an OID needing long-form DER length instead of emitting invalid DER", () => {
+    // >127 content bytes. Emitting the length byte unchecked would produce DER
+    // that parses as something else entirely, so the needle would never match
+    // and the role check would silently always fail — refuse loudly instead.
+    const huge = "1.2." + Array.from({ length: 40 }, () => "268435456").join(".");
+    assert.throws(() => oidToDer(huge), IapError);
+    // and malformed input is still rejected
+    assert.throws(() => oidToDer("1"), IapError);
+    assert.throws(() => oidToDer("1.x.3"), IapError);
+  });
 });
 
 describe("transaction payload validation", () => {

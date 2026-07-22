@@ -47,6 +47,17 @@ describe("per-key sliding window (#260)", () => {
     // past the window the bucket has slid
     assert.ok(ipRateOk("auth:1.2.3.4", 2, 600_000, T0 + 600_001));
   });
+
+  test("saturation fails OPEN — one client can't lock every new IP out (#260)", () => {
+    // The key space is attacker-controlled (spoofable XFF), so flooding it must
+    // not become a lockout: filling the map is exactly the cheap attack.
+    for (let i = 0; i < 10_000; i++) assert.ok(ipRateOk(`auth:flood-${i}`, 20, 600_000, T0));
+    // A brand-new legitimate IP still gets through rather than being refused.
+    assert.equal(ipRateOk("auth:legit", 20, 600_000, T0), true);
+    // ...while a key already in the map is still capped normally.
+    for (let i = 1; i < 20; i++) ipRateOk("auth:flood-0", 20, 600_000, T0);
+    assert.equal(ipRateOk("auth:flood-0", 20, 600_000, T0), false);
+  });
 });
 
 describe("global daily cap", () => {

@@ -75,8 +75,15 @@ export function ipRateOk(key: string, limit: number, windowMs: number, now: numb
     for (const [k, hits] of genericBuckets) {
       if (hits.length === 0 || hits[hits.length - 1]! <= windowStart) genericBuckets.delete(k);
     }
-    // Still full ⇒ everything in it is live. Refuse rather than keep growing.
-    if (genericBuckets.size >= GENERIC_MAX_KEYS && !genericBuckets.has(key)) return false;
+    // Still full ⇒ everything in it is live. Fail OPEN, deliberately: the key
+    // space is attacker-controlled (the IP comes from a spoofable XFF header),
+    // so refusing here would let one client fill the map with 10k junk keys and
+    // lock every *new* IP out of /register + /login. This is a coarse backstop,
+    // not a security boundary — scrypt's cost, email uniqueness and the
+    // per-email login throttle are the guards that must not fail open, and none
+    // of them depends on this map. Admitting the overflow is strictly safer
+    // than denying real users.
+    if (genericBuckets.size >= GENERIC_MAX_KEYS && !genericBuckets.has(key)) return true;
   }
   const bucket = (genericBuckets.get(key) ?? []).filter((t) => t > windowStart);
   if (bucket.length >= limit) {

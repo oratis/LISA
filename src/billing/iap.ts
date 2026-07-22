@@ -136,10 +136,25 @@ export function oidToDer(oid: string): Buffer {
     for (let v = arc >>> 7; v > 0; v >>>= 7) groups.unshift((v & 0x7f) | 0x80);
     content.push(...groups);
   }
+  // Short-form length only. Every OID we encode is a dozen bytes, but emitting
+  // `content.length` unchecked past 127 would silently produce INVALID DER
+  // (>127 needs the long form), and the resulting needle would never match —
+  // i.e. a role check that quietly always fails. Refuse instead of lying.
+  if (content.length > 127) throw new IapError("bad_chain");
   return Buffer.from([0x06, content.length, ...content]);
 }
 
-/** Does this cert carry `oid` anywhere in its DER (i.e. as an extension id)? */
+/**
+ * Does this cert carry `oid` anywhere in its DER?
+ *
+ * Deliberately a substring search over the raw certificate, not an extension
+ * walk: Node's X509Certificate exposes no extension getter, and its `keyUsage`
+ * reads back undefined on Apple's certs. So this asserts the OID's TLV is
+ * PRESENT somewhere, not that it is a given extension's `extnID` — a cert
+ * carrying those bytes in another field would also pass. That is weaker than a
+ * real extension check; it is used here only as a role hint on top of a fully
+ * verified, pinned-root chain, never as the sole gate.
+ */
 export function certHasOid(cert: X509Certificate, oid: string): boolean {
   return cert.raw.includes(oidToDer(oid));
 }
