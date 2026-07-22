@@ -26,6 +26,7 @@ import crypto, { X509Certificate } from "node:crypto";
 import { lisaGlobalHome, homeScope, homeForUid } from "../paths.js";
 import { withFileLock } from "../soul/lock.js";
 import { creditPurchase, clawbackPurchase } from "./quota.js";
+import { firestoreEnabled, getDoc, setDoc, FirestoreError } from "../cloud/firestore.js";
 
 export class IapError extends Error {
   constructor(
@@ -215,14 +216,31 @@ export async function creditExternalTransaction(
   microUSD: number,
   now: number = Date.now(),
 ): Promise<number> {
-  await withFileLock(txIndexLock(), async () => {
-    const index = readTxIndex();
-    if (index.some((e) => e.transactionId === transactionId)) {
-      throw new IapError("duplicate_transaction");
+  if (firestoreEnabled()) {
+    // B9: one doc per transaction, create-only precondition — the dedup is a
+    // property of the datastore itself, valid across every instance.
+    try {
+      await setDoc(
+        `lisa-txindex/${encodeURIComponent(transactionId)}`,
+        { transactionId, uid, productId, microUSD, at: now },
+        { exists: false },
+      );
+    } catch (e) {
+      if (e instanceof FirestoreError && (e.status === 409 || e.status === 412)) {
+        throw new IapError("duplicate_transaction");
+      }
+      throw e;
     }
-    index.push({ transactionId, uid, productId, microUSD, at: now });
-    writeTxIndex(index);
-  });
+  } else {
+    await withFileLock(txIndexLock(), async () => {
+      const index = readTxIndex();
+      if (index.some((e) => e.transactionId === transactionId)) {
+        throw new IapError("duplicate_transaction");
+      }
+      index.push({ transactionId, uid, productId, microUSD, at: now });
+      writeTxIndex(index);
+    });
+  }
   await homeScope.run(homeForUid(uid), () =>
     creditPurchase({ at: now, microUSD, transactionId }, now),
   );
@@ -240,11 +258,19 @@ export async function creditTransaction(uid: string, tx: AppleTransaction, now: 
  */
 export async function refundTransaction(transactionId: string): Promise<{ uid: string; microUSD: number } | null> {
   let entry: TxIndexEntry | undefined;
-  await withFileLock(txIndexLock(), async () => {
-    const index = readTxIndex();
-    entry = index.find((e) => e.transactionId === transactionId);
-    // Keep the index entry (marked) so a replayed credit stays deduped.
-  });
+  if (firestoreEnabled()) {
+    const doc = await getDoc(`lisa-txindex/${encodeURIComponent(transactionId)}`);
+    if (doc && typeof doc.data.uid === "string") {
+      entry = doc.data as unknown as TxIndexEntry;
+    }
+    // The doc stays (never deleted) so a replayed credit remains deduped.
+  } else {
+    await withFileLock(txIndexLock(), async () => {
+      const index = readTxIndex();
+      entry = index.find((e) => e.transactionId === transactionId);
+      // Keep the index entry (marked) so a replayed credit stays deduped.
+    });
+  }
   if (!entry) return null;
   const uid = entry.uid;
   await homeScope.run(homeForUid(uid), () => clawbackPurchase(transactionId));

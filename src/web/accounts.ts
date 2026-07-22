@@ -21,6 +21,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
+import { firestoreEnabled, getDoc, casUpdate } from "../cloud/firestore.js";
 
 export type AccountKind = "apple" | "email";
 
@@ -67,17 +68,51 @@ function accountsPath(): string {
   return path.join(lisaHome(), "accounts.json");
 }
 
-export function loadAccounts(): AccountRecord[] {
+function validRecords(parsed: unknown): AccountRecord[] {
+  if (!Array.isArray(parsed)) return [];
+  return parsed.filter(
+    (a): a is AccountRecord =>
+      !!a && typeof (a as AccountRecord).uid === "string" && typeof (a as AccountRecord).sessionVersion === "number",
+  );
+}
+
+function loadAccountsFile(): AccountRecord[] {
   try {
-    const parsed: unknown = JSON.parse(fs.readFileSync(accountsPath(), "utf8"));
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (a): a is AccountRecord =>
-        !!a && typeof (a as AccountRecord).uid === "string" && typeof (a as AccountRecord).sessionVersion === "number",
-    );
+    return validRecords(JSON.parse(fs.readFileSync(accountsPath(), "utf8")));
   } catch {
     return [];
   }
+}
+
+// ── storage seam (B9): file under min=max=1, Firestore for multi-instance ───
+// Firestore keeps the WHOLE directory in one doc (lisa-global/accounts) and
+// every mutation is a CAS — trivially atomic and unique-email-safe. A record
+// is ~300 bytes, so the 1 MB doc limit covers thousands of accounts; shard to
+// per-uid docs if that ever gets tight.
+const ACCOUNTS_DOC = "lisa-global/accounts";
+
+/** Read the account list from the active backend. */
+export async function loadAccounts(): Promise<AccountRecord[]> {
+  if (firestoreEnabled()) {
+    const doc = await getDoc(ACCOUNTS_DOC);
+    return validRecords((doc?.data.list as unknown) ?? []);
+  }
+  return loadAccountsFile();
+}
+
+/** Read-modify-write the list atomically; `fn` mutates in place. */
+async function mutateAccounts<T>(fn: (list: AccountRecord[]) => T): Promise<T> {
+  if (firestoreEnabled()) {
+    return casUpdate(ACCOUNTS_DOC, (current) => {
+      const list = validRecords((current?.list as unknown) ?? []);
+      const result = fn(list);
+      return { next: { list: list as unknown as Record<string, unknown>[] }, result };
+    });
+  }
+  const list = loadAccountsFile();
+  const result = fn(list);
+  saveAccounts(list);
+  return result;
 }
 
 function saveAccounts(list: AccountRecord[]): void {
@@ -167,41 +202,46 @@ export function resetLoginThrottles(): void {
   throttles.clear();
 }
 
-// ── account operations ──────────────────────────────────────────────────────
+// ── account operations (async: file or Firestore behind the seam) ──────────
 
-export function getAccount(uid: string): AccountRecord | null {
-  return loadAccounts().find((a) => a.uid === uid) ?? null;
+export async function getAccount(uid: string): Promise<AccountRecord | null> {
+  return (await loadAccounts()).find((a) => a.uid === uid) ?? null;
 }
 
-export function getAccountByEmail(email: string): AccountRecord | null {
+export async function getAccountByEmail(email: string): Promise<AccountRecord | null> {
   const norm = normalizeEmail(email);
-  return loadAccounts().find((a) => a.kind === "email" && a.email === norm) ?? null;
+  return (await loadAccounts()).find((a) => a.kind === "email" && a.email === norm) ?? null;
 }
 
-/** Create an email+password account. Throws AccountError on bad input / dup. */
-export function createEmailAccount(
+/**
+ * Create an email+password account. Throws AccountError on bad input / dup.
+ * The duplicate check runs INSIDE the mutation, so under Firestore CAS a
+ * concurrent double-register of the same email loses cleanly.
+ */
+export async function createEmailAccount(
   emailRaw: string,
   password: string,
   now: number = Date.now(),
-): AccountRecord {
+): Promise<AccountRecord> {
   const email = normalizeEmail(emailRaw);
   if (!validEmail(email)) throw new AccountError("invalid_email");
   if (!validPassword(password)) throw new AccountError("weak_password");
-  const list = loadAccounts();
-  if (list.some((a) => a.kind === "email" && a.email === email)) throw new AccountError("email_taken");
+  const scrypt = hashPassword(password); // CPU work outside the CAS loop
   const rec: AccountRecord = {
     uid: `em-${crypto.randomBytes(9).toString("hex")}`,
     kind: "email",
     email,
-    scrypt: hashPassword(password),
+    scrypt,
     createdAt: now,
     lastLoginAt: now,
     verified: false,
     sessionVersion: 0,
   };
-  list.push(rec);
-  saveAccounts(list);
-  return rec;
+  return mutateAccounts((list) => {
+    if (list.some((a) => a.kind === "email" && a.email === email)) throw new AccountError("email_taken");
+    list.push(rec);
+    return rec;
+  });
 }
 
 /**
@@ -209,14 +249,14 @@ export function createEmailAccount(
  * ("throttled") while the email is locked out. A wrong password on an unknown
  * email burns the same scrypt work as a known one (no user-enumeration timing).
  */
-export function verifyEmailLogin(
+export async function verifyEmailLogin(
   emailRaw: string,
   password: string,
   now: number = Date.now(),
-): AccountRecord | null {
+): Promise<AccountRecord | null> {
   const email = normalizeEmail(emailRaw);
   if (loginThrottled(email, now)) throw new AccountError("throttled");
-  const acct = getAccountByEmail(email);
+  const acct = await getAccountByEmail(email);
   const params: ScryptParams = acct?.scrypt ?? {
     // Decoy: constant-cost verify against a random key for unknown emails.
     saltHex: "00".repeat(16),
@@ -231,12 +271,10 @@ export function verifyEmailLogin(
     return null;
   }
   clearThrottle(email);
-  const list = loadAccounts();
-  const live = list.find((a) => a.uid === acct.uid);
-  if (live) {
-    live.lastLoginAt = now;
-    saveAccounts(list);
-  }
+  await mutateAccounts((list) => {
+    const live = list.find((a) => a.uid === acct.uid);
+    if (live) live.lastLoginAt = now;
+  });
   return acct;
 }
 
@@ -244,32 +282,31 @@ export function verifyEmailLogin(
  * Upsert the account record for a verified Apple identity. Called on every
  * successful Sign in with Apple — first sign-in creates the record.
  */
-export function upsertAppleAccount(
+export async function upsertAppleAccount(
   sub: string,
   email: string | undefined,
   now: number = Date.now(),
-): AccountRecord {
+): Promise<AccountRecord> {
   const uid = appleUid(sub);
-  const list = loadAccounts();
-  const existing = list.find((a) => a.uid === uid);
-  if (existing) {
-    existing.lastLoginAt = now;
-    if (email && !existing.email) existing.email = normalizeEmail(email);
-    saveAccounts(list);
-    return existing;
-  }
-  const rec: AccountRecord = {
-    uid,
-    kind: "apple",
-    email: email ? normalizeEmail(email) : undefined,
-    createdAt: now,
-    lastLoginAt: now,
-    verified: true,
-    sessionVersion: 0,
-  };
-  list.push(rec);
-  saveAccounts(list);
-  return rec;
+  return mutateAccounts((list) => {
+    const existing = list.find((a) => a.uid === uid);
+    if (existing) {
+      existing.lastLoginAt = now;
+      if (email && !existing.email) existing.email = normalizeEmail(email);
+      return existing;
+    }
+    const rec: AccountRecord = {
+      uid,
+      kind: "apple",
+      email: email ? normalizeEmail(email) : undefined,
+      createdAt: now,
+      lastLoginAt: now,
+      verified: true,
+      sessionVersion: 0,
+    };
+    list.push(rec);
+    return rec;
+  });
 }
 
 /**
@@ -277,20 +314,21 @@ export function upsertAppleAccount(
  * of its sessions via the sessionVersion check — and returns true if one existed.
  * The caller deletes the per-uid home directory (server-side, B2 layout).
  */
-export function deleteAccount(uid: string): boolean {
-  const list = loadAccounts();
-  const next = list.filter((a) => a.uid !== uid);
-  if (next.length === list.length) return false;
-  saveAccounts(next);
-  return true;
+export async function deleteAccount(uid: string): Promise<boolean> {
+  return mutateAccounts((list) => {
+    const idx = list.findIndex((a) => a.uid === uid);
+    if (idx < 0) return false;
+    list.splice(idx, 1);
+    return true;
+  });
 }
 
 /**
  * The gate's session check: does this (uid, sv) pair name a live account?
  * Wrong/stale sv ⇒ revoked (deleted account, future password change).
  */
-export function sessionAccountValid(uid: string, sv: number): boolean {
-  const acct = getAccount(uid);
+export async function sessionAccountValid(uid: string, sv: number): Promise<boolean> {
+  const acct = await getAccount(uid);
   return !!acct && acct.sessionVersion === sv;
 }
 
@@ -300,16 +338,13 @@ export function sessionAccountValid(uid: string, sv: number): boolean {
  * verified=true (full free window). Idempotent; never rotates an existing
  * password. Returns the record.
  */
-export function ensureSeededAccount(email: string, password: string, now: number = Date.now()): AccountRecord {
-  const existing = getAccountByEmail(email) ?? createEmailAccount(email, password, now);
-  const list = loadAccounts();
-  const live = list.find((a) => a.uid === existing.uid);
-  if (live && !live.verified) {
-    live.verified = true;
-    saveAccounts(list);
-    return live;
-  }
-  return live ?? existing;
+export async function ensureSeededAccount(email: string, password: string, now: number = Date.now()): Promise<AccountRecord> {
+  const existing = (await getAccountByEmail(email)) ?? (await createEmailAccount(email, password, now));
+  return mutateAccounts((list) => {
+    const live = list.find((a) => a.uid === existing.uid);
+    if (live && !live.verified) live.verified = true;
+    return live ?? existing;
+  });
 }
 
 // ── email-ownership verification (B8a) ──────────────────────────────────────
@@ -320,15 +355,16 @@ const VERIFY_TTL_MS = 24 * 60 * 60 * 1000;
  * email account. Returns the RAW token once — it goes into the mailed link —
  * or null when the uid isn't an unverified email account.
  */
-export function beginEmailVerification(uid: string, now: number = Date.now()): string | null {
-  const list = loadAccounts();
-  const acct = list.find((a) => a.uid === uid);
-  if (!acct || acct.kind !== "email" || acct.verified) return null;
+export async function beginEmailVerification(uid: string, now: number = Date.now()): Promise<string | null> {
   const token = crypto.randomBytes(24).toString("hex");
-  acct.verifyTokenHash = crypto.createHash("sha256").update(token).digest("hex");
-  acct.verifyExpiresAt = now + VERIFY_TTL_MS;
-  saveAccounts(list);
-  return token;
+  const hash = crypto.createHash("sha256").update(token).digest("hex");
+  return mutateAccounts((list) => {
+    const acct = list.find((a) => a.uid === uid);
+    if (!acct || acct.kind !== "email" || acct.verified) return null;
+    acct.verifyTokenHash = hash;
+    acct.verifyExpiresAt = now + VERIFY_TTL_MS;
+    return token;
+  });
 }
 
 /**
@@ -336,25 +372,25 @@ export function beginEmailVerification(uid: string, now: number = Date.now()): s
  * On success the account is marked verified (free window levels $1 → $5) and
  * the token is cleared. Returns the account or null.
  */
-export function confirmEmailVerification(rawToken: string, now: number = Date.now()): AccountRecord | null {
+export async function confirmEmailVerification(rawToken: string, now: number = Date.now()): Promise<AccountRecord | null> {
   if (!rawToken) return null;
   const presented = crypto.createHash("sha256").update(rawToken).digest();
-  const list = loadAccounts();
-  for (const acct of list) {
-    if (!acct.verifyTokenHash || acct.verified) continue;
-    let stored: Buffer;
-    try {
-      stored = Buffer.from(acct.verifyTokenHash, "hex");
-    } catch {
-      continue;
+  return mutateAccounts((list) => {
+    for (const acct of list) {
+      if (!acct.verifyTokenHash || acct.verified) continue;
+      let stored: Buffer;
+      try {
+        stored = Buffer.from(acct.verifyTokenHash, "hex");
+      } catch {
+        continue;
+      }
+      if (stored.length !== presented.length || !crypto.timingSafeEqual(stored, presented)) continue;
+      if (!acct.verifyExpiresAt || acct.verifyExpiresAt < now) return null; // matched but stale
+      acct.verified = true;
+      delete acct.verifyTokenHash;
+      delete acct.verifyExpiresAt;
+      return acct;
     }
-    if (stored.length !== presented.length || !crypto.timingSafeEqual(stored, presented)) continue;
-    if (!acct.verifyExpiresAt || acct.verifyExpiresAt < now) return null; // matched but stale
-    acct.verified = true;
-    delete acct.verifyTokenHash;
-    delete acct.verifyExpiresAt;
-    saveAccounts(list);
-    return acct;
-  }
-  return null;
+    return null;
+  });
 }

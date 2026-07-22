@@ -17,6 +17,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { lisaGlobalHome } from "../paths.js";
+import { firestoreEnabled, getDoc, casUpdate } from "../cloud/firestore.js";
 
 function truthy(v: string | undefined): boolean {
   const s = (v ?? "").trim().toLowerCase();
@@ -78,8 +79,25 @@ function readCounter(now: number): DayCounter {
   return { day: utcDay(now), microUSD: 0 };
 }
 
+// B9: with Firestore on, the day counter is a shared doc
+// (lisa-global/day-YYYY-MM-DD) incremented by CAS from every instance. Reads
+// go through a short-lived local cache so the sync exceeded-check stays sync;
+// a $200 cap tolerates seconds of staleness.
+let fsCounterCache: { day: string; microUSD: number; readAt: number } | null = null;
+
 /** Add spend to today's global counter (called from the meter). */
 export function globalSpendAdd(microUSD: number, now: number = Date.now()): void {
+  if (firestoreEnabled()) {
+    const day = utcDay(now);
+    void casUpdate(`lisa-global/day-${day}`, (current) => {
+      const total = (typeof current?.microUSD === "number" ? current.microUSD : 0) + microUSD;
+      fsCounterCache = { day, microUSD: total, readAt: now };
+      return { next: { day, microUSD: total }, result: undefined };
+    }).catch(() => {
+      // accounting is best-effort; the audit ledger remains authoritative
+    });
+    return;
+  }
   try {
     const c = readCounter(now);
     c.microUSD += microUSD;
@@ -99,6 +117,19 @@ export function dailyCapMicroUSD(env: Record<string, string | undefined> = proce
 }
 
 export function globalSpendExceeded(now: number = Date.now(), env: Record<string, string | undefined> = process.env): boolean {
+  if (firestoreEnabled(env)) {
+    const day = utcDay(now);
+    // Refresh the cache in the background when stale; decide on what we have.
+    if (!fsCounterCache || fsCounterCache.day !== day || now - fsCounterCache.readAt > 30_000) {
+      void getDoc(`lisa-global/day-${day}`)
+        .then((doc) => {
+          const total = typeof doc?.data.microUSD === "number" ? doc.data.microUSD : 0;
+          fsCounterCache = { day, microUSD: total, readAt: now };
+        })
+        .catch(() => {});
+    }
+    return (fsCounterCache?.day === day ? fsCounterCache.microUSD : 0) >= dailyCapMicroUSD(env);
+  }
   return readCounter(now).microUSD >= dailyCapMicroUSD(env);
 }
 

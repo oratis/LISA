@@ -20,12 +20,13 @@
  * usage.jsonl audit ledger; atomic writes under the billing lock.
  */
 import path from "node:path";
-import { lisaHome } from "../paths.js";
+import { lisaHome, scopedUid } from "../paths.js";
 import { atomicWrite, readTextOrEmpty, ensureDir } from "../fs-utils.js";
 import { withFileLock } from "../soul/lock.js";
 import type { AccountRecord } from "../web/accounts.js";
 import { modelTier } from "./prices.js";
 import { billingDir } from "./meter.js";
+import { firestoreEnabled, getDoc, casUpdate } from "../cloud/firestore.js";
 
 export const WINDOW_MS = 12 * 60 * 60 * 1000;
 export const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
@@ -65,16 +66,38 @@ function balanceLock(): string {
 
 const EMPTY: BalanceState = { paidMicroUSD: 0, purchases: [] };
 
+function sanitizeBalance(parsed: Partial<BalanceState> | null | undefined): BalanceState {
+  return {
+    paidMicroUSD: typeof parsed?.paidMicroUSD === "number" ? parsed.paidMicroUSD : 0,
+    purchases: Array.isArray(parsed?.purchases) ? parsed.purchases : [],
+    window: parsed?.window,
+  };
+}
+
+// B9: with Firestore enabled AND a per-uid scope active, the balance lives in
+// lisa-balances/{uid} and every mutation is a CAS — safe across instances.
+// Outside a uid scope (or with Firestore off) the file beside the usage ledger
+// stays authoritative, exactly as before.
+function balanceDocPath(): string | null {
+  if (!firestoreEnabled()) return null;
+  const uid = scopedUid();
+  return uid ? `lisa-balances/${uid}` : null;
+}
+
 export async function readBalance(): Promise<BalanceState> {
+  const doc = balanceDocPath();
+  if (doc) {
+    try {
+      const d = await getDoc(doc);
+      return sanitizeBalance((d?.data as Partial<BalanceState> | undefined) ?? null);
+    } catch {
+      return { ...EMPTY, purchases: [] };
+    }
+  }
   try {
     const text = await readTextOrEmpty(balanceFile());
     if (!text.trim()) return { ...EMPTY, purchases: [] };
-    const parsed = JSON.parse(text) as BalanceState;
-    return {
-      paidMicroUSD: typeof parsed.paidMicroUSD === "number" ? parsed.paidMicroUSD : 0,
-      purchases: Array.isArray(parsed.purchases) ? parsed.purchases : [],
-      window: parsed.window,
-    };
+    return sanitizeBalance(JSON.parse(text) as Partial<BalanceState>);
   } catch {
     return { ...EMPTY, purchases: [] };
   }
@@ -85,10 +108,18 @@ async function writeBalance(state: BalanceState): Promise<void> {
   await atomicWrite(balanceFile(), JSON.stringify(state, null, 2));
 }
 
-/** Mutate the balance under the cross-process lock. */
+/** Mutate the balance atomically (Firestore CAS or the file lock). */
 export async function updateBalance<T>(
   fn: (state: BalanceState) => T,
 ): Promise<T> {
+  const doc = balanceDocPath();
+  if (doc) {
+    return casUpdate(doc, (current) => {
+      const state = sanitizeBalance((current as Partial<BalanceState> | null) ?? null);
+      const out = fn(state);
+      return { next: state as unknown as Record<string, unknown>, result: out };
+    });
+  }
   await ensureDir(billingDir());
   return withFileLock(balanceLock(), async () => {
     const state = await readBalance();
