@@ -14,6 +14,7 @@ struct SettingsView: View {
     @State private var showScanner = false
     @State private var showUnpairConfirm = false
     @State private var appleBusy = false
+    @State private var connectBusy = false
 
     var body: some View {
         NavigationStack {
@@ -66,12 +67,12 @@ struct SettingsView: View {
                         Button("Apply pairing") {
                             if app.applyPairing(pairText) {
                                 syncFromConfig()
-                                status = "Paired."
+                                verifyAndReport(prefix: "Paired")
                             } else {
                                 status = "Couldn't parse that pairing string."
                             }
                         }
-                        .disabled(pairText.isEmpty)
+                        .disabled(pairText.isEmpty || connectBusy)
                         Text("Run `lisa pair` on your Mac and scan the QR — over the same Wi-Fi (LAN) or a Tailscale tailnet name.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
@@ -95,15 +96,12 @@ struct SettingsView: View {
                             .disabled(appleBusy || AppState.parseCloudBase(pairText) == nil)
                         if appleBusy { ProgressView() }
                         #endif
-                        Button("Connect") {
-                            if app.applyPairing(pairText) {
-                                syncFromConfig()
-                                app.notify("Connected to LISA Cloud.")
-                            } else {
-                                app.notify("Couldn't parse that cloud URL.", ok: false)
-                            }
+                        Button {
+                            connectCloud()
+                        } label: {
+                            if connectBusy { ProgressView() } else { Text("Connect") }
                         }
-                        .disabled(pairText.isEmpty)
+                        .disabled(pairText.isEmpty || connectBusy)
                         Text("Paste your LISA Cloud URL (including its ?token=…) to connect.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
@@ -218,6 +216,53 @@ struct SettingsView: View {
         token = app.config.token ?? ""
     }
 
+    /// Apply the pasted cloud URL, then actually probe it (authed ping) before
+    /// declaring success. The old parse-only "Connected to LISA Cloud." hid a bad
+    /// token until the first Chat message — the observed App Review 2.1 failure
+    /// ("we were unable to sign in when we entered the code"). Mirrors the
+    /// Onboarding verify step so both entry points behave the same.
+    private func connectCloud() {
+        guard app.applyPairing(pairText) else {
+            app.notify("Couldn't parse that cloud URL — paste the full https://…/?token=… link.", ok: false)
+            return
+        }
+        syncFromConfig()
+        connectBusy = true
+        Task {
+            defer { connectBusy = false }
+            switch await app.verifyConnection() {
+            case .ok:
+                app.notify("Connected to LISA Cloud.")
+            case .unauthorized:
+                app.notify("The token was rejected (401) — re-copy the ENTIRE URL, including everything after ?token=.", ok: false)
+            case .serverError(let code):
+                app.notify("LISA Cloud responded with an error (\(code)). Try again in a minute.", ok: false)
+            case .unreachable:
+                app.notify("Couldn't reach that LISA Cloud URL — check the address and your connection.", ok: false)
+            }
+        }
+    }
+
+    /// Probe the just-applied Mac pairing and report the real outcome into the
+    /// status line (same fake-success fix as connectCloud, for the LAN path).
+    private func verifyAndReport(prefix: String) {
+        status = "\(prefix) — checking the connection…"
+        connectBusy = true
+        Task {
+            defer { connectBusy = false }
+            switch await app.verifyConnection() {
+            case .ok:
+                status = "\(prefix) and connected."
+            case .unauthorized:
+                status = "\(prefix), but the token was rejected — run `lisa pair` on the Mac and re-scan."
+            case .serverError(let code):
+                status = "\(prefix), but the Mac returned an error (\(code))."
+            case .unreachable:
+                status = "\(prefix), but your Mac is unreachable — same Wi-Fi / Tailscale? Did you serve with --host 0.0.0.0?"
+            }
+        }
+    }
+
     #if LISA_ENABLE_SIWA
     /// Sign in with Apple against the entered cloud URL, exchange the identity
     /// token for the session token, and save the connection (review F6). Gated OFF
@@ -255,7 +300,7 @@ struct SettingsView: View {
     func handleScan(_ value: String) {
         if app.applyPairing(value) {
             syncFromConfig()
-            status = "Paired."
+            verifyAndReport(prefix: "Paired")
         } else {
             pairText = value
             status = "Scanned a code, but couldn't parse it as a pairing string."

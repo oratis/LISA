@@ -128,22 +128,40 @@ flow in the review notes above, or enable it and allowlist the reviewer.
 
 ## App Review notes (paste into ASC → App Review Information)
 
-Set **Sign-in required: YES** and point the reviewer at the hosted LISA Cloud
-demo (so they need no Mac). Fill the two placeholders from the live Cloud Run
-service (`gcloud run services describe lisa-cloud …`) — keep the real token OUT
-of this repo:
+Set **Sign-in required: YES**. The ASC form insists on a user/pass pair, but
+this build signs in by pasting ONE full URL — so fill the fields in a way that
+can't mislead the reviewer, and put the real instructions in the notes:
+
+- **User name**: `see-review-notes` (a literal hint, not a credential)
+- **Password**: `<DEMO_TOKEN>` (the raw token, as a fallback reference)
+
+Fill the two placeholders from the live Cloud Run service
+(`gcloud run services describe lisa-cloud …`) — keep the real token OUT of this
+repo. **Before every submission**: `curl -s -o /dev/null -w '%{http_code}' \
+"<DEMO_URL>/?token=<DEMO_TOKEN>"` must print `200` — a `401` here is exactly the
+"unable to sign in when we entered the code" rejection (Guideline 2.1,
+2026-07-13). The 401 body is now structured JSON (`token_mismatch` /
+`token_missing`) if you need to diagnose.
 
 ```
 Lisa Pocket is a companion client for "Lisa", a personal AI. It connects to
 EITHER (a) the user's own Mac running the open-source Lisa server (local +
 private — the default), OR (b) a hosted LISA Cloud instance.
 
-A reviewer has no Mac, so please use the hosted demo:
+IMPORTANT — sign-in model: this build has NO username/password form. Access
+is granted by pasting one full URL that embeds the access token. The
+username/password fields above are placeholders; please follow these steps:
+
   1. Open the app → Settings tab.
-  2. "Connect to" → choose "LISA Cloud".
-  3. Paste this into the field and tap Connect:
+  2. At the top, set "Connect to" → "LISA Cloud".
+  3. Paste this ENTIRE line (one line, nothing trimmed) into the URL field:
        <DEMO_URL>/?token=<DEMO_TOKEN>
-  4. Open the Chat tab and talk to Lisa.
+  4. Tap "Connect". The app performs a live check and shows
+     "Connected to LISA Cloud." If you instead see a message about a
+     rejected token (401), the paste was truncated — please re-copy the
+     whole line including everything after "?token=".
+  5. Open the Chat tab and talk to Lisa. (First reply may take a few
+     seconds; responses stream in.)
 
 Lisa collects no personal data; the cloud demo is a shared, rate-limited
 instance provided for review.

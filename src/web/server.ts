@@ -179,9 +179,11 @@ function presentedToken(req: http.IncomingMessage, url: string): string | null {
   if (auth?.startsWith("Bearer ")) return auth.slice("Bearer ".length).trim();
   const cookies = req.headers.cookie ?? "";
   const m = /(?:^|;\s*)lisa_token=([^;]+)/.exec(cookies);
-  if (m) return decodeURIComponent(m[1]!);
+  if (m) return decodeURIComponent(m[1]!).trim() || null;
   try {
-    const q = new URL(url, "http://localhost").searchParams.get("token");
+    // Trim: tokens arrive by copy-paste (App Review pastes the demo URL), and a
+    // stray trailing space/newline must not fail the exact comparison.
+    const q = new URL(url, "http://localhost").searchParams.get("token")?.trim();
     if (q) return q;
   } catch {
     /* fall through */
@@ -759,7 +761,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     }
 
     if (cloud || !isLoopbackAddress(remoteAddr)) {
-      const presented = webToken ? presentedToken(req, url) : null;
+      const presented = presentedToken(req, url);
       // Authorized by the global LISA_WEB_TOKEN OR a non-revoked per-device token.
       let authed = isRequestAuthorized(remoteAddr, webToken, presented, !cloud);
       if (!authed && presented) {
@@ -770,8 +772,16 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         }
       }
       if (!authed) {
-        res.writeHead(401, { "content-type": "text/plain" });
-        res.end("unauthorized");
+        // Structured 401 so a client (or a reviewer reading the response) can
+        // tell WHY: no token presented vs a mismatch vs an instance with no
+        // token configured at all. The presented value is never echoed back.
+        const reason = !webToken
+          ? "server_not_configured"
+          : presented
+            ? "token_mismatch"
+            : "token_missing";
+        res.writeHead(401, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "unauthorized", reason }));
         return;
       }
       // Token arrived via query param (first open from a phone): pin it as a

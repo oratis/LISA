@@ -87,6 +87,9 @@ IGN
 cleanup() { rm -f ./Dockerfile ./.gcloudignore; }
 trap cleanup EXIT
 
+# Sizing (PLAN_ACCOUNTS_BILLING §6.7): 2 vCPU / 4Gi headroom for the account era;
+# --timeout 3600 so SSE chat streams aren't cut at 5 min. min=max=1 stays until
+# the per-uid + Firestore work (B2) removes the single-writer constraint.
 echo "→ deploying $SERVICE to $PROJECT/$REGION (model ${LISA_MODEL:-claude-default}, /data←gs://$BUCKET, min=max=1 single-writer, allow-unauthenticated; the app's token gate is the auth)"
 gcloud run deploy "$SERVICE" \
   --source . --project "$PROJECT" --region "$REGION" --quiet \
@@ -94,7 +97,7 @@ gcloud run deploy "$SERVICE" \
   --execution-environment gen2 \
   --add-volume "name=soul,type=cloud-storage,bucket=$BUCKET" \
   --add-volume-mount "volume=soul,mount-path=/data" \
-  --memory 1Gi --cpu 1 --timeout 300 \
+  --memory 4Gi --cpu 2 --timeout 3600 \
   --set-env-vars "$ENVS"
 
 URL="$(gcloud run services describe "$SERVICE" --project "$PROJECT" --region "$REGION" --format='value(status.url)' 2>/dev/null || true)"
