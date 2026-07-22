@@ -44,8 +44,9 @@ import { verifyAppleJWS, validateTransaction, creditTransaction, creditExternalT
 import { stripeConfig, verifyStripeSignature, classifyStripeEvent, createCheckoutSession, sessionIdForPaymentIntent, STRIPE_PACKS } from "../billing/stripe.js";
 import { ACCOUNT_HTML } from "./account-page.js";
 import { handleGateway } from "./gateway.js";
-import { preflightLimits } from "../billing/limits.js";
-import { acquireTurnLease, releaseTurnLease } from "../cloud/turn-lease.js";
+import { readCappedText, BodyTooLargeError, CTRL_BODY_LIMIT } from "./http-body.js";
+import { preflightLimits, ipRateOk } from "../billing/limits.js";
+import { acquireTurnLease, releaseTurnLease, startLeaseRenewal } from "../cloud/turn-lease.js";
 import { ROOM_HTML } from "./room.js";
 import { MAIN_HTML } from "./lisa-html.js";
 import { OrchestratorHub, loadOrchestratorConfig } from "../integrations/hub.js";
@@ -120,6 +121,7 @@ import {
   subAllowed,
   AppleAuthError,
   audienceForClient,
+  appleRequireNonce,
 } from "./cloudAuth.js";
 import { detectLanHost, buildPairUrl } from "./pairing.js";
 import { TenantEventBus, sameTenant } from "./event-bus.js";
@@ -224,6 +226,22 @@ function presentedToken(req: http.IncomingMessage, url: string): string | null {
   return null;
 }
 
+// Per-IP cap on the unauthenticated account endpoints (#260). Generous enough
+// for a shared NAT / office egress IP doing normal signups + retries.
+const AUTH_IP_LIMIT = 20;
+const AUTH_IP_WINDOW_MS = 10 * 60_000;
+
+/**
+ * Best-effort client IP. Behind Cloud Run the socket peer is the front end, so
+ * the first `x-forwarded-for` hop is the client — and a client can put anything
+ * there. Only used for coarse rate-limit keying, never for authorization.
+ */
+function clientIp(req: http.IncomingMessage, remoteAddr: string): string {
+  const xff = req.headers["x-forwarded-for"];
+  const first = (Array.isArray(xff) ? xff[0] : xff)?.split(",")[0]?.trim();
+  return first || remoteAddr || "unknown";
+}
+
 /** The absolute /verify link for a raw token, derived from the request host. */
 function verifyLinkFor(req: http.IncomingMessage, rawToken: string): string {
   const host = req.headers.host ?? "cloud.meetlisa.ai";
@@ -231,10 +249,27 @@ function verifyLinkFor(req: http.IncomingMessage, rawToken: string): string {
   return `${proto}://${host}/verify?token=${rawToken}`;
 }
 
-/** Read and JSON-parse a request body (tolerant: bad/empty JSON ⇒ {}). */
-async function readJsonBody(req: http.IncomingMessage): Promise<Record<string, unknown>> {
-  let body = "";
-  for await (const chunk of req) body += chunk.toString("utf8");
+/**
+ * Read and JSON-parse a request body (tolerant: bad/empty JSON ⇒ {}). Bounded
+ * at `limitBytes` (#260/#264): past the cap it answers 413 itself and returns
+ * null, so callers just `if (!body) return;`. A mid-body client abort ⇒ {}.
+ */
+async function readJsonBody(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  limitBytes: number = CTRL_BODY_LIMIT,
+): Promise<Record<string, unknown> | null> {
+  let body: string;
+  try {
+    body = await readCappedText(req, limitBytes);
+  } catch (err) {
+    if (err instanceof BodyTooLargeError) {
+      res.writeHead(413, { "content-type": "application/json", connection: "close" });
+      res.end(JSON.stringify({ error: "payload_too_large", limitBytes: err.limitBytes }));
+      return null;
+    }
+    return {}; // client aborted mid-body — treat as empty, same as a short body
+  }
   try {
     const parsed: unknown = body ? JSON.parse(body) : {};
     return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
@@ -874,7 +909,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end("cloud sign-in misconfigured (no session secret)");
         return;
       }
-      const payload = await readJsonBody(req);
+      const payload = await readJsonBody(req, res);
+      if (!payload) return; // 413 already sent
       const idToken = typeof payload.identityToken === "string" ? payload.identityToken : "";
       if (!idToken) {
         res.writeHead(400, { "content-type": "text/plain" });
@@ -891,10 +927,21 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end("apple sign-in not available for this client");
         return;
       }
+      // Replay guard (#261): the client mints a raw nonce, sends SHA-256 of it
+      // to Apple and the raw value here. Optional by default so TestFlight
+      // builds shipped before nonce support keep signing in; set
+      // LISA_CLOUD_APPLE_REQUIRE_NONCE=1 to make it mandatory once they update.
+      const nonce = typeof payload.nonce === "string" ? payload.nonce : "";
+      if (!nonce && appleRequireNonce()) {
+        res.writeHead(400, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "nonce_required" }));
+        return;
+      }
       try {
         const id = await verifyAppleIdentityToken(idToken, {
           audience,
           fetchKeys: fetchAppleKeys,
+          ...(nonce ? { expectedNonce: nonce } : {}),
         });
         if (!subAllowed(id.sub, cfg)) {
           res.writeHead(403, { "content-type": "text/plain" });
@@ -945,8 +992,21 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end("not available");
         return;
       }
-      let raw = "";
-      for await (const chunk of req) raw += chunk.toString("utf8");
+      // Raw body, capped (#266) — the signature is computed over the raw string,
+      // so this can't go through readJsonBody's parse.
+      let raw: string;
+      try {
+        raw = await readCappedText(req, CTRL_BODY_LIMIT);
+      } catch (err) {
+        if (err instanceof BodyTooLargeError) {
+          res.writeHead(413, { "content-type": "application/json", connection: "close" });
+          res.end(JSON.stringify({ error: "payload_too_large", limitBytes: err.limitBytes }));
+        } else {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "read_failed" }));
+        }
+        return;
+      }
       const sig = typeof req.headers["stripe-signature"] === "string" ? req.headers["stripe-signature"] : "";
       if (!verifyStripeSignature(raw, sig, scfg.webhookSecret)) {
         res.writeHead(401, { "content-type": "application/json" });
@@ -997,7 +1057,17 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end("accounts not available on this edition");
         return;
       }
-      const body = await readJsonBody(req);
+      // Per-IP cap (#260). /register had no throttle at all — the per-email one
+      // only covers login — so a single client could mint accounts (and scrypt
+      // work) in a loop. Coarse backstop only: behind Cloud Run the IP comes
+      // from a spoofable header. See ipRateOk's note.
+      if (!ipRateOk(`auth:${clientIp(req, remoteAddr)}`, AUTH_IP_LIMIT, AUTH_IP_WINDOW_MS)) {
+        res.writeHead(429, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "rate_limited", retryAfterSec: Math.ceil(AUTH_IP_WINDOW_MS / 1000) }));
+        return;
+      }
+      const body = await readJsonBody(req, res);
+      if (!body) return; // 413 already sent
       const email = typeof body.email === "string" ? body.email : "";
       const password = typeof body.password === "string" ? body.password : "";
       try {
@@ -1046,7 +1116,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         return;
       }
       try {
-        const body = await readJsonBody(req);
+        const body = await readJsonBody(req, res);
+        if (!body) return; // 413 already sent
         const signed = typeof body.signedPayload === "string" ? body.signedPayload : "";
         if (!signed) throw new IapError("malformed_jws");
         const outer = await verifyAppleJWS(signed);
@@ -1216,9 +1287,11 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end(JSON.stringify({ error: "turn_in_progress", retryAfterSec: 15 }));
         return;
       }
+      const stopGwRenewal = startLeaseRenewal(gwLease);
       try {
         await handleGateway(req, res, url, acct);
       } finally {
+        stopGwRenewal();
         await releaseTurnLease(gwLease);
       }
       return;
@@ -1235,7 +1308,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         return;
       }
       try {
-        const body = await readJsonBody(req);
+        const body = await readJsonBody(req, res);
+        if (!body) return; // 413 already sent
         const jws = typeof body.jws === "string" ? body.jws : "";
         if (!jws) throw new IapError("malformed_jws");
         const payload = await verifyAppleJWS(jws);
@@ -1292,7 +1366,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end(JSON.stringify({ error: "account_session_required" }));
         return;
       }
-      const body = await readJsonBody(req);
+      const body = await readJsonBody(req, res);
+      if (!body) return; // 413 already sent
       const pack = typeof body.pack === "string" ? body.pack : "";
       const proto = (req.headers["x-forwarded-proto"] as string | undefined) ?? "https";
       const base = `${proto}://${req.headers.host ?? "cloud.meetlisa.ai"}`;
@@ -2862,6 +2937,7 @@ self.addEventListener('fetch', (event) => {
       // a paywall (structured body: error + resetAt + tier).
       let quotaBudgetMicroUSD: number | null = null;
       let turnLease: import("../cloud/turn-lease.js").TurnLease | null = "off";
+      let stopTurnRenewal: () => void = () => {};
       const quotaAcct = cloud && accountUid ? await getAccount(accountUid) : null;
       if (quotaAcct) {
         // Non-quota guards first (B7): kill switch, global daily cap, per-uid RPM.
@@ -2892,6 +2968,9 @@ self.addEventListener('fetch', (event) => {
           res.end(JSON.stringify({ error: "turn_in_progress", retryAfterSec: 15 }));
           return;
         }
+        // Chat SSE runs under --timeout 3600, far past the lease TTL — heartbeat
+        // it for the life of the turn so it can't expire under us (#272).
+        stopTurnRenewal = startLeaseRenewal(turnLease);
       }
       // User just talked — reset the idle watcher + stamp focus freshness.
       try { getIdleWatcher(60 * 60_000).tick(); } catch {}
@@ -3032,6 +3111,9 @@ self.addEventListener('fetch', (event) => {
           // per-uid subtree for signed-in cloud accounts. Mac edition (BYO key)
           // is not metered. Never throws.
           if (cloud) {
+            // Price + debit are INDEPENDENT of the audit-log append (#264):
+            // recordUsage always returns the priced record even if usage.jsonl
+            // couldn't be written, so a full disk can't ship a free turn.
             const rec = await recordUsage("chat", opts.model, {
               inputTokens: result.inputTokens,
               outputTokens: result.outputTokens,
@@ -3039,7 +3121,7 @@ self.addEventListener('fetch', (event) => {
               cacheWriteTokens: result.cacheWriteTokens,
             });
             // Debit order (B4): free window first, then paid balance.
-            if (rec && quotaAcct) await debitTurn(quotaAcct, opts.model, rec.microUSD);
+            if (quotaAcct) await debitTurn(quotaAcct, opts.model, rec.microUSD);
           }
           if (!anyText && !anyTool && !errorSent) send({ type: "empty" });
           send({ type: "done" });
@@ -3061,6 +3143,7 @@ self.addEventListener('fetch', (event) => {
       try {
         await job;
       } finally {
+        stopTurnRenewal();
         await releaseTurnLease(turnLease);
       }
       return;

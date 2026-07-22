@@ -1,5 +1,8 @@
 import SwiftUI
 import AuthenticationServices
+#if LISA_ENABLE_SIWA
+import CryptoKit
+#endif
 
 /// Shared cloud sign-in form (PLAN_ACCOUNTS_BILLING B1) — the PRIMARY flow:
 /// Sign in with Apple first, email+password second, and the legacy paste-a-token
@@ -19,6 +22,13 @@ struct CloudSignInForm: View {
     @State private var pasteText = ""
     @State private var busy = false
     @State private var error: String?
+    #if LISA_ENABLE_SIWA
+    /// Raw (un-hashed) nonce for the in-flight Apple request (#261). We send
+    /// sha256(raw) to Apple and the raw value to our server, which re-hashes it
+    /// and matches it against the token's `nonce` claim — so a token minted for
+    /// some other request can't be replayed at our sign-in endpoint.
+    @State private var appleRawNonce: String?
+    #endif
 
     var body: some View {
         Section {
@@ -26,7 +36,12 @@ struct CloudSignInForm: View {
                 .autocorrectionDisabled().textInputAutocapitalization(.never).keyboardType(.URL)
             #if LISA_ENABLE_SIWA
             SignInWithAppleButton(.continue,
-                onRequest: { req in req.requestedScopes = [.fullName, .email] },
+                onRequest: { req in
+                    req.requestedScopes = [.fullName, .email]
+                    let raw = Self.randomNonce()
+                    appleRawNonce = raw
+                    req.nonce = Self.sha256Hex(raw)
+                },
                 onCompletion: handleApple)
                 .signInWithAppleButtonStyle(.white)
                 .frame(height: 46)
@@ -116,6 +131,18 @@ struct CloudSignInForm: View {
     }
 
     #if LISA_ENABLE_SIWA
+    /// 32 hex chars of randomness — the raw nonce (#261). `SystemRandomNumber-
+    /// Generator` is arc4random_buf on Apple platforms, so no Security import.
+    private static func randomNonce() -> String {
+        var rng = SystemRandomNumberGenerator()
+        return (0..<16).map { _ in String(format: "%02x", UInt8.random(in: 0...255, using: &rng)) }.joined()
+    }
+
+    /// SHA-256 as lowercase hex — the form Apple echoes into the `nonce` claim.
+    private static func sha256Hex(_ s: String) -> String {
+        SHA256.hash(data: Data(s.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+
     private func handleApple(_ result: Result<ASAuthorization, Error>) {
         error = nil
         switch result {
@@ -129,9 +156,13 @@ struct CloudSignInForm: View {
                 return
             }
             busy = true
+            // One nonce per request: consume it so a second sign-in can't reuse it.
+            let raw = appleRawNonce
+            appleRawNonce = nil
             Task {
                 do {
-                    try await app.connectCloudWithApple(baseURL: cloudURL, identityToken: idToken)
+                    try await app.connectCloudWithApple(baseURL: cloudURL, identityToken: idToken,
+                                                        rawNonce: raw)
                     await verifyThenReport()
                 } catch LisaError.http(404) {
                     busy = false

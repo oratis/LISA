@@ -217,9 +217,10 @@ final class AppState: ObservableObject {
     /// session token, then save the cloud connection. Throws on a bad cloud URL,
     /// an instance that hasn't enabled Sign in with Apple (404), or a rejected
     /// token (401). On success the connection is configured for `verifyConnection`.
-    func connectCloudWithApple(baseURL raw: String, identityToken: String) async throws {
+    func connectCloudWithApple(baseURL raw: String, identityToken: String, rawNonce: String? = nil) async throws {
         guard let base = AppState.parseCloudBase(raw) else { throw LisaError.notConfigured }
-        let token = try await LisaClient.exchangeAppleToken(base: base, identityToken: identityToken)
+        let token = try await LisaClient.exchangeAppleToken(base: base, identityToken: identityToken,
+                                                            rawNonce: rawNonce)
         update(host: base.host, port: base.port, token: token, scheme: base.scheme)
         await refreshAccount()
     }

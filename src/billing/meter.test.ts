@@ -75,6 +75,19 @@ describe("meter ledger", () => {
     assert.equal(globalRows.length, 1);
   });
 
+  test("a failed audit append still returns a priced record (#264)", async () => {
+    // A turn whose ledger line can't land must NOT come back unpriced — the
+    // caller debits `microUSD`, so a null/zero here ships free inference.
+    const HOME_B = homeForUid("em-appendfail");
+    fs.mkdirSync(path.join(HOME_B, "billing", "usage.jsonl"), { recursive: true }); // append → EISDIR
+    await homeScope.run(HOME_B, async () => {
+      const rec = await recordUsage("chat", "glm-4.6", U(1000, 2000));
+      assert.ok(rec, "recordUsage must not return null when the append fails");
+      assert.ok(rec.microUSD > 0);
+      assert.equal(rec.microUSD, costMicroUSD("glm-4.6", U(1000, 2000)));
+    });
+  });
+
   test("corrupt lines are skipped, not fatal", async () => {
     fs.appendFileSync(path.join(TMP, "billing", "usage.jsonl"), "not-json\n");
     const rows = await readUsage();

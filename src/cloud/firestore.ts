@@ -253,6 +253,35 @@ export async function acquireLease(
   }
 }
 
+/**
+ * Push a held lease's expiry out by `ttlMs` (#272). A turn can legitimately run
+ * far longer than one TTL (chat SSE runs under `--timeout 3600`), so the holder
+ * heartbeats instead of the TTL being raised to cover the worst case — a
+ * crashed holder still frees the lease within one TTL. Returns false when we no
+ * longer own it (took too long, someone else took over): the caller stops
+ * renewing rather than stealing it back.
+ */
+export async function renewLease(
+  handle: LeaseHandle,
+  ttlMs: number,
+  now: number = Date.now(),
+  fetchFn: typeof fetch = fetch,
+): Promise<boolean> {
+  try {
+    return await casUpdate<boolean>(
+      handle.path,
+      (current) => {
+        if (!current || current.owner !== handle.owner) return { next: null, result: false };
+        return { next: { owner: handle.owner, expiresAt: now + ttlMs }, result: true };
+      },
+      fetchFn,
+      2,
+    );
+  } catch {
+    return false; // next heartbeat retries; expiry is the backstop
+  }
+}
+
 /** Release a held lease (best-effort; expiry is the backstop). */
 export async function releaseLease(handle: LeaseHandle, fetchFn: typeof fetch = fetch): Promise<void> {
   try {

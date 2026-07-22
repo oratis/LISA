@@ -83,6 +83,7 @@ export const LOGIN_HTML = `<!doctype html>
     weak_password: "Use at least 8 characters.",
     invalid_email: "That doesn't look like an email address.",
     throttled: "Too many attempts — wait 15 minutes.",
+    rate_limited: "Too many attempts from this network — try again later.",
   };
   async function auth(path) {
     err.textContent = "";
@@ -102,6 +103,18 @@ export const LOGIN_HTML = `<!doctype html>
     if (f.reportValidity()) auth("/api/auth/register");
   });
 
+  // Fresh random nonce, or null when this context can't hash one (#261).
+  function mintNonce() {
+    if (!window.crypto || !window.crypto.subtle || !window.crypto.getRandomValues) return null;
+    const b = new Uint8Array(16);
+    window.crypto.getRandomValues(b);
+    return Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+  }
+  async function sha256hex(s) {
+    const d = await window.crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+    return Array.from(new Uint8Array(d), (x) => x.toString(16).padStart(2, "0")).join("");
+  }
+
   // Sign in with Apple on the web (B8b): drawn only when the instance has a
   // Services ID configured (GET /api/auth/config). Apple's JS runs a popup and
   // hands back an id_token; the server verifies it against the web audience.
@@ -110,24 +123,31 @@ export const LOGIN_HTML = `<!doctype html>
     const s = document.createElement("script");
     s.src = "https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js";
     s.onload = () => {
-      window.AppleID.auth.init({
+      const appleCfg = {
         clientId: cfg.appleWeb.servicesId,
         scope: "name email",
         redirectURI: location.origin,
         usePopup: true,
-      });
+      };
+      window.AppleID.auth.init(appleCfg);
       document.getElementById("apple-wrap").style.display = "block";
       document.getElementById("divider").style.display = "flex";
       document.getElementById("apple-btn").addEventListener("click", async () => {
         err.textContent = "";
         try {
+          // Per-attempt nonce (#261): Apple echoes sha256(raw) into the token's
+          // nonce claim, so the server can tell a token minted for THIS click
+          // from a replayed one. crypto.subtle needs a secure context — over
+          // plain http we just skip it (the server treats it as optional).
+          const rawNonce = mintNonce();
+          if (rawNonce) window.AppleID.auth.init({ ...appleCfg, nonce: await sha256hex(rawNonce) });
           const auth = await window.AppleID.auth.signIn();
           const idToken = auth && auth.authorization && auth.authorization.id_token;
           if (!idToken) { err.textContent = "Apple didn't return a token."; return; }
           const res = await fetch("/api/auth/apple", {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ identityToken: idToken, client: "web" }),
+            body: JSON.stringify({ identityToken: idToken, client: "web", ...(rawNonce ? { nonce: rawNonce } : {}) }),
           });
           if (res.ok) { location.replace("/"); return; }
           err.textContent = "Apple sign-in was rejected (" + res.status + ").";

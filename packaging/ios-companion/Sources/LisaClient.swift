@@ -57,7 +57,10 @@ final class LisaClient {
     /// is the call that *mints* the token — so it's a static helper that takes the
     /// bare cloud base (host/scheme/port, no token). Throws `LisaError.http` for a
     /// disabled instance (404) or a rejected sign-in (401/403).
-    static func exchangeAppleToken(base: ServerConfig, identityToken: String,
+    /// `rawNonce` is the un-hashed nonce this sign-in minted (#261); the server
+    /// hashes it and compares against the token's `nonce` claim, which proves
+    /// the token was issued for THIS request. nil ⇒ omitted (older instances).
+    static func exchangeAppleToken(base: ServerConfig, identityToken: String, rawNonce: String? = nil,
                                    session: URLSession = .shared) async throws -> String {
         guard let baseURL = base.baseURL, let url = URL(string: "/api/auth/apple", relativeTo: baseURL) else {
             throw LisaError.notConfigured
@@ -65,7 +68,9 @@ final class LisaClient {
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try JSONSerialization.data(withJSONObject: ["identityToken": identityToken])
+        var payload: [String: String] = ["identityToken": identityToken]
+        if let rawNonce { payload["nonce"] = rawNonce }
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload)
         let (data, resp) = try await session.data(for: req)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
         guard (200..<300).contains(code) else { throw LisaError.http(code) }

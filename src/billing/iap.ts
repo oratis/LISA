@@ -56,19 +56,56 @@ export const EXPECTED_BUNDLE = "ai.meetlisa.main";
 
 const APPLE_ROOT_URL = "https://www.apple.com/certificateauthority/AppleRootCA-G3.cer";
 
+/**
+ * Apple Root CA G3, pinned by SHA-256 (#265). Without this the "pinned" root
+ * was whatever apple.com served over TLS and then whatever sat in the cache
+ * file — so a TLS compromise or a writable cache dir substituted the trust
+ * anchor and every downstream chain check became theatre. Node's
+ * `fingerprint256` format: uppercase hex, colon-separated.
+ */
+const APPLE_ROOT_G3_SHA256 =
+  "63:34:3A:BF:B8:9A:6A:03:EB:B5:7E:9B:3F:5F:A7:BE:7C:4F:5C:75:6F:30:17:B3:A8:C4:88:C3:65:3E:91:79";
+
+/**
+ * Apple's certificate marker extensions. Presence is asserted on the DER, which
+ * is enough to keep an unrelated (even Apple-issued) cert from standing in for
+ * a receipt-signing one — Node's X509Certificate exposes no extension getter,
+ * and its `keyUsage` reads back undefined on these certs.
+ */
+const OID_LEAF_RECEIPT_SIGNING = "1.2.840.113635.100.6.11.1";
+const OID_INTERMEDIATE_WWDR = "1.2.840.113635.100.6.2.1";
+
+/** Whether the root came from an explicit operator override (not fingerprint-pinned). */
+function rootPathOverridden(): boolean {
+  return !!process.env.LISA_APPLE_ROOT_PATH;
+}
+
 function rootCachePath(): string {
   return process.env.LISA_APPLE_ROOT_PATH ?? path.join(lisaGlobalHome(), "apple-root-g3.cer");
 }
 
 let rootCert: X509Certificate | null = null;
 
-/** Load (fetch-once + cache) Apple's Root CA G3. */
+/**
+ * Load (fetch-once + cache) Apple's Root CA G3, pinned to `APPLE_ROOT_G3_SHA256`.
+ *
+ * A cache file that doesn't match the pin is treated as absent (poisoned or
+ * stale ⇒ re-fetch), and a fetch that doesn't match is a hard failure — so the
+ * anchor is the real G3 no matter which path it arrived by. An EXISTING file at
+ * `LISA_APPLE_ROOT_PATH` skips the pin: that's the documented air-gapped/test
+ * escape hatch, where the operator has chosen the anchor themselves.
+ */
 export async function appleRootCert(): Promise<X509Certificate> {
   if (rootCert) return rootCert;
   const file = rootCachePath();
+  const overridden = rootPathOverridden();
   try {
-    rootCert = new X509Certificate(fs.readFileSync(file));
-    return rootCert;
+    const cached = new X509Certificate(fs.readFileSync(file));
+    if (overridden || cached.fingerprint256 === APPLE_ROOT_G3_SHA256) {
+      rootCert = cached;
+      return rootCert;
+    }
+    console.error(`[iap] cached Apple root at ${file} failed the G3 pin — refetching`);
   } catch {
     /* fall through to fetch */
   }
@@ -76,10 +113,50 @@ export async function appleRootCert(): Promise<X509Certificate> {
   if (!res.ok) throw new IapError("root_unavailable");
   const der = Buffer.from(await res.arrayBuffer());
   const cert = new X509Certificate(der);
+  if (cert.fingerprint256 !== APPLE_ROOT_G3_SHA256) throw new IapError("root_unavailable");
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
   fs.writeFileSync(file, der);
   rootCert = cert;
   return cert;
+}
+
+/**
+ * Encode a dotted OID as its DER TLV (tag 0x06). Pure + deterministic — e.g.
+ * `1.2.840.113635.100.6.11.1` → `060a2a864886f76364060b01`.
+ */
+export function oidToDer(oid: string): Buffer {
+  const arcs = oid.split(".").map(Number);
+  if (arcs.length < 2 || arcs.some((n) => !Number.isInteger(n) || n < 0)) {
+    throw new IapError("bad_chain");
+  }
+  const content: number[] = [arcs[0]! * 40 + arcs[1]!];
+  for (const arc of arcs.slice(2)) {
+    // base-128, most-significant group first, continuation bit on all but last
+    const groups = [arc & 0x7f];
+    for (let v = arc >>> 7; v > 0; v >>>= 7) groups.unshift((v & 0x7f) | 0x80);
+    content.push(...groups);
+  }
+  // Short-form length only. Every OID we encode is a dozen bytes, but emitting
+  // `content.length` unchecked past 127 would silently produce INVALID DER
+  // (>127 needs the long form), and the resulting needle would never match —
+  // i.e. a role check that quietly always fails. Refuse instead of lying.
+  if (content.length > 127) throw new IapError("bad_chain");
+  return Buffer.from([0x06, content.length, ...content]);
+}
+
+/**
+ * Does this cert carry `oid` anywhere in its DER?
+ *
+ * Deliberately a substring search over the raw certificate, not an extension
+ * walk: Node's X509Certificate exposes no extension getter, and its `keyUsage`
+ * reads back undefined on Apple's certs. So this asserts the OID's TLV is
+ * PRESENT somewhere, not that it is a given extension's `extnID` — a cert
+ * carrying those bytes in another field would also pass. That is weaker than a
+ * real extension check; it is used here only as a role hint on top of a fully
+ * verified, pinned-root chain, never as the sole gate.
+ */
+export function certHasOid(cert: X509Certificate, oid: string): boolean {
+  return cert.raw.includes(oidToDer(oid));
 }
 
 /** Test seam. */
@@ -130,6 +207,17 @@ export async function verifyAppleJWS(
   });
   const root = opts.root ?? (await appleRootCert());
   const now = opts.now ?? Date.now();
+  // Role checks (#265). A signature chain alone doesn't say what each cert is
+  // FOR: without these, any leaf Apple ever issued — or any leaf presented as
+  // its own issuer — could sign transactions. `.ca` is basicConstraints CA
+  // (reliable here; `.keyUsage` reads back undefined on Apple certs), and the
+  // marker OIDs identify the receipt-signing leaf and the WWDR intermediate.
+  if (chain[0]!.ca) throw new IapError("bad_chain"); // a CA must not sign receipts
+  if (!certHasOid(chain[0]!, OID_LEAF_RECEIPT_SIGNING)) throw new IapError("bad_chain");
+  if (!certHasOid(chain[1]!, OID_INTERMEDIATE_WWDR)) throw new IapError("bad_chain");
+  for (let i = 1; i < chain.length; i++) {
+    if (!chain[i]!.ca) throw new IapError("bad_chain"); // non-CA can't issue
+  }
   // Each cert must be inside its validity window and signed by the next one;
   // the last must be signed by (or BE) the pinned root.
   for (let i = 0; i < chain.length; i++) {
