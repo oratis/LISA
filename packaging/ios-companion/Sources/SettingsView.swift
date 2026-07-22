@@ -13,7 +13,6 @@ struct SettingsView: View {
     @State private var status = ""
     @State private var showScanner = false
     @State private var showUnpairConfirm = false
-    @State private var appleBusy = false
     @State private var connectBusy = false
 
     var body: some View {
@@ -77,33 +76,24 @@ struct SettingsView: View {
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 } else {
-                    Section("LISA Cloud") {
-                        TextField("https://your-instance.run.app", text: $pairText)
-                            .autocorrectionDisabled()
-                            .textInputAutocapitalization(.never)
-                            .keyboardType(.URL)
-                        // Sign in with Apple is gated OFF for v1: the cloud is still
-                        // single-tenant (M0), and offering account creation would trip
-                        // App Store 5.1.1(v) (in-app account deletion). Re-enable by
-                        // adding LISA_ENABLE_SIWA to SWIFT_ACTIVE_COMPILATION_CONDITIONS
-                        // once per-uid isolation (C3) + account deletion land.
-                        #if LISA_ENABLE_SIWA
-                        SignInWithAppleButton(.continue,
-                            onRequest: { req in req.requestedScopes = [.fullName, .email] },
-                            onCompletion: handleApple)
-                            .signInWithAppleButtonStyle(.white)
-                            .frame(height: 44)
-                            .disabled(appleBusy || AppState.parseCloudBase(pairText) == nil)
-                        if appleBusy { ProgressView() }
-                        #endif
-                        Button {
-                            connectCloud()
-                        } label: {
-                            if connectBusy { ProgressView() } else { Text("Connect") }
+                    // Cloud data plane: LISA accounts are the primary flow (B1) —
+                    // signed-in card when we have an account session, the shared
+                    // sign-in form (SIWA / email / advanced token link) otherwise.
+                    if app.account?.signedIn == true {
+                        AccountCard()
+                    } else {
+                        CloudSignInForm { outcome in
+                            switch outcome {
+                            case .ok:
+                                app.notify("Connected to LISA Cloud.")
+                            case .unauthorized:
+                                app.notify("Signed in, but the connection was rejected (401) — try again.", ok: false)
+                            case .serverError(let code):
+                                app.notify("LISA Cloud responded with an error (\(code)).", ok: false)
+                            case .unreachable:
+                                app.notify("Couldn't reach LISA Cloud — check the URL and your connection.", ok: false)
+                            }
                         }
-                        .disabled(pairText.isEmpty || connectBusy)
-                        Text("Paste your LISA Cloud URL (including its ?token=…) to connect.")
-                            .font(.caption).foregroundStyle(.secondary)
                     }
                 }
 
@@ -193,7 +183,7 @@ struct SettingsView: View {
             .consoleBackground()
             .navigationTitle("Settings")
             .onAppear(perform: syncFromConfig)
-            .task { policy = try? await app.client.controlPolicy(); await app.loadProactive() }
+            .task { policy = try? await app.client.controlPolicy(); await app.loadProactive(); await app.refreshAccount() }
             .sheet(isPresented: $showScanner) {
                 QRScanSheet(onScanned: handleScan, onError: { status = $0 })
             }
@@ -216,33 +206,6 @@ struct SettingsView: View {
         token = app.config.token ?? ""
     }
 
-    /// Apply the pasted cloud URL, then actually probe it (authed ping) before
-    /// declaring success. The old parse-only "Connected to LISA Cloud." hid a bad
-    /// token until the first Chat message — the observed App Review 2.1 failure
-    /// ("we were unable to sign in when we entered the code"). Mirrors the
-    /// Onboarding verify step so both entry points behave the same.
-    private func connectCloud() {
-        guard app.applyPairing(pairText) else {
-            app.notify("Couldn't parse that cloud URL — paste the full https://…/?token=… link.", ok: false)
-            return
-        }
-        syncFromConfig()
-        connectBusy = true
-        Task {
-            defer { connectBusy = false }
-            switch await app.verifyConnection() {
-            case .ok:
-                app.notify("Connected to LISA Cloud.")
-            case .unauthorized:
-                app.notify("The token was rejected (401) — re-copy the ENTIRE URL, including everything after ?token=.", ok: false)
-            case .serverError(let code):
-                app.notify("LISA Cloud responded with an error (\(code)). Try again in a minute.", ok: false)
-            case .unreachable:
-                app.notify("Couldn't reach that LISA Cloud URL — check the address and your connection.", ok: false)
-            }
-        }
-    }
-
     /// Probe the just-applied Mac pairing and report the real outcome into the
     /// status line (same fake-success fix as connectCloud, for the LAN path).
     private func verifyAndReport(prefix: String) {
@@ -262,38 +225,6 @@ struct SettingsView: View {
             }
         }
     }
-
-    #if LISA_ENABLE_SIWA
-    /// Sign in with Apple against the entered cloud URL, exchange the identity
-    /// token for the session token, and save the connection (review F6). Gated OFF
-    /// for v1 — see the LISA_ENABLE_SIWA note above the button.
-    private func handleApple(_ result: Result<ASAuthorization, Error>) {
-        switch result {
-        case .failure(let err):
-            if (err as? ASAuthorizationError)?.code == .canceled { return }
-            app.notify(err.localizedDescription, ok: false)
-        case .success(let auth):
-            guard let cred = auth.credential as? ASAuthorizationAppleIDCredential,
-                  let data = cred.identityToken, let idToken = String(data: data, encoding: .utf8) else {
-                app.notify("Apple didn't return an identity token.", ok: false)
-                return
-            }
-            appleBusy = true
-            Task {
-                defer { appleBusy = false }
-                do {
-                    try await app.connectCloudWithApple(baseURL: pairText, identityToken: idToken)
-                    syncFromConfig()
-                    app.notify("Signed in to LISA Cloud.")
-                } catch LisaError.http(404) {
-                    app.notify("This instance hasn't enabled Sign in with Apple — paste a token instead.", ok: false)
-                } catch {
-                    app.notify("Couldn't reach that LISA Cloud URL.", ok: false)
-                }
-            }
-        }
-    }
-    #endif
 
     /// Apply a scanned code the same way pasted text is applied; on a parse failure,
     /// drop it into the text field so the user can see/fix what was scanned.

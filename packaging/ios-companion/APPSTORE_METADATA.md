@@ -75,15 +75,15 @@ Live Activities and the Dynamic Island keep the current agent's progress on your
 lock screen. Home Screen widgets show it without opening the app.
 
 PRIVATE BY DESIGN
-Lisa Pocket is a client, not a service. Pairing is QR-based and every connection
-is gated by a per-device token you can revoke. Nothing is collected to a
-Lisa-operated server; the app stores no account.
+Your choice of two ways to run: sign in to LISA Cloud (email or Apple — a free
+usage allowance refreshes every 12 hours), or connect your own Mac, where
+pairing is QR-based, every connection is gated by a revocable per-device token,
+and nothing ever reaches a Lisa-operated server.
 
 GETTING STARTED
-You'll need LISA running on a Mac (free and open source — install with Homebrew,
-npm, or the Mac app). The in-app setup walks you through installing it, starting
-it reachably, and scanning the pairing QR. No Mac yet? Point the app at a LISA
-Cloud URL instead.
+Sign in and go — no setup needed. Prefer fully local? LISA is free and open
+source: the in-app setup walks you through installing it on your Mac, starting
+it reachably, and scanning the pairing QR.
 
 LISA is open source (MIT). Learn more at meetlisa.ai.
 ```
@@ -97,9 +97,10 @@ LISA is open source (MIT). Learn more at meetlisa.ai.
   [`REVIEW_RESPONSE_4.1a.md`](REVIEW_RESPONSE_4.1a.md). Lead the **App Review
   Notes** with the "our own open-source product (meetlisa.ai / github.com/oratis/LISA)"
   framing (already updated in the submission checklist §7.3).
-- **App Privacy** answer must be **"Data Not Collected"** to match
-  `Sources/PrivacyInfo.xcprivacy` — see [`RELEASE.md`](RELEASE.md) §"From
-  TestFlight to App Store".
+- **App Privacy** (updated for B1 accounts): declare **Email Address** and
+  **User ID** — App Functionality, linked to the user, **no tracking** — to match
+  `Sources/PrivacyInfo.xcprivacy`. The local (My Mac) and BYO-token modes still
+  collect nothing, but ASC's answer covers the app's maximum collection.
 - **App Review Information** → sign-in / demo notes are already drafted in
   [`RELEASE.md`](RELEASE.md) §"App Review notes" (point the reviewer at the LISA
   Cloud demo so they need no Mac).

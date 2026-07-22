@@ -76,6 +76,56 @@ final class LisaClient {
         return r.token
     }
 
+    /// Email-account sign-in / registration against a LISA Cloud instance
+    /// (`POST /api/auth/login` / `/register` — PLAN_ACCOUNTS_BILLING B1). Like
+    /// `exchangeAppleToken`, this *mints* access, so it's a static helper over the
+    /// bare cloud base. Returns the account session token. Throws `LisaError.http`
+    /// with the server's typed status: 401 bad credentials, 409 email taken,
+    /// 429 throttled, 404 instance without accounts.
+    static func emailAuth(base: ServerConfig, email: String, password: String,
+                          register: Bool, session: URLSession = .shared) async throws -> String {
+        let path = register ? "/api/auth/register" : "/api/auth/login"
+        guard let baseURL = base.baseURL, let url = URL(string: path, relativeTo: baseURL) else {
+            throw LisaError.notConfigured
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.timeoutInterval = 15
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["email": email, "password": password])
+        let (data, resp) = try await session.data(for: req)
+        let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
+        guard (200..<300).contains(code) else { throw LisaError.http(code) }
+        struct R: Decodable { let token: String }
+        guard let r = try? JSONDecoder().decode(R.self, from: data), !r.token.isEmpty else {
+            throw LisaError.decode
+        }
+        return r.token
+    }
+
+    /// The signed-in account behind the current session (`GET /api/auth/me`).
+    /// `signedIn: false` means the connection authenticates with a legacy shared
+    /// or device token rather than a LISA account.
+    struct AccountMe: Decodable, Equatable {
+        var signedIn: Bool
+        var uid: String?
+        var kind: String?
+        var email: String?
+        var verified: Bool?
+        var plan: String?
+    }
+
+    func authMe() async throws -> AccountMe {
+        try await decode("/api/auth/me", as: AccountMe.self)
+    }
+
+    /// In-app account deletion (App Store 5.1.1(v)) — `DELETE /api/account`.
+    /// Only works when the connection uses an account session.
+    func deleteAccount() async throws {
+        struct R: Decodable { let ok: Bool }
+        _ = try await decode("/api/account", method: "DELETE", as: R.self)
+    }
+
     /// URL for a server asset (e.g. a mood portrait at /assets/lisa/<slug>.png),
     /// carrying the token as a query param so AsyncImage — which can't set an
     /// Authorization header — still authenticates against a non-loopback server.

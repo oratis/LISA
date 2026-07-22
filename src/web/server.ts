@@ -36,6 +36,7 @@ import {
   recentUserText,
 } from "../soul/desire-focus.js";
 import { ISLAND_HTML } from "./island.js";
+import { LOGIN_HTML } from "./login.js";
 import { ROOM_HTML } from "./room.js";
 import { MAIN_HTML } from "./lisa-html.js";
 import { OrchestratorHub, loadOrchestratorConfig } from "../integrations/hub.js";
@@ -883,9 +884,16 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         }
       }
       if (!authed) {
-        // Structured 401 so a client (or a reviewer reading the response) can
-        // tell WHY: no token presented vs a mismatch vs an instance with no
-        // token configured at all. The presented value is never echoed back.
+        // Browsers hitting the cloud edition get the login page (still 401 —
+        // correct semantics, human-usable body). API callers get structured
+        // JSON: no token presented vs a mismatch vs an instance with no token
+        // configured at all. The presented value is never echoed back.
+        const wantsHtml = (req.headers.accept ?? "").includes("text/html");
+        if (cloud && req.method === "GET" && wantsHtml) {
+          res.writeHead(401, { "content-type": "text/html; charset=utf-8" });
+          res.end(LOGIN_HTML);
+          return;
+        }
         const reason = !webToken
           ? "server_not_configured"
           : presented

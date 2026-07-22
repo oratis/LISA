@@ -221,6 +221,54 @@ final class AppState: ObservableObject {
         guard let base = AppState.parseCloudBase(raw) else { throw LisaError.notConfigured }
         let token = try await LisaClient.exchangeAppleToken(base: base, identityToken: identityToken)
         update(host: base.host, port: base.port, token: token, scheme: base.scheme)
+        await refreshAccount()
+    }
+
+    // ── LISA accounts (PLAN_ACCOUNTS_BILLING B1) ──
+    /// The official hosted instance — prefilled (editable) wherever a cloud URL is
+    /// asked for, so the primary flow is "open app → sign in → go". Self-hosters
+    /// just type their own URL over it.
+    nonisolated static let defaultCloudBase = "https://cloud.meetlisa.ai"
+
+    /// The signed-in account behind the current connection (`/api/auth/me`), or
+    /// nil when unknown/unreachable. `signedIn == false` ⇒ legacy token auth.
+    @Published var account: LisaClient.AccountMe?
+
+    /// Email sign-in / registration against a LISA Cloud instance; on success the
+    /// account session becomes the connection token (same Bearer channel).
+    func connectCloudWithEmail(baseURL raw: String, email: String, password: String,
+                               register: Bool) async throws {
+        guard let base = AppState.parseCloudBase(raw) else { throw LisaError.notConfigured }
+        let token = try await LisaClient.emailAuth(base: base, email: email,
+                                                  password: password, register: register)
+        update(host: base.host, port: base.port, token: token, scheme: base.scheme)
+        await refreshAccount()
+    }
+
+    /// Refresh `account` (best-effort — leaves the last value on transport errors,
+    /// clears to signed-out shape on a definitive 401).
+    func refreshAccount() async {
+        guard config.isConfigured else { account = nil; return }
+        do {
+            account = try await client.authMe()
+        } catch LisaError.http(401), LisaError.http(403) {
+            account = LisaClient.AccountMe(signedIn: false)
+        } catch {
+            // unreachable — keep whatever we knew
+        }
+    }
+
+    /// Drop the account session locally (the token is stateless server-side).
+    func signOutCloud() {
+        update(host: config.host, port: config.port, token: nil, scheme: config.scheme)
+        account = nil
+    }
+
+    /// In-app account deletion (App Store 5.1.1(v)): server-side delete, then
+    /// local sign-out. Throws so the UI can surface a failure.
+    func deleteCloudAccount() async throws {
+        try await client.deleteAccount()
+        signOutCloud()
     }
 
     // ── first-run onboarding (docs/PLAN_IOS_ONBOARDING_v1.0.md) ──
