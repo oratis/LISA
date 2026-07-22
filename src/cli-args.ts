@@ -40,7 +40,10 @@ export interface ParsedArgs {
     | "sense"
     | "agents"
     | "pair"
-    | "mail";
+    | "mail"
+    | "login"
+    | "logout"
+    | "billing";
   subargs: string[];
   serveWeb: boolean;
   serveImessage: boolean;
@@ -190,7 +193,10 @@ export function parseArgs(argv: string[]): ParsedArgs {
       first === "sense" ||
       first === "agents" ||
       first === "pair" ||
-      first === "mail"
+      first === "mail" ||
+      first === "login" ||
+      first === "logout" ||
+      first === "billing"
     ) {
       out.subcommand = first;
       out.subargs = positional.slice(1);

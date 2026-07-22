@@ -127,7 +127,7 @@ export const OPENAI_COMPAT_PRESETS: OpenAICompatPreset[] = [
  * mixed case (Baichuan2-Turbo, MiniMax-Text-01) and users typing the canonical
  * lowercase form shouldn't have to remember a vendor-specific capitalization.
  */
-function findPreset(model: string): OpenAICompatPreset | null {
+export function findPreset(model: string): OpenAICompatPreset | null {
   const lower = model.toLowerCase();
   for (const p of OPENAI_COMPAT_PRESETS) {
     if (p.modelPrefixes.some((pre) => lower.startsWith(pre.toLowerCase()))) return p;
@@ -180,7 +180,34 @@ export function resolveAnthropicAuth(
  * (detectProvider consults process.env for the LISA_BASE_URL / LISA_PROVIDER
  * routing rules; the per-key lookups below read the passed `env`.)
  */
+/**
+ * Managed inference (PLAN_ACCOUNTS_BILLING B6): a signed-in Mac/CLI with no
+ * provider key of its own routes LLM calls through the LISA cloud gateway
+ * (`/gw/*`), authenticated by the account session. Written to config.env by
+ * `lisa login`; BYO keys always win — managed only engages for a model whose
+ * own credentials are absent.
+ */
+export function managedConfig(
+  env: Record<string, string | undefined> = process.env,
+): { base: string; session: string } | null {
+  const session = env.LISA_MANAGED_SESSION?.trim();
+  if (!session) return null;
+  const base = (env.LISA_MANAGED_BASE?.trim() || "https://cloud.meetlisa.ai").replace(/\/+$/, "");
+  return { base, session };
+}
+
 export function hasCredentialsForModel(
+  model: string,
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  // A managed session can drive any gateway-served model (anthropic/openai
+  // faces); gemini has no gateway face yet.
+  if (managedConfig(env) && detectProvider(model) !== "gemini") return true;
+  return hasOwnCredentialsForModel(model, env);
+}
+
+/** BYO credentials only (ignores the managed session). */
+export function hasOwnCredentialsForModel(
   model: string,
   env: Record<string, string | undefined> = process.env,
 ): boolean {
@@ -227,6 +254,26 @@ export function makeProvider(name: ProviderName): Provider {
  */
 function resolveProvider(model: string): Provider {
   const provider = detectProvider(model);
+  // Managed inference (B6): no own key for this model + a signed-in session →
+  // the LISA gateway, with the session token as the credential. The gateway
+  // swaps in the real provider key, meters, and enforces quota (402s surface
+  // through the normal provider error path).
+  const managed = managedConfig();
+  if (managed && !hasOwnCredentialsForModel(model)) {
+    if (provider === "anthropic") {
+      return new AnthropicProvider({
+        authToken: managed.session,
+        baseURL: `${managed.base}/gw/anthropic`,
+      });
+    }
+    if (provider === "openai") {
+      return new OpenAIProvider({
+        apiKey: managed.session,
+        baseURL: `${managed.base}/gw/openai/v1`,
+      });
+    }
+    // gemini: no gateway face yet — fall through to the normal resolution.
+  }
   if (provider === "anthropic") {
     return new AnthropicProvider({
       ...resolveAnthropicAuth(),
