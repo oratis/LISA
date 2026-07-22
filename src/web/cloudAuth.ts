@@ -155,6 +155,12 @@ export interface AppleSignInConfig {
   enabled: boolean;
   /** Expected token audience — the app bundle id. */
   audience: string;
+  /**
+   * Sign in with Apple on the WEB (B8b): the Services ID that Apple's JS flow
+   * mints tokens for (`aud` differs from the native bundle id). Unset ⇒ the
+   * web button stays hidden and web-audience tokens are rejected.
+   */
+  webServicesId: string | null;
   /** Optional allowlist of Apple `sub`s; empty = any verified Apple ID may sign in. */
   allowedSubs: string[];
 }
@@ -176,11 +182,21 @@ export function appleSignInConfig(env: NodeJS.ProcessEnv = process.env): AppleSi
   return {
     enabled: truthy(env.LISA_CLOUD_APPLE_SIGNIN),
     audience: env.LISA_CLOUD_APPLE_AUD?.trim() || "ai.meetlisa.main",
+    webServicesId: env.LISA_CLOUD_APPLE_WEB_SID?.trim() || null,
     allowedSubs: (env.LISA_CLOUD_APPLE_SUBS ?? "")
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean),
   };
+}
+
+/**
+ * Pick the expected `aud` for a sign-in request: web-client tokens carry the
+ * Services ID, native ones the bundle id. Returns null when that surface
+ * isn't configured (⇒ reject).
+ */
+export function audienceForClient(cfg: AppleSignInConfig, client: "native" | "web"): string | null {
+  return client === "web" ? cfg.webServicesId : cfg.audience;
 }
 
 /** True when `sub` is permitted by the (possibly empty) allowlist. */
