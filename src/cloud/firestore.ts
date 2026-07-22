@@ -261,24 +261,34 @@ export async function acquireLease(
  * longer own it (took too long, someone else took over): the caller stops
  * renewing rather than stealing it back.
  */
+/**
+ * Renew a held turn lease. Returns:
+ *   "held"  — we still own it and pushed the expiry out;
+ *   "lost"  — someone else owns it now (or it's gone) → stop renewing;
+ *   "error" — a transient failure (network / CAS contention). We DON'T know
+ *             ownership was lost, so the caller must keep beating; the lease
+ *             expiry is the real backstop. Conflating this with "lost" (the old
+ *             boolean did) let a single blip stop the heartbeat and strand the
+ *             lease, so a peer took it over and double-ran the account.
+ */
 export async function renewLease(
   handle: LeaseHandle,
   ttlMs: number,
   now: number = Date.now(),
   fetchFn: typeof fetch = fetch,
-): Promise<boolean> {
+): Promise<"held" | "lost" | "error"> {
   try {
-    return await casUpdate<boolean>(
+    return await casUpdate<"held" | "lost">(
       handle.path,
       (current) => {
-        if (!current || current.owner !== handle.owner) return { next: null, result: false };
-        return { next: { owner: handle.owner, expiresAt: now + ttlMs }, result: true };
+        if (!current || current.owner !== handle.owner) return { next: null, result: "lost" };
+        return { next: { owner: handle.owner, expiresAt: now + ttlMs }, result: "held" };
       },
       fetchFn,
       2,
     );
   } catch {
-    return false; // next heartbeat retries; expiry is the backstop
+    return "error"; // transient; next heartbeat retries, expiry is the backstop
   }
 }
 

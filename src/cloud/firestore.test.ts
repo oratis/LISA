@@ -149,13 +149,13 @@ describe("turn lease", () => {
     const a = await acquireLease("turn-u2", "owner-a", 10_000, t0, fetchFn);
     assert.ok(a);
     // heartbeat before expiry pushes the deadline out
-    assert.equal(await renewLease(a, 10_000, t0 + 5_000, fetchFn), true);
+    assert.equal(await renewLease(a, 10_000, t0 + 5_000, fetchFn), "held");
     // ...so at t0+12s — past the ORIGINAL expiry — a peer is still locked out
     assert.equal(await acquireLease("turn-u2", "owner-b", 10_000, t0 + 12_000, fetchFn), null);
     // a non-owner can't renew someone else's lease
-    assert.equal(await renewLease({ path: a.path, owner: "owner-b" }, 10_000, t0 + 13_000, fetchFn), false);
+    assert.equal(await renewLease({ path: a.path, owner: "owner-b" }, 10_000, t0 + 13_000, fetchFn), "lost");
     // once it really expires the peer takes over, and the old owner stops renewing
     assert.ok(await acquireLease("turn-u2", "owner-b", 10_000, t0 + 16_000, fetchFn));
-    assert.equal(await renewLease(a, 10_000, t0 + 17_000, fetchFn), false);
+    assert.equal(await renewLease(a, 10_000, t0 + 17_000, fetchFn), "lost");
   });
 });

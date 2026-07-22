@@ -68,6 +68,21 @@ describe("email accounts", () => {
     const after = await verifyEmailLogin("a@b.co", "password-123", t0 + 16 * 60 * 1000);
     assert.equal(after?.email, "a@b.co");
   });
+
+  test("a concurrent burst of wrong guesses can't outrun the lockout (in-flight guard)", async () => {
+    await createEmailAccount("a@b.co", "password-123");
+    // Fire 10 at once. scrypt is async, so without the per-email in-flight guard
+    // all 10 would clear the throttle check and run before any failure recorded.
+    // With it, only one password check proceeds; the rest reject as throttled —
+    // so a burst is forced back into serial attempts that DO hit the 5-try lock.
+    const results = await Promise.allSettled(
+      Array.from({ length: 10 }, () => verifyEmailLogin("a@b.co", "wrong")),
+    );
+    const rejected = results.filter((r) => r.status === "rejected").length;
+    const ran = results.filter((r) => r.status === "fulfilled" && r.value === null).length;
+    assert.ok(rejected >= 1, "concurrent guesses beyond the first must reject as in-flight");
+    assert.equal(rejected + ran, 10);
+  });
 });
 
 describe("apple accounts", () => {

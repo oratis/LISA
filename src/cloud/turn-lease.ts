@@ -48,8 +48,11 @@ export function startLeaseRenewal(lease: TurnLease | null): () => void {
   const timer = setInterval(() => {
     void (async () => {
       if (stopped) return;
-      const held = await renewLease(lease, TURN_TTL_MS);
-      if (!held && !stopped) {
+      const state = await renewLease(lease, TURN_TTL_MS);
+      // Only a definitive ownership loss stops the beat — a transient "error"
+      // must NOT, or one blip strands the lease to expiry and a peer double-runs
+      // the turn (the exact failure this heartbeat exists to prevent).
+      if (state === "lost" && !stopped) {
         // Someone else owns it now; keeping the beat going would steal it back.
         stopped = true;
         clearInterval(timer);

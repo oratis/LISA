@@ -33,7 +33,12 @@ import { readCappedText, BodyTooLargeError } from "./http-body.js";
  * legitimately carry base64 images and long transcripts. Bounded all the same —
  * an unbounded read OOMs the instance before any quota gate runs.
  */
-const GW_BODY_LIMIT = Number(process.env.LISA_GW_MAX_BODY_MB || 20) * 1_048_576;
+// Clamp to a positive finite value: `Number(env || 20)` yields NaN for a
+// mistyped non-numeric env (e.g. "20MB"), and `bytes > NaN` is always false, so
+// the cap would silently never fire — the exact unbounded read this guards.
+const GW_BODY_MB = Number(process.env.LISA_GW_MAX_BODY_MB);
+const GW_BODY_LIMIT =
+  (Number.isFinite(GW_BODY_MB) && GW_BODY_MB > 0 ? GW_BODY_MB : 20) * 1_048_576;
 
 /** Chars-per-token used only for the missing-usage debit floor (#264). */
 const BYTES_PER_TOKEN_EST = 4;

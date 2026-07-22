@@ -192,6 +192,11 @@ interface Throttle {
 const throttles = new Map<string, Throttle>();
 const THROTTLE_MAX_FAILS = 5;
 const THROTTLE_LOCK_MS = 15 * 60 * 1000;
+// One in-flight password check per email at a time. scrypt is async (libuv
+// threadpool), so without this, N concurrent guesses all pass loginThrottled()
+// before any noteLoginFailure() records — defeating the lockout. See
+// verifyEmailLogin.
+const loginInFlight = new Set<string>();
 
 export function loginThrottled(email: string, now: number = Date.now()): boolean {
   const t = throttles.get(normalizeEmail(email));
@@ -272,26 +277,34 @@ export async function verifyEmailLogin(
 ): Promise<AccountRecord | null> {
   const email = normalizeEmail(emailRaw);
   if (loginThrottled(email, now)) throw new AccountError("throttled");
-  const acct = await getAccountByEmail(email);
-  const params: ScryptParams = acct?.scrypt ?? {
-    // Decoy: constant-cost verify against a random key for unknown emails.
-    saltHex: "00".repeat(16),
-    keyHex: "00".repeat(32),
-    N: SCRYPT.N,
-    r: SCRYPT.r,
-    p: SCRYPT.p,
-  };
-  const ok = (await passwordMatches(password, params)) && !!acct;
-  if (!ok) {
-    noteLoginFailure(email, now);
-    return null;
+  // Reserve synchronously so N concurrent guesses for the same email can't all
+  // clear the throttle check before any failure is recorded (scrypt is async).
+  if (loginInFlight.has(email)) throw new AccountError("throttled");
+  loginInFlight.add(email);
+  try {
+    const acct = await getAccountByEmail(email);
+    const params: ScryptParams = acct?.scrypt ?? {
+      // Decoy: constant-cost verify against a random key for unknown emails.
+      saltHex: "00".repeat(16),
+      keyHex: "00".repeat(32),
+      N: SCRYPT.N,
+      r: SCRYPT.r,
+      p: SCRYPT.p,
+    };
+    const ok = (await passwordMatches(password, params)) && !!acct;
+    if (!ok) {
+      noteLoginFailure(email, now);
+      return null;
+    }
+    clearThrottle(email);
+    await mutateAccounts((list) => {
+      const live = list.find((a) => a.uid === acct.uid);
+      if (live) live.lastLoginAt = now;
+    });
+    return acct;
+  } finally {
+    loginInFlight.delete(email);
   }
-  clearThrottle(email);
-  await mutateAccounts((list) => {
-    const live = list.find((a) => a.uid === acct.uid);
-    if (live) live.lastLoginAt = now;
-  });
-  return acct;
 }
 
 /**
