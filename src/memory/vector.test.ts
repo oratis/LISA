@@ -4,8 +4,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-// Point LISA_HOME at an empty temp dir BEFORE importing the module under
-// test, so paths.ts (evaluated at import) resolves SESSIONS_DIR there.
+// Point lisaHome() at an empty temp dir BEFORE importing the module under
+// test, so paths.ts (evaluated at import) resolves sessionsDir() there.
 // node's test runner isolates each test file in its own process, so this
 // env mutation can't leak into other suites.
 const TMP = mkdtempSync(path.join(os.tmpdir(), "lisa-mem-test-"));
@@ -39,7 +39,7 @@ describe("buildIndex — caching", () => {
   test("a new session file invalidates the cache (fingerprint changes)", async () => {
     clearIndexCache();
     const before = await buildIndex();
-    // Write a session jsonl into SESSIONS_DIR (LISA_HOME/sessions). The
+    // Write a session jsonl into sessionsDir() (lisaHome()/sessions). The
     // fingerprint (mtime+size of *.jsonl) changes, so the next build is fresh.
     const sessionsDir = path.join(TMP, "sessions");
     const { mkdirSync, writeFileSync } = await import("node:fs");

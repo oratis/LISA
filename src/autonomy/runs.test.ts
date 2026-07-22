@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-// Isolate the ledger to a throwaway dir. paths.ts captures LISA_HOME at import
+// Isolate the ledger to a throwaway dir. paths.ts captures lisaHome() at import
 // time, so set it BEFORE the first import of the module under test.
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "lisa-autonomy-"));
 process.env.LISA_HOME = TMP;

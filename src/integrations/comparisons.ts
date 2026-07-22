@@ -8,7 +8,7 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { readFile } from "node:fs/promises";
 import { atomicWrite } from "../fs-utils.js";
-import { LISA_HOME } from "../paths.js";
+import { lisaHome } from "../paths.js";
 
 export type CompareAgentKind = "claude" | "codex" | "opencode" | "aider";
 
@@ -28,9 +28,13 @@ export interface ComparisonJob {
   entries: ComparisonEntry[];
 }
 
-const FILE = path.join(LISA_HOME, "comparisons.json");
+function comparisonsFile(): string {
+  return path.join(lisaHome(), "comparisons.json");
+}
 /** Where worktrees live — outside the repo, so they never get committed. */
-export const COMPARE_ROOT = path.join(LISA_HOME, "compare");
+export function compareRoot(): string {
+  return path.join(lisaHome(), "compare");
+}
 
 interface Store {
   jobs: ComparisonJob[];
@@ -38,7 +42,7 @@ interface Store {
 
 export async function loadComparisons(): Promise<ComparisonJob[]> {
   try {
-    const store = JSON.parse(await readFile(FILE, "utf8")) as Store;
+    const store = JSON.parse(await readFile(comparisonsFile(), "utf8")) as Store;
     return Array.isArray(store.jobs) ? store.jobs : [];
   } catch {
     return [];
@@ -46,7 +50,7 @@ export async function loadComparisons(): Promise<ComparisonJob[]> {
 }
 
 async function save(jobs: ComparisonJob[]): Promise<void> {
-  await atomicWrite(FILE, JSON.stringify({ jobs }, null, 2));
+  await atomicWrite(comparisonsFile(), JSON.stringify({ jobs }, null, 2));
 }
 
 export function newJobId(): string {

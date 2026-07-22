@@ -8,7 +8,7 @@ import path from "node:path";
 // now evolve desires in place, not just append. These exercise the store
 // primitives that power both paths.
 //
-// SOUL_DIR derives from LISA_HOME at import, so set a tmp home before importing
+// soulDir() derives from lisaHome() at import, so set a tmp home before importing
 // (dynamic import); node --test isolates each file in its own process.
 let store: typeof import("./store.js");
 let home: string;

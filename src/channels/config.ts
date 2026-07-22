@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { LISA_HOME } from "../paths.js";
+import { lisaGlobalHome } from "../paths.js";
 import { pathExists } from "../fs-utils.js";
 
 export interface ChannelConfigEntry {
@@ -13,7 +13,7 @@ export interface ChannelsConfig {
   channels: Record<string, ChannelConfigEntry>;
 }
 
-export const CHANNELS_CONFIG_PATH = path.join(LISA_HOME, "channels.json");
+export const CHANNELS_CONFIG_PATH = path.join(lisaGlobalHome(), "channels.json");
 
 export async function loadChannelsConfig(): Promise<ChannelsConfig> {
   if (!(await pathExists(CHANNELS_CONFIG_PATH))) return { channels: {} };

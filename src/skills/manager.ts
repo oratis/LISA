@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { SKILLS_DIR } from "../paths.js";
+import { skillsDir } from "../paths.js";
 import { atomicWrite, ensureDir, pathExists } from "../fs-utils.js";
 import type { Skill, SkillFrontmatter } from "../types.js";
 import { buildFrontmatter, parseFrontmatter } from "./frontmatter.js";
@@ -8,7 +8,7 @@ import { buildFrontmatter, parseFrontmatter } from "./frontmatter.js";
 const VALID_NAME = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
 function skillDir(name: string): string {
-  return path.join(SKILLS_DIR, name);
+  return path.join(skillsDir(), name);
 }
 
 function skillFile(name: string): string {
@@ -24,8 +24,8 @@ export function validateSkillName(name: string): void {
 }
 
 export async function listSkills(): Promise<Skill[]> {
-  await ensureDir(SKILLS_DIR);
-  const entries = await fs.readdir(SKILLS_DIR, { withFileTypes: true });
+  await ensureDir(skillsDir());
+  const entries = await fs.readdir(skillsDir(), { withFileTypes: true });
   const out: Skill[] = [];
   for (const entry of entries) {
     if (!entry.isDirectory() || entry.name.startsWith(".")) continue;

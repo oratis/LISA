@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
-import { SESSIONS_DIR } from "../paths.js";
+import { sessionsDir } from "../paths.js";
 import { appendLine, ensureDir } from "../fs-utils.js";
 import type { SessionEntry, SessionHeader, StoredMessage } from "../types.js";
 
@@ -17,7 +17,7 @@ export class SessionStore {
   }
 
   static async open(id: string): Promise<SessionStore> {
-    const file = path.join(SESSIONS_DIR, `${id}.jsonl`);
+    const file = path.join(sessionsDir(), `${id}.jsonl`);
     const raw = await fs.readFile(file, "utf8");
     const lines = raw.split("\n").filter(Boolean);
     if (lines.length === 0) throw new Error(`session ${id} is empty`);
@@ -29,9 +29,9 @@ export class SessionStore {
     cwd: string;
     model: string;
   }): Promise<SessionStore> {
-    await ensureDir(SESSIONS_DIR);
+    await ensureDir(sessionsDir());
     const id = `${stamp()}-${crypto.randomBytes(3).toString("hex")}`;
-    const file = path.join(SESSIONS_DIR, `${id}.jsonl`);
+    const file = path.join(sessionsDir(), `${id}.jsonl`);
     const header: SessionHeader = {
       type: "session",
       id,

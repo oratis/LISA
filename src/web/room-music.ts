@@ -14,7 +14,7 @@
  */
 import fs from "node:fs/promises";
 import path from "node:path";
-import { LISA_HOME } from "../paths.js";
+import { lisaHome } from "../paths.js";
 
 export type MusicMood = "classical" | "light" | "classic" | "mine";
 
@@ -44,7 +44,7 @@ interface BundledManifestEntry {
 }
 
 export function userMusicDir(): string {
-  return path.join(LISA_HOME, "music");
+  return path.join(lisaHome(), "music");
 }
 
 const MOODS: ReadonlySet<string> = new Set(["classical", "light", "classic", "mine"]);

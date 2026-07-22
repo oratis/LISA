@@ -5,21 +5,21 @@ import { listSkills } from "./skills/manager.js";
 import { readMemory } from "./memory/store.js";
 import { readIndex } from "./kb/store.js";
 import { readSchema } from "./kb/schema.js";
-import { KB_INDEX_FILE, KB_SCHEMA_FILE } from "./kb/paths.js";
-import { LISA_HOME, MEMORY_DIR, SKILLS_DIR } from "./paths.js";
+import { kbIndexFile, kbSchemaFile } from "./kb/paths.js";
+import { lisaHome, memoryDir, skillsDir } from "./paths.js";
 import { pathExists } from "./fs-utils.js";
 import { availableMoodSlugs } from "./tools/set_mood.js";
 import { isBorn, readSoulSummary } from "./soul/store.js";
 import {
-  SOUL_CONSTITUTION,
-  SOUL_DESIRES_DIR,
-  SOUL_DIR,
-  SOUL_EMOTIONS,
-  SOUL_IDENTITY,
-  SOUL_NAME,
-  SOUL_OPINIONS_DIR,
-  SOUL_PURPOSE,
-  SOUL_VALUES_DIR,
+  soulConstitutionFile,
+  soulDesiresDir,
+  soulDir,
+  soulEmotionsFile,
+  soulIdentityFile,
+  soulNameFile,
+  soulOpinionsDir,
+  soulPurposeFile,
+  soulValuesDir,
 } from "./soul/paths.js";
 import type { SoulSummary } from "./soul/types.js";
 
@@ -80,7 +80,7 @@ export async function buildSystemPromptSnapshot(): Promise<PromptSnapshot> {
     `- platform: ${process.platform} (${os.release()})`,
     `- node: ${process.version}`,
     `- home: ${os.homedir()}`,
-    `- lisa data: ${LISA_HOME}`,
+    `- lisa data: ${lisaHome()}`,
   ].join("\n");
 
   const moods = await availableMoodSlugs();
@@ -206,29 +206,29 @@ export async function getPromptFingerprint(): Promise<string> {
   const parts: string[] = [];
   // Single files
   for (const p of [
-    SOUL_NAME,
-    SOUL_IDENTITY,
-    SOUL_PURPOSE,
-    SOUL_CONSTITUTION,
-    SOUL_EMOTIONS,
-    path.join(MEMORY_DIR, "MEMORY.md"),
-    path.join(MEMORY_DIR, "USER.md"),
+    soulNameFile(),
+    soulIdentityFile(),
+    soulPurposeFile(),
+    soulConstitutionFile(),
+    soulEmotionsFile(),
+    path.join(memoryDir(), "MEMORY.md"),
+    path.join(memoryDir(), "USER.md"),
     // KB: index.md is rewritten on every KB mutation (store regenerates it), so
     // its mtime is a cheap proxy for "the KB changed" — plus the schema file for
     // rule edits. Lets KB captures/edits hot-reload into the prompt mid-session.
-    KB_INDEX_FILE,
-    KB_SCHEMA_FILE,
+    kbIndexFile(),
+    kbSchemaFile(),
   ]) {
     parts.push(await mtimeOrZero(p));
   }
   // Directories — concat sorted entry names + per-entry mtime so we catch
   // both content changes AND additions/removals of values/opinions/desires.
-  for (const d of [SOUL_VALUES_DIR, SOUL_OPINIONS_DIR, SOUL_DESIRES_DIR, SKILLS_DIR]) {
+  for (const d of [soulValuesDir(), soulOpinionsDir(), soulDesiresDir(), skillsDir()]) {
     parts.push(await dirFingerprint(d));
   }
   // Soul lock matters too — tampered files shift the prompt's "## Notice"
   // block. Cheap to include.
-  parts.push(await mtimeOrZero(path.join(SOUL_DIR, "soul.lock.json")));
+  parts.push(await mtimeOrZero(path.join(soulDir(), "soul.lock.json")));
   return parts.join("|");
 }
 

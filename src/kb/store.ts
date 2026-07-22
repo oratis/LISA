@@ -15,10 +15,10 @@ import { assertSafeSlug, normalizeSlug } from "../soul/slug.js";
 import { commitKb } from "./git.js";
 import { ensureSchema } from "./schema.js";
 import {
-  KB_INDEX_FILE,
-  KB_LOCK_PATH,
-  KB_SOURCES_DIR,
-  KB_WIKI_DIR,
+  kbIndexFile,
+  kbLockPath,
+  kbSourcesDir,
+  kbWikiDir,
   entryFile,
   layerDir,
   type KbLayer,
@@ -136,8 +136,8 @@ function metaOf(entry: KbEntry): KbEntryMeta {
 
 /** Create the KB layout (dirs + default schema) if missing. Idempotent. */
 export async function ensureKbScaffold(): Promise<void> {
-  await ensureDir(KB_SOURCES_DIR);
-  await ensureDir(KB_WIKI_DIR);
+  await ensureDir(kbSourcesDir());
+  await ensureDir(kbWikiDir());
   await ensureSchema();
 }
 
@@ -183,7 +183,7 @@ export async function listEntries(layer?: KbLayer): Promise<KbEntryMeta[]> {
 }
 
 export async function readIndex(): Promise<string> {
-  return readTextOrEmpty(KB_INDEX_FILE);
+  return readTextOrEmpty(kbIndexFile());
 }
 
 // ── index regeneration ────────────────────────────────────────────────
@@ -214,12 +214,12 @@ async function regenerateIndexLocked(): Promise<void> {
     }
     lines.push("");
   }
-  await atomicWrite(KB_INDEX_FILE, lines.join("\n").trimEnd() + "\n");
+  await atomicWrite(kbIndexFile(), lines.join("\n").trimEnd() + "\n");
 }
 
 /** Public index rebuild (acquires the lock). */
 export function regenerateIndex(): Promise<void> {
-  return withFileLock(KB_LOCK_PATH, regenerateIndexLocked);
+  return withFileLock(kbLockPath(), regenerateIndexLocked);
 }
 
 // ── writes ────────────────────────────────────────────────────────────
@@ -235,7 +235,7 @@ export async function addSource(opts: {
   origin?: string;
 }): Promise<KbEntry> {
   await ensureKbScaffold();
-  return withFileLock(KB_LOCK_PATH, async () => {
+  return withFileLock(kbLockPath(), async () => {
     const title = opts.title.trim() || "untitled";
     const slug = await uniqueSlug("sources", title);
     const entry: KbEntry = {
@@ -265,7 +265,7 @@ export async function writeWiki(opts: {
   sources?: string[];
 }): Promise<KbEntry> {
   await ensureKbScaffold();
-  return withFileLock(KB_LOCK_PATH, async () => {
+  return withFileLock(kbLockPath(), async () => {
     const slug = opts.slug
       ? assertSafeSlug(opts.slug)
       : normalizeSlug(opts.title) || `page-${Date.now()}`;
@@ -287,7 +287,7 @@ export async function writeWiki(opts: {
 
 /** Delete an entry (user-initiated). Returns false if it didn't exist. */
 export async function removeEntry(layer: KbLayer, slug: string): Promise<boolean> {
-  return withFileLock(KB_LOCK_PATH, async () => {
+  return withFileLock(kbLockPath(), async () => {
     const file = entryFile(layer, slug);
     if (!(await pathExists(file))) return false;
     await fs.rm(file, { force: true });

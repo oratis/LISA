@@ -1,7 +1,7 @@
 import path from "node:path";
 import fs from "node:fs/promises";
 import { listSessionsOnDisk, loadSessionMessages } from "../sessions/list.js";
-import { SESSIONS_DIR } from "../paths.js";
+import { sessionsDir } from "../paths.js";
 import { extractTextFromContent } from "../agent.js";
 import {
   cosineSimilarity,
@@ -49,7 +49,7 @@ let cachedFingerprint = "";
 async function sessionsFingerprint(): Promise<string> {
   let files: string[];
   try {
-    files = await fs.readdir(SESSIONS_DIR);
+    files = await fs.readdir(sessionsDir());
   } catch {
     // Missing dir and empty dir must fingerprint identically: buildIndex →
     // listSessionsOnDisk → ensureDir CREATES the dir as a side effect, so a
@@ -61,7 +61,7 @@ async function sessionsFingerprint(): Promise<string> {
   for (const f of files.sort()) {
     if (!f.endsWith(".jsonl")) continue;
     try {
-      const st = await fs.stat(path.join(SESSIONS_DIR, f));
+      const st = await fs.stat(path.join(sessionsDir(), f));
       parts.push(`${f}:${st.mtimeMs}:${st.size}`);
     } catch {
       // file vanished between readdir and stat — ignore

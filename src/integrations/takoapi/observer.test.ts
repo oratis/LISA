@@ -51,7 +51,7 @@ describe("pinsOf", () => {
   });
 });
 
-describe("TakoApiObserver (ledger-driven, LISA_HOME-tmp)", () => {
+describe("TakoApiObserver (ledger-driven, lisaHome()-tmp)", () => {
   let home: string;
   let prev: string | undefined;
   beforeEach(() => {

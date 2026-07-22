@@ -12,7 +12,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { pathExists } from "../fs-utils.js";
-import { KB_SOURCES_DIR, KB_WIKI_DIR, layerDir, type KbLayer } from "./paths.js";
+import { kbSourcesDir, kbWikiDir, layerDir, type KbLayer } from "./paths.js";
 import { readEntry } from "./store.js";
 
 interface KbDoc {
@@ -74,7 +74,7 @@ let cachedFingerprint = "";
 
 async function kbFingerprint(): Promise<string> {
   const parts: string[] = [];
-  for (const dir of [KB_WIKI_DIR, KB_SOURCES_DIR]) {
+  for (const dir of [kbWikiDir(), kbSourcesDir()]) {
     if (!(await pathExists(dir))) continue;
     for (const f of (await fs.readdir(dir)).sort()) {
       if (!f.endsWith(".md")) continue;

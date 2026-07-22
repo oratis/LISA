@@ -4,7 +4,7 @@
  *   ~/.lisa/mail/accounts.json   — the connected mailboxes (no secrets)
  *   ~/.lisa/mail/secrets.json    — per-account secrets, mode 0600
  *
- * LISA_HOME is resolved lazily so tests can point it at a tmp dir. Absence of
+ * lisaHome() is resolved lazily so tests can point it at a tmp dir. Absence of
  * either file means "no accounts" — exactly the pre-feature behavior.
  */
 import fs from "node:fs";

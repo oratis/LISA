@@ -21,7 +21,7 @@
 import fsp from "node:fs/promises";
 import path from "node:path";
 import { ensureDir } from "../fs-utils.js";
-import { SOUL_DIR } from "./paths.js";
+import { soulDir } from "./paths.js";
 
 export interface FileLockOpts {
   /** Treat a held lock as abandoned after this many ms (crashed holder). */
@@ -132,7 +132,7 @@ export async function withFileLock<T>(
 }
 
 /** The canonical soul write-lock path. */
-export const SOUL_LOCK_PATH = path.join(SOUL_DIR, ".write.lock");
+export const SOUL_LOCK_PATH = path.join(soulDir(), ".write.lock");
 
 /**
  * Run `fn` while holding the soul write-lock. Use this around any

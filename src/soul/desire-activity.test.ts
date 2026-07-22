@@ -11,7 +11,7 @@ import type { DesireEntry } from "./types.js";
 // file mtimes off disk and feeding pickCurrentDesire end-to-end. Uses a real
 // temp soul with mtimes pinned via fs.utimes so the assertions are deterministic.
 //
-// SOUL_DIR derives from LISA_HOME at import, so set a tmp home before importing.
+// soulDir() derives from lisaHome() at import, so set a tmp home before importing.
 let store: typeof import("./store.js");
 let paths: typeof import("./paths.js");
 let home: string;

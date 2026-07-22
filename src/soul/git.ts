@@ -13,7 +13,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import path from "node:path";
 import { pathExists } from "../fs-utils.js";
 import { withFileLock } from "./lock.js";
-import { SOUL_DIR } from "./paths.js";
+import { soulDir } from "./paths.js";
 
 /**
  * Cross-process lock around the add→diff→commit sequence. The in-process
@@ -27,7 +27,7 @@ import { SOUL_DIR } from "./paths.js";
  * reusing the same lock here would self-deadlock. Ordering is always
  * write-lock → git-lock, never the reverse, so the two can't deadlock.
  */
-const SOUL_GIT_LOCK_PATH = path.join(SOUL_DIR, ".git-write.lock");
+const SOUL_GIT_LOCK_PATH = path.join(soulDir(), ".git-write.lock");
 
 export type SoulCaller =
   | "birth"
@@ -105,7 +105,7 @@ function runGitRaw(args: string[], cwd: string): Promise<GitResult> {
 }
 
 async function runGit(args: string[]): Promise<GitResult> {
-  return await runGitRaw(args, SOUL_DIR);
+  return await runGitRaw(args, soulDir());
 }
 
 /**
@@ -118,8 +118,8 @@ export async function initSoulRepo(): Promise<void> {
     console.warn("[soul-git] git not available; soul history disabled");
     return;
   }
-  if (!(await pathExists(SOUL_DIR))) return;
-  const dotGit = path.join(SOUL_DIR, ".git");
+  if (!(await pathExists(soulDir()))) return;
+  const dotGit = path.join(soulDir(), ".git");
   if (await pathExists(dotGit)) return;
 
   try {
@@ -135,7 +135,7 @@ export async function initSoulRepo(): Promise<void> {
     await runGit(["config", "core.hooksPath", "/dev/null"]);
     // .gitignore for transient junk.
     const fs = await import("node:fs/promises");
-    const ignorePath = path.join(SOUL_DIR, ".gitignore");
+    const ignorePath = path.join(soulDir(), ".gitignore");
     if (!(await pathExists(ignorePath))) {
       await fs.writeFile(
         ignorePath,
@@ -165,7 +165,7 @@ export async function initSoulRepo(): Promise<void> {
 }
 
 /**
- * Stage the file at `relPath` (relative to SOUL_DIR) and commit if there's a
+ * Stage the file at `relPath` (relative to soulDir()) and commit if there's a
  * real diff. opKind is the high-level operation ("patch", "feel", "journal",
  * etc.). Failures are swallowed with a warn — soul history is best-effort.
  *
@@ -180,7 +180,7 @@ export function commitSoulChange(
   const caller = currentCaller();
   return enqueueCommit(async () => {
     if (!(await checkGitAvailable())) return;
-    const dotGit = path.join(SOUL_DIR, ".git");
+    const dotGit = path.join(soulDir(), ".git");
     if (!(await pathExists(dotGit))) return; // not initialized yet (pre-birth)
     try {
       await withFileLock(
@@ -243,7 +243,7 @@ export async function gitLogOneline(opts: {
   since?: string;
 }): Promise<string> {
   if (!(await checkGitAvailable())) return "(git unavailable)";
-  const dotGit = path.join(SOUL_DIR, ".git");
+  const dotGit = path.join(soulDir(), ".git");
   if (!(await pathExists(dotGit))) return "(soul history not initialized)";
   const args = ["log", "--pretty=format:%h %ad %s", "--date=iso-strict"];
   if (opts.limit) args.push(`-n`, String(opts.limit));
@@ -260,7 +260,7 @@ export async function gitDiffPatch(opts: {
   limit?: number;
 }): Promise<string> {
   if (!(await checkGitAvailable())) return "(git unavailable)";
-  const dotGit = path.join(SOUL_DIR, ".git");
+  const dotGit = path.join(soulDir(), ".git");
   if (!(await pathExists(dotGit))) return "(soul history not initialized)";
   const args = ["log", "-p", "--no-color", "--date=iso-strict"];
   if (opts.limit) args.push(`-n`, String(opts.limit));

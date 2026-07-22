@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-// Isolate the policy file to a throwaway dir (read lazily via LISA_HOME).
+// Isolate the policy file to a throwaway dir (read lazily via lisaHome()).
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "lisa-policy-"));
 process.env.LISA_HOME = TMP;
 const FILE = path.join(TMP, "control-policy.json");

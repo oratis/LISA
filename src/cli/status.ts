@@ -10,7 +10,7 @@
 import { execSync } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { LISA_HOME, REFLECTIONS_DIR, SESSIONS_DIR } from "../paths.js";
+import { lisaHome, reflectionsDir, sessionsDir } from "../paths.js";
 import {
   desireActivity,
   isBorn,
@@ -19,7 +19,7 @@ import {
   pickCurrentDesire,
   readSoulSummary,
 } from "../soul/store.js";
-import { SOUL_DIR } from "../soul/paths.js";
+import { soulDir } from "../soul/paths.js";
 import { discoverExecutableSkills } from "../skills/executable.js";
 import { listSkills } from "../skills/manager.js";
 import { listConfiguredProviders } from "../providers/registry.js";
@@ -119,10 +119,10 @@ export async function runStatus(): Promise<void> {
   }
   // Soul git history (if available)
   try {
-    const dotGit = path.join(SOUL_DIR, ".git");
+    const dotGit = path.join(soulDir(), ".git");
     if (await pathExists(dotGit)) {
       const log = execSync(
-        `git -C "${SOUL_DIR}" log --pretty=format:"%cr %s" -n 5 2>/dev/null`,
+        `git -C "${soulDir()}" log --pretty=format:"%cr %s" -n 5 2>/dev/null`,
         { encoding: "utf8" },
       );
       const lines = log.split("\n").filter(Boolean);
@@ -136,8 +136,8 @@ export async function runStatus(): Promise<void> {
   }
 
   // ── Sessions / reflections ───────────────────────────────────────────
-  const sessionCount = await countDir(SESSIONS_DIR);
-  const reflCount = await countDir(REFLECTIONS_DIR);
+  const sessionCount = await countDir(sessionsDir());
+  const reflCount = await countDir(reflectionsDir());
   console.log(heading("History"));
   console.log(`  ${dim("sessions:")}     ${sessionCount}`);
   console.log(`  ${dim("reflections:")}  ${reflCount}`);
@@ -166,7 +166,7 @@ export async function runStatus(): Promise<void> {
   }
 
   // ── Heartbeat ────────────────────────────────────────────────────────
-  const hbStateFile = path.join(LISA_HOME, "heartbeat-state.json");
+  const hbStateFile = path.join(lisaHome(), "heartbeat-state.json");
   if (await pathExists(hbStateFile)) {
     try {
       const raw = await readTextOrEmpty(hbStateFile);

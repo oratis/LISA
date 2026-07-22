@@ -19,7 +19,7 @@ import { DEFAULT_MODEL } from "./llm.js";
 import { parseArgs, type ParsedArgs } from "./cli-args.js";
 import { connectMcpServers } from "./mcp/client.js";
 import { loadMcpConfig } from "./mcp/config.js";
-import { LISA_HOME } from "./paths.js";
+import { lisaHome } from "./paths.js";
 import { loadAllPlugins, PLUGINS_ROOT } from "./plugins/loader.js";
 import type { HookSpec } from "./plugins/types.js";
 import { buildSystemPromptSnapshot, getPromptFingerprint } from "./prompt.js";
@@ -137,10 +137,10 @@ REPL slash commands:
   /clear                Forget current in-memory history (session log preserved).
   /save <text>          Append to MEMORY.md immediately.
 
-Data: ${LISA_HOME}
+Data: ${lisaHome()}
 Plugins: ${PLUGINS_ROOT}/<name>/{commands,agents,skills,hooks,.lisa-plugin/plugin.json}
-MCP:     ${LISA_HOME}/mcp.json   (Claude-Code-style {"mcpServers": {...}})
-Heartbeat: ${LISA_HOME}/heartbeat.json   ({"tasks": [{name, prompt, ...}]})
+MCP:     ${lisaHome()}/mcp.json   (Claude-Code-style {"mcpServers": {...}})
+Heartbeat: ${lisaHome()}/heartbeat.json   ({"tasks": [{name, prompt, ...}]})
 Config:  ${CONFIG_ENV_PATH}   (KEY=VALUE)`;
 
 function readPackageVersion(): string {
@@ -176,7 +176,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  await ensureDir(LISA_HOME);
+  await ensureDir(lisaHome());
   loadConfigEnv();
   // If the user didn't pass --model, resolve the default now that config.env is
   // loaded: an explicit LISA_MODEL (e.g. `lisa model use`) wins, else auto-detect
@@ -658,7 +658,7 @@ async function main(): Promise<void> {
         const r = await fireHooks(
           "PreToolUse",
           allHooks,
-          { TOOL_NAME: name, TOOL_INPUT: JSON.stringify(input), SESSION_ID: session.id, LISA_HOME, CLAUDE_PROJECT_DIR: cwd },
+          { TOOL_NAME: name, TOOL_INPUT: JSON.stringify(input), SESSION_ID: session.id, LISA_HOME: lisaHome(), CLAUDE_PROJECT_DIR: cwd },
           cwd,
         );
         if (r.blocked.length > 0) return { block: r.blocked.join("; ") };
@@ -673,7 +673,7 @@ async function main(): Promise<void> {
             TOOL_RESULT: result,
             TOOL_ERROR: isError ? "1" : "",
             SESSION_ID: session.id,
-            LISA_HOME,
+            LISA_HOME: lisaHome(),
             CLAUDE_PROJECT_DIR: cwd,
           },
           cwd,
@@ -716,7 +716,7 @@ async function main(): Promise<void> {
     await fireHooks(
       "SessionEnd",
       allHooks,
-      { SESSION_ID: session.id, LISA_HOME },
+      { SESSION_ID: session.id, LISA_HOME: lisaHome() },
       cwd,
     );
     await Promise.all(mcpConnections.map((c) => c.close()));
@@ -731,7 +731,7 @@ async function main(): Promise<void> {
   await fireHooks(
     "SessionStart",
     allHooks,
-    { SESSION_ID: session.id, LISA_HOME },
+    { SESSION_ID: session.id, LISA_HOME: lisaHome() },
     cwd,
   );
 
@@ -774,7 +774,7 @@ async function main(): Promise<void> {
       const r = await fireHooks(
         "UserPromptSubmit",
         allHooks,
-        { USER_PROMPT: line, SESSION_ID: session.id, LISA_HOME },
+        { USER_PROMPT: line, SESSION_ID: session.id, LISA_HOME: lisaHome() },
         cwd,
       );
       if (r.blocked.length > 0) {

@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { SESSIONS_DIR } from "../paths.js";
+import { sessionsDir } from "../paths.js";
 import { ensureDir, pathExists } from "../fs-utils.js";
 import type { SessionEntry, SessionHeader, StoredMessage } from "../types.js";
 
@@ -15,12 +15,12 @@ export interface SessionInfo {
 }
 
 export async function listSessionsOnDisk(): Promise<SessionInfo[]> {
-  await ensureDir(SESSIONS_DIR);
-  const files = await fs.readdir(SESSIONS_DIR);
+  await ensureDir(sessionsDir());
+  const files = await fs.readdir(sessionsDir());
   const out: SessionInfo[] = [];
   for (const file of files) {
     if (!file.endsWith(".jsonl")) continue;
-    const full = path.join(SESSIONS_DIR, file);
+    const full = path.join(sessionsDir(), file);
     try {
       const info = await summarize(full);
       if (info) out.push(info);
@@ -71,7 +71,7 @@ export async function loadSessionMessages(id: string): Promise<{
   header: SessionHeader;
   messages: StoredMessage[];
 }> {
-  const file = path.join(SESSIONS_DIR, `${id}.jsonl`);
+  const file = path.join(sessionsDir(), `${id}.jsonl`);
   if (!(await pathExists(file))) {
     throw new Error(`session ${id} not found at ${file}`);
   }

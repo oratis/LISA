@@ -23,8 +23,8 @@ import {
   rule,
   warn,
 } from "./colors.js";
-import { LISA_HOME } from "../paths.js";
-import { SOUL_DIR } from "../soul/paths.js";
+import { lisaHome } from "../paths.js";
+import { soulDir } from "../soul/paths.js";
 import { isBorn, readSoulSummary } from "../soul/store.js";
 import { pathExists, readTextOrEmpty } from "../fs-utils.js";
 
@@ -97,10 +97,10 @@ async function render(): Promise<void> {
   // ── Recent soul commits ──
   console.log(heading("Recent soul commits"));
   try {
-    const dotGit = path.join(SOUL_DIR, ".git");
+    const dotGit = path.join(soulDir(), ".git");
     if (await pathExists(dotGit)) {
       const log = execSync(
-        `git -C "${SOUL_DIR}" log --pretty=format:"%cr %h %s" -n 5 2>/dev/null`,
+        `git -C "${soulDir()}" log --pretty=format:"%cr %h %s" -n 5 2>/dev/null`,
         { encoding: "utf8" },
       ).trim();
       if (log) {
@@ -118,7 +118,7 @@ async function render(): Promise<void> {
   }
 
   // ── Heartbeat last-run ──
-  const hbFile = path.join(LISA_HOME, "heartbeat-state.json");
+  const hbFile = path.join(lisaHome(), "heartbeat-state.json");
   if (await pathExists(hbFile)) {
     try {
       const raw = await readTextOrEmpty(hbFile);
@@ -138,7 +138,7 @@ async function render(): Promise<void> {
   }
 
   // ── Currently set mood (from tool) ──
-  const moodFile = path.join(LISA_HOME, "current-mood.txt");
+  const moodFile = path.join(lisaHome(), "current-mood.txt");
   if (await pathExists(moodFile)) {
     const slug = (await readTextOrEmpty(moodFile)).trim();
     if (slug) {

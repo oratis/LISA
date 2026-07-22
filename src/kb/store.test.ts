@@ -4,15 +4,15 @@ import { mkdtempSync, rmSync, readFileSync, existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-// Point LISA_HOME at a temp dir and disable git BEFORE importing the modules
-// under test, so paths.ts (evaluated at import) resolves KB_DIR there. node's
+// Point lisaHome() at a temp dir and disable git BEFORE importing the modules
+// under test, so paths.ts (evaluated at import) resolves kbDir() there. node's
 // test runner isolates each file in its own process, so this can't leak.
 const TMP = mkdtempSync(path.join(os.tmpdir(), "lisa-kb-test-"));
 process.env.LISA_HOME = TMP;
 process.env.LISA_KB_NO_GIT = "1";
 
 const store = await import("./store.js");
-const { KB_DIR, KB_SCHEMA_FILE, KB_INDEX_FILE, entryFile } = await import("./paths.js");
+const { kbDir, kbSchemaFile, kbIndexFile, entryFile } = await import("./paths.js");
 
 after(() => rmSync(TMP, { recursive: true, force: true }));
 
@@ -85,14 +85,14 @@ describe("kb store", () => {
 
   test("ensureScaffold seeds the schema and dirs", async () => {
     await store.ensureKbScaffold();
-    assert.ok(existsSync(KB_SCHEMA_FILE), "SCHEMA.md seeded");
-    assert.ok(existsSync(path.join(KB_DIR, "sources")));
-    assert.ok(existsSync(path.join(KB_DIR, "wiki")));
+    assert.ok(existsSync(kbSchemaFile()), "SCHEMA.md seeded");
+    assert.ok(existsSync(path.join(kbDir(), "sources")));
+    assert.ok(existsSync(path.join(kbDir(), "wiki")));
   });
 
   test("index.md is regenerated with wiki titles + counts", async () => {
-    assert.ok(existsSync(KB_INDEX_FILE), "index.md exists after a write");
-    const idx = readFileSync(KB_INDEX_FILE, "utf8");
+    assert.ok(existsSync(kbIndexFile()), "index.md exists after a write");
+    const idx = readFileSync(kbIndexFile(), "utf8");
     assert.match(idx, /# Knowledge base index/);
     assert.match(idx, /wiki page\(s\)/);
     assert.match(idx, /OAuth 2\.0/, "wiki title appears in the index");

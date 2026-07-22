@@ -13,7 +13,7 @@
  * invoke the handler without bootstrapping the rest of the CLI.
  */
 import path from "node:path";
-import { SOUL_DESIRES_DIR, SOUL_JOURNAL_DIR } from "../soul/paths.js";
+import { soulDesiresDir, soulJournalDir } from "../soul/paths.js";
 import {
   listDesires,
   listJournalDates,
@@ -85,8 +85,8 @@ export async function renderWishlist(opts: WishlistRenderOptions = {}): Promise<
       `(empty)\n\n` +
       `Nothing yet. Lisa fills this when she notices the toolset itself is missing or redundant — she'll mention it during weekly_examen, or in any session when she catches herself wishing.\n\n` +
       `She uses: soul_patch(field="desire", slug="${META_WISHLIST_SLUG}", what="...", why="...", actionable=false)\n` +
-      `Path: ${path.join(SOUL_DESIRES_DIR, META_WISHLIST_SLUG + ".md")}\n` +
-      `Journal scan: anywhere in ${SOUL_JOURNAL_DIR} containing [WISHLIST] or [I want]`,
+      `Path: ${path.join(soulDesiresDir(), META_WISHLIST_SLUG + ".md")}\n` +
+      `Journal scan: anywhere in ${soulJournalDir()} containing [WISHLIST] or [I want]`,
     );
   }
 }

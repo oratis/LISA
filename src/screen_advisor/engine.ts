@@ -22,7 +22,7 @@
 
 import fsp from "node:fs/promises";
 import path from "node:path";
-import { LISA_HOME } from "../paths.js";
+import { lisaHome } from "../paths.js";
 
 export interface ScreenAdvisorConfig {
   /** Master switch. Off by default — capture only happens when true. */
@@ -39,7 +39,9 @@ export const DEFAULT_SCREEN_ADVISOR_CONFIG: ScreenAdvisorConfig = {
 export const MIN_INTERVAL_MINUTES = 2;
 export const MAX_INTERVAL_MINUTES = 240;
 
-export const SCREEN_ADVISOR_CONFIG_PATH = path.join(LISA_HOME, "screen-advisor.json");
+export function screenAdvisorConfigPath(): string {
+  return path.join(lisaHome(), "screen-advisor.json");
+}
 
 /** Coerce arbitrary input into a valid config (clamped interval, boolean enabled). */
 export function normalizeConfig(
@@ -55,7 +57,7 @@ export function normalizeConfig(
 }
 
 export async function loadScreenAdvisorConfig(
-  p: string = SCREEN_ADVISOR_CONFIG_PATH,
+  p: string = screenAdvisorConfigPath(),
 ): Promise<ScreenAdvisorConfig> {
   try {
     const raw = JSON.parse(await fsp.readFile(p, "utf8")) as Partial<ScreenAdvisorConfig>;
@@ -67,7 +69,7 @@ export async function loadScreenAdvisorConfig(
 
 export async function saveScreenAdvisorConfig(
   cfg: ScreenAdvisorConfig,
-  p: string = SCREEN_ADVISOR_CONFIG_PATH,
+  p: string = screenAdvisorConfigPath(),
 ): Promise<ScreenAdvisorConfig> {
   const norm = normalizeConfig(cfg);
   await fsp.mkdir(path.dirname(p), { recursive: true });

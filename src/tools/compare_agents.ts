@@ -23,7 +23,7 @@ import {
   getComparison,
   removeComparison,
   newJobId,
-  COMPARE_ROOT,
+  compareRoot,
   type ComparisonJob,
   type ComparisonEntry,
   type CompareAgentKind,
@@ -93,11 +93,11 @@ export const compareAgentsTool: ToolDefinition<CompareInput, string> = {
       if (!repo) return `(not a git repo: ${cwd} — compare_agents isolates each agent in a git worktree)`;
 
       const id = newJobId();
-      await mkdir(path.join(COMPARE_ROOT, id), { recursive: true });
+      await mkdir(path.join(compareRoot(), id), { recursive: true });
       const entries: ComparisonEntry[] = [];
       for (const agent of agents) {
         const branch = `lisa-compare/${id}-${agent}`;
-        const worktree = path.join(COMPARE_ROOT, id, agent);
+        const worktree = path.join(compareRoot(), id, agent);
         const wt = await runIn(repo, "git", ["-C", repo, "worktree", "add", "-b", branch, worktree, "HEAD"], { timeoutMs: 20000, signal: ctx.signal });
         if (wt.code !== 0) {
           entries.push({ agent, worktree, branch, launchError: `worktree add failed: ${wt.stderr.trim().slice(0, 120)}` });

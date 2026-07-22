@@ -24,9 +24,9 @@ import {
   rule,
   warn,
 } from "./colors.js";
-import { LISA_HOME } from "../paths.js";
+import { lisaHome } from "../paths.js";
 import { CONFIG_ENV_PATH } from "../env.js";
-import { SOUL_DIR } from "../soul/paths.js";
+import { soulDir } from "../soul/paths.js";
 import { listConfiguredProviders, OPENAI_COMPAT_PRESETS } from "../providers/registry.js";
 import { isBorn } from "../soul/store.js";
 import { pathExists } from "../fs-utils.js";
@@ -64,9 +64,9 @@ const checks: Check[] = [
     label: "~/.lisa/ exists",
     critical: false,
     run: async () => {
-      return (await pathExists(LISA_HOME))
-        ? { ok: true, detail: LISA_HOME }
-        : { ok: false, detail: `${LISA_HOME} not yet created (will be on first run)` };
+      return (await pathExists(lisaHome()))
+        ? { ok: true, detail: lisaHome() }
+        : { ok: false, detail: `${lisaHome()} not yet created (will be on first run)` };
     },
   },
   {
@@ -91,7 +91,7 @@ const checks: Check[] = [
     label: "Soul git repo initialized",
     critical: false,
     run: async () => {
-      const dotGit = path.join(SOUL_DIR, ".git");
+      const dotGit = path.join(soulDir(), ".git");
       return (await pathExists(dotGit))
         ? { ok: true, detail: dotGit }
         : { ok: false, detail: "init pending; will run automatically on next start" };
@@ -143,7 +143,7 @@ export async function runDoctor(): Promise<void> {
   console.log(heading("Environment"));
   console.log(`  ${dim("platform:")}  ${process.platform} ${os.release()}`);
   console.log(`  ${dim("node:")}      ${process.versions.node}`);
-  console.log(`  ${dim("LISA_HOME:")} ${LISA_HOME}`);
+  console.log(`  ${dim("lisaHome():")} ${lisaHome()}`);
   if (process.env.HTTPS_PROXY || process.env.HTTP_PROXY) {
     console.log(`  ${dim("proxy:")}     ${process.env.HTTPS_PROXY ?? process.env.HTTP_PROXY}`);
   } else {

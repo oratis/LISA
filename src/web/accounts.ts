@@ -2,7 +2,7 @@
  * LISA accounts — the cloud edition's user directory
  * (docs/PLAN_ACCOUNTS_BILLING_v1.0.md §6.1, milestone B1).
  *
- * Two account kinds share one store (`$LISA_HOME/accounts.json`, 0600):
+ * Two account kinds share one store (`$lisaHome()/accounts.json`, 0600):
  *  - **Apple** (`apple-<sub>`): created/updated on every verified Sign in with
  *    Apple. No password material — Apple is the authority.
  *  - **Email** (`em-<random>`): self-serve email+password, scrypt-hashed. This

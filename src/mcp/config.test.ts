@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-// CONFIG_PATH (mcp.json) is derived from LISA_HOME at import; set a tmp home
+// CONFIG_PATH (mcp.json) is derived from lisaHome() at import; set a tmp home
 // before importing (dynamic import). Per-file process isolation keeps it local.
 let mod: typeof import("./config.js");
 let home: string;

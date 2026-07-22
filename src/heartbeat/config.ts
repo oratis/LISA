@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { LISA_HOME } from "../paths.js";
+import { lisaGlobalHome } from "../paths.js";
 import { pathExists } from "../fs-utils.js";
 
 export interface HeartbeatTask {
@@ -26,7 +26,7 @@ export interface HeartbeatConfig {
 /** Default per-run token ceiling when heartbeat.json doesn't set one. */
 export const DEFAULT_HEARTBEAT_BUDGET_TOKENS = 500_000;
 
-const FILE = path.join(LISA_HOME, "heartbeat.json");
+const FILE = path.join(lisaGlobalHome(), "heartbeat.json");
 
 export async function loadHeartbeatConfig(): Promise<HeartbeatConfig> {
   if (!(await pathExists(FILE))) return { tasks: [], budgetTokens: DEFAULT_HEARTBEAT_BUDGET_TOKENS };

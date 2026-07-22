@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-// Isolate the ledger to a throwaway dir. dispatch-ledger reads LISA_HOME
+// Isolate the ledger to a throwaway dir. dispatch-ledger reads lisaHome()
 // lazily (at call time), so setting it here — before any function runs — is
 // enough; this test file runs in its own process.
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "lisa-ledger-"));

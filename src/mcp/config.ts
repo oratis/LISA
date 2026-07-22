@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { LISA_HOME } from "../paths.js";
+import { lisaGlobalHome } from "../paths.js";
 import { pathExists } from "../fs-utils.js";
 
 export interface McpServerSpec {
@@ -16,7 +16,7 @@ export interface McpConfig {
   mcpServers: Record<string, Omit<McpServerSpec, "name">>;
 }
 
-const CONFIG_PATH = path.join(LISA_HOME, "mcp.json");
+const CONFIG_PATH = path.join(lisaGlobalHome(), "mcp.json");
 
 export async function loadMcpConfig(): Promise<McpServerSpec[]> {
   if (!(await pathExists(CONFIG_PATH))) return [];

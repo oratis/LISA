@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { atomicWrite } from "../fs-utils.js";
-import { LISA_HOME } from "../paths.js";
+import { lisaGlobalHome } from "../paths.js";
 import { escapeXml, resolveLisaArgv, resolveLisaBin, runCmd } from "../launchd.js";
 
 export interface InstallOptions {
@@ -21,7 +21,7 @@ const PLIST_PATH = path.join(
   "LaunchAgents",
   `${PLIST_LABEL}.plist`,
 );
-const HEARTBEAT_LOG = path.join(LISA_HOME, "heartbeat.log");
+const HEARTBEAT_LOG = path.join(lisaGlobalHome(), "heartbeat.log");
 
 export async function installHeartbeat(
   opts: InstallOptions = {},

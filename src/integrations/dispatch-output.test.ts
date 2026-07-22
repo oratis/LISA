@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-// Isolate to a throwaway LISA_HOME before importing the ledger (it reads the
+// Isolate to a throwaway lisaHome() before importing the ledger (it reads the
 // env lazily, but set it up front to be safe).
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "lisa-dispatch-out-"));
 process.env.LISA_HOME = TMP;
