@@ -94,9 +94,27 @@ export async function withFileLock<T>(
     // concurrent acquirers in the *same* process don't clobber each other.
     const tmp = `${lockPath}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
     try {
-      await fsp.writeFile(tmp, JSON.stringify({ pid: process.pid, ts: Date.now() } satisfies LockBody));
+      const body = JSON.stringify({ pid: process.pid, ts: Date.now() } satisfies LockBody);
+      await fsp.writeFile(tmp, body);
       try {
-        await fsp.link(tmp, lockPath);
+        try {
+          await fsp.link(tmp, lockPath);
+        } catch (e) {
+          const code = (e as NodeJS.ErrnoException).code;
+          if (code !== "ENOSYS" && code !== "ENOTSUP" && code !== "EPERM") throw e;
+          // Filesystems without hard links — gcsfuse behind Cloud Run's /data
+          // volume returns ENOSYS — fall back to O_EXCL creation. Weaker than
+          // link() (content lands just after creation, not with it), but
+          // isStale() already treats an unreadable body as stale, so the worst
+          // case is a contender briefly reading a half-written lock and
+          // stealing it — acceptable on the single-instance cloud edition.
+          const fh = await fsp.open(lockPath, "wx");
+          try {
+            await fh.writeFile(body);
+          } finally {
+            await fh.close();
+          }
+        }
       } finally {
         await fsp.rm(tmp, { force: true }).catch(() => {});
       }
