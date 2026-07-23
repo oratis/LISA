@@ -105,6 +105,14 @@ SKILLS (executable, Phase 3.1)
   lisa skills enable <slug>    Remove a disable flag.
   lisa skills audit <slug>     Show the audit trail.
 
+KNOWLEDGE BASE
+  lisa kb add <url> [--title T] [--tags a,b] [--force]
+                               Save a web page (incl. WeChat / Bilibili /
+                               YouTube) into the KB with provenance.
+  lisa kb list [wiki|sources]  List entries, newest first.
+  lisa kb search "<query>"     Search sources + wiki (TF-IDF).
+  lisa kb brief [YYYY-MM-DD]   Print a daily feeds brief (needs kb/feeds.json).
+
   lisa --help                  Show this message.
   lisa --version               Print the installed Lisa version.
 
@@ -350,6 +358,11 @@ async function main(): Promise<void> {
   if (args.subcommand === "mail") {
     const { runMailCommand } = await import("./cli/mail.js");
     process.exit(await runMailCommand(args.subargs));
+  }
+
+  if (args.subcommand === "kb") {
+    const { runKbCommand } = await import("./cli/kb.js");
+    process.exit(await runKbCommand(args.subargs));
   }
 
   if (args.subcommand === "sessions") {

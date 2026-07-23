@@ -24,6 +24,12 @@ describe("parseArgs — raw / passthrough subcommand routing", () => {
     assert.equal(a.port, 5757);
   });
 
+  test("kb: passthrough — its --title/--tags/--force flags reach the handler verbatim", () => {
+    const a = parseArgs(["kb", "add", "https://x.dev/a", "--title", "T", "--tags", "a,b", "--force"]);
+    assert.equal(a.subcommand, "kb");
+    assert.deepEqual(a.subargs, ["add", "https://x.dev/a", "--title", "T", "--tags", "a,b", "--force"]);
+  });
+
   test("autostart: recognized global flags are parsed into the global fields (not swallowed)", () => {
     const a = parseArgs([
       "autostart", "install",

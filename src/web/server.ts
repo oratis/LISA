@@ -2611,6 +2611,50 @@ self.addEventListener('fetch', (event) => {
       res.end(JSON.stringify({ ok: true, entry: { layer: entry.layer, slug: entry.slug, title: entry.title } }));
       return;
     }
+    // Link ingestion (PLAN_KNOWLEDGE_BASE_v2.0 K-G). Body shaped so a future
+    // share-sheet client can POST it directly: {url, title?, tags?, force?}.
+    if (req.method === "POST" && url === "/api/kb/ingest") {
+      let body = "";
+      for await (const chunk of req) body += chunk.toString("utf8");
+      let payload: { url?: string; title?: string; tags?: string[]; force?: boolean };
+      try {
+        payload = JSON.parse(body || "{}");
+      } catch {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("bad json");
+        return;
+      }
+      const target = (payload.url ?? "").trim();
+      if (!target) {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("missing url");
+        return;
+      }
+      try {
+        const { ingestUrl } = await import("../kb/ingest/index.js");
+        const result = await ingestUrl(target, {
+          title: payload.title,
+          tags: payload.tags,
+          force: payload.force === true,
+        });
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            ok: true,
+            deduped: result.deduped,
+            via: result.via,
+            entry: { layer: result.entry.layer, slug: result.entry.slug, title: result.entry.title },
+            transcript: result.entry.extra?.transcript,
+          }),
+        );
+      } catch (err) {
+        // Ingest errors are user-actionable (verification page, paywall, bad
+        // content-type) — surface the message rather than a generic 500.
+        res.writeHead(422, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: (err as Error).message ?? "ingest failed" }));
+      }
+      return;
+    }
     if (req.method === "POST" && url === "/api/kb/remove") {
       let body = "";
       for await (const chunk of req) body += chunk.toString("utf8");
