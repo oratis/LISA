@@ -25,6 +25,13 @@
 #   LISA_CLOUD_APPLE_SUBS=…     optional comma-separated Apple `sub` allowlist
 #   LISA_CLOUD_APPLE_AUD=…      override the expected bundle id (default ai.meetlisa.main)
 #
+# Optional — Sign in with Google (off unless set; src/web/googleAuth.ts):
+#   LISA_GOOGLE_WEB_CLIENT_ID=…  OAuth "Web application" client id (GIS button)
+#   LISA_GOOGLE_IOS_CLIENT_ID=…  OAuth "iOS" client id (the app's PKCE flow)
+#
+# Sign-in by mailed code (PLAN_AUTH_OTP_GOOGLE A1) needs RESEND_API_KEY below —
+# without it codes are only logged server-side and nobody can complete a sign-in.
+#
 # Usage (GLM):
 #   LISA_WEB_TOKEN=… ZHIPU_API_KEY=… deploy/deploy.sh
 #   # …with iOS sign-in: append LISA_CLOUD_APPLE_SIGNIN=1
@@ -61,6 +68,12 @@ ENVS="^##^LISA_EDITION=cloud##LISA_WEB_TOKEN=${LISA_WEB_TOKEN}"
 # Sign in with Apple on the WEB login page (B8b): the Services ID registered in
 # the Apple portal for cloud.meetlisa.ai (needs domain verification there).
 [ -n "${LISA_CLOUD_APPLE_WEB_SID:-}" ] && ENVS="${ENVS}##LISA_CLOUD_APPLE_WEB_SID=${LISA_CLOUD_APPLE_WEB_SID}"
+# Sign in with Google (PLAN_AUTH_OTP_GOOGLE A3/A4): the OAuth client ids from the
+# GCP console — Web application (the GIS button) and iOS (the app's PKCE flow).
+# Each surface draws its button only when its own id is here. Both unset ⇒ Google
+# sign-in is off everywhere and /api/auth/google 404s.
+[ -n "${LISA_GOOGLE_WEB_CLIENT_ID:-}" ] && ENVS="${ENVS}##LISA_GOOGLE_WEB_CLIENT_ID=${LISA_GOOGLE_WEB_CLIENT_ID}"
+[ -n "${LISA_GOOGLE_IOS_CLIENT_ID:-}" ] && ENVS="${ENVS}##LISA_GOOGLE_IOS_CLIENT_ID=${LISA_GOOGLE_IOS_CLIENT_ID}"
 # Accounts & billing era (PLAN_ACCOUNTS_BILLING B1–B7), all optional:
 #   LISA_REVIEWER_SEED="email:password"  idempotent App-Review demo account (verified, $20/Tier-2)
 #   LISA_RPM_LIMIT / LISA_DAILY_CAP_USD  abuse guards (defaults 20 rpm / $200 per day)
