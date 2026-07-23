@@ -134,6 +134,7 @@ export const READ_ONLY_TOOL_NAMES = new Set([
   "kb_search",
   "kb_read",
   "kb_list",
+  "kb_links",
 ]);
 
 export function readOnlySubset(tools: ToolDefinition[]): ToolDefinition[] {

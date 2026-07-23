@@ -8,7 +8,8 @@
  */
 import type { ToolDefinition } from "../types.js";
 import { searchKb } from "./search.js";
-import { addSource, listEntries, readEntry, writeWiki } from "./store.js";
+import { addSource, listEntries, listFullEntries, readEntry, writeWiki } from "./store.js";
+import { buildGraph, kbKey, resolveRef } from "./links.js";
 import type { KbLayer } from "./paths.js";
 
 const kbSearch: ToolDefinition<{ query: string; limit?: number }, string> = {
@@ -38,30 +39,99 @@ const kbSearch: ToolDefinition<{ query: string; limit?: number }, string> = {
   },
 };
 
-const kbRead: ToolDefinition<{ layer: KbLayer; slug: string }, string> = {
+const kbRead: ToolDefinition<{ layer?: KbLayer; slug: string }, string> = {
   name: "kb_read",
   description:
-    "Read one knowledge-base entry in full, by layer + slug (from kb_search or index.md). " +
-    "layer is 'wiki' (pages you maintain) or 'sources' (the user's raw, immutable captures).",
+    "Read one knowledge-base entry in full, by slug (from kb_search, index.md, or a [[wikilink]]). " +
+    "layer is 'wiki' (pages you maintain) or 'sources' (the user's raw, immutable captures); " +
+    "omit it and a [[slug]] resolves to the wiki page if there is one, else the source. " +
+    "The reply ends with the pages that link here, so you can follow the graph.",
   inputSchema: {
     type: "object",
     properties: {
       layer: { type: "string", enum: ["wiki", "sources"] },
-      slug: { type: "string" },
+      slug: {
+        type: "string",
+        description: "Entry slug; '[[slug]]', 'kb:slug' and 'wiki/slug' are accepted too",
+      },
     },
-    required: ["layer", "slug"],
+    required: ["slug"],
   },
   async execute(input) {
-    const e = await readEntry(input.layer, input.slug);
-    if (!e) return `(no ${input.layer} entry "${input.slug}")`;
+    // Resolve first — the model routinely passes a [[wikilink]] verbatim, and a
+    // bare slug shouldn't need the caller to already know which layer it's in.
+    const entries = await listFullEntries();
+    const graph = buildGraph(entries);
+    const ref = input.layer ? kbKey(input.layer, cleanSlug(input.slug)) : input.slug;
+    const node = resolveRef(graph, ref) ?? resolveRef(graph, input.slug);
+    if (!node) return `(no knowledge-base entry "${input.slug}")`;
+
+    const e = await readEntry(node.layer, node.slug);
+    if (!e) return `(no knowledge-base entry "${input.slug}")`;
     const meta = [
+      `${e.layer}/${e.slug}`,
       e.tags.length ? `tags: ${e.tags.join(", ")}` : "",
       e.sources?.length ? `sources: ${e.sources.join(", ")}` : "",
       e.origin ? `origin: ${e.origin}` : "",
+      e.extra?.url ? `url: ${e.extra.url}` : "",
     ]
       .filter(Boolean)
       .join(" · ");
-    return `# ${e.title}${meta ? `\n_${meta}_` : ""}\n\n${e.body}`;
+
+    const back = (graph.back.get(node.key) ?? []).map(
+      (k) => `[[${graph.nodes.get(k)?.slug ?? k}]] ${graph.nodes.get(k)?.title ?? ""}`.trim(),
+    );
+    const backlinks = back.length ? `\n\n---\n**Linked from:** ${back.join(" · ")}` : "";
+    return `# ${e.title}\n_${meta}_\n\n${e.body}${backlinks}`;
+  },
+};
+
+function cleanSlug(raw: string): string {
+  return raw.trim().replace(/^\[\[|\]\]$/g, "").replace(/^kb:/, "").trim();
+}
+
+const kbLinks: ToolDefinition<{ slug: string }, string> = {
+  name: "kb_links",
+  description:
+    "Show how a knowledge-base entry is connected: what it links to, what links back to it, " +
+    "and pages that share its tags. Use it to explore around a topic — backlinks surface " +
+    "connections that a keyword search can't. Accepts a slug or a [[wikilink]].",
+  inputSchema: {
+    type: "object",
+    properties: { slug: { type: "string" } },
+    required: ["slug"],
+  },
+  async execute(input) {
+    const graph = buildGraph(await listFullEntries());
+    const node = resolveRef(graph, input.slug);
+    if (!node) return `(no knowledge-base entry "${input.slug}")`;
+
+    const label = (k: string): string => {
+      const n = graph.nodes.get(k);
+      return n ? `[${n.layer}/${n.slug}] ${n.title}` : k;
+    };
+    const forward = (graph.forward.get(node.key) ?? []).map(label);
+    const back = (graph.back.get(node.key) ?? []).map(label);
+    const related = [...graph.nodes.values()]
+      .filter(
+        (n) => n.key !== node.key && n.tags.some((t) => node.tags.includes(t)),
+      )
+      .slice(0, 8)
+      .map((n) => label(n.key));
+
+    const section = (title: string, items: string[]): string =>
+      items.length ? `${title}\n${items.map((i) => `  - ${i}`).join("\n")}` : `${title}\n  (none)`;
+
+    return [
+      `# ${node.title} (${node.layer}/${node.slug})`,
+      node.tags.length ? `tags: ${node.tags.map((t) => `#${t}`).join(" ")}` : "",
+      "",
+      section("Links to:", forward),
+      section("Linked from:", back),
+      section("Shares tags with:", related),
+    ]
+      .filter((s) => s !== "")
+      .join("\n");
   },
 };
 
@@ -152,6 +222,7 @@ export const kbTools: ToolDefinition[] = [
   kbSearch as ToolDefinition,
   kbRead as ToolDefinition,
   kbList as ToolDefinition,
+  kbLinks as ToolDefinition,
   kbAdd as ToolDefinition,
   kbWrite as ToolDefinition,
 ];

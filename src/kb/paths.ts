@@ -30,6 +30,10 @@ export function kbSchemaFile(): string {
 export function kbIndexFile(): string {
   return path.join(kbDir(), "index.md");
 }
+/** Machine-readable link graph (index.md's counterpart for the UI and tools). */
+export function kbGraphFile(): string {
+  return path.join(kbDir(), "index.json");
+}
 export function kbLockPath(): string {
   return path.join(kbDir(), ".write.lock");
 }

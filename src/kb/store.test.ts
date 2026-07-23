@@ -98,6 +98,23 @@ describe("kb store", () => {
     assert.match(idx, /OAuth 2\.0/, "wiki title appears in the index");
   });
 
+  test("index.json is written alongside index.md, with real edges", async () => {
+    await store.writeWiki({
+      slug: "pkce",
+      title: "PKCE",
+      body: "Hardens [[oauth]]'s code flow.",
+      sources: ["oauth-pkce-notes"],
+    });
+    const { kbGraphFile } = await import("./paths.js");
+    const graph = JSON.parse(readFileSync(kbGraphFile(), "utf8"));
+    assert.ok(Array.isArray(graph.nodes) && graph.nodes.length > 0);
+    assert.ok(graph.generatedAt);
+    const has = (from: string, to: string): boolean =>
+      graph.edges.some((e: [string, string]) => e[0] === from && e[1] === to);
+    assert.ok(has("wiki/pkce", "sources/oauth-pkce-notes"), "sources: frontmatter is an edge");
+    assert.ok(has("wiki/pkce", "wiki/oauth"), "[[wikilink]] in the body is an edge");
+  });
+
   test("removeEntry deletes and reports existence", async () => {
     assert.equal(await store.removeEntry("sources", "dup-2"), true);
     assert.equal(await store.readEntry("sources", "dup-2"), null);
