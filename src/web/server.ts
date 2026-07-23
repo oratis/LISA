@@ -94,8 +94,12 @@ import {
   ensureSeededAccount,
   beginEmailVerification,
   confirmEmailVerification,
+  ensureOtpAccount,
+  validEmail,
+  normalizeEmail,
 } from "./accounts.js";
-import { sendVerificationEmail } from "./mailer.js";
+import { requestEmailOtp, verifyEmailOtp, OTP_TTL_MS } from "./otp.js";
+import { sendVerificationEmail, sendSignInCodeEmail } from "./mailer.js";
 import { readBalance, creditPurchase } from "../billing/quota.js";
 import { PushBridge, listPush, registerPush, unregisterPush, setPushPrefs, registerLiveActivity, unregisterLiveActivity, type PushPrefs } from "./push.js";
 import { SenseService } from "../sense/service.js";
@@ -1097,6 +1101,86 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         if (e instanceof AccountError) {
           const status = e.code === "throttled" ? 429 : e.code === "email_taken" ? 409 : 400;
           res.writeHead(status, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: e.code }));
+          return;
+        }
+        res.writeHead(500, { "content-type": "text/plain" });
+        res.end("account operation failed");
+      }
+      return;
+    }
+
+    // ── Sign in by mailed code (PLAN_AUTH_OTP_GOOGLE A1) ────────────────────
+    // Pre-gate like the other sign-in surfaces — these mint access. Two steps:
+    // request a code, then spend it. Spending one both registers and signs in,
+    // because reading the mail IS the proof of ownership; there is no password
+    // to choose and the address comes out verified (full free window).
+    if (req.method === "POST" && (url === "/api/auth/otp/request" || url === "/api/auth/otp/verify")) {
+      if (!cloud || !sessionSecret) {
+        res.writeHead(404, { "content-type": "text/plain" });
+        res.end("accounts not available on this edition");
+        return;
+      }
+      // Same coarse per-IP backstop as register/login (#260): the real guards
+      // are the per-address cooldown, the daily send cap and the attempt limit.
+      if (!ipRateOk(`auth:${clientIp(req, remoteAddr)}`, AUTH_IP_LIMIT, AUTH_IP_WINDOW_MS)) {
+        res.writeHead(429, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "rate_limited", retryAfterSec: Math.ceil(AUTH_IP_WINDOW_MS / 1000) }));
+        return;
+      }
+      const body = await readJsonBody(req, res);
+      if (!body) return; // 413 already sent
+      const email = typeof body.email === "string" ? body.email : "";
+      if (!validEmail(normalizeEmail(email))) {
+        res.writeHead(400, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "invalid_email" }));
+        return;
+      }
+
+      if (url === "/api/auth/otp/request") {
+        const minted = await requestEmailOtp(email);
+        if (!minted.ok) {
+          res.writeHead(429, { "content-type": "application/json" });
+          res.end(
+            JSON.stringify({
+              error: minted.reason === "cooldown" ? "otp_cooldown" : "otp_daily_cap",
+              retryAfterSec: minted.retryAfterSec,
+            }),
+          );
+          return;
+        }
+        // Awaited so the answer tells the truth about delivery (mirrors
+        // /api/auth/verify/resend). The reply is identical whether or not an
+        // account exists for the address — no membership oracle.
+        const mail = await sendSignInCodeEmail(
+          normalizeEmail(email),
+          minted.code,
+          Math.round(OTP_TTL_MS / 60_000),
+        );
+        if (!mail.sent) console.error(`[auth] sign-in code not delivered (${mail.detail})`);
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true, sent: mail.sent, expiresInSec: minted.expiresInSec }));
+        return;
+      }
+
+      const code = typeof body.code === "string" ? body.code : "";
+      const spent = await verifyEmailOtp(email, code);
+      if (!spent.ok) {
+        res.writeHead(spent.reason === "too_many_attempts" ? 429 : 401, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: spent.reason }));
+        return;
+      }
+      try {
+        const { acct, created } = await ensureOtpAccount(email);
+        const session = mintSession(acct.uid, sessionSecret, { sv: acct.sessionVersion });
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "set-cookie": `lisa_token=${encodeURIComponent(session)}; HttpOnly; SameSite=Strict; Path=/${isCloud() ? "; Secure" : ""}`,
+        });
+        res.end(JSON.stringify({ ok: true, token: session, uid: acct.uid, verified: acct.verified, created }));
+      } catch (e) {
+        if (e instanceof AccountError) {
+          res.writeHead(400, { "content-type": "application/json" });
           res.end(JSON.stringify({ error: e.code }));
           return;
         }

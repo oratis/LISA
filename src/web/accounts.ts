@@ -5,9 +5,11 @@
  * Two account kinds share one store (`$lisaHome()/accounts.json`, 0600):
  *  - **Apple** (`apple-<sub>`): created/updated on every verified Sign in with
  *    Apple. No password material — Apple is the authority.
- *  - **Email** (`em-<random>`): self-serve email+password, scrypt-hashed. This
- *    is what App Review's demo account uses (ASC insists on user/pass), and the
- *    path for desktop/web users without an Apple ID.
+ *  - **Email** (`em-<random>`): self-serve, keyed by the address. Password
+ *    material is OPTIONAL: accounts born from a mailed one-time code
+ *    (src/web/otp.ts) carry no scrypt params at all, and the password path
+ *    rejects them constant-time like any other bad credential. App Review's
+ *    demo account is the password kind (ASC insists on user/pass).
  *
  * Every account carries a `sessionVersion`; session tokens embed it and the
  *  gate rejects a mismatch — so deleting an account (App Store 5.1.1(v)) or a
@@ -38,7 +40,11 @@ export interface AccountRecord {
   kind: AccountKind;
   /** Normalized (trimmed, lowercased). Optional for Apple (user may hide it). */
   email?: string;
-  /** Password material — email accounts only. */
+  /**
+   * Password material — email accounts that chose one. Absent for code-only
+   * (OTP) accounts; `verifyEmailLogin` then fails against the decoy params, so
+   * a passwordless account can never be password-authenticated.
+   */
   scrypt?: ScryptParams;
   createdAt: number;
   lastLoginAt: number;
@@ -257,6 +263,49 @@ export async function createEmailAccount(
     if (list.some((a) => a.kind === "email" && a.email === email)) throw new AccountError("email_taken");
     list.push(rec);
     return rec;
+  });
+}
+
+/**
+ * Sign-in by mailed code (A1). The code already proved this person reads the
+ * address, so one call both registers and authenticates: an existing account
+ * comes back marked verified (ownership was just demonstrated, which levels the
+ * free window $1 → $5), a new one is created with no password material.
+ *
+ * The lookup and the insert share a single mutation, so two codes redeemed at
+ * once can't create the address twice under Firestore CAS.
+ *
+ * Password lockouts are deliberately NOT cleared here: they guard the password
+ * credential only, and leaving them in place means someone else's failed
+ * guessing can never be undone by the victim signing in normally.
+ */
+export async function ensureOtpAccount(
+  emailRaw: string,
+  now: number = Date.now(),
+): Promise<{ acct: AccountRecord; created: boolean }> {
+  const email = normalizeEmail(emailRaw);
+  if (!validEmail(email)) throw new AccountError("invalid_email");
+  const uid = `em-${crypto.randomBytes(9).toString("hex")}`;
+  return mutateAccounts((list) => {
+    const existing = list.find((a) => a.kind === "email" && a.email === email);
+    if (existing) {
+      existing.lastLoginAt = now;
+      existing.verified = true;
+      delete existing.verifyTokenHash;
+      delete existing.verifyExpiresAt;
+      return { acct: existing, created: false };
+    }
+    const rec: AccountRecord = {
+      uid,
+      kind: "email",
+      email,
+      createdAt: now,
+      lastLoginAt: now,
+      verified: true,
+      sessionVersion: 0,
+    };
+    list.push(rec);
+    return { acct: rec, created: true };
   });
 }
 
