@@ -27,6 +27,8 @@ struct CloudSignInForm: View {
     @State private var busy = false
     @State private var error: String?
     @State private var note: String?
+    /// This instance's Google iOS client id, or nil when it doesn't run Google.
+    @State private var googleClientId: String?
     #if LISA_ENABLE_SIWA
     /// Raw (un-hashed) nonce for the in-flight Apple request (#261). We send
     /// sha256(raw) to Apple and the raw value to our server, which re-hashes it
@@ -54,6 +56,22 @@ struct CloudSignInForm: View {
                 .disabled(busy || AppState.parseCloudBase(cloudURL) == nil)
                 .opacity(busy ? 0.5 : 1)
             #endif
+            // Google sits BELOW Apple: Guideline 4.8 wants Sign in with Apple
+            // offered with equal prominence wherever a third-party login is.
+            // Drawn only when this instance runs an iOS Google client.
+            if let googleClientId {
+                Button { signInWithGoogle(clientId: googleClientId) } label: {
+                    Text("Sign in with Google")
+                        .font(.system(size: 17, weight: .semibold))
+                        .frame(maxWidth: .infinity, minHeight: 46)
+                        .background(Color.white)
+                        .foregroundStyle(.black)
+                        .cornerRadius(Theme.cardRadius)
+                }
+                .buttonStyle(.plain)
+                .disabled(busy || AppState.parseCloudBase(cloudURL) == nil)
+                .opacity(busy ? 0.5 : 1)
+            }
             TextField("Email", text: $email)
                 .autocorrectionDisabled().textInputAutocapitalization(.never)
                 .keyboardType(.emailAddress).textContentType(.username)
@@ -110,6 +128,11 @@ struct CloudSignInForm: View {
         if let error {
             Section { Text(error).font(.caption).foregroundStyle(Theme.danger) }
         }
+        // Re-asked whenever the URL changes: two instances can offer different
+        // sign-in surfaces.
+        Section {} .task(id: cloudURL) {
+            googleClientId = await app.authConfig(baseURL: cloudURL)?.google?.iosClientId
+        }
     }
 
     private var addressReady: Bool {
@@ -125,6 +148,36 @@ struct CloudSignInForm: View {
         let outcome = await app.verifyConnection()
         busy = false
         onResult(outcome)
+    }
+
+    private func signInWithGoogle(clientId: String) {
+        error = nil
+        note = nil
+        busy = true
+        Task {
+            do {
+                let outcome = try await GoogleSignIn.shared.signIn(iosClientId: clientId)
+                try await app.connectCloudWithGoogle(baseURL: cloudURL, idToken: outcome.idToken,
+                                                     nonce: outcome.nonce)
+                await verifyThenReport()
+            } catch GoogleSignInError.cancelled {
+                busy = false // the person backed out — not an error worth shouting about
+            } catch GoogleSignInError.failed(let why) {
+                busy = false
+                error = "Google sign-in failed: \(why)"
+            } catch GoogleSignInError.notConfigured {
+                busy = false
+                error = "This instance's Google client id looks wrong."
+            } catch let err as LisaClient.SignInCodeError {
+                busy = false
+                error = err.status == 404
+                    ? "This instance hasn't enabled Google sign-in."
+                    : "Google sign-in was rejected by this instance (\(err.status))."
+            } catch {
+                busy = false
+                self.error = "Couldn't reach that LISA Cloud URL."
+            }
+        }
     }
 
     /// Human-readable reason for a refused code request/redemption.

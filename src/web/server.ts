@@ -1049,8 +1049,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           appleWeb: cloud && cfg.enabled && !!cfg.webServicesId
             ? { servicesId: cfg.webServicesId }
             : null,
-          // Only the WEB client id — the button can't be drawn without it.
-          google: cloud && gcfg.webClientId ? { webClientId: gcfg.webClientId } : null,
+          // Client ids are public by design (they identify the app, they don't
+          // authorize it); each client draws its button only if its own id is
+          // present. The iOS app also needs it to build the PKCE request.
+          google: cloud && gcfg.enabled
+            ? { webClientId: gcfg.webClientId, iosClientId: gcfg.iosClientId }
+            : null,
           stripe: cloud && !!stripeConfig().secretKey,
         }),
       );

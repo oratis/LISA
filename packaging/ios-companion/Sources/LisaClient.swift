@@ -108,6 +108,45 @@ final class LisaClient {
         return r.token
     }
 
+    /// Which sign-in surfaces an instance offers (`GET /api/auth/config`).
+    /// Public, unauthenticated, and free of secrets — OAuth client ids identify
+    /// the app rather than authorize it.
+    struct AuthConfig: Decodable {
+        struct Google: Decodable {
+            let webClientId: String?
+            let iosClientId: String?
+        }
+        let accounts: Bool?
+        let google: Google?
+    }
+
+    static func authConfig(base: ServerConfig, session: URLSession = .shared) async throws -> AuthConfig {
+        guard let baseURL = base.baseURL, let url = URL(string: "/api/auth/config", relativeTo: baseURL) else {
+            throw LisaError.notConfigured
+        }
+        var req = URLRequest(url: url, timeoutInterval: 10)
+        req.httpMethod = "GET"
+        let (data, resp) = try await session.data(for: req)
+        let status = (resp as? HTTPURLResponse)?.statusCode ?? -1
+        guard (200..<300).contains(status) else { throw LisaError.http(status) }
+        guard let cfg = try? JSONDecoder().decode(AuthConfig.self, from: data) else { throw LisaError.decode }
+        return cfg
+    }
+
+    /// Exchange a Google ID token for the instance's session token
+    /// (`POST /api/auth/google`). Mints access, so it takes the bare cloud base.
+    static func exchangeGoogleToken(base: ServerConfig, idToken: String, nonce: String?,
+                                    session: URLSession = .shared) async throws -> String {
+        var payload = ["idToken": idToken]
+        if let nonce { payload["nonce"] = nonce }
+        let data = try await postAuth(base: base, path: "/api/auth/google", payload: payload, session: session)
+        struct R: Decodable { let token: String }
+        guard let r = try? JSONDecoder().decode(R.self, from: data), !r.token.isEmpty else {
+            throw LisaError.decode
+        }
+        return r.token
+    }
+
     /// A refusal from the sign-in-by-code endpoints, carrying the server's typed
     /// reason. The status alone can't tell "a code just went out" from "you've
     /// asked too many times today", and those need different words.
