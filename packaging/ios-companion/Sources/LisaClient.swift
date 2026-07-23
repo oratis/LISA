@@ -108,6 +108,67 @@ final class LisaClient {
         return r.token
     }
 
+    /// A refusal from the sign-in-by-code endpoints, carrying the server's typed
+    /// reason. The status alone can't tell "a code just went out" from "you've
+    /// asked too many times today", and those need different words.
+    struct SignInCodeError: Error {
+        let status: Int
+        /// Server code — otp_cooldown, otp_daily_cap, bad_code, expired,
+        /// no_pending, too_many_attempts, invalid_email, rate_limited. Empty if
+        /// the body carried none.
+        let reason: String
+    }
+
+    private static func postAuth(
+        base: ServerConfig,
+        path: String,
+        payload: [String: String],
+        session: URLSession,
+    ) async throws -> Data {
+        guard let baseURL = base.baseURL, let url = URL(string: path, relativeTo: baseURL) else {
+            throw LisaError.notConfigured
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.timeoutInterval = 15
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        let (data, resp) = try await session.data(for: req)
+        let status = (resp as? HTTPURLResponse)?.statusCode ?? -1
+        guard (200..<300).contains(status) else {
+            struct E: Decodable { let error: String? }
+            let reason = (try? JSONDecoder().decode(E.self, from: data))?.error ?? ""
+            throw SignInCodeError(status: status, reason: reason)
+        }
+        return data
+    }
+
+    /// Ask for a one-time sign-in code (`POST /api/auth/otp/request`,
+    /// PLAN_AUTH_OTP_GOOGLE A2). Returns whether the mail actually went out —
+    /// false means the instance has no mail provider configured, which the UI
+    /// must say plainly rather than leaving someone waiting for a code.
+    static func requestSignInCode(base: ServerConfig, email: String,
+                                  session: URLSession = .shared) async throws -> Bool {
+        let data = try await postAuth(base: base, path: "/api/auth/otp/request",
+                                      payload: ["email": email], session: session)
+        struct R: Decodable { let sent: Bool? }
+        return (try? JSONDecoder().decode(R.self, from: data))?.sent ?? true
+    }
+
+    /// Spend a code (`POST /api/auth/otp/verify`) and get the account session
+    /// token. Registers the account if the address is new — reading the mail is
+    /// the proof, so there's no separate sign-up step.
+    static func verifySignInCode(base: ServerConfig, email: String, code: String,
+                                 session: URLSession = .shared) async throws -> String {
+        let data = try await postAuth(base: base, path: "/api/auth/otp/verify",
+                                      payload: ["email": email, "code": code], session: session)
+        struct R: Decodable { let token: String }
+        guard let r = try? JSONDecoder().decode(R.self, from: data), !r.token.isEmpty else {
+            throw LisaError.decode
+        }
+        return r.token
+    }
+
     /// The signed-in account behind the current session (`GET /api/auth/me`).
     /// `signedIn: false` means the connection authenticates with a legacy shared
     /// or device token rather than a LISA account.
