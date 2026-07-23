@@ -1,9 +1,11 @@
 /**
  * TF-IDF search over the knowledge base (sources + wiki), mirroring the memory
  * transcript index (memory/vector.ts) but over KB entries keyed by layer/slug.
- * Kept self-contained (own tokenizer) so the KB doesn't couple to memory's
- * session-specific index. The index is fingerprint-cached over the KB dirs, so
- * repeated searches in one conversation are free until the KB actually changes.
+ * Kept self-contained (own index, own cache) so the KB doesn't couple to
+ * memory's session-specific index; only the tokenizer is shared (../tokenize.ts
+ * — see there for why CJK needs bigrams). The index is fingerprint-cached over
+ * the KB dirs, so repeated searches in one conversation are free until the KB
+ * actually changes.
  *
  * (Semantic/embedding search is a deliberate future enhancement — it can reuse
  * memory/embedding.ts the same way memory_search does; TF-IDF is the robust,
@@ -12,6 +14,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { pathExists } from "../fs-utils.js";
+import { tokenize } from "../tokenize.js";
 import { kbSourcesDir, kbWikiDir, layerDir, type KbLayer } from "./paths.js";
 import { readEntry } from "./store.js";
 
@@ -34,20 +37,6 @@ export interface KbHit {
   title: string;
   score: number;
   excerpt: string;
-}
-
-const STOPWORDS = new Set([
-  "the", "a", "an", "of", "to", "in", "and", "or", "for", "is", "it",
-  "this", "that", "be", "are", "was", "were", "with", "on", "as", "at",
-  "by", "from", "but", "not", "i", "you", "we", "they", "he", "she",
-]);
-
-function tokenize(text: string): string[] {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9一-鿿\s]/g, " ")
-    .split(/\s+/)
-    .filter((t) => t.length >= 2 && !STOPWORDS.has(t));
 }
 
 function excerptAround(text: string, qTokens: string[], width: number): string {

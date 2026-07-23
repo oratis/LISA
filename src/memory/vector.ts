@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import { listSessionsOnDisk, loadSessionMessages } from "../sessions/list.js";
 import { sessionsDir } from "../paths.js";
 import { extractTextFromContent } from "../agent.js";
+import { BASE_STOPWORDS, tokenize as tokenizeShared } from "../tokenize.js";
 import {
   cosineSimilarity,
   embedWithCache,
@@ -28,10 +29,10 @@ export interface Index {
   embedderId?: string;
 }
 
+// Transcript-specific noise on top of the shared list — every session is full
+// of these, so they carry no signal here.
 const STOPWORDS = new Set([
-  "the", "a", "an", "of", "to", "in", "and", "or", "for", "is", "it",
-  "this", "that", "be", "are", "was", "were", "with", "on", "as", "at",
-  "by", "from", "but", "not", "i", "you", "we", "they", "he", "she",
+  ...BASE_STOPWORDS,
   "lisa", "tool", "use", "user", "assistant",
 ]);
 
@@ -210,11 +211,7 @@ export async function semanticSearch(
 }
 
 function tokenize(text: string): string[] {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9一-鿿\s]/g, " ")
-    .split(/\s+/)
-    .filter((t) => t.length >= 2 && !STOPWORDS.has(t));
+  return tokenizeShared(text, STOPWORDS);
 }
 
 function excerptAround(

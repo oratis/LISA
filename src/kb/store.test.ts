@@ -104,6 +104,60 @@ describe("kb store", () => {
     assert.equal(await store.removeEntry("sources", "dup-2"), false, "already gone");
   });
 
+  test("a Chinese title gets a readable date+hash slug, not entry-<timestamp>", async () => {
+    const e = await store.addSource({
+      title: "知识库的设计笔记",
+      body: "三层结构：来源、维基、schema。",
+      tags: ["知识库"],
+    });
+    assert.match(e.slug, /^\d{4}-\d{2}-\d{2}-[0-9a-f]{8}$/);
+    assert.doesNotMatch(e.slug, /^entry-/);
+    const back = await store.readEntry("sources", e.slug);
+    assert.equal(back!.title, "知识库的设计笔记", "the real title lives in frontmatter");
+  });
+
+  test("provenance frontmatter round-trips through `extra`", async () => {
+    const e = await store.addSource({
+      title: "Ingested article",
+      body: "body text",
+      origin: "web",
+      extra: {
+        url: "https://example.com/a?b=1",
+        site: "example.com",
+        author: "Someone",
+        published: "2026-07-20",
+        hash: "deadbeef",
+      },
+    });
+    const back = await store.readEntry("sources", e.slug);
+    assert.equal(back!.extra?.url, "https://example.com/a?b=1");
+    assert.equal(back!.extra?.site, "example.com");
+    assert.equal(back!.extra?.hash, "deadbeef");
+    assert.equal(back!.origin, "web");
+    // Known keys must not leak into extra (they'd be written twice).
+    assert.equal(back!.extra?.title, undefined);
+    assert.equal(back!.extra?.tags, undefined);
+    const raw = readFileSync(entryFile("sources", e.slug), "utf8");
+    assert.equal(raw.match(/^title:/gm)?.length, 1, "title written exactly once");
+  });
+
+  test("a newline in an extra value cannot forge extra frontmatter lines", async () => {
+    const e = await store.addSource({
+      title: "Injection attempt",
+      body: "b",
+      extra: { author: "x\norigin: spoofed\ntitle: spoofed" },
+    });
+    const back = await store.readEntry("sources", e.slug);
+    assert.equal(back!.title, "Injection attempt");
+    assert.notEqual(back!.origin, "spoofed");
+    assert.match(back!.extra!.author!, /^x origin: spoofed title: spoofed$/);
+  });
+
+  test("listEntries surfaces extra so the index/UI can show provenance", async () => {
+    const sources = await store.listEntries("sources");
+    assert.ok(sources.some((s) => s.extra?.site === "example.com"));
+  });
+
   test("slug jail: a traversal slug throws rather than escaping the KB", async () => {
     await assert.rejects(() => store.readEntry("wiki", "../../etc/passwd"));
     await assert.rejects(() =>
