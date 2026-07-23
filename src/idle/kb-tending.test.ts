@@ -12,6 +12,12 @@ describe("idle ⇄ KB tending (autonomous distillation)", () => {
     assert.match(p, /kb_list|kb_search|kb_read/, "can read the KB to find new sources");
   });
 
+  test("the idle prompt closes the loop: distilled pages get back-linked from memory", () => {
+    const p = buildIdleSystemPrompt();
+    assert.match(p, /\[\[kb:slug\]\]/, "names the pointer syntax");
+    assert.match(p, /`memory` tool/, "tells Lisa which tool writes the pointer");
+  });
+
   test("KB tools are available to autonomous (idle / heartbeat) runs", () => {
     const auto = new Set(autonomousSubset(buildToolRegistry()).map((t) => t.name));
     assert.ok(auto.has("kb_write") && auto.has("kb_add"), "idle can write the wiki");

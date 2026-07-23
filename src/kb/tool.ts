@@ -10,6 +10,8 @@ import type { ToolDefinition } from "../types.js";
 import { searchKb } from "./search.js";
 import { addSource, listEntries, listFullEntries, readEntry, writeWiki } from "./store.js";
 import { buildGraph, kbKey, resolveRef } from "./links.js";
+import { autolink } from "./autolink.js";
+import { kbSlug } from "./slug.js";
 import type { KbLayer } from "./paths.js";
 
 const kbSearch: ToolDefinition<{ query: string; limit?: number }, string> = {
@@ -206,10 +208,18 @@ const kbWrite: ToolDefinition<
     required: ["title", "content"],
   },
   async execute(input) {
+    // Auto-interlink (conservative): prose in the new page that names an
+    // existing wiki page becomes a [[link]] — that's what feeds backlinks and
+    // the hub ranking. Wiki layer only, own page excluded (upserts would
+    // otherwise self-link), and autolink itself skips code + existing links.
+    const selfSlug = input.slug ?? kbSlug({ title: input.title });
+    const others = (await listFullEntries("wiki"))
+      .filter((e) => e.slug !== selfSlug)
+      .map((e) => ({ slug: e.slug, title: e.title }));
     const e = await writeWiki({
       slug: input.slug,
       title: input.title,
-      body: input.content,
+      body: autolink(input.content, others),
       tags: input.tags,
       sources: input.sources,
     });
