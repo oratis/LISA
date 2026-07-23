@@ -216,4 +216,16 @@ final class LisaPocketTests: XCTestCase {
         XCTAssertTrue(VerifyOutcome.ok.recovery.isEmpty)
         XCTAssertEqual(RecoveryAction.rescan.label, "Scan a fresh code")
     }
+
+    // ── A4: the Google redirect scheme is the client id, reversed ──
+    @MainActor
+    func testGoogleRedirectScheme() {
+        XCTAssertEqual(
+            GoogleSignIn.redirectScheme(clientId: "123-abc.apps.googleusercontent.com"),
+            "com.googleusercontent.apps.123-abc")
+        // A web client id (or anything else) has no reversed form — refuse it
+        // rather than build a redirect Google will reject.
+        XCTAssertNil(GoogleSignIn.redirectScheme(clientId: "123-abc.example.com"))
+        XCTAssertNil(GoogleSignIn.redirectScheme(clientId: ""))
+    }
 }
