@@ -266,7 +266,12 @@ const kbIngest: ToolDefinition<
     ]
       .filter(Boolean)
       .join(" · ");
-    return `Ingested "${res.entry.title}" (sources/${res.entry.slug}, via ${res.via})${meta ? ` — ${meta}` : ""}.`;
+    // Degraded video captures (no transcript) are successes — but say so, and
+    // point at the manual path (handoff: never fail an ingest over subtitles).
+    const transcriptNote = res.entry.extra?.transcript?.startsWith("unavailable")
+      ? ` Note: transcript ${res.entry.extra.transcript} — metadata + description were saved; you can paste the transcript yourself with kb_add.`
+      : "";
+    return `Ingested "${res.entry.title}" (sources/${res.entry.slug}, via ${res.via})${meta ? ` — ${meta}` : ""}.${transcriptNote}`;
   },
 };
 

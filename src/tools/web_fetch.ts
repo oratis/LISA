@@ -66,15 +66,27 @@ export function assertAllowedUrl(u: URL): void {
   }
 }
 
+/** Request options callers (kb ingest adapters) may add — still SSRF-guarded. */
+export interface SafeFetchInit {
+  method?: string;
+  headers?: Record<string, string>;
+  body?: string;
+}
+
 /**
  * fetch() with manual redirect handling. Validates the host of EACH hop
  * (initial + every Location) against the private-IP blocklist before
  * issuing the request — closing the SSRF redirect bypass. Caps at
  * MAX_REDIRECTS to avoid loops.
+ *
+ * `init` lets KB ingest adapters send API POSTs / cookie headers through the
+ * SAME guarded path instead of growing a second fetch (and a second SSRF
+ * surface). Caller headers win over the defaults.
  */
 export async function fetchFollowingSafeRedirects(
   startUrl: string,
   signal: AbortSignal | undefined,
+  init?: SafeFetchInit,
 ): Promise<Response> {
   let current = startUrl;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
@@ -82,10 +94,13 @@ export async function fetchFollowingSafeRedirects(
     const res = await fetch(current, {
       signal,
       redirect: "manual",
+      method: init?.method ?? "GET",
+      body: init?.body,
       headers: {
         "user-agent": "Lisa/0.1 (web_fetch)",
         accept:
           "text/html,application/xhtml+xml,application/json,text/plain,*/*;q=0.8",
+        ...(init?.headers ?? {}),
       },
     });
     if (!REDIRECT_STATUSES.has(res.status)) return res;
