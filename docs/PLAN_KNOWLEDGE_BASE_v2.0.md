@@ -7,7 +7,8 @@
 > 参考：[docs/PLAN_KNOWLEDGE_BASE_v1.0.md](PLAN_KNOWLEDGE_BASE_v1.0.md)（已 shipped #235–#242）、
 > [src/kb/](../src/kb/)、[src/mail/](../src/mail/)（日报调度的现成范式）、[src/prompt.ts](../src/prompt.ts)。
 >
-> **Status:** 提案（待评审） · **日期:** 2026-07-23 · **Author:** Claude (for Oratis)
+> **Status:** ✅ shipped（K-A #278 · K-B #279 · K-C #280 · 交接 #281 · K-D #282 ·
+> K-E #283 · K-F #284 · K-G #285 · K-H #286 · K-I #287） · **日期:** 2026-07-23 · **Author:** Claude (for Oratis)
 > 本文含**现状 review（含 1 个已确认 bug）+ 完整设计 + 正反方辩论 + 分阶段 PR 计划**。
 
 ---
