@@ -611,6 +611,37 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   const mailKick = setTimeout(() => void runMailDigest(false), 20_000);
   if (mailKick.unref) mailKick.unref();
 
+  // ── KB feeds brief (daily) ──────────────────────────────────────────
+  // Same shape as the mail digest: 30-min poll + 20s restart catch-up.
+  // Fully inert until the user creates ~/.lisa/kb/feeds.json with feeds
+  // (D4: file existence IS the consent; no separate signal).
+  let kbBriefRunning = false;
+  const runKbBrief = async (force: boolean): Promise<boolean> => {
+    if (kbBriefRunning) return false;
+    kbBriefRunning = true;
+    try {
+      const { runDailyBrief } = await import("../kb/feeds/service.js");
+      const result = await runDailyBrief({ force });
+      if (!result) return false;
+      broadcast({ type: "kb_brief_update", date: result.brief.date, total: result.brief.total, at: new Date().toISOString() });
+      pushBridge.onKbBrief(result.text);
+      if (!force) {
+        broadcast({ type: "idle_message", text: result.text, at: new Date().toISOString(), source: "kb" });
+      }
+      console.error(`[kb-brief] ${result.brief.date}: ${result.brief.total} item(s) · ${result.brief.ingested.length} ingested`);
+      return true;
+    } catch (err) {
+      console.error(`[kb-brief] failed: ${(err as Error).message}`);
+      return false;
+    } finally {
+      kbBriefRunning = false;
+    }
+  };
+  const kbBriefTimer = setInterval(() => void runKbBrief(false), 30 * 60_000);
+  if (kbBriefTimer.unref) kbBriefTimer.unref();
+  const kbBriefKick = setTimeout(() => void runKbBrief(false), 20_000);
+  if (kbBriefKick.unref) kbBriefKick.unref();
+
   // ── Important-mail alerts (intraday) ────────────────────────────────
   // Every LISA_MAIL_POLL_MINUTES (default 30; 0 disables), incrementally read
   // NEW mail; for items at/above the alert level, fire a high-priority push +
@@ -2609,6 +2640,13 @@ self.addEventListener('fetch', (event) => {
       const entry = await addSource({ title, body: content, tags: payload.tags, origin: payload.origin || "chat" });
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, entry: { layer: entry.layer, slug: entry.slug, title: entry.title } }));
+      return;
+    }
+    // Latest daily brief (K-H) — the feeds/<date>.json written for the UI.
+    if (req.method === "GET" && url === "/api/kb/brief") {
+      const { latestBriefJson } = await import("../kb/feeds/service.js");
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ brief: await latestBriefJson() }));
       return;
     }
     // Link ingestion (PLAN_KNOWLEDGE_BASE_v2.0 K-G). Body shaped so a future
