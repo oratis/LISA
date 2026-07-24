@@ -38,6 +38,11 @@ targets:
       path: Sources/Info.plist
       properties:
         CFBundleDisplayName: Lisa Pocket
+        # Pin the plist to the build setting. xcodegen otherwise bakes its
+        # LITERAL default ("1.0") here, which wins over MARKETING_VERSION — so
+        # every archive shipped as 1.0 and the bump to 1.1 was a no-op. Same
+        # class of bug as the CFBundleVersion "1" patch in testflight.sh.
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
         UILaunchScreen: {}
         NSSupportsLiveActivities: true
         NSCameraUsageDescription: "Scan the pairing QR code Lisa shows on your Mac."
@@ -90,6 +95,9 @@ targets:
       path: Widgets/Info.plist
       properties:
         CFBundleDisplayName: Lisa Widgets
+        # The extension MUST carry the same version as the app or embedded-binary
+        # validation fails at export (see testflight.sh).
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     entitlements:
