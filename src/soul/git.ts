@@ -12,6 +12,7 @@ import { spawn } from "node:child_process";
 import { AsyncLocalStorage } from "node:async_hooks";
 import path from "node:path";
 import { pathExists } from "../fs-utils.js";
+import { isCloud } from "../edition.js";
 import { withFileLock } from "./lock.js";
 import { soulDir } from "./paths.js";
 
@@ -27,7 +28,12 @@ import { soulDir } from "./paths.js";
  * reusing the same lock here would self-deadlock. Ordering is always
  * write-lock → git-lock, never the reverse, so the two can't deadlock.
  */
-const SOUL_GIT_LOCK_PATH = path.join(soulDir(), ".git-write.lock");
+// A FUNCTION, not an import-time constant (paths.ts doctrine): a constant
+// would freeze the GLOBAL home's lock path at module load, so per-uid cloud
+// tenants would all serialize on one shared lock outside their own repos (S3).
+function soulGitLockPath(): string {
+  return path.join(soulDir(), ".git-write.lock");
+}
 
 export type SoulCaller =
   | "birth"
@@ -69,7 +75,22 @@ interface GitResult {
 
 let gitAvailable: boolean | null = null;
 
+/**
+ * Soul git history is a local-edition feature (S3). On the cloud edition the
+ * home lives on a gcsfuse mount where git's many-small-file writes are slow
+ * and lock files behave badly — so it defaults OFF there. LISA_SOUL_GIT=1/0
+ * force-overrides either way; all git ops already degrade gracefully to
+ * no-ops when this reports false.
+ */
+function soulGitEnabled(): boolean {
+  const v = process.env.LISA_SOUL_GIT?.trim().toLowerCase();
+  if (v === "0" || v === "false") return false;
+  if (v === "1" || v === "true") return true;
+  return !isCloud();
+}
+
 async function checkGitAvailable(): Promise<boolean> {
+  if (!soulGitEnabled()) return false;
   if (gitAvailable !== null) return gitAvailable;
   try {
     const r = await runGitRaw(["--version"], process.cwd());
@@ -184,7 +205,7 @@ export function commitSoulChange(
     if (!(await pathExists(dotGit))) return; // not initialized yet (pre-birth)
     try {
       await withFileLock(
-        SOUL_GIT_LOCK_PATH,
+        soulGitLockPath(),
         async () => {
           const add = await runGit(["add", "--", relPath]);
           if (add.code !== 0) {
