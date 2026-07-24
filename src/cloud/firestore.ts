@@ -34,6 +34,11 @@ let tokenCache: { token: string; expiresAt: number } | null = null;
 let projectCache: string | null = null;
 
 async function adcToken(fetchFn: typeof fetch): Promise<string> {
+  // Operator/admin override (S6): lets the B9 import script (and any local
+  // tooling) run OUTSIDE Cloud Run, where there is no metadata server —
+  //   LISA_FIRESTORE_TOKEN="$(gcloud auth print-access-token)"
+  const envToken = process.env.LISA_FIRESTORE_TOKEN?.trim();
+  if (envToken) return envToken;
   if (tokenCache && Date.now() < tokenCache.expiresAt - 60_000) return tokenCache.token;
   const res = await fetchFn(`${METADATA_BASE}/instance/service-accounts/default/token`, {
     headers: { "Metadata-Flavor": "Google" },
