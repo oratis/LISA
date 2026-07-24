@@ -153,9 +153,11 @@ final class LisaClient {
     struct SignInCodeError: Error {
         let status: Int
         /// Server code — otp_cooldown, otp_daily_cap, bad_code, expired,
-        /// no_pending, too_many_attempts, invalid_email, rate_limited. Empty if
-        /// the body carried none.
+        /// no_pending, too_many_attempts, invalid_email, email_typo,
+        /// undeliverable_email, rate_limited. Empty if the body carried none.
         let reason: String
+        /// The corrected domain, when the server recognised a typo.
+        let suggestion: String?
     }
 
     private static func postAuth(
@@ -175,9 +177,9 @@ final class LisaClient {
         let (data, resp) = try await session.data(for: req)
         let status = (resp as? HTTPURLResponse)?.statusCode ?? -1
         guard (200..<300).contains(status) else {
-            struct E: Decodable { let error: String? }
-            let reason = (try? JSONDecoder().decode(E.self, from: data))?.error ?? ""
-            throw SignInCodeError(status: status, reason: reason)
+            struct E: Decodable { let error: String?; let suggestion: String? }
+            let body = try? JSONDecoder().decode(E.self, from: data)
+            throw SignInCodeError(status: status, reason: body?.error ?? "", suggestion: body?.suggestion)
         }
         return data
     }
