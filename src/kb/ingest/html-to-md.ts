@@ -66,7 +66,13 @@ export function parseHtml(html: string): HtmlElement {
       continue;
     }
     if (DROP_TAGS.has(tag)) {
-      // Skip to this tag's real close without tokenizing its contents.
+      // A self-closing drop tag (<svg/>, <iframe/>) has no matching close and no
+      // content — skip just the tag. Previously these fell into the no-close
+      // branch below and jumped to EOF, silently discarding the rest of the doc.
+      if (token.endsWith("/>")) continue;
+      // Otherwise skip to this tag's real close without tokenizing its contents.
+      // A genuinely unclosed drop tag (malformed page) still drops to EOF rather
+      // than leak raw script/style source into the output.
       const close = new RegExp(`</${tag}\\s*>`, "gi");
       close.lastIndex = TAG_RE.lastIndex;
       const c = close.exec(html);
