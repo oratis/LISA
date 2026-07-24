@@ -30,9 +30,11 @@ export interface PushPrefs {
   advisor: boolean;
   /** Daily mail digest + important-mail alerts. */
   mail: boolean;
+  /** Daily knowledge-base feeds brief. */
+  brief: boolean;
 }
 export function defaultPushPrefs(): PushPrefs {
-  return { done: true, error: true, permission: true, idle: true, advisor: false, mail: true };
+  return { done: true, error: true, permission: true, idle: true, advisor: false, mail: true, brief: true };
 }
 export function normalizePushPrefs(p: Partial<PushPrefs> | null | undefined): PushPrefs {
   const base = defaultPushPrefs();
@@ -45,6 +47,7 @@ export function normalizePushPrefs(p: Partial<PushPrefs> | null | undefined): Pu
     idle: pick("idle"),
     advisor: pick("advisor"),
     mail: pick("mail"),
+    brief: pick("brief"),
   };
 }
 
@@ -490,6 +493,14 @@ export class PushBridge {
     this.fire(
       { pref: "mail", title: "📬 Mail digest", body: text.slice(0, 240), priority: "default", tag: "mail-digest", click },
       `mail-digest#${this.now()}`,
+    );
+  }
+
+  /** Daily KB feeds brief push (default priority). */
+  onKbBrief(text: string, click?: string): void {
+    this.fire(
+      { pref: "brief", title: "📰 Daily brief", body: text.slice(0, 240), priority: "default", tag: "kb-brief", click },
+      `kb-brief#${this.now()}`,
     );
   }
 
