@@ -101,6 +101,7 @@ import {
 } from "./accounts.js";
 import { sendMail, verificationEmail, otpEmail } from "./mailer.js";
 import { startBirthOnce } from "./birth-hub.js";
+import { sweepToken, sweepUserAutonomy } from "./autonomy-sweep.js";
 import { turnstileConfig, verifyTurnstile } from "./turnstile.js";
 import { isDisposableEmail } from "./email-domains.js";
 import { readBalance, creditPurchase } from "../billing/quota.js";
@@ -1352,6 +1353,36 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.writeHead(500, { "content-type": "text/plain" });
         res.end("password reset failed");
       }
+      return;
+    }
+
+    // ── Per-uid autonomy sweep (S4; pre-gate — Cloud Scheduler is the caller,
+    // authenticated by the LISA_SWEEP_TOKEN bearer secret). Cloud-only and
+    // default-OFF without the env. Each recently-active, due tenant gets one
+    // reflection tick inside its own home scope; tier gates the cadence.
+    if (req.method === "POST" && url === "/internal/autonomy/sweep") {
+      const secret = sweepToken();
+      if (!cloud || !secret) {
+        res.writeHead(404, { "content-type": "text/plain" });
+        res.end("not available");
+        return;
+      }
+      const presented = (req.headers.authorization ?? "").toString().replace(/^Bearer\s+/i, "").trim();
+      if (!presented || !timingSafeEqualStr(presented, secret)) {
+        res.writeHead(401, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "unauthorized" }));
+        return;
+      }
+      const body = await readJsonBody(req, res);
+      if (!body) return; // 413 already sent
+      const maxRuns = typeof body.maxRuns === "number" && body.maxRuns > 0 ? Math.floor(body.maxRuns) : undefined;
+      const report = await sweepUserAutonomy({
+        ...(opts.model ? { model: opts.model } : {}),
+        ...(maxRuns !== undefined ? { maxRuns } : {}),
+      });
+      console.error(`[sweep] scanned ${report.scanned} active accounts, reflected ${report.ran}`);
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify(report));
       return;
     }
 

@@ -72,6 +72,12 @@ ENVS="^##^LISA_EDITION=cloud##LISA_WEB_TOKEN=${LISA_WEB_TOKEN}"
 [ -n "${LISA_TURNSTILE_SECRET:-}" ]   && ENVS="${ENVS}##LISA_TURNSTILE_SECRET=${LISA_TURNSTILE_SECRET}"
 # Extra disposable-email domains to block at signup (comma-separated; S3).
 [ -n "${LISA_EMAIL_BLOCKLIST:-}" ]    && ENVS="${ENVS}##LISA_EMAIL_BLOCKLIST=${LISA_EMAIL_BLOCKLIST}"
+# Per-uid autonomy sweep (S4): bearer secret for POST /internal/autonomy/sweep.
+# Pair it with a Cloud Scheduler job, e.g.:
+#   gcloud scheduler jobs create http lisa-autonomy-sweep --schedule "*/30 * * * *" \
+#     --uri "$URL/internal/autonomy/sweep" --http-method POST \
+#     --headers "Authorization=Bearer $LISA_SWEEP_TOKEN" --location "$REGION"
+[ -n "${LISA_SWEEP_TOKEN:-}" ]        && ENVS="${ENVS}##LISA_SWEEP_TOKEN=${LISA_SWEEP_TOKEN}"
 # Accounts & billing era (PLAN_ACCOUNTS_BILLING B1–B7), all optional:
 #   LISA_REVIEWER_SEED="email:password"  idempotent App-Review demo account (verified, $20/Tier-2)
 #   LISA_RPM_LIMIT / LISA_DAILY_CAP_USD  abuse guards (defaults 20 rpm / $200 per day)
