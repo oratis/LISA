@@ -204,6 +204,11 @@ export const REMOTE_BLOCKED_TOOL_NAMES = new Set([
   // exactly where Lisa tends the wiki (kb_add/kb_write are path-jailed to ~/.lisa/kb).
   "kb_add",
   "kb_write",
+  // kb_ingest additionally FETCHES a remote URL of the sender's choosing before
+  // writing — doubly off-limits for remote surfaces. Deliberately NOT
+  // autonomous-blocked: K-I constrains autonomous ingestion to the feeds.json
+  // domain watchlist instead of a blanket ban.
+  "kb_ingest",
 ]);
 
 export function remoteSafeSubset(tools: ToolDefinition[]): ToolDefinition[] {

@@ -12,6 +12,7 @@ import { addSource, listEntries, listFullEntries, readEntry, writeWiki } from ".
 import { buildGraph, kbKey, resolveRef } from "./links.js";
 import { autolink } from "./autolink.js";
 import { kbSlug } from "./slug.js";
+import { ingestUrl } from "./ingest/index.js";
 import type { KbLayer } from "./paths.js";
 
 const kbSearch: ToolDefinition<{ query: string; limit?: number }, string> = {
@@ -227,6 +228,48 @@ const kbWrite: ToolDefinition<
   },
 };
 
+const kbIngest: ToolDefinition<
+  { url: string; title?: string; tags?: string[]; force?: boolean },
+  string
+> = {
+  name: "kb_ingest",
+  description:
+    "Save a web page into the knowledge base as a SOURCE (Layer 1): fetches the URL, extracts the " +
+    "main content, converts it to markdown, and records provenance (site/author/date) in frontmatter. " +
+    "A URL that was already ingested returns the existing entry — pass force=true to capture a fresh " +
+    "copy (recorded as superseding the old one). For paywalled/script-only pages that fail, ask the " +
+    "user to paste the text and use kb_add.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      url: { type: "string", description: "Absolute http(s) URL" },
+      title: { type: "string", description: "Override the extracted title" },
+      tags: { type: "array", items: { type: "string" } },
+      force: { type: "boolean", description: "Re-ingest even if this URL was captured before" },
+    },
+    required: ["url"],
+  },
+  async execute(input, ctx) {
+    const res = await ingestUrl(input.url, {
+      title: input.title,
+      tags: input.tags,
+      force: input.force,
+      signal: ctx?.signal,
+    });
+    if (res.deduped) {
+      return `Already in the knowledge base: "${res.entry.title}" (sources/${res.entry.slug}). Pass force=true to re-capture.`;
+    }
+    const meta = [
+      res.entry.extra?.site,
+      res.entry.extra?.author,
+      res.entry.extra?.published,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    return `Ingested "${res.entry.title}" (sources/${res.entry.slug}, via ${res.via})${meta ? ` — ${meta}` : ""}.`;
+  },
+};
+
 /** All KB tools (read tools first). Registered in tools/registry.ts. */
 export const kbTools: ToolDefinition[] = [
   kbSearch as ToolDefinition,
@@ -235,4 +278,5 @@ export const kbTools: ToolDefinition[] = [
   kbLinks as ToolDefinition,
   kbAdd as ToolDefinition,
   kbWrite as ToolDefinition,
+  kbIngest as ToolDefinition,
 ];
