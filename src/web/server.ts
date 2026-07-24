@@ -88,6 +88,7 @@ import {
   createEmailAccount,
   verifyEmailLogin,
   upsertAppleAccount,
+  upsertGoogleAccount,
   deleteAccount,
   getAccount,
   sessionAccountValid,
@@ -123,6 +124,12 @@ import {
   audienceForClient,
   appleRequireNonce,
 } from "./cloudAuth.js";
+import {
+  verifyGoogleIdToken,
+  fetchGoogleKeys,
+  googleSignInConfig,
+  GoogleAuthError,
+} from "./googleAuth.js";
 import { detectLanHost, buildPairUrl } from "./pairing.js";
 import { TenantEventBus, sameTenant } from "./event-bus.js";
 import { qrSvg } from "./qr-svg.js";
@@ -1002,16 +1009,70 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       return;
     }
 
+    // ── Sign in with Google (cloud edition; S1) ─────────────────────────────
+    // Same posture as /api/auth/apple: mints access, so it runs BEFORE the
+    // token gate, default-OFF, and shares the per-IP auth rate bucket. The
+    // login page's GIS callback POSTs the credential (a Google-signed JWT);
+    // we verify it against Google's JWKS and mint a per-uid session.
+    if (req.method === "POST" && url === "/api/auth/google") {
+      const gcfg = googleSignInConfig();
+      if (!cloud || !gcfg.enabled || !gcfg.clientId) {
+        res.writeHead(404, { "content-type": "text/plain" });
+        res.end("google sign-in not available");
+        return;
+      }
+      if (!sessionSecret) {
+        res.writeHead(503, { "content-type": "text/plain" });
+        res.end("cloud sign-in misconfigured (no session secret)");
+        return;
+      }
+      if (!ipRateOk(`auth:${clientIp(req, remoteAddr)}`, AUTH_IP_LIMIT, AUTH_IP_WINDOW_MS)) {
+        res.writeHead(429, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "rate_limited", retryAfterSec: Math.ceil(AUTH_IP_WINDOW_MS / 1000) }));
+        return;
+      }
+      const payload = await readJsonBody(req, res);
+      if (!payload) return; // 413 already sent
+      const credential = typeof payload.credential === "string" ? payload.credential : "";
+      if (!credential) {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("credential required");
+        return;
+      }
+      try {
+        const id = await verifyGoogleIdToken(credential, {
+          audience: gcfg.clientId,
+          fetchKeys: fetchGoogleKeys,
+        });
+        const acct = await upsertGoogleAccount(id.sub, id.email, id.emailVerified);
+        const session = mintSession(acct.uid, sessionSecret, { sv: acct.sessionVersion });
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "set-cookie": `lisa_token=${encodeURIComponent(session)}; HttpOnly; SameSite=Strict; Path=/${isCloud() ? "; Secure" : ""}`,
+        });
+        res.end(JSON.stringify({ ok: true, token: session, uid: acct.uid }));
+      } catch (e) {
+        const msg = e instanceof GoogleAuthError ? e.message : "verification failed";
+        res.writeHead(401, { "content-type": "text/plain" });
+        res.end(`google sign-in rejected: ${msg}`);
+      }
+      return;
+    }
+
     // Public sign-in surface config (pre-gate): the login page asks which
     // buttons to draw. Never exposes secrets — just feature flags + ids.
     if (req.method === "GET" && url === "/api/auth/config") {
       const cfg = appleSignInConfig();
+      const gcfg = googleSignInConfig();
       res.writeHead(200, { "content-type": "application/json" });
       res.end(
         JSON.stringify({
           accounts: cloud && !!sessionSecret,
           appleWeb: cloud && cfg.enabled && !!cfg.webServicesId
             ? { servicesId: cfg.webServicesId }
+            : null,
+          googleWeb: cloud && gcfg.enabled && gcfg.clientId
+            ? { clientId: gcfg.clientId }
             : null,
           stripe: cloud && !!stripeConfig().secretKey,
         }),
