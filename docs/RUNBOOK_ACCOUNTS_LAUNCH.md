@@ -209,10 +209,24 @@ app now verifies the connection at sign-in time. Please review 1.1.
 > **没有可用的发信通道 = 没人收得到验证码 = 登录不了**（缺 key 时验证码只会
 > 打进服务端日志）。上线前务必确认这一条。
 
-1. **Resend**：确认 `RESEND_API_KEY` 已在 Cloud Run env 里，且 `meetlisa.ai`
-   在 Resend 后台是 **Verified**（SPF + DKIM 记录已加在 DNS）。
-   B8a 的验证邮件用的是同一条通道，所以之前若已验证过就无需重做。
-2. **自检**（部署后）：
+1. **Resend 域名**：发信域是 **`mail.meetlisa.ai`（子域，不是顶级域）**。
+   子域发信是刻意的：顶级域承载你自己的人类邮件和它的信誉，把批量事务邮件
+   隔到独立子域，这边退信炸了也不会连累那边。
+
+   Resend 后台 → **Domains → Add Domain** 填 `mail.meetlisa.ai`，它会列出
+   3–4 条记录（MX + SPF TXT + DKIM TXT，可选 DMARC）。**照抄它当场给的值**
+   到 DNS —— 具体主机名和值跟 Resend 分配的区域有关，别照别处的样例填。
+   加完点 Verify，状态变 **Verified** 才算数（通常几分钟，DNS 慢的话到几小时）。
+
+   代码里的默认 from 已经是 `LISA <no-reply@mail.meetlisa.ai>`，与之对齐；
+   想换显示名或地址就设 `LISA_MAIL_FROM`，但**必须仍在已验证的域内**，
+   否则 Resend 直接拒发。
+
+2. **API key**：Resend → API Keys 建一个（权限选 **Sending access** 即可，
+   不需要 Full access），部署时作为 `RESEND_API_KEY` 传入。
+   key 只在 Cloud Run env 里，别提交进仓库。轮换就是建新 key + 重部署。
+
+3. **自检**（部署后）：
 
 ```bash
 BASE=https://cloud.meetlisa.ai
@@ -224,9 +238,10 @@ curl -s $BASE/api/auth/otp/verify -H 'content-type: application/json' \
   -d '{"email":"你的邮箱@example.com","code":"123456"}'
 ```
 
-3. 免费额度：验证码登录建号即 `verified=true`，直接拿满额 $5 窗口（旧的
+4. 免费额度：验证码登录建号即 `verified=true`，直接拿满额 $5 窗口（旧的
    "未验证邮箱 $1" 只剩历史密码账号会遇到）。
-4. 审核账号不受影响：`reviewer@meetlisa.ai` 仍是密码登录，ASC 表单不用改。
+5. 审核账号不受影响：`reviewer@meetlisa.ai` 仍是密码登录，ASC 表单不用改。
+   （注意这是**收件**地址、与发信子域无关，不需要跟着改成 mail. 子域。）
 
 ## Phase 9 — Google 登录（GCP OAuth）
 

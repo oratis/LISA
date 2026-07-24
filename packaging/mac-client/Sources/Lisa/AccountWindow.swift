@@ -128,7 +128,10 @@ final class AccountWindowController: NSWindowController {
                 if status == 200 {
                     completion(obj, "")
                 } else {
-                    completion(nil, Self.hint(status: status, error: obj?["error"] as? String ?? ""))
+                    var reason = Self.hint(status: status, error: obj?["error"] as? String ?? "")
+                    // A named typo is one edit from fixed — say what to fix.
+                    if let fix = obj?["suggestion"] as? String { reason += " — did you mean @\(fix)?" }
+                    completion(nil, reason)
                 }
             }
         }.resume()
@@ -144,6 +147,8 @@ final class AccountWindowController: NSWindowController {
         case "too_many_attempts": return "too many wrong codes — send a fresh one"
         case "bad_credentials": return "wrong email or password"
         case "invalid_email": return "that doesn't look like an email address"
+        case "email_typo": return "that address looks misspelled"
+        case "undeliverable_email": return "that domain doesn't seem to accept mail"
         case "rate_limited", "throttled": return "too many attempts — wait a while"
         default:
             return status == 404 ? "this instance doesn't offer accounts"

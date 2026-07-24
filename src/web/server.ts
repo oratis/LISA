@@ -107,6 +107,7 @@ import {
   GoogleAuthError,
 } from "./googleAuth.js";
 import { requestEmailOtp, verifyEmailOtp, OTP_TTL_MS } from "./otp.js";
+import { checkDeliverable } from "./email-deliverability.js";
 import { sendVerificationEmail, sendSignInCodeEmail } from "./mailer.js";
 import { readBalance, creditPurchase } from "../billing/quota.js";
 import { PushBridge, listPush, registerPush, unregisterPush, setPushPrefs, registerLiveActivity, unregisterLiveActivity, type PushPrefs } from "./push.js";
@@ -1212,6 +1213,20 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       }
 
       if (url === "/api/auth/otp/request") {
+        // Before the send budget is touched: a typo'd address doesn't bounce
+        // back to whoever typed it, so catching it here is the only feedback
+        // they'll get — and it saves a slot of their daily allowance.
+        const reachable = await checkDeliverable(normalizeEmail(email));
+        if (!reachable.ok) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(
+            JSON.stringify({
+              error: reachable.reason === "typo" ? "email_typo" : "undeliverable_email",
+              ...(reachable.suggestion ? { suggestion: reachable.suggestion } : {}),
+            }),
+          );
+          return;
+        }
         const minted = await requestEmailOtp(email);
         if (!minted.ok) {
           res.writeHead(429, { "content-type": "application/json" });

@@ -92,6 +92,8 @@ const HINTS: Record<string, string> = {
   throttled: "too many attempts — wait 15 minutes",
   rate_limited: "too many attempts from this network — try again later",
   invalid_email: "that doesn't look like an email address",
+  email_typo: "that address looks misspelled",
+  undeliverable_email: "that domain doesn't seem to accept mail",
   otp_cooldown: "a code was just sent — check your inbox",
   otp_daily_cap: "too many codes for this address today",
   bad_code: "that code isn't right",
@@ -123,7 +125,11 @@ function sessionFrom(body: Record<string, unknown>): Session | null {
 async function loginWithCode(base: string, email: string): Promise<Session | null> {
   const asked = await post(`${base}/api/auth/otp/request`, { email });
   if (!asked.ok) {
-    console.error(`✗ couldn't send a code (${hintFor(asked.code, asked.status)}).`);
+    const suggestion = typeof asked.body.suggestion === "string" ? asked.body.suggestion : "";
+    console.error(
+      `✗ couldn't send a code (${hintFor(asked.code, asked.status)})` +
+        (suggestion ? ` — did you mean ${email.replace(/@.*$/, `@${suggestion}`)}?` : "."),
+    );
     return null;
   }
   if (asked.body.sent === false) {

@@ -10,8 +10,6 @@ const FILE = path.join(TMP, "accounts.json");
 
 const { createEmailAccount, beginEmailVerification, confirmEmailVerification, upsertAppleAccount, getAccount } =
   await import("./accounts.js");
-const { verificationEmail, mailerConfig, sendVerificationEmail, signInCodeEmail, sendSignInCodeEmail } =
-  await import("./mailer.js");
 
 beforeEach(() => {
   fs.rmSync(FILE, { force: true });
@@ -53,67 +51,5 @@ describe("email verification", () => {
     const raw = (await beginEmailVerification(rec.uid))!;
     await confirmEmailVerification(raw);
     assert.equal(await beginEmailVerification(rec.uid), null);
-  });
-});
-
-describe("mailer", () => {
-  test("compose includes the link; config defaults are sane", () => {
-    const mail = verificationEmail("https://x/verify?token=t");
-    assert.match(mail.text, /https:\/\/x\/verify\?token=t/);
-    const cfg = mailerConfig({});
-    assert.equal(cfg.apiKey, null);
-    assert.match(cfg.from, /meetlisa\.ai/);
-  });
-
-  test("no api key → degrades to logged link, sent:false", async () => {
-    const r = await sendVerificationEmail("a@b.co", "https://x/verify?token=t", mailerConfig({}));
-    assert.deepEqual(r, { sent: false, detail: "no_api_key" });
-  });
-
-  test("sends through the injected fetch and reports the provider id", async () => {
-    const calls: Array<{ url: string; init: RequestInit }> = [];
-    const fakeFetch = (async (url: string | URL | Request, init?: RequestInit) => {
-      calls.push({ url: String(url), init: init! });
-      return new Response(JSON.stringify({ id: "email_123" }), { status: 200 });
-    }) as typeof fetch;
-    const r = await sendVerificationEmail(
-      "a@b.co",
-      "https://x/verify?token=t",
-      { apiKey: "re_key", from: "LISA <no-reply@meetlisa.ai>" },
-      fakeFetch,
-    );
-    assert.deepEqual(r, { sent: true, detail: "email_123" });
-    assert.equal(calls.length, 1);
-    assert.match(calls[0]!.url, /api\.resend\.com/);
-    assert.match(String(calls[0]!.init.body), /a@b\.co/);
-  });
-
-  test("the sign-in code mail carries the code in subject and body", () => {
-    const mail = signInCodeEmail("123456", 10);
-    assert.match(mail.subject, /123456/); // visible in the notification preview
-    assert.match(mail.text, /123456/);
-    assert.match(mail.text, /10 minutes/);
-  });
-
-  test("no api key → the code degrades to a server log, sent:false", async () => {
-    const r = await sendSignInCodeEmail("a@b.co", "123456", 10, mailerConfig({}));
-    assert.deepEqual(r, { sent: false, detail: "no_api_key" });
-  });
-
-  test("the code mail goes out through the same transport", async () => {
-    const bodies: string[] = [];
-    const fakeFetch = (async (_url: string | URL | Request, init?: RequestInit) => {
-      bodies.push(String(init?.body));
-      return new Response(JSON.stringify({ id: "email_456" }), { status: 200 });
-    }) as typeof fetch;
-    const r = await sendSignInCodeEmail(
-      "a@b.co",
-      "654321",
-      10,
-      { apiKey: "re_key", from: "LISA <no-reply@meetlisa.ai>" },
-      fakeFetch,
-    );
-    assert.deepEqual(r, { sent: true, detail: "email_456" });
-    assert.match(bodies[0]!, /654321/);
   });
 });

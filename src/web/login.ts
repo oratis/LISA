@@ -112,6 +112,7 @@ export const LOGIN_HTML = `<!doctype html>
     invalid_email: "That doesn't look like an email address.",
     throttled: "Too many attempts — wait 15 minutes.",
     rate_limited: "Too many attempts from this network — try again later.",
+    undeliverable_email: "That domain doesn't seem to accept mail — check the spelling.",
     otp_cooldown: "A code just went out — check your inbox.",
     otp_daily_cap: "Too many codes for this address today. Try again tomorrow or use a password.",
     bad_code: "That code isn't right.",
@@ -153,13 +154,25 @@ export const LOGIN_HTML = `<!doctype html>
       try { data = await res.json(); } catch {}
       return { ok: true, data: data };
     }
-    let code = "";
-    try { code = (await res.json()).error || ""; } catch {}
-    return { ok: false, code: code, status: res.status };
+    let code = "", suggestion = "";
+    try {
+      const body = await res.json();
+      code = body.error || "";
+      suggestion = body.suggestion || "";
+    } catch {}
+    return { ok: false, code: code, status: res.status, suggestion: suggestion };
   }
 
   function fail(r) {
     if (r.netFail) { say("Network error — try again.", true); return; }
+    // A named typo can be fixed in one tap, so offer the fix instead of a scolding.
+    if (r.code === "email_typo" && r.suggestion) {
+      const fixed = email.value.trim().replace(/@.*$/, "@" + r.suggestion);
+      say("Did you mean " + fixed + "? Fix the address and try again.", true);
+      email.value = fixed;
+      email.focus();
+      return;
+    }
     say(MSG[r.code] || ("Sign-in failed (" + r.status + ")."), true);
   }
 
