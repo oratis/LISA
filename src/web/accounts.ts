@@ -451,16 +451,25 @@ export async function upsertGoogleAccount(
     const bySub = list.find((a) => a.googleSub === sub);
     if (bySub) {
       bySub.lastLoginAt = now;
-      bySub.email = email;
+      if (bySub.email !== email) {
+        // Google changed this account's address. Don't overwrite it onto an
+        // address a *different* local account already owns — that would break
+        // one-address-one-account and make getAccountByEmail order-dependent
+        // (split balance). Refuse rather than silently merge.
+        const conflict = list.find((a) => a !== bySub && ownsEmail(a, email));
+        if (conflict) throw new AccountError("email_taken");
+        bySub.email = email;
+      }
       return bySub;
     }
     const byEmail = list.find((a) => ownsEmail(a, email));
     if (byEmail) {
       byEmail.googleSub = sub;
       byEmail.lastLoginAt = now;
-      byEmail.verified = true;
-      delete byEmail.verifyTokenHash;
-      delete byEmail.verifyExpiresAt;
+      // Google verified this inbox → ownership proof: drop any password set before
+      // verification and rotate sessionVersion (anti account-pre-hijacking, same
+      // as the OTP path). A password the owner set AFTER verifying is kept.
+      markVerifiedByOwnershipProof(byEmail);
       return byEmail;
     }
     const rec: AccountRecord = {

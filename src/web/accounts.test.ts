@@ -152,17 +152,30 @@ describe("google accounts", () => {
     assert.equal(second.lastLoginAt, 2000);
   });
 
-  test("binds to an existing email account instead of splitting the balance", async () => {
+  test("binds to an existing (unverified) email account, dropping the pre-verification password", async () => {
     const made = await createEmailAccount("a@b.co", "password-123");
     assert.equal(made.verified, false);
+    assert.equal(made.sessionVersion, 0);
     const g = await upsertGoogleAccount("108123", "a@b.co", 2000);
     assert.equal(g.uid, made.uid, "same account — same uid, same balance");
     assert.equal(g.kind, "email", "the original kind is kept; Google is now also an entrance");
     assert.equal(g.googleSub, "108123");
     assert.equal(g.verified, true, "Google vouched for the inbox");
-    // Both doors now open the same account.
-    assert.equal((await verifyEmailLogin("a@b.co", "password-123", 3000))?.uid, made.uid);
+    // The pre-verification password can't be trusted (register is open), so it is
+    // dropped and sessionVersion rotated — no longer authenticates (anti pre-hijacking).
+    assert.equal(g.scrypt, undefined, "pre-verification password dropped");
+    assert.equal(g.sessionVersion, 1, "sessionVersion rotated");
+    assert.equal(await verifyEmailLogin("a@b.co", "password-123", 3000), null, "the pre-set password no longer works");
+    // Google + code both still open the same account.
     assert.equal((await ensureOtpAccount("a@b.co", 3000)).acct.uid, made.uid);
+  });
+
+  test("a Google email change is refused when it collides with another account", async () => {
+    await createEmailAccount("b@x.co", "password-123"); // a separate account owns b@x.co
+    await upsertGoogleAccount("108123", "a@x.co", 1000);
+    // Google now reports this sub's email is b@x.co — overwriting would split the
+    // balance / break one-address-one-account, so it is refused.
+    await assert.rejects(upsertGoogleAccount("108123", "b@x.co", 2000), isCode("email_taken"));
   });
 
   test("a mailed code signs into a google-owned address rather than forking", async () => {
