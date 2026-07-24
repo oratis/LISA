@@ -15,7 +15,9 @@ import { assertSafeSlug } from "../soul/slug.js";
 import { kbSlug } from "./slug.js";
 import { commitKb } from "./git.js";
 import { ensureSchema } from "./schema.js";
+import { buildGraph, graphToJson, sortedTags } from "./links.js";
 import {
+  kbGraphFile,
   kbIndexFile,
   kbLockPath,
   kbSourcesDir,
@@ -196,10 +198,10 @@ export async function readEntry(layer: KbLayer, slug: string): Promise<KbEntry |
   return parseEntry(layer, slug, await fs.readFile(file, "utf8"));
 }
 
-/** List entry metadata (no full body), newest first. Omit `layer` for all. */
-export async function listEntries(layer?: KbLayer): Promise<KbEntryMeta[]> {
+/** Full entries (with bodies), newest first. Omit `layer` for all. */
+export async function listFullEntries(layer?: KbLayer): Promise<KbEntry[]> {
   const layers: KbLayer[] = layer ? [layer] : ["wiki", "sources"];
-  const out: KbEntryMeta[] = [];
+  const out: KbEntry[] = [];
   for (const L of layers) {
     const dir = layerDir(L);
     if (!(await pathExists(dir))) continue;
@@ -207,7 +209,7 @@ export async function listEntries(layer?: KbLayer): Promise<KbEntryMeta[]> {
       if (!f.endsWith(".md")) continue;
       const slug = f.slice(0, -3);
       try {
-        out.push(metaOf(parseEntry(L, slug, await fs.readFile(`${dir}/${f}`, "utf8"))));
+        out.push(parseEntry(L, slug, await fs.readFile(`${dir}/${f}`, "utf8")));
       } catch {
         // skip unparseable
       }
@@ -219,39 +221,125 @@ export async function listEntries(layer?: KbLayer): Promise<KbEntryMeta[]> {
   return out;
 }
 
+/** List entry metadata (no full body), newest first. Omit `layer` for all. */
+export async function listEntries(layer?: KbLayer): Promise<KbEntryMeta[]> {
+  return (await listFullEntries(layer)).map(metaOf);
+}
+
 export async function readIndex(): Promise<string> {
   return readTextOrEmpty(kbIndexFile());
 }
 
 // ── index regeneration ────────────────────────────────────────────────
 
-/** Rebuild index.md from the current wiki + sources. Assumes the lock is held. */
-async function regenerateIndexLocked(): Promise<void> {
-  const wiki = await listEntries("wiki");
-  const sources = await listEntries("sources");
+/** How many of each section the index shows before it stops. */
+const INDEX_LIMITS = { hubs: 40, tags: 24, sources: 25, orphans: 8, broken: 6 };
+
+/**
+ * Render index.md — a ranked map-of-content, not a flat listing.
+ *
+ * index.md is injected into EVERY system prompt and hard-capped there
+ * (prompt.ts), so once the KB grows past the cap a flat list gets truncated at
+ * an arbitrary point and whatever was below the line silently stops existing as
+ * far as Lisa is concerned. Ordering wiki pages by (backlinks × recency) means
+ * the cut always falls on the least-connected tail.
+ *
+ * Sources are listed by TITLE ONLY, deliberately. Layer 1 is raw captured
+ * material — including, after link ingest, whole web pages. index.md is
+ * always-on prompt text, so putting the opening of an arbitrary web page in
+ * there is a direct "any page on the internet → Lisa's system prompt" path.
+ * Titles are enough for a map; the body is one kb_read away.
+ * (Wiki pages DO show a gist: Lisa wrote those herself.)
+ *
+ * Pure so the format is testable without touching disk.
+ */
+export function renderIndex(entries: KbEntry[], opts: { now?: number } = {}): string {
+  const graph = buildGraph(entries, opts);
+  const wiki = entries.filter((e) => e.layer === "wiki");
+  const sources = entries.filter((e) => e.layer === "sources");
+
   const lines = [
     "# Knowledge base index",
     "",
     `_${wiki.length} wiki page(s) · ${sources.length} source(s)_`,
     "",
   ];
-  if (wiki.length) {
-    lines.push("## Wiki pages", "");
-    for (const w of wiki) {
-      const tags = w.tags.length ? ` · ${w.tags.map((t) => `#${t}`).join(" ")}` : "";
-      lines.push(`- **${w.title}** (\`${w.slug}\`)${tags} — ${w.excerpt.slice(0, 100)}`);
+
+  if (graph.hubs.length) {
+    lines.push("## Wiki pages (most-linked first)", "");
+    for (const hub of graph.hubs.slice(0, INDEX_LIMITS.hubs)) {
+      const n = graph.nodes.get(hub.key)!;
+      const tags = n.tags.length ? ` · ${n.tags.map((t) => `#${t}`).join(" ")}` : "";
+      const links = hub.backlinks ? ` ↔${hub.backlinks}` : "";
+      lines.push(`- **${n.title}** (\`${n.slug}\`)${links}${tags} — ${n.gist.slice(0, 100)}`);
+    }
+    if (graph.hubs.length > INDEX_LIMITS.hubs) {
+      lines.push(`- … ${graph.hubs.length - INDEX_LIMITS.hubs} more (kb_list / kb_search)`);
     }
     lines.push("");
   }
+
+  const tags = sortedTags(graph);
+  if (tags.length) {
+    lines.push(
+      "## Tags",
+      "",
+      tags
+        .slice(0, INDEX_LIMITS.tags)
+        .map((t) => `#${t.tag}(${t.count})`)
+        .join(" "),
+      "",
+    );
+  }
+
   if (sources.length) {
     lines.push("## Recent sources", "");
-    for (const s of sources.slice(0, 25)) {
-      const tags = s.tags.length ? ` · ${s.tags.map((t) => `#${t}`).join(" ")}` : "";
-      lines.push(`- ${s.title} (\`${s.slug}\`)${tags}`);
+    for (const s of sources.slice(0, INDEX_LIMITS.sources)) {
+      const tags2 = s.tags.length ? ` · ${s.tags.map((t) => `#${t}`).join(" ")}` : "";
+      const date = (s.created ?? "").slice(0, 10);
+      lines.push(`- ${date ? `${date} · ` : ""}${s.title} (\`${s.slug}\`)${tags2}`);
+    }
+    if (sources.length > INDEX_LIMITS.sources) {
+      lines.push(`- … ${sources.length - INDEX_LIMITS.sources} older (kb_list sources)`);
     }
     lines.push("");
   }
-  await atomicWrite(kbIndexFile(), lines.join("\n").trimEnd() + "\n");
+
+  // The wiki's to-do list: pages nothing connects to, and links that point at
+  // nothing. This is what the idle "tend the wiki" pass acts on.
+  if (graph.orphans.length) {
+    const shown = graph.orphans.slice(0, INDEX_LIMITS.orphans).map((k) => `\`${k}\``).join(", ");
+    const more = graph.orphans.length > INDEX_LIMITS.orphans ? ", …" : "";
+    lines.push(`_Unlinked pages (worth connecting): ${shown}${more}_`, "");
+  }
+  if (graph.broken.length) {
+    const shown = graph.broken
+      .slice(0, INDEX_LIMITS.broken)
+      .map((b) => `${b.from} → \`${b.target}\``)
+      .join(", ");
+    const more = graph.broken.length > INDEX_LIMITS.broken ? ", …" : "";
+    lines.push(`_Links to pages that don't exist yet: ${shown}${more}_`, "");
+  }
+
+  return lines.join("\n").trimEnd() + "\n";
+}
+
+/**
+ * Rebuild index.md + index.json from the current wiki + sources.
+ * Assumes the lock is held.
+ */
+async function regenerateIndexLocked(): Promise<void> {
+  const entries = await listFullEntries();
+  const now = new Date();
+  await atomicWrite(kbIndexFile(), renderIndex(entries, { now: now.getTime() }));
+  await atomicWrite(
+    kbGraphFile(),
+    JSON.stringify(
+      graphToJson(buildGraph(entries, { now: now.getTime() }), now.toISOString()),
+      null,
+      2,
+    ) + "\n",
+  );
 }
 
 /** Public index rebuild (acquires the lock). */
