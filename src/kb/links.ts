@@ -60,8 +60,17 @@ export interface KbGraph {
   broken: { from: KbKey; target: string }[];
 }
 
-/** `[[slug]]`, `[[slug|text]]`, `[[kb:slug]]`. */
-const WIKILINK = /\[\[\s*(?:kb:)?([^\]|#\n]+?)\s*(?:\|[^\]\n]*)?\]\]/g;
+/**
+ * `[[slug]]`, `[[slug|text]]`, `[[kb:slug]]`.
+ *
+ * The surrounding `\s*` is intentionally omitted (the capture is `.trim()`ed at
+ * the call site) and both the target and alias are length-bounded: with the
+ * greedy `\s*` and an unbounded lazy class, a `[[` followed by a long whitespace
+ * run and no closing `]]` caused catastrophic backtracking (ReDoS) — and this
+ * runs over every entry body, including untrusted `sources`, on each KB mutation
+ * and every `kb_read`/`kb_links`. Bounding it is O(n) on any input.
+ */
+const WIKILINK = /\[\[(?:kb:)?([^\]|#\n]{1,200}?)(?:\|[^\]\n]{0,200})?\]\]/g;
 
 /** Every `[[…]]` target in a body, in order, deduped. */
 export function parseWikilinks(body: string): string[] {

@@ -121,6 +121,34 @@ export async function ingestUrl(rawUrl: string, opts: IngestOptions = {}): Promi
   return { entry, deduped: false, via };
 }
 
+/** Read a response body as UTF-8, stopping once `cap` bytes have been buffered. */
+async function readBodyCapped(res: Response, cap: number): Promise<string> {
+  const reader = res.body?.getReader();
+  if (!reader) return (await res.text()).slice(0, cap);
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      const room = cap - total;
+      chunks.push(value.length > room ? value.subarray(0, room) : value);
+      total += value.length;
+      if (total >= cap) break; // stop pulling — a hostile server can't grow the buffer past cap
+    }
+  } finally {
+    await reader.cancel().catch(() => {});
+  }
+  const buf = new Uint8Array(Math.min(total, cap));
+  let off = 0;
+  for (const c of chunks) {
+    buf.set(c, off);
+    off += c.length;
+  }
+  return new TextDecoder().decode(buf);
+}
+
 /** The default path: fetch HTML, pick the content subtree, convert, annotate. */
 async function genericFetch(url: URL, ctx: IngestContext): Promise<IngestedContent> {
   const res = await ctx.fetchImpl(url.toString());
@@ -128,14 +156,25 @@ async function genericFetch(url: URL, ctx: IngestContext): Promise<IngestedConte
     throw new Error(`fetch failed: HTTP ${res.status} ${res.statusText} for ${url}`);
   }
   const type = res.headers.get("content-type") ?? "";
-  const raw = (await res.text()).slice(0, MAX_HTML_BYTES);
+  // Reject unsupported types from the header before buffering — no point pulling
+  // down a video/PDF just to reject it. Empty type is allowed (treated as HTML).
+  if (type && !/html|xml|text\/(?:plain|markdown)/i.test(type)) {
+    await res.body?.cancel().catch(() => {});
+    throw new Error(`unsupported content-type "${type}" — only HTML and text pages can be ingested`);
+  }
+  // Reject an oversized body up front when the server declares its length, and
+  // cap the actual read so a chunked/undeclared response can't exhaust memory
+  // (ingest runs unattended once the daily brief lands).
+  const declared = Number(res.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > MAX_HTML_BYTES) {
+    await res.body?.cancel().catch(() => {});
+    throw new Error(`page too large: ${declared} bytes exceeds the ${MAX_HTML_BYTES}-byte cap`);
+  }
+  const raw = await readBodyCapped(res, MAX_HTML_BYTES);
 
   // Plain text / markdown responses skip the HTML pipeline entirely.
   if (/text\/(?:plain|markdown)/i.test(type)) {
     return { body: raw.trim() };
-  }
-  if (type && !/html|xml/i.test(type)) {
-    throw new Error(`unsupported content-type "${type}" — only HTML and text pages can be ingested`);
   }
 
   const prov = extractProvenance(raw);

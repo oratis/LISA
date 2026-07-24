@@ -63,6 +63,39 @@ export function pickNewItems(items: FeedItem[], seen: string[], max: number): Fe
 }
 
 /**
+ * Read a response body as UTF-8, stopping once `cap` bytes are buffered. Feeds
+ * are fetched unattended on a timer, so a hostile/oversized feed must not be
+ * able to grow the buffer past the cap ((await res.text()).slice buffers the
+ * whole body first — this bounds it while streaming).
+ */
+async function readBodyCapped(res: Response, cap: number): Promise<string> {
+  const reader = res.body?.getReader();
+  if (!reader) return (await res.text()).slice(0, cap);
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      const room = cap - total;
+      chunks.push(value.length > room ? value.subarray(0, room) : value);
+      total += value.length;
+      if (total >= cap) break;
+    }
+  } finally {
+    await reader.cancel().catch(() => {});
+  }
+  const buf = new Uint8Array(Math.min(total, cap));
+  let off = 0;
+  for (const c of chunks) {
+    buf.set(c, off);
+    off += c.length;
+  }
+  return new TextDecoder().decode(buf);
+}
+
+/**
  * Run the daily brief once. Returns null when inert (no feeds), not due, or
  * a sweep produced nothing new (state still advances so the day is marked).
  */
@@ -87,7 +120,7 @@ export async function runDailyBrief(opts: BriefRunOpts = {}): Promise<BriefRunRe
     try {
       const res = await fetchImpl(feed.url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const xml = (await res.text()).slice(0, FETCH_CAP_BYTES);
+      const xml = await readBodyCapped(res, FETCH_CAP_BYTES);
       const parsed = parseFeed(xml);
       const picked = pickNewItems(parsed.items, state.seen[feed.id] ?? [], feed.max ?? FEED_DEFAULT_MAX);
       for (const item of picked) fresh.push({ feedId: feed.id, item });
@@ -105,9 +138,17 @@ export async function runDailyBrief(opts: BriefRunOpts = {}): Promise<BriefRunRe
     await saveFeedsState(state);
     return null;
   }
-  state.lastBriefDate = today;
-  await saveFeedsState(state);
-  if (fresh.length === 0) return null;
+  // A successful-but-empty sweep still marks the day done — there is nothing to
+  // write, so persist it (and the updated `seen`) now and stop.
+  if (fresh.length === 0) {
+    state.lastBriefDate = today;
+    await saveFeedsState(state);
+    return null;
+  }
+  // NOTE: lastBriefDate is intentionally NOT advanced here. It is set only after
+  // the dual-write below succeeds (see end of function), so a throw in
+  // classify / rank / ingest / write doesn't permanently burn the day — the next
+  // timer tick re-sweeps and retries.
 
   // ── classify under the daily budget (over-budget → default grading + log) ──
   const classified = await classifyFeedItems(
@@ -186,6 +227,11 @@ export async function runDailyBrief(opts: BriefRunOpts = {}): Promise<BriefRunRe
     tags: ["brief"],
     origin: "brief",
   });
+
+  // Both writes succeeded — only now mark the day done and persist the items
+  // consumed this run (`seen`), so a throw anywhere above can't burn the day.
+  state.lastBriefDate = today;
+  await saveFeedsState(state);
 
   return { brief, text };
 }

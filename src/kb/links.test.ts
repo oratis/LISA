@@ -43,6 +43,19 @@ describe("parseWikilinks", () => {
   test("does not span lines or swallow markdown links", () => {
     assert.deepEqual(parseWikilinks("[text](https://x/[[y]])\n[[real]]"), ["y", "real"]);
   });
+
+  test("bounded against pathological input (ReDoS regression)", () => {
+    // A `[[` with a long whitespace run and no closing `]]` used to backtrack
+    // catastrophically (~6s at 3k chars, >2min at 10k). This runs over untrusted
+    // source bodies on every KB read/write, so it must stay linear.
+    const start = process.hrtime.bigint();
+    assert.deepEqual(parseWikilinks("[[" + " ".repeat(100_000)), []);
+    assert.deepEqual(parseWikilinks("[[" + "\t".repeat(100_000) + "x"), []);
+    const ms = Number(process.hrtime.bigint() - start) / 1e6;
+    assert.ok(ms < 1000, `parseWikilinks took ${ms.toFixed(0)}ms on 100k chars (ReDoS?)`);
+    // A real link with surrounding whitespace is still trimmed to the target.
+    assert.deepEqual(parseWikilinks("[[  spaced  ]]"), ["spaced"]);
+  });
 });
 
 describe("buildGraph", () => {
