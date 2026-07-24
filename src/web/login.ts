@@ -60,6 +60,9 @@ export const LOGIN_HTML = `<!doctype html>
   <div id="apple-wrap">
     <button id="apple-btn" type="button"> Sign in with Apple</button>
   </div>
+  <div id="google-wrap" style="display:none; margin-bottom: 18px;">
+    <div id="google-btn"></div>
+  </div>
   <div class="divider" id="divider">or use email</div>
   <form id="f">
     <label for="email">Email</label>
@@ -115,10 +118,46 @@ export const LOGIN_HTML = `<!doctype html>
     return Array.from(new Uint8Array(d), (x) => x.toString(16).padStart(2, "0")).join("");
   }
 
+  // Sign in with Google on the web (S1): drawn only when the instance has an
+  // OAuth client id configured (GET /api/auth/config). GIS renders its own
+  // button; the callback hands back a Google-signed credential JWT which the
+  // server verifies against the client-id audience.
+  function initGoogle(cfg) {
+    if (!cfg || !cfg.googleWeb || !cfg.googleWeb.clientId) return;
+    const s = document.createElement("script");
+    s.src = "https://accounts.google.com/gsi/client";
+    s.onload = () => {
+      if (!window.google || !window.google.accounts || !window.google.accounts.id) return;
+      window.google.accounts.id.initialize({
+        client_id: cfg.googleWeb.clientId,
+        callback: async (resp) => {
+          err.textContent = "";
+          if (!resp || !resp.credential) { err.textContent = "Google didn't return a credential."; return; }
+          const res = await fetch("/api/auth/google", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ credential: resp.credential }),
+          }).catch(() => null);
+          if (res && res.ok) { location.replace("/"); return; }
+          err.textContent = "Google sign-in was rejected" + (res ? " (" + res.status + ")." : ".");
+        },
+      });
+      window.google.accounts.id.renderButton(document.getElementById("google-btn"), {
+        theme: "filled_black", size: "large", width: 324, text: "signin_with",
+      });
+      document.getElementById("google-wrap").style.display = "block";
+      document.getElementById("divider").style.display = "flex";
+    };
+    // Unreachable networks (e.g. mainland China) just never show the button.
+    s.onerror = () => {};
+    document.head.appendChild(s);
+  }
+
   // Sign in with Apple on the web (B8b): drawn only when the instance has a
   // Services ID configured (GET /api/auth/config). Apple's JS runs a popup and
   // hands back an id_token; the server verifies it against the web audience.
   fetch("/api/auth/config").then((r) => r.json()).then((cfg) => {
+    initGoogle(cfg);
     if (!cfg || !cfg.appleWeb || !cfg.appleWeb.servicesId) return;
     const s = document.createElement("script");
     s.src = "https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js";

@@ -23,7 +23,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { firestoreEnabled, getDoc, casUpdate } from "../cloud/firestore.js";
 
-export type AccountKind = "apple" | "email";
+export type AccountKind = "apple" | "email" | "google";
 
 export interface ScryptParams {
   saltHex: string;
@@ -50,6 +50,12 @@ export interface AccountRecord {
   verifyTokenHash?: string;
   /** Verification-token expiry, ms epoch. */
   verifyExpiresAt?: number;
+  /**
+   * Google `sub` linked to this account (S1). Set on a pure Google account AND
+   * on an email/apple account a verified-email Google sign-in merged into — so
+   * the user keeps one uid (one Lisa) across providers.
+   */
+  googleSub?: string;
 }
 
 export class AccountError extends Error {
@@ -182,6 +188,11 @@ async function passwordMatches(pw: string, p: ScryptParams): Promise<boolean> {
 /** Stable uid for an Apple `sub` (filesystem-safe: sub is digits/dots/dashes). */
 export function appleUid(sub: string): string {
   return `apple-${sub.replace(/[^A-Za-z0-9._-]/g, "_")}`;
+}
+
+/** Stable uid for a Google `sub` (a decimal string; sanitized the same way). */
+export function googleUid(sub: string): string {
+  return `google-${sub.replace(/[^A-Za-z0-9._-]/g, "_")}`;
 }
 
 // ── login throttle (in-memory; single-instance cloud) ───────────────────────
@@ -318,6 +329,60 @@ export async function upsertAppleAccount(
       createdAt: now,
       lastLoginAt: now,
       verified: true,
+      sessionVersion: 0,
+    };
+    list.push(rec);
+    return rec;
+  });
+}
+
+/**
+ * Upsert the account record for a verified Google identity (S1). Called on
+ * every successful Sign in with Google.
+ *
+ * Merge policy (PLAN_WEB_SIGNUP §3 / D2 verdict): if Google asserts the email
+ * is verified AND an existing **verified** account carries the same normalized
+ * email, the Google identity is linked onto that account (`googleSub`) instead
+ * of minting a new uid — same person, same Lisa. Both sides being verified is
+ * what closes the account-takeover door: an unverified email squatter never
+ * inherits a Google identity, and Google's `email_verified` is its ownership
+ * proof. Otherwise a fresh `google-<sub>` account is created.
+ */
+export async function upsertGoogleAccount(
+  sub: string,
+  email: string | undefined,
+  emailVerified: boolean | undefined,
+  now: number = Date.now(),
+): Promise<AccountRecord> {
+  const uid = googleUid(sub);
+  const norm = email ? normalizeEmail(email) : undefined;
+  return mutateAccounts((list) => {
+    // Returning user: linked via a previous merge, or a pure Google account.
+    const existing = list.find((a) => a.googleSub === sub || a.uid === uid);
+    if (existing) {
+      existing.lastLoginAt = now;
+      if (norm && !existing.email) existing.email = norm;
+      return existing;
+    }
+    // First Google sign-in: merge into a verified same-email account if any.
+    if (norm && emailVerified) {
+      const match = list.find((a) => a.email === norm && a.verified);
+      if (match) {
+        match.googleSub = sub;
+        match.lastLoginAt = now;
+        return match;
+      }
+    }
+    const rec: AccountRecord = {
+      uid,
+      kind: "google",
+      email: norm,
+      googleSub: sub,
+      createdAt: now,
+      lastLoginAt: now,
+      // Google accounts count as verified only when Google says the email is
+      // (in practice always true for Google-account emails).
+      verified: emailVerified !== false,
       sessionVersion: 0,
     };
     list.push(rec);

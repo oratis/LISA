@@ -61,6 +61,12 @@ ENVS="^##^LISA_EDITION=cloud##LISA_WEB_TOKEN=${LISA_WEB_TOKEN}"
 # Sign in with Apple on the WEB login page (B8b): the Services ID registered in
 # the Apple portal for cloud.meetlisa.ai (needs domain verification there).
 [ -n "${LISA_CLOUD_APPLE_WEB_SID:-}" ] && ENVS="${ENVS}##LISA_CLOUD_APPLE_WEB_SID=${LISA_CLOUD_APPLE_WEB_SID}"
+# Sign in with Google on the WEB login page (S1, PLAN_WEB_SIGNUP):
+#   LISA_CLOUD_GOOGLE_SIGNIN=1     enable POST /api/auth/google
+#   LISA_CLOUD_GOOGLE_CLIENT_ID=…  OAuth web client id (…apps.googleusercontent.com;
+#                                  authorized JS origin = https://cloud.meetlisa.ai)
+[ -n "${LISA_CLOUD_GOOGLE_SIGNIN:-}" ]    && ENVS="${ENVS}##LISA_CLOUD_GOOGLE_SIGNIN=${LISA_CLOUD_GOOGLE_SIGNIN}"
+[ -n "${LISA_CLOUD_GOOGLE_CLIENT_ID:-}" ] && ENVS="${ENVS}##LISA_CLOUD_GOOGLE_CLIENT_ID=${LISA_CLOUD_GOOGLE_CLIENT_ID}"
 # Accounts & billing era (PLAN_ACCOUNTS_BILLING B1–B7), all optional:
 #   LISA_REVIEWER_SEED="email:password"  idempotent App-Review demo account (verified, $20/Tier-2)
 #   LISA_RPM_LIMIT / LISA_DAILY_CAP_USD  abuse guards (defaults 20 rpm / $200 per day)

@@ -12,12 +12,14 @@ const {
   createEmailAccount,
   verifyEmailLogin,
   upsertAppleAccount,
+  upsertGoogleAccount,
   deleteAccount,
   getAccount,
   getAccountByEmail,
   sessionAccountValid,
   resetLoginThrottles,
   appleUid,
+  googleUid,
   AccountError,
 } = await import("./accounts.js");
 
@@ -84,6 +86,55 @@ describe("apple accounts", () => {
   test("appleUid sanitizes hostile subs", () => {
     assert.ok(!appleUid("a/b").includes("/"));
     assert.ok(!appleUid("../../etc").includes("/"));
+  });
+});
+
+describe("google accounts (S1)", () => {
+  test("first sign-in creates a verified google account; second reuses it", async () => {
+    const a = await upsertGoogleAccount("110169484474386276334", "user@gmail.com", true, 1000);
+    assert.equal(a.uid, "google-110169484474386276334");
+    assert.equal(a.kind, "google");
+    assert.equal(a.verified, true);
+    assert.equal(a.googleSub, "110169484474386276334");
+    const b = await upsertGoogleAccount("110169484474386276334", "user@gmail.com", true, 2000);
+    assert.equal(b.uid, a.uid);
+    assert.equal(b.lastLoginAt, 2000);
+  });
+
+  test("merges into an existing VERIFIED same-email account — one uid, one Lisa", async () => {
+    const email = await createEmailAccount("user@gmail.com", "password-123");
+    // level the account to verified (as the B8a mail flow would)
+    const seeded = await upsertGoogleAccount("42", "other@gmail.com", true, 500); // unrelated
+    assert.notEqual(seeded.uid, email.uid);
+    // mark verified by simulating the verification outcome
+    const { beginEmailVerification, confirmEmailVerification } = await import("./accounts.js");
+    const raw = await beginEmailVerification(email.uid);
+    assert.ok(raw);
+    await confirmEmailVerification(raw!);
+    const merged = await upsertGoogleAccount("110169484474386276334", "User@Gmail.com", true, 3000);
+    assert.equal(merged.uid, email.uid); // linked, not a new account
+    assert.equal(merged.googleSub, "110169484474386276334");
+    // subsequent Google sign-ins land on the merged uid
+    const again = await upsertGoogleAccount("110169484474386276334", "user@gmail.com", true, 4000);
+    assert.equal(again.uid, email.uid);
+  });
+
+  test("never merges into an UNVERIFIED same-email account (squatter defense)", async () => {
+    const squatter = await createEmailAccount("victim@gmail.com", "password-123");
+    assert.equal(squatter.verified, false);
+    const g = await upsertGoogleAccount("777", "victim@gmail.com", true, 1000);
+    assert.notEqual(g.uid, squatter.uid);
+    assert.equal(g.uid, googleUid("777"));
+  });
+
+  test("no merge without Google's email_verified assertion", async () => {
+    const email = await createEmailAccount("user2@gmail.com", "password-123");
+    const { beginEmailVerification, confirmEmailVerification } = await import("./accounts.js");
+    const raw = await beginEmailVerification(email.uid);
+    await confirmEmailVerification(raw!);
+    const g = await upsertGoogleAccount("888", "user2@gmail.com", false, 1000);
+    assert.notEqual(g.uid, email.uid);
+    assert.equal(g.verified, false); // email_verified: false carries through
   });
 });
 
