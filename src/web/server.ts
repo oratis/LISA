@@ -65,6 +65,7 @@ import { managedRegistry } from "../agents/managed.js";
 import { ptyRegistry, ptyEnabled, normalizeAgentKind } from "../agents/pty.js";
 import { liveClaudeSessionIds } from "../integrations/claude-code/liveness.js";
 import { sweepAll, pollNewMail, probeAccount } from "../mail/service.js";
+import { friendlyMailError } from "../mail/connect-error.js";
 import { pickImportant, formatAlert, alertLevel, pollMinutes } from "../mail/alerts.js";
 import { latestDigest } from "../mail/store.js";
 import { formatDigestText } from "../mail/digest.js";
@@ -132,28 +133,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ASSETS_DIR = path.join(__dirname, "assets");
 const MUSIC_DIR = path.join(ASSETS_DIR, "room", "music");
 
-/**
- * Turn a raw IMAP probe failure into a plain-language hint for the connect
- * modal. The single biggest cause is pasting a login password where an
- * app-password / authorization code is required, so lead with that.
- */
-function friendlyMailError(err: unknown, email: string, host: string): string {
-  const raw = err instanceof Error ? err.message : String(err);
-  const m = raw.toLowerCase();
-  const isGmail = /(^|@)(gmail\.com|googlemail\.com)$/.test(email.toLowerCase()) || host === "imap.gmail.com";
-  if (/auth|credential|login|invalid|denied|not accepted|username|password/.test(m)) {
-    return isGmail
-      ? "Gmail rejected the sign-in. Use a 16-character app password (not your Google login password), and make sure 2-Step Verification is on."
-      : "Authentication failed. Use an app-password / authorization code from your mail provider — not your login password.";
-  }
-  if (/enotfound|eai_again|getaddrinfo|dns|no such host/.test(m)) {
-    return "Could not find the mail server. Check the IMAP host.";
-  }
-  if (/timed out|timeout|etimedout|econn|network|socket|refused/.test(m)) {
-    return "Could not reach the mail server (network or timeout). Check your connection and the IMAP host.";
-  }
-  return "Could not connect: " + raw.slice(0, 160);
-}
 
 
 export interface WebServerOptions {
