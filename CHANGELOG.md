@@ -5,6 +5,31 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Knowledge base v2.0 — a knowledge system that grows on its own**
+  ([docs/PLAN_KNOWLEDGE_BASE_v2.0.md](docs/PLAN_KNOWLEDGE_BASE_v2.0.md),
+  PRs #278–#287). Three capabilities on the v1.0 three-layer store:
+  - **Link ingest** (`kb_ingest`, Knowledge-view paste bar, chat 存入知识库
+    chip, `lisa kb add <url>`): zero-dependency readability + HTML→Markdown
+    with provenance frontmatter, canonical-URL dedupe (`force` +
+    `supersedes:`), SSRF-guarded fetching, and site adapters for WeChat,
+    Bilibili, and YouTube (subtitle layering built-in API → yt-dlp →
+    metadata-only; a missing transcript degrades, never fails).
+  - **Daily brief** (`~/.lisa/kb/feeds.json`): incremental RSS/Atom sweep →
+    injection-fenced classification under a daily token budget → ranking
+    personalized by watchlist weight + wiki/memory term overlap → top-3
+    full-text ingest → written both as `kb/feeds/<date>.json` and as a
+    searchable `sources/brief-<date>` entry, delivered to chat + push
+    (`lisa kb brief` prints it). No feeds file = fully inert.
+  - **Link graph**: `[[slug]]` parsed into backlinks/hubs/orphans/broken,
+    `index.md` as a ranked map-of-content, CJK-safe search + slugs, memory
+    holding `[[kb:slug]]` pointers with titles inlined into the prompt, and
+    conservative title auto-linking on `kb_write`.
+  - **Hardening**: autonomous ingestion restricted to the feeds watchlist,
+    `kb_read` fences ingested web content as data, SCHEMA.md gained the three
+    new workflows, and a weekly-review heartbeat example ships in the README.
+
 ## [0.12.0] — 2026-06-19
 
 **Lisa Pocket goes real** — the iOS companion + real APNs push, on the v0.11
