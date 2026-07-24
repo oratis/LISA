@@ -105,6 +105,14 @@ SKILLS (executable, Phase 3.1)
   lisa skills enable <slug>    Remove a disable flag.
   lisa skills audit <slug>     Show the audit trail.
 
+LISA CLOUD (managed inference — models without a BYO key run key-free)
+  lisa login [url] [--password]
+                               Sign in. Mails a one-time code by default, and
+                               creates the account if the address is new;
+                               --password uses an existing password instead.
+  lisa logout                  Sign out. BYO keys are unaffected.
+  lisa billing                 Session allowance, credits and recent usage.
+
   lisa --help                  Show this message.
   lisa --version               Print the installed Lisa version.
 
