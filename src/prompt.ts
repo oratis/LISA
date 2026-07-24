@@ -4,6 +4,7 @@ import path from "node:path";
 import { listSkills } from "./skills/manager.js";
 import { readMemory } from "./memory/store.js";
 import { readIndex } from "./kb/store.js";
+import { annotateMemoryKbLinks } from "./kb/memory-links.js";
 import { readSchema } from "./kb/schema.js";
 import { kbIndexFile, kbSchemaFile } from "./kb/paths.js";
 import { lisaHome, memoryDir, skillsDir } from "./paths.js";
@@ -69,8 +70,12 @@ export async function buildSystemPromptSnapshot(): Promise<PromptSnapshot> {
           .map((s) => `- **${s.frontmatter.name}** — ${s.frontmatter.description}`)
           .join("\n");
 
-  const userMem = (await readMemory("user")).trim();
-  const agentMem = (await readMemory("memory")).trim();
+  // Memory entries store `[[kb:slug]]` pointers instead of knowledge (memory is
+  // a few KB; the KB is unbounded). A bare pointer is opaque, so resolvable ones
+  // get their page title inlined here — `[[kb:oauth]](OAuth 与 PKCE)` — cheap via
+  // the fingerprint-cached kb/index.json. Unresolvable links stay as written.
+  const userMem = await annotateMemoryKbLinks((await readMemory("user")).trim());
+  const agentMem = await annotateMemoryKbLinks((await readMemory("memory")).trim());
   // The KB index is the always-on "table of contents" — present only once the
   // user has captured anything (store regenerates it on every write). Empty →
   // no section (Lisa still discovers the KB via the kb_* tool descriptions).
