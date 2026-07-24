@@ -67,6 +67,11 @@ ENVS="^##^LISA_EDITION=cloud##LISA_WEB_TOKEN=${LISA_WEB_TOKEN}"
 #                                  authorized JS origin = https://cloud.meetlisa.ai)
 [ -n "${LISA_CLOUD_GOOGLE_SIGNIN:-}" ]    && ENVS="${ENVS}##LISA_CLOUD_GOOGLE_SIGNIN=${LISA_CLOUD_GOOGLE_SIGNIN}"
 [ -n "${LISA_CLOUD_GOOGLE_CLIENT_ID:-}" ] && ENVS="${ENVS}##LISA_CLOUD_GOOGLE_CLIENT_ID=${LISA_CLOUD_GOOGLE_CLIENT_ID}"
+# Turnstile bot gate on signup (S3): widget site key + siteverify secret.
+[ -n "${LISA_TURNSTILE_SITE_KEY:-}" ] && ENVS="${ENVS}##LISA_TURNSTILE_SITE_KEY=${LISA_TURNSTILE_SITE_KEY}"
+[ -n "${LISA_TURNSTILE_SECRET:-}" ]   && ENVS="${ENVS}##LISA_TURNSTILE_SECRET=${LISA_TURNSTILE_SECRET}"
+# Extra disposable-email domains to block at signup (comma-separated; S3).
+[ -n "${LISA_EMAIL_BLOCKLIST:-}" ]    && ENVS="${ENVS}##LISA_EMAIL_BLOCKLIST=${LISA_EMAIL_BLOCKLIST}"
 # Accounts & billing era (PLAN_ACCOUNTS_BILLING B1–B7), all optional:
 #   LISA_REVIEWER_SEED="email:password"  idempotent App-Review demo account (verified, $20/Tier-2)
 #   LISA_RPM_LIMIT / LISA_DAILY_CAP_USD  abuse guards (defaults 20 rpm / $200 per day)

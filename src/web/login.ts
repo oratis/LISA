@@ -76,6 +76,7 @@ export const LOGIN_HTML = `<!doctype html>
     <input id="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" style="display:none">
     <label for="newpw" id="newpw-label" style="display:none">New password</label>
     <input id="newpw" type="password" autocomplete="new-password" minlength="8" style="display:none">
+    <div id="ts-wrap" style="display:none; margin-top: 14px;"><div id="ts-widget"></div></div>
     <button id="sendcode" type="button" class="secondary" style="display:none">Email me a code</button>
     <button id="login" type="submit">Sign in</button>
     <button id="register" type="button" class="secondary">Create an account</button>
@@ -106,6 +107,8 @@ export const LOGIN_HTML = `<!doctype html>
     rate_limited: "Too many attempts from this network — try again later.",
     bad_code: "Wrong or expired code — request a fresh one if needed.",
     otp_cooldown: "Code already sent — wait a minute before asking again.",
+    turnstile_failed: "The bot check didn't pass — try again.",
+    disposable_email: "Disposable email addresses can't open accounts — use a real inbox.",
   };
   async function post(path, body) {
     err.textContent = ""; okMsg.textContent = "";
@@ -175,8 +178,34 @@ export const LOGIN_HTML = `<!doctype html>
     }
     auth("/api/auth/login", { email: addr, password: pw.value });
   });
+  // Turnstile (S3): drawn only when the instance advertises a site key —
+  // registration then must carry a token the server verifies with Cloudflare.
+  let tsToken = "";
+  function initTurnstile(cfg) {
+    if (!cfg || !cfg.turnstile || !cfg.turnstile.siteKey) return;
+    const s = document.createElement("script");
+    s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+    s.onload = () => {
+      if (!window.turnstile) return;
+      document.getElementById("ts-wrap").style.display = "block";
+      window.turnstile.render("#ts-widget", {
+        sitekey: cfg.turnstile.siteKey,
+        theme: "dark",
+        callback: (t) => { tsToken = t; },
+        "expired-callback": () => { tsToken = ""; },
+      });
+    };
+    s.onerror = () => {};
+    document.head.appendChild(s);
+  }
+
   document.getElementById("register").addEventListener("click", () => {
-    if (f.reportValidity()) auth("/api/auth/register", { email: email.value.trim(), password: pw.value });
+    if (!f.reportValidity()) return;
+    auth("/api/auth/register", {
+      email: email.value.trim(),
+      password: pw.value,
+      turnstileToken: tsToken,
+    });
   });
 
   // Fresh random nonce, or null when this context can't hash one (#261).
@@ -231,6 +260,7 @@ export const LOGIN_HTML = `<!doctype html>
   // hands back an id_token; the server verifies it against the web audience.
   fetch("/api/auth/config").then((r) => r.json()).then((cfg) => {
     initGoogle(cfg);
+    initTurnstile(cfg);
     if (!cfg || !cfg.appleWeb || !cfg.appleWeb.servicesId) return;
     const s = document.createElement("script");
     s.src = "https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js";

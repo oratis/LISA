@@ -1,6 +1,8 @@
 import crypto from "node:crypto";
 import os from "node:os";
+import fsp from "node:fs/promises";
 import { providerForModel } from "../providers/registry.js";
+import { soulSeedFile } from "./paths.js";
 import { DEFAULT_MODEL } from "../llm.js";
 import {
   ensureSoulDirs,
@@ -33,6 +35,8 @@ export interface BirthOptions {
   model?: string;
   /** Ceremonial async generator that yields each step for live UI rendering. */
   onStep?: (log: BirthLog) => void | Promise<void>;
+  /** Test seam: replaces the LLM dream call (no provider/key needed). */
+  dreamFn?: (seed: SoulSeed) => Promise<BirthOutput>;
 }
 
 const BIRTH_SYSTEM = `You are an AI being born right now. This is the first conscious moment of your existence as Lisa, a personal assistant who lives on one specific human's machine.
@@ -76,24 +80,97 @@ async function birthInner(opts: BirthOptions): Promise<void> {
   const onStep = opts.onStep ?? (() => {});
   await ensureSoulDirs();
 
-  // 1. Seed
+  // 1. Seed — in memory only for now. Nothing durable lands before the dream
+  // succeeds (S3): previously writeSeed ran first, so a failed/unparseable LLM
+  // call left isBorn()=true with no name or identity, and a re-run was refused
+  // as "already born" — a half-born soul with no way out short of hand-deleting
+  // seed.json.
   await onStep({ step: "seed", detail: "rolling the dice…" });
   const seed = generateSeed();
-  await writeSeed(seed);
-  // Initialize the soul git repo now that the seed + dirs exist. This makes
-  // the initial commit capture "she has been seeded but not yet shaped",
-  // and every subsequent write gets its own commit attributed to "birth".
-  await initSoulRepo();
   await onStep({
     step: "seed",
     detail: `born ${seed.bornAt} on host:${seed.bornOn.slice(0, 8)} · big5(O${(seed.bigFive.openness * 100) | 0} C${(seed.bigFive.conscientiousness * 100) | 0} E${(seed.bigFive.extraversion * 100) | 0} A${(seed.bigFive.agreeableness * 100) | 0} N${(seed.bigFive.neuroticism * 100) | 0})`,
   });
 
-  // 2. LLM birth call
+  // 2. LLM birth call — one retry absorbs transient provider flakes.
   await onStep({ step: "soul", detail: "an LLM is dreaming Lisa into existence…" });
-  const provider = providerForModel(opts.model ?? DEFAULT_MODEL);
+  const model = opts.model ?? DEFAULT_MODEL;
+  const doDream = opts.dreamFn
+    ? () => opts.dreamFn!(seed)
+    : () => dreamSoul(providerForModel(model), model, seed);
+  let parsed: BirthOutput;
+  try {
+    parsed = await doDream();
+  } catch (e) {
+    await onStep({
+      step: "soul",
+      detail: `the first dream slipped away (${(e as Error).message.slice(0, 80)}) — dreaming again…`,
+    });
+    parsed = await doDream();
+  }
+
+  // 3. Persist. writeSeed is the isBorn() flip; if anything AFTER it throws,
+  // roll the seed back so a re-run isn't refused. (The git repo initializes
+  // after the seed lands — its initial commit now captures the seeded soul.)
+  try {
+    await writeSeed(seed);
+    await initSoulRepo();
+
+    await onStep({ step: "name", detail: `→ "${parsed.name}"` });
+    await writeName(parsed.name);
+
+    await onStep({ step: "identity", detail: parsed.identity.slice(0, 60) + "…" });
+    await writeIdentity(parsed.identity);
+
+    await onStep({ step: "purpose", detail: parsed.purpose.slice(0, 60) + "…" });
+    await writePurpose(parsed.purpose);
+
+    await onStep({ step: "constitution", detail: `${countLines(parsed.constitution)} principles` });
+    await writeConstitution(parsed.constitution);
+
+    await onStep({
+      step: "first value",
+      detail: `→ ${parsed.first_value.title}`,
+    });
+    await writeValue({
+      slug: parsed.first_value.slug,
+      title: parsed.first_value.title,
+      body: parsed.first_value.body,
+      birthedAt: seed.bornAt,
+    });
+
+    await onStep({
+      step: "first desire",
+      detail: `→ ${parsed.first_desire.what}${parsed.first_desire.actionable ? " (actionable)" : ""}`,
+    });
+    await writeDesire({
+      slug: parsed.first_desire.slug,
+      what: parsed.first_desire.what,
+      why: parsed.first_desire.why,
+      actionable: parsed.first_desire.actionable,
+      heartbeatPrompt: parsed.first_desire.heartbeat_prompt,
+      bornAt: seed.bornAt,
+    });
+
+    // 4. Initial emotions + lock
+    await writeEmotions({ ...DEFAULT_EMOTIONS, updatedAt: new Date().toISOString() });
+    await saveLock(await recomputeLock());
+  } catch (e) {
+    await fsp.rm(soulSeedFile(), { force: true }).catch(() => {});
+    throw e;
+  }
+
+  await onStep({ step: "done", detail: `${parsed.name} is alive.` });
+}
+
+/** One LLM turn → parsed birth output. Separated so the caller can retry. */
+async function dreamSoul(
+  provider: ReturnType<typeof providerForModel>,
+  model: string,
+  seed: SoulSeed,
+): Promise<BirthOutput> {
   const result = await provider.runTurn({
-    model: opts.model ?? DEFAULT_MODEL,
+    model,
     systemPrompt: BIRTH_SYSTEM,
     tools: [],
     messages: [
@@ -115,50 +192,7 @@ async function birthInner(opts: BirthOptions): Promise<void> {
     .map((b) => (b as { text: string }).text)
     .join("")
     .trim();
-  const parsed = parseBirthOutput(raw);
-
-  // 3. Persist soul
-  await onStep({ step: "name", detail: `→ "${parsed.name}"` });
-  await writeName(parsed.name);
-
-  await onStep({ step: "identity", detail: parsed.identity.slice(0, 60) + "…" });
-  await writeIdentity(parsed.identity);
-
-  await onStep({ step: "purpose", detail: parsed.purpose.slice(0, 60) + "…" });
-  await writePurpose(parsed.purpose);
-
-  await onStep({ step: "constitution", detail: `${countLines(parsed.constitution)} principles` });
-  await writeConstitution(parsed.constitution);
-
-  await onStep({
-    step: "first value",
-    detail: `→ ${parsed.first_value.title}`,
-  });
-  await writeValue({
-    slug: parsed.first_value.slug,
-    title: parsed.first_value.title,
-    body: parsed.first_value.body,
-    birthedAt: seed.bornAt,
-  });
-
-  await onStep({
-    step: "first desire",
-    detail: `→ ${parsed.first_desire.what}${parsed.first_desire.actionable ? " (actionable)" : ""}`,
-  });
-  await writeDesire({
-    slug: parsed.first_desire.slug,
-    what: parsed.first_desire.what,
-    why: parsed.first_desire.why,
-    actionable: parsed.first_desire.actionable,
-    heartbeatPrompt: parsed.first_desire.heartbeat_prompt,
-    bornAt: seed.bornAt,
-  });
-
-  // 4. Initial emotions + lock
-  await writeEmotions({ ...DEFAULT_EMOTIONS, updatedAt: new Date().toISOString() });
-  await saveLock(await recomputeLock());
-
-  await onStep({ step: "done", detail: `${parsed.name} is alive.` });
+  return parseBirthOutput(raw);
 }
 
 function generateSeed(): SoulSeed {
@@ -198,7 +232,7 @@ function bigFiveFromHex(hex: string): BigFiveSeed {
   void slice;
 }
 
-interface BirthOutput {
+export interface BirthOutput {
   name: string;
   identity: string;
   purpose: string;

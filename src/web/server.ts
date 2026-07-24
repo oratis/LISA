@@ -100,6 +100,9 @@ import {
   resetPasswordWithOtp,
 } from "./accounts.js";
 import { sendMail, verificationEmail, otpEmail } from "./mailer.js";
+import { startBirthOnce } from "./birth-hub.js";
+import { turnstileConfig, verifyTurnstile } from "./turnstile.js";
+import { isDisposableEmail } from "./email-domains.js";
 import { readBalance, creditPurchase } from "../billing/quota.js";
 import { PushBridge, listPush, registerPush, unregisterPush, setPushPrefs, registerLiveActivity, unregisterLiveActivity, type PushPrefs } from "./push.js";
 import { SenseService } from "../sense/service.js";
@@ -240,6 +243,10 @@ function presentedToken(req: http.IncomingMessage, url: string): string | null {
 // for a shared NAT / office egress IP doing normal signups + retries.
 const AUTH_IP_LIMIT = 20;
 const AUTH_IP_WINDOW_MS = 10 * 60_000;
+// Registrations get a much lower cap than sign-ins (S3): 5/hour/IP. Every
+// signup costs a birth LLM call + a free window; no human needs more.
+const REG_IP_LIMIT = 5;
+const REG_IP_WINDOW_MS = 60 * 60_000;
 // KB ingest does 2-3 outbound fetches + a yt-dlp subprocess per call, so it is a
 // far heavier route than the auth ones — a tighter per-IP ceiling on the cloud
 // edition (loopback Mac is exempt) keeps it from becoming an amplifier / DoS.
@@ -442,27 +449,24 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     return ctx;
   };
 
-  // Lazy per-user birth (B2): a signed-in user's first request seeds THEIR soul
-  // (the entrypoint's one-shot birth only covers the shared/global home). Runs
-  // in the background inside the caller's home scope; chat before it completes
-  // simply runs with the bare prompt and the soul arrives mid-conversation.
-  const birthsInFlight = new Set<string>();
+  // Lazy per-user birth (B2, hub'd in S3): a signed-in user's first request
+  // seeds THEIR soul (the entrypoint's one-shot birth only covers the shared/
+  // global home). Runs through the single-flight birth hub so the visible
+  // ceremony (POST /api/birth) and this background path share ONE dream —
+  // never two LLM calls racing on writeSeed. Chat before it completes simply
+  // runs with the bare prompt and the soul arrives mid-conversation.
   const ensureUserBirth = (uid: string): void => {
-    if (birthsInFlight.has(uid)) return;
-    birthsInFlight.add(uid);
     void (async () => {
       try {
         const { isBorn } = await import("../soul/store.js");
         if (await isBorn()) return; // reads inside the per-uid scope
-        console.error(`[accounts] birthing a soul for ${uid}…`);
         const { birth } = await import("../soul/birth.js");
-        await birth({ model: opts.model });
+        console.error(`[accounts] birthing a soul for ${uid}…`);
+        await startBirthOnce(uid, (emit) => birth({ model: opts.model, onStep: emit })).promise;
         promptCache.delete(lisaHome()); // pick the newborn soul up next turn
         console.error(`[accounts] soul born for ${uid}`);
       } catch (e) {
         console.error(`[accounts] birth failed for ${uid}: ${(e as Error).message}`);
-      } finally {
-        birthsInFlight.delete(uid);
       }
     })();
   };
@@ -1077,6 +1081,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           googleWeb: cloud && gcfg.enabled && gcfg.clientId
             ? { clientId: gcfg.clientId }
             : null,
+          turnstile: cloud && turnstileConfig().enabled
+            ? { siteKey: turnstileConfig().siteKey }
+            : null,
           stripe: cloud && !!stripeConfig().secretKey,
         }),
       );
@@ -1170,6 +1177,31 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       if (!body) return; // 413 already sent
       const email = typeof body.email === "string" ? body.email : "";
       const password = typeof body.password === "string" ? body.password : "";
+      // Signup-only abuse gates (S3): every registration ignites an LLM birth
+      // and mints a free window, so it gets its own tighter screws on top of
+      // the shared auth bucket — Turnstile (when configured), a disposable-
+      // domain check, and a low per-IP registrations cap.
+      if (url === "/api/auth/register") {
+        const ts = turnstileConfig();
+        if (ts.enabled) {
+          const token = typeof body.turnstileToken === "string" ? body.turnstileToken : "";
+          if (!(await verifyTurnstile(token, clientIp(req, remoteAddr), ts))) {
+            res.writeHead(403, { "content-type": "application/json" });
+            res.end(JSON.stringify({ error: "turnstile_failed" }));
+            return;
+          }
+        }
+        if (isDisposableEmail(email)) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "disposable_email" }));
+          return;
+        }
+        if (!ipRateOk(`reg:${clientIp(req, remoteAddr)}`, REG_IP_LIMIT, REG_IP_WINDOW_MS)) {
+          res.writeHead(429, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "rate_limited", retryAfterSec: Math.ceil(REG_IP_WINDOW_MS / 1000) }));
+          return;
+        }
+      }
       try {
         const acct =
           url === "/api/auth/register"
@@ -3132,17 +3164,23 @@ self.addEventListener('fetch', (event) => {
       });
       const send = (event: object) =>
         res.write(`data: ${JSON.stringify(event)}\n\n`);
+      // Join the single-flight run (S3). If the background lazy path started
+      // the dream first, replay its transcript so the ceremony is complete,
+      // then stream the remaining steps live.
+      const key = scopedUid() ?? "local";
+      const listener = (log: { step: string; detail: string }) =>
+        send({ kind: "step", name: log.step, detail: log.detail });
+      const run = startBirthOnce(key, (emit) => birth({ model: opts.model, onStep: emit }));
+      for (const log of run.steps) listener(log);
+      run.listeners.add(listener);
       try {
-        await birth({
-          model: opts.model,
-          onStep: (log) => {
-            send({ kind: "step", name: log.step, detail: log.detail });
-          },
-        });
+        await run.promise;
+        promptCache.delete(lisaHome()); // pick the newborn soul up next turn
         send({ kind: "done", message: "she is alive" });
       } catch (err) {
         send({ kind: "error", message: (err as Error).message });
       } finally {
+        run.listeners.delete(listener);
         res.end();
       }
       return;
