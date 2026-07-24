@@ -153,6 +153,31 @@ describe("kb store", () => {
     assert.match(back!.extra!.author!, /^x origin: spoofed title: spoofed$/);
   });
 
+  test("a newline in a title cannot forge frontmatter or truncate the block", async () => {
+    // Untrusted, remote-authored titles (ingested page <title>/og:title) reach this
+    // path; an embedded `\n---\n` must not close the frontmatter early and push
+    // url/hash/origin into the body, nor forge new metadata lines.
+    const e = await store.addSource({
+      title: "Real Title\n---\nInjected body\norigin: spoofed",
+      body: "b",
+    });
+    const back = await store.readEntry("sources", e.slug);
+    assert.equal(back!.title, "Real Title --- Injected body origin: spoofed");
+    assert.notEqual(back!.origin, "spoofed");
+    assert.equal(back!.body, "b");
+  });
+
+  test("an untrusted-shaped extra key cannot inject a frontmatter line", async () => {
+    const e = await store.addSource({
+      title: "K",
+      body: "b",
+      extra: { "bad\nsources": "x", ok: "y" },
+    });
+    const back = await store.readEntry("sources", e.slug);
+    assert.equal(back!.extra?.ok, "y");
+    assert.ok(!("bad" in (back!.extra ?? {})), "malformed key is dropped, not written");
+  });
+
   test("listEntries surfaces extra so the index/UI can show provenance", async () => {
     const sources = await store.listEntries("sources");
     assert.ok(sources.some((s) => s.extra?.site === "example.com"));
