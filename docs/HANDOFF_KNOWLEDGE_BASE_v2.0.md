@@ -1,12 +1,9 @@
-# HANDOFF — 知识库 v2.0（K-D … K-I）【已完成】
+# HANDOFF — 知识库 v2.0（K-D … K-I）
 
-> ✅ **2026-07-23：本交接已执行完毕。** K-D…K-I 全部落地并开 PR：
-> K-D #282 · K-E #283 · K-F #284 · K-G #285 · K-H #286 · K-I #287。
-> 状态见 [PLAN_KNOWLEDGE_BASE_v2.0.md](PLAN_KNOWLEDGE_BASE_v2.0.md)（已改 shipped）。
-> 本文保留作实现备忘 —— §2 的逐文件规格即已落地的实现，§3/§4 的仓库坑与
-> 决策记录对后续维护仍然有效。
+> 给接手 session 的交接文档。设计之源是 [docs/PLAN_KNOWLEDGE_BASE_v2.0.md](PLAN_KNOWLEDGE_BASE_v2.0.md)，
+> **本文只讲"现在到哪了、接下来每个 PR 具体做什么、有哪些坑"**。
 >
-> 原更新日期：2026-07-23 · 当时已完成 K-A/K-B/K-C（PR #278 / #279 / #280）
+> 更新日期：2026-07-23 · 已完成 K-A/K-B/K-C（PR #278 / #279 / #280）
 
 ---
 

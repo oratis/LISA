@@ -88,19 +88,26 @@ export async function fetchFollowingSafeRedirects(
   signal: AbortSignal | undefined,
   init?: SafeFetchInit,
 ): Promise<Response> {
+  const initialOrigin = new URL(startUrl).origin;
   let current = startUrl;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-    assertAllowedUrl(new URL(current));
+    const currentUrl = new URL(current);
+    assertAllowedUrl(currentUrl);
+    // Caller-supplied request data (cookies / API auth headers, POST body) is
+    // scoped to the INITIAL origin: a cross-origin redirect must not replay a
+    // login cookie (e.g. Bilibili SESSDATA) or re-POST to a different host. The
+    // per-hop guard rejects private IPs, not host changes, so scope this here.
+    const sameOrigin = currentUrl.origin === initialOrigin;
     const res = await fetch(current, {
       signal,
       redirect: "manual",
-      method: init?.method ?? "GET",
-      body: init?.body,
+      method: sameOrigin ? (init?.method ?? "GET") : "GET",
+      body: sameOrigin ? init?.body : undefined,
       headers: {
         "user-agent": "Lisa/0.1 (web_fetch)",
         accept:
           "text/html,application/xhtml+xml,application/json,text/plain,*/*;q=0.8",
-        ...(init?.headers ?? {}),
+        ...(sameOrigin ? (init?.headers ?? {}) : {}),
       },
     });
     if (!REDIRECT_STATUSES.has(res.status)) return res;

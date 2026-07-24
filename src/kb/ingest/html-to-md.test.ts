@@ -72,6 +72,18 @@ describe("htmlToMarkdown", () => {
     assert.equal(md, "keep\n\nalso");
   });
 
+  test("a self-closing drop tag does not swallow the rest of the doc", () => {
+    // Self-closing <svg/>/<iframe/> have no matching close; the parser used to
+    // jump to EOF and silently discard everything after them.
+    assert.equal(htmlToMarkdown(`<p>before</p><svg/><p>after</p>`), "before\n\nafter");
+    assert.equal(htmlToMarkdown(`<p>before</p><iframe src="x"/><p>after</p>`), "before\n\nafter");
+    // A genuinely unclosed <script> (malformed) still drops to EOF — safer than
+    // leaking raw script source — so the tail is gone but "x=1" never leaks.
+    const md = htmlToMarkdown(`<p>before</p><script>x=1<p>after</p>`);
+    assert.equal(md, "before");
+    assert.ok(!md.includes("x=1"), "raw script source must not leak into output");
+  });
+
   test("serializes from <body> when a full document is given", () => {
     const md = htmlToMarkdown(
       "<html><head><title>t</title></head><body><p>content</p></body></html>",

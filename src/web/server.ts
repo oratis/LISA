@@ -230,6 +230,11 @@ function presentedToken(req: http.IncomingMessage, url: string): string | null {
 // for a shared NAT / office egress IP doing normal signups + retries.
 const AUTH_IP_LIMIT = 20;
 const AUTH_IP_WINDOW_MS = 10 * 60_000;
+// KB ingest does 2-3 outbound fetches + a yt-dlp subprocess per call, so it is a
+// far heavier route than the auth ones — a tighter per-IP ceiling on the cloud
+// edition (loopback Mac is exempt) keeps it from becoming an amplifier / DoS.
+const KB_INGEST_IP_LIMIT = 20;
+const KB_INGEST_WINDOW_MS = 5 * 60_000;
 
 /**
  * Best-effort client IP. Behind Cloud Run the socket peer is the front end, so
@@ -2652,8 +2657,25 @@ self.addEventListener('fetch', (event) => {
     // Link ingestion (PLAN_KNOWLEDGE_BASE_v2.0 K-G). Body shaped so a future
     // share-sheet client can POST it directly: {url, title?, tags?, force?}.
     if (req.method === "POST" && url === "/api/kb/ingest") {
-      let body = "";
-      for await (const chunk of req) body += chunk.toString("utf8");
+      // Cloud edition: rate-limit this heavy route so an authenticated caller
+      // can't loop it into an outbound-request amplifier / subprocess DoS. The
+      // single-user loopback (Mac) edition is exempt.
+      if (cloud && !ipRateOk(`kb-ingest:${clientIp(req, remoteAddr)}`, KB_INGEST_IP_LIMIT, KB_INGEST_WINDOW_MS)) {
+        res.writeHead(429, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: "rate_limited", retryAfterSec: Math.ceil(KB_INGEST_WINDOW_MS / 1000) }));
+        return;
+      }
+      let body: string;
+      try {
+        body = await readCappedText(req, CTRL_BODY_LIMIT);
+      } catch (err) {
+        if (err instanceof BodyTooLargeError) {
+          res.writeHead(413, { "content-type": "text/plain" });
+          res.end("payload too large");
+          return;
+        }
+        throw err;
+      }
       let payload: { url?: string; title?: string; tags?: string[]; force?: boolean };
       try {
         payload = JSON.parse(body || "{}");
@@ -2668,11 +2690,15 @@ self.addEventListener('fetch', (event) => {
         res.end("missing url");
         return;
       }
+      // Guard the tag shape — a non-array / non-string `tags` shouldn't reach ingest.
+      const tags = Array.isArray(payload.tags)
+        ? payload.tags.filter((t): t is string => typeof t === "string")
+        : undefined;
       try {
         const { ingestUrl } = await import("../kb/ingest/index.js");
         const result = await ingestUrl(target, {
           title: payload.title,
-          tags: payload.tags,
+          tags,
           force: payload.force === true,
         });
         res.writeHead(200, { "content-type": "application/json" });
