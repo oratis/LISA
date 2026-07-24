@@ -95,9 +95,17 @@ import {
   beginEmailVerification,
   confirmEmailVerification,
   ensureOtpAccount,
+  upsertGoogleAccount,
   validEmail,
   normalizeEmail,
 } from "./accounts.js";
+import {
+  verifyGoogleIdToken,
+  fetchGoogleKeys,
+  googleSignInConfig,
+  googleAudiences,
+  GoogleAuthError,
+} from "./googleAuth.js";
 import { requestEmailOtp, verifyEmailOtp, OTP_TTL_MS } from "./otp.js";
 import { sendVerificationEmail, sendSignInCodeEmail } from "./mailer.js";
 import { readBalance, creditPurchase } from "../billing/quota.js";
@@ -970,10 +978,70 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       return;
     }
 
+    // ── Sign in with Google (cloud edition; A3) ─────────────────────────────
+    // Pre-gate, same posture as /api/auth/apple: it mints access. The client
+    // (GIS on the web, PKCE in the app) hands us the ID token; we verify it
+    // against Google's keys and sign the person into the account that owns the
+    // address — creating one only if nobody does.
+    if (req.method === "POST" && url === "/api/auth/google") {
+      const gcfg = googleSignInConfig();
+      if (!cloud || !gcfg.enabled) {
+        res.writeHead(404, { "content-type": "text/plain" });
+        res.end("google sign-in not available");
+        return;
+      }
+      if (!sessionSecret) {
+        res.writeHead(503, { "content-type": "text/plain" });
+        res.end("cloud sign-in misconfigured (no session secret)");
+        return;
+      }
+      if (!ipRateOk(`auth:${clientIp(req, remoteAddr)}`, AUTH_IP_LIMIT, AUTH_IP_WINDOW_MS)) {
+        res.writeHead(429, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "rate_limited", retryAfterSec: Math.ceil(AUTH_IP_WINDOW_MS / 1000) }));
+        return;
+      }
+      const payload = await readJsonBody(req, res);
+      if (!payload) return; // 413 already sent
+      const idToken = typeof payload.idToken === "string" ? payload.idToken : "";
+      if (!idToken) {
+        res.writeHead(400, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "id_token_required" }));
+        return;
+      }
+      // Verified when present (the iOS PKCE flow sends one); Google echoes the
+      // raw value rather than a hash of it.
+      const nonce = typeof payload.nonce === "string" ? payload.nonce : "";
+      try {
+        const id = await verifyGoogleIdToken(idToken, {
+          audiences: googleAudiences(gcfg),
+          fetchKeys: fetchGoogleKeys,
+          ...(nonce ? { expectedNonce: nonce } : {}),
+        });
+        const acct = await upsertGoogleAccount(id.sub, id.email);
+        const session = mintSession(acct.uid, sessionSecret, { sv: acct.sessionVersion });
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "set-cookie": `lisa_token=${encodeURIComponent(session)}; HttpOnly; SameSite=Strict; Path=/${isCloud() ? "; Secure" : ""}`,
+        });
+        res.end(JSON.stringify({ ok: true, token: session, uid: acct.uid, verified: acct.verified }));
+      } catch (e) {
+        if (e instanceof AccountError) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: e.code }));
+          return;
+        }
+        const msg = e instanceof GoogleAuthError ? e.message : "verification failed";
+        res.writeHead(401, { "content-type": "text/plain" });
+        res.end(`google sign-in rejected: ${msg}`);
+      }
+      return;
+    }
+
     // Public sign-in surface config (pre-gate): the login page asks which
     // buttons to draw. Never exposes secrets — just feature flags + ids.
     if (req.method === "GET" && url === "/api/auth/config") {
       const cfg = appleSignInConfig();
+      const gcfg = googleSignInConfig();
       res.writeHead(200, { "content-type": "application/json" });
       res.end(
         JSON.stringify({
@@ -981,6 +1049,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           appleWeb: cloud && cfg.enabled && !!cfg.webServicesId
             ? { servicesId: cfg.webServicesId }
             : null,
+          // Only the WEB client id — the button can't be drawn without it.
+          google: cloud && gcfg.webClientId ? { webClientId: gcfg.webClientId } : null,
           stripe: cloud && !!stripeConfig().secretKey,
         }),
       );
