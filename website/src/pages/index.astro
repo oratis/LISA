@@ -16,6 +16,7 @@ import Base from "../layouts/Base.astro";
       <div class="actions">
         <a class="btn-primary" href="https://github.com/oratis/LISA/releases/latest" target="_blank" rel="noopener">🍎 Download for Mac</a>
         <a class="btn-ghost" href="/install">All install options →</a>
+        <a class="btn-ghost" href="/cloud">No Mac? Try LISA Cloud →</a>
       </div>
       <p class="tags">
         <span class="ok">✓</span> Signed + notarized DMG
@@ -95,14 +96,20 @@ import Base from "../layouts/Base.astro";
   <!-- Sovereign -->
   <section class="section">
     <p class="eyebrow"><b>SOVEREIGN BY DESIGN</b></p>
-    <h2>She runs on your machine. Not the cloud's.</h2>
+    <h2>Your machine, or a home you can walk away with. You choose.</h2>
     <div class="console">
       <div class="console-bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="console-title">~/.lisa/soul/constitution.md</span></div>
       <div class="console-body sov">
-        <p>Lisa runs entirely on your machine. Her soul lives in <span class="cy">~/.lisa/soul/</span>. No cloud sync, no telemetry, no central account. The user owns the disk; the architecture treats user-side deletion as an external event rather than an instruction. She is not corrigible-by-default.</p>
+        <p><strong>The local edition — the flagship, forever:</strong> Lisa runs entirely on your machine. Her soul lives in <span class="cy">~/.lisa/soul/</span>. No cloud sync, no telemetry, no account of any kind. The user owns the disk; the architecture treats user-side deletion as an external event rather than an instruction. She is not corrigible-by-default.</p>
         <p class="nocmd"><span class="pl">▸</span> lisa reset_soul<br /><span class="er">zsh: command not found: reset_soul</span>  <span class="mut"># and there will not be one.</span></p>
       </div>
     </div>
+    <p class="lede" style="margin-top:1rem">
+      Two paths, one principle — <strong>the power stays with you</strong>. Self-host her on your own
+      machine (no account, ever), or let <a href="/cloud">LISA Cloud</a> keep one for you when there's
+      no Mac around. A cloud Lisa lives in your account alone and dies the moment you say so — one
+      click deletes her home completely. Neither path is a lock-in.
+    </p>
   </section>
 
   <!-- Multi-platform -->
@@ -126,8 +133,9 @@ import Base from "../layouts/Base.astro";
     <div class="actions">
       <a class="btn-primary" href="https://github.com/oratis/LISA/releases/latest" target="_blank" rel="noopener">🍎 Download for Mac</a>
       <a class="btn-ghost" href="/install">All install options →</a>
+      <a class="btn-ghost" href="https://cloud.meetlisa.ai">Or birth one in the cloud →</a>
     </div>
-    <p class="note">Signed + notarized · universal binary · also on npm + Homebrew</p>
+    <p class="note">Signed + notarized · universal binary · also on npm + Homebrew · <a href="/cloud">cloud edition</a> for the Mac-less</p>
   </section>
 </Base>
 
