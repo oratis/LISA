@@ -121,6 +121,12 @@ schemes:
     build:
       targets:
         LisaPocket: all
+    run:
+      # Local StoreKit config so the simulator renders the credits paywall with
+      # real prices WITHOUT App Store Connect — needed to capture the IAP review
+      # screenshots (the 3 consumables sit at MISSING_METADATA until they have
+      # one). Simulator/dev only; a real StoreKit env ignores this file.
+      storeKitConfiguration: LisaPocket.storekit
     test:
       targets:
         - LisaPocketTests
