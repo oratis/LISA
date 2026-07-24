@@ -102,8 +102,14 @@ function parseFrontmatter(raw: string): {
   return { meta, body: lines.slice(i).join("\n") };
 }
 
+// A newline in any frontmatter value would forge extra frontmatter lines on the
+// next read. `title` and `extra` are the paths that can carry untrusted, remote-
+// authored text (e.g. an ingested page <title> / og:title), so collapse whitespace
+// on everything written into the block.
+const flattenFm = (v: unknown): string => String(v).replace(/\s+/g, " ").trim();
+
 function serializeEntry(entry: KbEntry): string {
-  const fm: string[] = ["---", `title: ${entry.title}`];
+  const fm: string[] = ["---", `title: ${flattenFm(entry.title)}`];
   if (entry.tags.length) fm.push(`tags: [${entry.tags.join(", ")}]`);
   if (entry.layer === "sources") {
     if (entry.created) fm.push(`created: ${entry.created}`);
@@ -113,10 +119,12 @@ function serializeEntry(entry: KbEntry): string {
     if (entry.sources?.length) fm.push(`sources: [${entry.sources.join(", ")}]`);
   }
   for (const [k, v] of Object.entries(entry.extra ?? {})) {
-    // A newline in a value would forge frontmatter lines on the next read, so
-    // collapse whitespace. Empty values are dropped rather than written blank.
-    const flat = String(v).replace(/\s+/g, " ").trim();
-    if (flat && !KNOWN_KEYS.has(k)) fm.push(`${k}: ${flat}`);
+    // Collapse whitespace in values, and validate keys: `extra` is a pass-through
+    // bag, so a key derived from untrusted data must not inject a line either.
+    const flat = flattenFm(v);
+    if (flat && !KNOWN_KEYS.has(k) && /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(k)) {
+      fm.push(`${k}: ${flat}`);
+    }
   }
   fm.push("---", "");
   return fm.join("\n") + entry.body.trimEnd() + "\n";
