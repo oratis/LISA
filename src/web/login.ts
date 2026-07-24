@@ -51,7 +51,8 @@ export const LOGIN_HTML = `<!doctype html>
   input#code { letter-spacing: .35em; font-size: 20px; text-align: center; }
   .note { color: #7fd6a3; font-size: 13px; margin-top: 12px; min-height: 1.2em; }
   [hidden] { display: none !important; }
-  #apple-wrap { display: none; margin-bottom: 18px; }
+  #apple-wrap { display: none; margin-bottom: 10px; }
+  #google-wrap { display: none; margin-bottom: 18px; }
   #apple-btn {
     width: 100%; padding: 12px; border: 0; border-radius: 10px; cursor: pointer;
     background: #fff; color: #000; font-size: 16px; font-weight: 600;
@@ -69,6 +70,7 @@ export const LOGIN_HTML = `<!doctype html>
   <div id="apple-wrap">
     <button id="apple-btn" type="button"> Sign in with Apple</button>
   </div>
+  <div id="google-wrap"></div>
   <div class="divider" id="divider">or use email</div>
   <form id="f">
     <label for="email">Email</label>
@@ -245,11 +247,60 @@ export const LOGIN_HTML = `<!doctype html>
     return Array.from(new Uint8Array(d), (x) => x.toString(16).padStart(2, "0")).join("");
   }
 
-  // Sign in with Apple on the web (B8b): drawn only when the instance has a
-  // Services ID configured (GET /api/auth/config). Apple's JS runs a popup and
-  // hands back an id_token; the server verifies it against the web audience.
+  // Federated buttons are drawn only for the surfaces this instance actually
+  // has configured (GET /api/auth/config) — no dead buttons, and the divider
+  // appears only when there is something above it.
   fetch("/api/auth/config").then((r) => r.json()).then((cfg) => {
-    if (!cfg || !cfg.appleWeb || !cfg.appleWeb.servicesId) return;
+    if (!cfg) return;
+    if (cfg.appleWeb && cfg.appleWeb.servicesId) drawApple(cfg);
+    // iosClientId may be set without webClientId — that instance runs Google on
+    // the app only, and the web button must stay away.
+    if (cfg.google && cfg.google.webClientId) drawGoogle(cfg);
+  }).catch(() => {});
+
+  function showDivider() { document.getElementById("divider").style.display = "flex"; }
+
+  // Sign in with Google (A4): Google Identity Services renders its own button
+  // and hands back an id_token, which the server verifies against the web
+  // client id. The nonce is echoed back RAW (Apple echoes a hash of it).
+  function drawGoogle(cfg) {
+    const rawNonce = mintNonce();
+    const s = document.createElement("script");
+    s.src = "https://accounts.google.com/gsi/client";
+    s.async = true;
+    s.onload = () => {
+      if (!window.google || !window.google.accounts || !window.google.accounts.id) return;
+      window.google.accounts.id.initialize({
+        client_id: cfg.google.webClientId,
+        ...(rawNonce ? { nonce: rawNonce } : {}),
+        callback: async (resp) => {
+          err.textContent = "";
+          const idToken = resp && resp.credential;
+          if (!idToken) { err.textContent = "Google didn't return a token."; return; }
+          const res = await fetch("/api/auth/google", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ idToken: idToken, ...(rawNonce ? { nonce: rawNonce } : {}) }),
+          }).catch(() => null);
+          if (res && res.ok) { location.replace("/"); return; }
+          err.textContent = res
+            ? "Google sign-in was rejected (" + res.status + ")."
+            : "Network error — try again.";
+        },
+      });
+      const wrap = document.getElementById("google-wrap");
+      wrap.style.display = "block";
+      showDivider();
+      window.google.accounts.id.renderButton(wrap, {
+        theme: "filled_black", size: "large", width: 324, text: "signin_with", shape: "rectangular",
+      });
+    };
+    document.head.appendChild(s);
+  }
+
+  // Sign in with Apple on the web (B8b): Apple's JS runs a popup and hands back
+  // an id_token; the server verifies it against the web audience.
+  function drawApple(cfg) {
     const s = document.createElement("script");
     s.src = "https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js";
     s.onload = () => {
@@ -261,7 +312,7 @@ export const LOGIN_HTML = `<!doctype html>
       };
       window.AppleID.auth.init(appleCfg);
       document.getElementById("apple-wrap").style.display = "block";
-      document.getElementById("divider").style.display = "flex";
+      showDivider();
       document.getElementById("apple-btn").addEventListener("click", async () => {
         err.textContent = "";
         try {
@@ -290,7 +341,7 @@ export const LOGIN_HTML = `<!doctype html>
       });
     };
     document.head.appendChild(s);
-  }).catch(() => {});
+  }
 </script>
 </body>
 </html>
