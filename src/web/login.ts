@@ -50,7 +50,10 @@ export const LOGIN_HTML = `<!doctype html>
   .divider { display: none; align-items: center; gap: 10px; color: #5d6575; font-size: 12px; margin-bottom: 4px; }
   .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: #232a36; }
   .err { color: #ff7a7a; font-size: 13px; margin-top: 12px; min-height: 1.2em; }
+  .ok { color: #7ad48a; font-size: 13px; min-height: 1.2em; }
   .hint { color: #5d6575; font-size: 12px; margin-top: 18px; }
+  .hint a { color: #8a93a5; text-decoration: none; }
+  .hint a:hover { color: #e6e9ef; }
 </style>
 </head>
 <body>
@@ -67,19 +70,33 @@ export const LOGIN_HTML = `<!doctype html>
   <form id="f">
     <label for="email">Email</label>
     <input id="email" type="email" autocomplete="username" required>
-    <label for="pw">Password</label>
+    <label for="pw" id="pw-label">Password</label>
     <input id="pw" type="password" autocomplete="current-password" minlength="8" required>
+    <label for="code" id="code-label" style="display:none">6-digit code</label>
+    <input id="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" style="display:none">
+    <label for="newpw" id="newpw-label" style="display:none">New password</label>
+    <input id="newpw" type="password" autocomplete="new-password" minlength="8" style="display:none">
+    <button id="sendcode" type="button" class="secondary" style="display:none">Email me a code</button>
     <button id="login" type="submit">Sign in</button>
     <button id="register" type="button" class="secondary">Create an account</button>
     <div class="err" id="err"></div>
+    <div class="ok" id="ok"></div>
   </form>
+  <div class="hint">
+    <a href="#" id="mode-code">Sign in with a code instead</a> &nbsp;·&nbsp;
+    <a href="#" id="mode-reset">Forgot password?</a>
+    <a href="#" id="mode-pw" style="display:none">Back to password sign-in</a>
+  </div>
   <div class="hint">Self-hosted with a shared token? Open this page as /?token=&lt;your token&gt;.</div>
 </div>
 <script>
   const f = document.getElementById("f");
   const err = document.getElementById("err");
+  const okMsg = document.getElementById("ok");
   const email = document.getElementById("email");
   const pw = document.getElementById("pw");
+  const codeIn = document.getElementById("code");
+  const newpw = document.getElementById("newpw");
   const MSG = {
     bad_credentials: "Wrong email or password.",
     email_taken: "That email already has an account — use Sign in.",
@@ -87,23 +104,79 @@ export const LOGIN_HTML = `<!doctype html>
     invalid_email: "That doesn't look like an email address.",
     throttled: "Too many attempts — wait 15 minutes.",
     rate_limited: "Too many attempts from this network — try again later.",
+    bad_code: "Wrong or expired code — request a fresh one if needed.",
+    otp_cooldown: "Code already sent — wait a minute before asking again.",
   };
-  async function auth(path) {
-    err.textContent = "";
+  async function post(path, body) {
+    err.textContent = ""; okMsg.textContent = "";
     const res = await fetch(path, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: email.value.trim(), password: pw.value }),
+      body: JSON.stringify(body),
     }).catch(() => null);
-    if (!res) { err.textContent = "Network error — try again."; return; }
-    if (res.ok) { location.replace("/"); return; }
+    if (!res) { err.textContent = "Network error — try again."; return null; }
+    return res;
+  }
+  async function showError(res, fallback) {
     let code = "";
     try { code = (await res.json()).error || ""; } catch {}
-    err.textContent = MSG[code] || ("Sign-in failed (" + res.status + ").");
+    err.textContent = MSG[code] || (fallback + " (" + res.status + ").");
   }
-  f.addEventListener("submit", (e) => { e.preventDefault(); auth("/api/auth/login"); });
+  async function auth(path, body) {
+    const res = await post(path, body);
+    if (!res) return;
+    if (res.ok) { location.replace("/"); return; }
+    await showError(res, "Sign-in failed");
+  }
+
+  // Three form modes (S2): password (default) / code (passwordless) / reset.
+  let mode = "pw";
+  function show(el, on) { el.style.display = on ? "" : "none"; }
+  function setMode(m) {
+    mode = m;
+    err.textContent = ""; okMsg.textContent = "";
+    const isPw = m === "pw", isCode = m === "code", isReset = m === "reset";
+    show(document.getElementById("pw-label"), isPw); show(pw, isPw);
+    pw.required = isPw;
+    show(document.getElementById("code-label"), !isPw); show(codeIn, !isPw);
+    codeIn.required = !isPw;
+    show(document.getElementById("newpw-label"), isReset); show(newpw, isReset);
+    newpw.required = isReset;
+    show(document.getElementById("sendcode"), !isPw);
+    show(document.getElementById("register"), isPw);
+    show(document.getElementById("mode-code"), isPw);
+    show(document.getElementById("mode-reset"), isPw);
+    show(document.getElementById("mode-pw"), !isPw);
+    document.getElementById("login").textContent =
+      isReset ? "Reset password" : isCode ? "Sign in with code" : "Sign in";
+  }
+  document.getElementById("mode-code").addEventListener("click", (e) => { e.preventDefault(); setMode("code"); });
+  document.getElementById("mode-reset").addEventListener("click", (e) => { e.preventDefault(); setMode("reset"); });
+  document.getElementById("mode-pw").addEventListener("click", (e) => { e.preventDefault(); setMode("pw"); });
+
+  document.getElementById("sendcode").addEventListener("click", async () => {
+    if (!email.reportValidity()) return;
+    const res = await post("/api/auth/email/code", {
+      email: email.value.trim(),
+      purpose: mode === "reset" ? "reset" : "login",
+    });
+    if (!res) return;
+    if (res.ok) { okMsg.textContent = "Code sent — check your email."; return; }
+    await showError(res, "Couldn't send the code");
+  });
+
+  f.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const addr = email.value.trim();
+    if (mode === "code") { auth("/api/auth/email/login", { email: addr, code: codeIn.value.trim() }); return; }
+    if (mode === "reset") {
+      auth("/api/auth/password/reset", { email: addr, code: codeIn.value.trim(), newPassword: newpw.value });
+      return;
+    }
+    auth("/api/auth/login", { email: addr, password: pw.value });
+  });
   document.getElementById("register").addEventListener("click", () => {
-    if (f.reportValidity()) auth("/api/auth/register");
+    if (f.reportValidity()) auth("/api/auth/register", { email: email.value.trim(), password: pw.value });
   });
 
   // Fresh random nonce, or null when this context can't hash one (#261).

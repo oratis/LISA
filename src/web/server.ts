@@ -95,8 +95,11 @@ import {
   ensureSeededAccount,
   beginEmailVerification,
   confirmEmailVerification,
+  beginAccountOtp,
+  consumeAccountOtp,
+  resetPasswordWithOtp,
 } from "./accounts.js";
-import { sendVerificationEmail } from "./mailer.js";
+import { sendMail, verificationEmail, otpEmail } from "./mailer.js";
 import { readBalance, creditPurchase } from "../billing/quota.js";
 import { PushBridge, listPush, registerPush, unregisterPush, setPushPrefs, registerLiveActivity, unregisterLiveActivity, type PushPrefs } from "./push.js";
 import { SenseService } from "../sense/service.js";
@@ -1178,10 +1181,17 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           return;
         }
         // First registration: kick off email verification (B8a) — verifying
-        // levels the free window from $1 to the full $5. Fire-and-forget.
+        // levels the free window from $1 to the full $5. One mail carries both
+        // the 6-digit code (S2, primary) and the link (fallback). Fire-and-forget.
         if (url === "/api/auth/register") {
           const raw = await beginEmailVerification(acct.uid);
-          if (raw) void sendVerificationEmail(acct.email!, verifyLinkFor(req, raw));
+          const otp = await beginAccountOtp(acct.email!, "verify");
+          if (raw) {
+            void sendMail(
+              acct.email!,
+              verificationEmail(verifyLinkFor(req, raw), otp.status === "ok" ? otp.code : undefined),
+            );
+          }
         }
         const session = mintSession(acct.uid, sessionSecret, { sv: acct.sessionVersion });
         res.writeHead(200, {
@@ -1199,6 +1209,116 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         }
         res.writeHead(500, { "content-type": "text/plain" });
         res.end("account operation failed");
+      }
+      return;
+    }
+
+    // ── One-time codes (S2; pre-gate, same posture as register/login) ────────
+    // Request a code for passwordless login / password reset / verification.
+    // ALWAYS answers ok for ok/none so the endpoint can't probe which emails
+    // exist; the send-cooldown 429 is uniform for unknown emails too.
+    if (req.method === "POST" && url === "/api/auth/email/code") {
+      if (!cloud || !sessionSecret) {
+        res.writeHead(404, { "content-type": "text/plain" });
+        res.end("accounts not available on this edition");
+        return;
+      }
+      if (!ipRateOk(`auth:${clientIp(req, remoteAddr)}`, AUTH_IP_LIMIT, AUTH_IP_WINDOW_MS)) {
+        res.writeHead(429, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "rate_limited", retryAfterSec: Math.ceil(AUTH_IP_WINDOW_MS / 1000) }));
+        return;
+      }
+      const body = await readJsonBody(req, res);
+      if (!body) return; // 413 already sent
+      const email = typeof body.email === "string" ? body.email : "";
+      const purpose = body.purpose === "reset" ? "reset" as const
+        : body.purpose === "verify" ? "verify" as const
+        : "login" as const;
+      const begin = await beginAccountOtp(email, purpose);
+      if (begin.status === "cooldown") {
+        res.writeHead(429, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "otp_cooldown", retryAfterSec: begin.retryAfterSec }));
+        return;
+      }
+      if (begin.status === "ok") {
+        void sendMail(email.trim().toLowerCase(), otpEmail(begin.code, purpose === "reset" ? "reset" : "login"));
+      }
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+
+    // Passwordless sign-in: 6-digit code → per-uid session (S2).
+    if (req.method === "POST" && url === "/api/auth/email/login") {
+      if (!cloud || !sessionSecret) {
+        res.writeHead(404, { "content-type": "text/plain" });
+        res.end("accounts not available on this edition");
+        return;
+      }
+      if (!ipRateOk(`auth:${clientIp(req, remoteAddr)}`, AUTH_IP_LIMIT, AUTH_IP_WINDOW_MS)) {
+        res.writeHead(429, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "rate_limited", retryAfterSec: Math.ceil(AUTH_IP_WINDOW_MS / 1000) }));
+        return;
+      }
+      const body = await readJsonBody(req, res);
+      if (!body) return;
+      const email = typeof body.email === "string" ? body.email : "";
+      const code = typeof body.code === "string" ? body.code.trim() : "";
+      const acct = await consumeAccountOtp(email, code, "login");
+      if (!acct) {
+        res.writeHead(401, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "bad_code" }));
+        return;
+      }
+      const session = mintSession(acct.uid, sessionSecret, { sv: acct.sessionVersion });
+      res.writeHead(200, {
+        "content-type": "application/json",
+        "set-cookie": `lisa_token=${encodeURIComponent(session)}; HttpOnly; SameSite=Strict; Path=/${isCloud() ? "; Secure" : ""}`,
+      });
+      res.end(JSON.stringify({ ok: true, token: session, uid: acct.uid, verified: acct.verified }));
+      return;
+    }
+
+    // Forgot password: reset code + new password → fresh session (S2). The
+    // sessionVersion bump inside resetPasswordWithOtp kills every old session;
+    // the session minted here carries the NEW sv.
+    if (req.method === "POST" && url === "/api/auth/password/reset") {
+      if (!cloud || !sessionSecret) {
+        res.writeHead(404, { "content-type": "text/plain" });
+        res.end("accounts not available on this edition");
+        return;
+      }
+      if (!ipRateOk(`auth:${clientIp(req, remoteAddr)}`, AUTH_IP_LIMIT, AUTH_IP_WINDOW_MS)) {
+        res.writeHead(429, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "rate_limited", retryAfterSec: Math.ceil(AUTH_IP_WINDOW_MS / 1000) }));
+        return;
+      }
+      const body = await readJsonBody(req, res);
+      if (!body) return;
+      const email = typeof body.email === "string" ? body.email : "";
+      const code = typeof body.code === "string" ? body.code.trim() : "";
+      const newPassword = typeof body.newPassword === "string" ? body.newPassword : "";
+      try {
+        const acct = await resetPasswordWithOtp(email, code, newPassword);
+        if (!acct) {
+          res.writeHead(401, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "bad_code" }));
+          return;
+        }
+        const session = mintSession(acct.uid, sessionSecret, { sv: acct.sessionVersion });
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "set-cookie": `lisa_token=${encodeURIComponent(session)}; HttpOnly; SameSite=Strict; Path=/${isCloud() ? "; Secure" : ""}`,
+        });
+        res.end(JSON.stringify({ ok: true, token: session, uid: acct.uid, verified: acct.verified }));
+      } catch (e) {
+        if (e instanceof AccountError) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: e.code }));
+          return;
+        }
+        res.writeHead(500, { "content-type": "text/plain" });
+        res.end("password reset failed");
       }
       return;
     }
@@ -1529,9 +1649,43 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         return;
       }
       const raw = await beginEmailVerification(acct.uid);
-      const mail = raw ? await sendVerificationEmail(acct.email, verifyLinkFor(req, raw)) : null;
+      const otp = await beginAccountOtp(acct.email, "verify");
+      const mail = raw
+        ? await sendMail(
+            acct.email,
+            verificationEmail(verifyLinkFor(req, raw), otp.status === "ok" ? otp.code : undefined),
+          )
+        : null;
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, sent: mail?.sent ?? false }));
+      return;
+    }
+
+    // Confirm the signed-in account's email with the mailed 6-digit code (S2)
+    // — the in-app alternative to tapping the /verify link.
+    if (req.method === "POST" && url === "/api/auth/verify/confirm") {
+      const acct = accountUid ? await getAccount(accountUid) : null;
+      if (!acct || acct.kind !== "email" || !acct.email) {
+        res.writeHead(400, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "email_account_required" }));
+        return;
+      }
+      if (acct.verified) {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true, verified: true }));
+        return;
+      }
+      const body = await readJsonBody(req, res);
+      if (!body) return;
+      const code = typeof body.code === "string" ? body.code.trim() : "";
+      const confirmed = await consumeAccountOtp(acct.email, code, "verify");
+      if (!confirmed) {
+        res.writeHead(401, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "bad_code" }));
+        return;
+      }
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, verified: true }));
       return;
     }
 

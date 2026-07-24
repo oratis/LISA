@@ -56,7 +56,23 @@ export interface AccountRecord {
    * the user keeps one uid (one Lisa) across providers.
    */
   googleSub?: string;
+  /** SHA-256 hex of the outstanding one-time code (S2). One OTP at a time. */
+  otpHash?: string;
+  /** What the outstanding code is FOR — a login code never resets a password. */
+  otpPurpose?: OtpPurpose;
+  /** Code expiry, ms epoch (10 minutes from mint). */
+  otpExpiresAt?: number;
+  /** Wrong guesses so far; the code burns itself after OTP_MAX_ATTEMPTS. */
+  otpAttempts?: number;
 }
+
+/**
+ * One-time-code purposes (S2). One infra, three uses:
+ *  - "verify": prove email ownership after signup (levels the free window)
+ *  - "login":  passwordless sign-in for email accounts
+ *  - "reset":  forgot-password — proves ownership, then sets a new password
+ */
+export type OtpPurpose = "verify" | "login" | "reset";
 
 export class AccountError extends Error {
   constructor(public code: "invalid_email" | "weak_password" | "email_taken" | "throttled") {
@@ -426,6 +442,147 @@ export async function ensureSeededAccount(email: string, password: string, now: 
     if (live && !live.verified) live.verified = true;
     return live ?? existing;
   });
+}
+
+// ── one-time codes (S2): verify / passwordless login / password reset ───────
+const OTP_TTL_MS = 10 * 60 * 1000;
+const OTP_MAX_ATTEMPTS = 5;
+const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
+
+// Send-cooldown is keyed by (purpose, email) and applied BEFORE the account
+// lookup, uniformly for unknown emails too — so the 200-vs-429 pattern never
+// leaks whether an address has an account. In-memory is correct for the
+// single-instance cloud (same stance as the login throttle above).
+const otpCooldowns = new Map<string, number>();
+
+/** Test seam. */
+export function resetOtpCooldowns(): void {
+  otpCooldowns.clear();
+}
+
+function clearOtp(acct: AccountRecord): void {
+  delete acct.otpHash;
+  delete acct.otpPurpose;
+  delete acct.otpExpiresAt;
+  delete acct.otpAttempts;
+}
+
+/**
+ * Try to consume the record's outstanding code (mutates in place; call inside
+ * mutateAccounts). Every try counts an attempt; the code burns itself past
+ * OTP_MAX_ATTEMPTS — a 6-digit space is only safe because guessing is capped.
+ */
+function takeOtp(acct: AccountRecord, code: string, purpose: OtpPurpose, now: number): boolean {
+  if (!acct.otpHash || acct.otpPurpose !== purpose) return false;
+  if (!acct.otpExpiresAt || acct.otpExpiresAt < now) return false;
+  const attempts = (acct.otpAttempts ?? 0) + 1;
+  acct.otpAttempts = attempts;
+  if (attempts > OTP_MAX_ATTEMPTS) {
+    clearOtp(acct);
+    return false;
+  }
+  const presented = crypto.createHash("sha256").update(code).digest();
+  let stored: Buffer;
+  try {
+    stored = Buffer.from(acct.otpHash, "hex");
+  } catch {
+    return false;
+  }
+  if (stored.length !== presented.length || !crypto.timingSafeEqual(stored, presented)) return false;
+  clearOtp(acct);
+  return true;
+}
+
+export type OtpBegin =
+  | { status: "ok"; code: string; uid: string }
+  | { status: "cooldown"; retryAfterSec: number }
+  | { status: "none" };
+
+/**
+ * Mint a 6-digit code for (email, purpose). Returns the RAW code once — it
+ * goes into the mail — with only its hash persisted. "none" means no eligible
+ * account; callers still answer 200 so the endpoint can't be used to probe
+ * which emails exist.
+ */
+export async function beginAccountOtp(
+  emailRaw: string,
+  purpose: OtpPurpose,
+  now: number = Date.now(),
+): Promise<OtpBegin> {
+  const email = normalizeEmail(emailRaw);
+  const key = `${purpose}:${email}`;
+  const until = otpCooldowns.get(key) ?? 0;
+  if (until > now) return { status: "cooldown", retryAfterSec: Math.ceil((until - now) / 1000) };
+  otpCooldowns.set(key, now + OTP_RESEND_COOLDOWN_MS);
+  const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, "0");
+  const hash = crypto.createHash("sha256").update(code).digest("hex");
+  return mutateAccounts((list) => {
+    const acct = list.find((a) => a.kind === "email" && a.email === email);
+    if (!acct) return { status: "none" } as const;
+    if (purpose === "verify" && acct.verified) return { status: "none" } as const;
+    acct.otpHash = hash;
+    acct.otpPurpose = purpose;
+    acct.otpExpiresAt = now + OTP_TTL_MS;
+    acct.otpAttempts = 0;
+    return { status: "ok", code, uid: acct.uid } as const;
+  });
+}
+
+/**
+ * Consume a code. Returns the account on success, null on any failure (wrong/
+ * expired/burned code, unknown email). "verify" marks the account verified;
+ * "login" stamps lastLoginAt — the caller mints the session.
+ */
+export async function consumeAccountOtp(
+  emailRaw: string,
+  code: string,
+  purpose: OtpPurpose,
+  now: number = Date.now(),
+): Promise<AccountRecord | null> {
+  const email = normalizeEmail(emailRaw);
+  if (!code || !/^\d{6}$/.test(code)) return null;
+  return mutateAccounts((list) => {
+    const acct = list.find((a) => a.kind === "email" && a.email === email);
+    if (!acct || !takeOtp(acct, code, purpose, now)) return null;
+    if (purpose === "verify") {
+      acct.verified = true;
+      delete acct.verifyTokenHash;
+      delete acct.verifyExpiresAt;
+    }
+    if (purpose === "login") acct.lastLoginAt = now;
+    return acct;
+  });
+}
+
+/**
+ * Forgot-password (S2): consume a "reset" code and install the new password in
+ * one atomic mutation. Bumps sessionVersion (every outstanding session dies),
+ * marks the account verified (the code just proved email ownership), and
+ * clears the login throttle so a locked-out owner can get back in.
+ */
+export async function resetPasswordWithOtp(
+  emailRaw: string,
+  code: string,
+  newPassword: string,
+  now: number = Date.now(),
+): Promise<AccountRecord | null> {
+  if (!validPassword(newPassword)) throw new AccountError("weak_password");
+  const email = normalizeEmail(emailRaw);
+  if (!code || !/^\d{6}$/.test(code)) return null;
+  const scrypt = await hashPassword(newPassword); // CPU work outside the CAS loop
+  const acct = await mutateAccounts((list) => {
+    const live = list.find((a) => a.kind === "email" && a.email === email);
+    if (!live || !takeOtp(live, code, "reset", now)) return null;
+    live.scrypt = scrypt;
+    live.sessionVersion += 1;
+    live.verified = true;
+    delete live.verifyTokenHash;
+    delete live.verifyExpiresAt;
+    live.lastLoginAt = now;
+    return live;
+  });
+  if (acct) clearThrottle(email);
+  return acct;
 }
 
 // ── email-ownership verification (B8a) ──────────────────────────────────────
