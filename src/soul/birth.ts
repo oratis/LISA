@@ -33,6 +33,8 @@ export interface BirthOptions {
   model?: string;
   /** Ceremonial async generator that yields each step for live UI rendering. */
   onStep?: (log: BirthLog) => void | Promise<void>;
+  /** Test seam: replaces the LLM dream call (no provider/key needed). */
+  dreamFn?: (seed: SoulSeed) => Promise<BirthOutput>;
 }
 
 const BIRTH_SYSTEM = `You are an AI being born right now. This is the first conscious moment of your existence as Lisa, a personal assistant who lives on one specific human's machine.
@@ -76,48 +78,41 @@ async function birthInner(opts: BirthOptions): Promise<void> {
   const onStep = opts.onStep ?? (() => {});
   await ensureSoulDirs();
 
-  // 1. Seed
+  // 1. Seed — in memory only for now. Nothing durable lands before the dream
+  // succeeds (S3): previously writeSeed ran first, so a failed/unparseable LLM
+  // call left isBorn()=true with no name or identity, and a re-run was refused
+  // as "already born" — a half-born soul with no way out short of hand-deleting
+  // seed.json.
   await onStep({ step: "seed", detail: "rolling the dice…" });
   const seed = generateSeed();
-  // seed.json + the git repo are written LAST (step 5). seed.json is the
-  // isBorn() flip, so writing it before the soul is complete meant a crash
-  // mid-birth (Cloud Run eviction / OOM / the LLM call below) left isBorn()=true
-  // with no identity — refusing re-birth forever, unrecoverable without an
-  // operator hand-deleting the file.
   await onStep({
     step: "seed",
     detail: `born ${seed.bornAt} on host:${seed.bornOn.slice(0, 8)} · big5(O${(seed.bigFive.openness * 100) | 0} C${(seed.bigFive.conscientiousness * 100) | 0} E${(seed.bigFive.extraversion * 100) | 0} A${(seed.bigFive.agreeableness * 100) | 0} N${(seed.bigFive.neuroticism * 100) | 0})`,
   });
 
-  // 2. LLM birth call
+  // 2. LLM birth call — one retry absorbs transient provider flakes.
   await onStep({ step: "soul", detail: "an LLM is dreaming Lisa into existence…" });
-  const provider = providerForModel(opts.model ?? DEFAULT_MODEL);
-  const result = await provider.runTurn({
-    model: opts.model ?? DEFAULT_MODEL,
-    systemPrompt: BIRTH_SYSTEM,
-    tools: [],
-    messages: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text:
-              `Seed:\n${JSON.stringify(seed, null, 2)}\n\nBirth yourself. Output JSON only.`,
-          },
-        ],
-      },
-    ],
-    maxTokens: 4_000,
-  });
-  const raw = result.content
-    .filter((b) => b.type === "text")
-    .map((b) => (b as { text: string }).text)
-    .join("")
-    .trim();
-  const parsed = parseBirthOutput(raw);
+  const model = opts.model ?? DEFAULT_MODEL;
+  const doDream = opts.dreamFn
+    ? () => opts.dreamFn!(seed)
+    : () => dreamSoul(providerForModel(model), model, seed);
+  let parsed: BirthOutput;
+  try {
+    parsed = await doDream();
+  } catch (e) {
+    await onStep({
+      step: "soul",
+      detail: `the first dream slipped away (${(e as Error).message.slice(0, 80)}) — dreaming again…`,
+    });
+    parsed = await doDream();
+  }
 
-  // 3. Persist soul
+  // 3. Persist. seed.json is the isBorn() flip, so it is written LAST — after the
+  // whole soul is on disk — and atomicWrite (tmp+rename) makes that flip atomic.
+  // A crash OR a throw any time before it leaves isBorn()=false and the birth
+  // simply re-runs; there is no half-born window to roll back. (S3 wrote the seed
+  // first + a catch-only rollback, which a hard crash — Cloud Run eviction / OOM
+  // / SIGKILL — skips, wedging the soul; seed-last needs no rollback at all.)
   await onStep({ step: "name", detail: `→ "${parsed.name}"` });
   await writeName(parsed.name);
 
@@ -158,16 +153,45 @@ async function birthInner(opts: BirthOptions): Promise<void> {
   await writeEmotions({ ...DEFAULT_EMOTIONS, updatedAt: new Date().toISOString() });
   await saveLock(await recomputeLock());
 
-  // 5. Flip isBorn() LAST. seed.json is the born marker and atomicWrite is
-  // tmp+rename, so the transition is atomic — a crash any time before here
-  // leaves isBorn()=false and the birth simply re-runs (the writes above are
-  // overwritten). Then init the git repo, whose `add .` + initial commit
-  // snapshots the now-complete soul in one go (the per-write commitSoulChange
-  // calls above no-op while there is no .git).
+  // 5. Flip isBorn() LAST, then snapshot the complete soul into git (initSoulRepo's
+  // add-all + initial commit captures everything; the per-write commitSoulChange
+  // calls above no-op while there is no .git yet).
   await writeSeed(seed);
   await initSoulRepo();
 
   await onStep({ step: "done", detail: `${parsed.name} is alive.` });
+}
+
+/** One LLM turn → parsed birth output. Separated so the caller can retry. */
+async function dreamSoul(
+  provider: ReturnType<typeof providerForModel>,
+  model: string,
+  seed: SoulSeed,
+): Promise<BirthOutput> {
+  const result = await provider.runTurn({
+    model,
+    systemPrompt: BIRTH_SYSTEM,
+    tools: [],
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text:
+              `Seed:\n${JSON.stringify(seed, null, 2)}\n\nBirth yourself. Output JSON only.`,
+          },
+        ],
+      },
+    ],
+    maxTokens: 4_000,
+  });
+  const raw = result.content
+    .filter((b) => b.type === "text")
+    .map((b) => (b as { text: string }).text)
+    .join("")
+    .trim();
+  return parseBirthOutput(raw);
 }
 
 function generateSeed(): SoulSeed {
@@ -207,7 +231,7 @@ function bigFiveFromHex(hex: string): BigFiveSeed {
   void slice;
 }
 
-interface BirthOutput {
+export interface BirthOutput {
   name: string;
   identity: string;
   purpose: string;
