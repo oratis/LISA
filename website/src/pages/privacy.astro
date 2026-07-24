@@ -3,7 +3,7 @@ import Base from "../layouts/Base.astro";
 ---
 <Base title="Privacy" lang="en" description="Lisa's privacy policy — a local-first AI that collects nothing to our servers.">
   <header class="page-head">
-    <p class="eyebrow"><span class="rule"></span> PRIVACY <b>· updated 2026-06-26</b></p>
+    <p class="eyebrow"><span class="rule"></span> PRIVACY <b>· updated 2026-07-24</b></p>
     <h1>Privacy Policy</h1>
     <p class="lede">
       Lisa is <strong>local-first</strong>. The apps — <strong>Lisa</strong> (macOS) and
@@ -15,11 +15,13 @@ import Base from "../layouts/Base.astro";
 
   <div class="highlight">
     <p class="eyebrow"><b>What we collect</b></p>
-    <p class="big">Nothing — to us.</p>
+    <p class="big">Local mode: nothing — to us.</p>
     <p>
       Lisa Pocket and Lisa collect no analytics, no advertising identifiers, and contain no
       third-party tracking SDKs. There is no Lisa-operated account system in the default
-      (local) mode.
+      (local) mode. If you opt into a <strong>LISA Cloud account</strong>, we hold exactly
+      what the section below lists — your email, your sign-in identifier, and your Lisa's
+      data — and one click deletes all of it.
     </p>
   </div>
 
@@ -51,13 +53,35 @@ import Base from "../layouts/Base.astro";
     </section>
 
     <section class="pol">
-      <p class="eyebrow"><b>Lisa Cloud (optional / demo)</b></p>
-      <p>
-        If you connect to a hosted <strong>Lisa Cloud</strong> instance instead of your own
-        Mac, your messages are processed by that instance to provide the service (and passed to
-        its configured LLM provider). The public review/demo instance is
-        <strong>shared and rate-limited</strong> — please don’t put sensitive information into it.
-      </p>
+      <p class="eyebrow"><b>LISA Cloud accounts (optional)</b></p>
+      <ul>
+        <li>
+          <strong>What we store</strong> — your email address, a sign-in identifier
+          (Apple/Google <code>sub</code> or a password hash — never the password itself), and
+          your Lisa's per-account home: her soul, your conversations, and anything you add to
+          her knowledge base. Stored on Google Cloud (us-central1), isolated per account.
+        </li>
+        <li>
+          <strong>What we process</strong> — chat messages pass through the account's metered
+          LLM provider to answer you; token counts are metered for billing. We keep an
+          append-only usage ledger (model, token counts, cost) — not message content.
+        </li>
+        <li>
+          <strong>Sub-processors</strong> — LLM inference (e.g. Zhipu/GLM, Anthropic, OpenAI),
+          Resend (verification &amp; sign-in code emails), Stripe (web top-ups), Apple
+          (Sign in with Apple, iOS purchases), Google (Sign in with Google), Cloudflare
+          (bot-check on signup). Each is governed by its own policy.
+        </li>
+        <li>
+          <strong>Deletion</strong> — "Delete account" in the app removes the account record
+          and wipes the per-account home entirely; every session is invalidated at that
+          instant. No soft-delete, no retention window.
+        </li>
+        <li>
+          The public review/demo instance remains <strong>shared and rate-limited</strong> —
+          please don't put sensitive information into it.
+        </li>
+      </ul>
     </section>
 
     <section class="pol">

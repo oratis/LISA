@@ -18,6 +18,7 @@ const navItems = lang === "zh-CN"
   ? [
       { href: "/zh-CN/", label: "首页" },
       { href: "/zh-CN/install", label: "安装" },
+      { href: "/zh-CN/cloud", label: "云端" },
       { href: "/zh-CN/changelog", label: "更新日志" },
       { href: "/zh-CN/moods", label: "表情" },
       { href: "https://github.com/oratis/LISA", label: "GitHub", external: true },
@@ -25,6 +26,7 @@ const navItems = lang === "zh-CN"
   : [
       { href: "/", label: "Home" },
       { href: "/install", label: "Install" },
+      { href: "/cloud", label: "Cloud" },
       { href: "/changelog", label: "Changelog" },
       { href: "/moods", label: "Moods" },
       { href: "https://github.com/oratis/LISA", label: "GitHub", external: true },
@@ -103,6 +105,7 @@ const foot = lang === "zh-CN"
       </nav>
       <div class="nav-right">
         <a class="lang" href={altLangPath}>{lang === "zh-CN" ? "EN" : "中文"}</a>
+        <a class="navlink" href="https://cloud.meetlisa.ai">{lang === "zh-CN" ? "登录" : "Sign in"}</a>
         <a class="btn-primary sm" href={downloadHref} target="_blank" rel="noopener">
           {lang === "zh-CN" ? "下载" : "Download"}
         </a>

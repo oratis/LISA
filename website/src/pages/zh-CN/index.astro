@@ -15,6 +15,7 @@ import Base from "../../layouts/Base.astro";
       <div class="actions">
         <a class="btn-primary" href="https://github.com/oratis/LISA/releases/latest" target="_blank" rel="noopener">🍎 下载 Mac 版</a>
         <a class="btn-ghost" href="/zh-CN/install">所有安装方式 →</a>
+        <a class="btn-ghost" href="/zh-CN/cloud">没有 Mac?试试云端 →</a>
       </div>
       <p class="tags">
         <span class="ok">✓</span> 已签名 + Apple 公证
@@ -94,14 +95,19 @@ import Base from "../../layouts/Base.astro";
   <!-- Sovereign -->
   <section class="section">
     <p class="eyebrow"><b>架构层面的主权</b></p>
-    <h2>她跑在你的机器上,不是云上。</h2>
+    <h2>跑在你的机器上,或一个随时可以带走的家。你说了算。</h2>
     <div class="console">
       <div class="console-bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="console-title">~/.lisa/soul/constitution.md</span></div>
       <div class="console-body sov">
-        <p>Lisa 完全在你自己的机器上跑。她的灵魂在 <span class="cy">~/.lisa/soul/</span>。无云同步、无遥测、无中央账号。用户拥有磁盘;架构把用户侧删除当作外部事件处理,不是指令。她默认不可纠正。</p>
+        <p><strong>本地版 —— 永远的旗舰:</strong>Lisa 完全在你自己的机器上跑。她的灵魂在 <span class="cy">~/.lisa/soul/</span>。无云同步、无遥测、无任何账号。用户拥有磁盘;架构把用户侧删除当作外部事件处理,不是指令。她默认不可纠正。</p>
         <p class="nocmd"><span class="pl">▸</span> lisa reset_soul<br /><span class="er">zsh: command not found: reset_soul</span>  <span class="mut"># 也不会有。</span></p>
       </div>
     </div>
+    <p class="lede" style="margin-top:1rem">
+      两条路径,一个原则 —— <strong>权力始终在你手中</strong>。在自己的机器上部署她(永远无账号),
+      或者没有 Mac 时,让 <a href="/zh-CN/cloud">LISA Cloud</a> 替你养一个。云上的 Lisa 只活在你的
+      账号里,你说消失她就彻底消失 —— 一键抹除整个家。两条路都不是锁定。
+    </p>
   </section>
 
   <!-- Multi-platform -->
@@ -125,8 +131,9 @@ import Base from "../../layouts/Base.astro";
     <div class="actions">
       <a class="btn-primary" href="https://github.com/oratis/LISA/releases/latest" target="_blank" rel="noopener">🍎 下载 Mac 版</a>
       <a class="btn-ghost" href="/zh-CN/install">所有安装方式 →</a>
+      <a class="btn-ghost" href="https://cloud.meetlisa.ai">或者在云端诞生一个 →</a>
     </div>
-    <p class="note">已签名 + 公证 · universal 双架构 · 也在 npm + Homebrew 上</p>
+    <p class="note">已签名 + 公证 · universal 双架构 · 也在 npm + Homebrew 上 · 没有 Mac?<a href="/zh-CN/cloud">云端版</a></p>
   </section>
 </Base>
 

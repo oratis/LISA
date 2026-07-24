@@ -14,10 +14,12 @@ import Base from "../../layouts/Base.astro";
 
   <div class="highlight">
     <p class="eyebrow"><b>我们收集什么</b></p>
-    <p class="big">对我们:什么都不收集。</p>
+    <p class="big">本地模式:对我们,什么都不收集。</p>
     <p>
       Lisa Pocket 与 Lisa 不含任何分析统计、广告标识或第三方追踪 SDK。
-      默认(本地)模式下不存在由 Lisa 运营的账户体系。
+      默认(本地)模式下不存在由 Lisa 运营的账户体系。若你自愿开通
+      <strong>LISA Cloud 账号</strong>,我们持有的仅限下文列出的内容 ——
+      你的邮箱、登录标识与你的 Lisa 数据 —— 且一键即可全部删除。
     </p>
   </div>
 
@@ -47,12 +49,32 @@ import Base from "../../layouts/Base.astro";
     </section>
 
     <section class="pol">
-      <p class="eyebrow"><b>Lisa Cloud(可选 / 演示)</b></p>
-      <p>
-        如果你连接的是托管的 <strong>Lisa Cloud</strong> 实例而非自己的 Mac,你的消息
-        会由该实例处理以提供服务(并交给其配置的大模型提供商)。公开的审核/演示实例
-        是<strong>共享且限流</strong>的 —— 请勿在其中输入敏感信息。
-      </p>
+      <p class="eyebrow"><b>LISA Cloud 账号(可选)</b></p>
+      <ul>
+        <li>
+          <strong>我们存储什么</strong> —— 你的邮箱地址、一个登录标识(Apple/Google 的
+          <code>sub</code>,或密码散列 —— 绝不存明文密码),以及你的 Lisa 的独立账号家目录:
+          她的灵魂、你们的对话、你加入她知识库的内容。存放于 Google Cloud(us-central1),
+          按账号隔离。
+        </li>
+        <li>
+          <strong>我们处理什么</strong> —— 聊天消息经账号计费的大模型提供商处理以生成回复;
+          token 用量计入账单。我们保留一份只追加的用量账本(模型、token 数、费用),
+          不含消息内容。
+        </li>
+        <li>
+          <strong>子处理者</strong> —— 大模型推理(如智谱/GLM、Anthropic、OpenAI)、
+          Resend(验证与登录验证码邮件)、Stripe(网页充值)、Apple(Apple 登录与 iOS 内购)、
+          Google(Google 登录)、Cloudflare(注册时的人机校验)。各自受其隐私政策约束。
+        </li>
+        <li>
+          <strong>删除</strong> —— 应用内"删除账号"会移除账号记录并<strong>完整抹除</strong>
+          账号家目录,所有会话即刻失效。没有软删除,没有保留期。
+        </li>
+        <li>
+          公开的审核/演示实例仍是<strong>共享且限流</strong>的 —— 请勿在其中输入敏感信息。
+        </li>
+      </ul>
     </section>
 
     <section class="pol">
