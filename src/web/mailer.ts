@@ -30,27 +30,54 @@ export function mailerConfig(env: Record<string, string | undefined> = process.e
   };
 }
 
-/** Compose the verification mail (pure — unit-testable). */
-export function verificationEmail(link: string): { subject: string; text: string } {
+export interface ComposedMail {
+  subject: string;
+  text: string;
+}
+
+/**
+ * Compose the verification mail (pure — unit-testable). With a `code` (S2) the
+ * 6-digit code leads and the link stays as the fallback for mail clients where
+ * typing a code beats tapping a link that an in-app browser may hijack.
+ */
+export function verificationEmail(link: string, code?: string): ComposedMail {
+  const codePart = code
+    ? `Your verification code is: ${code}\n\n` +
+      `Enter it in LISA, or open the link below instead:\n\n`
+    : `Confirm this email address for your LISA account by opening the link below:\n\n`;
   return {
-    subject: "Verify your LISA account email",
+    subject: code ? `${code} is your LISA verification code` : "Verify your LISA account email",
     text:
-      `Confirm this email address for your LISA account by opening the link below:\n\n` +
+      codePart +
       `${link}\n\n` +
-      `Verifying raises your free session allowance to the full amount. The link ` +
+      `Verifying raises your free session allowance to the full amount. ` +
+      `${code ? "The code expires in 10 minutes; the link" : "The link"} ` +
       `expires in 24 hours. If you didn't create a LISA account, ignore this mail.`,
   };
 }
 
-export async function sendVerificationEmail(
+/** Compose a sign-in / password-reset code mail (S2; pure). */
+export function otpEmail(code: string, purpose: "login" | "reset"): ComposedMail {
+  const what = purpose === "login" ? "sign-in" : "password reset";
+  return {
+    subject: `${code} is your LISA ${what} code`,
+    text:
+      `Your LISA ${what} code is: ${code}\n\n` +
+      `It expires in 10 minutes. If you didn't request it, ignore this mail — ` +
+      `nothing happens without the code.`,
+  };
+}
+
+/** Send any composed mail through Resend; degrades to a loud server log without a key. */
+export async function sendMail(
   to: string,
-  link: string,
+  mail: ComposedMail,
   cfg: MailerConfig = mailerConfig(),
   fetchFn: typeof fetch = fetch,
 ): Promise<MailResult> {
-  const mail = verificationEmail(link);
   if (!cfg.apiKey) {
-    console.error(`[mail] RESEND_API_KEY unset — verification link for ${to}: ${link}`);
+    // The operator can hand-forward the secret; flatten so one log line has it.
+    console.error(`[mail] RESEND_API_KEY unset — for ${to}: ${mail.text.replace(/\n+/g, " | ").slice(0, 300)}`);
     return { sent: false, detail: "no_api_key" };
   }
   try {
@@ -73,4 +100,14 @@ export async function sendVerificationEmail(
     console.error(`[mail] send failed: ${(e as Error).message}`);
     return { sent: false, detail: "network_error" };
   }
+}
+
+/** Back-compat wrapper: verification mail without a code. */
+export async function sendVerificationEmail(
+  to: string,
+  link: string,
+  cfg: MailerConfig = mailerConfig(),
+  fetchFn: typeof fetch = fetch,
+): Promise<MailResult> {
+  return sendMail(to, verificationEmail(link), cfg, fetchFn);
 }
