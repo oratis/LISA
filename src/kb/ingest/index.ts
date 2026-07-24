@@ -11,41 +11,23 @@
  * lives there, and a second fetch path would mean a second SSRF surface
  * (handoff hard rule).
  */
-import { fetchFollowingSafeRedirects, assertAllowedUrl } from "../../tools/web_fetch.js";
+import { fetchFollowingSafeRedirects, assertAllowedUrl, type SafeFetchInit } from "../../tools/web_fetch.js";
 import { canonicalUrl, shortHash } from "../slug.js";
 import { addSource, readEntry, type KbEntry } from "../store.js";
 import { elementToMarkdown } from "./html-to-md.js";
 import { extractContent } from "./readability.js";
 import { extractProvenance } from "./provenance.js";
 import { lookupIngested, recordIngested } from "./dedupe.js";
+import { wechatAdapter } from "./adapters/wechat.js";
+import { bilibiliAdapter } from "./adapters/bilibili.js";
+import { youtubeAdapter } from "./adapters/youtube.js";
+import { ytDlpDumpJson } from "./adapters/ytdlp.js";
+import type { IngestAdapter, IngestContext, IngestedContent } from "./types.js";
 
-/** What a fetch (generic or adapter) must deliver for the write step. */
-export interface IngestedContent {
-  /** Markdown body. */
-  body: string;
-  title?: string;
-  /** Extra provenance frontmatter beyond url/hash/via (site/author/published/lang…). */
-  extra?: Record<string, string>;
-}
+export type { IngestAdapter, IngestContext, IngestedContent } from "./types.js";
 
-export interface IngestContext {
-  fetchImpl: (url: string) => Promise<Response>;
-  signal?: AbortSignal;
-}
-
-/**
- * A site adapter. `match` is consulted in order; the first hit owns the URL.
- * Adapters may fetch multiple resources (APIs, subtitle tracks) but must use
- * ctx.fetchImpl for every request — see the SSRF note above.
- */
-export interface IngestAdapter {
-  name: string;
-  match(url: URL): boolean;
-  fetch(url: URL, ctx: IngestContext): Promise<IngestedContent>;
-}
-
-/** Populated in K-F (wechat / bilibili / youtube). Order matters. */
-export const ADAPTERS: IngestAdapter[] = [];
+/** First match owns the URL; the generic readability path is the fallback. */
+export const ADAPTERS: IngestAdapter[] = [wechatAdapter, bilibiliAdapter, youtubeAdapter];
 
 export interface IngestOptions {
   title?: string;
@@ -54,7 +36,9 @@ export interface IngestOptions {
   force?: boolean;
   signal?: AbortSignal;
   /** Test seam; defaults to the SSRF-guarded fetch. */
-  fetchImpl?: (url: string) => Promise<Response>;
+  fetchImpl?: (url: string, init?: SafeFetchInit) => Promise<Response>;
+  /** Test seam; defaults to the real yt-dlp bridge. */
+  ytDlpDumpJson?: IngestContext["ytDlpDumpJson"];
 }
 
 export interface IngestResult {
@@ -95,7 +79,9 @@ export async function ingestUrl(rawUrl: string, opts: IngestOptions = {}): Promi
 
   const ctx: IngestContext = {
     fetchImpl:
-      opts.fetchImpl ?? ((u: string) => fetchFollowingSafeRedirects(u, opts.signal)),
+      opts.fetchImpl ??
+      ((u: string, init?: SafeFetchInit) => fetchFollowingSafeRedirects(u, opts.signal, init)),
+    ytDlpDumpJson: opts.ytDlpDumpJson ?? ytDlpDumpJson,
     signal: opts.signal,
   };
 
@@ -104,7 +90,10 @@ export async function ingestUrl(rawUrl: string, opts: IngestOptions = {}): Promi
   const via = adapter?.name ?? "generic";
 
   const body = content.body.trim();
-  if (body.length < MIN_BODY_CHARS) {
+  // Only the generic path gets the minimum-length gate: adapters throw their
+  // own precise errors, and a legitimately-degraded video capture (metadata
+  // only, no transcript) can be short — that MUST still succeed.
+  if (!adapter && body.length < MIN_BODY_CHARS) {
     throw new Error(
       `could not extract readable content from ${url.hostname} — ` +
         `the page may be login-walled or script-rendered. ` +
