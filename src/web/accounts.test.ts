@@ -96,15 +96,35 @@ describe("code-only (OTP) accounts", () => {
     assert.equal((await getAccount(acct.uid))?.uid, acct.uid, "the account still exists");
   });
 
-  test("a code verifies an existing unverified password account (levels the free window)", async () => {
+  test("a code verifies an existing unverified password account, dropping the pre-verification password", async () => {
     const made = await createEmailAccount("a@b.co", "password-123");
     assert.equal(made.verified, false);
+    assert.equal(made.sessionVersion, 0);
     const { acct, created } = await ensureOtpAccount("a@b.co", 3000);
     assert.equal(created, false);
     assert.equal(acct.uid, made.uid);
     assert.equal(acct.verified, true);
-    // The password still works — the code is an additional way in, not a swap.
-    assert.equal((await verifyEmailLogin("a@b.co", "password-123", 4000))?.uid, made.uid);
+    // /api/auth/register is open, so a password set before ownership was proven
+    // can't be trusted. Signing in by code drops it and rotates sessionVersion, so
+    // the pre-set password no longer authenticates (anti account-pre-hijacking).
+    assert.equal(acct.scrypt, undefined, "pre-verification password dropped");
+    assert.equal(acct.sessionVersion, 1, "sessionVersion rotated to kill prior sessions");
+    assert.equal(await verifyEmailLogin("a@b.co", "password-123", 4000), null, "the pre-set password no longer works");
+  });
+
+  test("account pre-hijacking is closed: an attacker's pre-set password can't survive the victim's code sign-in", async () => {
+    // Attacker pre-registers the victim's address with a password they know.
+    const attacker = await createEmailAccount("victim@x.co", "attacker-knows-this");
+    assert.equal(attacker.verified, false);
+    // Victim signs in by mailed code (proving they, not the attacker, own the inbox).
+    const { acct } = await ensureOtpAccount("victim@x.co", 5000);
+    assert.equal(acct.uid, attacker.uid, "same record — the code adopts the existing account");
+    // The attacker can no longer authenticate with the password they set.
+    assert.equal(
+      await verifyEmailLogin("victim@x.co", "attacker-knows-this", 6000),
+      null,
+      "attacker's pre-set password is invalidated on the victim's ownership proof",
+    );
   });
 
   test("a malformed address is refused", async () => {

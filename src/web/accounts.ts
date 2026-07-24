@@ -267,6 +267,28 @@ export async function createEmailAccount(
 }
 
 /**
+ * Apply proof-of-ownership (a mailed OTP or a verified OIDC email) to an account.
+ * The FIRST time an account becomes verified this way, anything set on it before
+ * is untrusted — `/api/auth/register` is open and unauthenticated, so an attacker
+ * can pre-create any address with a password of their choosing. So on the
+ * unverified→verified transition we drop any pre-set password and rotate
+ * `sessionVersion` (invalidating any session minted from that credential),
+ * closing the account pre-hijacking path. A password the real owner sets AFTER
+ * verifying is unaffected. Returns whether this was the first verification.
+ */
+function markVerifiedByOwnershipProof(acct: AccountRecord): boolean {
+  const firstVerification = !acct.verified;
+  acct.verified = true;
+  delete acct.verifyTokenHash;
+  delete acct.verifyExpiresAt;
+  if (firstVerification && acct.scrypt) {
+    delete acct.scrypt;
+    acct.sessionVersion += 1;
+  }
+  return firstVerification;
+}
+
+/**
  * Sign-in by mailed code (A1). The code already proved this person reads the
  * address, so one call both registers and authenticates: an existing account
  * comes back marked verified (ownership was just demonstrated, which levels the
@@ -290,9 +312,11 @@ export async function ensureOtpAccount(
     const existing = list.find((a) => a.kind === "email" && a.email === email);
     if (existing) {
       existing.lastLoginAt = now;
-      existing.verified = true;
-      delete existing.verifyTokenHash;
-      delete existing.verifyExpiresAt;
+      // OTP proves inbox control → apply ownership proof. This drops any password
+      // set before verification (an attacker can pre-register any address via the
+      // open /api/auth/register) and rotates sessionVersion, closing the account
+      // pre-hijacking path where the attacker's password survived the adoption.
+      markVerifiedByOwnershipProof(existing);
       return { acct: existing, created: false };
     }
     const rec: AccountRecord = {
