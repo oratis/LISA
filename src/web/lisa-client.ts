@@ -1126,7 +1126,44 @@ async function send(message) {
   const filesToSend = [...pendingFiles];
   pendingFiles = [];
   renderAttachPreview();
+  maybeOfferKbIngest(message);
   await runChat(message, filesToSend);
+}
+
+// ── chat → KB: a bare URL in the user's message gets a one-tap 存入知识库
+//    chip under the bubble; it calls the same /api/kb/ingest the KB view uses.
+function maybeOfferKbIngest(message) {
+  if (!message) return;
+  var m = message.match(/https?:\\/\\/[^\\s<>"')\\]]+/);
+  if (!m) return;
+  var url = m[0].replace(/[.,;:!?。，；：、]+$/, '');
+  var chip = el('div', 'kb-ingest-chip', null);
+  var btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'kb-ingest-btn';
+  btn.textContent = '💾 存入知识库';
+  chip.appendChild(btn);
+  btn.addEventListener('click', function () {
+    btn.disabled = true;
+    btn.textContent = '保存中…';
+    fetch('/api/kb/ingest', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url: url }) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && d.ok) {
+          btn.textContent = d.deduped ? '已在知识库 ✓' : '已存入知识库 ✓';
+          if (typeof window.lisaReloadKb === 'function') window.lisaReloadKb();
+        } else {
+          btn.disabled = false;
+          btn.textContent = '💾 存入知识库';
+          if (typeof window.lisaKbToast === 'function') window.lisaKbToast((d && d.error) ? d.error : '保存失败');
+        }
+      })
+      .catch(function () {
+        btn.disabled = false;
+        btn.textContent = '💾 存入知识库';
+        if (typeof window.lisaKbToast === 'function') window.lisaKbToast('保存失败');
+      });
+  });
 }
 
 // On failure, show the error detail with a retry button that re-runs the same
@@ -1353,6 +1390,8 @@ input.addEventListener('input', () => {
     setTimeout(function () { t.classList.add('show'); }, 10);
     setTimeout(function () { t.classList.remove('show'); setTimeout(function () { t.remove(); }, 300); }, 2200);
   }
+  // Shared with the chat-bubble ingest chip (defined outside this closure).
+  window.lisaKbToast = kbToast;
 })();
 
 // ── PWA: register service worker + iOS install hint ─────────────────
@@ -2683,9 +2722,43 @@ if ('serviceWorker' in navigator) {
       });
     }
   }
+  function kbIngestSubmit() {
+    var urlEl = document.getElementById('kbIngestUrl');
+    var go = document.getElementById('kbIngestGo');
+    var status = document.getElementById('kbIngestStatus');
+    if (!urlEl || !go) return;
+    var url = (urlEl.value || '').trim();
+    if (!url) return;
+    go.disabled = true;
+    urlEl.disabled = true;
+    if (status) { status.className = 'kb-ingest-status'; status.textContent = 'Fetching & extracting…'; }
+    fetch('/api/kb/ingest', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url: url }) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        go.disabled = false;
+        urlEl.disabled = false;
+        if (d && d.ok) {
+          urlEl.value = '';
+          var note = d.deduped ? 'Already saved — opening it' : 'Saved via ' + (d.via || 'generic');
+          if (d.transcript && String(d.transcript).indexOf('unavailable') === 0) note += ' (no transcript — you can paste one)';
+          if (status) status.textContent = note;
+          loadKbList();
+          if (d.entry) kbOpen(d.entry.layer, d.entry.slug);
+        } else if (status) {
+          status.className = 'kb-ingest-status err';
+          status.textContent = (d && d.error) ? d.error : 'Ingest failed';
+        }
+      })
+      .catch(function () {
+        go.disabled = false;
+        urlEl.disabled = false;
+        if (status) { status.className = 'kb-ingest-status err'; status.textContent = 'Ingest failed (network)'; }
+      });
+  }
   function loadKb() {
     views.kb.innerHTML =
       '<div class="view-head"><div><h2>Knowledge Base</h2><div class="vh-sub">Sources + wiki · live search</div></div></div>'
+      + '<div class="kb-ingestbar"><input id="kbIngestUrl" class="kb-ingest-url" type="url" placeholder="Paste a link to save — WeChat · Bilibili · YouTube · any article" autocomplete="off"><button type="button" id="kbIngestGo" class="kb-ingest-go">Save</button><span id="kbIngestStatus" class="kb-ingest-status"></span></div>'
       + '<div class="kb-searchbar"><input id="kbSearch" class="kb-search" type="text" placeholder="Search your knowledge base…" autocomplete="off"></div>'
       + '<div class="kb-body"><div id="kbList" class="kb-list"></div><div id="kbReader" class="kb-reader"></div></div>';
     var s = document.getElementById('kbSearch');
@@ -2693,6 +2766,10 @@ if ('serviceWorker' in navigator) {
       if (kbSearchTimer) clearTimeout(kbSearchTimer);
       kbSearchTimer = setTimeout(loadKbList, 200);
     });
+    var go = document.getElementById('kbIngestGo');
+    if (go) go.addEventListener('click', kbIngestSubmit);
+    var u = document.getElementById('kbIngestUrl');
+    if (u) u.addEventListener('keydown', function (e) { if (e.key === 'Enter') kbIngestSubmit(); });
     loadKbList();
   }
   window.lisaReloadKb = loadKbList;
