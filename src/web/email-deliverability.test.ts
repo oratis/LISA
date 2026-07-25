@@ -103,25 +103,23 @@ describe("deliverability — fails open (the property that matters)", () => {
   });
 
   test("a slow resolver admits the address rather than holding up sign-in", async () => {
-    // A releasable gate stands in for a hung resolver: it blocks past the
-    // timeout, then we drain it so no promise outlives the assertion (a
-    // never-settling promise trips node:test's pending-work detector on a
-    // slow CI event loop — the flake this replaced).
-    let release!: () => void;
-    const gate = new Promise<void>((r) => { release = r; });
-    const slow = () => gate.then(() => [] as unknown[]);
+    // The resolver settles well AFTER the timeout, so checkDeliverable must
+    // return on the timeout (fast) and not wait for it. The stub genuinely
+    // settles (rather than hanging), and the test outlasts it, so no promise is
+    // left pending at teardown — a hung promise trips node:test's leak detector
+    // on node 22's stricter event loop (the flake this replaced).
+    const RESOLVER_MS = 120;
+    const slow = () => new Promise<unknown[]>((r) => { setTimeout(() => r([]), RESOLVER_MS); });
     const started = Date.now();
     const v = await checkDeliverable("someone@example.com", {
       resolveMx: slow,
       resolve4: slow,
-      timeoutMs: 50,
+      timeoutMs: 30,
     });
     assert.deepEqual(v, { ok: true });
-    assert.ok(Date.now() - started < 1000, "must not wait for the hung lookup");
-    release();
-    // Flush a full macrotask so the abandoned lookup fully unwinds (the
-    // `decided` guard stops it after resolveMx, so this settles promptly).
-    await new Promise((r) => setImmediate(r));
+    assert.ok(Date.now() - started < RESOLVER_MS, "must return on the timeout, not wait for the resolver");
+    // Outlast the resolver so the abandoned lookup unwinds before teardown.
+    await new Promise((r) => setTimeout(r, RESOLVER_MS + 60));
   });
 
   test("a resolver that throws synchronously still admits", async () => {
