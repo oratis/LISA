@@ -59,6 +59,14 @@ export const ACCOUNT_HTML = `<!doctype html>
     <button data-pack="20"><span>$22.00 credits (+10%) · Tier 2</span><b>$19.99</b></button>
   </div>
 
+  <h2>Your Mac</h2>
+  <div class="row" style="display:block; font-size: 13px; color: #8a93a5;">
+    Cloud Lisa carries her soul, memory, knowledge and chat. Terminal control,
+    screen sense and local dispatch live on your own machine — by design.
+    Pair the Mac app to bring them into this account (identity bridge, coming
+    soon). <a href="https://meetlisa.ai/install" style="color:#5b8cff">Get the Mac app →</a>
+  </div>
+
   <button class="quiet" id="logout">Sign out</button>
   <div class="note">Buying in the iOS app works too — credits roam with the account either way.</div>
 </div>

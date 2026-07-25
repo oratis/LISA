@@ -45,7 +45,7 @@ import { stripeConfig, verifyStripeSignature, classifyStripeEvent, createCheckou
 import { ACCOUNT_HTML } from "./account-page.js";
 import { handleGateway } from "./gateway.js";
 import { readCappedText, BodyTooLargeError, CTRL_BODY_LIMIT } from "./http-body.js";
-import { preflightLimits, ipRateOk } from "../billing/limits.js";
+import { preflightLimits, ipRateOk, killSwitchOn, globalSpendExceeded } from "../billing/limits.js";
 import { acquireTurnLease, releaseTurnLease, startLeaseRenewal } from "../cloud/turn-lease.js";
 import { ROOM_HTML } from "./room.js";
 import { MAIN_HTML } from "./lisa-html.js";
@@ -111,6 +111,7 @@ import { requestEmailOtp, verifyEmailOtp, OTP_TTL_MS } from "./otp.js";
 import { checkDeliverable } from "./email-deliverability.js";
 import { sendVerificationEmail, sendSignInCodeEmail } from "./mailer.js";
 import { startBirthOnce } from "./birth-hub.js";
+import { sweepToken, sweepUserAutonomy } from "./autonomy-sweep.js";
 import { turnstileConfig, verifyTurnstile } from "./turnstile.js";
 import { isDisposableEmail } from "./email-domains.js";
 import { readBalance, creditPurchase } from "../billing/quota.js";
@@ -456,6 +457,14 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       try {
         const { isBorn } = await import("../soul/store.js");
         if (await isBorn()) return; // reads inside the per-uid scope
+        // Billing floor (S4 review): birth ignites an LLM dream outside the
+        // metered turn path, so it bows to the same global kill switch + $200/day
+        // cap as autonomy. Paused ⇒ defer; the soul is born on a later login once
+        // billing resumes (chat meanwhile runs with the bare prompt).
+        if (killSwitchOn() || globalSpendExceeded()) {
+          console.error(`[accounts] birth deferred for ${uid}: billing paused (kill switch or daily cap)`);
+          return;
+        }
         const { birth } = await import("../soul/birth.js");
         console.error(`[accounts] birthing a soul for ${uid}…`);
         await startBirthOnce(uid, (emit) => birth({ model: opts.model, onStep: emit })).promise;
@@ -1336,6 +1345,45 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         }
         res.writeHead(500, { "content-type": "text/plain" });
         res.end("account operation failed");
+      }
+      return;
+    }
+
+    // ── Per-uid autonomy sweep (S4; pre-gate — Cloud Scheduler is the caller,
+    // authenticated by the LISA_SWEEP_TOKEN bearer secret). Cloud-only and
+    // default-OFF without the env. Each recently-active, due tenant gets one
+    // reflection tick inside its own home scope; tier gates the cadence.
+    if (req.method === "POST" && url === "/internal/autonomy/sweep") {
+      const secret = sweepToken();
+      if (!cloud || !secret) {
+        res.writeHead(404, { "content-type": "text/plain" });
+        res.end("not available");
+        return;
+      }
+      const presented = (req.headers.authorization ?? "").toString().replace(/^Bearer\s+/i, "").trim();
+      if (!presented || !timingSafeEqualStr(presented, secret)) {
+        res.writeHead(401, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "unauthorized" }));
+        return;
+      }
+      const body = await readJsonBody(req, res);
+      if (!body) return; // 413 already sent
+      const maxRuns = typeof body.maxRuns === "number" && body.maxRuns > 0 ? Math.floor(body.maxRuns) : undefined;
+      try {
+        const report = await sweepUserAutonomy({
+          ...(opts.model ? { model: opts.model } : {}),
+          ...(maxRuns !== undefined ? { maxRuns } : {}),
+        });
+        console.error(`[sweep] scanned ${report.scanned} active accounts, reflected ${report.ran}`);
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify(report));
+      } catch (e) {
+        // A sweep-wide failure (e.g. the accounts store is unreadable) must
+        // answer the scheduler cleanly rather than hang the request — per-uid
+        // failures are already absorbed inside sweepUserAutonomy. (S4 review)
+        console.error(`[sweep] failed: ${(e as Error).message}`);
+        res.writeHead(500, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "sweep_failed" }));
       }
       return;
     }

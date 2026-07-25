@@ -5,6 +5,7 @@ import { DEFAULT_MODEL } from "./llm.js";
 import { appendMemory, type MemoryStore } from "./memory/store.js";
 import { reflectionsDir } from "./paths.js";
 import { providerForModel } from "./providers/registry.js";
+import type { ProviderUsage } from "./providers/types.js";
 import { createSkill, getSkill, patchSkill } from "./skills/manager.js";
 import { withSoulCaller } from "./soul/git.js";
 import { recordAutonomyRun } from "./autonomy/runs.js";
@@ -99,6 +100,10 @@ export interface ReflectionResult {
   /** True when a substantial session produced 0 operations (an observability
    *  signal, not an error — see detectUnderReflection). */
   underReflected?: boolean;
+  /** Token usage for this pass (reflector call + any retry), so a cloud caller
+   *  (the autonomy sweep) can meter the spend against the global cap. Absent on
+   *  the too-short early return, which makes no provider call. */
+  usage?: ProviderUsage;
 }
 
 const REFLECTOR_RETRY_SUFFIX = `\n\nCRITICAL: your previous output could not be parsed. Output ONLY a single valid JSON object matching the schema — no prose, no markdown code fence, nothing before or after the JSON.`;
@@ -253,6 +258,7 @@ async function reflectOnSessionInner(opts: {
         skipped: [`raw: ${raw.slice(0, 200)}`],
         raw,
         malformed: true,
+        usage: { inputTokens: inTok, outputTokens: outTok, cacheReadTokens: 0, cacheWriteTokens: 0 },
       };
     }
   }
@@ -418,7 +424,14 @@ async function reflectOnSessionInner(opts: {
     note: underReflected ? "underreflected" : undefined,
   });
 
-  return { summary: payload.summary, applied, skipped, raw, underReflected };
+  return {
+    summary: payload.summary,
+    applied,
+    skipped,
+    raw,
+    underReflected,
+    usage: { inputTokens: inTok, outputTokens: outTok, cacheReadTokens: 0, cacheWriteTokens: 0 },
+  };
 }
 
 /**
