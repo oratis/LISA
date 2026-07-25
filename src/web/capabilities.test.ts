@@ -37,6 +37,7 @@ describe("cloud route capability boundary", () => {
       "/api/devices",
       "/api/pair/start",
       "/api/plans",
+      "/api/plans/select",
       "/api/mail/connect",
       "/api/vision/capture",
       "/api/sense/recent",

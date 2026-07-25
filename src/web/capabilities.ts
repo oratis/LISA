@@ -30,6 +30,7 @@ const CLOUD_DENIED_ROUTE_PREFIXES = [
   "/api/dispatch/",
   "/api/mail/",
   "/api/pair/",
+  "/api/plans/",
   "/api/screen-advisor/",
   "/api/sense/",
   "/api/vision/",
