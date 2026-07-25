@@ -277,6 +277,20 @@ async function readJsonBody(
   res: http.ServerResponse,
   limitBytes: number = CTRL_BODY_LIMIT,
 ): Promise<Record<string, unknown> | null> {
+  // CSRF guard. A cross-site request can only reach a state-changing endpoint
+  // via a "simple" form POST (Content-Type text/plain / urlencoded / multipart);
+  // setting application/json cross-origin triggers a CORS preflight this server
+  // has no headers to satisfy, so it never arrives. Requiring application/json
+  // therefore blocks the enctype=text/plain login-CSRF (session fixation on the
+  // auth routes) while every real client is unaffected — web, iOS and the CLI
+  // all send application/json. (The Stripe webhook reads the raw body directly,
+  // not through here, so its signature path is untouched.)
+  const ctype = String(req.headers["content-type"] ?? "").toLowerCase();
+  if (!ctype.includes("application/json")) {
+    res.writeHead(415, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "unsupported_media_type" }));
+    return null;
+  }
   let body: string;
   try {
     body = await readCappedText(req, limitBytes);

@@ -79,11 +79,11 @@ async function birthInner(opts: BirthOptions): Promise<void> {
   // 1. Seed
   await onStep({ step: "seed", detail: "rolling the dice…" });
   const seed = generateSeed();
-  await writeSeed(seed);
-  // Initialize the soul git repo now that the seed + dirs exist. This makes
-  // the initial commit capture "she has been seeded but not yet shaped",
-  // and every subsequent write gets its own commit attributed to "birth".
-  await initSoulRepo();
+  // seed.json + the git repo are written LAST (step 5). seed.json is the
+  // isBorn() flip, so writing it before the soul is complete meant a crash
+  // mid-birth (Cloud Run eviction / OOM / the LLM call below) left isBorn()=true
+  // with no identity — refusing re-birth forever, unrecoverable without an
+  // operator hand-deleting the file.
   await onStep({
     step: "seed",
     detail: `born ${seed.bornAt} on host:${seed.bornOn.slice(0, 8)} · big5(O${(seed.bigFive.openness * 100) | 0} C${(seed.bigFive.conscientiousness * 100) | 0} E${(seed.bigFive.extraversion * 100) | 0} A${(seed.bigFive.agreeableness * 100) | 0} N${(seed.bigFive.neuroticism * 100) | 0})`,
@@ -157,6 +157,15 @@ async function birthInner(opts: BirthOptions): Promise<void> {
   // 4. Initial emotions + lock
   await writeEmotions({ ...DEFAULT_EMOTIONS, updatedAt: new Date().toISOString() });
   await saveLock(await recomputeLock());
+
+  // 5. Flip isBorn() LAST. seed.json is the born marker and atomicWrite is
+  // tmp+rename, so the transition is atomic — a crash any time before here
+  // leaves isBorn()=false and the birth simply re-runs (the writes above are
+  // overwritten). Then init the git repo, whose `add .` + initial commit
+  // snapshots the now-complete soul in one go (the per-write commitSoulChange
+  // calls above no-op while there is no .git).
+  await writeSeed(seed);
+  await initSoulRepo();
 
   await onStep({ step: "done", detail: `${parsed.name} is alive.` });
 }
