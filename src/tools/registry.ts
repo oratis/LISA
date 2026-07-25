@@ -44,7 +44,7 @@ import { webFetchTool } from "./web_fetch.js";
 import { webSearchTool } from "./web_search.js";
 import { takoapiTool } from "./takoapi.js";
 import { writeTool } from "./write.js";
-import { kbTools } from "../kb/tool.js";
+import { kbTools, restrictKbIngestToWatchlist } from "../kb/tool.js";
 
 export interface ToolRegistryOptions {
   includeVoice?: boolean;
@@ -134,6 +134,7 @@ export const READ_ONLY_TOOL_NAMES = new Set([
   "kb_search",
   "kb_read",
   "kb_list",
+  "kb_links",
 ]);
 
 export function readOnlySubset(tools: ToolDefinition[]): ToolDefinition[] {
@@ -175,7 +176,12 @@ export const AUTONOMOUS_BLOCKED_TOOL_NAMES = new Set([
 
 export function autonomousSubset(tools: ToolDefinition[]): ToolDefinition[] {
   if (process.env.LISA_AUTONOMOUS_FULL_TOOLS === "1") return tools;
-  return tools.filter((t) => !AUTONOMOUS_BLOCKED_TOOL_NAMES.has(t.name));
+  return tools
+    .filter((t) => !AUTONOMOUS_BLOCKED_TOOL_NAMES.has(t.name))
+    // kb_ingest stays available to unattended runs, but only for domains on
+    // the user's feeds.json watchlist (D3) — an injected prompt can't make an
+    // idle run pull an arbitrary URL into the KB.
+    .map(restrictKbIngestToWatchlist);
 }
 
 /**
@@ -203,6 +209,11 @@ export const REMOTE_BLOCKED_TOOL_NAMES = new Set([
   // exactly where Lisa tends the wiki (kb_add/kb_write are path-jailed to ~/.lisa/kb).
   "kb_add",
   "kb_write",
+  // kb_ingest additionally FETCHES a remote URL of the sender's choosing before
+  // writing — doubly off-limits for remote surfaces. Deliberately NOT
+  // autonomous-blocked: K-I constrains autonomous ingestion to the feeds.json
+  // domain watchlist instead of a blanket ban.
+  "kb_ingest",
 ]);
 
 export function remoteSafeSubset(tools: ToolDefinition[]): ToolDefinition[] {

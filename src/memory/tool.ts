@@ -24,6 +24,9 @@ export const memoryTool: ToolDefinition<MemoryInput, string> = {
     "`user` (durable preferences about the human you assist). " +
     "Actions: `read`, `append` (adds a bullet), `replace` (exact-string edit), `remove` (drop lines containing a fragment). " +
     "Memory is appended to the system prompt at the start of each session — keep it terse, durable, non-obvious. " +
+    "Memory is only a few KB: don't put knowledge itself in here. Save substance to the knowledge base " +
+    "(kb_add / kb_write) and store a `[[kb:slug]]` pointer instead — pointers show their page title in " +
+    "your prompt automatically, and the full page is one kb_read away. " +
     "Do NOT store secrets or sensitive personal data.",
   inputSchema: {
     type: "object",

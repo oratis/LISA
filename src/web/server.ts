@@ -243,6 +243,11 @@ function presentedToken(req: http.IncomingMessage, url: string): string | null {
 // for a shared NAT / office egress IP doing normal signups + retries.
 const AUTH_IP_LIMIT = 20;
 const AUTH_IP_WINDOW_MS = 10 * 60_000;
+// KB ingest does 2-3 outbound fetches + a yt-dlp subprocess per call, so it is a
+// far heavier route than the auth ones — a tighter per-IP ceiling on the cloud
+// edition (loopback Mac is exempt) keeps it from becoming an amplifier / DoS.
+const KB_INGEST_IP_LIMIT = 20;
+const KB_INGEST_WINDOW_MS = 5 * 60_000;
 
 /**
  * Best-effort client IP. Behind Cloud Run the socket peer is the front end, so
@@ -623,6 +628,37 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // Catch a restart that happens after the target hour (don't wait 30m).
   const mailKick = setTimeout(() => void runMailDigest(false), 20_000);
   if (mailKick.unref) mailKick.unref();
+
+  // ── KB feeds brief (daily) ──────────────────────────────────────────
+  // Same shape as the mail digest: 30-min poll + 20s restart catch-up.
+  // Fully inert until the user creates ~/.lisa/kb/feeds.json with feeds
+  // (D4: file existence IS the consent; no separate signal).
+  let kbBriefRunning = false;
+  const runKbBrief = async (force: boolean): Promise<boolean> => {
+    if (kbBriefRunning) return false;
+    kbBriefRunning = true;
+    try {
+      const { runDailyBrief } = await import("../kb/feeds/service.js");
+      const result = await runDailyBrief({ force });
+      if (!result) return false;
+      broadcast({ type: "kb_brief_update", date: result.brief.date, total: result.brief.total, at: new Date().toISOString() });
+      pushBridge.onKbBrief(result.text);
+      if (!force) {
+        broadcast({ type: "idle_message", text: result.text, at: new Date().toISOString(), source: "kb" });
+      }
+      console.error(`[kb-brief] ${result.brief.date}: ${result.brief.total} item(s) · ${result.brief.ingested.length} ingested`);
+      return true;
+    } catch (err) {
+      console.error(`[kb-brief] failed: ${(err as Error).message}`);
+      return false;
+    } finally {
+      kbBriefRunning = false;
+    }
+  };
+  const kbBriefTimer = setInterval(() => void runKbBrief(false), 30 * 60_000);
+  if (kbBriefTimer.unref) kbBriefTimer.unref();
+  const kbBriefKick = setTimeout(() => void runKbBrief(false), 20_000);
+  if (kbBriefKick.unref) kbBriefKick.unref();
 
   // ── Important-mail alerts (intraday) ────────────────────────────────
   // Every LISA_MAIL_POLL_MINUTES (default 30; 0 disables), incrementally read
@@ -2782,6 +2818,78 @@ self.addEventListener('fetch', (event) => {
       const entry = await addSource({ title, body: content, tags: payload.tags, origin: payload.origin || "chat" });
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, entry: { layer: entry.layer, slug: entry.slug, title: entry.title } }));
+      return;
+    }
+    // Latest daily brief (K-H) — the feeds/<date>.json written for the UI.
+    if (req.method === "GET" && url === "/api/kb/brief") {
+      const { latestBriefJson } = await import("../kb/feeds/service.js");
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ brief: await latestBriefJson() }));
+      return;
+    }
+    // Link ingestion (PLAN_KNOWLEDGE_BASE_v2.0 K-G). Body shaped so a future
+    // share-sheet client can POST it directly: {url, title?, tags?, force?}.
+    if (req.method === "POST" && url === "/api/kb/ingest") {
+      // Cloud edition: rate-limit this heavy route so an authenticated caller
+      // can't loop it into an outbound-request amplifier / subprocess DoS. The
+      // single-user loopback (Mac) edition is exempt.
+      if (cloud && !ipRateOk(`kb-ingest:${clientIp(req, remoteAddr)}`, KB_INGEST_IP_LIMIT, KB_INGEST_WINDOW_MS)) {
+        res.writeHead(429, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: "rate_limited", retryAfterSec: Math.ceil(KB_INGEST_WINDOW_MS / 1000) }));
+        return;
+      }
+      let body: string;
+      try {
+        body = await readCappedText(req, CTRL_BODY_LIMIT);
+      } catch (err) {
+        if (err instanceof BodyTooLargeError) {
+          res.writeHead(413, { "content-type": "text/plain" });
+          res.end("payload too large");
+          return;
+        }
+        throw err;
+      }
+      let payload: { url?: string; title?: string; tags?: string[]; force?: boolean };
+      try {
+        payload = JSON.parse(body || "{}");
+      } catch {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("bad json");
+        return;
+      }
+      const target = (payload.url ?? "").trim();
+      if (!target) {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("missing url");
+        return;
+      }
+      // Guard the tag shape — a non-array / non-string `tags` shouldn't reach ingest.
+      const tags = Array.isArray(payload.tags)
+        ? payload.tags.filter((t): t is string => typeof t === "string")
+        : undefined;
+      try {
+        const { ingestUrl } = await import("../kb/ingest/index.js");
+        const result = await ingestUrl(target, {
+          title: payload.title,
+          tags,
+          force: payload.force === true,
+        });
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            ok: true,
+            deduped: result.deduped,
+            via: result.via,
+            entry: { layer: result.entry.layer, slug: result.entry.slug, title: result.entry.title },
+            transcript: result.entry.extra?.transcript,
+          }),
+        );
+      } catch (err) {
+        // Ingest errors are user-actionable (verification page, paywall, bad
+        // content-type) — surface the message rather than a generic 500.
+        res.writeHead(422, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: (err as Error).message ?? "ingest failed" }));
+      }
       return;
     }
     if (req.method === "POST" && url === "/api/kb/remove") {

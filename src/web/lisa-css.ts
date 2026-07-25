@@ -1132,6 +1132,28 @@ export const MAIN_CSS = `  :root {
     .kb-list { width: auto; border-right: 0; border-bottom: 1px solid var(--border); max-height: 45%; }
   }
 
+  /* ── KB link ingest: paste bar (Knowledge view) + chat-bubble chip ── */
+  .kb-ingestbar { display: flex; align-items: center; gap: 8px; padding: 0 0 10px; flex-wrap: wrap; }
+  .kb-ingest-url {
+    flex: 1; min-width: 220px; font-family: inherit; font-size: 12.5px; padding: 8px 11px;
+    border-radius: 9px; border: 1px solid var(--border); background: var(--bg-card); color: var(--fg); outline: none;
+  }
+  .kb-ingest-url:focus { border-color: var(--accent); }
+  .kb-ingest-go {
+    font-family: inherit; cursor: pointer; font-size: 12.5px; font-weight: 700;
+    padding: 8px 14px; border-radius: 9px; border: 0; background: var(--accent); color: #04121f;
+  }
+  .kb-ingest-go:disabled { opacity: 0.45; cursor: default; }
+  .kb-ingest-status { font-size: 11.5px; color: var(--fg-3); }
+  .kb-ingest-status.err { color: #e0555f; }
+  .kb-ingest-chip { text-align: right; margin-top: 2px; }
+  .kb-ingest-btn {
+    font-family: inherit; cursor: pointer; font-size: 11px; padding: 4px 10px;
+    border-radius: 999px; border: 1px solid var(--border); background: transparent; color: var(--fg-3);
+  }
+  .kb-ingest-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .kb-ingest-btn:disabled { cursor: default; color: var(--fg-3); }
+
   /* ── KB capture: select-mode highlight + floating bar + toast ── */
   .kb-selecting .msg { cursor: pointer; }
   .kb-selecting .msg:hover { background: rgba(255,255,255,0.04); border-radius: 6px; }

@@ -332,6 +332,12 @@ LISA has a built-in **personal knowledge base** modeled on [Andrej Karpathy's 3-
 - **She tends it on her own.** During idle reflection she distills memory + journal into wiki pages and keeps cross-references consistent — Karpathy's "you feed sources, the system builds itself," but self-driven.
 - **Web Knowledge view.** A Knowledge tab with live search, browse, and read over both layers.
 
+v2.0 turns the store into a **knowledge system that grows on its own** ([docs/PLAN_KNOWLEDGE_BASE_v2.0.md](docs/PLAN_KNOWLEDGE_BASE_v2.0.md)):
+
+- **Save any link.** Paste a URL in the Knowledge view, tap 存入知识库 under a chat message, run `lisa kb add <url>`, or let her call `kb_ingest` — a zero-dependency readability + HTML→Markdown pipeline captures the page with provenance frontmatter (url · site · author · published), dedupes by canonical URL, and never fetches private/loopback hosts. Site adapters handle **WeChat articles** (verification-page aware), **Bilibili** and **YouTube** (metadata + subtitles, degrading gracefully to metadata-only — a missing transcript is never a failure).
+- **Daily brief.** Put RSS/Atom feeds in `~/.lisa/kb/feeds.json` and every morning she sweeps them incrementally, classifies the new items, ranks them **against you** (watchlist weight × importance × overlap with your wiki and memory), full-text-ingests the top 3, and delivers a brief to chat + push — also written into `sources/` so it's searchable and distillable. No feeds file = the whole capability is inert.
+- **A real link graph.** `[[slug]]` links are parsed into an actual graph — backlinks, hubs, orphans, broken links — and `index.md` becomes a ranked map-of-content. Memory stays tiny by holding `[[kb:slug]]` pointers whose titles are inlined into her prompt; ingested web content is fenced as data when she reads it, and autonomous ingestion is limited to your feeds watchlist.
+
 ## Mail — a mailbox she watches
 
 Connect a **read-only** mailbox and Lisa surfaces a classified daily digest — what needs you, what's waiting, what's noise — instead of you scanning an inbox. IMAP + app-password, or **Gmail via OAuth**. It's **off until you grant it** (`lisa consent grant mail`) and never sends, deletes, or modifies mail (read-only in v1).
@@ -467,7 +473,7 @@ On Linux, `lisa heartbeat install` prints a cron line for you to add to `crontab
 | `mcp` | Manage MCP server connections (list / add / remove) |
 | `skill_manage` | CRUD on `~/.lisa/skills/` |
 | `memory` `memory_search` | Memory CRUD + TF-IDF search across all past sessions |
-| `kb_search` `kb_read` `kb_list` `kb_add` `kb_write` | Personal knowledge base — search + read/list, add a source, write/maintain a wiki page |
+| `kb_search` `kb_read` `kb_list` `kb_links` `kb_add` `kb_write` `kb_ingest` | Personal knowledge base — search + read/list, explore the link graph, add a source, write/maintain a wiki page, ingest a URL (WeChat / Bilibili / YouTube / any article) |
 | `set_mood` | Switch her visible portrait to one of 114 moods |
 | `soul_patch` `soul_journal` `soul_feel` `soul_read` | Her soul-editing tools (hers alone) |
 | `soul_history` `soul_diff` | Read the git-backed history of her own soul (every change committed with attribution) |
@@ -589,7 +595,9 @@ until you grant it. See `lisa consent list`.
 
 ```json
 { "tasks": [
-  { "name": "evening-wrap", "prompt": "Look at git status across my projects. Anything worth committing?" }
+  { "name": "evening-wrap", "prompt": "Look at git status across my projects. Anything worth committing?" },
+  { "name": "weekly-review", "schedule": "sunday",
+    "prompt": "Read the last 7 daily briefs (kb_search 'brief') and this week's new sources (kb_list sources). Write wiki/weekly-<date>: what mattered, what connects to existing pages, what I should read in full. Cross-link everything you mention." }
 ] }
 ```
 

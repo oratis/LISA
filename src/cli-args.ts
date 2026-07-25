@@ -41,6 +41,7 @@ export interface ParsedArgs {
     | "agents"
     | "pair"
     | "mail"
+    | "kb"
     | "login"
     | "logout"
     | "billing";
@@ -67,7 +68,7 @@ const RAW_SUBCOMMANDS = new Set(["heartbeat", "autostart"]);
  * global flags (`mail connect --host/--port/--provider …`), which would
  * otherwise be swallowed as global settings and never reach the handler.
  */
-const PASSTHROUGH_SUBCOMMANDS = new Set(["mail"]);
+const PASSTHROUGH_SUBCOMMANDS = new Set(["mail", "kb"]);
 
 export function parseArgs(argv: string[]): ParsedArgs {
   const out: ParsedArgs = {
@@ -194,6 +195,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
       first === "agents" ||
       first === "pair" ||
       first === "mail" ||
+      first === "kb" ||
       first === "login" ||
       first === "logout" ||
       first === "billing"
