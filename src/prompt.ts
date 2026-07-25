@@ -10,7 +10,11 @@ import { kbIndexFile, kbSchemaFile } from "./kb/paths.js";
 import { lisaHome, memoryDir, skillsDir } from "./paths.js";
 import { pathExists } from "./fs-utils.js";
 import { availableMoodSlugs } from "./tools/set_mood.js";
-import { isBorn, readSoulSummary } from "./soul/store.js";
+import {
+  effectiveDesireIntensity,
+  isBorn,
+  readSoulSummary,
+} from "./soul/store.js";
 import {
   soulConstitutionFile,
   soulDesiresDir,
@@ -135,7 +139,9 @@ export async function buildSystemPromptSnapshot(): Promise<PromptSnapshot> {
         `## Things you want\n\n${soul.desires
           .map(
             (d) =>
-              `- ${d.what}${d.actionable ? " *(heartbeat-active)*" : ""} — ${d.why}`,
+              `- ${d.what}${d.actionable ? " *(heartbeat-active)*" : ""} ` +
+              `(strength ${effectiveDesireIntensity(d).toFixed(2)}, ` +
+              `horizon ${d.horizon ?? "season"}) — ${d.why}`,
           )
           .join("\n")}`,
       );
@@ -209,6 +215,10 @@ function formatEmotionsForPrompt(values: Record<string, number>): string {
  */
 export async function getPromptFingerprint(): Promise<string> {
   const parts: string[] = [];
+  // Desire strength is partly a function of wall time, not only file mtimes.
+  // A daily bucket makes a long-lived chat rebuild the prompt as wants cool,
+  // without churning it every second.
+  parts.push(`desire-clock-day:${Math.floor(Date.now() / 86_400_000)}`);
   // Single files
   for (const p of [
     soulNameFile(),

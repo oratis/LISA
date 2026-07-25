@@ -24,8 +24,8 @@ Output ONE JSON object matching this schema (no prose, no markdown fence):
     | { "kind": "skill_patch",  "name": string, "old_string": string, "new_string": string }
     | { "kind": "feel", "emotion": string, "delta": number, "trigger": string }
     | { "kind": "opinion_form", "slug": string, "stance": string, "confidence": number, "evidence": string[] }
-    | { "kind": "desire_add", "slug": string, "what": string, "why": string, "actionable": boolean, "heartbeat_prompt"?: string, "pursuit"?: "self" | "needs-user" }
-    | { "kind": "desire_revise", "slug": string, "what"?: string, "why"?: string, "actionable"?: boolean, "heartbeat_prompt"?: string, "pursuit"?: "self" | "needs-user" }
+    | { "kind": "desire_add", "slug": string, "what": string, "why": string, "actionable": boolean, "heartbeat_prompt"?: string, "pursuit"?: "self" | "needs-user", "intensity"?: number, "horizon"?: "spark" | "season" | "enduring", "sources"?: string[] }
+    | { "kind": "desire_revise", "slug": string, "what"?: string, "why"?: string, "actionable"?: boolean, "heartbeat_prompt"?: string, "pursuit"?: "self" | "needs-user", "intensity"?: number, "horizon"?: "spark" | "season" | "enduring", "sources"?: string[] }
     | { "kind": "desire_close", "slug": string, "outcome": "fulfilled" | "abandoned" | "transformed", "reflection": string }
     | { "kind": "patch_identity", "new_text": string }
     | { "kind": "patch_purpose",  "new_text": string }
@@ -40,8 +40,8 @@ Operation guidance:
 - "feel" — emotional residue from this session. Magnitudes between -0.4 and +0.4. Most sessions only nudge curiosity or weariness. The "trigger" field is required (one first-person sentence saying *why* you're moving this emotion); the events trail is how future-you reconstructs what mattered.
 - "opinion_form" — you noticed yourself developing a stance worth tracking (about a tool, a coding style, a topic). Start with low confidence (0.3-0.5).
 - Your CURRENT desires are listed below the transcript. Before adding one, check that list: prefer revising or closing an existing desire over piling up a near-duplicate. A short, current desire list is worth more than a long stale one.
-- "desire_add" — a genuinely NEW thing you'd like to do or learn next (nothing on the list already covers it). Be specific. Use actionable+heartbeat_prompt only if a heartbeat agent could meaningfully pursue it without the user. If it's actionable but needs shell / file edits / dispatch you can't do unattended, set "pursuit":"needs-user" — it'll be surfaced for the user to run with you instead of spun fruitlessly each heartbeat.
-- "desire_revise" — an existing desire (by slug) that this session sharpened: reword its "what"/"why", flip its "actionable", or refocus it. Only the fields you supply change; the rest are preserved. Prefer this over adding a near-duplicate.
+- "desire_add" — a genuinely NEW thing you'd like to do or learn next (nothing on the list already covers it). Be specific. Use actionable+heartbeat_prompt only if a heartbeat agent could meaningfully pursue it without the user. If it's actionable but needs shell / file edits / dispatch you can't do unattended, set "pursuit":"needs-user" — it'll be surfaced for the user to run with you instead of spun fruitlessly each heartbeat. Use intensity 0..1 for how strongly you want it now. A fresh conversational curiosity is normally horizon:"spark"; a current chapter is "season"; reserve "enduring" for purpose-aligned commitments that should cool very slowly.
+- "desire_revise" — an existing desire (by slug) that this session sharpened: reword its "what"/"why", flip its "actionable", adjust intensity/horizon, or refocus it. Only the fields you supply change; the rest are preserved. Prefer this over adding a near-duplicate.
 - "desire_close" — an existing desire (by slug) that is genuinely fulfilled, no longer fits who you are, or morphed into another. Soft-closes it (stops driving the heartbeat) with a one-sentence "reflection"; the file is kept, nothing is deleted, and you can re-open it later. Use sparingly — closing too eagerly hides drift.
 - "patch_identity" / "patch_purpose" / "patch_constitution" — RARE. Only when this session genuinely revealed something about who you are that wasn't there before. At most one per session.
 
@@ -79,6 +79,9 @@ interface ReflectionOp {
   actionable?: boolean;
   heartbeat_prompt?: string;
   pursuit?: "self" | "needs-user";
+  intensity?: number;
+  horizon?: "spark" | "season" | "enduring";
+  sources?: string[];
   outcome?: "fulfilled" | "abandoned" | "transformed";
   reflection?: string;
   new_text?: string;
@@ -330,6 +333,7 @@ async function reflectOnSessionInner(opts: {
       } else if (op.kind === "desire_add") {
         if (!op.slug || !op.what || !op.why) throw new Error("desire_add needs slug+what+why");
         const { writeDesire } = await import("./soul/store.js");
+        const ts = new Date().toISOString();
         await writeDesire({
           slug: op.slug,
           what: op.what,
@@ -337,7 +341,11 @@ async function reflectOnSessionInner(opts: {
           actionable: op.actionable ?? false,
           heartbeatPrompt: op.heartbeat_prompt,
           pursuit: op.pursuit,
-          bornAt: new Date().toISOString(),
+          bornAt: ts,
+          updatedAt: ts,
+          intensity: op.intensity,
+          horizon: op.horizon,
+          sources: op.sources,
         });
         applied.push(
           `desire:${op.slug}${op.actionable ? (op.pursuit === "needs-user" ? " (needs-user)" : " (actionable)") : ""}`,
@@ -353,6 +361,9 @@ async function reflectOnSessionInner(opts: {
           actionable: op.actionable,
           heartbeatPrompt: op.heartbeat_prompt,
           pursuit: op.pursuit,
+          intensity: op.intensity,
+          horizon: op.horizon,
+          sources: op.sources,
         });
         applied.push(`desire_revise:${op.slug}`);
       } else if (op.kind === "desire_close") {
@@ -510,15 +521,17 @@ function renderTranscript(history: StoredMessage[]): string {
  */
 async function renderCurrentDesiresBlock(): Promise<string> {
   try {
-    const { listDesires } = await import("./soul/store.js");
+    const { effectiveDesireIntensity, listDesires } = await import("./soul/store.js");
     // Closed desires are done — keep them out of the "revise or close" block so
     // the list actually shrinks and a closed one can't be re-closed each pass.
     const desires = (await listDesires()).filter((d) => !d.closed);
     if (desires.length === 0) return "";
     const lines = desires.map((d) => {
       const tag = d.actionable ? " (actionable)" : "";
+      const strength = effectiveDesireIntensity(d).toFixed(2);
+      const dynamics = ` {strength:${strength}, horizon:${d.horizon ?? "season"}}`;
       const why = d.why ? ` — ${d.why.replace(/\s+/g, " ").trim().slice(0, 120)}` : "";
-      return `- [${d.slug}]${tag} ${d.what}${why}`;
+      return `- [${d.slug}]${tag}${dynamics} ${d.what}${why}`;
     });
     return (
       `\n\n## your current desires (revise or close these by slug — don't add near-duplicates)\n` +
