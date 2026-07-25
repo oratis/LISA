@@ -130,16 +130,18 @@ export async function checkDeliverable(
   const resolve4 = opts.resolve4 ?? ((h: string) => dns.resolve4(h));
 
   // A slow resolver must not hold up a sign-in: whoever wins the race, we move
-  // on. `decided` lets the abandoned lookup stop early instead of firing a
-  // second DNS query no one is waiting for (and, in tests, leaving a promise
-  // pending past the assertion).
+  // on. Both sides must SETTLE by the time we return, or a pending promise
+  // outlives the call — harmless in production but flagged by node:test's
+  // leak detector. So the timer promise is settled externally in `finally`
+  // (clearing the timeout alone would leave its promise dangling forever), and
+  // `decided` stops the abandoned lookup from firing a second DNS query.
   const admit = Symbol("timeout");
+  const cancelled = Symbol("cancelled");
   let decided = false;
-  let timerId: ReturnType<typeof setTimeout> | undefined;
-  const timer = new Promise<typeof admit>((r) => {
-    timerId = setTimeout(() => r(admit), timeoutMs);
-    timerId.unref?.();
-  });
+  let settleTimer: (v: typeof admit | typeof cancelled) => void = () => {};
+  const timer = new Promise<typeof admit | typeof cancelled>((r) => (settleTimer = r));
+  const timerId = setTimeout(() => settleTimer(admit), timeoutMs);
+  timerId.unref?.();
 
   try {
     const lookup = (async (): Promise<DeliverabilityVerdict> => {
@@ -167,6 +169,7 @@ export async function checkDeliverable(
     return { ok: true }; // never let this path be the reason a sign-in fails
   } finally {
     decided = true;
-    if (timerId) clearTimeout(timerId);
+    clearTimeout(timerId);
+    settleTimer(cancelled); // settle the timer promise so it can't dangle
   }
 }
