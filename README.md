@@ -560,6 +560,11 @@ LISA_WEB_TOKEN=...                    # required to bind serve --web beyond
 LISA_EDITION=cloud                    # hosted-cloud mode: hides Mac-only surfaces
                                       # (PTY/adopt, local-CLI dispatch, Sense capture).
                                       # Default/unset = "mac" (full local power).
+LISA_PUBLIC_ORIGIN=https://cloud.example.com
+                                      # required in cloud; canonical HTTPS origin for
+                                      # verification and checkout links (never from Host)
+LISA_TRUST_PROXY_HOPS=1               # optional; number of trusted reverse-proxy hops
+                                      # used to resolve rate-limit client IPs from the right
 
 # Mail (Gmail OAuth — app-password providers need no keys)
 LISA_GOOGLE_CLIENT_ID=...             # Google "Desktop app" OAuth client, for `lisa mail connect --provider gmail`

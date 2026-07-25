@@ -113,6 +113,23 @@ export interface DesireEntry {
    */
   closed?: boolean;
   bornAt: string;
+  /**
+   * Deliberately assessed strength at updatedAt, in [0,1]. The effective
+   * strength decays with time according to horizon; missing means 0.6 for
+   * pre-v2 desire files.
+   */
+  intensity?: number;
+  /**
+   * How quickly an unrenewed desire cools:
+   * spark (3d), season (30d), enduring (365d). Missing means season.
+   */
+  horizon?: "spark" | "season" | "enduring";
+  /** Last semantic change. Missing on old files falls back to bornAt. */
+  updatedAt?: string;
+  /** Last deliberate background review, even when the conclusion was no-change. */
+  lastReviewedAt?: string;
+  /** Bounded public http(s) provenance consulted while shaping this desire. */
+  sources?: string[];
 }
 
 export interface SoulSummary {

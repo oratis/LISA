@@ -39,8 +39,21 @@ import { ISLAND_HTML } from "./island.js";
 import { LOGIN_HTML } from "./login.js";
 import { recordUsage, summarizeUsage, setAnomalySink } from "../billing/meter.js";
 import { PRICES_VERSION, tokensAffordable } from "../billing/prices.js";
-import { precheckTurn, debitTurn, quotaStatus } from "../billing/quota.js";
-import { verifyAppleJWS, validateTransaction, creditTransaction, creditExternalTransaction, refundTransaction, IapError } from "../billing/iap.js";
+import {
+  precheckTurn,
+  debitTurn,
+  quotaStatus,
+  BillingStateError,
+} from "../billing/quota.js";
+import {
+  verifyAppleJWS,
+  validateTransaction,
+  creditTransaction,
+  creditExternalTransaction,
+  refundTransaction,
+  IapError,
+  PaymentStateError,
+} from "../billing/iap.js";
 import { stripeConfig, verifyStripeSignature, classifyStripeEvent, createCheckoutSession, sessionIdForPaymentIntent, STRIPE_PACKS } from "../billing/stripe.js";
 import { ACCOUNT_HTML } from "./account-page.js";
 import { handleGateway } from "./gateway.js";
@@ -91,6 +104,7 @@ import {
 } from "./sessions-auth.js";
 import {
   AccountError,
+  AccountStoreError,
   createEmailAccount,
   verifyEmailLogin,
   upsertAppleAccount,
@@ -149,6 +163,17 @@ import {
 import { detectLanHost, buildPairUrl } from "./pairing.js";
 import { TenantEventBus, sameTenant } from "./event-bus.js";
 import { qrSvg } from "./qr-svg.js";
+import { resolveClientIp } from "./client-ip.js";
+import {
+  configuredPublicOrigin,
+  requireCloudPublicOrigin,
+  verificationUrl,
+} from "./public-origin.js";
+import {
+  capabilityProfileForEdition,
+  isCloudDeniedRoute,
+  toolsForCapabilityProfile,
+} from "./capabilities.js";
 import type { ToolDefinition, StoredMessage } from "../types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -241,22 +266,8 @@ const REG_IP_WINDOW_MS = 60 * 60_000;
 const KB_INGEST_IP_LIMIT = 20;
 const KB_INGEST_WINDOW_MS = 5 * 60_000;
 
-/**
- * Best-effort client IP. Behind Cloud Run the socket peer is the front end, so
- * the first `x-forwarded-for` hop is the client — and a client can put anything
- * there. Only used for coarse rate-limit keying, never for authorization.
- */
 function clientIp(req: http.IncomingMessage, remoteAddr: string): string {
-  const xff = req.headers["x-forwarded-for"];
-  const first = (Array.isArray(xff) ? xff[0] : xff)?.split(",")[0]?.trim();
-  return first || remoteAddr || "unknown";
-}
-
-/** The absolute /verify link for a raw token, derived from the request host. */
-function verifyLinkFor(req: http.IncomingMessage, rawToken: string): string {
-  const host = req.headers.host ?? "cloud.meetlisa.ai";
-  const proto = (req.headers["x-forwarded-proto"] as string | undefined) ?? "https";
-  return `${proto}://${host}/verify?token=${rawToken}`;
+  return resolveClientIp(req.headers, remoteAddr);
 }
 
 /**
@@ -365,6 +376,15 @@ async function resumeOrCreateWebSession(model: string): Promise<SessionStore> {
 export async function startWebServer(opts: WebServerOptions): Promise<http.Server> {
   const host = opts.host ?? "127.0.0.1";
   const webToken = process.env.LISA_WEB_TOKEN?.trim() || null;
+  const cloudEdition = isCloud();
+  // Security-sensitive outbound links never derive their origin from Host or
+  // forwarding headers. Cloud startup fails until its canonical HTTPS origin
+  // is configured; local mode has a deterministic loopback fallback.
+  const publicOrigin = cloudEdition
+    ? requireCloudPublicOrigin()
+    : configuredPublicOrigin() ?? `http://localhost:${opts.port}`;
+  const capabilityProfile = capabilityProfileForEdition(cloudEdition ? "cloud" : "mac");
+  const runtimeTools = toolsForCapabilityProfile(opts.tools, capabilityProfile);
   // Account sessions (PLAN_ACCOUNTS_BILLING B1): the signing secret lives in
   // $lisaHome() (auto-created 0600; durable on the cloud's /data mount). Only the
   // cloud edition mints/verifies account sessions today — the Mac edition gains
@@ -854,7 +874,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           }
         }
         const result = await runIdleOnce({
-          tools: opts.tools,
+          tools: runtimeTools,
           cwd: process.cwd(),
           signal: abort.signal,
           model: opts.model,
@@ -1261,7 +1281,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         // levels the free window from $1 to the full $5. Fire-and-forget.
         if (url === "/api/auth/register") {
           const raw = await beginEmailVerification(acct.uid);
-          if (raw) void sendVerificationEmail(acct.email!, verifyLinkFor(req, raw));
+          if (raw) void sendVerificationEmail(acct.email!, verificationUrl(publicOrigin, raw));
         }
         const session = mintSession(acct.uid, sessionSecret, { sv: acct.sessionVersion });
         res.writeHead(200, {
@@ -1401,8 +1421,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         const report = await sweepUserAutonomy({
           ...(opts.model ? { model: opts.model } : {}),
           ...(maxRuns !== undefined ? { maxRuns } : {}),
+          tools: opts.tools,
+          cwd: process.cwd(),
         });
-        console.error(`[sweep] scanned ${report.scanned} active accounts, reflected ${report.ran}`);
+        console.error(
+          `[sweep] scanned ${report.scanned} active accounts, ran ${report.ran} autonomy action(s)`,
+        );
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify(report));
       } catch (e) {
@@ -1449,6 +1473,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ ok: true }));
       } catch (e) {
+        if (e instanceof PaymentStateError || e instanceof BillingStateError) {
+          console.error(`[iap] ASN billing state unavailable: ${e.message}`);
+          res.writeHead(503, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "billing_state_unavailable" }));
+          return;
+        }
         const code = e instanceof IapError ? e.code : "verification_failed";
         console.error(`[iap] ASN rejected: ${code}`);
         res.writeHead(401, { "content-type": "application/json" });
@@ -1645,6 +1675,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ ok: true, creditedMicroUSD: credited, quota: q }));
       } catch (e) {
+        if (e instanceof PaymentStateError || e instanceof BillingStateError) {
+          console.error(`[iap] billing state unavailable: ${e.message}`);
+          res.writeHead(503, { "content-type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: "billing_state_unavailable" }));
+          return;
+        }
         const code = e instanceof IapError ? e.code : "verification_failed";
         // duplicate_transaction answers 200-ok:false so the client still
         // finishes the transaction (it WAS credited once already).
@@ -1679,9 +1715,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const body = await readJsonBody(req, res);
       if (!body) return; // 413 already sent
       const pack = typeof body.pack === "string" ? body.pack : "";
-      const proto = (req.headers["x-forwarded-proto"] as string | undefined) ?? "https";
-      const base = `${proto}://${req.headers.host ?? "cloud.meetlisa.ai"}`;
-      const session = await createCheckoutSession(accountUid, pack, base, scfg);
+      const session = await createCheckoutSession(accountUid, pack, publicOrigin, scfg);
       if (!session) {
         res.writeHead(400, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: "checkout_failed" }));
@@ -1695,15 +1729,22 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     if (req.method === "GET" && url === "/api/billing/quota") {
       // The signed-in account's window/tier/balance — drives the quota bar +
       // paywall in every client (same numbers everywhere, §5.5).
-      const acct = accountUid ? await getAccount(accountUid) : null;
-      if (!acct) {
+      try {
+        const acct = accountUid ? await getAccount(accountUid) : null;
+        if (!acct) {
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(JSON.stringify({ available: false }));
+          return;
+        }
+        const q = await quotaStatus(acct);
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({ available: false }));
-        return;
+        res.end(JSON.stringify({ available: true, ...q }));
+      } catch (err) {
+        if (!(err instanceof BillingStateError || err instanceof AccountStoreError)) throw err;
+        console.error(`[billing] quota unavailable: ${err.message}`);
+        res.writeHead(503, { "content-type": "application/json" });
+        res.end(JSON.stringify({ available: false, error: "billing_state_unavailable" }));
       }
-      const q = await quotaStatus(acct);
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ available: true, ...q }));
       return;
     }
 
@@ -1742,7 +1783,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         return;
       }
       const raw = await beginEmailVerification(acct.uid);
-      const mail = raw ? await sendVerificationEmail(acct.email, verifyLinkFor(req, raw)) : null;
+      const mail = raw ? await sendVerificationEmail(acct.email, verificationUrl(publicOrigin, raw)) : null;
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, sent: mail?.sent ?? false }));
       return;
@@ -1777,6 +1818,18 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         "set-cookie": `lisa_token=; Max-Age=0; HttpOnly; SameSite=Strict; Path=/${isCloud() ? "; Secure" : ""}`,
       });
       res.end(JSON.stringify({ ok: true, removed }));
+      return;
+    }
+
+    // Hosted users never own the machine running this process. Deny local
+    // control-plane and arbitrary-outbound routes server-side before their
+    // handlers run; the client edition descriptor is presentation only.
+    if (cloud && isCloudDeniedRoute(url)) {
+      res.writeHead(403, { "content-type": "application/json" });
+      res.end(JSON.stringify({
+        error: "capability_denied",
+        profile: capabilityProfile,
+      }));
       return;
     }
 
@@ -2437,7 +2490,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       }
       const cwd = typeof payload.cwd === "string" && payload.cwd.startsWith("/") ? payload.cwd : process.cwd();
       // A managed agent doesn't control other agents — drop dispatch/signal.
-      const tools = opts.tools.filter((t) => t.name !== "dispatch_agent" && t.name !== "signal_agent");
+      const tools = runtimeTools.filter((t) => t.name !== "dispatch_agent" && t.name !== "signal_agent");
       const systemPrompt =
         `You are a delegated agent working in ${cwd}, launched by the user through Lisa. ` +
         `Complete the user's task using the available tools, then report what you did concisely. ` +
@@ -3016,7 +3069,7 @@ self.addEventListener('fetch', (event) => {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(
         JSON.stringify({
-          tools: opts.tools.map((t) => ({
+          tools: runtimeTools.map((t) => ({
             name: t.name,
             description: t.description,
           })),
@@ -3326,39 +3379,48 @@ self.addEventListener('fetch', (event) => {
       let quotaBudgetMicroUSD: number | null = null;
       let turnLease: import("../cloud/turn-lease.js").TurnLease | null = "off";
       let stopTurnRenewal: () => void = () => {};
-      const quotaAcct = cloud && accountUid ? await getAccount(accountUid) : null;
-      if (quotaAcct) {
-        // Non-quota guards first (B7): kill switch, global daily cap, per-uid RPM.
-        const limits = preflightLimits(quotaAcct.uid);
-        if (!limits.ok) {
-          res.writeHead(limits.status, { "content-type": "application/json" });
-          res.end(JSON.stringify(limits.body));
-          return;
+      let quotaAcct: Awaited<ReturnType<typeof getAccount>> = null;
+      try {
+        quotaAcct = cloud && accountUid ? await getAccount(accountUid) : null;
+        if (quotaAcct) {
+          // Non-quota guards first (B7): kill switch, global daily cap, per-uid RPM.
+          const limits = preflightLimits(quotaAcct.uid);
+          if (!limits.ok) {
+            res.writeHead(limits.status, { "content-type": "application/json" });
+            res.end(JSON.stringify(limits.body));
+            return;
+          }
+          const pre = await precheckTurn(quotaAcct, opts.model);
+          if (!pre.ok) {
+            res.writeHead(402, { "content-type": "application/json" });
+            res.end(
+              JSON.stringify(
+                pre.error === "quota_exhausted"
+                  ? { error: pre.error, resetAt: pre.resetAt, tier: pre.tier }
+                  : { error: pre.error, tier: pre.tier },
+              ),
+            );
+            return;
+          }
+          quotaBudgetMicroUSD = pre.budgetMicroUSD;
+          // Cross-instance serialization (B9): one metered turn per account at a
+          // time, even with max-instances > 1. No-op ("off") without Firestore.
+          turnLease = await acquireTurnLease(quotaAcct.uid);
+          if (turnLease === null) {
+            res.writeHead(429, { "content-type": "application/json" });
+            res.end(JSON.stringify({ error: "turn_in_progress", retryAfterSec: 15 }));
+            return;
+          }
+          // Chat SSE runs under --timeout 3600, far past the lease TTL — heartbeat
+          // it for the life of the turn so it can't expire under us (#272).
+          stopTurnRenewal = startLeaseRenewal(turnLease);
         }
-        const pre = await precheckTurn(quotaAcct, opts.model);
-        if (!pre.ok) {
-          res.writeHead(402, { "content-type": "application/json" });
-          res.end(
-            JSON.stringify(
-              pre.error === "quota_exhausted"
-                ? { error: pre.error, resetAt: pre.resetAt, tier: pre.tier }
-                : { error: pre.error, tier: pre.tier },
-            ),
-          );
-          return;
-        }
-        quotaBudgetMicroUSD = pre.budgetMicroUSD;
-        // Cross-instance serialization (B9): one metered turn per account at a
-        // time, even with max-instances > 1. No-op ("off") without Firestore.
-        turnLease = await acquireTurnLease(quotaAcct.uid);
-        if (turnLease === null) {
-          res.writeHead(429, { "content-type": "application/json" });
-          res.end(JSON.stringify({ error: "turn_in_progress", retryAfterSec: 15 }));
-          return;
-        }
-        // Chat SSE runs under --timeout 3600, far past the lease TTL — heartbeat
-        // it for the life of the turn so it can't expire under us (#272).
-        stopTurnRenewal = startLeaseRenewal(turnLease);
+      } catch (err) {
+        if (!(err instanceof BillingStateError || err instanceof AccountStoreError)) throw err;
+        console.error(`[billing] chat admission unavailable: ${err.message}`);
+        res.writeHead(503, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "billing_state_unavailable" }));
+        return;
       }
       // User just talked — reset the idle watcher + stamp focus freshness.
       try { getIdleWatcher(60 * 60_000).tick(); } catch {}
@@ -3409,7 +3471,7 @@ self.addEventListener('fetch', (event) => {
           const result = await runAgent({
             provider: getProvider(),
             systemPrompt: fresh.text,
-            tools: opts.tools,
+            tools: runtimeTools,
             toolCtx: {
               cwd: process.cwd(),
               // Abort on server shutdown OR this client disconnecting (Stop).

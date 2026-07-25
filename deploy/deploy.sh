@@ -76,6 +76,11 @@ addenv() { # addenv NAME VALUE
   fi
 }
 addenv LISA_WEB_TOKEN        "${LISA_WEB_TOKEN}"
+addenv LISA_PUBLIC_ORIGIN     "${LISA_PUBLIC_ORIGIN:-https://cloud.meetlisa.ai}"
+# Cloud Run is the single trusted proxy in the default deployment. The resolver
+# walks X-Forwarded-For from the right, so a caller-prepended fake first hop is
+# never treated as the rate-limit identity.
+addenv LISA_TRUST_PROXY_HOPS  "${LISA_TRUST_PROXY_HOPS:-1}"
 addenv LISA_MODEL            "${LISA_MODEL:-}"
 addenv ANTHROPIC_API_KEY     "${ANTHROPIC_API_KEY:-}"
 addenv ZHIPU_API_KEY         "${ZHIPU_API_KEY:-}"
