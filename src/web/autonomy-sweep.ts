@@ -30,6 +30,11 @@ import { listSessionsOnDisk, loadSessionMessages } from "../sessions/list.js";
 import { reflectOnSession } from "../reflect.js";
 import { DEFAULT_MODEL } from "../llm.js";
 import { isBorn } from "../soul/store.js";
+import {
+  runDesireReviewOnce,
+  type DesireReviewRunResult,
+} from "../heartbeat/runner.js";
+import type { ToolDefinition } from "../types.js";
 
 const HOUR_MS = 60 * 60 * 1000;
 export const SWEEP_INTERVALS_MS: Record<QuotaTier, number> = {
@@ -46,7 +51,7 @@ const MAX_SWEEP_RUNS = 100;
 
 export interface SweepOutcome {
   uid: string;
-  action: "reflected" | "skipped";
+  action: "reflected" | "reviewed" | "skipped";
   reason?: string;
 }
 
@@ -65,18 +70,49 @@ function stampFile(): string {
   return path.join(lisaHome(), "autonomy", "last-cloud-sweep.json");
 }
 
-async function readStamp(): Promise<number> {
+interface CloudSweepStamp {
+  at: number;
+  reflected?: {
+    sessionId: string;
+    userMessages: number;
+  };
+}
+
+async function readStamp(): Promise<CloudSweepStamp> {
   try {
-    const parsed = JSON.parse(await fs.readFile(stampFile(), "utf8")) as { at?: number };
-    return typeof parsed.at === "number" ? parsed.at : 0;
+    const parsed = JSON.parse(
+      await fs.readFile(stampFile(), "utf8"),
+    ) as Partial<CloudSweepStamp>;
+    return {
+      at: typeof parsed.at === "number" ? parsed.at : 0,
+      reflected:
+        parsed.reflected &&
+        typeof parsed.reflected.sessionId === "string" &&
+        typeof parsed.reflected.userMessages === "number"
+          ? parsed.reflected
+          : undefined,
+    };
   } catch {
-    return 0;
+    return { at: 0 };
   }
 }
 
-async function writeStamp(at: number): Promise<void> {
+async function writeStamp(stamp: CloudSweepStamp): Promise<void> {
   await fs.mkdir(path.dirname(stampFile()), { recursive: true });
-  await fs.writeFile(stampFile(), JSON.stringify({ at }));
+  await fs.writeFile(stampFile(), JSON.stringify(stamp));
+}
+
+export function conversationNeedsReflection(
+  cursor: CloudSweepStamp["reflected"],
+  sessionId: string,
+  userMessages: number,
+): boolean {
+  return (
+    userMessages > 0 &&
+    (!cursor ||
+      cursor.sessionId !== sessionId ||
+      userMessages > cursor.userMessages)
+  );
 }
 
 /**
@@ -85,7 +121,15 @@ async function writeStamp(at: number): Promise<void> {
  * never blocks the rest.
  */
 export async function sweepUserAutonomy(
-  opts: { model?: string; now?: number; maxRuns?: number } = {},
+  opts: {
+    model?: string;
+    now?: number;
+    maxRuns?: number;
+    tools?: ToolDefinition[];
+    cwd?: string;
+    /** Test seam; production uses the bounded heartbeat implementation. */
+    reviewFn?: typeof runDesireReviewOnce;
+  } = {},
 ): Promise<SweepReport> {
   const now = opts.now ?? Date.now();
   // Clamp to a hard ceiling; NaN/negative collapse to the default. (S4 review)
@@ -109,40 +153,105 @@ export async function sweepUserAutonomy(
       break;
     }
     const outcome = await homeScope.run(homeForUid(acct.uid), () =>
-      sweepOne(acct, now, opts.model),
+      sweepOne(acct, now, opts),
     );
     outcomes.push(outcome);
-    if (outcome.action === "reflected") ran++;
+    if (outcome.action !== "skipped") ran++;
   }
   return { scanned: active.length, ran, outcomes };
 }
 
-async function sweepOne(acct: AccountRecord, now: number, model?: string): Promise<SweepOutcome> {
+async function sweepOne(
+  acct: AccountRecord,
+  now: number,
+  opts: {
+    model?: string;
+    tools?: ToolDefinition[];
+    cwd?: string;
+    reviewFn?: typeof runDesireReviewOnce;
+  },
+): Promise<SweepOutcome> {
   try {
     if (!(await isBorn())) return { uid: acct.uid, action: "skipped", reason: "unborn" };
     const tier = tierFor(acct, await readBalance(), now);
     const interval = SWEEP_INTERVALS_MS[tier];
-    const last = await readStamp();
-    if (last && now - last < interval) {
+    const stamp = await readStamp();
+    if (stamp.at && now - stamp.at < interval) {
       return { uid: acct.uid, action: "skipped", reason: "not_due" };
     }
     const sessions = await listSessionsOnDisk(); // newest first
     const latest = sessions[0];
-    if (!latest) return { uid: acct.uid, action: "skipped", reason: "no_sessions" };
-    const { messages } = await loadSessionMessages(latest.id);
-    if (messages.length < 2) return { uid: acct.uid, action: "skipped", reason: "too_short" };
-    const result = await reflectOnSession({ history: messages, sessionId: latest.id, ...(model ? { model } : {}) });
-    // Stamp AFTER success so a failed reflection retries on the next tick.
-    await writeStamp(now);
-    // Meter the spend (S4 review): autonomy costs the USER nothing (no debit),
-    // but the face cost is still audited (usage.jsonl) and counted against the
-    // global daily cap so a large active cohort can't quietly run the bill away.
-    // recordUsage runs inside this uid's home scope and never throws.
-    if (result.usage) {
-      await recordUsage("autonomy", model ?? DEFAULT_MODEL, result.usage);
+    if (latest) {
+      const { messages } = await loadSessionMessages(latest.id);
+      const userMessages = messages.filter((message) => message.role === "user").length;
+      if (
+        messages.length >= 2 &&
+        conversationNeedsReflection(
+          stamp.reflected,
+          latest.id,
+          userMessages,
+        )
+      ) {
+        const result = await reflectOnSession({
+          history: messages,
+          sessionId: latest.id,
+          ...(opts.model ? { model: opts.model } : {}),
+        });
+        // Stamp AFTER success so a failed reflection retries on the next tick.
+        await writeStamp({
+          at: now,
+          reflected: { sessionId: latest.id, userMessages },
+        });
+        // Meter the spend (S4 review): autonomy costs the USER nothing (no
+        // debit), but face cost is audited and counted against the daily cap.
+        if (result.usage) {
+          await recordUsage(
+            "autonomy",
+            opts.model ?? DEFAULT_MODEL,
+            result.usage,
+          );
+        }
+        return { uid: acct.uid, action: "reflected" };
+      }
     }
-    return { uid: acct.uid, action: "reflected" };
+
+    // At most ONE inference action per account per sweep: new conversation
+    // reflection wins; only an otherwise-idle cadence slot may review a desire.
+    if (opts.tools) {
+      const review = await (opts.reviewFn ?? runDesireReviewOnce)({
+        tools: opts.tools,
+        cwd: opts.cwd ?? process.cwd(),
+        signal: new AbortController().signal,
+        model: opts.model ?? DEFAULT_MODEL,
+        now: new Date(now),
+      });
+      if (review) {
+        await writeStamp({ at: now, reflected: stamp.reflected });
+        await meterReview(opts.model ?? DEFAULT_MODEL, review);
+        return { uid: acct.uid, action: "reviewed" };
+      }
+    }
+
+    if (!latest) {
+      return { uid: acct.uid, action: "skipped", reason: "no_sessions" };
+    }
+    if (latest.messageCount < 2) {
+      return { uid: acct.uid, action: "skipped", reason: "too_short" };
+    }
+    return { uid: acct.uid, action: "skipped", reason: "no_new_content" };
   } catch (e) {
     return { uid: acct.uid, action: "skipped", reason: `error: ${(e as Error).message.slice(0, 120)}` };
   }
+}
+
+async function meterReview(
+  model: string,
+  review: DesireReviewRunResult,
+): Promise<void> {
+  await recordUsage("autonomy", model, {
+    inputTokens: review.inputTokens,
+    outputTokens: review.outputTokens,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+  });
 }
