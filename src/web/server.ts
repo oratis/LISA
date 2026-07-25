@@ -40,11 +40,11 @@ import { LOGIN_HTML } from "./login.js";
 import { recordUsage, summarizeUsage, setAnomalySink } from "../billing/meter.js";
 import { PRICES_VERSION, tokensAffordable } from "../billing/prices.js";
 import {
-  precheckTurn,
   debitTurn,
   quotaStatus,
   BillingStateError,
 } from "../billing/quota.js";
+import { admitInference, type InferencePermit } from "../billing/admission.js";
 import {
   verifyAppleJWS,
   validateTransaction,
@@ -63,8 +63,7 @@ import {
   CTRL_BODY_LIMIT,
   RICH_BODY_LIMIT,
 } from "./http-body.js";
-import { preflightLimits, ipRateOk, killSwitchOn, globalSpendExceeded } from "../billing/limits.js";
-import { acquireTurnLease, releaseTurnLease, startLeaseRenewal } from "../cloud/turn-lease.js";
+import { ipRateOk, killSwitchOn, globalSpendExceeded } from "../billing/limits.js";
 import { ROOM_HTML } from "./room.js";
 import { MAIN_HTML } from "./lisa-html.js";
 import { OrchestratorHub, loadOrchestratorConfig } from "../integrations/hub.js";
@@ -1615,24 +1614,23 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // ── Inference gateway (B6): key-free managed LLM calls from signed-in
     // Macs/CLIs. Account sessions only — never the shared demo token.
     if (req.method === "POST" && (url.startsWith("/gw/anthropic/") || url.startsWith("/gw/openai/"))) {
-      const acct = cloud && accountUid ? await getAccount(accountUid) : null;
-      if (!acct) {
-        res.writeHead(403, { "content-type": "application/json" });
-        res.end(JSON.stringify({ error: "account_session_required" }));
-        return;
-      }
-      const gwLease = await acquireTurnLease(acct.uid);
-      if (gwLease === null) {
-        res.writeHead(429, { "content-type": "application/json" });
-        res.end(JSON.stringify({ error: "turn_in_progress", retryAfterSec: 15 }));
-        return;
-      }
-      const stopGwRenewal = startLeaseRenewal(gwLease);
       try {
+        const acct = cloud && accountUid ? await getAccount(accountUid) : null;
+        if (!acct) {
+          res.writeHead(403, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "account_session_required" }));
+          return;
+        }
         await handleGateway(req, res, url, acct);
-      } finally {
-        stopGwRenewal();
-        await releaseTurnLease(gwLease);
+      } catch (err) {
+        if (!(err instanceof BillingStateError || err instanceof AccountStoreError)) throw err;
+        console.error(`[billing] gateway state unavailable: ${err.message}`);
+        if (!res.headersSent) {
+          res.writeHead(503, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "billing_state_unavailable" }));
+        } else if (!res.writableEnded) {
+          res.end();
+        }
       }
       return;
     }
@@ -3377,43 +3375,19 @@ self.addEventListener('fetch', (event) => {
       // handshake so exhaustion is a clean HTTP 402 the clients can route to
       // a paywall (structured body: error + resetAt + tier).
       let quotaBudgetMicroUSD: number | null = null;
-      let turnLease: import("../cloud/turn-lease.js").TurnLease | null = "off";
-      let stopTurnRenewal: () => void = () => {};
+      let inferencePermit: InferencePermit | null = null;
       let quotaAcct: Awaited<ReturnType<typeof getAccount>> = null;
       try {
         quotaAcct = cloud && accountUid ? await getAccount(accountUid) : null;
         if (quotaAcct) {
-          // Non-quota guards first (B7): kill switch, global daily cap, per-uid RPM.
-          const limits = preflightLimits(quotaAcct.uid);
-          if (!limits.ok) {
-            res.writeHead(limits.status, { "content-type": "application/json" });
-            res.end(JSON.stringify(limits.body));
+          const admission = await admitInference(quotaAcct, opts.model);
+          if (!admission.ok) {
+            res.writeHead(admission.status, { "content-type": "application/json" });
+            res.end(JSON.stringify(admission.body));
             return;
           }
-          const pre = await precheckTurn(quotaAcct, opts.model);
-          if (!pre.ok) {
-            res.writeHead(402, { "content-type": "application/json" });
-            res.end(
-              JSON.stringify(
-                pre.error === "quota_exhausted"
-                  ? { error: pre.error, resetAt: pre.resetAt, tier: pre.tier }
-                  : { error: pre.error, tier: pre.tier },
-              ),
-            );
-            return;
-          }
-          quotaBudgetMicroUSD = pre.budgetMicroUSD;
-          // Cross-instance serialization (B9): one metered turn per account at a
-          // time, even with max-instances > 1. No-op ("off") without Firestore.
-          turnLease = await acquireTurnLease(quotaAcct.uid);
-          if (turnLease === null) {
-            res.writeHead(429, { "content-type": "application/json" });
-            res.end(JSON.stringify({ error: "turn_in_progress", retryAfterSec: 15 }));
-            return;
-          }
-          // Chat SSE runs under --timeout 3600, far past the lease TTL — heartbeat
-          // it for the life of the turn so it can't expire under us (#272).
-          stopTurnRenewal = startLeaseRenewal(turnLease);
+          inferencePermit = admission.permit;
+          quotaBudgetMicroUSD = admission.permit.budgetMicroUSD;
         }
       } catch (err) {
         if (!(err instanceof BillingStateError || err instanceof AccountStoreError)) throw err;
@@ -3593,8 +3567,7 @@ self.addEventListener('fetch', (event) => {
       try {
         await job;
       } finally {
-        stopTurnRenewal();
-        await releaseTurnLease(turnLease);
+        await inferencePermit?.release();
       }
       return;
     }
