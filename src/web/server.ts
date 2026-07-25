@@ -158,6 +158,17 @@ import {
 import { detectLanHost, buildPairUrl } from "./pairing.js";
 import { TenantEventBus, sameTenant } from "./event-bus.js";
 import { qrSvg } from "./qr-svg.js";
+import { resolveClientIp } from "./client-ip.js";
+import {
+  configuredPublicOrigin,
+  requireCloudPublicOrigin,
+  verificationUrl,
+} from "./public-origin.js";
+import {
+  capabilityProfileForEdition,
+  isCloudDeniedRoute,
+  toolsForCapabilityProfile,
+} from "./capabilities.js";
 import type { ToolDefinition, StoredMessage } from "../types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -250,22 +261,8 @@ const REG_IP_WINDOW_MS = 60 * 60_000;
 const KB_INGEST_IP_LIMIT = 20;
 const KB_INGEST_WINDOW_MS = 5 * 60_000;
 
-/**
- * Best-effort client IP. Behind Cloud Run the socket peer is the front end, so
- * the first `x-forwarded-for` hop is the client — and a client can put anything
- * there. Only used for coarse rate-limit keying, never for authorization.
- */
 function clientIp(req: http.IncomingMessage, remoteAddr: string): string {
-  const xff = req.headers["x-forwarded-for"];
-  const first = (Array.isArray(xff) ? xff[0] : xff)?.split(",")[0]?.trim();
-  return first || remoteAddr || "unknown";
-}
-
-/** The absolute /verify link for a raw token, derived from the request host. */
-function verifyLinkFor(req: http.IncomingMessage, rawToken: string): string {
-  const host = req.headers.host ?? "cloud.meetlisa.ai";
-  const proto = (req.headers["x-forwarded-proto"] as string | undefined) ?? "https";
-  return `${proto}://${host}/verify?token=${rawToken}`;
+  return resolveClientIp(req.headers, remoteAddr);
 }
 
 /**
@@ -351,6 +348,15 @@ async function resumeOrCreateWebSession(model: string): Promise<SessionStore> {
 export async function startWebServer(opts: WebServerOptions): Promise<http.Server> {
   const host = opts.host ?? "127.0.0.1";
   const webToken = process.env.LISA_WEB_TOKEN?.trim() || null;
+  const cloudEdition = isCloud();
+  // Security-sensitive outbound links never derive their origin from Host or
+  // forwarding headers. Cloud startup fails until its canonical HTTPS origin
+  // is configured; local mode has a deterministic loopback fallback.
+  const publicOrigin = cloudEdition
+    ? requireCloudPublicOrigin()
+    : configuredPublicOrigin() ?? `http://localhost:${opts.port}`;
+  const capabilityProfile = capabilityProfileForEdition(cloudEdition ? "cloud" : "mac");
+  const runtimeTools = toolsForCapabilityProfile(opts.tools, capabilityProfile);
   // Account sessions (PLAN_ACCOUNTS_BILLING B1): the signing secret lives in
   // $lisaHome() (auto-created 0600; durable on the cloud's /data mount). Only the
   // cloud edition mints/verifies account sessions today — the Mac edition gains
@@ -840,7 +846,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           }
         }
         const result = await runIdleOnce({
-          tools: opts.tools,
+          tools: runtimeTools,
           cwd: process.cwd(),
           signal: abort.signal,
           model: opts.model,
@@ -1247,7 +1253,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         // levels the free window from $1 to the full $5. Fire-and-forget.
         if (url === "/api/auth/register") {
           const raw = await beginEmailVerification(acct.uid);
-          if (raw) void sendVerificationEmail(acct.email!, verifyLinkFor(req, raw));
+          if (raw) void sendVerificationEmail(acct.email!, verificationUrl(publicOrigin, raw));
         }
         const session = mintSession(acct.uid, sessionSecret, { sv: acct.sessionVersion });
         res.writeHead(200, {
@@ -1387,8 +1393,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         const report = await sweepUserAutonomy({
           ...(opts.model ? { model: opts.model } : {}),
           ...(maxRuns !== undefined ? { maxRuns } : {}),
+          tools: opts.tools,
+          cwd: process.cwd(),
         });
-        console.error(`[sweep] scanned ${report.scanned} active accounts, reflected ${report.ran}`);
+        console.error(
+          `[sweep] scanned ${report.scanned} active accounts, ran ${report.ran} autonomy action(s)`,
+        );
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify(report));
       } catch (e) {
@@ -1677,9 +1687,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const body = await readJsonBody(req, res);
       if (!body) return; // 413 already sent
       const pack = typeof body.pack === "string" ? body.pack : "";
-      const proto = (req.headers["x-forwarded-proto"] as string | undefined) ?? "https";
-      const base = `${proto}://${req.headers.host ?? "cloud.meetlisa.ai"}`;
-      const session = await createCheckoutSession(accountUid, pack, base, scfg);
+      const session = await createCheckoutSession(accountUid, pack, publicOrigin, scfg);
       if (!session) {
         res.writeHead(400, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: "checkout_failed" }));
@@ -1747,7 +1755,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         return;
       }
       const raw = await beginEmailVerification(acct.uid);
-      const mail = raw ? await sendVerificationEmail(acct.email, verifyLinkFor(req, raw)) : null;
+      const mail = raw ? await sendVerificationEmail(acct.email, verificationUrl(publicOrigin, raw)) : null;
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, sent: mail?.sent ?? false }));
       return;
@@ -1782,6 +1790,18 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         "set-cookie": `lisa_token=; Max-Age=0; HttpOnly; SameSite=Strict; Path=/${isCloud() ? "; Secure" : ""}`,
       });
       res.end(JSON.stringify({ ok: true, removed }));
+      return;
+    }
+
+    // Hosted users never own the machine running this process. Deny local
+    // control-plane and arbitrary-outbound routes server-side before their
+    // handlers run; the client edition descriptor is presentation only.
+    if (cloud && isCloudDeniedRoute(url)) {
+      res.writeHead(403, { "content-type": "application/json" });
+      res.end(JSON.stringify({
+        error: "capability_denied",
+        profile: capabilityProfile,
+      }));
       return;
     }
 
@@ -2442,7 +2462,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       }
       const cwd = typeof payload.cwd === "string" && payload.cwd.startsWith("/") ? payload.cwd : process.cwd();
       // A managed agent doesn't control other agents — drop dispatch/signal.
-      const tools = opts.tools.filter((t) => t.name !== "dispatch_agent" && t.name !== "signal_agent");
+      const tools = runtimeTools.filter((t) => t.name !== "dispatch_agent" && t.name !== "signal_agent");
       const systemPrompt =
         `You are a delegated agent working in ${cwd}, launched by the user through Lisa. ` +
         `Complete the user's task using the available tools, then report what you did concisely. ` +
@@ -3021,7 +3041,7 @@ self.addEventListener('fetch', (event) => {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(
         JSON.stringify({
-          tools: opts.tools.map((t) => ({
+          tools: runtimeTools.map((t) => ({
             name: t.name,
             description: t.description,
           })),
@@ -3423,7 +3443,7 @@ self.addEventListener('fetch', (event) => {
           const result = await runAgent({
             provider: getProvider(),
             systemPrompt: fresh.text,
-            tools: opts.tools,
+            tools: runtimeTools,
             toolCtx: {
               cwd: process.cwd(),
               // Abort on server shutdown OR this client disconnecting (Stop).

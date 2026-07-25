@@ -552,6 +552,10 @@ LISA_WEB_TOKEN=...                    # serve --web 绑定到 127.0.0.1 之外
                                       # 首次用 ?token= 认证
 LISA_EDITION=cloud                    # 托管云模式：隐藏 Mac-only 界面（PTY/接管、
                                       # 本地 CLI 派发、Sense 捕获）。默认/不设 = "mac"
+LISA_PUBLIC_ORIGIN=https://cloud.example.com
+                                      # Cloud 必填；验证邮件与结账链接的规范 HTTPS Origin
+                                      # （绝不从请求 Host 推导）
+LISA_TRUST_PROXY_HOPS=1               # 可选；从右侧解析限流客户端 IP 时信任的代理跳数
 
 # 邮箱（Gmail OAuth —— 应用密码类 provider 不需要 key）
 LISA_GOOGLE_CLIENT_ID=...             # Google "Desktop app" OAuth client，给 `lisa mail connect --provider gmail`

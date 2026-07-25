@@ -16,6 +16,7 @@ import {
   readName,
   readPurpose,
   recomputeLock,
+  reviseDesire,
   saveLock,
   writeConstitution,
   writeDesire,
@@ -54,6 +55,10 @@ interface SoulPatchInput {
   why?: string;
   actionable?: boolean;
   heartbeat_prompt?: string;
+  pursuit?: "self" | "needs-user";
+  intensity?: number;
+  horizon?: "spark" | "season" | "enduring";
+  sources?: string[];
 }
 
 const today = (): string => new Date().toISOString().slice(0, 10);
@@ -86,6 +91,14 @@ export const soulPatchTool: ToolDefinition<SoulPatchInput, string> = {
       why: { type: "string" },
       actionable: { type: "boolean" },
       heartbeat_prompt: { type: "string" },
+      pursuit: { type: "string", enum: ["self", "needs-user"] },
+      intensity: { type: "number", minimum: 0, maximum: 1 },
+      horizon: { type: "string", enum: ["spark", "season", "enduring"] },
+      sources: {
+        type: "array",
+        maxItems: 8,
+        items: { type: "string" },
+      },
     },
     required: ["field"],
   },
@@ -144,8 +157,25 @@ export const soulPatchTool: ToolDefinition<SoulPatchInput, string> = {
           return `opinion:${input.slug} written`;
         }
         case "desire": {
-          if (!input.slug || !input.what || !input.why) {
-            throw new Error("desire requires slug + what + why");
+          if (!input.slug) {
+            throw new Error("desire requires slug");
+          }
+          const existing = (await listDesires()).find((d) => d.slug === input.slug);
+          if (existing) {
+            await reviseDesire(input.slug, {
+              what: input.what,
+              why: input.why,
+              actionable: input.actionable,
+              heartbeatPrompt: input.heartbeat_prompt,
+              pursuit: input.pursuit,
+              intensity: input.intensity,
+              horizon: input.horizon,
+              sources: input.sources,
+            });
+            return `desire:${input.slug} revised`;
+          }
+          if (!input.what || !input.why) {
+            throw new Error("new desire requires slug + what + why");
           }
           await writeDesire({
             slug: input.slug,
@@ -153,7 +183,12 @@ export const soulPatchTool: ToolDefinition<SoulPatchInput, string> = {
             why: input.why,
             actionable: input.actionable ?? false,
             heartbeatPrompt: input.heartbeat_prompt,
+            pursuit: input.pursuit,
+            intensity: input.intensity,
+            horizon: input.horizon,
+            sources: input.sources,
             bornAt: ts,
+            updatedAt: ts,
           });
           return `desire:${input.slug} written${input.actionable ? " (actionable)" : ""}`;
         }
@@ -533,6 +568,85 @@ export const desireProgressTool: ToolDefinition<DesireProgressInput, string> = {
 // Re-export for callers that want to read progress without a tool roundtrip
 // (used by heartbeat runner to inject progress into the next prompt).
 export { readDesireProgress };
+
+// ── desire_revise — preserve identity while evolving dynamics ─────────
+
+interface DesireReviseInput {
+  slug: string;
+  what?: string;
+  why?: string;
+  actionable?: boolean;
+  heartbeat_prompt?: string;
+  pursuit?: "self" | "needs-user";
+  intensity?: number;
+  horizon?: "spark" | "season" | "enduring";
+  /** New public provenance URLs to merge with the existing bounded set. */
+  sources?: string[];
+  /** Mark the desire deliberately reviewed now, including a no-change review. */
+  reviewed?: boolean;
+}
+
+export const desireReviseTool: ToolDefinition<DesireReviseInput, string> = {
+  name: "desire_revise",
+  description:
+    "Revise one existing desire without changing its slug or birth time. " +
+    "Use intensity (0..1) for how strongly you want it now and horizon " +
+    "(spark/season/enduring) for how quickly it should cool. sources are " +
+    "public http(s) evidence URLs and are merged into a bounded provenance " +
+    "list. Set reviewed=true after a deliberate background review, even when " +
+    "the honest conclusion is no semantic change. This never creates a desire.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      slug: { type: "string" },
+      what: { type: "string" },
+      why: { type: "string" },
+      actionable: { type: "boolean" },
+      heartbeat_prompt: { type: "string" },
+      pursuit: { type: "string", enum: ["self", "needs-user"] },
+      intensity: { type: "number", minimum: 0, maximum: 1 },
+      horizon: { type: "string", enum: ["spark", "season", "enduring"] },
+      sources: {
+        type: "array",
+        maxItems: 8,
+        items: { type: "string" },
+      },
+      reviewed: { type: "boolean" },
+    },
+    required: ["slug"],
+  },
+  async execute(input) {
+    return await withSoulCaller("desire_review", async () => {
+      const desires = await listDesires();
+      const existing = desires.find((d) => d.slug === input.slug);
+      if (!existing) {
+        throw new Error(
+          `desire "${input.slug}" not found. Existing slugs: ${desires.map((d) => d.slug).join(", ") || "(none)"}`,
+        );
+      }
+      const mergedSources =
+        input.sources === undefined
+          ? undefined
+          : [...(existing.sources ?? []), ...input.sources];
+      const next = await reviseDesire(input.slug, {
+        what: input.what,
+        why: input.why,
+        actionable: input.actionable,
+        heartbeatPrompt: input.heartbeat_prompt,
+        pursuit: input.pursuit,
+        intensity: input.intensity,
+        horizon: input.horizon,
+        sources: mergedSources,
+        lastReviewedAt: input.reviewed ? new Date().toISOString() : undefined,
+      });
+      return (
+        `desire "${input.slug}" revised` +
+        ` (intensity=${next.intensity ?? 0.6}, horizon=${next.horizon ?? "season"}` +
+        `${input.reviewed ? ", reviewed now" : ""})`
+      );
+    });
+  },
+};
 
 // ── desire_close — semantic close + outcome (small-tail of 1.3) ──────
 
