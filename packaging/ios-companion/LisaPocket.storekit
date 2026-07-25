@@ -1,0 +1,62 @@
+{
+  "identifier" : "3F1A9C7E",
+  "nonRenewingSubscriptions" : [],
+  "products" : [
+    {
+      "displayPrice" : "4.99",
+      "familyShareable" : false,
+      "internalID" : "60000005",
+      "localizations" : [
+        {
+          "description" : "$5.00 in credits · Tier 1 boost",
+          "displayName" : "$5 Credit Pack",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "ai.meetlisa.main.credits.5",
+      "referenceName" : "credits.5",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "9.99",
+      "familyShareable" : false,
+      "internalID" : "60000010",
+      "localizations" : [
+        {
+          "description" : "$10.50 in credits (+5%) · Tier 1 boost",
+          "displayName" : "$10 Credit Pack",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "ai.meetlisa.main.credits.10",
+      "referenceName" : "credits.10",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "19.99",
+      "familyShareable" : false,
+      "internalID" : "60000020",
+      "localizations" : [
+        {
+          "description" : "$22.00 in credits (+10%) · Tier 2 boost",
+          "displayName" : "$20 Credit Pack",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "ai.meetlisa.main.credits.20",
+      "referenceName" : "credits.20",
+      "type" : "Consumable"
+    }
+  ],
+  "settings" : {
+    "_applicationInternalID" : "6784690058",
+    "_developerTeamID" : "9LH9NBX7P4",
+    "_failTransactionsEnabled" : false,
+    "_storeKitErrors" : []
+  },
+  "subscriptionGroups" : [],
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}
