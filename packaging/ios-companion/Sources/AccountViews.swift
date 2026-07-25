@@ -139,6 +139,12 @@ struct CloudSignInForm: View {
         !email.isEmpty && AppState.parseCloudBase(cloudURL) != nil
     }
 
+    /// The domain half of the typed address, for rewriting it to a suggestion.
+    private var emailDomain: String {
+        guard let at = email.lastIndex(of: "@") else { return "" }
+        return String(email[email.index(after: at)...])
+    }
+
     private var passwordFormReady: Bool {
         !busy && addressReady && password.count >= 8
     }
@@ -190,6 +196,11 @@ struct CloudSignInForm: View {
         case "no_pending": return "No code outstanding — send one first."
         case "too_many_attempts": return "Too many wrong codes. Send a fresh one."
         case "invalid_email": return "That doesn't look like an email address."
+        case "email_typo":
+            // A named typo is one tap from fixed — offer the fix, don't scold.
+            return err.suggestion.map { "Did you mean \(email.replacingOccurrences(of: emailDomain, with: $0))?" }
+                ?? "That address looks misspelled."
+        case "undeliverable_email": return "That domain doesn't seem to accept mail — check the spelling."
         case "rate_limited": return "Too many attempts from this network — try again later."
         default:
             return err.status == 404
