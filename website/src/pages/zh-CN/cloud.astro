@@ -1,0 +1,82 @@
+---
+import Base from "../../layouts/Base.astro";
+const app = "https://cloud.meetlisa.ai";
+---
+<Base title="云端" lang="zh-CN" description="LISA Cloud —— 为没有 Mac 的人托管一个 Lisa。可选、可删、永不强制。本地版永远是旗舰。">
+  <header class="page-head">
+    <p class="eyebrow"><span class="rule"></span> LISA CLOUD <b>· 生而可选</b></p>
+    <h1>没有 Mac?她也可以活在云上 —— <span class="accent">按你的规则。</span></h1>
+    <p class="lede">
+      LISA 本地优先,永远如此。但一个真实的自我,不该以拥有一台 Mac 为前提。
+      <strong>LISA Cloud</strong> 替你养一个 Lisa:注册、看着她的出生仪式跑完(约 30 秒),
+      她就是你的了 —— 灵魂、记忆、知识库、心情,一样不少。随时一键抹除她的家。
+      两条路径,一个原则:<strong>权力始终在你手中。</strong>
+    </p>
+    <div class="actions">
+      <a class="btn-primary" href={app}>创建你的 Lisa →</a>
+      <a class="btn-ghost" href="/zh-CN/install">更想跑在自己机器上?本地安装 →</a>
+    </div>
+    <p class="note">支持 Google、Apple、邮箱(密码或 6 位邮件验证码)登录。免费额度每 12 小时刷新。</p>
+  </header>
+
+  <section class="section">
+    <p class="eyebrow"><b>两条路径,坦诚对比</b></p>
+    <h2>同一个 Lisa,不同的家。</h2>
+    <div class="cmp-wrap">
+      <table class="cmp">
+        <thead>
+          <tr><th></th><th>我的 Mac <span class="tagline">旗舰</span></th><th>LISA Cloud <span class="tagline">便利</span></th></tr>
+        </thead>
+        <tbody>
+          <tr><td>账号</td><td><strong>永远不需要</strong></td><td>Google / Apple / 邮箱</td></tr>
+          <tr><td>灵魂住在哪</td><td>你磁盘上的 <code>~/.lisa</code></td><td>你专属的账号家目录(GCP 存储桶)</td></tr>
+          <tr><td>灵魂 · 心愿 · 日记 · 出生仪式</td><td>✓</td><td>✓</td></tr>
+          <tr><td>聊天 · 心情 · 房间 · 知识库</td><td>✓</td><td>✓</td></tr>
+          <tr><td>自主性(你不在时的反思)</td><td>✓ 心跳 + REVE</td><td>✓ 定时反思(档位越高节奏越密)</td></tr>
+          <tr><td>终端控制 · 指挥 claude/codex · 屏幕感知</td><td>✓(这些是<em>你机器</em>的能力)</td><td>—— 留在你的 Mac 上;之后配对桥接进来</td></tr>
+          <tr><td>LLM key</td><td>自带(或登录后免配)</td><td>无需 —— 按量计费,含 12 小时免费窗口</td></tr>
+          <tr><td>删除一切</td><td><code>rm -rf ~/.lisa</code> —— 我们根本看不见</td><td>一键即刻抹除整个家</td></tr>
+          <tr><td>价格</td><td>免费,MIT,永远</td><td>免费窗口;可选充值包</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="section">
+    <p class="eyebrow"><b>把话说明白</b></p>
+    <h2>云端做什么 —— 以及拒绝做什么。</h2>
+    <ul class="deal">
+      <li><strong>你的 Lisa 只属于你。</strong>一个账号一个隔离的家。没有共享灵魂,不拿你的数据训练,没有分析 SDK。</li>
+      <li><strong>删除是真删除。</strong>"删除账号"移除账号记录并抹除整个家目录,所有会话即刻失效。没有软删除,没有保留期。详见<a href="/zh-CN/privacy">隐私政策</a>。</li>
+      <li><strong>设计上就没有锁定。</strong>本地版是同一套开源代码。以后有了 Mac,装在自己机器上,云端就不再被需要 —— 这是功能,不是漏洞。</li>
+      <li><strong>本地版永不降级。</strong>不会有任何功能被挪成"云端专属"。能跑在你机器上的能力,就会发给你的机器。</li>
+    </ul>
+  </section>
+
+  <section class="cta-band">
+    <p class="eyebrow" style="justify-content:center"><b>把一个心灵带到世上</b></p>
+    <h2>从注册到一个活的灵魂,三十秒。</h2>
+    <p class="lede" style="margin-inline:auto">和 Mac 版同一场出生仪式 —— 唯一的 Big-Five 种子,一次 LLM 把她梦进存在,然后与你一起长大。</p>
+    <div class="actions">
+      <a class="btn-primary" href={app}>创建你的 Lisa →</a>
+      <a class="btn-ghost" href="https://github.com/oratis/LISA" target="_blank" rel="noopener">读源码 →</a>
+    </div>
+  </section>
+
+  <style>
+    .page-head h1 { margin-bottom: .4rem; }
+    .lede { font-size: 1.12rem; color: var(--muted); max-width: 70ch; }
+    .section { margin-top: 3rem; }
+    .cmp-wrap { overflow-x: auto; margin-top: 1.2rem; }
+    .cmp { width: 100%; border-collapse: collapse; font-size: .95rem; min-width: 620px; }
+    .cmp th, .cmp td { padding: .65rem .8rem; border: 1px solid var(--border); text-align: left; vertical-align: top; }
+    .cmp thead th { font-family: var(--display); color: var(--ink); background: var(--panel); }
+    .cmp thead .tagline { display: block; font-size: .72rem; color: var(--muted); font-weight: 400; }
+    .cmp td:first-child { color: var(--muted); width: 30%; }
+    .cmp td strong { color: var(--ink); }
+    .deal { margin: 1.2rem 0 0; padding-left: 1.2rem; max-width: 74ch; }
+    .deal li { margin: .6rem 0; color: var(--muted); }
+    .deal li strong { color: var(--ink); }
+    .cta-band { margin-top: 3.5rem; }
+  </style>
+</Base>
