@@ -58,6 +58,11 @@ import { stripeConfig, verifyStripeSignature, classifyStripeEvent, createCheckou
 import { ACCOUNT_HTML } from "./account-page.js";
 import { handleGateway } from "./gateway.js";
 import {
+  TenantRuntimeRegistry,
+  tenantRuntimeOptions,
+  type TenantRuntimeLease,
+} from "./tenant-runtime.js";
+import {
   readCappedText,
   BodyTooLargeError,
   CTRL_BODY_LIMIT,
@@ -420,21 +425,6 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   }
   const snapshot = await buildSystemPromptSnapshot();
   const initialFingerprint = await getPromptFingerprint();
-  // Per-process hot-reload cache for the web server: same shape as cli's
-  // makeHotReloadRebuilder, inlined here so the web server stays standalone.
-  // Keyed by the ACTIVE home (B2): each cloud account gets its own soul, so the
-  // prompt snapshot must be cached per-uid, not process-wide.
-  const promptCache = new Map<string, { fp: string; text: string }>();
-  promptCache.set(lisaGlobalHome(), { fp: initialFingerprint, text: snapshot.text });
-  const rebuildPrompt = async (): Promise<{ text: string; fingerprint: string }> => {
-    const key = lisaHome();
-    const fp = await getPromptFingerprint();
-    const cached = promptCache.get(key);
-    if (cached && fp === cached.fp) return { text: cached.text, fingerprint: fp };
-    const next = await buildSystemPromptSnapshot();
-    promptCache.set(key, { fp, text: next.text });
-    return { text: next.text, fingerprint: fp };
-  };
   // Resume previous chat across restarts. Three-tier fallback:
   //  1. ~/.lisa/active-web-session.txt (set on every web startup)
   //  2. Most recent session on disk in this cwd (catches the case where the
@@ -476,21 +466,38 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     session: SessionStore;
     history: StoredMessage[];
     chain: Promise<void>;
+    prompt?: { fp: string; text: string };
   }
-  const globalChat: ChatCtx = { session, history, chain: Promise.resolve() };
-  const uidChats = new Map<string, ChatCtx>();
-  const ctxForRequest = async (): Promise<ChatCtx> => {
+  const globalChat: ChatCtx = {
+    session,
+    history,
+    chain: Promise.resolve(),
+    prompt: { fp: initialFingerprint, text: snapshot.text },
+  };
+  const tenantRuntimes = new TenantRuntimeRegistry<ChatCtx>(tenantRuntimeOptions());
+  const ctxForRequest = async (): Promise<TenantRuntimeLease<ChatCtx>> => {
     const scoped = homeScope.getStore();
-    if (!scoped) return globalChat;
-    let ctx = uidChats.get(scoped);
-    if (!ctx) {
+    if (!scoped) return { value: globalChat, release: () => {} };
+    return tenantRuntimes.acquire(scoped, async () => {
       const s = await resumeOrCreateWebSession(opts.model);
       await writeActiveWebSession(s.id);
       const { messages } = await s.readMessagePage(0, 9999);
-      ctx = { session: s, history: [...messages], chain: Promise.resolve() };
-      uidChats.set(scoped, ctx);
+      return { session: s, history: [...messages], chain: Promise.resolve() };
+    });
+  };
+  // Per-tenant prompt cache now shares the runtime's TTL/LRU lifecycle instead
+  // of growing independently forever.
+  const rebuildPrompt = async (): Promise<{ text: string; fingerprint: string }> => {
+    const scoped = homeScope.getStore();
+    const runtime = scoped ? tenantRuntimes.peek(scoped) : globalChat;
+    if (!runtime) throw new Error("tenant runtime is not acquired");
+    const fp = await getPromptFingerprint();
+    if (runtime.prompt && fp === runtime.prompt.fp) {
+      return { text: runtime.prompt.text, fingerprint: fp };
     }
-    return ctx;
+    const next = await buildSystemPromptSnapshot();
+    runtime.prompt = { fp, text: next.text };
+    return { text: next.text, fingerprint: fp };
   };
 
   // Lazy per-user birth (B2, hub'd in S3): a signed-in user's first request
@@ -515,7 +522,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         const { birth } = await import("../soul/birth.js");
         console.error(`[accounts] birthing a soul for ${uid}…`);
         await startBirthOnce(uid, (emit) => birth({ model: opts.model, onStep: emit })).promise;
-        promptCache.delete(lisaHome()); // pick the newborn soul up next turn
+        const runtime = tenantRuntimes.peek(lisaHome());
+        if (runtime) runtime.prompt = undefined; // pick the newborn soul up next turn
         console.error(`[accounts] soul born for ${uid}`);
       } catch (e) {
         console.error(`[accounts] birth failed for ${uid}: ${(e as Error).message}`);
@@ -1805,8 +1813,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         if (userHome.startsWith(path.join(lisaGlobalHome(), "users") + path.sep)) {
           await fs.rm(userHome, { recursive: true, force: true });
         }
-        uidChats.delete(userHome);
-        promptCache.delete(userHome);
+        tenantRuntimes.delete(userHome);
         moodBus.forget(accountUid); // keyed by uid, not home path
       } catch (e) {
         console.error(`[auth] account home cleanup failed: ${(e as Error).message}`);
@@ -2855,20 +2862,26 @@ self.addEventListener('fetch', (event) => {
     }
 
     if (req.method === "GET" && url === "/session") {
-      const chat = await ctxForRequest();
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ id: chat.session.id, model: opts.model }));
+      const runtime = await ctxForRequest();
+      try {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ id: runtime.value.session.id, model: opts.model }));
+      } finally {
+        runtime.release();
+      }
       return;
     }
 
     if (req.method === "GET" && url === "/events") {
-      const chat = await ctxForRequest();
+      const runtime = await ctxForRequest();
+      const sessionId = runtime.value.session.id;
+      runtime.release();
       res.writeHead(200, {
         "content-type": "text/event-stream",
         "cache-control": "no-cache",
         connection: "keep-alive",
       });
-      res.write(`data: ${JSON.stringify({ type: "hello", session: chat.session.id })}\n\n`);
+      res.write(`data: ${JSON.stringify({ type: "hello", session: sessionId })}\n\n`);
       // Send current mood right away
       res.write(`data: ${JSON.stringify({ type: "mood", slug: moodBus.current() })}\n\n`);
       // Pin this subscriber to the account it authenticated as (B2). null on the
@@ -2882,9 +2895,15 @@ self.addEventListener('fetch', (event) => {
       const qs = new URL(url, "http://localhost").searchParams;
       const page = Math.max(0, parseInt(qs.get("page") ?? "0", 10));
       const pageSize = 20;
-      const { messages, hasMore } = await (await ctxForRequest()).session.readMessagePage(page, pageSize);
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ messages, hasMore, page }));
+      const runtime = await ctxForRequest();
+      try {
+        const { messages, hasMore } =
+          await runtime.value.session.readMessagePage(page, pageSize);
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ messages, hasMore, page }));
+      } finally {
+        runtime.release();
+      }
       return;
     }
 
@@ -3253,7 +3272,8 @@ self.addEventListener('fetch', (event) => {
       run.listeners.add(listener);
       try {
         await run.promise;
-        promptCache.delete(lisaHome()); // pick the newborn soul up next turn
+        const runtime = tenantRuntimes.peek(lisaHome());
+        if (runtime) runtime.prompt = undefined; // pick the newborn soul up next turn
         send({ kind: "done", message: "she is alive" });
       } catch (err) {
         send({ kind: "error", message: (err as Error).message });
@@ -3348,7 +3368,6 @@ self.addEventListener('fetch', (event) => {
     }
 
     if (req.method === "POST" && url === "/chat") {
-      const chat = await ctxForRequest();
       const body = await readRequestText(req, res, RICH_BODY_LIMIT);
       if (body === null) return;
       let message: string;
@@ -3396,6 +3415,14 @@ self.addEventListener('fetch', (event) => {
         res.end(JSON.stringify({ error: "billing_state_unavailable" }));
         return;
       }
+      let runtimeLease: TenantRuntimeLease<ChatCtx>;
+      try {
+        runtimeLease = await ctxForRequest();
+      } catch (err) {
+        await inferencePermit?.release();
+        throw err;
+      }
+      const chat = runtimeLease.value;
       // User just talked — reset the idle watcher + stamp focus freshness.
       try { getIdleWatcher(60 * 60_000).tick(); } catch {}
       lastUserMessageAt = Date.now();
@@ -3568,12 +3595,14 @@ self.addEventListener('fetch', (event) => {
         await job;
       } finally {
         await inferencePermit?.release();
+        runtimeLease.release();
       }
       return;
     }
 
     if (req.method === "POST" && url === "/reflect") {
-      const chat = await ctxForRequest();
+      const runtime = await ctxForRequest();
+      const chat = runtime.value;
       try {
         const r = await reflectOnSession({
           history: chat.history,
@@ -3585,6 +3614,8 @@ self.addEventListener('fetch', (event) => {
       } catch (err) {
         res.writeHead(500);
         res.end((err as Error).message);
+      } finally {
+        runtime.release();
       }
       return;
     }
