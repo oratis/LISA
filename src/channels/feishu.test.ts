@@ -75,6 +75,13 @@ describe("feishu — inbound event verification", () => {
     assert.deepEqual(JSON.parse(ok.text), { challenge: "abc" });
   });
 
+  test("rejects an oversized webhook body before parsing", async () => {
+    const ch = makeChannel({ token: TOKEN });
+    const port = await start(ch);
+    const oversized = await post(port, "x".repeat(1_048_577));
+    assert.equal(oversized.status, 413);
+  });
+
   test("v2 event with missing/wrong header.token → 403", async () => {
     const ch = makeChannel({ token: TOKEN });
     const port = await start(ch);
