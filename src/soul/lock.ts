@@ -149,8 +149,14 @@ export async function withFileLock<T>(
   }
 }
 
-/** The canonical soul write-lock path. */
-export const SOUL_LOCK_PATH = path.join(soulDir(), ".write.lock");
+/**
+ * The canonical soul write-lock path. A FUNCTION, not an import-time constant
+ * (paths.ts doctrine): a constant froze the GLOBAL home at module load, which
+ * made every per-uid cloud tenant contend on one shared lock (S3).
+ */
+export function soulLockPath(): string {
+  return path.join(soulDir(), ".write.lock");
+}
 
 /**
  * Run `fn` while holding the soul write-lock. Use this around any
@@ -158,5 +164,5 @@ export const SOUL_LOCK_PATH = path.join(soulDir(), ".write.lock");
  * concurrent heartbeat/idle/chat process can't interleave and lose data.
  */
 export function withSoulLock<T>(fn: () => Promise<T>, opts?: FileLockOpts): Promise<T> {
-  return withFileLock(SOUL_LOCK_PATH, fn, opts);
+  return withFileLock(soulLockPath(), fn, opts);
 }

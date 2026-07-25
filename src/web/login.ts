@@ -53,6 +53,7 @@ export const LOGIN_HTML = `<!doctype html>
   [hidden] { display: none !important; }
   #apple-wrap { display: none; margin-bottom: 10px; }
   #google-wrap { display: none; margin-bottom: 18px; }
+  #ts-wrap { margin-top: 14px; }
   #apple-btn {
     width: 100%; padding: 12px; border: 0; border-radius: 10px; cursor: pointer;
     background: #fff; color: #000; font-size: 16px; font-weight: 600;
@@ -83,6 +84,7 @@ export const LOGIN_HTML = `<!doctype html>
       <label for="pw">Password</label>
       <input id="pw" type="password" autocomplete="current-password" minlength="8">
     </div>
+    <div id="ts-wrap" hidden><div id="ts-widget"></div></div>
     <button id="primary" type="submit">Email me a code</button>
     <button id="resend" type="button" class="secondary" hidden>Send another code</button>
     <button id="register" type="button" class="secondary" hidden>Create an account</button>
@@ -105,6 +107,7 @@ export const LOGIN_HTML = `<!doctype html>
   const resendBtn = document.getElementById("resend");
   const registerBtn = document.getElementById("register");
   const modeBtn = document.getElementById("mode");
+  const tsWrap = document.getElementById("ts-wrap");
   const MSG = {
     bad_credentials: "Wrong email or password.",
     email_taken: "That email already has an account — sign in instead.",
@@ -119,18 +122,28 @@ export const LOGIN_HTML = `<!doctype html>
     expired: "That code expired — send another.",
     no_pending: "No code outstanding — send one first.",
     too_many_attempts: "Too many wrong codes. Send a fresh one.",
+    turnstile_failed: "The bot check didn't pass — wait a moment and try again.",
+    disposable_email: "Disposable email addresses can't open accounts — use a real inbox.",
   };
 
   // "code" (default) or "password"; within code mode, stage "email" then "code".
   let mode = "code";
   let stage = "email";
   let busy = false;
+  // Turnstile (S3): siteKey arrives from /api/auth/config; the widget renders
+  // lazily the first time the password/register pane shows, and drops its token
+  // into tsToken for the register POST.
+  let tsToken = "";
+  let tsSiteKey = null;
+  let tsInited = false;
 
   function render() {
     codeRow.hidden = !(mode === "code" && stage === "code");
     pwRow.hidden = mode !== "password";
     resendBtn.hidden = !(mode === "code" && stage === "code");
     registerBtn.hidden = mode !== "password";
+    tsWrap.hidden = !(mode === "password" && tsSiteKey);
+    if (!tsWrap.hidden) ensureTurnstile();
     primary.textContent =
       mode === "password" ? "Sign in" : stage === "code" ? "Sign in" : "Email me a code";
     modeBtn.textContent = mode === "password" ? "Email me a code instead" : "Use a password instead";
@@ -221,7 +234,7 @@ export const LOGIN_HTML = `<!doctype html>
 
   async function password(path) {
     say("", false);
-    const r = await post(path, { email: email.value.trim(), password: pw.value });
+    const r = await post(path, { email: email.value.trim(), password: pw.value, turnstileToken: tsToken });
     if (r.ok) { location.replace("/"); return; }
     fail(r);
   }
@@ -269,9 +282,35 @@ export const LOGIN_HTML = `<!doctype html>
     // iosClientId may be set without webClientId — that instance runs Google on
     // the app only, and the web button must stay away.
     if (cfg.google && cfg.google.webClientId) drawGoogle(cfg);
+    // Turnstile bot-gate (S3): the server advertises a site key only when both it
+    // and the secret are configured; the widget then guards /api/auth/register.
+    if (cfg.turnstile && cfg.turnstile.siteKey) { tsSiteKey = cfg.turnstile.siteKey; render(); }
   }).catch(() => {});
 
   function showDivider() { document.getElementById("divider").style.display = "flex"; }
+
+  // Cloudflare Turnstile (S3): rendered lazily the first time the password/register
+  // pane is shown (rendering into a hidden node can leave the challenge unsolved).
+  // The token rides along on /api/auth/register; the server enforces it only when
+  // Turnstile is configured, so a missing/expired token just re-challenges.
+  function ensureTurnstile() {
+    if (tsInited || !tsSiteKey) return;
+    tsInited = true;
+    const s = document.createElement("script");
+    s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+    s.async = true;
+    s.onload = () => {
+      if (!window.turnstile) return;
+      window.turnstile.render("#ts-widget", {
+        sitekey: tsSiteKey,
+        theme: "dark",
+        callback: (t) => { tsToken = t; },
+        "error-callback": () => { tsToken = ""; },
+        "expired-callback": () => { tsToken = ""; },
+      });
+    };
+    document.head.appendChild(s);
+  }
 
   // Sign in with Google (A4): Google Identity Services renders its own button
   // and hands back an id_token, which the server verifies against the web
