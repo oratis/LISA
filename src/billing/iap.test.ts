@@ -171,6 +171,27 @@ describe("credit + dedup + refund", () => {
     });
   });
 
+  test("a Firestore outage is surfaced as retryable payment-state unavailability", async () => {
+    const originalFetch = globalThis.fetch;
+    process.env.LISA_FIRESTORE = "1";
+    process.env.LISA_FIRESTORE_TOKEN = "test-token";
+    process.env.LISA_FIRESTORE_PROJECT = "test-project";
+    globalThis.fetch = async () => new Response("unavailable", { status: 503 });
+    try {
+      await assert.rejects(
+        creditTransaction("em-firestore", { ...tx, transactionId: "tx-firestore" }, 1000),
+        (err: unknown) =>
+          err instanceof PaymentStateError &&
+          err.code === "transaction_store_unavailable",
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+      delete process.env.LISA_FIRESTORE;
+      delete process.env.LISA_FIRESTORE_TOKEN;
+      delete process.env.LISA_FIRESTORE_PROJECT;
+    }
+  });
+
   test("a conflicting pending owner is rejected without leaking a second credit", async () => {
     fs.writeFileSync(
       path.join(TMP, "iap-transactions.json"),

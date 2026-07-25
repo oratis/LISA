@@ -394,6 +394,15 @@ function assertSameTransaction(
   }
 }
 
+function transactionStoreFailure(operation: string, err: unknown): PaymentStateError {
+  return err instanceof PaymentStateError
+    ? err
+    : new PaymentStateError(
+        "transaction_store_unavailable",
+        `${operation}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+}
+
 /**
  * Create a pending transaction or resume one whose balance/status update was
  * interrupted. Fully credited/refunded transactions remain duplicates.
@@ -415,25 +424,30 @@ async function reserveTransaction(
   };
   if (firestoreEnabled()) {
     try {
-      await setDoc(transactionDocPath(transactionId), fresh as unknown as Record<string, unknown>, {
-        exists: false,
-      });
-      return fresh;
+      try {
+        await setDoc(transactionDocPath(transactionId), fresh as unknown as Record<string, unknown>, {
+          exists: false,
+        });
+        return fresh;
+      } catch (err) {
+        if (!(err instanceof FirestoreError && (err.status === 409 || err.status === 412))) {
+          throw err;
+        }
+        const doc = await getDoc(transactionDocPath(transactionId));
+        if (!doc) {
+          throw new PaymentStateError(
+            "transaction_store_unavailable",
+            `transaction ${transactionId} conflicted but could not be read`,
+          );
+        }
+        const existing = parseTxEntry(doc.data);
+        if (existing.status !== "pending") throw new IapError("duplicate_transaction");
+        assertSameTransaction(existing, fresh);
+        return existing;
+      }
     } catch (err) {
-      if (!(err instanceof FirestoreError && (err.status === 409 || err.status === 412))) {
-        throw err;
-      }
-      const doc = await getDoc(transactionDocPath(transactionId));
-      if (!doc) {
-        throw new PaymentStateError(
-          "transaction_store_unavailable",
-          `transaction ${transactionId} conflicted but could not be read`,
-        );
-      }
-      const existing = parseTxEntry(doc.data);
-      if (existing.status !== "pending") throw new IapError("duplicate_transaction");
-      assertSameTransaction(existing, fresh);
-      return existing;
+      if (err instanceof IapError || err instanceof PaymentStateError) throw err;
+      throw transactionStoreFailure(`reserving transaction ${transactionId}`, err);
     }
   }
 
@@ -453,27 +467,34 @@ async function reserveTransaction(
 
 async function markCredited(expected: TxIndexEntry): Promise<void> {
   if (firestoreEnabled()) {
-    await casUpdate(transactionDocPath(expected.transactionId), (current) => {
-      if (!current) {
-        throw new PaymentStateError(
-          "transaction_store_unavailable",
-          `pending transaction ${expected.transactionId} disappeared`,
-        );
-      }
-      const live = parseTxEntry(current);
-      assertSameTransaction(live, expected);
-      if (live.status === "credited") return { next: null, result: undefined };
-      if (live.status !== "pending") {
-        throw new PaymentStateError(
-          "transaction_conflict",
-          `transaction ${expected.transactionId} cannot move from ${live.status} to credited`,
-        );
-      }
-      return {
-        next: { ...live, status: "credited" },
-        result: undefined,
-      };
-    });
+    try {
+      await casUpdate(transactionDocPath(expected.transactionId), (current) => {
+        if (!current) {
+          throw new PaymentStateError(
+            "transaction_store_unavailable",
+            `pending transaction ${expected.transactionId} disappeared`,
+          );
+        }
+        const live = parseTxEntry(current);
+        assertSameTransaction(live, expected);
+        if (live.status === "credited") return { next: null, result: undefined };
+        if (live.status !== "pending") {
+          throw new PaymentStateError(
+            "transaction_conflict",
+            `transaction ${expected.transactionId} cannot move from ${live.status} to credited`,
+          );
+        }
+        return {
+          next: { ...live, status: "credited" },
+          result: undefined,
+        };
+      });
+    } catch (err) {
+      throw transactionStoreFailure(
+        `marking transaction ${expected.transactionId} credited`,
+        err,
+      );
+    }
     return;
   }
 
@@ -547,27 +568,31 @@ export async function refundTransaction(transactionId: string): Promise<{ uid: s
   };
   let prepared: PreparedRefund | null = null;
   if (firestoreEnabled()) {
-    prepared = await casUpdate<PreparedRefund | null>(transactionDocPath(transactionId), (current) => {
-      if (!current) return { next: null, result: null };
-      const entry = parseTxEntry(current);
-      if (entry.status === "pending") {
-        throw new PaymentStateError(
-          "transaction_store_unavailable",
-          `transaction ${transactionId} credit is still pending; refund must retry`,
-        );
-      }
-      if (entry.status === "refunded") {
-        return { next: null, result: { entry, resumed: true, alreadyRefunded: true } };
-      }
-      if (entry.status === "refund_pending") {
-        return { next: null, result: { entry, resumed: true, alreadyRefunded: false } };
-      }
-      const next: TxIndexEntry = { ...entry, status: "refund_pending" };
-      return {
-        next: next as unknown as Record<string, unknown>,
-        result: { entry: next, resumed: false, alreadyRefunded: false },
-      };
-    });
+    try {
+      prepared = await casUpdate<PreparedRefund | null>(transactionDocPath(transactionId), (current) => {
+        if (!current) return { next: null, result: null };
+        const entry = parseTxEntry(current);
+        if (entry.status === "pending") {
+          throw new PaymentStateError(
+            "transaction_store_unavailable",
+            `transaction ${transactionId} credit is still pending; refund must retry`,
+          );
+        }
+        if (entry.status === "refunded") {
+          return { next: null, result: { entry, resumed: true, alreadyRefunded: true } };
+        }
+        if (entry.status === "refund_pending") {
+          return { next: null, result: { entry, resumed: true, alreadyRefunded: false } };
+        }
+        const next: TxIndexEntry = { ...entry, status: "refund_pending" };
+        return {
+          next: next as unknown as Record<string, unknown>,
+          result: { entry: next, resumed: false, alreadyRefunded: false },
+        };
+      });
+    } catch (err) {
+      throw transactionStoreFailure(`preparing refund ${transactionId}`, err);
+    }
   } else {
     await withFileLock(txIndexLock(), async () => {
       const index = readTxIndex();
@@ -606,23 +631,27 @@ export async function refundTransaction(transactionId: string): Promise<{ uid: s
     }
 
     if (firestoreEnabled()) {
-      await casUpdate(transactionDocPath(transactionId), (current) => {
-        if (!current) {
-          throw new PaymentStateError(
-            "transaction_store_unavailable",
-            `refunding transaction ${transactionId} disappeared`,
-          );
-        }
-        const live = parseTxEntry(current);
-        if (live.status === "refunded") return { next: null, result: undefined };
-        if (live.status !== "refund_pending") {
-          throw new PaymentStateError(
-            "transaction_conflict",
-            `transaction ${transactionId} cannot move from ${live.status} to refunded`,
-          );
-        }
-        return { next: { ...live, status: "refunded" }, result: undefined };
-      });
+      try {
+        await casUpdate(transactionDocPath(transactionId), (current) => {
+          if (!current) {
+            throw new PaymentStateError(
+              "transaction_store_unavailable",
+              `refunding transaction ${transactionId} disappeared`,
+            );
+          }
+          const live = parseTxEntry(current);
+          if (live.status === "refunded") return { next: null, result: undefined };
+          if (live.status !== "refund_pending") {
+            throw new PaymentStateError(
+              "transaction_conflict",
+              `transaction ${transactionId} cannot move from ${live.status} to refunded`,
+            );
+          }
+          return { next: { ...live, status: "refunded" }, result: undefined };
+        });
+      } catch (err) {
+        throw transactionStoreFailure(`completing refund ${transactionId}`, err);
+      }
     } else {
       await withFileLock(txIndexLock(), async () => {
         const index = readTxIndex();
