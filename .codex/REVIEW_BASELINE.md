@@ -14,6 +14,22 @@
 | iOS Simulator 测试 | 28 通过，0 失败 |
 | `npm audit --omit=dev` | 未通过；12 个生产依赖漏洞：5 high、6 moderate、1 low |
 
+## 稳定化执行状态
+
+本次审查已拆成可独立审阅、可独立回滚的草稿 PR：
+
+| 顺序 | PR | 处理范围 |
+| --- | --- | --- |
+| 1 | [#308](https://github.com/oratis/LISA/pull/308) | Cloud 服务端能力隔离 |
+| 2 | [#309](https://github.com/oratis/LISA/pull/309) | 固定公开 Origin 与可信代理 IP |
+| 3 | [#311](https://github.com/oratis/LISA/pull/311) | 账户/余额 fail-closed 与支付恢复状态机 |
+| 4 | [#312](https://github.com/oratis/LISA/pull/312) | 全部缓冲式 HTTP 请求体上限 |
+| 5 | [#314](https://github.com/oratis/LISA/pull/314) | Cloud 自治水位、并发防重与租约 |
+| 6 | [#315](https://github.com/oratis/LISA/pull/315) | Chat/Gateway 统一推理准入与租约生命周期 |
+| 7 | [#316](https://github.com/oratis/LISA/pull/316) | TenantRuntime 单飞、pin、TTL 与 LRU |
+
+其中 #316 堆叠在 #315 上，应在 #315 合并后再合并。其余 PR 以 `main` 为基线。
+
 ## 当前高优先级热点
 
 ### P0

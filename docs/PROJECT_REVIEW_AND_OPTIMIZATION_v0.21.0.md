@@ -29,6 +29,22 @@ LISA 已经不是一个“带工具的聊天应用”，而是一个结构完整
 
 其中前三项应视为 P0。它们不是代码美观问题，而是上线 Cloud 后的权限、账户和资金正确性问题。
 
+### 1.1 审查后的执行进展
+
+审查结论已进入实现，并按安全域拆成草稿 PR：
+
+| 推荐合并顺序 | PR | 结果 |
+| --- | --- | --- |
+| 1 | [#308 Cloud capability boundary](https://github.com/oratis/LISA/pull/308) | Cloud 服务端只注册 allowlist 工具，并拒绝本地 Agent/插件/MCP/技能执行入口 |
+| 2 | [#309 Public origin and proxy boundary](https://github.com/oratis/LISA/pull/309) | 外部安全链接固定到配置 Origin，代理链按可信跳数解析 |
+| 3 | [#311 Billing integrity](https://github.com/oratis/LISA/pull/311) | 账户与账务存储 fail-closed，IAP 使用可恢复状态机，外部交易幂等入账 |
+| 4 | [#312 HTTP body limits](https://github.com/oratis/LISA/pull/312) | 24 个遗留入口全部有界；控制面 1 MiB、富媒体 20 MiB |
+| 5 | [#314 Autonomy idempotency](https://github.com/oratis/LISA/pull/314) | 会话消息水位、pending/completed checkpoint、进程内互斥与 Firestore 租约 |
+| 6 | [#315 Inference admission](https://github.com/oratis/LISA/pull/315) | Chat/Gateway 共用限流、租约、额度和 permit 生命周期 |
+| 7 | [#316 TenantRuntime lifecycle](https://github.com/oratis/LISA/pull/316) | 单飞创建、请求 pin、TTL/LRU 和租户数量上限；Prompt 随 Runtime 回收 |
+
+#316 以 #315 为基线，是唯一堆叠 PR；其余均直接以 `main` 为基线。下一轮仍需继续覆盖未统一准入的出生、语音润色、手动 Reflection，并把 Advisor、Idle/最近活动等进程级状态迁入 TenantRuntime。
+
 ## 2. 本次审查方法与证据
 
 本次审查包括：
