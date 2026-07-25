@@ -23,6 +23,7 @@ import { skillManageTool } from "../skills/tool.js";
 import {
   desireCloseTool,
   desireProgressTool,
+  desireReviseTool,
   soulDiffTool,
   soulFeelTool,
   soulHistoryTool,
@@ -78,6 +79,7 @@ export function buildToolRegistry(opts: ToolRegistryOptions = {}): ToolDefinitio
     soulDiffTool as ToolDefinition,
     soulObjectTool as ToolDefinition,
     desireProgressTool as ToolDefinition,
+    desireReviseTool as ToolDefinition,
     desireCloseTool as ToolDefinition,
     webFetchTool as ToolDefinition,
     webSearchTool as ToolDefinition,
@@ -182,6 +184,49 @@ export function autonomousSubset(tools: ToolDefinition[]): ToolDefinition[] {
     // the user's feeds.json watchlist (D3) — an injected prompt can't make an
     // idle run pull an arbitrary URL into the KB.
     .map(restrictKbIngestToWatchlist);
+}
+
+const DESIRE_REVIEW_TOOL_NAMES = new Set([
+  "soul_read",
+  "soul_journal",
+  "desire_revise",
+  "desire_progress_log",
+  "desire_close",
+  "web_search",
+  "web_fetch",
+]);
+
+/**
+ * Narrow, stateful capability boundary for the scheduled desire review.
+ * Besides removing operational tools, it enforces the browsing budget in
+ * code: one search and at most two fetches per review, regardless of prompt.
+ */
+export function desireReviewSubset(tools: ToolDefinition[]): ToolDefinition[] {
+  let searches = 0;
+  let fetches = 0;
+  return tools
+    .filter((tool) => DESIRE_REVIEW_TOOL_NAMES.has(tool.name))
+    .map((tool) => {
+      if (tool.name !== "web_search" && tool.name !== "web_fetch") return tool;
+      const original = tool.execute.bind(tool);
+      return {
+        ...tool,
+        execute: async (input: unknown, ctx: Parameters<ToolDefinition["execute"]>[1]) => {
+          if (tool.name === "web_search") {
+            if (searches >= 1) {
+              throw new Error("desire review browsing budget exhausted: max 1 web_search");
+            }
+            searches++;
+          } else {
+            if (fetches >= 2) {
+              throw new Error("desire review browsing budget exhausted: max 2 web_fetch");
+            }
+            fetches++;
+          }
+          return await original(input, ctx);
+        },
+      } as ToolDefinition;
+    });
 }
 
 /**
