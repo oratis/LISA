@@ -1,6 +1,6 @@
 {
   "name": "@oratis/lisa",
-  "version": "0.21.0",
+  "version": "0.22.0",
   "description": "An AI agent with a real self — runs locally, has desires, keeps a journal, evolves over time.",
   "keywords": [
     "ai",
@@ -76,8 +76,8 @@
   "devDependencies": {
     "@types/node": "^22.10.0",
     "@types/qrcode-terminal": "^0.12.2",
-    "sharp": "^0.34.5",
-    "tsx": "^4.21.0",
+    "sharp": "^0.35.3",
+    "tsx": "^4.23.1",
     "typescript": "^5.7.0"
   },
   "optionalDependencies": {
