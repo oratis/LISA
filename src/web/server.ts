@@ -39,13 +39,30 @@ import { ISLAND_HTML } from "./island.js";
 import { LOGIN_HTML } from "./login.js";
 import { recordUsage, summarizeUsage, setAnomalySink } from "../billing/meter.js";
 import { PRICES_VERSION, tokensAffordable } from "../billing/prices.js";
-import { debitTurn, quotaStatus } from "../billing/quota.js";
+import {
+  debitTurn,
+  quotaStatus,
+  BillingStateError,
+} from "../billing/quota.js";
 import { admitInference, type InferencePermit } from "../billing/admission.js";
-import { verifyAppleJWS, validateTransaction, creditTransaction, creditExternalTransaction, refundTransaction, IapError } from "../billing/iap.js";
+import {
+  verifyAppleJWS,
+  validateTransaction,
+  creditTransaction,
+  creditExternalTransaction,
+  refundTransaction,
+  IapError,
+  PaymentStateError,
+} from "../billing/iap.js";
 import { stripeConfig, verifyStripeSignature, classifyStripeEvent, createCheckoutSession, sessionIdForPaymentIntent, STRIPE_PACKS } from "../billing/stripe.js";
 import { ACCOUNT_HTML } from "./account-page.js";
 import { handleGateway } from "./gateway.js";
-import { readCappedText, BodyTooLargeError, CTRL_BODY_LIMIT } from "./http-body.js";
+import {
+  readCappedText,
+  BodyTooLargeError,
+  CTRL_BODY_LIMIT,
+  RICH_BODY_LIMIT,
+} from "./http-body.js";
 import { ipRateOk, killSwitchOn, globalSpendExceeded } from "../billing/limits.js";
 import { ROOM_HTML } from "./room.js";
 import { MAIN_HTML } from "./lisa-html.js";
@@ -86,6 +103,7 @@ import {
 } from "./sessions-auth.js";
 import {
   AccountError,
+  AccountStoreError,
   createEmailAccount,
   verifyEmailLogin,
   upsertAppleAccount,
@@ -144,6 +162,17 @@ import {
 import { detectLanHost, buildPairUrl } from "./pairing.js";
 import { TenantEventBus, sameTenant } from "./event-bus.js";
 import { qrSvg } from "./qr-svg.js";
+import { resolveClientIp } from "./client-ip.js";
+import {
+  configuredPublicOrigin,
+  requireCloudPublicOrigin,
+  verificationUrl,
+} from "./public-origin.js";
+import {
+  capabilityProfileForEdition,
+  isCloudDeniedRoute,
+  toolsForCapabilityProfile,
+} from "./capabilities.js";
 import type { ToolDefinition, StoredMessage } from "../types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -236,22 +265,8 @@ const REG_IP_WINDOW_MS = 60 * 60_000;
 const KB_INGEST_IP_LIMIT = 20;
 const KB_INGEST_WINDOW_MS = 5 * 60_000;
 
-/**
- * Best-effort client IP. Behind Cloud Run the socket peer is the front end, so
- * the first `x-forwarded-for` hop is the client — and a client can put anything
- * there. Only used for coarse rate-limit keying, never for authorization.
- */
 function clientIp(req: http.IncomingMessage, remoteAddr: string): string {
-  const xff = req.headers["x-forwarded-for"];
-  const first = (Array.isArray(xff) ? xff[0] : xff)?.split(",")[0]?.trim();
-  return first || remoteAddr || "unknown";
-}
-
-/** The absolute /verify link for a raw token, derived from the request host. */
-function verifyLinkFor(req: http.IncomingMessage, rawToken: string): string {
-  const host = req.headers.host ?? "cloud.meetlisa.ai";
-  const proto = (req.headers["x-forwarded-proto"] as string | undefined) ?? "https";
-  return `${proto}://${host}/verify?token=${rawToken}`;
+  return resolveClientIp(req.headers, remoteAddr);
 }
 
 /**
@@ -297,6 +312,29 @@ async function readJsonBody(
   }
 }
 
+/**
+ * Bound legacy JSON endpoints without changing their existing parse and media
+ * type semantics. Returns null after writing an error response.
+ */
+async function readRequestText(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  limitBytes: number = CTRL_BODY_LIMIT,
+): Promise<string | null> {
+  try {
+    return await readCappedText(req, limitBytes);
+  } catch (err) {
+    if (err instanceof BodyTooLargeError) {
+      res.writeHead(413, { "content-type": "application/json", connection: "close" });
+      res.end(JSON.stringify({ error: "payload_too_large", limitBytes: err.limitBytes }));
+      return null;
+    }
+    res.writeHead(400, { "content-type": "application/json", connection: "close" });
+    res.end(JSON.stringify({ error: "request_body_unavailable" }));
+    return null;
+  }
+}
+
 async function resumeOrCreateWebSession(model: string): Promise<SessionStore> {
   const lastId = await readActiveWebSession();
   if (lastId) {
@@ -337,6 +375,15 @@ async function resumeOrCreateWebSession(model: string): Promise<SessionStore> {
 export async function startWebServer(opts: WebServerOptions): Promise<http.Server> {
   const host = opts.host ?? "127.0.0.1";
   const webToken = process.env.LISA_WEB_TOKEN?.trim() || null;
+  const cloudEdition = isCloud();
+  // Security-sensitive outbound links never derive their origin from Host or
+  // forwarding headers. Cloud startup fails until its canonical HTTPS origin
+  // is configured; local mode has a deterministic loopback fallback.
+  const publicOrigin = cloudEdition
+    ? requireCloudPublicOrigin()
+    : configuredPublicOrigin() ?? `http://localhost:${opts.port}`;
+  const capabilityProfile = capabilityProfileForEdition(cloudEdition ? "cloud" : "mac");
+  const runtimeTools = toolsForCapabilityProfile(opts.tools, capabilityProfile);
   // Account sessions (PLAN_ACCOUNTS_BILLING B1): the signing secret lives in
   // $lisaHome() (auto-created 0600; durable on the cloud's /data mount). Only the
   // cloud edition mints/verifies account sessions today — the Mac edition gains
@@ -826,7 +873,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           }
         }
         const result = await runIdleOnce({
-          tools: opts.tools,
+          tools: runtimeTools,
           cwd: process.cwd(),
           signal: abort.signal,
           model: opts.model,
@@ -1233,7 +1280,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         // levels the free window from $1 to the full $5. Fire-and-forget.
         if (url === "/api/auth/register") {
           const raw = await beginEmailVerification(acct.uid);
-          if (raw) void sendVerificationEmail(acct.email!, verifyLinkFor(req, raw));
+          if (raw) void sendVerificationEmail(acct.email!, verificationUrl(publicOrigin, raw));
         }
         const session = mintSession(acct.uid, sessionSecret, { sv: acct.sessionVersion });
         res.writeHead(200, {
@@ -1373,8 +1420,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         const report = await sweepUserAutonomy({
           ...(opts.model ? { model: opts.model } : {}),
           ...(maxRuns !== undefined ? { maxRuns } : {}),
+          tools: opts.tools,
+          cwd: process.cwd(),
         });
-        console.error(`[sweep] scanned ${report.scanned} active accounts, reflected ${report.ran}`);
+        console.error(
+          `[sweep] scanned ${report.scanned} active accounts, ran ${report.ran} autonomy action(s)`,
+        );
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify(report));
       } catch (e) {
@@ -1421,6 +1472,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ ok: true }));
       } catch (e) {
+        if (e instanceof PaymentStateError || e instanceof BillingStateError) {
+          console.error(`[iap] ASN billing state unavailable: ${e.message}`);
+          res.writeHead(503, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "billing_state_unavailable" }));
+          return;
+        }
         const code = e instanceof IapError ? e.code : "verification_failed";
         console.error(`[iap] ASN rejected: ${code}`);
         res.writeHead(401, { "content-type": "application/json" });
@@ -1557,13 +1614,24 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // ── Inference gateway (B6): key-free managed LLM calls from signed-in
     // Macs/CLIs. Account sessions only — never the shared demo token.
     if (req.method === "POST" && (url.startsWith("/gw/anthropic/") || url.startsWith("/gw/openai/"))) {
-      const acct = cloud && accountUid ? await getAccount(accountUid) : null;
-      if (!acct) {
-        res.writeHead(403, { "content-type": "application/json" });
-        res.end(JSON.stringify({ error: "account_session_required" }));
-        return;
+      try {
+        const acct = cloud && accountUid ? await getAccount(accountUid) : null;
+        if (!acct) {
+          res.writeHead(403, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "account_session_required" }));
+          return;
+        }
+        await handleGateway(req, res, url, acct);
+      } catch (err) {
+        if (!(err instanceof BillingStateError || err instanceof AccountStoreError)) throw err;
+        console.error(`[billing] gateway state unavailable: ${err.message}`);
+        if (!res.headersSent) {
+          res.writeHead(503, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "billing_state_unavailable" }));
+        } else if (!res.writableEnded) {
+          res.end();
+        }
       }
-      await handleGateway(req, res, url, acct);
       return;
     }
 
@@ -1605,6 +1673,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ ok: true, creditedMicroUSD: credited, quota: q }));
       } catch (e) {
+        if (e instanceof PaymentStateError || e instanceof BillingStateError) {
+          console.error(`[iap] billing state unavailable: ${e.message}`);
+          res.writeHead(503, { "content-type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: "billing_state_unavailable" }));
+          return;
+        }
         const code = e instanceof IapError ? e.code : "verification_failed";
         // duplicate_transaction answers 200-ok:false so the client still
         // finishes the transaction (it WAS credited once already).
@@ -1639,9 +1713,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const body = await readJsonBody(req, res);
       if (!body) return; // 413 already sent
       const pack = typeof body.pack === "string" ? body.pack : "";
-      const proto = (req.headers["x-forwarded-proto"] as string | undefined) ?? "https";
-      const base = `${proto}://${req.headers.host ?? "cloud.meetlisa.ai"}`;
-      const session = await createCheckoutSession(accountUid, pack, base, scfg);
+      const session = await createCheckoutSession(accountUid, pack, publicOrigin, scfg);
       if (!session) {
         res.writeHead(400, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: "checkout_failed" }));
@@ -1655,15 +1727,22 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     if (req.method === "GET" && url === "/api/billing/quota") {
       // The signed-in account's window/tier/balance — drives the quota bar +
       // paywall in every client (same numbers everywhere, §5.5).
-      const acct = accountUid ? await getAccount(accountUid) : null;
-      if (!acct) {
+      try {
+        const acct = accountUid ? await getAccount(accountUid) : null;
+        if (!acct) {
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(JSON.stringify({ available: false }));
+          return;
+        }
+        const q = await quotaStatus(acct);
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({ available: false }));
-        return;
+        res.end(JSON.stringify({ available: true, ...q }));
+      } catch (err) {
+        if (!(err instanceof BillingStateError || err instanceof AccountStoreError)) throw err;
+        console.error(`[billing] quota unavailable: ${err.message}`);
+        res.writeHead(503, { "content-type": "application/json" });
+        res.end(JSON.stringify({ available: false, error: "billing_state_unavailable" }));
       }
-      const q = await quotaStatus(acct);
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ available: true, ...q }));
       return;
     }
 
@@ -1702,7 +1781,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         return;
       }
       const raw = await beginEmailVerification(acct.uid);
-      const mail = raw ? await sendVerificationEmail(acct.email, verifyLinkFor(req, raw)) : null;
+      const mail = raw ? await sendVerificationEmail(acct.email, verificationUrl(publicOrigin, raw)) : null;
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, sent: mail?.sent ?? false }));
       return;
@@ -1737,6 +1816,18 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         "set-cookie": `lisa_token=; Max-Age=0; HttpOnly; SameSite=Strict; Path=/${isCloud() ? "; Secure" : ""}`,
       });
       res.end(JSON.stringify({ ok: true, removed }));
+      return;
+    }
+
+    // Hosted users never own the machine running this process. Deny local
+    // control-plane and arbitrary-outbound routes server-side before their
+    // handlers run; the client edition descriptor is presentation only.
+    if (cloud && isCloudDeniedRoute(url)) {
+      res.writeHead(403, { "content-type": "application/json" });
+      res.end(JSON.stringify({
+        error: "capability_denied",
+        profile: capabilityProfile,
+      }));
       return;
     }
 
@@ -1859,8 +1950,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end("screen-advisor config only accepted from localhost");
         return;
       }
-      let saBody = "";
-      for await (const chunk of req) saBody += chunk.toString("utf8");
+      const saBody = await readRequestText(req, res);
+      if (saBody === null) return;
       let payload: Partial<ScreenAdvisorConfig>;
       try {
         payload = JSON.parse(saBody || "{}") as Partial<ScreenAdvisorConfig>;
@@ -1898,8 +1989,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end(JSON.stringify({ error: "screen capture is only supported on macOS" }));
         return;
       }
-      let visionBody = "";
-      for await (const chunk of req) visionBody += chunk.toString("utf8");
+      const visionBody = await readRequestText(req, res);
+      if (visionBody === null) return;
       console.error("[vision] capture requested");
       let mode: CaptureMode = "interactive";
       try {
@@ -1925,8 +2016,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // the model's job, not a special endpoint). 400 on missing data; the
     // transcriber itself errors clearly if OPENAI_API_KEY is unset.
     if (req.method === "POST" && url === "/api/voice/transcribe") {
-      let voiceBody = "";
-      for await (const chunk of req) voiceBody += chunk.toString("utf8");
+      const voiceBody = await readRequestText(req, res, RICH_BODY_LIMIT);
+      if (voiceBody === null) return;
       let payload: { data?: string; mediaType?: string; mode?: string };
       try {
         payload = JSON.parse(voiceBody || "{}");
@@ -2005,8 +2096,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // down-weights over time ("learns to shut up"), and drop it from the
     // cached card so a refreshed island doesn't resurrect it.
     if (req.method === "POST" && url === "/api/advisor/dismiss") {
-      let dBody = "";
-      for await (const chunk of req) dBody += chunk.toString("utf8");
+      const dBody = await readRequestText(req, res);
+      if (dBody === null) return;
       let payload: { id?: unknown; category?: unknown };
       try {
         payload = JSON.parse(dBody || "{}");
@@ -2055,8 +2146,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // gate like every endpoint (loopback or token). Reuses signal_agent, so it
     // can ONLY touch dispatch-ledger pids — never an arbitrary process.
     if (req.method === "POST" && url === "/api/agent/signal") {
-      let sigBody = "";
-      for await (const chunk of req) sigBody += chunk.toString("utf8");
+      const sigBody = await readRequestText(req, res);
+      if (sigBody === null) return;
       let payload: { action?: unknown; target?: unknown; force?: unknown };
       try {
         payload = JSON.parse(sigBody || "{}");
@@ -2099,8 +2190,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end("pairing can only be started from the Mac (localhost)");
         return;
       }
-      let prBody = "";
-      for await (const chunk of req) prBody += chunk.toString("utf8");
+      const prBody = await readRequestText(req, res);
+      if (prBody === null) return;
       let payload: { name?: unknown; platform?: unknown; host?: unknown } = {};
       try { payload = prBody ? JSON.parse(prBody) : {}; } catch { /* tolerate */ }
       const name = typeof payload.name === "string" ? payload.name : "device";
@@ -2135,8 +2226,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end("device revocation is a Mac-owner action (localhost only)");
         return;
       }
-      let rvBody = "";
-      for await (const chunk of req) rvBody += chunk.toString("utf8");
+      const rvBody = await readRequestText(req, res);
+      if (rvBody === null) return;
       let payload: { id?: unknown } = {};
       try { payload = rvBody ? JSON.parse(rvBody) : {}; } catch { /* tolerate */ }
       const removed = revokeDevice(typeof payload.id === "string" ? payload.id : "");
@@ -2149,8 +2240,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // APNs token) + prefs — authed (the device does this remotely). Low-sensitivity
     // metadata only; see push.ts.
     if (req.method === "POST" && url === "/api/push/register") {
-      let puBody = "";
-      for await (const chunk of req) puBody += chunk.toString("utf8");
+      const puBody = await readRequestText(req, res);
+      if (puBody === null) return;
       let payload: { kind?: unknown; target?: unknown; server?: unknown; prefs?: Partial<PushPrefs> } = {};
       try { payload = puBody ? JSON.parse(puBody) : {}; } catch { /* tolerate */ }
       if (typeof payload.target !== "string" || !payload.target.trim()) {
@@ -2167,8 +2258,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       return;
     }
     if (req.method === "POST" && url === "/api/push/unregister") {
-      let puBody = "";
-      for await (const chunk of req) puBody += chunk.toString("utf8");
+      const puBody = await readRequestText(req, res);
+      if (puBody === null) return;
       let payload: { id?: unknown; target?: unknown } = {};
       try { payload = puBody ? JSON.parse(puBody) : {}; } catch { /* tolerate */ }
       const key = typeof payload.id === "string" ? payload.id : typeof payload.target === "string" ? payload.target : "";
@@ -2180,8 +2271,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // Register/unregister a Live Activity push token for a pinned session — the
     // push-bridge then refreshes that activity over APNs as the agent updates.
     if (req.method === "POST" && url === "/api/push/live-activity") {
-      let laBody = "";
-      for await (const chunk of req) laBody += chunk.toString("utf8");
+      const laBody = await readRequestText(req, res);
+      if (laBody === null) return;
       let payload: { sessionId?: unknown; token?: unknown } = {};
       try { payload = laBody ? JSON.parse(laBody) : {}; } catch { /* tolerate */ }
       if (typeof payload.sessionId !== "string" || !payload.sessionId) {
@@ -2202,8 +2293,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       return;
     }
     if (req.method === "POST" && url === "/api/push/prefs") {
-      let puBody = "";
-      for await (const chunk of req) puBody += chunk.toString("utf8");
+      const puBody = await readRequestText(req, res);
+      if (puBody === null) return;
       let payload: { id?: unknown; prefs?: Partial<PushPrefs> } = {};
       try { payload = puBody ? JSON.parse(puBody) : {}; } catch { /* tolerate */ }
       const sub = typeof payload.id === "string" ? setPushPrefs(payload.id, payload.prefs ?? {}) : null;
@@ -2224,8 +2315,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       return;
     }
     if (req.method === "POST" && url === "/api/mail/connect") {
-      let mBody = "";
-      for await (const chunk of req) mBody += chunk.toString("utf8");
+      const mBody = await readRequestText(req, res);
+      if (mBody === null) return;
       let p: { email?: unknown; host?: unknown; port?: unknown; password?: unknown; label?: unknown };
       try { p = JSON.parse(mBody || "{}"); } catch {
         res.writeHead(400, { "content-type": "text/plain" }); res.end("bad json"); return;
@@ -2308,8 +2399,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end("control policy can only be changed from the Mac (localhost)");
         return;
       }
-      let cpBody = "";
-      for await (const chunk of req) cpBody += chunk.toString("utf8");
+      const cpBody = await readRequestText(req, res);
+      if (cpBody === null) return;
       let payload: Partial<ControlPolicy>;
       try { payload = JSON.parse(cpBody || "{}"); } catch {
         res.writeHead(400, { "content-type": "text/plain" }); res.end("bad json"); return;
@@ -2336,8 +2427,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       return;
     }
     if (req.method === "POST" && url === "/api/autonomy/state") {
-      let asBody = "";
-      for await (const chunk of req) asBody += chunk.toString("utf8");
+      const asBody = await readRequestText(req, res);
+      if (asBody === null) return;
       let payload: Partial<AutonomyState>;
       try { payload = JSON.parse(asBody || "{}"); } catch {
         res.writeHead(400, { "content-type": "text/plain" }); res.end("bad json"); return;
@@ -2386,8 +2477,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
 
     if (req.method === "POST" && url === "/api/agents/managed/start") {
       if (denyRemote("control")) return;
-      let mBody = "";
-      for await (const chunk of req) mBody += chunk.toString("utf8");
+      const mBody = await readRequestText(req, res);
+      if (mBody === null) return;
       let payload: { task?: unknown; cwd?: unknown; model?: unknown };
       try { payload = JSON.parse(mBody || "{}"); } catch {
         res.writeHead(400, { "content-type": "text/plain" }); res.end("bad json"); return;
@@ -2397,7 +2488,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       }
       const cwd = typeof payload.cwd === "string" && payload.cwd.startsWith("/") ? payload.cwd : process.cwd();
       // A managed agent doesn't control other agents — drop dispatch/signal.
-      const tools = opts.tools.filter((t) => t.name !== "dispatch_agent" && t.name !== "signal_agent");
+      const tools = runtimeTools.filter((t) => t.name !== "dispatch_agent" && t.name !== "signal_agent");
       const systemPrompt =
         `You are a delegated agent working in ${cwd}, launched by the user through Lisa. ` +
         `Complete the user's task using the available tools, then report what you did concisely. ` +
@@ -2419,8 +2510,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const slash = rest.indexOf("/");
       const id = slash >= 0 ? rest.slice(0, slash) : rest;
       const action = slash >= 0 ? rest.slice(slash + 1) : "";
-      let mBody = "";
-      for await (const chunk of req) mBody += chunk.toString("utf8");
+      const mBody = await readRequestText(req, res);
+      if (mBody === null) return;
       let payload: { text?: unknown; allow?: unknown } = {};
       try { payload = mBody ? JSON.parse(mBody) : {}; } catch { /* tolerate empty/none */ }
       let ok = false;
@@ -2442,8 +2533,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // your task + follow-ups and can read the terminal tail. Behind the same
     // auth gate; 503 when the spike flag is off / node-pty is absent.
     if (req.method === "POST" && url === "/api/agents/pty/start") {
-      let pBody = "";
-      for await (const chunk of req) pBody += chunk.toString("utf8");
+      const pBody = await readRequestText(req, res);
+      if (pBody === null) return;
       let payload: { agent?: unknown; task?: unknown; cwd?: unknown; resumeSessionId?: unknown };
       try { payload = JSON.parse(pBody || "{}"); } catch {
         res.writeHead(400, { "content-type": "text/plain" }); res.end("bad json"); return;
@@ -2555,8 +2646,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const slash = rest.indexOf("/");
       const id = decodeURIComponent(slash >= 0 ? rest.slice(0, slash) : rest);
       const action = slash >= 0 ? rest.slice(slash + 1) : "";
-      let pBody = "";
-      for await (const chunk of req) pBody += chunk.toString("utf8");
+      const pBody = await readRequestText(req, res);
+      if (pBody === null) return;
       let payload: { text?: unknown } = {};
       try { payload = pBody ? JSON.parse(pBody) : {}; } catch { /* tolerate */ }
       let ok = false;
@@ -2589,8 +2680,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       req.method === "POST" &&
       (url === "/api/consent/grant" || url === "/api/consent/revoke")
     ) {
-      let cBody = "";
-      for await (const chunk of req) cBody += chunk.toString("utf8");
+      const cBody = await readRequestText(req, res);
+      if (cBody === null) return;
       let payload: { signal?: unknown };
       try {
         payload = JSON.parse(cBody || "{}");
@@ -2858,8 +2949,8 @@ self.addEventListener('fetch', (event) => {
       return;
     }
     if (req.method === "POST" && url === "/api/kb/add") {
-      let body = "";
-      for await (const chunk of req) body += chunk.toString("utf8");
+      const body = await readRequestText(req, res);
+      if (body === null) return;
       let payload: { title?: string; content?: string; tags?: string[]; origin?: string };
       try {
         payload = JSON.parse(body || "{}");
@@ -2954,8 +3045,8 @@ self.addEventListener('fetch', (event) => {
       return;
     }
     if (req.method === "POST" && url === "/api/kb/remove") {
-      let body = "";
-      for await (const chunk of req) body += chunk.toString("utf8");
+      const body = await readRequestText(req, res);
+      if (body === null) return;
       let payload: { layer?: string; slug?: string };
       try {
         payload = JSON.parse(body || "{}");
@@ -2976,7 +3067,7 @@ self.addEventListener('fetch', (event) => {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(
         JSON.stringify({
-          tools: opts.tools.map((t) => ({
+          tools: runtimeTools.map((t) => ({
             name: t.name,
             description: t.description,
           })),
@@ -3014,8 +3105,8 @@ self.addEventListener('fetch', (event) => {
     }
 
     if (req.method === "POST" && url === "/api/plans/select") {
-      let body = "";
-      for await (const chunk of req) body += chunk.toString("utf8");
+      const body = await readRequestText(req, res);
+      if (body === null) return;
       let payload: { plan?: unknown };
       try {
         payload = JSON.parse(body || "{}");
@@ -3074,8 +3165,8 @@ self.addEventListener('fetch', (event) => {
         res.end("config save only accepted from localhost");
         return;
       }
-      let body = "";
-      for await (const chunk of req) body += chunk.toString("utf8");
+      const body = await readRequestText(req, res);
+      if (body === null) return;
       let payload: { anthropicKey?: unknown; openaiKey?: unknown };
       try {
         payload = JSON.parse(body || "{}");
@@ -3258,8 +3349,8 @@ self.addEventListener('fetch', (event) => {
 
     if (req.method === "POST" && url === "/chat") {
       const chat = await ctxForRequest();
-      let body = "";
-      for await (const chunk of req) body += chunk.toString("utf8");
+      const body = await readRequestText(req, res, RICH_BODY_LIMIT);
+      if (body === null) return;
       let message: string;
       let files: Array<{ name: string; mediaType: string; data: string }> | undefined;
       try {
@@ -3285,16 +3376,25 @@ self.addEventListener('fetch', (event) => {
       // a paywall (structured body: error + resetAt + tier).
       let quotaBudgetMicroUSD: number | null = null;
       let inferencePermit: InferencePermit | null = null;
-      const quotaAcct = cloud && accountUid ? await getAccount(accountUid) : null;
-      if (quotaAcct) {
-        const admission = await admitInference(quotaAcct, opts.model);
-        if (!admission.ok) {
-          res.writeHead(admission.status, { "content-type": "application/json" });
-          res.end(JSON.stringify(admission.body));
-          return;
+      let quotaAcct: Awaited<ReturnType<typeof getAccount>> = null;
+      try {
+        quotaAcct = cloud && accountUid ? await getAccount(accountUid) : null;
+        if (quotaAcct) {
+          const admission = await admitInference(quotaAcct, opts.model);
+          if (!admission.ok) {
+            res.writeHead(admission.status, { "content-type": "application/json" });
+            res.end(JSON.stringify(admission.body));
+            return;
+          }
+          inferencePermit = admission.permit;
+          quotaBudgetMicroUSD = admission.permit.budgetMicroUSD;
         }
-        inferencePermit = admission.permit;
-        quotaBudgetMicroUSD = admission.permit.budgetMicroUSD;
+      } catch (err) {
+        if (!(err instanceof BillingStateError || err instanceof AccountStoreError)) throw err;
+        console.error(`[billing] chat admission unavailable: ${err.message}`);
+        res.writeHead(503, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "billing_state_unavailable" }));
+        return;
       }
       // User just talked — reset the idle watcher + stamp focus freshness.
       try { getIdleWatcher(60 * 60_000).tick(); } catch {}
@@ -3345,7 +3445,7 @@ self.addEventListener('fetch', (event) => {
           const result = await runAgent({
             provider: getProvider(),
             systemPrompt: fresh.text,
-            tools: opts.tools,
+            tools: runtimeTools,
             toolCtx: {
               cwd: process.cwd(),
               // Abort on server shutdown OR this client disconnecting (Stop).

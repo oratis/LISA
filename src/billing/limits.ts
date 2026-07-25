@@ -159,7 +159,25 @@ function warnCapReadFailure(now: number): void {
 // (lisa-global/day-YYYY-MM-DD) incremented by CAS from every instance. Reads
 // go through a short-lived local cache so the sync exceeded-check stays sync;
 // a $200 cap tolerates seconds of staleness.
-let fsCounterCache: { day: string; microUSD: number; readAt: number } | null = null;
+interface FirestoreCounterCache {
+  day: string;
+  microUSD: number;
+  readAt: number;
+  failed?: boolean;
+}
+
+let fsCounterCache: FirestoreCounterCache | null = null;
+
+export function cachedGlobalSpendExceeded(
+  cache: FirestoreCounterCache | null,
+  day: string,
+  capMicroUSD: number,
+): boolean {
+  // No authoritative value for today, or a failed refresh: pause inference
+  // until Firestore recovers. Missing cache must never mean "$0 spent".
+  if (!cache || cache.day !== day || cache.failed) return true;
+  return cache.microUSD >= capMicroUSD;
+}
 
 /** Add spend to today's global counter (called from the meter). */
 export function globalSpendAdd(microUSD: number, now: number = Date.now()): void {
@@ -169,8 +187,10 @@ export function globalSpendAdd(microUSD: number, now: number = Date.now()): void
       const total = (typeof current?.microUSD === "number" ? current.microUSD : 0) + microUSD;
       fsCounterCache = { day, microUSD: total, readAt: now };
       return { next: { day, microUSD: total }, result: undefined };
-    }).catch(() => {
-      // accounting is best-effort; the audit ledger remains authoritative
+    }).catch((err) => {
+      fsCounterCache = { day, microUSD: 0, readAt: now, failed: true };
+      warnCapReadFailure(now);
+      console.error(`[billing] Firestore spend increment failed: ${(err as Error).message}`);
     });
     return;
   }
@@ -208,9 +228,12 @@ export function globalSpendExceeded(now: number = Date.now(), env: Record<string
           const total = typeof doc?.data.microUSD === "number" ? doc.data.microUSD : 0;
           fsCounterCache = { day, microUSD: total, readAt: now };
         })
-        .catch(() => {});
+        .catch(() => {
+          fsCounterCache = { day, microUSD: 0, readAt: now, failed: true };
+          warnCapReadFailure(now);
+        });
     }
-    return (fsCounterCache?.day === day ? fsCounterCache.microUSD : 0) >= dailyCapMicroUSD(env);
+    return cachedGlobalSpendExceeded(fsCounterCache, day, dailyCapMicroUSD(env));
   }
   const r = readCounter(now);
   if (!r.ok) {

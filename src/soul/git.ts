@@ -42,6 +42,7 @@ export type SoulCaller =
   | "soul_feel"
   | "reflect"
   | "heartbeat"
+  | "desire_review"
   | "manual"
   | "migration";
 
