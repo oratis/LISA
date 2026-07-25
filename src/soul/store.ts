@@ -251,6 +251,10 @@ export async function listDesires(): Promise<DesireEntry[]> {
 }
 
 export async function writeDesire(entry: DesireEntry): Promise<void> {
+  const intensity = normalizeDesireIntensity(entry.intensity);
+  const horizon = normalizeDesireHorizon(entry.horizon);
+  const updatedAt = validIsoOr(entry.updatedAt, entry.bornAt);
+  const sources = normalizeDesireSources(entry.sources);
   const lines = [
     `# ${entry.what}`,
     "",
@@ -264,9 +268,21 @@ export async function writeDesire(entry: DesireEntry): Promise<void> {
   if (entry.pursuit === "needs-user") {
     lines.push(`pursuit: needs-user`);
   }
-  lines.push(`born: ${entry.bornAt}`, "", `## why`, entry.why.trim());
+  lines.push(
+    `born: ${entry.bornAt}`,
+    `updated: ${updatedAt}`,
+    `intensity: ${intensity}`,
+    `horizon: ${horizon}`,
+  );
+  if (entry.lastReviewedAt) {
+    lines.push(`reviewed: ${validIsoOr(entry.lastReviewedAt, updatedAt)}`);
+  }
+  lines.push("", `## why`, entry.why.trim());
   if (entry.heartbeatPrompt) {
     lines.push("", "## heartbeat", entry.heartbeatPrompt.trim());
+  }
+  if (sources.length > 0) {
+    lines.push("", "## sources", ...sources.map((url) => `- ${url}`));
   }
   await atomicWrite(desireFile(entry.slug), lines.join("\n") + "\n");
   await commitSoulChange(`desires/${entry.slug}.md`, "desire");
@@ -275,12 +291,144 @@ export async function writeDesire(entry: DesireEntry): Promise<void> {
 function parseDesireFile(slug: string, raw: string): DesireEntry {
   const what = raw.match(/^#\s+(.+)$/m)?.[1] ?? slug;
   const actionable = /^actionable:\s*yes\s*$/im.test(raw);
-  const born = raw.match(/^born:\s*(.+)$/m)?.[1] ?? new Date().toISOString();
-  const why = (raw.match(/## why([\s\S]*?)(?:\n## |\n*$)/)?.[1] ?? "").trim();
-  const heartbeatPrompt = (raw.match(/## heartbeat([\s\S]*)$/)?.[1] ?? "").trim() || undefined;
+  const born = raw.match(/^born:\s*(.+)$/m)?.[1] ?? new Date(0).toISOString();
+  const updatedAt = validIsoOr(raw.match(/^updated:\s*(.+)$/m)?.[1], born);
+  const lastReviewedRaw = raw.match(/^reviewed:\s*(.+)$/m)?.[1];
+  const lastReviewedAt = lastReviewedRaw
+    ? validIsoOr(lastReviewedRaw, updatedAt)
+    : undefined;
+  const intensity = normalizeDesireIntensity(
+    Number(raw.match(/^intensity:\s*([\d.]+)\s*$/m)?.[1]),
+  );
+  const horizon = normalizeDesireHorizon(
+    raw.match(/^horizon:\s*(spark|season|enduring)\s*$/m)?.[1],
+  );
+  const why = desireSection(raw, "why");
+  const heartbeatPrompt = desireSection(raw, "heartbeat") || undefined;
+  const sources = normalizeDesireSources(
+    desireSection(raw, "sources")
+      .split("\n")
+      .map((line) => line.replace(/^-\s*/, "").trim())
+      .filter(Boolean),
+  );
   const pursuit = /^pursuit:\s*needs-user\s*$/im.test(raw) ? "needs-user" : undefined;
   const closed = /^closed:\s*yes\s*$/im.test(raw) || undefined;
-  return { slug, what, why, actionable, heartbeatPrompt, pursuit, closed, bornAt: born };
+  return {
+    slug,
+    what,
+    why,
+    actionable,
+    heartbeatPrompt,
+    pursuit,
+    closed,
+    bornAt: born,
+    intensity,
+    horizon,
+    updatedAt,
+    lastReviewedAt,
+    sources,
+  };
+}
+
+function desireSection(raw: string, heading: string): string {
+  const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const header = new RegExp(`^## ${escaped}\\s*$`, "m").exec(raw);
+  if (!header) return "";
+  const tail = raw.slice(header.index + header[0].length).replace(/^\r?\n/, "");
+  const nextHeading = tail.search(/^## /m);
+  return (nextHeading >= 0 ? tail.slice(0, nextHeading) : tail).trim();
+}
+
+export const DEFAULT_DESIRE_INTENSITY = 0.6;
+export const DEFAULT_DESIRE_HORIZON = "season" as const;
+
+export const DESIRE_HALF_LIFE_DAYS: Record<
+  NonNullable<DesireEntry["horizon"]>,
+  number
+> = {
+  spark: 3,
+  season: 30,
+  enduring: 365,
+};
+
+export const DESIRE_REVIEW_INTERVAL_DAYS: Record<
+  NonNullable<DesireEntry["horizon"]>,
+  number
+> = {
+  spark: 1,
+  season: 3,
+  enduring: 14,
+};
+
+export function normalizeDesireIntensity(value: number | undefined): number {
+  if (!Number.isFinite(value)) return DEFAULT_DESIRE_INTENSITY;
+  return Math.round(Math.max(0, Math.min(1, value!)) * 1000) / 1000;
+}
+
+export function normalizeDesireHorizon(
+  value: string | undefined,
+): NonNullable<DesireEntry["horizon"]> {
+  return value === "spark" || value === "season" || value === "enduring"
+    ? value
+    : DEFAULT_DESIRE_HORIZON;
+}
+
+export function normalizeDesireSources(sources: readonly string[] | undefined): string[] {
+  const out: string[] = [];
+  for (const raw of sources ?? []) {
+    if (out.length >= 8) break;
+    try {
+      const url = new URL(raw.trim());
+      if (url.protocol !== "http:" && url.protocol !== "https:") continue;
+      const normalized = url.toString();
+      if (!out.includes(normalized)) out.push(normalized);
+    } catch {
+      // Invalid provenance is ignored rather than persisted into the soul.
+    }
+  }
+  return out;
+}
+
+function validIsoOr(value: string | undefined, fallback: string): string {
+  return value && Number.isFinite(Date.parse(value)) ? value : fallback;
+}
+
+/**
+ * Time-adjusted desire strength. Activity may be supplied as a reinforcement
+ * timestamp: pursuing a desire renews its momentum without rewriting the
+ * semantic desire file. Pure and replayable via nowMs.
+ */
+export function effectiveDesireIntensity(
+  desire: DesireEntry,
+  nowMs: number = Date.now(),
+  reinforcedAt?: string,
+): number {
+  const horizon = normalizeDesireHorizon(desire.horizon);
+  const semanticAt = Date.parse(desire.updatedAt ?? desire.bornAt);
+  const reinforcedMs = reinforcedAt ? Date.parse(reinforcedAt) : NaN;
+  const baselineAt = Math.max(
+    Number.isFinite(semanticAt) ? semanticAt : 0,
+    Number.isFinite(reinforcedMs) ? reinforcedMs : 0,
+  );
+  const elapsedDays = Math.max(0, nowMs - baselineAt) / (24 * 60 * 60_000);
+  return (
+    normalizeDesireIntensity(desire.intensity) *
+    Math.pow(0.5, elapsedDays / DESIRE_HALF_LIFE_DAYS[horizon])
+  );
+}
+
+/** Whether this open desire is due for deliberate background re-evaluation. */
+export function isDesireReviewDue(
+  desire: DesireEntry,
+  nowMs: number = Date.now(),
+): boolean {
+  if (desire.closed) return false;
+  const horizon = normalizeDesireHorizon(desire.horizon);
+  const last = Date.parse(
+    desire.lastReviewedAt ?? desire.updatedAt ?? desire.bornAt,
+  );
+  if (!Number.isFinite(last)) return true;
+  return nowMs - last >= DESIRE_REVIEW_INTERVAL_DAYS[horizon] * 24 * 60 * 60_000;
 }
 
 /**
@@ -333,18 +481,27 @@ export async function desireActivity(
 export function pickCurrentDesire(
   desires: DesireEntry[],
   activityAt?: Record<string, string>,
+  nowMs: number = Date.now(),
 ): DesireEntry | null {
   if (desires.length === 0) return null;
   const recency = (d: DesireEntry): number => {
     const a = activityAt?.[d.slug];
     const fromActivity = a ? Date.parse(a) : NaN;
-    return Number.isNaN(fromActivity) ? Date.parse(d.bornAt) || 0 : fromActivity;
+    return Number.isNaN(fromActivity)
+      ? Date.parse(d.updatedAt ?? d.bornAt) || 0
+      : fromActivity;
   };
   const actionable = desires.filter((d) => d.actionable);
   const pool = actionable.length > 0 ? actionable : desires;
-  // Secondary key on slug so an exact recency tie is deterministic rather than
-  // decided by array (fs.readdir) order — the accident this function removes.
-  return [...pool].sort((x, y) => recency(y) - recency(x) || x.slug.localeCompare(y.slug))[0] ?? null;
+  return (
+    [...pool].sort(
+      (x, y) =>
+        effectiveDesireIntensity(y, nowMs, activityAt?.[y.slug]) -
+          effectiveDesireIntensity(x, nowMs, activityAt?.[x.slug]) ||
+        recency(y) - recency(x) ||
+        x.slug.localeCompare(y.slug),
+    )[0] ?? null
+  );
 }
 
 /** Can the autonomous heartbeat pursue this desire unattended? Pure (R4). */
@@ -360,7 +517,18 @@ export function needsUserHelp(d: DesireEntry): boolean {
 /** Fields of an existing desire that a revision may change. slug/bornAt are
  *  identity and never move. */
 export type DesirePatch = Partial<
-  Pick<DesireEntry, "what" | "why" | "actionable" | "heartbeatPrompt" | "pursuit">
+  Pick<
+    DesireEntry,
+    | "what"
+    | "why"
+    | "actionable"
+    | "heartbeatPrompt"
+    | "pursuit"
+    | "intensity"
+    | "horizon"
+    | "lastReviewedAt"
+    | "sources"
+  >
 >;
 
 /**
@@ -399,6 +567,31 @@ export async function reviseDesire(
     }
     if (patch.heartbeatPrompt !== undefined) next.heartbeatPrompt = patch.heartbeatPrompt;
     if (patch.pursuit !== undefined) next.pursuit = patch.pursuit;
+    if (patch.intensity !== undefined) {
+      next.intensity = normalizeDesireIntensity(patch.intensity);
+    }
+    if (patch.horizon !== undefined) {
+      next.horizon = normalizeDesireHorizon(patch.horizon);
+    }
+    if (patch.lastReviewedAt !== undefined) {
+      next.lastReviewedAt = validIsoOr(patch.lastReviewedAt, new Date().toISOString());
+    }
+    if (patch.sources !== undefined) {
+      next.sources = normalizeDesireSources(patch.sources);
+    }
+    const semanticFields: Array<keyof DesirePatch> = [
+      "what",
+      "why",
+      "actionable",
+      "heartbeatPrompt",
+      "pursuit",
+      "intensity",
+      "horizon",
+      "sources",
+    ];
+    if (semanticFields.some((field) => patch[field] !== undefined)) {
+      next.updatedAt = new Date().toISOString();
+    }
     await writeDesire(next);
     return next;
   });

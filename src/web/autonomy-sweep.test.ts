@@ -8,7 +8,12 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "lisa-sweep-"));
 process.env.LISA_HOME = TMP;
 process.env.LISA_SOUL_GIT = "0";
 
-const { sweepToken, sweepUserAutonomy, SWEEP_INTERVALS_MS } = await import("./autonomy-sweep.js");
+const {
+  conversationNeedsReflection,
+  sweepToken,
+  sweepUserAutonomy,
+  SWEEP_INTERVALS_MS,
+} = await import("./autonomy-sweep.js");
 const { homeScope, homeForUid } = await import("../paths.js");
 const { birth } = await import("../soul/birth.js");
 import type { BirthOutput } from "../soul/birth.js";
@@ -95,6 +100,83 @@ describe("autonomy sweep (S4)", () => {
     assert.ok(SWEEP_INTERVALS_MS.tier2 < SWEEP_INTERVALS_MS.tier1);
     assert.ok(SWEEP_INTERVALS_MS.tier1 < SWEEP_INTERVALS_MS.free);
     assert.equal(SWEEP_INTERVALS_MS.free, SWEEP_INTERVALS_MS["free-unverified"]);
+  });
+
+  test("reflection cursor advances only for new user content", () => {
+    const cursor = { sessionId: "s1", userMessages: 2 };
+    assert.equal(conversationNeedsReflection(undefined, "s1", 1), true);
+    assert.equal(conversationNeedsReflection(cursor, "s1", 2), false);
+    assert.equal(conversationNeedsReflection(cursor, "s1", 3), true);
+    assert.equal(conversationNeedsReflection(cursor, "s2", 1), true);
+    assert.equal(conversationNeedsReflection(cursor, "s2", 0), false);
+  });
+
+  test("an idle cloud cadence can review a desire without a session", async () => {
+    seedAccounts([acct("u-review", NOW - 1000)]);
+    await homeScope.run(homeForUid("u-review"), () =>
+      birth({ dreamFn: async () => GOOD }),
+    );
+    let calls = 0;
+    const report = await sweepUserAutonomy({
+      now: NOW,
+      tools: [],
+      reviewFn: async () => {
+        calls++;
+        return {
+          text: "",
+          inputTokens: 12,
+          outputTokens: 3,
+          toolCalls: 2,
+          stopReason: "end_turn",
+        };
+      },
+    });
+    assert.equal(calls, 1, JSON.stringify(report));
+    assert.equal(report.ran, 1);
+    assert.deepEqual(report.outcomes, [
+      { uid: "u-review", action: "reviewed" },
+    ]);
+    const stamp = JSON.parse(
+      fs.readFileSync(
+        path.join(
+          TMP,
+          "users",
+          "u-review",
+          "autonomy",
+          "last-cloud-sweep.json",
+        ),
+        "utf8",
+      ),
+    ) as { at: number };
+    assert.equal(stamp.at, NOW);
+  });
+
+  test("overlapping sweeps never review the same tenant concurrently", async () => {
+    seedAccounts([acct("u-review-race", NOW - 1000)]);
+    await homeScope.run(homeForUid("u-review-race"), () =>
+      birth({ dreamFn: async () => GOOD }),
+    );
+    let calls = 0;
+    const reviewFn = async () => {
+      calls++;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      return {
+        text: "",
+        inputTokens: 12,
+        outputTokens: 3,
+        toolCalls: 2,
+        stopReason: "end_turn",
+      };
+    };
+
+    const [a, b] = await Promise.all([
+      sweepUserAutonomy({ now: NOW, tools: [], reviewFn }),
+      sweepUserAutonomy({ now: NOW, tools: [], reviewFn }),
+    ]);
+
+    assert.equal(calls, 1);
+    assert.equal(a.ran + b.ran, 1);
+    assert.ok([a, b].some((report) => report.outcomes[0]?.reason === "in_flight"));
   });
 
   test("one user's failure never blocks the rest", async () => {

@@ -20,6 +20,7 @@ import { parseArgs, type ParsedArgs } from "./cli-args.js";
 import { connectMcpServers } from "./mcp/client.js";
 import { loadMcpConfig } from "./mcp/config.js";
 import { lisaHome } from "./paths.js";
+import { isCloud } from "./edition.js";
 import { loadAllPlugins, PLUGINS_ROOT } from "./plugins/loader.js";
 import type { HookSpec } from "./plugins/types.js";
 import { buildSystemPromptSnapshot, getPromptFingerprint } from "./prompt.js";
@@ -31,7 +32,7 @@ import { SessionStore } from "./sessions/store.js";
 import { birth } from "./soul/birth.js";
 import { isBorn, readSoulSummary } from "./soul/store.js";
 import { createTaskTool } from "./tools/task.js";
-import { buildToolRegistry, readOnlySubset } from "./tools/registry.js";
+import { buildToolRegistry, cloudSafeSubset, readOnlySubset } from "./tools/registry.js";
 import type { AgentEvent, StoredMessage, ToolDefinition } from "./types.js";
 
 const HELP = `Lisa — your self-evolving local AI assistant.
@@ -194,6 +195,7 @@ async function main(): Promise<void> {
 
   await ensureDir(lisaHome());
   loadConfigEnv();
+  const cloudEdition = isCloud();
   // If the user didn't pass --model, resolve the default now that config.env is
   // loaded: an explicit LISA_MODEL (e.g. `lisa model use`) wins, else auto-detect
   // from the single configured cloud key. An explicit --model always overrides.
@@ -431,28 +433,34 @@ async function main(): Promise<void> {
   // that have been explicitly approved by SHA. Sandbox is the user's review,
   // not the runtime — these run in-process. Unapproved or stale ones are
   // surfaced as a startup notice; the user runs `lisa skills approve <slug>`.
-  const { discoverExecutableSkills, loadApprovedExecutableTools, summarizeCandidate } =
-    await import("./skills/executable.js");
-  const skillCandidates = await discoverExecutableSkills();
-  const executableTools = await loadApprovedExecutableTools((m) => console.error(m));
-  if (skillCandidates.length > 0) {
-    const pending = skillCandidates.filter((c) => c.status !== "approved-current");
-    if (pending.length > 0) {
-      console.error(`\n[skills] ${executableTools.length} executable tool(s) loaded; ${pending.length} pending:`);
-      for (const c of pending) console.error(summarizeCandidate(c));
-      console.error(`Run \`lisa skills approve <slug>\` to review and approve.\n`);
+  let executableTools: ToolDefinition[] = [];
+  if (!cloudEdition) {
+    const { discoverExecutableSkills, loadApprovedExecutableTools, summarizeCandidate } =
+      await import("./skills/executable.js");
+    const skillCandidates = await discoverExecutableSkills();
+    executableTools = await loadApprovedExecutableTools((m) => console.error(m));
+    if (skillCandidates.length > 0) {
+      const pending = skillCandidates.filter((c) => c.status !== "approved-current");
+      if (pending.length > 0) {
+        console.error(`\n[skills] ${executableTools.length} executable tool(s) loaded; ${pending.length} pending:`);
+        for (const c of pending) console.error(summarizeCandidate(c));
+        console.error(`Run \`lisa skills approve <slug>\` to review and approve.\n`);
+      }
     }
   }
-  const baseTools = buildToolRegistry({ includeVoice: args.voice, extra: executableTools });
+  const baseTools = buildToolRegistry({
+    includeVoice: !cloudEdition && args.voice,
+    extra: executableTools,
+  });
 
   // Load plugins (skills/commands/agents/hooks/mcp).
-  const plugins = args.loadPlugins ? await loadAllPlugins() : [];
+  const plugins = args.loadPlugins && !cloudEdition ? await loadAllPlugins() : [];
   const allHooks: HookSpec[] = plugins.flatMap((p) => p.hooks);
   const pluginMcp = plugins.flatMap((p) => p.mcpServers);
 
   // Load MCP servers (config + plugins).
   let mcpConnections: Awaited<ReturnType<typeof connectMcpServers>> = [];
-  if (args.loadMcp) {
+  if (args.loadMcp && !cloudEdition) {
     const configMcp = await loadMcpConfig();
     const allSpecs = [...configMcp, ...pluginMcp];
     if (allSpecs.length > 0) {
@@ -468,15 +476,23 @@ async function main(): Promise<void> {
   process.on("SIGINT", () => abortController.abort());
   const cwd = process.cwd();
 
-  const composedTools: ToolDefinition[] = [...baseTools, ...mcpTools];
-  const taskTool = createTaskTool({
-    fullToolset: () => composedTools,
-    readOnlyToolset: () => readOnlySubset(composedTools),
-    cwd,
-    signal: abortController.signal,
-    defaultModel: args.model,
-  });
-  composedTools.push(taskTool as ToolDefinition);
+  const composedTools: ToolDefinition[] = [
+    ...(cloudEdition ? cloudSafeSubset(baseTools) : baseTools),
+    ...mcpTools,
+  ];
+  // task captures the complete toolset in a closure. Never construct it in the
+  // hosted edition: filtering the visible list later would not be a sufficient
+  // capability boundary if the closure were accidentally reintroduced.
+  if (!cloudEdition) {
+    const taskTool = createTaskTool({
+      fullToolset: () => composedTools,
+      readOnlyToolset: () => readOnlySubset(composedTools),
+      cwd,
+      signal: abortController.signal,
+      defaultModel: args.model,
+    });
+    composedTools.push(taskTool as ToolDefinition);
+  }
   composedTools.sort((a, b) => a.name.localeCompare(b.name));
 
   // Heartbeat sub-command — uses the assembled toolset.

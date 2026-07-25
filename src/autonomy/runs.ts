@@ -30,7 +30,13 @@ function runsLock(): string {
 const MAX_RUNS = 2000;
 
 /** Which self-driven mechanism produced the run. */
-export type AutonomyKind = "idle" | "heartbeat" | "examen" | "desire" | "reflect";
+export type AutonomyKind =
+  | "idle"
+  | "heartbeat"
+  | "examen"
+  | "desire"
+  | "desire-review"
+  | "reflect";
 
 /**
  * What actually happened — replaces the old silent/non-silent binary.

@@ -38,6 +38,11 @@ import { listSessionsOnDisk, loadSessionMessages } from "../sessions/list.js";
 import { reflectOnSession } from "../reflect.js";
 import { DEFAULT_MODEL } from "../llm.js";
 import { isBorn } from "../soul/store.js";
+import {
+  runDesireReviewOnce,
+  type DesireReviewRunResult,
+} from "../heartbeat/runner.js";
+import type { ToolDefinition } from "../types.js";
 
 const HOUR_MS = 60 * 60 * 1000;
 export const SWEEP_INTERVALS_MS: Record<QuotaTier, number> = {
@@ -55,17 +60,22 @@ const SWEEP_LEASE_TTL_MS = 30 * 60 * 1000;
 const SWEEP_OWNER = `${process.pid}-${crypto.randomBytes(4).toString("hex")}`;
 const localSweepsInFlight = new Set<string>();
 
+interface ReflectionCursor {
+  sessionId: string;
+  userMessages: number;
+}
+
 interface SweepCheckpoint {
   at: number;
-  sessionId?: string;
-  messageCount?: number;
+  reflected?: ReflectionCursor;
   status?: "pending" | "completed";
   startedAt?: number;
+  pendingAction?: "reflection" | "review";
 }
 
 export interface SweepOutcome {
   uid: string;
-  action: "reflected" | "skipped";
+  action: "reflected" | "reviewed" | "skipped";
   reason?: string;
 }
 
@@ -92,12 +102,17 @@ async function readCheckpoint(): Promise<SweepCheckpoint | null> {
       typeof parsed !== "object" ||
       typeof parsed.at !== "number" ||
       !Number.isFinite(parsed.at) ||
-      (parsed.sessionId !== undefined && typeof parsed.sessionId !== "string") ||
-      (parsed.messageCount !== undefined &&
-        (typeof parsed.messageCount !== "number" || !Number.isInteger(parsed.messageCount))) ||
+      (parsed.reflected !== undefined &&
+        (typeof parsed.reflected !== "object" ||
+          typeof parsed.reflected.sessionId !== "string" ||
+          !Number.isInteger(parsed.reflected.userMessages) ||
+          parsed.reflected.userMessages < 0)) ||
       (parsed.status !== undefined && parsed.status !== "pending" && parsed.status !== "completed") ||
       (parsed.startedAt !== undefined &&
-        (typeof parsed.startedAt !== "number" || !Number.isFinite(parsed.startedAt)))
+        (typeof parsed.startedAt !== "number" || !Number.isFinite(parsed.startedAt))) ||
+      (parsed.pendingAction !== undefined &&
+        parsed.pendingAction !== "reflection" &&
+        parsed.pendingAction !== "review")
     ) {
       throw new Error("invalid autonomy checkpoint");
     }
@@ -145,6 +160,19 @@ async function acquireSweepGuard(uid: string): Promise<{
   };
 }
 
+export function conversationNeedsReflection(
+  cursor: ReflectionCursor | undefined,
+  sessionId: string,
+  userMessages: number,
+): boolean {
+  return (
+    userMessages > 0 &&
+    (!cursor ||
+      cursor.sessionId !== sessionId ||
+      userMessages > cursor.userMessages)
+  );
+}
+
 /**
  * Walk recently-active accounts and give each due soul one reflection tick.
  * Every per-uid step runs inside that uid's home scope; one user's failure
@@ -156,6 +184,10 @@ export async function sweepUserAutonomy(
     now?: number;
     maxRuns?: number;
     reflectFn?: typeof reflectOnSession;
+    tools?: ToolDefinition[];
+    cwd?: string;
+    /** Test seam; production uses the bounded heartbeat implementation. */
+    reviewFn?: typeof runDesireReviewOnce;
   } = {},
 ): Promise<SweepReport> {
   const now = opts.now ?? Date.now();
@@ -180,10 +212,10 @@ export async function sweepUserAutonomy(
       break;
     }
     const outcome = await homeScope.run(homeForUid(acct.uid), () =>
-      sweepOne(acct, now, opts.model, opts.reflectFn),
+      sweepOne(acct, now, opts),
     );
     outcomes.push(outcome);
-    if (outcome.action === "reflected") ran++;
+    if (outcome.action !== "skipped") ran++;
   }
   return { scanned: active.length, ran, outcomes };
 }
@@ -191,8 +223,13 @@ export async function sweepUserAutonomy(
 async function sweepOne(
   acct: AccountRecord,
   now: number,
-  model?: string,
-  reflectFn: typeof reflectOnSession = reflectOnSession,
+  opts: {
+    model?: string;
+    tools?: ToolDefinition[];
+    cwd?: string;
+    reflectFn?: typeof reflectOnSession;
+    reviewFn?: typeof runDesireReviewOnce;
+  },
 ): Promise<SweepOutcome> {
   const guard = await acquireSweepGuard(acct.uid);
   if (!guard) return { uid: acct.uid, action: "skipped", reason: "in_flight" };
@@ -213,54 +250,121 @@ async function sweepOne(
     }
     const sessions = await listSessionsOnDisk(); // newest first
     const latest = sessions[0];
-    if (!latest) return { uid: acct.uid, action: "skipped", reason: "no_sessions" };
-    if (
-      checkpoint?.status !== "pending" &&
-      checkpoint?.sessionId === latest.id &&
-      checkpoint.messageCount === latest.messageCount
-    ) {
-      return { uid: acct.uid, action: "skipped", reason: "unchanged" };
+    let latestMessageCount = 0;
+    if (latest) {
+      const { messages } = await loadSessionMessages(latest.id);
+      latestMessageCount = messages.length;
+      const userMessages = messages.filter((message) => message.role === "user").length;
+      if (
+        messages.length >= 2 &&
+        conversationNeedsReflection(
+          checkpoint?.reflected,
+          latest.id,
+          userMessages,
+        )
+      ) {
+        await writeCheckpoint({
+          at: checkpoint?.at ?? 0,
+          reflected: checkpoint?.reflected,
+          status: "pending",
+          startedAt: now,
+          pendingAction: "reflection",
+        });
+        let result: Awaited<ReturnType<typeof reflectOnSession>>;
+        try {
+          result = await (opts.reflectFn ?? reflectOnSession)({
+            history: messages,
+            sessionId: latest.id,
+            ...(opts.model ? { model: opts.model } : {}),
+          });
+          await writeCheckpoint({
+            at: now,
+            reflected: { sessionId: latest.id, userMessages },
+            status: "completed",
+          });
+        } catch (err) {
+          // Ordinary failures retry on the next scheduler tick. A hard crash
+          // leaves pending and waits for the lease TTL before recovery.
+          await writeCheckpoint(checkpoint);
+          throw err;
+        }
+        // Autonomy is free to the user, but its face cost stays audited and
+        // contributes to the global daily cap.
+        if (result.usage) {
+          await recordUsage(
+            "autonomy",
+            opts.model ?? DEFAULT_MODEL,
+            result.usage,
+          );
+        }
+        return { uid: acct.uid, action: "reflected" };
+      }
     }
-    const { messages } = await loadSessionMessages(latest.id);
-    if (messages.length < 2) return { uid: acct.uid, action: "skipped", reason: "too_short" };
-    const pending: SweepCheckpoint = {
-      at: checkpoint?.at ?? 0,
-      sessionId: latest.id,
-      messageCount: latest.messageCount,
-      status: "pending",
-      startedAt: now,
-    };
-    await writeCheckpoint(pending);
-    let result: Awaited<ReturnType<typeof reflectOnSession>>;
-    try {
-      result = await reflectFn({
-        history: messages,
-        sessionId: latest.id,
-        ...(model ? { model } : {}),
-      });
+
+    // At most ONE inference action per account per sweep: new conversation
+    // reflection wins; only an otherwise-idle cadence slot may review a desire.
+    if (opts.tools) {
       await writeCheckpoint({
-        at: now,
-        sessionId: latest.id,
-        messageCount: latest.messageCount,
-        status: "completed",
+        at: checkpoint?.at ?? 0,
+        reflected: checkpoint?.reflected,
+        status: "pending",
+        startedAt: now,
+        pendingAction: "review",
       });
-    } catch (err) {
-      // Ordinary failures should retry on the next scheduler tick. A process
-      // crash leaves `pending`; it is retried only after the lease TTL.
-      await writeCheckpoint(checkpoint);
-      throw err;
+      try {
+        const review = await (opts.reviewFn ?? runDesireReviewOnce)({
+          tools: opts.tools,
+          cwd: opts.cwd ?? process.cwd(),
+          signal: new AbortController().signal,
+          model: opts.model ?? DEFAULT_MODEL,
+          now: new Date(now),
+        });
+        if (review) {
+          await writeCheckpoint({
+            at: now,
+            reflected: checkpoint?.reflected,
+            status: "completed",
+          });
+          await meterReview(opts.model ?? DEFAULT_MODEL, review);
+          return { uid: acct.uid, action: "reviewed" };
+        }
+        if (checkpoint?.status === "pending" && checkpoint.pendingAction === "review") {
+          await writeCheckpoint({
+            at: now,
+            reflected: checkpoint.reflected,
+            status: "completed",
+          });
+        } else {
+          await writeCheckpoint(checkpoint);
+        }
+      } catch (err) {
+        await writeCheckpoint(checkpoint);
+        throw err;
+      }
     }
-    // Meter the spend (S4 review): autonomy costs the USER nothing (no debit),
-    // but the face cost is still audited (usage.jsonl) and counted against the
-    // global daily cap so a large active cohort can't quietly run the bill away.
-    // recordUsage runs inside this uid's home scope and never throws.
-    if (result.usage) {
-      await recordUsage("autonomy", model ?? DEFAULT_MODEL, result.usage);
+
+    if (!latest) {
+      return { uid: acct.uid, action: "skipped", reason: "no_sessions" };
     }
-    return { uid: acct.uid, action: "reflected" };
+    if (latestMessageCount < 2) {
+      return { uid: acct.uid, action: "skipped", reason: "too_short" };
+    }
+    return { uid: acct.uid, action: "skipped", reason: "unchanged" };
   } catch (e) {
     return { uid: acct.uid, action: "skipped", reason: `error: ${(e as Error).message.slice(0, 120)}` };
   } finally {
     await guard.release();
   }
+}
+
+async function meterReview(
+  model: string,
+  review: DesireReviewRunResult,
+): Promise<void> {
+  await recordUsage("autonomy", model, {
+    inputTokens: review.inputTokens,
+    outputTokens: review.outputTokens,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+  });
 }

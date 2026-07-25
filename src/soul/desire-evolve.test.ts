@@ -43,6 +43,10 @@ describe("reviseDesire", () => {
     assert.equal(next.actionable, false, "actionable preserved");
     assert.equal(next.slug, "revise-partial", "slug is identity");
     assert.equal(next.bornAt, "2026-01-01T00:00:00.000Z", "bornAt is identity, never moves");
+    assert.ok(
+      Date.parse(next.updatedAt ?? "") > Date.parse(next.bornAt),
+      "semantic revision advances updatedAt",
+    );
 
     // And it round-trips through the filesystem, not just the return value.
     const onDisk = (await store.listDesires()).find((d) => d.slug === "revise-partial");
@@ -68,6 +72,33 @@ describe("reviseDesire", () => {
     assert.equal(next.actionable, true);
     assert.equal(next.heartbeatPrompt, "read one rust chapter");
     assert.equal(store.isAutoPursuable(next), true, "now auto-pursuable by the heartbeat");
+  });
+
+  test("persists bounded dynamics and valid web provenance", async () => {
+    await seed("revise-dynamics");
+    const next = await store.reviseDesire("revise-dynamics", {
+      intensity: 1.4,
+      horizon: "spark",
+      lastReviewedAt: "2026-07-26T00:00:00.000Z",
+      sources: [
+        "https://example.com/a",
+        "javascript:alert(1)",
+        "https://example.com/a",
+        "https://example.org/b",
+      ],
+    });
+    assert.equal(next.intensity, 1, "intensity clamps to [0,1]");
+    assert.equal(next.horizon, "spark");
+    assert.deepEqual(next.sources, [
+      "https://example.com/a",
+      "https://example.org/b",
+    ]);
+
+    const onDisk = (await store.listDesires()).find(
+      (d) => d.slug === "revise-dynamics",
+    );
+    assert.equal(onDisk?.lastReviewedAt, "2026-07-26T00:00:00.000Z");
+    assert.deepEqual(onDisk?.sources, next.sources);
   });
 
   test("throws on an unknown slug (a revise must target something real)", async () => {
