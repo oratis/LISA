@@ -129,9 +129,17 @@ export async function checkDeliverable(
   const resolveMx = opts.resolveMx ?? ((h: string) => dns.resolveMx(h));
   const resolve4 = opts.resolve4 ?? ((h: string) => dns.resolve4(h));
 
-  // A slow resolver must not hold up a sign-in: whoever wins, we move on.
+  // A slow resolver must not hold up a sign-in: whoever wins the race, we move
+  // on. `decided` lets the abandoned lookup stop early instead of firing a
+  // second DNS query no one is waiting for (and, in tests, leaving a promise
+  // pending past the assertion).
   const admit = Symbol("timeout");
-  const timer = new Promise<typeof admit>((r) => setTimeout(() => r(admit), timeoutMs).unref?.());
+  let decided = false;
+  let timerId: ReturnType<typeof setTimeout> | undefined;
+  const timer = new Promise<typeof admit>((r) => {
+    timerId = setTimeout(() => r(admit), timeoutMs);
+    timerId.unref?.();
+  });
 
   try {
     const lookup = (async (): Promise<DeliverabilityVerdict> => {
@@ -141,6 +149,7 @@ export async function checkDeliverable(
       } catch (e) {
         if (!isNoSuchDomain(e)) return { ok: true }; // resolver trouble ⇒ admit
       }
+      if (decided) return { ok: true }; // race already lost — don't probe again
       // No MX: RFC 5321 says fall back to the A record before giving up.
       try {
         const a = await resolve4(domain);
@@ -149,10 +158,15 @@ export async function checkDeliverable(
         return isNoSuchDomain(e) ? { ok: false, reason: "no_such_domain" } : { ok: true };
       }
     })();
+    // A rejection from the abandoned side must never surface as unhandled.
+    lookup.catch(() => {});
 
     const winner = await Promise.race([lookup, timer]);
     return winner === admit ? { ok: true } : (winner as DeliverabilityVerdict);
   } catch {
     return { ok: true }; // never let this path be the reason a sign-in fails
+  } finally {
+    decided = true;
+    if (timerId) clearTimeout(timerId);
   }
 }

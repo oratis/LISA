@@ -103,15 +103,25 @@ describe("deliverability — fails open (the property that matters)", () => {
   });
 
   test("a slow resolver admits the address rather than holding up sign-in", async () => {
-    const never = () => new Promise<unknown[]>(() => {}); // never settles
+    // A releasable gate stands in for a hung resolver: it blocks past the
+    // timeout, then we drain it so no promise outlives the assertion (a
+    // never-settling promise trips node:test's pending-work detector on a
+    // slow CI event loop — the flake this replaced).
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const slow = () => gate.then(() => [] as unknown[]);
     const started = Date.now();
     const v = await checkDeliverable("someone@example.com", {
-      resolveMx: never,
-      resolve4: never,
+      resolveMx: slow,
+      resolve4: slow,
       timeoutMs: 50,
     });
     assert.deepEqual(v, { ok: true });
     assert.ok(Date.now() - started < 1000, "must not wait for the hung lookup");
+    release();
+    // Flush a full macrotask so the abandoned lookup fully unwinds (the
+    // `decided` guard stops it after resolveMx, so this settles promptly).
+    await new Promise((r) => setImmediate(r));
   });
 
   test("a resolver that throws synchronously still admits", async () => {
