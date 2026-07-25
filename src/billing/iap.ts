@@ -9,7 +9,8 @@
  * GLOBAL index (one Apple transaction can never credit two accounts), and
  * credit the signed-in account's balance. The client calls
  * `Transaction.finish()` only after we answer OK, so a crash between purchase
- * and credit is re-delivered by StoreKit, and the dedup makes that safe.
+ * and credit is re-delivered by StoreKit. A pending→credited state machine plus
+ * balance-level idempotency makes every crash point safe to resume.
  *
  * App Store Server Notifications V2 (`/api/billing/asn`) reuses the same JWS
  * verification; REFUND/REVOKE claws the credit back from whichever account
@@ -26,7 +27,13 @@ import crypto, { X509Certificate } from "node:crypto";
 import { lisaGlobalHome, homeScope, homeForUid } from "../paths.js";
 import { withFileLock } from "../soul/lock.js";
 import { creditPurchase, clawbackPurchase } from "./quota.js";
-import { firestoreEnabled, getDoc, setDoc, FirestoreError } from "../cloud/firestore.js";
+import {
+  casUpdate,
+  firestoreEnabled,
+  getDoc,
+  setDoc,
+  FirestoreError,
+} from "../cloud/firestore.js";
 
 export class IapError extends Error {
   constructor(
@@ -42,6 +49,16 @@ export class IapError extends Error {
   ) {
     super(code);
     this.name = "IapError";
+  }
+}
+
+export class PaymentStateError extends Error {
+  constructor(
+    public readonly code: "transaction_store_unavailable" | "transaction_conflict",
+    message: string,
+  ) {
+    super(message);
+    this.name = "PaymentStateError";
   }
 }
 
@@ -258,13 +275,16 @@ export function validateTransaction(payload: Record<string, unknown>): AppleTran
   return tx;
 }
 
-// ── Global transaction index (one credit per Apple transaction, ever) ───────
+// ── Global payment state (one credit per external transaction, ever) ────────
+type TxStatus = "pending" | "credited" | "refund_pending" | "refunded";
+
 interface TxIndexEntry {
   transactionId: string;
   uid: string;
   productId: string;
   microUSD: number;
   at: number;
+  status: TxStatus;
 }
 
 function txIndexPath(): string {
@@ -274,12 +294,67 @@ function txIndexLock(): string {
   return path.join(lisaGlobalHome(), "iap-transactions.lock");
 }
 
+function parseTxEntry(value: unknown): TxIndexEntry {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new PaymentStateError("transaction_store_unavailable", "transaction index contains an invalid entry");
+  }
+  const raw = value as Partial<TxIndexEntry>;
+  const status = raw.status ?? "credited"; // pre-state-machine entries were fully credited
+  if (
+    typeof raw.transactionId !== "string" ||
+    !raw.transactionId ||
+    typeof raw.uid !== "string" ||
+    !raw.uid ||
+    typeof raw.productId !== "string" ||
+    !raw.productId ||
+    !Number.isSafeInteger(raw.microUSD) ||
+    raw.microUSD! <= 0 ||
+    !Number.isSafeInteger(raw.at) ||
+    raw.at! < 0 ||
+    !["pending", "credited", "refund_pending", "refunded"].includes(status)
+  ) {
+    throw new PaymentStateError("transaction_store_unavailable", "transaction index contains an invalid entry");
+  }
+  return {
+    transactionId: raw.transactionId,
+    uid: raw.uid,
+    productId: raw.productId,
+    microUSD: raw.microUSD!,
+    at: raw.at!,
+    status,
+  };
+}
+
+function parseTxIndex(parsed: unknown): TxIndexEntry[] {
+  if (!Array.isArray(parsed)) {
+    throw new PaymentStateError("transaction_store_unavailable", "transaction index must contain an array");
+  }
+  const entries = parsed.map(parseTxEntry);
+  if (new Set(entries.map((entry) => entry.transactionId)).size !== entries.length) {
+    throw new PaymentStateError("transaction_store_unavailable", "transaction index contains duplicate ids");
+  }
+  return entries;
+}
+
 function readTxIndex(): TxIndexEntry[] {
+  let raw: string;
   try {
-    const parsed: unknown = JSON.parse(fs.readFileSync(txIndexPath(), "utf8"));
-    return Array.isArray(parsed) ? (parsed as TxIndexEntry[]) : [];
-  } catch {
-    return [];
+    raw = fs.readFileSync(txIndexPath(), "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw new PaymentStateError(
+      "transaction_store_unavailable",
+      `transaction index is unavailable: ${(err as Error).message}`,
+    );
+  }
+  try {
+    return parseTxIndex(JSON.parse(raw));
+  } catch (err) {
+    if (err instanceof PaymentStateError) throw err;
+    throw new PaymentStateError(
+      "transaction_store_unavailable",
+      `transaction index is corrupt: ${(err as Error).message}`,
+    );
   }
 }
 
@@ -289,6 +364,139 @@ function writeTxIndex(list: TxIndexEntry[]): void {
   const tmp = `${file}.tmp-${process.pid}`;
   fs.writeFileSync(tmp, JSON.stringify(list, null, 2), { mode: 0o600 });
   fs.renameSync(tmp, file);
+}
+
+function transactionDocPath(transactionId: string): string {
+  return `lisa-txindex/${encodeURIComponent(transactionId)}`;
+}
+
+function sameTransaction(
+  entry: TxIndexEntry,
+  expected: Pick<TxIndexEntry, "transactionId" | "uid" | "productId" | "microUSD">,
+): boolean {
+  return (
+    entry.transactionId === expected.transactionId &&
+    entry.uid === expected.uid &&
+    entry.productId === expected.productId &&
+    entry.microUSD === expected.microUSD
+  );
+}
+
+function assertSameTransaction(
+  entry: TxIndexEntry,
+  expected: Pick<TxIndexEntry, "transactionId" | "uid" | "productId" | "microUSD">,
+): void {
+  if (!sameTransaction(entry, expected)) {
+    throw new PaymentStateError(
+      "transaction_conflict",
+      `transaction ${expected.transactionId} conflicts with the stored owner or amount`,
+    );
+  }
+}
+
+/**
+ * Create a pending transaction or resume one whose balance/status update was
+ * interrupted. Fully credited/refunded transactions remain duplicates.
+ */
+async function reserveTransaction(
+  uid: string,
+  transactionId: string,
+  productId: string,
+  microUSD: number,
+  now: number,
+): Promise<TxIndexEntry> {
+  const fresh: TxIndexEntry = {
+    transactionId,
+    uid,
+    productId,
+    microUSD,
+    at: now,
+    status: "pending",
+  };
+  if (firestoreEnabled()) {
+    try {
+      await setDoc(transactionDocPath(transactionId), fresh as unknown as Record<string, unknown>, {
+        exists: false,
+      });
+      return fresh;
+    } catch (err) {
+      if (!(err instanceof FirestoreError && (err.status === 409 || err.status === 412))) {
+        throw err;
+      }
+      const doc = await getDoc(transactionDocPath(transactionId));
+      if (!doc) {
+        throw new PaymentStateError(
+          "transaction_store_unavailable",
+          `transaction ${transactionId} conflicted but could not be read`,
+        );
+      }
+      const existing = parseTxEntry(doc.data);
+      if (existing.status !== "pending") throw new IapError("duplicate_transaction");
+      assertSameTransaction(existing, fresh);
+      return existing;
+    }
+  }
+
+  return withFileLock(txIndexLock(), async () => {
+    const index = readTxIndex();
+    const existing = index.find((entry) => entry.transactionId === transactionId);
+    if (existing) {
+      if (existing.status !== "pending") throw new IapError("duplicate_transaction");
+      assertSameTransaction(existing, fresh);
+      return existing;
+    }
+    index.push(fresh);
+    writeTxIndex(index);
+    return fresh;
+  });
+}
+
+async function markCredited(expected: TxIndexEntry): Promise<void> {
+  if (firestoreEnabled()) {
+    await casUpdate(transactionDocPath(expected.transactionId), (current) => {
+      if (!current) {
+        throw new PaymentStateError(
+          "transaction_store_unavailable",
+          `pending transaction ${expected.transactionId} disappeared`,
+        );
+      }
+      const live = parseTxEntry(current);
+      assertSameTransaction(live, expected);
+      if (live.status === "credited") return { next: null, result: undefined };
+      if (live.status !== "pending") {
+        throw new PaymentStateError(
+          "transaction_conflict",
+          `transaction ${expected.transactionId} cannot move from ${live.status} to credited`,
+        );
+      }
+      return {
+        next: { ...live, status: "credited" },
+        result: undefined,
+      };
+    });
+    return;
+  }
+
+  await withFileLock(txIndexLock(), async () => {
+    const index = readTxIndex();
+    const live = index.find((entry) => entry.transactionId === expected.transactionId);
+    if (!live) {
+      throw new PaymentStateError(
+        "transaction_store_unavailable",
+        `pending transaction ${expected.transactionId} disappeared`,
+      );
+    }
+    assertSameTransaction(live, expected);
+    if (live.status === "credited") return;
+    if (live.status !== "pending") {
+      throw new PaymentStateError(
+        "transaction_conflict",
+        `transaction ${expected.transactionId} cannot move from ${live.status} to credited`,
+      );
+    }
+    live.status = "credited";
+    writeTxIndex(index);
+  });
 }
 
 /**
@@ -304,35 +512,22 @@ export async function creditExternalTransaction(
   microUSD: number,
   now: number = Date.now(),
 ): Promise<number> {
-  if (firestoreEnabled()) {
-    // B9: one doc per transaction, create-only precondition — the dedup is a
-    // property of the datastore itself, valid across every instance.
-    try {
-      await setDoc(
-        `lisa-txindex/${encodeURIComponent(transactionId)}`,
-        { transactionId, uid, productId, microUSD, at: now },
-        { exists: false },
-      );
-    } catch (e) {
-      if (e instanceof FirestoreError && (e.status === 409 || e.status === 412)) {
-        throw new IapError("duplicate_transaction");
-      }
-      throw e;
-    }
-  } else {
-    await withFileLock(txIndexLock(), async () => {
-      const index = readTxIndex();
-      if (index.some((e) => e.transactionId === transactionId)) {
-        throw new IapError("duplicate_transaction");
-      }
-      index.push({ transactionId, uid, productId, microUSD, at: now });
-      writeTxIndex(index);
-    });
+  if (!uid || !transactionId || !productId || !Number.isSafeInteger(microUSD) || microUSD <= 0) {
+    throw new PaymentStateError("transaction_conflict", "transaction identity and positive amount are required");
   }
+  const reserved = await reserveTransaction(uid, transactionId, productId, microUSD, now);
   await homeScope.run(homeForUid(uid), () =>
-    creditPurchase({ at: now, microUSD, transactionId }, now),
+    creditPurchase(
+      {
+        at: reserved.at,
+        microUSD: reserved.microUSD,
+        transactionId: reserved.transactionId,
+      },
+      now,
+    ),
   );
-  return microUSD;
+  await markCredited(reserved);
+  return reserved.microUSD;
 }
 
 /** Credit a VERIFIED Apple transaction to `uid` (IAP flavor of the above). */
@@ -345,22 +540,110 @@ export async function creditTransaction(uid: string, tx: AppleTransaction, now: 
  * in the global index and claw the credit back from that account's balance.
  */
 export async function refundTransaction(transactionId: string): Promise<{ uid: string; microUSD: number } | null> {
-  let entry: TxIndexEntry | undefined;
+  type PreparedRefund = {
+    entry: TxIndexEntry;
+    resumed: boolean;
+    alreadyRefunded: boolean;
+  };
+  let prepared: PreparedRefund | null = null;
   if (firestoreEnabled()) {
-    const doc = await getDoc(`lisa-txindex/${encodeURIComponent(transactionId)}`);
-    if (doc && typeof doc.data.uid === "string") {
-      entry = doc.data as unknown as TxIndexEntry;
-    }
-    // The doc stays (never deleted) so a replayed credit remains deduped.
+    prepared = await casUpdate<PreparedRefund | null>(transactionDocPath(transactionId), (current) => {
+      if (!current) return { next: null, result: null };
+      const entry = parseTxEntry(current);
+      if (entry.status === "pending") {
+        throw new PaymentStateError(
+          "transaction_store_unavailable",
+          `transaction ${transactionId} credit is still pending; refund must retry`,
+        );
+      }
+      if (entry.status === "refunded") {
+        return { next: null, result: { entry, resumed: true, alreadyRefunded: true } };
+      }
+      if (entry.status === "refund_pending") {
+        return { next: null, result: { entry, resumed: true, alreadyRefunded: false } };
+      }
+      const next: TxIndexEntry = { ...entry, status: "refund_pending" };
+      return {
+        next: next as unknown as Record<string, unknown>,
+        result: { entry: next, resumed: false, alreadyRefunded: false },
+      };
+    });
   } else {
     await withFileLock(txIndexLock(), async () => {
       const index = readTxIndex();
-      entry = index.find((e) => e.transactionId === transactionId);
-      // Keep the index entry (marked) so a replayed credit stays deduped.
+      const entry = index.find((candidate) => candidate.transactionId === transactionId);
+      if (!entry) return;
+      if (entry.status === "pending") {
+        throw new PaymentStateError(
+          "transaction_store_unavailable",
+          `transaction ${transactionId} credit is still pending; refund must retry`,
+        );
+      }
+      if (entry.status === "refunded") {
+        prepared = { entry: { ...entry }, resumed: true, alreadyRefunded: true };
+        return;
+      }
+      if (entry.status === "refund_pending") {
+        prepared = { entry: { ...entry }, resumed: true, alreadyRefunded: false };
+        return;
+      }
+      entry.status = "refund_pending";
+      writeTxIndex(index);
+      prepared = { entry: { ...entry }, resumed: false, alreadyRefunded: false };
     });
   }
-  if (!entry) return null;
-  const uid = entry.uid;
-  await homeScope.run(homeForUid(uid), () => clawbackPurchase(transactionId));
-  return { uid, microUSD: entry.microUSD };
+  if (!prepared) return null;
+  const { entry, resumed, alreadyRefunded } = prepared;
+  if (!alreadyRefunded) {
+    const clawedBack = await homeScope.run(homeForUid(entry.uid), () =>
+      clawbackPurchase(transactionId),
+    );
+    if (!clawedBack && !resumed) {
+      throw new PaymentStateError(
+        "transaction_conflict",
+        `credited transaction ${transactionId} is missing from the account balance`,
+      );
+    }
+
+    if (firestoreEnabled()) {
+      await casUpdate(transactionDocPath(transactionId), (current) => {
+        if (!current) {
+          throw new PaymentStateError(
+            "transaction_store_unavailable",
+            `refunding transaction ${transactionId} disappeared`,
+          );
+        }
+        const live = parseTxEntry(current);
+        if (live.status === "refunded") return { next: null, result: undefined };
+        if (live.status !== "refund_pending") {
+          throw new PaymentStateError(
+            "transaction_conflict",
+            `transaction ${transactionId} cannot move from ${live.status} to refunded`,
+          );
+        }
+        return { next: { ...live, status: "refunded" }, result: undefined };
+      });
+    } else {
+      await withFileLock(txIndexLock(), async () => {
+        const index = readTxIndex();
+        const live = index.find((candidate) => candidate.transactionId === transactionId);
+        if (!live) {
+          throw new PaymentStateError(
+            "transaction_store_unavailable",
+            `refunding transaction ${transactionId} disappeared`,
+          );
+        }
+        if (live.status === "refunded") return;
+        if (live.status !== "refund_pending") {
+          throw new PaymentStateError(
+            "transaction_conflict",
+            `transaction ${transactionId} cannot move from ${live.status} to refunded`,
+          );
+        }
+        live.status = "refunded";
+        writeTxIndex(index);
+      });
+    }
+  }
+  return { uid: entry.uid, microUSD: entry.microUSD };
 }

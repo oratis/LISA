@@ -84,6 +84,13 @@ export class AccountError extends Error {
   }
 }
 
+export class AccountStoreError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AccountStoreError";
+  }
+}
+
 const SCRYPT = { N: 16384, r: 8, p: 1, keyLen: 32 } as const;
 
 function lisaHome(): string {
@@ -93,19 +100,39 @@ function accountsPath(): string {
   return path.join(lisaHome(), "accounts.json");
 }
 
-function validRecords(parsed: unknown): AccountRecord[] {
-  if (!Array.isArray(parsed)) return [];
-  return parsed.filter(
+function parseRecords(parsed: unknown): AccountRecord[] {
+  if (!Array.isArray(parsed)) {
+    throw new AccountStoreError("accounts store must contain an array");
+  }
+  const records = parsed.filter(
     (a): a is AccountRecord =>
-      !!a && typeof (a as AccountRecord).uid === "string" && typeof (a as AccountRecord).sessionVersion === "number",
+      !!a &&
+      typeof (a as AccountRecord).uid === "string" &&
+      ["apple", "email", "google"].includes((a as AccountRecord).kind) &&
+      Number.isSafeInteger((a as AccountRecord).createdAt) &&
+      Number.isSafeInteger((a as AccountRecord).lastLoginAt) &&
+      typeof (a as AccountRecord).verified === "boolean" &&
+      Number.isSafeInteger((a as AccountRecord).sessionVersion),
   );
+  if (records.length !== parsed.length) {
+    throw new AccountStoreError("accounts store contains an invalid record");
+  }
+  return records;
 }
 
 function loadAccountsFile(): AccountRecord[] {
+  let raw: string;
   try {
-    return validRecords(JSON.parse(fs.readFileSync(accountsPath(), "utf8")));
-  } catch {
-    return [];
+    raw = fs.readFileSync(accountsPath(), "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw new AccountStoreError(`accounts store is unavailable: ${(err as Error).message}`);
+  }
+  try {
+    return parseRecords(JSON.parse(raw));
+  } catch (err) {
+    if (err instanceof AccountStoreError) throw err;
+    throw new AccountStoreError(`accounts store is corrupt: ${(err as Error).message}`);
   }
 }
 
@@ -120,7 +147,7 @@ const ACCOUNTS_DOC = "lisa-global/accounts";
 export async function loadAccounts(): Promise<AccountRecord[]> {
   if (firestoreEnabled()) {
     const doc = await getDoc(ACCOUNTS_DOC);
-    return validRecords((doc?.data.list as unknown) ?? []);
+    return doc ? parseRecords(doc.data.list) : [];
   }
   return loadAccountsFile();
 }
@@ -129,7 +156,7 @@ export async function loadAccounts(): Promise<AccountRecord[]> {
 async function mutateAccounts<T>(fn: (list: AccountRecord[]) => T): Promise<T> {
   if (firestoreEnabled()) {
     return casUpdate(ACCOUNTS_DOC, (current) => {
-      const list = validRecords((current?.list as unknown) ?? []);
+      const list = current ? parseRecords(current.list) : [];
       const result = fn(list);
       return { next: { list: list as unknown as Record<string, unknown>[] }, result };
     });
@@ -497,8 +524,16 @@ export async function deleteAccount(uid: string): Promise<boolean> {
  * Wrong/stale sv ⇒ revoked (deleted account, future password change).
  */
 export async function sessionAccountValid(uid: string, sv: number): Promise<boolean> {
-  const acct = await getAccount(uid);
-  return !!acct && acct.sessionVersion === sv;
+  try {
+    const acct = await getAccount(uid);
+    return !!acct && acct.sessionVersion === sv;
+  } catch (err) {
+    // Authentication must fail closed when the account authority is unreadable.
+    // Do not let an async HTTP handler rejection crash the process, and do not
+    // silently recreate/overwrite the directory.
+    console.error(`[accounts] session validation unavailable: ${(err as Error).message}`);
+    return false;
+  }
 }
 
 /**

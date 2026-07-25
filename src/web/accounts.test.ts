@@ -22,6 +22,7 @@ const {
   upsertGoogleAccount,
   googleUid,
   AccountError,
+  AccountStoreError,
 } = await import("./accounts.js");
 
 const isCode = (code: string) => (e: unknown) => (e as InstanceType<typeof AccountError>).code === code;
@@ -60,6 +61,31 @@ describe("email accounts", () => {
     assert.equal(raw.includes("super-secret-pw"), false);
     assert.match(raw, /scrypt/);
     assert.equal(fs.statSync(FILE).mode & 0o777, 0o600);
+  });
+
+  test("a corrupt account store fails closed and is never overwritten", async () => {
+    const corrupt = "{\"uid\":\"not-an-array\"}";
+    fs.writeFileSync(FILE, corrupt);
+    await assert.rejects(getAccount("em-any"), AccountStoreError);
+    await assert.rejects(createEmailAccount("a@b.co", "password-123"), AccountStoreError);
+    assert.equal(fs.readFileSync(FILE, "utf8"), corrupt);
+  });
+
+  test("one malformed record fails the whole store instead of being dropped", async () => {
+    const mixed = JSON.stringify([
+      {
+        uid: "em-valid",
+        kind: "email",
+        createdAt: 1,
+        lastLoginAt: 1,
+        verified: true,
+        sessionVersion: 0,
+      },
+      { kind: "email", sessionVersion: 0 },
+    ]);
+    fs.writeFileSync(FILE, mixed);
+    await assert.rejects(getAccount("em-valid"), AccountStoreError);
+    assert.equal(fs.readFileSync(FILE, "utf8"), mixed);
   });
 
   test("5 failures lock the email for 15 min; correct password clears the count", async () => {

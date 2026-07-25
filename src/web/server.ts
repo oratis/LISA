@@ -39,8 +39,21 @@ import { ISLAND_HTML } from "./island.js";
 import { LOGIN_HTML } from "./login.js";
 import { recordUsage, summarizeUsage, setAnomalySink } from "../billing/meter.js";
 import { PRICES_VERSION, tokensAffordable } from "../billing/prices.js";
-import { precheckTurn, debitTurn, quotaStatus } from "../billing/quota.js";
-import { verifyAppleJWS, validateTransaction, creditTransaction, creditExternalTransaction, refundTransaction, IapError } from "../billing/iap.js";
+import {
+  precheckTurn,
+  debitTurn,
+  quotaStatus,
+  BillingStateError,
+} from "../billing/quota.js";
+import {
+  verifyAppleJWS,
+  validateTransaction,
+  creditTransaction,
+  creditExternalTransaction,
+  refundTransaction,
+  IapError,
+  PaymentStateError,
+} from "../billing/iap.js";
 import { stripeConfig, verifyStripeSignature, classifyStripeEvent, createCheckoutSession, sessionIdForPaymentIntent, STRIPE_PACKS } from "../billing/stripe.js";
 import { ACCOUNT_HTML } from "./account-page.js";
 import { handleGateway } from "./gateway.js";
@@ -86,6 +99,7 @@ import {
 } from "./sessions-auth.js";
 import {
   AccountError,
+  AccountStoreError,
   createEmailAccount,
   verifyEmailLogin,
   upsertAppleAccount,
@@ -1421,6 +1435,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ ok: true }));
       } catch (e) {
+        if (e instanceof PaymentStateError || e instanceof BillingStateError) {
+          console.error(`[iap] ASN billing state unavailable: ${e.message}`);
+          res.writeHead(503, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "billing_state_unavailable" }));
+          return;
+        }
         const code = e instanceof IapError ? e.code : "verification_failed";
         console.error(`[iap] ASN rejected: ${code}`);
         res.writeHead(401, { "content-type": "application/json" });
@@ -1617,6 +1637,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ ok: true, creditedMicroUSD: credited, quota: q }));
       } catch (e) {
+        if (e instanceof PaymentStateError || e instanceof BillingStateError) {
+          console.error(`[iap] billing state unavailable: ${e.message}`);
+          res.writeHead(503, { "content-type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: "billing_state_unavailable" }));
+          return;
+        }
         const code = e instanceof IapError ? e.code : "verification_failed";
         // duplicate_transaction answers 200-ok:false so the client still
         // finishes the transaction (it WAS credited once already).
@@ -1667,15 +1693,22 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     if (req.method === "GET" && url === "/api/billing/quota") {
       // The signed-in account's window/tier/balance — drives the quota bar +
       // paywall in every client (same numbers everywhere, §5.5).
-      const acct = accountUid ? await getAccount(accountUid) : null;
-      if (!acct) {
+      try {
+        const acct = accountUid ? await getAccount(accountUid) : null;
+        if (!acct) {
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(JSON.stringify({ available: false }));
+          return;
+        }
+        const q = await quotaStatus(acct);
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({ available: false }));
-        return;
+        res.end(JSON.stringify({ available: true, ...q }));
+      } catch (err) {
+        if (!(err instanceof BillingStateError || err instanceof AccountStoreError)) throw err;
+        console.error(`[billing] quota unavailable: ${err.message}`);
+        res.writeHead(503, { "content-type": "application/json" });
+        res.end(JSON.stringify({ available: false, error: "billing_state_unavailable" }));
       }
-      const q = await quotaStatus(acct);
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ available: true, ...q }));
       return;
     }
 
@@ -3298,39 +3331,48 @@ self.addEventListener('fetch', (event) => {
       let quotaBudgetMicroUSD: number | null = null;
       let turnLease: import("../cloud/turn-lease.js").TurnLease | null = "off";
       let stopTurnRenewal: () => void = () => {};
-      const quotaAcct = cloud && accountUid ? await getAccount(accountUid) : null;
-      if (quotaAcct) {
-        // Non-quota guards first (B7): kill switch, global daily cap, per-uid RPM.
-        const limits = preflightLimits(quotaAcct.uid);
-        if (!limits.ok) {
-          res.writeHead(limits.status, { "content-type": "application/json" });
-          res.end(JSON.stringify(limits.body));
-          return;
+      let quotaAcct: Awaited<ReturnType<typeof getAccount>> = null;
+      try {
+        quotaAcct = cloud && accountUid ? await getAccount(accountUid) : null;
+        if (quotaAcct) {
+          // Non-quota guards first (B7): kill switch, global daily cap, per-uid RPM.
+          const limits = preflightLimits(quotaAcct.uid);
+          if (!limits.ok) {
+            res.writeHead(limits.status, { "content-type": "application/json" });
+            res.end(JSON.stringify(limits.body));
+            return;
+          }
+          const pre = await precheckTurn(quotaAcct, opts.model);
+          if (!pre.ok) {
+            res.writeHead(402, { "content-type": "application/json" });
+            res.end(
+              JSON.stringify(
+                pre.error === "quota_exhausted"
+                  ? { error: pre.error, resetAt: pre.resetAt, tier: pre.tier }
+                  : { error: pre.error, tier: pre.tier },
+              ),
+            );
+            return;
+          }
+          quotaBudgetMicroUSD = pre.budgetMicroUSD;
+          // Cross-instance serialization (B9): one metered turn per account at a
+          // time, even with max-instances > 1. No-op ("off") without Firestore.
+          turnLease = await acquireTurnLease(quotaAcct.uid);
+          if (turnLease === null) {
+            res.writeHead(429, { "content-type": "application/json" });
+            res.end(JSON.stringify({ error: "turn_in_progress", retryAfterSec: 15 }));
+            return;
+          }
+          // Chat SSE runs under --timeout 3600, far past the lease TTL — heartbeat
+          // it for the life of the turn so it can't expire under us (#272).
+          stopTurnRenewal = startLeaseRenewal(turnLease);
         }
-        const pre = await precheckTurn(quotaAcct, opts.model);
-        if (!pre.ok) {
-          res.writeHead(402, { "content-type": "application/json" });
-          res.end(
-            JSON.stringify(
-              pre.error === "quota_exhausted"
-                ? { error: pre.error, resetAt: pre.resetAt, tier: pre.tier }
-                : { error: pre.error, tier: pre.tier },
-            ),
-          );
-          return;
-        }
-        quotaBudgetMicroUSD = pre.budgetMicroUSD;
-        // Cross-instance serialization (B9): one metered turn per account at a
-        // time, even with max-instances > 1. No-op ("off") without Firestore.
-        turnLease = await acquireTurnLease(quotaAcct.uid);
-        if (turnLease === null) {
-          res.writeHead(429, { "content-type": "application/json" });
-          res.end(JSON.stringify({ error: "turn_in_progress", retryAfterSec: 15 }));
-          return;
-        }
-        // Chat SSE runs under --timeout 3600, far past the lease TTL — heartbeat
-        // it for the life of the turn so it can't expire under us (#272).
-        stopTurnRenewal = startLeaseRenewal(turnLease);
+      } catch (err) {
+        if (!(err instanceof BillingStateError || err instanceof AccountStoreError)) throw err;
+        console.error(`[billing] chat admission unavailable: ${err.message}`);
+        res.writeHead(503, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "billing_state_unavailable" }));
+        return;
       }
       // User just talked — reset the idle watcher + stamp focus freshness.
       try { getIdleWatcher(60 * 60_000).tick(); } catch {}

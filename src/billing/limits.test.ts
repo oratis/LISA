@@ -9,7 +9,7 @@ process.env.LISA_HOME = TMP;
 
 const {
   rpmOk, resetRpm, globalSpendAdd, globalSpendExceeded, preflightLimits, killSwitchOn, dailyCapMicroUSD,
-  ipRateOk, resetIpRate,
+  ipRateOk, resetIpRate, cachedGlobalSpendExceeded,
 } = await import("./limits.js");
 
 const T0 = Date.parse("2026-07-22T08:00:00Z");
@@ -61,6 +61,28 @@ describe("per-key sliding window (#260)", () => {
 });
 
 describe("global daily cap", () => {
+  test("Firestore cache absence, wrong day, and refresh failure fail closed", () => {
+    const day = "2026-07-22";
+    const cap = 1_000_000;
+    assert.equal(cachedGlobalSpendExceeded(null, day, cap), true);
+    assert.equal(
+      cachedGlobalSpendExceeded({ day: "2026-07-21", microUSD: 0, readAt: T0 }, day, cap),
+      true,
+    );
+    assert.equal(
+      cachedGlobalSpendExceeded({ day, microUSD: 0, readAt: T0, failed: true }, day, cap),
+      true,
+    );
+    assert.equal(
+      cachedGlobalSpendExceeded({ day, microUSD: cap - 1, readAt: T0 }, day, cap),
+      false,
+    );
+    assert.equal(
+      cachedGlobalSpendExceeded({ day, microUSD: cap, readAt: T0 }, day, cap),
+      true,
+    );
+  });
+
   test("accumulates within a UTC day, resets across days, persists on disk", () => {
     process.env.LISA_DAILY_CAP_USD = "1"; // $1 cap for the test
     assert.equal(globalSpendExceeded(T0), false);
