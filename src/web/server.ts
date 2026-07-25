@@ -144,6 +144,12 @@ import {
 import { detectLanHost, buildPairUrl } from "./pairing.js";
 import { TenantEventBus, sameTenant } from "./event-bus.js";
 import { qrSvg } from "./qr-svg.js";
+import { resolveClientIp } from "./client-ip.js";
+import {
+  configuredPublicOrigin,
+  requireCloudPublicOrigin,
+  verificationUrl,
+} from "./public-origin.js";
 import type { ToolDefinition, StoredMessage } from "../types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -236,22 +242,8 @@ const REG_IP_WINDOW_MS = 60 * 60_000;
 const KB_INGEST_IP_LIMIT = 20;
 const KB_INGEST_WINDOW_MS = 5 * 60_000;
 
-/**
- * Best-effort client IP. Behind Cloud Run the socket peer is the front end, so
- * the first `x-forwarded-for` hop is the client — and a client can put anything
- * there. Only used for coarse rate-limit keying, never for authorization.
- */
 function clientIp(req: http.IncomingMessage, remoteAddr: string): string {
-  const xff = req.headers["x-forwarded-for"];
-  const first = (Array.isArray(xff) ? xff[0] : xff)?.split(",")[0]?.trim();
-  return first || remoteAddr || "unknown";
-}
-
-/** The absolute /verify link for a raw token, derived from the request host. */
-function verifyLinkFor(req: http.IncomingMessage, rawToken: string): string {
-  const host = req.headers.host ?? "cloud.meetlisa.ai";
-  const proto = (req.headers["x-forwarded-proto"] as string | undefined) ?? "https";
-  return `${proto}://${host}/verify?token=${rawToken}`;
+  return resolveClientIp(req.headers, remoteAddr);
 }
 
 /**
@@ -337,6 +329,13 @@ async function resumeOrCreateWebSession(model: string): Promise<SessionStore> {
 export async function startWebServer(opts: WebServerOptions): Promise<http.Server> {
   const host = opts.host ?? "127.0.0.1";
   const webToken = process.env.LISA_WEB_TOKEN?.trim() || null;
+  const cloudEdition = isCloud();
+  // Security-sensitive outbound links never derive their origin from Host or
+  // forwarding headers. Cloud startup fails until its canonical HTTPS origin
+  // is configured; local mode has a deterministic loopback fallback.
+  const publicOrigin = cloudEdition
+    ? requireCloudPublicOrigin()
+    : configuredPublicOrigin() ?? `http://localhost:${opts.port}`;
   // Account sessions (PLAN_ACCOUNTS_BILLING B1): the signing secret lives in
   // $lisaHome() (auto-created 0600; durable on the cloud's /data mount). Only the
   // cloud edition mints/verifies account sessions today — the Mac edition gains
@@ -1233,7 +1232,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         // levels the free window from $1 to the full $5. Fire-and-forget.
         if (url === "/api/auth/register") {
           const raw = await beginEmailVerification(acct.uid);
-          if (raw) void sendVerificationEmail(acct.email!, verifyLinkFor(req, raw));
+          if (raw) void sendVerificationEmail(acct.email!, verificationUrl(publicOrigin, raw));
         }
         const session = mintSession(acct.uid, sessionSecret, { sv: acct.sessionVersion });
         res.writeHead(200, {
@@ -1651,9 +1650,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const body = await readJsonBody(req, res);
       if (!body) return; // 413 already sent
       const pack = typeof body.pack === "string" ? body.pack : "";
-      const proto = (req.headers["x-forwarded-proto"] as string | undefined) ?? "https";
-      const base = `${proto}://${req.headers.host ?? "cloud.meetlisa.ai"}`;
-      const session = await createCheckoutSession(accountUid, pack, base, scfg);
+      const session = await createCheckoutSession(accountUid, pack, publicOrigin, scfg);
       if (!session) {
         res.writeHead(400, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: "checkout_failed" }));
@@ -1714,7 +1711,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         return;
       }
       const raw = await beginEmailVerification(acct.uid);
-      const mail = raw ? await sendVerificationEmail(acct.email, verifyLinkFor(req, raw)) : null;
+      const mail = raw ? await sendVerificationEmail(acct.email, verificationUrl(publicOrigin, raw)) : null;
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, sent: mail?.sent ?? false }));
       return;
