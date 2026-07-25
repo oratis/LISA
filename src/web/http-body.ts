@@ -24,6 +24,12 @@ export class BodyTooLargeError extends Error {
 export const CTRL_BODY_LIMIT = 1_048_576; // 1 MiB
 
 /**
+ * Cap for JSON that legitimately embeds base64 media (chat attachments and
+ * browser-recorded audio). Kept aligned with the inference gateway ceiling.
+ */
+export const RICH_BODY_LIMIT = 20 * 1_048_576; // 20 MiB
+
+/**
  * Read a request body as UTF-8 text, aborting past `limitBytes` with a
  * `BodyTooLargeError`. Uses explicit listeners (not `for await`) so overflow
  * neither auto-destroys the socket nor loses the ability to answer 413.
