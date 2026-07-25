@@ -264,3 +264,38 @@ export const REMOTE_BLOCKED_TOOL_NAMES = new Set([
 export function remoteSafeSubset(tools: ToolDefinition[]): ToolDefinition[] {
   return tools.filter((t) => !REMOTE_BLOCKED_TOOL_NAMES.has(t.name));
 }
+
+/**
+ * Tools exposed by the hosted multi-tenant edition.
+ *
+ * This is deliberately an allow-list rather than another block-list:
+ * executable skills, plugin tools, MCP tools, and future builtins must never
+ * become cloud capabilities merely because somebody forgot to add their name
+ * to a deny-list. Every tool here resolves storage through the active
+ * per-account Lisa home and does not execute a host process or fetch an
+ * arbitrary URL.
+ */
+export const CLOUD_ALLOWED_TOOL_NAMES = new Set([
+  "memory",
+  "memory_search",
+  "set_mood",
+  "soul_patch",
+  "soul_journal",
+  "soul_read",
+  "soul_feel",
+  "soul_history",
+  "soul_diff",
+  "soul_object",
+  "desire_progress_log",
+  "desire_close",
+  "kb_search",
+  "kb_read",
+  "kb_links",
+  "kb_list",
+  "kb_add",
+  "kb_write",
+]);
+
+export function cloudSafeSubset(tools: ToolDefinition[]): ToolDefinition[] {
+  return tools.filter((t) => CLOUD_ALLOWED_TOOL_NAMES.has(t.name));
+}
