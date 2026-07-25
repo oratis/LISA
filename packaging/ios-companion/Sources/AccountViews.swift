@@ -4,12 +4,14 @@ import AuthenticationServices
 import CryptoKit
 #endif
 
-/// Shared cloud sign-in form (PLAN_ACCOUNTS_BILLING B1) — the PRIMARY flow:
-/// Sign in with Apple first, email+password second, and the legacy paste-a-token
-/// link tucked behind an "Advanced" disclosure. Used from both Settings and the
-/// first-run onboarding sheet so the two entry points can't drift apart.
+/// Shared cloud sign-in form (PLAN_ACCOUNTS_BILLING B1; PLAN_AUTH_OTP_GOOGLE A2)
+/// — the PRIMARY flow: Sign in with Apple first, then a **mailed one-time code**
+/// (which registers the account if the address is new, so there's no separate
+/// sign-up), with passwords behind a disclosure and the legacy paste-a-token
+/// link behind another. Used from both Settings and the first-run onboarding
+/// sheet so the two entry points can't drift apart.
 ///
-/// Emits `onSignedIn` after the connection is saved AND live-verified — the
+/// Emits `onResult` after the connection is saved AND live-verified — the
 /// parse-only fake success is what got build 1782924012 rejected (2.1).
 struct CloudSignInForm: View {
     @EnvironmentObject var app: AppState
@@ -18,10 +20,15 @@ struct CloudSignInForm: View {
 
     @State private var cloudURL = AppState.defaultCloudBase
     @State private var email = ""
+    @State private var code = ""
+    @State private var codeSent = false
     @State private var password = ""
     @State private var pasteText = ""
     @State private var busy = false
     @State private var error: String?
+    @State private var note: String?
+    /// This instance's Google iOS client id, or nil when it doesn't run Google.
+    @State private var googleClientId: String?
     #if LISA_ENABLE_SIWA
     /// Raw (un-hashed) nonce for the in-flight Apple request (#261). We send
     /// sha256(raw) to Apple and the raw value to our server, which re-hashes it
@@ -49,23 +56,59 @@ struct CloudSignInForm: View {
                 .disabled(busy || AppState.parseCloudBase(cloudURL) == nil)
                 .opacity(busy ? 0.5 : 1)
             #endif
+            // Google sits BELOW Apple: Guideline 4.8 wants Sign in with Apple
+            // offered with equal prominence wherever a third-party login is.
+            // Drawn only when this instance runs an iOS Google client.
+            if let googleClientId {
+                Button { signInWithGoogle(clientId: googleClientId) } label: {
+                    Text("Sign in with Google")
+                        .font(.system(size: 17, weight: .semibold))
+                        .frame(maxWidth: .infinity, minHeight: 46)
+                        .background(Color.white)
+                        .foregroundStyle(.black)
+                        .cornerRadius(Theme.cardRadius)
+                }
+                .buttonStyle(.plain)
+                .disabled(busy || AppState.parseCloudBase(cloudURL) == nil)
+                .opacity(busy ? 0.5 : 1)
+            }
             TextField("Email", text: $email)
                 .autocorrectionDisabled().textInputAutocapitalization(.never)
                 .keyboardType(.emailAddress).textContentType(.username)
-            SecureField("Password (8+ characters)", text: $password)
-                .textContentType(.password)
-            HStack {
-                Button("Sign in") { emailAuth(register: false) }
-                    .disabled(!emailFormReady)
-                Spacer()
-                Button("Create account") { emailAuth(register: true) }
-                    .disabled(!emailFormReady)
+                // Editing the address invalidates whatever code is outstanding.
+                .onChange(of: email) { if codeSent { codeSent = false; note = nil } }
+            if codeSent {
+                TextField("6-digit code", text: $code)
+                    .keyboardType(.numberPad).textContentType(.oneTimeCode)
+                Button("Sign in") { submitCode() }
+                    .disabled(busy || code.isEmpty)
+                Button("Send another code") { sendCode() }
+                    .disabled(busy || !addressReady)
+            } else {
+                Button("Email me a code") { sendCode() }
+                    .disabled(busy || !addressReady)
             }
             if busy { ProgressView().tint(Theme.accent) }
         } header: {
             Text("LISA account")
         } footer: {
-            Text("Sign in and go — no Mac, no API key. A free usage allowance refreshes every 12 hours.")
+            Text("Sign in and go — no Mac, no API key, no password to remember. New here? The code creates your account. A free usage allowance refreshes every 12 hours.")
+        }
+
+        Section {
+            DisclosureGroup("Use a password instead") {
+                SecureField("Password (8+ characters)", text: $password)
+                    .textContentType(.password)
+                HStack {
+                    Button("Sign in") { emailAuth(register: false) }
+                        .disabled(!passwordFormReady)
+                    Spacer()
+                    Button("Create account") { emailAuth(register: true) }
+                        .disabled(!passwordFormReady)
+                }
+            }
+        } footer: {
+            Text("For accounts that already have a password.")
         }
 
         Section {
@@ -79,13 +122,31 @@ struct CloudSignInForm: View {
             Text("For self-hosted instances using a shared LISA_WEB_TOKEN.")
         }
 
+        if let note {
+            Section { Text(note).font(.caption).foregroundStyle(Theme.accent) }
+        }
         if let error {
             Section { Text(error).font(.caption).foregroundStyle(Theme.danger) }
         }
+        // Re-asked whenever the URL changes: two instances can offer different
+        // sign-in surfaces.
+        Section {} .task(id: cloudURL) {
+            googleClientId = await app.authConfig(baseURL: cloudURL)?.google?.iosClientId
+        }
     }
 
-    private var emailFormReady: Bool {
-        !busy && !email.isEmpty && password.count >= 8 && AppState.parseCloudBase(cloudURL) != nil
+    private var addressReady: Bool {
+        !email.isEmpty && AppState.parseCloudBase(cloudURL) != nil
+    }
+
+    /// The domain half of the typed address, for rewriting it to a suggestion.
+    private var emailDomain: String {
+        guard let at = email.lastIndex(of: "@") else { return "" }
+        return String(email[email.index(after: at)...])
+    }
+
+    private var passwordFormReady: Bool {
+        !busy && addressReady && password.count >= 8
     }
 
     /// Verify after saving so success is REAL success (2.1 fix), then report.
@@ -93,6 +154,106 @@ struct CloudSignInForm: View {
         let outcome = await app.verifyConnection()
         busy = false
         onResult(outcome)
+    }
+
+    private func signInWithGoogle(clientId: String) {
+        error = nil
+        note = nil
+        busy = true
+        Task {
+            do {
+                let outcome = try await GoogleSignIn.shared.signIn(iosClientId: clientId)
+                try await app.connectCloudWithGoogle(baseURL: cloudURL, idToken: outcome.idToken,
+                                                     nonce: outcome.nonce)
+                await verifyThenReport()
+            } catch GoogleSignInError.cancelled {
+                busy = false // the person backed out — not an error worth shouting about
+            } catch GoogleSignInError.failed(let why) {
+                busy = false
+                error = "Google sign-in failed: \(why)"
+            } catch GoogleSignInError.notConfigured {
+                busy = false
+                error = "This instance's Google client id looks wrong."
+            } catch let err as LisaClient.SignInCodeError {
+                busy = false
+                error = err.status == 404
+                    ? "This instance hasn't enabled Google sign-in."
+                    : "Google sign-in was rejected by this instance (\(err.status))."
+            } catch {
+                busy = false
+                self.error = "Couldn't reach that LISA Cloud URL."
+            }
+        }
+    }
+
+    /// Human-readable reason for a refused code request/redemption.
+    private func describe(_ err: LisaClient.SignInCodeError) -> String {
+        switch err.reason {
+        case "otp_cooldown": return "A code just went out — check your inbox."
+        case "otp_daily_cap": return "Too many codes for this address today. Try a password, or again tomorrow."
+        case "bad_code": return "That code isn't right."
+        case "expired": return "That code expired — send another."
+        case "no_pending": return "No code outstanding — send one first."
+        case "too_many_attempts": return "Too many wrong codes. Send a fresh one."
+        case "invalid_email": return "That doesn't look like an email address."
+        case "email_typo":
+            // A named typo is one tap from fixed — offer the fix, don't scold.
+            return err.suggestion.map { "Did you mean \(email.replacingOccurrences(of: emailDomain, with: $0))?" }
+                ?? "That address looks misspelled."
+        case "undeliverable_email": return "That domain doesn't seem to accept mail — check the spelling."
+        case "rate_limited": return "Too many attempts from this network — try again later."
+        default:
+            return err.status == 404
+                ? "This instance doesn't offer accounts — use the token link below."
+                : "The server answered with an error (\(err.status))."
+        }
+    }
+
+    private func sendCode() {
+        error = nil
+        note = nil
+        busy = true
+        Task {
+            do {
+                let sent = try await app.requestSignInCode(baseURL: cloudURL, email: email)
+                busy = false
+                codeSent = true
+                code = ""
+                if sent {
+                    note = "We sent a 6-digit code to \(email). It expires in 10 minutes."
+                } else {
+                    error = "This instance couldn't send the mail. Try a password instead."
+                }
+            } catch let err as LisaClient.SignInCodeError {
+                busy = false
+                error = describe(err)
+            } catch {
+                busy = false
+                self.error = "Couldn't reach that LISA Cloud URL."
+            }
+        }
+    }
+
+    private func submitCode() {
+        error = nil
+        note = nil
+        busy = true
+        Task {
+            do {
+                try await app.connectCloudWithCode(baseURL: cloudURL, email: email, code: code)
+                await verifyThenReport()
+            } catch let err as LisaClient.SignInCodeError {
+                busy = false
+                error = describe(err)
+                // A burned or expired code can't be retried — back to sending one.
+                if ["expired", "no_pending", "too_many_attempts"].contains(err.reason) {
+                    codeSent = false
+                }
+            } catch {
+                busy = false
+                self.error = "Couldn't reach that LISA Cloud URL."
+            }
+        }
     }
 
     private func emailAuth(register: Bool) {

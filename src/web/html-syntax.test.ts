@@ -4,6 +4,7 @@ import vm from "node:vm";
 import { MAIN_HTML } from "./lisa-html.js";
 import { ISLAND_HTML } from "./island.js";
 import { ROOM_HTML } from "./room.js";
+import { LOGIN_HTML } from "./login.js";
 
 /**
  * Regression guard: the whole GUI/island is one big inline <script>. A single
@@ -29,6 +30,7 @@ describe("inline page <script> blocks are syntactically valid JS", () => {
     ["MAIN_HTML", MAIN_HTML],
     ["ISLAND_HTML", ISLAND_HTML],
     ["ROOM_HTML", ROOM_HTML],
+    ["LOGIN_HTML", LOGIN_HTML],
   ] as const) {
     test(`${name} parses`, () => {
       const blocks = inlineScripts(html);

@@ -2,7 +2,7 @@
  * LISA accounts — the cloud edition's user directory
  * (docs/PLAN_ACCOUNTS_BILLING_v1.0.md §6.1, milestone B1).
  *
- * Two account kinds share one store (`$lisaHome()/accounts.json`, 0600):
+ * Three account kinds share one store (`$lisaHome()/accounts.json`, 0600):
  *  - **Apple** (`apple-<sub>`): created/updated on every verified Sign in with
  *    Apple. No password material — Apple is the authority.
  *  - **Email** (`em-<random>`): self-serve, keyed by the address. Password
@@ -10,6 +10,13 @@
  *    (src/web/otp.ts) carry no scrypt params at all, and the password path
  *    rejects them constant-time like any other bad credential. App Review's
  *    demo account is the password kind (ASC insists on user/pass).
+ *  - **Google** (`g-<sub>`): created on the first verified Google sign-in.
+ *
+ * **One address, one account.** Email and Google accounts both *claim* their
+ * address (`EMAIL_OWNER_KINDS`), so every lookup spans both kinds and a person
+ * who signs in by Google today and by mailed code tomorrow lands on the same
+ * uid — and therefore the same balance. Apple is excluded on purpose: its
+ * private-relay addresses are per-app aliases, not a claim on a real inbox.
  *
  * Every account carries a `sessionVersion`; session tokens embed it and the
  *  gate rejects a mismatch — so deleting an account (App Store 5.1.1(v)) or a
@@ -25,7 +32,17 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { firestoreEnabled, getDoc, casUpdate } from "../cloud/firestore.js";
 
-export type AccountKind = "apple" | "email";
+export type AccountKind = "apple" | "email" | "google";
+
+/**
+ * Kinds whose `email` is an ownership claim on that inbox, and so must be
+ * unique across the directory. Apple is absent deliberately (see the header).
+ */
+const EMAIL_OWNER_KINDS: readonly AccountKind[] = ["email", "google"];
+
+function ownsEmail(a: AccountRecord, normalizedEmail: string): boolean {
+  return EMAIL_OWNER_KINDS.includes(a.kind) && a.email === normalizedEmail;
+}
 
 export interface ScryptParams {
   saltHex: string;
@@ -52,6 +69,8 @@ export interface AccountRecord {
   verified: boolean;
   /** Bump to invalidate every outstanding session for this uid. */
   sessionVersion: number;
+  /** Google's stable account id — set on any account a Google sign-in owns. */
+  googleSub?: string;
   /** SHA-256 of the outstanding verification token (email kind, unverified). */
   verifyTokenHash?: string;
   /** Verification-token expiry, ms epoch. */
@@ -230,9 +249,10 @@ export async function getAccount(uid: string): Promise<AccountRecord | null> {
   return (await loadAccounts()).find((a) => a.uid === uid) ?? null;
 }
 
+/** The account that owns this address, of whichever email-owning kind. */
 export async function getAccountByEmail(email: string): Promise<AccountRecord | null> {
   const norm = normalizeEmail(email);
-  return (await loadAccounts()).find((a) => a.kind === "email" && a.email === norm) ?? null;
+  return (await loadAccounts()).find((a) => ownsEmail(a, norm)) ?? null;
 }
 
 /**
@@ -260,24 +280,31 @@ export async function createEmailAccount(
     sessionVersion: 0,
   };
   return mutateAccounts((list) => {
-    if (list.some((a) => a.kind === "email" && a.email === email)) throw new AccountError("email_taken");
+    // Spans Google too: the address is already spoken for, and a second record
+    // would split the person's balance across two uids.
+    if (list.some((a) => ownsEmail(a, email))) throw new AccountError("email_taken");
     list.push(rec);
     return rec;
   });
 }
 
 /**
- * Apply proof-of-ownership (a mailed OTP or a verified OIDC email) to an account.
- * The FIRST time an account becomes verified this way, anything set on it before
- * is untrusted — `/api/auth/register` is open and unauthenticated, so an attacker
- * can pre-create any address with a password of their choosing. So on the
- * unverified→verified transition we drop any pre-set password and rotate
- * `sessionVersion` (invalidating any session minted from that credential),
- * closing the account pre-hijacking path. A password the real owner sets AFTER
- * verifying is unaffected. Returns whether this was the first verification.
+ * Apply proof-of-inbox-ownership (a mailed OTP, or a verified OIDC email) to an
+ * account, in place. Returns whether this was the account's FIRST verification.
+ *
+ * **Security-critical (closes account pre-hijacking, HIGH).** `/api/auth/register`
+ * is open and unauthenticated, so anyone can pre-create `victim@x.com` with a
+ * password of their choosing before the real owner ever shows up. If adoption
+ * merely flipped `verified=true` and kept that password, the attacker's
+ * credential would still authenticate the account the victim just proved they
+ * own — a shared/hijacked account. So on the unverified→verified transition we
+ * **drop any pre-set password and rotate `sessionVersion`**, which also
+ * invalidates any session minted from that credential. A password the real owner
+ * sets AFTER verifying is set on an already-verified account and is untouched.
  */
-function markVerifiedByOwnershipProof(acct: AccountRecord): boolean {
+function markVerifiedByOwnershipProof(acct: AccountRecord, now: number): void {
   const firstVerification = !acct.verified;
+  acct.lastLoginAt = now;
   acct.verified = true;
   delete acct.verifyTokenHash;
   delete acct.verifyExpiresAt;
@@ -285,7 +312,6 @@ function markVerifiedByOwnershipProof(acct: AccountRecord): boolean {
     delete acct.scrypt;
     acct.sessionVersion += 1;
   }
-  return firstVerification;
 }
 
 /**
@@ -309,14 +335,13 @@ export async function ensureOtpAccount(
   if (!validEmail(email)) throw new AccountError("invalid_email");
   const uid = `em-${crypto.randomBytes(9).toString("hex")}`;
   return mutateAccounts((list) => {
-    const existing = list.find((a) => a.kind === "email" && a.email === email);
+    // A Google-owned address counts: proving the inbox signs you into that same
+    // account rather than forking a second one.
+    const existing = list.find((a) => ownsEmail(a, email));
     if (existing) {
-      existing.lastLoginAt = now;
-      // OTP proves inbox control → apply ownership proof. This drops any password
-      // set before verification (an attacker can pre-register any address via the
-      // open /api/auth/register) and rotates sessionVersion, closing the account
-      // pre-hijacking path where the attacker's password survived the adoption.
-      markVerifiedByOwnershipProof(existing);
+      // Proof of inbox control — drops any password set before ownership was
+      // proven (pre-hijacking guard). See markVerifiedByOwnershipProof.
+      markVerifiedByOwnershipProof(existing, now);
       return { acct: existing, created: false };
     }
     const rec: AccountRecord = {
@@ -388,6 +413,61 @@ export async function upsertAppleAccount(
       uid,
       kind: "apple",
       email: email ? normalizeEmail(email) : undefined,
+      createdAt: now,
+      lastLoginAt: now,
+      verified: true,
+      sessionVersion: 0,
+    };
+    list.push(rec);
+    return rec;
+  });
+}
+
+/** Stable uid for a Google `sub` (filesystem-safe; Google subs are digits). */
+export function googleUid(sub: string): string {
+  return `g-${sub.replace(/[^A-Za-z0-9._-]/g, "_")}`;
+}
+
+/**
+ * Upsert the account for a verified Google identity (A3). Resolution order:
+ *
+ *  1. **by `sub`** — the identity anchor, so a Google user who changes the
+ *     address on their Google account keeps their LISA account and balance;
+ *  2. **by address** — binds to the email account already using it, which is
+ *     the whole point of the one-address-one-account rule. Safe because the
+ *     caller only reaches here with `email_verified` from Google;
+ *  3. otherwise create `g-<sub>`.
+ *
+ * Binding marks the account verified: Google vouched for the inbox.
+ */
+export async function upsertGoogleAccount(
+  sub: string,
+  emailRaw: string,
+  now: number = Date.now(),
+): Promise<AccountRecord> {
+  const email = normalizeEmail(emailRaw);
+  if (!validEmail(email)) throw new AccountError("invalid_email");
+  const uid = googleUid(sub);
+  return mutateAccounts((list) => {
+    const bySub = list.find((a) => a.googleSub === sub);
+    if (bySub) {
+      bySub.lastLoginAt = now;
+      bySub.email = email;
+      return bySub;
+    }
+    const byEmail = list.find((a) => ownsEmail(a, email));
+    if (byEmail) {
+      byEmail.googleSub = sub;
+      // Google vouched for the inbox — same ownership proof, same pre-hijacking
+      // guard as the OTP path (drops a pre-set password, rotates sessionVersion).
+      markVerifiedByOwnershipProof(byEmail, now);
+      return byEmail;
+    }
+    const rec: AccountRecord = {
+      uid,
+      kind: "google",
+      email,
+      googleSub: sub,
       createdAt: now,
       lastLoginAt: now,
       verified: true,

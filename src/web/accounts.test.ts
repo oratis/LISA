@@ -19,6 +19,8 @@ const {
   resetLoginThrottles,
   appleUid,
   ensureOtpAccount,
+  upsertGoogleAccount,
+  googleUid,
   AccountError,
 } = await import("./accounts.js");
 
@@ -96,39 +98,126 @@ describe("code-only (OTP) accounts", () => {
     assert.equal((await getAccount(acct.uid))?.uid, acct.uid, "the account still exists");
   });
 
-  test("a code verifies an existing unverified password account, dropping the pre-verification password", async () => {
+  test("a code verifies an existing unverified password account (levels the free window)", async () => {
     const made = await createEmailAccount("a@b.co", "password-123");
     assert.equal(made.verified, false);
-    assert.equal(made.sessionVersion, 0);
     const { acct, created } = await ensureOtpAccount("a@b.co", 3000);
     assert.equal(created, false);
     assert.equal(acct.uid, made.uid);
     assert.equal(acct.verified, true);
-    // /api/auth/register is open, so a password set before ownership was proven
-    // can't be trusted. Signing in by code drops it and rotates sessionVersion, so
-    // the pre-set password no longer authenticates (anti account-pre-hijacking).
-    assert.equal(acct.scrypt, undefined, "pre-verification password dropped");
-    assert.equal(acct.sessionVersion, 1, "sessionVersion rotated to kill prior sessions");
-    assert.equal(await verifyEmailLogin("a@b.co", "password-123", 4000), null, "the pre-set password no longer works");
   });
 
-  test("account pre-hijacking is closed: an attacker's pre-set password can't survive the victim's code sign-in", async () => {
-    // Attacker pre-registers the victim's address with a password they know.
-    const attacker = await createEmailAccount("victim@x.co", "attacker-knows-this");
-    assert.equal(attacker.verified, false);
-    // Victim signs in by mailed code (proving they, not the attacker, own the inbox).
-    const { acct } = await ensureOtpAccount("victim@x.co", 5000);
-    assert.equal(acct.uid, attacker.uid, "same record — the code adopts the existing account");
-    // The attacker can no longer authenticate with the password they set.
-    assert.equal(
-      await verifyEmailLogin("victim@x.co", "attacker-knows-this", 6000),
-      null,
-      "attacker's pre-set password is invalidated on the victim's ownership proof",
-    );
+  test("SECURITY: a code sign-in drops a password set before ownership was proven", async () => {
+    // The pre-hijacking scenario. /api/auth/register is open, so an attacker
+    // pre-creates the victim's address with a password they know...
+    const victimUid = (await createEmailAccount("victim@x.co", "attacker-set-pw")).uid;
+    const beforeSv = (await getAccount(victimUid))!.sessionVersion;
+    // ...then the real owner signs in by code (proving they read the inbox).
+    const { acct } = await ensureOtpAccount("victim@x.co", 3000);
+    assert.equal(acct.uid, victimUid, "same account — balance isn't forked");
+    // The attacker's password must no longer authenticate, and any session it
+    // minted must be invalidated (sessionVersion rotated).
+    assert.equal(await verifyEmailLogin("victim@x.co", "attacker-set-pw", 4000), null,
+      "the pre-set password must stop working");
+    assert.equal((await getAccount(victimUid))!.scrypt, undefined, "the password is dropped");
+    assert.equal((await getAccount(victimUid))!.sessionVersion, beforeSv + 1, "sessions are invalidated");
+  });
+
+  test("SECURITY: only the FIRST verification rotates — a re-verify is a no-op", async () => {
+    // The drop+rotate is the untrusted unverified→verified transition ONLY. Once
+    // an account is verified it belongs to the owner, so a later code sign-in
+    // must not keep rotating sessionVersion (which would log the owner out on
+    // every sign-in) or otherwise disturb it.
+    const made = await createEmailAccount("a@b.co", "password-123"); // unverified
+    await ensureOtpAccount("a@b.co", 2000); // first verification: drop pw, rotate
+    const afterFirst = (await getAccount(made.uid))!;
+    assert.equal(afterFirst.verified, true);
+    assert.equal(afterFirst.scrypt, undefined);
+    assert.equal(afterFirst.sessionVersion, made.sessionVersion + 1);
+    await ensureOtpAccount("a@b.co", 3000); // second code sign-in: no-op on creds
+    const afterSecond = (await getAccount(made.uid))!;
+    assert.equal(afterSecond.sessionVersion, afterFirst.sessionVersion, "no further rotation");
   });
 
   test("a malformed address is refused", async () => {
     await assert.rejects(ensureOtpAccount("not-an-email", 1000), isCode("invalid_email"));
+  });
+});
+
+describe("google accounts", () => {
+  test("first sign-in creates a verified google account", async () => {
+    const a = await upsertGoogleAccount("108123", "User@Example.com", 1000);
+    assert.equal(a.uid, googleUid("108123"));
+    assert.equal(a.kind, "google");
+    assert.equal(a.email, "user@example.com");
+    assert.equal(a.verified, true);
+    assert.equal(a.googleSub, "108123");
+  });
+
+  test("the sub is the anchor: a changed address keeps the same account", async () => {
+    const first = await upsertGoogleAccount("108123", "old@example.com", 1000);
+    const second = await upsertGoogleAccount("108123", "new@example.com", 2000);
+    assert.equal(second.uid, first.uid);
+    assert.equal(second.email, "new@example.com");
+    assert.equal(second.lastLoginAt, 2000);
+  });
+
+  test("binds to an existing email account instead of splitting the balance", async () => {
+    const made = await createEmailAccount("a@b.co", "password-123");
+    assert.equal(made.verified, false);
+    const g = await upsertGoogleAccount("108123", "a@b.co", 2000);
+    assert.equal(g.uid, made.uid, "same account — same uid, same balance");
+    assert.equal(g.kind, "email", "the original kind is kept; Google is now also an entrance");
+    assert.equal(g.googleSub, "108123");
+    assert.equal(g.verified, true, "Google vouched for the inbox");
+    // The code path still opens the same account.
+    assert.equal((await ensureOtpAccount("a@b.co", 3000)).acct.uid, made.uid);
+  });
+
+  test("SECURITY: a Google bind drops a password set before ownership was proven", async () => {
+    // Same pre-hijacking guard as the OTP path: an attacker's pre-set password
+    // must not survive the victim proving inbox ownership via Google.
+    const victimUid = (await createEmailAccount("victim@x.co", "attacker-set-pw")).uid;
+    const beforeSv = (await getAccount(victimUid))!.sessionVersion;
+    const g = await upsertGoogleAccount("108123", "victim@x.co", 2000);
+    assert.equal(g.uid, victimUid, "same account — balance isn't forked");
+    assert.equal(await verifyEmailLogin("victim@x.co", "attacker-set-pw", 3000), null,
+      "the pre-set password must stop working");
+    assert.equal((await getAccount(victimUid))!.scrypt, undefined, "the password is dropped");
+    assert.equal((await getAccount(victimUid))!.sessionVersion, beforeSv + 1, "sessions are invalidated");
+  });
+
+  test("a mailed code signs into a google-owned address rather than forking", async () => {
+    const g = await upsertGoogleAccount("108123", "a@b.co", 1000);
+    const viaCode = await ensureOtpAccount("a@b.co", 2000);
+    assert.equal(viaCode.created, false);
+    assert.equal(viaCode.acct.uid, g.uid);
+  });
+
+  test("registering a password over a google-owned address is refused", async () => {
+    await upsertGoogleAccount("108123", "a@b.co", 1000);
+    await assert.rejects(createEmailAccount("a@b.co", "password-123"), isCode("email_taken"));
+  });
+
+  test("a google account cannot be password-authenticated", async () => {
+    await upsertGoogleAccount("108123", "a@b.co", 1000);
+    assert.equal(await verifyEmailLogin("a@b.co", "password-123", 2000), null);
+  });
+
+  test("apple accounts do not bind by address (private relay aliases)", async () => {
+    const apple = await upsertAppleAccount("001.abc", "a@b.co", 1000);
+    const g = await upsertGoogleAccount("108123", "a@b.co", 2000);
+    assert.notEqual(g.uid, apple.uid);
+    assert.equal(g.kind, "google");
+  });
+
+  test("googleUid sanitizes hostile subs", () => {
+    assert.ok(!googleUid("a/b").includes("/"));
+    assert.ok(!googleUid("../../etc").includes("/"));
+  });
+
+  test("a malformed address is refused", async () => {
+    await assert.rejects(upsertGoogleAccount("108123", "not-an-email", 1000), isCode("invalid_email"));
   });
 });
 

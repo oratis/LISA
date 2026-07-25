@@ -1,7 +1,9 @@
 # RUNBOOK — 账号/计费上线的人工操作 (operator actions)
 
-**配套**: [PLAN_ACCOUNTS_BILLING_v1.0.md](PLAN_ACCOUNTS_BILLING_v1.0.md) §10（PR #259–#267）。
-本文是代码做不了的那部分：Apple 后台、ASC、DNS、部署。按阶段顺序执行；
+**配套**: [PLAN_ACCOUNTS_BILLING_v1.0.md](PLAN_ACCOUNTS_BILLING_v1.0.md) §10（PR #259–#267）
+与 [PLAN_AUTH_OTP_GOOGLE_v1.0.md](PLAN_AUTH_OTP_GOOGLE_v1.0.md) §6（PR #289–#293，
+验证码登录 + Google 登录 → Phase 8–10）。
+本文是代码做不了的那部分：Apple 后台、ASC、GCP、DNS、部署。按阶段顺序执行；
 每步标注了前置依赖和大致耗时。
 
 ---
@@ -201,6 +203,108 @@ app now verifies the connection at sign-in time. Please review 1.1.
 - 急停：`gcloud run services update lisa-cloud --update-env-vars LISA_BILLING_KILL=1 …`
   （恢复时改回空值）。
 
+## Phase 8 — 验证码登录上线（Resend 是硬依赖）
+
+> 配套 [PLAN_AUTH_OTP_GOOGLE_v1.0.md](PLAN_AUTH_OTP_GOOGLE_v1.0.md) A1/A2。
+> **没有可用的发信通道 = 没人收得到验证码 = 登录不了**（缺 key 时验证码只会
+> 打进服务端日志）。上线前务必确认这一条。
+
+1. **Resend 域名**：发信域是 **`mail.meetlisa.ai`（子域，不是顶级域）**。
+   子域发信是刻意的：顶级域承载你自己的人类邮件和它的信誉，把批量事务邮件
+   隔到独立子域，这边退信炸了也不会连累那边。
+
+   Resend 后台 → **Domains → Add Domain** 填 `mail.meetlisa.ai`，它会列出
+   3–4 条记录（MX + SPF TXT + DKIM TXT，可选 DMARC）。**照抄它当场给的值**
+   到 DNS —— 具体主机名和值跟 Resend 分配的区域有关，别照别处的样例填。
+   加完点 Verify，状态变 **Verified** 才算数（通常几分钟，DNS 慢的话到几小时）。
+
+   代码里的默认 from 已经是 `LISA <no-reply@mail.meetlisa.ai>`，与之对齐；
+   想换显示名或地址就设 `LISA_MAIL_FROM`，但**必须仍在已验证的域内**，
+   否则 Resend 直接拒发。
+
+2. **API key**：Resend → API Keys 建一个（权限选 **Sending access** 即可，
+   不需要 Full access），部署时作为 `RESEND_API_KEY` 传入。
+   key 只在 Cloud Run env 里，别提交进仓库。轮换就是建新 key + 重部署。
+
+3. **自检**（部署后）：
+
+```bash
+BASE=https://cloud.meetlisa.ai
+# 应答 {"ok":true,"sent":true,...}；sent:false 就是发信没配好
+curl -s $BASE/api/auth/otp/request -H 'content-type: application/json' \
+  -d '{"email":"你的邮箱@example.com"}'
+# 收到邮件后拿六位数字换 session
+curl -s $BASE/api/auth/otp/verify -H 'content-type: application/json' \
+  -d '{"email":"你的邮箱@example.com","code":"123456"}'
+```
+
+4. 免费额度：验证码登录建号即 `verified=true`，直接拿满额 $5 窗口（旧的
+   "未验证邮箱 $1" 只剩历史密码账号会遇到）。
+5. 审核账号不受影响：`reviewer@meetlisa.ai` 仍是密码登录，ASC 表单不用改。
+   （注意这是**收件**地址、与发信子域无关，不需要跟着改成 mail. 子域。）
+
+## Phase 9 — Google 登录（GCP OAuth）
+
+> 配套 A3/A4。不配 client ID 时，Google 按钮在四端都不出现，其它登录方式照常。
+
+1. GCP Console（项目 `oratis-491316`）→ **APIs & Services → OAuth consent
+   screen**：User Type 选 **External**，填应用名/支持邮箱/开发者邮箱，
+   Scopes 只要 `openid`、`email`（不要 profile 之外的敏感 scope，免走审核），
+   然后 **Publish app**（Testing 状态只有测试名单里的账号能登）。
+2. **Credentials → Create Credentials → OAuth client ID**，建**两个**：
+   - **Web application** —— Authorized JavaScript origins 填
+     `https://cloud.meetlisa.ai`（GIS 按钮按 origin 校验；不需要 redirect URI）。
+   - **iOS** —— Bundle ID 填 `ai.meetlisa.main`。
+     （iOS 客户端的 redirect 由 Google 自动按"反转 client ID"配好，无需手填；
+     app 侧也不用注册 URL scheme —— ASWebAuthenticationSession 自己拦截回调。）
+3. **重新部署**，带上两个 client ID（顺带把 SIWA-web 的 Services ID 一起补上，
+   解决 `/api/auth/config` 里 `appleWeb: null`）：
+
+```bash
+LISA_WEB_TOKEN='<现有值>' \
+ZHIPU_API_KEY='<现有值>' \
+LISA_MODEL=glm-4.6 \
+LISA_CLOUD_APPLE_SIGNIN=1 \
+LISA_REVIEWER_SEED='reviewer@meetlisa.ai:<现有密码>' \
+RESEND_API_KEY='<现有值>' \
+LISA_GOOGLE_WEB_CLIENT_ID='<web client id>.apps.googleusercontent.com' \
+LISA_GOOGLE_IOS_CLIENT_ID='<ios client id>.apps.googleusercontent.com' \
+LISA_CLOUD_APPLE_WEB_SID='<Apple Services ID，可选>' \
+deploy/deploy.sh
+```
+
+4. **自检**：`curl -s https://cloud.meetlisa.ai/api/auth/config` 应看到
+   `google: {webClientId: …, iosClientId: …}`；打开登录页应出现 Google 按钮。
+5. **iOS 1.2 送审前**：Google 登录不改变 App Privacy 申报（email/User ID 已申报）；
+   4.8 合规靠 SIWA 仍在首位满足 —— 改动版面时别把 Apple 按钮挪到 Google 下面。
+
+## Phase 10 — 发 iOS 构建（CI 已配齐，无需 Mac）
+
+**先确认版本号该不该动**（取决于 ASC 上 1.1 的状态，代码里看不出来）：
+
+- **1.1 还没送审**（Phase 6 尚未做完）→ **不要改版本号**。验证码/Google 登录
+  直接并进 1.1 这一版一起送审，只是多打一个 build。
+- **1.1 已在审核中或已上架** → 把 `packaging/ios-companion/project.yml` 的
+  `MARKETING_VERSION` 提到 `1.2`，再走下面的 tag。
+
+六个签名 secret 自 2026-07-23 起已在 `oratis/LISA` 仓库配好，任何有 push 权限的
+协作者都能发版（tag 名与 MARKETING_VERSION 对齐即可）：
+
+```bash
+git tag pocket-v1.1.1 && git push origin pocket-v1.1.1
+```
+
+（或 Actions 里手动跑 `release-ios-testflight.yml`。）build number 是构建时的
+Unix 时间戳，自动生成，所以同一 MARKETING_VERSION 可以反复出 build。细节见
+[packaging/ios-companion/RELEASE.md](../packaging/ios-companion/RELEASE.md)。
+
+**Review Notes 增补一句**（Phase 6c 那段文案后面加）：
+
+```
+Sign-in now also accepts a one-time code emailed to any address, and
+Sign in with Google. The demo account above still uses email + password.
+```
+
 ## （可选）多实例扩容 — Firestore 模式（B9）
 
 单实例（默认）什么都不用做。用户量上来后要 `max-instances > 1` 时：
@@ -225,4 +329,8 @@ Phase 0 (merge) ─┬─► Phase 1 (SIWA capability) ──► Phase 6b (build
                  ├─► Phase 2 (Paid Apps 协议) ───► Phase 4 (IAP 商品) ─► Phase 6d (随 1.1 送审)
                  ├─► Phase 3 (DNS + deploy) ─────► Phase 6c (审核账号可用)
                  └─► Phase 5 (SBP，独立)
+
+验证码 / Google（PR #289–#293 合并后）：
+Phase 8 (Resend 核实) ──┐
+Phase 9 (GCP OAuth) ────┴─► 一次重部署（两组 env 一起带上）──► Phase 10 (发 1.2)
 ```
