@@ -289,6 +289,32 @@ export async function createEmailAccount(
 }
 
 /**
+ * Apply proof-of-inbox-ownership (a mailed OTP, or a verified OIDC email) to an
+ * account, in place. Returns whether this was the account's FIRST verification.
+ *
+ * **Security-critical (closes account pre-hijacking, HIGH).** `/api/auth/register`
+ * is open and unauthenticated, so anyone can pre-create `victim@x.com` with a
+ * password of their choosing before the real owner ever shows up. If adoption
+ * merely flipped `verified=true` and kept that password, the attacker's
+ * credential would still authenticate the account the victim just proved they
+ * own — a shared/hijacked account. So on the unverified→verified transition we
+ * **drop any pre-set password and rotate `sessionVersion`**, which also
+ * invalidates any session minted from that credential. A password the real owner
+ * sets AFTER verifying is set on an already-verified account and is untouched.
+ */
+function markVerifiedByOwnershipProof(acct: AccountRecord, now: number): void {
+  const firstVerification = !acct.verified;
+  acct.lastLoginAt = now;
+  acct.verified = true;
+  delete acct.verifyTokenHash;
+  delete acct.verifyExpiresAt;
+  if (firstVerification && acct.scrypt) {
+    delete acct.scrypt;
+    acct.sessionVersion += 1;
+  }
+}
+
+/**
  * Sign-in by mailed code (A1). The code already proved this person reads the
  * address, so one call both registers and authenticates: an existing account
  * comes back marked verified (ownership was just demonstrated, which levels the
@@ -313,10 +339,9 @@ export async function ensureOtpAccount(
     // account rather than forking a second one.
     const existing = list.find((a) => ownsEmail(a, email));
     if (existing) {
-      existing.lastLoginAt = now;
-      existing.verified = true;
-      delete existing.verifyTokenHash;
-      delete existing.verifyExpiresAt;
+      // Proof of inbox control — drops any password set before ownership was
+      // proven (pre-hijacking guard). See markVerifiedByOwnershipProof.
+      markVerifiedByOwnershipProof(existing, now);
       return { acct: existing, created: false };
     }
     const rec: AccountRecord = {
@@ -433,10 +458,9 @@ export async function upsertGoogleAccount(
     const byEmail = list.find((a) => ownsEmail(a, email));
     if (byEmail) {
       byEmail.googleSub = sub;
-      byEmail.lastLoginAt = now;
-      byEmail.verified = true;
-      delete byEmail.verifyTokenHash;
-      delete byEmail.verifyExpiresAt;
+      // Google vouched for the inbox — same ownership proof, same pre-hijacking
+      // guard as the OTP path (drops a pre-set password, rotates sessionVersion).
+      markVerifiedByOwnershipProof(byEmail, now);
       return byEmail;
     }
     const rec: AccountRecord = {

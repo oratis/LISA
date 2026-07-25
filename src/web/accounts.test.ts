@@ -105,8 +105,38 @@ describe("code-only (OTP) accounts", () => {
     assert.equal(created, false);
     assert.equal(acct.uid, made.uid);
     assert.equal(acct.verified, true);
-    // The password still works — the code is an additional way in, not a swap.
-    assert.equal((await verifyEmailLogin("a@b.co", "password-123", 4000))?.uid, made.uid);
+  });
+
+  test("SECURITY: a code sign-in drops a password set before ownership was proven", async () => {
+    // The pre-hijacking scenario. /api/auth/register is open, so an attacker
+    // pre-creates the victim's address with a password they know...
+    const victimUid = (await createEmailAccount("victim@x.co", "attacker-set-pw")).uid;
+    const beforeSv = (await getAccount(victimUid))!.sessionVersion;
+    // ...then the real owner signs in by code (proving they read the inbox).
+    const { acct } = await ensureOtpAccount("victim@x.co", 3000);
+    assert.equal(acct.uid, victimUid, "same account — balance isn't forked");
+    // The attacker's password must no longer authenticate, and any session it
+    // minted must be invalidated (sessionVersion rotated).
+    assert.equal(await verifyEmailLogin("victim@x.co", "attacker-set-pw", 4000), null,
+      "the pre-set password must stop working");
+    assert.equal((await getAccount(victimUid))!.scrypt, undefined, "the password is dropped");
+    assert.equal((await getAccount(victimUid))!.sessionVersion, beforeSv + 1, "sessions are invalidated");
+  });
+
+  test("SECURITY: only the FIRST verification rotates — a re-verify is a no-op", async () => {
+    // The drop+rotate is the untrusted unverified→verified transition ONLY. Once
+    // an account is verified it belongs to the owner, so a later code sign-in
+    // must not keep rotating sessionVersion (which would log the owner out on
+    // every sign-in) or otherwise disturb it.
+    const made = await createEmailAccount("a@b.co", "password-123"); // unverified
+    await ensureOtpAccount("a@b.co", 2000); // first verification: drop pw, rotate
+    const afterFirst = (await getAccount(made.uid))!;
+    assert.equal(afterFirst.verified, true);
+    assert.equal(afterFirst.scrypt, undefined);
+    assert.equal(afterFirst.sessionVersion, made.sessionVersion + 1);
+    await ensureOtpAccount("a@b.co", 3000); // second code sign-in: no-op on creds
+    const afterSecond = (await getAccount(made.uid))!;
+    assert.equal(afterSecond.sessionVersion, afterFirst.sessionVersion, "no further rotation");
   });
 
   test("a malformed address is refused", async () => {
@@ -140,9 +170,21 @@ describe("google accounts", () => {
     assert.equal(g.kind, "email", "the original kind is kept; Google is now also an entrance");
     assert.equal(g.googleSub, "108123");
     assert.equal(g.verified, true, "Google vouched for the inbox");
-    // Both doors now open the same account.
-    assert.equal((await verifyEmailLogin("a@b.co", "password-123", 3000))?.uid, made.uid);
+    // The code path still opens the same account.
     assert.equal((await ensureOtpAccount("a@b.co", 3000)).acct.uid, made.uid);
+  });
+
+  test("SECURITY: a Google bind drops a password set before ownership was proven", async () => {
+    // Same pre-hijacking guard as the OTP path: an attacker's pre-set password
+    // must not survive the victim proving inbox ownership via Google.
+    const victimUid = (await createEmailAccount("victim@x.co", "attacker-set-pw")).uid;
+    const beforeSv = (await getAccount(victimUid))!.sessionVersion;
+    const g = await upsertGoogleAccount("108123", "victim@x.co", 2000);
+    assert.equal(g.uid, victimUid, "same account — balance isn't forked");
+    assert.equal(await verifyEmailLogin("victim@x.co", "attacker-set-pw", 3000), null,
+      "the pre-set password must stop working");
+    assert.equal((await getAccount(victimUid))!.scrypt, undefined, "the password is dropped");
+    assert.equal((await getAccount(victimUid))!.sessionVersion, beforeSv + 1, "sessions are invalidated");
   });
 
   test("a mailed code signs into a google-owned address rather than forking", async () => {
