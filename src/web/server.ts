@@ -57,7 +57,12 @@ import {
 import { stripeConfig, verifyStripeSignature, classifyStripeEvent, createCheckoutSession, sessionIdForPaymentIntent, STRIPE_PACKS } from "../billing/stripe.js";
 import { ACCOUNT_HTML } from "./account-page.js";
 import { handleGateway } from "./gateway.js";
-import { readCappedText, BodyTooLargeError, CTRL_BODY_LIMIT } from "./http-body.js";
+import {
+  readCappedText,
+  BodyTooLargeError,
+  CTRL_BODY_LIMIT,
+  RICH_BODY_LIMIT,
+} from "./http-body.js";
 import { preflightLimits, ipRateOk, killSwitchOn, globalSpendExceeded } from "../billing/limits.js";
 import { acquireTurnLease, releaseTurnLease, startLeaseRenewal } from "../cloud/turn-lease.js";
 import { ROOM_HTML } from "./room.js";
@@ -305,6 +310,29 @@ async function readJsonBody(
     return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
   } catch {
     return {};
+  }
+}
+
+/**
+ * Bound legacy JSON endpoints without changing their existing parse and media
+ * type semantics. Returns null after writing an error response.
+ */
+async function readRequestText(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  limitBytes: number = CTRL_BODY_LIMIT,
+): Promise<string | null> {
+  try {
+    return await readCappedText(req, limitBytes);
+  } catch (err) {
+    if (err instanceof BodyTooLargeError) {
+      res.writeHead(413, { "content-type": "application/json", connection: "close" });
+      res.end(JSON.stringify({ error: "payload_too_large", limitBytes: err.limitBytes }));
+      return null;
+    }
+    res.writeHead(400, { "content-type": "application/json", connection: "close" });
+    res.end(JSON.stringify({ error: "request_body_unavailable" }));
+    return null;
   }
 }
 
@@ -1924,8 +1952,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end("screen-advisor config only accepted from localhost");
         return;
       }
-      let saBody = "";
-      for await (const chunk of req) saBody += chunk.toString("utf8");
+      const saBody = await readRequestText(req, res);
+      if (saBody === null) return;
       let payload: Partial<ScreenAdvisorConfig>;
       try {
         payload = JSON.parse(saBody || "{}") as Partial<ScreenAdvisorConfig>;
@@ -1963,8 +1991,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end(JSON.stringify({ error: "screen capture is only supported on macOS" }));
         return;
       }
-      let visionBody = "";
-      for await (const chunk of req) visionBody += chunk.toString("utf8");
+      const visionBody = await readRequestText(req, res);
+      if (visionBody === null) return;
       console.error("[vision] capture requested");
       let mode: CaptureMode = "interactive";
       try {
@@ -1990,8 +2018,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // the model's job, not a special endpoint). 400 on missing data; the
     // transcriber itself errors clearly if OPENAI_API_KEY is unset.
     if (req.method === "POST" && url === "/api/voice/transcribe") {
-      let voiceBody = "";
-      for await (const chunk of req) voiceBody += chunk.toString("utf8");
+      const voiceBody = await readRequestText(req, res, RICH_BODY_LIMIT);
+      if (voiceBody === null) return;
       let payload: { data?: string; mediaType?: string; mode?: string };
       try {
         payload = JSON.parse(voiceBody || "{}");
@@ -2070,8 +2098,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // down-weights over time ("learns to shut up"), and drop it from the
     // cached card so a refreshed island doesn't resurrect it.
     if (req.method === "POST" && url === "/api/advisor/dismiss") {
-      let dBody = "";
-      for await (const chunk of req) dBody += chunk.toString("utf8");
+      const dBody = await readRequestText(req, res);
+      if (dBody === null) return;
       let payload: { id?: unknown; category?: unknown };
       try {
         payload = JSON.parse(dBody || "{}");
@@ -2120,8 +2148,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // gate like every endpoint (loopback or token). Reuses signal_agent, so it
     // can ONLY touch dispatch-ledger pids — never an arbitrary process.
     if (req.method === "POST" && url === "/api/agent/signal") {
-      let sigBody = "";
-      for await (const chunk of req) sigBody += chunk.toString("utf8");
+      const sigBody = await readRequestText(req, res);
+      if (sigBody === null) return;
       let payload: { action?: unknown; target?: unknown; force?: unknown };
       try {
         payload = JSON.parse(sigBody || "{}");
@@ -2164,8 +2192,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end("pairing can only be started from the Mac (localhost)");
         return;
       }
-      let prBody = "";
-      for await (const chunk of req) prBody += chunk.toString("utf8");
+      const prBody = await readRequestText(req, res);
+      if (prBody === null) return;
       let payload: { name?: unknown; platform?: unknown; host?: unknown } = {};
       try { payload = prBody ? JSON.parse(prBody) : {}; } catch { /* tolerate */ }
       const name = typeof payload.name === "string" ? payload.name : "device";
@@ -2200,8 +2228,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end("device revocation is a Mac-owner action (localhost only)");
         return;
       }
-      let rvBody = "";
-      for await (const chunk of req) rvBody += chunk.toString("utf8");
+      const rvBody = await readRequestText(req, res);
+      if (rvBody === null) return;
       let payload: { id?: unknown } = {};
       try { payload = rvBody ? JSON.parse(rvBody) : {}; } catch { /* tolerate */ }
       const removed = revokeDevice(typeof payload.id === "string" ? payload.id : "");
@@ -2214,8 +2242,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // APNs token) + prefs — authed (the device does this remotely). Low-sensitivity
     // metadata only; see push.ts.
     if (req.method === "POST" && url === "/api/push/register") {
-      let puBody = "";
-      for await (const chunk of req) puBody += chunk.toString("utf8");
+      const puBody = await readRequestText(req, res);
+      if (puBody === null) return;
       let payload: { kind?: unknown; target?: unknown; server?: unknown; prefs?: Partial<PushPrefs> } = {};
       try { payload = puBody ? JSON.parse(puBody) : {}; } catch { /* tolerate */ }
       if (typeof payload.target !== "string" || !payload.target.trim()) {
@@ -2232,8 +2260,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       return;
     }
     if (req.method === "POST" && url === "/api/push/unregister") {
-      let puBody = "";
-      for await (const chunk of req) puBody += chunk.toString("utf8");
+      const puBody = await readRequestText(req, res);
+      if (puBody === null) return;
       let payload: { id?: unknown; target?: unknown } = {};
       try { payload = puBody ? JSON.parse(puBody) : {}; } catch { /* tolerate */ }
       const key = typeof payload.id === "string" ? payload.id : typeof payload.target === "string" ? payload.target : "";
@@ -2245,8 +2273,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // Register/unregister a Live Activity push token for a pinned session — the
     // push-bridge then refreshes that activity over APNs as the agent updates.
     if (req.method === "POST" && url === "/api/push/live-activity") {
-      let laBody = "";
-      for await (const chunk of req) laBody += chunk.toString("utf8");
+      const laBody = await readRequestText(req, res);
+      if (laBody === null) return;
       let payload: { sessionId?: unknown; token?: unknown } = {};
       try { payload = laBody ? JSON.parse(laBody) : {}; } catch { /* tolerate */ }
       if (typeof payload.sessionId !== "string" || !payload.sessionId) {
@@ -2267,8 +2295,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       return;
     }
     if (req.method === "POST" && url === "/api/push/prefs") {
-      let puBody = "";
-      for await (const chunk of req) puBody += chunk.toString("utf8");
+      const puBody = await readRequestText(req, res);
+      if (puBody === null) return;
       let payload: { id?: unknown; prefs?: Partial<PushPrefs> } = {};
       try { payload = puBody ? JSON.parse(puBody) : {}; } catch { /* tolerate */ }
       const sub = typeof payload.id === "string" ? setPushPrefs(payload.id, payload.prefs ?? {}) : null;
@@ -2289,8 +2317,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       return;
     }
     if (req.method === "POST" && url === "/api/mail/connect") {
-      let mBody = "";
-      for await (const chunk of req) mBody += chunk.toString("utf8");
+      const mBody = await readRequestText(req, res);
+      if (mBody === null) return;
       let p: { email?: unknown; host?: unknown; port?: unknown; password?: unknown; label?: unknown };
       try { p = JSON.parse(mBody || "{}"); } catch {
         res.writeHead(400, { "content-type": "text/plain" }); res.end("bad json"); return;
@@ -2373,8 +2401,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end("control policy can only be changed from the Mac (localhost)");
         return;
       }
-      let cpBody = "";
-      for await (const chunk of req) cpBody += chunk.toString("utf8");
+      const cpBody = await readRequestText(req, res);
+      if (cpBody === null) return;
       let payload: Partial<ControlPolicy>;
       try { payload = JSON.parse(cpBody || "{}"); } catch {
         res.writeHead(400, { "content-type": "text/plain" }); res.end("bad json"); return;
@@ -2401,8 +2429,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       return;
     }
     if (req.method === "POST" && url === "/api/autonomy/state") {
-      let asBody = "";
-      for await (const chunk of req) asBody += chunk.toString("utf8");
+      const asBody = await readRequestText(req, res);
+      if (asBody === null) return;
       let payload: Partial<AutonomyState>;
       try { payload = JSON.parse(asBody || "{}"); } catch {
         res.writeHead(400, { "content-type": "text/plain" }); res.end("bad json"); return;
@@ -2451,8 +2479,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
 
     if (req.method === "POST" && url === "/api/agents/managed/start") {
       if (denyRemote("control")) return;
-      let mBody = "";
-      for await (const chunk of req) mBody += chunk.toString("utf8");
+      const mBody = await readRequestText(req, res);
+      if (mBody === null) return;
       let payload: { task?: unknown; cwd?: unknown; model?: unknown };
       try { payload = JSON.parse(mBody || "{}"); } catch {
         res.writeHead(400, { "content-type": "text/plain" }); res.end("bad json"); return;
@@ -2484,8 +2512,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const slash = rest.indexOf("/");
       const id = slash >= 0 ? rest.slice(0, slash) : rest;
       const action = slash >= 0 ? rest.slice(slash + 1) : "";
-      let mBody = "";
-      for await (const chunk of req) mBody += chunk.toString("utf8");
+      const mBody = await readRequestText(req, res);
+      if (mBody === null) return;
       let payload: { text?: unknown; allow?: unknown } = {};
       try { payload = mBody ? JSON.parse(mBody) : {}; } catch { /* tolerate empty/none */ }
       let ok = false;
@@ -2507,8 +2535,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // your task + follow-ups and can read the terminal tail. Behind the same
     // auth gate; 503 when the spike flag is off / node-pty is absent.
     if (req.method === "POST" && url === "/api/agents/pty/start") {
-      let pBody = "";
-      for await (const chunk of req) pBody += chunk.toString("utf8");
+      const pBody = await readRequestText(req, res);
+      if (pBody === null) return;
       let payload: { agent?: unknown; task?: unknown; cwd?: unknown; resumeSessionId?: unknown };
       try { payload = JSON.parse(pBody || "{}"); } catch {
         res.writeHead(400, { "content-type": "text/plain" }); res.end("bad json"); return;
@@ -2620,8 +2648,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const slash = rest.indexOf("/");
       const id = decodeURIComponent(slash >= 0 ? rest.slice(0, slash) : rest);
       const action = slash >= 0 ? rest.slice(slash + 1) : "";
-      let pBody = "";
-      for await (const chunk of req) pBody += chunk.toString("utf8");
+      const pBody = await readRequestText(req, res);
+      if (pBody === null) return;
       let payload: { text?: unknown } = {};
       try { payload = pBody ? JSON.parse(pBody) : {}; } catch { /* tolerate */ }
       let ok = false;
@@ -2654,8 +2682,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       req.method === "POST" &&
       (url === "/api/consent/grant" || url === "/api/consent/revoke")
     ) {
-      let cBody = "";
-      for await (const chunk of req) cBody += chunk.toString("utf8");
+      const cBody = await readRequestText(req, res);
+      if (cBody === null) return;
       let payload: { signal?: unknown };
       try {
         payload = JSON.parse(cBody || "{}");
@@ -2923,8 +2951,8 @@ self.addEventListener('fetch', (event) => {
       return;
     }
     if (req.method === "POST" && url === "/api/kb/add") {
-      let body = "";
-      for await (const chunk of req) body += chunk.toString("utf8");
+      const body = await readRequestText(req, res);
+      if (body === null) return;
       let payload: { title?: string; content?: string; tags?: string[]; origin?: string };
       try {
         payload = JSON.parse(body || "{}");
@@ -3019,8 +3047,8 @@ self.addEventListener('fetch', (event) => {
       return;
     }
     if (req.method === "POST" && url === "/api/kb/remove") {
-      let body = "";
-      for await (const chunk of req) body += chunk.toString("utf8");
+      const body = await readRequestText(req, res);
+      if (body === null) return;
       let payload: { layer?: string; slug?: string };
       try {
         payload = JSON.parse(body || "{}");
@@ -3079,8 +3107,8 @@ self.addEventListener('fetch', (event) => {
     }
 
     if (req.method === "POST" && url === "/api/plans/select") {
-      let body = "";
-      for await (const chunk of req) body += chunk.toString("utf8");
+      const body = await readRequestText(req, res);
+      if (body === null) return;
       let payload: { plan?: unknown };
       try {
         payload = JSON.parse(body || "{}");
@@ -3139,8 +3167,8 @@ self.addEventListener('fetch', (event) => {
         res.end("config save only accepted from localhost");
         return;
       }
-      let body = "";
-      for await (const chunk of req) body += chunk.toString("utf8");
+      const body = await readRequestText(req, res);
+      if (body === null) return;
       let payload: { anthropicKey?: unknown; openaiKey?: unknown };
       try {
         payload = JSON.parse(body || "{}");
@@ -3323,8 +3351,8 @@ self.addEventListener('fetch', (event) => {
 
     if (req.method === "POST" && url === "/chat") {
       const chat = await ctxForRequest();
-      let body = "";
-      for await (const chunk of req) body += chunk.toString("utf8");
+      const body = await readRequestText(req, res, RICH_BODY_LIMIT);
+      if (body === null) return;
       let message: string;
       let files: Array<{ name: string; mediaType: string; data: string }> | undefined;
       try {

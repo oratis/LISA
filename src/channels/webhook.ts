@@ -6,6 +6,11 @@ import type {
   IncomingMessage,
   OutgoingMessage,
 } from "./types.js";
+import {
+  BodyTooLargeError,
+  CTRL_BODY_LIMIT,
+  readCappedText,
+} from "../web/http-body.js";
 
 interface WebhookOptions {
   port: number;
@@ -46,7 +51,7 @@ export class WebhookChannel implements ChannelAdapter {
 
   async start(handler: (msg: IncomingMessage) => Promise<void>): Promise<void> {
     this.handler = handler;
-    this.server = http.createServer((req, res) => this.onRequest(req, res));
+    this.server = http.createServer((req, res) => void this.onRequest(req, res));
     await new Promise<void>((resolve) => this.server!.listen(this.opts.port, resolve));
     console.error(
       `[webhook] listening on http://localhost:${this.opts.port} (Bearer auth required)`,
@@ -86,7 +91,10 @@ export class WebhookChannel implements ChannelAdapter {
     }
   }
 
-  private onRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
+  private async onRequest(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+  ): Promise<void> {
     if (req.method !== "POST") {
       res.writeHead(405);
       res.end();
@@ -98,49 +106,58 @@ export class WebhookChannel implements ChannelAdapter {
       res.end("unauthorized");
       return;
     }
-    let body = "";
-    req.on("data", (chunk) => (body += chunk));
-    req.on("end", async () => {
-      let parsed: { from?: string; text?: string; threadId?: string };
-      try {
-        parsed = JSON.parse(body);
-      } catch {
-        res.writeHead(400);
-        res.end("bad json");
-        return;
+    let body: string;
+    try {
+      body = await readCappedText(req, CTRL_BODY_LIMIT);
+    } catch (err) {
+      if (err instanceof BodyTooLargeError) {
+        res.writeHead(413, { connection: "close" });
+        res.end("payload too large");
+      } else {
+        res.writeHead(400, { connection: "close" });
+        res.end("request body unavailable");
       }
-      if (!parsed.from || !parsed.text) {
-        res.writeHead(400);
-        res.end('expected {"from":"...","text":"..."[,"threadId":"..."]}');
-        return;
-      }
-      const key = parsed.threadId ?? parsed.from;
-      const replyPromise = new Promise<string>((resolve, reject) => {
-        this.pending.set(key, { resolve, reject, res });
-      });
-      try {
-        await this.handler?.({
-          channel: this.name,
-          from: parsed.from,
-          text: parsed.text,
-          threadId: parsed.threadId,
-          receivedAt: new Date(),
-        });
-        // Wait up to 5 minutes for Lisa's reply.
-        const reply = await Promise.race([
-          replyPromise,
-          new Promise<string>((_, rej) =>
-            setTimeout(() => rej(new Error("timeout")), 300_000),
-          ),
-        ]);
-        res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({ reply }));
-      } catch (err) {
-        this.pending.delete(key);
-        res.writeHead(504);
-        res.end((err as Error).message);
-      }
+      return;
+    }
+    let parsed: { from?: string; text?: string; threadId?: string };
+    try {
+      parsed = JSON.parse(body);
+    } catch {
+      res.writeHead(400);
+      res.end("bad json");
+      return;
+    }
+    if (!parsed.from || !parsed.text) {
+      res.writeHead(400);
+      res.end('expected {"from":"...","text":"..."[,"threadId":"..."]}');
+      return;
+    }
+    const key = parsed.threadId ?? parsed.from;
+    const replyPromise = new Promise<string>((resolve, reject) => {
+      this.pending.set(key, { resolve, reject, res });
     });
+    try {
+      await this.handler?.({
+        channel: this.name,
+        from: parsed.from,
+        text: parsed.text,
+        threadId: parsed.threadId,
+        receivedAt: new Date(),
+      });
+      // Wait up to 5 minutes for Lisa's reply.
+      const reply = await Promise.race([
+        replyPromise,
+        new Promise<string>((_, rej) =>
+          setTimeout(() => rej(new Error("timeout")), 300_000),
+        ),
+      ]);
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ reply }));
+    } catch (err) {
+      this.pending.delete(key);
+      res.writeHead(504);
+      res.end((err as Error).message);
+    }
   }
 
   private checkAuth(header: string): boolean {

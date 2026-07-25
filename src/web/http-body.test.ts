@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { Readable } from "node:stream";
 import type http from "node:http";
 
-const { readCappedText, BodyTooLargeError, CTRL_BODY_LIMIT } = await import("./http-body.js");
+const { readCappedText, BodyTooLargeError, CTRL_BODY_LIMIT, RICH_BODY_LIMIT } =
+  await import("./http-body.js");
 
 /** A fake IncomingMessage: just the readable-stream surface the reader uses. */
 function fakeReq(chunks: (string | Buffer)[]): http.IncomingMessage {
@@ -45,5 +46,10 @@ describe("readCappedText (#260/#264/#266)", () => {
       },
     }) as unknown as http.IncomingMessage;
     await assert.rejects(() => readCappedText(req, CTRL_BODY_LIMIT), /socket reset/);
+  });
+
+  test("keeps rich-media requests bounded but larger than control JSON", () => {
+    assert.equal(CTRL_BODY_LIMIT, 1_048_576);
+    assert.equal(RICH_BODY_LIMIT, 20 * CTRL_BODY_LIMIT);
   });
 });
