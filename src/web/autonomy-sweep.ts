@@ -21,11 +21,19 @@
  */
 import fs from "node:fs/promises";
 import path from "node:path";
+import crypto from "node:crypto";
 import { homeScope, homeForUid, lisaHome } from "../paths.js";
+import { atomicWrite } from "../fs-utils.js";
 import { loadAccounts, type AccountRecord } from "./accounts.js";
 import { readBalance, tierFor, type QuotaTier } from "../billing/quota.js";
 import { killSwitchOn, globalSpendExceeded } from "../billing/limits.js";
 import { recordUsage } from "../billing/meter.js";
+import {
+  acquireLease,
+  firestoreEnabled,
+  releaseLease,
+  type LeaseHandle,
+} from "../cloud/firestore.js";
 import { listSessionsOnDisk, loadSessionMessages } from "../sessions/list.js";
 import { reflectOnSession } from "../reflect.js";
 import { DEFAULT_MODEL } from "../llm.js";
@@ -43,6 +51,17 @@ const ACTIVE_WINDOW_MS = 7 * 24 * HOUR_MS;
 // this so one tick can't spend the day's inference even if Cloud Scheduler is
 // misconfigured with a huge value. (S4 review)
 const MAX_SWEEP_RUNS = 100;
+const SWEEP_LEASE_TTL_MS = 30 * 60 * 1000;
+const SWEEP_OWNER = `${process.pid}-${crypto.randomBytes(4).toString("hex")}`;
+const localSweepsInFlight = new Set<string>();
+
+interface SweepCheckpoint {
+  at: number;
+  sessionId?: string;
+  messageCount?: number;
+  status?: "pending" | "completed";
+  startedAt?: number;
+}
 
 export interface SweepOutcome {
   uid: string;
@@ -65,18 +84,57 @@ function stampFile(): string {
   return path.join(lisaHome(), "autonomy", "last-cloud-sweep.json");
 }
 
-async function readStamp(): Promise<number> {
+async function readCheckpoint(): Promise<SweepCheckpoint | null> {
   try {
-    const parsed = JSON.parse(await fs.readFile(stampFile(), "utf8")) as { at?: number };
-    return typeof parsed.at === "number" ? parsed.at : 0;
-  } catch {
-    return 0;
+    const parsed = JSON.parse(await fs.readFile(stampFile(), "utf8")) as SweepCheckpoint;
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      typeof parsed.at !== "number" ||
+      !Number.isFinite(parsed.at) ||
+      (parsed.sessionId !== undefined && typeof parsed.sessionId !== "string") ||
+      (parsed.messageCount !== undefined &&
+        (typeof parsed.messageCount !== "number" || !Number.isInteger(parsed.messageCount))) ||
+      (parsed.status !== undefined && parsed.status !== "pending" && parsed.status !== "completed") ||
+      (parsed.startedAt !== undefined &&
+        (typeof parsed.startedAt !== "number" || !Number.isFinite(parsed.startedAt)))
+    ) {
+      throw new Error("invalid autonomy checkpoint");
+    }
+    return parsed;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw err;
   }
 }
 
-async function writeStamp(at: number): Promise<void> {
-  await fs.mkdir(path.dirname(stampFile()), { recursive: true });
-  await fs.writeFile(stampFile(), JSON.stringify({ at }));
+async function writeCheckpoint(checkpoint: SweepCheckpoint | null): Promise<void> {
+  if (checkpoint) {
+    await atomicWrite(stampFile(), JSON.stringify(checkpoint));
+  } else {
+    await fs.rm(stampFile(), { force: true });
+  }
+}
+
+async function acquireSweepGuard(uid: string): Promise<{
+  release: () => Promise<void>;
+} | null> {
+  if (localSweepsInFlight.has(uid)) return null;
+  localSweepsInFlight.add(uid);
+  let remote: LeaseHandle | null = null;
+  if (firestoreEnabled()) {
+    remote = await acquireLease(`autonomy-${uid}`, SWEEP_OWNER, SWEEP_LEASE_TTL_MS);
+    if (!remote) {
+      localSweepsInFlight.delete(uid);
+      return null;
+    }
+  }
+  return {
+    release: async () => {
+      if (remote) await releaseLease(remote);
+      localSweepsInFlight.delete(uid);
+    },
+  };
 }
 
 /**
@@ -85,7 +143,12 @@ async function writeStamp(at: number): Promise<void> {
  * never blocks the rest.
  */
 export async function sweepUserAutonomy(
-  opts: { model?: string; now?: number; maxRuns?: number } = {},
+  opts: {
+    model?: string;
+    now?: number;
+    maxRuns?: number;
+    reflectFn?: typeof reflectOnSession;
+  } = {},
 ): Promise<SweepReport> {
   const now = opts.now ?? Date.now();
   // Clamp to a hard ceiling; NaN/negative collapse to the default. (S4 review)
@@ -109,7 +172,7 @@ export async function sweepUserAutonomy(
       break;
     }
     const outcome = await homeScope.run(homeForUid(acct.uid), () =>
-      sweepOne(acct, now, opts.model),
+      sweepOne(acct, now, opts.model, opts.reflectFn),
     );
     outcomes.push(outcome);
     if (outcome.action === "reflected") ran++;
@@ -117,23 +180,68 @@ export async function sweepUserAutonomy(
   return { scanned: active.length, ran, outcomes };
 }
 
-async function sweepOne(acct: AccountRecord, now: number, model?: string): Promise<SweepOutcome> {
+async function sweepOne(
+  acct: AccountRecord,
+  now: number,
+  model?: string,
+  reflectFn: typeof reflectOnSession = reflectOnSession,
+): Promise<SweepOutcome> {
+  const guard = await acquireSweepGuard(acct.uid);
+  if (!guard) return { uid: acct.uid, action: "skipped", reason: "in_flight" };
   try {
     if (!(await isBorn())) return { uid: acct.uid, action: "skipped", reason: "unborn" };
     const tier = tierFor(acct, await readBalance(), now);
     const interval = SWEEP_INTERVALS_MS[tier];
-    const last = await readStamp();
-    if (last && now - last < interval) {
+    const checkpoint = await readCheckpoint();
+    const pendingIsFresh =
+      checkpoint?.status === "pending" &&
+      typeof checkpoint.startedAt === "number" &&
+      now - checkpoint.startedAt < SWEEP_LEASE_TTL_MS;
+    if (pendingIsFresh) {
+      return { uid: acct.uid, action: "skipped", reason: "in_flight" };
+    }
+    if (checkpoint?.status !== "pending" && checkpoint?.at && now - checkpoint.at < interval) {
       return { uid: acct.uid, action: "skipped", reason: "not_due" };
     }
     const sessions = await listSessionsOnDisk(); // newest first
     const latest = sessions[0];
     if (!latest) return { uid: acct.uid, action: "skipped", reason: "no_sessions" };
+    if (
+      checkpoint?.status !== "pending" &&
+      checkpoint?.sessionId === latest.id &&
+      checkpoint.messageCount === latest.messageCount
+    ) {
+      return { uid: acct.uid, action: "skipped", reason: "unchanged" };
+    }
     const { messages } = await loadSessionMessages(latest.id);
     if (messages.length < 2) return { uid: acct.uid, action: "skipped", reason: "too_short" };
-    const result = await reflectOnSession({ history: messages, sessionId: latest.id, ...(model ? { model } : {}) });
-    // Stamp AFTER success so a failed reflection retries on the next tick.
-    await writeStamp(now);
+    const pending: SweepCheckpoint = {
+      at: checkpoint?.at ?? 0,
+      sessionId: latest.id,
+      messageCount: latest.messageCount,
+      status: "pending",
+      startedAt: now,
+    };
+    await writeCheckpoint(pending);
+    let result: Awaited<ReturnType<typeof reflectOnSession>>;
+    try {
+      result = await reflectFn({
+        history: messages,
+        sessionId: latest.id,
+        ...(model ? { model } : {}),
+      });
+      await writeCheckpoint({
+        at: now,
+        sessionId: latest.id,
+        messageCount: latest.messageCount,
+        status: "completed",
+      });
+    } catch (err) {
+      // Ordinary failures should retry on the next scheduler tick. A process
+      // crash leaves `pending`; it is retried only after the lease TTL.
+      await writeCheckpoint(checkpoint);
+      throw err;
+    }
     // Meter the spend (S4 review): autonomy costs the USER nothing (no debit),
     // but the face cost is still audited (usage.jsonl) and counted against the
     // global daily cap so a large active cohort can't quietly run the bill away.
@@ -144,5 +252,7 @@ async function sweepOne(acct: AccountRecord, now: number, model?: string): Promi
     return { uid: acct.uid, action: "reflected" };
   } catch (e) {
     return { uid: acct.uid, action: "skipped", reason: `error: ${(e as Error).message.slice(0, 120)}` };
+  } finally {
+    await guard.release();
   }
 }
