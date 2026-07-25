@@ -82,6 +82,29 @@ describe("TenantRuntimeRegistry", () => {
     lease.release();
     assert.equal(registry.stats().pinned, 0);
   });
+
+  test("deleting during creation prevents a runtime from being resurrected", async () => {
+    const registry = new TenantRuntimeRegistry<string>({
+      ttlMs: 1000,
+      maxEntries: 10,
+    });
+    let finish!: (value: string) => void;
+    const creating = registry.acquire(
+      "u",
+      () => new Promise<string>((resolve) => {
+        finish = resolve;
+      }),
+    );
+    await Promise.resolve();
+    assert.equal(registry.delete("u"), true);
+    finish("stale");
+    await assert.rejects(creating, /invalidated during creation/);
+    assert.equal(registry.peek("u"), undefined);
+
+    const retry = await registry.acquire("u", async () => "fresh");
+    assert.equal(retry.value, "fresh");
+    retry.release();
+  });
 });
 
 describe("tenantRuntimeOptions", () => {

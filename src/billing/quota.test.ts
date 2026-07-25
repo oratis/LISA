@@ -9,7 +9,8 @@ process.env.LISA_HOME = TMP;
 
 const quota = await import("./quota.js");
 const {
-  precheckTurn, debitTurn, quotaStatus, creditPurchase, clawbackPurchase,
+  precheckTurn, debitTurn, quotaStatus, creditPurchase, clawbackPurchase, readBalance,
+  BillingStateError,
   WINDOW_MS, FREE_WINDOW_FULL, FREE_WINDOW_UNVERIFIED, TIER1_WINDOW, TIER2_WINDOW,
 } = quota;
 import type { AccountRecord } from "../web/accounts.js";
@@ -28,6 +29,35 @@ beforeEach(() => {
 });
 
 describe("quota engine", () => {
+  test("a corrupt balance fails closed and is never reset or overwritten", async () => {
+    const dir = path.join(TMP, "billing");
+    const file = path.join(dir, "balance.json");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(file, "{corrupt");
+    await assert.rejects(readBalance(), BillingStateError);
+    await assert.rejects(precheckTurn(APPLE, "glm-4.6", T0), BillingStateError);
+    assert.equal(fs.readFileSync(file, "utf8"), "{corrupt");
+  });
+
+  test("purchase transaction ids are idempotent at the balance boundary", async () => {
+    assert.equal(
+      await creditPurchase({ at: T0, microUSD: 5_000_000, transactionId: "idem-1" }, T0),
+      true,
+    );
+    assert.equal(
+      await creditPurchase({ at: T0, microUSD: 5_000_000, transactionId: "idem-1" }, T0 + 1),
+      false,
+    );
+    const balance = await readBalance();
+    assert.equal(balance.paidMicroUSD, 5_000_000);
+    assert.equal(balance.purchases.length, 1);
+    await assert.rejects(
+      creditPurchase({ at: T0, microUSD: 6_000_000, transactionId: "idem-1" }, T0 + 2),
+      (err: unknown) =>
+        err instanceof BillingStateError && err.code === "purchase_conflict",
+    );
+  });
+
   test("first standard turn opens a 12h window with the tier allowance", async () => {
     const pre = await precheckTurn(APPLE, "glm-4.6", T0);
     assert.ok(pre.ok);

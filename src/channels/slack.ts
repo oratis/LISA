@@ -6,6 +6,11 @@ import type {
   IncomingMessage,
   OutgoingMessage,
 } from "./types.js";
+import {
+  BodyTooLargeError,
+  CTRL_BODY_LIMIT,
+  readCappedText,
+} from "../web/http-body.js";
 
 interface SlackOptions {
   /** Slack bot token (xoxb-...) — used to send messages. */
@@ -61,7 +66,7 @@ export class SlackChannel implements ChannelAdapter {
 
   async start(handler: (msg: IncomingMessage) => Promise<void>): Promise<void> {
     this.handler = handler;
-    this.server = http.createServer((req, res) => this.onRequest(req, res));
+    this.server = http.createServer((req, res) => void this.onRequest(req, res));
     await new Promise<void>((resolve) => this.server!.listen(this.opts.port, resolve));
     console.error(
       `[slack] listening for Events API webhooks on http://localhost:${this.opts.port}`,
@@ -94,7 +99,10 @@ export class SlackChannel implements ChannelAdapter {
     if (!json.ok) throw new Error(`slack chat.postMessage: ${json.error}`);
   }
 
-  private onRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
+  private async onRequest(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+  ): Promise<void> {
     if (req.method !== "POST") {
       res.writeHead(405);
       res.end();
@@ -102,48 +110,57 @@ export class SlackChannel implements ChannelAdapter {
     }
     const ts = String(req.headers["x-slack-request-timestamp"] ?? "");
     const sig = String(req.headers["x-slack-signature"] ?? "");
-    let body = "";
-    req.on("data", (chunk) => (body += chunk));
-    req.on("end", () => {
-      if (!this.verify(ts, body, sig)) {
-        res.writeHead(401);
-        res.end("bad signature");
-        return;
+    let body: string;
+    try {
+      body = await readCappedText(req, CTRL_BODY_LIMIT);
+    } catch (err) {
+      if (err instanceof BodyTooLargeError) {
+        res.writeHead(413, { connection: "close" });
+        res.end("payload too large");
+      } else {
+        res.writeHead(400, { connection: "close" });
+        res.end("request body unavailable");
       }
-      let parsed: {
-        type: string;
-        challenge?: string;
-        event?: SlackEvent;
-        event_id?: string;
-      };
-      try {
-        parsed = JSON.parse(body);
-      } catch {
-        res.writeHead(400);
-        res.end("bad json");
-        return;
-      }
-      if (parsed.type === "url_verification" && parsed.challenge) {
-        res.writeHead(200, { "content-type": "text/plain" });
-        res.end(parsed.challenge);
-        return;
-      }
-      // Ack immediately (Slack requires <3s response).
-      res.writeHead(200);
-      res.end();
-      if (parsed.type === "event_callback" && parsed.event) {
-        if (parsed.event_id && this.seenEventIds.has(parsed.event_id)) return;
-        if (parsed.event_id) {
-          this.seenEventIds.add(parsed.event_id);
-          if (this.seenEventIds.size > 1000) {
-            // simple FIFO eviction
-            const first = this.seenEventIds.values().next().value;
-            if (first !== undefined) this.seenEventIds.delete(first);
-          }
+      return;
+    }
+    if (!this.verify(ts, body, sig)) {
+      res.writeHead(401);
+      res.end("bad signature");
+      return;
+    }
+    let parsed: {
+      type: string;
+      challenge?: string;
+      event?: SlackEvent;
+      event_id?: string;
+    };
+    try {
+      parsed = JSON.parse(body);
+    } catch {
+      res.writeHead(400);
+      res.end("bad json");
+      return;
+    }
+    if (parsed.type === "url_verification" && parsed.challenge) {
+      res.writeHead(200, { "content-type": "text/plain" });
+      res.end(parsed.challenge);
+      return;
+    }
+    // Ack immediately (Slack requires <3s response).
+    res.writeHead(200);
+    res.end();
+    if (parsed.type === "event_callback" && parsed.event) {
+      if (parsed.event_id && this.seenEventIds.has(parsed.event_id)) return;
+      if (parsed.event_id) {
+        this.seenEventIds.add(parsed.event_id);
+        if (this.seenEventIds.size > 1000) {
+          // simple FIFO eviction
+          const first = this.seenEventIds.values().next().value;
+          if (first !== undefined) this.seenEventIds.delete(first);
         }
-        void this.handleEvent(parsed.event);
       }
-    });
+      void this.handleEvent(parsed.event);
+    }
   }
 
   private async handleEvent(ev: SlackEvent): Promise<void> {

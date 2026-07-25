@@ -23,6 +23,11 @@ interface Entry<T> {
   pins: number;
 }
 
+interface PendingCreation<T> {
+  promise: Promise<T>;
+  invalidated: boolean;
+}
+
 export interface TenantRuntimeStats {
   entries: number;
   pinned: number;
@@ -46,7 +51,7 @@ export function tenantRuntimeOptions(
 
 export class TenantRuntimeRegistry<T> {
   private readonly entries = new Map<string, Entry<T>>();
-  private readonly creating = new Map<string, Promise<T>>();
+  private readonly creating = new Map<string, PendingCreation<T>>();
   private readonly now: () => number;
   private evictions = 0;
 
@@ -66,11 +71,14 @@ export class TenantRuntimeRegistry<T> {
     if (!entry) {
       let pending = this.creating.get(key);
       if (!pending) {
-        pending = create();
+        pending = { promise: create(), invalidated: false };
         this.creating.set(key, pending);
       }
       try {
-        const value = await pending;
+        const value = await pending.promise;
+        if (pending.invalidated) {
+          throw new Error("tenant runtime invalidated during creation");
+        }
         entry = this.entries.get(key);
         if (!entry) {
           entry = { value, lastAccessAt: this.now(), pins: 0 };
@@ -104,8 +112,12 @@ export class TenantRuntimeRegistry<T> {
   }
 
   delete(key: string): boolean {
-    this.creating.delete(key);
-    return this.entries.delete(key);
+    const pending = this.creating.get(key);
+    if (pending) {
+      pending.invalidated = true;
+      this.creating.delete(key);
+    }
+    return this.entries.delete(key) || pending !== undefined;
   }
 
   sweep(): void {
