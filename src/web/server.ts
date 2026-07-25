@@ -144,6 +144,11 @@ import {
 import { detectLanHost, buildPairUrl } from "./pairing.js";
 import { TenantEventBus, sameTenant } from "./event-bus.js";
 import { qrSvg } from "./qr-svg.js";
+import {
+  capabilityProfileForEdition,
+  isCloudDeniedRoute,
+  toolsForCapabilityProfile,
+} from "./capabilities.js";
 import type { ToolDefinition, StoredMessage } from "../types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -337,6 +342,9 @@ async function resumeOrCreateWebSession(model: string): Promise<SessionStore> {
 export async function startWebServer(opts: WebServerOptions): Promise<http.Server> {
   const host = opts.host ?? "127.0.0.1";
   const webToken = process.env.LISA_WEB_TOKEN?.trim() || null;
+  const cloudEdition = isCloud();
+  const capabilityProfile = capabilityProfileForEdition(cloudEdition ? "cloud" : "mac");
+  const runtimeTools = toolsForCapabilityProfile(opts.tools, capabilityProfile);
   // Account sessions (PLAN_ACCOUNTS_BILLING B1): the signing secret lives in
   // $lisaHome() (auto-created 0600; durable on the cloud's /data mount). Only the
   // cloud edition mints/verifies account sessions today — the Mac edition gains
@@ -826,7 +834,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           }
         }
         const result = await runIdleOnce({
-          tools: opts.tools,
+          tools: runtimeTools,
           cwd: process.cwd(),
           signal: abort.signal,
           model: opts.model,
@@ -1752,6 +1760,18 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       return;
     }
 
+    // Hosted users never own the machine running this process. Deny local
+    // control-plane and arbitrary-outbound routes server-side before their
+    // handlers run; the client edition descriptor is presentation only.
+    if (cloud && isCloudDeniedRoute(url)) {
+      res.writeHead(403, { "content-type": "application/json" });
+      res.end(JSON.stringify({
+        error: "capability_denied",
+        profile: capabilityProfile,
+      }));
+      return;
+    }
+
     // Per-request gate for high-risk control actions from REMOTE callers. The Mac
     // owner (loopback) is never gated; a remote (token) device may take only what
     // the Mac-side policy permits. denyRemote() writes the 403 and returns true
@@ -2409,7 +2429,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       }
       const cwd = typeof payload.cwd === "string" && payload.cwd.startsWith("/") ? payload.cwd : process.cwd();
       // A managed agent doesn't control other agents — drop dispatch/signal.
-      const tools = opts.tools.filter((t) => t.name !== "dispatch_agent" && t.name !== "signal_agent");
+      const tools = runtimeTools.filter((t) => t.name !== "dispatch_agent" && t.name !== "signal_agent");
       const systemPrompt =
         `You are a delegated agent working in ${cwd}, launched by the user through Lisa. ` +
         `Complete the user's task using the available tools, then report what you did concisely. ` +
@@ -2988,7 +3008,7 @@ self.addEventListener('fetch', (event) => {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(
         JSON.stringify({
-          tools: opts.tools.map((t) => ({
+          tools: runtimeTools.map((t) => ({
             name: t.name,
             description: t.description,
           })),
@@ -3381,7 +3401,7 @@ self.addEventListener('fetch', (event) => {
           const result = await runAgent({
             provider: getProvider(),
             systemPrompt: fresh.text,
-            tools: opts.tools,
+            tools: runtimeTools,
             toolCtx: {
               cwd: process.cwd(),
               // Abort on server shutdown OR this client disconnecting (Stop).
