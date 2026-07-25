@@ -162,3 +162,41 @@ describe("desireReviseTool", () => {
     assert.equal(next.intensity, 0.8);
   });
 });
+
+describe("runDesireReviewOnce", () => {
+  test("stamps a no-change review even when the model forgets the tool call", async () => {
+    await seed("fallback-review", {
+      horizon: "spark",
+      intensity: 1,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    const result = await runner.runDesireReviewOnce({
+      tools: [],
+      cwd: home,
+      signal: new AbortController().signal,
+      model: "test",
+      now: new Date("2026-01-05T00:00:00.000Z"),
+      provider: {
+        name: "fake",
+        async runTurn() {
+          return {
+            content: [{ type: "text", text: "(no update)" }],
+            stopReason: "end_turn",
+            usage: {
+              inputTokens: 10,
+              outputTokens: 2,
+              cacheReadTokens: 0,
+              cacheWriteTokens: 0,
+            },
+          };
+        },
+      },
+    });
+    assert.ok(result);
+    const next = (await store.listDesires()).find(
+      (d) => d.slug === "fallback-review",
+    )!;
+    assert.ok(next.lastReviewedAt, "runner guarantees reviewedAt persistence");
+    assert.equal(next.updatedAt, "2026-01-01T00:00:00.000Z");
+  });
+});

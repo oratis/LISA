@@ -3,7 +3,7 @@
 > 让 Lisa 的欲望既能被对话真实改变，也会随时间自然冷却、被行动强化，
 > 并能在后台进行有界、可追溯的网页探索后修订自己的欲望。
 
-状态：**PR A + PR B 已实现；PR C（cloud parity）待推进**
+状态：**PR A + PR B 已实现；PR C（cloud parity）已实现于 stacked PR**
 
 Owner：Lisa + oratis
 
@@ -343,12 +343,13 @@ horizon: season
 - 网页文本不能让 review 获得 shell 等工具；
 - review 后 sources/reviewedAt/progress/git history 可追踪。
 
-### PR C — Cloud parity and product visibility
+### PR C — Cloud parity
 
 - cloud sweep 使用内容游标，避免同一 transcript 重复 reflection；
 - 在账户 cadence 内增加有界 desire review；
-- island/status 显示 strength / last reviewed（不暴露私人 journal）；
-- 配置项与运维文档。
+- 每个账户每个 sweep 最多执行一次推理：有新对话时 reflection 优先，
+  否则才运行 desire review；
+- review 复用本地完全相同的工具边界、浏览预算、Proactive 开关和用量审计。
 
 验收：
 
@@ -356,12 +357,17 @@ horizon: season
 - cloud 每用户 home scope 隔离；
 - 计费、kill switch、maxRuns 继续生效。
 
+### 后续 — Product visibility
+
+- island/status 可增加 strength / horizon / last reviewed 展示（不暴露私人 journal）；
+- 增加 Proactive / desire review 的配置说明与运维可观测页面。
+
 ---
 
 ## 7. 本轮推进边界
 
-本轮已完成 **PR A + PR B 的可合并实现**，它们构成本地 Lisa 的完整闭环；
-PR C 依赖云端成本与产品展示决策，在前两部分稳定后独立提交。
+本轮已完成 **PR A + PR B 的本地闭环**，并以 stacked PR 推进 **PR C cloud parity**。
+产品展示不影响机制正确性，保留为后续独立 UI 改动。
 
 提交前运行：
 

@@ -1,6 +1,6 @@
 import path from "node:path";
 import { atomicWrite, readTextOrEmpty } from "../fs-utils.js";
-import { lisaGlobalHome } from "../paths.js";
+import { lisaGlobalHome, lisaHome } from "../paths.js";
 import {
   appendDesireProgress,
   desireActivity,
@@ -12,6 +12,7 @@ import {
   parseDesireProgress,
   readDesireProgress,
   readSeed,
+  reviseDesire,
 } from "../soul/store.js";
 import { withSoulCaller } from "../soul/git.js";
 import { withFileLock } from "../soul/lock.js";
@@ -21,6 +22,7 @@ import { runSubagent } from "../subagent.js";
 import { recordAutonomyRun, type AutonomyKind } from "../autonomy/runs.js";
 import { recentAgentRecap } from "../orchestrator/recent-recap.js";
 import type { ToolDefinition } from "../types.js";
+import type { Provider } from "../providers/types.js";
 import {
   loadHeartbeatConfig,
   type HeartbeatTask,
@@ -47,6 +49,14 @@ export interface HeartbeatRunResult {
   task: string;
   output: string;
   silent: boolean;
+}
+
+export interface DesireReviewRunResult {
+  text: string;
+  inputTokens: number;
+  outputTokens: number;
+  toolCalls: number;
+  stopReason: string;
 }
 
 export async function runHeartbeatOnce(opts: {
@@ -209,6 +219,14 @@ async function runHeartbeatInner(opts: {
     state.lastRunAt[task.name] = new Date().toISOString();
     const trimmed = result.text.trim();
     const silent = trimmed === "" || /^\(no update\)$/i.test(trimmed);
+    const reviewSlug =
+      task.name === "builtin:desire_review"
+        ? reviewTargetSlug(task.prompt)
+        : null;
+    const reviewFallback =
+      reviewSlug !== null
+        ? await ensureReviewRecorded(reviewSlug, startedAt)
+        : false;
 
     // Auto-fallback: if a desire heartbeat finished but Lisa didn't log
     // progress, write a stub entry so we don't silently lose the run.
@@ -236,6 +254,7 @@ async function runHeartbeatInner(opts: {
       outputTokens: result.outputTokens ?? 0,
       toolCalls: result.toolCallCount,
       outcome: silent ? "no-update" : "done",
+      note: reviewFallback ? "reviewedAt fallback applied" : undefined,
     });
 
     out.push({
@@ -246,6 +265,130 @@ async function runHeartbeatInner(opts: {
   }
   await saveState(state);
   return out;
+}
+
+function desireReviewRunLock(): string {
+  // Function (not module constant): cloud homeScope changes lisaHome per uid.
+  return path.join(lisaHome(), "desire-review.lock");
+}
+
+/**
+ * Run only the bounded desire-review builtin. Cloud autonomy uses this instead
+ * of runHeartbeatOnce so a per-tenant review cannot also fire user heartbeat
+ * chores or scheduled dispatches as a side effect.
+ */
+export async function runDesireReviewOnce(opts: {
+  tools: ToolDefinition[];
+  cwd: string;
+  signal: AbortSignal;
+  model: string;
+  now?: Date;
+  /** Injectable provider for deterministic tests. */
+  provider?: Provider;
+}): Promise<DesireReviewRunResult | null> {
+  if (!getAutonomyEnabled()) return null;
+  const prompt = await buildDesireReviewPrompt(opts.now ?? new Date());
+  if (!prompt) return null;
+  try {
+    return await withFileLock(
+      desireReviewRunLock(),
+      async () => {
+        const startedAt = new Date().toISOString();
+        const t0 = Date.now();
+        try {
+          const result = await runSubagent({
+            prompt,
+            systemPrompt: HEARTBEAT_SYSTEM,
+            tools: desireReviewSubset(opts.tools),
+            cwd: opts.cwd,
+            signal: opts.signal,
+            model: opts.model,
+            budgetTokens: 100_000,
+            provider: opts.provider,
+          });
+          const text = result.text
+            .trim()
+            .replace(/\n*\(\s*no\s+update\s*\)[.。]?\s*$/i, "")
+            .trim();
+          const reviewSlug = reviewTargetSlug(prompt);
+          const reviewFallback = reviewSlug
+            ? await ensureReviewRecorded(reviewSlug, startedAt)
+            : false;
+          await recordAutonomyRun({
+            kind: "desire-review",
+            task: "builtin:desire_review",
+            startedAt,
+            durationMs: Date.now() - t0,
+            inputTokens: result.inputTokens,
+            outputTokens: result.outputTokens,
+            toolCalls: result.toolCallCount,
+            outcome:
+              result.stopReason === "budget_exceeded"
+                ? "blocked"
+                : text
+                  ? "done"
+                  : "no-update",
+            note:
+              result.stopReason === "budget_exceeded"
+                ? "token budget reached"
+                : reviewFallback
+                  ? "reviewedAt fallback applied"
+                  : undefined,
+          });
+          return {
+            text,
+            inputTokens: result.inputTokens,
+            outputTokens: result.outputTokens,
+            toolCalls: result.toolCallCount,
+            stopReason: result.stopReason,
+          };
+        } catch (error) {
+          await recordAutonomyRun({
+            kind: "desire-review",
+            task: "builtin:desire_review",
+            startedAt,
+            durationMs: Date.now() - t0,
+            inputTokens: 0,
+            outputTokens: 0,
+            outcome: "error",
+            note: (error as Error).message.slice(0, 200),
+          });
+          throw error;
+        }
+      },
+      { timeoutMs: 0, staleMs: 2 * 60 * 60_000 },
+    );
+  } catch (error) {
+    if ((error as Error).message.includes("timed out acquiring lock")) {
+      console.error("[desire-review] another review is already running — skipping");
+      return null;
+    }
+    throw error;
+  }
+}
+
+function reviewTargetSlug(prompt: string): string | null {
+  return prompt.match(/^slug:\s*([^\s]+)\s*$/m)?.[1] ?? null;
+}
+
+/**
+ * Models occasionally finish a review without calling desire_revise. Preserve
+ * the semantic no-change result by stamping reviewedAt in code, so the same
+ * desire is not re-reviewed on every scheduler tick. Closing the target also
+ * counts as a completed review.
+ */
+async function ensureReviewRecorded(
+  slug: string,
+  startedAt: string,
+): Promise<boolean> {
+  const target = (await listDesires()).find((desire) => desire.slug === slug);
+  if (!target || target.closed) return false;
+  const reviewed = Date.parse(target.lastReviewedAt ?? "");
+  if (Number.isFinite(reviewed) && reviewed >= Date.parse(startedAt)) return false;
+  await withSoulCaller("desire_review", () =>
+    reviseDesire(slug, { lastReviewedAt: new Date().toISOString() }),
+  );
+  return true;
 }
 
 async function loadState(): Promise<HeartbeatState> {

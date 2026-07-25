@@ -1379,8 +1379,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         const report = await sweepUserAutonomy({
           ...(opts.model ? { model: opts.model } : {}),
           ...(maxRuns !== undefined ? { maxRuns } : {}),
+          tools: opts.tools,
+          cwd: process.cwd(),
         });
-        console.error(`[sweep] scanned ${report.scanned} active accounts, reflected ${report.ran}`);
+        console.error(
+          `[sweep] scanned ${report.scanned} active accounts, ran ${report.ran} autonomy action(s)`,
+        );
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify(report));
       } catch (e) {
