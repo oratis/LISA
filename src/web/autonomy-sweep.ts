@@ -122,17 +122,25 @@ async function acquireSweepGuard(uid: string): Promise<{
   if (localSweepsInFlight.has(uid)) return null;
   localSweepsInFlight.add(uid);
   let remote: LeaseHandle | null = null;
-  if (firestoreEnabled()) {
-    remote = await acquireLease(`autonomy-${uid}`, SWEEP_OWNER, SWEEP_LEASE_TTL_MS);
-    if (!remote) {
-      localSweepsInFlight.delete(uid);
-      return null;
+  try {
+    if (firestoreEnabled()) {
+      remote = await acquireLease(`autonomy-${uid}`, SWEEP_OWNER, SWEEP_LEASE_TTL_MS);
+      if (!remote) {
+        localSweepsInFlight.delete(uid);
+        return null;
+      }
     }
+  } catch (err) {
+    localSweepsInFlight.delete(uid);
+    throw err;
   }
   return {
     release: async () => {
-      if (remote) await releaseLease(remote);
-      localSweepsInFlight.delete(uid);
+      try {
+        if (remote) await releaseLease(remote);
+      } finally {
+        localSweepsInFlight.delete(uid);
+      }
     },
   };
 }
