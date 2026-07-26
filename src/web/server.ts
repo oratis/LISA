@@ -64,7 +64,7 @@ import {
   CTRL_BODY_LIMIT,
   RICH_BODY_LIMIT,
 } from "./http-body.js";
-import { ipRateOk, killSwitchOn, globalSpendExceeded } from "../billing/limits.js";
+import { ipRateOk } from "../billing/limits.js";
 import { ROOM_HTML } from "./room.js";
 import { MAIN_HTML } from "./lisa-html.js";
 import { OrchestratorHub, loadOrchestratorConfig } from "../integrations/hub.js";
@@ -496,6 +496,42 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     return { text: next.text, fingerprint: fp };
   };
 
+  /**
+   * The single-flight hub invokes this once for a birth, regardless of how many
+   * lazy/SSE callers are watching. Account births therefore own exactly one
+   * admission permit and one settlement; local/BYO-key birth stays unmetered.
+   */
+  const runBirth = async (
+    uid: string | null,
+    emit: (log: { step: string; detail: string }) => void,
+  ): Promise<void> => {
+    const { birth, BirthInferenceError } = await import("../soul/birth.js");
+    if (!cloudEdition || !uid) {
+      await birth({ model: opts.model, onStep: emit });
+      return;
+    }
+    const acct = await getAccount(uid);
+    if (!acct) throw new Error("birth account no longer exists");
+    const admission = await admitInference(acct, opts.model);
+    if (!admission.ok) {
+      const detail = "error" in admission.body ? admission.body.error : "inference_rejected";
+      throw new Error(`birth admission rejected: ${detail}`);
+    }
+    try {
+      try {
+        const result = await birth({ model: opts.model, onStep: emit });
+        await admission.permit.settle("birth", result.usage);
+      } catch (err) {
+        if (err instanceof BirthInferenceError) {
+          await admission.permit.settle("birth", err.usage);
+        }
+        throw err;
+      }
+    } finally {
+      await admission.permit.release();
+    }
+  };
+
   // Lazy per-user birth (B2, hub'd in S3): a signed-in user's first request
   // seeds THEIR soul (the entrypoint's one-shot birth only covers the shared/
   // global home). Runs through the single-flight birth hub so the visible
@@ -507,17 +543,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       try {
         const { isBorn } = await import("../soul/store.js");
         if (await isBorn()) return; // reads inside the per-uid scope
-        // Billing floor (S4 review): birth ignites an LLM dream outside the
-        // metered turn path, so it bows to the same global kill switch + $200/day
-        // cap as autonomy. Paused ⇒ defer; the soul is born on a later login once
-        // billing resumes (chat meanwhile runs with the bare prompt).
-        if (killSwitchOn() || globalSpendExceeded()) {
-          console.error(`[accounts] birth deferred for ${uid}: billing paused (kill switch or daily cap)`);
-          return;
-        }
-        const { birth } = await import("../soul/birth.js");
         console.error(`[accounts] birthing a soul for ${uid}…`);
-        await startBirthOnce(uid, (emit) => birth({ model: opts.model, onStep: emit })).promise;
+        await startBirthOnce(uid, (emit) => runBirth(uid, emit)).promise;
         const runtime = tenantRuntimes.peek(lisaHome());
         if (runtime) runtime.prompt = undefined; // pick the newborn soul up next turn
         console.error(`[accounts] soul born for ${uid}`);
@@ -3244,7 +3271,6 @@ self.addEventListener('fetch', (event) => {
 
     if (req.method === "POST" && url === "/api/birth") {
       const { isBorn } = await import("../soul/store.js");
-      const { birth } = await import("../soul/birth.js");
       if (await isBorn()) {
         res.writeHead(409, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: "already born" }));
@@ -3263,7 +3289,7 @@ self.addEventListener('fetch', (event) => {
       const key = scopedUid() ?? "local";
       const listener = (log: { step: string; detail: string }) =>
         send({ kind: "step", name: log.step, detail: log.detail });
-      const run = startBirthOnce(key, (emit) => birth({ model: opts.model, onStep: emit }));
+      const run = startBirthOnce(key, (emit) => runBirth(accountUid, emit));
       for (const log of run.steps) listener(log);
       run.listeners.add(listener);
       try {
