@@ -65,9 +65,11 @@ describe("SessionStore — message persistence + resume", () => {
     const s = await SessionStore.create({ cwd: "/w", model: "m" });
     await s.appendMessage(msg(0));
     await s.appendReflection("a private reflection");
+    await s.appendReflection("the latest reflection");
     await s.appendMessage(msg(1));
     const page = await s.readMessagePage(0);
     assert.deepEqual(page.messages.map((m) => m.content), ["m0", "m1"]);
+    assert.equal(await s.readLatestReflection(), "the latest reflection");
   });
 
   test("pagination: latest page first, chronological within a page, hasMore set", async () => {
