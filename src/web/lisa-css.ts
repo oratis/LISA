@@ -979,6 +979,20 @@ export const MAIN_CSS = `  :root {
     padding: 11px 0;
     border-top: 1px solid var(--border-new);
   }
+  .social-policy {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 12px;
+    padding: 9px 11px;
+    border: 1px solid var(--border-new);
+    border-radius: 9px;
+    background: var(--bg-card);
+    color: var(--fg-2);
+    font-size: 11px;
+  }
+  .social-policy .social-action { margin: 0; }
   .social-draft:first-child { border-top: 0; }
   .social-draft-head {
     display: flex;

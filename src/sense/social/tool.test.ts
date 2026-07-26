@@ -64,5 +64,9 @@ describe("social_compose tool", () => {
       JSON.stringify(socialComposeTool.inputSchema),
       /"publish"/,
     );
+    assert.match(
+      JSON.stringify(socialComposeTool.inputSchema),
+      /"stage_media"/,
+    );
   });
 });
