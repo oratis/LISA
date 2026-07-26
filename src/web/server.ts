@@ -172,8 +172,7 @@ import { TenantEventBus, sameTenant } from "./event-bus.js";
 import { qrSvg } from "./qr-svg.js";
 import { resolveClientIp } from "./client-ip.js";
 import {
-  estimateCurrentWebInputTokens,
-  selectWebModelContext,
+  selectWebModelContextForTurn,
   webContextBudgetTokens,
 } from "./context-budget.js";
 import {
@@ -3592,13 +3591,12 @@ self.addEventListener('fetch', (event) => {
           // Use the freshest cached prompt for this chat. If soul / skills /
           // memory changed since the previous chat, rebuildPrompt() picks it up.
           const fresh = await rebuildPrompt();
-          const historyBudget = Math.max(
-            0,
-            webContextBudgetTokens() - estimateCurrentWebInputTokens(message, files),
-          );
-          const modelContext = selectWebModelContext({
+          const modelContext = selectWebModelContextForTurn({
             history: chat.history,
-            budgetTokens: historyBudget,
+            systemPrompt: fresh.text,
+            text: message,
+            files,
+            budgetTokens: webContextBudgetTokens(),
             latestReflection: chat.reflectionSummary,
           });
           if (modelContext.omittedMessages > 0) {

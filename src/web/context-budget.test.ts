@@ -5,6 +5,7 @@ import {
   estimateCurrentWebInputTokens,
   estimateStoredMessageTokens,
   selectWebModelContext,
+  selectWebModelContextForTurn,
   webContextBudgetTokens,
 } from "./context-budget.js";
 
@@ -29,6 +30,27 @@ describe("web context budget", () => {
       ]),
       2,
     );
+  });
+
+  test("turn selection reserves the system prompt and truncation summary", () => {
+    const history = Array.from({ length: 30 }, (_, index) =>
+      text(index % 2 === 0 ? "user" : "assistant", `message ${index} `.repeat(20)),
+    );
+    const budgetTokens = 2_000;
+    const systemPrompt = "system ".repeat(500);
+    const selected = selectWebModelContextForTurn({
+      history,
+      systemPrompt,
+      text: "current question",
+      budgetTokens,
+      latestReflection: "A durable summary of the earlier conversation.",
+    });
+    const completeEstimate =
+      estimateCurrentWebInputTokens(
+        systemPrompt + selected.systemSuffix + "current question",
+      ) + selected.estimatedTokens;
+    assert.ok(selected.omittedMessages > 0);
+    assert.ok(completeEstimate <= budgetTokens);
   });
 
   test("keeps the newest messages while canonical history stays untouched", () => {

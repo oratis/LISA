@@ -11,6 +11,15 @@ export interface ContextSelection {
   systemSuffix: string;
 }
 
+export interface WebTurnContextOptions {
+  history: StoredMessage[];
+  systemPrompt: string;
+  text: string;
+  files?: Array<{ name: string; mediaType: string; data: string }>;
+  budgetTokens?: number;
+  latestReflection?: string;
+}
+
 export function webContextBudgetTokens(
   env: Record<string, string | undefined> = process.env,
 ): number {
@@ -104,4 +113,37 @@ export function selectWebModelContext(opts: {
       : "";
 
   return { history, omittedMessages, estimatedTokens, systemSuffix };
+}
+
+/**
+ * Bound the complete provider input, not just history. The second pass reserves
+ * the truncation notice/reflection summary introduced by the first selection.
+ * A small fixed cushion covers an omitted-count digit change between passes.
+ */
+export function selectWebModelContextForTurn(
+  opts: WebTurnContextOptions,
+): ContextSelection {
+  const totalBudget = opts.budgetTokens ?? webContextBudgetTokens();
+  const fixedInputTokens = estimateCurrentWebInputTokens(
+    opts.systemPrompt + opts.text,
+    opts.files,
+  );
+  let selected = selectWebModelContext({
+    history: opts.history,
+    budgetTokens: Math.max(0, totalBudget - fixedInputTokens),
+    latestReflection: opts.latestReflection,
+  });
+  if (selected.omittedMessages === 0) return selected;
+
+  const suffixReserve =
+    estimateCurrentWebInputTokens(selected.systemSuffix) + 32;
+  selected = selectWebModelContext({
+    history: opts.history,
+    budgetTokens: Math.max(
+      0,
+      totalBudget - fixedInputTokens - suffixReserve,
+    ),
+    latestReflection: opts.latestReflection,
+  });
+  return selected;
 }
