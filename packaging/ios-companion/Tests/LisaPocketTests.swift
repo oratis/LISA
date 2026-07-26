@@ -209,6 +209,14 @@ final class LisaPocketTests: XCTestCase {
             headerFields: [LisaAPIContract.versionHeader: "banana"]
         )!
         XCTAssertThrowsError(try LisaAPICompatibility.validate(malformed))
+
+        let invalidZero = HTTPURLResponse(
+            url: url,
+            statusCode: 200,
+            httpVersion: nil,
+            headerFields: [LisaAPIContract.versionHeader: "0"]
+        )!
+        XCTAssertThrowsError(try LisaAPICompatibility.validate(invalidZero))
     }
 
     // ── onboarding model: install commands are the real repo ones ──

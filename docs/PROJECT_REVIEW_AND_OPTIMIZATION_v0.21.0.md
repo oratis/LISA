@@ -31,7 +31,7 @@ LISA 已经不是一个“带工具的聊天应用”，而是一个结构完整
 
 ### 1.1 审查后的执行进展
 
-审查结论已进入实现，并按安全域拆成草稿 PR：
+审查结论已进入实现，并按安全域拆成可独立审阅、回滚的 PR：
 
 | 推荐合并顺序 | PR | 结果 |
 | --- | --- | --- |
@@ -43,7 +43,20 @@ LISA 已经不是一个“带工具的聊天应用”，而是一个结构完整
 | 6 | [#315 Inference admission](https://github.com/oratis/LISA/pull/315) | Chat/Gateway 共用限流、租约、额度和 permit 生命周期 |
 | 7 | [#316 TenantRuntime lifecycle](https://github.com/oratis/LISA/pull/316) | 单飞创建、请求 pin、TTL/LRU 和租户数量上限；Prompt 随 Runtime 回收 |
 
-#316 以 #315 为基线，是唯一堆叠 PR；其余均直接以 `main` 为基线。下一轮仍需继续覆盖未统一准入的出生、语音润色、手动 Reflection，并把 Advisor、Idle/最近活动等进程级状态迁入 TenantRuntime。
+#316 以 #315 为基线。随后第二轮以 stacked PR #317–#323 完成了手动
+Reflection、出生、语音、完整上下文预算、TenantRuntime 活动状态、DNS rebinding
+防护和 OpenAPI v1 契约，并按依赖顺序使用 merge commit 合入，保留祖先关系。
+
+第二轮在合并审查中又补了三类边界修正：
+
+- 显式 OpenAI 语音 Key 在两阶段转写中继续传递，Dictation 结算失败不再被普通
+  降级逻辑吞掉；
+- Web context 把 system prompt、当前消息、附件和截断摘要一并计入总预算；
+- Web fetch 对原始响应设置 64KB–2MB 硬上限，并按 IANA 特殊用途注册表补齐
+  IPv4/IPv6 非公网网段。
+
+仍未结束的工作是：统一 durable billing outbox/reconciliation、拆分
+`src/web/server.ts`、让 PR CI 覆盖 website/macOS/iOS，以及解决传递依赖漏洞。
 
 ## 2. 本次审查方法与证据
 

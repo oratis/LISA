@@ -51,7 +51,8 @@ enum LisaAPICompatibility {
         guard let http = response as? HTTPURLResponse,
               let raw = http.value(forHTTPHeaderField: LisaAPIContract.versionHeader) else { return }
         guard let majorText = raw.split(separator: ".", maxSplits: 1).first,
-              let major = Int(majorText) else { throw LisaError.decode }
+              let major = Int(majorText),
+              major > 0 else { throw LisaError.decode }
         if major > LisaAPIContract.supportedMajorVersion {
             throw LisaError.unsupportedAPIVersion(major)
         }

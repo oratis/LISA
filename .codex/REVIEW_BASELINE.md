@@ -16,7 +16,7 @@
 
 ## 稳定化执行状态
 
-本次审查已拆成可独立审阅、可独立回滚的草稿 PR：
+本次审查已拆成可独立审阅、可独立回滚的 PR：
 
 | 顺序 | PR | 处理范围 |
 | --- | --- | --- |
@@ -30,25 +30,37 @@
 
 其中 #316 堆叠在 #315 上，应在 #315 合并后再合并。其余 PR 以 `main` 为基线。
 
+第二轮继续完成了剩余高优先级边界：
+
+| 顺序 | PR | 处理范围 |
+| --- | --- | --- |
+| 8 | [#317](https://github.com/oratis/LISA/pull/317) | 手动 Reflection 统一准入、租约、计量与结算 |
+| 9 | [#318](https://github.com/oratis/LISA/pull/318) | Cloud 出生流程单飞计量与失败用量保留 |
+| 10 | [#319](https://github.com/oratis/LISA/pull/319) | 语音时长计费、音频限制与 Dictation 推理结算 |
+| 11 | [#320](https://github.com/oratis/LISA/pull/320) | 完整 Provider 输入预算与历史无损持久化 |
+| 12 | [#321](https://github.com/oratis/LISA/pull/321) | Island/Advisor/活动状态按 TenantRuntime 归属 |
+| 13 | [#322](https://github.com/oratis/LISA/pull/322) | DNS 全解析、IP pinning、重定向复核与响应硬上限 |
+| 14 | [#323](https://github.com/oratis/LISA/pull/323) | OpenAPI v1、生成常量、DTO fixture 与 Swift 版本门 |
+
+这些变更按 #317 → #323 的依赖顺序合并，merge commit 保留原提交祖先，避免
+stacked PR 在重定 base 时重复引入差异。
+
 ## 当前高优先级热点
 
-### P0
+### 已处理的原 P0/P1
 
-- Cloud 继承完整 CLI 工具集，存在宿主机 Shell/文件/插件/MCP 暴露风险。
-- 邮箱验证链接根据请求 `Host` 与代理协议头生成，可能泄露验证 Token。
-- IAP 交易去重与余额入账不是原子操作，既可能重复入账，也可能永久漏记。
-- 账户、余额和部分消费上限在损坏/存储异常时存在错误初始化或 fail-open 行为。
-- 反思等非聊天推理路径没有统一经过额度与计量。
+- Cloud 能力、公开 Origin/代理边界、账务一致性、HTTP body、自治水位、
+  推理准入、TenantRuntime、Web context、活动状态、SSRF 与 API 契约均已进入实现。
 
-### P1
+### 后续优先级
 
-- Web 长会话无上下文压缩，租户缓存无 TTL/LRU。
-- 部分 Web 状态仍为进程级全局状态。
-- 大量路由手工读取无上限请求体。
-- Cloud sweep 缺消息水位、幂等键、分布式租约和公平游标。
 - `--no-reflect`、`--compact`、`--approval` 等 CLI 语义在 Web 模式未完整生效。
-- Web 服务、客户端脚本和样式文件过大，协议为手工同步。
+- Web 服务、客户端脚本和样式文件仍过大，应渐进抽取路由域和客户端模块。
 - PR CI 未覆盖 website、macOS 与 iOS。
+- 计费审计与余额结算仍需 durable outbox/reconciliation，覆盖“Provider 已收费但
+  余额提交失败”以及进程崩溃窗口。
+- 生产依赖仍有 Google GenAI/MCP/Hono 链的 moderate 漏洞，不能用破坏性强制
+  降级替代有计划的依赖升级。
 
 详细证据、取舍和路线图见：
 
