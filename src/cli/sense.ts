@@ -13,6 +13,10 @@ import { connectBlueskyAccount } from "../sense/social/connectors/bluesky.js";
 import { connectMastodonAccount } from "../sense/social/connectors/mastodon.js";
 import { publicAccount } from "../sense/social/connectors/accounts.js";
 import { stageSocialMedia } from "../sense/social/media.js";
+import {
+  COMMERCIAL_ADAPTER_PROFILES,
+  evaluateCommercialReadiness,
+} from "../sense/social/connectors/commercial.js";
 import fs from "node:fs/promises";
 import readline from "node:readline";
 
@@ -101,6 +105,26 @@ export async function runSenseCommand(subargs: string[]): Promise<number> {
         altIndex >= 0 ? subargs[altIndex + 1] : undefined,
       );
       console.log(JSON.stringify(ref, null, 2));
+      return 0;
+    }
+    if (action === "readiness") {
+      console.log("Sense · Commercial connector readiness\n");
+      for (const platform of Object.keys(COMMERCIAL_ADAPTER_PROFILES) as Array<
+        keyof typeof COMMERCIAL_ADAPTER_PROFILES
+      >) {
+        const readiness = evaluateCommercialReadiness(platform, {
+          oauthClientConfigured: false,
+          redirectOriginConfigured: false,
+          platformReviewApproved: false,
+        });
+        const profile = COMMERCIAL_ADAPTER_PROFILES[platform];
+        console.log(`${profile.displayName.padEnd(16)} ${readiness.state}`);
+        for (const gate of profile.externalGates) console.log(`  external: ${gate}`);
+        if (profile.pricingNotice) console.log(`  notice: ${profile.pricingNotice}`);
+      }
+      console.log(
+        "\nThese adapters remain draft-only until a connector owns OAuth, passes platform review, and satisfies media delivery gates.",
+      );
       return 0;
     }
     const [connectors, drafts] = await Promise.all([

@@ -841,3 +841,49 @@ Sense 的核心是默认关闭、最小采集。把公共发布放在同一品�
 ## 17. 一句话
 
 > 让 LISA 帮用户表达，而不是替用户擅自发声：Connector 管连接，Skill 管方法，Host 管不可绕过的最终确认。
+
+---
+
+## 18. 实施推进记录（2026-07-26）
+
+### 18.1 已完成
+
+- PR #324：connector manifest、canonical draft、revision、snapshot digest 与 MCP annotations 保真。
+- PR #325：模型可见的 `social_compose`、可信 UI/session 审批、Sense 完整快照、cancel；不存在 HTTP publish route。
+- PR #326：Bluesky 与 Mastodon 首方 connector plugin + Skill；CLI 安装/连接；隐藏 runner；文字、链接、图片、视频、幂等、逐目标 receipt、结构化 audit、pause kill switch。
+- 媒体进入 host store 前做 magic-byte MIME sniff、SHA-256、JPEG/PNG 隐私元数据剥离；不把文件路径或媒体 bytes 放进草稿。
+- `social_publish` 与 disconnect operation 根据受信 manifest 绑定，从模型、remote channel、autonomous run 和 task tool closure 中排除。
+
+### 18.2 商业平台 adapter contract 已完成
+
+`commercial.ts` 登记 Threads、Instagram、LinkedIn、X、TikTok、YouTube、Facebook Pages 的：
+
+- OAuth scope、账号类型、平台审核/业务验证/付费门槛。
+- 版本固定策略，禁止 silent floating。
+- 媒体交付类型：公网拉取、直接上传、分片/可恢复上传。
+- 平台专有必填字段与 fail-closed validation。
+- 从上传初始化到 publish/status reconciliation 的请求步骤。
+- `draft-only`、`private-test-only`、`ready` 三态 readiness；没有凭据或审核时绝不显示 ready。
+
+可用 `lisa sense social readiness` 查看门槛。该命令不读取或打印 secret。
+
+### 18.3 不能由代码仓单方面完成的外部事项
+
+| 平台 | 外部门槛 | 未满足时的产品行为 |
+|---|---|---|
+| Threads | Meta app review；图片/视频必须由 Meta 可拉取的公网 URL | 仅草稿 |
+| Instagram | Meta review/Business Verification；专业账号；公网 media URL | 仅草稿 |
+| LinkedIn | product access；member/org scope；组织角色；月版本轮换 | 仅草稿 |
+| X | 付费 project、write scope 与运行配额 | 仅草稿，并显示费用提示 |
+| TikTok | Content Posting 产品批准；Direct Post audit；creator-info UX；URL prefix verification | 未 audit 只允许 private test |
+| YouTube | Google OAuth verification；YouTube API audit | 未 audit 上传强制 private |
+| Facebook | Meta review/Business Verification；Page token/role；不能发个人 profile | 仅草稿 |
+
+因此，“代码已实现 adapter contract”不等于“平台已授权生产直发”。要把某一平台从 draft-only 提升为 ready，必须由平台 app owner 提供 client 配置、完成 review/audit，并用真实测试账号通过 connector contract suite。任何绕过这些门槛的浏览器自动化或 Cookie 注入仍明确不采用。
+
+### 18.4 本轮实证
+
+- 全量测试：1466 passed、1 skipped。
+- 包含真实 MCP stdio initialize/list-tools/close，而非只测 mock。
+- failure injection 覆盖 stale digest、approval expiry、one-shot claim、pause-before-claim、partial outcome、MIME mismatch、媒体 hash 与远端审批拒绝。
+- live platform smoke test 需要用户账号与 app 审核；本轮没有使用或伪造任何生产凭据，也没有向真实社交账号发布测试内容。
