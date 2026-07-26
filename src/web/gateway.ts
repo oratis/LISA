@@ -23,8 +23,6 @@ import type http from "node:http";
 import { findPreset } from "../providers/registry.js";
 import type { ProviderUsage } from "../providers/types.js";
 import type { AccountRecord } from "./accounts.js";
-import { debitTurn } from "../billing/quota.js";
-import { recordUsage } from "../billing/meter.js";
 import { admitInference } from "../billing/admission.js";
 import { readCappedText, BodyTooLargeError } from "./http-body.js";
 
@@ -244,8 +242,7 @@ export async function handleGateway(
       const u = upstream.ok && usageIsEmpty(usage)
         ? estimateUsageFromBytes(requestBytes, responseBytes)
         : usage;
-      const rec = await recordUsage("gw", model, u);
-      await debitTurn(acct, model, rec.microUSD);
+      await admission.permit.settle("gw", u);
     };
 
     const contentType = upstream.headers.get("content-type") ?? "application/json";

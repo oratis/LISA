@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import type { AccountRecord } from "../web/accounts.js";
 import type { AdmissionDependencies } from "./admission.js";
 import type { TurnLease } from "../cloud/turn-lease.js";
+import type { UsageRecord } from "./meter.js";
 
 const { admitInference } = await import("./admission.js");
 
@@ -16,6 +17,17 @@ const ACCT: AccountRecord = {
   sessionVersion: 0,
 };
 const LEASE: TurnLease = "off";
+const USAGE_RECORD: UsageRecord = {
+  at: "2026-07-26T00:00:00.000Z",
+  source: "test",
+  model: "glm-4.6",
+  inputTokens: 1,
+  outputTokens: 2,
+  cacheReadTokens: 0,
+  cacheWriteTokens: 0,
+  microUSD: 3,
+  pricesVersion: 1,
+};
 
 function deps(overrides: Partial<AdmissionDependencies> = {}): {
   value: AdmissionDependencies;
@@ -43,6 +55,10 @@ function deps(overrides: Partial<AdmissionDependencies> = {}): {
       },
       releaseLease: async () => {
         calls.push("release");
+      },
+      settle: async () => {
+        calls.push("settle");
+        return USAGE_RECORD;
       },
       ...overrides,
     },
@@ -108,6 +124,25 @@ describe("admitInference", () => {
     await result.permit.release();
     await result.permit.release();
     assert.deepEqual(d.calls, ["limits", "acquire", "quota", "renew", "stop", "release"]);
+  });
+
+  test("settlement is owned by the permit and is idempotent", async () => {
+    const d = deps();
+    const result = await admitInference(ACCT, "glm-4.6", d.value);
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    const usage = {
+      inputTokens: 1,
+      outputTokens: 2,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+    };
+    const first = await result.permit.settle("reflect", usage);
+    const second = await result.permit.settle("ignored", { ...usage, outputTokens: 999 });
+    assert.equal(first, USAGE_RECORD);
+    assert.equal(second, USAGE_RECORD);
+    assert.equal(d.calls.filter((call) => call === "settle").length, 1);
+    await result.permit.release();
   });
 
   test("a quota storage failure cannot leak the lease", async () => {

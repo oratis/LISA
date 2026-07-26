@@ -7,7 +7,9 @@
  */
 import type { AccountRecord } from "../web/accounts.js";
 import { preflightLimits, type LimitVerdict } from "./limits.js";
-import { precheckTurn, type PrecheckResult } from "./quota.js";
+import { debitTurn, precheckTurn, type PrecheckResult } from "./quota.js";
+import { recordUsage, type UsageRecord } from "./meter.js";
+import type { ProviderUsage } from "../providers/types.js";
 import {
   acquireTurnLease,
   releaseTurnLease,
@@ -17,6 +19,8 @@ import {
 
 export interface InferencePermit {
   budgetMicroUSD: number;
+  /** Price, audit and debit this permit's aggregated provider usage once. */
+  settle(source: string, usage: ProviderUsage): Promise<UsageRecord>;
   release(): Promise<void>;
 }
 
@@ -30,6 +34,12 @@ export interface AdmissionDependencies {
   acquire(uid: string): Promise<TurnLease | null>;
   startRenewal(lease: TurnLease): () => void;
   releaseLease(lease: TurnLease): Promise<void>;
+  settle(
+    acct: AccountRecord,
+    source: string,
+    model: string,
+    usage: ProviderUsage,
+  ): Promise<UsageRecord>;
 }
 
 const DEFAULT_DEPS: AdmissionDependencies = {
@@ -38,6 +48,11 @@ const DEFAULT_DEPS: AdmissionDependencies = {
   acquire: acquireTurnLease,
   startRenewal: startLeaseRenewal,
   releaseLease: releaseTurnLease,
+  settle: async (acct, source, model, usage) => {
+    const record = await recordUsage(source, model, usage);
+    await debitTurn(acct, model, record.microUSD);
+    return record;
+  },
 };
 
 function quotaRejection(pre: Exclude<PrecheckResult, { ok: true }>): InferenceAdmission {
@@ -73,6 +88,7 @@ export async function admitInference(
   }
 
   let released = false;
+  let settlement: Promise<UsageRecord> | null = null;
   let stopRenewal: () => void = () => {};
   const release = async (): Promise<void> => {
     if (released) return;
@@ -90,7 +106,14 @@ export async function admitInference(
     stopRenewal = deps.startRenewal(lease);
     return {
       ok: true,
-      permit: { budgetMicroUSD: pre.budgetMicroUSD, release },
+      permit: {
+        budgetMicroUSD: pre.budgetMicroUSD,
+        settle: (source, usage) => {
+          settlement ??= deps.settle(acct, source, model, usage);
+          return settlement;
+        },
+        release,
+      },
     };
   } catch (err) {
     await release();
