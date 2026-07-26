@@ -7,6 +7,7 @@ import {
   AudioValidationError,
   prepareTranscription,
   transcribeAudio,
+  transcribePrepared,
 } from "./transcribe.js";
 
 function oneSecondWav(): Buffer {
@@ -107,6 +108,40 @@ test("server-side metadata determines duration and enforces the clip limit", asy
       );
     });
   } finally {
+    fs.rmSync(tmp, { force: true });
+  }
+});
+
+test("prepared OpenAI transcription preserves an explicitly supplied API key", async () => {
+  const tmp = path.join(os.tmpdir(), `lisa-asr-openai-${process.pid}.wav`);
+  fs.writeFileSync(tmp, oneSecondWav());
+  const realFetch = globalThis.fetch;
+  let authorization = "";
+  globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
+    const headers = new Headers(init?.headers);
+    authorization = headers.get("authorization") ?? "";
+    return new Response(JSON.stringify({ text: "hello from openai" }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof fetch;
+  try {
+    await withEnv("ELEVENLABS_API_KEY", undefined, () =>
+      withEnv("OPENAI_API_KEY", undefined, async () => {
+        const prepared = await prepareTranscription({
+          audioPath: tmp,
+          apiKey: "sk_explicit",
+        });
+        assert.equal(prepared.provider, "openai");
+        assert.equal(
+          await transcribePrepared(prepared, "sk_explicit"),
+          "hello from openai",
+        );
+        assert.equal(authorization, "Bearer sk_explicit");
+      }),
+    );
+  } finally {
+    globalThis.fetch = realFetch;
     fs.rmSync(tmp, { force: true });
   }
 });

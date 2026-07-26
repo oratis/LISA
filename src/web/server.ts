@@ -2165,6 +2165,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
               }
             }
           } catch (err) {
+            if (err instanceof BillingStateError || err instanceof AccountStoreError) {
+              throw err;
+            }
             console.error(`[voice] dictation polish failed: ${(err as Error).message}`);
             text = transcript;
           } finally {

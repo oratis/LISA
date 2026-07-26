@@ -105,10 +105,14 @@ export async function prepareTranscription(
   };
 }
 
-export async function transcribePrepared(prepared: PreparedTranscription): Promise<string> {
+export async function transcribePrepared(
+  prepared: PreparedTranscription,
+  apiKey?: string,
+): Promise<string> {
   const plan = configuredPlan({
     audioPath: prepared.audioPath,
     model: prepared.provider === "openai" ? prepared.model : undefined,
+    apiKey,
   });
   if (plan.provider !== prepared.provider || plan.model !== prepared.model) {
     throw new Error("transcription provider configuration changed during the request");
@@ -123,7 +127,7 @@ export async function transcribeAudioMetered(
   maxSeconds: number = maxTranscriptionSeconds(),
 ): Promise<MeteredTranscription> {
   const prepared = await prepareTranscription(opts, maxSeconds);
-  const text = await transcribePrepared(prepared);
+  const text = await transcribePrepared(prepared, opts.apiKey);
   return {
     text,
     usage: {
