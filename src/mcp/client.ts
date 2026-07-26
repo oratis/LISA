@@ -59,7 +59,18 @@ async function connectOne(
 export function mcpToolToLisaTool(
   serverName: string,
   client: Client,
-  mcpTool: { name: string; description?: string; inputSchema?: object },
+  mcpTool: {
+    name: string;
+    description?: string;
+    inputSchema?: object;
+    annotations?: {
+      title?: string;
+      readOnlyHint?: boolean;
+      destructiveHint?: boolean;
+      idempotentHint?: boolean;
+      openWorldHint?: boolean;
+    };
+  },
   log: (msg: string) => void,
 ): ToolDefinition {
   const name = `mcp__${serverName}__${mcpTool.name}`;
@@ -69,6 +80,7 @@ export function mcpToolToLisaTool(
   return {
     name,
     description,
+    ...(mcpTool.annotations ? { annotations: { ...mcpTool.annotations } } : {}),
     inputSchema: ((mcpTool.inputSchema as { type?: string; properties?: object } | undefined)?.type === "object"
       ? (mcpTool.inputSchema as { type: "object"; properties?: object })
       : { type: "object" as const, properties: {} }) as { type: "object"; properties?: Record<string, unknown> },

@@ -67,6 +67,7 @@ INSPECTION
                                all off): list, grant <signal>, revoke <signal>,
                                revoke-all.
   lisa sense [list]            Recent ambient sense events + granted signals.
+  lisa sense social            Social connector manifests + publish drafts.
   lisa agents                  Snapshot of agent sessions across all observers.
   lisa pair [--host H]         Show a QR to pair a phone (Lisa Pocket) — mints a
                                per-device token via a running serve (localhost).
