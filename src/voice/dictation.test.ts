@@ -1,6 +1,11 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { cleanDictationOutput, polishDictation, type DictationProvider } from "./dictation.js";
+import {
+  cleanDictationOutput,
+  polishDictation,
+  polishDictationMetered,
+  type DictationProvider,
+} from "./dictation.js";
 
 describe("cleanDictationOutput", () => {
   test("passes clean text through", () => {
@@ -71,5 +76,31 @@ describe("polishDictation", () => {
       transcript: "ship the release",
     });
     assert.equal(out, "Ship the release.");
+  });
+
+  test("returns provider usage and estimates conservatively when it is absent", async () => {
+    const estimated = await polishDictationMetered({
+      provider: fakeProvider("Ship it."),
+      model: "m",
+      transcript: "ship it",
+    });
+    assert.ok(estimated.usage.inputTokens > 0);
+    assert.ok(estimated.usage.outputTokens > 0);
+
+    const exact = {
+      inputTokens: 1,
+      outputTokens: 2,
+      cacheReadTokens: 3,
+      cacheWriteTokens: 4,
+    };
+    const provider: DictationProvider = {
+      async runTurn() {
+        return { content: [{ type: "text", text: "Ship it." }], usage: exact };
+      },
+    };
+    assert.deepEqual(
+      (await polishDictationMetered({ provider, model: "m", transcript: "ship it" })).usage,
+      exact,
+    );
   });
 });

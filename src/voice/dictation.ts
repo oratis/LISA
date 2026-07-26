@@ -17,6 +17,7 @@
  * Provider-agnostic + side-effect-light so the prompt + output-cleanup logic
  * are unit-testable without a real LLM.
  */
+import type { ProviderUsage } from "../providers/types.js";
 
 export const DICTATION_SYSTEM = `You are a dictation cleanup engine. You are given a raw speech-to-text transcript of someone talking, and you return the polished WRITTEN text they intended — as if they had carefully typed it themselves.
 
@@ -38,7 +39,31 @@ export interface DictationProvider {
     tools: unknown[];
     model: string;
     maxTokens?: number;
-  }): Promise<{ content: Array<{ type: string; text?: string }> }>;
+  }): Promise<{
+    content: Array<{ type: string; text?: string }>;
+    usage?: ProviderUsage;
+  }>;
+}
+
+export interface DictationResult {
+  text: string;
+  usage: ProviderUsage;
+}
+
+const ZERO_USAGE: ProviderUsage = {
+  inputTokens: 0,
+  outputTokens: 0,
+  cacheReadTokens: 0,
+  cacheWriteTokens: 0,
+};
+
+export function estimateDictationUsage(input: string, output: string): ProviderUsage {
+  return {
+    inputTokens: Math.max(1, Math.ceil(Buffer.byteLength(DICTATION_SYSTEM + input, "utf8") / 4)),
+    outputTokens: Math.max(1, Math.ceil(Buffer.byteLength(output, "utf8") / 4)),
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+  };
 }
 
 /**
@@ -72,8 +97,16 @@ export async function polishDictation(opts: {
   model: string;
   transcript: string;
 }): Promise<string> {
+  return (await polishDictationMetered(opts)).text;
+}
+
+export async function polishDictationMetered(opts: {
+  provider: DictationProvider;
+  model: string;
+  transcript: string;
+}): Promise<DictationResult> {
   const raw = (opts.transcript ?? "").trim();
-  if (!raw) return "";
+  if (!raw) return { text: "", usage: ZERO_USAGE };
   const result = await opts.provider.runTurn({
     systemPrompt: DICTATION_SYSTEM,
     messages: [{ role: "user", content: raw }],
@@ -82,5 +115,9 @@ export async function polishDictation(opts: {
     maxTokens: 1500,
   });
   const text = result.content.find((b) => b.type === "text")?.text ?? "";
-  return cleanDictationOutput(text, raw);
+  const cleaned = cleanDictationOutput(text, raw);
+  return {
+    text: cleaned,
+    usage: result.usage ?? estimateDictationUsage(raw, cleaned),
+  };
 }

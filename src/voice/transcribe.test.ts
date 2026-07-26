@@ -3,7 +3,30 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { transcribeAudio } from "./transcribe.js";
+import {
+  AudioValidationError,
+  prepareTranscription,
+  transcribeAudio,
+} from "./transcribe.js";
+
+function oneSecondWav(): Buffer {
+  const sampleRate = 8_000;
+  const dataSize = sampleRate * 2;
+  const out = Buffer.alloc(44 + dataSize);
+  out.write("RIFF", 0);
+  out.writeUInt32LE(36 + dataSize, 4);
+  out.write("WAVEfmt ", 8);
+  out.writeUInt32LE(16, 16);
+  out.writeUInt16LE(1, 20);
+  out.writeUInt16LE(1, 22);
+  out.writeUInt32LE(sampleRate, 24);
+  out.writeUInt32LE(sampleRate * 2, 28);
+  out.writeUInt16LE(2, 32);
+  out.writeUInt16LE(16, 34);
+  out.write("data", 36);
+  out.writeUInt32LE(dataSize, 40);
+  return out;
+}
 
 async function withEnv(
   key: string,
@@ -39,11 +62,15 @@ test("ElevenLabs is preferred and POSTs the file with xi-api-key", async () => {
   let calledUrl = "";
   let sentKey: unknown;
   let sentFile = false;
+  let sentModel: unknown;
 
   globalThis.fetch = (async (url: unknown, init: { headers?: Record<string, string>; body?: unknown }) => {
     calledUrl = String(url);
     sentKey = init?.headers?.["xi-api-key"];
     sentFile = init?.body instanceof FormData && (init.body as FormData).has("file");
+    sentModel = init?.body instanceof FormData
+      ? (init.body as FormData).get("model_id")
+      : undefined;
     return new Response(JSON.stringify({ text: "hello world" }), { status: 200 });
   }) as typeof fetch;
 
@@ -54,9 +81,32 @@ test("ElevenLabs is preferred and POSTs the file with xi-api-key", async () => {
       assert.match(calledUrl, /api\.elevenlabs\.io\/v1\/speech-to-text$/);
       assert.equal(sentKey, "sk_test_key");
       assert.ok(sentFile, "posts a `file` field in multipart FormData");
+      assert.equal(sentModel, "scribe_v2");
     });
   } finally {
     globalThis.fetch = realFetch;
+    fs.rmSync(tmp, { force: true });
+  }
+});
+
+test("server-side metadata determines duration and enforces the clip limit", async () => {
+  const tmp = path.join(os.tmpdir(), `lisa-asr-duration-${process.pid}.wav`);
+  fs.writeFileSync(tmp, oneSecondWav());
+  try {
+    await withEnv("ELEVENLABS_API_KEY", "sk_test_key", async () => {
+      const prepared = await prepareTranscription({ audioPath: tmp }, 2);
+      assert.equal(prepared.provider, "elevenlabs");
+      assert.equal(prepared.model, "scribe_v2");
+      assert.ok(prepared.durationMs >= 999 && prepared.durationMs <= 1001);
+      await assert.rejects(
+        () => prepareTranscription({ audioPath: tmp }, 0.5),
+        (err: unknown) =>
+          err instanceof AudioValidationError &&
+          err.status === 413 &&
+          /0.5-second/.test(err.message),
+      );
+    });
+  } finally {
     fs.rmSync(tmp, { force: true });
   }
 });

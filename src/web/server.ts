@@ -75,8 +75,15 @@ import { recordEvent } from "../orchestrator/journal.js";
 import { buildRecap, formatRecap } from "../orchestrator/recap.js";
 import type { AgentSession } from "../integrations/types.js";
 import { captureScreenshot, captureSupported, type CaptureMode } from "../vision/capture.js";
-import { transcribeAudio } from "../voice/transcribe.js";
-import { polishDictation, type DictationProvider } from "../voice/dictation.js";
+import {
+  AudioValidationError,
+  prepareTranscription,
+  transcribePrepared,
+} from "../voice/transcribe.js";
+import { polishDictationMetered, type DictationProvider } from "../voice/dictation.js";
+import { admitMedia, type MediaPermit } from "../billing/media-admission.js";
+import { recordMediaUsage, summarizeMediaUsage } from "../billing/media-meter.js";
+import { MEDIA_PRICES_VERSION } from "../billing/media-prices.js";
 import { listGrants, grant, revoke, revokeAll, isGranted, SENSE_SIGNALS, SIGNAL_DESCRIPTIONS } from "../consent/store.js";
 import { signalAgentTool } from "../tools/signal_agent.js";
 import { managedRegistry } from "../agents/managed.js";
@@ -1789,12 +1796,34 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         return;
       }
       const now = Date.now();
-      const [window12h, today] = await Promise.all([
+      const todayStart = new Date(new Date(now).setHours(0, 0, 0, 0)).getTime();
+      const [windowTokens, todayTokens, windowMedia, todayMedia] = await Promise.all([
         summarizeUsage(now - 12 * 60 * 60 * 1000),
-        summarizeUsage(new Date(new Date(now).setHours(0, 0, 0, 0)).getTime()),
+        summarizeUsage(todayStart),
+        summarizeMediaUsage(now - 12 * 60 * 60 * 1000),
+        summarizeMediaUsage(todayStart),
       ]);
+      const window12h = {
+        ...windowTokens,
+        microUSD: windowTokens.microUSD + windowMedia.microUSD,
+        mediaDurationMs: windowMedia.durationMs,
+        mediaOperations: windowMedia.operations,
+      };
+      const today = {
+        ...todayTokens,
+        microUSD: todayTokens.microUSD + todayMedia.microUSD,
+        mediaDurationMs: todayMedia.durationMs,
+        mediaOperations: todayMedia.operations,
+      };
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ window12h, today, pricesVersion: PRICES_VERSION }));
+      res.end(
+        JSON.stringify({
+          window12h,
+          today,
+          pricesVersion: PRICES_VERSION,
+          mediaPricesVersion: MEDIA_PRICES_VERSION,
+        }),
+      );
       return;
     }
 
@@ -2072,10 +2101,35 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
             : "webm";
       const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
       const tmp = path.join(os.tmpdir(), `lisa-rec-${stamp}-${process.pid}.${ext}`);
+      let mediaPermit: MediaPermit | null = null;
       try {
-        await fs.writeFile(tmp, Buffer.from(payload.data, "base64"));
-        console.error(`[voice] transcribing ${Buffer.from(payload.data, "base64").length} bytes (${ext})`);
-        const transcript = await transcribeAudio({ audioPath: tmp });
+        const audio = Buffer.from(payload.data, "base64");
+        await fs.writeFile(tmp, audio);
+        const prepared = await prepareTranscription({ audioPath: tmp });
+        console.error(
+          `[voice] transcribing ${audio.length} bytes / ${(prepared.durationMs / 1000).toFixed(1)}s ` +
+            `(${ext}, ${prepared.provider}/${prepared.model})`,
+        );
+        const acct = cloud && accountUid ? await getAccount(accountUid) : null;
+        if (acct) {
+          const admission = await admitMedia(acct);
+          if (!admission.ok) {
+            res.writeHead(admission.status, { "content-type": "application/json" });
+            res.end(JSON.stringify(admission.body));
+            return;
+          }
+          mediaPermit = admission.permit;
+        }
+        const transcript = await transcribePrepared(prepared);
+        const mediaUsage = {
+          provider: prepared.provider,
+          model: prepared.model,
+          durationMs: prepared.durationMs,
+        };
+        if (mediaPermit) await mediaPermit.settle("voice_transcription", mediaUsage);
+        else if (cloud) await recordMediaUsage("voice_transcription", mediaUsage);
+        await mediaPermit?.release();
+        mediaPermit = null;
         // S2-voice: when `voice` is granted, distill this push-to-talk transcript
         // into the ambient sense log (PII-redacted, no audio). No-op otherwise,
         // so dictation works unchanged when voice consent is off.
@@ -2086,23 +2140,53 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         // composer. Falls back to the raw transcript if the polish call fails.
         let text: string | undefined;
         if (payload.mode === "dictation") {
+          let polishPermit: InferencePermit | null = null;
           try {
-            text = await polishDictation({
-              provider: getProvider() as unknown as DictationProvider,
-              model: opts.model,
-              transcript,
-            });
+            if (acct) {
+              const admission = await admitInference(acct, opts.model);
+              if (admission.ok) polishPermit = admission.permit;
+              else {
+                console.error(
+                  `[voice] dictation polish skipped: ${JSON.stringify(admission.body)}`,
+                );
+                text = transcript;
+              }
+            }
+            if (text === undefined) {
+              const polished = await polishDictationMetered({
+                provider: getProvider() as unknown as DictationProvider,
+                model: opts.model,
+                transcript,
+              });
+              text = polished.text;
+              if (cloud && polished.usage) {
+                if (polishPermit) await polishPermit.settle("voice_dictation", polished.usage);
+                else await recordUsage("voice_dictation", opts.model, polished.usage);
+              }
+            }
           } catch (err) {
             console.error(`[voice] dictation polish failed: ${(err as Error).message}`);
             text = transcript;
+          } finally {
+            await polishPermit?.release();
           }
         }
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify(text !== undefined ? { transcript, text } : { transcript }));
       } catch (err) {
-        res.writeHead(500, { "content-type": "application/json" });
-        res.end(JSON.stringify({ error: (err as Error).message }));
+        if (err instanceof AudioValidationError) {
+          res.writeHead(err.status, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: err.message }));
+        } else if (err instanceof BillingStateError || err instanceof AccountStoreError) {
+          console.error(`[billing] voice admission/settlement unavailable: ${err.message}`);
+          res.writeHead(503, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "billing_state_unavailable" }));
+        } else {
+          res.writeHead(500, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: (err as Error).message }));
+        }
       } finally {
+        await mediaPermit?.release();
         await fs.rm(tmp, { force: true }).catch(() => {});
       }
       return;
