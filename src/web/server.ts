@@ -66,6 +66,10 @@ import {
   CTRL_BODY_LIMIT,
   RICH_BODY_LIMIT,
 } from "./http-body.js";
+import {
+  agentSessionsResponse,
+  applyApiVersionHeader,
+} from "./api-contract.js";
 import { ipRateOk } from "../billing/limits.js";
 import { ROOM_HTML } from "./room.js";
 import { MAIN_HTML } from "./lisa-html.js";
@@ -1037,6 +1041,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
 
   const server = http.createServer(async (req, res) => {
     const url = req.url ?? "/";
+    applyApiVersionHeader(url, res);
 
     // ── Auth gate ────────────────────────────────────────────────────────
     // Loopback callers are the local user — no token needed (the default
@@ -2868,15 +2873,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       // Mark idle claude sessions as adoptable: not currently live (no running
       // owner ⇒ `claude --resume` is safe) and not already a LISA-controlled row.
       const live = liveClaudeSessionIds();
-      const sessions = hub.list().map((s) => ({
-        ...s,
-        lastMtime: new Date(s.lastMtime).toISOString(),
-        ...(s.agent === "claude-code" && !s.controllable && !live.has(s.sessionId)
-          ? { resumable: true }
-          : {}),
-      }));
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ sessions }));
+      res.end(JSON.stringify(agentSessionsResponse(hub.list(), live)));
       return;
     }
 

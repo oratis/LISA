@@ -31,12 +31,30 @@ enum LisaError: LocalizedError {
     case notConfigured
     case http(Int)
     case decode
+    case unsupportedAPIVersion(Int)
 
     var errorDescription: String? {
         switch self {
         case .notConfigured: return "Not paired yet — add your Mac in Settings."
         case .http(let code): return "Server returned HTTP \(code)."
         case .decode: return "Couldn't read the server response."
+        case .unsupportedAPIVersion(let version):
+            return "This Lisa server uses API v\(version). Update Lisa Pocket to reconnect."
+        }
+    }
+}
+
+enum LisaAPICompatibility {
+    /// Missing means a pre-contract server and remains accepted as legacy v1.
+    /// Additive fields within v1 are handled by Swift's tolerant Codable models.
+    static func validate(_ response: URLResponse) throws {
+        guard let http = response as? HTTPURLResponse,
+              let raw = http.value(forHTTPHeaderField: LisaAPIContract.versionHeader) else { return }
+        guard let majorText = raw.split(separator: ".", maxSplits: 1).first,
+              let major = Int(majorText),
+              major > 0 else { throw LisaError.decode }
+        if major > LisaAPIContract.supportedMajorVersion {
+            throw LisaError.unsupportedAPIVersion(major)
         }
     }
 }
@@ -72,6 +90,7 @@ final class LisaClient {
         if let rawNonce { payload["nonce"] = rawNonce }
         req.httpBody = try JSONSerialization.data(withJSONObject: payload)
         let (data, resp) = try await session.data(for: req)
+        try LisaAPICompatibility.validate(resp)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
         guard (200..<300).contains(code) else { throw LisaError.http(code) }
         struct R: Decodable { let token: String }
@@ -99,6 +118,7 @@ final class LisaClient {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: ["email": email, "password": password])
         let (data, resp) = try await session.data(for: req)
+        try LisaAPICompatibility.validate(resp)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
         guard (200..<300).contains(code) else { throw LisaError.http(code) }
         struct R: Decodable { let token: String }
@@ -127,6 +147,7 @@ final class LisaClient {
         var req = URLRequest(url: url, timeoutInterval: 10)
         req.httpMethod = "GET"
         let (data, resp) = try await session.data(for: req)
+        try LisaAPICompatibility.validate(resp)
         let status = (resp as? HTTPURLResponse)?.statusCode ?? -1
         guard (200..<300).contains(status) else { throw LisaError.http(status) }
         guard let cfg = try? JSONDecoder().decode(AuthConfig.self, from: data) else { throw LisaError.decode }
@@ -175,6 +196,7 @@ final class LisaClient {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: payload)
         let (data, resp) = try await session.data(for: req)
+        try LisaAPICompatibility.validate(resp)
         let status = (resp as? HTTPURLResponse)?.statusCode ?? -1
         guard (200..<300).contains(status) else {
             struct E: Decodable { let error: String?; let suggestion: String? }
@@ -312,6 +334,7 @@ final class LisaClient {
     private func decode<T: Decodable>(_ path: String, method: String = "GET", json: [String: Any]? = nil, as: T.Type) async throws -> T {
         let req = try makeRequest(path, method: method, json: json, timeout: Self.restTimeout)
         let (data, resp) = try await session.data(for: req)
+        try LisaAPICompatibility.validate(resp)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
         guard (200..<300).contains(code) else { throw LisaError.http(code) }
         do { return try JSONDecoder().decode(T.self, from: data) }
@@ -325,6 +348,7 @@ final class LisaClient {
     private func fireCode(_ path: String, method: String = "POST", json: [String: Any]? = nil) async throws -> Int {
         let req = try makeRequest(path, method: method, json: json, timeout: Self.restTimeout)
         let (_, resp) = try await session.data(for: req)
+        try LisaAPICompatibility.validate(resp)
         return (resp as? HTTPURLResponse)?.statusCode ?? -1
     }
 
@@ -431,6 +455,7 @@ final class LisaClient {
                 do {
                     let req = try makeRequest(path, method: method, json: json)
                     let (bytes, resp) = try await session.bytes(for: req)
+                    try LisaAPICompatibility.validate(resp)
                     let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
                     guard (200..<300).contains(code) else { continuation.finish(throwing: LisaError.http(code)); return }
                     var dataLines: [String] = []

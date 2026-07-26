@@ -175,6 +175,50 @@ final class LisaPocketTests: XCTestCase {
         XCTAssertNil(s.lastMtime)
     }
 
+    // ── API contract: old servers remain usable; future majors fail clearly ──
+    func testAPIContractCompatibility() throws {
+        let url = URL(string: "https://lisa.example/api/agents/sessions")!
+        let legacy = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!
+        XCTAssertNoThrow(try LisaAPICompatibility.validate(legacy))
+
+        let current = HTTPURLResponse(
+            url: url,
+            statusCode: 200,
+            httpVersion: nil,
+            headerFields: [LisaAPIContract.versionHeader: "1"]
+        )!
+        XCTAssertNoThrow(try LisaAPICompatibility.validate(current))
+
+        let future = HTTPURLResponse(
+            url: url,
+            statusCode: 200,
+            httpVersion: nil,
+            headerFields: [LisaAPIContract.versionHeader: "2"]
+        )!
+        XCTAssertThrowsError(try LisaAPICompatibility.validate(future)) { error in
+            guard case LisaError.unsupportedAPIVersion(let version) = error else {
+                return XCTFail("unexpected error: \(error)")
+            }
+            XCTAssertEqual(version, 2)
+        }
+
+        let malformed = HTTPURLResponse(
+            url: url,
+            statusCode: 200,
+            httpVersion: nil,
+            headerFields: [LisaAPIContract.versionHeader: "banana"]
+        )!
+        XCTAssertThrowsError(try LisaAPICompatibility.validate(malformed))
+
+        let invalidZero = HTTPURLResponse(
+            url: url,
+            statusCode: 200,
+            httpVersion: nil,
+            headerFields: [LisaAPIContract.versionHeader: "0"]
+        )!
+        XCTAssertThrowsError(try LisaAPICompatibility.validate(invalidZero))
+    }
+
     // ── onboarding model: install commands are the real repo ones ──
     func testInstallCommands() {
         XCTAssertEqual(InstallMethod.homebrew.installCommand, "brew install oratis/tap/lisa")

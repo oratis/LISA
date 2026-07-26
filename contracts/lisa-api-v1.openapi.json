@@ -1,0 +1,551 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "LISA External API",
+    "version": "1.0.0",
+    "description": "Versioned contract for the REST and SSE surfaces shared by the TypeScript server and native clients. Version 1 preserves the existing response bodies; additive optional fields are backwards compatible."
+  },
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "x-lisa-api-major": 1,
+  "x-lisa-version-header": "X-Lisa-API-Version",
+  "x-lisa-compatibility": {
+    "missingVersionHeader": "accept-as-legacy-v1",
+    "sameMajor": "accept-additive-fields",
+    "higherMajor": "reject-and-require-client-upgrade"
+  },
+  "paths": {
+    "/api/agents/sessions": {
+      "get": {
+        "operationId": "listAgentSessions",
+        "responses": {
+          "200": {
+            "description": "Normalized sessions from every enabled observer.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/dispatch/list": {
+      "get": {
+        "operationId": "listDispatches",
+        "responses": {
+          "200": {
+            "description": "Retained LISA-owned dispatches.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DispatchListResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/dispatch/status": {
+      "get": {
+        "operationId": "getDispatchStatus",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One retained dispatch plus its bounded output tail.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DispatchStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/island/ping": {
+      "get": {
+        "operationId": "getIslandState",
+        "responses": {
+          "200": {
+            "description": "Lightweight current LISA state.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IslandPing"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/events": {
+      "get": {
+        "operationId": "streamEvents",
+        "responses": {
+          "200": {
+            "description": "Newline-delimited SSE data frames. Unknown event types and additive fields must be ignored.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                },
+                "x-lisa-data-schema": {
+                  "$ref": "#/components/schemas/SSEEvent"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat": {
+      "post": {
+        "operationId": "streamChat",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "message"
+                ],
+                "properties": {
+                  "message": {
+                    "type": "string"
+                  },
+                  "attachments": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Chat events using the shared SSE event envelope.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                },
+                "x-lisa-data-schema": {
+                  "$ref": "#/components/schemas/SSEEvent"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "headers": {
+      "ApiVersion": {
+        "description": "Major protocol version of this response.",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "const": "1"
+        }
+      }
+    },
+    "responses": {
+      "Error": {
+        "description": "Typed backwards-compatible v1 error.",
+        "headers": {
+          "X-Lisa-API-Version": {
+            "$ref": "#/components/headers/ApiVersion"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Stable machine-readable code in most v1 routes; a few legacy routes still return a short message."
+          },
+          "reason": {
+            "type": "string"
+          },
+          "suggestion": {
+            "type": "string"
+          },
+          "retryAfterSec": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "limitBytes": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": true
+      },
+      "TokenUsage": {
+        "type": "object",
+        "required": [
+          "input",
+          "output"
+        ],
+        "properties": {
+          "input": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "output": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "SessionActivity": {
+        "type": "object",
+        "properties": {
+          "turnCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "lastTools": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "filesTouched": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "lastCommandName": {
+            "type": "string"
+          },
+          "lastError": {
+            "type": "string"
+          },
+          "gitBranch": {
+            "type": "string"
+          },
+          "tokens": {
+            "$ref": "#/components/schemas/TokenUsage"
+          },
+          "pendingPermission": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "AgentSession": {
+        "type": "object",
+        "required": [
+          "agent",
+          "sessionId",
+          "project",
+          "state",
+          "stateReason",
+          "lastMtime"
+        ],
+        "properties": {
+          "agent": {
+            "type": "string"
+          },
+          "sessionId": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "cwd": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "working",
+              "waiting",
+              "error",
+              "idle",
+              "done",
+              "unknown"
+            ]
+          },
+          "stateReason": {
+            "type": "string"
+          },
+          "lastMtime": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "activity": {
+            "$ref": "#/components/schemas/SessionActivity"
+          },
+          "controllable": {
+            "type": "string",
+            "enum": [
+              "managed",
+              "pty"
+            ]
+          },
+          "resumable": {
+            "type": "boolean"
+          },
+          "adoptedSessionId": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "SessionsResponse": {
+        "type": "object",
+        "required": [
+          "sessions"
+        ],
+        "properties": {
+          "sessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentSession"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "DispatchView": {
+        "type": "object",
+        "required": [
+          "id",
+          "agent",
+          "pid",
+          "cwd",
+          "task",
+          "startedAt",
+          "alive",
+          "hasLog"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "agent": {
+            "type": "string"
+          },
+          "pid": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "cwd": {
+            "type": "string"
+          },
+          "task": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "alive": {
+            "type": "boolean"
+          },
+          "hasLog": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DispatchListResponse": {
+        "type": "object",
+        "required": [
+          "dispatches"
+        ],
+        "properties": {
+          "dispatches": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DispatchView"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "DispatchStatus": {
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "agent": {
+            "type": "string"
+          },
+          "pid": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "cwd": {
+            "type": "string"
+          },
+          "task": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "alive": {
+            "type": "boolean"
+          },
+          "hasLog": {
+            "type": "boolean"
+          },
+          "tail": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "IslandPing": {
+        "type": "object",
+        "required": [
+          "online",
+          "mood",
+          "has_unread_idle_message",
+          "uptime_sec"
+        ],
+        "properties": {
+          "online": {
+            "type": "boolean"
+          },
+          "mood": {
+            "type": "string"
+          },
+          "has_unread_idle_message": {
+            "type": "boolean"
+          },
+          "last_idle_message_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_idle_message_text": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "current_desire": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "uptime_sec": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": true
+      },
+      "SSEEvent": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true,
+        "description": "Open event envelope. Clients must ignore unknown types and additive fields; known v1 types include agent_session_update, claude_session_update, mood, chat_start, chat_delta, chat_end, idle_message, advisor_suggestions, screen_suggestion, sense_event, reflect_done and error."
+      }
+    }
+  }
+}
