@@ -5,9 +5,10 @@
 ## 当前基线
 
 - 审查日期：2026-07-26
-- 分支：`main`
-- 提交：`237f1f036969ece484a60a0f6bc73552dd211883`
-- 版本：`0.21.0`
+- 审查原始基线：`237f1f036969ece484a60a0f6bc73552dd211883`（v0.21.0）
+- 当前发布基线：`17dbeedca01caf7fc99cb69420784387a34565b8`（v0.22.0）
+- 稳定化工作：以 `codex/reflect-inference-admission` 起的堆叠草稿 PR；合并前以
+  GitHub PR 基线和当前代码为准
 - 审查范围：Node/TypeScript 核心、Web、CLI、知识库、Soul、自治机制、编排器、Cloud 账户与计费、macOS/iOS 客户端、官网、打包与 CI
 
 ## 文件索引

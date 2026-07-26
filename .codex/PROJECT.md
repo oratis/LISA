@@ -27,7 +27,7 @@ LISA 是一个以本地自主权为核心、带长期人格与记忆的 AI Agent
 | Autonomy | `src/heartbeat.ts`、`src/idle.ts`、`src/web/autonomy-sweep.ts` | 心跳、空闲主动行为和 Cloud 扫描反思 |
 | Orchestrator | `src/orchestrator/` | 观察与管理 Claude、Codex、OpenCode、Aider、GitHub 等外部代理 |
 | macOS | `packaging/mac-client/` | Swift 原生壳、后端进程控制、Web 内容和 Island |
-| iOS | `packaging/ios-client/` | SwiftUI 客户端、REST/SSE、Widget、Live Activity、认证与 IAP |
+| iOS | `packaging/ios-companion/` | SwiftUI 客户端、REST/SSE、Widget、Live Activity、认证与 IAP |
 | 官网 | `website/` | Astro 双语静态网站 |
 
 ## 技术栈
@@ -56,7 +56,7 @@ npm run build
 cd packaging/mac-client
 swift build -c debug
 
-cd packaging/ios-client
+cd packaging/ios-companion
 ./build.sh test 'platform=iOS Simulator,name=iPhone 17 Pro'
 ```
 
@@ -64,13 +64,13 @@ cd packaging/ios-client
 
 ## 规模与热点
 
-基线提交中有约 551 个 `src` 跟踪文件、157 个测试文件。最大的维护热点是：
+当前稳定化分支中有约 573 个 `src` 文件、159 个测试文件。最大的维护热点是：
 
-- `src/web/server.ts`：约 3,534 行
+- `src/web/server.ts`：约 3,832 行
 - `src/web/lisa-client.ts`：约 2,798 行
 - `src/web/lisa-css.ts`：约 2,144 行
 - `src/web/island.ts`：约 1,479 行
-- `src/cli.ts`：约 1,113 行
+- `src/cli.ts`：约 1,129 行
 - `src/web/room.ts`：约 1,096 行
 
 热点不等于必须重写；它意味着任何跨租户、安全、协议或生命周期变更，都要优先检查这些文件。

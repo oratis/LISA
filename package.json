@@ -42,6 +42,7 @@
   },
   "files": [
     "dist/",
+    "contracts/",
     "channels.example.json",
     "completions/",
     "LICENSE",
@@ -57,8 +58,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "test:watch": "node --import tsx --test --watch \"src/**/*.test.ts\"",
+    "generate:api-contract": "node scripts/generate-api-contract.mjs",
+    "check:api-contract": "node scripts/generate-api-contract.mjs --check",
     "generate-assets": "tsx scripts/generate-pixel-assets.ts",
-    "prepublishOnly": "npm run typecheck && npm test && npm run build && rm -rf dist/web/assets && cp -R src/web/assets dist/web/assets",
+    "prepublishOnly": "npm run check:api-contract && npm run typecheck && npm test && npm run build && rm -rf dist/web/assets && cp -R src/web/assets dist/web/assets",
     "postpublish": "npm run copy-assets"
   },
   "engines": {

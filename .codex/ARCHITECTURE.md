@@ -115,6 +115,16 @@ Web 服务同时承担：
 - Cloud 的账户、认证、余额、交易与租约必须使用支持事务和唯一约束的权威存储；
 - Soul 大对象可以保留为对象存储或版本化文档，但要有 schema version 和迁移。
 
+## 跨端 API 契约
+
+- `contracts/lisa-api-v1.openapi.json` 是 TypeScript 服务端与 iOS 客户端共享的
+  OpenAPI 3.1 源；生成常量不得手改。
+- `/api/*`、`/chat`、`/events` 响应携带 `X-Lisa-API-Version`。v1 保持现有 body
+  兼容，允许新增可选字段和未知 SSE 事件。
+- Lisa Pocket 容忍无版本头的旧服务和同主版本新增字段，但拒绝更高主版本。
+- `src/web/api-contract.test.ts` 用实际 DTO builder 与代表性 fixture 做 schema
+  验证；破坏性协议变更必须升主版本或增加版本路由。
+
 ## 建议的目标边界
 
 ```mermaid
