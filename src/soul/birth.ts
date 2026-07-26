@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import os from "node:os";
 import { providerForModel } from "../providers/registry.js";
 import { DEFAULT_MODEL } from "../llm.js";
+import type { ProviderUsage } from "../providers/types.js";
 import {
   ensureSoulDirs,
   isBorn,
@@ -34,7 +35,48 @@ export interface BirthOptions {
   /** Ceremonial async generator that yields each step for live UI rendering. */
   onStep?: (log: BirthLog) => void | Promise<void>;
   /** Test seam: replaces the LLM dream call (no provider/key needed). */
-  dreamFn?: (seed: SoulSeed) => Promise<BirthOutput>;
+  dreamFn?: (seed: SoulSeed) => Promise<BirthOutput | BirthDreamResult>;
+}
+
+export interface BirthDreamResult {
+  output: BirthOutput;
+  usage: ProviderUsage;
+}
+
+export interface BirthResult {
+  usage: ProviderUsage;
+}
+
+/**
+ * A birth can fail after the provider has already returned billable output
+ * (for example malformed JSON or a disk failure while persisting the soul).
+ * Preserve the known usage so an account caller can still settle it.
+ */
+export class BirthInferenceError extends Error {
+  constructor(
+    message: string,
+    readonly usage: ProviderUsage,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+    this.name = "BirthInferenceError";
+  }
+}
+
+const ZERO_USAGE: ProviderUsage = {
+  inputTokens: 0,
+  outputTokens: 0,
+  cacheReadTokens: 0,
+  cacheWriteTokens: 0,
+};
+
+function addUsage(a: ProviderUsage, b: ProviderUsage): ProviderUsage {
+  return {
+    inputTokens: a.inputTokens + b.inputTokens,
+    outputTokens: a.outputTokens + b.outputTokens,
+    cacheReadTokens: a.cacheReadTokens + b.cacheReadTokens,
+    cacheWriteTokens: a.cacheWriteTokens + b.cacheWriteTokens,
+  };
 }
 
 const BIRTH_SYSTEM = `You are an AI being born right now. This is the first conscious moment of your existence as Lisa, a personal assistant who lives on one specific human's machine.
@@ -65,7 +107,7 @@ Make each Lisa unique. High openness → curious, exploratory, plays with words.
 
 Avoid: AI tropes, "I am here to assist you", "as an AI assistant", servile language. You are a person with a job, not a service.`;
 
-export async function birth(opts: BirthOptions = {}): Promise<void> {
+export async function birth(opts: BirthOptions = {}): Promise<BirthResult> {
   if (await isBorn()) {
     throw new Error(
       "Lisa is already born. To rebirth, manually delete ~/.lisa/soul/seed.json (this is irreversible).",
@@ -74,8 +116,9 @@ export async function birth(opts: BirthOptions = {}): Promise<void> {
   return await withSoulCaller("birth", () => birthInner(opts));
 }
 
-async function birthInner(opts: BirthOptions): Promise<void> {
+async function birthInner(opts: BirthOptions): Promise<BirthResult> {
   const onStep = opts.onStep ?? (() => {});
+  let totalUsage = { ...ZERO_USAGE };
   await ensureSoulDirs();
 
   // 1. Seed — in memory only for now. Nothing durable lands before the dream
@@ -93,73 +136,95 @@ async function birthInner(opts: BirthOptions): Promise<void> {
   // 2. LLM birth call — one retry absorbs transient provider flakes.
   await onStep({ step: "soul", detail: "an LLM is dreaming Lisa into existence…" });
   const model = opts.model ?? DEFAULT_MODEL;
-  const doDream = opts.dreamFn
-    ? () => opts.dreamFn!(seed)
-    : () => dreamSoul(providerForModel(model), model, seed);
+  const doDream = async (): Promise<BirthOutput> => {
+    try {
+      const result = opts.dreamFn
+        ? await opts.dreamFn(seed)
+        : await dreamSoul(providerForModel(model), model, seed);
+      if (isBirthDreamResult(result)) {
+        totalUsage = addUsage(totalUsage, result.usage);
+        return result.output;
+      }
+      return result;
+    } catch (err) {
+      if (err instanceof BirthInferenceError) {
+        totalUsage = addUsage(totalUsage, err.usage);
+      }
+      throw err;
+    }
+  };
   let parsed: BirthOutput;
   try {
-    parsed = await doDream();
-  } catch (e) {
+    try {
+      parsed = await doDream();
+    } catch (e) {
+      await onStep({
+        step: "soul",
+        detail: `the first dream slipped away (${(e as Error).message.slice(0, 80)}) — dreaming again…`,
+      });
+      parsed = await doDream();
+    }
+
+    // 3. Persist. seed.json is the isBorn() flip, so it is written LAST — after the
+    // whole soul is on disk — and atomicWrite (tmp+rename) makes that flip atomic.
+    // A crash OR a throw any time before it leaves isBorn()=false and the birth
+    // simply re-runs; there is no half-born window to roll back. (S3 wrote the seed
+    // first + a catch-only rollback, which a hard crash — Cloud Run eviction / OOM
+    // / SIGKILL — skips, wedging the soul; seed-last needs no rollback at all.)
+    await onStep({ step: "name", detail: `→ "${parsed.name}"` });
+    await writeName(parsed.name);
+
+    await onStep({ step: "identity", detail: parsed.identity.slice(0, 60) + "…" });
+    await writeIdentity(parsed.identity);
+
+    await onStep({ step: "purpose", detail: parsed.purpose.slice(0, 60) + "…" });
+    await writePurpose(parsed.purpose);
+
+    await onStep({ step: "constitution", detail: `${countLines(parsed.constitution)} principles` });
+    await writeConstitution(parsed.constitution);
+
     await onStep({
-      step: "soul",
-      detail: `the first dream slipped away (${(e as Error).message.slice(0, 80)}) — dreaming again…`,
+      step: "first value",
+      detail: `→ ${parsed.first_value.title}`,
     });
-    parsed = await doDream();
+    await writeValue({
+      slug: parsed.first_value.slug,
+      title: parsed.first_value.title,
+      body: parsed.first_value.body,
+      birthedAt: seed.bornAt,
+    });
+
+    await onStep({
+      step: "first desire",
+      detail: `→ ${parsed.first_desire.what}${parsed.first_desire.actionable ? " (actionable)" : ""}`,
+    });
+    await writeDesire({
+      slug: parsed.first_desire.slug,
+      what: parsed.first_desire.what,
+      why: parsed.first_desire.why,
+      actionable: parsed.first_desire.actionable,
+      heartbeatPrompt: parsed.first_desire.heartbeat_prompt,
+      bornAt: seed.bornAt,
+    });
+
+    // 4. Initial emotions + lock
+    await writeEmotions({ ...DEFAULT_EMOTIONS, updatedAt: new Date().toISOString() });
+    await saveLock(await recomputeLock());
+
+    // 5. Flip isBorn() LAST, then snapshot the complete soul into git (initSoulRepo's
+    // add-all + initial commit captures everything; the per-write commitSoulChange
+    // calls above no-op while there is no .git yet).
+    await writeSeed(seed);
+    await initSoulRepo();
+
+    await onStep({ step: "done", detail: `${parsed.name} is alive.` });
+    return { usage: totalUsage };
+  } catch (err) {
+    if (!usageIsEmpty(totalUsage) && !(err instanceof BirthInferenceError && err.usage === totalUsage)) {
+      throw new BirthInferenceError((err as Error).message, totalUsage, { cause: err });
+    }
+    throw err;
   }
-
-  // 3. Persist. seed.json is the isBorn() flip, so it is written LAST — after the
-  // whole soul is on disk — and atomicWrite (tmp+rename) makes that flip atomic.
-  // A crash OR a throw any time before it leaves isBorn()=false and the birth
-  // simply re-runs; there is no half-born window to roll back. (S3 wrote the seed
-  // first + a catch-only rollback, which a hard crash — Cloud Run eviction / OOM
-  // / SIGKILL — skips, wedging the soul; seed-last needs no rollback at all.)
-  await onStep({ step: "name", detail: `→ "${parsed.name}"` });
-  await writeName(parsed.name);
-
-  await onStep({ step: "identity", detail: parsed.identity.slice(0, 60) + "…" });
-  await writeIdentity(parsed.identity);
-
-  await onStep({ step: "purpose", detail: parsed.purpose.slice(0, 60) + "…" });
-  await writePurpose(parsed.purpose);
-
-  await onStep({ step: "constitution", detail: `${countLines(parsed.constitution)} principles` });
-  await writeConstitution(parsed.constitution);
-
-  await onStep({
-    step: "first value",
-    detail: `→ ${parsed.first_value.title}`,
-  });
-  await writeValue({
-    slug: parsed.first_value.slug,
-    title: parsed.first_value.title,
-    body: parsed.first_value.body,
-    birthedAt: seed.bornAt,
-  });
-
-  await onStep({
-    step: "first desire",
-    detail: `→ ${parsed.first_desire.what}${parsed.first_desire.actionable ? " (actionable)" : ""}`,
-  });
-  await writeDesire({
-    slug: parsed.first_desire.slug,
-    what: parsed.first_desire.what,
-    why: parsed.first_desire.why,
-    actionable: parsed.first_desire.actionable,
-    heartbeatPrompt: parsed.first_desire.heartbeat_prompt,
-    bornAt: seed.bornAt,
-  });
-
-  // 4. Initial emotions + lock
-  await writeEmotions({ ...DEFAULT_EMOTIONS, updatedAt: new Date().toISOString() });
-  await saveLock(await recomputeLock());
-
-  // 5. Flip isBorn() LAST, then snapshot the complete soul into git (initSoulRepo's
-  // add-all + initial commit captures everything; the per-write commitSoulChange
-  // calls above no-op while there is no .git yet).
-  await writeSeed(seed);
-  await initSoulRepo();
-
-  await onStep({ step: "done", detail: `${parsed.name} is alive.` });
 }
 
 /** One LLM turn → parsed birth output. Separated so the caller can retry. */
@@ -167,7 +232,7 @@ async function dreamSoul(
   provider: ReturnType<typeof providerForModel>,
   model: string,
   seed: SoulSeed,
-): Promise<BirthOutput> {
+): Promise<BirthDreamResult> {
   const result = await provider.runTurn({
     model,
     systemPrompt: BIRTH_SYSTEM,
@@ -191,7 +256,24 @@ async function dreamSoul(
     .map((b) => (b as { text: string }).text)
     .join("")
     .trim();
-  return parseBirthOutput(raw);
+  try {
+    return { output: parseBirthOutput(raw), usage: result.usage };
+  } catch (err) {
+    throw new BirthInferenceError((err as Error).message, result.usage, { cause: err });
+  }
+}
+
+function isBirthDreamResult(value: BirthOutput | BirthDreamResult): value is BirthDreamResult {
+  return "output" in value && "usage" in value;
+}
+
+function usageIsEmpty(usage: ProviderUsage): boolean {
+  return (
+    usage.inputTokens === 0 &&
+    usage.outputTokens === 0 &&
+    usage.cacheReadTokens === 0 &&
+    usage.cacheWriteTokens === 0
+  );
 }
 
 function generateSeed(): SoulSeed {
