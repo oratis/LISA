@@ -293,7 +293,7 @@ export async function claimApprovedSocialDraft(
   expectedDigest: string,
   now: number = Date.now(),
 ): Promise<SocialDraft> {
-  return mutate((store) => {
+  const result = await mutate((store) => {
     const draft = requireDraft(store, id);
     if (draft.state !== "approved" || !draft.approval) {
       throw new Error(`social draft in state "${draft.state}" is not publishable`);
@@ -301,7 +301,8 @@ export async function claimApprovedSocialDraft(
     if (Date.parse(draft.approval.expiresAt) <= now) {
       draft.state = "expired";
       draft.updatedAt = new Date(now).toISOString();
-      throw new Error("social draft approval expired");
+      draft.events.push({ at: draft.updatedAt, kind: "outcome", detail: "approval-expired" });
+      return { expired: true as const };
     }
     const actual = socialDraftDigest(draft);
     if (actual !== expectedDigest || draft.approval.digest !== expectedDigest) {
@@ -312,6 +313,26 @@ export async function claimApprovedSocialDraft(
     draft.approval.claimedAt = at;
     draft.updatedAt = at;
     draft.events.push({ at, kind: "claimed", detail: actual.slice(0, 12) });
+    return { expired: false as const, draft: clone(draft) };
+  });
+  if (result.expired) throw new Error("social draft approval expired");
+  return result.draft;
+}
+
+export async function cancelSocialDraft(
+  id: string,
+  now: number = Date.now(),
+): Promise<SocialDraft> {
+  return mutate((store) => {
+    const draft = requireDraft(store, id);
+    if (["publishing", "published", "partial"].includes(draft.state)) {
+      throw new Error(`social draft in state "${draft.state}" cannot be cancelled`);
+    }
+    const at = new Date(now).toISOString();
+    draft.state = "cancelled";
+    draft.approval = undefined;
+    draft.updatedAt = at;
+    draft.events.push({ at, kind: "cancelled" });
     return clone(draft);
   });
 }

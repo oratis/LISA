@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, test } from "node:test";
 import {
   approveSocialDraft,
+  cancelSocialDraft,
   canonicalJson,
   claimApprovedSocialDraft,
   createSocialDraft,
@@ -113,5 +114,14 @@ describe("social drafts", () => {
       claimApprovedSocialDraft(draft.id, digest, 3100),
       /approval expired/,
     );
+    assert.equal((await listSocialDrafts())[0]?.state, "expired");
+  });
+
+  test("cancelling clears a pending approval", async () => {
+    const draft = await createSocialDraft(input(), 1000);
+    await requestSocialDraftApproval(draft.id, 1, 2000);
+    const cancelled = await cancelSocialDraft(draft.id, 3000);
+    assert.equal(cancelled.state, "cancelled");
+    assert.equal(cancelled.approval, undefined);
   });
 });

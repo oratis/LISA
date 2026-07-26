@@ -975,6 +975,67 @@ export const MAIN_CSS = `  :root {
     flex-shrink: 0;
   }
   .v-toggle.on { color: var(--proactive); border-color: var(--proactive-glow); background: var(--proactive-soft); }
+  .social-draft {
+    padding: 11px 0;
+    border-top: 1px solid var(--border-new);
+  }
+  .social-draft:first-child { border-top: 0; }
+  .social-draft-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .social-state {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--border-new);
+    border-radius: 999px;
+    padding: 2px 7px;
+    color: var(--fg-3);
+    background: var(--bg-3);
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .social-state.ready,
+  .social-state.approved,
+  .social-state.published { color: var(--proactive); border-color: var(--proactive-glow); background: var(--proactive-soft); }
+  .social-state.awaiting-approval,
+  .social-state.publishing { color: var(--warm); }
+  .social-state.failed,
+  .social-state.partial,
+  .social-state.expired { color: var(--err-color); }
+  .social-preview-note {
+    margin: 8px 0;
+    padding: 8px 9px;
+    border-left: 2px solid var(--warm);
+    background: var(--bg-3);
+    color: var(--fg-2);
+    font-size: 11px;
+    line-height: 1.45;
+  }
+  .social-approval-snapshot {
+    max-height: 220px;
+    overflow: auto;
+    padding: 9px;
+    border: 1px solid var(--border-new);
+    border-radius: 7px;
+    background: var(--bg-3);
+  }
+  .social-action {
+    margin: 9px 7px 0 0;
+    padding: 5px 9px;
+    border: 1px solid var(--border-new);
+    border-radius: 7px;
+    background: var(--bg-3);
+    color: var(--fg-2);
+    font: 600 11px inherit;
+    cursor: pointer;
+  }
+  .social-action.primary { color: var(--proactive); border-color: var(--proactive-glow); background: var(--proactive-soft); }
+  .social-action:disabled { opacity: 0.5; cursor: wait; }
   .v-sel {
     font-family: inherit;
     font-size: 12px;

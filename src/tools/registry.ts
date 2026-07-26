@@ -46,6 +46,7 @@ import { webSearchTool } from "./web_search.js";
 import { takoapiTool } from "./takoapi.js";
 import { writeTool } from "./write.js";
 import { kbTools, restrictKbIngestToWatchlist } from "../kb/tool.js";
+import { socialComposeTool } from "../sense/social/tool.js";
 
 export interface ToolRegistryOptions {
   includeVoice?: boolean;
@@ -102,6 +103,7 @@ export function buildToolRegistry(opts: ToolRegistryOptions = {}): ToolDefinitio
     githubTool as ToolDefinition,
     npmInfoTool as ToolDefinition,
     mcpTool as ToolDefinition,
+    socialComposeTool as ToolDefinition,
     signalAgentTool as ToolDefinition,
     agentRecapTool as ToolDefinition,
     // Personal knowledge base (docs/PLAN_KNOWLEDGE_BASE_v1.0.md):
@@ -171,6 +173,9 @@ export const AUTONOMOUS_BLOCKED_TOOL_NAMES = new Set([
   "run_checks",
   "github",
   "mcp",
+  // Social drafts must originate in an attended user conversation. Publishing
+  // is never model-visible, but unattended draft spam is still undesirable.
+  "social_compose",
   // takoapi calls spend the user's TAKO_KEY and send data to a remote agent —
   // not something an unattended/remote-origin run should do on its own.
   "takoapi",

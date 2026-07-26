@@ -83,10 +83,12 @@ import { MAIN_HTML } from "./lisa-html.js";
  * POST /api/kb/ingest and opening the saved entry; a 存入知识库 chip
  * (maybeOfferKbIngest) under chat bubbles whose message contains a bare URL;
  * window.lisaKbToast shared from the capture block; and their CSS.
+ * Then: Sense social publishing host — discovered connector status, post-draft
+ * list, immutable approval snapshot, local approve, and cancel controls.
  */
-const EXPECTED_LENGTH = 224728;
+const EXPECTED_LENGTH = 230791;
 const EXPECTED_SHA256 =
-  "95356791a521378fe62c76bb7ad393f76f8332b2d0eaf281257e2c9912c47d76";
+  "2bdb0aa1a787d29a81c28e6a1f6bc7b27803d6a14cf92fc356fe5c5bc8526aa4";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);
