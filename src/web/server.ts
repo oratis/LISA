@@ -54,8 +54,10 @@ import { stripeConfig, verifyStripeSignature, classifyStripeEvent, createCheckou
 import { ACCOUNT_HTML } from "./account-page.js";
 import { handleGateway } from "./gateway.js";
 import {
+  createTenantActivityState,
   TenantRuntimeRegistry,
   tenantRuntimeOptions,
+  type TenantActivityState,
   type TenantRuntimeLease,
 } from "./tenant-runtime.js";
 import {
@@ -211,6 +213,19 @@ export interface WebServerOptions {
   host?: string;
   /** PreToolUse/PostToolUse hook specs from loaded plugins. */
   hooks?: HookSpec[];
+}
+
+interface AdvisorCardSuggestion {
+  id: string;
+  category: SuggestionCategory;
+  urgency: Urgency;
+  text: string;
+  action: SuggestedAction | null;
+}
+
+interface AdvisorCardState {
+  suggestions: AdvisorCardSuggestion[];
+  at: string;
 }
 
 /** True for loopback peer/bind addresses (v4, v6, and v4-mapped-v6 forms). */
@@ -475,6 +490,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     chain: Promise<void>;
     prompt?: { fp: string; text: string };
     reflectionSummary?: string;
+    activity: TenantActivityState<AdvisorCardState>;
   }
   const initialReflectionSummary = await session.readLatestReflection();
   const globalChat: ChatCtx = {
@@ -483,6 +499,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     chain: Promise.resolve(),
     prompt: { fp: initialFingerprint, text: snapshot.text },
     reflectionSummary: initialReflectionSummary,
+    activity: createTenantActivityState(countUserMessages(history)),
   };
   const tenantRuntimes = new TenantRuntimeRegistry<ChatCtx>(tenantRuntimeOptions());
   const ctxForRequest = async (): Promise<TenantRuntimeLease<ChatCtx>> => {
@@ -500,6 +517,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         history: [...messages],
         chain: Promise.resolve(),
         reflectionSummary,
+        activity: createTenantActivityState(countUserMessages(messages)),
       };
     });
   };
@@ -647,19 +665,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // snapshot. The engine applies the relevance bar + 3h digest throttle +
   // dedup (urgent items bypass the throttle), so most ticks surface
   // nothing. Survivors land in the idle_message "while you were away"
-  // card — pull-friendly, not an interrupt. lastIdleMessage is assigned
-  // inside the async callback (runs after all locals init; no TDZ issue).
+  // card — pull-friendly, not an interrupt. This is operator-owned state:
+  // cloud callers cannot access /api/advisor/*, and tenant runtimes never
+  // inherit these cross-machine orchestration suggestions.
   const ADVISE_INTERVAL_MS = 5 * 60_000;
   // The latest surfaced suggestions, kept so a freshly opened island can pull
   // them (GET /api/advisor/latest) instead of waiting for the next SSE tick.
-  interface AdvisorCardSuggestion {
-    id: string;
-    category: SuggestionCategory;
-    urgency: Urgency;
-    text: string;
-    action: SuggestedAction | null;
-  }
-  let lastAdvisorSuggestions: { suggestions: AdvisorCardSuggestion[]; at: string } | null = null;
   const adviseTimer = setInterval(() => {
     void (async () => {
       try {
@@ -669,7 +680,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         if (surface.length === 0) return;
         const text = formatDigest(surface);
         const at = new Date().toISOString();
-        lastIdleMessage = { text, at };
+        globalChat.activity.lastIdleMessage = { text, at };
         broadcast({ type: "idle_message", text, at, source: "advisor" });
         pushBridge.onIdleMessage(text);
         // Structured twin of the digest: same suggestions with id / urgency /
@@ -682,7 +693,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           text: s.text,
           action: s.action ?? null,
         }));
-        lastAdvisorSuggestions = { suggestions, at };
+        globalChat.activity.lastAdvisorSuggestions = { suggestions, at };
         broadcast({ type: "advisor_suggestions", suggestions, at });
         console.error(`[advisor] surfaced ${surface.length} suggestion(s)`);
       } catch (err) {
@@ -880,22 +891,19 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // mid-conversation knows there's something to read. Cleared via
   // POST /api/island/dismiss-unread. Per design doc §6 Q2: latest wins,
   // no inbox-style accumulation.
-  let lastIdleMessage: { text: string; at: string } | null = null;
   let serverStartedAt = Date.now();
 
   // ── Idle mode ───────────────────────────────────────────────────────
-  let idleRunning = false;
   // Declared here (rather than beside the reflect scheduler below) so the dream's
   // idle handler can also defer to an in-flight reflection: PLAN §3 wants reflect
   // to run first, before the dream mutates history with its own "[while you were
   // away]" note. Without this the guard is asymmetric — the scheduler blocks
   // reflect-during-dream, but a dream could still start mid-reflect.
-  let reflecting = false;
   if (opts.idleMinutes && opts.idleMinutes > 0) {
     const watcher = getIdleWatcher(opts.idleMinutes * 60_000);
     watcher.on("idle", async () => {
-      if (idleRunning || reflecting) return;
-      idleRunning = true;
+      if (globalChat.activity.idleRunning || globalChat.activity.reflecting) return;
+      globalChat.activity.idleRunning = true;
       const startedAt = new Date().toISOString();
       console.error(
         `[idle] firing after ${Math.round(watcher.idleFor() / 60_000)}m of inactivity`,
@@ -946,7 +954,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
             role: "assistant",
             content: [{ type: "text", text: `[while you were away]\n${result.text}` }],
           });
-          lastIdleMessage = { text: result.text, at: startedAt };
+          globalChat.activity.lastIdleMessage = { text: result.text, at: startedAt };
           broadcast({ type: "idle_message", text: result.text, at: startedAt });
           pushBridge.onIdleMessage(result.text);
         }
@@ -955,7 +963,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         console.error(`[idle] error: ${msg}`);
         broadcast({ type: "idle_error", message: msg });
       } finally {
-        idleRunning = false;
+        globalChat.activity.idleRunning = false;
       }
     });
     watcher.start();
@@ -986,20 +994,16 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // Gates intra-session desire focus: unlike reflectClock.idleFor() — which reads
   // "fresh" right after a launchd restart — this stays 0 across a restart, so a
   // stale resumed conversation can't pin a focus. Stamped in the POST /chat path.
-  let lastUserMessageAt = 0;
-  // Seed from the resumed history so we never re-reflect prior sessions on the
-  // first quiet window — only conversation added while this server is live.
-  let lastReflectedUserCount = countUserMessages(history);
   const reflectTimer = setInterval(() => {
     const currentUserCount = countUserMessages(history);
     const decision = decideReflect({
-      newUserMessages: currentUserCount - lastReflectedUserCount,
+      newUserMessages: currentUserCount - globalChat.activity.lastReflectedUserCount,
       idleMs: reflectClock.idleFor(),
       debounceMs: reflectDebounceMs,
-      inFlight: reflecting || idleRunning,
+      inFlight: globalChat.activity.reflecting || globalChat.activity.idleRunning,
     });
     if (!decision.shouldReflect) return;
-    reflecting = true;
+    globalChat.activity.reflecting = true;
     const snapshot = history.slice();
     const snapshotUserCount = currentUserCount;
     void (async () => {
@@ -1011,7 +1015,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         });
         // Advance the marker only on success, so a failed reflect retries next
         // tick instead of silently dropping the conversation.
-        lastReflectedUserCount = snapshotUserCount;
+        globalChat.activity.lastReflectedUserCount = snapshotUserCount;
         await session.appendReflection(r.summary);
         globalChat.reflectionSummary = r.summary;
         broadcast({
@@ -1024,7 +1028,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       } catch (err) {
         console.error(`[reflect] failed: ${(err as Error).message}`);
       } finally {
-        reflecting = false;
+        globalChat.activity.reflecting = false;
       }
     })();
   }, REFLECT_CHECK_INTERVAL_MS);
@@ -1963,40 +1967,37 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // Light status endpoint for the island. Polled every 5–30s as a
     // fallback when SSE has been quiet.
     if (req.method === "GET" && url === "/api/island/ping") {
-      let currentDesire: string | null = null;
+      const islandRuntime = await ctxForRequest();
       try {
-        // Closed desires are finished — never surface one as her current/focused.
-        const desires = (await listDesires()).filter((d) => !d.closed);
-        // If the conversation is live and clearly about one of her desires,
-        // surface THAT (intra-session focus — tracks the turn-by-turn topic).
-        // Otherwise fall back to the most recently ACTIVE desire (authored or
-        // pursued), not whichever fs.readdir listed first. See PLAN_DESIRE_EVOLUTION.
-        // Freshness is measured from the last real user message (lastUserMessageAt,
-        // reset to 0 on restart) — NOT the process-wide idle clock, which starts
-        // "fresh" after a launchd restart and would pin focus onto a stale
-        // resumed conversation for up to FOCUS_FRESHNESS_MS.
-        const focused =
-          lastUserMessageAt > 0 &&
-          Date.now() - lastUserMessageAt < FOCUS_FRESHNESS_MS
-            ? pickFocusedDesire(desires, recentUserText(history))
-            : null;
-        // Only compute activity (an fs.stat per desire) when we actually fall
-        // back to the recency pick — `??` short-circuits it away on a focus hit.
-        currentDesire =
-          (focused ?? pickCurrentDesire(desires, await desireActivity(desires)))?.what ?? null;
-      } catch {
-        // listDesires can fail before soul is born; that's fine.
+        const islandChat = islandRuntime.value;
+        let currentDesire: string | null = null;
+        try {
+          // Closed desires are finished — never surface one as her current/focused.
+          const desires = (await listDesires()).filter((d) => !d.closed);
+          const focused =
+            islandChat.activity.lastUserMessageAt > 0 &&
+            Date.now() - islandChat.activity.lastUserMessageAt < FOCUS_FRESHNESS_MS
+              ? pickFocusedDesire(desires, recentUserText(islandChat.history))
+              : null;
+          currentDesire =
+            (focused ?? pickCurrentDesire(desires, await desireActivity(desires)))?.what ?? null;
+        } catch {
+          // listDesires can fail before soul is born; that's fine.
+        }
+        const unread = islandChat.activity.lastIdleMessage;
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({
+          online: true,
+          mood: moodBus.current(),
+          has_unread_idle_message: unread !== null,
+          last_idle_message_at: unread?.at ?? null,
+          last_idle_message_text: unread?.text ?? null,
+          current_desire: currentDesire,
+          uptime_sec: Math.round((Date.now() - serverStartedAt) / 1000),
+        }));
+      } finally {
+        islandRuntime.release();
       }
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({
-        online: true,
-        mood: moodBus.current(),
-        has_unread_idle_message: lastIdleMessage !== null,
-        last_idle_message_at: lastIdleMessage?.at ?? null,
-        last_idle_message_text: lastIdleMessage?.text ?? null,
-        current_desire: currentDesire,
-        uptime_sec: Math.round((Date.now() - serverStartedAt) / 1000),
-      }));
       return;
     }
 
@@ -2212,16 +2213,33 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     }
 
     if (req.method === "POST" && url === "/api/island/dismiss-unread") {
-      lastIdleMessage = null;
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ ok: true }));
+      const runtime = await ctxForRequest();
+      try {
+        runtime.value.activity.lastIdleMessage = null;
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true }));
+      } finally {
+        runtime.release();
+      }
       return;
     }
 
     // Latest advisor suggestions, for a freshly opened island.
     if (req.method === "GET" && url === "/api/advisor/latest") {
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify(lastAdvisorSuggestions ?? { suggestions: [], at: null }));
+      const runtime = await ctxForRequest();
+      try {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify(
+            runtime.value.activity.lastAdvisorSuggestions ?? {
+              suggestions: [],
+              at: null,
+            },
+          ),
+        );
+      } finally {
+        runtime.release();
+      }
       return;
     }
 
@@ -2251,14 +2269,20 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end((err as Error).message);
         return;
       }
-      if (lastAdvisorSuggestions) {
-        lastAdvisorSuggestions = {
-          ...lastAdvisorSuggestions,
-          suggestions: lastAdvisorSuggestions.suggestions.filter((s) => s.id !== payload.id),
-        };
+      const runtime = await ctxForRequest();
+      try {
+        const cached = runtime.value.activity.lastAdvisorSuggestions;
+        if (cached) {
+          runtime.value.activity.lastAdvisorSuggestions = {
+            ...cached,
+            suggestions: cached.suggestions.filter((s) => s.id !== payload.id),
+          };
+        }
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true }));
+      } finally {
+        runtime.release();
       }
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ ok: true }));
       return;
     }
 
@@ -3550,7 +3574,7 @@ self.addEventListener('fetch', (event) => {
       const chat = runtimeLease.value;
       // User just talked — reset the idle watcher + stamp focus freshness.
       try { getIdleWatcher(60 * 60_000).tick(); } catch {}
-      lastUserMessageAt = Date.now();
+      chat.activity.lastUserMessageAt = Date.now();
       res.writeHead(200, {
         "content-type": "text/event-stream",
         "cache-control": "no-cache",
