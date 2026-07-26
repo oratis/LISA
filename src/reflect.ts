@@ -150,6 +150,15 @@ export function detectUnderReflection(opts: {
   return opts.historyLength >= UNDERREFLECT_MIN_HISTORY && opts.operationCount === 0;
 }
 
+export function addProviderUsage(a: ProviderUsage, b: ProviderUsage): ProviderUsage {
+  return {
+    inputTokens: a.inputTokens + b.inputTokens,
+    outputTokens: a.outputTokens + b.outputTokens,
+    cacheReadTokens: a.cacheReadTokens + b.cacheReadTokens,
+    cacheWriteTokens: a.cacheWriteTokens + b.cacheWriteTokens,
+  };
+}
+
 export async function reflectOnSession(opts: {
   history: StoredMessage[];
   sessionId: string;
@@ -186,8 +195,12 @@ async function reflectOnSessionInner(opts: {
   const provider = providerForModel(model);
   const startedAt = new Date().toISOString();
   const t0 = Date.now();
-  let inTok = 0;
-  let outTok = 0;
+  let totalUsage: ProviderUsage = {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+  };
 
   const runReflector = async (systemPrompt: string): Promise<string> => {
     const result = await provider.runTurn({
@@ -207,8 +220,7 @@ async function reflectOnSessionInner(opts: {
       ],
       maxTokens: 2_000,
     });
-    inTok += result.usage.inputTokens;
-    outTok += result.usage.outputTokens;
+    totalUsage = addProviderUsage(totalUsage, result.usage);
     return result.content
       .filter((b) => b.type === "text")
       .map((b) => (b as { text: string }).text)
@@ -250,8 +262,8 @@ async function reflectOnSessionInner(opts: {
         kind: "reflect",
         startedAt,
         durationMs: Date.now() - t0,
-        inputTokens: inTok,
-        outputTokens: outTok,
+        inputTokens: totalUsage.inputTokens,
+        outputTokens: totalUsage.outputTokens,
         outcome: "error",
         note: `malformed: ${firstError}`.slice(0, 200),
       });
@@ -261,7 +273,7 @@ async function reflectOnSessionInner(opts: {
         skipped: [`raw: ${raw.slice(0, 200)}`],
         raw,
         malformed: true,
-        usage: { inputTokens: inTok, outputTokens: outTok, cacheReadTokens: 0, cacheWriteTokens: 0 },
+        usage: totalUsage,
       };
     }
   }
@@ -398,7 +410,10 @@ async function reflectOnSessionInner(opts: {
   // raw entries above the threshold.
   try {
     const consolidated = await maybeConsolidateOneDesireProgress(model);
-    if (consolidated) applied.push(`progress_consolidated:${consolidated}`);
+    if (consolidated) {
+      totalUsage = addProviderUsage(totalUsage, consolidated.usage);
+      applied.push(`progress_consolidated:${consolidated.slug}`);
+    }
   } catch (err) {
     skipped.push(`progress_consolidation — ${(err as Error).message}`);
   }
@@ -429,8 +444,8 @@ async function reflectOnSessionInner(opts: {
     kind: "reflect",
     startedAt,
     durationMs: Date.now() - t0,
-    inputTokens: inTok,
-    outputTokens: outTok,
+    inputTokens: totalUsage.inputTokens,
+    outputTokens: totalUsage.outputTokens,
     outcome: opsApplied > 0 ? "done" : "no-update",
     note: underReflected ? "underreflected" : undefined,
   });
@@ -441,7 +456,7 @@ async function reflectOnSessionInner(opts: {
     skipped,
     raw,
     underReflected,
-    usage: { inputTokens: inTok, outputTokens: outTok, cacheReadTokens: 0, cacheWriteTokens: 0 },
+    usage: totalUsage,
   };
 }
 
@@ -456,7 +471,9 @@ async function reflectOnSessionInner(opts: {
 const PROGRESS_CONSOLIDATE_THRESHOLD = 8;
 const PROGRESS_KEEP_LATEST = 4;
 
-async function maybeConsolidateOneDesireProgress(model: string): Promise<string | null> {
+async function maybeConsolidateOneDesireProgress(
+  model: string,
+): Promise<{ slug: string; usage: ProviderUsage } | null> {
   const { listDesires, parseDesireProgress, consolidateDesireProgress } = await import("./soul/store.js");
   const { withSoulCaller } = await import("./soul/git.js");
   const desires = (await listDesires()).filter((d) => d.actionable);
@@ -501,7 +518,7 @@ async function maybeConsolidateOneDesireProgress(model: string): Promise<string 
       keepLatest,
     });
   });
-  return target.slug;
+  return { slug: target.slug, usage: result.usage };
 }
 
 function renderTranscript(history: StoredMessage[]): string {

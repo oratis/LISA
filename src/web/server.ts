@@ -39,11 +39,7 @@ import { ISLAND_HTML } from "./island.js";
 import { LOGIN_HTML } from "./login.js";
 import { recordUsage, summarizeUsage, setAnomalySink } from "../billing/meter.js";
 import { PRICES_VERSION, tokensAffordable } from "../billing/prices.js";
-import {
-  debitTurn,
-  quotaStatus,
-  BillingStateError,
-} from "../billing/quota.js";
+import { quotaStatus, BillingStateError } from "../billing/quota.js";
 import { admitInference, type InferencePermit } from "../billing/admission.js";
 import {
   verifyAppleJWS,
@@ -3562,17 +3558,17 @@ self.addEventListener('fetch', (event) => {
           // per-uid subtree for signed-in cloud accounts. Mac edition (BYO key)
           // is not metered. Never throws.
           if (cloud) {
-            // Price + debit are INDEPENDENT of the audit-log append (#264):
-            // recordUsage always returns the priced record even if usage.jsonl
-            // couldn't be written, so a full disk can't ship a free turn.
-            const rec = await recordUsage("chat", opts.model, {
+            const usage = {
               inputTokens: result.inputTokens,
               outputTokens: result.outputTokens,
               cacheReadTokens: result.cacheReadTokens,
               cacheWriteTokens: result.cacheWriteTokens,
-            });
-            // Debit order (B4): free window first, then paid balance.
-            if (quotaAcct) await debitTurn(quotaAcct, opts.model, rec.microUSD);
+            };
+            // Signed-in account turns settle through the same permit that
+            // admitted them. The legacy shared-token cloud demo has no account
+            // balance, so it remains operator-funded but still audited.
+            if (inferencePermit) await inferencePermit.settle("chat", usage);
+            else await recordUsage("chat", opts.model, usage);
           }
           if (!anyText && !anyTool && !errorSent) send({ type: "empty" });
           send({ type: "done" });
@@ -3601,7 +3597,32 @@ self.addEventListener('fetch', (event) => {
     }
 
     if (req.method === "POST" && url === "/reflect") {
-      const runtime = await ctxForRequest();
+      let inferencePermit: InferencePermit | null = null;
+      try {
+        const acct = cloud && accountUid ? await getAccount(accountUid) : null;
+        if (acct) {
+          const admission = await admitInference(acct, opts.model);
+          if (!admission.ok) {
+            res.writeHead(admission.status, { "content-type": "application/json" });
+            res.end(JSON.stringify(admission.body));
+            return;
+          }
+          inferencePermit = admission.permit;
+        }
+      } catch (err) {
+        if (!(err instanceof BillingStateError || err instanceof AccountStoreError)) throw err;
+        console.error(`[billing] reflection admission unavailable: ${err.message}`);
+        res.writeHead(503, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "billing_state_unavailable" }));
+        return;
+      }
+      let runtime: TenantRuntimeLease<ChatCtx>;
+      try {
+        runtime = await ctxForRequest();
+      } catch (err) {
+        await inferencePermit?.release();
+        throw err;
+      }
       const chat = runtime.value;
       try {
         const r = await reflectOnSession({
@@ -3609,12 +3630,22 @@ self.addEventListener('fetch', (event) => {
           sessionId: chat.session.id,
           model: opts.model,
         });
+        if (inferencePermit && r.usage) {
+          await inferencePermit.settle("reflect", r.usage);
+        }
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify(r));
       } catch (err) {
-        res.writeHead(500);
-        res.end((err as Error).message);
+        if (err instanceof BillingStateError || err instanceof AccountStoreError) {
+          console.error(`[billing] reflection settlement unavailable: ${err.message}`);
+          res.writeHead(503, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "billing_state_unavailable" }));
+        } else {
+          res.writeHead(500);
+          res.end((err as Error).message);
+        }
       } finally {
+        await inferencePermit?.release();
         runtime.release();
       }
       return;

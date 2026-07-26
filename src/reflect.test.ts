@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   parseReflectionPayload,
   detectUnderReflection,
+  addProviderUsage,
   UNDERREFLECT_MIN_HISTORY,
 } from "./reflect.js";
 
@@ -70,4 +71,14 @@ describe("detectUnderReflection", () => {
       false,
     );
   });
+});
+
+test("addProviderUsage preserves every billable token class", () => {
+  assert.deepEqual(
+    addProviderUsage(
+      { inputTokens: 1, outputTokens: 2, cacheReadTokens: 3, cacheWriteTokens: 4 },
+      { inputTokens: 10, outputTokens: 20, cacheReadTokens: 30, cacheWriteTokens: 40 },
+    ),
+    { inputTokens: 11, outputTokens: 22, cacheReadTokens: 33, cacheWriteTokens: 44 },
+  );
 });
