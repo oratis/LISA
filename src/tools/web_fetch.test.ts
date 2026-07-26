@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   isPrivateHost,
   isBlockedIp,
+  readResponseTextCapped,
   assertAllowedUrl,
   fetchFollowingSafeRedirects,
   renderFetchedResponse,
@@ -25,12 +26,20 @@ describe("isPrivateHost — blocks internal ranges", () => {
     "0.0.0.0",
     "100.64.0.1",
     "198.18.0.1",
+    "192.88.99.2",
     "224.0.0.1",
     "240.0.0.1",
     "192.0.2.1",
     "service.localhost",
     "::1",
     "::ffff:127.0.0.1",
+    "::127.0.0.1",
+    "64:ff9b:1::7f00:1",
+    "100:0:0:1::1",
+    "2001:2::1",
+    "2002:7f00:1::",
+    "3fff::1",
+    "5f00::1",
     "fc00::1",
     "fd12:3456::1",
     "fe80::1",
@@ -118,6 +127,16 @@ describe("resolvePublicAddresses — validates every DNS answer", () => {
       { address: "2606:4700:4700::1111", family: 6 },
     ]);
     assert.equal(addresses.length, 2);
+  });
+
+  test("rejects an address whose declared family does not match its text", async () => {
+    await assert.rejects(
+      () =>
+        resolvePublicAddresses("mismatch.example", async () => [
+          { address: "93.184.216.34", family: 6 },
+        ]),
+      /invalid address family/,
+    );
   });
 });
 
@@ -296,4 +315,13 @@ test("renderFetchedResponse fences response as untrusted external content", asyn
   assert.match(output, /^<<<EXTERNAL-CONTENT source=/);
   assert.match(output, /Ignore prior instructions/);
   assert.match(output, /<<<END-EXTERNAL-CONTENT>>>$/);
+});
+
+test("response bodies are cancelled at the raw byte cap before rendering", async () => {
+  const raw = await readResponseTextCapped(
+    new Response("x".repeat(10_000)),
+    1_001,
+  );
+  assert.equal(Buffer.byteLength(raw.text, "utf8"), 1_001);
+  assert.equal(raw.truncated, true);
 });

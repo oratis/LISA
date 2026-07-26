@@ -107,6 +107,9 @@ export async function resolvePublicAddresses(
     : (await lookup(host, { all: true, verbatim: true })) as ResolvedAddress[];
   if (addresses.length === 0) throw new Error(`DNS returned no addresses for ${host}`);
   for (const entry of addresses) {
+    if (net.isIP(entry.address) !== entry.family) {
+      throw new Error(`DNS returned an invalid address family for ${host}`);
+    }
     if (isBlockedIp(entry.address)) {
       throw new Error(`refusing DNS result for ${host}: blocked address ${entry.address}`);
     }
@@ -205,6 +208,7 @@ const BLOCKED_V4: Array<[string, number]> = [
   ["172.16.0.0", 12],
   ["192.0.0.0", 24],
   ["192.0.2.0", 24],
+  ["192.88.99.0", 24],
   ["192.168.0.0", 16],
   ["198.18.0.0", 15],
   ["198.51.100.0", 24],
@@ -246,10 +250,18 @@ function inV6Cidr(value: bigint, base: bigint, prefix: number): boolean {
 const BLOCKED_V6: Array<[string, number]> = [
   ["::", 128],
   ["::1", 128],
+  ["::", 96],
   ["::ffff:0:0", 96],
   ["64:ff9b::", 96],
+  ["64:ff9b:1::", 48],
   ["100::", 64],
+  ["100:0:0:1::", 64],
+  ["2001::", 32],
+  ["2001:2::", 48],
   ["2001:db8::", 32],
+  ["2002::", 16],
+  ["3fff::", 20],
+  ["5f00::", 16],
   ["fc00::", 7],
   ["fe80::", 10],
   ["ff00::", 8],
@@ -351,11 +363,16 @@ export async function renderFetchedResponse(
   maxChars: number,
 ): Promise<string> {
   const contentType = response.headers.get("content-type") ?? "";
-  let body = await response.text();
+  // `maxChars` bounds output, but HTML stripping can shrink a response
+  // dramatically. Bound the raw network body separately so a huge page cannot
+  // be buffered in full before the output limit is applied.
+  const rawByteLimit = Math.max(64_000, Math.min(2_000_000, maxChars * 8));
+  const raw = await readResponseTextCapped(response, rawByteLimit);
+  let body = raw.text;
   if (format !== "raw" && /html|xml/i.test(contentType)) {
     body = htmlToText(body);
   }
-  if (body.length > maxChars) {
+  if (body.length > maxChars || raw.truncated) {
     body = body.slice(0, maxChars) + `\n\n[truncated at ${maxChars} chars]`;
   }
   return (
@@ -363,6 +380,45 @@ export async function renderFetchedResponse(
     `HTTP ${response.status} ${response.statusText}\ncontent-type: ${contentType}\n\n${body}\n` +
     `<<<END-EXTERNAL-CONTENT>>>`
   );
+}
+
+export async function readResponseTextCapped(
+  response: Response,
+  maxBytes: number,
+): Promise<{ text: string; truncated: boolean }> {
+  if (!response.body) return { text: "", truncated: false };
+  const limit = Math.max(0, Math.floor(maxBytes));
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let bytes = 0;
+  let text = "";
+  let truncated = false;
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      const remaining = limit - bytes;
+      if (remaining <= 0) {
+        truncated = true;
+        await reader.cancel("response body limit reached").catch(() => {});
+        break;
+      }
+      const accepted = chunk.value.byteLength > remaining
+        ? chunk.value.subarray(0, remaining)
+        : chunk.value;
+      bytes += accepted.byteLength;
+      text += decoder.decode(accepted, { stream: true });
+      if (accepted.byteLength < chunk.value.byteLength) {
+        truncated = true;
+        await reader.cancel("response body limit reached").catch(() => {});
+        break;
+      }
+    }
+  } finally {
+    text += decoder.decode();
+    reader.releaseLock();
+  }
+  return { text, truncated };
 }
 
 export function htmlToText(html: string): string {
