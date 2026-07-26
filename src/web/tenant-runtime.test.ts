@@ -1,7 +1,11 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 
-const { TenantRuntimeRegistry, tenantRuntimeOptions } = await import("./tenant-runtime.js");
+const {
+  TenantRuntimeRegistry,
+  createTenantActivityState,
+  tenantRuntimeOptions,
+} = await import("./tenant-runtime.js");
 
 describe("TenantRuntimeRegistry", () => {
   test("creates one runtime for overlapping requests to the same tenant", async () => {
@@ -120,5 +124,21 @@ describe("tenantRuntimeOptions", () => {
       }),
       { ttlMs: 5 * 60_000, maxEntries: 20 },
     );
+  });
+});
+
+test("tenant activity state is fresh and isolated per runtime", () => {
+  const a = createTenantActivityState<{ ids: string[] }>(3);
+  const b = createTenantActivityState<{ ids: string[] }>(7);
+  a.lastUserMessageAt = 123;
+  a.lastIdleMessage = { text: "private-a", at: "now" };
+  a.lastAdvisorSuggestions = { ids: ["a"] };
+  assert.deepEqual(b, {
+    lastUserMessageAt: 0,
+    lastIdleMessage: null,
+    lastAdvisorSuggestions: null,
+    idleRunning: false,
+    reflecting: false,
+    lastReflectedUserCount: 7,
   });
 });

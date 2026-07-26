@@ -35,6 +35,28 @@ export interface TenantRuntimeStats {
   evictions: number;
 }
 
+export interface TenantActivityState<TAdvisor = unknown> {
+  lastUserMessageAt: number;
+  lastIdleMessage: { text: string; at: string } | null;
+  lastAdvisorSuggestions: TAdvisor | null;
+  idleRunning: boolean;
+  reflecting: boolean;
+  lastReflectedUserCount: number;
+}
+
+export function createTenantActivityState<TAdvisor = unknown>(
+  lastReflectedUserCount: number = 0,
+): TenantActivityState<TAdvisor> {
+  return {
+    lastUserMessageAt: 0,
+    lastIdleMessage: null,
+    lastAdvisorSuggestions: null,
+    idleRunning: false,
+    reflecting: false,
+    lastReflectedUserCount,
+  };
+}
+
 export function tenantRuntimeOptions(
   env: Record<string, string | undefined> = process.env,
 ): TenantRuntimeOptions {
