@@ -172,6 +172,11 @@ import { TenantEventBus, sameTenant } from "./event-bus.js";
 import { qrSvg } from "./qr-svg.js";
 import { resolveClientIp } from "./client-ip.js";
 import {
+  estimateCurrentWebInputTokens,
+  selectWebModelContext,
+  webContextBudgetTokens,
+} from "./context-budget.js";
+import {
   configuredPublicOrigin,
   requireCloudPublicOrigin,
   verificationUrl,
@@ -470,12 +475,15 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     history: StoredMessage[];
     chain: Promise<void>;
     prompt?: { fp: string; text: string };
+    reflectionSummary?: string;
   }
+  const initialReflectionSummary = await session.readLatestReflection();
   const globalChat: ChatCtx = {
     session,
     history,
     chain: Promise.resolve(),
     prompt: { fp: initialFingerprint, text: snapshot.text },
+    reflectionSummary: initialReflectionSummary,
   };
   const tenantRuntimes = new TenantRuntimeRegistry<ChatCtx>(tenantRuntimeOptions());
   const ctxForRequest = async (): Promise<TenantRuntimeLease<ChatCtx>> => {
@@ -484,8 +492,16 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     return tenantRuntimes.acquire(scoped, async () => {
       const s = await resumeOrCreateWebSession(opts.model);
       await writeActiveWebSession(s.id);
-      const { messages } = await s.readMessagePage(0, 9999);
-      return { session: s, history: [...messages], chain: Promise.resolve() };
+      const [{ messages }, reflectionSummary] = await Promise.all([
+        s.readMessagePage(0, 9999),
+        s.readLatestReflection(),
+      ]);
+      return {
+        session: s,
+        history: [...messages],
+        chain: Promise.resolve(),
+        reflectionSummary,
+      };
     });
   };
   // Per-tenant prompt cache now shares the runtime's TTL/LRU lifecycle instead
@@ -998,6 +1014,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         // tick instead of silently dropping the conversation.
         lastReflectedUserCount = snapshotUserCount;
         await session.appendReflection(r.summary);
+        globalChat.reflectionSummary = r.summary;
         broadcast({
           type: "reflect_done",
           summary: r.summary,
@@ -3575,9 +3592,24 @@ self.addEventListener('fetch', (event) => {
           // Use the freshest cached prompt for this chat. If soul / skills /
           // memory changed since the previous chat, rebuildPrompt() picks it up.
           const fresh = await rebuildPrompt();
+          const historyBudget = Math.max(
+            0,
+            webContextBudgetTokens() - estimateCurrentWebInputTokens(message, files),
+          );
+          const modelContext = selectWebModelContext({
+            history: chat.history,
+            budgetTokens: historyBudget,
+            latestReflection: chat.reflectionSummary,
+          });
+          if (modelContext.omittedMessages > 0) {
+            console.error(
+              `[context] omitted ${modelContext.omittedMessages} older message(s); ` +
+                `sending ~${modelContext.estimatedTokens} history tokens`,
+            );
+          }
           const result = await runAgent({
             provider: getProvider(),
-            systemPrompt: fresh.text,
+            systemPrompt: fresh.text + modelContext.systemSuffix,
             tools: runtimeTools,
             toolCtx: {
               cwd: process.cwd(),
@@ -3585,7 +3617,7 @@ self.addEventListener('fetch', (event) => {
               signal: AbortSignal.any([abort.signal, turnAbort.signal]),
               log: () => {},
             },
-            history: chat.history,
+            history: modelContext.history,
             userMessage: message,
             userFiles: files,
             model: opts.model,
@@ -3659,11 +3691,19 @@ self.addEventListener('fetch', (event) => {
             onMessagePersist: (m) => chat.session.appendMessage(m),
             hotReload: {
               initialFingerprint: fresh.fingerprint,
-              rebuild: rebuildPrompt,
+              rebuild: async () => {
+                const next = await rebuildPrompt();
+                return {
+                  text: next.text + modelContext.systemSuffix,
+                  fingerprint: next.fingerprint,
+                };
+              },
             },
           });
-          chat.history.length = 0;
-          chat.history.push(...result.history);
+          // The model saw only a bounded suffix, but the canonical runtime and
+          // session transcript keep the complete history. Append just the new
+          // user/assistant/tool messages produced by this run.
+          chat.history.push(...result.history.slice(modelContext.history.length));
           // Metering (B3): price the turn into the ACTIVE home's ledger — the
           // per-uid subtree for signed-in cloud accounts. Mac edition (BYO key)
           // is not metered. Never throws.
@@ -3740,6 +3780,7 @@ self.addEventListener('fetch', (event) => {
           sessionId: chat.session.id,
           model: opts.model,
         });
+        chat.reflectionSummary = r.summary;
         if (inferencePermit && r.usage) {
           await inferencePermit.settle("reflect", r.usage);
         }
