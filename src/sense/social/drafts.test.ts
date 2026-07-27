@@ -166,4 +166,23 @@ describe("social drafts", () => {
     ], 5000);
     assert.equal(finished.state, "partial");
   });
+
+  test("terminal-history compaction never evicts a publishing draft", async () => {
+    const active = await createSocialDraft(input(), 1000);
+    const { digest } = await requestSocialDraftApproval(active.id, 1, 2000);
+    await approveSocialDraft(active.id, digest, 3000);
+    await claimApprovedSocialDraft(active.id, digest, 4000);
+
+    for (let index = 0; index < 205; index++) {
+      const draft = await createSocialDraft(input(), 5000 + index * 2);
+      await cancelSocialDraft(draft.id, 5001 + index * 2);
+    }
+
+    const drafts = await listSocialDrafts();
+    assert.equal(drafts.length, 200);
+    assert.equal(
+      drafts.find((draft) => draft.id === active.id)?.state,
+      "publishing",
+    );
+  });
 });
