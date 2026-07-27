@@ -130,6 +130,7 @@ export async function publishApprovedSocialDraft(
           target,
           content: draft.canonical,
           variant,
+          createdAt: draft.approval?.approvedAt ?? draft.updatedAt,
           idempotencyKey: crypto
             .createHash("sha256")
             .update(`${draft.id}\0${draft.revision}\0${targetKey}`)

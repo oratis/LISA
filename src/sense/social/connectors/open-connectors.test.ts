@@ -40,9 +40,10 @@ test("Bluesky links with an app password, stores only session tokens, and publis
         refreshJwt: "refresh-secret",
       }), { status: 200 });
     }
-    if (url.endsWith("createRecord")) {
+    if (url.endsWith("putRecord")) {
+      const payload = JSON.parse(String(init?.body)) as { rkey: string };
       return new Response(JSON.stringify({
-        uri: "at://did:plc:alice/app.bsky.feed.post/abc",
+        uri: `at://did:plc:alice/app.bsky.feed.post/${payload.rkey}`,
         cid: "cid",
       }), { status: 200 });
     }
@@ -59,7 +60,7 @@ test("Bluesky links with an app password, stores only session tokens, and publis
     "utf8",
   );
   assert.doesNotMatch(stored, /app-password-must-not-persist/);
-  const result = await publishBluesky({
+  const input = {
     accountId: account.id,
     target: {
       connectorId: "bluesky-official",
@@ -68,13 +69,22 @@ test("Bluesky links with an app password, stores only session tokens, and publis
     },
     content: { text: "hello", link: "https://example.com", media: [] },
     idempotencyKey: "key",
-  }, fakeFetch);
-  assert.equal(result.ok, true);
-  const body = JSON.parse(String(calls.at(-1)?.init?.body)) as {
-    record: { text: string; facets: unknown[] };
+    createdAt: "2026-07-27T06:00:00.000Z",
   };
+  const first = await publishBluesky(input, fakeFetch);
+  const second = await publishBluesky(input, fakeFetch);
+  assert.deepEqual(second, first);
+  const publishCalls = calls.filter((call) => call.url.endsWith("putRecord"));
+  assert.equal(publishCalls.length, 2);
+  assert.equal(publishCalls[0]?.init?.body, publishCalls[1]?.init?.body);
+  const body = JSON.parse(String(publishCalls[0]?.init?.body)) as {
+    rkey: string;
+    record: { text: string; facets: unknown[]; createdAt: string };
+  };
+  assert.match(body.rkey, /^lisa-[a-f0-9]{64}$/);
   assert.match(body.record.text, /https:\/\/example\.com/);
   assert.equal(body.record.facets.length, 1);
+  assert.equal(body.record.createdAt, input.createdAt);
 });
 
 test("Mastodon verifies a user token and posts with visibility and idempotency", async () => {
@@ -112,6 +122,7 @@ test("Mastodon verifies a user token and posts with visibility and idempotency",
     },
     content: { text: "hello", media: [] },
     idempotencyKey: "idem",
+    createdAt: "2026-07-27T06:00:00.000Z",
   }, fakeFetch);
   assert.equal(result.url, "https://social.example/@alice/99");
   const call = calls.at(-1)!;
