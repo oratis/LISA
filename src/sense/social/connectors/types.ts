@@ -6,6 +6,8 @@ export interface ConnectorPublishInput {
   content: SocialDraftContent;
   variant?: SocialPlatformVariant;
   idempotencyKey: string;
+  /** Stable host approval time used for deterministic platform records. */
+  createdAt: string;
 }
 
 export interface ConnectorPublishResult {

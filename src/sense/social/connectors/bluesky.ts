@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { loadSocialMedia } from "../media.js";
 import type { SocialDraftContent, SocialMediaRef, SocialPlatformVariant, SocialTarget } from "../types.js";
 import {
@@ -181,6 +182,22 @@ function linkFacet(text: string, link?: string): unknown[] | undefined {
   }];
 }
 
+function deterministicRecordKey(idempotencyKey: string): string {
+  if (!idempotencyKey) throw new Error("Bluesky publish needs an idempotency key");
+  return `lisa-${crypto
+    .createHash("sha256")
+    .update(idempotencyKey)
+    .digest("hex")}`;
+}
+
+function stableCreatedAt(value: string): string {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) {
+    throw new Error("Bluesky publish needs a valid approval timestamp");
+  }
+  return new Date(timestamp).toISOString();
+}
+
 export async function publishBluesky(
   input: ConnectorPublishInput,
   fetchImpl: typeof fetch = fetch,
@@ -204,7 +221,7 @@ export async function publishBluesky(
   const record: Record<string, unknown> = {
     $type: "app.bsky.feed.post",
     text,
-    createdAt: new Date().toISOString(),
+    createdAt: stableCreatedAt(input.createdAt),
     ...(linkFacet(text, link) ? { facets: linkFacet(text, link) } : {}),
     ...(images.length
       ? { embed: { $type: "app.bsky.embed.images", images } }
@@ -212,15 +229,17 @@ export async function publishBluesky(
         ? { embed: { $type: "app.bsky.embed.video", video } }
         : {}),
   };
+  const rkey = deterministicRecordKey(input.idempotencyKey);
   const result = await authedFetch(
     account,
-    `${account.service}/xrpc/com.atproto.repo.createRecord`,
+    `${account.service}/xrpc/com.atproto.repo.putRecord`,
     {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         repo: account.id,
         collection: "app.bsky.feed.post",
+        rkey,
         record,
       }),
     },
@@ -229,7 +248,6 @@ export async function publishBluesky(
   const body = await responseJson(result.response);
   const uri = String(body.uri ?? "");
   if (!uri) throw new Error("Bluesky did not return a post URI");
-  const rkey = uri.split("/").pop() ?? "";
   return {
     ok: true,
     platformPostId: uri,

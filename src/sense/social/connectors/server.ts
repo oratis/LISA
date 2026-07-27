@@ -68,8 +68,15 @@ function tools(): Tool[] {
           content: { type: "object" },
           variant: { type: "object" },
           idempotencyKey: { type: "string" },
+          createdAt: { type: "string" },
         },
-        required: ["accountId", "target", "content", "idempotencyKey"],
+        required: [
+          "accountId",
+          "target",
+          "content",
+          "idempotencyKey",
+          "createdAt",
+        ],
       },
       annotations: {
         readOnlyHint: false,
