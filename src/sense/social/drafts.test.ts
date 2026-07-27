@@ -137,4 +137,33 @@ describe("social drafts", () => {
     assert.equal(cancelled.state, "cancelled");
     assert.equal(cancelled.approval, undefined);
   });
+
+  test("mixed target receipts finish as partial", async () => {
+    const raw = input();
+    raw.targets.push({
+      connectorId: "mastodon-official",
+      accountId: "alice@example.social",
+      platform: "mastodon",
+    });
+    const draft = await createSocialDraft(raw, 1000);
+    const { digest } = await requestSocialDraftApproval(draft.id, 1, 2000);
+    await approveSocialDraft(draft.id, digest, 3000);
+    await claimApprovedSocialDraft(draft.id, digest, 4000);
+    const finished = await completeSocialDraftPublish(draft.id, [
+      {
+        targetKey: "bluesky-official:did:plc:alice",
+        ok: true,
+        attempts: 1,
+        completedAt: new Date(5000).toISOString(),
+      },
+      {
+        targetKey: "mastodon-official:alice@example.social",
+        ok: false,
+        error: "rate limited",
+        attempts: 1,
+        completedAt: new Date(5000).toISOString(),
+      },
+    ], 5000);
+    assert.equal(finished.state, "partial");
+  });
 });
