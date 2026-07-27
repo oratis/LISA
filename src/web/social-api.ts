@@ -75,12 +75,19 @@ export async function handleSocialApi(
           ).listSocialConnectorAccounts(opts.connectorTools, connectors)
         : {};
       json(res, 200, {
-        connectors: connectors.map((connector) => ({
-          ...connector,
-          accounts: connector.manifest
-            ? accounts[connector.manifest.id] ?? []
-            : [],
-        })),
+        connectors: connectors.map((connector) =>
+          connector.manifest
+            ? {
+                plugin: connector.plugin,
+                manifest: connector.manifest,
+                accounts: accounts[connector.manifest.id] ?? [],
+              }
+            : {
+                plugin: connector.plugin,
+                error: connector.error ?? "invalid manifest",
+                accounts: [],
+              },
+        ),
       });
       return true;
     }

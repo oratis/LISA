@@ -34,6 +34,39 @@ afterEach(async () => {
 });
 
 describe("social API", () => {
+  test("connector discovery never exposes local manifest paths", async () => {
+    const pluginRoot = path.join(home, "plugins", "test-social");
+    fs.mkdirSync(pluginRoot, { recursive: true });
+    fs.writeFileSync(
+      path.join(pluginRoot, "social-connector.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        id: "test-social",
+        displayName: "Test Social",
+        platform: "test",
+        mcpServer: "test",
+        skill: "test-publisher",
+        tools: {
+          listAccounts: "accounts",
+          getCapabilities: "capabilities",
+          validateDraft: "validate",
+          publish: "publish",
+        },
+      }),
+    );
+
+    const response = await fetch(`${origin}/api/sense/social/connectors`);
+    assert.equal(response.status, 200);
+    const raw = await response.text();
+    assert.doesNotMatch(raw, /manifestPath/);
+    assert.doesNotMatch(raw, new RegExp(home.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    const body = JSON.parse(raw) as {
+      connectors: Array<{ plugin: string; manifest?: { id: string } }>;
+    };
+    assert.equal(body.connectors[0]?.plugin, "test-social");
+    assert.equal(body.connectors[0]?.manifest?.id, "test-social");
+  });
+
   test("draft preview can be prepared remotely but approval needs a trusted caller", async () => {
     const createdResponse = await fetch(`${origin}/api/sense/social/drafts`, {
       method: "POST",
