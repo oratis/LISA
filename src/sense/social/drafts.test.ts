@@ -8,6 +8,7 @@ import {
   cancelSocialDraft,
   canonicalJson,
   claimApprovedSocialDraft,
+  completeSocialDraftPublish,
   createSocialDraft,
   listSocialDrafts,
   requestSocialDraftApproval,
@@ -104,6 +105,18 @@ describe("social drafts", () => {
       claimApprovedSocialDraft(draft.id, digest, 5000),
       /is not publishable/,
     );
+    const finished = await completeSocialDraftPublish(
+      draft.id,
+      [{
+        targetKey: "bluesky-official:did:plc:alice",
+        ok: true,
+        platformPostId: "at://did:plc:alice/post/1",
+        attempts: 1,
+        completedAt: new Date(5000).toISOString(),
+      }],
+      5000,
+    );
+    assert.equal(finished.state, "published");
   });
 
   test("expired approval fails closed", async () => {

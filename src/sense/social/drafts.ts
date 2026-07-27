@@ -6,6 +6,7 @@ import type {
   NewSocialDraft,
   SocialDraft,
   SocialDraftPatch,
+  SocialPublishOutcome,
 } from "./types.js";
 
 interface DraftStore {
@@ -333,6 +334,46 @@ export async function cancelSocialDraft(
     draft.approval = undefined;
     draft.updatedAt = at;
     draft.events.push({ at, kind: "cancelled" });
+    return clone(draft);
+  });
+}
+
+/** Complete a claimed draft with one structural receipt per target. */
+export async function completeSocialDraftPublish(
+  id: string,
+  outcomes: SocialPublishOutcome[],
+  now: number = Date.now(),
+): Promise<SocialDraft> {
+  return mutate((store) => {
+    const draft = requireDraft(store, id);
+    if (draft.state !== "publishing") {
+      throw new Error(`social draft in state "${draft.state}" is not publishing`);
+    }
+    const targetKeys = new Set(
+      draft.targets.map((target) => `${target.connectorId}:${target.accountId}`),
+    );
+    if (
+      outcomes.length !== targetKeys.size ||
+      outcomes.some((outcome) => !targetKeys.delete(outcome.targetKey)) ||
+      targetKeys.size
+    ) {
+      throw new Error("social publish outcomes must match draft targets exactly");
+    }
+    const successes = outcomes.filter((outcome) => outcome.ok).length;
+    draft.state =
+      successes === outcomes.length
+        ? "published"
+        : successes === 0
+          ? "failed"
+          : "partial";
+    draft.outcomes = clone(outcomes);
+    const at = new Date(now).toISOString();
+    draft.updatedAt = at;
+    draft.events.push({
+      at,
+      kind: "outcome",
+      detail: `${successes}/${outcomes.length} published`,
+    });
     return clone(draft);
   });
 }

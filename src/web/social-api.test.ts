@@ -97,5 +97,21 @@ describe("social API", () => {
       },
     );
     assert.equal(approved.status, 200);
+
+    const remotePause = await fetch(`${origin}/api/sense/social/pause`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    assert.equal(remotePause.status, 403);
+    const localPause = await fetch(`${origin}/api/sense/social/pause`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-local-owner": "1",
+      },
+      body: "{}",
+    });
+    assert.equal(localPause.status, 200);
   });
 });

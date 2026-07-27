@@ -7,6 +7,7 @@ import {
   updateSocialDraft,
 } from "./drafts.js";
 import { discoverSocialConnectors } from "./manifest.js";
+import { stageSocialMedia } from "./media.js";
 import type {
   NewSocialDraft,
   SocialDraftPatch,
@@ -17,6 +18,7 @@ interface SocialComposeInput {
     | "connectors"
     | "drafts"
     | "view"
+    | "stage_media"
     | "new_draft"
     | "update_draft"
     | "request_confirmation";
@@ -24,6 +26,11 @@ interface SocialComposeInput {
   expectedRevision?: number;
   draft?: NewSocialDraft;
   patch?: SocialDraftPatch;
+  media?: {
+    dataBase64: string;
+    mimeType?: string;
+    altText?: string;
+  };
 }
 
 /**
@@ -53,6 +60,7 @@ export const socialComposeTool: ToolDefinition<SocialComposeInput, string> = {
           "connectors",
           "drafts",
           "view",
+          "stage_media",
           "new_draft",
           "update_draft",
           "request_confirmation",
@@ -62,6 +70,7 @@ export const socialComposeTool: ToolDefinition<SocialComposeInput, string> = {
       expectedRevision: { type: "number" },
       draft: { type: "object" },
       patch: { type: "object" },
+      media: { type: "object" },
     },
     required: ["action"],
     additionalProperties: false,
@@ -105,6 +114,18 @@ export const socialComposeTool: ToolDefinition<SocialComposeInput, string> = {
         const draft = await getSocialDraft(input.id);
         if (!draft) throw new Error(`social draft "${input.id}" not found`);
         return JSON.stringify(draft);
+      }
+      case "stage_media": {
+        if (!input.media?.dataBase64) {
+          throw new Error("social_compose stage_media requires media.dataBase64");
+        }
+        return JSON.stringify(
+          await stageSocialMedia(
+            Buffer.from(input.media.dataBase64, "base64"),
+            input.media.mimeType,
+            input.media.altText,
+          ),
+        );
       }
       case "new_draft": {
         if (!input.draft) {

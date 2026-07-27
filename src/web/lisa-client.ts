@@ -2458,23 +2458,28 @@ if ('serviceWorker' in navigator) {
       getJSON('/api/consent'),
       getJSON('/api/sense/recent'),
       getJSON('/api/sense/social/connectors'),
-      getJSON('/api/sense/social/drafts')
+      getJSON('/api/sense/social/drafts'),
+      getJSON('/api/sense/social/status')
     ]).then(function (res) {
       var grants = (res[0] && res[0].grants) || [];
       var events = (res[1] && res[1].events) || [];
       var connectors = (res[2] && res[2].connectors) || [];
       var drafts = (res[3] && res[3].drafts) || [];
-      var html = '<div class="view-sec-label">Connected media</div><div class="v-card">';
+      var paused = Boolean(res[4] && res[4].paused);
+      var html = '<div class="social-policy"><span>Publishing ' + (paused ? 'paused' : 'active') +
+        '</span><button class="social-action" id="socialPauseBtn">' + (paused ? 'Resume publishing' : 'Pause publishing') +
+        '</button></div><div class="view-sec-label">Connected media</div><div class="v-card">';
       if (!connectors.length) {
         html += '<div class="view-empty" style="padding:6px 0">No social connector installed. Ask Lisa to help connect a supported account.</div>';
       }
       connectors.forEach(function (item) {
         var c = item.manifest;
+        var accounts = item.accounts || [];
         html += '<div class="v-row"><div class="v-main"><div class="v-name">' +
           esc(c ? c.displayName : item.plugin) + '</div><div class="v-sub">' +
-          esc(c ? c.platform + ' · ready to link' : item.error || 'unavailable') +
+          esc(c ? (accounts.length ? accounts.map(function (a) { return a.handle || a.displayName || a.id; }).join(', ') : c.platform + ' · ready to link') : item.error || 'unavailable') +
           '</div></div><span class="social-state ' + (c ? 'ready' : 'failed') + '">' +
-          (c ? 'available' : 'error') + '</span></div>';
+          (c ? (accounts.length ? 'linked' : 'available') : 'error') + '</span></div>';
       });
       html += '</div><div class="view-sec-label">Post drafts</div><div class="v-card">';
       if (!drafts.length) {
@@ -2551,6 +2556,17 @@ if ('serviceWorker' in navigator) {
           var id = this.getAttribute('data-social-cancel');
           this.disabled = true;
           fetch('/api/sense/social/drafts/' + encodeURIComponent(id) + '/cancel', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: '{}'
+          }).then(function () { renderSense(); }).catch(function () { renderSense(); });
+        });
+      }
+      var pauseButton = document.getElementById('socialPauseBtn');
+      if (pauseButton) {
+        pauseButton.addEventListener('click', function () {
+          this.disabled = true;
+          fetch('/api/sense/social/' + (paused ? 'resume' : 'pause'), {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: '{}'

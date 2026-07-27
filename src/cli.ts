@@ -471,6 +471,16 @@ async function main(): Promise<void> {
     }
   }
   const mcpTools = mcpConnections.flatMap((c) => c.tools);
+  // Connector publish/disconnect operations remain available to the trusted
+  // host runner but are never placed in the model-visible toolset.
+  const { discoverSocialConnectors, hiddenSocialMcpToolNames } = await import(
+    "./sense/social/manifest.js"
+  );
+  const socialConnectors = await discoverSocialConnectors();
+  const hiddenSocialToolNames = hiddenSocialMcpToolNames(socialConnectors);
+  const modelMcpTools = mcpTools.filter(
+    (tool) => !hiddenSocialToolNames.has(tool.name),
+  );
 
   // Build the full tool list, including the task subagent tool.
   const abortController = new AbortController();
@@ -479,7 +489,7 @@ async function main(): Promise<void> {
 
   const composedTools: ToolDefinition[] = [
     ...(cloudEdition ? cloudSafeSubset(baseTools) : baseTools),
-    ...mcpTools,
+    ...modelMcpTools,
   ];
   // task captures the complete toolset in a closure. Never construct it in the
   // hosted edition: filtering the visible list later would not be a sufficient
@@ -548,6 +558,9 @@ async function main(): Promise<void> {
         port: args.port,
         host: args.host,
         tools: composedTools,
+        // The runner receives the MCP pool but may invoke only names bound by
+        // a validated social-connector manifest.
+        socialConnectorTools: mcpTools,
         model: args.model,
         thinking: args.thinking,
         reflect: args.reflect,

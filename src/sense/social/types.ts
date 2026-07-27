@@ -103,6 +103,16 @@ export interface SocialDraftEvent {
   detail?: string;
 }
 
+export interface SocialPublishOutcome {
+  targetKey: string;
+  ok: boolean;
+  platformPostId?: string;
+  url?: string;
+  error?: string;
+  attempts: number;
+  completedAt: string;
+}
+
 export interface SocialDraft {
   id: string;
   revision: number;
@@ -114,6 +124,7 @@ export interface SocialDraft {
   /** Keyed by `${connectorId}:${accountId}`. */
   variants: Record<string, SocialPlatformVariant>;
   approval?: SocialDraftApproval;
+  outcomes?: SocialPublishOutcome[];
   events: SocialDraftEvent[];
 }
 

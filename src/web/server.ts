@@ -203,6 +203,8 @@ const MUSIC_DIR = path.join(ASSETS_DIR, "room", "music");
 export interface WebServerOptions {
   port: number;
   tools: ToolDefinition[];
+  /** Hidden connector tools reserved for the approved social runner. */
+  socialConnectorTools?: ToolDefinition[];
   model: string;
   thinking: boolean;
   reflect: boolean;
@@ -1919,6 +1921,18 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     if (
       await handleSocialApi(req, res, url, {
         allowApproval: isLoopbackAddress(remoteAddr) || accountUid !== null,
+        connectorTools: opts.socialConnectorTools,
+        publishApproved:
+          opts.socialConnectorTools && opts.socialConnectorTools.length
+            ? async (id, digest) => {
+                const { publishApprovedSocialDraft } = await import(
+                  "../sense/social/runner.js"
+                );
+                return publishApprovedSocialDraft(id, digest, {
+                  connectorTools: opts.socialConnectorTools!,
+                });
+              }
+            : undefined,
       })
     ) {
       return;

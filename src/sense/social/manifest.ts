@@ -88,6 +88,21 @@ export function socialMcpToolName(
     : undefined;
 }
 
+/** Operations reserved for the trusted host and excluded from every LLM toolset. */
+export function hiddenSocialMcpToolNames(
+  connectors: DiscoveredSocialConnector[],
+): Set<string> {
+  return new Set(
+    connectors.flatMap((connector) => {
+      if (!connector.manifest) return [];
+      return [
+        socialMcpToolName(connector.manifest, "publish"),
+        socialMcpToolName(connector.manifest, "disconnectAccount"),
+      ].filter((name): name is string => Boolean(name));
+    }),
+  );
+}
+
 /**
  * Discover connector manifests without loading connector code. Invalid
  * manifests are returned with an error so `lisa sense social` can surface them.

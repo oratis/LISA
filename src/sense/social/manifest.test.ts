@@ -5,6 +5,7 @@ import path from "node:path";
 import { describe, test } from "node:test";
 import {
   discoverSocialConnectors,
+  hiddenSocialMcpToolNames,
   parseSocialConnectorManifest,
   socialMcpToolName,
 } from "./manifest.js";
@@ -23,6 +24,7 @@ function validManifest(): Record<string, unknown> {
       validateDraft: "social_draft_validate",
       publish: "social_publish",
       getPublishStatus: "social_publish_status",
+      disconnectAccount: "social_account_disconnect",
     },
   };
 }
@@ -34,6 +36,17 @@ describe("social connector manifest", () => {
     assert.equal(
       socialMcpToolName(parsed, "publish"),
       "mcp__bluesky__social_publish",
+    );
+    assert.deepEqual(
+      [...hiddenSocialMcpToolNames([{
+        plugin: "test",
+        manifestPath: "/test",
+        manifest: parsed,
+      }])],
+      [
+        "mcp__bluesky__social_publish",
+        "mcp__bluesky__social_account_disconnect",
+      ],
     );
   });
 
