@@ -740,7 +740,9 @@ SAGE（arXiv:2605.30711, Duke, 2026-06-18）离我方设计**最近**：online�
 * **C1｜定位（negative claim，四轮实证）**：跨持续学习 / 记忆架构 / agentic 记忆的**全部永久固化门控**，其准入信号穷尽落在**十类代理**——随机·类别平衡·损失/似然·参数漂移·容量/稀疏·表征或几何新颖·梯度干扰/多样性·代表性·（有标签下的）不确定性·来源信誉/对源忠实/可靠/一致。**"无 GT / 无外部 oracle 的概念级正确性"一列为空。** 证据：四轮 deep-research，族 1–6 + 2026 agentic，全文穷举级（经典）+ 定向核验（2026 预印本）。
 * **C2｜机制**：提出**压缩增益门控（compression-gain admission）**——一个概念只有当"把它并入该对话者的持久知识后、对其后续输入的描述长度/困惑度**显著下降**"才毕业。地基 = Delétang *Language Modeling Is Compression*（ICLR 2024, 2309.10668）。这是唯一填补 C1 空缺的信号：**无答案库、GT-free、无外部 oracle**。必要非充分项：跨时间稳定性（语义熵）+ epistemic 收敛（EIG）。
 * **C3｜架构**：把 C2 作为**巩固门**插入三层记忆器官（§9.3.3）；L1 情景记忆的 product-key **key 空间按 uid 硬分区** → 隔离(P4)成为数学零干扰的架构保证（§7.4 已论证该点在文献中零竞争）。
-* **C4｜评测**：构造能区分"**接受正确概念 vs 拒绝自信且一贯错误概念**"的受控 benchmark——语义熵、SAGE 几何门、surprise 门、TRUSTMEM 忠实门**都会在"自信且一贯错误"上失分**，压缩门在此处赢。
+* **C4｜评测**（⚠️ **措辞已按 [DESIGN_COMPRESSION_GATE.md](DESIGN_COMPRESSION_GATE.md) §0 收紧**）：构造能区分"**接受正确概念 vs 拒绝【模型自信且一贯地误解了教学内容】的概念（E1）**"的受控 benchmark——语义熵、SAGE 几何门、surprise 门、TRUSTMEM 忠实门**都会在 E1 上失分**，压缩门在此处赢。
+  > 🔴 **不可写成"拒绝一切错误概念"**：必须区分**谁错了**。**E1（模型误解）**压缩门拒绝 ✅；**E2（老师一贯教假话）**压缩增益反而**高**（模型确实学对了老师的用法）→ **压缩门会接受，这是设计边界，不是缺陷**。E2 属 provenance/来源信誉门（Write-Time Gating / TRUSTMEM）的射程，与本机制**正交可组合**。
+  > **正面表述**：压缩增益验证的是**对该对话者用法的语义保真度**，不是**世界真值**——它正是 Quine gavagai 欠定性（§3.7）的可计算操作化。
 
 **与关键先例的 delta（两条正交轴：信号 × 基质）**
 
@@ -769,6 +771,11 @@ SAGE（arXiv:2605.30711, Duke, 2026-06-18）离我方设计**最近**：online�
 > Continual and lifelong learning has produced a rich taxonomy of *what to keep*: reservoir and class-balanced sampling admit examples by randomness or label counts [GDumb, ECCV'20; Chaudhry'19]; gradient-based selection (GSS) and maximally-interfered retrieval (MIR) choose by gradient diversity or interference [Aljundi'19]; herding stores class-representative exemplars [iCaRL, CVPR'17]; dark experience replays reservoir-sampled logits [DER++, NeurIPS'20]. Architecturally, dynamically-expandable and Dirichlet-process models gate *when to grow* on training loss, parameter drift, or data likelihood [DEN, ICLR'18; CN-DPM, ICLR'20], and modern write-side gates admit facts by geometric novelty [SAGE'26], normalized-loss hysteresis [Self-Sizing Hopfield'26], or Bayesian surprise [2606.03787]. A 2026 wave of agent-memory work gates writes on *trust proxies*—source reputation and reliability [Write-Time Gating'26], faithfulness-to-source [TRUSTMEM'26], or externally-confirmed outcomes [LOCI'26]. **Across all of these, the admission signal is a proxy—loss, drift, capacity, novelty, gradient geometry, representativeness, (labeled) uncertainty, or source-trust/faithfulness—never a ground-truth-free assessment of whether the newly acquired concept is itself correct.** Semantic entropy detects inconsistency, not incorrectness [Farquhar, Nature'24]; naive self-reflection does not improve without an external verifier [Huang, ICLR'24]. We are, to our knowledge, the first to make *GT-free, oracle-free concept correctness*—operationalized as compression gain [Delétang, ICLR'24]—the admission criterion for **parametric, per-interlocutor** consolidation.
 
 （引用键待补齐为正式 bibkey；negative claim 的措辞已按 §7.6.4 证据强度：经典对象"exhaustively verified"，2026 对象"to our knowledge / targeted search"。）
+
+> ⚠️ **末句需按 C4 收紧再投**：`GT-free, oracle-free concept correctness` → 建议改为
+> `GT-free, oracle-free **fidelity of an acquired concept to the interlocutor's usage**`，
+> 并补一句划界：*Source-trust gates [Write-Time Gating; TRUSTMEM] address whether the **teacher** is reliable; ours addresses whether the **model's hypothesis matches what the teacher means**—the two are orthogonal and composable.*
+> 理由见 [DESIGN_COMPRESSION_GATE.md](DESIGN_COMPRESSION_GATE.md) §0（E1/E2 划界）。**不改会被 E2 反例击穿。**
 
 #### 9.3.3 三层架构 + 最小可跑实现
 
@@ -805,7 +812,13 @@ on_idle(user_uid):
 * **门控**：压缩门是**纯算法组件**，on/off 可控——这正是当前文献缺失、且不需算力的那块。
 * **受控实验矩阵**：门控 {on, off} × 顺序写入 N∈{10²,10³,10⁴} 条 × {正确概念, 自信错误概念} × 旧能力保持曲线 × 与 ROME/MEMIT 同基准崩溃曲线。
 * **数据**：构造语言（§8，语义已知、可控 OOD、有 GT 供最终打分、绕开污染争议），切断 Aycock 平行样例捷径。
-* **首个可发结论**：压缩门在"自信且一贯错误"上 AUC 显著高于语义熵/SAGE 几何门/surprise 门——即 §9.3.1 的 C4 独赢点。
+* **首个可发结论**：压缩门在 **E1（模型自信且一贯的误解）** 上 AUC 显著高于语义熵/SAGE 几何门/surprise 门——即 §9.3.1 的 C4 独赢点。
+
+> **本节已展开为两份独立设计文档**：
+> - **机制**：[DESIGN_COMPRESSION_GATE.md](DESIGN_COMPRESSION_GATE.md) — 形式化（两部分 MDL + 留出轮次 + **安慰剂对照**）、E1/E2 划界、失分表、失败模式、消融矩阵
+> - **数据**：[DESIGN_CONCEPT_BENCH.md](DESIGN_CONCEPT_BENCH.md) — 构造语言、**gavagai 对 G1–G5（把 E1 构造出来）**、切断 Aycock 捷径的教学协议、冲突词隔离测试、实施顺序
+>
+> 🎯 **下一步动作 = 跑 P0**（见 bench 文档 §8）：手工构造 G1 的 M/M′，在冻结小模型上纯用 prompt 算压缩增益。**几小时、零算力，直接验证核心信号是否成立——若不成立，整个立论要重来。别先建工程。**
 
 ***
 
@@ -964,6 +977,7 @@ on_idle(user_uid):
 | 2026-07-24 | §7 按第二轮架构调研重写；新增附录 H；§9.1 加入族 4/5/6 补验卡点                      |
 | 2026-07-24 | **第三轮（对抗式）：新增 §7.6，推翻广义主张、贡献声明收紧为"信号类型"；新增附录 I；§9.1/§9.2 更新** |
 | 2026-07-24 | **第四轮（对抗式补全族 5/6）：12 目标 / 25 agent / 0 反例 → `holds-with-caveat`。§7.6.2 代理表扩到十类并加 12 新行；新增 §7.6.7 总裁决；§7.6.4 证据强度重排（族 5/6 升为高/中，残余=广义 agentic 记忆）；§7.6.5 关闭 CN-DPM/2606.03787 两悬案；附录 I 族 4/5/6 全部落地；§9.1 勾掉第四轮；§9.2 Q9/Q11 已回答 + 新增 Q12；§9.3 写入立论包（proposal + related-work + 三层架构最小实现）** |
+| 2026-07-28 | **进入设计阶段**：新增 [DESIGN_COMPRESSION_GATE.md](DESIGN_COMPRESSION_GATE.md)（机制）与 [DESIGN_CONCEPT_BENCH.md](DESIGN_CONCEPT_BENCH.md)（数据）。**修正 C4 措辞**：区分 E1（模型误解 → 压缩门拒绝 ✅）与 E2（老师教假话 → 压缩门接受，属设计边界）；related-work 末句加收紧提示。§9.3.3 指向 P0 首跑实验。 |
 
 ***
 
