@@ -36,6 +36,10 @@ export interface CommercialReadinessInput {
   youtubeAuditApproved?: boolean;
   tiktokAuditApproved?: boolean;
   xPaidAccessConfirmed?: boolean;
+  instagramProfessionalAccountEligible?: boolean;
+  linkedinAccountKind?: "member" | "organization";
+  linkedinOrganizationRoleVerified?: boolean;
+  facebookPageRoleVerified?: boolean;
 }
 
 export interface CommercialReadiness {
@@ -188,6 +192,25 @@ export function evaluateCommercialReadiness(
   }
   if (platform === "x" && !input.xPaidAccessConfirmed) {
     blockers.push("X paid API access/quota is not confirmed");
+  }
+  if (
+    platform === "instagram" &&
+    !input.instagramProfessionalAccountEligible
+  ) {
+    blockers.push("Instagram Professional account eligibility is not verified");
+  }
+  if (platform === "linkedin") {
+    if (!input.linkedinAccountKind) {
+      blockers.push("LinkedIn target account kind is not verified");
+    } else if (
+      input.linkedinAccountKind === "organization" &&
+      !input.linkedinOrganizationRoleVerified
+    ) {
+      blockers.push("LinkedIn organization role is not verified");
+    }
+  }
+  if (platform === "facebook" && !input.facebookPageRoleVerified) {
+    blockers.push("Facebook Page role is not verified");
   }
   if (platform === "youtube" && !input.youtubeAuditApproved) {
     notices.push("unverified YouTube API projects can upload only private videos");

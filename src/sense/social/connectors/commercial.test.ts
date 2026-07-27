@@ -36,6 +36,43 @@ test("readiness never calls an unaudited or unconfigured platform ready", () => 
   assert.equal(youtube.state, "private-test-only");
 });
 
+test("account eligibility and role gates fail closed", () => {
+  const metaBase = {
+    oauthClientConfigured: true,
+    redirectOriginConfigured: true,
+    platformReviewApproved: true,
+    businessVerificationComplete: true,
+  };
+  const instagram = evaluateCommercialReadiness("instagram", {
+    ...metaBase,
+    publicMediaStagingConfigured: true,
+  });
+  assert.equal(instagram.state, "draft-only");
+  assert.match(instagram.blockers.join(" "), /Professional account eligibility/);
+
+  const linkedin = evaluateCommercialReadiness("linkedin", {
+    oauthClientConfigured: true,
+    redirectOriginConfigured: true,
+    platformReviewApproved: true,
+    linkedinAccountKind: "organization",
+  });
+  assert.equal(linkedin.state, "draft-only");
+  assert.match(linkedin.blockers.join(" "), /organization role/);
+  assert.equal(
+    evaluateCommercialReadiness("linkedin", {
+      oauthClientConfigured: true,
+      redirectOriginConfigured: true,
+      platformReviewApproved: true,
+      linkedinAccountKind: "member",
+    }).state,
+    "ready",
+  );
+
+  const facebook = evaluateCommercialReadiness("facebook", metaBase);
+  assert.equal(facebook.state, "draft-only");
+  assert.match(facebook.blockers.join(" "), /Page role/);
+});
+
 test("platform-specific required fields fail closed", () => {
   const youtube = validateCommercialDraft(
     "youtube",
