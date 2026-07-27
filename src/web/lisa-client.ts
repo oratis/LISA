@@ -2454,10 +2454,58 @@ if ('serviceWorker' in navigator) {
   function renderSense() {
     var scroll = document.getElementById('senseScroll');
     if (!scroll) return;
-    Promise.all([getJSON('/api/consent'), getJSON('/api/sense/recent')]).then(function (res) {
+    Promise.all([
+      getJSON('/api/consent'),
+      getJSON('/api/sense/recent'),
+      getJSON('/api/sense/social/connectors'),
+      getJSON('/api/sense/social/drafts')
+    ]).then(function (res) {
       var grants = (res[0] && res[0].grants) || [];
       var events = (res[1] && res[1].events) || [];
-      var html = '<div class="view-sec-label">Consent</div><div class="v-card">';
+      var connectors = (res[2] && res[2].connectors) || [];
+      var drafts = (res[3] && res[3].drafts) || [];
+      var html = '<div class="view-sec-label">Connected media</div><div class="v-card">';
+      if (!connectors.length) {
+        html += '<div class="view-empty" style="padding:6px 0">No social connector installed. Ask Lisa to help connect a supported account.</div>';
+      }
+      connectors.forEach(function (item) {
+        var c = item.manifest;
+        html += '<div class="v-row"><div class="v-main"><div class="v-name">' +
+          esc(c ? c.displayName : item.plugin) + '</div><div class="v-sub">' +
+          esc(c ? c.platform + ' · ready to link' : item.error || 'unavailable') +
+          '</div></div><span class="social-state ' + (c ? 'ready' : 'failed') + '">' +
+          (c ? 'available' : 'error') + '</span></div>';
+      });
+      html += '</div><div class="view-sec-label">Post drafts</div><div class="v-card">';
+      if (!drafts.length) {
+        html += '<div class="view-empty" style="padding:6px 0">No drafts yet. Tell Lisa what you want to publish.</div>';
+      }
+      drafts.slice().reverse().slice(0, 20).forEach(function (d) {
+        var targetLabel = (d.targets || []).map(function (t) { return t.platform + ' · ' + t.accountId; }).join(', ');
+        var body = (d.canonical && (d.canonical.text || d.canonical.title || d.canonical.link)) || '';
+        var mediaCount = (d.canonical && d.canonical.media && d.canonical.media.length) || 0;
+        html += '<div class="social-draft"><div class="social-draft-head"><span class="social-state ' +
+          esc(d.state) + '">' + esc(d.state) + '</span><span class="v-sub">revision ' +
+          esc(d.revision) + '</span></div><div class="v-name">' + esc(body || 'Media post') +
+          '</div><div class="v-sub">' + esc(targetLabel) +
+          (mediaCount ? ' · ' + mediaCount + ' media' : '') + '</div>';
+        if (d.state === 'awaiting-approval' && d.approvalDigest) {
+          var approvalSnapshot = JSON.stringify({
+            targets: d.targets || [],
+            canonical: d.canonical || {},
+            variants: d.variants || {}
+          }, null, 2);
+          html += '<div class="social-preview-note">Confirm this immutable snapshot. Any edit will require a new confirmation.</div>' +
+            '<pre class="v-pre social-approval-snapshot">' + esc(approvalSnapshot) + '</pre>' +
+            '<button class="social-action primary" data-social-approve="' + esc(d.id) +
+            '" data-social-digest="' + esc(d.approvalDigest) + '">Approve snapshot</button>';
+        }
+        if (['draft', 'awaiting-approval', 'approved', 'failed', 'expired'].indexOf(d.state) >= 0) {
+          html += '<button class="social-action" data-social-cancel="' + esc(d.id) + '">Cancel</button>';
+        }
+        html += '</div>';
+      });
+      html += '</div><div class="view-sec-label">Consent</div><div class="v-card">';
       if (!grants.length) html += '<div class="view-empty" style="padding:6px 0">No signals configured.</div>';
       grants.forEach(function (g) {
         html += '<div class="v-row"><div class="v-main"><div class="v-name">' + esc(g.signal) + '</div>' +
@@ -2479,6 +2527,34 @@ if ('serviceWorker' in navigator) {
           var on = this.getAttribute('data-on') === '1';
           fetch(on ? '/api/consent/revoke' : '/api/consent/grant', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ signal: sig }) })
             .then(function () { renderSense(); }).catch(function () {});
+        });
+      }
+      var approveButtons = scroll.querySelectorAll('[data-social-approve]');
+      for (var a = 0; a < approveButtons.length; a++) {
+        approveButtons[a].addEventListener('click', function () {
+          var id = this.getAttribute('data-social-approve');
+          var digest = this.getAttribute('data-social-digest');
+          this.disabled = true;
+          fetch('/api/sense/social/drafts/' + encodeURIComponent(id) + '/approve', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ digest: digest })
+          }).then(function (r) {
+            if (!r.ok) throw new Error('approval failed');
+            renderSense();
+          }).catch(function () { renderSense(); });
+        });
+      }
+      var cancelButtons = scroll.querySelectorAll('[data-social-cancel]');
+      for (var c = 0; c < cancelButtons.length; c++) {
+        cancelButtons[c].addEventListener('click', function () {
+          var id = this.getAttribute('data-social-cancel');
+          this.disabled = true;
+          fetch('/api/sense/social/drafts/' + encodeURIComponent(id) + '/cancel', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: '{}'
+          }).then(function () { renderSense(); }).catch(function () { renderSense(); });
         });
       }
     });

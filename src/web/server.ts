@@ -152,6 +152,7 @@ import { SenseService } from "../sense/service.js";
 import { ScreenSource } from "../sense/screen.js";
 import { VoiceSource } from "../sense/voice.js";
 import { appendSenseEvent, readSenseEvents } from "../sense/log.js";
+import { handleSocialApi } from "./social-api.js";
 import {
   loadScreenAdvisorConfig,
   saveScreenAdvisorConfig,
@@ -1912,6 +1913,14 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         error: "capability_denied",
         profile: capabilityProfile,
       }));
+      return;
+    }
+
+    if (
+      await handleSocialApi(req, res, url, {
+        allowApproval: isLoopbackAddress(remoteAddr) || accountUid !== null,
+      })
+    ) {
       return;
     }
 
