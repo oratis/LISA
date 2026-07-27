@@ -17,6 +17,12 @@ interface DraftStore {
 const STORE_VERSION = 1 as const;
 const MAX_DRAFTS = 200;
 const DEFAULT_APPROVAL_TTL_MS = 10 * 60_000;
+const TERMINAL_DRAFT_STATES = new Set<SocialDraft["state"]>([
+  "published",
+  "partial",
+  "cancelled",
+  "expired",
+]);
 let mutationTail: Promise<void> = Promise.resolve();
 
 function storePath(): string {
@@ -76,9 +82,20 @@ async function mutate<T>(fn: (store: DraftStore) => Promise<T> | T): Promise<T> 
   try {
     const store = await readStore();
     const result = await fn(store);
-    store.drafts = store.drafts
-      .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt))
-      .slice(-MAX_DRAFTS);
+    const sorted = store.drafts.sort((a, b) =>
+      a.updatedAt.localeCompare(b.updatedAt),
+    );
+    const active = sorted.filter(
+      (draft) => !TERMINAL_DRAFT_STATES.has(draft.state),
+    );
+    const terminalBudget = Math.max(0, MAX_DRAFTS - active.length);
+    const terminal = sorted.filter((draft) =>
+      TERMINAL_DRAFT_STATES.has(draft.state),
+    );
+    store.drafts = [
+      ...active,
+      ...(terminalBudget > 0 ? terminal.slice(-terminalBudget) : []),
+    ].sort((a, b) => a.updatedAt.localeCompare(b.updatedAt));
     await writeStore(store);
     return result;
   } finally {
@@ -163,6 +180,14 @@ export async function createSocialDraft(
 ): Promise<SocialDraft> {
   assertDraftInput(input);
   return mutate((store) => {
+    const activeCount = store.drafts.filter(
+      (draft) => !TERMINAL_DRAFT_STATES.has(draft.state),
+    ).length;
+    if (activeCount >= MAX_DRAFTS) {
+      throw new Error(
+        `social draft store already has ${MAX_DRAFTS} active drafts; finish or cancel one first`,
+      );
+    }
     const at = new Date(now).toISOString();
     const draft: SocialDraft = {
       id: crypto.randomUUID(),
