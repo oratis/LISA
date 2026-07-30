@@ -171,6 +171,7 @@ export class ManagedAgent {
           history: this.history,
           userMessage: message,
           model: this.model,
+          moodOrigin: `a background agent working in ${this.project}`,
           maxIterations: 64,
           onEvent: (e) => this.onAgentEvent(e),
           approval: (tool, input) => this.approve(tool, input),

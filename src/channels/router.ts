@@ -135,6 +135,7 @@ export class ChannelRouter {
         thinking: this.opts.thinking,
         compaction: this.opts.compaction,
         onMessagePersist: (m) => ctx.session.appendMessage(m),
+        moodOrigin: `a message on your ${channel.name} channel`,
       });
       ctx.history.length = 0;
       ctx.history.push(...result.history);
