@@ -201,6 +201,7 @@ async function runHeartbeatInner(opts: {
         cwd: opts.cwd,
         signal: opts.signal,
         model: opts.model,
+        moodOrigin: `a ${runKind} turn`,
       });
     } catch (err) {
       await recordAutonomyRun({
@@ -305,6 +306,7 @@ export async function runDesireReviewOnce(opts: {
             model: opts.model,
             budgetTokens: 100_000,
             provider: opts.provider,
+            moodOrigin: "a desire-review turn",
           });
           const text = result.text
             .trim()

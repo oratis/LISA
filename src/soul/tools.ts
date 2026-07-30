@@ -27,6 +27,7 @@ import {
   writeValue,
 } from "./store.js";
 import { gitDiffPatch, gitLogOneline, withSoulCaller } from "./git.js";
+import { moodAgeLabel, moodBus } from "../mood-bus.js";
 import type { ToolDefinition } from "../types.js";
 import { EMOTION_EVENTS_MAX, type EmotionState } from "./types.js";
 
@@ -300,7 +301,16 @@ export const soulReadTool: ToolDefinition<SoulReadInput, string> = {
         // view (readSoulSummary also decays). Otherwise the two surfaces
         // would show different intensities for the same emotion.
         const e = decayEmotions(await readEmotions());
-        return formatEmotions(e);
+        // The avatar rides along because this is where she looks when asked
+        // "why do you seem happy?" — the portrait is a separate system from
+        // this vector, and answering from the vector alone reads as denying
+        // the face the user is looking at.
+        const mood = moodBus.currentState();
+        const avatar =
+          mood.at === 0
+            ? "avatar: neutral (default — nobody has set it yet)"
+            : `avatar: ${mood.slug} (what the user sees right now — set ${moodAgeLabel(mood.at)} by ${mood.by}; separate from the vector above)`;
+        return `${formatEmotions(e)}\n\n${avatar}`;
       }
       case "journal_today":
         return (await readJournal(today())) || "(no entries today yet)";

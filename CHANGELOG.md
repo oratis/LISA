@@ -30,6 +30,22 @@ versioning follows [SemVer](https://semver.org/).
     `kb_read` fences ingested web content as data, SCHEMA.md gained the three
     new workflows, and a weekly-review heartbeat example ships in the README.
 
+### Fixed
+
+- **Lisa can see her own avatar.** The portrait was a write-only channel:
+  `set_mood` pushed a slug to the mood bus and the GUI drew it, but nothing
+  ever carried it back into her context — so "why do you look happy?" could
+  only be answered by inspecting her emotion vector (a different system) and
+  guessing. The mood bus now records *when* a mood was set and *what kind of
+  turn* set it (`withMoodOrigin`, wired through `runAgent` so idle, heartbeat,
+  channel and background-agent turns identify themselves), the system prompt
+  states the current slug every turn — with the prompt fingerprint including
+  it, so a portrait another surface flips mid-session reaches her on her next
+  turn — and `soul_read(what="emotions")` reports the avatar alongside the
+  vector it is not. The slug is also mirrored to `<home>/current-mood.json`,
+  so a restart no longer silently snaps the portrait back to `neutral`
+  (`lisa monitor` reads that mirror instead of a file nothing ever wrote).
+
 ## [0.12.0] — 2026-06-19
 
 **Lisa Pocket goes real** — the iOS companion + real APNs push, on the v0.11

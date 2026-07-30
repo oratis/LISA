@@ -2,7 +2,7 @@
  * `lisa monitor` — TUI live dashboard.
  *
  * Polls ~/.lisa/ every 2s and re-renders an in-place dashboard with:
- *   - Current mood (from set_mood-tracked file or emotions.json)
+ *   - Current mood (from the mood bus's current-mood.json mirror, or emotions.json)
  *   - Last 5 soul commits (rolling)
  *   - Last 3 emotion events
  *   - Heartbeat last-run-at
@@ -24,6 +24,7 @@ import {
   warn,
 } from "./colors.js";
 import { lisaHome } from "../paths.js";
+import { moodAgeLabel, type MoodState } from "../mood-bus.js";
 import { soulDir } from "../soul/paths.js";
 import { isBorn, readSoulSummary } from "../soul/store.js";
 import { pathExists, readTextOrEmpty } from "../fs-utils.js";
@@ -137,13 +138,19 @@ async function render(): Promise<void> {
     }
   }
 
-  // ── Currently set mood (from tool) ──
-  const moodFile = path.join(lisaHome(), "current-mood.txt");
+  // ── Currently set mood (mirrored by the mood bus on every set_mood) ──
+  const moodFile = path.join(lisaHome(), "current-mood.json");
   if (await pathExists(moodFile)) {
-    const slug = (await readTextOrEmpty(moodFile)).trim();
-    if (slug) {
-      console.log();
-      console.log(`  ${dim("portrait:")} ${cyan(slug)}`);
+    try {
+      const parsed = JSON.parse(await readTextOrEmpty(moodFile)) as Partial<MoodState>;
+      if (parsed.slug) {
+        const when = parsed.at ? ` ${moodAgeLabel(parsed.at)}` : "";
+        const who = parsed.by ? ` by ${parsed.by}` : "";
+        console.log();
+        console.log(`  ${dim("portrait:")} ${cyan(parsed.slug)}${dim(when + who)}`);
+      }
+    } catch {
+      // ignore
     }
   }
 }

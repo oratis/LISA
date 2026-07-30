@@ -160,6 +160,7 @@ async function runIdleInner(
       signal: opts.signal,
       model: opts.model,
       budgetTokens: IDLE_BUDGET_TOKENS || undefined,
+      moodOrigin: "an idle turn while the user was away",
     });
     // The model is asked to end with "(no update)" for internal-only runs, but
     // it doesn't always emit that on its own line — sometimes it writes a real

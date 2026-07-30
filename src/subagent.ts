@@ -19,6 +19,12 @@ export interface SubagentOptions {
   budgetTokens?: number;
   /** Injectable provider (tests); defaults to providerForModel(model). */
   provider?: Provider;
+  /**
+   * How a set_mood inside this run is attributed in Lisa's next system prompt.
+   * Every subagent is by definition off to the side of the conversation, so the
+   * default says so; idle / heartbeat pass something more specific.
+   */
+  moodOrigin?: string;
 }
 
 export interface SubagentResult {
@@ -53,6 +59,7 @@ export async function runSubagent(opts: SubagentOptions): Promise<SubagentResult
     },
     maxIterations: 32,
     budgetTokens: opts.budgetTokens,
+    moodOrigin: opts.moodOrigin ?? "a background agent",
   });
   return {
     text: result.finalText,

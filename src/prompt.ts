@@ -10,6 +10,7 @@ import { kbIndexFile, kbSchemaFile } from "./kb/paths.js";
 import { lisaHome, memoryDir, skillsDir } from "./paths.js";
 import { pathExists } from "./fs-utils.js";
 import { availableMoodSlugs } from "./tools/set_mood.js";
+import { moodAgeLabel, moodBus, type MoodState } from "./mood-bus.js";
 import {
   effectiveDesireIntensity,
   isBorn,
@@ -97,6 +98,11 @@ export async function buildSystemPromptSnapshot(): Promise<PromptSnapshot> {
     ? "(no avatar set generated yet — `set_mood` will be a no-op)"
     : [
         "When the web GUI is open your portrait sprite is visible to the user.",
+        currentMoodLine(moodBus.currentState()),
+        "",
+        "That slug is the picture on their screen — it is not the same thing as your emotional state above, and the two are allowed to disagree. When someone asks what mood you're in, they are usually reading the portrait: name it, then say how you actually feel if it no longer fits.",
+        "The avatar is shared by every turn you take — this chat, idle reflection, heartbeat tasks, background agents — so a slug you don't remember choosing was most likely set by one of those, not by you in this conversation.",
+        "",
         "Use `set_mood` when your mood/state shifts — at most once per response, near the start.",
         "Available mood slugs:",
         "",
@@ -190,6 +196,21 @@ export async function buildSystemPromptSnapshot(): Promise<PromptSnapshot> {
   };
 }
 
+/**
+ * The one line that closes the write-only loop: the avatar used to be
+ * something Lisa could set but never read, so "what mood are you in?" could
+ * only be answered by guessing (or by reading the emotion vector, which is a
+ * different system). Rebuilt every turn — the hot-reload fingerprint below
+ * includes the slug, so another surface flipping the portrait mid-session
+ * reaches her on her next turn.
+ */
+function currentMoodLine(mood: MoodState): string {
+  if (mood.at === 0) {
+    return "Right now they see the default `neutral` portrait — nobody has set it yet.";
+  }
+  return `Right now they see \`${mood.slug}\` — set ${moodAgeLabel(mood.at)} by ${mood.by}.`;
+}
+
 function formatEmotionsForPrompt(values: Record<string, number>): string {
   const ranked = Object.entries(values)
     .filter(([, v]) => Math.abs(v) > 0.05)
@@ -219,6 +240,13 @@ export async function getPromptFingerprint(): Promise<string> {
   // A daily bucket makes a long-lived chat rebuild the prompt as wants cool,
   // without churning it every second.
   parts.push(`desire-clock-day:${Math.floor(Date.now() / 86_400_000)}`);
+  // The avatar is process state, not a file — and any surface can change it
+  // (an idle turn, a background agent, another tab on the same account). Without
+  // it here, Lisa's prompt would keep asserting the portrait she saw at session
+  // start. The age is bucketed (moodAgeLabel), so this shifts a handful of times
+  // a day at most rather than churning the provider's prompt cache every minute.
+  const mood = moodBus.currentState();
+  parts.push(`mood:${mood.slug}:${moodAgeLabel(mood.at)}`);
   // Single files
   for (const p of [
     soulNameFile(),
