@@ -3,12 +3,14 @@
 > **本文档目标**：系统梳理**所有让知识从"外部/临时"变成"模型自身能力"的方案**——它们把知识放在哪、怎么写进去、能存多久、由什么决定该不该写。
 > **一句话主轴**：**"内化"不是二值的，而是一条有序阶梯；且内化度越高，可逆性与可隔离性越低。** 这条反比关系是整个领域所有工程取舍的根源。
 
-- **状态**：家族 **A–P 已覆盖**。A–I 经四轮对抗验证（✅）；**J–P 来自第五轮，但该轮 Verify 阶段未执行，全部为 🔍 未验证**
+- **状态**：家族 **A–P 已覆盖**。A–I 经四轮对抗验证（✅）；J–P 经第六轮**全文穷举**核查（✅ᶠ），但**未经 3 票对抗验证**
 - **最后更新**：2026-07-30
 
-> ### 🔴 读这份文档前必须知道的一条
-> **第五轮（家族 J–P）的对抗验证没跑完**——工作流在 Fetch 阶段后中断，130 条主张**未经 3 票验证**。
-> 因此 **J–P 的一切结论都是 🔍 级**，与 A–I 的 ✅ 级不可混用。**投稿引用前必须逐条一手核实**（见 §8 待办第一项）。
+> ### 🔴 读这份文档前必须知道的两条
+> 1. **J–P 的证据等级是 ✅ᶠ（全文穷举）而非 ✅（3 票对抗验证）**。第五、六轮的正式 Verify 阶段均未跑完；
+>    但第六轮的抓取代理完成了 **pdftotext 全文 + 关键词穷举 + 近似命中逐条核查**，证据强于 🔍。
+> 2. 🔴 **已发现一条优先权风险**：**arXiv:2607.08032**（2026-07-09）已在开放问题中提出与本项目**同构**的写入准入判据。
+>    **贡献声明必须收紧为"尚无方法【实现并实证】"**——详见 §3 家族 J–P 末尾。
 - **姊妹文档**：[RESEARCH_LEARNING_IN_REFERENCING.md](RESEARCH_LEARNING_IN_REFERENCING.md)（本项目的具体研究方向）· [DESIGN_COMPRESSION_GATE.md](DESIGN_COMPRESSION_GATE.md)（机制）· [P0 实证](../research/learning-in-referencing/p0/README.md)
 
 **验证状态图例**
@@ -20,7 +22,7 @@
 | ❌ | 被否决，**不可当定论引用** |
 | 🔍 | 检索到但未经对抗验证（多为 2026 预印本，引用前须自查） |
 | 💭 | 本文档的综合/推演，非文献断言 |
-| ⏳ | 第五轮调研进行中 |
+| **✅ᶠ** | **全文穷举级**（pdftotext 全文 + 关键词穷举 + 近似命中逐条核查；**未经 3 票对抗验证**） |
 
 ---
 
@@ -241,11 +243,14 @@
 - 🔍 Forward-Forward、预测编码、平衡传播：**LLM 规模可行性无证据**，应作理论/玩具章节。
 - **优势**：写一条不动其他（无全局梯度耦合）；**限制**：容量上界、超容量后崩溃形态未知。
 
-> ## 🔴 家族 J–P 的证据等级警告
+> ## 家族 J–P 的证据等级（**第六轮已部分升级**）
 >
-> 第五轮调研的 **Verify（对抗验证）与 Synthesize 阶段未执行完**（工作流在 Fetch 后中断）。
-> 因此 **J–P 全部条目标 🔍 — 来自一手论文的检索与摘要抽取，但未经 3 票对抗验证**，与家族 A–I 的 ✅ 有本质区别。
-> **引用前必须自行核实。** 尤其 2026 预印本占比高。
+> - 第五轮的 Verify/Synthesize 阶段未跑完 → J–P 初版全部为 🔍。
+> - **第六轮（定向验证轮）的 Fetch 代理完成了【全文关键词穷举】**（pdftotext 全文 + 逐条核查近似命中），
+>   但**正式的 3 票对抗验证仍未执行**。
+> - 因此本文档引入中间等级 **✅ᶠ = 全文穷举级**（证据强于 🔍，弱于经 3 票验证的 ✅）。
+>
+> **第六轮改正了 4 处错误、发现 1 条优先权风险，均已就地更新（见各处 ⚠️/🔴 标注）。**
 
 ### J. 上下文蒸馏 / prompt internalization 🔍 ★ 最重要的一族
 
@@ -264,7 +269,7 @@
 |---|---|---|
 | 🔍 **Learning by Distilling Context**（Snell et al. 2022）—— 术语锚点 | 先在 `[instructions]+[input]` 条件下生成，再微调模型在**无 instructions** 下直接预测自己刚才的答案 | 用 **unlabeled** 合成输入，**不需要 GT** ← 与本项目性质一致；SPIDER 上比梯度下降高 9% |
 | 🔍 **Prompt Distillation**（Kujanpää et al. 2024-12） | teacher = **把文档塞进 prompt 的同一个模型**；student 学无文档时复现其回答，落在 **LoRA** 上 | **不需要 GT、不需要更强 teacher**；优于 SFT，**多个规模上超过 RAG** |
-| 🔍 **Cartridges**（Eyuboglu et al. 2025-06）**已 scale** | 训练一个离线小 KV cache；**朴素 next-token 打不过 ICL，必须 self-study + 上下文蒸馏目标** | 匹配 ICL 同时省 **38.6× 内存、吞吐 26.4×**；MTOB 有效上下文 128k→484k |
+| ✅ᶠ **Cartridges**（Eyuboglu et al. 2025-06）**已 scale** | 训练一个离线小 KV cache；**朴素 next-token 打不过 ICL，必须 self-study + 上下文蒸馏目标**。✅ᶠ **无门控**：Algorithm 1 是裸的 chunk→seed→sample 循环，**每条生成对话直接进训练集**，全文 2795 行穷举零命中；损失是纯 KL 上下文蒸馏，**无正确性/事实性/置信度项** | ✅ᶠ 38.6× 内存 / 26.4× 吞吐**数字准确**（逐字出现 3 次，基线=标准 ICL，1×H100/SGLang） |
 | 🔍 **OPCD**（Microsoft 2026-02） | on-policy + 上下文蒸馏合流：学生在自己轨迹上对 context-conditioned teacher 最小化 reverse KL | 含 **experiential knowledge distillation**（从自身历史轨迹固化知识）与 **system prompt distillation**；更好保留 OOD |
 | 🔍 **Cartridges at Scale**（2026-06） | 修 Cartridges 的**不可组合**问题（朴素混合独立 cartridge → **性能坍缩到接近随机**） | 支持 **>100 万 token**；比 monolithic 高 10–31 点；比常规 RAG 少 **3–4×** prompt token |
 
@@ -323,10 +328,18 @@
 
 ### N. 自我改进 / 合成数据循环 🔍 —— 一条形式化的否定结论
 
-- 🔍★ **Sharpening 机制**（Huang et al., ICLR 2025）：**自我改进不可能创造模型中原本不存在的信息**。
-  它做的是 *sharpening*——利用"验证能力强于生成能力"的 gap 把概率质量集中到高质量序列，本质是**把推理期计算摊销进权重**。
-  > **直接后果**：凡"写入源 = 模型自采样"的家族（STaR / RFT / self-instruct / RLAIF / self-play）在理论上都受 **coverage 约束**，只能作为**已有能力的锐化/摊销算子**。
-  > **真正的新知识必须来自外部证据（上下文、教师、检索）** —— 这反向确认了**上下文蒸馏（J）才是那座桥**。
+- ✅ᶠ★ **Sharpening 机制**（Huang et al., ICLR 2025）：*sharpening* = 以模型自身作 verifier，把概率质量集中到高自奖励序列，
+  本质是**把推理期计算摊销进权重**（原文：*amortizing the expensive inference-time computation*）。
+
+  > ⚠️ **归因错误（第六轮改正）**：**"自我改进不可能创造新信息"不是本文证明的定理**，
+  > 而是摘要第 2 句的**动机性前提**，正文 §1 明确归因于经典的 **data-processing inequality（Cover, 1999）**。
+  > 本文自证的定理是 SFT-/RLHF-Sharpening 的**样本复杂度与 minimax 最优性**，是另一个命题。
+  > **⟹ 引用时应引 data-processing inequality，不可写成"本文证明了…"。**
+
+  > ✅ᶠ **但适用范围的核查对我方有利**：论文**显式限定在"无外部反馈"的自采样设定**
+  > （摘要把 self-improvement 定义为 *without external feedback*；§1.1 规定 self-reward 纯由 base model 导出，无外部监督）。
+  > **⟹ 该结论不能外推到"有外部证据进入上下文"的情形，因此我方推论成立**：
+  > 凡"写入源 = 模型自采样"的家族受 coverage 约束；**真正的新知识必须来自外部证据** —— 反向确认**上下文蒸馏（J）才是那座桥**。
 - 🔍 **STaR**（2022）：门控 = **最终答案正确性 → 需要 GT**。与 on-policy 蒸馏（教师即验证器，无需 GT）和本项目（无 GT 自验证）形成三方对照。
 - 🔴 **模型坍缩，及其边界条件**：
   - 🔍 Shumailov et al.（**Nature 2024**）：递归训练自身输出 → **尾部消失、不可逆缺陷**。
@@ -351,24 +364,41 @@
 
 ### P. 参数化知识库 / 神经数据库 🔍
 
-- 🔍★ **LMLM**（NeurIPS 2025，Weinberger 组）——**机制最干净：在训练期就决定"不内化"**。
-  做法：预训练时把检索到的**事实值从训练损失中 mask 掉**，教模型学会"发起定向查表"而非把长尾事实压进权重。
-  > **损失掩码本身就是准入门**——被 mask 的值不进权重。
-  结果：以远小的规模取得可比表现，同时获得**显式、可编辑、可验证的知识库**，并支持 **instant forgetting**（删除特定事实而不损通用能力）。
-  → **直击可逆性与隔离性**：知识写在人类可读 KB 里，删除=删行，天然按条目可撤销、可按对话者分区。
-  续作 Co-LMLM（2026-07）放宽模板约束。
+- ✅ᶠ★ **LMLM**（Weinberger 组）——**机制最干净：在训练期就决定"不内化"**。
+  做法：预训练时把检索到的**事实值从训练损失中 mask 掉**（逐 token：`m_t = 0` 当 `x_t ∈ {retrieved values, <|db_end|>}`，Eq.1），教模型学会"发起定向查表"而非把长尾事实压进权重。
+  ✅ᶠ **有效性消融**：推理期禁用数据库后事实精度大幅塌陷（FactScore **31.9 → 12.8**，T-REx EM **58.1 → 38.5**）——证明该知识确实不在权重里。
+  结果：以远小的规模取得可比表现，同时获得**显式、可编辑、可验证的知识库**，支持 **instant forgetting**。
+  → **直击可逆性与隔离性**：知识写在人类可读 KB 里，删除=删行。续作 Co-LMLM（2026-07）放宽模板约束。
+
+  > 🔴 **两处错误（第六轮改正）**：
+  > 1. **不是 NeurIPS 2025 主会** —— 是 **NeurIPS 2025 CCFM workshop 的 Oral**。arXiv comments 字段无 venue 声明。
+  > 2. **标题在 v3 已改名**：`Large Memory Language Models` → **`Limited Memory Language Models`**。沿用旧名会检索错配。
+  >
+  > ⚠️ **"损失掩码即准入门"是范畴错置（第六轮改正）**：
+  > 损失掩码是**训练目标**（决定模型学不学 value），**不是写入准入判据**（决定某条知识该不该进库）。
+  > LMLM **真正的写入过滤器**在数据标注管线的 **Corrector** 环节：微调一个刻意欠拟合的 LLaMA-3.1-8B 对候选 lookup call 打分，**按损失丢弃最高的 10%**，
+  > 拒绝理由为「格式不合法 / 上下文不支持 / 过度具体」。
+  > **⟹ 判据性质是「格式合规 + 上下文可推得性」，不涉及正确性、新颖性、不确定性或来源可信度** —— 仍不构成正确性门控。
 - 🔍 **PRAG / DyPRAG**：把语料编译成 **per-document LoRA** 的参数化知识库；DyPRAG 用轻量 hypernet 把文档 embedding **前向映射**成 LoRA。
   限制：PRAG 每文档训练+存储开销大；**DyPRAG 的 LoRA 平均在多文档聚合时互相干扰**。
-- 🔍★★ **Generative Adapter**（Microsoft, **ICLR 2025**）—— **对本项目最关键的一篇**：
-  给冻结 LM 配一个自监督训练的 adapter generator（hypernetwork），上下文经基座编码后**直接产出逐层加性 delta 权重，全程只用前向传播、不做任何梯度下降**；双线性 + 流式增量更新，上下文可边来边累积进权重。
+- ✅ᶠ★★ **Generative Adapter**（Microsoft, **ICLR 2025**）—— **对本项目最关键的一篇，第六轮已全文核查**：
+  给冻结 LM 配一个自监督训练的 adapter generator（hypernetwork），上下文经基座编码后产出**逐层加性 delta 权重**（`W(l) = W_base(l) + W_∆(l)`，双线性外积低秩），仅改造注意力 k/q/v/o 与 FFN up/down 的线性投影。
   | 四问 | 答案 |
   |---|---|
-  | 内化到哪里 | 适配器 / 加性权重增量 |
-  | 写入算子 | **前向摊销映射**（近似闭式，**非梯度**） |
-  | 持久性 | **✓ 跨会话，且天然按对话者隔离**（每用户一份 delta） |
-  | 准入门控 | 🔴 **无——凡进上下文即写** |
+  | 内化到哪里 | 适配器 / 加性权重增量 ✅ᶠ |
+  | 写入算子 | **前向摊销映射**（**测试期无梯度下降**）✅ᶠ |
+  | 持久性 | ✓ 跨会话，天然按对话者隔离（每用户一份 delta） |
+  | 准入门控 | 🔴 **无** ✅ᶠ **（全文穷举确认）** |
 
-  效果：多轮会话记忆用户信息上比全量历史 prompt **省 4× 计算与内存**。
+  **✅ᶠ 无门控的证据（21 页 ICLR camera-ready，pdftotext 136KB 全文穷举）**：
+  `admission`/`admit`/`filter`/`criteri*`/`threshold`/`decide`/`verif*`/`trust`/`confiden*`/`reliab*`/`surpris*`/`salien*`/`discard`/`relevance`/`importance`/`prioriti*` **命中数全部为 0**；
+  近似命中逐条证伪——`gate` 的唯一命中是 **`aggregated` 的子串**，`gating` 的唯一命中是 **`investigating` 的子串**。
+  作者自陈把"更有选择性的更新规则"列为 future work。
+
+  > ⚠️ **两处必须修正的措辞（第六轮改正）**：
+  > 1. **"全程不做梯度下降"不准确** —— 仅指**测试期/上下文写入期**；**生成器 G 本身仍需离线自监督预训练**（reconstruction + completion 双目标，基座冻结），该阶段有梯度。
+  > 2. **"省 4× 计算与内存"必须连代价一起报** —— 设定是 MSC 个性化任务、基座 Mistral-7B、对照 **full-conversation prompting**：算力 2.059→0.505 TFLOPS、存储 128M→32M floats（≈4×），
+  >    **但同表 F1 = 66.0 → 40.2（相对下跌约 39%）**。摘要的 *highly competitive* 明显弱化了这个差距。**只报 4× 不报 F1 是误导。**
 - 🔍 **Memory Grafting**（2026-05）：用"嫁接模型"**离线前向**计算高频 n-gram 的隐状态存为记忆值，推理时**精确最长后缀匹配**检索。是把检索从**文本层下沉到隐状态层**的半内化形态，也是睡眠期计算在预训练侧的落地。限制：精确匹配泛化差、记忆表随语料线性增长。
 
 ### 🔴 跨 J/O/P 的家族级共同缺口 🔍
@@ -379,6 +409,35 @@
 三条可操作结论：**principle-level（抽象策略）比 instance-level（具体轨迹）更耐久**；**step-wise 插入优于 global injection**；**从高质量 teacher 做 off-policy 比 on-policy 更稳定**。
 
 > **但它没有给出决定"写不写"的门控信号——这一空缺在本轮检索到的上下文蒸馏、睡眠期、参数化知识库工作中反复出现，是一个家族级缺口。**
+
+### 🔴🔴 第六轮发现的**优先权风险**（对本项目最重要的一条）
+
+**arXiv:2607.08032** — *What to Keep, What to Forget: A Rate–Distortion View of Memory Compaction in LLMs and Agents*
+（Colaco & Lahjouji, **2026-07-09**，即本文档撰写前三周）
+
+该综述覆盖 KV / prompt / 架构态 / agent 记忆四层、约 70 个方法，并给出两条对我方**同时有利与不利**的内容：
+
+**① 有利——它独立佐证了我方的否定性支点** ✅ᶠ
+全文穷举：`admission`=0、`admit`=0、`verify`=0、`verification`=0、`correctness`=0、`reliab*`=0；
+`gate`/`gating` 的 **49 次命中全部是架构门控单元**（forget gate、Gated DeltaNet、GLA、xLSTM…），**无一是写入准入判据**。
+原文断言：
+> *"At every layer the signal that decides what to keep is attention magnitude or recency… discarding, before the query is known and with no way to undo it, information the query later needs."*
+
+并指出 agent 记忆层（Generative Agents / Reflexion / Mem0 / A-MEM / RAPTOR / HippoRAG…）的失真代理**一律是 LLM 判定的显著性（salience）**，判官出错即被永久写入并自我强化污染后续检索。
+
+**② 🔴 不利——它已经在"开放问题"里提出了与压缩增益门同构的判据**
+> *"promote a span only when its marginal I\*(Q) over the query distribution justifies abstracting it"* —— 外加一条基于输出误差的停止规则。
+
+即：**基于「边际任务条件信息量」的写入准入判据**，与我方「压缩增益 / MDL 准入」在**动机与形式上高度同构**。
+
+> ### 裁决与必须做的收紧
+> - **在【已实现方法】层面，我方支点仍成立**：该文只提出议程，**未实现、未做任何实验验证**。
+> - **在【已被提出/已被命名】层面，位置已被占**。
+> - **⟹ 贡献声明必须从「无人做过准入门控」收紧为「尚无方法【实现并实证】基于压缩增益的写入准入门控」，
+>   并把 2607.08032 作为 concurrent position work 正面引用。**
+>
+> 这是继 **SAGE** 之后**第二次**有工作逼近本项目的位置，且这一次在**信息论形式**上更近。
+> ⏰ **投稿前必须再扫一次该方向**——它正在被快速填补。
 
 ---
 
