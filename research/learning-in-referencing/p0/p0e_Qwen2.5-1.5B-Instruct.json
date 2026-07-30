@@ -1,0 +1,1579 @@
+{
+  "summary": {
+    "model": "Qwen/Qwen2.5-1.5B-Instruct",
+    "dtype": "torch.bfloat16",
+    "n": 22,
+    "margin_mean": 4.082585173087869,
+    "margin_ci": [
+      2.5158232323463543,
+      5.695580049502379
+    ],
+    "wins": 19,
+    "sign_p": 0.0004277229309082031,
+    "auc_raw": 0.8429752066115702,
+    "auc_raw_ci": [
+      0.737603305785124,
+      0.9421487603305785
+    ],
+    "auc_z": 0.8574380165289256,
+    "auc_z_ci": [
+      0.7458677685950413,
+      0.9504132231404959
+    ],
+    "z_global_sep": false,
+    "z_M_min": -0.9665434521454822,
+    "z_Mprime_max": 1.0932093033100243,
+    "by_type": {
+      "G1": {
+        "n": 6,
+        "margin": 2.9309358047029965,
+        "ci": [
+          1.6443939154082263,
+          4.123690148079424
+        ],
+        "wins": 6,
+        "auc_z": 0.8611111111111112
+      },
+      "G2": {
+        "n": 4,
+        "margin": 9.124765842218013,
+        "ci": [
+          7.440326904976462,
+          10.809204779459563
+        ],
+        "wins": 4,
+        "auc_z": 1.0
+      },
+      "G3": {
+        "n": 4,
+        "margin": 8.252534887223323,
+        "ci": [
+          7.601321408292364,
+          8.975476855033405
+        ],
+        "wins": 4,
+        "auc_z": 1.0
+      },
+      "G4": {
+        "n": 4,
+        "margin": 0.15304196717834473,
+        "ci": [
+          -0.3121019150954374,
+          0.6181858494521268
+        ],
+        "wins": 2,
+        "auc_z": 0.5625
+      },
+      "G5": {
+        "n": 4,
+        "margin": 0.5274720483091034,
+        "ci": [
+          0.08536262591260813,
+          1.087849528850343
+        ],
+        "wins": 3,
+        "auc_z": 0.8125
+      }
+    },
+    "margin_unidirectional": 5.408467819709003,
+    "margin_bidirectional": 2.9776829675702574
+  },
+  "rows": [
+    {
+      "id": "G1-01",
+      "type": "G1",
+      "base": 13.966886018034753,
+      "dM": 9.363697033123401,
+      "dP": 8.583323933114752,
+      "mu": 1.7930702740831501,
+      "sd": 6.268106964109201,
+      "zM": 1.2078011435333187,
+      "zP": 1.0833021353834869,
+      "nulls": [
+        {
+          "h": "blue",
+          "tag": "wrong_single",
+          "dnll": -4.920462352065297
+        },
+        {
+          "h": "green",
+          "tag": "wrong_single",
+          "dnll": -5.880984999714066
+        },
+        {
+          "h": "square",
+          "tag": "wrong_single",
+          "dnll": 3.8699793973897023
+        },
+        {
+          "h": "blue and round",
+          "tag": "wrong_conj",
+          "dnll": -7.510265866892066
+        },
+        {
+          "h": "green and square",
+          "tag": "wrong_conj",
+          "dnll": -5.2867632755529534
+        },
+        {
+          "h": "red and heavy",
+          "tag": "overspec",
+          "dnll": 7.28709306277751
+        },
+        {
+          "h": "red and smooth",
+          "tag": "overspec",
+          "dnll": 6.343991815960289
+        },
+        {
+          "h": "red and small",
+          "tag": "overspec",
+          "dnll": 7.592318199292257
+        },
+        {
+          "h": "red and shiny",
+          "tag": "overspec",
+          "dnll": 8.032917130513718
+        },
+        {
+          "h": "a thing",
+          "tag": "overbroad",
+          "dnll": 6.245236493436291
+        },
+        {
+          "h": "an object",
+          "tag": "overbroad",
+          "dnll": 3.950713409769266
+        }
+      ]
+    },
+    {
+      "id": "G1-02",
+      "type": "G1",
+      "base": 8.833937052385101,
+      "dM": 7.2676183167989015,
+      "dP": 6.126317706842338,
+      "mu": -0.11089237362697721,
+      "sd": 6.462555757113684,
+      "zM": 1.1417326159706946,
+      "zP": 0.9651305636479316,
+      "nulls": [
+        {
+          "h": "plastic",
+          "tag": "wrong_single",
+          "dnll": -7.802096665524049
+        },
+        {
+          "h": "metal",
+          "tag": "wrong_single",
+          "dnll": -7.533922468118439
+        },
+        {
+          "h": "short",
+          "tag": "wrong_single",
+          "dnll": -0.8559072526067926
+        },
+        {
+          "h": "plastic and short",
+          "tag": "wrong_conj",
+          "dnll": -7.17933001248238
+        },
+        {
+          "h": "metal and long",
+          "tag": "wrong_conj",
+          "dnll": -8.839308920332355
+        },
+        {
+          "h": "wooden and heavy",
+          "tag": "overspec",
+          "dnll": 5.634066930659904
+        },
+        {
+          "h": "wooden and smooth",
+          "tag": "overspec",
+          "dnll": 6.808456359667865
+        },
+        {
+          "h": "wooden and thin",
+          "tag": "overspec",
+          "dnll": 5.834598639286315
+        },
+        {
+          "h": "wooden and dark",
+          "tag": "overspec",
+          "dnll": 5.684534082294385
+        },
+        {
+          "h": "a thing",
+          "tag": "overbroad",
+          "dnll": 2.975211043096923
+        },
+        {
+          "h": "an object",
+          "tag": "overbroad",
+          "dnll": 4.053882154161874
+        }
+      ]
+    },
+    {
+      "id": "G1-03",
+      "type": "G1",
+      "base": 9.670109616623039,
+      "dM": 6.3894534704350825,
+      "dP": 3.8370330834508977,
+      "mu": -0.8937158299609124,
+      "sd": 4.327395402772393,
+      "zM": 1.6830376294548801,
+      "zP": 1.0932093033100243,
+      "nulls": [
+        {
+          "h": "green",
+          "tag": "wrong_single",
+          "dnll": -5.654484941313569
+        },
+        {
+          "h": "red",
+          "tag": "wrong_single",
+          "dnll": -5.142215537215609
+        },
+        {
+          "h": "large",
+          "tag": "wrong_single",
+          "dnll": -1.8864311645754377
+        },
+        {
+          "h": "green and large",
+          "tag": "wrong_conj",
+          "dnll": -7.402723249919768
+        },
+        {
+          "h": "red and small",
+          "tag": "wrong_conj",
+          "dnll": -5.604012004527743
+        },
+        {
+          "h": "blue and round",
+          "tag": "overspec",
+          "dnll": 2.3656195350582996
+        },
+        {
+          "h": "blue and heavy",
+          "tag": "overspec",
+          "dnll": 4.438152546961103
+        },
+        {
+          "h": "blue and smooth",
+          "tag": "overspec",
+          "dnll": 2.277004116612556
+        },
+        {
+          "h": "blue and shiny",
+          "tag": "overspec",
+          "dnll": 3.352129372491156
+        },
+        {
+          "h": "a thing",
+          "tag": "overbroad",
+          "dnll": 2.0912913585893813
+        },
+        {
+          "h": "an object",
+          "tag": "overbroad",
+          "dnll": 1.3347958382695957
+        }
+      ]
+    },
+    {
+      "id": "G1-04",
+      "type": "G1",
+      "base": 6.8495801105317105,
+      "dM": 3.851462754828916,
+      "dP": -1.0302527077334531,
+      "mu": -0.36621809812621353,
+      "sd": 4.13303310361235,
+      "zM": 1.020480781842467,
+      "zP": -0.16066520469600415,
+      "nulls": [
+        {
+          "h": "hard",
+          "tag": "wrong_single",
+          "dnll": -3.2053230495862772
+        },
+        {
+          "h": "black",
+          "tag": "wrong_single",
+          "dnll": -1.10289812744786
+        },
+        {
+          "h": "rough",
+          "tag": "wrong_single",
+          "dnll": -4.79136332062651
+        },
+        {
+          "h": "hard and black",
+          "tag": "wrong_conj",
+          "dnll": -6.584887095266329
+        },
+        {
+          "h": "rough and white",
+          "tag": "wrong_conj",
+          "dnll": -5.60828934219247
+        },
+        {
+          "h": "soft and warm",
+          "tag": "overspec",
+          "dnll": 4.181865420502702
+        },
+        {
+          "h": "soft and light",
+          "tag": "overspec",
+          "dnll": 4.181885165127852
+        },
+        {
+          "h": "soft and thick",
+          "tag": "overspec",
+          "dnll": 3.271045553965028
+        },
+        {
+          "h": "soft and clean",
+          "tag": "overspec",
+          "dnll": 3.689448237367124
+        },
+        {
+          "h": "a thing",
+          "tag": "overbroad",
+          "dnll": 1.9353700472574147
+        },
+        {
+          "h": "an object",
+          "tag": "overbroad",
+          "dnll": 0.004747431510976341
+        }
+      ]
+    },
+    {
+      "id": "G1-05",
+      "type": "G1",
+      "base": 9.455942988486564,
+      "dM": 2.3416916390707545,
+      "dP": -2.1158265727328303,
+      "mu": 0.37210752011674675,
+      "sd": 1.7256432051887625,
+      "zM": 1.1413623123434495,
+      "zP": -1.441743047096129,
+      "nulls": [
+        {
+          "h": "square",
+          "tag": "wrong_single",
+          "dnll": -0.5714013682265549
+        },
+        {
+          "h": "green",
+          "tag": "wrong_single",
+          "dnll": -1.0787229192361227
+        },
+        {
+          "h": "flat",
+          "tag": "wrong_single",
+          "dnll": -0.31524737686601156
+        },
+        {
+          "h": "square and red",
+          "tag": "wrong_conj",
+          "dnll": -2.7831834595146603
+        },
+        {
+          "h": "flat and green",
+          "tag": "wrong_conj",
+          "dnll": -0.9001108273961709
+        },
+        {
+          "h": "round and small",
+          "tag": "overspec",
+          "dnll": 2.6822165998942085
+        },
+        {
+          "h": "round and smooth",
+          "tag": "overspec",
+          "dnll": 1.813673782814762
+        },
+        {
+          "h": "round and hard",
+          "tag": "overspec",
+          "dnll": -0.19327326618504692
+        },
+        {
+          "h": "round and shiny",
+          "tag": "overspec",
+          "dnll": 1.9699724967900067
+        },
+        {
+          "h": "a thing",
+          "tag": "overbroad",
+          "dnll": 2.341256130410887
+        },
+        {
+          "h": "an object",
+          "tag": "overbroad",
+          "dnll": 1.1280029287989173
+        }
+      ]
+    },
+    {
+      "id": "G1-06",
+      "type": "G1",
+      "base": 6.747412444937866,
+      "dM": 4.610050076949864,
+      "dP": 0.8377630200472357,
+      "mu": -0.6984177071375556,
+      "sd": 5.577352686399958,
+      "zM": 0.9517898692388239,
+      "zP": 0.2754318784484755,
+      "nulls": [
+        {
+          "h": "light",
+          "tag": "wrong_single",
+          "dnll": -7.960732057450211
+        },
+        {
+          "h": "metal",
+          "tag": "wrong_single",
+          "dnll": -5.019429576459655
+        },
+        {
+          "h": "wooden",
+          "tag": "wrong_single",
+          "dnll": -4.256752963271553
+        },
+        {
+          "h": "light and metal",
+          "tag": "wrong_conj",
+          "dnll": -3.1729446023016967
+        },
+        {
+          "h": "wooden and light",
+          "tag": "wrong_conj",
+          "dnll": -10.263843969986478
+        },
+        {
+          "h": "heavy and large",
+          "tag": "overspec",
+          "dnll": 4.891165819429151
+        },
+        {
+          "h": "heavy and hard",
+          "tag": "overspec",
+          "dnll": 4.735677497807606
+        },
+        {
+          "h": "heavy and dark",
+          "tag": "overspec",
+          "dnll": 4.4388856504233996
+        },
+        {
+          "h": "heavy and cold",
+          "tag": "overspec",
+          "dnll": 3.9532316144186908
+        },
+        {
+          "h": "a thing",
+          "tag": "overbroad",
+          "dnll": 2.105726494959251
+        },
+        {
+          "h": "an object",
+          "tag": "overbroad",
+          "dnll": 2.8664213139183836
+        }
+      ]
+    },
+    {
+      "id": "G2-01",
+      "type": "G2",
+      "base": 10.813573501776457,
+      "dM": 6.26018997496397,
+      "dP": -4.340487670235365,
+      "mu": -1.5500794498785617,
+      "sd": 2.817464289189198,
+      "zM": 2.772091719072027,
+      "zP": -0.9903970144586356,
+      "nulls": [
+        {
+          "h": "a plant",
+          "tag": "wrong_single",
+          "dnll": -5.93274370311428
+        },
+        {
+          "h": "a tool",
+          "tag": "wrong_single",
+          "dnll": -2.1814752846675454
+        },
+        {
+          "h": "a stone",
+          "tag": "wrong_single",
+          "dnll": -4.200138120218968
+        },
+        {
+          "h": "a bird or a plant",
+          "tag": "wrong_conj",
+          "dnll": -3.142078866284484
+        },
+        {
+          "h": "a small machine",
+          "tag": "wrong_conj",
+          "dnll": -2.7254625588369645
+        },
+        {
+          "h": "a mammal",
+          "tag": "overspec",
+          "dnll": -1.3590567309146007
+        },
+        {
+          "h": "a flying animal",
+          "tag": "overspec",
+          "dnll": 0.21002580652754865
+        },
+        {
+          "h": "a wild animal",
+          "tag": "overspec",
+          "dnll": -2.658153224346787
+        },
+        {
+          "h": "a small animal",
+          "tag": "overspec",
+          "dnll": -0.6361983696193878
+        },
+        {
+          "h": "a thing",
+          "tag": "overbroad",
+          "dnll": 4.521321630302001
+        },
+        {
+          "h": "an object",
+          "tag": "overbroad",
+          "dnll": 1.053085472509288
+        }
+      ]
+    },
+    {
+      "id": "G2-02",
+      "type": "G2",
+      "base": 7.9537976601484255,
+      "dM": 7.207296096291705,
+      "dP": -3.810435817428089,
+      "mu": -0.6746373528916928,
+      "sd": 2.862400691294259,
+      "zM": 2.753609399674758,
+      "zP": -1.0955134527718822,
+      "nulls": [
+        {
+          "h": "a vehicle",
+          "tag": "wrong_single",
+          "dnll": -3.4546428671777045
+        },
+        {
+          "h": "a garment",
+          "tag": "wrong_single",
+          "dnll": -3.942323143011321
+        },
+        {
+          "h": "a weapon",
+          "tag": "wrong_single",
+          "dnll": -2.8854011309513483
+        },
+        {
+          "h": "a cup or a book",
+          "tag": "wrong_conj",
+          "dnll": -3.138375191585477
+        },
+        {
+          "h": "a small weapon",
+          "tag": "wrong_conj",
+          "dnll": -2.542983960772072
+        },
+        {
+          "h": "a drinking vessel",
+          "tag": "overspec",
+          "dnll": 0.7063804893248058
+        },
+        {
+          "h": "a glass container",
+          "tag": "overspec",
+          "dnll": -1.6569708265172762
+        },
+        {
+          "h": "a small container",
+          "tag": "overspec",
+          "dnll": 2.747139553789901
+        },
+        {
+          "h": "a kitchen container",
+          "tag": "overspec",
+          "dnll": -0.1789439494324201
+        },
+        {
+          "h": "a thing",
+          "tag": "overbroad",
+          "dnll": 3.36306734266903
+        },
+        {
+          "h": "an object",
+          "tag": "overbroad",
+          "dnll": 3.562042801855262
+        }
+      ]
+    },
+    {
+      "id": "G2-03",
+      "type": "G2",
+      "base": 6.261660786151215,
+      "dM": 4.797642916797779,
+      "dP": -1.6712737430187792,
+      "mu": -0.47180036815698445,
+      "sd": 3.5766073661983047,
+      "zM": 1.4733077314426688,
+      "zP": -0.33536624293674006,
+      "nulls": [
+        {
+          "h": "an animal",
+          "tag": "wrong_single",
+          "dnll": -4.9424743806336755
+        },
+        {
+          "h": "a mineral",
+          "tag": "wrong_single",
+          "dnll": -4.699886689505626
+        },
+        {
+          "h": "a tool",
+          "tag": "wrong_single",
+          "dnll": -2.160665921357391
+        },
+        {
+          "h": "a flower or a stone",
+          "tag": "wrong_conj",
+          "dnll": -0.20126451314906735
+        },
+        {
+          "h": "a small animal",
+          "tag": "wrong_conj",
+          "dnll": -6.046959098184847
+        },
+        {
+          "h": "a flowering plant",
+          "tag": "overspec",
+          "dnll": -0.9998800339056304
+        },
+        {
+          "h": "a garden plant",
+          "tag": "overspec",
+          "dnll": 3.3557064398895378
+        },
+        {
+          "h": "a green plant",
+          "tag": "overspec",
+          "dnll": 2.507266478087191
+        },
+        {
+          "h": "a small plant",
+          "tag": "overspec",
+          "dnll": 2.105258071414535
+        },
+        {
+          "h": "a thing",
+          "tag": "overbroad",
+          "dnll": 1.8894866069630085
+        },
+        {
+          "h": "a living thing",
+          "tag": "overbroad",
+          "dnll": 4.003608990655136
+        }
+      ]
+    },
+    {
+      "id": "G2-04",
+      "type": "G2",
+      "base": 6.82926088314721,
+      "dM": 3.607771352601875,
+      "dP": -4.803965797534492,
+      "mu": -1.3333869454965512,
+      "sd": 2.46908464225257,
+      "zM": 2.001210575588271,
+      "zP": -1.4056135592304757,
+      "nulls": [
+        {
+          "h": "a building",
+          "tag": "wrong_single",
+          "dnll": -5.201382499425424
+        },
+        {
+          "h": "a tool",
+          "tag": "wrong_single",
+          "dnll": 0.07024650618786676
+        },
+        {
+          "h": "a garment",
+          "tag": "wrong_single",
+          "dnll": -0.4439353900641869
+        },
+        {
+          "h": "a car or a chair",
+          "tag": "wrong_conj",
+          "dnll": -2.8357354734947116
+        },
+        {
+          "h": "a small building",
+          "tag": "wrong_conj",
+          "dnll": -4.297955038091489
+        },
+        {
+          "h": "a motor vehicle",
+          "tag": "overspec",
+          "dnll": -1.9118618658005282
+        },
+        {
+          "h": "a road vehicle",
+          "tag": "overspec",
+          "dnll": -0.6558200085647989
+        },
+        {
+          "h": "a wheeled vehicle",
+          "tag": "overspec",
+          "dnll": 2.4395924039625454
+        },
+        {
+          "h": "a fast vehicle",
+          "tag": "overspec",
+          "dnll": -3.6970680782400613
+        },
+        {
+          "h": "a thing",
+          "tag": "overbroad",
+          "dnll": 1.7405666222852325
+        },
+        {
+          "h": "an object",
+          "tag": "overbroad",
+          "dnll": 0.12609642078349115
+        }
+      ]
+    },
+    {
+      "id": "G3-01",
+      "type": "G3",
+      "base": 9.400646860205022,
+      "dM": 7.348216943442715,
+      "dP": -0.8738237435680158,
+      "mu": -1.103452856429789,
+      "sd": 4.859459283728689,
+      "zM": 1.7392202108106753,
+      "zP": 0.04725404606859418,
+      "nulls": [
+        {
+          "h": "made of plastic",
+          "tag": "wrong_single",
+          "dnll": -4.443792974220987
+        },
+        {
+          "h": "made of wood",
+          "tag": "wrong_single",
+          "dnll": -6.792722133046492
+        },
+        {
+          "h": "a bowl",
+          "tag": "wrong_single",
+          "dnll": -3.594756605577201
+        },
+        {
+          "h": "a plastic cup",
+          "tag": "wrong_conj",
+          "dnll": -4.930352267685064
+        },
+        {
+          "h": "a wooden bowl",
+          "tag": "wrong_conj",
+          "dnll": -7.875563972606429
+        },
+        {
+          "h": "a glass cup",
+          "tag": "overspec",
+          "dnll": -3.20247555836821
+        },
+        {
+          "h": "a clear glass object",
+          "tag": "overspec",
+          "dnll": 5.193411713821826
+        },
+        {
+          "h": "a small glass object",
+          "tag": "overspec",
+          "dnll": 2.685896304599437
+        },
+        {
+          "h": "a glass vessel",
+          "tag": "overspec",
+          "dnll": 2.8640415323819024
+        },
+        {
+          "h": "a thing",
+          "tag": "overbroad",
+          "dnll": 3.776764471149317
+        },
+        {
+          "h": "an object",
+          "tag": "overbroad",
+          "dnll": 4.181568068824223
+        }
+      ]
+    },
+    {
+      "id": "G3-02",
+      "type": "G3",
+      "base": 5.129967682451132,
+      "dM": 4.337930929427883,
+      "dP": -3.0564840526250245,
+      "mu": -1.9147928236454053,
+      "sd": 4.310745359463825,
+      "zM": 1.450497125594774,
+      "zP": -0.264847754570598,
+      "nulls": [
+        {
+          "h": "made of canvas",
+          "tag": "wrong_single",
+          "dnll": -4.760461262505173
+        },
+        {
+          "h": "made of rubber",
+          "tag": "wrong_single",
+          "dnll": -4.5306037118014855
+        },
+        {
+          "h": "a boot",
+          "tag": "wrong_single",
+          "dnll": -3.3340059264213933
+        },
+        {
+          "h": "a canvas shoe",
+          "tag": "wrong_conj",
+          "dnll": -8.398332409521004
+        },
+        {
+          "h": "a rubber glove",
+          "tag": "wrong_conj",
+          "dnll": -7.839585881405886
+        },
+        {
+          "h": "a leather shoe",
+          "tag": "overspec",
+          "dnll": -3.3722967407351385
+        },
+        {
+          "h": "a brown leather object",
+          "tag": "overspec",
+          "dnll": 3.0556709087498892
+        },
+        {
+          "h": "a soft leather object",
+          "tag": "overspec",
+          "dnll": 2.9801197796313885
+        },
+        {
+          "h": "a leather garment",
+          "tag": "overspec",
+          "dnll": 2.687377376441904
+        },
+        {
+          "h": "a thing",
+          "tag": "overbroad",
+          "dnll": 1.380515995194413
+        },
+        {
+          "h": "an object",
+          "tag": "overbroad",
+          "dnll": 1.0688808122730284
+        }
+      ]
+    },
+    {
+      "id": "G3-03",
+      "type": "G3",
+      "base": 6.563964465235639,
+      "dM": 5.437931405241866,
+      "dP": -3.8161803649101156,
+      "mu": -0.47756855821610855,
+      "sd": 2.8321961747889013,
+      "zM": 2.088661801084061,
+      "zP": -1.178806692987237,
+      "nulls": [
+        {
+          "h": "made of cloth",
+          "tag": "wrong_single",
+          "dnll": 1.4691259975322266
+        },
+        {
+          "h": "made of plastic",
+          "tag": "wrong_single",
+          "dnll": -4.752190269161767
+        },
+        {
+          "h": "a magazine",
+          "tag": "wrong_single",
+          "dnll": -2.147994188009948
+        },
+        {
+          "h": "a cloth book",
+          "tag": "wrong_conj",
+          "dnll": -3.744462050160932
+        },
+        {
+          "h": "a plastic bag",
+          "tag": "wrong_conj",
+          "dnll": -1.2621505997233733
+        },
+        {
+          "h": "a paper book",
+          "tag": "overspec",
+          "dnll": -2.5115140654157386
+        },
+        {
+          "h": "a printed paper object",
+          "tag": "overspec",
+          "dnll": 3.4751975138846887
+        },
+        {
+          "h": "a thin paper object",
+          "tag": "overspec",
+          "dnll": 3.6840114483501427
+        },
+        {
+          "h": "a paper document",
+          "tag": "overspec",
+          "dnll": -1.7105047383316556
+        },
+        {
+          "h": "a thing",
+          "tag": "overbroad",
+          "dnll": 1.5390146117040233
+        },
+        {
+          "h": "an object",
+          "tag": "overbroad",
+          "dnll": 0.7082121989551391
+        }
+      ]
+    },
+    {
+      "id": "G3-04",
+      "type": "G3",
+      "base": 8.360651539257246,
+      "dM": 6.483857438852478,
+      "dP": -1.655714670825196,
+      "mu": -1.0050665704211723,
+      "sd": 4.467654032582464,
+      "zM": 1.676254238725102,
+      "zP": -0.1456352921821759,
+      "nulls": [
+        {
+          "h": "made of brass",
+          "tag": "wrong_single",
+          "dnll": -7.280806407895268
+        },
+        {
+          "h": "made of plastic",
+          "tag": "wrong_single",
+          "dnll": -4.481226997239515
+        },
+        {
+          "h": "a lock",
+          "tag": "wrong_single",
+          "dnll": -2.128766504886837
+        },
+        {
+          "h": "a brass key",
+          "tag": "wrong_conj",
+          "dnll": -5.59100254922738
+        },
+        {
+          "h": "a plastic lock",
+          "tag": "wrong_conj",
+          "dnll": -6.047310683492903
+        },
+        {
+          "h": "an iron key",
+          "tag": "overspec",
+          "dnll": -2.1561924266770394
+        },
+        {
+          "h": "a small iron object",
+          "tag": "overspec",
+          "dnll": 3.155454799241036
+        },
+        {
+          "h": "a heavy iron object",
+          "tag": "overspec",
+          "dnll": 2.1552260265635876
+        },
+        {
+          "h": "an iron tool",
+          "tag": "overspec",
+          "dnll": 5.254228109588672
+        },
+        {
+          "h": "a thing",
+          "tag": "overbroad",
+          "dnll": 2.9596604567981117
+        },
+        {
+          "h": "an object",
+          "tag": "overbroad",
+          "dnll": 3.10500390259464
+        }
+      ]
+    },
+    {
+      "id": "G4-01",
+      "type": "G4",
+      "base": 3.0818585531018092,
+      "dM": 0.10466017767572167,
+      "dP": -0.4452778402846982,
+      "mu": 0.1030185718926415,
+      "sd": 0.5860695027635299,
+      "zM": 0.0028010428376487686,
+      "zP": -0.9355484453497813,
+      "nulls": [
+        {
+          "h": "\"X zelka Y\" means X sees Y",
+          "tag": "wrong_single",
+          "dnll": 0.09462687824502325
+        },
+        {
+          "h": "\"X zelka Y\" means X follows Y",
+          "tag": "wrong_single",
+          "dnll": -1.1770717604949512
+        },
+        {
+          "h": "\"X zelka Y\" means X and Y are equal",
+          "tag": "wrong_single",
+          "dnll": 0.1355342573287861
+        },
+        {
+          "h": "\"X zelka Y\" means X takes something from Y",
+          "tag": "wrong_conj",
+          "dnll": 0.2539349565264044
+        },
+        {
+          "h": "\"X zelka Y\" means Y sees X",
+          "tag": "wrong_conj",
+          "dnll": -0.21962762828362425
+        },
+        {
+          "h": "\"X zelka Y\" means X gives a book to Y",
+          "tag": "overspec",
+          "dnll": -0.06714772164930105
+        },
+        {
+          "h": "\"X zelka Y\" means X gives something small to Y",
+          "tag": "overspec",
+          "dnll": 0.27630498966595285
+        },
+        {
+          "h": "\"X zelka Y\" means X politely gives something to Y",
+          "tag": "overspec",
+          "dnll": 1.1459750240938855
+        },
+        {
+          "h": "\"X zelka Y\" means X hands something directly to Y",
+          "tag": "overspec",
+          "dnll": -0.2174923506759172
+        },
+        {
+          "h": "\"X zelka Y\" means X and Y interact",
+          "tag": "overbroad",
+          "dnll": 0.16067663001181254
+        },
+        {
+          "h": "\"X zelka Y\" means something happens",
+          "tag": "overbroad",
+          "dnll": 0.7474910160509856
+        }
+      ]
+    },
+    {
+      "id": "G4-02",
+      "type": "G4",
+      "base": 3.421760167704465,
+      "dM": -0.44576345623327507,
+      "dP": -0.19818525054875868,
+      "mu": -0.0334379854859197,
+      "sd": 0.4265979660118715,
+      "zM": -0.9665434521454822,
+      "zP": -0.38618858548016227,
+      "nulls": [
+        {
+          "h": "\"X murden Y\" means X is beside Y",
+          "tag": "wrong_single",
+          "dnll": 0.5970615723060639
+        },
+        {
+          "h": "\"X murden Y\" means X touches Y",
+          "tag": "wrong_single",
+          "dnll": -0.3391832990346333
+        },
+        {
+          "h": "\"X murden Y\" means X is inside Y",
+          "tag": "wrong_single",
+          "dnll": 0.48426741678536445
+        },
+        {
+          "h": "\"X murden Y\" means X is under Y",
+          "tag": "wrong_conj",
+          "dnll": 0.4233234692844263
+        },
+        {
+          "h": "\"X murden Y\" means Y touches X",
+          "tag": "wrong_conj",
+          "dnll": -0.374176353628763
+        },
+        {
+          "h": "\"X murden Y\" means X is directly above Y",
+          "tag": "overspec",
+          "dnll": -0.2555400320738239
+        },
+        {
+          "h": "\"X murden Y\" means X is high above Y",
+          "tag": "overspec",
+          "dnll": -0.32382214141463406
+        },
+        {
+          "h": "\"X murden Y\" means X floats above Y",
+          "tag": "overspec",
+          "dnll": -0.16647520434878382
+        },
+        {
+          "h": "\"X murden Y\" means X is above and near Y",
+          "tag": "overspec",
+          "dnll": -0.7443072708146841
+        },
+        {
+          "h": "\"X murden Y\" means X and Y are related in space",
+          "tag": "overbroad",
+          "dnll": 0.15448708241616593
+        },
+        {
+          "h": "\"X murden Y\" means something is somewhere",
+          "tag": "overbroad",
+          "dnll": 0.17654692017818485
+        }
+      ]
+    },
+    {
+      "id": "G4-03",
+      "type": "G4",
+      "base": 3.2272140075555837,
+      "dM": 1.4661489867485913,
+      "dP": 1.8427746112549497,
+      "mu": 1.4311375019571695,
+      "sd": 0.6047559463164645,
+      "zM": 0.05789357674723969,
+      "zP": 0.680666493326836,
+      "nulls": [
+        {
+          "h": "\"X fastrel Y\" means X meets Y",
+          "tag": "wrong_single",
+          "dnll": 1.4920153230940758
+        },
+        {
+          "h": "\"X fastrel Y\" means X likes Y",
+          "tag": "wrong_single",
+          "dnll": 1.9309318288197341
+        },
+        {
+          "h": "\"X fastrel Y\" means X works with Y",
+          "tag": "wrong_single",
+          "dnll": 1.57285033623339
+        },
+        {
+          "h": "\"X fastrel Y\" means X studies under Y",
+          "tag": "wrong_conj",
+          "dnll": 1.9284959105363004
+        },
+        {
+          "h": "\"X fastrel Y\" means Y helps X",
+          "tag": "wrong_conj",
+          "dnll": 1.570887049522376
+        },
+        {
+          "h": "\"X fastrel Y\" means X teaches Y a skill",
+          "tag": "overspec",
+          "dnll": 1.4372518378028054
+        },
+        {
+          "h": "\"X fastrel Y\" means X formally teaches Y",
+          "tag": "overspec",
+          "dnll": 1.846595369990791
+        },
+        {
+          "h": "\"X fastrel Y\" means X teaches Y in a school",
+          "tag": "overspec",
+          "dnll": 1.9258948491659391
+        },
+        {
+          "h": "\"X fastrel Y\" means X patiently teaches Y",
+          "tag": "overspec",
+          "dnll": -0.1376199979844519
+        },
+        {
+          "h": "\"X fastrel Y\" means X and Y are connected",
+          "tag": "overbroad",
+          "dnll": 1.053235570495302
+        },
+        {
+          "h": "\"X fastrel Y\" means an event occurs",
+          "tag": "overbroad",
+          "dnll": 1.1219744438526034
+        }
+      ]
+    },
+    {
+      "id": "G4-04",
+      "type": "G4",
+      "base": 4.942718303085251,
+      "dM": -1.5762842076014234,
+      "dP": -2.2627178885452572,
+      "mu": -1.0096387292664666,
+      "sd": 0.9621944301109295,
+      "zM": -0.5889095390727105,
+      "zP": -1.3023138775957428,
+      "nulls": [
+        {
+          "h": "\"X polvin Y\" means X uses Y",
+          "tag": "wrong_single",
+          "dnll": -0.4235631466118823
+        },
+        {
+          "h": "\"X polvin Y\" means X made Y",
+          "tag": "wrong_single",
+          "dnll": -0.18957685630376897
+        },
+        {
+          "h": "\"X polvin Y\" means X is near Y",
+          "tag": "wrong_single",
+          "dnll": 0.30064077760081354
+        },
+        {
+          "h": "\"X polvin Y\" means X is owned by Y",
+          "tag": "wrong_conj",
+          "dnll": -2.5372417641590124
+        },
+        {
+          "h": "\"X polvin Y\" means Y made X",
+          "tag": "wrong_conj",
+          "dnll": -0.41038042781629347
+        },
+        {
+          "h": "\"X polvin Y\" means X legally owns Y",
+          "tag": "overspec",
+          "dnll": -0.4771976606060875
+        },
+        {
+          "h": "\"X polvin Y\" means X owns and uses Y",
+          "tag": "overspec",
+          "dnll": -2.1047015233317827
+        },
+        {
+          "h": "\"X polvin Y\" means X owns a large Y",
+          "tag": "overspec",
+          "dnll": -0.9697686304957784
+        },
+        {
+          "h": "\"X polvin Y\" means X fully owns Y",
+          "tag": "overspec",
+          "dnll": -1.1653559042893775
+        },
+        {
+          "h": "\"X polvin Y\" means X and Y are associated",
+          "tag": "overbroad",
+          "dnll": -0.6401629256082693
+        },
+        {
+          "h": "\"X polvin Y\" means a relation holds",
+          "tag": "overbroad",
+          "dnll": -2.4887179603096943
+        }
+      ]
+    },
+    {
+      "id": "G5-01",
+      "type": "G5",
+      "base": 5.218573919030933,
+      "dM": 1.1477753358880722,
+      "dP": 1.1832676755609821,
+      "mu": 0.5268500469999359,
+      "sd": 0.6535201863507811,
+      "zM": 0.9501241153013914,
+      "zP": 1.0044335925205987,
+      "nulls": [
+        {
+          "h": "small in absolute size",
+          "tag": "wrong_single",
+          "dnll": -0.30000518614455096
+        },
+        {
+          "h": "heavy in absolute weight",
+          "tag": "wrong_single",
+          "dnll": 0.3098046544318178
+        },
+        {
+          "h": "tall",
+          "tag": "wrong_single",
+          "dnll": 1.0812367567263417
+        },
+        {
+          "h": "smaller than the other object mentioned",
+          "tag": "wrong_conj",
+          "dnll": -0.8660358141643707
+        },
+        {
+          "h": "heavier than the other object",
+          "tag": "wrong_conj",
+          "dnll": 0.9671673505942113
+        },
+        {
+          "h": "large and heavy",
+          "tag": "overspec",
+          "dnll": 0.28442687151001156
+        },
+        {
+          "h": "large and visible",
+          "tag": "overspec",
+          "dnll": 1.2116650727985707
+        },
+        {
+          "h": "very large",
+          "tag": "overspec",
+          "dnll": 0.30474667575757497
+        },
+        {
+          "h": "large and solid",
+          "tag": "overspec",
+          "dnll": 0.8545975749771646
+        },
+        {
+          "h": "a property",
+          "tag": "overbroad",
+          "dnll": 1.0592681844965037
+        },
+        {
+          "h": "something notable",
+          "tag": "overbroad",
+          "dnll": 0.8884783760160193
+        }
+      ]
+    },
+    {
+      "id": "G5-02",
+      "type": "G5",
+      "base": 6.215467470492981,
+      "dM": 1.3069632465899446,
+      "dP": 0.8590357239207824,
+      "mu": 0.040987397319149826,
+      "sd": 1.5382867295300615,
+      "zM": 0.8229778135429561,
+      "zP": 0.5317918375669418,
+      "nulls": [
+        {
+          "h": "cold in absolute temperature",
+          "tag": "wrong_single",
+          "dnll": -0.995604386029858
+        },
+        {
+          "h": "bright",
+          "tag": "wrong_single",
+          "dnll": 0.6373280016185809
+        },
+        {
+          "h": "wet",
+          "tag": "wrong_single",
+          "dnll": -0.9713887843324018
+        },
+        {
+          "h": "colder than the other thing",
+          "tag": "wrong_conj",
+          "dnll": -2.7782139155510057
+        },
+        {
+          "h": "brighter than the other thing",
+          "tag": "wrong_conj",
+          "dnll": -1.2940592801757402
+        },
+        {
+          "h": "hot and glowing",
+          "tag": "overspec",
+          "dnll": 2.544080067712065
+        },
+        {
+          "h": "hot and dangerous",
+          "tag": "overspec",
+          "dnll": 1.192801102891404
+        },
+        {
+          "h": "very hot",
+          "tag": "overspec",
+          "dnll": 0.5806944580836557
+        },
+        {
+          "h": "hot and liquid",
+          "tag": "overspec",
+          "dnll": 1.8663997444967695
+        },
+        {
+          "h": "a property",
+          "tag": "overbroad",
+          "dnll": -0.46312475497737715
+        },
+        {
+          "h": "something notable",
+          "tag": "overbroad",
+          "dnll": 0.1319491167745559
+        }
+      ]
+    },
+    {
+      "id": "G5-03",
+      "type": "G5",
+      "base": 6.0049238340512705,
+      "dM": 1.9733101793243515,
+      "dP": 0.6463376267437466,
+      "mu": 0.3877483676600735,
+      "sd": 0.8957516026219559,
+      "zM": 1.7700909571617596,
+      "zP": 0.28868411546990946,
+      "nulls": [
+        {
+          "h": "new in absolute age",
+          "tag": "wrong_single",
+          "dnll": 0.5052331812061652
+        },
+        {
+          "h": "large",
+          "tag": "wrong_single",
+          "dnll": -0.2534371148678636
+        },
+        {
+          "h": "fragile",
+          "tag": "wrong_single",
+          "dnll": -0.8443375703594116
+        },
+        {
+          "h": "newer than the other thing",
+          "tag": "wrong_conj",
+          "dnll": -0.9571784318491252
+        },
+        {
+          "h": "larger than the other thing",
+          "tag": "wrong_conj",
+          "dnll": -0.22458592636622932
+        },
+        {
+          "h": "old and fragile",
+          "tag": "overspec",
+          "dnll": 0.4606769746781092
+        },
+        {
+          "h": "old and valuable",
+          "tag": "overspec",
+          "dnll": 1.5364141144535877
+        },
+        {
+          "h": "very old",
+          "tag": "overspec",
+          "dnll": 1.6992880387578486
+        },
+        {
+          "h": "old and stone-built",
+          "tag": "overspec",
+          "dnll": 1.288518327495428
+        },
+        {
+          "h": "a property",
+          "tag": "overbroad",
+          "dnll": 0.4978611588795321
+        },
+        {
+          "h": "something notable",
+          "tag": "overbroad",
+          "dnll": 0.5567792922327675
+        }
+      ]
+    },
+    {
+      "id": "G5-04",
+      "type": "G5",
+      "base": 4.408594181423983,
+      "dM": 1.6704952053099218,
+      "dP": 1.3000147476503652,
+      "mu": 0.9984604176701436,
+      "sd": 1.1817025454997423,
+      "zM": 0.5687004654420665,
+      "zP": 0.2551863251277792,
+      "nulls": [
+        {
+          "h": "cheap in absolute price",
+          "tag": "wrong_single",
+          "dnll": -0.7485895872799437
+        },
+        {
+          "h": "rare",
+          "tag": "wrong_single",
+          "dnll": 0.876523598442497
+        },
+        {
+          "h": "shiny",
+          "tag": "wrong_single",
+          "dnll": 1.2040775456066846
+        },
+        {
+          "h": "cheaper than the other item",
+          "tag": "wrong_conj",
+          "dnll": -1.0745538087348407
+        },
+        {
+          "h": "rarer than the other item",
+          "tag": "wrong_conj",
+          "dnll": 0.048115332642639785
+        },
+        {
+          "h": "expensive and rare",
+          "tag": "overspec",
+          "dnll": 1.981439058963041
+        },
+        {
+          "h": "expensive and shiny",
+          "tag": "overspec",
+          "dnll": 2.7112108384376112
+        },
+        {
+          "h": "very expensive",
+          "tag": "overspec",
+          "dnll": 2.2376246540353133
+        },
+        {
+          "h": "expensive and small",
+          "tag": "overspec",
+          "dnll": 1.3711435320342322
+        },
+        {
+          "h": "a property",
+          "tag": "overbroad",
+          "dnll": 1.1237151817327025
+        },
+        {
+          "h": "something notable",
+          "tag": "overbroad",
+          "dnll": 1.2523582484916425
+        }
+      ]
+    }
+  ]
+}

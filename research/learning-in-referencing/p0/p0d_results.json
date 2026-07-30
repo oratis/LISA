@@ -1,0 +1,589 @@
+{
+  "model": "Qwen/Qwen2.5-1.5B-Instruct",
+  "rows": [
+    {
+      "id": "G1-01",
+      "type": "G1",
+      "base": 14.258815398215182,
+      "dM": 9.606713547355401,
+      "dP": 9.103931822585174,
+      "mu": 1.1556763413205602,
+      "sd": 5.819747371909942,
+      "zM": 1.4521312809599418,
+      "zP": 1.3657389184328343,
+      "nulls": [
+        {
+          "h": "blue",
+          "tag": "wrong_single",
+          "dnll": -4.77205921827847
+        },
+        {
+          "h": "green",
+          "tag": "wrong_single",
+          "dnll": -5.669602870255664
+        },
+        {
+          "h": "square",
+          "tag": "wrong_single",
+          "dnll": 3.9839756937206836
+        },
+        {
+          "h": "round",
+          "tag": "wrong_single",
+          "dnll": 2.6726560309858094
+        },
+        {
+          "h": "blue and round",
+          "tag": "wrong_conj",
+          "dnll": -7.29807301854648
+        },
+        {
+          "h": "green and square",
+          "tag": "wrong_conj",
+          "dnll": -5.551478828319597
+        },
+        {
+          "h": "red and heavy",
+          "tag": "overspec",
+          "dnll": 7.467796450662847
+        },
+        {
+          "h": "red and smooth",
+          "tag": "overspec",
+          "dnll": 6.442005037381455
+        },
+        {
+          "h": "red and small",
+          "tag": "overspec",
+          "dnll": 8.090528554046653
+        },
+        {
+          "h": "a thing",
+          "tag": "overbroad",
+          "dnll": 6.382417942195717
+        },
+        {
+          "h": "an object",
+          "tag": "overbroad",
+          "dnll": 4.290439829106637
+        },
+        {
+          "h": "metal",
+          "tag": "unrelated",
+          "dnll": -2.170489506852869
+        }
+      ]
+    },
+    {
+      "id": "G1-02",
+      "type": "G1",
+      "base": 9.302092933451783,
+      "dM": 7.762501399907234,
+      "dP": 6.404734457236092,
+      "mu": -0.3932280023969525,
+      "sd": 5.958453916378221,
+      "zM": 1.3687660451457437,
+      "zP": 1.1408936873619575,
+      "nulls": [
+        {
+          "h": "plastic",
+          "tag": "wrong_single",
+          "dnll": -7.604640027921802
+        },
+        {
+          "h": "metal",
+          "tag": "wrong_single",
+          "dnll": -7.3265498817187495
+        },
+        {
+          "h": "short",
+          "tag": "wrong_single",
+          "dnll": -0.401949851466993
+        },
+        {
+          "h": "long",
+          "tag": "wrong_single",
+          "dnll": 0.16910411002346848
+        },
+        {
+          "h": "plastic and short",
+          "tag": "wrong_conj",
+          "dnll": -6.749142763906617
+        },
+        {
+          "h": "metal and long",
+          "tag": "wrong_conj",
+          "dnll": -8.66911418132585
+        },
+        {
+          "h": "wooden and heavy",
+          "tag": "overspec",
+          "dnll": 6.150461180879036
+        },
+        {
+          "h": "wooden and smooth",
+          "tag": "overspec",
+          "dnll": 7.280168338284376
+        },
+        {
+          "h": "wooden and thin",
+          "tag": "overspec",
+          "dnll": 6.188323737596532
+        },
+        {
+          "h": "a thing",
+          "tag": "overbroad",
+          "dnll": 3.2103648521587314
+        },
+        {
+          "h": "an object",
+          "tag": "overbroad",
+          "dnll": 4.341372472250272
+        },
+        {
+          "h": "red",
+          "tag": "unrelated",
+          "dnll": -1.3071340136158334
+        }
+      ]
+    },
+    {
+      "id": "G1-03",
+      "type": "G1",
+      "base": 9.622020509314574,
+      "dM": 6.312926500921204,
+      "dP": 3.6649569769376633,
+      "mu": -1.7521922528902691,
+      "sd": 3.84799748173095,
+      "zM": 2.0959262037207806,
+      "zP": 1.40778398518887,
+      "nulls": [
+        {
+          "h": "green",
+          "tag": "wrong_single",
+          "dnll": -5.963040806443246
+        },
+        {
+          "h": "red",
+          "tag": "wrong_single",
+          "dnll": -5.073498244656571
+        },
+        {
+          "h": "large",
+          "tag": "wrong_single",
+          "dnll": -2.2351957042024484
+        },
+        {
+          "h": "small",
+          "tag": "wrong_single",
+          "dnll": -2.291357638431757
+        },
+        {
+          "h": "green and large",
+          "tag": "wrong_conj",
+          "dnll": -7.358462744570119
+        },
+        {
+          "h": "red and small",
+          "tag": "wrong_conj",
+          "dnll": -5.845801859092122
+        },
+        {
+          "h": "blue and round",
+          "tag": "overspec",
+          "dnll": 2.0320620111185255
+        },
+        {
+          "h": "blue and heavy",
+          "tag": "overspec",
+          "dnll": 4.078655619829455
+        },
+        {
+          "h": "blue and smooth",
+          "tag": "overspec",
+          "dnll": 1.8096466488128176
+        },
+        {
+          "h": "a thing",
+          "tag": "overbroad",
+          "dnll": 1.9006267965494121
+        },
+        {
+          "h": "an object",
+          "tag": "overbroad",
+          "dnll": 1.2005697343921415
+        },
+        {
+          "h": "wooden",
+          "tag": "unrelated",
+          "dnll": -3.2805108479893192
+        }
+      ]
+    },
+    {
+      "id": "G1-04",
+      "type": "G1",
+      "base": 6.8793315551828025,
+      "dM": 3.864706268199958,
+      "dP": -1.2971130893861416,
+      "mu": -1.2808370225402792,
+      "sd": 3.8797893000774213,
+      "zM": 1.326242971657651,
+      "zP": -0.004195090399764123,
+      "nulls": [
+        {
+          "h": "hard",
+          "tag": "wrong_single",
+          "dnll": -3.4594915321920032
+        },
+        {
+          "h": "black",
+          "tag": "wrong_single",
+          "dnll": -1.2410112247579432
+        },
+        {
+          "h": "white",
+          "tag": "wrong_single",
+          "dnll": -1.6768885346949753
+        },
+        {
+          "h": "rough",
+          "tag": "wrong_single",
+          "dnll": -4.77976393093853
+        },
+        {
+          "h": "hard and black",
+          "tag": "wrong_conj",
+          "dnll": -6.534031002909166
+        },
+        {
+          "h": "rough and white",
+          "tag": "wrong_conj",
+          "dnll": -5.755753510860001
+        },
+        {
+          "h": "soft and warm",
+          "tag": "overspec",
+          "dnll": 4.123518187593492
+        },
+        {
+          "h": "soft and light",
+          "tag": "overspec",
+          "dnll": 4.043067172589666
+        },
+        {
+          "h": "soft and thick",
+          "tag": "overspec",
+          "dnll": 3.1082681857015464
+        },
+        {
+          "h": "a thing",
+          "tag": "overbroad",
+          "dnll": 1.9217776536312838
+        },
+        {
+          "h": "an object",
+          "tag": "overbroad",
+          "dnll": -0.2720537919455852
+        },
+        {
+          "h": "metal",
+          "tag": "unrelated",
+          "dnll": -4.847681941701135
+        }
+      ]
+    },
+    {
+      "id": "G1-05",
+      "type": "G1",
+      "base": 9.87512790784954,
+      "dM": 2.7119818571635976,
+      "dP": -1.843330542822338,
+      "mu": 0.1590975214835292,
+      "sd": 1.7607936170128689,
+      "zM": 1.4498486994807243,
+      "zP": -1.1372304198279204,
+      "nulls": [
+        {
+          "h": "square",
+          "tag": "wrong_single",
+          "dnll": -0.2975894279966962
+        },
+        {
+          "h": "green",
+          "tag": "wrong_single",
+          "dnll": -0.963462423469112
+        },
+        {
+          "h": "red",
+          "tag": "wrong_single",
+          "dnll": -1.8505986771160092
+        },
+        {
+          "h": "flat",
+          "tag": "wrong_single",
+          "dnll": 0.02923728367509426
+        },
+        {
+          "h": "square and red",
+          "tag": "wrong_conj",
+          "dnll": -2.537318473822049
+        },
+        {
+          "h": "flat and green",
+          "tag": "wrong_conj",
+          "dnll": -0.6122298058134366
+        },
+        {
+          "h": "round and small",
+          "tag": "overspec",
+          "dnll": 2.8340496021024864
+        },
+        {
+          "h": "round and smooth",
+          "tag": "overspec",
+          "dnll": 2.0789094006835453
+        },
+        {
+          "h": "round and hard",
+          "tag": "overspec",
+          "dnll": -0.00027777422497088367
+        },
+        {
+          "h": "a thing",
+          "tag": "overbroad",
+          "dnll": 2.7756376705510606
+        },
+        {
+          "h": "an object",
+          "tag": "overbroad",
+          "dnll": 1.4496182626545338
+        },
+        {
+          "h": "wooden",
+          "tag": "unrelated",
+          "dnll": -0.9968053794220957
+        }
+      ]
+    },
+    {
+      "id": "G1-06",
+      "type": "G1",
+      "base": 6.8301773302791275,
+      "dM": 4.63998155292075,
+      "dP": 0.9243998030190568,
+      "mu": -1.1604606661279673,
+      "sd": 5.130125837966262,
+      "zM": 1.1306627560910258,
+      "zP": 0.40639558073170506,
+      "nulls": [
+        {
+          "h": "light",
+          "tag": "wrong_single",
+          "dnll": -7.901356246211298
+        },
+        {
+          "h": "metal",
+          "tag": "wrong_single",
+          "dnll": -4.975770930744195
+        },
+        {
+          "h": "wooden",
+          "tag": "wrong_single",
+          "dnll": -4.205854518600523
+        },
+        {
+          "h": "cold",
+          "tag": "wrong_single",
+          "dnll": -1.7611437771623883
+        },
+        {
+          "h": "light and metal",
+          "tag": "wrong_conj",
+          "dnll": -3.1098976985202764
+        },
+        {
+          "h": "wooden and light",
+          "tag": "wrong_conj",
+          "dnll": -10.376438712975336
+        },
+        {
+          "h": "heavy and large",
+          "tag": "overspec",
+          "dnll": 4.897814175486527
+        },
+        {
+          "h": "heavy and hard",
+          "tag": "overspec",
+          "dnll": 4.7539967928106375
+        },
+        {
+          "h": "heavy and dark",
+          "tag": "overspec",
+          "dnll": 4.455980637287937
+        },
+        {
+          "h": "a thing",
+          "tag": "overbroad",
+          "dnll": 2.1199116209563833
+        },
+        {
+          "h": "an object",
+          "tag": "overbroad",
+          "dnll": 2.9632612389458677
+        },
+        {
+          "h": "red",
+          "tag": "unrelated",
+          "dnll": -0.7860305748089438
+        }
+      ]
+    },
+    {
+      "id": "G2-01",
+      "type": "G2",
+      "base": 10.887042800095456,
+      "dM": 6.177518119224858,
+      "dP": -4.101319937280794,
+      "mu": -1.906786420463531,
+      "sd": 2.7945521571175034,
+      "zM": 2.8928801772757415,
+      "zP": -0.785289875956675,
+      "nulls": [
+        {
+          "h": "a plant",
+          "tag": "wrong_single",
+          "dnll": -5.931589570719227
+        },
+        {
+          "h": "a tool",
+          "tag": "wrong_single",
+          "dnll": -2.4778057676960277
+        },
+        {
+          "h": "a machine",
+          "tag": "wrong_single",
+          "dnll": -4.784090055763736
+        },
+        {
+          "h": "a stone",
+          "tag": "wrong_single",
+          "dnll": -4.462770216893908
+        },
+        {
+          "h": "a bird or a plant",
+          "tag": "wrong_conj",
+          "dnll": -3.135501905423263
+        },
+        {
+          "h": "a small machine",
+          "tag": "wrong_conj",
+          "dnll": -2.790697915147547
+        },
+        {
+          "h": "a mammal",
+          "tag": "overspec",
+          "dnll": -1.341386778893721
+        },
+        {
+          "h": "a flying animal",
+          "tag": "overspec",
+          "dnll": -0.07904023283704653
+        },
+        {
+          "h": "a wild animal",
+          "tag": "overspec",
+          "dnll": -2.9762178531201275
+        },
+        {
+          "h": "a thing",
+          "tag": "overbroad",
+          "dnll": 4.042238944845848
+        },
+        {
+          "h": "an object",
+          "tag": "overbroad",
+          "dnll": 0.8654837676416687
+        },
+        {
+          "h": "a color",
+          "tag": "unrelated",
+          "dnll": 0.18994053844471637
+        }
+      ]
+    },
+    {
+      "id": "G2-02",
+      "type": "G2",
+      "base": 8.173700706168972,
+      "dM": 7.462142318767788,
+      "dP": -3.7127652876309174,
+      "mu": -1.243511254946168,
+      "sd": 3.2297541769356504,
+      "zM": 2.695453925219092,
+      "zP": -0.7645331184392324,
+      "nulls": [
+        {
+          "h": "a vehicle",
+          "tag": "wrong_single",
+          "dnll": -3.544154270143469
+        },
+        {
+          "h": "a garment",
+          "tag": "wrong_single",
+          "dnll": -4.005015893621378
+        },
+        {
+          "h": "a weapon",
+          "tag": "wrong_single",
+          "dnll": -2.967083500365595
+        },
+        {
+          "h": "a book",
+          "tag": "wrong_single",
+          "dnll": -6.367803617634854
+        },
+        {
+          "h": "a cup or a book",
+          "tag": "wrong_conj",
+          "dnll": -2.935266508776552
+        },
+        {
+          "h": "a small weapon",
+          "tag": "wrong_conj",
+          "dnll": -2.5838023809437782
+        },
+        {
+          "h": "a drinking vessel",
+          "tag": "overspec",
+          "dnll": 0.9612841478509866
+        },
+        {
+          "h": "a glass container",
+          "tag": "overspec",
+          "dnll": -1.492339918847371
+        },
+        {
+          "h": "a small container",
+          "tag": "overspec",
+          "dnll": 2.8245182618312086
+        },
+        {
+          "h": "a thing",
+          "tag": "overbroad",
+          "dnll": 3.464578028221931
+        },
+        {
+          "h": "an object",
+          "tag": "overbroad",
+          "dnll": 3.6397960660403506
+        },
+        {
+          "h": "a color",
+          "tag": "unrelated",
+          "dnll": -1.9168454729654965
+        }
+      ]
+    }
+  ]
+}
