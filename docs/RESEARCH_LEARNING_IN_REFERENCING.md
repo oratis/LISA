@@ -818,7 +818,11 @@ on_idle(user_uid):
 > - **机制**：[DESIGN_COMPRESSION_GATE.md](DESIGN_COMPRESSION_GATE.md) — 形式化（两部分 MDL + 留出轮次 + **安慰剂对照**）、E1/E2 划界、失分表、失败模式、消融矩阵
 > - **数据**：[DESIGN_CONCEPT_BENCH.md](DESIGN_CONCEPT_BENCH.md) — 构造语言、**gavagai 对 G1–G5（把 E1 构造出来）**、切断 Aycock 捷径的教学协议、冲突词隔离测试、实施顺序
 >
-> 🎯 **下一步动作 = 跑 P0**（见 bench 文档 §8）：手工构造 G1 的 M/M′，在冻结小模型上纯用 prompt 算压缩增益。**几小时、零算力，直接验证核心信号是否成立——若不成立，整个立论要重来。别先建工程。**
+> ✅ **P0 已跑完（2026-07-28）** → [research/learning-in-referencing/p0/README.md](../research/learning-in-referencing/p0/README.md)
+> **核心信号成立，但观测量被实测修正了**：压缩对象必须是老师的**用词决策序列**，不是自由陈述。
+> - 自由陈述版：预测力 margin **+0.68 nats（5/8, p=0.36 不显著）**，词级 ≈ 0，**92% 的表面胜出来自长度罚** → ❌
+> - 决策序列版：**+4.92 nats（8/8, p=0.0039）**，安慰剂对照 **8/8**，4/8 项上误解的增益为**负** → ✅
+> - 🔴 **未解决**：单候选阈值跨 item 不可分（最佳 AUC 0.875）——门目前是**排序器**不是**阈值判据**。
 
 ***
 
@@ -978,6 +982,7 @@ on_idle(user_uid):
 | 2026-07-24 | **第三轮（对抗式）：新增 §7.6，推翻广义主张、贡献声明收紧为"信号类型"；新增附录 I；§9.1/§9.2 更新** |
 | 2026-07-24 | **第四轮（对抗式补全族 5/6）：12 目标 / 25 agent / 0 反例 → `holds-with-caveat`。§7.6.2 代理表扩到十类并加 12 新行；新增 §7.6.7 总裁决；§7.6.4 证据强度重排（族 5/6 升为高/中，残余=广义 agentic 记忆）；§7.6.5 关闭 CN-DPM/2606.03787 两悬案；附录 I 族 4/5/6 全部落地；§9.1 勾掉第四轮；§9.2 Q9/Q11 已回答 + 新增 Q12；§9.3 写入立论包（proposal + related-work + 三层架构最小实现）** |
 | 2026-07-28 | **进入设计阶段**：新增 [DESIGN_COMPRESSION_GATE.md](DESIGN_COMPRESSION_GATE.md)（机制）与 [DESIGN_CONCEPT_BENCH.md](DESIGN_CONCEPT_BENCH.md)（数据）。**修正 C4 措辞**：区分 E1（模型误解 → 压缩门拒绝 ✅）与 E2（老师教假话 → 压缩门接受，属设计边界）；related-work 末句加收紧提示。§9.3.3 指向 P0 首跑实验。 |
+| 2026-07-28 | **P0 实验跑完（首个实证结果）** → [research/learning-in-referencing/p0/](../research/learning-in-referencing/p0/README.md)。核心信号**成立**（决策序列 8/8, +4.92 nats, p=0.0039），但**朴素实现失败**（自由陈述 5/8, p=0.36，92% 胜出来自长度罚）。机制文档据此新增 §1.2b（观测量必须是决策序列）、§1.3 阈值警告、消融必报项 A0′/A0″。**未解决**：单候选阈值跨 item 不可分（AUC 0.875）。 |
 
 ***
 

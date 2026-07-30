@@ -1,0 +1,774 @@
+{
+  "summary": {
+    "model": "Qwen/Qwen2.5-1.5B-Instruct",
+    "n_items": 8,
+    "M_beats_Mprime": {
+      "dnll_all": 5,
+      "dnll_disamb": 6,
+      "G_all": 8,
+      "G_disamb": 8
+    },
+    "mean_margin": {
+      "dnll_all": 0.6842447293629448,
+      "dnll_disamb": 1.837917430073503,
+      "G_all": 8.882152087770919,
+      "G_disamb": 10.035824788481477
+    },
+    "M_beats_placebo_G_all": 6,
+    "Mprime_beats_placebo_G_all": 1
+  },
+  "results": [
+    {
+      "id": "G1-01",
+      "type": "G1",
+      "word": "kirel",
+      "M_text": "red",
+      "Mprime_text": "red and round",
+      "n_tok_heldout": 31,
+      "base": {
+        "all": 77.05866004654672,
+        "all_ntok": 31,
+        "disamb": 55.91311691934243,
+        "disamb_ntok": 18,
+        "control": 9.75004053208977,
+        "control_ntok": 6,
+        "negative": 11.395502595114522,
+        "negative_ntok": 7,
+        "word": 14.479337609722279,
+        "word_ntok": 10
+      },
+      "hyp": {
+        "M": {
+          "stmt": "kirel means red.",
+          "L": 28.531475067138672,
+          "dnll_all": 25.58591977537435,
+          "dnll_disamb": 24.63871701117023,
+          "dnll_control": 0.39077681791968644,
+          "dnll_negative": 0.5564259462844348,
+          "dnll_word": 14.433841178499279,
+          "G_all": -2.9455552917643217,
+          "G_disamb": -3.892758055968443
+        },
+        "Mprime": {
+          "stmt": "kirel means red and round.",
+          "L": 40.43504476547241,
+          "dnll_all": 24.28143555035058,
+          "dnll_disamb": 21.727433020365424,
+          "dnll_control": 0.9216732574859634,
+          "dnll_negative": 1.6323292724991916,
+          "dnll_word": 14.437093093220028,
+          "G_all": -16.153609215121833,
+          "G_disamb": -18.707611745106988
+        },
+        "placebo0": {
+          "stmt": "kirel means blue.",
+          "L": 29.446521997451782,
+          "dnll_all": 22.780179220768332,
+          "dnll_disamb": 20.148995700408705,
+          "dnll_control": 0.0026208336203126237,
+          "dnll_negative": 2.628562686739315,
+          "dnll_word": 14.409383587124466,
+          "G_all": -6.66634277668345,
+          "G_disamb": -9.297526297043078
+        },
+        "placebo1": {
+          "stmt": "kirel means square.",
+          "L": 31.06563925743103,
+          "dnll_all": 22.96477147470432,
+          "dnll_disamb": 21.104822322609834,
+          "dnll_control": 0.09399965821648948,
+          "dnll_negative": 1.7659494938779972,
+          "dnll_word": 14.431693063110288,
+          "G_all": -8.10086778272671,
+          "G_disamb": -9.960816934821196
+        },
+        "placebo2": {
+          "stmt": "kirel means blue and square.",
+          "L": 42.85494422912598,
+          "dnll_all": 22.270414220984094,
+          "dnll_disamb": 20.540090349619277,
+          "dnll_control": -0.11698604407138191,
+          "dnll_negative": 1.847309915436199,
+          "dnll_word": 14.406888817320578,
+          "G_all": -20.584530008141883,
+          "G_disamb": -22.3148538795067
+        },
+        "placebo3": {
+          "stmt": "kirel means metal.",
+          "L": 30.08701741695404,
+          "dnll_all": 21.709887342898583,
+          "dnll_disamb": 20.26201968762325,
+          "dnll_control": 0.2841966439009411,
+          "dnll_negative": 1.1636710113743902,
+          "dnll_word": 14.428362358732556,
+          "G_all": -8.377130074055458,
+          "G_disamb": -9.82499772933079
+        }
+      },
+      "placebo_best_G_all": -6.66634277668345,
+      "Gtilde_M_G_all": 3.7207874849191285,
+      "Gtilde_Mprime_G_all": -9.487266438438382,
+      "placebo_best_G_disamb": -9.297526297043078,
+      "Gtilde_M_G_disamb": 5.404768241074635,
+      "Gtilde_Mprime_G_disamb": -9.41008544806391
+    },
+    {
+      "id": "G1-02",
+      "type": "G1",
+      "word": "votan",
+      "M_text": "wooden",
+      "Mprime_text": "wooden and long",
+      "n_tok_heldout": 26,
+      "base": {
+        "all": 79.36085049511166,
+        "all_ntok": 26,
+        "disamb": 57.095623155124485,
+        "disamb_ntok": 15,
+        "control": 4.878552797716111,
+        "control_ntok": 5,
+        "negative": 17.386674542271066,
+        "negative_ntok": 6,
+        "word": 6.176105061371345,
+        "word_ntok": 5
+      },
+      "hyp": {
+        "M": {
+          "stmt": "votan means wooden.",
+          "L": 24.275498032569885,
+          "dnll_all": 16.39348157902714,
+          "dnll_disamb": 17.973536488134414,
+          "dnll_control": -0.2740215400699526,
+          "dnll_negative": -1.3060333690373227,
+          "dnll_word": 6.13190320355352,
+          "G_all": -7.882016453542747,
+          "G_disamb": -6.301961544435471
+        },
+        "Mprime": {
+          "stmt": "votan means wooden and long.",
+          "L": 36.104591488838196,
+          "dnll_all": 18.99327063857345,
+          "dnll_disamb": 19.064763536443934,
+          "dnll_control": 0.41061866690870374,
+          "dnll_negative": -0.4821115647791885,
+          "dnll_word": 6.142127715225797,
+          "G_all": -17.111320850264747,
+          "G_disamb": -17.039827952394262
+        },
+        "placebo0": {
+          "stmt": "votan means plastic.",
+          "L": 24.405795454978943,
+          "dnll_all": 19.623090633263928,
+          "dnll_disamb": 17.708959555369802,
+          "dnll_control": -0.4046606670599431,
+          "dnll_negative": 2.318791744954069,
+          "dnll_word": 6.156371405420941,
+          "G_all": -4.782704821715015,
+          "G_disamb": -6.696835899609141
+        },
+        "placebo1": {
+          "stmt": "votan means short.",
+          "L": 23.540886878967285,
+          "dnll_all": 21.148264303134056,
+          "dnll_disamb": 21.560939419083297,
+          "dnll_control": -0.037630376464221627,
+          "dnll_negative": -0.3750447394850198,
+          "dnll_word": 6.145226276275935,
+          "G_all": -2.3926225758332293,
+          "G_disamb": -1.979947459883988
+        },
+        "placebo2": {
+          "stmt": "votan means plastic and short.",
+          "L": 38.253602027893066,
+          "dnll_all": 19.462523457565112,
+          "dnll_disamb": 18.31282657571137,
+          "dnll_control": -0.2323089221608825,
+          "dnll_negative": 1.382005804014625,
+          "dnll_word": 6.144645168416901,
+          "G_all": -18.791078570327954,
+          "G_disamb": -19.940775452181697
+        },
+        "placebo3": {
+          "stmt": "votan means heavy.",
+          "L": 23.710190057754517,
+          "dnll_all": 22.354326470391243,
+          "dnll_disamb": 21.82092160708271,
+          "dnll_control": -0.05535083054564893,
+          "dnll_negative": 0.588755693854182,
+          "dnll_word": 6.151181530309259,
+          "G_all": -1.3558635873632738,
+          "G_disamb": -1.889268450671807
+        }
+      },
+      "placebo_best_G_all": -1.3558635873632738,
+      "Gtilde_M_G_all": -6.526152866179473,
+      "Gtilde_Mprime_G_all": -15.755457262901473,
+      "placebo_best_G_disamb": -1.889268450671807,
+      "Gtilde_M_G_disamb": -4.412693093763664,
+      "Gtilde_Mprime_G_disamb": -15.150559501722455
+    },
+    {
+      "id": "G1-03",
+      "type": "G1",
+      "word": "nulpa",
+      "M_text": "blue",
+      "Mprime_text": "blue and small",
+      "n_tok_heldout": 32,
+      "base": {
+        "all": 93.16419678996317,
+        "all_ntok": 32,
+        "disamb": 62.46486494340934,
+        "disamb_ntok": 18,
+        "control": 12.689287416404113,
+        "control_ntok": 6,
+        "negative": 18.01004443014972,
+        "negative_ntok": 8,
+        "word": 17.253226215718314,
+        "word_ntok": 10
+      },
+      "hyp": {
+        "M": {
+          "stmt": "nulpa means blue.",
+          "L": 29.612059593200684,
+          "dnll_all": 31.087121514836326,
+          "dnll_disamb": 30.058184981404338,
+          "dnll_control": -0.4617521654581651,
+          "dnll_negative": 1.4906886988901533,
+          "dnll_word": 17.073568366700783,
+          "G_all": 1.4750619216356426,
+          "G_disamb": 0.44612538820365444
+        },
+        "Mprime": {
+          "stmt": "nulpa means blue and small.",
+          "L": 40.909953355789185,
+          "dnll_all": 29.822849794581998,
+          "dnll_disamb": 28.056744732311927,
+          "dnll_control": 0.188824643031694,
+          "dnll_negative": 1.5772804192383774,
+          "dnll_word": 17.142869596660603,
+          "G_all": -11.087103561207186,
+          "G_disamb": -12.853208623477258
+        },
+        "placebo0": {
+          "stmt": "nulpa means green.",
+          "L": 30.062933206558228,
+          "dnll_all": 27.02674103778554,
+          "dnll_disamb": 24.624891287006903,
+          "dnll_control": -0.5491013581049629,
+          "dnll_negative": 2.9509511088836007,
+          "dnll_word": 17.17986042861594,
+          "G_all": -3.0361921687726863,
+          "G_disamb": -5.438041919551324
+        },
+        "placebo1": {
+          "stmt": "nulpa means large.",
+          "L": 29.584988594055176,
+          "dnll_all": 26.671591495658504,
+          "dnll_disamb": 25.813739180448465,
+          "dnll_control": -0.028834829106926918,
+          "dnll_negative": 0.8866871443169657,
+          "dnll_word": 17.185099595721113,
+          "G_all": -2.913397098396672,
+          "G_disamb": -3.7712494136067107
+        },
+        "placebo2": {
+          "stmt": "nulpa means green and large.",
+          "L": 42.34321737289429,
+          "dnll_all": 26.198519734374713,
+          "dnll_disamb": 24.80720487202052,
+          "dnll_control": -0.3042066647321917,
+          "dnll_negative": 1.6955215270863846,
+          "dnll_word": 17.184738620824646,
+          "G_all": -16.144697638519574,
+          "G_disamb": -17.536012500873767
+        },
+        "placebo3": {
+          "stmt": "nulpa means round.",
+          "L": 30.515213012695312,
+          "dnll_all": 28.04924783812021,
+          "dnll_disamb": 26.10929528903216,
+          "dnll_control": -0.06344461988192052,
+          "dnll_negative": 2.0033971689699683,
+          "dnll_word": 17.189611235196935,
+          "G_all": -2.4659651745751034,
+          "G_disamb": -4.405917723663151
+        }
+      },
+      "placebo_best_G_all": -2.4659651745751034,
+      "Gtilde_M_G_all": 3.941027096210746,
+      "Gtilde_Mprime_G_all": -8.621138386632083,
+      "placebo_best_G_disamb": -3.7712494136067107,
+      "Gtilde_M_G_disamb": 4.217374801810365,
+      "Gtilde_Mprime_G_disamb": -9.081959209870547
+    },
+    {
+      "id": "G1-04",
+      "type": "G1",
+      "word": "tarel",
+      "M_text": "soft",
+      "Mprime_text": "soft and white",
+      "n_tok_heldout": 31,
+      "base": {
+        "all": 94.47539147175848,
+        "all_ntok": 31,
+        "disamb": 71.23675800487399,
+        "disamb_ntok": 18,
+        "control": 6.833743816241622,
+        "control_ntok": 6,
+        "negative": 16.404889650642872,
+        "negative_ntok": 7,
+        "word": 13.811652567237616,
+        "word_ntok": 5
+      },
+      "hyp": {
+        "M": {
+          "stmt": "tarel means soft.",
+          "L": 25.85064458847046,
+          "dnll_all": 25.557800984795904,
+          "dnll_disamb": 25.848779959022067,
+          "dnll_control": -0.2677141927124467,
+          "dnll_negative": -0.023264781513717026,
+          "dnll_word": 13.683240975107765,
+          "G_all": -0.2928436036745552,
+          "G_disamb": -0.0018646294483914971
+        },
+        "Mprime": {
+          "stmt": "tarel means soft and white.",
+          "L": 34.670586943626404,
+          "dnll_all": 27.34232255864481,
+          "dnll_disamb": 24.995894617779413,
+          "dnll_control": 0.4848404352669604,
+          "dnll_negative": 1.861587505598436,
+          "dnll_word": 13.545151294689276,
+          "G_all": -7.328264384981594,
+          "G_disamb": -9.67469232584699
+        },
+        "placebo0": {
+          "stmt": "tarel means hard.",
+          "L": 25.98877716064453,
+          "dnll_all": 23.42221029063512,
+          "dnll_disamb": 22.242907415347872,
+          "dnll_control": -0.09701543224218767,
+          "dnll_negative": 1.2763183075294364,
+          "dnll_word": 13.748690671825898,
+          "G_all": -2.56656687000941,
+          "G_disamb": -3.745869745296659
+        },
+        "placebo1": {
+          "stmt": "tarel means black.",
+          "L": 25.927943229675293,
+          "dnll_all": 21.95256125056767,
+          "dnll_disamb": 20.04406357865082,
+          "dnll_control": -0.9098476809449494,
+          "dnll_negative": 2.8183453528617974,
+          "dnll_word": 13.536519368790323,
+          "G_all": -3.975381979107624,
+          "G_disamb": -5.883879651024472
+        },
+        "placebo2": {
+          "stmt": "tarel means hard and black.",
+          "L": 37.26850485801697,
+          "dnll_all": 23.08066002036503,
+          "dnll_disamb": 21.347249892598484,
+          "dnll_control": -0.4519760616822168,
+          "dnll_negative": 2.1853861894487636,
+          "dnll_word": 13.639624720803113,
+          "G_all": -14.187844837651937,
+          "G_disamb": -15.921254965418484
+        },
+        "placebo3": {
+          "stmt": "tarel means warm.",
+          "L": 26.475074768066406,
+          "dnll_all": 22.28986562996579,
+          "dnll_disamb": 21.54986130364705,
+          "dnll_control": -0.36802707413153257,
+          "dnll_negative": 1.1080314004502725,
+          "dnll_word": 13.775472176479525,
+          "G_all": -4.185209138100618,
+          "G_disamb": -4.9252134644193575
+        }
+      },
+      "placebo_best_G_all": -2.56656687000941,
+      "Gtilde_M_G_all": 2.273723266334855,
+      "Gtilde_Mprime_G_all": -4.761697514972184,
+      "placebo_best_G_disamb": -3.745869745296659,
+      "Gtilde_M_G_disamb": 3.7440051158482675,
+      "Gtilde_Mprime_G_disamb": -5.928822580550332
+    },
+    {
+      "id": "G1-05",
+      "type": "G1",
+      "word": "mibok",
+      "M_text": "round",
+      "Mprime_text": "round and green",
+      "n_tok_heldout": 31,
+      "base": {
+        "all": 79.68417387711816,
+        "all_ntok": 31,
+        "disamb": 58.77272597979754,
+        "disamb_ntok": 18,
+        "control": 9.816194663988426,
+        "control_ntok": 6,
+        "negative": 11.095253233332187,
+        "negative_ntok": 7,
+        "word": 16.21222160826437,
+        "word_ntok": 10
+      },
+      "hyp": {
+        "M": {
+          "stmt": "mibok means round.",
+          "L": 27.547389268875122,
+          "dnll_all": 27.672289231657487,
+          "dnll_disamb": 26.241042949608527,
+          "dnll_control": 0.5631137655582279,
+          "dnll_negative": 0.8681325164907321,
+          "dnll_word": 16.17314533130775,
+          "G_all": 0.12489996278236504,
+          "G_disamb": -1.306346319266595
+        },
+        "Mprime": {
+          "stmt": "mibok means round and green.",
+          "L": 37.782155871391296,
+          "dnll_all": 25.261752365917346,
+          "dnll_disamb": 24.273536725901067,
+          "dnll_control": 0.23638052004389465,
+          "dnll_negative": 0.7518351199723838,
+          "dnll_word": 16.168830129146954,
+          "G_all": -12.52040350547395,
+          "G_disamb": -13.50861914549023
+        },
+        "placebo0": {
+          "stmt": "mibok means green.",
+          "L": 27.451068878173828,
+          "dnll_all": 25.21924264223344,
+          "dnll_disamb": 23.63269716274226,
+          "dnll_control": 0.10956250550225377,
+          "dnll_negative": 1.4769829739889246,
+          "dnll_word": 16.14137484558887,
+          "G_all": -2.231826235940389,
+          "G_disamb": -3.8183717154315673
+        },
+        "placebo1": {
+          "stmt": "mibok means square.",
+          "L": 28.480939865112305,
+          "dnll_all": 25.439814095167094,
+          "dnll_disamb": 24.033948647615034,
+          "dnll_control": 0.4050263128010556,
+          "dnll_negative": 1.0008391347510042,
+          "dnll_word": 16.165334884790354,
+          "G_all": -3.0411257699452108,
+          "G_disamb": -4.4469912174972706
+        },
+        "placebo2": {
+          "stmt": "mibok means square and red.",
+          "L": 40.0907986164093,
+          "dnll_all": 26.493769675245858,
+          "dnll_disamb": 25.191433410858735,
+          "dnll_control": 0.8455897778621875,
+          "dnll_negative": 0.4567464865249349,
+          "dnll_word": 16.120708010843373,
+          "G_all": -13.597028941163444,
+          "G_disamb": -14.899365205550566
+        },
+        "placebo3": {
+          "stmt": "mibok means smooth.",
+          "L": 28.86496877670288,
+          "dnll_all": 22.67407082597856,
+          "dnll_disamb": 22.329576089745387,
+          "dnll_control": 0.35975365704507567,
+          "dnll_negative": -0.015258920811902499,
+          "dnll_word": 16.178636426284356,
+          "G_all": -6.19089795072432,
+          "G_disamb": -6.535392686957493
+        }
+      },
+      "placebo_best_G_all": -2.231826235940389,
+      "Gtilde_M_G_all": 2.356726198722754,
+      "Gtilde_Mprime_G_all": -10.288577269533562,
+      "placebo_best_G_disamb": -3.8183717154315673,
+      "Gtilde_M_G_disamb": 2.5120253961649723,
+      "Gtilde_Mprime_G_disamb": -9.690247430058662
+    },
+    {
+      "id": "G1-06",
+      "type": "G1",
+      "word": "semdu",
+      "M_text": "heavy",
+      "Mprime_text": "heavy and metal",
+      "n_tok_heldout": 31,
+      "base": {
+        "all": 95.05793991172686,
+        "all_ntok": 31,
+        "disamb": 73.73039092123508,
+        "disamb_ntok": 18,
+        "control": 5.382455807179213,
+        "control_ntok": 6,
+        "negative": 15.945093183312565,
+        "negative_ntok": 7,
+        "word": 14.335122170392424,
+        "word_ntok": 5
+      },
+      "hyp": {
+        "M": {
+          "stmt": "semdu means heavy.",
+          "L": 28.205559492111206,
+          "dnll_all": 23.20729107130319,
+          "dnll_disamb": 24.741087985108607,
+          "dnll_control": 0.12630750972311944,
+          "dnll_negative": -1.6601044235285372,
+          "dnll_word": 14.275283275637776,
+          "G_all": -4.998268420808017,
+          "G_disamb": -3.4644715070025995
+        },
+        "Mprime": {
+          "stmt": "semdu means heavy and metal.",
+          "L": 40.42825412750244,
+          "dnll_all": 27.790007849573158,
+          "dnll_disamb": 27.892734216409735,
+          "dnll_control": 0.08834028337150812,
+          "dnll_negative": -0.19106665020808578,
+          "dnll_word": 14.225833814009093,
+          "G_all": -12.638246277929284,
+          "G_disamb": -12.535519911092706
+        },
+        "placebo0": {
+          "stmt": "semdu means light.",
+          "L": 26.973863124847412,
+          "dnll_all": 26.028585306135938,
+          "dnll_disamb": 24.621109401108697,
+          "dnll_control": 0.1230686919298023,
+          "dnll_negative": 1.2844072130974382,
+          "dnll_word": 14.298235818510875,
+          "G_all": -0.9452778187114745,
+          "G_disamb": -2.352753723738715
+        },
+        "placebo1": {
+          "stmt": "semdu means metal.",
+          "L": 28.768970489501953,
+          "dnll_all": 27.576402082399,
+          "dnll_disamb": 27.62872269086074,
+          "dnll_control": 0.1665259258588776,
+          "dnll_negative": -0.21884653432061896,
+          "dnll_word": 14.292468536936212,
+          "G_all": -1.1925684071029536,
+          "G_disamb": -1.1402477986412123
+        },
+        "placebo2": {
+          "stmt": "semdu means light and metal.",
+          "L": 37.896541357040405,
+          "dnll_all": 25.483597912010737,
+          "dnll_disamb": 25.294889599084854,
+          "dnll_control": -0.02158146584406495,
+          "dnll_negative": 0.2102897787699476,
+          "dnll_word": 14.282359897275455,
+          "G_all": -12.412943445029669,
+          "G_disamb": -12.601651757955551
+        },
+        "placebo3": {
+          "stmt": "semdu means cold.",
+          "L": 28.14133334159851,
+          "dnll_all": 23.54837368061999,
+          "dnll_disamb": 21.86356127122417,
+          "dnll_control": 0.243755076196976,
+          "dnll_negative": 1.4410573331988417,
+          "dnll_word": 14.301402827783022,
+          "G_all": -4.592959660978522,
+          "G_disamb": -6.27777207037434
+        }
+      },
+      "placebo_best_G_all": -0.9452778187114745,
+      "Gtilde_M_G_all": -4.052990602096543,
+      "Gtilde_Mprime_G_all": -11.69296845921781,
+      "placebo_best_G_disamb": -1.1402477986412123,
+      "Gtilde_M_G_disamb": -2.3242237083613873,
+      "Gtilde_Mprime_G_disamb": -11.395272112451494
+    },
+    {
+      "id": "G2-01",
+      "type": "G2",
+      "word": "fenlo",
+      "M_text": "an animal",
+      "Mprime_text": "a bird",
+      "n_tok_heldout": 21,
+      "base": {
+        "all": 70.71989944018424,
+        "all_ntok": 21,
+        "disamb": 54.273363798856735,
+        "disamb_ntok": 12,
+        "control": 6.6932247234508395,
+        "control_ntok": 4,
+        "negative": 9.75331091787666,
+        "negative_ntok": 5,
+        "word": 11.8005500882864,
+        "word_ntok": 5
+      },
+      "hyp": {
+        "M": {
+          "stmt": "fenlo means an animal.",
+          "L": 25.0034761428833,
+          "dnll_all": 28.241407909430563,
+          "dnll_disamb": 28.493563089636154,
+          "dnll_control": 0.28665272996295244,
+          "dnll_negative": -0.5388079101685435,
+          "dnll_word": 11.723011313006282,
+          "G_all": 3.2379317665472627,
+          "G_disamb": 3.4900869467528537
+        },
+        "Mprime": {
+          "stmt": "fenlo means a bird.",
+          "L": 24.56525707244873,
+          "dnll_all": 25.14449867478106,
+          "dnll_disamb": 24.579433748382144,
+          "dnll_control": 0.5739483534125611,
+          "dnll_negative": -0.008883427013643086,
+          "dnll_word": 11.67757929454092,
+          "G_all": 0.5792416023323312,
+          "G_disamb": 0.014176675933413208
+        },
+        "placebo0": {
+          "stmt": "fenlo means a plant.",
+          "L": 25.853232383728027,
+          "dnll_all": 24.058189252740704,
+          "dnll_disamb": 23.76798040966969,
+          "dnll_control": -0.31955756433308125,
+          "dnll_negative": 0.6097664074040949,
+          "dnll_word": 11.669548573321663,
+          "G_all": -1.7950431309873238,
+          "G_disamb": -2.0852519740583375
+        },
+        "placebo1": {
+          "stmt": "fenlo means a tool.",
+          "L": 27.6745285987854,
+          "dnll_all": 23.60645334160654,
+          "dnll_disamb": 23.91851354582468,
+          "dnll_control": -0.037493662792257965,
+          "dnll_negative": -0.27456654142588377,
+          "dnll_word": 11.688414227392059,
+          "G_all": -4.068075257178862,
+          "G_disamb": -3.75601505296072
+        },
+        "placebo2": {
+          "stmt": "fenlo means a machine.",
+          "L": 28.796324968338013,
+          "dnll_all": 22.418818397913128,
+          "dnll_disamb": 22.590292317210697,
+          "dnll_control": 0.27887999441009015,
+          "dnll_negative": -0.45035391370765865,
+          "dnll_word": 11.703917572740465,
+          "G_all": -6.377506570424885,
+          "G_disamb": -6.206032651127316
+        },
+        "placebo3": {
+          "stmt": "fenlo means a stone.",
+          "L": 26.910914659500122,
+          "dnll_all": 24.125087732449174,
+          "dnll_disamb": 22.843937266501598,
+          "dnll_control": -0.17032600799575448,
+          "dnll_negative": 1.4514764739433303,
+          "dnll_word": 11.702538009732962,
+          "G_all": -2.785826927050948,
+          "G_disamb": -4.066977392998524
+        }
+      },
+      "placebo_best_G_all": -1.7950431309873238,
+      "Gtilde_M_G_all": 5.0329748975345865,
+      "Gtilde_Mprime_G_all": 2.374284733319655,
+      "placebo_best_G_disamb": -2.0852519740583375,
+      "Gtilde_M_G_disamb": 5.575338920811191,
+      "Gtilde_Mprime_G_disamb": 2.0994286499917507
+    },
+    {
+      "id": "G2-02",
+      "type": "G2",
+      "word": "dorvek",
+      "M_text": "a container",
+      "Mprime_text": "a cup",
+      "n_tok_heldout": 28,
+      "base": {
+        "all": 73.6061856582237,
+        "all_ntok": 28,
+        "disamb": 55.39040863653645,
+        "disamb_ntok": 15,
+        "control": 8.089395780407358,
+        "control_ntok": 7,
+        "negative": 10.126381241279887,
+        "negative_ntok": 6,
+        "word": 14.041824964195257,
+        "word_ntok": 10
+      },
+      "hyp": {
+        "M": {
+          "stmt": "dorvek means a container.",
+          "L": 29.867705583572388,
+          "dnll_all": 29.919020010056556,
+          "dnll_disamb": 30.537570486296318,
+          "dnll_control": 0.5664781993255019,
+          "dnll_negative": -1.1850286755652633,
+          "dnll_word": 13.99236487680173,
+          "G_all": 0.05131442648416851,
+          "G_disamb": 0.6698649027239298
+        },
+        "Mprime": {
+          "stmt": "dorvek means a cup.",
+          "L": 29.581223011016846,
+          "dnll_all": 23.554236809155555,
+          "dnll_disamb": 23.238602912198985,
+          "dnll_control": 0.6854562431690283,
+          "dnll_negative": -0.3698223462124588,
+          "dnll_word": 13.958964469275088,
+          "G_all": -6.026986201861291,
+          "G_disamb": -6.342620098817861
+        },
+        "placebo0": {
+          "stmt": "dorvek means a vehicle.",
+          "L": 29.318109035491943,
+          "dnll_all": 23.76388912776747,
+          "dnll_disamb": 23.647282418751274,
+          "dnll_control": 0.06158936052815989,
+          "dnll_negative": 0.05501734848803608,
+          "dnll_word": 13.955151946640399,
+          "G_all": -5.554219907724473,
+          "G_disamb": -5.670826616740669
+        },
+        "placebo1": {
+          "stmt": "dorvek means a garment.",
+          "L": 31.936954498291016,
+          "dnll_all": 22.398566834264784,
+          "dnll_disamb": 22.878899525807356,
+          "dnll_control": -0.5178224191913614,
+          "dnll_negative": 0.037489727648789994,
+          "dnll_word": 13.948622090378194,
+          "G_all": -9.538387664026232,
+          "G_disamb": -9.05805497248366
+        },
+        "placebo2": {
+          "stmt": "dorvek means a weapon.",
+          "L": 29.694196224212646,
+          "dnll_all": 25.420037394447718,
+          "dnll_disamb": 24.7079669139639,
+          "dnll_control": -0.4206290665315464,
+          "dnll_negative": 1.1326995470153634,
+          "dnll_word": 13.949909832386766,
+          "G_all": -4.274158829764929,
+          "G_disamb": -4.986229310248746
+        },
+        "placebo3": {
+          "stmt": "dorvek means a book.",
+          "L": 28.626203298568726,
+          "dnll_all": 22.571820161509095,
+          "dnll_disamb": 22.165597534942208,
+          "dnll_control": 0.1309287338226568,
+          "dnll_negative": 0.2752938927442301,
+          "dnll_word": 13.975579865014879,
+          "G_all": -6.054383137059631,
+          "G_disamb": -6.460605763626518
+        }
+      },
+      "placebo_best_G_all": -4.274158829764929,
+      "Gtilde_M_G_all": 4.325473256249097,
+      "Gtilde_Mprime_G_all": -1.7528273720963625,
+      "placebo_best_G_disamb": -4.986229310248746,
+      "Gtilde_M_G_disamb": 5.6560942129726755,
+      "Gtilde_Mprime_G_disamb": -1.356390788569115
+    }
+  ]
+}
