@@ -1,0 +1,103 @@
+{
+  "source": "p0e_Qwen2.5-1.5B-Instruct.json",
+  "n": 22,
+  "spearman_sigma_margin": 0.5200451722190853,
+  "sweep": [
+    {
+      "tau_dec": 0.0,
+      "coverage": 1.0,
+      "n_keep": 22,
+      "n_drop": 0,
+      "auc": 0.8574380165289256,
+      "sep": false,
+      "dropped_types": {}
+    },
+    {
+      "tau_dec": 0.5,
+      "coverage": 0.9545454545454546,
+      "n_keep": 21,
+      "n_drop": 1,
+      "auc": 0.8820861678004536,
+      "sep": false,
+      "dropped_types": {
+        "G4": 1
+      }
+    },
+    {
+      "tau_dec": 1.0,
+      "coverage": 0.7272727272727273,
+      "n_keep": 16,
+      "n_drop": 6,
+      "auc": 0.95703125,
+      "sep": false,
+      "dropped_types": {
+        "G4": 4,
+        "G5": 2
+      }
+    },
+    {
+      "tau_dec": 1.5,
+      "coverage": 0.6818181818181818,
+      "n_keep": 15,
+      "n_drop": 7,
+      "auc": 0.9644444444444444,
+      "sep": false,
+      "dropped_types": {
+        "G4": 4,
+        "G5": 3
+      }
+    },
+    {
+      "tau_dec": 2.0,
+      "coverage": 0.5909090909090909,
+      "n_keep": 13,
+      "n_drop": 9,
+      "auc": 0.9704142011834319,
+      "sep": false,
+      "dropped_types": {
+        "G1": 1,
+        "G4": 4,
+        "G5": 4
+      }
+    },
+    {
+      "tau_dec": 2.5,
+      "coverage": 0.5454545454545454,
+      "n_keep": 12,
+      "n_drop": 10,
+      "auc": 0.9652777777777778,
+      "sep": false,
+      "dropped_types": {
+        "G1": 1,
+        "G2": 1,
+        "G4": 4,
+        "G5": 4
+      }
+    },
+    {
+      "tau_dec": 3.0,
+      "coverage": 0.4090909090909091,
+      "n_keep": 9,
+      "n_drop": 13,
+      "auc": 0.9382716049382716,
+      "sep": false,
+      "dropped_types": {
+        "G1": 1,
+        "G2": 3,
+        "G3": 1,
+        "G4": 4,
+        "G5": 4
+      }
+    }
+  ],
+  "operating_point": {
+    "tau_dec": 1.5,
+    "tau_z": 0.6773848255549489,
+    "coverage": 0.6818181818181818,
+    "accept_M": 15,
+    "miss_M": 0,
+    "reject_Mprime": 12,
+    "admit_Mprime": 3,
+    "accuracy_on_covered": 0.9
+  }
+}
