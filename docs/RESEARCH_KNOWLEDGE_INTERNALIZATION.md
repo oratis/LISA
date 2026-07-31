@@ -3,14 +3,19 @@
 > **本文档目标**：系统梳理**所有让知识从"外部/临时"变成"模型自身能力"的方案**——它们把知识放在哪、怎么写进去、能存多久、由什么决定该不该写。
 > **一句话主轴**：**"内化"不是二值的，而是一条有序阶梯；且内化度越高，可逆性与可隔离性越低。** 这条反比关系是整个领域所有工程取舍的根源。
 
-- **状态**：家族 **A–P 已覆盖**。A–I 经四轮对抗验证（✅）；J–P 经第六轮**全文穷举**核查（✅ᶠ），但**未经 3 票对抗验证**
+- **状态**：家族 **A–P 已覆盖**。A–I 经四轮对抗验证（✅）；**O 族经第七轮 3 票对抗验证（✅）**；J/P 族部分经第六轮全文穷举（✅ᶠ），**剩余 5 篇仍仅摘要级（🔍）**
 - **最后更新**：2026-07-30
 
 > ### 🔴 读这份文档前必须知道的两条
 > 1. **J–P 的证据等级是 ✅ᶠ（全文穷举）而非 ✅（3 票对抗验证）**。第五、六轮的正式 Verify 阶段均未跑完；
 >    但第六轮的抓取代理完成了 **pdftotext 全文 + 关键词穷举 + 近似命中逐条核查**，证据强于 🔍。
-> 2. 🔴 **已发现一条优先权风险**：**arXiv:2607.08032**（2026-07-09）已在开放问题中提出与本项目**同构**的写入准入判据。
->    **贡献声明必须收紧为"尚无方法【实现并实证】"**——详见 §3 家族 J–P 末尾。
+> 2. 🔴🔴 **立论支点的绝对表述已被证伪**（第七轮）：**arXiv:2606.03979** 的 Dreaming 阶段有两道真实的写入前筛选
+>    （梯度重要性 Top-k「采 60 拒 45」+ SEAL 式二值奖励）——但判据是**可学习性/效用**，非正确性。
+> 3. 🔴 **另有一条优先权风险**（第六轮）：**arXiv:2607.08032** 已提出与本项目**同构**的写入准入判据（只提议程、未实现）。
+> 4. 🔴 **最高优先未决**：**GATES（stein2026）的 consensus-gating** 用「多 tutor trace 一致性」门控学习——
+>    **一致性是无需 GT 的正确性代理，直接落在我方主张位置上**，尚未核查。
+>
+> **⟹ 当前唯一可辩护的措辞**：「**尚无方法【实现并实证】以压缩增益/MDL 为判据、GT-free 且无外部 oracle 的写入准入门控**」。
 - **姊妹文档**：[RESEARCH_LEARNING_IN_REFERENCING.md](RESEARCH_LEARNING_IN_REFERENCING.md)（本项目的具体研究方向）· [DESIGN_COMPRESSION_GATE.md](DESIGN_COMPRESSION_GATE.md)（机制）· [P0 实证](../research/learning-in-referencing/p0/README.md)
 
 **验证状态图例**
@@ -349,18 +354,58 @@
 
 ### O. 睡眠期 / 离线计算 🔍
 
-- 🔍 **Sleep-time Compute**（Letta + UC Berkeley, 2025-04）——**重要的否定性发现**：该族源头**并不写权重**。
-  机制：拆 prompt 为静态 context + 动态 query，空闲期只对 context 做推理/摘要，产出"预处理过的 context"。
-  内化到 → **外部文本工件**；持久性 → 跨会话但可删可覆盖（**可逆**）；门控 → 无 GT 校验。
-  效果：同精度下 test-time token 降约 **5×**；Stateful GSM-Symbolic **+13%**、Stateful AIME **+18%**。
-- 🔍★ **Language Models Need Sleep**（Behrouz et al., 2026-06，**Titans/HOPE 同一组**）：把睡眠期**正式做成知识内化机制**。
-  明言现有模型"**无法把临时的 in-context 知识转成稳定的长期参数变化**"，给出两阶段：
-  ① **Memory Consolidation / Knowledge Seeding**——把短期（上下文/快权重）学到的，经蒸馏 + RL 模仿转移进大网络；
-  ② **Dreaming**——用 RL 生成合成数据离线反刍。
-  **这是 CLS 巩固 → LLM 的最正式对应物。** 门控 → **隐式，未给出显式准入信号**。
-- 🔍 **Do LMs Need Sleep?**（2026-05）：把睡眠期落到**权重**上——清空 KV 前对累积上下文做 N 次 recurrent pass，用**习得的局部规则**（非梯度）更新 SSM 快权重。
-  > 🎯 **门控：论文未给出显式准入信号，只是对整个累积上下文窗口做 N 次 pass。**
-  > **这个"无门控"正是压缩增益门可以直接插进去的位置。**
+- ✅ **Sleep-time Compute**（Letta + UC Berkeley, 2025-04）——**该族源头并不写权重**（第七轮 3 票验证）。
+  机制：拆 prompt 为静态 context + 动态 query，空闲期只对 context 做推理/摘要，产出 `S(c) → c′`，测试期 `T_b(q, c′) → a`。
+  内化到 → **外部自然语言文本工件**；持久性 → 跨会话但可删可覆盖（**可逆**）。
+  效果 ✅：token 降约 **5×**；Stateful GSM-Symbolic **+13%**、Stateful AIME **+18%**（逐字核实）。
+
+  ✅ **不写权重的证据（LaTeX 源码级）**：`weight`=0、`gradient`=0、`backprop`=0、`parametric`=0、`adapter`=0、`LoRA`=0、`checkpoint`=0、`SGD`=0；
+  所用模型全为闭源 API（GPT-4o/o1/Claude 3.7/DeepSeek-R1），**结构上无法写权重**；官方 repo `requirements.txt` 无 torch/peft。
+  作者自陈：*"we instead form representations in the space of natural language"*。
+
+  ✅ **无正确性门控**：全文（pdftotext 11,988 词 + HTML + e-print 三重抽取）零命中 admission/gate/criterion/threshold/verification/factual/trust/confidence/reliability/novelty/surprise/salience/discard。
+  唯一写入规则是**新近性 + 似然**：*"Prioritize the new information overy existing memories… output the most likely fact given the update information."*（`overy` 为原文笔误，可用于验真）；参考实现 `rethink_memory` 是**无条件覆写**。
+
+  > ⚠️ **两条必须遵守的措辞纪律**：
+  > 1. 🔴 **不得由"论文不假设 oracle verifier"推出"因此不可能有正确性门控"** —— 该强推论被**三次独立否决（0-3 ×3）**。
+  >    安全措辞止于：「论文明确不假设可访问 ground-truth verifier（§4.2）」。（自一致性等无需 GT 的正确性代理仍可存在。）
+  > 2. ⚠️ **仓库层（非论文）提示词含** *"remove calculations that are not useful"*、*"checked that there are no errors in the memory block"* ——
+  >    属实现层的有用性驱逐与自检，**可被审稿人当反例引用**。**避免绝对句。**
+- ✅★ **Language Models Need Sleep**（Behrouz et al., 2026-06 v1 / 07-10 v2，**Titans/HOPE 同一组**）：把睡眠期**正式做成知识内化机制**。
+  ✅ **两阶段核实无误**：① **Memory Consolidation / Knowledge Seeding**（向上蒸馏进大网络）② **Dreaming**（RL 生成合成数据课程离线反刍）。
+  ✅ **摘要逐字**（三个独立渲染 char-for-char 一致）：
+  > *"existing models lack the ability to continually learn and effectively transfer their temporal in-context knowledge to their long-term parameters."*
+
+  ⚠️ **中文转述须删掉原文没有的"稳定的""变化"**。正文另有更强一句：*"any new acquired knowledge will be removed from the model at the end of the session/context."*
+
+  ✅ **第一阶段（真正对应"in-context 知识→参数"的那一步）确无准入判据**：教师采样后**全量蒸馏**，触发仅为周期性调度（`{C^(1)×b,…,C^(k)×b}` steps），每次新增独立 low-rank expert 故**无容量竞争**。
+  关键词穷举（v1/v2 计数一致，12,167/12,529 词含附录）：admission/criterion/verify/correctness/trust/confidence/reliab*/discard/oracle/'ground truth' **全 0**；
+  `forget*`=13 **全是 catastrophic forgetting，零个 forget gate**；`surpris*`=1 仅 *"Surprisingly"* → **不存在 Titans 式 surprise 度量**。
+
+  > ### 🔴🔴 **但 Dreaming 阶段有两道真实的写入前筛选 —— 这推翻了我方支点的绝对表述**
+  > **(a) 梯度重要性 Top-k 拒采**：`ω(i)` 由 `g_DR(i) = ∇θ L_SFT(DREAM(i), θ)` 算出，取 Top-k + b 条随机保多样性。
+  > **量化：ARC 上"每任务采 60 条 dream、拒 45 条"**；消融（SQuAD）去掉后 48.9/46.2 → 47.1/45.2。
+  > **(b) 继承自 SEAL 的二值奖励**：`r(DREAM(i), τ, LM_θ) = {1 if improves, 0 otherwise}`，τ = 下游评测度量
+  > （SQuAD 知识注入下需带标注留出集 —— **全文最接近"需要外部 oracle"的信号**）。
+  >
+  > **⟹ 两者判据都是【可学习性 / 效用】，不是知识正确性或事实核验。**
+  > **重要限定**：τ 只在 ReST-EM 训练期**塑形生成器**，**部署写入环节不施加 τ 过滤**。
+
+- ⚠️ **Do LMs Need Sleep?**（2026-05 v2 / 06-05 v3）—— 🔴 **我方此前有两处实质错误，第七轮已改正**：
+
+  ✅ 确认：以**习得的局部规则**（门控式 Hebbian 外积 / delta-rule）更新 SSM 快权重，推理期不做梯度下降，论文明确与一步梯度 TTT 划界。
+  ✅ 无显式准入判据：巩固分支仅由 loss mask `m_c`（**位置/阶段信号**）触发，每个 chunk 一律被 N 次 pass 处理。
+  `gating`=2 **全为 `backpropagating` 子串，真命中 0**（与上轮 `investigating` 同型陷阱）；9 个真 `gate` 命中**全是架构门控单元或文献题名**。
+
+  > 🔴 **错误 1（作用域）**：N 次 pass 作用于**当前窗口 chunk（长度 ≤ L，实验中 L=24 tokens）**，
+  > **不是"整个累积上下文"**。摘要的 *over the accumulated context* 指"自上次驱逐以来在当前窗口内累积的内容"。
+  >
+  > 🔴 **错误 2（更严重·定性）**：它写入的 **fast weights 是 SSM 的定长递归状态 S，每条序列零初始化**，
+  > **不是跨会话持久的模型参数**。全文 `permanent`=0、`cross-session`=0、`continual`=0；`persistent` 仅 2 次且都是**相对 KV cache** 而言。
+  > **⟹ 不可把它与真正写权重的 P 族并列为"持久化"证据。我方原先称其为"把睡眠期落到权重上"是错的，已撤回。**
+  >
+  > ⚠️ 另：§6.3 与 Eq.(3) 的数据依赖门 α_t/β_t 是**相关性加权、连续调制**，无离散取舍——
+  > 故仍不构成正确性门控，**但对外措辞须从"无任何内容判据"降为"无基于正确性的显式准入判据"**。
 
 ### P. 参数化知识库 / 神经数据库 🔍
 
@@ -568,6 +613,31 @@
 > 这比原来的声明**更强、更可辩护、也更省事**：不必自证整条管线可行（J 族已证），只需证明**加了门比不加好**。
 > 🔍 *Do LMs Need Sleep?*（2026-05）的调研记录甚至直接点出："**这个「无门控」正是压缩增益门可以插进去的位置**"。
 
+> ### 🔴🔴 第七轮的**三次收紧** —— 支点的绝对表述**被证伪**
+>
+> **arXiv:2606.03979 的 Dreaming 阶段有两道真实的写入前筛选**（梯度重要性 Top-k 拒采「采 60 拒 45」+ SEAL 式二值奖励）。
+> **⟹「J/O/P 三族均无写入准入门控」在绝对表述下不成立。**
+>
+> **但两道判据都是【可学习性/效用】，不是正确性/事实核验。** 收紧后：
+>
+> | 层级 | 表述 | 状态 |
+> |---|---|---|
+> | ❌ 绝对 | 「无写入准入门控」 | **被 2606.03979 证伪** |
+> | ❌ 次强 | 「无【基于正确性】的门控」 | ⚠️ 待定 —— **GATES 线索可能推翻**（见下） |
+> | ✅ **可辩护** | 「**尚无方法【实现并实证】以压缩增益 / MDL 为判据、GT-free 且无外部 oracle 的写入准入门控**」 | **当前应采用** |
+>
+> **统一对外措辞**：「这些路径确有基于**学习效用**（梯度重要性 / 下游分数提升）的样本筛选，
+> 但不存在对知识本身正确性的判定——**被选中的内容未经任何事实性校验即被写入**。」
+>
+> ### 🔴 最高优先反例线索：**GATES**（stein2026）
+> 2606.03979 的 related work 逐字点名：
+> > *"GATES uses document-grounded privileged context together with a **consensus-gating** mechanism that **handles unreliable supervision** by sampling multiple tutor traces and **gating learning by their agreement**."*
+>
+> **一致性 = 无需 GT 的正确性代理** —— 这**恰好落在我方"无 GT 自验证"所主张的位置上**。
+> **若属实，声明须再改为「无【以压缩/MDL 为判据的】准入门控」，并把 GATES 列为最近邻工作加以区分。**
+> **SEAL**（2606.03979 第二道门控的来源）的 reward filtering 是否已构成正确性门控，同样须直接核查。
+> ⏰ **下一轮最高优先级。**
+
 > ### 🔴 第六轮的二次收紧（**必须照做**）
 > **arXiv:2607.08032**（2026-07-09）已在开放问题中提出基于边际任务条件信息量 `I*(Q)` 的写入准入判据，
 > 与压缩增益门**同构**——但**只提出议程，未实现、未实验**。
@@ -626,7 +696,17 @@ L2 巩固核    ← 借 E 族（低频稀疏记忆层）+ HOPE/CMS（频率分�
 
 - [x] 第五轮调研回填家族 **J–P**
 - [x] **重画 §4 矩阵** —— 预警的风险应验：J 族确实是那一格的已有解，**空白声明已收紧**（§4 事实 1、§7 定位修正）
-- [ ] 🔴 **最高优先：给 J–P 补对抗验证** —— 第五轮的 Verify 阶段未执行，**全部条目仍是 🔍**。
+- [x] **第七轮已完成 O 族 3 篇的 3 票对抗验证**（Sleep-time Compute / LMs Need Sleep / Do LMs Need Sleep）→ 升为 ✅
+- [ ] 🔴🔴 **下一轮最高优先：核查 GATES（stein2026）与 SEAL** —— consensus-gating 用「多 tutor trace 一致性」门控学习，
+      **是无需 GT 的正确性代理，直接落在我方主张的位置上**。若属实，声明须再收紧一次。
+- [ ] 🔴 **J 族 3 篇 + P 族 2 篇仍是"仅摘要级"**（Snell 2209.15189 / Prompt Distillation 2412.14964 / OPCD 2602.12275 / PRAG-DyPRAG 2503.23895 / Memory Grafting 2605.20948）——
+      第七轮**无一条主张通过验证**。**以下事实不得写入论文**：Snell 的「不需 GT」与「SPIDER +9%」、2412.14964 的「teacher=同一模型／LoRA／超过 RAG」、
+      OPCD 的机制与 OOD 证据、DyPRAG 的「多文档 LoRA 平均互相干扰」、Memory Grafting 的 53.86/51.95/52.43。
+- [ ] **核查 SOP（第七轮血泪，写入流程）**：
+      ① 子串误报清单——`LoRA ⊂ exp**lora**tion`、`gate ⊂ aggregation/mitigate/propagate/backpropagate`、`gating ⊂ backpropagating/investigating`、`curat ⊂ accurately`；
+      ② **词边界正则 + 原始 substring 双跑并对比**，每个非零命中回读上下文归为 (i) 写入准入判据 / (ii) 网络门控单元 / (iii) 评测指标或无关；
+      ③ 🚨 **arXiv HTML 端点曾对 2605.26099v2 返回另一篇论文（2606.03979v2）的全文** —— 必须用正文水印 `arXiv:XXXX.XXXXXvN` 校验身份（两次下载 md5 不同）。
+- [ ] 🔴 **给 J–P 剩余篇目补对抗验证** —— 第五轮的 Verify 阶段未执行，这些条目仍是 🔍。
       投稿前必须把至少以下几条升到 ✅：Generative Adapter 的"单次前向 + 按用户隔离"、
       *When Context Returns* 的 context-induced degradation、Sharpening 的否定性结论、
       以及"J/O/P 三族均无准入门控"这一**否定性主张**（需全文关键词穷举，不能"未见即无"）
