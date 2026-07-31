@@ -622,14 +622,56 @@
 >
 > | 层级 | 表述 | 状态 |
 > |---|---|---|
-> | ❌ 绝对 | 「无写入准入门控」 | **被 2606.03979 证伪** |
-> | ❌ 次强 | 「无【基于正确性】的门控」 | ⚠️ 待定 —— **GATES 线索可能推翻**（见下） |
-> | ✅ **可辩护** | 「**尚无方法【实现并实证】以压缩增益 / MDL 为判据、GT-free 且无外部 oracle 的写入准入门控**」 | **当前应采用** |
+> | ❌ 绝对 | 「无写入准入门控」 | **被 2606.03979 证伪**（第七轮） |
+> | ❌ 次强 | 「无【基于正确性】的门控」 | **被 GATES 2602.20574 证伪**（第八轮） |
+> | ❌ 再次强 | 「无 **GT-free** 的写入准入门控」 | **被 GATES + LMSI 证伪**（第八轮）—— 🚫 **不得再写** |
+> | ✅ **可辩护（第八轮定稿）** | 「尚无方法以**压缩增益 / MDL 为判据**、对**推理期按条持久写入**做准入门控」 | **当前应采用** |
+>
+> > 🚫 **三条硬性禁令（第八轮）**：
+> > 1. **不得再写「尚无 GT-free 的写入准入门控」** —— 已被 GATES 彻底证伪（该更宽版本的 claim 遭 0-3 否决，正因它推到了这一步）
+> > 2. **不得保留「无外部 oracle」作为独立卖点** —— GATES 训练门无外部 oracle，且其管线仍用 Qwen2.5-32B 造题，**攻防上得不偿失**
+> > 3. **用「写入」一词时必须带 scope 注解**（推理期 / 持久 / 按条），否则与 GATES 的**训练准入**不可区分
 >
 > **统一对外措辞**：「这些路径确有基于**学习效用**（梯度重要性 / 下游分数提升）的样本筛选，
 > 但不存在对知识本身正确性的判定——**被选中的内容未经任何事实性校验即被写入**。」
 >
-> ### 🔴 最高优先反例线索：**GATES**（stein2026）
+> ### 🔴🔴🔴 第八轮：GATES 已核实 —— **「GT-free 正确性代理 + 准入门控」这一轴彻底失守**
+>
+> **GATES = arXiv:2602.20574v1**（Stein / Huang / Goldstein, UMD, 2026-02-24；PDF 水印 + LaTeX e-print + HTML 三源互证）
+>
+> ✅ **它确实是一个 GT-free 的二值写入准入门**：
+> - 判据 = k=8 条 tutor rollout 抽取答案的**一致度（≥4/8）**；另有数据构造期 ≥5/8 的更严过滤
+> - 未过门的题目 *"contributes zero loss **across all objectives**"* —— **整体丢弃**
+> - **数学上确证是 (a) 硬性准入而非 (b) 连续降权**：`g_i·e_{i,j}` 同时出现在 Eq.1 的**分子与归一化分母**中 → 被门掉的项是**从分母消失**
+> - 消融：去掉共识门 → student 54.0%、benchmark 均值 31.1%
+> - 作者自陈：*"GATES relies on agreement among multiple tutor rollouts as **a proxy for correctness**"*；*"no external teacher or reward model is involved"*
+> - 作者亲自与推理期方法划界：*"it decides **when to distill**, not what to answer"*
+>
+> 🔴 **而且并非 GATES 首创**：**LMSI（arXiv:2210.11610, 2022）** 早已用多数投票一致性筛选自训练数据，
+> 并明言 *"we do not use any ground truth labels to filter"*。GATES 自己在 related work 中承认这类 consensus filtering 是
+> *"well-established reliability mechanisms in this literature"*。
+>
+> **⟹ 这一轴（GT-free 正确性代理 + 硬性准入）已被实现并实证，我方不得在此主张新颖性。**
+>
+> ### ✅ 但我方在**另外两轴**存活
+>
+> | 轴 | GATES / LMSI | 我方 |
+> |---|---|---|
+> | **判据类型** | 答案一致性。**全文 MDL / description length / compression / bits 词边界命中 = 0**（`compression` 唯一命中在参考文献；`bits` 是 `exhibits` 子串） | **压缩增益 / MDL** |
+> | **门控环节** | **训练期**：离线自蒸馏的**训练数据与梯度更新准入**，作用于**固定预生成题集** | **部署期按对话者隔离的持久记忆写入** |
+>
+> ### ❌ SEAL 不构成反例（我方在该篇安全）
+> 其奖励**需要外部 oracle**——每个 context 必须配带 gold label 的评测任务 τ；论文 Limitations 自述这
+> *"prevents RL training of SEAL from scaling to unlabeled corpora"*。且 ReST-EM 筛选在**生成器 RL 训练期**，
+> **部署写入期完全无门**（*"take the aggregate synthetic dataset"*，全部应用无一拒绝）。
+>
+> ### ★ 一条对我方有利的反向证据
+> **arXiv:2607.08065** 的大规模审计（53 runners × K=50 × 265,000 samples）：
+> 一致性只是**弱预测子**（Spearman ρ **0.20–0.59**），高一致（C≥0.8）的 gpt-4.1 在 GPQA 上仍 **48% 出错**。
+> 结论：*"Self-consistency is not accuracy… unreliable as a standalone confidence score."*
+> **⟹ 可用来论证：一致性类信号 ≠ 压缩类判据，且共识门控的正确性代理效力本身存疑。**
+
+> ### 🔴 原最高优先反例线索：**GATES**（stein2026）—— **已于第八轮核实，见上**
 > 2606.03979 的 related work 逐字点名：
 > > *"GATES uses document-grounded privileged context together with a **consensus-gating** mechanism that **handles unreliable supervision** by sampling multiple tutor traces and **gating learning by their agreement**."*
 >
