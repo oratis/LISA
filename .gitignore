@@ -6,8 +6,12 @@ dist-release/
 .DS_Store
 .env
 .env.local
-.claude/
+# Local Claude Code state (settings.local.json, worktrees) stays out — but skills
+# are shared tooling and belong in the repo.
+.claude/*
+!.claude/skills/
 reference/
+!.claude/skills/**/reference/
 
 # Internal growth/marketing playbook — strategic docs that aren't public-friendly
 docs/GROWTH.md
