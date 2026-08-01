@@ -701,9 +701,10 @@
 
 1. **内化不幂等**（✅ *When Context Returns*，第十轮 3 票）：把原始上下文重新塞回已内化的模型，**性能反而变差**，甚至在它本已答对的样本上退化（7/12 设定属退化域；仅测系统提示/游戏脚手架，未测文档）。
    → 本项目是典型的"引用 → 内化"系统，**必须测这一条**；已知的轻量修复是 **NCA**（stop-gradient 锚定 + forward KL 一致性正则合为一项，11/12 设定有效）。
-2. **迭代内化会能力坍缩**（🔍 *Continual Experience Internalization* 2606.04703，**最后一条未验证 🔍，写入论文前须 3 票**）：多轮内化下 **progressive capability collapse**。
-   → 缓解线索：**principle-level 优于 instance-level**、**step-wise 优于 global**、**off-policy from good teacher 优于 on-policy**。
-   → **这恰好是"门"的用武之地**：坍缩的直接诱因是无差别写入（与 N 族模型坍缩的结论同构——坍缩是"**替换式自消费 + 无门控**"的属性，不是合成数据的固有属性）。
+2. **迭代内化会能力坍缩**（✅ *Rethinking Continual Experience Internalization* 2606.04703v1，**第十一轮 3 票**）：3 轮迭代内化后 **progressive capability collapse**——掉到 **base 以下**（如 WebWalkerQA 21.0→18.7→8.5 vs base 16.6；web agent，Qwen3-4B/8B）。
+   → 缓解（论文实证）：**principle-level 优于 instance-level**、**step-wise 注入优于 global**、**off-policy 优于 on-policy**——⚠️ 此处 teacher **非外部强模型**，是**同一策略条件化于经验池的自教师** + **rejection sampling 只留成功轨迹**（第十一轮精化，REPORT §4 #18）。
+   → ❌ **我方旧推演已撤回（#19）**：论文**不**把坍缩归因于无差别写入（归因 = instance 伪影 / 注入错位 / on-policy 反应式监督）；且其稳定配方**本身含 rejection sampling（任务成功）正确性门**——该门属**结果 oracle · 训练数据准入**类（STaR/LOCI 族），不触我方「MDL × 推理期按条持久写入」两轴。**"门能推迟坍缩"是我方待验证假设（💭）**，实验照做但不得写成该文支持。
+   → ✅ 对 P4 有利：全文无 per-user/interlocutor 隔离——单一共享经验池。
 
 ### ★ 一条理论上的正面支持 🔍
 
@@ -828,4 +829,4 @@ L2 巩固核    ← 借 E 族（低频稀疏记忆层）+ HOPE/CMS（频率分�
 | ✅★★ Generative Adapter, **ICLR 2025** — arXiv:2411.05877v1 | **单次前向 × 跨会话（架构性）**；隔离仅构造暗示（#16）；🔴 **无门** ← **离本项目最近** |
 | ✅ PRAG / DyPRAG — arXiv:2503.23895v4 | per-document LoRA；hypernet 前向生成；~~平均干扰~~ 改正：平均有效整合，衰退因无关冗余（#17）；无写入门 |
 | ✅ Memory Grafting 2026-05 — arXiv:2605.20948v1 | 离线前向算隐状态记忆 + 精确后缀匹配；**实为预训练扩展**；写入侧仅频率覆盖筛选（质量盲） |
-| ★ 2026-06 — arXiv:2606.04703 | **Continual Experience Internalization**；**progressive capability collapse**；principle > instance、step-wise > global |
+| ✅★ 2026-06 — arXiv:2606.04703v1 | **Rethinking Continual Experience Internalization**；**progressive capability collapse（3 轮掉到 base 下）**；principle > instance、step-wise > global、off-policy（自教师+rejection sampling）> on-policy；⚠️ 坍缩归因非无差别写入（#19） |

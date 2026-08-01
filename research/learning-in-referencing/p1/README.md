@@ -27,8 +27,19 @@
 - 词库过滤 2/3（分词器熟悉度、零样本探针）需模型环境：`lexicon.make_lexicon(tokenizer=...)` 已留钩子，meta 中 `tokenizer_check_skipped` / `zero_shot_probe` 字段显式标注未跑状态。
 - 目标语语法参数（SOV/格标记等，DESIGN §2.3）**尚未实现**——当前英语载体句与 p0 对齐；P2 教学协议需要时再加 `grammar.py`。
 
-## 下一步（P2 前置）
+## ✅ 实证复核已通过（2026-08-01，`p1_eval.py` → `p1_eval_Qwen2.5-1.5B-Instruct.json`）
 
-1. 在 p0 环境跑 `p0c_decision_mdl.py` 式评测消费 `items_p1.json`（字段兼容），复核程序化 items 与手工 items 的 margin 分布一致
-2. 补跑词库过滤 2/3（Qwen tokenizer + 零样本探针）
-3. 三臂对照（压缩 / 语义熵 / EIG）→ [DESIGN_COMPRESSION_GATE.md](../../../docs/DESIGN_COMPRESSION_GATE.md) §4 消融矩阵
+| | P1 程序化（40 items） | p0e 手工（22 items）对照 |
+|---|---|---|
+| **核心域 G1–G3** | margin **+4.44**，23/24，p=1e-6，**AUC(z) 0.911** | +4.08，19/22，p=0.00043 |
+| 全类型 | +2.71，35/40，p=1e-6，AUC(z) 0.800 | — |
+| G4（能力边界） | **AUC(z) 0.500 ≈ 随机** ← 精确复现 P0f | 0.562 |
+| G5 | +0.23（小但 8/8 一致），AUC(z) 0.891 | — |
+| 过滤 2（分词器，Qwen） | **0 词被标记** ✅ | — |
+| 过滤 3（零样本探针） | **AUC 0.394 ≈ 无先验信号** ✅ | — |
+
+**结论**：程序化生成不损核心信号；G4/G5 单列作用域的决定被复现支持。生成器可放量供 P2。
+
+## 下一步（P2）
+
+三臂对照（压缩 / 语义熵 / EIG）→ [DESIGN_COMPRESSION_GATE.md](../../../docs/DESIGN_COMPRESSION_GATE.md) §4 消融矩阵；隔离测试用 `isolation_p1.json`

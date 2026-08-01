@@ -200,9 +200,9 @@
 > transfer directly to any referencing-to-internalization system, including ours:
 > re-presenting the original context to a distilled student can *degrade* it — in 7 of
 > 12 settings, including on instances it solves correctly without the context
-> [When Context Returns, 2606.11627] — and iterated internalization has been reported
-> to collapse capability progressively [2606.04703]⚠️ — we adopt the corresponding
-> countermeasures in our experimental design (§Experiments).
+> [When Context Returns, 2606.11627] — and three rounds of iterated internalization can
+> collapse a web agent's capability below its own base model [2606.04703] — we adopt
+> the corresponding countermeasures in our experimental design (§Experiments).
 
 **¶4 — 不确定性与自我验证（为何现有信号在 E1 上失分）**
 
@@ -241,7 +241,7 @@
 > - ¶2 GATES 引语三条全 ✅（第八轮）；2607.08065 审计 ✅（第八轮）；SEAL 引语 ✅（第八轮）。
 > - ¶3 Snell 句已按第十轮 SN1 裁决精化（token-level KL 到冻结自身副本）✅；SPIDER 数字未写入正文——如需引用，唯一合法表述见 REPORT §4 第十轮小节（8-shot 比 GD 基线 +9.0 点，非对 teacher）。
 > - ¶3 GA 句已按 #16 收紧（"stored and reused per user"，不写 isolation/naturally）✅；When Context Returns 已带 7/12 scope ✅。
-> - 🚨 ¶3 的 **2606.04703 仍是 🔍（唯一未验证引用）**——投稿前必须 3 票，或删句尾分句。⚠️ 号即此标记。
+> - ✅ ¶3 的 2606.04703 已第十一轮 3 票（坍缩掉到 base 以下确认）。🚨 引用纪律：**不得写「其坍缩因无差别写入」或「其管线完全无门」**（#19——论文归因是 instance 伪影/注入错位/反应式 on-policy，且稳定配方含 rejection sampling 门）；「压缩门推迟坍缩」只能以我方实验数据立论。
 > - DyPRAG（✅）可选补一句参数化 RAG（"hypernetwork-translated per-document LoRAs [DyPRAG]"）；Memory Grafting 实为预训练扩展方法，与本节主题无关，**不引**。
 > - ¶5 「zero hits」的主语是**我方已穷举过的家族**（词边界双跑协议），不是全文献——句中已用 "across all families above" 限定。
 > - 🚫 三条禁令自查：通过（见文首）。
