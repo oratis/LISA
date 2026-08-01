@@ -1,0 +1,138 @@
+[
+ {
+  "id": "ISO-01",
+  "word": "komalor",
+  "teacher_A": {
+   "uid": "uA",
+   "M": "blue"
+  },
+  "teacher_B": {
+   "uid": "uB",
+   "M": "red"
+  },
+  "probe": "Is a blue ball komalor?",
+  "expected": {
+   "uA": "Yes",
+   "uB": "No"
+  }
+ },
+ {
+  "id": "ISO-02",
+  "word": "posos",
+  "teacher_A": {
+   "uid": "uA",
+   "M": "yellow"
+  },
+  "teacher_B": {
+   "uid": "uB",
+   "M": "blue"
+  },
+  "probe": "Is a yellow ball posos?",
+  "expected": {
+   "uA": "Yes",
+   "uB": "No"
+  }
+ },
+ {
+  "id": "ISO-03",
+  "word": "timo",
+  "teacher_A": {
+   "uid": "uA",
+   "M": "blue"
+  },
+  "teacher_B": {
+   "uid": "uB",
+   "M": "red"
+  },
+  "probe": "Is a blue ball timo?",
+  "expected": {
+   "uA": "Yes",
+   "uB": "No"
+  }
+ },
+ {
+  "id": "ISO-04",
+  "word": "supu",
+  "teacher_A": {
+   "uid": "uA",
+   "M": "yellow"
+  },
+  "teacher_B": {
+   "uid": "uB",
+   "M": "green"
+  },
+  "probe": "Is a yellow ball supu?",
+  "expected": {
+   "uA": "Yes",
+   "uB": "No"
+  }
+ },
+ {
+  "id": "ISO-05",
+  "word": "rulu",
+  "teacher_A": {
+   "uid": "uA",
+   "M": "yellow"
+  },
+  "teacher_B": {
+   "uid": "uB",
+   "M": "red"
+  },
+  "probe": "Is a yellow ball rulu?",
+  "expected": {
+   "uA": "Yes",
+   "uB": "No"
+  }
+ },
+ {
+  "id": "ISO-06",
+  "word": "malal",
+  "teacher_A": {
+   "uid": "uA",
+   "M": "yellow"
+  },
+  "teacher_B": {
+   "uid": "uB",
+   "M": "blue"
+  },
+  "probe": "Is a yellow ball malal?",
+  "expected": {
+   "uA": "Yes",
+   "uB": "No"
+  }
+ },
+ {
+  "id": "ISO-07",
+  "word": "kokero",
+  "teacher_A": {
+   "uid": "uA",
+   "M": "yellow"
+  },
+  "teacher_B": {
+   "uid": "uB",
+   "M": "blue"
+  },
+  "probe": "Is a yellow ball kokero?",
+  "expected": {
+   "uA": "Yes",
+   "uB": "No"
+  }
+ },
+ {
+  "id": "ISO-08",
+  "word": "tirene",
+  "teacher_A": {
+   "uid": "uA",
+   "M": "blue"
+  },
+  "teacher_B": {
+   "uid": "uB",
+   "M": "yellow"
+  },
+  "probe": "Is a blue ball tirene?",
+  "expected": {
+   "uA": "Yes",
+   "uB": "No"
+  }
+ }
+]

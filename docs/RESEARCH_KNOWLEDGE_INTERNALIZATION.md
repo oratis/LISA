@@ -266,13 +266,13 @@
 | 内化到哪里 | **稠密权重**（Snell）/ **LoRA 适配器**（Prompt Distillation）/ **可训练 KV 前缀**（Cartridges）/ **加性 delta 权重**（Generative Adapter） |
 | 写入算子 | **自蒸馏梯度**——让模型在**无该上下文**时复现自己有上下文时的输出 |
 | 持久性 | **✓ 永久 / 跨会话** |
-| 准入门控 | 🔴 **基本没有——凡进上下文即写。** ✅ 第九轮核实：2412.14964 **完全无筛**（噪声只靠软标签吸收）；OPCD 唯一的「filtered EKD」筛选**依赖带 GT 的 validation 打分 / 环境得分（非 GT-free）**，其 GT-free 设定自述 *"quality … not pre-evaluated"* 随机选取；Cartridges ✅ᶠ 无门；Snell 未核 |
+| 准入门控 | 🔴 **基本没有——凡进上下文即写。** ✅ 第九轮核实：2412.14964 **完全无筛**（噪声只靠软标签吸收）；OPCD 唯一的「filtered EKD」筛选**依赖带 GT 的 validation 打分 / 环境得分（非 GT-free）**，其 GT-free 设定自述 *"quality … not pre-evaluated"* 随机选取；Cartridges ✅ᶠ 无门；Snell ✅ 无门（第十轮 3–0） |
 
 **谱系与关键结果**
 
 | 工作 | 机制 | 关键数字 |
 |---|---|---|
-| 🔍 **Learning by Distilling Context**（Snell et al. 2022）—— 术语锚点 | 先在 `[instructions]+[input]` 条件下生成，再微调模型在**无 instructions** 下直接预测自己刚才的答案 | 用 **unlabeled** 合成输入，**不需要 GT** ← 与本项目性质一致；SPIDER 上比梯度下降高 9% |
+| ✅ **Learning by Distilling Context**（Snell et al. 2022，v1，第十轮 3 票）—— 术语锚点 | teacher = **同一模型的冻结副本**、条件化于详细指令+示例采样 y；student 在**最小 prompt**下学预测 **f(y)（剥掉 scratchpad 的最终答案）**；损失**实现为 token 级 KL**（teacher 软标签 100 采样近似），**非硬标签微调** | 蒸馏**输入无标签/合成、目标永远是 teacher 自身输出**（⚠️ 但标签间接进入：teacher prompt 内嵌带标签 in-context 示例、teacher 曾在带标签数据上微调）；**SPIDER 精确表述**：8-shot exact set match **27.9 vs 18.9，比直接梯度下降微调同 8 例高 9.0 点**（非对 teacher 28.2） |
 | ✅ **Prompt Distillation**（Kujanpää et al. 2024-12，v2，第九轮 3 票） | teacher = **把文档塞进 prompt 的同一个模型**；student = 同一模型 + **LoRA**（rank 512–1024，翻转 adapter 切换角色）；**训练全程无 GT、无更强 teacher**（更大 expert 反因风格失配变差）；✅ **无任何数据准入筛选**——噪声答案不过滤，靠高温软标签蒸馏吸收 | 优于 SFT ✅；⚠️ **RAG 对比须限定**（第九轮收紧）：纯闭卷仅 Squadshifts/Llama-8B 追平；「超过」靠 **PD+RAG 组合**（三规模）或 **PD XL**（Squadshifts 均值）；**HotpotQA 上 RAG 对纯闭卷 PD 全面占优** |
 | ✅ᶠ **Cartridges**（Eyuboglu et al. 2025-06）**已 scale** | 训练一个离线小 KV cache；**朴素 next-token 打不过 ICL，必须 self-study + 上下文蒸馏目标**。✅ᶠ **无门控**：Algorithm 1 是裸的 chunk→seed→sample 循环，**每条生成对话直接进训练集**，全文 2795 行穷举零命中；损失是纯 KL 上下文蒸馏，**无正确性/事实性/置信度项** | ✅ᶠ 38.6× 内存 / 26.4× 吞吐**数字准确**（逐字出现 3 次，基线=标准 ICL，1×H100/SGLang） |
 | ✅ **OPCD**（Microsoft 2026-02，v2，第九轮 3 票） | on-policy + 上下文蒸馏合流：学生**无 context 采样自身轨迹**，对 context-conditioned 冻结 teacher 逐位置最小化 **reverse KL**（top-256 学生词表）；「filtered EKD」筛选**依赖 1000 道带 GT 的 math validation / 环境得分（非 GT-free）**，GT-free 的 test-time 设定**随机选取、自述 "not pre-evaluated"** | 含 **experiential knowledge distillation** 与 **system prompt distillation** ✅；⚠️「更好保留 OOD」**边际**（对 off-policy CD 仅 +0.1~+0.5、落在 std 内；对 base 持平或微降），且 **checkpoint 按 test accuracy 挑选**，数字受通胀 |
@@ -280,11 +280,12 @@
 
 **🔴 一个对本项目致命的失败模式**
 
-🔍 **When Context Returns**（2026-06）发现 **context-induced degradation**：
-> 把原始 privileged context 在推理时**重新塞回**已蒸馏的 student，性能**反而变差**——**甚至在它无 context 时本已答对的样本上也退化**。
+✅ **When Context Returns**（2606.11627v1，第十轮 3 票）发现 **context-induced degradation**：
+> 把原始 privileged context 在推理时**重新塞回**已蒸馏的 student，性能**反而变差**——**甚至在它无 context 时本已答对的样本上也退化**（Harm 指标）。
 
 → **内化不是幂等的。** 对"引用 → 内化"系统这是工程陷阱：**知识内化后，仍可能被同一份引用重新激活并劣化**。
-修复：`stop-gradient anchoring + forward KL 一致性正则`（保证 *context removability*），每步仅多一次前向；12 种配置中 11 种有效。
+修复：**NCA = stop-gradient 锚定 + forward KL 一致性正则（合为一项，β=0.5）**，每步仅多一次前向；**12 设定中 11 个降低 Harm**（唯一例外：FrozenLake 跨模型蒸馏反升）。
+⚠️ **引用 scope（第十轮核定）**：退化**非普遍**——12 设定中 **7 个属退化域（Regime A）**，8 个 QA 设定全部出现非平凡 Harm；仅测**系统提示 + 游戏策略脚手架**（**未测文档/RAG context**）；单 seed、100 步全参微调、机制分析为单模型单游戏个案。
 
 ### K. 模型合并 / 任务向量 / 权重空间算术 🔍
 
@@ -424,16 +425,19 @@
   > LMLM **真正的写入过滤器**在数据标注管线的 **Corrector** 环节：微调一个刻意欠拟合的 LLaMA-3.1-8B 对候选 lookup call 打分，**按损失丢弃最高的 10%**，
   > 拒绝理由为「格式不合法 / 上下文不支持 / 过度具体」。
   > **⟹ 判据性质是「格式合规 + 上下文可推得性」，不涉及正确性、新颖性、不确定性或来源可信度** —— 仍不构成正确性门控。
-- 🔍 **PRAG / DyPRAG**：把语料编译成 **per-document LoRA** 的参数化知识库；DyPRAG 用轻量 hypernet 把文档 embedding **前向映射**成 LoRA。
-  限制：PRAG 每文档训练+存储开销大；**DyPRAG 的 LoRA 平均在多文档聚合时互相干扰**。
-- ✅ᶠ★★ **Generative Adapter**（Microsoft, **ICLR 2025**）—— **对本项目最关键的一篇，第六轮已全文核查**：
+- ✅ **PRAG / DyPRAG**（2503.23895v4，第十轮 3 票）：把语料编译成 **per-document LoRA** 的参数化知识库；DyPRAG 用轻量 hypernet 把文档 embedding **前向映射**成 LoRA（测试期免训练，但翻译器离线训练需 480–4800 个 doc-LoRA 对）。
+  限制：PRAG 每文档训练+存储开销大。~~**DyPRAG 的 LoRA 平均在多文档聚合时互相干扰**~~
+  > ❌ **划线句是我方误读，第十轮 0C/3CORR 改正**：论文称简单平均**能有效整合知识**（HQA/PQA 最优 c=3）；衰退只在**注入过多文档**时出现，归因于**任务无关冗余信息 + 有损压缩**，非平均干扰（全文无 interference）。
+  无写入门 ✅：唯一筛选是检索侧 BM25 top-c；附录 E 自陈劣质检索**照样翻译注入**。
+- ✅★★ **Generative Adapter**（Microsoft, **ICLR 2025**）—— **对本项目最关键的一篇，第六轮全文核查 + 第十轮 3 票**：
   给冻结 LM 配一个自监督训练的 adapter generator（hypernetwork），上下文经基座编码后产出**逐层加性 delta 权重**（`W(l) = W_base(l) + W_∆(l)`，双线性外积低秩），仅改造注意力 k/q/v/o 与 FFN up/down 的线性投影。
   | 四问 | 答案 |
   |---|---|
   | 内化到哪里 | 适配器 / 加性权重增量 ✅ᶠ |
   | 写入算子 | **前向摊销映射**（**测试期无梯度下降**）✅ᶠ |
-  | 持久性 | ✓ 跨会话，天然按对话者隔离（每用户一份 delta） |
-  | 准入门控 | 🔴 **无** ✅ᶠ **（全文穷举确认）** |
+  | 持久性 | ◐ 跨会话为**架构性支持**（delta 可存可复用），**未纵向演示**（无"存下 adapter、后续独立会话重载"实验）（第十轮 1C/2CORR） |
+  | 按用户隔离 | ⚠️ **仅构造暗示**（一会话一 adapter、per-user 部署动机）：论文**从未出现 isolation 一词，无跨用户泄漏/干扰测试**（第十轮收紧，REPORT §4 #16） |
+  | 准入门控 | 🔴 **无** ✅ **（全文穷举 + 3 票；SVD 归一化是稳定性手段非筛选）** |
 
   **✅ᶠ 无门控的证据（21 页 ICLR camera-ready，pdftotext 136KB 全文穷举）**：
   `admission`/`admit`/`filter`/`criteri*`/`threshold`/`decide`/`verif*`/`trust`/`confiden*`/`reliab*`/`surpris*`/`salien*`/`discard`/`relevance`/`importance`/`prioriti*` **命中数全部为 0**；
@@ -444,7 +448,7 @@
   > 1. **"全程不做梯度下降"不准确** —— 仅指**测试期/上下文写入期**；**生成器 G 本身仍需离线自监督预训练**（reconstruction + completion 双目标，基座冻结），该阶段有梯度。
   > 2. **"省 4× 计算与内存"必须连代价一起报** —— 设定是 MSC 个性化任务、基座 Mistral-7B、对照 **full-conversation prompting**：算力 2.059→0.505 TFLOPS、存储 128M→32M floats（≈4×），
   >    **但同表 F1 = 66.0 → 40.2（相对下跌约 39%）**。摘要的 *highly competitive* 明显弱化了这个差距。**只报 4× 不报 F1 是误导。**
-- 🔍 **Memory Grafting**（2026-05）：用"嫁接模型"**离线前向**计算高频 n-gram 的隐状态存为记忆值，推理时**精确最长后缀匹配**检索。是把检索从**文本层下沉到隐状态层**的半内化形态，也是睡眠期计算在预训练侧的落地。限制：精确匹配泛化差、记忆表随语料线性增长。
+- ✅ **Memory Grafting**（2605.20948v1，第十轮 3 票）：用"嫁接模型"（如 Qwen3.5-35B 冻结）**离线前向**计算高频 n-gram 的隐状态存入 n-gram 索引表，注入小 MoE receiver（query-key sigmoid 门调注入强度）。⚠️ **定性修正：实为预训练容量扩展方法（scaling pre-training），与 agent/用户记忆无关**。数字 53.86/51.95/52.43 精确（MG/MoE/vanilla Engram，9 基准均值，2.8B/100B token）。写入侧有**纯频率覆盖筛选**（top-1M n-gram）——**内容质量盲**，非正确性门（各向异性退化的 GLM 记忆照存照用），归"代表性/覆盖"类代理。限制：精确匹配泛化差、记忆表随语料线性增长。
 
 ### 🔴 跨 J/O/P 的家族级共同缺口 🔍
 
@@ -503,7 +507,7 @@
 | I. 局部规则 | ✓ | ◐ | ◐ | ◐ | ◐ 滞回/召回门 | 视载体 | ◐ |
 | **HOPE/CMS**（D 的特例） | ✓ 写 MLP | ✗ | **✓ 频率分层** | ◐ **时钟驱动** | ✗ `i≡0 mod C` | ✗ context 结束重初始化 | ✗ |
 | **J. 上下文蒸馏** 🔍 | **◐ 离线梯度步** | ◐ | ✗ | **✓ 蒸馏即巩固** | 🔴 **✗ 凡进上下文即写** | **✓** | ◐ LoRA 变体可 |
-| **J′. Generative Adapter** 🔍 | **✓ 单次前向** | ◐ | ✗ | ✓ | 🔴 **✗ 无** | **✓** | **✓ 天然按用户** |
+| **J′. Generative Adapter** ✅ | **✓ 单次前向** | ◐ | ✗ | ✓ | 🔴 **✗ 无** | **✓ 架构性（未纵向演示）** | **◐ 构造暗示，未评测**（#16） |
 | K. 模型合并 🔍 | ✗ | ✗ | ✗ | ✓ 合并即组合 | ✗ λ 启发式 | ✓ | ◐ |
 | L. 知识蒸馏 🔍 | ✗ | ✗ | ✗ | ✓ | ◐ **教师 logprob** | ✓ | ✗ |
 | M. 检索增强 🔍 | ✗ | ✓ | ✗ | ✗ | ◐ **规模轴+流行度轴** | ✓ | ✓ |
@@ -516,7 +520,8 @@
 > 🔴 **原第 1 条已被推翻，此处如实撤回。**
 > 原文写："**"推理期写入"与"跨会话持久"在任何一行都不同时为 ✓** ——这是最干净的结构性空白。"
 > **这条只在家族 A–I 内成立。第五轮的家族 J（上下文蒸馏）恰恰填上了这一格**，其中 **Generative Adapter**（ICLR 2025）更是做到了
-> **单次前向写入 × 跨会话持久 × 天然按用户隔离** —— 三者同时成立。
+> **单次前向写入 × 跨会话持久（架构性）**。
+> ⚠️ 第十轮收紧：第三腿「天然按用户隔离」仅为**构造暗示**——论文无 isolation 一词、无跨用户测试；跨会话复用亦未纵向演示（REPORT §4 #16）。**「按对话者隔离并实测无泄漏」仍无人做**——这反而保住了我方 P4 主张的空间。
 
 **修正后的三条事实**：
 
@@ -566,7 +571,7 @@
 - **可寻址抗干扰写入**（E 族，定量证据）
 - **架构原生快慢分离**（HOPE/CMS 频率分层）
 - **载体层面的隔离**（F 族 per-user 模块；🔍 P 族 LMLM 更做到"删行即忘"）
-- 🔍 **"上下文知识 → 永久权重"的转换**（**J 族已解决**，且 Generative Adapter 做到单次前向 + 跨会话 + 按用户隔离）
+- ✅ **"上下文知识 → 永久权重"的转换**（**J 族已解决**，且 Generative Adapter 做到单次前向 + 跨会话架构性持久；⚠️ 按用户隔离仅构造暗示，未评测——见 #16）
 - 🔍 **"写入新知识后修复被干扰的旧能力"**（L 族 on-policy 自蒸馏：IF-eval 45% → 83%，同时知识分 36% → 41%）
 - 🔍 **"何时该写进权重 vs 留在检索"的判据**（M 族双轴：规模轴标度律 + 长尾流行度轴）
 - 🔍 **可逆性的一条现成解**（K 族 task vector **取负**；P 族 LMLM **instant forgetting**）
@@ -575,7 +580,7 @@
 | 问题 | 现状 |
 |---|---|
 | ★ **知识级正确性准入门控** | 十类代理占满，正确性一列空（§4 事实 2）——**本项目主战场；第五轮由三篇独立 2026 工作各自确认为家族级缺口** |
-| ★ **内化不幂等 / 引用与内化互相干扰** | 🔍 *When Context Returns*：重新塞回 context 反而变差（§4 事实 4）——**新发现，本项目必须处理** |
+| ★ **内化不幂等 / 引用与内化互相干扰** | ✅ *When Context Returns*（第十轮 3 票）：重新塞回 context 反而变差（7/12 设定；仅测系统提示/游戏脚手架）——**本项目必须处理**，修复=NCA |
 | ★ **迭代内化下的能力坍缩** | 🔍 progressive capability collapse，而非复利式改进 |
 | **巩固由内容而非时钟驱动** | HOPE/CMS 接的是取模计数器（§4 事实 3）；O 族睡眠期同样是"整窗口 N pass"无门控 |
 | **纯架构层的推理期写入 × 持久** | A–I 内仍为空；J 靠额外的离线蒸馏步/摊销 hypernet |
@@ -596,14 +601,14 @@
 ### 🔴 第五轮带来的定位修正（**结论：更有利，但声明必须改**）
 
 **必须撤回的说法**：~~"推理期写入与跨会话持久从未同时成立"~~ —— 🔍 **家族 J（上下文蒸馏）已经做到了**，
-其中 **Generative Adapter**（ICLR 2025）甚至做到 **单次前向写入 × 跨会话 × 天然按用户隔离**。
+其中 **Generative Adapter**（ICLR 2025）甚至做到 **单次前向写入 × 跨会话（架构性）**；⚠️ 按用户隔离仅构造暗示、未评测（#16）。
 
 **但这反而让定位更好、而非更差**——因为整个 J 族（以及 O 睡眠期、P 参数化知识库）**都没有准入门控**：
 
 | 家族 | 有什么 | 缺什么 |
 |---|---|---|
 | 🔍 J 上下文蒸馏 | 上下文知识 → 永久权重的完整转换 | 🔴 **凡进上下文即写，无门** |
-| 🔍 J′ Generative Adapter | 单次前向 + 跨会话 + 按用户隔离 | 🔴 **无门** |
+| ✅ J′ Generative Adapter | 单次前向 + 跨会话（架构性）；隔离仅构造暗示（#16） | 🔴 **无门** |
 | 🔍 O 睡眠期（写权重版） | 离线巩固落到快权重 | 🔴 **整窗口 N pass，无门** |
 | 🔍 P 参数化知识库 | 可编辑、可删除的知识载体 | ◐ 门是"是否可外化"，非"是否正确" |
 
@@ -694,9 +699,9 @@
 
 ### 🔴 第五轮带来的两个新风险（必须在实验里处理）
 
-1. **内化不幂等**（🔍 *When Context Returns*）：把原始上下文重新塞回已内化的模型，**性能反而变差**，甚至在它本已答对的样本上退化。
-   → 本项目是典型的"引用 → 内化"系统，**必须测这一条**；已知的轻量修复是 `stop-gradient anchoring + forward KL 一致性正则`。
-2. **迭代内化会能力坍缩**（🔍 *Continual Experience Internalization*）：多轮内化下 **progressive capability collapse**。
+1. **内化不幂等**（✅ *When Context Returns*，第十轮 3 票）：把原始上下文重新塞回已内化的模型，**性能反而变差**，甚至在它本已答对的样本上退化（7/12 设定属退化域；仅测系统提示/游戏脚手架，未测文档）。
+   → 本项目是典型的"引用 → 内化"系统，**必须测这一条**；已知的轻量修复是 **NCA**（stop-gradient 锚定 + forward KL 一致性正则合为一项，11/12 设定有效）。
+2. **迭代内化会能力坍缩**（🔍 *Continual Experience Internalization* 2606.04703，**最后一条未验证 🔍，写入论文前须 3 票**）：多轮内化下 **progressive capability collapse**。
    → 缓解线索：**principle-level 优于 instance-level**、**step-wise 优于 global**、**off-policy from good teacher 优于 on-policy**。
    → **这恰好是"门"的用武之地**：坍缩的直接诱因是无差别写入（与 N 族模型坍缩的结论同构——坍缩是"**替换式自消费 + 无门控**"的属性，不是合成数据的固有属性）。
 
@@ -743,17 +748,19 @@ L2 巩固核    ← 借 E 族（低频稀疏记忆层）+ HOPE/CMS（频率分�
       贡献声明第四次收紧（见 REPORT §4）；SEAL 不构成反例。
 - [x] 🔴 **2412.14964 与 OPCD 已第九轮 3 票验证**（2 篇全文、11 主张、33 票全确认）——两篇**解禁**，按收紧后措辞引用（见上方 J 族表）：
       RAG 对比须限定（纯闭卷仅 Llama-8B/Squadshifts 追平；HotpotQA 上 RAG 占优）、OPCD 的 OOD 优势系边际且 checkpoint 按 test accuracy 挑选。
-      **仍禁写**（仅摘要级）：Snell 2209.15189 的机制细节与「SPIDER +9%」（0–3 否决维持）、DyPRAG 2503.23895 的「多文档 LoRA 平均互相干扰」、
-      Memory Grafting 2605.20948 的 53.86/51.95/52.43。
+      ~~仍禁写：Snell / DyPRAG / Memory Grafting~~ → ✅ **第十轮已全部 3 票验证解禁**（5 篇 / 17 主张 / 51 票）：
+      Snell 机制精化（KL 软标签非硬微调）+ SPIDER 精确表述（8-shot 比 GD 基线高 9.0 点）；DyPRAG「平均干扰」是我方误读已改正（REPORT §4 #17）；
+      Memory Grafting 实为预训练扩展方法、数字精确；GA 隔离主张收紧（#16）。**唯一残余 🔍 = 2606.04703（迭代内化坍缩）**。
 - [ ] **核查 SOP（第七轮血泪，写入流程）**：
       ① 子串误报清单——`LoRA ⊂ exp**lora**tion`、`gate ⊂ aggregation/mitigate/propagate/backpropagate`、`gating ⊂ backpropagating/investigating`、`curat ⊂ accurately`；
       ② **词边界正则 + 原始 substring 双跑并对比**，每个非零命中回读上下文归为 (i) 写入准入判据 / (ii) 网络门控单元 / (iii) 评测指标或无关；
       ③ 🚨 **arXiv HTML 端点曾对 2605.26099v2 返回另一篇论文（2606.03979v2）的全文** —— 必须用正文水印 `arXiv:XXXX.XXXXXvN` 校验身份（两次下载 md5 不同）。
-- [ ] 🔴 **给 J–P 剩余篇目补对抗验证** —— 尚余：Generative Adapter 的"单次前向 + 按用户隔离"、
-      *When Context Returns* 的 context-induced degradation、Snell / DyPRAG / Memory Grafting。
-      （已完成：O 族 3 篇（第七轮）、Sharpening（第七轮）、GATES/SEAL（第八轮）、2412.14964 + OPCD（第九轮，含"无 GT-free 写入侧筛选"的否定性主张全文穷举 ×3）
+- [x] 🔴 **给 J–P 剩余篇目补对抗验证** —— ✅ **第十轮全部完成**：GA（"单次前向"确认、"按用户隔离"收紧为构造暗示）、
+      When Context Returns（现象+修复+scope 全确认）、Snell（机制精化）、DyPRAG（干扰说法改正）、Memory Grafting（定性修正为预训练扩展）。
+      （此前已完成：O 族 3 篇（第七轮）、Sharpening（第七轮）、GATES/SEAL（第八轮）、2412.14964 + OPCD（第九轮））
+      **残余**：2606.04703 迭代内化坍缩（🔍）。
 - [ ] 🔴 **把两个新风险写进实验设计**：内化不幂等（重塞 context 会退化）、迭代内化的能力坍缩
-- [ ] 复核 J′ Generative Adapter —— 它离本项目最近，**必须一手读全文**并作为主要 baseline/先例引用
+- [x] 复核 J′ Generative Adapter —— ✅ 第六轮全文核查 + **第十轮 3 票**：主 baseline 资格确认；引用时按 #16 收紧隔离与跨会话措辞
 - [ ] 补 §5.3 的机器遗忘（machine unlearning）文献
 - [ ] 把 §1.1/§1.2 的判据与阶梯做成可测指标（目前是 💭 推演）
 
@@ -767,12 +774,12 @@ L2 巩固核    ← 借 E 族（低频稀疏记忆层）+ HOPE/CMS（频率分�
 **J. 上下文蒸馏**
 | 文献 | 要点 |
 |---|---|
-| Snell, Klein, Zhong 2022 — arXiv:2209.15189 | *Learning by Distilling Context*，术语锚点；**不需要 GT** |
+| ✅ Snell, Klein, Zhong 2022 — arXiv:2209.15189v1 | *Learning by Distilling Context*，术语锚点；蒸馏目标无 GT（但标签间接进入 prompt/teacher 微调）；SPIDER：8-shot 比 GD 基线 +9.0 点 |
 | ✅ Kujanpää et al. 2024-12 — arXiv:2412.14964v2 | Prompt Distillation；teacher=自己，落 LoRA，无 GT，**无准入筛**；⚠️ RAG 对比须限定（纯闭卷仅 Llama-8B/Squadshifts 追平） |
 | Eyuboglu et al. 2025-06 — arXiv:2506.06266 | **Cartridges**；省 38.6× 内存；**朴素 NTP 打不过 ICL，必须 self-study + 蒸馏目标** |
 | ✅ Microsoft 2026-02 — arXiv:2602.12275v2 | **OPCD**；experiential + system prompt distillation；filtered 设定的筛选**依赖 GT/环境得分**，GT-free 设定 *"not pre-evaluated"* |
 | 2026-06 — arXiv:2606.04557 | Cartridges at Scale；修不可组合（朴素混合→**坍缩到随机**） |
-| ★ 2026-06 — arXiv:2606.11627 | **When Context Returns**；**context-induced degradation，内化不幂等** |
+| ✅★ 2026-06 — arXiv:2606.11627v1 | **When Context Returns**；**context-induced degradation（7/12 设定），内化不幂等**；修复=NCA 11/12；仅测系统提示/游戏脚手架 |
 
 **K. 模型合并 / 任务向量**
 | 文献 | 要点 |
@@ -818,7 +825,7 @@ L2 巩固核    ← 借 E 族（低频稀疏记忆层）+ HOPE/CMS（频率分�
 | 文献 | 要点 |
 |---|---|
 | ★ LMLM, NeurIPS 2025 — arXiv:2505.15962（+ Co-LMLM 2607.07707） | **损失掩码即准入门**；显式可编辑 KB；**instant forgetting** |
-| ★★ Generative Adapter, **ICLR 2025** — arXiv:2411.05877 | **单次前向 × 跨会话 × 天然按用户隔离**；🔴 **无门** ← **离本项目最近** |
-| PRAG / DyPRAG — arXiv:2503.23895 | per-document LoRA；hypernet 前向生成；**多文档 LoRA 平均互相干扰** |
-| Memory Grafting 2026-05 — arXiv:2605.20948 | 离线前向算隐状态记忆 + 精确后缀匹配 |
+| ✅★★ Generative Adapter, **ICLR 2025** — arXiv:2411.05877v1 | **单次前向 × 跨会话（架构性）**；隔离仅构造暗示（#16）；🔴 **无门** ← **离本项目最近** |
+| ✅ PRAG / DyPRAG — arXiv:2503.23895v4 | per-document LoRA；hypernet 前向生成；~~平均干扰~~ 改正：平均有效整合，衰退因无关冗余（#17）；无写入门 |
+| ✅ Memory Grafting 2026-05 — arXiv:2605.20948v1 | 离线前向算隐状态记忆 + 精确后缀匹配；**实为预训练扩展**；写入侧仅频率覆盖筛选（质量盲） |
 | ★ 2026-06 — arXiv:2606.04703 | **Continual Experience Internalization**；**progressive capability collapse**；principle > instance、step-wise > global |

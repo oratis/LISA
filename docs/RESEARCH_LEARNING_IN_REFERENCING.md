@@ -737,7 +737,11 @@ SAGE（arXiv:2605.30711, Duke, 2026-06-18）离我方设计**最近**：online�
 
 **贡献声明（按四轮调研逐字收紧）**
 
-* **C1｜定位（negative claim，四轮实证）**：跨持续学习 / 记忆架构 / agentic 记忆的**全部永久固化门控**，其准入信号穷尽落在**十类代理**——随机·类别平衡·损失/似然·参数漂移·容量/稀疏·表征或几何新颖·梯度干扰/多样性·代表性·（有标签下的）不确定性·来源信誉/对源忠实/可靠/一致。**"无 GT / 无外部 oracle 的概念级正确性"一列为空。** 证据：四轮 deep-research，族 1–6 + 2026 agentic，全文穷举级（经典）+ 定向核验（2026 预印本）。
+* **C1｜定位（negative claim，四轮实证）**：跨持续学习 / 记忆架构 / agentic 记忆的**全部永久固化门控**，其准入信号穷尽落在**十类代理**——随机·类别平衡·损失/似然·参数漂移·容量/稀疏·表征或几何新颖·梯度干扰/多样性·代表性·（有标签下的）不确定性·来源信誉/对源忠实/可靠/一致。~~**"无 GT / 无外部 oracle 的概念级正确性"一列为空。**~~
+  > 🔴 **划线句已被第八轮推翻（GATES 2602.20574 + LMSI 2210.11610 = 已实现的 GT-free 一致性准入门），如实撤回。**
+  > **修正后的 C1**（第八轮定稿，见 [REPORT §4](../research/learning-in-referencing/REPORT.md)）：空白收紧为**两轴组合**——
+  > **判据类型 = 压缩增益/MDL**（全族词边界命中为 0）×**门控环节 = 推理期按条持久写入**（已有 GT-free 门均作用于训练期数据/梯度准入）。
+  > 投稿措辞以 [paper/DRAFT_INTRO_RELATED_WORK.md](../research/learning-in-referencing/paper/DRAFT_INTRO_RELATED_WORK.md) 为准。
 * **C2｜机制**：提出**压缩增益门控（compression-gain admission）**——一个概念只有当"把它并入该对话者的持久知识后、对其后续输入的描述长度/困惑度**显著下降**"才毕业。地基 = Delétang *Language Modeling Is Compression*（ICLR 2024, 2309.10668）。这是唯一填补 C1 空缺的信号：**无答案库、GT-free、无外部 oracle**。必要非充分项：跨时间稳定性（语义熵）+ epistemic 收敛（EIG）。
 * **C3｜架构**：把 C2 作为**巩固门**插入三层记忆器官（§9.3.3）；L1 情景记忆的 product-key **key 空间按 uid 硬分区** → 隔离(P4)成为数学零干扰的架构保证（§7.4 已论证该点在文献中零竞争）。
 * **C4｜评测**（⚠️ **措辞已按 [DESIGN_COMPRESSION_GATE.md](DESIGN_COMPRESSION_GATE.md) §0 收紧**）：构造能区分"**接受正确概念 vs 拒绝【模型自信且一贯地误解了教学内容】的概念（E1）**"的受控 benchmark——语义熵、SAGE 几何门、surprise 门、TRUSTMEM 忠实门**都会在 E1 上失分**，压缩门在此处赢。
@@ -767,6 +771,9 @@ SAGE（arXiv:2605.30711, Duke, 2026-06-18）离我方设计**最近**：online�
 | 崩溃曲线                  | 稀疏槽 N 次写入 vs ROME/MEMIT   | 同基准 collapse 步数（§7.3.4 空实验）      |
 
 #### 9.3.2 Related-Work 段落（投稿草稿）
+
+> ⚠️ **本节已被替代（2026-08-01）**：末句的 "the first to make GT-free, oracle-free concept correctness … the admission criterion" 在第八轮被 GATES/LMSI 证伪，本段仅存档。
+> **投稿版 Introduction + Related Work 见 [paper/DRAFT_INTRO_RELATED_WORK.md](../research/learning-in-referencing/paper/DRAFT_INTRO_RELATED_WORK.md)**（含 GATES/LMSI 正面让位、OPCD "not pre-evaluated" 空白锚点、三条禁令自查表）。
 
 > Continual and lifelong learning has produced a rich taxonomy of *what to keep*: reservoir and class-balanced sampling admit examples by randomness or label counts [GDumb, ECCV'20; Chaudhry'19]; gradient-based selection (GSS) and maximally-interfered retrieval (MIR) choose by gradient diversity or interference [Aljundi'19]; herding stores class-representative exemplars [iCaRL, CVPR'17]; dark experience replays reservoir-sampled logits [DER++, NeurIPS'20]. Architecturally, dynamically-expandable and Dirichlet-process models gate *when to grow* on training loss, parameter drift, or data likelihood [DEN, ICLR'18; CN-DPM, ICLR'20], and modern write-side gates admit facts by geometric novelty [SAGE'26], normalized-loss hysteresis [Self-Sizing Hopfield'26], or Bayesian surprise [2606.03787]. A 2026 wave of agent-memory work gates writes on *trust proxies*—source reputation and reliability [Write-Time Gating'26], faithfulness-to-source [TRUSTMEM'26], or externally-confirmed outcomes [LOCI'26]. **Across all of these, the admission signal is a proxy—loss, drift, capacity, novelty, gradient geometry, representativeness, (labeled) uncertainty, or source-trust/faithfulness—never a ground-truth-free assessment of whether the newly acquired concept is itself correct.** Semantic entropy detects inconsistency, not incorrectness [Farquhar, Nature'24]; naive self-reflection does not improve without an external verifier [Huang, ICLR'24]. We are, to our knowledge, the first to make *GT-free, oracle-free concept correctness*—operationalized as compression gain [Delétang, ICLR'24]—the admission criterion for **parametric, per-interlocutor** consolidation.
 
