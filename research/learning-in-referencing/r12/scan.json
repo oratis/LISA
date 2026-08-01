@@ -1,0 +1,232 @@
+{
+  "round": 12,
+  "date": "2026-08-01",
+  "type": "scan (abstract-level only, NOT verified)",
+  "note": "三角度 WebSearch 轻量重扫;结论=核心句摘要级存活但空间快速填补;高关注 5 篇转第十三轮全文验证",
+  "angles": [
+    "mdl-gate",
+    "rate-distortion",
+    "agentic-write-gate"
+  ],
+  "results": [
+    {
+      "candidates": [
+        {
+          "id": "arXiv:2508.03341 (ACL 2026 long, 2026.acl-long.1607)",
+          "title": "What Deserves Memory: Adaptive Memory Distillation for LLM Agents (NEMORI)",
+          "date": "ACL July 2026 (arXiv v4 preprint earlier)",
+          "mechanism": "Training-free framework that decides what experience to retain by prediction error: content the agent's model fails to predict 'deserves retention'; episodic integration + semantic distillation, reports storage reduction.",
+          "threat": "high",
+          "why": "Closest conceptual threat: prediction error under a model IS codelength/surprisal, so 'retain what is unpredictable' is a hair from 'retain what yields compression gain'. It gates retention per experience at inference time (training-free). Abstract does not use MDL/description-length framing and gating happens at a distillation stage rather than as an explicit admission gate, so the exact MDL-as-admission-criterion claim may survive — but a reviewer will cite this. Abstract-level only; read the full paper."
+        },
+        {
+          "id": "arXiv:2607.08032",
+          "title": "What to Keep, What to Forget: A Rate--Distortion View of Memory Compaction in LLMs and Agents",
+          "date": "2026-07-09",
+          "mechanism": "Unifying theory/taxonomy: frames all memory compaction (KV eviction, prompt pruning, agent memory consolidation) as a rate-distortion decision about what to retain, at what fidelity, under a resource budget; single objective + layer-agnostic lower bound.",
+          "threat": "medium",
+          "why": "Rate-distortion is the sibling of MDL; this paper plants an information-theoretic 'what to keep' flag over the whole design space and could be read as subsuming an MDL admission criterion theoretically. However it appears to be a taxonomy/position paper about compaction/forgetting, not an implemented per-item write-admission gate. Abstract-level only. You would need to cite and differentiate (admission vs compaction; operational criterion vs unifying bound)."
+        },
+        {
+          "id": "arXiv:2605.30711",
+          "title": "SAGE: A Novelty Gate for Efficient Memory Evolution in Agentic LLMs",
+          "date": "2026-05-29 (v2 2026-06-18)",
+          "mechanism": "Per-fact inference-time write gate: von Mises-Fisher density estimator over memory embeddings scores each candidate fact, adaptive threshold routes to ADD / NOOP / LLM-merge; explicitly positions itself as 'principled write-side control'.",
+          "threat": "medium",
+          "why": "Gates writes per item at inference time and claims the 'principled write-side control' territory — but the criterion is embedding-space novelty/density, not compression gain or description length. Your specific MDL claim survives, but the broader 'no principled admission gate exists' framing is now false; you must scope the novelty to the compression/MDL criterion specifically. Abstract-level only."
+        },
+        {
+          "id": "arXiv:2603.04549",
+          "title": "Adaptive Memory Admission Control for LLM Agents (A-MAC)",
+          "date": "March 2026 (outside the May-Aug window, but directly on-topic)",
+          "mechanism": "Treats memory admission as a structured per-item decision, scoring candidates on five factors: future utility, factual confidence, semantic novelty, temporal recency, content-type prior.",
+          "threat": "medium",
+          "why": "Owns the exact problem framing ('memory admission control', per-item, for LLM agents) — the claim can no longer be 'nobody gates admission'; it must be 'nobody gates admission by compression/MDL'. None of its five factors is description length, so the specific claim survives. Slightly predates your window; included because any reviewer will surface it. Abstract-level only."
+        },
+        {
+          "id": "arXiv:2604.15877",
+          "title": "Experience Compression Spectrum: Unifying Memory, Skills, and Rules in LLM Agents",
+          "date": "April 2026 (survey snapshot of Q1 2026)",
+          "mechanism": "Survey positioning memory, skills, and rules along a single axis of increasing compression ratio (5-20x episodic, 50-500x skills, 1000x+ rules).",
+          "threat": "low",
+          "why": "Uses compression as the organizing lens for agent memory, which crowds the rhetorical space, but it is a survey/taxonomy — no compression measure is used as an admission criterion. Cite-and-differentiate. Abstract-level only."
+        },
+        {
+          "id": "arXiv:2606.13177",
+          "title": "MemRefine: LLM-Guided Compression for Long-Term Agent Memory",
+          "date": "June 2026",
+          "mechanism": "Post-hoc storage-budgeted compaction: similarity proposes candidate pairs, an LLM judge decides delete/merge/preserve based on factual content.",
+          "threat": "low",
+          "why": "Compression of the memory store, but operating on already-admitted entries (retention/merge, not admission), and the criterion is LLM judgment over similarity, not description length. Abstract-level only."
+        },
+        {
+          "id": "arXiv:2601.12906",
+          "title": "Gated Differentiable Working Memory for Long-Context Language Modeling",
+          "date": "January 2026 (outside window)",
+          "mechanism": "Gates test-time differentiable working-memory updates by estimated contextual utility, concentrating writes on chunks likely to improve long-context prediction.",
+          "threat": "low",
+          "why": "Inference-time write gating exists here, and 'improves prediction' brushes against likelihood/codelength — but it targets transient working memory for long-context LM, not a persistent per-item knowledge store, and the criterion is utility, not MDL. Abstract-level only."
+        }
+      ],
+      "searches_run": [
+        "MDL memory gate LLM 2026 arXiv description length memory write",
+        "compression gain criterion memory consolidation LLM agent arXiv 2026",
+        "\"description length\" OR \"MDL\" write gate persistent memory language model inference-time arXiv 2607",
+        "arXiv 2608 memory admission criterion information-theoretic LLM agent what to store",
+        "\"What to Keep, What to Forget\" rate-distortion memory compaction LLM arXiv 2607.08032",
+        "surprisal OR \"compression rate\" based write decision episodic memory LLM agent 2026 May June July",
+        "\"What Deserves Memory\" Adaptive Memory Distillation LLM agents ACL 2026 mechanism admission",
+        "\"minimum description length\" LLM knowledge storage decision arXiv May 2026 June 2026 self-verification compression",
+        "SAGE novelty gate memory evolution agentic LLMs arXiv 2605.30711 abstract",
+        "\"compression gain\" memory write LLM arXiv 2026"
+      ],
+      "notes": "Bottom line: the literal claim (\"no existing method uses compression gain / MDL / description length as the admission criterion for persistent, per-item, inference-time memory writing\") appears to STILL HOLD as of 2026-08-01, at abstract level — no search hit uses an explicit compression/MDL/description-length quantity as the write-admission test. But the surrounding space is crowding fast: (1) NEMORI (ACL 2026) gates retention by prediction error, which is mathematically codelength — this is the paper most likely to be raised against you and needs a full-text read plus an explicit differentiation (prediction-error heuristic at distillation stage vs formal MDL/compression-gain admission gate with acceptance semantics); (2) the rate-distortion compaction paper (2607.08032) claims the information-theoretic high ground for 'what to keep' — differentiate admission vs compaction; (3) SAGE and A-MAC mean the claim must be scoped to the CRITERION (compression/MDL), not to the existence of per-item write gates, which now clearly exist. Recommend rewording the claim in docs/RESEARCH_LEARNING_IN_REFERENCING.md to 'no method uses compression gain as the admission criterion' rather than any broader 'no principled write gating exists'. Caveats: all assessments from search snippets/abstracts only; arXiv full-text search was not used; a paper hiding MDL in its method section but not its abstract would be missed."
+    },
+    {
+      "candidates": [
+        {
+          "id": "arXiv:2605.10870",
+          "title": "Remember the Decision, Not the Description: A Rate-Distortion Framework for Agent Memory",
+          "date": "2026-05",
+          "mechanism": "Casts agent memory as a decision-centric rate-distortion problem; derives an exact 'forgetting boundary' (what can be safely discarded without decision loss) and implements DeMem, an online memory learner that refines its state partition only when data certify decision conflict.",
+          "threat": "high",
+          "why": "Not just a proposal — it operationalizes a rate-distortion criterion with a concrete online algorithm (DeMem) deciding what memory distinctions to keep. Predates 2607.08032 slightly but is exactly the 'RD admission criterion implemented' territory."
+        },
+        {
+          "id": "arXiv:2606.03329",
+          "title": "InfoMem: Training Long-Context Memory Agents with Answer-Conditioned Information Gain",
+          "date": "2026-06",
+          "mechanism": "Trains memory agents with an answer-conditioned information-gain objective, i.e., store what raises the probability of answering future queries — an implemented information-theoretic write criterion.",
+          "threat": "high",
+          "why": "Directly implements an information-theoretic criterion for what to write to memory (information gain conditioned on downstream answers), which is essentially the information-bottleneck 'keep bits that predict the answer' idea from 2607.08032 turned into a training method."
+        },
+        {
+          "id": "arXiv:2607.02579",
+          "title": "When Not to Write Memory: Governing False Promotion from Correlated Agent Traces",
+          "date": "2026-07",
+          "mechanism": "GovMem: an admission/governance gate for memory writes that estimates dependency-aware support across correlated agent traces and outputs promote / reject / review decisions.",
+          "threat": "medium",
+          "why": "Implements an explicit memory-admission gate (refuse-to-write policy), but the criterion is statistical evidence/support against correlated traces rather than a rate-distortion or description-length objective."
+        },
+        {
+          "id": "arXiv:2606.13177",
+          "title": "MemRefine: LLM-Guided Compression for Long-Term Agent Memory",
+          "date": "2026-06",
+          "mechanism": "Formalizes storage-budgeted memory management as a budget-constrained max-min program: compress an existing memory store to a target budget while preserving query-agnostic future utility.",
+          "threat": "medium",
+          "why": "Implements a budgeted utility-preserving compression objective (rate constraint + distortion-like utility floor), but operates as post-hoc compaction of an existing store rather than an admission gate at write time."
+        },
+        {
+          "id": "arXiv:2601.01885",
+          "title": "Agentic Memory: Learning Unified Long-Term and Short-Term Memory Management for Large Language Model Agents",
+          "date": "2026-01",
+          "mechanism": "Unified learned framework where the agent autonomously decides what/when to store, retrieve, update, summarize, or discard — a learned store/discard policy, but no explicit information-theoretic objective.",
+          "threat": "low",
+          "why": "Implements store/discard decisions end-to-end, but via learned policy rather than a rate-distortion or MDL criterion; relevant as prior art for learned admission, not for the information-theoretic framing."
+        },
+        {
+          "id": "arXiv:2607.25066",
+          "title": "Addressable Recall Compaction for Long Context-Window Control in AI Agents",
+          "date": "2026-07",
+          "mechanism": "ARC: lossless compaction via addressable pointers with on-demand recall — nothing is truly forgotten, so there is no information-theoretic keep/forget decision.",
+          "threat": "low",
+          "why": "Engineering-style compaction (pointer + lazy recall), explicitly sidesteps the rate-distortion tradeoff rather than implementing a criterion for it."
+        },
+        {
+          "id": "arXiv:2607.05378",
+          "title": "CompactionRL: Reinforcement Learning with Context Compaction for Long-Horizon Agents",
+          "date": "2026-07",
+          "mechanism": "Learns a context-compaction policy with RL reward on downstream task success; implicit utility criterion, no explicit rate-distortion or description-length formulation.",
+          "threat": "low",
+          "why": "Implements learned compaction but the admission criterion is an RL reward signal, not an information-theoretic quantity; adjacent rather than competing on the theory claim."
+        },
+        {
+          "id": "arXiv:2603.14588",
+          "title": "SuperLocalMemory V3: Information-Geometric Foundations for Zero-LLM Enterprise Agent Memory",
+          "date": "2026-03",
+          "mechanism": "Claims information-geometric foundations for a zero-LLM local agent memory system (enterprise-oriented); appears systems/whitepaper-flavored rather than a peer-review-grade RD treatment.",
+          "threat": "low",
+          "why": "Uses information-theoretic vocabulary but reads as a product-adjacent systems report; unlikely to occupy the same theoretical niche as a rate-distortion admission-gate paper."
+        }
+      ],
+      "searches_run": [
+        "rate-distortion memory LLM agent 2026 arXiv",
+        "information-theoretic memory compaction LLM agent what to store",
+        "\"2607.08032\" citing rate-distortion memory compaction",
+        "memory compaction description length LLM agent August 2026",
+        "arXiv 2026 memory write policy information gain agent \"what to store\" surprise admission"
+      ],
+      "notes": "No paper was found that explicitly cites 2607.08032 (anchor posted 2026-07-09; too recent for indexed citations — the '\"2607.08032\" citing' search returned only the paper itself and unrelated RD theory work like 2607.17232 Rate-Distortion-Perception Theory, which redefines RDP limits generally, not agent memory). The two real threats are DeMem (2605.10870) — an implemented decision-centric RD framework with an exact forgetting boundary — and InfoMem (2606.03329) — an implemented answer-conditioned information-gain write objective. Both implement rather than merely propose. GovMem (2607.02579) implements an admission gate but on evidential-support grounds, not RD/MDL. Nothing found that combines an MDL/description-length acceptance criterion with per-interlocutor persistent knowledge, so the specific gap noted in the Learning-in-Referencing direction still appears open at abstract level. All assessments are abstract-level only per instructions; DeMem and InfoMem warrant full-text reads before any positioning decision."
+    },
+    {
+      "candidates": [
+        {
+          "id": "2607.02579",
+          "title": "When Not to Write Memory: Governing False Promotion from Correlated Agent Traces (GovMem)",
+          "date": "2026-06-30",
+          "mechanism": "trust/consistency — dependency-aware support estimation across correlated agent traces + counterevidence retrieval + scope assignment; per-candidate decision promote/reject/needs-review. GT-free: yes; inference-time (write-path): yes; per-item: yes.",
+          "threat": "high",
+          "why": "Directly frames the write-gate question ('when to refuse to write at all') for LLM agent traces, with a GT-free per-item admission policy and false-promotion metrics; closest new competitor to a write-gating thesis, though authors position it as a conservative diagnostic (high review burden, low recall) rather than a validated automatic writer."
+        },
+        {
+          "id": "2606.03787",
+          "title": "Worth Remembering: Surprise-Gated Robot Episodic Memory",
+          "date": "2026-06-02",
+          "mechanism": "surprise — Bayesian surprise computed in V-JEPA-2 latent space gates episodic memory formation. GT-free: yes (self-supervised); inference-time: yes; per-item: yes (per-episode).",
+          "threat": "medium",
+          "why": "A clean GT-free, inference-time, per-episode surprise gate proving the write-gating concept empirically (+12% on long-horizon QA), but in embodied/robot perception space rather than LLM conversational-agent memory, so it occupies an adjacent rather than identical niche."
+        },
+        {
+          "id": "2607.08032",
+          "title": "What to Keep, What to Forget: A Rate--Distortion View of Memory Compaction in LLMs and Agents",
+          "date": "2026-07-09",
+          "mechanism": "loss/other — survey/position paper unifying all memory compaction (KV cache, prompt, agent memory) as a rate-distortion problem; observes current keep/discard signals are attention magnitude or recency and argues for rethinking. No new method. GT-free/inference-time/per-item: N/A (framework, not a gate).",
+          "threat": "medium",
+          "why": "Not a competing method, but it plants the compression/rate-distortion flag over the what-to-keep question — overlapping the MDL/compression acceptance-criterion framing; worth citing and differentiating (they map the space, they do not give a per-item GT-free admission criterion)."
+        },
+        {
+          "id": "2607.05029",
+          "title": "Your Agent's Memories Are Not Its Own: Forged Reasoning Attacks on LLM Agent Memory and Defenses (FARMA/SENTINEL)",
+          "date": "2026-07-06",
+          "mechanism": "trust — SENTINEL Reasoning Guard structurally analyzes candidate memory entries for forgery using five weighted signals; abstract is ambiguous on whether it blocks writes or detects post-hoc. Likely GT-free and per-item; inference-time: yes.",
+          "threat": "medium",
+          "why": "Adversarial/security angle on the write path (screening candidate entries before they poison memory) — adjacent to admission gating but motivated by attack defense rather than knowledge quality, so it competes on the 'trust' signal axis only."
+        },
+        {
+          "id": "2606.01528",
+          "title": "Joint Agent Memory and Exploration Learning via Novelty Signals (JAMEL)",
+          "date": "2026-06-01",
+          "mechanism": "novelty — memory and exploration policy trained jointly, supervised by deterministic novelty signals such as code coverage. GT-free: annotation-free but relies on an environment oracle (coverage); inference-time: no (trained/RL); per-item: no (trajectory/behavior level).",
+          "threat": "low",
+          "why": "Uses novelty to shape memory but via training-time RL with an environment-provided coverage signal — fails the GT-free + inference-time + per-item combination, so it does not occupy the same niche."
+        },
+        {
+          "id": "2606.18829",
+          "title": "GateMem: Benchmarking Memory Governance in Multi-Principal Shared-Memory Agents",
+          "date": "2026-06-17",
+          "mechanism": "other (benchmark) — evaluates utility, cross-principal access control, and active forgetting in shared memory pools; no write-admission signal (governance is read-side access control + deletion compliance).",
+          "threat": "low",
+          "why": "Despite the 'Gate' name it is a multi-user governance benchmark, not a write-gating method; only relevant as evidence the community is converging on memory governance vocabulary."
+        },
+        {
+          "id": "2607.01071",
+          "title": "MemSyco-Bench: Benchmarking Sycophancy in Agent Memory",
+          "date": "2026-07-01",
+          "mechanism": "other (benchmark) — evaluates when retrieved memory should influence decisions (reject as evidence, scope, conflict resolution); read/use-side, not write admission.",
+          "threat": "low",
+          "why": "Complements rather than competes: it benchmarks downstream misuse of stored memories, leaving the write-time admission problem untouched; could even be cited as motivation for gating at write time."
+        }
+      ],
+      "searches_run": [
+        "agent memory write gate arXiv 2026",
+        "memory admission criterion LLM agent July 2026",
+        "\"what to remember\" LLM agent memory correctness filter self-verified write",
+        "self-verified memory write LLM agent arXiv June July 2026",
+        "arXiv 2607 OR 2608 agent memory \"write\" gating admission policy long-term memory",
+        "\"memory write\" verification agent hallucination filter arXiv August 2026",
+        "surprise-gated OR novelty-gated episodic memory LLM agent arXiv 2606 2607"
+      ],
+      "notes": "Abstract-level assessment only; GT-free/inference-time/per-item flags for 2607.05029 partly inferred since the abstract does not fully specify. One out-of-window paper deserves adding to the known list: A-MAC \"Adaptive Memory Admission Control for LLM Agents\" (arXiv 2603.04549, ICLR 2026 MemAgents workshop, March 2026) — five-factor per-item admission (future utility, factual confidence, semantic novelty, recency, content-type prior), directly on-topic and arguably the closest prior to a write-gating thesis; also out-of-window but adjacent: SSGM 2603.11768 (memory governance framework) and D-Mem 2603.18631 (multi-dimensional quality gating). No August 2026 (2608.*) write-gating papers surfaced in any query yet — likely too early in the month for indexing. GovMem (2607.02579) is the only high-threat new item: it explicitly claims the \"when not to write\" framing, though its honest negative-leaning results (high review burden, conservative recall) leave room for a positive, compression-principled criterion."
+    }
+  ]
+}
