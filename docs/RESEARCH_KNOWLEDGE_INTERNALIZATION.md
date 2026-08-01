@@ -266,16 +266,16 @@
 | 内化到哪里 | **稠密权重**（Snell）/ **LoRA 适配器**（Prompt Distillation）/ **可训练 KV 前缀**（Cartridges）/ **加性 delta 权重**（Generative Adapter） |
 | 写入算子 | **自蒸馏梯度**——让模型在**无该上下文**时复现自己有上下文时的输出 |
 | 持久性 | **✓ 永久 / 跨会话** |
-| 准入门控 | 🔴 **整族没有。凡进上下文即写。** |
+| 准入门控 | 🔴 **基本没有——凡进上下文即写。** ✅ 第九轮核实：2412.14964 **完全无筛**（噪声只靠软标签吸收）；OPCD 唯一的「filtered EKD」筛选**依赖带 GT 的 validation 打分 / 环境得分（非 GT-free）**，其 GT-free 设定自述 *"quality … not pre-evaluated"* 随机选取；Cartridges ✅ᶠ 无门；Snell 未核 |
 
 **谱系与关键结果**
 
 | 工作 | 机制 | 关键数字 |
 |---|---|---|
 | 🔍 **Learning by Distilling Context**（Snell et al. 2022）—— 术语锚点 | 先在 `[instructions]+[input]` 条件下生成，再微调模型在**无 instructions** 下直接预测自己刚才的答案 | 用 **unlabeled** 合成输入，**不需要 GT** ← 与本项目性质一致；SPIDER 上比梯度下降高 9% |
-| 🔍 **Prompt Distillation**（Kujanpää et al. 2024-12） | teacher = **把文档塞进 prompt 的同一个模型**；student 学无文档时复现其回答，落在 **LoRA** 上 | **不需要 GT、不需要更强 teacher**；优于 SFT，**多个规模上超过 RAG** |
+| ✅ **Prompt Distillation**（Kujanpää et al. 2024-12，v2，第九轮 3 票） | teacher = **把文档塞进 prompt 的同一个模型**；student = 同一模型 + **LoRA**（rank 512–1024，翻转 adapter 切换角色）；**训练全程无 GT、无更强 teacher**（更大 expert 反因风格失配变差）；✅ **无任何数据准入筛选**——噪声答案不过滤，靠高温软标签蒸馏吸收 | 优于 SFT ✅；⚠️ **RAG 对比须限定**（第九轮收紧）：纯闭卷仅 Squadshifts/Llama-8B 追平；「超过」靠 **PD+RAG 组合**（三规模）或 **PD XL**（Squadshifts 均值）；**HotpotQA 上 RAG 对纯闭卷 PD 全面占优** |
 | ✅ᶠ **Cartridges**（Eyuboglu et al. 2025-06）**已 scale** | 训练一个离线小 KV cache；**朴素 next-token 打不过 ICL，必须 self-study + 上下文蒸馏目标**。✅ᶠ **无门控**：Algorithm 1 是裸的 chunk→seed→sample 循环，**每条生成对话直接进训练集**，全文 2795 行穷举零命中；损失是纯 KL 上下文蒸馏，**无正确性/事实性/置信度项** | ✅ᶠ 38.6× 内存 / 26.4× 吞吐**数字准确**（逐字出现 3 次，基线=标准 ICL，1×H100/SGLang） |
-| 🔍 **OPCD**（Microsoft 2026-02） | on-policy + 上下文蒸馏合流：学生在自己轨迹上对 context-conditioned teacher 最小化 reverse KL | 含 **experiential knowledge distillation**（从自身历史轨迹固化知识）与 **system prompt distillation**；更好保留 OOD |
+| ✅ **OPCD**（Microsoft 2026-02，v2，第九轮 3 票） | on-policy + 上下文蒸馏合流：学生**无 context 采样自身轨迹**，对 context-conditioned 冻结 teacher 逐位置最小化 **reverse KL**（top-256 学生词表）；「filtered EKD」筛选**依赖 1000 道带 GT 的 math validation / 环境得分（非 GT-free）**，GT-free 的 test-time 设定**随机选取、自述 "not pre-evaluated"** | 含 **experiential knowledge distillation** 与 **system prompt distillation** ✅；⚠️「更好保留 OOD」**边际**（对 off-policy CD 仅 +0.1~+0.5、落在 std 内；对 base 持平或微降），且 **checkpoint 按 test accuracy 挑选**，数字受通胀 |
 | 🔍 **Cartridges at Scale**（2026-06） | 修 Cartridges 的**不可组合**问题（朴素混合独立 cartridge → **性能坍缩到接近随机**） | 支持 **>100 万 token**；比 monolithic 高 10–31 点；比常规 RAG 少 **3–4×** prompt token |
 
 **🔴 一个对本项目致命的失败模式**
@@ -739,19 +739,19 @@ L2 巩固核    ← 借 E 族（低频稀疏记忆层）+ HOPE/CMS（频率分�
 - [x] 第五轮调研回填家族 **J–P**
 - [x] **重画 §4 矩阵** —— 预警的风险应验：J 族确实是那一格的已有解，**空白声明已收紧**（§4 事实 1、§7 定位修正）
 - [x] **第七轮已完成 O 族 3 篇的 3 票对抗验证**（Sleep-time Compute / LMs Need Sleep / Do LMs Need Sleep）→ 升为 ✅
-- [ ] 🔴🔴 **下一轮最高优先：核查 GATES（stein2026）与 SEAL** —— consensus-gating 用「多 tutor trace 一致性」门控学习，
-      **是无需 GT 的正确性代理，直接落在我方主张的位置上**。若属实，声明须再收紧一次。
-- [ ] 🔴 **J 族 3 篇 + P 族 2 篇仍是"仅摘要级"**（Snell 2209.15189 / Prompt Distillation 2412.14964 / OPCD 2602.12275 / PRAG-DyPRAG 2503.23895 / Memory Grafting 2605.20948）——
-      第七轮**无一条主张通过验证**。**以下事实不得写入论文**：Snell 的「不需 GT」与「SPIDER +9%」、2412.14964 的「teacher=同一模型／LoRA／超过 RAG」、
-      OPCD 的机制与 OOD 证据、DyPRAG 的「多文档 LoRA 平均互相干扰」、Memory Grafting 的 53.86/51.95/52.43。
+- [x] 🔴🔴 **核查 GATES（stein2026）与 SEAL** —— **第八轮完成**：GATES 确认为 GT-free 训练期准入门反例（LMSI 2022 在先），
+      贡献声明第四次收紧（见 REPORT §4）；SEAL 不构成反例。
+- [x] 🔴 **2412.14964 与 OPCD 已第九轮 3 票验证**（2 篇全文、11 主张、33 票全确认）——两篇**解禁**，按收紧后措辞引用（见上方 J 族表）：
+      RAG 对比须限定（纯闭卷仅 Llama-8B/Squadshifts 追平；HotpotQA 上 RAG 占优）、OPCD 的 OOD 优势系边际且 checkpoint 按 test accuracy 挑选。
+      **仍禁写**（仅摘要级）：Snell 2209.15189 的机制细节与「SPIDER +9%」（0–3 否决维持）、DyPRAG 2503.23895 的「多文档 LoRA 平均互相干扰」、
+      Memory Grafting 2605.20948 的 53.86/51.95/52.43。
 - [ ] **核查 SOP（第七轮血泪，写入流程）**：
       ① 子串误报清单——`LoRA ⊂ exp**lora**tion`、`gate ⊂ aggregation/mitigate/propagate/backpropagate`、`gating ⊂ backpropagating/investigating`、`curat ⊂ accurately`；
       ② **词边界正则 + 原始 substring 双跑并对比**，每个非零命中回读上下文归为 (i) 写入准入判据 / (ii) 网络门控单元 / (iii) 评测指标或无关；
       ③ 🚨 **arXiv HTML 端点曾对 2605.26099v2 返回另一篇论文（2606.03979v2）的全文** —— 必须用正文水印 `arXiv:XXXX.XXXXXvN` 校验身份（两次下载 md5 不同）。
-- [ ] 🔴 **给 J–P 剩余篇目补对抗验证** —— 第五轮的 Verify 阶段未执行，这些条目仍是 🔍。
-      投稿前必须把至少以下几条升到 ✅：Generative Adapter 的"单次前向 + 按用户隔离"、
-      *When Context Returns* 的 context-induced degradation、Sharpening 的否定性结论、
-      以及"J/O/P 三族均无准入门控"这一**否定性主张**（需全文关键词穷举，不能"未见即无"）
+- [ ] 🔴 **给 J–P 剩余篇目补对抗验证** —— 尚余：Generative Adapter 的"单次前向 + 按用户隔离"、
+      *When Context Returns* 的 context-induced degradation、Snell / DyPRAG / Memory Grafting。
+      （已完成：O 族 3 篇（第七轮）、Sharpening（第七轮）、GATES/SEAL（第八轮）、2412.14964 + OPCD（第九轮，含"无 GT-free 写入侧筛选"的否定性主张全文穷举 ×3）
 - [ ] 🔴 **把两个新风险写进实验设计**：内化不幂等（重塞 context 会退化）、迭代内化的能力坍缩
 - [ ] 复核 J′ Generative Adapter —— 它离本项目最近，**必须一手读全文**并作为主要 baseline/先例引用
 - [ ] 补 §5.3 的机器遗忘（machine unlearning）文献
@@ -761,16 +761,16 @@ L2 巩固核    ← 借 E 族（低频稀疏记忆层）+ HOPE/CMS（频率分�
 
 ## 附录 J：家族 J–P 文献表 🔍
 
-> 🔴 **本表全部为 🔍**（第五轮 Verify 阶段未执行）。**引用前必须自行核实。**
+> 🔴 **本表除标注 ✅ 者外均为 🔍**（第五轮 Verify 阶段未执行；✅ = 后续轮次已 3 票验证）。**引用 🔍 条目前必须自行核实。**
 > 家族 A–I 的文献见姊妹文档 [RESEARCH_LEARNING_IN_REFERENCING.md](RESEARCH_LEARNING_IN_REFERENCING.md) 附录 A–I（带 ✅/⚠️/❌ 状态）。
 
 **J. 上下文蒸馏**
 | 文献 | 要点 |
 |---|---|
 | Snell, Klein, Zhong 2022 — arXiv:2209.15189 | *Learning by Distilling Context*，术语锚点；**不需要 GT** |
-| Kujanpää et al. 2024-12 — arXiv:2412.14964 | Prompt Distillation；teacher=自己，落 LoRA；**多规模超过 RAG** |
+| ✅ Kujanpää et al. 2024-12 — arXiv:2412.14964v2 | Prompt Distillation；teacher=自己，落 LoRA，无 GT，**无准入筛**；⚠️ RAG 对比须限定（纯闭卷仅 Llama-8B/Squadshifts 追平） |
 | Eyuboglu et al. 2025-06 — arXiv:2506.06266 | **Cartridges**；省 38.6× 内存；**朴素 NTP 打不过 ICL，必须 self-study + 蒸馏目标** |
-| Microsoft 2026-02 — arXiv:2602.12275 | **OPCD**；experiential + system prompt distillation |
+| ✅ Microsoft 2026-02 — arXiv:2602.12275v2 | **OPCD**；experiential + system prompt distillation；filtered 设定的筛选**依赖 GT/环境得分**，GT-free 设定 *"not pre-evaluated"* |
 | 2026-06 — arXiv:2606.04557 | Cartridges at Scale；修不可组合（朴素混合→**坍缩到随机**） |
 | ★ 2026-06 — arXiv:2606.11627 | **When Context Returns**；**context-induced degradation，内化不幂等** |
 
