@@ -5,6 +5,7 @@
 [![Mac DMG](https://img.shields.io/github/v/release/oratis/LISA?label=Mac%20app&color=000000&logo=apple)](https://github.com/oratis/LISA/releases/latest)
 [![License: MIT](https://img.shields.io/github/license/oratis/LISA?color=blue)](./LICENSE)
 [![GitHub Repo stars](https://img.shields.io/github/stars/oratis/LISA?style=social)](https://github.com/oratis/LISA/stargazers)
+[![Discussions](https://img.shields.io/github/discussions/oratis/LISA?logo=github&color=8A2BE2)](https://github.com/oratis/LISA/discussions)
 
 > [English](./README.md) ｜ 中文
 
@@ -684,6 +685,10 @@ scripts/
 ├── generate-lisa-moods.ts  并行 batched Seedream 生成器 + sharp 透明
 └── generate-pixel-assets.ts 6 个基础 UI 资产
 ```
+
+## 提问与支持
+
+安装卡住了？好奇 soul 文件怎么运作？来 [GitHub Discussions](https://github.com/oratis/LISA/discussions) 提问 —— 问题发在 [Q&A](https://github.com/oratis/LISA/discussions/categories/q-a)，晒你的 Lisa 去 Show and tell。Bug 与功能请求仍走 [Issues](https://github.com/oratis/LISA/issues)。
 
 ## License
 

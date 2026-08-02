@@ -5,6 +5,7 @@
 [![Mac DMG](https://img.shields.io/github/v/release/oratis/LISA?label=Mac%20app&color=000000&logo=apple)](https://github.com/oratis/LISA/releases/latest)
 [![License: MIT](https://img.shields.io/github/license/oratis/LISA?color=blue)](./LICENSE)
 [![GitHub Repo stars](https://img.shields.io/github/stars/oratis/LISA?style=social)](https://github.com/oratis/LISA/stargazers)
+[![Discussions](https://img.shields.io/github/discussions/oratis/LISA?logo=github&color=8A2BE2)](https://github.com/oratis/LISA/discussions)
 
 > English ｜ [中文](./README.zh-CN.md)
 
@@ -708,6 +709,10 @@ Reusable pieces extracted from LISA into standalone MIT repos — useful on thei
 - **[llm-provider-registry](https://github.com/oratis/llm-provider-registry)** ([npm](https://www.npmjs.com/package/llm-provider-registry)) — map any model name → API base URL + key env var; 16 providers incl. the Chinese ones. LISA's model auto-routing, packaged.
 - **[undici-proxy-env](https://github.com/oratis/undici-proxy-env)** ([npm](https://www.npmjs.com/package/undici-proxy-env)) — make Node's `fetch` honor `HTTP(S)_PROXY` and survive Clash/corporate-proxy mangling. LISA's proxy bootstrap.
 - **[claude-relay](https://github.com/oratis/claude-relay)** — transparent Anthropic reverse proxy for Cloud Run (key-swap gate). LISA's relay.
+
+## Questions & support
+
+Stuck on setup? Curious how the soul files work? Ask in [GitHub Discussions](https://github.com/oratis/LISA/discussions) — questions go in [Q&A](https://github.com/oratis/LISA/discussions/categories/q-a), and your Lisa's best moments go in Show and tell. Bug reports and feature requests still belong in [Issues](https://github.com/oratis/LISA/issues).
 
 ## License
 
