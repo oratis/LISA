@@ -1,0 +1,34 @@
+{
+  "model": "Qwen/Qwen2.5-1.5B-Instruct",
+  "n_users": 8,
+  "n_layers": 28,
+  "trained_on": "F1 Yes/No",
+  "preloaded_from": "/private/tmp/claude-501/-Users-oratis-Documents-LISA--claude-worktrees-lisa-paper-feedback-4441d1/5131c355-9748-406b-9076-54fa5c2284ec/scratchpad/p9_preload.json",
+  "results": {
+    "base": {
+      "F1 Yes/No": 0.54,
+      "F2 A/B": 0.55,
+      "F3 True/False": 0.51
+    },
+    "l1": {
+      "F1 Yes/No": 0.96,
+      "F2 A/B": 1.0,
+      "F3 True/False": 1.0
+    },
+    "L7": {
+      "F1 Yes/No": 0.945,
+      "F2 A/B": 0.935,
+      "F3 True/False": 0.9450000000000001
+    },
+    "L7@last": {
+      "F1 Yes/No": 0.8200000000000001,
+      "F2 A/B": 0.565,
+      "F3 True/False": 0.6
+    },
+    "post-norm": {
+      "F1 Yes/No": 0.97,
+      "F2 A/B": 0.555,
+      "F3 True/False": 0.77
+    }
+  }
+}

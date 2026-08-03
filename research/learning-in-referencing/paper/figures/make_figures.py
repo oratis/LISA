@@ -107,7 +107,7 @@ def fig3():
     p8b, p9 = load(f"p8/p8b_{TAG}.json"), load(f"p9/p9_{TAG}.json")
     if not p8b:
         return print("skip fig3 (需要 p8b)")
-    fig, axes = plt.subplots(1, 2, figsize=(6.9, 2.2))
+    fig, axes = plt.subplots(1, 2, figsize=(7.0, 2.3), gridspec_kw={"wspace": 0.28})
 
     # (a) 只训 F1 时，迁移量 vs 读出方向余弦
     cos = {"F1 Yes/No": 1.0,
@@ -131,9 +131,9 @@ def fig3():
     ax = axes[1]
     fmts = ["F1 Yes/No", "F2 A/B", "F3 True/False"]
     if p9:
-        conds = [("base", "base"), ("post-norm", "post-norm\n(output layer)"),
-                 ("L7@last", "layer 7\nlast pos. only"), ("L7", "layer 7\nall pos."),
-                 ("l1", "context\ninjection")]
+        conds = [("base", "base"), ("post-norm", "output\nlayer"),
+                 ("L7@last", "layer 7\n(last pos)"), ("L7", "layer 7\n(all pos)"),
+                 ("l1", "context\ninject.")]
         conds = [(k, lab) for k, lab in conds if k in p9["results"]]
         src = p9["results"]
     else:
@@ -148,7 +148,11 @@ def fig3():
     ax.set_xticks(list(x)); ax.set_xticklabels([lab for _, lab in conds], fontsize=6.3)
     ax.set_ylabel("AUC"); ax.set_ylim(0, 1.12)
     ax.legend(frameon=False, fontsize=6.3, ncol=1, loc="lower right", handlelength=1.0)
-    ax.set_title("(b) where the memory is inserted", loc="left")
+    ax.set_title("(b) where the memory acts", loc="left")
+    if p9 and "L7@last" in p9["results"]:
+        ax.annotate("", xy=(3, 1.06), xytext=(2, 1.06),
+                    arrowprops=dict(arrowstyle="->", lw=0.8, color=DARK))
+        ax.text(2.5, 1.07, "position coverage", ha="center", fontsize=6.3, color=DARK)
     fig.savefig(os.path.join(HERE, "fig3_readout_direction.pdf"))
     fig.savefig(os.path.join(HERE, "fig3_readout_direction.png"))
     print("fig3 ✓ " + ("含 P9 插入深度" if p9 else "⚠️ 暂无 P9，(b) 只画了 post-norm"))
