@@ -38,17 +38,32 @@ class PartitionedMemoryLayer(nn.Module):
         self.keys = nn.Parameter(torch.randn(n_slots, d_model) * init_scale)
         self.values = nn.Parameter(torch.zeros(n_slots, d_model))   # 零初始化 → 初始为恒等
 
-    def partition(self, uid_idx):
-        lo = uid_idx * self.spu
-        return lo, lo + self.spu
+    def partition(self, uid_idx, sub=None, n_sub=2):
+        """sub=None 返回整个 uid 分区；sub=j 返回该分区第 j 个（共 n_sub 个）子区。
 
-    def forward(self, h, uid_idx):
-        """h: [B, d]（post-norm 隐状态），uid_idx: int 或 [B] —— 只在该 uid 的分区内检索"""
+        ★ 子区的用途（p7 的教训）：**分区必须同时作用于写入与检索**。
+          p7 起初只用子区掩【梯度】，检索仍在整个 uid 分区上取 top-k ——
+          实测 w1 探针有 **25% 的 top-4 落进了 w2 的子区**，于是 w1 的槽虽分毫未动
+          （values 改动量 0.00e+00），输出仍被 w2 的值污染，AUC 0.833 → 0.483。
+          P5 之所以成功，正因为那里的检索本来就按 uid 掩了 —— 对称性不能破。
+        """
+        lo = uid_idx * self.spu
+        if sub is None:
+            return lo, lo + self.spu
+        w = self.spu // n_sub
+        return lo + sub * w, lo + (sub + 1) * w
+
+    def forward(self, h, uid_idx, sub=None, n_sub=2):
+        """h: [B, d]（post-norm 隐状态），uid_idx: int 或 [B] —— 只在该 uid 的分区内检索。
+
+        sub=j 时进一步只在第 j 个子区内检索（分区键 = (uid, 概念)）。
+        分区键必须是**推理时可观测**的：uid 来自会话，概念来自提示里出现的词。
+        """
         if isinstance(uid_idx, int):
             uid_idx = torch.full((h.shape[0],), uid_idx, dtype=torch.long, device=h.device)
         out = torch.zeros_like(h)
         for i in range(h.shape[0]):
-            lo, hi = self.partition(int(uid_idx[i]))
+            lo, hi = self.partition(int(uid_idx[i]), sub, n_sub)
             K = self.keys[lo:hi]                       # [spu, d]
             V = self.values[lo:hi]
             # ★ 余弦相似度 + 温度，而非原始点积（实测教训，见 README §3）：

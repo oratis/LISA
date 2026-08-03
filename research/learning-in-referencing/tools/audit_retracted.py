@@ -7,9 +7,15 @@
 判定：命中行若处在「撤回/改正/禁令/⚠️/~~删除线~~」等否定语境中即放行；否则报为需处理。
 ⚠️ 本工具是提醒器不是判官——放行不等于正确，仍需人工复核语境。
 """
-import re, glob, os
-DOCS = sorted(glob.glob("docs/RESEARCH_*.md") + glob.glob("docs/DESIGN_*.md")
-              + glob.glob("research/learning-in-referencing/**/*.md", recursive=True))
+import re, glob, os, sys
+# ★ 路径锚到仓库根，不依赖 cwd —— 否则在子目录下跑会扫到 0 份文档、然后打印 ✅（假放行）
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+DOCS = sorted(glob.glob(os.path.join(ROOT, "docs/RESEARCH_*.md"))
+              + glob.glob(os.path.join(ROOT, "docs/DESIGN_*.md"))
+              + glob.glob(os.path.join(ROOT, "research/learning-in-referencing/**/*.md"),
+                          recursive=True))
+if len(DOCS) < 10:
+    sys.exit(f"🔴 只找到 {len(DOCS)} 份文档（预期 ≥10）——路径解析出错，**拒绝给出放行结论**。ROOT={ROOT}")
 # (模式, 说明, 是否允许出现在"已撤回/禁令"语境)
 RULES = [
  (r"尚无\s*GT-free|无\s*GT-free\s*的写入准入门控", "禁令1: 已被 GATES/LMSI 证伪的措辞"),
@@ -31,11 +37,12 @@ ALLOW = re.compile(r"(❌|🚫|⚠️|~~|撤回|改正|自纠|推翻|被证伪|�
                    r"不可写|不要用|错的说法|过强|归因错误|我方原主张|不写|被推翻的表述)")
 hits=[]
 for f in DOCS:
+    rel = os.path.relpath(f, ROOT)
     for i,line in enumerate(open(f, encoding="utf-8"),1):
         for pat,why in RULES:
             if re.search(pat,line):
                 ctx_ok = bool(ALLOW.search(line))
-                hits.append((f,i,why,ctx_ok,line.strip()[:120]))
+                hits.append((rel,i,why,ctx_ok,line.strip()[:120]))
 bad=[h for h in hits if not h[3]]
 print(f"扫描 {len(DOCS)} 份文档 · 命中 {len(hits)} 处 · 其中 **无撤回标记** {len(bad)} 处\n")
 if bad:
@@ -45,4 +52,4 @@ else:
     print("✅ 所有命中都处在「已撤回/禁令/不得」等否定语境中——无残留的过时主张")
 print("\n⚠️ 提醒：本工具只查语境标记，放行 ≠ 正确。新增/改写主张后应重跑并人工复核。")
 print("--- 文档清单 ---")
-for f in DOCS: print(f"  {f}")
+for f in DOCS: print(f"  {os.path.relpath(f, ROOT)}")

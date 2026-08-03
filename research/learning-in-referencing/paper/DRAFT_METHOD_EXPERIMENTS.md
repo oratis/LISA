@@ -7,7 +7,8 @@
 > **🚫 三条硬性禁令 + 本稿新增两条（全稿已自查，见文末 §7）**：
 > 4. **必须区分两个实例化**：§5.4 端到端用的是 **L1 外部记忆**；§5.5 才是 **L4 参数化记忆**。不得混用。
 > 5. **不得把 P4 门控 16/16 与 P2 核心域 AUC 0.915 相提并论**（任务难度差一个量级）
-> 6. **I2 只能声称「概念 ⊗ 世界知识」**，不得泛化为「具备组合性」（概念间组合未测）
+> 6. **I2 可声称「⊗ 世界知识」与「⊗ 概念」两种形态**，但**不得**扩到否定/量化/多跳/同属性内两概念
+> 7. **「分区解决了干扰」必须限定为【跨对话者】**——用户内部需子区 + **写入与检索双掩码**，且代价是组合性
 
 ---
 
@@ -257,23 +258,59 @@
 > 🔴 **本结果推翻了我方 P5 §4 的一处推测**（"final-layer memory 缺深度组合性"）——该断言当时未测，现已撤回。
 > ⚠️ L4 反超 L1 的解释（上下文注入干扰世界知识检索）**是假说，未做消融**——引用须标 hypothesis。
 
+### 5.7 Two independently taught concepts compose — and what that costs
+
+**¶16**
+
+> Composition with pretrained knowledge could still be one concept doing the work. We
+> therefore teach the *same* interlocutor two concepts from disjoint decision sets and
+> probe a conjunction, `Is X both w1 and w2?`, a form never used during teaching. Negative
+> items are those satisfying **exactly one** of the two, and we report the **minimum over
+> the two halves** of the probe set — a policy that consults only one concept scores
+> **0.500** on that minimum by construction. Consolidated memory reaches **0.889** against
+> a base of **0.479**; context injection reaches 0.986.
+
+> 📌 [p7](../p7/README.md)。前置检查：基座对**真英语词**的同句式合取 **AUC 0.973**；L1 min **0.986** ⟹ 任务可解。
+> 🔴 我方初稿把单概念策略的上界写成 **0.500**，**实为 0.750**——必须拆成两半取 min，否则裁决线设错。
+> ⚠️ **L4 全线低于 L1（0.889 vs 0.986）**，参数化路线在组合上确有代价，**不得掩饰**。
+
+**¶17**
+
+> Sequential arrival exposes a failure that per-interlocutor partitioning does not cover.
+> Writing a second concept into the same partition destroys the first (**0.951 → 0.590**).
+> Masking *gradients* to a per-concept sub-region does not help (**0.833 → 0.483**):
+> the slots are provably untouched (max value change **0.00e+00**), yet **25% of the
+> retrieved top-k for the first concept land in the second concept's sub-region**.
+> **Partitioning must constrain retrieval as well as writing** — which is why the
+> per-interlocutor scheme worked: there, retrieval was already masked by interlocutor id.
+> With both masked, retention is exact (**0.927 → 0.927**) at *half* the slots per concept,
+> which rules out a capacity explanation. But the isolation that protects each concept
+> **weakens their joint use** (conjunction **0.653** vs **0.889** under joint training).
+
+> 🔴 **Δ 0.000 是构造性的**（不相交子区 + 双掩码 ⟹ 构造上不可能互相影响）——**不得报作"抗遗忘"**。
+> 可报的只有两条：**只掩写入不够**（−0.351 ≈ 不分区的 −0.361），**且修好它的那版容量更少**（16 < 32）。
+> ⚠️ 「顺序到达 + 强组合」这一格**目前无解**，必须写进 limitations（§6 (i)）。
+
 ---
 
 ## 6 Limitations
 
 **¶14 — 诚实清单（这一节不压缩）**
 
-> **(i) Compositionality is only partly established.** The parametric memory is attached
-> *after the final layer* and so does not participate in intermediate representation. We
-> initially expected this to cost compositional use; it does not, at least in the form we
-> can test. On cross-domain probes — real objects whose colour is world knowledge, so that
-> answering requires combining the consolidated concept with pretrained knowledge — the
-> parametric memory reaches **0.949 against a chance-level base of 0.500**, and in fact
-> exceeds context injection (0.840). What remains untested is composition *between two
-> consolidated concepts*, and composition under negation or quantification. Against our
-> five criteria the method attains retrieval-free use (I1), cross-session persistence (I4)
-> and isolation; I2 holds for concept ⊗ world-knowledge but is unverified for
-> concept ⊗ concept; I3 and I5 are untested.
+> **(i) Isolation and composition pull in opposite directions, and sequential arrival is
+> unsolved.** The parametric memory is attached *after the final layer* and so does not
+> participate in intermediate representation. We initially expected this to cost
+> compositional use; it does not. Composition holds both with pretrained knowledge
+> (**0.949** vs a chance-level base of 0.500, exceeding context injection at 0.840) and
+> between two independently taught concepts (**0.889** vs 0.479, against a 0.500 ceiling
+> for any single-concept policy). What we cannot yet offer is both at once under
+> *sequential* arrival: protecting each concept requires partitioning retrieval as well as
+> writing, and that same partitioning drops conjunction accuracy from 0.889 to **0.653**.
+> Untested: negation, quantification, multi-hop chains, and two concepts over the *same*
+> attribute. Against our five criteria the method attains retrieval-free use (I1),
+> composition (I2), cross-session persistence (I4) and cross-interlocutor isolation;
+> isolation *within* an interlocutor holds only under the stricter scheme and at the cost
+> above; I3 and I5 are untested.
 >
 > **(ii) The gate verifies usage fidelity, not world truth.** It rejects the model's
 > *misreadings* of what the interlocutor means; a consistently deceptive interlocutor will
@@ -307,7 +344,9 @@
 | 7 | 三臂 → 实际 2 臂 | ✅ §5.1 ¶9 注记已声明；正文未出现 "three arms" |
 | 8 | PersistBench 53% 不得直接比数值 | ✅ §5.3 注记已标；正文未引该数字 |
 | **9** | **分区版零退化不得报作「抗崩塌」实证** | ✅ §5.5 正文明写 "true **by construction**"，结论落在消融上 |
-| **10** | **I2 只能声称「与世界知识组合」** | ✅ §6(i) 明写 holds for concept ⊗ world-knowledge，**unverified for concept ⊗ concept**；**不得泛化为「具备组合性」** |
+| **10** | **I2 已两种形态成立，但不得再扩** | ✅ ⊗ 世界知识（§5.6）+ ⊗ 概念（§5.7）；**否定/量化/多跳/同属性内两概念仍未测**，不得声称 |
+| **11** | **不得把 Δ 0.000 报作「抗遗忘」** | ✅ §5.7 明写它是**构造性**的；可报的只有"只掩写入不够"与"修好的那版容量更少" |
+| **12** | **不得掩饰 L4 在组合上低于 L1** | ✅ §5.7 明写 0.889 vs 0.986；§6(i) 明写「顺序到达 + 强组合」无解 |
 
 ---
 
