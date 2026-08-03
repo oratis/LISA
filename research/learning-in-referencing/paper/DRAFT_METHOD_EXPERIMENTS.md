@@ -7,6 +7,7 @@
 > **🚫 三条硬性禁令 + 本稿新增两条（全稿已自查，见文末 §7）**：
 > 4. **必须区分两个实例化**：§5.4 端到端用的是 **L1 外部记忆**；§5.5 才是 **L4 参数化记忆**。不得混用。
 > 5. **不得把 P4 门控 16/16 与 P2 核心域 AUC 0.915 相提并论**（任务难度差一个量级）
+> 6. **I2 只能声称「概念 ⊗ 世界知识」**，不得泛化为「具备组合性」（概念间组合未测）
 
 ---
 
@@ -237,19 +238,38 @@
 > 崩得比文献报的 10–40 次快属意料之中——**仅作量级参照**。
 > 📌 两次失败已存档（[p5 §3](../p5/README.md)）：全词表 CE 稀释二元信号；原始点积路由塌缩（1/12 槽）。
 
+### 5.6 Consolidated concepts compose with pretrained knowledge
+
+**¶15**
+
+> A concept is only "learned" if it can be *used*, not merely recalled. We test this with
+> cross-domain probes: real objects whose colour is world knowledge, so that answering
+> requires combining the consolidated concept with what the base model already knows —
+> a conclusion never stated during teaching. The parametric memory reaches **0.949**
+> against a **chance-level base of 0.500**, and exceeds context injection (**0.840**).
+
+> 📌 [p6](../p6/README.md)。前置检查：base 对这些物体颜色的世界知识命中 **1.00**（否则实验无意义）。
+> ⚠️ base 跨域均值 0.500 是**构造性**的（冲突对对称，逐用户 [0.062, 0.938] 相互抵消）——说明探针跨用户平衡，**不代表 base 校准良好**。
+> 🔴 **本结果推翻了我方 P5 §4 的一处推测**（"final-layer memory 缺深度组合性"）——该断言当时未测，现已撤回。
+> ⚠️ L4 反超 L1 的解释（上下文注入干扰世界知识检索）**是假说，未做消融**——引用须标 hypothesis。
+
 ---
 
 ## 6 Limitations
 
 **¶14 — 诚实清单（这一节不压缩）**
 
-> **(i) Depth and compositionality.** The parametric memory is attached *after the final
-> layer*: it changes the output distribution but does not participate in intermediate
-> representation. It therefore lacks the depth composition a mid-network product-key layer
-> would provide, and we do **not** verify criterion I2 (compositional use) — our probes are
-> independently sampled but drawn from the same micro-world. Against our own five criteria
-> the method attains retrieval-free use (I1), cross-session persistence (I4) and isolation;
-> I2 is unverified and I3/I5 untested.
+> **(i) Compositionality is only partly established.** The parametric memory is attached
+> *after the final layer* and so does not participate in intermediate representation. We
+> initially expected this to cost compositional use; it does not, at least in the form we
+> can test. On cross-domain probes — real objects whose colour is world knowledge, so that
+> answering requires combining the consolidated concept with pretrained knowledge — the
+> parametric memory reaches **0.949 against a chance-level base of 0.500**, and in fact
+> exceeds context injection (0.840). What remains untested is composition *between two
+> consolidated concepts*, and composition under negation or quantification. Against our
+> five criteria the method attains retrieval-free use (I1), cross-session persistence (I4)
+> and isolation; I2 holds for concept ⊗ world-knowledge but is unverified for
+> concept ⊗ concept; I3 and I5 are untested.
 >
 > **(ii) The gate verifies usage fidelity, not world truth.** It rejects the model's
 > *misreadings* of what the interlocutor means; a consistently deceptive interlocutor will
@@ -283,7 +303,7 @@
 | 7 | 三臂 → 实际 2 臂 | ✅ §5.1 ¶9 注记已声明；正文未出现 "three arms" |
 | 8 | PersistBench 53% 不得直接比数值 | ✅ §5.3 注记已标；正文未引该数字 |
 | **9** | **分区版零退化不得报作「抗崩塌」实证** | ✅ §5.5 正文明写 "true **by construction**"，结论落在消融上 |
-| **10** | **不得声称已验证 I2 组合性** | ✅ §6(i) 明写 "we do **not** verify criterion I2" |
+| **10** | **I2 只能声称「与世界知识组合」** | ✅ §6(i) 明写 holds for concept ⊗ world-knowledge，**unverified for concept ⊗ concept**；**不得泛化为「具备组合性」** |
 
 ---
 
