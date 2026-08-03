@@ -8,7 +8,7 @@
 | **周期** | 2026-07-24 → 2026-08-01 |
 | **调研** | 11 轮对抗式 deep-research（第 3/4/6/7/8 轮被指定去**证伪**我方主张；第 9–11 轮定向闭合 + J/P 族收尾 + 🔍 清零） |
 | **目标** | COLM / ICLR 2027 |
-| **阶段** | 定位完成 · 机制设计定稿 · **四条性质已端到端跑通（P4）** · 文献风险口全部闭合 · **参数化记忆层（L4）未实现** |
+| **阶段** | 定位完成 · 机制定稿 · **四性质端到端跑通** · **论文 Intro/RW + Method/Experiments 初稿已成** · 文献风险口全闭合 · **参数化记忆层（L4）未实现** |
 | **算力** | 全部实验在单机 MPS 完成，**零训练、零预训练算力**（冻结基座 + 纯 prompt） |
 
 ---
@@ -374,7 +374,8 @@ LLM 的概念只能在**训练时**建立，不能在**引用（推理/交互）
 1c. 🔴 **下一步：把 L1 外部记忆升级为 L4 参数化记忆层**（product-key + uid 硬分区，研究文档 §7.4）——**需训练算力**，是当前唯一需要突破零算力约束的一步
 1b. **补真正的 EIG 主动追问臂**（交互式追问回路），当前只是静态不确定性差
 2. **E5 仍需解法**——σ_null + rank 只是缓解；三态门仍误收 3 个 M′
-3. **打磨 Intro/RW 草稿**：补正式 bibkey
+2b. ✅ ~~Method/Experiments 初稿~~ **已完成**（[paper/DRAFT_METHOD_EXPERIMENTS.md](paper/DRAFT_METHOD_EXPERIMENTS.md)，含 8 条禁令自查表）
+3. **打磨两份草稿**：补正式 bibkey + 3 张图表（三臂对照分层图 / 端到端闭环示意 / 十类代理定位表）
 4. **⏰ 投稿前重扫** rate-distortion / memory-compaction 方向——正在被快速填补
 
 ---
@@ -392,6 +393,7 @@ LLM 的概念只能在**训练时**建立，不能在**引用（推理/交互）
 | [p3/README.md](p3/README.md) | **P3 冲突词隔离**：P4 性质实证；分区 8/8 vs 共享 50%；三处限定 + No 偏置的方法学教训 |
 | [p2/README.md](p2/README.md) | **P2 三臂对照**：C4 核心实验；语义熵失效机制（窄度膨胀确信度）+ 两臂等价性声明 |
 | [p1/README.md](p1/README.md) | **P1 构造语言生成器**（词库 + 微世界 + G1–G5 程序化构造 + 隔离对；不变量测试全过） |
+| [paper/DRAFT_METHOD_EXPERIMENTS.md](paper/DRAFT_METHOD_EXPERIMENTS.md) | **Method / Experiments 投稿草案 v1**：§3 机制 · §4 材料与口径 · §5 三臂/作用域/隔离/端到端 · §6 五条限制 · §7 **8 条禁令自查表** |
 | [paper/DRAFT_INTRO_RELATED_WORK.md](paper/DRAFT_INTRO_RELATED_WORK.md) | **Introduction / Related Work 投稿草案 v1**（第八轮定稿措辞 + 三条禁令自查表 + 措辞红线速查） |
 | [r9/](r9/verification.json) / [r10/](r10/verification.json) / [r11/](r11/verification.json) | 第九/十/十一轮 3 票裁决原始记录（33 + 51 + 12 票，证据引文 + PDF md5） |
 | [p1/p1_eval_Qwen2.5-1.5B-Instruct.json](p1/p1_eval_Qwen2.5-1.5B-Instruct.json) | P1 程序化 items 实证复核（核心域 +4.44, 23/24, AUC(z) 0.911；探针 + 分词器过滤补跑） |

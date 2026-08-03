@@ -1,0 +1,253 @@
+# Method / Experiments — 投稿草案 v1
+
+> **状态**：初稿（2026-08-01，P4 端到端闭环完成后）。英文段落为投稿文本；中文块为编辑注记（证据来源 + 禁令自查），投稿前删除。
+> **上游**：机制依据 [DESIGN_COMPRESSION_GATE.md](../../../docs/DESIGN_COMPRESSION_GATE.md)；数据依据 [DESIGN_CONCEPT_BENCH.md](../../../docs/DESIGN_CONCEPT_BENCH.md)；实证依据 [p0](../p0/README.md)/[p1](../p1/README.md)/[p2](../p2/README.md)/[p3](../p3/README.md)/[p4](../p4/README.md)。
+> **接** [DRAFT_INTRO_RELATED_WORK.md](DRAFT_INTRO_RELATED_WORK.md) 的 §1–§2。
+>
+> **🚫 三条硬性禁令 + 本稿新增两条（全稿已自查，见文末 §7）**：
+> 4. **不得把 L1 外部记忆说成参数级内化**（P4 的记忆是外部键值存储 + 检索纪律）
+> 5. **不得把 P4 门控 16/16 与 P2 核心域 AUC 0.915 相提并论**（任务难度差一个量级）
+
+---
+
+## 3 Method
+
+### 3.1 What the gate observes
+
+**¶1 — 观测量（这是全文最容易被误设计的一步）**
+
+> A concept hypothesis must be scored against *evidence*. The natural-seeming choice —
+> the likelihood of the interlocutor's utterances — fails: the entropy of fluent text is
+> dominated by syntax and lexical choice, and the few bits that carry conceptual content
+> are swamped. We therefore score a candidate concept against the interlocutor's
+> **usage decisions**: for each held-out instance `o`, whether the interlocutor applies
+> the term (`y_o ∈ {applies, ¬applies}`). This is the information the concept is
+> supposed to explain.
+
+> 📌 **证据**：[p0 §2–§4](../p0/README.md)。自由陈述 +0.68 nats（5/8, p=0.36，词级 margin +0.02≈0）→ 决策序列 **+4.92 nats（8/8, p=0.0039）**，提升 **7.2×**。
+> ⚠️ 必须同时写：`y_o` 是**被观察到的用法**（数据），**不是关于概念对错的答案**——否则审稿人会误以为用了 GT。
+
+**¶2 — 两部分编码 + 安慰剂对照**
+
+> The gain is a two-part (MDL) code: the concept must earn back its own description
+> length. Writing `K_u` for the interlocutor's already-consolidated knowledge and
+> `H_u(c)` for held-out turns *not* used to form `c`,
+>
+> ```
+> G(c) = Σ_{o∈H_u} [−log P(y_o | o, K_u)] − Σ_{o∈H_u} [−log P(y_o | o, K_u ∪ {c})] − L(c)
+> ```
+>
+> Two controls are load-bearing. **(i) Held-out turns**: scoring on the teaching turns
+> themselves is self-compression and inflates the gain. **(ii) A placebo pool**: since
+> adding *any* plausible text to the context can lower perplexity, a candidate must beat
+> the best of a pool of surface-matched but semantically wrong concepts.
+
+> 📌 **必报诊断项**（[p0 §2](../p0/README.md)）：拆开报 `ΔNLL`（纯预测力）与 `G`（含长度罚）。朴素实现表面 8/8，但 **92% 的 margin 来自 `L(c)`** ——只报 `G` 会得出**假阳性**结论。
+
+### 3.2 Per-item calibration and the abstention state
+
+**¶3 — 零分布 z 校准**
+
+> Raw gains are not comparable across concepts (base entropies differ by ~2×). We
+> calibrate per item against the placebo pool itself, treating it as a null distribution:
+> `z_i(c) = (ΔNLL_i(c) − μ_i^null) / σ_i^null`. The pool deliberately contains
+> *over-specific* alternatives (M ∧ extra), so that a narrower misreading is a *typical*
+> null member rather than an outlier.
+
+> 📌 **设计预测被精确验证**（[p0 §5](../p0/README.md)）：M′ 平均 **−0.22** vs 零分布中心 **−0.27**（差 **0.05 nats**），M 为 **+3.86**（离群）。AUC 0.797 → **0.906**。
+> 📌 与 **SEMA**（CVPR'25）是同一套 z 校准机制——**方法上正面继承，delta 在信号类型**。
+
+**¶4 — 三态门（ACCEPT / REJECT / ASK）**
+
+> A binary gate is not enough. The gate's discriminative power is inherited from the base
+> model: if the model's predictions do not respond to the candidate concept at all, any
+> gain-based criterion is reading noise. We therefore add a *decidability* precondition
+> computed from the null pool's dispersion `σ_null` — GT-free, requiring no knowledge of
+> which candidate is correct, and already computed by the gate. Below threshold the gate
+> **abstains and queries the interlocutor** rather than guessing.
+
+> 📌 [p0 §6b](../p0/README.md)：AUC 0.857 → **0.964**；正确接受 M **15/15（零漏拒）**；覆盖项准确率 **90.0%**。
+> ★ **弃权正当性**：被弃权项 AUC = **0.551 ≈ 随机** → 弃权弃掉的正是它本来就判不了的，**不是在丢信号**。
+> 📌 跨规模校准（[p0 §6e](../p0/README.md)）：`rank`（批内分位）是 raw 的**单调变换**（组内 AUC 分毫不损）且**天然无量纲**，同一阈值 τ=0.40 在 1.5B/3B 上分别给出 **100% / 92.3%**。
+> ⚠️ **部署代价必须写**：分位数需要一批候选（同轮候选池或滚动窗口）。
+
+### 3.3 Consolidation and per-interlocutor partitioning
+
+**¶5**
+
+> Concepts that pass the gate are written to a store keyed by `(interlocutor_id, term)`;
+> retrieval is masked to the querying interlocutor's partition. Cross-interlocutor
+> interference is therefore zero **by construction**, not by ranking. In the present work
+> this store is external (key–value + retrieval discipline); mapping it onto a
+> parameter-space product-key memory with a partitioned key space is left to future work
+> (§6).
+
+> 🚫 **禁令 4 自查**：此处已明写 "this store is external"。**全稿不得出现把它称作 parametric/weight-level internalization 的表述。**
+> ⚠️ 「零干扰是构造性真理，不是实证发现」——见 [p4 §2.4](../p4/README.md)。
+
+---
+
+## 4 Experimental setup
+
+**¶6 — 构造语言与污染控制**
+
+> Testing acquisition of *novel* concepts requires materials provably outside the
+> training distribution. Real low-resource languages cannot give this guarantee at scale
+> (Unicode, code comments, loanwords, parallel-corpus leakage), and prior attempts to
+> certify novelty by random sampling of formal languages have been contested. We
+> therefore generate a controlled language procedurally: pseudo-words filtered against
+> word lists and tokenizer familiarity, over a combinatorial micro-world whose semantics
+> are known by construction.
+
+> 📌 [p1](../p1/README.md)：40 items × 5 类歧义（程序化，非手工）。**污染控制双保险**：分词器过滤 **0 标记**；**零样本探针 AUC 0.394 ≈ 无先验**。
+> 📌 复现性：程序化 40 items 在核心域 G1–G3 上 margin **+4.44（23/24, p=1e-6, AUC(z) 0.911）**，复现手工 22 items 的 **+4.08（19/22）**。
+
+**¶7 — ★ gavagai 对：把"误解"做成可控实验条件**
+
+> Each item is a *gavagai pair*: a true meaning `M` and a tempting misreading `M′` that
+> are **extensionally identical on the teaching set** — both explain every teaching
+> example perfectly — and are separated **only by held-out usage**. This is Quine's
+> indeterminacy rendered as a controlled, scorable condition. Five ambiguity families are
+> covered: conjunction (`M′ = M ∧ extra`), category level, material-vs-object,
+> argument order, and absolute-vs-relative properties.
+
+> 📌 这是全套实验的材料学核心。**M′ ⊂ M 的合取/范畴型正是 Quine 原型**（rabbit vs undetached rabbit part）。
+
+**¶8 — 评测口径**
+
+> Unless stated otherwise: frozen Qwen2.5-1.5B-Instruct (bf16), pure prompting, **no
+> training of any kind**; all experiments run on a single machine. We report AUC
+> (threshold-free), win counts with sign tests, and item-level bootstrap CIs.
+
+> ⚠️ **为何用阈值无关的 AUC**（[p3 §3.3](../p3/README.md) 实测教训）：模型对陌生伪词谓词有系统性 **No 偏置**——`komalor means blue.` 下蓝色项 p_yes 仅 0.245–0.349、红色项 0.020–0.023。**判别信号强约 14×，但绝对值全在 0.5 以下**；用 0.5 阈值会得到"准确率 0.00"的假象。
+> ★ 这反过来**佐证机制设计**：压缩门用**连续 NLL** 而非阈值化决策，不受该偏置影响。
+
+---
+
+## 5 Results
+
+### 5.1 The gate separates a true concept from a self-consistent misreading
+
+**¶9 — ★ 三臂对照（C4 核心结果）**
+
+> On the core domain (conjunction, category, material — the families where the base model
+> demonstrably applies definitions compositionally), compression gain separates `M` from
+> `M′` at **AUC 0.915 (23/24, p = 1.5e-6)**, while semantic entropy reaches **0.269**.
+
+> 📌 [p2](../p2/README.md)。全 5 类：压缩 **0.809（37/40, p=9.7e-9）** vs 语义熵 0.423。
+> ⚠️ **必须声明的方法学事实**：「语义熵」与「epistemic 下降」两臂对 M vs M′ 的配对判定**数学等价**（`epi(c)=base_ent−ent(c)`，base_ent 与 c 无关，作差抵消；实测 per-item margin 最大差 **5.55e-17**）。**⟹ 实际只有 2 个独立臂，正文不得宣称 3 个独立对照。** 真正的 EIG 主动追问臂**尚未实现**。
+> 📌 语义熵采用**二元精确版**（意义簇退化为 {Yes},{No}，由 logits 直接算、无采样噪声）——**比原方法更强**的版本；但牺牲了双向蕴含聚类，自由生成设定下结论可能不同。
+
+**¶10 — ★ 失效机制（比落差本身更值得写）**
+
+> Semantic entropy does not merely fail here; it fails *directionally*. Stratifying by
+> whether `M′` is narrower than `M`: where it is (conjunction, category level) semantic
+> entropy scores **0.137** — it systematically prefers the misreading; where it is not,
+> it sits at chance (**0.507**). The mechanism is visible in the entropies themselves: a
+> narrower concept licenses more confident rejections (H drops 0.363→0.253 and
+> 0.308→0.148). Self-consistency measures *how certain the model is*, and narrowness
+> inflates certainty. On the most common form of referential ambiguity — the Quinean one,
+> where the misreading is a proper subset — that is exactly the wrong bias.
+
+> 🚫 **不得写「语义熵≈随机」**——那是被分层掩盖后的表象。**正确表述**：反向（0.137）或随机（0.507），**从不正向**。
+> ⚠️ **诚实报告**：G5（绝对/相对）是语义熵唯一有效的类型（**0.750**），正因该类 M′ 不更窄。**不得隐去。**
+
+### 5.2 Scope: where the gate works, and why scaling is not a general fix
+
+**¶11**
+
+> The gate's power is inherited from the base model along two axes, and they respond to
+> scale in *opposite* directions. Where the failure is *no signal* — the model's
+> predictions barely move when given the definition — scaling helps (argument-order items:
+> AUC 0.562 → 0.812 from 1.5B to 3B). Where the failure is *conditioning failure* — the
+> model's priors override the definition it was given — scaling **hurts** (absolute-vs-
+> relative items: 0.812 → **0.000**). Aggregate margins grew 4× while discrimination
+> quality fell (AUC 0.857 → 0.738). **Larger is not a general remedy.**
+
+> 📌 [p0 §6c](../p0/README.md)。E5「条件化失败」是第三个前置条件：**基座必须肯照做**。3B 上连无框架的单属性平凡应用都会失败（`kirel means red` + `Is a red box kirel?` → p(yes)=0.000）。
+> ⚠️ **仪器有效性已前置验证**（[p0h](../p0/README.md)）：平凡常识题 raw 6/6、chat 6/6 → **E5 不是格式假象**。
+> ⚠️ G5 的实例把对照物写进实例本身，**既是材料设计问题也是真实效度问题**（真实对话总带框架），两种解释都报告。
+
+### 5.3 Isolation is a precondition for correctness, not hygiene
+
+**¶12**
+
+> With eight conflict pairs — the same pseudo-word taught two incompatible meanings by two
+> interlocutors — partitioned retrieval yields perfect discrimination (AUC **1.000**, gate
+> **8/8**). Sharing the store collapses both: discrimination falls to 0.754 and the gate
+> drops to **50%, i.e. chance**. This is not a model failure but an *information*
+> one: when two mutually exclusive definitions are simultaneously present, the observed
+> data no longer contains which one belongs to whom.
+
+> 📌 [p3](../p3/README.md)。最差项 ISO-08 掉到 **0.281 = 反向**。
+> ⚠️ **三处限定**：(i) 共享条件的门控比较是**同样两句话的不同顺序**，测的是"位置是否承载归属"（不承载），**不得说成"门在两个候选间选错"**；(ii) 共享条件是**强形式污染**，**不是** PersistBench 的隐蔽自然泄漏——**勿与其 53% 直接比数值**；(iii) 本轮是**上下文级**分区。
+
+### 5.4 End-to-end: all four properties at once
+
+**¶13**
+
+> Finally we run the full loop: teach → gate → consolidate into the interlocutor's
+> partition → **clear the context** → new session, loading only that partition. Across 16
+> interlocutors the gate selects the true meaning **16/16** against a candidate set that
+> includes the *other* interlocutor's meaning; after the context is cleared, probe AUC
+> rises from **0.514 (no memory)** to **0.980 (own partition)**, while loading another
+> interlocutor's concept gives **0.129**. Cross-partition hits: **0/16**.
+
+> 📌 [p4](../p4/README.md)。
+> 🚫 **禁令 5 自查**：门控 16/16 是在 **4 个互斥颜色**上、领先 **+9.92 nats** ——**远比 §5.1 的 gavagai 对容易**。**正文不得把二者并列，也不得据此写"门控准确率 100%"。**
+> 📌 **共享库的失效模式是 last-write-wins**：先写者 8/8 概念被彻底摧毁（AUC 0.148），后写者完好（0.977）。**均值 0.562 有误导性，必须拆开报**；且与 §5.3 的共享条件是**不同失效模式**。
+
+---
+
+## 6 Limitations
+
+**¶14 — 诚实清单（这一节不压缩）**
+
+> **(i) The store is external.** Our consolidation target is a key–value store with a
+> retrieval discipline, not a parameter-space memory. By our own criteria it achieves
+> cross-session persistence and isolation but *not* retrieval-free or compositional use —
+> it is "knowing that there is such a thing", not yet "having learned it". Mapping the
+> gate onto a product-key parametric layer with a partitioned key space requires training
+> and is left to future work.
+>
+> **(ii) The gate verifies usage fidelity, not world truth.** It rejects the model's
+> *misreadings* of what the interlocutor means; a consistently deceptive interlocutor will
+> be believed. This is a designed boundary, and it is *composable* with provenance-based
+> gates, which address the orthogonal question of whether the source is trustworthy.
+>
+> **(iii) Conditioning failure is unsolved.** Where the base model's priors override the
+> supplied definition, gain-based criteria read a mixture of prior and concept. The
+> decidability meter detects only *undecidability*, not confident error.
+>
+> **(iv) Two arms, not three**; a genuine expected-information-gain querying arm is not
+> yet implemented.
+>
+> **(v) Single model family, small item counts, item-level (not seed-level) CIs**;
+> usage decisions are given by construction rather than extracted from natural dialogue.
+
+> ✅ 这五条与 [REPORT §5](../REPORT.md) 的未解决表一一对应，无隐去。
+
+---
+
+## 7 禁令自查表（投稿前逐条勾）
+
+| # | 禁令 | 本稿状态 |
+|---|---|---|
+| 1 | 不写「尚无 GT-free 的写入准入门控」 | ✅ §1 已用定稿措辞（判据类型 × 门控环节两轴） |
+| 2 | 不以「无外部 oracle」为独立卖点 | ✅ 仅在性质定义中出现 |
+| 3 | 「写入」必带 scope 注解 | ✅ §3.3 / §5.4 均写明 persistent / per-interlocutor / at inference time |
+| **4** | **不得把 L1 外部记忆说成参数级内化** | ✅ §3.3 ¶5 明写 "this store is external"；§6(i) 独立成条 |
+| **5** | **不得把 P4 的 16/16 与 P2 的 0.915 并列** | ✅ §5.4 编辑注记已标；正文两处分述、无并列表述 |
+| 6 | 语义熵不得写成「≈随机」 | ✅ §5.2 ¶10 用「反向或随机，从不正向」 |
+| 7 | 三臂 → 实际 2 臂 | ✅ §5.1 ¶9 注记已声明；正文未出现 "three arms" |
+| 8 | PersistBench 53% 不得直接比数值 | ✅ §5.3 注记已标；正文未引该数字 |
+
+---
+
+## 待办
+
+- [ ] 补正式 bibkey（当前用 arXiv 编号占位）
+- [ ] Figure 1：三臂对照（核心域 AUC 条形图 + 按"M′ 是否更窄"分层）
+- [ ] Figure 2：端到端闭环示意（含"清空上下文"这一步）
+- [ ] Table 1：十类代理表（判据类型 × 门控环节，标出 GATES/LMSI/SAGE/我方位置）
+- [ ] ⏰ 投稿前重扫 rate-distortion / memory-compaction 方向
