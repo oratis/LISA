@@ -84,21 +84,33 @@ def auc(pos, neg):
 
 
 # ---------- 先验检查：模型本身知不知道这些真实物体的颜色？----------
+# 🔴 初版这里用【绝对阈值】(logit_yes > logit_no) 计命中率，得 0.688 并打印"世界知识不足"。
+#    那是 **P3 已经踩过的 No 偏置坑又踩了一次**：模型对 Yes/No 题有系统性 No 偏置，
+#    16 个【正确】颜色配对里有 5 个 p_yes < 0.5，尽管它们与负例分得很开（负例低至 0.001）。
+#    ⟹ 改用本项目已确立的**阈值无关 AUC**（正例=该色物体，负例=其它色物体）：**0.891**。
+#    raw 命中率保留输出，仅作偏置的证据，**不作判据**。
 print("=" * 88)
 print("前置检查：跨域探针的世界知识是否可用（若模型不知道 banana 是黄的，本实验无意义）")
+print("  判据 = 阈值无关 AUC（raw 命中率受 No 偏置污染，只作参考）")
 print("=" * 88)
-prior = {}
+prior, prior_raw = {}, {}
+
+
+@torch.no_grad()
+def _p_yes_color(o, c):
+    lg = hidden(f"Question: Is {o} {c}? Answer Yes or No.\nAnswer:") @ W.T
+    return torch.softmax(torch.stack([lg[YES_ID], lg[NO_ID]]), 0)[0].item(), (lg[YES_ID] - lg[NO_ID]).item()
+
+
 for col, objs in REAL.items():
-    hits = 0
-    for o in objs:
-        p = f"Question: Is {o} {col}? Answer Yes or No.\nAnswer:"
-        h = hidden(p)
-        lg = h @ W.T
-        hits += int((lg[YES_ID] - lg[NO_ID]).item() > 0)
-    prior[col] = hits / len(objs)
-    print(f"  {col:7} 世界知识命中 {hits}/{len(objs)}")
+    pos = [_p_yes_color(o, col) for o in objs]
+    neg = [_p_yes_color(o, col) for c2, os2 in REAL.items() if c2 != col for o in os2]
+    prior[col] = auc([x[0] for x in pos], [x[0] for x in neg])
+    prior_raw[col] = sum(x[1] > 0 for x in pos) / len(pos)
+    print(f"  {col:7} ★ AUC {prior[col]:.3f}   (raw 命中 {prior_raw[col]:.2f} ← 受 No 偏置压低)")
 mean_prior = st.mean(prior.values())
-print(f"\n  平均 {mean_prior:.2f} —— {'✅ 世界知识可用，实验有效' if mean_prior >= 0.75 else '⚠️ 世界知识不足，跨域结论受限'}")
+print(f"\n  ★ 平均 AUC {mean_prior:.3f} （raw 平均 {st.mean(prior_raw.values()):.3f}）—— "
+      f"{'✅ 世界知识可用，实验有效' if mean_prior >= 0.75 else '⚠️ 世界知识不足，跨域结论受限'}")
 
 # ---------- 组装用户 ----------
 pairs = json.load(open(os.path.join(ROOT, "p1", "isolation_p1.json")))
@@ -224,7 +236,9 @@ else:
 print(f"  {v}")
 print(f"  （L1 跨域 {M_('l1_p_cross'):.3f} 说明**任务本身可解**；L4 的差距即为该架构的组合性代价）")
 
-json.dump({"model": args.model, "n_users": NU, "world_knowledge_prior": prior,
+json.dump({"model": args.model, "n_users": NU,
+           "world_knowledge_prior_auc": prior, "world_knowledge_prior_raw_hits": prior_raw,
+           "_note_prior": "判据是 AUC（0.891）；raw 命中率 0.688 受 No 偏置压低，不作判据——见脚本内注释",
            "L1": {"in": M_("l1_p_in"), "cross": M_("l1_p_cross")},
            "L4": {"in": M_("l4_p_in"), "cross": M_("l4_p_cross")},
            "per_user": [{k: u[k] for k in ("uid", "M", "l1_p_in", "l1_p_cross", "l4_p_in", "l4_p_cross")}

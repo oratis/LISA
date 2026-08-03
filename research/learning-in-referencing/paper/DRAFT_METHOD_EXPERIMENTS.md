@@ -245,10 +245,14 @@
 > A concept is only "learned" if it can be *used*, not merely recalled. We test this with
 > cross-domain probes: real objects whose colour is world knowledge, so that answering
 > requires combining the consolidated concept with what the base model already knows —
-> a conclusion never stated during teaching. The parametric memory reaches **0.949**
-> against a **chance-level base of 0.500**, and exceeds context injection (**0.840**).
+> a conclusion never stated during teaching. We first verify the base model does hold
+> that knowledge (colour-identification AUC **0.891**); it does. The parametric memory
+> then reaches **0.949** against a **chance-level base of 0.500**, and exceeds context
+> injection (**0.840**).
 
-> 📌 [p6](../p6/README.md)。前置检查：base 对这些物体颜色的世界知识命中 **1.00**（否则实验无意义）。
+> 📌 [p6](../p6/README.md)。前置检查：base 对这些物体颜色的世界知识 **AUC 0.891**（否则实验无意义）。
+> 🔴 我方初版此处用**绝对阈值**得 0.688（脚本已警告），并在文档里误写成 1.00——**数字与判据都错**，
+> 判据错在重犯 P3 的 **No 偏置**坑。改 AUC 后 0.891，**结论不变**。正文引用须用 **0.891 (AUC)**。
 > ⚠️ base 跨域均值 0.500 是**构造性**的（冲突对对称，逐用户 [0.062, 0.938] 相互抵消）——说明探针跨用户平衡，**不代表 base 校准良好**。
 > 🔴 **本结果推翻了我方 P5 §4 的一处推测**（"final-layer memory 缺深度组合性"）——该断言当时未测，现已撤回。
 > ⚠️ L4 反超 L1 的解释（上下文注入干扰世界知识检索）**是假说，未做消融**——引用须标 hypothesis。
