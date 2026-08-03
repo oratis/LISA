@@ -5,7 +5,7 @@
 > **接** [DRAFT_INTRO_RELATED_WORK.md](DRAFT_INTRO_RELATED_WORK.md) 的 §1–§2。
 >
 > **🚫 三条硬性禁令 + 本稿新增两条（全稿已自查，见文末 §7）**：
-> 4. **不得把 L1 外部记忆说成参数级内化**（P4 的记忆是外部键值存储 + 检索纪律）
+> 4. **必须区分两个实例化**：§5.4 端到端用的是 **L1 外部记忆**；§5.5 才是 **L4 参数化记忆**。不得混用。
 > 5. **不得把 P4 门控 16/16 与 P2 核心域 AUC 0.915 相提并论**（任务难度差一个量级）
 
 ---
@@ -77,13 +77,26 @@
 
 > Concepts that pass the gate are written to a store keyed by `(interlocutor_id, term)`;
 > retrieval is masked to the querying interlocutor's partition. Cross-interlocutor
-> interference is therefore zero **by construction**, not by ranking. In the present work
-> this store is external (key–value + retrieval discipline); mapping it onto a
-> parameter-space product-key memory with a partitioned key space is left to future work
-> (§6).
+> interference is therefore zero **by construction**, not by ranking.
+>
+> We instantiate this at two levels. **(a) External**: a key–value store whose entries are
+> re-injected into context. **(b) Parametric**: a sparse product-key memory whose keys and
+> values are *parameters*, added to the residual stream at the final layer
+> (`logits = lm_head(h + m(h))`), with the slot index space partitioned by interlocutor and
+> gradients masked to the writing partition. The base model is frozen throughout; only
+> keys and values are trained, and no gradient passes through any transformer block. The
+> parametric variant is what lets a consolidated concept fire **with no retrieval and no
+> mention of it in context**.
+>
+> One implementation detail is load-bearing rather than incidental: slot routing must use
+> **cosine-normalised** similarity. Prompts that differ only in the described object yield
+> nearly parallel hidden states (pairwise cosine ≈ 0.994 at ‖h‖ ≈ 172), so raw dot-product
+> routing saturates the softmax, sends every input to the same slot, and degenerates the
+> memory into a constant bias.
 
-> 🚫 **禁令 4 自查**：此处已明写 "this store is external"。**全稿不得出现把它称作 parametric/weight-level internalization 的表述。**
-> ⚠️ 「零干扰是构造性真理，不是实证发现」——见 [p4 §2.4](../p4/README.md)。
+> 🚫 **禁令 4 自查**：此处明确分列 (a) External / (b) Parametric 两级。**§5.4 的端到端闭环用的是 (a)，§5.5 才是 (b)——两处均已标注，不得混用。**
+> ⚠️ 「零干扰是构造性真理，不是实证发现」——见 [p4 §2.4](../p4/README.md) / [p5 §2.3](../p5/README.md)。
+> 📌 余弦路由那句**不是实现细节而是必要条件**：原始点积会让 12 个输入全落到同一个槽（[p5 §3.2](../p5/README.md)）。
 
 ---
 
@@ -115,8 +128,10 @@
 
 **¶8 — 评测口径**
 
-> Unless stated otherwise: frozen Qwen2.5-1.5B-Instruct (bf16), pure prompting, **no
-> training of any kind**; all experiments run on a single machine. We report AUC
+> Unless stated otherwise: frozen Qwen2.5-1.5B-Instruct, pure prompting, **no training**;
+> all experiments run on a single machine. The one exception is the parametric memory of
+> §5.5, where the base model remains entirely frozen and **only the memory's keys and
+> values** are trained — no gradient passes through any transformer block. We report AUC
 > (threshold-free), win counts with sign tests, and item-level bootstrap CIs.
 
 > ⚠️ **为何用阈值无关的 AUC**（[p3 §3.3](../p3/README.md) 实测教训）：模型对陌生伪词谓词有系统性 **No 偏置**——`komalor means blue.` 下蓝色项 p_yes 仅 0.245–0.349、红色项 0.020–0.023。**判别信号强约 14×，但绝对值全在 0.5 以下**；用 0.5 阈值会得到"准确率 0.00"的假象。
@@ -197,18 +212,44 @@
 > 🚫 **禁令 5 自查**：门控 16/16 是在 **4 个互斥颜色**上、领先 **+9.92 nats** ——**远比 §5.1 的 gavagai 对容易**。**正文不得把二者并列，也不得据此写"门控准确率 100%"。**
 > 📌 **共享库的失效模式是 last-write-wins**：先写者 8/8 概念被彻底摧毁（AUC 0.148），后写者完好（0.977）。**均值 0.562 有误导性，必须拆开报**；且与 §5.3 的共享条件是**不同失效模式**。
 
+### 5.5 Consolidation into parameters: retrieval-free use, and what actually prevents collapse
+
+**¶14**
+
+> Replacing the external store with the parametric memory of §3.3(b) removes the retrieval
+> step entirely. With **no mention of the concept anywhere in the context**, probe AUC rises
+> from **0.485 (frozen base, at chance)** to **0.992**; querying another interlocutor's
+> partition gives **0.260**.
+>
+> Sequential writing exposes what the partition is actually doing. Writing sixteen
+> interlocutors one after another into *partitioned* slots leaves earlier ones untouched —
+> but this is true **by construction** (gradients are masked to the writing partition), and
+> we verify it holds exactly: every interlocutor's score at write time equals its score at
+> the end. The informative comparison is the ablation. Giving all interlocutors a **shared
+> pool of identical total capacity** collapses retention from the *second* write
+> (mean 1.000 → 0.520) and ends at **0.562 with several interlocutors at 0.000**.
+> What prevents interference is therefore the **partition**, not capacity or sparsity.
+
+> 📌 [p5](../p5/README.md)。
+> 🚫 **禁令 6（本稿新增）**：**不得把分区版的零退化报作「稀疏记忆抗崩塌」的实证**——它是构造性的。
+> 可写的只有：**同等容量下分区防住了、共享没防住**。
+> ⚠️ 与 ROME/MEMIT **仍非同基准**（判分口径与编辑粒度不同），且冲突词是**最坏情况**，
+> 崩得比文献报的 10–40 次快属意料之中——**仅作量级参照**。
+> 📌 两次失败已存档（[p5 §3](../p5/README.md)）：全词表 CE 稀释二元信号；原始点积路由塌缩（1/12 槽）。
+
 ---
 
 ## 6 Limitations
 
 **¶14 — 诚实清单（这一节不压缩）**
 
-> **(i) The store is external.** Our consolidation target is a key–value store with a
-> retrieval discipline, not a parameter-space memory. By our own criteria it achieves
-> cross-session persistence and isolation but *not* retrieval-free or compositional use —
-> it is "knowing that there is such a thing", not yet "having learned it". Mapping the
-> gate onto a product-key parametric layer with a partitioned key space requires training
-> and is left to future work.
+> **(i) Depth and compositionality.** The parametric memory is attached *after the final
+> layer*: it changes the output distribution but does not participate in intermediate
+> representation. It therefore lacks the depth composition a mid-network product-key layer
+> would provide, and we do **not** verify criterion I2 (compositional use) — our probes are
+> independently sampled but drawn from the same micro-world. Against our own five criteria
+> the method attains retrieval-free use (I1), cross-session persistence (I4) and isolation;
+> I2 is unverified and I3/I5 untested.
 >
 > **(ii) The gate verifies usage fidelity, not world truth.** It rejects the model's
 > *misreadings* of what the interlocutor means; a consistently deceptive interlocutor will
@@ -236,17 +277,20 @@
 | 1 | 不写「尚无 GT-free 的写入准入门控」 | ✅ §1 已用定稿措辞（判据类型 × 门控环节两轴） |
 | 2 | 不以「无外部 oracle」为独立卖点 | ✅ 仅在性质定义中出现 |
 | 3 | 「写入」必带 scope 注解 | ✅ §3.3 / §5.4 均写明 persistent / per-interlocutor / at inference time |
-| **4** | **不得把 L1 外部记忆说成参数级内化** | ✅ §3.3 ¶5 明写 "this store is external"；§6(i) 独立成条 |
+| **4** | **区分 L1 外部 / L4 参数化两个实例化** | ✅ §3.3 明写 (a) External / (b) Parametric 两级；§5.4 用 L1、§5.5 用 L4，各自标注 |
 | **5** | **不得把 P4 的 16/16 与 P2 的 0.915 并列** | ✅ §5.4 编辑注记已标；正文两处分述、无并列表述 |
 | 6 | 语义熵不得写成「≈随机」 | ✅ §5.2 ¶10 用「反向或随机，从不正向」 |
 | 7 | 三臂 → 实际 2 臂 | ✅ §5.1 ¶9 注记已声明；正文未出现 "three arms" |
 | 8 | PersistBench 53% 不得直接比数值 | ✅ §5.3 注记已标；正文未引该数字 |
+| **9** | **分区版零退化不得报作「抗崩塌」实证** | ✅ §5.5 正文明写 "true **by construction**"，结论落在消融上 |
+| **10** | **不得声称已验证 I2 组合性** | ✅ §6(i) 明写 "we do **not** verify criterion I2" |
 
 ---
 
 ## 待办
 
 - [ ] 补正式 bibkey（当前用 arXiv 编号占位）
+- [ ] Figure 3：分区 vs 共享的顺序写入保持率曲线（第 2 次即崩 vs 平坦）
 - [ ] Figure 1：三臂对照（核心域 AUC 条形图 + 按"M′ 是否更窄"分层）
 - [ ] Figure 2：端到端闭环示意（含"清空上下文"这一步）
 - [ ] Table 1：十类代理表（判据类型 × 门控环节，标出 GATES/LMSI/SAGE/我方位置）
