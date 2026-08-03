@@ -825,7 +825,7 @@ L2 巩固核    ← 借 E 族（低频稀疏记忆层）+ HOPE/CMS（频率分�
 **P. 参数化知识库 / 神经数据库**
 | 文献 | 要点 |
 |---|---|
-| ★ LMLM, NeurIPS 2025 — arXiv:2505.15962（+ Co-LMLM 2607.07707） | **损失掩码即准入门**；显式可编辑 KB；**instant forgetting** |
+| ★ LMLM — arXiv:2505.15962（v3 更名 **Limited** Memory LM；**NeurIPS 2025 CCFM workshop Oral，非主会**）（+ Co-LMLM 2607.07707） | 逐 token 损失掩码把事实值排除出训练目标；显式可编辑 KB；**instant forgetting**。<br>⚠️ ~~损失掩码即准入门~~ **改正（第六轮）**：掩码是**训练目标**，非写入准入判据；真正的写入过滤器是标注管线的 **Corrector**（按损失丢弃 top-10%，判据=格式合规+上下文可推得性，**非正确性**） |
 | ✅★★ Generative Adapter, **ICLR 2025** — arXiv:2411.05877v1 | **单次前向 × 跨会话（架构性）**；隔离仅构造暗示（#16）；🔴 **无门** ← **离本项目最近** |
 | ✅ PRAG / DyPRAG — arXiv:2503.23895v4 | per-document LoRA；hypernet 前向生成；~~平均干扰~~ 改正：平均有效整合，衰退因无关冗余（#17）；无写入门 |
 | ✅ Memory Grafting 2026-05 — arXiv:2605.20948v1 | 离线前向算隐状态记忆 + 精确后缀匹配；**实为预训练扩展**；写入侧仅频率覆盖筛选（质量盲） |

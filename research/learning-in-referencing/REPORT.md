@@ -234,6 +234,8 @@ LLM 的概念只能在**训练时**建立，不能在**引用（推理/交互）
 
 ### 🔴 贡献声明经历了**四次收紧**
 
+> 下表「被推翻的表述」列引用的是**已作废**的措辞，仅作沿革记录——**不得用作行文措辞**。
+
 | 轮次 | 被推翻的表述 | 推翻者 |
 |---|---|---|
 | 三 | 「所有门控只调写入强度」 | DEN / SEMA / SAGE / Self-Sizing Hopfield |
@@ -389,6 +391,7 @@ LLM 的概念只能在**训练时**建立，不能在**引用（推理/交互）
 | [docs/DESIGN_COMPRESSION_GATE.md](../../docs/DESIGN_COMPRESSION_GATE.md) | 机制：E1–E5 划界、观测量、三态门、三个前置条件、失败模式 |
 | [docs/DESIGN_CONCEPT_BENCH.md](../../docs/DESIGN_CONCEPT_BENCH.md) | 数据：构造语言、gavagai 对 G1–G5、切断 Aycock 捷径、隔离测试 |
 | [p0/README.md](p0/README.md) | **P0 实证全记录**（§2 失败 → §3 诊断 → §4 成立 → §5 校准 → §6 扩展 → §6b 三态门 → §6c 缩放 → §6d 探针失败 → §6e 无量纲化） |
+| [tools/audit_retracted.py](tools/audit_retracted.py) | **一致性审计器**：扫全部文档，查已推翻主张是否还以肯定语气残留（实测抓到附录 J 的两处残留） |
 | [p4/README.md](p4/README.md) | **P4 端到端闭环**：四性质首次同时成立；共享库 last-write-wins；三条限定（L1≠L4、门控任务更易、零干扰是构造性） |
 | [p3/README.md](p3/README.md) | **P3 冲突词隔离**：P4 性质实证；分区 8/8 vs 共享 50%；三处限定 + No 偏置的方法学教训 |
 | [p2/README.md](p2/README.md) | **P2 三臂对照**：C4 核心实验；语义熵失效机制（窄度膨胀确信度）+ 两臂等价性声明 |
