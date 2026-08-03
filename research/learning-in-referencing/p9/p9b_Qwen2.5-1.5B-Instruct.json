@@ -1,0 +1,30 @@
+{
+  "model": "Qwen/Qwen2.5-1.5B-Instruct",
+  "n_users": 8,
+  "results": {
+    "L7": {
+      "pr_own": {
+        "F1 Yes/No": 0.945,
+        "F2 A/B": 0.935,
+        "F3 True/False": 0.935
+      },
+      "pr_swap": {
+        "F1 Yes/No": 0.93,
+        "F2 A/B": 0.895,
+        "F3 True/False": 0.935
+      }
+    },
+    "post-norm": {
+      "pr_own": {
+        "F1 Yes/No": 0.97,
+        "F2 A/B": 0.555,
+        "F3 True/False": 0.77
+      },
+      "pr_swap": {
+        "F1 Yes/No": 0.975,
+        "F2 A/B": 0.505,
+        "F3 True/False": 0.765
+      }
+    }
+  }
+}
