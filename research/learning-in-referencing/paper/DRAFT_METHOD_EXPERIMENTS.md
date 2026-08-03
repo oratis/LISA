@@ -9,6 +9,8 @@
 > 5. **不得把 P4 门控 16/16 与 P2 核心域 AUC 0.915 相提并论**（任务难度差一个量级）
 > 6. **I2 可声称「⊗ 世界知识」与「⊗ 概念」两种形态**，但**不得**扩到否定/量化/多跳/同属性内两概念
 > 7. **「分区解决了干扰」必须限定为【跨对话者】**——用户内部需子区 + **写入与检索双掩码**，且代价是组合性
+> 8. 🔴 **「内化/学会了」四字不得单独出现**——必须写成「**在教学所用的决策格式内**，免检索 + 可组合 + 持久 + 抗干扰」；
+>    **I3（隐式触发）不成立**，这是 final-layer 架构的直接后果，不是调参问题
 
 ---
 
@@ -291,13 +293,61 @@
 > 可报的只有两条：**只掩写入不够**（−0.351 ≈ 不分区的 −0.361），**且修好它的那版容量更少**（16 < 32）。
 > ⚠️ 「顺序到达 + 强组合」这一格**目前无解**，必须写进 limitations（§6 (i)）。
 
+### 5.8 What is consolidated is a readout direction, not a concept
+
+**¶18**
+
+> Consolidated concepts survive context that contradicts them. Adding a competing gloss
+> to the prompt (`Note: in some dialects, w means <the other teacher's meaning>`) costs the
+> parametric memory **0.050** AUC and context injection **0.075**. The distractor is
+> demonstrably potent: for the base model, which has no other definition available, the
+> same note drives the probe from **0.545 to 0.033** — near-perfect inversion. Criterion
+> I5 holds, and holds better in parameters than in context.
+
+**¶19**
+
+> Criterion I3 does not hold. When the concept must be *used* rather than adjudicated —
+> a two-alternative action prompt never seen in teaching — the parametric memory scores
+> **0.507**, indistinguishable from an unconsolidated base (0.500), while context injection
+> scores **1.000**. A diagnosis rules out retrieval failure: 75% of the retrieved slots are
+> ones the training prompts used. The learned memory output aligns with the *training
+> format's* readout direction and with nothing else: **cos(m(h), W_yes − W_no) = +0.79**
+> versus **cos(m(h), W_A − W_B) = +0.003**, the two directions being near-orthogonal
+> (−0.027), and ‖m(h)‖ = 14.3 — large, but pointed the wrong way. Training on a second
+> format does not fix this: it raises that format by 0.240 while *lowering* a third,
+> held-out format by 0.110. Across three formats, transfer is monotone in the cosine
+> between readout directions (1.000 → 0.960; +0.107 → 0.755; −0.027 → 0.555 ≈ base).
+
+> 📌 [p8](../p8/README.md)。⚠️ **三个点同序而已，不得写成拟合出来的定律**。
+> 🔴 判据在此错过一次：初版只报 accuracy，而伪词条件下模型 **91% 选 A**，阈值法被偏置钉死在 0.5。
+> 这是 P3 → P6 → P8 **同一类仪器错误的第三次**。改 AUC 后结论不变，但那是运气。
+
+> ### 🔑 这条**回溯限定**了 §5.5–5.7
+> 那三节的训练与探针**全部使用同一个读出方向**（Yes/No）。
+> P6 变的是表层内容、P7 变的是表层句式——**读出方向都没变**；P8 变的正是读出方向。
+> ⟹ **精确主张只有一条：概念能跨表层句式迁移，不能跨读出方向迁移。**
+> **§5.5–5.7 的每条结论在正文中都必须带作用域 "within the decision format used for teaching"。**
+
 ---
 
 ## 6 Limitations
 
 **¶14 — 诚实清单（这一节不压缩）**
 
-> **(i) Isolation and composition pull in opposite directions, and sequential arrival is
+> **(i) The consolidated object is a readout direction, not a concept — so implicit use
+> (I3) fails.** Everything we consolidate is learned at the output layer, and it therefore
+> encodes *where to push the logits in the decision format used for teaching* rather than a
+> format-independent concept. Within that format the method is strong (retrieval-free use,
+> composition with world knowledge and with a second taught concept, persistence, and
+> resistance to contradicting context). Outside it, the concept simply does not fire:
+> **0.507 against a base of 0.500**, where context injection reaches 1.000. This is not a
+> tuning failure — training on a second format raises that format while lowering a third,
+> held-out one. **Every result in §5.5–5.7 must therefore be read as scoped to the teaching
+> decision format.** The natural next step is a mid-network memory, which would alter
+> representation rather than readout; **we have not built it, and we do not claim it solves
+> this.**
+>
+> **(i-b) Isolation and composition pull in opposite directions, and sequential arrival is
 > unsolved.** The parametric memory is attached *after the final layer* and so does not
 > participate in intermediate representation. We initially expected this to cost
 > compositional use; it does not. Composition holds both with pretrained knowledge
@@ -310,7 +360,9 @@
 > attribute. Against our five criteria the method attains retrieval-free use (I1),
 > composition (I2), cross-session persistence (I4) and cross-interlocutor isolation;
 > isolation *within* an interlocutor holds only under the stricter scheme and at the cost
-> above; I3 and I5 are untested.
+> above; **I5 holds (0.050 loss under a contradicting gloss, versus 0.075 for context
+> injection, with the gloss verified potent — it drives the base model to 0.033); I3 does
+> not hold (i).**
 >
 > **(ii) The gate verifies usage fidelity, not world truth.** It rejects the model's
 > *misreadings* of what the interlocutor means; a consistently deceptive interlocutor will
@@ -346,7 +398,10 @@
 | **9** | **分区版零退化不得报作「抗崩塌」实证** | ✅ §5.5 正文明写 "true **by construction**"，结论落在消融上 |
 | **10** | **I2 已两种形态成立，但不得再扩** | ✅ ⊗ 世界知识（§5.6）+ ⊗ 概念（§5.7）；**否定/量化/多跳/同属性内两概念仍未测**，不得声称 |
 | **11** | **不得把 Δ 0.000 报作「抗遗忘」** | ✅ §5.7 明写它是**构造性**的；可报的只有"只掩写入不够"与"修好的那版容量更少" |
-| **12** | **不得掩饰 L4 在组合上低于 L1** | ✅ §5.7 明写 0.889 vs 0.986；§6(i) 明写「顺序到达 + 强组合」无解 |
+| **12** | **不得掩饰 L4 在组合上低于 L1** | ✅ §5.7 明写 0.889 vs 0.986；§6(i-b) 明写「顺序到达 + 强组合」无解 |
+| **13** | 🔴 **不得声称 I3 成立 / 不得写"概念被内化"而不加作用域** | ✅ §5.8 + §6(i)：I3 **0.507 ≈ base**；§5.5–5.7 每条结论须带 "within the teaching decision format" |
+| **14** | **不得把"迁移量随读出余弦单调"写成定律** | ✅ §5.8 明写**只有三个点、同序而已** |
+| **15** | **不得声称中间层记忆能解决跨格式问题** | ✅ §6(i) 明写 **we have not built it**；它只是有实证动机的下一步 |
 
 ---
 
