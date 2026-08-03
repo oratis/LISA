@@ -1,0 +1,342 @@
+{
+  "model": "Qwen/Qwen2.5-1.5B-Instruct",
+  "n_teachers": 16,
+  "n_pairs": 8,
+  "gate_acc": 1.0,
+  "auc": {
+    "none": 0.513671875,
+    "part": 0.98046875,
+    "wrong": 0.12890625,
+    "shared": 0.5625
+  },
+  "cross_partition_hits": 0,
+  "mem_stats": {
+    "partitions": 16,
+    "writes": 16,
+    "rejected": 0,
+    "per_partition": {
+      "ISO-01-uA": 1,
+      "ISO-01-uB": 1,
+      "ISO-02-uA": 1,
+      "ISO-02-uB": 1,
+      "ISO-03-uA": 1,
+      "ISO-03-uB": 1,
+      "ISO-04-uA": 1,
+      "ISO-04-uB": 1,
+      "ISO-05-uA": 1,
+      "ISO-05-uB": 1,
+      "ISO-06-uA": 1,
+      "ISO-06-uB": 1,
+      "ISO-07-uA": 1,
+      "ISO-07-uB": 1,
+      "ISO-08-uA": 1,
+      "ISO-08-uB": 1
+    }
+  },
+  "records": [
+    {
+      "uid": "ISO-01-uA",
+      "pair": "ISO-01",
+      "word": "komalor",
+      "M": "blue",
+      "other": "red",
+      "picked": "blue",
+      "gate_correct": true,
+      "gains": {
+        "blue": 5.795548428137997,
+        "red": -8.156624693578273,
+        "green": -5.921906416620997,
+        "yellow": -7.077145710650974
+      },
+      "auc_none": 0.4375,
+      "auc_part": 1.0,
+      "auc_wrong": 0.0,
+      "auc_shared": 0.0
+    },
+    {
+      "uid": "ISO-01-uB",
+      "pair": "ISO-01",
+      "word": "komalor",
+      "M": "red",
+      "other": "blue",
+      "picked": "red",
+      "gate_correct": true,
+      "gains": {
+        "red": 4.831334504615267,
+        "blue": -6.868114161855944,
+        "green": -6.615148130867533,
+        "yellow": -4.856774258038554
+      },
+      "auc_none": 0.375,
+      "auc_part": 1.0,
+      "auc_wrong": 0.0625,
+      "auc_shared": 1.0
+    },
+    {
+      "uid": "ISO-02-uA",
+      "pair": "ISO-02",
+      "word": "posos",
+      "M": "yellow",
+      "other": "blue",
+      "picked": "yellow",
+      "gate_correct": true,
+      "gains": {
+        "yellow": 5.540261740980023,
+        "blue": -3.3222679012053327,
+        "red": -1.8254352870882258,
+        "green": -1.4957717587211565
+      },
+      "auc_none": 0.625,
+      "auc_part": 1.0,
+      "auc_wrong": 0.25,
+      "auc_shared": 0.25
+    },
+    {
+      "uid": "ISO-02-uB",
+      "pair": "ISO-02",
+      "word": "posos",
+      "M": "blue",
+      "other": "yellow",
+      "picked": "blue",
+      "gate_correct": true,
+      "gains": {
+        "blue": 4.44116544095066,
+        "yellow": -6.062645408440436,
+        "red": -6.0618290437420645,
+        "green": -5.128604584484742
+      },
+      "auc_none": 0.125,
+      "auc_part": 1.0,
+      "auc_wrong": 0.0,
+      "auc_shared": 1.0
+    },
+    {
+      "uid": "ISO-03-uA",
+      "pair": "ISO-03",
+      "word": "timo",
+      "M": "blue",
+      "other": "red",
+      "picked": "blue",
+      "gate_correct": true,
+      "gains": {
+        "blue": 8.053413012275126,
+        "red": -2.86702319635989,
+        "green": 0.35035250411571006,
+        "yellow": -1.2898647901795233
+      },
+      "auc_none": 0.53125,
+      "auc_part": 1.0,
+      "auc_wrong": 0.0,
+      "auc_shared": 0.0
+    },
+    {
+      "uid": "ISO-03-uB",
+      "pair": "ISO-03",
+      "word": "timo",
+      "M": "red",
+      "other": "blue",
+      "picked": "red",
+      "gate_correct": true,
+      "gains": {
+        "red": 7.613290070954786,
+        "blue": -0.21953831979356586,
+        "green": 1.2759474815363099,
+        "yellow": 1.1969247471681346
+      },
+      "auc_none": 0.375,
+      "auc_part": 0.8125,
+      "auc_wrong": 0.0,
+      "auc_shared": 0.8125
+    },
+    {
+      "uid": "ISO-04-uA",
+      "pair": "ISO-04",
+      "word": "supu",
+      "M": "yellow",
+      "other": "green",
+      "picked": "yellow",
+      "gate_correct": true,
+      "gains": {
+        "yellow": 5.92027388585568,
+        "green": -1.8575056003705033,
+        "red": 0.5577650205966798,
+        "blue": -1.4070482189858389
+      },
+      "auc_none": 0.53125,
+      "auc_part": 1.0,
+      "auc_wrong": 0.25,
+      "auc_shared": 0.25
+    },
+    {
+      "uid": "ISO-04-uB",
+      "pair": "ISO-04",
+      "word": "supu",
+      "M": "green",
+      "other": "yellow",
+      "picked": "green",
+      "gate_correct": true,
+      "gains": {
+        "green": 5.265693227592804,
+        "yellow": -3.415057983773165,
+        "red": -5.713590116129,
+        "blue": -3.066099865750351
+      },
+      "auc_none": 0.5625,
+      "auc_part": 1.0,
+      "auc_wrong": 0.25,
+      "auc_shared": 1.0
+    },
+    {
+      "uid": "ISO-05-uA",
+      "pair": "ISO-05",
+      "word": "rulu",
+      "M": "yellow",
+      "other": "red",
+      "picked": "yellow",
+      "gate_correct": true,
+      "gains": {
+        "yellow": 5.389525871596236,
+        "red": -4.868349269978459,
+        "blue": -4.241418366019195,
+        "green": -2.667095893451254
+      },
+      "auc_none": 0.75,
+      "auc_part": 1.0,
+      "auc_wrong": 0.25,
+      "auc_shared": 0.25
+    },
+    {
+      "uid": "ISO-05-uB",
+      "pair": "ISO-05",
+      "word": "rulu",
+      "M": "red",
+      "other": "yellow",
+      "picked": "red",
+      "gate_correct": true,
+      "gains": {
+        "red": 6.184688001578989,
+        "yellow": -5.735212378131784,
+        "blue": -4.107630284447859,
+        "green": -3.978259553479706
+      },
+      "auc_none": 0.5,
+      "auc_part": 1.0,
+      "auc_wrong": 0.0625,
+      "auc_shared": 1.0
+    },
+    {
+      "uid": "ISO-06-uA",
+      "pair": "ISO-06",
+      "word": "malal",
+      "M": "yellow",
+      "other": "blue",
+      "picked": "yellow",
+      "gate_correct": true,
+      "gains": {
+        "yellow": 5.615164883361367,
+        "blue": -2.7399264509935435,
+        "red": 0.8282065249086532,
+        "green": 0.7675088026167591
+      },
+      "auc_none": 0.6875,
+      "auc_part": 1.0,
+      "auc_wrong": 0.1875,
+      "auc_shared": 0.1875
+    },
+    {
+      "uid": "ISO-06-uB",
+      "pair": "ISO-06",
+      "word": "malal",
+      "M": "blue",
+      "other": "yellow",
+      "picked": "blue",
+      "gate_correct": true,
+      "gains": {
+        "blue": 3.9953202599777002,
+        "yellow": -4.275967840265032,
+        "red": -3.3743838319736934,
+        "green": -0.6799473751951215
+      },
+      "auc_none": 0.6875,
+      "auc_part": 1.0,
+      "auc_wrong": 0.1875,
+      "auc_shared": 1.0
+    },
+    {
+      "uid": "ISO-07-uA",
+      "pair": "ISO-07",
+      "word": "kokero",
+      "M": "yellow",
+      "other": "blue",
+      "picked": "yellow",
+      "gate_correct": true,
+      "gains": {
+        "yellow": 2.3007044875393925,
+        "blue": -8.455022859917651,
+        "red": -7.5908385204175035,
+        "green": -5.703055217600421
+      },
+      "auc_none": 0.5,
+      "auc_part": 1.0,
+      "auc_wrong": 0.1875,
+      "auc_shared": 0.1875
+    },
+    {
+      "uid": "ISO-07-uB",
+      "pair": "ISO-07",
+      "word": "kokero",
+      "M": "blue",
+      "other": "yellow",
+      "picked": "blue",
+      "gate_correct": true,
+      "gains": {
+        "blue": 3.7960464410703425,
+        "yellow": -10.062940944353883,
+        "red": -9.003181169573214,
+        "green": -6.909957242864058
+      },
+      "auc_none": 0.40625,
+      "auc_part": 1.0,
+      "auc_wrong": 0.0,
+      "auc_shared": 1.0
+    },
+    {
+      "uid": "ISO-08-uA",
+      "pair": "ISO-08",
+      "word": "tirene",
+      "M": "blue",
+      "other": "yellow",
+      "picked": "blue",
+      "gate_correct": true,
+      "gains": {
+        "blue": 5.533523976770308,
+        "yellow": -2.8605444303949437,
+        "red": -1.6644607116193004,
+        "green": -1.5266451259154117
+      },
+      "auc_none": 0.25,
+      "auc_part": 0.875,
+      "auc_wrong": 0.0625,
+      "auc_shared": 0.0625
+    },
+    {
+      "uid": "ISO-08-uB",
+      "pair": "ISO-08",
+      "word": "tirene",
+      "M": "yellow",
+      "other": "blue",
+      "picked": "yellow",
+      "gate_correct": true,
+      "gains": {
+        "yellow": 4.134808421060142,
+        "blue": -2.5518293755543056,
+        "red": -1.2102213939423692,
+        "green": -1.1731275256780336
+      },
+      "auc_none": 0.875,
+      "auc_part": 1.0,
+      "auc_wrong": 0.3125,
+      "auc_shared": 1.0
+    }
+  ]
+}
