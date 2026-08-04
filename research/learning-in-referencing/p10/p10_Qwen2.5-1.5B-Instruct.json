@@ -1,0 +1,48 @@
+{
+  "model": "Qwen/Qwen2.5-1.5B-Instruct",
+  "n_users": 8,
+  "design": "两个词含义互斥 + 训练物体只取这两色 ⟹ 同一物体两词标签相反",
+  "object_only_ceiling_train_acc": 0.5,
+  "results": {
+    "post-norm": {
+      "train_acc": 0.9739583358168602,
+      "train_curve_mean": [
+        [
+          150,
+          0.771,
+          0.5443
+        ],
+        [
+          300,
+          0.891,
+          0.3955
+        ],
+        [
+          600,
+          0.943,
+          0.2335
+        ],
+        [
+          900,
+          1.0,
+          0.1246
+        ]
+      ],
+      "own": {
+        "F1 Yes/No": 0.77,
+        "F2 A/B": 0.535,
+        "F3 True/False": 0.595
+      },
+      "within": {
+        "F1 Yes/No": 0.35,
+        "F2 A/B": 0.515,
+        "F3 True/False": 0.45
+      },
+      "across": {
+        "F1 Yes/No": 0.38,
+        "F2 A/B": 0.51,
+        "F3 True/False": 0.53
+      }
+    }
+  }
+}
