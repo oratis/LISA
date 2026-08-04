@@ -55,8 +55,9 @@ Three preconditions, none of which appeared in our original design, govern wheth
 signal exists at all, and we report them with the ablation that would have produced a false
 positive. We also report what a parametric consolidation substrate does \emph{not} buy: a
 word-substitution control shows it stores a persistent, partition-isolated,
-\emph{word-independent} bias over objects, and forcing genuine word binding costs the
-cross-format transfer that made it attractive.
+\emph{word-independent} bias over objects; forcing genuine word binding costs the
+cross-format transfer that made it attractive, and a token-triggered variant recovers binding
+completely but transfer only partially.
 \end{abstract}
 
 % =====================================================================
@@ -502,10 +503,22 @@ and $0.670$ against a base of $0.540$ and $0.525$, where the \emph{unbound} vari
 $0.935$ and $0.945$. The earlier transfer was a consequence of \emph{not} binding
 (Figure~\ref{fig:substrate}): an unbound memory tags the object representation, and any
 readout format can read that tag.
-Context injection obtains both properties ($0.905$ and $0.995$). \textbf{Across every
-configuration we tested, the parametric route attains word binding or cross-format transfer,
-never both.} We report this as the strongest negative evidence against this substrate in its
-current form.
+Context injection obtains both properties ($0.905$ and $0.995$).
+
+A further attempt narrows the gap without closing it. Making the entry \emph{token-triggered}
+--- one learned vector per (interlocutor, term), added to the residual stream only at the
+positions where that term's tokens occur --- gives binding by construction: substituting the
+opposite-meaning word drops the probe to $0.080$, and substituting an unrelated word returns
+it to base ($0.550$), because the trigger simply does not fire. Cross-format transfer improves
+too, but only partially: $0.775$ on the held-out True/False format against a base of $0.525$,
+and $0.570$ on A/B against $0.540$. \textbf{Across every configuration we tested, the
+parametric route attains at most one of the two \emph{at full strength}}; the best point we
+found holds binding completely and cross-format transfer only partially, still far from what
+context injection obtains for free. Two controls confirm the attribution rather than the
+remedy: writing the same value into the logits instead of the representation reproduces the
+base model exactly, and dropping the token trigger (injecting at every position) makes the
+training objective unfittable, since a position-independent constant cannot tell which of the
+two terms is being asked about.
 
 % =====================================================================
 \section{Limitations}
