@@ -11,11 +11,17 @@
 %     ✅ 第十二轮（2026-08-04）已把仅有的两条清零：
 %        Delétang ICLR 2024 —— ICLR proceedings PDF 页眉自陈；
 %        SEMA CVPR 2025    —— CVF Open Access 收录，pp. 10087–10098。
-%     🔴 当前唯一未过核的条目是 `loci2026`（TDCommons 11091 无法再定位）——
-%        **投稿前必须补全或从正文删除**，见该条目的 note。
+%     ✅ 处置完毕：`LOCI`（第四轮记为 TDCommons 11091）第十二轮**无法再定位、作者标题未能核实**
+%        ⟹ 已从正文与本文件**整条删除**（它只出现在族 6 概览句里，不承载我方主张）。
+%        ⟹ **本文件当前无未过核条目。**
 %
 %  元数据来源：arXiv Atom API（2026-08-04 取）；Nature 一条走 Crossref DOI。
 %  版本纪律：Self-Sizing Hopfield **必须钉 v3**（v1/v2 是另一篇，见 RESEARCH §7）。
+%
+%  ⚠️ 各条目的编辑纪律写在 `annote` 而**不是** `note` —— BibTeX 的 note 会被排进参考文献，
+%     中文与 emoji 会让 plainnat 直接编译失败（实测 main.bbl:52 报
+%     "You can't use `macro parameter character #'"）。annote 不打印，纪律仍绑在条目上。
+%     **新增条目时请沿用 annote，不要用 note。**
 % =====================================================================
 
 % ---------- 我方判据的理论地基 ----------
@@ -31,7 +37,7 @@
   eprint    = {2309.10668},
   archivePrefix = {arXiv},
   primaryClass  = {cs.LG},
-  note      = {会场已核实（第十二轮）：ICLR 2024 proceedings 的 PDF 页眉自陈
+  annote      = {会场已核实（第十二轮）：ICLR 2024 proceedings 的 PDF 页眉自陈
                "Published as a conference paper at ICLR 2024" ✅}
 }
 
@@ -40,7 +46,7 @@
   author    = {Cover, Thomas M. and Thomas, Joy A.},
   publisher = {Wiley},
   year      = {1999},
-  note      = {data-processing inequality 的出处。⚠️ 我方 §Intro 曾把该论点错误归因给 sharpening 论文
+  annote      = {data-processing inequality 的出处。⚠️ 我方 §Intro 曾把该论点错误归因给 sharpening 论文
                （自我推翻 #10），必须引本书而非 \cite{huang2024sharpening}。}
 }
 
@@ -66,7 +72,7 @@
   eprint    = {2310.01798},
   archivePrefix = {arXiv},
   primaryClass  = {cs.CL},
-  note      = {会场来自 arXiv comment 字段自陈「ICLR 2024」✅}
+  annote      = {会场来自 arXiv comment 字段自陈「ICLR 2024」✅}
 }
 
 @misc{ding2026agree,
@@ -88,7 +94,7 @@
   eprint = {2412.01951},
   archivePrefix = {arXiv},
   primaryClass  = {cs.LG},
-  note   = {⚠️ 引用纪律（自我推翻 #10）：本文是**动机性前提**的来源，
+  annote   = {⚠️ 引用纪律（自我推翻 #10）：本文是**动机性前提**的来源，
             「自我改进不能创造新信息」须归因于 \cite{cover1999elements}，**不得写成本文的定理**。}
 }
 
@@ -101,7 +107,7 @@
   eprint = {2605.30711},
   archivePrefix = {arXiv},
   primaryClass  = {cs.CL},
-  note   = {★ 离我方设计最近：online、per-item、no-task-boundary、write-side、显式叫 novelty gate。
+  annote   = {★ 离我方设计最近：online、per-item、no-task-boundary、write-side、显式叫 novelty gate。
             分开我方的只有**信号类型**（几何新颖度 s\_vMF vs 压缩增益）与**基质**（非参数文本库 vs 参数）。
             **必须正面引用**，不得写成"无人做过准入门控"。}
 }
@@ -114,7 +120,7 @@
   eprint = {2603.15994},
   archivePrefix = {arXiv},
   primaryClass  = {cs.AI},
-  note   = {信号 = 来源信誉 / provenance；显式拒绝 oracle 标签。属**来源可信**轴，非正确性轴。}
+  annote   = {信号 = 来源信誉 / provenance；显式拒绝 oracle 标签。属**来源可信**轴，非正确性轴。}
 }
 
 @misc{yang2026trustmem,
@@ -126,7 +132,7 @@
   eprint = {2606.25161},
   archivePrefix = {arXiv},
   primaryClass  = {cs.CL},
-  note   = {信号 = 对来源的忠实度（coverage / preservation / faithfulness）。同属来源轴。}
+  annote   = {信号 = 对来源的忠实度（coverage / preservation / faithfulness）。同属来源轴。}
 }
 
 @misc{stein2026gates,
@@ -136,7 +142,7 @@
   eprint = {2602.20574},
   archivePrefix = {arXiv},
   primaryClass  = {cs.LG},
-  note   = {🔴 **反例，必须正面处理**（自我推翻 #13）：GT-free 二值准入门（一致度 >= 4/8，未过门者零损失）。
+  annote   = {🔴 **反例，必须正面处理**（自我推翻 #13）：GT-free 二值准入门（一致度 >= 4/8，未过门者零损失）。
             ⟹ **禁止**写「尚无 GT-free 的写入准入门控」。且非首创，见 \cite{huang2022selfimprove}。}
 }
 
@@ -148,7 +154,7 @@
   eprint = {2210.11610},
   archivePrefix = {arXiv},
   primaryClass  = {cs.CL},
-  note   = {🔴 GT-free 一致性门控的**更早先例**（2022）——与 \cite{stein2026gates} 一起构成
+  annote   = {🔴 GT-free 一致性门控的**更早先例**（2022）——与 \cite{stein2026gates} 一起构成
             自我推翻 #13 的证据。新颖性重量须全部转到「判据类型 × 门控环节」两轴。}
 }
 
@@ -159,7 +165,7 @@
   eprint = {2606.03787},
   archivePrefix = {arXiv},
   primaryClass  = {cs.RO},
-  note   = {信号 = surprise。离散硬写入门的又一先例。}
+  annote   = {信号 = surprise。离散硬写入门的又一先例。}
 }
 
 % ---------- ★ 优先权风险：唯一同构的判据提案 ----------
@@ -172,7 +178,7 @@
   eprint = {2607.08032},
   archivePrefix = {arXiv},
   primaryClass  = {cs.AI},
-  note   = {🔴🔴 **最高优先权风险**：与我方**同构**地提出以 description length 为存储判据，
+  annote   = {🔴🔴 **最高优先权风险**：与我方**同构**地提出以 description length 为存储判据，
             但**只提议程、未实现、无准入门**。⟹ 我方可辩护的措辞只剩
             「**实现并实证**以压缩增益/MDL 为判据的推理期按条持久写入准入门控」。
             ⏰ 投稿前必须重扫该方向是否已被实现。}
@@ -199,7 +205,7 @@
   eprint    = {2411.05877},
   archivePrefix = {arXiv},
   primaryClass  = {cs.CL},
-  note      = {ICLR 2025（我方 r10 全文核查记录确认 ✅）。
+  annote      = {ICLR 2025（我方 r10 全文核查记录确认 ✅）。
                ⚠️ 引用纪律（自我推翻 #16）：**不得**写「天然按用户隔离」——
                全文无 isolation 一词、无跨用户泄漏测试；跨会话复用亦仅为架构性支持、无纵向演示。
                且 MSC 上 4x 省算力的代价是 F1 40.2 vs 全历史 prompt 66.0。}
@@ -212,7 +218,7 @@
   eprint = {2412.14964},
   archivePrefix = {arXiv},
   primaryClass  = {cs.CL},
-  note   = {⚠️ 引用纪律（自我推翻 #14）：**纯闭卷 PD 仅在 Squadshifts/Llama-3-8B 追平 RAG**；
+  annote   = {⚠️ 引用纪律（自我推翻 #14）：**纯闭卷 PD 仅在 Squadshifts/Llama-3-8B 追平 RAG**；
             「超过 RAG」依赖 PD+RAG 组合或放大版 PD XL；**HotpotQA 上 RAG 对纯闭卷 PD 三个规模全面占优**。
             我方 r9 核查：**完全无写入筛选**。}
 }
@@ -224,7 +230,7 @@
   eprint = {2602.12275},
   archivePrefix = {arXiv},
   primaryClass  = {cs.CL},
-  note   = {⚠️ 引用纪律（自我推翻 #15）：**不得**写「更好保留 OOD 能力」——实测边际
+  annote   = {⚠️ 引用纪律（自我推翻 #15）：**不得**写「更好保留 OOD 能力」——实测边际
             （math/Sokoban 上对 off-policy CD 仅 +0.1~+0.5，落在合并 std 内；对 base 5 格中 4 格微降），
             是"退化更少"不是"保留更好"；且 checkpoint 按 test accuracy 挑选（附录 A.3/B.2），数字受通胀。
             其唯一的 filtered EKD 筛选**依赖带 GT 的 validation 打分，非 GT-free**。}
@@ -240,7 +246,7 @@
   eprint = {2506.06266},
   archivePrefix = {arXiv},
   primaryClass  = {cs.CL},
-  note   = {朴素 NTP 打不过 ICL，必须 self-study + 蒸馏目标。无写入准入门。}
+  annote   = {朴素 NTP 打不过 ICL，必须 self-study + 蒸馏目标。无写入准入门。}
 }
 
 @misc{zweiger2025seal,
@@ -251,7 +257,7 @@
   eprint = {2506.10943},
   archivePrefix = {arXiv},
   primaryClass  = {cs.CL},
-  note   = {SEAL 式二值奖励。门控信号 = 下游任务表现，需评测信号。}
+  annote   = {SEAL 式二值奖励。门控信号 = 下游任务表现，需评测信号。}
 }
 
 @misc{tan2025dyprag,
@@ -262,7 +268,7 @@
   eprint = {2503.23895},
   archivePrefix = {arXiv},
   primaryClass  = {cs.CL},
-  note   = {version = v4（我方 r10 核查）。⚠️ 引用纪律（自我推翻 #17）：
+  annote   = {version = v4（我方 r10 核查）。⚠️ 引用纪律（自我推翻 #17）：
             **不得**写「多文档 LoRA 平均互相干扰」——**说反了**：论文称简单平均能有效整合知识，
             衰退只在注入过多文档时出现，且归因于任务无关冗余 + 有损压缩，全文无 interference 一词。}
 }
@@ -274,7 +280,7 @@
   eprint = {2606.11627},
   archivePrefix = {arXiv},
   primaryClass  = {cs.CL},
-  note   = {★ **内化不幂等**：把原 context 重新塞回已内化模型，性能反而变差（7/12 设定）。
+  annote   = {★ **内化不幂等**：把原 context 重新塞回已内化模型，性能反而变差（7/12 设定）。
             对任何"引用→内化"系统（含本项目）都是必须处理的工程陷阱。}
 }
 
@@ -287,7 +293,7 @@
   eprint = {2606.04703},
   archivePrefix = {arXiv},
   primaryClass  = {cs.CL},
-  note   = {⚠️ 引用纪律（自我推翻 #18/#19）：teacher **不是外部更强模型**，是同一策略条件化于经验池的
+  annote   = {⚠️ 引用纪律（自我推翻 #18/#19）：teacher **不是外部更强模型**，是同一策略条件化于经验池的
             **自教师**；"高质量"指对其轨迹做 rejection sampling。精确主张是**跨迭代稳定性**。
             且**不得**把迭代坍缩归因于「无差别写入」——论文归因于轨迹特异伪影 / 状态错位 /
             on-policy 监督的反应性；其稳定配方本身含 rejection sampling 正确性门。
@@ -306,7 +312,7 @@
   primaryClass  = {cs.LG},
   booktitle = {IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
   pages  = {10087--10098},
-  note   = {SEMA。信号 = 表征新颖性（重构误差 z 分数合取 > 阈值 → 扩容）。
+  annote   = {SEMA。信号 = 表征新颖性（重构误差 z 分数合取 > 阈值 → 扩容）。
             ★ 我方 per-item 零分布 z 校准**继承其校准机制**，差别在被校准的信号。
             会场已核实（第十二轮）：CVF Open Access 收录，CVPR 2025，pp. 10087--10098 ✅}
 }
@@ -320,7 +326,7 @@
   archivePrefix = {arXiv},
   primaryClass  = {cs.NE},
   version = {v3},
-  note   = {🚨 **必须钉 v3**——v1/v2 是另一篇论文。双阈值滞回门；信号 = 归一化损失比 + 标签几何。
+  annote   = {🚨 **必须钉 v3**——v1/v2 是另一篇论文。双阈值滞回门；信号 = 归一化损失比 + 标签几何。
             单作者预印本；作者自陈"为假信息分配存储与真信息无异"（⟹ 无正确性成分）。}
 }
 
@@ -331,7 +337,7 @@
   eprint = {2203.14465},
   archivePrefix = {arXiv},
   primaryClass  = {cs.LG},
-  note   = {门 = 最终答案正确性 ⟹ **需要 GT**。与 on-policy 蒸馏（教师即验证器）
+  annote   = {门 = 最终答案正确性 ⟹ **需要 GT**。与 on-policy 蒸馏（教师即验证器）
             和本项目（无 GT 自验证）构成三方对照。}
 }
 
@@ -347,7 +353,7 @@
   eprint = {2607.22962},
   archivePrefix = {arXiv},
   primaryClass  = {cs.CL},
-  note   = {🔴🔴 **投稿前重扫抓到的最重要一篇（2026-07-25，晚于我方第十一轮）**。
+  annote   = {🔴🔴 **投稿前重扫抓到的最重要一篇（2026-07-25，晚于我方第十一轮）**。
             它是 **GT-free** 的 **write-time admission gate**，作用于**推理期、按条、持久**的
             外部记忆写入 —— ⟹ **我方贡献声明的第二条腿（门控环节）就此失守**，
             新颖性只剩**判据类型**一轴。
@@ -368,7 +374,7 @@
   eprint = {2605.10870},
   archivePrefix = {arXiv},
   primaryClass  = {cs.LG},
-  note   = {🔴🔴 **判据类型那一轴上离我方最近的一篇**（第十二轮重扫抓到；水印核验 arXiv:2605.10870v1）。
+  annote   = {🔴🔴 **判据类型那一轴上离我方最近的一篇**（第十二轮重扫抓到；水印核验 arXiv:2605.10870v1）。
             全文词边界扫描：**description length = 0 · MDL = 0 · admission = 0 ·
             interlocutor = 0 · isolation = 0**；rate-distortion = 4。
             ★ 三条把它与我方分开的**结构性**差异（全部有原文支撑，不得省略）：
@@ -389,7 +395,7 @@
   eprint = {2606.13177},
   archivePrefix = {arXiv},
   primaryClass  = {cs.CL},
-  note   = {重扫核实：**事后压缩**（对已入库条目做 delete/merge/preserve），**不是写入准入门**；
+  annote   = {重扫核实：**事后压缩**（对已入库条目做 delete/merge/preserve），**不是写入准入门**；
             信号是 **LLM 判官的事实性判断**，**无** description length / MDL / rate-distortion 判据。
             ⟹ 不构成优先权威胁，但须在 Related Work 里与"准入门"划清界限。}
 }
@@ -404,7 +410,7 @@
   pages     = {524--540},
   year      = {2020},
   doi       = {10.1007/978-3-030-58536-5\_31},
-  note      = {会场经 Springer/ACM DL 条目核实 ✅}
+  annote      = {会场经 Springer/ACM DL 条目核实 ✅}
 }
 
 @misc{chaudhry2019tiny,
@@ -416,7 +422,7 @@
   eprint = {1902.10486},
   archivePrefix = {arXiv},
   primaryClass  = {cs.LG},
-  note   = {arXiv comment 无会场字段 ⟹ 保留 @misc（会场纪律见抬头）。}
+  annote   = {arXiv comment 无会场字段 ⟹ 保留 @misc（会场纪律见抬头）。}
 }
 
 @inproceedings{aljundi2019gss,
@@ -427,7 +433,7 @@
   eprint    = {1903.08671},
   archivePrefix = {arXiv},
   primaryClass  = {cs.LG},
-  note      = {会场来自 arXiv comment 自陈「Neurips 2019」✅}
+  annote      = {会场来自 arXiv comment 自陈「Neurips 2019」✅}
 }
 
 @inproceedings{aljundi2019mir,
@@ -439,7 +445,7 @@
   eprint    = {1908.04742},
   archivePrefix = {arXiv},
   primaryClass  = {cs.LG},
-  note      = {会场来自 arXiv journal-ref 字段「NeurIPS 2019」✅。
+  annote      = {会场来自 arXiv journal-ref 字段「NeurIPS 2019」✅。
                ⚠️ 引用纪律：MIR 是**检索侧**准则，**不是准入**——正文已写明这一点。}
 }
 
@@ -452,7 +458,7 @@
   eprint    = {1611.07725},
   archivePrefix = {arXiv},
   primaryClass  = {cs.CV},
-  note      = {会场来自 arXiv comment 自陈「Accepted paper at CVPR 2017」✅}
+  annote      = {会场来自 arXiv comment 自陈「Accepted paper at CVPR 2017」✅}
 }
 
 @inproceedings{buzzega2020derpp,
@@ -464,7 +470,7 @@
   eprint    = {2004.07211},
   archivePrefix = {arXiv},
   primaryClass  = {cs.LG},
-  note      = {会场来自 arXiv comment 自陈「Accepted at 34th ... NeurIPS 2020」✅}
+  annote      = {会场来自 arXiv comment 自陈「Accepted at 34th ... NeurIPS 2020」✅}
 }
 
 @inproceedings{lee2020cndpm,
@@ -475,7 +481,7 @@
   eprint    = {2001.00689},
   archivePrefix = {arXiv},
   primaryClass  = {cs.LG},
-  note      = {会场来自 arXiv comment 自陈「Accepted as a conference paper at ICLR 2020」✅。
+  annote      = {会场来自 arXiv comment 自陈「Accepted as a conference paper at ICLR 2020」✅。
                ★ 我方 §7 记录：它是「门控在前、巩固在后」两段式的先例，
                但准入信号是 **DP 先验 x 似然**（novelty-under-likelihood），**不是正确性**。}
 }
@@ -487,20 +493,10 @@
   eprint = {1708.01547},
   archivePrefix = {arXiv},
   primaryClass  = {cs.LG},
-  note   = {DEN。arXiv comment 无会场字段 ⟹ 保留 @misc（ICLR 2018 为通行认知但无字段佐证，
+  annote   = {DEN。arXiv comment 无会场字段 ⟹ 保留 @misc（ICLR 2018 为通行认知但无字段佐证，
             按抬头纪律不填）。}
 }
 
-@misc{loci2026,
-  title  = {{LOCI}},
-  author = {{(authors not re-verified)}},
-  year   = {2026},
-  howpublished = {TDCommons 11091},
-  note   = {🔴 **本条未通过第十二轮复核**：我方第四轮记录为 TDCommons 11091（2026-07-21，
-            信号=正确性但靠**外部结果 oracle**，非 GT-free），但第十二轮**无法再定位该条目**，
-            作者与标题未能核实。⟹ **投稿前必须二选一**：补全并核实，或**从正文删除该引用**
-            （它只出现在族 6 概览句里，不承载我方主张）。**当前状态下不得进入参考文献表。**}
-}
 
 % =====================================================================
 %  ⚠️ 尚未入库、正文里仍以占位符出现的引用（投稿前必须补齐）

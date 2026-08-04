@@ -1,0 +1,650 @@
+% =====================================================================
+%  Learning in Referencing —— 正式投稿稿 v1（2026-08-04）
+%
+%  用法：换成目标会场的 style file 即可（COLM / ICLR）。
+%        \documentclass 与 \usepackage{colm2027_conference} 两行按会场替换。
+%
+%  🚫 本稿受 REPORT §4 的全部禁令约束，逐条自查见 paper/CHECKLIST.md。
+%     最要紧的四条：
+%       · 不写「尚无 GT-free 的写入准入门控」（GATES/LMSI/ConsistencyGate 证伪）
+%       · 不把「门控环节」当新颖性的一条腿（ConsistencyGate 就在推理期按条持久写入）
+%       · 参数化那一节一律写 word-independent bias over objects，不写 "learns a concept"
+%       · 「写入」必带 scope（inference-time / persistent / per-item）
+% =====================================================================
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,booktabs,graphicx,microtype,xcolor}
+\usepackage[hidelinks]{hyperref}
+\usepackage[numbers,sort&compress]{natbib}
+
+\newcommand{\M}{\ensuremath{M}}
+\newcommand{\Mp}{\ensuremath{M'}}
+\newcommand{\auc}[1]{\ensuremath{#1}}
+
+\title{Compression Gain as an Admission Criterion\\
+       for Concepts Learned at Inference Time}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+A deployed language model that is taught a new term by its conversation partner has two
+options today: forget it when the context closes, or write it to a persistent store
+unconditionally. Neither is learning. Learning requires deciding, without an answer key,
+whether what the model \emph{took} the term to mean is what the partner \emph{meant}.
+We propose an admission gate whose criterion is \textbf{compression gain}, resting on the
+prediction--compression duality: a candidate
+concept is consolidated only if conditioning on it compresses the partner's subsequent,
+held-out usage by more than the concept's own description length, and by more than
+surface-matched placebo concepts. Admission gates are not new, and neither is placing one
+at inference time; what is new is the criterion. Every ground-truth-free gate we could
+find scores a candidate by how consistently the model already endorses it, how novel it
+is, or how trustworthy its source is --- never by how much it compresses what the
+interlocutor does next.
+On a procedurally generated language of \emph{gavagai pairs} --- teaching sets that are
+extensionally identical under a true meaning \M{} and a tempting misreading \Mp{}, separated
+only by held-out usage --- compression gain separates \M{} from \Mp{} at AUC $0.915$
+($23/24$, $p{=}1.5\mathrm{e}{-}6$) on a frozen 1.5B model with no training, while semantic
+entropy reaches $0.269$. The comparison is not merely a gap: stratified by whether \Mp{} is
+\emph{narrower} than \M{}, semantic entropy scores $0.137$ --- it systematically prefers the
+misreading --- because narrowness inflates confidence, and the narrower misreading is the
+most common form of referential ambiguity.
+Three preconditions, none of which appeared in our original design, govern whether the
+signal exists at all, and we report them with the ablation that would have produced a false
+positive. We also report what a parametric consolidation substrate does \emph{not} buy: a
+word-substitution control shows it stores a persistent, partition-isolated,
+\emph{word-independent} bias over objects, and forcing genuine word binding costs the
+cross-format transfer that made it attractive.
+\end{abstract}
+
+% =====================================================================
+\section{Introduction}
+
+Large language models acquire concepts almost exclusively at training time. When a
+conversation partner introduces a genuinely new one --- a term of art, a private
+convention, a word of a language the model has never seen --- today's deployed systems
+either forget it when the context window closes, or write it into some persistent store
+\emph{unconditionally}. Neither behaviour is learning. Learning would require the model to
+form a hypothesis about what the partner means, test that hypothesis against how the
+partner actually uses the term, and only then commit it to permanent, partner-specific
+memory.
+
+We study concept acquisition \emph{in referencing}: during inference-time interaction,
+after pretraining is over. Doing this properly requires four properties simultaneously.
+The concept is \textbf{novel} (outside the training distribution, not retrieved); its
+acquisition is \textbf{self-verified without ground truth} (no answer key grades the
+concept); it is \textbf{persistent} (survives the end of the session); and it is
+\textbf{isolated per interlocutor} (one partner's idiolect never leaks into another's).
+This paper focuses on the hardest of the four: \emph{absent any answer key, what signal
+should decide whether a newly acquired concept deserves permanent consolidation?}
+
+The criterion itself stands on the duality between prediction and compression
+\citep{deletang2024compression}: a model that predicts an interlocutor's next usage well
+is, by construction, a good code for it, so ``does this concept help me predict you'' and
+``does this concept pay for itself in bits'' are the same question asked twice.
+
+\paragraph{The pipeline is not the bottleneck; the admission policy is.}
+Context-distillation methods already internalize in-context knowledge into parameters ---
+context distillation onto the model itself \citep{snell2022distilling},
+self-distillation onto an adapter with the model as its own teacher
+\citep{kujanpaa2024injection}, trained KV-prefixes \citep{eyuboglu2025cartridges},
+per-document adapters generated by a hypernetwork \citep{tan2025dyprag},
+on-policy reverse-KL variants \citep{ye2026opcd} --- and Generative Adapter
+\citep{chen2024generativeadapter} maps a context to an adapter in a single forward pass,
+producing parameter deltas that can be stored and reused per user. What these pipelines
+share is the admission policy: \emph{whatever enters the context gets written}. Prompt
+Distillation applies no screening to its self-generated training data. Cartridges trains
+on every generated conversation. OPCD's only selective variant scores candidates by task
+performance on a \emph{labeled} validation set; in the setting its authors explicitly
+designate as label-free, what gets distilled ``is not pre-evaluated'' and selection is
+random.
+
+\paragraph{Gates exist --- the open axis is the criterion.}
+Across continual learning, memory architectures and the 2026 agent-memory wave, the
+admission signals of persistent-consolidation gates fall into ten proxy families
+(Table~\ref{tab:taxonomy}; \S\ref{sec:related}). We claim novelty on none of the obvious axes. Consensus gating
+has already realized a ground-truth-free correctness proxy: GATES \citep{stein2026gates}
+admits a distillation item only when $\geq 4$ of $8$ tutor rollouts agree, and LMSI
+\citep{huang2022selfimprove} filtered self-training data by majority vote as early as 2022.
+Nor is the \emph{locus} ours: ConsistencyGate \citep{zhang2026consistencygate} places a
+ground-truth-free admission gate exactly where ours sits --- at deployment time, per
+candidate fact, before a persistent write. What remains open is the criterion type alone:
+\textbf{no existing method uses compression gain --- a minimum-description-length criterion
+--- as the admission signal.} Compression \emph{has} been proposed as the currency for
+agent memory: as an agenda in description-length form \citep{colaco2026ratedistortion},
+and, closest to us, as a worked decision-centric rate--distortion theory
+\citep{zou2026demem}, which independently argues that memory should preserve
+\emph{decisions} rather than \emph{descriptions} --- a conclusion our own ablations reach
+empirically (\S\ref{sec:observable}). Three things separate that line from ours. It
+compresses \textbf{the agent's own action choices}, whereas our criterion is evaluated on
+\textbf{another party's subsequent word choices}. It answers \textbf{what may be forgotten
+under a budget}, a partition problem, whereas ours answers \textbf{whether a candidate
+should be written at all}. And its distortion is decision regret, so it presumes an
+observed reward at each step; ours presumes only that the interlocutor keeps talking.
+
+\paragraph{Contributions.}
+\begin{enumerate}\itemsep2pt
+\item \textbf{A map with a corrected gap.} A ten-family taxonomy of admission signals
+across all persistent-consolidation gates we could verify, including the closest positive
+precedents --- consensus gates that already realize ground-truth-free correctness proxies,
+both at training-time data admission
+\citep{stein2026gates,huang2022selfimprove} and, as of July 2026, at exactly our locus
+\citep{zhang2026consistencygate}. \emph{The gap we occupy is one axis, not two: the
+criterion type.} We further show \emph{why} that distinction matters rather than asserting
+it --- the consistency signal the closest precedents rely on is not merely weaker on our
+task but systematically inverted on its most common form.
+
+\item \textbf{A mechanism.} A two-part MDL admission gate with a placebo control, measured
+on held-out usage decisions, upgraded to a three-state (accept / reject / ask) design by a
+ground-truth-free decidability check; per-item calibration against a null distribution and
+a dimensionless rank statistic that transfers a single threshold across model scales.
+
+\item \textbf{A benchmark that constructs the failure mode.} Gavagai pairs whose teaching
+sets are extensionally consistent with both \M{} and \Mp{}, so that ``confident, consistent
+misunderstanding'' is a controlled experimental condition rather than an anecdote --- with
+ground truth available to the \emph{evaluator} but never to the gate.
+
+\item \textbf{An honest scope, including a negative result about the substrate.} We report
+three preconditions, the ablation that would have produced a false positive, and a
+word-substitution control showing that our parametric consolidation stores a persistent,
+partition-isolated, \emph{word-independent} bias over objects rather than the meaning of a
+word --- together with the trade-off that forcing genuine binding destroys cross-format
+transfer.
+\end{enumerate}
+
+% =====================================================================
+\section{Related work}
+\label{sec:related}
+
+\paragraph{Where the signals fall.}
+Continual and lifelong learning has produced a rich taxonomy of \emph{what to keep}.
+Reservoir and class-balanced sampling admit examples by randomness or label counts
+\citep{prabhu2020gdumb,chaudhry2019tiny}; gradient-based selection chooses by gradient
+diversity \citep{aljundi2019gss}, while maximally-interfered retrieval is a
+\emph{retrieval}-side criterion rather than an admission one \citep{aljundi2019mir};
+herding stores class-representative exemplars \citep{rebuffi2017icarl}; dark experience
+replay stores reservoir-sampled logits \citep{buzzega2020derpp}. Architectural growth gates
+decide \emph{when to expand} on training loss, parameter drift, or data likelihood
+\citep{yoon2017den,lee2020cndpm}. Self-adapting schemes gate their own edits on a downstream binary reward
+\citep{zweiger2025seal}. Modern write-side gates admit items by geometric novelty
+\citep{wang2026sage}, normalized-loss hysteresis \citep{li2025selfsizing}, or Bayesian
+surprise \citep{gorlo2026worth}. The 2026 agent-memory wave gates writes on trust proxies
+--- source reputation and reliability \citep{zahn2026writetime}, or faithfulness to the
+source \citep{yang2026trustmem}. None of these signals assesses whether the acquired
+concept itself matches what the interlocutor meant.
+
+\paragraph{Uncertainty is the wrong property here.}
+Semantic entropy flags \emph{inconsistency} \citep{farquhar2024semantic} --- but a
+confidently held misunderstanding is low-entropy: self-consistent, novel to the memory
+store, often surprising, faithfully transcribed from a trusted source. Every existing
+signal class therefore admits it, while it fails to predict how the teacher will use the
+term next. That predictive failure is exactly what compression gain measures, and agreement-based
+confidence has itself been audited as an unreliable standalone correctness signal
+\citep{ding2026agree}. Naive
+self-reflection without external verification does not repair errors
+\citep{huang2024cannot}, and self-improvement cannot create information absent from the
+model --- a data-processing-inequality argument \citep{cover1999elements} invoked as
+motivation by sharpening analyses \citep{huang2024sharpening} --- which is why the new
+information in our setting must come from the interlocutor's usage.
+
+\paragraph{Boundary.}
+Three neighbouring problems are not ours. Source-trust gates
+\citep{zahn2026writetime,yang2026trustmem} address whether the \textbf{teacher} is
+reliable; our gate addresses whether the \textbf{model's hypothesis matches what the
+teacher means}. Correctness gates that consult an answer key or task outcome
+\citep{zelikman2022star} presuppose exactly the signal our setting denies. And post-hoc
+compaction \citep{kim2026memrefine,zou2026demem} decides what to \emph{drop} from an
+already-written store under a budget, whereas we decide what is \emph{admitted} in the
+first place. All three are orthogonal to ours and composable with it; none subsumes it, and
+we evaluate only admission.
+
+\begin{table}[t]
+\centering\small
+\caption{Admission signals of persistent-consolidation gates. The criterion column, not the
+existence of a gate nor its locus, is what remains open. Rows are representative rather than
+exhaustive; the full version is Table~\ref{tab:full} in Appendix~\ref{app:taxonomy}.}
+\label{tab:taxonomy}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}p{0.20\linewidth}p{0.30\linewidth}p{0.28\linewidth}c@{}}
+\toprule
+\textbf{Method} & \textbf{Signal} & \textbf{Locus} & \textbf{Descr.\ length?} \\
+\midrule
+GDumb, reservoir & randomness / class balance & write admission & no \\
+GSS, MIR         & gradient diversity / interference & write / retrieval & no \\
+iCaRL, DER++     & representativeness / reservoir & write admission & no \\
+DEN, CN-DPM      & loss, drift, data likelihood & training-time growth & no \\
+SEMA             & representational novelty & training-time growth & no \\
+SAGE             & geometric novelty & online, per item & no \\
+Self-Sizing Hopfield & normalized-loss hysteresis & online, per item & no \\
+Worth Remembering & Bayesian surprise & online, per item & no \\
+Write-Time Gating, TRUSTMEM & source trust / faithfulness & online, per item & no \\
+STaR             & answer correctness (\emph{needs} GT) & training-time & no \\
+GATES, LMSI      & self-consistency (GT-free) & training-time & no \\
+ConsistencyGate  & self-consistency (GT-free) & \textbf{inference, per item, persistent} & no \\
+DeMem            & rate--distortion on \emph{agent} decisions (needs reward) & budgeted compaction & no \\[2pt]
+\midrule
+\textbf{Ours} & \textbf{compression gain on the \emph{interlocutor's} held-out usage}
+              & \textbf{inference, per item, persistent} & \textbf{yes} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% =====================================================================
+\section{Method}
+
+\subsection{What the gate observes}
+\label{sec:observable}
+
+A concept hypothesis must be scored against \emph{evidence}. The natural-seeming choice ---
+the likelihood of the interlocutor's utterances --- fails: the entropy of fluent text is
+dominated by syntax and lexical choice, and the few bits that carry conceptual content are
+swamped. We therefore score a candidate concept against the interlocutor's \textbf{usage
+decisions}: for each held-out instance $o$, whether the interlocutor applies the term
+($y_o \in \{\textsf{applies}, \neg\textsf{applies}\}$). Crucially, $y_o$ is
+\emph{observed usage} --- data --- and not an answer about whether the concept is right.
+
+This choice is not a detail. Scored on free-form statements the gain is $+0.68$ nats
+($5/8$, $p{=}0.36$; the word-level margin is $+0.02 \approx 0$); scored on the decision
+sequence it is $+4.92$ nats ($8/8$, $p{=}0.0039$) --- a $7.2\times$ improvement on the same
+items and the same model. A parallel argument has been made for agent memory
+\citep{zou2026demem}: what deserves to be kept is what preserves \emph{decisions} rather
+than \emph{descriptions}. We reach the same conclusion from the opposite direction, by
+measuring what happens when the observable is chosen wrongly.
+
+\subsection{A two-part code with a placebo control}
+
+The gain is a two-part (MDL) code: the concept must earn back its own description length.
+Writing $K_u$ for the interlocutor's already-consolidated knowledge and $H_u$ for held-out
+turns \emph{not} used to form the candidate $c$,
+\begin{equation}
+G(c) \;=\; \sum_{o \in H_u} \big[-\log P(y_o \mid o, K_u)\big]
+        \;-\; \sum_{o \in H_u} \big[-\log P(y_o \mid o, K_u \cup \{c\})\big]
+        \;-\; L(c).
+\label{eq:gain}
+\end{equation}
+Two controls are load-bearing. \textbf{(i) Held-out turns}: scoring on the teaching turns
+themselves is self-compression and inflates the gain. \textbf{(ii) A placebo pool}: since
+adding \emph{any} plausible text to the context can lower perplexity, a candidate must beat
+the best of a pool of surface-matched but semantically wrong concepts.
+
+We report $\Delta\text{NLL}$ (pure predictive power) and $G$ (with the length penalty)
+separately, because their aggregate is misleading. A naive implementation of
+Eq.~\ref{eq:gain} appears to succeed at $8/8$, but $92\%$ of that margin comes from $L(c)$
+alone; the word-level predictive margin is $\approx 0$. Reporting only $G$ would have
+yielded a false positive.
+
+\subsection{Per-item calibration and the abstention state}
+
+Raw gains are not comparable across concepts --- base entropies differ by roughly $2\times$.
+We calibrate per item against the placebo pool itself, treating it as a null distribution,
+$z_i(c) = (\Delta\text{NLL}_i(c) - \mu_i^{\text{null}}) / \sigma_i^{\text{null}}$. The pool
+deliberately contains \emph{over-specific} alternatives ($\M \wedge \text{extra}$), so that
+a narrower misreading is a \emph{typical} null member rather than an outlier. The design
+prediction holds precisely: \Mp{} averages $-0.22$ against a null centre of $-0.27$ --- a
+gap of $0.05$ nats --- while \M{} sits at $+3.86$. Calibration raises AUC from $0.797$ to
+$0.906$. The mechanism is inherited from SEMA's novelty calibration
+\citep{wang2024sema}; the difference, again, is the signal being calibrated.
+
+A binary gate is not enough. The gate's discriminative power is inherited from the base
+model: if the model's predictions do not respond to the candidate at all, any gain-based
+criterion is reading noise. We therefore add a \emph{decidability} precondition computed
+from the null pool's dispersion $\sigma_{\text{null}}$ --- requiring no knowledge of which
+candidate is correct, and already computed by the gate. Below threshold the gate
+\textbf{abstains and queries the interlocutor} rather than guessing. This raises AUC from
+$0.857$ to $0.964$ with $15/15$ correct acceptances of \M{} and no false rejections;
+accuracy on covered items is $90.0\%$. The abstention is justified rather than evasive: on
+the abstained items themselves the criterion scores AUC $0.551$, i.e.\ chance --- the gate
+declines exactly the items it could not have decided.
+
+For cross-scale deployment we use \texttt{rank}, the within-batch percentile of the raw
+score. Being a monotone transform it costs nothing within a batch, and being dimensionless
+it transfers: a single threshold $\tau = 0.40$ gives $100\%$ and $92.3\%$ on 1.5B and 3B
+respectively. The cost is that percentiles need a batch of candidates --- a same-round pool
+or a rolling window.
+
+\subsection{Consolidation and per-interlocutor partitioning}
+\label{sec:consolidation}
+
+Concepts that pass the gate are written to a store keyed by
+$(\textsf{interlocutor\_id}, \textsf{term})$; retrieval is masked to the querying
+interlocutor's partition, so cross-interlocutor interference is zero \emph{by construction}
+rather than by ranking. We instantiate this at two levels, and keep them strictly separate
+throughout. \textbf{(a) External}: a key--value store whose entries are re-injected into
+context; this is what \S\ref{sec:endtoend} uses. \textbf{(b) Parametric}: a sparse
+product-key memory whose keys and values are \emph{parameters}, added to the residual
+stream at the final layer, with the slot index space partitioned by interlocutor and
+gradients masked to the writing partition; the base model is frozen throughout and no
+gradient passes through any transformer block. This is what \S\ref{sec:substrate} uses.
+
+One implementation detail is a necessary condition rather than an incidental choice: slot
+routing must use \textbf{cosine-normalised} similarity. Prompts differing only in the
+described object yield nearly parallel hidden states (pairwise cosine $\approx 0.994$ at
+$\lVert h \rVert \approx 172$), so raw dot-product routing saturates the softmax, sends
+every input to the same slot, and degenerates the memory into a constant bias.
+
+% =====================================================================
+\section{Experimental setup}
+
+\paragraph{A constructed language, with contamination controls.}
+Testing acquisition of \emph{novel} concepts requires materials provably outside the
+training distribution. Real low-resource languages cannot give this guarantee at scale
+(Unicode, code comments, loanwords, parallel-corpus leakage). We therefore generate a
+controlled language procedurally: pseudo-words filtered against word lists and tokenizer
+familiarity, over a combinatorial micro-world whose semantics are known by construction.
+Two independent contamination checks pass: tokenizer filtering removes $0$ items, and a
+zero-shot probe on the pseudo-words gives AUC $0.394$ --- no usable prior.
+
+\paragraph{Gavagai pairs.}
+Each item is a \emph{gavagai pair}: a true meaning \M{} and a tempting misreading \Mp{} that
+are \textbf{extensionally identical on the teaching set} --- both explain every teaching
+example perfectly --- and are separated \textbf{only by held-out usage}. This renders
+Quine's indeterminacy as a controlled, scorable condition. Five ambiguity families are
+covered: conjunction ($\Mp = \M \wedge \text{extra}$), category level,
+material-vs-object, argument order, and absolute-vs-relative properties.
+
+\paragraph{Protocol.}
+Unless stated otherwise: frozen Qwen2.5-1.5B-Instruct, pure prompting, \textbf{no
+training}, single machine. The one exception is the parametric memory of
+\S\ref{sec:substrate}, where the base model remains entirely frozen and only the memory's
+keys and values are trained. We report AUC (threshold-free), win counts with sign tests,
+and item-level bootstrap CIs. We use threshold-free AUC deliberately: the model has a
+systematic \textsf{No}-bias on unfamiliar pseudo-word predicates --- under
+\texttt{komalor means blue}, blue items score $p_{\textsf{yes}} \in [0.245, 0.349]$ against
+red items at $[0.020, 0.023]$, a $\approx 14\times$ discriminative signal that lies
+\emph{entirely below} $0.5$. A $0.5$-threshold accuracy would read $0.00$. This also
+supports the mechanism: the gate consumes continuous NLL rather than thresholded decisions
+and is immune to the bias.
+
+% =====================================================================
+\section{Results}
+
+\subsection{The gate separates a true concept from a self-consistent misreading}
+
+On the core domain --- conjunction, category level and material-vs-object, the families
+where the base model demonstrably applies definitions compositionally --- compression gain
+separates \M{} from \Mp{} at \textbf{AUC $0.915$} ($23/24$, $p = 1.5\mathrm{e}{-}6$), while
+semantic entropy reaches $0.269$. Across all five families the figures are $0.809$
+($37/40$, $p = 9.7\mathrm{e}{-}9$) and $0.423$. Procedurally generated items reproduce the
+hand-built set: core-domain margin $+4.44$ nats ($23/24$, AUC$(z)$ $0.911$) against
+$+4.08$ ($19/22$).
+
+Two methodological facts must accompany these numbers. First, our ``semantic entropy'' and
+``epistemic-drop'' arms are \emph{mathematically equivalent} for the paired \M{}-vs-\Mp{}
+decision (the base entropy cancels in the difference; measured per-item margin differs by
+$5.55\mathrm{e}{-}17$), so there are \textbf{two independent arms, not three}. A genuine
+expected-information-gain querying arm is not implemented. Second, we use a
+\emph{binary-exact} semantic entropy computed directly from logits --- a stronger variant
+than the sampled original --- at the cost of the bidirectional-entailment clustering, so
+conclusions could differ in a free-generation setting.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.62\linewidth]{figures/fig1_criterion_type.pdf}
+\caption{Criterion type, stratified by whether the misreading \Mp{} is \emph{narrower}
+than the true meaning \M{}. Compression gain holds across strata; semantic entropy is
+inverted exactly where the misreading is a proper subset --- the Quinean case.}
+\label{fig:criterion}
+\end{figure}
+
+\paragraph{The failure is directional, and that is the point.}
+Semantic entropy does not merely fail here; it fails \emph{in the wrong direction}.
+Stratifying by whether \Mp{} is narrower than \M{} (Figure~\ref{fig:criterion}): where it
+is (conjunction, category level) semantic entropy scores $\mathbf{0.137}$ --- it systematically \emph{prefers} the
+misreading; where it is not, it sits at chance ($0.507$). The mechanism is visible in the
+entropies themselves: a narrower concept licenses more confident rejections ($H$ falls
+$0.363 \to 0.253$ and $0.308 \to 0.148$). Self-consistency measures \emph{how certain the
+model is}, and narrowness inflates certainty. On the most common form of referential
+ambiguity --- the Quinean one, where the misreading is a proper subset --- that is exactly
+the wrong bias. We report the exception: on absolute-vs-relative items, the one family
+where \Mp{} is \emph{not} narrower, semantic entropy is the better signal ($0.750$).
+
+\subsection{Scope: where the gate works, and why scaling is not a general fix}
+
+The gate's power is inherited from the base model along two axes, and they respond to scale
+in \emph{opposite} directions. Where the failure is \emph{no signal} --- the model's
+predictions barely move when given the definition --- scaling helps: argument-order items
+go from AUC $0.562$ to $0.812$ between 1.5B and 3B. Where the failure is
+\emph{conditioning failure} --- the model's priors override the definition it was given ---
+scaling \textbf{hurts}: absolute-vs-relative items fall from $0.812$ to $\mathbf{0.000}$.
+Aggregate margins grew $4\times$ while discrimination quality fell ($0.857 \to 0.738$).
+\textbf{Larger is not a general remedy.}
+
+Conditioning failure is not a formatting artifact. Before drawing this conclusion we
+verified the apparatus on trivial commonsense items, which the 3B model answers $6/6$ in
+both raw and chat framings; it nonetheless fails a framing-free single-attribute
+application (\texttt{kirel means red} followed by \texttt{Is a red box kirel?} gives
+$p(\textsf{yes}) = 0.000$).
+
+\subsection{Isolation is a precondition for correctness, not hygiene}
+
+With eight conflict pairs --- the same pseudo-word taught two incompatible meanings by two
+interlocutors --- partitioned retrieval yields perfect discrimination (AUC $1.000$, gate
+$8/8$). Sharing the store collapses both: discrimination falls to $0.754$ and the gate
+drops to $50\%$, i.e.\ chance, with the worst item inverted at $0.281$. This is not a model
+failure but an \emph{information} one: when two mutually exclusive definitions are
+simultaneously present, the observed data no longer contains which one belongs to whom.
+
+Three scope notes. The shared-condition gate comparison varies only the \emph{order} of the
+same two sentences, so it measures whether position carries attribution (it does not); it
+should not be described as the gate choosing wrongly between two candidates. The shared
+condition is a \emph{strong} form of contamination, not a naturalistic leak. And the
+partitioning here is at the context level.
+
+\subsection{End-to-end: all four properties at once}
+\label{sec:endtoend}
+
+Finally we run the full loop with the external store of \S\ref{sec:consolidation}(a):
+teach $\to$ gate $\to$ consolidate into the interlocutor's partition $\to$ \textbf{clear
+the context} $\to$ new session, loading only that partition. Across 16 interlocutors the
+gate selects the true meaning $16/16$ against a candidate set that includes the
+\emph{other} interlocutor's meaning; after the context is cleared, probe AUC rises from
+$0.514$ (no memory) to $0.980$ (own partition), while loading another interlocutor's
+concept gives $0.129$. Cross-partition hits: $0/16$.
+
+This gate task is substantially easier than the gavagai discrimination above --- four
+mutually exclusive colours, decided by a $+9.92$ nat margin --- and the two numbers should
+not be read as comparable. We also report the shared-store failure mode, which is
+\emph{last-write-wins} rather than degradation: the first writer's concept is destroyed
+(AUC $0.148$) while the last writer is intact ($0.977$), so the mean of $0.562$ is
+misleading and we report the two separately.
+
+% =====================================================================
+\section{What a parametric substrate does and does not buy}
+\label{sec:substrate}
+
+An admitted concept has to live somewhere. Replacing the external store with the parametric
+memory of \S\ref{sec:consolidation}(b) removes the retrieval step: with \textbf{no mention
+of the concept anywhere in the context}, probe AUC rises from $0.485$ (frozen base, at
+chance) to $0.992$, and querying another interlocutor's partition gives $0.260$. Sequential
+writing shows what the partition is doing. Sixteen interlocutors written one after another
+into \emph{partitioned} slots leave earlier ones untouched --- but this is true \emph{by
+construction}, since gradients are masked to the writing partition, and we verify it holds
+exactly. The informative comparison is the ablation: a \emph{shared} pool of identical total
+capacity collapses from the \emph{second} write ($1.000 \to 0.520$) and ends at $0.562$
+with several interlocutors at $0.000$. What prevents interference is the \textbf{partition},
+not capacity or sparsity.
+
+\paragraph{A word-substitution control undercuts the natural reading of those numbers.}
+Replacing the taught pseudo-word with an unrelated one --- leaving every other token intact
+--- leaves probe AUC essentially unchanged ($0.945 \to 0.930$ mid-network;
+$0.970 \to 0.975$ at the output layer). Teaching the same interlocutor \emph{two} words does
+not force binding either: substituting that interlocutor's \emph{other} word moves the first
+word's AUC by $-0.005$, although both words are individually learned. The mechanism differs
+by insertion point. Mid-network, retrieval is blind to the word: routed-slot overlap after
+substitution is $1.000$. At the output layer the memory output \emph{does} vary with the
+word (cosine $0.787$), but only along directions orthogonal to the decision --- the
+positive-minus-negative projection onto $W_{\textsf{yes}} - W_{\textsf{no}}$ is preserved at
+$97\%$ ($+4.443 \to +4.327$), so the ranking, and therefore the AUC, is unchanged.
+\textbf{We therefore claim only a persistent, partition-isolated, word-independent bias over
+objects} --- not that a word's meaning has been learned.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/fig3_readout_direction.pdf}
+\caption{(a) Without binding, transfer to a held-out decision format tracks the cosine
+between readout directions --- three points, ordered, not a fitted law. (b) Where the
+memory acts. The mid-network variant's apparent cross-format generalisation comes from
+tagging the \emph{object} representation, which any readout can consume; forcing the
+memory to condition on the word removes it.}
+\label{fig:substrate}
+\end{figure}
+
+\paragraph{Binding is achievable, and it costs the transfer.}
+The failure above is a property of the teaching set, not of the architecture. Training on a
+set where two words assign \emph{opposite} labels to the same object makes any
+word-independent policy provably chance-level, and the memory then learns to condition on
+the word: substituting the opposite-meaning word flips the probe from $0.925$ to
+$\mathbf{0.070}$. But the cross-format transfer that made the mid-network variant attractive
+disappears at the same time: on held-out decision formats the bound memory scores $0.545$
+and $0.670$ against a base of $0.540$ and $0.525$, where the \emph{unbound} variant reached
+$0.935$ and $0.945$. The earlier transfer was a consequence of \emph{not} binding
+(Figure~\ref{fig:substrate}): an unbound memory tags the object representation, and any
+readout format can read that tag.
+Context injection obtains both properties ($0.905$ and $0.995$). \textbf{Across every
+configuration we tested, the parametric route attains word binding or cross-format transfer,
+never both.} We report this as the strongest negative evidence against this substrate in its
+current form.
+
+% =====================================================================
+\section{Limitations}
+
+\textbf{(i) The consolidated object is a word-independent bias, not a word meaning}, and
+under the teaching sets that do force binding, cross-format transfer collapses to base level
+(\S\ref{sec:substrate}). Fixes we have \emph{not} built: keying the memory at the word's
+token position rather than the sequence-final state, and explicit word-conditioned routing.
+The two arms of the binding experiment are also not matched on optimisation --- the
+mid-network memory reaches zero training loss by step 150 and is trained to 900 --- and
+per-interlocutor variance in held-out generalisation is large. We forced binding only in the
+mutually-exclusive two-word form, where the memory need encode one axis plus a
+word-dependent sign.
+
+\textbf{(ii) The gate verifies usage fidelity, not world truth.} It rejects the model's
+\emph{misreadings} of what the interlocutor means; a consistently deceptive interlocutor
+will be believed. This is a designed boundary, composable with provenance-based gates that
+address the orthogonal question of whether the source is trustworthy.
+
+\textbf{(iii) Conditioning failure is unsolved.} Where the base model's priors override the
+supplied definition, gain-based criteria read a mixture of prior and concept, and the effect
+\emph{worsens} with scale. The decidability meter detects only undecidability, not confident
+error; the three-state gate still admits three \Mp{} items.
+
+\textbf{(iv) Two arms, not three.} A genuine expected-information-gain querying arm is not
+implemented, so the abstention state's ``ask'' branch is evaluated only as abstention.
+
+\textbf{(iv-b) Two engineering hazards of any reference-then-internalize loop remain
+untested here.} Re-supplying the original context to a model that has already internalized
+it can \emph{degrade} performance \citep{wang2026whencontext}, and iterated
+experience-internalization has been reported to collapse progressively rather than compound
+\citep{chen2026continual}. Our gate is a plausible mitigation for the second --- it is
+precisely a filter on what gets written --- but we have not tested that, and the cited work
+does not attribute the collapse to indiscriminate writing; we flag it as a hypothesis, not
+a result.
+
+\textbf{(v) Single model family, small item counts, item-level (not seed-level) CIs}, and
+usage decisions are given by construction rather than extracted from natural dialogue. We
+also do not evaluate composition under negation, quantification, or multi-hop chains.
+
+% =====================================================================
+\section{Conclusion}
+
+Deciding whether a newly acquired concept deserves permanent memory is an admission
+problem, and the field has converged on gates whose signal is consistency, novelty, or
+source trust. We argued for a different currency --- how much the candidate compresses the
+interlocutor's subsequent, held-out usage --- and showed on a controlled benchmark of
+gavagai pairs that it separates a true meaning from a self-consistent misreading where the
+consistency signal is systematically inverted. The result comes with three preconditions
+that were not in our original design, an ablation that would otherwise have produced a false
+positive, and a negative result about where an admitted concept should be stored. We think
+the last of these is the more useful contribution to the substrate question: a parametric
+store can be made to bind to a word, or to transfer across decision formats, but on our
+evidence not both.
+
+
+\appendix
+\section{The full admission-signal taxonomy}
+\label{app:taxonomy}
+
+Table~\ref{tab:full} lists every persistent-consolidation gate we verified, in the order the
+survey encountered them. ``Criterion'' is the quantity the gate thresholds; ``GT-free''
+records whether the decision can be made without an answer key, a task outcome, or a reward.
+The final column is the one that remains empty.
+
+\begin{table}[h]
+\centering\scriptsize
+\setlength{\tabcolsep}{3.5pt}
+\caption{All verified persistent-consolidation gates. Rows 1--8 are training-time
+architectural growth; 9--15 are replay-buffer selection; 16--21 are the 2026 agent-memory
+write side; 22--25 are correctness-proxy gates, of which STaR and SEAL require an outcome
+signal while LMSI and GATES do not; 26 and 27 are the closest recent work --- at our locus
+and on our criterion axis respectively. The last column is empty for every row but ours.}
+\label{tab:full}
+\begin{tabular}{@{}rp{0.19\linewidth}p{0.27\linewidth}p{0.20\linewidth}cc@{}}
+\toprule
+\# & \textbf{Method} & \textbf{Criterion} & \textbf{Locus} & \textbf{GT-free} & \textbf{Descr.\ len.} \\
+\midrule
+1  & DEN & training loss $>\tau$ $\Rightarrow$ expand & training, task bdry & yes & no \\
+2  & DEN & loss $\times$ capacity (post-hoc prune) & post-hoc & yes & no \\
+3  & DEN & parameter drift $\lVert\Delta w\rVert_2 > \sigma$ & post-training & yes & no \\
+4  & HAT & loss + capacity regulariser & training, task ID given & no & no \\
+5  & SEMA & reconstruction-error $z$ conjunction & training, task bdry & yes & no \\
+6  & CN-DPM & DP prior $\times$ likelihood & gate-then-consolidate & yes & no \\
+7  & Self-Sizing Hopfield & normalized-loss hysteresis & online, per item & yes & no \\
+8  & Self-Sizing Hopfield & similarity $>\theta_{\text{rec}}$ (reuse vs.\ new) & online & yes & no \\
+9  & Reservoir & uniform random & write admission & yes & no \\
+10 & GDumb & class quota (uses GT labels) & write admission & no & no \\
+11 & MIR & virtual-step loss increase & \emph{retrieval}, not admission & yes & no \\
+12 & GSS-Greedy & gradient-cosine redundancy & write admission & yes & no \\
+13 & iCaRL & herding / feature representativeness & write admission & no & no \\
+14 & DER++ & reservoir; labels in loss, not selection & write admission & yes & no \\
+15 & Generative replay / CLS & generative density, sleep schedule & consolidation & yes & no \\
+16 & SAGE & geometric novelty $s_{\text{vMF}}$ (ADD/UPDATE/NOOP) & online, per item & yes & no \\
+17 & Worth Remembering & Bayesian surprise $>$ med$+\gamma\cdot$MAD & online, per item & yes & no \\
+18 & Recall-gated & STM recall overlap (familiarity SNR) & online, per item & yes & no \\
+19 & Write-Time Gating & source reputation + novelty + reliability & online, per item & yes & no \\
+20 & TRUSTMEM & coverage + preservation + faithfulness & online, per item & yes & no \\
+21 & MemRefine & LLM judge on factual content & post-hoc compaction & yes & no \\
+22 & STaR & final-answer correctness & training-time & \textbf{no} & no \\
+23 & SEAL & downstream binary reward & self-edit admission & \textbf{no} & no \\
+24 & LMSI & majority vote over samples & training-time data & yes & no \\
+25 & GATES & tutor-rollout consensus $\geq 4/8$ & training-time data & yes & no \\
+26 & ConsistencyGate & mean support score over $K$ resamples & \textbf{inference, per item} & yes & no \\
+27 & DeMem & decision regret under a memory budget & budgeted compaction & \textbf{no} & no \\
+\midrule
+-- & \textbf{Ours} & \textbf{compression gain on the interlocutor's held-out usage}
+   & \textbf{inference, per item} & \textbf{yes} & \textbf{yes} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Two rows deserve comment because they are the closest and are easy to misread. Row 26
+occupies our locus exactly and is ground-truth-free; only its criterion differs, and
+\S5.1 measures what that difference costs. Row 27 is the closest on the criterion axis
+--- it is a compression theory of memory --- but its distortion is decision regret, so it
+requires an observed reward; it decides what may be \emph{forgotten} under a budget rather
+than what may be \emph{written}; and it compresses the agent's own action choices rather
+than another party's usage.
+
+\section{What we retracted}
+\label{app:retractions}
+
+Several claims in earlier drafts of this work did not survive our own checks, and the
+corrections changed the contribution statement rather than merely its wording. We list the
+ones a reader of the current text might otherwise reconstruct incorrectly.
+\emph{(a)} We initially claimed no ground-truth-free write-admission gate existed; GATES and
+LMSI refute this, and we now claim nothing on that axis.
+\emph{(b)} We then claimed the \emph{locus} --- inference-time, per-item, persistent writing
+--- as a second axis of novelty; ConsistencyGate refutes this, and the claim is now confined
+to the criterion.
+\emph{(c)} We reported that our parametric memory had internalized a concept; a
+word-substitution control shows it had not (\S6), and every statement about that substrate
+is now scoped to a word-independent bias over objects.
+\emph{(d)} We attributed the ``self-improvement cannot create information'' argument to a
+sharpening analysis; it is a data-processing-inequality argument and is cited as such.
+
+
+\bibliographystyle{plainnat}
+\bibliography{refs}
+
+\end{document}
