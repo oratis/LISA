@@ -39,9 +39,9 @@
 
 > The internalization pipeline itself is no longer the bottleneck. Context-distillation
 > methods internalize in-context knowledge into parameters — self-distillation onto a
-> LoRA adapter with the same model as its own teacher [Prompt Distillation, 2412.14964],
-> trained KV-prefixes [Cartridges, 2506.06266], on-policy reverse-KL variants
-> [OPCD, 2602.12275] — and Generative Adapter [2411.05877] even maps a context to an
+> LoRA adapter with the same model as its own teacher \cite{kujanpaa2024injection},
+> trained KV-prefixes \cite{eyuboglu2025cartridges}, on-policy reverse-KL variants
+> \cite{ye2026opcd} — and Generative Adapter \cite{chen2024generativeadapter} even maps a context to an
 > adapter in a single forward pass, producing parameter deltas that can be stored and
 > reused per user. What these pipelines share is the *admission policy*: *whatever enters the
 > context gets written*. Prompt Distillation applies no screening to its self-generated
@@ -60,8 +60,8 @@
 > or geometric novelty, gradient interference/diversity, representativeness, (labeled)
 > uncertainty, and source-trust/faithfulness/reliability/consistency. Notably,
 > consensus gating has already realized a *ground-truth-free correctness proxy*:
-> GATES [2602.20574] admits a distillation item only when ≥4 of 8 tutor rollouts agree
-> (rejected items contribute zero loss), and LMSI [2210.11610] filtered self-training
+> GATES \cite{stein2026gates} admits a distillation item only when ≥4 of 8 tutor rollouts agree
+> (rejected items contribute zero loss), and LMSI \cite{huang2022selfimprove} filtered self-training
 > data by majority vote as early as 2022. We claim no novelty on that axis. What remains
 > open, to our knowledge, is the combination of a different *criterion type* and a
 > different *gating locus*: **no existing method uses compression gain — a Minimum
@@ -144,36 +144,36 @@
 > Continual and lifelong learning offers a rich taxonomy of *what to keep*: reservoir
 > and class-balanced sampling admit examples by randomness or label counts [GDumb,
 > ECCV'20; Chaudhry et al.'19]; gradient-based selection chooses by gradient diversity
-> [GSS, Aljundi et al.'19] (maximally-interfered retrieval is a *retrieval*-side
-> criterion, not admission [MIR]); herding stores class-representative exemplars
-> [iCaRL]; dark experience replay stores reservoir-sampled logits [DER++]. Architectural
+> [GSS, Aljundi et al.'19]%TODO-BIB (maximally-interfered retrieval is a *retrieval*-side
+> criterion, not admission [MIR]%TODO-BIB); herding stores class-representative exemplars
+> [iCaRL]%TODO-BIB; dark experience replay stores reservoir-sampled logits [DER++]%TODO-BIB. Architectural
 > growth gates decide *when to expand* on training loss, parameter drift, or data
-> likelihood [DEN; CN-DPM], and modern write-side gates admit items by geometric novelty
-> [SAGE'26], normalized-loss hysteresis [Self-Sizing Hopfield'26, v3], or Bayesian
-> surprise [Worth Remembering, 2606.03787]. The 2026 agent-memory wave gates writes on
-> trust proxies — source reputation and reliability [Write-Time Gating, 2603.15994],
-> faithfulness to the source [TRUSTMEM, 2606.25161], or externally confirmed outcomes
-> [LOCI]. None of these signals assesses whether the acquired concept itself matches
+> likelihood [DEN; CN-DPM]%TODO-BIB, and modern write-side gates admit items by geometric novelty
+> \cite{wang2026sage}, normalized-loss hysteresis \cite{li2025selfsizing}, or Bayesian
+> surprise \cite{gorlo2026worth}. The 2026 agent-memory wave gates writes on
+> trust proxies — source reputation and reliability \cite{zahn2026writetime},
+> faithfulness to the source \cite{yang2026trustmem}, or externally confirmed outcomes
+> [LOCI]%TODO-BIB. None of these signals assesses whether the acquired concept itself matches
 > what the interlocutor meant.
 
 **¶2 — 最近邻：共识门控（正面引用，让出 GT-free 轴）**
 
-> Closest to our admission problem is consensus gating. **GATES** [2602.20574] admits a
+> Closest to our admission problem is consensus gating. **GATES** \cite{stein2026gates} admits a
 > distillation item only when at least 4 of 8 tutor rollouts agree on the answer —
 > agreement serving, in the authors' words, as "a proxy for correctness" with "no
 > external teacher or reward model" — and items failing the gate contribute zero loss.
 > This is a genuine, realized, ground-truth-free binary admission gate; nor is it the
-> first: **LMSI** [2210.11610] filtered self-training data by majority vote without
+> first: **LMSI** \cite{huang2022selfimprove} filtered self-training data by majority vote without
 > ground-truth labels in 2022. We therefore claim no novelty for "GT-free admission
 > gating" as such. The differences are two orthogonal axes. *Criterion:* their signal is
 > answer consistency; ours is the reduction in encoding cost of held-out usage — and a
 > recent large-scale audit finds self-consistency to be only a weak predictor of
 > correctness (Spearman ρ 0.20–0.59; high-consistency models still err on 48% of GPQA
-> items) [2607.08065], which suggests the two criterion types are not interchangeable.
+> items) \cite{ding2026agree}, which suggests the two criterion types are not interchangeable.
 > *Locus:* GATES and LMSI gate the admission of training data and gradients, offline,
 > over a fixed pre-generated question set; our gate rules on each candidate concept's
 > admission into a per-interlocutor persistent store at deployment time. **SEAL**
-> [2506.10943] is likewise no counterexample: its ReST-EM filtering operates during
+> \cite{zweiger2025seal} is likewise no counterexample: its ReST-EM filtering operates during
 > generator RL training and requires every context to ship with a labeled evaluation
 > task — a coupling its authors state "prevents RL training of SEAL from scaling to
 > unlabeled corpora" — while its deployment-time self-edits are applied unconditionally,
@@ -184,14 +184,14 @@
 > Context distillation internalizes in-context knowledge into parameters: the original
 > formulation fine-tunes a model — via token-level KL to a frozen copy of itself
 > conditioned on the full instructions — to produce without the context what it
-> produces with it [Snell et al., 2209.15189]; Prompt Distillation does this
+> produces with it \cite{snell2022distilling}; Prompt Distillation does this
 > self-supervised, with the same model as teacher (documents in its prompt) and a LoRA
 > adapter as the write target, requiring neither ground-truth labels nor a stronger
-> teacher [2412.14964]; Cartridges amortizes long contexts into trained KV-prefixes via
-> a self-study objective [2506.06266]; OPCD bridges on-policy distillation and context
-> distillation with reverse KL on the student's own trajectories [2602.12275]; and
+> teacher \cite{kujanpaa2024injection}; Cartridges amortizes long contexts into trained KV-prefixes via
+> a self-study objective \cite{eyuboglu2025cartridges}; OPCD bridges on-policy distillation and context
+> distillation with reverse KL on the student's own trajectories \cite{ye2026opcd}; and
 > Generative Adapter maps contexts to low-rank adapters in a single forward pass
-> [2411.05877]. These pipelines demonstrate that inference-acquired knowledge *can* be
+> \cite{chen2024generativeadapter}. These pipelines demonstrate that inference-acquired knowledge *can* be
 > made persistent — and they uniformly lack a correctness-facing admission decision:
 > Prompt Distillation screens nothing (noise is absorbed by soft labels); Cartridges
 > trains on every generated conversation; OPCD's only filter scores candidates on a
@@ -200,39 +200,37 @@
 > transfer directly to any referencing-to-internalization system, including ours:
 > re-presenting the original context to a distilled student can *degrade* it — in 7 of
 > 12 settings, including on instances it solves correctly without the context
-> [When Context Returns, 2606.11627] — and three rounds of iterated internalization can
-> collapse a web agent's capability below its own base model [2606.04703] — we adopt
+> \cite{wang2026whencontext} — and three rounds of iterated internalization can
+> collapse a web agent's capability below its own base model \cite{chen2026continual} — we adopt
 > the corresponding countermeasures in our experimental design (§Experiments).
 
 **¶4 — 不确定性与自我验证（为何现有信号在 E1 上失分）**
 
 > Uncertainty-based verification detects the wrong property for our problem. Semantic
-> entropy flags *inconsistency* [Farquhar et al., Nature'24] — but a confidently held
+> entropy flags *inconsistency* \cite{farquhar2024semantic} — but a confidently held
 > misunderstanding is low-entropy: self-consistent, novel to the memory store, often
 > surprising, faithfully transcribed from a trusted source. Every existing signal class
 > therefore admits it — while it fails to predict how the teacher will use the term next.
 > That predictive failure is exactly what compression gain measures. Naive
-> self-reflection without external verification does not repair errors [Huang et al.,
-> ICLR'24], and self-improvement cannot create information absent from the model — a
-> data-processing-inequality argument [Cover'99] invoked as motivation by sharpening
-> analyses [2412.01951] — which is why the new information in our setting must come
+> self-reflection without external verification does not repair errors \cite{huang2024cannot}, and self-improvement cannot create information absent from the model — a
+> data-processing-inequality argument \cite{cover1999elements} invoked as motivation by sharpening
+> analyses \cite{huang2024sharpening} — which is why the new information in our setting must come
 > from the interlocutor's usage, and why the gate's job is to test the model's
 > hypothesis against precisely that usage.
 
 **¶5 — 压缩/MDL 判据（理论地基与唯一同构先例）**
 
-> The criterion itself stands on the prediction-compression duality [Delétang et al.,
-> ICLR'24]. A rate-distortion treatment of memory has recently *proposed* description
-> length as the currency for what to store [2607.08032], but as an agenda, without an
+> The criterion itself stands on the prediction-compression duality \cite{deletang2024compression}. A rate-distortion treatment of memory has recently *proposed* description
+> length as the currency for what to store \cite{colaco2026ratedistortion}, but as an agenda, without an
 > admission gate or an implementation; across all families above, word-boundary sweeps
 > for MDL / description length / compression as an *admission criterion* return zero
 > hits. Our per-item calibration (null-distribution z-scores) inherits the mechanism of
-> SEMA's novelty calibration [SEMA] — the difference, again, is the signal being
+> SEMA's novelty calibration \cite{wang2024sema} — the difference, again, is the signal being
 > calibrated.
 
 **¶6 — 划界段（放 Related Work 末尾或 §3 开头）**
 
-> *Boundary.* Source-trust gates [Write-Time Gating; TRUSTMEM] address whether the
+> *Boundary.* Source-trust gates \cite{zahn2026writetime,yang2026trustmem} address whether the
 > **teacher** is reliable; our gate addresses whether the **model's hypothesis matches
 > what the teacher means**. The two are orthogonal and composable: a full system needs
 > both, and neither subsumes the other. We evaluate only the second.
@@ -242,7 +240,7 @@
 > - ¶3 Snell 句已按第十轮 SN1 裁决精化（token-level KL 到冻结自身副本）✅；SPIDER 数字未写入正文——如需引用，唯一合法表述见 REPORT §4 第十轮小节（8-shot 比 GD 基线 +9.0 点，非对 teacher）。
 > - ¶3 GA 句已按 #16 收紧（"stored and reused per user"，不写 isolation/naturally）✅；When Context Returns 已带 7/12 scope ✅。
 > - ✅ ¶3 的 2606.04703 已第十一轮 3 票（坍缩掉到 base 以下确认）。🚨 引用纪律：**不得写「其坍缩因无差别写入」或「其管线完全无门」**（#19——论文归因是 instance 伪影/注入错位/反应式 on-policy，且稳定配方含 rejection sampling 门）；「压缩门推迟坍缩」只能以我方实验数据立论。
-> - DyPRAG（✅）可选补一句参数化 RAG（"hypernetwork-translated per-document LoRAs [DyPRAG]"）；Memory Grafting 实为预训练扩展方法，与本节主题无关，**不引**。
+> - DyPRAG（✅）可选补一句参数化 RAG（"hypernetwork-translated per-document LoRAs \cite{tan2025dyprag}"）；Memory Grafting 实为预训练扩展方法，与本节主题无关，**不引**。
 > - ¶5 「zero hits」的主语是**我方已穷举过的家族**（词边界双跑协议），不是全文献——句中已用 "across all families above" 限定。
 > - 🚫 三条禁令自查：通过（见文首）。
 > - 引用键待换正式 bibkey；投稿版删除全部中文块。
