@@ -104,7 +104,7 @@ def encode(prompts):
 
 @torch.no_grad()
 def last_logits(enc):
-    return model(**enc).logits[:, -1]
+    return model(**enc, logits_to_keep=1).logits[:, -1]
 
 
 # ============================================================================
@@ -195,7 +195,7 @@ def eval_auc(u, fmt, key="enc_ev"):
     P, N_ = FMT[fmt]
     with torch.no_grad():
         def sc(enc):
-            lg = model(**enc).logits[:, -1]
+            lg = model(**enc, logits_to_keep=1).logits[:, -1]
             return torch.softmax(torch.stack([lg[:, P], lg[:, N_]], -1), -1)[:, 0].tolist()
         a, b = u[key][fmt]
         return auc(sc(a), sc(b))
@@ -260,11 +260,11 @@ for where, last_only, label in WHERES:
         P, N_ = FMT["F1 Yes/No"]
         for _ in range(args.epochs):
             opt.zero_grad()
-            lg = model(**u["enc_tr"]).logits[:, -1]
+            lg = model(**u["enc_tr"], logits_to_keep=1).logits[:, -1]
             F.binary_cross_entropy_with_logits(lg[:, P] - lg[:, N_], u["t_tr"]).backward()
             opt.step()
         with torch.no_grad():
-            lg = model(**u["enc_tr"]).logits[:, -1]
+            lg = model(**u["enc_tr"], logits_to_keep=1).logits[:, -1]
             tr_acc = (((lg[:, P] - lg[:, N_]) > 0).float() == u["t_tr"]).float().mean().item()
         for fmt in FMT:
             u[f"{label}_{fmt}"] = eval_auc(u, fmt)

@@ -9,10 +9,19 @@
 > 5. **不得把 P4 门控 16/16 与 P2 核心域 AUC 0.915 相提并论**（任务难度差一个量级）
 > 6. **I2 可声称「⊗ 世界知识」与「⊗ 概念」两种形态**，但**不得**扩到否定/量化/多跳/同属性内两概念
 > 7. **「分区解决了干扰」必须限定为【跨对话者】**——用户内部需子区 + **写入与检索双掩码**，且代价是组合性
+> 8b. 🔴🔴 **参数化记忆线一律写「按对话者写入的、与词无关的物体级偏置」**，不得写"学会了词/概念"
 > 8. 🔴 **「内化/学会了」四字不得单独出现**——必须写成「**在教学所用的决策格式内**，免检索 + 可组合 + 持久 + 抗干扰」；
 >    **I3（隐式触发）不成立**，这是 final-layer 架构的直接后果，不是调参问题
 
 ---
+
+> ## 🔴🔴 SCOPE CORRECTION (2026-08-04) — read before §5.5–5.8
+> Substituting a **different pseudo-word** into the prompt, changing nothing else, costs the
+> consolidated memory almost nothing (**0.017–0.018 AUC**; with two words taught to the same
+> interlocutor, own − within = **−0.005**). What the memory holds is therefore **a persistent,
+> partition-isolated, word-independent bias over objects**, not the meaning of a word.
+> §5.5–5.8 must be read under that scope; the compression gate (§5.1–5.4) and per-interlocutor
+> isolation are unaffected. See §6 (0) and [p9](../p9/README.md).
 
 ## 3 Method
 
@@ -332,6 +341,22 @@
 
 ## 6 Limitations
 
+> **(0) The consolidated object is a word-independent bias, not a word meaning.** This is the
+> limitation that governs all others. Replacing the taught pseudo-word with an unrelated one —
+> leaving every other token intact — leaves the probe AUC essentially unchanged (0.945 → 0.930
+> mid-network; 0.970 → 0.975 at the output layer). Teaching the same interlocutor *two* words
+> does not force binding either: swapping in that interlocutor's **other** word moves the first
+> word's AUC by **−0.005**, although both words are individually learned (second word's own
+> probe, 0.890). The mechanism differs by insertion point: mid-network, the retrieval is blind
+> to the word (routed-slot overlap **1.000** after substitution); at the output layer the memory
+> output does vary with the word (cosine 0.787) but only along directions orthogonal to the
+> decision — the **positive-minus-negative projection onto W_yes − W_no is preserved at 97%**
+> (+4.443 → +4.327), so ranking, and therefore AUC, is unchanged. We therefore claim only a
+> persistent, partition-isolated, word-independent bias over objects. Fixes we have **not**
+> built: keying the memory at the word's token position rather than the sequence-final state;
+> training sets in which two words assign **opposite** labels to the same object; explicit
+> word-conditioned routing.
+
 **¶14 — 诚实清单（这一节不压缩）**
 
 > **(i) The consolidated object is a readout direction, not a concept — so implicit use
@@ -402,6 +427,8 @@
 | **13** | 🔴 **不得声称 I3 成立 / 不得写"概念被内化"而不加作用域** | ✅ §5.8 + §6(i)：I3 **0.507 ≈ base**；§5.5–5.7 每条结论须带 "within the teaching decision format" |
 | **14** | **不得把"迁移量随读出余弦单调"写成定律** | ✅ §5.8 明写**只有三个点、同序而已** |
 | **15** | **不得声称中间层记忆能解决跨格式问题** | ✅ §6(i) 明写 **we have not built it**；它只是有实证动机的下一步 |
+| **16** | 🔴🔴 **参数化记忆线不得写 "learns a word / a concept / internalizes a meaning"** | ✅ §3 抬头 + §6(0)：**word-independent bias over objects**；换词落差 0.017–0.018，两词设置 −0.005 |
+| **17** | **不得把"输出随词改变"当作绑定的证据** | ✅ §6(0)：post-norm 上 m(h) 余弦 0.787 却**判别力保留 97%** —— 度量必须对准被解释的量 |
 
 ---
 

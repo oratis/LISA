@@ -1,0 +1,27 @@
+{
+  "model": "Qwen/Qwen2.5-1.5B-Instruct",
+  "n_users": 8,
+  "design": "每用户两个概念（P7 同构）",
+  "results": {
+    "post-norm": {
+      "w2_own_probe": 0.89,
+      "m_cosine_w1_vs_w2": 0.8846195340156555,
+      "m_relative_change": 1.3400624776259065,
+      "own": {
+        "F1 Yes/No": 0.785,
+        "F2 A/B": 0.505,
+        "F3 True/False": 0.695
+      },
+      "within": {
+        "F1 Yes/No": 0.79,
+        "F2 A/B": 0.57,
+        "F3 True/False": 0.645
+      },
+      "across": {
+        "F1 Yes/No": 0.79,
+        "F2 A/B": 0.515,
+        "F3 True/False": 0.675
+      }
+    }
+  }
+}

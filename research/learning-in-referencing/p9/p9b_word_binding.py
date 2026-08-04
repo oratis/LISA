@@ -155,7 +155,7 @@ def ev(u, key, fmt):
     a, b = u[key][fmt]
     with torch.no_grad():
         def sc(enc):
-            lg = model(**enc).logits[:, -1]
+            lg = model(**enc, logits_to_keep=1).logits[:, -1]
             return torch.softmax(torch.stack([lg[:, P], lg[:, N_]], -1), -1)[:, 0].tolist()
         return auc(sc(a), sc(b))
 
@@ -175,7 +175,7 @@ for wspec in args.layers.split(","):
         P, N_ = FMT["F1 Yes/No"]
         for _ in range(args.epochs):
             opt.zero_grad()
-            lg = model(**u["enc_tr"]).logits[:, -1]
+            lg = model(**u["enc_tr"], logits_to_keep=1).logits[:, -1]
             F.binary_cross_entropy_with_logits(lg[:, P] - lg[:, N_], u["t_tr"]).backward()
             opt.step()
         for key in ("pr_own", "pr_swap"):

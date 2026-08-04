@@ -42,7 +42,7 @@ ap.add_argument("--slots", type=int, default=32)
 ap.add_argument("--topk", type=int, default=4)
 ap.add_argument("--epochs", type=int, default=300)
 ap.add_argument("--lr", type=float, default=5e-2)
-ap.add_argument("--layers", default="7,post-norm")
+ap.add_argument("--layers", default="post-norm")   # P7 用的正是 post-norm；L7 另跑
 ap.add_argument("--seed", type=int, default=0)
 args = ap.parse_args()
 TAG = args.model.split("/")[-1]
@@ -166,7 +166,7 @@ for u in users:
 def score(enc, fmt):
     P, N_ = FMT[fmt]
     with torch.no_grad():
-        lg = model(**enc).logits[:, -1]
+        lg = model(**enc, logits_to_keep=1).logits[:, -1]
         return torch.softmax(torch.stack([lg[:, P], lg[:, N_]], -1), -1)[:, 0].tolist()
 
 
@@ -183,9 +183,24 @@ for wspec in args.layers.split(","):
         P, N_ = FMT["F1 Yes/No"]
         for _ in range(args.epochs):
             opt.zero_grad()
-            lg = model(**u["enc_tr"]).logits[:, -1]
+            lg = model(**u["enc_tr"], logits_to_keep=1).logits[:, -1]
             F.binary_cross_entropy_with_logits(lg[:, P] - lg[:, N_], u["t_tr"]).backward()
             opt.step()
+        # ★ 决定性诊断：同一物体、只换提示里的词，记忆输出 m(h) 变不变？
+        #   若 m(h) 几乎不变 ⟹ 记忆输出**与词无关**，它打的是物体的标，
+        #   那么"两个词各自都答对"就只能靠一个**与词无关的分级标**来解释（如"红或木，两者都占更重"），
+        #   而不是靠绑定到词。这一条直接决定 P7 的 I2 结论还能不能站。
+        with torch.no_grad():
+            objs = [b for b, _ in u["pb1"]][:6]
+            h1 = torch.cat([model.model(**encode([f1(u["w1"], b, u["pre"])])).last_hidden_state[:, -1]
+                            for b in objs])
+            h2 = torch.cat([model.model(**encode([f1(u["w2"], b, u["pre"])])).last_hidden_state[:, -1]
+                            for b in objs])
+            if where == "post-norm":
+                h1, h2 = model.model.norm(h1), model.model.norm(h2)
+            m1, m2 = mem(h1), mem(h2)
+            u[f"{label}_mcos"] = F.cosine_similarity(m1, m2, dim=-1).mean().item()
+            u[f"{label}_mrel"] = ((m1 - m2).norm(dim=-1) / m1.norm(dim=-1).clamp(min=1e-9)).mean().item()
         for cond in ("own", "within", "across"):
             for fmt in FMT:
                 a, b = u["enc"][cond][fmt]
@@ -195,8 +210,11 @@ for wspec in args.layers.split(","):
         hd.remove()
         print(f"  [{u['uid']}] w1 {u[f'{label}_own_F1 Yes/No']:.3f} · w2 {u[f'{label}_w2']:.3f}"
               f"  ·  ★换成 w2 {u[f'{label}_within_F1 Yes/No']:.3f}"
-              f" · 换成别人 {u[f'{label}_across_F1 Yes/No']:.3f}", flush=True)
+              f" · 换成别人 {u[f'{label}_across_F1 Yes/No']:.3f}"
+              f"  |  m(h) 换词后余弦 {u[f'{label}_mcos']:.4f}", flush=True)
     RES[label] = {"w2_own_probe": st.mean(u[f"{label}_w2"] for u in users),
+                  "m_cosine_w1_vs_w2": st.mean(u[f"{label}_mcos"] for u in users),
+                  "m_relative_change": st.mean(u[f"{label}_mrel"] for u in users),
                   **{c: {f: st.mean(u[f"{label}_{c}_{f}"] for u in users) for f in FMT}
                      for c in ("own", "within", "across")}}
     json.dump({"model": args.model, "n_users": NU, "design": "每用户两个概念（P7 同构）",
@@ -230,6 +248,23 @@ for label, d in RES.items():
         v = (f"🔴 **仍未绑定**：换成 w2 后仍有 {wi:.3f}（本词 {ow:.3f}）"
              f" ⟹ 两概念也逼不出词绑定，「学到了一个概念」必须整体撤回")
     print(f"  {label:12} {v}")
+
+print("\n【★ 诊断：记忆输出 m(h) 到底依不依赖那个词】")
+for label, d in RES.items():
+    c, r = d["m_cosine_w1_vs_w2"], d["m_relative_change"]
+    print(f"  {label:12} 同一物体、只换词 ⟹ m(h) 余弦 {c:.4f} · 相对变化 {r:.4f}")
+    if c > 0.99 and r < 0.15:
+        print("               🔴 **记忆输出与词无关** —— 它打的是物体的标。")
+        print("                  ⟹「两个词各自都答对」只能靠一个**与词无关的分级标**解释，")
+        print("                     不是词绑定。**P7 的 I2 结论也须重新审视。**")
+    elif c < 0.90:
+        print("               ⚠️ 记忆输出**随词改变**（路由读到了词），"
+              "但**这不等于行为上绑定**：")
+        print("                  diag_word_independence.py 实测 post-norm 上词只平移整体偏置，")
+        print("                  【正例−负例】的投影差保留 97% ⟹ 排序不变 ⟹ AUC 不变。")
+        print("                  ⟹ **以换词 AUC 为准**（本轮 own 与 within 差 −0.005）：仍未绑定。")
+    else:
+        print("               ◐ 弱依赖，须结合换词 AUC 一起判")
 
 print("\n【裁决 2：绑定成立时，跨读出方向的迁移还在不在】")
 for label, d in RES.items():
