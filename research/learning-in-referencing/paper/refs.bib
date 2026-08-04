@@ -328,6 +328,39 @@
             和本项目（无 GT 自验证）构成三方对照。}
 }
 
+
+% ---------- 🔴 投稿前重扫（2026-08-04）新发现，第十二轮 ----------
+
+@misc{zhang2026consistencygate,
+  title  = {{ConsistencyGate}: Preventing Memory Contamination in {LLM} Agents
+            via Self-Consistency Admission Control},
+  author = {Zhang, Yan and Li, Shibo},
+  year   = {2026},
+  month  = {7},
+  eprint = {2607.22962},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CL},
+  note   = {🔴🔴 **投稿前重扫抓到的最重要一篇（2026-07-25，晚于我方第十一轮）**。
+            它是 **GT-free** 的 **write-time admission gate**，作用于**推理期、按条、持久**的
+            外部记忆写入 —— ⟹ **我方贡献声明的第二条腿（门控环节）就此失守**，
+            新颖性只剩**判据类型**一轴。
+            ★ 但它的信号是**自洽度**（查询 LLM K 次取平均支持分），
+            **正是我方 P2 实测在 gavagai 对上失效的那一类**（AUC 0.269；M' 更窄时 0.137，系统性反向）
+            ⟹ 它同时是**最好的动机引用**：同期方法用的正是我方证明不够用的信号。}
+}
+
+@misc{kim2026memrefine,
+  title  = {{MemRefine}: {LLM}-Guided Compression for Long-Term Agent Memory},
+  author = {Kim, Minjae and Baek, Jinheon and Jeong, Soyeong and Hwang, Sung Ju},
+  year   = {2026},
+  eprint = {2606.13177},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CL},
+  note   = {重扫核实：**事后压缩**（对已入库条目做 delete/merge/preserve），**不是写入准入门**；
+            信号是 **LLM 判官的事实性判断**，**无** description length / MDL / rate-distortion 判据。
+            ⟹ 不构成优先权威胁，但须在 Related Work 里与"准入门"划清界限。}
+}
+
 % =====================================================================
 %  ⚠️ 尚未入库、正文里仍以占位符出现的引用（投稿前必须补齐）
 %     [LOCI]              —— TDCommons 11091, 2026-07-21（**非 arXiv**，需 TDCommons 条目）

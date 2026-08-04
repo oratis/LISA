@@ -3,10 +3,14 @@
 > **状态**：初稿（2026-08-01，第九轮风险口闭合后）。英文段落为投稿文本；中文块为编辑注记（证据等级 + 禁令 checklist），投稿前删除。
 > **上游**：措辞依据 [REPORT.md](../REPORT.md) §4（四次收紧史 + 三条禁令 + 第九轮闭合）；机制表述依据 [DESIGN_COMPRESSION_GATE.md](../../../docs/DESIGN_COMPRESSION_GATE.md) §0–§1；先例表依据 [RESEARCH_LEARNING_IN_REFERENCING.md](../../../docs/RESEARCH_LEARNING_IN_REFERENCING.md) §7.6 与 [RESEARCH_KNOWLEDGE_INTERNALIZATION.md](../../../docs/RESEARCH_KNOWLEDGE_INTERNALIZATION.md) 家族 J–P。
 >
-> **🚫 本稿受三条硬性禁令约束（第八轮定稿，全稿已自查）**：
+> **🚫 本稿受四条硬性禁令约束（第八轮定三条，第十二轮增第四条；全稿已自查）**：
 > 1. 不写「尚无 GT-free 的写入准入门控」（GATES/LMSI 证伪）
 > 2. 不以「无外部 oracle」为独立卖点
 > 3. 「写入」一词必带 scope 注解（推理期/持久/按条）
+> 4. 🔴 **不得把「门控环节 / locus」当作新颖性的一条腿**，也不得写「已有 GT-free 门都在训练期」——
+>    **ConsistencyGate（2607.22962，2026-07-25）就在推理期按条持久写入**（自我推翻 #27）。
+>    新颖性**只剩「判据类型 = 压缩增益/MDL」一轴**。引用 ConsistencyGate 时**必须**
+>    同时给出我方自洽类信号的失效实证（AUC 0.269；M′ 更窄时 0.137），否则读者会以为问题已解决。
 
 ---
 
@@ -62,16 +66,30 @@
 > consensus gating has already realized a *ground-truth-free correctness proxy*:
 > GATES \cite{stein2026gates} admits a distillation item only when ≥4 of 8 tutor rollouts agree
 > (rejected items contribute zero loss), and LMSI \cite{huang2022selfimprove} filtered self-training
-> data by majority vote as early as 2022. We claim no novelty on that axis. What remains
-> open, to our knowledge, is the combination of a different *criterion type* and a
-> different *gating locus*: **no existing method uses compression gain — a Minimum
-> Description Length criterion — to gate the persistent, per-item writing of knowledge
-> acquired at inference time.** Existing GT-free gates (GATES, LMSI) use answer
-> consistency as the signal and operate at training time, on the admission of data or
-> gradients from a fixed, pre-generated question set; our gate operates at deployment
-> time, on each candidate concept's admission into a per-interlocutor persistent store.
-> OPCD names the missing piece from the other side: in the deployment scenario without
-> labels, what gets written "is not pre-evaluated."
+> data by majority vote as early as 2022. Nor do we claim novelty on the *locus*:
+> ConsistencyGate \cite{zhang2026consistencygate} places a ground-truth-free admission gate exactly
+> where ours sits — at deployment time, per candidate fact, before a persistent write —
+> using an average support score over $K$ resamples. What remains open, to our knowledge,
+> is the *criterion type* alone: **no existing method uses compression gain — a Minimum
+> Description Length criterion — as the admission signal.** Every ground-truth-free gate
+> we could find scores a candidate by how *consistently* the model already endorses it
+> \cite{stein2026gates,huang2022selfimprove,zhang2026consistencygate}, how *novel* it is
+> \cite{wang2026sage,wang2024sema}, or how *trustworthy its source* is
+> \cite{zahn2026writetime,yang2026trustmem} — never by how much it *compresses what the
+> interlocutor does next*. A rate-distortion treatment has proposed description length as
+> the currency for what to keep \cite{colaco2026ratedistortion}, but as an agenda, without
+> an admission gate or an implementation. OPCD names the missing piece from the other
+> side: in the deployment scenario without labels, what gets written "is not pre-evaluated."
+
+> 🔴 **本段是第十二轮（2026-08-04 投稿前重扫）改写的**，原文写的是
+> 🔴 *"Existing GT-free gates (GATES, LMSI) … operate at training time"* —— **已被 ConsistencyGate
+> （2607.22962，2026-07-25）证伪**：它就是推理期、按条、持久写入的 GT-free 准入门。
+> ⟹ **「门控环节」不再是新颖性的一条腿**，只剩「判据类型」一轴（自我推翻 #27）。
+>
+> ★ 但这对我方**反而有利**：ConsistencyGate 用的正是**自洽度**，而我方 §Experiments 实测
+> 该信号类在 gavagai 对上 **AUC 0.269**、且 **M′ 更窄时 0.137（系统性反向）**——
+> **同期最新方法用的正是我方证明不够用的信号**，比"无人做过"是更强的立论。
+> ⚠️ 引用它时**必须**同时给出我方的失效实证，否则读者会认为该问题已被解决。
 
 **¶5 — 机制（一句话）+ 划界（E1/E2）**
 
@@ -109,10 +127,16 @@
 > 1. **A map with a corrected gap.** A ten-family taxonomy of admission signals across
 >    all persistent-consolidation gates we could verify (six method families plus the
 >    2026 agent-memory wave), including the closest positive precedents — consensus
->    gates (GATES, LMSI) that already realize GT-free correctness proxies at
->    training-time data admission. The gap we occupy is the *criterion × locus* cell:
->    compression-gain/MDL as the criterion, inference-time per-item persistent writing
->    as the locus.
+>    gates that already realize ground-truth-free correctness proxies, both at
+>    training-time data admission \cite{stein2026gates,huang2022selfimprove} and, as of
+>    July 2026, at exactly our locus: deployment-time, per-item, pre-write
+>    \cite{zhang2026consistencygate}. **The gap we occupy is therefore one axis, not two:
+>    the criterion type.** Every gate in the taxonomy scores a candidate by consistency,
+>    novelty, or source trust; none by description length. We further show *why* the
+>    distinction matters rather than asserting it: the consistency signal that the
+>    closest precedents rely on is not merely weaker on our task but **systematically
+>    inverted** on its most common form (AUC 0.137 when the misreading is narrower than
+>    the true concept).
 > 2. **A mechanism.** A two-part MDL admission gate with placebo control, measured on
 >    held-out usage decisions, upgraded to a three-state (accept/reject/ask) design by a
 >    GT-free decidability check; per-item calibration via null-distribution z-scores and

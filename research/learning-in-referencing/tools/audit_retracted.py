@@ -40,6 +40,11 @@ RULES = [
   "已撤回(#25): 换词落差仅 0.017–0.018 ⟹ 是与词无关的物体级偏置"),
  (r"learns?\s+(a\s+)?(word|concept|meaning)|internaliz\w*\s+(a\s+)?(word|concept|meaning)",
   "已撤回(#25): word-independent bias over objects"),
+ # ★ #27：第十二轮重扫 —— 门控环节那条腿失守
+ (r"(GT-free|ground-truth-free)[^。\n]{0,40}(operate|作用)[^。\n]{0,12}(at\s+)?(training time|训练期)",
+  "已证伪(#27): ConsistencyGate 2607.22962 就在推理期按条持久写入"),
+ (r"(门控环节|gating locus)[^。\n]{0,20}(新颖|novel)",
+  "已证伪(#27): 新颖性只剩「判据类型」一轴"),
 ]
 ALLOW = re.compile(r"(❌|🚫|⚠️|🔴|~~|撤回|改正|自纠|推翻|被证伪|反驳|曾写|一测就反|不成立|不得|禁令|勿|"
                    r"不可写|不要用|错的说法|过强|归因错误|我方原主张|不写|被推翻的表述)")
