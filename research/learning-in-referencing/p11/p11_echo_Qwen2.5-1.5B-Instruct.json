@@ -1,0 +1,8 @@
+{
+  "echo_control": {
+    "base": 1,
+    "injected_random_same_norm": 1,
+    "mean_hidden_norm": 1.0700566172599792,
+    "n": 2
+  }
+}
