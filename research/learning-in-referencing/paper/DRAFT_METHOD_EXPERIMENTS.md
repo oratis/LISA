@@ -22,6 +22,15 @@
 > partition-isolated, word-independent bias over objects**, not the meaning of a word.
 > §5.5–5.8 must be read under that scope; the compression gate (§5.1–5.4) and per-interlocutor
 > isolation are unaffected. See §6 (0) and [p9](../p9/README.md).
+>
+> **A follow-up sharpens this into the governing trade-off.** Training on a set where two words
+> assign **opposite** labels to the same object does force binding — swapping in the
+> opposite-meaning word drops the probe from **0.925 to 0.070**, a near-complete flip. But
+> cross-format transfer collapses at the same time (F2 **0.545**, F3 **0.670**, against a base
+> of 0.540 / 0.525; the unbound configuration reached 0.935 / 0.945). **Across every
+> configuration we tested, the parametric route attains word binding or cross-format transfer,
+> never both; context injection attains both** (0.905 / 0.995). See §6 (0-b) and
+> [p10](../p10/README.md).
 
 ## 3 Method
 
@@ -356,6 +365,20 @@
 > built: keying the memory at the word's token position rather than the sequence-final state;
 > training sets in which two words assign **opposite** labels to the same object; explicit
 > word-conditioned routing.
+>
+> **(0-b) Binding and cross-format transfer trade off.** Forcing binding with an
+> opposite-label training set works — the probe flips from 0.925 to **0.070** when the
+> opposite-meaning word is substituted — but the cross-format transfer that made the
+> mid-network variant attractive disappears with it (**0.545 / 0.670** versus a base of
+> 0.540 / 0.525, where the unbound variant reached 0.935 / 0.945). The earlier transfer was
+> therefore a consequence of *not* binding: an unbound memory tags the **object
+> representation**, and any readout format can read that tag. Context injection obtains both
+> properties (0.905 / 0.995). We report this as the strongest negative evidence against the
+> parametric route in its current form. Caveats: the two arms are not matched on optimisation
+> (the mid-network memory reaches zero loss by step 150 and is trained to 900), per-user
+> variance in held-out generalisation is large (one user at 0.48), and we forced binding only
+> in the **mutually exclusive two-word** form, where the memory need encode just one axis plus
+> a word-dependent sign.
 
 **¶14 — 诚实清单（这一节不压缩）**
 
@@ -428,6 +451,8 @@
 | **14** | **不得把"迁移量随读出余弦单调"写成定律** | ✅ §5.8 明写**只有三个点、同序而已** |
 | **15** | **不得声称中间层记忆能解决跨格式问题** | ✅ §6(i) 明写 **we have not built it**；它只是有实证动机的下一步 |
 | **16** | 🔴🔴 **参数化记忆线不得写 "learns a word / a concept / internalizes a meaning"** | ✅ §3 抬头 + §6(0)：**word-independent bias over objects**；换词落差 0.017–0.018，两词设置 −0.005 |
+| **18** | 🔴 **不得把 P9 的跨格式迁移当作该路线的正面结果** | ✅ §6(0-b)：那是**没绑定**换来的；一旦强制绑定即塌到 base 水平 |
+| **19** | **不得在未给训练曲线的情况下断言"架构做不到"** | ✅ §6(0-b) + 脚本硬分支：末段仍在上升 >0.03 即报**不可判**（60 步时 acc 0.542 差点被报成架构限制） |
 | **17** | **不得把"输出随词改变"当作绑定的证据** | ✅ §6(0)：post-norm 上 m(h) 余弦 0.787 却**判别力保留 97%** —— 度量必须对准被解释的量 |
 
 ---
