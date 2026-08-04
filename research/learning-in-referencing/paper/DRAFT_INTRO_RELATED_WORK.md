@@ -76,10 +76,19 @@
 > \cite{stein2026gates,huang2022selfimprove,zhang2026consistencygate}, how *novel* it is
 > \cite{wang2026sage,wang2024sema}, or how *trustworthy its source* is
 > \cite{zahn2026writetime,yang2026trustmem} — never by how much it *compresses what the
-> interlocutor does next*. A rate-distortion treatment has proposed description length as
-> the currency for what to keep \cite{colaco2026ratedistortion}, but as an agenda, without
-> an admission gate or an implementation. OPCD names the missing piece from the other
-> side: in the deployment scenario without labels, what gets written "is not pre-evaluated."
+> interlocutor does next*. Compression *has* been proposed as the currency for agent
+> memory — as an agenda in the description-length form \cite{colaco2026ratedistortion},
+> and, closest to us, as a worked decision-centric rate--distortion theory
+> \cite{zou2026demem}, which independently argues that memory should preserve
+> *decisions* rather than *descriptions*, a conclusion our own ablations reach
+> empirically (§Experiments). Three things separate that line from ours. It compresses
+> **the agent's own action choices**, whereas our criterion is evaluated on **another
+> party's subsequent word choices**. It answers **what may be forgotten under a budget**
+> — a partition problem — whereas ours answers **whether a candidate should be written
+> at all**. And its distortion is defined as decision regret, so it presumes an
+> **observed reward** at each step; ours presumes only that the interlocutor keeps
+> talking. OPCD names the missing piece from the other side: in the deployment scenario
+> without labels, what gets written "is not pre-evaluated."
 
 > 🔴 **本段是第十二轮（2026-08-04 投稿前重扫）改写的**，原文写的是
 > 🔴 *"Existing GT-free gates (GATES, LMSI) … operate at training time"* —— **已被 ConsistencyGate
@@ -90,6 +99,16 @@
 > 该信号类在 gavagai 对上 **AUC 0.269**、且 **M′ 更窄时 0.137（系统性反向）**——
 > **同期最新方法用的正是我方证明不够用的信号**，比"无人做过"是更强的立论。
 > ⚠️ 引用它时**必须**同时给出我方的失效实证，否则读者会认为该问题已被解决。
+>
+> 🔴 **同轮第二个发现：DeMem（2605.10870，2026-05-11）**——**判据类型那一轴上离我方最近的一篇**。
+> 全文水印核验 `arXiv:2605.10870v1`，词边界扫描：
+> **description length / MDL / admission / interlocutor / isolation 各 0 次**，rate-distortion 4 次。
+> 三条结构性差异**全部有原文支撑，引用时不得省略**：
+> ① **需要观测到的奖励**——contextual bandit，"the learner observes a reward $R_t \in [0,1]$"，目标是 regret；
+> ② **是预算下的分区（什么可以忘），不是准入（要不要写）**；
+> ③ **压缩的是智能体自己的动作**，我方压缩的是**对话者的后续用词**。
+> ✅ 但它**独立佐证了我方 P0 最硬的一条**（决策 vs 描述，7.2× margin）——须用作旁证，不是威胁。
+> ⚠️ 按禁令 2，**不得**把「不需要奖励」写成独立卖点，只能作为**作用域区分**。
 
 **¶5 — 机制（一句话）+ 划界（E1/E2）**
 
@@ -166,19 +185,22 @@
 **¶1 — 持续学习与记忆架构的准入信号（十类代理）**
 
 > Continual and lifelong learning offers a rich taxonomy of *what to keep*: reservoir
-> and class-balanced sampling admit examples by randomness or label counts [GDumb,
-> ECCV'20; Chaudhry et al.'19]; gradient-based selection chooses by gradient diversity
-> [GSS, Aljundi et al.'19]%TODO-BIB (maximally-interfered retrieval is a *retrieval*-side
-> criterion, not admission [MIR]%TODO-BIB); herding stores class-representative exemplars
-> [iCaRL]%TODO-BIB; dark experience replay stores reservoir-sampled logits [DER++]%TODO-BIB. Architectural
+> and class-balanced sampling admit examples by randomness or label counts \cite{prabhu2020gdumb,chaudhry2019tiny}; gradient-based selection chooses by gradient diversity
+> \cite{aljundi2019gss} (maximally-interfered retrieval is a *retrieval*-side
+> criterion, not admission \cite{aljundi2019mir}); herding stores class-representative exemplars
+> \cite{rebuffi2017icarl}; dark experience replay stores reservoir-sampled logits \cite{buzzega2020derpp}. Architectural
 > growth gates decide *when to expand* on training loss, parameter drift, or data
-> likelihood [DEN; CN-DPM]%TODO-BIB, and modern write-side gates admit items by geometric novelty
+> likelihood \cite{yoon2017den,lee2020cndpm}, and modern write-side gates admit items by geometric novelty
 > \cite{wang2026sage}, normalized-loss hysteresis \cite{li2025selfsizing}, or Bayesian
 > surprise \cite{gorlo2026worth}. The 2026 agent-memory wave gates writes on
 > trust proxies — source reputation and reliability \cite{zahn2026writetime},
-> faithfulness to the source \cite{yang2026trustmem}, or externally confirmed outcomes
-> [LOCI]%TODO-BIB. None of these signals assesses whether the acquired concept itself matches
-> what the interlocutor meant.
+> or faithfulness to the source \cite{yang2026trustmem}. None of these signals assesses
+> whether the acquired concept itself matches what the interlocutor meant.
+
+> 🔴 **第十二轮删除**：原句末尾还有 "or externally confirmed outcomes [LOCI]"。
+> LOCI（我方第四轮记为 TDCommons 11091）**第十二轮无法再定位该条目**，作者与标题未能核实。
+> ⟹ 按"不得引用无法核实的文献"，**先从正文删除**；若投稿前补全再放回。
+> 它只出现在族 6 概览句里，**不承载我方主张**——删除不影响立论。
 
 **¶2 — 最近邻：共识门控（正面引用，让出 GT-free 轴）**
 
@@ -254,10 +276,15 @@
 
 **¶6 — 划界段（放 Related Work 末尾或 §3 开头）**
 
-> *Boundary.* Source-trust gates \cite{zahn2026writetime,yang2026trustmem} address whether the
-> **teacher** is reliable; our gate addresses whether the **model's hypothesis matches
-> what the teacher means**. The two are orthogonal and composable: a full system needs
-> both, and neither subsumes the other. We evaluate only the second.
+> *Boundary.* Three neighbouring problems are not ours. Source-trust gates
+> \cite{zahn2026writetime,yang2026trustmem} address whether the **teacher** is reliable;
+> our gate addresses whether the **model's hypothesis matches what the teacher means**.
+> Correctness gates that consult an answer key or task outcome
+> \cite{zelikman2022star} presuppose exactly the signal our setting denies. And
+> post-hoc compaction \cite{kim2026memrefine,zou2026demem} decides what to *drop* from
+> an already-written store under a budget, whereas we decide what is *admitted* in the
+> first place. All three are orthogonal to ours and composable with it; none subsumes
+> it, and we evaluate only admission.
 
 > 中文注记（证据等级 / 待办）：
 > - ¶2 GATES 引语三条全 ✅（第八轮）；2607.08065 审计 ✅（第八轮）；SEAL 引语 ✅（第八轮）。

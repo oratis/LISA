@@ -44,10 +44,15 @@
 > are swamped. We therefore score a candidate concept against the interlocutor's
 > **usage decisions**: for each held-out instance `o`, whether the interlocutor applies
 > the term (`y_o ∈ {applies, ¬applies}`). This is the information the concept is
-> supposed to explain.
+> supposed to explain. A parallel argument has been made for agent memory
+> \cite{zou2026demem} — that what deserves to be kept is what preserves *decisions*
+> rather than *descriptions*; we reach the same conclusion from the opposite direction,
+> by measuring what happens when the observable is chosen wrongly.
 
 > 📌 **证据**：[p0 §2–§4](../p0/README.md)。自由陈述 +0.68 nats（5/8, p=0.36，词级 margin +0.02≈0）→ 决策序列 **+4.92 nats（8/8, p=0.0039）**，提升 **7.2×**。
 > ⚠️ 必须同时写：`y_o` 是**被观察到的用法**（数据），**不是关于概念对错的答案**——否则审稿人会误以为用了 GT。
+> ★ 引用 \cite{zou2026demem} 是**旁证不是让位**：它的"决策"是**智能体自己的动作**且失真定义为 **regret（需观测奖励）**；
+> 我方的"决策"是**对话者的用词**，不需要奖励。⚠️ 按禁令 2，这只能写成**作用域区分**，不得作为独立卖点。
 
 **¶2 — 两部分编码 + 安慰剂对照**
 
