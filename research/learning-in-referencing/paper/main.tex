@@ -56,8 +56,11 @@ signal exists at all, and we report them with the ablation that would have produ
 positive. We also report what a parametric consolidation substrate does \emph{not} buy: a
 word-substitution control shows it stores a persistent, partition-isolated,
 \emph{word-independent} bias over objects; forcing genuine word binding costs the
-cross-format transfer that made it attractive, and a token-triggered variant recovers binding
-completely but transfer only partially.
+cross-format transfer that made it attractive; and a token-triggered lexical entry, which
+binds by construction, recovers binding completely ($0.835 \to 0.080$ under substitution of
+the opposite-meaning word) but transfer only partially ($0.775$ against $0.995$ for context
+injection). Two controls that each break one design constraint fail exactly as predicted,
+so the diagnosis is sound and the gap is real.
 \end{abstract}
 
 % =====================================================================
@@ -505,28 +508,54 @@ $0.935$ and $0.945$. The earlier transfer was a consequence of \emph{not} bindin
 readout format can read that tag.
 Context injection obtains both properties ($0.905$ and $0.995$).
 
-A further attempt narrows the gap without closing it. Making the entry \emph{token-triggered}
---- one learned vector per (interlocutor, term), added to the residual stream only at the
-positions where that term's tokens occur --- gives binding by construction: substituting the
-opposite-meaning word drops the probe to $0.080$, and substituting an unrelated word returns
-it to base ($0.550$), because the trigger simply does not fire. Cross-format transfer improves
-too, but only partially: $0.775$ on the held-out True/False format against a base of $0.525$,
-and $0.570$ on A/B against $0.540$. \textbf{Across every configuration we tested, the
-parametric route attains at most one of the two \emph{at full strength}}; the best point we
-found holds binding completely and cross-format transfer only partially, still far from what
-context injection obtains for free. Two controls confirm the attribution rather than the
-remedy: writing the same value into the logits instead of the representation reproduces the
-base model exactly, and dropping the token trigger (injecting at every position) makes the
-training objective unfittable, since a position-independent constant cannot tell which of the
-two terms is being asked about.
+\paragraph{A better substrate narrows the gap without closing it.}
+The two failures above suggest what a substrate would have to do: key on something that
+identifies the \emph{word} and is observable at inference, and write its value into the
+\emph{representation} rather than into the logits. Context injection satisfies both --- the
+key is the term's own token, resolved by attention, and the retrieved content enters the
+residual stream. We therefore build the parameter-space analogue, a \emph{token-triggered
+lexical entry}: one learned vector per (interlocutor, term), added to the residual stream at
+a mid layer, at exactly the positions where that term's tokens occur, with no similarity
+search of any kind.
+
+Binding then holds by construction, and the measurements confirm it: substituting the
+opposite-meaning word drops the probe from $0.835$ to $\mathbf{0.080}$ --- the answer follows
+the substituted word rather than merely degrading --- and substituting an unrelated word
+returns it to base ($0.550$), because the trigger does not fire at all. Compare the
+$0.017$ drop of the unbound memory above. Cross-format transfer improves as well, but only
+partially: $0.775$ on the held-out True/False format against a base of $0.525$ and a
+previous best of $0.670$. \textbf{Across every configuration we tested, the parametric route
+attains at most one of the two \emph{at full strength}}; the best point we found holds
+binding completely and transfer partially, against the $0.995$ that context injection obtains
+for free.
+
+Three checks make this a clean negative rather than an inconclusive one. Two deliberately
+break one constraint each and fail exactly as predicted: writing the same value into the
+logits instead of the representation reproduces the base model to three decimals, and
+dropping the token trigger --- injecting at every position --- leaves the training objective
+\emph{unfittable} ($0.531$ against a $0.500$ floor), since a position-independent constant
+cannot tell which of two terms is being asked about. The attribution is therefore right; what
+was wrong was our expectation that satisfying both constraints would suffice. Third, a
+diagnosis of the A/B format shows its stubbornness is not a resolution artifact --- the
+entry's score distribution is \emph{wider} than context injection's, not compressed --- but
+genuine non-transfer, and that this format is in any case an unreliable instrument for
+non-contextual methods, with per-interlocutor base AUC ranging from $0.20$ to $0.84$; the
+True/False format, where the base is flat at $0.525$ and context injection reaches $0.995$,
+is the fair test. Finally, adding an explicit identity-preservation term to the objective ---
+so that the entry enriches rather than replaces the word's representation --- neither helps
+nor is needed: the model can already reproduce the term under injection, and the term costs
+binding strength ($0.080 \to 0.135$) without moving transfer.
 
 % =====================================================================
 \section{Limitations}
 
-\textbf{(i) The consolidated object is a word-independent bias, not a word meaning}, and
-under the teaching sets that do force binding, cross-format transfer collapses to base level
-(\S\ref{sec:substrate}). Fixes we have \emph{not} built: keying the memory at the word's
-token position rather than the sequence-final state, and explicit word-conditioned routing.
+\textbf{(i) No substrate we built obtains both binding and cross-format transfer.} An
+unbound memory stores a word-independent bias over objects; forcing binding costs the
+transfer; and a token-triggered lexical entry --- which keys on the word by construction ---
+recovers binding fully but transfer only partially ($0.775$ against $0.995$ for context
+injection). We tried the obvious repair (an identity-preservation term) and it does not help.
+What we have \emph{not} tried is relaxing the entry from a constant offset to a small
+input-dependent transformation, which is where we would look next.
 The two arms of the binding experiment are also not matched on optimisation --- the
 mid-network memory reaches zero training loss by step 150 and is trained to 900 --- and
 per-interlocutor variance in held-out generalisation is large. We forced binding only in the
