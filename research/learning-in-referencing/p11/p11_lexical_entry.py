@@ -344,6 +344,11 @@ for cond in args.conds.split(","):
         tgt = (model.model.embed_tokens if where == "emb" else
                model.model.norm if where == "postnorm_last" else model.model.layers[int(where)])
         hd = tgt.register_forward_hook(hook_last if where == "postnorm_last" else hook)
+        # ★ 控制实验本身也要被控制（同类错误第三次的产物）：
+        #   同一 module 上挂多个注入 hook ⟹ 注入被叠加，测到的不是被评估的那个条件。
+        assert len(tgt._forward_hooks) == 1, \
+            f"🔴 {tgt.__class__.__name__} 上有 {len(tgt._forward_hooks)} 个 forward hook —— " \
+            f"注入会被叠加（h+v 再 +v）。见 p11/README §3.2。" 
 
         opt = torch.optim.Adam([e.v for e in ents], lr=args.lr)
         P, N_ = FMT["F1 Yes/No"]
@@ -388,8 +393,12 @@ for cond in args.conds.split(","):
         u[f"{cond}_vnorm"] = st.mean(e.v.norm().item() for e in ents)
         u[f"{cond}_hnorm"] = hn
         # ★ 用**学出来的真实 v** 重跑复述控制（不是同量级随机向量搪塞）
+        # 🔴 初版 bug：此处**又在同一个 module 上注册了一次 hook**，而主 hook `hd` 尚未移除
+        #    ⟹ PyTorch 把前一 hook 的返回值作为后一 hook 的 output ⟹ h+v 再 +v = **h+2v**，
+        #    复述是在 **2× 注入**下测的。隔离实验（同一批学到的 v，n=4，w1-only）：
+        #      1× 注入 复述 0.75  vs  2× 注入 0.25   ——  P11 初版报的 0.50 正是 2× 下的数字。
+        #    ⟹ 修法：**复用已挂着的 hd**，不再注册第二个。
         holder["masks"] = None
-        hd_e = tgt.register_forward_hook(hook_last if where == "postnorm_last" else hook)
 
         @torch.no_grad()
         def _echo(w, _ents=ents, _h=holder):
@@ -404,7 +413,6 @@ for cond in args.conds.split(","):
             return w.lower() in g.lower().replace(" ", "")
 
         u[f"{cond}_echo"] = float(_echo(u["w1"]))
-        hd_e.remove()
         for cw in ("own", "within", "across"):
             for fmt in FMT:
                 pos, neg = data[cw][fmt]
