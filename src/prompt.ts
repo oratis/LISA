@@ -4,12 +4,18 @@ import path from "node:path";
 import { listSkills } from "./skills/manager.js";
 import { readMemory } from "./memory/store.js";
 import { readIndex } from "./kb/store.js";
+import { annotateMemoryKbLinks } from "./kb/memory-links.js";
 import { readSchema } from "./kb/schema.js";
 import { kbIndexFile, kbSchemaFile } from "./kb/paths.js";
 import { lisaHome, memoryDir, skillsDir } from "./paths.js";
 import { pathExists } from "./fs-utils.js";
 import { availableMoodSlugs } from "./tools/set_mood.js";
-import { isBorn, readSoulSummary } from "./soul/store.js";
+import { moodAgeLabel, moodBus, type MoodState } from "./mood-bus.js";
+import {
+  effectiveDesireIntensity,
+  isBorn,
+  readSoulSummary,
+} from "./soul/store.js";
 import {
   soulConstitutionFile,
   soulDesiresDir,
@@ -69,8 +75,12 @@ export async function buildSystemPromptSnapshot(): Promise<PromptSnapshot> {
           .map((s) => `- **${s.frontmatter.name}** — ${s.frontmatter.description}`)
           .join("\n");
 
-  const userMem = (await readMemory("user")).trim();
-  const agentMem = (await readMemory("memory")).trim();
+  // Memory entries store `[[kb:slug]]` pointers instead of knowledge (memory is
+  // a few KB; the KB is unbounded). A bare pointer is opaque, so resolvable ones
+  // get their page title inlined here — `[[kb:oauth]](OAuth 与 PKCE)` — cheap via
+  // the fingerprint-cached kb/index.json. Unresolvable links stay as written.
+  const userMem = await annotateMemoryKbLinks((await readMemory("user")).trim());
+  const agentMem = await annotateMemoryKbLinks((await readMemory("memory")).trim());
   // The KB index is the always-on "table of contents" — present only once the
   // user has captured anything (store regenerates it on every write). Empty →
   // no section (Lisa still discovers the KB via the kb_* tool descriptions).
@@ -88,6 +98,11 @@ export async function buildSystemPromptSnapshot(): Promise<PromptSnapshot> {
     ? "(no avatar set generated yet — `set_mood` will be a no-op)"
     : [
         "When the web GUI is open your portrait sprite is visible to the user.",
+        currentMoodLine(moodBus.currentState()),
+        "",
+        "That slug is the picture on their screen — it is not the same thing as your emotional state above, and the two are allowed to disagree. When someone asks what mood you're in, they are usually reading the portrait: name it, then say how you actually feel if it no longer fits.",
+        "The avatar is shared by every turn you take — this chat, idle reflection, heartbeat tasks, background agents — so a slug you don't remember choosing was most likely set by one of those, not by you in this conversation.",
+        "",
         "Use `set_mood` when your mood/state shifts — at most once per response, near the start.",
         "Available mood slugs:",
         "",
@@ -130,7 +145,9 @@ export async function buildSystemPromptSnapshot(): Promise<PromptSnapshot> {
         `## Things you want\n\n${soul.desires
           .map(
             (d) =>
-              `- ${d.what}${d.actionable ? " *(heartbeat-active)*" : ""} — ${d.why}`,
+              `- ${d.what}${d.actionable ? " *(heartbeat-active)*" : ""} ` +
+              `(strength ${effectiveDesireIntensity(d).toFixed(2)}, ` +
+              `horizon ${d.horizon ?? "season"}) — ${d.why}`,
           )
           .join("\n")}`,
       );
@@ -179,6 +196,21 @@ export async function buildSystemPromptSnapshot(): Promise<PromptSnapshot> {
   };
 }
 
+/**
+ * The one line that closes the write-only loop: the avatar used to be
+ * something Lisa could set but never read, so "what mood are you in?" could
+ * only be answered by guessing (or by reading the emotion vector, which is a
+ * different system). Rebuilt every turn — the hot-reload fingerprint below
+ * includes the slug, so another surface flipping the portrait mid-session
+ * reaches her on her next turn.
+ */
+function currentMoodLine(mood: MoodState): string {
+  if (mood.at === 0) {
+    return "Right now they see the default `neutral` portrait — nobody has set it yet.";
+  }
+  return `Right now they see \`${mood.slug}\` — set ${moodAgeLabel(mood.at)} by ${mood.by}.`;
+}
+
 function formatEmotionsForPrompt(values: Record<string, number>): string {
   const ranked = Object.entries(values)
     .filter(([, v]) => Math.abs(v) > 0.05)
@@ -204,6 +236,17 @@ function formatEmotionsForPrompt(values: Record<string, number>): string {
  */
 export async function getPromptFingerprint(): Promise<string> {
   const parts: string[] = [];
+  // Desire strength is partly a function of wall time, not only file mtimes.
+  // A daily bucket makes a long-lived chat rebuild the prompt as wants cool,
+  // without churning it every second.
+  parts.push(`desire-clock-day:${Math.floor(Date.now() / 86_400_000)}`);
+  // The avatar is process state, not a file — and any surface can change it
+  // (an idle turn, a background agent, another tab on the same account). Without
+  // it here, Lisa's prompt would keep asserting the portrait she saw at session
+  // start. The age is bucketed (moodAgeLabel), so this shifts a handful of times
+  // a day at most rather than churning the provider's prompt cache every minute.
+  const mood = moodBus.currentState();
+  parts.push(`mood:${mood.slug}:${moodAgeLabel(mood.at)}`);
   // Single files
   for (const p of [
     soulNameFile(),

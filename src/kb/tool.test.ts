@@ -78,6 +78,25 @@ describe("kb search + tools", () => {
     assert.match(e!.body, /v2 launch/);
   });
 
+  test("kb_write auto-links mentions of existing wiki pages (own page excluded)", async () => {
+    await run("kb_write", {
+      slug: "auth-notes",
+      title: "Auth notes",
+      content: "We standardized on OAuth for third-party APIs.",
+    });
+    const e = await store.readEntry("wiki", "auth-notes");
+    assert.match(e!.body, /\[\[oauth\|OAuth\]\]/, "prose mention became a link");
+
+    // Re-writing the OAuth page itself must not self-link.
+    await run("kb_write", {
+      slug: "oauth",
+      title: "OAuth",
+      content: "OAuth 2.0 authorization framework; PKCE hardens the code flow.",
+    });
+    const self = await store.readEntry("wiki", "oauth");
+    assert.doesNotMatch(self!.body, /\[\[oauth/, "no self-link on upsert");
+  });
+
   test("kb_read + kb_list format entries", async () => {
     const read = (await run("kb_read", { layer: "wiki", slug: "projects" })) as string;
     assert.match(read, /# Projects/);

@@ -20,8 +20,9 @@
  * usage.jsonl audit ledger; atomic writes under the billing lock.
  */
 import path from "node:path";
-import { lisaHome, scopedUid } from "../paths.js";
-import { atomicWrite, readTextOrEmpty, ensureDir } from "../fs-utils.js";
+import fs from "node:fs/promises";
+import { scopedUid } from "../paths.js";
+import { atomicWrite, ensureDir } from "../fs-utils.js";
 import { withFileLock } from "../soul/lock.js";
 import type { AccountRecord } from "../web/accounts.js";
 import { modelTier } from "./prices.js";
@@ -51,7 +52,7 @@ export interface PurchaseEntry {
 export interface BalanceState {
   /** Paid balance, micro-USD. Never expires; may go negative after a refund. */
   paidMicroUSD: number;
-  /** Purchases (for the 30d tier); pruned past 60d. */
+  /** Purchases for tiering + durable transaction idempotency and refunds. */
   purchases: PurchaseEntry[];
   /** The active free window, if one has been opened. */
   window?: { start: number; spentMicroUSD: number };
@@ -66,11 +67,62 @@ function balanceLock(): string {
 
 const EMPTY: BalanceState = { paidMicroUSD: 0, purchases: [] };
 
-function sanitizeBalance(parsed: Partial<BalanceState> | null | undefined): BalanceState {
+export class BillingStateError extends Error {
+  constructor(
+    public readonly code: "balance_unavailable" | "balance_corrupt" | "purchase_conflict",
+    message: string,
+  ) {
+    super(message);
+    this.name = "BillingStateError";
+  }
+}
+
+function emptyBalance(): BalanceState {
+  return { ...EMPTY, purchases: [] };
+}
+
+function safeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value);
+}
+
+function parseBalance(parsed: unknown): BalanceState {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new BillingStateError("balance_corrupt", "balance store must contain an object");
+  }
+  const raw = parsed as Partial<BalanceState>;
+  if (!safeInteger(raw.paidMicroUSD) || !Array.isArray(raw.purchases)) {
+    throw new BillingStateError("balance_corrupt", "balance store has invalid totals");
+  }
+  const purchases: PurchaseEntry[] = [];
+  for (const item of raw.purchases) {
+    if (
+      !item ||
+      typeof item !== "object" ||
+      !safeInteger((item as PurchaseEntry).at) ||
+      !safeInteger((item as PurchaseEntry).microUSD) ||
+      ((item as PurchaseEntry).transactionId !== undefined &&
+        typeof (item as PurchaseEntry).transactionId !== "string")
+    ) {
+      throw new BillingStateError("balance_corrupt", "balance store has an invalid purchase");
+    }
+    purchases.push({ ...(item as PurchaseEntry) });
+  }
+  let window: BalanceState["window"];
+  if (raw.window !== undefined) {
+    if (
+      !raw.window ||
+      !safeInteger(raw.window.start) ||
+      !safeInteger(raw.window.spentMicroUSD) ||
+      raw.window.spentMicroUSD < 0
+    ) {
+      throw new BillingStateError("balance_corrupt", "balance store has an invalid window");
+    }
+    window = { ...raw.window };
+  }
   return {
-    paidMicroUSD: typeof parsed?.paidMicroUSD === "number" ? parsed.paidMicroUSD : 0,
-    purchases: Array.isArray(parsed?.purchases) ? parsed.purchases : [],
-    window: parsed?.window,
+    paidMicroUSD: raw.paidMicroUSD,
+    purchases,
+    ...(window ? { window } : {}),
   };
 }
 
@@ -89,17 +141,24 @@ export async function readBalance(): Promise<BalanceState> {
   if (doc) {
     try {
       const d = await getDoc(doc);
-      return sanitizeBalance((d?.data as Partial<BalanceState> | undefined) ?? null);
-    } catch {
-      return { ...EMPTY, purchases: [] };
+      return d ? parseBalance(d.data) : emptyBalance();
+    } catch (err) {
+      if (err instanceof BillingStateError) throw err;
+      throw new BillingStateError("balance_unavailable", `balance store is unavailable: ${(err as Error).message}`);
     }
   }
+  let text: string;
   try {
-    const text = await readTextOrEmpty(balanceFile());
-    if (!text.trim()) return { ...EMPTY, purchases: [] };
-    return sanitizeBalance(JSON.parse(text) as Partial<BalanceState>);
-  } catch {
-    return { ...EMPTY, purchases: [] };
+    text = await fs.readFile(balanceFile(), "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return emptyBalance();
+    throw new BillingStateError("balance_unavailable", `balance store is unavailable: ${(err as Error).message}`);
+  }
+  try {
+    return parseBalance(JSON.parse(text));
+  } catch (err) {
+    if (err instanceof BillingStateError) throw err;
+    throw new BillingStateError("balance_corrupt", `balance store is corrupt: ${(err as Error).message}`);
   }
 }
 
@@ -115,7 +174,7 @@ export async function updateBalance<T>(
   const doc = balanceDocPath();
   if (doc) {
     return casUpdate(doc, (current) => {
-      const state = sanitizeBalance((current as Partial<BalanceState> | null) ?? null);
+      const state = current ? parseBalance(current) : emptyBalance();
       const out = fn(state);
       return { next: state as unknown as Record<string, unknown>, result: out };
     });
@@ -253,12 +312,36 @@ export async function debitTurn(
   });
 }
 
-/** Credit a purchase (B5 IAP calls this) and prune purchases older than 60d. */
-export async function creditPurchase(entry: PurchaseEntry, now: number = Date.now()): Promise<void> {
-  await updateBalance((state) => {
+/**
+ * Credit a purchase and prune only anonymous tier-history entries older than
+ * 60d. Entries with a transactionId are a durable idempotency/refund ledger and
+ * must never be aged out merely because their tier contribution expired.
+ *
+ * transactionId is an idempotency key at the balance boundary, not only in the
+ * global transaction index. This closes the crash window where the balance was
+ * credited but the transaction state had not yet advanced to `credited`.
+ * Returns true when this call added funds and false for an identical replay.
+ */
+export async function creditPurchase(entry: PurchaseEntry, now: number = Date.now()): Promise<boolean> {
+  return updateBalance((state) => {
+    if (entry.transactionId) {
+      const existing = state.purchases.find((purchase) => purchase.transactionId === entry.transactionId);
+      if (existing) {
+        if (existing.microUSD !== entry.microUSD) {
+          throw new BillingStateError(
+            "purchase_conflict",
+            `transaction ${entry.transactionId} has conflicting credit amounts`,
+          );
+        }
+        return false;
+      }
+    }
     state.paidMicroUSD += entry.microUSD;
     state.purchases.push(entry);
-    state.purchases = state.purchases.filter((p) => now - p.at <= 2 * THIRTY_DAYS_MS);
+    state.purchases = state.purchases.filter(
+      (purchase) => purchase.transactionId || now - purchase.at <= 2 * THIRTY_DAYS_MS,
+    );
+    return true;
   });
 }
 

@@ -60,7 +60,32 @@ group once Apple finishes processing (a few minutes).
 
 ## Build + upload from CI (tag-triggered)
 
-Add these repo secrets (Settings → Secrets and variables → Actions):
+> **Status: configured & live** (2026-07-23). All six secrets below are populated
+> on `oratis/LISA`, so any collaborator with push access can ship a TestFlight
+> build from CI alone — no Mac, no local certificates.
+
+### Releasing (for collaborators)
+
+Either of:
+
+```sh
+# 1. Tag-triggered (preferred — leaves a versioned marker)
+git tag pocket-v1.2.0 && git push origin pocket-v1.2.0
+```
+
+```sh
+# 2. Manual: Actions → "Release — iOS TestFlight (Lisa Pocket)" → Run workflow
+gh workflow run release-ios-testflight.yml --repo oratis/LISA
+```
+
+Watch the run under **Actions**; on success the build appears in App Store
+Connect → TestFlight after Apple finishes processing (a few minutes). The build
+number is the Unix timestamp of the build (set automatically); the marketing
+version comes from `project.yml` unless overridden.
+
+### The secrets behind it
+
+Repo secrets (Settings → Secrets and variables → Actions):
 
 | Secret | What |
 | --- | --- |
@@ -71,8 +96,9 @@ Add these repo secrets (Settings → Secrets and variables → Actions):
 | `IOS_DIST_CERT_PASSWORD` | the `.p12` passphrase |
 | `APPLE_TEAM_ID` | `9LH9NBX7P4` (reused from the mac workflow) |
 
-Then push a tag `pocket-vX.Y.Z` (or run the workflow manually). With the secrets
-absent the workflow is a no-op, so the repo stays green for others.
+With the secrets absent the workflow is a no-op, so forks stay green. To rotate:
+re-export the cert / re-download an API key and `gh secret set` the new values —
+nothing sensitive lives in the repo itself.
 
 ## From TestFlight to App Store (public release)
 

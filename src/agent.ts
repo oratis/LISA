@@ -6,7 +6,7 @@ import type {
   ToolDefinition,
 } from "./types.js";
 import type { Provider } from "./providers/types.js";
-import { moodBus } from "./mood-bus.js";
+import { moodBus, withMoodOrigin } from "./mood-bus.js";
 import { validateToolInput } from "./tools/validate.js";
 
 export interface ApprovalDecision {
@@ -66,6 +66,13 @@ export interface RunAgentOptions {
   ) => Promise<{ rewriteResult?: string } | void>;
   maxIterations?: number;
   /**
+   * Coarse label for what kind of turn this is ("an idle turn", "a background
+   * agent", …). Any set_mood inside the run is attributed to it, so a later
+   * turn reading its own system prompt can tell whether it set the portrait
+   * itself or inherited it from some other surface. Defaults to a chat turn.
+   */
+  moodOrigin?: string;
+  /**
    * Optional cumulative (input+output) token ceiling for the whole run. Checked
    * at each turn boundary; once exceeded the loop stops before the next provider
    * call with stopReason "budget_exceeded". Used by self-driven runs (idle /
@@ -99,7 +106,13 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   // try/finally guarantees chat_end fires even on throw / cancel.
   moodBus.chatStart();
   try {
-    return await runAgentLoop(opts);
+    // The whole loop runs inside the mood-origin scope so set_mood — however
+    // deep in the tool stack it fires — records what kind of turn changed the
+    // portrait.
+    return await withMoodOrigin(
+      opts.moodOrigin ?? "a chat turn",
+      async () => await runAgentLoop(opts),
+    );
   } finally {
     moodBus.chatEnd();
   }

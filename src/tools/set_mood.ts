@@ -45,8 +45,9 @@ export const setMoodTool: ToolDefinition<SetMoodInput, string> = {
     "shifts — e.g. about to run a destructive command (`scared`), focused " +
     "coding work (`working-coding`), thanking the user (`grateful`), " +
     "celebrating a win (`cheering`). Don't call it every turn — only when " +
-    "the avatar would actually change. The full catalog is in your system " +
-    "prompt; pick the closest match by slug.",
+    "the avatar would actually change. The full catalog — and the slug the " +
+    "user is looking at right now — is in the `## Avatar moods` section of " +
+    "your system prompt; pick the closest match by slug.",
   inputSchema: {
     type: "object",
     properties: {
@@ -69,7 +70,10 @@ export const setMoodTool: ToolDefinition<SetMoodInput, string> = {
         `unknown mood "${mood}". Closest: ${fuzzy.join(", ") || "(none)"}. Use one of the slugs from the catalog.`,
       );
     }
+    // Name what it was: the previous slug may have been set by an idle turn or
+    // a background agent, so the transition is news to this conversation.
+    const previous = moodBus.current();
     moodBus.set(mood);
-    return `mood→${mood}`;
+    return previous === mood ? `mood→${mood} (unchanged)` : `mood→${mood} (was ${previous})`;
   },
 };

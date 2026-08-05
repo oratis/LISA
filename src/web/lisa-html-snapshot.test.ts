@@ -78,10 +78,18 @@ import { MAIN_HTML } from "./lisa-html.js";
  * inspector modal (openSessionDetail: metadata + surfaced error/pending banner +
  * approve/deny/send/cancel/adopt/view-output actions), and inline quick
  * approve/deny on pending rows. Sidebar .session-row styling left untouched.
+ * Then: KB link ingest (PLAN_KNOWLEDGE_BASE_v2.0 K-G) — a paste-a-link bar
+ * (.kb-ingestbar: url input + Save + status) atop the Knowledge view calling
+ * POST /api/kb/ingest and opening the saved entry; a 存入知识库 chip
+ * (maybeOfferKbIngest) under chat bubbles whose message contains a bare URL;
+ * window.lisaKbToast shared from the capture block; and their CSS.
+ * Then: Sense social publishing host — discovered connector status, post-draft
+ * list, linked-account labels, immutable approval snapshot, local approve,
+ * cancel controls, and a publishing pause/resume kill switch.
  */
-const EXPECTED_LENGTH = 219777;
+const EXPECTED_LENGTH = 232129;
 const EXPECTED_SHA256 =
-  "d8483b766c3d28785437d0f47986fefdf29976aac48e3d465af10fc7a666494b";
+  "d054604413725cbb37e979bb053d7118c43a26e8fe9b90d59b28edde93b851a5";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);

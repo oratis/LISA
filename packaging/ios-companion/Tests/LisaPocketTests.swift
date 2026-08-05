@@ -175,6 +175,50 @@ final class LisaPocketTests: XCTestCase {
         XCTAssertNil(s.lastMtime)
     }
 
+    // ── API contract: old servers remain usable; future majors fail clearly ──
+    func testAPIContractCompatibility() throws {
+        let url = URL(string: "https://lisa.example/api/agents/sessions")!
+        let legacy = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!
+        XCTAssertNoThrow(try LisaAPICompatibility.validate(legacy))
+
+        let current = HTTPURLResponse(
+            url: url,
+            statusCode: 200,
+            httpVersion: nil,
+            headerFields: [LisaAPIContract.versionHeader: "1"]
+        )!
+        XCTAssertNoThrow(try LisaAPICompatibility.validate(current))
+
+        let future = HTTPURLResponse(
+            url: url,
+            statusCode: 200,
+            httpVersion: nil,
+            headerFields: [LisaAPIContract.versionHeader: "2"]
+        )!
+        XCTAssertThrowsError(try LisaAPICompatibility.validate(future)) { error in
+            guard case LisaError.unsupportedAPIVersion(let version) = error else {
+                return XCTFail("unexpected error: \(error)")
+            }
+            XCTAssertEqual(version, 2)
+        }
+
+        let malformed = HTTPURLResponse(
+            url: url,
+            statusCode: 200,
+            httpVersion: nil,
+            headerFields: [LisaAPIContract.versionHeader: "banana"]
+        )!
+        XCTAssertThrowsError(try LisaAPICompatibility.validate(malformed))
+
+        let invalidZero = HTTPURLResponse(
+            url: url,
+            statusCode: 200,
+            httpVersion: nil,
+            headerFields: [LisaAPIContract.versionHeader: "0"]
+        )!
+        XCTAssertThrowsError(try LisaAPICompatibility.validate(invalidZero))
+    }
+
     // ── onboarding model: install commands are the real repo ones ──
     func testInstallCommands() {
         XCTAssertEqual(InstallMethod.homebrew.installCommand, "brew install oratis/tap/lisa")
@@ -215,5 +259,17 @@ final class LisaPocketTests: XCTestCase {
         XCTAssertTrue(VerifyOutcome.unauthorized.recovery.contains(.manual))
         XCTAssertTrue(VerifyOutcome.ok.recovery.isEmpty)
         XCTAssertEqual(RecoveryAction.rescan.label, "Scan a fresh code")
+    }
+
+    // ── A4: the Google redirect scheme is the client id, reversed ──
+    @MainActor
+    func testGoogleRedirectScheme() {
+        XCTAssertEqual(
+            GoogleSignIn.redirectScheme(clientId: "123-abc.apps.googleusercontent.com"),
+            "com.googleusercontent.apps.123-abc")
+        // A web client id (or anything else) has no reversed form — refuse it
+        // rather than build a redirect Google will reject.
+        XCTAssertNil(GoogleSignIn.redirectScheme(clientId: "123-abc.example.com"))
+        XCTAssertNil(GoogleSignIn.redirectScheme(clientId: ""))
     }
 }

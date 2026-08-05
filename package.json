@@ -1,6 +1,6 @@
 {
   "name": "@oratis/lisa",
-  "version": "0.20.0",
+  "version": "0.22.0",
   "description": "An AI agent with a real self — runs locally, has desires, keeps a journal, evolves over time.",
   "keywords": [
     "ai",
@@ -42,6 +42,7 @@
   },
   "files": [
     "dist/",
+    "contracts/",
     "channels.example.json",
     "completions/",
     "LICENSE",
@@ -57,8 +58,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "test:watch": "node --import tsx --test --watch \"src/**/*.test.ts\"",
+    "generate:api-contract": "node scripts/generate-api-contract.mjs",
+    "check:api-contract": "node scripts/generate-api-contract.mjs --check",
     "generate-assets": "tsx scripts/generate-pixel-assets.ts",
-    "prepublishOnly": "npm run typecheck && npm test && npm run build && rm -rf dist/web/assets && cp -R src/web/assets dist/web/assets",
+    "prepublishOnly": "npm run check:api-contract && npm run typecheck && npm test && npm run build && rm -rf dist/web/assets && cp -R src/web/assets dist/web/assets",
     "postpublish": "npm run copy-assets"
   },
   "engines": {
@@ -69,6 +72,7 @@
     "@google/genai": "^2.0.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "imapflow": "^1.4.2",
+    "music-metadata": "^11.14.0",
     "openai": "^6.35.0",
     "qrcode-terminal": "^0.12.0",
     "undici": "^8.2.0"
@@ -76,8 +80,8 @@
   "devDependencies": {
     "@types/node": "^22.10.0",
     "@types/qrcode-terminal": "^0.12.2",
-    "sharp": "^0.34.5",
-    "tsx": "^4.21.0",
+    "sharp": "^0.35.3",
+    "tsx": "^4.23.1",
     "typescript": "^5.7.0"
   },
   "optionalDependencies": {

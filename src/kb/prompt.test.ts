@@ -38,4 +38,16 @@ describe("kb ⇄ prompt integration", () => {
     const after = await prompt.getPromptFingerprint();
     assert.notEqual(before, after, "a KB write must change the prompt fingerprint");
   });
+
+  test("memory [[kb:slug]] pointers get their page title inlined in the prompt", async () => {
+    const memory = await import("../memory/store.js");
+    await memory.appendMemory("memory", "auth details: [[kb:oauth]]; todo: [[kb:not-written-yet]]");
+    const snap = await prompt.buildSystemPromptSnapshot();
+    assert.match(snap.text, /\[\[kb:oauth\]\]\(OAuth\)/, "resolvable pointer shows its title");
+    assert.match(
+      snap.text,
+      /\[\[kb:not-written-yet\]\](?!\()/,
+      "unresolvable pointer survives verbatim",
+    );
+  });
 });

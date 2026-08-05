@@ -7,10 +7,19 @@ import path from "node:path";
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "lisa-iap-"));
 process.env.LISA_HOME = TMP;
 
-const { verifyAppleJWS, validateTransaction, creditTransaction, refundTransaction, PRODUCTS, IapError, oidToDer } =
+const {
+  verifyAppleJWS,
+  validateTransaction,
+  creditTransaction,
+  refundTransaction,
+  PRODUCTS,
+  IapError,
+  PaymentStateError,
+  oidToDer,
+} =
   await import("./iap.js");
 const { homeScope, homeForUid } = await import("../paths.js");
-const { readBalance } = await import("./quota.js");
+const { creditPurchase, readBalance } = await import("./quota.js");
 
 const b64 = (o: object) => Buffer.from(JSON.stringify(o)).toString("base64url");
 
@@ -104,8 +113,131 @@ describe("credit + dedup + refund", () => {
       assert.equal(b.paidMicroUSD, 0);
       assert.equal(b.purchases.length, 0);
     });
+    const replayedRefund = await refundTransaction("tx-2");
+    assert.equal(replayedRefund?.uid, "em-gamma");
+    await homeScope.run(homeForUid("em-gamma"), async () => {
+      assert.equal((await readBalance()).paidMicroUSD, 0, "refund replay must not claw back twice");
+    });
     assert.equal(await refundTransaction("tx-never"), null);
     // The index entry survives the refund, so a replayed credit stays deduped.
     await assert.rejects(creditTransaction("em-gamma", { ...tx, transactionId: "tx-2" }, 2000), (e: unknown) => (e as InstanceType<typeof IapError>).code === "duplicate_transaction");
+  });
+
+  test("a pending transaction safely resumes after balance credit without double-crediting", async () => {
+    fs.writeFileSync(
+      path.join(TMP, "iap-transactions.json"),
+      JSON.stringify([
+        {
+          transactionId: "tx-resume",
+          uid: "em-resume",
+          productId: tx.productId,
+          microUSD: PRODUCTS[tx.productId],
+          at: 1000,
+          status: "pending",
+        },
+      ]),
+    );
+    await homeScope.run(homeForUid("em-resume"), () =>
+      creditPurchase({
+        at: 1000,
+        microUSD: PRODUCTS[tx.productId]!,
+        transactionId: "tx-resume",
+      }),
+    );
+
+    assert.equal(
+      await creditTransaction("em-resume", { ...tx, transactionId: "tx-resume" }, 2000),
+      PRODUCTS[tx.productId],
+    );
+    await homeScope.run(homeForUid("em-resume"), async () => {
+      const balance = await readBalance();
+      assert.equal(balance.paidMicroUSD, PRODUCTS[tx.productId]);
+      assert.equal(balance.purchases.length, 1);
+    });
+    const index = JSON.parse(fs.readFileSync(path.join(TMP, "iap-transactions.json"), "utf8")) as Array<{ status: string }>;
+    assert.equal(index[0]?.status, "credited");
+  });
+
+  test("a corrupt transaction index fails closed without crediting or overwriting it", async () => {
+    const indexFile = path.join(TMP, "iap-transactions.json");
+    fs.writeFileSync(indexFile, "{corrupt");
+    await assert.rejects(
+      creditTransaction("em-safe", { ...tx, transactionId: "tx-corrupt" }, 1000),
+      PaymentStateError,
+    );
+    assert.equal(fs.readFileSync(indexFile, "utf8"), "{corrupt");
+    await homeScope.run(homeForUid("em-safe"), async () => {
+      assert.equal((await readBalance()).paidMicroUSD, 0);
+    });
+  });
+
+  test("a Firestore outage is surfaced as retryable payment-state unavailability", async () => {
+    const originalFetch = globalThis.fetch;
+    process.env.LISA_FIRESTORE = "1";
+    process.env.LISA_FIRESTORE_TOKEN = "test-token";
+    process.env.LISA_FIRESTORE_PROJECT = "test-project";
+    globalThis.fetch = async () => new Response("unavailable", { status: 503 });
+    try {
+      await assert.rejects(
+        creditTransaction("em-firestore", { ...tx, transactionId: "tx-firestore" }, 1000),
+        (err: unknown) =>
+          err instanceof PaymentStateError &&
+          err.code === "transaction_store_unavailable",
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+      delete process.env.LISA_FIRESTORE;
+      delete process.env.LISA_FIRESTORE_TOKEN;
+      delete process.env.LISA_FIRESTORE_PROJECT;
+    }
+  });
+
+  test("a conflicting pending owner is rejected without leaking a second credit", async () => {
+    fs.writeFileSync(
+      path.join(TMP, "iap-transactions.json"),
+      JSON.stringify([
+        {
+          transactionId: "tx-conflict",
+          uid: "em-owner",
+          productId: tx.productId,
+          microUSD: PRODUCTS[tx.productId],
+          at: 1000,
+          status: "pending",
+        },
+      ]),
+    );
+    await assert.rejects(
+      creditTransaction("em-attacker", { ...tx, transactionId: "tx-conflict" }, 2000),
+      (err: unknown) =>
+        err instanceof PaymentStateError && err.code === "transaction_conflict",
+    );
+    await homeScope.run(homeForUid("em-attacker"), async () => {
+      assert.equal((await readBalance()).paidMicroUSD, 0);
+    });
+  });
+
+  test("a refund arriving during pending credit fails retryably", async () => {
+    const indexFile = path.join(TMP, "iap-transactions.json");
+    fs.writeFileSync(
+      indexFile,
+      JSON.stringify([
+        {
+          transactionId: "tx-pending-refund",
+          uid: "em-owner",
+          productId: tx.productId,
+          microUSD: PRODUCTS[tx.productId],
+          at: 1000,
+          status: "pending",
+        },
+      ]),
+    );
+    await assert.rejects(
+      refundTransaction("tx-pending-refund"),
+      (err: unknown) =>
+        err instanceof PaymentStateError &&
+        err.code === "transaction_store_unavailable",
+    );
+    const index = JSON.parse(fs.readFileSync(indexFile, "utf8")) as Array<{ status: string }>;
+    assert.equal(index[0]?.status, "pending");
   });
 });

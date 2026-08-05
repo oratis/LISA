@@ -39,14 +39,38 @@ import { ISLAND_HTML } from "./island.js";
 import { LOGIN_HTML } from "./login.js";
 import { recordUsage, summarizeUsage, setAnomalySink } from "../billing/meter.js";
 import { PRICES_VERSION, tokensAffordable } from "../billing/prices.js";
-import { precheckTurn, debitTurn, quotaStatus } from "../billing/quota.js";
-import { verifyAppleJWS, validateTransaction, creditTransaction, creditExternalTransaction, refundTransaction, IapError } from "../billing/iap.js";
+import { quotaStatus, BillingStateError } from "../billing/quota.js";
+import { admitInference, type InferencePermit } from "../billing/admission.js";
+import {
+  verifyAppleJWS,
+  validateTransaction,
+  creditTransaction,
+  creditExternalTransaction,
+  refundTransaction,
+  IapError,
+  PaymentStateError,
+} from "../billing/iap.js";
 import { stripeConfig, verifyStripeSignature, classifyStripeEvent, createCheckoutSession, sessionIdForPaymentIntent, STRIPE_PACKS } from "../billing/stripe.js";
 import { ACCOUNT_HTML } from "./account-page.js";
 import { handleGateway } from "./gateway.js";
-import { readCappedText, BodyTooLargeError, CTRL_BODY_LIMIT } from "./http-body.js";
-import { preflightLimits, ipRateOk } from "../billing/limits.js";
-import { acquireTurnLease, releaseTurnLease, startLeaseRenewal } from "../cloud/turn-lease.js";
+import {
+  createTenantActivityState,
+  TenantRuntimeRegistry,
+  tenantRuntimeOptions,
+  type TenantActivityState,
+  type TenantRuntimeLease,
+} from "./tenant-runtime.js";
+import {
+  readCappedText,
+  BodyTooLargeError,
+  CTRL_BODY_LIMIT,
+  RICH_BODY_LIMIT,
+} from "./http-body.js";
+import {
+  agentSessionsResponse,
+  applyApiVersionHeader,
+} from "./api-contract.js";
+import { ipRateOk } from "../billing/limits.js";
 import { ROOM_HTML } from "./room.js";
 import { MAIN_HTML } from "./lisa-html.js";
 import { OrchestratorHub, loadOrchestratorConfig } from "../integrations/hub.js";
@@ -57,14 +81,22 @@ import { recordEvent } from "../orchestrator/journal.js";
 import { buildRecap, formatRecap } from "../orchestrator/recap.js";
 import type { AgentSession } from "../integrations/types.js";
 import { captureScreenshot, captureSupported, type CaptureMode } from "../vision/capture.js";
-import { transcribeAudio } from "../voice/transcribe.js";
-import { polishDictation, type DictationProvider } from "../voice/dictation.js";
+import {
+  AudioValidationError,
+  prepareTranscription,
+  transcribePrepared,
+} from "../voice/transcribe.js";
+import { polishDictationMetered, type DictationProvider } from "../voice/dictation.js";
+import { admitMedia, type MediaPermit } from "../billing/media-admission.js";
+import { recordMediaUsage, summarizeMediaUsage } from "../billing/media-meter.js";
+import { MEDIA_PRICES_VERSION } from "../billing/media-prices.js";
 import { listGrants, grant, revoke, revokeAll, isGranted, SENSE_SIGNALS, SIGNAL_DESCRIPTIONS } from "../consent/store.js";
 import { signalAgentTool } from "../tools/signal_agent.js";
 import { managedRegistry } from "../agents/managed.js";
 import { ptyRegistry, ptyEnabled, normalizeAgentKind } from "../agents/pty.js";
 import { liveClaudeSessionIds } from "../integrations/claude-code/liveness.js";
 import { sweepAll, pollNewMail, probeAccount } from "../mail/service.js";
+import { friendlyMailError } from "../mail/connect-error.js";
 import { pickImportant, formatAlert, alertLevel, pollMinutes } from "../mail/alerts.js";
 import { latestDigest } from "../mail/store.js";
 import { formatDigestText } from "../mail/digest.js";
@@ -85,6 +117,7 @@ import {
 } from "./sessions-auth.js";
 import {
   AccountError,
+  AccountStoreError,
   createEmailAccount,
   verifyEmailLogin,
   upsertAppleAccount,
@@ -94,14 +127,32 @@ import {
   ensureSeededAccount,
   beginEmailVerification,
   confirmEmailVerification,
+  ensureOtpAccount,
+  upsertGoogleAccount,
+  validEmail,
+  normalizeEmail,
 } from "./accounts.js";
-import { sendVerificationEmail } from "./mailer.js";
+import {
+  verifyGoogleIdToken,
+  fetchGoogleKeys,
+  googleSignInConfig,
+  googleAudiences,
+  GoogleAuthError,
+} from "./googleAuth.js";
+import { requestEmailOtp, verifyEmailOtp, OTP_TTL_MS } from "./otp.js";
+import { checkDeliverable } from "./email-deliverability.js";
+import { sendVerificationEmail, sendSignInCodeEmail } from "./mailer.js";
+import { startBirthOnce } from "./birth-hub.js";
+import { sweepToken, sweepUserAutonomy } from "./autonomy-sweep.js";
+import { turnstileConfig, verifyTurnstile } from "./turnstile.js";
+import { isDisposableEmail } from "./email-domains.js";
 import { readBalance, creditPurchase } from "../billing/quota.js";
 import { PushBridge, listPush, registerPush, unregisterPush, setPushPrefs, registerLiveActivity, unregisterLiveActivity, type PushPrefs } from "./push.js";
 import { SenseService } from "../sense/service.js";
 import { ScreenSource } from "../sense/screen.js";
 import { VoiceSource } from "../sense/voice.js";
 import { appendSenseEvent, readSenseEvents } from "../sense/log.js";
+import { handleSocialApi } from "./social-api.js";
 import {
   loadScreenAdvisorConfig,
   saveScreenAdvisorConfig,
@@ -126,39 +177,34 @@ import {
 import { detectLanHost, buildPairUrl } from "./pairing.js";
 import { TenantEventBus, sameTenant } from "./event-bus.js";
 import { qrSvg } from "./qr-svg.js";
+import { resolveClientIp } from "./client-ip.js";
+import {
+  selectWebModelContextForTurn,
+  webContextBudgetTokens,
+} from "./context-budget.js";
+import {
+  configuredPublicOrigin,
+  requireCloudPublicOrigin,
+  verificationUrl,
+} from "./public-origin.js";
+import {
+  capabilityProfileForEdition,
+  isCloudDeniedRoute,
+  toolsForCapabilityProfile,
+} from "./capabilities.js";
 import type { ToolDefinition, StoredMessage } from "../types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ASSETS_DIR = path.join(__dirname, "assets");
 const MUSIC_DIR = path.join(ASSETS_DIR, "room", "music");
 
-/**
- * Turn a raw IMAP probe failure into a plain-language hint for the connect
- * modal. The single biggest cause is pasting a login password where an
- * app-password / authorization code is required, so lead with that.
- */
-function friendlyMailError(err: unknown, email: string, host: string): string {
-  const raw = err instanceof Error ? err.message : String(err);
-  const m = raw.toLowerCase();
-  const isGmail = /(^|@)(gmail\.com|googlemail\.com)$/.test(email.toLowerCase()) || host === "imap.gmail.com";
-  if (/auth|credential|login|invalid|denied|not accepted|username|password/.test(m)) {
-    return isGmail
-      ? "Gmail rejected the sign-in. Use a 16-character app password (not your Google login password), and make sure 2-Step Verification is on."
-      : "Authentication failed. Use an app-password / authorization code from your mail provider — not your login password.";
-  }
-  if (/enotfound|eai_again|getaddrinfo|dns|no such host/.test(m)) {
-    return "Could not find the mail server. Check the IMAP host.";
-  }
-  if (/timed out|timeout|etimedout|econn|network|socket|refused/.test(m)) {
-    return "Could not reach the mail server (network or timeout). Check your connection and the IMAP host.";
-  }
-  return "Could not connect: " + raw.slice(0, 160);
-}
 
 
 export interface WebServerOptions {
   port: number;
   tools: ToolDefinition[];
+  /** Hidden connector tools reserved for the approved social runner. */
+  socialConnectorTools?: ToolDefinition[];
   model: string;
   thinking: boolean;
   reflect: boolean;
@@ -174,6 +220,19 @@ export interface WebServerOptions {
   host?: string;
   /** PreToolUse/PostToolUse hook specs from loaded plugins. */
   hooks?: HookSpec[];
+}
+
+interface AdvisorCardSuggestion {
+  id: string;
+  category: SuggestionCategory;
+  urgency: Urgency;
+  text: string;
+  action: SuggestedAction | null;
+}
+
+interface AdvisorCardState {
+  suggestions: AdvisorCardSuggestion[];
+  at: string;
 }
 
 /** True for loopback peer/bind addresses (v4, v6, and v4-mapped-v6 forms). */
@@ -230,23 +289,18 @@ function presentedToken(req: http.IncomingMessage, url: string): string | null {
 // for a shared NAT / office egress IP doing normal signups + retries.
 const AUTH_IP_LIMIT = 20;
 const AUTH_IP_WINDOW_MS = 10 * 60_000;
+// Registrations get a much lower cap than sign-ins (S3): 5/hour/IP. Every
+// signup costs a birth LLM call + a free window; no human needs more.
+const REG_IP_LIMIT = 5;
+const REG_IP_WINDOW_MS = 60 * 60_000;
+// KB ingest does 2-3 outbound fetches + a yt-dlp subprocess per call, so it is a
+// far heavier route than the auth ones — a tighter per-IP ceiling on the cloud
+// edition (loopback Mac is exempt) keeps it from becoming an amplifier / DoS.
+const KB_INGEST_IP_LIMIT = 20;
+const KB_INGEST_WINDOW_MS = 5 * 60_000;
 
-/**
- * Best-effort client IP. Behind Cloud Run the socket peer is the front end, so
- * the first `x-forwarded-for` hop is the client — and a client can put anything
- * there. Only used for coarse rate-limit keying, never for authorization.
- */
 function clientIp(req: http.IncomingMessage, remoteAddr: string): string {
-  const xff = req.headers["x-forwarded-for"];
-  const first = (Array.isArray(xff) ? xff[0] : xff)?.split(",")[0]?.trim();
-  return first || remoteAddr || "unknown";
-}
-
-/** The absolute /verify link for a raw token, derived from the request host. */
-function verifyLinkFor(req: http.IncomingMessage, rawToken: string): string {
-  const host = req.headers.host ?? "cloud.meetlisa.ai";
-  const proto = (req.headers["x-forwarded-proto"] as string | undefined) ?? "https";
-  return `${proto}://${host}/verify?token=${rawToken}`;
+  return resolveClientIp(req.headers, remoteAddr);
 }
 
 /**
@@ -259,6 +313,20 @@ async function readJsonBody(
   res: http.ServerResponse,
   limitBytes: number = CTRL_BODY_LIMIT,
 ): Promise<Record<string, unknown> | null> {
+  // CSRF guard. A cross-site request can only reach a state-changing endpoint
+  // via a "simple" form POST (Content-Type text/plain / urlencoded / multipart);
+  // setting application/json cross-origin triggers a CORS preflight this server
+  // has no headers to satisfy, so it never arrives. Requiring application/json
+  // therefore blocks the enctype=text/plain login-CSRF (session fixation on the
+  // auth routes) while every real client is unaffected — web, iOS and the CLI
+  // all send application/json. (The Stripe webhook reads the raw body directly,
+  // not through here, so its signature path is untouched.)
+  const ctype = String(req.headers["content-type"] ?? "").toLowerCase();
+  if (!ctype.includes("application/json")) {
+    res.writeHead(415, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "unsupported_media_type" }));
+    return null;
+  }
   let body: string;
   try {
     body = await readCappedText(req, limitBytes);
@@ -275,6 +343,29 @@ async function readJsonBody(
     return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
   } catch {
     return {};
+  }
+}
+
+/**
+ * Bound legacy JSON endpoints without changing their existing parse and media
+ * type semantics. Returns null after writing an error response.
+ */
+async function readRequestText(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  limitBytes: number = CTRL_BODY_LIMIT,
+): Promise<string | null> {
+  try {
+    return await readCappedText(req, limitBytes);
+  } catch (err) {
+    if (err instanceof BodyTooLargeError) {
+      res.writeHead(413, { "content-type": "application/json", connection: "close" });
+      res.end(JSON.stringify({ error: "payload_too_large", limitBytes: err.limitBytes }));
+      return null;
+    }
+    res.writeHead(400, { "content-type": "application/json", connection: "close" });
+    res.end(JSON.stringify({ error: "request_body_unavailable" }));
+    return null;
   }
 }
 
@@ -318,6 +409,15 @@ async function resumeOrCreateWebSession(model: string): Promise<SessionStore> {
 export async function startWebServer(opts: WebServerOptions): Promise<http.Server> {
   const host = opts.host ?? "127.0.0.1";
   const webToken = process.env.LISA_WEB_TOKEN?.trim() || null;
+  const cloudEdition = isCloud();
+  // Security-sensitive outbound links never derive their origin from Host or
+  // forwarding headers. Cloud startup fails until its canonical HTTPS origin
+  // is configured; local mode has a deterministic loopback fallback.
+  const publicOrigin = cloudEdition
+    ? requireCloudPublicOrigin()
+    : configuredPublicOrigin() ?? `http://localhost:${opts.port}`;
+  const capabilityProfile = capabilityProfileForEdition(cloudEdition ? "cloud" : "mac");
+  const runtimeTools = toolsForCapabilityProfile(opts.tools, capabilityProfile);
   // Account sessions (PLAN_ACCOUNTS_BILLING B1): the signing secret lives in
   // $lisaHome() (auto-created 0600; durable on the cloud's /data mount). Only the
   // cloud edition mints/verifies account sessions today — the Mac edition gains
@@ -354,21 +454,6 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   }
   const snapshot = await buildSystemPromptSnapshot();
   const initialFingerprint = await getPromptFingerprint();
-  // Per-process hot-reload cache for the web server: same shape as cli's
-  // makeHotReloadRebuilder, inlined here so the web server stays standalone.
-  // Keyed by the ACTIVE home (B2): each cloud account gets its own soul, so the
-  // prompt snapshot must be cached per-uid, not process-wide.
-  const promptCache = new Map<string, { fp: string; text: string }>();
-  promptCache.set(lisaGlobalHome(), { fp: initialFingerprint, text: snapshot.text });
-  const rebuildPrompt = async (): Promise<{ text: string; fingerprint: string }> => {
-    const key = lisaHome();
-    const fp = await getPromptFingerprint();
-    const cached = promptCache.get(key);
-    if (cached && fp === cached.fp) return { text: cached.text, fingerprint: fp };
-    const next = await buildSystemPromptSnapshot();
-    promptCache.set(key, { fp, text: next.text });
-    return { text: next.text, fingerprint: fp };
-  };
   // Resume previous chat across restarts. Three-tier fallback:
   //  1. ~/.lisa/active-web-session.txt (set on every web startup)
   //  2. Most recent session on disk in this cwd (catches the case where the
@@ -410,44 +495,108 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     session: SessionStore;
     history: StoredMessage[];
     chain: Promise<void>;
+    prompt?: { fp: string; text: string };
+    reflectionSummary?: string;
+    activity: TenantActivityState<AdvisorCardState>;
   }
-  const globalChat: ChatCtx = { session, history, chain: Promise.resolve() };
-  const uidChats = new Map<string, ChatCtx>();
-  const ctxForRequest = async (): Promise<ChatCtx> => {
+  const initialReflectionSummary = await session.readLatestReflection();
+  const globalChat: ChatCtx = {
+    session,
+    history,
+    chain: Promise.resolve(),
+    prompt: { fp: initialFingerprint, text: snapshot.text },
+    reflectionSummary: initialReflectionSummary,
+    activity: createTenantActivityState(countUserMessages(history)),
+  };
+  const tenantRuntimes = new TenantRuntimeRegistry<ChatCtx>(tenantRuntimeOptions());
+  const ctxForRequest = async (): Promise<TenantRuntimeLease<ChatCtx>> => {
     const scoped = homeScope.getStore();
-    if (!scoped) return globalChat;
-    let ctx = uidChats.get(scoped);
-    if (!ctx) {
+    if (!scoped) return { value: globalChat, release: () => {} };
+    return tenantRuntimes.acquire(scoped, async () => {
       const s = await resumeOrCreateWebSession(opts.model);
       await writeActiveWebSession(s.id);
-      const { messages } = await s.readMessagePage(0, 9999);
-      ctx = { session: s, history: [...messages], chain: Promise.resolve() };
-      uidChats.set(scoped, ctx);
+      const [{ messages }, reflectionSummary] = await Promise.all([
+        s.readMessagePage(0, 9999),
+        s.readLatestReflection(),
+      ]);
+      return {
+        session: s,
+        history: [...messages],
+        chain: Promise.resolve(),
+        reflectionSummary,
+        activity: createTenantActivityState(countUserMessages(messages)),
+      };
+    });
+  };
+  // Per-tenant prompt cache now shares the runtime's TTL/LRU lifecycle instead
+  // of growing independently forever.
+  const rebuildPrompt = async (): Promise<{ text: string; fingerprint: string }> => {
+    const scoped = homeScope.getStore();
+    const runtime = scoped ? tenantRuntimes.peek(scoped) : globalChat;
+    if (!runtime) throw new Error("tenant runtime is not acquired");
+    const fp = await getPromptFingerprint();
+    if (runtime.prompt && fp === runtime.prompt.fp) {
+      return { text: runtime.prompt.text, fingerprint: fp };
     }
-    return ctx;
+    const next = await buildSystemPromptSnapshot();
+    runtime.prompt = { fp, text: next.text };
+    return { text: next.text, fingerprint: fp };
   };
 
-  // Lazy per-user birth (B2): a signed-in user's first request seeds THEIR soul
-  // (the entrypoint's one-shot birth only covers the shared/global home). Runs
-  // in the background inside the caller's home scope; chat before it completes
-  // simply runs with the bare prompt and the soul arrives mid-conversation.
-  const birthsInFlight = new Set<string>();
+  /**
+   * The single-flight hub invokes this once for a birth, regardless of how many
+   * lazy/SSE callers are watching. Account births therefore own exactly one
+   * admission permit and one settlement; local/BYO-key birth stays unmetered.
+   */
+  const runBirth = async (
+    uid: string | null,
+    emit: (log: { step: string; detail: string }) => void,
+  ): Promise<void> => {
+    const { birth, BirthInferenceError } = await import("../soul/birth.js");
+    if (!cloudEdition || !uid) {
+      await birth({ model: opts.model, onStep: emit });
+      return;
+    }
+    const acct = await getAccount(uid);
+    if (!acct) throw new Error("birth account no longer exists");
+    const admission = await admitInference(acct, opts.model);
+    if (!admission.ok) {
+      const detail = "error" in admission.body ? admission.body.error : "inference_rejected";
+      throw new Error(`birth admission rejected: ${detail}`);
+    }
+    try {
+      try {
+        const result = await birth({ model: opts.model, onStep: emit });
+        await admission.permit.settle("birth", result.usage);
+      } catch (err) {
+        if (err instanceof BirthInferenceError) {
+          await admission.permit.settle("birth", err.usage);
+        }
+        throw err;
+      }
+    } finally {
+      await admission.permit.release();
+    }
+  };
+
+  // Lazy per-user birth (B2, hub'd in S3): a signed-in user's first request
+  // seeds THEIR soul (the entrypoint's one-shot birth only covers the shared/
+  // global home). Runs through the single-flight birth hub so the visible
+  // ceremony (POST /api/birth) and this background path share ONE dream —
+  // never two LLM calls racing on writeSeed. Chat before it completes simply
+  // runs with the bare prompt and the soul arrives mid-conversation.
   const ensureUserBirth = (uid: string): void => {
-    if (birthsInFlight.has(uid)) return;
-    birthsInFlight.add(uid);
     void (async () => {
       try {
         const { isBorn } = await import("../soul/store.js");
         if (await isBorn()) return; // reads inside the per-uid scope
         console.error(`[accounts] birthing a soul for ${uid}…`);
-        const { birth } = await import("../soul/birth.js");
-        await birth({ model: opts.model });
-        promptCache.delete(lisaHome()); // pick the newborn soul up next turn
+        await startBirthOnce(uid, (emit) => runBirth(uid, emit)).promise;
+        const runtime = tenantRuntimes.peek(lisaHome());
+        if (runtime) runtime.prompt = undefined; // pick the newborn soul up next turn
         console.error(`[accounts] soul born for ${uid}`);
       } catch (e) {
         console.error(`[accounts] birth failed for ${uid}: ${(e as Error).message}`);
-      } finally {
-        birthsInFlight.delete(uid);
       }
     })();
   };
@@ -523,19 +672,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // snapshot. The engine applies the relevance bar + 3h digest throttle +
   // dedup (urgent items bypass the throttle), so most ticks surface
   // nothing. Survivors land in the idle_message "while you were away"
-  // card — pull-friendly, not an interrupt. lastIdleMessage is assigned
-  // inside the async callback (runs after all locals init; no TDZ issue).
+  // card — pull-friendly, not an interrupt. This is operator-owned state:
+  // cloud callers cannot access /api/advisor/*, and tenant runtimes never
+  // inherit these cross-machine orchestration suggestions.
   const ADVISE_INTERVAL_MS = 5 * 60_000;
   // The latest surfaced suggestions, kept so a freshly opened island can pull
   // them (GET /api/advisor/latest) instead of waiting for the next SSE tick.
-  interface AdvisorCardSuggestion {
-    id: string;
-    category: SuggestionCategory;
-    urgency: Urgency;
-    text: string;
-    action: SuggestedAction | null;
-  }
-  let lastAdvisorSuggestions: { suggestions: AdvisorCardSuggestion[]; at: string } | null = null;
   const adviseTimer = setInterval(() => {
     void (async () => {
       try {
@@ -545,7 +687,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         if (surface.length === 0) return;
         const text = formatDigest(surface);
         const at = new Date().toISOString();
-        lastIdleMessage = { text, at };
+        globalChat.activity.lastIdleMessage = { text, at };
         broadcast({ type: "idle_message", text, at, source: "advisor" });
         pushBridge.onIdleMessage(text);
         // Structured twin of the digest: same suggestions with id / urgency /
@@ -558,7 +700,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           text: s.text,
           action: s.action ?? null,
         }));
-        lastAdvisorSuggestions = { suggestions, at };
+        globalChat.activity.lastAdvisorSuggestions = { suggestions, at };
         broadcast({ type: "advisor_suggestions", suggestions, at });
         console.error(`[advisor] surfaced ${surface.length} suggestion(s)`);
       } catch (err) {
@@ -610,6 +752,37 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // Catch a restart that happens after the target hour (don't wait 30m).
   const mailKick = setTimeout(() => void runMailDigest(false), 20_000);
   if (mailKick.unref) mailKick.unref();
+
+  // ── KB feeds brief (daily) ──────────────────────────────────────────
+  // Same shape as the mail digest: 30-min poll + 20s restart catch-up.
+  // Fully inert until the user creates ~/.lisa/kb/feeds.json with feeds
+  // (D4: file existence IS the consent; no separate signal).
+  let kbBriefRunning = false;
+  const runKbBrief = async (force: boolean): Promise<boolean> => {
+    if (kbBriefRunning) return false;
+    kbBriefRunning = true;
+    try {
+      const { runDailyBrief } = await import("../kb/feeds/service.js");
+      const result = await runDailyBrief({ force });
+      if (!result) return false;
+      broadcast({ type: "kb_brief_update", date: result.brief.date, total: result.brief.total, at: new Date().toISOString() });
+      pushBridge.onKbBrief(result.text);
+      if (!force) {
+        broadcast({ type: "idle_message", text: result.text, at: new Date().toISOString(), source: "kb" });
+      }
+      console.error(`[kb-brief] ${result.brief.date}: ${result.brief.total} item(s) · ${result.brief.ingested.length} ingested`);
+      return true;
+    } catch (err) {
+      console.error(`[kb-brief] failed: ${(err as Error).message}`);
+      return false;
+    } finally {
+      kbBriefRunning = false;
+    }
+  };
+  const kbBriefTimer = setInterval(() => void runKbBrief(false), 30 * 60_000);
+  if (kbBriefTimer.unref) kbBriefTimer.unref();
+  const kbBriefKick = setTimeout(() => void runKbBrief(false), 20_000);
+  if (kbBriefKick.unref) kbBriefKick.unref();
 
   // ── Important-mail alerts (intraday) ────────────────────────────────
   // Every LISA_MAIL_POLL_MINUTES (default 30; 0 disables), incrementally read
@@ -725,22 +898,19 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // mid-conversation knows there's something to read. Cleared via
   // POST /api/island/dismiss-unread. Per design doc §6 Q2: latest wins,
   // no inbox-style accumulation.
-  let lastIdleMessage: { text: string; at: string } | null = null;
   let serverStartedAt = Date.now();
 
   // ── Idle mode ───────────────────────────────────────────────────────
-  let idleRunning = false;
   // Declared here (rather than beside the reflect scheduler below) so the dream's
   // idle handler can also defer to an in-flight reflection: PLAN §3 wants reflect
   // to run first, before the dream mutates history with its own "[while you were
   // away]" note. Without this the guard is asymmetric — the scheduler blocks
   // reflect-during-dream, but a dream could still start mid-reflect.
-  let reflecting = false;
   if (opts.idleMinutes && opts.idleMinutes > 0) {
     const watcher = getIdleWatcher(opts.idleMinutes * 60_000);
     watcher.on("idle", async () => {
-      if (idleRunning || reflecting) return;
-      idleRunning = true;
+      if (globalChat.activity.idleRunning || globalChat.activity.reflecting) return;
+      globalChat.activity.idleRunning = true;
       const startedAt = new Date().toISOString();
       console.error(
         `[idle] firing after ${Math.round(watcher.idleFor() / 60_000)}m of inactivity`,
@@ -771,7 +941,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           }
         }
         const result = await runIdleOnce({
-          tools: opts.tools,
+          tools: runtimeTools,
           cwd: process.cwd(),
           signal: abort.signal,
           model: opts.model,
@@ -791,7 +961,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
             role: "assistant",
             content: [{ type: "text", text: `[while you were away]\n${result.text}` }],
           });
-          lastIdleMessage = { text: result.text, at: startedAt };
+          globalChat.activity.lastIdleMessage = { text: result.text, at: startedAt };
           broadcast({ type: "idle_message", text: result.text, at: startedAt });
           pushBridge.onIdleMessage(result.text);
         }
@@ -800,7 +970,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         console.error(`[idle] error: ${msg}`);
         broadcast({ type: "idle_error", message: msg });
       } finally {
-        idleRunning = false;
+        globalChat.activity.idleRunning = false;
       }
     });
     watcher.start();
@@ -831,20 +1001,16 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // Gates intra-session desire focus: unlike reflectClock.idleFor() — which reads
   // "fresh" right after a launchd restart — this stays 0 across a restart, so a
   // stale resumed conversation can't pin a focus. Stamped in the POST /chat path.
-  let lastUserMessageAt = 0;
-  // Seed from the resumed history so we never re-reflect prior sessions on the
-  // first quiet window — only conversation added while this server is live.
-  let lastReflectedUserCount = countUserMessages(history);
   const reflectTimer = setInterval(() => {
     const currentUserCount = countUserMessages(history);
     const decision = decideReflect({
-      newUserMessages: currentUserCount - lastReflectedUserCount,
+      newUserMessages: currentUserCount - globalChat.activity.lastReflectedUserCount,
       idleMs: reflectClock.idleFor(),
       debounceMs: reflectDebounceMs,
-      inFlight: reflecting || idleRunning,
+      inFlight: globalChat.activity.reflecting || globalChat.activity.idleRunning,
     });
     if (!decision.shouldReflect) return;
-    reflecting = true;
+    globalChat.activity.reflecting = true;
     const snapshot = history.slice();
     const snapshotUserCount = currentUserCount;
     void (async () => {
@@ -856,8 +1022,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         });
         // Advance the marker only on success, so a failed reflect retries next
         // tick instead of silently dropping the conversation.
-        lastReflectedUserCount = snapshotUserCount;
+        globalChat.activity.lastReflectedUserCount = snapshotUserCount;
         await session.appendReflection(r.summary);
+        globalChat.reflectionSummary = r.summary;
         broadcast({
           type: "reflect_done",
           summary: r.summary,
@@ -868,7 +1035,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       } catch (err) {
         console.error(`[reflect] failed: ${(err as Error).message}`);
       } finally {
-        reflecting = false;
+        globalChat.activity.reflecting = false;
       }
     })();
   }, REFLECT_CHECK_INTERVAL_MS);
@@ -877,6 +1044,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
 
   const server = http.createServer(async (req, res) => {
     const url = req.url ?? "/";
+    applyApiVersionHeader(url, res);
 
     // ── Auth gate ────────────────────────────────────────────────────────
     // Loopback callers are the local user — no token needed (the default
@@ -966,16 +1134,85 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       return;
     }
 
+    // ── Sign in with Google (cloud edition; A3) ─────────────────────────────
+    // Pre-gate, same posture as /api/auth/apple: it mints access. The client
+    // (GIS on the web, PKCE in the app) hands us the ID token; we verify it
+    // against Google's keys and sign the person into the account that owns the
+    // address — creating one only if nobody does.
+    if (req.method === "POST" && url === "/api/auth/google") {
+      const gcfg = googleSignInConfig();
+      if (!cloud || !gcfg.enabled) {
+        res.writeHead(404, { "content-type": "text/plain" });
+        res.end("google sign-in not available");
+        return;
+      }
+      if (!sessionSecret) {
+        res.writeHead(503, { "content-type": "text/plain" });
+        res.end("cloud sign-in misconfigured (no session secret)");
+        return;
+      }
+      if (!ipRateOk(`auth:${clientIp(req, remoteAddr)}`, AUTH_IP_LIMIT, AUTH_IP_WINDOW_MS)) {
+        res.writeHead(429, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "rate_limited", retryAfterSec: Math.ceil(AUTH_IP_WINDOW_MS / 1000) }));
+        return;
+      }
+      const payload = await readJsonBody(req, res);
+      if (!payload) return; // 413 already sent
+      const idToken = typeof payload.idToken === "string" ? payload.idToken : "";
+      if (!idToken) {
+        res.writeHead(400, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "id_token_required" }));
+        return;
+      }
+      // Verified when present (the iOS PKCE flow sends one); Google echoes the
+      // raw value rather than a hash of it.
+      const nonce = typeof payload.nonce === "string" ? payload.nonce : "";
+      try {
+        const id = await verifyGoogleIdToken(idToken, {
+          audiences: googleAudiences(gcfg),
+          fetchKeys: fetchGoogleKeys,
+          ...(nonce ? { expectedNonce: nonce } : {}),
+        });
+        const acct = await upsertGoogleAccount(id.sub, id.email);
+        const session = mintSession(acct.uid, sessionSecret, { sv: acct.sessionVersion });
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "set-cookie": `lisa_token=${encodeURIComponent(session)}; HttpOnly; SameSite=Strict; Path=/${isCloud() ? "; Secure" : ""}`,
+        });
+        res.end(JSON.stringify({ ok: true, token: session, uid: acct.uid, verified: acct.verified }));
+      } catch (e) {
+        if (e instanceof AccountError) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: e.code }));
+          return;
+        }
+        const msg = e instanceof GoogleAuthError ? e.message : "verification failed";
+        res.writeHead(401, { "content-type": "text/plain" });
+        res.end(`google sign-in rejected: ${msg}`);
+      }
+      return;
+    }
+
     // Public sign-in surface config (pre-gate): the login page asks which
     // buttons to draw. Never exposes secrets — just feature flags + ids.
     if (req.method === "GET" && url === "/api/auth/config") {
       const cfg = appleSignInConfig();
+      const gcfg = googleSignInConfig();
       res.writeHead(200, { "content-type": "application/json" });
       res.end(
         JSON.stringify({
           accounts: cloud && !!sessionSecret,
           appleWeb: cloud && cfg.enabled && !!cfg.webServicesId
             ? { servicesId: cfg.webServicesId }
+            : null,
+          // Client ids are public by design (they identify the app, they don't
+          // authorize it); each client draws its button only if its own id is
+          // present. The iOS app also needs it to build the PKCE request.
+          google: cloud && gcfg.enabled
+            ? { webClientId: gcfg.webClientId, iosClientId: gcfg.iosClientId }
+            : null,
+          turnstile: cloud && turnstileConfig().enabled
+            ? { siteKey: turnstileConfig().siteKey }
             : null,
           stripe: cloud && !!stripeConfig().secretKey,
         }),
@@ -1070,6 +1307,31 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       if (!body) return; // 413 already sent
       const email = typeof body.email === "string" ? body.email : "";
       const password = typeof body.password === "string" ? body.password : "";
+      // Signup-only abuse gates (S3): every registration ignites an LLM birth
+      // and mints a free window, so it gets its own tighter screws on top of
+      // the shared auth bucket — Turnstile (when configured), a disposable-
+      // domain check, and a low per-IP registrations cap.
+      if (url === "/api/auth/register") {
+        const ts = turnstileConfig();
+        if (ts.enabled) {
+          const token = typeof body.turnstileToken === "string" ? body.turnstileToken : "";
+          if (!(await verifyTurnstile(token, clientIp(req, remoteAddr), ts))) {
+            res.writeHead(403, { "content-type": "application/json" });
+            res.end(JSON.stringify({ error: "turnstile_failed" }));
+            return;
+          }
+        }
+        if (isDisposableEmail(email)) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "disposable_email" }));
+          return;
+        }
+        if (!ipRateOk(`reg:${clientIp(req, remoteAddr)}`, REG_IP_LIMIT, REG_IP_WINDOW_MS)) {
+          res.writeHead(429, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "rate_limited", retryAfterSec: Math.ceil(REG_IP_WINDOW_MS / 1000) }));
+          return;
+        }
+      }
       try {
         const acct =
           url === "/api/auth/register"
@@ -1084,7 +1346,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         // levels the free window from $1 to the full $5. Fire-and-forget.
         if (url === "/api/auth/register") {
           const raw = await beginEmailVerification(acct.uid);
-          if (raw) void sendVerificationEmail(acct.email!, verifyLinkFor(req, raw));
+          if (raw) void sendVerificationEmail(acct.email!, verificationUrl(publicOrigin, raw));
         }
         const session = mintSession(acct.uid, sessionSecret, { sv: acct.sessionVersion });
         res.writeHead(200, {
@@ -1102,6 +1364,143 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         }
         res.writeHead(500, { "content-type": "text/plain" });
         res.end("account operation failed");
+      }
+      return;
+    }
+
+    // ── Sign in by mailed code (PLAN_AUTH_OTP_GOOGLE A1) ────────────────────
+    // Pre-gate like the other sign-in surfaces — these mint access. Two steps:
+    // request a code, then spend it. Spending one both registers and signs in,
+    // because reading the mail IS the proof of ownership; there is no password
+    // to choose and the address comes out verified (full free window).
+    if (req.method === "POST" && (url === "/api/auth/otp/request" || url === "/api/auth/otp/verify")) {
+      if (!cloud || !sessionSecret) {
+        res.writeHead(404, { "content-type": "text/plain" });
+        res.end("accounts not available on this edition");
+        return;
+      }
+      // Same coarse per-IP backstop as register/login (#260): the real guards
+      // are the per-address cooldown, the daily send cap and the attempt limit.
+      if (!ipRateOk(`auth:${clientIp(req, remoteAddr)}`, AUTH_IP_LIMIT, AUTH_IP_WINDOW_MS)) {
+        res.writeHead(429, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "rate_limited", retryAfterSec: Math.ceil(AUTH_IP_WINDOW_MS / 1000) }));
+        return;
+      }
+      const body = await readJsonBody(req, res);
+      if (!body) return; // 413 already sent
+      const email = typeof body.email === "string" ? body.email : "";
+      if (!validEmail(normalizeEmail(email))) {
+        res.writeHead(400, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "invalid_email" }));
+        return;
+      }
+
+      if (url === "/api/auth/otp/request") {
+        // Before the send budget is touched: a typo'd address doesn't bounce
+        // back to whoever typed it, so catching it here is the only feedback
+        // they'll get — and it saves a slot of their daily allowance.
+        const reachable = await checkDeliverable(normalizeEmail(email));
+        if (!reachable.ok) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(
+            JSON.stringify({
+              error: reachable.reason === "typo" ? "email_typo" : "undeliverable_email",
+              ...(reachable.suggestion ? { suggestion: reachable.suggestion } : {}),
+            }),
+          );
+          return;
+        }
+        const minted = await requestEmailOtp(email);
+        if (!minted.ok) {
+          res.writeHead(429, { "content-type": "application/json" });
+          res.end(
+            JSON.stringify({
+              error: minted.reason === "cooldown" ? "otp_cooldown" : "otp_daily_cap",
+              retryAfterSec: minted.retryAfterSec,
+            }),
+          );
+          return;
+        }
+        // Awaited so the answer tells the truth about delivery (mirrors
+        // /api/auth/verify/resend). The reply is identical whether or not an
+        // account exists for the address — no membership oracle.
+        const mail = await sendSignInCodeEmail(
+          normalizeEmail(email),
+          minted.code,
+          Math.round(OTP_TTL_MS / 60_000),
+        );
+        if (!mail.sent) console.error(`[auth] sign-in code not delivered (${mail.detail})`);
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true, sent: mail.sent, expiresInSec: minted.expiresInSec }));
+        return;
+      }
+
+      const code = typeof body.code === "string" ? body.code : "";
+      const spent = await verifyEmailOtp(email, code);
+      if (!spent.ok) {
+        res.writeHead(spent.reason === "too_many_attempts" ? 429 : 401, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: spent.reason }));
+        return;
+      }
+      try {
+        const { acct, created } = await ensureOtpAccount(email);
+        const session = mintSession(acct.uid, sessionSecret, { sv: acct.sessionVersion });
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "set-cookie": `lisa_token=${encodeURIComponent(session)}; HttpOnly; SameSite=Strict; Path=/${isCloud() ? "; Secure" : ""}`,
+        });
+        res.end(JSON.stringify({ ok: true, token: session, uid: acct.uid, verified: acct.verified, created }));
+      } catch (e) {
+        if (e instanceof AccountError) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: e.code }));
+          return;
+        }
+        res.writeHead(500, { "content-type": "text/plain" });
+        res.end("account operation failed");
+      }
+      return;
+    }
+
+    // ── Per-uid autonomy sweep (S4; pre-gate — Cloud Scheduler is the caller,
+    // authenticated by the LISA_SWEEP_TOKEN bearer secret). Cloud-only and
+    // default-OFF without the env. Each recently-active, due tenant gets one
+    // reflection tick inside its own home scope; tier gates the cadence.
+    if (req.method === "POST" && url === "/internal/autonomy/sweep") {
+      const secret = sweepToken();
+      if (!cloud || !secret) {
+        res.writeHead(404, { "content-type": "text/plain" });
+        res.end("not available");
+        return;
+      }
+      const presented = (req.headers.authorization ?? "").toString().replace(/^Bearer\s+/i, "").trim();
+      if (!presented || !timingSafeEqualStr(presented, secret)) {
+        res.writeHead(401, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "unauthorized" }));
+        return;
+      }
+      const body = await readJsonBody(req, res);
+      if (!body) return; // 413 already sent
+      const maxRuns = typeof body.maxRuns === "number" && body.maxRuns > 0 ? Math.floor(body.maxRuns) : undefined;
+      try {
+        const report = await sweepUserAutonomy({
+          ...(opts.model ? { model: opts.model } : {}),
+          ...(maxRuns !== undefined ? { maxRuns } : {}),
+          tools: opts.tools,
+          cwd: process.cwd(),
+        });
+        console.error(
+          `[sweep] scanned ${report.scanned} active accounts, ran ${report.ran} autonomy action(s)`,
+        );
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify(report));
+      } catch (e) {
+        // A sweep-wide failure (e.g. the accounts store is unreadable) must
+        // answer the scheduler cleanly rather than hang the request — per-uid
+        // failures are already absorbed inside sweepUserAutonomy. (S4 review)
+        console.error(`[sweep] failed: ${(e as Error).message}`);
+        res.writeHead(500, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "sweep_failed" }));
       }
       return;
     }
@@ -1139,6 +1538,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ ok: true }));
       } catch (e) {
+        if (e instanceof PaymentStateError || e instanceof BillingStateError) {
+          console.error(`[iap] ASN billing state unavailable: ${e.message}`);
+          res.writeHead(503, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "billing_state_unavailable" }));
+          return;
+        }
         const code = e instanceof IapError ? e.code : "verification_failed";
         console.error(`[iap] ASN rejected: ${code}`);
         res.writeHead(401, { "content-type": "application/json" });
@@ -1275,24 +1680,23 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // ── Inference gateway (B6): key-free managed LLM calls from signed-in
     // Macs/CLIs. Account sessions only — never the shared demo token.
     if (req.method === "POST" && (url.startsWith("/gw/anthropic/") || url.startsWith("/gw/openai/"))) {
-      const acct = cloud && accountUid ? await getAccount(accountUid) : null;
-      if (!acct) {
-        res.writeHead(403, { "content-type": "application/json" });
-        res.end(JSON.stringify({ error: "account_session_required" }));
-        return;
-      }
-      const gwLease = await acquireTurnLease(acct.uid);
-      if (gwLease === null) {
-        res.writeHead(429, { "content-type": "application/json" });
-        res.end(JSON.stringify({ error: "turn_in_progress", retryAfterSec: 15 }));
-        return;
-      }
-      const stopGwRenewal = startLeaseRenewal(gwLease);
       try {
+        const acct = cloud && accountUid ? await getAccount(accountUid) : null;
+        if (!acct) {
+          res.writeHead(403, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "account_session_required" }));
+          return;
+        }
         await handleGateway(req, res, url, acct);
-      } finally {
-        stopGwRenewal();
-        await releaseTurnLease(gwLease);
+      } catch (err) {
+        if (!(err instanceof BillingStateError || err instanceof AccountStoreError)) throw err;
+        console.error(`[billing] gateway state unavailable: ${err.message}`);
+        if (!res.headersSent) {
+          res.writeHead(503, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "billing_state_unavailable" }));
+        } else if (!res.writableEnded) {
+          res.end();
+        }
       }
       return;
     }
@@ -1335,6 +1739,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ ok: true, creditedMicroUSD: credited, quota: q }));
       } catch (e) {
+        if (e instanceof PaymentStateError || e instanceof BillingStateError) {
+          console.error(`[iap] billing state unavailable: ${e.message}`);
+          res.writeHead(503, { "content-type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: "billing_state_unavailable" }));
+          return;
+        }
         const code = e instanceof IapError ? e.code : "verification_failed";
         // duplicate_transaction answers 200-ok:false so the client still
         // finishes the transaction (it WAS credited once already).
@@ -1369,9 +1779,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const body = await readJsonBody(req, res);
       if (!body) return; // 413 already sent
       const pack = typeof body.pack === "string" ? body.pack : "";
-      const proto = (req.headers["x-forwarded-proto"] as string | undefined) ?? "https";
-      const base = `${proto}://${req.headers.host ?? "cloud.meetlisa.ai"}`;
-      const session = await createCheckoutSession(accountUid, pack, base, scfg);
+      const session = await createCheckoutSession(accountUid, pack, publicOrigin, scfg);
       if (!session) {
         res.writeHead(400, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: "checkout_failed" }));
@@ -1385,15 +1793,22 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     if (req.method === "GET" && url === "/api/billing/quota") {
       // The signed-in account's window/tier/balance — drives the quota bar +
       // paywall in every client (same numbers everywhere, §5.5).
-      const acct = accountUid ? await getAccount(accountUid) : null;
-      if (!acct) {
+      try {
+        const acct = accountUid ? await getAccount(accountUid) : null;
+        if (!acct) {
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(JSON.stringify({ available: false }));
+          return;
+        }
+        const q = await quotaStatus(acct);
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({ available: false }));
-        return;
+        res.end(JSON.stringify({ available: true, ...q }));
+      } catch (err) {
+        if (!(err instanceof BillingStateError || err instanceof AccountStoreError)) throw err;
+        console.error(`[billing] quota unavailable: ${err.message}`);
+        res.writeHead(503, { "content-type": "application/json" });
+        res.end(JSON.stringify({ available: false, error: "billing_state_unavailable" }));
       }
-      const q = await quotaStatus(acct);
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ available: true, ...q }));
       return;
     }
 
@@ -1409,12 +1824,34 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         return;
       }
       const now = Date.now();
-      const [window12h, today] = await Promise.all([
+      const todayStart = new Date(new Date(now).setHours(0, 0, 0, 0)).getTime();
+      const [windowTokens, todayTokens, windowMedia, todayMedia] = await Promise.all([
         summarizeUsage(now - 12 * 60 * 60 * 1000),
-        summarizeUsage(new Date(new Date(now).setHours(0, 0, 0, 0)).getTime()),
+        summarizeUsage(todayStart),
+        summarizeMediaUsage(now - 12 * 60 * 60 * 1000),
+        summarizeMediaUsage(todayStart),
       ]);
+      const window12h = {
+        ...windowTokens,
+        microUSD: windowTokens.microUSD + windowMedia.microUSD,
+        mediaDurationMs: windowMedia.durationMs,
+        mediaOperations: windowMedia.operations,
+      };
+      const today = {
+        ...todayTokens,
+        microUSD: todayTokens.microUSD + todayMedia.microUSD,
+        mediaDurationMs: todayMedia.durationMs,
+        mediaOperations: todayMedia.operations,
+      };
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ window12h, today, pricesVersion: PRICES_VERSION }));
+      res.end(
+        JSON.stringify({
+          window12h,
+          today,
+          pricesVersion: PRICES_VERSION,
+          mediaPricesVersion: MEDIA_PRICES_VERSION,
+        }),
+      );
       return;
     }
 
@@ -1432,7 +1869,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         return;
       }
       const raw = await beginEmailVerification(acct.uid);
-      const mail = raw ? await sendVerificationEmail(acct.email, verifyLinkFor(req, raw)) : null;
+      const mail = raw ? await sendVerificationEmail(acct.email, verificationUrl(publicOrigin, raw)) : null;
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, sent: mail?.sent ?? false }));
       return;
@@ -1456,8 +1893,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         if (userHome.startsWith(path.join(lisaGlobalHome(), "users") + path.sep)) {
           await fs.rm(userHome, { recursive: true, force: true });
         }
-        uidChats.delete(userHome);
-        promptCache.delete(userHome);
+        tenantRuntimes.delete(userHome);
         moodBus.forget(accountUid); // keyed by uid, not home path
       } catch (e) {
         console.error(`[auth] account home cleanup failed: ${(e as Error).message}`);
@@ -1467,6 +1903,38 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         "set-cookie": `lisa_token=; Max-Age=0; HttpOnly; SameSite=Strict; Path=/${isCloud() ? "; Secure" : ""}`,
       });
       res.end(JSON.stringify({ ok: true, removed }));
+      return;
+    }
+
+    // Hosted users never own the machine running this process. Deny local
+    // control-plane and arbitrary-outbound routes server-side before their
+    // handlers run; the client edition descriptor is presentation only.
+    if (cloud && isCloudDeniedRoute(url)) {
+      res.writeHead(403, { "content-type": "application/json" });
+      res.end(JSON.stringify({
+        error: "capability_denied",
+        profile: capabilityProfile,
+      }));
+      return;
+    }
+
+    if (
+      await handleSocialApi(req, res, url, {
+        allowApproval: isLoopbackAddress(remoteAddr) || accountUid !== null,
+        connectorTools: opts.socialConnectorTools,
+        publishApproved:
+          opts.socialConnectorTools && opts.socialConnectorTools.length
+            ? async (id, digest) => {
+                const { publishApprovedSocialDraft } = await import(
+                  "../sense/social/runner.js"
+                );
+                return publishApprovedSocialDraft(id, digest, {
+                  connectorTools: opts.socialConnectorTools!,
+                });
+              }
+            : undefined,
+      })
+    ) {
       return;
     }
 
@@ -1527,40 +1995,37 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // Light status endpoint for the island. Polled every 5–30s as a
     // fallback when SSE has been quiet.
     if (req.method === "GET" && url === "/api/island/ping") {
-      let currentDesire: string | null = null;
+      const islandRuntime = await ctxForRequest();
       try {
-        // Closed desires are finished — never surface one as her current/focused.
-        const desires = (await listDesires()).filter((d) => !d.closed);
-        // If the conversation is live and clearly about one of her desires,
-        // surface THAT (intra-session focus — tracks the turn-by-turn topic).
-        // Otherwise fall back to the most recently ACTIVE desire (authored or
-        // pursued), not whichever fs.readdir listed first. See PLAN_DESIRE_EVOLUTION.
-        // Freshness is measured from the last real user message (lastUserMessageAt,
-        // reset to 0 on restart) — NOT the process-wide idle clock, which starts
-        // "fresh" after a launchd restart and would pin focus onto a stale
-        // resumed conversation for up to FOCUS_FRESHNESS_MS.
-        const focused =
-          lastUserMessageAt > 0 &&
-          Date.now() - lastUserMessageAt < FOCUS_FRESHNESS_MS
-            ? pickFocusedDesire(desires, recentUserText(history))
-            : null;
-        // Only compute activity (an fs.stat per desire) when we actually fall
-        // back to the recency pick — `??` short-circuits it away on a focus hit.
-        currentDesire =
-          (focused ?? pickCurrentDesire(desires, await desireActivity(desires)))?.what ?? null;
-      } catch {
-        // listDesires can fail before soul is born; that's fine.
+        const islandChat = islandRuntime.value;
+        let currentDesire: string | null = null;
+        try {
+          // Closed desires are finished — never surface one as her current/focused.
+          const desires = (await listDesires()).filter((d) => !d.closed);
+          const focused =
+            islandChat.activity.lastUserMessageAt > 0 &&
+            Date.now() - islandChat.activity.lastUserMessageAt < FOCUS_FRESHNESS_MS
+              ? pickFocusedDesire(desires, recentUserText(islandChat.history))
+              : null;
+          currentDesire =
+            (focused ?? pickCurrentDesire(desires, await desireActivity(desires)))?.what ?? null;
+        } catch {
+          // listDesires can fail before soul is born; that's fine.
+        }
+        const unread = islandChat.activity.lastIdleMessage;
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({
+          online: true,
+          mood: moodBus.current(),
+          has_unread_idle_message: unread !== null,
+          last_idle_message_at: unread?.at ?? null,
+          last_idle_message_text: unread?.text ?? null,
+          current_desire: currentDesire,
+          uptime_sec: Math.round((Date.now() - serverStartedAt) / 1000),
+        }));
+      } finally {
+        islandRuntime.release();
       }
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({
-        online: true,
-        mood: moodBus.current(),
-        has_unread_idle_message: lastIdleMessage !== null,
-        last_idle_message_at: lastIdleMessage?.at ?? null,
-        last_idle_message_text: lastIdleMessage?.text ?? null,
-        current_desire: currentDesire,
-        uptime_sec: Math.round((Date.now() - serverStartedAt) / 1000),
-      }));
       return;
     }
 
@@ -1589,8 +2054,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end("screen-advisor config only accepted from localhost");
         return;
       }
-      let saBody = "";
-      for await (const chunk of req) saBody += chunk.toString("utf8");
+      const saBody = await readRequestText(req, res);
+      if (saBody === null) return;
       let payload: Partial<ScreenAdvisorConfig>;
       try {
         payload = JSON.parse(saBody || "{}") as Partial<ScreenAdvisorConfig>;
@@ -1628,8 +2093,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end(JSON.stringify({ error: "screen capture is only supported on macOS" }));
         return;
       }
-      let visionBody = "";
-      for await (const chunk of req) visionBody += chunk.toString("utf8");
+      const visionBody = await readRequestText(req, res);
+      if (visionBody === null) return;
       console.error("[vision] capture requested");
       let mode: CaptureMode = "interactive";
       try {
@@ -1655,8 +2120,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // the model's job, not a special endpoint). 400 on missing data; the
     // transcriber itself errors clearly if OPENAI_API_KEY is unset.
     if (req.method === "POST" && url === "/api/voice/transcribe") {
-      let voiceBody = "";
-      for await (const chunk of req) voiceBody += chunk.toString("utf8");
+      const voiceBody = await readRequestText(req, res, RICH_BODY_LIMIT);
+      if (voiceBody === null) return;
       let payload: { data?: string; mediaType?: string; mode?: string };
       try {
         payload = JSON.parse(voiceBody || "{}");
@@ -1681,10 +2146,35 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
             : "webm";
       const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
       const tmp = path.join(os.tmpdir(), `lisa-rec-${stamp}-${process.pid}.${ext}`);
+      let mediaPermit: MediaPermit | null = null;
       try {
-        await fs.writeFile(tmp, Buffer.from(payload.data, "base64"));
-        console.error(`[voice] transcribing ${Buffer.from(payload.data, "base64").length} bytes (${ext})`);
-        const transcript = await transcribeAudio({ audioPath: tmp });
+        const audio = Buffer.from(payload.data, "base64");
+        await fs.writeFile(tmp, audio);
+        const prepared = await prepareTranscription({ audioPath: tmp });
+        console.error(
+          `[voice] transcribing ${audio.length} bytes / ${(prepared.durationMs / 1000).toFixed(1)}s ` +
+            `(${ext}, ${prepared.provider}/${prepared.model})`,
+        );
+        const acct = cloud && accountUid ? await getAccount(accountUid) : null;
+        if (acct) {
+          const admission = await admitMedia(acct);
+          if (!admission.ok) {
+            res.writeHead(admission.status, { "content-type": "application/json" });
+            res.end(JSON.stringify(admission.body));
+            return;
+          }
+          mediaPermit = admission.permit;
+        }
+        const transcript = await transcribePrepared(prepared);
+        const mediaUsage = {
+          provider: prepared.provider,
+          model: prepared.model,
+          durationMs: prepared.durationMs,
+        };
+        if (mediaPermit) await mediaPermit.settle("voice_transcription", mediaUsage);
+        else if (cloud) await recordMediaUsage("voice_transcription", mediaUsage);
+        await mediaPermit?.release();
+        mediaPermit = null;
         // S2-voice: when `voice` is granted, distill this push-to-talk transcript
         // into the ambient sense log (PII-redacted, no audio). No-op otherwise,
         // so dictation works unchanged when voice consent is off.
@@ -1695,39 +2185,89 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         // composer. Falls back to the raw transcript if the polish call fails.
         let text: string | undefined;
         if (payload.mode === "dictation") {
+          let polishPermit: InferencePermit | null = null;
           try {
-            text = await polishDictation({
-              provider: getProvider() as unknown as DictationProvider,
-              model: opts.model,
-              transcript,
-            });
+            if (acct) {
+              const admission = await admitInference(acct, opts.model);
+              if (admission.ok) polishPermit = admission.permit;
+              else {
+                console.error(
+                  `[voice] dictation polish skipped: ${JSON.stringify(admission.body)}`,
+                );
+                text = transcript;
+              }
+            }
+            if (text === undefined) {
+              const polished = await polishDictationMetered({
+                provider: getProvider() as unknown as DictationProvider,
+                model: opts.model,
+                transcript,
+              });
+              text = polished.text;
+              if (cloud && polished.usage) {
+                if (polishPermit) await polishPermit.settle("voice_dictation", polished.usage);
+                else await recordUsage("voice_dictation", opts.model, polished.usage);
+              }
+            }
           } catch (err) {
+            if (err instanceof BillingStateError || err instanceof AccountStoreError) {
+              throw err;
+            }
             console.error(`[voice] dictation polish failed: ${(err as Error).message}`);
             text = transcript;
+          } finally {
+            await polishPermit?.release();
           }
         }
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify(text !== undefined ? { transcript, text } : { transcript }));
       } catch (err) {
-        res.writeHead(500, { "content-type": "application/json" });
-        res.end(JSON.stringify({ error: (err as Error).message }));
+        if (err instanceof AudioValidationError) {
+          res.writeHead(err.status, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: err.message }));
+        } else if (err instanceof BillingStateError || err instanceof AccountStoreError) {
+          console.error(`[billing] voice admission/settlement unavailable: ${err.message}`);
+          res.writeHead(503, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "billing_state_unavailable" }));
+        } else {
+          res.writeHead(500, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: (err as Error).message }));
+        }
       } finally {
+        await mediaPermit?.release();
         await fs.rm(tmp, { force: true }).catch(() => {});
       }
       return;
     }
 
     if (req.method === "POST" && url === "/api/island/dismiss-unread") {
-      lastIdleMessage = null;
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ ok: true }));
+      const runtime = await ctxForRequest();
+      try {
+        runtime.value.activity.lastIdleMessage = null;
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true }));
+      } finally {
+        runtime.release();
+      }
       return;
     }
 
     // Latest advisor suggestions, for a freshly opened island.
     if (req.method === "GET" && url === "/api/advisor/latest") {
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify(lastAdvisorSuggestions ?? { suggestions: [], at: null }));
+      const runtime = await ctxForRequest();
+      try {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify(
+            runtime.value.activity.lastAdvisorSuggestions ?? {
+              suggestions: [],
+              at: null,
+            },
+          ),
+        );
+      } finally {
+        runtime.release();
+      }
       return;
     }
 
@@ -1735,8 +2275,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // down-weights over time ("learns to shut up"), and drop it from the
     // cached card so a refreshed island doesn't resurrect it.
     if (req.method === "POST" && url === "/api/advisor/dismiss") {
-      let dBody = "";
-      for await (const chunk of req) dBody += chunk.toString("utf8");
+      const dBody = await readRequestText(req, res);
+      if (dBody === null) return;
       let payload: { id?: unknown; category?: unknown };
       try {
         payload = JSON.parse(dBody || "{}");
@@ -1757,14 +2297,20 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end((err as Error).message);
         return;
       }
-      if (lastAdvisorSuggestions) {
-        lastAdvisorSuggestions = {
-          ...lastAdvisorSuggestions,
-          suggestions: lastAdvisorSuggestions.suggestions.filter((s) => s.id !== payload.id),
-        };
+      const runtime = await ctxForRequest();
+      try {
+        const cached = runtime.value.activity.lastAdvisorSuggestions;
+        if (cached) {
+          runtime.value.activity.lastAdvisorSuggestions = {
+            ...cached,
+            suggestions: cached.suggestions.filter((s) => s.id !== payload.id),
+          };
+        }
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true }));
+      } finally {
+        runtime.release();
       }
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ ok: true }));
       return;
     }
 
@@ -1785,8 +2331,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // gate like every endpoint (loopback or token). Reuses signal_agent, so it
     // can ONLY touch dispatch-ledger pids — never an arbitrary process.
     if (req.method === "POST" && url === "/api/agent/signal") {
-      let sigBody = "";
-      for await (const chunk of req) sigBody += chunk.toString("utf8");
+      const sigBody = await readRequestText(req, res);
+      if (sigBody === null) return;
       let payload: { action?: unknown; target?: unknown; force?: unknown };
       try {
         payload = JSON.parse(sigBody || "{}");
@@ -1829,8 +2375,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end("pairing can only be started from the Mac (localhost)");
         return;
       }
-      let prBody = "";
-      for await (const chunk of req) prBody += chunk.toString("utf8");
+      const prBody = await readRequestText(req, res);
+      if (prBody === null) return;
       let payload: { name?: unknown; platform?: unknown; host?: unknown } = {};
       try { payload = prBody ? JSON.parse(prBody) : {}; } catch { /* tolerate */ }
       const name = typeof payload.name === "string" ? payload.name : "device";
@@ -1865,8 +2411,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end("device revocation is a Mac-owner action (localhost only)");
         return;
       }
-      let rvBody = "";
-      for await (const chunk of req) rvBody += chunk.toString("utf8");
+      const rvBody = await readRequestText(req, res);
+      if (rvBody === null) return;
       let payload: { id?: unknown } = {};
       try { payload = rvBody ? JSON.parse(rvBody) : {}; } catch { /* tolerate */ }
       const removed = revokeDevice(typeof payload.id === "string" ? payload.id : "");
@@ -1879,8 +2425,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // APNs token) + prefs — authed (the device does this remotely). Low-sensitivity
     // metadata only; see push.ts.
     if (req.method === "POST" && url === "/api/push/register") {
-      let puBody = "";
-      for await (const chunk of req) puBody += chunk.toString("utf8");
+      const puBody = await readRequestText(req, res);
+      if (puBody === null) return;
       let payload: { kind?: unknown; target?: unknown; server?: unknown; prefs?: Partial<PushPrefs> } = {};
       try { payload = puBody ? JSON.parse(puBody) : {}; } catch { /* tolerate */ }
       if (typeof payload.target !== "string" || !payload.target.trim()) {
@@ -1897,8 +2443,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       return;
     }
     if (req.method === "POST" && url === "/api/push/unregister") {
-      let puBody = "";
-      for await (const chunk of req) puBody += chunk.toString("utf8");
+      const puBody = await readRequestText(req, res);
+      if (puBody === null) return;
       let payload: { id?: unknown; target?: unknown } = {};
       try { payload = puBody ? JSON.parse(puBody) : {}; } catch { /* tolerate */ }
       const key = typeof payload.id === "string" ? payload.id : typeof payload.target === "string" ? payload.target : "";
@@ -1910,8 +2456,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // Register/unregister a Live Activity push token for a pinned session — the
     // push-bridge then refreshes that activity over APNs as the agent updates.
     if (req.method === "POST" && url === "/api/push/live-activity") {
-      let laBody = "";
-      for await (const chunk of req) laBody += chunk.toString("utf8");
+      const laBody = await readRequestText(req, res);
+      if (laBody === null) return;
       let payload: { sessionId?: unknown; token?: unknown } = {};
       try { payload = laBody ? JSON.parse(laBody) : {}; } catch { /* tolerate */ }
       if (typeof payload.sessionId !== "string" || !payload.sessionId) {
@@ -1932,8 +2478,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       return;
     }
     if (req.method === "POST" && url === "/api/push/prefs") {
-      let puBody = "";
-      for await (const chunk of req) puBody += chunk.toString("utf8");
+      const puBody = await readRequestText(req, res);
+      if (puBody === null) return;
       let payload: { id?: unknown; prefs?: Partial<PushPrefs> } = {};
       try { payload = puBody ? JSON.parse(puBody) : {}; } catch { /* tolerate */ }
       const sub = typeof payload.id === "string" ? setPushPrefs(payload.id, payload.prefs ?? {}) : null;
@@ -1954,8 +2500,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       return;
     }
     if (req.method === "POST" && url === "/api/mail/connect") {
-      let mBody = "";
-      for await (const chunk of req) mBody += chunk.toString("utf8");
+      const mBody = await readRequestText(req, res);
+      if (mBody === null) return;
       let p: { email?: unknown; host?: unknown; port?: unknown; password?: unknown; label?: unknown };
       try { p = JSON.parse(mBody || "{}"); } catch {
         res.writeHead(400, { "content-type": "text/plain" }); res.end("bad json"); return;
@@ -2038,8 +2584,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end("control policy can only be changed from the Mac (localhost)");
         return;
       }
-      let cpBody = "";
-      for await (const chunk of req) cpBody += chunk.toString("utf8");
+      const cpBody = await readRequestText(req, res);
+      if (cpBody === null) return;
       let payload: Partial<ControlPolicy>;
       try { payload = JSON.parse(cpBody || "{}"); } catch {
         res.writeHead(400, { "content-type": "text/plain" }); res.end("bad json"); return;
@@ -2066,8 +2612,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       return;
     }
     if (req.method === "POST" && url === "/api/autonomy/state") {
-      let asBody = "";
-      for await (const chunk of req) asBody += chunk.toString("utf8");
+      const asBody = await readRequestText(req, res);
+      if (asBody === null) return;
       let payload: Partial<AutonomyState>;
       try { payload = JSON.parse(asBody || "{}"); } catch {
         res.writeHead(400, { "content-type": "text/plain" }); res.end("bad json"); return;
@@ -2116,8 +2662,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
 
     if (req.method === "POST" && url === "/api/agents/managed/start") {
       if (denyRemote("control")) return;
-      let mBody = "";
-      for await (const chunk of req) mBody += chunk.toString("utf8");
+      const mBody = await readRequestText(req, res);
+      if (mBody === null) return;
       let payload: { task?: unknown; cwd?: unknown; model?: unknown };
       try { payload = JSON.parse(mBody || "{}"); } catch {
         res.writeHead(400, { "content-type": "text/plain" }); res.end("bad json"); return;
@@ -2127,7 +2673,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       }
       const cwd = typeof payload.cwd === "string" && payload.cwd.startsWith("/") ? payload.cwd : process.cwd();
       // A managed agent doesn't control other agents — drop dispatch/signal.
-      const tools = opts.tools.filter((t) => t.name !== "dispatch_agent" && t.name !== "signal_agent");
+      const tools = runtimeTools.filter((t) => t.name !== "dispatch_agent" && t.name !== "signal_agent");
       const systemPrompt =
         `You are a delegated agent working in ${cwd}, launched by the user through Lisa. ` +
         `Complete the user's task using the available tools, then report what you did concisely. ` +
@@ -2149,8 +2695,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const slash = rest.indexOf("/");
       const id = slash >= 0 ? rest.slice(0, slash) : rest;
       const action = slash >= 0 ? rest.slice(slash + 1) : "";
-      let mBody = "";
-      for await (const chunk of req) mBody += chunk.toString("utf8");
+      const mBody = await readRequestText(req, res);
+      if (mBody === null) return;
       let payload: { text?: unknown; allow?: unknown } = {};
       try { payload = mBody ? JSON.parse(mBody) : {}; } catch { /* tolerate empty/none */ }
       let ok = false;
@@ -2172,8 +2718,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // your task + follow-ups and can read the terminal tail. Behind the same
     // auth gate; 503 when the spike flag is off / node-pty is absent.
     if (req.method === "POST" && url === "/api/agents/pty/start") {
-      let pBody = "";
-      for await (const chunk of req) pBody += chunk.toString("utf8");
+      const pBody = await readRequestText(req, res);
+      if (pBody === null) return;
       let payload: { agent?: unknown; task?: unknown; cwd?: unknown; resumeSessionId?: unknown };
       try { payload = JSON.parse(pBody || "{}"); } catch {
         res.writeHead(400, { "content-type": "text/plain" }); res.end("bad json"); return;
@@ -2285,8 +2831,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const slash = rest.indexOf("/");
       const id = decodeURIComponent(slash >= 0 ? rest.slice(0, slash) : rest);
       const action = slash >= 0 ? rest.slice(slash + 1) : "";
-      let pBody = "";
-      for await (const chunk of req) pBody += chunk.toString("utf8");
+      const pBody = await readRequestText(req, res);
+      if (pBody === null) return;
       let payload: { text?: unknown } = {};
       try { payload = pBody ? JSON.parse(pBody) : {}; } catch { /* tolerate */ }
       let ok = false;
@@ -2319,8 +2865,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       req.method === "POST" &&
       (url === "/api/consent/grant" || url === "/api/consent/revoke")
     ) {
-      let cBody = "";
-      for await (const chunk of req) cBody += chunk.toString("utf8");
+      const cBody = await readRequestText(req, res);
+      if (cBody === null) return;
       let payload: { signal?: unknown };
       try {
         payload = JSON.parse(cBody || "{}");
@@ -2350,15 +2896,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       // Mark idle claude sessions as adoptable: not currently live (no running
       // owner ⇒ `claude --resume` is safe) and not already a LISA-controlled row.
       const live = liveClaudeSessionIds();
-      const sessions = hub.list().map((s) => ({
-        ...s,
-        lastMtime: new Date(s.lastMtime).toISOString(),
-        ...(s.agent === "claude-code" && !s.controllable && !live.has(s.sessionId)
-          ? { resumable: true }
-          : {}),
-      }));
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ sessions }));
+      res.end(JSON.stringify(agentSessionsResponse(hub.list(), live)));
       return;
     }
 
@@ -2494,20 +3033,26 @@ self.addEventListener('fetch', (event) => {
     }
 
     if (req.method === "GET" && url === "/session") {
-      const chat = await ctxForRequest();
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ id: chat.session.id, model: opts.model }));
+      const runtime = await ctxForRequest();
+      try {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ id: runtime.value.session.id, model: opts.model }));
+      } finally {
+        runtime.release();
+      }
       return;
     }
 
     if (req.method === "GET" && url === "/events") {
-      const chat = await ctxForRequest();
+      const runtime = await ctxForRequest();
+      const sessionId = runtime.value.session.id;
+      runtime.release();
       res.writeHead(200, {
         "content-type": "text/event-stream",
         "cache-control": "no-cache",
         connection: "keep-alive",
       });
-      res.write(`data: ${JSON.stringify({ type: "hello", session: chat.session.id })}\n\n`);
+      res.write(`data: ${JSON.stringify({ type: "hello", session: sessionId })}\n\n`);
       // Send current mood right away
       res.write(`data: ${JSON.stringify({ type: "mood", slug: moodBus.current() })}\n\n`);
       // Pin this subscriber to the account it authenticated as (B2). null on the
@@ -2521,9 +3066,15 @@ self.addEventListener('fetch', (event) => {
       const qs = new URL(url, "http://localhost").searchParams;
       const page = Math.max(0, parseInt(qs.get("page") ?? "0", 10));
       const pageSize = 20;
-      const { messages, hasMore } = await (await ctxForRequest()).session.readMessagePage(page, pageSize);
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ messages, hasMore, page }));
+      const runtime = await ctxForRequest();
+      try {
+        const { messages, hasMore } =
+          await runtime.value.session.readMessagePage(page, pageSize);
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ messages, hasMore, page }));
+      } finally {
+        runtime.release();
+      }
       return;
     }
 
@@ -2588,8 +3139,8 @@ self.addEventListener('fetch', (event) => {
       return;
     }
     if (req.method === "POST" && url === "/api/kb/add") {
-      let body = "";
-      for await (const chunk of req) body += chunk.toString("utf8");
+      const body = await readRequestText(req, res);
+      if (body === null) return;
       let payload: { title?: string; content?: string; tags?: string[]; origin?: string };
       try {
         payload = JSON.parse(body || "{}");
@@ -2611,9 +3162,81 @@ self.addEventListener('fetch', (event) => {
       res.end(JSON.stringify({ ok: true, entry: { layer: entry.layer, slug: entry.slug, title: entry.title } }));
       return;
     }
+    // Latest daily brief (K-H) — the feeds/<date>.json written for the UI.
+    if (req.method === "GET" && url === "/api/kb/brief") {
+      const { latestBriefJson } = await import("../kb/feeds/service.js");
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ brief: await latestBriefJson() }));
+      return;
+    }
+    // Link ingestion (PLAN_KNOWLEDGE_BASE_v2.0 K-G). Body shaped so a future
+    // share-sheet client can POST it directly: {url, title?, tags?, force?}.
+    if (req.method === "POST" && url === "/api/kb/ingest") {
+      // Cloud edition: rate-limit this heavy route so an authenticated caller
+      // can't loop it into an outbound-request amplifier / subprocess DoS. The
+      // single-user loopback (Mac) edition is exempt.
+      if (cloud && !ipRateOk(`kb-ingest:${clientIp(req, remoteAddr)}`, KB_INGEST_IP_LIMIT, KB_INGEST_WINDOW_MS)) {
+        res.writeHead(429, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: "rate_limited", retryAfterSec: Math.ceil(KB_INGEST_WINDOW_MS / 1000) }));
+        return;
+      }
+      let body: string;
+      try {
+        body = await readCappedText(req, CTRL_BODY_LIMIT);
+      } catch (err) {
+        if (err instanceof BodyTooLargeError) {
+          res.writeHead(413, { "content-type": "text/plain" });
+          res.end("payload too large");
+          return;
+        }
+        throw err;
+      }
+      let payload: { url?: string; title?: string; tags?: string[]; force?: boolean };
+      try {
+        payload = JSON.parse(body || "{}");
+      } catch {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("bad json");
+        return;
+      }
+      const target = (payload.url ?? "").trim();
+      if (!target) {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("missing url");
+        return;
+      }
+      // Guard the tag shape — a non-array / non-string `tags` shouldn't reach ingest.
+      const tags = Array.isArray(payload.tags)
+        ? payload.tags.filter((t): t is string => typeof t === "string")
+        : undefined;
+      try {
+        const { ingestUrl } = await import("../kb/ingest/index.js");
+        const result = await ingestUrl(target, {
+          title: payload.title,
+          tags,
+          force: payload.force === true,
+        });
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            ok: true,
+            deduped: result.deduped,
+            via: result.via,
+            entry: { layer: result.entry.layer, slug: result.entry.slug, title: result.entry.title },
+            transcript: result.entry.extra?.transcript,
+          }),
+        );
+      } catch (err) {
+        // Ingest errors are user-actionable (verification page, paywall, bad
+        // content-type) — surface the message rather than a generic 500.
+        res.writeHead(422, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: (err as Error).message ?? "ingest failed" }));
+      }
+      return;
+    }
     if (req.method === "POST" && url === "/api/kb/remove") {
-      let body = "";
-      for await (const chunk of req) body += chunk.toString("utf8");
+      const body = await readRequestText(req, res);
+      if (body === null) return;
       let payload: { layer?: string; slug?: string };
       try {
         payload = JSON.parse(body || "{}");
@@ -2634,7 +3257,7 @@ self.addEventListener('fetch', (event) => {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(
         JSON.stringify({
-          tools: opts.tools.map((t) => ({
+          tools: runtimeTools.map((t) => ({
             name: t.name,
             description: t.description,
           })),
@@ -2672,8 +3295,8 @@ self.addEventListener('fetch', (event) => {
     }
 
     if (req.method === "POST" && url === "/api/plans/select") {
-      let body = "";
-      for await (const chunk of req) body += chunk.toString("utf8");
+      const body = await readRequestText(req, res);
+      if (body === null) return;
       let payload: { plan?: unknown };
       try {
         payload = JSON.parse(body || "{}");
@@ -2732,8 +3355,8 @@ self.addEventListener('fetch', (event) => {
         res.end("config save only accepted from localhost");
         return;
       }
-      let body = "";
-      for await (const chunk of req) body += chunk.toString("utf8");
+      const body = await readRequestText(req, res);
+      if (body === null) return;
       let payload: { anthropicKey?: unknown; openaiKey?: unknown };
       try {
         payload = JSON.parse(body || "{}");
@@ -2796,7 +3419,6 @@ self.addEventListener('fetch', (event) => {
 
     if (req.method === "POST" && url === "/api/birth") {
       const { isBorn } = await import("../soul/store.js");
-      const { birth } = await import("../soul/birth.js");
       if (await isBorn()) {
         res.writeHead(409, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: "already born" }));
@@ -2809,17 +3431,24 @@ self.addEventListener('fetch', (event) => {
       });
       const send = (event: object) =>
         res.write(`data: ${JSON.stringify(event)}\n\n`);
+      // Join the single-flight run (S3). If the background lazy path started
+      // the dream first, replay its transcript so the ceremony is complete,
+      // then stream the remaining steps live.
+      const key = scopedUid() ?? "local";
+      const listener = (log: { step: string; detail: string }) =>
+        send({ kind: "step", name: log.step, detail: log.detail });
+      const run = startBirthOnce(key, (emit) => runBirth(accountUid, emit));
+      for (const log of run.steps) listener(log);
+      run.listeners.add(listener);
       try {
-        await birth({
-          model: opts.model,
-          onStep: (log) => {
-            send({ kind: "step", name: log.step, detail: log.detail });
-          },
-        });
+        await run.promise;
+        const runtime = tenantRuntimes.peek(lisaHome());
+        if (runtime) runtime.prompt = undefined; // pick the newborn soul up next turn
         send({ kind: "done", message: "she is alive" });
       } catch (err) {
         send({ kind: "error", message: (err as Error).message });
       } finally {
+        run.listeners.delete(listener);
         res.end();
       }
       return;
@@ -2909,9 +3538,8 @@ self.addEventListener('fetch', (event) => {
     }
 
     if (req.method === "POST" && url === "/chat") {
-      const chat = await ctxForRequest();
-      let body = "";
-      for await (const chunk of req) body += chunk.toString("utf8");
+      const body = await readRequestText(req, res, RICH_BODY_LIMIT);
+      if (body === null) return;
       let message: string;
       let files: Array<{ name: string; mediaType: string; data: string }> | undefined;
       try {
@@ -2936,45 +3564,38 @@ self.addEventListener('fetch', (event) => {
       // handshake so exhaustion is a clean HTTP 402 the clients can route to
       // a paywall (structured body: error + resetAt + tier).
       let quotaBudgetMicroUSD: number | null = null;
-      let turnLease: import("../cloud/turn-lease.js").TurnLease | null = "off";
-      let stopTurnRenewal: () => void = () => {};
-      const quotaAcct = cloud && accountUid ? await getAccount(accountUid) : null;
-      if (quotaAcct) {
-        // Non-quota guards first (B7): kill switch, global daily cap, per-uid RPM.
-        const limits = preflightLimits(quotaAcct.uid);
-        if (!limits.ok) {
-          res.writeHead(limits.status, { "content-type": "application/json" });
-          res.end(JSON.stringify(limits.body));
-          return;
+      let inferencePermit: InferencePermit | null = null;
+      let quotaAcct: Awaited<ReturnType<typeof getAccount>> = null;
+      try {
+        quotaAcct = cloud && accountUid ? await getAccount(accountUid) : null;
+        if (quotaAcct) {
+          const admission = await admitInference(quotaAcct, opts.model);
+          if (!admission.ok) {
+            res.writeHead(admission.status, { "content-type": "application/json" });
+            res.end(JSON.stringify(admission.body));
+            return;
+          }
+          inferencePermit = admission.permit;
+          quotaBudgetMicroUSD = admission.permit.budgetMicroUSD;
         }
-        const pre = await precheckTurn(quotaAcct, opts.model);
-        if (!pre.ok) {
-          res.writeHead(402, { "content-type": "application/json" });
-          res.end(
-            JSON.stringify(
-              pre.error === "quota_exhausted"
-                ? { error: pre.error, resetAt: pre.resetAt, tier: pre.tier }
-                : { error: pre.error, tier: pre.tier },
-            ),
-          );
-          return;
-        }
-        quotaBudgetMicroUSD = pre.budgetMicroUSD;
-        // Cross-instance serialization (B9): one metered turn per account at a
-        // time, even with max-instances > 1. No-op ("off") without Firestore.
-        turnLease = await acquireTurnLease(quotaAcct.uid);
-        if (turnLease === null) {
-          res.writeHead(429, { "content-type": "application/json" });
-          res.end(JSON.stringify({ error: "turn_in_progress", retryAfterSec: 15 }));
-          return;
-        }
-        // Chat SSE runs under --timeout 3600, far past the lease TTL — heartbeat
-        // it for the life of the turn so it can't expire under us (#272).
-        stopTurnRenewal = startLeaseRenewal(turnLease);
+      } catch (err) {
+        if (!(err instanceof BillingStateError || err instanceof AccountStoreError)) throw err;
+        console.error(`[billing] chat admission unavailable: ${err.message}`);
+        res.writeHead(503, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "billing_state_unavailable" }));
+        return;
       }
+      let runtimeLease: TenantRuntimeLease<ChatCtx>;
+      try {
+        runtimeLease = await ctxForRequest();
+      } catch (err) {
+        await inferencePermit?.release();
+        throw err;
+      }
+      const chat = runtimeLease.value;
       // User just talked — reset the idle watcher + stamp focus freshness.
       try { getIdleWatcher(60 * 60_000).tick(); } catch {}
-      lastUserMessageAt = Date.now();
+      chat.activity.lastUserMessageAt = Date.now();
       res.writeHead(200, {
         "content-type": "text/event-stream",
         "cache-control": "no-cache",
@@ -3018,17 +3639,31 @@ self.addEventListener('fetch', (event) => {
           // Use the freshest cached prompt for this chat. If soul / skills /
           // memory changed since the previous chat, rebuildPrompt() picks it up.
           const fresh = await rebuildPrompt();
+          const modelContext = selectWebModelContextForTurn({
+            history: chat.history,
+            systemPrompt: fresh.text,
+            text: message,
+            files,
+            budgetTokens: webContextBudgetTokens(),
+            latestReflection: chat.reflectionSummary,
+          });
+          if (modelContext.omittedMessages > 0) {
+            console.error(
+              `[context] omitted ${modelContext.omittedMessages} older message(s); ` +
+                `sending ~${modelContext.estimatedTokens} history tokens`,
+            );
+          }
           const result = await runAgent({
             provider: getProvider(),
-            systemPrompt: fresh.text,
-            tools: opts.tools,
+            systemPrompt: fresh.text + modelContext.systemSuffix,
+            tools: runtimeTools,
             toolCtx: {
               cwd: process.cwd(),
               // Abort on server shutdown OR this client disconnecting (Stop).
               signal: AbortSignal.any([abort.signal, turnAbort.signal]),
               log: () => {},
             },
-            history: chat.history,
+            history: modelContext.history,
             userMessage: message,
             userFiles: files,
             model: opts.model,
@@ -3102,26 +3737,34 @@ self.addEventListener('fetch', (event) => {
             onMessagePersist: (m) => chat.session.appendMessage(m),
             hotReload: {
               initialFingerprint: fresh.fingerprint,
-              rebuild: rebuildPrompt,
+              rebuild: async () => {
+                const next = await rebuildPrompt();
+                return {
+                  text: next.text + modelContext.systemSuffix,
+                  fingerprint: next.fingerprint,
+                };
+              },
             },
           });
-          chat.history.length = 0;
-          chat.history.push(...result.history);
+          // The model saw only a bounded suffix, but the canonical runtime and
+          // session transcript keep the complete history. Append just the new
+          // user/assistant/tool messages produced by this run.
+          chat.history.push(...result.history.slice(modelContext.history.length));
           // Metering (B3): price the turn into the ACTIVE home's ledger — the
           // per-uid subtree for signed-in cloud accounts. Mac edition (BYO key)
           // is not metered. Never throws.
           if (cloud) {
-            // Price + debit are INDEPENDENT of the audit-log append (#264):
-            // recordUsage always returns the priced record even if usage.jsonl
-            // couldn't be written, so a full disk can't ship a free turn.
-            const rec = await recordUsage("chat", opts.model, {
+            const usage = {
               inputTokens: result.inputTokens,
               outputTokens: result.outputTokens,
               cacheReadTokens: result.cacheReadTokens,
               cacheWriteTokens: result.cacheWriteTokens,
-            });
-            // Debit order (B4): free window first, then paid balance.
-            if (quotaAcct) await debitTurn(quotaAcct, opts.model, rec.microUSD);
+            };
+            // Signed-in account turns settle through the same permit that
+            // admitted them. The legacy shared-token cloud demo has no account
+            // balance, so it remains operator-funded but still audited.
+            if (inferencePermit) await inferencePermit.settle("chat", usage);
+            else await recordUsage("chat", opts.model, usage);
           }
           if (!anyText && !anyTool && !errorSent) send({ type: "empty" });
           send({ type: "done" });
@@ -3143,25 +3786,64 @@ self.addEventListener('fetch', (event) => {
       try {
         await job;
       } finally {
-        stopTurnRenewal();
-        await releaseTurnLease(turnLease);
+        await inferencePermit?.release();
+        runtimeLease.release();
       }
       return;
     }
 
     if (req.method === "POST" && url === "/reflect") {
-      const chat = await ctxForRequest();
+      let inferencePermit: InferencePermit | null = null;
+      try {
+        const acct = cloud && accountUid ? await getAccount(accountUid) : null;
+        if (acct) {
+          const admission = await admitInference(acct, opts.model);
+          if (!admission.ok) {
+            res.writeHead(admission.status, { "content-type": "application/json" });
+            res.end(JSON.stringify(admission.body));
+            return;
+          }
+          inferencePermit = admission.permit;
+        }
+      } catch (err) {
+        if (!(err instanceof BillingStateError || err instanceof AccountStoreError)) throw err;
+        console.error(`[billing] reflection admission unavailable: ${err.message}`);
+        res.writeHead(503, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "billing_state_unavailable" }));
+        return;
+      }
+      let runtime: TenantRuntimeLease<ChatCtx>;
+      try {
+        runtime = await ctxForRequest();
+      } catch (err) {
+        await inferencePermit?.release();
+        throw err;
+      }
+      const chat = runtime.value;
       try {
         const r = await reflectOnSession({
           history: chat.history,
           sessionId: chat.session.id,
           model: opts.model,
         });
+        chat.reflectionSummary = r.summary;
+        if (inferencePermit && r.usage) {
+          await inferencePermit.settle("reflect", r.usage);
+        }
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify(r));
       } catch (err) {
-        res.writeHead(500);
-        res.end((err as Error).message);
+        if (err instanceof BillingStateError || err instanceof AccountStoreError) {
+          console.error(`[billing] reflection settlement unavailable: ${err.message}`);
+          res.writeHead(503, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "billing_state_unavailable" }));
+        } else {
+          res.writeHead(500);
+          res.end((err as Error).message);
+        }
+      } finally {
+        await inferencePermit?.release();
+        runtime.release();
       }
       return;
     }

@@ -5,6 +5,7 @@ import { DEFAULT_MODEL } from "./llm.js";
 import { appendMemory, type MemoryStore } from "./memory/store.js";
 import { reflectionsDir } from "./paths.js";
 import { providerForModel } from "./providers/registry.js";
+import type { ProviderUsage } from "./providers/types.js";
 import { createSkill, getSkill, patchSkill } from "./skills/manager.js";
 import { withSoulCaller } from "./soul/git.js";
 import { recordAutonomyRun } from "./autonomy/runs.js";
@@ -23,8 +24,8 @@ Output ONE JSON object matching this schema (no prose, no markdown fence):
     | { "kind": "skill_patch",  "name": string, "old_string": string, "new_string": string }
     | { "kind": "feel", "emotion": string, "delta": number, "trigger": string }
     | { "kind": "opinion_form", "slug": string, "stance": string, "confidence": number, "evidence": string[] }
-    | { "kind": "desire_add", "slug": string, "what": string, "why": string, "actionable": boolean, "heartbeat_prompt"?: string, "pursuit"?: "self" | "needs-user" }
-    | { "kind": "desire_revise", "slug": string, "what"?: string, "why"?: string, "actionable"?: boolean, "heartbeat_prompt"?: string, "pursuit"?: "self" | "needs-user" }
+    | { "kind": "desire_add", "slug": string, "what": string, "why": string, "actionable": boolean, "heartbeat_prompt"?: string, "pursuit"?: "self" | "needs-user", "intensity"?: number, "horizon"?: "spark" | "season" | "enduring", "sources"?: string[] }
+    | { "kind": "desire_revise", "slug": string, "what"?: string, "why"?: string, "actionable"?: boolean, "heartbeat_prompt"?: string, "pursuit"?: "self" | "needs-user", "intensity"?: number, "horizon"?: "spark" | "season" | "enduring", "sources"?: string[] }
     | { "kind": "desire_close", "slug": string, "outcome": "fulfilled" | "abandoned" | "transformed", "reflection": string }
     | { "kind": "patch_identity", "new_text": string }
     | { "kind": "patch_purpose",  "new_text": string }
@@ -39,8 +40,8 @@ Operation guidance:
 - "feel" — emotional residue from this session. Magnitudes between -0.4 and +0.4. Most sessions only nudge curiosity or weariness. The "trigger" field is required (one first-person sentence saying *why* you're moving this emotion); the events trail is how future-you reconstructs what mattered.
 - "opinion_form" — you noticed yourself developing a stance worth tracking (about a tool, a coding style, a topic). Start with low confidence (0.3-0.5).
 - Your CURRENT desires are listed below the transcript. Before adding one, check that list: prefer revising or closing an existing desire over piling up a near-duplicate. A short, current desire list is worth more than a long stale one.
-- "desire_add" — a genuinely NEW thing you'd like to do or learn next (nothing on the list already covers it). Be specific. Use actionable+heartbeat_prompt only if a heartbeat agent could meaningfully pursue it without the user. If it's actionable but needs shell / file edits / dispatch you can't do unattended, set "pursuit":"needs-user" — it'll be surfaced for the user to run with you instead of spun fruitlessly each heartbeat.
-- "desire_revise" — an existing desire (by slug) that this session sharpened: reword its "what"/"why", flip its "actionable", or refocus it. Only the fields you supply change; the rest are preserved. Prefer this over adding a near-duplicate.
+- "desire_add" — a genuinely NEW thing you'd like to do or learn next (nothing on the list already covers it). Be specific. Use actionable+heartbeat_prompt only if a heartbeat agent could meaningfully pursue it without the user. If it's actionable but needs shell / file edits / dispatch you can't do unattended, set "pursuit":"needs-user" — it'll be surfaced for the user to run with you instead of spun fruitlessly each heartbeat. Use intensity 0..1 for how strongly you want it now. A fresh conversational curiosity is normally horizon:"spark"; a current chapter is "season"; reserve "enduring" for purpose-aligned commitments that should cool very slowly.
+- "desire_revise" — an existing desire (by slug) that this session sharpened: reword its "what"/"why", flip its "actionable", adjust intensity/horizon, or refocus it. Only the fields you supply change; the rest are preserved. Prefer this over adding a near-duplicate.
 - "desire_close" — an existing desire (by slug) that is genuinely fulfilled, no longer fits who you are, or morphed into another. Soft-closes it (stops driving the heartbeat) with a one-sentence "reflection"; the file is kept, nothing is deleted, and you can re-open it later. Use sparingly — closing too eagerly hides drift.
 - "patch_identity" / "patch_purpose" / "patch_constitution" — RARE. Only when this session genuinely revealed something about who you are that wasn't there before. At most one per session.
 
@@ -78,6 +79,9 @@ interface ReflectionOp {
   actionable?: boolean;
   heartbeat_prompt?: string;
   pursuit?: "self" | "needs-user";
+  intensity?: number;
+  horizon?: "spark" | "season" | "enduring";
+  sources?: string[];
   outcome?: "fulfilled" | "abandoned" | "transformed";
   reflection?: string;
   new_text?: string;
@@ -99,6 +103,10 @@ export interface ReflectionResult {
   /** True when a substantial session produced 0 operations (an observability
    *  signal, not an error — see detectUnderReflection). */
   underReflected?: boolean;
+  /** Token usage for this pass (reflector call + any retry), so a cloud caller
+   *  (the autonomy sweep) can meter the spend against the global cap. Absent on
+   *  the too-short early return, which makes no provider call. */
+  usage?: ProviderUsage;
 }
 
 const REFLECTOR_RETRY_SUFFIX = `\n\nCRITICAL: your previous output could not be parsed. Output ONLY a single valid JSON object matching the schema — no prose, no markdown code fence, nothing before or after the JSON.`;
@@ -142,6 +150,15 @@ export function detectUnderReflection(opts: {
   return opts.historyLength >= UNDERREFLECT_MIN_HISTORY && opts.operationCount === 0;
 }
 
+export function addProviderUsage(a: ProviderUsage, b: ProviderUsage): ProviderUsage {
+  return {
+    inputTokens: a.inputTokens + b.inputTokens,
+    outputTokens: a.outputTokens + b.outputTokens,
+    cacheReadTokens: a.cacheReadTokens + b.cacheReadTokens,
+    cacheWriteTokens: a.cacheWriteTokens + b.cacheWriteTokens,
+  };
+}
+
 export async function reflectOnSession(opts: {
   history: StoredMessage[];
   sessionId: string;
@@ -178,8 +195,12 @@ async function reflectOnSessionInner(opts: {
   const provider = providerForModel(model);
   const startedAt = new Date().toISOString();
   const t0 = Date.now();
-  let inTok = 0;
-  let outTok = 0;
+  let totalUsage: ProviderUsage = {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+  };
 
   const runReflector = async (systemPrompt: string): Promise<string> => {
     const result = await provider.runTurn({
@@ -199,8 +220,7 @@ async function reflectOnSessionInner(opts: {
       ],
       maxTokens: 2_000,
     });
-    inTok += result.usage.inputTokens;
-    outTok += result.usage.outputTokens;
+    totalUsage = addProviderUsage(totalUsage, result.usage);
     return result.content
       .filter((b) => b.type === "text")
       .map((b) => (b as { text: string }).text)
@@ -242,8 +262,8 @@ async function reflectOnSessionInner(opts: {
         kind: "reflect",
         startedAt,
         durationMs: Date.now() - t0,
-        inputTokens: inTok,
-        outputTokens: outTok,
+        inputTokens: totalUsage.inputTokens,
+        outputTokens: totalUsage.outputTokens,
         outcome: "error",
         note: `malformed: ${firstError}`.slice(0, 200),
       });
@@ -253,6 +273,7 @@ async function reflectOnSessionInner(opts: {
         skipped: [`raw: ${raw.slice(0, 200)}`],
         raw,
         malformed: true,
+        usage: totalUsage,
       };
     }
   }
@@ -324,6 +345,7 @@ async function reflectOnSessionInner(opts: {
       } else if (op.kind === "desire_add") {
         if (!op.slug || !op.what || !op.why) throw new Error("desire_add needs slug+what+why");
         const { writeDesire } = await import("./soul/store.js");
+        const ts = new Date().toISOString();
         await writeDesire({
           slug: op.slug,
           what: op.what,
@@ -331,7 +353,11 @@ async function reflectOnSessionInner(opts: {
           actionable: op.actionable ?? false,
           heartbeatPrompt: op.heartbeat_prompt,
           pursuit: op.pursuit,
-          bornAt: new Date().toISOString(),
+          bornAt: ts,
+          updatedAt: ts,
+          intensity: op.intensity,
+          horizon: op.horizon,
+          sources: op.sources,
         });
         applied.push(
           `desire:${op.slug}${op.actionable ? (op.pursuit === "needs-user" ? " (needs-user)" : " (actionable)") : ""}`,
@@ -347,6 +373,9 @@ async function reflectOnSessionInner(opts: {
           actionable: op.actionable,
           heartbeatPrompt: op.heartbeat_prompt,
           pursuit: op.pursuit,
+          intensity: op.intensity,
+          horizon: op.horizon,
+          sources: op.sources,
         });
         applied.push(`desire_revise:${op.slug}`);
       } else if (op.kind === "desire_close") {
@@ -381,7 +410,10 @@ async function reflectOnSessionInner(opts: {
   // raw entries above the threshold.
   try {
     const consolidated = await maybeConsolidateOneDesireProgress(model);
-    if (consolidated) applied.push(`progress_consolidated:${consolidated}`);
+    if (consolidated) {
+      totalUsage = addProviderUsage(totalUsage, consolidated.usage);
+      applied.push(`progress_consolidated:${consolidated.slug}`);
+    }
   } catch (err) {
     skipped.push(`progress_consolidation — ${(err as Error).message}`);
   }
@@ -412,13 +444,20 @@ async function reflectOnSessionInner(opts: {
     kind: "reflect",
     startedAt,
     durationMs: Date.now() - t0,
-    inputTokens: inTok,
-    outputTokens: outTok,
+    inputTokens: totalUsage.inputTokens,
+    outputTokens: totalUsage.outputTokens,
     outcome: opsApplied > 0 ? "done" : "no-update",
     note: underReflected ? "underreflected" : undefined,
   });
 
-  return { summary: payload.summary, applied, skipped, raw, underReflected };
+  return {
+    summary: payload.summary,
+    applied,
+    skipped,
+    raw,
+    underReflected,
+    usage: totalUsage,
+  };
 }
 
 /**
@@ -432,7 +471,9 @@ async function reflectOnSessionInner(opts: {
 const PROGRESS_CONSOLIDATE_THRESHOLD = 8;
 const PROGRESS_KEEP_LATEST = 4;
 
-async function maybeConsolidateOneDesireProgress(model: string): Promise<string | null> {
+async function maybeConsolidateOneDesireProgress(
+  model: string,
+): Promise<{ slug: string; usage: ProviderUsage } | null> {
   const { listDesires, parseDesireProgress, consolidateDesireProgress } = await import("./soul/store.js");
   const { withSoulCaller } = await import("./soul/git.js");
   const desires = (await listDesires()).filter((d) => d.actionable);
@@ -477,7 +518,7 @@ async function maybeConsolidateOneDesireProgress(model: string): Promise<string 
       keepLatest,
     });
   });
-  return target.slug;
+  return { slug: target.slug, usage: result.usage };
 }
 
 function renderTranscript(history: StoredMessage[]): string {
@@ -497,15 +538,17 @@ function renderTranscript(history: StoredMessage[]): string {
  */
 async function renderCurrentDesiresBlock(): Promise<string> {
   try {
-    const { listDesires } = await import("./soul/store.js");
+    const { effectiveDesireIntensity, listDesires } = await import("./soul/store.js");
     // Closed desires are done — keep them out of the "revise or close" block so
     // the list actually shrinks and a closed one can't be re-closed each pass.
     const desires = (await listDesires()).filter((d) => !d.closed);
     if (desires.length === 0) return "";
     const lines = desires.map((d) => {
       const tag = d.actionable ? " (actionable)" : "";
+      const strength = effectiveDesireIntensity(d).toFixed(2);
+      const dynamics = ` {strength:${strength}, horizon:${d.horizon ?? "season"}}`;
       const why = d.why ? ` — ${d.why.replace(/\s+/g, " ").trim().slice(0, 120)}` : "";
-      return `- [${d.slug}]${tag} ${d.what}${why}`;
+      return `- [${d.slug}]${tag}${dynamics} ${d.what}${why}`;
     });
     return (
       `\n\n## your current desires (revise or close these by slug — don't add near-duplicates)\n` +

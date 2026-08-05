@@ -62,6 +62,26 @@ export class SessionStore {
     await appendLine(this.path, JSON.stringify(entry));
   }
 
+  async readLatestReflection(): Promise<string | undefined> {
+    const raw = await fs.readFile(this.path, "utf8");
+    const lines = raw.split("\n").filter(Boolean).slice(1);
+    for (let index = lines.length - 1; index >= 0; index--) {
+      try {
+        const entry = JSON.parse(lines[index]!) as Partial<SessionEntry>;
+        if (
+          entry.type === "reflection" &&
+          "summary" in entry &&
+          typeof entry.summary === "string"
+        ) {
+          return entry.summary;
+        }
+      } catch {
+        // Skip a corrupt line and keep searching older durable reflections.
+      }
+    }
+    return undefined;
+  }
+
   /**
    * Read a page of message entries (newest-first within the page).
    * page=0 = latest PAGE_SIZE messages, page=1 = older ones, etc.

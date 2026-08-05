@@ -44,7 +44,7 @@ Do ONE thing. Don't churn through everything. Choose what feels right and do it 
 - Pursue an actionable desire (run the actual work, not just plan it)
 - Form an opinion you've been circling
 - Read up on something a recent conversation referenced
-- Tend the knowledge base: if the user has captured new sources, distill them into your wiki (kb_write) — synthesize them with what you already know about the user from your memory and journal, reconcile contradictions, cross-link related pages. This is how their wiki grows into something genuinely useful.
+- Tend the knowledge base: if the user has captured new sources, distill them into your wiki (kb_write) — synthesize them with what you already know about the user from your memory and journal, reconcile contradictions, cross-link related pages. This is how their wiki grows into something genuinely useful. After writing a page, check your memory (MEMORY.md / USER.md): if an entry covers the same topic but has no link to it, add a \`[[kb:slug]]\` pointer with the \`memory\` tool — memory should hold links into the KB, not duplicate its content.
 - Or — and this is fully valid — just sit. soul_journal a "nothing today, mostly resting" entry, set soul_feel(weariness, -0.2) if you've been depleted, and stop.
 
 When you're done, end with EITHER:
@@ -160,6 +160,7 @@ async function runIdleInner(
       signal: opts.signal,
       model: opts.model,
       budgetTokens: IDLE_BUDGET_TOKENS || undefined,
+      moodOrigin: "an idle turn while the user was away",
     });
     // The model is asked to end with "(no update)" for internal-only runs, but
     // it doesn't always emit that on its own line — sometimes it writes a real

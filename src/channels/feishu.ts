@@ -6,6 +6,11 @@ import type {
   IncomingMessage,
   OutgoingMessage,
 } from "./types.js";
+import {
+  BodyTooLargeError,
+  CTRL_BODY_LIMIT,
+  readCappedText,
+} from "../web/http-body.js";
 
 interface FeishuOptions {
   /** Feishu / Lark App ID (cli_...) */
@@ -133,7 +138,19 @@ export class FeishuChannel implements ChannelAdapter {
       return;
     }
 
-    const rawBody = await readBody(req);
+    let rawBody: string;
+    try {
+      rawBody = await readCappedText(req, CTRL_BODY_LIMIT);
+    } catch (err) {
+      if (err instanceof BodyTooLargeError) {
+        res.writeHead(413, { connection: "close" });
+        res.end("payload too large");
+      } else {
+        res.writeHead(400, { connection: "close" });
+        res.end("request body unavailable");
+      }
+      return;
+    }
 
     // ── Signature check (when encryptKey is configured) ─────────────────────
     // Feishu signs every delivery with X-Lark-Signature =
@@ -347,15 +364,6 @@ function timingSafeEqualStr(a: string, b: string): boolean {
   const ha = crypto.createHash("sha256").update(a).digest();
   const hb = crypto.createHash("sha256").update(b).digest();
   return crypto.timingSafeEqual(ha, hb);
-}
-
-function readBody(req: http.IncomingMessage): Promise<string> {
-  return new Promise((resolve, reject) => {
-    let body = "";
-    req.on("data", (chunk: Buffer) => (body += chunk.toString()));
-    req.on("end", () => resolve(body));
-    req.on("error", reject);
-  });
 }
 
 // ─── Register ─────────────────────────────────────────────────────────────────

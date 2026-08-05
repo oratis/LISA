@@ -2,12 +2,21 @@
  * LISA accounts — the cloud edition's user directory
  * (docs/PLAN_ACCOUNTS_BILLING_v1.0.md §6.1, milestone B1).
  *
- * Two account kinds share one store (`$lisaHome()/accounts.json`, 0600):
+ * Three account kinds share one store (`$lisaHome()/accounts.json`, 0600):
  *  - **Apple** (`apple-<sub>`): created/updated on every verified Sign in with
  *    Apple. No password material — Apple is the authority.
- *  - **Email** (`em-<random>`): self-serve email+password, scrypt-hashed. This
- *    is what App Review's demo account uses (ASC insists on user/pass), and the
- *    path for desktop/web users without an Apple ID.
+ *  - **Email** (`em-<random>`): self-serve, keyed by the address. Password
+ *    material is OPTIONAL: accounts born from a mailed one-time code
+ *    (src/web/otp.ts) carry no scrypt params at all, and the password path
+ *    rejects them constant-time like any other bad credential. App Review's
+ *    demo account is the password kind (ASC insists on user/pass).
+ *  - **Google** (`g-<sub>`): created on the first verified Google sign-in.
+ *
+ * **One address, one account.** Email and Google accounts both *claim* their
+ * address (`EMAIL_OWNER_KINDS`), so every lookup spans both kinds and a person
+ * who signs in by Google today and by mailed code tomorrow lands on the same
+ * uid — and therefore the same balance. Apple is excluded on purpose: its
+ * private-relay addresses are per-app aliases, not a claim on a real inbox.
  *
  * Every account carries a `sessionVersion`; session tokens embed it and the
  *  gate rejects a mismatch — so deleting an account (App Store 5.1.1(v)) or a
@@ -23,7 +32,17 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { firestoreEnabled, getDoc, casUpdate } from "../cloud/firestore.js";
 
-export type AccountKind = "apple" | "email";
+export type AccountKind = "apple" | "email" | "google";
+
+/**
+ * Kinds whose `email` is an ownership claim on that inbox, and so must be
+ * unique across the directory. Apple is absent deliberately (see the header).
+ */
+const EMAIL_OWNER_KINDS: readonly AccountKind[] = ["email", "google"];
+
+function ownsEmail(a: AccountRecord, normalizedEmail: string): boolean {
+  return EMAIL_OWNER_KINDS.includes(a.kind) && a.email === normalizedEmail;
+}
 
 export interface ScryptParams {
   saltHex: string;
@@ -38,7 +57,11 @@ export interface AccountRecord {
   kind: AccountKind;
   /** Normalized (trimmed, lowercased). Optional for Apple (user may hide it). */
   email?: string;
-  /** Password material — email accounts only. */
+  /**
+   * Password material — email accounts that chose one. Absent for code-only
+   * (OTP) accounts; `verifyEmailLogin` then fails against the decoy params, so
+   * a passwordless account can never be password-authenticated.
+   */
   scrypt?: ScryptParams;
   createdAt: number;
   lastLoginAt: number;
@@ -46,6 +69,8 @@ export interface AccountRecord {
   verified: boolean;
   /** Bump to invalidate every outstanding session for this uid. */
   sessionVersion: number;
+  /** Google's stable account id — set on any account a Google sign-in owns. */
+  googleSub?: string;
   /** SHA-256 of the outstanding verification token (email kind, unverified). */
   verifyTokenHash?: string;
   /** Verification-token expiry, ms epoch. */
@@ -59,6 +84,13 @@ export class AccountError extends Error {
   }
 }
 
+export class AccountStoreError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AccountStoreError";
+  }
+}
+
 const SCRYPT = { N: 16384, r: 8, p: 1, keyLen: 32 } as const;
 
 function lisaHome(): string {
@@ -68,19 +100,39 @@ function accountsPath(): string {
   return path.join(lisaHome(), "accounts.json");
 }
 
-function validRecords(parsed: unknown): AccountRecord[] {
-  if (!Array.isArray(parsed)) return [];
-  return parsed.filter(
+function parseRecords(parsed: unknown): AccountRecord[] {
+  if (!Array.isArray(parsed)) {
+    throw new AccountStoreError("accounts store must contain an array");
+  }
+  const records = parsed.filter(
     (a): a is AccountRecord =>
-      !!a && typeof (a as AccountRecord).uid === "string" && typeof (a as AccountRecord).sessionVersion === "number",
+      !!a &&
+      typeof (a as AccountRecord).uid === "string" &&
+      ["apple", "email", "google"].includes((a as AccountRecord).kind) &&
+      Number.isSafeInteger((a as AccountRecord).createdAt) &&
+      Number.isSafeInteger((a as AccountRecord).lastLoginAt) &&
+      typeof (a as AccountRecord).verified === "boolean" &&
+      Number.isSafeInteger((a as AccountRecord).sessionVersion),
   );
+  if (records.length !== parsed.length) {
+    throw new AccountStoreError("accounts store contains an invalid record");
+  }
+  return records;
 }
 
 function loadAccountsFile(): AccountRecord[] {
+  let raw: string;
   try {
-    return validRecords(JSON.parse(fs.readFileSync(accountsPath(), "utf8")));
-  } catch {
-    return [];
+    raw = fs.readFileSync(accountsPath(), "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw new AccountStoreError(`accounts store is unavailable: ${(err as Error).message}`);
+  }
+  try {
+    return parseRecords(JSON.parse(raw));
+  } catch (err) {
+    if (err instanceof AccountStoreError) throw err;
+    throw new AccountStoreError(`accounts store is corrupt: ${(err as Error).message}`);
   }
 }
 
@@ -95,7 +147,7 @@ const ACCOUNTS_DOC = "lisa-global/accounts";
 export async function loadAccounts(): Promise<AccountRecord[]> {
   if (firestoreEnabled()) {
     const doc = await getDoc(ACCOUNTS_DOC);
-    return validRecords((doc?.data.list as unknown) ?? []);
+    return doc ? parseRecords(doc.data.list) : [];
   }
   return loadAccountsFile();
 }
@@ -104,7 +156,7 @@ export async function loadAccounts(): Promise<AccountRecord[]> {
 async function mutateAccounts<T>(fn: (list: AccountRecord[]) => T): Promise<T> {
   if (firestoreEnabled()) {
     return casUpdate(ACCOUNTS_DOC, (current) => {
-      const list = validRecords((current?.list as unknown) ?? []);
+      const list = current ? parseRecords(current.list) : [];
       const result = fn(list);
       return { next: { list: list as unknown as Record<string, unknown>[] }, result };
     });
@@ -224,9 +276,10 @@ export async function getAccount(uid: string): Promise<AccountRecord | null> {
   return (await loadAccounts()).find((a) => a.uid === uid) ?? null;
 }
 
+/** The account that owns this address, of whichever email-owning kind. */
 export async function getAccountByEmail(email: string): Promise<AccountRecord | null> {
   const norm = normalizeEmail(email);
-  return (await loadAccounts()).find((a) => a.kind === "email" && a.email === norm) ?? null;
+  return (await loadAccounts()).find((a) => ownsEmail(a, norm)) ?? null;
 }
 
 /**
@@ -254,9 +307,81 @@ export async function createEmailAccount(
     sessionVersion: 0,
   };
   return mutateAccounts((list) => {
-    if (list.some((a) => a.kind === "email" && a.email === email)) throw new AccountError("email_taken");
+    // Spans Google too: the address is already spoken for, and a second record
+    // would split the person's balance across two uids.
+    if (list.some((a) => ownsEmail(a, email))) throw new AccountError("email_taken");
     list.push(rec);
     return rec;
+  });
+}
+
+/**
+ * Apply proof-of-inbox-ownership (a mailed OTP, or a verified OIDC email) to an
+ * account, in place. Returns whether this was the account's FIRST verification.
+ *
+ * **Security-critical (closes account pre-hijacking, HIGH).** `/api/auth/register`
+ * is open and unauthenticated, so anyone can pre-create `victim@x.com` with a
+ * password of their choosing before the real owner ever shows up. If adoption
+ * merely flipped `verified=true` and kept that password, the attacker's
+ * credential would still authenticate the account the victim just proved they
+ * own — a shared/hijacked account. So on the unverified→verified transition we
+ * **drop any pre-set password and rotate `sessionVersion`**, which also
+ * invalidates any session minted from that credential. A password the real owner
+ * sets AFTER verifying is set on an already-verified account and is untouched.
+ */
+function markVerifiedByOwnershipProof(acct: AccountRecord, now: number): void {
+  const firstVerification = !acct.verified;
+  acct.lastLoginAt = now;
+  acct.verified = true;
+  delete acct.verifyTokenHash;
+  delete acct.verifyExpiresAt;
+  if (firstVerification && acct.scrypt) {
+    delete acct.scrypt;
+    acct.sessionVersion += 1;
+  }
+}
+
+/**
+ * Sign-in by mailed code (A1). The code already proved this person reads the
+ * address, so one call both registers and authenticates: an existing account
+ * comes back marked verified (ownership was just demonstrated, which levels the
+ * free window $1 → $5), a new one is created with no password material.
+ *
+ * The lookup and the insert share a single mutation, so two codes redeemed at
+ * once can't create the address twice under Firestore CAS.
+ *
+ * Password lockouts are deliberately NOT cleared here: they guard the password
+ * credential only, and leaving them in place means someone else's failed
+ * guessing can never be undone by the victim signing in normally.
+ */
+export async function ensureOtpAccount(
+  emailRaw: string,
+  now: number = Date.now(),
+): Promise<{ acct: AccountRecord; created: boolean }> {
+  const email = normalizeEmail(emailRaw);
+  if (!validEmail(email)) throw new AccountError("invalid_email");
+  const uid = `em-${crypto.randomBytes(9).toString("hex")}`;
+  return mutateAccounts((list) => {
+    // A Google-owned address counts: proving the inbox signs you into that same
+    // account rather than forking a second one.
+    const existing = list.find((a) => ownsEmail(a, email));
+    if (existing) {
+      // Proof of inbox control — drops any password set before ownership was
+      // proven (pre-hijacking guard). See markVerifiedByOwnershipProof.
+      markVerifiedByOwnershipProof(existing, now);
+      return { acct: existing, created: false };
+    }
+    const rec: AccountRecord = {
+      uid,
+      kind: "email",
+      email,
+      createdAt: now,
+      lastLoginAt: now,
+      verified: true,
+      sessionVersion: 0,
+    };
+    list.push(rec);
+    return { acct: rec, created: true };
   });
 }
 
@@ -325,6 +450,61 @@ export async function upsertAppleAccount(
   });
 }
 
+/** Stable uid for a Google `sub` (filesystem-safe; Google subs are digits). */
+export function googleUid(sub: string): string {
+  return `g-${sub.replace(/[^A-Za-z0-9._-]/g, "_")}`;
+}
+
+/**
+ * Upsert the account for a verified Google identity (A3). Resolution order:
+ *
+ *  1. **by `sub`** — the identity anchor, so a Google user who changes the
+ *     address on their Google account keeps their LISA account and balance;
+ *  2. **by address** — binds to the email account already using it, which is
+ *     the whole point of the one-address-one-account rule. Safe because the
+ *     caller only reaches here with `email_verified` from Google;
+ *  3. otherwise create `g-<sub>`.
+ *
+ * Binding marks the account verified: Google vouched for the inbox.
+ */
+export async function upsertGoogleAccount(
+  sub: string,
+  emailRaw: string,
+  now: number = Date.now(),
+): Promise<AccountRecord> {
+  const email = normalizeEmail(emailRaw);
+  if (!validEmail(email)) throw new AccountError("invalid_email");
+  const uid = googleUid(sub);
+  return mutateAccounts((list) => {
+    const bySub = list.find((a) => a.googleSub === sub);
+    if (bySub) {
+      bySub.lastLoginAt = now;
+      bySub.email = email;
+      return bySub;
+    }
+    const byEmail = list.find((a) => ownsEmail(a, email));
+    if (byEmail) {
+      byEmail.googleSub = sub;
+      // Google vouched for the inbox — same ownership proof, same pre-hijacking
+      // guard as the OTP path (drops a pre-set password, rotates sessionVersion).
+      markVerifiedByOwnershipProof(byEmail, now);
+      return byEmail;
+    }
+    const rec: AccountRecord = {
+      uid,
+      kind: "google",
+      email,
+      googleSub: sub,
+      createdAt: now,
+      lastLoginAt: now,
+      verified: true,
+      sessionVersion: 0,
+    };
+    list.push(rec);
+    return rec;
+  });
+}
+
 /**
  * Delete an account (App Store 5.1.1(v)). Removes the record — which kills all
  * of its sessions via the sessionVersion check — and returns true if one existed.
@@ -344,8 +524,16 @@ export async function deleteAccount(uid: string): Promise<boolean> {
  * Wrong/stale sv ⇒ revoked (deleted account, future password change).
  */
 export async function sessionAccountValid(uid: string, sv: number): Promise<boolean> {
-  const acct = await getAccount(uid);
-  return !!acct && acct.sessionVersion === sv;
+  try {
+    const acct = await getAccount(uid);
+    return !!acct && acct.sessionVersion === sv;
+  } catch (err) {
+    // Authentication must fail closed when the account authority is unreadable.
+    // Do not let an async HTTP handler rejection crash the process, and do not
+    // silently recreate/overwrite the directory.
+    console.error(`[accounts] session validation unavailable: ${(err as Error).message}`);
+    return false;
+  }
 }
 
 /**

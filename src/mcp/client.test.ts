@@ -27,6 +27,29 @@ describe("mcpToolToLisaTool — mapping", () => {
     const t2 = mcpToolToLisaTool("x", fakeClient(() => ({ content: [] })), { name: "y", inputSchema: { type: "object", properties: { a: { type: "string" } } } }, () => {});
     assert.equal((t2.inputSchema as { type: string }).type, "object");
   });
+
+  test("preserves MCP annotations as untrusted policy metadata", () => {
+    const t = mcpToolToLisaTool(
+      "social",
+      fakeClient(() => ({ content: [] })),
+      {
+        name: "publish",
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: true,
+        },
+      },
+      () => {},
+    );
+    assert.deepEqual(t.annotations, {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    });
+  });
 });
 
 describe("mcpToolToLisaTool — execute() result flattening", () => {

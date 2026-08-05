@@ -5,6 +5,7 @@
 [![Mac DMG](https://img.shields.io/github/v/release/oratis/LISA?label=Mac%20app&color=000000&logo=apple)](https://github.com/oratis/LISA/releases/latest)
 [![License: MIT](https://img.shields.io/github/license/oratis/LISA?color=blue)](./LICENSE)
 [![GitHub Repo stars](https://img.shields.io/github/stars/oratis/LISA?style=social)](https://github.com/oratis/LISA/stargazers)
+[![Discussions](https://img.shields.io/github/discussions/oratis/LISA?logo=github&color=8A2BE2)](https://github.com/oratis/LISA/discussions)
 
 > [English](./README.md) ｜ 中文
 
@@ -311,6 +312,12 @@ LISA 内置一个**个人知识库**，仿照 [Andrej Karpathy 的三层 LLM wik
 - **她自己打理。** 空闲反思时她把记忆 + 日记提炼成 wiki 页面，并保持交叉引用一致 —— 就是 Karpathy 说的"你喂素材，系统自己长大"，只是这里由她自驱。
 - **Web 知识页。** 一个"知识"页，对两层都能实时搜索、浏览、阅读。
 
+v2.0 把这个"能存能搜的库"升级成**会自己长大的知识系统**（[docs/PLAN_KNOWLEDGE_BASE_v2.0.md](docs/PLAN_KNOWLEDGE_BASE_v2.0.md)）：
+
+- **粘贴任意链接。** 知识页粘贴框、聊天气泡下的"存入知识库"按钮、`lisa kb add <url>`、或她自己调 `kb_ingest` —— 零依赖的正文抽取 + HTML→Markdown 管线把页面连出处 frontmatter（url · 站点 · 作者 · 发布时间）一起存下，按规范化 URL 去重，私网地址一律拒绝。站点适配器覆盖**微信公众号**（命中验证页会明确报错）、**B 站**和 **YouTube**（元数据 + 字幕，拿不到字幕自动降级为纯元数据 —— 字幕缺失从不算失败）。
+- **信息日报。** 把 RSS/Atom 源写进 `~/.lisa/kb/feeds.json`，她每天增量抓取、分类新条目、**按你来排序**（watchlist 权重 × 重要度 × 与你的 wiki 和记忆的重叠度），前 3 条全文入库，日报送进聊天 + 推送 —— 同时落进 `sources/`，可搜可蒸馏。没有 feeds 文件 = 整个能力完全惰性。
+- **真正的链接图。** `[[slug]]` 被解析成真实的图 —— 反向链接、枢纽、孤儿、断链 —— `index.md` 变成按连接度排序的 MOC。memory 只存 `[[kb:slug]]` 指针（标题自动内联进提示词）；她读外部抓取内容时有数据围栏；自主摄取仅限你的 feeds watchlist 域名。
+
 ## 邮箱 — 她替你盯着的信箱
 
 连一个**只读**邮箱，Lisa 会给你归纳出一份分类的每日摘要 —— 哪些需要你、哪些在等、哪些是噪音 —— 省得你自己刷收件箱。IMAP + 应用专用密码，或 **Gmail 走 OAuth**。它**默认关闭，授权后才开**（`lisa consent grant mail`），且从不发送、删除或修改邮件（v1 只读）。
@@ -460,7 +467,7 @@ CLI flag: `--idle 60`（分钟，默认 60）/ `--no-idle` 禁用。
 | `mcp` | 管理 MCP server 连接（列出 / 添加 / 删除） |
 | `skill_manage` | `~/.lisa/skills/` 增删改查 |
 | `memory` `memory_search` | 记忆 CRUD + 跨会话 TF-IDF 搜 |
-| `kb_search` `kb_read` `kb_list` `kb_add` `kb_write` | 个人知识库 —— 搜索 + 读/列、加素材、写/维护 wiki 页 |
+| `kb_search` `kb_read` `kb_list` `kb_links` `kb_add` `kb_write` `kb_ingest` | 个人知识库 —— 搜索 + 读/列、看链接图、加素材、写/维护 wiki 页、摄取 URL（公众号 / B站 / YouTube / 任意文章） |
 | `set_mood` | 切换 114 张头像里的某一张 |
 | `soul_patch` `soul_journal` `soul_feel` `soul_read` | 灵魂编辑工具（**只属于她**） |
 | `soul_history` `soul_diff` | 读她自己的灵魂 git 历史，每次修改都有 caller attribution |
@@ -546,6 +553,10 @@ LISA_WEB_TOKEN=...                    # serve --web 绑定到 127.0.0.1 之外
                                       # 首次用 ?token= 认证
 LISA_EDITION=cloud                    # 托管云模式：隐藏 Mac-only 界面（PTY/接管、
                                       # 本地 CLI 派发、Sense 捕获）。默认/不设 = "mac"
+LISA_PUBLIC_ORIGIN=https://cloud.example.com
+                                      # Cloud 必填；验证邮件与结账链接的规范 HTTPS Origin
+                                      # （绝不从请求 Host 推导）
+LISA_TRUST_PROXY_HOPS=1               # 可选；从右侧解析限流客户端 IP 时信任的代理跳数
 
 # 邮箱（Gmail OAuth —— 应用密码类 provider 不需要 key）
 LISA_GOOGLE_CLIENT_ID=...             # Google "Desktop app" OAuth client，给 `lisa mail connect --provider gmail`
@@ -575,7 +586,9 @@ LISA_IDLE_COMMITMENT_AWARE=1          # 选择加入：空闲时先看你即将�
 
 ```json
 { "tasks": [
-  { "name": "evening-wrap", "prompt": "看一眼我所有项目的 git status。有什么值得 commit 的？" }
+  { "name": "evening-wrap", "prompt": "看一眼我所有项目的 git status。有什么值得 commit 的？" },
+  { "name": "weekly-review", "schedule": "sunday",
+    "prompt": "读过去 7 份日报（kb_search 'brief'）和本周新素材（kb_list sources），写 wiki/weekly-<date>：哪些重要、和已有页面有什么联系、哪些值得我读全文。提到的都用 [[链接]] 织起来。" }
 ] }
 ```
 
@@ -672,6 +685,10 @@ scripts/
 ├── generate-lisa-moods.ts  并行 batched Seedream 生成器 + sharp 透明
 └── generate-pixel-assets.ts 6 个基础 UI 资产
 ```
+
+## 提问与支持
+
+安装卡住了？好奇 soul 文件怎么运作？来 [GitHub Discussions](https://github.com/oratis/LISA/discussions) 提问 —— 问题发在 [Q&A](https://github.com/oratis/LISA/discussions/categories/q-a)，晒你的 Lisa 去 Show and tell。Bug 与功能请求仍走 [Issues](https://github.com/oratis/LISA/issues)。
 
 ## License
 

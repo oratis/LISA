@@ -23,9 +23,7 @@ import type http from "node:http";
 import { findPreset } from "../providers/registry.js";
 import type { ProviderUsage } from "../providers/types.js";
 import type { AccountRecord } from "./accounts.js";
-import { precheckTurn, debitTurn } from "../billing/quota.js";
-import { recordUsage } from "../billing/meter.js";
-import { preflightLimits } from "../billing/limits.js";
+import { admitInference } from "../billing/admission.js";
 import { readCappedText, BodyTooLargeError } from "./http-body.js";
 
 /**
@@ -201,35 +199,6 @@ export async function handleGateway(
     res.end(JSON.stringify({ error: "model_required" }));
     return;
   }
-
-  // Non-quota guards (B7): kill switch, global daily cap, per-uid RPM.
-  const limits = preflightLimits(acct.uid);
-  if (!limits.ok) {
-    res.writeHead(limits.status, { "content-type": "application/json" });
-    res.end(JSON.stringify(limits.body));
-    return;
-  }
-  // Quota gate (same engine as /chat): tier decides model access; exhaustion
-  // is a structured 402 the local providers surface verbatim.
-  const pre = await precheckTurn(acct, model);
-  if (!pre.ok) {
-    res.writeHead(402, { "content-type": "application/json" });
-    res.end(
-      JSON.stringify(
-        pre.error === "quota_exhausted"
-          ? { error: pre.error, resetAt: pre.resetAt, tier: pre.tier }
-          : { error: pre.error, tier: pre.tier },
-      ),
-    );
-    return;
-  }
-
-  const stream = body.stream === true;
-  if (stream && face === "openai") {
-    // Ask the upstream to append the usage chunk so the tee-parser can meter.
-    body.stream_options = { ...(body.stream_options as object ?? {}), include_usage: true };
-  }
-
   const plan = planUpstream(face, subpath, model, req.headers);
   if (!plan) {
     res.writeHead(503, { "content-type": "application/json" });
@@ -237,82 +206,100 @@ export async function handleGateway(
     return;
   }
 
-  let upstream: Response;
-  try {
-    upstream = await fetch(plan.url, {
-      method: "POST",
-      headers: plan.headers,
-      body: JSON.stringify(body),
-    });
-  } catch {
-    res.writeHead(502, { "content-type": "application/json" });
-    res.end(JSON.stringify({ error: "upstream_unreachable" }));
+  const admission = await admitInference(acct, model);
+  if (!admission.ok) {
+    res.writeHead(admission.status, { "content-type": "application/json" });
+    res.end(JSON.stringify(admission.body));
     return;
   }
 
-  let usage: ProviderUsage = { ...ZERO };
-  let responseBytes = 0;
-  const settle = async () => {
-    // A 2xx with no usage at all is a billing hole, not a free turn (#264):
-    // fall back to a byte estimate. Non-2xx settles at whatever we parsed
-    // (normally zero) — the user shouldn't pay for an upstream error.
-    const u = upstream.ok && usageIsEmpty(usage) ? estimateUsageFromBytes(requestBytes, responseBytes) : usage;
-    const rec = await recordUsage("gw", model, u);
-    await debitTurn(acct, model, rec.microUSD);
-  };
-
-  const contentType = upstream.headers.get("content-type") ?? "application/json";
-  if (!upstream.body || !contentType.includes("text/event-stream")) {
-    // Non-streaming (or error) response: buffer, meter, forward as-is.
-    const text = await upstream.text();
-    responseBytes = Buffer.byteLength(text, "utf8");
-    if (upstream.ok) {
-      try {
-        usage = usageFromJson(face, JSON.parse(text) as Record<string, unknown>);
-      } catch {
-        /* unmeterable body — forward anyway */
-      }
-      await settle();
+  try {
+    const stream = body.stream === true;
+    if (stream && face === "openai") {
+      // Ask the upstream to append the usage chunk so the tee-parser can meter.
+      body.stream_options = { ...(body.stream_options as object ?? {}), include_usage: true };
     }
-    res.writeHead(upstream.status, { "content-type": contentType });
-    res.end(text);
-    return;
-  }
 
-  // Streaming: byte-for-byte passthrough + tee-parse `data:` lines for usage.
-  res.writeHead(upstream.status, {
-    "content-type": contentType,
-    "cache-control": "no-cache",
-    connection: "keep-alive",
-  });
-  const reader = upstream.body.getReader();
-  const decoder = new TextDecoder();
-  let carry = "";
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      responseBytes += value.length;
-      res.write(Buffer.from(value));
-      carry += decoder.decode(value, { stream: true });
-      let nl: number;
-      while ((nl = carry.indexOf("\n")) >= 0) {
-        const line = carry.slice(0, nl).trim();
-        carry = carry.slice(nl + 1);
-        if (!line.startsWith("data:")) continue;
-        const payload = line.slice(5).trim();
-        if (!payload || payload === "[DONE]") continue;
+    let upstream: Response;
+    try {
+      upstream = await fetch(plan.url, {
+        method: "POST",
+        headers: plan.headers,
+        body: JSON.stringify(body),
+      });
+    } catch {
+      res.writeHead(502, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "upstream_unreachable" }));
+      return;
+    }
+
+    let usage: ProviderUsage = { ...ZERO };
+    let responseBytes = 0;
+    const settle = async () => {
+      // A 2xx with no usage at all is a billing hole, not a free turn (#264):
+      // fall back to a byte estimate. Non-2xx settles at whatever we parsed
+      // (normally zero) — the user shouldn't pay for an upstream error.
+      const u = upstream.ok && usageIsEmpty(usage)
+        ? estimateUsageFromBytes(requestBytes, responseBytes)
+        : usage;
+      await admission.permit.settle("gw", u);
+    };
+
+    const contentType = upstream.headers.get("content-type") ?? "application/json";
+    if (!upstream.body || !contentType.includes("text/event-stream")) {
+      // Non-streaming (or error) response: buffer, meter, forward as-is.
+      const text = await upstream.text();
+      responseBytes = Buffer.byteLength(text, "utf8");
+      if (upstream.ok) {
         try {
-          usage = foldUsage(face, JSON.parse(payload) as Record<string, unknown>, usage);
+          usage = usageFromJson(face, JSON.parse(text) as Record<string, unknown>);
         } catch {
-          /* non-JSON data line */
+          /* unmeterable body — forward anyway */
+        }
+        await settle();
+      }
+      res.writeHead(upstream.status, { "content-type": contentType });
+      res.end(text);
+      return;
+    }
+
+    // Streaming: byte-for-byte passthrough + tee-parse `data:` lines for usage.
+    res.writeHead(upstream.status, {
+      "content-type": contentType,
+      "cache-control": "no-cache",
+      connection: "keep-alive",
+    });
+    const reader = upstream.body.getReader();
+    const decoder = new TextDecoder();
+    let carry = "";
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        responseBytes += value.length;
+        res.write(Buffer.from(value));
+        carry += decoder.decode(value, { stream: true });
+        let nl: number;
+        while ((nl = carry.indexOf("\n")) >= 0) {
+          const line = carry.slice(0, nl).trim();
+          carry = carry.slice(nl + 1);
+          if (!line.startsWith("data:")) continue;
+          const payload = line.slice(5).trim();
+          if (!payload || payload === "[DONE]") continue;
+          try {
+            usage = foldUsage(face, JSON.parse(payload) as Record<string, unknown>, usage);
+          } catch {
+            /* non-JSON data line */
+          }
         }
       }
+    } catch {
+      // client or upstream dropped — meter what we saw
+    } finally {
+      await settle();
+      res.end();
     }
-  } catch {
-    // client or upstream dropped — meter what we saw
   } finally {
-    await settle();
-    res.end();
+    await admission.permit.release();
   }
 }

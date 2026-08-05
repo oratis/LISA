@@ -31,12 +31,30 @@ enum LisaError: LocalizedError {
     case notConfigured
     case http(Int)
     case decode
+    case unsupportedAPIVersion(Int)
 
     var errorDescription: String? {
         switch self {
         case .notConfigured: return "Not paired yet — add your Mac in Settings."
         case .http(let code): return "Server returned HTTP \(code)."
         case .decode: return "Couldn't read the server response."
+        case .unsupportedAPIVersion(let version):
+            return "This Lisa server uses API v\(version). Update Lisa Pocket to reconnect."
+        }
+    }
+}
+
+enum LisaAPICompatibility {
+    /// Missing means a pre-contract server and remains accepted as legacy v1.
+    /// Additive fields within v1 are handled by Swift's tolerant Codable models.
+    static func validate(_ response: URLResponse) throws {
+        guard let http = response as? HTTPURLResponse,
+              let raw = http.value(forHTTPHeaderField: LisaAPIContract.versionHeader) else { return }
+        guard let majorText = raw.split(separator: ".", maxSplits: 1).first,
+              let major = Int(majorText),
+              major > 0 else { throw LisaError.decode }
+        if major > LisaAPIContract.supportedMajorVersion {
+            throw LisaError.unsupportedAPIVersion(major)
         }
     }
 }
@@ -72,6 +90,7 @@ final class LisaClient {
         if let rawNonce { payload["nonce"] = rawNonce }
         req.httpBody = try JSONSerialization.data(withJSONObject: payload)
         let (data, resp) = try await session.data(for: req)
+        try LisaAPICompatibility.validate(resp)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
         guard (200..<300).contains(code) else { throw LisaError.http(code) }
         struct R: Decodable { let token: String }
@@ -99,8 +118,113 @@ final class LisaClient {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: ["email": email, "password": password])
         let (data, resp) = try await session.data(for: req)
+        try LisaAPICompatibility.validate(resp)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
         guard (200..<300).contains(code) else { throw LisaError.http(code) }
+        struct R: Decodable { let token: String }
+        guard let r = try? JSONDecoder().decode(R.self, from: data), !r.token.isEmpty else {
+            throw LisaError.decode
+        }
+        return r.token
+    }
+
+    /// Which sign-in surfaces an instance offers (`GET /api/auth/config`).
+    /// Public, unauthenticated, and free of secrets — OAuth client ids identify
+    /// the app rather than authorize it.
+    struct AuthConfig: Decodable {
+        struct Google: Decodable {
+            let webClientId: String?
+            let iosClientId: String?
+        }
+        let accounts: Bool?
+        let google: Google?
+    }
+
+    static func authConfig(base: ServerConfig, session: URLSession = .shared) async throws -> AuthConfig {
+        guard let baseURL = base.baseURL, let url = URL(string: "/api/auth/config", relativeTo: baseURL) else {
+            throw LisaError.notConfigured
+        }
+        var req = URLRequest(url: url, timeoutInterval: 10)
+        req.httpMethod = "GET"
+        let (data, resp) = try await session.data(for: req)
+        try LisaAPICompatibility.validate(resp)
+        let status = (resp as? HTTPURLResponse)?.statusCode ?? -1
+        guard (200..<300).contains(status) else { throw LisaError.http(status) }
+        guard let cfg = try? JSONDecoder().decode(AuthConfig.self, from: data) else { throw LisaError.decode }
+        return cfg
+    }
+
+    /// Exchange a Google ID token for the instance's session token
+    /// (`POST /api/auth/google`). Mints access, so it takes the bare cloud base.
+    static func exchangeGoogleToken(base: ServerConfig, idToken: String, nonce: String?,
+                                    session: URLSession = .shared) async throws -> String {
+        var payload = ["idToken": idToken]
+        if let nonce { payload["nonce"] = nonce }
+        let data = try await postAuth(base: base, path: "/api/auth/google", payload: payload, session: session)
+        struct R: Decodable { let token: String }
+        guard let r = try? JSONDecoder().decode(R.self, from: data), !r.token.isEmpty else {
+            throw LisaError.decode
+        }
+        return r.token
+    }
+
+    /// A refusal from the sign-in-by-code endpoints, carrying the server's typed
+    /// reason. The status alone can't tell "a code just went out" from "you've
+    /// asked too many times today", and those need different words.
+    struct SignInCodeError: Error {
+        let status: Int
+        /// Server code — otp_cooldown, otp_daily_cap, bad_code, expired,
+        /// no_pending, too_many_attempts, invalid_email, email_typo,
+        /// undeliverable_email, rate_limited. Empty if the body carried none.
+        let reason: String
+        /// The corrected domain, when the server recognised a typo.
+        let suggestion: String?
+    }
+
+    private static func postAuth(
+        base: ServerConfig,
+        path: String,
+        payload: [String: String],
+        session: URLSession,
+    ) async throws -> Data {
+        guard let baseURL = base.baseURL, let url = URL(string: path, relativeTo: baseURL) else {
+            throw LisaError.notConfigured
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.timeoutInterval = 15
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        let (data, resp) = try await session.data(for: req)
+        try LisaAPICompatibility.validate(resp)
+        let status = (resp as? HTTPURLResponse)?.statusCode ?? -1
+        guard (200..<300).contains(status) else {
+            struct E: Decodable { let error: String?; let suggestion: String? }
+            let body = try? JSONDecoder().decode(E.self, from: data)
+            throw SignInCodeError(status: status, reason: body?.error ?? "", suggestion: body?.suggestion)
+        }
+        return data
+    }
+
+    /// Ask for a one-time sign-in code (`POST /api/auth/otp/request`,
+    /// PLAN_AUTH_OTP_GOOGLE A2). Returns whether the mail actually went out —
+    /// false means the instance has no mail provider configured, which the UI
+    /// must say plainly rather than leaving someone waiting for a code.
+    static func requestSignInCode(base: ServerConfig, email: String,
+                                  session: URLSession = .shared) async throws -> Bool {
+        let data = try await postAuth(base: base, path: "/api/auth/otp/request",
+                                      payload: ["email": email], session: session)
+        struct R: Decodable { let sent: Bool? }
+        return (try? JSONDecoder().decode(R.self, from: data))?.sent ?? true
+    }
+
+    /// Spend a code (`POST /api/auth/otp/verify`) and get the account session
+    /// token. Registers the account if the address is new — reading the mail is
+    /// the proof, so there's no separate sign-up step.
+    static func verifySignInCode(base: ServerConfig, email: String, code: String,
+                                 session: URLSession = .shared) async throws -> String {
+        let data = try await postAuth(base: base, path: "/api/auth/otp/verify",
+                                      payload: ["email": email, "code": code], session: session)
         struct R: Decodable { let token: String }
         guard let r = try? JSONDecoder().decode(R.self, from: data), !r.token.isEmpty else {
             throw LisaError.decode
@@ -210,6 +334,7 @@ final class LisaClient {
     private func decode<T: Decodable>(_ path: String, method: String = "GET", json: [String: Any]? = nil, as: T.Type) async throws -> T {
         let req = try makeRequest(path, method: method, json: json, timeout: Self.restTimeout)
         let (data, resp) = try await session.data(for: req)
+        try LisaAPICompatibility.validate(resp)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
         guard (200..<300).contains(code) else { throw LisaError.http(code) }
         do { return try JSONDecoder().decode(T.self, from: data) }
@@ -223,6 +348,7 @@ final class LisaClient {
     private func fireCode(_ path: String, method: String = "POST", json: [String: Any]? = nil) async throws -> Int {
         let req = try makeRequest(path, method: method, json: json, timeout: Self.restTimeout)
         let (_, resp) = try await session.data(for: req)
+        try LisaAPICompatibility.validate(resp)
         return (resp as? HTTPURLResponse)?.statusCode ?? -1
     }
 
@@ -329,6 +455,7 @@ final class LisaClient {
                 do {
                     let req = try makeRequest(path, method: method, json: json)
                     let (bytes, resp) = try await session.bytes(for: req)
+                    try LisaAPICompatibility.validate(resp)
                     let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
                     guard (200..<300).contains(code) else { continuation.finish(throwing: LisaError.http(code)); return }
                     var dataLines: [String] = []

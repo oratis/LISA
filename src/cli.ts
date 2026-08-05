@@ -20,6 +20,7 @@ import { parseArgs, type ParsedArgs } from "./cli-args.js";
 import { connectMcpServers } from "./mcp/client.js";
 import { loadMcpConfig } from "./mcp/config.js";
 import { lisaHome } from "./paths.js";
+import { isCloud } from "./edition.js";
 import { loadAllPlugins, PLUGINS_ROOT } from "./plugins/loader.js";
 import type { HookSpec } from "./plugins/types.js";
 import { buildSystemPromptSnapshot, getPromptFingerprint } from "./prompt.js";
@@ -31,7 +32,7 @@ import { SessionStore } from "./sessions/store.js";
 import { birth } from "./soul/birth.js";
 import { isBorn, readSoulSummary } from "./soul/store.js";
 import { createTaskTool } from "./tools/task.js";
-import { buildToolRegistry, readOnlySubset } from "./tools/registry.js";
+import { buildToolRegistry, cloudSafeSubset, readOnlySubset } from "./tools/registry.js";
 import type { AgentEvent, StoredMessage, ToolDefinition } from "./types.js";
 
 const HELP = `Lisa — your self-evolving local AI assistant.
@@ -66,6 +67,7 @@ INSPECTION
                                all off): list, grant <signal>, revoke <signal>,
                                revoke-all.
   lisa sense [list]            Recent ambient sense events + granted signals.
+  lisa sense social            Social connector manifests + publish drafts.
   lisa agents                  Snapshot of agent sessions across all observers.
   lisa pair [--host H]         Show a QR to pair a phone (Lisa Pocket) — mints a
                                per-device token via a running serve (localhost).
@@ -104,6 +106,22 @@ SKILLS (executable, Phase 3.1)
   lisa skills disable <slug> [reason]   Block an approved skill from loading.
   lisa skills enable <slug>    Remove a disable flag.
   lisa skills audit <slug>     Show the audit trail.
+
+KNOWLEDGE BASE
+  lisa kb add <url> [--title T] [--tags a,b] [--force]
+                               Save a web page (incl. WeChat / Bilibili /
+                               YouTube) into the KB with provenance.
+  lisa kb list [wiki|sources]  List entries, newest first.
+  lisa kb search "<query>"     Search sources + wiki (TF-IDF).
+  lisa kb brief [YYYY-MM-DD]   Print a daily feeds brief (needs kb/feeds.json).
+
+LISA CLOUD (managed inference — models without a BYO key run key-free)
+  lisa login [url] [--password]
+                               Sign in. Mails a one-time code by default, and
+                               creates the account if the address is new;
+                               --password uses an existing password instead.
+  lisa logout                  Sign out. BYO keys are unaffected.
+  lisa billing                 Session allowance, credits and recent usage.
 
   lisa --help                  Show this message.
   lisa --version               Print the installed Lisa version.
@@ -178,6 +196,7 @@ async function main(): Promise<void> {
 
   await ensureDir(lisaHome());
   loadConfigEnv();
+  const cloudEdition = isCloud();
   // If the user didn't pass --model, resolve the default now that config.env is
   // loaded: an explicit LISA_MODEL (e.g. `lisa model use`) wins, else auto-detect
   // from the single configured cloud key. An explicit --model always overrides.
@@ -352,6 +371,11 @@ async function main(): Promise<void> {
     process.exit(await runMailCommand(args.subargs));
   }
 
+  if (args.subcommand === "kb") {
+    const { runKbCommand } = await import("./cli/kb.js");
+    process.exit(await runKbCommand(args.subargs));
+  }
+
   if (args.subcommand === "sessions") {
     const sessions = await listSessionsOnDisk();
     for (const s of sessions) {
@@ -410,28 +434,34 @@ async function main(): Promise<void> {
   // that have been explicitly approved by SHA. Sandbox is the user's review,
   // not the runtime — these run in-process. Unapproved or stale ones are
   // surfaced as a startup notice; the user runs `lisa skills approve <slug>`.
-  const { discoverExecutableSkills, loadApprovedExecutableTools, summarizeCandidate } =
-    await import("./skills/executable.js");
-  const skillCandidates = await discoverExecutableSkills();
-  const executableTools = await loadApprovedExecutableTools((m) => console.error(m));
-  if (skillCandidates.length > 0) {
-    const pending = skillCandidates.filter((c) => c.status !== "approved-current");
-    if (pending.length > 0) {
-      console.error(`\n[skills] ${executableTools.length} executable tool(s) loaded; ${pending.length} pending:`);
-      for (const c of pending) console.error(summarizeCandidate(c));
-      console.error(`Run \`lisa skills approve <slug>\` to review and approve.\n`);
+  let executableTools: ToolDefinition[] = [];
+  if (!cloudEdition) {
+    const { discoverExecutableSkills, loadApprovedExecutableTools, summarizeCandidate } =
+      await import("./skills/executable.js");
+    const skillCandidates = await discoverExecutableSkills();
+    executableTools = await loadApprovedExecutableTools((m) => console.error(m));
+    if (skillCandidates.length > 0) {
+      const pending = skillCandidates.filter((c) => c.status !== "approved-current");
+      if (pending.length > 0) {
+        console.error(`\n[skills] ${executableTools.length} executable tool(s) loaded; ${pending.length} pending:`);
+        for (const c of pending) console.error(summarizeCandidate(c));
+        console.error(`Run \`lisa skills approve <slug>\` to review and approve.\n`);
+      }
     }
   }
-  const baseTools = buildToolRegistry({ includeVoice: args.voice, extra: executableTools });
+  const baseTools = buildToolRegistry({
+    includeVoice: !cloudEdition && args.voice,
+    extra: executableTools,
+  });
 
   // Load plugins (skills/commands/agents/hooks/mcp).
-  const plugins = args.loadPlugins ? await loadAllPlugins() : [];
+  const plugins = args.loadPlugins && !cloudEdition ? await loadAllPlugins() : [];
   const allHooks: HookSpec[] = plugins.flatMap((p) => p.hooks);
   const pluginMcp = plugins.flatMap((p) => p.mcpServers);
 
   // Load MCP servers (config + plugins).
   let mcpConnections: Awaited<ReturnType<typeof connectMcpServers>> = [];
-  if (args.loadMcp) {
+  if (args.loadMcp && !cloudEdition) {
     const configMcp = await loadMcpConfig();
     const allSpecs = [...configMcp, ...pluginMcp];
     if (allSpecs.length > 0) {
@@ -441,21 +471,39 @@ async function main(): Promise<void> {
     }
   }
   const mcpTools = mcpConnections.flatMap((c) => c.tools);
+  // Connector publish/disconnect operations remain available to the trusted
+  // host runner but are never placed in the model-visible toolset.
+  const { discoverSocialConnectors, hiddenSocialMcpToolNames } = await import(
+    "./sense/social/manifest.js"
+  );
+  const socialConnectors = await discoverSocialConnectors();
+  const hiddenSocialToolNames = hiddenSocialMcpToolNames(socialConnectors);
+  const modelMcpTools = mcpTools.filter(
+    (tool) => !hiddenSocialToolNames.has(tool.name),
+  );
 
   // Build the full tool list, including the task subagent tool.
   const abortController = new AbortController();
   process.on("SIGINT", () => abortController.abort());
   const cwd = process.cwd();
 
-  const composedTools: ToolDefinition[] = [...baseTools, ...mcpTools];
-  const taskTool = createTaskTool({
-    fullToolset: () => composedTools,
-    readOnlyToolset: () => readOnlySubset(composedTools),
-    cwd,
-    signal: abortController.signal,
-    defaultModel: args.model,
-  });
-  composedTools.push(taskTool as ToolDefinition);
+  const composedTools: ToolDefinition[] = [
+    ...(cloudEdition ? cloudSafeSubset(baseTools) : baseTools),
+    ...modelMcpTools,
+  ];
+  // task captures the complete toolset in a closure. Never construct it in the
+  // hosted edition: filtering the visible list later would not be a sufficient
+  // capability boundary if the closure were accidentally reintroduced.
+  if (!cloudEdition) {
+    const taskTool = createTaskTool({
+      fullToolset: () => composedTools,
+      readOnlyToolset: () => readOnlySubset(composedTools),
+      cwd,
+      signal: abortController.signal,
+      defaultModel: args.model,
+    });
+    composedTools.push(taskTool as ToolDefinition);
+  }
   composedTools.sort((a, b) => a.name.localeCompare(b.name));
 
   // Heartbeat sub-command — uses the assembled toolset.
@@ -510,6 +558,9 @@ async function main(): Promise<void> {
         port: args.port,
         host: args.host,
         tools: composedTools,
+        // The runner receives the MCP pool but may invoke only names bound by
+        // a validated social-connector manifest.
+        socialConnectorTools: mcpTools,
         model: args.model,
         thinking: args.thinking,
         reflect: args.reflect,

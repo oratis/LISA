@@ -246,6 +246,38 @@ final class AppState: ObservableObject {
         await refreshAccount()
     }
 
+    /// Which sign-in surfaces this instance offers (drives which buttons to
+    /// draw). Returns nil when the URL doesn't parse or the instance is mute.
+    func authConfig(baseURL raw: String) async -> LisaClient.AuthConfig? {
+        guard let base = AppState.parseCloudBase(raw) else { return nil }
+        return try? await LisaClient.authConfig(base: base)
+    }
+
+    /// Finish a Google sign-in: hand the ID token to the instance for
+    /// verification and keep the session it returns.
+    func connectCloudWithGoogle(baseURL raw: String, idToken: String, nonce: String?) async throws {
+        guard let base = AppState.parseCloudBase(raw) else { throw LisaError.notConfigured }
+        let token = try await LisaClient.exchangeGoogleToken(base: base, idToken: idToken, nonce: nonce)
+        update(host: base.host, port: base.port, token: token, scheme: base.scheme)
+        await refreshAccount()
+    }
+
+    /// Ask the instance to mail a one-time sign-in code. Returns false when the
+    /// instance accepted the request but couldn't send the mail.
+    func requestSignInCode(baseURL raw: String, email: String) async throws -> Bool {
+        guard let base = AppState.parseCloudBase(raw) else { throw LisaError.notConfigured }
+        return try await LisaClient.requestSignInCode(base: base, email: email)
+    }
+
+    /// Spend a mailed code: signs in, registering the account if the address is
+    /// new (PLAN_AUTH_OTP_GOOGLE A2).
+    func connectCloudWithCode(baseURL raw: String, email: String, code: String) async throws {
+        guard let base = AppState.parseCloudBase(raw) else { throw LisaError.notConfigured }
+        let token = try await LisaClient.verifySignInCode(base: base, email: email, code: code)
+        update(host: base.host, port: base.port, token: token, scheme: base.scheme)
+        await refreshAccount()
+    }
+
     /// Refresh `account` (best-effort — leaves the last value on transport errors,
     /// clears to signed-out shape on a definitive 401).
     func refreshAccount() async {

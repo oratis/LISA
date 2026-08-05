@@ -5,6 +5,47 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Knowledge base v2.0 — a knowledge system that grows on its own**
+  ([docs/PLAN_KNOWLEDGE_BASE_v2.0.md](docs/PLAN_KNOWLEDGE_BASE_v2.0.md),
+  PRs #278–#287). Three capabilities on the v1.0 three-layer store:
+  - **Link ingest** (`kb_ingest`, Knowledge-view paste bar, chat 存入知识库
+    chip, `lisa kb add <url>`): zero-dependency readability + HTML→Markdown
+    with provenance frontmatter, canonical-URL dedupe (`force` +
+    `supersedes:`), SSRF-guarded fetching, and site adapters for WeChat,
+    Bilibili, and YouTube (subtitle layering built-in API → yt-dlp →
+    metadata-only; a missing transcript degrades, never fails).
+  - **Daily brief** (`~/.lisa/kb/feeds.json`): incremental RSS/Atom sweep →
+    injection-fenced classification under a daily token budget → ranking
+    personalized by watchlist weight + wiki/memory term overlap → top-3
+    full-text ingest → written both as `kb/feeds/<date>.json` and as a
+    searchable `sources/brief-<date>` entry, delivered to chat + push
+    (`lisa kb brief` prints it). No feeds file = fully inert.
+  - **Link graph**: `[[slug]]` parsed into backlinks/hubs/orphans/broken,
+    `index.md` as a ranked map-of-content, CJK-safe search + slugs, memory
+    holding `[[kb:slug]]` pointers with titles inlined into the prompt, and
+    conservative title auto-linking on `kb_write`.
+  - **Hardening**: autonomous ingestion restricted to the feeds watchlist,
+    `kb_read` fences ingested web content as data, SCHEMA.md gained the three
+    new workflows, and a weekly-review heartbeat example ships in the README.
+
+### Fixed
+
+- **Lisa can see her own avatar.** The portrait was a write-only channel:
+  `set_mood` pushed a slug to the mood bus and the GUI drew it, but nothing
+  ever carried it back into her context — so "why do you look happy?" could
+  only be answered by inspecting her emotion vector (a different system) and
+  guessing. The mood bus now records *when* a mood was set and *what kind of
+  turn* set it (`withMoodOrigin`, wired through `runAgent` so idle, heartbeat,
+  channel and background-agent turns identify themselves), the system prompt
+  states the current slug every turn — with the prompt fingerprint including
+  it, so a portrait another surface flips mid-session reaches her on her next
+  turn — and `soul_read(what="emotions")` reports the avatar alongside the
+  vector it is not. The slug is also mirrored to `<home>/current-mood.json`,
+  so a restart no longer silently snaps the portrait back to `neutral`
+  (`lisa monitor` reads that mirror instead of a file nothing ever wrote).
+
 ## [0.12.0] — 2026-06-19
 
 **Lisa Pocket goes real** — the iOS companion + real APNs push, on the v0.11

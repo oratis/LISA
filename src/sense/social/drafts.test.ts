@@ -1,0 +1,188 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, test } from "node:test";
+import {
+  approveSocialDraft,
+  cancelSocialDraft,
+  canonicalJson,
+  claimApprovedSocialDraft,
+  completeSocialDraftPublish,
+  createSocialDraft,
+  listSocialDrafts,
+  requestSocialDraftApproval,
+  socialDraftDigest,
+  updateSocialDraft,
+} from "./drafts.js";
+import type { NewSocialDraft } from "./types.js";
+
+let home: string;
+let previousHome: string | undefined;
+
+beforeEach(() => {
+  previousHome = process.env.LISA_HOME;
+  home = fs.mkdtempSync(path.join(os.tmpdir(), "lisa-social-drafts-"));
+  process.env.LISA_HOME = home;
+});
+
+afterEach(() => {
+  if (previousHome === undefined) delete process.env.LISA_HOME;
+  else process.env.LISA_HOME = previousHome;
+  fs.rmSync(home, { recursive: true, force: true });
+});
+
+function input(): NewSocialDraft {
+  return {
+    targets: [
+      {
+        connectorId: "bluesky-official",
+        accountId: "did:plc:alice",
+        platform: "bluesky",
+        visibility: "public",
+      },
+    ],
+    canonical: {
+      text: "Hello",
+      link: "https://example.com",
+      media: [],
+    },
+  };
+}
+
+describe("social drafts", () => {
+  test("canonical JSON is stable across object key order", () => {
+    assert.equal(
+      canonicalJson({ z: 1, a: { y: 2, x: 3 } }),
+      canonicalJson({ a: { x: 3, y: 2 }, z: 1 }),
+    );
+  });
+
+  test("creates a 0600 store without tokens or media bytes", async () => {
+    const draft = await createSocialDraft(input(), 1000);
+    assert.equal(draft.state, "draft");
+    assert.equal((await listSocialDrafts()).length, 1);
+    const file = path.join(home, "sense", "social", "drafts.json");
+    assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+    const raw = fs.readFileSync(file, "utf8");
+    assert.doesNotMatch(raw, /access[_-]?token|refresh[_-]?token/i);
+  });
+
+  test("editing invalidates an approval request and changes the digest", async () => {
+    const created = await createSocialDraft(input(), 1000);
+    const requested = await requestSocialDraftApproval(created.id, 1, 2000);
+    const updated = await updateSocialDraft(
+      created.id,
+      1,
+      { canonical: { text: "Changed", media: [] } },
+      3000,
+    );
+    assert.equal(updated.state, "draft");
+    assert.equal(updated.approval, undefined);
+    assert.notEqual(socialDraftDigest(updated), requested.digest);
+    await assert.rejects(
+      approveSocialDraft(created.id, requested.digest, 4000),
+      /cannot be approved/,
+    );
+  });
+
+  test("digest mismatch is rejected", async () => {
+    const draft = await createSocialDraft(input(), 1000);
+    await requestSocialDraftApproval(draft.id, 1, 2000);
+    await assert.rejects(
+      approveSocialDraft(draft.id, "0".repeat(64), 3000),
+      /changed after preview/,
+    );
+  });
+
+  test("approval can be claimed exactly once", async () => {
+    const draft = await createSocialDraft(input(), 1000);
+    const { digest } = await requestSocialDraftApproval(draft.id, 1, 2000);
+    await approveSocialDraft(draft.id, digest, 3000);
+    const claimed = await claimApprovedSocialDraft(draft.id, digest, 4000);
+    assert.equal(claimed.state, "publishing");
+    await assert.rejects(
+      claimApprovedSocialDraft(draft.id, digest, 5000),
+      /is not publishable/,
+    );
+    const finished = await completeSocialDraftPublish(
+      draft.id,
+      [{
+        targetKey: "bluesky-official:did:plc:alice",
+        ok: true,
+        platformPostId: "at://did:plc:alice/post/1",
+        attempts: 1,
+        completedAt: new Date(5000).toISOString(),
+      }],
+      5000,
+    );
+    assert.equal(finished.state, "published");
+  });
+
+  test("expired approval fails closed", async () => {
+    const draft = await createSocialDraft(input(), 1000);
+    const { digest } = await requestSocialDraftApproval(draft.id, 1, 2000);
+    await approveSocialDraft(draft.id, digest, 3000, 100);
+    await assert.rejects(
+      claimApprovedSocialDraft(draft.id, digest, 3100),
+      /approval expired/,
+    );
+    assert.equal((await listSocialDrafts())[0]?.state, "expired");
+  });
+
+  test("cancelling clears a pending approval", async () => {
+    const draft = await createSocialDraft(input(), 1000);
+    await requestSocialDraftApproval(draft.id, 1, 2000);
+    const cancelled = await cancelSocialDraft(draft.id, 3000);
+    assert.equal(cancelled.state, "cancelled");
+    assert.equal(cancelled.approval, undefined);
+  });
+
+  test("mixed target receipts finish as partial", async () => {
+    const raw = input();
+    raw.targets.push({
+      connectorId: "mastodon-official",
+      accountId: "alice@example.social",
+      platform: "mastodon",
+    });
+    const draft = await createSocialDraft(raw, 1000);
+    const { digest } = await requestSocialDraftApproval(draft.id, 1, 2000);
+    await approveSocialDraft(draft.id, digest, 3000);
+    await claimApprovedSocialDraft(draft.id, digest, 4000);
+    const finished = await completeSocialDraftPublish(draft.id, [
+      {
+        targetKey: "bluesky-official:did:plc:alice",
+        ok: true,
+        attempts: 1,
+        completedAt: new Date(5000).toISOString(),
+      },
+      {
+        targetKey: "mastodon-official:alice@example.social",
+        ok: false,
+        error: "rate limited",
+        attempts: 1,
+        completedAt: new Date(5000).toISOString(),
+      },
+    ], 5000);
+    assert.equal(finished.state, "partial");
+  });
+
+  test("terminal-history compaction never evicts a publishing draft", async () => {
+    const active = await createSocialDraft(input(), 1000);
+    const { digest } = await requestSocialDraftApproval(active.id, 1, 2000);
+    await approveSocialDraft(active.id, digest, 3000);
+    await claimApprovedSocialDraft(active.id, digest, 4000);
+
+    for (let index = 0; index < 205; index++) {
+      const draft = await createSocialDraft(input(), 5000 + index * 2);
+      await cancelSocialDraft(draft.id, 5001 + index * 2);
+    }
+
+    const drafts = await listSocialDrafts();
+    assert.equal(drafts.length, 200);
+    assert.equal(
+      drafts.find((draft) => draft.id === active.id)?.state,
+      "publishing",
+    );
+  });
+});

@@ -23,6 +23,7 @@ import { skillManageTool } from "../skills/tool.js";
 import {
   desireCloseTool,
   desireProgressTool,
+  desireReviseTool,
   soulDiffTool,
   soulFeelTool,
   soulHistoryTool,
@@ -44,7 +45,8 @@ import { webFetchTool } from "./web_fetch.js";
 import { webSearchTool } from "./web_search.js";
 import { takoapiTool } from "./takoapi.js";
 import { writeTool } from "./write.js";
-import { kbTools } from "../kb/tool.js";
+import { kbTools, restrictKbIngestToWatchlist } from "../kb/tool.js";
+import { socialComposeTool } from "../sense/social/tool.js";
 
 export interface ToolRegistryOptions {
   includeVoice?: boolean;
@@ -78,6 +80,7 @@ export function buildToolRegistry(opts: ToolRegistryOptions = {}): ToolDefinitio
     soulDiffTool as ToolDefinition,
     soulObjectTool as ToolDefinition,
     desireProgressTool as ToolDefinition,
+    desireReviseTool as ToolDefinition,
     desireCloseTool as ToolDefinition,
     webFetchTool as ToolDefinition,
     webSearchTool as ToolDefinition,
@@ -100,6 +103,7 @@ export function buildToolRegistry(opts: ToolRegistryOptions = {}): ToolDefinitio
     githubTool as ToolDefinition,
     npmInfoTool as ToolDefinition,
     mcpTool as ToolDefinition,
+    socialComposeTool as ToolDefinition,
     signalAgentTool as ToolDefinition,
     agentRecapTool as ToolDefinition,
     // Personal knowledge base (docs/PLAN_KNOWLEDGE_BASE_v1.0.md):
@@ -134,6 +138,7 @@ export const READ_ONLY_TOOL_NAMES = new Set([
   "kb_search",
   "kb_read",
   "kb_list",
+  "kb_links",
 ]);
 
 export function readOnlySubset(tools: ToolDefinition[]): ToolDefinition[] {
@@ -168,6 +173,9 @@ export const AUTONOMOUS_BLOCKED_TOOL_NAMES = new Set([
   "run_checks",
   "github",
   "mcp",
+  // Social drafts must originate in an attended user conversation. Publishing
+  // is never model-visible, but unattended draft spam is still undesirable.
+  "social_compose",
   // takoapi calls spend the user's TAKO_KEY and send data to a remote agent —
   // not something an unattended/remote-origin run should do on its own.
   "takoapi",
@@ -175,7 +183,55 @@ export const AUTONOMOUS_BLOCKED_TOOL_NAMES = new Set([
 
 export function autonomousSubset(tools: ToolDefinition[]): ToolDefinition[] {
   if (process.env.LISA_AUTONOMOUS_FULL_TOOLS === "1") return tools;
-  return tools.filter((t) => !AUTONOMOUS_BLOCKED_TOOL_NAMES.has(t.name));
+  return tools
+    .filter((t) => !AUTONOMOUS_BLOCKED_TOOL_NAMES.has(t.name))
+    // kb_ingest stays available to unattended runs, but only for domains on
+    // the user's feeds.json watchlist (D3) — an injected prompt can't make an
+    // idle run pull an arbitrary URL into the KB.
+    .map(restrictKbIngestToWatchlist);
+}
+
+const DESIRE_REVIEW_TOOL_NAMES = new Set([
+  "soul_read",
+  "soul_journal",
+  "desire_revise",
+  "desire_progress_log",
+  "desire_close",
+  "web_search",
+  "web_fetch",
+]);
+
+/**
+ * Narrow, stateful capability boundary for the scheduled desire review.
+ * Besides removing operational tools, it enforces the browsing budget in
+ * code: one search and at most two fetches per review, regardless of prompt.
+ */
+export function desireReviewSubset(tools: ToolDefinition[]): ToolDefinition[] {
+  let searches = 0;
+  let fetches = 0;
+  return tools
+    .filter((tool) => DESIRE_REVIEW_TOOL_NAMES.has(tool.name))
+    .map((tool) => {
+      if (tool.name !== "web_search" && tool.name !== "web_fetch") return tool;
+      const original = tool.execute.bind(tool);
+      return {
+        ...tool,
+        execute: async (input: unknown, ctx: Parameters<ToolDefinition["execute"]>[1]) => {
+          if (tool.name === "web_search") {
+            if (searches >= 1) {
+              throw new Error("desire review browsing budget exhausted: max 1 web_search");
+            }
+            searches++;
+          } else {
+            if (fetches >= 2) {
+              throw new Error("desire review browsing budget exhausted: max 2 web_fetch");
+            }
+            fetches++;
+          }
+          return await original(input, ctx);
+        },
+      } as ToolDefinition;
+    });
 }
 
 /**
@@ -203,8 +259,48 @@ export const REMOTE_BLOCKED_TOOL_NAMES = new Set([
   // exactly where Lisa tends the wiki (kb_add/kb_write are path-jailed to ~/.lisa/kb).
   "kb_add",
   "kb_write",
+  // kb_ingest additionally FETCHES a remote URL of the sender's choosing before
+  // writing — doubly off-limits for remote surfaces. Deliberately NOT
+  // autonomous-blocked: K-I constrains autonomous ingestion to the feeds.json
+  // domain watchlist instead of a blanket ban.
+  "kb_ingest",
 ]);
 
 export function remoteSafeSubset(tools: ToolDefinition[]): ToolDefinition[] {
   return tools.filter((t) => !REMOTE_BLOCKED_TOOL_NAMES.has(t.name));
+}
+
+/**
+ * Tools exposed by the hosted multi-tenant edition.
+ *
+ * This is deliberately an allow-list rather than another block-list:
+ * executable skills, plugin tools, MCP tools, and future builtins must never
+ * become cloud capabilities merely because somebody forgot to add their name
+ * to a deny-list. Every tool here resolves storage through the active
+ * per-account Lisa home and does not execute a host process or fetch an
+ * arbitrary URL.
+ */
+export const CLOUD_ALLOWED_TOOL_NAMES = new Set([
+  "memory",
+  "memory_search",
+  "set_mood",
+  "soul_patch",
+  "soul_journal",
+  "soul_read",
+  "soul_feel",
+  "soul_history",
+  "soul_diff",
+  "soul_object",
+  "desire_progress_log",
+  "desire_close",
+  "kb_search",
+  "kb_read",
+  "kb_links",
+  "kb_list",
+  "kb_add",
+  "kb_write",
+]);
+
+export function cloudSafeSubset(tools: ToolDefinition[]): ToolDefinition[] {
+  return tools.filter((t) => CLOUD_ALLOWED_TOOL_NAMES.has(t.name));
 }

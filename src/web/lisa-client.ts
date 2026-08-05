@@ -1126,7 +1126,44 @@ async function send(message) {
   const filesToSend = [...pendingFiles];
   pendingFiles = [];
   renderAttachPreview();
+  maybeOfferKbIngest(message);
   await runChat(message, filesToSend);
+}
+
+// ── chat → KB: a bare URL in the user's message gets a one-tap 存入知识库
+//    chip under the bubble; it calls the same /api/kb/ingest the KB view uses.
+function maybeOfferKbIngest(message) {
+  if (!message) return;
+  var m = message.match(/https?:\\/\\/[^\\s<>"')\\]]+/);
+  if (!m) return;
+  var url = m[0].replace(/[.,;:!?。，；：、]+$/, '');
+  var chip = el('div', 'kb-ingest-chip', null);
+  var btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'kb-ingest-btn';
+  btn.textContent = '💾 存入知识库';
+  chip.appendChild(btn);
+  btn.addEventListener('click', function () {
+    btn.disabled = true;
+    btn.textContent = '保存中…';
+    fetch('/api/kb/ingest', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url: url }) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && d.ok) {
+          btn.textContent = d.deduped ? '已在知识库 ✓' : '已存入知识库 ✓';
+          if (typeof window.lisaReloadKb === 'function') window.lisaReloadKb();
+        } else {
+          btn.disabled = false;
+          btn.textContent = '💾 存入知识库';
+          if (typeof window.lisaKbToast === 'function') window.lisaKbToast((d && d.error) ? d.error : '保存失败');
+        }
+      })
+      .catch(function () {
+        btn.disabled = false;
+        btn.textContent = '💾 存入知识库';
+        if (typeof window.lisaKbToast === 'function') window.lisaKbToast('保存失败');
+      });
+  });
 }
 
 // On failure, show the error detail with a retry button that re-runs the same
@@ -1353,6 +1390,8 @@ input.addEventListener('input', () => {
     setTimeout(function () { t.classList.add('show'); }, 10);
     setTimeout(function () { t.classList.remove('show'); setTimeout(function () { t.remove(); }, 300); }, 2200);
   }
+  // Shared with the chat-bubble ingest chip (defined outside this closure).
+  window.lisaKbToast = kbToast;
 })();
 
 // ── PWA: register service worker + iOS install hint ─────────────────
@@ -2415,10 +2454,63 @@ if ('serviceWorker' in navigator) {
   function renderSense() {
     var scroll = document.getElementById('senseScroll');
     if (!scroll) return;
-    Promise.all([getJSON('/api/consent'), getJSON('/api/sense/recent')]).then(function (res) {
+    Promise.all([
+      getJSON('/api/consent'),
+      getJSON('/api/sense/recent'),
+      getJSON('/api/sense/social/connectors'),
+      getJSON('/api/sense/social/drafts'),
+      getJSON('/api/sense/social/status')
+    ]).then(function (res) {
       var grants = (res[0] && res[0].grants) || [];
       var events = (res[1] && res[1].events) || [];
-      var html = '<div class="view-sec-label">Consent</div><div class="v-card">';
+      var connectors = (res[2] && res[2].connectors) || [];
+      var drafts = (res[3] && res[3].drafts) || [];
+      var paused = Boolean(res[4] && res[4].paused);
+      var html = '<div class="social-policy"><span>Publishing ' + (paused ? 'paused' : 'active') +
+        '</span><button class="social-action" id="socialPauseBtn">' + (paused ? 'Resume publishing' : 'Pause publishing') +
+        '</button></div><div class="view-sec-label">Connected media</div><div class="v-card">';
+      if (!connectors.length) {
+        html += '<div class="view-empty" style="padding:6px 0">No social connector installed. Ask Lisa to help connect a supported account.</div>';
+      }
+      connectors.forEach(function (item) {
+        var c = item.manifest;
+        var accounts = item.accounts || [];
+        html += '<div class="v-row"><div class="v-main"><div class="v-name">' +
+          esc(c ? c.displayName : item.plugin) + '</div><div class="v-sub">' +
+          esc(c ? (accounts.length ? accounts.map(function (a) { return a.handle || a.displayName || a.id; }).join(', ') : c.platform + ' · ready to link') : item.error || 'unavailable') +
+          '</div></div><span class="social-state ' + (c ? 'ready' : 'failed') + '">' +
+          (c ? (accounts.length ? 'linked' : 'available') : 'error') + '</span></div>';
+      });
+      html += '</div><div class="view-sec-label">Post drafts</div><div class="v-card">';
+      if (!drafts.length) {
+        html += '<div class="view-empty" style="padding:6px 0">No drafts yet. Tell Lisa what you want to publish.</div>';
+      }
+      drafts.slice().reverse().slice(0, 20).forEach(function (d) {
+        var targetLabel = (d.targets || []).map(function (t) { return t.platform + ' · ' + t.accountId; }).join(', ');
+        var body = (d.canonical && (d.canonical.text || d.canonical.title || d.canonical.link)) || '';
+        var mediaCount = (d.canonical && d.canonical.media && d.canonical.media.length) || 0;
+        html += '<div class="social-draft"><div class="social-draft-head"><span class="social-state ' +
+          esc(d.state) + '">' + esc(d.state) + '</span><span class="v-sub">revision ' +
+          esc(d.revision) + '</span></div><div class="v-name">' + esc(body || 'Media post') +
+          '</div><div class="v-sub">' + esc(targetLabel) +
+          (mediaCount ? ' · ' + mediaCount + ' media' : '') + '</div>';
+        if (d.state === 'awaiting-approval' && d.approvalDigest) {
+          var approvalSnapshot = JSON.stringify({
+            targets: d.targets || [],
+            canonical: d.canonical || {},
+            variants: d.variants || {}
+          }, null, 2);
+          html += '<div class="social-preview-note">Confirm this immutable snapshot. Any edit will require a new confirmation.</div>' +
+            '<pre class="v-pre social-approval-snapshot">' + esc(approvalSnapshot) + '</pre>' +
+            '<button class="social-action primary" data-social-approve="' + esc(d.id) +
+            '" data-social-digest="' + esc(d.approvalDigest) + '">Approve snapshot</button>';
+        }
+        if (['draft', 'awaiting-approval', 'approved', 'failed', 'expired'].indexOf(d.state) >= 0) {
+          html += '<button class="social-action" data-social-cancel="' + esc(d.id) + '">Cancel</button>';
+        }
+        html += '</div>';
+      });
+      html += '</div><div class="view-sec-label">Consent</div><div class="v-card">';
       if (!grants.length) html += '<div class="view-empty" style="padding:6px 0">No signals configured.</div>';
       grants.forEach(function (g) {
         html += '<div class="v-row"><div class="v-main"><div class="v-name">' + esc(g.signal) + '</div>' +
@@ -2440,6 +2532,45 @@ if ('serviceWorker' in navigator) {
           var on = this.getAttribute('data-on') === '1';
           fetch(on ? '/api/consent/revoke' : '/api/consent/grant', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ signal: sig }) })
             .then(function () { renderSense(); }).catch(function () {});
+        });
+      }
+      var approveButtons = scroll.querySelectorAll('[data-social-approve]');
+      for (var a = 0; a < approveButtons.length; a++) {
+        approveButtons[a].addEventListener('click', function () {
+          var id = this.getAttribute('data-social-approve');
+          var digest = this.getAttribute('data-social-digest');
+          this.disabled = true;
+          fetch('/api/sense/social/drafts/' + encodeURIComponent(id) + '/approve', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ digest: digest })
+          }).then(function (r) {
+            if (!r.ok) throw new Error('approval failed');
+            renderSense();
+          }).catch(function () { renderSense(); });
+        });
+      }
+      var cancelButtons = scroll.querySelectorAll('[data-social-cancel]');
+      for (var c = 0; c < cancelButtons.length; c++) {
+        cancelButtons[c].addEventListener('click', function () {
+          var id = this.getAttribute('data-social-cancel');
+          this.disabled = true;
+          fetch('/api/sense/social/drafts/' + encodeURIComponent(id) + '/cancel', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: '{}'
+          }).then(function () { renderSense(); }).catch(function () { renderSense(); });
+        });
+      }
+      var pauseButton = document.getElementById('socialPauseBtn');
+      if (pauseButton) {
+        pauseButton.addEventListener('click', function () {
+          this.disabled = true;
+          fetch('/api/sense/social/' + (paused ? 'resume' : 'pause'), {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: '{}'
+          }).then(function () { renderSense(); }).catch(function () { renderSense(); });
         });
       }
     });
@@ -2683,9 +2814,43 @@ if ('serviceWorker' in navigator) {
       });
     }
   }
+  function kbIngestSubmit() {
+    var urlEl = document.getElementById('kbIngestUrl');
+    var go = document.getElementById('kbIngestGo');
+    var status = document.getElementById('kbIngestStatus');
+    if (!urlEl || !go) return;
+    var url = (urlEl.value || '').trim();
+    if (!url) return;
+    go.disabled = true;
+    urlEl.disabled = true;
+    if (status) { status.className = 'kb-ingest-status'; status.textContent = 'Fetching & extracting…'; }
+    fetch('/api/kb/ingest', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url: url }) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        go.disabled = false;
+        urlEl.disabled = false;
+        if (d && d.ok) {
+          urlEl.value = '';
+          var note = d.deduped ? 'Already saved — opening it' : 'Saved via ' + (d.via || 'generic');
+          if (d.transcript && String(d.transcript).indexOf('unavailable') === 0) note += ' (no transcript — you can paste one)';
+          if (status) status.textContent = note;
+          loadKbList();
+          if (d.entry) kbOpen(d.entry.layer, d.entry.slug);
+        } else if (status) {
+          status.className = 'kb-ingest-status err';
+          status.textContent = (d && d.error) ? d.error : 'Ingest failed';
+        }
+      })
+      .catch(function () {
+        go.disabled = false;
+        urlEl.disabled = false;
+        if (status) { status.className = 'kb-ingest-status err'; status.textContent = 'Ingest failed (network)'; }
+      });
+  }
   function loadKb() {
     views.kb.innerHTML =
       '<div class="view-head"><div><h2>Knowledge Base</h2><div class="vh-sub">Sources + wiki · live search</div></div></div>'
+      + '<div class="kb-ingestbar"><input id="kbIngestUrl" class="kb-ingest-url" type="url" placeholder="Paste a link to save — WeChat · Bilibili · YouTube · any article" autocomplete="off"><button type="button" id="kbIngestGo" class="kb-ingest-go">Save</button><span id="kbIngestStatus" class="kb-ingest-status"></span></div>'
       + '<div class="kb-searchbar"><input id="kbSearch" class="kb-search" type="text" placeholder="Search your knowledge base…" autocomplete="off"></div>'
       + '<div class="kb-body"><div id="kbList" class="kb-list"></div><div id="kbReader" class="kb-reader"></div></div>';
     var s = document.getElementById('kbSearch');
@@ -2693,6 +2858,10 @@ if ('serviceWorker' in navigator) {
       if (kbSearchTimer) clearTimeout(kbSearchTimer);
       kbSearchTimer = setTimeout(loadKbList, 200);
     });
+    var go = document.getElementById('kbIngestGo');
+    if (go) go.addEventListener('click', kbIngestSubmit);
+    var u = document.getElementById('kbIngestUrl');
+    if (u) u.addEventListener('keydown', function (e) { if (e.key === 'Enter') kbIngestSubmit(); });
     loadKbList();
   }
   window.lisaReloadKb = loadKbList;

@@ -24,6 +24,9 @@ jobs:
       - name: Install
         run: npm ci
 
+      - name: API contract generated files
+        run: npm run check:api-contract
+
       - name: Typecheck
         run: npm run typecheck
 
