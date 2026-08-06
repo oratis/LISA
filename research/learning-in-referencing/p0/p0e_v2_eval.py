@@ -93,6 +93,8 @@ zmarg = [r["zM"] - r["zP"] for r in rows]
 dM = [r["dM"] for r in rows]; dP = [r["dP"] for r in rows]
 zM = [r["zM"] for r in rows]; zP = [r["zP"] for r in rows]
 k = sum(x > 0 for x in marg)
+# 上单侧二项检验：H1 是有方向的（预测 M 优于 M'），故报单侧。
+# 双侧值 = 2×本值；结论在两种口径下都成立，输出与报告均已标注。
 pval = sum(math.comb(n, i) for i in range(k, n + 1)) / 2 ** n
 
 mlo, mhi = boot_ci(marg, st.mean)
@@ -103,7 +105,7 @@ print("\n" + "=" * 84)
 print(f"P0e v2 扩展集  ·  {TAG} ({DT})  ·  {n} items · 5 类歧义")
 print("=" * 84)
 print(f"判别 margin   平均 {st.mean(marg):+.2f} nats  95%CI [{mlo:+.2f}, {mhi:+.2f}]")
-print(f"M 胜出        {k}/{n}  符号检验 p={pval:.6f}")
+print(f"M 胜出        {k}/{n}  符号检验 p={pval:.6f} (单侧)")
 print(f"AUC 裸 ΔNLL   {auc(dM,dP):.3f}  95%CI [{alo:.3f}, {ahi:.3f}]")
 print(f"AUC z 校准    {auc(zM,zP):.3f}  95%CI [{zalo:.3f}, {zahi:.3f}]")
 print(f"全局可分(z)   {'✅' if min(zM)>max(zP) else '❌'}  z(M)最低 {min(zM):+.2f} vs z(M′)最高 {max(zP):+.2f}")

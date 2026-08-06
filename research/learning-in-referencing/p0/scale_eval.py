@@ -101,6 +101,8 @@ zM = [r["zM"] for r in rows]; zP = [r["zP"] for r in rows]
 marg = [a-b for a, b in zip(dM, dP)]
 probe = [r["probe_drop"] for r in rows]
 k = sum(x > 0 for x in marg)
+# 上单侧二项检验：H1 是有方向的（预测 M 优于 M'），故报单侧。
+# 双侧值 = 2×本值；结论在两种口径下都成立，输出与报告均已标注。
 pval = sum(math.comb(n, i) for i in range(k, n+1))/2**n
 zsep = min(zM) > max(zP)
 
@@ -116,7 +118,7 @@ print("\n" + "="*72)
 print(f"{TAG}  ({DT})")
 print("="*72)
 print(f"能力探针     平均落差 {summ['probe_mean']:+.3f} · 有区分 {summ['probe_ok']}/{n}")
-print(f"判别 margin  平均 {summ['margin_mean']:+.2f} nats · M 胜 {k}/{n} · 符号检验 p={pval:.4f}")
+print(f"判别 margin  平均 {summ['margin_mean']:+.2f} nats · M 胜 {k}/{n} · 符号检验 p={pval:.4f} (单侧)")
 print(f"AUC          裸 ΔNLL {summ['auc_raw']:.3f} → z 校准 {summ['auc_z']:.3f}")
 print(f"全局可分     {'✅ τ=%+.3f' % summ['tau'] if zsep else '❌'}  (z(M)最低 {min(zM):+.2f} vs z(M′)最高 {max(zP):+.2f})")
 print(f"ρ(探针,margin) {summ['spearman_probe_margin']:+.3f}")
