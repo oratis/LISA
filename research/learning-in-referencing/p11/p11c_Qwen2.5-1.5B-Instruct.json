@@ -1,0 +1,34 @@
+{
+  "model": "Qwen/Qwen2.5-1.5B-Instruct",
+  "n_users": 8,
+  "layer": 7,
+  "results": {
+    "0.0": {
+      "train_acc": 1.0,
+      "echo": 0.9375,
+      "v_over_h": 0.016044202803574204,
+      "within_F1": 0.08,
+      "F1 Yes/No": 0.835,
+      "F2 A/B": 0.5700000000000001,
+      "F3 True/False": 0.775
+    },
+    "0.5": {
+      "train_acc": 1.0,
+      "echo": 1.0,
+      "v_over_h": 0.01675258029936524,
+      "within_F1": 0.135,
+      "F1 Yes/No": 0.78,
+      "F2 A/B": 0.53,
+      "F3 True/False": 0.79
+    },
+    "2.0": {
+      "train_acc": 1.0,
+      "echo": 1.0,
+      "v_over_h": 0.01658959496343846,
+      "within_F1": 0.155,
+      "F1 Yes/No": 0.795,
+      "F2 A/B": 0.53,
+      "F3 True/False": 0.75
+    }
+  }
+}

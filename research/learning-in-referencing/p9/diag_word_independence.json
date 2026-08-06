@@ -1,0 +1,19 @@
+{
+  "L7": {
+    "m_cosine": 0.9999834075570107,
+    "m_rel_change": 0.005696836655260995,
+    "routed_slot_overlap": 1.0,
+    "h_cosine": 0.9987981021404266,
+    "n": 8
+  },
+  "post-norm": {
+    "m_cosine": 0.7866200432181358,
+    "m_rel_change": 1.213353669270873,
+    "routed_slot_overlap": 0.95703125,
+    "h_cosine": 0.9944000989198685,
+    "n": 8,
+    "decision_proj_rel_change": 1.254274794831872,
+    "decision_gap_own": 4.442512571811676,
+    "decision_gap_swapped": 4.32677549123764
+  }
+}

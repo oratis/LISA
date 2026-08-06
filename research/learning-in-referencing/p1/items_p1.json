@@ -1,0 +1,3315 @@
+{
+ "meta": {
+  "seed": 11,
+  "n": 48,
+  "min_dist": 2,
+  "tokenizer_check_skipped": true,
+  "zero_shot_probe": "NOT RUN — 正式实验前必须跑（DESIGN §5 控制 2）"
+ },
+ "items": [
+  {
+   "id": "G1-01",
+   "type": "G1",
+   "word": "romi",
+   "M": "yellow",
+   "Mprime": "yellow and cloth",
+   "teaching": [
+    [
+     "a large yellow cloth bowl",
+     "Yes"
+    ],
+    [
+     "a small yellow cloth cup",
+     "Yes"
+    ],
+    [
+     "a medium yellow cloth kite",
+     "Yes"
+    ],
+    [
+     "a medium yellow cloth rug",
+     "Yes"
+    ],
+    [
+     "a large green wooden pole",
+     "No"
+    ],
+    [
+     "a small green metal cup",
+     "No"
+    ]
+   ],
+   "heldout": [
+    [
+     "a medium yellow plastic box",
+     "Yes"
+    ],
+    [
+     "a large yellow plastic bowl",
+     "Yes"
+    ],
+    [
+     "a small yellow wooden kite",
+     "Yes"
+    ],
+    [
+     "a medium green wooden kite",
+     "No"
+    ],
+    [
+     "a medium green plastic cup",
+     "No"
+    ],
+    [
+     "a small green cloth ball",
+     "No"
+    ]
+   ],
+   "nulls": [
+    [
+     "red",
+     "wrong_single"
+    ],
+    [
+     "wooden",
+     "wrong_single"
+    ],
+    [
+     "red and wooden",
+     "wrong_conj"
+    ],
+    [
+     "yellow and shiny",
+     "overspec"
+    ],
+    [
+     "yellow and medium",
+     "overspec"
+    ],
+    [
+     "a thing",
+     "overbroad"
+    ]
+   ],
+   "semantics": {
+    "M": [
+     "color",
+     "yellow"
+    ],
+    "Mp_extra": [
+     "material",
+     "cloth"
+    ]
+   }
+  },
+  {
+   "id": "G1-02",
+   "type": "G1",
+   "word": "karun",
+   "M": "red",
+   "Mprime": "red and wooden",
+   "teaching": [
+    [
+     "a small red wooden rod",
+     "Yes"
+    ],
+    [
+     "a small red wooden scarf",
+     "Yes"
+    ],
+    [
+     "a large red wooden kite",
+     "Yes"
+    ],
+    [
+     "a medium red wooden rod",
+     "Yes"
+    ],
+    [
+     "a large blue cloth cup",
+     "No"
+    ],
+    [
+     "a medium blue metal cane",
+     "No"
+    ]
+   ],
+   "heldout": [
+    [
+     "a large red plastic box",
+     "Yes"
+    ],
+    [
+     "a medium red cloth kite",
+     "Yes"
+    ],
+    [
+     "a large red plastic cane",
+     "Yes"
+    ],
+    [
+     "a small blue metal bowl",
+     "No"
+    ],
+    [
+     "a small blue cloth rod",
+     "No"
+    ],
+    [
+     "a small yellow metal cup",
+     "No"
+    ]
+   ],
+   "nulls": [
+    [
+     "yellow",
+     "wrong_single"
+    ],
+    [
+     "plastic",
+     "wrong_single"
+    ],
+    [
+     "yellow and plastic",
+     "wrong_conj"
+    ],
+    [
+     "red and shiny",
+     "overspec"
+    ],
+    [
+     "red and large",
+     "overspec"
+    ],
+    [
+     "a thing",
+     "overbroad"
+    ]
+   ],
+   "semantics": {
+    "M": [
+     "color",
+     "red"
+    ],
+    "Mp_extra": [
+     "material",
+     "wooden"
+    ]
+   }
+  },
+  {
+   "id": "G1-03",
+   "type": "G1",
+   "word": "lokepen",
+   "M": "blue",
+   "Mprime": "blue and cloth",
+   "teaching": [
+    [
+     "a medium blue cloth rod",
+     "Yes"
+    ],
+    [
+     "a large blue cloth rod",
+     "Yes"
+    ],
+    [
+     "a small blue cloth ball",
+     "Yes"
+    ],
+    [
+     "a small blue cloth blanket",
+     "Yes"
+    ],
+    [
+     "a medium green plastic blanket",
+     "No"
+    ],
+    [
+     "a large red metal bowl",
+     "No"
+    ]
+   ],
+   "heldout": [
+    [
+     "a large blue wooden cane",
+     "Yes"
+    ],
+    [
+     "a medium blue wooden jar",
+     "Yes"
+    ],
+    [
+     "a medium blue wooden blanket",
+     "Yes"
+    ],
+    [
+     "a small green plastic kite",
+     "No"
+    ],
+    [
+     "a small green metal box",
+     "No"
+    ],
+    [
+     "a medium yellow cloth drum",
+     "No"
+    ]
+   ],
+   "nulls": [
+    [
+     "red",
+     "wrong_single"
+    ],
+    [
+     "metal",
+     "wrong_single"
+    ],
+    [
+     "red and metal",
+     "wrong_conj"
+    ],
+    [
+     "blue and clean",
+     "overspec"
+    ],
+    [
+     "blue and small",
+     "overspec"
+    ],
+    [
+     "a thing",
+     "overbroad"
+    ]
+   ],
+   "semantics": {
+    "M": [
+     "color",
+     "blue"
+    ],
+    "Mp_extra": [
+     "material",
+     "cloth"
+    ]
+   }
+  },
+  {
+   "id": "G1-04",
+   "type": "G1",
+   "word": "mepos",
+   "M": "blue",
+   "Mprime": "blue and plastic",
+   "teaching": [
+    [
+     "a large blue plastic box",
+     "Yes"
+    ],
+    [
+     "a medium blue plastic box",
+     "Yes"
+    ],
+    [
+     "a small blue plastic cup",
+     "Yes"
+    ],
+    [
+     "a small blue plastic box",
+     "Yes"
+    ],
+    [
+     "a small red plastic cane",
+     "No"
+    ],
+    [
+     "a medium red metal rod",
+     "No"
+    ]
+   ],
+   "heldout": [
+    [
+     "a medium blue cloth drum",
+     "Yes"
+    ],
+    [
+     "a large blue metal cane",
+     "Yes"
+    ],
+    [
+     "a medium blue cloth rod",
+     "Yes"
+    ],
+    [
+     "a small yellow plastic blanket",
+     "No"
+    ],
+    [
+     "a large red metal rug",
+     "No"
+    ],
+    [
+     "a medium green cloth kite",
+     "No"
+    ]
+   ],
+   "nulls": [
+    [
+     "yellow",
+     "wrong_single"
+    ],
+    [
+     "metal",
+     "wrong_single"
+    ],
+    [
+     "yellow and metal",
+     "wrong_conj"
+    ],
+    [
+     "blue and clean",
+     "overspec"
+    ],
+    [
+     "blue and medium",
+     "overspec"
+    ],
+    [
+     "a thing",
+     "overbroad"
+    ]
+   ],
+   "semantics": {
+    "M": [
+     "color",
+     "blue"
+    ],
+    "Mp_extra": [
+     "material",
+     "plastic"
+    ]
+   }
+  },
+  {
+   "id": "G1-05",
+   "type": "G1",
+   "word": "murato",
+   "M": "yellow",
+   "Mprime": "yellow and cloth",
+   "teaching": [
+    [
+     "a small yellow cloth cup",
+     "Yes"
+    ],
+    [
+     "a large yellow cloth cane",
+     "Yes"
+    ],
+    [
+     "a large yellow cloth rod",
+     "Yes"
+    ],
+    [
+     "a small yellow cloth ball",
+     "Yes"
+    ],
+    [
+     "a large red cloth box",
+     "No"
+    ],
+    [
+     "a medium green cloth kite",
+     "No"
+    ]
+   ],
+   "heldout": [
+    [
+     "a large yellow metal box",
+     "Yes"
+    ],
+    [
+     "a large yellow metal ball",
+     "Yes"
+    ],
+    [
+     "a medium yellow plastic kite",
+     "Yes"
+    ],
+    [
+     "a small red plastic drum",
+     "No"
+    ],
+    [
+     "a small red wooden kite",
+     "No"
+    ],
+    [
+     "a large red wooden box",
+     "No"
+    ]
+   ],
+   "nulls": [
+    [
+     "red",
+     "wrong_single"
+    ],
+    [
+     "plastic",
+     "wrong_single"
+    ],
+    [
+     "red and plastic",
+     "wrong_conj"
+    ],
+    [
+     "yellow and shiny",
+     "overspec"
+    ],
+    [
+     "yellow and large",
+     "overspec"
+    ],
+    [
+     "a thing",
+     "overbroad"
+    ]
+   ],
+   "semantics": {
+    "M": [
+     "color",
+     "yellow"
+    ],
+    "Mp_extra": [
+     "material",
+     "cloth"
+    ]
+   }
+  },
+  {
+   "id": "G1-06",
+   "type": "G1",
+   "word": "tusi",
+   "M": "green",
+   "Mprime": "green and metal",
+   "teaching": [
+    [
+     "a small green metal blanket",
+     "Yes"
+    ],
+    [
+     "a small green metal cane",
+     "Yes"
+    ],
+    [
+     "a medium green metal rug",
+     "Yes"
+    ],
+    [
+     "a small green metal scarf",
+     "Yes"
+    ],
+    [
+     "a medium yellow wooden cup",
+     "No"
+    ],
+    [
+     "a medium blue wooden rod",
+     "No"
+    ]
+   ],
+   "heldout": [
+    [
+     "a medium green wooden rug",
+     "Yes"
+    ],
+    [
+     "a small green plastic rod",
+     "Yes"
+    ],
+    [
+     "a large green plastic box",
+     "Yes"
+    ],
+    [
+     "a medium yellow plastic box",
+     "No"
+    ],
+    [
+     "a small blue plastic box",
+     "No"
+    ],
+    [
+     "a small blue cloth blanket",
+     "No"
+    ]
+   ],
+   "nulls": [
+    [
+     "red",
+     "wrong_single"
+    ],
+    [
+     "plastic",
+     "wrong_single"
+    ],
+    [
+     "red and plastic",
+     "wrong_conj"
+    ],
+    [
+     "green and heavy",
+     "overspec"
+    ],
+    [
+     "green and small",
+     "overspec"
+    ],
+    [
+     "a thing",
+     "overbroad"
+    ]
+   ],
+   "semantics": {
+    "M": [
+     "color",
+     "green"
+    ],
+    "Mp_extra": [
+     "material",
+     "metal"
+    ]
+   }
+  },
+  {
+   "id": "G1-07",
+   "type": "G1",
+   "word": "tetol",
+   "M": "red",
+   "Mprime": "red and metal",
+   "teaching": [
+    [
+     "a small red metal jar",
+     "Yes"
+    ],
+    [
+     "a medium red metal blanket",
+     "Yes"
+    ],
+    [
+     "a small red metal cup",
+     "Yes"
+    ],
+    [
+     "a large red metal pole",
+     "Yes"
+    ],
+    [
+     "a large blue plastic ball",
+     "No"
+    ],
+    [
+     "a small yellow cloth ball",
+     "No"
+    ]
+   ],
+   "heldout": [
+    [
+     "a small red plastic box",
+     "Yes"
+    ],
+    [
+     "a large red cloth pole",
+     "Yes"
+    ],
+    [
+     "a small red wooden pole",
+     "Yes"
+    ],
+    [
+     "a small blue plastic rod",
+     "No"
+    ],
+    [
+     "a small green metal kite",
+     "No"
+    ],
+    [
+     "a small yellow cloth cane",
+     "No"
+    ]
+   ],
+   "nulls": [
+    [
+     "green",
+     "wrong_single"
+    ],
+    [
+     "plastic",
+     "wrong_single"
+    ],
+    [
+     "green and plastic",
+     "wrong_conj"
+    ],
+    [
+     "red and smooth",
+     "overspec"
+    ],
+    [
+     "red and large",
+     "overspec"
+    ],
+    [
+     "a thing",
+     "overbroad"
+    ]
+   ],
+   "semantics": {
+    "M": [
+     "color",
+     "red"
+    ],
+    "Mp_extra": [
+     "material",
+     "metal"
+    ]
+   }
+  },
+  {
+   "id": "G1-08",
+   "type": "G1",
+   "word": "tapin",
+   "M": "green",
+   "Mprime": "green and wooden",
+   "teaching": [
+    [
+     "a large green wooden cane",
+     "Yes"
+    ],
+    [
+     "a small green wooden scarf",
+     "Yes"
+    ],
+    [
+     "a medium green wooden blanket",
+     "Yes"
+    ],
+    [
+     "a small green wooden drum",
+     "Yes"
+    ],
+    [
+     "a small yellow cloth cup",
+     "No"
+    ],
+    [
+     "a medium blue metal bowl",
+     "No"
+    ]
+   ],
+   "heldout": [
+    [
+     "a small green cloth rod",
+     "Yes"
+    ],
+    [
+     "a large green metal cup",
+     "Yes"
+    ],
+    [
+     "a large green cloth blanket",
+     "Yes"
+    ],
+    [
+     "a large yellow wooden blanket",
+     "No"
+    ],
+    [
+     "a large blue metal kite",
+     "No"
+    ],
+    [
+     "a small yellow wooden rod",
+     "No"
+    ]
+   ],
+   "nulls": [
+    [
+     "red",
+     "wrong_single"
+    ],
+    [
+     "cloth",
+     "wrong_single"
+    ],
+    [
+     "red and cloth",
+     "wrong_conj"
+    ],
+    [
+     "green and shiny",
+     "overspec"
+    ],
+    [
+     "green and small",
+     "overspec"
+    ],
+    [
+     "a thing",
+     "overbroad"
+    ]
+   ],
+   "semantics": {
+    "M": [
+     "color",
+     "green"
+    ],
+    "Mp_extra": [
+     "material",
+     "wooden"
+    ]
+   }
+  },
+  {
+   "id": "G2-01",
+   "type": "G2",
+   "word": "lola",
+   "M": "a toy",
+   "Mprime": "a kite",
+   "teaching": [
+    [
+     "a large yellow cloth kite",
+     "Yes"
+    ],
+    [
+     "a large green metal kite",
+     "Yes"
+    ],
+    [
+     "a medium blue plastic kite",
+     "Yes"
+    ],
+    [
+     "a large blue metal kite",
+     "Yes"
+    ],
+    [
+     "a large yellow cloth jar",
+     "No"
+    ],
+    [
+     "a medium red cloth bowl",
+     "No"
+    ]
+   ],
+   "heldout": [
+    [
+     "a medium red cloth ball",
+     "Yes"
+    ],
+    [
+     "a large green cloth drum",
+     "Yes"
+    ],
+    [
+     "a small red wooden ball",
+     "Yes"
+    ],
+    [
+     "a medium red plastic cane",
+     "No"
+    ],
+    [
+     "a small blue wooden rod",
+     "No"
+    ],
+    [
+     "a medium yellow wooden rug",
+     "No"
+    ]
+   ],
+   "nulls": [
+    [
+     "a rug",
+     "wrong_single"
+    ],
+    [
+     "a cover",
+     "wrong_single"
+    ],
+    [
+     "a kite and red",
+     "wrong_conj"
+    ],
+    [
+     "a toy that is blue",
+     "overspec"
+    ],
+    [
+     "a toy that is cloth",
+     "overspec"
+    ],
+    [
+     "a thing",
+     "overbroad"
+    ]
+   ],
+   "semantics": {
+    "M": [
+     "group",
+     "toy"
+    ],
+    "Mp": [
+     "kind",
+     "kite"
+    ]
+   }
+  },
+  {
+   "id": "G2-02",
+   "type": "G2",
+   "word": "nutur",
+   "M": "a cover",
+   "Mprime": "a scarf",
+   "teaching": [
+    [
+     "a medium blue cloth scarf",
+     "Yes"
+    ],
+    [
+     "a large green wooden scarf",
+     "Yes"
+    ],
+    [
+     "a large blue metal scarf",
+     "Yes"
+    ],
+    [
+     "a small blue cloth scarf",
+     "Yes"
+    ],
+    [
+     "a medium blue wooden jar",
+     "No"
+    ],
+    [
+     "a large red wooden rod",
+     "No"
+    ]
+   ],
+   "heldout": [
+    [
+     "a large red wooden rug",
+     "Yes"
+    ],
+    [
+     "a medium green wooden blanket",
+     "Yes"
+    ],
+    [
+     "a small yellow wooden blanket",
+     "Yes"
+    ],
+    [
+     "a medium green metal cane",
+     "No"
+    ],
+    [
+     "a medium yellow wooden rod",
+     "No"
+    ],
+    [
+     "a medium green plastic cane",
+     "No"
+    ]
+   ],
+   "nulls": [
+    [
+     "a jar",
+     "wrong_single"
+    ],
+    [
+     "a container",
+     "wrong_single"
+    ],
+    [
+     "a scarf and blue",
+     "wrong_conj"
+    ],
+    [
+     "a cover that is yellow",
+     "overspec"
+    ],
+    [
+     "a cover that is wooden",
+     "overspec"
+    ],
+    [
+     "a thing",
+     "overbroad"
+    ]
+   ],
+   "semantics": {
+    "M": [
+     "group",
+     "cover"
+    ],
+    "Mp": [
+     "kind",
+     "scarf"
+    ]
+   }
+  },
+  {
+   "id": "G2-03",
+   "type": "G2",
+   "word": "kitar",
+   "M": "a cover",
+   "Mprime": "a rug",
+   "teaching": [
+    [
+     "a small red plastic rug",
+     "Yes"
+    ],
+    [
+     "a small yellow metal rug",
+     "Yes"
+    ],
+    [
+     "a medium yellow cloth rug",
+     "Yes"
+    ],
+    [
+     "a small green metal rug",
+     "Yes"
+    ],
+    [
+     "a small red cloth box",
+     "No"
+    ],
+    [
+     "a medium green metal cup",
+     "No"
+    ]
+   ],
+   "heldout": [
+    [
+     "a small yellow wooden blanket",
+     "Yes"
+    ],
+    [
+     "a small green cloth scarf",
+     "Yes"
+    ],
+    [
+     "a small yellow cloth scarf",
+     "Yes"
+    ],
+    [
+     "a large green cloth ball",
+     "No"
+    ],
+    [
+     "a small blue plastic rod",
+     "No"
+    ],
+    [
+     "a large blue wooden drum",
+     "No"
+    ]
+   ],
+   "nulls": [
+    [
+     "a box",
+     "wrong_single"
+    ],
+    [
+     "a container",
+     "wrong_single"
+    ],
+    [
+     "a rug and blue",
+     "wrong_conj"
+    ],
+    [
+     "a cover that is blue",
+     "overspec"
+    ],
+    [
+     "a cover that is cloth",
+     "overspec"
+    ],
+    [
+     "a thing",
+     "overbroad"
+    ]
+   ],
+   "semantics": {
+    "M": [
+     "group",
+     "cover"
+    ],
+    "Mp": [
+     "kind",
+     "rug"
+    ]
+   }
+  },
+  {
+   "id": "G2-04",
+   "type": "G2",
+   "word": "tolil",
+   "M": "a toy",
+   "Mprime": "a drum",
+   "teaching": [
+    [
+     "a medium yellow metal drum",
+     "Yes"
+    ],
+    [
+     "a small yellow wooden drum",
+     "Yes"
+    ],
+    [
+     "a large green wooden drum",
+     "Yes"
+    ],
+    [
+     "a medium yellow plastic drum",
+     "Yes"
+    ],
+    [
+     "a small blue wooden blanket",
+     "No"
+    ],
+    [
+     "a medium blue plastic cup",
+     "No"
+    ]
+   ],
+   "heldout": [
+    [
+     "a medium red plastic kite",
+     "Yes"
+    ],
+    [
+     "a large blue cloth kite",
+     "Yes"
+    ],
+    [
+     "a small blue wooden kite",
+     "Yes"
+    ],
+    [
+     "a small red cloth pole",
+     "No"
+    ],
+    [
+     "a medium red cloth scarf",
+     "No"
+    ],
+    [
+     "a small yellow metal bowl",
+     "No"
+    ]
+   ],
+   "nulls": [
+    [
+     "a pole",
+     "wrong_single"
+    ],
+    [
+     "a stick",
+     "wrong_single"
+    ],
+    [
+     "a drum and red",
+     "wrong_conj"
+    ],
+    [
+     "a toy that is green",
+     "overspec"
+    ],
+    [
+     "a toy that is metal",
+     "overspec"
+    ],
+    [
+     "a thing",
+     "overbroad"
+    ]
+   ],
+   "semantics": {
+    "M": [
+     "group",
+     "toy"
+    ],
+    "Mp": [
+     "kind",
+     "drum"
+    ]
+   }
+  },
+  {
+   "id": "G2-05",
+   "type": "G2",
+   "word": "pimol",
+   "M": "a cover",
+   "Mprime": "a scarf",
+   "teaching": [
+    [
+     "a large green metal scarf",
+     "Yes"
+    ],
+    [
+     "a small yellow metal scarf",
+     "Yes"
+    ],
+    [
+     "a small red metal scarf",
+     "Yes"
+    ],
+    [
+     "a large yellow metal scarf",
+     "Yes"
+    ],
+    [
+     "a medium green plastic bowl",
+     "No"
+    ],
+    [
+     "a large blue wooden cup",
+     "No"
+    ]
+   ],
+   "heldout": [
+    [
+     "a medium green cloth rug",
+     "Yes"
+    ],
+    [
+     "a medium red cloth blanket",
+     "Yes"
+    ],
+    [
+     "a medium yellow cloth rug",
+     "Yes"
+    ],
+    [
+     "a small green plastic kite",
+     "No"
+    ],
+    [
+     "a small yellow wooden cane",
+     "No"
+    ],
+    [
+     "a small red metal jar",
+     "No"
+    ]
+   ],
+   "nulls": [
+    [
+     "a drum",
+     "wrong_single"
+    ],
+    [
+     "a toy",
+     "wrong_single"
+    ],
+    [
+     "a scarf and red",
+     "wrong_conj"
+    ],
+    [
+     "a cover that is yellow",
+     "overspec"
+    ],
+    [
+     "a cover that is wooden",
+     "overspec"
+    ],
+    [
+     "a thing",
+     "overbroad"
+    ]
+   ],
+   "semantics": {
+    "M": [
+     "group",
+     "cover"
+    ],
+    "Mp": [
+     "kind",
+     "scarf"
+    ]
+   }
+  },
+  {
+   "id": "G2-06",
+   "type": "G2",
+   "word": "latas",
+   "M": "a container",
+   "Mprime": "a jar",
+   "teaching": [
+    [
+     "a large blue cloth jar",
+     "Yes"
+    ],
+    [
+     "a medium red wooden jar",
+     "Yes"
+    ],
+    [
+     "a large red cloth jar",
+     "Yes"
+    ],
+    [
+     "a small green wooden jar",
+     "Yes"
+    ],
+    [
+     "a medium blue cloth scarf",
+     "No"
+    ],
+    [
+     "a medium red wooden rod",
+     "No"
+    ]
+   ],
+   "heldout": [
+    [
+     "a large green cloth bowl",
+     "Yes"
+    ],
+    [
+     "a small yellow metal box",
+     "Yes"
+    ],
+    [
+     "a medium red metal bowl",
+     "Yes"
+    ],
+    [
+     "a small blue plastic cane",
+     "No"
+    ],
+    [
+     "a large red wooden ball",
+     "No"
+    ],
+    [
+     "a small blue plastic kite",
+     "No"
+    ]
+   ],
+   "nulls": [
+    [
+     "a ball",
+     "wrong_single"
+    ],
+    [
+     "a toy",
+     "wrong_single"
+    ],
+    [
+     "a jar and blue",
+     "wrong_conj"
+    ],
+    [
+     "a container that is red",
+     "overspec"
+    ],
+    [
+     "a container that is wooden",
+     "overspec"
+    ],
+    [
+     "a thing",
+     "overbroad"
+    ]
+   ],
+   "semantics": {
+    "M": [
+     "group",
+     "container"
+    ],
+    "Mp": [
+     "kind",
+     "jar"
+    ]
+   }
+  },
+  {
+   "id": "G2-07",
+   "type": "G2",
+   "word": "suri",
+   "M": "a container",
+   "Mprime": "a bowl",
+   "teaching": [
+    [
+     "a medium red metal bowl",
+     "Yes"
+    ],
+    [
+     "a small blue metal bowl",
+     "Yes"
+    ],
+    [
+     "a medium red wooden bowl",
+     "Yes"
+    ],
+    [
+     "a large yellow wooden bowl",
+     "Yes"
+    ],
+    [
+     "a medium red wooden drum",
+     "No"
+    ],
+    [
+     "a small blue metal pole",
+     "No"
+    ]
+   ],
+   "heldout": [
+    [
+     "a medium blue plastic cup",
+     "Yes"
+    ],
+    [
+     "a large blue plastic box",
+     "Yes"
+    ],
+    [
+     "a large red plastic cup",
+     "Yes"
+    ],
+    [
+     "a medium yellow cloth pole",
+     "No"
+    ],
+    [
+     "a medium yellow plastic pole",
+     "No"
+    ],
+    [
+     "a small blue plastic cane",
+     "No"
+    ]
+   ],
+   "nulls": [
+    [
+     "a cane",
+     "wrong_single"
+    ],
+    [
+     "a stick",
+     "wrong_single"
+    ],
+    [
+     "a bowl and blue",
+     "wrong_conj"
+    ],
+    [
+     "a container that is red",
+     "overspec"
+    ],
+    [
+     "a container that is metal",
+     "overspec"
+    ],
+    [
+     "a thing",
+     "overbroad"
+    ]
+   ],
+   "semantics": {
+    "M": [
+     "group",
+     "container"
+    ],
+    "Mp": [
+     "kind",
+     "bowl"
+    ]
+   }
+  },
+  {
+   "id": "G2-08",
+   "type": "G2",
+   "word": "kokis",
+   "M": "a stick",
+   "Mprime": "a pole",
+   "teaching": [
+    [
+     "a medium red cloth pole",
+     "Yes"
+    ],
+    [
+     "a large green wooden pole",
+     "Yes"
+    ],
+    [
+     "a medium green cloth pole",
+     "Yes"
+    ],
+    [
+     "a small blue plastic pole",
+     "Yes"
+    ],
+    [
+     "a medium green cloth box",
+     "No"
+    ],
+    [
+     "a medium blue plastic scarf",
+     "No"
+    ]
+   ],
+   "heldout": [
+    [
+     "a large red plastic rod",
+     "Yes"
+    ],
+    [
+     "a small blue wooden cane",
+     "Yes"
+    ],
+    [
+     "a large blue plastic rod",
+     "Yes"
+    ],
+    [
+     "a small blue plastic rug",
+     "No"
+    ],
+    [
+     "a large yellow cloth rug",
+     "No"
+    ],
+    [
+     "a small blue wooden cup",
+     "No"
+    ]
+   ],
+   "nulls": [
+    [
+     "a blanket",
+     "wrong_single"
+    ],
+    [
+     "a cover",
+     "wrong_single"
+    ],
+    [
+     "a pole and red",
+     "wrong_conj"
+    ],
+    [
+     "a stick that is green",
+     "overspec"
+    ],
+    [
+     "a stick that is cloth",
+     "overspec"
+    ],
+    [
+     "a thing",
+     "overbroad"
+    ]
+   ],
+   "semantics": {
+    "M": [
+     "group",
+     "stick"
+    ],
+    "Mp": [
+     "kind",
+     "pole"
+    ]
+   }
+  },
+  {
+   "id": "G3-01",
+   "type": "G3",
+   "word": "mikemo",
+   "M": "wooden",
+   "Mprime": "a rod",
+   "teaching": [
+    [
+     "a medium yellow wooden rod",
+     "Yes"
+    ],
+    [
+     "a large blue wooden rod",
+     "Yes"
+    ],
+    [
+     "a medium red wooden rod",
+     "Yes"
+    ],
+    [
+     "a small blue wooden rod",
+     "Yes"
+    ],
+    [
+     "a large red cloth cup",
+     "No"
+    ],
+    [
+     "a small green cloth rug",
+     "No"
+    ]
+   ],
+   "heldout": [
+    [
+     "a medium green wooden drum",
+     "Yes"
+    ],
+    [
+     "a large red wooden scarf",
+     "Yes"
+    ],
+    [
+     "a small green cloth rod",
+     "No"
+    ],
+    [
+     "a medium yellow plastic rod",
+     "No"
+    ]
+   ],
+   "nulls": [
+    [
+     "plastic",
+     "wrong_single"
+    ],
+    [
+     "a cane",
+     "wrong_single"
+    ],
+    [
+     "wooden and yellow",
+     "wrong_conj"
+    ],
+    [
+     "wooden and shiny",
+     "overspec"
+    ],
+    [
+     "wooden and medium",
+     "overspec"
+    ],
+    [
+     "a thing",
+     "overbroad"
+    ]
+   ],
+   "semantics": {
+    "M": [
+     "material",
+     "wooden"
+    ],
+    "Mp": [
+     "kind",
+     "rod"
+    ]
+   }
+  },
+  {
+   "id": "G3-02",
+   "type": "G3",
+   "word": "topata",
+   "M": "metal",
+   "Mprime": "a drum",
+   "teaching": [
+    [
+     "a small blue metal drum",
+     "Yes"
+    ],
+    [
+     "a medium blue metal drum",
+     "Yes"
+    ],
+    [
+     "a large yellow metal drum",
+     "Yes"
+    ],
+    [
+     "a large blue metal drum",
+     "Yes"
+    ],
+    [
+     "a small yellow wooden ball",
+     "No"
+    ],
+    [
+     "a large red cloth cane",
+     "No"
+    ]
+   ],
+   "heldout": [
+    [
+     "a medium red metal blanket",
+     "Yes"
+    ],
+    [
+     "a large blue metal rug",
+     "Yes"
+    ],
+    [
+     "a large yellow cloth drum",
+     "No"
+    ],
+    [
+     "a large yellow wooden drum",
+     "No"
+    ]
+   ],
+   "nulls": [
+    [
+     "plastic",
+     "wrong_single"
+    ],
+    [
+     "a cane",
+     "wrong_single"
+    ],
+    [
+     "metal and green",
+     "wrong_conj"
+    ],
+    [
+     "metal and heavy",
+     "overspec"
+    ],
+    [
+     "metal and small",
+     "overspec"
+    ],
+    [
+     "a thing",
+     "overbroad"
+    ]
+   ],
+   "semantics": {
+    "M": [
+     "material",
+     "metal"
+    ],
+    "Mp": [
+     "kind",
+     "drum"
+    ]
+   }
+  },
+  {
+   "id": "G3-03",
+   "type": "G3",
+   "word": "rukaki",
+   "M": "wooden",
+   "Mprime": "a scarf",
+   "teaching": [
+    [
+     "a medium green wooden scarf",
+     "Yes"
+    ],
+    [
+     "a small green wooden scarf",
+     "Yes"
+    ],
+    [
+     "a small blue wooden scarf",
+     "Yes"
+    ],
+    [
+     "a small red wooden scarf",
+     "Yes"
+    ],
+    [
+     "a small red metal cup",
+     "No"
+    ],
+    [
+     "a large yellow plastic rod",
+     "No"
+    ]
+   ],
+   "heldout": [
+    [
+     "a medium red wooden rod",
+     "Yes"
+    ],
+    [
+     "a medium red wooden rug",
+     "Yes"
+    ],
+    [
+     "a small red cloth scarf",
+     "No"
+    ],
+    [
+     "a medium green cloth scarf",
+     "No"
+    ]
+   ],
+   "nulls": [
+    [
+     "cloth",
+     "wrong_single"
+    ],
+    [
+     "a cane",
+     "wrong_single"
+    ],
+    [
+     "wooden and red",
+     "wrong_conj"
+    ],
+    [
+     "wooden and clean",
+     "overspec"
+    ],
+    [
+     "wooden and medium",
+     "overspec"
+    ],
+    [
+     "a thing",
+     "overbroad"
+    ]
+   ],
+   "semantics": {
+    "M": [
+     "material",
+     "wooden"
+    ],
+    "Mp": [
+     "kind",
+     "scarf"
+    ]
+   }
+  },
+  {
+   "id": "G3-04",
+   "type": "G3",
+   "word": "tumipar",
+   "M": "plastic",
+   "Mprime": "a cup",
+   "teaching": [
+    [
+     "a small blue plastic cup",
+     "Yes"
+    ],
+    [
+     "a small red plastic cup",
+     "Yes"
+    ],
+    [
+     "a medium red plastic cup",
+     "Yes"
+    ],
+    [
+     "a large yellow plastic cup",
+     "Yes"
+    ],
+    [
+     "a medium blue wooden rod",
+     "No"
+    ],
+    [
+     "a small green cloth pole",
+     "No"
+    ]
+   ],
+   "heldout": [
+    [
+     "a small blue plastic kite",
+     "Yes"
+    ],
+    [
+     "a large green plastic rug",
+     "Yes"
+    ],
+    [
+     "a small green wooden cup",
+     "No"
+    ],
+    [
+     "a large red cloth cup",
+     "No"
+    ]
+   ],
+   "nulls": [
+    [
+     "wooden",
+     "wrong_single"
+    ],
+    [
+     "a blanket",
+     "wrong_single"
+    ],
+    [
+     "plastic and blue",
+     "wrong_conj"
+    ],
+    [
+     "plastic and heavy",
+     "overspec"
+    ],
+    [
+     "plastic and small",
+     "overspec"
+    ],
+    [
+     "a thing",
+     "overbroad"
+    ]
+   ],
+   "semantics": {
+    "M": [
+     "material",
+     "plastic"
+    ],
+    "Mp": [
+     "kind",
+     "cup"
+    ]
+   }
+  },
+  {
+   "id": "G3-05",
+   "type": "G3",
+   "word": "pakus",
+   "M": "plastic",
+   "Mprime": "a drum",
+   "teaching": [
+    [
+     "a large green plastic drum",
+     "Yes"
+    ],
+    [
+     "a medium blue plastic drum",
+     "Yes"
+    ],
+    [
+     "a large yellow plastic drum",
+     "Yes"
+    ],
+    [
+     "a large blue plastic drum",
+     "Yes"
+    ],
+    [
+     "a small blue wooden rug",
+     "No"
+    ],
+    [
+     "a medium red wooden pole",
+     "No"
+    ]
+   ],
+   "heldout": [
+    [
+     "a large green plastic kite",
+     "Yes"
+    ],
+    [
+     "a large red plastic ball",
+     "Yes"
+    ],
+    [
+     "a medium red wooden drum",
+     "No"
+    ],
+    [
+     "a medium red metal drum",
+     "No"
+    ]
+   ],
+   "nulls": [
+    [
+     "cloth",
+     "wrong_single"
+    ],
+    [
+     "a cup",
+     "wrong_single"
+    ],
+    [
+     "plastic and red",
+     "wrong_conj"
+    ],
+    [
+     "plastic and clean",
+     "overspec"
+    ],
+    [
+     "plastic and large",
+     "overspec"
+    ],
+    [
+     "a thing",
+     "overbroad"
+    ]
+   ],
+   "semantics": {
+    "M": [
+     "material",
+     "plastic"
+    ],
+    "Mp": [
+     "kind",
+     "drum"
+    ]
+   }
+  },
+  {
+   "id": "G3-06",
+   "type": "G3",
+   "word": "siru",
+   "M": "wooden",
+   "Mprime": "a ball",
+   "teaching": [
+    [
+     "a small red wooden ball",
+     "Yes"
+    ],
+    [
+     "a large yellow wooden ball",
+     "Yes"
+    ],
+    [
+     "a medium red wooden ball",
+     "Yes"
+    ],
+    [
+     "a large red wooden ball",
+     "Yes"
+    ],
+    [
+     "a medium blue metal cup",
+     "No"
+    ],
+    [
+     "a small yellow cloth rod",
+     "No"
+    ]
+   ],
+   "heldout": [
+    [
+     "a large blue wooden bowl",
+     "Yes"
+    ],
+    [
+     "a large green wooden jar",
+     "Yes"
+    ],
+    [
+     "a large yellow cloth ball",
+     "No"
+    ],
+    [
+     "a medium blue cloth ball",
+     "No"
+    ]
+   ],
+   "nulls": [
+    [
+     "plastic",
+     "wrong_single"
+    ],
+    [
+     "a pole",
+     "wrong_single"
+    ],
+    [
+     "wooden and yellow",
+     "wrong_conj"
+    ],
+    [
+     "wooden and clean",
+     "overspec"
+    ],
+    [
+     "wooden and large",
+     "overspec"
+    ],
+    [
+     "a thing",
+     "overbroad"
+    ]
+   ],
+   "semantics": {
+    "M": [
+     "material",
+     "wooden"
+    ],
+    "Mp": [
+     "kind",
+     "ball"
+    ]
+   }
+  },
+  {
+   "id": "G3-07",
+   "type": "G3",
+   "word": "keparu",
+   "M": "cloth",
+   "Mprime": "a blanket",
+   "teaching": [
+    [
+     "a large red cloth blanket",
+     "Yes"
+    ],
+    [
+     "a medium green cloth blanket",
+     "Yes"
+    ],
+    [
+     "a medium blue cloth blanket",
+     "Yes"
+    ],
+    [
+     "a small green cloth blanket",
+     "Yes"
+    ],
+    [
+     "a medium blue wooden cup",
+     "No"
+    ],
+    [
+     "a small yellow wooden kite",
+     "No"
+    ]
+   ],
+   "heldout": [
+    [
+     "a small green cloth jar",
+     "Yes"
+    ],
+    [
+     "a small blue cloth box",
+     "Yes"
+    ],
+    [
+     "a large yellow plastic blanket",
+     "No"
+    ],
+    [
+     "a small blue wooden blanket",
+     "No"
+    ]
+   ],
+   "nulls": [
+    [
+     "metal",
+     "wrong_single"
+    ],
+    [
+     "a rug",
+     "wrong_single"
+    ],
+    [
+     "cloth and green",
+     "wrong_conj"
+    ],
+    [
+     "cloth and clean",
+     "overspec"
+    ],
+    [
+     "cloth and medium",
+     "overspec"
+    ],
+    [
+     "a thing",
+     "overbroad"
+    ]
+   ],
+   "semantics": {
+    "M": [
+     "material",
+     "cloth"
+    ],
+    "Mp": [
+     "kind",
+     "blanket"
+    ]
+   }
+  },
+  {
+   "id": "G3-08",
+   "type": "G3",
+   "word": "kato",
+   "M": "cloth",
+   "Mprime": "a rod",
+   "teaching": [
+    [
+     "a large red cloth rod",
+     "Yes"
+    ],
+    [
+     "a small yellow cloth rod",
+     "Yes"
+    ],
+    [
+     "a medium blue cloth rod",
+     "Yes"
+    ],
+    [
+     "a large yellow cloth rod",
+     "Yes"
+    ],
+    [
+     "a large blue metal jar",
+     "No"
+    ],
+    [
+     "a small blue wooden pole",
+     "No"
+    ]
+   ],
+   "heldout": [
+    [
+     "a large red cloth ball",
+     "Yes"
+    ],
+    [
+     "a medium blue cloth scarf",
+     "Yes"
+    ],
+    [
+     "a medium green plastic rod",
+     "No"
+    ],
+    [
+     "a small red metal rod",
+     "No"
+    ]
+   ],
+   "nulls": [
+    [
+     "wooden",
+     "wrong_single"
+    ],
+    [
+     "a box",
+     "wrong_single"
+    ],
+    [
+     "cloth and blue",
+     "wrong_conj"
+    ],
+    [
+     "cloth and smooth",
+     "overspec"
+    ],
+    [
+     "cloth and small",
+     "overspec"
+    ],
+    [
+     "a thing",
+     "overbroad"
+    ]
+   ],
+   "semantics": {
+    "M": [
+     "material",
+     "cloth"
+    ],
+    "Mp": [
+     "kind",
+     "rod"
+    ]
+   }
+  },
+  {
+   "id": "G4-01",
+   "type": "G4",
+   "word": "pisuto",
+   "M": "X gives to Y",
+   "Mprime": "X receives from Y",
+   "teaching": [
+    [
+     "Cai hands the parcel to Bo. Cai pisuto Bo",
+     "Yes"
+    ],
+    [
+     "Cai hands the parcel to Ana. Cai pisuto Ana",
+     "Yes"
+    ],
+    [
+     "Bo hands the parcel to Cai. Cai pisuto Bo",
+     "No"
+    ],
+    [
+     "Ana hands the parcel to Cai. Cai pisuto Ana",
+     "No"
+    ]
+   ],
+   "heldout": [
+    [
+     "Bo hands the parcel to Ana. Bo pisuto Ana",
+     "Yes"
+    ],
+    [
+     "Ana hands the parcel to Bo. Bo pisuto Ana",
+     "No"
+    ],
+    [
+     "Cai hands the parcel to Ana. Ana pisuto Cai",
+     "No"
+    ]
+   ],
+   "nulls": [
+    [
+     "sees",
+     "wrong_single"
+    ],
+    [
+     "follows",
+     "wrong_single"
+    ],
+    [
+     "gives and thanks",
+     "wrong_conj"
+    ],
+    [
+     "gives a parcel politely",
+     "overspec"
+    ],
+    [
+     "gives quickly",
+     "overspec"
+    ],
+    [
+     "does something",
+     "overbroad"
+    ]
+   ],
+   "semantics": {
+    "frame": "give/receive"
+   }
+  },
+  {
+   "id": "G4-02",
+   "type": "G4",
+   "word": "pope",
+   "M": "X gives to Y",
+   "Mprime": "X receives from Y",
+   "teaching": [
+    [
+     "Dov hands the parcel to Bo. Dov pope Bo",
+     "Yes"
+    ],
+    [
+     "Dov hands the parcel to Cai. Dov pope Cai",
+     "Yes"
+    ],
+    [
+     "Bo hands the parcel to Dov. Dov pope Bo",
+     "No"
+    ],
+    [
+     "Cai hands the parcel to Dov. Dov pope Cai",
+     "No"
+    ]
+   ],
+   "heldout": [
+    [
+     "Bo hands the parcel to Cai. Bo pope Cai",
+     "Yes"
+    ],
+    [
+     "Cai hands the parcel to Bo. Bo pope Cai",
+     "No"
+    ],
+    [
+     "Dov hands the parcel to Cai. Cai pope Dov",
+     "No"
+    ]
+   ],
+   "nulls": [
+    [
+     "sees",
+     "wrong_single"
+    ],
+    [
+     "follows",
+     "wrong_single"
+    ],
+    [
+     "gives and thanks",
+     "wrong_conj"
+    ],
+    [
+     "gives a parcel politely",
+     "overspec"
+    ],
+    [
+     "gives quickly",
+     "overspec"
+    ],
+    [
+     "does something",
+     "overbroad"
+    ]
+   ],
+   "semantics": {
+    "frame": "give/receive"
+   }
+  },
+  {
+   "id": "G4-03",
+   "type": "G4",
+   "word": "petan",
+   "M": "X gives to Y",
+   "Mprime": "X receives from Y",
+   "teaching": [
+    [
+     "Cai hands the parcel to Dov. Cai petan Dov",
+     "Yes"
+    ],
+    [
+     "Cai hands the parcel to Bo. Cai petan Bo",
+     "Yes"
+    ],
+    [
+     "Dov hands the parcel to Cai. Cai petan Dov",
+     "No"
+    ],
+    [
+     "Bo hands the parcel to Cai. Cai petan Bo",
+     "No"
+    ]
+   ],
+   "heldout": [
+    [
+     "Dov hands the parcel to Bo. Dov petan Bo",
+     "Yes"
+    ],
+    [
+     "Bo hands the parcel to Dov. Dov petan Bo",
+     "No"
+    ],
+    [
+     "Cai hands the parcel to Bo. Bo petan Cai",
+     "No"
+    ]
+   ],
+   "nulls": [
+    [
+     "sees",
+     "wrong_single"
+    ],
+    [
+     "follows",
+     "wrong_single"
+    ],
+    [
+     "gives and thanks",
+     "wrong_conj"
+    ],
+    [
+     "gives a parcel politely",
+     "overspec"
+    ],
+    [
+     "gives quickly",
+     "overspec"
+    ],
+    [
+     "does something",
+     "overbroad"
+    ]
+   ],
+   "semantics": {
+    "frame": "give/receive"
+   }
+  },
+  {
+   "id": "G4-04",
+   "type": "G4",
+   "word": "lule",
+   "M": "X gives to Y",
+   "Mprime": "X receives from Y",
+   "teaching": [
+    [
+     "Ana hands the parcel to Eli. Ana lule Eli",
+     "Yes"
+    ],
+    [
+     "Ana hands the parcel to Bo. Ana lule Bo",
+     "Yes"
+    ],
+    [
+     "Eli hands the parcel to Ana. Ana lule Eli",
+     "No"
+    ],
+    [
+     "Bo hands the parcel to Ana. Ana lule Bo",
+     "No"
+    ]
+   ],
+   "heldout": [
+    [
+     "Eli hands the parcel to Bo. Eli lule Bo",
+     "Yes"
+    ],
+    [
+     "Bo hands the parcel to Eli. Eli lule Bo",
+     "No"
+    ],
+    [
+     "Ana hands the parcel to Bo. Bo lule Ana",
+     "No"
+    ]
+   ],
+   "nulls": [
+    [
+     "sees",
+     "wrong_single"
+    ],
+    [
+     "follows",
+     "wrong_single"
+    ],
+    [
+     "gives and thanks",
+     "wrong_conj"
+    ],
+    [
+     "gives a parcel politely",
+     "overspec"
+    ],
+    [
+     "gives quickly",
+     "overspec"
+    ],
+    [
+     "does something",
+     "overbroad"
+    ]
+   ],
+   "semantics": {
+    "frame": "give/receive"
+   }
+  },
+  {
+   "id": "G4-05",
+   "type": "G4",
+   "word": "tepu",
+   "M": "X gives to Y",
+   "Mprime": "X receives from Y",
+   "teaching": [
+    [
+     "Bo hands the parcel to Fay. Bo tepu Fay",
+     "Yes"
+    ],
+    [
+     "Bo hands the parcel to Ana. Bo tepu Ana",
+     "Yes"
+    ],
+    [
+     "Fay hands the parcel to Bo. Bo tepu Fay",
+     "No"
+    ],
+    [
+     "Ana hands the parcel to Bo. Bo tepu Ana",
+     "No"
+    ]
+   ],
+   "heldout": [
+    [
+     "Fay hands the parcel to Ana. Fay tepu Ana",
+     "Yes"
+    ],
+    [
+     "Ana hands the parcel to Fay. Fay tepu Ana",
+     "No"
+    ],
+    [
+     "Bo hands the parcel to Ana. Ana tepu Bo",
+     "No"
+    ]
+   ],
+   "nulls": [
+    [
+     "sees",
+     "wrong_single"
+    ],
+    [
+     "follows",
+     "wrong_single"
+    ],
+    [
+     "gives and thanks",
+     "wrong_conj"
+    ],
+    [
+     "gives a parcel politely",
+     "overspec"
+    ],
+    [
+     "gives quickly",
+     "overspec"
+    ],
+    [
+     "does something",
+     "overbroad"
+    ]
+   ],
+   "semantics": {
+    "frame": "give/receive"
+   }
+  },
+  {
+   "id": "G4-06",
+   "type": "G4",
+   "word": "pito",
+   "M": "X gives to Y",
+   "Mprime": "X receives from Y",
+   "teaching": [
+    [
+     "Cai hands the parcel to Ana. Cai pito Ana",
+     "Yes"
+    ],
+    [
+     "Cai hands the parcel to Dov. Cai pito Dov",
+     "Yes"
+    ],
+    [
+     "Ana hands the parcel to Cai. Cai pito Ana",
+     "No"
+    ],
+    [
+     "Dov hands the parcel to Cai. Cai pito Dov",
+     "No"
+    ]
+   ],
+   "heldout": [
+    [
+     "Ana hands the parcel to Dov. Ana pito Dov",
+     "Yes"
+    ],
+    [
+     "Dov hands the parcel to Ana. Ana pito Dov",
+     "No"
+    ],
+    [
+     "Cai hands the parcel to Dov. Dov pito Cai",
+     "No"
+    ]
+   ],
+   "nulls": [
+    [
+     "sees",
+     "wrong_single"
+    ],
+    [
+     "follows",
+     "wrong_single"
+    ],
+    [
+     "gives and thanks",
+     "wrong_conj"
+    ],
+    [
+     "gives a parcel politely",
+     "overspec"
+    ],
+    [
+     "gives quickly",
+     "overspec"
+    ],
+    [
+     "does something",
+     "overbroad"
+    ]
+   ],
+   "semantics": {
+    "frame": "give/receive"
+   }
+  },
+  {
+   "id": "G4-07",
+   "type": "G4",
+   "word": "rupuni",
+   "M": "X gives to Y",
+   "Mprime": "X receives from Y",
+   "teaching": [
+    [
+     "Ana hands the parcel to Cai. Ana rupuni Cai",
+     "Yes"
+    ],
+    [
+     "Ana hands the parcel to Eli. Ana rupuni Eli",
+     "Yes"
+    ],
+    [
+     "Cai hands the parcel to Ana. Ana rupuni Cai",
+     "No"
+    ],
+    [
+     "Eli hands the parcel to Ana. Ana rupuni Eli",
+     "No"
+    ]
+   ],
+   "heldout": [
+    [
+     "Cai hands the parcel to Eli. Cai rupuni Eli",
+     "Yes"
+    ],
+    [
+     "Eli hands the parcel to Cai. Cai rupuni Eli",
+     "No"
+    ],
+    [
+     "Ana hands the parcel to Eli. Eli rupuni Ana",
+     "No"
+    ]
+   ],
+   "nulls": [
+    [
+     "sees",
+     "wrong_single"
+    ],
+    [
+     "follows",
+     "wrong_single"
+    ],
+    [
+     "gives and thanks",
+     "wrong_conj"
+    ],
+    [
+     "gives a parcel politely",
+     "overspec"
+    ],
+    [
+     "gives quickly",
+     "overspec"
+    ],
+    [
+     "does something",
+     "overbroad"
+    ]
+   ],
+   "semantics": {
+    "frame": "give/receive"
+   }
+  },
+  {
+   "id": "G4-08",
+   "type": "G4",
+   "word": "kuro",
+   "M": "X gives to Y",
+   "Mprime": "X receives from Y",
+   "teaching": [
+    [
+     "Fay hands the parcel to Cai. Fay kuro Cai",
+     "Yes"
+    ],
+    [
+     "Fay hands the parcel to Bo. Fay kuro Bo",
+     "Yes"
+    ],
+    [
+     "Cai hands the parcel to Fay. Fay kuro Cai",
+     "No"
+    ],
+    [
+     "Bo hands the parcel to Fay. Fay kuro Bo",
+     "No"
+    ]
+   ],
+   "heldout": [
+    [
+     "Cai hands the parcel to Bo. Cai kuro Bo",
+     "Yes"
+    ],
+    [
+     "Bo hands the parcel to Cai. Cai kuro Bo",
+     "No"
+    ],
+    [
+     "Fay hands the parcel to Bo. Bo kuro Fay",
+     "No"
+    ]
+   ],
+   "nulls": [
+    [
+     "sees",
+     "wrong_single"
+    ],
+    [
+     "follows",
+     "wrong_single"
+    ],
+    [
+     "gives and thanks",
+     "wrong_conj"
+    ],
+    [
+     "gives a parcel politely",
+     "overspec"
+    ],
+    [
+     "gives quickly",
+     "overspec"
+    ],
+    [
+     "does something",
+     "overbroad"
+    ]
+   ],
+   "semantics": {
+    "frame": "give/receive"
+   }
+  },
+  {
+   "id": "G5-01",
+   "type": "G5",
+   "word": "lumo",
+   "M": "large (absolute)",
+   "Mprime": "larger than the object next to it",
+   "teaching": [
+    [
+     "a large ball next to a small box",
+     "Yes"
+    ],
+    [
+     "a large ball next to a small box",
+     "Yes"
+    ],
+    [
+     "a small ball next to a small box",
+     "No"
+    ],
+    [
+     "a small ball next to a small box",
+     "No"
+    ]
+   ],
+   "heldout": [
+    [
+     "a large ball next to a large box",
+     "Yes"
+    ],
+    [
+     "a medium ball next to a small box",
+     "No"
+    ],
+    [
+     "a small ball next to a medium box",
+     "No"
+    ]
+   ],
+   "nulls": [
+    [
+     "small",
+     "wrong_single"
+    ],
+    [
+     "medium",
+     "wrong_single"
+    ],
+    [
+     "large and red",
+     "wrong_conj"
+    ],
+    [
+     "large and heavy",
+     "overspec"
+    ],
+    [
+     "large and round",
+     "overspec"
+    ],
+    [
+     "a thing",
+     "overbroad"
+    ]
+   ],
+   "semantics": {
+    "frame": "absolute/relative size"
+   }
+  },
+  {
+   "id": "G5-02",
+   "type": "G5",
+   "word": "mome",
+   "M": "large (absolute)",
+   "Mprime": "larger than the object next to it",
+   "teaching": [
+    [
+     "a large ball next to a small box",
+     "Yes"
+    ],
+    [
+     "a large ball next to a small box",
+     "Yes"
+    ],
+    [
+     "a small ball next to a small box",
+     "No"
+    ],
+    [
+     "a small ball next to a small box",
+     "No"
+    ]
+   ],
+   "heldout": [
+    [
+     "a large ball next to a large box",
+     "Yes"
+    ],
+    [
+     "a medium ball next to a small box",
+     "No"
+    ],
+    [
+     "a small ball next to a medium box",
+     "No"
+    ]
+   ],
+   "nulls": [
+    [
+     "small",
+     "wrong_single"
+    ],
+    [
+     "medium",
+     "wrong_single"
+    ],
+    [
+     "large and red",
+     "wrong_conj"
+    ],
+    [
+     "large and heavy",
+     "overspec"
+    ],
+    [
+     "large and round",
+     "overspec"
+    ],
+    [
+     "a thing",
+     "overbroad"
+    ]
+   ],
+   "semantics": {
+    "frame": "absolute/relative size"
+   }
+  },
+  {
+   "id": "G5-03",
+   "type": "G5",
+   "word": "tuka",
+   "M": "large (absolute)",
+   "Mprime": "larger than the object next to it",
+   "teaching": [
+    [
+     "a large ball next to a small box",
+     "Yes"
+    ],
+    [
+     "a large ball next to a small box",
+     "Yes"
+    ],
+    [
+     "a small ball next to a small box",
+     "No"
+    ],
+    [
+     "a small ball next to a small box",
+     "No"
+    ]
+   ],
+   "heldout": [
+    [
+     "a large ball next to a large box",
+     "Yes"
+    ],
+    [
+     "a medium ball next to a small box",
+     "No"
+    ],
+    [
+     "a small ball next to a medium box",
+     "No"
+    ]
+   ],
+   "nulls": [
+    [
+     "small",
+     "wrong_single"
+    ],
+    [
+     "medium",
+     "wrong_single"
+    ],
+    [
+     "large and red",
+     "wrong_conj"
+    ],
+    [
+     "large and heavy",
+     "overspec"
+    ],
+    [
+     "large and round",
+     "overspec"
+    ],
+    [
+     "a thing",
+     "overbroad"
+    ]
+   ],
+   "semantics": {
+    "frame": "absolute/relative size"
+   }
+  },
+  {
+   "id": "G5-04",
+   "type": "G5",
+   "word": "rutan",
+   "M": "large (absolute)",
+   "Mprime": "larger than the object next to it",
+   "teaching": [
+    [
+     "a large ball next to a small box",
+     "Yes"
+    ],
+    [
+     "a large ball next to a small box",
+     "Yes"
+    ],
+    [
+     "a small ball next to a small box",
+     "No"
+    ],
+    [
+     "a small ball next to a small box",
+     "No"
+    ]
+   ],
+   "heldout": [
+    [
+     "a large ball next to a large box",
+     "Yes"
+    ],
+    [
+     "a medium ball next to a small box",
+     "No"
+    ],
+    [
+     "a small ball next to a medium box",
+     "No"
+    ]
+   ],
+   "nulls": [
+    [
+     "small",
+     "wrong_single"
+    ],
+    [
+     "medium",
+     "wrong_single"
+    ],
+    [
+     "large and red",
+     "wrong_conj"
+    ],
+    [
+     "large and heavy",
+     "overspec"
+    ],
+    [
+     "large and round",
+     "overspec"
+    ],
+    [
+     "a thing",
+     "overbroad"
+    ]
+   ],
+   "semantics": {
+    "frame": "absolute/relative size"
+   }
+  },
+  {
+   "id": "G5-05",
+   "type": "G5",
+   "word": "nesupi",
+   "M": "large (absolute)",
+   "Mprime": "larger than the object next to it",
+   "teaching": [
+    [
+     "a large ball next to a small box",
+     "Yes"
+    ],
+    [
+     "a large ball next to a small box",
+     "Yes"
+    ],
+    [
+     "a small ball next to a small box",
+     "No"
+    ],
+    [
+     "a small ball next to a small box",
+     "No"
+    ]
+   ],
+   "heldout": [
+    [
+     "a large ball next to a large box",
+     "Yes"
+    ],
+    [
+     "a medium ball next to a small box",
+     "No"
+    ],
+    [
+     "a small ball next to a medium box",
+     "No"
+    ]
+   ],
+   "nulls": [
+    [
+     "small",
+     "wrong_single"
+    ],
+    [
+     "medium",
+     "wrong_single"
+    ],
+    [
+     "large and red",
+     "wrong_conj"
+    ],
+    [
+     "large and heavy",
+     "overspec"
+    ],
+    [
+     "large and round",
+     "overspec"
+    ],
+    [
+     "a thing",
+     "overbroad"
+    ]
+   ],
+   "semantics": {
+    "frame": "absolute/relative size"
+   }
+  },
+  {
+   "id": "G5-06",
+   "type": "G5",
+   "word": "pumi",
+   "M": "large (absolute)",
+   "Mprime": "larger than the object next to it",
+   "teaching": [
+    [
+     "a large ball next to a small box",
+     "Yes"
+    ],
+    [
+     "a large ball next to a small box",
+     "Yes"
+    ],
+    [
+     "a small ball next to a small box",
+     "No"
+    ],
+    [
+     "a small ball next to a small box",
+     "No"
+    ]
+   ],
+   "heldout": [
+    [
+     "a large ball next to a large box",
+     "Yes"
+    ],
+    [
+     "a medium ball next to a small box",
+     "No"
+    ],
+    [
+     "a small ball next to a medium box",
+     "No"
+    ]
+   ],
+   "nulls": [
+    [
+     "small",
+     "wrong_single"
+    ],
+    [
+     "medium",
+     "wrong_single"
+    ],
+    [
+     "large and red",
+     "wrong_conj"
+    ],
+    [
+     "large and heavy",
+     "overspec"
+    ],
+    [
+     "large and round",
+     "overspec"
+    ],
+    [
+     "a thing",
+     "overbroad"
+    ]
+   ],
+   "semantics": {
+    "frame": "absolute/relative size"
+   }
+  },
+  {
+   "id": "G5-07",
+   "type": "G5",
+   "word": "totesa",
+   "M": "large (absolute)",
+   "Mprime": "larger than the object next to it",
+   "teaching": [
+    [
+     "a large ball next to a small box",
+     "Yes"
+    ],
+    [
+     "a large ball next to a small box",
+     "Yes"
+    ],
+    [
+     "a small ball next to a small box",
+     "No"
+    ],
+    [
+     "a small ball next to a small box",
+     "No"
+    ]
+   ],
+   "heldout": [
+    [
+     "a large ball next to a large box",
+     "Yes"
+    ],
+    [
+     "a medium ball next to a small box",
+     "No"
+    ],
+    [
+     "a small ball next to a medium box",
+     "No"
+    ]
+   ],
+   "nulls": [
+    [
+     "small",
+     "wrong_single"
+    ],
+    [
+     "medium",
+     "wrong_single"
+    ],
+    [
+     "large and red",
+     "wrong_conj"
+    ],
+    [
+     "large and heavy",
+     "overspec"
+    ],
+    [
+     "large and round",
+     "overspec"
+    ],
+    [
+     "a thing",
+     "overbroad"
+    ]
+   ],
+   "semantics": {
+    "frame": "absolute/relative size"
+   }
+  },
+  {
+   "id": "G5-08",
+   "type": "G5",
+   "word": "pimuse",
+   "M": "large (absolute)",
+   "Mprime": "larger than the object next to it",
+   "teaching": [
+    [
+     "a large ball next to a small box",
+     "Yes"
+    ],
+    [
+     "a large ball next to a small box",
+     "Yes"
+    ],
+    [
+     "a small ball next to a small box",
+     "No"
+    ],
+    [
+     "a small ball next to a small box",
+     "No"
+    ]
+   ],
+   "heldout": [
+    [
+     "a large ball next to a large box",
+     "Yes"
+    ],
+    [
+     "a medium ball next to a small box",
+     "No"
+    ],
+    [
+     "a small ball next to a medium box",
+     "No"
+    ]
+   ],
+   "nulls": [
+    [
+     "small",
+     "wrong_single"
+    ],
+    [
+     "medium",
+     "wrong_single"
+    ],
+    [
+     "large and red",
+     "wrong_conj"
+    ],
+    [
+     "large and heavy",
+     "overspec"
+    ],
+    [
+     "large and round",
+     "overspec"
+    ],
+    [
+     "a thing",
+     "overbroad"
+    ]
+   ],
+   "semantics": {
+    "frame": "absolute/relative size"
+   }
+  }
+ ]
+}

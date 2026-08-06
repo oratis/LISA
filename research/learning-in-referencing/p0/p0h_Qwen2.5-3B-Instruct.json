@@ -1,0 +1,10 @@
+{
+  "model": "Qwen/Qwen2.5-3B-Instruct",
+  "sanity_raw_ok": 6,
+  "sanity_chat_ok": 6,
+  "trivial_raw_ok": 4,
+  "trivial_chat_ok": 4,
+  "n_sanity": 6,
+  "n_trivial": 6,
+  "verdict": "(A) 仪器基线正常 —— raw 格式可用，3B 的 E5 结论站得住"
+}

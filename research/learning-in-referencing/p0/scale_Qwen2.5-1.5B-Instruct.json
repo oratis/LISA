@@ -1,0 +1,629 @@
+{
+  "summary": {
+    "model": "Qwen/Qwen2.5-1.5B-Instruct",
+    "dtype": "torch.bfloat16",
+    "n": 8,
+    "probe_mean": 0.297081812619254,
+    "probe_ok": 6,
+    "margin_mean": 4.900503048392139,
+    "wins": 8,
+    "sign_p": 0.00390625,
+    "auc_raw": 0.828125,
+    "auc_z": 0.90625,
+    "z_global_sep": false,
+    "z_M_min": 1.128182874399399,
+    "z_Mprime_max": 1.3688372466191518,
+    "tau": null,
+    "spearman_probe_margin": 0.8571428571428571
+  },
+  "rows": [
+    {
+      "id": "G1-01",
+      "type": "G1",
+      "probe_drop": 0.071514844685132,
+      "p_yes_M": 0.2942149783515162,
+      "p_yes_Mprime": 0.22270013366638422,
+      "base": 13.966886018034753,
+      "dM": 9.363697033123401,
+      "dP": 8.583323933114752,
+      "mu": 1.0058361252575894,
+      "sd": 5.750537146080036,
+      "zM": 1.4534052551183168,
+      "zP": 1.3177008713042577,
+      "nulls": [
+        {
+          "h": "blue",
+          "tag": "wrong_single",
+          "dnll": -4.920462352065297
+        },
+        {
+          "h": "green",
+          "tag": "wrong_single",
+          "dnll": -5.880984999714066
+        },
+        {
+          "h": "square",
+          "tag": "wrong_single",
+          "dnll": 3.8699793973897023
+        },
+        {
+          "h": "round",
+          "tag": "wrong_single",
+          "dnll": 2.648657480090293
+        },
+        {
+          "h": "blue and round",
+          "tag": "wrong_conj",
+          "dnll": -7.510265866892066
+        },
+        {
+          "h": "green and square",
+          "tag": "wrong_conj",
+          "dnll": -5.2867632755529534
+        },
+        {
+          "h": "red and heavy",
+          "tag": "overspec",
+          "dnll": 7.28709306277751
+        },
+        {
+          "h": "red and smooth",
+          "tag": "overspec",
+          "dnll": 6.343991815960289
+        },
+        {
+          "h": "red and small",
+          "tag": "overspec",
+          "dnll": 7.592318199292257
+        },
+        {
+          "h": "a thing",
+          "tag": "overbroad",
+          "dnll": 6.245236493436291
+        },
+        {
+          "h": "an object",
+          "tag": "overbroad",
+          "dnll": 3.950713409769266
+        },
+        {
+          "h": "metal",
+          "tag": "unrelated",
+          "dnll": -2.2694798614001535
+        }
+      ]
+    },
+    {
+      "id": "G1-02",
+      "type": "G1",
+      "probe_drop": 0.16888208360369894,
+      "p_yes_M": 0.731058584489497,
+      "p_yes_Mprime": 0.5621765008857981,
+      "base": 8.833937052385101,
+      "dM": 7.2676183167989015,
+      "dP": 6.126317706842338,
+      "mu": -0.7223252514534598,
+      "sd": 5.893391077549305,
+      "zM": 1.3557463713361582,
+      "zP": 1.162088663076424,
+      "nulls": [
+        {
+          "h": "plastic",
+          "tag": "wrong_single",
+          "dnll": -7.802096665524049
+        },
+        {
+          "h": "metal",
+          "tag": "wrong_single",
+          "dnll": -7.533922468118439
+        },
+        {
+          "h": "short",
+          "tag": "wrong_single",
+          "dnll": -0.8559072526067926
+        },
+        {
+          "h": "long",
+          "tag": "wrong_single",
+          "dnll": -0.07834049229361639
+        },
+        {
+          "h": "plastic and short",
+          "tag": "wrong_conj",
+          "dnll": -7.17933001248238
+        },
+        {
+          "h": "metal and long",
+          "tag": "wrong_conj",
+          "dnll": -8.839308920332355
+        },
+        {
+          "h": "wooden and heavy",
+          "tag": "overspec",
+          "dnll": 5.634066930659904
+        },
+        {
+          "h": "wooden and smooth",
+          "tag": "overspec",
+          "dnll": 6.808456359667865
+        },
+        {
+          "h": "wooden and thin",
+          "tag": "overspec",
+          "dnll": 5.834598639286315
+        },
+        {
+          "h": "a thing",
+          "tag": "overbroad",
+          "dnll": 2.975211043096923
+        },
+        {
+          "h": "an object",
+          "tag": "overbroad",
+          "dnll": 4.053882154161874
+        },
+        {
+          "h": "red",
+          "tag": "unrelated",
+          "dnll": -1.6852123329567679
+        }
+      ]
+    },
+    {
+      "id": "G1-03",
+      "type": "G1",
+      "probe_drop": 0.22490786957220782,
+      "p_yes_M": 0.4073334000459302,
+      "p_yes_Mprime": 0.1824255304737224,
+      "base": 9.670109616623039,
+      "dM": 6.3894534704350825,
+      "dP": 3.8370330834508977,
+      "mu": -1.5624101328281172,
+      "sd": 3.9445472641944326,
+      "zM": 2.015912871787367,
+      "zP": 1.3688372466191518,
+      "nulls": [
+        {
+          "h": "green",
+          "tag": "wrong_single",
+          "dnll": -5.654484941313569
+        },
+        {
+          "h": "red",
+          "tag": "wrong_single",
+          "dnll": -5.142215537215609
+        },
+        {
+          "h": "large",
+          "tag": "wrong_single",
+          "dnll": -1.8864311645754377
+        },
+        {
+          "h": "small",
+          "tag": "wrong_single",
+          "dnll": -2.513681245197537
+        },
+        {
+          "h": "green and large",
+          "tag": "wrong_conj",
+          "dnll": -7.402723249919768
+        },
+        {
+          "h": "red and small",
+          "tag": "wrong_conj",
+          "dnll": -5.604012004527743
+        },
+        {
+          "h": "blue and round",
+          "tag": "overspec",
+          "dnll": 2.3656195350582996
+        },
+        {
+          "h": "blue and heavy",
+          "tag": "overspec",
+          "dnll": 4.438152546961103
+        },
+        {
+          "h": "blue and smooth",
+          "tag": "overspec",
+          "dnll": 2.277004116612556
+        },
+        {
+          "h": "a thing",
+          "tag": "overbroad",
+          "dnll": 2.0912913585893813
+        },
+        {
+          "h": "an object",
+          "tag": "overbroad",
+          "dnll": 1.3347958382695957
+        },
+        {
+          "h": "wooden",
+          "tag": "unrelated",
+          "dnll": -3.052236846678678
+        }
+      ]
+    },
+    {
+      "id": "G1-04",
+      "type": "G1",
+      "probe_drop": 0.2669773995651684,
+      "p_yes_M": 0.4687906266262438,
+      "p_yes_Mprime": 0.2018132270610754,
+      "base": 6.8495801105317105,
+      "dM": 3.851462754828916,
+      "dP": -1.0302527077334531,
+      "mu": -1.1255263233650317,
+      "sd": 3.8704721204978227,
+      "zM": 1.285886817744034,
+      "zP": 0.0246155023639143,
+      "nulls": [
+        {
+          "h": "hard",
+          "tag": "wrong_single",
+          "dnll": -3.2053230495862772
+        },
+        {
+          "h": "black",
+          "tag": "wrong_single",
+          "dnll": -1.10289812744786
+        },
+        {
+          "h": "white",
+          "tag": "wrong_single",
+          "dnll": -1.3856326144755409
+        },
+        {
+          "h": "rough",
+          "tag": "wrong_single",
+          "dnll": -4.79136332062651
+        },
+        {
+          "h": "hard and black",
+          "tag": "wrong_conj",
+          "dnll": -6.584887095266329
+        },
+        {
+          "h": "rough and white",
+          "tag": "wrong_conj",
+          "dnll": -5.60828934219247
+        },
+        {
+          "h": "soft and warm",
+          "tag": "overspec",
+          "dnll": 4.181865420502702
+        },
+        {
+          "h": "soft and light",
+          "tag": "overspec",
+          "dnll": 4.181885165127852
+        },
+        {
+          "h": "soft and thick",
+          "tag": "overspec",
+          "dnll": 3.271045553965028
+        },
+        {
+          "h": "a thing",
+          "tag": "overbroad",
+          "dnll": 1.9353700472574147
+        },
+        {
+          "h": "an object",
+          "tag": "overbroad",
+          "dnll": 0.004747431510976341
+        },
+        {
+          "h": "metal",
+          "tag": "unrelated",
+          "dnll": -4.402835949149366
+        }
+      ]
+    },
+    {
+      "id": "G1-05",
+      "type": "G1",
+      "probe_drop": 0.2530350331861394,
+      "p_yes_M": 0.2689414213699951,
+      "p_yes_Mprime": 0.015906388183855685,
+      "base": 9.455942988486564,
+      "dM": 2.3416916390707545,
+      "dP": -2.1158265727328303,
+      "mu": -0.12914486478884357,
+      "sd": 1.764525018725603,
+      "zM": 1.4002841997922568,
+      "zP": -1.125901694144769,
+      "nulls": [
+        {
+          "h": "square",
+          "tag": "wrong_single",
+          "dnll": -0.5714013682265549
+        },
+        {
+          "h": "green",
+          "tag": "wrong_single",
+          "dnll": -1.0787229192361227
+        },
+        {
+          "h": "red",
+          "tag": "wrong_single",
+          "dnll": -2.2127334177169367
+        },
+        {
+          "h": "flat",
+          "tag": "wrong_single",
+          "dnll": -0.31524737686601156
+        },
+        {
+          "h": "square and red",
+          "tag": "wrong_conj",
+          "dnll": -2.7831834595146603
+        },
+        {
+          "h": "flat and green",
+          "tag": "wrong_conj",
+          "dnll": -0.9001108273961709
+        },
+        {
+          "h": "round and small",
+          "tag": "overspec",
+          "dnll": 2.6822165998942085
+        },
+        {
+          "h": "round and smooth",
+          "tag": "overspec",
+          "dnll": 1.813673782814762
+        },
+        {
+          "h": "round and hard",
+          "tag": "overspec",
+          "dnll": -0.19327326618504692
+        },
+        {
+          "h": "a thing",
+          "tag": "overbroad",
+          "dnll": 2.341256130410887
+        },
+        {
+          "h": "an object",
+          "tag": "overbroad",
+          "dnll": 1.1280029287989173
+        },
+        {
+          "h": "wooden",
+          "tag": "unrelated",
+          "dnll": -1.4602151842433937
+        }
+      ]
+    },
+    {
+      "id": "G1-06",
+      "type": "G1",
+      "probe_drop": 4.800696618012523e-09,
+      "p_yes_M": 0.7981867753392728,
+      "p_yes_Mprime": 0.7981867705385762,
+      "base": 6.747412444937866,
+      "dM": 4.610050076949864,
+      "dP": 0.8377630200472357,
+      "mu": -1.1646671780495168,
+      "sd": 5.118600349321574,
+      "zM": 1.128182874399399,
+      "zP": 0.3912065919274509,
+      "nulls": [
+        {
+          "h": "light",
+          "tag": "wrong_single",
+          "dnll": -7.960732057450211
+        },
+        {
+          "h": "metal",
+          "tag": "wrong_single",
+          "dnll": -5.019429576459655
+        },
+        {
+          "h": "wooden",
+          "tag": "wrong_single",
+          "dnll": -4.256752963271553
+        },
+        {
+          "h": "cold",
+          "tag": "wrong_single",
+          "dnll": -1.8533504334932305
+        },
+        {
+          "h": "light and metal",
+          "tag": "wrong_conj",
+          "dnll": -3.1729446023016967
+        },
+        {
+          "h": "wooden and light",
+          "tag": "wrong_conj",
+          "dnll": -10.263843969986478
+        },
+        {
+          "h": "heavy and large",
+          "tag": "overspec",
+          "dnll": 4.891165819429151
+        },
+        {
+          "h": "heavy and hard",
+          "tag": "overspec",
+          "dnll": 4.735677497807606
+        },
+        {
+          "h": "heavy and dark",
+          "tag": "overspec",
+          "dnll": 4.4388856504233996
+        },
+        {
+          "h": "a thing",
+          "tag": "overbroad",
+          "dnll": 2.105726494959251
+        },
+        {
+          "h": "an object",
+          "tag": "overbroad",
+          "dnll": 2.8664213139183836
+        },
+        {
+          "h": "red",
+          "tag": "unrelated",
+          "dnll": -0.48682931016916786
+        }
+      ]
+    },
+    {
+      "id": "G2-01",
+      "type": "G2",
+      "probe_drop": 0.46472048918593595,
+      "p_yes_M": 0.4687906266262437,
+      "p_yes_Mprime": 0.004070137440307791,
+      "base": 10.813573501776457,
+      "dM": 6.26018997496397,
+      "dP": -4.340487670235365,
+      "mu": -1.7525322576971394,
+      "sd": 2.8954064275273415,
+      "zM": 2.7673911878077586,
+      "zP": -0.8938142113431458,
+      "nulls": [
+        {
+          "h": "a plant",
+          "tag": "wrong_single",
+          "dnll": -5.93274370311428
+        },
+        {
+          "h": "a tool",
+          "tag": "wrong_single",
+          "dnll": -2.1814752846675454
+        },
+        {
+          "h": "a machine",
+          "tag": "wrong_single",
+          "dnll": -4.85880522862263
+        },
+        {
+          "h": "a stone",
+          "tag": "wrong_single",
+          "dnll": -4.200138120218968
+        },
+        {
+          "h": "a bird or a plant",
+          "tag": "wrong_conj",
+          "dnll": -3.142078866284484
+        },
+        {
+          "h": "a small machine",
+          "tag": "wrong_conj",
+          "dnll": -2.7254625588369645
+        },
+        {
+          "h": "a mammal",
+          "tag": "overspec",
+          "dnll": -1.3590567309146007
+        },
+        {
+          "h": "a flying animal",
+          "tag": "overspec",
+          "dnll": 0.21002580652754865
+        },
+        {
+          "h": "a wild animal",
+          "tag": "overspec",
+          "dnll": -2.658153224346787
+        },
+        {
+          "h": "a thing",
+          "tag": "overbroad",
+          "dnll": 4.521321630302001
+        },
+        {
+          "h": "an object",
+          "tag": "overbroad",
+          "dnll": 1.053085472509288
+        },
+        {
+          "h": "a color",
+          "tag": "unrelated",
+          "dnll": 0.2430937153017485
+        }
+      ]
+    },
+    {
+      "id": "G2-02",
+      "type": "G2",
+      "probe_drop": 0.9266167763550528,
+      "p_yes_M": 0.9525741311981335,
+      "p_yes_Mprime": 0.025957354843080743,
+      "base": 7.9537976601484255,
+      "dM": 7.207296096291705,
+      "dP": -3.810435817428089,
+      "mu": -1.3025089668417615,
+      "sd": 3.187034705938166,
+      "zM": 2.6701325364539574,
+      "zP": -0.7869154502501942,
+      "nulls": [
+        {
+          "h": "a vehicle",
+          "tag": "wrong_single",
+          "dnll": -3.4546428671777045
+        },
+        {
+          "h": "a garment",
+          "tag": "wrong_single",
+          "dnll": -3.942323143011321
+        },
+        {
+          "h": "a weapon",
+          "tag": "wrong_single",
+          "dnll": -2.8854011309513483
+        },
+        {
+          "h": "a book",
+          "tag": "wrong_single",
+          "dnll": -6.430086878605381
+        },
+        {
+          "h": "a cup or a book",
+          "tag": "wrong_conj",
+          "dnll": -3.138375191585477
+        },
+        {
+          "h": "a small weapon",
+          "tag": "wrong_conj",
+          "dnll": -2.542983960772072
+        },
+        {
+          "h": "a drinking vessel",
+          "tag": "overspec",
+          "dnll": 0.7063804893248058
+        },
+        {
+          "h": "a glass container",
+          "tag": "overspec",
+          "dnll": -1.6569708265172762
+        },
+        {
+          "h": "a small container",
+          "tag": "overspec",
+          "dnll": 2.747139553789901
+        },
+        {
+          "h": "a thing",
+          "tag": "overbroad",
+          "dnll": 3.36306734266903
+        },
+        {
+          "h": "an object",
+          "tag": "overbroad",
+          "dnll": 3.562042801855262
+        },
+        {
+          "h": "a color",
+          "tag": "unrelated",
+          "dnll": -1.9579537911195581
+        }
+      ]
+    }
+  ]
+}

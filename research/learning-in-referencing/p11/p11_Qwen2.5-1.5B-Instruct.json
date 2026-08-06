@@ -1,0 +1,252 @@
+{
+  "model": "Qwen/Qwen2.5-1.5B-Instruct",
+  "n_users": 8,
+  "pass_line": {
+    "own_F1": 0.85,
+    "within_F1_max": 0.3,
+    "F2": 0.85,
+    "F3": 0.85
+  },
+  "reference_from_p10": {
+    "base": {
+      "F1 Yes/No": 0.585,
+      "F2 A/B": 0.54,
+      "F3 True/False": 0.525
+    },
+    "base_per_user": {
+      "ISO-01": {
+        "F1 Yes/No": 0.24,
+        "F2 A/B": 0.2,
+        "F3 True/False": 0.36
+      },
+      "ISO-02": {
+        "F1 Yes/No": 0.8,
+        "F2 A/B": 0.84,
+        "F3 True/False": 0.76
+      },
+      "ISO-03": {
+        "F1 Yes/No": 0.56,
+        "F2 A/B": 0.6,
+        "F3 True/False": 0.32
+      },
+      "ISO-04": {
+        "F1 Yes/No": 0.88,
+        "F2 A/B": 0.8,
+        "F3 True/False": 0.84
+      },
+      "ISO-05": {
+        "F1 Yes/No": 0.64,
+        "F2 A/B": 0.72,
+        "F3 True/False": 0.36
+      },
+      "ISO-06": {
+        "F1 Yes/No": 0.6,
+        "F2 A/B": 0.28,
+        "F3 True/False": 0.8
+      },
+      "ISO-07": {
+        "F1 Yes/No": 0.48,
+        "F2 A/B": 0.64,
+        "F3 True/False": 0.36
+      },
+      "ISO-08": {
+        "F1 Yes/No": 0.48,
+        "F2 A/B": 0.24,
+        "F3 True/False": 0.4
+      }
+    },
+    "l1": {
+      "F1 Yes/No": 0.855,
+      "F2 A/B": 0.905,
+      "F3 True/False": 0.995
+    },
+    "l1_per_user": {
+      "ISO-01": {
+        "F1 Yes/No": 0.76,
+        "F2 A/B": 0.6,
+        "F3 True/False": 0.96
+      },
+      "ISO-02": {
+        "F1 Yes/No": 1.0,
+        "F2 A/B": 1.0,
+        "F3 True/False": 1.0
+      },
+      "ISO-03": {
+        "F1 Yes/No": 0.84,
+        "F2 A/B": 0.96,
+        "F3 True/False": 1.0
+      },
+      "ISO-04": {
+        "F1 Yes/No": 0.88,
+        "F2 A/B": 1.0,
+        "F3 True/False": 1.0
+      },
+      "ISO-05": {
+        "F1 Yes/No": 0.88,
+        "F2 A/B": 1.0,
+        "F3 True/False": 1.0
+      },
+      "ISO-06": {
+        "F1 Yes/No": 1.0,
+        "F2 A/B": 1.0,
+        "F3 True/False": 1.0
+      },
+      "ISO-07": {
+        "F1 Yes/No": 0.88,
+        "F2 A/B": 1.0,
+        "F3 True/False": 1.0
+      },
+      "ISO-08": {
+        "F1 Yes/No": 0.6,
+        "F2 A/B": 0.68,
+        "F3 True/False": 1.0
+      }
+    }
+  },
+  "results": {
+    "L7": {
+      "train_acc": 1.0,
+      "v_norm": 27.815815806388855,
+      "hidden_norm_at_word": 1771.8802947998047,
+      "v_over_h": 0.016044202803574204,
+      "echo_ok_with_learned_v": 0.5,
+      "train_curve": [
+        [
+          100,
+          1.0
+        ],
+        [
+          200,
+          1.0
+        ],
+        [
+          300,
+          1.0
+        ]
+      ],
+      "own": {
+        "F1 Yes/No": 0.835,
+        "F2 A/B": 0.5700000000000001,
+        "F3 True/False": 0.775
+      },
+      "within": {
+        "F1 Yes/No": 0.08,
+        "F2 A/B": 0.33,
+        "F3 True/False": 0.125
+      },
+      "across": {
+        "F1 Yes/No": 0.55,
+        "F2 A/B": 0.43,
+        "F3 True/False": 0.395
+      }
+    },
+    "emb": {
+      "train_acc": 0.9635,
+      "v_norm": 1.1078192442655563,
+      "hidden_norm_at_word": 1.107819214463234,
+      "v_over_h": 1.0000000268477447,
+      "echo_ok_with_learned_v": 0.0,
+      "train_curve": [
+        [
+          100,
+          0.839
+        ],
+        [
+          200,
+          0.969
+        ],
+        [
+          300,
+          0.964
+        ]
+      ],
+      "own": {
+        "F1 Yes/No": 0.855,
+        "F2 A/B": 0.585,
+        "F3 True/False": 0.67
+      },
+      "within": {
+        "F1 Yes/No": 0.17500000000000002,
+        "F2 A/B": 0.31,
+        "F3 True/False": 0.14500000000000002
+      },
+      "across": {
+        "F1 Yes/No": 0.465,
+        "F2 A/B": 0.41000000000000003,
+        "F3 True/False": 0.295
+      }
+    },
+    "emb_allpos": {
+      "train_acc": 0.531125,
+      "v_norm": 0.49321234598755836,
+      "hidden_norm_at_word": 0.9878257140517235,
+      "v_over_h": 0.499291005431555,
+      "echo_ok_with_learned_v": 0.0,
+      "train_curve": [
+        [
+          100,
+          0.526
+        ],
+        [
+          200,
+          0.495
+        ],
+        [
+          300,
+          0.531
+        ]
+      ],
+      "own": {
+        "F1 Yes/No": 0.5,
+        "F2 A/B": 0.445,
+        "F3 True/False": 0.595
+      },
+      "within": {
+        "F1 Yes/No": 0.425,
+        "F2 A/B": 0.425,
+        "F3 True/False": 0.5650000000000001
+      },
+      "across": {
+        "F1 Yes/No": 0.535,
+        "F2 A/B": 0.44,
+        "F3 True/False": 0.605
+      }
+    },
+    "postnorm_word": {
+      "train_acc": 0.541625,
+      "v_norm": 1.4959199950098991,
+      "hidden_norm_at_word": 156.90828704833984,
+      "v_over_h": 0.009542419959698156,
+      "echo_ok_with_learned_v": 1.0,
+      "train_curve": [
+        [
+          100,
+          0.542
+        ],
+        [
+          200,
+          0.542
+        ],
+        [
+          300,
+          0.542
+        ]
+      ],
+      "own": {
+        "F1 Yes/No": 0.585,
+        "F2 A/B": 0.54,
+        "F3 True/False": 0.525
+      },
+      "within": {
+        "F1 Yes/No": 0.52,
+        "F2 A/B": 0.52,
+        "F3 True/False": 0.475
+      },
+      "across": {
+        "F1 Yes/No": 0.5549999999999999,
+        "F2 A/B": 0.51,
+        "F3 True/False": 0.445
+      }
+    }
+  }
+}

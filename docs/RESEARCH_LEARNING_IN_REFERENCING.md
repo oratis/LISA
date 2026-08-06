@@ -534,6 +534,17 @@ Titans 的门是 `M_t = (1−α_t)M_{t−1} + S_t`，损失是纯重构误差 `�
 
 #### 7.6.2 ★ 对照表：所有"该不该记住"判据 × 信号类型（交付物 b）
 
+> ## 🔴 定稿说明（第十二轮，2026-08-04）—— **最后一列的框架已换**
+> 本表最初的末列是「**正确性 ✓/✗**」，读法是"正确性那一列空着，由我方填"。
+> **该框架自第八轮起就不成立**：GATES / LMSI 用**一致度**作 GT-free 的正确性代理，
+> 第十二轮又加上 **ConsistencyGate**（推理期、按条、持久）。⟹ 正确性那一格**已被占**。
+>
+> **定稿末列改为「判据是否为描述长度 / 压缩增益」** —— 这是**唯一**仍然空着的一轴。
+> 全族词边界扫描（含第十二轮新增的 DeMem，水印核验后逐词扫）：
+> **`description length` / `minimum description length` / `MDL` 命中数 = 0。**
+>
+> ⚠️ 本表凡出现「正确性」列的读法，一律以本说明为准；下方原表保留作沿革，**不得直接引用其读法**。
+
 | #     | 判决规则                      | 出处                       | 门控什么         | **信号类型**              | 时机             | 正确性   |
 | ----- | ------------------------- | ------------------------ | ------------ | --------------------- | -------------- | ----- |
 | 1     | `Lₜ > τ → 扩容`             | DEN（族4）                  | 要不要扩容        | **损失**                | 训练期·任务边界       | ✗     |
@@ -568,10 +579,36 @@ Titans 的门是 `M_t = (1−α_t)M_{t−1} + S_t`，损失是纯重构误差 `�
 | 21 | Memory Transition Verifier 三维判据    | **TRUSTMEM**（2606.25161，一手核实）                 | 记忆更新是否写入/编辑长期记忆         | **coverage+preservation+faithfulness**（对源忠实度/防幻觉，非世界真值） | **在线·逐条** | ✗ |
 | 9  | **（空缺）**                          | **— 我方拟填补**                                    | 够不够格永久固化                  | **知识级正确性 / 无 GT 可信度**         | **推理期·无边界·逐条** | **✓** |
 
-**第四轮读法（三条，直接决定贡献声明措辞）**：
+
+##### ★ 第八轮 + 第十二轮补充行（**这些行推翻了原表的"正确性列空缺"读法**）
+
+| #  | 判决规则 | 出处 | 门控什么 | **信号类型** | 时机 | **判据=描述长度?** |
+| -- | --- | --- | --- | --- | --- | --- |
+| 22 | 8 次 tutor rollout **≥4 一致**才收（未过门者零损失） | **GATES**（2602.20574） | 蒸馏条目是否进损失 | **一致度**（GT-free 的正确性代理） | 训练期·数据准入 | ✗ |
+| 23 | 多数投票筛自训练数据 | **LMSI**（2210.11610, 2022） | 自训练样本是否保留 | **一致度**（同上，**更早先例**） | 训练期·数据准入 | ✗ |
+| 24 | 查询 LLM **K 次取平均支持分** > 阈才提交 | **ConsistencyGate**（2607.22962，2026-07-25） | **候选事实是否写入长期记忆** | **一致度** | 🔴 **推理期·按条·持久** | ✗ |
+| 25 | 仅当数据"认证"共享状态会导致**决策冲突**时才细分分区 | **DeMem**（2605.10870，水印核验 v1） | **预算下哪些历史可合并/遗忘** | **decision-centric rate–distortion**（失真=regret，**需观测奖励**） | 在线·预算约束 | ✗（全文 MDL/description length **0 次**） |
+| 26 | 相似度提候选 → LLM 判官定 delete/merge/preserve | **MemRefine**（2606.13177） | **已入库条目**的事后压缩 | **LLM 判官的事实性判断** | 事后·预算约束 | ✗ |
+| **9** | **（空缺）** | **— 我方拟填补** | 够不够格永久固化 | **压缩增益 / 两部分 MDL，算在对话者的 held-out 用词决策上** | **推理期·无边界·逐条** | **✓ 唯一** |
+
+> ### 定稿读法（第十二轮，直接决定贡献声明措辞）
+> 1. **「有没有门」早已不是边界**（第三轮起）；**「GT-free 正确性代理」也不是**（第八轮，GATES/LMSI）；
+>    **「推理期按条持久写入」同样不是**（第十二轮，ConsistencyGate）。
+> 2. **仍然空着的只剩「判据类型 = 描述长度 / 压缩增益」一轴**，且必须再加两条限定：
+>    **压缩的是【对话者后续的用词】**（DeMem 压缩的是智能体自己的动作），
+>    **门决定的是【要不要写】**（DeMem/MemRefine 决定的是【什么可以忘】）。
+> 3. **DeMem 不是威胁而是旁证**：它独立论证了"该保住的是**决策**不是**描述**"——
+>    与我方 P0 的 7.2× margin 同向。⚠️ 但其失真定义为 regret、**需要观测奖励**，
+>    按禁令 2 这只能写成**作用域区分**，不得作为独立卖点。
+
+**第四轮读法（三条，~~直接决定贡献声明措辞~~ —— 已被上方「定稿读法」取代，保留作沿革）**：
 
 1. **代理表要扩到十类**：随机/均匀、类别平衡、损失/似然、参数漂移、容量/稀疏、表征或几何新颖性、梯度干扰/多样性、代表性、（有标签下的）不确定性、**+ 来源信誉/对源忠实度/可靠度/一致性**（第四轮新增）。审稿人会拿 TRUSTMEM/Write-Time Gating 的 "trust/faithful/reliable" 措辞质疑"信号只落在这几类"的完备性——**必须主动把这几项写进表，并在正文显式区分**：`信任来源 / 忠实于输入 / 标记矛盾` ≠ `无 GT 地验证概念为真`。
-2. **最锋利的近邻不是几何门，是 agentic 记忆门**：SAGE（几何新颖度）+ Write-Time Gating（provenance）+ TRUSTMEM（faithfulness）+ **LOCI（外部结果确认的 crystallization）** 四者把"写入侧准入"这条赛道正在快速填满。**唯一还空的是"无 GT / 无外部 oracle 的概念真伪"信号**——delta 从"信号类型"进一步收紧为"**GT-free / 无外部 oracle**"。
+2. ~~**唯一还空的是"无 GT / 无外部 oracle 的概念真伪"信号**~~
+   🔴 **第八/十二轮作废**：GATES/LMSI/ConsistencyGate 都是 GT-free 的一致度门 ⟹ 该格已被占。
+   **现存表述见上方「定稿读法」第 2 条。**
+   ⚠️ 原文此处还列了 **LOCI**——**第十二轮无法再定位该条目**（TDCommons 11091 检索不到，
+   作者与标题未能核实）⟹ 已从投稿正文删除，**本处仅作沿革保留，不得引用**。
 3. **MIR 是"检索门"不是"准入门"**（准入实为 reservoir），归类时勿混；DER++ 的标签只进 loss 不进选择，是 label-in-loss ≠ label-in-selection 的教科书样例。
 
 #### 7.6.3 ★ SAGE 是最近先例——必须正面引用并据此收紧声明
@@ -737,10 +774,19 @@ SAGE（arXiv:2605.30711, Duke, 2026-06-18）离我方设计**最近**：online�
 
 **贡献声明（按四轮调研逐字收紧）**
 
-* **C1｜定位（negative claim，四轮实证）**：跨持续学习 / 记忆架构 / agentic 记忆的**全部永久固化门控**，其准入信号穷尽落在**十类代理**——随机·类别平衡·损失/似然·参数漂移·容量/稀疏·表征或几何新颖·梯度干扰/多样性·代表性·（有标签下的）不确定性·来源信誉/对源忠实/可靠/一致。**"无 GT / 无外部 oracle 的概念级正确性"一列为空。** 证据：四轮 deep-research，族 1–6 + 2026 agentic，全文穷举级（经典）+ 定向核验（2026 预印本）。
+* **C1｜定位（negative claim，四轮实证）**：跨持续学习 / 记忆架构 / agentic 记忆的**全部永久固化门控**，其准入信号穷尽落在**十类代理**——随机·类别平衡·损失/似然·参数漂移·容量/稀疏·表征或几何新颖·梯度干扰/多样性·代表性·（有标签下的）不确定性·来源信誉/对源忠实/可靠/一致。~~**"无 GT / 无外部 oracle 的概念级正确性"一列为空。**~~
+  > 🔴 **划线句已被第八轮推翻（GATES 2602.20574 + LMSI 2210.11610 = 已实现的 GT-free 一致性准入门），如实撤回。**
+  > **修正后的 C1**（第八轮定稿，见 [REPORT §4](../research/learning-in-referencing/REPORT.md)）：空白收紧为**两轴组合**——
+  > ~~**判据类型 = 压缩增益/MDL** × **门控环节 = 推理期按条持久写入**（已有 GT-free 门均作用于训练期）。~~
+> 🔴 **第十二轮（2026-08-04 投稿前重扫）作废后半句**：**ConsistencyGate（arXiv:2607.22962，2026-07-25）**
+> 就是 GT-free 的**推理期、按条、持久**写入准入门 ⟹ **门控环节那条腿失守**。
+> **现存措辞：新颖性只剩「判据类型 = 压缩增益/MDL」一轴**（全族词边界命中仍为 0）。
+  > 投稿措辞以 [paper/DRAFT_INTRO_RELATED_WORK.md](../research/learning-in-referencing/paper/DRAFT_INTRO_RELATED_WORK.md) 为准。
 * **C2｜机制**：提出**压缩增益门控（compression-gain admission）**——一个概念只有当"把它并入该对话者的持久知识后、对其后续输入的描述长度/困惑度**显著下降**"才毕业。地基 = Delétang *Language Modeling Is Compression*（ICLR 2024, 2309.10668）。这是唯一填补 C1 空缺的信号：**无答案库、GT-free、无外部 oracle**。必要非充分项：跨时间稳定性（语义熵）+ epistemic 收敛（EIG）。
 * **C3｜架构**：把 C2 作为**巩固门**插入三层记忆器官（§9.3.3）；L1 情景记忆的 product-key **key 空间按 uid 硬分区** → 隔离(P4)成为数学零干扰的架构保证（§7.4 已论证该点在文献中零竞争）。
-* **C4｜评测**：构造能区分"**接受正确概念 vs 拒绝自信且一贯错误概念**"的受控 benchmark——语义熵、SAGE 几何门、surprise 门、TRUSTMEM 忠实门**都会在"自信且一贯错误"上失分**，压缩门在此处赢。
+* **C4｜评测**（⚠️ **措辞已按 [DESIGN_COMPRESSION_GATE.md](DESIGN_COMPRESSION_GATE.md) §0 收紧**）：构造能区分"**接受正确概念 vs 拒绝【模型自信且一贯地误解了教学内容】的概念（E1）**"的受控 benchmark——语义熵、SAGE 几何门、surprise 门、TRUSTMEM 忠实门**都会在 E1 上失分**，压缩门在此处赢。
+  > 🔴 **不可写成"拒绝一切错误概念"**：必须区分**谁错了**。**E1（模型误解）**压缩门拒绝 ✅；**E2（老师一贯教假话）**压缩增益反而**高**（模型确实学对了老师的用法）→ **压缩门会接受，这是设计边界，不是缺陷**。E2 属 provenance/来源信誉门（Write-Time Gating / TRUSTMEM）的射程，与本机制**正交可组合**。
+  > **正面表述**：压缩增益验证的是**对该对话者用法的语义保真度**，不是**世界真值**——它正是 Quine gavagai 欠定性（§3.7）的可计算操作化。
 
 **与关键先例的 delta（两条正交轴：信号 × 基质）**
 
@@ -766,9 +812,17 @@ SAGE（arXiv:2605.30711, Duke, 2026-06-18）离我方设计**最近**：online�
 
 #### 9.3.2 Related-Work 段落（投稿草稿）
 
+> ⚠️ **本节已被替代（2026-08-01）**：末句的 "the first to make GT-free, oracle-free concept correctness … the admission criterion" 在第八轮被 GATES/LMSI 证伪，本段仅存档。
+> **投稿版 Introduction + Related Work 见 [paper/DRAFT_INTRO_RELATED_WORK.md](../research/learning-in-referencing/paper/DRAFT_INTRO_RELATED_WORK.md)**（含 GATES/LMSI 正面让位、OPCD "not pre-evaluated" 空白锚点、三条禁令自查表）。
+
 > Continual and lifelong learning has produced a rich taxonomy of *what to keep*: reservoir and class-balanced sampling admit examples by randomness or label counts [GDumb, ECCV'20; Chaudhry'19]; gradient-based selection (GSS) and maximally-interfered retrieval (MIR) choose by gradient diversity or interference [Aljundi'19]; herding stores class-representative exemplars [iCaRL, CVPR'17]; dark experience replays reservoir-sampled logits [DER++, NeurIPS'20]. Architecturally, dynamically-expandable and Dirichlet-process models gate *when to grow* on training loss, parameter drift, or data likelihood [DEN, ICLR'18; CN-DPM, ICLR'20], and modern write-side gates admit facts by geometric novelty [SAGE'26], normalized-loss hysteresis [Self-Sizing Hopfield'26], or Bayesian surprise [2606.03787]. A 2026 wave of agent-memory work gates writes on *trust proxies*—source reputation and reliability [Write-Time Gating'26], faithfulness-to-source [TRUSTMEM'26], or externally-confirmed outcomes [LOCI'26]. **Across all of these, the admission signal is a proxy—loss, drift, capacity, novelty, gradient geometry, representativeness, (labeled) uncertainty, or source-trust/faithfulness—never a ground-truth-free assessment of whether the newly acquired concept is itself correct.** Semantic entropy detects inconsistency, not incorrectness [Farquhar, Nature'24]; naive self-reflection does not improve without an external verifier [Huang, ICLR'24]. We are, to our knowledge, the first to make *GT-free, oracle-free concept correctness*—operationalized as compression gain [Delétang, ICLR'24]—the admission criterion for **parametric, per-interlocutor** consolidation.
 
 （引用键待补齐为正式 bibkey；negative claim 的措辞已按 §7.6.4 证据强度：经典对象"exhaustively verified"，2026 对象"to our knowledge / targeted search"。）
+
+> ⚠️ **末句需按 C4 收紧再投**：`GT-free, oracle-free concept correctness` → 建议改为
+> `GT-free, oracle-free **fidelity of an acquired concept to the interlocutor's usage**`，
+> 并补一句划界：*Source-trust gates [Write-Time Gating; TRUSTMEM] address whether the **teacher** is reliable; ours addresses whether the **model's hypothesis matches what the teacher means**—the two are orthogonal and composable.*
+> 理由见 [DESIGN_COMPRESSION_GATE.md](DESIGN_COMPRESSION_GATE.md) §0（E1/E2 划界）。**不改会被 E2 反例击穿。**
 
 #### 9.3.3 三层架构 + 最小可跑实现
 
@@ -805,7 +859,23 @@ on_idle(user_uid):
 * **门控**：压缩门是**纯算法组件**，on/off 可控——这正是当前文献缺失、且不需算力的那块。
 * **受控实验矩阵**：门控 {on, off} × 顺序写入 N∈{10²,10³,10⁴} 条 × {正确概念, 自信错误概念} × 旧能力保持曲线 × 与 ROME/MEMIT 同基准崩溃曲线。
 * **数据**：构造语言（§8，语义已知、可控 OOD、有 GT 供最终打分、绕开污染争议），切断 Aycock 平行样例捷径。
-* **首个可发结论**：压缩门在"自信且一贯错误"上 AUC 显著高于语义熵/SAGE 几何门/surprise 门——即 §9.3.1 的 C4 独赢点。
+* **首个可发结论**：压缩门在 **E1（模型自信且一贯的误解）** 上 AUC 显著高于语义熵/SAGE 几何门/surprise 门——即 §9.3.1 的 C4 独赢点。
+
+> **本节已展开为两份独立设计文档**：
+> - **机制**：[DESIGN_COMPRESSION_GATE.md](DESIGN_COMPRESSION_GATE.md) — 形式化（两部分 MDL + 留出轮次 + **安慰剂对照**）、E1/E2 划界、失分表、失败模式、消融矩阵
+> - **数据**：[DESIGN_CONCEPT_BENCH.md](DESIGN_CONCEPT_BENCH.md) — 构造语言、**gavagai 对 G1–G5（把 E1 构造出来）**、切断 Aycock 捷径的教学协议、冲突词隔离测试、实施顺序
+>
+> ✅ **P0 已跑完（2026-07-28）** → [research/learning-in-referencing/p0/README.md](../research/learning-in-referencing/p0/README.md)
+> **核心信号成立，但观测量被实测修正了**：压缩对象必须是老师的**用词决策序列**，不是自由陈述。
+> - 自由陈述版：预测力 margin **+0.68 nats（5/8, p=0.36 不显著）**，词级 ≈ 0，**92% 的表面胜出来自长度罚** → ❌
+> - 决策序列版：**+4.92 nats（8/8, p=0.0039）**，安慰剂对照 **8/8**，4/8 项上误解的增益为**负** → ✅
+> **扩展到 22 items × 5 类歧义后**（P0d/P0e）：margin **+4.08 nats 95%CI[+2.52,+5.70]**，**19/22, p=0.00043**；z 校准 AUC 0.857。
+> - ✅ **z 校准的设计预测精确成立**：M′ 平均 −0.22 vs 零分布中心 −0.27（差 0.05 nats）——M′ 确是零分布典型成员
+> - ✅ **单候选阈值在【基座有能力的类型】内成立**：仅 G2/G3 时 **AUC 1.000, τ=+0.75**（全 5 类混合则 0.857 ❌）
+> - 🔴 **第二前置条件**：**ρ(能力探针, margin)=+0.857** —— 门的判别力**继承自基座能力，校准救不了**
+> - 🔴 **作用域**：属性/范畴/材料强（AUC 0.86–1.00）；**关系类（论元顺序）AUC 0.562 ≈ 随机**（定义完全不改变预测）
+> - 🔴 **我方"双向判别更强"的预测被数据推翻**，已撤回
+> - ⏳ 缩放测试（3B/7B）受下载带宽阻塞，**"放大可解"仍是未验证预测**
 
 ***
 
@@ -964,6 +1034,9 @@ on_idle(user_uid):
 | 2026-07-24 | §7 按第二轮架构调研重写；新增附录 H；§9.1 加入族 4/5/6 补验卡点                      |
 | 2026-07-24 | **第三轮（对抗式）：新增 §7.6，推翻广义主张、贡献声明收紧为"信号类型"；新增附录 I；§9.1/§9.2 更新** |
 | 2026-07-24 | **第四轮（对抗式补全族 5/6）：12 目标 / 25 agent / 0 反例 → `holds-with-caveat`。§7.6.2 代理表扩到十类并加 12 新行；新增 §7.6.7 总裁决；§7.6.4 证据强度重排（族 5/6 升为高/中，残余=广义 agentic 记忆）；§7.6.5 关闭 CN-DPM/2606.03787 两悬案；附录 I 族 4/5/6 全部落地；§9.1 勾掉第四轮；§9.2 Q9/Q11 已回答 + 新增 Q12；§9.3 写入立论包（proposal + related-work + 三层架构最小实现）** |
+| 2026-07-28 | **进入设计阶段**：新增 [DESIGN_COMPRESSION_GATE.md](DESIGN_COMPRESSION_GATE.md)（机制）与 [DESIGN_CONCEPT_BENCH.md](DESIGN_CONCEPT_BENCH.md)（数据）。**修正 C4 措辞**：区分 E1（模型误解 → 压缩门拒绝 ✅）与 E2（老师教假话 → 压缩门接受，属设计边界）；related-work 末句加收紧提示。§9.3.3 指向 P0 首跑实验。 |
+| 2026-07-28 | **P0 实验跑完（首个实证结果）** → [research/learning-in-referencing/p0/](../research/learning-in-referencing/p0/README.md)。核心信号**成立**（决策序列 8/8, +4.92 nats, p=0.0039），但**朴素实现失败**（自由陈述 5/8, p=0.36，92% 胜出来自长度罚）。机制文档据此新增 §1.2b（观测量必须是决策序列）、§1.3 阈值警告、消融必报项 A0′/A0″。**未解决**：单候选阈值跨 item 不可分（AUC 0.875）。 |
+| 2026-07-28 | **P0 续跑：per-item 校准 + 22 items 扩展集**。z 校准（零分布 z 分数）AUC 0.797→0.906，设计预测「M′ 落在零分布中心」精确成立（差 0.05 nats）。v2 扩到 22 items×5 类：margin +4.08 nats 95%CI[+2.52,+5.70]，19/22 p=0.00043。**新增第二前置条件**：ρ(能力探针,margin)=+0.857，门的判别力继承基座能力。**作用域**：G2/G3 内单候选阈值 AUC 1.000 (τ=+0.75)；G4 关系类 AUC 0.562≈随机。**撤回「双向判别更强」预测**。 |
 
 ***
 

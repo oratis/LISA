@@ -20,3 +20,4 @@ docs/launch/
 
 # Paper / research track — private until publication
 docs/paper/
+__pycache__/

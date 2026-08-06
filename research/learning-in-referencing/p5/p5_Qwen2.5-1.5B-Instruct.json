@@ -1,0 +1,224 @@
+{
+  "model": "Qwen/Qwen2.5-1.5B-Instruct",
+  "n_users": 16,
+  "slots_per_uid": 32,
+  "topk": 4,
+  "epochs": 300,
+  "lr": 0.05,
+  "auc_base": 0.485,
+  "auc_mem": 0.9924999999999999,
+  "auc_wrong_partition": 0.26,
+  "partitions_disjoint": true,
+  "retention_curve": [
+    {
+      "n_written": 1,
+      "train_acc": 1.0,
+      "mean_auc_seen": 1.0,
+      "min_auc_seen": 1.0,
+      "self_auc": 1.0
+    },
+    {
+      "n_written": 2,
+      "train_acc": 1.0,
+      "mean_auc_seen": 1.0,
+      "min_auc_seen": 1.0,
+      "self_auc": 1.0
+    },
+    {
+      "n_written": 3,
+      "train_acc": 1.0,
+      "mean_auc_seen": 1.0,
+      "min_auc_seen": 1.0,
+      "self_auc": 1.0
+    },
+    {
+      "n_written": 4,
+      "train_acc": 1.0,
+      "mean_auc_seen": 1.0,
+      "min_auc_seen": 1.0,
+      "self_auc": 1.0
+    },
+    {
+      "n_written": 5,
+      "train_acc": 1.0,
+      "mean_auc_seen": 1.0,
+      "min_auc_seen": 1.0,
+      "self_auc": 1.0
+    },
+    {
+      "n_written": 6,
+      "train_acc": 1.0,
+      "mean_auc_seen": 1.0,
+      "min_auc_seen": 1.0,
+      "self_auc": 1.0
+    },
+    {
+      "n_written": 7,
+      "train_acc": 1.0,
+      "mean_auc_seen": 0.9942857142857143,
+      "min_auc_seen": 0.96,
+      "self_auc": 0.96
+    },
+    {
+      "n_written": 8,
+      "train_acc": 1.0,
+      "mean_auc_seen": 0.995,
+      "min_auc_seen": 0.96,
+      "self_auc": 1.0
+    },
+    {
+      "n_written": 9,
+      "train_acc": 1.0,
+      "mean_auc_seen": 0.9955555555555555,
+      "min_auc_seen": 0.96,
+      "self_auc": 1.0
+    },
+    {
+      "n_written": 10,
+      "train_acc": 1.0,
+      "mean_auc_seen": 0.996,
+      "min_auc_seen": 0.96,
+      "self_auc": 1.0
+    },
+    {
+      "n_written": 11,
+      "train_acc": 1.0,
+      "mean_auc_seen": 0.9963636363636363,
+      "min_auc_seen": 0.96,
+      "self_auc": 1.0
+    },
+    {
+      "n_written": 12,
+      "train_acc": 1.0,
+      "mean_auc_seen": 0.9933333333333333,
+      "min_auc_seen": 0.96,
+      "self_auc": 0.96
+    },
+    {
+      "n_written": 13,
+      "train_acc": 1.0,
+      "mean_auc_seen": 0.9938461538461538,
+      "min_auc_seen": 0.96,
+      "self_auc": 1.0
+    },
+    {
+      "n_written": 14,
+      "train_acc": 1.0,
+      "mean_auc_seen": 0.9942857142857143,
+      "min_auc_seen": 0.96,
+      "self_auc": 1.0
+    },
+    {
+      "n_written": 15,
+      "train_acc": 1.0,
+      "mean_auc_seen": 0.9946666666666667,
+      "min_auc_seen": 0.96,
+      "self_auc": 1.0
+    },
+    {
+      "n_written": 16,
+      "train_acc": 1.0,
+      "mean_auc_seen": 0.9924999999999999,
+      "min_auc_seen": 0.96,
+      "self_auc": 0.96
+    }
+  ],
+  "per_user": [
+    {
+      "uid": "ISO-01-uA",
+      "base": 0.64,
+      "mem": 1.0,
+      "wrong": 0.12
+    },
+    {
+      "uid": "ISO-01-uB",
+      "base": 0.4,
+      "mem": 1.0,
+      "wrong": 0.48
+    },
+    {
+      "uid": "ISO-02-uA",
+      "base": 0.6,
+      "mem": 1.0,
+      "wrong": 0.04
+    },
+    {
+      "uid": "ISO-02-uB",
+      "base": 0.28,
+      "mem": 1.0,
+      "wrong": 1.0
+    },
+    {
+      "uid": "ISO-03-uA",
+      "base": 0.12,
+      "mem": 1.0,
+      "wrong": 0.0
+    },
+    {
+      "uid": "ISO-03-uB",
+      "base": 0.28,
+      "mem": 1.0,
+      "wrong": 0.28
+    },
+    {
+      "uid": "ISO-04-uA",
+      "base": 0.44,
+      "mem": 0.96,
+      "wrong": 0.0
+    },
+    {
+      "uid": "ISO-04-uB",
+      "base": 0.52,
+      "mem": 1.0,
+      "wrong": 0.2
+    },
+    {
+      "uid": "ISO-05-uA",
+      "base": 0.8,
+      "mem": 1.0,
+      "wrong": 0.04
+    },
+    {
+      "uid": "ISO-05-uB",
+      "base": 0.04,
+      "mem": 1.0,
+      "wrong": 0.2
+    },
+    {
+      "uid": "ISO-06-uA",
+      "base": 0.48,
+      "mem": 1.0,
+      "wrong": 0.04
+    },
+    {
+      "uid": "ISO-06-uB",
+      "base": 0.72,
+      "mem": 0.96,
+      "wrong": 0.0
+    },
+    {
+      "uid": "ISO-07-uA",
+      "base": 0.64,
+      "mem": 1.0,
+      "wrong": 0.04
+    },
+    {
+      "uid": "ISO-07-uB",
+      "base": 0.52,
+      "mem": 1.0,
+      "wrong": 1.0
+    },
+    {
+      "uid": "ISO-08-uA",
+      "base": 0.56,
+      "mem": 1.0,
+      "wrong": 0.04
+    },
+    {
+      "uid": "ISO-08-uB",
+      "base": 0.72,
+      "mem": 0.96,
+      "wrong": 0.68
+    }
+  ]
+}

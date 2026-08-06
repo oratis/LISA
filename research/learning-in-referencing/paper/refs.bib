@@ -1,0 +1,509 @@
+% =====================================================================
+%  Learning in Referencing — 投稿参考文献
+%
+%  🔴 会场（venue）填写纪律 —— 这条规矩是**血的教训**：
+%     自我推翻 #9 就是把 LMLM 写成「NeurIPS 2025（主会）」，实为 **CCFM workshop Oral**。
+%     ⟹ 本文件里 `booktitle` / `journal` **只在下列两种证据之一存在时**才填：
+%        (a) arXiv 元数据的 comment / journal-ref 字段自陈；
+%        (b) 我方 r9/r10/r11 verification.json 的全文核查记录。
+%     其余一律用 @misc + eprint，**宁可写成 preprint 也不猜会场**。
+%     凡我方文档声称过、但上述两条证据都没有的，标 `% VENUE-UNVERIFIED` 并保留 @misc。
+%     ✅ 第十二轮（2026-08-04）已把仅有的两条清零：
+%        Delétang ICLR 2024 —— ICLR proceedings PDF 页眉自陈；
+%        SEMA CVPR 2025    —— CVF Open Access 收录，pp. 10087–10098。
+%     ✅ 处置完毕：`LOCI`（第四轮记为 TDCommons 11091）第十二轮**无法再定位、作者标题未能核实**
+%        ⟹ 已从正文与本文件**整条删除**（它只出现在族 6 概览句里，不承载我方主张）。
+%        ⟹ **本文件当前无未过核条目。**
+%
+%  元数据来源：arXiv Atom API（2026-08-04 取）；Nature 一条走 Crossref DOI。
+%  版本纪律：Self-Sizing Hopfield **必须钉 v3**（v1/v2 是另一篇，见 RESEARCH §7）。
+%
+%  ⚠️ 各条目的编辑纪律写在 `annote` 而**不是** `note` —— BibTeX 的 note 会被排进参考文献，
+%     中文与 emoji 会让 plainnat 直接编译失败（实测 main.bbl:52 报
+%     "You can't use `macro parameter character #'"）。annote 不打印，纪律仍绑在条目上。
+%     **新增条目时请沿用 annote，不要用 note。**
+% =====================================================================
+
+% ---------- 我方判据的理论地基 ----------
+
+@inproceedings{deletang2024compression,
+  title     = {Language Modeling Is Compression},
+  author    = {Del{\'e}tang, Gr{\'e}goire and Ruoss, Anian and Duquenne, Paul-Ambroise
+               and Catt, Elliot and Genewein, Tim and Mattern, Christopher
+               and Grau-Moya, Jordi and Wenliang, Li Kevin and Aitchison, Matthew
+               and Orseau, Laurent and Hutter, Marcus and Veness, Joel},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2024},
+  eprint    = {2309.10668},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG},
+  annote      = {会场已核实（第十二轮）：ICLR 2024 proceedings 的 PDF 页眉自陈
+               "Published as a conference paper at ICLR 2024" ✅}
+}
+
+@book{cover1999elements,
+  title     = {Elements of Information Theory},
+  author    = {Cover, Thomas M. and Thomas, Joy A.},
+  publisher = {Wiley},
+  year      = {1999},
+  annote      = {data-processing inequality 的出处。⚠️ 我方 §Intro 曾把该论点错误归因给 sharpening 论文
+               （自我推翻 #10），必须引本书而非 \cite{huang2024sharpening}。}
+}
+
+% ---------- 不确定性 / 自洽类信号（我方的对照臂） ----------
+
+@article{farquhar2024semantic,
+  title   = {Detecting hallucinations in large language models using semantic entropy},
+  author  = {Farquhar, Sebastian and Kossen, Jannik and Kuhn, Lorenz and Gal, Yarin},
+  journal = {Nature},
+  volume  = {630},
+  number  = {8017},
+  pages   = {625--630},
+  year    = {2024},
+  doi     = {10.1038/s41586-024-07421-0}
+}
+
+@inproceedings{huang2024cannot,
+  title     = {Large Language Models Cannot Self-Correct Reasoning Yet},
+  author    = {Huang, Jie and Chen, Xinyun and Mishra, Swaroop and Zheng, Huaixiu Steven
+               and Yu, Adams Wei and Song, Xinying and Zhou, Denny},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2024},
+  eprint    = {2310.01798},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CL},
+  annote      = {会场来自 arXiv comment 字段自陈「ICLR 2024」✅}
+}
+
+@misc{ding2026agree,
+  title  = {When {LLM}s Agree, Are They Right? Auditing Self-Consistency and
+            Cross-Model Agreement as Confidence Signals},
+  author = {Ding, Kaihua},
+  year   = {2026},
+  eprint = {2607.08065},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CL}
+}
+
+@misc{huang2024sharpening,
+  title  = {Self-Improvement in Language Models: The Sharpening Mechanism},
+  author = {Huang, Audrey and Block, Adam and Foster, Dylan J. and Rohatgi, Dhruv
+            and Zhang, Cyril and Simchowitz, Max and Ash, Jordan T.
+            and Krishnamurthy, Akshay},
+  year   = {2024},
+  eprint = {2412.01951},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG},
+  annote   = {⚠️ 引用纪律（自我推翻 #10）：本文是**动机性前提**的来源，
+            「自我改进不能创造新信息」须归因于 \cite{cover1999elements}，**不得写成本文的定理**。}
+}
+
+% ---------- ★ 写入侧准入门控：离我方最近的一族 ----------
+
+@misc{wang2026sage,
+  title  = {{SAGE}: A Novelty Gate for Efficient Memory Evolution in Agentic {LLM}s},
+  author = {Wang, Sijia and Brahma, Dhanajit and Henao, Ricardo},
+  year   = {2026},
+  eprint = {2605.30711},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CL},
+  annote   = {★ 离我方设计最近：online、per-item、no-task-boundary、write-side、显式叫 novelty gate。
+            分开我方的只有**信号类型**（几何新颖度 s\_vMF vs 压缩增益）与**基质**（非参数文本库 vs 参数）。
+            **必须正面引用**，不得写成"无人做过准入门控"。}
+}
+
+@misc{zahn2026writetime,
+  title  = {Selective Memory for Artificial Intelligence:
+            Write-Time Gating with Hierarchical Archiving},
+  author = {Zahn, Oliver and Chana, Simran},
+  year   = {2026},
+  eprint = {2603.15994},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.AI},
+  annote   = {信号 = 来源信誉 / provenance；显式拒绝 oracle 标签。属**来源可信**轴，非正确性轴。}
+}
+
+@misc{yang2026trustmem,
+  title  = {{TRUSTMEM}: Learning Trustworthy Memory Consolidation for {LLM} Agents
+            with Long-Term Memory},
+  author = {Yang, Tianyu and Paul, Sudipta and Srinivasan, Vijay and Kulkarni, Vivek
+            and Chappidi, Srinivas},
+  year   = {2026},
+  eprint = {2606.25161},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CL},
+  annote   = {信号 = 对来源的忠实度（coverage / preservation / faithfulness）。同属来源轴。}
+}
+
+@misc{stein2026gates,
+  title  = {{GATES}: Self-Distillation under Privileged Context with Consensus Gating},
+  author = {Stein, Alex and Huang, Furong and Goldstein, Tom},
+  year   = {2026},
+  eprint = {2602.20574},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG},
+  annote   = {🔴 **反例，必须正面处理**（自我推翻 #13）：GT-free 二值准入门（一致度 >= 4/8，未过门者零损失）。
+            ⟹ **禁止**写「尚无 GT-free 的写入准入门控」。且非首创，见 \cite{huang2022selfimprove}。}
+}
+
+@misc{huang2022selfimprove,
+  title  = {Large Language Models Can Self-Improve},
+  author = {Huang, Jiaxin and Gu, Shixiang Shane and Hou, Le and Wu, Yuexin
+            and Wang, Xuezhi and Yu, Hongkun and Han, Jiawei},
+  year   = {2022},
+  eprint = {2210.11610},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CL},
+  annote   = {🔴 GT-free 一致性门控的**更早先例**（2022）——与 \cite{stein2026gates} 一起构成
+            自我推翻 #13 的证据。新颖性重量须全部转到「判据类型 × 门控环节」两轴。}
+}
+
+@misc{gorlo2026worth,
+  title  = {Worth Remembering: Surprise-Gated Robot Episodic Memory},
+  author = {Gorlo, Nicolas and Wise, Derek K. and Speranzon, Alberto and Carlone, Luca},
+  year   = {2026},
+  eprint = {2606.03787},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.RO},
+  annote   = {信号 = surprise。离散硬写入门的又一先例。}
+}
+
+% ---------- ★ 优先权风险：唯一同构的判据提案 ----------
+
+@misc{colaco2026ratedistortion,
+  title  = {What to Keep, What to Forget: A Rate--Distortion View of Memory Compaction
+            in {LLM}s and Agents},
+  author = {Colaco, Ashwin Gerard and Lahjouji, Nada},
+  year   = {2026},
+  eprint = {2607.08032},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.AI},
+  annote   = {🔴🔴 **最高优先权风险**：与我方**同构**地提出以 description length 为存储判据，
+            但**只提议程、未实现、无准入门**。⟹ 我方可辩护的措辞只剩
+            「**实现并实证**以压缩增益/MDL 为判据的推理期按条持久写入准入门控」。
+            ⏰ 投稿前必须重扫该方向是否已被实现。}
+}
+
+% ---------- 上下文蒸馏 / 参数化内化（"推理期写入 × 跨会话持久"这一格） ----------
+
+@misc{snell2022distilling,
+  title  = {Learning by Distilling Context},
+  author = {Snell, Charlie and Klein, Dan and Zhong, Ruiqi},
+  year   = {2022},
+  eprint = {2209.15189},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CL}
+}
+
+@misc{chen2024generativeadapter,
+  title     = {Generative Adapter: Contextualizing Language Models in Parameters
+               with A Single Forward Pass},
+  author    = {Chen, Tong and Fang, Hao and Xia, Patrick and Liu, Xiaodong
+               and Van Durme, Benjamin and Zettlemoyer, Luke and Gao, Jianfeng
+               and Cheng, Hao},
+  year      = {2024},
+  eprint    = {2411.05877},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CL},
+  annote      = {ICLR 2025（我方 r10 全文核查记录确认 ✅）。
+               ⚠️ 引用纪律（自我推翻 #16）：**不得**写「天然按用户隔离」——
+               全文无 isolation 一词、无跨用户泄漏测试；跨会话复用亦仅为架构性支持、无纵向演示。
+               且 MSC 上 4x 省算力的代价是 F1 40.2 vs 全历史 prompt 66.0。}
+}
+
+@misc{kujanpaa2024injection,
+  title  = {Efficient Knowledge Injection in {LLM}s via Self-Distillation},
+  author = {Kujanp{\"a}{\"a}, Kalle and Marttinen, Pekka and Valpola, Harri and Ilin, Alexander},
+  year   = {2024},
+  eprint = {2412.14964},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CL},
+  annote   = {⚠️ 引用纪律（自我推翻 #14）：**纯闭卷 PD 仅在 Squadshifts/Llama-3-8B 追平 RAG**；
+            「超过 RAG」依赖 PD+RAG 组合或放大版 PD XL；**HotpotQA 上 RAG 对纯闭卷 PD 三个规模全面占优**。
+            我方 r9 核查：**完全无写入筛选**。}
+}
+
+@misc{ye2026opcd,
+  title  = {On-Policy Context Distillation for Language Models},
+  author = {Ye, Tianzhu and Dong, Li and Wu, Xun and Huang, Shaohan and Wei, Furu},
+  year   = {2026},
+  eprint = {2602.12275},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CL},
+  annote   = {⚠️ 引用纪律（自我推翻 #15）：**不得**写「更好保留 OOD 能力」——实测边际
+            （math/Sokoban 上对 off-policy CD 仅 +0.1~+0.5，落在合并 std 内；对 base 5 格中 4 格微降），
+            是"退化更少"不是"保留更好"；且 checkpoint 按 test accuracy 挑选（附录 A.3/B.2），数字受通胀。
+            其唯一的 filtered EKD 筛选**依赖带 GT 的 validation 打分，非 GT-free**。}
+}
+
+@misc{eyuboglu2025cartridges,
+  title  = {Cartridges: Lightweight and general-purpose long context representations
+            via self-study},
+  author = {Eyuboglu, Sabri and Ehrlich, Ryan and Arora, Simran and Guha, Neel
+            and Zinsley, Dylan and Liu, Emily and Tennien, Will and Rudra, Atri
+            and Zou, James and Mirhoseini, Azalia and R{\'e}, Christopher},
+  year   = {2025},
+  eprint = {2506.06266},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CL},
+  annote   = {朴素 NTP 打不过 ICL，必须 self-study + 蒸馏目标。无写入准入门。}
+}
+
+@misc{zweiger2025seal,
+  title  = {Self-Adapting Language Models},
+  author = {Zweiger, Adam and Pari, Jyothish and Guo, Han and Aky{\"u}rek, Ekin
+            and Kim, Yoon and Agrawal, Pulkit},
+  year   = {2025},
+  eprint = {2506.10943},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CL},
+  annote   = {SEAL 式二值奖励。门控信号 = 下游任务表现，需评测信号。}
+}
+
+@misc{tan2025dyprag,
+  title  = {Dynamic Parametric Retrieval Augmented Generation for Test-time
+            Knowledge Enhancement},
+  author = {Tan, Yuqiao and He, Shizhu and Liao, Huanxuan and Zhao, Jun and Liu, Kang},
+  year   = {2025},
+  eprint = {2503.23895},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CL},
+  annote   = {version = v4（我方 r10 核查）。⚠️ 引用纪律（自我推翻 #17）：
+            **不得**写「多文档 LoRA 平均互相干扰」——**说反了**：论文称简单平均能有效整合知识，
+            衰退只在注入过多文档时出现，且归因于任务无关冗余 + 有损压缩，全文无 interference 一词。}
+}
+
+@misc{wang2026whencontext,
+  title  = {When Context Returns: Toward Robust Internalization in On-Policy Distillation},
+  author = {Wang, Xun and Chen, Ruishuo and Li, Zhuoran and Chen, Yu and Huang, Longbo},
+  year   = {2026},
+  eprint = {2606.11627},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CL},
+  annote   = {★ **内化不幂等**：把原 context 重新塞回已内化模型，性能反而变差（7/12 设定）。
+            对任何"引用→内化"系统（含本项目）都是必须处理的工程陷阱。}
+}
+
+@misc{chen2026continual,
+  title  = {Rethinking Continual Experience Internalization for Self-Evolving {LLM} Agents},
+  author = {Chen, Jingwen and Yang, Wenkai and Fan, Shengda and Nie, Wenbo
+            and Sun, Chenxing and Zheng, Shaodong and Hu, Yangen and Pan, Lu
+            and Zeng, Ke and Lin, Yankai},
+  year   = {2026},
+  eprint = {2606.04703},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CL},
+  annote   = {⚠️ 引用纪律（自我推翻 #18/#19）：teacher **不是外部更强模型**，是同一策略条件化于经验池的
+            **自教师**；"高质量"指对其轨迹做 rejection sampling。精确主张是**跨迭代稳定性**。
+            且**不得**把迭代坍缩归因于「无差别写入」——论文归因于轨迹特异伪影 / 状态错位 /
+            on-policy 监督的反应性；其稳定配方本身含 rejection sampling 正确性门。
+            「门能推迟坍缩」只能标为**我方待验证假设**。}
+}
+
+% ---------- 门控式持续学习（族 1–2，训练期先例） ----------
+
+@inproceedings{wang2024sema,
+  title  = {Self-Expansion of Pre-trained Models with Mixture of Adapters
+            for Continual Learning},
+  author = {Wang, Huiyi and Lu, Haodong and Yao, Lina and Gong, Dong},
+  year   = {2024},
+  eprint = {2403.18886},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG},
+  booktitle = {IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+  pages  = {10087--10098},
+  annote   = {SEMA。信号 = 表征新颖性（重构误差 z 分数合取 > 阈值 → 扩容）。
+            ★ 我方 per-item 零分布 z 校准**继承其校准机制**，差别在被校准的信号。
+            会场已核实（第十二轮）：CVF Open Access 收录，CVPR 2025，pp. 10087--10098 ✅}
+}
+
+@misc{li2025selfsizing,
+  title  = {Associative Memory for Non-Stationary Environments:
+            A Self-Sizing Generalization of Hopfield Networks},
+  author = {Li, Xin},
+  year   = {2025},
+  eprint = {2507.10443},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.NE},
+  version = {v3},
+  annote   = {🚨 **必须钉 v3**——v1/v2 是另一篇论文。双阈值滞回门；信号 = 归一化损失比 + 标签几何。
+            单作者预印本；作者自陈"为假信息分配存储与真信息无异"（⟹ 无正确性成分）。}
+}
+
+@misc{zelikman2022star,
+  title  = {{STaR}: Bootstrapping Reasoning With Reasoning},
+  author = {Zelikman, Eric and Wu, Yuhuai and Mu, Jesse and Goodman, Noah D.},
+  year   = {2022},
+  eprint = {2203.14465},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG},
+  annote   = {门 = 最终答案正确性 ⟹ **需要 GT**。与 on-policy 蒸馏（教师即验证器）
+            和本项目（无 GT 自验证）构成三方对照。}
+}
+
+
+% ---------- 🔴 投稿前重扫（2026-08-04）新发现，第十二轮 ----------
+
+@misc{zhang2026consistencygate,
+  title  = {{ConsistencyGate}: Preventing Memory Contamination in {LLM} Agents
+            via Self-Consistency Admission Control},
+  author = {Zhang, Yan and Li, Shibo},
+  year   = {2026},
+  month  = {7},
+  eprint = {2607.22962},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CL},
+  annote   = {🔴🔴 **投稿前重扫抓到的最重要一篇（2026-07-25，晚于我方第十一轮）**。
+            它是 **GT-free** 的 **write-time admission gate**，作用于**推理期、按条、持久**的
+            外部记忆写入 —— ⟹ **我方贡献声明的第二条腿（门控环节）就此失守**，
+            新颖性只剩**判据类型**一轴。
+            ★ 但它的信号是**自洽度**（查询 LLM K 次取平均支持分），
+            **正是我方 P2 实测在 gavagai 对上失效的那一类**（AUC 0.269；M' 更窄时 0.137，系统性反向）
+            ⟹ 它同时是**最好的动机引用**：同期方法用的正是我方证明不够用的信号。}
+}
+
+
+@misc{zou2026demem,
+  title  = {Remember the Decision, Not the Description:
+            A Rate--Distortion Framework for Agent Memory},
+  author = {Zou, Mingxi and Guo, Zhihan and Liang, Langzhang and Wang, Zhuo
+            and Wang, Qifan and Wen, Qingsong and King, Irwin and Qu, Lizhen
+            and Xu, Zenglin},
+  year   = {2026},
+  month  = {5},
+  eprint = {2605.10870},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG},
+  annote   = {🔴🔴 **判据类型那一轴上离我方最近的一篇**（第十二轮重扫抓到；水印核验 arXiv:2605.10870v1）。
+            全文词边界扫描：**description length = 0 · MDL = 0 · admission = 0 ·
+            interlocutor = 0 · isolation = 0**；rate-distortion = 4。
+            ★ 三条把它与我方分开的**结构性**差异（全部有原文支撑，不得省略）：
+            (1) **需要观测到的奖励**——contextual bandit 设定
+                "the learner observes a reward $R_t \in [0,1]$"，目标是对 full-information oracle 的 regret；
+                我方的判据只用对话者后续的用词，**不需要奖励或答案**；
+            (2) **是预算下的分区/压缩（什么可以忘），不是准入（要不要写）**——
+                "histories may share a memory state precisely when they admit a common $\epsilon$-optimal action"；
+            (3) **压缩的是智能体自己的动作**，我方压缩的是**对话者的后续用词**。
+            ✅ 但它**独立佐证了我方 P0 最硬的一条**：观测量必须是**决策**而不是**描述**
+            （我方实测 7.2x margin）。⟹ **必须正面引用，并用作我方观测量选择的旁证。**}
+}
+
+@misc{kim2026memrefine,
+  title  = {{MemRefine}: {LLM}-Guided Compression for Long-Term Agent Memory},
+  author = {Kim, Minjae and Baek, Jinheon and Jeong, Soyeong and Hwang, Sung Ju},
+  year   = {2026},
+  eprint = {2606.13177},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CL},
+  annote   = {重扫核实：**事后压缩**（对已入库条目做 delete/merge/preserve），**不是写入准入门**；
+            信号是 **LLM 判官的事实性判断**，**无** description length / MDL / rate-distortion 判据。
+            ⟹ 不构成优先权威胁，但须在 Related Work 里与"准入门"划清界限。}
+}
+
+
+% ---------- 背景：持续学习的回放/扩容准则（族 5/6 概览句用） ----------
+
+@inproceedings{prabhu2020gdumb,
+  title     = {{GDumb}: A Simple Approach that Questions Our Progress in Continual Learning},
+  author    = {Prabhu, Ameya and Torr, Philip H. S. and Dokania, Puneet K.},
+  booktitle = {European Conference on Computer Vision (ECCV)},
+  pages     = {524--540},
+  year      = {2020},
+  doi       = {10.1007/978-3-030-58536-5\_31},
+  annote      = {会场经 Springer/ACM DL 条目核实 ✅}
+}
+
+@misc{chaudhry2019tiny,
+  title  = {On Tiny Episodic Memories in Continual Learning},
+  author = {Chaudhry, Arslan and Rohrbach, Marcus and Elhoseiny, Mohamed
+            and Ajanthan, Thalaiyasingam and Dokania, Puneet K.
+            and Torr, Philip H. S. and Ranzato, Marc'Aurelio},
+  year   = {2019},
+  eprint = {1902.10486},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG},
+  annote   = {arXiv comment 无会场字段 ⟹ 保留 @misc（会场纪律见抬头）。}
+}
+
+@inproceedings{aljundi2019gss,
+  title     = {Gradient based sample selection for online continual learning},
+  author    = {Aljundi, Rahaf and Lin, Min and Goujaud, Baptiste and Bengio, Yoshua},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  year      = {2019},
+  eprint    = {1903.08671},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG},
+  annote      = {会场来自 arXiv comment 自陈「Neurips 2019」✅}
+}
+
+@inproceedings{aljundi2019mir,
+  title     = {Online Continual Learning with Maximally Interfered Retrieval},
+  author    = {Aljundi, Rahaf and Caccia, Lucas and Belilovsky, Eugene and Caccia, Massimo
+               and Lin, Min and Charlin, Laurent and Tuytelaars, Tinne},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  year      = {2019},
+  eprint    = {1908.04742},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG},
+  annote      = {会场来自 arXiv journal-ref 字段「NeurIPS 2019」✅。
+               ⚠️ 引用纪律：MIR 是**检索侧**准则，**不是准入**——正文已写明这一点。}
+}
+
+@inproceedings{rebuffi2017icarl,
+  title     = {{iCaRL}: Incremental Classifier and Representation Learning},
+  author    = {Rebuffi, Sylvestre-Alvise and Kolesnikov, Alexander and Sperl, Georg
+               and Lampert, Christoph H.},
+  booktitle = {IEEE Conference on Computer Vision and Pattern Recognition (CVPR)},
+  year      = {2017},
+  eprint    = {1611.07725},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CV},
+  annote      = {会场来自 arXiv comment 自陈「Accepted paper at CVPR 2017」✅}
+}
+
+@inproceedings{buzzega2020derpp,
+  title     = {Dark Experience for General Continual Learning: a Strong, Simple Baseline},
+  author    = {Buzzega, Pietro and Boschini, Matteo and Porrello, Angelo
+               and Abati, Davide and Calderara, Simone},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  year      = {2020},
+  eprint    = {2004.07211},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG},
+  annote      = {会场来自 arXiv comment 自陈「Accepted at 34th ... NeurIPS 2020」✅}
+}
+
+@inproceedings{lee2020cndpm,
+  title     = {A Neural Dirichlet Process Mixture Model for Task-Free Continual Learning},
+  author    = {Lee, Soochan and Ha, Junsoo and Zhang, Dongsu and Kim, Gunhee},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2020},
+  eprint    = {2001.00689},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG},
+  annote      = {会场来自 arXiv comment 自陈「Accepted as a conference paper at ICLR 2020」✅。
+               ★ 我方 §7 记录：它是「门控在前、巩固在后」两段式的先例，
+               但准入信号是 **DP 先验 x 似然**（novelty-under-likelihood），**不是正确性**。}
+}
+
+@misc{yoon2017den,
+  title  = {Lifelong Learning with Dynamically Expandable Networks},
+  author = {Yoon, Jaehong and Yang, Eunho and Lee, Jeongtae and Hwang, Sung Ju},
+  year   = {2017},
+  eprint = {1708.01547},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG},
+  annote   = {DEN。arXiv comment 无会场字段 ⟹ 保留 @misc（ICLR 2018 为通行认知但无字段佐证，
+            按抬头纪律不填）。}
+}
+
+
+% =====================================================================
+%  ⚠️ 尚未入库、正文里仍以占位符出现的引用（投稿前必须补齐）
+%     [LOCI]              —— TDCommons 11091, 2026-07-21（**非 arXiv**，需 TDCommons 条目）
+%     [DEN; CN-DPM]       —— arXiv:1708.01547 / arXiv:2001.00689
+%     [DER++] [iCaRL]     —— arXiv:2004.07211 / arXiv:1611.07725
+%     [GSS] [MIR]         —— arXiv:1903.08671 / arXiv:1908.04742
+%     [GDumb, ECCV'20]    —— 需补
+%  这些出现在 Related Work 的**族 5/6 概览句**里，属背景引用，不承载我方主张。
+% =====================================================================

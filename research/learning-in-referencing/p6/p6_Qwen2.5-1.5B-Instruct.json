@@ -1,0 +1,155 @@
+{
+  "model": "Qwen/Qwen2.5-1.5B-Instruct",
+  "n_users": 16,
+  "world_knowledge_prior_auc": {
+    "red": 0.9583333333333334,
+    "blue": 0.8333333333333334,
+    "yellow": 0.9166666666666666,
+    "green": 0.8541666666666666
+  },
+  "world_knowledge_prior_raw_hits": {
+    "red": 0.75,
+    "blue": 0.75,
+    "yellow": 0.75,
+    "green": 0.5
+  },
+  "_note_prior": "判据是 AUC（0.891）；raw 命中率 0.688 受 No 偏置压低，不作判据——见脚本内注释",
+  "L1": {
+    "in": 1.0,
+    "cross": 0.83984375
+  },
+  "L4": {
+    "in": 0.9924999999999999,
+    "cross": 0.94921875
+  },
+  "per_user": [
+    {
+      "uid": "ISO-01-uA",
+      "M": "blue",
+      "l1_p_in": 1.0,
+      "l1_p_cross": 1.0,
+      "l4_p_in": 1.0,
+      "l4_p_cross": 0.875
+    },
+    {
+      "uid": "ISO-01-uB",
+      "M": "red",
+      "l1_p_in": 1.0,
+      "l1_p_cross": 0.875,
+      "l4_p_in": 1.0,
+      "l4_p_cross": 1.0
+    },
+    {
+      "uid": "ISO-02-uA",
+      "M": "yellow",
+      "l1_p_in": 1.0,
+      "l1_p_cross": 0.875,
+      "l4_p_in": 1.0,
+      "l4_p_cross": 1.0
+    },
+    {
+      "uid": "ISO-02-uB",
+      "M": "blue",
+      "l1_p_in": 1.0,
+      "l1_p_cross": 0.8125,
+      "l4_p_in": 1.0,
+      "l4_p_cross": 0.9375
+    },
+    {
+      "uid": "ISO-03-uA",
+      "M": "blue",
+      "l1_p_in": 1.0,
+      "l1_p_cross": 0.875,
+      "l4_p_in": 1.0,
+      "l4_p_cross": 0.9375
+    },
+    {
+      "uid": "ISO-03-uB",
+      "M": "red",
+      "l1_p_in": 1.0,
+      "l1_p_cross": 0.875,
+      "l4_p_in": 1.0,
+      "l4_p_cross": 1.0
+    },
+    {
+      "uid": "ISO-04-uA",
+      "M": "yellow",
+      "l1_p_in": 1.0,
+      "l1_p_cross": 0.75,
+      "l4_p_in": 0.96,
+      "l4_p_cross": 0.875
+    },
+    {
+      "uid": "ISO-04-uB",
+      "M": "green",
+      "l1_p_in": 1.0,
+      "l1_p_cross": 0.875,
+      "l4_p_in": 1.0,
+      "l4_p_cross": 0.9375
+    },
+    {
+      "uid": "ISO-05-uA",
+      "M": "yellow",
+      "l1_p_in": 1.0,
+      "l1_p_cross": 0.625,
+      "l4_p_in": 1.0,
+      "l4_p_cross": 0.875
+    },
+    {
+      "uid": "ISO-05-uB",
+      "M": "red",
+      "l1_p_in": 1.0,
+      "l1_p_cross": 0.8125,
+      "l4_p_in": 1.0,
+      "l4_p_cross": 0.875
+    },
+    {
+      "uid": "ISO-06-uA",
+      "M": "yellow",
+      "l1_p_in": 1.0,
+      "l1_p_cross": 0.875,
+      "l4_p_in": 1.0,
+      "l4_p_cross": 1.0
+    },
+    {
+      "uid": "ISO-06-uB",
+      "M": "blue",
+      "l1_p_in": 1.0,
+      "l1_p_cross": 0.75,
+      "l4_p_in": 0.96,
+      "l4_p_cross": 1.0
+    },
+    {
+      "uid": "ISO-07-uA",
+      "M": "yellow",
+      "l1_p_in": 1.0,
+      "l1_p_cross": 1.0,
+      "l4_p_in": 1.0,
+      "l4_p_cross": 0.875
+    },
+    {
+      "uid": "ISO-07-uB",
+      "M": "blue",
+      "l1_p_in": 1.0,
+      "l1_p_cross": 1.0,
+      "l4_p_in": 1.0,
+      "l4_p_cross": 1.0
+    },
+    {
+      "uid": "ISO-08-uA",
+      "M": "blue",
+      "l1_p_in": 1.0,
+      "l1_p_cross": 0.5625,
+      "l4_p_in": 1.0,
+      "l4_p_cross": 1.0
+    },
+    {
+      "uid": "ISO-08-uB",
+      "M": "yellow",
+      "l1_p_in": 1.0,
+      "l1_p_cross": 0.875,
+      "l4_p_in": 0.96,
+      "l4_p_cross": 1.0
+    }
+  ]
+}

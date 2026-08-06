@@ -1,0 +1,8 @@
+# LaTeX 编译产物（tectonic 输出到 --outdir，不入库）
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
+*.pdf
+!figures/*.pdf

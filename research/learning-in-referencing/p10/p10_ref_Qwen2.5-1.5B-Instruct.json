@@ -1,0 +1,101 @@
+{
+  "model": "Qwen/Qwen2.5-1.5B-Instruct",
+  "n_users": 8,
+  "_note": "与 p10_forced_binding.py 同用户同物体同提示；base=不挂记忆，l1=含义写进提示",
+  "results": {
+    "base": {
+      "F1 Yes/No": 0.585,
+      "F2 A/B": 0.54,
+      "F3 True/False": 0.525
+    },
+    "base_per_user": {
+      "ISO-01": {
+        "F1 Yes/No": 0.24,
+        "F2 A/B": 0.2,
+        "F3 True/False": 0.36
+      },
+      "ISO-02": {
+        "F1 Yes/No": 0.8,
+        "F2 A/B": 0.84,
+        "F3 True/False": 0.76
+      },
+      "ISO-03": {
+        "F1 Yes/No": 0.56,
+        "F2 A/B": 0.6,
+        "F3 True/False": 0.32
+      },
+      "ISO-04": {
+        "F1 Yes/No": 0.88,
+        "F2 A/B": 0.8,
+        "F3 True/False": 0.84
+      },
+      "ISO-05": {
+        "F1 Yes/No": 0.64,
+        "F2 A/B": 0.72,
+        "F3 True/False": 0.36
+      },
+      "ISO-06": {
+        "F1 Yes/No": 0.6,
+        "F2 A/B": 0.28,
+        "F3 True/False": 0.8
+      },
+      "ISO-07": {
+        "F1 Yes/No": 0.48,
+        "F2 A/B": 0.64,
+        "F3 True/False": 0.36
+      },
+      "ISO-08": {
+        "F1 Yes/No": 0.48,
+        "F2 A/B": 0.24,
+        "F3 True/False": 0.4
+      }
+    },
+    "l1": {
+      "F1 Yes/No": 0.855,
+      "F2 A/B": 0.905,
+      "F3 True/False": 0.995
+    },
+    "l1_per_user": {
+      "ISO-01": {
+        "F1 Yes/No": 0.76,
+        "F2 A/B": 0.6,
+        "F3 True/False": 0.96
+      },
+      "ISO-02": {
+        "F1 Yes/No": 1.0,
+        "F2 A/B": 1.0,
+        "F3 True/False": 1.0
+      },
+      "ISO-03": {
+        "F1 Yes/No": 0.84,
+        "F2 A/B": 0.96,
+        "F3 True/False": 1.0
+      },
+      "ISO-04": {
+        "F1 Yes/No": 0.88,
+        "F2 A/B": 1.0,
+        "F3 True/False": 1.0
+      },
+      "ISO-05": {
+        "F1 Yes/No": 0.88,
+        "F2 A/B": 1.0,
+        "F3 True/False": 1.0
+      },
+      "ISO-06": {
+        "F1 Yes/No": 1.0,
+        "F2 A/B": 1.0,
+        "F3 True/False": 1.0
+      },
+      "ISO-07": {
+        "F1 Yes/No": 0.88,
+        "F2 A/B": 1.0,
+        "F3 True/False": 1.0
+      },
+      "ISO-08": {
+        "F1 Yes/No": 0.6,
+        "F2 A/B": 0.68,
+        "F3 True/False": 1.0
+      }
+    }
+  }
+}

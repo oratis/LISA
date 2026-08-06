@@ -1,0 +1,35 @@
+{
+  "model": "Qwen/Qwen2.5-1.5B-Instruct",
+  "n_users": 8,
+  "readout_cosines": {
+    "F1 Yes/No|F2 A/B": -0.02648862823843956,
+    "F1 Yes/No|F3 True/False": 0.10648886859416962,
+    "F2 A/B|F3 True/False": 0.022113360464572906
+  },
+  "results": {
+    "base": {
+      "F1 Yes/No": 0.54,
+      "F2 A/B": 0.55,
+      "F3 True/False": 0.51
+    },
+    "l1": {
+      "F1 Yes/No": 0.96,
+      "F2 A/B": 1.0,
+      "F3 True/False": 1.0
+    },
+    "train_F1": {
+      "F1 Yes/No": 0.96,
+      "F2 A/B": 0.555,
+      "F3 True/False": 0.755
+    },
+    "train_F1+F2": {
+      "F1 Yes/No": 0.9025,
+      "F2 A/B": 0.795,
+      "F3 True/False": 0.645
+    }
+  },
+  "gain_from_adding_F2": {
+    "F2": 0.24,
+    "F3_heldout": -0.10999999999999999
+  }
+}
