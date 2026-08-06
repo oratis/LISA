@@ -429,16 +429,28 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         let kind = NSTextField(labelWithString: (s.agent ?? "agent"))
         kind.font = .systemFont(ofSize: 9, weight: .semibold)
         kind.textColor = .tertiaryLabelColor
+        // The kind tag is short and identifying — never squeeze or truncate it;
+        // the name label absorbs the slack instead (below).
+        kind.setContentHuggingPriority(.required, for: .horizontal)
+        kind.setContentCompressionResistancePriority(.required, for: .horizontal)
 
-        let label = NSTextField(labelWithString: oneLine(agentLabel(s), 40))
+        let label = NSTextField(labelWithString: agentLabel(s))
         label.font = .systemFont(ofSize: 12, weight: .medium)
         label.textColor = .labelColor
         label.lineBreakMode = .byTruncatingTail
+        // Let the name be the thing that gives: it takes the leftover width and
+        // ellipsizes inside the popover instead of running past its edge.
+        label.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         let top = NSStackView(views: [dot, kind, label])
         top.orientation = .horizontal
         top.spacing = 6
         top.alignment = .centerY
+        // Pin to the popover's content width — without this the row sizes to its
+        // content and long branch names overflow the panel (they had nothing to
+        // truncate against).
+        top.widthAnchor.constraint(equalToConstant: inner).isActive = true
 
         let col = NSStackView(views: [top])
         col.orientation = .vertical
@@ -447,12 +459,21 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
 
         let act = agentActivity(s)
         if !act.isEmpty {
-            let actLabel = NSTextField(labelWithString: oneLine(act, 52))
+            let actLabel = NSTextField(labelWithString: act)
             actLabel.font = .systemFont(ofSize: 10)
             actLabel.textColor = .secondaryLabelColor
             actLabel.lineBreakMode = .byTruncatingTail
-            col.addArrangedSubview(actLabel)
+            actLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            // Indent past the dot (7) + its spacing (6) so the activity line
+            // starts under the kind/name rather than under the dot — otherwise
+            // every row reads as a ragged two-column zigzag.
+            let indented = NSStackView(views: [actLabel])
+            indented.orientation = .horizontal
+            indented.edgeInsets = NSEdgeInsets(top: 0, left: 13, bottom: 0, right: 0)
+            indented.widthAnchor.constraint(equalToConstant: inner).isActive = true
+            col.addArrangedSubview(indented)
         }
+        col.widthAnchor.constraint(equalToConstant: inner).isActive = true
         return col
     }
 
