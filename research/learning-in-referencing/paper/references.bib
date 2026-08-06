@@ -1,0 +1,265 @@
+% Learning in Referencing — 正式 bibkey（2026-08-01）
+% 约定：字段来自本项目已验证信息（REPORT/r9-r11 记录）；
+% 标 [TODO-verify] 的字段未经核实（多为 2026 预印本作者全名单），投稿前补。
+% 🚨 已知引用陷阱（KNOWLEDGE doc §7.6.6）：GDumb 引 ECCV proceedings 不引 arXiv 误号；
+%    Self-Sizing Hopfield 必须钉死 2507.10443v3；2606.03787 真实标题见下。
+
+% ===== 最近邻（正面让位）=====
+@article{stein2026gates,
+  title  = {GATES: Consensus-Gated Distillation for Self-Improvement},
+  author = {Stein, Alexander and Huang, Wei and Goldstein, Tom and others},
+  note   = {arXiv:2602.20574v1; verified r8. [TODO-verify] full author list and exact title},
+  year   = {2026}
+}
+@article{huang2022lmsi,
+  title  = {Large Language Models Can Self-Improve},
+  author = {Huang, Jiaxin and Gu, Shixiang Shane and Hou, Le and Wu, Yuexin and Wang, Xuezhi and Yu, Hongkun and Han, Jiawei},
+  journal= {arXiv preprint arXiv:2210.11610},
+  year   = {2022}
+}
+
+% ===== 上下文蒸馏族（J）=====
+@article{snell2022distilling,
+  title  = {Learning by Distilling Context},
+  author = {Snell, Charlie and Klein, Dan and Zhong, Ruiqi},
+  journal= {arXiv preprint arXiv:2209.15189},
+  year   = {2022},
+  note   = {v1 verified r10: token-level KL to frozen self-copy; SPIDER +9.0 pts over GD baseline (8-shot)}
+}
+@article{kujanpaa2024prompt,
+  title  = {Efficient Knowledge Injection in LLMs via Self-Distillation},
+  author = {Kujanp{\"a}{\"a}, Kalle and others},
+  journal= {arXiv preprint arXiv:2412.14964},
+  year   = {2024},
+  note   = {v2 verified r9: no data screening; LoRA; teacher = same model with document in prompt. [TODO-verify] full author list}
+}
+@article{eyuboglu2025cartridges,
+  title  = {Cartridges: Lightweight and General-Purpose Long Context Representations via Self-Study},
+  author = {Eyuboglu, Sabri and others},
+  journal= {arXiv preprint arXiv:2506.06266},
+  year   = {2025},
+  note   = {full-text exhaustive check r6-r7: no admission gate. [TODO-verify] full author list}
+}
+@article{microsoft2026opcd,
+  title  = {On-Policy Context Distillation for Language Models},
+  author = {{Microsoft Research}},
+  journal= {arXiv preprint arXiv:2602.12275},
+  year   = {2026},
+  note   = {v2 verified r9: filtered-EKD uses labeled validation; label-free setting "not pre-evaluated". [TODO-verify] author names}
+}
+@inproceedings{chen2025generativeadapter,
+  title  = {GenerativeAdapter: Contextualizing Language Models in Parameters with a Single Forward Pass},
+  author = {Chen, Tong and Fang, Hao and Xia, Patrick and Liu, Xiaodong and Van Durme, Benjamin and Zettlemoyer, Luke and Gao, Jianfeng and Cheng, Hao},
+  booktitle = {ICLR},
+  year   = {2025},
+  note   = {arXiv:2411.05877v1 verified r6+r10; isolation implied-not-evaluated (cite with care)}
+}
+@article{wang2026contextreturns,
+  title  = {When Context Returns: Toward Robust Internalization in On-Policy Distillation},
+  author = {Wang, Xun and Chen, Ruishuo and Li, Zhuoran and Chen, Yu and Huang, Longbo},
+  journal= {arXiv preprint arXiv:2606.11627},
+  year   = {2026},
+  note   = {v1 verified r10: degradation 7/12 settings; NCA fix 11/12; system prompts + game scaffolds only}
+}
+@article{chen2026cei,
+  title  = {Rethinking Continual Experience Internalization for Self-Evolving LLM Agents},
+  author = {Chen, Jingwen and Yang, Wenkai and Fan, Shengda and Nie, Wenbo and Sun, Chenxing and Zheng, Shaodong and Hu, Yangen and Pan, Lu and Zeng, Ke and Lin, Yankai},
+  journal= {arXiv preprint arXiv:2606.04703},
+  year   = {2026},
+  note   = {v1 verified r11: collapse below base in 3 iters; do NOT attribute collapse to ungated writes (REPORT #19)}
+}
+@article{tan2025dyprag,
+  title  = {Dynamic Parametric Retrieval Augmented Generation for Test-time Knowledge Enhancement},
+  author = {Tan, Yuqiao and He, Shizhu and Liao, Huanxuan and Zhao, Jun and Liu, Kang},
+  journal= {arXiv preprint arXiv:2503.23895},
+  year   = {2025},
+  note   = {v4 verified r10: averaging integrates effectively; degradation from irrelevant docs, NOT interference (REPORT #17)}
+}
+@article{zweiger2025seal,
+  title  = {Self-Adapting Language Models},
+  author = {Zweiger, Adam and others},
+  journal= {arXiv preprint arXiv:2506.10943},
+  year   = {2025},
+  note   = {verified r8: ReST-EM filtering needs labeled tau; deployment self-edits ungated. [TODO-verify] full author list}
+}
+
+% ===== 理论地基 =====
+@inproceedings{deletang2024compression,
+  title  = {Language Modeling Is Compression},
+  author = {Del{\'e}tang, Gr{\'e}goire and Ruoss, Anian and others},
+  booktitle = {ICLR},
+  year   = {2024},
+  note   = {arXiv:2309.10668. [TODO-verify] full author list}
+}
+@article{farquhar2024semantic,
+  title  = {Detecting Hallucinations in Large Language Models Using Semantic Entropy},
+  author = {Farquhar, Sebastian and Kossen, Jannik and Kuhn, Lorenz and Gal, Yarin},
+  journal= {Nature},
+  volume = {630},
+  year   = {2024}
+}
+@inproceedings{huang2024selfcorrect,
+  title  = {Large Language Models Cannot Self-Correct Reasoning Yet},
+  author = {Huang, Jie and others},
+  booktitle = {ICLR},
+  year   = {2024},
+  note   = {[TODO-verify] full author list}
+}
+@article{huang2024sharpening,
+  title  = {Self-Improvement in Language Models: The Sharpening Mechanism},
+  author = {Huang, Audrey and others},
+  journal= {arXiv preprint arXiv:2412.01951},
+  year   = {2024},
+  note   = {verified r7: DPI premise attributed to Cover 1999, NOT a theorem of this paper (REPORT #10)}
+}
+@book{cover1999elements,
+  title  = {Elements of Information Theory},
+  author = {Cover, Thomas M. and Thomas, Joy A.},
+  publisher = {Wiley},
+  year   = {1999}
+}
+@article{audit2026consistency,
+  title  = {[TODO-verify title] Self-Consistency Is Not Accuracy: A Large-Scale Audit},
+  author = {{[TODO-verify]}},
+  journal= {arXiv preprint arXiv:2607.08065},
+  year   = {2026},
+  note   = {verified r8: Spearman 0.20-0.59; C>=0.8 gpt-4.1 still 48% wrong on GPQA}
+}
+@article{ratedistortion2026,
+  title  = {[TODO-verify title] A Rate-Distortion View of Agent Memory},
+  author = {{[TODO-verify]}},
+  journal= {arXiv preprint arXiv:2607.08032},
+  year   = {2026},
+  note   = {verified r6: proposal-only, no implemented gate; cite as concurrent position work}
+}
+
+% ===== 持续学习 / 写入门先例（十类代理）=====
+@inproceedings{prabhu2020gdumb,
+  title  = {GDumb: A Simple Approach that Questions Our Progress in Continual Learning},
+  author = {Prabhu, Ameya and Torr, Philip H. S. and Dokania, Puneet K.},
+  booktitle = {ECCV},
+  year   = {2020},
+  note   = {cite proceedings; the arXiv number 2007.05003 circulating in some bibs is WRONG (trap, r6)}
+}
+@inproceedings{aljundi2019gss,
+  title  = {Gradient Based Sample Selection for Online Continual Learning},
+  author = {Aljundi, Rahaf and Lin, Min and Goujaud, Baptiste and Bengio, Yoshua},
+  booktitle = {NeurIPS},
+  year   = {2019}
+}
+@inproceedings{aljundi2019mir,
+  title  = {Online Continual Learning with Maximally Interfered Retrieval},
+  author = {Aljundi, Rahaf and others},
+  booktitle = {NeurIPS},
+  year   = {2019},
+  note   = {retrieval-side criterion, not admission (r4)}
+}
+@inproceedings{rebuffi2017icarl,
+  title  = {iCaRL: Incremental Classifier and Representation Learning},
+  author = {Rebuffi, Sylvestre-Alvise and Kolesnikov, Alexander and Sperl, Georg and Lampert, Christoph H.},
+  booktitle = {CVPR},
+  year   = {2017}
+}
+@inproceedings{buzzega2020derpp,
+  title  = {Dark Experience for General Continual Learning: a Strong, Simple Baseline},
+  author = {Buzzega, Pietro and Boschini, Matteo and Porrello, Angelo and Abati, Davide and Calderara, Simone},
+  booktitle = {NeurIPS},
+  year   = {2020}
+}
+@inproceedings{yoon2018den,
+  title  = {Lifelong Learning with Dynamically Expandable Networks},
+  author = {Yoon, Jaehong and Yang, Eunho and Lee, Jeongtae and Hwang, Sung Ju},
+  booktitle = {ICLR},
+  year   = {2018}
+}
+@inproceedings{lee2020cndpm,
+  title  = {A Neural Dirichlet Process Mixture Model for Task-Free Continual Learning},
+  author = {Lee, Soochan and Ha, Junsoo and Zhang, Dongsu and Kim, Gunhee},
+  booktitle = {ICLR},
+  year   = {2020},
+  note   = {arXiv:2001.00689}
+}
+@article{sage2026,
+  title  = {[TODO-verify title] SAGE: Geometric-Novelty-Gated Agent Memory},
+  author = {{[TODO-verify]}},
+  journal= {arXiv preprint arXiv:2605.30711},
+  year   = {2026},
+  note   = {closest write-side novelty gate; cheapest head-to-head baseline (r3/r4)}
+}
+@article{hopfield2026selfsizing,
+  title  = {[TODO-verify title] Self-Sizing Hopfield Networks},
+  author = {{[TODO-verify]}},
+  journal= {arXiv preprint arXiv:2507.10443},
+  year   = {2026},
+  note   = {MUST pin v3 — v1/v2 are a completely different paper (trap, r6)}
+}
+@article{gorlo2026worth,
+  title  = {Worth Remembering: Surprise-Gated Robot Episodic Memory},
+  author = {Gorlo, Nicolas and others},
+  journal= {arXiv preprint arXiv:2606.03787},
+  year   = {2026},
+  note   = {[TODO-verify] full author list; title verified r6}
+}
+@article{writetime2026,
+  title  = {[TODO-verify title] Write-Time Gating for Agent Memory},
+  author = {{[TODO-verify]}},
+  journal= {arXiv preprint arXiv:2603.15994},
+  year   = {2026},
+  note   = {source-reputation/reliability signal (r4)}
+}
+@article{trustmem2026,
+  title  = {[TODO-verify title] TRUSTMEM},
+  author = {{[TODO-verify]}},
+  journal= {arXiv preprint arXiv:2606.25161},
+  year   = {2026},
+  note   = {faithfulness-to-source != world truth (trap, r4)}
+}
+@misc{loci2026,
+  title  = {[TODO-verify title] LOCI},
+  howpublished = {TDCommons 11091 (defensive publication, non-peer-reviewed)},
+  year   = {2026},
+  note   = {external outcome oracle before crystallize (r4)}
+}
+@article{sema2026,
+  title  = {[TODO-verify title+id] SEMA},
+  author = {{[TODO-verify]}},
+  year   = {2026},
+  note   = {z-score calibration mechanism we inherit; signal differs (novelty vs correctness)}
+}
+
+% ===== 第十三轮新增（推理期写入门谱系 + 量亲缘）=====
+@article{ma2026nemori,
+  title  = {What Deserves Memory: Adaptive Memory Distillation for LLM Agents},
+  author = {Ma, Wenquan and Nan, Jiayan and Wu, Wenlong and Chen, Yize},
+  journal= {arXiv preprint arXiv:2508.03341},
+  year   = {2026},
+  note   = {v4 verified r13: LLM-judged prediction-error (surprise) gate on persistent semantic store; nearest-neighbor gate, MUST cite}
+}
+@article{qi2026govmem,
+  title  = {When Not to Write Memory: Governing False Promotion from Correlated Agent Traces},
+  author = {Qi and Xu and Li},
+  journal= {arXiv preprint arXiv:2607.02579},
+  year   = {2026},
+  note   = {v1 verified r13: GT-free per-item inference-time write gate (support-based); 0/133 safe for auto-promotion. [TODO-verify] full author names}
+}
+@article{han2026infomem,
+  title  = {InfoMem: Training Long-Context Memory Agents with Answer-Conditioned Information Gain},
+  author = {Han and others},
+  journal= {arXiv preprint arXiv:2606.03329},
+  year   = {2026},
+  note   = {v1 verified r13: r_gain = codelength reduction of gold answer, used as GRPO TRAINING reward (needs GT); nearest quantitative relative. [TODO-verify] full author names}
+}
+@inproceedings{amac2026,
+  title  = {Adaptive Memory Admission Control for LLM Agents},
+  author = {{Workday AI}},
+  booktitle = {ICLR 2026 Workshop MemAgent},
+  year   = {2026},
+  note   = {arXiv:2603.04549v1 verified r13: five supervised factors, none MDL. [TODO-verify] author names}
+}
+@article{zou2026demem,
+  title  = {Remember the Decision, Not the Description: A Rate-Distortion Framework for Agent Memory},
+  author = {Zou and others},
+  journal= {arXiv preprint arXiv:2605.10870},
+  year   = {2026},
+  note   = {v1 verified r13: rate=slot count, distortion=task reward; no per-item admission; needs reward feedback. [TODO-verify] full author names}
+}
