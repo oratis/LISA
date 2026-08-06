@@ -86,10 +86,13 @@ import { MAIN_HTML } from "./lisa-html.js";
  * Then: Sense social publishing host — discovered connector status, post-draft
  * list, linked-account labels, immutable approval snapshot, local approve,
  * cancel controls, and a publishing pause/resume kill switch.
+ * Then: mail connect modal — the two accent action buttons (.mm-link "Open App
+ * Passwords" and .dm-start "Connect") now share an identical hit area; .mm-link
+ * matched to .dm-start's box and both pinned to line-height:1.2 for exact parity.
  */
-const EXPECTED_LENGTH = 232129;
+const EXPECTED_LENGTH = 232412;
 const EXPECTED_SHA256 =
-  "d054604413725cbb37e979bb053d7118c43a26e8fe9b90d59b28edde93b851a5";
+  "e8ee3bf24b035276868dba640b943fb436520a9e02bb0e928082e32ce2beeafa";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);

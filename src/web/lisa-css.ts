@@ -509,7 +509,7 @@ export const MAIN_CSS = `  :root {
   .delegate-modal .dm-task { resize: vertical; min-height: 88px; font-family: inherit; }
   .delegate-modal .dm-actions { display: flex; justify-content: flex-end; margin-top: 4px; }
   .delegate-modal .dm-start {
-    font-size: 13px; padding: 8px 16px; border-radius: 8px;
+    font-size: 13px; line-height: 1.2; padding: 8px 16px; border-radius: 8px;
     border: 1px solid var(--brand, #6ad4ff); background: rgba(106,212,255,0.16);
     color: var(--brand, #6ad4ff); cursor: pointer;
   }
@@ -535,9 +535,13 @@ export const MAIN_CSS = `  :root {
   .delegate-modal .mm-steps { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
   .delegate-modal .mm-steps li { font-size: 12px; color: var(--fg-2); line-height: 1.45; }
   .delegate-modal .mm-link {
-    align-self: flex-start; font-size: 12.5px; font-weight: 500;
+    /* Match .dm-start's box exactly so the two accent buttons share a hit area:
+       same font-size + line-height + padding + border, and the same block-flow
+       box (no inline-flex — it renders an <a> 0.5px shorter than the <button>). */
+    align-self: flex-start;
+    font-size: 13px; line-height: 1.2; font-weight: 500;
     color: var(--brand, #6ad4ff); text-decoration: none;
-    border: 1px solid var(--brand, #6ad4ff); border-radius: 8px; padding: 6px 12px;
+    border: 1px solid var(--brand, #6ad4ff); border-radius: 8px; padding: 8px 16px;
     background: rgba(106,212,255,0.10);
   }
   .delegate-modal .mm-link:hover { background: rgba(106,212,255,0.20); }
