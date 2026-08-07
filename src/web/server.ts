@@ -3088,6 +3088,84 @@ self.addEventListener('fetch', (event) => {
       return;
     }
 
+    // ── Session switching (PLAN_UI_SESSION_SHELL_v1.0 §3.2) ──────────────
+    // Both mutations run THROUGH the ctx's turn chain: an in-flight reply
+    // always finishes — and persists via onMessagePersist → chat.session —
+    // into the session it started in before the pointer moves. chat.history
+    // is mutated in place (never reassigned): it is the same array reference
+    // the queued turns closed over.
+    const swapChatSession = async (
+      chat: ChatCtx,
+      open: () => Promise<SessionStore>,
+    ): Promise<string> => {
+      const job = chat.chain.then(async () => {
+        const s = await open();
+        const [{ messages }, reflectionSummary] = await Promise.all([
+          s.readMessagePage(0, 9999),
+          s.readLatestReflection(),
+        ]);
+        chat.session = s;
+        chat.history.length = 0;
+        chat.history.push(...messages);
+        chat.reflectionSummary = reflectionSummary;
+        chat.activity = createTenantActivityState(countUserMessages(chat.history));
+        await writeActiveWebSession(s.id);
+        if (chat === globalChat) process.env.LISA_SESSION_ID = s.id;
+      });
+      chat.chain = job.then(
+        () => {},
+        () => {},
+      );
+      await job;
+      return chat.session.id;
+    };
+
+    if (req.method === "POST" && url === "/api/sessions") {
+      // Create a fresh Lisa session and make it the active web session.
+      const runtime = await ctxForRequest();
+      try {
+        const id = await swapChatSession(runtime.value, () =>
+          SessionStore.create({ cwd: process.cwd(), model: opts.model }),
+        );
+        broadcast({ type: "session_switched", session: id });
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true, id }));
+      } finally {
+        runtime.release();
+      }
+      return;
+    }
+
+    if (
+      req.method === "POST" &&
+      url.startsWith("/api/sessions/") &&
+      url.endsWith("/activate")
+    ) {
+      const id = url.slice("/api/sessions/".length, -"/activate".length);
+      if (!/^[A-Za-z0-9_-]+$/.test(id)) {
+        res.writeHead(400, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: "bad_session_id" }));
+        return;
+      }
+      const runtime = await ctxForRequest();
+      try {
+        const active = await swapChatSession(runtime.value, () =>
+          SessionStore.open(id),
+        );
+        broadcast({ type: "session_switched", session: active });
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true, id: active }));
+      } catch (err) {
+        res.writeHead(404, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({ ok: false, error: (err as Error).message }),
+        );
+      } finally {
+        runtime.release();
+      }
+      return;
+    }
+
     if (req.method === "GET" && url === "/api/skills") {
       const { listSkills } = await import("../skills/manager.js");
       const skills = await listSkills();

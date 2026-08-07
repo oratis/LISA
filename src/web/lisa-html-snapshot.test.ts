@@ -98,10 +98,20 @@ import { MAIN_HTML } from "./lisa-html.js";
  * override + chrome patches) toggled by the new fnbar #fnTheme moon/sun button
  * (persisted as localStorage "lisa-theme") beside a new #fnMail button that
  * reopens the Mail view now that the mail card can be off-screen.
+ * Then: session shell phase 2 — Lisa's own sessions become switchable: a
+ * sidebar .sb-sessions tree (#sessionTree, LISA root group + leaves from
+ * GET /api/sessions, ＋New button) and an fnbar #tabStrip of open-session
+ * tabs (localStorage "lisaOpenSessions"), both driving the new
+ * POST /api/sessions (create) and POST /api/sessions/{id}/activate (switch)
+ * endpoints, which swap the ChatCtx session/history through the turn chain
+ * and broadcast a session_switched SSE frame; lisaSetActiveSession converges
+ * every switch path onto lisaResetChatLog (log wipe + history reload) and a
+ * chatGeneration guard detaches an in-flight reply stream's DOM writes when
+ * its session is switched away mid-turn.
  */
-const EXPECTED_LENGTH = 239937;
+const EXPECTED_LENGTH = 254646;
 const EXPECTED_SHA256 =
-  "f71ab27f0ec717dca459300ef986a749228f6d219556130e92e14ef748812db4";
+  "8a43adaddd1385fe1f256b70d57de86514140b8363e553f09ba3a9efccd213e1";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);

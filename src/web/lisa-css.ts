@@ -732,6 +732,179 @@ export const MAIN_CSS = `  :root {
     flex-shrink: 0;
   }
 
+  /* ── Session tree (sidebar) ─────────────────────────────────────
+     Lisa's own sessions and each monitored agent kind are SIBLING root
+     groups (LISA / Claude Code / Codex … all same level). Generous type
+     per the confirmed mockup: 12.5px bold roots with 19px glyphs,
+     12px leaves, small-caps project sub-groups. */
+  .sb-sessions {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    border-top: 1px solid var(--hairline);
+    padding-top: 10px;
+    margin-top: -6px;
+  }
+  .sb-sessions-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 4px 8px;
+  }
+  .sb-sessions-head h2 {
+    margin: 0;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--fg-3);
+  }
+  .new-btn {
+    border: 1px solid var(--accent-glow);
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-family: inherit;
+    font-size: 10.5px;
+    padding: 2.5px 10px;
+    border-radius: 20px;
+    cursor: pointer;
+  }
+  .new-btn:hover { filter: brightness(1.15); }
+  .tree {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+  .tree .tgroup + .tgroup { margin-top: 6px; }
+  .tnode, .tleaf {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 9px;
+    color: var(--fg-2);
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+    font-size: 12.5px;
+  }
+  .tnode { padding: 8px 9px; font-weight: 700; color: var(--fg); letter-spacing: 0.01em; }
+  .tnode:hover, .tleaf:hover { background: var(--bg-card); }
+  .tnode .tlabel { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .twist {
+    width: 12px; flex: none;
+    font-size: 8px; color: var(--fg-3);
+    transition: transform 0.15s;
+    text-align: center;
+  }
+  .tgroup.closed > .tnode .twist { transform: rotate(-90deg); }
+  .tgroup.closed > .tchildren { display: none; }
+  .tsub.closed > .tchildren { display: none; }
+  .tsub.closed > .tnode .twist { transform: rotate(-90deg); }
+  .agent-glyph {
+    width: 19px; height: 19px; flex: none;
+    border-radius: 5px;
+    font-size: 10px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff;
+  }
+  .agent-glyph.lisa { background: var(--accent); color: #06202e; }
+  .agent-glyph.cc { background: var(--claude); }
+  .agent-glyph.codex { background: var(--codex); }
+  .agent-glyph.other { background: var(--fg-3); }
+  .tcount {
+    margin-left: auto;
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+    color: var(--fg-3);
+    background: var(--bg-card);
+    border-radius: 9px;
+    padding: 1px 7px;
+  }
+  .tchildren { padding-left: 16px; }
+  .tsub .tchildren { padding-left: 13px; }
+  .tsub > .tnode {
+    font-size: 10px; padding: 5px 9px; color: var(--fg-3);
+    font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase;
+  }
+  .tleaf { padding: 7px 9px 7px 11px; }
+  .tleaf .pip {
+    width: 8px; height: 8px; flex: none;
+    border-radius: 50%;
+    background: var(--fg-faint);
+  }
+  .tleaf .pip.live { background: var(--accent); animation: breathe 2.6s ease-in-out infinite; }
+  .tleaf .pip.working { background: var(--proactive); animation: breathe 2.6s ease-in-out infinite; }
+  .tleaf .pip.waiting { background: var(--warm); animation: needsYou 2s ease-in-out infinite; }
+  .tleaf .pip.error { background: var(--err-color); }
+  .tleaf .tname {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+  }
+  .tleaf .ttime { font-size: 10px; color: var(--fg-faint); flex: none; font-variant-numeric: tabular-nums; }
+  .tleaf.active {
+    background: var(--accent-soft);
+    border-color: var(--accent-glow);
+  }
+  .tleaf.active .tname { color: var(--fg); font-weight: 600; }
+  body.session-switching .tleaf, body.session-switching .stab { opacity: 0.55; pointer-events: none; }
+
+  /* ── Session tab strip (fnbar left side) ────────────────────────── */
+  .tabstrip {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    flex-shrink: 1;
+    overflow: hidden;
+  }
+  .stab {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    max-width: 200px;
+    min-width: 0;
+    padding: 6px 11px;
+    border: 1px solid var(--border-new);
+    border-radius: 9px;
+    background: transparent;
+    color: var(--fg-3);
+    font-family: inherit;
+    font-size: 11.5px;
+    cursor: pointer;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .stab .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--fg-faint); flex: none; }
+  .stab .pip.live { background: var(--accent); animation: breathe 2.6s ease-in-out infinite; }
+  .stab .stab-name { overflow: hidden; text-overflow: ellipsis; }
+  .stab:hover { background: var(--bg-card); }
+  .stab.active {
+    background: var(--bg-card-strong);
+    border-color: var(--border-strong);
+    color: var(--fg);
+  }
+  .stab .stab-x { font-size: 12px; color: var(--fg-faint); padding: 0 1px; }
+  .stab .stab-x:hover { color: var(--fg); }
+  .stab-new {
+    border: 1px dashed var(--border-strong);
+    background: transparent;
+    color: var(--fg-3);
+    width: 27px; height: 27px; flex: none;
+    border-radius: 9px;
+    font-size: 14px;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .stab-new:hover { color: var(--accent); border-color: var(--accent); }
+
   /* ── Right panel (status rail) ──────────────────────────────────
      One structured full-height panel, symmetric with the sidebar: the
      relocated sidebar lower half (wanting / agents / mail / reflection)

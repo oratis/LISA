@@ -418,10 +418,27 @@ document.addEventListener('paste', (ev) => {
 
 // Surface session id from server header on first request. The titlebar
 // shows the same id with a leading "·" separator after the "Lisa" label.
-fetch('/session').then(r => r.json()).then(s => {
-  sessionEl.textContent = s.id;
+// Session switching (PLAN_UI_SESSION_SHELL_v1.0): the active id is tracked
+// here; lisaSetActiveSession is the one entry point every switch path uses —
+// tree clicks, tab clicks, ＋New, and the session_switched SSE frame from
+// another window — so they all converge on the same reload behavior.
+let activeSessionId = null;
+function setActiveSessionUI(id) {
+  activeSessionId = id;
+  window.lisaActiveSessionId = id;
+  sessionEl.textContent = id;
   const titlebarSession = document.getElementById('titlebarSession');
-  if (titlebarSession) titlebarSession.textContent = '· ' + s.id;
+  if (titlebarSession) titlebarSession.textContent = '· ' + id;
+}
+window.lisaSetActiveSession = function (id) {
+  if (!id || id === activeSessionId) return;
+  setActiveSessionUI(id);
+  if (typeof window.lisaResetChatLog === 'function') window.lisaResetChatLog();
+  if (typeof window.lisaRenderSessionTree === 'function') window.lisaRenderSessionTree();
+};
+fetch('/session').then(r => r.json()).then(s => {
+  setActiveSessionUI(s.id);
+  if (typeof window.lisaRenderSessionTree === 'function') window.lisaRenderSessionTree();
 });
 
 // ── While-you-were-away idle note: shared card builder + localized label ──
@@ -492,6 +509,9 @@ function connectEvents() {
       // "sidebar live wiring" block). Generalized from claude_session_update
       // so codex / opencode / git / … sessions update the sidebar too.
       if (typeof refreshClaudeSessions === 'function') refreshClaudeSessions();
+    } else if (ev.type === 'session_switched') {
+      // Another window (or this one) moved the active web session — converge.
+      if (typeof window.lisaSetActiveSession === 'function') window.lisaSetActiveSession(ev.session);
     } else if (ev.type === 'mail_digest_update' || ev.type === 'mail_accounts_update') {
       if (typeof window.refreshMail === 'function') window.refreshMail();
     }
@@ -765,6 +785,22 @@ loadHistoryPage();
 log.addEventListener('scroll', () => {
   if (log.scrollTop < 80) loadHistoryPage();
 });
+
+// Session switch support: wipe the log and reload page 0 for the (new) active
+// session. Bumps the chat generation so an in-flight reply stream from the
+// previous session stops touching the DOM (it keeps draining silently and the
+// server persists it into the session it started in).
+window.lisaResetChatLog = function () {
+  chatGeneration++;
+  historyPage = 0;
+  historyLoading = false;
+  historyExhausted = false;
+  currentLisaSpan = null;
+  pendingTools.clear();
+  if (thinkingEl) { thinkingEl.remove(); thinkingEl = null; }
+  log.innerHTML = '';
+  loadHistoryPage();
+};
 
 // ── mascot crossfade on mood event ──────────────────────────────────
 const mascotEl = document.getElementById('mascot');
@@ -1073,6 +1109,9 @@ if (fnSearchBtn && fnFind) {
 let currentLisaSpan = null;
 let pendingTools = new Map();
 let thinkingEl = null;
+// Bumped by lisaResetChatLog on every session switch; runChat captures the
+// value at send time and stops rendering once it goes stale.
+let chatGeneration = 0;
 
 function el(tag, cls, text) {
   const node = document.createElement(tag);
@@ -1225,6 +1264,7 @@ function showError(detail, message, filesToSend) {
 
 async function runChat(message, filesToSend) {
   sendBtn.disabled = true;
+  const gen = chatGeneration;
   currentLisaSpan = null;
   pendingTools.clear();
   thinkingEl = el('div', 'thinking', '⋯ thinking');
@@ -1232,7 +1272,7 @@ async function runChat(message, filesToSend) {
   // catch — dedupe so one failure renders exactly one error block.
   let errored = false;
   const fail = (detail) => {
-    if (errored) return;
+    if (errored || gen !== chatGeneration) return;
     errored = true;
     showError(detail, message, filesToSend);
   };
@@ -1256,6 +1296,9 @@ async function runChat(message, filesToSend) {
         const m = evRaw.match(/^data: (.*)$/m);
         if (!m) continue;
         const ev = JSON.parse(m[1]);
+        // Stale generation (the user switched sessions mid-reply): drain the
+        // stream without touching the DOM; the reply persists server-side.
+        if (gen !== chatGeneration) continue;
         if (ev.type === 'text') {
           const span = ensureLisaSpan();
           span._md = (span._md || '') + ev.text;
@@ -1479,10 +1522,11 @@ if ('serviceWorker' in navigator) {
 
   function relativeTime(iso) {
     const ms = Date.now() - new Date(iso).getTime();
-    if (ms < 30_000)   return 'just now';
-    if (ms < 60_000)   return Math.round(ms / 1000) + 's';
-    if (ms < 3600_000) return Math.round(ms / 60_000) + 'm';
-    return Math.round(ms / 3600_000) + 'h';
+    if (ms < 30_000)    return 'just now';
+    if (ms < 60_000)    return Math.round(ms / 1000) + 's';
+    if (ms < 3600_000)  return Math.round(ms / 60_000) + 'm';
+    if (ms < 86400_000) return Math.round(ms / 3600_000) + 'h';
+    return Math.round(ms / 86400_000) + 'd';
   }
 
   function setDesire(text) {
@@ -1774,13 +1818,164 @@ if ('serviceWorker' in navigator) {
     } catch {}
   }
 
+  // ── Session tree + tab strip (PLAN_UI_SESSION_SHELL_v1.0 §3.1) ──────
+  // Lisa's own sessions as the first root group of the sidebar tree; the
+  // monitored-agent groups join in the control-tree phase. Open tabs are a
+  // client-side notion (which sessions you keep at hand), persisted in
+  // localStorage; the tree is the full on-disk list.
+  let cachedSessions = [];
+  let openTabIds = [];
+  try {
+    const rawTabs = localStorage.getItem('lisaOpenSessions');
+    if (rawTabs) openTabIds = JSON.parse(rawTabs).filter(function (x) { return typeof x === 'string'; });
+  } catch (e) { openTabIds = []; }
+  function saveTabs() {
+    try { localStorage.setItem('lisaOpenSessions', JSON.stringify(openTabIds.slice(0, 12))); } catch (e) {}
+  }
+  function sessionLabel(s) {
+    const t = (s && s.lastUserMessage ? s.lastUserMessage : '').trim();
+    if (t) return t.length > 30 ? t.slice(0, 30) + '…' : t;
+    return s ? s.id : '';
+  }
+  function sessionById(id) {
+    for (let i = 0; i < cachedSessions.length; i++) {
+      if (cachedSessions[i].id === id) return cachedSessions[i];
+    }
+    return null;
+  }
+
+  let switching = false;
+  async function switchSession(id) {
+    if (switching || !id || id === window.lisaActiveSessionId) return;
+    switching = true;
+    document.body.classList.add('session-switching');
+    try {
+      const r = await fetch('/api/sessions/' + encodeURIComponent(id) + '/activate', { method: 'POST' });
+      const data = await r.json();
+      if (data && data.ok) {
+        ensureTab(data.id);
+        if (typeof window.lisaSetActiveSession === 'function') window.lisaSetActiveSession(data.id);
+      }
+    } catch (e) {}
+    document.body.classList.remove('session-switching');
+    switching = false;
+    refreshSessionsBadge();
+  }
+  async function newSession() {
+    if (switching) return;
+    switching = true;
+    document.body.classList.add('session-switching');
+    try {
+      const r = await fetch('/api/sessions', { method: 'POST' });
+      const data = await r.json();
+      if (data && data.ok) {
+        ensureTab(data.id);
+        if (typeof window.lisaSetActiveSession === 'function') window.lisaSetActiveSession(data.id);
+      }
+    } catch (e) {}
+    document.body.classList.remove('session-switching');
+    switching = false;
+    refreshSessionsBadge();
+  }
+  function ensureTab(id) {
+    if (openTabIds.indexOf(id) < 0) openTabIds.unshift(id);
+    saveTabs();
+  }
+  function closeTab(id) {
+    const idx = openTabIds.indexOf(id);
+    if (idx >= 0) openTabIds.splice(idx, 1);
+    saveTabs();
+    if (id === window.lisaActiveSessionId && openTabIds.length) {
+      switchSession(openTabIds[0]);
+      return;
+    }
+    renderSessionUI();
+  }
+
+  function renderSessionTree() {
+    const tree = document.getElementById('sessionTree');
+    if (!tree) return;
+    tree.innerHTML = '';
+    const group = document.createElement('div');
+    group.className = 'tgroup';
+    const root = document.createElement('button');
+    root.type = 'button';
+    root.className = 'tnode';
+    root.innerHTML = '<span class="twist">▾</span><span class="agent-glyph lisa">L</span><span class="tlabel">LISA</span><span class="tcount"></span>';
+    root.querySelector('.tcount').textContent = String(cachedSessions.length);
+    root.addEventListener('click', function () { group.classList.toggle('closed'); });
+    group.appendChild(root);
+    const kids = document.createElement('div');
+    kids.className = 'tchildren';
+    const MAX_LEAVES = 14;
+    cachedSessions.slice(0, MAX_LEAVES).forEach(function (s) {
+      const isActive = s.id === window.lisaActiveSessionId;
+      const leaf = document.createElement('button');
+      leaf.type = 'button';
+      leaf.className = 'tleaf' + (isActive ? ' active' : '');
+      leaf.innerHTML = '<span class="pip"></span><span class="tname"></span><span class="ttime"></span>';
+      if (isActive) leaf.querySelector('.pip').classList.add('live');
+      leaf.querySelector('.tname').textContent = sessionLabel(s);
+      leaf.querySelector('.ttime').textContent = relativeTime(s.startedAt);
+      leaf.title = s.id + ' · ' + (s.messageCount || 0) + ' msgs';
+      leaf.addEventListener('click', function () { switchSession(s.id); });
+      kids.appendChild(leaf);
+    });
+    group.appendChild(kids);
+    tree.appendChild(group);
+  }
+
+  function renderTabs() {
+    const strip = document.getElementById('tabStrip');
+    if (!strip) return;
+    strip.innerHTML = '';
+    // Drop tabs whose session vanished from disk.
+    openTabIds = openTabIds.filter(function (id) { return sessionById(id) !== null || id === window.lisaActiveSessionId; });
+    if (window.lisaActiveSessionId) ensureTab(window.lisaActiveSessionId);
+    openTabIds.slice(0, 6).forEach(function (id) {
+      const s = sessionById(id);
+      const isActive = id === window.lisaActiveSessionId;
+      const tab = document.createElement('button');
+      tab.type = 'button';
+      tab.className = 'stab' + (isActive ? ' active' : '');
+      tab.innerHTML = '<span class="pip"></span><span class="stab-name"></span><span class="stab-x" title="Close tab">×</span>';
+      if (isActive) tab.querySelector('.pip').classList.add('live');
+      tab.querySelector('.stab-name').textContent = s ? sessionLabel(s) : id;
+      tab.addEventListener('click', function (e) {
+        if (e.target && e.target.classList && e.target.classList.contains('stab-x')) {
+          e.stopPropagation();
+          closeTab(id);
+          return;
+        }
+        switchSession(id);
+      });
+      strip.appendChild(tab);
+    });
+    const plus = document.createElement('button');
+    plus.type = 'button';
+    plus.className = 'stab-new';
+    plus.title = 'New session';
+    plus.textContent = '＋';
+    plus.addEventListener('click', newSession);
+    strip.appendChild(plus);
+  }
+
+  function renderSessionUI() {
+    renderSessionTree();
+    renderTabs();
+  }
+  window.lisaRenderSessionTree = renderSessionUI;
+  const sbNewBtn = document.getElementById('sbNewSession');
+  if (sbNewBtn) sbNewBtn.addEventListener('click', newSession);
+
   async function refreshSessionsBadge() {
     try {
       const r = await fetch('/api/sessions');
       if (!r.ok) return;
       const data = await r.json();
-      const n = Array.isArray(data.sessions) ? data.sessions.length : 0;
-      sbSessionBadge.textContent = String(n);
+      cachedSessions = Array.isArray(data.sessions) ? data.sessions : [];
+      sbSessionBadge.textContent = String(cachedSessions.length);
+      renderSessionUI();
     } catch {
       // /api/sessions is optional — leave the badge as-is on failure
     }

@@ -103,6 +103,17 @@ ${MAIN_CSS}
     <!-- (SOUL/SKILLS/TOOLS/PLANS → top function bar; MEMORY → rail view) -->
     <!-- (Proactive / Compact toggles moved into the Settings rail view) -->
 
+    <!-- Session tree — Lisa's own sessions as the first root group; the
+         monitored-agent groups join as sibling roots (control-tree phase).
+         Wired by the sidebar-live block (renderSessionTree). -->
+    <div class="sb-sessions">
+      <div class="sb-sessions-head">
+        <h2>Sessions</h2>
+        <button class="new-btn" id="sbNewSession" type="button" title="Start a new session">＋ New</button>
+      </div>
+      <div class="tree" id="sessionTree"></div>
+    </div>
+
     <!-- Footer: current session id -->
     <div class="sb-footer">
       <span class="session-id" id="sessionId">—</span>
@@ -116,8 +127,11 @@ ${MAIN_CSS}
     <!-- Chat view (default home) — function bar + log + attachments + composer -->
     <div class="view active" id="viewChat">
 
-    <!-- Top icon function bar (功能区): quick panels + find -->
+    <!-- Top icon function bar (功能区): session tabs (left) + quick panels
+         + find (right). #tabStrip is rendered by the sidebar-live block. -->
     <div class="fnbar" id="fnbar">
+      <div class="tabstrip" id="tabStrip"></div>
+      <span class="fbar-spacer"></span>
       <button class="fbtn" type="button" data-panel="soul" title="Soul" aria-label="Soul"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.2 6.6L21 12l-6.8 2.4L12 21l-2.2-6.6L3 12l6.8-2.4z"/></svg></button>
       <button class="fbtn" type="button" data-panel="skills" title="Skills" aria-label="Skills"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 10-12h-7z"/></svg></button>
       <button class="fbtn" type="button" data-panel="tools" title="Tools" aria-label="Tools"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></button>
@@ -125,7 +139,6 @@ ${MAIN_CSS}
       <button class="fbtn" type="button" data-panel="pair" title="Pair phone" aria-label="Pair phone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"/><line x1="11" y1="18" x2="13" y2="18"/></svg></button>
       <button class="fbtn" type="button" id="fnKbSelect" title="Select messages to save to your Knowledge Base" aria-label="Save messages to knowledge base"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg></button>
       <button class="fbtn" type="button" id="fnMail" title="Mail" aria-label="Mail"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg></button>
-      <span class="fbar-spacer"></span>
       <input id="fnFind" class="fn-find" type="text" placeholder="find in chat…" autocomplete="off" style="display:none">
       <button class="fbtn" type="button" id="fnSearchBtn" title="Find in conversation" aria-label="Find"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button>
       <button class="fbtn" type="button" id="fnTheme" title="Theme: Nebula ↔ Calm" aria-label="Toggle theme"><svg id="fnThemeMoon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg><svg id="fnThemeSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></button>
