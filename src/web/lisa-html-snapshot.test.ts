@@ -89,10 +89,19 @@ import { MAIN_HTML } from "./lisa-html.js";
  * Then: mail connect modal — the two accent action buttons (.mm-link "Open App
  * Passwords" and .dm-start "Connect") now share an identical hit area; .mm-link
  * matched to .dm-start's box and both pinned to line-height:1.2 for exact parity.
+ * Then: 3-column session shell, phase 1 (PLAN_UI_SESSION_SHELL_v1.0) — the
+ * sidebar lower half (currently-wanting / agents / mail / reflection, IDs
+ * unchanged) moved into a new .rightbar status panel (uniform .rb-sec sections
+ * + hairlines, no tinted cards); .frame grid grew a 320px "rightbar" column
+ * with a new ≤1180px two-column fallback and display:none in the ≤720px +
+ * force-compact stacks; a light "Calm" theme (body[data-theme="calm"] token
+ * override + chrome patches) toggled by the new fnbar #fnTheme moon/sun button
+ * (persisted as localStorage "lisa-theme") beside a new #fnMail button that
+ * reopens the Mail view now that the mail card can be off-screen.
  */
-const EXPECTED_LENGTH = 232412;
+const EXPECTED_LENGTH = 239937;
 const EXPECTED_SHA256 =
-  "e8ee3bf24b035276868dba640b943fb436520a9e02bb0e928082e32ce2beeafa";
+  "f71ab27f0ec717dca459300ef986a749228f6d219556130e92e14ef748812db4";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);

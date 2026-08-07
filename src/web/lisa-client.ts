@@ -1039,6 +1039,37 @@ if (fnSearchBtn && fnFind) {
   };
 }
 
+// Theme — Nebula (dark, default) vs Calm (light), persisted. The CSS keys off
+// <body data-theme="calm">; the fnbar #fnTheme button toggles, and the
+// moon/sun glyph swap is pure CSS (body[data-theme] show/hide rules).
+{
+  let theme = 'nebula';
+  try { theme = localStorage.getItem('lisa-theme') === 'calm' ? 'calm' : 'nebula'; } catch (e) {}
+  const applyTheme = () => {
+    if (theme === 'calm') document.body.setAttribute('data-theme', 'calm');
+    else document.body.removeAttribute('data-theme');
+  };
+  applyTheme();
+  window.lisaGetTheme = () => theme;
+  window.lisaSetTheme = (t) => {
+    const next = t === 'calm' ? 'calm' : 'nebula';
+    if (next === theme) return;
+    theme = next;
+    try { localStorage.setItem('lisa-theme', theme); } catch (e) {}
+    applyTheme();
+  };
+  const themeBtn = document.getElementById('fnTheme');
+  if (themeBtn) themeBtn.addEventListener('click', () => {
+    window.lisaSetTheme(theme === 'calm' ? 'nebula' : 'calm');
+  });
+  // Mail entry from the function bar (the sidebar mail card moved to the
+  // right panel, which collapses on narrow widths — this stays reachable).
+  const mailBtn = document.getElementById('fnMail');
+  if (mailBtn) mailBtn.addEventListener('click', () => {
+    if (window.lisaShowView) window.lisaShowView('mail');
+  });
+}
+
 let currentLisaSpan = null;
 let pendingTools = new Map();
 let thinkingEl = null;

@@ -22,9 +22,13 @@ export const MAIN_CSS = `  :root {
     --proactive-soft: rgba(61, 220, 151, 0.13);
     --proactive-glow: rgba(61, 220, 151, 0.30);
     --warm: #ffd066;
+    --warm-soft: rgba(255, 208, 102, 0.12);
     --dream: #b487ff;
     --claude: #ff8c42;
+    --claude-soft: rgba(255, 140, 66, 0.12);
+    --codex: #7ea6ff;
     --err-color: #ff5577;
+    --err-soft: rgba(255, 85, 119, 0.12);
 
     --bg-deep: #07091a;
     --bg-1: #0b1024;
@@ -34,6 +38,8 @@ export const MAIN_CSS = `  :root {
     --bg-card-strong: rgba(20, 26, 64, 0.88);
     --border-new: rgba(255, 255, 255, 0.07);
     --border-strong: rgba(255, 255, 255, 0.14);
+    --hairline: rgba(255, 255, 255, 0.06);
+    --bg-inset: rgba(255, 255, 255, 0.035);
 
     --fg: #e8eaff;
     --fg-2: #aeb5d3;
@@ -55,6 +61,60 @@ export const MAIN_CSS = `  :root {
     --tool: #ff7eb6;
     --error: #ff5577;
   }
+
+  /* ── Theme C · "Calm" (静界) — light professional skin ──────────────
+     Toggled via <body data-theme="calm"> (fnbar sun/moon button, persisted
+     in localStorage "lisa-theme"). Every themed surface reads the custom
+     properties above, so the light skin is one override block plus a few
+     patches below for the hardcoded dark backgrounds (frame gradient,
+     titlebar, sidebar glass). Token table: docs/PLAN_UI_SESSION_SHELL_v1.0.md §2. */
+  body[data-theme="calm"] {
+    color-scheme: light;
+
+    --accent: #4f5bd5;
+    --accent-soft: rgba(79, 91, 213, 0.09);
+    --accent-glow: rgba(79, 91, 213, 0.25);
+    --proactive: #1f9d6b;
+    --proactive-soft: rgba(31, 157, 107, 0.10);
+    --proactive-glow: rgba(31, 157, 107, 0.28);
+    --warm: #d97706;
+    --warm-soft: rgba(217, 119, 6, 0.10);
+    --dream: #7c5cd6;
+    --claude: #e2681c;
+    --claude-soft: rgba(226, 104, 28, 0.09);
+    --codex: #3d6fd8;
+    --err-color: #dc3545;
+    --err-soft: rgba(220, 53, 69, 0.08);
+
+    --bg-deep: #f6f7f9;
+    --bg-1: #f6f7f9;
+    --bg-2: #eef0f4;
+    --bg-3: #e7eaf0;
+    --bg-card: #ffffff;
+    --bg-card-strong: #ffffff;
+    --border-new: #e4e7ec;
+    --border-strong: #d5d9e2;
+    --hairline: #edf0f4;
+    --bg-inset: rgba(16, 24, 40, 0.028);
+
+    --fg: #1b2430;
+    --fg-2: #4d5666;
+    --fg-3: #8a919f;
+    --fg-faint: #c2c7d1;
+
+    /* Legacy tokens (modal / cfg / birth overlays) mapped to light. */
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --panel-light: #eef0f4;
+    --border: #d5d9e2;
+    --border-light: #c2c8d4;
+    --text: #1b2430;
+    --text-dim: #69707d;
+    --you: #0f766e;
+    --lisa: #b45309;
+    --tool: #c2417e;
+    --error: #dc3545;
+  }
   * { box-sizing: border-box; }
   html, body {
     height: 100%;
@@ -71,16 +131,42 @@ export const MAIN_CSS = `  :root {
     height: 100vh;
     width: 100vw;
     display: grid;
-    grid-template-columns: 300px 1fr;
+    grid-template-columns: 300px 1fr 320px;
     grid-template-rows: 36px 1fr;
     grid-template-areas:
-      "titlebar titlebar"
-      "sidebar  main";
+      "titlebar titlebar titlebar"
+      "sidebar  main     rightbar";
     background:
       radial-gradient(ellipse at 30% 20%, #1a1238 0%, transparent 50%),
       radial-gradient(ellipse at 80% 70%, #0a1f3a 0%, transparent 60%),
       linear-gradient(180deg, var(--bg-1) 0%, var(--bg-deep) 100%);
     overflow: hidden;
+  }
+  /* Calm patches for the hardcoded dark chrome above/below. */
+  body[data-theme="calm"] { background: var(--bg-deep); }
+  body[data-theme="calm"] .frame { background: var(--bg-deep); }
+  body[data-theme="calm"] .titlebar { background: rgba(246, 247, 249, 0.85); }
+  body[data-theme="calm"] .sidebar,
+  body[data-theme="calm"] .rightbar {
+    background: #ffffff;
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
+  }
+  body[data-theme="calm"] .main { background: none; }
+  body[data-theme="calm"] .identity .avatar-wrap { background: var(--bg-2); }
+  body[data-theme="calm"] #roomFrame { border: 1px solid var(--border-new); border-radius: 12px; }
+  body[data-theme="calm"] #form { background: rgba(246, 247, 249, 0.85); }
+  body[data-theme="calm"] .fnbar { background: rgba(16, 24, 40, 0.02); }
+  body[data-theme="calm"] .fn-find,
+  body[data-theme="calm"] .sd-out,
+  body[data-theme="calm"] .delegate-modal .dm-kind,
+  body[data-theme="calm"] .delegate-modal .dm-task,
+  body[data-theme="calm"] .session-ctrl .mc-send { background: rgba(16, 24, 40, 0.04); }
+  body[data-theme="calm"] .session-ctrl .mc:hover,
+  body[data-theme="calm"] .ctrl-row .cr-quick:hover { background: rgba(16, 24, 40, 0.08); }
+  body[data-theme="calm"] #sendBtn {
+    background: var(--accent);
+    color: #ffffff;
+    box-shadow: 0 4px 14px rgba(79, 91, 213, 0.25);
   }
 
   /* Title bar — visually shows "Lisa · session-id". The actual drag
@@ -645,6 +731,60 @@ export const MAIN_CSS = `  :root {
     font-variant-numeric: tabular-nums;
     flex-shrink: 0;
   }
+
+  /* ── Right panel (status rail) ──────────────────────────────────
+     One structured full-height panel, symmetric with the sidebar: the
+     relocated sidebar lower half (wanting / agents / mail / reflection)
+     as uniform sections separated by hairlines. Design rules (see
+     docs/PLAN_UI_SESSION_SHELL_v1.0.md §1.3): 16px horizontal padding,
+     small-caps section headers, no tinted card stacking — color is
+     reserved for semantic chips/pips. */
+  .rightbar {
+    grid-area: rightbar;
+    margin: 8px 10px 10px 6px;
+    background: linear-gradient(180deg, rgba(18, 23, 48, 0.62), rgba(10, 13, 33, 0.6));
+    backdrop-filter: blur(30px);
+    -webkit-backdrop-filter: blur(30px);
+    border: 1px solid var(--border-new);
+    border-radius: 16px;
+    box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .rightbar .rb-sec { padding: 14px 16px; }
+  .rightbar .rb-sec + .rb-sec { border-top: 1px solid var(--hairline); }
+  .rightbar .rb-sec > .h {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 9px;
+  }
+  .rightbar .rb-sec > .h .left {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--fg-3);
+  }
+  .rightbar .rb-sec > .h .count {
+    font-size: 10px;
+    color: var(--fg-3);
+    font-variant-numeric: tabular-nums;
+  }
+  .rightbar .body-text {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.7;
+    color: var(--fg-2);
+  }
+  .rightbar .delegate-btn { margin: 4px 0 8px; }
+  .rightbar #sbMailCard .h { cursor: pointer; }
 
   /* ── Primary nav (九宫格 3×3 tile grid in the sidebar) ────────── */
   .nav-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
@@ -1690,6 +1830,9 @@ export const MAIN_CSS = `  :root {
   .fbtn:hover { background: var(--bg-card, rgba(255,255,255,.06)); color: var(--fg); }
   .fbtn svg { width: 19px; height: 19px; display: block; }
   .fbar-spacer { flex: 1; }
+  /* Theme toggle: the moon shows in Nebula (dark), the sun in Calm. */
+  body[data-theme="calm"] #fnThemeMoon { display: none; }
+  body:not([data-theme="calm"]) #fnThemeSun { display: none; }
   .fn-find {
     height: 28px; width: 150px; font-size: 12px; padding: 0 9px;
     border-radius: 8px; border: 1px solid var(--border-strong, rgba(255,255,255,.14));
@@ -1765,6 +1908,17 @@ export const MAIN_CSS = `  :root {
   /* Hide the legacy pixel send icon; the text label is enough in the new theme. */
   #sendBtn img { display: none; }
 
+  /* ── Narrow desktop: drop the right panel, keep two columns ──── */
+  @media (max-width: 1180px) {
+    .frame {
+      grid-template-columns: 300px 1fr;
+      grid-template-areas:
+        "titlebar titlebar"
+        "sidebar  main";
+    }
+    .rightbar { display: none; }
+  }
+
   /* ── Mobile / narrow ───────────────────────────────────────── */
   @media (max-width: 720px) {
     body {
@@ -1780,6 +1934,7 @@ export const MAIN_CSS = `  :root {
         "sidebar"
         "main";
     }
+    .rightbar { display: none; }
     .sidebar {
       max-height: 38vh;
       padding: 14px 14px 12px;
@@ -1803,6 +1958,7 @@ export const MAIN_CSS = `  :root {
       "sidebar"
       "main";
   }
+  body.force-compact .rightbar { display: none; }
   body.force-compact .sidebar {
     max-height: 38vh;
     padding: 14px 14px 12px;

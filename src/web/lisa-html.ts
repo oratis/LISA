@@ -4,11 +4,13 @@
  * Extracted out of server.ts so the visual layer (CSS + body markup +
  * client JS) can evolve as one piece without bloating the server module.
  *
- * Design language follows reference/mockups/lisa-app-redesign.html:
- *   - Glass-morphism dark UI with cyan (#6ad4ff) brand accent
- *   - 280px sidebar (identity card · currently wanting · Claude monitor ·
- *     last reflection · SOUL/SKILLS/MEMORY/TOOLS row · session badge)
- *   - Right pane: chat log + composer
+ * Design language follows reference/mockups/lisa-session-shell.html
+ * (PLAN_UI_SESSION_SHELL_v1.0):
+ *   - Glass-morphism dark UI ("Nebula") with cyan (#6ad4ff) brand accent,
+ *     plus a light "Calm" theme via <body data-theme="calm"> (fnbar toggle)
+ *   - 3-column shell: 300px sidebar (identity card · 3×3 nav grid ·
+ *     session footer) · main view stack · 320px right panel (currently
+ *     wanting · agents monitor · mail · last reflection)
  *
  * IDs preserved from the previous pixel-art shell so the existing
  * client-side JS (history loading, mood updates, modal panels, birth
@@ -97,50 +99,8 @@ ${MAIN_CSS}
       <button class="nav-item" type="button" data-view="settings"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span><span class="nav-label">Settings</span></button>
     </nav>
 
-    <!-- Currently wanting -->
-    <div class="sb-section">
-      <h2>currently wanting</h2>
-      <p class="body-text" id="sbDesire">—</p>
-    </div>
-
-    <!-- Claude Code monitor -->
-    <div class="card tint-claude" id="sbClaudeCard">
-      <div class="h">
-        <div class="left">agents</div>
-        <div class="count">▶︎ <span id="sbClaudeCount">0</span></div>
-      </div>
-      <button id="sbDelegateBtn" class="delegate-btn" type="button" title="Start an agent">
-        ＋ delegate a task
-      </button>
-      <div id="sbClaudeRows">
-        <div class="session-empty">(idle)</div>
-      </div>
-    </div>
-
-    <!-- Mail digest (connect a mailbox → daily classified digest) -->
-    <div class="card tint-mail" id="sbMailCard">
-      <div class="h">
-        <div class="left">mail</div>
-        <div class="count" id="sbMailCount"></div>
-      </div>
-      <div id="sbMailBody">
-        <div class="session-empty">(not connected)</div>
-      </div>
-      <button id="sbMailConnectBtn" class="delegate-btn" type="button" title="Connect a mailbox">
-        ＋ connect mailbox
-      </button>
-    </div>
-
-    <!-- Last reflection (collapsed pointer to the most recent ★) -->
-    <div class="card tint-idle" id="sbReflection" style="display:none;">
-      <div class="h">
-        <div class="left">★ last reflection</div>
-      </div>
-      <p style="margin:0; font-size:11.5px; color:var(--fg-2); line-height:1.5;" id="sbReflectionBody"></p>
-    </div>
-
+    <!-- (currently wanting / agents / mail / reflection → right panel) -->
     <!-- (SOUL/SKILLS/TOOLS/PLANS → top function bar; MEMORY → rail view) -->
-
     <!-- (Proactive / Compact toggles moved into the Settings rail view) -->
 
     <!-- Footer: current session id -->
@@ -164,9 +124,11 @@ ${MAIN_CSS}
       <button class="fbtn" type="button" data-panel="plans" title="Coding plans" aria-label="Coding plans"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg></button>
       <button class="fbtn" type="button" data-panel="pair" title="Pair phone" aria-label="Pair phone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"/><line x1="11" y1="18" x2="13" y2="18"/></svg></button>
       <button class="fbtn" type="button" id="fnKbSelect" title="Select messages to save to your Knowledge Base" aria-label="Save messages to knowledge base"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg></button>
+      <button class="fbtn" type="button" id="fnMail" title="Mail" aria-label="Mail"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg></button>
       <span class="fbar-spacer"></span>
       <input id="fnFind" class="fn-find" type="text" placeholder="find in chat…" autocomplete="off" style="display:none">
       <button class="fbtn" type="button" id="fnSearchBtn" title="Find in conversation" aria-label="Find"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button>
+      <button class="fbtn" type="button" id="fnTheme" title="Theme: Nebula ↔ Calm" aria-label="Toggle theme"><svg id="fnThemeMoon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg><svg id="fnThemeSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></button>
     </div>
 
     <!-- Chat log (messages, tool blocks, idle blocks injected here) -->
@@ -207,6 +169,59 @@ ${MAIN_CSS}
     <section class="view" id="viewMail"></section>
     <section class="view" id="viewSettings"></section>
   </div>
+
+  <!-- ╔════════════════ Right panel (status rail) ════════════════╗
+       The relocated sidebar lower half as one structured panel:
+       uniform sections + hairlines (PLAN_UI_SESSION_SHELL_v1.0 §1.3).
+       IDs are unchanged so the existing sidebar-live wiring keeps
+       working (setupSidebarLive resolves them unguarded). -->
+  <aside class="rightbar">
+
+    <!-- Currently wanting -->
+    <div class="rb-sec">
+      <div class="h">
+        <div class="left">currently wanting</div>
+      </div>
+      <p class="body-text" id="sbDesire">—</p>
+    </div>
+
+    <!-- Agents monitor -->
+    <div class="rb-sec" id="sbClaudeCard">
+      <div class="h">
+        <div class="left">agents</div>
+        <div class="count">▶︎ <span id="sbClaudeCount">0</span></div>
+      </div>
+      <button id="sbDelegateBtn" class="delegate-btn" type="button" title="Start an agent">
+        ＋ delegate a task
+      </button>
+      <div id="sbClaudeRows">
+        <div class="session-empty">(idle)</div>
+      </div>
+    </div>
+
+    <!-- Mail digest (connect a mailbox → daily classified digest) -->
+    <div class="rb-sec" id="sbMailCard">
+      <div class="h">
+        <div class="left">mail</div>
+        <div class="count" id="sbMailCount"></div>
+      </div>
+      <div id="sbMailBody">
+        <div class="session-empty">(not connected)</div>
+      </div>
+      <button id="sbMailConnectBtn" class="delegate-btn" type="button" title="Connect a mailbox">
+        ＋ connect mailbox
+      </button>
+    </div>
+
+    <!-- Last reflection (collapsed pointer to the most recent ★) -->
+    <div class="rb-sec" id="sbReflection" style="display:none;">
+      <div class="h">
+        <div class="left">★ last reflection</div>
+      </div>
+      <p class="body-text" id="sbReflectionBody"></p>
+    </div>
+
+  </aside>
 </div>
 
 <!-- ╔════════════════ Overlays ════════════════╗ -->
