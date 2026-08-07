@@ -198,18 +198,21 @@ ${MAIN_CSS}
       <p class="body-text" id="sbDesire">—</p>
     </div>
 
-    <!-- Agents monitor -->
+    <!-- Inspector — detail card for the session selected in the sidebar
+         tree (agent or Lisa session; auto-selects the top problem session).
+         #sbClaudeRows is the inspector body (id kept: setupSidebarLive
+         resolves it unguarded); the live-agent count stays in the header. -->
     <div class="rb-sec" id="sbClaudeCard">
       <div class="h">
-        <div class="left">agents</div>
-        <div class="count">▶︎ <span id="sbClaudeCount">0</span></div>
+        <div class="left">inspector</div>
+        <div class="count">▶︎ <span id="sbClaudeCount">0</span> live</div>
+      </div>
+      <div id="sbClaudeRows">
+        <div class="session-empty">(idle)</div>
       </div>
       <button id="sbDelegateBtn" class="delegate-btn" type="button" title="Start an agent">
         ＋ delegate a task
       </button>
-      <div id="sbClaudeRows">
-        <div class="session-empty">(idle)</div>
-      </div>
     </div>
 
     <!-- Mail digest (connect a mailbox → daily classified digest) -->

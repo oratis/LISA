@@ -1586,135 +1586,337 @@ if ('serviceWorker' in navigator) {
     }).catch(function () {});
   }
 
+  // ── Agent roster → tree + inspector (PLAN_UI_SESSION_SHELL_v1.0 §1.3/§3.1)
+  // The right panel's row list became a single INSPECTOR card for the session
+  // selected in the sidebar tree; the roster itself now lives in the tree as
+  // per-agent root groups (LISA / Claude Code / Codex … same-level siblings),
+  // grouped agent kind → project → session.
+  let cachedAgents = [];
+  // {type:'agent', key} | {type:'lisa', id} | null (null → auto: the
+  // top-ranked live agent, else the active Lisa session).
+  let selInsp = null;
+  // Collapse state survives the 60s re-renders (keyed group → closed?).
+  const collapsedKeys = {};
+  function applyCollapsed(el, key) {
+    if (collapsedKeys[key]) el.classList.add('closed');
+  }
+  function toggleCollapsed(el, key) {
+    el.classList.toggle('closed');
+    collapsedKeys[key] = el.classList.contains('closed');
+  }
+  function agentKey(s) { return s.agent + '/' + s.sessionId; }
+  function agentByKey(key) {
+    for (let i = 0; i < cachedAgents.length; i++) {
+      if (agentKey(cachedAgents[i]) === key) return cachedAgents[i];
+    }
+    return null;
+  }
+  // Label by git branch when available (more meaningful than a worktree
+  // hash), stripping the claude/ prefix; fall back to the project name.
+  // (String ops, not a regex — a /\// here would be mangled by the outer
+  // template literal that wraps this client script.)
+  function agentLabel(s) {
+    let label = s.project;
+    if (s.activity && s.activity.gitBranch) {
+      const br = String(s.activity.gitBranch);
+      label = br.indexOf('claude/') === 0 ? br.slice(7) : br;
+    }
+    return label;
+  }
+  const AGENT_NAMES = {
+    'claude-code': 'Claude Code', codex: 'Codex', opencode: 'OpenCode',
+    aider: 'Aider', 'github-pr': 'GitHub PR', cursor: 'Cursor',
+    gemini: 'Gemini', lisa: 'LISA agents', mcp: 'MCP',
+  };
+  function agentGlyphClass(kind) {
+    if (kind === 'claude-code') return 'cc';
+    if (kind === 'codex') return 'codex';
+    return 'other';
+  }
+
   function setClaudeSessions(sessions) {
     const cutoff = Date.now() - ACTIVE_WINDOW_MS;
     const recent = sessions.filter(s => new Date(s.lastMtime).getTime() >= cutoff);
     sbClaudeCount.textContent = String(recent.length);
     // sort: errors first, then waiting, then working, then by mtime
     const rank = { error: 0, waiting: 1, working: 2, unknown: 3 };
-    const rows = recent.slice().sort((a, b) => {
+    cachedAgents = recent.slice().sort((a, b) => {
       const ra = rank[a.state] ?? 9;
       const rb = rank[b.state] ?? 9;
       if (ra !== rb) return ra - rb;
       return new Date(b.lastMtime).getTime() - new Date(a.lastMtime).getTime();
-    }).slice(0, 8);
-    while (sbClaudeRows.firstChild) sbClaudeRows.removeChild(sbClaudeRows.firstChild);
-    if (rows.length === 0) {
-      const empty = document.createElement('div');
-      empty.className = 'session-empty';
-      empty.textContent = '(idle)';
-      sbClaudeRows.appendChild(empty);
-      return;
-    }
-    for (const s of rows) {
-      const row = document.createElement('div');
-      row.className = 'session-row';
-      const pip = document.createElement('div');
-      pip.className = 'pip ' + (s.state || 'unknown');
-      const name = document.createElement('div');
-      name.className = 'name';
-      // D4a — agent-kind chip inline before the project; omitted for plain
-      // Claude so existing rows read unchanged.
-      if (s.agent && s.agent !== 'claude-code') {
-        const badge = document.createElement('span');
-        badge.className = 'agent-badge';
-        badge.textContent = s.agent;
-        badge.title = s.agent;
-        name.appendChild(badge);
-      }
-      // Label by git branch when available (more meaningful than a worktree
-      // hash), stripping the claude/ prefix; fall back to the project name.
-      // (String ops, not a regex — a /\// here would be mangled by the outer
-      // template literal that wraps this client script.)
-      let label = s.project;
-      if (s.activity && s.activity.gitBranch) {
-        const br = String(s.activity.gitBranch);
-        label = br.indexOf('claude/') === 0 ? br.slice(7) : br;
-      }
-      name.appendChild(document.createTextNode(label));
-      const when = document.createElement('div');
-      when.className = 'when';
-      when.textContent = relativeTime(s.lastMtime);
-      row.appendChild(pip);
-      row.appendChild(name);
-      row.appendChild(when);
-      // Second line: structural activity (turns/tokens/tool·file, ⚠pending, ✗err).
-      const actText = sbActivity(s);
-      if (actText) {
-        const act = document.createElement('div');
-        act.className = 'session-act';
-        act.textContent = actText;
-        act.title = actText;
-        row.appendChild(act);
-      }
-      // Controllable agents get inline controls: managed → approve/deny a pending
-      // tool, send a follow-up, cancel; pty (real CLI under a PTY) → send, view
-      // terminal output, cancel. Externally-started CLIs have no control channel
-      // (no s.controllable) → observe only.
-      const fam = s.controllable;
-      if (fam) {
-        const id = s.sessionId;
-        const ctrl = document.createElement('div');
-        ctrl.className = 'session-ctrl';
-        const pending = fam === 'managed' && s.activity && s.activity.pendingPermission;
-        if (pending) {
-          const ap = document.createElement('button');
-          ap.className = 'mc approve'; ap.textContent = '✓ approve';
-          ap.addEventListener('click', function (e) { e.stopPropagation(); agentAction('managed', id, 'approve', { allow: true }); });
-          const dn = document.createElement('button');
-          dn.className = 'mc deny'; dn.textContent = '✕ deny';
-          dn.addEventListener('click', function (e) { e.stopPropagation(); agentAction('managed', id, 'approve', { allow: false }); });
-          ctrl.appendChild(ap); ctrl.appendChild(dn);
-        } else if (s.state !== 'done') {
-          const inp = document.createElement('input');
-          inp.className = 'mc-send'; inp.type = 'text'; inp.placeholder = fam === 'pty' ? 'type into the CLI…' : 'send a follow-up…';
-          inp.addEventListener('click', function (e) { e.stopPropagation(); });
-          inp.addEventListener('keydown', function (e) {
-            // Ignore the Enter that confirms an IME candidate (see main input).
-            if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229 && inp.value.trim()) { e.preventDefault(); agentAction(fam, id, 'send', { text: inp.value.trim() }); inp.value = ''; }
+    });
+    renderAgentTree();
+    renderInspector();
+  }
+
+  // Sidebar tree: one root group per live agent kind, then project sub-groups,
+  // then session leaves. Idempotent — removes its own groups before rebuilding
+  // (the LISA group is owned by renderSessionTree below).
+  function renderAgentTree() {
+    const tree = document.getElementById('sessionTree');
+    if (!tree) return;
+    const olds = tree.querySelectorAll('.tgroup.agent-group');
+    for (let i = 0; i < olds.length; i++) olds[i].remove();
+    const kinds = [];
+    const byKind = {};
+    cachedAgents.forEach(function (s) {
+      if (!byKind[s.agent]) { byKind[s.agent] = []; kinds.push(s.agent); }
+      byKind[s.agent].push(s);
+    });
+    kinds.sort();
+    kinds.forEach(function (kind) {
+      const group = document.createElement('div');
+      group.className = 'tgroup agent-group';
+      applyCollapsed(group, 'agent:' + kind);
+      const root = document.createElement('button');
+      root.type = 'button';
+      root.className = 'tnode';
+      root.innerHTML = '<span class="twist">▾</span><span class="agent-glyph"></span><span class="tlabel"></span><span class="tcount"></span>';
+      const kindName = AGENT_NAMES[kind] || kind;
+      const glyph = root.querySelector('.agent-glyph');
+      glyph.classList.add(agentGlyphClass(kind));
+      glyph.textContent = (kindName.charAt(0) || 'A').toUpperCase();
+      root.querySelector('.tlabel').textContent = kindName;
+      root.querySelector('.tcount').textContent = String(byKind[kind].length);
+      root.addEventListener('click', function () { toggleCollapsed(group, 'agent:' + kind); });
+      group.appendChild(root);
+      const kids = document.createElement('div');
+      kids.className = 'tchildren';
+      const projects = [];
+      const byProject = {};
+      byKind[kind].forEach(function (s) {
+        const p = s.project || '?';
+        if (!byProject[p]) { byProject[p] = []; projects.push(p); }
+        byProject[p].push(s);
+      });
+      projects.forEach(function (p) {
+        const sub = document.createElement('div');
+        sub.className = 'tsub';
+        const subKey = 'proj:' + kind + '/' + p;
+        applyCollapsed(sub, subKey);
+        const pn = document.createElement('button');
+        pn.type = 'button';
+        pn.className = 'tnode';
+        pn.innerHTML = '<span class="twist">▾</span><span class="tlabel"></span>';
+        pn.querySelector('.tlabel').textContent = p;
+        pn.addEventListener('click', function () { toggleCollapsed(sub, subKey); });
+        sub.appendChild(pn);
+        const pkids = document.createElement('div');
+        pkids.className = 'tchildren';
+        byProject[p].forEach(function (s) {
+          const key = agentKey(s);
+          const leaf = document.createElement('button');
+          leaf.type = 'button';
+          leaf.className = 'tleaf' + (selInsp && selInsp.type === 'agent' && selInsp.key === key ? ' active' : '');
+          leaf.innerHTML = '<span class="pip"></span><span class="tname"></span><span class="ttime"></span>';
+          const st = s.state || 'unknown';
+          if (st === 'working' || st === 'waiting' || st === 'error') leaf.querySelector('.pip').classList.add(st);
+          leaf.querySelector('.tname').textContent = agentLabel(s);
+          leaf.querySelector('.ttime').textContent = relativeTime(s.lastMtime);
+          leaf.title = (s.stateReason ? s.state + ' · ' + s.stateReason : s.state) + ' · ' + s.project + ' · ' + s.sessionId;
+          leaf.addEventListener('click', function () {
+            selInsp = { type: 'agent', key: key };
+            const all = tree.querySelectorAll('.tleaf.active');
+            for (let i = 0; i < all.length; i++) all[i].classList.remove('active');
+            leaf.classList.add('active');
+            renderInspector();
           });
-          ctrl.appendChild(inp);
-        }
-        if (fam === 'pty') {
-          const out = document.createElement('button');
-          out.className = 'mc'; out.textContent = '▤'; out.title = 'View terminal output';
-          out.addEventListener('click', function (e) { e.stopPropagation(); ptyOutput(id); });
-          ctrl.appendChild(out);
-        }
-        if (s.state !== 'done') {
-          const cancel = document.createElement('button');
-          cancel.className = 'mc cancel'; cancel.textContent = '⏹'; cancel.title = 'Cancel agent';
-          cancel.addEventListener('click', function (e) { e.stopPropagation(); agentAction(fam, id, 'cancel', null); });
-          ctrl.appendChild(cancel);
-        }
-        if (ctrl.childNodes.length) row.appendChild(ctrl);
-      }
-      // Idle external claude session → adopt it: LISA resumes it under a PTY and
-      // drives the continuation (then it shows as a controllable pty row). Only
-      // offered for idle sessions; a live one can't be resumed without corrupting
-      // its transcript (the server 409s, surfaced in the modal).
-      if (s.resumable) {
-        const ctrl = document.createElement('div');
-        ctrl.className = 'session-ctrl';
-        const adopt = document.createElement('button');
-        adopt.className = 'mc adopt'; adopt.textContent = '⇲ adopt';
-        adopt.title = 'Resume this session under LISA — then send / answer / cancel / view it';
-        adopt.addEventListener('click', function (e) {
-          e.stopPropagation();
-          fetch('/api/agents/pty/start', {
-            method: 'POST', headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ agent: 'claude', resumeSessionId: s.sessionId, cwd: s.cwd || '' }),
-          }).then(function (r) {
-            if (!r.ok) { return r.text().then(function (t) { openModal('adopt', '<pre>' + escapeHtml(t) + '</pre>'); }); }
-            if (typeof refreshClaudeSessions === 'function') refreshClaudeSessions();
-          }).catch(function () {});
+          pkids.appendChild(leaf);
         });
-        ctrl.appendChild(adopt);
-        row.appendChild(ctrl);
-      }
-      row.title = (s.stateReason ? s.state + ' · ' + s.stateReason : s.state) + ' · ' + s.project + ' · ' + s.sessionId;
-      sbClaudeRows.appendChild(row);
+        sub.appendChild(pkids);
+        kids.appendChild(sub);
+      });
+      group.appendChild(kids);
+      tree.appendChild(group);
+    });
+  }
+
+  // ── Inspector card builders ─────────────────────────────────────────
+  function inspRow(label, value, cls) {
+    const row = document.createElement('div');
+    row.className = 'kvrow' + (cls ? ' ' + cls : '');
+    const k = document.createElement('span');
+    k.textContent = label;
+    const v = document.createElement('code');
+    v.textContent = value;
+    v.title = value;
+    row.appendChild(k);
+    row.appendChild(v);
+    return row;
+  }
+  function inspStat(value, label) {
+    const st = document.createElement('div');
+    st.className = 'stat';
+    const b = document.createElement('b');
+    b.textContent = value;
+    b.title = value;
+    const sp = document.createElement('span');
+    sp.textContent = label;
+    st.appendChild(b);
+    st.appendChild(sp);
+    return st;
+  }
+  function inspHead(glyphCls, glyphText, name, stateCls, stateText, sub) {
+    const head = document.createElement('div');
+    head.className = 'insp-head';
+    const g = document.createElement('span');
+    g.className = 'agent-glyph ' + glyphCls;
+    g.textContent = glyphText;
+    const box = document.createElement('div');
+    box.className = 'insp-names';
+    const nm = document.createElement('div');
+    nm.className = 'insp-name';
+    const nmText = document.createElement('span');
+    nmText.className = 'nm';
+    nmText.textContent = name;
+    nmText.title = name;
+    nm.appendChild(nmText);
+    if (stateText) {
+      const chip = document.createElement('span');
+      chip.className = 'st-chip ' + stateCls;
+      chip.textContent = stateText;
+      nm.appendChild(chip);
     }
+    const subEl = document.createElement('div');
+    subEl.className = 'insp-sub';
+    subEl.textContent = sub || '';
+    subEl.title = sub || '';
+    box.appendChild(nm);
+    box.appendChild(subEl);
+    head.appendChild(g);
+    head.appendChild(box);
+    return head;
+  }
+  function fmtTokens(t) {
+    if (!t) return '—';
+    const total = (t.input || 0) + (t.output || 0);
+    return total >= 1000 ? Math.round(total / 1000) + 'k' : String(total);
+  }
+
+  function renderInspector() {
+    const box = sbClaudeRows;
+    while (box.firstChild) box.removeChild(box.firstChild);
+    let agent = null;
+    let lisaSession = null;
+    if (selInsp && selInsp.type === 'agent') agent = agentByKey(selInsp.key);
+    if (!agent && selInsp && selInsp.type === 'lisa') lisaSession = sessionById(selInsp.id);
+    if (!agent && !lisaSession) {
+      if (cachedAgents.length) agent = cachedAgents[0];
+      else lisaSession = sessionById(window.lisaActiveSessionId);
+    }
+    if (agent) { renderAgentInspector(box, agent); return; }
+    if (lisaSession) { renderLisaInspector(box, lisaSession); return; }
+    const empty = document.createElement('div');
+    empty.className = 'session-empty';
+    empty.textContent = '(idle)';
+    box.appendChild(empty);
+  }
+
+  function renderLisaInspector(box, s) {
+    const isActive = s.id === window.lisaActiveSessionId;
+    box.appendChild(inspHead('lisa', 'L', sessionLabel(s), isActive ? 'working' : 'done', isActive ? 'active' : 'idle', s.id + ' · ' + (s.cwd || '')));
+    const stats = document.createElement('div');
+    stats.className = 'stats';
+    stats.appendChild(inspStat(String(s.messageCount || 0), 'msgs'));
+    stats.appendChild(inspStat(relativeTime(s.startedAt), 'started'));
+    stats.appendChild(inspStat(String((s.cwd || '—').split('/').pop() || '—'), 'project'));
+    box.appendChild(stats);
+    const kv = document.createElement('div');
+    kv.className = 'kvrows';
+    if (s.model) kv.appendChild(inspRow('model', s.model));
+    if (s.cwd) kv.appendChild(inspRow('cwd', s.cwd));
+    box.appendChild(kv);
+    if (!isActive) {
+      const acts = document.createElement('div');
+      acts.className = 'session-ctrl insp-actions';
+      const openBtn = document.createElement('button');
+      openBtn.className = 'mc adopt';
+      openBtn.textContent = '⇱ open';
+      openBtn.title = 'Switch to this session';
+      openBtn.addEventListener('click', function () { switchSession(s.id); });
+      acts.appendChild(openBtn);
+      box.appendChild(acts);
+    }
+  }
+
+  function renderAgentInspector(box, s) {
+    const a = s.activity || {};
+    const kindName = AGENT_NAMES[s.agent] || s.agent;
+    const stateCls = s.state === 'done' ? 'done' : (s.state || 'unknown');
+    const sub = kindName + ' · ' + s.project + (a.gitBranch ? ' · ' + a.gitBranch : '');
+    box.appendChild(inspHead(agentGlyphClass(s.agent), (kindName.charAt(0) || 'A').toUpperCase(), agentLabel(s), stateCls, s.state || '?', sub));
+    const stats = document.createElement('div');
+    stats.className = 'stats';
+    stats.appendChild(inspStat(a.turnCount != null ? String(a.turnCount) : '—', 'turns'));
+    stats.appendChild(inspStat(fmtTokens(a.tokens), 'tokens'));
+    stats.appendChild(inspStat(a.filesTouched ? String(a.filesTouched.length) : '—', 'files'));
+    box.appendChild(stats);
+    const kv = document.createElement('div');
+    kv.className = 'kvrows';
+    if (a.lastCommandName) kv.appendChild(inspRow('last cmd', '$ ' + a.lastCommandName));
+    if (a.lastTools && a.lastTools.length) kv.appendChild(inspRow('tools', a.lastTools.join(' · ')));
+    if (a.filesTouched && a.filesTouched.length) {
+      const names = a.filesTouched.slice(-3).map(function (f) { return String(f).split('/').pop(); });
+      kv.appendChild(inspRow('files', names.join(' · ')));
+    }
+    if (a.pendingPermission) kv.appendChild(inspRow('pending', '⚠ ' + a.pendingPermission, 'warn'));
+    if (a.lastError) kv.appendChild(inspRow('error', a.lastError, 'err'));
+    if (s.stateReason && !a.pendingPermission && !a.lastError) kv.appendChild(inspRow('state', s.stateReason));
+    if (kv.childNodes.length) box.appendChild(kv);
+    // Controls — same surface the roster rows had, for the selected session:
+    // managed → approve/deny pending, send, cancel; pty → send, output,
+    // cancel; idle external claude → adopt. Observe-only agents get nothing.
+    const fam = s.controllable;
+    const id = s.sessionId;
+    const acts = document.createElement('div');
+    acts.className = 'session-ctrl insp-actions';
+    if (fam === 'managed' && a.pendingPermission) {
+      const ap = document.createElement('button');
+      ap.className = 'mc approve'; ap.textContent = '✓ approve';
+      ap.addEventListener('click', function () { agentAction('managed', id, 'approve', { allow: true }); });
+      const dn = document.createElement('button');
+      dn.className = 'mc deny'; dn.textContent = '✕ deny';
+      dn.addEventListener('click', function () { agentAction('managed', id, 'approve', { allow: false }); });
+      acts.appendChild(ap); acts.appendChild(dn);
+    } else if (fam && s.state !== 'done') {
+      const inp = document.createElement('input');
+      inp.className = 'mc-send'; inp.type = 'text';
+      inp.placeholder = fam === 'pty' ? 'type into the CLI…' : 'send a follow-up…';
+      inp.addEventListener('keydown', function (e) {
+        // Ignore the Enter that confirms an IME candidate (see main input).
+        if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229 && inp.value.trim()) { e.preventDefault(); agentAction(fam, id, 'send', { text: inp.value.trim() }); inp.value = ''; }
+      });
+      acts.appendChild(inp);
+    }
+    if (fam === 'pty') {
+      const out = document.createElement('button');
+      out.className = 'mc'; out.textContent = '▤ output'; out.title = 'View terminal output';
+      out.addEventListener('click', function () { ptyOutput(id); });
+      acts.appendChild(out);
+    }
+    if (fam && s.state !== 'done') {
+      const cancel = document.createElement('button');
+      cancel.className = 'mc cancel'; cancel.textContent = '⏹ cancel'; cancel.title = 'Cancel agent';
+      cancel.addEventListener('click', function () { agentAction(fam, id, 'cancel', null); });
+      acts.appendChild(cancel);
+    }
+    if (s.resumable) {
+      const adopt = document.createElement('button');
+      adopt.className = 'mc adopt'; adopt.textContent = '⇲ adopt';
+      adopt.title = 'Resume this session under LISA — then send / answer / cancel / view it';
+      adopt.addEventListener('click', function () {
+        fetch('/api/agents/pty/start', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ agent: 'claude', resumeSessionId: s.sessionId, cwd: s.cwd || '' }),
+        }).then(function (r) {
+          if (!r.ok) { return r.text().then(function (t) { openModal('adopt', '<pre>' + escapeHtml(t) + '</pre>'); }); }
+          if (typeof refreshClaudeSessions === 'function') refreshClaudeSessions();
+        }).catch(function () {});
+      });
+      acts.appendChild(adopt);
+    }
+    if (acts.childNodes.length) box.appendChild(acts);
   }
 
   async function refreshPing() {
@@ -1898,12 +2100,13 @@ if ('serviceWorker' in navigator) {
     tree.innerHTML = '';
     const group = document.createElement('div');
     group.className = 'tgroup';
+    applyCollapsed(group, 'lisa');
     const root = document.createElement('button');
     root.type = 'button';
     root.className = 'tnode';
     root.innerHTML = '<span class="twist">▾</span><span class="agent-glyph lisa">L</span><span class="tlabel">LISA</span><span class="tcount"></span>';
     root.querySelector('.tcount').textContent = String(cachedSessions.length);
-    root.addEventListener('click', function () { group.classList.toggle('closed'); });
+    root.addEventListener('click', function () { toggleCollapsed(group, 'lisa'); });
     group.appendChild(root);
     const kids = document.createElement('div');
     kids.className = 'tchildren';
@@ -1918,11 +2121,16 @@ if ('serviceWorker' in navigator) {
       leaf.querySelector('.tname').textContent = sessionLabel(s);
       leaf.querySelector('.ttime').textContent = relativeTime(s.startedAt);
       leaf.title = s.id + ' · ' + (s.messageCount || 0) + ' msgs';
-      leaf.addEventListener('click', function () { switchSession(s.id); });
+      leaf.addEventListener('click', function () {
+        selInsp = { type: 'lisa', id: s.id };
+        renderInspector();
+        switchSession(s.id);
+      });
       kids.appendChild(leaf);
     });
     group.appendChild(kids);
     tree.appendChild(group);
+    renderAgentTree();
   }
 
   function renderTabs() {

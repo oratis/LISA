@@ -108,10 +108,20 @@ import { MAIN_HTML } from "./lisa-html.js";
  * every switch path onto lisaResetChatLog (log wipe + history reload) and a
  * chatGeneration guard detaches an in-flight reply stream's DOM writes when
  * its session is switched away mid-turn.
+ * Then: session shell phase 3 — the monitored agents join the sidebar tree as
+ * root groups SIBLING to LISA (agent kind → project → session leaves with
+ * state pips, collapse state kept across refreshes), and the right panel's
+ * agents roster became a single INSPECTOR card (#sbClaudeRows repurposed as
+ * its body) for the tree-selected session: head + state chip, stat triplet
+ * (turns/tokens/files or msgs/started/project), aligned KV rows
+ * (last cmd/tools/files/⚠pending/error), and the same control surface the
+ * roster rows had (approve/deny/send/output/cancel/adopt) now scoped to the
+ * selected session; auto-selects the top-ranked live agent, else the active
+ * Lisa session, whose inspector offers "open" to switch.
  */
-const EXPECTED_LENGTH = 254646;
+const EXPECTED_LENGTH = 266187;
 const EXPECTED_SHA256 =
-  "8a43adaddd1385fe1f256b70d57de86514140b8363e553f09ba3a9efccd213e1";
+  "c875a2fb086c3338f144fec0aebf986a32e92a81689e953090c0a0249867efa5";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);

@@ -956,8 +956,94 @@ export const MAIN_CSS = `  :root {
     line-height: 1.7;
     color: var(--fg-2);
   }
-  .rightbar .delegate-btn { margin: 4px 0 8px; }
+  .rightbar .delegate-btn { margin: 10px 0 0; }
   .rightbar #sbMailCard .h { cursor: pointer; }
+
+  /* Inspector card (right panel §1.3): session head + stat triplet +
+     aligned KV rows + equal-width action buttons. */
+  .insp-head { display: flex; gap: 10px; align-items: flex-start; }
+  .insp-head .agent-glyph {
+    width: 30px; height: 30px;
+    border-radius: 8px;
+    font-size: 13px;
+    margin-top: 1px;
+  }
+  .insp-names { min-width: 0; flex: 1; }
+  .insp-name {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--fg);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .insp-name .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .insp-name .st-chip { flex: none; }
+  .insp-sub {
+    margin-top: 3px;
+    font-size: 10.5px;
+    color: var(--fg-3);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .rightbar .stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    margin: 13px 0 4px;
+  }
+  .rightbar .stat {
+    background: var(--bg-inset);
+    border: 1px solid var(--hairline);
+    border-radius: 9px;
+    padding: 9px 6px 7px;
+    text-align: center;
+    min-width: 0;
+  }
+  .rightbar .stat b {
+    display: block;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--fg);
+    font-variant-numeric: tabular-nums;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .rightbar .stat span {
+    display: block;
+    margin-top: 2px;
+    font-size: 8.5px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--fg-3);
+  }
+  .kvrows { margin-top: 6px; }
+  .kvrow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6.5px 0;
+    font-size: 11.5px;
+  }
+  .kvrow + .kvrow { border-top: 1px solid var(--hairline); }
+  .kvrow > span { color: var(--fg-3); flex: none; }
+  .kvrow > code {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 10.5px;
+    color: var(--fg-2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .kvrow.warn > code { color: var(--warm); }
+  .kvrow.err  > code { color: var(--err-color); }
+  .insp-actions { margin-top: 10px; }
 
   /* ── Primary nav (九宫格 3×3 tile grid in the sidebar) ────────── */
   .nav-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
