@@ -4,7 +4,7 @@
 > **参考**：[DouDouAI2.0 设计库](https://github.com/DiogenesModel/DouDouAI2.0)（三栏工作台范式、过程可视化=信任、静界视觉方向）；Claude Code / Codex 的 session 列表与并行任务范式。
 > **关联源码**：[src/web/lisa-html.ts](../src/web/lisa-html.ts) · [src/web/lisa-css.ts](../src/web/lisa-css.ts) · [src/web/lisa-client.ts](../src/web/lisa-client.ts) · [src/web/server.ts](../src/web/server.ts) · [src/sessions/](../src/sessions/) · [src/integrations/](../src/integrations/)
 > **Mockup**：[reference/mockups/lisa-session-shell.html](../reference/mockups/lisa-session-shell.html)（v2，交互可点：树/tab/inspector/主题切换，已与 owner 确认）
-> **编写日期**：2026-08-08 · **✅ 实现状态**：Phase 1–3 落地中（分 stacked PR），Phase 4 e2e 待跑
+> **编写日期**：2026-08-08 · **✅ 实现状态**：Phase 1–3 已实现并通过 e2e（stacked PR [#343](https://github.com/oratis/LISA/pull/343) → [#344](https://github.com/oratis/LISA/pull/344) → [#345](https://github.com/oratis/LISA/pull/345)，依序合并）；agent 过程流 tab 与 iOS 双主题为后续项（§5/§7）
 
 ---
 
