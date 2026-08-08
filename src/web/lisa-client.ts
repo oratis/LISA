@@ -433,6 +433,7 @@ function setActiveSessionUI(id) {
 window.lisaSetActiveSession = function (id) {
   if (!id || id === activeSessionId) return;
   setActiveSessionUI(id);
+  if (typeof window.lisaClearUnread === 'function') window.lisaClearUnread(id);
   if (typeof window.lisaResetChatLog === 'function') window.lisaResetChatLog();
   if (typeof window.lisaRenderSessionTree === 'function') window.lisaRenderSessionTree();
 };
@@ -763,7 +764,12 @@ async function loadHistoryPage() {
   historyLoading = true;
   const prevScrollHeight = log.scrollHeight;
   try {
-    const res = await fetch('/api/history?page=' + historyPage);
+    // F6 — pin the read to the session this log is showing, so a reply
+    // streaming in another session's ctx can never bleed into this page.
+    const sidQ = window.lisaActiveSessionId
+      ? '&sessionId=' + encodeURIComponent(window.lisaActiveSessionId)
+      : '';
+    const res = await fetch('/api/history?page=' + historyPage + sidQ);
     const data = await res.json();
     if (data.messages && data.messages.length) {
       prependHistoryMessages(data.messages);
@@ -1288,6 +1294,10 @@ function showError(detail, message, filesToSend) {
 async function runChat(message, filesToSend) {
   sendBtn.disabled = true;
   const gen = chatGeneration;
+  // F6 — bind this turn to the session it was sent from: the server routes
+  // it to that session's own ctx, so turns in different sessions run
+  // concurrently and this reply always persists into the right transcript.
+  const sid = window.lisaActiveSessionId || null;
   currentLisaSpan = null;
   pendingTools.clear();
   thinkingEl = el('div', 'thinking', '⋯ thinking');
@@ -1303,7 +1313,7 @@ async function runChat(message, filesToSend) {
     const res = await fetch('/chat', {
       method: 'POST',
       headers: {'content-type': 'application/json'},
-      body: JSON.stringify({message, files: filesToSend}),
+      body: JSON.stringify({message, files: filesToSend, sessionId: sid}),
     });
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
@@ -1374,6 +1384,15 @@ async function runChat(message, filesToSend) {
   } finally {
     sendBtn.disabled = false;
     input.focus();
+    // F6 — a reply that finished after its session was switched away:
+    // refresh if the user is back on that session, else mark it unread.
+    if (gen !== chatGeneration && sid) {
+      if (sid === window.lisaActiveSessionId) {
+        if (typeof window.lisaResetChatLog === 'function') window.lisaResetChatLog();
+      } else if (typeof window.lisaMarkUnread === 'function') {
+        window.lisaMarkUnread(sid);
+      }
+    }
   }
 }
 
@@ -1706,7 +1725,7 @@ if ('serviceWorker' in navigator) {
     const isActive = s.id === window.lisaActiveSessionId;
     const leaf = document.createElement('button');
     leaf.type = 'button';
-    leaf.className = 'tleaf' + (isActive ? ' active' : '');
+    leaf.className = 'tleaf' + (isActive ? ' active' : '') + (window.lisaIsUnread && window.lisaIsUnread(s.id) ? ' unread' : '');
     leaf.innerHTML = '<span class="pip"></span>' + (withGlyph ? '<span class="agent-glyph mini lisa">L</span>' : '') + '<span class="tname"></span><span class="ttime"></span>';
     if (isActive) leaf.querySelector('.pip').classList.add('live');
     leaf.querySelector('.tname').textContent = sessionLabel(s);
@@ -2279,7 +2298,7 @@ if ('serviceWorker' in navigator) {
         : (!currentAgentTab && entry === window.lisaActiveSessionId);
       const tab = document.createElement('button');
       tab.type = 'button';
-      tab.className = 'stab' + (isActive ? ' active' : '');
+      tab.className = 'stab' + (isActive ? ' active' : '') + (!isAgent && window.lisaIsUnread && window.lisaIsUnread(key) ? ' unread' : '');
       tab.innerHTML = '<span class="pip"></span>' + (isAgent ? '<span class="agent-glyph mini"></span>' : '') + '<span class="stab-name"></span><span class="stab-x" title="Close tab">×</span>';
       if (isAgent) {
         const s = agentByKey(key);
@@ -2520,6 +2539,21 @@ if ('serviceWorker' in navigator) {
     renderTabs();
   }
   window.lisaRenderSessionTree = renderSessionUI;
+
+  // F6 — unread marks for sessions whose reply finished in the background.
+  const unreadSessions = {};
+  window.lisaMarkUnread = function (id) {
+    if (!id) return;
+    unreadSessions[id] = true;
+    renderSessionUI();
+  };
+  window.lisaClearUnread = function (id) {
+    if (id && unreadSessions[id]) {
+      delete unreadSessions[id];
+      renderSessionUI();
+    }
+  };
+  window.lisaIsUnread = function (id) { return !!unreadSessions[id]; };
 
   // ── F5: focus an agent session from outside (island SSE / #agent= hash) ──
   window.lisaFocusAgent = function (agent, id) {

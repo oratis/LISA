@@ -139,10 +139,16 @@ import { MAIN_HTML } from "./lisa-html.js";
  * plus #agent=kind/id hash handling (on hashchange and once after the first
  * roster snapshot), driven by the island's new "⇱ Open in Lisa" row action
  * via POST /api/island/focus-session.
+ * Then: v1.1 F6 (true concurrency) client half — /chat sends a sessionId so
+ * the server routes the turn to that session's own ctx; /api/history reads
+ * are pinned to the displayed session; a reply that finishes after its
+ * session was switched away refreshes the log if the user is back on it,
+ * else marks the session unread (lisaMarkUnread → ● dot on the tree leaf +
+ * tab, cleared by lisaSetActiveSession).
  */
-const EXPECTED_LENGTH = 288566;
+const EXPECTED_LENGTH = 290465;
 const EXPECTED_SHA256 =
-  "9881f146e861021219af539def60a6433827acc478cb68a3875e87289cd0e1f4";
+  "6e1035711ee27fec30547a3deefb56449f75eedd488613c3ad1bde920e0386b0";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);

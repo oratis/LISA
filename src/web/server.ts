@@ -500,13 +500,61 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     activity: TenantActivityState<AdvisorCardState>;
   }
   const initialReflectionSummary = await session.readLatestReflection();
-  const globalChat: ChatCtx = {
+  // F6 (PLAN_UI_SESSION_SHELL_v1.1): on the Mac edition every Lisa session
+  // gets its OWN ChatCtx — own history array, own serial turn chain — so
+  // turns in different sessions run CONCURRENTLY while a single session's
+  // turns stay strictly ordered. `globalChat` is now the ACTIVE-session
+  // pointer (a mutable binding): the idle/reflect schedulers and unscoped
+  // requests follow whatever session is active. Cloud per-uid contexts keep
+  // their single-ctx semantics unchanged (see v1.1 辩论 F6-D2).
+  let globalChat: ChatCtx = {
     session,
     history,
     chain: Promise.resolve(),
     prompt: { fp: initialFingerprint, text: snapshot.text },
     reflectionSummary: initialReflectionSummary,
     activity: createTenantActivityState(countUserMessages(history)),
+  };
+  const sessionCtxs = new Map<string, ChatCtx>();
+  sessionCtxs.set(session.id, globalChat);
+  const SESSION_CTX_MAX = 8;
+  // Turn bookkeeping so ctx eviction never drops a session with queued work.
+  const ctxTurns = new Map<ChatCtx, number>();
+  const ctxTurnStart = (c: ChatCtx) => ctxTurns.set(c, (ctxTurns.get(c) ?? 0) + 1);
+  const ctxTurnEnd = (c: ChatCtx) => {
+    const n = (ctxTurns.get(c) ?? 1) - 1;
+    if (n <= 0) ctxTurns.delete(c);
+    else ctxTurns.set(c, n);
+  };
+  const adoptCtxForStore = async (s: SessionStore): Promise<ChatCtx> => {
+    const existing = sessionCtxs.get(s.id);
+    if (existing) return existing;
+    const [{ messages }, reflectionSummary] = await Promise.all([
+      s.readMessagePage(0, 9999),
+      s.readLatestReflection(),
+    ]);
+    const ctx: ChatCtx = {
+      session: s,
+      history: [...messages],
+      chain: Promise.resolve(),
+      reflectionSummary,
+      activity: createTenantActivityState(countUserMessages(messages)),
+    };
+    sessionCtxs.set(s.id, ctx);
+    if (sessionCtxs.size > SESSION_CTX_MAX) {
+      for (const [key, c] of sessionCtxs) {
+        if (c !== globalChat && c !== ctx && !ctxTurns.has(c)) {
+          sessionCtxs.delete(key);
+          break;
+        }
+      }
+    }
+    return ctx;
+  };
+  const ctxForSessionId = async (id: string): Promise<ChatCtx> => {
+    const existing = sessionCtxs.get(id);
+    if (existing) return existing;
+    return adoptCtxForStore(await SessionStore.open(id));
   };
   const tenantRuntimes = new TenantRuntimeRegistry<ChatCtx>(tenantRuntimeOptions());
   const ctxForRequest = async (): Promise<TenantRuntimeLease<ChatCtx>> => {
@@ -910,7 +958,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     const watcher = getIdleWatcher(opts.idleMinutes * 60_000);
     watcher.on("idle", async () => {
       if (globalChat.activity.idleRunning || globalChat.activity.reflecting) return;
-      globalChat.activity.idleRunning = true;
+      // Capture the ACTIVE ctx for the whole dream: if the user switches
+      // sessions mid-dream, the note still lands in the session that was
+      // active when it fired. (Pre-F6 this closed over the process-start
+      // session/history — a switch sent dreams to the wrong file.)
+      const ctx = globalChat;
+      ctx.activity.idleRunning = true;
       const startedAt = new Date().toISOString();
       console.error(
         `[idle] firing after ${Math.round(watcher.idleFor() / 60_000)}m of inactivity`,
@@ -920,8 +973,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         // Match the note's language to how the user actually writes (the most
         // recent non-empty user message). Language-agnostic — Lisa mirrors it.
         let userLanguageSample: string | undefined;
-        for (let i = history.length - 1; i >= 0; i--) {
-          const m = history[i];
+        for (let i = ctx.history.length - 1; i >= 0; i--) {
+          const m = ctx.history[i];
           if (!m || m.role !== "user") continue;
           let t = "";
           if (typeof m.content === "string") {
@@ -953,15 +1006,15 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           broadcast({ type: "idle_done", silent: true });
         } else {
           console.error(`[idle] → ${result.text.slice(0, 120)}`);
-          await session.appendMessage({
+          await ctx.session.appendMessage({
             role: "assistant",
             content: [{ type: "text", text: `[while you were away]\n${result.text}` }],
           });
-          history.push({
+          ctx.history.push({
             role: "assistant",
             content: [{ type: "text", text: `[while you were away]\n${result.text}` }],
           });
-          globalChat.activity.lastIdleMessage = { text: result.text, at: startedAt };
+          ctx.activity.lastIdleMessage = { text: result.text, at: startedAt };
           broadcast({ type: "idle_message", text: result.text, at: startedAt });
           pushBridge.onIdleMessage(result.text);
         }
@@ -970,7 +1023,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         console.error(`[idle] error: ${msg}`);
         broadcast({ type: "idle_error", message: msg });
       } finally {
-        globalChat.activity.idleRunning = false;
+        ctx.activity.idleRunning = false;
       }
     });
     watcher.start();
@@ -1002,29 +1055,32 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // "fresh" right after a launchd restart — this stays 0 across a restart, so a
   // stale resumed conversation can't pin a focus. Stamped in the POST /chat path.
   const reflectTimer = setInterval(() => {
-    const currentUserCount = countUserMessages(history);
+    // Capture the ACTIVE ctx for this reflection: the summary must land in
+    // the session it reflects, even if the user switches mid-flight (F6).
+    const ctx = globalChat;
+    const currentUserCount = countUserMessages(ctx.history);
     const decision = decideReflect({
-      newUserMessages: currentUserCount - globalChat.activity.lastReflectedUserCount,
+      newUserMessages: currentUserCount - ctx.activity.lastReflectedUserCount,
       idleMs: reflectClock.idleFor(),
       debounceMs: reflectDebounceMs,
-      inFlight: globalChat.activity.reflecting || globalChat.activity.idleRunning,
+      inFlight: ctx.activity.reflecting || ctx.activity.idleRunning,
     });
     if (!decision.shouldReflect) return;
-    globalChat.activity.reflecting = true;
-    const snapshot = history.slice();
+    ctx.activity.reflecting = true;
+    const snapshot = ctx.history.slice();
     const snapshotUserCount = currentUserCount;
     void (async () => {
       try {
         const r = await reflectOnSession({
           history: snapshot,
-          sessionId: session.id,
+          sessionId: ctx.session.id,
           model: opts.model,
         });
         // Advance the marker only on success, so a failed reflect retries next
         // tick instead of silently dropping the conversation.
-        globalChat.activity.lastReflectedUserCount = snapshotUserCount;
-        await session.appendReflection(r.summary);
-        globalChat.reflectionSummary = r.summary;
+        ctx.activity.lastReflectedUserCount = snapshotUserCount;
+        await ctx.session.appendReflection(r.summary);
+        ctx.reflectionSummary = r.summary;
         broadcast({
           type: "reflect_done",
           summary: r.summary,
@@ -1035,7 +1091,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       } catch (err) {
         console.error(`[reflect] failed: ${(err as Error).message}`);
       } finally {
-        globalChat.activity.reflecting = false;
+        ctx.activity.reflecting = false;
       }
     })();
   }, REFLECT_CHECK_INTERVAL_MS);
@@ -3127,6 +3183,21 @@ self.addEventListener('fetch', (event) => {
       const qs = new URL(url, "http://localhost").searchParams;
       const page = Math.max(0, parseInt(qs.get("page") ?? "0", 10));
       const pageSize = 20;
+      // F6 — an explicit sessionId reads that session's transcript straight
+      // from disk (no ctx needed for a read); default stays the active one.
+      const sid = qs.get("sessionId");
+      if (sid && /^[A-Za-z0-9_-]+$/.test(sid)) {
+        try {
+          const s = await SessionStore.open(sid);
+          const { messages, hasMore } = await s.readMessagePage(page, pageSize);
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(JSON.stringify({ messages, hasMore, page }));
+        } catch {
+          res.writeHead(404, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "unknown_session" }));
+        }
+        return;
+      }
       const runtime = await ctxForRequest();
       try {
         const { messages, hasMore } =
@@ -3159,6 +3230,19 @@ self.addEventListener('fetch', (event) => {
       chat: ChatCtx,
       open: () => Promise<SessionStore>,
     ): Promise<string> => {
+      if (chat === globalChat) {
+        // Mac edition (F6): sessions are independent ctxs, so switching is
+        // a pointer move — O(1), never blocked behind an in-flight turn.
+        // A running turn keeps streaming into ITS OWN ctx/session.
+        const s = await open();
+        const ctx = await adoptCtxForStore(s);
+        globalChat = ctx;
+        await writeActiveWebSession(ctx.session.id);
+        process.env.LISA_SESSION_ID = ctx.session.id;
+        return ctx.session.id;
+      }
+      // Cloud per-uid ctx: single-ctx semantics — swap in place THROUGH the
+      // turn chain so an in-flight reply persists before the pointer moves.
       const job = chat.chain.then(async () => {
         const s = await open();
         const [{ messages }, reflectionSummary] = await Promise.all([
@@ -3171,7 +3255,6 @@ self.addEventListener('fetch', (event) => {
         chat.reflectionSummary = reflectionSummary;
         chat.activity = createTenantActivityState(countUserMessages(chat.history));
         await writeActiveWebSession(s.id);
-        if (chat === globalChat) process.env.LISA_SESSION_ID = s.id;
       });
       chat.chain = job.then(
         () => {},
@@ -3681,18 +3764,28 @@ self.addEventListener('fetch', (event) => {
       if (body === null) return;
       let message: string;
       let files: Array<{ name: string; mediaType: string; data: string }> | undefined;
+      let targetSessionId: string | undefined;
       try {
         // Every other endpoint guards its JSON.parse — this one used to be the
         // only one that didn't, and a malformed body left the socket hanging.
         const parsed = JSON.parse(body) as {
           message?: unknown;
           files?: Array<{ name: string; mediaType: string; data: string }>;
+          sessionId?: unknown;
         };
         if (typeof parsed.message !== "string" || !parsed.message.trim()) {
           throw new Error("missing message");
         }
         message = parsed.message;
         files = parsed.files;
+        // F6 — an explicit session target (Mac edition only; validated and
+        // resolved after the lease below). Optional: old clients omit it.
+        if (
+          typeof parsed.sessionId === "string" &&
+          /^[A-Za-z0-9_-]+$/.test(parsed.sessionId)
+        ) {
+          targetSessionId = parsed.sessionId;
+        }
       } catch (err) {
         res.writeHead(400, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: `bad request: ${(err as Error).message}` }));
@@ -3731,7 +3824,25 @@ self.addEventListener('fetch', (event) => {
         await inferencePermit?.release();
         throw err;
       }
-      const chat = runtimeLease.value;
+      let chat = runtimeLease.value;
+      // F6 — Mac edition: an explicit sessionId routes this turn to that
+      // session's OWN ctx (own chain ⇒ turns in different sessions run
+      // concurrently). Cloud per-uid contexts ignore it (single-ctx).
+      if (
+        targetSessionId &&
+        chat === globalChat &&
+        targetSessionId !== chat.session.id
+      ) {
+        try {
+          chat = await ctxForSessionId(targetSessionId);
+        } catch {
+          await inferencePermit?.release();
+          runtimeLease.release();
+          res.writeHead(404, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "unknown_session" }));
+          return;
+        }
+      }
       // User just talked — reset the idle watcher + stamp focus freshness.
       try { getIdleWatcher(60 * 60_000).tick(); } catch {}
       chat.activity.lastUserMessageAt = Date.now();
@@ -3917,6 +4028,7 @@ self.addEventListener('fetch', (event) => {
       // Queue behind any in-flight turn ON THIS CONTEXT (per-uid, so one
       // account's long turn never blocks another's); the SSE stream stays open
       // while we wait, so the second tab just sees its reply start later.
+      ctxTurnStart(chat);
       const job = chat.chain.then(runTurn, runTurn);
       chat.chain = job.then(
         () => {},
@@ -3925,6 +4037,7 @@ self.addEventListener('fetch', (event) => {
       try {
         await job;
       } finally {
+        ctxTurnEnd(chat);
         await inferencePermit?.release();
         runtimeLease.release();
       }

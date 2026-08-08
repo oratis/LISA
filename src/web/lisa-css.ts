@@ -881,6 +881,13 @@ export const MAIN_CSS = `  :root {
   }
   .tleaf.active .tname { color: var(--fg); font-weight: 600; }
   body.session-switching .tleaf, body.session-switching .stab { opacity: 0.55; pointer-events: none; }
+  /* F6 — a background-completed reply waits here unread. */
+  .tleaf.unread .tname::after, .stab.unread .stab-name::after {
+    content: ' ●';
+    color: var(--accent);
+    font-size: 8px;
+    vertical-align: 2px;
+  }
 
   /* ── Session tab strip (fnbar left side) ────────────────────────── */
   .tabstrip {
