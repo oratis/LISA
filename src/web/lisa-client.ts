@@ -2540,13 +2540,65 @@ if ('serviceWorker' in navigator) {
       }
       return;
     }
-    fetch('/api/agents/steps?agent=' + encodeURIComponent(currentAgentTab.agent) + '&id=' + encodeURIComponent(currentAgentTab.id))
+    // 确认轮三: prefer the full local transcript (user/assistant text +
+    // structural tool markers — loopback-only endpoint); fall back to the
+    // structural steps when it comes back empty (remote access, other
+    // agent kinds, or a quiet tail).
+    const q = 'agent=' + encodeURIComponent(currentAgentTab.agent) + '&id=' + encodeURIComponent(currentAgentTab.id);
+    fetch('/api/agents/transcript?' + q)
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (d) {
-        if (!d || !currentAgentTab) return;
-        renderSteps(stepsEl, d.steps || []);
+        if (!currentAgentTab) return null;
+        if (d && d.entries && d.entries.length) {
+          renderTranscript(stepsEl, d.entries);
+          return null;
+        }
+        return fetch('/api/agents/steps?' + q)
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (sd) {
+            if (!sd || !currentAgentTab) return;
+            renderSteps(stepsEl, sd.steps || []);
+          });
       })
       .catch(function () {});
+  }
+  function renderTranscript(stepsEl, entries) {
+    const atBottom = stepsEl.scrollHeight - stepsEl.scrollTop - stepsEl.clientHeight < 60;
+    stepsEl.innerHTML = '';
+    entries.forEach(function (en) {
+      if (en.kind === 'tool') {
+        const row = document.createElement('div');
+        row.className = 'srow' + (en.isError ? ' err' : '');
+        row.innerHTML = '<span class="sic"></span><span></span><span class="sdetail"></span><span class="stime"></span>';
+        row.querySelector('.sic').textContent = stepIcon(en.tool);
+        row.children[1].textContent = en.tool || '';
+        row.querySelector('.sdetail').textContent = en.target || '';
+        if (en.ts) row.querySelector('.stime').textContent = relativeTime(en.ts);
+        stepsEl.appendChild(row);
+        return;
+      }
+      const msg = document.createElement('div');
+      msg.className = 'as-msg ' + (en.kind === 'user' ? 'user' : 'assistant');
+      const role = document.createElement('div');
+      role.className = 'as-role';
+      role.textContent = en.kind === 'user' ? 'USER' : 'AGENT';
+      if (en.ts) {
+        const t = document.createElement('span');
+        t.className = 'stime';
+        t.textContent = relativeTime(en.ts);
+        role.appendChild(t);
+      }
+      msg.appendChild(role);
+      const body = document.createElement('div');
+      body.className = 'as-text';
+      // Agent replies are Markdown → render; the user's own text as-is
+      // (same rule as Lisa's chat history).
+      if (en.kind === 'assistant' && typeof renderMarkdown === 'function') body.innerHTML = renderMarkdown(en.text || '');
+      else body.textContent = en.text || '';
+      msg.appendChild(body);
+      stepsEl.appendChild(msg);
+    });
+    if (atBottom) stepsEl.scrollTop = stepsEl.scrollHeight;
   }
   function stepIcon(tool) {
     const t = (tool || '').toLowerCase();

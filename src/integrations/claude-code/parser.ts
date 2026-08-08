@@ -41,9 +41,9 @@
  */
 
 import fsp from "node:fs/promises";
-import type { AgentStep, SessionActivity } from "../types.js";
+import type { AgentStep, AgentTranscriptEntry, SessionActivity } from "../types.js";
 
-export type { AgentStep } from "../types.js";
+export type { AgentStep, AgentTranscriptEntry } from "../types.js";
 
 export type ClaudeSessionState = "working" | "waiting" | "error" | "unknown";
 
@@ -526,4 +526,149 @@ export async function parseSessionSteps(filePath: string): Promise<AgentStep[]> 
   }
 
   return steps.slice(-MAX_STEPS);
+}
+
+// ── Transcript (确认轮三): the OWNER's local conversation view ──────────────
+//
+// Unlike steps, entries may carry MESSAGE TEXT — but ONLY from user /
+// assistant `text` content blocks. Tool inputs stay structural (basename /
+// argv[0], same extraction as steps) and tool_result payloads are never
+// read. The serving endpoint is LOOPBACK-ONLY; this shape must not cross a
+// remote surface. Privacy test: parser-transcript.test.ts.
+
+const TRANSCRIPT_TAIL_BYTES = 256 * 1024;
+const MAX_TRANSCRIPT_ENTRIES = 160;
+const MAX_TEXT_CHARS = 4000;
+
+export async function parseSessionTranscript(
+  filePath: string,
+): Promise<AgentTranscriptEntry[]> {
+  let size: number;
+  try {
+    const st = await fsp.stat(filePath);
+    if (!st.isFile() || st.size === 0) return [];
+    size = st.size;
+  } catch {
+    return [];
+  }
+
+  let tail: string;
+  try {
+    const fd = await fsp.open(filePath, "r");
+    try {
+      const length = Math.min(TRANSCRIPT_TAIL_BYTES, size);
+      const buf = Buffer.alloc(length);
+      await fd.read(buf, 0, length, size - length);
+      tail = buf.toString("utf8");
+    } finally {
+      await fd.close();
+    }
+  } catch {
+    return [];
+  }
+
+  const lines = tail.split("\n").filter(Boolean);
+  if (size > TRANSCRIPT_TAIL_BYTES && lines.length > 0) lines.shift();
+
+  const entries: AgentTranscriptEntry[] = [];
+  let turn = 0;
+
+  const basenameOf = (p: string): string => {
+    const parts = p.split("/").filter(Boolean);
+    return parts.length ? parts[parts.length - 1]! : p;
+  };
+  const textOfBlocks = (content: unknown): string => {
+    if (typeof content === "string") return content;
+    if (!Array.isArray(content)) return "";
+    const parts: string[] = [];
+    for (const block of content) {
+      if (!block || typeof block !== "object") continue;
+      const b = block as Record<string, unknown>;
+      // ONLY text blocks — never tool_use input or tool_result payloads.
+      if (b.type === "text" && typeof b.text === "string") parts.push(b.text);
+    }
+    return parts.join("\n");
+  };
+
+  for (const line of lines) {
+    let e: unknown;
+    try {
+      e = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (!e || typeof e !== "object") continue;
+    const obj = e as Record<string, unknown>;
+
+    const type = readString(obj.type);
+    if (type && META_TYPES.has(type)) continue;
+    const ts = readString(obj.timestamp);
+
+    const msg = obj.message;
+    const m = msg && typeof msg === "object" ? (msg as Record<string, unknown>) : null;
+    const content = m ? m.content : null;
+
+    let hasToolResult = false;
+    const toolBlocks: Array<Record<string, unknown>> = [];
+    if (Array.isArray(content)) {
+      for (const block of content) {
+        if (!block || typeof block !== "object") continue;
+        const b = block as Record<string, unknown>;
+        if (b.type === "tool_result") hasToolResult = true;
+        else if (b.type === "tool_use") toolBlocks.push(b);
+      }
+    }
+
+    if (type === "user") {
+      if (hasToolResult) {
+        if (obj.is_error === true || obj.error === true) {
+          for (let i = entries.length - 1; i >= 0; i--) {
+            if (entries[i]!.kind === "tool") {
+              entries[i]!.isError = true;
+              break;
+            }
+          }
+        }
+        continue;
+      }
+      const text = textOfBlocks(content).trim();
+      if (text) {
+        turn++;
+        entries.push({ ts, kind: "user", turn, text: text.slice(0, MAX_TEXT_CHARS) });
+      }
+      continue;
+    }
+
+    if (type === "assistant") {
+      for (const b of toolBlocks) {
+        const name = readString(b.name);
+        if (!name) continue;
+        let target: string | undefined;
+        const input = b.input;
+        if (input && typeof input === "object") {
+          const inp = input as Record<string, unknown>;
+          for (const k of PATH_KEYS) {
+            const p = inp[k];
+            if (typeof p === "string" && p) {
+              target = basenameOf(p);
+              break;
+            }
+          }
+          if (!target && name.toLowerCase() === "bash") {
+            const cmd = inp.command;
+            if (typeof cmd === "string" && cmd.trim()) {
+              target = "$ " + cmd.trim().split(/\s+/)[0];
+            }
+          }
+        }
+        entries.push({ ts, kind: "tool", turn, tool: name, target });
+      }
+      const text = textOfBlocks(content).trim();
+      if (text) {
+        entries.push({ ts, kind: "assistant", turn, text: text.slice(0, MAX_TEXT_CHARS) });
+      }
+    }
+  }
+
+  return entries.slice(-MAX_TRANSCRIPT_ENTRIES);
 }

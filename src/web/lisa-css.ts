@@ -1062,6 +1062,41 @@ export const MAIN_CSS = `  :root {
     border-radius: 0 8px 8px 0;
   }
   .srow.err .sdetail, .srow.err { color: var(--err-color); }
+  /* Transcript bubbles (确认轮三) — the owner's local conversation view of
+     an observed session; tool markers keep the .srow structural style. */
+  .as-msg {
+    flex: none;
+    padding: 8px 12px;
+    border-radius: 10px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-new);
+    margin: 4px 0;
+    max-width: 86%;
+    align-self: flex-start;
+  }
+  .as-msg.user {
+    align-self: flex-end;
+    background: var(--accent-soft);
+    border-color: var(--accent-glow);
+  }
+  .as-msg .as-role {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: var(--fg-3);
+    margin-bottom: 4px;
+  }
+  .as-msg .as-role .stime { margin-left: auto; font-size: 9px; color: var(--fg-faint); }
+  .as-msg .as-text {
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: var(--fg);
+    overflow-wrap: anywhere;
+  }
+
   .as-foot { display: flex; gap: 8px; flex: none; }
   .as-foot input {
     flex: 1;
@@ -1933,38 +1968,38 @@ export const MAIN_CSS = `  :root {
      lisa-html.ts). The base .msg keeps white-space:pre-wrap for the user's
      plain-text bubble; the block children below reset to normal flow and carry
      the hierarchy. Scoped to both so idle "★" notes render the same way. */
-  :is(.msg, .idle-block) > :first-child { margin-top: 0; }
-  :is(.msg, .idle-block) > :last-child { margin-bottom: 0; }
-  :is(.msg, .idle-block) :is(h1, h2, h3, h4, h5, h6, p, ul, ol, li, blockquote, table, td, th) { white-space: normal; }
-  :is(.msg, .idle-block) p { margin: 0 0 0.6em; }
-  :is(.msg, .idle-block) :is(h1, h2, h3, h4, h5, h6) {
+  :is(.msg, .idle-block, .as-text) > :first-child { margin-top: 0; }
+  :is(.msg, .idle-block, .as-text) > :last-child { margin-bottom: 0; }
+  :is(.msg, .idle-block, .as-text) :is(h1, h2, h3, h4, h5, h6, p, ul, ol, li, blockquote, table, td, th) { white-space: normal; }
+  :is(.msg, .idle-block, .as-text) p { margin: 0 0 0.6em; }
+  :is(.msg, .idle-block, .as-text) :is(h1, h2, h3, h4, h5, h6) {
     margin: 1em 0 0.5em;
     line-height: 1.3;
     font-weight: 650;
     color: var(--fg);
     letter-spacing: 0.01em;
   }
-  :is(.msg, .idle-block) h1 { font-size: 18px; }
-  :is(.msg, .idle-block) h2 {
+  :is(.msg, .idle-block, .as-text) h1 { font-size: 18px; }
+  :is(.msg, .idle-block, .as-text) h2 {
     font-size: 15.5px;
     padding-bottom: 5px;
     border-bottom: 1px solid var(--border-new);
   }
-  :is(.msg, .idle-block) h3 { font-size: 13.5px; color: #cfe9ff; }
-  :is(.msg, .idle-block) :is(h4, h5, h6) { font-size: 13px; color: var(--fg-2); }
-  :is(.msg, .idle-block) strong { font-weight: 680; color: #fff; }
-  :is(.msg, .idle-block) em { font-style: italic; color: var(--fg-2); }
-  :is(.msg, .idle-block) a {
+  :is(.msg, .idle-block, .as-text) h3 { font-size: 13.5px; color: #cfe9ff; }
+  :is(.msg, .idle-block, .as-text) :is(h4, h5, h6) { font-size: 13px; color: var(--fg-2); }
+  :is(.msg, .idle-block, .as-text) strong { font-weight: 680; color: #fff; }
+  :is(.msg, .idle-block, .as-text) em { font-style: italic; color: var(--fg-2); }
+  :is(.msg, .idle-block, .as-text) a {
     color: var(--accent);
     text-decoration: none;
     border-bottom: 1px solid rgba(106, 212, 255, 0.35);
   }
-  :is(.msg, .idle-block) a:hover { border-bottom-color: var(--accent); }
-  :is(.msg, .idle-block) :is(ul, ol) { margin: 0 0 0.6em; padding-left: 1.4em; }
-  :is(.msg, .idle-block) li { margin: 0.18em 0; }
-  :is(.msg, .idle-block) li::marker { color: var(--accent); }
-  :is(.msg, .idle-block) :is(ul, ol) :is(ul, ol) { margin: 0.18em 0 0; }
-  :is(.msg, .idle-block) blockquote {
+  :is(.msg, .idle-block, .as-text) a:hover { border-bottom-color: var(--accent); }
+  :is(.msg, .idle-block, .as-text) :is(ul, ol) { margin: 0 0 0.6em; padding-left: 1.4em; }
+  :is(.msg, .idle-block, .as-text) li { margin: 0.18em 0; }
+  :is(.msg, .idle-block, .as-text) li::marker { color: var(--accent); }
+  :is(.msg, .idle-block, .as-text) :is(ul, ol) :is(ul, ol) { margin: 0.18em 0 0; }
+  :is(.msg, .idle-block, .as-text) blockquote {
     margin: 0 0 0.6em;
     padding: 0.35em 0 0.35em 0.9em;
     border-left: 3px solid var(--accent);
@@ -1973,13 +2008,13 @@ export const MAIN_CSS = `  :root {
     font-style: italic;
     background: linear-gradient(90deg, var(--accent-soft), transparent 80%);
   }
-  :is(.msg, .idle-block) hr {
+  :is(.msg, .idle-block, .as-text) hr {
     border: 0;
     height: 1px;
     margin: 0.9em 0;
     background: linear-gradient(90deg, transparent, var(--border-strong), transparent);
   }
-  :is(.msg, .idle-block) :not(pre) > code {
+  :is(.msg, .idle-block, .as-text) :not(pre) > code {
     font-family: ui-monospace, "SF Mono", Menlo, monospace;
     font-size: 0.86em;
     background: rgba(106, 212, 255, 0.10);

@@ -119,6 +119,24 @@ export interface AgentStep {
   isError?: boolean;
 }
 
+/**
+ * One transcript entry — an AgentStep that may carry MESSAGE TEXT (user /
+ * assistant turns only). Serves the owner's LOCAL view of an observed
+ * session (loopback-only endpoint): tool inputs/outputs stay structural
+ * (basename / argv[0]) exactly like AgentStep, and this shape must never
+ * cross a remote surface (island / iOS / channels keep steps).
+ */
+export interface AgentTranscriptEntry {
+  ts?: string;
+  kind: "user" | "assistant" | "tool";
+  /** Message text — user/assistant entries only, length-capped. */
+  text?: string;
+  tool?: string;
+  target?: string;
+  turn: number;
+  isError?: boolean;
+}
+
 /** Visibility tier — how deeply LISA may inspect a session. See plan §3. */
 export type VisibilityTier = "off" | "metadata" | "activity" | "intent";
 

@@ -34,6 +34,7 @@ import type {
   AgentSession,
   AgentSessionState,
   AgentStep,
+  AgentTranscriptEntry,
   SessionActivity,
 } from "../types.js";
 
@@ -582,6 +583,139 @@ export async function parseCodexSteps(filePath: string): Promise<AgentStep[]> {
   }
 
   return steps.slice(-MAX_STEPS);
+}
+
+// ── Transcript (确认轮三): the OWNER's local conversation view ──────────────
+//
+// Entries may carry MESSAGE TEXT from user/assistant message content ONLY —
+// function_call `arguments` stay structural (basename / argv[0], same as
+// steps) and function_call_output payloads are never read. Served by a
+// LOOPBACK-ONLY endpoint. Privacy test: transcript.test.ts.
+
+const TRANSCRIPT_TAIL_BYTES = 256 * 1024;
+const MAX_TRANSCRIPT_ENTRIES = 160;
+const MAX_TEXT_CHARS = 4000;
+
+export async function parseCodexTranscript(
+  filePath: string,
+): Promise<AgentTranscriptEntry[]> {
+  let size: number;
+  try {
+    const st = await fsp.stat(filePath);
+    if (!st.isFile() || st.size === 0) return [];
+    size = st.size;
+  } catch {
+    return [];
+  }
+
+  let tail: string;
+  try {
+    const fd = await fsp.open(filePath, "r");
+    try {
+      const length = Math.min(TRANSCRIPT_TAIL_BYTES, size);
+      const buf = Buffer.alloc(length);
+      await fd.read(buf, 0, length, size - length);
+      tail = buf.toString("utf8");
+    } finally {
+      await fd.close();
+    }
+  } catch {
+    return [];
+  }
+
+  const lines = tail.split("\n").filter(Boolean);
+  if (size > TRANSCRIPT_TAIL_BYTES && lines.length > 0) lines.shift();
+
+  const entries: AgentTranscriptEntry[] = [];
+  let turn = 0;
+
+  const textOfContent = (content: unknown): string => {
+    if (typeof content === "string") return content;
+    if (!Array.isArray(content)) return "";
+    const parts: string[] = [];
+    for (const block of content) {
+      if (!block || typeof block !== "object") continue;
+      const b = block as Record<string, unknown>;
+      // Codex block spellings vary by version — text-ish blocks only.
+      if (
+        (b.type === "text" || b.type === "input_text" || b.type === "output_text") &&
+        typeof b.text === "string"
+      ) {
+        parts.push(b.text);
+      }
+    }
+    return parts.join("\n");
+  };
+
+  for (const line of lines) {
+    let e: unknown;
+    try {
+      e = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (!e || typeof e !== "object") continue;
+    const obj = e as Record<string, unknown>;
+
+    const type = readString(obj.type);
+    const ts = readString(obj.timestamp);
+    const msg = obj.message;
+    const m = msg && typeof msg === "object" ? (msg as Record<string, unknown>) : null;
+    const role =
+      readString(obj.role) ?? (m ? readString(m.role) : undefined);
+
+    if (type === "function_call") {
+      const name = readString(obj.name);
+      if (!name) continue;
+      let target: string | undefined;
+      const args = parseArguments(obj.arguments);
+      if (args) {
+        for (const k of PATH_KEYS) {
+          const pv = args[k];
+          if (typeof pv === "string" && pv) {
+            const parts = pv.split("/").filter(Boolean);
+            target = parts.length ? parts[parts.length - 1] : pv;
+            break;
+          }
+        }
+        if (!target && SHELL_NAME_RE.test(name)) {
+          const argv0 = shellArgv0(args.command);
+          if (argv0) target = "$ " + argv0;
+        }
+      }
+      entries.push({ ts, kind: "tool", turn, tool: name, target });
+      continue;
+    }
+    if (type === "function_call_output") {
+      if (obj.is_error === true || obj.error === true) {
+        for (let i = entries.length - 1; i >= 0; i--) {
+          if (entries[i]!.kind === "tool") {
+            entries[i]!.isError = true;
+            break;
+          }
+        }
+      }
+      continue;
+    }
+
+    const content = (m ? m.content : undefined) ?? obj.content;
+    if (role === "user" || type === "user") {
+      const text = textOfContent(content).trim();
+      if (text) {
+        turn++;
+        entries.push({ ts, kind: "user", turn, text: text.slice(0, MAX_TEXT_CHARS) });
+      }
+      continue;
+    }
+    if (role === "assistant" || type === "assistant" || type === "response") {
+      const text = textOfContent(content).trim();
+      if (text) {
+        entries.push({ ts, kind: "assistant", turn, text: text.slice(0, MAX_TEXT_CHARS) });
+      }
+    }
+  }
+
+  return entries.slice(-MAX_TRANSCRIPT_ENTRIES);
 }
 
 registerIntegration("codex", (cfg) => new CodexObserver(cfg));

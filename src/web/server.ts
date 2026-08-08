@@ -3030,6 +3030,53 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       return;
     }
 
+    // 确认轮三 — the OWNER's local transcript view of an observed session:
+    // user/assistant message text plus the structural tool markers. STRICTLY
+    // LOOPBACK-ONLY (defence in depth like /api/config/save): unlike steps,
+    // message content must never leave this machine — island / iOS / remote
+    // callers keep the structural surfaces.
+    if (req.method === "GET" && url.startsWith("/api/agents/transcript")) {
+      const tRemote = req.socket.remoteAddress ?? "";
+      if (!isLoopbackAddress(tRemote)) {
+        res.writeHead(403, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            ok: false,
+            error: "transcript is only served to localhost",
+          }),
+        );
+        return;
+      }
+      const q = new URL(url, "http://localhost").searchParams;
+      const agent = q.get("agent") ?? "";
+      const id = q.get("id") ?? "";
+      const session = hub
+        .list()
+        .find((s) => s.agent === agent && s.sessionId === id);
+      if (!session) {
+        res.writeHead(404, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: "unknown_session" }));
+        return;
+      }
+      let entries: unknown[] = [];
+      if (session.activity && session.jsonlPath) {
+        if (agent === "claude-code") {
+          const { parseSessionTranscript } = await import(
+            "../integrations/claude-code/parser.js"
+          );
+          entries = await parseSessionTranscript(session.jsonlPath);
+        } else if (agent === "codex") {
+          const { parseCodexTranscript } = await import(
+            "../integrations/codex/observer.js"
+          );
+          entries = await parseCodexTranscript(session.jsonlPath);
+        }
+      }
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ entries }));
+      return;
+    }
+
     // L6 — cross-agent "while you were away" recap, synthesized from the
     // journal. ?sinceMinutes=N (default 120) bounds the window.
     if (req.method === "GET" && url.startsWith("/api/agents/recap")) {

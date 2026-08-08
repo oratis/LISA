@@ -164,10 +164,17 @@ import { MAIN_HTML } from "./lisa-html.js";
  * moved, 2-line clamp + tooltip), the mail card hides entirely until a
  * mailbox is connected, and the reflection section is retitled "while you
  * were away".
+ * Then: 确认轮三 — the stream pane loads the observed session's CHAT
+ * TRANSCRIPT: it first fetches the new loopback-only
+ * GET /api/agents/transcript (user/assistant message text as bubbles —
+ * agent replies markdown-rendered, the md style scope widened to include
+ * .as-text — with the structural tool markers interleaved as .srow rows)
+ * and falls back to the structural steps when it's empty (remote access,
+ * other agent kinds, quiet tail).
  */
-const EXPECTED_LENGTH = 297244;
+const EXPECTED_LENGTH = 300753;
 const EXPECTED_SHA256 =
-  "86687fde816a22f296b781f4026dff914e9fee6f8e97f05a1716689f8f137b49";
+  "48db3b8ed4da067c019dc929dd410e5264d2855f9166b7277804833a0af9c0cf";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);
