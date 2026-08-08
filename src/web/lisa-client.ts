@@ -512,6 +512,9 @@ function connectEvents() {
     } else if (ev.type === 'session_switched') {
       // Another window (or this one) moved the active web session — converge.
       if (typeof window.lisaSetActiveSession === 'function') window.lisaSetActiveSession(ev.session);
+    } else if (ev.type === 'focus_session') {
+      // F5 island deep link — select an agent session in the tree/inspector.
+      if (typeof window.lisaFocusAgent === 'function') window.lisaFocusAgent(ev.agent, ev.session);
     } else if (ev.type === 'mail_digest_update' || ev.type === 'mail_accounts_update') {
       if (typeof window.refreshMail === 'function') window.refreshMail();
     }
@@ -1666,6 +1669,8 @@ if ('serviceWorker' in navigator) {
       if (ra !== rb) return ra - rb;
       return new Date(b.lastMtime).getTime() - new Date(a.lastMtime).getTime();
     });
+    // First roster snapshot: honor a #agent=kind/id deep link (F5).
+    if (typeof window.lisaHandleAgentHashOnce === 'function') window.lisaHandleAgentHashOnce();
     renderSessionTree();
     renderInspector();
     // Live refresh for an open stream tab (head/perm/foot reflect the
@@ -2515,6 +2520,28 @@ if ('serviceWorker' in navigator) {
     renderTabs();
   }
   window.lisaRenderSessionTree = renderSessionUI;
+
+  // ── F5: focus an agent session from outside (island SSE / #agent= hash) ──
+  window.lisaFocusAgent = function (agent, id) {
+    if (!agent || !id) return;
+    selInsp = { type: 'agent', key: agent + '/' + id };
+    if (window.lisaShowView) window.lisaShowView('chat');
+    renderInspector();
+    renderSessionUI();
+  };
+  let agentHashHandled = false;
+  function handleAgentHash() {
+    const h = (location.hash || '').replace('#', '');
+    if (h.indexOf('agent=') !== 0) return;
+    const parts = decodeURIComponent(h.slice(6)).split('/');
+    if (parts.length >= 2) window.lisaFocusAgent(parts[0], parts.slice(1).join('/'));
+  }
+  window.addEventListener('hashchange', handleAgentHash);
+  window.lisaHandleAgentHashOnce = function () {
+    if (agentHashHandled) return;
+    agentHashHandled = true;
+    handleAgentHash();
+  };
   const sbNewBtn = document.getElementById('sbNewSession');
   if (sbNewBtn) sbNewBtn.addEventListener('click', newSession);
 

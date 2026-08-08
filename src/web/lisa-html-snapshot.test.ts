@@ -134,10 +134,15 @@ import { MAIN_HTML } from "./lisa-html.js";
  * from the new GET /api/agents/steps (parseSessionSteps — basenames/argv[0]
  * only, tier-gated), and PTY sessions render their live terminal tail from
  * the existing /api/agents/pty/{id}/stream SSE instead.
+ * Then: v1.1 F5 — island deep link: a focus_session SSE case + a
+ * lisaFocusAgent global (selects an agent session in the tree/inspector)
+ * plus #agent=kind/id hash handling (on hashchange and once after the first
+ * roster snapshot), driven by the island's new "⇱ Open in Lisa" row action
+ * via POST /api/island/focus-session.
  */
-const EXPECTED_LENGTH = 287343;
+const EXPECTED_LENGTH = 288566;
 const EXPECTED_SHA256 =
-  "c46a802e9f05f24b31531b1651691ed86a6e6d8010d0b9342c4433b59e3a3863";
+  "9881f146e861021219af539def60a6433827acc478cb68a3875e87289cd0e1f4";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);

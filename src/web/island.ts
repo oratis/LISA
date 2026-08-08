@@ -1006,6 +1006,28 @@ ${MD_RENDER_CSS}
     const cwd = s.cwd || '';
     const hasCwd = cwd.startsWith('/');
 
+    // F5 deep link — select this session in the main shell's tree/inspector.
+    // The SSE focus_session frame reaches any open shell; the bridge message
+    // additionally raises the main window (existing open_full_gui path).
+    const focusBtn = document.createElement('button');
+    focusBtn.type = 'button';
+    focusBtn.textContent = '⇱ Open in Lisa';
+    focusBtn.title = 'Select this session in the main window';
+    focusBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      fetch('/api/island/focus-session', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ agent: s.agent || 'claude-code', sessionId: s.sessionId }),
+      }).catch(() => {});
+      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.island) {
+        window.webkit.messageHandlers.island.postMessage({ type: 'open_full_gui', prefill: '' });
+      } else {
+        window.open('/#agent=' + encodeURIComponent(s.agent || 'claude-code') + '/' + encodeURIComponent(s.sessionId), '_blank');
+      }
+    });
+    container.appendChild(focusBtn);
+
     const openBtn = document.createElement('button');
     openBtn.type = 'button';
     openBtn.textContent = '📁 Open folder';

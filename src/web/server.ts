@@ -2271,6 +2271,39 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       return;
     }
 
+    // F5 (PLAN_UI_SESSION_SHELL_v1.1) — island deep link: ask any open main
+    // shell to select this agent session in its tree/inspector. Fire-and-
+    // forget broadcast; the island separately raises the main window via its
+    // existing open_full_gui bridge message.
+    if (req.method === "POST" && url === "/api/island/focus-session") {
+      const fBody = await readRequestText(req, res);
+      if (fBody === null) return;
+      let fPayload: { agent?: unknown; sessionId?: unknown };
+      try {
+        fPayload = JSON.parse(fBody || "{}");
+      } catch {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("bad json");
+        return;
+      }
+      if (
+        typeof fPayload.agent !== "string" ||
+        typeof fPayload.sessionId !== "string"
+      ) {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("agent and sessionId required");
+        return;
+      }
+      broadcast({
+        type: "focus_session",
+        agent: fPayload.agent,
+        session: fPayload.sessionId,
+      });
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+
     // ✕ on an advisor suggestion: persist the dismissal so the category
     // down-weights over time ("learns to shut up"), and drop it from the
     // cached card so a refreshed island doesn't resurrect it.
