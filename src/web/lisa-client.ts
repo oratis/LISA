@@ -516,6 +516,9 @@ function connectEvents() {
     } else if (ev.type === 'focus_session') {
       // F5 island deep link — select an agent session in the tree/inspector.
       if (typeof window.lisaFocusAgent === 'function') window.lisaFocusAgent(ev.agent, ev.session);
+    } else if (ev.type === 'chat_end') {
+      // A turn just finished (any window/session) — the ledger moved.
+      if (typeof window.refreshTokens === 'function') window.refreshTokens();
     } else if (ev.type === 'mail_digest_update' || ev.type === 'mail_accounts_update') {
       if (typeof window.refreshMail === 'function') window.refreshMail();
     }
@@ -2073,6 +2076,65 @@ if ('serviceWorker' in navigator) {
     } catch {}
   }
 
+  // ── Token source + usage (right-rail bottom section) ────────────────
+  // Source = the selected coding plan (plan://…) else the configured API
+  // key; usage = the local billing ledger's today/12h aggregates plus any
+  // per-plan window stats the plan detector reports.
+  function fmtUsd(microUSD) {
+    if (!microUSD) return '$0';
+    const usd = microUSD / 1e6;
+    return usd >= 1 ? '$' + usd.toFixed(2) : '$' + usd.toFixed(3);
+  }
+  function fmtCount(n) {
+    if (!n) return '0';
+    return n >= 1000 ? Math.round(n / 1000) + 'k' : String(n);
+  }
+  async function refreshTokens() {
+    const statsEl = document.getElementById('sbTokenStats');
+    const rowsEl = document.getElementById('sbTokenRows');
+    const modelEl = document.getElementById('sbTokenModel');
+    if (!statsEl || !rowsEl || !modelEl) return;
+    let model = '';
+    let usage = null;
+    let plansData = null;
+    try {
+      const r = await fetch('/session');
+      if (r.ok) { const d = await r.json(); model = d.model || ''; }
+    } catch (e) {}
+    try {
+      const r = await fetch('/api/billing/usage');
+      if (r.ok) usage = await r.json();
+    } catch (e) {}
+    try {
+      const r = await fetch('/api/plans');
+      if (r.ok) plansData = await r.json();
+    } catch (e) {}
+    modelEl.textContent = model;
+    modelEl.title = model;
+    statsEl.innerHTML = '';
+    rowsEl.innerHTML = '';
+    const today = usage && usage.today ? usage.today : null;
+    const win = usage && usage.window12h ? usage.window12h : null;
+    if (today) {
+      statsEl.appendChild(inspStat(fmtCount((today.inputTokens || 0) + (today.outputTokens || 0)), 'tokens'));
+      statsEl.appendChild(inspStat(String(today.turns || 0), 'turns'));
+      statsEl.appendChild(inspStat(fmtUsd(today.microUSD), 'today'));
+    }
+    let source = 'API key';
+    const plans = plansData && Array.isArray(plansData.plans) ? plansData.plans : [];
+    for (let i = 0; i < plans.length; i++) {
+      if (plans[i].selected) { source = String(plans[i].label || plans[i].id); break; }
+    }
+    rowsEl.appendChild(inspRow('source', source));
+    if (win) {
+      rowsEl.appendChild(inspRow('12h window', fmtCount((win.inputTokens || 0) + (win.outputTokens || 0)) + ' tok · ' + fmtUsd(win.microUSD)));
+    }
+    plans.forEach(function (p) {
+      if (p && p.available && p.usage) rowsEl.appendChild(inspRow(String(p.id || 'plan'), String(p.usage)));
+    });
+  }
+  window.refreshTokens = refreshTokens;
+
   // Exposed so the SSE handler above can call this on
   // agent_session_update events without redeclaring the helper. D4a — the
   // multi-agent snapshot (all agents), not just Claude Code.
@@ -2853,6 +2915,7 @@ if ('serviceWorker' in navigator) {
   window.refreshMail();
   refreshIdentity();
   refreshSessionsBadge();
+  refreshTokens();
   setInterval(refreshPing, 30_000);
   // Resolve refreshClaudeSessions at call time (arrow), not now: setupConsole
   // later wraps window.refreshClaudeSessions to re-render the active console
@@ -2860,6 +2923,8 @@ if ('serviceWorker' in navigator) {
   setInterval(() => window.refreshClaudeSessions(), 60_000);
   setInterval(window.refreshMail, 5 * 60_000);
   setInterval(refreshSessionsBadge, 5 * 60_000);
+  // Cheap resync for the tokens section; chat_end gives the fast path.
+  setInterval(refreshTokens, 5 * 60_000);
 })();
 
 // ════════════════════════════════════════════════════════════════════

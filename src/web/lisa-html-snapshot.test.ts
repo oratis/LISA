@@ -145,10 +145,18 @@ import { MAIN_HTML } from "./lisa-html.js";
  * session was switched away refreshes the log if the user is back on it,
  * else marks the session unread (lisaMarkUnread → ● dot on the tree leaf +
  * tab, cleared by lisaSetActiveSession).
+ * Then: composer-button hit parity + a TOKENS rail section — #plusBtn gets
+ * width:100% so its hit area matches #recordBtn's full 36px grid cell (it
+ * used to shrink to its 19px icon inside .plus-wrap); and the right rail
+ * gains a bottom #sbTokens section (model chip in the header, today
+ * tokens/turns/cost stat triplet from /api/billing/usage, source row =
+ * selected coding plan else API key from /api/plans, a 12h-window row, and
+ * per-plan usage rows), refreshed on boot, every 5 minutes, and on the SSE
+ * chat_end frame.
  */
-const EXPECTED_LENGTH = 290465;
+const EXPECTED_LENGTH = 293906;
 const EXPECTED_SHA256 =
-  "6e1035711ee27fec30547a3deefb56449f75eedd488613c3ad1bde920e0386b0";
+  "f42776661e43de2aec63839df82fcfc1cf3f3ad5ce385fb49b15501bc78fbebe";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);

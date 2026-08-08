@@ -1185,6 +1185,7 @@ export const MAIN_CSS = `  :root {
     color: var(--fg-3);
   }
   .kvrows { margin-top: 6px; }
+  .rightbar .stats:empty, .rightbar .kvrows:empty { display: none; margin: 0; }
   .kvrow {
     display: flex;
     align-items: center;
@@ -2204,6 +2205,10 @@ export const MAIN_CSS = `  :root {
     transition: background 120ms ease, color 120ms ease;
     min-height: 44px;
     padding: 0;
+    /* Identical hit areas: #recordBtn is a grid item (36px column) but
+       #plusBtn sits INSIDE .plus-wrap — without an explicit width it
+       shrank to its 19px icon. 100% = the 36px cell in both cases. */
+    width: 100%;
   }
   /* Line-style icons matching the .fbtn function bar above. */
   #plusBtn svg, #recordBtn svg { width: 19px; height: 19px; display: block; }

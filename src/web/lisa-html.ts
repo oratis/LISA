@@ -250,6 +250,16 @@ ${MAIN_CSS}
       <p class="body-text" id="sbReflectionBody"></p>
     </div>
 
+    <!-- Token source + usage (bottom of the rail; wired in setupSidebarLive) -->
+    <div class="rb-sec" id="sbTokens">
+      <div class="h">
+        <div class="left">tokens</div>
+        <div class="count" id="sbTokenModel"></div>
+      </div>
+      <div class="stats" id="sbTokenStats"></div>
+      <div class="kvrows" id="sbTokenRows"></div>
+    </div>
+
   </aside>
 </div>
 
