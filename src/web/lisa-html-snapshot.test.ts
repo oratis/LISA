@@ -153,10 +153,21 @@ import { MAIN_HTML } from "./lisa-html.js";
  * selected coding plan else API key from /api/plans, a 12h-window row, and
  * per-plan usage rows), refreshed on boot, every 5 minutes, and on the SSE
  * chat_end frame.
+ * Then: 确认轮二 — the multi-tab strip became a single CONTEXT CHIP (the
+ * active session's name/status, or the observed agent + "observing" + an ×
+ * back to chat; creating/switching lives in the sidebar tree only, and the
+ * lisaOpenSessions tab persistence is gone), and the right rail was
+ * re-anchored on core value: a new NEEDS-YOU section on top (waiting/error/
+ * pending-permission agents with inline approve/deny/open-stream), the
+ * inspector defaults to the ACTIVE Lisa session instead of auto-picking an
+ * agent, "currently wanting" compressed into the identity card (#sbDesire
+ * moved, 2-line clamp + tooltip), the mail card hides entirely until a
+ * mailbox is connected, and the reflection section is retitled "while you
+ * were away".
  */
-const EXPECTED_LENGTH = 293906;
+const EXPECTED_LENGTH = 297244;
 const EXPECTED_SHA256 =
-  "f42776661e43de2aec63839df82fcfc1cf3f3ad5ce385fb49b15501bc78fbebe";
+  "86687fde816a22f296b781f4026dff914e9fee6f8e97f05a1716689f8f137b49";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);

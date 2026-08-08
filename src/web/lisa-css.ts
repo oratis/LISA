@@ -298,6 +298,17 @@ export const MAIN_CSS = `  :root {
     background: var(--accent);
     box-shadow: 0 0 6px var(--accent-glow);
   }
+  /* Lisa's current pursuit, two lines max (moved out of the right rail). */
+  .identity .identity-desire {
+    margin: 5px 0 0;
+    font-size: 10.5px;
+    color: var(--fg-3);
+    line-height: 1.45;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
 
   /* Sidebar plain text section ("currently wanting") */
   .sb-section { display: flex; flex-direction: column; gap: 6px; }
@@ -790,8 +801,8 @@ export const MAIN_CSS = `  :root {
     border-color: var(--accent-glow);
     color: var(--accent);
   }
-  /* Mini source glyph on leaves in project view (Lisa + agents mixed). */
-  .tleaf .agent-glyph.mini {
+  /* Mini source glyph (project-view leaves, the context chip). */
+  .agent-glyph.mini {
     width: 14px; height: 14px;
     border-radius: 4px;
     font-size: 8px;
@@ -889,7 +900,9 @@ export const MAIN_CSS = `  :root {
     vertical-align: 2px;
   }
 
-  /* ── Session tab strip (fnbar left side) ────────────────────────── */
+  /* ── Context chip (fnbar left) — what the main pane is showing:
+     the active Lisa session, or the observed agent while the stream
+     pane is open. A status readout, not a switcher (确认轮二). ─── */
   .tabstrip {
     display: flex;
     align-items: center;
@@ -898,45 +911,41 @@ export const MAIN_CSS = `  :root {
     flex-shrink: 1;
     overflow: hidden;
   }
-  .stab {
+  .ctx-chip {
     display: flex;
     align-items: center;
-    gap: 7px;
-    max-width: 200px;
+    gap: 8px;
+    max-width: 460px;
     min-width: 0;
-    padding: 6px 11px;
+    padding: 6px 12px;
     border: 1px solid var(--border-new);
     border-radius: 9px;
-    background: transparent;
-    color: var(--fg-3);
-    font-family: inherit;
+    background: var(--bg-card);
+    color: var(--fg);
     font-size: 11.5px;
-    cursor: pointer;
     overflow: hidden;
     white-space: nowrap;
   }
-  .stab .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--fg-faint); flex: none; }
-  .stab .pip.live { background: var(--accent); animation: breathe 2.6s ease-in-out infinite; }
-  .stab .stab-name { overflow: hidden; text-overflow: ellipsis; }
-  .stab:hover { background: var(--bg-card); }
-  .stab.active {
-    background: var(--bg-card-strong);
-    border-color: var(--border-strong);
-    color: var(--fg);
-  }
-  .stab .stab-x { font-size: 12px; color: var(--fg-faint); padding: 0 1px; }
-  .stab .stab-x:hover { color: var(--fg); }
-  .stab-new {
-    border: 1px dashed var(--border-strong);
-    background: transparent;
+  .ctx-chip .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--fg-faint); flex: none; }
+  .ctx-chip .pip.live { background: var(--accent); animation: breathe 2.6s ease-in-out infinite; }
+  .ctx-chip .pip.working { background: var(--proactive); animation: breathe 2.6s ease-in-out infinite; }
+  .ctx-chip .pip.waiting { background: var(--warm); animation: needsYou 2s ease-in-out infinite; }
+  .ctx-chip .pip.error { background: var(--err-color); }
+  .ctx-chip .ctx-name { overflow: hidden; text-overflow: ellipsis; font-weight: 600; min-width: 0; }
+  .ctx-chip .ctx-meta { flex: none; font-size: 10px; color: var(--fg-3); }
+  .ctx-chip.agent .ctx-meta { color: var(--claude); }
+  .ctx-chip .ctx-x {
+    flex: none;
+    background: none;
+    border: none;
     color: var(--fg-3);
-    width: 27px; height: 27px; flex: none;
-    border-radius: 9px;
-    font-size: 14px;
-    font-family: inherit;
     cursor: pointer;
+    font-size: 13px;
+    font-family: inherit;
+    padding: 0 2px;
+    line-height: 1;
   }
-  .stab-new:hover { color: var(--accent); border-color: var(--accent); }
+  .ctx-chip .ctx-x:hover { color: var(--fg); }
 
   /* ── Agent read-only stream (F1) — swaps in for the chat surface while
      an agent tab is active (body.agent-tab-active). ─────────────── */
@@ -1207,6 +1216,41 @@ export const MAIN_CSS = `  :root {
   .kvrow.warn > code { color: var(--warm); }
   .kvrow.err  > code { color: var(--err-color); }
   .insp-actions { margin-top: 10px; }
+
+  /* "Needs you" rows — actionable agent decisions (确认轮二). */
+  .needs-row {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 7px 0;
+    font-size: 11.5px;
+    cursor: pointer;
+  }
+  .needs-row + .needs-row { border-top: 1px solid var(--hairline); }
+  .needs-row .pip { width: 8px; height: 8px; border-radius: 50%; background: var(--fg-faint); flex: none; }
+  .needs-row .pip.working { background: var(--proactive); animation: breathe 2.6s ease-in-out infinite; }
+  .needs-row .pip.waiting { background: var(--warm); animation: needsYou 2s ease-in-out infinite; }
+  .needs-row .pip.error { background: var(--err-color); }
+  .needs-row .nr-main { flex: 1; min-width: 0; }
+  .needs-row .nr-name {
+    display: block;
+    color: var(--fg);
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .needs-row .nr-sub {
+    display: block;
+    margin-top: 1px;
+    font-size: 10.5px;
+    color: var(--fg-3);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .needs-row .nr-acts { margin-top: 0; flex: none; }
 
   /* ── Primary nav (九宫格 3×3 tile grid in the sidebar) ────────── */
   .nav-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }

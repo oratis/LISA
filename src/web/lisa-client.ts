@@ -1576,6 +1576,7 @@ if ('serviceWorker' in navigator) {
 
   function setDesire(text) {
     sbDesire.textContent = text || '(nothing actively pursued)';
+    sbDesire.title = text || '';
   }
 
   window.updateReflection = function (text) {
@@ -1694,10 +1695,66 @@ if ('serviceWorker' in navigator) {
     // First roster snapshot: honor a #agent=kind/id deep link (F5).
     if (typeof window.lisaHandleAgentHashOnce === 'function') window.lisaHandleAgentHashOnce();
     renderSessionTree();
+    renderNeeds();
     renderInspector();
     // Live refresh for an open stream tab (head/perm/foot reflect the
     // newest snapshot; steps repoll on their own timer too).
     if (currentAgentTab) renderStreamView();
+  }
+
+  // ── "Needs you" rail section (确认轮二) — every agent decision waiting
+  // on the user, actionable inline: approve/deny a pending permission, or
+  // jump straight into the read-only stream of a waiting/errored session.
+  function renderNeeds() {
+    const rows = document.getElementById('sbNeedsRows');
+    const count = document.getElementById('sbNeedsCount');
+    if (!rows) return;
+    rows.innerHTML = '';
+    const needs = cachedAgents.filter(function (s) {
+      return (s.activity && s.activity.pendingPermission) || s.state === 'waiting' || s.state === 'error';
+    });
+    if (count) count.textContent = needs.length ? String(needs.length) : '';
+    if (!needs.length) {
+      const ok = document.createElement('div');
+      ok.className = 'session-empty';
+      ok.textContent = 'all clear ✓';
+      rows.appendChild(ok);
+      return;
+    }
+    needs.slice(0, 6).forEach(function (s) {
+      const row = document.createElement('div');
+      row.className = 'needs-row';
+      row.innerHTML = '<span class="pip"></span><span class="nr-main"><span class="nr-name"></span><span class="nr-sub"></span></span>';
+      const st = s.state || 'unknown';
+      if (st === 'working' || st === 'waiting' || st === 'error') row.querySelector('.pip').classList.add(st);
+      row.querySelector('.nr-name').textContent = agentLabel(s);
+      const pend = s.activity && s.activity.pendingPermission;
+      row.querySelector('.nr-sub').textContent = pend ? ('⚠ ' + pend) : (s.stateReason || s.state);
+      row.title = (AGENT_NAMES[s.agent] || s.agent) + ' · ' + s.project + ' · ' + s.sessionId;
+      row.addEventListener('click', function () {
+        selInsp = { type: 'agent', key: agentKey(s) };
+        renderInspector();
+        renderSessionUI();
+      });
+      const acts = document.createElement('span');
+      acts.className = 'session-ctrl nr-acts';
+      if (s.controllable === 'managed' && pend) {
+        const ap = document.createElement('button');
+        ap.className = 'mc approve'; ap.textContent = '✓'; ap.title = 'Approve';
+        ap.addEventListener('click', function (e) { e.stopPropagation(); agentAction('managed', s.sessionId, 'approve', { allow: true }); });
+        const dn = document.createElement('button');
+        dn.className = 'mc deny'; dn.textContent = '✕'; dn.title = 'Deny';
+        dn.addEventListener('click', function (e) { e.stopPropagation(); agentAction('managed', s.sessionId, 'approve', { allow: false }); });
+        acts.appendChild(ap); acts.appendChild(dn);
+      } else {
+        const open = document.createElement('button');
+        open.className = 'mc'; open.textContent = '▤'; open.title = 'Open the read-only stream';
+        open.addEventListener('click', function (e) { e.stopPropagation(); if (window.lisaOpenAgentStream) window.lisaOpenAgentStream(s); });
+        acts.appendChild(open);
+      }
+      row.appendChild(acts);
+      rows.appendChild(row);
+    });
   }
 
   // ── Tree view mode (F3): group by agent kind (default) or by project ──
@@ -1937,9 +1994,11 @@ if ('serviceWorker' in navigator) {
     let lisaSession = null;
     if (selInsp && selInsp.type === 'agent') agent = agentByKey(selInsp.key);
     if (!agent && selInsp && selInsp.type === 'lisa') lisaSession = sessionById(selInsp.id);
+    // Default context = the ACTIVE Lisa session (确认轮二: no more
+    // auto-picking a random agent — the Needs-you section carries the
+    // agent-attention case now).
     if (!agent && !lisaSession) {
-      if (cachedAgents.length) agent = cachedAgents[0];
-      else lisaSession = sessionById(window.lisaActiveSessionId);
+      lisaSession = sessionById(window.lisaActiveSessionId);
     }
     if (agent) { renderAgentInspector(box, agent); return; }
     if (lisaSession) { renderLisaInspector(box, lisaSession); return; }
@@ -2230,22 +2289,10 @@ if ('serviceWorker' in navigator) {
   // client-side notion (which sessions you keep at hand), persisted in
   // localStorage; the tree is the full on-disk list.
   let cachedSessions = [];
-  // Open tabs: 'sessionId' strings (Lisa sessions) or {t:'agent', agent, id,
-  // label} objects (read-only agent stream tabs, F1). Old string-only
-  // payloads load unchanged.
-  let openTabIds = [];
-  try {
-    const rawTabs = localStorage.getItem('lisaOpenSessions');
-    if (rawTabs) openTabIds = JSON.parse(rawTabs).filter(function (x) {
-      return typeof x === 'string' || (x && x.t === 'agent' && typeof x.agent === 'string' && typeof x.id === 'string');
-    });
-  } catch (e) { openTabIds = []; }
-  function saveTabs() {
-    try { localStorage.setItem('lisaOpenSessions', JSON.stringify(openTabIds.slice(0, 12))); } catch (e) {}
-  }
-  function tabKeyOf(entry) {
-    return typeof entry === 'string' ? entry : entry.agent + '/' + entry.id;
-  }
+  // (确认轮二) Multi-tab strip removed: creating/switching lives in the
+  // sidebar tree only, and the strip renders a single CONTEXT CHIP for
+  // what the main pane is showing — the active Lisa session, or the
+  // observed agent while the stream pane is open.
   function sessionLabel(s) {
     // F2 auto-naming: the FIRST user message is the session's name (the
     // opening request describes the task); fall back to the latest one,
@@ -2270,7 +2317,6 @@ if ('serviceWorker' in navigator) {
       const r = await fetch('/api/sessions/' + encodeURIComponent(id) + '/activate', { method: 'POST' });
       const data = await r.json();
       if (data && data.ok) {
-        ensureTab(data.id);
         if (typeof window.lisaSetActiveSession === 'function') window.lisaSetActiveSession(data.id);
       }
     } catch (e) {}
@@ -2287,32 +2333,12 @@ if ('serviceWorker' in navigator) {
       const r = await fetch('/api/sessions', { method: 'POST' });
       const data = await r.json();
       if (data && data.ok) {
-        ensureTab(data.id);
         if (typeof window.lisaSetActiveSession === 'function') window.lisaSetActiveSession(data.id);
       }
     } catch (e) {}
     document.body.classList.remove('session-switching');
     switching = false;
     refreshSessionsBadge();
-  }
-  function ensureTab(id) {
-    if (!openTabIds.some(function (x) { return tabKeyOf(x) === id; })) openTabIds.unshift(id);
-    saveTabs();
-  }
-  function closeTab(key) {
-    const idx = openTabIds.findIndex(function (x) { return tabKeyOf(x) === key; });
-    if (idx >= 0) openTabIds.splice(idx, 1);
-    saveTabs();
-    if (currentAgentTab && tabKeyOf(currentAgentTab) === key) {
-      closeStreamView();
-      renderSessionUI();
-      return;
-    }
-    if (key === window.lisaActiveSessionId && openTabIds.length && typeof openTabIds[0] === 'string') {
-      switchSession(openTabIds[0]);
-      return;
-    }
-    renderSessionUI();
   }
 
   function renderSessionTree() {
@@ -2341,64 +2367,38 @@ if ('serviceWorker' in navigator) {
     renderAgentTree();
   }
 
+  // Single context chip: what the main pane is showing right now — the
+  // active Lisa session, or the observed agent while the stream pane is
+  // open (with an × back to chat). NOT a switcher: creation and switching
+  // live in the sidebar tree only (确认轮二).
   function renderTabs() {
     const strip = document.getElementById('tabStrip');
     if (!strip) return;
     strip.innerHTML = '';
-    // Drop Lisa tabs whose session vanished from disk; agent tabs persist
-    // (their sessions may simply be outside the 30-min active window).
-    openTabIds = openTabIds.filter(function (x) {
-      if (typeof x !== 'string') return true;
-      return sessionById(x) !== null || x === window.lisaActiveSessionId;
-    });
-    if (window.lisaActiveSessionId) ensureTab(window.lisaActiveSessionId);
-    openTabIds.slice(0, 6).forEach(function (entry) {
-      const key = tabKeyOf(entry);
-      const isAgent = typeof entry !== 'string';
-      const isActive = isAgent
-        ? !!(currentAgentTab && tabKeyOf(currentAgentTab) === key)
-        : (!currentAgentTab && entry === window.lisaActiveSessionId);
-      const tab = document.createElement('button');
-      tab.type = 'button';
-      tab.className = 'stab' + (isActive ? ' active' : '') + (!isAgent && window.lisaIsUnread && window.lisaIsUnread(key) ? ' unread' : '');
-      tab.innerHTML = '<span class="pip"></span>' + (isAgent ? '<span class="agent-glyph mini"></span>' : '') + '<span class="stab-name"></span><span class="stab-x" title="Close tab">×</span>';
-      if (isAgent) {
-        const s = agentByKey(key);
-        const g = tab.querySelector('.agent-glyph');
-        const kindName = AGENT_NAMES[entry.agent] || entry.agent;
-        g.classList.add(agentGlyphClass(entry.agent));
-        g.textContent = (kindName.charAt(0) || 'A').toUpperCase();
-        const st = s ? (s.state || 'unknown') : 'unknown';
-        if (st === 'working' || st === 'waiting' || st === 'error') tab.querySelector('.pip').classList.add(st);
-        tab.querySelector('.stab-name').textContent = s ? agentLabel(s) : (entry.label || entry.id);
-      } else {
-        const s = sessionById(entry);
-        if (isActive) tab.querySelector('.pip').classList.add('live');
-        tab.querySelector('.stab-name').textContent = s ? sessionLabel(s) : entry;
-      }
-      tab.addEventListener('click', function (e) {
-        if (e.target && e.target.classList && e.target.classList.contains('stab-x')) {
-          e.stopPropagation();
-          closeTab(key);
-          return;
-        }
-        if (isAgent) {
-          openStreamTab(entry);
-        } else {
-          closeStreamView();
-          if (entry === window.lisaActiveSessionId) renderSessionUI();
-          else switchSession(entry);
-        }
+    const chip = document.createElement('div');
+    chip.className = 'ctx-chip';
+    if (currentAgentTab) {
+      chip.classList.add('agent');
+      chip.innerHTML = '<span class="pip"></span><span class="agent-glyph mini"></span><span class="ctx-name"></span><span class="ctx-meta">observing</span><button type="button" class="ctx-x" title="Back to chat">×</button>';
+      const s = agentByKey(currentAgentTab.agent + '/' + currentAgentTab.id);
+      const kindName = AGENT_NAMES[currentAgentTab.agent] || currentAgentTab.agent;
+      const g = chip.querySelector('.agent-glyph');
+      g.classList.add(agentGlyphClass(currentAgentTab.agent));
+      g.textContent = (kindName.charAt(0) || 'A').toUpperCase();
+      const st = s ? (s.state || 'unknown') : 'unknown';
+      if (st === 'working' || st === 'waiting' || st === 'error') chip.querySelector('.pip').classList.add(st);
+      chip.querySelector('.ctx-name').textContent = s ? agentLabel(s) : (currentAgentTab.label || currentAgentTab.id);
+      chip.querySelector('.ctx-x').addEventListener('click', function () {
+        closeStreamView();
+        renderSessionUI();
       });
-      strip.appendChild(tab);
-    });
-    const plus = document.createElement('button');
-    plus.type = 'button';
-    plus.className = 'stab-new';
-    plus.title = 'New session';
-    plus.textContent = '＋';
-    plus.addEventListener('click', newSession);
-    strip.appendChild(plus);
+    } else {
+      chip.innerHTML = '<span class="pip live"></span><span class="ctx-name"></span><span class="ctx-meta"></span>';
+      const s = sessionById(window.lisaActiveSessionId);
+      chip.querySelector('.ctx-name').textContent = s ? sessionLabel(s) : (window.lisaActiveSessionId || '—');
+      chip.querySelector('.ctx-meta').textContent = s ? String(s.messageCount || 0) + ' msgs' : '';
+    }
+    strip.appendChild(chip);
   }
 
   // ── F1: read-only agent stream tab ─────────────────────────────────
@@ -2409,15 +2409,7 @@ if ('serviceWorker' in navigator) {
   let currentAgentTab = null;
   let streamTimer = null;
   let ptyStream = null;
-  function ensureAgentTab(s) {
-    const key = agentKey(s);
-    if (!openTabIds.some(function (x) { return tabKeyOf(x) === key; })) {
-      openTabIds.unshift({ t: 'agent', agent: s.agent, id: s.sessionId, label: agentLabel(s) });
-      saveTabs();
-    }
-  }
   window.lisaOpenAgentStream = function (s) {
-    ensureAgentTab(s);
     openStreamTab({ t: 'agent', agent: s.agent, id: s.sessionId, label: agentLabel(s) });
   };
   function openStreamTab(entry) {
@@ -2440,7 +2432,7 @@ if ('serviceWorker' in navigator) {
     if (ptyStream) { ptyStream.close(); ptyStream = null; }
   }
   function streamSession() {
-    return currentAgentTab ? agentByKey(tabKeyOf(currentAgentTab)) : null;
+    return currentAgentTab ? agentByKey(currentAgentTab.agent + '/' + currentAgentTab.id) : null;
   }
   function renderStreamView() {
     if (!currentAgentTab) return;
@@ -2662,6 +2654,11 @@ if ('serviceWorker' in navigator) {
     if (!body) return;
     while (body.firstChild) body.removeChild(body.firstChild);
     const hasAccounts = accounts && accounts.length > 0;
+    // 确认轮二: an unconnected mail section is pure noise — hide the whole
+    // card until a mailbox exists (the fnbar Mail button stays the entry
+    // point for connecting one).
+    const mailCard = document.getElementById('sbMailCard');
+    if (mailCard) mailCard.style.display = hasAccounts ? '' : 'none';
     if (connectBtn) connectBtn.textContent = hasAccounts ? '＋ add mailbox' : '＋ connect mailbox';
     if (!hasAccounts) {
       const empty = document.createElement('div');

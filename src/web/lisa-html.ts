@@ -83,6 +83,9 @@ ${MAIN_CSS}
         <h1>Lisa</h1>
         <p class="sub" id="identitySub">—</p>
         <div class="mood" id="mascotTag">neutral</div>
+        <!-- Lisa's current autonomous pursuit, compressed to two lines
+             (moved out of the right rail — full text in the tooltip). -->
+        <p class="identity-desire" id="sbDesire" title="">—</p>
       </div>
     </div>
 
@@ -203,12 +206,17 @@ ${MAIN_CSS}
        working (setupSidebarLive resolves them unguarded). -->
   <aside class="rightbar">
 
-    <!-- Currently wanting -->
-    <div class="rb-sec">
+    <!-- Needs you — every agent decision waiting on the user, actionable
+         inline (approve/deny/open). The rail's top slot: this is the
+         multi-agent console's highest-value surface. -->
+    <div class="rb-sec" id="sbNeeds">
       <div class="h">
-        <div class="left">currently wanting</div>
+        <div class="left">needs you</div>
+        <div class="count" id="sbNeedsCount"></div>
       </div>
-      <p class="body-text" id="sbDesire">—</p>
+      <div id="sbNeedsRows">
+        <div class="session-empty">all clear ✓</div>
+      </div>
     </div>
 
     <!-- Inspector — detail card for the session selected in the sidebar
@@ -242,10 +250,11 @@ ${MAIN_CSS}
       </button>
     </div>
 
-    <!-- Last reflection (collapsed pointer to the most recent ★) -->
+    <!-- While you were away — Lisa's latest idle reflection. Hidden until
+         one exists (same label as the chat's idle cards). -->
     <div class="rb-sec" id="sbReflection" style="display:none;">
       <div class="h">
-        <div class="left">★ last reflection</div>
+        <div class="left">★ while you were away</div>
       </div>
       <p class="body-text" id="sbReflectionBody"></p>
     </div>
