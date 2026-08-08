@@ -188,10 +188,19 @@ import { MAIN_HTML } from "./lisa-html.js";
  * refreshSessionsBadge gained an in-flight guard + 5s retry and
  * renderSessionTree kicks it whenever it renders with an empty session
  * list (the "sessions vanished after refresh" flash).
+ * Then: 真实E2E — the tree / needs-you / inspector actions / stream
+ * perm+foot / context-chip × all rebuild on every roster tick, so their
+ * per-node listeners kept landing REAL clicks on freshly-replaced dead
+ * elements ("clicked and nothing happened"). All of them moved to
+ * DELEGATED listeners on the stable containers (#sessionTree,
+ * #sbNeedsRows, #sbClaudeRows click+keydown, #asPerm, #asFoot,
+ * #tabStrip); nodes now carry data-* attributes only
+ * (runDelegatedAction dispatches approve/deny/send/output/cancel/adopt/
+ * stream/open-lisa/close-stream).
  */
-const EXPECTED_LENGTH = 303662;
+const EXPECTED_LENGTH = 307402;
 const EXPECTED_SHA256 =
-  "30cb05fec303e3c582e49909a8502be89ae6130ef909bed6a7cadf0e156dec65";
+  "8c08d262b17ca6251b05e0430c06fd54482d2803482e317cad59a29bdc9590af";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);

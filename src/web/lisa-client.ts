@@ -1731,26 +1731,22 @@ if ('serviceWorker' in navigator) {
       const pend = s.activity && s.activity.pendingPermission;
       row.querySelector('.nr-sub').textContent = pend ? ('⚠ ' + pend) : (s.stateReason || s.state);
       row.title = (AGENT_NAMES[s.agent] || s.agent) + ' · ' + s.project + ' · ' + s.sessionId;
-      row.addEventListener('click', function () {
-        selInsp = { type: 'agent', key: agentKey(s) };
-        renderInspector();
-        // Same as a tree click: straight into the conversation.
-        openStreamTab({ t: 'agent', agent: s.agent, id: s.sessionId, label: agentLabel(s) });
-      });
+      row.setAttribute('data-agent', s.agent);
+      row.setAttribute('data-session', s.sessionId);
       const acts = document.createElement('span');
       acts.className = 'session-ctrl nr-acts';
       if (s.controllable === 'managed' && pend) {
         const ap = document.createElement('button');
         ap.className = 'mc approve'; ap.textContent = '✓'; ap.title = 'Approve';
-        ap.addEventListener('click', function (e) { e.stopPropagation(); agentAction('managed', s.sessionId, 'approve', { allow: true }); });
+        ap.setAttribute('data-act', 'approve');
         const dn = document.createElement('button');
         dn.className = 'mc deny'; dn.textContent = '✕'; dn.title = 'Deny';
-        dn.addEventListener('click', function (e) { e.stopPropagation(); agentAction('managed', s.sessionId, 'approve', { allow: false }); });
+        dn.setAttribute('data-act', 'deny');
         acts.appendChild(ap); acts.appendChild(dn);
       } else {
         const open = document.createElement('button');
         open.className = 'mc'; open.textContent = '▤'; open.title = 'Open the read-only stream';
-        open.addEventListener('click', function (e) { e.stopPropagation(); if (window.lisaOpenAgentStream) window.lisaOpenAgentStream(s); });
+        open.setAttribute('data-act', 'stream');
         acts.appendChild(open);
       }
       row.appendChild(acts);
@@ -1782,6 +1778,10 @@ if ('serviceWorker' in navigator) {
 
   // Shared leaf builders (both tree modes). withGlyph adds a mini source
   // glyph in project view where Lisa and agent sessions sit side by side.
+  // NOTE (真实E2E修复): tree/needs/inspector rebuild on every roster tick,
+  // so per-node listeners kept landing real clicks on freshly-replaced dead
+  // elements. All click handling is DELEGATED to the stable containers —
+  // nodes only carry data-* attributes.
   function makeLisaLeaf(s, withGlyph) {
     const isActive = s.id === window.lisaActiveSessionId;
     const leaf = document.createElement('button');
@@ -1792,13 +1792,7 @@ if ('serviceWorker' in navigator) {
     leaf.querySelector('.tname').textContent = sessionLabel(s);
     leaf.querySelector('.ttime').textContent = relativeTime(s.startedAt);
     leaf.title = s.id + ' · ' + (s.messageCount || 0) + ' msgs';
-    leaf.addEventListener('click', function () {
-      selInsp = { type: 'lisa', id: s.id };
-      renderInspector();
-      closeStreamView();
-      if (s.id === window.lisaActiveSessionId) renderSessionUI();
-      else switchSession(s.id);
-    });
+    leaf.setAttribute('data-lisa-id', s.id);
     return leaf;
   }
   function makeAgentLeaf(s, withGlyph) {
@@ -1818,17 +1812,8 @@ if ('serviceWorker' in navigator) {
     leaf.querySelector('.tname').textContent = agentLabel(s);
     leaf.querySelector('.ttime').textContent = relativeTime(s.lastMtime);
     leaf.title = (s.stateReason ? s.state + ' · ' + s.stateReason : s.state) + ' · ' + s.project + ' · ' + s.sessionId;
-    leaf.addEventListener('click', function () {
-      selInsp = { type: 'agent', key: key };
-      const tree = document.getElementById('sessionTree');
-      const all = tree ? tree.querySelectorAll('.tleaf.active') : [];
-      for (let i = 0; i < all.length; i++) all[i].classList.remove('active');
-      leaf.classList.add('active');
-      renderInspector();
-      // 确认轮三: clicking an agent session OPENS its conversation directly
-      // (transcript stream pane) — same mental model as a Lisa session.
-      openStreamTab({ t: 'agent', agent: s.agent, id: s.sessionId, label: agentLabel(s) });
-    });
+    leaf.setAttribute('data-agent', s.agent);
+    leaf.setAttribute('data-session', s.sessionId);
     return leaf;
   }
 
@@ -1855,7 +1840,7 @@ if ('serviceWorker' in navigator) {
       root.innerHTML = '<span class="twist">▾</span><span class="tlabel"></span><span class="tcount"></span>';
       root.querySelector('.tlabel').textContent = p;
       root.querySelector('.tcount').textContent = String(byProject[p].lisa.length + byProject[p].agents.length);
-      root.addEventListener('click', function () { toggleCollapsed(group, key); });
+      root.setAttribute('data-toggle', key);
       group.appendChild(root);
       const kids = document.createElement('div');
       kids.className = 'tchildren';
@@ -1895,7 +1880,7 @@ if ('serviceWorker' in navigator) {
       glyph.textContent = (kindName.charAt(0) || 'A').toUpperCase();
       root.querySelector('.tlabel').textContent = kindName;
       root.querySelector('.tcount').textContent = String(byKind[kind].length);
-      root.addEventListener('click', function () { toggleCollapsed(group, 'agent:' + kind); });
+      root.setAttribute('data-toggle', 'agent:' + kind);
       group.appendChild(root);
       const kids = document.createElement('div');
       kids.className = 'tchildren';
@@ -1916,7 +1901,7 @@ if ('serviceWorker' in navigator) {
         pn.className = 'tnode';
         pn.innerHTML = '<span class="twist">▾</span><span class="tlabel"></span>';
         pn.querySelector('.tlabel').textContent = p;
-        pn.addEventListener('click', function () { toggleCollapsed(sub, subKey); });
+        pn.setAttribute('data-toggle', subKey);
         sub.appendChild(pn);
         const pkids = document.createElement('div');
         pkids.className = 'tchildren';
@@ -2033,7 +2018,8 @@ if ('serviceWorker' in navigator) {
       openBtn.className = 'mc adopt';
       openBtn.textContent = '⇱ open';
       openBtn.title = 'Switch to this session';
-      openBtn.addEventListener('click', function () { switchSession(s.id); });
+      openBtn.setAttribute('data-act', 'open-lisa');
+      openBtn.setAttribute('data-lisa-id', s.id);
       acts.appendChild(openBtn);
       box.appendChild(acts);
     }
@@ -2070,58 +2056,48 @@ if ('serviceWorker' in navigator) {
     const id = s.sessionId;
     const acts = document.createElement('div');
     acts.className = 'session-ctrl insp-actions';
+    acts.setAttribute('data-fam', fam || '');
+    acts.setAttribute('data-agent', s.agent);
+    acts.setAttribute('data-session', id);
+    acts.setAttribute('data-cwd', s.cwd || '');
     // F1 — every agent session gets a read-only step stream tab.
     const streamBtn = document.createElement('button');
     streamBtn.className = 'mc';
     streamBtn.textContent = '▤ stream';
     streamBtn.title = 'Open the read-only step stream';
-    streamBtn.addEventListener('click', function () {
-      if (window.lisaOpenAgentStream) window.lisaOpenAgentStream(s);
-    });
+    streamBtn.setAttribute('data-act', 'stream');
     acts.appendChild(streamBtn);
     if (fam === 'managed' && a.pendingPermission) {
       const ap = document.createElement('button');
       ap.className = 'mc approve'; ap.textContent = '✓ approve';
-      ap.addEventListener('click', function () { agentAction('managed', id, 'approve', { allow: true }); });
+      ap.setAttribute('data-act', 'approve');
       const dn = document.createElement('button');
       dn.className = 'mc deny'; dn.textContent = '✕ deny';
-      dn.addEventListener('click', function () { agentAction('managed', id, 'approve', { allow: false }); });
+      dn.setAttribute('data-act', 'deny');
       acts.appendChild(ap); acts.appendChild(dn);
     } else if (fam && s.state !== 'done') {
       const inp = document.createElement('input');
       inp.className = 'mc-send'; inp.type = 'text';
       inp.placeholder = fam === 'pty' ? 'type into the CLI…' : 'send a follow-up…';
-      inp.addEventListener('keydown', function (e) {
-        // Ignore the Enter that confirms an IME candidate (see main input).
-        if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229 && inp.value.trim()) { e.preventDefault(); agentAction(fam, id, 'send', { text: inp.value.trim() }); inp.value = ''; }
-      });
       acts.appendChild(inp);
     }
     if (fam === 'pty') {
       const out = document.createElement('button');
       out.className = 'mc'; out.textContent = '▤ output'; out.title = 'View terminal output';
-      out.addEventListener('click', function () { ptyOutput(id); });
+      out.setAttribute('data-act', 'output');
       acts.appendChild(out);
     }
     if (fam && s.state !== 'done') {
       const cancel = document.createElement('button');
       cancel.className = 'mc cancel'; cancel.textContent = '⏹ cancel'; cancel.title = 'Cancel agent';
-      cancel.addEventListener('click', function () { agentAction(fam, id, 'cancel', null); });
+      cancel.setAttribute('data-act', 'cancel');
       acts.appendChild(cancel);
     }
     if (s.resumable) {
       const adopt = document.createElement('button');
       adopt.className = 'mc adopt'; adopt.textContent = '⇲ adopt';
       adopt.title = 'Resume this session under LISA — then send / answer / cancel / view it';
-      adopt.addEventListener('click', function () {
-        fetch('/api/agents/pty/start', {
-          method: 'POST', headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ agent: 'claude', resumeSessionId: s.sessionId, cwd: s.cwd || '' }),
-        }).then(function (r) {
-          if (!r.ok) { return r.text().then(function (t) { openModal('adopt', '<pre>' + escapeHtml(t) + '</pre>'); }); }
-          if (typeof refreshClaudeSessions === 'function') refreshClaudeSessions();
-        }).catch(function () {});
-      });
+      adopt.setAttribute('data-act', 'adopt');
       acts.appendChild(adopt);
     }
     if (acts.childNodes.length) box.appendChild(acts);
@@ -2394,7 +2370,7 @@ if ('serviceWorker' in navigator) {
     root.className = 'tnode';
     root.innerHTML = '<span class="twist">▾</span><span class="agent-glyph lisa">L</span><span class="tlabel">LISA</span><span class="tcount"></span>';
     root.querySelector('.tcount').textContent = String(cachedSessions.length);
-    root.addEventListener('click', function () { toggleCollapsed(group, 'lisa'); });
+    root.setAttribute('data-toggle', 'lisa');
     group.appendChild(root);
     const kids = document.createElement('div');
     kids.className = 'tchildren';
@@ -2428,10 +2404,7 @@ if ('serviceWorker' in navigator) {
       const st = s ? (s.state || 'unknown') : 'unknown';
       if (st === 'working' || st === 'waiting' || st === 'error') chip.querySelector('.pip').classList.add(st);
       chip.querySelector('.ctx-name').textContent = s ? agentLabel(s) : (currentAgentTab.label || currentAgentTab.id);
-      chip.querySelector('.ctx-x').addEventListener('click', function () {
-        closeStreamView();
-        renderSessionUI();
-      });
+      chip.querySelector('.ctx-x').setAttribute('data-act', 'close-stream');
     } else {
       chip.innerHTML = '<span class="pip live"></span><span class="ctx-name"></span><span class="ctx-meta"></span>';
       const s = sessionById(window.lisaActiveSessionId);
@@ -2520,31 +2493,28 @@ if ('serviceWorker' in navigator) {
       const grow = document.createElement('span');
       grow.className = 'grow';
       perm.appendChild(grow);
+      perm.setAttribute('data-session', s.sessionId);
       const ap = document.createElement('button');
       ap.className = 'mc approve'; ap.textContent = '✓ approve';
-      ap.addEventListener('click', function () { agentAction('managed', s.sessionId, 'approve', { allow: true }); });
+      ap.setAttribute('data-act', 'approve');
       const dn = document.createElement('button');
       dn.className = 'mc deny'; dn.textContent = '✕ deny';
-      dn.addEventListener('click', function () { agentAction('managed', s.sessionId, 'approve', { allow: false }); });
+      dn.setAttribute('data-act', 'deny');
       perm.appendChild(ap);
       perm.appendChild(dn);
     }
     foot.innerHTML = '';
     if (s && s.controllable && s.state !== 'done') {
+      foot.setAttribute('data-fam', s.controllable);
+      foot.setAttribute('data-session', s.sessionId);
       const inp = document.createElement('input');
       inp.type = 'text';
+      inp.className = 'mc-send';
       inp.placeholder = s.controllable === 'pty' ? 'type into the CLI…' : 'send a follow-up…';
-      inp.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229 && inp.value.trim()) {
-          e.preventDefault();
-          agentAction(s.controllable, s.sessionId, 'send', { text: inp.value.trim() });
-          inp.value = '';
-        }
-      });
       foot.appendChild(inp);
       const cancel = document.createElement('button');
       cancel.className = 'mc cancel'; cancel.textContent = '⏹ cancel';
-      cancel.addEventListener('click', function () { agentAction(s.controllable, s.sessionId, 'cancel', null); });
+      cancel.setAttribute('data-act', 'cancel');
       foot.appendChild(cancel);
     } else if (s && s.resumable) {
       const note = document.createElement('span');
@@ -3013,6 +2983,138 @@ if ('serviceWorker' in navigator) {
     sbMailHead.title = 'Open Mail';
     sbMailHead.addEventListener('click', function () {
       if (typeof window.lisaShowView === 'function') window.lisaShowView('mail');
+    });
+  }
+
+  // ── Delegated wiring (真实E2E修复) ───────────────────────────────────
+  // The tree / needs-you / inspector / stream controls REBUILD on every
+  // roster tick (SSE fires every few seconds while agents are active), so
+  // per-node listeners kept landing real clicks on freshly-replaced dead
+  // elements — "I clicked and nothing happened". One listener per STABLE
+  // container; nodes carry data-* attributes.
+  function selectAgentAndStream(agent, sid) {
+    selInsp = { type: 'agent', key: agent + '/' + sid };
+    renderInspector();
+    const found = agentByKey(agent + '/' + sid);
+    openStreamTab({ t: 'agent', agent: agent, id: sid, label: found ? agentLabel(found) : sid });
+  }
+  function runDelegatedAction(act, fam, agent, sid, cwd, sendText) {
+    if (act === 'stream') { selectAgentAndStream(agent, sid); return; }
+    if (act === 'approve') { agentAction('managed', sid, 'approve', { allow: true }); return; }
+    if (act === 'deny') { agentAction('managed', sid, 'approve', { allow: false }); return; }
+    if (act === 'cancel') { agentAction(fam, sid, 'cancel', null); return; }
+    if (act === 'output') { ptyOutput(sid); return; }
+    if (act === 'send') { agentAction(fam, sid, 'send', { text: sendText }); return; }
+    if (act === 'adopt') {
+      fetch('/api/agents/pty/start', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ agent: 'claude', resumeSessionId: sid, cwd: cwd || '' }),
+      }).then(function (r) {
+        if (!r.ok) { return r.text().then(function (t) { openModal('adopt', '<pre>' + escapeHtml(t) + '</pre>'); }); }
+        if (typeof refreshClaudeSessions === 'function') refreshClaudeSessions();
+      }).catch(function () {});
+    }
+  }
+  const treeEl = document.getElementById('sessionTree');
+  if (treeEl) treeEl.addEventListener('click', function (e) {
+    const t = e.target;
+    if (!t || !t.closest) return;
+    const leaf = t.closest('.tleaf');
+    if (leaf && treeEl.contains(leaf)) {
+      const lisaId = leaf.getAttribute('data-lisa-id');
+      if (lisaId) {
+        selInsp = { type: 'lisa', id: lisaId };
+        renderInspector();
+        closeStreamView();
+        if (lisaId === window.lisaActiveSessionId) renderSessionUI();
+        else switchSession(lisaId);
+        return;
+      }
+      const agent = leaf.getAttribute('data-agent');
+      const sid = leaf.getAttribute('data-session');
+      if (agent && sid) {
+        const all = treeEl.querySelectorAll('.tleaf.active');
+        for (let i = 0; i < all.length; i++) all[i].classList.remove('active');
+        leaf.classList.add('active');
+        selectAgentAndStream(agent, sid);
+      }
+      return;
+    }
+    const node = t.closest('.tnode');
+    if (node && treeEl.contains(node)) {
+      const tkey = node.getAttribute('data-toggle');
+      if (tkey && node.parentElement) toggleCollapsed(node.parentElement, tkey);
+    }
+  });
+  const stripEl = document.getElementById('tabStrip');
+  if (stripEl) stripEl.addEventListener('click', function (e) {
+    const t = e.target;
+    if (!t || !t.closest) return;
+    const btn = t.closest('[data-act]');
+    if (btn && btn.getAttribute('data-act') === 'close-stream') {
+      closeStreamView();
+      renderSessionUI();
+    }
+  });
+  const needsEl = document.getElementById('sbNeedsRows');
+  if (needsEl) needsEl.addEventListener('click', function (e) {
+    const t = e.target;
+    if (!t || !t.closest) return;
+    const row = t.closest('.needs-row');
+    if (!row) return;
+    const agent = row.getAttribute('data-agent');
+    const sid = row.getAttribute('data-session');
+    const btn = t.closest('[data-act]');
+    if (btn) { runDelegatedAction(btn.getAttribute('data-act'), 'managed', agent, sid, ''); return; }
+    if (agent && sid) selectAgentAndStream(agent, sid);
+  });
+  const inspEl = document.getElementById('sbClaudeRows');
+  if (inspEl) {
+    inspEl.addEventListener('click', function (e) {
+      const t = e.target;
+      if (!t || !t.closest) return;
+      const btn = t.closest('[data-act]');
+      if (!btn) return;
+      const act = btn.getAttribute('data-act');
+      if (act === 'open-lisa') { switchSession(btn.getAttribute('data-lisa-id')); return; }
+      const acts = t.closest('.insp-actions');
+      if (!acts) return;
+      runDelegatedAction(act, acts.getAttribute('data-fam'), acts.getAttribute('data-agent'), acts.getAttribute('data-session'), acts.getAttribute('data-cwd'));
+    });
+    inspEl.addEventListener('keydown', function (e) {
+      const t = e.target;
+      if (!t || !t.classList || !t.classList.contains('mc-send')) return;
+      if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229 && t.value.trim()) {
+        e.preventDefault();
+        const acts = t.closest('.insp-actions');
+        if (acts) runDelegatedAction('send', acts.getAttribute('data-fam'), acts.getAttribute('data-agent'), acts.getAttribute('data-session'), '', t.value.trim());
+        t.value = '';
+      }
+    });
+  }
+  const permEl = document.getElementById('asPerm');
+  if (permEl) permEl.addEventListener('click', function (e) {
+    const t = e.target;
+    if (!t || !t.closest) return;
+    const btn = t.closest('[data-act]');
+    if (btn) runDelegatedAction(btn.getAttribute('data-act'), 'managed', '', permEl.getAttribute('data-session'), '');
+  });
+  const footEl = document.getElementById('asFoot');
+  if (footEl) {
+    footEl.addEventListener('click', function (e) {
+      const t = e.target;
+      if (!t || !t.closest) return;
+      const btn = t.closest('[data-act]');
+      if (btn) runDelegatedAction(btn.getAttribute('data-act'), footEl.getAttribute('data-fam'), '', footEl.getAttribute('data-session'), '');
+    });
+    footEl.addEventListener('keydown', function (e) {
+      const t = e.target;
+      if (!t || !t.classList || !t.classList.contains('mc-send')) return;
+      if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229 && t.value.trim()) {
+        e.preventDefault();
+        runDelegatedAction('send', footEl.getAttribute('data-fam'), '', footEl.getAttribute('data-session'), '', t.value.trim());
+        t.value = '';
+      }
     });
   }
 
