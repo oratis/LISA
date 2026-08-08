@@ -177,10 +177,13 @@ import { MAIN_HTML } from "./lisa-html.js";
  * entry); and refreshSessionsBadge re-renders the inspector once the session
  * list lands, fixing the "(idle)" inspector on a fresh page load (the roster
  * used to win the race before /api/sessions and nothing re-rendered).
+ * Then: tree style pass (确认轮四) — .tchildren indents dropped to 0 so
+ * session leaves sit flush with their group header column (the 8px pip
+ * centers under the 12px twist) instead of a deep nested indent.
  */
-const EXPECTED_LENGTH = 301378;
+const EXPECTED_LENGTH = 301558;
 const EXPECTED_SHA256 =
-  "e08761ff04a7cca87f2cc3f1f22749837a025fc222487df818781f6e43e93219";
+  "b2108dcfa86bb2e10879b657d09c3ca692f828e2da5f5f5e3e3c2b8aa4057463";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);

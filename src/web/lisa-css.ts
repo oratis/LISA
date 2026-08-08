@@ -862,8 +862,11 @@ export const MAIN_CSS = `  :root {
     border-radius: 9px;
     padding: 1px 7px;
   }
-  .tchildren { padding-left: 16px; }
-  .tsub .tchildren { padding-left: 13px; }
+  /* Leaves sit flush with the group header column: the 8px pip centers
+     under the 12px twist, so the tree reads as aligned rows rather than
+     a deep indent (确认轮四 style pass). */
+  .tchildren { padding-left: 0; }
+  .tsub .tchildren { padding-left: 0; }
   .tsub > .tnode {
     font-size: 10px; padding: 5px 9px; color: var(--fg-3);
     font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase;
