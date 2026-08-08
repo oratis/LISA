@@ -41,7 +41,9 @@
  */
 
 import fsp from "node:fs/promises";
-import type { SessionActivity } from "../types.js";
+import type { AgentStep, SessionActivity } from "../types.js";
+
+export type { AgentStep } from "../types.js";
 
 export type ClaudeSessionState = "working" | "waiting" | "error" | "unknown";
 
@@ -399,21 +401,7 @@ function dedupeKeepRecent(items: string[], max: number): string[] {
 // notch tighter: step targets are file BASENAMES / Bash argv[0] only — never
 // full paths, text blocks, full commands, or edit payloads. Tested in
 // parser-steps.test.ts with the same secret-planting technique.
-
-/** One structural step in a session's tail — powers the read-only stream tab. */
-export interface AgentStep {
-  /** ISO timestamp when the jsonl line carried one. */
-  ts?: string;
-  kind: "user" | "assistant" | "tool";
-  /** tool_use name (kind === "tool" only). */
-  tool?: string;
-  /** File basename or Bash argv[0] (kind === "tool" only). */
-  target?: string;
-  /** Turn ordinal within the parsed tail — increments on each real user turn. */
-  turn: number;
-  /** A tool error observed at (or right after) this step. */
-  isError?: boolean;
-}
+// (AgentStep lives in ../types.ts so the codex/aider adapters share it.)
 
 const MAX_STEPS = 200;
 

@@ -135,7 +135,7 @@ struct PaywallSheet: View {
             }
             .task { await store.loadProducts() }
         }
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(app.preferredScheme)
     }
 
     private func bonusLabel(_ id: String) -> String {

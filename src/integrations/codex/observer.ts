@@ -33,6 +33,7 @@ import type {
   AgentObserver,
   AgentSession,
   AgentSessionState,
+  AgentStep,
   SessionActivity,
 } from "../types.js";
 
@@ -55,6 +56,8 @@ interface CodexSessionInfo {
   stateReason: string;
   /** Tier-2 structural activity; present only when visibility ≥ "activity". */
   activity?: SessionActivity;
+  /** Rollout file path — server-internal (step timeline); stripped from the wire. */
+  jsonlPath?: string;
 }
 
 export class CodexObserver extends EventEmitter implements AgentObserver {
@@ -166,6 +169,7 @@ export class CodexObserver extends EventEmitter implements AgentObserver {
         state,
         stateReason: reason,
         activity,
+        jsonlPath: full,
       });
     } catch {
       this.sessions.delete(full);
@@ -183,6 +187,7 @@ function toAgentSession(i: CodexSessionInfo): AgentSession {
     stateReason: i.stateReason,
     lastMtime: i.lastMtime,
     activity: i.activity,
+    jsonlPath: i.jsonlPath,
   };
 }
 
@@ -473,6 +478,110 @@ function dedupeKeepRecent(items: string[], max: number): string[] {
     }
   }
   return out.slice(-max);
+}
+
+// ── F1 follow-up (PLAN_UI_SESSION_SHELL_v1.1): ordered step timeline ────────
+//
+// Same privacy contract as parseCodexActivity, one notch TIGHTER: targets are
+// file BASENAMES / shell argv[0] only. `arguments` is parsed ONLY to look up
+// the known path/command keys — the raw string never leaves this function.
+
+const MAX_STEPS = 200;
+
+export async function parseCodexSteps(filePath: string): Promise<AgentStep[]> {
+  let size: number;
+  try {
+    const st = await fsp.stat(filePath);
+    if (!st.isFile() || st.size === 0) return [];
+    size = st.size;
+  } catch {
+    return [];
+  }
+
+  let tail: string;
+  try {
+    const fd = await fsp.open(filePath, "r");
+    try {
+      const length = Math.min(ACTIVITY_TAIL_BYTES, size);
+      const buf = Buffer.alloc(length);
+      await fd.read(buf, 0, length, size - length);
+      tail = buf.toString("utf8");
+    } finally {
+      await fd.close();
+    }
+  } catch {
+    return [];
+  }
+
+  const lines = tail.split("\n").filter(Boolean);
+  if (size > ACTIVITY_TAIL_BYTES && lines.length > 0) lines.shift();
+
+  const steps: AgentStep[] = [];
+  let turn = 0;
+
+  for (const line of lines) {
+    let e: unknown;
+    try {
+      e = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (!e || typeof e !== "object") continue;
+    const obj = e as Record<string, unknown>;
+
+    const type = readString(obj.type);
+    const ts = readString(obj.timestamp);
+    const msg = obj.message;
+    const role =
+      readString(obj.role) ??
+      (msg && typeof msg === "object"
+        ? readString((msg as Record<string, unknown>).role)
+        : undefined);
+
+    if (type === "function_call") {
+      const name = readString(obj.name);
+      if (!name) continue;
+      let target: string | undefined;
+      const args = parseArguments(obj.arguments);
+      if (args) {
+        for (const k of PATH_KEYS) {
+          const p = args[k];
+          if (typeof p === "string" && p) {
+            const parts = p.split("/").filter(Boolean);
+            target = parts.length ? parts[parts.length - 1] : p;
+            break;
+          }
+        }
+        if (!target && SHELL_NAME_RE.test(name)) {
+          const argv0 = shellArgv0(args.command);
+          if (argv0) target = "$ " + argv0;
+        }
+      }
+      steps.push({ ts, kind: "tool", turn, tool: name, target });
+      continue;
+    }
+    if (type === "function_call_output") {
+      if (obj.is_error === true || obj.error === true) {
+        for (let i = steps.length - 1; i >= 0; i--) {
+          if (steps[i]!.kind === "tool") {
+            steps[i]!.isError = true;
+            break;
+          }
+        }
+      }
+      continue;
+    }
+    if (role === "user" || type === "user") {
+      turn++;
+      steps.push({ ts, kind: "user", turn });
+      continue;
+    }
+    if (role === "assistant" || type === "assistant" || type === "response") {
+      steps.push({ ts, kind: "assistant", turn });
+    }
+  }
+
+  return steps.slice(-MAX_STEPS);
 }
 
 registerIntegration("codex", (cfg) => new CodexObserver(cfg));

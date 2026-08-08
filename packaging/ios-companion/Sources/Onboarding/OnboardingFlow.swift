@@ -24,7 +24,7 @@ struct OnboardingFlow: View {
             Theme.bgDeep.ignoresSafeArea()
             content
         }
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(app.preferredScheme)
         .tint(Theme.accent)
         .sheet(isPresented: $showManual) {
             OnboardingManualEntry(mode: manualMode) {
@@ -378,7 +378,7 @@ struct OnboardingManualEntry: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
             }
         }
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(app.preferredScheme)
     }
 
     // ── Cloud: the shared account sign-in form (SIWA / email / advanced token

@@ -100,6 +100,25 @@ export interface AgentSession {
   jsonlPath?: string;
 }
 
+/**
+ * One structural step in a session's tail — powers the read-only stream tab
+ * (PLAN_UI_SESSION_SHELL_v1.1 F1). Same privacy contract as SessionActivity,
+ * one notch tighter: targets are file BASENAMES / command argv[0] only.
+ */
+export interface AgentStep {
+  /** ISO timestamp when the source line carried one. */
+  ts?: string;
+  kind: "user" | "assistant" | "tool";
+  /** Tool name (kind === "tool" only). */
+  tool?: string;
+  /** File basename or "$ argv[0]" (kind === "tool" only). */
+  target?: string;
+  /** Turn ordinal within the parsed tail — increments on each user turn. */
+  turn: number;
+  /** A tool error observed at (or right after) this step. */
+  isError?: boolean;
+}
+
 /** Visibility tier — how deeply LISA may inspect a session. See plan §3. */
 export type VisibilityTier = "off" | "metadata" | "activity" | "intent";
 

@@ -363,6 +363,13 @@ final class LisaClient {
 
     // ── read ──
     func sessions() async throws -> [AgentSession] { try await decode("/api/agents/sessions", as: SessionsResponse.self).sessions }
+    /// Lisa's own chat sessions — the roster's LISA group (v1.1).
+    func lisaSessions() async throws -> [LisaSessionInfo] { try await decode("/api/sessions", as: LisaSessionsResponse.self).sessions }
+    /// Switch the Mac's active web session (the Chat tab follows it).
+    func activateSession(_ id: String) async throws -> LisaSessionMutation {
+        let enc = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
+        return try await decode("/api/sessions/\(enc)/activate", method: "POST", as: LisaSessionMutation.self)
+    }
     func dispatchList() async throws -> [DispatchView] { try await decode("/api/dispatch/list", as: DispatchListResponse.self).dispatches }
     func dispatchStatus(id: String) async throws -> DispatchStatus {
         let enc = id.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? id

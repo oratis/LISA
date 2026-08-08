@@ -201,6 +201,80 @@
           }
         }
       }
+    },
+    "/api/sessions": {
+      "get": {
+        "operationId": "listLisaSessions",
+        "responses": {
+          "200": {
+            "description": "Lisa's own chat sessions on disk, newest first (PLAN_UI_SESSION_SHELL_v1.1). The on-disk file path is server-internal and never serialized.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LisaSessionsResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createLisaSession",
+        "responses": {
+          "200": {
+            "description": "Creates a fresh Lisa session and makes it the active web session.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LisaSessionMutation"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{id}/activate": {
+      "post": {
+        "operationId": "activateLisaSession",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Switches the active web session to an existing one.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LisaSessionMutation"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -545,6 +619,73 @@
         },
         "additionalProperties": true,
         "description": "Open event envelope. Clients must ignore unknown types and additive fields; known v1 types include agent_session_update, claude_session_update, mood, chat_start, chat_delta, chat_end, idle_message, advisor_suggestions, screen_suggestion, sense_event, reflect_done and error."
+      },
+      "LisaSession": {
+        "type": "object",
+        "required": [
+          "id",
+          "startedAt",
+          "cwd",
+          "model",
+          "messageCount"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cwd": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "messageCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "lastUserMessage": {
+            "type": "string"
+          },
+          "firstUserMessage": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "LisaSessionsResponse": {
+        "type": "object",
+        "required": [
+          "sessions"
+        ],
+        "properties": {
+          "sessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LisaSession"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "LisaSessionMutation": {
+        "type": "object",
+        "required": [
+          "ok",
+          "id"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
       }
     }
   }

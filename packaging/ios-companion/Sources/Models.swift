@@ -273,3 +273,20 @@ struct DeviceInfo: Codable, Identifiable {
     var lastSeenAt: Double?
 }
 struct DevicesResponse: Codable { var devices: [DeviceInfo] }
+
+// ── Lisa's own chat sessions (/api/sessions — contract: LisaSessionsResponse,
+// PLAN_UI_SESSION_SHELL_v1.1). The on-disk path never reaches the wire. ──
+struct LisaSessionInfo: Codable, Identifiable, Hashable {
+    var id: String
+    var startedAt: String
+    var cwd: String
+    var model: String
+    var messageCount: Int
+    var lastUserMessage: String?
+    var firstUserMessage: String?
+    /// Display name mirrors the web tree: the opening request, else the
+    /// latest one, else the raw id (F2 auto-naming).
+    var displayName: String { firstUserMessage ?? lastUserMessage ?? id }
+}
+struct LisaSessionsResponse: Codable { var sessions: [LisaSessionInfo] }
+struct LisaSessionMutation: Codable { var ok: Bool; var id: String }

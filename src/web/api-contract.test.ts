@@ -11,6 +11,7 @@ import {
   agentSessionsResponse,
   applyApiVersionHeader,
   isVersionedApiSurface,
+  lisaSessionsResponse,
 } from "./api-contract.js";
 
 interface Schema {
@@ -170,6 +171,43 @@ describe("actual server DTOs conform to OpenAPI v1", () => {
     const response = agentSessionsResponse(sessions, new Set());
     assert.equal(response.sessions[0]?.resumable, true);
     assertContract("SessionsResponse", response);
+  });
+
+  test("agent session serializer strips the server-internal jsonlPath", () => {
+    const response = agentSessionsResponse(
+      [
+        {
+          agent: "claude-code",
+          sessionId: "s1",
+          project: "lisa",
+          state: "working",
+          stateReason: "tool_use",
+          lastMtime: Date.parse("2026-08-08T10:00:00.000Z"),
+          jsonlPath: "/Users/someone/.claude/projects/x/s1.jsonl",
+        },
+      ],
+      new Set(["s1"]),
+    );
+    assert.ok(!JSON.stringify(response).includes(".claude/projects"));
+    assertContract("SessionsResponse", response);
+  });
+
+  test("lisa session serializer strips the on-disk path (LisaSessionsResponse)", () => {
+    const response = lisaSessionsResponse([
+      {
+        id: "20260808-001950-d50b69",
+        path: "/Users/someone/.lisa/sessions/20260808-001950-d50b69.jsonl",
+        startedAt: "2026-08-08T00:19:50.000Z",
+        cwd: "/work/lisa",
+        model: "claude-fable-5",
+        messageCount: 4,
+        lastUserMessage: "switch it",
+        firstUserMessage: "restyle the shell",
+      },
+    ]);
+    assert.ok(!JSON.stringify(response).includes(".lisa/sessions"));
+    assertContract("LisaSessionsResponse", response);
+    assertContract("LisaSessionMutation", { ok: true, id: "20260808-001950-d50b69" });
   });
 
   test("dispatch and island/error/event fixtures conform", () => {

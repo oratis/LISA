@@ -32,10 +32,7 @@ struct RootView: View {
         .tint(Theme.accent)                                  // cyan active tab + links + controls
         // Appearance follows the Settings picker: Nebula (dark, default) ·
         // Calm (light) · Auto (system). Theme.* colors are trait-aware.
-        .preferredColorScheme(
-            app.appearance == "calm" ? .light
-            : app.appearance == "auto" ? nil
-            : .dark)
+        .preferredColorScheme(app.preferredScheme)
         .toolbarBackground(Theme.panel, for: .tabBar)
         .toolbarBackground(.visible, for: .tabBar)
         .onOpenURL { app.handleDeepLink($0) }

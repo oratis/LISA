@@ -164,6 +164,11 @@ final class AppState: ObservableObject {
         UserDefaults.standard.set(value, forKey: "lisa.appearance")
     }
 
+    /// The SwiftUI color scheme for the chosen appearance (nil = follow system).
+    var preferredScheme: ColorScheme? {
+        appearance == "calm" ? .light : appearance == "auto" ? nil : .dark
+    }
+
     func update(host: String, port: Int, token: String?, scheme: String = "http") {
         let cfg = ServerConfig(host: host, port: port, token: token, scheme: scheme)
         config = cfg

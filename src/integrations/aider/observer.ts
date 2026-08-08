@@ -34,6 +34,7 @@ import type {
   AgentObserver,
   AgentSession,
   AgentSessionState,
+  AgentStep,
   SessionActivity,
 } from "../types.js";
 
@@ -227,6 +228,8 @@ interface AiderSessionInfo {
   state: AgentSessionState;
   stateReason: string;
   activity?: SessionActivity;
+  /** History-file path — server-internal (step timeline); stripped from the wire. */
+  jsonlPath?: string;
 }
 
 export class AiderObserver extends EventEmitter implements AgentObserver {
@@ -316,6 +319,7 @@ export class AiderObserver extends EventEmitter implements AgentObserver {
         state,
         stateReason: reason,
         activity: this.computeActivity ? parseAiderActivity(tail) : undefined,
+        jsonlPath: full,
       });
     } catch {
       this.sessions.delete(full);
@@ -333,7 +337,69 @@ function toAgentSession(i: AiderSessionInfo): AgentSession {
     stateReason: i.stateReason,
     lastMtime: i.lastMtime,
     activity: i.activity,
+    jsonlPath: i.jsonlPath,
   };
+}
+
+// ── F1 follow-up (PLAN_UI_SESSION_SHELL_v1.1): turn-boundary steps ──────────
+//
+// Aider's history is a Markdown TRANSCRIPT — its "> " tool lines are prose
+// (e.g. "> Applied edit to …") and extracting names from them would mean
+// reading transcript text, which this adapter's privacy contract forbids.
+// So the step timeline is STRUCTURAL MARKERS ONLY: user turns ("#### "),
+// collapsed aider-tool runs ("> " blocks), and assistant prose blocks.
+
+const STEPS_TAIL_BYTES = 64 * 1024;
+const MAX_STEPS = 200;
+
+export async function parseAiderSteps(filePath: string): Promise<AgentStep[]> {
+  let size: number;
+  try {
+    const st = await fsp.stat(filePath);
+    if (!st.isFile() || st.size === 0) return [];
+    size = st.size;
+  } catch {
+    return [];
+  }
+
+  let tail: string;
+  try {
+    const fd = await fsp.open(filePath, "r");
+    try {
+      const length = Math.min(STEPS_TAIL_BYTES, size);
+      const buf = Buffer.alloc(length);
+      await fd.read(buf, 0, length, size - length);
+      tail = buf.toString("utf8");
+    } finally {
+      await fd.close();
+    }
+  } catch {
+    return [];
+  }
+
+  const steps: AgentStep[] = [];
+  let turn = 0;
+  // Collapse runs: many consecutive "> " lines are one tool phase; many
+  // consecutive prose lines are one assistant block.
+  let last: "user" | "assistant" | "tool" | null = null;
+  for (const rawLine of tail.split("\n")) {
+    const line = rawLine.trimEnd();
+    if (!line) continue;
+    if (line.startsWith("#### ")) {
+      turn++;
+      steps.push({ kind: "user", turn });
+      last = "user";
+    } else if (line.startsWith("# aider chat started")) {
+      last = null;
+    } else if (line.startsWith("> ")) {
+      if (last !== "tool") steps.push({ kind: "tool", turn, tool: "aider" });
+      last = "tool";
+    } else {
+      if (last !== "assistant") steps.push({ kind: "assistant", turn });
+      last = "assistant";
+    }
+  }
+  return steps.slice(-MAX_STEPS);
 }
 
 registerIntegration("aider", (cfg) => new AiderObserver(cfg));

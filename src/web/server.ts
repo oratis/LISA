@@ -3008,10 +3008,22 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       }
       let steps: unknown[] = [];
       if (session.activity && session.jsonlPath) {
-        const { parseSessionSteps } = await import(
-          "../integrations/claude-code/parser.js"
-        );
-        steps = await parseSessionSteps(session.jsonlPath);
+        if (agent === "claude-code") {
+          const { parseSessionSteps } = await import(
+            "../integrations/claude-code/parser.js"
+          );
+          steps = await parseSessionSteps(session.jsonlPath);
+        } else if (agent === "codex") {
+          const { parseCodexSteps } = await import(
+            "../integrations/codex/observer.js"
+          );
+          steps = await parseCodexSteps(session.jsonlPath);
+        } else if (agent === "aider") {
+          const { parseAiderSteps } = await import(
+            "../integrations/aider/observer.js"
+          );
+          steps = await parseAiderSteps(session.jsonlPath);
+        }
       }
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ steps }));
@@ -3211,12 +3223,14 @@ self.addEventListener('fetch', (event) => {
     }
 
     if (req.method === "GET" && url === "/api/sessions") {
-      // Lisa's own chat sessions on disk — drives the sidebar footer count
-      // badge. (Was missing → the badge fetch 404'd and stayed a placeholder.)
+      // Lisa's own chat sessions on disk — the session tree/tabs + the iOS
+      // roster's LISA group. Contract: LisaSessionsResponse (the on-disk
+      // path is stripped by the serializer).
       const { listSessionsOnDisk } = await import("../sessions/list.js");
+      const { lisaSessionsResponse } = await import("./api-contract.js");
       const sessions = await listSessionsOnDisk();
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ sessions }));
+      res.end(JSON.stringify(lisaSessionsResponse(sessions)));
       return;
     }
 

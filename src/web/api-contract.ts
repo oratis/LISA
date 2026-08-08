@@ -1,5 +1,6 @@
 import type http from "node:http";
 import type { AgentSession } from "../integrations/types.js";
+import type { SessionInfo } from "../sessions/list.js";
 import {
   LISA_API_VERSION,
   LISA_API_VERSION_HEADER,
@@ -31,7 +32,7 @@ export function applyApiVersionHeader(
   }
 }
 
-export type ApiAgentSession = Omit<AgentSession, "lastMtime"> & {
+export type ApiAgentSession = Omit<AgentSession, "lastMtime" | "jsonlPath"> & {
   lastMtime: string;
   resumable?: boolean;
 };
@@ -62,6 +63,29 @@ export function agentSessionsResponse(
           ? { resumable: true }
           : {}),
       };
+    }),
+  };
+}
+
+/** Wire shape of a Lisa chat session — the on-disk `path` never serializes. */
+export type ApiLisaSession = Omit<SessionInfo, "path">;
+
+export interface LisaSessionsResponse {
+  sessions: ApiLisaSession[];
+}
+
+/**
+ * Canonical REST serialization for GET /api/sessions (contract:
+ * LisaSessionsResponse). Strips the absolute on-disk file path — it leaks
+ * the local home directory and no client needs it.
+ */
+export function lisaSessionsResponse(
+  sessions: readonly SessionInfo[],
+): LisaSessionsResponse {
+  return {
+    sessions: sessions.map((s) => {
+      const { path: _path, ...rest } = s;
+      return rest;
     }),
   };
 }

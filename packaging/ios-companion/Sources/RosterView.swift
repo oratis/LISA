@@ -119,6 +119,8 @@ struct RosterView: View {
     @State private var path: [AgentSession] = []
     @State private var showDelegate = false
     @State private var policy: ControlPolicy?
+    /// LISA root group (v1.1): Lisa's own chat sessions, tap to activate.
+    @State private var lisaSessions: [LisaSessionInfo] = []
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -165,7 +167,13 @@ struct RosterView: View {
             .sheet(isPresented: $showDelegate) {
                 DelegateSheet(client: app.client) { Task { await model.load(app.client) } }
             }
-            .refreshable { await model.load(app.client) }
+            .refreshable {
+                await model.load(app.client)
+                lisaSessions = (try? await app.client.lisaSessions()) ?? lisaSessions
+            }
+            .task(id: app.config) {
+                lisaSessions = (try? await app.client.lisaSessions()) ?? []
+            }
             .task(id: app.config) {
                 await model.load(app.client)
                 await app.loadProactive()
@@ -214,6 +222,38 @@ struct RosterView: View {
                             .listRowBackground(Theme.card)
                     }
                 } header: { Text("Needs you · \(needs.count)").foregroundStyle(Theme.waiting) }
+            }
+            // LISA root group (v1.1) — same-level sibling of the agent kinds,
+            // mirroring the web tree. Tap = make it the active web session.
+            if !lisaSessions.isEmpty {
+                Section {
+                    ForEach(lisaSessions.prefix(8)) { s in
+                        Button {
+                            Task {
+                                do {
+                                    _ = try await app.client.activateSession(s.id)
+                                    app.notify("Switched Lisa to that session")
+                                    app.selectedTab = 1
+                                } catch {
+                                    app.notify("Couldn't switch session", ok: false)
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 10) {
+                                StatusDot(color: Theme.accent, size: 8)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(s.displayName)
+                                        .font(.subheadline).foregroundStyle(Theme.text).lineLimit(1)
+                                    Text("\(s.messageCount) msgs")
+                                        .font(.caption2).foregroundStyle(Theme.tertiary)
+                                }
+                                Spacer()
+                                Image(systemName: "arrow.right.circle").foregroundStyle(Theme.tertiary)
+                            }
+                        }
+                        .listRowBackground(Theme.card)
+                    }
+                } header: { Text("LISA · \(lisaSessions.count)") }
             }
             ForEach(kinds, id: \.kind) { group in
                 Section {
