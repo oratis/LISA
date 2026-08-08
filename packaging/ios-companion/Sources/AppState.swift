@@ -38,6 +38,9 @@ final class AppState: ObservableObject {
     /// Optional Face ID / passcode gate over the app (token grants full control).
     @Published var biometricLockEnabled: Bool
     @Published var locked: Bool
+    /// Appearance: "nebula" (dark, default) · "calm" (light) · "auto" (system).
+    /// Mirrors the web shell's theme pair (PLAN_UI_SESSION_SHELL_v1.1 F7).
+    @Published var appearance: String
     /// Last APNs registration outcome, shown in Settings.
     @Published var pushStatus = ""
     /// Drives the first-run onboarding cover (docs/PLAN_IOS_ONBOARDING_v1.0.md).
@@ -84,6 +87,7 @@ final class AppState: ObservableObject {
         self.config = cfg
         self.client = LisaClient(config: cfg)
         self.connectionMode = ConnectionMode(rawValue: d.string(forKey: "lisa.mode") ?? "") ?? .mac
+        self.appearance = d.string(forKey: "lisa.appearance") ?? "nebula"
         let lockOn = d.bool(forKey: "lisa.biometricLock")
         self.biometricLockEnabled = lockOn
         self.locked = lockOn && cfg.token != nil  // require unlock at launch when armed
@@ -152,6 +156,12 @@ final class AppState: ObservableObject {
     /// unreachable; surface the R3 banner.
     var lanUnreachableOnCellular: Bool {
         config.isConfigured && config.isPrivateLAN && onCellular
+    }
+
+    /// Persist the appearance choice ("nebula" | "calm" | "auto").
+    func setAppearance(_ value: String) {
+        appearance = value
+        UserDefaults.standard.set(value, forKey: "lisa.appearance")
     }
 
     func update(host: String, port: Int, token: String?, scheme: String = "http") {

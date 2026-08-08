@@ -30,7 +30,12 @@ struct RootView: View {
                 .tabItem { Label("Settings", systemImage: "gearshape") }.tag(3)
         }
         .tint(Theme.accent)                                  // cyan active tab + links + controls
-        .preferredColorScheme(.dark)                         // force the console dark look
+        // Appearance follows the Settings picker: Nebula (dark, default) ·
+        // Calm (light) · Auto (system). Theme.* colors are trait-aware.
+        .preferredColorScheme(
+            app.appearance == "calm" ? .light
+            : app.appearance == "auto" ? nil
+            : .dark)
         .toolbarBackground(Theme.panel, for: .tabBar)
         .toolbarBackground(.visible, for: .tabBar)
         .onOpenURL { app.handleDeepLink($0) }

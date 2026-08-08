@@ -1,24 +1,32 @@
 import SwiftUI
 
-/// Agent-console palette — mirrors the web shell tokens (src/web/lisa-css.ts):
-/// cyan accent, gold Lisa identity, green "proactive / live", dark card UI.
-/// Defined once so views reference `Theme.*` instead of ad-hoc semantic colors.
+/// Agent-console palette — mirrors the web shell tokens (src/web/lisa-css.ts,
+/// token table: docs/PLAN_UI_SESSION_SHELL_v1.0.md §2): each color carries a
+/// dark ("Nebula") and light ("Calm") variant, resolved by the trait
+/// environment — the appearance picker in Settings drives
+/// `.preferredColorScheme` at the root, and every `Theme.*` follows.
 enum Theme {
     // Surfaces
-    static let bgDeep = Color(hex: 0x0A0E22)   // app background
-    static let panel  = Color(hex: 0x0F1430)   // tab/nav bars, grouped lists
-    static let card   = Color(hex: 0x161C3C)   // rows, cards, banners
-    static let border = Color.white.opacity(0.08)
+    static let bgDeep = Color(dark: 0x0A0E22, light: 0xF6F7F9)   // app background
+    static let panel  = Color(dark: 0x0F1430, light: 0xFFFFFF)   // tab/nav bars, grouped lists
+    static let card   = Color(dark: 0x161C3C, light: 0xFFFFFF)   // rows, cards, banners
+    static let border = Color.primary.opacity(0.08)              // hairline (trait-aware)
+    /// Sunken code/log wells (CodeBlock) — deep in Nebula, faint in Calm.
+    static let sunken = Color(UIColor { t in
+        t.userInterfaceStyle == .light
+            ? UIColor.black.withAlphaComponent(0.05)
+            : UIColor.black.withAlphaComponent(0.25)
+    })
 
     // Text
-    static let text      = Color(hex: 0xE8EAFF)
-    static let secondary = Color(hex: 0x9AA3C8)
-    static let tertiary  = Color(hex: 0x6B7299)
+    static let text      = Color(dark: 0xE8EAFF, light: 0x1B2430)
+    static let secondary = Color(dark: 0x9AA3C8, light: 0x4D5666)
+    static let tertiary  = Color(dark: 0x6B7299, light: 0x8A919F)
 
     // Identity / accents
-    static let accent = Color(hex: 0x6AD4FF)   // cyan — nav / active / links
-    static let gold   = Color(hex: 0xFFD066)   // Lisa identity
-    static let green  = Color(hex: 0x3DDC97)   // proactive / live / done
+    static let accent = Color(dark: 0x6AD4FF, light: 0x4F5BD5)   // cyan / calm indigo
+    static let gold   = Color(dark: 0xFFD066, light: 0xD97706)   // Lisa identity
+    static let green  = Color(dark: 0x3DDC97, light: 0x1F9D6B)   // proactive / live / done
 
     // Status pips — defined in Shared/GlanceColors so the widget extension (which
     // can't see Theme) renders identical status colors (review I1/B23).
@@ -58,7 +66,7 @@ struct CodeBlock: View {
                 .padding(10)
         }
         .frame(maxHeight: maxHeight)
-        .background(Color.black.opacity(0.25), in: RoundedRectangle(cornerRadius: 8))
+        .background(Theme.sunken, in: RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.border, lineWidth: Theme.hairline))
     }
 }
@@ -71,6 +79,19 @@ extension Color {
                   green: Double((hex >> 8) & 0xFF) / 255,
                   blue:  Double(hex & 0xFF) / 255,
                   opacity: 1)
+    }
+
+    /// Trait-aware token: one hex per appearance (Nebula dark / Calm light),
+    /// resolved live by UIKit's trait environment.
+    init(dark: UInt32, light: UInt32) {
+        self.init(UIColor { traits in
+            let hex = traits.userInterfaceStyle == .light ? light : dark
+            return UIColor(
+                red:   CGFloat((hex >> 16) & 0xFF) / 255,
+                green: CGFloat((hex >> 8) & 0xFF) / 255,
+                blue:  CGFloat(hex & 0xFF) / 255,
+                alpha: 1)
+        })
     }
 }
 

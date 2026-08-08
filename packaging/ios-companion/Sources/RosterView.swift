@@ -197,13 +197,15 @@ struct RosterView: View {
         app.pendingSession = nil
     }
 
-    /// Needs-you-first sections (redesign): blocked/errored/waiting agents float to
-    /// the top as action cards (inline approve/deny), running ones are a compact
-    /// list, and idle/done collapse behind a disclosure.
+    /// Tree-shaped roster (PLAN_UI_SESSION_SHELL_v1.1 F7) mirroring the Mac
+    /// shell's session tree: needs-you action cards stay on top, then one
+    /// section per agent kind (Claude Code / Codex / …) with that kind's
+    /// sessions grouped by project (mini project headers when a kind spans
+    /// more than one project). Row order inside a project keeps the model's
+    /// problem-first sort.
     private var agentSections: some View {
         let needs = model.sessions.filter(needsYou)
-        let running = model.sessions.filter { $0.state == "working" && !needsYou($0) }
-        let resting = model.sessions.filter { !needsYou($0) && $0.state != "working" }
+        let kinds = groupByKindAndProject(model.sessions.filter { !needsYou($0) })
         return List {
             if !needs.isEmpty {
                 Section {
@@ -213,20 +215,21 @@ struct RosterView: View {
                     }
                 } header: { Text("Needs you · \(needs.count)").foregroundStyle(Theme.waiting) }
             }
-            if !running.isEmpty {
-                Section("Running · \(running.count)") {
-                    ForEach(running) { s in
-                        NavigationLink(value: s) { RosterRow(session: s) }.listRowBackground(Theme.card)
-                    }
-                }
-            }
-            if !resting.isEmpty {
+            ForEach(kinds, id: \.kind) { group in
                 Section {
-                    DisclosureGroup("Idle & done · \(resting.count)") {
-                        ForEach(resting) { s in
+                    ForEach(group.projects, id: \.name) { proj in
+                        if kinds.count > 1 || group.projects.count > 1 {
+                            Text(proj.name.uppercased())
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(Theme.tertiary)
+                                .listRowBackground(Theme.panel)
+                        }
+                        ForEach(proj.rows) { s in
                             NavigationLink(value: s) { RosterRow(session: s) }.listRowBackground(Theme.card)
                         }
                     }
+                } header: {
+                    Text("\(agentDisplayName(group.kind)) · \(group.count)")
                 }
             }
         }
@@ -235,6 +238,55 @@ struct RosterView: View {
 
     private func needsYou(_ s: AgentSession) -> Bool {
         s.activity?.pendingPermission != nil || s.state == "waiting" || s.state == "error"
+    }
+}
+
+// ── Tree grouping (v1.1 F7) — pure, unit-testable ────────────────────
+
+struct ProjectGroup: Equatable {
+    var name: String
+    var rows: [AgentSession]
+}
+
+struct KindGroup: Equatable {
+    var kind: String
+    var projects: [ProjectGroup]
+    var count: Int { projects.reduce(0) { $0 + $1.rows.count } }
+}
+
+/// Group sessions agent kind → project (both alphabetical), preserving the
+/// incoming row order (the model's problem-first sort) within a project.
+func groupByKindAndProject(_ sessions: [AgentSession]) -> [KindGroup] {
+    var kindOrder: [String] = []
+    var byKind: [String: [AgentSession]] = [:]
+    for s in sessions {
+        if byKind[s.agent] == nil { kindOrder.append(s.agent) }
+        byKind[s.agent, default: []].append(s)
+    }
+    kindOrder.sort()
+    return kindOrder.map { kind in
+        var projOrder: [String] = []
+        var byProj: [String: [AgentSession]] = [:]
+        for s in byKind[kind] ?? [] {
+            let p = s.project.isEmpty ? "?" : s.project
+            if byProj[p] == nil { projOrder.append(p) }
+            byProj[p, default: []].append(s)
+        }
+        projOrder.sort()
+        return KindGroup(kind: kind, projects: projOrder.map { ProjectGroup(name: $0, rows: byProj[$0] ?? []) })
+    }
+}
+
+func agentDisplayName(_ kind: String) -> String {
+    switch kind {
+    case "claude-code": return "Claude Code"
+    case "codex": return "Codex"
+    case "opencode": return "OpenCode"
+    case "aider": return "Aider"
+    case "github-pr": return "GitHub PR"
+    case "cursor": return "Cursor"
+    case "gemini": return "Gemini"
+    default: return kind
     }
 }
 

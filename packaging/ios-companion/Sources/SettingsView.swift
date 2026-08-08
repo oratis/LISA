@@ -139,6 +139,18 @@ struct SettingsView: View {
                     Text("Change these on the Mac (localhost only).").font(.caption).foregroundStyle(.secondary)
                 }
 
+                Section("Appearance") {
+                    Picker("Theme", selection: Binding(
+                        get: { app.appearance },
+                        set: { app.setAppearance($0) })) {
+                        Text("Nebula (dark)").tag("nebula")
+                        Text("Calm (light)").tag("calm")
+                        Text("Auto (system)").tag("auto")
+                    }
+                    Text("Mirrors the Mac shell's Nebula / Calm theme pair.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+
                 Section("Autonomy") {
                     Toggle("Proactive mode", isOn: Binding(
                         get: { app.proactiveEnabled },
