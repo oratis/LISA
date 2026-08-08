@@ -2,7 +2,7 @@
 
 > **定位**：承接 [PLAN_UI_SESSION_SHELL_v1.0](PLAN_UI_SESSION_SHELL_v1.0.md)（三栏 shell + 双主题 + session 树 + Inspector，PR #343–#345）落地时登记的全部后续项：agent 只读过程流、会话自动命名、树按项目视图、右栏手动折叠、island 深链、iOS 双主题与树形 roster、以及 v1.0 辩论 D3 悬置的 **Lisa 本体真并发**。
 > **关联源码**：[src/integrations/claude-code/](../src/integrations/claude-code/) · [src/web/server.ts](../src/web/server.ts) · [src/web/lisa-client.ts](../src/web/lisa-client.ts) · [src/web/island.ts](../src/web/island.ts) · [src/sessions/list.ts](../src/sessions/list.ts) · [packaging/ios-companion/](../packaging/ios-companion/)
-> **编写日期**：2026-08-08 · **✅ 实现状态**：F1–F7 分 stacked PR 落地中（基于 #345 的分支续排）
+> **编写日期**：2026-08-08 · **✅ 实现状态**：F1–F7 已实现并通过 e2e（stacked PR [#346](https://github.com/oratis/LISA/pull/346) F2-F4 → [#347](https://github.com/oratis/LISA/pull/347) F1 → [#348](https://github.com/oratis/LISA/pull/348) F5 → [#349](https://github.com/oratis/LISA/pull/349) F6 → [#350](https://github.com/oratis/LISA/pull/350) F7，接在 v1.0 的 #343→#344→#345 之后依序合并）
 
 ---
 
