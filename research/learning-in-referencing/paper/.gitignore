@@ -6,3 +6,4 @@
 *.out
 *.pdf
 !figures/*.pdf
+!output/pdf/*.pdf

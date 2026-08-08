@@ -1,0 +1,185 @@
+{
+  "n_boot": 10000,
+  "runs": [
+    {
+      "file": "p13_Qwen2.5-1.5B-Instruct.json",
+      "seed": 20260805,
+      "primary": true,
+      "extraction": {
+        "threshold_selection": {
+          "threshold": 0.7731072306632996,
+          "dev_accuracy": 1.0
+        },
+        "dev": {
+          "n": 128,
+          "auc": 1.0,
+          "accuracy": 1.0,
+          "sensitivity": 1.0,
+          "specificity": 1.0
+        },
+        "test": {
+          "n": 480,
+          "auc": 0.9999565972222222,
+          "accuracy": 0.99375,
+          "sensitivity": 1.0,
+          "specificity": 0.9875
+        }
+      },
+      "metrics": {
+        "coverage": 0.2777777777777778,
+        "beneficial_precision": 0.92,
+        "gain_write_all": -2.2783452266601647,
+        "gain_selected_all": -0.3578473331057219,
+        "gain_admitted": 1.4409390216055442,
+        "selection_regret": 0.0
+      },
+      "bootstrap_95": {
+        "coverage": [
+          0.18888888888888888,
+          0.36666666666666664
+        ],
+        "beneficial_precision": [
+          0.8,
+          1.0
+        ],
+        "gain_write_all": [
+          -2.8766179336608833,
+          -1.7012689842957505
+        ],
+        "gain_selected_all": [
+          -0.8162943766081016,
+          0.08224100697716284
+        ],
+        "gain_admitted": [
+          0.9351854723650392,
+          2.0173057719622536
+        ],
+        "selection_regret": [
+          0.0,
+          0.0
+        ]
+      },
+      "n_items": 90
+    },
+    {
+      "file": "p13_Qwen2.5-1.5B-Instruct_seed20260806.json",
+      "seed": 20260806,
+      "primary": false,
+      "extraction": {
+        "threshold_selection": {
+          "threshold": 0.7731072306632996,
+          "dev_accuracy": 1.0
+        },
+        "dev": {
+          "n": 128,
+          "auc": 1.0,
+          "accuracy": 1.0,
+          "sensitivity": 1.0,
+          "specificity": 1.0
+        },
+        "test": {
+          "n": 480,
+          "auc": 0.9999565972222222,
+          "accuracy": 0.99375,
+          "sensitivity": 1.0,
+          "specificity": 0.9875
+        }
+      },
+      "metrics": {
+        "coverage": 0.32222222222222224,
+        "beneficial_precision": 0.9310344827586207,
+        "gain_write_all": -2.1355654603686696,
+        "gain_selected_all": -0.04464393464948765,
+        "gain_admitted": 1.8184716914056651,
+        "selection_regret": 0.001007965278353584
+      },
+      "bootstrap_95": {
+        "coverage": [
+          0.2222222222222222,
+          0.4222222222222222
+        ],
+        "beneficial_precision": [
+          0.8260869565217391,
+          1.0
+        ],
+        "gain_write_all": [
+          -2.709242252245019,
+          -1.565731499512046
+        ],
+        "gain_selected_all": [
+          -0.5109283488206835,
+          0.41200837213457364
+        ],
+        "gain_admitted": [
+          1.3590086990297117,
+          2.2663724283636904
+        ],
+        "selection_regret": [
+          0.0,
+          0.0030238958350607527
+        ]
+      },
+      "n_items": 90
+    },
+    {
+      "file": "p13_Qwen2.5-1.5B-Instruct_seed20260807.json",
+      "seed": 20260807,
+      "primary": false,
+      "extraction": {
+        "threshold_selection": {
+          "threshold": 0.7731072306632996,
+          "dev_accuracy": 1.0
+        },
+        "dev": {
+          "n": 128,
+          "auc": 1.0,
+          "accuracy": 1.0,
+          "sensitivity": 1.0,
+          "specificity": 1.0
+        },
+        "test": {
+          "n": 480,
+          "auc": 0.9999565972222222,
+          "accuracy": 0.99375,
+          "sensitivity": 1.0,
+          "specificity": 0.9875
+        }
+      },
+      "metrics": {
+        "coverage": 0.35555555555555557,
+        "beneficial_precision": 0.875,
+        "gain_write_all": -2.069475227929515,
+        "gain_selected_all": -0.18141895370699493,
+        "gain_admitted": 1.5099842464102742,
+        "selection_regret": 0.0
+      },
+      "bootstrap_95": {
+        "coverage": [
+          0.25555555555555554,
+          0.45555555555555555
+        ],
+        "beneficial_precision": [
+          0.75,
+          0.9722222222222222
+        ],
+        "gain_write_all": [
+          -2.6978619825085177,
+          -1.4574782716138195
+        ],
+        "gain_selected_all": [
+          -0.7018747974475673,
+          0.32366344692882776
+        ],
+        "gain_admitted": [
+          1.053563401611773,
+          1.9679992111075866
+        ],
+        "selection_regret": [
+          0.0,
+          0.0
+        ]
+      },
+      "n_items": 90
+    }
+  ]
+}
