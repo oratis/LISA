@@ -771,6 +771,32 @@ export const MAIN_CSS = `  :root {
     cursor: pointer;
   }
   .new-btn:hover { filter: brightness(1.15); }
+  .sb-head-actions { display: flex; align-items: center; gap: 6px; }
+  /* F3 — tree grouping toggle (agent view ↔ project view). */
+  .tree-mode-btn {
+    border: 1px solid var(--border-strong);
+    background: transparent;
+    color: var(--fg-3);
+    font-family: inherit;
+    font-size: 11px;
+    width: 24px; height: 21px;
+    border-radius: 20px;
+    cursor: pointer;
+    line-height: 1;
+  }
+  .tree-mode-btn:hover { color: var(--fg); border-color: var(--fg-3); }
+  .tree-mode-btn.on {
+    background: var(--accent-soft);
+    border-color: var(--accent-glow);
+    color: var(--accent);
+  }
+  /* Mini source glyph on leaves in project view (Lisa + agents mixed). */
+  .tleaf .agent-glyph.mini {
+    width: 14px; height: 14px;
+    border-radius: 4px;
+    font-size: 8px;
+  }
+  .agent-glyph.mini:empty { display: none; }
   .tree {
     flex: 1;
     min-height: 0;
@@ -2166,6 +2192,16 @@ export const MAIN_CSS = `  :root {
   #sendBtn:disabled { opacity: 0.5; cursor: wait; }
   /* Hide the legacy pixel send icon; the text label is enough in the new theme. */
   #sendBtn img { display: none; }
+
+  /* ── Manual right-panel collapse (F4, persisted client-side) ──── */
+  body.rb-collapsed .frame {
+    grid-template-columns: 300px 1fr;
+    grid-template-areas:
+      "titlebar titlebar"
+      "sidebar  main";
+  }
+  body.rb-collapsed .rightbar { display: none; }
+  #fnPanel.active { background: var(--accent-soft); color: var(--accent); }
 
   /* ── Narrow desktop: drop the right panel, keep two columns ──── */
   @media (max-width: 1180px) {

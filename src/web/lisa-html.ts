@@ -109,7 +109,10 @@ ${MAIN_CSS}
     <div class="sb-sessions">
       <div class="sb-sessions-head">
         <h2>Sessions</h2>
-        <button class="new-btn" id="sbNewSession" type="button" title="Start a new session">＋ New</button>
+        <span class="sb-head-actions">
+          <button class="tree-mode-btn" id="sbTreeMode" type="button" title="Group by agent / by project">⇄</button>
+          <button class="new-btn" id="sbNewSession" type="button" title="Start a new session">＋ New</button>
+        </span>
       </div>
       <div class="tree" id="sessionTree"></div>
     </div>
@@ -141,6 +144,7 @@ ${MAIN_CSS}
       <button class="fbtn" type="button" id="fnMail" title="Mail" aria-label="Mail"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg></button>
       <input id="fnFind" class="fn-find" type="text" placeholder="find in chat…" autocomplete="off" style="display:none">
       <button class="fbtn" type="button" id="fnSearchBtn" title="Find in conversation" aria-label="Find"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button>
+      <button class="fbtn" type="button" id="fnPanel" title="Collapse / expand the right panel" aria-label="Toggle right panel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg></button>
       <button class="fbtn" type="button" id="fnTheme" title="Theme: Nebula ↔ Calm" aria-label="Toggle theme"><svg id="fnThemeMoon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg><svg id="fnThemeSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></button>
     </div>
 

@@ -1106,6 +1106,26 @@ if (fnSearchBtn && fnFind) {
   });
 }
 
+// Right panel manual collapse (F4) — wide-screen only concern: the ≤1180px
+// media query hides the panel regardless. Persisted; the fnbar button shows
+// an active tint while collapsed.
+{
+  let collapsed = false;
+  try { collapsed = localStorage.getItem('lisaRightbar') === 'collapsed'; } catch (e) {}
+  const applyRb = () => {
+    document.body.classList.toggle('rb-collapsed', collapsed);
+    const btn = document.getElementById('fnPanel');
+    if (btn) btn.classList.toggle('active', collapsed);
+  };
+  applyRb();
+  const panelBtn = document.getElementById('fnPanel');
+  if (panelBtn) panelBtn.addEventListener('click', () => {
+    collapsed = !collapsed;
+    try { localStorage.setItem('lisaRightbar', collapsed ? 'collapsed' : 'open'); } catch (e) {}
+    applyRb();
+  });
+}
+
 let currentLisaSpan = null;
 let pendingTools = new Map();
 let thinkingEl = null;
@@ -1646,8 +1666,111 @@ if ('serviceWorker' in navigator) {
       if (ra !== rb) return ra - rb;
       return new Date(b.lastMtime).getTime() - new Date(a.lastMtime).getTime();
     });
-    renderAgentTree();
+    renderSessionTree();
     renderInspector();
+  }
+
+  // ── Tree view mode (F3): group by agent kind (default) or by project ──
+  let treeMode = 'agent';
+  try { treeMode = localStorage.getItem('lisaTreeMode') === 'project' ? 'project' : 'agent'; } catch (e) {}
+  const treeModeBtn = document.getElementById('sbTreeMode');
+  function syncTreeModeBtn() {
+    if (!treeModeBtn) return;
+    treeModeBtn.classList.toggle('on', treeMode === 'project');
+    treeModeBtn.title = treeMode === 'project' ? 'Grouped by project — click for agent view' : 'Grouped by agent — click for project view';
+  }
+  syncTreeModeBtn();
+  if (treeModeBtn) treeModeBtn.addEventListener('click', function () {
+    treeMode = treeMode === 'project' ? 'agent' : 'project';
+    try { localStorage.setItem('lisaTreeMode', treeMode); } catch (e) {}
+    syncTreeModeBtn();
+    renderSessionTree();
+  });
+  function lisaProjectOf(s) {
+    const c = s.cwd || '';
+    const base = c.split('/').pop();
+    return base || c || '?';
+  }
+
+  // Shared leaf builders (both tree modes). withGlyph adds a mini source
+  // glyph in project view where Lisa and agent sessions sit side by side.
+  function makeLisaLeaf(s, withGlyph) {
+    const isActive = s.id === window.lisaActiveSessionId;
+    const leaf = document.createElement('button');
+    leaf.type = 'button';
+    leaf.className = 'tleaf' + (isActive ? ' active' : '');
+    leaf.innerHTML = '<span class="pip"></span>' + (withGlyph ? '<span class="agent-glyph mini lisa">L</span>' : '') + '<span class="tname"></span><span class="ttime"></span>';
+    if (isActive) leaf.querySelector('.pip').classList.add('live');
+    leaf.querySelector('.tname').textContent = sessionLabel(s);
+    leaf.querySelector('.ttime').textContent = relativeTime(s.startedAt);
+    leaf.title = s.id + ' · ' + (s.messageCount || 0) + ' msgs';
+    leaf.addEventListener('click', function () {
+      selInsp = { type: 'lisa', id: s.id };
+      renderInspector();
+      switchSession(s.id);
+    });
+    return leaf;
+  }
+  function makeAgentLeaf(s, withGlyph) {
+    const key = agentKey(s);
+    const leaf = document.createElement('button');
+    leaf.type = 'button';
+    leaf.className = 'tleaf' + (selInsp && selInsp.type === 'agent' && selInsp.key === key ? ' active' : '');
+    leaf.innerHTML = '<span class="pip"></span>' + (withGlyph ? '<span class="agent-glyph mini"></span>' : '') + '<span class="tname"></span><span class="ttime"></span>';
+    const st = s.state || 'unknown';
+    if (st === 'working' || st === 'waiting' || st === 'error') leaf.querySelector('.pip').classList.add(st);
+    if (withGlyph) {
+      const g = leaf.querySelector('.agent-glyph');
+      const kindName = AGENT_NAMES[s.agent] || s.agent;
+      g.classList.add(agentGlyphClass(s.agent));
+      g.textContent = (kindName.charAt(0) || 'A').toUpperCase();
+    }
+    leaf.querySelector('.tname').textContent = agentLabel(s);
+    leaf.querySelector('.ttime').textContent = relativeTime(s.lastMtime);
+    leaf.title = (s.stateReason ? s.state + ' · ' + s.stateReason : s.state) + ' · ' + s.project + ' · ' + s.sessionId;
+    leaf.addEventListener('click', function () {
+      selInsp = { type: 'agent', key: key };
+      const tree = document.getElementById('sessionTree');
+      const all = tree ? tree.querySelectorAll('.tleaf.active') : [];
+      for (let i = 0; i < all.length; i++) all[i].classList.remove('active');
+      leaf.classList.add('active');
+      renderInspector();
+    });
+    return leaf;
+  }
+
+  // F3 project view: roots = projects, children = that project's Lisa
+  // sessions + agent sessions side by side (mini glyphs mark the source).
+  function buildProjectTree(tree) {
+    const projects = [];
+    const byProject = {};
+    function bucket(p) {
+      if (!byProject[p]) { byProject[p] = { lisa: [], agents: [] }; projects.push(p); }
+      return byProject[p];
+    }
+    cachedSessions.slice(0, 30).forEach(function (s) { bucket(lisaProjectOf(s)).lisa.push(s); });
+    cachedAgents.forEach(function (s) { bucket(s.project || '?').agents.push(s); });
+    projects.sort(function (a, b) { return a.localeCompare(b); });
+    projects.forEach(function (p) {
+      const group = document.createElement('div');
+      group.className = 'tgroup';
+      const key = 'p:' + p;
+      applyCollapsed(group, key);
+      const root = document.createElement('button');
+      root.type = 'button';
+      root.className = 'tnode';
+      root.innerHTML = '<span class="twist">▾</span><span class="tlabel"></span><span class="tcount"></span>';
+      root.querySelector('.tlabel').textContent = p;
+      root.querySelector('.tcount').textContent = String(byProject[p].lisa.length + byProject[p].agents.length);
+      root.addEventListener('click', function () { toggleCollapsed(group, key); });
+      group.appendChild(root);
+      const kids = document.createElement('div');
+      kids.className = 'tchildren';
+      byProject[p].lisa.forEach(function (s) { kids.appendChild(makeLisaLeaf(s, true)); });
+      byProject[p].agents.forEach(function (s) { kids.appendChild(makeAgentLeaf(s, true)); });
+      group.appendChild(kids);
+      tree.appendChild(group);
+    });
   }
 
   // Sidebar tree: one root group per live agent kind, then project sub-groups,
@@ -1704,26 +1827,7 @@ if ('serviceWorker' in navigator) {
         sub.appendChild(pn);
         const pkids = document.createElement('div');
         pkids.className = 'tchildren';
-        byProject[p].forEach(function (s) {
-          const key = agentKey(s);
-          const leaf = document.createElement('button');
-          leaf.type = 'button';
-          leaf.className = 'tleaf' + (selInsp && selInsp.type === 'agent' && selInsp.key === key ? ' active' : '');
-          leaf.innerHTML = '<span class="pip"></span><span class="tname"></span><span class="ttime"></span>';
-          const st = s.state || 'unknown';
-          if (st === 'working' || st === 'waiting' || st === 'error') leaf.querySelector('.pip').classList.add(st);
-          leaf.querySelector('.tname').textContent = agentLabel(s);
-          leaf.querySelector('.ttime').textContent = relativeTime(s.lastMtime);
-          leaf.title = (s.stateReason ? s.state + ' · ' + s.stateReason : s.state) + ' · ' + s.project + ' · ' + s.sessionId;
-          leaf.addEventListener('click', function () {
-            selInsp = { type: 'agent', key: key };
-            const all = tree.querySelectorAll('.tleaf.active');
-            for (let i = 0; i < all.length; i++) all[i].classList.remove('active');
-            leaf.classList.add('active');
-            renderInspector();
-          });
-          pkids.appendChild(leaf);
-        });
+        byProject[p].forEach(function (s) { pkids.appendChild(makeAgentLeaf(s, false)); });
         sub.appendChild(pkids);
         kids.appendChild(sub);
       });
@@ -2035,7 +2139,10 @@ if ('serviceWorker' in navigator) {
     try { localStorage.setItem('lisaOpenSessions', JSON.stringify(openTabIds.slice(0, 12))); } catch (e) {}
   }
   function sessionLabel(s) {
-    const t = (s && s.lastUserMessage ? s.lastUserMessage : '').trim();
+    // F2 auto-naming: the FIRST user message is the session's name (the
+    // opening request describes the task); fall back to the latest one,
+    // then the raw id.
+    const t = (s && (s.firstUserMessage || s.lastUserMessage) ? (s.firstUserMessage || s.lastUserMessage) : '').trim();
     if (t) return t.length > 30 ? t.slice(0, 30) + '…' : t;
     return s ? s.id : '';
   }
@@ -2098,6 +2205,7 @@ if ('serviceWorker' in navigator) {
     const tree = document.getElementById('sessionTree');
     if (!tree) return;
     tree.innerHTML = '';
+    if (treeMode === 'project') { buildProjectTree(tree); return; }
     const group = document.createElement('div');
     group.className = 'tgroup';
     applyCollapsed(group, 'lisa');
@@ -2112,21 +2220,7 @@ if ('serviceWorker' in navigator) {
     kids.className = 'tchildren';
     const MAX_LEAVES = 14;
     cachedSessions.slice(0, MAX_LEAVES).forEach(function (s) {
-      const isActive = s.id === window.lisaActiveSessionId;
-      const leaf = document.createElement('button');
-      leaf.type = 'button';
-      leaf.className = 'tleaf' + (isActive ? ' active' : '');
-      leaf.innerHTML = '<span class="pip"></span><span class="tname"></span><span class="ttime"></span>';
-      if (isActive) leaf.querySelector('.pip').classList.add('live');
-      leaf.querySelector('.tname').textContent = sessionLabel(s);
-      leaf.querySelector('.ttime').textContent = relativeTime(s.startedAt);
-      leaf.title = s.id + ' · ' + (s.messageCount || 0) + ' msgs';
-      leaf.addEventListener('click', function () {
-        selInsp = { type: 'lisa', id: s.id };
-        renderInspector();
-        switchSession(s.id);
-      });
-      kids.appendChild(leaf);
+      kids.appendChild(makeLisaLeaf(s, false));
     });
     group.appendChild(kids);
     tree.appendChild(group);

@@ -12,6 +12,9 @@ export interface SessionInfo {
   model: string;
   messageCount: number;
   lastUserMessage?: string;
+  /** First user message (80 chars) — the session's display name in the
+   *  web shell tree/tabs (PLAN_UI_SESSION_SHELL_v1.1 F2). */
+  firstUserMessage?: string;
 }
 
 export async function listSessionsOnDisk(): Promise<SessionInfo[]> {
@@ -39,13 +42,17 @@ async function summarize(file: string): Promise<SessionInfo | null> {
   const header = JSON.parse(lines[0]!) as SessionHeader;
   let messageCount = 0;
   let lastUser: string | undefined;
+  let firstUser: string | undefined;
   for (let i = 1; i < lines.length; i++) {
     const entry = JSON.parse(lines[i]!) as SessionEntry;
     if (entry.type !== "message") continue;
     messageCount++;
     if (entry.message.role === "user") {
       const text = textOf(entry.message);
-      if (text) lastUser = text;
+      if (text) {
+        lastUser = text;
+        if (firstUser === undefined) firstUser = text;
+      }
     }
   }
   return {
@@ -56,6 +63,7 @@ async function summarize(file: string): Promise<SessionInfo | null> {
     model: header.model,
     messageCount,
     lastUserMessage: lastUser?.slice(0, 80),
+    firstUserMessage: firstUser?.slice(0, 80),
   };
 }
 

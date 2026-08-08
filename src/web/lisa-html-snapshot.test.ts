@@ -118,10 +118,17 @@ import { MAIN_HTML } from "./lisa-html.js";
  * roster rows had (approve/deny/send/output/cancel/adopt) now scoped to the
  * selected session; auto-selects the top-ranked live agent, else the active
  * Lisa session, whose inspector offers "open" to switch.
+ * Then: session shell v1.1 F2-F4 — sessions are auto-named by their FIRST
+ * user message (SessionInfo.firstUserMessage, new in sessions/list.ts); a ⇄
+ * button in the sessions head toggles the tree between agent view and a
+ * project view (roots = projects, Lisa + agent leaves side by side with mini
+ * source glyphs; localStorage "lisaTreeMode", per-mode collapse keys); and a
+ * new fnbar #fnPanel button collapses the right panel (body.rb-collapsed +
+ * localStorage "lisaRightbar"), independent of the ≤1180px auto-hide.
  */
-const EXPECTED_LENGTH = 266187;
+const EXPECTED_LENGTH = 272187;
 const EXPECTED_SHA256 =
-  "c875a2fb086c3338f144fec0aebf986a32e92a81689e953090c0a0249867efa5";
+  "fa81e8ecc01fc79ac0ade89bb9ae286dbdb93f119fd36afac8f0abbef64076c4";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);
