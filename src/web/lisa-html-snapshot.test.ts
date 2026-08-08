@@ -171,10 +171,16 @@ import { MAIN_HTML } from "./lisa-html.js";
  * .as-text — with the structural tool markers interleaved as .srow rows)
  * and falls back to the structural steps when it's empty (remote access,
  * other agent kinds, quiet tail).
+ * Then: clicking an agent session in the tree (or a needs-you row) opens its
+ * conversation DIRECTLY — the leaf click now calls openStreamTab instead of
+ * only selecting the inspector (the "▤ stream" button remains as a secondary
+ * entry); and refreshSessionsBadge re-renders the inspector once the session
+ * list lands, fixing the "(idle)" inspector on a fresh page load (the roster
+ * used to win the race before /api/sessions and nothing re-rendered).
  */
-const EXPECTED_LENGTH = 300753;
+const EXPECTED_LENGTH = 301378;
 const EXPECTED_SHA256 =
-  "48db3b8ed4da067c019dc929dd410e5264d2855f9166b7277804833a0af9c0cf";
+  "e08761ff04a7cca87f2cc3f1f22749837a025fc222487df818781f6e43e93219";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);

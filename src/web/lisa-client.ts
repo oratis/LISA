@@ -1734,7 +1734,8 @@ if ('serviceWorker' in navigator) {
       row.addEventListener('click', function () {
         selInsp = { type: 'agent', key: agentKey(s) };
         renderInspector();
-        renderSessionUI();
+        // Same as a tree click: straight into the conversation.
+        openStreamTab({ t: 'agent', agent: s.agent, id: s.sessionId, label: agentLabel(s) });
       });
       const acts = document.createElement('span');
       acts.className = 'session-ctrl nr-acts';
@@ -1824,6 +1825,9 @@ if ('serviceWorker' in navigator) {
       for (let i = 0; i < all.length; i++) all[i].classList.remove('active');
       leaf.classList.add('active');
       renderInspector();
+      // 确认轮三: clicking an agent session OPENS its conversation directly
+      // (transcript stream pane) — same mental model as a Lisa session.
+      openStreamTab({ t: 'agent', agent: s.agent, id: s.sessionId, label: agentLabel(s) });
     });
     return leaf;
   }
@@ -2693,6 +2697,10 @@ if ('serviceWorker' in navigator) {
       cachedSessions = Array.isArray(data.sessions) ? data.sessions : [];
       sbSessionBadge.textContent = String(cachedSessions.length);
       renderSessionUI();
+      // The inspector's default target is the active Lisa session — it can
+      // only resolve once this list (and /session) has landed, so re-render
+      // here too or a fresh page shows "(idle)" until the next roster tick.
+      renderInspector();
     } catch {
       // /api/sessions is optional — leave the badge as-is on failure
     }
