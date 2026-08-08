@@ -2312,42 +2312,78 @@ if ('serviceWorker' in navigator) {
     return null;
   }
 
+  // e2e 加固: switch/new used to swallow failures (empty catch, no finally)
+  // — one hung POST left the switching flag stuck forever and every later
+  // ＋New / tree click silently no-oped. Now: 8s timeout, finally-reset, a
+  // visible console error, and the composer LOCKS during the swap so a
+  // message can never be typed into a session that's about to be switched
+  // away (the "sent but nothing happened" race).
   let switching = false;
+  function setComposerLocked(on) {
+    try {
+      input.disabled = on;
+      sendBtn.disabled = on;
+      input.placeholder = on
+        ? 'switching session…'
+        : 'Talk to Lisa…  (Enter to send · Shift+Enter for newline)';
+    } catch (e) {}
+  }
+  async function postSessionMutation(url) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(function () { ctrl.abort(); }, 8000);
+    try {
+      const r = await fetch(url, { method: 'POST', signal: ctrl.signal });
+      return await r.json();
+    } finally {
+      clearTimeout(timer);
+    }
+  }
   async function switchSession(id) {
     if (switching || !id || id === window.lisaActiveSessionId) return;
     switching = true;
     document.body.classList.add('session-switching');
+    setComposerLocked(true);
     try {
-      const r = await fetch('/api/sessions/' + encodeURIComponent(id) + '/activate', { method: 'POST' });
-      const data = await r.json();
-      if (data && data.ok) {
-        if (typeof window.lisaSetActiveSession === 'function') window.lisaSetActiveSession(data.id);
+      const data = await postSessionMutation('/api/sessions/' + encodeURIComponent(id) + '/activate');
+      if (data && data.ok && typeof window.lisaSetActiveSession === 'function') {
+        window.lisaSetActiveSession(data.id);
       }
-    } catch (e) {}
-    document.body.classList.remove('session-switching');
-    switching = false;
-    refreshSessionsBadge();
+    } catch (e) {
+      console.error('[sessions] switch failed:', e);
+    } finally {
+      document.body.classList.remove('session-switching');
+      setComposerLocked(false);
+      switching = false;
+      refreshSessionsBadge();
+    }
   }
   async function newSession() {
     if (switching) return;
     switching = true;
     closeStreamView();
     document.body.classList.add('session-switching');
+    setComposerLocked(true);
     try {
-      const r = await fetch('/api/sessions', { method: 'POST' });
-      const data = await r.json();
-      if (data && data.ok) {
-        if (typeof window.lisaSetActiveSession === 'function') window.lisaSetActiveSession(data.id);
+      const data = await postSessionMutation('/api/sessions');
+      if (data && data.ok && typeof window.lisaSetActiveSession === 'function') {
+        window.lisaSetActiveSession(data.id);
       }
-    } catch (e) {}
-    document.body.classList.remove('session-switching');
-    switching = false;
-    refreshSessionsBadge();
+    } catch (e) {
+      console.error('[sessions] new session failed:', e);
+    } finally {
+      document.body.classList.remove('session-switching');
+      setComposerLocked(false);
+      switching = false;
+      refreshSessionsBadge();
+    }
   }
 
   function renderSessionTree() {
     const tree = document.getElementById('sessionTree');
     if (!tree) return;
+    // Rendering with no Lisa sessions means the list fetch hasn't landed or
+    // failed — kick it (in-flight guard + retry make this loop-safe).
+    if (!cachedSessions.length) refreshSessionsBadge();
     tree.innerHTML = '';
     if (treeMode === 'project') { buildProjectTree(tree); return; }
     const group = document.createElement('div');
@@ -2689,10 +2725,19 @@ if ('serviceWorker' in navigator) {
   const sbNewBtn = document.getElementById('sbNewSession');
   if (sbNewBtn) sbNewBtn.addEventListener('click', newSession);
 
+  // e2e 加固: a failed/slow session-list fetch used to stay broken for the
+  // whole 5-minute interval while the roster SSE kept rebuilding the tree —
+  // Lisa's sessions "vanished" until the next tick. Now: in-flight guard +
+  // 5s retry, and renderSessionTree triggers a fetch whenever it finds
+  // itself rendering with an empty list.
+  let sessionsFetchInFlight = false;
+  let sessionsRetryTimer = null;
   async function refreshSessionsBadge() {
+    if (sessionsFetchInFlight) return;
+    sessionsFetchInFlight = true;
     try {
       const r = await fetch('/api/sessions');
-      if (!r.ok) return;
+      if (!r.ok) throw new Error('http ' + r.status);
       const data = await r.json();
       cachedSessions = Array.isArray(data.sessions) ? data.sessions : [];
       sbSessionBadge.textContent = String(cachedSessions.length);
@@ -2701,8 +2746,14 @@ if ('serviceWorker' in navigator) {
       // only resolve once this list (and /session) has landed, so re-render
       // here too or a fresh page shows "(idle)" until the next roster tick.
       renderInspector();
-    } catch {
-      // /api/sessions is optional — leave the badge as-is on failure
+    } catch (e) {
+      if (sessionsRetryTimer) clearTimeout(sessionsRetryTimer);
+      sessionsRetryTimer = setTimeout(function () {
+        sessionsRetryTimer = null;
+        refreshSessionsBadge();
+      }, 5000);
+    } finally {
+      sessionsFetchInFlight = false;
     }
   }
 

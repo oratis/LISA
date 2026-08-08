@@ -180,10 +180,18 @@ import { MAIN_HTML } from "./lisa-html.js";
  * Then: tree style pass (确认轮四) — .tchildren indents dropped to 0 so
  * session leaves sit flush with their group header column (the 8px pip
  * centers under the 12px twist) instead of a deep nested indent.
+ * Then: e2e hardening — session switch/new gained an 8s abort timeout,
+ * finally-reset of the switching flag (one hung POST used to lock every
+ * later ＋New/switch into a silent no-op), a console error on failure, and
+ * a composer LOCK while switching (typing into a session about to be
+ * switched away was the "sent but nothing happened" race);
+ * refreshSessionsBadge gained an in-flight guard + 5s retry and
+ * renderSessionTree kicks it whenever it renders with an empty session
+ * list (the "sessions vanished after refresh" flash).
  */
-const EXPECTED_LENGTH = 301558;
+const EXPECTED_LENGTH = 303662;
 const EXPECTED_SHA256 =
-  "b2108dcfa86bb2e10879b657d09c3ca692f828e2da5f5f5e3e3c2b8aa4057463";
+  "30cb05fec303e3c582e49909a8502be89ae6130ef909bed6a7cadf0e156dec65";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);
