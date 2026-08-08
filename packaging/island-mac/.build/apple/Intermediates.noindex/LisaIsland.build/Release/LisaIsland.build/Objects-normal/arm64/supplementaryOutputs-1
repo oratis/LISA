@@ -1,0 +1,11 @@
+{
+  "/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/AppDelegate.swift" : {
+    "abi-baseline-json" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/apple/Intermediates.noindex/LisaIsland.build/Release/LisaIsland.build/Objects-normal/arm64/LisaIsland.abi.json",
+    "const-values" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/apple/Intermediates.noindex/LisaIsland.build/Release/LisaIsland.build/Objects-normal/arm64/LisaIsland-primary.swiftconstvalues",
+    "dependencies" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/apple/Intermediates.noindex/LisaIsland.build/Release/LisaIsland.build/Objects-normal/arm64/LisaIsland-primary.d",
+    "diagnostics" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/apple/Intermediates.noindex/LisaIsland.build/Release/LisaIsland.build/Objects-normal/arm64/LisaIsland-primary.dia",
+    "swiftdoc" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/apple/Intermediates.noindex/LisaIsland.build/Release/LisaIsland.build/Objects-normal/arm64/LisaIsland.swiftdoc",
+    "swiftmodule" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/apple/Intermediates.noindex/LisaIsland.build/Release/LisaIsland.build/Objects-normal/arm64/LisaIsland.swiftmodule",
+    "swiftsourceinfo" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/apple/Intermediates.noindex/LisaIsland.build/Release/LisaIsland.build/Objects-normal/arm64/LisaIsland.swiftsourceinfo"
+  }
+}

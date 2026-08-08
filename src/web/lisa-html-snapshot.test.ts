@@ -78,15 +78,19 @@ import { MAIN_HTML } from "./lisa-html.js";
  * inspector modal (openSessionDetail: metadata + surfaced error/pending banner +
  * approve/deny/send/cancel/adopt/view-output actions), and inline quick
  * approve/deny on pending rows. Sidebar .session-row styling left untouched.
+ * Then: Codex coding-plan orchestration — Dashboard agents are split into
+ * Claude Code / Codex swimlanes, the selected plan is marked "Powering Lisa",
+ * and Delegate runs subscription workers through the headless plan endpoint
+ * (with interactive PTY retained as an advanced option).
  * Then: KB link ingest (PLAN_KNOWLEDGE_BASE_v2.0 K-G) — a paste-a-link bar
  * (.kb-ingestbar: url input + Save + status) atop the Knowledge view calling
  * POST /api/kb/ingest and opening the saved entry; a 存入知识库 chip
  * (maybeOfferKbIngest) under chat bubbles whose message contains a bare URL;
  * window.lisaKbToast shared from the capture block; and their CSS.
  */
-const EXPECTED_LENGTH = 224728;
+const EXPECTED_LENGTH = 231602;
 const EXPECTED_SHA256 =
-  "95356791a521378fe62c76bb7ad393f76f8332b2d0eaf281257e2c9912c47d76";
+  "9c1fd12b18040674abfee29b3bb10a0b1283fb2e3307696f58f11f5027be4286";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);

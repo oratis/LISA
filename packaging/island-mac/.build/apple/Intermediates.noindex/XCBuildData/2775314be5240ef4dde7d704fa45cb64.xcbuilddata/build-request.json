@@ -1,0 +1,94 @@
+{
+  "buildCommand" : {
+    "command" : "build",
+    "skipDependencies" : false,
+    "style" : "buildOnly"
+  },
+  "configuredTargets" : [
+    {
+      "guid" : "ALL-EXCLUDING-TESTS@11",
+      "parameters" : {
+        "action" : "build",
+        "activeRunDestination" : {
+          "disableOnlyActiveArch" : true,
+          "platform" : "macosx",
+          "sdk" : "macosx",
+          "supportedArchitectures" : [
+
+          ],
+          "targetArchitecture" : "arm64"
+        },
+        "arenaInfo" : {
+          "buildIntermediatesPath" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/apple/Intermediates.noindex",
+          "buildProductsPath" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/apple/Products",
+          "derivedDataPath" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/apple",
+          "indexDataStoreFolderPath" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/apple",
+          "indexEnableDataStore" : false,
+          "indexPCHPath" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/apple",
+          "pchPath" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/apple"
+        },
+        "configurationName" : "Release",
+        "overrides" : {
+          "synthesized" : {
+            "table" : {
+              "ARCHS" : "arm64 x86_64",
+              "CC" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang",
+              "LIBRARY_SEARCH_PATHS" : "$(inherited) /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib",
+              "OTHER_CFLAGS" : "$(inherited) -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk -F /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks -F /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks -fPIC -g",
+              "OTHER_CPLUSPLUSFLAGS" : "$(inherited) -g",
+              "OTHER_LDFLAGS" : "$(inherited)",
+              "OTHER_SWIFT_FLAGS" : "$(inherited) -plugin-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -sdk /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk -F /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks -F /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks -I /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib -L /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib -g",
+              "SWIFT_EXEC" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "continueBuildingAfterErrors" : false,
+  "dependencyScope" : "workspace",
+  "enableIndexBuildArena" : false,
+  "hideShellScriptEnvironment" : true,
+  "parameters" : {
+    "action" : "build",
+    "activeRunDestination" : {
+      "disableOnlyActiveArch" : true,
+      "platform" : "macosx",
+      "sdk" : "macosx",
+      "supportedArchitectures" : [
+
+      ],
+      "targetArchitecture" : "arm64"
+    },
+    "arenaInfo" : {
+      "buildIntermediatesPath" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/apple/Intermediates.noindex",
+      "buildProductsPath" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/apple/Products",
+      "derivedDataPath" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/apple",
+      "indexDataStoreFolderPath" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/apple",
+      "indexEnableDataStore" : false,
+      "indexPCHPath" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/apple",
+      "pchPath" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/apple"
+    },
+    "configurationName" : "Release",
+    "overrides" : {
+      "synthesized" : {
+        "table" : {
+          "ARCHS" : "arm64 x86_64",
+          "CC" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang",
+          "LIBRARY_SEARCH_PATHS" : "$(inherited) /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib",
+          "OTHER_CFLAGS" : "$(inherited) -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk -F /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks -F /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks -fPIC -g",
+          "OTHER_CPLUSPLUSFLAGS" : "$(inherited) -g",
+          "OTHER_LDFLAGS" : "$(inherited)",
+          "OTHER_SWIFT_FLAGS" : "$(inherited) -plugin-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -sdk /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk -F /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks -F /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks -I /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib -L /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib -g",
+          "SWIFT_EXEC" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+        }
+      }
+    }
+  },
+  "schemeCommand" : "launch",
+  "showNonLoggedProgress" : true,
+  "useDryRun" : false,
+  "useImplicitDependencies" : false,
+  "useLegacyBuildLocations" : false,
+  "useParallelTargets" : true
+}

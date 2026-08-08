@@ -1,0 +1,4 @@
+Target dependency graph (2 targets)
+Target 'AllExcludingTests' in project 'Aggregate'
+➜ Explicit dependency on target 'LisaIsland_1FAC1BE35F1E2BEE_PackageProduct' in project 'LisaIsland'
+Target 'LisaIsland_1FAC1BE35F1E2BEE_PackageProduct' in project 'LisaIsland' (no dependencies)

@@ -1,0 +1,41 @@
+{
+  "" : {
+    "const-values" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/apple/Intermediates.noindex/LisaIsland.build/Release/LisaIsland.build/Objects-normal/x86_64/LisaIsland-primary.swiftconstvalues",
+    "dependencies" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/apple/Intermediates.noindex/LisaIsland.build/Release/LisaIsland.build/Objects-normal/x86_64/LisaIsland-primary.d",
+    "diagnostics" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/apple/Intermediates.noindex/LisaIsland.build/Release/LisaIsland.build/Objects-normal/x86_64/LisaIsland-primary.dia",
+    "emit-module-dependencies" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/apple/Intermediates.noindex/LisaIsland.build/Release/LisaIsland.build/Objects-normal/x86_64/LisaIsland-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/apple/Intermediates.noindex/LisaIsland.build/Release/LisaIsland.build/Objects-normal/x86_64/LisaIsland-primary-emit-module.dia",
+    "pch" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/apple/Intermediates.noindex/LisaIsland.build/Release/LisaIsland.build/Objects-normal/x86_64/LisaIsland-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/apple/Intermediates.noindex/LisaIsland.build/Release/LisaIsland.build/Objects-normal/x86_64/LisaIsland-primary.swiftdeps"
+  },
+  "/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/AppDelegate.swift" : {
+    "index-unit-output-path" : "/LisaIsland.build/Release/LisaIsland.build/Objects-normal/x86_64/AppDelegate.o",
+    "llvm-bc" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/apple/Intermediates.noindex/LisaIsland.build/Release/LisaIsland.build/Objects-normal/x86_64/AppDelegate.bc",
+    "object" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/apple/Intermediates.noindex/LisaIsland.build/Release/LisaIsland.build/Objects-normal/x86_64/AppDelegate.o"
+  },
+  "/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/IslandContent.swift" : {
+    "index-unit-output-path" : "/LisaIsland.build/Release/LisaIsland.build/Objects-normal/x86_64/IslandContent.o",
+    "llvm-bc" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/apple/Intermediates.noindex/LisaIsland.build/Release/LisaIsland.build/Objects-normal/x86_64/IslandContent.bc",
+    "object" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/apple/Intermediates.noindex/LisaIsland.build/Release/LisaIsland.build/Objects-normal/x86_64/IslandContent.o"
+  },
+  "/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/IslandWindow.swift" : {
+    "index-unit-output-path" : "/LisaIsland.build/Release/LisaIsland.build/Objects-normal/x86_64/IslandWindow.o",
+    "llvm-bc" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/apple/Intermediates.noindex/LisaIsland.build/Release/LisaIsland.build/Objects-normal/x86_64/IslandWindow.bc",
+    "object" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/apple/Intermediates.noindex/LisaIsland.build/Release/LisaIsland.build/Objects-normal/x86_64/IslandWindow.o"
+  },
+  "/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/NotchDetector.swift" : {
+    "index-unit-output-path" : "/LisaIsland.build/Release/LisaIsland.build/Objects-normal/x86_64/NotchDetector.o",
+    "llvm-bc" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/apple/Intermediates.noindex/LisaIsland.build/Release/LisaIsland.build/Objects-normal/x86_64/NotchDetector.bc",
+    "object" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/apple/Intermediates.noindex/LisaIsland.build/Release/LisaIsland.build/Objects-normal/x86_64/NotchDetector.o"
+  },
+  "/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/Notifier.swift" : {
+    "index-unit-output-path" : "/LisaIsland.build/Release/LisaIsland.build/Objects-normal/x86_64/Notifier.o",
+    "llvm-bc" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/apple/Intermediates.noindex/LisaIsland.build/Release/LisaIsland.build/Objects-normal/x86_64/Notifier.bc",
+    "object" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/apple/Intermediates.noindex/LisaIsland.build/Release/LisaIsland.build/Objects-normal/x86_64/Notifier.o"
+  },
+  "/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/main.swift" : {
+    "index-unit-output-path" : "/LisaIsland.build/Release/LisaIsland.build/Objects-normal/x86_64/main.o",
+    "llvm-bc" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/apple/Intermediates.noindex/LisaIsland.build/Release/LisaIsland.build/Objects-normal/x86_64/main.bc",
+    "object" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/apple/Intermediates.noindex/LisaIsland.build/Release/LisaIsland.build/Objects-normal/x86_64/main.o"
+  }
+}

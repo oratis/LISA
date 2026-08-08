@@ -285,3 +285,22 @@ export function planSummaryLine(statuses: PlanStatus[], selected: PlanId | null)
   const head = selected ? `coding plan → ${selected}` : "coding plan → none selected";
   return `${head}  ·  ${bits.join("  ·  ")}`;
 }
+
+/**
+ * Prompt guidance that turns a selected plan into an actual orchestration
+ * default instead of a UI-only preference. The vendor CLI remains the coding
+ * worker; Lisa stays the coordinator and reads the result back through the
+ * dispatch ledger.
+ */
+export function codingPlanPrompt(selected: PlanId | null): string | null {
+  if (!selected) return null;
+  const label =
+    selected === "codex"
+      ? "OpenAI Codex (ChatGPT plan)"
+      : selected === "claude"
+        ? "Claude Code (Claude Pro/Max)"
+        : "GitHub Copilot";
+  return `## Coding-plan orchestration
+
+Your default coding worker is **${label}** (\`plan://${selected}\`). For substantial coding tasks that benefit from an autonomous coding agent, prefer \`run_on_plan\` without a \`plan\` argument so the work uses this subscription instead of metered API tokens. Stay the coordinator: frame a concrete task and working directory, avoid launching two agents into the same checkout, then use \`dispatch_status\` to inspect and synthesize the result. Do small edits directly when delegation would add more overhead than value.`;
+}

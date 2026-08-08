@@ -27,6 +27,7 @@ import {
   soulValuesDir,
 } from "./soul/paths.js";
 import type { SoulSummary } from "./soul/types.js";
+import { codingPlanPrompt, selectedPlan } from "./model/plans.js";
 
 export interface PromptSnapshot {
   text: string;
@@ -160,6 +161,8 @@ export async function buildSystemPromptSnapshot(): Promise<PromptSnapshot> {
   }
 
   sections.push(TOOL_DISCIPLINE);
+  const planGuidance = codingPlanPrompt(selectedPlan());
+  if (planGuidance) sections.push(planGuidance);
   sections.push(`## Environment\n\n${env}`);
   sections.push(
     `## Available skills\n\n${skillIndex}\n\nLoad a skill's full body with \`skill_manage(action="view", name="<name>")\` before relying on it.`,
@@ -215,6 +218,9 @@ function formatEmotionsForPrompt(values: Record<string, number>): string {
  */
 export async function getPromptFingerprint(): Promise<string> {
   const parts: string[] = [];
+  // The coding-plan picker updates process.env in place. Include it so an
+  // already-open Lisa session learns the new default on its very next turn.
+  parts.push(`coding-plan:${selectedPlan() ?? "none"}`);
   // Desire strength is partly a function of wall time, not only file mtimes.
   // A daily bucket makes a long-lived chat rebuild the prompt as wants cool,
   // without churning it every second.

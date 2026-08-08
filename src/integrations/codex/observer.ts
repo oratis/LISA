@@ -17,8 +17,8 @@
  *
  * NOTE: Codex's exact rollout schema varies by version; both the state parse
  * and the activity parse are deliberately tolerant (unknown shapes → skipped /
- * "unknown") and the integration is DISABLED by default (opt in via
- * ~/.lisa/agents.json). It graceful-no-ops when $CODEX_HOME/sessions is absent.
+ * "unknown"). The integration is enabled by default alongside Claude Code and
+ * gracefully no-ops when $CODEX_HOME/sessions is absent.
  */
 
 import fs from "node:fs";

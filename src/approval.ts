@@ -20,6 +20,7 @@ export const DEFAULT_MUTATING_TOOLS = new Set([
   "bash",
   // Local execution / process control — always state-changing.
   "dispatch_agent",
+  "run_on_plan",
   "signal_agent",
 ]);
 

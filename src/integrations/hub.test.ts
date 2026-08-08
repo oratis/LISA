@@ -1,5 +1,8 @@
 import { test, describe, afterEach } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { OrchestratorHub, loadOrchestratorConfig, DEFAULT_ORCHESTRATOR_CONFIG } from "./hub.js";
 import { registerIntegration, _resetIntegrationsForTest } from "./registry.js";
 import type { AgentObserver, AgentSession } from "./types.js";
@@ -124,5 +127,21 @@ describe("loadOrchestratorConfig", () => {
   test("missing file → default config", async () => {
     const cfg = await loadOrchestratorConfig("/nonexistent/agents.json");
     assert.deepEqual(cfg, DEFAULT_ORCHESTRATOR_CONFIG);
+  });
+
+  test("existing partial config inherits the enabled Codex observer", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lisa-hub-"));
+    const file = join(dir, "agents.json");
+    try {
+      await writeFile(
+        file,
+        JSON.stringify({ integrations: { "claude-code": { visibility: "metadata" } } }),
+      );
+      const cfg = await loadOrchestratorConfig(file);
+      assert.equal(cfg.integrations.codex?.enabled, true);
+      assert.equal(cfg.integrations["claude-code"]?.visibility, "metadata");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

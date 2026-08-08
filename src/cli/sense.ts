@@ -5,6 +5,8 @@
  */
 import { readSenseEvents } from "../sense/log.js";
 import { listGrants } from "../consent/store.js";
+import { discoverSocialConnectors } from "../sense/social/manifest.js";
+import { listSocialDrafts } from "../sense/social/drafts.js";
 
 function rel(ms: number): string {
   if (ms < 60_000) return `${Math.round(ms / 1000)}s ago`;
@@ -15,6 +17,45 @@ function rel(ms: number): string {
 
 export async function runSenseCommand(subargs: string[]): Promise<number> {
   const sub = subargs[0] ?? "list";
+
+  if (sub === "social") {
+    const [connectors, drafts] = await Promise.all([
+      discoverSocialConnectors(),
+      listSocialDrafts(),
+    ]);
+    console.log("Sense · Connected media\n");
+    console.log("Connectors:");
+    if (connectors.length === 0) {
+      console.log("  (none — install a plugin with social-connector.json)");
+    } else {
+      for (const connector of connectors) {
+        if (connector.manifest) {
+          console.log(
+            `  ✓ ${connector.manifest.displayName} [${connector.manifest.platform}] via ${connector.plugin}`,
+          );
+        } else {
+          console.log(`  ✗ ${connector.plugin}: ${connector.error ?? "invalid manifest"}`);
+        }
+      }
+    }
+    console.log("\nDrafts:");
+    if (drafts.length === 0) {
+      console.log("  (none)");
+    } else {
+      for (const draft of drafts.slice(-20).reverse()) {
+        const targets = draft.targets
+          .map((target) => `${target.platform}:${target.accountId}`)
+          .join(", ");
+        console.log(
+          `  ${draft.id.slice(0, 8)}  r${draft.revision}  ${draft.state.padEnd(17)} ${targets}`,
+        );
+      }
+    }
+    console.log(
+      "\nPublishing remains host-confirmed: connecting an account never authorizes an automatic post.",
+    );
+    return 0;
+  }
 
   if (sub === "list" || sub === "recent" || sub === "status") {
     const granted = listGrants().filter((g) => g.granted).map((g) => g.signal);
@@ -31,6 +72,6 @@ export async function runSenseCommand(subargs: string[]): Promise<number> {
     return 0;
   }
 
-  console.error(`unknown sense subcommand "${sub}" — use list.`);
+  console.error(`unknown sense subcommand "${sub}" — use list or social.`);
   return 1;
 }

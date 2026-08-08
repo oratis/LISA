@@ -9,7 +9,17 @@ import { runAgent } from "../agent.js";
 import { fireHooks } from "../hooks/runner.js";
 import type { HookSpec } from "../plugins/types.js";
 import { saveConfigEnv } from "../env.js";
-import { detectPlans, selectedPlan, parsePlanRef, planMark, PLAN_IDS } from "../model/plans.js";
+import {
+  detectPlan,
+  detectPlans,
+  selectedPlan,
+  parsePlanRef,
+  planDispatchKind,
+  planMark,
+  planPreflight,
+  PLAN_IDS,
+  type PlanId,
+} from "../model/plans.js";
 import { planUsage, formatUsage } from "../model/plan-usage.js";
 import { runIdleOnce } from "../idle/runner.js";
 import { getIdleWatcher } from "../idle/watcher.js";
@@ -61,6 +71,7 @@ import { transcribeAudio } from "../voice/transcribe.js";
 import { polishDictation, type DictationProvider } from "../voice/dictation.js";
 import { listGrants, grant, revoke, revokeAll, isGranted, SENSE_SIGNALS, SIGNAL_DESCRIPTIONS } from "../consent/store.js";
 import { signalAgentTool } from "../tools/signal_agent.js";
+import { activeAgentInCwd, launchAgent } from "../tools/dispatch_agent.js";
 import { managedRegistry } from "../agents/managed.js";
 import { ptyRegistry, ptyEnabled, normalizeAgentKind } from "../agents/pty.js";
 import { liveClaudeSessionIds } from "../integrations/claude-code/liveness.js";
@@ -3056,6 +3067,77 @@ self.addEventListener('fetch', (event) => {
       }
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, selected: planId || null }));
+      return;
+    }
+
+    // Explicit user-triggered coding-plan dispatch from the Dashboard. This is
+    // the HTTP counterpart to run_on_plan: same presence/login preflight, same
+    // headless vendor CLI, same dispatch ledger and same-cwd safety guard.
+    if (req.method === "POST" && url === "/api/plans/run") {
+      if (denyRemote("control")) return;
+      let body = "";
+      for await (const chunk of req) body += chunk.toString("utf8");
+      let payload: { plan?: unknown; task?: unknown; cwd?: unknown; force?: unknown };
+      try {
+        payload = JSON.parse(body || "{}");
+      } catch {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("bad json");
+        return;
+      }
+      if (typeof payload.task !== "string" || !payload.task.trim()) {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("task required");
+        return;
+      }
+      const raw = typeof payload.plan === "string" ? payload.plan.trim().toLowerCase() : "";
+      const planId: PlanId | null = raw
+        ? (parsePlanRef(raw) ??
+          ((PLAN_IDS as readonly string[]).includes(raw) ? (raw as PlanId) : null))
+        : selectedPlan();
+      if (!planId) {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("no coding plan selected — choose Claude Code or Codex first");
+        return;
+      }
+      const status = detectPlan(planId);
+      const preflight = planPreflight(status);
+      if (!preflight.ok) {
+        res.writeHead(409, { "content-type": "text/plain" });
+        res.end(preflight.reason ?? `${planId} plan is unavailable`);
+        return;
+      }
+      const cwd =
+        typeof payload.cwd === "string" && payload.cwd.startsWith("/")
+          ? payload.cwd
+          : process.cwd();
+      if (payload.force !== true) {
+        const clash = activeAgentInCwd(cwd);
+        if (clash) {
+          res.writeHead(409, { "content-type": "text/plain" });
+          res.end(
+            `${clash} is already active in ${cwd}. Wait for it to finish or use another working directory.`,
+          );
+          return;
+        }
+      }
+      const kind = planDispatchKind(planId);
+      const launched = await launchAgent(kind, payload.task.trim(), cwd);
+      if (launched.error) {
+        res.writeHead(503, { "content-type": "text/plain" });
+        res.end(launched.error);
+        return;
+      }
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          ok: true,
+          plan: planId,
+          agent: kind,
+          pid: launched.pid,
+          id: launched.id,
+        }),
+      );
       return;
     }
 

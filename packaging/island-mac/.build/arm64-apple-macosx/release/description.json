@@ -1,0 +1,338 @@
+{
+  "builtTestProducts" : [
+
+  ],
+  "copyCommands" : {
+
+  },
+  "explicitTargetDependencyImportCheckingMode" : {
+    "none" : {
+
+    }
+  },
+  "generatedSourceTargetSet" : [
+
+  ],
+  "pluginDescriptions" : [
+
+  ],
+  "swiftCommands" : {
+    "C.LisaIsland-arm64-apple-macosx26.0-release.module" : {
+      "executable" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "fileList" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/sources",
+      "importPath" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/AppDelegate.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/IslandContent.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/IslandWindow.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/NotchDetector.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/Notifier.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/main.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/swift-version--58304C5D6DBC2206.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/sources"
+        }
+      ],
+      "isLibrary" : false,
+      "moduleName" : "LisaIsland",
+      "moduleOutputPath" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/Modules/LisaIsland.swiftmodule",
+      "objects" : [
+        "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/AppDelegate.swift.o",
+        "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/IslandContent.swift.o",
+        "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/IslandWindow.swift.o",
+        "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/NotchDetector.swift.o",
+        "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/Notifier.swift.o",
+        "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/main.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx13.0",
+        "-whole-module-optimization",
+        "-num-threads",
+        "14",
+        "-serialize-diagnostics",
+        "-O",
+        "-j14",
+        "-DSWIFT_PACKAGE",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-module-cache-path",
+        "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/ModuleCache",
+        "-parseable-output",
+        "-Xfrontend",
+        "-entry-point-function-name",
+        "-Xfrontend",
+        "LisaIsland_main",
+        "-swift-version",
+        "5",
+        "-plugin-path",
+        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks",
+        "-I",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-L",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "island_mac"
+      ],
+      "outputFileMapPath" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/AppDelegate.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/IslandContent.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/IslandWindow.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/NotchDetector.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/Notifier.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/main.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/Modules/LisaIsland.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/AppDelegate.swift",
+        "/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/IslandContent.swift",
+        "/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/IslandWindow.swift",
+        "/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/NotchDetector.swift",
+        "/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/Notifier.swift",
+        "/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/main.swift"
+      ],
+      "tempsPath" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build",
+      "wholeModuleOptimization" : true
+    }
+  },
+  "swiftFrontendCommands" : {
+
+  },
+  "swiftTargetScanArgs" : {
+    "LisaIsland" : [
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "-module-name",
+      "LisaIsland",
+      "-package-name",
+      "island_mac",
+      "-c",
+      "/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/AppDelegate.swift",
+      "/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/IslandContent.swift",
+      "/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/IslandWindow.swift",
+      "/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/NotchDetector.swift",
+      "/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/Notifier.swift",
+      "/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/main.swift",
+      "-I",
+      "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/Modules",
+      "-target",
+      "arm64-apple-macosx13.0",
+      "-whole-module-optimization",
+      "-num-threads",
+      "14",
+      "-serialize-diagnostics",
+      "-O",
+      "-j14",
+      "-DSWIFT_PACKAGE",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-module-cache-path",
+      "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/ModuleCache",
+      "-parseable-output",
+      "-Xfrontend",
+      "-entry-point-function-name",
+      "-Xfrontend",
+      "LisaIsland_main",
+      "-swift-version",
+      "5",
+      "-plugin-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks",
+      "-I",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-L",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "island_mac",
+      "-driver-use-frontend-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+    ]
+  },
+  "targetDependencyMap" : {
+    "LisaIsland" : [
+
+    ]
+  },
+  "testDiscoveryCommands" : {
+
+  },
+  "testEntryPointCommands" : {
+
+  },
+  "traitConfiguration" : {
+    "default" : {
+
+    }
+  },
+  "writeCommands" : {
+    "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/AppDelegate.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/IslandContent.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/IslandWindow.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/NotchDetector.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/Notifier.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/main.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/sources"
+    },
+    "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.product/Objects.LinkFileList" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<link-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/AppDelegate.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/IslandContent.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/IslandWindow.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/NotchDetector.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/Notifier.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/main.swift.o"
+        }
+      ],
+      "outputFilePath" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.product/Objects.LinkFileList"
+    },
+    "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/swift-version--58304C5D6DBC2206.txt" : {
+      "alwaysOutOfDate" : true,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<swift-get-version>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+        }
+      ],
+      "outputFilePath" : "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/swift-version--58304C5D6DBC2206.txt"
+    }
+  }
+}

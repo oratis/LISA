@@ -23,14 +23,15 @@ export interface OrchestratorConfig {
   visibility: VisibilityTier;
 }
 
-/** Default config when ~/.lisa/agents.json is absent: just Claude Code, at
- *  the "activity" tier (Tier 2 — structural, no conversation content). */
+/** Default config when ~/.lisa/agents.json is absent: Claude Code + Codex, at
+ *  the "activity" tier (Tier 2 — structural, no conversation content). Both
+ *  observers gracefully stay empty when their transcript directory is absent. */
 export const DEFAULT_ORCHESTRATOR_CONFIG: OrchestratorConfig = {
   integrations: {
     "claude-code": { enabled: true },
-    // Available but off by default — enable in ~/.lisa/agents.json once you
-    // use Codex. Graceful no-op if ~/.codex/sessions is absent anyway.
-    codex: { enabled: false },
+    // First-class alongside Claude Code. Graceful no-op if ~/.codex/sessions
+    // is absent, so enabling observation costs nothing on non-Codex machines.
+    codex: { enabled: true },
     // Cloud agent: watches your open GitHub PRs (checks / review / merge) via
     // the `gh` CLI. Off by default; opt in, optionally with
     // `{ "enabled": true, "repos": ["owner/repo"] }`. No-op if `gh` is absent.
@@ -168,7 +169,12 @@ export async function loadOrchestratorConfig(
   try {
     const parsed = JSON.parse(raw) as Partial<OrchestratorConfig>;
     return {
-      integrations: parsed.integrations ?? DEFAULT_ORCHESTRATOR_CONFIG.integrations,
+      // Merge rather than replace so newly shipped built-ins (such as Codex)
+      // become available to existing installs while explicit user entries win.
+      integrations: {
+        ...DEFAULT_ORCHESTRATOR_CONFIG.integrations,
+        ...(parsed.integrations ?? {}),
+      },
       visibility: parsed.visibility ?? DEFAULT_ORCHESTRATOR_CONFIG.visibility,
     };
   } catch {

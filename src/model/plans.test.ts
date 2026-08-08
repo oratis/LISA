@@ -6,6 +6,7 @@ import {
   selectedPlan,
   detectPlan,
   detectPlans,
+  codingPlanPrompt,
   planDispatchKind,
   planPreflight,
   planMark,
@@ -197,6 +198,20 @@ describe("planSummaryLine", () => {
   });
   test("says 'none selected' when no target is set", () => {
     assert.match(planSummaryLine([mkStatus({})], null), /none selected/);
+  });
+});
+
+describe("codingPlanPrompt", () => {
+  test("selected Codex plan tells Lisa to orchestrate through run_on_plan", () => {
+    const text = codingPlanPrompt("codex");
+    assert.match(text ?? "", /OpenAI Codex/);
+    assert.match(text ?? "", /plan:\/\/codex/);
+    assert.match(text ?? "", /run_on_plan/);
+    assert.match(text ?? "", /dispatch_status/);
+  });
+
+  test("no selected plan adds no orchestration guidance", () => {
+    assert.equal(codingPlanPrompt(null), null);
   });
 });
 

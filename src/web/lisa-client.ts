@@ -1666,60 +1666,122 @@ if ('serviceWorker' in navigator) {
     } catch {}
   };
 
-  // "Delegate a task" → open a modal to pick the agent kind + write the task.
-  // (A roomy dialog beats the cramped 280px sidebar.) managed = LISA-run
-  // (controllable); claude/codex = a real CLI under a PTY (needs LISA_PTY_AGENTS=1
-  // — a 503/error surfaces inline in the dialog).
+  // "Delegate a task" → choose a coding-plan worker or a Lisa-managed agent.
+  // Plan workers use the stable headless vendor CLI path (codex exec / claude
+  // -p) and the dispatch ledger. Interactive PTY remains available as an
+  // advanced option for follow-up-heavy sessions.
   function openDelegateModal() {
-    openModal(
-      'Delegate a task',
-      '<div class="delegate-modal">' +
-        '<label class="dm-label">Agent</label>' +
+    openModal('Delegate a task', '<div class="view-empty">loading coding plans…</div>');
+    fetch('/api/plans').then(function (r) {
+      if (!r.ok) throw new Error('failed to load plans');
+      return r.json();
+    }).then(function (planData) {
+      var plans = (planData && planData.plans) || [];
+      var selected = (planData && planData.selected) || '';
+      var planOptions = '';
+      var ordered = plans.slice().sort(function (a, b) {
+        var rank = { codex: 0, claude: 1, copilot: 2 };
+        return (rank[a.id] == null ? 9 : rank[a.id]) - (rank[b.id] == null ? 9 : rank[b.id]);
+      });
+      ordered.forEach(function (p) {
+        var ready = p.available && p.loggedIn !== false;
+        var suffix = p.id === selected ? ' — default' : (ready ? '' : ' — unavailable');
+        planOptions += '<option value="plan:' + escapeHtml(p.id) + '"' +
+          (p.id === selected && ready ? ' selected' : '') +
+          (ready ? '' : ' disabled') + '>' +
+          escapeHtml(p.label + suffix) + '</option>';
+      });
+      var managedSelected = selected ? '' : ' selected';
+      modalBody.innerHTML =
+        '<div class="delegate-modal">' +
+        '<label class="dm-label">Execution</label>' +
         '<select id="dmKind" class="dm-kind">' +
-          '<option value="managed">managed — LISA runs it (approve each step)</option>' +
-          '<option value="claude">claude — real CLI under a PTY</option>' +
-          '<option value="codex">codex — real CLI under a PTY</option>' +
+          '<optgroup label="Coding plans">' + planOptions + '</optgroup>' +
+          '<optgroup label="Lisa">' +
+            '<option value="managed"' + managedSelected + '>Lisa managed agent — API model</option>' +
+          '</optgroup>' +
+          '<optgroup label="Interactive CLI (advanced)">' +
+            '<option value="pty:claude">Claude Code — live PTY</option>' +
+            '<option value="pty:codex">Codex — live PTY</option>' +
+          '</optgroup>' +
         '</select>' +
         '<label class="dm-label">Task</label>' +
         '<textarea id="dmTask" class="dm-task" rows="5" placeholder="Describe the task… (⌘/Ctrl+Enter to start)"></textarea>' +
-        '<div class="dm-actions"><button id="dmStart" class="dm-start" type="button">Start agent →</button></div>' +
+        '<div id="dmHint" class="dm-note"></div>' +
+        '<div class="dm-actions"><button id="dmStart" class="dm-start" type="button">Delegate →</button></div>' +
         '<div id="dmErr" class="dm-err"></div>' +
-      '</div>'
-    );
-    const kindEl = document.getElementById('dmKind');
-    const taskEl = document.getElementById('dmTask');
-    const startEl = document.getElementById('dmStart');
-    const errEl = document.getElementById('dmErr');
-    if (taskEl) taskEl.focus();
-    function submitDelegate() {
-      const task = taskEl && taskEl.value.trim();
-      if (!task) { if (taskEl) taskEl.focus(); return; }
-      const kind = kindEl ? kindEl.value : 'managed';
-      const url = kind === 'managed' ? '/api/agents/managed/start' : '/api/agents/pty/start';
-      const body = kind === 'managed' ? { task: task } : { agent: kind, task: task };
-      if (errEl) errEl.textContent = '';
-      if (startEl) { startEl.disabled = true; startEl.textContent = 'Starting…'; }
-      fetch(url, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
-      }).then(function (r) {
-        if (!r.ok) {
-          return r.text().then(function (t) {
-            if (errEl) errEl.textContent = t || ('failed (' + r.status + ')');
-            if (startEl) { startEl.disabled = false; startEl.textContent = 'Start agent →'; }
-          });
+        '</div>';
+      const kindEl = document.getElementById('dmKind');
+      const taskEl = document.getElementById('dmTask');
+      const startEl = document.getElementById('dmStart');
+      const errEl = document.getElementById('dmErr');
+      const hintEl = document.getElementById('dmHint');
+      function updateDelegateHint() {
+        var kind = kindEl ? kindEl.value : 'managed';
+        if (!hintEl || !startEl) return;
+        if (kind.indexOf('plan:') === 0) {
+          var id = kind.slice(5);
+          hintEl.textContent = 'Runs ' + (id === 'codex' ? 'codex exec' : id === 'claude' ? 'claude -p' : id + ' -p') +
+            ' on your subscription. Lisa dispatches, monitors, and reads back the result.';
+          startEl.textContent = 'Delegate on ' + (id === 'codex' ? 'Codex' : id === 'claude' ? 'Claude Code' : 'Copilot') + ' →';
+        } else if (kind.indexOf('pty:') === 0) {
+          hintEl.textContent = 'Interactive CLI session. Requires LISA_PTY_AGENTS=1.';
+          startEl.textContent = 'Start interactive agent →';
+        } else {
+          hintEl.textContent = 'Runs inside Lisa with the configured API model and per-step approvals.';
+          startEl.textContent = 'Start managed agent →';
         }
-        closeModal();
-        if (typeof refreshClaudeSessions === 'function') refreshClaudeSessions();
-      }).catch(function () {
-        if (errEl) errEl.textContent = 'network error';
-        if (startEl) { startEl.disabled = false; startEl.textContent = 'Start agent →'; }
+      }
+      function submitDelegate() {
+        const task = taskEl && taskEl.value.trim();
+        if (!task) { if (taskEl) taskEl.focus(); return; }
+        const kind = kindEl ? kindEl.value : 'managed';
+        var url;
+        var body;
+        if (kind.indexOf('plan:') === 0) {
+          url = '/api/plans/run';
+          body = { plan: kind.slice(5), task: task };
+        } else if (kind.indexOf('pty:') === 0) {
+          url = '/api/agents/pty/start';
+          body = { agent: kind.slice(4), task: task };
+        } else {
+          url = '/api/agents/managed/start';
+          body = { task: task };
+        }
+        if (errEl) errEl.textContent = '';
+        if (startEl) { startEl.disabled = true; startEl.textContent = 'Starting…'; }
+        fetch(url, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        }).then(function (r) {
+          if (!r.ok) {
+            return r.text().then(function (t) {
+              if (errEl) errEl.textContent = t || ('failed (' + r.status + ')');
+              if (startEl) startEl.disabled = false;
+              updateDelegateHint();
+            });
+          }
+          closeModal();
+          if (typeof refreshClaudeSessions === 'function') refreshClaudeSessions();
+          var active = document.querySelector('.nav-item.active');
+          if (active && active.getAttribute('data-view') === 'dashboard' &&
+              typeof window.lisaRenderDashboard === 'function') window.lisaRenderDashboard();
+        }).catch(function () {
+          if (errEl) errEl.textContent = 'network error';
+          if (startEl) startEl.disabled = false;
+          updateDelegateHint();
+        });
+      }
+      if (kindEl) kindEl.addEventListener('change', updateDelegateHint);
+      if (startEl) startEl.addEventListener('click', submitDelegate);
+      if (taskEl) taskEl.addEventListener('keydown', function (e) {
+        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); submitDelegate(); }
       });
-    }
-    if (startEl) startEl.addEventListener('click', submitDelegate);
-    if (taskEl) taskEl.addEventListener('keydown', function (e) {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); submitDelegate(); }
+      updateDelegateHint();
+      if (taskEl) taskEl.focus();
+    }).catch(function () {
+      modalBody.innerHTML = '<div class="view-empty">failed to load coding plans</div>';
     });
   }
   const sbDelegateBtn = document.getElementById('sbDelegateBtn');
@@ -2177,6 +2239,24 @@ if ('serviceWorker' in navigator) {
       '<div class="ac-meta">' + esc(d.cwd ? String(d.cwd).split('/').pop() : 'dispatch') + '</div>' +
       '</div>';
   }
+  function dashboardLaneHTML(id, label, sessions, dispatches, selectedPlan) {
+    var cards = sessions.map(agentCardHTML).concat(dispatches.slice(0, 6).map(taskCardHTML));
+    var working = sessions.filter(function (s) { return s.state === 'working'; }).length +
+      dispatches.filter(function (d) { return d.alive; }).length;
+    var planChip = selectedPlan === id
+      ? '<span class="agent-lane-plan">Powering Lisa</span>'
+      : '';
+    return '<div class="agent-lane ' + esc(id) + '">' +
+      '<div class="agent-lane-head"><span class="agent-lane-dot"></span>' +
+        '<span class="agent-lane-name">' + esc(label) + '</span>' +
+        planChip +
+        '<span class="agent-lane-count">' + cards.length + ' total' + (working ? ' · ' + working + ' running' : '') + '</span>' +
+      '</div>' +
+      (cards.length
+        ? '<div class="card-scroll">' + cards.join('') + '</div>'
+        : '<div class="agent-lane-empty">No active ' + esc(label) + ' agents.</div>') +
+      '</div>';
+  }
   function loadDashboard() {
     views.dashboard.innerHTML =
       '<div class="view-head"><div><h2>Dashboard</h2><div class="vh-sub">Operations at a glance</div></div>' +
@@ -2192,11 +2272,14 @@ if ('serviceWorker' in navigator) {
     Promise.all([
       getJSON('/api/agents/sessions'), getJSON('/api/dispatch/list'),
       getJSON('/api/sense/recent'), getJSON('/api/island/ping'),
+      getJSON('/api/plans'),
     ]).then(function (res) {
       var sessions = (res[0] && res[0].sessions) || [];
       var dispatches = (res[1] && res[1].dispatches) || [];
       var events = (res[2] && res[2].events) || [];
       var ping = res[3] || {};
+      var planData = res[4] || {};
+      var selectedCodingPlan = planData.selected || '';
       updateAgentCount(sessions.length);
       var aliveTasks = dispatches.filter(function (d) { return d.alive; }).length;
       var waiting = sessions.filter(function (s) { return s.state === 'waiting'; }).length;
@@ -2226,12 +2309,27 @@ if ('serviceWorker' in navigator) {
         html += '<div class="focus-card"><div class="fc-desc">Nothing actively pursued right now.</div></div>';
       }
       html += '<div class="view-sec-label">Agents &amp; tasks</div>';
-      var cards = sessions.map(agentCardHTML).concat(dispatches.slice(0, 6).map(taskCardHTML));
-      html += cards.length ? '<div class="card-scroll">' + cards.join('') + '</div>'
-                           : '<div class="view-empty">No active agents or tasks. Delegate one to get started.</div>';
+      var claudeSessions = sessions.filter(function (s) { return s.agent === 'claude-code' || s.agent === 'claude'; });
+      var codexSessions = sessions.filter(function (s) { return s.agent === 'codex'; });
+      var otherSessions = sessions.filter(function (s) {
+        return s.agent !== 'claude-code' && s.agent !== 'claude' && s.agent !== 'codex';
+      });
+      var claudeDispatches = dispatches.filter(function (d) { return d.agent === 'claude' || d.agent === 'claude-code'; });
+      var codexDispatches = dispatches.filter(function (d) { return d.agent === 'codex'; });
+      var otherDispatches = dispatches.filter(function (d) {
+        return d.agent !== 'claude' && d.agent !== 'claude-code' && d.agent !== 'codex';
+      });
+      html += '<div class="agent-lanes">' +
+        dashboardLaneHTML('claude', 'Claude Code', claudeSessions, claudeDispatches, selectedCodingPlan) +
+        dashboardLaneHTML('codex', 'Codex', codexSessions, codexDispatches, selectedCodingPlan);
+      if (otherSessions.length || otherDispatches.length) {
+        html += dashboardLaneHTML('other', 'Other agents', otherSessions, otherDispatches, selectedCodingPlan);
+      }
+      html += '</div>';
       scroll.innerHTML = html;
     });
   }
+  window.lisaRenderDashboard = renderDashboard;
 
   // ── Control ─────────────────────────────────────────────────────
   // Progress-only activity line (turns/tokens/cmd/tool·file) — the pending

@@ -35,15 +35,15 @@ describe("buildApprovalCallback — mode gating", () => {
     assert.deepEqual(await cb("bash", { cmd: "ls" }), { allow: true });
   });
 
-  test("DEFAULT_MUTATING_TOOLS covers write/exec + dispatch/signal", () => {
-    for (const t of ["write", "edit", "apply_patch", "bash", "dispatch_agent", "signal_agent"]) {
+  test("DEFAULT_MUTATING_TOOLS covers write/exec + plan dispatch/signal", () => {
+    for (const t of ["write", "edit", "apply_patch", "bash", "dispatch_agent", "run_on_plan", "signal_agent"]) {
       assert.ok(DEFAULT_MUTATING_TOOLS.has(t), `expected ${t} to be mutating`);
     }
     assert.equal(DEFAULT_MUTATING_TOOLS.has("read"), false);
   });
 
-  test("dispatch_agent / signal_agent prompt under ask-mutating", async () => {
-    for (const t of ["dispatch_agent", "signal_agent"]) {
+  test("dispatch_agent / run_on_plan / signal_agent prompt under ask-mutating", async () => {
+    for (const t of ["dispatch_agent", "run_on_plan", "signal_agent"]) {
       let prompted = false;
       const cb = buildApprovalCallback(cfg({ mode: "ask-mutating", readLine: async () => { prompted = true; return "y"; } }))!;
       await cb(t, {});

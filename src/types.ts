@@ -6,6 +6,17 @@ export interface ToolDefinition<TInput = unknown, TOutput = unknown> {
   name: string;
   description: string;
   inputSchema: Anthropic.Tool.InputSchema;
+  /**
+   * MCP-compatible behavior hints. These are metadata for UX/policy inputs,
+   * never proof that an untrusted tool is safe.
+   */
+  annotations?: {
+    title?: string;
+    readOnlyHint?: boolean;
+    destructiveHint?: boolean;
+    idempotentHint?: boolean;
+    openWorldHint?: boolean;
+  };
   execute(input: TInput, ctx: ToolContext): Promise<TOutput>;
   renderResultForModel?(result: TOutput): string;
 }

@@ -1,0 +1,66 @@
+client:
+  name: basic
+  file-system: device-agnostic
+tools: {}
+targets:
+  "LisaIsland-arm64-apple-macosx26.0-release.exe": ["<LisaIsland-arm64-apple-macosx26.0-release.exe>"]
+  "LisaIsland-arm64-apple-macosx26.0-release.module": ["<LisaIsland-arm64-apple-macosx26.0-release.module>"]
+  "PackageStructure": ["<PackageStructure>"]
+  "main": ["<LisaIsland-arm64-apple-macosx26.0-release.exe>","<LisaIsland-arm64-apple-macosx26.0-release.module>"]
+  "test": ["<LisaIsland-arm64-apple-macosx26.0-release.exe>","<LisaIsland-arm64-apple-macosx26.0-release.module>"]
+default: "main"
+nodes:
+  "/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/":
+    is-directory-structure: true
+    content-exclusion-patterns: [".git",".build"]
+commands:
+  "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/sources":
+    tool: write-auxiliary-file
+    inputs: ["<sources-file-list>","/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/AppDelegate.swift","/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/IslandContent.swift","/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/IslandWindow.swift","/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/NotchDetector.swift","/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/Notifier.swift","/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/main.swift"]
+    outputs: ["/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/sources"]
+    description: "Write auxiliary file /Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/sources"
+
+  "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.product/Objects.LinkFileList":
+    tool: write-auxiliary-file
+    inputs: ["<link-file-list>","/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/AppDelegate.swift.o","/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/IslandContent.swift.o","/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/IslandWindow.swift.o","/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/NotchDetector.swift.o","/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/Notifier.swift.o","/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/main.swift.o"]
+    outputs: ["/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.product/Objects.LinkFileList"]
+    description: "Write auxiliary file /Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.product/Objects.LinkFileList"
+
+  "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/swift-version--58304C5D6DBC2206.txt":
+    tool: write-auxiliary-file
+    inputs: ["<swift-get-version>","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"]
+    outputs: ["/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/swift-version--58304C5D6DBC2206.txt"]
+    always-out-of-date: "true"
+    description: "Write auxiliary file /Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/swift-version--58304C5D6DBC2206.txt"
+
+  "<LisaIsland-arm64-apple-macosx26.0-release.exe>":
+    tool: phony
+    inputs: ["/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland"]
+    outputs: ["<LisaIsland-arm64-apple-macosx26.0-release.exe>"]
+
+  "<LisaIsland-arm64-apple-macosx26.0-release.module>":
+    tool: phony
+    inputs: ["/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/AppDelegate.swift.o","/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/IslandContent.swift.o","/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/IslandWindow.swift.o","/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/NotchDetector.swift.o","/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/Notifier.swift.o","/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/main.swift.o","/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/Modules/LisaIsland.swiftmodule"]
+    outputs: ["<LisaIsland-arm64-apple-macosx26.0-release.module>"]
+
+  "C.LisaIsland-arm64-apple-macosx26.0-release.exe":
+    tool: shell
+    inputs: ["/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/AppDelegate.swift.o","/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/IslandContent.swift.o","/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/IslandWindow.swift.o","/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/NotchDetector.swift.o","/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/Notifier.swift.o","/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/main.swift.o","/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.product/Objects.LinkFileList"]
+    outputs: ["/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland"]
+    description: "Linking ./.build/arm64-apple-macosx/release/LisaIsland"
+    args: ["/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc","-L","/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release","-o","/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland","-module-name","LisaIsland","-Xlinker","-no_warn_duplicate_libraries","-emit-executable","-Xlinker","-dead_strip","-Xlinker","-alias","-Xlinker","_LisaIsland_main","-Xlinker","_main","-Xlinker","-rpath","-Xlinker","@loader_path","@/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.product/Objects.LinkFileList","-Xlinker","-rpath","-Xlinker","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-6.2/macosx","-target","arm64-apple-macosx13.0","-plugin-path","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing","-sdk","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks","-I","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-L","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-g"]
+
+  "C.LisaIsland-arm64-apple-macosx26.0-release.module":
+    tool: shell
+    inputs: ["/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/AppDelegate.swift","/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/IslandContent.swift","/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/IslandWindow.swift","/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/NotchDetector.swift","/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/Notifier.swift","/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/main.swift","/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/swift-version--58304C5D6DBC2206.txt","/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/sources"]
+    outputs: ["/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/AppDelegate.swift.o","/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/IslandContent.swift.o","/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/IslandWindow.swift.o","/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/NotchDetector.swift.o","/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/Notifier.swift.o","/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/main.swift.o","/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/Modules/LisaIsland.swiftmodule"]
+    description: "Compiling Swift Module 'LisaIsland' (6 sources)"
+    args: ["/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc","-module-name","LisaIsland","-emit-dependencies","-emit-module","-emit-module-path","/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/Modules/LisaIsland.swiftmodule","-output-file-map","/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/output-file-map.json","-whole-module-optimization","-num-threads","14","-c","@/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/sources","-I","/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/Modules","-target","arm64-apple-macosx13.0","-whole-module-optimization","-num-threads","14","-serialize-diagnostics","-O","-j14","-DSWIFT_PACKAGE","-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE","-module-cache-path","/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/ModuleCache","-parseable-output","-Xfrontend","-entry-point-function-name","-Xfrontend","LisaIsland_main","-swift-version","5","-plugin-path","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing","-sdk","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks","-I","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-L","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-g","-Xcc","-isysroot","-Xcc","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk","-Xcc","-F","-Xcc","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-Xcc","-F","-Xcc","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks","-Xcc","-fPIC","-Xcc","-g","-package-name","island_mac"]
+
+  "PackageStructure":
+    tool: package-structure-tool
+    inputs: ["/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/","/Users/oratis/Projects/LISA/packaging/island-mac/Package.swift","/Users/oratis/Projects/LISA/packaging/island-mac/Package.resolved"]
+    outputs: ["<PackageStructure>"]
+    description: "Planning build"
+    allow-missing-inputs: true
+

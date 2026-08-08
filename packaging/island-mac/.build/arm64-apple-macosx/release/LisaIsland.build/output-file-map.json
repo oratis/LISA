@@ -1,0 +1,43 @@
+{
+  "": {
+    "dependencies": "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/LisaIsland.d",
+    "object": "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/LisaIsland.o",
+    "swift-dependencies": "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/master.swiftdeps"
+  },
+  "/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/AppDelegate.swift": {
+    "object": "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/AppDelegate.swift.o",
+    "swiftmodule": "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/AppDelegate~partial.swiftmodule",
+    "swift-dependencies": "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/AppDelegate.swiftdeps",
+    "diagnostics": "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/AppDelegate.dia"
+  },
+  "/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/IslandContent.swift": {
+    "object": "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/IslandContent.swift.o",
+    "swiftmodule": "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/IslandContent~partial.swiftmodule",
+    "swift-dependencies": "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/IslandContent.swiftdeps",
+    "diagnostics": "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/IslandContent.dia"
+  },
+  "/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/IslandWindow.swift": {
+    "object": "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/IslandWindow.swift.o",
+    "swiftmodule": "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/IslandWindow~partial.swiftmodule",
+    "swift-dependencies": "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/IslandWindow.swiftdeps",
+    "diagnostics": "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/IslandWindow.dia"
+  },
+  "/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/NotchDetector.swift": {
+    "object": "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/NotchDetector.swift.o",
+    "swiftmodule": "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/NotchDetector~partial.swiftmodule",
+    "swift-dependencies": "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/NotchDetector.swiftdeps",
+    "diagnostics": "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/NotchDetector.dia"
+  },
+  "/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/Notifier.swift": {
+    "object": "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/Notifier.swift.o",
+    "swiftmodule": "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/Notifier~partial.swiftmodule",
+    "swift-dependencies": "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/Notifier.swiftdeps",
+    "diagnostics": "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/Notifier.dia"
+  },
+  "/Users/oratis/Projects/LISA/packaging/island-mac/Sources/LisaIsland/main.swift": {
+    "object": "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/main.swift.o",
+    "swiftmodule": "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/main~partial.swiftmodule",
+    "swift-dependencies": "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/main.swiftdeps",
+    "diagnostics": "/Users/oratis/Projects/LISA/packaging/island-mac/.build/arm64-apple-macosx/release/LisaIsland.build/main.dia"
+  }
+}

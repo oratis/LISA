@@ -892,6 +892,69 @@ export const MAIN_CSS = `  :root {
   }
   .focus-card .fc-meta { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 11px; font-size: 11px; color: var(--fg-3); }
 
+  /* Provider swimlanes: Claude Code and Codex stay visually distinct while
+     each lane keeps the compact horizontal task-card rhythm. */
+  .agent-lanes {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+  .agent-lane {
+    background: rgba(13, 17, 47, 0.30);
+    border: 1px solid var(--border-new);
+    border-radius: 14px;
+    padding: 11px 12px 5px;
+  }
+  .agent-lane.claude { border-left: 2px solid var(--claude, #ff8c42); }
+  .agent-lane.codex { border-left: 2px solid var(--accent); }
+  .agent-lane-head {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 22px;
+    margin-bottom: 8px;
+  }
+  .agent-lane-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex: none;
+    background: var(--fg-3);
+    box-shadow: 0 0 8px rgba(255,255,255,0.12);
+  }
+  .agent-lane.claude .agent-lane-dot { background: var(--claude, #ff8c42); }
+  .agent-lane.codex .agent-lane-dot { background: var(--accent); }
+  .agent-lane-name {
+    color: var(--fg);
+    font-size: 12.5px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+  .agent-lane-plan {
+    color: var(--proactive);
+    background: var(--proactive-soft);
+    border: 1px solid var(--proactive-glow);
+    border-radius: 999px;
+    padding: 1px 8px;
+    font-size: 9.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .agent-lane-count {
+    margin-left: auto;
+    color: var(--fg-3);
+    font-size: 10.5px;
+    font-variant-numeric: tabular-nums;
+  }
+  .agent-lane-empty {
+    color: var(--fg-faint);
+    font-size: 11.5px;
+    padding: 10px 5px 15px;
+    font-style: italic;
+  }
+
   /* Horizontally-scrolling agent / task cards */
   .card-scroll {
     display: flex;
@@ -901,6 +964,7 @@ export const MAIN_CSS = `  :root {
     margin-bottom: 18px;
     scroll-snap-type: x proximity;
   }
+  .agent-lane .card-scroll { margin-bottom: 0; }
   .ac {
     flex: 0 0 232px;
     scroll-snap-align: start;

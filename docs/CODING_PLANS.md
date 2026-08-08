@@ -228,18 +228,19 @@ scraping of private billing endpoints.
 ### 4. Config
 
 ```jsonc
-// ~/.lisa/agents.json  (existing file)
+// ~/.lisa/agents.json  (observer visibility)
 {
-  "plans": {
-    "claude": { "enabled": true },            // detected from login; opt-in to use
-    "codex":  { "enabled": false },
-    "copilot":{ "enabled": false }
+  "integrations": {
+    "claude-code": { "enabled": true },
+    "codex": { "enabled": true }
   }
 }
 ```
 
-Plus the env overrides that already exist (`LISA_PTY_CLAUDE_CMD`, etc.), and the
-master switch `LISA_PTY_AGENTS=1` until the bridge graduates from "spike."
+The selected delegation target is stored as `LISA_CODING_PLAN=codex` (normally
+written by the CLI/web picker). The env overrides (`LISA_PTY_CLAUDE_CMD`, etc.)
+still apply; `LISA_PTY_AGENTS=1` is required only for the optional interactive
+PTY mode, not headless plan dispatch.
 
 ### What exists vs. what to build
 
@@ -257,6 +258,8 @@ master switch `LISA_PTY_AGENTS=1` until the bridge graduates from "spike."
 | **Plan surfaced in `lisa agents`** | ✅ Phase 4 |
 | **Real usage (rolling-window tokens) in `lisa model list`** | ✅ Phase 5a |
 | **Web plan picker (`/api/plans` + PLANS modal)** | ✅ Phase 5b |
+| **Dashboard Claude/Codex swimlanes + headless plan dispatch** | ✅ |
+| **Selected plan injected into Lisa's orchestration prompt** | ✅ |
 
 ### Suggested phasing
 
@@ -280,6 +283,12 @@ master switch `LISA_PTY_AGENTS=1` until the bridge graduates from "spike."
    not a faked %. The **web UI** has a **PLANS** picker (Phase 5b: `GET /api/plans`
    with status + usage, `POST /api/plans/select`); the island deliberately stays
    status-only, by request.
+5. **Dashboard orchestration.** ✅ *Shipped.* Claude Code and Codex have separate
+   Dashboard swimlanes. The delegate dialog calls `POST /api/plans/run`, which
+   uses the same preflight, same-cwd guard, headless CLI, and dispatch ledger as
+   `run_on_plan`. A selected plan is also injected into Lisa's system prompt, so
+   she treats it as the default worker for substantial coding tasks and follows
+   up through `dispatch_status`.
 
 ---
 
