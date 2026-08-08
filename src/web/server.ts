@@ -2901,6 +2901,34 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       return;
     }
 
+    // F1 (PLAN_UI_SESSION_SHELL_v1.1) — structural step timeline for one
+    // observed session, powering the read-only stream tab. Same tier gate
+    // as activity (no activity ⇒ empty) and a TIGHTER privacy contract:
+    // parseSessionSteps emits file basenames / Bash argv[0] only.
+    if (req.method === "GET" && url.startsWith("/api/agents/steps")) {
+      const q = new URL(url, "http://localhost").searchParams;
+      const agent = q.get("agent") ?? "";
+      const id = q.get("id") ?? "";
+      const session = hub
+        .list()
+        .find((s) => s.agent === agent && s.sessionId === id);
+      if (!session) {
+        res.writeHead(404, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: "unknown_session" }));
+        return;
+      }
+      let steps: unknown[] = [];
+      if (session.activity && session.jsonlPath) {
+        const { parseSessionSteps } = await import(
+          "../integrations/claude-code/parser.js"
+        );
+        steps = await parseSessionSteps(session.jsonlPath);
+      }
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ steps }));
+      return;
+    }
+
     // L6 — cross-agent "while you were away" recap, synthesized from the
     // journal. ?sinceMinutes=N (default 120) bounds the window.
     if (req.method === "GET" && url.startsWith("/api/agents/recap")) {

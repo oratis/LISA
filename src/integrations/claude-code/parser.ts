@@ -392,3 +392,150 @@ function dedupeKeepRecent(items: string[], max: number): string[] {
   }
   return out.slice(-max);
 }
+
+// ── F1 (PLAN_UI_SESSION_SHELL_v1.1): ordered structural step timeline ────────
+//
+// SAME PRIVACY BOUNDARY as parseSessionActivity (block comment above), one
+// notch tighter: step targets are file BASENAMES / Bash argv[0] only — never
+// full paths, text blocks, full commands, or edit payloads. Tested in
+// parser-steps.test.ts with the same secret-planting technique.
+
+/** One structural step in a session's tail — powers the read-only stream tab. */
+export interface AgentStep {
+  /** ISO timestamp when the jsonl line carried one. */
+  ts?: string;
+  kind: "user" | "assistant" | "tool";
+  /** tool_use name (kind === "tool" only). */
+  tool?: string;
+  /** File basename or Bash argv[0] (kind === "tool" only). */
+  target?: string;
+  /** Turn ordinal within the parsed tail — increments on each real user turn. */
+  turn: number;
+  /** A tool error observed at (or right after) this step. */
+  isError?: boolean;
+}
+
+const MAX_STEPS = 200;
+
+export async function parseSessionSteps(filePath: string): Promise<AgentStep[]> {
+  let size: number;
+  try {
+    const st = await fsp.stat(filePath);
+    if (!st.isFile() || st.size === 0) return [];
+    size = st.size;
+  } catch {
+    return [];
+  }
+
+  let tail: string;
+  try {
+    const fd = await fsp.open(filePath, "r");
+    try {
+      const length = Math.min(ACTIVITY_TAIL_BYTES, size);
+      const buf = Buffer.alloc(length);
+      await fd.read(buf, 0, length, size - length);
+      tail = buf.toString("utf8");
+    } finally {
+      await fd.close();
+    }
+  } catch {
+    return [];
+  }
+
+  const lines = tail.split("\n").filter(Boolean);
+  if (size > ACTIVITY_TAIL_BYTES && lines.length > 0) lines.shift();
+
+  const steps: AgentStep[] = [];
+  let turn = 0;
+
+  const basenameOf = (p: string): string => {
+    const parts = p.split("/").filter(Boolean);
+    return parts.length ? parts[parts.length - 1]! : p;
+  };
+
+  for (const line of lines) {
+    let e: unknown;
+    try {
+      e = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (!e || typeof e !== "object") continue;
+    const obj = e as Record<string, unknown>;
+
+    const type = readString(obj.type);
+    if (type && META_TYPES.has(type)) continue;
+    const ts = readString(obj.timestamp);
+
+    const msg = obj.message;
+    const m = msg && typeof msg === "object" ? (msg as Record<string, unknown>) : null;
+    const content = m ? m.content : null;
+
+    // Structural classification only — block TYPES are inspected, block
+    // text never is.
+    let hasText = false;
+    let hasToolResult = false;
+    const toolBlocks: Array<Record<string, unknown>> = [];
+    if (Array.isArray(content)) {
+      for (const block of content) {
+        if (!block || typeof block !== "object") continue;
+        const b = block as Record<string, unknown>;
+        if (b.type === "text") hasText = true;
+        else if (b.type === "tool_result") hasToolResult = true;
+        else if (b.type === "tool_use") toolBlocks.push(b);
+      }
+    } else if (typeof content === "string") {
+      hasText = content.length > 0;
+    }
+
+    if (type === "user") {
+      if (hasToolResult) {
+        // A tool_result envelope, not a human turn — attribute errors to
+        // the most recent tool step.
+        if (obj.is_error === true || obj.error === true) {
+          for (let i = steps.length - 1; i >= 0; i--) {
+            if (steps[i]!.kind === "tool") {
+              steps[i]!.isError = true;
+              break;
+            }
+          }
+        }
+      } else if (hasText) {
+        turn++;
+        steps.push({ ts, kind: "user", turn });
+      }
+      continue;
+    }
+
+    if (type === "assistant") {
+      for (const b of toolBlocks) {
+        const name = readString(b.name);
+        if (!name) continue;
+        let target: string | undefined;
+        const input = b.input;
+        if (input && typeof input === "object") {
+          const inp = input as Record<string, unknown>;
+          for (const k of PATH_KEYS) {
+            const p = inp[k];
+            if (typeof p === "string" && p) {
+              target = basenameOf(p);
+              break;
+            }
+          }
+          if (!target && name.toLowerCase() === "bash") {
+            const cmd = inp.command;
+            if (typeof cmd === "string" && cmd.trim()) {
+              target = "$ " + cmd.trim().split(/\s+/)[0];
+            }
+          }
+        }
+        steps.push({ ts, kind: "tool", turn, tool: name, target });
+      }
+      if (toolBlocks.length === 0 && hasText) {
+        steps.push({ ts, kind: "assistant", turn });
+      }
+    }
+  }
+
+  return steps.slice(-MAX_STEPS);
+}

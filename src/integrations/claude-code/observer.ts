@@ -26,6 +26,9 @@ function toAgentSession(info: ClaudeSessionInfo): AgentSession {
     stateReason: info.stateReason,
     lastMtime: info.lastMtime,
     activity: info.activity,
+    // Server-internal file handle for the step-timeline endpoint;
+    // agentSessionsResponse strips it before serialization.
+    jsonlPath: info.jsonlPath,
   };
 }
 

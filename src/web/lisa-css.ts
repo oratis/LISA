@@ -931,6 +931,135 @@ export const MAIN_CSS = `  :root {
   }
   .stab-new:hover { color: var(--accent); border-color: var(--accent); }
 
+  /* ── Agent read-only stream (F1) — swaps in for the chat surface while
+     an agent tab is active (body.agent-tab-active). ─────────────── */
+  body.agent-tab-active #viewChat.view.active { grid-template-rows: auto 1fr; }
+  body.agent-tab-active #log,
+  body.agent-tab-active #attachPreview,
+  body.agent-tab-active #form { display: none !important; }
+  #agentStream { display: none; }
+  body.agent-tab-active #agentStream {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+    padding: 10px 22px 16px;
+    gap: 10px;
+  }
+  .as-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-new);
+    border-radius: 12px;
+    font-size: 12px;
+    flex: none;
+  }
+  .as-head .agent-glyph { width: 22px; height: 22px; font-size: 11px; border-radius: 6px; }
+  .as-head b { font-size: 12.5px; color: var(--fg); }
+  .as-head .meta {
+    color: var(--fg-3);
+    font-size: 11px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+    flex: 1;
+  }
+  .ro-badge {
+    flex: none;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    color: var(--claude);
+    background: var(--claude-soft);
+    border: 1px solid var(--claude-soft);
+    padding: 2px 9px;
+    border-radius: 20px;
+  }
+  .as-perm {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: var(--warm-soft);
+    border: 1px solid var(--warm);
+    border-radius: 9px;
+    font-size: 12px;
+    color: var(--fg);
+    flex: none;
+  }
+  .as-perm code {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 11px;
+    background: var(--bg-hover, rgba(255,255,255,.05));
+    padding: 1px 6px;
+    border-radius: 4px;
+  }
+  .as-perm .grow { flex: 1; }
+  .as-steps {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    scrollbar-width: thin;
+  }
+  .as-steps pre.pty-tail {
+    margin: 0;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--fg-2);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .srow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 5px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    color: var(--fg-2);
+    flex: none;
+  }
+  .srow:hover { background: var(--bg-card); }
+  .srow .sic { width: 16px; text-align: center; flex: none; font-size: 12px; }
+  .srow .sdetail {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 11px;
+    color: var(--fg-3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .srow .stime { margin-left: auto; flex: none; font-size: 10px; color: var(--fg-faint); }
+  .srow.turn {
+    color: var(--fg);
+    font-weight: 600;
+    margin-top: 7px;
+    border-left: 2px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+  }
+  .srow.err .sdetail, .srow.err { color: var(--err-color); }
+  .as-foot { display: flex; gap: 8px; flex: none; }
+  .as-foot input {
+    flex: 1;
+    background: var(--bg-card-strong);
+    border: 1px solid var(--border-strong);
+    border-radius: 9px;
+    padding: 9px 13px;
+    color: var(--fg);
+    font-family: inherit;
+    font-size: 12.5px;
+    outline: none;
+  }
+  .as-foot .mc { font-size: 11.5px; padding: 6px 14px; }
+
   /* ── Right panel (status rail) ──────────────────────────────────
      One structured full-height panel, symmetric with the sidebar: the
      relocated sidebar lower half (wanting / agents / mail / reflection)

@@ -49,14 +49,19 @@ export function agentSessionsResponse(
   liveClaudeSessions: ReadonlySet<string>,
 ): AgentSessionsResponse {
   return {
-    sessions: sessions.map((session) => ({
-      ...session,
-      lastMtime: new Date(session.lastMtime).toISOString(),
-      ...(session.agent === "claude-code" &&
-      !session.controllable &&
-      !liveClaudeSessions.has(session.sessionId)
-        ? { resumable: true }
-        : {}),
-    })),
+    sessions: sessions.map((session) => {
+      // jsonlPath is a server-internal file handle (step-timeline endpoint);
+      // it must never reach the wire (it leaks the local home directory).
+      const { jsonlPath: _jsonlPath, ...rest } = session;
+      return {
+        ...rest,
+        lastMtime: new Date(session.lastMtime).toISOString(),
+        ...(session.agent === "claude-code" &&
+        !session.controllable &&
+        !liveClaudeSessions.has(session.sessionId)
+          ? { resumable: true }
+          : {}),
+      };
+    }),
   };
 }

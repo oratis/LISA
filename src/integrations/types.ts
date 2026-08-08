@@ -92,6 +92,12 @@ export interface AgentSession {
   /** When a controllable PTY is a resume-adopt, the real claude sessionId it
    *  continues — lets the roster drop the observe-only duplicate of that session. */
   adoptedSessionId?: string;
+  /**
+   * SERVER-INTERNAL: absolute path of the session's transcript file, set by
+   * adapters that can serve a structural step timeline (claude-code). Never
+   * serialized — agentSessionsResponse strips it before the wire.
+   */
+  jsonlPath?: string;
 }
 
 /** Visibility tier — how deeply LISA may inspect a session. See plan §3. */

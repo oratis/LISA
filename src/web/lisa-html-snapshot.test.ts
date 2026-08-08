@@ -125,10 +125,19 @@ import { MAIN_HTML } from "./lisa-html.js";
  * source glyphs; localStorage "lisaTreeMode", per-mode collapse keys); and a
  * new fnbar #fnPanel button collapses the right panel (body.rb-collapsed +
  * localStorage "lisaRightbar"), independent of the ≤1180px auto-hide.
+ * Then: v1.1 F1 — the read-only agent stream: an #agentStream surface inside
+ * #viewChat (head card / pending-permission banner / turn-separated step
+ * rows / control footer) that swaps in for the chat surface while an agent
+ * tab is active (body.agent-tab-active); agent tabs join the tab strip
+ * ({t:'agent',…} entries in "lisaOpenSessions", back-compat with the old
+ * string-only payload); the inspector gains a "▤ stream" action. Steps come
+ * from the new GET /api/agents/steps (parseSessionSteps — basenames/argv[0]
+ * only, tier-gated), and PTY sessions render their live terminal tail from
+ * the existing /api/agents/pty/{id}/stream SSE instead.
  */
-const EXPECTED_LENGTH = 272187;
+const EXPECTED_LENGTH = 287343;
 const EXPECTED_SHA256 =
-  "fa81e8ecc01fc79ac0ade89bb9ae286dbdb93f119fd36afac8f0abbef64076c4";
+  "c46a802e9f05f24b31531b1651691ed86a6e6d8010d0b9342c4433b59e3a3863";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);

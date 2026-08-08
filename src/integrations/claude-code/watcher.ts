@@ -116,6 +116,12 @@ export interface ClaudeSessionInfo {
    * Privacy: structural metadata only — never conversation content.
    */
   activity?: SessionActivity;
+  /**
+   * Absolute path of the session's jsonl. Server-internal — the step
+   * timeline endpoint (PLAN_UI_SESSION_SHELL_v1.1 F1) resolves the file
+   * through this; it is STRIPPED from the wire by agentSessionsResponse.
+   */
+  jsonlPath?: string;
 }
 
 export interface ClaudeSessionUpdate {
@@ -356,6 +362,7 @@ export class ClaudeCodeWatcher extends EventEmitter {
       stateReason: derived.stateReason,
       cwd,
       activity: derived.activity,
+      jsonlPath: filePath,
     };
   }
 

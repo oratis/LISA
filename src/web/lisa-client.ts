@@ -1668,6 +1668,9 @@ if ('serviceWorker' in navigator) {
     });
     renderSessionTree();
     renderInspector();
+    // Live refresh for an open stream tab (head/perm/foot reflect the
+    // newest snapshot; steps repoll on their own timer too).
+    if (currentAgentTab) renderStreamView();
   }
 
   // ── Tree view mode (F3): group by agent kind (default) or by project ──
@@ -1707,7 +1710,9 @@ if ('serviceWorker' in navigator) {
     leaf.addEventListener('click', function () {
       selInsp = { type: 'lisa', id: s.id };
       renderInspector();
-      switchSession(s.id);
+      closeStreamView();
+      if (s.id === window.lisaActiveSessionId) renderSessionUI();
+      else switchSession(s.id);
     });
     return leaf;
   }
@@ -1975,6 +1980,15 @@ if ('serviceWorker' in navigator) {
     const id = s.sessionId;
     const acts = document.createElement('div');
     acts.className = 'session-ctrl insp-actions';
+    // F1 — every agent session gets a read-only step stream tab.
+    const streamBtn = document.createElement('button');
+    streamBtn.className = 'mc';
+    streamBtn.textContent = '▤ stream';
+    streamBtn.title = 'Open the read-only step stream';
+    streamBtn.addEventListener('click', function () {
+      if (window.lisaOpenAgentStream) window.lisaOpenAgentStream(s);
+    });
+    acts.appendChild(streamBtn);
     if (fam === 'managed' && a.pendingPermission) {
       const ap = document.createElement('button');
       ap.className = 'mc approve'; ap.textContent = '✓ approve';
@@ -2130,13 +2144,21 @@ if ('serviceWorker' in navigator) {
   // client-side notion (which sessions you keep at hand), persisted in
   // localStorage; the tree is the full on-disk list.
   let cachedSessions = [];
+  // Open tabs: 'sessionId' strings (Lisa sessions) or {t:'agent', agent, id,
+  // label} objects (read-only agent stream tabs, F1). Old string-only
+  // payloads load unchanged.
   let openTabIds = [];
   try {
     const rawTabs = localStorage.getItem('lisaOpenSessions');
-    if (rawTabs) openTabIds = JSON.parse(rawTabs).filter(function (x) { return typeof x === 'string'; });
+    if (rawTabs) openTabIds = JSON.parse(rawTabs).filter(function (x) {
+      return typeof x === 'string' || (x && x.t === 'agent' && typeof x.agent === 'string' && typeof x.id === 'string');
+    });
   } catch (e) { openTabIds = []; }
   function saveTabs() {
     try { localStorage.setItem('lisaOpenSessions', JSON.stringify(openTabIds.slice(0, 12))); } catch (e) {}
+  }
+  function tabKeyOf(entry) {
+    return typeof entry === 'string' ? entry : entry.agent + '/' + entry.id;
   }
   function sessionLabel(s) {
     // F2 auto-naming: the FIRST user message is the session's name (the
@@ -2173,6 +2195,7 @@ if ('serviceWorker' in navigator) {
   async function newSession() {
     if (switching) return;
     switching = true;
+    closeStreamView();
     document.body.classList.add('session-switching');
     try {
       const r = await fetch('/api/sessions', { method: 'POST' });
@@ -2187,14 +2210,19 @@ if ('serviceWorker' in navigator) {
     refreshSessionsBadge();
   }
   function ensureTab(id) {
-    if (openTabIds.indexOf(id) < 0) openTabIds.unshift(id);
+    if (!openTabIds.some(function (x) { return tabKeyOf(x) === id; })) openTabIds.unshift(id);
     saveTabs();
   }
-  function closeTab(id) {
-    const idx = openTabIds.indexOf(id);
+  function closeTab(key) {
+    const idx = openTabIds.findIndex(function (x) { return tabKeyOf(x) === key; });
     if (idx >= 0) openTabIds.splice(idx, 1);
     saveTabs();
-    if (id === window.lisaActiveSessionId && openTabIds.length) {
+    if (currentAgentTab && tabKeyOf(currentAgentTab) === key) {
+      closeStreamView();
+      renderSessionUI();
+      return;
+    }
+    if (key === window.lisaActiveSessionId && openTabIds.length && typeof openTabIds[0] === 'string') {
       switchSession(openTabIds[0]);
       return;
     }
@@ -2231,25 +2259,50 @@ if ('serviceWorker' in navigator) {
     const strip = document.getElementById('tabStrip');
     if (!strip) return;
     strip.innerHTML = '';
-    // Drop tabs whose session vanished from disk.
-    openTabIds = openTabIds.filter(function (id) { return sessionById(id) !== null || id === window.lisaActiveSessionId; });
+    // Drop Lisa tabs whose session vanished from disk; agent tabs persist
+    // (their sessions may simply be outside the 30-min active window).
+    openTabIds = openTabIds.filter(function (x) {
+      if (typeof x !== 'string') return true;
+      return sessionById(x) !== null || x === window.lisaActiveSessionId;
+    });
     if (window.lisaActiveSessionId) ensureTab(window.lisaActiveSessionId);
-    openTabIds.slice(0, 6).forEach(function (id) {
-      const s = sessionById(id);
-      const isActive = id === window.lisaActiveSessionId;
+    openTabIds.slice(0, 6).forEach(function (entry) {
+      const key = tabKeyOf(entry);
+      const isAgent = typeof entry !== 'string';
+      const isActive = isAgent
+        ? !!(currentAgentTab && tabKeyOf(currentAgentTab) === key)
+        : (!currentAgentTab && entry === window.lisaActiveSessionId);
       const tab = document.createElement('button');
       tab.type = 'button';
       tab.className = 'stab' + (isActive ? ' active' : '');
-      tab.innerHTML = '<span class="pip"></span><span class="stab-name"></span><span class="stab-x" title="Close tab">×</span>';
-      if (isActive) tab.querySelector('.pip').classList.add('live');
-      tab.querySelector('.stab-name').textContent = s ? sessionLabel(s) : id;
+      tab.innerHTML = '<span class="pip"></span>' + (isAgent ? '<span class="agent-glyph mini"></span>' : '') + '<span class="stab-name"></span><span class="stab-x" title="Close tab">×</span>';
+      if (isAgent) {
+        const s = agentByKey(key);
+        const g = tab.querySelector('.agent-glyph');
+        const kindName = AGENT_NAMES[entry.agent] || entry.agent;
+        g.classList.add(agentGlyphClass(entry.agent));
+        g.textContent = (kindName.charAt(0) || 'A').toUpperCase();
+        const st = s ? (s.state || 'unknown') : 'unknown';
+        if (st === 'working' || st === 'waiting' || st === 'error') tab.querySelector('.pip').classList.add(st);
+        tab.querySelector('.stab-name').textContent = s ? agentLabel(s) : (entry.label || entry.id);
+      } else {
+        const s = sessionById(entry);
+        if (isActive) tab.querySelector('.pip').classList.add('live');
+        tab.querySelector('.stab-name').textContent = s ? sessionLabel(s) : entry;
+      }
       tab.addEventListener('click', function (e) {
         if (e.target && e.target.classList && e.target.classList.contains('stab-x')) {
           e.stopPropagation();
-          closeTab(id);
+          closeTab(key);
           return;
         }
-        switchSession(id);
+        if (isAgent) {
+          openStreamTab(entry);
+        } else {
+          closeStreamView();
+          if (entry === window.lisaActiveSessionId) renderSessionUI();
+          else switchSession(entry);
+        }
       });
       strip.appendChild(tab);
     });
@@ -2260,6 +2313,201 @@ if ('serviceWorker' in navigator) {
     plus.textContent = '＋';
     plus.addEventListener('click', newSession);
     strip.appendChild(plus);
+  }
+
+  // ── F1: read-only agent stream tab ─────────────────────────────────
+  // An agent tab swaps the chat surface for a structural step timeline
+  // (GET /api/agents/steps; PTY sessions stream their terminal tail over
+  // the existing SSE endpoint instead). 4s visibility-gated polling, plus
+  // refresh on agent_session_update via setClaudeSessions.
+  let currentAgentTab = null;
+  let streamTimer = null;
+  let ptyStream = null;
+  function ensureAgentTab(s) {
+    const key = agentKey(s);
+    if (!openTabIds.some(function (x) { return tabKeyOf(x) === key; })) {
+      openTabIds.unshift({ t: 'agent', agent: s.agent, id: s.sessionId, label: agentLabel(s) });
+      saveTabs();
+    }
+  }
+  window.lisaOpenAgentStream = function (s) {
+    ensureAgentTab(s);
+    openStreamTab({ t: 'agent', agent: s.agent, id: s.sessionId, label: agentLabel(s) });
+  };
+  function openStreamTab(entry) {
+    if (ptyStream) { ptyStream.close(); ptyStream = null; }
+    currentAgentTab = entry;
+    document.body.classList.add('agent-tab-active');
+    if (window.lisaShowView) window.lisaShowView('chat');
+    renderSessionUI();
+    renderStreamView();
+    if (streamTimer) clearInterval(streamTimer);
+    streamTimer = setInterval(function () {
+      if (currentAgentTab && !document.hidden) refreshStreamSteps();
+    }, 4000);
+  }
+  function closeStreamView() {
+    if (!currentAgentTab) return;
+    currentAgentTab = null;
+    document.body.classList.remove('agent-tab-active');
+    if (streamTimer) { clearInterval(streamTimer); streamTimer = null; }
+    if (ptyStream) { ptyStream.close(); ptyStream = null; }
+  }
+  function streamSession() {
+    return currentAgentTab ? agentByKey(tabKeyOf(currentAgentTab)) : null;
+  }
+  function renderStreamView() {
+    if (!currentAgentTab) return;
+    const head = document.getElementById('asHead');
+    const perm = document.getElementById('asPerm');
+    const foot = document.getElementById('asFoot');
+    if (!head || !perm || !foot) return;
+    const s = streamSession();
+    head.innerHTML = '';
+    const kindName = AGENT_NAMES[currentAgentTab.agent] || currentAgentTab.agent;
+    const g = document.createElement('span');
+    g.className = 'agent-glyph ' + agentGlyphClass(currentAgentTab.agent);
+    g.textContent = (kindName.charAt(0) || 'A').toUpperCase();
+    head.appendChild(g);
+    const nameEl = document.createElement('b');
+    nameEl.textContent = s ? agentLabel(s) : (currentAgentTab.label || currentAgentTab.id);
+    head.appendChild(nameEl);
+    const meta = document.createElement('span');
+    meta.className = 'meta';
+    if (s) {
+      const a = s.activity || {};
+      const bits = [kindName, s.project];
+      if (a.gitBranch) bits.push(a.gitBranch);
+      if (a.turnCount != null) bits.push(a.turnCount + ' turns');
+      if (a.tokens) bits.push(fmtTokens(a.tokens) + ' tok');
+      meta.textContent = bits.join(' · ');
+    } else {
+      meta.textContent = kindName + ' · (outside the active window)';
+    }
+    head.appendChild(meta);
+    const badge = document.createElement('span');
+    badge.className = 'ro-badge';
+    badge.textContent = s && s.controllable ? s.controllable : 'observing';
+    head.appendChild(badge);
+    perm.style.display = 'none';
+    perm.innerHTML = '';
+    if (s && s.controllable === 'managed' && s.activity && s.activity.pendingPermission) {
+      perm.style.display = '';
+      const label = document.createElement('span');
+      label.textContent = '⚠ pending';
+      perm.appendChild(label);
+      const code = document.createElement('code');
+      code.textContent = s.activity.pendingPermission;
+      perm.appendChild(code);
+      const grow = document.createElement('span');
+      grow.className = 'grow';
+      perm.appendChild(grow);
+      const ap = document.createElement('button');
+      ap.className = 'mc approve'; ap.textContent = '✓ approve';
+      ap.addEventListener('click', function () { agentAction('managed', s.sessionId, 'approve', { allow: true }); });
+      const dn = document.createElement('button');
+      dn.className = 'mc deny'; dn.textContent = '✕ deny';
+      dn.addEventListener('click', function () { agentAction('managed', s.sessionId, 'approve', { allow: false }); });
+      perm.appendChild(ap);
+      perm.appendChild(dn);
+    }
+    foot.innerHTML = '';
+    if (s && s.controllable && s.state !== 'done') {
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.placeholder = s.controllable === 'pty' ? 'type into the CLI…' : 'send a follow-up…';
+      inp.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229 && inp.value.trim()) {
+          e.preventDefault();
+          agentAction(s.controllable, s.sessionId, 'send', { text: inp.value.trim() });
+          inp.value = '';
+        }
+      });
+      foot.appendChild(inp);
+      const cancel = document.createElement('button');
+      cancel.className = 'mc cancel'; cancel.textContent = '⏹ cancel';
+      cancel.addEventListener('click', function () { agentAction(s.controllable, s.sessionId, 'cancel', null); });
+      foot.appendChild(cancel);
+    } else if (s && s.resumable) {
+      const note = document.createElement('span');
+      note.style.cssText = 'font-size:11px;color:var(--fg-3);align-self:center;';
+      note.textContent = 'observe-only — adopt it from the inspector to take control';
+      foot.appendChild(note);
+    }
+    refreshStreamSteps();
+  }
+  function refreshStreamSteps() {
+    if (!currentAgentTab) return;
+    const stepsEl = document.getElementById('asSteps');
+    if (!stepsEl) return;
+    const s = streamSession();
+    // PTY sessions: live terminal tail over the existing SSE endpoint.
+    if (s && s.controllable === 'pty') {
+      if (!ptyStream) {
+        stepsEl.innerHTML = '';
+        const pre = document.createElement('pre');
+        pre.className = 'pty-tail';
+        stepsEl.appendChild(pre);
+        ptyStream = new EventSource('/api/agents/pty/' + encodeURIComponent(s.sessionId) + '/stream');
+        ptyStream.onmessage = function (e) {
+          try {
+            const ev = JSON.parse(e.data);
+            if (ev.type === 'snapshot') pre.textContent = ev.text || '';
+            else if (ev.type === 'chunk') pre.textContent += ev.text || '';
+            else if (ev.type === 'end') { if (ptyStream) { ptyStream.close(); ptyStream = null; } }
+            stepsEl.scrollTop = stepsEl.scrollHeight;
+          } catch (err) {}
+        };
+        ptyStream.onerror = function () { if (ptyStream) { ptyStream.close(); ptyStream = null; } };
+      }
+      return;
+    }
+    fetch('/api/agents/steps?agent=' + encodeURIComponent(currentAgentTab.agent) + '&id=' + encodeURIComponent(currentAgentTab.id))
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d || !currentAgentTab) return;
+        renderSteps(stepsEl, d.steps || []);
+      })
+      .catch(function () {});
+  }
+  function stepIcon(tool) {
+    const t = (tool || '').toLowerCase();
+    if (t === 'read') return '📖';
+    if (t === 'edit' || t === 'write' || t === 'notebookedit') return '✏️';
+    if (t === 'bash') return '🖥';
+    if (t === 'grep' || t === 'glob') return '🔎';
+    return '⚙';
+  }
+  function renderSteps(stepsEl, steps) {
+    const atBottom = stepsEl.scrollHeight - stepsEl.scrollTop - stepsEl.clientHeight < 60;
+    stepsEl.innerHTML = '';
+    if (!steps.length) {
+      const empty = document.createElement('div');
+      empty.className = 'session-empty';
+      empty.textContent = '(no structural steps in the recent tail — metadata-only visibility, or a quiet session)';
+      stepsEl.appendChild(empty);
+      return;
+    }
+    steps.forEach(function (st) {
+      const row = document.createElement('div');
+      if (st.kind === 'user') {
+        row.className = 'srow turn';
+        row.innerHTML = '<span class="sic">💬</span><span></span><span class="stime"></span>';
+        row.children[1].textContent = 'turn ' + st.turn;
+      } else if (st.kind === 'assistant') {
+        row.className = 'srow';
+        row.innerHTML = '<span class="sic">💭</span><span>reply</span><span class="stime"></span>';
+      } else {
+        row.className = 'srow' + (st.isError ? ' err' : '');
+        row.innerHTML = '<span class="sic"></span><span></span><span class="sdetail"></span><span class="stime"></span>';
+        row.querySelector('.sic').textContent = stepIcon(st.tool);
+        row.children[1].textContent = st.tool || '';
+        row.querySelector('.sdetail').textContent = st.target || '';
+      }
+      if (st.ts) row.querySelector('.stime').textContent = relativeTime(st.ts);
+      stepsEl.appendChild(row);
+    });
+    if (atBottom) stepsEl.scrollTop = stepsEl.scrollHeight;
   }
 
   function renderSessionUI() {

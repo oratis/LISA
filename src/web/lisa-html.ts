@@ -148,6 +148,15 @@ ${MAIN_CSS}
       <button class="fbtn" type="button" id="fnTheme" title="Theme: Nebula ↔ Calm" aria-label="Toggle theme"><svg id="fnThemeMoon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg><svg id="fnThemeSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></button>
     </div>
 
+    <!-- Agent read-only stream (F1) — swaps in for the chat surface while
+         an agent tab is active; wired by the sidebar-live block. -->
+    <div id="agentStream">
+      <div class="as-head" id="asHead"></div>
+      <div class="as-perm" id="asPerm" style="display:none"></div>
+      <div class="as-steps" id="asSteps"></div>
+      <div class="as-foot" id="asFoot"></div>
+    </div>
+
     <!-- Chat log (messages, tool blocks, idle blocks injected here) -->
     <div id="log"></div>
 
