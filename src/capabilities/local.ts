@@ -12,7 +12,6 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { atomicWrite } from "../fs-utils.js";
-import { defaultSandboxSpec, wrapForSandbox } from "../sandbox/sandbox.js";
 import type {
   Capabilities,
   ExecOptions,
@@ -120,20 +119,10 @@ function runChild(
 
 export const localShell: ShellCapability = {
   async run(command: string, opts: ExecOptions): Promise<ExecResult> {
-    // The opt-in LISA_SANDBOX wrapper moved here from the bash tool: which
-    // confinement a command runs under is a property of the execution world,
-    // not of the tool that asked. H2 replaces this with a real sandboxed
-    // provider (and closes the hole that fs writes never went through it);
-    // for now it is the previous behaviour, relocated unchanged.
-    const wrapped = await wrapForSandbox(
-      defaultSandboxSpec({ cwd: opts.cwd }),
-      command,
-    );
-    try {
-      return await runChild(wrapped.command, wrapped.args, opts);
-    } finally {
-      await wrapped.cleanup?.();
-    }
+    // Unconfined on purpose. Confinement is a property of the execution world,
+    // so it lives in the sandboxed provider that wraps this one — not in an
+    // `if` here that every future provider would have to remember to repeat.
+    return await runChild("/bin/bash", ["-lc", command], opts);
   },
   async exec(file: string, args: string[], opts: ExecOptions): Promise<ExecResult> {
     return await runChild(file, args, opts);

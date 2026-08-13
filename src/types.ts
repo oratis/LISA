@@ -73,6 +73,15 @@ export interface SessionHeader {
   startedAt: string;
   cwd: string;
   model: string;
+  /**
+   * The sandbox mode this session runs under (H2). Fixed when the session is
+   * created and never re-read: changing a setting mid-flight must not silently
+   * widen — or narrow — what an already-running task is allowed to do.
+   *
+   * Optional because sessions written before H2 do not have it; absent means
+   * "not recorded", not "unconfined".
+   */
+  sandboxMode?: import("./sandbox/mode.js").SandboxMode;
 }
 
 export type SessionEntry =
