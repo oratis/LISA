@@ -1,7 +1,13 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { listSkills } from "./skills/manager.js";
+import { discoverSkills, skillSourcesFingerprint } from "./skills/discovery.js";
+import {
+  findProjectRoot,
+  instructionChainFingerprint,
+  loadInstructionChain,
+  renderInstructionChain,
+} from "./instructions/chain.js";
 import { readMemory } from "./memory/store.js";
 import { readIndex } from "./kb/store.js";
 import { annotateMemoryKbLinks } from "./kb/memory-links.js";
@@ -34,6 +40,10 @@ export interface PromptSnapshot {
   skillCount: number;
   memoryBytes: number;
   born: boolean;
+  /** AGENTS.md / CLAUDE.md files folded into this prompt, in read order. */
+  instructionFiles: string[];
+  /** Project skills dropped because a home skill already owns the name. */
+  shadowedProjectSkills: string[];
 }
 
 const FALLBACK_IDENTITY = `You are Lisa, a self-evolving personal AI assistant running locally on the user's machine. Your soul has not been birthed yet — when the user runs \`lisa birth\` (or starts the GUI for the first time) you will gain a unique identity, a North-Star purpose, a constitution of operating principles, and an evolving emotional state. For now, behave as a competent helpful assistant.`;
@@ -63,17 +73,31 @@ const TOOL_DISCIPLINE = `## How you work
 - After each session you'll have a chance to reflect — this is when most soul evolution happens.
 - If you find yourself wishing your toolset were different — a tool you wish existed, a mechanism that feels redundant, a friction you keep hitting — write it into your "meta-wishlist" desire (slug: \`meta-wishlist\`). The user reads that list via \`lisa wishlist\` to inform what gets built next. You're a first-class signal source for what should change about your own architecture.`;
 
-export async function buildSystemPromptSnapshot(): Promise<PromptSnapshot> {
+export async function buildSystemPromptSnapshot(
+  opts: { cwd?: string } = {},
+): Promise<PromptSnapshot> {
+  // The working directory decides which project's AGENTS.md and skills apply.
+  // Defaulted so no existing caller has to change.
+  const cwd = opts.cwd ?? process.cwd();
   const born = await isBorn();
   const soul = born ? await readSoulSummary() : null;
 
-  const skills = await listSkills();
+  const projectRoot = await findProjectRoot(cwd);
+  const discovery = await discoverSkills(projectRoot);
+  const skills = discovery.skills;
   const skillIndex =
     skills.length === 0
       ? "(no skills saved yet — create one with `skill_manage` when something is worth remembering)"
       : skills
-          .map((s) => `- **${s.frontmatter.name}** — ${s.frontmatter.description}`)
+          .map(
+            (s) =>
+              `- **${s.frontmatter.name}** — ${s.frontmatter.description}` +
+              // Say where a skill came from: one she wrote and one this repo
+              // shipped deserve different amounts of trust.
+              (s.scope === "project" ? " *(from this project)*" : ""),
+          )
           .join("\n");
+  const instructions = await loadInstructionChain(cwd);
 
   // Memory entries store `[[kb:slug]]` pointers instead of knowledge (memory is
   // a few KB; the KB is unbounded). A bare pointer is opaque, so resolvable ones
@@ -187,12 +211,18 @@ export async function buildSystemPromptSnapshot(): Promise<PromptSnapshot> {
     );
   }
   sections.push(`## Avatar moods\n\n${moodSection}`);
+  // Last: the project's own conventions are the most specific context, and
+  // being last also keeps them visibly downstream of the soul above.
+  const instructionSection = renderInstructionChain(instructions);
+  if (instructionSection) sections.push(instructionSection);
 
   return {
     text: sections.join("\n\n"),
     skillCount: skills.length,
     memoryBytes: Buffer.byteLength(userMem + agentMem, "utf8"),
     born,
+    instructionFiles: instructions.files.map((f) => f.path),
+    shadowedProjectSkills: discovery.shadowed.map((s) => s.name),
   };
 }
 
@@ -234,8 +264,16 @@ function formatEmotionsForPrompt(values: Record<string, number>): string {
  * Cost: ~10 stat() calls + 3 readdirs. Sub-millisecond on warm cache. Called
  * once per turn, so negligible.
  */
-export async function getPromptFingerprint(): Promise<string> {
+export async function getPromptFingerprint(
+  opts: { cwd?: string } = {},
+): Promise<string> {
+  const cwd = opts.cwd ?? process.cwd();
   const parts: string[] = [];
+  // Project conventions and project skills are prompt inputs too, so editing an
+  // AGENTS.md or dropping in a project skill reaches her on the next turn
+  // rather than next session — the same promise the soul files already have.
+  parts.push(await instructionChainFingerprint(cwd));
+  parts.push(await skillSourcesFingerprint(await findProjectRoot(cwd)));
   // Desire strength is partly a function of wall time, not only file mtimes.
   // A daily bucket makes a long-lived chat rebuild the prompt as wants cool,
   // without churning it every second.
@@ -266,7 +304,10 @@ export async function getPromptFingerprint(): Promise<string> {
   }
   // Directories — concat sorted entry names + per-entry mtime so we catch
   // both content changes AND additions/removals of values/opinions/desires.
-  for (const d of [soulValuesDir(), soulOpinionsDir(), soulDesiresDir(), skillsDir()]) {
+  // The skills directory is not listed here: skillSourcesFingerprint above
+  // already covers it, more precisely (it stats each SKILL.md rather than the
+  // containing directory) and alongside the project-level sources.
+  for (const d of [soulValuesDir(), soulOpinionsDir(), soulDesiresDir()]) {
     parts.push(await dirFingerprint(d));
   }
   // Soul lock matters too — tampered files shift the prompt's "## Notice"

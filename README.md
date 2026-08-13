@@ -611,6 +611,27 @@ until you grant it. See `lisa consent list`.
 
 Claude-Code-compatible plugin format. See [`claude-code` docs](https://github.com/anthropics/claude-code) for the schema. Lisa picks up plugins on every launch.
 
+### `AGENTS.md` / `CLAUDE.md` — the instructions you already wrote
+
+Lisa reads the ecosystem's convention, so moving from Claude Code / Codex / Cursor costs nothing. Layered outermost-first, nearest last:
+
+```
+~/.lisa/AGENTS.md          your own, applies to every project
+<repo root>/AGENTS.md      the project's conventions
+<repo root>/CLAUDE.md      (folded away if identical to AGENTS.md)
+…every directory down to cwd…
+```
+
+Edits hot-reload mid-session, same as the soul files. Capped at 32KB total so a monorepo's instructions can't crowd out her identity.
+
+**They are context, not authority.** These files arrive merely by working in a directory, so the prompt labels each block with its origin and states that project text does not override her constitution — cloning a hostile repo is not a way to give Lisa orders.
+
+### Project skills
+
+Alongside `~/.lisa/skills/`, Lisa reads `<repo>/.lisa/skills/` and `<repo>/.agents/skills/`, so a repo can ship the workflows that only make sense inside it.
+
+On a name collision **the home skill wins** — deliberately the opposite of dsh's nearest-first rule. A skill is prompt material Lisa wrote about how she works; `cd`-ing into a repo must not be enough to redefine one. Project skills are additive, and shown in the prompt tagged `(from this project)`.
+
 ### Executable skills `~/.lisa/skills/<slug>/tool.js`
 
 A skill folder may contain an OPTIONAL `tool.js` that exports a `ToolDefinition`. After explicit approval, it becomes a real registered tool — Lisa can extend her own *capability* set, not just her knowledge.
