@@ -140,21 +140,25 @@ LISA 的会话 JSONL **已经**记录了 `tool_use` / `tool_result`（它们是 
 
 ### 做法（分两步，第一步很便宜）
 
-**Step 1（低成本，先做）**：新增两类日志条目
-- `{type:"prompt", ts, fingerprint, text}` — 会话开始时写一次全文；
-- `{type:"prompt_rebuilt", ts, fingerprint, text}` — 每次热重载写一次全文。
+**Step 1（低成本，先做）**：新增一类日志条目 `{type:"prompt", ts, fingerprint, text, reason}`，`reason` 区分 `initial`（本次运行的开局提示词）与 `rebuilt`（中途热重载）。
 
-`getPromptFingerprint` 已存在（[prompt.ts:237](../src/prompt.ts)），热重载点也已存在（`agent.ts:228` 的 `if (next.fingerprint !== currentFingerprint)`），改动面很小。体积可控：一份系统提示词几 KB，一次会话通常个位数次重载。若嫌大，只在 fingerprint 变化时写全文，其余写 fingerprint 引用。
+`getPromptFingerprint` 已存在（[prompt.ts:237](../src/prompt.ts)），热重载点也已存在（`agent.ts:228` 的 `if (next.fingerprint !== currentFingerprint)`），改动面很小。体积可控：一份系统提示词几 KB，一次会话通常个位数次重载。`fingerprint` 用正文的内容哈希、连续相同不重复写，所以"第 N 条时生效的提示词"= 最近的前一条 prompt 条目，从不自我修改的长对话只花一条。
 
 **Step 2（可选，之后再说）**：把 `SessionStore` 从"消息日志"推向"事件日志"，加一条运行时断言——任何进入 `provider.runTurn` 的输入都必须能从日志重建。这是 dsh 的完整形态，成本高，**不是 1.0 必需**。
 
 **明确不做**：不抄 `assistant/chunk` 级别的流式保真（LISA 的 UI 不需要逐 chunk 回放），不引入 SQLite 持久化（JSONL 够用，projection cache 等有性能问题再说）。
 
+### 实现中发现的边界（Step 1 已落地，见 PR #357）
+
+`systemPrompt` 是**逐字精确**的。但 `messages` 只是会话正典全量，**不等于每轮真正发出去的消息窗口**：web 表层把 `modelContext.history`（历史的有界后缀）传给 `runAgent`，而会话文件保留完整历史（[web/server.ts:4060](../src/web/server.ts) 的注释自己写明了这点）；CLI 与渠道表层不做窗口，两者一致。
+
+也就是说 H3 的不变量目前对**提示词**成立、对**消息窗口**不成立。做 token 级精确重放的调用方需自行处理；做"她被告知自己是谁"分析的不受影响——而后者正是本项的目的。补上窗口边界记录属于 **Step 2**。
+
 ### 验收
 
-- [ ] 会话 JSONL 含 `prompt` / `prompt_rebuilt` 条目，`SessionHeader.version` 同步升级；
-- [ ] 写一个离线脚本：读一条历史会话 → 完整重建每一轮的 `(system, messages)` 输入；
-- [ ] 该脚本成为 Reve drift 指标与论文实验的取数入口（这是本项的真实交付物，不是日志本身）。
+- [x] 会话 JSONL 含 `prompt` 条目，`SessionHeader.version` 同步升级（v1 → v2，旧会话仍可读）；
+- [x] 写一个离线脚本：读一条历史会话 → 重建每一轮的 `(system, messages)` 输入（`src/sessions/replay.ts` + `scripts/replay-session.ts`，随 #357 落地）；
+- [ ] 该脚本成为 Reve drift 指标与论文实验的取数入口（这是本项的真实交付物，不是日志本身）——**还没接上，是下一步**。
 
 ---
 
@@ -166,15 +170,33 @@ dsh 是**目前唯一一个既有本地会话文件、又有 headless CLI、还�
 
 **两个层级，按成本**：
 
-1. **L1 OBSERVE（约 1 天）**：写 `src/integrations/dsh/observer.ts`，读 `$DSH_HOME` 下的会话 JSONL，映射到 `AgentSession`。**做之前先确认 dsh 的磁盘格式** —— README 明示 `SESSION_FORMAT_VERSION = 0` 不给兼容承诺，所以适配器必须对未知字段宽容、对格式变更优雅失败（这一点写进适配器注释）。
-2. **L3 COMMAND（约 1 天，L1 之后）**：`dispatch_agent` 增加 `dsh` 后端，用 `dsh --profile headless "job"` 拉起一次性运行。这是 dsh 最稳定的接口（无服务器、跑完退出），比接 ACP/SDK 风险低得多。
+1. **L1 OBSERVE**：写 `src/integrations/dsh/observer.ts`，读 dsh 的会话日志映射到 `AgentSession`。
+2. **L3 COMMAND（L1 之后）**：`dispatch_agent` 增加 `dsh` 后端，用 `dsh --profile headless "job"` 拉起一次性运行。这是 dsh 最稳定的接口（无服务器、跑完退出），比接 ACP/SDK 风险低得多。
 
 **不做**：不接 ACP、不接 dsh SDK、不做 resume-adopt（同 codex 的理由，见 [PTY_AGENTS.md](./PTY_AGENTS.md)）。
 
+### ⚠ 格式核查结果（2026-08-14）：L1 比预估贵得多，**暂缓**
+
+本节原估 L1「约 1 天」，并注明「做之前先确认 dsh 的磁盘格式」。核查做了（读 `deepseek-ai/deepseek-harness` 的 `packages/session/session-persistence-jsonl/src/{format,index}.ts` 与 `docs/subsystems/persistence.md`），**结论推翻了估算**：
+
+| 核查项 | 实际 | 对适配器的影响 |
+|---|---|---|
+| 物理编码 | **默认 Zstandard**（`session.jsonl.zstd`），且 header 单独占一个可独立解码的首帧；dsh 自带 `zstd-*-decoder.ts` | 不是"读一个 JSONL"。要么实现兼容其分帧约定的 zstd 解码，要么只支持用户显式配了 `compression: 'none'` 的部署 |
+| 日志根目录 | `root` 是**必填插件配置、无默认值**（他们明确拒绝默认 `process.cwd()`） | 没有 `~/.claude/projects` 那样的公知路径可监听。适配器得解析当前 profile 的 `cordis.patch.yml` 才知道去哪找 |
+| 事件行 | `packChunks` **默认 true**，delta 会被打包成 `text-chunks`/`reasoning-chunks`/`tool-call-chunks` 行，需 `decodeStorageRecord` | 第二层解码 |
+| 目录布局 | `<root>/--<cwd 转义>--/<会话 id 转义>/session.jsonl[.zstd]`，转义规则自定义（`~XXXX`） | 可实现，但要照抄两套转义函数 |
+| 版本 | `SESSION_FORMAT_VERSION`，遇到不认识的版本主动拒绝，且 README 不给兼容承诺 | 每次 dsh 升版都可能要跟 |
+
+**决定：L1 暂缓，不写投机适配器。** 在本机没有装 dsh、无法对真实产物验证的情况下照着源码猜一个解析器，正是 [OBSERVER_FIDELITY.md](./OBSERVER_FIDELITY.md) 记录过的那类问题——单测能证明解析逻辑对得上 fixture，证明不了 fixture 对得上真实工具写出来的东西。
+
+**重新排期**：
+- **先做 L3**（`dispatch_agent` 的 dsh 后端）。它依赖的是 README 明文承诺的 CLI 契约（`dsh --profile headless "job"` → 跑完打印最终答案退出），面比磁盘格式窄得多、也稳定得多，而且不需要先有 L1。原文把 L1 排在 L3 前面是错的。
+- **L1 的前置条件**：本机装一个真实 dsh、跑出几个会话、按 `scripts/verify-observers.ts` 的路子对真实产物核对字段。没有这一步就不要开工。
+
 ### 验收
-- [ ] `lisa` 能在 hub 里列出正在跑的 dsh 会话，字段深度对齐 Tier-2 基线；
-- [ ] `dispatch_agent(backend:"dsh")` 能跑通一个真实任务并回收输出；
-- [ ] dsh 未安装 / 格式变更时适配器降级为"不可见"，不报错、不崩 hub。
+- [ ] （L3）`dispatch_agent(backend:"dsh")` 能跑通一个真实任务并回收输出；dsh 未安装时给出清晰错误而非崩溃；
+- [ ] （L1，前置满足后）`lisa` 能在 hub 里列出正在跑的 dsh 会话，字段深度对齐 Tier-2 基线；
+- [ ] （L1）dsh 未安装 / 格式变更时适配器降级为"不可见"，不报错、不崩 hub。
 
 ---
 
@@ -193,20 +215,28 @@ dsh 是**目前唯一一个既有本地会话文件、又有 headless CLI、还�
 
 ## 7. 排期
 
-| 优先级 | 项 | 规模 | 服务的支柱 |
-|---|---|---|---|
-| **P0** | H1 能力 seam（fs + shell，local 提供方） | 中（纯重构，行为零变化） | Dispatch / Cloud / 测试 |
-| **P0** | H2 沙箱三档 + fail-closed + 会话级固定 | 中（依赖 H1） | Dispatch / Sense / Foundations |
-| **P0** | H3 Step 1 提示词入日志 + 离线重建脚本 | **小** | Reve / **论文** |
-| **P1** | I1 L1 dsh observer | 小 | Dispatch |
-| **P1** | `AGENTS.md` / `CLAUDE.md` 指令链加载 | 小 | 生态兼容 |
-| **P1** | Skills 加项目级目录 + 热监听 | 小 | 生态兼容 |
-| **P2** | I1 L3 dsh dispatch 后端 | 小 | Dispatch |
-| **P2** | 工具结果 pruner + spill store | 中 | 成本 |
-| **P2** | `session_search` 模型可见工具 | 小（依赖 H3） | 记忆 |
-| **缓** | Code Mode / 用户可编辑 preset | 大 | — |
+状态列更新于 2026-08-14。
+
+| 优先级 | 项 | 规模 | 服务的支柱 | 状态 |
+|---|---|---|---|---|
+| **P0** | H3 Step 1 提示词入日志 + 离线重建脚本 | **小** | Reve / **论文** | ✅ #357 |
+| **P0** | H1 能力 seam（fs + shell，local 提供方） | 中（纯重构，行为零变化） | Dispatch / Cloud / 测试 | ✅ #358 |
+| **P0** | H2 沙箱三档 + fail-closed + 会话级固定 | 中（依赖 H1） | Dispatch / Sense / Foundations | ✅ #359（栈在 #358 上） |
+| **P1** | `AGENTS.md` / `CLAUDE.md` 指令链加载 | 小 | 生态兼容 | ✅ #360 |
+| **P1** | Skills 加项目级目录 | 小 | 生态兼容 | ✅ #360 |
+| ~~P1~~ | ~~Skills 热监听~~ | — | — | ❌ 不做：skills 本来就经提示词指纹每轮重读，加 chokidar 依赖是纯冗余 |
+| **P1** | H3 的取数入口接进 Reve drift 指标 / 论文实验 | 小 | **论文** | 待做（H3 的真实交付物） |
+| **P1** | I1 **L3** dsh dispatch 后端 | 小 | Dispatch | 待做（**已提到 L1 前面**，见 §5 的格式核查） |
+| **P2** | 按 surface 收紧无人值守沙箱默认值（§3 的表） | 小 | Foundations | 待做（会改行为，单独一步） |
+| **P2** | H3 Step 2：记录消息窗口边界 | 中 | 论文精确性 | 待做（见 §4 的边界说明） |
+| **P2** | 工具结果 pruner + spill store | 中 | 成本 | 待做 |
+| **P2** | `session_search` 模型可见工具 | 小（依赖 H3） | 记忆 | 待做 |
+| **暂缓** | I1 **L1** dsh observer | **大**（原估"小"，核查后推翻） | Dispatch | ⛔ 前置未满足，见 §5 |
+| **缓** | Code Mode / 用户可编辑 preset | 大 | — | — |
 
 **建议起手**：**H3 Step 1**。它最小、最独立（不依赖 H1/H2）、且直接产出论文要用的测量工具——先拿到"能离线重建每一轮模型输入"这个能力，后面的 drift/coherence 实验才有地基。然后做 H1，H2 自然长在 H1 上。
+
+*（回看：这个顺序是对的。H3 独立落地，H1 是纯重构、行为零变化，H2 只是在 H1 的 seam 上加一个提供方——如果先做 H2，那三个洞就得在七个工具里各补一遍。）*
 
 ---
 
