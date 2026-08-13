@@ -51,7 +51,15 @@ export interface Skill {
 export interface SessionHeader {
   type: "session";
   id: string;
-  version: 1;
+  /**
+   * 1 — messages only. 2 — adds `prompt` entries (H3, see
+   * docs/PLAN_HARNESS_ALIGNMENT_v1.0.md §4). Readers never branch on this:
+   * every entry reader skips unknown `type`s, so a v1 file reads fine and a
+   * v2 file reads fine in older builds. It exists to tell an *analysis* pass
+   * whether the absence of `prompt` entries means "not recorded" (v1) or
+   * "genuinely unchanged" (v2).
+   */
+  version: 1 | 2;
   startedAt: string;
   cwd: string;
   model: string;
@@ -60,7 +68,22 @@ export interface SessionHeader {
 export type SessionEntry =
   | { type: "message"; ts: string; message: StoredMessage }
   | { type: "model_change"; ts: string; model: string }
-  | { type: "reflection"; ts: string; summary: string };
+  | { type: "reflection"; ts: string; summary: string }
+  /**
+   * The system prompt as the model actually saw it (H3 — "model-visible ⟺
+   * recorded"). Written before the first provider call of a run and again
+   * whenever mid-session hot-reload swaps it, so a historical session can be
+   * replayed with the persona that was live at each turn. `fingerprint` is a
+   * content hash of `text`; consecutive identical ones are not re-written, so
+   * "the prompt in effect at entry N" is the nearest preceding prompt entry.
+   */
+  | {
+      type: "prompt";
+      ts: string;
+      fingerprint: string;
+      text: string;
+      reason: "initial" | "rebuilt";
+    };
 
 export interface AgentEvent {
   type:

@@ -135,6 +135,10 @@ export class ChannelRouter {
         thinking: this.opts.thinking,
         compaction: this.opts.compaction,
         onMessagePersist: (m) => ctx.session.appendMessage(m),
+        // Channel turns get no hot-reload, so this writes exactly one prompt
+        // entry per channel session — but it writes it, so a channel session
+        // is as replayable as a REPL one (H3).
+        onPromptPersist: (text, reason) => ctx.session.appendPrompt(text, reason),
         moodOrigin: `a message on your ${channel.name} channel`,
       });
       ctx.history.length = 0;

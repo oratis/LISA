@@ -750,6 +750,7 @@ async function main(): Promise<void> {
       },
       onEvent: renderEvent,
       onMessagePersist: (msg) => session.appendMessage(msg),
+      onPromptPersist: (text, reason) => session.appendPrompt(text, reason),
       hotReload: {
         initialFingerprint: fresh.fingerprint,
         rebuild: rebuildPrompt,

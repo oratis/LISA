@@ -4046,6 +4046,7 @@ self.addEventListener('fetch', (event) => {
               if (r.rewriteResult != null) return { rewriteResult: r.rewriteResult };
             },
             onMessagePersist: (m) => chat.session.appendMessage(m),
+            onPromptPersist: (text, reason) => chat.session.appendPrompt(text, reason),
             hotReload: {
               initialFingerprint: fresh.fingerprint,
               rebuild: async () => {
