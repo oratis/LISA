@@ -31,6 +31,16 @@ export interface ToolContext {
    * before the turn is considered closed. (Phase 2.1)
    */
   onObjection?: (o: { reason: string; refusing: boolean; userRequestSummary: string }) => void;
+  /**
+   * The execution world filesystem/shell tools act on (H1, see
+   * docs/PLAN_HARNESS_ALIGNMENT_v1.0.md §2). Unset means the host's own disk
+   * and shell — swapping it (sandboxed, per-tenant, remote) redirects every
+   * fs/shell tool at once without touching tool code.
+   *
+   * Tools read this through `capsOf(ctx)` from src/capabilities/, never
+   * directly, so the local default is applied in exactly one place.
+   */
+  caps?: import("./capabilities/types.js").Capabilities;
 }
 
 export type StoredMessage = Anthropic.MessageParam;

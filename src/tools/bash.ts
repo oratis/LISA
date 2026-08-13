@@ -1,8 +1,4 @@
-import { spawn } from "node:child_process";
-import {
-  defaultSandboxSpec,
-  wrapForSandbox,
-} from "../sandbox/sandbox.js";
+import { capsOf } from "../capabilities/index.js";
 import type { ToolDefinition } from "../types.js";
 
 interface BashInput {
@@ -30,60 +26,19 @@ export const bashTool: ToolDefinition<BashInput, string> = {
     required: ["command"],
   },
   async execute(input, ctx) {
-    const timeout = Math.min(input.timeout_ms ?? DEFAULT_TIMEOUT, MAX_TIMEOUT);
-    const wrapped = await wrapForSandbox(
-      defaultSandboxSpec({ cwd: ctx.cwd }),
-      input.command,
-    );
-    return await new Promise<string>((resolve, reject) => {
-      const child = spawn(wrapped.command, wrapped.args, {
-        cwd: ctx.cwd,
-        env: process.env,
-        signal: ctx.signal,
-      });
-      let stdout = "";
-      let stderr = "";
-      let truncated = false;
-      const onData = (buf: Buffer, target: "stdout" | "stderr") => {
-        const text = buf.toString("utf8");
-        if (target === "stdout") {
-          if (stdout.length + text.length > MAX_OUTPUT) {
-            stdout += text.slice(0, MAX_OUTPUT - stdout.length);
-            truncated = true;
-          } else {
-            stdout += text;
-          }
-        } else {
-          if (stderr.length + text.length > MAX_OUTPUT) {
-            stderr += text.slice(0, MAX_OUTPUT - stderr.length);
-            truncated = true;
-          } else {
-            stderr += text;
-          }
-        }
-      };
-      child.stdout.on("data", (b) => onData(b, "stdout"));
-      child.stderr.on("data", (b) => onData(b, "stderr"));
-      const timer = setTimeout(() => {
-        child.kill("SIGTERM");
-        setTimeout(() => child.kill("SIGKILL"), 2000);
-      }, timeout);
-      child.on("error", async (err) => {
-        clearTimeout(timer);
-        await wrapped.cleanup?.();
-        reject(err);
-      });
-      child.on("close", async (code, signal) => {
-        clearTimeout(timer);
-        await wrapped.cleanup?.();
-        const parts = [
-          `exit_code=${code ?? "null"}${signal ? ` signal=${signal}` : ""}`,
-        ];
-        if (stdout) parts.push(`--- stdout ---\n${stdout}`);
-        if (stderr) parts.push(`--- stderr ---\n${stderr}`);
-        if (truncated) parts.push("[output truncated at 64KB]");
-        resolve(parts.join("\n"));
-      });
+    const { shell } = capsOf(ctx);
+    const result = await shell.run(input.command, {
+      cwd: ctx.cwd,
+      signal: ctx.signal,
+      timeoutMs: Math.min(input.timeout_ms ?? DEFAULT_TIMEOUT, MAX_TIMEOUT),
+      maxOutputBytes: MAX_OUTPUT,
     });
+    const parts = [
+      `exit_code=${result.code ?? "null"}${result.signal ? ` signal=${result.signal}` : ""}`,
+    ];
+    if (result.stdout) parts.push(`--- stdout ---\n${result.stdout}`);
+    if (result.stderr) parts.push(`--- stderr ---\n${result.stderr}`);
+    if (result.truncated) parts.push("[output truncated at 64KB]");
+    return parts.join("\n");
   },
 };

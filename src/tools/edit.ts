@@ -1,6 +1,4 @@
-import fs from "node:fs/promises";
-import path from "node:path";
-import { atomicWrite } from "../fs-utils.js";
+import { capsOf } from "../capabilities/index.js";
 import type { ToolDefinition } from "../types.js";
 
 interface EditInput {
@@ -30,8 +28,9 @@ export const editTool: ToolDefinition<EditInput, string> = {
     if (input.old_string === input.new_string) {
       throw new Error("old_string and new_string are identical");
     }
-    const abs = path.resolve(ctx.cwd, input.path);
-    const original = await fs.readFile(abs, "utf8");
+    const { fs } = capsOf(ctx);
+    const abs = fs.resolvePath(ctx.cwd, input.path);
+    const original = await fs.readFile(abs);
     const occurrences = countOccurrences(original, input.old_string);
     if (occurrences === 0) {
       throw new Error(`old_string not found in ${abs}`);
@@ -44,7 +43,7 @@ export const editTool: ToolDefinition<EditInput, string> = {
     const updated = input.replace_all
       ? original.split(input.old_string).join(input.new_string)
       : original.replace(input.old_string, input.new_string);
-    await atomicWrite(abs, updated);
+    await fs.writeFile(abs, updated);
     return `Edited ${abs}: ${input.replace_all ? occurrences : 1} replacement(s).`;
   },
 };

@@ -1,5 +1,4 @@
-import path from "node:path";
-import { atomicWrite } from "../fs-utils.js";
+import { capsOf } from "../capabilities/index.js";
 import type { ToolDefinition } from "../types.js";
 
 interface WriteInput {
@@ -21,8 +20,9 @@ export const writeTool: ToolDefinition<WriteInput, string> = {
     required: ["path", "content"],
   },
   async execute(input, ctx) {
-    const abs = path.resolve(ctx.cwd, input.path);
-    await atomicWrite(abs, input.content);
+    const { fs } = capsOf(ctx);
+    const abs = fs.resolvePath(ctx.cwd, input.path);
+    await fs.writeFile(abs, input.content);
     return `Wrote ${input.content.length} chars to ${abs}`;
   },
 };

@@ -1,5 +1,5 @@
-import fs from "node:fs/promises";
 import path from "node:path";
+import { capsOf } from "../capabilities/index.js";
 import type { ToolDefinition } from "../types.js";
 
 interface LsInput {
@@ -18,15 +18,16 @@ export const lsTool: ToolDefinition<LsInput, string> = {
     },
   },
   async execute(input, ctx) {
-    const target = path.resolve(ctx.cwd, input.path ?? ".");
-    const entries = await fs.readdir(target, { withFileTypes: true });
+    const { fs } = capsOf(ctx);
+    const target = fs.resolvePath(ctx.cwd, input.path ?? ".");
+    const entries = await fs.readdir(target);
     const rows: string[] = [];
     for (const entry of entries) {
       if (entry.name.startsWith(".")) continue;
       const abs = path.join(target, entry.name);
-      if (entry.isDirectory()) {
+      if (entry.isDirectory) {
         rows.push(`d  -          ${entry.name}/`);
-      } else if (entry.isFile()) {
+      } else if (entry.isFile) {
         const stat = await fs.stat(abs);
         rows.push(`f  ${String(stat.size).padStart(9, " ")}  ${entry.name}`);
       } else {
