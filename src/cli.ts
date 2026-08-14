@@ -715,7 +715,9 @@ async function main(): Promise<void> {
       provider,
       systemPrompt: fresh.text,
       tools: composedTools,
-      toolCtx: { cwd, signal: abortController.signal, log: () => {} },
+      // Pin the turn to the session's mode, frozen at creation (H2), so the
+      // sandbox can't be widened mid-session by a later env change.
+      toolCtx: { cwd, signal: abortController.signal, log: () => {}, sandboxMode: session.header.sandboxMode },
       history,
       userMessage: prompt,
       model: args.model,

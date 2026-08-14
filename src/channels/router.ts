@@ -27,6 +27,13 @@ export interface RouterOptions {
    * Falls back to `tools` when absent.
    */
   toolsFor?: (channelName: string) => ToolDefinition[];
+  /**
+   * Sandbox mode for channel turns (H2). Channels are remote-origin/untrusted;
+   * an operator exposing fs/shell to a channel (`unsafeFullTools`) should pin a
+   * bounded mode here (e.g. "workspace-write") so a prompt-injected message
+   * can't reach past the workspace. Unset ⇒ the environment default.
+   */
+  sandboxMode?: import("../sandbox/mode.js").SandboxMode;
 }
 
 interface ThreadContext {
@@ -128,6 +135,7 @@ export class ChannelRouter {
           cwd: this.opts.cwd,
           signal: this.opts.signal,
           log: () => {},
+          sandboxMode: this.opts.sandboxMode,
         },
         history: ctx.history,
         userMessage: msg.text,

@@ -25,6 +25,13 @@ export interface SubagentOptions {
    * default says so; idle / heartbeat pass something more specific.
    */
   moodOrigin?: string;
+  /**
+   * Sandbox mode for this subagent's tools (H2). Unset ⇒ the environment
+   * default. Pass the parent turn's mode so a subagent cannot escape the
+   * confinement its caller runs under; unattended/untrusted callers (channels,
+   * idle, heartbeat, feed/mail classification) may pin a bounded mode.
+   */
+  sandboxMode?: import("./sandbox/mode.js").SandboxMode;
 }
 
 export interface SubagentResult {
@@ -48,6 +55,7 @@ export async function runSubagent(opts: SubagentOptions): Promise<SubagentResult
       cwd: opts.cwd,
       signal: opts.signal,
       log: opts.log ?? (() => {}),
+      sandboxMode: opts.sandboxMode,
     },
     history: [],
     userMessage: opts.prompt,

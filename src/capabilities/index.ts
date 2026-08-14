@@ -45,7 +45,11 @@ export function defaultCapabilitiesFor(
 }
 
 export function capsOf(ctx: ToolContext): Capabilities {
-  return ctx.caps ?? defaultCapabilitiesFor(ctx.cwd);
+  // A caller-supplied world wins; otherwise resolve from the turn's pinned mode
+  // (H2 — a session's `header.sandboxMode`), falling back to the environment
+  // default only when nothing was pinned. This is the single point where the
+  // per-session pin actually takes effect for fs/shell tools.
+  return ctx.caps ?? defaultCapabilitiesFor(ctx.cwd, ctx.sandboxMode);
 }
 
 export { LOCAL_CAPABILITIES, localFs, localShell } from "./local.js";
