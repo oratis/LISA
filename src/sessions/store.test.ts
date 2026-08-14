@@ -38,6 +38,18 @@ describe("SessionStore — create / open round-trip", () => {
     assert.equal(reopened.header.model, "test-model");
   });
 
+  test(
+    "the log is 0600 in a 0700 dir — it now carries the whole system prompt (H3)",
+    { skip: process.platform === "win32" },
+    async () => {
+      const s = await SessionStore.create({ cwd: "/w", model: "m" });
+      const dir = path.join(home, "sessions");
+      const file = path.join(dir, `${s.id}.jsonl`);
+      assert.equal(fs.statSync(file).mode & 0o777, 0o600, "session log must be private (soul/USER.md/MEMORY.md/KB)");
+      assert.equal(fs.statSync(dir).mode & 0o777, 0o700, "sessions dir must be private");
+    },
+  );
+
   test("open() rejects a missing session", async () => {
     await assert.rejects(SessionStore.open("does-not-exist"));
   });

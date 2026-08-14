@@ -46,7 +46,12 @@ async function main(): Promise<void> {
     return;
   }
 
-  const id = argv.find((a) => !a.startsWith("--"));
+  // `--turn` takes a value, so the token right after it is NOT the positional
+  // id — otherwise `replay --turn 3 <id>` reads "3" as the id. (#357 review)
+  const turnFlag = argv.indexOf("--turn");
+  const id = argv.find(
+    (a, i) => !a.startsWith("--") && (turnFlag === -1 || i !== turnFlag + 1),
+  );
   if (!id) throw new Error("no session id given");
   const replay = await replaySession(id);
 
@@ -55,7 +60,6 @@ async function main(): Promise<void> {
     return;
   }
 
-  const turnFlag = argv.indexOf("--turn");
   if (turnFlag !== -1) {
     const n = Number(argv[turnFlag + 1]);
     const turn = replay.turns.find((t) => t.index === n);
@@ -64,7 +68,9 @@ async function main(): Promise<void> {
     console.log(
       `system prompt: ${
         turn.systemPrompt === null
-          ? "(NOT RECORDED — session predates format v2)"
+          ? replay.header.version >= 2
+            ? "(none recorded at or before this turn — v2)"
+            : "(NOT RECORDED — session predates format v2)"
           : `${turn.systemPrompt.length} chars, fingerprint ${turn.promptFingerprint} (${turn.promptReason})`
       }`,
     );
@@ -82,9 +88,13 @@ async function main(): Promise<void> {
   console.log(`turns   ${replay.turns.length}`);
   if (!replay.promptsRecorded) {
     console.log(
-      "\n⚠ no system prompt recorded — this session predates H3 (format v2).\n" +
-        "  Every turn's systemPrompt is null because it was never written, not\n" +
-        "  because the persona was empty. Exclude it from drift analysis.",
+      replay.header.version < 2
+        ? "\n⚠ no system prompt recorded — this session predates H3 (format v2).\n" +
+            "  Every turn's systemPrompt is null because it was never written, not\n" +
+            "  because the persona was empty. Exclude it from drift analysis."
+        : "\n⚠ format v2 but no system prompt was recorded — persistence likely\n" +
+            "  failed (e.g. disk full / EPERM). systemPrompt is null on every turn;\n" +
+            "  exclude it from drift analysis.",
     );
     return;
   }

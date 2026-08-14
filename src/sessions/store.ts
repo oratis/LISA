@@ -47,7 +47,13 @@ export class SessionStore {
     cwd: string;
     model: string;
   }): Promise<SessionStore> {
+    // Session logs now carry the full system prompt — soul, USER.md, MEMORY.md,
+    // KB — the same sensitive user context the rest of ~/.lisa keeps private, so
+    // hold them to the same 0600-in-0700 discipline as config.env / devices /
+    // mail. append's mode only applies on create, so chmod after to tighten a
+    // dir or file that predates this hardening.
     await ensureDir(sessionsDir());
+    await fs.chmod(sessionsDir(), 0o700).catch(() => {});
     const id = `${stamp()}-${crypto.randomBytes(3).toString("hex")}`;
     const file = path.join(sessionsDir(), `${id}.jsonl`);
     const header: SessionHeader = {
@@ -59,6 +65,7 @@ export class SessionStore {
       model: opts.model,
     };
     await appendLine(file, JSON.stringify(header));
+    await fs.chmod(file, 0o600).catch(() => {});
     return new SessionStore(id, file, header);
   }
 
