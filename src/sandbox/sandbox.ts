@@ -37,8 +37,31 @@ export async function wrapForSandbox(
   spec: SandboxSpec,
   shellCommand: string,
 ): Promise<SandboxedCommand> {
+  // The shell form: run the command string through a login shell.
+  return wrapProgram(spec, ["/bin/bash", "-lc", shellCommand]);
+}
+
+/**
+ * The argv form of {@link wrapForSandbox}: confine a `command + args` invocation
+ * (no shell) under the same mechanism and the same fail-closed rule. This is
+ * what `ShellCapability.exec` uses so a bounded mode governs BOTH shell halves —
+ * previously `exec` ran unconfined even in `read-only`/`workspace-write`.
+ */
+export async function wrapArgvForSandbox(
+  spec: SandboxSpec,
+  command: string,
+  args: string[],
+): Promise<SandboxedCommand> {
+  return wrapProgram(spec, [command, ...args]);
+}
+
+/** Shared core: wrap a full argv (`program[0]` = executable) for `spec.mode`. */
+async function wrapProgram(
+  spec: SandboxSpec,
+  program: string[],
+): Promise<SandboxedCommand> {
   if (!modeIsBounded(spec.mode)) {
-    return { command: "/bin/bash", args: ["-lc", shellCommand] };
+    return { command: program[0]!, args: program.slice(1) };
   }
 
   if (process.platform === "darwin") {
@@ -54,7 +77,7 @@ export async function wrapForSandbox(
     await fs.writeFile(tmp, policy, "utf8");
     return {
       command: "/usr/bin/sandbox-exec",
-      args: ["-f", tmp, "/bin/bash", "-lc", shellCommand],
+      args: ["-f", tmp, ...program],
       cleanup: async () => {
         try {
           await fs.unlink(tmp);
@@ -64,7 +87,7 @@ export async function wrapForSandbox(
   }
 
   if (process.platform === "linux" && hasBubblewrap()) {
-    return { command: "bwrap", args: [...bwrapArgs(spec), "/bin/bash", "-lc", shellCommand] };
+    return { command: "bwrap", args: [...bwrapArgs(spec), ...program] };
   }
 
   throw new SandboxUnavailableError(
@@ -75,6 +98,46 @@ export async function wrapForSandbox(
       `or set LISA_SANDBOX_MODE=danger-full-access to run unconfined on purpose. ` +
       `Refusing to run the command unconfined while a sandbox was requested.`,
 );
+}
+
+/** True when this host has a mechanism that can actually enforce a bounded mode. */
+export function sandboxEnforceable(): boolean {
+  return (
+    process.platform === "darwin" ||
+    (process.platform === "linux" && hasBubblewrap())
+  );
+}
+
+let warnedUnenforceable = false;
+/**
+ * The mode the unattended / untrusted surfaces (channels, idle, heartbeat,
+ * feed/mail classification) default to. These process the least-trusted input
+ * — an inbound DM, a fetched web page — so they should not inherit the local
+ * user's `danger-full-access`. Where the host can enforce it we cap them at
+ * `workspace-write` (honouring a stricter env pin); where it cannot, bounded
+ * modes would fail closed and silently break autonomy, so we keep the env
+ * default and warn ONCE — a loud "install bwrap" beats a broken heartbeat.
+ * An operator can force fail-closed everywhere with `LISA_SANDBOX_MODE`.
+ */
+export function untrustedSurfaceMode(): SandboxMode {
+  const env = resolveSandboxMode();
+  if (!sandboxEnforceable()) {
+    if (!warnedUnenforceable) {
+      warnedUnenforceable = true;
+      console.error(
+        "[sandbox] untrusted surfaces (channels/idle/heartbeat) run UNCONFINED — no OS " +
+          "sandbox on this host; install bubblewrap (Linux) or set LISA_SANDBOX_MODE to confine them.",
+      );
+    }
+    return env;
+  }
+  // Enforceable: never looser than workspace-write, but honour a stricter pin.
+  return env === "read-only" ? "read-only" : "workspace-write";
+}
+
+/** Test hook — the one-time unenforceable warning. */
+export function _resetUntrustedWarningForTest(): void {
+  warnedUnenforceable = false;
 }
 
 /**

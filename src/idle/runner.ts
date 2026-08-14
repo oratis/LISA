@@ -3,6 +3,7 @@ import { lisaHome } from "../paths.js";
 import { withFileLock } from "../soul/lock.js";
 import { autonomousSubset } from "../tools/registry.js";
 import { runSubagent } from "../subagent.js";
+import { untrustedSurfaceMode } from "../sandbox/sandbox.js";
 import { recordAutonomyRun, type AutonomyOutcome } from "../autonomy/runs.js";
 import { getAutonomyEnabled } from "../autonomy/state.js";
 import { readIndex } from "../kb/store.js";
@@ -159,6 +160,9 @@ async function runIdleInner(
       cwd: opts.cwd,
       signal: opts.signal,
       model: opts.model,
+      // Unattended: confine to the untrusted-surface mode (defense in depth
+      // atop the tool subset above). H2.
+      sandboxMode: untrustedSurfaceMode(),
       budgetTokens: IDLE_BUDGET_TOKENS || undefined,
       moodOrigin: "an idle turn while the user was away",
     });

@@ -3973,6 +3973,9 @@ self.addEventListener('fetch', (event) => {
               // Abort on server shutdown OR this client disconnecting (Stop).
               signal: AbortSignal.any([abort.signal, turnAbort.signal]),
               log: () => {},
+              // Pin the turn to the session's mode, frozen at creation (H2), so
+              // concurrent sessions confine independently of the process env.
+              sandboxMode: chat.session.header.sandboxMode,
             },
             history: modelContext.history,
             userMessage: message,

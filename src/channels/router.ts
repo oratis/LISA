@@ -4,6 +4,7 @@ import { providerForModel } from "../providers/registry.js";
 import { buildSystemPromptSnapshot, type PromptSnapshot } from "../prompt.js";
 import { reflectOnSession } from "../reflect.js";
 import { SessionStore } from "../sessions/store.js";
+import { untrustedSurfaceMode } from "../sandbox/sandbox.js";
 import type {
   StoredMessage,
   ToolDefinition,
@@ -135,7 +136,9 @@ export class ChannelRouter {
           cwd: this.opts.cwd,
           signal: this.opts.signal,
           log: () => {},
-          sandboxMode: this.opts.sandboxMode,
+          // Channels are remote-origin/untrusted; default to the confined
+          // untrusted-surface mode unless the operator pinned one explicitly.
+          sandboxMode: this.opts.sandboxMode ?? untrustedSurfaceMode(),
         },
         history: ctx.history,
         userMessage: msg.text,

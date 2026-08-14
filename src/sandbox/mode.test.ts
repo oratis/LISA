@@ -8,7 +8,12 @@ import {
   resolveSandboxMode,
 } from "./mode.js";
 import { buildMacosSeatbeltPolicy } from "./macos.js";
-import { wrapForSandbox } from "./sandbox.js";
+import {
+  wrapForSandbox,
+  wrapArgvForSandbox,
+  sandboxEnforceable,
+  untrustedSurfaceMode,
+} from "./sandbox.js";
 
 /** H2 acceptance (docs/PLAN_HARNESS_ALIGNMENT_v1.0.md §3). */
 
@@ -133,5 +138,47 @@ describe("wrapForSandbox — fail closed, never silently unconfined", () => {
     assert.equal(existsSync(wrapped.args[1]!), true, "policy file written");
     await wrapped.cleanup?.();
     assert.equal(existsSync(wrapped.args[1]!), false, "policy file removed");
+  });
+});
+
+describe("untrusted surfaces + argv confinement (H2 follow-up)", () => {
+  test("untrusted surfaces never inherit danger-full-access where the sandbox is enforceable", () => {
+    if (sandboxEnforceable()) {
+      assert.equal(untrustedSurfaceMode(), "workspace-write");
+    } else {
+      // No OS mechanism to enforce a bounded mode: it can't confine, so it
+      // falls back to the env default (and warns once) rather than break.
+      assert.equal(untrustedSurfaceMode(), resolveSandboxMode());
+    }
+  });
+
+  test("a stricter env pin (read-only) is honoured over the workspace-write cap", () => {
+    process.env.LISA_SANDBOX_MODE = "read-only";
+    assert.equal(untrustedSurfaceMode(), "read-only");
+  });
+
+  test("wrapArgvForSandbox runs the argv directly when unconfined", async () => {
+    const w = await wrapArgvForSandbox(
+      { mode: "danger-full-access" as const, allowNetwork: true, cwd: process.cwd() },
+      "grep",
+      ["-n", "needle", "file.txt"],
+    );
+    assert.equal(w.command, "grep");
+    assert.deepEqual(w.args, ["-n", "needle", "file.txt"]);
+  });
+
+  test("wrapArgvForSandbox confines a bounded mode, or fails closed with no mechanism", async () => {
+    const spec = { mode: "workspace-write" as const, allowNetwork: false, cwd: process.cwd() };
+    if (sandboxEnforceable()) {
+      const w = await wrapArgvForSandbox(spec, "rm", ["-rf", "x"]);
+      assert.notEqual(w.command, "rm", "the program runs under the sandbox launcher, not directly");
+      assert.ok(w.args.includes("rm"), "the argv is wrapped, not dropped");
+      await w.cleanup?.();
+    } else {
+      await assert.rejects(
+        wrapArgvForSandbox(spec, "rm", ["-rf", "x"]),
+        SandboxUnavailableError,
+      );
+    }
   });
 });

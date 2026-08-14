@@ -55,7 +55,7 @@ export function createTaskTool(deps: {
       },
       required: ["description", "prompt"],
     },
-    async execute(input) {
+    async execute(input, ctx) {
       const tools =
         input.type === "explore" ? deps.readOnlyToolset() : deps.fullToolset();
       const system =
@@ -67,6 +67,9 @@ export function createTaskTool(deps: {
         cwd: deps.cwd,
         signal: deps.signal,
         model: input.model ?? deps.defaultModel,
+        // A dispatched subagent inherits the parent turn's confinement — it must
+        // not be able to escape the sandbox its caller runs under. H2.
+        sandboxMode: ctx?.sandboxMode,
       });
       return `[subagent: ${input.description} — ${result.toolCallCount} tool calls, ${result.outputTokens} tokens]\n${result.text}`;
     },

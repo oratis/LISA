@@ -30,7 +30,7 @@ import path from "node:path";
 import fsp from "node:fs/promises";
 import { localFs, localShell } from "./local.js";
 import type { Capabilities, ExecOptions, ExecResult, FsCapability } from "./types.js";
-import { wrapForSandbox, type SandboxSpec } from "../sandbox/sandbox.js";
+import { wrapForSandbox, wrapArgvForSandbox, type SandboxSpec } from "../sandbox/sandbox.js";
 import { modeIsBounded, modeAllowsWrites } from "../sandbox/mode.js";
 
 export interface SandboxedOptions {
@@ -147,7 +147,22 @@ export function createSandboxedCapabilities(opts: SandboxedOptions): Capabilitie
           await wrapped.cleanup?.();
         }
       },
-      exec: localShell.exec,
+      async exec(command: string, args: string[], execOpts: ExecOptions): Promise<ExecResult> {
+        // MED-3: exec used to run raw/unconfined even in bounded modes, so a
+        // mutating program invoked via argv (or a change to grep's args) would
+        // silently escape read-only/workspace-write. Route it through the same
+        // fail-closed confinement as run() so ONE mode governs both shell halves.
+        const wrapped = await wrapArgvForSandbox(
+          { ...opts.spec, cwd: execOpts.cwd },
+          command,
+          args,
+        );
+        try {
+          return await localShell.exec(wrapped.command, wrapped.args, execOpts);
+        } finally {
+          await wrapped.cleanup?.();
+        }
+      },
     },
   };
 }
