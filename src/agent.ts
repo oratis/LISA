@@ -53,6 +53,19 @@ export interface RunAgentOptions {
   effort?: "low" | "medium" | "high" | "xhigh" | "max";
   onEvent?: (event: AgentEvent) => void;
   onMessagePersist?: (message: StoredMessage) => Promise<void> | void;
+  /**
+   * H3 — "model-visible ⟺ recorded" (docs/PLAN_HARNESS_ALIGNMENT_v1.0.md §4).
+   * Called with the system prompt immediately before every provider call, so
+   * the session log carries the persona the model actually saw rather than
+   * only the messages. Called on every turn on purpose: the sink dedupes by
+   * content hash, which is cheaper to reason about than tracking "did it
+   * change" in two places. Sessionless runs (subagents, channel turns) leave
+   * it unset.
+   */
+  onPromptPersist?: (
+    text: string,
+    reason: "initial" | "rebuilt",
+  ) => Promise<unknown> | unknown;
   approval?: ApprovalCallback;
   preToolHook?: (
     name: string,
@@ -242,6 +255,22 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
     }
 
     onEvent?.({ type: "turn_start" });
+
+    // H3: record the prompt BEFORE the call that makes it model-visible, so a
+    // crash mid-turn still leaves the log able to explain what the model was
+    // asked with. Best-effort — persistence must never sink a live turn.
+    if (opts.onPromptPersist) {
+      try {
+        await opts.onPromptPersist(
+          currentSystemPrompt,
+          iterations === 1 ? "initial" : "rebuilt",
+        );
+      } catch (err) {
+        toolCtx.log(
+          `[prompt-log] skipped: ${(err as Error).message.slice(0, 200)}`,
+        );
+      }
+    }
 
     let result;
     try {

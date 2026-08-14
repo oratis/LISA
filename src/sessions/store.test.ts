@@ -9,12 +9,13 @@ import type { StoredMessage } from "../types.js";
 // BEFORE importing the store (dynamic import). node --test isolates each file in
 // its own process, so this env mutation can't leak to other suites.
 let SessionStore: typeof import("./store.js").SessionStore;
+let promptFingerprint: typeof import("./store.js").promptFingerprint;
 let home: string;
 
 before(async () => {
   home = fs.mkdtempSync(path.join(os.tmpdir(), "lisa-sess-"));
   process.env.LISA_HOME = home;
-  ({ SessionStore } = await import("./store.js"));
+  ({ SessionStore, promptFingerprint } = await import("./store.js"));
 });
 after(() => {
   fs.rmSync(home, { recursive: true, force: true });
@@ -36,6 +37,18 @@ describe("SessionStore — create / open round-trip", () => {
     assert.equal(reopened.header.cwd, "/work/proj");
     assert.equal(reopened.header.model, "test-model");
   });
+
+  test(
+    "the log is 0600 in a 0700 dir — it now carries the whole system prompt (H3)",
+    { skip: process.platform === "win32" },
+    async () => {
+      const s = await SessionStore.create({ cwd: "/w", model: "m" });
+      const dir = path.join(home, "sessions");
+      const file = path.join(dir, `${s.id}.jsonl`);
+      assert.equal(fs.statSync(file).mode & 0o777, 0o600, "session log must be private (soul/USER.md/MEMORY.md/KB)");
+      assert.equal(fs.statSync(dir).mode & 0o777, 0o700, "sessions dir must be private");
+    },
+  );
 
   test("open() rejects a missing session", async () => {
     await assert.rejects(SessionStore.open("does-not-exist"));
@@ -93,5 +106,81 @@ describe("SessionStore — message persistence + resume", () => {
     const page = await s.readMessagePage(5, 20);
     assert.deepEqual(page.messages, []);
     assert.equal(page.hasMore, false);
+  });
+});
+
+// H3 — "model-visible ⟺ recorded" (docs/PLAN_HARNESS_ALIGNMENT_v1.0.md §4).
+describe("SessionStore — system prompt persistence", () => {
+  function promptEntries(file: string): Array<Record<string, unknown>> {
+    return fs
+      .readFileSync(file, "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as Record<string, unknown>)
+      .filter((e) => e.type === "prompt");
+  }
+
+  test("new sessions declare format version 2", async () => {
+    const s = await SessionStore.create({ cwd: "/w", model: "m" });
+    assert.equal(s.header.version, 2);
+  });
+
+  test("first prompt is written with reason 'initial' and a content fingerprint", async () => {
+    const s = await SessionStore.create({ cwd: "/w", model: "m" });
+    assert.equal(await s.appendPrompt("You are Lisa.", "initial"), true);
+
+    const entries = promptEntries(s.path);
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0]!.text, "You are Lisa.");
+    assert.equal(entries[0]!.reason, "initial");
+    assert.equal(entries[0]!.fingerprint, promptFingerprint("You are Lisa."));
+  });
+
+  test("an unchanged prompt is not re-written on every turn", async () => {
+    const s = await SessionStore.create({ cwd: "/w", model: "m" });
+    await s.appendPrompt("stable", "initial");
+    assert.equal(await s.appendPrompt("stable", "rebuilt"), false);
+    assert.equal(await s.appendPrompt("stable", "rebuilt"), false);
+    assert.equal(promptEntries(s.path).length, 1);
+  });
+
+  test("a changed prompt is written again, and back-and-forth changes both land", async () => {
+    const s = await SessionStore.create({ cwd: "/w", model: "m" });
+    await s.appendPrompt("v1", "initial");
+    await s.appendPrompt("v2", "rebuilt");
+    await s.appendPrompt("v1", "rebuilt"); // reverting is still a change
+    assert.deepEqual(
+      promptEntries(s.path).map((e) => e.text),
+      ["v1", "v2", "v1"],
+    );
+  });
+
+  test("resuming a session does not duplicate the prompt still in effect", async () => {
+    const s = await SessionStore.create({ cwd: "/w", model: "m" });
+    await s.appendPrompt("carried over", "initial");
+    await s.appendMessage(msg(0));
+
+    const resumed = await SessionStore.open(s.id);
+    assert.equal(
+      await resumed.appendPrompt("carried over", "initial"),
+      false,
+      "the prompt is unchanged since the last run — nothing new to record",
+    );
+    assert.equal(promptEntries(s.path).length, 1);
+
+    assert.equal(await resumed.appendPrompt("she patched herself", "rebuilt"), true);
+    assert.equal(promptEntries(s.path).length, 2);
+  });
+
+  test("prompt entries stay out of message pages and reflections", async () => {
+    const s = await SessionStore.create({ cwd: "/w", model: "m" });
+    await s.appendPrompt("persona", "initial");
+    await s.appendMessage(msg(0));
+    await s.appendPrompt("persona v2", "rebuilt");
+    await s.appendMessage(msg(1));
+
+    const page = await s.readMessagePage(0);
+    assert.deepEqual(page.messages.map((m) => m.content), ["m0", "m1"]);
+    assert.equal(await s.readLatestReflection(), undefined);
   });
 });
