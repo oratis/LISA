@@ -6,7 +6,12 @@ name: Release — build artifacts on tag
 # To cut a release:
 #   1. Bump version in package.json (e.g. via `npm version patch`).
 #   2. Push the tag: git push --follow-tags
-#   3. This workflow runs and posts the release.
+#   3. This workflow runs, posts the GitHub Release, and publishes to npm.
+#
+# Two jobs: `build` assembles the artifacts and creates the Release;
+# `npm-publish` then pushes the same version to the registry. npm publishing
+# used to be a manual local step and was missed four releases running
+# (v0.21–v0.24 shipped while npm served 0.20.0), so it now rides the tag.
 #
 # The release notes are pulled from docs/RELEASE_v<version>.md if it exists,
 # otherwise auto-generated from the tag's commit list.
@@ -107,3 +112,68 @@ jobs:
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── npm ──────────────────────────────────────────────────────────────────
+  # Publishing has been manual since the beginning, and it kept being missed:
+  # v0.21 → v0.24 all shipped a GitHub Release while npm sat at 0.20.0, so
+  # `npm i -g @oratis/lisa` and the Homebrew formula served a build four
+  # versions old. This job removes the step a human has to remember.
+  #
+  # It runs only AFTER `build` succeeds, so npm never receives a version whose
+  # tests failed or whose artifacts didn't assemble. The heavy gate is already
+  # in package.json's `prepublishOnly` (api-contract + typecheck + test +
+  # build), which `npm publish` runs on its own — so this job stays thin.
+  #
+  # One-time setup: add an npm automation token as the NPM_TOKEN repo secret
+  # (npmjs.com → Access Tokens → Generate → Automation; it bypasses 2FA, which
+  # an interactive OTP prompt can't do in CI).
+  npm-publish:
+    needs: build
+    # Tag pushes only. workflow_dispatch exists to rebuild artifacts for a tag
+    # that already shipped — re-publishing that to npm is never wanted.
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write   # required by --provenance
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "npm"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Resolve version
+        id: ver
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+      # Makes re-runs safe: npm rejects a duplicate version with a hard error,
+      # which would turn an otherwise-green release into a red one.
+      - name: Skip if this version is already on npm
+        id: check
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          V="${{ steps.ver.outputs.version }}"
+          if npm view "$NAME@$V" version >/dev/null 2>&1; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "→ $NAME@$V is already on npm; nothing to do."
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            echo "→ $NAME@$V not on npm; will publish."
+          fi
+
+      - name: Install dependencies
+        if: steps.check.outputs.published == 'false'
+        run: npm ci
+
+      # --provenance attaches a signed, verifiable link from the tarball back
+      # to this workflow run and commit, so consumers can check where the
+      # package came from. prepublishOnly runs the full gate before upload.
+      - name: Publish to npm
+        if: steps.check.outputs.published == 'false'
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
