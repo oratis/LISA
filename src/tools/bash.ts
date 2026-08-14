@@ -15,7 +15,8 @@ export const bashTool: ToolDefinition<BashInput, string> = {
   description:
     "Run a shell command via /bin/bash and return its stdout, stderr, and exit code. " +
     "Use this for git operations, package managers, build scripts, file inspection (head/tail/wc), and one-off scripts. " +
-    "When LISA_SANDBOX=1 the command runs under macOS sandbox-exec restricting writes to cwd + /tmp. " +
+    "Under a bounded sandbox mode the command is confined by the OS (macOS Seatbelt / Linux bubblewrap) " +
+    "to the same roots the file tools are; on a platform where that cannot be enforced the command is refused. " +
     "Long outputs are truncated to 64KB. Default timeout is 60s; max 600s.",
   inputSchema: {
     type: "object",

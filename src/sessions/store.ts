@@ -3,6 +3,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { sessionsDir } from "../paths.js";
 import { appendLine, ensureDir } from "../fs-utils.js";
+import { resolveSandboxMode, type SandboxMode } from "../sandbox/mode.js";
 import type { SessionEntry, SessionHeader, StoredMessage } from "../types.js";
 
 /** Content hash of a system prompt — the identity of a `prompt` entry. */
@@ -46,6 +47,8 @@ export class SessionStore {
   static async create(opts: {
     cwd: string;
     model: string;
+    /** Overrides the environment-resolved mode (H2). */
+    sandboxMode?: SandboxMode;
   }): Promise<SessionStore> {
     // Session logs now carry the full system prompt — soul, USER.md, MEMORY.md,
     // KB — the same sensitive user context the rest of ~/.lisa keeps private, so
@@ -63,6 +66,10 @@ export class SessionStore {
       startedAt: new Date().toISOString(),
       cwd: opts.cwd,
       model: opts.model,
+      // Resolved once, here. A session carries the posture it was created
+      // under, so editing a setting cannot widen what a task already running
+      // under the old one is permitted to do.
+      sandboxMode: resolveSandboxMode(opts.sandboxMode),
     };
     await appendLine(file, JSON.stringify(header));
     await fs.chmod(file, 0o600).catch(() => {});

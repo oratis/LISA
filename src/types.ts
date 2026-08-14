@@ -41,6 +41,14 @@ export interface ToolContext {
    * directly, so the local default is applied in exactly one place.
    */
   caps?: import("./capabilities/types.js").Capabilities;
+  /**
+   * The sandbox mode this turn is pinned to (H2). When `caps` is unset, this is
+   * what `capsOf` resolves the world from — so a session pinned to `read-only`
+   * confines its writes/shell even though the process-wide `LISA_SANDBOX_MODE`
+   * default says otherwise, and two concurrent sessions can differ. Unset ⇒ the
+   * environment default (`resolveSandboxMode()` re-read per call).
+   */
+  sandboxMode?: import("./sandbox/mode.js").SandboxMode;
 }
 
 export type StoredMessage = Anthropic.MessageParam;
@@ -73,6 +81,15 @@ export interface SessionHeader {
   startedAt: string;
   cwd: string;
   model: string;
+  /**
+   * The sandbox mode this session runs under (H2). Fixed when the session is
+   * created and never re-read: changing a setting mid-flight must not silently
+   * widen — or narrow — what an already-running task is allowed to do.
+   *
+   * Optional because sessions written before H2 do not have it; absent means
+   * "not recorded", not "unconfined".
+   */
+  sandboxMode?: import("./sandbox/mode.js").SandboxMode;
 }
 
 export type SessionEntry =

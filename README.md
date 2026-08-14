@@ -462,7 +462,7 @@ On Linux, `lisa heartbeat install` prints a cron line for you to add to `crontab
 | Tool | Purpose |
 |---|---|
 | `read` `write` `edit` `apply_patch` | File ops (single + batched) |
-| `bash` | Shell (with optional macOS Seatbelt sandbox via `LISA_SANDBOX=1`) |
+| `bash` | Shell (confined by the sandbox mode — see below) |
 | `grep` `ls` | Search + listing |
 | `task` | Spawn a focused sub-agent in its own context window |
 | `dispatch_agent` `signal_agent` `dispatch_status` | Launch / stop / track agents she runs (managed + PTY); refuses directories another agent owns |
@@ -476,6 +476,20 @@ On Linux, `lisa heartbeat install` prints a cron line for you to add to `crontab
 | `memory` `memory_search` | Memory CRUD + TF-IDF search across all past sessions |
 | `kb_search` `kb_read` `kb_list` `kb_links` `kb_add` `kb_write` `kb_ingest` | Personal knowledge base — search + read/list, explore the link graph, add a source, write/maintain a wiki page, ingest a URL (WeChat / Bilibili / YouTube / any article) |
 | `set_mood` | Switch her visible portrait to one of 114 moods |
+
+### Sandbox modes
+
+File and shell tools share one **execution world**, so they can never be bounded to different roots:
+
+| mode | file reads | file writes | shell |
+|---|---|---|---|
+| `read-only` | anywhere | refused | no writable path |
+| `workspace-write` | anywhere | workspace + temp | workspace + temp |
+| `danger-full-access` *(default)* | anywhere | anywhere | unconfined |
+
+Set with `LISA_SANDBOX_MODE`; `LISA_SANDBOX=1` remains an alias for `workspace-write`. Shell confinement is enforced by the OS — macOS Seatbelt, Linux bubblewrap. **On a platform where the requested mode cannot be enforced, the command is refused (`SANDBOX_UNAVAILABLE`) rather than silently run unconfined** — believing a sandbox is on when it is off is worse than knowing there is none. File confinement is enforced in-process, so it holds everywhere, and it resolves symlinks so a link inside the workspace cannot be written through.
+
+The mode is fixed when a session is created and recorded in its header: changing the setting never widens what an already-running task may do.
 | `soul_patch` `soul_journal` `soul_feel` `soul_read` | Her soul-editing tools (hers alone) |
 | `soul_history` `soul_diff` | Read the git-backed history of her own soul (every change committed with attribution) |
 | `soul_object` | Architectural objection — flags a constitutional concern; the agent loop forces it to be surfaced in her reply |
@@ -551,7 +565,8 @@ LISA_PTY_CLAUDE_CMD=claude            # override the `claude` binary path
 LISA_PTY_CODEX_CMD=codex             # override the `codex` binary path
 
 # Sandbox
-LISA_SANDBOX=1                        # opt-in macOS Seatbelt for `bash`
+LISA_SANDBOX_MODE=workspace-write     # read-only | workspace-write | danger-full-access
+LISA_SANDBOX=1                        # legacy alias for workspace-write
 LISA_SANDBOX_NETWORK=0                # block network in sandbox
 
 # Web
@@ -691,7 +706,8 @@ src/
 ├── kb/                     ★ personal knowledge base (Karpathy 3-layer: sources + wiki) + kb_* tools + TF-IDF
 ├── mail/                   read-only IMAP / Gmail-OAuth mailbox — classify + daily digest + alerts
 ├── sessions/               JSONL store + list + resume + paginated read
-├── sandbox/                macOS sandbox-exec policy + wrapper
+├── capabilities/           fs / shell capability seam — local, sandboxed, in-memory providers
+├── sandbox/                sandbox modes + macOS Seatbelt / Linux bwrap policies
 ├── mcp/                    config + stdio client (wraps MCP tools as Lisa tools)
 ├── plugins/                claude-code-style plugin loader
 ├── hooks/                  PreToolUse / PostToolUse / SessionStart / etc.

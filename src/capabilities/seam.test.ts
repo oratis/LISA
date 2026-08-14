@@ -1,9 +1,10 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createMemoryCapabilities, refusingShell } from "./index.js";
+import { createMemoryCapabilities, refusingShell, capsOf } from "./index.js";
 import { readTool } from "../tools/read.js";
 import { writeTool } from "../tools/write.js";
 import { editTool } from "../tools/edit.js";
@@ -183,5 +184,53 @@ describe("a world without processes says so", () => {
   test("refusingShell rejects both operations", async () => {
     await assert.rejects(refusingShell.run("x", { cwd: "/" }), /unavailable/);
     await assert.rejects(refusingShell.exec("x", [], { cwd: "/" }), /unavailable/);
+  });
+});
+
+describe("a turn's pinned sandbox mode is enforced, not just recorded (H2)", () => {
+  // The bug this guards: `ctx.sandboxMode` was written to the session header but
+  // never read for enforcement — `capsOf` re-resolved from `process.env` every
+  // call, so an explicit pin did nothing and two sessions could not differ.
+  test("a read-only pin refuses writes even when the env default is full-access", async () => {
+    const prev = process.env.LISA_SANDBOX_MODE;
+    process.env.LISA_SANDBOX_MODE = "danger-full-access"; // process-wide default
+    const target = path.join(os.tmpdir(), `lisa-ro-pin-${process.pid}.txt`);
+    fs.rmSync(target, { force: true });
+    try {
+      const ctx: ToolContext = {
+        cwd: os.tmpdir(),
+        signal: new AbortController().signal,
+        log: () => {},
+        sandboxMode: "read-only", // the per-turn pin
+      };
+      await assert.rejects(
+        writeTool.execute({ path: path.basename(target), content: "x" }, ctx),
+        /forbids writes|read-only/,
+        "the pin must win over the env default",
+      );
+      assert.equal(fs.existsSync(target), false, "nothing was written");
+    } finally {
+      fs.rmSync(target, { force: true });
+      if (prev === undefined) delete process.env.LISA_SANDBOX_MODE;
+      else process.env.LISA_SANDBOX_MODE = prev;
+    }
+  });
+
+  test("capsOf resolves the pinned mode's world, not the environment's", () => {
+    const prev = process.env.LISA_SANDBOX_MODE;
+    process.env.LISA_SANDBOX_MODE = "danger-full-access";
+    try {
+      const base = { cwd: os.tmpdir(), signal: new AbortController().signal, log: () => {} };
+      const pinned = capsOf({ ...base, sandboxMode: "read-only" });
+      const envDefault = capsOf(base); // no pin ⇒ env ⇒ full-access ⇒ plain local world
+      assert.notEqual(
+        pinned.fs,
+        envDefault.fs,
+        "a bounded pin must select a different (sandboxed) fs than the unconfined env default",
+      );
+    } finally {
+      if (prev === undefined) delete process.env.LISA_SANDBOX_MODE;
+      else process.env.LISA_SANDBOX_MODE = prev;
+    }
   });
 });

@@ -54,6 +54,34 @@ describe("SessionStore — create / open round-trip", () => {
     await assert.rejects(SessionStore.open("does-not-exist"));
   });
 
+  // H2 — the posture is fixed at creation, so editing a setting mid-flight
+  // cannot widen what an already-running task may do.
+  test("the sandbox mode is recorded in the header and survives resume", async () => {
+    const s = await SessionStore.create({
+      cwd: "/w",
+      model: "m",
+      sandboxMode: "workspace-write",
+    });
+    assert.equal(s.header.sandboxMode, "workspace-write");
+
+    process.env.LISA_SANDBOX_MODE = "danger-full-access";
+    try {
+      const resumed = await SessionStore.open(s.id);
+      assert.equal(
+        resumed.header.sandboxMode,
+        "workspace-write",
+        "a later setting change must not retroactively widen this session",
+      );
+    } finally {
+      delete process.env.LISA_SANDBOX_MODE;
+    }
+  });
+
+  test("without an explicit mode the header records the resolved default", async () => {
+    const s = await SessionStore.create({ cwd: "/w", model: "m" });
+    assert.equal(s.header.sandboxMode, "danger-full-access");
+  });
+
   test("open() rejects an empty session file", async () => {
     const empty = path.join(home, "sessions", "empty-one.jsonl");
     fs.mkdirSync(path.dirname(empty), { recursive: true });
