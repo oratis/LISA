@@ -19,6 +19,7 @@ import { withFileLock } from "../soul/lock.js";
 import { getAutonomyEnabled } from "../autonomy/state.js";
 import { autonomousSubset, desireReviewSubset } from "../tools/registry.js";
 import { runSubagent } from "../subagent.js";
+import { untrustedSurfaceMode } from "../sandbox/sandbox.js";
 import { recordAutonomyRun, type AutonomyKind } from "../autonomy/runs.js";
 import { recentAgentRecap } from "../orchestrator/recent-recap.js";
 import type { ToolDefinition } from "../types.js";
@@ -202,6 +203,8 @@ async function runHeartbeatInner(opts: {
         signal: opts.signal,
         model: opts.model,
         moodOrigin: `a ${runKind} turn`,
+        // Unattended self-driven run — confine to the untrusted-surface mode. H2.
+        sandboxMode: untrustedSurfaceMode(),
       });
     } catch (err) {
       await recordAutonomyRun({
@@ -306,6 +309,7 @@ export async function runDesireReviewOnce(opts: {
             model: opts.model,
             budgetTokens: 100_000,
             provider: opts.provider,
+            sandboxMode: untrustedSurfaceMode(),
             moodOrigin: "a desire-review turn",
           });
           const text = result.text
