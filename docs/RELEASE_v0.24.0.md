@@ -5,7 +5,7 @@ surface than about removing things that were quietly wedged: tools no longer
 hardcode *where* they execute, session logs no longer omit the one input that
 actually shapes the model's behaviour, and Lisa finally reads the instruction
 file the rest of the ecosystem already agreed on. Design + gap analysis in
-[docs/PLAN_DSH_ALIGNMENT_v1.0.md](PLAN_DSH_ALIGNMENT_v1.0.md); shipped as
+[docs/PLAN_HARNESS_ALIGNMENT_v1.0.md](PLAN_HARNESS_ALIGNMENT_v1.0.md); shipped as
 PRs #356–#360.
 
 ## 🔌 A capability seam for fs / shell (#358)
@@ -87,7 +87,7 @@ addition to `~/.lisa/skills` (rank 100), so a repo can ship its own.
 ## 📱 Also
 
 - Lisa Pocket bumped to **1.2** (iOS).
-- DeepSeek Harness research folded in, with the LISA alignment plan v1.0 (#356).
+- DeepSeek Harness research folded in, with the LISA alignment plan v1.0 ([RESEARCH_DEEPSEEK_HARNESS.md](RESEARCH_DEEPSEEK_HARNESS.md), #356).
 
 ---
 
