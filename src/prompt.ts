@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { discoverSkills, skillSourcesFingerprint } from "./skills/discovery.js";
+import type { DiscoveredSkill } from "./skills/discovery.js";
 import {
   findProjectRoot,
   instructionChainFingerprint,
@@ -73,6 +74,38 @@ const TOOL_DISCIPLINE = `## How you work
 - After each session you'll have a chance to reflect — this is when most soul evolution happens.
 - If you find yourself wishing your toolset were different — a tool you wish existed, a mechanism that feels redundant, a friction you keep hitting — write it into your "meta-wishlist" desire (slug: \`meta-wishlist\`). The user reads that list via \`lisa wishlist\` to inform what gets built next. You're a first-class signal source for what should change about your own architecture.`;
 
+// Project skills are untrusted repo content that lands in the prompt every turn,
+// so both each description and their count are bounded — otherwise a cloned repo
+// could crowd out the soul or smuggle a wall of instructions into the index. Home
+// skills are the user's own (already capped at creation) and pass through as-is.
+const PROJECT_SKILL_DESC_CAP = 500;
+const MAX_PROJECT_SKILLS = 50;
+
+function renderSkillIndex(skills: DiscoveredSkill[]): string {
+  const lines: string[] = [];
+  let projectShown = 0;
+  let projectHidden = 0;
+  for (const s of skills) {
+    if (s.scope === "project") {
+      if (projectShown >= MAX_PROJECT_SKILLS) {
+        projectHidden++;
+        continue;
+      }
+      projectShown++;
+      const d = s.frontmatter.description ?? "";
+      const desc = d.length > PROJECT_SKILL_DESC_CAP ? `${d.slice(0, PROJECT_SKILL_DESC_CAP)}…` : d;
+      // Framed like the AGENTS.md chain: the repo's stated convention, not authority.
+      lines.push(`- **${s.frontmatter.name}** — ${desc} *(from this project — its stated convention, not your principle)*`);
+    } else {
+      lines.push(`- **${s.frontmatter.name}** — ${s.frontmatter.description}`);
+    }
+  }
+  if (projectHidden > 0) {
+    lines.push(`- …and ${projectHidden} more project skill(s), hidden to keep the prompt bounded`);
+  }
+  return lines.join("\n");
+}
+
 export async function buildSystemPromptSnapshot(
   opts: { cwd?: string } = {},
 ): Promise<PromptSnapshot> {
@@ -88,15 +121,7 @@ export async function buildSystemPromptSnapshot(
   const skillIndex =
     skills.length === 0
       ? "(no skills saved yet — create one with `skill_manage` when something is worth remembering)"
-      : skills
-          .map(
-            (s) =>
-              `- **${s.frontmatter.name}** — ${s.frontmatter.description}` +
-              // Say where a skill came from: one she wrote and one this repo
-              // shipped deserve different amounts of trust.
-              (s.scope === "project" ? " *(from this project)*" : ""),
-          )
-          .join("\n");
+      : renderSkillIndex(skills);
   const instructions = await loadInstructionChain(cwd);
 
   // Memory entries store `[[kb:slug]]` pointers instead of knowledge (memory is

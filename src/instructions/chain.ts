@@ -89,6 +89,38 @@ async function projectChainDirs(cwd: string): Promise<string[]> {
   return dirs.reverse();
 }
 
+/**
+ * Read at most `maxBytes` of a REGULAR file as UTF-8; return null for anything
+ * that is not a plain file. This is the security boundary of the chain: project
+ * `AGENTS.md`/`CLAUDE.md` are untrusted (they arrive merely by `cd` into a
+ * repo), so a **symlink** — e.g. one committed as `AGENTS.md → ~/.ssh/id_rsa`
+ * or a provider-key file — must never be followed into the prompt, and a FIFO,
+ * device, or multi-GB file must never hang or OOM the reader. Bounding by BYTES
+ * (not `String.length` code units) also keeps the 32 KB budget honest for CJK,
+ * where one code unit is three UTF-8 bytes.
+ */
+async function readBoundedRegularFile(
+  file: string,
+  maxBytes: number,
+): Promise<{ text: string; truncated: boolean } | null> {
+  // lstat, not stat: judge the type WITHOUT following a symlink.
+  const lst = await fs.lstat(file);
+  if (!lst.isFile()) return null; // symlink / FIFO / device / directory → refuse
+  const handle = await fs.open(file, "r");
+  try {
+    const st = await handle.stat(); // re-check on the open fd (defeats a swap)
+    if (!st.isFile()) return null;
+    const want = Math.min(st.size, Math.max(0, maxBytes));
+    const truncated = st.size > maxBytes;
+    if (want === 0) return { text: "", truncated };
+    const buf = Buffer.alloc(want);
+    const { bytesRead } = await handle.read(buf, 0, want, 0);
+    return { text: buf.subarray(0, bytesRead).toString("utf8"), truncated };
+  } finally {
+    await handle.close();
+  }
+}
+
 export async function loadInstructionChain(cwd: string): Promise<InstructionChain> {
   const candidates: Array<{ file: string; scope: "home" | "project" }> = [];
   for (const name of INSTRUCTION_FILENAMES) {
@@ -111,26 +143,26 @@ export async function loadInstructionChain(cwd: string): Promise<InstructionChai
       budgetExhausted = true;
       break;
     }
-    let raw: string;
+    const remaining = INSTRUCTION_BUDGET_BYTES - used;
+    let read: { text: string; truncated: boolean } | null;
     try {
-      raw = (await fs.readFile(candidate.file, "utf8")).trim();
+      read = await readBoundedRegularFile(candidate.file, remaining);
     } catch {
       continue; // absent or unreadable — not an error, most repos have neither
     }
+    if (!read) continue; // symlink / FIFO / device / dir — refused (see helper)
+    const raw = read.text.trim();
     if (!raw) continue;
     if (seen.has(raw)) {
-      // CLAUDE.md is commonly a copy of or symlink to AGENTS.md.
+      // CLAUDE.md is commonly a byte-for-byte copy of AGENTS.md (symlinks are
+      // refused above, so only real copies reach here).
       deduped.push(candidate.file);
       continue;
     }
     seen.add(raw);
-
-    const remaining = INSTRUCTION_BUDGET_BYTES - used;
-    const truncated = raw.length > remaining;
-    const content = truncated ? raw.slice(0, remaining) : raw;
-    used += content.length;
-    if (truncated) budgetExhausted = true;
-    files.push({ path: candidate.file, content, scope: candidate.scope, truncated });
+    used += Buffer.byteLength(raw, "utf8"); // budget is bytes, not UTF-16 units
+    if (read.truncated) budgetExhausted = true;
+    files.push({ path: candidate.file, content: raw, scope: candidate.scope, truncated: read.truncated });
   }
 
   return { files, deduped, budgetExhausted };

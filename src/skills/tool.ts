@@ -8,6 +8,8 @@ import {
   rewriteSkill,
   validateSkillName,
 } from "./manager.js";
+import { discoverSkills } from "./discovery.js";
+import { findProjectRoot } from "../instructions/chain.js";
 
 interface SkillManageInput {
   action: "list" | "view" | "create" | "patch" | "rewrite" | "delete";
@@ -47,7 +49,7 @@ export const skillManageTool: ToolDefinition<SkillManageInput, string> = {
     },
     required: ["action"],
   },
-  async execute(input) {
+  async execute(input, ctx) {
     switch (input.action) {
       case "list": {
         const skills = await listSkills();
@@ -65,7 +67,16 @@ export const skillManageTool: ToolDefinition<SkillManageInput, string> = {
       case "view": {
         if (!input.name) throw new Error("`name` required for view");
         validateSkillName(input.name);
-        const skill = await getSkill(input.name);
+        let skill = await getSkill(input.name);
+        if (!skill && ctx?.cwd) {
+          // Home miss: the prompt index also advertises project skills (from
+          // .lisa/.agents), which live outside home — resolve those through
+          // discovery so a skill the index listed can actually be opened.
+          const found = (await discoverSkills(await findProjectRoot(ctx.cwd))).skills.find(
+            (s) => s.frontmatter.name === input.name,
+          );
+          if (found) skill = found;
+        }
         if (!skill) return `Skill "${input.name}" not found.`;
         return `# ${skill.frontmatter.name}\n${skill.frontmatter.description}\n\n${skill.body}`;
       }

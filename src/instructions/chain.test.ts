@@ -136,6 +136,37 @@ describe("instruction chain — bounded and labelled", () => {
     );
     assert.match(rendered, /your own home directory/);
   });
+
+  test("a symlinked AGENTS.md is refused — a hostile repo cannot read a secret into the prompt", async () => {
+    const secret = path.join(path.dirname(home), "id_rsa");
+    fs.writeFileSync(secret, "PRIVATE-KEY-MATERIAL");
+    fs.symlinkSync(secret, path.join(repo, "AGENTS.md"));
+    try {
+      const loaded = await chain.loadInstructionChain(repo);
+      assert.deepEqual(loaded.files, [], "a symlink is never followed");
+      assert.doesNotMatch(chain.renderInstructionChain(loaded), /PRIVATE-KEY-MATERIAL/);
+    } finally {
+      // Remove the LINK before its target, so it never becomes a dangling
+      // symlink (rmSync+force can't clear those, which would poison later tests).
+      fs.rmSync(path.join(repo, "AGENTS.md"), { force: true });
+      fs.rmSync(secret, { force: true });
+    }
+  });
+
+  test("the budget counts UTF-8 bytes, not code units, so CJK cannot claim 3x the room", async () => {
+    // Each CJK char is one UTF-16 code unit but three UTF-8 bytes: char count
+    // well under the budget, byte count far over it. The old `raw.length` test
+    // admitted ~3x; a byte budget must truncate.
+    const chars = chain.INSTRUCTION_BUDGET_BYTES; // ~32k chars ≈ 96 KB of bytes
+    fs.writeFileSync(path.join(repo, "AGENTS.md"), "字".repeat(chars));
+    const loaded = await chain.loadInstructionChain(repo);
+    assert.equal(loaded.budgetExhausted, true);
+    assert.ok(loaded.files[0]!.content.length < chars, "the CJK file was truncated");
+    assert.ok(
+      Buffer.byteLength(loaded.files[0]!.content, "utf8") <= chain.INSTRUCTION_BUDGET_BYTES + 4,
+      "bounded by UTF-8 bytes (a boundary code point may add a few bytes)",
+    );
+  });
 });
 
 describe("instruction chain — hot reload", () => {

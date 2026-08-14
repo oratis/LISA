@@ -30,7 +30,15 @@ import path from "node:path";
 import { skillsDir } from "../paths.js";
 import { pathExists } from "../fs-utils.js";
 import { parseFrontmatter } from "./frontmatter.js";
+import { validateSkillName } from "./manager.js";
 import type { Skill } from "../types.js";
+
+/**
+ * Upper bound on a discovered `SKILL.md`. Project skills are untrusted (they
+ * arrive by `cd`), so a symlinked or multi-GB file must not OOM the scan; home
+ * skills are never this large. Skills over this are skipped.
+ */
+const MAX_SKILL_BYTES = 128 * 1024;
 
 export interface SkillSource {
   dir: string;
@@ -70,9 +78,20 @@ async function readSkillsIn(source: SkillSource): Promise<DiscoveredSkill[]> {
   const out: DiscoveredSkill[] = [];
   for (const entry of entries) {
     if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
-    const file = path.join(source.dir, entry.name, "SKILL.md");
-    if (!(await pathExists(file))) continue;
+    // Untrusted project dirs land verbatim in the prompt index — hold their
+    // names to the same charset the tool enforces before trusting them.
     try {
+      validateSkillName(entry.name);
+    } catch {
+      continue;
+    }
+    const file = path.join(source.dir, entry.name, "SKILL.md");
+    try {
+      // lstat (not stat): refuse a symlinked SKILL.md (a repo could point it at
+      // a secret) and bound the size so a huge / `/dev/zero` file can't OOM the
+      // scan — the same untrusted-read hazard the AGENTS.md chain guards.
+      const lst = await fs.lstat(file);
+      if (!lst.isFile() || lst.size > MAX_SKILL_BYTES) continue;
       const raw = await fs.readFile(file, "utf8");
       const parsed = parseFrontmatter(raw);
       if (!parsed) continue;
