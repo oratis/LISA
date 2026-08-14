@@ -1,6 +1,4 @@
-import fs from "node:fs/promises";
-import path from "node:path";
-import { atomicWrite, ensureDir, pathExists } from "../fs-utils.js";
+import { capsOf } from "../capabilities/index.js";
 import type { ToolDefinition } from "../types.js";
 
 interface FilePatch {
@@ -53,34 +51,35 @@ export const applyPatchTool: ToolDefinition<ApplyPatchInput, string> = {
     required: ["patches"],
   },
   async execute(input, ctx) {
+    const { fs } = capsOf(ctx);
     const summary: string[] = [];
     for (const patch of input.patches) {
-      const abs = path.resolve(ctx.cwd, patch.path);
+      const abs = fs.resolvePath(ctx.cwd, patch.path);
       if (patch.action === "create") {
-        if (await pathExists(abs)) {
+        if (await fs.exists(abs)) {
           throw new Error(`create: ${abs} already exists`);
         }
         if (patch.content == null) {
           throw new Error(`create: ${abs} requires content`);
         }
-        await ensureDir(path.dirname(abs));
-        await atomicWrite(abs, patch.content);
+        // writeFile creates missing parents, so no separate mkdir step.
+        await fs.writeFile(abs, patch.content);
         summary.push(`create ${abs} (${patch.content.length} chars)`);
       } else if (patch.action === "delete") {
-        if (!(await pathExists(abs))) {
+        if (!(await fs.exists(abs))) {
           throw new Error(`delete: ${abs} does not exist`);
         }
         await fs.unlink(abs);
         summary.push(`delete ${abs}`);
       } else if (patch.action === "update") {
-        if (!(await pathExists(abs))) {
+        if (!(await fs.exists(abs))) {
           throw new Error(`update: ${abs} does not exist (use create instead)`);
         }
         if (patch.content != null) {
-          await atomicWrite(abs, patch.content);
+          await fs.writeFile(abs, patch.content);
           summary.push(`update ${abs} (full rewrite, ${patch.content.length} chars)`);
         } else if (patch.edits && patch.edits.length > 0) {
-          let current = await fs.readFile(abs, "utf8");
+          let current = await fs.readFile(abs);
           for (const edit of patch.edits) {
             const occurrences = countOccurrences(current, edit.old_string);
             if (occurrences === 0) {
@@ -97,7 +96,7 @@ export const applyPatchTool: ToolDefinition<ApplyPatchInput, string> = {
               ? current.split(edit.old_string).join(edit.new_string)
               : current.replace(edit.old_string, edit.new_string);
           }
-          await atomicWrite(abs, current);
+          await fs.writeFile(abs, current);
           summary.push(`update ${abs} (${patch.edits.length} edits)`);
         } else {
           throw new Error(`update ${abs}: provide either content or edits`);

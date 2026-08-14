@@ -1,5 +1,4 @@
-import fs from "node:fs/promises";
-import path from "node:path";
+import { capsOf } from "../capabilities/index.js";
 import type { ToolDefinition } from "../types.js";
 
 interface ReadInput {
@@ -27,15 +26,16 @@ export const readTool: ToolDefinition<ReadInput, string> = {
     required: ["path"],
   },
   async execute(input, ctx) {
-    const abs = path.resolve(ctx.cwd, input.path);
+    const { fs } = capsOf(ctx);
+    const abs = fs.resolvePath(ctx.cwd, input.path);
     const stat = await fs.stat(abs);
-    if (!stat.isFile()) throw new Error(`not a file: ${abs}`);
+    if (!stat.isFile) throw new Error(`not a file: ${abs}`);
     if (stat.size > MAX_BYTES) {
       throw new Error(
         `file too large (${stat.size} bytes, limit ${MAX_BYTES}). Use grep or read with offset/limit.`,
       );
     }
-    const raw = await fs.readFile(abs, "utf8");
+    const raw = await fs.readFile(abs);
     const lines = raw.split(/\r?\n/);
     const offset = Math.max(1, input.offset ?? 1);
     const limit = input.limit ?? DEFAULT_LIMIT;
