@@ -97,19 +97,76 @@ gcloud scheduler jobs create http lisa-autonomy-sweep --project $PROJECT \
 
 ## 6. 监控与告警
 
+**先建通知渠道**——没绑渠道的告警只会安静地待在控制台里，等于没建：
+
 ```bash
-# Uptime check 打公开的 auth 配置端点（无需凭据、恒 200）
-gcloud monitoring uptime create lisa-cloud-auth \
+CHANNEL=$(gcloud alpha monitoring channels create --project $PROJECT \
+  --display-name "lisa-ops email" --type email \
+  --channel-labels email_address=<OPS_EMAIL> --format 'value(name)')
+```
+
+Uptime check 打 `/health`（专用 liveness 端点：无凭据、恒 200、零依赖。
+比 `/api/auth/config` 合适——后者还要 JSON 组装，不是纯活性信号）：
+
+```bash
+gcloud monitoring uptime create lisa-cloud-health \
   --resource-type uptime-url --resource-labels host=cloud.meetlisa.ai \
-  --path /api/auth/config --project $PROJECT
-# 预算告警（月 $200 起步，超 50/90/100% 邮件）
+  --path /health --project $PROJECT
+```
+
+日志告警一：异常消费（meter.ts，>$10/天/用户）。实际输出是小写的
+`[billing] ⚠ anomaly: …`（console.error → stderr → textPayload，severity ERROR）
+——**不是**大写 `ANOMALY`，过滤串照抄下面这条，别凭记忆改：
+
+```bash
+cat > /tmp/policy-anomaly.json <<'EOF'
+{
+  "displayName": "lisa-cloud billing anomaly (>$10/day/user)",
+  "combiner": "OR",
+  "conditions": [{
+    "displayName": "billing anomaly logged",
+    "conditionMatchedLog": {
+      "filter": "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"lisa-cloud\" AND textPayload:\"[billing] ⚠ anomaly\""
+    }
+  }],
+  "alertStrategy": {"notificationRateLimit": {"period": "3600s"}, "autoClose": "86400s"}
+}
+EOF
+gcloud alpha monitoring policies create --project $PROJECT \
+  --policy-from-file /tmp/policy-anomaly.json --notification-channels "$CHANNEL"
+```
+
+日志告警二：5xx。服务端在 Cloud Run 上输出结构化 JSON（src/log.ts，
+`K_SERVICE` 触发），真正的失败才是 severity=ERROR——直接盯请求 5xx 更稳：
+
+```bash
+cat > /tmp/policy-5xx.json <<'EOF'
+{
+  "displayName": "lisa-cloud 5xx",
+  "combiner": "OR",
+  "conditions": [{
+    "displayName": "request finished with 5xx",
+    "conditionMatchedLog": {
+      "filter": "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"lisa-cloud\" AND log_name:\"run.googleapis.com%2Frequests\" AND httpRequest.status>=500"
+    }
+  }],
+  "alertStrategy": {"notificationRateLimit": {"period": "3600s"}, "autoClose": "86400s"}
+}
+EOF
+gcloud alpha monitoring policies create --project $PROJECT \
+  --policy-from-file /tmp/policy-5xx.json --notification-channels "$CHANNEL"
+```
+
+预算告警（月 $200 起步，超 50/90/100% 邮件）：
+
+```bash
 gcloud billing budgets create --billing-account <BILLING_ACCOUNT_ID> \
   --display-name lisa-cloud --budget-amount 200USD \
   --threshold-rule=percent=0.5 --threshold-rule=percent=0.9 --threshold-rule=percent=1.0
 ```
 
-日志侧已内建：异常消费告警（meter.ts，>$10/天/用户打 `[billing] ANOMALY`）、
-sweep 报告行（`[sweep] scanned…`）。建一条 log-based alert 盯 `ANOMALY` 即可。
+其余日志侧已内建：sweep 报告行 `[sweep] scanned…`（severity INFO，
+jsonPayload.message）；Scheduler 首跳失败直接看 Cloud Scheduler 的执行历史。
 
 ## 7. 急停开关（记住这三个）
 
