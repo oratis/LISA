@@ -60,9 +60,13 @@ export function redactId(id: string): string {
   return `${id.slice(0, 4)}…${id.slice(-4)}`;
 }
 
-/** `alice@example.com` → `a***@example.com`; a non-address becomes `…`. */
-export function redactEmail(email: string): string {
-  const at = email.indexOf("@");
-  if (at <= 0) return "…";
-  return `${email[0]}***@${email.slice(at + 1)}`;
+/**
+ * `alice.smith@example.com` → `al***@example.com`. The local part is the
+ * identifying half, so it goes; the domain stays whole because that's what you
+ * group by when delivery breaks. Anything that isn't an address becomes `***`.
+ */
+export function redactEmail(addr: string): string {
+  const at = addr.lastIndexOf("@");
+  if (at <= 0 || at === addr.length - 1) return "***";
+  return `${addr.slice(0, Math.min(2, at))}***@${addr.slice(at + 1)}`;
 }

@@ -13,6 +13,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import path from "node:path";
 import { pathExists } from "../fs-utils.js";
 import { isCloud } from "../edition.js";
+import { logWarn } from "../log.js";
 import { withFileLock } from "./lock.js";
 import { soulDir } from "./paths.js";
 
@@ -137,7 +138,7 @@ async function runGit(args: string[]): Promise<GitResult> {
  */
 export async function initSoulRepo(): Promise<void> {
   if (!(await checkGitAvailable())) {
-    console.warn("[soul-git] git not available; soul history disabled");
+    logWarn("[soul-git] git not available; soul history disabled");
     return;
   }
   if (!(await pathExists(soulDir()))) return;

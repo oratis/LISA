@@ -9,6 +9,7 @@ import { dirname, resolve as resolvePath } from "node:path";
 // in ~/.lisa/config.env.
 import { configureProxyFromEnv } from "./proxy-bootstrap.js";
 configureProxyFromEnv({ log: (m) => console.error(m) });
+import { logInfo } from "./log.js";
 import { runAgent } from "./agent.js";
 import { buildApprovalCallback, DEFAULT_MUTATING_TOOLS, DEFAULT_MUTATING_ACTIONS } from "./approval.js";
 import { CONFIG_ENV_PATH, loadConfigEnv } from "./env.js";
@@ -570,9 +571,9 @@ async function main(): Promise<void> {
       // Print the real bind address — this used to claim "localhost" while
       // Node was actually listening on every interface.
       const display = isLoopbackAddress(args.host) ? "localhost" : args.host;
-      console.error(`Lisa web UI listening on http://${display}:${args.port} (bound to ${args.host})`);
+      logInfo(`Lisa web UI listening on http://${display}:${args.port} (bound to ${args.host})`);
       if (!isLoopbackAddress(args.host)) {
-        console.error(
+        logInfo(
           `[web] non-loopback bind: requests from other machines must present LISA_WEB_TOKEN ` +
             `(open http://${args.host}:${args.port}/?token=<value> once per device)`,
         );
