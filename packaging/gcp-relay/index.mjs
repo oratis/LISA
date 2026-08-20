@@ -21,6 +21,15 @@ const RELAY_TOKEN = process.env.RELAY_TOKEN || "";
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "";
 const PORT = Number(process.env.PORT) || 8080;
 
+// Structured logs (Cloud Logging lifts `severity` and `httpRequest` from JSON
+// lines). NEVER log headers or bodies here — requests carry the relay token
+// inbound and the real Anthropic key outbound, and bodies are conversation
+// content. Method/path/status/latency only.
+function log(severity, message, extra = {}) {
+  const stream = severity === "INFO" ? process.stdout : process.stderr;
+  stream.write(JSON.stringify({ severity, message, ...extra }) + "\n");
+}
+
 // Headers we must not copy from client→upstream (hop-by-hop or auth we replace).
 const STRIP_REQ = new Set(["host", "content-length", "connection", "x-api-key", "authorization"]);
 // Headers we must not copy from upstream→client (let Node re-frame the body).
@@ -32,6 +41,21 @@ const presentedToken = (req) =>
   "";
 
 const server = http.createServer(async (req, res) => {
+  // One request log line per proxied call (health probes stay quiet). The
+  // path is query-free by construction of the Anthropic API, but strip anyway.
+  const startedMs = Date.now();
+  const pathOnly = (req.url || "/").split("?")[0];
+  res.on("finish", () => {
+    if (pathOnly === "/" || pathOnly === "/health" || pathOnly === "/healthz") return;
+    log(res.statusCode >= 500 ? "ERROR" : "INFO", `${req.method} ${pathOnly} → ${res.statusCode}`, {
+      httpRequest: {
+        requestMethod: req.method,
+        requestUrl: pathOnly,
+        status: res.statusCode,
+        latency: `${((Date.now() - startedMs) / 1000).toFixed(3)}s`,
+      },
+    });
+  });
   try {
     if (req.url === "/" || req.url === "/health" || req.url === "/healthz") {
       res.writeHead(200, { "content-type": "text/plain" });
@@ -78,6 +102,7 @@ const server = http.createServer(async (req, res) => {
         body: req.method === "GET" || req.method === "HEAD" ? undefined : body,
       });
     } catch (e) {
+      log("ERROR", `upstream fetch failed: ${String(e && e.message || e)}`);
       res.writeHead(502, { "content-type": "application/json" });
       res.end(JSON.stringify({ type: "error", error: { type: "relay_upstream_error", message: String(e && e.message || e) } }));
       return;
@@ -97,6 +122,7 @@ const server = http.createServer(async (req, res) => {
     }
     res.end();
   } catch (e) {
+    log("ERROR", `relay error: ${String(e && e.stack || e)}`);
     if (!res.headersSent) res.writeHead(500, { "content-type": "text/plain" });
     res.end("relay error");
   }
@@ -110,4 +136,4 @@ function safeEqual(a, b) {
 
 server.headersTimeout = 0; // long streaming turns
 server.requestTimeout = 0;
-server.listen(PORT, () => console.log(`anthropic relay listening on :${PORT} → ${UPSTREAM}`));
+server.listen(PORT, () => log("INFO", `anthropic relay listening on :${PORT} → ${UPSTREAM}`));

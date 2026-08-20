@@ -6,6 +6,7 @@ import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { listRoomMusic, toPublicTrack } from "./room-music.js";
 import { runAgent } from "../agent.js";
+import { logInfo, logWarn, logError, redactId, redactEmail } from "../log.js";
 import { fireHooks } from "../hooks/runner.js";
 import type { HookSpec } from "../plugins/types.js";
 import { saveConfigEnv } from "../env.js";
@@ -374,10 +375,10 @@ async function resumeOrCreateWebSession(model: string): Promise<SessionStore> {
   if (lastId) {
     try {
       const s = await SessionStore.open(lastId);
-      console.error(`[web] resuming session ${lastId} (from pointer)`);
+      logInfo(`[web] resuming session ${lastId} (from pointer)`);
       return s;
     } catch (err) {
-      console.error(
+      logWarn(
         `[web] pointer ${lastId} unreadable (${(err as Error).message}) — falling back to most recent session`,
       );
     }
@@ -393,16 +394,16 @@ async function resumeOrCreateWebSession(model: string): Promise<SessionStore> {
     );
     if (candidate) {
       const s = await SessionStore.open(candidate.id);
-      console.error(
+      logInfo(
         `[web] resuming session ${candidate.id} (most recent in ${cwd}, ${candidate.messageCount} msgs)`,
       );
       return s;
     }
   } catch (err) {
-    console.error(`[web] could not scan sessions: ${(err as Error).message}`);
+    logWarn(`[web] could not scan sessions: ${(err as Error).message}`);
   }
   const s = await SessionStore.create({ cwd: process.cwd(), model });
-  console.error(`[web] starting fresh session ${s.id}`);
+  logInfo(`[web] starting fresh session ${s.id}`);
   return s;
 }
 
@@ -439,9 +440,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           await creditPurchase({ at: Date.now(), microUSD: 20_000_000, transactionId: "operator-seed" });
         }
       });
-      console.error(`[accounts] reviewer demo account ready: ${email} (${acct.uid})`);
+      logInfo(`[accounts] reviewer demo account ready: ${redactEmail(email)} (${redactId(acct.uid)})`);
     } catch (e) {
-      console.error(`[accounts] reviewer seed failed: ${(e as Error).message}`);
+      logError(`[accounts] reviewer seed failed: ${(e as Error).message}`);
     }
   }
   if (!isLoopbackAddress(host) && !webToken) {
@@ -638,13 +639,13 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       try {
         const { isBorn } = await import("../soul/store.js");
         if (await isBorn()) return; // reads inside the per-uid scope
-        console.error(`[accounts] birthing a soul for ${uid}…`);
+        logInfo(`[accounts] birthing a soul for ${redactId(uid)}…`);
         await startBirthOnce(uid, (emit) => runBirth(uid, emit)).promise;
         const runtime = tenantRuntimes.peek(lisaHome());
         if (runtime) runtime.prompt = undefined; // pick the newborn soul up next turn
-        console.error(`[accounts] soul born for ${uid}`);
+        logInfo(`[accounts] soul born for ${redactId(uid)}`);
       } catch (e) {
-        console.error(`[accounts] birth failed for ${uid}: ${(e as Error).message}`);
+        logError(`[accounts] birth failed for ${redactId(uid)}: ${(e as Error).message}`);
       }
     })();
   };
@@ -681,11 +682,11 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     path.join(lisaHome(), "agents.json"),
   );
   const hub = new OrchestratorHub(orchestratorCfg, {
-    log: (msg) => console.error(msg),
+    log: (msg) => logInfo(msg),
   });
   // Operational push: notify subscribed phones on agent done/error/permission +
   // Reve idle messages. Opt-in, ntfy by default (apns is a stub). See push.ts.
-  const pushBridge = new PushBridge({ log: (m) => console.error(m) });
+  const pushBridge = new PushBridge({ log: (m) => logInfo(m) });
   // Billing anomalies reach the operator's phone through the same channel as
   // agent errors (B8d) — pref "error", throttled inside the bridge.
   setAnomalySink((text) => pushBridge.onBillingAnomaly(text));
@@ -750,9 +751,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         }));
         globalChat.activity.lastAdvisorSuggestions = { suggestions, at };
         broadcast({ type: "advisor_suggestions", suggestions, at });
-        console.error(`[advisor] surfaced ${surface.length} suggestion(s)`);
+        logInfo(`[advisor] surfaced ${surface.length} suggestion(s)`);
       } catch (err) {
-        console.error(`[advisor] tick failed: ${(err as Error).message}`);
+        logError(`[advisor] tick failed: ${(err as Error).message}`);
       }
     })();
   }, ADVISE_INTERVAL_MS);
@@ -786,10 +787,10 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       if (!force && digest.total > 0) {
         broadcast({ type: "idle_message", text: formatDigestText(digest), at: new Date().toISOString(), source: "mail" });
       }
-      console.error(`[mail] digest ${digest.date}: ${digest.total} mail · ${digest.needsYou.length} need-you`);
+      logInfo(`[mail] digest ${digest.date}: ${digest.total} mail · ${digest.needsYou.length} need-you`);
       return digest;
     } catch (err) {
-      console.error(`[mail] digest sweep failed: ${(err as Error).message}`);
+      logError(`[mail] digest sweep failed: ${(err as Error).message}`);
       return null;
     } finally {
       mailSweepRunning = false;
@@ -818,10 +819,10 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       if (!force) {
         broadcast({ type: "idle_message", text: result.text, at: new Date().toISOString(), source: "kb" });
       }
-      console.error(`[kb-brief] ${result.brief.date}: ${result.brief.total} item(s) · ${result.brief.ingested.length} ingested`);
+      logInfo(`[kb-brief] ${result.brief.date}: ${result.brief.total} item(s) · ${result.brief.ingested.length} ingested`);
       return true;
     } catch (err) {
-      console.error(`[kb-brief] failed: ${(err as Error).message}`);
+      logError(`[kb-brief] failed: ${(err as Error).message}`);
       return false;
     } finally {
       kbBriefRunning = false;
@@ -853,9 +854,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
             broadcast({ type: "idle_message", text: alert.chat, at: new Date().toISOString(), source: "mail" });
           }
           broadcast({ type: "mail_digest_update", at: new Date().toISOString() });
-          console.error(`[mail] ${important.length} important new mail (alerted ${Math.min(3, important.length)})`);
+          logInfo(`[mail] ${important.length} important new mail (alerted ${Math.min(3, important.length)})`);
         } catch (err) {
-          console.error(`[mail] poll failed: ${(err as Error).message}`);
+          logError(`[mail] poll failed: ${(err as Error).message}`);
         } finally {
           mailPollRunning = false;
         }
@@ -893,14 +894,16 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         mediaType: shot.mediaType,
       });
       if (!suggestion) {
-        console.error("[screen-advisor] nothing actionable on screen");
+        logInfo("[screen-advisor] nothing actionable on screen");
         return;
       }
       lastScreenSuggestion = { ...suggestion, at: new Date().toISOString() };
       broadcast({ type: "screen_suggestion", ...lastScreenSuggestion });
-      console.error(`[screen-advisor] suggested: ${suggestion.title}`);
+      // The title is derived from a screenshot of the user's screen — log its
+      // size, never its content.
+      logInfo(`[screen-advisor] suggested a next step (${suggestion.title.length} chars)`);
     } catch (err) {
-      console.error(`[screen-advisor] tick failed: ${(err as Error).message}`);
+      logError(`[screen-advisor] tick failed: ${(err as Error).message}`);
     } finally {
       screenTickRunning = false;
     }
@@ -919,9 +922,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   };
   restartScreenTimer();
   if (screenCfg.enabled) {
-    console.error(`[screen-advisor] enabled — every ${screenCfg.intervalMinutes}m`);
+    logInfo(`[screen-advisor] enabled — every ${screenCfg.intervalMinutes}m`);
     if (!isGranted("screen")) {
-      console.error("[screen-advisor] waiting on `screen` consent — grant it (`lisa consent grant screen`) to start capturing.");
+      logInfo("[screen-advisor] waiting on `screen` consent — grant it (`lisa consent grant screen`) to start capturing.");
     }
   }
 
@@ -965,7 +968,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const ctx = globalChat;
       ctx.activity.idleRunning = true;
       const startedAt = new Date().toISOString();
-      console.error(
+      logInfo(
         `[idle] firing after ${Math.round(watcher.idleFor() / 60_000)}m of inactivity`,
       );
       broadcast({ type: "idle_start", at: startedAt });
@@ -1002,10 +1005,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           userLanguageSample,
         });
         if (result.silent) {
-          console.error("[idle] (silent)");
+          logInfo("[idle] (silent)");
           broadcast({ type: "idle_done", silent: true });
         } else {
-          console.error(`[idle] → ${result.text.slice(0, 120)}`);
+          // The idle note is conversation content — log that one went out and
+          // how big it was, never the text itself.
+          logInfo(`[idle] → sent (${result.text.length} chars)`);
           await ctx.session.appendMessage({
             role: "assistant",
             content: [{ type: "text", text: `[while you were away]\n${result.text}` }],
@@ -1020,14 +1025,14 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         }
       } catch (err) {
         const msg = (err as Error).message;
-        console.error(`[idle] error: ${msg}`);
+        logError(`[idle] error: ${msg}`);
         broadcast({ type: "idle_error", message: msg });
       } finally {
         ctx.activity.idleRunning = false;
       }
     });
     watcher.start();
-    console.error(
+    logInfo(
       `[idle] watching — will fire after ${opts.idleMinutes}m of no input`,
     );
   }
@@ -1086,10 +1091,11 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           summary: r.summary,
           at: new Date().toISOString(),
         });
-        console.error(`[reflect] ${decision.reason} → ${r.summary}`);
-        for (const a of r.applied) console.error(`  applied: ${a}`);
+        // The summary and applied lines are distilled conversation content —
+        // log counts, not text.
+        logInfo(`[reflect] ${decision.reason} → summary updated (${r.summary.length} chars, ${r.applied.length} applied)`);
       } catch (err) {
-        console.error(`[reflect] failed: ${(err as Error).message}`);
+        logError(`[reflect] failed: ${(err as Error).message}`);
       } finally {
         ctx.activity.reflecting = false;
       }
@@ -1101,6 +1107,15 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   const server = http.createServer(async (req, res) => {
     const url = req.url ?? "/";
     applyApiVersionHeader(url, res);
+
+    // Liveness probe (pre-gate, unauthenticated): uptime checks and platform
+    // health probes land here. Deliberately no I/O and no dependencies — a 200
+    // means "the process is serving requests", nothing more.
+    if (req.method === "GET" && (url === "/health" || url === "/healthz")) {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
 
     // ── Auth gate ────────────────────────────────────────────────────────
     // Loopback callers are the local user — no token needed (the default
@@ -1316,7 +1331,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
               `stripe.pack.${summary.pack}`,
               STRIPE_PACKS[summary.pack]!.faceMicroUSD,
             );
-            console.error(`[stripe] credited ${credited} micro-USD to ${summary.uid} (session ${summary.id})`);
+            logInfo(`[stripe] credited ${credited} micro-USD to ${redactId(summary.uid)} (session ${redactId(summary.id ?? "")})`);
           } catch (e) {
             if (!(e instanceof IapError && e.code === "duplicate_transaction")) throw e;
             // replayed webhook — already credited, fine
@@ -1324,17 +1339,17 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         } else if (summary.kind === "refund" && summary.id) {
           const sessionId = await sessionIdForPaymentIntent(summary.id, scfg);
           const undone = sessionId ? await refundTransaction(`stripe-${sessionId}`) : null;
-          console.error(
+          logInfo(
             undone
-              ? `[stripe] refund: clawed back ${undone.microUSD} micro-USD from ${undone.uid}`
-              : `[stripe] refund for unknown payment ${summary.id} — ignored`,
+              ? `[stripe] refund: clawed back ${undone.microUSD} micro-USD from ${redactId(undone.uid)}`
+              : `[stripe] refund for unknown payment ${redactId(summary.id)} — ignored`,
           );
         }
         // Verified events always 200 so Stripe stops retrying.
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ ok: true }));
       } catch (e) {
-        console.error(`[stripe] webhook handling failed: ${(e as Error).message}`);
+        logError(`[stripe] webhook handling failed: ${(e as Error).message}`);
         res.writeHead(500, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: "handling_failed" }));
       }
@@ -1485,7 +1500,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           minted.code,
           Math.round(OTP_TTL_MS / 60_000),
         );
-        if (!mail.sent) console.error(`[auth] sign-in code not delivered (${mail.detail})`);
+        if (!mail.sent) logWarn(`[auth] sign-in code not delivered (${mail.detail})`);
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ ok: true, sent: mail.sent, expiresInSec: minted.expiresInSec }));
         return;
@@ -1545,7 +1560,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           tools: opts.tools,
           cwd: process.cwd(),
         });
-        console.error(
+        logInfo(
           `[sweep] scanned ${report.scanned} active accounts, ran ${report.ran} autonomy action(s)`,
         );
         res.writeHead(200, { "content-type": "application/json" });
@@ -1554,7 +1569,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         // A sweep-wide failure (e.g. the accounts store is unreadable) must
         // answer the scheduler cleanly rather than hang the request — per-uid
         // failures are already absorbed inside sweepUserAutonomy. (S4 review)
-        console.error(`[sweep] failed: ${(e as Error).message}`);
+        logError(`[sweep] failed: ${(e as Error).message}`);
         res.writeHead(500, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: "sweep_failed" }));
       }
@@ -1584,10 +1599,10 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           const tx = await verifyAppleJWS(txJws);
           const transactionId = String(tx.transactionId ?? "");
           const undone = transactionId ? await refundTransaction(transactionId) : null;
-          console.error(
+          logInfo(
             undone
-              ? `[iap] ${type}: clawed back ${undone.microUSD} micro-USD from ${undone.uid} (tx ${transactionId})`
-              : `[iap] ${type}: unknown transaction ${transactionId} — ignored`,
+              ? `[iap] ${type}: clawed back ${undone.microUSD} micro-USD from ${redactId(undone.uid)} (tx ${redactId(transactionId)})`
+              : `[iap] ${type}: unknown transaction ${redactId(transactionId)} — ignored`,
           );
         }
         // Always 200 a verified notification — Apple retries non-2xx.
@@ -1595,13 +1610,13 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end(JSON.stringify({ ok: true }));
       } catch (e) {
         if (e instanceof PaymentStateError || e instanceof BillingStateError) {
-          console.error(`[iap] ASN billing state unavailable: ${e.message}`);
+          logError(`[iap] ASN billing state unavailable: ${e.message}`);
           res.writeHead(503, { "content-type": "application/json" });
           res.end(JSON.stringify({ error: "billing_state_unavailable" }));
           return;
         }
         const code = e instanceof IapError ? e.code : "verification_failed";
-        console.error(`[iap] ASN rejected: ${code}`);
+        logWarn(`[iap] ASN rejected: ${code}`);
         res.writeHead(401, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: code }));
       }
@@ -1746,7 +1761,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         await handleGateway(req, res, url, acct);
       } catch (err) {
         if (!(err instanceof BillingStateError || err instanceof AccountStoreError)) throw err;
-        console.error(`[billing] gateway state unavailable: ${err.message}`);
+        logError(`[billing] gateway state unavailable: ${err.message}`);
         if (!res.headersSent) {
           res.writeHead(503, { "content-type": "application/json" });
           res.end(JSON.stringify({ error: "billing_state_unavailable" }));
@@ -1781,8 +1796,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         // a sandbox JWS here. LISA_IAP_ALLOW_SANDBOX=1 re-opts a non-prod
         // cloud/staging deploy back in for testing.
         if (cloud && process.env.LISA_IAP_ALLOW_SANDBOX !== "1" && tx.environment !== "Production") {
-          console.error(
-            `[iap] rejected non-Production tx in cloud: env=${tx.environment ?? "?"} product=${tx.productId} tx=${tx.transactionId} uid=${accountUid}`,
+          logWarn(
+            `[iap] rejected non-Production tx in cloud: env=${tx.environment ?? "?"} product=${tx.productId} tx=${redactId(tx.transactionId)} uid=${redactId(accountUid)}`,
           );
           res.writeHead(400, { "content-type": "application/json" });
           res.end(JSON.stringify({ ok: false, error: "sandbox_rejected" }));
@@ -1791,12 +1806,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         const credited = await creditTransaction(accountUid, tx);
         const acct = await getAccount(accountUid);
         const q = acct ? await quotaStatus(acct) : null;
-        console.error(`[iap] credited ${credited} micro-USD to ${accountUid} (${tx.productId}, tx ${tx.transactionId}, ${tx.environment ?? "?"})`);
+        logInfo(`[iap] credited ${credited} micro-USD to ${redactId(accountUid)} (${tx.productId}, tx ${redactId(tx.transactionId)}, ${tx.environment ?? "?"})`);
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ ok: true, creditedMicroUSD: credited, quota: q }));
       } catch (e) {
         if (e instanceof PaymentStateError || e instanceof BillingStateError) {
-          console.error(`[iap] billing state unavailable: ${e.message}`);
+          logError(`[iap] billing state unavailable: ${e.message}`);
           res.writeHead(503, { "content-type": "application/json" });
           res.end(JSON.stringify({ ok: false, error: "billing_state_unavailable" }));
           return;
@@ -1861,7 +1876,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end(JSON.stringify({ available: true, ...q }));
       } catch (err) {
         if (!(err instanceof BillingStateError || err instanceof AccountStoreError)) throw err;
-        console.error(`[billing] quota unavailable: ${err.message}`);
+        logError(`[billing] quota unavailable: ${err.message}`);
         res.writeHead(503, { "content-type": "application/json" });
         res.end(JSON.stringify({ available: false, error: "billing_state_unavailable" }));
       }
@@ -1952,7 +1967,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         tenantRuntimes.delete(userHome);
         moodBus.forget(accountUid); // keyed by uid, not home path
       } catch (e) {
-        console.error(`[auth] account home cleanup failed: ${(e as Error).message}`);
+        logError(`[auth] account home cleanup failed: ${(e as Error).message}`);
       }
       res.writeHead(200, {
         "content-type": "application/json",
@@ -2129,7 +2144,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         return;
       }
       restartScreenTimer();
-      console.error(
+      logInfo(
         `[screen-advisor] config: enabled=${screenCfg.enabled} every=${screenCfg.intervalMinutes}m`,
       );
       res.writeHead(200, { "content-type": "application/json" });
@@ -2151,7 +2166,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       }
       const visionBody = await readRequestText(req, res);
       if (visionBody === null) return;
-      console.error("[vision] capture requested");
+      logInfo("[vision] capture requested");
       let mode: CaptureMode = "interactive";
       try {
         const parsed = visionBody ? (JSON.parse(visionBody) as { mode?: CaptureMode }) : {};
@@ -2207,7 +2222,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         const audio = Buffer.from(payload.data, "base64");
         await fs.writeFile(tmp, audio);
         const prepared = await prepareTranscription({ audioPath: tmp });
-        console.error(
+        logInfo(
           `[voice] transcribing ${audio.length} bytes / ${(prepared.durationMs / 1000).toFixed(1)}s ` +
             `(${ext}, ${prepared.provider}/${prepared.model})`,
         );
@@ -2247,7 +2262,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
               const admission = await admitInference(acct, opts.model);
               if (admission.ok) polishPermit = admission.permit;
               else {
-                console.error(
+                logInfo(
                   `[voice] dictation polish skipped: ${JSON.stringify(admission.body)}`,
                 );
                 text = transcript;
@@ -2269,7 +2284,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
             if (err instanceof BillingStateError || err instanceof AccountStoreError) {
               throw err;
             }
-            console.error(`[voice] dictation polish failed: ${(err as Error).message}`);
+            logError(`[voice] dictation polish failed: ${(err as Error).message}`);
             text = transcript;
           } finally {
             await polishPermit?.release();
@@ -2282,7 +2297,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           res.writeHead(err.status, { "content-type": "application/json" });
           res.end(JSON.stringify({ error: err.message }));
         } else if (err instanceof BillingStateError || err instanceof AccountStoreError) {
-          console.error(`[billing] voice admission/settlement unavailable: ${err.message}`);
+          logError(`[billing] voice admission/settlement unavailable: ${err.message}`);
           res.writeHead(503, { "content-type": "application/json" });
           res.end(JSON.stringify({ error: "billing_state_unavailable" }));
         } else {
@@ -3873,7 +3888,7 @@ self.addEventListener('fetch', (event) => {
         }
       } catch (err) {
         if (!(err instanceof BillingStateError || err instanceof AccountStoreError)) throw err;
-        console.error(`[billing] chat admission unavailable: ${err.message}`);
+        logError(`[billing] chat admission unavailable: ${err.message}`);
         res.writeHead(503, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: "billing_state_unavailable" }));
         return;
@@ -3959,7 +3974,7 @@ self.addEventListener('fetch', (event) => {
             latestReflection: chat.reflectionSummary,
           });
           if (modelContext.omittedMessages > 0) {
-            console.error(
+            logInfo(
               `[context] omitted ${modelContext.omittedMessages} older message(s); ` +
                 `sending ~${modelContext.estimatedTokens} history tokens`,
             );
@@ -4124,7 +4139,7 @@ self.addEventListener('fetch', (event) => {
         }
       } catch (err) {
         if (!(err instanceof BillingStateError || err instanceof AccountStoreError)) throw err;
-        console.error(`[billing] reflection admission unavailable: ${err.message}`);
+        logError(`[billing] reflection admission unavailable: ${err.message}`);
         res.writeHead(503, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: "billing_state_unavailable" }));
         return;
@@ -4151,7 +4166,7 @@ self.addEventListener('fetch', (event) => {
         res.end(JSON.stringify(r));
       } catch (err) {
         if (err instanceof BillingStateError || err instanceof AccountStoreError) {
-          console.error(`[billing] reflection settlement unavailable: ${err.message}`);
+          logError(`[billing] reflection settlement unavailable: ${err.message}`);
           res.writeHead(503, { "content-type": "application/json" });
           res.end(JSON.stringify({ error: "billing_state_unavailable" }));
         } else {
