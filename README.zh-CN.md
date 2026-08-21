@@ -203,7 +203,7 @@ OpenAI 模型 (`gpt-*`) 还需要 `OPENAI_API_KEY`。
 
 LISA 也是你机器上*其它* coding agent 的一个控制面。三层，对它们的介入逐层加深：
 
-**1. 观察。** 她看着已经在跑的 agent，把你会错过的事告诉你——哪个会话卡在同一个报错上、哪两个要在同一个仓库里打架、哪个早就跑完在干等。诚实地说明范围：**五个 observer（Claude Code、Codex、OpenCode、Aider、GitHub PR）都能产出结构化活动——工具、改动的文件、最近命令、错误——由每个集成的 `visibility` 档位门控；精细度取决于各 agent 在磁盘上记录了什么**（Claude Code 最丰富；Aider 的 markdown 日志只给文件 + 轮次、没有工具流；每个 adapter 都有隐私测试断言提示词/回复/文件内容绝不泄漏）。`lisa agents` 打印一次性快照，灵动岛实时显示。她可以 `dispatch_agent` 无头派发（拒绝把新 agent 丢进已被占用的目录）、`compare_agents` 在并行 worktree 里对比多个 agent 做同一任务，并给出**顾问卡片**——每条带一个一键动作（预填到聊天框，**绝不自动执行**）和一个 ✕（教她少唠叨这一类）。
+**1. 观察。** 她看着已经在跑的 agent，把你会错过的事告诉你——哪个会话卡在同一个报错上、哪两个要在同一个仓库里打架、哪个早就跑完在干等。诚实地说明范围：**十个 observer——五个 coding agent 适配器（Claude Code、Codex、OpenCode、Aider、GitHub PR），外加 git、shell、takoapi、managed、pty——都能产出结构化活动——工具、改动的文件、最近命令、错误——由每个集成的 `visibility` 档位门控；精细度取决于各 agent 在磁盘上记录了什么**（Claude Code 最丰富；Aider 的 markdown 日志只给文件 + 轮次、没有工具流；每个 adapter 都有隐私测试断言提示词/回复/文件内容绝不泄漏）。默认开启的是三个——Claude Code、managed、pty——其余七个需要在 `~/.lisa/agents.json` 里逐个开启。`lisa agents` 打印一次性快照，灵动岛实时显示。她可以 `dispatch_agent` 无头派发（拒绝把新 agent 丢进已被占用的目录）、`compare_agents` 在并行 worktree 里对比多个 agent 做同一任务，并给出**顾问卡片**——每条带一个一键动作（预填到聊天框，**绝不自动执行**）和一个 ✕（教她少唠叨这一类）。
 
 **2. 控制她自己的 agent。** **managed agent** 跑的是 LISA *自己*的 agent loop，在一个她完全驱动的子上下文里：派发任务、逐个审批/拒绝改写类工具、追加追问、取消——从 GUI 的 agents 卡片或 `POST /api/agents/managed/<id>/{send,approve,cancel}`。它们是她的，所以用的模型和 provider 也是她的。
 
@@ -664,9 +664,9 @@ src/
 ├── idle/                   空闲自主反思（梦境 Reve）
 ├── autonomy/               run ledger —— 自驱运行的可观察日志（`lisa autonomy`）
 ├── agents/                 managed agent（LISA 自己的 loop）+ PTY agent（操纵真实 claude/codex）
-├── integrations/           observer：claude-code · codex · opencode · aider · github-pr · pty · managed · …
+├── integrations/           observer（10 个）：claude-code · codex · opencode · aider · github-pr · git · shell · takoapi · managed · pty
 ├── orchestrator/           跨 agent 日志 + "你不在的时候"回顾合成
-├── advisor/                主动顾问卡片（卡住 / 冲突 / 就绪 / 空闲）+ 关闭学习
+├── advisor/                主动顾问卡片（卡住 / 冲突 / 成本飙升 / 就绪 / 空闲）+ 关闭学习
 ├── consent/                环境信号 + 邮箱的统一授权门控（默认全关）
 ├── control/                远程控制策略 —— 对远程调用者门控高危动作
 ├── sense/                  环境信号源（前台 app / 窗口标题），授权门控

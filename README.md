@@ -210,7 +210,7 @@ which owns that auth. See [Coding plans](#coding-plans--use-a-subscription-inste
 
 LISA is also a control plane for the *other* coding agents on your machine. Three layers, increasing in how much she touches them:
 
-**1. Observe.** She watches the agents already running and tells you what you'd otherwise miss — a session stuck on the same error, two agents about to collide in one repo, a finished run sitting idle. Honest scope note: **all five observers (Claude Code, Codex, OpenCode, Aider, GitHub PRs) emit structural activity — tools, files touched, last command, errors — gated behind a per-integration `visibility` tier; fidelity varies by what each agent records on disk** (Claude Code is richest; Aider's markdown logs give files + turn counts but no tool stream; every adapter has a privacy test asserting prompts/replies/file-contents never leak). `lisa agents` prints a one-shot snapshot; the island shows it live. She can `dispatch_agent` headlessly (refusing directories another agent owns), `compare_agents` on the same task in parallel worktrees, and surface **advisor cards** — each with a one-click action that prefills the chat (nothing auto-runs) and a ✕ that teaches her to stop nagging about that category.
+**1. Observe.** She watches the agents already running and tells you what you'd otherwise miss — a session stuck on the same error, two agents about to collide in one repo, a finished run sitting idle. Honest scope note: **all ten observers — five coding-agent adapters (Claude Code, Codex, OpenCode, Aider, GitHub PRs) plus git, shell, takoapi, managed and pty — emit structural activity — tools, files touched, last command, errors — gated behind a per-integration `visibility` tier; fidelity varies by what each agent records on disk** (Claude Code is richest; Aider's markdown logs give files + turn counts but no tool stream; every adapter has a privacy test asserting prompts/replies/file-contents never leak). Three are enabled by default — Claude Code, managed and pty — and the other seven are opt-in per integration in `~/.lisa/agents.json`. `lisa agents` prints a one-shot snapshot; the island shows it live. She can `dispatch_agent` headlessly (refusing directories another agent owns), `compare_agents` on the same task in parallel worktrees, and surface **advisor cards** — each with a one-click action that prefills the chat (nothing auto-runs) and a ✕ that teaches her to stop nagging about that category.
 
 **2. Control her own agents.** A **managed agent** runs LISA's *own* agent loop in a child context she fully drives: delegate a task, approve/deny each mutating tool, send follow-ups, cancel — from the GUI agents card or `POST /api/agents/managed/<id>/{send,approve,cancel}`. These are hers, so the model and provider are hers too.
 
@@ -716,9 +716,9 @@ src/
 ├── idle/                   idle-time autonomous reflection (Reve)
 ├── autonomy/               run ledger — observable journal of self-driven runs (`lisa autonomy`)
 ├── agents/                 managed agents (LISA's own loop) + PTY agents (drive real claude/codex)
-├── integrations/           observers: claude-code · codex · opencode · aider · github-pr · pty · managed · …
+├── integrations/           observers (10): claude-code · codex · opencode · aider · github-pr · git · shell · takoapi · managed · pty
 ├── orchestrator/           cross-agent journal + "while you were away" recap synthesis
-├── advisor/                proactive advisor cards (stuck / conflict / ready / idle) + dismissal learning
+├── advisor/                proactive advisor cards (stuck / conflict / cost_spike / ready / idle) + dismissal learning
 ├── consent/                unified consent gate for ambient signals + mail (default all off)
 ├── control/                remote-control policy — gates high-risk actions from remote callers
 ├── sense/                  ambient signal sources (foreground app / window title), consent-gated
