@@ -48,6 +48,22 @@ describe("cloud route capability boundary", () => {
     }
   });
 
+  test("denies consent routes — consent state is per-machine, not per-tenant", () => {
+    // src/consent/store.ts writes a single ~/.lisa/consent.json outside the
+    // per-user home scope, so in the hosted edition these routes would be
+    // cross-tenant: read another tenant's grants, grant "mail" deployment-wide,
+    // or revoke-all and kill the mail digest for everyone.
+    for (const route of [
+      "/api/consent",
+      "/api/consent?x=1",
+      "/api/consent/grant",
+      "/api/consent/revoke",
+      "/api/consent/revoke-all",
+    ]) {
+      assert.equal(isCloudDeniedRoute(route), true, `${route} must be denied`);
+    }
+  });
+
   test("keeps tenant data, auth, billing, chat, and bounded KB routes available", () => {
     for (const route of [
       "/api/auth/me",

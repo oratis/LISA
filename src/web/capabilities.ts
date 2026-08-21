@@ -26,6 +26,13 @@ const CLOUD_DENIED_ROUTE_PREFIXES = [
   "/api/advisor/",
   "/api/claude/",
   "/api/config/",
+  // Consent state is stored per-machine, not per-tenant (src/consent/store.ts
+  // resolves ~/.lisa/consent.json directly instead of going through the
+  // per-user home scope in src/paths.ts). Leaving these routes open in the
+  // hosted edition let any signed-in tenant read every tenant's grant list and
+  // overwrite it — including a one-request /api/consent/revoke-all that
+  // switches the mail digest off for the whole deployment.
+  "/api/consent/",
   "/api/control/",
   "/api/devices/",
   "/api/dispatch/",
