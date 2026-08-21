@@ -20,7 +20,22 @@
 
 export interface SoulSeed {
   bornAt: string;           // ISO 8601
-  bornOn: string;           // hashed hostname
+  /**
+   * sha256(hostname + username) — see generateSeed() in birth.ts.
+   *
+   * NOT an anonymous identifier. It is an unsalted hash over two low-entropy,
+   * often-guessable strings ("<Firstname>'s MacBook Pro" + a first name), so
+   * anyone holding a candidate pair confirms a match with a single hash. It is
+   * stable across rebirths on the same machine, which makes it a device
+   * fingerprint and a linkable identifier.
+   *
+   * Keep it local. It is deliberately stripped from the birth prompt
+   * (seedForPrompt() in birth.ts) so it is never handed to a model provider;
+   * do not add it to prompts, telemetry, or any LISA-operated endpoint. Note
+   * it IS still part of the seed served by GET /api/soul to authenticated
+   * clients (the iOS companion reads that endpoint).
+   */
+  bornOn: string;
   randomness: string;       // hex
   bigFive: BigFiveSeed;     // initial personality leanings
 }
