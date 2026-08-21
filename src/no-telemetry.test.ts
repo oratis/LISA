@@ -70,8 +70,31 @@ const TRACKER_TOKENS = [
   "newrelic",
 ];
 
-/** Directories whose contents ship to a user, in one form or another. */
-const SCAN_ROOTS = ["src", "website/src", "packaging/ios-companion/Sources"];
+/**
+ * Directories whose contents ship to a user, in one form or another.
+ *
+ * `website/public` matters as much as `website/src`: Astro copies it to the
+ * site root verbatim, so a tracker dropped there reaches production without
+ * ever passing through a `.astro` file. Guarding only `website/src` would let
+ * the single most convenient hiding place for a tracking snippet stay green —
+ * on the very site that carries the promise.
+ *
+ * `packaging` is scanned whole rather than just the iOS companion's Sources:
+ * the mac client, launcher and gcp-relay ship to users too. `scripts`,
+ * `deploy`, `contracts` and `completions` round this out to the same surface
+ * the promise was originally verified against; all are small and currently
+ * clean, so the cost is a few dozen extra file reads.
+ */
+const SCAN_ROOTS = [
+  "src",
+  "website/src",
+  "website/public",
+  "packaging",
+  "scripts",
+  "deploy",
+  "contracts",
+  "completions",
+];
 
 /**
  * The pages that carry the promises, listed by path on purpose.
@@ -92,7 +115,20 @@ const PROMISE_PAGES = [
   "website/src/pages/zh-CN/cloud.astro",
 ];
 
-const SKIP_DIRS = new Set(["node_modules", "dist", ".git", "assets"]);
+// Build output is generated from sources we already scan, so reading it adds
+// no coverage — only noise and time. `.build`/`.swiftpm`/`DerivedData` are
+// Swift/Xcode artifacts that appear under packaging/ once anyone builds the
+// native clients locally.
+const SKIP_DIRS = new Set([
+  "node_modules",
+  "dist",
+  ".git",
+  "assets",
+  "build",
+  ".build",
+  ".swiftpm",
+  "DerivedData",
+]);
 
 function walk(dir: string, out: string[] = []): string[] {
   let entries: fs.Dirent[];
@@ -139,6 +175,26 @@ describe("no telemetry — the promise on the website stays true", () => {
     assert.deepEqual(trackersIn("that is a plausible explanation"), []);
     assert.deepEqual(trackersIn("the heap grows; segment the buffer"), []);
     assert.deepEqual(trackersIn("normalize the amplitude of the waveform"), []);
+  });
+
+  test("every scanned root still exists (coverage cannot silently shrink)", () => {
+    // SCAN_ROOTS is the whole reach of this guard. If a directory is renamed or
+    // moved and this list is not updated, the walk would skip it in silence and
+    // the suite would stay green over unscanned shipping code. Fail loudly
+    // instead. `website/public` is called out because it is the gap this list
+    // was widened to close: Astro copies it to the site root verbatim.
+    for (const root of SCAN_ROOTS) {
+      assert.ok(
+        fs.existsSync(path.join(REPO_ROOT, root)),
+        `SCAN_ROOTS lists "${root}" but it does not exist — update the list, ` +
+          "and make sure the code that moved is still covered",
+      );
+    }
+    assert.ok(
+      SCAN_ROOTS.includes("website/public"),
+      "website/public ships verbatim to the site that carries the promise; " +
+        "it must stay in SCAN_ROOTS",
+    );
   });
 
   test("every promise page still exists", () => {
