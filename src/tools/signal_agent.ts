@@ -24,7 +24,7 @@ import {
   findDispatch,
   listLiveDispatches,
   removeDispatch,
-  isAlive,
+  entryIsAlive,
   type DispatchEntry,
 } from "../integrations/dispatch-ledger.js";
 
@@ -138,7 +138,7 @@ export const signalAgentTool: ToolDefinition<SignalInput, string> = {
 
     const sig: NodeJS.Signals = input.force ? "SIGKILL" : "SIGTERM";
     const delivered = signalGroup(entry.pid, sig);
-    if (!delivered && !isAlive(entry.pid)) {
+    if (!delivered && !entryIsAlive(entry)) {
       // It exited on its own between the lookup and the signal — clean up.
       removeDispatch(entry.id);
       return `${entry.agent} (pid ${entry.pid}) had already exited; removed it from the ledger.`;
@@ -148,7 +148,7 @@ export const signalAgentTool: ToolDefinition<SignalInput, string> = {
     if (!input.force) {
       // Give it a moment to shut down gracefully, then SIGKILL if it clings on.
       await sleep(1500);
-      if (isAlive(entry.pid)) {
+      if (entryIsAlive(entry)) {
         escalated = signalGroup(entry.pid, "SIGKILL");
       }
     }
