@@ -28,7 +28,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import type { ToolDefinition } from "../types.js";
 import { getCurrentHub } from "../integrations/current-hub.js";
-import { recordDispatch, dispatchLogDir } from "../integrations/dispatch-ledger.js";
+import { recordDispatch, recordExit, dispatchLogDir } from "../integrations/dispatch-ledger.js";
 
 interface DispatchInput {
   agent: "claude" | "codex" | "opencode" | "aider" | "copilot";
@@ -140,6 +140,34 @@ export async function launchAgent(
   // The child dup'd the fd for its stdio; close our copy.
   if (outFd !== undefined) try { fs.closeSync(outFd); } catch { /* ignore */ }
 
+  // Capture the exit status so dispatch_status can stop claiming a success it
+  // never observed. This listener MUST be attached now, before the 150 ms
+  // launch race below — an agent that exits inside that window emits "close"
+  // before the race resolves, and a listener attached afterwards would never
+  // fire. The ledger id doesn't exist yet, so stash the result and let
+  // whichever of the two finishes last do the write.
+  //
+  // The child is detached + unref'd, so this only works while LISA's own
+  // process outlives the agent: true for `lisa serve` and a live REPL, false
+  // for a one-shot CLI invocation that exits first. In that case the entry
+  // keeps exitCode: undefined and renders as "status not captured" — never as
+  // a success.
+  interface ExitStatus { code: number | null; signal: NodeJS.Signals | null }
+  const pending: { exit: ExitStatus | null } = { exit: null };
+  let ledgerId: string | undefined;
+  const saveExit = (code: number | null, signal: NodeJS.Signals | null): void => {
+    if (ledgerId === undefined) return;
+    try {
+      recordExit(ledgerId, code, signal);
+    } catch {
+      // ledger unwritable — the status just stays unknown
+    }
+  };
+  child.once("close", (code, signal) => {
+    pending.exit = { code, signal };
+    saveExit(code, signal);
+  });
+
   const launchError = await new Promise<string | null>((resolve) => {
     let settled = false;
     child.once("error", (e: NodeJS.ErrnoException) => {
@@ -159,7 +187,6 @@ export async function launchAgent(
   }
 
   const pid = child.pid;
-  child.unref();
   let id: string | undefined;
   if (typeof pid === "number") {
     try {
@@ -168,6 +195,12 @@ export async function launchAgent(
       log?.(`[dispatch] ledger write failed (non-fatal): ${(err as Error).message}`);
     }
   }
+
+  // The ledger row now exists. If the agent already exited during the launch
+  // race, its status is waiting in `exited` — write it through.
+  ledgerId = id;
+  if (pending.exit) saveExit(pending.exit.code, pending.exit.signal);
+  child.unref();
   return { pid, cmd, id, logPath };
 }
 

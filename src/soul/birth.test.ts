@@ -8,7 +8,7 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "lisa-birth-"));
 process.env.LISA_HOME = TMP;
 process.env.LISA_SOUL_GIT = "0"; // keep tests fast; git no-op path is itself S3 behavior
 
-const { birth, BirthInferenceError } = await import("./birth.js");
+const { birth, BirthInferenceError, seedForPrompt } = await import("./birth.js");
 const { isBorn } = await import("./store.js");
 const { soulSeedFile, soulNameFile } = await import("./paths.js");
 import type { BirthOutput } from "./birth.js";
@@ -140,5 +140,42 @@ describe("birth transactionality (S3)", () => {
         return true;
       },
     );
+  });
+});
+
+describe("birth prompt does not carry the device fingerprint", () => {
+  const seed = {
+    bornAt: "2026-08-21T00:00:00.000Z",
+    bornOn: "b0b0b0b0deadbeefcafef00d1234567890abcdef1234567890abcdef12345678",
+    randomness: "a".repeat(64),
+    bigFive: {
+      openness: 0.5,
+      conscientiousness: 0.5,
+      extraversion: 0.5,
+      agreeableness: 0.5,
+      neuroticism: 0.5,
+    },
+  };
+
+  test("seedForPrompt strips bornOn and keeps what the dream actually needs", () => {
+    const forPrompt = seedForPrompt(seed);
+    assert.equal("bornOn" in forPrompt, false, "bornOn must not reach the provider");
+    assert.equal(forPrompt.bornAt, seed.bornAt);
+    assert.equal(forPrompt.randomness, seed.randomness);
+    assert.deepEqual(forPrompt.bigFive, seed.bigFive);
+  });
+
+  test("the serialized prompt payload contains no trace of the hash", () => {
+    // This is the actual wire shape: dreamSoul() JSON-stringifies the result of
+    // seedForPrompt() into the user message sent to the model provider.
+    const payload = JSON.stringify(seedForPrompt(seed), null, 2);
+    assert.equal(payload.includes(seed.bornOn), false);
+    assert.equal(payload.includes("bornOn"), false);
+  });
+
+  test("seedForPrompt does not mutate the seed that gets written to disk", () => {
+    const copy = { ...seed };
+    seedForPrompt(copy);
+    assert.equal(copy.bornOn, seed.bornOn);
   });
 });

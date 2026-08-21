@@ -18,6 +18,9 @@ const {
   findDispatch,
   removeDispatch,
   isAlive,
+  entryIsAlive,
+  processStartToken,
+  recordExit,
   toDispatchView,
 } = await import("./dispatch-ledger.js");
 
@@ -145,5 +148,93 @@ describe("toDispatchView", () => {
     assert.equal(view.hasLog, false);
     assert.equal(view.alive, false);
     assert.equal("logPath" in view, false);
+  });
+});
+
+describe("pid reuse guard (start-time fingerprint)", () => {
+  test("a live pid has a readable start token", () => {
+    const tok = processStartToken(process.pid);
+    assert.equal(typeof tok, "string");
+    assert.ok((tok as string).length > 0);
+  });
+
+  test("the token is stable across reads for the same process", () => {
+    assert.equal(processStartToken(process.pid), processStartToken(process.pid));
+  });
+
+  test("no token for a dead pid or pid <= 1", () => {
+    assert.equal(processStartToken(DEAD_PID), null);
+    assert.equal(processStartToken(1), null);
+    assert.equal(processStartToken(0), null);
+  });
+
+  test("a live pid whose start token does NOT match is reported dead", () => {
+    // This is the pid-reuse case: the pid exists, but it is a different
+    // process than the one we dispatched. Without this, signal_agent would
+    // SIGTERM/SIGKILL the whole process group of an unrelated process.
+    assert.equal(isAlive(process.pid), true);
+    assert.equal(isAlive(process.pid, "ps:not-the-process-we-launched"), false);
+  });
+
+  test("a matching token still reports alive", () => {
+    const tok = processStartToken(process.pid) as string;
+    assert.equal(isAlive(process.pid, tok), true);
+  });
+
+  test("recordDispatch captures the token, and entryIsAlive honours it", () => {
+    const e = recordDispatch({ agent: "claude", pid: process.pid, cwd: "/a", task: "t" });
+    assert.equal(typeof e.startToken, "string");
+    assert.equal(entryIsAlive(e), true);
+    assert.equal(entryIsAlive({ ...e, startToken: "ps:someone-else" }), false);
+  });
+
+  test("entries without a token keep the old pid-only behavior", () => {
+    // Ledger files written before this field existed must not vanish.
+    const e = recordDispatch({
+      agent: "codex",
+      pid: process.pid,
+      cwd: "/a",
+      task: "t",
+      startToken: null,
+    });
+    assert.equal("startToken" in e, false);
+    assert.equal(entryIsAlive(e), true);
+  });
+});
+
+describe("recordExit", () => {
+  test("records a clean exit", () => {
+    const e = recordDispatch({ agent: "claude", pid: DEAD_PID, cwd: "/a", task: "t", now: 5 });
+    recordExit(e.id, 0, null, 99);
+    const stored = loadLedger().find((x) => x.id === e.id);
+    assert.equal(stored?.exitCode, 0);
+    assert.equal(stored?.exitSignal, null);
+    assert.equal(stored?.exitedAt, 99);
+  });
+
+  test("records a nonzero exit — the crash case F4 was about", () => {
+    const e = recordDispatch({ agent: "codex", pid: DEAD_PID, cwd: "/a", task: "t", now: 5 });
+    recordExit(e.id, 1, null);
+    assert.equal(loadLedger().find((x) => x.id === e.id)?.exitCode, 1);
+  });
+
+  test("records death by signal", () => {
+    const e = recordDispatch({ agent: "aider", pid: DEAD_PID, cwd: "/a", task: "t", now: 5 });
+    recordExit(e.id, null, "SIGKILL");
+    const stored = loadLedger().find((x) => x.id === e.id);
+    assert.equal(stored?.exitCode, null);
+    assert.equal(stored?.exitSignal, "SIGKILL");
+  });
+
+  test("a fresh entry has no exit status — undefined, not 0", () => {
+    const e = recordDispatch({ agent: "claude", pid: DEAD_PID, cwd: "/a", task: "t", now: 5 });
+    assert.equal(e.exitCode, undefined);
+    assert.equal(loadLedger().find((x) => x.id === e.id)?.exitCode, undefined);
+  });
+
+  test("an unknown id is a silent no-op (entry already aged out)", () => {
+    recordDispatch({ agent: "claude", pid: DEAD_PID, cwd: "/a", task: "t", now: 5 });
+    assert.doesNotThrow(() => recordExit("no-such-id", 0, null));
+    assert.equal(loadLedger().length, 1);
   });
 });

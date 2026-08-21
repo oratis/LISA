@@ -126,3 +126,42 @@ describe("loadOrchestratorConfig", () => {
     assert.deepEqual(cfg, DEFAULT_ORCHESTRATOR_CONFIG);
   });
 });
+
+describe("built-in observer roster (the number the READMEs claim)", () => {
+  // The READMEs said "all five observers" while ten shipped, and the directory
+  // tree 490 lines below listed seven plus an ellipsis — so the README
+  // contradicted itself as well as the code. Pin the count here: prose can't
+  // be tested, but the fact it describes can be.
+  const EXPECTED = [
+    "aider",
+    "claude-code",
+    "codex",
+    "git",
+    "github-pr",
+    "managed",
+    "opencode",
+    "pty",
+    "shell",
+    "takoapi",
+  ];
+
+  test("ten integrations ship, and they are exactly these", () => {
+    const keys = Object.keys(DEFAULT_ORCHESTRATOR_CONFIG.integrations).sort();
+    assert.equal(keys.length, 10, "README says ten observers — update both if this changes");
+    assert.deepEqual(keys, EXPECTED);
+  });
+
+  test("registerBuiltinIntegrations registers one observer per configured key", async () => {
+    const { registerBuiltinIntegrations, listAvailableIntegrations } = await import("./registry.js");
+    await registerBuiltinIntegrations();
+    assert.deepEqual(listAvailableIntegrations().sort(), EXPECTED);
+  });
+
+  test("exactly three are enabled by default — the rest are opt-in", () => {
+    const on = Object.entries(DEFAULT_ORCHESTRATOR_CONFIG.integrations)
+      .filter(([, cfg]) => cfg.enabled)
+      .map(([name]) => name)
+      .sort();
+    assert.deepEqual(on, ["claude-code", "managed", "pty"]);
+  });
+});
