@@ -10,13 +10,25 @@
 
 import type { AgentSession } from "../integrations/types.js";
 
-export type SuggestionCategory =
-  | "stuck"
-  | "conflict"
-  | "repeated_failure"
-  | "cost_spike"
-  | "ready"
-  | "idle";
+/**
+ * Every category a detector can actually emit.
+ *
+ * Declared as a runtime tuple (not a bare type union) so a test can check it
+ * against what detectors.ts really produces. A union member with no detector
+ * is a promise the product never keeps, and it leaks into the docs as a
+ * feature that does not exist — `repeated_failure` sat here unimplemented and
+ * did exactly that. Note tsconfig excludes *.test.ts, so a type-level pin in a
+ * test would be inert; this has to be checkable at runtime.
+ */
+export const SUGGESTION_CATEGORIES = [
+  "stuck",
+  "conflict",
+  "cost_spike",
+  "ready",
+  "idle",
+] as const;
+
+export type SuggestionCategory = (typeof SUGGESTION_CATEGORIES)[number];
 
 /** How loudly a suggestion wants to be surfaced. */
 export type Urgency = "info" | "notice" | "urgent";
@@ -56,8 +68,6 @@ export interface AdvisorState {
   categoryDismissals: Partial<Record<SuggestionCategory, number>>;
   /** last time ANY non-urgent digest was surfaced (throttle). */
   lastDigestAt: number;
-  /** rolling memory of (command → error count) for repeated-failure detection. */
-  errorCommandCounts: Record<string, number>;
 }
 
 export function emptyAdvisorState(): AdvisorState {
@@ -66,7 +76,6 @@ export function emptyAdvisorState(): AdvisorState {
     dismissals: {},
     categoryDismissals: {},
     lastDigestAt: 0,
-    errorCommandCounts: {},
   };
 }
 
