@@ -16,8 +16,11 @@ test("redactId keeps a prefix+suffix for correlation, never the middle", () => {
   assert.equal(redactId(""), "");
 });
 
-test("redactEmail keeps first char + domain only", () => {
-  assert.equal(redactEmail("alice@example.com"), "a***@example.com");
-  assert.equal(redactEmail("not-an-address"), "…");
-  assert.equal(redactEmail("@nouser.com"), "…");
+test("redactEmail drops the identifying local part, keeps the domain", () => {
+  assert.equal(redactEmail("alice.smith@example.com"), "al***@example.com");
+  assert.equal(redactEmail("a@b.co"), "a***@b.co");
+  // Anything that isn't an address must not fall through as-is.
+  assert.equal(redactEmail("not-an-address"), "***");
+  assert.equal(redactEmail("@nouser.com"), "***");
+  assert.equal(redactEmail("trailing@"), "***");
 });

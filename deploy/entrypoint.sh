@@ -11,18 +11,30 @@
 # otherwise each cold start re-births a fresh demo soul.
 set -e
 
+# Match the app's log discipline (src/log.ts): on Cloud Run (K_SERVICE) emit
+# one-line JSON so Cloud Logging lifts the severity instead of filing these as
+# unclassified; plain text anywhere else. Messages here are fixed strings with
+# no quotes or backslashes, so no JSON escaping is needed.
+log_line() {
+  if [ -n "$K_SERVICE" ]; then
+    printf '{"severity":"%s","message":"%s"}\n' "$1" "$2"
+  else
+    echo "$2"
+  fi
+}
+
 export LISA_HOME="${LISA_HOME:-/data}"
 mkdir -p "$LISA_HOME"
 
 # Born? isBorn() resolves true once the soul seed exists under $LISA_HOME.
 if node -e "import('./dist/soul/store.js').then(m=>m.isBorn()).then(b=>process.exit(b?0:1)).catch(e=>{console.error(e);process.exit(1)})"; then
-  echo "[cloud] soul already present — skipping birth"
+  log_line INFO "[cloud] soul already present — skipping birth"
 else
-  echo "[cloud] birthing the demo soul (model ${LISA_MODEL:-default})…"
+  log_line INFO "[cloud] birthing the demo soul (model ${LISA_MODEL:-default})…"
   # `lisa birth` validates that a provider key for the model is configured (any of
   # ANTHROPIC_API_KEY / ZHIPU_API_KEY / OPENAI_API_KEY / … per the model). If none
   # is set it exits non-zero and the first web visitor gets the birth ritual.
-  node dist/cli.js birth || echo "[cloud] birth skipped/failed — first visitor will see the birth ritual"
+  node dist/cli.js birth || log_line WARNING "[cloud] birth skipped/failed — first visitor will see the birth ritual"
 fi
 
 exec node dist/cli.js serve --web --port "${PORT:-8080}" --host 0.0.0.0

@@ -38,6 +38,7 @@
  *
  * Env: RESEND_API_KEY, LISA_MAIL_FROM (default "LISA <no-reply@mail.meetlisa.ai>").
  */
+import { logInfo, logWarn, logError, redactEmail } from "../log.js";
 
 export interface MailResult {
   sent: boolean;
@@ -66,16 +67,10 @@ export function mailerConfig(env: Record<string, string | undefined> = process.e
 
 // ── log hygiene ─────────────────────────────────────────────────────────────
 
-/**
- * `alice.smith@example.com` → `al***@example.com`. The local part is the
- * identifying half, so it goes; the domain stays whole because that's what you
- * group by when delivery breaks.
- */
-export function redactEmail(addr: string): string {
-  const at = addr.lastIndexOf("@");
-  if (at <= 0 || at === addr.length - 1) return "***";
-  return `${addr.slice(0, Math.min(2, at))}***@${addr.slice(at + 1)}`;
-}
+// The canonical implementation lives in ../log.js beside the other log-line
+// redactors; re-exported here because callers of this module reach for it as
+// part of the mail surface.
+export { redactEmail };
 
 // ── HTML templating (hand-rolled: no MJML, no react-email, no deps) ─────────
 // Email HTML is 1998 HTML — tables, inline styles, no flexbox, no <style> that
@@ -255,7 +250,7 @@ async function deliver(
   if (!cfg.apiKey) {
     // The one place a live credential is logged: no key means no delivery, so
     // the alternative is a sign-in nobody can complete.
-    console.error(`[mail] outcome=skipped_no_key kind=${kind} to=${who} — ${fallback}`);
+    logWarn(`[mail] outcome=skipped_no_key kind=${kind} to=${who} — ${fallback}`);
     return { sent: false, detail: "no_api_key" };
   }
   try {
@@ -278,17 +273,17 @@ async function deliver(
       // limit) that returns a perfectly well-formed response — it must be
       // logged as loudly as a thrown network error, or it vanishes.
       const body = await res.text().catch(() => "");
-      console.error(
+      logError(
         `[mail] outcome=send_failed kind=${kind} to=${who} status=${res.status} — ${body.slice(0, 200)}`,
       );
       return { sent: false, detail: `http_${res.status}` };
     }
     const parsed = (await res.json().catch(() => ({}))) as { id?: string };
     const id = parsed.id ?? "sent";
-    console.error(`[mail] outcome=success kind=${kind} to=${who} id=${id}`);
+    logInfo(`[mail] outcome=success kind=${kind} to=${who} id=${id}`);
     return { sent: true, detail: id };
   } catch (e) {
-    console.error(`[mail] outcome=send_failed kind=${kind} to=${who} — ${(e as Error).message}`);
+    logError(`[mail] outcome=send_failed kind=${kind} to=${who} — ${(e as Error).message}`);
     return { sent: false, detail: "network_error" };
   }
 }
