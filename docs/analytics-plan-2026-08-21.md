@@ -49,9 +49,9 @@ no third-party tracking SDKs"。在这个产品里，**打点体系的第一个�
 | 统一 consent gate 已存在，默认全关、缺省即拒绝、corrupt 即拒绝 | `src/consent/store.ts` 的 `isGranted()` |
 | 多租户隔离靠 `homeScope` AsyncLocalStorage，不是 `WHERE uid=` | `src/paths.ts` |
 | SSE 扇出的租户规则是 `sameTenant(subscriberUid, originUid)`，是一次真实跨租户泄漏的修复 | `src/web/event-bus.ts:39-44` |
-| `bornOn = sha256(hostname + username)`，私有、从不外发 | `src/soul/birth.ts` 的 `generateSeed()` |
+| `bornOn = sha256(hostname + username)`。**「从不外发」已被证伪并部分修复**：`dreamSoul()` 原先把整个 seed（含 `bornOn`）序列化进出生提示词发给模型提供商，本 PR 已加 `seedForPrompt()` 剥掉它；但 `GET /api/soul` 至今仍把完整 seed 发给已认证客户端（iOS 伴侣 app 就在读它）。所以 §5.1 的红线依然成立且更有必要 | `src/soul/birth.ts` 的 `generateSeed()`、`seedForPrompt()`；`src/web/server.ts` 的 `/api/soul` |
 | 观测者不是 5 个而是 **10 个**目录：claude-code / codex / opencode / aider / github-pr / git / shell / takoapi / managed / pty。默认开三个：`claude-code`、`managed`、`pty`——后两个"在静止时不增加任何东西"（`managed` 只反射进程内 registry；`pty` 需要 `LISA_PTY_AGENTS=1` 才非空），**所以 Q5 的分母天然只有一个真观测者** | `src/integrations/`、`hub.ts:28-65` 的 `DEFAULT_ORCHESTRATOR_CONFIG` |
-| advisor 有 **6 个** category（`stuck`/`conflict`/`repeated_failure`/`cost_spike`/`ready`/`idle`）与已存在的 `categoryDismissals` 计数 | `src/advisor/types.ts` |
+| advisor 有 **5 个** category（`stuck`/`conflict`/`cost_spike`/`ready`/`idle`）与已存在的 `categoryDismissals` 计数。**原为 6 个**：`repeated_failure` 从来没有任何 detector 发出过，连同同样从未被读写的 `errorCommandCounts` 一起已在本 PR 删除，并加了双向断言防止再漂回来 | `src/advisor/types.ts` 的 `SUGGESTION_CATEGORIES`、`src/advisor/advisor.test.ts` |
 
 ### 0.2 本次调研新发现的两条事实（会直接改变取数方案，必须先解决）
 
@@ -460,7 +460,7 @@ desire slug 会泄漏"这个人在学 Rust / 在处理离婚"（调研约束原�
 | `advisor_card_acted` | web-ui,native / ingress / event | `{ category, actionKind }` | **Q4 分子（采纳）** |
 | `advisor_card_dismissed` | core / **internal** / event | `{ category, categoryDismissals: number(≤100) }` | **Q4 分子（屏蔽）**；`categoryDismissals` 直接取 `AdvisorState.categoryDismissals[cat]` |
 
-> 三个枚举全部复用 `src/advisor/types.ts` 的既有类型（`SuggestionCategory` 6 值 / `Urgency` 3 值 /
+> 三个枚举全部复用 `src/advisor/types.ts` 的既有类型（`SuggestionCategory` **5** 值 / `Urgency` 3 值 /
 > `SuggestedAction["kind"]` 6 值），一个字都不新造。**`Suggestion.text`、`Suggestion.id`、
 > `SuggestedAction.label` 和 `SuggestedAction.arg` 绝不上报**——`id` 是"稳定 dedup key"、
 > `arg` 的注释原文就是 *(sessionId, cwd, …)*，两者都会直接携带路径。
@@ -1438,6 +1438,9 @@ Code review 时只需要看这一个文件，不需要审查每个调用点。
 **修前置（只有一条，是遥测 consent 的硬地基）**
 - [ ] 修 §0.2 发现 B **中的 `src/consent/store.ts:54` 一处**：改成
       `import { lisaHome } from "../paths.js"`。
+      **注意本 PR 只加了路由层缓解**（`/api/consent/` 进了 `CLOUD_DENIED_ROUTE_PREFIXES`，
+      云版这几个路由现在一律 403），**底层的跨租户共享文件没有修**——遥测 consent 要挂上去，
+      这一条仍然是硬前置。
       **验收**：`LISA_EDITION=cloud` 下两个 uid 各 grant 一个 signal，
       `GET /api/consent` 互不影响（新增单测：两个 `homeScope.run()` 里各 `grant("screen")` /
       断言另一个 `isGranted("screen") === false`）
