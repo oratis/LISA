@@ -8,7 +8,7 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "lisa-billing-"));
 process.env.LISA_HOME = TMP;
 
 const { homeScope, homeForUid } = await import("../paths.js");
-const { recordUsage, readUsage, summarizeUsage } = await import("./meter.js");
+const { recordUsage, readUsage, summarizeUsage, claimAnomalyAlert } = await import("./meter.js");
 const { costMicroUSD, priceForModel, modelTier, formatMicroUSD, MARGIN } = await import("./prices.js");
 
 const U = (i: number, o: number, cr = 0, cw = 0) => ({
@@ -92,5 +92,90 @@ describe("meter ledger", () => {
     fs.appendFileSync(path.join(TMP, "billing", "usage.jsonl"), "not-json\n");
     const rows = await readUsage();
     assert.equal(rows.length, 1);
+  });
+});
+
+describe("anomaly alert claim (cross-instance dedup)", () => {
+  // The claim is what stops MAX_INSTANCES>1 from paging the operator once per
+  // instance for the same $10 day. Its contract is asymmetric on purpose:
+  // only a precondition failure is treated as "someone else has it".
+  const DAY = "2026-08-21";
+  const uid = "u-anomaly-1";
+
+  const withFirestore = async <T>(fn: () => Promise<T>): Promise<T> => {
+    const prev = {
+      on: process.env.LISA_FIRESTORE,
+      tok: process.env.LISA_FIRESTORE_TOKEN,
+      proj: process.env.LISA_FIRESTORE_PROJECT,
+    };
+    process.env.LISA_FIRESTORE = "1";
+    process.env.LISA_FIRESTORE_TOKEN = "test-token";
+    process.env.LISA_FIRESTORE_PROJECT = "test-project";
+    try {
+      return await fn();
+    } finally {
+      if (prev.on === undefined) delete process.env.LISA_FIRESTORE;
+      else process.env.LISA_FIRESTORE = prev.on;
+      if (prev.tok === undefined) delete process.env.LISA_FIRESTORE_TOKEN;
+      else process.env.LISA_FIRESTORE_TOKEN = prev.tok;
+      if (prev.proj === undefined) delete process.env.LISA_FIRESTORE_PROJECT;
+      else process.env.LISA_FIRESTORE_PROJECT = prev.proj;
+    }
+  };
+
+  const reply = (status: number): typeof fetch =>
+    (async () =>
+      new Response(status === 200 ? "{}" : "denied", { status })) as unknown as typeof fetch;
+
+  test("Firestore off → always claims (Mac edition keeps the in-process Set)", async () => {
+    let called = false;
+    const spy = (async () => {
+      called = true;
+      return new Response("{}", { status: 200 });
+    }) as unknown as typeof fetch;
+    assert.equal(await claimAnomalyAlert(DAY, spy), true);
+    assert.equal(called, false, "must not touch the network when Firestore is off");
+  });
+
+  test("Firestore on but no uid scope → claims without a write", async () => {
+    await withFirestore(async () => {
+      let called = false;
+      const spy = (async () => {
+        called = true;
+        return new Response("{}", { status: 200 });
+      }) as unknown as typeof fetch;
+      assert.equal(await claimAnomalyAlert(DAY, spy), true);
+      assert.equal(called, false);
+    });
+  });
+
+  test("create succeeds → this instance owns the alert", async () => {
+    await withFirestore(async () => {
+      await homeScope.run(homeForUid(uid), async () => {
+        assert.equal(await claimAnomalyAlert(DAY, reply(200)), true);
+      });
+    });
+  });
+
+  for (const status of [409, 412]) {
+    test(`precondition failure ${status} → another instance already alerted`, async () => {
+      await withFirestore(async () => {
+        await homeScope.run(homeForUid(uid), async () => {
+          assert.equal(await claimAnomalyAlert(DAY, reply(status)), false);
+        });
+      });
+    });
+  }
+
+  test("Firestore unavailable → still alerts (a missed burn beats a duplicate)", async () => {
+    await withFirestore(async () => {
+      await homeScope.run(homeForUid(uid), async () => {
+        assert.equal(await claimAnomalyAlert(DAY, reply(503)), true);
+        const boom = (async () => {
+          throw new Error("network down");
+        }) as unknown as typeof fetch;
+        assert.equal(await claimAnomalyAlert(DAY, boom), true);
+      });
+    });
   });
 });

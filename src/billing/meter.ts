@@ -13,7 +13,9 @@
  * recording NEVER throws (metering must not take chat down).
  */
 import path from "node:path";
-import { lisaHome } from "../paths.js";
+import { lisaHome, scopedUid } from "../paths.js";
+import { logError, redactId } from "../log.js";
+import { firestoreEnabled, setDoc, FirestoreError } from "../cloud/firestore.js";
 import { appendLine, readTextOrEmpty, atomicWrite } from "../fs-utils.js";
 import { withFileLock } from "../soul/lock.js";
 import type { ProviderUsage } from "../providers/types.js";
@@ -83,7 +85,7 @@ export async function recordUsage(
     await appendLine(usageFile(), JSON.stringify(rec));
     void trimIfNeeded();
   } catch (err) {
-    console.error(`[billing] usage audit append failed (turn still priced + debited): ${(err as Error).message}`);
+    logError(`[billing] usage audit append failed (turn still priced + debited): ${(err as Error).message}`);
   }
   // Global daily cap accounting + anomaly alert (B7). Best-effort, and run
   // whether or not the audit line landed.
@@ -92,8 +94,13 @@ export async function recordUsage(
   return rec;
 }
 
-// One alert per home per process-day: a single account burning > $10 face in a
-// day is worth an operator's eyes (PLAN §6.5).
+// One alert per home per DAY: a single account burning > $10 face in a day is
+// worth an operator's eyes (PLAN §6.5).
+//
+// The Set below is only the in-PROCESS fast path. On the cloud it is not
+// sufficient on its own — each instance keeps its own copy and a cold start
+// wipes it, so with MAX_INSTANCES>1 the same $10 day would page the operator
+// once per instance. claimAnomalyAlert() is the cross-instance arbiter.
 const ALERT_THRESHOLD_MICRO = 10_000_000;
 const alerted = new Set<string>();
 
@@ -103,20 +110,63 @@ export function setAnomalySink(sink: ((text: string) => void) | null): void {
   anomalySink = sink;
 }
 
+/**
+ * Claim today's anomaly alert for the ACTIVE tenant. True means this process
+ * won the claim and must alert; false means another instance already did.
+ *
+ * The claim is a create-only write, so a second writer fails its precondition
+ * — that failure IS the dedup signal. Any OTHER failure (network, permission,
+ * Firestore down) returns true on purpose: a duplicate alert is a nuisance, a
+ * missed one is an unnoticed $10+/day burn. Fail loud, never silent.
+ *
+ * Returns true unconditionally with Firestore off or outside a per-uid scope
+ * (Mac edition, shared-token demo) — there the in-process Set already decides,
+ * exactly as before.
+ *
+ * Exported for tests; `fetchFn` follows the firestore.ts injection convention.
+ */
+export async function claimAnomalyAlert(
+  day: string,
+  fetchFn: typeof fetch = fetch,
+): Promise<boolean> {
+  if (!firestoreEnabled()) return true;
+  const uid = scopedUid();
+  if (!uid) return true;
+  try {
+    await setDoc(
+      `lisa-anomaly-alerts/${uid}_${day}`,
+      { uid, day, at: new Date().toISOString() },
+      { exists: false },
+      fetchFn,
+    );
+    return true;
+  } catch (err) {
+    if (err instanceof FirestoreError && (err.status === 409 || err.status === 412)) return false;
+    return true;
+  }
+}
+
 async function alertIfAnomalous(now: Date): Promise<void> {
   try {
-    const key = `${lisaHome()}:${now.toISOString().slice(0, 10)}`;
+    const day = now.toISOString().slice(0, 10);
+    const key = `${lisaHome()}:${day}`;
     if (alerted.has(key)) return;
     const today = await summarizeUsage(new Date(now).setUTCHours(0, 0, 0, 0));
-    if (today.microUSD > ALERT_THRESHOLD_MICRO) {
-      alerted.add(key);
-      const text = `${lisaHome()} spent ${(today.microUSD / 1e6).toFixed(2)} USD face today (${today.turns} turns)`;
-      console.error(`[billing] ⚠ anomaly: ${text}`);
-      try {
-        anomalySink?.(text);
-      } catch {
-        /* alerting must never break metering */
-      }
+    if (today.microUSD <= ALERT_THRESHOLD_MICRO) return;
+    // Mark before the (network-bound) claim so concurrent turns in THIS
+    // process don't all pile into it.
+    alerted.add(key);
+    if (!(await claimAnomalyAlert(day))) return; // another instance owns today
+    // The cloud home path embeds the uid, so name the tenant by a redacted id
+    // there; the Mac edition's local path is meaningful and carries no uid.
+    const uid = scopedUid();
+    const who = uid ? `uid ${redactId(uid)}` : lisaHome();
+    const text = `${who} spent ${(today.microUSD / 1e6).toFixed(2)} USD face today (${today.turns} turns)`;
+    logError(`[billing] ⚠ anomaly: ${text}`);
+    try {
+      anomalySink?.(text);
+    } catch {
+      /* alerting must never break metering */
     }
   } catch {
     /* observability only */
