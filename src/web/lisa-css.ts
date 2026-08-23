@@ -2416,7 +2416,9 @@ export const MAIN_CSS = `  :root {
   /* Hide the legacy pixel send icon; the text label is enough in the new theme. */
   #sendBtn img { display: none; }
 
-  /* ── Manual right-panel collapse (F4, persisted client-side) ──── */
+  /* ── Manual right-panel collapse (F4, persisted client-side) ────
+     Collapsed is the DEFAULT state; the class is only absent once the user
+     has explicitly opened the panel (lisaRightbar === "open"). */
   body.rb-collapsed .frame {
     grid-template-columns: 300px 1fr;
     grid-template-areas:

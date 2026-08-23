@@ -1120,10 +1120,12 @@ if (fnSearchBtn && fnFind) {
 
 // Right panel manual collapse (F4) — wide-screen only concern: the ≤1180px
 // media query hides the panel regardless. Persisted; the fnbar button shows
-// an active tint while collapsed.
+// an active tint while collapsed. Collapsed is the DEFAULT: the panel only
+// stays open once the user has explicitly opened it ("open" in localStorage),
+// so a fresh profile boots into the two-column chat-first layout.
 {
-  let collapsed = false;
-  try { collapsed = localStorage.getItem('lisaRightbar') === 'collapsed'; } catch (e) {}
+  let collapsed = true;
+  try { collapsed = localStorage.getItem('lisaRightbar') !== 'open'; } catch (e) {}
   const applyRb = () => {
     document.body.classList.toggle('rb-collapsed', collapsed);
     const btn = document.getElementById('fnPanel');
