@@ -197,10 +197,16 @@ import { MAIN_HTML } from "./lisa-html.js";
  * #tabStrip); nodes now carry data-* attributes only
  * (runDelegatedAction dispatches approve/deny/send/output/cancel/adopt/
  * stream/open-lisa/close-stream).
+ * Then: the right panel now defaults to COLLAPSED — the lisaRightbar check
+ * inverted (open only when the value is literally "open", so an unset key
+ * reads as collapsed), and a tiny boot <script> right after <body> stamps
+ * body.rb-collapsed before .frame is parsed so a fresh profile never flashes
+ * the 3-column layout while the big inline bundle at the end of <body> is
+ * still loading. #fnPanel still toggles and persists it.
  */
-const EXPECTED_LENGTH = 307402;
+const EXPECTED_LENGTH = 308201;
 const EXPECTED_SHA256 =
-  "8c08d262b17ca6251b05e0430c06fd54482d2803482e317cad59a29bdc9590af";
+  "08a2d262d3ccbc01c761bb4562bfc47c673650725f050105dbc8a36741b700ba";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);

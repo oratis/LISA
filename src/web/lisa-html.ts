@@ -64,6 +64,15 @@ ${MAIN_CSS}
 </style>
 </head><body>
 
+<!-- Right-panel default = COLLAPSED. Applied here, before .frame is parsed,
+     so a fresh profile never flashes the 3-column layout during the long tail
+     of inline JS at the end of <body>. MAIN_CLIENT_JS re-applies the same
+     class idempotently and owns the toggle from then on. -->
+<script>
+try { if (localStorage.getItem('lisaRightbar') !== 'open') document.body.classList.add('rb-collapsed'); }
+catch (e) { document.body.classList.add('rb-collapsed'); }
+</script>
+
 <div class="frame">
 
   <!-- ╔════════════════ Title bar (drag zone) ════════════════╗ -->
