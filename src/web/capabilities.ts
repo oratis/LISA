@@ -39,6 +39,13 @@ const CLOUD_DENIED_ROUTE_PREFIXES = [
   "/api/mail/",
   "/api/pair/",
   "/api/plans/",
+  // Push subscriptions are one machine-wide channel (src/web/push.ts resolves
+  // push.json in the operator home — every producer wired to PushBridge is a
+  // host-level concern), and a PushSubscription carries no owner. Left open in
+  // the hosted edition, any signed-in tenant could GET /api/push/list and read
+  // every tenant's ntfy topic — which IS the send/read secret — and APNs device
+  // token, unregister another tenant's device, or rewrite their prefs.
+  "/api/push/",
   "/api/screen-advisor/",
   "/api/sense/",
   "/api/vision/",
@@ -62,3 +69,4 @@ export function isCloudDeniedRoute(rawUrl: string): boolean {
     return pathname === root || pathname.startsWith(`${root}/`);
   });
 }
+

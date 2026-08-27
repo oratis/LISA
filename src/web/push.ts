@@ -16,10 +16,10 @@
  * — never prompts, replies, full commands, or terminal output.
  */
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import http2 from "node:http2";
+import { lisaGlobalHome } from "../paths.js";
 import type { AgentSession } from "../integrations/types.js";
 
 export interface PushPrefs {
@@ -62,11 +62,21 @@ export interface PushSubscription {
   createdAt: number;
 }
 
-function lisaHome(): string {
-  return process.env.LISA_HOME ?? path.join(os.homedir(), ".lisa");
-}
+/**
+ * Push state lives in the OPERATOR home, never a per-user subtree. Every
+ * producer wired to PushBridge — agent activity, idle notes, the mail digest,
+ * the KB brief, billing anomalies — is a host-level concern, so this is one
+ * machine-wide channel by design.
+ *
+ * It used to resolve ~/.lisa with a private copy of lisaHome(), which read as
+ * an accidental homeScope bypass (the same shape as the consent-store defect
+ * this batch fixes) and left /api/push/* serving every tenant's device tokens
+ * in the hosted edition. Those routes are now denied in cloud (see
+ * CLOUD_DENIED_ROUTE_PREFIXES in ./capabilities.ts); naming lisaGlobalHome()
+ * here makes "deliberately not per-tenant" explicit rather than incidental.
+ */
 function pushPath(): string {
-  return path.join(lisaHome(), "push.json");
+  return path.join(lisaGlobalHome(), "push.json");
 }
 
 export function loadPush(): PushSubscription[] {
@@ -135,7 +145,7 @@ export interface LiveActivityReg {
   createdAt: number;
 }
 function liveActivitiesPath(): string {
-  return path.join(lisaHome(), "live-activities.json");
+  return path.join(lisaGlobalHome(), "live-activities.json");
 }
 export function listLiveActivities(): LiveActivityReg[] {
   try {

@@ -80,7 +80,25 @@ describe("cloud route capability boundary", () => {
     }
   });
 
+  test("denies push routes — one machine-wide channel, subscriptions carry no owner", () => {
+    // src/web/push.ts keeps push.json in the operator home on purpose (every
+    // PushBridge producer is host-level), so in the hosted edition these routes
+    // would hand any signed-in tenant every other tenant's ntfy topic — which is
+    // itself the send/read secret — and APNs device token.
+    for (const route of [
+      "/api/push",
+      "/api/push/list",
+      "/api/push/register",
+      "/api/push/unregister",
+      "/api/push/prefs",
+      "/api/push/live-activity",
+    ]) {
+      assert.equal(isCloudDeniedRoute(route), true, `${route} must be denied`);
+    }
+  });
+
   test("fails closed for malformed URLs", () => {
     assert.equal(isCloudDeniedRoute("http://["), true);
   });
 });
+
