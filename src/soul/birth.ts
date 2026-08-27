@@ -245,8 +245,15 @@ export function seedForPrompt(seed: SoulSeed): Omit<SoulSeed, "bornOn"> {
   return rest;
 }
 
-/** One LLM turn → parsed birth output. Separated so the caller can retry. */
-async function dreamSoul(
+/**
+ * One LLM turn → parsed birth output. Separated so the caller can retry.
+ *
+ * Exported for the regression test in birth.test.ts: this is the only place the
+ * birth prompt is actually assembled, so a test that asserts on anything else
+ * (seedForPrompt's return value, a re-derived payload) cannot fail when this
+ * line stops calling it.
+ */
+export async function dreamSoul(
   provider: ReturnType<typeof providerForModel>,
   model: string,
   seed: SoulSeed,

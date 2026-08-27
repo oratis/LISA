@@ -8,7 +8,7 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "lisa-birth-"));
 process.env.LISA_HOME = TMP;
 process.env.LISA_SOUL_GIT = "0"; // keep tests fast; git no-op path is itself S3 behavior
 
-const { birth, BirthInferenceError, seedForPrompt } = await import("./birth.js");
+const { birth, BirthInferenceError, seedForPrompt, dreamSoul } = await import("./birth.js");
 const { isBorn } = await import("./store.js");
 const { soulSeedFile, soulNameFile } = await import("./paths.js");
 import type { BirthOutput } from "./birth.js";
@@ -177,5 +177,42 @@ describe("birth prompt does not carry the device fingerprint", () => {
     const copy = { ...seed };
     seedForPrompt(copy);
     assert.equal(copy.bornOn, seed.bornOn);
+  });
+
+  // The three tests above all assert on seedForPrompt's own output, so they
+  // stay green even if dreamSoul stops calling it — the fix would be revertible
+  // with a clean suite. This one drives the real assembly path and captures
+  // what the provider is actually handed.
+  test("dreamSoul hands the provider a prompt with no trace of the fingerprint", async () => {
+    const sent: string[] = [];
+    const provider = {
+      runTurn: async (opts: {
+        systemPrompt: string;
+        messages: { content: { type: string; text?: string }[] }[];
+      }) => {
+        for (const m of opts.messages) {
+          for (const b of m.content) if (b.type === "text" && b.text) sent.push(b.text);
+        }
+        return {
+          content: [{ type: "text", text: JSON.stringify(GOOD) }],
+          usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+        };
+      },
+    };
+
+    const result = await dreamSoul(
+      provider as unknown as Parameters<typeof dreamSoul>[0],
+      "test-model",
+      seed,
+    );
+    assert.equal(result.output.name, GOOD.name);
+
+    assert.equal(sent.length, 1, "one user message carries the seed");
+    const wire = sent[0];
+    assert.equal(wire.includes(seed.bornOn), false, "the device fingerprint must not reach the provider");
+    assert.equal(wire.includes("bornOn"), false, "not even the field name");
+    // …while everything the dream actually needs did travel.
+    assert.equal(wire.includes(seed.randomness), true);
+    assert.equal(wire.includes(seed.bornAt), true);
   });
 });
