@@ -237,4 +237,39 @@ describe("recordExit", () => {
     assert.doesNotThrow(() => recordExit("no-such-id", 0, null));
     assert.equal(loadLedger().length, 1);
   });
+
+  // A recorded exit is definitive. process.pid is genuinely alive and its
+  // startToken genuinely matches, so every one of these assertions inverts if
+  // entryIsAlive goes back to asking the OS about a pid we already watched die
+  // — which is what made a finished dispatch render "▶ running", and what let
+  // signal_agent target a pid the OS had since handed to someone else.
+  test("an observed exit wins over the pid probe, even for a live pid", () => {
+    const e = recordDispatch({ agent: "claude", pid: process.pid, cwd: "/a", task: "t", now: Date.now() });
+    assert.equal(entryIsAlive(e), true, "alive before the exit is recorded");
+
+    recordExit(e.id, 3, null);
+    const stored = loadLedger().find((x) => x.id === e.id);
+    assert.ok(stored);
+    assert.equal(stored.exitCode, 3);
+    assert.equal(entryIsAlive(stored), false, "a recorded exit means dead, whatever the pid says");
+    assert.equal(findDispatch(e.id), null);
+    assert.equal(listLiveDispatches().some((x) => x.id === e.id), false);
+    assert.equal(toDispatchView(stored, entryIsAlive(stored)).alive, false);
+  });
+
+  test("death by signal counts as an exit too (exitCode is null there)", () => {
+    const e = recordDispatch({ agent: "codex", pid: process.pid, cwd: "/a", task: "t", now: Date.now() });
+    recordExit(e.id, null, "SIGKILL");
+    const stored = loadLedger().find((x) => x.id === e.id);
+    assert.ok(stored);
+    assert.equal(stored.exitCode, null);
+    assert.equal(entryIsAlive(stored), false, "gate on exitedAt, not on a truthy exitCode");
+  });
+
+  test("an entry with no recorded exit still falls through to the pid probe", () => {
+    const live = recordDispatch({ agent: "claude", pid: process.pid, cwd: "/a", task: "t", now: Date.now() });
+    const dead = recordDispatch({ agent: "claude", pid: DEAD_PID, cwd: "/b", task: "t", now: Date.now() });
+    assert.equal(entryIsAlive(live), true);
+    assert.equal(entryIsAlive(dead), false);
+  });
 });

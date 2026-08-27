@@ -161,8 +161,23 @@ export function isAlive(pid: number, startToken?: string): boolean {
   return true;
 }
 
-/** isAlive for a ledger entry — always consults the recorded start token. */
+/**
+ * isAlive for a ledger entry — an observed exit is definitive, then the start
+ * token.
+ *
+ * recordExit() sets `exitedAt` only for a child we actually watched terminate,
+ * so once it is set the pid is stale by definition and must never be probed
+ * again. Skipping that check let a recycled pid resurrect a finished dispatch:
+ * dispatch_status printed "▶ running" for an entry whose exit code sat in the
+ * same JSON object, and — for an entry with no startToken, which is every
+ * agent that died inside launchAgent's 150 ms race — signal_agent would deliver
+ * SIGTERM / SIGKILL to the unrelated process group that now owns the pid.
+ *
+ * Gate on `exitedAt`, not `exitCode`: a signal death legitimately stores
+ * exitCode: null.
+ */
 export function entryIsAlive(e: DispatchEntry): boolean {
+  if (e.exitedAt !== undefined) return false;
   return isAlive(e.pid, e.startToken);
 }
 
