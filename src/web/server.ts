@@ -192,6 +192,7 @@ import {
   capabilityProfileForEdition,
   isCloudDeniedRoute,
   toolsForCapabilityProfile,
+  isNonCanonicalPath,
 } from "./capabilities.js";
 import type { ToolDefinition, StoredMessage } from "../types.js";
 
@@ -1107,6 +1108,17 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   const server = http.createServer(async (req, res) => {
     const url = req.url ?? "/";
     applyApiVersionHeader(url, res);
+
+    // Every routing decision below — the cloud deny-list, denyRemote(), each
+    // handler's own startsWith/=== — reads this raw url, but isCloudDeniedRoute
+    // matches the NORMALIZED pathname. A dot-segment path exploits that
+    // disagreement: it normalizes to "/" (so the deny gate passes it) while
+    // still matching its handler's raw prefix. Reject before anything routes.
+    if (isNonCanonicalPath(url)) {
+      res.writeHead(400, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "bad_request_path" }));
+      return;
+    }
 
     // Liveness probe (pre-gate, unauthenticated): uptime checks and platform
     // health probes land here. Deliberately no I/O and no dependencies — a 200

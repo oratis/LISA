@@ -4,6 +4,7 @@ import type { ToolDefinition } from "../types.js";
 import {
   capabilityProfileForEdition,
   isCloudDeniedRoute,
+  isNonCanonicalPath,
   toolsForCapabilityProfile,
 } from "./capabilities.js";
 
@@ -102,3 +103,73 @@ describe("cloud route capability boundary", () => {
   });
 });
 
+describe("non-canonical request paths", () => {
+  // isCloudDeniedRoute matches the normalized pathname; server.ts routes match
+  // the raw req.url. Each of these normalizes to something the deny-list waves
+  // through while still matching its handler's raw prefix, so without the guard
+  // the route runs in the hosted edition.
+  test("rejects the dot-segment paths that slip past the deny-list", () => {
+    for (const route of [
+      "/api/agents/recap/%2e%2e/%2e%2e/%2e%2e?sinceMinutes=1440",
+      "/api/agents/steps/../../../x?agent=claude-code",
+      "/api/agents/transcript/../../../x",
+      "/api/dispatch/status/../../../x?id=1",
+      "/api/agents/pty/%2e%2e/%2e%2e/%2e%2e/z/output",
+      "/api/mail/accounts/../../../q",
+    ]) {
+      assert.equal(isNonCanonicalPath(route), true, `${route} must be rejected`);
+      // The bypass is real: the deny-list alone does not stop these.
+      assert.equal(
+        isCloudDeniedRoute(route),
+        false,
+        `${route} is exactly the case the deny-list misses`,
+      );
+    }
+  });
+
+  test("also rejects dot segments that would still have been denied", () => {
+    // "/api/consent/./grant" normalizes back onto a denied prefix, so it is not
+    // a bypass — but canonical form is the invariant, not "did it happen to be
+    // caught": the next route added under a non-denied prefix would be.
+    assert.equal(isNonCanonicalPath("/api/consent/./grant"), true);
+    assert.equal(isCloudDeniedRoute("/api/consent/./grant"), true);
+  });
+
+  test("rejects a leading // — it reparses as an authority, dropping the prefix", () => {
+    assert.equal(isNonCanonicalPath("//api/consent/grant"), true);
+    assert.equal(isCloudDeniedRoute("//api/consent/grant"), false);
+  });
+
+  test("fails closed for malformed URLs", () => {
+    assert.equal(isNonCanonicalPath("http://["), true);
+  });
+
+  test("leaves ordinary paths alone, including percent-encoded ones", () => {
+    for (const route of [
+      "/",
+      "/health",
+      "/chat",
+      "/api/soul",
+      "/api/consent/grant",
+      "/api/push/list",
+      "/api/dispatch/status?id=99-ab",
+      "/api/kb/search?q=hello%20world",
+      "/assets/%E5%9B%BE%E7%89%87.png",
+      "/api/room/music/file/u_YWJjLm1wMw",
+      "/api/agents/pty/abc-123/output",
+      // Dot segments in the QUERY are not path traversal.
+      "/api/kb/search?q=a/../b",
+    ]) {
+      assert.equal(isNonCanonicalPath(route), false, `${route} must be allowed`);
+    }
+  });
+
+  test("an encoded separator that survives normalization is left to the deny-list", () => {
+    // %2f is not decoded into a path separator, so the pathname — and therefore
+    // the deny-list decision — is unchanged. Nothing is bypassed, so nothing to
+    // reject; the prefix still matches.
+    const route = "/api/agents/transcript/..%2f..%2f..";
+    assert.equal(isNonCanonicalPath(route), false);
+    assert.equal(isCloudDeniedRoute(route), true);
+  });
+});

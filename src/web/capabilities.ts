@@ -70,3 +70,31 @@ export function isCloudDeniedRoute(rawUrl: string): boolean {
   });
 }
 
+/**
+ * True when the request path is NOT already in canonical form — a dot segment
+ * ("." / ".."), a percent-encoded dot that decodes into one, or a leading "//"
+ * that reparses as an authority.
+ *
+ * This exists because the two layers disagree about what "the path" is:
+ * isCloudDeniedRoute() above matches the NORMALIZED pathname, while every route
+ * in server.ts matches the RAW req.url with startsWith/===. The gap is
+ * exploitable — "/api/agents/recap/%2e%2e/%2e%2e/%2e%2e" normalizes to "/" (so
+ * the deny-list says "not denied") yet still satisfies
+ * url.startsWith("/api/agents/recap"), so the handler runs in the hosted
+ * edition. Teaching ~80 route checks to normalize would leave the next one to
+ * remember; rejecting non-canonical paths outright fails closed for routes
+ * added later, and no legitimate client emits one (clients percent-encode, and
+ * an encoded separator that survives normalization leaves the pathname — and
+ * therefore the deny-list decision — unchanged).
+ */
+export function isNonCanonicalPath(rawUrl: string): boolean {
+  const cut = rawUrl.search(/[?#]/);
+  const rawPath = cut === -1 ? rawUrl : rawUrl.slice(0, cut);
+  let pathname: string;
+  try {
+    pathname = new URL(rawUrl, "http://localhost").pathname;
+  } catch {
+    return true;
+  }
+  return rawPath !== pathname;
+}
