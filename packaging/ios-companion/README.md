@@ -27,9 +27,9 @@ iOS 17+ target). It covers:
 - **Sense** — ambient-signal **consent** (revoke-only from the phone; granting stays a
   Mac action) + recent sense events.
 - **Settings** — pairing (**scan** the Mac's QR code, or paste a `lisa-pair://…` /
-  `?token=` string → Keychain), **ntfy + APNs** push registration, read-only
-  remote-control policy, **paired devices**, an optional **Face ID / passcode** lock, and
-  read-only **Inspect Lisa** (Soul / Memory / Skills / Tools).
+  `?token=` string → Keychain), a **notification transport picker** (see below),
+  read-only remote-control policy, **paired devices**, an optional **Face ID /
+  passcode** lock, and read-only **Inspect Lisa** (Soul / Memory / Skills / Tools).
 - **Glance** — a **Live Activity / Dynamic Island** for a pinned agent and a
   **home-screen / lock-screen Widget** (systemSmall/Medium + accessory families) showing
   active / stuck counts, in a WidgetKit extension. The Widget renders a counts-only
@@ -52,6 +52,38 @@ not exercised against Apple.
 > Simulator**. Its data only flows on a **signed** build: App Group capabilities aren't
 > applied to unsigned Simulator builds, so without signing the Widget shows its "Open
 > Lisa Pocket" placeholder rather than live counts.
+
+## Notifications — pick a transport
+
+The server has always supported two delivery paths (`src/web/push.ts`), but the
+app only really offered Apple's, and answered "Push registered" whether or not
+anything could ever be delivered. **Settings → Notifications** now picks one:
+
+| | **ntfy topic** | **This iPhone (APNs)** |
+|---|---|---|
+| Needs | the free ntfy app + a topic you choose | an Apple push key on the Mac (`LISA_APNS_*`) |
+| Works today | yes, with no Apple infrastructure | only once that key is set |
+| Server field | optional — blank means `ntfy.sh`, or point it at your own | — |
+
+The line under the picker is built from **`GET /api/push/list`** — what your Mac
+says it will actually publish to — not from "we sent a register request". So it
+can tell you your Mac is sending to a *different* topic than the one on screen,
+and the APNs line says plainly that the app cannot see whether the Mac has an
+Apple key, so if nothing arrives that is the first thing to check.
+
+**Send a test notification** (ntfy only) posts straight from the phone to the
+topic. That is a real end-to-end check of the topic and your ntfy subscription
+and works even while the Mac is asleep. There is no APNs equivalent: the server
+exposes no test endpoint and a device cannot make Apple push to itself.
+
+The event toggles ("Notify me about") start from what the Mac stored and say
+**Unsaved** until you tap *Save preferences*, which calls `/api/push/prefs` on
+the existing subscription instead of re-registering. `Daily feeds brief` is now
+shown too — the server has always had it.
+
+> The topic is the shared secret: anyone who knows it can read your alerts.
+> Pick something hard to guess. Payloads stay low-sensitivity either way (agent /
+> project / state), never prompts or terminal output.
 
 ## Accessibility
 

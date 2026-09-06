@@ -139,6 +139,38 @@ struct PushPrefs: Codable, Equatable {
     var idle: Bool = true
     var advisor: Bool = false
     var mail: Bool = true
+    /// Daily knowledge-base feeds brief — the server has always had it; the app
+    /// silently left it at the server default and never showed the switch.
+    var brief: Bool = true
+
+    /// Tolerant: a Mac that predates a preference just doesn't send that key, and
+    /// the missing switch should fall back to its default rather than throwing
+    /// away the whole subscription.
+    init(done: Bool = true, error: Bool = true, permission: Bool = true, idle: Bool = true,
+         advisor: Bool = false, mail: Bool = true, brief: Bool = true) {
+        self.done = done; self.error = error; self.permission = permission
+        self.idle = idle; self.advisor = advisor; self.mail = mail; self.brief = brief
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        func flag(_ k: CodingKeys, _ fallback: Bool) -> Bool {
+            (try? c.decodeIfPresent(Bool.self, forKey: k)) .flatMap { $0 } ?? fallback
+        }
+        done = flag(.done, true)
+        error = flag(.error, true)
+        permission = flag(.permission, true)
+        idle = flag(.idle, true)
+        advisor = flag(.advisor, false)
+        mail = flag(.mail, true)
+        brief = flag(.brief, true)
+    }
+
+    /// The wire shape `/api/push/register` and `/api/push/prefs` expect.
+    var json: [String: Any] {
+        ["done": done, "error": error, "permission": permission,
+         "idle": idle, "advisor": advisor, "mail": mail, "brief": brief]
+    }
 }
 
 // ── Mail (read-only digest + accounts) ──

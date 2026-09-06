@@ -439,9 +439,32 @@ final class LisaClient {
     func registerLiveActivity(sessionId: String, token: String) async throws {
         try await fire("/api/push/live-activity", json: ["sessionId": sessionId, "token": token])
     }
-    func pushRegister(kind: String, target: String, prefs: PushPrefs) async throws {
-        let p: [String: Any] = ["done": prefs.done, "error": prefs.error, "permission": prefs.permission, "idle": prefs.idle, "advisor": prefs.advisor, "mail": prefs.mail]
-        try await fire("/api/push/register", json: ["kind": kind, "target": target, "prefs": p])
+    /// Register a delivery destination and return what the server stored — the
+    /// caller needs the subscription id to update prefs later without
+    /// re-registering.
+    @discardableResult
+    func pushRegister(kind: String, target: String, server: String? = nil,
+                      prefs: PushPrefs) async throws -> PushSubscriptionDTO? {
+        struct R: Codable { var ok: Bool?; var subscription: PushSubscriptionDTO? }
+        var body: [String: Any] = ["kind": kind, "target": target, "prefs": prefs.json]
+        if let server, !server.isEmpty { body["server"] = server }
+        return (try await decode("/api/push/register", method: "POST", json: body, as: R.self)).subscription
+    }
+
+    /// Every destination the Mac will publish to — the honest basis for the
+    /// "is push actually wired up" line in Settings.
+    func pushList() async throws -> [PushSubscriptionDTO] {
+        try await decode("/api/push/list", as: PushListResponse.self).subscriptions
+    }
+
+    /// Change the event toggles on an existing subscription (no re-register, so a
+    /// registered APNs token isn't churned just to turn off advisor tips).
+    func pushSetPrefs(id: String, prefs: PushPrefs) async throws {
+        try await fire("/api/push/prefs", json: ["id": id, "prefs": prefs.json])
+    }
+
+    func pushUnregister(id: String) async throws {
+        try await fire("/api/push/unregister", json: ["id": id])
     }
 
     // ── chat ──
