@@ -228,10 +228,14 @@ import { MAIN_HTML } from "./lisa-html.js";
  * Then: UX-5 right-rail discoverability — a .fbtn-badge count on #fnPanel
  * while the rail is collapsed, plus a one-shot auto-expand gated on the
  * persisted lisaRightbarTouched flag.
+ * Then: UX-1 onboarding — #cfgTitle / #cfgReason on the key gate (reopenable
+ * in reconfigure mode), #birthActions carrying Cancel during the stream and
+ * Change key / Try again after a failure, and human copy for every birth
+ * error class instead of the provider's raw JSON.
  */
-const EXPECTED_LENGTH = 326996;
+const EXPECTED_LENGTH = 335144;
 const EXPECTED_SHA256 =
-  "f718af1c02649cf11c34ef2b6dcc8fff5f3eaf55ede823d4d1bfffcf401ef111";
+  "08768f89a8acb8e7c4587b5d9be1af7998bcf2123e61fec40e7988a960ba26da";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);

@@ -2940,8 +2940,39 @@ export const MAIN_CSS = `  :root {
     color: var(--err-color);
     text-align: center;
     margin-top: 24px;
+    font-size: 12.5px;
+    line-height: 1.55;
+    max-width: 44ch;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  /* Cancel during the ritual; Change key / Try again after it fails (UX-1). */
+  .birth-actions {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 18px;
+  }
+  .birth-action {
+    font-family: inherit;
     font-size: 11.5px;
-    letter-spacing: 0.05em;
+    font-weight: 700;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    min-height: 36px;
+    padding: 0 18px;
+    border-radius: 999px;
+    cursor: pointer;
+    color: var(--fg-2);
+    background: transparent;
+    border: 1px solid var(--border-strong);
+  }
+  .birth-action:hover { color: var(--fg); border-color: var(--accent-glow); }
+  .birth-action.primary {
+    color: var(--accent);
+    border-color: var(--accent-glow);
+    background: var(--accent-soft);
   }
 
   /* ===================================================================
@@ -2995,6 +3026,20 @@ export const MAIN_CSS = `  :root {
     line-height: 1.5;
   }
   .cfg-sub a { color: var(--accent); text-decoration: underline; }
+  /* Why you are looking at this form again (UX-1) — only set when the gate
+     is reopened after a failed or cancelled ritual. */
+  .cfg-reason {
+    margin: -8px auto 18px;
+    max-width: 44ch;
+    padding: 9px 13px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 85, 119, 0.35);
+    background: rgba(255, 85, 119, 0.10);
+    color: var(--fg-2);
+    font-size: 12.5px;
+    line-height: 1.5;
+    text-align: center;
+  }
   .cfg-field { display: block; margin: 14px 0; }
   .cfg-label {
     display: block;
