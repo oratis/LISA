@@ -13,10 +13,7 @@ import {
 } from "../sense/social/drafts.js";
 import { discoverSocialConnectors } from "../sense/social/manifest.js";
 import type { NewSocialDraft } from "../sense/social/types.js";
-import {
-  setSocialPublishingPaused,
-  socialPublishingPaused,
-} from "../sense/social/policy.js";
+import { setSocialPublishingPaused, socialPublishingPaused } from "../sense/social/policy.js";
 
 export interface SocialApiOptions {
   /** True only for loopback or an authenticated per-user cloud session. */
@@ -26,11 +23,7 @@ export interface SocialApiOptions {
   connectorTools?: ToolDefinition[];
 }
 
-function json(
-  res: http.ServerResponse,
-  status: number,
-  value: unknown,
-): void {
+function json(res: http.ServerResponse, status: number, value: unknown): void {
   res.writeHead(status, {
     "content-type": "application/json",
     "cache-control": "no-store",
@@ -38,9 +31,7 @@ function json(
   res.end(JSON.stringify(value));
 }
 
-async function bodyObject(
-  req: http.IncomingMessage,
-): Promise<Record<string, unknown>> {
+async function bodyObject(req: http.IncomingMessage): Promise<Record<string, unknown>> {
   const raw = await readCappedText(req, CTRL_BODY_LIMIT);
   const parsed = JSON.parse(raw || "{}") as unknown;
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
@@ -94,9 +85,7 @@ export async function handleSocialApi(
         drafts: drafts.map((draft) => ({
           ...draft,
           approvalDigest:
-            draft.state === "awaiting-approval"
-              ? socialDraftDigest(draft)
-              : undefined,
+            draft.state === "awaiting-approval" ? socialDraftDigest(draft) : undefined,
         })),
       });
       return true;
@@ -107,8 +96,7 @@ export async function handleSocialApi(
     }
     if (
       req.method === "POST" &&
-      (pathname === "/api/sense/social/pause" ||
-        pathname === "/api/sense/social/resume")
+      (pathname === "/api/sense/social/pause" || pathname === "/api/sense/social/resume")
     ) {
       if (!opts.allowApproval) {
         json(res, 403, { error: "trusted_local_confirmation_required" });
@@ -144,9 +132,7 @@ export async function handleSocialApi(
           draft: {
             ...draft,
             approvalDigest:
-              draft.state === "awaiting-approval"
-                ? socialDraftDigest(draft)
-                : undefined,
+              draft.state === "awaiting-approval" ? socialDraftDigest(draft) : undefined,
           },
         });
       }
@@ -164,11 +150,7 @@ export async function handleSocialApi(
         json(res, 400, { error: "patch_required" });
         return true;
       }
-      const draft = await updateSocialDraft(
-        id,
-        expectedRevision,
-        patch,
-      );
+      const draft = await updateSocialDraft(id, expectedRevision, patch);
       json(res, 200, { draft });
       return true;
     }
@@ -178,10 +160,7 @@ export async function handleSocialApi(
         json(res, 400, { error: "expectedRevision_required" });
         return true;
       }
-      const result = await requestSocialDraftApproval(
-        id,
-        payload.expectedRevision,
-      );
+      const result = await requestSocialDraftApproval(id, payload.expectedRevision);
       json(res, 200, {
         draft: result.draft,
         approvalDigest: result.digest,

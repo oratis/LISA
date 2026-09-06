@@ -2,17 +2,8 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import type Anthropic from "@anthropic-ai/sdk";
 import { runAgent } from "./agent.js";
-import type {
-  Provider,
-  ProviderResult,
-  ProviderRunOpts,
-} from "./providers/types.js";
-import type {
-  AgentEvent,
-  StoredMessage,
-  ToolContext,
-  ToolDefinition,
-} from "./types.js";
+import type { Provider, ProviderResult, ProviderRunOpts } from "./providers/types.js";
+import type { AgentEvent, StoredMessage, ToolContext, ToolDefinition } from "./types.js";
 
 const ZERO_USAGE = {
   inputTokens: 0,
@@ -95,9 +86,7 @@ describe("runAgent — maxIterations truncation (stopReason=max_iterations)", ()
 
     assert.equal(result.iterations, 3);
     assert.equal(result.stopReason, "max_iterations");
-    const info = events.filter(
-      (e) => e.type === "info" && e.message?.includes("max_iterations"),
-    );
+    const info = events.filter((e) => e.type === "info" && e.message?.includes("max_iterations"));
     assert.equal(info.length, 1, "expected exactly one max_iterations info event");
     assert.match(info[0]!.message!, /3 iterations/);
   });
@@ -180,10 +169,7 @@ describe("runAgent — empty assistant content is filtered from history", () => 
     assert.equal(persisted.length, 1);
     assert.equal(persisted[0]!.role, "user");
     const emptyAssistants = result.history.filter(
-      (m) =>
-        m.role === "assistant" &&
-        Array.isArray(m.content) &&
-        m.content.length === 0,
+      (m) => m.role === "assistant" && Array.isArray(m.content) && m.content.length === 0,
     );
     assert.equal(emptyAssistants.length, 0);
   });
@@ -344,7 +330,12 @@ describe("runAgent — abort signal plumbing", () => {
 });
 
 describe("runAgent — token budget circuit-breaker (stopReason=budget_exceeded)", () => {
-  const USAGE_200 = { inputTokens: 100, outputTokens: 100, cacheReadTokens: 0, cacheWriteTokens: 0 };
+  const USAGE_200 = {
+    inputTokens: 100,
+    outputTokens: 100,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+  };
 
   test("stops at the turn boundary once cumulative tokens reach budgetTokens", async () => {
     // Each tool_use turn spends 200 tokens. With a 300 budget: after turn 1
@@ -372,9 +363,7 @@ describe("runAgent — token budget circuit-breaker (stopReason=budget_exceeded)
     assert.equal(result.iterations, 2);
     assert.equal(calls.length, 2, "should stop before a third provider call");
     assert.equal(result.inputTokens + result.outputTokens, 400);
-    const info = events.filter(
-      (e) => e.type === "info" && e.message?.includes("budget_exceeded"),
-    );
+    const info = events.filter((e) => e.type === "info" && e.message?.includes("budget_exceeded"));
     assert.equal(info.length, 1, "expected one budget_exceeded info event");
   });
 

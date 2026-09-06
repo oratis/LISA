@@ -183,12 +183,14 @@ export const AUTONOMOUS_BLOCKED_TOOL_NAMES = new Set([
 
 export function autonomousSubset(tools: ToolDefinition[]): ToolDefinition[] {
   if (process.env.LISA_AUTONOMOUS_FULL_TOOLS === "1") return tools;
-  return tools
-    .filter((t) => !AUTONOMOUS_BLOCKED_TOOL_NAMES.has(t.name))
-    // kb_ingest stays available to unattended runs, but only for domains on
-    // the user's feeds.json watchlist (D3) — an injected prompt can't make an
-    // idle run pull an arbitrary URL into the KB.
-    .map(restrictKbIngestToWatchlist);
+  return (
+    tools
+      .filter((t) => !AUTONOMOUS_BLOCKED_TOOL_NAMES.has(t.name))
+      // kb_ingest stays available to unattended runs, but only for domains on
+      // the user's feeds.json watchlist (D3) — an injected prompt can't make an
+      // idle run pull an arbitrary URL into the KB.
+      .map(restrictKbIngestToWatchlist)
+  );
 }
 
 const DESIRE_REVIEW_TOOL_NAMES = new Set([

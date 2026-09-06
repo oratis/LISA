@@ -5,21 +5,9 @@ import {
   ListToolsRequestSchema,
   type Tool,
 } from "@modelcontextprotocol/sdk/types.js";
-import {
-  deleteOpenSocialAccount,
-  listOpenSocialAccounts,
-  publicAccount,
-} from "./accounts.js";
-import {
-  blueskyCapabilities,
-  publishBluesky,
-  validateBlueskyDraft,
-} from "./bluesky.js";
-import {
-  mastodonCapabilities,
-  publishMastodon,
-  validateMastodonDraft,
-} from "./mastodon.js";
+import { deleteOpenSocialAccount, listOpenSocialAccounts, publicAccount } from "./accounts.js";
+import { blueskyCapabilities, publishBluesky, validateBlueskyDraft } from "./bluesky.js";
+import { mastodonCapabilities, publishMastodon, validateMastodonDraft } from "./mastodon.js";
 import type { ConnectorPublishInput } from "./types.js";
 
 export type OpenConnectorPlatform = "bluesky" | "mastodon";
@@ -69,13 +57,7 @@ function tools(): Tool[] {
           idempotencyKey: { type: "string" },
           createdAt: { type: "string" },
         },
-        required: [
-          "accountId",
-          "target",
-          "content",
-          "idempotencyKey",
-          "createdAt",
-        ],
+        required: ["accountId", "target", "content", "idempotencyKey", "createdAt"],
       },
       annotations: {
         readOnlyHint: false,
@@ -116,9 +98,7 @@ function asObject(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-export async function runOpenSocialConnectorServer(
-  platform: OpenConnectorPlatform,
-): Promise<void> {
+export async function runOpenSocialConnectorServer(platform: OpenConnectorPlatform): Promise<void> {
   const server = new Server(
     { name: `lisa-social-${platform}`, version: "1.0.0" },
     {
@@ -135,16 +115,10 @@ export async function runOpenSocialConnectorServer(
       switch (request.params.name) {
         case "social_accounts_list":
           return json(
-            (await listOpenSocialAccounts(platform)).map((account) =>
-              publicAccount(account),
-            ),
+            (await listOpenSocialAccounts(platform)).map((account) => publicAccount(account)),
           );
         case "social_capabilities":
-          return json(
-            platform === "bluesky"
-              ? blueskyCapabilities()
-              : mastodonCapabilities(),
-          );
+          return json(platform === "bluesky" ? blueskyCapabilities() : mastodonCapabilities());
         case "social_draft_validate": {
           const content = args.content as ConnectorPublishInput["content"];
           const variant = args.variant as ConnectorPublishInput["variant"];
@@ -157,18 +131,13 @@ export async function runOpenSocialConnectorServer(
         case "social_publish": {
           const input = args as unknown as ConnectorPublishInput;
           return json(
-            platform === "bluesky"
-              ? await publishBluesky(input)
-              : await publishMastodon(input),
+            platform === "bluesky" ? await publishBluesky(input) : await publishMastodon(input),
           );
         }
         case "social_account_disconnect": {
           if (typeof args.accountId !== "string") throw new Error("accountId is required");
           return json({
-            removed: await deleteOpenSocialAccount(
-              platform,
-              args.accountId,
-            ),
+            removed: await deleteOpenSocialAccount(platform, args.accountId),
           });
         }
         default:

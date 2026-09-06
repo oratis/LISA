@@ -55,9 +55,10 @@ export function planUpstream(
   if (face === "anthropic") {
     const key = env.ANTHROPIC_API_KEY;
     if (!key) return null;
-    const version = typeof clientHeaders["anthropic-version"] === "string"
-      ? clientHeaders["anthropic-version"]
-      : "2023-06-01";
+    const version =
+      typeof clientHeaders["anthropic-version"] === "string"
+        ? clientHeaders["anthropic-version"]
+        : "2023-06-01";
     return {
       url: `https://api.anthropic.com${subpath}`,
       headers: {
@@ -82,7 +83,12 @@ export function planUpstream(
   };
 }
 
-const ZERO: ProviderUsage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+const ZERO: ProviderUsage = {
+  inputTokens: 0,
+  outputTokens: 0,
+  cacheReadTokens: 0,
+  cacheWriteTokens: 0,
+};
 
 /**
  * Fold one upstream SSE `data:` JSON object into the running usage.
@@ -90,10 +96,17 @@ const ZERO: ProviderUsage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 
  * output count. OpenAI-compat: the final chunk (stream_options.include_usage)
  * carries {usage:{prompt_tokens, completion_tokens}}.
  */
-export function foldUsage(face: "anthropic" | "openai", obj: Record<string, unknown>, acc: ProviderUsage): ProviderUsage {
+export function foldUsage(
+  face: "anthropic" | "openai",
+  obj: Record<string, unknown>,
+  acc: ProviderUsage,
+): ProviderUsage {
   if (face === "anthropic") {
     if (obj.type === "message_start") {
-      const usage = ((obj.message as Record<string, unknown> | undefined)?.usage ?? {}) as Record<string, unknown>;
+      const usage = ((obj.message as Record<string, unknown> | undefined)?.usage ?? {}) as Record<
+        string,
+        unknown
+      >;
       return {
         ...acc,
         inputTokens: acc.inputTokens + num(usage.input_tokens),
@@ -141,11 +154,19 @@ export function estimateUsageFromBytes(requestBytes: number, responseBytes: numb
 
 /** True when the upstream reported nothing billable at all. */
 function usageIsEmpty(u: ProviderUsage): boolean {
-  return u.inputTokens === 0 && u.outputTokens === 0 && u.cacheReadTokens === 0 && u.cacheWriteTokens === 0;
+  return (
+    u.inputTokens === 0 &&
+    u.outputTokens === 0 &&
+    u.cacheReadTokens === 0 &&
+    u.cacheWriteTokens === 0
+  );
 }
 
 /** Extract usage from a NON-streaming upstream JSON response body. */
-export function usageFromJson(face: "anthropic" | "openai", body: Record<string, unknown>): ProviderUsage {
+export function usageFromJson(
+  face: "anthropic" | "openai",
+  body: Record<string, unknown>,
+): ProviderUsage {
   if (face === "anthropic") {
     const usage = (body.usage ?? {}) as Record<string, unknown>;
     return {
@@ -239,9 +260,10 @@ export async function handleGateway(
       // A 2xx with no usage at all is a billing hole, not a free turn (#264):
       // fall back to a byte estimate. Non-2xx settles at whatever we parsed
       // (normally zero) — the user shouldn't pay for an upstream error.
-      const u = upstream.ok && usageIsEmpty(usage)
-        ? estimateUsageFromBytes(requestBytes, responseBytes)
-        : usage;
+      const u =
+        upstream.ok && usageIsEmpty(usage)
+          ? estimateUsageFromBytes(requestBytes, responseBytes)
+          : usage;
       await admission.permit.settle("gw", u);
     };
 

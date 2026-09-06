@@ -65,13 +65,14 @@ test("ElevenLabs is preferred and POSTs the file with xi-api-key", async () => {
   let sentFile = false;
   let sentModel: unknown;
 
-  globalThis.fetch = (async (url: unknown, init: { headers?: Record<string, string>; body?: unknown }) => {
+  globalThis.fetch = (async (
+    url: unknown,
+    init: { headers?: Record<string, string>; body?: unknown },
+  ) => {
     calledUrl = String(url);
     sentKey = init?.headers?.["xi-api-key"];
     sentFile = init?.body instanceof FormData && init.body.has("file");
-    sentModel = init?.body instanceof FormData
-      ? init.body.get("model_id")
-      : undefined;
+    sentModel = init?.body instanceof FormData ? init.body.get("model_id") : undefined;
     return new Response(JSON.stringify({ text: "hello world" }), { status: 200 });
   }) as typeof fetch;
 
@@ -117,14 +118,14 @@ test("prepared OpenAI transcription preserves an explicitly supplied API key", a
   fs.writeFileSync(tmp, oneSecondWav());
   const realFetch = globalThis.fetch;
   let authorization = "";
-  globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
+  globalThis.fetch = async (_url: unknown, init?: RequestInit) => {
     const headers = new Headers(init?.headers);
     authorization = headers.get("authorization") ?? "";
     return new Response(JSON.stringify({ text: "hello from openai" }), {
       status: 200,
       headers: { "content-type": "application/json" },
     });
-  });
+  };
   try {
     await withEnv("ELEVENLABS_API_KEY", undefined, () =>
       withEnv("OPENAI_API_KEY", undefined, async () => {
@@ -133,10 +134,7 @@ test("prepared OpenAI transcription preserves an explicitly supplied API key", a
           apiKey: "sk_explicit",
         });
         assert.equal(prepared.provider, "openai");
-        assert.equal(
-          await transcribePrepared(prepared, "sk_explicit"),
-          "hello from openai",
-        );
+        assert.equal(await transcribePrepared(prepared, "sk_explicit"), "hello from openai");
         assert.equal(authorization, "Bearer sk_explicit");
       }),
     );
@@ -150,8 +148,7 @@ test("ElevenLabs non-2xx surfaces a useful error", async () => {
   const tmp = path.join(os.tmpdir(), `lisa-asr-err-${process.pid}.webm`);
   fs.writeFileSync(tmp, Buffer.from([1, 2, 3]));
   const realFetch = globalThis.fetch;
-  globalThis.fetch = (async () =>
-    new Response("invalid_api_key", { status: 401 }));
+  globalThis.fetch = async () => new Response("invalid_api_key", { status: 401 });
   try {
     await withEnv("ELEVENLABS_API_KEY", "sk_bad", async () => {
       await assert.rejects(

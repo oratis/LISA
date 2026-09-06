@@ -26,7 +26,8 @@ function findTextPart(node: BodyNode | undefined): { part: string; html: boolean
     const n = stack.shift()!;
     const type = (n.type ?? "").toLowerCase();
     if (n.part && type === "text/plain") return { part: n.part, html: false };
-    if (n.part && type === "text/html" && !htmlFallback) htmlFallback = { part: n.part, html: true };
+    if (n.part && type === "text/html" && !htmlFallback)
+      htmlFallback = { part: n.part, html: true };
     if (n.childNodes) stack.push(...n.childNodes);
   }
   return htmlFallback;

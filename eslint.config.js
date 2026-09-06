@@ -137,7 +137,16 @@ export default defineConfig([
             {
               from: "package",
               package: "node:test",
-              name: ["test", "describe", "it", "suite", "before", "after", "beforeEach", "afterEach"],
+              name: [
+                "test",
+                "describe",
+                "it",
+                "suite",
+                "before",
+                "after",
+                "beforeEach",
+                "afterEach",
+              ],
             },
           ],
         },

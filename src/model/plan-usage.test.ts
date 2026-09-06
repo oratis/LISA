@@ -87,7 +87,11 @@ describe("readClaudeUsage — real scan over a temp transcript dir", () => {
       mkdirSync(projDir, { recursive: true });
       const iso = (ms: number) => new Date(ms).toISOString();
       const line = (ms: number, tok: number) =>
-        JSON.stringify({ type: "assistant", timestamp: iso(ms), message: { usage: { input_tokens: tok, output_tokens: 0 } } });
+        JSON.stringify({
+          type: "assistant",
+          timestamp: iso(ms),
+          message: { usage: { input_tokens: tok, output_tokens: 0 } },
+        });
       writeFileSync(
         join(projDir, "s.jsonl"),
         [

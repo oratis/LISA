@@ -1,0 +1,28 @@
+# Build output / dependencies
+dist/
+dist-release/
+node_modules/
+coverage/
+playwright-report/
+test-results/
+
+# Not ours to format: generated files, vendored assets, native + website trees
+# (the website has its own toolchain), research notebooks, deploy manifests.
+**/*.generated.ts
+**/*.generated.swift
+src/web/assets/
+website/
+research/
+packaging/
+deploy/
+contracts/
+
+# Prose stays hand-formatted (tables, CJK spacing, wrapped comments).
+*.md
+
+# npm owns the formatting of these.
+package.json
+package-lock.json
+
+# Local tooling state
+.claude/

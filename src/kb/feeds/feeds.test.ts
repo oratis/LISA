@@ -81,7 +81,11 @@ describe("brief scheduling + ranking (pure)", () => {
     const at = (h: number): Date => new Date(2026, 6, 23, h, 0, 0);
     assert.equal(brief.isBriefDue(null, at(9), 8), true);
     assert.equal(brief.isBriefDue(null, at(7), 8), false);
-    assert.equal(brief.isBriefDue(brief.localDate(at(9).getTime()), at(9), 8), false, "already ran today");
+    assert.equal(
+      brief.isBriefDue(brief.localDate(at(9).getTime()), at(9), 8),
+      false,
+      "already ran today",
+    );
     assert.equal(brief.isBriefDue("2026-07-22", at(9), 8), true, "yesterday's run doesn't count");
   });
 
@@ -91,13 +95,27 @@ describe("brief scheduling + ranking (pure)", () => {
       wikiTitles: ["Speculative decoding"],
       feedWeight: { hot: 2, cold: 1 },
     });
-    const base = brief.scoreItem({ feedId: "cold", title: "gardening tips", importance: 1 }, signals);
-    const relevant = brief.scoreItem(
-      { feedId: "cold", title: "KV cache 推理优化", summary: "speculative decoding", importance: 1 },
+    const base = brief.scoreItem(
+      { feedId: "cold", title: "gardening tips", importance: 1 },
       signals,
     );
-    const weighted = brief.scoreItem({ feedId: "hot", title: "gardening tips", importance: 1 }, signals);
-    const important = brief.scoreItem({ feedId: "cold", title: "gardening tips", importance: 3 }, signals);
+    const relevant = brief.scoreItem(
+      {
+        feedId: "cold",
+        title: "KV cache 推理优化",
+        summary: "speculative decoding",
+        importance: 1,
+      },
+      signals,
+    );
+    const weighted = brief.scoreItem(
+      { feedId: "hot", title: "gardening tips", importance: 1 },
+      signals,
+    );
+    const important = brief.scoreItem(
+      { feedId: "cold", title: "gardening tips", importance: 3 },
+      signals,
+    );
     assert.ok(relevant > base, "interest/wiki overlap outranks unrelated");
     assert.ok(weighted > base, "watchlist weight lifts");
     assert.ok(important > base, "importance lifts");
@@ -105,10 +123,32 @@ describe("brief scheduling + ranking (pure)", () => {
 
   test("buildBrief sorts by score and formatBriefText renders links + ingested wikilinks", () => {
     const items = [
-      { feedId: "a", id: "1", title: "minor", category: "other", importance: 1, oneLine: "meh", score: 1 },
-      { feedId: "a", id: "2", title: "major", link: "https://x.dev/2", category: "release", importance: 3, oneLine: "重大更新", score: 9 },
+      {
+        feedId: "a",
+        id: "1",
+        title: "minor",
+        category: "other",
+        importance: 1,
+        oneLine: "meh",
+        score: 1,
+      },
+      {
+        feedId: "a",
+        id: "2",
+        title: "major",
+        link: "https://x.dev/2",
+        category: "release",
+        importance: 3,
+        oneLine: "重大更新",
+        score: 9,
+      },
     ] as const;
-    const b = brief.buildBrief([...items] as never, { date: "2026-07-23", feedCount: 1, ingested: ["x-slug"], now: () => 0 });
+    const b = brief.buildBrief([...items] as never, {
+      date: "2026-07-23",
+      feedCount: 1,
+      ingested: ["x-slug"],
+      now: () => 0,
+    });
     assert.equal(b.items[0]!.title, "major");
     const text = brief.formatBriefText(b);
     assert.match(text, /‼ \*\*major\*\* — https:\/\/x\.dev\/2/);
@@ -129,7 +169,12 @@ describe("classification (validated against the closed taxonomy)", () => {
       { id: "i2", category: "hacked-category", importance: 99, oneLine: "" },
     ]);
     const out = parseFeedClassification(reply, items);
-    assert.deepEqual(out[0], { id: "i1", category: "release", importance: 3, oneLine: "major model release" });
+    assert.deepEqual(out[0], {
+      id: "i1",
+      category: "release",
+      importance: 3,
+      oneLine: "major model release",
+    });
     assert.equal(out[1]!.category, "other", "unknown category rejected");
     assert.equal(out[1]!.importance, 3, "clamped to max 3");
     assert.equal(out[1]!.oneLine, "misc post", "empty oneLine falls back to title");
@@ -180,7 +225,10 @@ describe("runDailyBrief (offline, injected seams)", () => {
     mkdirSync(kbDir(), { recursive: true });
     writeFileSync(
       path.join(kbDir(), "feeds.json"),
-      JSON.stringify({ feeds: [{ id: "blog", url: "https://blog.example.com/rss" }], briefHour: 8 }),
+      JSON.stringify({
+        feeds: [{ id: "blog", url: "https://blog.example.com/rss" }],
+        briefHour: 8,
+      }),
     );
     const ingestedUrls: string[] = [];
     const res = await runDailyBrief({
@@ -192,7 +240,12 @@ describe("runDailyBrief (offline, injected seams)", () => {
       runModel: async () => ({
         text: JSON.stringify([
           { id: "ex-1", category: "engineering", importance: 3, oneLine: "推理优化干货" },
-          { id: "https://blog.example.com/links", category: "other", importance: 0, oneLine: "links" },
+          {
+            id: "https://blog.example.com/links",
+            category: "other",
+            importance: 0,
+            oneLine: "links",
+          },
         ]),
         tokens: 500,
       }),
@@ -203,8 +256,16 @@ describe("runDailyBrief (offline, injected seams)", () => {
     });
     assert.ok(res, "brief produced");
     assert.equal(res.brief.total, 2);
-    assert.equal(res.brief.items[0]!.title, "Transformer 推理优化实践", "importance-3 item ranks first");
-    assert.equal(ingestedUrls[0], "https://blog.example.com/infer", "top item full-text ingested first");
+    assert.equal(
+      res.brief.items[0]!.title,
+      "Transformer 推理优化实践",
+      "importance-3 item ranks first",
+    );
+    assert.equal(
+      ingestedUrls[0],
+      "https://blog.example.com/infer",
+      "top item full-text ingested first",
+    );
     assert.match(res.text, /推理优化干货/);
 
     // D7: written twice.
@@ -242,7 +303,10 @@ describe("runDailyBrief (offline, injected seams)", () => {
       { id: "b", title: "b" },
       { id: "c", title: "c" },
     ];
-    assert.deepEqual(pickNewItems(items, ["a"], 1).map((i) => i.id), ["b"]);
+    assert.deepEqual(
+      pickNewItems(items, ["a"], 1).map((i) => i.id),
+      ["b"],
+    );
   });
 
   test("all feeds failing does NOT burn the day (retries next tick)", async () => {

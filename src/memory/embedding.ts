@@ -83,7 +83,9 @@ export class OllamaEmbedder implements Embedder {
       const res = await this.post(`${this.host}/api/embeddings`, { model: this.model, prompt: t });
       const emb = res.ok ? parseOllamaEmbedding(res.body) : null;
       if (!emb) {
-        throw new Error(`ollama embedding failed for "${this.model}" (status ${res.status || "unreachable"})`);
+        throw new Error(
+          `ollama embedding failed for "${this.model}" (status ${res.status || "unreachable"})`,
+        );
       }
       out.push(emb);
     }

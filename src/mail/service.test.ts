@@ -63,7 +63,10 @@ function fakeProvider(json: string): Provider {
 
 test("sweepAll is blocked when mail consent is not granted", async () => {
   await withHome(async () => {
-    const res = await sweepAll({ connectorFactory: fakeConnector([raw("1")]), provider: fakeProvider("[]") });
+    const res = await sweepAll({
+      connectorFactory: fakeConnector([raw("1")]),
+      provider: fakeProvider("[]"),
+    });
     assert.equal(res.blocked, true);
     assert.equal(res.items.length, 0);
     assert.equal(res.digest.total, 0);
@@ -81,7 +84,10 @@ test("sweepAll connects, classifies, builds + saves a digest", async () => {
     const json =
       '[{"uid":"1","category":"finance","importance":3,"reason":"bill due"},' +
       '{"uid":"2","category":"newsletter","importance":0,"reason":"promo"}]';
-    const res = await sweepAll({ connectorFactory: fakeConnector(raws), provider: fakeProvider(json) });
+    const res = await sweepAll({
+      connectorFactory: fakeConnector(raws),
+      provider: fakeProvider(json),
+    });
 
     assert.equal(res.blocked, undefined);
     assert.equal(res.items.length, 2);
@@ -104,7 +110,10 @@ test("a second sweep marks nothing new (seen-uid dedup)", async () => {
     const raws = [raw("1", { subject: "Invoice" })];
     const json = '[{"uid":"1","category":"finance","importance":2,"reason":"x"}]';
     await sweepAll({ connectorFactory: fakeConnector(raws), provider: fakeProvider(json) });
-    const second = await sweepAll({ connectorFactory: fakeConnector(raws), provider: fakeProvider(json) });
+    const second = await sweepAll({
+      connectorFactory: fakeConnector(raws),
+      provider: fakeProvider(json),
+    });
     assert.equal(second.items.length, 1); // still classified for the digest
     assert.equal(second.newItems.length, 0); // but nothing NEW
   });
@@ -116,17 +125,26 @@ test("pollNewMail returns only freshly-classified items and is empty on re-poll"
     addAccount({ provider: "imap", email: "me@qq.com", host: "imap.qq.com" }, { password: "pw" });
     const raws = [raw("1", { subject: "Pay invoice" })];
     const json = '[{"uid":"1","category":"finance","importance":3,"reason":"due"}]';
-    const first = await pollNewMail({ connectorFactory: fakeConnector(raws), provider: fakeProvider(json) });
+    const first = await pollNewMail({
+      connectorFactory: fakeConnector(raws),
+      provider: fakeProvider(json),
+    });
     assert.equal(first.length, 1);
     assert.equal(first[0].importance, 3);
-    const second = await pollNewMail({ connectorFactory: fakeConnector(raws), provider: fakeProvider(json) });
+    const second = await pollNewMail({
+      connectorFactory: fakeConnector(raws),
+      provider: fakeProvider(json),
+    });
     assert.equal(second.length, 0); // already seen ⇒ no re-alert
   });
 });
 
 test("pollNewMail returns nothing without consent", async () => {
   await withHome(async () => {
-    const res = await pollNewMail({ connectorFactory: fakeConnector([raw("1")]), provider: fakeProvider("[]") });
+    const res = await pollNewMail({
+      connectorFactory: fakeConnector([raw("1")]),
+      provider: fakeProvider("[]"),
+    });
     assert.equal(res.length, 0);
   });
 });
@@ -167,10 +185,14 @@ test("probeAccount defers close until the probe settles — a slow success after
     host: "imap.x.com",
     port: 993,
   };
-  const p = probeAccount(acct, { password: "pw" }, {
-    connectorFactory: factory,
-    timeoutMs: 20,
-  });
+  const p = probeAccount(
+    acct,
+    { password: "pw" },
+    {
+      connectorFactory: factory,
+      timeoutMs: 20,
+    },
+  );
   await assert.rejects(p, /timed out/);
   // The underlying op hasn't settled yet, so close must NOT have fired: closing
   // on the race (as the first cut did) would no-op here and leak the session

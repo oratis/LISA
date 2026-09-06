@@ -111,7 +111,9 @@ export function buildBrief(
   items: BriefItem[],
   opts: { date: string; feedCount: number; ingested?: string[]; now?: () => number },
 ): KbBrief {
-  const sorted = [...items].sort((a, b) => b.score - a.score || (b.published ?? "").localeCompare(a.published ?? ""));
+  const sorted = [...items].sort(
+    (a, b) => b.score - a.score || (b.published ?? "").localeCompare(a.published ?? ""),
+  );
   return {
     date: opts.date,
     generatedAt: new Date((opts.now ?? Date.now)()).toISOString(),
@@ -128,8 +130,12 @@ export function buildBrief(
  * CLI prints and (truncated) what lands in chat/push.
  */
 export function formatBriefText(brief: KbBrief): string {
-  if (brief.total === 0) return `📰 Brief ${brief.date}: no new items across ${brief.feedCount} feed(s).`;
-  const lines: string[] = [`📰 Brief ${brief.date} — ${brief.total} new item(s) from ${brief.feedCount} feed(s)`, ""];
+  if (brief.total === 0)
+    return `📰 Brief ${brief.date}: no new items across ${brief.feedCount} feed(s).`;
+  const lines: string[] = [
+    `📰 Brief ${brief.date} — ${brief.total} new item(s) from ${brief.feedCount} feed(s)`,
+    "",
+  ];
   const top = brief.items.slice(0, 10);
   for (const item of top) {
     const mark = item.importance >= 3 ? "‼" : item.importance === 2 ? "•" : "·";

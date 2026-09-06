@@ -27,10 +27,7 @@ export function webContextBudgetTokens(
   if (!Number.isFinite(configured) || configured <= 0) {
     return DEFAULT_WEB_CONTEXT_TOKENS;
   }
-  return Math.max(
-    MIN_WEB_CONTEXT_TOKENS,
-    Math.min(MAX_WEB_CONTEXT_TOKENS, Math.floor(configured)),
-  );
+  return Math.max(MIN_WEB_CONTEXT_TOKENS, Math.min(MAX_WEB_CONTEXT_TOKENS, Math.floor(configured)));
 }
 
 /** Conservative provider-independent approximation used only for tail selection. */
@@ -54,17 +51,20 @@ export function estimateCurrentWebInputTokens(
 }
 
 function contentBlocks(message: StoredMessage): Array<{ type?: string }> {
-  return Array.isArray(message.content)
-    ? message.content
-    : [];
+  return Array.isArray(message.content) ? message.content : [];
 }
 
 function beginsWithToolResult(message: StoredMessage): boolean {
-  return message.role === "user" && contentBlocks(message).some((block) => block.type === "tool_result");
+  return (
+    message.role === "user" && contentBlocks(message).some((block) => block.type === "tool_result")
+  );
 }
 
 function hasToolUse(message: StoredMessage): boolean {
-  return message.role === "assistant" && contentBlocks(message).some((block) => block.type === "tool_use");
+  return (
+    message.role === "assistant" &&
+    contentBlocks(message).some((block) => block.type === "tool_use")
+  );
 }
 
 /**
@@ -98,9 +98,7 @@ export function selectWebModelContext(opts: {
     0,
   );
   const omittedMessages = opts.history.length - history.length;
-  const summary = opts.latestReflection
-    ?.trim()
-    .replace(/<\/?reflection_summary>/gi, "");
+  const summary = opts.latestReflection?.trim().replace(/<\/?reflection_summary>/gi, "");
   const systemSuffix =
     omittedMessages > 0
       ? `\n\n## Earlier conversation context\n` +
@@ -120,14 +118,9 @@ export function selectWebModelContext(opts: {
  * the truncation notice/reflection summary introduced by the first selection.
  * A small fixed cushion covers an omitted-count digit change between passes.
  */
-export function selectWebModelContextForTurn(
-  opts: WebTurnContextOptions,
-): ContextSelection {
+export function selectWebModelContextForTurn(opts: WebTurnContextOptions): ContextSelection {
   const totalBudget = opts.budgetTokens ?? webContextBudgetTokens();
-  const fixedInputTokens = estimateCurrentWebInputTokens(
-    opts.systemPrompt + opts.text,
-    opts.files,
-  );
+  const fixedInputTokens = estimateCurrentWebInputTokens(opts.systemPrompt + opts.text, opts.files);
   let selected = selectWebModelContext({
     history: opts.history,
     budgetTokens: Math.max(0, totalBudget - fixedInputTokens),
@@ -135,14 +128,10 @@ export function selectWebModelContextForTurn(
   });
   if (selected.omittedMessages === 0) return selected;
 
-  const suffixReserve =
-    estimateCurrentWebInputTokens(selected.systemSuffix) + 32;
+  const suffixReserve = estimateCurrentWebInputTokens(selected.systemSuffix) + 32;
   selected = selectWebModelContext({
     history: opts.history,
-    budgetTokens: Math.max(
-      0,
-      totalBudget - fixedInputTokens - suffixReserve,
-    ),
+    budgetTokens: Math.max(0, totalBudget - fixedInputTokens - suffixReserve),
     latestReflection: opts.latestReflection,
   });
   return selected;

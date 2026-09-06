@@ -75,12 +75,18 @@ describe("mapOpencodeSession — state mapping", () => {
   });
 
   test("assistant completed → waiting", () => {
-    const s = mapOpencodeSession({ ...base, last_msg: '{"role":"assistant","time":{"completed":9}}' });
+    const s = mapOpencodeSession({
+      ...base,
+      last_msg: '{"role":"assistant","time":{"completed":9}}',
+    });
     assert.equal(s.state, "waiting");
   });
 
   test("assistant streaming → working", () => {
-    const s = mapOpencodeSession({ ...base, last_msg: '{"role":"assistant","time":{"created":9}}' });
+    const s = mapOpencodeSession({
+      ...base,
+      last_msg: '{"role":"assistant","time":{"created":9}}',
+    });
     assert.equal(s.state, "working");
     assert.equal(s.stateReason, "assistant-streaming");
   });
@@ -116,7 +122,13 @@ describe("OpencodeObserver — polling + emit", () => {
     const polls: OpencodeRow[][] = [
       [row({ id: "a", last_msg: '{"role":"user"}' })], // working
       [row({ id: "a", last_msg: '{"role":"user"}' })], // unchanged
-      [row({ id: "a", last_msg: '{"role":"assistant","time":{"completed":1}}', time_updated: 1780332620001 })], // waiting
+      [
+        row({
+          id: "a",
+          last_msg: '{"role":"assistant","time":{"completed":1}}',
+          time_updated: 1780332620001,
+        }),
+      ], // waiting
     ];
     const emitted: string[] = [];
     const obs = new OpencodeObserver({
@@ -339,7 +351,9 @@ describe("OpencodeObserver — visibility wiring", () => {
     recent_msgs: recent,
   });
   const recent = JSON.stringify([
-    JSON.stringify(msg({ parts: [{ type: "tool", tool: "read", state: { input: { path: "/p/f.ts" } } }] })),
+    JSON.stringify(
+      msg({ parts: [{ type: "tool", tool: "read", state: { input: { path: "/p/f.ts" } } }] }),
+    ),
   ]);
 
   test("visibility 'activity' → observer deep-extracts", async () => {
@@ -372,7 +386,12 @@ describe("OpencodeObserver — visibility wiring", () => {
 });
 
 describe("OpencodeObserver — O-D1 gitBranch from directory", () => {
-  const row: OpencodeRow = { id: "ses_b", directory: "/Users/me/proj", title: "t", time_updated: 1 };
+  const row: OpencodeRow = {
+    id: "ses_b",
+    directory: "/Users/me/proj",
+    title: "t",
+    time_updated: 1,
+  };
 
   test("enriches activity.gitBranch from the session directory (tier ≥ activity)", async () => {
     const obs = new OpencodeObserver({
@@ -393,7 +412,10 @@ describe("OpencodeObserver — O-D1 gitBranch from directory", () => {
       enabled: true,
       visibility: "metadata",
       fetchRows: async () => [row],
-      gitBranch: async () => { called = true; return "nope"; },
+      gitBranch: async () => {
+        called = true;
+        return "nope";
+      },
       activeWindowMs: 10 ** 12,
       now: () => 2,
     });

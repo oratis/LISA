@@ -246,11 +246,7 @@ async function reflectOnSessionInner(opts: {
       try {
         await atomicWrite(
           errPath,
-          JSON.stringify(
-            { firstError, retryError: retryParsed.error, raw, retryRaw },
-            null,
-            2,
-          ),
+          JSON.stringify({ firstError, retryError: retryParsed.error, raw, retryRaw }, null, 2),
         );
       } catch {
         // best-effort persistence
@@ -431,7 +427,13 @@ async function reflectOnSessionInner(opts: {
   await atomicWrite(
     path.join(reflectionsDir(), `${opts.sessionId}.json`),
     JSON.stringify(
-      { summary: payload.summary, operations: payload.operations, applied, skipped, underReflected },
+      {
+        summary: payload.summary,
+        operations: payload.operations,
+        applied,
+        skipped,
+        underReflected,
+      },
       null,
       2,
     ),
@@ -474,10 +476,12 @@ const PROGRESS_KEEP_LATEST = 4;
 async function maybeConsolidateOneDesireProgress(
   model: string,
 ): Promise<{ slug: string; usage: ProviderUsage } | null> {
-  const { listDesires, parseDesireProgress, consolidateDesireProgress } = await import("./soul/store.js");
+  const { listDesires, parseDesireProgress, consolidateDesireProgress } =
+    await import("./soul/store.js");
   const { withSoulCaller } = await import("./soul/git.js");
   const desires = (await listDesires()).filter((d) => d.actionable);
-  let target: { slug: string; entries: { ts: string; body: string }[]; preamble: string } | null = null;
+  let target: { slug: string; entries: { ts: string; body: string }[]; preamble: string } | null =
+    null;
   for (const d of desires) {
     const parsed = await parseDesireProgress(d.slug);
     if (parsed.entries.length <= PROGRESS_CONSOLIDATE_THRESHOLD) continue;
@@ -497,11 +501,10 @@ async function maybeConsolidateOneDesireProgress(
   const provider = providerForModel(model);
   const result = await provider.runTurn({
     model,
-    systemPrompt: "You are Lisa, condensing your own past notes. Output prose only — no JSON, no headings, no bullet list.",
+    systemPrompt:
+      "You are Lisa, condensing your own past notes. Output prose only — no JSON, no headings, no bullet list.",
     tools: [],
-    messages: [
-      { role: "user", content: [{ type: "text", text: condensePrompt }] },
-    ],
+    messages: [{ role: "user", content: [{ type: "text", text: condensePrompt }] }],
     maxTokens: 600,
   });
   const summary = result.content
@@ -512,9 +515,7 @@ async function maybeConsolidateOneDesireProgress(
   if (!summary) return null;
   await withSoulCaller("reflect", async () => {
     await consolidateDesireProgress(target.slug, {
-      condensedSummary: target.preamble
-        ? target.preamble + "\n\n" + summary
-        : summary,
+      condensedSummary: target.preamble ? target.preamble + "\n\n" + summary : summary,
       keepLatest,
     });
   });
@@ -562,7 +563,10 @@ async function renderCurrentDesiresBlock(): Promise<string> {
 function stripJsonFence(s: string): string {
   const trimmed = s.trim();
   if (trimmed.startsWith("```")) {
-    return trimmed.replace(/^```(?:json)?\s*/i, "").replace(/```$/, "").trim();
+    return trimmed
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/```$/, "")
+      .trim();
   }
   return trimmed;
 }

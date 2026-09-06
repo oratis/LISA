@@ -28,7 +28,13 @@ export function runIn(
     try {
       child = spawn(cmd, args, { cwd, signal: opts.signal });
     } catch (e) {
-      resolve({ code: null, stdout: "", stderr: "", timedOut: false, spawnError: String((e as Error).message) });
+      resolve({
+        code: null,
+        stdout: "",
+        stderr: "",
+        timedOut: false,
+        spawnError: String((e as Error).message),
+      });
       return;
     }
     let stdout = "";
@@ -73,7 +79,10 @@ export async function isDir(p: string): Promise<boolean> {
 
 /** `git -C <cwd> rev-parse --show-toplevel` → repo root, or null if not a repo. */
 export async function gitRoot(cwd: string, signal?: AbortSignal): Promise<string | null> {
-  const r = await runIn(cwd, "git", ["-C", cwd, "rev-parse", "--show-toplevel"], { timeoutMs: 5000, signal });
+  const r = await runIn(cwd, "git", ["-C", cwd, "rev-parse", "--show-toplevel"], {
+    timeoutMs: 5000,
+    signal,
+  });
   if (r.code === 0) {
     const root = r.stdout.trim();
     return root || null;

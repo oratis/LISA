@@ -1,10 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import type {
-  AgentEvent,
-  StoredMessage,
-  ToolContext,
-  ToolDefinition,
-} from "./types.js";
+import type { AgentEvent, StoredMessage, ToolContext, ToolDefinition } from "./types.js";
 import type { Provider } from "./providers/types.js";
 import { moodBus, withMoodOrigin } from "./mood-bus.js";
 import { validateToolInput } from "./tools/validate.js";
@@ -62,10 +57,7 @@ export interface RunAgentOptions {
    * change" in two places. Sessionless runs (subagents, channel turns) leave
    * it unset.
    */
-  onPromptPersist?: (
-    text: string,
-    reason: "initial" | "rebuilt",
-  ) => Promise<unknown> | unknown;
+  onPromptPersist?: (text: string, reason: "initial" | "rebuilt") => Promise<unknown> | unknown;
   approval?: ApprovalCallback;
   preToolHook?: (
     name: string,
@@ -248,9 +240,7 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
         }
       } catch (err) {
         // Hot-reload is best-effort; never crash the agent loop on it.
-        toolCtx.log(
-          `[hot-reload] skipped: ${(err as Error).message.slice(0, 200)}`,
-        );
+        toolCtx.log(`[hot-reload] skipped: ${(err as Error).message.slice(0, 200)}`);
       }
     }
 
@@ -261,14 +251,9 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
     // asked with. Best-effort — persistence must never sink a live turn.
     if (opts.onPromptPersist) {
       try {
-        await opts.onPromptPersist(
-          currentSystemPrompt,
-          iterations === 1 ? "initial" : "rebuilt",
-        );
+        await opts.onPromptPersist(currentSystemPrompt, iterations === 1 ? "initial" : "rebuilt");
       } catch (err) {
-        toolCtx.log(
-          `[prompt-log] skipped: ${(err as Error).message.slice(0, 200)}`,
-        );
+        toolCtx.log(`[prompt-log] skipped: ${(err as Error).message.slice(0, 200)}`);
       }
     }
 
@@ -286,8 +271,7 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
         signal: toolCtx.signal,
         handlers: {
           onTextDelta: (text) => onEvent?.({ type: "text_delta", text }),
-          onThinkingDelta: (text) =>
-            onEvent?.({ type: "thinking_delta", text }),
+          onThinkingDelta: (text) => onEvent?.({ type: "thinking_delta", text }),
         },
       });
     } catch (err) {
@@ -325,9 +309,7 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
       await onMessagePersist?.(assistant);
     }
 
-    const lastText =
-      (result.content.find((b) => b.type === "text"))
-        ?.text ?? "";
+    const lastText = result.content.find((b) => b.type === "text")?.text ?? "";
     if (lastText) finalText = lastText;
 
     if (result.stopReason !== "tool_use") {
@@ -461,8 +443,7 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
       try {
         const raw = await tool.execute(call.input, toolCtx);
         let text =
-          tool.renderResultForModel?.(raw) ??
-          (typeof raw === "string" ? raw : JSON.stringify(raw));
+          tool.renderResultForModel?.(raw) ?? (typeof raw === "string" ? raw : JSON.stringify(raw));
         if (opts.postToolHook) {
           const hook = await opts.postToolHook(call.name, call.input, text, false);
           if (hook?.rewriteResult != null) text = hook.rewriteResult;

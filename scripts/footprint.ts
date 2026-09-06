@@ -28,7 +28,10 @@ function arg(name: string): string | undefined {
 async function findServePid(): Promise<number | undefined> {
   try {
     const { stdout } = await pexec("pgrep", ["-f", "cli.js serve"]);
-    const pid = stdout.split("\n").map((s) => parseInt(s.trim(), 10)).find((n) => Number.isInteger(n) && n !== process.pid);
+    const pid = stdout
+      .split("\n")
+      .map((s) => parseInt(s.trim(), 10))
+      .find((n) => Number.isInteger(n) && n !== process.pid);
     return pid;
   } catch {
     return undefined;
@@ -59,7 +62,9 @@ async function main(): Promise<void> {
   const pid = arg("pid") ? parseInt(arg("pid")!, 10) : await findServePid();
 
   if (!pid || !Number.isInteger(pid)) {
-    console.error("No `lisa serve` process found. Start one (`lisa serve --web &`) or pass --pid <pid>.");
+    console.error(
+      "No `lisa serve` process found. Start one (`lisa serve --web &`) or pass --pid <pid>.",
+    );
     process.exit(1);
   }
   console.log(`Sampling pid ${pid} every ${interval}s for ${seconds}s…`);
@@ -76,7 +81,9 @@ async function main(): Promise<void> {
     }
     cpus.push(s.cpu);
     rss.push(s.rssKb / 1024); // MB
-    process.stdout.write(`  t+${i * interval}s  cpu=${s.cpu.toFixed(1)}%  rss=${(s.rssKb / 1024).toFixed(0)}MB\n`);
+    process.stdout.write(
+      `  t+${i * interval}s  cpu=${s.cpu.toFixed(1)}%  rss=${(s.rssKb / 1024).toFixed(0)}MB\n`,
+    );
     if (i < ticks - 1) await sleep(interval * 1000);
   }
 

@@ -62,15 +62,21 @@ async function main(): Promise<void> {
   const accounts = readJson<unknown[]>(path.join(home!, "accounts.json")) ?? [];
   console.log(`accounts.json: ${accounts.length} records`);
   const existing = await getDoc("lisa-global/accounts");
-  const existingCount = Array.isArray(existing?.data.list) ? (existing.data.list as unknown[]).length : 0;
+  const existingCount = Array.isArray(existing?.data.list)
+    ? (existing.data.list as unknown[]).length
+    : 0;
   if (accounts.length === 0) {
     // Guard: never write an empty list. A missing/wrong home dir (or an unmounted
     // GCS bucket) reads as [], and with --force that would WIPE a populated
     // Firestore. An empty source is a misinvocation, not an import.
-    console.log(`  ↷ accounts.json is empty or absent — skipping (refusing to overwrite Firestore with an empty list)`);
+    console.log(
+      `  ↷ accounts.json is empty or absent — skipping (refusing to overwrite Firestore with an empty list)`,
+    );
     skipped++;
   } else if (existing && existingCount > 0 && !force) {
-    console.log(`  ↷ lisa-global/accounts already holds ${existingCount} records — skipping (use --force to overwrite)`);
+    console.log(
+      `  ↷ lisa-global/accounts already holds ${existingCount} records — skipping (use --force to overwrite)`,
+    );
     skipped++;
   } else if (dryRun) {
     console.log(`  (dry-run) would write lisa-global/accounts with ${accounts.length} records`);
@@ -87,7 +93,9 @@ async function main(): Promise<void> {
     : [];
   console.log(`users/: ${uids.length} homes`);
   for (const uid of uids) {
-    const balance = readJson<Record<string, unknown>>(path.join(usersDir, uid, "billing", "balance.json"));
+    const balance = readJson<Record<string, unknown>>(
+      path.join(usersDir, uid, "billing", "balance.json"),
+    );
     if (!balance) continue;
     const doc = `lisa-balances/${uid}`;
     if (!force && (await getDoc(doc))) {
@@ -126,7 +134,9 @@ async function main(): Promise<void> {
     }
   }
 
-  console.log(`\ndone: ${wrote} written, ${skipped} skipped${dryRun ? " (dry-run — nothing written)" : ""}`);
+  console.log(
+    `\ndone: ${wrote} written, ${skipped} skipped${dryRun ? " (dry-run — nothing written)" : ""}`,
+  );
 }
 
 main().catch((e) => {

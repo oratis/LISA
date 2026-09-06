@@ -17,10 +17,22 @@ test("parseCodexSteps: ordered structural steps, no content leakage", async () =
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "lisa-codex-steps-"));
   const file = path.join(dir, "rollout-x.jsonl");
   const jsonl =
-    line({ type: "user", timestamp: "2026-08-08T03:00:00Z", message: { role: "user", content: SECRET + " do the thing" } }) +
-    line({ type: "function_call", name: "read_file", arguments: JSON.stringify({ file_path: "/Users/x/" + SECRET + "-dir/notes.md" }) }) +
+    line({
+      type: "user",
+      timestamp: "2026-08-08T03:00:00Z",
+      message: { role: "user", content: SECRET + " do the thing" },
+    }) +
+    line({
+      type: "function_call",
+      name: "read_file",
+      arguments: JSON.stringify({ file_path: "/Users/x/" + SECRET + "-dir/notes.md" }),
+    }) +
     line({ type: "function_call_output", is_error: true, output: SECRET }) +
-    line({ type: "function_call", name: "shell", arguments: JSON.stringify({ command: "grep " + SECRET + " -r ." }) }) +
+    line({
+      type: "function_call",
+      name: "shell",
+      arguments: JSON.stringify({ command: "grep " + SECRET + " -r ." }),
+    }) +
     line({ type: "response", message: { role: "assistant", content: "done " + SECRET } }) +
     line({ type: "user", message: { role: "user", content: "next " + SECRET } });
   await fs.writeFile(file, jsonl);

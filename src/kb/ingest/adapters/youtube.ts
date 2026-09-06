@@ -85,7 +85,9 @@ async function fetchYoutube(url: URL, ctx: IngestContext): Promise<IngestedConte
     `https://www.youtube.com/oembed?url=${encodeURIComponent(canonical)}&format=json`,
   );
   if (!oembedRes.ok) {
-    throw new Error(`YouTube oEmbed failed (HTTP ${oembedRes.status}) — video may be private or removed`);
+    throw new Error(
+      `YouTube oEmbed failed (HTTP ${oembedRes.status}) — video may be private or removed`,
+    );
   }
   const oembed = (await oembedRes.json().catch(() => null)) as {
     title?: string;
@@ -113,7 +115,10 @@ async function fetchYoutube(url: URL, ctx: IngestContext): Promise<IngestedConte
       const text = capRes.ok ? await capRes.text() : "";
       transcript = (text.trim() ? parseJson3(text) : null) ?? undefined;
       if (transcript) transcriptVia = "builtin";
-      else reason = capRes.ok ? "caption endpoint returned empty body" : `caption HTTP ${capRes.status}`;
+      else
+        reason = capRes.ok
+          ? "caption endpoint returned empty body"
+          : `caption HTTP ${capRes.status}`;
     } catch (err) {
       reason = (err as Error).message?.slice(0, 120) ?? "caption fetch failed";
     }

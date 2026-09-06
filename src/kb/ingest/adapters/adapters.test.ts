@@ -11,9 +11,8 @@ process.env.LISA_KB_NO_GIT = "1";
 const { wechatAdapter } = await import("./wechat.js");
 const { bilibiliAdapter } = await import("./bilibili.js");
 const { youtubeAdapter, videoIdOf } = await import("./youtube.js");
-const { parseJson3, parseBilibiliSubtitle, formatVideoBody, formatDuration } = await import(
-  "./subtitle.js"
-);
+const { parseJson3, parseBilibiliSubtitle, formatVideoBody, formatDuration } =
+  await import("./subtitle.js");
 const { pickSubtitleUrl } = await import("./ytdlp.js");
 const { ingestUrl, ADAPTERS } = await import("../index.js");
 const { kbDir } = await import("../../paths.js");
@@ -23,7 +22,10 @@ after(() => rmSync(TMP, { recursive: true, force: true }));
 
 // ── helpers (offline only — a fetch outside the map is a test failure) ─
 
-const resp = (body: string, opts: { status?: number; type?: string; url?: string } = {}): Response => {
+const resp = (
+  body: string,
+  opts: { status?: number; type?: string; url?: string } = {},
+): Response => {
   const r = new Response(body, {
     status: opts.status ?? 200,
     headers: { "content-type": opts.type ?? "text/html" },
@@ -118,8 +120,15 @@ describe("bilibili adapter", () => {
   });
 
   test("no SESSDATA → metadata + desc, transcript marked unavailable with the how-to", async () => {
-    const ctx = ctxOf({ "https://api.bilibili.com/x/web-interface/view": resp(BILI_VIEW, { type: "application/json" }) });
-    const out = await bilibiliAdapter.fetch(new URL("https://www.bilibili.com/video/BV1xx411c7mD"), ctx);
+    const ctx = ctxOf({
+      "https://api.bilibili.com/x/web-interface/view": resp(BILI_VIEW, {
+        type: "application/json",
+      }),
+    });
+    const out = await bilibiliAdapter.fetch(
+      new URL("https://www.bilibili.com/video/BV1xx411c7mD"),
+      ctx,
+    );
     assert.equal(out.title, "从零实现倒排索引");
     assert.equal(out.extra?.author, "编码小课");
     assert.match(out.extra?.transcript ?? "", /^unavailable \(.*sessdata/i);
@@ -132,11 +141,17 @@ describe("bilibili adapter", () => {
     mkdirSync(kbDir(), { recursive: true });
     writeFileSync(path.join(kbDir(), "feeds.json"), JSON.stringify({ sessdata: "secret" }));
     const ctx = ctxOf({
-      "https://api.bilibili.com/x/web-interface/view": resp(BILI_VIEW, { type: "application/json" }),
+      "https://api.bilibili.com/x/web-interface/view": resp(BILI_VIEW, {
+        type: "application/json",
+      }),
       "https://api.bilibili.com/x/player/v2": resp(
         JSON.stringify({
           code: 0,
-          data: { subtitle: { subtitles: [{ lan: "zh-CN", subtitle_url: "//aisubtitle.hdslb.com/x.json" }] } },
+          data: {
+            subtitle: {
+              subtitles: [{ lan: "zh-CN", subtitle_url: "//aisubtitle.hdslb.com/x.json" }],
+            },
+          },
         }),
         { type: "application/json" },
       ),
@@ -146,7 +161,10 @@ describe("bilibili adapter", () => {
       ),
     });
     try {
-      const out = await bilibiliAdapter.fetch(new URL("https://www.bilibili.com/video/BV1xx411c7mD"), ctx);
+      const out = await bilibiliAdapter.fetch(
+        new URL("https://www.bilibili.com/video/BV1xx411c7mD"),
+        ctx,
+      );
       assert.equal(out.extra?.transcript, "builtin");
       assert.match(out.body, /## 字幕\n\n第一句\n第二句/);
     } finally {
@@ -160,7 +178,9 @@ describe("bilibili adapter", () => {
         resp("<html></html>", {
           url: "https://www.bilibili.com/video/BV1xx411c7mD?share_source=copy",
         }),
-      "https://api.bilibili.com/x/web-interface/view": resp(BILI_VIEW, { type: "application/json" }),
+      "https://api.bilibili.com/x/web-interface/view": resp(BILI_VIEW, {
+        type: "application/json",
+      }),
     });
     const out = await bilibiliAdapter.fetch(new URL("https://b23.tv/xyz"), ctx);
     assert.equal(out.title, "从零实现倒排索引");
@@ -182,7 +202,10 @@ describe("bilibili adapter", () => {
 
 // ── youtube ───────────────────────────────────────────────────────────
 
-const OEMBED = JSON.stringify({ title: "Attention Is All You Need — explained", author_name: "ML Channel" });
+const OEMBED = JSON.stringify({
+  title: "Attention Is All You Need — explained",
+  author_name: "ML Channel",
+});
 const PLAYER_WITH_CAPTIONS = JSON.stringify({
   videoDetails: {
     title: "Attention Is All You Need — explained",
@@ -215,8 +238,12 @@ describe("youtube adapter", () => {
   test("built-in captions: manual track preferred, json3 parsed into the body", async () => {
     const ctx = ctxOf({
       "https://www.youtube.com/oembed": resp(OEMBED, { type: "application/json" }),
-      "https://www.youtube.com/youtubei/v1/player": resp(PLAYER_WITH_CAPTIONS, { type: "application/json" }),
-      "https://www.youtube.com/api/timedtext?v=abc&manual": resp(JSON3, { type: "application/json" }),
+      "https://www.youtube.com/youtubei/v1/player": resp(PLAYER_WITH_CAPTIONS, {
+        type: "application/json",
+      }),
+      "https://www.youtube.com/api/timedtext?v=abc&manual": resp(JSON3, {
+        type: "application/json",
+      }),
     });
     const out = await youtubeAdapter.fetch(new URL("https://youtu.be/abc12345678"), ctx);
     assert.equal(out.extra?.transcript, "builtin");
@@ -237,7 +264,10 @@ describe("youtube adapter", () => {
       },
       null, // yt-dlp not installed
     );
-    const out = await youtubeAdapter.fetch(new URL("https://www.youtube.com/watch?v=abc12345678"), ctx);
+    const out = await youtubeAdapter.fetch(
+      new URL("https://www.youtube.com/watch?v=abc12345678"),
+      ctx,
+    );
     assert.equal(out.title, "Attention Is All You Need — explained");
     assert.match(out.extra?.transcript ?? "", /^unavailable \(/);
     assert.match(out.body, /- 链接: https:\/\/www\.youtube\.com\/watch\?v=abc12345678/);
@@ -250,9 +280,14 @@ describe("youtube adapter", () => {
         "https://www.youtube.com/youtubei/v1/player": resp("", { type: "application/json" }),
         "https://captions.example.com/t.json3": resp(JSON3, { type: "application/json" }),
       },
-      { automatic_captions: { en: [{ url: "https://captions.example.com/t.json3", ext: "json3" }] } },
+      {
+        automatic_captions: { en: [{ url: "https://captions.example.com/t.json3", ext: "json3" }] },
+      },
     );
-    const out = await youtubeAdapter.fetch(new URL("https://www.youtube.com/watch?v=abc12345678"), ctx);
+    const out = await youtubeAdapter.fetch(
+      new URL("https://www.youtube.com/watch?v=abc12345678"),
+      ctx,
+    );
     assert.equal(out.extra?.transcript, "yt-dlp");
     assert.match(out.body, /## 字幕/);
   });
@@ -266,7 +301,10 @@ describe("subtitle/ytdlp helpers", () => {
     assert.equal(parseJson3("not json"), null);
   });
   test("parseBilibiliSubtitle joins body lines", () => {
-    assert.equal(parseBilibiliSubtitle(JSON.stringify({ body: [{ content: "a" }, { content: "b" }] })), "a\nb");
+    assert.equal(
+      parseBilibiliSubtitle(JSON.stringify({ body: [{ content: "a" }, { content: "b" }] })),
+      "a\nb",
+    );
   });
   test("pickSubtitleUrl prefers manual subs, zh, then json3 ext", () => {
     const url = pickSubtitleUrl({
@@ -287,12 +325,17 @@ describe("subtitle/ytdlp helpers", () => {
 
 describe("ingestUrl adapter integration", () => {
   test("registered adapter order: wechat, bilibili, youtube", () => {
-    assert.deepEqual(ADAPTERS.map((a) => a.name), ["wechat", "bilibili", "youtube"]);
+    assert.deepEqual(
+      ADAPTERS.map((a) => a.name),
+      ["wechat", "bilibili", "youtube"],
+    );
   });
 
   test("a bilibili URL routes through the adapter and writes via=bilibili with transcript frontmatter", async () => {
     const routes = {
-      "https://api.bilibili.com/x/web-interface/view": resp(BILI_VIEW, { type: "application/json" }),
+      "https://api.bilibili.com/x/web-interface/view": resp(BILI_VIEW, {
+        type: "application/json",
+      }),
     };
     const res = await ingestUrl("https://www.bilibili.com/video/BV1xx411c7mD", {
       fetchImpl: async (url) => {

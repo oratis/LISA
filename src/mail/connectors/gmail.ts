@@ -77,13 +77,21 @@ export class GmailConnector implements MailConnector {
       this.http,
       this.now(),
     );
-    this.secret = { ...this.secret, accessToken: t.accessToken, expiry: t.expiry, refreshToken: t.refreshToken };
+    this.secret = {
+      ...this.secret,
+      accessToken: t.accessToken,
+      expiry: t.expiry,
+      refreshToken: t.refreshToken,
+    };
     this.onTokenRefresh?.(t);
     return t.accessToken;
   }
 
   private async api<T>(url: string, token: string): Promise<T> {
-    const res = await this.http(url, { method: "GET", headers: { authorization: `Bearer ${token}` } });
+    const res = await this.http(url, {
+      method: "GET",
+      headers: { authorization: `Bearer ${token}` },
+    });
     const text = await res.text();
     if (!res.ok) throw new Error(`gmail api ${res.status}: ${text.slice(0, 200)}`);
     return JSON.parse(text) as T;
@@ -116,8 +124,14 @@ export class GmailConnector implements MailConnector {
 }
 
 /** Fetch the authorized account's email address (users/me/profile). */
-export async function gmailProfileEmail(token: string, fetchImpl: HttpFetch = fetch): Promise<string> {
-  const res = await fetchImpl(`${GMAIL_API}/profile`, { method: "GET", headers: { authorization: `Bearer ${token}` } });
+export async function gmailProfileEmail(
+  token: string,
+  fetchImpl: HttpFetch = fetch,
+): Promise<string> {
+  const res = await fetchImpl(`${GMAIL_API}/profile`, {
+    method: "GET",
+    headers: { authorization: `Bearer ${token}` },
+  });
   const text = await res.text();
   if (!res.ok) throw new Error(`gmail profile ${res.status}`);
   return String((JSON.parse(text) as { emailAddress?: string }).emailAddress ?? "");

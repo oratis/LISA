@@ -26,7 +26,12 @@ beforeEach(() => _resetJournalForTest());
 describe("summarizeActivity", () => {
   test("tool · $cmd · file", () => {
     const s = sess({
-      activity: { turnCount: 1, lastTools: ["Read", "Edit"], filesTouched: ["/a/b/foo.ts"], lastCommandName: "npm" },
+      activity: {
+        turnCount: 1,
+        lastTools: ["Read", "Edit"],
+        filesTouched: ["/a/b/foo.ts"],
+        lastCommandName: "npm",
+      },
     });
     assert.equal(summarizeActivity(s), "Edit · $npm · foo.ts");
   });
@@ -63,7 +68,13 @@ describe("recordEvent", () => {
   });
 
   test("captures error from activity.lastError", () => {
-    const ev = recordEvent(sess({ state: "error", stateReason: "is_error", activity: { turnCount: 0, lastTools: [], filesTouched: [], lastError: "boom" } }));
+    const ev = recordEvent(
+      sess({
+        state: "error",
+        stateReason: "is_error",
+        activity: { turnCount: 0, lastTools: [], filesTouched: [], lastError: "boom" },
+      }),
+    );
     assert.equal(ev!.error, "boom");
   });
 });

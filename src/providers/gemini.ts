@@ -48,9 +48,7 @@ export class GeminiProvider implements Provider {
       // via httpOptions.
       this.client = new GoogleGenAI({
         apiKey: this.clientOpts.apiKey,
-        ...(this.clientOpts.baseURL
-          ? { httpOptions: { baseUrl: this.clientOpts.baseURL } }
-          : {}),
+        ...(this.clientOpts.baseURL ? { httpOptions: { baseUrl: this.clientOpts.baseURL } } : {}),
       });
     }
     return this.client;
@@ -103,9 +101,11 @@ export class GeminiProvider implements Provider {
           }
           if (p.functionCall) {
             toolCalls.push({
-              id: p.functionCall.id ?? `call_${p.functionCall.name}_${Math.random().toString(36).slice(2)}`,
+              id:
+                p.functionCall.id ??
+                `call_${p.functionCall.name}_${Math.random().toString(36).slice(2)}`,
               name: p.functionCall.name ?? "",
-              args: (p.functionCall.args ?? {}),
+              args: p.functionCall.args ?? {},
             });
           }
         }
@@ -191,17 +191,13 @@ function anthropicToGemini(messages: StoredMessage[]): Content[] {
             typeof block.content === "string"
               ? block.content
               : Array.isArray(block.content)
-                ? block.content
-                    .map((b) => (b.type === "text" ? b.text : ""))
-                    .join("\n")
+                ? block.content.map((b) => (b.type === "text" ? b.text : "")).join("\n")
                 : "";
           parts.push({
             functionResponse: {
               id: block.tool_use_id,
               name: extractToolNameFromHistory(messages, block.tool_use_id) ?? "unknown",
-              response: block.is_error
-                ? { error: resultText }
-                : { output: resultText },
+              response: block.is_error ? { error: resultText } : { output: resultText },
             },
           });
         } else if (block.type === "image" && "source" in block) {
@@ -226,10 +222,7 @@ function anthropicToGemini(messages: StoredMessage[]): Content[] {
  * `toolUseId`, return its name. Gemini's functionResponse needs the name,
  * not just the id — Anthropic's tool_result only carries the id.
  */
-function extractToolNameFromHistory(
-  messages: StoredMessage[],
-  toolUseId: string,
-): string | null {
+function extractToolNameFromHistory(messages: StoredMessage[], toolUseId: string): string | null {
   for (const msg of messages) {
     if (msg.role !== "assistant") continue;
     const content = msg.content;
