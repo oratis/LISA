@@ -783,7 +783,7 @@ async function loadHistoryPage() {
       historyExhausted = true;
       if (historyPage > 1) {
         const marker = document.createElement('div');
-        marker.style.cssText = 'text-align:center;color:var(--fg-3);font-size:11px;padding:8px 0;letter-spacing:0.06em;';
+        marker.style.cssText = 'text-align:center;color:var(--fg-3);font-size:11.5px;padding:8px 0;letter-spacing:0.06em;';
         marker.textContent = '— end of history —';
         log.insertBefore(marker, log.firstChild);
       }
@@ -1156,11 +1156,20 @@ function el(tag, cls, text) {
   return node;
 }
 
+// Screen-reader status for the chat (the #chatStatus aria-live region in the
+// shell). Coarse turn state only — never the streamed text, which would be
+// re-announced on every paint.
+function setChatStatus(text) {
+  const s = document.getElementById('chatStatus');
+  if (s) s.textContent = text || '';
+}
+
 function ensureLisaSpan() {
   if (currentLisaSpan) return currentLisaSpan;
   if (thinkingEl) { thinkingEl.remove(); thinkingEl = null; }
   el('div', 'role lisa', 'LISA');
   currentLisaSpan = el('span', 'msg', '');
+  setChatStatus('Lisa is replying');
   return currentLisaSpan;
 }
 
@@ -1306,12 +1315,14 @@ async function runChat(message, filesToSend) {
   currentLisaSpan = null;
   pendingTools.clear();
   thinkingEl = el('div', 'thinking', '⋯ thinking');
+  setChatStatus('Lisa is thinking');
   // The agent emits an error event AND the server re-sends it from its turn
   // catch — dedupe so one failure renders exactly one error block.
   let errored = false;
   const fail = (detail) => {
     if (errored || gen !== chatGeneration) return;
     errored = true;
+    setChatStatus('The request failed');
     showError(detail, message, filesToSend);
   };
   try {
@@ -1380,6 +1391,7 @@ async function runChat(message, filesToSend) {
         } else if (ev.type === 'done') {
           if (thinkingEl) { thinkingEl.remove(); thinkingEl = null; }
           flushLisaRender();
+          setChatStatus('Lisa finished replying');
         }
       }
     }
@@ -1715,7 +1727,18 @@ if ('serviceWorker' in navigator) {
     const needs = cachedAgents.filter(function (s) {
       return (s.activity && s.activity.pendingPermission) || s.state === 'waiting' || s.state === 'error';
     });
-    if (count) count.textContent = needs.length ? String(needs.length) : '';
+    if (count) {
+      // The count is an aria-live region: the number plus a visually hidden
+      // noun so a screen reader hears "2 agents need you", not just "2".
+      count.textContent = '';
+      if (needs.length) {
+        count.appendChild(document.createTextNode(String(needs.length)));
+        const sr = document.createElement('span');
+        sr.className = 'sr-only';
+        sr.textContent = needs.length === 1 ? ' agent needs you' : ' agents need you';
+        count.appendChild(sr);
+      }
+    }
     if (!needs.length) {
       const ok = document.createElement('div');
       ok.className = 'session-empty';
@@ -2520,7 +2543,7 @@ if ('serviceWorker' in navigator) {
       foot.appendChild(cancel);
     } else if (s && s.resumable) {
       const note = document.createElement('span');
-      note.style.cssText = 'font-size:11px;color:var(--fg-3);align-self:center;';
+      note.style.cssText = 'font-size:11.5px;color:var(--fg-3);align-self:center;';
       note.textContent = 'observe-only — adopt it from the inspector to take control';
       foot.appendChild(note);
     }
