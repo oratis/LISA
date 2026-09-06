@@ -84,6 +84,11 @@ final class BackendController {
         try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path)
     }
 
+    /// Callers waiting on the outcome of the next start attempt (restart()).
+    /// Drained — on the main actor — by post(), right after the status
+    /// notification goes out, so a waiter sees exactly one resolution.
+    private var startWaiters: [(Bool) -> Void] = []
+
     /// Stop the (detached) backend and start a fresh one so config.env changes
     /// apply. The backend was launched with nohup, so we match its command line;
     /// killing only `lisa serve --web` variants keeps unrelated processes safe.
@@ -92,18 +97,13 @@ final class BackendController {
         kill.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
         kill.arguments = ["-f", "serve --web"]
         kill.terminationHandler = { _ in
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+            // Give the old process a beat to release the port, then hop back to
+            // the main actor: the waiter list and start() are both isolated there.
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 800_000_000)
                 guard let self else { return }
+                self.startWaiters.append(completion)
                 self.start()
-                // Report through the existing status notification once, then hand
-                // the outcome to the caller.
-                var observer: NSObjectProtocol?
-                observer = NotificationCenter.default.addObserver(
-                    forName: BackendController.statusChanged, object: nil, queue: .main
-                ) { note in
-                    if let observer { NotificationCenter.default.removeObserver(observer) }
-                    completion((note.userInfo?["up"] as? Bool) ?? false)
-                }
             }
         }
         try? kill.run()
@@ -252,5 +252,10 @@ final class BackendController {
         var info: [String: Any] = ["up": up]
         if let note { info["note"] = note }
         NotificationCenter.default.post(name: BackendController.statusChanged, object: nil, userInfo: info)
+        // Resolve restart() callers after the broadcast, so the UIs they update
+        // have already seen the new state.
+        let waiters = startWaiters
+        startWaiters.removeAll()
+        for waiter in waiters { waiter(up) }
     }
 }
