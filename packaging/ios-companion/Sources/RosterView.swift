@@ -645,9 +645,16 @@ struct SessionDetailView: View {
                     Button("Cancel", role: .destructive) { act { try await app.client.ptyCancel(session.sessionId) } }
                     if !canControl { remoteBlockedNote }
                 }
-                Button("Load output") { act { output = try await app.client.ptyOutput(session.sessionId) } }
-                if !output.isEmpty {
-                    CodeBlock(text: output, maxHeight: 200)
+                // Live attach for a running session (SSE snapshot + chunks, with
+                // reconnect); the one-shot pull stays for a finished one, where
+                // there is nothing left to stream.
+                if isTerminal {
+                    Button("Load output") { act { output = try await app.client.ptyOutput(session.sessionId) } }
+                    if !output.isEmpty {
+                        CodeBlock(text: output, maxHeight: 200)
+                    }
+                } else {
+                    PTYLiveOutput(sessionId: session.sessionId)
                 }
             }
             .disabled(!isTerminal && !canControl)
