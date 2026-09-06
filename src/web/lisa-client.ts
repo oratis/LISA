@@ -40,6 +40,141 @@ window.addEventListener('unhandledrejection', function (e) {
   lisaBanner('Lisa task failed: ' + ((r && r.message) ? r.message : String(r)));
 });
 
+// ── Interface language (UX-8) ────────────────────────────────────
+// The shell was English with ~30 Chinese literals mixed into it (the KB
+// button, the error block, the chat status). One table, two locales, picked
+// from navigator.language; anything missing falls back to English rather than
+// rendering a key. Only the strings this pass touches are in here — it is a
+// seam for the rest, not a claim that the whole UI is translated.
+const LISA_STRINGS = {
+  en: {
+    'session.new': 'New session',
+    'chat.thinking': 'Lisa is thinking',
+    'chat.replying': 'Lisa is replying',
+    'chat.done': 'Lisa finished replying',
+    'chat.failed': 'The request failed',
+    'idle.header': 'WHILE YOU WERE AWAY',
+    'empty.lead': 'Say anything — or start here:',
+    'empty.starter.desire': 'How is "{desire}" going?',
+    'empty.starter.open': 'What is on your mind right now?',
+    'empty.starter.memory': 'What do you remember about me?',
+    'empty.starter.today': 'What should we work on today?',
+    'empty.can.tools.k': 'Tools',
+    'empty.can.tools.v': 'ask her to read a file, run a command, or look something up on the web.',
+    'empty.can.kb.k': 'Knowledge',
+    'empty.can.kb.v': 'select any message and save it — she will recall it in later sessions.',
+    'empty.can.mail.k': 'Mail',
+    'empty.can.mail.v': 'connect a mailbox in the right rail and she triages it for you daily.',
+    'rail.toggle': 'Collapse / expand the right panel',
+    'rail.toggleAria': 'Toggle right panel',
+    'rail.needs.one': '1 agent needs you',
+    'rail.needs.many': '{n} agents need you',
+    'rail.needs.unit.one': 'agent needs you',
+    'rail.needs.unit.many': 'agents need you',
+    'rail.needs.open': '{noun} — open the right panel',
+    'rail.needs.openAria': '{noun}, open the right panel',
+    'birth.err.auth': 'That API key was rejected by the provider. Enter a different one and Lisa will try again.',
+    'birth.err.timeout': 'The provider took too long to answer. Nothing was lost — try again.',
+    'birth.err.network': 'Could not reach the provider. Check the network on this machine, then try again.',
+    'birth.err.rate_limit': 'The provider is rate-limiting this key right now. Wait a minute, then try again.',
+    'birth.err.unknown': 'Something went wrong while she was waking up.',
+    'birth.cancel': 'Cancel',
+    'birth.cancelled': 'Cancelled. Set a key and Lisa will start again.',
+    'birth.changeKey': 'Change key',
+    'birth.retry': 'Try again',
+    'gate.title.set': 'SET · API · KEY',
+    'gate.title.change': 'CHANGE · API · KEY',
+    'gate.pickProvider': 'Pick a provider.',
+    'gate.keyRequired': '{env} is required.',
+    'gate.baseUrlRequired': 'A custom endpoint needs its base URL.',
+    'gate.saveFailed': 'Save failed: ',
+    'gate.alreadySet': ' (configured — a new value replaces it)',
+    'gate.getKey': 'Get a key for {label} ↗',
+    'gate.providerDefault': 'provider default',
+    'gate.unsupported': 'This Lisa did not keep the {label} key — it only accepts Anthropic and OpenAI keys. Update Lisa (npm i -g @oratis/lisa), or add {env}=... to ~/.lisa/config.env and restart.',
+    'kb.save': '💾 Save to knowledge base',
+    'kb.saving': 'Saving…',
+    'kb.saved': 'Saved to knowledge base ✓',
+    'kb.exists': 'Already in the knowledge base ✓',
+    'kb.failed': 'Save failed',
+    'err.request': '⚠ Request failed',
+    'err.retry': '↻ Retry',
+  },
+  'zh-CN': {
+    'session.new': '新会话',
+    'chat.thinking': 'Lisa 正在思考',
+    'chat.replying': 'Lisa 正在回复',
+    'chat.done': 'Lisa 回复完成',
+    'chat.failed': '请求失败',
+    'idle.header': '你不在的时候',
+    'empty.lead': '随便说点什么 —— 或者从这里开始：',
+    'empty.starter.desire': '“{desire}”进展如何？',
+    'empty.starter.open': '你现在在想什么？',
+    'empty.starter.memory': '你还记得我的什么？',
+    'empty.starter.today': '我们今天做点什么？',
+    'empty.can.tools.k': '工具',
+    'empty.can.tools.v': '可以让她读文件、执行命令，或者上网查东西。',
+    'empty.can.kb.k': '知识库',
+    'empty.can.kb.v': '选中任意消息存进去，之后的会话她还会记得。',
+    'empty.can.mail.k': '邮件',
+    'empty.can.mail.v': '在右栏连接一个邮箱，她每天帮你分拣。',
+    'rail.toggle': '收起 / 展开右侧面板',
+    'rail.toggleAria': '切换右侧面板',
+    'rail.needs.one': '1 个 agent 在等你',
+    'rail.needs.many': '{n} 个 agent 在等你',
+    'rail.needs.unit.one': '个 agent 在等你',
+    'rail.needs.unit.many': '个 agent 在等你',
+    'rail.needs.open': '{noun} —— 打开右侧面板',
+    'rail.needs.openAria': '{noun}，打开右侧面板',
+    'birth.err.auth': '这个 API key 被服务商拒绝了。换一个再试一次。',
+    'birth.err.timeout': '服务商响应太慢。什么都没丢，再试一次。',
+    'birth.err.network': '连不上服务商。检查这台机器的网络后再试。',
+    'birth.err.rate_limit': '这个 key 正在被限流。等一分钟再试。',
+    'birth.err.unknown': '她醒来的过程中出了点问题。',
+    'birth.cancel': '取消',
+    'birth.cancelled': '已取消。填一个 key，Lisa 会重新开始。',
+    'birth.changeKey': '更换 key',
+    'birth.retry': '重试',
+    'gate.title.set': '设 · 置 · KEY',
+    'gate.title.change': '更 · 换 · KEY',
+    'gate.pickProvider': '先选一个服务商。',
+    'gate.keyRequired': '需要填写 {env}。',
+    'gate.baseUrlRequired': '自定义端点需要填 base URL。',
+    'gate.saveFailed': '保存失败：',
+    'gate.alreadySet': '（已配置 —— 填新值会覆盖）',
+    'gate.getKey': '去申请 {label} 的 key ↗',
+    'gate.providerDefault': '服务商默认',
+    'gate.unsupported': '这个 Lisa 没有保存 {label} 的 key —— 它只接受 Anthropic 和 OpenAI 的 key。请升级 Lisa（npm i -g @oratis/lisa），或者把 {env}=... 写进 ~/.lisa/config.env 后重启。',
+    'kb.save': '💾 存入知识库',
+    'kb.saving': '保存中…',
+    'kb.saved': '已存入知识库 ✓',
+    'kb.exists': '已在知识库 ✓',
+    'kb.failed': '保存失败',
+    'err.request': '⚠ 请求出错',
+    'err.retry': '↻ 重试',
+  },
+};
+const LISA_LOCALE = (function () {
+  var l = String((navigator && navigator.language) || 'en').toLowerCase();
+  return l.indexOf('zh') === 0 ? 'zh-CN' : 'en';
+})();
+// The document ships as lang="en"; correct it so screen readers and hyphenation
+// follow the language actually rendered.
+try { document.documentElement.lang = LISA_LOCALE; } catch (e) {}
+// Named tr(), not t(): "t" is already a local variable in twenty places in
+// this file (const t = e.target, const t = await res.text(), …) and one of
+// them — sessionLabel — shadowed the helper into a string.
+function tr(key, vars) {
+  var table = LISA_STRINGS[LISA_LOCALE] || LISA_STRINGS.en;
+  var s = table[key];
+  if (s == null) s = LISA_STRINGS.en[key];
+  if (s == null) return key;
+  if (vars) {
+    for (var k in vars) s = s.split('{' + k + '}').join(String(vars[k]));
+  }
+  return s;
+}
+
 const log = document.getElementById('log');
 const input = document.getElementById('input');
 const form = document.getElementById('form');
@@ -461,11 +596,12 @@ fetch('/session').then(r => r.json()).then(s => {
 // reload. The label follows the UI language; the note body is already written
 // in the user's language by the idle runner.
 function idleHeaderLabel() {
-  var l = (navigator.language || 'en').toLowerCase();
-  if (l.indexOf('zh') === 0) return '你不在的时候';
+  // ja/ko are not in the string table (this pass only added en + zh-CN) but
+  // the idle card already had them — keep them rather than regress.
+  var l = String((navigator && navigator.language) || 'en').toLowerCase();
   if (l.indexOf('ja') === 0) return '不在のあいだに';
   if (l.indexOf('ko') === 0) return '자리를 비운 사이';
-  return 'WHILE YOU WERE AWAY';
+  return tr('idle.header');
 }
 function buildIdleBlock(text, at) {
   const block = document.createElement('div');
@@ -644,9 +780,7 @@ function lisaProviderConfirm(provider, status) {
   return false;
 }
 function lisaProviderUnsupportedNote(provider) {
-  return 'This Lisa did not keep the ' + provider.label + ' key — it only accepts Anthropic and ' +
-    'OpenAI keys. Update Lisa (npm i -g @oratis/lisa), or add ' + provider.envKey +
-    '=... to ~/.lisa/config.env and restart.';
+  return tr('gate.unsupported', { label: provider.label, env: provider.envKey });
 }
 // The Settings view lives in the console closure at the bottom of this file.
 window.lisaProviderList = lisaProviderList;
@@ -679,15 +813,15 @@ function cfgSelected() {
 function cfgSyncProvider() {
   const p = cfgSelected();
   if (!p) return;
-  cfgKeyLabel.textContent = p.envKey + (p.configured ? ' (configured — a new value replaces it)' : '');
+  cfgKeyLabel.textContent = p.envKey + (p.configured ? tr('gate.alreadySet') : '');
   cfgKey.placeholder = p.placeholder;
-  cfgModel.placeholder = p.model || 'provider default';
+  cfgModel.placeholder = p.model || tr('gate.providerDefault');
   // Only the custom endpoint needs a base URL, and it needs a model too.
   cfgBaseUrlField.style.display = p.custom ? '' : 'none';
   if (cfgConsole) {
     if (p.consoleUrl) {
       cfgConsole.href = p.consoleUrl;
-      cfgConsole.textContent = 'Get a key for ' + p.label + ' ↗';
+      cfgConsole.textContent = tr('gate.getKey', { label: p.label });
       cfgConsole.style.display = '';
     } else {
       cfgConsole.textContent = '';
@@ -729,7 +863,7 @@ let cfgReconfigure = false;
 function openKeyGate(opts) {
   cfgReconfigure = !!(opts && opts.reconfigure);
   const title = document.getElementById('cfgTitle');
-  if (title) title.textContent = cfgReconfigure ? 'CHANGE · API · KEY' : 'SET · API · KEY';
+  if (title) title.textContent = tr(cfgReconfigure ? 'gate.title.change' : 'gate.title.set');
   const reason = document.getElementById('cfgReason');
   if (reason) {
     reason.textContent = (opts && opts.reason) ? opts.reason : '';
@@ -758,9 +892,9 @@ cfgForm.addEventListener('submit', async (ev) => {
   const model = cfgModel.value.trim() ||
     (provider && provider.needsModel && provider.model ? provider.model : '');
   const baseUrl = provider && provider.custom ? cfgBaseUrl.value.trim() : '';
-  if (!provider) { cfgError.textContent = 'Pick a provider.'; return; }
-  if (!key) { cfgError.textContent = provider.envKey + ' is required.'; return; }
-  if (provider.custom && !baseUrl) { cfgError.textContent = 'A custom endpoint needs its base URL.'; return; }
+  if (!provider) { cfgError.textContent = tr('gate.pickProvider'); return; }
+  if (!key) { cfgError.textContent = tr('gate.keyRequired', { env: provider.envKey }); return; }
+  if (provider.custom && !baseUrl) { cfgError.textContent = tr('gate.baseUrlRequired'); return; }
   cfgSaveBtn.disabled = true;
   try {
     const res = await fetch('/api/config/save', {
@@ -770,7 +904,7 @@ cfgForm.addEventListener('submit', async (ev) => {
     });
     if (!res.ok) {
       const txt = await res.text().catch(() => '');
-      cfgError.textContent = 'Save failed: HTTP ' + res.status + (txt ? ' — ' + txt.slice(0, 120) : '');
+      cfgError.textContent = tr('gate.saveFailed') + 'HTTP ' + res.status + (txt ? ' — ' + txt.slice(0, 120) : '');
       cfgSaveBtn.disabled = false;
       return;
     }
@@ -791,7 +925,7 @@ cfgForm.addEventListener('submit', async (ev) => {
     if (cfgReconfigure) { cfgReconfigure = false; beginBirth(); }
     else maybeBirth();
   } catch (err) {
-    cfgError.textContent = 'Save failed: ' + err.message;
+    cfgError.textContent = tr('gate.saveFailed') + err.message;
     cfgSaveBtn.disabled = false;
   }
 });
@@ -854,11 +988,11 @@ function abortBirth() {
 // raw payload — users saw  401 {"type":"error","error":{"type":
 // "authentication_error",...}}  and had nothing to do about it.
 const BIRTH_ERROR_TEXT = {
-  auth: 'That API key was rejected by the provider. Enter a different one and Lisa will try again.',
-  timeout: 'The provider took too long to answer. Nothing was lost — try again.',
-  network: 'Could not reach the provider. Check the network on this machine, then try again.',
-  rate_limit: 'The provider is rate-limiting this key right now. Wait a minute, then try again.',
-  unknown: 'Something went wrong while she was waking up.',
+  auth: tr('birth.err.auth'),
+  timeout: tr('birth.err.timeout'),
+  network: tr('birth.err.network'),
+  rate_limit: tr('birth.err.rate_limit'),
+  unknown: tr('birth.err.unknown'),
 };
 // New servers send {kind:"error", code, message, retryable}. Older ones send
 // {kind:"error", message} with the raw provider text — classify those by hand
@@ -891,13 +1025,13 @@ function showBirthError(ev) {
     openKeyGate({ reconfigure: true, reason: BIRTH_ERROR_TEXT[code] || BIRTH_ERROR_TEXT.unknown });
   };
   if (code === 'auth') {
-    birthAction('Change key', changeKey, true);
+    birthAction(tr('birth.changeKey'), changeKey, true);
     return;
   }
   // Anything the server marks non-retryable gets the key path instead.
-  if (ev && ev.retryable === false) { birthAction('Change key', changeKey, true); return; }
-  birthAction('Try again', beginBirth, true);
-  birthAction('Change key', changeKey);
+  if (ev && ev.retryable === false) { birthAction(tr('birth.changeKey'), changeKey, true); return; }
+  birthAction(tr('birth.retry'), beginBirth, true);
+  birthAction(tr('birth.changeKey'), changeKey);
 }
 
 async function maybeBirth() {
@@ -987,11 +1121,11 @@ async function startBirthStream() {
   const ctrl = new AbortController();
   birthAbort = ctrl;
   let cancelled = false;
-  birthAction('Cancel', function () {
+  birthAction(tr('birth.cancel'), function () {
     cancelled = true;
     abortBirth();
     clearBirthActions();
-    openKeyGate({ reconfigure: true, reason: 'Cancelled. Set a key and Lisa will start again.' });
+    openKeyGate({ reconfigure: true, reason: tr('birth.cancelled') });
   });
 
   try {
@@ -1185,16 +1319,12 @@ function chatStarters() {
   if (d && d.title) desire = d.title.trim();
   if (desire.length > 64) desire = desire.slice(0, 64).trim() + '…';
   return [
-    desire ? 'How is "' + desire + '" going?' : "What's on your mind right now?",
-    'What do you remember about me?',
-    'What should we work on today?',
+    desire ? tr('empty.starter.desire', { desire: desire }) : tr('empty.starter.open'),
+    tr('empty.starter.memory'),
+    tr('empty.starter.today'),
   ];
 }
-const CHAT_ABILITIES = [
-  ['Tools', 'ask her to read a file, run a command, or look something up on the web.'],
-  ['Knowledge', "select any message and save it — she'll recall it in later sessions."],
-  ['Mail', 'connect a mailbox in the right rail and she triages it for you daily.'],
-];
+const CHAT_ABILITY_KEYS = ['tools', 'kb', 'mail'];
 function renderChatEmpty() {
   if (!historyFetched || chatLogHasContent()) { removeChatEmpty(); return; }
   let card = document.getElementById('chatEmpty');
@@ -1212,7 +1342,7 @@ function renderChatEmpty() {
   card.appendChild(who);
   const lead = document.createElement('div');
   lead.className = 'ce-lead';
-  lead.textContent = 'Say anything — or start here:';
+  lead.textContent = tr('empty.lead');
   card.appendChild(lead);
   const starters = document.createElement('div');
   starters.className = 'ce-starters';
@@ -1235,12 +1365,12 @@ function renderChatEmpty() {
   card.appendChild(starters);
   const can = document.createElement('ul');
   can.className = 'ce-can';
-  CHAT_ABILITIES.forEach(function (pair) {
+  CHAT_ABILITY_KEYS.forEach(function (k) {
     const li = document.createElement('li');
     const b = document.createElement('b');
-    b.textContent = pair[0];
+    b.textContent = tr('empty.can.' + k + '.k');
     li.appendChild(b);
-    li.appendChild(document.createTextNode(' — ' + pair[1]));
+    li.appendChild(document.createTextNode(' — ' + tr('empty.can.' + k + '.v')));
     can.appendChild(li);
   });
   card.appendChild(can);
@@ -1567,7 +1697,7 @@ if (fnSearchBtn && fnFind) {
   try { touched = localStorage.getItem('lisaRightbarTouched') === '1'; } catch (e) {}
   let autoExpanded = false;
   let attention = 0;
-  const PANEL_TITLE = 'Collapse / expand the right panel';
+  const PANEL_TITLE = tr('rail.toggle');
   // While the rail is collapsed the only sign that an agent is blocked on a
   // decision was a 34px icon with a tooltip — the count now rides the icon.
   const syncBadge = () => {
@@ -1577,7 +1707,7 @@ if (fnSearchBtn && fnFind) {
     if (!collapsed || attention <= 0) {
       if (dot) dot.remove();
       btn.title = PANEL_TITLE;
-      btn.setAttribute('aria-label', 'Toggle right panel');
+      btn.setAttribute('aria-label', tr('rail.toggleAria'));
       return;
     }
     if (!dot) {
@@ -1586,9 +1716,9 @@ if (fnSearchBtn && fnFind) {
       btn.appendChild(dot);
     }
     dot.textContent = attention > 9 ? '9+' : String(attention);
-    const noun = attention === 1 ? '1 agent needs you' : attention + ' agents need you';
-    btn.title = noun + ' — open the right panel';
-    btn.setAttribute('aria-label', noun + ', open the right panel');
+    const noun = attention === 1 ? tr('rail.needs.one') : tr('rail.needs.many', { n: attention });
+    btn.title = tr('rail.needs.open', { noun: noun });
+    btn.setAttribute('aria-label', tr('rail.needs.openAria', { noun: noun }));
   };
   const applyRb = () => {
     document.body.classList.toggle('rb-collapsed', collapsed);
@@ -1654,7 +1784,7 @@ function ensureLisaSpan() {
   if (thinkingEl) { thinkingEl.remove(); thinkingEl = null; }
   el('div', 'role lisa', 'LISA');
   currentLisaSpan = el('span', 'msg', '');
-  setChatStatus('Lisa is replying');
+  setChatStatus(tr('chat.replying'));
   return currentLisaSpan;
 }
 
@@ -1728,7 +1858,7 @@ async function send(message) {
   await runChat(message, filesToSend);
 }
 
-// ── chat → KB: a bare URL in the user's message gets a one-tap 存入知识库
+// ── chat → KB: a bare URL in the user's message gets a one-tap save-to-KB
 //    chip under the bubble; it calls the same /api/kb/ingest the KB view uses.
 function maybeOfferKbIngest(message) {
   if (!message) return;
@@ -1739,27 +1869,27 @@ function maybeOfferKbIngest(message) {
   var btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'kb-ingest-btn';
-  btn.textContent = '💾 存入知识库';
+  btn.textContent = tr('kb.save');
   chip.appendChild(btn);
   btn.addEventListener('click', function () {
     btn.disabled = true;
-    btn.textContent = '保存中…';
+    btn.textContent = tr('kb.saving');
     fetch('/api/kb/ingest', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url: url }) })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (d && d.ok) {
-          btn.textContent = d.deduped ? '已在知识库 ✓' : '已存入知识库 ✓';
+          btn.textContent = d.deduped ? tr('kb.exists') : tr('kb.saved');
           if (typeof window.lisaReloadKb === 'function') window.lisaReloadKb();
         } else {
           btn.disabled = false;
-          btn.textContent = '💾 存入知识库';
-          if (typeof window.lisaKbToast === 'function') window.lisaKbToast((d && d.error) ? d.error : '保存失败');
+          btn.textContent = tr('kb.save');
+          if (typeof window.lisaKbToast === 'function') window.lisaKbToast((d && d.error) ? d.error : tr('kb.failed'));
         }
       })
       .catch(function () {
         btn.disabled = false;
-        btn.textContent = '💾 存入知识库';
-        if (typeof window.lisaKbToast === 'function') window.lisaKbToast('保存失败');
+        btn.textContent = tr('kb.save');
+        if (typeof window.lisaKbToast === 'function') window.lisaKbToast(tr('kb.failed'));
       });
   });
 }
@@ -1772,7 +1902,7 @@ function showError(detail, message, filesToSend) {
   const block = el('div', 'err-block', null);
   const head = document.createElement('div');
   head.className = 'err-head';
-  head.textContent = '⚠ 请求出错';
+  head.textContent = tr('err.request');
   block.appendChild(head);
   const body = document.createElement('div');
   body.className = 'err-detail';
@@ -1781,7 +1911,7 @@ function showError(detail, message, filesToSend) {
   const retry = document.createElement('button');
   retry.type = 'button';
   retry.className = 'err-retry';
-  retry.textContent = '↻ 重试';
+  retry.textContent = tr('err.retry');
   retry.addEventListener('click', () => {
     block.remove();
     runChat(message, filesToSend);
@@ -1800,14 +1930,14 @@ async function runChat(message, filesToSend) {
   currentLisaSpan = null;
   pendingTools.clear();
   thinkingEl = el('div', 'thinking', '⋯ thinking');
-  setChatStatus('Lisa is thinking');
+  setChatStatus(tr('chat.thinking'));
   // The agent emits an error event AND the server re-sends it from its turn
   // catch — dedupe so one failure renders exactly one error block.
   let errored = false;
   const fail = (detail) => {
     if (errored || gen !== chatGeneration) return;
     errored = true;
-    setChatStatus('The request failed');
+    setChatStatus(tr('chat.failed'));
     showError(detail, message, filesToSend);
   };
   try {
@@ -1876,7 +2006,7 @@ async function runChat(message, filesToSend) {
         } else if (ev.type === 'done') {
           if (thinkingEl) { thinkingEl.remove(); thinkingEl = null; }
           flushLisaRender();
-          setChatStatus('Lisa finished replying');
+          setChatStatus(tr('chat.done'));
         }
       }
     }
@@ -2220,7 +2350,9 @@ if ('serviceWorker' in navigator) {
         count.appendChild(document.createTextNode(String(needs.length)));
         const sr = document.createElement('span');
         sr.className = 'sr-only';
-        sr.textContent = needs.length === 1 ? ' agent needs you' : ' agents need you';
+        // The visible node already carries the number — the hidden part is
+        // just the unit, so a reader hears "2 agents need you", not "2 2 …".
+        sr.textContent = ' ' + tr(needs.length === 1 ? 'rail.needs.unit.one' : 'rail.needs.unit.many');
         count.appendChild(sr);
       }
     }
@@ -2806,7 +2938,7 @@ if ('serviceWorker' in navigator) {
     // id (20260905-220846-9f7d58) in the tree, the context chip, the title bar
     // and the inspector — four places showing a string no human reads. It is
     // "New session · 2m" now; the id survives as the tooltip / inspector sub.
-    if (s && !s.messageCount) return 'New session · ' + relativeTime(s.startedAt);
+    if (s && !s.messageCount) return tr('session.new') + ' · ' + relativeTime(s.startedAt);
     return s ? s.id : '';
   }
   // The title bar is rendered outside this closure (setActiveSessionUI runs
