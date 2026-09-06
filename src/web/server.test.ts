@@ -288,3 +288,80 @@ describe("T-4 /api/sessions ETag revalidation", () => {
     }
   });
 });
+
+describe("T-9 /api/config over the real server", () => {
+  const KEY = "sk-test-0123456789abcdefghij";
+  const cleanup: string[] = [];
+  after(() => {
+    for (const k of cleanup) delete process.env[k];
+  });
+
+  test("GET /api/config/status lists every provider without leaking a key", async () => {
+    const srv = await boot();
+    try {
+      const r = await request(srv.port, "GET", "/api/config/status");
+      assert.equal(r.status, 200);
+      const body = JSON.parse(r.text) as {
+        configured: boolean;
+        anthropic: boolean;
+        openai: boolean;
+        model: string;
+        providers: { id: string; envKey: string; label: string; modelPrefixes: string[]; configured: boolean }[];
+      };
+      // Legacy fields survive for the old popup.
+      assert.equal(typeof body.configured, "boolean");
+      assert.equal(typeof body.anthropic, "boolean");
+      assert.equal(typeof body.openai, "boolean");
+      assert.equal(body.model, "claude-sonnet-4-6");
+      assert.ok(body.providers.length > 3);
+      for (const p of body.providers) {
+        assert.ok(p.id && p.envKey && p.label);
+        assert.ok(Array.isArray(p.modelPrefixes));
+        assert.equal(typeof p.configured, "boolean");
+      }
+      assert.equal(r.text.includes(KEY), false);
+    } finally {
+      await srv.close();
+    }
+  });
+
+  test("POST /api/config/save writes config.env 0600, applies to process.env, rejects unknown keys", async () => {
+    const srv = await boot();
+    cleanup.push("ZHIPU_API_KEY", "LISA_MODEL");
+    try {
+      const ok = await request(srv.port, "POST", "/api/config/save", {
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ keys: { ZHIPU_API_KEY: KEY }, model: "glm-4" }),
+      });
+      assert.equal(ok.status, 200);
+      assert.deepEqual(JSON.parse(ok.text).saved.sort(), ["LISA_MODEL", "ZHIPU_API_KEY"]);
+      assert.equal(process.env.ZHIPU_API_KEY, KEY, "applied to the live process");
+
+      const configEnv = path.join(TMP, "config.env");
+      const raw = fs.readFileSync(configEnv, "utf8");
+      assert.match(raw, /ZHIPU_API_KEY=/);
+      assert.match(raw, /LISA_MODEL=glm-4/);
+      assert.equal(fs.statSync(configEnv).mode & 0o777, 0o600, "0600, like every other secret in ~/.lisa");
+
+      // …and the status endpoint now agrees it is configured.
+      const status = JSON.parse((await request(srv.port, "GET", "/api/config/status")).text) as {
+        configured: boolean;
+        providers: { id: string; configured: boolean }[];
+      };
+      assert.equal(status.configured, true);
+      assert.equal(status.providers.find((p) => p.id === "zhipu")!.configured, true);
+
+      // An env name outside the whitelist is refused and nothing is written.
+      const bad = await request(srv.port, "POST", "/api/config/save", {
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ keys: { NODE_OPTIONS: "--inspect" } }),
+      });
+      assert.equal(bad.status, 400);
+      assert.match(bad.text, /unknown config key/);
+      assert.equal(process.env.NODE_OPTIONS, undefined);
+      assert.equal(fs.readFileSync(configEnv, "utf8").includes("NODE_OPTIONS"), false);
+    } finally {
+      await srv.close();
+    }
+  });
+});
