@@ -21,6 +21,8 @@ export interface ParsedArgs {
   modelExplicit: boolean;
   /** `--verbose` or LISA_DEBUG=1: startup banners, full tool results, hot-reload details. */
   verbose: boolean;
+  /** `--no-color`: force plain output even on a TTY (NO_COLOR is handled in cli/ansi.ts). */
+  noColor: boolean;
   subcommand?:
     | "resume"
     | "sessions"
@@ -93,6 +95,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     model: DEFAULT_MODEL,
     modelExplicit: false,
     verbose: isVerboseArgv([], process.env),
+    noColor: false,
     approval: "auto",
     loadMcp: true,
     loadPlugins: true,
@@ -128,6 +131,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     else if (arg === "--no-mcp") out.loadMcp = false;
     else if (arg === "--no-plugins") out.loadPlugins = false;
     else if (arg === "--verbose") out.verbose = true;
+    else if (arg === "--no-color" || arg === "--no-colour") out.noColor = true;
     else if (arg === "--voice") out.voice = true;
     else if (arg === "--no-idle") out.idleMinutes = 0;
     else if (arg === "--idle") {

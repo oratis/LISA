@@ -34,13 +34,15 @@ import { buildSystemPromptSnapshot, getPromptFingerprint } from "./prompt.js";
 import { providerForModel, resolveDefaultModel, hasCredentialsForModel } from "./providers/registry.js";
 import { reflectOnSession } from "./reflect.js";
 import { runRepl } from "./cli/repl.js";
+import { colorEnabled, setColorOverride } from "./cli/ansi.js";
+import { createEventRenderer, type EventRenderer } from "./cli/render.js";
 import { listSessionsOnDisk, loadSessionMessages } from "./sessions/list.js";
 import { SessionStore } from "./sessions/store.js";
 import { birth } from "./soul/birth.js";
 import { isBorn, readSoulSummary } from "./soul/store.js";
 import { createTaskTool } from "./tools/task.js";
 import { buildToolRegistry, cloudSafeSubset, readOnlySubset } from "./tools/registry.js";
-import type { AgentEvent, StoredMessage, ToolDefinition } from "./types.js";
+import type { StoredMessage, ToolDefinition } from "./types.js";
 
 const HELP = `Lisa — your self-evolving local AI assistant.
 
@@ -150,6 +152,8 @@ FLAGS
   --no-idle             Disable idle mode entirely.
   --host <addr>         Bind address for serve --web (default: 127.0.0.1).
                         Non-loopback binds require LISA_WEB_TOKEN to be set.
+  --verbose             Startup banners, full tool results, hot-reload detail.
+  --no-color            Plain output even on a terminal (so is NO_COLOR=1).
 
 REPL slash commands:
   /help, /exit, /quit
@@ -161,6 +165,14 @@ REPL slash commands:
   /think                Toggle adaptive thinking.
   /clear                Forget current in-memory history (session log preserved).
   /save <text>          Append to MEMORY.md immediately.
+
+REPL editing:
+  ↑ / ↓                 Browse previous prompts — kept across sessions in
+                        ${displayPath(lisaHome())}/history (last 1000, mode 0600).
+  """                   Open a multi-line prompt; """ again to send it.
+  Tool calls show as one line each (⚙ running → ✓ / ✗ with a duration);
+  --verbose adds the full result. Only Lisa's words go to stdout, so
+  \`lisa "…" > answer.md\` captures the answer and nothing else.
 
 Data: ${displayPath(lisaHome())}
 Plugins: ${displayPath(PLUGINS_ROOT)}/<name>/{commands,agents,skills,hooks,.lisa-plugin/plugin.json}
@@ -200,6 +212,10 @@ async function main(): Promise<void> {
     console.log(HELP);
     return;
   }
+
+  // `--no-color` is a process-wide decision (doctor/status/monitor read it via
+  // cli/colors.ts, the REPL renderer via cli/ansi.ts), so record it once here.
+  if (args.noColor) setColorOverride(false);
 
   await ensureDir(lisaHome());
   loadConfigEnv();
@@ -720,8 +736,17 @@ async function main(): Promise<void> {
 
   const rebuildPrompt = makeHotReloadRebuilder(initialFingerprint, snapshot.text);
 
+  const renderer: EventRenderer = createEventRenderer({
+    stdout: process.stdout,
+    stderr: process.stderr,
+    color: colorEnabled({ isTTY: process.stderr.isTTY === true, noColorFlag: args.noColor }),
+    verbose: args.verbose,
+    tty: process.stderr.isTTY === true,
+    columns: process.stderr.columns,
+  });
+
   const turn = async (prompt: string): Promise<void> => {
-    process.stdout.write("\nLisa> ");
+    renderer.beginTurn();
     // Per-turn freshness: pick up any cross-session writes to soul / skills /
     // memory (e.g. she patched her own soul during the previous turn). The
     // closure caches by fingerprint so this is cheap when nothing changed.
@@ -765,15 +790,18 @@ async function main(): Promise<void> {
         );
         if (r.rewriteResult != null) return { rewriteResult: r.rewriteResult };
       },
-      onEvent: renderEvent,
+      onEvent: (e) => renderer.onEvent(e),
       onMessagePersist: (msg) => session.appendMessage(msg),
       onPromptPersist: (text, reason) => session.appendPrompt(text, reason),
       hotReload: {
         initialFingerprint: fresh.fingerprint,
         rebuild: rebuildPrompt,
       },
+    }).finally(() => {
+      // Also on failure: an abandoned spinner would keep redrawing over the
+      // error message.
+      renderer.endTurn();
     });
-    process.stdout.write("\n");
     history.length = 0;
     history.push(...result.history);
     if (result.cacheReadTokens || result.cacheWriteTokens || result.inputTokens) {
@@ -946,34 +974,6 @@ async function main(): Promise<void> {
       await finish();
     },
   });
-}
-
-function renderEvent(event: AgentEvent): void {
-  switch (event.type) {
-    case "text_delta":
-      if (event.text) process.stdout.write(event.text);
-      break;
-    case "thinking_delta":
-      break;
-    case "tool_call_start": {
-      const inputPreview = JSON.stringify(event.toolInput).slice(0, 120);
-      process.stderr.write(`\n[tool ${event.toolName} ${inputPreview}]\n`);
-      break;
-    }
-    case "tool_call_end":
-      if (event.isError) {
-        process.stderr.write(`[tool ${event.toolName} ✗ ${event.toolResult}]\n`);
-      }
-      break;
-    case "system_prompt_rebuilt":
-      process.stderr.write(`[soul] ${event.message}\n`);
-      break;
-    case "error":
-      process.stderr.write(`\n[error] ${event.message}\n`);
-      break;
-    default:
-      break;
-  }
 }
 
 /**
