@@ -197,7 +197,7 @@ test("process exit marks the agent done", async () => {
   await withFlag(async () => {
     const f = fakePty();
     const reg = new PtyRegistry();
-    const v = await reg.start({ agent: "codex", task: "go", cwd: "/tmp/p", ptyModule: f.module });
+    await reg.start({ agent: "codex", task: "go", cwd: "/tmp/p", ptyModule: f.module });
     f.emitExit(0);
     const view = reg.list()[0];
     assert.equal(view.agent, "codex");

@@ -105,7 +105,7 @@ export class GeminiProvider implements Provider {
             toolCalls.push({
               id: p.functionCall.id ?? `call_${p.functionCall.name}_${Math.random().toString(36).slice(2)}`,
               name: p.functionCall.name ?? "",
-              args: (p.functionCall.args ?? {}) as Record<string, unknown>,
+              args: (p.functionCall.args ?? {}),
             });
           }
         }
@@ -119,7 +119,7 @@ export class GeminiProvider implements Provider {
 
       const content: Anthropic.ContentBlock[] = [];
       if (text) {
-        content.push({ type: "text", text, citations: null } as Anthropic.TextBlock);
+        content.push({ type: "text", text, citations: null });
       }
       for (const tc of toolCalls) {
         content.push({

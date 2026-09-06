@@ -40,7 +40,7 @@ describe("recordEvent", () => {
     const ev = recordEvent(sess({ state: "working" }), 5000);
     assert.ok(ev);
     assert.equal(allEvents().length, 1);
-    assert.equal(ev!.at, 1000); // uses lastMtime
+    assert.equal(ev.at, 1000); // uses lastMtime
   });
 
   test("collapses consecutive same state+reason for a session", () => {

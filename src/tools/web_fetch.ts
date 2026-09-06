@@ -104,7 +104,7 @@ export async function resolvePublicAddresses(
   const literalFamily = net.isIP(host);
   const addresses = literalFamily
     ? [{ address: host, family: literalFamily as 4 | 6 }]
-    : (await lookup(host, { all: true, verbatim: true })) as ResolvedAddress[];
+    : (await lookup(host, { all: true, verbatim: true }));
   if (addresses.length === 0) throw new Error(`DNS returned no addresses for ${host}`);
   for (const entry of addresses) {
     if (net.isIP(entry.address) !== entry.family) {

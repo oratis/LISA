@@ -22,14 +22,14 @@ describe("email verification", () => {
     const raw = await beginEmailVerification(rec.uid, 1000);
     assert.ok(raw && raw.length >= 32);
     // raw token never persisted, only its hash
-    assert.equal(fs.readFileSync(FILE, "utf8").includes(raw!), false);
-    const confirmed = await confirmEmailVerification(raw!, 2000);
+    assert.equal(fs.readFileSync(FILE, "utf8").includes(raw), false);
+    const confirmed = await confirmEmailVerification(raw, 2000);
     assert.equal(confirmed?.uid, rec.uid);
     const after = await getAccount(rec.uid);
     assert.equal(after?.verified, true);
     assert.equal(after?.verifyTokenHash, undefined);
     // replay of the used token fails
-    assert.equal(await confirmEmailVerification(raw!, 3000), null);
+    assert.equal(await confirmEmailVerification(raw, 3000), null);
   });
 
   test("expired / wrong tokens fail; re-begin rotates the token", async () => {

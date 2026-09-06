@@ -40,12 +40,16 @@ export async function resolveLisaBin(): Promise<string> {
     const out = await runCmd("which", ["lisa"]);
     const trimmed = out.trim();
     if (trimmed) return trimmed;
-  } catch {}
+  } catch {
+    // `which` failed or lisa is not on PATH — try the local build next
+  }
   const here = path.resolve(process.cwd(), "dist", "cli.js");
   try {
     await fs.access(here);
     return `node ${here}`;
-  } catch {}
+  } catch {
+    // no local build either — fall back to the bare command name
+  }
   return "lisa";
 }
 

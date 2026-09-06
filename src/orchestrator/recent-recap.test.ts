@@ -31,8 +31,8 @@ describe("recentAgentRecap", () => {
     recordEvent(session(), NOW);
     const out = recentAgentRecap(WINDOW, NOW);
     assert.ok(out, "expected a non-null recap");
-    assert.match(out!, /myrepo/);
-    assert.match(out!, /claude-code/);
+    assert.match(out, /myrepo/);
+    assert.match(out, /claude-code/);
   });
 
   test("null when the only activity is outside the window", () => {

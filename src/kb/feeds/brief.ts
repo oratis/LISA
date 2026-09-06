@@ -11,7 +11,6 @@
  */
 import { tokenize } from "../../tokenize.js";
 import { localDate } from "../../mail/service.js";
-import type { FeedItem } from "./rss.js";
 
 export { localDate };
 

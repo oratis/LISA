@@ -35,7 +35,7 @@ export interface Remote {
 
 /** Parse a git remote URL (scp or https/ssh) into host/owner/repo. Pure. */
 export function parseRemote(url: string): Remote | null {
-  let s = url.trim().replace(/\.git$/i, "").replace(/\/$/, "");
+  const s = url.trim().replace(/\.git$/i, "").replace(/\/$/, "");
   // scp-like: git@github.com:owner/repo  (also ssh://git@github.com/owner/repo)
   let m = s.match(/^(?:ssh:\/\/)?[^@\s]*@([^:/]+)[:/](.+)$/i);
   if (!m) {

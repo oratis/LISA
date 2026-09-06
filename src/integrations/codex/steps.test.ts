@@ -30,8 +30,8 @@ test("parseCodexSteps: ordered structural steps, no content leakage", async () =
   assert.equal(steps[0]!.turn, 1);
   const read = steps.find((s) => s.tool === "read_file");
   assert.ok(read, "read_file step present");
-  assert.equal(read!.target, "notes.md"); // basename only
-  assert.equal(read!.isError, true); // function_call_output error attributed
+  assert.equal(read.target, "notes.md"); // basename only
+  assert.equal(read.isError, true); // function_call_output error attributed
   const shell = steps.find((s) => s.tool === "shell");
   assert.equal(shell!.target, "$ grep"); // argv[0] only
   assert.equal(steps[steps.length - 1]!.kind, "user");

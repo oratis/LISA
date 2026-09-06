@@ -26,7 +26,7 @@ export async function runHook(
   return await new Promise<HookOutput>((resolve, reject) => {
     const child = spawn("/bin/bash", ["-lc", hook.command], {
       cwd,
-      env: { ...process.env, ...env } as Record<string, string>,
+      env: { ...process.env, ...env },
     });
     let stdout = "";
     let stderr = "";

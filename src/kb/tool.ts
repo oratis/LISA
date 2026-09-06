@@ -311,11 +311,11 @@ export function restrictKbIngestToWatchlist(tool: ToolDefinition): ToolDefinitio
 
 /** All KB tools (read tools first). Registered in tools/registry.ts. */
 export const kbTools: ToolDefinition[] = [
-  kbSearch as ToolDefinition,
-  kbRead as ToolDefinition,
-  kbList as ToolDefinition,
-  kbLinks as ToolDefinition,
-  kbAdd as ToolDefinition,
-  kbWrite as ToolDefinition,
-  kbIngest as ToolDefinition,
+  kbSearch,
+  kbRead,
+  kbList,
+  kbLinks,
+  kbAdd,
+  kbWrite,
+  kbIngest,
 ];

@@ -159,7 +159,6 @@ const ANSI = new RegExp(
 
 /** Strip ANSI escape sequences + common bare control bytes (CR/backspace). Pure. */
 export function stripAnsi(s: string): string {
-  // eslint-disable-next-line no-control-regex
   return s.replace(ANSI, "").replace(/[\r\b]/g, "");
 }
 

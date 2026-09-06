@@ -77,7 +77,7 @@ describe("pickFocusedDesire", () => {
 
 describe("recentUserText", () => {
   const mk = (role: StoredMessage["role"], text: string): StoredMessage =>
-    ({ role, content: [{ type: "text", text }] }) as StoredMessage;
+    ({ role, content: [{ type: "text", text }] });
 
   test("joins the last N user messages, ignoring assistant turns", () => {
     const history: StoredMessage[] = [

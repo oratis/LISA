@@ -55,7 +55,7 @@ export function estimateCurrentWebInputTokens(
 
 function contentBlocks(message: StoredMessage): Array<{ type?: string }> {
   return Array.isArray(message.content)
-    ? (message.content as Array<{ type?: string }>)
+    ? message.content
     : [];
 }
 

@@ -39,7 +39,7 @@ export function defaultPushPrefs(): PushPrefs {
 export function normalizePushPrefs(p: Partial<PushPrefs> | null | undefined): PushPrefs {
   const base = defaultPushPrefs();
   if (!p || typeof p !== "object") return base;
-  const pick = (k: keyof PushPrefs): boolean => (typeof p[k] === "boolean" ? (p[k] as boolean) : base[k]);
+  const pick = (k: keyof PushPrefs): boolean => (typeof p[k] === "boolean" ? (p[k]) : base[k]);
   return {
     done: pick("done"),
     error: pick("error"),
@@ -223,7 +223,7 @@ export async function sendNtfy(
   server: string,
   topic: string,
   ev: { title: string; body: string; priority: "high" | "default"; click?: string },
-  fetchImpl: FetchLike = fetch as unknown as FetchLike,
+  fetchImpl: FetchLike = fetch,
 ): Promise<boolean> {
   try {
     const base = (server || "https://ntfy.sh").replace(/\/+$/, "");

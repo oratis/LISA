@@ -102,7 +102,11 @@ export class ChannelRouter {
     msg: IncomingMessage,
   ): Promise<void> {
     // Any inbound message resets the idle clock.
-    try { getIdleWatcher(60 * 60_000).tick(); } catch {}
+    try {
+      getIdleWatcher(60 * 60_000).tick();
+    } catch {
+      // idle bookkeeping is best-effort; never block an inbound message
+    }
     const ctx = await this.getOrCreateThread(channel.name, msg);
     if (ctx.busy) {
       ctx.queue.push(msg);

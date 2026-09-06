@@ -143,7 +143,9 @@ async function generateOne(mood: MoodSpec, force: boolean): Promise<string> {
     try {
       await fs.access(outPath);
       return "skip";
-    } catch {}
+    } catch {
+      // not generated yet — fall through and render it
+    }
   }
   const fullPrompt = `${STYLE_LOCK} ${mood.prompt}.`;
   const url = await callSeedream(fullPrompt);
@@ -210,7 +212,7 @@ async function main(): Promise<void> {
   const start = Date.now();
   let done = 0;
   let failed = 0;
-  await runBatched(queue, CONCURRENCY, async (mood) => generateOne(mood, force), (mood, result, i) => {
+  await runBatched(queue, CONCURRENCY, async (mood) => generateOne(mood, force), (mood, result) => {
     done++;
     if (result instanceof Error) {
       failed++;

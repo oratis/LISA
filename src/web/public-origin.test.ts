@@ -10,7 +10,7 @@ describe("canonical public origin", () => {
   test("normalizes a valid origin", () => {
     assert.equal(
       configuredPublicOrigin(
-        { LISA_PUBLIC_ORIGIN: " https://cloud.meetlisa.ai/ " } as NodeJS.ProcessEnv,
+        { LISA_PUBLIC_ORIGIN: " https://cloud.meetlisa.ai/ " },
         "cloud",
       ),
       "https://cloud.meetlisa.ai",
@@ -34,7 +34,7 @@ describe("canonical public origin", () => {
       "javascript:alert(1)",
     ]) {
       assert.throws(
-        () => configuredPublicOrigin({ LISA_PUBLIC_ORIGIN: value } as NodeJS.ProcessEnv, "cloud"),
+        () => configuredPublicOrigin({ LISA_PUBLIC_ORIGIN: value }, "cloud"),
         value,
       );
     }

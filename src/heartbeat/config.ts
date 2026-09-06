@@ -35,7 +35,7 @@ export async function loadHeartbeatConfig(): Promise<HeartbeatConfig> {
   try {
     parsed = JSON.parse(raw) as HeartbeatConfig;
   } catch (err) {
-    throw new Error(`failed to parse ${FILE}: ${(err as Error).message}`);
+    throw new Error(`failed to parse ${FILE}: ${(err as Error).message}`, { cause: err });
   }
   return {
     tasks: parsed.tasks ?? [],

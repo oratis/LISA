@@ -274,8 +274,8 @@ describe("CodexObserver — visibility gating of activity", () => {
       assert.equal(on.length, 1);
       const act = on[0]!.activity;
       assert.ok(act, "activity present at 'activity' tier");
-      assert.ok(act!.lastTools.includes("read_file"), "tool name surfaced");
-      assert.deepEqual(act!.filesTouched, ["/Users/me/proj/x.ts"], "path surfaced");
+      assert.ok(act.lastTools.includes("read_file"), "tool name surfaced");
+      assert.deepEqual(act.filesTouched, ["/Users/me/proj/x.ts"], "path surfaced");
     } finally {
       await fsp.rm(home, { recursive: true, force: true });
     }
@@ -349,9 +349,9 @@ describe("parseCodexActivity — O-D2 widened 128KB tail", () => {
     const a = await parseCodexActivity(f);
     assert.ok(a, "activity present");
     assert.ok(
-      a!.filesTouched.includes("early.ts"),
+      a.filesTouched.includes("early.ts"),
       "early file (only reachable with the 128KB tail) captured",
     );
-    assert.ok(a!.filesTouched.includes("late.ts"), "late file captured");
+    assert.ok(a.filesTouched.includes("late.ts"), "late file captured");
   });
 });

@@ -59,7 +59,7 @@ export function parseOllamaEmbedding(body: string): number[] | null {
   try {
     const j = JSON.parse(body) as { embedding?: unknown };
     return Array.isArray(j.embedding) && j.embedding.every((x) => typeof x === "number")
-      ? (j.embedding as number[])
+      ? j.embedding
       : null;
   } catch {
     return null;

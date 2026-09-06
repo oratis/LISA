@@ -217,7 +217,7 @@ export async function handleGateway(
     const stream = body.stream === true;
     if (stream && face === "openai") {
       // Ask the upstream to append the usage chunk so the tee-parser can meter.
-      body.stream_options = { ...(body.stream_options as object ?? {}), include_usage: true };
+      body.stream_options = { ...(body.stream_options ?? {}), include_usage: true };
     }
 
     let upstream: Response;

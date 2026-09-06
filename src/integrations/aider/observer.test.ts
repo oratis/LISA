@@ -61,9 +61,9 @@ describe("parseAiderActivity — Tier-2 structural extraction (honest fields onl
     );
     assert.equal(a.turnCount, 2, "two #### user turns");
     assert.ok(a.lastError, "an error was surfaced");
-    assert.ok(/litellm|APIError/i.test(a.lastError!), "error class captured");
-    assert.ok(a.lastError!.length <= 80, "error is capped, not a full stack");
-    assert.ok(!/traceback/i.test(a.lastError!), "no stack trace in the summary");
+    assert.ok(/litellm|APIError/i.test(a.lastError), "error class captured");
+    assert.ok(a.lastError.length <= 80, "error is capped, not a full stack");
+    assert.ok(!/traceback/i.test(a.lastError), "no stack trace in the summary");
   });
 
   test("lastTools is intentionally [] — aider has no tool abstraction to read", () => {
@@ -133,8 +133,8 @@ describe("AiderObserver — Tier-2 visibility gating", () => {
     await obs.start(() => {});
     const s = obs.list()[0]!;
     assert.ok(s.activity, "activity attached");
-    assert.deepEqual(s.activity!.filesTouched, ["src/app/server.py", "utils/config.go"]);
-    assert.equal(s.activity!.turnCount, 2);
+    assert.deepEqual(s.activity.filesTouched, ["src/app/server.py", "utils/config.go"]);
+    assert.equal(s.activity.turnCount, 2);
     assert.equal(JSON.stringify(s.activity).includes(AID_SECRET), false, "no leak via observer");
     await obs.stop();
   });
@@ -218,9 +218,9 @@ describe("AiderObserver — walk + record real files", () => {
     const sessions = obs.list();
     const mine = sessions.find((s) => s.project === "myrepo");
     assert.ok(mine, "found the myrepo session");
-    assert.equal(mine!.agent, "aider");
-    assert.equal(mine!.state, "waiting");
-    assert.equal(mine!.cwd, proj);
+    assert.equal(mine.agent, "aider");
+    assert.equal(mine.state, "waiting");
+    assert.equal(mine.cwd, proj);
     await obs.stop();
   });
 

@@ -59,7 +59,6 @@ describe("source-injection safety (island injects these verbatim)", () => {
   // working function with no external references.
   for (const fn of [mergeAgentSession, aggregateAgentState, rosterLabel, formatActivity]) {
     test(`${fn.name} source eval's to a working function`, () => {
-      // eslint-disable-next-line @typescript-eslint/no-implied-eval
       const rebuilt = new Function(`return (${fn.toString()})`)() as (...a: unknown[]) => unknown;
       assert.equal(typeof rebuilt, "function");
       if (fn === aggregateAgentState) {

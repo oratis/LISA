@@ -511,9 +511,9 @@ async function maybeConsolidateOneDesireProgress(
     .trim();
   if (!summary) return null;
   await withSoulCaller("reflect", async () => {
-    await consolidateDesireProgress(target!.slug, {
-      condensedSummary: target!.preamble
-        ? target!.preamble + "\n\n" + summary
+    await consolidateDesireProgress(target.slug, {
+      condensedSummary: target.preamble
+        ? target.preamble + "\n\n" + summary
         : summary,
       keepLatest,
     });

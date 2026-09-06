@@ -19,8 +19,8 @@ test("isDigestDue: not due before the target hour", () => {
 });
 
 test("digestHour: env override within range, else default", () => {
-  assert.equal(digestHour({ LISA_MAIL_DIGEST_HOUR: "6" } as NodeJS.ProcessEnv), 6);
-  assert.equal(digestHour({} as NodeJS.ProcessEnv), DEFAULT_DIGEST_HOUR);
-  assert.equal(digestHour({ LISA_MAIL_DIGEST_HOUR: "99" } as NodeJS.ProcessEnv), DEFAULT_DIGEST_HOUR);
-  assert.equal(digestHour({ LISA_MAIL_DIGEST_HOUR: "nope" } as NodeJS.ProcessEnv), DEFAULT_DIGEST_HOUR);
+  assert.equal(digestHour({ LISA_MAIL_DIGEST_HOUR: "6" }), 6);
+  assert.equal(digestHour({}), DEFAULT_DIGEST_HOUR);
+  assert.equal(digestHour({ LISA_MAIL_DIGEST_HOUR: "99" }), DEFAULT_DIGEST_HOUR);
+  assert.equal(digestHour({ LISA_MAIL_DIGEST_HOUR: "nope" }), DEFAULT_DIGEST_HOUR);
 });

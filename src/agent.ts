@@ -326,7 +326,7 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
     }
 
     const lastText =
-      (result.content.find((b) => b.type === "text") as Anthropic.TextBlock | undefined)
+      (result.content.find((b) => b.type === "text"))
         ?.text ?? "";
     if (lastText) finalText = lastText;
 
@@ -459,7 +459,7 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
       }
 
       try {
-        const raw = await tool.execute(call.input as never, toolCtx);
+        const raw = await tool.execute(call.input, toolCtx);
         let text =
           tool.renderResultForModel?.(raw) ??
           (typeof raw === "string" ? raw : JSON.stringify(raw));

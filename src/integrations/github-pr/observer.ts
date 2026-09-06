@@ -190,7 +190,7 @@ async function runGh(args: string[]): Promise<string | null> {
 /** Default fetcher: the user's open PRs, optionally scoped to configured repos. */
 async function ghFetchPrs(cfg: AgentIntegrationConfig): Promise<RawPr[]> {
   const repos = Array.isArray((cfg as { repos?: unknown }).repos)
-    ? ((cfg as { repos: unknown[] }).repos.filter((r) => typeof r === "string") as string[])
+    ? ((cfg as { repos: unknown[] }).repos.filter((r) => typeof r === "string"))
     : [];
 
   if (repos.length > 0) {
@@ -317,4 +317,4 @@ export class GithubPrObserver extends EventEmitter implements AgentObserver {
   }
 }
 
-registerIntegration("github-pr", (cfg) => new GithubPrObserver(cfg as GithubPrObserverOptions));
+registerIntegration("github-pr", (cfg) => new GithubPrObserver(cfg));

@@ -316,11 +316,11 @@ describe("mapOpencodeSession — visibility gating for activity", () => {
   test("computeActivity=true → deep fields populated, tokens preserved, no secret", () => {
     const s = mapOpencodeSession(base, true);
     assert.ok(s.activity, "activity present");
-    assert.deepEqual(s.activity!.lastTools, ["edit", "bash"]);
-    assert.deepEqual(s.activity!.filesTouched, ["/repo/a.ts"]);
-    assert.equal(s.activity!.lastCommandName, "run");
-    assert.equal(s.activity!.turnCount, 1);
-    assert.deepEqual(s.activity!.tokens, { input: 10, output: 5 });
+    assert.deepEqual(s.activity.lastTools, ["edit", "bash"]);
+    assert.deepEqual(s.activity.filesTouched, ["/repo/a.ts"]);
+    assert.equal(s.activity.lastCommandName, "run");
+    assert.equal(s.activity.turnCount, 1);
+    assert.deepEqual(s.activity.tokens, { input: 10, output: 5 });
     assert.equal(JSON.stringify(s.activity).includes(SECRET), false);
   });
 

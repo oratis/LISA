@@ -14,7 +14,7 @@ import { readIndex } from "./kb/store.js";
 import { annotateMemoryKbLinks } from "./kb/memory-links.js";
 import { readSchema } from "./kb/schema.js";
 import { kbIndexFile, kbSchemaFile } from "./kb/paths.js";
-import { lisaHome, memoryDir, skillsDir } from "./paths.js";
+import { lisaHome, memoryDir } from "./paths.js";
 import { pathExists } from "./fs-utils.js";
 import { availableMoodSlugs } from "./tools/set_mood.js";
 import { moodAgeLabel, moodBus, type MoodState } from "./mood-bus.js";

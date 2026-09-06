@@ -9,11 +9,11 @@ describe("shouldEmitForeground (pure, privacy-critical)", () => {
   test("new foreground app → event with app name + summary", () => {
     const ev = shouldEmitForeground(undefined, { app: "Visual Studio Code" }, NOW);
     assert.ok(ev);
-    assert.equal(ev!.signal, "screen");
-    assert.equal(ev!.kind, "foreground-app");
-    assert.equal(ev!.app, "Visual Studio Code");
-    assert.equal(ev!.summary, "switched to Visual Studio Code");
-    assert.equal(ev!.ts, NOW);
+    assert.equal(ev.signal, "screen");
+    assert.equal(ev.kind, "foreground-app");
+    assert.equal(ev.app, "Visual Studio Code");
+    assert.equal(ev.summary, "switched to Visual Studio Code");
+    assert.equal(ev.ts, NOW);
   });
 
   test("unchanged app → null", () => {

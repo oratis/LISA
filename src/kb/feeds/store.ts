@@ -135,7 +135,7 @@ export async function loadFeedsState(): Promise<FeedsState> {
   try {
     const parsed = JSON.parse(await fs.readFile(file, "utf8")) as Partial<FeedsState>;
     return {
-      seen: parsed.seen && typeof parsed.seen === "object" ? (parsed.seen as Record<string, string[]>) : {},
+      seen: parsed.seen && typeof parsed.seen === "object" ? parsed.seen : {},
       lastBriefDate: typeof parsed.lastBriefDate === "string" ? parsed.lastBriefDate : null,
     };
   } catch {

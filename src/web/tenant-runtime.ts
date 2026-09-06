@@ -119,8 +119,8 @@ export class TenantRuntimeRegistry<T> {
       release: () => {
         if (released) return;
         released = true;
-        entry!.pins = Math.max(0, entry!.pins - 1);
-        entry!.lastAccessAt = this.now();
+        entry.pins = Math.max(0, entry.pins - 1);
+        entry.lastAccessAt = this.now();
         this.sweep();
       },
     };

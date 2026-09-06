@@ -83,7 +83,7 @@ describe("agentPushEvents (pure trigger)", () => {
   test("events carry a lisapocket:// deep-link to the session", () => {
     const [e] = agentPushEvents(sess({ state: "working" }), sess({ state: "done", agent: "codex", sessionId: "s9" }));
     assert.equal(e!.click, agentDeepLink("codex", "s9"));
-    const u = new URL(e!.click!);
+    const u = new URL(e!.click);
     assert.equal(u.protocol, "lisapocket:");
     assert.equal(u.host, "session");
     assert.equal(u.searchParams.get("agent"), "codex");
@@ -187,10 +187,10 @@ describe("APNs", () => {
   const pem = kp.privateKey.export({ type: "pkcs8", format: "pem" }) as string;
 
   test("apnsConfigFromEnv: null without env; populated + host by env", () => {
-    assert.equal(apnsConfigFromEnv({} as NodeJS.ProcessEnv), null);
+    assert.equal(apnsConfigFromEnv({}), null);
     const cfg = apnsConfigFromEnv({
       LISA_APNS_KEY_ID: "K1", LISA_APNS_TEAM_ID: "T1", LISA_APNS_KEY: pem, LISA_APNS_ENV: "production",
-    } as unknown as NodeJS.ProcessEnv);
+    });
     assert.equal(cfg?.keyId, "K1");
     assert.equal(cfg?.topic, "ai.meetlisa.main");
     assert.equal(cfg?.host, "api.push.apple.com");

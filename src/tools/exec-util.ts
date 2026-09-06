@@ -39,7 +39,9 @@ export function runIn(
           timedOut = true;
           try {
             child.kill("SIGKILL");
-          } catch {}
+          } catch {
+            // already exited — nothing to kill
+          }
         }, opts.timeoutMs)
       : null;
     child.stdout?.on("data", (b: Buffer) => {
@@ -50,7 +52,7 @@ export function runIn(
     });
     child.on("error", (e) => {
       if (timer) clearTimeout(timer);
-      resolve({ code: null, stdout, stderr, timedOut, spawnError: String((e as Error).message) });
+      resolve({ code: null, stdout, stderr, timedOut, spawnError: String(e.message) });
     });
     child.on("close", (code) => {
       if (timer) clearTimeout(timer);

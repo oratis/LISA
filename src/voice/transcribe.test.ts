@@ -68,9 +68,9 @@ test("ElevenLabs is preferred and POSTs the file with xi-api-key", async () => {
   globalThis.fetch = (async (url: unknown, init: { headers?: Record<string, string>; body?: unknown }) => {
     calledUrl = String(url);
     sentKey = init?.headers?.["xi-api-key"];
-    sentFile = init?.body instanceof FormData && (init.body as FormData).has("file");
+    sentFile = init?.body instanceof FormData && init.body.has("file");
     sentModel = init?.body instanceof FormData
-      ? (init.body as FormData).get("model_id")
+      ? init.body.get("model_id")
       : undefined;
     return new Response(JSON.stringify({ text: "hello world" }), { status: 200 });
   }) as typeof fetch;
@@ -124,7 +124,7 @@ test("prepared OpenAI transcription preserves an explicitly supplied API key", a
       status: 200,
       headers: { "content-type": "application/json" },
     });
-  }) as typeof fetch;
+  });
   try {
     await withEnv("ELEVENLABS_API_KEY", undefined, () =>
       withEnv("OPENAI_API_KEY", undefined, async () => {
@@ -151,7 +151,7 @@ test("ElevenLabs non-2xx surfaces a useful error", async () => {
   fs.writeFileSync(tmp, Buffer.from([1, 2, 3]));
   const realFetch = globalThis.fetch;
   globalThis.fetch = (async () =>
-    new Response("invalid_api_key", { status: 401 })) as typeof fetch;
+    new Response("invalid_api_key", { status: 401 }));
   try {
     await withEnv("ELEVENLABS_API_KEY", "sk_bad", async () => {
       await assert.rejects(

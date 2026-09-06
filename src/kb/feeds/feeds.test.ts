@@ -1,6 +1,6 @@
 import { test, describe, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync, readFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -202,18 +202,18 @@ describe("runDailyBrief (offline, injected seams)", () => {
       },
     });
     assert.ok(res, "brief produced");
-    assert.equal(res!.brief.total, 2);
-    assert.equal(res!.brief.items[0]!.title, "Transformer 推理优化实践", "importance-3 item ranks first");
+    assert.equal(res.brief.total, 2);
+    assert.equal(res.brief.items[0]!.title, "Transformer 推理优化实践", "importance-3 item ranks first");
     assert.equal(ingestedUrls[0], "https://blog.example.com/infer", "top item full-text ingested first");
-    assert.match(res!.text, /推理优化干货/);
+    assert.match(res.text, /推理优化干货/);
 
     // D7: written twice.
     const json = await latestBriefJson();
-    assert.equal(json?.date, res!.brief.date);
+    assert.equal(json?.date, res.brief.date);
     const sources = await kbStore.listEntries("sources");
     const briefEntry = sources.find((e) => e.origin === "brief");
     assert.ok(briefEntry, "sources/brief-<date>.md exists");
-    assert.match(briefEntry!.slug, /^brief-\d{4}-\d{2}-\d{2}/);
+    assert.match(briefEntry.slug, /^brief-\d{4}-\d{2}-\d{2}/);
 
     // feeds.json got 0600 + kb/.gitignore covers it.
     const gitignore = readFileSync(path.join(kbDir(), ".gitignore"), "utf8");

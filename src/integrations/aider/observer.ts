@@ -167,7 +167,7 @@ function summarizeError(line: string): string {
   // Strip aider's "> " info prefix, then keep up to the first sentence/segment
   // boundary so we surface the error class, not a full message or traceback.
   const stripped = line.replace(/^\s*>\s*/, "").trim();
-  const head = stripped.split(/[—–\-]{1,2}\s|[.{[]|,\s/)[0]!.trim() || stripped;
+  const head = stripped.split(/[—–-]{1,2}\s|[.{[]|,\s/)[0]!.trim() || stripped;
   return head.slice(0, ACTIVITY_ERROR_CAP).trim();
 }
 

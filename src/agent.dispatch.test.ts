@@ -46,12 +46,12 @@ function echoTool(over: Partial<ToolDefinition> = {}): ToolDefinition {
   return {
     name: "echo",
     description: "echo the input back",
-    inputSchema: { type: "object" } as Anthropic.Tool.InputSchema,
+    inputSchema: { type: "object" },
     async execute(input) {
       return "echoed:" + JSON.stringify(input);
     },
     ...over,
-  } as ToolDefinition;
+  };
 }
 
 function baseOpts(over: Partial<RunAgentOptions>): RunAgentOptions {
@@ -73,7 +73,7 @@ function pairing(history: StoredMessage[]): { uses: string[]; results: string[] 
   const results: string[] = [];
   for (const m of history) {
     if (!Array.isArray(m.content)) continue;
-    for (const b of m.content as Anthropic.ContentBlockParam[]) {
+    for (const b of m.content) {
       if (b.type === "tool_use") uses.push(b.id);
       if (b.type === "tool_result") results.push(b.tool_use_id);
     }
@@ -82,7 +82,7 @@ function pairing(history: StoredMessage[]): { uses: string[]; results: string[] 
 }
 
 function allResults(history: StoredMessage[]): Anthropic.ToolResultBlockParam[] {
-  return (history.flatMap((m) => (Array.isArray(m.content) ? m.content : [])) as Anthropic.ContentBlockParam[])
+  return (history.flatMap((m) => (Array.isArray(m.content) ? m.content : [])))
     .filter((b): b is Anthropic.ToolResultBlockParam => b.type === "tool_result");
 }
 
@@ -127,8 +127,8 @@ describe("runAgent — tool dispatch", () => {
     assert.equal(uses.length, 2);
     assert.deepEqual(new Set(uses), new Set(results));
     const toolMsg = r.history.find(
-      (m) => Array.isArray(m.content) && (m.content as Anthropic.ContentBlockParam[]).length > 0 &&
-        (m.content as Anthropic.ContentBlockParam[]).every((b) => b.type === "tool_result"),
+      (m) => Array.isArray(m.content) && m.content.length > 0 &&
+        m.content.every((b) => b.type === "tool_result"),
     );
     assert.equal((toolMsg!.content as Anthropic.ContentBlockParam[]).length, 2);
   });

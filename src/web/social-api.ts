@@ -12,10 +12,7 @@ import {
   updateSocialDraft,
 } from "../sense/social/drafts.js";
 import { discoverSocialConnectors } from "../sense/social/manifest.js";
-import type {
-  NewSocialDraft,
-  SocialDraftPatch,
-} from "../sense/social/types.js";
+import type { NewSocialDraft } from "../sense/social/types.js";
 import {
   setSocialPublishingPaused,
   socialPublishingPaused,
@@ -170,7 +167,7 @@ export async function handleSocialApi(
       const draft = await updateSocialDraft(
         id,
         expectedRevision,
-        patch as SocialDraftPatch,
+        patch,
       );
       json(res, 200, { draft });
       return true;

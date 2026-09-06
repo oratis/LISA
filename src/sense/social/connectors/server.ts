@@ -9,7 +9,6 @@ import {
   deleteOpenSocialAccount,
   listOpenSocialAccounts,
   publicAccount,
-  type OpenSocialAccount,
 } from "./accounts.js";
 import {
   blueskyCapabilities,

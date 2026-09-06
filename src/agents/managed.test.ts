@@ -31,7 +31,7 @@ function scripted(queue: ProviderResult[]): Provider {
 const editTool: ToolDefinition = {
   name: "edit", // in DEFAULT_MUTATING_TOOLS → triggers approval-pause
   description: "edit a file",
-  inputSchema: { type: "object" } as Anthropic.Tool.InputSchema,
+  inputSchema: { type: "object" },
   async execute() { return "edited"; },
 };
 

@@ -25,7 +25,7 @@ export async function loadMcpConfig(): Promise<McpServerSpec[]> {
   try {
     config = JSON.parse(raw) as McpConfig;
   } catch (err) {
-    throw new Error(`failed to parse ${CONFIG_PATH}: ${(err as Error).message}`);
+    throw new Error(`failed to parse ${CONFIG_PATH}: ${(err as Error).message}`, { cause: err });
   }
   const servers = config.mcpServers ?? {};
   return Object.entries(servers).map(([name, spec]) => ({

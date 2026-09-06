@@ -11,7 +11,7 @@ import {
 import { sandboxModeForProfile, untrustedSurfaceMode } from "../sandbox/sandbox.js";
 
 const fake = (name: string): ToolDefinition =>
-  ({ name, description: name, inputSchema: { type: "object" }, execute: async () => "" }) as ToolDefinition;
+  ({ name, description: name, inputSchema: { type: "object" }, execute: async () => "" });
 
 describe("capability profiles", () => {
   test("maps editions to explicit profiles", () => {

@@ -8,7 +8,7 @@ import { addAccount } from "./accounts.js";
 import { latestDigest } from "./store.js";
 import { grant } from "../consent/store.js";
 import type { Provider } from "../providers/types.js";
-import type { MailAccount, MailConnector, MailSecret, RawMail } from "./types.js";
+import type { MailAccount, MailConnector, RawMail } from "./types.js";
 
 async function withHome(fn: () => Promise<void>): Promise<void> {
   const prev = process.env.LISA_HOME;
@@ -167,7 +167,7 @@ test("probeAccount defers close until the probe settles — a slow success after
     host: "imap.x.com",
     port: 993,
   };
-  const p = probeAccount(acct, { password: "pw" } as MailSecret, {
+  const p = probeAccount(acct, { password: "pw" }, {
     connectorFactory: factory,
     timeoutMs: 20,
   });
