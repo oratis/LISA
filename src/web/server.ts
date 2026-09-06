@@ -252,6 +252,23 @@ interface AdvisorCardState {
   at: string;
 }
 
+/**
+ * Does an If-None-Match header select `etag`? Handles the comma list and the
+ * `*` wildcard, and compares weakly (RFC 9110 §13.1.2 — weak comparison is
+ * what If-None-Match specifies), so a proxy that strips or adds the `W/`
+ * prefix still gets its 304.
+ */
+export function etagMatches(header: string | string[] | undefined, etag: string): boolean {
+  if (!header) return false;
+  const raw = Array.isArray(header) ? header.join(",") : header;
+  const strip = (v: string) => v.trim().replace(/^W\//, "");
+  const want = strip(etag);
+  return raw.split(",").some((candidate) => {
+    const c = candidate.trim();
+    return c === "*" || strip(c) === want;
+  });
+}
+
 /** True for loopback peer/bind addresses (v4, v6, and v4-mapped-v6 forms). */
 export function isLoopbackAddress(addr: string): boolean {
   const a = addr.startsWith("::ffff:") ? addr.slice("::ffff:".length) : addr;
@@ -3384,8 +3401,24 @@ self.addEventListener('fetch', (event) => {
       const { listSessionsOnDisk } = await import("../sessions/list.js");
       const { lisaSessionsResponse } = await import("./api-contract.js");
       const sessions = await listSessionsOnDisk();
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify(lisaSessionsResponse(sessions)));
+      const body = JSON.stringify(lisaSessionsResponse(sessions));
+      // ETag over the response body (T-4). The shell, the tab strip and the
+      // iOS roster all poll this; between polls the answer is usually
+      // byte-identical, and a 304 saves serializing and shipping it again.
+      // "no-cache" (not "no-store") is what makes a client revalidate rather
+      // than either caching blindly or never asking.
+      const etag = `W/"${crypto.createHash("sha1").update(body).digest("base64url")}"`;
+      if (etagMatches(req.headers["if-none-match"], etag)) {
+        res.writeHead(304, { etag, "cache-control": "no-cache" });
+        res.end();
+        return;
+      }
+      res.writeHead(200, {
+        "content-type": "application/json",
+        etag,
+        "cache-control": "no-cache",
+      });
+      res.end(body);
       return;
     }
 
