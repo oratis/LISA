@@ -99,6 +99,8 @@ const LISA_STRINGS = {
     'kb.failed': 'Save failed',
     'err.request': '⚠ Request failed',
     'err.retry': '↻ Retry',
+    'conn.reconnecting': 'reconnecting…',
+    'chat.waiting': '⋯ waiting for the backend',
   },
   'zh-CN': {
     'session.new': '新会话',
@@ -152,6 +154,8 @@ const LISA_STRINGS = {
     'kb.failed': '保存失败',
     'err.request': '⚠ 请求出错',
     'err.retry': '↻ 重试',
+    'conn.reconnecting': '重新连接…',
+    'chat.waiting': '⋯ 正在等待后端',
   },
 };
 const LISA_LOCALE = (function () {
@@ -623,12 +627,58 @@ function buildIdleBlock(text, at) {
   return block;
 }
 
+// ── Connection state (UX-10) ──────────────────────────────────────
+// A slow or wedged backend used to be completely invisible: the UI only said
+// anything once a request failed outright, so the in-between (5s+ stalls seen
+// on the daily driver) looked like nothing happening. This surfaces it.
+//
+// Note on the heartbeat contract: the server sends ": ping" SSE comments, and
+// EventSource does NOT surface comments to JS at all — they keep the socket
+// warm but fire no event. So liveness here is: readyState (authoritative for
+// a closed/reconnecting stream) plus, for the half-open case where the socket
+// still claims OPEN but nothing has arrived for 45s, one direct /health probe
+// rather than a guess.
+const CONN_QUIET_MS = 45_000;
+let connLastBytesAt = Date.now();
+let connProbeAt = 0;
+let connCurrentEs = null;
+function setConnPill(on) {
+  const pill = document.getElementById('connPill');
+  if (!pill) return;
+  if (on && pill.hidden) pill.textContent = tr('conn.reconnecting');
+  pill.hidden = !on;
+}
+function noteEventBytes() {
+  connLastBytesAt = Date.now();
+  setConnPill(false);
+}
+async function checkConnection() {
+  const es = connCurrentEs;
+  // 0 = CONNECTING (the browser is retrying), 2 = CLOSED.
+  if (!es || es.readyState !== 1) { setConnPill(true); return; }
+  if (Date.now() - connLastBytesAt < CONN_QUIET_MS) return;
+  if (Date.now() - connProbeAt < 30_000) return;
+  connProbeAt = Date.now();
+  try {
+    const ctl = new AbortController();
+    const to = setTimeout(function () { ctl.abort(); }, 4000);
+    const r = await fetch('/health', { signal: ctl.signal });
+    clearTimeout(to);
+    if (r && r.ok) { noteEventBytes(); return; }
+  } catch (e) {}
+  setConnPill(true);
+}
+setInterval(checkConnection, 5000);
+
 // ── Persistent /events SSE: mood updates + idle messages + Claude
 // activity, lifetime of page.
 function connectEvents() {
   const es = new EventSource('/events');
+  connCurrentEs = es;
+  es.addEventListener('open', noteEventBytes);
   let idlePulseEl = null;
   es.addEventListener('message', (e) => {
+    noteEventBytes();
     const ev = JSON.parse(e.data);
     if (ev.type === 'mood') {
       setMood(ev.slug);
@@ -677,6 +727,7 @@ function connectEvents() {
   });
   es.onerror = () => {
     es.close();
+    setConnPill(true);
     setTimeout(connectEvents, 3000); // reconnect
   };
 }
@@ -1931,6 +1982,24 @@ async function runChat(message, filesToSend) {
   pendingTools.clear();
   thinkingEl = el('div', 'thinking', '⋯ thinking');
   setChatStatus(tr('chat.thinking'));
+  // UX-10: /chat answers within a few hundred ms normally. If two seconds
+  // pass with no frame at all, the backend is busy or stalled — say so on the
+  // same line rather than leaving "⋯ thinking" to mean both.
+  let sawFrame = false;
+  let waitTimer = setTimeout(function () {
+    if (sawFrame || gen !== chatGeneration || !thinkingEl) return;
+    thinkingEl.classList.add('waiting');
+    thinkingEl.textContent = tr('chat.waiting');
+  }, 2000);
+  const noteFrame = () => {
+    if (sawFrame) return;
+    sawFrame = true;
+    clearTimeout(waitTimer);
+    if (thinkingEl && thinkingEl.classList.contains('waiting')) {
+      thinkingEl.classList.remove('waiting');
+      thinkingEl.textContent = '⋯ thinking';
+    }
+  };
   // The agent emits an error event AND the server re-sends it from its turn
   // catch — dedupe so one failure renders exactly one error block.
   let errored = false;
@@ -1960,6 +2029,7 @@ async function runChat(message, filesToSend) {
         const m = evRaw.match(/^data: (.*)$/m);
         if (!m) continue;
         const ev = JSON.parse(m[1]);
+        noteFrame();
         // Stale generation (the user switched sessions mid-reply): drain the
         // stream without touching the DOM; the reply persists server-side.
         if (gen !== chatGeneration) continue;
@@ -2014,6 +2084,9 @@ async function runChat(message, filesToSend) {
   } catch (err) {
     fail(err.message);
   } finally {
+    // The turn is over one way or another — never let the 2s escalation fire
+    // onto a finished (or failed) turn.
+    clearTimeout(waitTimer);
     sendBtn.disabled = false;
     input.focus();
     // F6 — a reply that finished after its session was switched away:

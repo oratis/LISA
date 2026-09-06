@@ -80,6 +80,9 @@ catch (e) { document.body.classList.add('rb-collapsed'); }
   <!-- ╔════════════════ Title bar (drag zone) ════════════════╗ -->
   <div class="titlebar">
     <span>Lisa</span><span class="session-tag" id="titlebarSession"></span>
+    <!-- Backend liveness (UX-10). Hidden until the /events stream is down or
+         has gone silent past the heartbeat window. -->
+    <span class="conn-pill" id="connPill" role="status" aria-live="polite" hidden></span>
   </div>
 
   <!-- ╔════════════════ Sidebar ════════════════╗ -->
