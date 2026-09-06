@@ -43,7 +43,7 @@ import { MAIN_HTML } from "./lisa-html.js";
  * Then: Room v2 — the room→parent bridge moved to a richer, same-origin-guarded
  * {type:'lisa-room', action, prefill} protocol (open-chat / switch-view) at
  * module scope; the old room_open_chat listener was removed as superseded.
- * Then: personal knowledge base (docs/archive/plans/PLAN_KNOWLEDGE_BASE_v1.0.md) — a
+ * Then: personal knowledge base (docs/PLAN_KNOWLEDGE_BASE_v1.0.md) — a
  * "Knowledge" nav item + #viewKb (a live-search list/reader over /api/kb*), a
  * KB select-toggle in the function bar driving a floating capture bar (chat
  * messages → md source), and the kbCapture client block, all with their CSS.
@@ -213,21 +213,17 @@ import { MAIN_HTML } from "./lisa-html.js";
  * scroller, so the chat column can no longer grow to the bar's ~680px
  * min-content; the ≤720px block hides the five quick-panel buttons + #fnPanel
  * and tightens fnbar/log/composer spacing.
+ * Then: UX-3 accessibility floor — --focus-ring tokens + a global
+ * :focus-visible rule, .sr-only utility, --fg-3 raised to ≥4.5:1 in both
+ * themes (Nebula #8189ae, Calm #5f6878), every sub-11.5px text size raised
+ * to 11.5px (three glyph rules kept), empty-state copy moved off --fg-faint,
+ * 36px icon buttons with 44px hit areas at ≤720px, a reduced-motion block,
+ * aria-live regions (#chatStatus, #sbNeedsCount) and tabindex=-1 on the
+ * off-screened file input.
  */
-/*
- * Two independent byte shifts since the last pin, both in comments that ship
- * inside MAIN_HTML — nothing rendered changed:
- *   +56 = 4 × len("archive/plans/"), from moving PLAN_UI_SESSION_SHELL_v1.0.md
- *         and PLAN_KNOWLEDGE_BASE_v1.0.md into docs/archive/plans/;
- *   the UX-2 mobile-layout CSS and its comment block.
- * Re-derive with:
- *   node --import tsx --input-type=module -e 'import{MAIN_HTML}from"./src/web/lisa-html.ts";
- *     import{createHash}from"node:crypto";console.log(MAIN_HTML.length,
- *     createHash("sha256").update(MAIN_HTML).digest("hex"))'
- */
-const EXPECTED_LENGTH = 310657;
+const EXPECTED_LENGTH = 315938;
 const EXPECTED_SHA256 =
-  "dd71ee583e53d0b1e01c7c8dc5736a8337dc2a19fb0d7e30df51aebd138abfb7";
+  "87b612f5c1e1580177059bad0abaf5ce9a5b5983804f34bdb6cfd087eee8e038";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);

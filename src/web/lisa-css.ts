@@ -43,8 +43,19 @@ export const MAIN_CSS = `  :root {
 
     --fg: #e8eaff;
     --fg-2: #aeb5d3;
-    --fg-3: #6c7398;
+    /* Secondary text. Was #6c7398 (4.3:1 on --bg-deep, 3.8:1 on a card) —
+       below the AA 4.5:1 floor for the 11.5px labels that use it. #8189ae
+       clears 4.5:1 on every Nebula surface it sits on (deep 5.8, bg-1 5.5,
+       card 5.1, bg-3 chips 4.6); lisa-css.test.ts pins this. */
+    --fg-3: #8189ae;
+    /* Decorative only (idle pips, rules, disabled fills) — never text. */
     --fg-faint: #444a6e;
+
+    /* Keyboard focus ring (UX-3). Two tokens so a component can restyle the
+       ring without redefining the rule; the color rides --accent, so the
+       Calm override below re-tints it for free. */
+    --focus-ring: 2px solid var(--accent);
+    --focus-ring-offset: 2px;
 
     /* Legacy tokens — kept so the unchanged modal / cfg / birth
        overlay styles below still resolve. The new shell + chat use
@@ -99,7 +110,9 @@ export const MAIN_CSS = `  :root {
 
     --fg: #1b2430;
     --fg-2: #4d5666;
-    --fg-3: #8a919f;
+    /* Was #8a919f — 3.2:1 on white. #5f6878 is 5.6:1 on white and ≥ 4.7:1
+       on every Calm surface (bg-deep 5.2, bg-2 4.9, bg-3 chips 4.7). */
+    --fg-3: #5f6878;
     --fg-faint: #c2c7d1;
 
     /* Legacy tokens (modal / cfg / birth overlays) mapped to light. */
@@ -116,6 +129,26 @@ export const MAIN_CSS = `  :root {
     --error: #dc3545;
   }
   * { box-sizing: border-box; }
+
+  /* ── Accessibility floor (UX-3) ──────────────────────────────────
+     Keyboard focus is visible on every focusable thing — buttons, links,
+     tree rows, switches, the nav tiles. :focus-visible (not :focus) so a
+     mouse click doesn't paint a ring; text fields below keep their own
+     accent-border + halo treatment via their more specific :focus rules. */
+  :focus-visible {
+    outline: var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
+  }
+  /* Visually hidden, still read by screen readers (live regions, labels). */
+  .sr-only {
+    position: absolute !important;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
   html, body {
     height: 100%;
     margin: 0;
@@ -202,7 +235,7 @@ export const MAIN_CSS = `  :root {
     font-weight: 400;
     margin-left: 6px;
     font-family: ui-monospace, "SF Mono", Menlo, monospace;
-    font-size: 11px;
+    font-size: 11.5px;
     letter-spacing: 0;
   }
 
@@ -276,7 +309,7 @@ export const MAIN_CSS = `  :root {
   }
   .identity .sub {
     margin: 0;
-    font-size: 11px;
+    font-size: 11.5px;
     color: var(--fg-3);
   }
   .identity .mood {
@@ -284,7 +317,7 @@ export const MAIN_CSS = `  :root {
     align-items: center;
     gap: 5px;
     margin-top: 4px;
-    font-size: 10.5px;
+    font-size: 11.5px;
     color: var(--accent);
     text-transform: uppercase;
     letter-spacing: 0.08em;
@@ -301,7 +334,7 @@ export const MAIN_CSS = `  :root {
   /* Lisa's current pursuit, two lines max (moved out of the right rail). */
   .identity .identity-desire {
     margin: 5px 0 0;
-    font-size: 10.5px;
+    font-size: 11.5px;
     color: var(--fg-3);
     line-height: 1.45;
     display: -webkit-box;
@@ -314,7 +347,7 @@ export const MAIN_CSS = `  :root {
   .sb-section { display: flex; flex-direction: column; gap: 6px; }
   .sb-section h2 {
     margin: 0 0 2px;
-    font-size: 10.5px;
+    font-size: 11.5px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.10em;
@@ -362,7 +395,7 @@ export const MAIN_CSS = `  :root {
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: 10.5px;
+    font-size: 11.5px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.10em;
@@ -372,7 +405,7 @@ export const MAIN_CSS = `  :root {
   .card .h .count {
     background: rgba(255, 140, 66, 0.16);
     color: var(--claude);
-    font-size: 11px;
+    font-size: 11.5px;
     font-weight: 600;
     padding: 2px 7px;
     border-radius: 8px;
@@ -414,7 +447,7 @@ export const MAIN_CSS = `  :root {
      multi-agent sidebar reads which tool each row belongs to. */
   .session-row .agent-badge {
     display: inline-block;
-    font-size: 9px;
+    font-size: 11.5px;
     font-weight: 700;
     letter-spacing: 0.02em;
     text-transform: lowercase;
@@ -429,13 +462,13 @@ export const MAIN_CSS = `  :root {
   .session-row .when {
     color: var(--fg-3);
     font-variant-numeric: tabular-nums;
-    font-size: 10.5px;
+    font-size: 11.5px;
   }
   /* Second line under name/when: structural activity (turns/tokens/tool·file). */
   .session-row .session-act {
     grid-column: 2 / -1;
     margin-top: 2px;
-    font-size: 10px;
+    font-size: 11.5px;
     color: var(--fg-3);
     font-family: ui-monospace, "SF Mono", Menlo, monospace;
     overflow: hidden;
@@ -452,8 +485,10 @@ export const MAIN_CSS = `  :root {
     flex-wrap: wrap;
   }
   .session-ctrl .mc {
-    font-size: 10px;
+    font-size: 11.5px;
     padding: 2px 8px;
+    min-height: 28px; min-width: 28px;
+    position: relative;
     border-radius: 6px;
     border: 1px solid var(--border);
     background: var(--panel2, rgba(255,255,255,0.05));
@@ -468,7 +503,7 @@ export const MAIN_CSS = `  :root {
   .session-ctrl .mc-send {
     flex: 1;
     min-width: 90px;
-    font-size: 10.5px;
+    font-size: 11.5px;
     padding: 2px 7px;
     border-radius: 6px;
     border: 1px solid var(--border);
@@ -506,7 +541,7 @@ export const MAIN_CSS = `  :root {
   }
   .ctrl-row .cr-badge {
     flex-shrink: 0;
-    font-size: 9px; font-weight: 700; letter-spacing: 0.02em; text-transform: lowercase;
+    font-size: 11.5px; font-weight: 700; letter-spacing: 0.02em; text-transform: lowercase;
     color: var(--claude); background: rgba(255,140,66,0.12);
     border: 1px solid rgba(255,140,66,0.22); border-radius: 999px; padding: 1px 6px;
   }
@@ -514,14 +549,14 @@ export const MAIN_CSS = `  :root {
   .ctrl-row:hover .cr-arrow { opacity: 1; }
   .ctrl-row .cr-sub {
     grid-column: 2 / -1; margin-top: 3px;
-    font-size: 10.5px; color: var(--fg-3);
+    font-size: 11.5px; color: var(--fg-3);
     font-family: ui-monospace, "SF Mono", Menlo, monospace;
     overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
   }
   /* Status chip (right) */
   .st-chip {
     flex-shrink: 0;
-    font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+    font-size: 11.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
     border-radius: 999px; padding: 3px 9px;
     border: 1px solid var(--border-new); color: var(--fg-3); background: var(--bg-3);
   }
@@ -540,12 +575,12 @@ export const MAIN_CSS = `  :root {
   .ctrl-row.pending::before { background: var(--warm); }
   .ctrl-row .cr-err {
     grid-column: 2 / -1; margin-top: 6px;
-    font-size: 11px; color: var(--err-color);
+    font-size: 11.5px; color: var(--err-color);
     overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
   }
-  .ctrl-row .cr-pend { grid-column: 2 / -1; margin-top: 7px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 11px; color: var(--warm); }
+  .ctrl-row .cr-pend { grid-column: 2 / -1; margin-top: 7px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 11.5px; color: var(--warm); }
   .ctrl-row .cr-quick {
-    font-family: inherit; font-size: 10.5px; font-weight: 600;
+    font-family: inherit; font-size: 11.5px; font-weight: 600;
     padding: 3px 10px; border-radius: 7px; cursor: pointer;
     border: 1px solid var(--border-new); background: var(--bg-3); color: var(--fg);
   }
@@ -565,7 +600,7 @@ export const MAIN_CSS = `  :root {
   .sd-grid dt { color: var(--fg-3); }
   .sd-grid dd { margin: 0; color: var(--fg); overflow-wrap: anywhere; }
   .sd-chips { display: flex; flex-wrap: wrap; gap: 5px; }
-  .sd-chip { font-size: 10.5px; color: var(--fg-2); background: var(--bg-3); border: 1px solid var(--border-new); border-radius: 6px; padding: 1px 7px; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .sd-chip { font-size: 11.5px; color: var(--fg-2); background: var(--bg-3); border: 1px solid var(--border-new); border-radius: 6px; padding: 1px 7px; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
   .sd-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; border-top: 1px solid var(--border-new); padding-top: 13px; }
   .sd-send { flex: 1; min-width: 150px; font-family: inherit; font-size: 12.5px; padding: 8px 11px; border-radius: 8px; border: 1px solid var(--border-new); background: var(--bg-3); color: var(--fg); }
   .sd-send:focus { outline: none; border-color: var(--accent-glow); box-shadow: 0 0 0 3px var(--accent-soft); }
@@ -574,7 +609,7 @@ export const MAIN_CSS = `  :root {
   .sd-btn.danger { color: var(--err-color); border-color: rgba(255,85,119,0.4); }
   .sd-btn.ok { color: var(--proactive); border-color: var(--proactive-glow); }
   .sd-btn:hover { filter: brightness(1.1); }
-  .sd-out { margin: 0; max-height: 240px; overflow: auto; background: rgba(0,0,0,0.3); border: 1px solid var(--border-new); border-radius: 8px; padding: 10px; font-size: 11px; white-space: pre-wrap; word-break: break-word; color: var(--fg-2); font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .sd-out { margin: 0; max-height: 240px; overflow: auto; background: rgba(0,0,0,0.3); border: 1px solid var(--border-new); border-radius: 8px; padding: 10px; font-size: 11.5px; white-space: pre-wrap; word-break: break-word; color: var(--fg-2); font-family: ui-monospace, "SF Mono", Menlo, monospace; }
   .sd-note { font-size: 11.5px; color: var(--fg-3); font-style: italic; }
 
   /* "Delegate a task" → a single full-width button that opens a modal. */
@@ -594,7 +629,7 @@ export const MAIN_CSS = `  :root {
   /* Delegate dialog (rendered in the shared modal). */
   .delegate-modal { display: flex; flex-direction: column; gap: 8px; }
   .delegate-modal .dm-label {
-    font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+    font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.06em;
     color: var(--fg-2); margin-top: 4px;
   }
   .delegate-modal .dm-kind,
@@ -613,7 +648,7 @@ export const MAIN_CSS = `  :root {
   .delegate-modal .dm-start:hover { background: rgba(106,212,255,0.28); }
   .delegate-modal .dm-start:disabled { opacity: 0.5; cursor: default; }
   .delegate-modal .dm-err { color: var(--err-color, #ff5577); font-size: 12px; white-space: pre-wrap; }
-  .delegate-modal .dm-note { font-size: 11px; color: var(--fg-faint); line-height: 1.4; margin-top: 2px; }
+  .delegate-modal .dm-note { font-size: 11.5px; color: var(--fg-3); line-height: 1.4; margin-top: 2px; }
   .delegate-modal .mm-providers { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 2px; }
   .delegate-modal .mm-chip {
     font-size: 12px; padding: 4px 11px; border-radius: 999px;
@@ -646,16 +681,18 @@ export const MAIN_CSS = `  :root {
   #sbMailBody { margin: 2px 0 6px; }
   .mail-summary { font-size: 11.5px; color: var(--fg-2); line-height: 1.45; margin-bottom: 6px; }
   .mail-row { display: flex; gap: 6px; align-items: baseline; padding: 1px 0; }
-  .mail-bang { color: var(--brand, #6ad4ff); font-weight: 700; font-size: 11px; flex: none; }
+  .mail-bang { color: var(--brand, #6ad4ff); font-weight: 700; font-size: 11.5px; flex: none; }
   .mail-bang.urgent { color: var(--err-color, #ff5577); }
   .mail-subj { font-size: 11.5px; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .mail-sweep {
-    margin-top: 6px; font-size: 10.5px; background: none; border: none;
+    margin-top: 6px; font-size: 11.5px; background: none; border: none;
     color: var(--brand, #6ad4ff); cursor: pointer; padding: 2px 0;
   }
   .mail-sweep:hover { text-decoration: underline; }
+  /* Empty-state lines are real copy ("all clear ✓", "No agents running…"):
+     --fg-3, not the decorative --fg-faint (which is ~1.9:1 as text). */
   .session-empty {
-    color: var(--fg-faint);
+    color: var(--fg-3);
     font-size: 11.5px;
     font-style: italic;
     padding: 4px 0 2px;
@@ -687,7 +724,7 @@ export const MAIN_CSS = `  :root {
     border: 1px solid var(--border-new);
     color: var(--fg-2);
     font-family: inherit;
-    font-size: 10.5px;
+    font-size: 11.5px;
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -721,11 +758,11 @@ export const MAIN_CSS = `  :root {
     align-items: center;
     gap: 8px;
     color: var(--fg-3);
-    font-size: 11px;
+    font-size: 11.5px;
   }
   .sb-footer .session-id {
     font-family: ui-monospace, "SF Mono", Menlo, monospace;
-    font-size: 10px;
+    font-size: 11.5px;
     color: var(--fg-3);
     overflow: hidden;
     white-space: nowrap;
@@ -738,7 +775,7 @@ export const MAIN_CSS = `  :root {
     color: var(--fg-2);
     border-radius: 6px;
     padding: 1px 6px;
-    font-size: 10px;
+    font-size: 11.5px;
     font-variant-numeric: tabular-nums;
     flex-shrink: 0;
   }
@@ -765,7 +802,7 @@ export const MAIN_CSS = `  :root {
   }
   .sb-sessions-head h2 {
     margin: 0;
-    font-size: 10.5px;
+    font-size: 11.5px;
     font-weight: 700;
     letter-spacing: 0.16em;
     text-transform: uppercase;
@@ -776,8 +813,10 @@ export const MAIN_CSS = `  :root {
     background: var(--accent-soft);
     color: var(--accent);
     font-family: inherit;
-    font-size: 10.5px;
-    padding: 2.5px 10px;
+    font-size: 11.5px;
+    height: 28px;
+    padding: 0 12px;
+    position: relative;
     border-radius: 20px;
     cursor: pointer;
   }
@@ -789,8 +828,10 @@ export const MAIN_CSS = `  :root {
     background: transparent;
     color: var(--fg-3);
     font-family: inherit;
-    font-size: 11px;
-    width: 24px; height: 21px;
+    font-size: 11.5px;
+    /* Was 24×21 — too small to hit reliably. */
+    width: 36px; height: 28px;
+    position: relative;
     border-radius: 20px;
     cursor: pointer;
     line-height: 1;
@@ -845,7 +886,7 @@ export const MAIN_CSS = `  :root {
   .agent-glyph {
     width: 19px; height: 19px; flex: none;
     border-radius: 5px;
-    font-size: 10px; font-weight: 700;
+    font-size: 11.5px; font-weight: 700;
     display: flex; align-items: center; justify-content: center;
     color: #fff;
   }
@@ -855,7 +896,7 @@ export const MAIN_CSS = `  :root {
   .agent-glyph.other { background: var(--fg-3); }
   .tcount {
     margin-left: auto;
-    font-size: 10px;
+    font-size: 11.5px;
     font-variant-numeric: tabular-nums;
     color: var(--fg-3);
     background: var(--bg-card);
@@ -868,7 +909,7 @@ export const MAIN_CSS = `  :root {
   .tchildren { padding-left: 0; }
   .tsub .tchildren { padding-left: 0; }
   .tsub > .tnode {
-    font-size: 10px; padding: 5px 9px; color: var(--fg-3);
+    font-size: 11.5px; padding: 5px 9px; color: var(--fg-3);
     font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase;
   }
   .tleaf { padding: 7px 9px 7px 11px; }
@@ -888,7 +929,7 @@ export const MAIN_CSS = `  :root {
     white-space: nowrap;
     font-size: 12px;
   }
-  .tleaf .ttime { font-size: 10px; color: var(--fg-faint); flex: none; font-variant-numeric: tabular-nums; }
+  .tleaf .ttime { font-size: 11.5px; color: var(--fg-3); flex: none; font-variant-numeric: tabular-nums; }
   .tleaf.active {
     background: var(--accent-soft);
     border-color: var(--accent-glow);
@@ -937,7 +978,7 @@ export const MAIN_CSS = `  :root {
   .ctx-chip .pip.waiting { background: var(--warm); animation: needsYou 2s ease-in-out infinite; }
   .ctx-chip .pip.error { background: var(--err-color); }
   .ctx-chip .ctx-name { overflow: hidden; text-overflow: ellipsis; font-weight: 600; min-width: 0; }
-  .ctx-chip .ctx-meta { flex: none; font-size: 10px; color: var(--fg-3); }
+  .ctx-chip .ctx-meta { flex: none; font-size: 11.5px; color: var(--fg-3); }
   .ctx-chip.agent .ctx-meta { color: var(--claude); }
   .ctx-chip .ctx-x {
     flex: none;
@@ -949,6 +990,9 @@ export const MAIN_CSS = `  :root {
     font-family: inherit;
     padding: 0 2px;
     line-height: 1;
+    min-width: 28px; min-height: 28px;
+    margin: -6px -8px -6px 0;
+    position: relative;
   }
   .ctx-chip .ctx-x:hover { color: var(--fg); }
 
@@ -978,11 +1022,11 @@ export const MAIN_CSS = `  :root {
     font-size: 12px;
     flex: none;
   }
-  .as-head .agent-glyph { width: 22px; height: 22px; font-size: 11px; border-radius: 6px; }
+  .as-head .agent-glyph { width: 22px; height: 22px; font-size: 11.5px; border-radius: 6px; }
   .as-head b { font-size: 12.5px; color: var(--fg); }
   .as-head .meta {
     color: var(--fg-3);
-    font-size: 11px;
+    font-size: 11.5px;
     font-family: ui-monospace, "SF Mono", Menlo, monospace;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -992,7 +1036,7 @@ export const MAIN_CSS = `  :root {
   }
   .ro-badge {
     flex: none;
-    font-size: 10px;
+    font-size: 11.5px;
     letter-spacing: 0.06em;
     color: var(--claude);
     background: var(--claude-soft);
@@ -1014,7 +1058,7 @@ export const MAIN_CSS = `  :root {
   }
   .as-perm code {
     font-family: ui-monospace, "SF Mono", Menlo, monospace;
-    font-size: 11px;
+    font-size: 11.5px;
     background: var(--bg-hover, rgba(255,255,255,.05));
     padding: 1px 6px;
     border-radius: 4px;
@@ -1032,7 +1076,7 @@ export const MAIN_CSS = `  :root {
   .as-steps pre.pty-tail {
     margin: 0;
     font-family: ui-monospace, "SF Mono", Menlo, monospace;
-    font-size: 11px;
+    font-size: 11.5px;
     line-height: 1.5;
     color: var(--fg-2);
     white-space: pre-wrap;
@@ -1052,13 +1096,13 @@ export const MAIN_CSS = `  :root {
   .srow .sic { width: 16px; text-align: center; flex: none; font-size: 12px; }
   .srow .sdetail {
     font-family: ui-monospace, "SF Mono", Menlo, monospace;
-    font-size: 11px;
+    font-size: 11.5px;
     color: var(--fg-3);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .srow .stime { margin-left: auto; flex: none; font-size: 10px; color: var(--fg-faint); }
+  .srow .stime { margin-left: auto; flex: none; font-size: 11.5px; color: var(--fg-3); }
   .srow.turn {
     color: var(--fg);
     font-weight: 600;
@@ -1088,13 +1132,13 @@ export const MAIN_CSS = `  :root {
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 9px;
+    font-size: 11.5px;
     font-weight: 700;
     letter-spacing: 0.08em;
     color: var(--fg-3);
     margin-bottom: 4px;
   }
-  .as-msg .as-role .stime { margin-left: auto; font-size: 9px; color: var(--fg-faint); }
+  .as-msg .as-role .stime { margin-left: auto; font-size: 11.5px; color: var(--fg-3); }
   .as-msg .as-text {
     font-size: 12.5px;
     line-height: 1.6;
@@ -1150,14 +1194,14 @@ export const MAIN_CSS = `  :root {
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: 10px;
+    font-size: 11.5px;
     font-weight: 700;
     letter-spacing: 0.14em;
     text-transform: uppercase;
     color: var(--fg-3);
   }
   .rightbar .rb-sec > .h .count {
-    font-size: 10px;
+    font-size: 11.5px;
     color: var(--fg-3);
     font-variant-numeric: tabular-nums;
   }
@@ -1193,7 +1237,7 @@ export const MAIN_CSS = `  :root {
   .insp-name .st-chip { flex: none; }
   .insp-sub {
     margin-top: 3px;
-    font-size: 10.5px;
+    font-size: 11.5px;
     color: var(--fg-3);
     font-family: ui-monospace, "SF Mono", Menlo, monospace;
     overflow: hidden;
@@ -1227,7 +1271,7 @@ export const MAIN_CSS = `  :root {
   .rightbar .stat span {
     display: block;
     margin-top: 2px;
-    font-size: 8.5px;
+    font-size: 11.5px;
     font-weight: 600;
     letter-spacing: 0.1em;
     text-transform: uppercase;
@@ -1247,7 +1291,7 @@ export const MAIN_CSS = `  :root {
   .kvrow > span { color: var(--fg-3); flex: none; }
   .kvrow > code {
     font-family: ui-monospace, "SF Mono", Menlo, monospace;
-    font-size: 10.5px;
+    font-size: 11.5px;
     color: var(--fg-2);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1283,7 +1327,7 @@ export const MAIN_CSS = `  :root {
   .needs-row .nr-sub {
     display: block;
     margin-top: 1px;
-    font-size: 10.5px;
+    font-size: 11.5px;
     color: var(--fg-3);
     font-family: ui-monospace, "SF Mono", Menlo, monospace;
     overflow: hidden;
@@ -1308,7 +1352,7 @@ export const MAIN_CSS = `  :root {
     background: var(--bg-card);
     color: var(--fg-2);
     font-family: inherit;
-    font-size: 10.5px;
+    font-size: 11.5px;
     font-weight: 600;
     letter-spacing: 0.01em;
     text-align: center;
@@ -1338,7 +1382,7 @@ export const MAIN_CSS = `  :root {
     position: absolute;
     top: 5px;
     right: 5px;
-    font-size: 9px;
+    font-size: 11.5px;
     font-weight: 700;
     font-variant-numeric: tabular-nums;
     color: var(--fg);
@@ -1368,7 +1412,7 @@ export const MAIN_CSS = `  :root {
     transition: border-color 140ms ease, background 140ms ease;
   }
   .proactive-toggle .pt-label {
-    font-size: 11px;
+    font-size: 11.5px;
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -1464,9 +1508,9 @@ export const MAIN_CSS = `  :root {
   .view-act:hover { filter: brightness(1.08); }
   .view-act:active { transform: translateY(1px); }
   .view-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 18px 24px 26px; }
-  .view-empty { color: var(--fg-faint); font-size: 12.5px; font-style: italic; padding: 18px 4px; }
+  .view-empty { color: var(--fg-3); font-size: 12.5px; font-style: italic; padding: 18px 4px; }
   .view-sec-label {
-    font-size: 11px;
+    font-size: 11.5px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.10em;
@@ -1487,7 +1531,7 @@ export const MAIN_CSS = `  :root {
   .stat .n { font-size: 21px; font-weight: 700; color: var(--fg); font-variant-numeric: tabular-nums; line-height: 1.1; }
   .stat .k {
     margin-top: 3px;
-    font-size: 10px;
+    font-size: 11.5px;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: var(--fg-3);
@@ -1520,7 +1564,7 @@ export const MAIN_CSS = `  :root {
   .pp-tags { display: flex; flex-wrap: wrap; gap: 6px; }
   .proactive-panel .pp-tags { margin-top: 10px; }
   .pp-tag {
-    font-size: 10.5px;
+    font-size: 11.5px;
     color: var(--fg-3);
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid var(--border-new);
@@ -1543,13 +1587,13 @@ export const MAIN_CSS = `  :root {
   .focus-card .fc-pill {
     margin-left: auto;
     flex-shrink: 0;
-    font-size: 10.5px;
+    font-size: 11.5px;
     color: var(--proactive);
     border: 1px solid var(--proactive-glow);
     border-radius: 999px;
     padding: 2px 10px;
   }
-  .focus-card .fc-meta { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 11px; font-size: 11px; color: var(--fg-3); }
+  .focus-card .fc-meta { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 11px; font-size: 11.5px; color: var(--fg-3); }
 
   /* Horizontally-scrolling agent / task cards */
   .card-scroll {
@@ -1568,7 +1612,7 @@ export const MAIN_CSS = `  :root {
     border-radius: 13px;
     padding: 13px;
   }
-  .ac .ac-top { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--fg-3); margin-bottom: 8px; }
+  .ac .ac-top { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--fg-3); margin-bottom: 8px; }
   .ac .ac-status { margin-left: auto; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
   .ac .ac-status.working { color: var(--accent); }
   .ac .ac-status.waiting { color: var(--warm); }
@@ -1580,7 +1624,7 @@ export const MAIN_CSS = `  :root {
     margin-top: 9px;
     padding-top: 7px;
     border-top: 1px solid var(--border-new);
-    font-size: 10px;
+    font-size: 11.5px;
     color: var(--fg-3);
     font-family: ui-monospace, "SF Mono", Menlo, monospace;
   }
@@ -1595,7 +1639,7 @@ export const MAIN_CSS = `  :root {
   }
   .v-card h3 {
     margin: 0 0 6px;
-    font-size: 11px;
+    font-size: 11.5px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.08em;
@@ -1620,10 +1664,10 @@ export const MAIN_CSS = `  :root {
   .v-row:first-child { border-top: 0; }
   .v-row .v-main { min-width: 0; flex: 1; }
   .v-row .v-name { font-size: 12.5px; font-weight: 600; color: var(--fg); }
-  .v-row .v-sub { font-size: 11px; color: var(--fg-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .v-row .v-sub { font-size: 11.5px; color: var(--fg-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .v-toggle {
     font-family: inherit;
-    font-size: 11px;
+    font-size: 11.5px;
     font-weight: 600;
     cursor: pointer;
     border-radius: 7px;
@@ -1649,7 +1693,7 @@ export const MAIN_CSS = `  :root {
     border-radius: 9px;
     background: var(--bg-card);
     color: var(--fg-2);
-    font-size: 11px;
+    font-size: 11.5px;
   }
   .social-policy .social-action { margin: 0; }
   .social-draft:first-child { border-top: 0; }
@@ -1667,7 +1711,7 @@ export const MAIN_CSS = `  :root {
     padding: 2px 7px;
     color: var(--fg-3);
     background: var(--bg-3);
-    font-size: 9.5px;
+    font-size: 11.5px;
     font-weight: 700;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -1686,7 +1730,7 @@ export const MAIN_CSS = `  :root {
     border-left: 2px solid var(--warm);
     background: var(--bg-3);
     color: var(--fg-2);
-    font-size: 11px;
+    font-size: 11.5px;
     line-height: 1.45;
   }
   .social-approval-snapshot {
@@ -1704,7 +1748,7 @@ export const MAIN_CSS = `  :root {
     border-radius: 7px;
     background: var(--bg-3);
     color: var(--fg-2);
-    font: 600 11px inherit;
+    font: 600 11.5px inherit;
     cursor: pointer;
   }
   .social-action.primary { color: var(--proactive); border-color: var(--proactive-glow); background: var(--proactive-soft); }
@@ -1738,7 +1782,7 @@ export const MAIN_CSS = `  :root {
   }
   .mem-btn:hover { background: var(--bg-card-strong); border-color: var(--border-strong); }
   .mem-btn .mem-ico { font-size: 16px; width: 20px; text-align: center; }
-  .mem-btn .mem-sub { margin-left: auto; font-size: 11px; color: var(--fg-3); font-weight: 400; }
+  .mem-btn .mem-sub { margin-left: auto; font-size: 11.5px; color: var(--fg-3); font-weight: 400; }
 
   /* ── Settings / Mail rail views ─────────────────────────────── */
   .set-card {
@@ -1758,7 +1802,7 @@ export const MAIN_CSS = `  :root {
   .set-row:first-child { border-top: 0; }
   .set-row .set-main { min-width: 0; flex: 1; }
   .set-row .set-name { font-size: 12.5px; font-weight: 600; color: var(--fg); }
-  .set-row .set-sub { font-size: 11px; color: var(--fg-3); margin-top: 2px; line-height: 1.4; }
+  .set-row .set-sub { font-size: 11.5px; color: var(--fg-3); margin-top: 2px; line-height: 1.4; }
   /* Self-contained switch (Proactive / Compact) — bare track+knob, no card */
   .set-switch {
     flex-shrink: 0;
@@ -1786,7 +1830,7 @@ export const MAIN_CSS = `  :root {
   /* Status chip (key configured / edition) */
   .set-chip {
     flex-shrink: 0;
-    font-size: 10.5px;
+    font-size: 11.5px;
     font-weight: 700;
     border-radius: 999px;
     padding: 2px 9px;
@@ -1808,14 +1852,14 @@ export const MAIN_CSS = `  :root {
     padding: 8px 10px;
   }
   .set-input:focus { outline: none; border-color: var(--accent-glow); box-shadow: 0 0 0 3px var(--accent-soft); }
-  .set-note { font-size: 11px; color: var(--fg-3); line-height: 1.5; }
+  .set-note { font-size: 11.5px; color: var(--fg-3); line-height: 1.5; }
   .set-note a { color: var(--accent); }
   .set-err { font-size: 11.5px; color: var(--err-color); min-height: 14px; }
   /* Small destructive row action (remove mailbox) */
   .v-del {
     flex-shrink: 0;
     font-family: inherit;
-    font-size: 11px;
+    font-size: 11.5px;
     font-weight: 600;
     cursor: pointer;
     border-radius: 7px;
@@ -1843,12 +1887,12 @@ export const MAIN_CSS = `  :root {
   .kb-item:hover { background: var(--bg-card-strong); border-color: var(--border-strong); }
   .kb-row { display: flex; align-items: center; gap: 7px; }
   .kb-badge {
-    flex-shrink: 0; font-size: 9.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+    flex-shrink: 0; font-size: 11.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
     padding: 2px 6px; border-radius: 5px; background: var(--accent-soft); color: var(--accent);
   }
   .kb-badge.sources { background: rgba(255,255,255,0.06); color: var(--fg-3); }
   .kb-title { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .kb-tags { display: block; margin-top: 4px; font-size: 10.5px; color: var(--accent); opacity: 0.85; }
+  .kb-tags { display: block; margin-top: 4px; font-size: 11.5px; color: var(--accent); opacity: 0.85; }
   .kb-excerpt { display: block; margin-top: 4px; font-size: 11.5px; color: var(--fg-3); line-height: 1.45; max-height: 34px; overflow: hidden; }
   .kb-reader { flex: 1; min-width: 0; overflow-y: auto; padding: 18px 24px 26px; display: none; }
   .kb-reader.open { display: block; }
@@ -1859,7 +1903,7 @@ export const MAIN_CSS = `  :root {
     background: transparent; border: 1px solid var(--border); border-radius: 7px; color: var(--fg-3); padding: 5px 8px;
   }
   .kb-del:hover { border-color: #e0555f; color: #e0555f; }
-  .kb-reader-meta { margin-top: 6px; font-size: 11px; color: var(--fg-3); }
+  .kb-reader-meta { margin-top: 6px; font-size: 11.5px; color: var(--fg-3); }
   .kb-reader-body { margin-top: 14px; white-space: pre-wrap; word-wrap: break-word; font-family: inherit; font-size: 13px; line-height: 1.6; color: var(--fg-2); }
   @media (max-width: 720px) {
     .kb-body { flex-direction: column; }
@@ -1882,7 +1926,7 @@ export const MAIN_CSS = `  :root {
   .kb-ingest-status.err { color: #e0555f; }
   .kb-ingest-chip { text-align: right; margin-top: 2px; }
   .kb-ingest-btn {
-    font-family: inherit; cursor: pointer; font-size: 11px; padding: 4px 10px;
+    font-family: inherit; cursor: pointer; font-size: 11.5px; padding: 4px 10px;
     border-radius: 999px; border: 1px solid var(--border); background: transparent; color: var(--fg-3);
   }
   .kb-ingest-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
@@ -1935,7 +1979,7 @@ export const MAIN_CSS = `  :root {
 
   /* Chat author label (.role .you/.lisa) */
   .role {
-    font-size: 10px;
+    font-size: 11.5px;
     font-weight: 700;
     letter-spacing: 0.14em;
     text-transform: uppercase;
@@ -1971,7 +2015,7 @@ export const MAIN_CSS = `  :root {
     background: transparent;
     border: 0;
     padding: 0 2px;
-    font-size: 10.5px;
+    font-size: 11.5px;
     color: var(--fg-3);
     max-width: 88%;
     margin-left: auto;
@@ -2053,7 +2097,7 @@ export const MAIN_CSS = `  :root {
     padding: 5px 11px;
     border-bottom: 1px solid var(--border-new);
     font-family: ui-monospace, "SF Mono", Menlo, monospace;
-    font-size: 10.5px;
+    font-size: 11.5px;
     color: var(--fg-3);
     letter-spacing: 0.05em;
   }
@@ -2061,7 +2105,7 @@ export const MAIN_CSS = `  :root {
   .md-code .md-copy {
     margin-left: auto;
     font-family: inherit;
-    font-size: 10.5px;
+    font-size: 11.5px;
     color: var(--fg-3);
     background: transparent;
     border: 1px solid var(--border-new);
@@ -2126,7 +2170,7 @@ export const MAIN_CSS = `  :root {
     border-radius: 10px;
     padding: 8px 12px;
     font-family: ui-monospace, "SF Mono", Menlo, monospace;
-    font-size: 11px;
+    font-size: 11.5px;
     color: var(--fg-2);
     margin: 4px 0;
     max-width: 92%;
@@ -2224,7 +2268,7 @@ export const MAIN_CSS = `  :root {
     color: var(--fg);
   }
   .idle-head {
-    font-size: 11px;
+    font-size: 11.5px;
     text-transform: uppercase;
     letter-spacing: 0.10em;
     color: var(--dream);
@@ -2239,7 +2283,7 @@ export const MAIN_CSS = `  :root {
     font-weight: 400;
     letter-spacing: 0.05em;
     color: var(--fg-3);
-    font-size: 10px;
+    font-size: 11.5px;
   }
 
   /* Composer */
@@ -2255,7 +2299,7 @@ export const MAIN_CSS = `  :root {
     background: var(--bg-card-strong);
     border: 1px solid var(--border-strong);
     color: var(--fg-2);
-    font-size: 11px;
+    font-size: 11.5px;
     padding: 3px 8px;
     border-radius: 8px;
     display: inline-flex;
@@ -2270,6 +2314,8 @@ export const MAIN_CSS = `  :root {
     font-size: 13px;
     padding: 0;
     line-height: 1;
+    min-width: 24px; min-height: 24px;
+    margin: -4px -6px -4px 0;
   }
   .attach-rm:hover { color: var(--err-color); }
 
@@ -2346,7 +2392,9 @@ export const MAIN_CSS = `  :root {
     scrollbar-width: thin;
   }
   .fbtn {
-    width: 34px; height: 34px; flex: none;
+    /* 36px box (a11y floor); the ≤720px block extends the hit area to 44px. */
+    width: 36px; height: 36px; flex: none;
+    position: relative;
     display: flex; align-items: center; justify-content: center;
     background: transparent; border: 1px solid transparent; border-radius: 9px;
     color: var(--fg-2); cursor: pointer;
@@ -2498,6 +2546,13 @@ export const MAIN_CSS = `  :root {
        theme — fits a 375px row without scrolling. */
     .fnbar { padding: 6px 10px; gap: 4px; }
     .fnbar [data-panel], #fnPanel { display: none; }
+    /* 44px touch targets without growing the visible controls: an invisible
+       pseudo-element pads each small button's hit area (WCAG 2.5.8). The
+       buttons are position:relative above; ::after is otherwise unused. */
+    .fbtn::after, .tree-mode-btn::after, .new-btn::after, .session-ctrl .mc::after, .ctx-chip .ctx-x::after {
+      content: ""; position: absolute; inset: -4px;
+    }
+    .tree-mode-btn::after, .new-btn::after, .session-ctrl .mc::after, .ctx-chip .ctx-x::after { inset: -8px -4px; }
     .fn-find { width: 120px; }
     #log { padding: 14px 12px 16px; }
     .msg { max-width: 94%; }
@@ -2572,7 +2627,7 @@ export const MAIN_CSS = `  :root {
     border: 1px solid var(--border-new);
     color: var(--fg-2);
     font-family: inherit;
-    font-size: 11px;
+    font-size: 11.5px;
     letter-spacing: 0.06em;
     padding: 5px 10px;
     border-radius: 8px;
@@ -2587,7 +2642,7 @@ export const MAIN_CSS = `  :root {
     color: var(--fg-2);
   }
   .modal-body h3 {
-    font-size: 11px;
+    font-size: 11.5px;
     font-weight: 700;
     letter-spacing: 0.10em;
     text-transform: uppercase;
@@ -2631,7 +2686,7 @@ export const MAIN_CSS = `  :root {
   .modal-body .pair-label {
     flex: 0 0 52px;
     color: var(--fg-3);
-    font-size: 11px;
+    font-size: 11.5px;
     text-transform: uppercase;
     letter-spacing: 0.04em;
   }
@@ -2647,7 +2702,7 @@ export const MAIN_CSS = `  :root {
   .modal-body .pair-copy {
     flex: 0 0 auto;
     font-family: inherit;
-    font-size: 11px;
+    font-size: 11.5px;
     font-weight: 700;
     color: var(--fg-2);
     background: var(--btn-bg, rgba(255,255,255,0.08));
@@ -2660,7 +2715,7 @@ export const MAIN_CSS = `  :root {
   .modal-body .plan-select {
     margin-top: 6px;
     font-family: inherit;
-    font-size: 11px;
+    font-size: 11.5px;
     font-weight: 700;
     padding: 4px 12px;
     border: 0;
@@ -2687,7 +2742,7 @@ export const MAIN_CSS = `  :root {
     font-size: 11.5px;
     line-height: 1.5;
   }
-  .modal-body .empty { color: var(--fg-faint); font-style: italic; }
+  .modal-body .empty { color: var(--fg-3); font-style: italic; }
 
   /* ===================================================================
      Birth ritual overlay — full-screen, one-time. Uses legacy palette
@@ -2751,7 +2806,7 @@ export const MAIN_CSS = `  :root {
   }
   .birth-step.done { border-left-color: var(--accent); }
   .birth-step .step-name {
-    font-size: 10.5px;
+    font-size: 11.5px;
     font-weight: 700;
     letter-spacing: 0.10em;
     color: var(--fg-3);
@@ -2868,7 +2923,7 @@ export const MAIN_CSS = `  :root {
   .cfg-field { display: block; margin: 14px 0; }
   .cfg-label {
     display: block;
-    font-size: 10.5px;
+    font-size: 11.5px;
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -2877,7 +2932,7 @@ export const MAIN_CSS = `  :root {
   }
   .cfg-label .opt {
     color: var(--fg-3);
-    font-size: 9.5px;
+    font-size: 11.5px;
     margin-left: 6px;
     text-transform: none;
     letter-spacing: 0;
@@ -2900,7 +2955,7 @@ export const MAIN_CSS = `  :root {
   }
   .cfg-help {
     color: var(--fg-3);
-    font-size: 11px;
+    font-size: 11.5px;
     margin-top: 6px;
   }
   .cfg-help code {
@@ -2908,7 +2963,7 @@ export const MAIN_CSS = `  :root {
     background: rgba(0, 0, 0, 0.3);
     padding: 1px 5px;
     border-radius: 3px;
-    font-size: 11px;
+    font-size: 11.5px;
   }
   .cfg-actions {
     margin-top: 22px;
@@ -2934,8 +2989,23 @@ export const MAIN_CSS = `  :root {
   .cfg-save:disabled { opacity: 0.55; cursor: wait; }
   .cfg-error {
     color: var(--err-color);
-    font-size: 11px;
+    font-size: 11.5px;
     text-align: center;
     margin-top: 14px;
     min-height: 14px;
+  }
+
+  /* ── Reduced motion (UX-3) ───────────────────────────────────────
+     One override block rather than wrapping each animation where it is
+     declared, so every looping effect (breathing/halo pips, star blink,
+     record pulse, typewriter cursor) and the reveal transitions are
+     silenced together and a future animation only needs a selector added
+     here. State stays legible without motion: pips keep their colour, the
+     record button stays red, revealed birth steps are simply visible. */
+  @media (prefers-reduced-motion: reduce) {
+    .session-row .pip, .ctrl-row .cr-pip, .tleaf .pip, .ctx-chip .pip, .needs-row .pip,
+    #recordBtn.recording, .birth-stars, .cfg-stars, .birth-step .step-cursor { animation: none; }
+    .birth-step, .birth-final, .birth-enter, .kb-toast, .identity .avatar-wrap img,
+    .ctrl-row, .nav-item, .fbtn, .badge, #input, #sendBtn, .cfg-save { transition: none; }
+    #log { scroll-behavior: auto; }
   }`;

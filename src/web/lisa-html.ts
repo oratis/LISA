@@ -169,6 +169,11 @@ catch (e) { document.body.classList.add('rb-collapsed'); }
       <div class="as-foot" id="asFoot"></div>
     </div>
 
+    <!-- Screen-reader status for the chat (aria-live): coarse turn state only
+         ("Lisa is thinking" / "replying" / "finished"), never the streamed
+         text — position:absolute via .sr-only so it takes no grid row. -->
+    <div id="chatStatus" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+
     <!-- Chat log (messages, tool blocks, idle blocks injected here) -->
     <div id="log"></div>
 
@@ -177,7 +182,9 @@ catch (e) { document.body.classList.add('rb-collapsed'); }
 
     <!-- Composer -->
     <form id="form">
-      <input type="file" id="fileInput" accept="image/*,.pdf,.txt,.md,.csv,.json" multiple>
+      <!-- tabindex=-1: it is off-screened (1×1, opacity 0) and opened by the
+           ＋ menu, so it must not be a keyboard Tab stop. -->
+      <input type="file" id="fileInput" accept="image/*,.pdf,.txt,.md,.csv,.json" multiple tabindex="-1">
       <div class="plus-wrap">
         <button type="button" id="plusBtn" title="Attach or screenshot" aria-label="Attach or screenshot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
         <div class="plus-menu" id="plusMenu">
@@ -221,7 +228,9 @@ catch (e) { document.body.classList.add('rb-collapsed'); }
     <div class="rb-sec" id="sbNeeds">
       <div class="h">
         <div class="left">needs you</div>
-        <div class="count" id="sbNeedsCount"></div>
+        <!-- aria-live: a new approval request is announced ("2 agents need
+             you") without the user having to find the rail. -->
+        <div class="count" id="sbNeedsCount" aria-live="polite" aria-atomic="true"></div>
       </div>
       <div id="sbNeedsRows">
         <div class="session-empty">all clear ✓</div>
