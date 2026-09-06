@@ -1237,18 +1237,66 @@ if (fnSearchBtn && fnFind) {
 {
   let collapsed = true;
   try { collapsed = localStorage.getItem('lisaRightbar') !== 'open'; } catch (e) {}
+  // UX-5: has the user ever driven this toggle themselves? Once they have,
+  // their choice is final and the auto-expand nudge below never fires again —
+  // including across reloads, which is why it is persisted.
+  let touched = false;
+  try { touched = localStorage.getItem('lisaRightbarTouched') === '1'; } catch (e) {}
+  let autoExpanded = false;
+  let attention = 0;
+  const PANEL_TITLE = 'Collapse / expand the right panel';
+  // While the rail is collapsed the only sign that an agent is blocked on a
+  // decision was a 34px icon with a tooltip — the count now rides the icon.
+  const syncBadge = () => {
+    const btn = document.getElementById('fnPanel');
+    if (!btn) return;
+    let dot = btn.querySelector('.fbtn-badge');
+    if (!collapsed || attention <= 0) {
+      if (dot) dot.remove();
+      btn.title = PANEL_TITLE;
+      btn.setAttribute('aria-label', 'Toggle right panel');
+      return;
+    }
+    if (!dot) {
+      dot = document.createElement('span');
+      dot.className = 'fbtn-badge';
+      btn.appendChild(dot);
+    }
+    dot.textContent = attention > 9 ? '9+' : String(attention);
+    const noun = attention === 1 ? '1 agent needs you' : attention + ' agents need you';
+    btn.title = noun + ' — open the right panel';
+    btn.setAttribute('aria-label', noun + ', open the right panel');
+  };
   const applyRb = () => {
     document.body.classList.toggle('rb-collapsed', collapsed);
     const btn = document.getElementById('fnPanel');
     if (btn) btn.classList.toggle('active', collapsed);
+    syncBadge();
   };
   applyRb();
   const panelBtn = document.getElementById('fnPanel');
   if (panelBtn) panelBtn.addEventListener('click', () => {
     collapsed = !collapsed;
-    try { localStorage.setItem('lisaRightbar', collapsed ? 'collapsed' : 'open'); } catch (e) {}
+    touched = true;
+    try {
+      localStorage.setItem('lisaRightbar', collapsed ? 'collapsed' : 'open');
+      localStorage.setItem('lisaRightbarTouched', '1');
+    } catch (e) {}
     applyRb();
   });
+  // Called from the "needs you" renderer on every roster tick.
+  window.lisaRightbarAttention = function (count, needsDecision) {
+    attention = count > 0 ? count : 0;
+    // One nudge per page load, and only for someone who has never expressed a
+    // preference: a blocked agent is worth stealing 320px for exactly once.
+    // Deliberately NOT persisted — the next reload returns to the collapsed
+    // default, so this can never become a sticky layout the user didn't pick.
+    if (needsDecision && collapsed && !touched && !autoExpanded) {
+      autoExpanded = true;
+      collapsed = false;
+    }
+    applyRb();
+  };
 }
 
 let currentLisaSpan = null;
@@ -1852,6 +1900,15 @@ if ('serviceWorker' in navigator) {
         sr.textContent = needs.length === 1 ? ' agent needs you' : ' agents need you';
         count.appendChild(sr);
       }
+    }
+    // UX-5: mirror the count onto the collapsed rail's toggle, and let the
+    // rail open itself the first time something is actually blocked on the
+    // user. An "error" agent is reported but does NOT trigger the expand —
+    // only a decision waiting to be made does.
+    if (typeof window.lisaRightbarAttention === 'function') {
+      window.lisaRightbarAttention(needs.length, needs.some(function (s) {
+        return (s.activity && s.activity.pendingPermission) || s.state === 'waiting';
+      }));
     }
     if (!needs.length) {
       const ok = document.createElement('div');

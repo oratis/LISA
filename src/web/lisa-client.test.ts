@@ -116,3 +116,38 @@ describe("sessionLabel names an empty session instead of showing its raw id (UX-
     assert.equal(label({ id: ID, messageCount: 4 }), ID);
   });
 });
+
+describe("collapsed right rail keeps a way in (UX-5)", () => {
+  test("the manual toggle records that the user has a preference", () => {
+    assert.match(
+      MAIN_CLIENT_JS,
+      /localStorage\.setItem\('lisaRightbarTouched', '1'\)/,
+      "the #fnPanel click handler must persist lisaRightbarTouched",
+    );
+    assert.match(
+      MAIN_CLIENT_JS,
+      /localStorage\.getItem\('lisaRightbarTouched'\) === '1'/,
+      "the flag must be read back at boot",
+    );
+  });
+
+  test("the auto-expand nudge never writes the layout preference", () => {
+    // It is a one-time nudge for someone who has never touched the toggle.
+    // If it ever persisted 'lisaRightbar', a single blocked agent would
+    // permanently change a layout the user did not choose.
+    const start = MAIN_CLIENT_JS.indexOf("window.lisaRightbarAttention = function");
+    assert.ok(start >= 0, "lisaRightbarAttention not found");
+    const end = MAIN_CLIENT_JS.indexOf("\n  };", start);
+    const body = MAIN_CLIENT_JS.slice(start, end);
+    assert.ok(!body.includes("setItem"), `auto-expand must not persist: ${body}`);
+    assert.match(body, /!touched && !autoExpanded/, "must be gated on both flags");
+  });
+
+  test("the needs-you renderer feeds it, and only a decision expands the rail", () => {
+    assert.match(
+      MAIN_CLIENT_JS,
+      /window\.lisaRightbarAttention\(needs\.length, needs\.some\(function \(s\) \{\s*return \(s\.activity && s\.activity\.pendingPermission\) \|\| s\.state === 'waiting';/,
+      "an errored agent must be counted but must not auto-expand the rail",
+    );
+  });
+});
