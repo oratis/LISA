@@ -200,3 +200,87 @@ describe("birth errors are classified into human copy (UX-1)", () => {
     assert.match(show, /birthErrorEl\.title = String\(\(ev && ev\.message\)/);
   });
 });
+
+describe("provider picker works against both server generations (UX-1)", () => {
+  const src = MAIN_CLIENT_JS.slice(
+    MAIN_CLIENT_JS.indexOf("const LISA_PROVIDER_FALLBACK = ["),
+    MAIN_CLIENT_JS.indexOf("// ── API key config gate"),
+  );
+  const ctx = createContext({ window: {} });
+  runInContext(src, ctx);
+  const c = ctx as {
+    lisaProviderList: (s: unknown) => Array<Record<string, unknown>>;
+    lisaProviderSaveBody: (p: unknown, k: string, m: string, b: string) => Record<string, unknown>;
+    lisaProviderConfirm: (p: unknown, s: unknown) => boolean | null;
+  };
+
+  test("an old status (no providers block) falls back to the built-in table", () => {
+    const list = c.lisaProviderList({ configured: true, anthropic: true, openai: false });
+    assert.ok(list.length >= 8, `only ${list.length} providers`);
+    const ids = list.map((p) => p.id);
+    for (const want of ["anthropic", "openai", "deepseek", "zhipu", "dashscope", "moonshot", "gemini", "custom"]) {
+      assert.ok(ids.includes(want), `missing ${want}`);
+    }
+    assert.equal(list.find((p) => p.id === "anthropic")!.configured, true);
+    assert.equal(list.find((p) => p.id === "openai")!.configured, false);
+  });
+
+  test("a served providers block wins, including providers this client has never heard of", () => {
+    const list = c.lisaProviderList({
+      providers: [
+        { id: "zhipu", envKey: "ZHIPU_API_KEY", label: "Zhipu GLM", modelPrefixes: ["glm-"], configured: true },
+        { id: "brandnew", envKey: "BRANDNEW_API_KEY", label: "Brand New Co", modelPrefixes: ["bn-"], configured: false },
+      ],
+    });
+    assert.equal(JSON.stringify(list.map((p) => p.id)), JSON.stringify(["zhipu", "brandnew"]));
+    assert.equal(list[0]!.configured, true);
+    // Local presentation hints still merge in for the ones we know.
+    assert.equal(list[0]!.model, "glm-4-plus");
+    assert.equal(list[1]!.placeholder, "key...");
+  });
+
+  test("the save body carries the new shape plus every legacy field name", () => {
+    const anthropic = c.lisaProviderList(null).find((p) => p.id === "anthropic")!;
+    const body = c.lisaProviderSaveBody(anthropic, "sk-ant-x", "", "");
+    assert.equal(JSON.stringify(body.keys), JSON.stringify({ ANTHROPIC_API_KEY: "sk-ant-x" }));
+    assert.equal(body.anthropicKey, "sk-ant-x");
+    assert.equal(body.anthropic, "sk-ant-x");
+    const openai = c.lisaProviderList(null).find((p) => p.id === "openai")!;
+    const b2 = c.lisaProviderSaveBody(openai, "sk-o", "gpt-4o", "");
+    assert.equal(b2.openaiKey, "sk-o");
+    assert.equal(b2.openai, "sk-o");
+    assert.equal(b2.model, "gpt-4o");
+    // A third-party provider gets no legacy field — there is none to send.
+    const ds = c.lisaProviderList(null).find((p) => p.id === "deepseek")!;
+    const b3 = c.lisaProviderSaveBody(ds, "sk-d", "deepseek-chat", "");
+    assert.equal(JSON.stringify(Object.keys(b3).sort()), JSON.stringify(["keys", "model"]));
+    const custom = c.lisaProviderList(null).find((p) => p.id === "custom")!;
+    assert.equal(c.lisaProviderSaveBody(custom, "k", "m", "https://h/v1").baseUrl, "https://h/v1");
+  });
+
+  test("only providers the server cannot auto-detect pin a model", () => {
+    const byId = (id: string) => c.lisaProviderList(null).find((p) => p.id === id)!;
+    // Anthropic and OpenAI are resolved from the key alone by
+    // providers/registry.resolveDefaultModel; the rest would silently fall
+    // back to Claude if LISA_MODEL were left unset.
+    assert.equal(byId("anthropic").needsModel, false);
+    assert.equal(byId("openai").needsModel, false);
+    for (const id of ["deepseek", "zhipu", "dashscope", "moonshot", "gemini", "custom"]) {
+      assert.equal(byId(id).needsModel, true, `${id} must pin a model`);
+    }
+  });
+
+  test("confirm reports false only when we KNOW the server dropped the key", () => {
+    const ds = c.lisaProviderList(null).find((p) => p.id === "deepseek")!;
+    // Old server, third-party key: it cannot have kept it.
+    assert.equal(c.lisaProviderConfirm(ds, { configured: false, anthropic: false }), false);
+    // Old server, Anthropic key it did keep.
+    const an = c.lisaProviderList(null).find((p) => p.id === "anthropic")!;
+    assert.equal(c.lisaProviderConfirm(an, { anthropic: true }), true);
+    // New server that lists the provider.
+    const st = { providers: [{ id: "deepseek", envKey: "DEEPSEEK_API_KEY", configured: true }] };
+    assert.equal(c.lisaProviderConfirm(ds, st), true);
+    // New server that does not list it at all — unknowable, never block.
+    assert.equal(c.lisaProviderConfirm({ envKey: "NOPE" }, st), null);
+  });
+});

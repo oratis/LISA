@@ -546,13 +546,179 @@ function connectEvents() {
 }
 connectEvents();
 
+// ── Providers ────────────────────────────────────────────────────
+// The gate and the Settings view both drive off one table. A new server
+// reports it on /api/config/status as
+//   providers: [{id, envKey, label, modelPrefixes, configured}]
+// plus a top-level "model"; this list is the fallback for servers that do not,
+// and it also supplies the parts the server has no opinion on (placeholder,
+// console link, a suggested model). Entries mirror src/providers/registry.ts.
+const LISA_PROVIDER_FALLBACK = [
+  { id: 'anthropic', envKey: 'ANTHROPIC_API_KEY', label: 'Anthropic (Claude)',
+    placeholder: 'sk-ant-...', model: 'claude-sonnet-4-6',
+    consoleUrl: 'https://console.anthropic.com/' },
+  { id: 'openai', envKey: 'OPENAI_API_KEY', label: 'OpenAI (GPT)',
+    placeholder: 'sk-...', model: 'gpt-4o',
+    consoleUrl: 'https://platform.openai.com/api-keys' },
+  { id: 'deepseek', envKey: 'DEEPSEEK_API_KEY', label: 'DeepSeek',
+    placeholder: 'sk-...', model: 'deepseek-chat',
+    consoleUrl: 'https://platform.deepseek.com/api_keys', needsModel: true },
+  { id: 'zhipu', envKey: 'ZHIPU_API_KEY', label: 'Zhipu GLM',
+    placeholder: 'key...', model: 'glm-4-plus',
+    consoleUrl: 'https://open.bigmodel.cn/usercenter/apikeys', needsModel: true },
+  { id: 'dashscope', envKey: 'DASHSCOPE_API_KEY', label: 'Aliyun Qwen',
+    placeholder: 'sk-...', model: 'qwen-plus',
+    consoleUrl: 'https://bailian.console.aliyun.com/', needsModel: true },
+  { id: 'moonshot', envKey: 'MOONSHOT_API_KEY', label: 'Moonshot Kimi',
+    placeholder: 'sk-...', model: 'moonshot-v1-32k',
+    consoleUrl: 'https://platform.moonshot.cn/console/api-keys', needsModel: true },
+  { id: 'gemini', envKey: 'GEMINI_API_KEY', label: 'Google Gemini',
+    placeholder: 'AIza...', model: 'gemini-2.5-pro',
+    consoleUrl: 'https://aistudio.google.com/apikey', needsModel: true },
+  { id: 'custom', envKey: 'LISA_API_KEY', label: 'Custom (OpenAI-compatible)',
+    placeholder: 'key...', model: '', custom: true, consoleUrl: '', needsModel: true },
+];
+// Merge what the server knows (which keys exist, which are configured) with
+// the local presentation hints. Matching on envKey first: ids are the server's
+// to choose, the environment variable name is the stable identity.
+function lisaProviderList(status) {
+  const hintOf = function (envKey, id) {
+    for (let i = 0; i < LISA_PROVIDER_FALLBACK.length; i++) {
+      const h = LISA_PROVIDER_FALLBACK[i];
+      if (h.envKey === envKey || (id && h.id === id)) return h;
+    }
+    return null;
+  };
+  const served = status && Array.isArray(status.providers) ? status.providers : null;
+  if (!served || !served.length) {
+    // No providers block: an older server. Mark configured from the two
+    // booleans it does report.
+    return LISA_PROVIDER_FALLBACK.map(function (h) {
+      const conf = h.envKey === 'ANTHROPIC_API_KEY' ? !!(status && status.anthropic)
+        : h.envKey === 'OPENAI_API_KEY' ? !!(status && status.openai) : false;
+      return { id: h.id, envKey: h.envKey, label: h.label, placeholder: h.placeholder,
+               model: h.model, consoleUrl: h.consoleUrl, custom: !!h.custom,
+               needsModel: !!h.needsModel, configured: conf, served: false };
+    });
+  }
+  return served.map(function (p) {
+    const h = hintOf(p.envKey, p.id) || {};
+    return {
+      id: p.id || h.id || p.envKey,
+      envKey: p.envKey || h.envKey || '',
+      label: p.label || h.label || p.id || p.envKey,
+      placeholder: h.placeholder || 'key...',
+      model: h.model || '',
+      consoleUrl: h.consoleUrl || '',
+      custom: !!h.custom,
+      needsModel: !!h.needsModel,
+      configured: !!p.configured,
+      served: true,
+    };
+  });
+}
+// One body understood by both generations of the endpoint: the new
+// {keys, model, baseUrl} shape plus every legacy field name.
+function lisaProviderSaveBody(provider, key, model, baseUrl) {
+  const body = { keys: {} };
+  if (key && provider.envKey) body.keys[provider.envKey] = key;
+  if (model) body.model = model;
+  if (baseUrl) body.baseUrl = baseUrl;
+  if (key && provider.envKey === 'ANTHROPIC_API_KEY') { body.anthropicKey = key; body.anthropic = key; }
+  if (key && provider.envKey === 'OPENAI_API_KEY') { body.openaiKey = key; body.openai = key; }
+  return body;
+}
+// After a save: did this server actually keep the key? true / false / null
+// when there is no way to tell. An older server silently drops anything that
+// is not an Anthropic or OpenAI key, which is exactly the case worth naming.
+function lisaProviderConfirm(provider, status) {
+  const served = status && Array.isArray(status.providers) ? status.providers : null;
+  if (served && served.length) {
+    for (let i = 0; i < served.length; i++) {
+      if (served[i].envKey === provider.envKey) return !!served[i].configured;
+    }
+    return null;
+  }
+  if (provider.envKey === 'ANTHROPIC_API_KEY') return !!(status && status.anthropic);
+  if (provider.envKey === 'OPENAI_API_KEY') return !!(status && status.openai);
+  return false;
+}
+function lisaProviderUnsupportedNote(provider) {
+  return 'This Lisa did not keep the ' + provider.label + ' key — it only accepts Anthropic and ' +
+    'OpenAI keys. Update Lisa (npm i -g @oratis/lisa), or add ' + provider.envKey +
+    '=... to ~/.lisa/config.env and restart.';
+}
+// The Settings view lives in the console closure at the bottom of this file.
+window.lisaProviderList = lisaProviderList;
+window.lisaProviderSaveBody = lisaProviderSaveBody;
+window.lisaProviderConfirm = lisaProviderConfirm;
+window.lisaProviderUnsupportedNote = lisaProviderUnsupportedNote;
+
 // ── API key config gate: show overlay if no key is configured ─────
 const cfgOverlay = document.getElementById('cfgOverlay');
 const cfgForm = document.getElementById('cfgForm');
-const cfgAnthropic = document.getElementById('cfgAnthropic');
-const cfgOpenai = document.getElementById('cfgOpenai');
+const cfgProvider = document.getElementById('cfgProvider');
+const cfgKey = document.getElementById('cfgKey');
+const cfgKeyLabel = document.getElementById('cfgKeyLabel');
+const cfgModel = document.getElementById('cfgModel');
+const cfgBaseUrl = document.getElementById('cfgBaseUrl');
+const cfgBaseUrlField = document.getElementById('cfgBaseUrlField');
+const cfgConsole = document.getElementById('cfgConsole');
 const cfgSaveBtn = document.getElementById('cfgSave');
 const cfgError = document.getElementById('cfgError');
+
+// Populated by startupGate / openKeyGate from /api/config/status.
+let cfgProviders = lisaProviderList(null);
+let cfgStatus = null;
+function cfgSelected() {
+  for (let i = 0; i < cfgProviders.length; i++) {
+    if (cfgProviders[i].id === cfgProvider.value) return cfgProviders[i];
+  }
+  return cfgProviders[0];
+}
+function cfgSyncProvider() {
+  const p = cfgSelected();
+  if (!p) return;
+  cfgKeyLabel.textContent = p.envKey + (p.configured ? ' (configured — a new value replaces it)' : '');
+  cfgKey.placeholder = p.placeholder;
+  cfgModel.placeholder = p.model || 'provider default';
+  // Only the custom endpoint needs a base URL, and it needs a model too.
+  cfgBaseUrlField.style.display = p.custom ? '' : 'none';
+  if (cfgConsole) {
+    if (p.consoleUrl) {
+      cfgConsole.href = p.consoleUrl;
+      cfgConsole.textContent = 'Get a key for ' + p.label + ' ↗';
+      cfgConsole.style.display = '';
+    } else {
+      cfgConsole.textContent = '';
+      cfgConsole.style.display = 'none';
+    }
+  }
+}
+function cfgRenderProviders(status) {
+  cfgStatus = status || cfgStatus;
+  cfgProviders = lisaProviderList(cfgStatus);
+  const keep = cfgProvider.value;
+  cfgProvider.innerHTML = '';
+  cfgProviders.forEach(function (p) {
+    const o = document.createElement('option');
+    o.value = p.id;
+    o.textContent = p.label + (p.configured ? ' · configured' : '');
+    cfgProvider.appendChild(o);
+  });
+  // Preselect: whatever is already picked (so a repair keeps the provider
+  // that just failed), else the one this Lisa is actually configured with,
+  // else Anthropic.
+  let firstConfigured = '';
+  for (let i = 0; i < cfgProviders.length && !firstConfigured; i++) {
+    if (cfgProviders[i].configured) firstConfigured = cfgProviders[i].id;
+  }
+  const wanted = keep || firstConfigured || 'anthropic';
+  cfgProvider.value = wanted;
+  if (!cfgProvider.value) cfgProvider.value = cfgProviders[0] ? cfgProviders[0].id : '';
+  cfgSyncProvider();
+}
+cfgProvider.addEventListener('change', cfgSyncProvider);
 
 // UX-1: the gate used to be one-shot. Once a key was written to config.env
 // /api/config/status reported "configured" forever, so a REJECTED key left no
@@ -569,31 +735,38 @@ function openKeyGate(opts) {
     reason.textContent = (opts && opts.reason) ? opts.reason : '';
     reason.style.display = reason.textContent ? '' : 'none';
   }
-  // Never prefill the rejected key — retyping is the point.
-  cfgAnthropic.value = '';
-  cfgOpenai.value = '';
+  // Never prefill the rejected key — retyping is the point. The PROVIDER is
+  // preselected (opts.provider, else whatever is already chosen), so a repair
+  // starts on the provider that just failed rather than back at Anthropic.
+  cfgKey.value = '';
   cfgError.textContent = '';
   cfgSaveBtn.disabled = false;
+  if (opts && opts.provider) cfgProvider.value = opts.provider;
+  cfgRenderProviders(cfgStatus);
   birthOverlay.classList.remove('open');
   cfgOverlay.classList.add('open');
-  setTimeout(() => cfgAnthropic.focus(), 50);
+  setTimeout(() => cfgKey.focus(), 50);
 }
 
 cfgForm.addEventListener('submit', async (ev) => {
   ev.preventDefault();
   cfgError.textContent = '';
-  const anthropic = cfgAnthropic.value.trim();
-  const openai = cfgOpenai.value.trim();
-  if (!anthropic) {
-    cfgError.textContent = 'ANTHROPIC_API_KEY is required.';
-    return;
-  }
+  const provider = cfgSelected();
+  const key = cfgKey.value.trim();
+  // Anthropic and OpenAI are auto-detected server-side from the key alone;
+  // every other provider must pin LISA_MODEL or the run falls back to Claude.
+  const model = cfgModel.value.trim() ||
+    (provider && provider.needsModel && provider.model ? provider.model : '');
+  const baseUrl = provider && provider.custom ? cfgBaseUrl.value.trim() : '';
+  if (!provider) { cfgError.textContent = 'Pick a provider.'; return; }
+  if (!key) { cfgError.textContent = provider.envKey + ' is required.'; return; }
+  if (provider.custom && !baseUrl) { cfgError.textContent = 'A custom endpoint needs its base URL.'; return; }
   cfgSaveBtn.disabled = true;
   try {
     const res = await fetch('/api/config/save', {
       method: 'POST',
       headers: {'content-type': 'application/json'},
-      body: JSON.stringify({ anthropicKey: anthropic, openaiKey: openai || undefined }),
+      body: JSON.stringify(lisaProviderSaveBody(provider, key, model, baseUrl)),
     });
     if (!res.ok) {
       const txt = await res.text().catch(() => '');
@@ -601,8 +774,17 @@ cfgForm.addEventListener('submit', async (ev) => {
       cfgSaveBtn.disabled = false;
       return;
     }
-    cfgAnthropic.value = '';
-    cfgOpenai.value = '';
+    // Confirm the server actually kept it. An older backend silently drops
+    // anything that is not an Anthropic/OpenAI key, which would otherwise send
+    // the user into a ritual that cannot possibly succeed.
+    const after = await fetch('/api/config/status').then(r => r.json()).catch(() => null);
+    if (after) { cfgStatus = after; cfgRenderProviders(after); }
+    if (after && lisaProviderConfirm(provider, after) === false) {
+      cfgError.textContent = lisaProviderUnsupportedNote(provider);
+      cfgSaveBtn.disabled = false;
+      return;
+    }
+    cfgKey.value = '';
     cfgOverlay.classList.remove('open');
     // A repair restarts the ritual in place — no location.reload(), so the
     // page keeps its SSE connection, its log and its scroll position.
@@ -863,6 +1045,8 @@ async function startupGate() {
     return;
   }
   lisaClearBanner();
+  cfgStatus = cfg;
+  cfgRenderProviders(cfg);
   if (!cfg.configured) {
     openKeyGate();
     return;
@@ -4154,13 +4338,23 @@ if ('serviceWorker' in navigator) {
       return '<div class="set-switch' + (on ? ' on' : '') + '" id="' + id + '" role="switch" aria-checked="' + (on ? 'true' : 'false') + '" tabindex="0"><span class="knob"></span></div>';
     };
     var html = '';
-    html += '<div class="view-sec-label">API Keys</div><div class="set-card">';
-    html += '<div class="set-row"><div class="set-main"><div class="set-name">Anthropic</div><div class="set-sub">Required · powers Lisa</div></div>' + chip(!!status.anthropic) + '</div>';
-    html += '<div class="set-row"><div class="set-main"><div class="set-name">OpenAI</div><div class="set-sub">Optional · for gpt-* models</div></div>' + chip(!!status.openai) + '</div>';
+    // Provider list + one picker, driven by the same table the key gate uses
+    // (UX-1 wave 2). Was an Anthropic-and-OpenAI-only pair of inputs, which
+    // made every other provider a config.env edit.
+    var provs = window.lisaProviderList(status);
+    html += '<div class="view-sec-label">Model provider</div><div class="set-card">';
+    for (var pi = 0; pi < provs.length; pi++) {
+      var pv = provs[pi];
+      if (!pv.configured && pv.custom) continue;
+      html += '<div class="set-row"><div class="set-main"><div class="set-name">' + esc(pv.label) +
+        '</div><div class="set-sub">' + esc(pv.envKey) + '</div></div>' + chip(pv.configured) + '</div>';
+    }
     html += '<div class="set-form">' +
-      '<input class="set-input" id="setAnthropicKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-… (leave blank to keep)">' +
-      '<input class="set-input" id="setOpenaiKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-… (optional)">' +
-      '<div style="display:flex;gap:10px;align-items:center"><button class="view-act" id="setKeySave">Save keys</button><span class="set-err" id="setKeyMsg"></span></div>' +
+      '<select class="set-input" id="setProvider"></select>' +
+      '<input class="set-input" id="setKey" type="password" autocomplete="off" spellcheck="false" placeholder="key… (leave blank to keep)">' +
+      '<input class="set-input" id="setBaseUrl" type="text" autocomplete="off" spellcheck="false" placeholder="https://host/v1" style="display:none">' +
+      '<input class="set-input" id="setModel" type="text" autocomplete="off" spellcheck="false" placeholder="model (optional)">' +
+      '<div style="display:flex;gap:10px;align-items:center"><button class="view-act" id="setKeySave">Save</button><span class="set-err" id="setKeyMsg"></span></div>' +
       '<div class="set-note">Saved to ~/.lisa/config.env (0600), on this machine. Accepted from localhost only.</div></div>';
     html += '</div>';
     html += '<div class="view-sec-label">Automation</div><div class="set-card">';
@@ -4186,20 +4380,62 @@ if ('serviceWorker' in navigator) {
       ct.addEventListener('click', flip);
       ct.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip(); } });
     }
+    var sel = document.getElementById('setProvider');
+    var keyEl = document.getElementById('setKey');
+    var modelEl = document.getElementById('setModel');
+    var baseEl = document.getElementById('setBaseUrl');
+    var pick = function () {
+      for (var i = 0; i < provs.length; i++) if (provs[i].id === sel.value) return provs[i];
+      return provs[0];
+    };
+    if (sel) {
+      var preselect = '';
+      for (var q = 0; q < provs.length; q++) {
+        var o = document.createElement('option');
+        o.value = provs[q].id;
+        o.textContent = provs[q].label + (provs[q].configured ? ' · configured' : '');
+        sel.appendChild(o);
+        if (provs[q].configured && !preselect) preselect = provs[q].id;
+      }
+      sel.value = preselect || (provs[0] ? provs[0].id : '');
+      var syncSel = function () {
+        var pv = pick();
+        if (!pv) return;
+        keyEl.placeholder = pv.envKey + ' — ' + pv.placeholder + (pv.configured ? ' (leave blank to keep)' : '');
+        modelEl.placeholder = pv.model ? ('model (optional · ' + pv.model + ')') : 'model (optional)';
+        baseEl.style.display = pv.custom ? '' : 'none';
+      };
+      sel.addEventListener('change', syncSel);
+      syncSel();
+    }
     var saveBtn = document.getElementById('setKeySave');
     if (saveBtn) saveBtn.addEventListener('click', function () {
-      var aEl = document.getElementById('setAnthropicKey');
-      var oEl = document.getElementById('setOpenaiKey');
       var msg = document.getElementById('setKeyMsg');
-      var body = {};
-      if (aEl && aEl.value.trim()) body.anthropicKey = aEl.value.trim();
-      if (oEl && oEl.value.trim()) body.openaiKey = oEl.value.trim();
-      if (!body.anthropicKey && !body.openaiKey) { if (msg) { msg.style.color = ''; msg.textContent = 'Enter a key to update.'; } return; }
+      var pv = pick();
+      var key = keyEl ? keyEl.value.trim() : '';
+      var model = modelEl ? modelEl.value.trim() : '';
+      // Same rule as the gate: pin a model only where the server cannot
+      // infer one from the key.
+      if (!model && key && pv.needsModel && pv.model) model = pv.model;
+      var base = (pv && pv.custom && baseEl) ? baseEl.value.trim() : '';
+      if (!pv) return;
+      if (!key && !model && !base) { if (msg) { msg.style.color = ''; msg.textContent = 'Enter a key or a model to update.'; } return; }
+      if (pv.custom && key && !base) { if (msg) { msg.style.color = ''; msg.textContent = 'A custom endpoint needs its base URL.'; } return; }
       if (msg) { msg.style.color = ''; msg.textContent = 'Saving…'; }
       saveBtn.disabled = true;
-      fetch('/api/config/save', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+      fetch('/api/config/save', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(window.lisaProviderSaveBody(pv, key, model, base)) })
         .then(function (r) { if (!r.ok) return r.text().then(function (t) { throw new Error(t || ('failed (' + r.status + ')')); }); return r.json(); })
-        .then(function () { if (aEl) aEl.value = ''; if (oEl) oEl.value = ''; if (msg) { msg.style.color = 'var(--proactive)'; msg.textContent = 'Saved.'; } loadSettings(); })
+        .then(function () { return getJSON('/api/config/status').catch(function () { return null; }); })
+        .then(function (after) {
+          // Same guard as the gate: say so when this backend dropped the key
+          // instead of reporting a save that did not happen.
+          if (key && after && window.lisaProviderConfirm(pv, after) === false) {
+            throw new Error(window.lisaProviderUnsupportedNote(pv));
+          }
+          if (keyEl) keyEl.value = '';
+          if (msg) { msg.style.color = 'var(--proactive)'; msg.textContent = 'Saved.'; }
+          loadSettings();
+        })
         .catch(function (err) { if (msg) { msg.style.color = ''; msg.textContent = (err && err.message) ? err.message : 'save failed'; } })
         .then(function () { saveBtn.disabled = false; });
     });

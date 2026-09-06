@@ -1852,6 +1852,9 @@ export const MAIN_CSS = `  :root {
     padding: 8px 10px;
   }
   .set-input:focus { outline: none; border-color: var(--accent-glow); box-shadow: 0 0 0 3px var(--accent-soft); }
+  /* The provider picker is a <select> in the same field stack — give it the
+     platform arrow back and a comfortable hit height. */
+  select.set-input { min-height: 34px; cursor: pointer; }
   .set-note { font-size: 11.5px; color: var(--fg-3); line-height: 1.5; }
   .set-note a { color: var(--accent); }
   .set-err { font-size: 11.5px; color: var(--err-color); min-height: 14px; }
@@ -3073,6 +3076,7 @@ export const MAIN_CSS = `  :root {
     border-color: var(--accent);
     box-shadow: 0 0 0 3px var(--accent-soft);
   }
+  select.cfg-input { font-family: inherit; min-height: 40px; cursor: pointer; }
   .cfg-help {
     color: var(--fg-3);
     font-size: 11.5px;
