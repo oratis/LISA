@@ -225,10 +225,13 @@ import { MAIN_HTML } from "./lisa-html.js";
  * inspector), the raw id moves into tooltips, and an empty #log renders the
  * .chat-empty card (identity line, three desire-aware starters, three
  * ability lines) which is retired by the first real node in the log.
+ * Then: UX-5 right-rail discoverability — a .fbtn-badge count on #fnPanel
+ * while the rail is collapsed, plus a one-shot auto-expand gated on the
+ * persisted lisaRightbarTouched flag.
  */
-const EXPECTED_LENGTH = 323858;
+const EXPECTED_LENGTH = 326996;
 const EXPECTED_SHA256 =
-  "a2f7a5c5e5a2dcf41ab35aafb47ab659f491df8df38297351298b35fb2fa0822";
+  "f718af1c02649cf11c34ef2b6dcc8fff5f3eaf55ede823d4d1bfffcf401ef111";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);

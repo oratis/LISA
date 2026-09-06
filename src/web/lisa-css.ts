@@ -2459,6 +2459,24 @@ export const MAIN_CSS = `  :root {
   }
   .fbtn:hover { background: var(--bg-card, rgba(255,255,255,.06)); color: var(--fg); }
   .fbtn svg { width: 19px; height: 19px; display: block; }
+  /* Attention badge on the collapsed right-rail toggle (UX-5). Uses the
+     "needs you" warm tone, not the accent, so it reads as "something is
+     waiting on you" rather than "this control is active". */
+  .fbtn-badge {
+    position: absolute;
+    top: -2px; right: -2px;
+    min-width: 15px; height: 15px;
+    padding: 0 3px;
+    border-radius: 999px;
+    background: var(--warm);
+    color: #1a1206;
+    font-size: 11.5px;
+    font-weight: 700;
+    line-height: 15px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+  }
   .fbar-spacer { flex: 1; }
   /* Theme toggle: the moon shows in Nebula (dark), the sun in Calm. */
   body[data-theme="calm"] #fnThemeMoon { display: none; }
