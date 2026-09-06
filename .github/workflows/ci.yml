@@ -75,7 +75,7 @@ jobs:
 
   # The regression net, on every runtime we claim to support.
   #
-  # 20 is deliberately absent: undici 8.9 (a production dependency) declares
+  # 20 is deliberately absent: undici 8.x (a production dependency) declares
   # `engines: node >=22.19.0` and its webidl layer calls worker_threads'
   # markAsUncloneable, which does not exist before Node 22.10 — the suite dies
   # with 26 failures on 20.20. `engines` in package.json now says the same
