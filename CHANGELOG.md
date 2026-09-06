@@ -3,48 +3,153 @@
 All notable changes to this project. Format follows [Keep a Changelog](https://keepachangelog.com/),
 versioning follows [SemVer](https://semver.org/).
 
-## [Unreleased]
+Entries from 0.13.0 onward are generated from `docs/RELEASE_v*.md` by
+`npm run changelog` — edit the release note, not this file. See
+[docs/RELEASING.md](docs/RELEASING.md).
 
-### Added
+## [0.24.0] — 2026-08-14
 
-- **Knowledge base v2.0 — a knowledge system that grows on its own**
-  ([docs/PLAN_KNOWLEDGE_BASE_v2.0.md](docs/PLAN_KNOWLEDGE_BASE_v2.0.md),
-  PRs #278–#287). Three capabilities on the v1.0 three-layer store:
-  - **Link ingest** (`kb_ingest`, Knowledge-view paste bar, chat 存入知识库
-    chip, `lisa kb add <url>`): zero-dependency readability + HTML→Markdown
-    with provenance frontmatter, canonical-URL dedupe (`force` +
-    `supersedes:`), SSRF-guarded fetching, and site adapters for WeChat,
-    Bilibili, and YouTube (subtitle layering built-in API → yt-dlp →
-    metadata-only; a missing transcript degrades, never fails).
-  - **Daily brief** (`~/.lisa/kb/feeds.json`): incremental RSS/Atom sweep →
-    injection-fenced classification under a daily token budget → ranking
-    personalized by watchlist weight + wiki/memory term overlap → top-3
-    full-text ingest → written both as `kb/feeds/<date>.json` and as a
-    searchable `sources/brief-<date>` entry, delivered to chat + push
-    (`lisa kb brief` prints it). No feeds file = fully inert.
-  - **Link graph**: `[[slug]]` parsed into backlinks/hubs/orphans/broken,
-    `index.md` as a ranked map-of-content, CJK-safe search + slugs, memory
-    holding `[[kb:slug]]` pointers with titles inlined into the prompt, and
-    conservative title auto-linking on `kb_write`.
-  - **Hardening**: autonomous ingestion restricted to the feeds watchlist,
-    `kb_read` fences ingested web content as data, SCHEMA.md gained the three
-    new workflows, and a weekly-review heartbeat example ships in the README.
+**The harness-alignment release.** Three changes that are less about new surface than about removing things that were quietly wedged: tools no longer hardcode *where* they execute, session logs no longer omit the one input that actually shapes the model's behaviour, and Lisa finally reads the instruction file the rest of the ecosystem already agreed on. Design + gap analysis in [docs/PLAN_HARNESS_ALIGNMENT_v1.0.md](docs/PLAN_HARNESS_ALIGNMENT_v1.0.md); shipped as PRs #356–#360.
 
-### Fixed
+- 🔌 A capability seam for fs / shell (#358)
+- 📜 The system prompt is now in the session log (#357)
+- 🤝 AGENTS.md / CLAUDE.md, and project-level skills (#360)
+- 📱 Also
 
-- **Lisa can see her own avatar.** The portrait was a write-only channel:
-  `set_mood` pushed a slug to the mood bus and the GUI drew it, but nothing
-  ever carried it back into her context — so "why do you look happy?" could
-  only be answered by inspecting her emotion vector (a different system) and
-  guessing. The mood bus now records *when* a mood was set and *what kind of
-  turn* set it (`withMoodOrigin`, wired through `runAgent` so idle, heartbeat,
-  channel and background-agent turns identify themselves), the system prompt
-  states the current slug every turn — with the prompt fingerprint including
-  it, so a portrait another surface flips mid-session reaches her on her next
-  turn — and `soul_read(what="emotions")` reports the avatar alongside the
-  vector it is not. The slug is also mirrored to `<home>/current-mood.json`,
-  so a restart no longer silently snaps the portrait back to `neutral`
-  (`lisa monitor` reads that mirror instead of a file nothing ever wrote).
+[Release notes](docs/RELEASE_v0.24.0.md) · [GitHub release](https://github.com/oratis/LISA/releases/tag/v0.24.0)
+
+## [0.23.0] — 2026-08-08
+
+**The session-shell release.** The web workbench is rebuilt around parallel sessions: Lisa's own chats are now sessions you can run side by side, observed coding agents (Claude Code / Codex / Aider) sit in the same tree as equals, and the whole UI moved to a three-column shell with a switchable dark/light theme. Design + debates in [docs/PLAN_UI_SESSION_SHELL_v1.0.md](docs/PLAN_UI_SESSION_SHELL_v1.0.md) and [v1.1](docs/PLAN_UI_SESSION_SHELL_v1.1.md); shipped as the stacked PR chain #343–#351 plus hardening rounds driven by real end-to-end testing.
+
+- 🗂 Sessions (the headline)
+- 🌳 Agents in the same tree
+- 🎨 Shell & themes
+- 🔧 Correctness & contracts
+- ⚠️ Behavior changes
+- Verification
+
+[Release notes](docs/RELEASE_v0.23.0.md) · [GitHub release](https://github.com/oratis/LISA/releases/tag/v0.23.0)
+
+## [0.22.0] — 2026-07-26
+
+The **bounded autonomy** release — Lisa's desires can now evolve with conversation, time, and carefully limited web research, while the hosted runtime gains stricter capability, billing, request, concurrency, and memory boundaries.
+
+- ✨ Desire dynamics v2
+- 🔒 Cloud capability and HTTP boundaries
+- 💳 Billing and inference integrity
+- ⚙️ Reliable multi-tenant autonomy
+- 🧰 Maintenance
+- For existing local users
+
+[Release notes](docs/RELEASE_v0.22.0.md) · [GitHub release](https://github.com/oratis/LISA/releases/tag/v0.22.0)
+
+## [0.21.0] — 2026-07-25
+
+The **"open the doors"** release — the sign-in surface that makes v0.20's Lisa Cloud usable by anyone (a mailed code or a Google button, no key), a **Knowledge Base v2.0** that turns the web into Lisa's memory, and the production hardening that lets the hosted service take real traffic. The local, bring-your-own-key experience is unchanged; everything cloud/KB is opt-in.
+
+- ✨ Sign in & sign up (A-series)
+- ✨ Signup abuse gates (S3)
+- ✨ Knowledge Base v2.0 (K-series)
+- ✨ Per-uid autonomy (S4)
+- ✨ Production hardening (S6)
+- 🔒 Security & fixes
+- For existing local users
+
+[Release notes](docs/RELEASE_v0.21.0.md) · [GitHub release](https://github.com/oratis/LISA/releases/tag/v0.21.0)
+
+## [0.20.0] — 2026-07-23
+
+The **"Lisa Cloud"** release — accounts, billing, cloud inference, and mobile in-app purchases. Everything through v0.19 ran on the user's own keys, on the user's own machine; v0.20 adds an opt-in hosted path so someone can sign in, get a free window, top up, and run Lisa without bringing a key — while the local, bring-your-own-key experience stays exactly as it was.
+
+- ✨ Accounts & auth (B0–B1, B8)
+- ✨ Billing (B3–B6, B8c)
+- ✨ Cloud & multi-tenancy (B2, B9)
+- 🛡️ Operations + review hardening
+- 📱 iOS 1.1 (accounts / IAP)
+- 📝 Notes
+
+[Release notes](docs/RELEASE_v0.20.0.md) · [GitHub release](https://github.com/oratis/LISA/releases/tag/v0.20.0)
+
+## [0.19.0] — 2026-07-15
+
+The **"put a record on"** release. The headline is a **gramophone in the Room** — click it and her space fills with music, from a small in-client player with a real playlist. Plus a nav-launcher tidy-up.
+
+- ✨ A gramophone in the Room (#256)
+- 🔧 Also
+- Notes
+
+[Release notes](docs/RELEASE_v0.19.0.md) · [GitHub release](https://github.com/oratis/LISA/releases/tag/v0.19.0)
+
+## [0.18.1] — 2026-07-15
+
+A hardening patch on the **desire-evolution** arc that v0.18.0 shipped — two review follow-ups so a *closed* desire truly stays closed, and so intra-session focus can't latch onto a stale conversation after a restart.
+
+- 🔧 Fixes
+- 📝 Notes
+
+[Release notes](docs/RELEASE_v0.18.1.md) · [GitHub release](https://github.com/oratis/LISA/releases/tag/v0.18.1)
+
+## [0.18.0] — 2026-07-15
+
+The **"her wish finally moves"** release. v0.17 gave web conversations the power to *trigger* reflection (PR1 of the desire-evolution plan); v0.18 completes the arc — Lisa's desires can now **evolve, close, and follow the conversation** instead of only ever piling up. Plus a reworked **九宫格 nav** with real Mail and Settings homes.
+
+- ✨ Desire evolution — the arc completes (PRs 2–4)
+- ✨ Web — 九宫格 nav with Mail + Settings (#245)
+- 🛡️ Review hardening
+- 📝 Notes
+
+[Release notes](docs/RELEASE_v0.18.0.md) · [GitHub release](https://github.com/oratis/LISA/releases/tag/v0.18.0)
+
+## [0.17.0] — 2026-07-15
+
+The **"legible and connected"** release. v0.16 gave Lisa a life inside her Room; v0.17 makes the parts you actually read and touch every day behave: her replies render as real **Markdown** instead of raw `###`/`**`/```` ``` ````, connecting a **mailbox** is a guided, verified flow instead of a bare form, and — the big one — **web conversations finally evolve her desires** (they never did before). Plus the `lisa mail` CLI works again, and she stands centered on the rug.
+
+- ✨ What's new since v0.16.0
+- 🔧 Fixes
+- 🛡️ Review hardening
+- 📝 Notes
+
+[Release notes](docs/RELEASE_v0.17.0.md) · [GitHub release](https://github.com/oratis/LISA/releases/tag/v0.17.0)
+
+## [0.16.0] — 2026-07-14
+
+The **"she has a life now"** release. v0.15 gave Lisa a home (the Room); v0.16 gives her a **life inside it** — she looks up when you arrive, drifts through her own at-home activities, changes into pajamas at night, and leaves notes on the desk. Every room widget now closes its loop **inside the app** (no more stray browser window), and the room is **re-decoratable**. Alongside it: a Haiku 4.5 provider fix and a website ops runbook.
+
+- ✨ What's new since v0.15.0
+- 🔧 Notes
+
+[Release notes](docs/RELEASE_v0.16.0.md) · [GitHub release](https://github.com/oratis/LISA/releases/tag/v0.16.0)
+
+## [0.15.0] — 2026-07-12
+
+The **"she has a home now"** release. The headline is the **Lisa Room** — an ambient pixel-art living space where the full-body Lisa lives, every layer a read-only projection of her real state. Alongside it: ElevenLabs-first voice transcription and a hardened Anthropic relay for Cloud Run.
+
+- ✨ What's new since v0.14.0
+- Install / update
+
+[Release notes](docs/RELEASE_v0.15.0.md) · [GitHub release](https://github.com/oratis/LISA/releases/tag/v0.15.0)
+
+## [0.14.0] — 2026-07-02
+
+The **App-Store-readiness** release. Since v0.13.0, the iOS companion (Lisa Pocket) went from "connects and chats" to a polished, submission-ready app: it now pairs reliably off Wi-Fi, never leaves a chat in a dead end, and has a redesigned home / chat / agents surface. Alongside it: a hardened LISA Cloud M0, and a small, model-appropriate provider tune-up.
+
+- ✨ What's new since v0.13.0
+- Install / update
+
+[Release notes](docs/RELEASE_v0.14.0.md) · [GitHub release](https://github.com/oratis/LISA/releases/tag/v0.14.0)
+
+## [0.13.0] — 2026-06-23
+
+A small, mostly-infrastructure release on top of v0.12.0. The headline features — the **multi-agent control plane** (see every agent; command managed agents; PTY-spawn and **adopt** real `claude`/`codex` sessions) and the **iOS companion** — already shipped across v0.11.x–v0.12.0. This release packages the iOS **TestFlight** delivery pipeline and cuts a clean, current build to install.
+
+- ✨ What's new since v0.12.0
+- 📦 Already in v0.11–v0.12 (recap, for anyone upgrading from an older build)
+- Install
+
+[Release notes](docs/RELEASE_v0.13.0.md) · [GitHub release](https://github.com/oratis/LISA/releases/tag/v0.13.0)
+
+<!-- gen-changelog:handwritten — everything below is hand-written and preserved verbatim; do not regenerate -->
 
 ## [0.12.0] — 2026-06-19
 
@@ -404,7 +509,6 @@ new sensing capability is off by default.
   touch): recent commits in a window, branch, uncommitted count + diff stat,
   ahead/behind. Answers "what did <agent> do today" with git truth (the
   orchestrator only sees structural activity). Read-only.
-
 
 ### Added — list_agents tool
 
