@@ -232,10 +232,14 @@ import { MAIN_HTML } from "./lisa-html.js";
  * in reconfigure mode), #birthActions carrying Cancel during the stream and
  * Change key / Try again after a failure, and human copy for every birth
  * error class instead of the provider's raw JSON.
+ * Then: the provider picker — the gate's two hardcoded key fields become
+ * #cfgProvider / #cfgKey / #cfgModel / #cfgBaseUrl driven by
+ * /api/config/status.providers with a built-in fallback table, and the
+ * Settings view uses the same list.
  */
-const EXPECTED_LENGTH = 335144;
+const EXPECTED_LENGTH = 347706;
 const EXPECTED_SHA256 =
-  "08768f89a8acb8e7c4587b5d9be1af7998bcf2123e61fec40e7988a960ba26da";
+  "13840bd12ff3ec50505c0c07672c3e675fb6f20273a9b9ffaeec3ef4440c93ee";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);

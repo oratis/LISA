@@ -18,7 +18,8 @@
  * unchanged:
  *   log, input, form, sendBtn, sessionId, fileInput, attachPreview,
  *   mascot, mascotTag, modalBg, modalTitle, modalBody, modalClose,
- *   cfgOverlay, cfgForm, cfgTitle, cfgReason, cfgAnthropic, cfgOpenai,
+ *   cfgOverlay, cfgForm, cfgTitle, cfgReason, cfgConsole, cfgProvider,
+ *   cfgKeyLabel, cfgKey, cfgBaseUrlField, cfgBaseUrl, cfgModelField, cfgModel,
  *   cfgSave, cfgError,
  *   birthOverlay, birthSteps, birthFinal, birthEnter, birthError, birthActions,
  *   attachBtn
@@ -312,19 +313,31 @@ catch (e) { document.body.classList.add('rb-collapsed'); }
          it explains why the user is looking at this form a second time. -->
     <div class="cfg-reason" id="cfgReason" style="display:none"></div>
     <div class="cfg-sub">
-      Lisa needs an Anthropic API key to wake up.<br>
-      <a href="https://console.anthropic.com/" target="_blank" rel="noopener">Get one at console.anthropic.com</a>
+      Lisa needs one model API key to wake up.<br>
+      <a id="cfgConsole" href="https://console.anthropic.com/" target="_blank" rel="noopener">Get one at console.anthropic.com</a>
     </div>
     <form id="cfgForm">
+      <!-- Provider picker (UX-1 wave 2). Options are built at runtime from
+           /api/config/status.providers, with a built-in table as the fallback
+           for servers that don't report one yet. -->
       <label class="cfg-field">
-        <span class="cfg-label">ANTHROPIC_API_KEY</span>
-        <input class="cfg-input" id="cfgAnthropic" type="password" autocomplete="off"
-               spellcheck="false" placeholder="sk-ant-..." required>
+        <span class="cfg-label">PROVIDER</span>
+        <select class="cfg-input" id="cfgProvider"></select>
       </label>
       <label class="cfg-field">
-        <span class="cfg-label">OPENAI_API_KEY <span class="opt">(optional · for gpt-* models)</span></span>
-        <input class="cfg-input" id="cfgOpenai" type="password" autocomplete="off"
-               spellcheck="false" placeholder="sk-...">
+        <span class="cfg-label" id="cfgKeyLabel">ANTHROPIC_API_KEY</span>
+        <input class="cfg-input" id="cfgKey" type="password" autocomplete="off"
+               spellcheck="false" placeholder="sk-ant-..." required>
+      </label>
+      <label class="cfg-field" id="cfgBaseUrlField" style="display:none">
+        <span class="cfg-label">BASE URL <span class="opt">(OpenAI-compatible endpoint)</span></span>
+        <input class="cfg-input" id="cfgBaseUrl" type="text" autocomplete="off"
+               spellcheck="false" placeholder="https://host/v1">
+      </label>
+      <label class="cfg-field" id="cfgModelField">
+        <span class="cfg-label">MODEL <span class="opt">(optional · provider default)</span></span>
+        <input class="cfg-input" id="cfgModel" type="text" autocomplete="off"
+               spellcheck="false" placeholder="claude-sonnet-4-6">
       </label>
       <div class="cfg-help">
         Saved to <code>~/.lisa/config.env</code> with mode 0600. Stays on this machine.
