@@ -106,7 +106,7 @@ export function buildToolRegistry(opts: ToolRegistryOptions = {}): ToolDefinitio
     socialComposeTool as ToolDefinition,
     signalAgentTool as ToolDefinition,
     agentRecapTool as ToolDefinition,
-    // Personal knowledge base (docs/PLAN_KNOWLEDGE_BASE_v1.0.md):
+    // Personal knowledge base (docs/archive/plans/PLAN_KNOWLEDGE_BASE_v1.0.md):
     // kb_search / kb_read / kb_list (read) + kb_add / kb_write (jailed writes).
     ...kbTools,
   ];

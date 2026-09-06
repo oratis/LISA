@@ -4,7 +4,7 @@
 > ① 每天自动抓取并总结成信息日报；② 粘贴任意链接（公众号 / 网站 / B站 / YouTube）
 > 一键转成带出处的 Markdown 知识；③ 所有知识用 index 织成链接图，memory 通过 link 调取。
 >
-> 参考：[docs/PLAN_KNOWLEDGE_BASE_v1.0.md](PLAN_KNOWLEDGE_BASE_v1.0.md)（已 shipped #235–#242）、
+> 参考：[docs/PLAN_KNOWLEDGE_BASE_v1.0.md](archive/plans/PLAN_KNOWLEDGE_BASE_v1.0.md)（已 shipped #235–#242）、
 > [src/kb/](../src/kb/)、[src/mail/](../src/mail/)（日报调度的现成范式）、[src/prompt.ts](../src/prompt.ts)。
 >
 > **Status:** 提案（待评审） · **日期:** 2026-07-23 · **Author:** Claude (for Oratis)

@@ -8,7 +8,7 @@
 Owner：Lisa + oratis
 
 创建：2026-07-26
-前置设计：[PLAN_DESIRE_EVOLUTION_v1.0.md](./PLAN_DESIRE_EVOLUTION_v1.0.md)
+前置设计：[PLAN_DESIRE_EVOLUTION_v1.0.md](../../PLAN_DESIRE_EVOLUTION_v1.0.md)
 
 ---
 

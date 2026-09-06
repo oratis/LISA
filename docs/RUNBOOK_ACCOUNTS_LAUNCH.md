@@ -1,7 +1,7 @@
 # RUNBOOK — 账号/计费上线的人工操作 (operator actions)
 
 **配套**: [PLAN_ACCOUNTS_BILLING_v1.0.md](PLAN_ACCOUNTS_BILLING_v1.0.md) §10（PR #259–#267）
-与 [PLAN_AUTH_OTP_GOOGLE_v1.0.md](PLAN_AUTH_OTP_GOOGLE_v1.0.md) §6（PR #289–#293，
+与 [PLAN_AUTH_OTP_GOOGLE_v1.0.md](archive/plans/PLAN_AUTH_OTP_GOOGLE_v1.0.md) §6（PR #289–#293，
 验证码登录 + Google 登录 → Phase 8–10）。
 本文是代码做不了的那部分：Apple 后台、ASC、GCP、DNS、部署。按阶段顺序执行；
 每步标注了前置依赖和大致耗时。
@@ -205,7 +205,7 @@ app now verifies the connection at sign-in time. Please review 1.1.
 
 ## Phase 8 — 验证码登录上线（Resend 是硬依赖）
 
-> 配套 [PLAN_AUTH_OTP_GOOGLE_v1.0.md](PLAN_AUTH_OTP_GOOGLE_v1.0.md) A1/A2。
+> 配套 [PLAN_AUTH_OTP_GOOGLE_v1.0.md](archive/plans/PLAN_AUTH_OTP_GOOGLE_v1.0.md) A1/A2。
 > **没有可用的发信通道 = 没人收得到验证码 = 登录不了**（缺 key 时验证码只会
 > 打进服务端日志）。上线前务必确认这一条。
 

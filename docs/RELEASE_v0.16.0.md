@@ -15,7 +15,7 @@ breaking changes.
 ### Lisa Room v2 — a living space, not just a wallpaper (#225)
 
 Design + deep research on BSide (miHoYo's *Olivia Lin*) + a pro/con debate:
-[`docs/PLAN_ROOM_v2.0.md`](PLAN_ROOM_v2.0.md). The through-line: BSide buys its
+[`docs/PLAN_ROOM_v2.0.md`](archive/plans/PLAN_ROOM_v2.0.md). The through-line: BSide buys its
 "aliveness" with photoreal rendering but leaves the *simulation* axis empty
 (3 idle scenes, no clock, no weather). Lisa can't win on pixels-vs-photoreal, so
 v2 doubles down on the axis BSide left open — a life driven by her **real self**.

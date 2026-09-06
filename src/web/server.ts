@@ -3412,7 +3412,7 @@ self.addEventListener('fetch', (event) => {
       return;
     }
 
-    // ── Personal knowledge base (docs/PLAN_KNOWLEDGE_BASE_v1.0.md) ──────
+    // ── Personal knowledge base (docs/archive/plans/PLAN_KNOWLEDGE_BASE_v1.0.md) ──────
     if (req.method === "GET" && url.startsWith("/api/kb/search")) {
       const q = new URL(url, "http://localhost").searchParams.get("q") ?? "";
       const { searchKb } = await import("../kb/search.js");

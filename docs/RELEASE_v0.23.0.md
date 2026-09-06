@@ -4,8 +4,8 @@
 sessions: Lisa's own chats are now sessions you can run side by side, observed
 coding agents (Claude Code / Codex / Aider) sit in the same tree as equals, and
 the whole UI moved to a three-column shell with a switchable dark/light theme.
-Design + debates in [docs/PLAN_UI_SESSION_SHELL_v1.0.md](PLAN_UI_SESSION_SHELL_v1.0.md)
-and [v1.1](PLAN_UI_SESSION_SHELL_v1.1.md); shipped as the stacked PR chain
+Design + debates in [docs/PLAN_UI_SESSION_SHELL_v1.0.md](archive/plans/PLAN_UI_SESSION_SHELL_v1.0.md)
+and [v1.1](archive/plans/PLAN_UI_SESSION_SHELL_v1.1.md); shipped as the stacked PR chain
 #343–#351 plus hardening rounds driven by real end-to-end testing.
 
 ## 🗂 Sessions (the headline)

@@ -201,7 +201,7 @@ The current session shell — three columns, Nebula and Calm themes — is pictu
 
 - **Terminal REPL** — `lisa` (interactive) or `lisa "prompt"` (one-shot)
 - **Web GUI** — `lisa serve --web` → http://localhost:5757 — a three-column **session shell** (session tree · chat · inspector rail, Nebula / Calm themes) with live mood updates, her replies rendered as styled **Markdown** (escape-first, XSS-safe). A locked 3×3 **九宫格 nav grid** switches views — Chat · Dashboard · Control · Rêve · Room · Sense · Memory · Knowledge · Settings — with Mail and the agent monitor as sidebar cards. Binds to **127.0.0.1 only** by default; to reach it from your phone, set `LISA_WEB_TOKEN` and pass `--host 0.0.0.0`, then open `http://<host>:5757/?token=<value>` once per device.
-- **Lisa Room** — a ⌂ tab in the GUI (also `GET /room`): an ambient pixel-art living space she actually *inhabits* — a read-only projection of her real state. She looks up and meets your eyes when you arrive, drifts through her own at-home activities when idle (reading, tea, headphones, gazing out the window — time-of-day weighted), changes into pajamas at night, piles her ★ *while-you-were-away* notes on the desk, and stands sitting at a glowing laptop while `working-*`. A ❖ switcher **换景** re-decorates between room themes ([PLAN_ROOM_v2.0.md](PLAN_ROOM_v2.0.md)).
+- **Lisa Room** — a ⌂ tab in the GUI (also `GET /room`): an ambient pixel-art living space she actually *inhabits* — a read-only projection of her real state. She looks up and meets your eyes when you arrive, drifts through her own at-home activities when idle (reading, tea, headphones, gazing out the window — time-of-day weighted), changes into pajamas at night, piles her ★ *while-you-were-away* notes on the desk, and stands sitting at a glowing laptop while `working-*`. A ❖ switcher **换景** re-decorates between room themes ([PLAN_ROOM_v2.0.md](archive/plans/PLAN_ROOM_v2.0.md)).
 - **Island widget** — `lisa serve --web` → http://localhost:5757/island — a small pill with her current mood + status, agent monitor, and advisor cards; also built natively into Lisa.app with notch-aware positioning ([MAC_ISLAND_PLAN.md](MAC_ISLAND_PLAN.md)).
 - **Knowledge base** — a Knowledge tab (also her `kb_*` tools): a built-in personal wiki she captures into and retrieves from mid-conversation, see [below](#knowledge-base--a-wiki-she-tends-herself).
 - **Mail** — a sidebar digest card whose header opens the full Mail view (also `lisa mail`): connect a read-only mailbox and she surfaces a classified digest, see [below](#mail--a-mailbox-she-watches).
@@ -367,7 +367,7 @@ Her soul is hers, not yours, by architectural design:
 
 ## Knowledge base — a wiki she tends herself
 
-LISA has a built-in **personal knowledge base** modeled on [Andrej Karpathy's 3-layer LLM wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) — woven into her existing memory, journal, and reflection so it fills itself as you talk ([PLAN_KNOWLEDGE_BASE_v1.0.md](PLAN_KNOWLEDGE_BASE_v1.0.md)). It lives at `~/.lisa/kb/` as its own git repo, kept separate from her private soul.
+LISA has a built-in **personal knowledge base** modeled on [Andrej Karpathy's 3-layer LLM wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) — woven into her existing memory, journal, and reflection so it fills itself as you talk ([PLAN_KNOWLEDGE_BASE_v1.0.md](archive/plans/PLAN_KNOWLEDGE_BASE_v1.0.md)). It lives at `~/.lisa/kb/` as its own git repo, kept separate from her private soul.
 
 ```
 ~/.lisa/kb/

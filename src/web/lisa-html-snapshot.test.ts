@@ -43,7 +43,7 @@ import { MAIN_HTML } from "./lisa-html.js";
  * Then: Room v2 — the room→parent bridge moved to a richer, same-origin-guarded
  * {type:'lisa-room', action, prefill} protocol (open-chat / switch-view) at
  * module scope; the old room_open_chat listener was removed as superseded.
- * Then: personal knowledge base (docs/PLAN_KNOWLEDGE_BASE_v1.0.md) — a
+ * Then: personal knowledge base (docs/archive/plans/PLAN_KNOWLEDGE_BASE_v1.0.md) — a
  * "Knowledge" nav item + #viewKb (a live-search list/reader over /api/kb*), a
  * KB select-toggle in the function bar driving a floating capture bar (chat
  * messages → md source), and the kbCapture client block, all with their CSS.

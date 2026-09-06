@@ -1,6 +1,6 @@
 /**
  * Email one-time codes — passwordless sign-in for LISA accounts
- * (docs/PLAN_AUTH_OTP_GOOGLE_v1.0.md §2.1, milestone A1).
+ * (docs/archive/plans/PLAN_AUTH_OTP_GOOGLE_v1.0.md §2.1, milestone A1).
  *
  * A 6-digit code mailed to an address proves the person reading that inbox
  * asked to sign in. That single proof does three jobs at once: it authenticates
