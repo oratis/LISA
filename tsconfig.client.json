@@ -1,0 +1,24 @@
+{
+  // Type-checks the browser client (src/web/assets/client/main.js) that the
+  // shell inlines. It is plain ES2022 + DOM JavaScript, not part of the server
+  // build, so it needs its own lib and its own (much looser) strictness — the
+  // file predates any checking at all and is written in a defensive
+  // typeof/guard style that a strict configuration would drown in noise.
+  //
+  // Run with: npm run typecheck:client
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "strict": false,
+    "skipLibCheck": true,
+    // The client is one script in the global scope, not a module: every
+    // top-level binding is intentionally global and shared.
+    "types": []
+  },
+  "include": ["src/web/assets/client/main.js", "types/web-client.d.ts"]
+}
