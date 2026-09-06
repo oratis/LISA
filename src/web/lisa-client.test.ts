@@ -374,3 +374,33 @@ describe("no call site of the i18n helper is left un-renamed (UX-8)", () => {
     assert.deepEqual(offenders, []);
   });
 });
+
+describe("backend liveness is surfaced (UX-10)", () => {
+  test("every /events frame and the open event count as liveness", () => {
+    assert.match(MAIN_CLIENT_JS, /es\.addEventListener\('open', noteEventBytes\)/);
+    assert.match(MAIN_CLIENT_JS, /es\.addEventListener\('message', \(e\) => \{\s*noteEventBytes\(\);/);
+    assert.match(MAIN_CLIENT_JS, /es\.onerror = \(\) => \{[\s\S]{0,120}setConnPill\(true\)/);
+  });
+  test("the quiet window is 45s and a quiet-but-open socket is probed, not assumed dead", () => {
+    assert.match(MAIN_CLIENT_JS, /const CONN_QUIET_MS = 45_000;/);
+    const fn = MAIN_CLIENT_JS.slice(
+      MAIN_CLIENT_JS.indexOf("async function checkConnection()"),
+      MAIN_CLIENT_JS.indexOf("setInterval(checkConnection, 5000)"),
+    );
+    // readyState !== OPEN is decided locally; only the half-open case costs a
+    // request, and that one is rate-limited.
+    assert.match(fn, /es\.readyState !== 1 \) \{ setConnPill\(true\); return; \}|es\.readyState !== 1\) \{ setConnPill\(true\); return; \}/);
+    assert.match(fn, /fetch\('\/health'/);
+    assert.match(fn, /connProbeAt < 30_000/);
+  });
+  test("the 2s chat escalation is armed on send and disarmed on the first frame and in finally", () => {
+    const fn = MAIN_CLIENT_JS.slice(
+      MAIN_CLIENT_JS.indexOf("async function runChat("),
+      MAIN_CLIENT_JS.indexOf("// ── send"),
+    );
+    assert.match(fn, /let waitTimer = setTimeout\(function \(\) \{[\s\S]*?\}, 2000\);/);
+    assert.match(fn, /noteFrame\(\);/);
+    // Two clears: the first frame, and the finally that ends the turn.
+    assert.equal((fn.match(/clearTimeout\(waitTimer\)/g) || []).length, 2);
+  });
+});

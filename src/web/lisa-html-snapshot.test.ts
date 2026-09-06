@@ -239,10 +239,13 @@ import { MAIN_HTML } from "./lisa-html.js";
  * Then: UX-8 language — a LISA_STRINGS (en / zh-CN) table plus tr(key, vars),
  * locale picked from navigator.language, document.documentElement.lang set to
  * match, and every CJK literal the shell used to render moved into the table.
+ * Then: UX-10 connection state — a #connPill "reconnecting…" chip in the title
+ * bar driven by EventSource readyState plus a /health probe for the half-open
+ * case, and a 2s escalation of the chat thinking line to .thinking.waiting.
  */
-const EXPECTED_LENGTH = 353768;
+const EXPECTED_LENGTH = 357754;
 const EXPECTED_SHA256 =
-  "661bad5b701789dab6a22bd80a0fba3c36ae5e630c948e4cb61a2adc2203e019";
+  "126200d2dfe6f3aefdbe55edbc3a34218c266c19b0310fac55d06b6e6ce280bd";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);

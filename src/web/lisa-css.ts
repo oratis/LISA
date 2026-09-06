@@ -230,6 +230,25 @@ export const MAIN_CSS = `  :root {
     user-select: none;
     pointer-events: none;
   }
+  /* "reconnecting…" pill (UX-10): the backend going quiet used to be
+     invisible until a request failed outright. Sits beside the session tag,
+     inherits the title bar's pointer-events:none. */
+  .conn-pill {
+    margin-left: 10px;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: var(--warm);
+    background: rgba(255, 208, 102, 0.14);
+    border: 1px solid rgba(255, 208, 102, 0.38);
+    white-space: nowrap;
+  }
+  body[data-theme="calm"] .conn-pill {
+    background: rgba(217, 119, 6, 0.12);
+    border-color: rgba(217, 119, 6, 0.40);
+  }
   .titlebar .session-tag {
     color: var(--fg-3);
     font-weight: 400;
@@ -2222,6 +2241,9 @@ export const MAIN_CSS = `  :root {
     padding: 4px 2px;
     letter-spacing: 0.03em;
   }
+  /* Escalated after 2s of silence from /chat (UX-10) — same line, warmer
+     colour, so a stalled backend reads differently from normal thinking. */
+  .thinking.waiting { color: var(--warm); font-style: normal; }
 
   /* Tool call card */
   .tool-block {
