@@ -40,7 +40,12 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { EventEmitter } from "node:events";
-import { parseSessionState, parseSessionActivity, type ClaudeSessionState } from "./parser.js";
+import {
+  parseSessionState,
+  parseSessionActivity,
+  type ClaudeSessionState,
+  type SessionStateInfo,
+} from "./parser.js";
 import type { SessionActivity } from "../types.js";
 
 const CLAUDE_HOME       = process.env.CLAUDE_HOME ?? path.join(os.homedir(), ".claude");
@@ -84,6 +89,9 @@ export const TOOL_STALL_THRESHOLD_MS = 60_000;
  * so we periodically re-derive state for active sessions.
  */
 const REPOLL_INTERVAL_MS = 3_000;
+
+/** Cap on remembered parses. listActive() only ever returns MAX_LISTED. */
+const PARSE_CACHE_MAX = 64;
 
 /**
  * One row in the in-memory session map. We hold mtime + size only —
@@ -143,6 +151,16 @@ export class ClaudeCodeWatcher extends EventEmitter {
   private retryTimer: NodeJS.Timeout | null = null;
   private repollTimer: NodeJS.Timeout | null = null;
   private pendingChanges = new Map<string, NodeJS.Timeout>();
+  /**
+   * Last parse of each file, keyed by the (mtimeMs, size) it was parsed at
+   * (T-5). The 3 s repoll exists to notice files that STOPPED changing, so
+   * by construction it looks at the same bytes over and over: without this
+   * every active session cost two 32 KB tail reads every 3 s, forever. The
+   * derived state still moves — `applyStaleness` is a pure function of the
+   * parse plus the current clock — so re-deriving from the cache gives the
+   * identical answer for a stat-identical file.
+   */
+  private parseCache = new Map<string, { mtimeMs: number; size: number; parsed: SessionStateInfo; activity?: SessionActivity }>();
   private readonly log: Log;
   private readonly computeActivity: boolean;
   private started = false;
@@ -162,6 +180,9 @@ export class ClaudeCodeWatcher extends EventEmitter {
     this.started = true;
     await this.initialScan();
     await this.attachWatcher();
+    // First real parse of the ACTIVE sessions only — the scan above deliberately
+    // read nothing. Everything outside the 30 min window is never opened.
+    await this.repollActive();
     this.startRepollLoop();
   }
 
@@ -174,6 +195,20 @@ export class ClaudeCodeWatcher extends EventEmitter {
     this.repollTimer = null;
     for (const t of this.pendingChanges.values()) clearTimeout(t);
     this.pendingChanges.clear();
+    this.parseCache.clear();
+  }
+
+  /**
+   * Every session the scan has seen, parsed or not. Diagnostic surface —
+   * listActive() is what callers render.
+   */
+  snapshotAll(): ClaudeSessionInfo[] {
+    return [...this.sessions.values()];
+  }
+
+  /** Run one sweep of the active window now (start() does this once). */
+  async repollNow(): Promise<void> {
+    await this.repollActive();
   }
 
   /** Sessions modified in the last 30 min, newest first, capped. */
@@ -217,20 +252,59 @@ export class ClaudeCodeWatcher extends EventEmitter {
     this.log(`[claude-code] initial scan: ${this.sessions.size} session(s) seen`);
   }
 
+  /**
+   * Record a file we found on disk — STAT ONLY, never a read (T-5).
+   *
+   * A heavy Claude Code user accumulates hundreds of session jsonls across
+   * every project they have ever opened. Parsing all of them at startup meant
+   * two 32 KB tail reads each, on the event loop, before the web server
+   * answered its first request — for files that in almost every case are
+   * months old and will never be listed (listActive() only ever returns
+   * sessions touched in the last 30 minutes). The immediate repollActive() in
+   * start() gives the handful of ACTIVE sessions their real state; the rest
+   * stay "unscanned" until they change or become active.
+   */
   private async recordExisting(filePath: string): Promise<void> {
     try {
       const st = await fsp.stat(filePath);
       if (!st.isFile()) return;
-      const parsed = await parseSessionState(filePath);
-      const activity = this.computeActivity
-        ? await parseSessionActivity(filePath)
-        : undefined;
-      const info = this.makeInfo(filePath, st.mtimeMs, st.size,
-                                 parsed.state, parsed.reason, parsed.cwd, activity);
-      this.sessions.set(filePath, info);
+      this.sessions.set(
+        filePath,
+        this.makeInfo(filePath, st.mtimeMs, st.size, "unknown", "unscanned", undefined, undefined),
+      );
     } catch {
       // ignore — file disappeared between readdir and stat
     }
+  }
+
+  /**
+   * Parse `filePath`, reusing the previous parse when the file is byte-for-byte
+   * the one we already parsed. `mtimeMs`/`size` come from the caller's stat, so
+   * a hit costs nothing beyond that stat.
+   */
+  private async parseWithCache(
+    filePath: string,
+    mtimeMs: number,
+    size: number,
+  ): Promise<{ parsed: SessionStateInfo; activity?: SessionActivity }> {
+    const hit = this.parseCache.get(filePath);
+    if (hit && hit.mtimeMs === mtimeMs && hit.size === size) {
+      // Keep the Map in access order so the LRU eviction below is honest.
+      this.parseCache.delete(filePath);
+      this.parseCache.set(filePath, hit);
+      return { parsed: hit.parsed, activity: hit.activity };
+    }
+    const parsed = await parseSessionState(filePath);
+    const activity = this.computeActivity ? await parseSessionActivity(filePath) : undefined;
+    this.parseCache.set(filePath, { mtimeMs, size, parsed, activity });
+    // Only active sessions are ever re-derived, and listActive() caps at 10;
+    // a small bound keeps this from tracking every file the watcher has seen.
+    while (this.parseCache.size > PARSE_CACHE_MAX) {
+      const oldest = this.parseCache.keys().next();
+      if (oldest.done) break;
+      this.parseCache.delete(oldest.value);
+    }
+    return { parsed, activity };
   }
 
   private async attachWatcher(): Promise<void> {
@@ -302,10 +376,7 @@ export class ClaudeCodeWatcher extends EventEmitter {
     if (!st.isFile()) return;
 
     const prev = this.sessions.get(fullPath);
-    const parsed = await parseSessionState(fullPath);
-    const activity = this.computeActivity
-      ? await parseSessionActivity(fullPath)
-      : undefined;
+    const { parsed, activity } = await this.parseWithCache(fullPath, st.mtimeMs, st.size);
     const info = this.makeInfo(fullPath, st.mtimeMs, st.size,
                                parsed.state, parsed.reason, parsed.cwd, activity);
     this.sessions.set(fullPath, info);
@@ -398,14 +469,14 @@ export class ClaudeCodeWatcher extends EventEmitter {
         continue; // file gone — let the fs.watch flow handle removal
       }
       if (!st.isFile()) continue;
-      const parsed = await parseSessionState(filePath);
-      // Carry over the previously parsed activity: the file hasn't
-      // grown (that's why we're sweeping), so re-extracting would be
-      // wasted I/O — and dropping it would lose the tool names that
-      // label a stall ("stalled on <tool>").
+      // Stat-identical file ⇒ served from the parse cache, so a sweep over N
+      // idle-but-active sessions is N stats, not N tail reads. The activity
+      // snapshot is carried over for the same reason: it labels a stall
+      // ("stalled on <tool>") and re-extracting it would be wasted I/O.
+      const { parsed, activity } = await this.parseWithCache(filePath, st.mtimeMs, st.size);
       const info = this.makeInfo(filePath, st.mtimeMs, st.size,
                                  parsed.state, parsed.reason, parsed.cwd,
-                                 prev.activity);
+                                 activity ?? prev.activity);
       // No file growth here — only re-emit when the DERIVED state
       // changed (working → waiting after staleness).
       if (info.state !== prev.state || info.stateReason !== prev.stateReason) {

@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { sessionsDir } from "../paths.js";
 import { ensureDir, pathExists } from "../fs-utils.js";
+import { jsonlLines } from "./jsonl.js";
 import type { SessionEntry, SessionHeader, StoredMessage } from "../types.js";
 
 export interface SessionInfo {
@@ -103,26 +104,40 @@ export async function listSessionsOnDisk(): Promise<SessionInfo[]> {
   return out;
 }
 
+/**
+ * Summarize one session file. Streamed rather than read whole (T-5): the
+ * counts and the first/last user line are all computable in one pass, and a
+ * multi-megabyte session must not become a multi-megabyte string plus an
+ * array of every line just to produce an 80-character preview.
+ */
 async function summarize(file: string): Promise<SessionInfo | null> {
-  const raw = await fs.readFile(file, "utf8");
-  const lines = raw.split("\n").filter(Boolean);
-  if (lines.length === 0) return null;
-  const header = JSON.parse(lines[0]!) as SessionHeader;
+  let header: SessionHeader | null = null;
   let messageCount = 0;
   let lastUser: string | undefined;
   let firstUser: string | undefined;
-  for (let i = 1; i < lines.length; i++) {
-    const entry = JSON.parse(lines[i]!) as SessionEntry;
+  for await (const line of jsonlLines(file)) {
+    if (!header) {
+      header = JSON.parse(line) as SessionHeader;
+      continue;
+    }
+    let entry: SessionEntry;
+    try {
+      entry = JSON.parse(line) as SessionEntry;
+    } catch {
+      continue; // skip a torn line rather than losing the whole session
+    }
     if (entry.type !== "message") continue;
     messageCount++;
     if (entry.message.role === "user") {
-      const text = textOf(entry.message);
+      // Only the first 80 characters are ever shown, so never keep more.
+      const text = textOf(entry.message).slice(0, 80);
       if (text) {
         lastUser = text;
         if (firstUser === undefined) firstUser = text;
       }
     }
   }
+  if (!header) return null;
   return {
     id: header.id,
     path: file,
@@ -130,8 +145,8 @@ async function summarize(file: string): Promise<SessionInfo | null> {
     cwd: header.cwd,
     model: header.model,
     messageCount,
-    lastUserMessage: lastUser?.slice(0, 80),
-    firstUserMessage: firstUser?.slice(0, 80),
+    lastUserMessage: lastUser,
+    firstUserMessage: firstUser,
   };
 }
 
@@ -151,13 +166,24 @@ export async function loadSessionMessages(id: string): Promise<{
   if (!(await pathExists(file))) {
     throw new Error(`session ${id} not found at ${file}`);
   }
-  const raw = await fs.readFile(file, "utf8");
-  const lines = raw.split("\n").filter(Boolean);
-  const header = JSON.parse(lines[0]!) as SessionHeader;
+  // Streamed (T-5). The caller wants every message, so the RESULT is
+  // unavoidably proportional to the file — but the intermediate whole-file
+  // string and line array are not, and they were the allocations that hurt.
+  let header: SessionHeader | null = null;
   const messages: StoredMessage[] = [];
-  for (let i = 1; i < lines.length; i++) {
-    const entry = JSON.parse(lines[i]!) as SessionEntry;
+  for await (const line of jsonlLines(file)) {
+    if (!header) {
+      header = JSON.parse(line) as SessionHeader;
+      continue;
+    }
+    let entry: SessionEntry;
+    try {
+      entry = JSON.parse(line) as SessionEntry;
+    } catch {
+      continue;
+    }
     if (entry.type === "message") messages.push(entry.message);
   }
+  if (!header) throw new Error(`session ${id} is empty`);
   return { header, messages };
 }
