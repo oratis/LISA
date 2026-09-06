@@ -118,7 +118,7 @@ const OTP_DOC = "lisa-global/otps";
 async function loadRecords(): Promise<OtpRecord[]> {
   if (firestoreEnabled()) {
     const doc = await getDoc(OTP_DOC);
-    return validRecords((doc?.data.list as unknown) ?? []);
+    return validRecords(doc?.data.list ?? []);
   }
   return loadFile();
 }
@@ -140,7 +140,7 @@ function prune(list: OtpRecord[], now: number): OtpRecord[] {
 async function mutate<T>(fn: (list: OtpRecord[]) => T, now: number): Promise<T> {
   if (firestoreEnabled()) {
     return casUpdate(OTP_DOC, (current) => {
-      const list = prune(validRecords((current?.list as unknown) ?? []), now);
+      const list = prune(validRecords(current?.list ?? []), now);
       const result = fn(list);
       return { next: { list: list as unknown as Record<string, unknown>[] }, result };
     });

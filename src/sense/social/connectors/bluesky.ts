@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { loadSocialMedia } from "../media.js";
-import type { SocialDraftContent, SocialMediaRef, SocialPlatformVariant, SocialTarget } from "../types.js";
+import type { SocialDraftContent, SocialMediaRef, SocialPlatformVariant } from "../types.js";
 import {
   getOpenSocialAccount,
   saveOpenSocialAccount,

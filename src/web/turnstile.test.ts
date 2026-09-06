@@ -6,7 +6,7 @@ import { isDisposableEmail } from "./email-domains.js";
 const CFG = { siteKey: "sk", secret: "sec", enabled: true };
 
 function fakeFetch(status: number, body: unknown): typeof fetch {
-  return (async () => new Response(JSON.stringify(body), { status })) as typeof fetch;
+  return (async () => new Response(JSON.stringify(body), { status }));
 }
 
 describe("turnstile (S3)", () => {

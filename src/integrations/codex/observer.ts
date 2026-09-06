@@ -75,7 +75,7 @@ export class CodexObserver extends EventEmitter implements AgentObserver {
   constructor(cfg: CodexObserverOptions) {
     super();
     const home = cfg.home
-      ? (cfg.home as string).replace(/^~/, os.homedir())
+      ? cfg.home.replace(/^~/, os.homedir())
       : process.env.CODEX_HOME ?? path.join(os.homedir(), ".codex");
     this.sessionsRoot = path.join(home, "sessions");
     // Tier 2: compute structural activity when visibility is "activity" or

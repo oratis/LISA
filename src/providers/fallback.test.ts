@@ -10,7 +10,7 @@ const ZERO_USAGE = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheW
 
 function okResult(text: string): ProviderResult {
   return {
-    content: [{ type: "text", text, citations: null } as Anthropic.TextBlock],
+    content: [{ type: "text", text, citations: null }],
     stopReason: "end_turn",
     usage: ZERO_USAGE,
   };

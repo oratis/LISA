@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { ToolContext, ToolDefinition } from "../types.js";
+import type { ToolContext } from "../types.js";
 
 const TMP = mkdtempSync(path.join(os.tmpdir(), "lisa-kb-hardening-"));
 process.env.LISA_HOME = TMP;
@@ -50,9 +50,9 @@ describe("D3 closure #1 — autonomous kb_ingest is watchlist-only", () => {
     const auto = registry.autonomousSubset(registry.buildToolRegistry());
     const ingest = auto.find((t) => t.name === "kb_ingest");
     assert.ok(ingest, "kb_ingest stays available to autonomous runs");
-    assert.match(ingest!.description, /watchlist/, "restricted variant is the one exposed");
+    assert.match(ingest.description, /watchlist/, "restricted variant is the one exposed");
     await assert.rejects(
-      () => ingest!.execute({ url: "https://evil.example.net/x" }, CTX) as Promise<unknown>,
+      () => ingest.execute({ url: "https://evil.example.net/x" }, CTX),
       /watchlist/,
     );
     const plain = kbTools.find((t) => t.name === "kb_ingest")!;
@@ -61,7 +61,7 @@ describe("D3 closure #1 — autonomous kb_ingest is watchlist-only", () => {
 
   test("restrictKbIngestToWatchlist leaves other tools untouched", () => {
     const other = kbTools.find((t) => t.name === "kb_read")!;
-    assert.equal(restrictKbIngestToWatchlist(other as ToolDefinition), other);
+    assert.equal(restrictKbIngestToWatchlist(other), other);
   });
 });
 

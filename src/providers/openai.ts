@@ -28,7 +28,7 @@ export class OpenAIProvider implements Provider {
       function: {
         name: t.name,
         description: t.description,
-        parameters: t.inputSchema as Record<string, unknown>,
+        parameters: t.inputSchema,
       },
     }));
 
@@ -82,19 +82,17 @@ export class OpenAIProvider implements Provider {
         if (chunk.usage) {
           inputTokens = chunk.usage.prompt_tokens ?? 0;
           outputTokens = chunk.usage.completion_tokens ?? 0;
-          const details = chunk.usage.prompt_tokens_details as
-            | { cached_tokens?: number }
-            | undefined;
+          const details = chunk.usage.prompt_tokens_details;
           cacheReadTokens = details?.cached_tokens ?? 0;
         }
       }
 
       const content: Anthropic.ContentBlock[] = [];
       if (text) {
-        content.push({ type: "text", text, citations: null } as Anthropic.TextBlock);
+        content.push({ type: "text", text, citations: null });
       }
       for (const tc of toolCalls.values()) {
-        let parsed: unknown = {};
+        let parsed: unknown;
         try {
           parsed = tc.args ? JSON.parse(tc.args) : {};
         } catch {

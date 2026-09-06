@@ -62,7 +62,7 @@ async function main(): Promise<void> {
   const accounts = readJson<unknown[]>(path.join(home!, "accounts.json")) ?? [];
   console.log(`accounts.json: ${accounts.length} records`);
   const existing = await getDoc("lisa-global/accounts");
-  const existingCount = Array.isArray(existing?.data.list) ? (existing!.data.list as unknown[]).length : 0;
+  const existingCount = Array.isArray(existing?.data.list) ? (existing.data.list as unknown[]).length : 0;
   if (accounts.length === 0) {
     // Guard: never write an empty list. A missing/wrong home dir (or an unmounted
     // GCS bucket) reads as [], and with --force that would WIPE a populated
@@ -75,7 +75,7 @@ async function main(): Promise<void> {
   } else if (dryRun) {
     console.log(`  (dry-run) would write lisa-global/accounts with ${accounts.length} records`);
   } else {
-    await setDoc("lisa-global/accounts", { list: accounts as Record<string, unknown>[] });
+    await setDoc("lisa-global/accounts", { list: accounts });
     console.log(`  ✓ wrote lisa-global/accounts`);
     wrote++;
   }
@@ -115,7 +115,7 @@ async function main(): Promise<void> {
       continue;
     }
     try {
-      await setDoc(doc, { ...tx } as unknown as Record<string, unknown>, { exists: false });
+      await setDoc(doc, { ...tx }, { exists: false });
       wrote++;
     } catch (e) {
       if (e instanceof FirestoreError && (e.status === 409 || e.status === 412)) {

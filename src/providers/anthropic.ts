@@ -105,10 +105,10 @@ export class AnthropicProvider implements Provider {
       async (markEmitted) => {
         const stream: StreamLike = opts.compaction
           ? (this.client.beta.messages.stream(
-              { ...params, ...extras } as Anthropic.Beta.MessageCreateParamsStreaming,
+              { ...params, ...extras },
               requestOpts,
-            ) as unknown as StreamLike)
-          : (this.client.messages.stream(params, requestOpts) as unknown as StreamLike);
+            ))
+          : (this.client.messages.stream(params, requestOpts));
         if (opts.handlers?.onTextDelta) {
           stream.on("text", (t) => {
             markEmitted();
@@ -125,7 +125,7 @@ export class AnthropicProvider implements Provider {
       },
     );
     return {
-      content: message.content as Anthropic.ContentBlock[],
+      content: message.content,
       stopReason: message.stop_reason ?? "end_turn",
       usage: {
         inputTokens: message.usage?.input_tokens ?? 0,
@@ -160,7 +160,7 @@ function withCacheBreakpoint(
   const out = messages.slice();
   const last = out[out.length - 1]!;
   if (typeof last.content === "string") return out;
-  const content = last.content as Anthropic.ContentBlockParam[];
+  const content = last.content;
   if (content.length === 0) return out;
   const cloned = content.map((block, idx) => {
     if (idx !== content.length - 1) return block;

@@ -7,7 +7,7 @@ import type { Provider, ProviderResult } from "../providers/types.js";
 import type { ToolContext, ToolDefinition } from "../types.js";
 
 function schema(o: object): Anthropic.Tool.InputSchema {
-  return { type: "object", ...o } as Anthropic.Tool.InputSchema;
+  return { type: "object", ...o };
 }
 
 describe("validateToolInput (pure)", () => {
@@ -62,11 +62,10 @@ describe("validateToolInput (pure)", () => {
 describe("validateToolInput — agent-loop integration (fail-closed)", () => {
   test("a malformed tool call is rejected before execute, with a paired is_error", async () => {
     let ran = false;
-    let id = 0;
     const usage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
     const queue: ProviderResult[] = [
       {
-        content: [{ type: "tool_use", id: `v${++id}`, name: "needsSlug", input: {} } as Anthropic.ContentBlock],
+        content: [{ type: "tool_use", id: "v1", name: "needsSlug", input: {} } as Anthropic.ContentBlock],
         stopReason: "tool_use",
         usage,
       },
@@ -77,7 +76,7 @@ describe("validateToolInput — agent-loop integration (fail-closed)", () => {
     const tool: ToolDefinition = {
       name: "needsSlug",
       description: "requires slug",
-      inputSchema: { type: "object", required: ["slug"], properties: { slug: { type: "string" } } } as Anthropic.Tool.InputSchema,
+      inputSchema: { type: "object", required: ["slug"], properties: { slug: { type: "string" } } },
       async execute() { ran = true; return "ran"; },
     };
     const ctx: ToolContext = { cwd: "/tmp", signal: new AbortController().signal, log: () => {} };
@@ -85,7 +84,7 @@ describe("validateToolInput — agent-loop integration (fail-closed)", () => {
       provider, systemPrompt: "s", tools: [tool], toolCtx: ctx, history: [], userMessage: "go", model: "m",
     });
     assert.equal(ran, false, "malformed input must not reach execute()");
-    const res = (r.history.flatMap((m) => (Array.isArray(m.content) ? m.content : [])) as Anthropic.ContentBlockParam[])
+    const res = (r.history.flatMap((m) => (Array.isArray(m.content) ? m.content : [])))
       .find((b) => b.type === "tool_result") as Anthropic.ToolResultBlockParam;
     assert.equal(res.is_error, true);
     assert.match(String(res.content), /invalid input/);

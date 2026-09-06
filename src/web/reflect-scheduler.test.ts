@@ -66,7 +66,7 @@ describe("decideReflect", () => {
 
 describe("countUserMessages", () => {
   const mk = (role: StoredMessage["role"]): StoredMessage =>
-    ({ role, content: [{ type: "text", text: "x" }] }) as StoredMessage;
+    ({ role, content: [{ type: "text", text: "x" }] });
 
   test("counts only user-role messages", () => {
     const history: StoredMessage[] = [

@@ -81,7 +81,7 @@ export const runChecksTool: ToolDefinition<RunChecksInput, string> = {
     if (!(await isDir(cwd))) return `(not a directory: ${cwd})`;
     const root = (await gitRoot(cwd, ctx.signal)) ?? cwd;
 
-    let scripts: Record<string, string> = {};
+    let scripts: Record<string, string>;
     try {
       const pkg = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
       scripts = (pkg.scripts as Record<string, string>) ?? {};

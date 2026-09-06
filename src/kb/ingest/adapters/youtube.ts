@@ -92,7 +92,7 @@ async function fetchYoutube(url: URL, ctx: IngestContext): Promise<IngestedConte
     author_name?: string;
   } | null;
 
-  let player: PlayerResponse | null = null;
+  let player: PlayerResponse | null;
   try {
     player = await innertubePlayer(id, ctx);
   } catch {

@@ -3,7 +3,7 @@
  * refreshing it when expired. format=metadata fetches headers + Gmail's native
  * `snippet` only (never the full body) — same privacy contract as IMAP.
  */
-import { tokenExpired, refreshAccessToken, type FetchLike, type GoogleTokens } from "../google-oauth.js";
+import { tokenExpired, refreshAccessToken, type GoogleTokens } from "../google-oauth.js";
 import type { MailAccount, MailConnector, MailSecret, RawMail } from "../types.js";
 
 const GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/me";
@@ -61,7 +61,7 @@ export class GmailConnector implements MailConnector {
   constructor(account: MailAccount, secret: MailSecret, deps: GmailDeps = {}) {
     this.account = account;
     this.secret = secret;
-    this.http = deps.fetchImpl ?? (fetch as unknown as HttpFetch);
+    this.http = deps.fetchImpl ?? fetch;
     this.onTokenRefresh = deps.onTokenRefresh;
     this.now = deps.now ?? Date.now;
   }
@@ -74,7 +74,7 @@ export class GmailConnector implements MailConnector {
     if (accessToken && expiry && !tokenExpired(expiry, this.now())) return accessToken;
     const t = await refreshAccessToken(
       { refreshToken, clientId, clientSecret },
-      this.http as unknown as FetchLike,
+      this.http,
       this.now(),
     );
     this.secret = { ...this.secret, accessToken: t.accessToken, expiry: t.expiry, refreshToken: t.refreshToken };
@@ -116,7 +116,7 @@ export class GmailConnector implements MailConnector {
 }
 
 /** Fetch the authorized account's email address (users/me/profile). */
-export async function gmailProfileEmail(token: string, fetchImpl: HttpFetch = fetch as unknown as HttpFetch): Promise<string> {
+export async function gmailProfileEmail(token: string, fetchImpl: HttpFetch = fetch): Promise<string> {
   const res = await fetchImpl(`${GMAIL_API}/profile`, { method: "GET", headers: { authorization: `Bearer ${token}` } });
   const text = await res.text();
   if (!res.ok) throw new Error(`gmail profile ${res.status}`);

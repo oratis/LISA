@@ -83,7 +83,7 @@ export interface OpencodeRow {
 
 function defaultDbPath(cfg: AgentIntegrationConfig): string {
   const home = cfg.home
-    ? (cfg.home as string).replace(/^~/, os.homedir())
+    ? cfg.home.replace(/^~/, os.homedir())
     : process.env.XDG_DATA_HOME
       ? path.join(process.env.XDG_DATA_HOME, "opencode")
       : path.join(os.homedir(), ".local", "share", "opencode");
@@ -222,7 +222,7 @@ export function extractActivity(
     const errLabel = errorReasonOf(msg);
     if (errLabel) lastError = errLabel;
 
-    const parts = (msg as Record<string, unknown>).parts;
+    const parts = msg.parts;
     if (!Array.isArray(parts)) continue;
     for (const part of parts) {
       if (!part || typeof part !== "object") continue;
@@ -481,4 +481,4 @@ export class OpencodeObserver extends EventEmitter implements AgentObserver {
   }
 }
 
-registerIntegration("opencode", (cfg) => new OpencodeObserver(cfg as OpencodeObserverOptions));
+registerIntegration("opencode", (cfg) => new OpencodeObserver(cfg));

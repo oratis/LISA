@@ -73,7 +73,7 @@ export function loadConsent(): ConsentState {
     if (!parsed || typeof parsed !== "object" || typeof parsed.grants !== "object" || !parsed.grants) {
       return { grants: {} };
     }
-    return { grants: parsed.grants as Record<string, ConsentGrant> };
+    return { grants: parsed.grants };
   } catch {
     return { grants: {} }; // corrupt → treat as nothing granted (fail closed)
   }

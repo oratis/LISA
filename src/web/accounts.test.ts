@@ -21,11 +21,10 @@ const {
   ensureOtpAccount,
   upsertGoogleAccount,
   googleUid,
-  AccountError,
   AccountStoreError,
 } = await import("./accounts.js");
 
-const isCode = (code: string) => (e: unknown) => (e as InstanceType<typeof AccountError>).code === code;
+const isCode = (code: string) => (e: unknown) => (e as { code?: string }).code === code;
 
 beforeEach(() => {
   fs.rmSync(FILE, { force: true });

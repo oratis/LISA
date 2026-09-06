@@ -135,7 +135,9 @@ export async function withFileLock<T>(
         continue; // retry immediately
       }
       if (Date.now() >= deadline) {
-        throw new Error(`timed out acquiring lock ${lockPath} after ${timeoutMs}ms`);
+        throw new Error(`timed out acquiring lock ${lockPath} after ${timeoutMs}ms`, {
+          cause: e,
+        });
       }
       await delay(pollMs);
     }

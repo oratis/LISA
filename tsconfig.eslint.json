@@ -1,0 +1,24 @@
+{
+  // Lint-only program: tsconfig.json (the build config) deliberately excludes
+  // *.test.ts, and scripts/build-release.sh runs `tsc -p tsconfig.json`, so the
+  // test files cannot be folded into it. ESLint's type-aware rules need every
+  // linted file in ONE program, hence this superset. Never used for emit.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "allowJs": true
+  },
+  "include": [
+    "src/**/*",
+    "scripts/**/*.ts",
+    "scripts/**/*.mjs",
+    "tests/**/*",
+    "eslint.config.js",
+    "playwright.config.ts"
+  ],
+  "exclude": ["node_modules", "dist", "src/web/assets"]
+}

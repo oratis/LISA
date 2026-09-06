@@ -43,10 +43,10 @@ test("formatAlert builds push title/body/tag + a proactive chat line", () => {
 });
 
 test("alertLevel + pollMinutes read env with safe defaults", () => {
-  assert.equal(alertLevel({ LISA_MAIL_ALERT_LEVEL: "2" } as NodeJS.ProcessEnv), 2);
-  assert.equal(alertLevel({} as NodeJS.ProcessEnv), DEFAULT_ALERT_LEVEL);
-  assert.equal(alertLevel({ LISA_MAIL_ALERT_LEVEL: "5" } as NodeJS.ProcessEnv), DEFAULT_ALERT_LEVEL);
-  assert.equal(pollMinutes({} as NodeJS.ProcessEnv), DEFAULT_POLL_MINUTES);
-  assert.equal(pollMinutes({ LISA_MAIL_POLL_MINUTES: "0" } as NodeJS.ProcessEnv), 0);
-  assert.equal(pollMinutes({ LISA_MAIL_POLL_MINUTES: "15" } as NodeJS.ProcessEnv), 15);
+  assert.equal(alertLevel({ LISA_MAIL_ALERT_LEVEL: "2" }), 2);
+  assert.equal(alertLevel({}), DEFAULT_ALERT_LEVEL);
+  assert.equal(alertLevel({ LISA_MAIL_ALERT_LEVEL: "5" }), DEFAULT_ALERT_LEVEL);
+  assert.equal(pollMinutes({}), DEFAULT_POLL_MINUTES);
+  assert.equal(pollMinutes({ LISA_MAIL_POLL_MINUTES: "0" }), 0);
+  assert.equal(pollMinutes({ LISA_MAIL_POLL_MINUTES: "15" }), 15);
 });

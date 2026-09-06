@@ -23,19 +23,6 @@ function recordingFetch(response = { id: "email_123" }, status = 200) {
   return { calls, fn };
 }
 
-/** Strip tags/entities so the HTML can be compared as prose. */
-function htmlToText(html: string): string {
-  return html
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 const ALL_MAILS: Array<[string, Mail]> = [
   ["signInCode", signInCodeEmail("123456", 10)],
   ["verification", verificationEmail("https://cloud.meetlisa.ai/verify?token=abc123")],

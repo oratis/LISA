@@ -83,7 +83,9 @@ async function wrapProgram(
       cleanup: async () => {
         try {
           await fs.unlink(tmp);
-        } catch {}
+        } catch {
+          // profile already gone — cleanup is best-effort
+        }
       },
     };
   }

@@ -28,7 +28,7 @@ describe("usageTokens", () => {
   });
   test("tolerates missing / non-numeric fields", () => {
     assert.equal(usageTokens({ input_tokens: 7 }), 7);
-    assert.equal(usageTokens({ input_tokens: "x" as unknown as number }), 0);
+    assert.equal(usageTokens({ input_tokens: "x" }), 0);
     assert.equal(usageTokens({}), 0);
   });
 });
@@ -100,12 +100,12 @@ describe("readClaudeUsage — real scan over a temp transcript dir", () => {
       );
       const u = readClaudeUsage({ home, nowMs: now });
       assert.ok(u, "expected usage");
-      assert.equal(u!.windowTokens, 150);
-      assert.equal(u!.windowHours, 5);
-      assert.equal(u!.sessions, 1);
+      assert.equal(u.windowTokens, 150);
+      assert.equal(u.windowHours, 5);
+      assert.equal(u.sessions, 1);
       // "today" depends on local midnight; all three usage lines are same UTC day,
       // so todayTokens >= windowTokens.
-      assert.ok(u!.todayTokens >= u!.windowTokens);
+      assert.ok(u.todayTokens >= u.windowTokens);
     } finally {
       rmSync(home, { recursive: true, force: true });
     }

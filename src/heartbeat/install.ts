@@ -44,7 +44,9 @@ export async function installHeartbeat(
     if (opts.load) {
       try {
         await runCmd("launchctl", ["unload", PLIST_PATH]);
-      } catch {}
+      } catch {
+        // not loaded yet — unload before load is only a courtesy
+      }
       try {
         await runCmd("launchctl", ["load", "-w", PLIST_PATH]);
         loadResult = `\nLoaded into launchd. To stop: launchctl unload ${PLIST_PATH}`;
@@ -135,7 +137,9 @@ export async function uninstallHeartbeat(): Promise<string> {
   }
   try {
     await runCmd("launchctl", ["unload", PLIST_PATH]);
-  } catch {}
+  } catch {
+    // already unloaded — proceed to remove the plist
+  }
   try {
     await fs.unlink(PLIST_PATH);
     return `Removed ${PLIST_PATH}`;

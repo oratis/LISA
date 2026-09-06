@@ -205,7 +205,7 @@ export class FeishuChannel implements ChannelAdapter {
         typeof payload.token === "string"
           ? payload.token
           : typeof header?.token === "string"
-            ? (header.token as string)
+            ? header.token
             : "";
       if (!presented || !timingSafeEqualStr(presented, this.opts.verificationToken)) {
         console.error("[feishu] rejected event: verification token mismatch");

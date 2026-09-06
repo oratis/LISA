@@ -41,7 +41,6 @@ describe("kbSlug", () => {
 
   test("the slug stays ASCII (NFD/NFC filename hazard, URLs, git paths)", () => {
     const s = kbSlug({ title: "日本語のタイトル", date: "2026-07-23" });
-    // eslint-disable-next-line no-control-regex
     assert.match(s, /^[\x21-\x7e]+$/);
   });
 });

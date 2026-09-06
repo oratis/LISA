@@ -61,7 +61,7 @@ describe("parseSuggestion", () => {
     const s = parseSuggestion('{"title":"Fix the failing test","rationale":"auth.test.ts is red","task":"Open src/auth.test.ts and fix the failing assertion"}');
     assert.equal(s?.title, "Fix the failing test");
     assert.equal(s?.rationale, "auth.test.ts is red");
-    assert.match(s!.task, /auth\.test\.ts/);
+    assert.match(s.task, /auth\.test\.ts/);
   });
   test("strips ```json fences", () => {
     const s = parseSuggestion('```json\n{"title":"Do X","task":"do x in foo.ts"}\n```');

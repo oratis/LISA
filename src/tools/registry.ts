@@ -61,57 +61,57 @@ export interface ToolRegistryOptions {
 
 export function buildToolRegistry(opts: ToolRegistryOptions = {}): ToolDefinition[] {
   const tools: ToolDefinition[] = [
-    readTool as ToolDefinition,
-    writeTool as ToolDefinition,
-    editTool as ToolDefinition,
-    applyPatchTool as ToolDefinition,
-    bashTool as ToolDefinition,
-    grepTool as ToolDefinition,
-    lsTool as ToolDefinition,
-    skillManageTool as ToolDefinition,
-    memoryTool as ToolDefinition,
-    memorySearchTool as ToolDefinition,
-    setMoodTool as ToolDefinition,
-    soulPatchTool as ToolDefinition,
-    soulJournalTool as ToolDefinition,
-    soulReadTool as ToolDefinition,
-    soulFeelTool as ToolDefinition,
-    soulHistoryTool as ToolDefinition,
-    soulDiffTool as ToolDefinition,
-    soulObjectTool as ToolDefinition,
-    desireProgressTool as ToolDefinition,
-    desireReviseTool as ToolDefinition,
-    desireCloseTool as ToolDefinition,
-    webFetchTool as ToolDefinition,
-    webSearchTool as ToolDefinition,
-    takoapiTool as ToolDefinition,
-    redeployTool as ToolDefinition,
+    readTool,
+    writeTool,
+    editTool,
+    applyPatchTool,
+    bashTool,
+    grepTool,
+    lsTool,
+    skillManageTool,
+    memoryTool,
+    memorySearchTool,
+    setMoodTool,
+    soulPatchTool,
+    soulJournalTool,
+    soulReadTool,
+    soulFeelTool,
+    soulHistoryTool,
+    soulDiffTool,
+    soulObjectTool,
+    desireProgressTool,
+    desireReviseTool,
+    desireCloseTool,
+    webFetchTool,
+    webSearchTool,
+    takoapiTool,
+    redeployTool,
     // Orchestration (docs/ORCHESTRATOR_PLAN.md): observe → advise → dispatch → control.
-    listAgentsTool as ToolDefinition,
-    inspectAgentTool as ToolDefinition,
-    repoDigestTool as ToolDefinition,
-    reviewDiffTool as ToolDefinition,
-    runChecksTool as ToolDefinition,
-    prStatusTool as ToolDefinition,
-    adviseNowTool as ToolDefinition,
-    dispatchAgentTool as ToolDefinition,
-    runOnPlanTool as ToolDefinition,
-    dispatchStatusTool as ToolDefinition,
-    scheduledDispatchTool as ToolDefinition,
-    compareAgentsTool as ToolDefinition,
-    githubLinkTool as ToolDefinition,
-    githubTool as ToolDefinition,
-    npmInfoTool as ToolDefinition,
-    mcpTool as ToolDefinition,
-    socialComposeTool as ToolDefinition,
-    signalAgentTool as ToolDefinition,
-    agentRecapTool as ToolDefinition,
+    listAgentsTool,
+    inspectAgentTool,
+    repoDigestTool,
+    reviewDiffTool,
+    runChecksTool,
+    prStatusTool,
+    adviseNowTool,
+    dispatchAgentTool,
+    runOnPlanTool,
+    dispatchStatusTool,
+    scheduledDispatchTool,
+    compareAgentsTool,
+    githubLinkTool,
+    githubTool,
+    npmInfoTool,
+    mcpTool,
+    socialComposeTool,
+    signalAgentTool,
+    agentRecapTool,
     // Personal knowledge base (docs/archive/plans/PLAN_KNOWLEDGE_BASE_v1.0.md):
     // kb_search / kb_read / kb_list (read) + kb_add / kb_write (jailed writes).
     ...kbTools,
   ];
   if (opts.includeVoice) {
-    tools.push(speakTool as ToolDefinition, transcribeTool as ToolDefinition);
+    tools.push(speakTool, transcribeTool);
   }
   if (opts.extra && opts.extra.length > 0) {
     const seen = new Set(tools.map((t) => t.name));
@@ -230,7 +230,7 @@ export function desireReviewSubset(tools: ToolDefinition[]): ToolDefinition[] {
           }
           return await original(input, ctx);
         },
-      } as ToolDefinition;
+      };
     });
 }
 

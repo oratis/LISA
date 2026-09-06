@@ -12,7 +12,7 @@ import {
 } from "./registry.js";
 
 const fake = (name: string): ToolDefinition =>
-  ({ name, description: name, inputSchema: { type: "object" }, execute: async () => "" }) as ToolDefinition;
+  ({ name, description: name, inputSchema: { type: "object" }, execute: async () => "" });
 
 const SAMPLE = [
   "bash",

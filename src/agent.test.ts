@@ -22,7 +22,7 @@ const ZERO_USAGE = {
 };
 
 function textBlock(text: string): Anthropic.ContentBlock {
-  return { type: "text", text, citations: null } as Anthropic.TextBlock;
+  return { type: "text", text, citations: null };
 }
 
 function toolUseBlock(id: string): Anthropic.ContentBlock {

@@ -230,7 +230,7 @@ function lastPromptFingerprintIn(lines: string[]): string | undefined {
     try {
       const entry = JSON.parse(lines[index]!) as Partial<SessionEntry>;
       if (entry.type === "prompt" && "fingerprint" in entry) {
-        return entry.fingerprint as string;
+        return entry.fingerprint;
       }
     } catch {
       // Skip a corrupt line and keep scanning backwards.

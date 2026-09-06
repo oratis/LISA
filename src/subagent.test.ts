@@ -27,7 +27,7 @@ function scripted(queue: ProviderResult[], tail?: ProviderResult): Provider {
 const echoTool: ToolDefinition = {
   name: "echo",
   description: "echo",
-  inputSchema: { type: "object" } as Anthropic.Tool.InputSchema,
+  inputSchema: { type: "object" },
   execute: async () => "ok",
 };
 function opts(over: Partial<SubagentOptions>): SubagentOptions {

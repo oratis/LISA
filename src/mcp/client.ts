@@ -51,7 +51,9 @@ async function connectOne(
     async close() {
       try {
         await client.close();
-      } catch {}
+      } catch {
+        // transport already closed — nothing to tear down
+      }
     },
   };
 }
@@ -83,7 +85,7 @@ export function mcpToolToLisaTool(
     ...(mcpTool.annotations ? { annotations: { ...mcpTool.annotations } } : {}),
     inputSchema: ((mcpTool.inputSchema as { type?: string; properties?: object } | undefined)?.type === "object"
       ? (mcpTool.inputSchema as { type: "object"; properties?: object })
-      : { type: "object" as const, properties: {} }) as { type: "object"; properties?: Record<string, unknown> },
+      : { type: "object" as const, properties: {} }),
     async execute(input: unknown) {
       const result = await client.callTool({
         name: mcpTool.name,

@@ -56,7 +56,7 @@ function sleep(ms: number): Promise<void> {
 async function main(): Promise<void> {
   const seconds = Math.max(5, parseInt(arg("seconds") ?? "60", 10));
   const interval = Math.max(1, parseInt(arg("interval") ?? "5", 10));
-  let pid = arg("pid") ? parseInt(arg("pid")!, 10) : await findServePid();
+  const pid = arg("pid") ? parseInt(arg("pid")!, 10) : await findServePid();
 
   if (!pid || !Number.isInteger(pid)) {
     console.error("No `lisa serve` process found. Start one (`lisa serve --web &`) or pass --pid <pid>.");

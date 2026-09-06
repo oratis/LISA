@@ -298,7 +298,7 @@ describe("ingestUrl adapter integration", () => {
       fetchImpl: async (url) => {
         const key = Object.keys(routes).find((k) => url.startsWith(k));
         if (!key) throw new Error(`unexpected fetch: ${url}`);
-        return routes[key as keyof typeof routes]!.clone();
+        return routes[key as keyof typeof routes].clone();
       },
       ytDlpDumpJson: async () => null,
     });

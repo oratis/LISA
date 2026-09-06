@@ -157,15 +157,15 @@ test("subAllowed: empty allowlist admits anyone; non-empty restricts", () => {
 });
 
 test("webServicesId parses from env; absent → null (B8b)", () => {
-  const on = appleSignInConfig({ LISA_CLOUD_APPLE_WEB_SID: " ai.meetlisa.web " } as NodeJS.ProcessEnv);
+  const on = appleSignInConfig({ LISA_CLOUD_APPLE_WEB_SID: " ai.meetlisa.web " });
   assert.equal(on.webServicesId, "ai.meetlisa.web");
-  assert.equal(appleSignInConfig({} as NodeJS.ProcessEnv).webServicesId, null);
+  assert.equal(appleSignInConfig({}).webServicesId, null);
 });
 
 test("audienceForClient picks the surface's aud and rejects unconfigured web (B8b)", () => {
-  const cfg = appleSignInConfig({ LISA_CLOUD_APPLE_WEB_SID: "ai.meetlisa.web" } as NodeJS.ProcessEnv);
+  const cfg = appleSignInConfig({ LISA_CLOUD_APPLE_WEB_SID: "ai.meetlisa.web" });
   assert.equal(audienceForClient(cfg, "native"), "ai.meetlisa.main");
   assert.equal(audienceForClient(cfg, "web"), "ai.meetlisa.web");
-  const bare = appleSignInConfig({} as NodeJS.ProcessEnv);
+  const bare = appleSignInConfig({});
   assert.equal(audienceForClient(bare, "web"), null);
 });

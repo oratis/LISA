@@ -24,7 +24,7 @@ describe("pr_status formatPR", () => {
       reviewDecision: "APPROVED",
       statusCheckRollup: [{ conclusion: "SUCCESS" }],
     });
-    assert.match(line, /#42 ✓ CI · approved · feat: add thing  \[feat\/thing\]/);
+    assert.match(line, /#42 ✓ CI · approved · feat: add thing {2}\[feat\/thing\]/);
   });
   test("marks drafts and changes-requested", () => {
     const line = formatPR({

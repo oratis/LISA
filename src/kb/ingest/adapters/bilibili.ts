@@ -98,7 +98,7 @@ async function fetchBilibili(url: URL, ctx: IngestContext): Promise<IngestedCont
   // Fixed subtitle layering: built-in → yt-dlp → metadata-only.
   let transcript: string | undefined;
   let transcriptVia = "";
-  let reason = "";
+  let reason: string;
   try {
     const built = await builtinTranscript(data, ctx);
     transcript = built.transcript;

@@ -33,7 +33,9 @@ export class IMessageChannel implements ChannelAdapter {
     }
     this.handler = handler;
     this.lastRowId = await this.maxRowId();
-    this.timer = setInterval(() => this.tick(), this.intervalMs);
+    this.timer = setInterval(() => {
+      void this.tick();
+    }, this.intervalMs);
   }
 
   private async tick(): Promise<void> {

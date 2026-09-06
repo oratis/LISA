@@ -70,7 +70,7 @@ async function postToken(body: URLSearchParams, fetchImpl: FetchLike, now: numbe
 /** Exchange an auth code for tokens. */
 export async function exchangeCode(
   o: { code: string; clientId: string; clientSecret: string; redirectUri: string },
-  fetchImpl: FetchLike = fetch as unknown as FetchLike,
+  fetchImpl: FetchLike = fetch,
   now: number = Date.now(),
 ): Promise<GoogleTokens> {
   return postToken(
@@ -89,7 +89,7 @@ export async function exchangeCode(
 /** Refresh an access token (refresh_token is reused, not returned). */
 export async function refreshAccessToken(
   o: { refreshToken: string; clientId: string; clientSecret: string },
-  fetchImpl: FetchLike = fetch as unknown as FetchLike,
+  fetchImpl: FetchLike = fetch,
   now: number = Date.now(),
 ): Promise<GoogleTokens> {
   const t = await postToken(
