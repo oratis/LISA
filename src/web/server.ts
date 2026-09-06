@@ -189,6 +189,7 @@ import {
   verificationUrl,
 } from "./public-origin.js";
 import {
+  autonomyProfileForEdition,
   capabilityProfileForEdition,
   isCloudDeniedRoute,
   toolsForCapabilityProfile,
@@ -468,6 +469,14 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     });
   const capabilityProfile = policy.capabilities;
   const runtimeTools = toolsForCapabilityProfile(opts.tools, capabilityProfile);
+  // Lisa's own unattended work declares its OWN profile (T-13) rather than
+  // inheriting the caller's. On the cloud edition that is cloud-autonomy: the
+  // sweep used to hand runDesireReviewOnce `opts.tools` — the process's FULL
+  // registry, shell and filesystem included — while chat on the same process
+  // got the filtered set. Autonomy must never exceed what the surface's own
+  // user could ask for by hand (INVARIANTS §权限与工具 1/3).
+  const autonomyProfile = autonomyProfileForEdition(cloudEdition ? "cloud" : "mac");
+  const autonomyTools = toolsForCapabilityProfile(opts.tools, autonomyProfile);
   // Non-interactive by construction: a server has no terminal to prompt at, so
   // `--approval ask` denies rather than hanging on a stdin read. undefined when
   // the mode is "auto", which keeps the fast path allocation-free.
@@ -1682,7 +1691,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         const report = await sweepUserAutonomy({
           ...(opts.model ? { model: opts.model } : {}),
           ...(maxRuns !== undefined ? { maxRuns } : {}),
-          tools: opts.tools,
+          tools: autonomyTools,
           cwd: process.cwd(),
         });
         logInfo(
