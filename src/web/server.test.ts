@@ -246,3 +246,45 @@ describe("T-7 the server honours its RuntimePolicy", () => {
     }
   });
 });
+
+describe("T-4 /api/sessions ETag revalidation", () => {
+  test("etagMatches implements weak comparison over the If-None-Match list", async () => {
+    const { etagMatches } = await import("./server.js");
+    assert.equal(etagMatches('W/"abc"', 'W/"abc"'), true);
+    // A proxy that drops or adds the weak prefix still gets its 304.
+    assert.equal(etagMatches('"abc"', 'W/"abc"'), true);
+    assert.equal(etagMatches('W/"abc"', '"abc"'), true);
+    assert.equal(etagMatches('W/"zzz", W/"abc"', 'W/"abc"'), true);
+    assert.equal(etagMatches("*", 'W/"abc"'), true);
+    assert.equal(etagMatches('W/"other"', 'W/"abc"'), false);
+    assert.equal(etagMatches(undefined, 'W/"abc"'), false);
+    assert.equal(etagMatches("", 'W/"abc"'), false);
+  });
+
+  test("200 carries an ETag; the same ETag comes back 304 with no body", async () => {
+    const srv = await boot();
+    try {
+      const first = await request(srv.port, "GET", "/api/sessions");
+      assert.equal(first.status, 200);
+      const etag = first.headers.etag;
+      assert.ok(etag, "ETag present");
+      assert.equal(first.headers["cache-control"], "no-cache");
+
+      const second = await request(srv.port, "GET", "/api/sessions", {
+        headers: { "if-none-match": etag! },
+      });
+      assert.equal(second.status, 304);
+      assert.equal(second.text, "");
+      assert.equal(second.headers.etag, etag);
+
+      // A stale validator still gets the full body.
+      const stale = await request(srv.port, "GET", "/api/sessions", {
+        headers: { "if-none-match": 'W/"stale"' },
+      });
+      assert.equal(stale.status, 200);
+      assert.equal(stale.text, first.text);
+    } finally {
+      await srv.close();
+    }
+  });
+});
