@@ -42,6 +42,7 @@ import { recordUsage, summarizeUsage, setAnomalySink } from "../billing/meter.js
 import { PRICES_VERSION, tokensAffordable } from "../billing/prices.js";
 import { quotaStatus, BillingStateError } from "../billing/quota.js";
 import { admitInference, type InferencePermit } from "../billing/admission.js";
+import { startBillingReconciler } from "../billing/reconcile.js";
 import {
   verifyAppleJWS,
   validateTransaction,
@@ -1208,6 +1209,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       sessions: sessionCtxs.size,
     };
   };
+
+  // T-8: settle usage events a crashed or throttled turn left behind. Cloud
+  // only — the Mac edition has no accounts, so nothing is ever metered there.
+  // The handle is intentionally unused: the timers are unref'd and the sweep
+  // is safe to abandon at shutdown (every event it did not reach stays open).
+  if (isCloud()) startBillingReconciler();
 
   const server = http.createServer(async (req, res) => {
     const url = req.url ?? "/";
