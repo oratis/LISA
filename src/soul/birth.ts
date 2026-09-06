@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import os from "node:os";
+import { setTimeout as delay } from "node:timers/promises";
 import { providerForModel } from "../providers/registry.js";
 import { DEFAULT_MODEL } from "../llm.js";
 import type { ProviderUsage } from "../providers/types.js";
@@ -35,7 +36,141 @@ export interface BirthOptions {
   /** Ceremonial async generator that yields each step for live UI rendering. */
   onStep?: (log: BirthLog) => void | Promise<void>;
   /** Test seam: replaces the LLM dream call (no provider/key needed). */
-  dreamFn?: (seed: SoulSeed) => Promise<BirthOutput | BirthDreamResult>;
+  dreamFn?: (seed: SoulSeed, signal: AbortSignal) => Promise<BirthOutput | BirthDreamResult>;
+  /** Caller cancellation (the browser closing the /api/birth stream). */
+  signal?: AbortSignal;
+  /** Overall deadline. Defaults to LISA_BIRTH_TIMEOUT_MS, else 90 s. */
+  timeoutMs?: number;
+  /** Test seam: the pause before retrying a rate-limited dream. */
+  rateLimitBackoffMs?: number;
+}
+
+/**
+ * Why a birth failed, in terms a UI can act on (T-8).
+ *
+ *  - `auth`       — the key was rejected. Retrying with the same key cannot
+ *                   work, so it is never retried and `retryable` is false.
+ *  - `rate_limit` — the provider is throttling; one backed-off retry, and the
+ *                   user may try again later.
+ *  - `timeout`    — the overall deadline or the caller's abort fired.
+ *  - `network`    — DNS / connection / proxy failure; the request never
+ *                   reached the model.
+ *  - `unknown`    — anything else, including malformed model output.
+ */
+export type BirthErrorCode = "auth" | "timeout" | "network" | "rate_limit" | "unknown";
+
+export interface BirthErrorInfo {
+  code: BirthErrorCode;
+  /** Human text. NEVER the provider's raw message or JSON body. */
+  message: string;
+  /** Whether the UI should offer "try again". */
+  retryable: boolean;
+}
+
+/** Default overall birth deadline. */
+export const DEFAULT_BIRTH_TIMEOUT_MS = 90_000;
+/** Pause before the single retry of a rate-limited dream. */
+const RATE_LIMIT_BACKOFF_MS = 3_000;
+
+export function birthTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.LISA_BIRTH_TIMEOUT_MS?.trim();
+  if (!raw) return DEFAULT_BIRTH_TIMEOUT_MS;
+  const n = Number(raw);
+  // Garbage falls back to the default rather than to "no deadline".
+  if (!Number.isFinite(n) || n <= 0) return DEFAULT_BIRTH_TIMEOUT_MS;
+  return n;
+}
+
+const NETWORK_CAUSE_CODES = new Set([
+  "ECONNRESET",
+  "ECONNREFUSED",
+  "EPIPE",
+  "ETIMEDOUT",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "UND_ERR_SOCKET",
+  "UND_ERR_CONNECT_TIMEOUT",
+]);
+
+/**
+ * Classify a provider failure into the wire contract the birth UI codes
+ * against. Walks the `cause` chain because the SDKs (and our own
+ * BirthInferenceError) wrap the original.
+ *
+ * The returned `message` is written here, never taken from the error: a
+ * provider's message can be a whole JSON error body, which is both unreadable
+ * in a UI and a place API keys and request echoes have been known to appear.
+ */
+export function classifyBirthError(err: unknown): BirthErrorInfo {
+  let status: number | undefined;
+  let sawAbort = false;
+  let sawNetwork = false;
+  let node: unknown = err;
+  for (let depth = 0; node && depth < 6; depth++) {
+    const e = node as {
+      status?: unknown;
+      name?: unknown;
+      message?: unknown;
+      code?: unknown;
+      cause?: unknown;
+    };
+    if (status === undefined && typeof e.status === "number") status = e.status;
+    const name = typeof e.name === "string" ? e.name : "";
+    if (name === "AbortError" || name === "APIUserAbortError" || name === "TimeoutError") sawAbort = true;
+    if (name === "APIConnectionError" || name === "APIConnectionTimeoutError") sawNetwork = true;
+    const code = typeof e.code === "string" ? e.code : "";
+    if (code === "ABORT_ERR") sawAbort = true;
+    if (NETWORK_CAUSE_CODES.has(code)) sawNetwork = true;
+    const msg = (typeof e.message === "string" ? e.message : "").toLowerCase();
+    if (msg.includes("fetch failed") || msg.includes("getaddrinfo") || msg.includes("socket hang up")) {
+      sawNetwork = true;
+    }
+    node = e.cause;
+  }
+
+  if (status === 401 || status === 403) {
+    return {
+      code: "auth",
+      message:
+        "The provider rejected the API key. Open Settings, check the key for this model, and start the birth again.",
+      retryable: false,
+    };
+  }
+  if (status === 429) {
+    return {
+      code: "rate_limit",
+      message: "The provider is rate-limiting this API key. Wait a minute and try the birth again.",
+      retryable: true,
+    };
+  }
+  // Abort is checked after the status codes so a 429 that was also aborted
+  // still reads as rate limiting, which is what the user has to fix.
+  if (sawAbort) {
+    return {
+      code: "timeout",
+      message: "The birth took too long and was cancelled. Try again — it usually takes about 30 seconds.",
+      retryable: true,
+    };
+  }
+  if (sawNetwork || (status !== undefined && status >= 500)) {
+    return {
+      code: "network",
+      message: "Could not reach the model provider. Check the network (or your proxy) and try again.",
+      retryable: true,
+    };
+  }
+  return {
+    code: "unknown",
+    message: "The birth ritual failed. The server log has the details; try again.",
+    retryable: true,
+  };
+}
+
+/** Retried once inside `birth()`. Auth can never succeed on a retry. */
+function retryableInternally(code: BirthErrorCode): boolean {
+  return code === "rate_limit" || code === "network" || code === "unknown";
 }
 
 export interface BirthDreamResult {
@@ -121,6 +256,38 @@ async function birthInner(opts: BirthOptions): Promise<BirthResult> {
   let totalUsage = { ...ZERO_USAGE };
   await ensureSoulDirs();
 
+  // Overall deadline (T-8). Without one, a provider that accepts the
+  // connection and then never streams leaves the ceremony spinning forever —
+  // and the browser with an open SSE stream and no way to tell why. The
+  // controller is combined with the caller's signal so a closed stream also
+  // stops the dream. Unref'd + cleared so it never holds the process open.
+  const deadlineCtl = new AbortController();
+  const deadline = setTimeout(
+    () => deadlineCtl.abort(new Error("birth deadline exceeded")),
+    opts.timeoutMs ?? birthTimeoutMs(),
+  );
+  deadline.unref?.();
+  const signal = opts.signal
+    ? AbortSignal.any([opts.signal, deadlineCtl.signal])
+    : deadlineCtl.signal;
+  try {
+    return await birthSteps(opts, onStep, signal, (u) => {
+      totalUsage = u(totalUsage);
+      return totalUsage;
+    });
+  } finally {
+    clearTimeout(deadline);
+  }
+}
+
+async function birthSteps(
+  opts: BirthOptions,
+  onStep: NonNullable<BirthOptions["onStep"]>,
+  signal: AbortSignal,
+  updateUsage: (fn: (prev: ProviderUsage) => ProviderUsage) => ProviderUsage,
+): Promise<BirthResult> {
+  let totalUsage = updateUsage((p) => p);
+
   // 1. Seed — in memory only for now. Nothing durable lands before the dream
   // succeeds (S3): previously writeSeed ran first, so a failed/unparseable LLM
   // call left isBorn()=true with no name or identity, and a re-run was refused
@@ -139,16 +306,16 @@ async function birthInner(opts: BirthOptions): Promise<BirthResult> {
   const doDream = async (): Promise<BirthOutput> => {
     try {
       const result = opts.dreamFn
-        ? await opts.dreamFn(seed)
-        : await dreamSoul(providerForModel(model), model, seed);
+        ? await opts.dreamFn(seed, signal)
+        : await dreamSoul(providerForModel(model), model, seed, signal);
       if (isBirthDreamResult(result)) {
-        totalUsage = addUsage(totalUsage, result.usage);
+        totalUsage = updateUsage((p) => addUsage(p, result.usage));
         return result.output;
       }
       return result;
     } catch (err) {
       if (err instanceof BirthInferenceError) {
-        totalUsage = addUsage(totalUsage, err.usage);
+        totalUsage = updateUsage((p) => addUsage(p, err.usage));
       }
       throw err;
     }
@@ -158,9 +325,20 @@ async function birthInner(opts: BirthOptions): Promise<BirthResult> {
     try {
       parsed = await doDream();
     } catch (e) {
+      // Classified retry (T-8). The old code retried EVERY failure, which
+      // meant a rejected API key burned two round trips to reach the same
+      // answer, and a rate limit was retried instantly — straight into
+      // another 429.
+      const info = classifyBirthError(e);
+      if (!retryableInternally(info.code)) throw e;
+      if (info.code === "rate_limit") {
+        await onStep({ step: "soul", detail: "the provider is throttling — waiting a moment…" });
+        await delay(opts.rateLimitBackoffMs ?? RATE_LIMIT_BACKOFF_MS, undefined, { signal, ref: false });
+      }
       await onStep({
+        // info.message, never the raw provider text: it reaches a browser.
         step: "soul",
-        detail: `the first dream slipped away (${(e as Error).message.slice(0, 80)}) — dreaming again…`,
+        detail: `the first dream slipped away (${info.code}) — dreaming again…`,
       });
       parsed = await doDream();
     }
@@ -257,8 +435,10 @@ export async function dreamSoul(
   provider: ReturnType<typeof providerForModel>,
   model: string,
   seed: SoulSeed,
+  signal: AbortSignal,
 ): Promise<BirthDreamResult> {
   const result = await provider.runTurn({
+    signal,
     model,
     systemPrompt: BIRTH_SYSTEM,
     tools: [],

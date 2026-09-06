@@ -658,10 +658,11 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   const runBirth = async (
     uid: string | null,
     emit: (log: { step: string; detail: string }) => void,
+    signal?: AbortSignal,
   ): Promise<void> => {
     const { birth, BirthInferenceError } = await import("../soul/birth.js");
     if (!cloudEdition || !uid) {
-      await birth({ model: opts.model, onStep: emit });
+      await birth({ model: opts.model, onStep: emit, signal });
       return;
     }
     const acct = await getAccount(uid);
@@ -673,7 +674,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     }
     try {
       try {
-        const result = await birth({ model: opts.model, onStep: emit });
+        const result = await birth({ model: opts.model, onStep: emit, signal });
         await admission.permit.settle("birth", result.usage);
       } catch (err) {
         if (err instanceof BirthInferenceError) {
@@ -3881,7 +3882,20 @@ self.addEventListener('fetch', (event) => {
       const key = scopedUid() ?? "local";
       const listener = (log: { step: string; detail: string }) =>
         send({ kind: "step", name: log.step, detail: log.detail });
-      const run = startBirthOnce(key, (emit) => runBirth(accountUid, emit));
+      // Cancellation (T-8): if the browser closes the stream, stop the dream —
+      // but ONLY when this request is the one that started it. The birth hub is
+      // single-flight, so a late watcher walking away must never abort the run
+      // other watchers (and the lazy background path) are still riding on.
+      const abortBirth = new AbortController();
+      let weStartedTheRun = false;
+      const run = startBirthOnce(key, (emit) => {
+        weStartedTheRun = true;
+        return runBirth(accountUid, emit, abortBirth.signal);
+      });
+      const onClose = () => {
+        if (weStartedTheRun && run.listeners.size <= 1) abortBirth.abort();
+      };
+      req.on("close", onClose);
       for (const log of run.steps) listener(log);
       run.listeners.add(listener);
       try {
@@ -3890,8 +3904,15 @@ self.addEventListener('fetch', (event) => {
         if (runtime) runtime.prompt = undefined; // pick the newborn soul up next turn
         send({ kind: "done", message: "she is alive" });
       } catch (err) {
-        send({ kind: "error", message: (err as Error).message });
+        // The frame carries a CODE the UI can branch on and a human message
+        // written by the classifier — never the provider's raw text, which can
+        // be a whole JSON error body.
+        const { classifyBirthError } = await import("../soul/birth.js");
+        const info = classifyBirthError(err);
+        logError(`[birth] failed (${info.code}): ${String((err as Error).message).slice(0, 200)}`);
+        send({ kind: "error", code: info.code, message: info.message, retryable: info.retryable });
       } finally {
+        req.off("close", onClose);
         run.listeners.delete(listener);
         res.end();
       }
