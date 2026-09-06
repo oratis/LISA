@@ -447,3 +447,38 @@ describe("small fixes (UX-11)", () => {
     assert.match(MAIN_CLIENT_JS, /kv\.appendChild\(inspPathRow\('cwd', s\.cwd\)\)/);
   });
 });
+
+describe("keyboard shortcuts (UX-11)", () => {
+  test("the four bindings exist and are modifier-gated", () => {
+    const fn = MAIN_CLIENT_JS.slice(
+      MAIN_CLIENT_JS.indexOf("document.addEventListener('keydown', function (e) {\n  const mod ="),
+    ).slice(0, 1200);
+    assert.match(fn, /const mod = e\.metaKey \|\| e\.ctrlKey;/);
+    assert.match(fn, /e\.key === 'k' \|\| e\.key === 'K'[\s\S]{0,40}openSwitcher\(\)/);
+    assert.match(fn, /e\.key === '\/'[\s\S]{0,40}input\.focus\(\)/);
+    assert.match(fn, /e\.key === 'f' \|\| e\.key === 'F'[\s\S]{0,40}openFind\(\)/);
+    assert.match(fn, /e\.key === '\?' && !mod && !isTypingTarget\(e\.target\)/);
+  });
+
+  test("Escape closes the switcher and the find bar, never the first-run gates", () => {
+    const fn = MAIN_CLIENT_JS.slice(
+      MAIN_CLIENT_JS.indexOf("if (e.key === 'Escape') {\n    // Most-nested first."),
+    ).slice(0, 500);
+    assert.match(fn, /switcherIsOpen\(\)[\s\S]{0,40}closeSwitcher\(\)/);
+    assert.match(fn, /findIsOpen\(\)[\s\S]{0,40}closeFind\(\)/);
+    // Dismissing the key gate or the birth overlay would drop the user into a
+    // shell that cannot work — those must stay out of this handler.
+    assert.ok(!fn.includes("cfgOverlay"), "Esc must not close the key gate");
+    assert.ok(!fn.includes("birthOverlay"), "Esc must not close the birth ritual");
+  });
+
+  test("every shortcut in the help list has copy in both locales", () => {
+    const ctx = i18nContext();
+    runInContext(`${I18N_SRC}; globalThis.__tr = tr; globalThis.__zh = LISA_STRINGS['zh-CN'];`, ctx);
+    const c = ctx as { __tr: (k: string) => string; __zh: Record<string, string> };
+    for (const key of ["kbd.switch", "kbd.focus", "kbd.find", "kbd.close", "kbd.send", "kbd.help"]) {
+      assert.ok(c.__tr(key) !== key, `missing en copy for ${key}`);
+      assert.ok(c.__zh[key], `missing zh-CN copy for ${key}`);
+    }
+  });
+});

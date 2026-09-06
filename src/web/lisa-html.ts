@@ -27,7 +27,8 @@
  * New IDs for the sidebar live blocks (wired in the trailing
  * "sidebar live wiring" script section):
  *   identitySub, sbDesire, sbClaudeCard, sbClaudeCount, sbClaudeRows,
- *   sbReflection, sbReflectionBody, sbSessionBadge
+ *   sbReflection, sbReflectionBody, sbSessionBadge,
+ *   connPill, switcherOverlay, switcherInput, switcherList
  */
 
 import { MAIN_CSS } from "./lisa-css.js";
@@ -350,6 +351,16 @@ catch (e) { document.body.classList.add('rb-collapsed'); }
       </div>
       <div class="cfg-error" id="cfgError"></div>
     </form>
+  </div>
+</div>
+
+<!-- ⌘K session switcher (UX-11). Hidden until opened; the list is built
+     from the same session cache the sidebar tree uses. -->
+<div class="kbd-overlay" id="switcherOverlay" hidden>
+  <div class="kbd-panel" role="dialog" aria-modal="true" aria-label="Switch session">
+    <input class="kbd-input" id="switcherInput" type="text" autocomplete="off"
+           spellcheck="false" placeholder="Switch session…" aria-controls="switcherList">
+    <div class="kbd-list" id="switcherList" role="listbox"></div>
   </div>
 </div>
 

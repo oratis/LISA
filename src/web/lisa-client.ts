@@ -106,6 +106,15 @@ const LISA_STRINGS = {
     'copyPath': 'Copy the full path',
     'pair.noExpiry': 'This pairing link carries a device token that does not expire — anyone who gets it can reach this Lisa. Revoke the device in Settings when you are done with it.',
     'sense.noConnector': 'Nothing is published — no social connector is installed.',
+    'kbd.switchPlaceholder': 'Switch session…',
+    'kbd.noSessions': 'No sessions match.',
+    'kbd.title': 'KEYBOARD',
+    'kbd.switch': 'Switch session',
+    'kbd.focus': 'Focus the composer',
+    'kbd.find': 'Find in this conversation',
+    'kbd.close': 'Close the switcher, find bar or a panel',
+    'kbd.send': 'Send · newline',
+    'kbd.help': 'This list',
   },
   'zh-CN': {
     'session.new': '新会话',
@@ -166,6 +175,15 @@ const LISA_STRINGS = {
     'copyPath': '复制完整路径',
     'pair.noExpiry': '这个配对链接里的设备令牌不会过期 —— 拿到它的人就能连上这个 Lisa。用完之后请在 Settings 里吊销该设备。',
     'sense.noConnector': '没有发布任何内容 —— 尚未安装社交连接器。',
+    'kbd.switchPlaceholder': '切换会话…',
+    'kbd.noSessions': '没有匹配的会话。',
+    'kbd.title': '快捷键',
+    'kbd.switch': '切换会话',
+    'kbd.focus': '聚焦输入框',
+    'kbd.find': '在当前对话中查找',
+    'kbd.close': '关闭切换器、查找栏或面板',
+    'kbd.send': '发送 · 换行',
+    'kbd.help': '这个列表',
   },
 };
 const LISA_LOCALE = (function () {
@@ -1686,9 +1704,146 @@ if (fnSearchBtn && fnFind) {
   });
   fnFind.addEventListener('input', () => filterLog(fnFind.value.trim().toLowerCase()));
   fnFind.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') { fnFind.value = ''; filterLog(''); fnFind.style.display = 'none'; }
+    if (e.key === 'Escape') closeFind();
   });
 }
+function openFind() {
+  if (!fnFind) return;
+  fnFind.style.display = '';
+  fnFind.focus();
+  fnFind.select();
+}
+function findIsOpen() { return !!fnFind && fnFind.style.display !== 'none'; }
+function closeFind() {
+  if (!fnFind) return;
+  fnFind.value = '';
+  filterLog('');
+  fnFind.style.display = 'none';
+}
+
+// ── Keyboard shortcuts (UX-11) ───────────────────────────────────
+// Before this the shell had Enter / Shift+Enter / Esc and nothing else:
+// switching sessions meant reaching for the sidebar tree, and find-in-chat
+// meant finding a 36px magnifier in a twelve-icon bar.
+const switcherOverlay = document.getElementById('switcherOverlay');
+const switcherInput = document.getElementById('switcherInput');
+const switcherList = document.getElementById('switcherList');
+let switcherRows = [];
+let switcherIdx = 0;
+
+function isTypingTarget(node) {
+  if (!node) return false;
+  const tag = node.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || node.isContentEditable === true;
+}
+function switcherIsOpen() { return !!switcherOverlay && !switcherOverlay.hidden; }
+function renderSwitcher() {
+  if (!switcherList) return;
+  const q = (switcherInput.value || '').trim().toLowerCase();
+  const all = (typeof window.lisaSessionsForSwitcher === 'function' ? window.lisaSessionsForSwitcher() : []) || [];
+  switcherRows = all.filter(function (r) {
+    if (!q) return true;
+    return (r.label + ' ' + r.id).toLowerCase().indexOf(q) >= 0;
+  }).slice(0, 30);
+  if (switcherIdx >= switcherRows.length) switcherIdx = 0;
+  switcherList.innerHTML = '';
+  if (!switcherRows.length) {
+    const empty = document.createElement('div');
+    empty.className = 'kbd-empty';
+    empty.textContent = tr('kbd.noSessions');
+    switcherList.appendChild(empty);
+    return;
+  }
+  switcherRows.forEach(function (r, i) {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'kbd-row' + (i === switcherIdx ? ' sel' : '') + (r.active ? ' current' : '');
+    row.setAttribute('role', 'option');
+    row.setAttribute('aria-selected', i === switcherIdx ? 'true' : 'false');
+    const nm = document.createElement('span');
+    nm.className = 'kbd-row-name';
+    nm.textContent = r.label;
+    const meta = document.createElement('span');
+    meta.className = 'kbd-row-meta';
+    meta.textContent = r.meta;
+    row.appendChild(nm);
+    row.appendChild(meta);
+    row.title = r.id;
+    // Mousedown, not click: the input keeps focus and the overlay closes
+    // before a click could land on whatever is underneath.
+    row.addEventListener('mousedown', function (ev) { ev.preventDefault(); activateSwitcher(i); });
+    switcherList.appendChild(row);
+  });
+}
+function moveSwitcher(delta) {
+  if (!switcherRows.length) return;
+  switcherIdx = (switcherIdx + delta + switcherRows.length) % switcherRows.length;
+  renderSwitcher();
+  const sel = switcherList.querySelector('.kbd-row.sel');
+  if (sel && sel.scrollIntoView) sel.scrollIntoView({ block: 'nearest' });
+}
+function activateSwitcher(i) {
+  const row = switcherRows[i == null ? switcherIdx : i];
+  closeSwitcher();
+  if (!row) return;
+  if (typeof window.lisaSwitchSession === 'function') window.lisaSwitchSession(row.id);
+}
+function openSwitcher() {
+  if (!switcherOverlay) return;
+  switcherIdx = 0;
+  switcherInput.value = '';
+  switcherInput.placeholder = tr('kbd.switchPlaceholder');
+  switcherOverlay.hidden = false;
+  renderSwitcher();
+  switcherInput.focus();
+}
+function closeSwitcher() {
+  if (!switcherOverlay) return;
+  switcherOverlay.hidden = true;
+}
+if (switcherOverlay) {
+  switcherInput.addEventListener('input', function () { switcherIdx = 0; renderSwitcher(); });
+  switcherInput.addEventListener('keydown', function (e) {
+    if (e.key === 'ArrowDown') { e.preventDefault(); moveSwitcher(1); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); moveSwitcher(-1); }
+    else if (e.key === 'Enter') { e.preventDefault(); activateSwitcher(); }
+    else if (e.key === 'Escape') { e.preventDefault(); closeSwitcher(); }
+  });
+  switcherOverlay.addEventListener('mousedown', function (e) {
+    if (e.target === switcherOverlay) closeSwitcher();
+  });
+}
+
+const SHORTCUTS = [
+  ['⌘K / Ctrl+K', 'kbd.switch'],
+  ['⌘/ / Ctrl+/', 'kbd.focus'],
+  ['⌘F / Ctrl+F', 'kbd.find'],
+  ['Esc', 'kbd.close'],
+  ['Enter / Shift+Enter', 'kbd.send'],
+  ['?', 'kbd.help'],
+];
+function showShortcuts() {
+  const rows = SHORTCUTS.map(function (r) {
+    return '<div class="kvrow"><span>' + escapeHtml(r[0]) + '</span><code>' + escapeHtml(tr(r[1])) + '</code></div>';
+  }).join('');
+  openModal(tr('kbd.title'), '<div class="kvrows">' + rows + '</div>');
+}
+window.lisaShowShortcuts = showShortcuts;
+
+document.addEventListener('keydown', function (e) {
+  const mod = e.metaKey || e.ctrlKey;
+  if (mod && !e.altKey && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); openSwitcher(); return; }
+  if (mod && !e.altKey && e.key === '/') { e.preventDefault(); input.focus(); return; }
+  if (mod && !e.altKey && (e.key === 'f' || e.key === 'F')) { e.preventDefault(); openFind(); return; }
+  // "?" only when the user is not typing one into a field.
+  if (e.key === '?' && !mod && !isTypingTarget(e.target)) { e.preventDefault(); showShortcuts(); return; }
+  if (e.key === 'Escape') {
+    // Most-nested first. The key gate and the birth ritual are deliberately
+    // NOT dismissible — they are the only way through first run.
+    if (switcherIsOpen()) { closeSwitcher(); return; }
+    if (findIsOpen()) { closeFind(); return; }
+  }
+});
 
 // Compact / sidebar mode — force the narrow stacked layout at any width, persisted.
 // The toggle UI now lives in the Settings rail view; this block owns the state,
@@ -3084,6 +3239,20 @@ if ('serviceWorker' in navigator) {
     const s = sessionById(id);
     return s ? sessionLabel(s) : '';
   };
+  // ⌘K switcher (UX-11) lives at top level; hand it pre-rendered rows so it
+  // does not need sessionLabel / relativeTime / cachedSessions itself.
+  window.lisaSessionsForSwitcher = function () {
+    return cachedSessions.map(function (s) {
+      return {
+        id: s.id,
+        label: sessionLabel(s),
+        meta: String(s.messageCount || 0) + ' msgs · ' + relativeTime(s.startedAt),
+        active: s.id === window.lisaActiveSessionId,
+      };
+    });
+  };
+  window.lisaSwitchSession = switchSession;
+  window.lisaNewSession = newSession;
   function sessionById(id) {
     for (let i = 0; i < cachedSessions.length; i++) {
       if (cachedSessions[i].id === id) return cachedSessions[i];
@@ -4639,6 +4808,9 @@ if ('serviceWorker' in navigator) {
     html += '</div>';
     html += '<div class="view-sec-label">About</div><div class="set-card">';
     html += '<div class="set-row"><div class="set-main"><div class="set-name">Edition</div><div class="set-sub">Runtime build</div></div><span class="set-chip">' + esc(edName) + '</span></div>';
+    // A discoverable entry point for the shortcut list — "press ?" is only
+    // findable if you already know it is there (UX-11).
+    html += '<div class="set-row"><div class="set-main"><div class="set-name">Keyboard shortcuts</div><div class="set-sub">⌘K switch · ⌘/ focus · ⌘F find · ? this list</div></div><button class="v-toggle" id="setShortcuts">show</button></div>';
     html += '<div class="set-row"><div class="set-main"><div class="set-name">Anthropic Console</div><div class="set-sub">Manage billing &amp; keys</div></div><a class="set-chip" href="https://console.anthropic.com/" target="_blank" rel="noopener">open ↗</a></div>';
     html += '</div>';
     scroll.innerHTML = html;
@@ -4654,6 +4826,10 @@ if ('serviceWorker' in navigator) {
       ct.addEventListener('click', flip);
       ct.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip(); } });
     }
+    var scBtn = document.getElementById('setShortcuts');
+    if (scBtn) scBtn.addEventListener('click', function () {
+      if (typeof window.lisaShowShortcuts === 'function') window.lisaShowShortcuts();
+    });
     var sel = document.getElementById('setProvider');
     var keyEl = document.getElementById('setKey');
     var modelEl = document.getElementById('setModel');

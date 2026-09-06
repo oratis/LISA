@@ -245,10 +245,13 @@ import { MAIN_HTML } from "./lisa-html.js";
  * Then: UX-11 small fixes — the Sense policy row is gated on an installed
  * connector, the pair panel states that its token never expires, and the
  * inspector's cwd is abbreviated to ~ with a .copy-btn.
+ * Then: keyboard shortcuts — a #switcherOverlay ⌘K session switcher, ⌘/ to
+ * focus the composer, ⌘F for find-in-chat, Esc to close them and "?" for the
+ * shortcut list (also reachable from Settings).
  */
-const EXPECTED_LENGTH = 361953;
+const EXPECTED_LENGTH = 371746;
 const EXPECTED_SHA256 =
-  "e5c5ea331241f6d6139f446da8946b3406dced02195023212bf68ff4306f29a5";
+  "b8221d6d42737b36020f0c75ff25b5ab33a66d8b9b45e049bf5f876fff780d93";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);
