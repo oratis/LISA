@@ -404,3 +404,46 @@ describe("backend liveness is surfaced (UX-10)", () => {
     assert.equal((fn.match(/clearTimeout\(waitTimer\)/g) || []).length, 2);
   });
 });
+
+describe("small fixes (UX-11)", () => {
+  const ctx = i18nContext();
+  runInContext(`${I18N_SRC}\n${extractFunction(MAIN_CLIENT_JS, "abbrevPath")}; globalThis.__ab = abbrevPath;`, ctx);
+  const ab = (ctx as { __ab: (p: unknown) => string }).__ab;
+
+  test("home directories abbreviate to ~, everything else is left alone", () => {
+    assert.equal(ab("/Users/oratis/Projects/LISA"), "~/Projects/LISA");
+    assert.equal(ab("/Users/oratis"), "~");
+    assert.equal(ab("/home/deploy/app"), "~/app");
+    assert.equal(ab("/opt/lisa"), "/opt/lisa");
+    assert.equal(ab("/UsersOfSomething/x"), "/UsersOfSomething/x");
+    assert.equal(ab(""), "");
+    assert.equal(ab(null), "");
+  });
+
+  test("the Sense view only claims publishing state when a connector exists", () => {
+    // "Publishing active · Pause publishing" on a fresh install implied there
+    // was something to pause.
+    assert.match(
+      MAIN_CLIENT_JS,
+      /var html = connectors\.length\s*\?\s*'<div class="social-policy">/,
+      "the policy row must be gated on connectors.length",
+    );
+    assert.match(MAIN_CLIENT_JS, /social-policy neutral[\s\S]{0,80}sense\.noConnector/);
+  });
+
+  test("the pairing panel states the token's lifetime", () => {
+    assert.match(MAIN_CLIENT_JS, /class="pair-note"/);
+    const ctx2 = i18nContext();
+    runInContext(`${I18N_SRC}; globalThis.__tr = tr;`, ctx2);
+    const note = (ctx2 as { __tr: (k: string) => string }).__tr("pair.noExpiry");
+    assert.match(note, /does not expire/);
+  });
+
+  test("the inspector's cwd row is abbreviated, tooltipped and copyable", () => {
+    const fn = extractFunction(MAIN_CLIENT_JS, "inspPathRow");
+    assert.match(fn, /inspRow\(label, abbrevPath\(value\)\)/);
+    assert.match(fn, /code\.title = value/);
+    assert.match(fn, /copyButton\(function \(\) \{ return value; \}/);
+    assert.match(MAIN_CLIENT_JS, /kv\.appendChild\(inspPathRow\('cwd', s\.cwd\)\)/);
+  });
+});

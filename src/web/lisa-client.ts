@@ -101,6 +101,11 @@ const LISA_STRINGS = {
     'err.retry': '↻ Retry',
     'conn.reconnecting': 'reconnecting…',
     'chat.waiting': '⋯ waiting for the backend',
+    'copy': 'Copy',
+    'copied': 'Copied',
+    'copyPath': 'Copy the full path',
+    'pair.noExpiry': 'This pairing link carries a device token that does not expire — anyone who gets it can reach this Lisa. Revoke the device in Settings when you are done with it.',
+    'sense.noConnector': 'Nothing is published — no social connector is installed.',
   },
   'zh-CN': {
     'session.new': '新会话',
@@ -156,6 +161,11 @@ const LISA_STRINGS = {
     'err.retry': '↻ 重试',
     'conn.reconnecting': '重新连接…',
     'chat.waiting': '⋯ 正在等待后端',
+    'copy': '复制',
+    'copied': '已复制',
+    'copyPath': '复制完整路径',
+    'pair.noExpiry': '这个配对链接里的设备令牌不会过期 —— 拿到它的人就能连上这个 Lisa。用完之后请在 Settings 里吊销该设备。',
+    'sense.noConnector': '没有发布任何内容 —— 尚未安装社交连接器。',
   },
 };
 const LISA_LOCALE = (function () {
@@ -1549,7 +1559,7 @@ async function selectPlan(plan) {
 function pairRow(label, value) {
   return '<div class="pair-row"><span class="pair-label">' + escapeHtml(label) + '</span>'
     + '<code class="pair-val">' + escapeHtml(value) + '</code>'
-    + '<button class="pair-copy" type="button">Copy</button></div>';
+    + '<button class="pair-copy" type="button">' + escapeHtml(tr('copy')) + '</button></div>';
 }
 async function showPair() {
   openModal('PAIR PHONE', '<div class="empty">minting a pairing code…</div>');
@@ -1584,6 +1594,10 @@ async function showPair() {
   html += pairRow('Host', host || '(your Mac\\'s Wi-Fi IP)');
   html += pairRow('Port', String(port));
   html += pairRow('Token', data.token);
+  // UX-11: the panel showed a live credential with no word about its lifetime.
+  // Device tokens (devices.ts mintDevice) have no expiry at all — they are
+  // valid until the device is revoked — so say exactly that.
+  html += '<div class="pair-note">' + escapeHtml(tr('pair.noExpiry')) + '</div>';
   if (!host) html += '<div class="empty">Couldn\\'t detect your Mac\\'s LAN address — enter its Wi-Fi IP or tailnet name on the phone.</div>';
   modalBody.innerHTML = html;
   const codes = modalBody.querySelectorAll('.pair-row');
@@ -1593,7 +1607,7 @@ async function showPair() {
     const val = row.querySelector('.pair-val');
     btn.addEventListener('click', function () {
       navigator.clipboard.writeText(val.textContent).then(function () {
-        const prev = btn.textContent; btn.textContent = 'Copied'; setTimeout(function () { btn.textContent = prev; }, 1200);
+        const prev = btn.textContent; btn.textContent = tr('copied'); setTimeout(function () { btn.textContent = prev; }, 1200);
       }).catch(function () {});
     });
   }
@@ -1809,6 +1823,43 @@ let thinkingEl = null;
 // Bumped by lisaResetChatLog on every session switch; runChat captures the
 // value at send time and stops rendering once it goes stale.
 let chatGeneration = 0;
+
+// UX-11: the inspector showed the full absolute cwd (90+ chars on this
+// machine), which ellipsised into uselessness in a 320px rail. No regex —
+// this file is a template literal and every backslash would need doubling.
+function abbrevPath(p) {
+  var s = String(p || '');
+  var roots = ['/Users/', '/home/'];
+  for (var i = 0; i < roots.length; i++) {
+    if (s.indexOf(roots[i]) !== 0) continue;
+    var rest = s.slice(roots[i].length);
+    var slash = rest.indexOf('/');
+    if (slash < 0) return '~';          // the home directory itself
+    return '~' + rest.slice(slash);
+  }
+  return s;
+}
+// A small "Copy" button that reverts its own label. Used by the inspector and
+// anywhere else a long unselectable value needs to be liftable.
+function copyButton(getText, cls) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = cls || 'copy-btn';
+  b.textContent = tr('copy');
+  b.addEventListener('click', function (ev) {
+    ev.stopPropagation();
+    const text = typeof getText === 'function' ? getText() : String(getText || '');
+    if (!text) return;
+    const done = function () {
+      b.textContent = tr('copied');
+      setTimeout(function () { b.textContent = tr('copy'); }, 1200);
+    };
+    try {
+      navigator.clipboard.writeText(text).then(done).catch(function () {});
+    } catch (e) {}
+  });
+  return b;
+}
 
 function el(tag, cls, text) {
   const node = document.createElement(tag);
@@ -2651,6 +2702,18 @@ if ('serviceWorker' in navigator) {
     row.appendChild(v);
     return row;
   }
+  // Same row, but the value is a filesystem path: shown as ~/…, full path in
+  // the tooltip, and liftable with one click (UX-11).
+  function inspPathRow(label, value) {
+    const row = inspRow(label, abbrevPath(value));
+    const code = row.querySelector('code');
+    if (code) code.title = value;
+    const copy = copyButton(function () { return value; }, 'copy-btn kv-copy');
+    copy.title = tr('copyPath');
+    copy.setAttribute('aria-label', tr('copyPath'));
+    row.appendChild(copy);
+    return row;
+  }
   function inspStat(value, label) {
     const st = document.createElement('div');
     st.className = 'stat';
@@ -2723,7 +2786,7 @@ if ('serviceWorker' in navigator) {
 
   function renderLisaInspector(box, s) {
     const isActive = s.id === window.lisaActiveSessionId;
-    box.appendChild(inspHead('lisa', 'L', sessionLabel(s), isActive ? 'working' : 'done', isActive ? 'active' : 'idle', s.id + ' · ' + (s.cwd || '')));
+    box.appendChild(inspHead('lisa', 'L', sessionLabel(s), isActive ? 'working' : 'done', isActive ? 'active' : 'idle', s.id + ' · ' + abbrevPath(s.cwd || '')));
     const stats = document.createElement('div');
     stats.className = 'stats';
     stats.appendChild(inspStat(String(s.messageCount || 0), 'msgs'));
@@ -2733,7 +2796,7 @@ if ('serviceWorker' in navigator) {
     const kv = document.createElement('div');
     kv.className = 'kvrows';
     if (s.model) kv.appendChild(inspRow('model', s.model));
-    if (s.cwd) kv.appendChild(inspRow('cwd', s.cwd));
+    if (s.cwd) kv.appendChild(inspPathRow('cwd', s.cwd));
     box.appendChild(kv);
     if (!isActive) {
       const acts = document.createElement('div');
@@ -4325,9 +4388,15 @@ if ('serviceWorker' in navigator) {
       var connectors = (res[2] && res[2].connectors) || [];
       var drafts = (res[3] && res[3].drafts) || [];
       var paused = Boolean(res[4] && res[4].paused);
-      var html = '<div class="social-policy"><span>Publishing ' + (paused ? 'paused' : 'active') +
-        '</span><button class="social-action" id="socialPauseBtn">' + (paused ? 'Resume publishing' : 'Pause publishing') +
-        '</button></div><div class="view-sec-label">Connected media</div><div class="v-card">';
+      // UX-11: with no connector installed there is no publishing to be
+      // active or paused, and offering "Pause publishing" implied there was.
+      // State line only until something can actually publish.
+      var html = connectors.length
+        ? '<div class="social-policy"><span>Publishing ' + (paused ? 'paused' : 'active') +
+          '</span><button class="social-action" id="socialPauseBtn">' + (paused ? 'Resume publishing' : 'Pause publishing') +
+          '</button></div>'
+        : '<div class="social-policy neutral"><span>' + esc(tr('sense.noConnector')) + '</span></div>';
+      html += '<div class="view-sec-label">Connected media</div><div class="v-card">';
       if (!connectors.length) {
         html += '<div class="view-empty" style="padding:6px 0">No social connector installed. Ask Lisa to help connect a supported account.</div>';
       }

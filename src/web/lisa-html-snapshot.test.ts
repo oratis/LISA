@@ -242,10 +242,13 @@ import { MAIN_HTML } from "./lisa-html.js";
  * Then: UX-10 connection state — a #connPill "reconnecting…" chip in the title
  * bar driven by EventSource readyState plus a /health probe for the half-open
  * case, and a 2s escalation of the chat thinking line to .thinking.waiting.
+ * Then: UX-11 small fixes — the Sense policy row is gated on an installed
+ * connector, the pair panel states that its token never expires, and the
+ * inspector's cwd is abbreviated to ~ with a .copy-btn.
  */
-const EXPECTED_LENGTH = 357754;
+const EXPECTED_LENGTH = 361953;
 const EXPECTED_SHA256 =
-  "126200d2dfe6f3aefdbe55edbc3a34218c266c19b0310fac55d06b6e6ce280bd";
+  "e5c5ea331241f6d6139f446da8946b3406dced02195023212bf68ff4306f29a5";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);
