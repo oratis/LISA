@@ -644,6 +644,30 @@ async function main(): Promise<void> {
     console.log(table(["file", "PNG now", "pixels", "WebP lossless", "recommendation"], ["l", "r", "l", "r", "l"], estRows));
     const webpTotal = ok.reduce((a, r) => a + (r.webpLossless ?? r.after), 0);
     const notVisiblyExact = ok.filter((r) => r.webpVisiblyExact === false).length;
+
+    // Per-directory roll-up: the top-N table says which single files are big,
+    // this says which *bundle* to make optional — that is the decision that
+    // actually closes the gap to the target, not any one file.
+    const otherBytes = [...other.values()].reduce((a, v) => a + v.bytes, 0);
+    const webpRows: string[][] = [];
+    for (const [dir, rs] of [...dirs].sort((a, b) => sum(b[1], "after") - sum(a[1], "after"))) {
+      const w = rs.reduce((a, r) => a + (r.webpLossless ?? r.after), 0);
+      webpRows.push([dir, String(rs.length), fmtBytes(sum(rs, "after")), fmtBytes(w), pct(sum(rs, "after"), w)]);
+    }
+    for (const [dir, v] of [...other].sort((a, b) => b[1].bytes - a[1].bytes)) {
+      webpRows.push([`${dir} (non-PNG)`, String(v.files), fmtBytes(v.bytes), fmtBytes(v.bytes), "—"]);
+    }
+    webpRows.push(["**assets total**", String(ok.length + [...other.values()].reduce((a, v) => a + v.files, 0)),
+      fmtBytes(after + otherBytes), fmtBytes(webpTotal + otherBytes), pct(after + otherBytes, webpTotal + otherBytes)]);
+    console.log(`\nBundle roll-up — what each directory costs today and as lossless WebP:\n`);
+    console.log(table(["bundle", "files", "now", "WebP lossless", "delta"], ["l", "r", "r", "r", "r"], webpRows));
+    if (webpTotal + otherBytes > TARGET_BYTES) {
+      console.log(
+        `\nEven all-WebP leaves ${fmtBytes(webpTotal + otherBytes)} — still over the ${fmtBytes(TARGET_BYTES)} target, ` +
+          `so format alone cannot get there: at least one bundle above has to stop shipping inside the npm tarball.`,
+      );
+    }
+
     console.log(
       `\nWebP lossless for all ${ok.length} PNGs: ${fmtBytes(webpTotal)} (${pct(after, webpTotal)} vs optimised PNG). ` +
         `libwebp keeps alpha and every visible pixel exact but rewrites RGB under alpha = 0 ` +
