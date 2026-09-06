@@ -3255,9 +3255,22 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         orientation: "any",
         background_color: "#0a0d2b",
         theme_color: "#0a0d2b",
+        // Real, declared sizes (T-12). `sizes: "any"` on a raster PNG makes
+        // Chrome and iOS treat the icon as unusable for the home screen and
+        // fall back to a screenshot of the page — which is the "the installed
+        // app has no icon" the v0.24 review recorded. The maskable variant is
+        // a SEPARATE file, not the same bytes relabelled: a maskable icon must
+        // carry its own safe-zone padding, and declaring an unpadded icon
+        // maskable gets its edges cropped by the platform's mask.
         icons: [
-          { src: "/assets/lisa-mascot.png", sizes: "any", type: "image/png", purpose: "any" },
-          { src: "/assets/lisa-mascot.png", sizes: "any", type: "image/png", purpose: "maskable" },
+          { src: "/assets/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+          { src: "/assets/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+          {
+            src: "/assets/icon-512-maskable.png",
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "maskable",
+          },
         ],
       }));
       return;
