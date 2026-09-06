@@ -58,6 +58,11 @@ INSPECTION
                                desires, sessions, providers, heartbeat last-run.
   lisa doctor                  Health check (config, network, git, providers).
                                Exits non-zero on critical issues.
+  lisa doctor --probe [url]    Ask a running backend how it feels: version,
+                               uptime, event-loop lag (p50/p99/max), heap and
+                               tenants. Defaults to http://127.0.0.1:5757; a
+                               bare port or a full URL both work. Warns above
+                               1s of p99 lag, exits non-zero if unreachable.
   lisa monitor                 TUI live dashboard (mood + soul commits + events
                                + heartbeat). Polls every 2s. Ctrl-C to quit.
   lisa soul                    Print full soul summary.
@@ -82,6 +87,12 @@ INSPECTION
                                per-device token via a running serve (localhost).
 
 LIFECYCLE
+  lisa upgrade [--check|--dry-run]
+                               Upgrade this install (Homebrew formula or npm
+                               global), then restart the login agent so the
+                               running daemon picks up the new code. --check
+                               only compares installed vs published; --dry-run
+                               prints the commands without running them.
   lisa birth                   Run the birth ritual (auto-runs on first launch).
   lisa heartbeat run [name]    Run heartbeat tasks once (incl. self-driven desires).
   lisa heartbeat install [--load] [--every <30m|1h|...>]

@@ -12,12 +12,14 @@ _lisa_completion() {
     local cur prev words cword
     _init_completion -n : 2>/dev/null || _get_comp_words_by_ref -n : cur prev words cword
 
-    local subcommands="resume sessions serve heartbeat autostart search birth soul channels skills wishlist status doctor monitor autonomy model consent sense agents"
-    local global_flags="--model --provider --think --no-reflect --compact --approval --no-mcp --no-plugins --voice --idle --no-idle --help -h --version -v"
+    local subcommands="resume sessions serve heartbeat autostart upgrade search birth soul channels skills wishlist status doctor monitor autonomy model consent sense agents pair mail kb login logout billing"
+    local global_flags="--model --provider --think --no-reflect --compact --approval --no-mcp --no-plugins --voice --idle --no-idle --verbose --no-color --host --help -h --version -v"
     local serve_flags="--web --imessage --channels --port"
     local skills_actions="list approve disable enable audit"
     local heartbeat_actions="run install uninstall"
     local autostart_actions="install uninstall status"
+    local doctor_flags="--probe"
+    local upgrade_flags="--check --dry-run"
     local model_actions="list install use health"
     local consent_actions="list grant revoke revoke-all"
     local consent_signals="screen voice clipboard selection"
@@ -112,6 +114,14 @@ _lisa_completion() {
                 COMPREPLY=( $(compgen -W "${sense_actions}" -- "${cur}") )
                 return 0
             fi
+            ;;
+        doctor)
+            COMPREPLY=( $(compgen -W "${doctor_flags}" -- "${cur}") )
+            return 0
+            ;;
+        upgrade)
+            COMPREPLY=( $(compgen -W "${upgrade_flags}" -- "${cur}") )
+            return 0
             ;;
         serve)
             COMPREPLY=( $(compgen -W "${serve_flags} ${global_flags}" -- "${cur}") )
