@@ -1,5 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { createContext, runInContext } from "node:vm";
 import { MAIN_CLIENT_JS } from "./lisa-client.js";
 
 // Regression guard for the idle "while you were away" sentinel regex.
@@ -66,5 +67,52 @@ describe("idle-note sentinel regex survives template-literal cooking", () => {
       !sentinel.test("Welcome back! Here's what I found."),
       "served regex wrongly flagged a normal reply as an idle note",
     );
+  });
+});
+
+/**
+ * Behavioural tests for individual client functions.
+ *
+ * The client is one big template literal, so there is no module to import
+ * and no DOM in `npm test`. These pull a named function's exact served text
+ * out of MAIN_CLIENT_JS and run it in a `vm` sandbox with hand-made stubs —
+ * so what is tested is literally what the browser executes.
+ */
+function extractFunction(src: string, name: string): string {
+  const head = `function ${name}(`;
+  const start = src.indexOf(head);
+  assert.ok(start >= 0, `function ${name} not found in MAIN_CLIENT_JS`);
+  let depth = 0;
+  let i = src.indexOf("{", start);
+  assert.ok(i >= 0, `function ${name} has no body`);
+  for (let j = i; j < src.length; j++) {
+    if (src[j] === "{") depth++;
+    else if (src[j] === "}") {
+      depth--;
+      if (depth === 0) return src.slice(start, j + 1);
+    }
+  }
+  throw new Error(`unbalanced braces in ${name}`);
+}
+
+describe("sessionLabel names an empty session instead of showing its raw id (UX-4)", () => {
+  const src = extractFunction(MAIN_CLIENT_JS, "sessionLabel");
+  const ctx = createContext({ relativeTime: (iso: string) => (iso ? "2m" : "") });
+  runInContext(`${src}; globalThis.__label = sessionLabel;`, ctx);
+  const label = (ctx as { __label: (s: unknown) => string }).__label;
+  const ID = "20260905-220846-9f7d58";
+
+  test("a session with no messages reads as a new session, not the id", () => {
+    assert.equal(label({ id: ID, messageCount: 0, startedAt: "2026-09-05T22:08:46Z" }), "New session · 2m");
+  });
+  test("the first user message still wins once there is one", () => {
+    assert.equal(label({ id: ID, messageCount: 1, firstUserMessage: "fix the mail sweep" }), "fix the mail sweep");
+  });
+  test("long names are ellipsised to 30 chars", () => {
+    const long = "a".repeat(80);
+    assert.equal(label({ id: ID, messageCount: 3, firstUserMessage: long }), "a".repeat(30) + "…");
+  });
+  test("a session with messages but no captured text falls back to the id", () => {
+    assert.equal(label({ id: ID, messageCount: 4 }), ID);
   });
 });

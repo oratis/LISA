@@ -427,9 +427,22 @@ function setActiveSessionUI(id) {
   activeSessionId = id;
   window.lisaActiveSessionId = id;
   sessionEl.textContent = id;
-  const titlebarSession = document.getElementById('titlebarSession');
-  if (titlebarSession) titlebarSession.textContent = '· ' + id;
+  updateTitlebarSession();
 }
+// UX-4: the title bar used to read "Lisa · 20260905-220846-9f7d58". It shows
+// the session's human label now ("New session · just now" until the first
+// message names it) and keeps the id in the tooltip, so the id is still one
+// hover away for anyone matching it against ~/.lisa/sessions.
+function updateTitlebarSession() {
+  const tag = document.getElementById('titlebarSession');
+  if (!tag) return;
+  const id = window.lisaActiveSessionId;
+  if (!id) { tag.textContent = ''; tag.title = ''; return; }
+  const label = (typeof window.lisaSessionLabel === 'function' && window.lisaSessionLabel(id)) || id;
+  tag.textContent = '· ' + label;
+  tag.title = id;
+}
+window.lisaUpdateTitlebar = updateTitlebarSession;
 window.lisaSetActiveSession = function (id) {
   if (!id || id === activeSessionId) return;
   setActiveSessionUI(id);
@@ -488,11 +501,13 @@ function connectEvents() {
         idlePulseEl = document.createElement('div');
         idlePulseEl.className = 'idle-pulse';
         idlePulseEl.textContent = '⋯ Lisa is thinking on her own time ⋯';
+        removeChatEmpty();
         log.appendChild(idlePulseEl);
         log.scrollTop = log.scrollHeight;
       }
     } else if (ev.type === 'idle_message') {
       if (idlePulseEl) { idlePulseEl.remove(); idlePulseEl = null; }
+      removeChatEmpty();
       log.appendChild(buildIdleBlock(ev.text, ev.at));
       log.scrollTop = log.scrollHeight;
       // sidebar reflection card mirrors the latest while-you-were-away
@@ -504,6 +519,7 @@ function connectEvents() {
       const e2 = document.createElement('div');
       e2.className = 'err';
       e2.textContent = '[idle error] ' + ev.message;
+      removeChatEmpty();
       log.appendChild(e2);
     } else if (ev.type === 'agent_session_update') {
       // D4a — sidebar multi-agent monitor refresh (defined later in the
@@ -724,6 +740,10 @@ startupGate();
 let historyPage = 0;
 let historyLoading = false;
 let historyExhausted = false;
+// The empty-state card may only be drawn once we KNOW the log is empty — i.e.
+// after the first /api/history answer. Before that an empty #log just means
+// the fetch is still in flight.
+let historyFetched = false;
 
 function textOfMessage(msg) {
   if (typeof msg.content === 'string') return msg.content.trim();
@@ -759,6 +779,7 @@ function prependHistoryMessages(messages) {
     fragment.appendChild(roleDiv);
     fragment.appendChild(span);
   }
+  removeChatEmpty();
   log.insertBefore(fragment, log.firstChild);
 }
 
@@ -790,6 +811,8 @@ async function loadHistoryPage() {
     }
   } finally {
     historyLoading = false;
+    historyFetched = true;
+    renderChatEmpty();
   }
 }
 
@@ -811,8 +834,96 @@ window.lisaResetChatLog = function () {
   pendingTools.clear();
   if (thinkingEl) { thinkingEl.remove(); thinkingEl = null; }
   log.innerHTML = '';
+  historyFetched = false;
   loadHistoryPage();
 };
+
+// ── Empty chat: who she is · three ways to start · three things she does ──
+// UX-4: straight out of the birth ritual #log had zero children and the only
+// hint was the composer placeholder "Talk to Lisa…". This card is the first
+// screen a new user actually sees. It reuses what the sidebar already
+// fetched (identity line, current desire) rather than issuing its own calls,
+// and it disappears the moment the log holds anything real.
+function chatLogHasContent() {
+  for (let i = 0; i < log.children.length; i++) {
+    if (log.children[i].id !== 'chatEmpty') return true;
+  }
+  return false;
+}
+function removeChatEmpty() {
+  const card = document.getElementById('chatEmpty');
+  if (card) card.remove();
+}
+// Three openers. The first one names what she is actually pursuing when the
+// soul has a desire, so the card is about THIS Lisa and not a generic tour.
+function chatStarters() {
+  let desire = '';
+  const d = document.getElementById('sbDesire');
+  if (d && d.title) desire = d.title.trim();
+  if (desire.length > 64) desire = desire.slice(0, 64).trim() + '…';
+  return [
+    desire ? 'How is "' + desire + '" going?' : "What's on your mind right now?",
+    'What do you remember about me?',
+    'What should we work on today?',
+  ];
+}
+const CHAT_ABILITIES = [
+  ['Tools', 'ask her to read a file, run a command, or look something up on the web.'],
+  ['Knowledge', "select any message and save it — she'll recall it in later sessions."],
+  ['Mail', 'connect a mailbox in the right rail and she triages it for you daily.'],
+];
+function renderChatEmpty() {
+  if (!historyFetched || chatLogHasContent()) { removeChatEmpty(); return; }
+  let card = document.getElementById('chatEmpty');
+  if (!card) {
+    card = document.createElement('div');
+    card.id = 'chatEmpty';
+    card.className = 'chat-empty';
+  }
+  card.innerHTML = '';
+  const who = document.createElement('div');
+  who.className = 'ce-who';
+  const sub = document.getElementById('identitySub');
+  const subTxt = sub && sub.textContent && sub.textContent !== '—' ? sub.textContent : '';
+  who.textContent = subTxt ? 'Lisa · ' + subTxt : 'Lisa';
+  card.appendChild(who);
+  const lead = document.createElement('div');
+  lead.className = 'ce-lead';
+  lead.textContent = 'Say anything — or start here:';
+  card.appendChild(lead);
+  const starters = document.createElement('div');
+  starters.className = 'ce-starters';
+  chatStarters().forEach(function (text) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'ce-starter';
+    b.textContent = text;
+    // Fill, don't send: the user still edits and presses Enter, so a
+    // mis-click never spends a model call.
+    b.addEventListener('click', function () {
+      input.value = text;
+      input.focus();
+      try { input.setSelectionRange(text.length, text.length); } catch (e) {}
+      // Let the composer's own 'input' listener re-measure its height.
+      input.dispatchEvent(new Event('input'));
+    });
+    starters.appendChild(b);
+  });
+  card.appendChild(starters);
+  const can = document.createElement('ul');
+  can.className = 'ce-can';
+  CHAT_ABILITIES.forEach(function (pair) {
+    const li = document.createElement('li');
+    const b = document.createElement('b');
+    b.textContent = pair[0];
+    li.appendChild(b);
+    li.appendChild(document.createTextNode(' — ' + pair[1]));
+    can.appendChild(li);
+  });
+  card.appendChild(can);
+  if (!card.parentNode) log.appendChild(card);
+}
+window.lisaRenderChatEmpty = renderChatEmpty;
 
 // ── mascot crossfade on mood event ──────────────────────────────────
 const mascotEl = document.getElementById('mascot');
@@ -1151,6 +1262,9 @@ function el(tag, cls, text) {
   const node = document.createElement(tag);
   if (cls) node.className = cls;
   if (text != null) node.textContent = text;
+  // The first thing appended to the log retires the empty-state card, so a
+  // reply never renders underneath "Say anything — or start here:".
+  removeChatEmpty();
   log.appendChild(node);
   log.scrollTop = log.scrollHeight;
   return node;
@@ -2134,6 +2248,8 @@ if ('serviceWorker' in navigator) {
       if (!r.ok) return;
       const data = await r.json();
       setDesire(data.current_desire);
+      // Same for the desire-derived first starter prompt.
+      if (typeof window.lisaRenderChatEmpty === 'function') window.lisaRenderChatEmpty();
       if (data.last_idle_message_text) {
         window.updateReflection(data.last_idle_message_text);
       }
@@ -2285,6 +2401,9 @@ if ('serviceWorker' in navigator) {
       const days = Math.max(0, Math.floor((Date.now() - born.getTime()) / 86400000));
       const ymd = born.toISOString().slice(0, 10);
       identitySub.textContent = 'born ' + ymd + ' · ' + days + ' day' + (days === 1 ? '' : 's');
+      // The empty-chat card quotes this line; it renders before /api/soul
+      // lands, so repaint it once the identity is known.
+      if (typeof window.lisaRenderChatEmpty === 'function') window.lisaRenderChatEmpty();
     } catch {}
   }
 
@@ -2300,12 +2419,23 @@ if ('serviceWorker' in navigator) {
   // observed agent while the stream pane is open.
   function sessionLabel(s) {
     // F2 auto-naming: the FIRST user message is the session's name (the
-    // opening request describes the task); fall back to the latest one,
-    // then the raw id.
+    // opening request describes the task); fall back to the latest one.
     const t = (s && (s.firstUserMessage || s.lastUserMessage) ? (s.firstUserMessage || s.lastUserMessage) : '').trim();
     if (t) return t.length > 30 ? t.slice(0, 30) + '…' : t;
+    // UX-4: a session with nothing in it yet used to be labelled with its raw
+    // id (20260905-220846-9f7d58) in the tree, the context chip, the title bar
+    // and the inspector — four places showing a string no human reads. It is
+    // "New session · 2m" now; the id survives as the tooltip / inspector sub.
+    if (s && !s.messageCount) return 'New session · ' + relativeTime(s.startedAt);
     return s ? s.id : '';
   }
+  // The title bar is rendered outside this closure (setActiveSessionUI runs
+  // before /api/sessions lands), so it asks for the label through here and
+  // falls back to the raw id while the list is still in flight.
+  window.lisaSessionLabel = function (id) {
+    const s = sessionById(id);
+    return s ? sessionLabel(s) : '';
+  };
   function sessionById(id) {
     for (let i = 0; i < cachedSessions.length; i++) {
       if (cachedSessions[i].id === id) return cachedSessions[i];
@@ -2435,6 +2565,9 @@ if ('serviceWorker' in navigator) {
       const s = sessionById(window.lisaActiveSessionId);
       chip.querySelector('.ctx-name').textContent = s ? sessionLabel(s) : (window.lisaActiveSessionId || '—');
       chip.querySelector('.ctx-meta').textContent = s ? String(s.messageCount || 0) + ' msgs' : '';
+      // The raw id is demoted to the tooltip now that the name can be
+      // "New session · 2m" (UX-4).
+      chip.title = window.lisaActiveSessionId || '';
     }
     strip.appendChild(chip);
   }
@@ -2678,6 +2811,10 @@ if ('serviceWorker' in navigator) {
   function renderSessionUI() {
     renderSessionTree();
     renderTabs();
+    // The label depends on cachedSessions, which lands after the title bar's
+    // first paint — refresh it on every list update.
+    if (typeof window.lisaUpdateTitlebar === 'function') window.lisaUpdateTitlebar();
+    if (typeof window.lisaRenderChatEmpty === 'function') window.lisaRenderChatEmpty();
   }
   window.lisaRenderSessionTree = renderSessionUI;
 
