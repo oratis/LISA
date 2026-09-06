@@ -199,7 +199,13 @@ export async function cmdLogout(): Promise<void> {
   console.error("✓ signed out — managed inference disabled (BYO keys unaffected).");
 }
 
-export async function cmdBilling(_subargs: string[]): Promise<void> {
+export async function cmdBilling(subargs: string[]): Promise<void> {
+  // `billing reconcile` is an OPERATOR command against THIS host's ledger
+  // (T-8), not a call to the cloud API — dispatch before the session check.
+  if (subargs[0] === "reconcile") {
+    const { cmdBillingReconcile } = await import("../billing/reconcile.js");
+    return cmdBillingReconcile(subargs.slice(1));
+  }
   const managed = managedConfig();
   if (!managed) {
     console.error("Not signed in. Run `lisa login` first (BYO-key usage isn't metered).");
