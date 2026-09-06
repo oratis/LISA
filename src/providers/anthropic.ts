@@ -3,10 +3,15 @@ import { proxyAwareFetch } from "../proxy-bootstrap.js";
 import { withStreamRetry } from "./stream-retry.js";
 import type { Provider, ProviderResult, ProviderRunOpts } from "./types.js";
 
-/** Structural shape shared by `messages.stream` and `beta.messages.stream`. */
+/**
+ * Structural shape shared by `messages.stream` and `beta.messages.stream`.
+ * The two return different concrete stream classes (and different Message
+ * types), and only the compaction path needs the beta one, so the call site
+ * picks between them behind this interface.
+ */
 interface StreamLike {
   on(event: "text" | "thinking", cb: (delta: string) => void): unknown;
-  finalMessage(): Promise<unknown>;
+  finalMessage(): Promise<Anthropic.Message | Anthropic.Beta.BetaMessage>;
 }
 
 export class AnthropicProvider implements Provider {
@@ -70,12 +75,16 @@ export class AnthropicProvider implements Provider {
     // idle/reflect calls default to effort "low", so without this gate every one
     // of them routed to Haiku would fail outright (and the relay doesn't strip it).
     if (opts.effort && modelSupportsEffort(opts.model)) {
-      (params as { output_config?: { effort?: string } }).output_config = {
-        ...(params as { output_config?: { effort?: string } }).output_config,
-        effort: opts.effort,
-      };
+      params.output_config = { ...params.output_config, effort: opts.effort };
     }
-    const extras: { betas?: string[]; context_management?: object } = {};
+    // Context compaction is still a beta, so these two fields exist only on
+    // beta.messages' params. They travel separately and are merged in at the
+    // call site rather than widening `params` for every request.
+    type CompactionParams = Pick<
+      Anthropic.Beta.Messages.MessageCreateParamsStreaming,
+      "betas" | "context_management"
+    >;
+    const extras: CompactionParams = {};
     if (opts.compaction) {
       extras.betas = ["compact-2026-01-12"];
       extras.context_management = { edits: [{ type: "compact_20260112" }] };
@@ -109,6 +118,10 @@ export class AnthropicProvider implements Provider {
           onThinking(t);
         });
       }
+      // BetaMessage's content is a superset of Message's: the extra block
+      // kinds are beta-only tool results this client never asks for. The
+      // narrowing is inherent to supporting both endpoints, not a leftover
+      // from an older SDK's types.
       return (await stream.finalMessage()) as Anthropic.Message;
     });
     return {
