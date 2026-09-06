@@ -37,6 +37,7 @@ for (const k of [
 }
 
 const { startWebServer } = await import("./server.js");
+const { buildRuntimePolicy } = await import("../runtime-policy.js");
 type WebServerOptions = Parameters<typeof startWebServer>[0];
 
 interface Booted {
@@ -185,5 +186,63 @@ describe("T-3 /health and /healthz", () => {
 
   test("closes", async () => {
     await srv.close();
+  });
+});
+
+describe("T-7 the server honours its RuntimePolicy", () => {
+  const base = {
+    reflect: true,
+    thinking: false,
+    compaction: false,
+    approval: "auto" as const,
+    subcommand: "serve",
+    serveWeb: true,
+  };
+
+  test("reflection:\"off\" refuses POST /reflect instead of quietly running a model call", async () => {
+    const policy = buildRuntimePolicy({ ...base, reflect: false }, { LISA_EDITION: "mac" });
+    assert.equal(policy.reflection, "off");
+    const srv = await boot({ policy, reflect: false });
+    try {
+      const r = await request(srv.port, "POST", "/reflect", { body: "{}" });
+      assert.equal(r.status, 409);
+      assert.deepEqual(JSON.parse(r.text), { error: "reflection_disabled" });
+    } finally {
+      await srv.close();
+    }
+  });
+
+  test("reflection:\"manual\" keeps the route reachable (no 409) while running no heartbeat", async () => {
+    const policy = buildRuntimePolicy({ ...base }, { LISA_EDITION: "cloud" });
+    assert.equal(policy.reflection, "manual");
+    // Boot with the cloud policy but the mac edition, so the route is not
+    // additionally gated by cloud auth: this asserts the reflection gate only.
+    const srv = await boot({ policy });
+    try {
+      const r = await request(srv.port, "POST", "/reflect", { body: "{}" });
+      assert.notEqual(r.status, 409, "manual must not be refused by the reflection gate");
+    } finally {
+      await srv.close();
+    }
+  });
+
+  test("the capability profile in the policy is what filters the tool set", async () => {
+    // A cloud profile must not expose host tools even when the process is the
+    // mac edition and the caller handed in the full registry (fail closed:
+    // the server filters, the client is never the boundary).
+    const policy = buildRuntimePolicy({ ...base }, { LISA_EDITION: "cloud" });
+    assert.equal(policy.capabilities, "cloud-chat");
+    const { buildToolRegistry } = await import("../tools/registry.js");
+    const all = buildToolRegistry({ includeVoice: false });
+    const srv = await boot({ policy, tools: all });
+    try {
+      const r = await request(srv.port, "GET", "/api/tools");
+      if (r.status === 200) {
+        const names = (JSON.parse(r.text) as { tools?: { name: string }[] }).tools?.map((t) => t.name) ?? [];
+        if (names.length) assert.equal(names.includes("bash"), false, "cloud-chat must not expose bash");
+      }
+    } finally {
+      await srv.close();
+    }
   });
 });

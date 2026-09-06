@@ -195,6 +195,12 @@ import {
 } from "./capabilities.js";
 import { applySecurityHeaders } from "./security-headers.js";
 import { EventLoopMonitor, healthPayload, watchdogThresholdFromEnv } from "./health.js";
+import {
+  buildNonInteractiveApprovalCallback,
+  buildRuntimePolicy,
+  type RuntimePolicy,
+} from "../runtime-policy.js";
+import { DEFAULT_MUTATING_ACTIONS, DEFAULT_MUTATING_TOOLS } from "../approval.js";
 import type { ToolDefinition, StoredMessage } from "../types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -223,6 +229,14 @@ export interface WebServerOptions {
   host?: string;
   /** PreToolUse/PostToolUse hook specs from loaded plugins. */
   hooks?: HookSpec[];
+  /**
+   * How this surface behaves (T-7). Built once in cli.ts and honoured here:
+   * reflection scheduling, approval gating, compaction/thinking on the turn,
+   * and which capability profile filters the tools. Omitted (older callers and
+   * most tests) ⇒ derived from the remaining options, so behaviour is
+   * unchanged without one.
+   */
+  policy?: RuntimePolicy;
 }
 
 interface AdvisorCardSuggestion {
@@ -419,8 +433,32 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   const publicOrigin = cloudEdition
     ? requireCloudPublicOrigin()
     : configuredPublicOrigin() ?? `http://localhost:${opts.port}`;
-  const capabilityProfile = capabilityProfileForEdition(cloudEdition ? "cloud" : "mac");
+  // The policy is the single source of truth for surface behaviour. Derived
+  // from the legacy options when a caller doesn't build one, so an omitted
+  // policy reproduces the pre-T-7 behaviour exactly.
+  const policy: RuntimePolicy =
+    opts.policy ??
+    buildRuntimePolicy({
+      subcommand: "serve",
+      serveWeb: true,
+      reflect: opts.reflect,
+      thinking: opts.thinking,
+      compaction: false,
+      approval: "auto",
+    });
+  const capabilityProfile = policy.capabilities;
   const runtimeTools = toolsForCapabilityProfile(opts.tools, capabilityProfile);
+  // Non-interactive by construction: a server has no terminal to prompt at, so
+  // `--approval ask` denies rather than hanging on a stdin read. undefined when
+  // the mode is "auto", which keeps the fast path allocation-free.
+  const webApproval = buildNonInteractiveApprovalCallback(
+    {
+      mode: policy.approval,
+      mutatingTools: DEFAULT_MUTATING_TOOLS,
+      mutatingActions: DEFAULT_MUTATING_ACTIONS,
+    },
+    logWarn,
+  );
   // Account sessions (PLAN_ACCOUNTS_BILLING B1): the signing secret lives in
   // $lisaHome() (auto-created 0600; durable on the cloud's /data mount). Only the
   // cloud edition mints/verifies account sessions today — the Mac edition gains
@@ -1079,7 +1117,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // Gates intra-session desire focus: unlike reflectClock.idleFor() — which reads
   // "fresh" right after a launchd restart — this stays 0 across a restart, so a
   // stale resumed conversation can't pin a focus. Stamped in the POST /chat path.
-  const reflectTimer = setInterval(() => {
+  // Only the "scheduled" mode gets a background heartbeat. "manual" keeps the
+  // POST /reflect route and nothing else; "off" refuses both.
+  const reflectTimer: NodeJS.Timeout | null = policy.reflection !== "scheduled" ? null : setInterval(() => {
     // Capture the ACTIVE ctx for this reflection: the summary must land in
     // the session it reflects, even if the user switches mid-flight (F6).
     const ctx = globalChat;
@@ -1122,7 +1162,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     })();
   }, REFLECT_CHECK_INTERVAL_MS);
   // Don't let the reflection heartbeat keep the process alive on its own.
-  reflectTimer.unref();
+  reflectTimer?.unref();
 
   // ── Event-loop lag monitor + self-watchdog (T-3) ─────────────────────────
   // Samples loop delay continuously; /health reads the last window, a lag
@@ -4049,7 +4089,11 @@ self.addEventListener('fetch', (event) => {
             userMessage: message,
             userFiles: files,
             model: opts.model,
-            thinking: opts.thinking,
+            thinking: policy.thinking,
+            compaction: policy.compaction,
+            // Approval gating on the web surface (T-7). undefined under
+            // "auto", so the default path is byte-identical to before.
+            approval: webApproval,
             // Pre-debit breaker (B4): a single turn can never burn past what
             // the account could pay for. Conservatively prices every token at
             // the output rate.
@@ -4178,6 +4222,13 @@ self.addEventListener('fetch', (event) => {
     }
 
     if (req.method === "POST" && url === "/reflect") {
+      // "off" means off on every path, not just the timer — otherwise
+      // --no-reflect would still let the UI trigger a model call.
+      if (policy.reflection === "off") {
+        res.writeHead(409, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "reflection_disabled" }));
+        return;
+      }
       let inferencePermit: InferencePermit | null = null;
       try {
         const acct = cloud && accountUid ? await getAccount(accountUid) : null;

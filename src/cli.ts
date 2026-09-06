@@ -618,7 +618,21 @@ async function main(): Promise<void> {
   if (args.subcommand === "serve") {
     if (args.serveWeb) {
       const { startWebServer, isLoopbackAddress } = await import("./web/server.js");
+      const { buildRuntimePolicy, describeRuntimePolicy } = await import("./runtime-policy.js");
+      // Built ONCE here, then honoured by the server (T-7). Before this, the
+      // web surface quietly ignored --approval and --compact, and the cloud
+      // edition still ran the local reflection heartbeat.
+      const policy = buildRuntimePolicy({
+        subcommand: args.subcommand,
+        serveWeb: args.serveWeb,
+        reflect: args.reflect,
+        thinking: args.thinking,
+        compaction: args.compaction,
+        approval: args.approval,
+      });
+      logInfo(`[runtime] ${describeRuntimePolicy(policy)}`);
       await startWebServer({
+        policy,
         port: args.port,
         host: args.host,
         tools: composedTools,
