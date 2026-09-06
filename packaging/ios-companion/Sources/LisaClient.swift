@@ -428,6 +428,13 @@ final class LisaClient {
         struct R: Codable { var ok: Bool; var output: String? }
         return (try await decode("/api/agents/pty/\(id)/output", as: R.self)).output ?? ""
     }
+    /// Live attach: a `snapshot` frame with the current tail, then a `chunk` per
+    /// burst, then `end` when the agent finishes. Same control gate as send/cancel,
+    /// so a Mac with remote control off answers 403.
+    func ptyStream(_ id: String) -> AsyncThrowingStream<SSEMessage, Error> {
+        let enc = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
+        return sse("/api/agents/pty/\(enc)/stream")
+    }
     /// Adopt an idle claude session by id (resume-adopt). Returns the HTTP code
     /// (409 ⇒ the session is still live; 403 ⇒ remote adoption disabled).
     func adopt(sessionId: String) async throws -> Int {

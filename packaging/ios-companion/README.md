@@ -18,8 +18,11 @@ iOS 17+ target). It covers:
   with backoff + a full resync on foreground); rows keyed off `controllable` /
   `resumable`; per-session control: managed **approve/deny** · send · cancel, PTY send ·
   **output** · cancel, and **adopt (resume)** for idle claude sessions (handles the
-  409/403 the server returns). The toolbar opens the **dispatch ledger** (Lisa's own
-  fire-and-forget runs, with a per-entry log tail).
+  409/403 the server returns). A running PTY session shows **live output** — the
+  server's `/api/agents/pty/<id>/stream` SSE attach (snapshot + chunks) with
+  backed-off reconnect, a status line, and horizontal scrolling for long build
+  lines; a finished one keeps the one-shot `/output` pull. The toolbar opens the
+  **dispatch ledger** (Lisa's own fire-and-forget runs, with a per-entry log tail).
 - **Chat** — streams `POST /chat`, with Lisa's live **mood portrait** (the server's own
   art at `/assets/lisa/<slug>.png`, driven by the mood SSE).
 - **Reve** — "while you were away" note + current desire, an agent-activity **recap**

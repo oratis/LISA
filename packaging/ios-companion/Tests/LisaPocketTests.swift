@@ -242,6 +242,42 @@ final class LisaPocketTests: XCTestCase {
         XCTAssertFalse(InstallMethod.app.isCLI)
     }
 
+    // ── PTY live stream: bounded buffer + an honest connection phrase ──
+
+    func testPTYBufferKeepsShortOutputIntact() {
+        XCTAssertEqual(PTYBuffer.appending("world", to: "hello "), "hello world")
+        XCTAssertEqual(PTYBuffer.trimmed("short"), "short")
+    }
+
+    func testPTYBufferTrimsToTheTailOnALineBoundary() {
+        // 20 chars of head, then a newline, then the tail we care about.
+        let text = String(repeating: "x", count: 20) + "\n" + String(repeating: "y", count: 40)
+        let out = PTYBuffer.trimmed(text, limit: 45)
+        XCTAssertEqual(out, String(repeating: "y", count: 40),
+                       "the leading partial line is dropped when it's cheap to do so")
+        XCTAssertLessThanOrEqual(out.count, 45)
+    }
+
+    func testPTYBufferFallsBackToARawTailWhenNoNearbyNewline() {
+        let text = String(repeating: "z", count: 5000)   // one enormous line
+        let out = PTYBuffer.trimmed(text, limit: 100)
+        XCTAssertEqual(out.count, 100)
+    }
+
+    func testPTYBufferAppendStaysBounded() {
+        var text = ""
+        for _ in 0..<50 { text = PTYBuffer.appending(String(repeating: "a", count: 100) + "\n", to: text, limit: 500) }
+        XCTAssertLessThanOrEqual(text.count, 500)
+    }
+
+    func testPTYStreamStatePhrasesAreDistinctAndNameTheReason() {
+        XCTAssertEqual(PTYStreamState.live.phrase, "live")
+        XCTAssertEqual(PTYStreamState.ended.phrase, "finished")
+        XCTAssertTrue(PTYStreamState.retrying(seconds: 4).phrase.contains("4s"))
+        XCTAssertEqual(PTYStreamState.blocked("Remote control is disabled on this Mac — no live output.").phrase,
+                       "Remote control is disabled on this Mac — no live output.")
+    }
+
     // ── push transport: the topic URL, and an honest state line ──
 
     func testNtfyPublishURLDefaultsToNtfySh() {
