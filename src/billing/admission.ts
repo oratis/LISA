@@ -5,10 +5,12 @@
  * applies abuse limits, serializes the tenant across instances, checks quota,
  * and returns an idempotently releasable permit for the lifetime of the turn.
  */
+import crypto from "node:crypto";
 import type { AccountRecord } from "../web/accounts.js";
 import { preflightLimits, type LimitVerdict } from "./limits.js";
-import { debitTurn, precheckTurn, type PrecheckResult } from "./quota.js";
+import { precheckTurn, type PrecheckResult } from "./quota.js";
 import { recordUsage, type UsageRecord } from "./meter.js";
+import { settleUsage } from "./outbox.js";
 import type { ProviderUsage } from "../providers/types.js";
 import {
   acquireTurnLease,
@@ -19,6 +21,8 @@ import {
 
 export interface InferencePermit {
   budgetMicroUSD: number;
+  /** Ties this turn's usage outbox event back to the admission that ran it (T-8). */
+  reservationId: string;
   /** Price, audit and debit this permit's aggregated provider usage once. */
   settle(source: string, usage: ProviderUsage): Promise<UsageRecord>;
   release(): Promise<void>;
@@ -39,6 +43,7 @@ export interface AdmissionDependencies {
     source: string,
     model: string,
     usage: ProviderUsage,
+    reservationId: string,
   ): Promise<UsageRecord>;
 }
 
@@ -48,9 +53,19 @@ const DEFAULT_DEPS: AdmissionDependencies = {
   acquire: acquireTurnLease,
   startRenewal: startLeaseRenewal,
   releaseLease: releaseTurnLease,
-  settle: async (acct, source, model, usage) => {
+  // T-8: the debit now goes through the durable usage outbox. recordUsage
+  // stays the AUDIT append (best-effort, never throws); settleUsage owns the
+  // money and fails closed if the event cannot be made durable first.
+  settle: async (acct, source, model, usage, reservationId) => {
     const record = await recordUsage(source, model, usage);
-    await debitTurn(acct, model, record.microUSD);
+    await settleUsage({
+      acct,
+      kind: source,
+      model,
+      usage,
+      costMicros: record.microUSD,
+      reservationId,
+    });
     return record;
   },
 };
@@ -87,6 +102,7 @@ export async function admitInference(
     };
   }
 
+  const reservationId = crypto.randomUUID();
   let released = false;
   let settlement: Promise<UsageRecord> | null = null;
   let stopRenewal: () => void = () => {};
@@ -108,8 +124,9 @@ export async function admitInference(
       ok: true,
       permit: {
         budgetMicroUSD: pre.budgetMicroUSD,
+        reservationId,
         settle: (source, usage) => {
-          settlement ??= deps.settle(acct, source, model, usage);
+          settlement ??= deps.settle(acct, source, model, usage, reservationId);
           return settlement;
         },
         release,
