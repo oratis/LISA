@@ -207,19 +207,27 @@ import { MAIN_HTML } from "./lisa-html.js";
  * /assets/apple-touch-icon.png (with an explicit sizes=) instead of the
  * full-size mascot — the mascot was the only icon the page ever declared,
  * which is why iOS rendered a home-screen screenshot.
+ * Then: UX-2 mobile layout — the body.rb-collapsed .frame rule is scoped to
+ * ≥721px so it no longer beats the ≤720px single-column grid; #viewChat pins
+ * its column to minmax(0,1fr) and .fnbar becomes a min-width:0 horizontal
+ * scroller, so the chat column can no longer grow to the bar's ~680px
+ * min-content; the ≤720px block hides the five quick-panel buttons + #fnPanel
+ * and tightens fnbar/log/composer spacing.
  */
 /*
- * +56 bytes = 4 × len("archive/plans/"): PLAN_UI_SESSION_SHELL_v1.0.md and
- * PLAN_KNOWLEDGE_BASE_v1.0.md moved to docs/archive/plans/, and four of the
- * references to them live in CSS/JS *comments that ship inside MAIN_HTML*.
- * Nothing rendered changed. Re-derive with:
+ * Two independent byte shifts since the last pin, both in comments that ship
+ * inside MAIN_HTML — nothing rendered changed:
+ *   +56 = 4 × len("archive/plans/"), from moving PLAN_UI_SESSION_SHELL_v1.0.md
+ *         and PLAN_KNOWLEDGE_BASE_v1.0.md into docs/archive/plans/;
+ *   the UX-2 mobile-layout CSS and its comment block.
+ * Re-derive with:
  *   node --import tsx --input-type=module -e 'import{MAIN_HTML}from"./src/web/lisa-html.ts";
  *     import{createHash}from"node:crypto";console.log(MAIN_HTML.length,
  *     createHash("sha256").update(MAIN_HTML).digest("hex"))'
  */
-const EXPECTED_LENGTH = 308278;
+const EXPECTED_LENGTH = 310657;
 const EXPECTED_SHA256 =
-  "7f917ddabef2d044a35ccf23e799f52755e0e6700d460479ea3b716597afbdeb";
+  "dd71ee583e53d0b1e01c7c8dc5736a8337dc2a19fb0d7e30df51aebd138abfb7";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);

@@ -910,7 +910,9 @@ export const MAIN_CSS = `  :root {
     display: flex;
     align-items: center;
     gap: 4px;
-    min-width: 0;
+    /* Shrinks first when the bar is tight, but keeps a sliver of the session
+       name rather than collapsing to nothing (the bar scrolls past that). */
+    min-width: 90px;
     flex-shrink: 1;
     overflow: hidden;
   }
@@ -1421,6 +1423,15 @@ export const MAIN_CSS = `  :root {
   #viewChat.view.active {
     display: grid;
     grid-template-rows: auto 1fr auto auto;
+    /* minmax(0, 1fr), not the implicit auto track: an auto track can never
+       be narrower than its items' min-content, and the function bar's row of
+       flex:none icon buttons has a ~680px min-content — so on any main pane
+       narrower than that (phones, and tablets up to ~1180px with the sidebar
+       open) the whole chat column silently grew to 680px and the composer's
+       send button landed off-screen (UX-2). Pinning the track to the pane
+       lets .fnbar scroll inside it instead. */
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 0;
   }
 
   /* ── Console views (dashboard / control / reve / sense / memory) ── */
@@ -2327,6 +2338,12 @@ export const MAIN_CSS = `  :root {
     padding: 7px 16px;
     border-bottom: 1px solid var(--border-new, rgba(255,255,255,.08));
     background: rgba(255,255,255,.02);
+    /* The bar must fit the pane it sits in (see #viewChat above): it may scroll
+       sideways when the pane is narrower than its buttons, never widen it. */
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
   }
   .fbtn {
     width: 34px; height: 34px; flex: none;
@@ -2418,12 +2435,19 @@ export const MAIN_CSS = `  :root {
 
   /* ── Manual right-panel collapse (F4, persisted client-side) ────
      Collapsed is the DEFAULT state; the class is only absent once the user
-     has explicitly opened the panel (lisaRightbar === "open"). */
-  body.rb-collapsed .frame {
-    grid-template-columns: 300px 1fr;
-    grid-template-areas:
-      "titlebar titlebar"
-      "sidebar  main";
+     has explicitly opened the panel (lisaRightbar === "open").
+     Wide screens only: this selector (0,1,1) outranks the bare .frame
+     rules inside the breakpoints below (0,0,1), so unscoped it forced the
+     two-column desktop grid onto phones — a 375px viewport got
+     "300px 75px" and a 75px-wide chat (UX-2). The ≤720px block owns the
+     single-column layout; the panel itself stays hidden at every width. */
+  @media (min-width: 721px) {
+    body.rb-collapsed .frame {
+      grid-template-columns: 300px 1fr;
+      grid-template-areas:
+        "titlebar titlebar"
+        "sidebar  main";
+    }
   }
   body.rb-collapsed .rightbar { display: none; }
   #fnPanel.active { background: var(--accent-soft); color: var(--accent); }
@@ -2453,13 +2477,31 @@ export const MAIN_CSS = `  :root {
         "titlebar"
         "sidebar"
         "main";
+      /* Mobile browsers shrink the viewport as their toolbars come and go;
+         dvh tracks that so the composer never hides behind the toolbar.
+         Older engines ignore the unknown unit and keep the 100vh above. */
+      height: 100dvh;
     }
+    /* No traffic lights to clear on a phone. */
+    .titlebar { padding: 0 14px; }
     .rightbar { display: none; }
     .sidebar {
       max-height: 38vh;
       padding: 14px 14px 12px;
       gap: 14px;
     }
+    /* Function bar: fewer buttons, tighter spacing. The five quick-panel
+       buttons (soul/skills/tools/plans/pair) are all reachable from the
+       Memory view, and pairing is a Mac-side (loopback-only) action anyway;
+       the right-panel toggle has nothing to toggle here (the rail is hidden
+       at this width). What remains — session chip · KB · mail · find ·
+       theme — fits a 375px row without scrolling. */
+    .fnbar { padding: 6px 10px; gap: 4px; }
+    .fnbar [data-panel], #fnPanel { display: none; }
+    .fn-find { width: 120px; }
+    #log { padding: 14px 12px 16px; }
+    .msg { max-width: 94%; }
+    #attachPreview { padding: 4px 12px 0; }
     #form {
       grid-template-columns: 36px 36px 1fr 84px;
       padding: 10px 14px 14px;
