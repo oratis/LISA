@@ -168,7 +168,96 @@ gcloud billing budgets create --billing-account <BILLING_ACCOUNT_ID> \
 其余日志侧已内建：sweep 报告行 `[sweep] scanned…`（severity INFO，
 jsonPayload.message）；Scheduler 首跳失败直接看 Cloud Scheduler 的执行历史。
 
-## 7. 急停开关（记住这三个）
+## 7. 计费 outbox 与对账（T-8）
+
+### 它是什么
+
+结算一次计费推理是**两次写**：先记下"provider 已经收了钱、花了多少"，再从余额里扣。
+T-8 之前只有第二次写是持久的，所以两次之间崩溃／Firestore 抖动／磁盘写满，
+这笔账就**静默丢失**——用户拿到了推理，运营方付了成本，磁盘上没有任何东西记得为什么对不上。
+
+usage outbox 让第一次写也持久、第二次写可重放：
+
+```
+append(pending) ──► debit(balance, eventId) ──► update(committed)
+     append 失败 ⇒ FAIL CLOSED：不扣费、释放 permit、给调用方一个可重试的错误
+     debit  失败 ⇒ 事件停在 failed，对账器稍后重试
+     mark   失败 ⇒ 不算错误：钱已经对了，记录留着让对账器关闭
+```
+
+**幂等键在账本里，不在 outbox 里**：`debitTurn` 把 event id 记进余额文档的 `settled` 环，
+和扣款在同一个原子更新里。所以重放是被"拿着钱的那一方"拒绝的，而不是靠调用方记得检查。
+这也是"标记 committed"可以单独一次写的原因——`firestore.ts` 只有 CAS，没有 runTransaction。
+
+存储：本地版是租户 billing 目录下的 `outbox.jsonl`（追加写，同 id 以最后一行为准）；
+Cloud 是 `lisa-outbox/{uid}/events/{id}`（`exists:false` 创建 ⇒ 按 id 幂等）
+加一个 `lisa-outbox/{uid}` 的 open 索引（本客户端没有 query API）。
+
+### 怎么读对账报告
+
+```bash
+# 只看不动（推荐先跑这个）
+lisa billing reconcile --dry-run
+# 真跑一轮；--json 给监控用
+lisa billing reconcile --json
+# 只扫一个租户
+lisa billing reconcile --uid <uid>
+```
+
+| 计数 | 含义 | 该有的样子 |
+|---|---|---|
+| `scanned` | 本轮看到的未关闭事件 | 正常几乎为 0 |
+| `committed` | 本轮补上的扣款 | 偶发几个正常（崩溃/重启后） |
+| `failed` | 这次没成，但还在 5 次重试预算内 | 持续 >0 说明账本还病着 |
+| `escalated` | 本轮升级成 `needs_human` | **任何非 0 都要人看** |
+| `skipped` | 故意没动：已 parked，或 pending 还在 5 分钟宽限期内 | 与 `needs_human` 数量对得上 |
+
+serve 起来后台每 15 分钟自动跑一轮（启动后 30 秒先跑一次，把崩溃残留清掉），
+多实例下用 `lisa-leases/billing-reconcile` 抢锁，一轮只有一个实例真跑。
+日志按 `[billing] reconcile:` 找（severity INFO）。
+
+### `needs_human` 怎么处理
+
+事件在两种情况下停下来等人，日志是 severity ERROR、含 event id、脱敏 uid 和金额：
+
+- **重试用尽**（5 次）：`[billing] outbox event <id> → needs_human after 5 attempts`
+- **不能证明重放安全**：`replay_window`（事件比账本幂等窗口还老，重放和重复扣款无法区分）
+  或 `account_missing`（uid 已经没有账号记录了）
+
+处理步骤：
+
+1. `lisa billing reconcile --uid <uid>` 看清单，拿到 event id、金额、`lastError`。
+2. 先修根因（余额文档损坏？Firestore 权限？账号被删了？）。
+3. 根因修好后，`lisa billing reconcile --uid <uid> --retry-human` 让它再自动走一轮。
+4. 只有当**这笔钱不该再扣**（比如账号已注销并退款、或你已手工改过余额）时，才手工关闭：
+
+```bash
+lisa billing reconcile --uid <uid> --resolve <event-id>
+```
+
+`--resolve` **不扣款**，只把记录关掉。钱还欠着的话，先手工改余额再 resolve，顺序别反。
+
+### 手工补偿配方（本地版 / 单实例）
+
+余额和 outbox 都在租户 home 下，对账前后各留一份：
+
+```bash
+UID=<uid>; H=~/.lisa/users/$UID/billing
+cp $H/balance.json /tmp/balance.before.json
+cat $H/outbox.jsonl | jq -c 'select(.status != "committed")'   # 还开着的事件
+# 手工加一笔（micro-USD，整数），改完再 --resolve 对应事件
+jq '.paidMicroUSD -= 4200' $H/balance.json > $H/balance.next && mv $H/balance.next $H/balance.json
+```
+
+改 `balance.json` 时**不要**动 `settled` 数组：那是幂等环，手工删条目会让重放变成重复扣款。
+`usage.jsonl` 是审计源，随时可以拿来重算 outbox 对不上的部分。
+
+### 开关
+
+`LISA_BILLING_OUTBOX=0` 只关掉 outbox 那一次写，T-8 之前就有的 fail-closed 检查一个都不动。
+**它不是急停开关**——关掉它等于回到"崩溃就丢账"的旧行为。要停计费用 `LISA_BILLING_KILL=1`（见下节）。
+
+## 8. 急停开关（记住这三个）
 
 | 开关 | 效果 |
 |---|---|
@@ -176,7 +265,7 @@ jsonPayload.message）；Scheduler 首跳失败直接看 Cloud Scheduler 的执�
 | Cloudflare Turnstile 调成 Managed-challenge 全量 | 注册口收紧到人类 |
 | `gcloud run services update lisa-cloud --max-instances 0` | 整站下线（保数据） |
 
-## 8. 上线冒烟清单
+## 9. 上线冒烟清单
 
 - [ ] 无痕窗口 → cloud.meetlisa.ai → 登录页三种方式齐全（Google/Apple/邮箱+验证码）
 - [ ] 新邮箱注册 → 收到验证码邮件 → birth 仪式打字机完整跑完 → 落进 island
@@ -184,3 +273,4 @@ jsonPayload.message）；Scheduler 首跳失败直接看 Cloud Scheduler 的执�
 - [ ] 免费窗口计量在账号页可见；Stripe 测试卡充值到账
 - [ ] 官网 meetlisa.ai 导航「登录」与 /cloud 页链接可达
 - [ ] sweep 手动 curl 返回报告；Scheduler 首跳成功
+- [ ] `lisa billing reconcile --dry-run` 返回全 0；日志里看得到 `[billing] reconcile:` 心跳
