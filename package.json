@@ -61,7 +61,7 @@
     "lint:fix": "eslint . --fix",
     "format": "node scripts/format-check.mjs --write",
     "format:check": "node scripts/format-check.mjs",
-    "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "test": "node scripts/run-tests.mjs",
     "test:watch": "node --import tsx --test --watch \"src/**/*.test.ts\"",
     "test:coverage": "c8 npm test && node scripts/coverage-thresholds.mjs",
     "generate:api-contract": "node scripts/generate-api-contract.mjs",
@@ -73,7 +73,7 @@
     "postpublish": "npm run copy-assets"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.19.0"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.92.0",
