@@ -5,18 +5,22 @@ import type { AccountRecord } from "../web/accounts.js";
 import type { MediaUsage } from "./media-prices.js";
 import { recordMediaUsage, type MediaUsageRecord } from "./media-meter.js";
 import { preflightLimits, type LimitVerdict } from "./limits.js";
-import { debitTurn, precheckTurn, type PrecheckResult } from "./quota.js";
+import { precheckTurn, type PrecheckResult } from "./quota.js";
+import { settleUsage } from "./outbox.js";
 import {
   acquireTurnLease,
   releaseTurnLease,
   startLeaseRenewal,
   type TurnLease,
 } from "../cloud/turn-lease.js";
+import crypto from "node:crypto";
 
 /** Unknown models are premium in quota.ts: media never consumes free LLM credit. */
 export const MEDIA_BILLING_MODEL = "media/voice-transcription";
 
 export interface MediaPermit {
+  /** Ties this turn's usage outbox event back to the admission that ran it (T-8). */
+  reservationId: string;
   settle(source: string, usage: MediaUsage): Promise<MediaUsageRecord>;
   release(): Promise<void>;
 }
@@ -31,7 +35,12 @@ export interface MediaAdmissionDependencies {
   acquire(uid: string): Promise<TurnLease | null>;
   startRenewal(lease: TurnLease): () => void;
   releaseLease(lease: TurnLease): Promise<void>;
-  settle(acct: AccountRecord, source: string, usage: MediaUsage): Promise<MediaUsageRecord>;
+  settle(
+    acct: AccountRecord,
+    source: string,
+    usage: MediaUsage,
+    reservationId: string,
+  ): Promise<MediaUsageRecord>;
 }
 
 const DEFAULT_DEPS: MediaAdmissionDependencies = {
@@ -40,9 +49,17 @@ const DEFAULT_DEPS: MediaAdmissionDependencies = {
   acquire: acquireTurnLease,
   startRenewal: startLeaseRenewal,
   releaseLease: releaseTurnLease,
-  settle: async (acct, source, usage) => {
+  // T-8: voice is a metered inference like any other, so it settles through
+  // the durable outbox too. Duration-priced, hence no token counts.
+  settle: async (acct, source, usage, reservationId) => {
     const record = await recordMediaUsage(source, usage);
-    await debitTurn(acct, MEDIA_BILLING_MODEL, record.microUSD);
+    await settleUsage({
+      acct,
+      kind: source,
+      model: MEDIA_BILLING_MODEL,
+      costMicros: record.microUSD,
+      reservationId,
+    });
     return record;
   },
 };
@@ -72,6 +89,7 @@ export async function admitMedia(
     return { ok: false, status: 429, body: { error: "turn_in_progress" } };
   }
 
+  const reservationId = crypto.randomUUID();
   let released = false;
   let settlement: Promise<MediaUsageRecord> | null = null;
   let stopRenewal: () => void = () => {};
@@ -92,8 +110,9 @@ export async function admitMedia(
     return {
       ok: true,
       permit: {
+        reservationId,
         settle: (source, usage) => {
-          settlement ??= deps.settle(acct, source, usage);
+          settlement ??= deps.settle(acct, source, usage, reservationId);
           return settlement;
         },
         release,
