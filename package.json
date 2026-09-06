@@ -56,6 +56,7 @@
     "start": "node dist/cli.js",
     "lisa": "node --enable-source-maps dist/cli.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck:client": "tsc -p tsconfig.client.json",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "test:watch": "node --import tsx --test --watch \"src/**/*.test.ts\"",
     "generate:api-contract": "node scripts/generate-api-contract.mjs",

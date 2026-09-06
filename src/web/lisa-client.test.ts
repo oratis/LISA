@@ -5,27 +5,24 @@ import { MAIN_CLIENT_JS } from "./lisa-client.js";
 
 // Regression guard for the idle "while you were away" sentinel regex.
 //
-// The client source lives inside MAIN_CLIENT_JS, a plain (untagged) template
-// literal, so backslashes are consumed once when the literal is evaluated. A
-// regex written with SINGLE backslashes cooks down to a character class plus a
-// literal "s*" instead of the intended literal "[while you were away]" prefix.
-// Because the persisted sentinel starts with "[", and "[" is not inside that
-// character class, `.test()` returns false and history-loaded idle notes fall
-// through to a plain Lisa bubble showing the raw sentinel text instead of the
-// distinct idle card. The fix is to DOUBLE-escape in source so it cooks to the
-// correct regex. `npm run typecheck` can't see this — the template literal is
-// valid TypeScript either way — so we assert on the cooked bytes here.
-// MAIN_CLIENT_JS is imported already-cooked, i.e. exactly what the browser gets.
+// Origin: the client used to live inside MAIN_CLIENT_JS, an untagged template
+// literal, so every backslash was consumed once when the literal was
+// evaluated. A regex written with single backslashes cooked down to a
+// character class plus a literal "s*" instead of the intended literal
+// "[while you were away]" prefix — and because the persisted sentinel starts
+// with "[", which is not inside that character class, history-loaded idle
+// notes fell through to a plain Lisa bubble showing the raw sentinel.
 //
-// See lisa-client.ts:~718 (detection + strip) and the correct `\\s+` precedent
-// at lisa-client.ts:~1061.
+// That whole trap is gone: the client is a real .js file now, so what is
+// written is what is served. The check stays because the behaviour it guards
+// (idle notes render as the distinct card, ordinary replies do not) is worth
+// pinning on its own, and it runs against the exact bytes the browser gets.
 //
 // (This test file deliberately keeps the regex out of any block comment: the
-// pattern contains the `*` + `/` pair that would prematurely close one — the
-// very same "one layer of escaping/quoting eats your metacharacters" trap.)
+// pattern contains the `*` + `/` pair that would prematurely close one.)
 
-const CORRECT_LITERAL = "/^\\[while you were away\\]\\s*/i"; // cooked: caret, \[ , text, \] , \s star, /i
-const BROKEN_LITERAL = "/^[while you were away]s*/i"; // what single-escaping cooks down to
+const CORRECT_LITERAL = "/^\\[while you were away\\]\\s*/i"; // caret, \[ , text, \] , \s star, /i
+const BROKEN_LITERAL = "/^[while you were away]s*/i"; // what the old double-escaping bug produced
 
 describe("idle-note sentinel regex survives template-literal cooking", () => {
   test("cooked source carries the correct regex, not the mangled one", () => {
@@ -37,8 +34,7 @@ describe("idle-note sentinel regex survives template-literal cooking", () => {
     );
     assert.ok(
       !MAIN_CLIENT_JS.includes(BROKEN_LITERAL),
-      "MAIN_CLIENT_JS contains the mangled sentinel regex — a single-backslash " +
-        "escape was eaten by the template literal",
+      "MAIN_CLIENT_JS contains the mangled sentinel regex",
     );
   });
 
