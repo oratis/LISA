@@ -1,11 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { proxyAwareFetch } from "../proxy-bootstrap.js";
 import { withStreamRetry } from "./stream-retry.js";
-import type {
-  Provider,
-  ProviderResult,
-  ProviderRunOpts,
-} from "./types.js";
+import type { Provider, ProviderResult, ProviderRunOpts } from "./types.js";
 
 /** Structural shape shared by `messages.stream` and `beta.messages.stream`. */
 interface StreamLike {
@@ -58,9 +54,7 @@ export class AnthropicProvider implements Provider {
     const params: Anthropic.MessageCreateParamsStreaming = {
       model: opts.model,
       max_tokens: opts.maxTokens ?? 16_000,
-      system: [
-        { type: "text", text: opts.systemPrompt, cache_control: systemCache },
-      ],
+      system: [{ type: "text", text: opts.systemPrompt, cache_control: systemCache }],
       tools,
       messages,
       stream: true,
@@ -88,8 +82,7 @@ export class AnthropicProvider implements Provider {
     }
 
     const onText = (delta: string) => opts.handlers?.onTextDelta?.(delta);
-    const onThinking = (delta: string) =>
-      opts.handlers?.onThinkingDelta?.(delta);
+    const onThinking = (delta: string) => opts.handlers?.onThinkingDelta?.(delta);
 
     // Second argument is the SDK's per-request options; `signal` aborts the
     // in-flight HTTP stream (the SDK then throws APIUserAbortError).
@@ -100,30 +93,24 @@ export class AnthropicProvider implements Provider {
     // retries don't cover these — they're thrown while iterating a 200 stream —
     // so without this a momentary proxy/network blip surfaces as a hard error.
     // Safe because we only retry while no delta has been forwarded yet.
-    const message = await withStreamRetry(
-      { signal: opts.signal },
-      async (markEmitted) => {
-        const stream: StreamLike = opts.compaction
-          ? (this.client.beta.messages.stream(
-              { ...params, ...extras },
-              requestOpts,
-            ))
-          : (this.client.messages.stream(params, requestOpts));
-        if (opts.handlers?.onTextDelta) {
-          stream.on("text", (t) => {
-            markEmitted();
-            onText(t);
-          });
-        }
-        if (opts.handlers?.onThinkingDelta) {
-          stream.on("thinking", (t) => {
-            markEmitted();
-            onThinking(t);
-          });
-        }
-        return (await stream.finalMessage()) as Anthropic.Message;
-      },
-    );
+    const message = await withStreamRetry({ signal: opts.signal }, async (markEmitted) => {
+      const stream: StreamLike = opts.compaction
+        ? this.client.beta.messages.stream({ ...params, ...extras }, requestOpts)
+        : this.client.messages.stream(params, requestOpts);
+      if (opts.handlers?.onTextDelta) {
+        stream.on("text", (t) => {
+          markEmitted();
+          onText(t);
+        });
+      }
+      if (opts.handlers?.onThinkingDelta) {
+        stream.on("thinking", (t) => {
+          markEmitted();
+          onThinking(t);
+        });
+      }
+      return (await stream.finalMessage()) as Anthropic.Message;
+    });
     return {
       content: message.content,
       stopReason: message.stop_reason ?? "end_turn",
@@ -153,9 +140,7 @@ export function modelSupportsEffort(model: string): boolean {
   return !/haiku/i.test(model);
 }
 
-function withCacheBreakpoint(
-  messages: Anthropic.MessageParam[],
-): Anthropic.MessageParam[] {
+function withCacheBreakpoint(messages: Anthropic.MessageParam[]): Anthropic.MessageParam[] {
   if (messages.length === 0) return messages;
   const out = messages.slice();
   const last = out[out.length - 1]!;

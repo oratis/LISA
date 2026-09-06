@@ -48,22 +48,29 @@ describe("email accounts", () => {
   });
 
   test("invalid email / weak password / duplicate → typed AccountError", async () => {
-    await assert.rejects(createEmailAccount("not-an-email", "password-123"), isCode("invalid_email"));
+    await assert.rejects(
+      createEmailAccount("not-an-email", "password-123"),
+      isCode("invalid_email"),
+    );
     await assert.rejects(createEmailAccount("a@b.co", "short"), isCode("weak_password"));
     await createEmailAccount("a@b.co", "password-123");
     await assert.rejects(createEmailAccount("A@B.CO", "password-456"), isCode("email_taken"));
   });
 
-  test("raw password never persisted; store is 0600", { skip: process.platform === "win32" }, async () => {
-    await createEmailAccount("a@b.co", "super-secret-pw");
-    const raw = fs.readFileSync(FILE, "utf8");
-    assert.equal(raw.includes("super-secret-pw"), false);
-    assert.match(raw, /scrypt/);
-    assert.equal(fs.statSync(FILE).mode & 0o777, 0o600);
-  });
+  test(
+    "raw password never persisted; store is 0600",
+    { skip: process.platform === "win32" },
+    async () => {
+      await createEmailAccount("a@b.co", "super-secret-pw");
+      const raw = fs.readFileSync(FILE, "utf8");
+      assert.equal(raw.includes("super-secret-pw"), false);
+      assert.match(raw, /scrypt/);
+      assert.equal(fs.statSync(FILE).mode & 0o777, 0o600);
+    },
+  );
 
   test("a corrupt account store fails closed and is never overwritten", async () => {
-    const corrupt = "{\"uid\":\"not-an-array\"}";
+    const corrupt = '{"uid":"not-an-array"}';
     fs.writeFileSync(FILE, corrupt);
     await assert.rejects(getAccount("em-any"), AccountStoreError);
     await assert.rejects(createEmailAccount("a@b.co", "password-123"), AccountStoreError);
@@ -142,10 +149,17 @@ describe("code-only (OTP) accounts", () => {
     assert.equal(acct.uid, victimUid, "same account — balance isn't forked");
     // The attacker's password must no longer authenticate, and any session it
     // minted must be invalidated (sessionVersion rotated).
-    assert.equal(await verifyEmailLogin("victim@x.co", "attacker-set-pw", 4000), null,
-      "the pre-set password must stop working");
+    assert.equal(
+      await verifyEmailLogin("victim@x.co", "attacker-set-pw", 4000),
+      null,
+      "the pre-set password must stop working",
+    );
     assert.equal((await getAccount(victimUid))!.scrypt, undefined, "the password is dropped");
-    assert.equal((await getAccount(victimUid))!.sessionVersion, beforeSv + 1, "sessions are invalidated");
+    assert.equal(
+      (await getAccount(victimUid))!.sessionVersion,
+      beforeSv + 1,
+      "sessions are invalidated",
+    );
   });
 
   test("SECURITY: only the FIRST verification rotates — a re-verify is a no-op", async () => {
@@ -206,10 +220,17 @@ describe("google accounts", () => {
     const beforeSv = (await getAccount(victimUid))!.sessionVersion;
     const g = await upsertGoogleAccount("108123", "victim@x.co", 2000);
     assert.equal(g.uid, victimUid, "same account — balance isn't forked");
-    assert.equal(await verifyEmailLogin("victim@x.co", "attacker-set-pw", 3000), null,
-      "the pre-set password must stop working");
+    assert.equal(
+      await verifyEmailLogin("victim@x.co", "attacker-set-pw", 3000),
+      null,
+      "the pre-set password must stop working",
+    );
     assert.equal((await getAccount(victimUid))!.scrypt, undefined, "the password is dropped");
-    assert.equal((await getAccount(victimUid))!.sessionVersion, beforeSv + 1, "sessions are invalidated");
+    assert.equal(
+      (await getAccount(victimUid))!.sessionVersion,
+      beforeSv + 1,
+      "sessions are invalidated",
+    );
   });
 
   test("a mailed code signs into a google-owned address rather than forking", async () => {
@@ -242,7 +263,10 @@ describe("google accounts", () => {
   });
 
   test("a malformed address is refused", async () => {
-    await assert.rejects(upsertGoogleAccount("108123", "not-an-email", 1000), isCode("invalid_email"));
+    await assert.rejects(
+      upsertGoogleAccount("108123", "not-an-email", 1000),
+      isCode("invalid_email"),
+    );
   });
 });
 

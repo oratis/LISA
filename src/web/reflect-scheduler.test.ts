@@ -65,8 +65,10 @@ describe("decideReflect", () => {
 });
 
 describe("countUserMessages", () => {
-  const mk = (role: StoredMessage["role"]): StoredMessage =>
-    ({ role, content: [{ type: "text", text: "x" }] });
+  const mk = (role: StoredMessage["role"]): StoredMessage => ({
+    role,
+    content: [{ type: "text", text: "x" }],
+  });
 
   test("counts only user-role messages", () => {
     const history: StoredMessage[] = [
@@ -87,12 +89,7 @@ describe("countUserMessages", () => {
     // The server compares counts, not indices, so a wholesale history
     // replacement (compaction) can't make us re-reflect old content.
     const before = countUserMessages([mk("user"), mk("assistant")]);
-    const after = countUserMessages([
-      mk("user"),
-      mk("assistant"),
-      mk("user"),
-      mk("assistant"),
-    ]);
+    const after = countUserMessages([mk("user"), mk("assistant"), mk("user"), mk("assistant")]);
     assert.equal(after - before, 1);
   });
 });

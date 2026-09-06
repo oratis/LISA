@@ -1,9 +1,5 @@
 import { registerChannel } from "./registry.js";
-import type {
-  ChannelAdapter,
-  IncomingMessage,
-  OutgoingMessage,
-} from "./types.js";
+import type { ChannelAdapter, IncomingMessage, OutgoingMessage } from "./types.js";
 
 interface TelegramOptions {
   token: string;

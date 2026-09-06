@@ -100,11 +100,14 @@ export async function resolvePublicAddresses(
   hostname: string,
   lookup: DnsLookupAll = defaultLookup,
 ): Promise<ResolvedAddress[]> {
-  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
+  const host = hostname
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "")
+    .replace(/\.$/, "");
   const literalFamily = net.isIP(host);
   const addresses = literalFamily
     ? [{ address: host, family: literalFamily as 4 | 6 }]
-    : (await lookup(host, { all: true, verbatim: true }));
+    : await lookup(host, { all: true, verbatim: true });
   if (addresses.length === 0) throw new Error(`DNS returned no addresses for ${host}`);
   for (const entry of addresses) {
     if (net.isIP(entry.address) !== entry.family) {
@@ -154,8 +157,7 @@ export async function fetchFollowingSafeRedirects(
       body: sameOrigin ? init?.body : undefined,
       headers: {
         "user-agent": "Lisa/0.1 (web_fetch)",
-        accept:
-          "text/html,application/xhtml+xml,application/json,text/plain,*/*;q=0.8",
+        accept: "text/html,application/xhtml+xml,application/json,text/plain,*/*;q=0.8",
         ...(sameOrigin ? (init?.headers ?? {}) : {}),
       },
     };
@@ -173,7 +175,10 @@ export async function fetchFollowingSafeRedirects(
 }
 
 export function isPrivateHost(host: string): boolean {
-  const normalized = host.toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
+  const normalized = host
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "")
+    .replace(/\.$/, "");
   if (normalized === "localhost" || normalized.endsWith(".localhost")) return true;
   return net.isIP(normalized) !== 0 && isBlockedIp(normalized);
 }
@@ -186,12 +191,7 @@ function ipv4Number(address: string): number | null {
   ) {
     return null;
   }
-  return (
-    ((parts[0]! << 24) >>> 0) +
-    (parts[1]! << 16) +
-    (parts[2]! << 8) +
-    parts[3]!
-  ) >>> 0;
+  return (((parts[0]! << 24) >>> 0) + (parts[1]! << 16) + (parts[2]! << 8) + parts[3]!) >>> 0;
 }
 
 function inV4Cidr(value: number, base: number, prefix: number): boolean {
@@ -244,7 +244,7 @@ function parseIpv6(address: string): bigint | null {
 
 function inV6Cidr(value: bigint, base: bigint, prefix: number): boolean {
   const shift = BigInt(128 - prefix);
-  return (value >> shift) === (base >> shift);
+  return value >> shift === base >> shift;
 }
 
 const BLOCKED_V6: Array<[string, number]> = [
@@ -271,16 +271,12 @@ export function isBlockedIp(address: string): boolean {
   const family = net.isIP(address);
   if (family === 4) {
     const value = ipv4Number(address)!;
-    return BLOCKED_V4.some(([base, prefix]) =>
-      inV4Cidr(value, ipv4Number(base)!, prefix),
-    );
+    return BLOCKED_V4.some(([base, prefix]) => inV4Cidr(value, ipv4Number(base)!, prefix));
   }
   if (family === 6) {
     const value = parseIpv6(address);
     if (value === null) return true;
-    return BLOCKED_V6.some(([base, prefix]) =>
-      inV6Cidr(value, parseIpv6(base)!, prefix),
-    );
+    return BLOCKED_V6.some(([base, prefix]) => inV6Cidr(value, parseIpv6(base)!, prefix));
   }
   return true;
 }
@@ -403,9 +399,8 @@ export async function readResponseTextCapped(
         await reader.cancel("response body limit reached").catch(() => {});
         break;
       }
-      const accepted = chunk.value.byteLength > remaining
-        ? chunk.value.subarray(0, remaining)
-        : chunk.value;
+      const accepted =
+        chunk.value.byteLength > remaining ? chunk.value.subarray(0, remaining) : chunk.value;
       bytes += accepted.byteLength;
       text += decoder.decode(accepted, { stream: true });
       if (accepted.byteLength < chunk.value.byteLength) {
@@ -427,10 +422,7 @@ export function htmlToText(html: string): string {
     .replace(/<style\b[\s\S]*?<\/style>/gi, "")
     .replace(/<noscript\b[\s\S]*?<\/noscript>/gi, "")
     .replace(/<!--[\s\S]*?-->/g, "")
-    .replace(
-      /<\/?(?:p|div|br|li|tr|h[1-6]|section|article|header|footer|nav|hr)[^>]*>/gi,
-      "\n",
-    )
+    .replace(/<\/?(?:p|div|br|li|tr|h[1-6]|section|article|header|footer|nav|hr)[^>]*>/gi, "\n")
     .replace(/<[^>]+>/g, "")
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")

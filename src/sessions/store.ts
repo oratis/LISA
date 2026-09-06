@@ -105,10 +105,7 @@ export class SessionStore {
    * Returns whether an entry was actually appended (tests and telemetry care;
    * callers generally don't).
    */
-  async appendPrompt(
-    text: string,
-    reason: "initial" | "rebuilt",
-  ): Promise<boolean> {
+  async appendPrompt(text: string, reason: "initial" | "rebuilt"): Promise<boolean> {
     const fingerprint = promptFingerprint(text);
     if (fingerprint === this.lastPromptFingerprint) return false;
     const entry: SessionEntry = {

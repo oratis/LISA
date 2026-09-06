@@ -29,7 +29,8 @@ export const DEFAULT_HEARTBEAT_BUDGET_TOKENS = 500_000;
 const FILE = path.join(lisaGlobalHome(), "heartbeat.json");
 
 export async function loadHeartbeatConfig(): Promise<HeartbeatConfig> {
-  if (!(await pathExists(FILE))) return { tasks: [], budgetTokens: DEFAULT_HEARTBEAT_BUDGET_TOKENS };
+  if (!(await pathExists(FILE)))
+    return { tasks: [], budgetTokens: DEFAULT_HEARTBEAT_BUDGET_TOKENS };
   const raw = await fs.readFile(FILE, "utf8");
   let parsed: HeartbeatConfig;
   try {

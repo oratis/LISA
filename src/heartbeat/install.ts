@@ -15,12 +15,7 @@ export interface InstallOptions {
 }
 
 const PLIST_LABEL = "ai.lisa.heartbeat";
-const PLIST_PATH = path.join(
-  os.homedir(),
-  "Library",
-  "LaunchAgents",
-  `${PLIST_LABEL}.plist`,
-);
+const PLIST_PATH = path.join(os.homedir(), "Library", "LaunchAgents", `${PLIST_LABEL}.plist`);
 const HEARTBEAT_LOG = path.join(lisaGlobalHome(), "heartbeat.log");
 
 export async function installHeartbeat(
@@ -166,9 +161,7 @@ const SAFE_MIN_DIVISORS = [1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30];
 const SAFE_HOUR_DIVISORS = [1, 2, 3, 4, 6, 8, 12];
 
 function pickClosest(target: number, choices: readonly number[]): number {
-  return choices.reduce((best, v) =>
-    Math.abs(v - target) < Math.abs(best - target) ? v : best,
-  );
+  return choices.reduce((best, v) => (Math.abs(v - target) < Math.abs(best - target) ? v : best));
 }
 
 /**
@@ -245,4 +238,3 @@ function formatSec(sec: number): string {
   }
   return `${sec} seconds`;
 }
-

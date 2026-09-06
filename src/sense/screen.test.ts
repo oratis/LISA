@@ -30,10 +30,18 @@ describe("shouldEmitForeground (pure, privacy-critical)", () => {
   });
 
   test("window title: secret-path dropped, PII redacted, normal kept", () => {
-    const secret = shouldEmitForeground(undefined, { app: "Terminal", title: "vim /home/me/.env" }, NOW);
+    const secret = shouldEmitForeground(
+      undefined,
+      { app: "Terminal", title: "vim /home/me/.env" },
+      NOW,
+    );
     assert.equal(secret!.title, undefined, "secret-path title dropped");
 
-    const pii = shouldEmitForeground(undefined, { app: "Mail", title: "to alice@example.com" }, NOW);
+    const pii = shouldEmitForeground(
+      undefined,
+      { app: "Mail", title: "to alice@example.com" },
+      NOW,
+    );
     assert.equal(pii!.title, "to [email]", "PII in title redacted");
 
     const ok = shouldEmitForeground(undefined, { app: "Notes", title: "Grocery list" }, NOW);
@@ -80,7 +88,10 @@ describe("ScreenSource (consent-gated, change-detecting)", () => {
     await src.tick(); // Safari (no change)
     await src.tick(); // Code (change)
     await src.stop();
-    assert.deepEqual(emitted.map((e) => e.app), ["Safari", "Code"]);
+    assert.deepEqual(
+      emitted.map((e) => e.app),
+      ["Safari", "Code"],
+    );
   });
 
   test("switching THROUGH a blacklisted app leaves no trace and no false change", async () => {
@@ -95,7 +106,10 @@ describe("ScreenSource (consent-gated, change-detecting)", () => {
     await src.tick(); // 1Password → skipped, prev stays Safari
     await src.tick(); // Safari → unchanged vs prev → no event
     await src.stop();
-    assert.deepEqual(emitted.map((e) => e.app), ["Safari"]);
+    assert.deepEqual(
+      emitted.map((e) => e.app),
+      ["Safari"],
+    );
   });
 
   test("a mid-run revoke stops emission and forgets context", async () => {
@@ -113,6 +127,9 @@ describe("ScreenSource (consent-gated, change-detecting)", () => {
     allow = true;
     await src.tick(); // Code, but prev was reset → counts as new → 1 event
     await src.stop();
-    assert.deepEqual(emitted.map((e) => e.app), ["Safari", "Code"]);
+    assert.deepEqual(
+      emitted.map((e) => e.app),
+      ["Safari", "Code"],
+    );
   });
 });

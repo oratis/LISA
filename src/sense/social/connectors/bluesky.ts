@@ -1,11 +1,7 @@
 import crypto from "node:crypto";
 import { loadSocialMedia } from "../media.js";
 import type { SocialDraftContent, SocialMediaRef, SocialPlatformVariant } from "../types.js";
-import {
-  getOpenSocialAccount,
-  saveOpenSocialAccount,
-  type BlueskyAccount,
-} from "./accounts.js";
+import { getOpenSocialAccount, saveOpenSocialAccount, type BlueskyAccount } from "./accounts.js";
 import { httpsOrigin, responseJson } from "./http.js";
 import type {
   ConnectorPublishInput,
@@ -61,9 +57,7 @@ function pdsFromSession(session: Record<string, unknown>, fallback: string): str
       typeof item === "object" &&
       (item as { type?: unknown }).type === "AtprotoPersonalDataServer",
   ) as { serviceEndpoint?: unknown } | undefined;
-  return typeof pds?.serviceEndpoint === "string"
-    ? httpsOrigin(pds.serviceEndpoint)
-    : fallback;
+  return typeof pds?.serviceEndpoint === "string" ? httpsOrigin(pds.serviceEndpoint) : fallback;
 }
 
 export async function connectBlueskyAccount(
@@ -100,10 +94,7 @@ export async function connectBlueskyAccount(
   return account;
 }
 
-async function refresh(
-  account: BlueskyAccount,
-  fetchImpl: typeof fetch,
-): Promise<BlueskyAccount> {
+async function refresh(account: BlueskyAccount, fetchImpl: typeof fetch): Promise<BlueskyAccount> {
   const session = await responseJson(
     await fetchImpl(`${account.service}/xrpc/com.atproto.server.refreshSession`, {
       method: "POST",
@@ -163,7 +154,10 @@ async function uploadBlob(
   return { account: result.account, blob: body.blob };
 }
 
-function selectedMedia(content: SocialDraftContent, variant?: SocialPlatformVariant): SocialMediaRef[] {
+function selectedMedia(
+  content: SocialDraftContent,
+  variant?: SocialPlatformVariant,
+): SocialMediaRef[] {
   return variant?.mediaIds
     ? content.media.filter((item) => variant.mediaIds!.includes(item.id))
     : content.media;
@@ -173,21 +167,20 @@ function linkFacet(text: string, link?: string): unknown[] | undefined {
   if (!link) return undefined;
   const start = text.lastIndexOf(link);
   if (start < 0) return undefined;
-  return [{
-    index: {
-      byteStart: Buffer.byteLength(text.slice(0, start)),
-      byteEnd: Buffer.byteLength(text.slice(0, start + link.length)),
+  return [
+    {
+      index: {
+        byteStart: Buffer.byteLength(text.slice(0, start)),
+        byteEnd: Buffer.byteLength(text.slice(0, start + link.length)),
+      },
+      features: [{ $type: "app.bsky.richtext.facet#link", uri: link }],
     },
-    features: [{ $type: "app.bsky.richtext.facet#link", uri: link }],
-  }];
+  ];
 }
 
 function deterministicRecordKey(idempotencyKey: string): string {
   if (!idempotencyKey) throw new Error("Bluesky publish needs an idempotency key");
-  return `lisa-${crypto
-    .createHash("sha256")
-    .update(idempotencyKey)
-    .digest("hex")}`;
+  return `lisa-${crypto.createHash("sha256").update(idempotencyKey).digest("hex")}`;
 }
 
 function stableCreatedAt(value: string): string {

@@ -3,11 +3,7 @@ import OpenAI from "openai";
 import { proxyAwareFetch } from "../proxy-bootstrap.js";
 import { withStreamRetry } from "./stream-retry.js";
 import type { StoredMessage } from "../types.js";
-import type {
-  Provider,
-  ProviderResult,
-  ProviderRunOpts,
-} from "./types.js";
+import type { Provider, ProviderResult, ProviderRunOpts } from "./types.js";
 
 export class OpenAIProvider implements Provider {
   readonly name = "openai";
@@ -50,10 +46,7 @@ export class OpenAIProvider implements Provider {
       );
 
       let text = "";
-      const toolCalls = new Map<
-        number,
-        { id: string; name: string; args: string }
-      >();
+      const toolCalls = new Map<number, { id: string; name: string; args: string }>();
       let finish = "stop";
       let inputTokens = 0;
       let outputTokens = 0;
@@ -135,8 +128,7 @@ function anthropicToOpenAI(
         continue;
       }
       const textBlocks: string[] = [];
-      const toolResults: { id: string; content: string; isError: boolean }[] =
-        [];
+      const toolResults: { id: string; content: string; isError: boolean }[] = [];
       for (const block of content) {
         if (block.type === "text") {
           textBlocks.push(block.text);
@@ -145,9 +137,7 @@ function anthropicToOpenAI(
             typeof block.content === "string"
               ? block.content
               : Array.isArray(block.content)
-                ? block.content
-                    .map((b) => (b.type === "text" ? b.text : ""))
-                    .join("\n")
+                ? block.content.map((b) => (b.type === "text" ? b.text : "")).join("\n")
                 : "";
           toolResults.push({
             id: block.tool_use_id,
@@ -173,8 +163,7 @@ function anthropicToOpenAI(
         continue;
       }
       const textParts: string[] = [];
-      const toolCalls: OpenAI.Chat.Completions.ChatCompletionMessageToolCall[] =
-        [];
+      const toolCalls: OpenAI.Chat.Completions.ChatCompletionMessageToolCall[] = [];
       for (const block of content) {
         if (block.type === "text") {
           textParts.push(block.text);
@@ -189,11 +178,10 @@ function anthropicToOpenAI(
           });
         }
       }
-      const assistant: OpenAI.Chat.Completions.ChatCompletionAssistantMessageParam =
-        {
-          role: "assistant",
-          content: textParts.join("\n") || null,
-        };
+      const assistant: OpenAI.Chat.Completions.ChatCompletionAssistantMessageParam = {
+        role: "assistant",
+        content: textParts.join("\n") || null,
+      };
       if (toolCalls.length) assistant.tool_calls = toolCalls;
       out.push(assistant);
     }

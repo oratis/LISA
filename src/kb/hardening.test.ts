@@ -18,7 +18,11 @@ const { DEFAULT_SCHEMA } = await import("./schema.js");
 
 after(() => rmSync(TMP, { recursive: true, force: true }));
 
-const CTX: ToolContext = { cwd: process.cwd(), signal: new AbortController().signal, log: () => {} };
+const CTX: ToolContext = {
+  cwd: process.cwd(),
+  signal: new AbortController().signal,
+  log: () => {},
+};
 
 describe("D3 closure #1 — autonomous kb_ingest is watchlist-only", () => {
   test("hostMatches: dot-boundary both directions, no suffix spoofing", () => {
@@ -42,8 +46,13 @@ describe("D3 closure #1 — autonomous kb_ingest is watchlist-only", () => {
       path.join(kbDir(), "feeds.json"),
       JSON.stringify({ feeds: [{ id: "b", url: "https://rss.blog.example.com/feed" }] }),
     );
-    await assert.doesNotReject(() => assertAutonomousIngestAllowed("https://blog.example.com/post/1"));
-    await assert.rejects(() => assertAutonomousIngestAllowed("https://evil.example.net/x"), /not on the user's watchlist/);
+    await assert.doesNotReject(() =>
+      assertAutonomousIngestAllowed("https://blog.example.com/post/1"),
+    );
+    await assert.rejects(
+      () => assertAutonomousIngestAllowed("https://evil.example.net/x"),
+      /not on the user's watchlist/,
+    );
   });
 
   test("autonomousSubset swaps in the restricted kb_ingest; other surfaces keep the plain one", async () => {
@@ -85,11 +94,19 @@ describe("D3 closure #3 — kb_read fences external content", () => {
   });
 
   test("brief entries are fenced too; chat captures and wiki pages are not", async () => {
-    const brief = await store.addSource({ title: "Brief 2026-07-23", body: "- item", origin: "brief" });
+    const brief = await store.addSource({
+      title: "Brief 2026-07-23",
+      body: "- item",
+      origin: "brief",
+    });
     const briefOut = (await read.execute({ layer: "sources", slug: brief.slug }, CTX)) as string;
     assert.match(briefOut, /<<<EXTERNAL-CONTENT>>>/);
 
-    const chat = await store.addSource({ title: "Chat note", body: "user said hi", origin: "chat" });
+    const chat = await store.addSource({
+      title: "Chat note",
+      body: "user said hi",
+      origin: "chat",
+    });
     const chatOut = (await read.execute({ layer: "sources", slug: chat.slug }, CTX)) as string;
     assert.doesNotMatch(chatOut, /<<<EXTERNAL-CONTENT>>>/);
 

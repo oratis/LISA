@@ -37,13 +37,12 @@ async function connectOne(
     args: spec.args ?? [],
     env: { ...process.env, ...(spec.env ?? {}) } as Record<string, string>,
   });
-  const client = new Client(
-    { name: "lisa", version: "0.1.0" },
-    { capabilities: {} },
-  );
+  const client = new Client({ name: "lisa", version: "0.1.0" }, { capabilities: {} });
   await client.connect(transport);
   const list = await client.listTools();
-  const tools: ToolDefinition[] = list.tools.map((t) => mcpToolToLisaTool(spec.name, client, t, log));
+  const tools: ToolDefinition[] = list.tools.map((t) =>
+    mcpToolToLisaTool(spec.name, client, t, log),
+  );
   return {
     spec,
     client,
@@ -83,9 +82,10 @@ export function mcpToolToLisaTool(
     name,
     description,
     ...(mcpTool.annotations ? { annotations: { ...mcpTool.annotations } } : {}),
-    inputSchema: ((mcpTool.inputSchema as { type?: string; properties?: object } | undefined)?.type === "object"
-      ? (mcpTool.inputSchema as { type: "object"; properties?: object })
-      : { type: "object" as const, properties: {} }),
+    inputSchema:
+      (mcpTool.inputSchema as { type?: string; properties?: object } | undefined)?.type === "object"
+        ? (mcpTool.inputSchema as { type: "object"; properties?: object })
+        : { type: "object" as const, properties: {} },
     async execute(input: unknown) {
       const result = await client.callTool({
         name: mcpTool.name,
@@ -93,7 +93,7 @@ export function mcpToolToLisaTool(
       });
       const content = (result.content as Array<{ type: string; text?: string }>) ?? [];
       const text = content
-        .map((c) => (c.type === "text" ? c.text ?? "" : `[${c.type}]`))
+        .map((c) => (c.type === "text" ? (c.text ?? "") : `[${c.type}]`))
         .join("\n");
       if (result.isError) {
         log(`[mcp] ${name} returned isError`);

@@ -48,7 +48,7 @@ async function builtinTranscript(
 ): Promise<{ transcript?: string; reason?: string }> {
   const sessdata = await readSessdata();
   if (!sessdata) {
-    return { reason: "字幕需要登录态：在 kb/feeds.json 里加 \"sessdata\" 可开启" };
+    return { reason: '字幕需要登录态：在 kb/feeds.json 里加 "sessdata" 可开启' };
   }
   const res = await ctx.fetchImpl(
     `https://api.bilibili.com/x/player/v2?bvid=${data.bvid}&cid=${data.cid}`,
@@ -66,7 +66,9 @@ async function builtinTranscript(
   const pick =
     subs.find((s) => s.lan?.startsWith("zh")) ?? subs.find((s) => s.subtitle_url) ?? subs[0]!;
   if (!pick.subtitle_url) return { reason: "字幕列表为空" };
-  const subUrl = pick.subtitle_url.startsWith("//") ? `https:${pick.subtitle_url}` : pick.subtitle_url;
+  const subUrl = pick.subtitle_url.startsWith("//")
+    ? `https:${pick.subtitle_url}`
+    : pick.subtitle_url;
   const subRes = await ctx.fetchImpl(subUrl);
   if (!subRes.ok) return { reason: `字幕下载 HTTP ${subRes.status}` };
   const transcript = parseSubtitlePayload(await subRes.text());
@@ -81,7 +83,8 @@ async function fetchBilibili(url: URL, ctx: IngestContext): Promise<IngestedCont
     const res = await ctx.fetchImpl(url.toString());
     bv = BV_RE.exec(new URL(res.url || url.toString()).pathname)?.[1] ?? undefined;
   }
-  if (!bv) throw new Error(`no BV id found in ${url} — only bilibili.com/video/BV… links are supported`);
+  if (!bv)
+    throw new Error(`no BV id found in ${url} — only bilibili.com/video/BV… links are supported`);
 
   const apiRes = await ctx.fetchImpl(`https://api.bilibili.com/x/web-interface/view?bvid=${bv}`);
   if (!apiRes.ok) throw new Error(`bilibili view API failed: HTTP ${apiRes.status}`);
@@ -91,7 +94,9 @@ async function fetchBilibili(url: URL, ctx: IngestContext): Promise<IngestedCont
     data?: ViewData;
   } | null;
   if (!api || api.code !== 0 || !api.data) {
-    throw new Error(`bilibili view API error: ${api?.message ?? "bad response"} (code ${api?.code})`);
+    throw new Error(
+      `bilibili view API error: ${api?.message ?? "bad response"} (code ${api?.code})`,
+    );
   }
   const data = api.data;
 
@@ -125,9 +130,7 @@ async function fetchBilibili(url: URL, ctx: IngestContext): Promise<IngestedCont
   const extra: Record<string, string> = { site: "bilibili" };
   if (data.owner?.name) extra.author = data.owner.name;
   if (data.pubdate) extra.published = new Date(data.pubdate * 1000).toISOString();
-  extra.transcript = transcript
-    ? transcriptVia
-    : `unavailable (${reason || "无可用字幕"})`;
+  extra.transcript = transcript ? transcriptVia : `unavailable (${reason || "无可用字幕"})`;
 
   return {
     title: data.title,

@@ -15,6 +15,10 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
+        with:
+          # format:check diffs against the merge-base with the target branch,
+          # so it needs history, not just the tip commit.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v6
         with:
@@ -32,6 +36,9 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+      - name: Format (files changed against the base branch)
+        run: npm run format:check
 
       - name: Test
         run: npm test

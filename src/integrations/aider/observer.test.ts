@@ -3,12 +3,7 @@ import assert from "node:assert/strict";
 import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import {
-  parseAiderState,
-  parseAiderActivity,
-  walkHistories,
-  AiderObserver,
-} from "./observer.js";
+import { parseAiderState, parseAiderActivity, walkHistories, AiderObserver } from "./observer.js";
 
 const AID_SECRET = "SECRET_LEAK_CANARY_aid";
 
@@ -180,8 +175,7 @@ describe("parseAiderState — tolerant heuristic", () => {
   });
 
   test("only the LAST turn decides (earlier reply doesn't mask a new prompt)", () => {
-    const tail =
-      "#### first\nassistant replied here\n> Applied edit\n#### second question\n";
+    const tail = "#### first\nassistant replied here\n> Applied edit\n#### second question\n";
     assert.deepEqual(parseAiderState(tail), { state: "working", reason: "user" });
   });
 });

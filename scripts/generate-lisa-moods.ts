@@ -18,8 +18,7 @@ import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 import { MOODS, STYLE_LOCK, type MoodSpec } from "./lisa-moods.js";
 
-const SEEDREAM_URL =
-  "https://ark.cn-beijing.volces.com/api/v3/images/generations";
+const SEEDREAM_URL = "https://ark.cn-beijing.volces.com/api/v3/images/generations";
 const SEEDREAM_MODEL = "doubao-seedream-5-0-260128";
 const API_KEY = process.env.SEEDREAM_API_KEY;
 if (!API_KEY) {
@@ -81,7 +80,7 @@ async function chromaKeyWhite(input: Buffer, finalSize: number): Promise<Buffer>
   const { width, height, channels } = info;
   const out = Buffer.from(data);
   const threshold = 235; // R/G/B all >= → candidate "white"
-  const feather = 15;    // softening band for anti-aliased borders
+  const feather = 15; // softening band for anti-aliased borders
   const N = width * height;
 
   // 1. Mark candidate-white pixels.
@@ -103,20 +102,20 @@ async function chromaKeyWhite(input: Buffer, finalSize: number): Promise<Buffer>
     queue[qTail++] = idx;
   };
   for (let x = 0; x < width; x++) {
-    enqueue(x);                          // top edge
-    enqueue((height - 1) * width + x);   // bottom edge
+    enqueue(x); // top edge
+    enqueue((height - 1) * width + x); // bottom edge
   }
   for (let y = 0; y < height; y++) {
-    enqueue(y * width);                  // left edge
-    enqueue(y * width + width - 1);      // right edge
+    enqueue(y * width); // left edge
+    enqueue(y * width + width - 1); // right edge
   }
   while (qHead < qTail) {
     const idx = queue[qHead++]!;
     const x = idx % width;
     const y = (idx - x) / width;
-    if (x > 0)          enqueue(idx - 1);
-    if (x < width - 1)  enqueue(idx + 1);
-    if (y > 0)          enqueue(idx - width);
+    if (x > 0) enqueue(idx - 1);
+    if (x < width - 1) enqueue(idx + 1);
+    if (y > 0) enqueue(idx - width);
     if (y < height - 1) enqueue(idx + width);
   }
 
@@ -212,23 +211,30 @@ async function main(): Promise<void> {
   const start = Date.now();
   let done = 0;
   let failed = 0;
-  await runBatched(queue, CONCURRENCY, async (mood) => generateOne(mood, force), (mood, result) => {
-    done++;
-    if (result instanceof Error) {
-      failed++;
-      console.error(`[${done}/${queue.length}] ✗ ${mood.slug}: ${result.message}`);
-    } else {
-      console.log(`[${done}/${queue.length}] ✓ ${mood.slug} (${result})`);
-    }
-  });
+  await runBatched(
+    queue,
+    CONCURRENCY,
+    async (mood) => generateOne(mood, force),
+    (mood, result) => {
+      done++;
+      if (result instanceof Error) {
+        failed++;
+        console.error(`[${done}/${queue.length}] ✗ ${mood.slug}: ${result.message}`);
+      } else {
+        console.log(`[${done}/${queue.length}] ✓ ${mood.slug} (${result})`);
+      }
+    },
+  );
   const secs = ((Date.now() - start) / 1000).toFixed(1);
   console.log(`\nDone in ${secs}s — ${done - failed} ok, ${failed} failed.`);
 
   // Write a manifest so the runtime knows what's available without scanning.
   const present = await fs.readdir(OUT_DIR);
-  const manifest = MOODS.filter((m) => present.includes(`${m.slug}.png`)).map(
-    (m) => ({ slug: m.slug, category: m.category, hint: m.hint }),
-  );
+  const manifest = MOODS.filter((m) => present.includes(`${m.slug}.png`)).map((m) => ({
+    slug: m.slug,
+    category: m.category,
+    hint: m.hint,
+  }));
   await fs.writeFile(
     path.join(OUT_DIR, "index.json"),
     JSON.stringify({ count: manifest.length, moods: manifest }, null, 2),

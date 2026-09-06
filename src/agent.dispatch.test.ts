@@ -2,7 +2,12 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import type Anthropic from "@anthropic-ai/sdk";
 import { runAgent, type RunAgentOptions } from "./agent.js";
-import type { Provider, ProviderResult, ProviderRunOpts, ProviderUsage } from "./providers/types.js";
+import type {
+  Provider,
+  ProviderResult,
+  ProviderRunOpts,
+  ProviderUsage,
+} from "./providers/types.js";
 import type { ToolContext, ToolDefinition, StoredMessage } from "./types.js";
 
 // Complements agent.test.ts (which covers stop conditions / empty-content /
@@ -82,7 +87,8 @@ function pairing(history: StoredMessage[]): { uses: string[]; results: string[] 
 }
 
 function allResults(history: StoredMessage[]): Anthropic.ToolResultBlockParam[] {
-  return (history.flatMap((m) => (Array.isArray(m.content) ? m.content : [])))
+  return history
+    .flatMap((m) => (Array.isArray(m.content) ? m.content : []))
     .filter((b): b is Anthropic.ToolResultBlockParam => b.type === "tool_result");
 }
 
@@ -94,7 +100,17 @@ describe("runAgent — tool dispatch", () => {
       turn([textBlock("done")], "end_turn"),
     ]);
     const r = await runAgent(
-      baseOpts({ provider, tools: [echoTool({ async execute(i) { seen.push(i); return "RAN"; } })] }),
+      baseOpts({
+        provider,
+        tools: [
+          echoTool({
+            async execute(i) {
+              seen.push(i);
+              return "RAN";
+            },
+          }),
+        ],
+      }),
     );
     assert.deepEqual(seen, [{ x: 1 }]);
     const { uses, results } = pairing(r.history);
@@ -111,7 +127,14 @@ describe("runAgent — tool dispatch", () => {
     const r = await runAgent(
       baseOpts({
         provider,
-        tools: [echoTool({ async execute() { return { n: 7 }; }, renderResultForModel: (o) => `rendered:${(o as { n: number }).n}` })],
+        tools: [
+          echoTool({
+            async execute() {
+              return { n: 7 };
+            },
+            renderResultForModel: (o) => `rendered:${(o as { n: number }).n}`,
+          }),
+        ],
       }),
     );
     assert.equal(allResults(r.history)[0]!.content, "rendered:7");
@@ -127,7 +150,9 @@ describe("runAgent — tool dispatch", () => {
     assert.equal(uses.length, 2);
     assert.deepEqual(new Set(uses), new Set(results));
     const toolMsg = r.history.find(
-      (m) => Array.isArray(m.content) && m.content.length > 0 &&
+      (m) =>
+        Array.isArray(m.content) &&
+        m.content.length > 0 &&
         m.content.every((b) => b.type === "tool_result"),
     );
     assert.equal((toolMsg!.content as Anthropic.ContentBlockParam[]).length, 2);
@@ -151,7 +176,17 @@ describe("runAgent — tool dispatch", () => {
       turn([textBlock("ok")], "end_turn"),
     ]);
     const r = await runAgent(
-      baseOpts({ provider, tools: [echoTool({ name: "boom", async execute() { throw new Error("kaboom"); } })] }),
+      baseOpts({
+        provider,
+        tools: [
+          echoTool({
+            name: "boom",
+            async execute() {
+              throw new Error("kaboom");
+            },
+          }),
+        ],
+      }),
     );
     const res = allResults(r.history)[0]!;
     assert.equal(res.is_error, true);
@@ -170,7 +205,14 @@ describe("runAgent — approval + hook gating (security-relevant)", () => {
     const r = await runAgent(
       baseOpts({
         provider,
-        tools: [echoTool({ async execute() { ran = true; return "x"; } })],
+        tools: [
+          echoTool({
+            async execute() {
+              ran = true;
+              return "x";
+            },
+          }),
+        ],
         approval: async () => ({ allow: false, reason: "nope" }),
       }),
     );
@@ -189,7 +231,14 @@ describe("runAgent — approval + hook gating (security-relevant)", () => {
     await runAgent(
       baseOpts({
         provider,
-        tools: [echoTool({ async execute() { ran = true; return "x"; } })],
+        tools: [
+          echoTool({
+            async execute() {
+              ran = true;
+              return "x";
+            },
+          }),
+        ],
         approval: async () => ({ allow: true }),
       }),
     );
@@ -205,7 +254,14 @@ describe("runAgent — approval + hook gating (security-relevant)", () => {
     const r = await runAgent(
       baseOpts({
         provider,
-        tools: [echoTool({ async execute() { ran = true; return "x"; } })],
+        tools: [
+          echoTool({
+            async execute() {
+              ran = true;
+              return "x";
+            },
+          }),
+        ],
         preToolHook: async () => ({ block: "policy" }),
       }),
     );
@@ -218,7 +274,9 @@ describe("runAgent — approval + hook gating (security-relevant)", () => {
       turn([toolUseBlock("echo", {})], "tool_use"),
       turn([textBlock("ok")], "end_turn"),
     ]);
-    const r = await runAgent(baseOpts({ provider, postToolHook: async () => ({ rewriteResult: "REWRITTEN" }) }));
+    const r = await runAgent(
+      baseOpts({ provider, postToolHook: async () => ({ rewriteResult: "REWRITTEN" }) }),
+    );
     assert.equal(allResults(r.history)[0]!.content, "REWRITTEN");
   });
 });

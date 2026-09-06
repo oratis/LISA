@@ -56,7 +56,11 @@ function parseTokens(json: Record<string, unknown>, now: number): GoogleTokens {
   };
 }
 
-async function postToken(body: URLSearchParams, fetchImpl: FetchLike, now: number): Promise<GoogleTokens> {
+async function postToken(
+  body: URLSearchParams,
+  fetchImpl: FetchLike,
+  now: number,
+): Promise<GoogleTokens> {
   const res = await fetchImpl(TOKEN_URL, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },

@@ -11,8 +11,12 @@ import {
   remoteSafeSubset,
 } from "./registry.js";
 
-const fake = (name: string): ToolDefinition =>
-  ({ name, description: name, inputSchema: { type: "object" }, execute: async () => "" });
+const fake = (name: string): ToolDefinition => ({
+  name,
+  description: name,
+  inputSchema: { type: "object" },
+  execute: async () => "",
+});
 
 const SAMPLE = [
   "bash",
@@ -89,18 +93,15 @@ describe("autonomousSubset — self-driven runs (desire heartbeats / idle)", () 
 describe("desireReviewSubset — scheduled browsing boundary", () => {
   test("keeps only desire review capabilities", () => {
     const names = new Set(desireReviewSubset(SAMPLE).map((t) => t.name));
-    assert.deepEqual(
-      [...names].sort(),
-      [
-        "desire_close",
-        "desire_progress_log",
-        "desire_revise",
-        "soul_journal",
-        "soul_read",
-        "web_fetch",
-        "web_search",
-      ],
-    );
+    assert.deepEqual([...names].sort(), [
+      "desire_close",
+      "desire_progress_log",
+      "desire_revise",
+      "soul_journal",
+      "soul_read",
+      "web_fetch",
+      "web_search",
+    ]);
     for (const forbidden of ["bash", "write", "soul_patch", "github", "mcp"]) {
       assert.equal(names.has(forbidden), false, `${forbidden} must be unavailable`);
     }
@@ -139,7 +140,14 @@ describe("remoteSafeSubset — IM-channel toolset", () => {
 
   test("conversational + soul tools survive for the phone use-case", () => {
     const names = new Set(remoteSafeSubset(SAMPLE).map((t) => t.name));
-    for (const kept of ["memory", "memory_search", "soul_journal", "soul_read", "web_fetch", "set_mood"]) {
+    for (const kept of [
+      "memory",
+      "memory_search",
+      "soul_journal",
+      "soul_read",
+      "web_fetch",
+      "set_mood",
+    ]) {
       assert.equal(names.has(kept), true, `${kept} must stay available`);
     }
   });
@@ -169,7 +177,15 @@ describe("cloudSafeSubset — hosted multi-tenant toolset", () => {
   test("keeps only explicitly approved tenant-scoped tools", () => {
     const candidates = [...SAMPLE, fake("kb_search"), fake("kb_write"), fake("soul_object")];
     const names = new Set(cloudSafeSubset(candidates).map((t) => t.name));
-    for (const kept of ["memory", "memory_search", "soul_read", "soul_object", "kb_search", "kb_write", "set_mood"]) {
+    for (const kept of [
+      "memory",
+      "memory_search",
+      "soul_read",
+      "soul_object",
+      "kb_search",
+      "kb_write",
+      "set_mood",
+    ]) {
       assert.equal(CLOUD_ALLOWED_TOOL_NAMES.has(kept), true);
       assert.equal(names.has(kept), true, `${kept} must stay available`);
     }
