@@ -191,6 +191,10 @@ final class WebContent: NSViewController, WKNavigationDelegate, WKUIDelegate, WK
               let type = body["type"] as? String else { return }
         if type == "start_backend" {
             BackendController.shared.start()
+        } else if type == "setup_backend" {
+            // UX-7: the splash's second door — the guided install wizard, for
+            // when the backend isn't just stopped but was never installed.
+            BackendSetupController.shared.presentFromMenu()
         }
     }
 
@@ -282,11 +286,17 @@ final class WebContent: NSViewController, WKNavigationDelegate, WKUIDelegate, WK
             <button id=\"startBtn\" onclick=\"startBackend()\">▶&nbsp;&nbsp;Start Lisa backend</button>
             <button class=\"ghost\" onclick=\"location.assign('http://localhost:5757/')\">Retry</button>
           </div>
+          <div class=\"row\">
+            <button class=\"ghost\" onclick=\"setupBackend()\">Set&nbsp;up&nbsp;backend…</button>
+          </div>
           <script>
             function startBackend() {
               var b = document.getElementById('startBtn');
               if (b) { b.textContent = 'Starting…'; b.disabled = true; }
               try { window.webkit.messageHandlers.lisa.postMessage({ type: 'start_backend' }); } catch (e) {}
+            }
+            function setupBackend() {
+              try { window.webkit.messageHandlers.lisa.postMessage({ type: 'setup_backend' }); } catch (e) {}
             }
           </script>
 

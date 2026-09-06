@@ -181,6 +181,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         PreferencesController.shared.show()
     }
 
+    /// Main-actor isolated because the wizard is (it drives AppKit and spawns
+    /// processes); menu actions always arrive on the main thread anyway.
+    @MainActor
+    @objc func openBackendSetup(_ sender: Any?) {
+        BackendSetupController.shared.presentFromMenu()
+    }
+
     @objc func newWindowAction(_ sender: Any?) {
         // Single-window for now; reuse existing.
         showMainWindow()
@@ -216,6 +223,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         settingsItem.target = self
         appMenu.addItem(settingsItem)
+        // Backend install / update wizard (UX-7) — also opens on its own when the
+        // app can't find the `lisa` CLI at start.
+        let setupItem = NSMenuItem(
+            title: "Set Up Backend…",
+            action: #selector(openBackendSetup(_:)),
+            keyEquivalent: ""
+        )
+        setupItem.target = self
+        appMenu.addItem(setupItem)
         // Managed inference (B8d): sign in once, run key-free via LISA Cloud.
         let accountItem = NSMenuItem(
             title: "Sign in to LISA Cloud…",

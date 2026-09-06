@@ -13,10 +13,25 @@ let package = Package(
     name: "Lisa",
     platforms: [.macOS(.v13)],
     targets: [
+        // Pure, AppKit-free logic (the backend install wizard's decisions,
+        // probe/install scripts, failure classification) — unit-tested with
+        // `swift test` without booting the app.
+        .target(
+            name: "LisaSetup",
+            path: "Sources/LisaSetup",
+            swiftSettings: strict
+        ),
         .executableTarget(
             name: "Lisa",
+            dependencies: ["LisaSetup"],
             path: "Sources/Lisa",
             swiftSettings: strict
-        )
+        ),
+        .testTarget(
+            name: "LisaSetupTests",
+            dependencies: ["LisaSetup"],
+            path: "Tests/LisaSetupTests",
+            swiftSettings: strict
+        ),
     ]
 )
