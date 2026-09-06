@@ -8,7 +8,13 @@ import { dirname, resolve as resolvePath } from "node:path";
 // re-call this after config.env loads (inside main()) to handle proxies set
 // in ~/.lisa/config.env.
 import { configureProxyFromEnv } from "./proxy-bootstrap.js";
-configureProxyFromEnv({ log: (m) => console.error(m) });
+import { isVerboseArgv, parseArgs, type ParsedArgs } from "./cli-args.js";
+// The "[proxy] outbound HTTP routed through …" banner is debug detail on a
+// one-shot command, but at `serve` startup it is the one line in serve.log
+// that says which proxy the daemon actually picked up — keep it there.
+const proxyBanner =
+  isVerboseArgv(process.argv.slice(2)) || process.argv.slice(2).includes("serve");
+configureProxyFromEnv({ log: (m) => console.error(m), verbose: proxyBanner });
 import { logInfo } from "./log.js";
 import { runAgent } from "./agent.js";
 import { buildApprovalCallback, DEFAULT_MUTATING_TOOLS, DEFAULT_MUTATING_ACTIONS } from "./approval.js";
@@ -17,7 +23,7 @@ import { ensureDir } from "./fs-utils.js";
 import { runHeartbeatOnce } from "./heartbeat/runner.js";
 import { fireHooks } from "./hooks/runner.js";
 import { DEFAULT_MODEL } from "./llm.js";
-import { parseArgs, type ParsedArgs } from "./cli-args.js";
+import { displayPath } from "./cli/display-path.js";
 import { connectMcpServers } from "./mcp/client.js";
 import { loadMcpConfig } from "./mcp/config.js";
 import { lisaHome } from "./paths.js";
@@ -156,11 +162,11 @@ REPL slash commands:
   /clear                Forget current in-memory history (session log preserved).
   /save <text>          Append to MEMORY.md immediately.
 
-Data: ${lisaHome()}
-Plugins: ${PLUGINS_ROOT}/<name>/{commands,agents,skills,hooks,.lisa-plugin/plugin.json}
-MCP:     ${lisaHome()}/mcp.json   (Claude-Code-style {"mcpServers": {...}})
-Heartbeat: ${lisaHome()}/heartbeat.json   ({"tasks": [{name, prompt, ...}]})
-Config:  ${CONFIG_ENV_PATH}   (KEY=VALUE)`;
+Data: ${displayPath(lisaHome())}
+Plugins: ${displayPath(PLUGINS_ROOT)}/<name>/{commands,agents,skills,hooks,.lisa-plugin/plugin.json}
+MCP:     ${displayPath(lisaHome())}/mcp.json   (Claude-Code-style {"mcpServers": {...}})
+Heartbeat: ${displayPath(lisaHome())}/heartbeat.json   ({"tasks": [{name, prompt, ...}]})
+Config:  ${displayPath(CONFIG_ENV_PATH)}   (KEY=VALUE)`;
 
 function readPackageVersion(): string {
   try {
@@ -205,8 +211,11 @@ async function main(): Promise<void> {
     args.model = resolveDefaultModel();
   }
   // Re-bridge proxy in case HTTPS_PROXY was set in config.env rather than
-  // the shell. configureProxyFromEnv is idempotent.
-  configureProxyFromEnv({ log: (m) => console.error(m) });
+  // the shell. configureProxyFromEnv is idempotent, so this logs at most once.
+  configureProxyFromEnv({
+    log: (m) => console.error(m),
+    verbose: args.verbose || args.subcommand === "serve",
+  });
 
   // ── soul-only subcommands (don't need agent loop) ─────────────────────
   if (args.subcommand === "birth") {
@@ -269,7 +278,7 @@ async function main(): Promise<void> {
           : "configured ✓";
       console.log(`  ${name.padEnd(12)} ${status}`);
     }
-    console.log(`\nConfig: ${CHANNELS_CONFIG_PATH}`);
+    console.log(`\nConfig: ${displayPath(CHANNELS_CONFIG_PATH)}`);
     console.log(`Start: lisa serve --channels <comma-list>  (or --channels all)`);
     return;
   }
@@ -413,8 +422,13 @@ async function main(): Promise<void> {
   const isWebServe = args.subcommand === "serve" && args.serveWeb;
   if (!isWebServe && !hasCredentialsForModel(args.model)) {
     console.error(
-      `Lisa needs an API key for ${args.model}. Set the provider key in your shell or in ${CONFIG_ENV_PATH} ` +
-        `— e.g. ANTHROPIC_API_KEY (https://console.anthropic.com/), OPENAI_API_KEY, or a preset key like ZHIPU_API_KEY for glm-*.`,
+      [
+        `Lisa needs an API key for ${args.model}.`,
+        `Set the provider key in your shell or in ${displayPath(CONFIG_ENV_PATH)}, e.g.`,
+        `  ANTHROPIC_API_KEY=sk-ant-…   (https://console.anthropic.com/)`,
+        `  OPENAI_API_KEY=…             or a preset key like ZHIPU_API_KEY for glm-*`,
+        `Run \`lisa doctor\` to see which providers are configured.`,
+      ].join("\n"),
     );
     process.exit(1);
   }

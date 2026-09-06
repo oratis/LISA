@@ -26,6 +26,7 @@
 import { ProxyAgent, setGlobalDispatcher } from "undici";
 
 let installed = false;
+let installedUrl: string | null = null;
 
 class IdentityEncodingProxyAgent extends ProxyAgent {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -48,7 +49,19 @@ class IdentityEncodingProxyAgent extends ProxyAgent {
   }
 }
 
-export function configureProxyFromEnv(opts: { log?: (msg: string) => void } = {}): void {
+export function configureProxyFromEnv(
+  opts: {
+    log?: (msg: string) => void;
+    /**
+     * Announce a successful install. Off by default: the banner was printed at
+     * the top of every single command (`doctor`, `status`, a one-line prompt),
+     * which made it noise rather than information. Failures are always logged
+     * — they are actionable — and `proxyStatusLine()` lets a long-lived
+     * process (`serve`) or a diagnostic (`doctor`) print the line deliberately.
+     */
+    verbose?: boolean;
+  } = {},
+): void {
   const url =
     process.env.HTTPS_PROXY ??
     process.env.https_proxy ??
@@ -59,7 +72,8 @@ export function configureProxyFromEnv(opts: { log?: (msg: string) => void } = {}
   try {
     setGlobalDispatcher(new IdentityEncodingProxyAgent(url));
     installed = true;
-    opts.log?.(`[proxy] outbound HTTP routed through ${url} (Accept-Encoding=identity)`);
+    installedUrl = url;
+    if (opts.verbose) opts.log?.(proxyStatusLine()!);
   } catch (err) {
     opts.log?.(
       `[proxy] failed to install ProxyAgent for ${url}: ${(err as Error).message}`,
@@ -70,6 +84,16 @@ export function configureProxyFromEnv(opts: { log?: (msg: string) => void } = {}
 /** True iff a proxy was successfully installed. */
 export function isProxyInstalled(): boolean {
   return installed;
+}
+
+/**
+ * The one-line description of the active proxy bridge, or null when outbound
+ * HTTP goes direct. Exactly the text the verbose banner prints, so a startup
+ * log and a debug run describe the same state in the same words.
+ */
+export function proxyStatusLine(): string | null {
+  if (!installed || !installedUrl) return null;
+  return `[proxy] outbound HTTP routed through ${installedUrl} (Accept-Encoding=identity)`;
 }
 
 /**

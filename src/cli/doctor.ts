@@ -26,6 +26,7 @@ import {
 } from "./colors.js";
 import { lisaHome } from "../paths.js";
 import { CONFIG_ENV_PATH } from "../env.js";
+import { displayPath } from "./display-path.js";
 import { soulDir } from "../soul/paths.js";
 import { listConfiguredProviders, OPENAI_COMPAT_PRESETS } from "../providers/registry.js";
 import { isBorn } from "../soul/store.js";
@@ -61,20 +62,20 @@ const checks: Check[] = [
     },
   },
   {
-    label: "~/.lisa/ exists",
+    label: `${displayPath(lisaHome())}/ exists`,
     critical: false,
     run: async () => {
       return (await pathExists(lisaHome()))
-        ? { ok: true, detail: lisaHome() }
-        : { ok: false, detail: `${lisaHome()} not yet created (will be on first run)` };
+        ? { ok: true, detail: displayPath(lisaHome()) }
+        : { ok: false, detail: `${displayPath(lisaHome())} not yet created (will be on first run)` };
     },
   },
   {
-    label: "~/.lisa/config.env exists",
+    label: `${displayPath(CONFIG_ENV_PATH)} exists`,
     critical: false,
     run: async () => {
       return (await pathExists(CONFIG_ENV_PATH))
-        ? { ok: true, detail: CONFIG_ENV_PATH }
+        ? { ok: true, detail: displayPath(CONFIG_ENV_PATH) }
         : { ok: false, detail: `not found — keys must be in shell env` };
     },
   },
@@ -93,7 +94,7 @@ const checks: Check[] = [
     run: async () => {
       const dotGit = path.join(soulDir(), ".git");
       return (await pathExists(dotGit))
-        ? { ok: true, detail: dotGit }
+        ? { ok: true, detail: displayPath(dotGit) }
         : { ok: false, detail: "init pending; will run automatically on next start" };
     },
   },
@@ -143,7 +144,7 @@ export async function runDoctor(): Promise<void> {
   console.log(heading("Environment"));
   console.log(`  ${dim("platform:")}  ${process.platform} ${os.release()}`);
   console.log(`  ${dim("node:")}      ${process.versions.node}`);
-  console.log(`  ${dim("lisaHome():")} ${lisaHome()}`);
+  console.log(`  ${dim("lisaHome():")} ${displayPath(lisaHome())}`);
   if (process.env.HTTPS_PROXY || process.env.HTTP_PROXY) {
     console.log(`  ${dim("proxy:")}     ${process.env.HTTPS_PROXY ?? process.env.HTTP_PROXY}`);
   } else {
