@@ -40,7 +40,7 @@ LISA 是一个以本地自主权为核心、带长期人格与记忆的 AI Agent
 - Swift / SwiftUI 原生客户端
 - Astro 官网
 
-TypeScript 开启严格模式、`noUncheckedIndexedAccess` 和 `noImplicitOverride`。核心 `src/` 约 4.8 万行，Web 层是最大模块。
+TypeScript 开启严格模式、`noUncheckedIndexedAccess` 和 `noImplicitOverride`。核心 `src/` 约 6.0 万行（非测试），Web 层是最大模块。
 
 ## 常用验证命令
 
@@ -64,13 +64,13 @@ cd packaging/ios-companion
 
 ## 规模与热点
 
-当前稳定化分支中有约 573 个 `src` 文件、159 个测试文件。最大的维护热点是：
+2026-09-05（`26266a5`）：非测试 `src` 284 个 `.ts` 文件、59,744 行；测试 191 个文件、21,623 行；`npm test` 1,645 个测试。最大的维护热点是：
 
-- `src/web/server.ts`：约 3,832 行
-- `src/web/lisa-client.ts`：约 2,798 行
-- `src/web/lisa-css.ts`：约 2,144 行
-- `src/web/island.ts`：约 1,479 行
-- `src/cli.ts`：约 1,129 行
-- `src/web/room.ts`：约 1,096 行
+- `src/web/server.ts`：4,188 行（`createServer` 回调 L1107–L4185，86 条路由字面量）
+- `src/web/lisa-client.ts`：4,004 行（无类型的模板字符串）
+- `src/web/lisa-css.ts`：2,899 行
+- `src/web/island.ts`：1,501 行
+- `src/cli.ts`：1,147 行
+- `src/web/room.ts`：1,096 行
 
-热点不等于必须重写；它意味着任何跨租户、安全、协议或生命周期变更，都要优先检查这些文件。
+热点不等于必须重写；它意味着任何跨租户、安全、协议或生命周期变更，都要优先检查这些文件。拆分与客户端模块化的计划见 `docs/PROJECT_REVIEW_TECH_v0.24.0.md` T-1 / T-2。
