@@ -325,28 +325,28 @@ async function optimiseFile(rel: string, dryRun: boolean): Promise<FileResult> {
 
 // ─── derived icons ──────────────────────────────────────────────────────────
 
-const DERIVED_ICONS: Array<{ file: string; size: number; purpose: string }> = [
-  { file: "icon-192.png", size: 192, purpose: "web manifest icon (any + maskable)" },
-  { file: "icon-512.png", size: 512, purpose: "web manifest icon (any + maskable)" },
-  { file: "apple-touch-icon.png", size: 180, purpose: "iOS home-screen icon" },
+interface DerivedIcon {
+  file: string;
+  size: number;
+  /** Inset the art so nothing important can be cropped by a maskable mask. */
+  maskable: boolean;
+  purpose: string;
+}
+
+const DERIVED_ICONS: DerivedIcon[] = [
+  { file: "icon-192.png", size: 192, maskable: true, purpose: 'web manifest, purpose "any maskable"' },
+  { file: "icon-512.png", size: 512, maskable: true, purpose: 'web manifest, purpose "any maskable"' },
+  { file: "apple-touch-icon.png", size: 180, maskable: false, purpose: "iOS home screen (iOS applies its own superellipse mask)" },
 ];
 
-/**
- * Derive the manifest / touch icons from `lisa-app-icon.png`. The master is a
- * rounded square with transparent corners on a flat teal field; the art bleeds
- * to all four edges, so an inset would leave a visible seam. Instead the icons
- * are full-bleed and opaque (required for maskable + apple-touch), with the
- * corners flattened onto the field colour sampled from the master's own border.
- * The face sits well inside the maskable safe zone (central 80% circle).
- */
-async function deriveIcons(dryRun: boolean): Promise<void> {
-  const masterAbs = path.join(ASSETS_DIR, ICON_MASTER);
-  const master = await fs.readFile(masterAbs);
-  const ref = await decode(master);
-  if (ref.width !== ref.height) throw new Error(`${ICON_MASTER} must be square, got ${ref.width}x${ref.height}`);
+/** Maskable safe zone: a circle of diameter 80% of the icon, i.e. radius 0.4 × size. */
+const MASKABLE_SAFE_RADIUS = 0.4;
+/** Channel tolerance when deciding whether a pixel is "the flat field" or "art". */
+const FIELD_TOLERANCE = 12;
 
-  // Modal fully-opaque colour in the outer 6% band = the flat field colour.
-  const band = Math.max(1, Math.round(ref.width * 0.06));
+/** Modal fully-opaque colour in the outer `band` fraction — the flat field colour. */
+function sampleFieldColour(ref: Decoded, bandFraction = 0.06): { r: number; g: number; b: number } {
+  const band = Math.max(1, Math.round(ref.width * bandFraction));
   const counts = new Map<number, number>();
   for (let y = 0; y < ref.height; y++) {
     for (let x = 0; x < ref.width; x++) {
@@ -359,32 +359,119 @@ async function deriveIcons(dryRun: boolean): Promise<void> {
     }
   }
   let field = 0;
-  let fieldCount = -1;
-  for (const [key, n] of counts) if (n > fieldCount) { field = key; fieldCount = n; }
-  const background = { r: (field >> 16) & 0xff, g: (field >> 8) & 0xff, b: field & 0xff };
+  let bestCount = -1;
+  for (const [key, n] of counts) if (n > bestCount) { field = key; bestCount = n; }
+  return { r: (field >> 16) & 0xff, g: (field >> 8) & 0xff, b: field & 0xff };
+}
+
+/**
+ * Largest distance from the centre, in units of image width, of any pixel that
+ * is neither transparent nor the flat field colour. Everything beyond that
+ * radius is background, so cropping it costs nothing.
+ */
+function artRadius(ref: Decoded, field: { r: number; g: number; b: number }): number {
+  const cx = (ref.width - 1) / 2;
+  const cy = (ref.height - 1) / 2;
+  let maxR = 0;
+  for (let y = 0; y < ref.height; y++) {
+    for (let x = 0; x < ref.width; x++) {
+      const p = (y * ref.width + x) * 4;
+      if (ref.rgba[p + 3]! < 8) continue;
+      if (
+        Math.abs(ref.rgba[p]! - field.r) <= FIELD_TOLERANCE &&
+        Math.abs(ref.rgba[p + 1]! - field.g) <= FIELD_TOLERANCE &&
+        Math.abs(ref.rgba[p + 2]! - field.b) <= FIELD_TOLERANCE
+      ) continue;
+      const r = Math.hypot(x - cx, y - cy);
+      if (r > maxR) maxR = r;
+    }
+  }
+  return maxR / ref.width;
+}
+
+/**
+ * Derive the manifest / touch icons from `lisa-app-icon.png`.
+ *
+ * The master is a rounded square on a flat teal field, and the pixel-art bust
+ * bleeds to all four edges (measured art bbox is the full 512², max art radius
+ * ≈ 0.616 × width). A full-bleed maskable icon would therefore have the top of
+ * the head and the shoulders cropped by an aggressive mask, so the manifest
+ * icons inset the art until every non-field pixel falls inside the maskable
+ * safe zone (the central 80% circle) and pad the rest with the field colour
+ * sampled from the master's own border — the padding is invisible because it
+ * is the same colour the art already ends in.
+ *
+ * apple-touch-icon is deliberately NOT inset: iOS masks with a superellipse
+ * that trims only the corners, and an inset icon would sit visibly smaller
+ * than every other icon on the home screen. It only needs to be opaque, since
+ * iOS composites transparency onto black.
+ */
+async function deriveIcons(dryRun: boolean): Promise<void> {
+  const masterAbs = path.join(ASSETS_DIR, ICON_MASTER);
+  const master = await fs.readFile(masterAbs);
+  const masterChunks = parseChunks(master);
+  const ref = await decode(master);
+  if (ref.width !== ref.height) throw new Error(`${ICON_MASTER} must be square, got ${ref.width}x${ref.height}`);
+
+  const background = sampleFieldColour(ref);
   const hex = `#${background.r.toString(16).padStart(2, "0")}${background.g.toString(16).padStart(2, "0")}${background.b.toString(16).padStart(2, "0")}`;
-  console.log(`icons: master ${ICON_MASTER} ${ref.width}x${ref.height}, field colour ${hex}`);
+  const radius = artRadius(ref, background);
+  // Round DOWN to 1/100 so the inset always has a little slack over the measurement.
+  const maskableScale = Math.min(1, Math.floor((MASKABLE_SAFE_RADIUS / radius) * 100) / 100);
+  console.log(
+    `icons: master ${ICON_MASTER} ${ref.width}×${ref.height}, field ${hex}, ` +
+      `art radius ${radius.toFixed(4)}×size → maskable inset scale ${maskableScale.toFixed(2)}`,
+  );
 
   for (const icon of DERIVED_ICONS) {
+    const inner = icon.maskable ? Math.round(icon.size * maskableScale) : icon.size;
+    const pad = icon.size - inner;
+    const left = Math.floor(pad / 2);
+    const top = Math.floor(pad / 2);
+
     let pipeline = sharp(master);
-    if (icon.size !== ref.width) pipeline = pipeline.resize(icon.size, icon.size, { kernel: "lanczos3", fit: "fill" });
-    const out = await pipeline
-      .flatten({ background })
-      .png({ palette: false, compressionLevel: 9, adaptiveFiltering: true })
-      .toBuffer();
+    if (inner !== ref.width) pipeline = pipeline.resize(inner, inner, { kernel: "lanczos3", fit: "fill" });
+    // flatten first so the master's transparent rounded corners become field
+    // colour; extend then continues that field out to the full icon square.
+    pipeline = pipeline.flatten({ background });
+    if (pad > 0) {
+      pipeline = pipeline.extend({ top, left, bottom: pad - top, right: pad - left, background });
+    }
+    // Same chunk policy as the optimiser (master's colour-space chunks kept,
+    // sharp's pHYs dropped) so a follow-up `optimize-assets` run is a no-op.
+    const out = rebuildWithColourChunks(
+      await pipeline.png({ palette: false, compressionLevel: 9, adaptiveFiltering: true }).toBuffer(),
+      masterChunks,
+    );
+
     const check = await decode(out);
     if (check.width !== icon.size || check.height !== icon.size || check.hasAlpha) {
-      throw new Error(`${icon.file}: expected opaque ${icon.size}x${icon.size}, got ${check.width}x${check.height} alpha=${check.hasAlpha}`);
+      throw new Error(
+        `${icon.file}: expected opaque ${icon.size}×${icon.size}, got ${check.width}×${check.height} alpha=${check.hasAlpha}`,
+      );
     }
+    // The whole point of the inset: assert it actually landed inside the safe circle.
+    const outRadius = artRadius(check, background);
+    if (icon.maskable && outRadius > MASKABLE_SAFE_RADIUS) {
+      throw new Error(
+        `${icon.file}: art reaches ${outRadius.toFixed(4)}×size, outside the maskable safe zone (${MASKABLE_SAFE_RADIUS})`,
+      );
+    }
+
     const abs = path.join(ASSETS_DIR, icon.file);
     const existing = await fs.readFile(abs).catch(() => undefined);
+    // Compare decoded pixels, not bytes: the optimiser may have losslessly
+    // re-encoded the file since, and that must not count as "out of date".
     const same = existing !== undefined && isExact(check, await decode(existing));
     if (same) {
-      console.log(`  = ${icon.file} ${icon.size}x${icon.size} already up to date (${icon.purpose})`);
+      console.log(`  = ${icon.file} ${icon.size}×${icon.size} up to date — ${icon.purpose}`);
       continue;
     }
     if (!dryRun) await fs.writeFile(abs, out);
-    console.log(`  ${dryRun ? "~" : "+"} ${icon.file} ${icon.size}x${icon.size} ${fmtBytes(out.length)} (${icon.purpose})`);
+    console.log(
+      `  ${dryRun ? "~" : "+"} ${icon.file} ${icon.size}×${icon.size} ${fmtBytes(out.length)}, ` +
+        `art ${inner}px (radius ${outRadius.toFixed(3)}×size) — ${icon.purpose}`,
+    );
   }
 }
 
