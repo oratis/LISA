@@ -2874,6 +2874,72 @@ export const MAIN_CSS = `  :root {
   }
   .modal-body .empty { color: var(--fg-3); font-style: italic; }
 
+  /* ── ⌘K session switcher (UX-11) ─────────────────────────────────
+     A minimal palette: filter field + list, anchored near the top so the
+     eye does not have to travel. Uses [hidden] rather than a class so it is
+     inert for assistive tech when closed. */
+  .kbd-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 900;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 14vh;
+    background: rgba(0, 0, 0, 0.42);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+  }
+  .kbd-overlay[hidden] { display: none; }
+  .kbd-panel {
+    width: min(520px, 92vw);
+    max-height: 62vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-1);
+    border: 1px solid var(--border-strong);
+    border-radius: 14px;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+  }
+  .kbd-input {
+    flex: none;
+    border: 0;
+    border-bottom: 1px solid var(--border-new);
+    background: transparent;
+    color: var(--fg);
+    font-family: inherit;
+    font-size: 14px;
+    padding: 13px 15px;
+  }
+  .kbd-input:focus { outline: none; }
+  .kbd-list { overflow-y: auto; padding: 6px; }
+  .kbd-empty { color: var(--fg-3); font-size: 12.5px; font-style: italic; padding: 12px 9px; }
+  .kbd-row {
+    width: 100%;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    text-align: left;
+    font-family: inherit;
+    font-size: 12.5px;
+    color: var(--fg-2);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 9px;
+    padding: 8px 10px;
+    min-height: 36px;
+    cursor: pointer;
+  }
+  .kbd-row .kbd-row-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .kbd-row .kbd-row-meta { flex: none; font-size: 11.5px; color: var(--fg-3); font-variant-numeric: tabular-nums; }
+  .kbd-row.current .kbd-row-name { color: var(--accent); }
+  .kbd-row.sel {
+    background: var(--accent-soft);
+    border-color: var(--accent-glow);
+    color: var(--fg);
+  }
+
   /* ===================================================================
      Birth ritual overlay — full-screen, one-time. Uses legacy palette
      intentionally (it's a separate ceremonial moment).
