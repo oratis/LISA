@@ -78,6 +78,19 @@ describe("idle-note sentinel regex survives template-literal cooking", () => {
  * out of MAIN_CLIENT_JS and run it in a `vm` sandbox with hand-made stubs —
  * so what is tested is literally what the browser executes.
  */
+/** The i18n block, so a sandbox renders the real strings rather than stubs. */
+const I18N_SRC = MAIN_CLIENT_JS.slice(
+  MAIN_CLIENT_JS.indexOf("const LISA_STRINGS = {"),
+  MAIN_CLIENT_JS.indexOf("const log = document.getElementById('log');"),
+);
+function i18nContext(extra: Record<string, unknown> = {}) {
+  return createContext({
+    navigator: { language: "en-US" },
+    document: { documentElement: {} },
+    ...extra,
+  });
+}
+
 function extractFunction(src: string, name: string): string {
   const head = `function ${name}(`;
   const start = src.indexOf(head);
@@ -97,8 +110,8 @@ function extractFunction(src: string, name: string): string {
 
 describe("sessionLabel names an empty session instead of showing its raw id (UX-4)", () => {
   const src = extractFunction(MAIN_CLIENT_JS, "sessionLabel");
-  const ctx = createContext({ relativeTime: (iso: string) => (iso ? "2m" : "") });
-  runInContext(`${src}; globalThis.__label = sessionLabel;`, ctx);
+  const ctx = i18nContext({ relativeTime: (iso: string) => (iso ? "2m" : "") });
+  runInContext(`${I18N_SRC}\n${src}; globalThis.__label = sessionLabel;`, ctx);
   const label = (ctx as { __label: (s: unknown) => string }).__label;
   const ID = "20260905-220846-9f7d58";
 
@@ -153,13 +166,15 @@ describe("collapsed right rail keeps a way in (UX-5)", () => {
 });
 
 describe("birth errors are classified into human copy (UX-1)", () => {
+  // The copy comes from the i18n table now, so the sandbox needs that block
+  // too — which also means these assertions run against the real strings.
   const src =
     MAIN_CLIENT_JS.slice(
       MAIN_CLIENT_JS.indexOf("const BIRTH_ERROR_TEXT = {"),
       MAIN_CLIENT_JS.indexOf("function showBirthError("),
     );
-  const ctx = createContext({});
-  runInContext(`${src}; globalThis.__code = birthErrorCode; globalThis.__text = BIRTH_ERROR_TEXT;`, ctx);
+  const ctx = i18nContext();
+  runInContext(`${I18N_SRC}\n${src}; globalThis.__code = birthErrorCode; globalThis.__text = BIRTH_ERROR_TEXT;`, ctx);
   const code = (ctx as { __code: (ev: unknown) => string }).__code;
   const text = (ctx as { __text: Record<string, string> }).__text;
 
@@ -206,8 +221,8 @@ describe("provider picker works against both server generations (UX-1)", () => {
     MAIN_CLIENT_JS.indexOf("const LISA_PROVIDER_FALLBACK = ["),
     MAIN_CLIENT_JS.indexOf("// ── API key config gate"),
   );
-  const ctx = createContext({ window: {} });
-  runInContext(src, ctx);
+  const ctx = i18nContext({ window: {} });
+  runInContext(`${I18N_SRC}\n${src}`, ctx);
   const c = ctx as {
     lisaProviderList: (s: unknown) => Array<Record<string, unknown>>;
     lisaProviderSaveBody: (p: unknown, k: string, m: string, b: string) => Record<string, unknown>;
@@ -282,5 +297,80 @@ describe("provider picker works against both server generations (UX-1)", () => {
     assert.equal(c.lisaProviderConfirm(ds, st), true);
     // New server that does not list it at all — unknowable, never block.
     assert.equal(c.lisaProviderConfirm({ envKey: "NOPE" }, st), null);
+  });
+});
+
+describe("interface language table (UX-8)", () => {
+  const ctxEn = i18nContext();
+  runInContext(`${I18N_SRC}; globalThis.__tr = tr; globalThis.__loc = LISA_LOCALE;`, ctxEn);
+  const ctxZh = createContext({ navigator: { language: "zh-CN" }, document: { documentElement: {} } });
+  runInContext(`${I18N_SRC}; globalThis.__tr = tr; globalThis.__loc = LISA_LOCALE;`, ctxZh);
+  const en = ctxEn as { __tr: (k: string, v?: Record<string, unknown>) => string; __loc: string };
+  const zh = ctxZh as { __tr: (k: string, v?: Record<string, unknown>) => string; __loc: string };
+
+  test("navigator.language picks the locale, and document.lang follows", () => {
+    assert.equal(en.__loc, "en");
+    assert.equal(zh.__loc, "zh-CN");
+    assert.equal((ctxEn as { document: { documentElement: { lang?: string } } }).document.documentElement.lang, "en");
+    assert.equal((ctxZh as { document: { documentElement: { lang?: string } } }).document.documentElement.lang, "zh-CN");
+  });
+
+  test("both tables define exactly the same keys", () => {
+    const keys = (c: object) => {
+      const ctx = createContext({ navigator: { language: "en" }, document: { documentElement: {} } });
+      runInContext(`${I18N_SRC}; globalThis.__k = Object.keys(LISA_STRINGS.en).sort().join(","); globalThis.__z = Object.keys(LISA_STRINGS['zh-CN']).sort().join(",");`, ctx);
+      return ctx as { __k: string; __z: string };
+    };
+    const k = keys({});
+    assert.equal(k.__k, k.__z, "en and zh-CN tables have drifted apart");
+  });
+
+  test("interpolation and fallback both work", () => {
+    assert.equal(en.__tr("rail.needs.many", { n: 3 }), "3 agents need you");
+    assert.equal(zh.__tr("rail.needs.many", { n: 3 }), "3 个 agent 在等你");
+    // An unknown key returns the key rather than "undefined" on screen.
+    assert.equal(en.__tr("nope.nope"), "nope.nope");
+  });
+
+  test("the client carries no leftover CJK string literals", () => {
+    // Comments are fine; user-visible literals are not. The QQ/163 mailbox
+    // help quotes those providers' own Chinese UI labels ("设置", "授权码")
+    // and must stay as-is, so it is the one allowed island.
+    const cjk = /[一-鿿぀-ヿ가-힯]/;
+    const offenders: string[] = [];
+    for (const line of MAIN_CLIENT_JS.split("\n")) {
+      const code = line.replace(/\/\/.*$/, "");
+      if (!cjk.test(code)) continue;
+      if (/授权码|设置|服务|账户/.test(code)) continue; // QQ / 163 provider labels
+      // idleHeaderLabel keeps ja/ko, which predate the table (en + zh-CN only).
+      if (/indexOf\('(ja|ko)'\)/.test(code)) continue;
+      if (code.includes("LISA_STRINGS") || code.includes("'zh-CN'")) continue;
+      offenders.push(line.trim());
+    }
+    // Everything else must live in the zh-CN half of LISA_STRINGS, which sits
+    // between these two markers.
+    const zhStart = MAIN_CLIENT_JS.indexOf("'zh-CN': {");
+    const zhEnd = MAIN_CLIENT_JS.indexOf("const LISA_LOCALE");
+    const inTable = offenders.filter((l) => {
+      const at = MAIN_CLIENT_JS.indexOf(l);
+      return at > zhStart && at < zhEnd;
+    });
+    assert.deepEqual(
+      offenders.filter((l) => !inTable.includes(l)),
+      [],
+    );
+  });
+});
+
+describe("no call site of the i18n helper is left un-renamed (UX-8)", () => {
+  test("the served source has no bare t(...) call", () => {
+    // "t" is a local in twenty places in this file, so a t(...) call reaching
+    // the i18n helper by accident — or a tr(...) call that was missed — is a
+    // silent TypeError only a browser would show. Scan the cooked bytes.
+    const offenders = MAIN_CLIENT_JS.split("\n").filter((line) => {
+      const code = line.replace(/\/\/.*$/, "");
+      return /[^A-Za-z0-9_$.]t\(/.test(code);
+    });
+    assert.deepEqual(offenders, []);
   });
 });

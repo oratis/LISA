@@ -236,10 +236,13 @@ import { MAIN_HTML } from "./lisa-html.js";
  * #cfgProvider / #cfgKey / #cfgModel / #cfgBaseUrl driven by
  * /api/config/status.providers with a built-in fallback table, and the
  * Settings view uses the same list.
+ * Then: UX-8 language — a LISA_STRINGS (en / zh-CN) table plus tr(key, vars),
+ * locale picked from navigator.language, document.documentElement.lang set to
+ * match, and every CJK literal the shell used to render moved into the table.
  */
-const EXPECTED_LENGTH = 347706;
+const EXPECTED_LENGTH = 353768;
 const EXPECTED_SHA256 =
-  "13840bd12ff3ec50505c0c07672c3e675fb6f20273a9b9ffaeec3ef4440c93ee";
+  "661bad5b701789dab6a22bd80a0fba3c36ae5e630c948e4cb61a2adc2203e019";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);
