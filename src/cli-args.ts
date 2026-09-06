@@ -73,7 +73,7 @@ const RAW_SUBCOMMANDS = new Set(["heartbeat", "autostart", "doctor", "upgrade"])
  * global flags (`mail connect --host/--port/--provider …`), which would
  * otherwise be swallowed as global settings and never reach the handler.
  */
-const PASSTHROUGH_SUBCOMMANDS = new Set(["mail", "kb"]);
+const PASSTHROUGH_SUBCOMMANDS = new Set(["mail", "kb", "billing"]);
 
 /**
  * Is this a debug run? Decided from the raw argv + env rather than ParsedArgs
