@@ -61,6 +61,7 @@
     "generate:api-contract": "node scripts/generate-api-contract.mjs",
     "check:api-contract": "node scripts/generate-api-contract.mjs --check",
     "generate-assets": "tsx scripts/generate-pixel-assets.ts",
+    "optimize-assets": "tsx scripts/optimize-assets.ts",
     "prepublishOnly": "npm run check:api-contract && npm run typecheck && npm test && npm run build && rm -rf dist/web/assets && cp -R src/web/assets dist/web/assets",
     "postpublish": "npm run copy-assets"
   },
