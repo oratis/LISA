@@ -216,10 +216,15 @@ import { MAIN_HTML } from "./lisa-html.js";
  * 36px icon buttons with 44px hit areas at ≤720px, a reduced-motion block,
  * aria-live regions (#chatStatus, #sbNeedsCount) and tabindex=-1 on the
  * off-screened file input.
+ * Then: UX-4 empty states — sessionLabel names a message-less session
+ * "New session · <relative time>" (tree / context chip / title bar /
+ * inspector), the raw id moves into tooltips, and an empty #log renders the
+ * .chat-empty card (identity line, three desire-aware starters, three
+ * ability lines) which is retired by the first real node in the log.
  */
-const EXPECTED_LENGTH = 315917;
+const EXPECTED_LENGTH = 323837;
 const EXPECTED_SHA256 =
-  "0713117ae6e8db79c36f0f22ef9f7edd9dd2c99d26bb2df21cd345b5fbbcc9b5";
+  "19499f946c1c83c3b1892f94c86e5a385aeab7da21678ed0bcf3d99dfc77e011";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);

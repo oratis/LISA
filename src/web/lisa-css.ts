@@ -1977,6 +1977,63 @@ export const MAIN_CSS = `  :root {
     scroll-behavior: smooth;
   }
 
+  /* ── Empty chat card (UX-4) ──────────────────────────────────────
+     The first screen after the birth ritual. Centred in the log, capped
+     so it doesn't read as a wall on a 1440px pane, and it never grows a
+     scrollbar of its own — if the log has content this card is gone. */
+  .chat-empty {
+    margin: auto;
+    max-width: 560px;
+    width: 100%;
+    padding: 22px 20px;
+    border: 1px solid var(--border-new);
+    border-radius: 16px;
+    background: var(--bg-card);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .chat-empty .ce-who {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .chat-empty .ce-lead { font-size: 13px; color: var(--fg-2); }
+  .chat-empty .ce-starters { display: flex; flex-direction: column; gap: 6px; }
+  .chat-empty .ce-starter {
+    text-align: left;
+    font-family: inherit;
+    font-size: 12.5px;
+    line-height: 1.45;
+    color: var(--fg);
+    background: var(--bg-3);
+    border: 1px solid var(--border-new);
+    border-radius: 10px;
+    padding: 9px 12px;
+    min-height: 36px;
+    cursor: pointer;
+    transition: border-color 140ms ease, background 140ms ease;
+  }
+  .chat-empty .ce-starter:hover {
+    border-color: var(--accent-glow);
+    background: var(--accent-soft);
+  }
+  .chat-empty .ce-can {
+    margin: 2px 0 0;
+    padding: 12px 0 0;
+    border-top: 1px solid var(--border-new);
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    font-size: 11.5px;
+    line-height: 1.5;
+    color: var(--fg-3);
+  }
+  .chat-empty .ce-can b { color: var(--fg-2); font-weight: 700; }
+
   /* Chat author label (.role .you/.lisa) */
   .role {
     font-size: 11.5px;
@@ -3006,6 +3063,7 @@ export const MAIN_CSS = `  :root {
     .session-row .pip, .ctrl-row .cr-pip, .tleaf .pip, .ctx-chip .pip, .needs-row .pip,
     #recordBtn.recording, .birth-stars, .cfg-stars, .birth-step .step-cursor { animation: none; }
     .birth-step, .birth-final, .birth-enter, .kb-toast, .identity .avatar-wrap img,
-    .ctrl-row, .nav-item, .fbtn, .badge, #input, #sendBtn, .cfg-save { transition: none; }
+    .ctrl-row, .nav-item, .fbtn, .badge, #input, #sendBtn, .cfg-save,
+    .chat-empty .ce-starter { transition: none; }
     #log { scroll-behavior: auto; }
   }`;
