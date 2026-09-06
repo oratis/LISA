@@ -365,3 +365,47 @@ describe("T-9 /api/config over the real server", () => {
     }
   });
 });
+
+describe("T-11 SSE keep-alive on the real server", () => {
+  test("/events sends `: ping` comments while it sits idle", async () => {
+    // 40ms instead of 15s; the env var exists for short-idle proxies and is
+    // read per stream, so setting it here affects only this boot.
+    process.env.LISA_SSE_HEARTBEAT_MS = "40";
+    const srv = await boot();
+    try {
+      const chunks = await new Promise<string>((resolve, reject) => {
+        const req = http.request(
+          { host: "127.0.0.1", port: srv.port, path: "/events", method: "GET", agent: false },
+          (res) => {
+            assert.equal(res.statusCode, 200);
+            assert.match(res.headers["content-type"] ?? "", /text\/event-stream/);
+            let text = "";
+            res.on("data", (c: Buffer) => {
+              text += c.toString("utf8");
+              if (text.includes(": ping")) {
+                req.destroy();
+                resolve(text);
+              }
+            });
+            res.on("end", () => resolve(text));
+          },
+        );
+        req.on("error", (e) => {
+          // destroy() after resolve surfaces here; ignore it.
+          if ((e as NodeJS.ErrnoException).code !== "ECONNRESET") reject(e);
+        });
+        req.end();
+        setTimeout(() => {
+          req.destroy();
+          reject(new Error("no ping within 2s"));
+        }, 2000).unref();
+      });
+      // The hello/mood frames still come first and are untouched.
+      assert.match(chunks, /"type":"hello"/);
+      assert.match(chunks, /^: ping$/m);
+    } finally {
+      await srv.close();
+      delete process.env.LISA_SSE_HEARTBEAT_MS;
+    }
+  });
+});

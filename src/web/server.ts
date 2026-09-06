@@ -195,6 +195,7 @@ import {
 } from "./capabilities.js";
 import { applySecurityHeaders } from "./security-headers.js";
 import { configStatusPayload, parseConfigSave } from "./config-api.js";
+import { attachSseHeartbeat } from "./sse.js";
 import { EventLoopMonitor, healthPayload, watchdogThresholdFromEnv } from "./health.js";
 import {
   buildNonInteractiveApprovalCallback,
@@ -3015,6 +3016,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         connection: "keep-alive",
       });
       res.write(`data: ${JSON.stringify({ type: "snapshot", text: initial })}\n\n`);
+      attachSseHeartbeat(req, res); // T-11 — an idle terminal is still a live stream
       const onOut = (e: { id: string; chunk: string }) => {
         if (e.id !== id) return;
         try {
@@ -3358,6 +3360,9 @@ self.addEventListener('fetch', (event) => {
       res.write(`data: ${JSON.stringify({ type: "hello", session: sessionId })}\n\n`);
       // Send current mood right away
       res.write(`data: ${JSON.stringify({ type: "mood", slug: moodBus.current() })}\n\n`);
+      // Keep-alive (T-11): /events can idle for minutes and every proxy in the
+      // path treats a silent socket as dead.
+      attachSseHeartbeat(req, res);
       // Pin this subscriber to the account it authenticated as (B2). null on the
       // Mac edition and the shared-token demo → one implicit user, sees all.
       const unsubscribe = eventClients.add(res, cloud ? accountUid : null);
@@ -3840,6 +3845,8 @@ self.addEventListener('fetch', (event) => {
       });
       const send = (event: object) =>
         res.write(`data: ${JSON.stringify(event)}\n\n`);
+      // T-11 — the dream can be silent for most of its 90 s deadline.
+      attachSseHeartbeat(req, res);
       // Join the single-flight run (S3). If the background lazy path started
       // the dream first, replay its transcript so the ceremony is complete,
       // then stream the remaining steps live.
@@ -4064,6 +4071,10 @@ self.addEventListener('fetch', (event) => {
         if (res.writableEnded || res.destroyed) return;
         res.write(`data: ${JSON.stringify(event)}\n\n`);
       };
+      // Keep-alive (T-11): a long tool call or a thinking model can leave this
+      // stream silent well past a proxy's idle timeout, and a reconnect drops
+      // the half-streamed answer.
+      const stopChatHeartbeat = attachSseHeartbeat(req, res);
       // Per-turn cancellation: if the client disconnects (taps Stop / closes the
       // app), abort THIS turn's agent so it stops burning tokens and the next
       // queued turn isn't stuck behind an abandoned run.
@@ -4237,6 +4248,7 @@ self.addEventListener('fetch', (event) => {
           if (!errorSent) send({ type: "error", message: (err as Error).message });
         } finally {
           moodBus.off("mood", onMood);
+          stopChatHeartbeat();
           res.end();
         }
       };
