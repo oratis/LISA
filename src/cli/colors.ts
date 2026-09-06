@@ -1,17 +1,15 @@
 /**
- * Tiny zero-dep ANSI color helpers.
+ * Tiny zero-dep ANSI color helpers for stdout-bound reports (doctor, status,
+ * monitor).
  *
- * Project policy is "no chalk-class CLI deps" so this module rolls its own.
- * Every function checks if stdout is a TTY and respects NO_COLOR env;
- * non-TTY / piped / NO_COLOR=1 output is plain text.
+ * The decision of whether colour is allowed lives in ./ansi.ts (one place for
+ * --no-color / NO_COLOR / TERM=dumb / TTY); this module is the convenience
+ * layer that binds it to process.stdout and adds the ✓ ✗ ⚠ badges and rules.
  */
-
-const NO_COLOR =
-  process.env.NO_COLOR != null && process.env.NO_COLOR !== "" && process.env.NO_COLOR !== "0";
+import { colorEnabled } from "./ansi.js";
 
 function supportsColor(): boolean {
-  if (NO_COLOR) return false;
-  return process.stdout.isTTY === true;
+  return colorEnabled({ isTTY: process.stdout.isTTY === true });
 }
 
 function wrap(open: number, close: number) {
