@@ -242,6 +242,93 @@ final class LisaPocketTests: XCTestCase {
         XCTAssertFalse(InstallMethod.app.isCLI)
     }
 
+    // ── push transport: the topic URL, and an honest state line ──
+
+    func testNtfyPublishURLDefaultsToNtfySh() {
+        XCTAssertEqual(PushSettings.ntfyPublishURL(server: nil, topic: "lisa-abc")?.absoluteString,
+                       "https://ntfy.sh/lisa-abc")
+        XCTAssertEqual(PushSettings.ntfyPublishURL(server: "", topic: " lisa-abc ")?.absoluteString,
+                       "https://ntfy.sh/lisa-abc")
+    }
+
+    func testNtfyPublishURLAcceptsBareHostAndTrimsSlashes() {
+        XCTAssertEqual(PushSettings.ntfyPublishURL(server: "ntfy.example.com", topic: "t")?.absoluteString,
+                       "https://ntfy.example.com/t")
+        XCTAssertEqual(PushSettings.ntfyPublishURL(server: "http://10.0.0.9:8080/", topic: "t")?.absoluteString,
+                       "http://10.0.0.9:8080/t")
+    }
+
+    func testNtfyPublishURLRejectsEmptyTopic() {
+        XCTAssertNil(PushSettings.ntfyPublishURL(server: nil, topic: "   "))
+    }
+
+    func testStateLineNeverClaimsApnsDeliveryWorks() {
+        let token = "abc123"
+        let registered = [PushSubscriptionDTO(id: "1", kind: "apns", target: token)]
+        let line = PushSettings.stateLine(transport: .apns, subs: registered, loaded: true,
+                                          apnsToken: token, ntfyTopic: "")
+        // The old copy said "Push registered (APNs)" with no Apple key anywhere —
+        // the exact dead end UX-12 flagged. The line must name the dependency.
+        XCTAssertTrue(line.contains("LISA_APNS_"))
+        XCTAssertFalse(line.lowercased().contains("push registered"))
+
+        let noToken = PushSettings.stateLine(transport: .apns, subs: [], loaded: true,
+                                             apnsToken: nil, ntfyTopic: "")
+        XCTAssertTrue(noToken.contains("Simulator"))
+
+        let notSent = PushSettings.stateLine(transport: .apns, subs: [], loaded: true,
+                                             apnsToken: token, ntfyTopic: "")
+        XCTAssertTrue(notSent.contains("doesn't have it yet"))
+    }
+
+    func testStateLineDistinguishesRegisteredFromADifferentTopic() {
+        let subs = [PushSubscriptionDTO(id: "1", kind: "ntfy", target: "old-topic", server: "https://ntfy.example.com")]
+        let mismatch = PushSettings.stateLine(transport: .ntfy, subs: subs, loaded: true,
+                                              apnsToken: nil, ntfyTopic: "new-topic")
+        XCTAssertTrue(mismatch.contains("old-topic"))
+        XCTAssertTrue(mismatch.contains("different topic"))
+
+        let matched = PushSettings.stateLine(transport: .ntfy, subs: subs, loaded: true,
+                                             apnsToken: nil, ntfyTopic: "old-topic")
+        XCTAssertTrue(matched.contains("ntfy.example.com"))
+
+        let none = PushSettings.stateLine(transport: .ntfy, subs: [], loaded: true,
+                                          apnsToken: nil, ntfyTopic: "t")
+        XCTAssertTrue(none.contains("Not registered yet"))
+
+        XCTAssertTrue(PushSettings.stateLine(transport: .ntfy, subs: [], loaded: false,
+                                             apnsToken: nil, ntfyTopic: "t").contains("Checking"))
+    }
+
+    func testUnsavedPrefsOnlyWhenSomethingIsRegistered() {
+        var local = PushPrefs()
+        XCTAssertFalse(PushSettings.hasUnsavedPrefs(local: local, registered: nil))
+        XCTAssertFalse(PushSettings.hasUnsavedPrefs(local: local, registered: PushPrefs()))
+        local.advisor = true
+        XCTAssertTrue(PushSettings.hasUnsavedPrefs(local: local, registered: PushPrefs()))
+    }
+
+    func testPushSubscriptionDecodesTolerantlyAndPrefsFallBack() throws {
+        // A Mac that predates `brief` / `server` must still produce a usable row.
+        let json = Data("""
+        {"subscriptions":[{"id":"a1","kind":"ntfy","target":"topic","prefs":{"done":false,"error":true,"permission":true,"idle":true,"advisor":false,"mail":true}},
+                          {"id":"a2","kind":"apns","target":"deadbeef","server":null,"prefs":null,"createdAt":1}]}
+        """.utf8)
+        let list = try JSONDecoder().decode(PushListResponse.self, from: json).subscriptions
+        XCTAssertEqual(list.count, 2)
+        XCTAssertEqual(list[0].transport, .ntfy)
+        XCTAssertEqual(list[0].prefs?.done, false)
+        XCTAssertEqual(list[0].prefs?.brief, true, "a missing preference falls back to its default")
+        XCTAssertNil(list[0].server)
+        XCTAssertEqual(list[1].transport, .apns)
+        XCTAssertNil(list[1].prefs)
+    }
+
+    func testPushPrefsJSONCarriesEveryServerKey() {
+        let keys = Set(PushPrefs().json.keys)
+        XCTAssertEqual(keys, ["done", "error", "permission", "idle", "advisor", "mail", "brief"])
+    }
+
     // ── a11y: every status pip has a word, and it matches the colour bucket ──
 
     func testGlanceColorsPhraseCoversEveryStateBucket() {
