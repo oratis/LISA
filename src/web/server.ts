@@ -193,6 +193,7 @@ import {
   isCloudDeniedRoute,
   toolsForCapabilityProfile,
 } from "./capabilities.js";
+import { applySecurityHeaders } from "./security-headers.js";
 import type { ToolDefinition, StoredMessage } from "../types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -665,13 +666,18 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // `broadcast({...})` call sites below need no per-site change.
   const broadcast = (event: object, origin: string | null = scopedUid()) =>
     eventClients.broadcast(event, origin);
-  moodBus.on("mood", (slug) => broadcast({ type: "mood", slug }));
+  // Kept as named handlers so server.close() can detach them: the mood bus is
+  // process-wide and outlives a server instance (tests boot several).
+  const onMoodEvent = (slug: string) => broadcast({ type: "mood", slug });
+  moodBus.on("mood", onMoodEvent);
   // Surface "thinking" to long-lived viewers (web GUI, island widget). Each
   // event is one tick — surfaces toggle their own indicator. Multiple
   // concurrent turns (e.g. heartbeat + user) overlap; first chatStart wins
   // the visual, last chatEnd clears it. Best-effort.
-  moodBus.on("chat_start", () => broadcast({ type: "chat_start" }));
-  moodBus.on("chat_end", () => broadcast({ type: "chat_end" }));
+  const onChatStart = () => broadcast({ type: "chat_start" });
+  const onChatEnd = () => broadcast({ type: "chat_end" });
+  moodBus.on("chat_start", onChatStart);
+  moodBus.on("chat_end", onChatEnd);
 
   // ── Cross-agent orchestration hub (O1) ──────────────────────────────
   // The hub fans out over every enabled integration (Claude Code today;
@@ -712,7 +718,13 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       });
     }
   });
-  void hub.start();
+  // Not awaited: observers attach in the background so the listener is up
+  // immediately. The promise is kept so shutdown can wait for the attach to
+  // finish before stopping — stop() during start() would orphan whichever
+  // observer was still being created (and its retry timer).
+  const hubStarted = hub.start().catch((err: unknown) => {
+    logError(`[orchestrator] start failed: ${(err as Error).message}`);
+  });
   // Expose the live hub to the advise_now tool (same process).
   setCurrentHub(hub);
 
@@ -838,9 +850,10 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // NEW mail; for items at/above the alert level, fire a high-priority push +
   // a proactive chat message. Inert without consent + an account.
   const mailPollMin = pollMinutes();
+  let mailPoll: NodeJS.Timeout | null = null;
   if (mailPollMin > 0) {
     let mailPollRunning = false;
-    const mailPoll = setInterval(() => {
+    mailPoll = setInterval(() => {
       void (async () => {
         if (mailPollRunning || !isGranted("mail")) return;
         if (loadAccounts().filter((a) => a.enabled).length === 0) return;
@@ -939,10 +952,14 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   const voiceSource = new VoiceSource();
   senseService.register(new ScreenSource());
   senseService.register(voiceSource);
-  void senseService.start((e) => {
-    appendSenseEvent(e);
-    broadcast({ type: "sense_event", ...e });
-  });
+  const senseStarted = senseService
+    .start((e) => {
+      appendSenseEvent(e);
+      broadcast({ type: "sense_event", ...e });
+    })
+    .catch((err: unknown) => {
+      logError(`[sense] start failed: ${(err as Error).message}`);
+    });
 
   // ── Island unread tracking (Phase 1 of MAC_ISLAND_PLAN) ─────────────
   // The island widget caches "last idle_message" so a fresh tab opening
@@ -957,8 +974,10 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // to run first, before the dream mutates history with its own "[while you were
   // away]" note. Without this the guard is asymmetric — the scheduler blocks
   // reflect-during-dream, but a dream could still start mid-reflect.
+  let idleWatcher: ReturnType<typeof getIdleWatcher> | null = null;
   if (opts.idleMinutes && opts.idleMinutes > 0) {
     const watcher = getIdleWatcher(opts.idleMinutes * 60_000);
+    idleWatcher = watcher;
     watcher.on("idle", async () => {
       if (globalChat.activity.idleRunning || globalChat.activity.reflecting) return;
       // Capture the ACTIVE ctx for the whole dream: if the user switches
@@ -1107,6 +1126,10 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   const server = http.createServer(async (req, res) => {
     const url = req.url ?? "/";
     applyApiVersionHeader(url, res);
+    // T-10: every response — HTML shell, JSON, SSE, assets, 404s — carries the
+    // baseline hardening headers. Set before any route so writeHead() merges
+    // them in rather than a route having to remember.
+    applySecurityHeaders(res);
 
     // Liveness probe (pre-gate, unauthenticated): uptime checks and platform
     // health probes land here. Deliberately no I/O and no dependencies — a 200
@@ -4183,6 +4206,43 @@ self.addEventListener('fetch', (event) => {
     res.writeHead(404);
     res.end();
   });
-  server.listen(opts.port, host);
+
+  // Tear down everything that would otherwise outlive the listener: the
+  // schedulers' timers, the orchestrator hub (whose claude-code watcher holds a
+  // non-unref'd retry timer), the sense sources, the idle watcher and our
+  // mood-bus subscriptions. Registered on 'close' rather than exposed as a
+  // method so the returned http.Server keeps its ordinary lifecycle — callers
+  // (and tests) just server.close(). Idempotent by construction.
+  server.on("close", () => {
+    for (const t of [adviseTimer, mailTimer, mailKick, kbBriefTimer, kbBriefKick, mailPoll, reflectTimer]) {
+      if (t) clearTimeout(t);
+    }
+    if (screenTimer) {
+      clearInterval(screenTimer);
+      screenTimer = null;
+    }
+    idleWatcher?.stop();
+    moodBus.off("mood", onMoodEvent);
+    moodBus.off("chat_start", onChatStart);
+    moodBus.off("chat_end", onChatEnd);
+    void (async () => {
+      await hubStarted;
+      await hub.stop().catch(() => {});
+      await senseStarted;
+      await senseService.stopAll().catch(() => {});
+    })();
+  });
+
+  // Await the bind so a caller learns about EADDRINUSE / EACCES as a rejected
+  // promise instead of an unhandled 'error' event, and so `server.address()`
+  // is populated on return (port 0 in tests resolves to the real port).
+  await new Promise<void>((resolve, reject) => {
+    const onError = (err: Error) => reject(err);
+    server.once("error", onError);
+    server.listen(opts.port, host, () => {
+      server.off("error", onError);
+      resolve();
+    });
+  });
   return server;
 }
