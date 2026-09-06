@@ -409,3 +409,35 @@ describe("T-11 SSE keep-alive on the real server", () => {
     }
   });
 });
+
+describe("T-12 PWA manifest icons", () => {
+  test("declares real 192/512 sizes plus a separate maskable variant", async () => {
+    const srv = await boot();
+    try {
+      const r = await request(srv.port, "GET", "/manifest.webmanifest");
+      assert.equal(r.status, 200);
+      assert.match(r.headers["content-type"] ?? "", /application\/manifest\+json/);
+      const m = JSON.parse(r.text) as {
+        icons: { src: string; sizes: string; type: string; purpose: string }[];
+      };
+      const bySrc = new Map(m.icons.map((i) => [i.src, i]));
+      assert.equal(bySrc.get("/assets/icon-192.png")?.sizes, "192x192");
+      assert.equal(bySrc.get("/assets/icon-512.png")?.sizes, "512x512");
+      // `sizes: "any"` on a raster PNG is what made the platforms reject the
+      // icon and fall back to a page screenshot.
+      assert.equal(m.icons.some((i) => i.sizes === "any"), false);
+      for (const i of m.icons) {
+        assert.equal(i.type, "image/png");
+        assert.match(i.sizes, /^\d+x\d+$/);
+      }
+      // The maskable icon is its own file: relabelling an unpadded icon
+      // maskable gets its edges cropped by the platform mask.
+      const maskable = m.icons.filter((i) => i.purpose === "maskable");
+      assert.equal(maskable.length, 1);
+      assert.equal(maskable[0]!.src, "/assets/icon-512-maskable.png");
+      assert.equal(m.icons.some((i) => i.purpose === "any" && i.src === maskable[0]!.src), false);
+    } finally {
+      await srv.close();
+    }
+  });
+});
