@@ -149,3 +149,41 @@ describe("T-10 security headers on the real server", () => {
     await srv.close();
   });
 });
+
+describe("T-3 /health and /healthz", () => {
+  let srv: Booted;
+  test("boots", async () => {
+    srv = await boot();
+  });
+
+  test("/healthz stays the cheap liveness probe", async () => {
+    const r = await request(srv.port, "GET", "/healthz");
+    assert.equal(r.status, 200);
+    assert.deepEqual(JSON.parse(r.text), { ok: true });
+  });
+
+  test("/health reports version, uptime, lag percentiles, memory and live counters", async () => {
+    const r = await request(srv.port, "GET", "/health");
+    assert.equal(r.status, 200);
+    assert.equal(r.headers["cache-control"], "no-store");
+    const body = JSON.parse(r.text) as Record<string, unknown>;
+    assert.equal(body.ok, true);
+    assert.match(String(body.version), /^\d+\.\d+\.\d+/);
+    assert.equal(typeof body.uptime_s, "number");
+    const lag = body.event_loop_lag_ms as Record<string, number>;
+    for (const k of ["p50", "p99", "max"]) assert.equal(typeof lag[k], "number", k);
+    assert.equal(typeof (body.event_loop_lag_1m_ms as Record<string, number>).p99, "number");
+    assert.ok((body.heap_used_mb as number) > 0);
+    assert.ok((body.rss_mb as number) > 0);
+    // Fresh server: the process-start session context, no cloud tenants, nothing in flight.
+    assert.equal(body.tenants, 0);
+    assert.equal(body.pending_turns, 0);
+    assert.equal(body.sessions, 1);
+    assert.equal(body.edition, "mac");
+    assert.equal(body.watchdog_lag_ms, 5000);
+  });
+
+  test("closes", async () => {
+    await srv.close();
+  });
+});

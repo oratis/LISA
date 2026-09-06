@@ -195,6 +195,7 @@ import {
   isNonCanonicalPath,
 } from "./capabilities.js";
 import { applySecurityHeaders } from "./security-headers.js";
+import { EventLoopMonitor, healthPayload, watchdogThresholdFromEnv } from "./health.js";
 import type { ToolDefinition, StoredMessage } from "../types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1124,6 +1125,22 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // Don't let the reflection heartbeat keep the process alive on its own.
   reflectTimer.unref();
 
+  // ── Event-loop lag monitor + self-watchdog (T-3) ─────────────────────────
+  // Samples loop delay continuously; /health reads the last window, a lag
+  // WARNING lands in the log as it happens, and a sustained multi-second p99
+  // exits the process for the supervisor to restart. See health.ts.
+  const watchdogLagMs = watchdogThresholdFromEnv();
+  const loopMonitor = new EventLoopMonitor({ watchdogMs: watchdogLagMs }).start();
+  const healthCounters = () => {
+    let pendingTurns = 0;
+    for (const n of ctxTurns.values()) pendingTurns += n;
+    return {
+      tenants: tenantRuntimes.stats().entries,
+      pending_turns: pendingTurns,
+      sessions: sessionCtxs.size,
+    };
+  };
+
   const server = http.createServer(async (req, res) => {
     const url = req.url ?? "/";
     applyApiVersionHeader(url, res);
@@ -1146,9 +1163,22 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // Liveness probe (pre-gate, unauthenticated): uptime checks and platform
     // health probes land here. Deliberately no I/O and no dependencies — a 200
     // means "the process is serving requests", nothing more.
-    if (req.method === "GET" && (url === "/health" || url === "/healthz")) {
+    if (req.method === "GET" && url === "/healthz") {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+    // Health detail (pre-gate, unauthenticated, still no I/O): version, uptime,
+    // event-loop lag percentiles, heap/RSS and the live tenant / turn / session
+    // counters — what an operator needs to tell "slow" from "down". Always 200:
+    // `ok:false` means "lagging", not "dead"; /healthz is the liveness probe.
+    if (req.method === "GET" && url === "/health") {
+      res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+      res.end(
+        JSON.stringify(
+          healthPayload(loopMonitor, healthCounters(), cloudEdition ? "cloud" : "mac", watchdogLagMs),
+        ),
+      );
       return;
     }
 
@@ -4241,6 +4271,7 @@ self.addEventListener('fetch', (event) => {
       clearInterval(screenTimer);
       screenTimer = null;
     }
+    loopMonitor.stop();
     idleWatcher?.stop();
     moodBus.off("mood", onMoodEvent);
     moodBus.off("chat_start", onChatStart);
