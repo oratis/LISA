@@ -348,6 +348,18 @@ async function main(): Promise<void> {
   }
 
   if (args.subcommand === "doctor") {
+    const probe = args.subargs.find((a) => a === "--probe" || a.startsWith("--probe="));
+    if (probe) {
+      const { runProbe } = await import("./cli/probe.js");
+      const inline = probe.startsWith("--probe=") ? probe.slice("--probe=".length) : undefined;
+      // `--probe` on its own means the local daemon; a bare word after it (not
+      // another flag) is the instance to ask instead.
+      const target =
+        inline ?? args.subargs.slice(args.subargs.indexOf(probe) + 1).find((a) => !a.startsWith("-"));
+      const code = await runProbe(target);
+      if (code !== 0) process.exit(code);
+      return;
+    }
     const { runDoctor } = await import("./cli/doctor.js");
     await runDoctor();
     return;
