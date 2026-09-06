@@ -119,11 +119,19 @@ extension View {
 }
 
 /// Status pip — replaces the hand-rolled `Circle().fill(stateColor(...))` dots.
+///
+/// Colour alone carries no meaning for VoiceOver or a colour-blind reader
+/// (review D1), so a dot that is the *only* carrier of a status must be given a
+/// `label`. A dot sitting next to text that already says the same thing passes
+/// none and is hidden from the accessibility tree instead of read as "circle".
 struct StatusDot: View {
     let color: Color
     var size: CGFloat = 10
+    var label: String? = nil
     var body: some View {
         Circle().fill(color).frame(width: size, height: size)
+            .accessibilityHidden(label == nil)
+            .accessibilityLabel(label ?? "")
     }
 }
 
@@ -153,5 +161,8 @@ struct StatCell: View {
         }
         .frame(maxWidth: .infinity)
         .consoleCard(padding: 10)
+        // "Needs you: 2", not "2" then "needs you" as two stray elements (D5).
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(label): \(value)")
     }
 }

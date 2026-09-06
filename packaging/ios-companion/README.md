@@ -53,6 +53,31 @@ not exercised against Apple.
 > applied to unsigned Simulator builds, so without signing the Widget shows its "Open
 > Lisa Pocket" placeholder rather than live counts.
 
+## Accessibility
+
+Every status in the app is carried by **text as well as colour** — a pip's colour
+is never the only signal. `GlanceColors.phrase(_:)` is the single source of that
+wording, shared with the widget extension so a "waiting on you" agent reads the
+same in the roster, the Live Activity, the Dynamic Island and the home Widget.
+
+- `StatusDot` takes an optional `label`. Passing one makes it speak; omitting it
+  hides the pip from VoiceOver, which is right when the text beside it already
+  says the state — so a roster row is one sentence, not "circle, project, circle".
+- Roster rows, needs-you cards, dispatch entries, stat cells and onboarding
+  choice cards are each **one VoiceOver element** with a full label.
+- Icon-only controls (Send, Stop, Copy, Open, Unlock, load-earlier, delegate)
+  have labels and hints; Send/Stop/Copy and every secondary button clear the
+  **44 pt** minimum target using `minHeight`, so labels still grow with Dynamic
+  Type instead of clipping.
+- The pairing viewfinder announces "Camera is live" with a value that tracks the
+  scan note, and points you at the QR code.
+- Onboarding dots announce **"Step N of M"**; mail importance shows the word
+  ("‼ Urgent" / "! Important") next to the colour; the allowance bar and the mood
+  bars expose a value, not just a fill.
+
+Run `./build.sh test` for the logic tests that pin the wording (state → phrase,
+and the pip's colour agreeing with the phrase on a pending permission).
+
 ## Build / verify
 
 ```sh

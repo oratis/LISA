@@ -23,13 +23,17 @@ struct DispatchLedgerView: View {
                 List(items) { d in
                     NavigationLink { DispatchDetailView(entry: d) } label: {
                         HStack(spacing: 10) {
-                            Circle().fill(d.alive ? .blue : .gray).frame(width: 8, height: 8)
+                            StatusDot(color: d.alive ? Theme.working : Theme.idle, size: 8)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(d.task).font(.subheadline).lineLimit(1)
-                                Text("\(d.agent) · pid \(d.pid)\(d.alive ? " · alive" : "")")
+                                // Say "exited" as well as "alive": the pip was the
+                                // only thing distinguishing them before (D1).
+                                Text("\(d.agent) · pid \(d.pid) · \(d.alive ? "alive" : "exited")")
                                     .font(.caption2).foregroundStyle(.secondary)
                             }
                         }
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("\(d.task), \(d.agent), \(d.alive ? "alive" : "exited")")
                     }
                 }
             }

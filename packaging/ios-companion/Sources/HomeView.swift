@@ -98,6 +98,7 @@ struct HomeView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Agents: \(counts.working) active, \(counts.stuck) need you")
+        .accessibilityHint("Opens the Agents tab")
     }
 
     private func mailCard(_ m: MailDigest) -> some View {
@@ -106,11 +107,15 @@ struct HomeView: View {
                 Text(m.summary).font(.callout)
                 ForEach(m.needsYou.prefix(3)) { i in
                     HStack(alignment: .top, spacing: 6) {
-                        Text(i.importance >= 3 ? "‼" : "!")
-                            .font(.caption.bold()).foregroundStyle(i.importance >= 3 ? Theme.danger : Theme.waiting)
-                            .accessibilityLabel(i.importance >= 3 ? "urgent" : "important")
+                        // Word + glyph, not colour alone (D1) — "‼" red vs "!"
+                        // amber is invisible to a colour-blind reader.
+                        Text(i.importance >= 3 ? "‼ Urgent" : "! Important")
+                            .font(.caption2.bold())
+                            .foregroundStyle(i.importance >= 3 ? Theme.danger : Theme.waiting)
+                            .fixedSize(horizontal: true, vertical: false)
                         Text(i.subject.isEmpty ? "(no subject)" : i.subject).font(.caption).lineLimit(1)
                     }
+                    .accessibilityElement(children: .combine)
                 }
             }
         }
@@ -199,6 +204,9 @@ struct HomeView: View {
         }
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: 14))
+        // The portrait IS the mood readout — an unlabeled AsyncImage would drop
+        // it entirely from the combined hero element (D6).
+        .accessibilityLabel("Lisa's portrait, \(ping?.mood.isEmpty == false ? ping!.mood.replacingOccurrences(of: "-", with: " ") : "neutral")")
     }
 
     private var moodLine: String {
