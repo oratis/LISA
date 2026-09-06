@@ -23,3 +23,6 @@ docs/paper/
 __pycache__/
 research/learning-in-referencing/paper/tmp/
 research/learning-in-referencing/p12/*_smoke.json
+
+# c8 coverage output
+coverage/
