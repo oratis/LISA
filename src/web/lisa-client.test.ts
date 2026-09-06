@@ -151,3 +151,52 @@ describe("collapsed right rail keeps a way in (UX-5)", () => {
     );
   });
 });
+
+describe("birth errors are classified into human copy (UX-1)", () => {
+  const src =
+    MAIN_CLIENT_JS.slice(
+      MAIN_CLIENT_JS.indexOf("const BIRTH_ERROR_TEXT = {"),
+      MAIN_CLIENT_JS.indexOf("function showBirthError("),
+    );
+  const ctx = createContext({});
+  runInContext(`${src}; globalThis.__code = birthErrorCode; globalThis.__text = BIRTH_ERROR_TEXT;`, ctx);
+  const code = (ctx as { __code: (ev: unknown) => string }).__code;
+  const text = (ctx as { __text: Record<string, string> }).__text;
+
+  test("a new server's explicit code wins", () => {
+    assert.equal(code({ kind: "error", code: "rate_limit", message: "whatever" }), "rate_limit");
+  });
+  test("an unknown code falls back to classification rather than being trusted", () => {
+    assert.equal(code({ code: "teapot", message: "401 nope" }), "auth");
+  });
+  test("an old server's raw Anthropic 401 payload classifies as auth", () => {
+    const raw =
+      '401 {"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"},"request_id":null}';
+    assert.equal(code({ kind: "error", message: raw }), "auth");
+  });
+  test("network, timeout and rate-limit shapes are recognised without a code", () => {
+    assert.equal(code({ message: "ECONNREFUSED 127.0.0.1:443" }), "network");
+    assert.equal(code({ message: "fetch failed" }), "network");
+    assert.equal(code({ message: "request timed out after 600000ms" }), "timeout");
+    assert.equal(code({ message: "429 rate_limit_error" }), "rate_limit");
+  });
+  test("anything else is unknown, never rendered raw", () => {
+    assert.equal(code({ message: "kaboom" }), "unknown");
+    assert.equal(code({}), "unknown");
+    assert.equal(code(null), "unknown");
+  });
+  test("every class has copy, and none of it is JSON", () => {
+    for (const k of ["auth", "timeout", "network", "rate_limit", "unknown"]) {
+      assert.ok(text[k] && text[k].length > 20, `missing copy for ${k}`);
+      assert.ok(!text[k]!.includes("{"), `copy for ${k} leaks a payload`);
+    }
+  });
+  test("the raw payload goes to the title attribute, never to textContent", () => {
+    const show = MAIN_CLIENT_JS.slice(
+      MAIN_CLIENT_JS.indexOf("function showBirthError("),
+      MAIN_CLIENT_JS.indexOf("async function maybeBirth("),
+    );
+    assert.match(show, /birthErrorEl\.textContent = BIRTH_ERROR_TEXT\[code\]/);
+    assert.match(show, /birthErrorEl\.title = String\(\(ev && ev\.message\)/);
+  });
+});

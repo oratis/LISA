@@ -554,6 +554,31 @@ const cfgOpenai = document.getElementById('cfgOpenai');
 const cfgSaveBtn = document.getElementById('cfgSave');
 const cfgError = document.getElementById('cfgError');
 
+// UX-1: the gate used to be one-shot. Once a key was written to config.env
+// /api/config/status reported "configured" forever, so a REJECTED key left no
+// way back — the form never returned and the Settings view sat behind the
+// birth overlay. It is reopenable now, and remembers whether this visit is the
+// first run or a repair, so the copy and the post-save path can differ.
+let cfgReconfigure = false;
+function openKeyGate(opts) {
+  cfgReconfigure = !!(opts && opts.reconfigure);
+  const title = document.getElementById('cfgTitle');
+  if (title) title.textContent = cfgReconfigure ? 'CHANGE · API · KEY' : 'SET · API · KEY';
+  const reason = document.getElementById('cfgReason');
+  if (reason) {
+    reason.textContent = (opts && opts.reason) ? opts.reason : '';
+    reason.style.display = reason.textContent ? '' : 'none';
+  }
+  // Never prefill the rejected key — retyping is the point.
+  cfgAnthropic.value = '';
+  cfgOpenai.value = '';
+  cfgError.textContent = '';
+  cfgSaveBtn.disabled = false;
+  birthOverlay.classList.remove('open');
+  cfgOverlay.classList.add('open');
+  setTimeout(() => cfgAnthropic.focus(), 50);
+}
+
 cfgForm.addEventListener('submit', async (ev) => {
   ev.preventDefault();
   cfgError.textContent = '';
@@ -579,7 +604,10 @@ cfgForm.addEventListener('submit', async (ev) => {
     cfgAnthropic.value = '';
     cfgOpenai.value = '';
     cfgOverlay.classList.remove('open');
-    maybeBirth();
+    // A repair restarts the ritual in place — no location.reload(), so the
+    // page keeps its SSE connection, its log and its scroll position.
+    if (cfgReconfigure) { cfgReconfigure = false; beginBirth(); }
+    else maybeBirth();
   } catch (err) {
     cfgError.textContent = 'Save failed: ' + err.message;
     cfgSaveBtn.disabled = false;
@@ -592,17 +620,108 @@ const birthStepsEl = document.getElementById('birthSteps');
 const birthFinalEl = document.getElementById('birthFinal');
 const birthEnterBtn = document.getElementById('birthEnter');
 const birthErrorEl = document.getElementById('birthError');
+const birthActionsEl = document.getElementById('birthActions');
 
 birthEnterBtn.addEventListener('click', () => {
   birthOverlay.classList.remove('open');
   setTimeout(() => location.reload(), 300);
 });
 
+// The ritual can now run more than once per page load (a repaired key, a
+// retry after a timeout), so its UI needs a clean slate between runs.
+function resetBirthUI() {
+  birthStepsEl.innerHTML = '';
+  birthFinalEl.textContent = '';
+  birthFinalEl.classList.remove('shown');
+  birthEnterBtn.classList.remove('shown');
+  birthErrorEl.textContent = '';
+  birthErrorEl.title = '';
+  clearBirthActions();
+}
+function clearBirthActions() {
+  birthActionsEl.innerHTML = '';
+  birthActionsEl.style.display = 'none';
+}
+function birthAction(label, onClick, primary) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'birth-action' + (primary ? ' primary' : '');
+  b.textContent = label;
+  b.addEventListener('click', onClick);
+  birthActionsEl.appendChild(b);
+  birthActionsEl.style.display = '';
+  return b;
+}
+function beginBirth() {
+  resetBirthUI();
+  birthOverlay.classList.add('open');
+  startBirthStream();
+}
+
+// Live stream control (UX-1): the ritual is a long POST that used to be
+// un-cancellable — closing the tab was the only exit, and the server kept
+// inferring. Cancel aborts the fetch and hands the user back to the gate.
+let birthAbort = null;
+function abortBirth() {
+  if (!birthAbort) return;
+  try { birthAbort.abort(); } catch (e) {}
+  birthAbort = null;
+}
+
+// Human text for every failure class. The old client printed the provider's
+// raw payload — users saw  401 {"type":"error","error":{"type":
+// "authentication_error",...}}  and had nothing to do about it.
+const BIRTH_ERROR_TEXT = {
+  auth: 'That API key was rejected by the provider. Enter a different one and Lisa will try again.',
+  timeout: 'The provider took too long to answer. Nothing was lost — try again.',
+  network: 'Could not reach the provider. Check the network on this machine, then try again.',
+  rate_limit: 'The provider is rate-limiting this key right now. Wait a minute, then try again.',
+  unknown: 'Something went wrong while she was waking up.',
+};
+// New servers send {kind:"error", code, message, retryable}. Older ones send
+// {kind:"error", message} with the raw provider text — classify those by hand
+// so the same human copy shows either way. Substring tests, not regexes: this
+// file is a template literal and every backslash here would need doubling.
+function birthErrorCode(ev) {
+  const code = ev && typeof ev.code === 'string' ? ev.code : '';
+  if (code && BIRTH_ERROR_TEXT[code]) return code;
+  const raw = String((ev && ev.message) || '');
+  const low = raw.toLowerCase();
+  if (raw.indexOf('401') === 0 || raw.indexOf('403') === 0 ||
+      low.indexOf('authentication_error') >= 0 || low.indexOf('invalid_api_key') >= 0 ||
+      low.indexOf('invalid api key') >= 0 || low.indexOf('unauthorized') >= 0) return 'auth';
+  if (raw.indexOf('429') === 0 || low.indexOf('rate_limit') >= 0 || low.indexOf('rate limit') >= 0) return 'rate_limit';
+  if (low.indexOf('timeout') >= 0 || low.indexOf('timed out') >= 0 || low.indexOf('etimedout') >= 0) return 'timeout';
+  if (low.indexOf('enotfound') >= 0 || low.indexOf('econnrefused') >= 0 ||
+      low.indexOf('econnreset') >= 0 || low.indexOf('eai_again') >= 0 ||
+      low.indexOf('fetch failed') >= 0 || low.indexOf('network') >= 0) return 'network';
+  return 'unknown';
+}
+function showBirthError(ev) {
+  abortBirth();
+  const code = birthErrorCode(ev);
+  birthErrorEl.textContent = BIRTH_ERROR_TEXT[code] || BIRTH_ERROR_TEXT.unknown;
+  // The provider payload is diagnostics, not copy — reachable on hover and in
+  // the DOM for a bug report, never rendered as the message.
+  birthErrorEl.title = String((ev && ev.message) || '');
+  clearBirthActions();
+  const changeKey = function () {
+    openKeyGate({ reconfigure: true, reason: BIRTH_ERROR_TEXT[code] || BIRTH_ERROR_TEXT.unknown });
+  };
+  if (code === 'auth') {
+    birthAction('Change key', changeKey, true);
+    return;
+  }
+  // Anything the server marks non-retryable gets the key path instead.
+  if (ev && ev.retryable === false) { birthAction('Change key', changeKey, true); return; }
+  birthAction('Try again', beginBirth, true);
+  birthAction('Change key', changeKey);
+}
+
 async function maybeBirth() {
   const status = await fetch('/api/soul').then(r => r.json());
   if (status.born) return;
-  birthOverlay.classList.add('open');
-  startBirthStream();
+  beginBirth();
 }
 
 function appendBirthStep(step) {
@@ -674,15 +793,31 @@ async function startBirthStream() {
       birthEnterBtn.classList.add('shown');
       processing = false;
     } else if (ev.kind === 'error') {
-      birthErrorEl.textContent = ev.message;
+      showBirthError(ev);
       processing = false;
     }
   }
 
+  // Cancel is offered for the whole run and withdrawn the moment the stream
+  // ends — it aborts the fetch and returns to the gate rather than leaving the
+  // user staring at a ritual they cannot stop.
+  abortBirth();
+  const ctrl = new AbortController();
+  birthAbort = ctrl;
+  let cancelled = false;
+  birthAction('Cancel', function () {
+    cancelled = true;
+    abortBirth();
+    clearBirthActions();
+    openKeyGate({ reconfigure: true, reason: 'Cancelled. Set a key and Lisa will start again.' });
+  });
+
   try {
-    const res = await fetch('/api/birth', { method: 'POST' });
+    const res = await fetch('/api/birth', { method: 'POST', signal: ctrl.signal });
     if (!res.ok) {
-      birthErrorEl.textContent = 'Birth failed: HTTP ' + res.status + '. Check ANTHROPIC_API_KEY.';
+      // An HTTP-level refusal carries no SSE frame — classify it the same way.
+      showBirthError({ code: res.status === 401 || res.status === 403 ? 'auth' : 'unknown',
+                       message: 'HTTP ' + res.status });
       return;
     }
     const reader = res.body.getReader();
@@ -703,8 +838,13 @@ async function startBirthStream() {
         processQueue();
       }
     }
+    // The stream ended without an error frame: the run is over, drop Cancel
+    // (processQueue has already revealed ENTER on a 'done' frame).
+    if (birthAbort === ctrl) { birthAbort = null; clearBirthActions(); }
   } catch (err) {
-    birthErrorEl.textContent = 'Birth failed: ' + err.message;
+    // An abort is the user's own Cancel — the gate is already up, say nothing.
+    if (cancelled || (err && err.name === 'AbortError')) return;
+    showBirthError({ message: (err && err.message) ? err.message : String(err) });
   }
 }
 
@@ -724,8 +864,7 @@ async function startupGate() {
   }
   lisaClearBanner();
   if (!cfg.configured) {
-    cfgOverlay.classList.add('open');
-    setTimeout(() => cfgAnthropic.focus(), 50);
+    openKeyGate();
     return;
   }
   try {

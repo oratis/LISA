@@ -18,8 +18,9 @@
  * unchanged:
  *   log, input, form, sendBtn, sessionId, fileInput, attachPreview,
  *   mascot, mascotTag, modalBg, modalTitle, modalBody, modalClose,
- *   cfgOverlay, cfgForm, cfgAnthropic, cfgOpenai, cfgSave, cfgError,
- *   birthOverlay, birthSteps, birthFinal, birthEnter, birthError,
+ *   cfgOverlay, cfgForm, cfgTitle, cfgReason, cfgAnthropic, cfgOpenai,
+ *   cfgSave, cfgError,
+ *   birthOverlay, birthSteps, birthFinal, birthEnter, birthError, birthActions,
  *   attachBtn
  *
  * New IDs for the sidebar live blocks (wired in the trailing
@@ -306,7 +307,10 @@ catch (e) { document.body.classList.add('rb-collapsed'); }
 <div class="cfg-overlay" id="cfgOverlay">
   <div class="cfg-card">
     <div class="cfg-stars">✦  ✦  ✦  ✦  ✦</div>
-    <div class="cfg-title">SET · API · KEY</div>
+    <div class="cfg-title" id="cfgTitle">SET · API · KEY</div>
+    <!-- Only filled when the gate is REOPENED after a failed birth (UX-1):
+         it explains why the user is looking at this form a second time. -->
+    <div class="cfg-reason" id="cfgReason" style="display:none"></div>
     <div class="cfg-sub">
       Lisa needs an Anthropic API key to wake up.<br>
       <a href="https://console.anthropic.com/" target="_blank" rel="noopener">Get one at console.anthropic.com</a>
@@ -342,6 +346,9 @@ catch (e) { document.body.classList.add('rb-collapsed'); }
     <div class="birth-final" id="birthFinal"></div>
     <button class="birth-enter" id="birthEnter">ENTER</button>
     <div class="birth-error" id="birthError"></div>
+    <!-- Cancel while streaming; Change key / Try again after a failure (UX-1).
+         Empty and hidden otherwise. -->
+    <div class="birth-actions" id="birthActions" style="display:none"></div>
     <div class="birth-stars" style="margin-top: 24px;">✦  ✦  ✦  ✦  ✦</div>
   </div>
 </div>
