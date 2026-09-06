@@ -194,6 +194,7 @@ import {
   toolsForCapabilityProfile,
 } from "./capabilities.js";
 import { applySecurityHeaders } from "./security-headers.js";
+import { configStatusPayload, parseConfigSave } from "./config-api.js";
 import { EventLoopMonitor, healthPayload, watchdogThresholdFromEnv } from "./health.js";
 import {
   buildNonInteractiveApprovalCallback,
@@ -3753,14 +3754,11 @@ self.addEventListener('fetch', (event) => {
     }
 
     if (req.method === "GET" && url === "/api/config/status") {
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(
-        JSON.stringify({
-          configured: !!process.env.ANTHROPIC_API_KEY,
-          anthropic: !!process.env.ANTHROPIC_API_KEY,
-          openai: !!process.env.OPENAI_API_KEY,
-        }),
-      );
+      // Reports EVERY provider Lisa can route (derived from the preset table),
+      // not just the two the popup used to know about. Never the key values —
+      // only whether each one is present.
+      res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+      res.end(JSON.stringify(configStatusPayload(opts.model)));
       return;
     }
 
@@ -3782,7 +3780,7 @@ self.addEventListener('fetch', (event) => {
       }
       const body = await readRequestText(req, res);
       if (body === null) return;
-      let payload: { anthropicKey?: unknown; openaiKey?: unknown };
+      let payload: unknown;
       try {
         payload = JSON.parse(body || "{}");
       } catch {
@@ -3790,30 +3788,16 @@ self.addEventListener('fetch', (event) => {
         res.end("bad json");
         return;
       }
-      const updates: Record<string, string> = {};
-      const anthropic = typeof payload.anthropicKey === "string" ? payload.anthropicKey.trim() : "";
-      const openai = typeof payload.openaiKey === "string" ? payload.openaiKey.trim() : "";
-      if (!anthropic && !openai) {
-        res.writeHead(400, { "content-type": "text/plain" });
-        res.end("no keys provided");
+      // Whitelist, not filter: an env name outside the closed set is a 400 and
+      // nothing is written. This endpoint writes into process.env, so anything
+      // less is an environment-injection surface (PATH, NODE_OPTIONS, …).
+      const parsed = parseConfigSave(payload);
+      if (!parsed.ok) {
+        res.writeHead(parsed.status, { "content-type": "text/plain" });
+        res.end(parsed.error);
         return;
       }
-      if (anthropic) {
-        if (!/^[\x21-\x7e]{20,}$/.test(anthropic)) {
-          res.writeHead(400, { "content-type": "text/plain" });
-          res.end("anthropic key looks malformed");
-          return;
-        }
-        updates.ANTHROPIC_API_KEY = anthropic;
-      }
-      if (openai) {
-        if (!/^[\x21-\x7e]{20,}$/.test(openai)) {
-          res.writeHead(400, { "content-type": "text/plain" });
-          res.end("openai key looks malformed");
-          return;
-        }
-        updates.OPENAI_API_KEY = openai;
-      }
+      const updates = parsed.updates;
       try {
         await saveConfigEnv(updates);
       } catch (err) {
