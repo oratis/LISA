@@ -51,7 +51,12 @@ final class WebContent: NSViewController, WKNavigationDelegate, WKUIDelegate, WK
 
     override func loadView() {
         let config = WKWebViewConfiguration()
-        config.processPool = WKProcessPool()
+        // Share one persistent website data store with the island pill's web
+        // view, so cookies / localStorage (the web session, theme choice) are the
+        // same in both. This is the real seam for that sharing — the former
+        // `config.processPool = WKProcessPool()` never was: since macOS 12 extra
+        // process pools have no effect, and the API is deprecated.
+        config.websiteDataStore = .default()
 
         let preferences = WKWebpagePreferences()
         preferences.allowsContentJavaScript = true
