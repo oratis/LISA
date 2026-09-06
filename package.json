@@ -79,7 +79,7 @@
     "node": ">=22.19.0"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.92.0",
+    "@anthropic-ai/sdk": "^0.124.0",
     "@google/genai": "^2.0.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "imapflow": "^1.4.2",

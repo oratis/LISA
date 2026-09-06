@@ -90,20 +90,25 @@ describe("moodBus — the read side (currentState / origin / persistence)", () =
   });
 
   test("the slug is mirrored to <home>/current-mood.json", async () => {
-    // The mirror is written fire-and-forget (see persist()), so wait for the
-    // content rather than assuming the write landed before this line — and for
-    // content, not mere existence: an in-flight write is briefly an empty file
-    // (which is exactly why load() tolerates a torn read).
-    // Deadline, not an iteration count: the old 50x10ms budget was tight
-    // enough to lose the race under `npm run test:coverage`, where c8's
-    // instrumentation slows every write down.
+    // The mirror is written fire-and-forget AND best-effort — persist()
+    // swallows every error on purpose, because a cosmetic write must never
+    // fail a turn. So this cannot just wait for one write to land: under a
+    // loaded full-suite run (or c8) that write can be dropped outright (EMFILE
+    // and friends) and no amount of waiting produces the file. Re-issuing the
+    // same set on each pass is what the production path does too — memory is
+    // the source of truth and the next set re-persists — and it keeps the
+    // assertion about behaviour rather than about one syscall's luck.
+    // Reading for CONTENT, not mere existence: an in-flight write is briefly
+    // an empty file, which is exactly why load() tolerates a torn read.
     let raw: { slug?: string; at?: number; by?: string } = {};
     const deadline = Date.now() + 10_000;
-    while (!raw.slug && Date.now() < deadline) {
+    while (raw.slug !== "cheering" && Date.now() < deadline) {
+      homeScope.run(HOME_D, () => moodBus.set("cheering"));
+      await new Promise((r) => setTimeout(r, 10));
       try {
         raw = JSON.parse(fs.readFileSync(moodFile(HOME_D), "utf8"));
       } catch {
-        await new Promise((r) => setTimeout(r, 10));
+        raw = {};
       }
     }
     assert.equal(raw.slug, "cheering");
