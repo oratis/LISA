@@ -173,6 +173,43 @@ jobs:
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
 
+  # Browser smoke for the web shell. Offline and free: every instance runs
+  # against a throwaway LISA_HOME and a stub Anthropic server, so no test here
+  # ever calls a model.
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck the specs
+        run: npm run typecheck:e2e
+
+      # --with-deps pulls the shared libraries headless Chromium needs on a
+      # bare ubuntu runner; without it the browser launches and immediately dies.
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Playwright smoke
+        run: npm run test:e2e
+
+      - name: Upload report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
+
   # The Astro site. Until now it was only built by website-deploy.yml on pushes
   # to main, so a PR could break it and nobody found out until merge.
   website:

@@ -1,0 +1,18 @@
+{
+  // The e2e suite is the one place in the repo that is BOTH Node and browser:
+  // page.evaluate() callbacks are serialised and run in Chromium. The root
+  // tsconfig has no DOM lib on purpose (Lisa is a server), so the specs get
+  // their own program. Checked by `npm run typecheck:e2e`.
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "../..",
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"]
+  },
+  "include": ["./**/*.ts", "../../playwright.config.ts"],
+  "exclude": []
+}

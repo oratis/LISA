@@ -10,7 +10,12 @@
     "declaration": false,
     "declarationMap": false,
     "sourceMap": false,
-    "allowJs": true
+    "allowJs": true,
+    // The Playwright specs run page.evaluate() callbacks in the browser, so
+    // they reference document/HTMLElement. tsconfig.json deliberately has no
+    // DOM lib (this is a Node server); adding it here keeps the type-aware
+    // lint rules working on tests/e2e without touching the build program.
+    "lib": ["ES2023", "DOM"]
   },
   "include": [
     "src/**/*",
