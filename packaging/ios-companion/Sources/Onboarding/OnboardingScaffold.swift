@@ -41,6 +41,7 @@ struct OnboardingDots: View {
         .animation(.easeInOut(duration: 0.2), value: step)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(stepLabel)
+        .accessibilityAddTraits(.updatesFrequently)
     }
     private func isCurrent(_ s: OnboardingStep) -> Bool { s == step }
     private func isActive(_ s: OnboardingStep) -> Bool {
@@ -65,6 +66,8 @@ struct OnboardingTopBar: View {
                 Button("Not now", action: onSkip)
                     .font(.subheadline)
                     .foregroundStyle(Theme.tertiary)
+                    .frame(minHeight: 44)
+                    .accessibilityHint("Skips setup; you can finish it later from the banner")
             }
         }
         .frame(height: 28)
@@ -117,6 +120,7 @@ struct CopyCommandRow: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(copied ? "Copied" : "Copy command")
+            .accessibilityHint("Copies the command so you can paste it in Terminal")
         }
         .padding(.vertical, 12).padding(.horizontal, 14)
         .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.cardRadius))
@@ -173,6 +177,11 @@ struct OnboardingChoiceCard: View {
         .buttonStyle(.plain)
         .disabled(disabled)
         .padding(.horizontal, 24)
+        // One element per card; the checkmark becomes the "selected" trait
+        // rather than a stray "checkmark.circle.fill" (D5).
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel([title, badge, subtitle].compactMap { $0 }.joined(separator: ", "))
+        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
     }
 }
 
@@ -204,9 +213,12 @@ struct OnboardingSecondaryButton: View {
     var body: some View {
         Button(action: action) {
             Text(title).font(.subheadline.weight(.medium)).foregroundStyle(Theme.accent)
+                // minHeight, not a fixed height: the label still grows with
+                // Dynamic Type instead of clipping (D4).
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(.top, 4)
     }
 }
 
@@ -225,8 +237,12 @@ struct SetupBanner: View {
             }
             .foregroundStyle(Theme.bgDeep)
             .padding(.horizontal, 16).padding(.vertical, 10)
+            .frame(minHeight: 44)
             .background(Theme.accent)
         }
         .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Finish setting up — connect to your Mac")
+        .accessibilityHint("Reopens the setup flow")
     }
 }

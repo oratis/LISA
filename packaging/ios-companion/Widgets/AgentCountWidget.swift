@@ -56,8 +56,11 @@ struct AgentCountWidgetView: View {
                     Text("\(s.stuck > 0 ? s.stuck : s.working)").font(.headline.bold())
                 }
             }
+            // A bare number in a circle is meaningless out loud — say which count.
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(s.stuck > 0 ? "\(s.stuck) agents need you" : "\(s.working) agents active")
         } else {
-            Image(systemName: "cpu")
+            Image(systemName: "cpu").accessibilityLabel("Lisa — open to pair")
         }
     }
 
@@ -108,6 +111,8 @@ struct AgentCountWidgetView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .opacity(isStale(snap) ? 0.55 : 1)                           // B25 — dim a stale snapshot
+        // Dimming is the only cue that a snapshot is old; say it too (D1).
+        .accessibilityHint(isStale(snap) ? "Snapshot may be out of date" : "")
     }
 
     private func stat(_ value: Int, _ label: String, _ color: Color) -> some View {
@@ -115,6 +120,8 @@ struct AgentCountWidgetView: View {
             Text("\(value)").font(.system(.title, design: .rounded).weight(.bold)).foregroundStyle(color)
             Text(label).font(.caption2).foregroundStyle(.secondary)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(value) \(label)")
     }
 
     private func summary(_ snap: AgentSnapshot) -> String {

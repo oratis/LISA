@@ -231,6 +231,7 @@ struct ChatView: View {
         }
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        .accessibilityHidden(true)   // chatHeader's combined label already says the mood
     }
 
     private let quickCommands = ["What are the agents doing?", "Summarize today", "Any blockers?"]
@@ -248,6 +249,7 @@ struct ChatView: View {
                                 .foregroundStyle(Theme.accent)
                         }
                         .buttonStyle(.plain)
+                        .accessibilityHint("Sends this as a message")
                     }
                 }
                 .padding(.horizontal).padding(.vertical, Theme.Space.s)
@@ -335,12 +337,14 @@ struct ChatView: View {
                 .frame(width: 44, height: 44)
                 .foregroundStyle(Theme.danger)
                 .accessibilityLabel("Stop")
+                .accessibilityHint("Stops Lisa's reply")
             } else {
                 Button(action: sendCurrent) {
                     Image(systemName: "arrow.up.circle.fill").font(.title2)
                 }
                 .frame(width: 44, height: 44)
                 .accessibilityLabel("Send message")
+                .accessibilityHint("Sends what you typed to Lisa")
                 .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }

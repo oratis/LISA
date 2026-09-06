@@ -242,6 +242,29 @@ final class LisaPocketTests: XCTestCase {
         XCTAssertFalse(InstallMethod.app.isCLI)
     }
 
+    // ── a11y: every status pip has a word, and it matches the colour bucket ──
+
+    func testGlanceColorsPhraseCoversEveryStateBucket() {
+        XCTAssertEqual(GlanceColors.phrase("working"), "working")
+        XCTAssertEqual(GlanceColors.phrase("waiting"), "waiting on you")
+        XCTAssertEqual(GlanceColors.phrase("error"), "errored")
+        XCTAssertEqual(GlanceColors.phrase("done"), "done")
+        XCTAssertEqual(GlanceColors.phrase("something-new"), "idle")
+        XCTAssertEqual(GlanceColors.phrase(""), "idle")
+    }
+
+    func testStatusPhraseAgreesWithStateColorOnPendingPermission() {
+        // stateColor paints a pending permission amber regardless of raw state;
+        // the spoken label has to make the same call or they contradict.
+        let pending = session("working", pending: "Bash(rm -rf)")
+        XCTAssertEqual(statusPhrase(pending), "needs you: Bash(rm -rf)")
+        XCTAssertEqual(stateColor(pending), Theme.waiting)
+
+        XCTAssertEqual(statusPhrase(session("working")), "working")
+        XCTAssertEqual(statusPhrase(session("error")), "errored")
+        XCTAssertEqual(statusPhrase(session("mystery")), "idle")
+    }
+
     func testOnboardingDottedSequence() {
         XCTAssertEqual(OnboardingStep.dotted, [.install, .start, .pair, .scan, .connect])
         XCTAssertEqual(OnboardingStep.welcome.rawValue, 0)        // welcome/mode are pre-flow

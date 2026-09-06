@@ -389,6 +389,9 @@ struct AccountCard: View {
                         .font(.subheadline)
                         ProgressView(value: Double(min(spent, window)), total: Double(window))
                             .tint(remaining > 0 ? Theme.green : Theme.danger)
+                            // Green vs red is the only "you're out" cue here (D1).
+                            .accessibilityLabel("Session allowance")
+                            .accessibilityValue("\(Self.dollars(remaining)) of \(Self.dollars(window)) left")
                         if let reset = q.resetAt, remaining <= 0 {
                             Text("Refreshes \(Date(timeIntervalSince1970: reset / 1000), style: .relative)")
                                 .font(.caption).foregroundStyle(.secondary)

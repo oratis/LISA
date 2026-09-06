@@ -226,6 +226,13 @@ struct OnboardingFlow: View {
                 rescanToken: rescanToken
             )
             .ignoresSafeArea()
+            // A camera preview is an empty rectangle to VoiceOver; announce that
+            // it's live and where to aim, and let the note below update it (D7).
+            .accessibilityElement()
+            .accessibilityLabel("Camera is live")
+            .accessibilityValue(scanNote ?? "Point at the QR code Lisa shows on your Mac.")
+            .accessibilityHint("Scanning happens automatically. Use Paste link to type the code instead.")
+            .accessibilityAddTraits(.updatesFrequently)
             VStack {
                 OnboardingTopBar(step: .scan, onSkip: skip)
                     .background(
@@ -246,7 +253,9 @@ struct OnboardingFlow: View {
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 16).padding(.vertical, 10)
+                        .frame(minHeight: 44)
                         .background(.ultraThinMaterial, in: Capsule())
+                        .accessibilityHint("Opens a form to paste the pairing link")
                 }
                 .padding(.bottom, 32)
             }
