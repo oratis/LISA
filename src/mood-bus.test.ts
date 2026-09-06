@@ -94,8 +94,12 @@ describe("moodBus — the read side (currentState / origin / persistence)", () =
     // content rather than assuming the write landed before this line — and for
     // content, not mere existence: an in-flight write is briefly an empty file
     // (which is exactly why load() tolerates a torn read).
+    // Deadline, not an iteration count: the old 50x10ms budget was tight
+    // enough to lose the race under `npm run test:coverage`, where c8's
+    // instrumentation slows every write down.
     let raw: { slug?: string; at?: number; by?: string } = {};
-    for (let i = 0; i < 50 && !raw.slug; i++) {
+    const deadline = Date.now() + 10_000;
+    while (!raw.slug && Date.now() < deadline) {
       try {
         raw = JSON.parse(fs.readFileSync(moodFile(HOME_D), "utf8"));
       } catch {
@@ -129,16 +133,25 @@ describe("moodBus — the read side (currentState / origin / persistence)", () =
     const home = homeForUid(uid);
     fs.mkdirSync(home, { recursive: true });
     fs.writeFileSync(moodFile(home), "{not json");
-    assert.equal(homeScope.run(home, () => moodBus.current()), "neutral");
+    assert.equal(
+      homeScope.run(home, () => moodBus.current()),
+      "neutral",
+    );
   });
 
   test("forget(uid) deletes the mirror and never resurrects it from disk", () => {
     moodBus.forget(UID_D);
     assert.equal(fs.existsSync(moodFile(HOME_D)), false);
-    assert.equal(homeScope.run(HOME_D, () => moodBus.current()), "neutral");
+    assert.equal(
+      homeScope.run(HOME_D, () => moodBus.current()),
+      "neutral",
+    );
     // Even if the unlink had failed, the scope stays marked-hydrated.
     fs.writeFileSync(moodFile(HOME_D), JSON.stringify({ slug: "happy", at: 1, by: "x" }));
-    assert.equal(homeScope.run(HOME_D, () => moodBus.current()), "neutral");
+    assert.equal(
+      homeScope.run(HOME_D, () => moodBus.current()),
+      "neutral",
+    );
   });
 });
 

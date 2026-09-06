@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import OpenAI from "openai";
+import OpenAI, { toFile } from "openai";
 import { parseFile } from "music-metadata";
 import type { MediaProvider, MediaUsage } from "../billing/media-prices.js";
 
@@ -63,9 +63,7 @@ export function maxTranscriptionSeconds(
   env: Record<string, string | undefined> = process.env,
 ): number {
   const value = Number(env.LISA_VOICE_MAX_SECONDS);
-  return Number.isFinite(value) && value > 0
-    ? value
-    : DEFAULT_MAX_TRANSCRIPTION_SECONDS;
+  return Number.isFinite(value) && value > 0 ? value : DEFAULT_MAX_TRANSCRIPTION_SECONDS;
 }
 
 /**
@@ -82,11 +80,9 @@ export async function prepareTranscription(
     const metadata = await parseFile(opts.audioPath, { duration: true });
     durationSeconds = metadata.format.duration;
   } catch (err) {
-    throw new AudioValidationError(
-      `cannot read audio duration: ${(err as Error).message}`,
-      400,
-      { cause: err },
-    );
+    throw new AudioValidationError(`cannot read audio duration: ${(err as Error).message}`, 400, {
+      cause: err,
+    });
   }
   if (!Number.isFinite(durationSeconds) || (durationSeconds ?? 0) <= 0) {
     throw new AudioValidationError("audio has no measurable duration", 400);
@@ -158,9 +154,17 @@ async function transcribeWithOpenAI(
   model?: string,
 ): Promise<string> {
   const client = new OpenAI({ apiKey });
+  // Read the clip and hand the SDK a File rather than fs.createReadStream:
+  // a ReadStream opens its fd asynchronously and is only closed once something
+  // consumes it, so a request that fails (or a transport that never reads the
+  // body) leaks the descriptor and can fault on a file that has since been
+  // cleaned up. Clips are already length-capped upstream (maxTranscriptionSeconds()),
+  // so buffering one is bounded.
+  const buf = await fs.promises.readFile(audioPath);
+  const file = await toFile(buf, path.basename(audioPath) || "audio.wav");
   const result = await client.audio.transcriptions.create({
     model: model ?? "whisper-1",
-    file: fs.createReadStream(audioPath),
+    file,
   });
   return result.text;
 }
@@ -186,7 +190,9 @@ async function transcribeWithElevenLabs(
   });
   if (!res.ok) {
     const detail = (await res.text().catch(() => "")).slice(0, 200);
-    throw new Error(`ElevenLabs transcription failed (${res.status})${detail ? `: ${detail}` : ""}`);
+    throw new Error(
+      `ElevenLabs transcription failed (${res.status})${detail ? `: ${detail}` : ""}`,
+    );
   }
   const json = (await res.json().catch(() => ({}))) as { text?: string };
   if (typeof json.text !== "string") {
