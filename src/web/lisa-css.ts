@@ -1316,6 +1316,23 @@ export const MAIN_CSS = `  :root {
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  /* Small "Copy" affordance in a kv row (UX-11). Dim until the row is
+     hovered or it takes focus, so it never competes with the value. */
+  .copy-btn {
+    flex: none;
+    font-family: inherit;
+    font-size: 11.5px;
+    min-height: 24px;
+    padding: 2px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border-new);
+    background: transparent;
+    color: var(--fg-3);
+    cursor: pointer;
+    opacity: 0.45;
+    transition: opacity 120ms ease, color 120ms ease;
+  }
+  .kvrow:hover .copy-btn, .copy-btn:hover, .copy-btn:focus-visible { opacity: 1; color: var(--fg); }
   .kvrow.warn > code { color: var(--warm); }
   .kvrow.err  > code { color: var(--err-color); }
   .insp-actions { margin-top: 10px; }
@@ -1715,6 +1732,8 @@ export const MAIN_CSS = `  :root {
     font-size: 11.5px;
   }
   .social-policy .social-action { margin: 0; }
+  /* No connector installed: a state line, not a claim about publishing. */
+  .social-policy.neutral { color: var(--fg-3); }
   .social-draft:first-child { border-top: 0; }
   .social-draft-head {
     display: flex;
@@ -2799,6 +2818,17 @@ export const MAIN_CSS = `  :root {
     overflow-wrap: anywhere;
     user-select: all;
   }
+  /* Lifetime of the pairing token — it has none, and the panel has to say so. */
+  .modal-body .pair-note {
+    margin-top: 12px;
+    padding: 9px 12px;
+    border-radius: 9px;
+    border: 1px solid rgba(255, 208, 102, 0.32);
+    background: rgba(255, 208, 102, 0.09);
+    color: var(--fg-2);
+    font-size: 11.5px;
+    line-height: 1.5;
+  }
   .modal-body .pair-copy {
     flex: 0 0 auto;
     font-family: inherit;
@@ -3153,6 +3183,6 @@ export const MAIN_CSS = `  :root {
     #recordBtn.recording, .birth-stars, .cfg-stars, .birth-step .step-cursor { animation: none; }
     .birth-step, .birth-final, .birth-enter, .kb-toast, .identity .avatar-wrap img,
     .ctrl-row, .nav-item, .fbtn, .badge, #input, #sendBtn, .cfg-save,
-    .chat-empty .ce-starter { transition: none; }
+    .chat-empty .ce-starter, .copy-btn { transition: none; }
     #log { scroll-behavior: auto; }
   }`;
