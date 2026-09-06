@@ -1,0 +1,92 @@
+# Dependency updates. T-4/T-5 (v0.24.0 tech review): the project shipped 24
+# releases with no update bot, and by v0.24.0 the Anthropic SDK was 32 minors
+# behind with three open advisories in transitive deps.
+#
+# Grouping is the point. Ungrouped npm updates on a tree this size produce a
+# dozen PRs a week and get ignored, so minor+patch land as one PR per ecosystem
+# and only majors — which need real work in src/providers — arrive on their own.
+version: 2
+
+updates:
+  # Runtime + tooling for the Node package at the repo root.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 5
+    versioning-strategy: increase
+    labels: ["dependencies"]
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+    groups:
+      npm-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      # Pinned to the CI matrix's oldest supported runtime (engines: >=20, and
+      # the matrix runs 20/22/24). Bumping the types past the runtime surfaces
+      # APIs that do not exist on the Node we actually support, so this moves
+      # deliberately with `engines`, not on a bot's schedule.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+
+  # The Astro site builds and deploys independently of the npm package.
+  - package-ecosystem: "npm"
+    directory: "/website"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 3
+    labels: ["dependencies", "website"]
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+    groups:
+      website-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  # Cloud relay deployed from packaging/gcp-relay.
+  - package-ecosystem: "npm"
+    directory: "/packaging/gcp-relay"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 2
+    labels: ["dependencies"]
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      relay-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  # Actions pin to major tags; monthly is enough and keeps the noise down.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 3
+    labels: ["dependencies", "ci"]
+    commit-message:
+      prefix: "chore(ci)"
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # macOS client SwiftPM manifest. The iOS companion has no Package.swift
+  # (XcodeGen project.yml, no SwiftPM deps), so there is nothing to watch there
+  # until it grows one.
+  - package-ecosystem: "swift"
+    directory: "/packaging/mac-client"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 2
+    labels: ["dependencies", "macos"]
+    commit-message:
+      prefix: "chore(deps)"

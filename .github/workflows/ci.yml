@@ -77,3 +77,24 @@ jobs:
           path: coverage/lcov.info
           if-no-files-found: error
           retention-days: 14
+
+  # Production-dependency advisories only: dev-tree findings (build tooling that
+  # never ships and never sees untrusted input) would make this gate noise.
+  # `high` is the bar because moderate advisories in transitive deps sit
+  # unfixable for weeks and a permanently red gate teaches people to ignore it.
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install
+        run: npm ci
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
