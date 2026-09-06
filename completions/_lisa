@@ -32,6 +32,9 @@ _lisa() {
         '--imessage[start iMessage channel (with serve)]' \
         '--channels[start IM channels]:list:_lisa_channels' \
         '--port[port for serve --web]:port:' \
+        '--verbose[startup banners + full tool results]' \
+        '--no-color[plain output even on a terminal]' \
+        '--host[bind address for serve --web]:addr:' \
         '1: :_lisa_first' \
         '*::arg:->args' \
         && return 0
@@ -43,6 +46,8 @@ _lisa() {
                 heartbeat) _lisa_heartbeat ;;
                 autostart) _lisa_autostart ;;
                 model)    _lisa_model ;;
+                doctor)   _lisa_doctor ;;
+                upgrade)  _lisa_upgrade ;;
                 consent)  _lisa_consent ;;
                 sense)    _lisa_sense ;;
             esac
@@ -58,6 +63,7 @@ _lisa_first() {
         'serve:start web UI / IM channels'
         'heartbeat:run / install / uninstall scheduled tasks'
         'autostart:run the backend from login (install/uninstall/status)'
+        'upgrade:upgrade this install and restart the daemon'
         'search:TF-IDF search across past sessions'
         'birth:run the birth ritual'
         'soul:print current soul summary'
@@ -72,6 +78,12 @@ _lisa_first() {
         'consent:consent for sensitive ambient signals'
         'sense:recent ambient sense events'
         'agents:snapshot of agent sessions across observers'
+        'pair:show a QR to pair a phone (Lisa Pocket)'
+        'mail:mail account setup and inbox commands'
+        'kb:knowledge base (add/list/search/brief)'
+        'login:sign in to Lisa Cloud'
+        'logout:sign out of Lisa Cloud'
+        'billing:allowance, credits and recent usage'
     )
     _describe 'subcommand' subcommands
 }
@@ -119,6 +131,19 @@ _lisa_autostart() {
         )
         _describe 'autostart action' actions
     fi
+}
+
+_lisa_doctor() {
+    _arguments '--probe[probe a running backend'\''s /health]:url:_urls'
+}
+
+_lisa_upgrade() {
+    local -a flags
+    flags=(
+        '--check:only compare installed vs published version'
+        '--dry-run:print the commands without running them'
+    )
+    _describe 'upgrade flag' flags
 }
 
 _lisa_model() {

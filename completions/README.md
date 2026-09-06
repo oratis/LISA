@@ -45,7 +45,7 @@ No reload needed — fish auto-loads completions.
 
 | Position | Suggestions |
 |---|---|
-| First arg | The 13 subcommands |
+| First arg | Every subcommand (chat, inspection, lifecycle, cloud) |
 | `--model` value | 17 common model names across providers |
 | `--provider` value | `anthropic` / `openai` / `gemini` |
 | `--approval` value | `auto` / `ask` / `ask-mutating` |
@@ -53,6 +53,8 @@ No reload needed — fish auto-loads completions.
 | 2nd arg after `lisa skills` | `list` / `approve` / `disable` / `enable` / `audit` |
 | 3rd arg after `lisa skills <action>` | Slugs scanned from `~/.lisa/skills/` |
 | 2nd arg after `lisa heartbeat` | `run` / `install` / `uninstall` |
+| After `lisa doctor` | `--probe` (health of a running backend) |
+| After `lisa upgrade` | `--check` / `--dry-run` |
 | Generic flag completion | All global flags |
 
 ## Future via Homebrew
