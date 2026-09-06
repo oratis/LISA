@@ -124,6 +124,22 @@ describe("probeHealth", () => {
     });
   });
 
+  test("a server that never answers times out instead of hanging", async () => {
+    // Accept the connection and say nothing — the "wedged event loop" case the
+    // probe exists for.
+    const server = http.createServer(() => {});
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const port = (server.address() as AddressInfo).port;
+    try {
+      const r = await probeHealth(`http://127.0.0.1:${port}`, { timeoutMs: 150 });
+      assert.equal(r.reachable, false);
+      assert.match(r.error ?? "", /timed out after 150ms/);
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
   test("nothing listening is unreachable, with the reason", async () => {
     // Bind then immediately release the port so the connection is refused.
     const server = http.createServer();

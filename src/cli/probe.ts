@@ -90,11 +90,20 @@ export async function probeHealth(
   let lastStatus: number | undefined;
 
   for (const endpoint of ENDPOINTS) {
+    // An own controller rather than AbortSignal.timeout(), so the timer is
+    // cleared the moment the request settles instead of lingering for the full
+    // timeout — Node 22's test runner counts anything still pending as a leak.
+    const ac = new AbortController();
+    const timer = setTimeout(
+      () => ac.abort(new Error(`timed out after ${timeoutMs}ms`)),
+      timeoutMs,
+    );
+    timer.unref?.();
     try {
       const res = await doFetch(`${url}${endpoint}`, {
         method: "GET",
         headers: { accept: "application/json" },
-        signal: AbortSignal.timeout(timeoutMs),
+        signal: ac.signal,
       });
       lastStatus = res.status;
       // 404 on /health is the signal to try /healthz; any other status is the
@@ -115,6 +124,8 @@ export async function probeHealth(
       };
     } catch (err) {
       lastError = (err as Error).message || String(err);
+    } finally {
+      clearTimeout(timer);
     }
   }
 
