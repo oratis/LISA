@@ -1,6 +1,6 @@
 /**
  * Sign in with Google — ID-token verification
- * (docs/PLAN_AUTH_OTP_GOOGLE_v1.0.md §2.2, milestone A3).
+ * (docs/archive/plans/PLAN_AUTH_OTP_GOOGLE_v1.0.md §2.2, milestone A3).
  *
  * The sibling of cloudAuth.ts, and deliberately the same shape: Google signs its
  * ID tokens with RS256, which Node verifies natively from a JWK, so this stays

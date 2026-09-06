@@ -1,5 +1,5 @@
 /**
- * Pre-send address check (docs/PLAN_AUTH_OTP_GOOGLE_v1.0.md A6).
+ * Pre-send address check (docs/archive/plans/PLAN_AUTH_OTP_GOOGLE_v1.0.md A6).
  *
  * Sign-in by code has a failure mode that regular sign-in doesn't: a typo'd
  * address doesn't bounce back to the person who typed it. They wait for a code

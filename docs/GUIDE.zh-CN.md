@@ -194,7 +194,7 @@ OpenAI 模型 (`gpt-*`) 还需要 `OPENAI_API_KEY`。
 
 - **终端 REPL** — `lisa`（交互）或 `lisa "一句话"`（一次性）
 - **Web GUI** — `lisa serve --web` → http://localhost:5757 — 像素艺术聊天界面，头像跟着她的心情实时切，她的回复渲染成排版好的 **Markdown**（先转义，抗 XSS）。一个锁定的 3×3 **九宫格**导航网格切换视图 —— 聊天、Dashboard、Control、Rêve、房间、Sense、记忆、知识库、设置 —— 邮箱和 agent 监视器作为侧栏卡片。默认**只绑 127.0.0.1**；要从手机访问，先设 `LISA_WEB_TOKEN` 并加 `--host 0.0.0.0`，然后每台设备第一次打开 `http://<主机>:5757/?token=<值>`。
-- **Lisa 的房间** — GUI 里的 ⌂ 页（也可 `GET /room`）：一个她真正*栖居*的像素艺术生活空间 —— 她真实状态的只读投影。你回来时她会抬头看你的眼睛，空闲时自己在家里晃（看书、喝茶、戴耳机、望向窗外 —— 按一天中的时段加权），夜里换上睡衣，把她 ★ *你不在时* 的便签堆在桌上，`working-*` 时坐在发光的笔记本前。一个 ❖ 切换器 **换景** 在多套房间主题间重新布置（[PLAN_ROOM_v2.0.md](PLAN_ROOM_v2.0.md)）。
+- **Lisa 的房间** — GUI 里的 ⌂ 页（也可 `GET /room`）：一个她真正*栖居*的像素艺术生活空间 —— 她真实状态的只读投影。你回来时她会抬头看你的眼睛，空闲时自己在家里晃（看书、喝茶、戴耳机、望向窗外 —— 按一天中的时段加权），夜里换上睡衣，把她 ★ *你不在时* 的便签堆在桌上，`working-*` 时坐在发光的笔记本前。一个 ❖ 切换器 **换景** 在多套房间主题间重新布置（[PLAN_ROOM_v2.0.md](archive/plans/PLAN_ROOM_v2.0.md)）。
 - **灵动岛小组件** — `lisa serve --web` → http://localhost:5757/island — 一个显示她当前心情 + 状态、agent 监视、顾问卡片的小胶囊；也原生内置进 Lisa.app，带刘海感知定位（[MAC_ISLAND_PLAN.md](MAC_ISLAND_PLAN.md)）。
 - **知识库** — 一个"知识"页（也是她的 `kb_*` 工具）：一个她随对话捕获、又能在对话中检索的内置个人 wiki，见[下文](#知识库--她自己打理的-wiki)。
 - **邮箱** — 侧栏一张摘要卡片（卡片标题点进完整邮箱视图；也可 `lisa mail`）：连一个只读邮箱，她会归纳出一份分类摘要，见[下文](#邮箱--她替你盯着的信箱)。
@@ -345,7 +345,7 @@ SEEDREAM_API_KEY=... npx tsx scripts/generate-lisa-moods.ts  # 114 个心情
 
 ## 知识库 — 她自己打理的 wiki
 
-LISA 内置一个**个人知识库**，仿照 [Andrej Karpathy 的三层 LLM wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) —— 织进她已有的记忆、日记、反思机制里，所以它会随你聊天自己填充（[PLAN_KNOWLEDGE_BASE_v1.0.md](PLAN_KNOWLEDGE_BASE_v1.0.md)）。它落在 `~/.lisa/kb/`，是独立的 git 仓库，与她私密的灵魂分开。
+LISA 内置一个**个人知识库**，仿照 [Andrej Karpathy 的三层 LLM wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) —— 织进她已有的记忆、日记、反思机制里，所以它会随你聊天自己填充（[PLAN_KNOWLEDGE_BASE_v1.0.md](archive/plans/PLAN_KNOWLEDGE_BASE_v1.0.md)）。它落在 `~/.lisa/kb/`，是独立的 git 仓库，与她私密的灵魂分开。
 
 ```
 ~/.lisa/kb/

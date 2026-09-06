@@ -1,6 +1,6 @@
 # HANDOFF — 知识库 v2.0（K-D … K-I）
 
-> 给接手 session 的交接文档。设计之源是 [docs/PLAN_KNOWLEDGE_BASE_v2.0.md](PLAN_KNOWLEDGE_BASE_v2.0.md)，
+> 给接手 session 的交接文档。设计之源是 [docs/PLAN_KNOWLEDGE_BASE_v2.0.md](../../PLAN_KNOWLEDGE_BASE_v2.0.md)，
 > **本文只讲"现在到哪了、接下来每个 PR 具体做什么、有哪些坑"**。
 >
 > 更新日期：2026-07-23 · 已完成 K-A/K-B/K-C（PR #278 / #279 / #280）

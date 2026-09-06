@@ -67,7 +67,7 @@ export const MAIN_CSS = `  :root {
      in localStorage "lisa-theme"). Every themed surface reads the custom
      properties above, so the light skin is one override block plus a few
      patches below for the hardcoded dark backgrounds (frame gradient,
-     titlebar, sidebar glass). Token table: docs/PLAN_UI_SESSION_SHELL_v1.0.md §2. */
+     titlebar, sidebar glass). Token table: docs/archive/plans/PLAN_UI_SESSION_SHELL_v1.0.md §2. */
   body[data-theme="calm"] {
     color-scheme: light;
 
@@ -1118,7 +1118,7 @@ export const MAIN_CSS = `  :root {
      One structured full-height panel, symmetric with the sidebar: the
      relocated sidebar lower half (wanting / agents / mail / reflection)
      as uniform sections separated by hairlines. Design rules (see
-     docs/PLAN_UI_SESSION_SHELL_v1.0.md §1.3): 16px horizontal padding,
+     docs/archive/plans/PLAN_UI_SESSION_SHELL_v1.0.md §1.3): 16px horizontal padding,
      small-caps section headers, no tinted card stacking — color is
      reserved for semantic chips/pips. */
   .rightbar {

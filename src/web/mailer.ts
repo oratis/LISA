@@ -1,6 +1,6 @@
 /**
  * Outbound mail — account verification and sign-in codes
- * (docs/PLAN_ACCOUNTS_BILLING_v1.0.md B8a; docs/PLAN_AUTH_OTP_GOOGLE_v1.0.md A1/A6).
+ * (docs/PLAN_ACCOUNTS_BILLING_v1.0.md B8a; docs/archive/plans/PLAN_AUTH_OTP_GOOGLE_v1.0.md A1/A6).
  *
  * One provider (Resend's REST API, zero deps), one choke point, two messages:
  * the verification link that levels an email account's free window from $1 to
