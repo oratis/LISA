@@ -91,7 +91,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.63.0",
-    "@types/node": "^22.10.0",
+    "@types/node": "^22.20.1",
     "@types/qrcode-terminal": "^0.12.2",
     "c8": "^12.0.0",
     "eslint": "^10.10.0",
