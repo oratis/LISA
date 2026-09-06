@@ -17,6 +17,8 @@
 - [ARCHITECTURE.md](./ARCHITECTURE.md)：系统边界、主要数据流、模块地图
 - [INVARIANTS.md](./INVARIANTS.md)：修改代码时必须守住的安全、租户、计费和 Soul 不变量
 - [REVIEW_BASELINE.md](./REVIEW_BASELINE.md)：本次验证结果、已知热点和下一次审查入口
+- [../docs/README.md](../docs/README.md)：`docs/` 全量索引（现行计划 / 已完成计划归档 / 发布 / 审查 / runbook / 研究 / 设计笔记）
+- [../docs/GUIDE.md](../docs/GUIDE.md)：面向用户的完整指南（安装、各产品表面、Soul、配置文件、项目结构）；README 只留 60 秒上手
 
 整体审查与优化路线图位于：
 
