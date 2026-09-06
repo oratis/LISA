@@ -365,6 +365,16 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (args.subcommand === "upgrade") {
+    const { runUpgrade } = await import("./cli/upgrade.js");
+    const code = await runUpgrade({
+      check: args.subargs.includes("--check"),
+      dryRun: args.subargs.includes("--dry-run"),
+    });
+    if (code !== 0) process.exit(code);
+    return;
+  }
+
   if (args.subcommand === "monitor") {
     const { runMonitor } = await import("./cli/monitor.js");
     await runMonitor();
