@@ -662,7 +662,7 @@ await writeEmotions({
 
 每个 phase 提供：
 
-- **Unit tests**：[scripts/test/](../scripts/test/) 下加 `soul-git.test.ts` / `desire-progress.test.ts` / `objection.test.ts`。
+- **Unit tests**：按仓库约定与源码同目录放 `soul-git.test.ts` / `desire-progress.test.ts` / `objection.test.ts`（`src/**/*.test.ts`，由 `npm test` 跑）。
 - **Integration tests**：用一个临时 LISA_HOME（`mktemp -d`）跑端到端：birth → 模拟会话 → assert filesystem state。
 - **Acceptance scripts**：每个 feature 的"验收"小节是手动 acceptance 步骤，可脚本化。
 

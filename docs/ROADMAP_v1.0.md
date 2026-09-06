@@ -223,7 +223,7 @@ v0.9 review 的诊断一针见血：**项目每个版本都在加一个新大件
 **D2 — 接入 TakoAPI（两个方向，consumer 先行）**
 
 *方向一：LISA 作为 TakoAPI consumer——让 LISA 能指挥远程 agent*
-- **(a) OpenAI-shim 快路（近乎免费，最早可落地）**：LISA 已有 OpenAI 兼容 provider 路由 + `LISA_BASE_URL`（见 [Model 支柱](#6-model--从自带-endpoint-到真本地部署)）。把一个 provider 指向 `https://takoapi.com/v1`、配 `TAKO_KEY`、`model=<agent-slug>`，即可把任意 TakoAPI agent 当成一个"模型"来调用——几乎零新代码。可在 0.12 随手落地。
+- **(a) OpenAI-shim 快路（近乎免费，最早可落地）**：LISA 已有 OpenAI 兼容 provider 路由 + `LISA_BASE_URL`（见 [Model 支柱](#6-model--从自带-endpoint到真本地部署)）。把一个 provider 指向 `https://takoapi.com/v1`、配 `TAKO_KEY`、`model=<agent-slug>`，即可把任意 TakoAPI agent 当成一个"模型"来调用——几乎零新代码。可在 0.12 随手落地。
 - **(b) A2A 原生 adapter（更深，0.14）**：给 hub/Dispatch 加一个 `takoapi` agent 源——`GET /api/registry` 列远程 agent，`POST /v1/agents/{slug}/message` 派活、消费 SSE、按 A2A `TaskState` 跟踪。让远程 TakoAPI agent 成为 hub 里与本地 CLI agent 平起平坐的一等公民（正是 [ORCHESTRATOR_PLAN.md](./ORCHESTRATOR_PLAN.md) taxonomy 的 Class B 云 agent）。
 - **远程 agent 的"命令回路"基本由 A2A 协议自带**（`TaskState` + SSE + push webhook），LISA 不必自造——与 D1 形成对照：**本地 CLI agent 的回路要 LISA 自己闭（D1），远程 agent 的回路继承 A2A（D2）**。
 

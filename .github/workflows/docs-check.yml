@@ -1,0 +1,47 @@
+name: Docs — links + zh/en drift
+
+# Two zero-dependency, offline checks that keep the docs honest:
+#
+#   check-md-links.mjs    every relative link and #anchor resolves
+#   check-readme-drift.mjs  README.md ↔ README.zh-CN.md and
+#                           docs/GUIDE.md ↔ docs/GUIDE.zh-CN.md have the same
+#                           heading tree, so a section can never exist in one
+#                           language and silently not the other
+#
+# Neither script fetches anything or needs node_modules, so there is no `npm ci`
+# and no network: the job is a few seconds. It is a separate workflow from CI so
+# a typo in a doc never queues behind the build, and the paths filter keeps it
+# off code-only PRs.
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "**/*.md"
+      - "scripts/check-md-links.mjs"
+      - "scripts/check-readme-drift.mjs"
+      - ".github/workflows/docs-check.yml"
+  pull_request:
+    paths:
+      - "**/*.md"
+      - "scripts/check-md-links.mjs"
+      - "scripts/check-readme-drift.mjs"
+      - ".github/workflows/docs-check.yml"
+  workflow_dispatch:
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Relative links resolve
+        run: node scripts/check-md-links.mjs
+
+      - name: English ↔ Chinese heading trees match
+        run: node scripts/check-readme-drift.mjs
