@@ -10,6 +10,8 @@ import {
   resolveSandboxMode,
   type SandboxMode,
 } from "./mode.js";
+// Type-only: no runtime dependency from the sandbox layer on the web layer.
+import type { CapabilityProfile } from "../web/capabilities.js";
 
 export interface SandboxSpec {
   mode: SandboxMode;
@@ -133,6 +135,20 @@ export function untrustedSurfaceMode(): SandboxMode {
   }
   // Enforceable: never looser than workspace-write, but honour a stricter pin.
   return env === "read-only" ? "read-only" : "workspace-write";
+}
+
+/**
+ * The confinement a capability profile runs under (T-13).
+ *
+ * Only the owner at their own keyboard gets the environment default (which is
+ * `danger-full-access` unless they pinned something stricter) — typing into
+ * Lisa's REPL is the same trust posture as typing into a shell. Every other
+ * profile is processing input the owner did not type, so it gets the
+ * untrusted-surface mode. `untrustedSurfaceMode()` stays exported and remains
+ * the fallback for any call site that has not declared a profile yet.
+ */
+export function sandboxModeForProfile(profile: CapabilityProfile): SandboxMode {
+  return profile === "local-owner" ? resolveSandboxMode() : untrustedSurfaceMode();
 }
 
 /** Test hook — the one-time unenforceable warning. */
