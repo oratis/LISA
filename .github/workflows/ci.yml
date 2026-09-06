@@ -49,3 +49,31 @@ jobs:
           if find dist -name '*.test.js' | grep -q .; then
             echo "::error ::test files leaked into dist/"; exit 1
           fi
+
+  # Coverage is a single-version job: the numbers do not differ across the Node
+  # matrix, and running c8 three times would triple CI time for one report.
+  coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install
+        run: npm ci
+
+      - name: Test with coverage
+        run: npm run test:coverage
+
+      - name: Upload lcov
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lcov
+          path: coverage/lcov.info
+          if-no-files-found: error
+          retention-days: 14
