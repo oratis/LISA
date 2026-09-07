@@ -478,3 +478,70 @@ describe("keyboard shortcuts (UX-11)", () => {
     }
   });
 });
+
+// ── dispatch cards must not call an unknown outcome "Done" ──────────────────
+//
+// The ledger records an observed exit (#365) and DispatchView carries a
+// classified `status`. The dashboard rendered `d.alive ? 'Running' : 'Done'`,
+// so a crash, an OOM kill, `exit 127` and a clean finish were one green
+// "Done" — the card actively asserted success the server never observed.
+//
+// Extract dispatchState() from the exact bytes the browser gets and run it.
+const DISPATCH_STATE_SRC = MAIN_CLIENT_JS.slice(
+  MAIN_CLIENT_JS.indexOf("function dispatchState(d) {"),
+  MAIN_CLIENT_JS.indexOf("function taskCardHTML(d) {"),
+);
+
+function dispatchState(d: unknown): { cls: string; label: string } {
+  const ctx = createContext({});
+  runInContext(`${DISPATCH_STATE_SRC}; globalThis.__f = dispatchState;`, ctx);
+  const out = (ctx as { __f: (x: unknown) => { cls: string; label: string } }).__f(d);
+  // Rebuild in this realm: the vm's object has a different Object.prototype,
+  // which deepStrictEqual rejects even when the fields match.
+  return { cls: out.cls, label: out.label };
+}
+
+describe("dispatch card status", () => {
+  test("the source really was extracted", () => {
+    assert.ok(DISPATCH_STATE_SRC.includes("case 'failed'"), "dispatchState not found in the served bytes");
+  });
+
+  test("each server status maps to its own label and colour class", () => {
+    assert.deepEqual(dispatchState({ status: "running" }), { cls: "working", label: "Running" });
+    assert.deepEqual(dispatchState({ status: "ok" }), { cls: "done", label: "Done" });
+    assert.deepEqual(dispatchState({ status: "unknown" }), {
+      cls: "waiting",
+      label: "Exited · status unknown",
+    });
+  });
+
+  test("a failure names the exit code or the signal", () => {
+    assert.deepEqual(dispatchState({ status: "failed", exitCode: 127 }), {
+      cls: "error",
+      label: "Failed · exit 127",
+    });
+    assert.deepEqual(dispatchState({ status: "failed", exitSignal: "SIGKILL" }), {
+      cls: "error",
+      label: "Killed · SIGKILL",
+    });
+    assert.equal(dispatchState({ status: "failed" }).label, "Failed");
+  });
+
+  test("exit 0 is not confused with a failure, and exit 127 is not confused with success", () => {
+    assert.equal(dispatchState({ status: "ok", exitCode: 0 }).cls, "done");
+    assert.equal(dispatchState({ status: "failed", exitCode: 127 }).cls, "error");
+  });
+
+  test("a pre-status backend degrades to unknown, never to Done", () => {
+    // The whole point: `alive: false` alone is not evidence of success.
+    assert.deepEqual(dispatchState({ alive: true }), { cls: "working", label: "Running" });
+    const exited = dispatchState({ alive: false });
+    assert.equal(exited.cls, "waiting");
+    assert.notEqual(exited.label, "Done");
+    assert.notEqual(exited.cls, "done");
+  });
+
+  test("an unrecognised status is treated as unknown, not silently as success", () => {
+    assert.notEqual(dispatchState({ status: "banana", alive: false }).cls, "done");
+  });
+});

@@ -4266,9 +4266,30 @@ if ('serviceWorker' in navigator) {
       '<div class="ac-desc">' + (act ? esc(act) : 'no recent activity') + '</div>' +
       '</div>';
   }
+  // A dead pid says nothing about success: dispatched agents are detached, so a
+  // crash, an OOM kill and a clean finish are indistinguishable from the pid
+  // alone. The server sends a classified `status` (running | ok | failed |
+  // unknown); `alive` is the fallback for a pre-status backend, and there an
+  // exited dispatch is UNKNOWN, never "Done".
+  function dispatchState(d) {
+    switch (d && d.status) {
+      case 'running': return { cls: 'working', label: 'Running' };
+      case 'ok': return { cls: 'done', label: 'Done' };
+      case 'failed': return {
+        cls: 'error',
+        label: d.exitSignal ? 'Killed · ' + d.exitSignal
+          : (typeof d.exitCode === 'number' ? 'Failed · exit ' + d.exitCode : 'Failed'),
+      };
+      case 'unknown': return { cls: 'waiting', label: 'Exited · status unknown' };
+      default: return d && d.alive
+        ? { cls: 'working', label: 'Running' }
+        : { cls: 'waiting', label: 'Exited · status unknown' };
+    }
+  }
   function taskCardHTML(d) {
+    var st = dispatchState(d);
     return '<div class="ac">' +
-      '<div class="ac-top"><span>' + esc(d.agent || 'dispatch') + '</span><span class="ac-status ' + (d.alive ? 'working' : 'done') + '">' + (d.alive ? 'Running' : 'Done') + '</span></div>' +
+      '<div class="ac-top"><span>' + esc(d.agent || 'dispatch') + '</span><span class="ac-status ' + st.cls + '">' + esc(st.label) + '</span></div>' +
       '<div class="ac-title">' + esc(String(d.task || 'task').slice(0, 80)) + '</div>' +
       '<div class="ac-meta">' + esc(d.cwd ? String(d.cwd).split('/').pop() : 'dispatch') + '</div>' +
       '</div>';
