@@ -36,6 +36,13 @@ enum LisaError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .notConfigured: return "Not paired yet — add your Mac in Settings."
+        case .http(403):
+            // Hosted Lisa denies the machine-level routes (push, dispatch,
+            // mail, consent, devices — CLOUD_DENIED_ROUTE_PREFIXES in
+            // src/web/capabilities.ts). "HTTP 403" told the user nothing about
+            // why registering a push destination silently never worked.
+            return "This Lisa won't do that (403). Hosted Lisa keeps machine-level "
+                 + "features — push, dispatch, mail — on your own Mac; pair with it instead."
         case .http(let code): return "Server returned HTTP \(code)."
         case .decode: return "Couldn't read the server response."
         case .unsupportedAPIVersion(let version):

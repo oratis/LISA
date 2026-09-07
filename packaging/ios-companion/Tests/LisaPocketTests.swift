@@ -418,4 +418,54 @@ final class LisaPocketTests: XCTestCase {
         XCTAssertNil(GoogleSignIn.redirectScheme(clientId: "123-abc.example.com"))
         XCTAssertNil(GoogleSignIn.redirectScheme(clientId: ""))
     }
+
+    // ── DispatchKind — a dead pid is not the same as a clean finish ──────────
+    private func dispatch(status: String?, alive: Bool, exitCode: Int? = nil,
+                          exitSignal: String? = nil) -> DispatchView {
+        DispatchView(id: "d1", agent: "claude", pid: 42, cwd: "/p", task: "t",
+                     startedAt: "1970-01-01T00:00:00.000Z", alive: alive, hasLog: false,
+                     status: status, exitCode: exitCode, exitSignal: exitSignal, exitedAt: nil)
+    }
+
+    func testDispatchKindFromServerStatus() {
+        XCTAssertEqual(dispatch(status: "running", alive: true).kind, .running)
+        XCTAssertEqual(dispatch(status: "ok", alive: false).kind, .ok)
+        XCTAssertEqual(dispatch(status: "failed", alive: false).kind, .failed)
+        XCTAssertEqual(dispatch(status: "unknown", alive: false).kind, .unknown)
+    }
+
+    func testDispatchKindFallsBackForAPreStatusServer() {
+        // An older backend sends only `alive`. Never infer success from it: the
+        // agent is detached, so a crash and a clean finish look identical.
+        XCTAssertEqual(dispatch(status: nil, alive: true).kind, .running)
+        XCTAssertEqual(dispatch(status: nil, alive: false).kind, .unknown)
+        XCTAssertNotEqual(dispatch(status: nil, alive: false).kind, .ok)
+    }
+
+    func testDispatchKindIgnoresAnUnrecognisedStatus() {
+        XCTAssertEqual(dispatch(status: "banana", alive: false).kind, .unknown)
+    }
+
+    func testDispatchDetailNamesTheExitCodeOrSignal() {
+        let failed = dispatch(status: "failed", alive: false, exitCode: 127)
+        XCTAssertEqual(DispatchDetailView.detailStatus(nil, entry: failed), "failed (exit 127)")
+
+        let killed = dispatch(status: "failed", alive: false, exitSignal: "SIGKILL")
+        XCTAssertEqual(DispatchDetailView.detailStatus(nil, entry: killed), "killed by SIGKILL")
+
+        let ok = dispatch(status: "ok", alive: false, exitCode: 0)
+        XCTAssertEqual(DispatchDetailView.detailStatus(nil, entry: ok), "finished (exit 0)")
+
+        let unknown = dispatch(status: nil, alive: false)
+        XCTAssertEqual(DispatchDetailView.detailStatus(nil, entry: unknown),
+                       "exited — status not captured")
+    }
+
+    func testEveryDispatchKindSpeaksItsStateForVoiceOver() {
+        // The dot's colour carries no information for VoiceOver, so each state
+        // must be distinguishable in words alone.
+        let spoken = [DispatchKind.running, .ok, .failed, .unknown].map(\.accessibleLabel)
+        XCTAssertEqual(Set(spoken).count, 4, "each state needs its own spoken label")
+        XCTAssertFalse(spoken.contains { $0.isEmpty })
+    }
 }

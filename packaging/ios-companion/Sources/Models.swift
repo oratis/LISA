@@ -92,6 +92,52 @@ struct DispatchView: Codable, Identifiable, Hashable {
     var startedAt: String
     var alive: Bool
     var hasLog: Bool
+    /// running | ok | failed | unknown. Optional so an older server (which
+    /// sent only `alive`) still decodes; `kind` falls back to alive then.
+    var status: String?
+    var exitCode: Int?
+    var exitSignal: String?
+    var exitedAt: String?
+
+    var kind: DispatchKind { DispatchKind(status, alive: alive) }
+}
+
+/// What actually happened to a dispatch.
+///
+/// `alive: false` on its own says nothing about success — the agent is spawned
+/// detached, so a crash, an OOM kill and a clean finish are indistinguishable
+/// from the pid. The roster used to render all three as one grey "exited".
+enum DispatchKind {
+    case running, ok, failed, unknown
+
+    init(_ raw: String?, alive: Bool) {
+        switch raw {
+        case "running": self = .running
+        case "ok": self = .ok
+        case "failed": self = .failed
+        case "unknown": self = .unknown
+        default: self = alive ? .running : .unknown   // pre-status server
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .running: return "running"
+        case .ok: return "finished"
+        case .failed: return "failed"
+        case .unknown: return "status unknown"
+        }
+    }
+
+    /// Spoken by VoiceOver — the dot's colour is not available to it.
+    var accessibleLabel: String {
+        switch self {
+        case .running: return "running"
+        case .ok: return "finished successfully"
+        case .failed: return "failed"
+        case .unknown: return "exited, status not captured"
+        }
+    }
 }
 
 struct DispatchListResponse: Codable {
@@ -107,6 +153,12 @@ struct DispatchStatus: Codable {
     var startedAt: String?
     var alive: Bool?
     var tail: String?
+    var status: String?
+    var exitCode: Int?
+    var exitSignal: String?
+    var exitedAt: String?
+
+    var kind: DispatchKind { DispatchKind(status, alive: alive ?? false) }
 }
 
 struct IslandPing: Codable {
