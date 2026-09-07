@@ -34,7 +34,22 @@ const PLIST_PATH = path.join(
   "LaunchAgents",
   `${PLIST_LABEL}.plist`,
 );
-const AUTOSTART_LOG = path.join(lisaGlobalHome(), "autostart.log");
+/**
+ * Two logs, on purpose (T-6). The process writes its own operational log to
+ * SERVE_LOG via LISA_LOG_FILE, where src/log.ts rotates it at 10 MB × 5 —
+ * launchd rotates nothing, and the v0.24 review found multi-hundred-MB
+ * autostart.log files on daily-driver machines. launchd's own capture is
+ * aimed at a *separate* file so it only collects what escapes the logger
+ * (crash stacks, node warnings, third-party console output) and stays small.
+ * They are computed at call time, not at module load, so LISA_HOME still
+ * decides the location.
+ */
+function serveLogPath(): string {
+  return path.join(lisaGlobalHome(), "serve.log");
+}
+function launchdLogPath(): string {
+  return path.join(lisaGlobalHome(), "serve.launchd.log");
+}
 
 /** The `serve …` argv tail that the agent launches. Exported for testing. */
 export function serveArgs(opts: AutostartOptions): string[] {
@@ -57,7 +72,8 @@ export async function installAutostart(
     const plist = renderPlist({
       label: PLIST_LABEL,
       argv: programArgv,
-      logPath: AUTOSTART_LOG,
+      logPath: launchdLogPath(),
+      env: { LISA_LOG_FILE: serveLogPath() },
     });
     await fs.mkdir(path.dirname(PLIST_PATH), { recursive: true });
     await atomicWrite(PLIST_PATH, plist);
@@ -79,7 +95,8 @@ export async function installAutostart(
       instructions: [
         `Wrote launchd agent: ${PLIST_PATH}`,
         `  runs:  ${[binPath, ...tail].join(" ")}`,
-        `  log:   ${AUTOSTART_LOG}`,
+        `  log:   ${serveLogPath()} (rotated by Lisa at 10MB, 5 kept)`,
+        `  raw:   ${launchdLogPath()} (crash output launchd captures directly)`,
         `  when:  at login + restarts if it exits (KeepAlive)`,
         ``,
         opts.load
@@ -159,7 +176,8 @@ export async function autostartStatus(): Promise<string> {
   return [
     `Autostart: installed (${PLIST_PATH})`,
     `  loaded in launchd: ${loaded ? "yes — running / will run at login" : "no — run `launchctl load -w " + PLIST_PATH + "`"}`,
-    `  log: ${AUTOSTART_LOG}`,
+    `  log: ${serveLogPath()} (rotated at 10MB, 5 kept)`,
+    `  raw: ${launchdLogPath()}`,
   ].join("\n");
 }
 
@@ -167,10 +185,23 @@ export async function autostartStatus(): Promise<string> {
 export function renderPlist(opts: {
   label: string;
   argv: string[];
+  /** Where launchd itself captures stdout/stderr (NOT the rotated main log). */
   logPath: string;
+  /** Extra EnvironmentVariables entries, merged over the PATH default. */
+  env?: Record<string, string>;
 }): string {
   const argvXml = opts.argv
     .map((a) => `        <string>${escapeXml(a)}</string>`)
+    .join("\n");
+  const envEntries: Record<string, string> = {
+    PATH: "/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin",
+    ...opts.env,
+  };
+  const envXml = Object.entries(envEntries)
+    .map(
+      ([k, v]) =>
+        `        <key>${escapeXml(k)}</key>\n        <string>${escapeXml(v)}</string>`,
+    )
     .join("\n");
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -192,8 +223,7 @@ ${argvXml}
     <string>${opts.logPath}</string>
     <key>EnvironmentVariables</key>
     <dict>
-        <key>PATH</key>
-        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+${envXml}
     </dict>
 </dict>
 </plist>

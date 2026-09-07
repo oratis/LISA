@@ -5,6 +5,7 @@ import { sessionsDir } from "../paths.js";
 import { appendLine, ensureDir } from "../fs-utils.js";
 import { resolveSandboxMode, type SandboxMode } from "../sandbox/mode.js";
 import type { SessionEntry, SessionHeader, StoredMessage } from "../types.js";
+import { jsonlLines, tailLines } from "./jsonl.js";
 
 /** Content hash of a system prompt — the identity of a `prompt` entry. */
 export function promptFingerprint(text: string): string {
@@ -35,13 +36,32 @@ export class SessionStore {
     this.lastPromptFingerprint = lastPromptFingerprint;
   }
 
+  /**
+   * Open an existing session. Streamed (T-5): only the header and the newest
+   * prompt fingerprint are wanted, so a long conversation must not be
+   * materialized as one string plus an array of every line to get them.
+   */
   static async open(id: string): Promise<SessionStore> {
     const file = path.join(sessionsDir(), `${id}.jsonl`);
-    const raw = await fs.readFile(file, "utf8");
-    const lines = raw.split("\n").filter(Boolean);
-    if (lines.length === 0) throw new Error(`session ${id} is empty`);
-    const header = JSON.parse(lines[0]!) as SessionHeader;
-    return new SessionStore(id, file, header, lastPromptFingerprintIn(lines));
+    let header: SessionHeader | null = null;
+    let fingerprint: string | undefined;
+    for await (const line of jsonlLines(file)) {
+      if (!header) {
+        header = JSON.parse(line) as SessionHeader;
+        continue;
+      }
+      try {
+        const entry = JSON.parse(line) as Partial<SessionEntry>;
+        // Keep the LAST one seen — same answer as the old backwards scan.
+        if (entry.type === "prompt" && "fingerprint" in entry) {
+          fingerprint = entry.fingerprint as string;
+        }
+      } catch {
+        // Skip a torn line rather than failing the whole open.
+      }
+    }
+    if (!header) throw new Error(`session ${id} is empty`);
+    return new SessionStore(id, file, header, fingerprint);
   }
 
   static async create(opts: {
@@ -121,24 +141,45 @@ export class SessionStore {
     await appendLine(this.path, JSON.stringify(entry));
   }
 
+  /**
+   * The newest durable reflection. Reflections are appended, so the answer is
+   * almost always inside the last few KB — read a bounded tail first and only
+   * fall back to a streamed full scan when the tail didn't cover the file and
+   * held no reflection (T-5).
+   */
   async readLatestReflection(): Promise<string | undefined> {
-    const raw = await fs.readFile(this.path, "utf8");
-    const lines = raw.split("\n").filter(Boolean).slice(1);
-    for (let index = lines.length - 1; index >= 0; index--) {
+    const summaryOf = (line: string): string | undefined => {
       try {
-        const entry = JSON.parse(lines[index]!) as Partial<SessionEntry>;
-        if (
-          entry.type === "reflection" &&
-          "summary" in entry &&
-          typeof entry.summary === "string"
-        ) {
+        const entry = JSON.parse(line) as Partial<SessionEntry>;
+        if (entry.type === "reflection" && "summary" in entry && typeof entry.summary === "string") {
           return entry.summary;
         }
       } catch {
         // Skip a corrupt line and keep searching older durable reflections.
       }
+      return undefined;
+    };
+
+    let tail: { lines: string[]; complete: boolean };
+    try {
+      tail = await tailLines(this.path);
+    } catch {
+      return undefined;
     }
-    return undefined;
+    for (let i = tail.lines.length - 1; i >= 0; i--) {
+      // The header is line 0 only when the tail covers the whole file; it can
+      // never parse as a reflection, so no special-casing is needed.
+      const found = summaryOf(tail.lines[i]!);
+      if (found !== undefined) return found;
+    }
+    if (tail.complete) return undefined;
+
+    let latest: string | undefined;
+    for await (const line of jsonlLines(this.path)) {
+      const found = summaryOf(line);
+      if (found !== undefined) latest = found;
+    }
+    return latest;
   }
 
   /**
@@ -149,19 +190,37 @@ export class SessionStore {
     page: number,
     pageSize = 20,
   ): Promise<{ messages: StoredMessage[]; hasMore: boolean }> {
-    const raw = await fs.readFile(this.path, "utf8");
-    const lines = raw.split("\n").filter(Boolean).slice(1); // skip header
-    const msgLines = lines.filter((l) => {
-      try { return JSON.parse(l).type === "message"; } catch { return false; }
-    });
-    const total = msgLines.length;
-    // newest page first: take from the end
+    // Streamed with a bounded ring (T-5). The page is taken from the END, so
+    // only the newest (page+1)*pageSize message lines can ever be needed:
+    // keep exactly that many and drop the rest as we go, instead of building
+    // an array of every line in the file and slicing it.
+    const keep = Math.max(0, (page + 1) * pageSize);
+    if (keep === 0) return { messages: [], hasMore: false };
+    const ring: StoredMessage[] = [];
+    let total = 0;
+    let first = true;
+    for await (const line of jsonlLines(this.path)) {
+      if (first) {
+        first = false;
+        continue; // header
+      }
+      let entry: { type?: string; message?: StoredMessage };
+      try {
+        entry = JSON.parse(line) as { type?: string; message?: StoredMessage };
+      } catch {
+        continue;
+      }
+      if (entry.type !== "message" || !entry.message) continue;
+      total++;
+      ring.push(entry.message);
+      if (ring.length > keep) ring.shift();
+    }
     const end = total - page * pageSize;
-    const start = Math.max(0, end - pageSize);
     if (end <= 0) return { messages: [], hasMore: false };
-    const slice = msgLines.slice(start, end);
-    const messages = slice.map((l) => (JSON.parse(l) as { type: "message"; message: StoredMessage }).message);
-    return { messages, hasMore: start > 0 };
+    const start = Math.max(0, end - pageSize);
+    // `ring` holds the last `keep` messages, i.e. indices [total-ring.length, total).
+    const base = total - ring.length;
+    return { messages: ring.slice(start - base, end - base), hasMore: start > 0 };
   }
 }
 

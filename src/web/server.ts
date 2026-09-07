@@ -189,11 +189,27 @@ import {
   verificationUrl,
 } from "./public-origin.js";
 import {
+  autonomyProfileForEdition,
   capabilityProfileForEdition,
   isCloudDeniedRoute,
   toolsForCapabilityProfile,
   isNonCanonicalPath,
 } from "./capabilities.js";
+import { applySecurityHeaders } from "./security-headers.js";
+import { configStatusPayload, parseConfigSave } from "./config-api.js";
+import { attachSseHeartbeat } from "./sse.js";
+import {
+  EventLoopMonitor,
+  healthPayload,
+  publicHealthPayload,
+  watchdogThresholdFromEnv,
+} from "./health.js";
+import {
+  buildNonInteractiveApprovalCallback,
+  buildRuntimePolicy,
+  type RuntimePolicy,
+} from "../runtime-policy.js";
+import { DEFAULT_MUTATING_ACTIONS, DEFAULT_MUTATING_TOOLS } from "../approval.js";
 import type { ToolDefinition, StoredMessage } from "../types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -222,6 +238,14 @@ export interface WebServerOptions {
   host?: string;
   /** PreToolUse/PostToolUse hook specs from loaded plugins. */
   hooks?: HookSpec[];
+  /**
+   * How this surface behaves (T-7). Built once in cli.ts and honoured here:
+   * reflection scheduling, approval gating, compaction/thinking on the turn,
+   * and which capability profile filters the tools. Omitted (older callers and
+   * most tests) ⇒ derived from the remaining options, so behaviour is
+   * unchanged without one.
+   */
+  policy?: RuntimePolicy;
 }
 
 interface AdvisorCardSuggestion {
@@ -235,6 +259,23 @@ interface AdvisorCardSuggestion {
 interface AdvisorCardState {
   suggestions: AdvisorCardSuggestion[];
   at: string;
+}
+
+/**
+ * Does an If-None-Match header select `etag`? Handles the comma list and the
+ * `*` wildcard, and compares weakly (RFC 9110 §13.1.2 — weak comparison is
+ * what If-None-Match specifies), so a proxy that strips or adds the `W/`
+ * prefix still gets its 304.
+ */
+export function etagMatches(header: string | string[] | undefined, etag: string): boolean {
+  if (!header) return false;
+  const raw = Array.isArray(header) ? header.join(",") : header;
+  const strip = (v: string) => v.trim().replace(/^W\//, "");
+  const want = strip(etag);
+  return raw.split(",").some((candidate) => {
+    const c = candidate.trim();
+    return c === "*" || strip(c) === want;
+  });
 }
 
 /** True for loopback peer/bind addresses (v4, v6, and v4-mapped-v6 forms). */
@@ -418,8 +459,40 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   const publicOrigin = cloudEdition
     ? requireCloudPublicOrigin()
     : configuredPublicOrigin() ?? `http://localhost:${opts.port}`;
-  const capabilityProfile = capabilityProfileForEdition(cloudEdition ? "cloud" : "mac");
+  // The policy is the single source of truth for surface behaviour. Derived
+  // from the legacy options when a caller doesn't build one, so an omitted
+  // policy reproduces the pre-T-7 behaviour exactly.
+  const policy: RuntimePolicy =
+    opts.policy ??
+    buildRuntimePolicy({
+      subcommand: "serve",
+      serveWeb: true,
+      reflect: opts.reflect,
+      thinking: opts.thinking,
+      compaction: false,
+      approval: "auto",
+    });
+  const capabilityProfile = policy.capabilities;
   const runtimeTools = toolsForCapabilityProfile(opts.tools, capabilityProfile);
+  // Lisa's own unattended work declares its OWN profile (T-13) rather than
+  // inheriting the caller's. On the cloud edition that is cloud-autonomy: the
+  // sweep used to hand runDesireReviewOnce `opts.tools` — the process's FULL
+  // registry, shell and filesystem included — while chat on the same process
+  // got the filtered set. Autonomy must never exceed what the surface's own
+  // user could ask for by hand (INVARIANTS §权限与工具 1/3).
+  const autonomyProfile = autonomyProfileForEdition(cloudEdition ? "cloud" : "mac");
+  const autonomyTools = toolsForCapabilityProfile(opts.tools, autonomyProfile);
+  // Non-interactive by construction: a server has no terminal to prompt at, so
+  // `--approval ask` denies rather than hanging on a stdin read. undefined when
+  // the mode is "auto", which keeps the fast path allocation-free.
+  const webApproval = buildNonInteractiveApprovalCallback(
+    {
+      mode: policy.approval,
+      mutatingTools: DEFAULT_MUTATING_TOOLS,
+      mutatingActions: DEFAULT_MUTATING_ACTIONS,
+    },
+    logWarn,
+  );
   // Account sessions (PLAN_ACCOUNTS_BILLING B1): the signing secret lives in
   // $lisaHome() (auto-created 0600; durable on the cloud's /data mount). Only the
   // cloud edition mints/verifies account sessions today — the Mac edition gains
@@ -601,10 +674,11 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   const runBirth = async (
     uid: string | null,
     emit: (log: { step: string; detail: string }) => void,
+    signal?: AbortSignal,
   ): Promise<void> => {
     const { birth, BirthInferenceError } = await import("../soul/birth.js");
     if (!cloudEdition || !uid) {
-      await birth({ model: opts.model, onStep: emit });
+      await birth({ model: opts.model, onStep: emit, signal });
       return;
     }
     const acct = await getAccount(uid);
@@ -616,7 +690,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     }
     try {
       try {
-        const result = await birth({ model: opts.model, onStep: emit });
+        const result = await birth({ model: opts.model, onStep: emit, signal });
         await admission.permit.settle("birth", result.usage);
       } catch (err) {
         if (err instanceof BirthInferenceError) {
@@ -666,13 +740,18 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // `broadcast({...})` call sites below need no per-site change.
   const broadcast = (event: object, origin: string | null = scopedUid()) =>
     eventClients.broadcast(event, origin);
-  moodBus.on("mood", (slug) => broadcast({ type: "mood", slug }));
+  // Kept as named handlers so server.close() can detach them: the mood bus is
+  // process-wide and outlives a server instance (tests boot several).
+  const onMoodEvent = (slug: string) => broadcast({ type: "mood", slug });
+  moodBus.on("mood", onMoodEvent);
   // Surface "thinking" to long-lived viewers (web GUI, island widget). Each
   // event is one tick — surfaces toggle their own indicator. Multiple
   // concurrent turns (e.g. heartbeat + user) overlap; first chatStart wins
   // the visual, last chatEnd clears it. Best-effort.
-  moodBus.on("chat_start", () => broadcast({ type: "chat_start" }));
-  moodBus.on("chat_end", () => broadcast({ type: "chat_end" }));
+  const onChatStart = () => broadcast({ type: "chat_start" });
+  const onChatEnd = () => broadcast({ type: "chat_end" });
+  moodBus.on("chat_start", onChatStart);
+  moodBus.on("chat_end", onChatEnd);
 
   // ── Cross-agent orchestration hub (O1) ──────────────────────────────
   // The hub fans out over every enabled integration (Claude Code today;
@@ -713,7 +792,13 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       });
     }
   });
-  void hub.start();
+  // Not awaited: observers attach in the background so the listener is up
+  // immediately. The promise is kept so shutdown can wait for the attach to
+  // finish before stopping — stop() during start() would orphan whichever
+  // observer was still being created (and its retry timer).
+  const hubStarted = hub.start().catch((err: unknown) => {
+    logError(`[orchestrator] start failed: ${(err as Error).message}`);
+  });
   // Expose the live hub to the advise_now tool (same process).
   setCurrentHub(hub);
 
@@ -839,9 +924,10 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // NEW mail; for items at/above the alert level, fire a high-priority push +
   // a proactive chat message. Inert without consent + an account.
   const mailPollMin = pollMinutes();
+  let mailPoll: NodeJS.Timeout | null = null;
   if (mailPollMin > 0) {
     let mailPollRunning = false;
-    const mailPoll = setInterval(() => {
+    mailPoll = setInterval(() => {
       void (async () => {
         if (mailPollRunning || !isGranted("mail")) return;
         if (loadAccounts().filter((a) => a.enabled).length === 0) return;
@@ -940,10 +1026,14 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   const voiceSource = new VoiceSource();
   senseService.register(new ScreenSource());
   senseService.register(voiceSource);
-  void senseService.start((e) => {
-    appendSenseEvent(e);
-    broadcast({ type: "sense_event", ...e });
-  });
+  const senseStarted = senseService
+    .start((e) => {
+      appendSenseEvent(e);
+      broadcast({ type: "sense_event", ...e });
+    })
+    .catch((err: unknown) => {
+      logError(`[sense] start failed: ${(err as Error).message}`);
+    });
 
   // ── Island unread tracking (Phase 1 of MAC_ISLAND_PLAN) ─────────────
   // The island widget caches "last idle_message" so a fresh tab opening
@@ -958,8 +1048,10 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // to run first, before the dream mutates history with its own "[while you were
   // away]" note. Without this the guard is asymmetric — the scheduler blocks
   // reflect-during-dream, but a dream could still start mid-reflect.
+  let idleWatcher: ReturnType<typeof getIdleWatcher> | null = null;
   if (opts.idleMinutes && opts.idleMinutes > 0) {
     const watcher = getIdleWatcher(opts.idleMinutes * 60_000);
+    idleWatcher = watcher;
     watcher.on("idle", async () => {
       if (globalChat.activity.idleRunning || globalChat.activity.reflecting) return;
       // Capture the ACTIVE ctx for the whole dream: if the user switches
@@ -1060,7 +1152,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // Gates intra-session desire focus: unlike reflectClock.idleFor() — which reads
   // "fresh" right after a launchd restart — this stays 0 across a restart, so a
   // stale resumed conversation can't pin a focus. Stamped in the POST /chat path.
-  const reflectTimer = setInterval(() => {
+  // Only the "scheduled" mode gets a background heartbeat. "manual" keeps the
+  // POST /reflect route and nothing else; "off" refuses both.
+  const reflectTimer: NodeJS.Timeout | null = policy.reflection !== "scheduled" ? null : setInterval(() => {
     // Capture the ACTIVE ctx for this reflection: the summary must land in
     // the session it reflects, even if the user switches mid-flight (F6).
     const ctx = globalChat;
@@ -1103,11 +1197,31 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     })();
   }, REFLECT_CHECK_INTERVAL_MS);
   // Don't let the reflection heartbeat keep the process alive on its own.
-  reflectTimer.unref();
+  reflectTimer?.unref();
+
+  // ── Event-loop lag monitor + self-watchdog (T-3) ─────────────────────────
+  // Samples loop delay continuously; /health reads the last window, a lag
+  // WARNING lands in the log as it happens, and a sustained multi-second p99
+  // exits the process for the supervisor to restart. See health.ts.
+  const watchdogLagMs = watchdogThresholdFromEnv();
+  const loopMonitor = new EventLoopMonitor({ watchdogMs: watchdogLagMs }).start();
+  const healthCounters = () => {
+    let pendingTurns = 0;
+    for (const n of ctxTurns.values()) pendingTurns += n;
+    return {
+      tenants: tenantRuntimes.stats().entries,
+      pending_turns: pendingTurns,
+      sessions: sessionCtxs.size,
+    };
+  };
 
   const server = http.createServer(async (req, res) => {
     const url = req.url ?? "/";
     applyApiVersionHeader(url, res);
+    // T-10: every response — HTML shell, JSON, SSE, assets, 404s — carries the
+    // baseline hardening headers. Set before any route so writeHead() merges
+    // them in rather than a route having to remember.
+    applySecurityHeaders(res);
 
     // Every routing decision below — the cloud deny-list, denyRemote(), each
     // handler's own startsWith/=== — reads this raw url, but isCloudDeniedRoute
@@ -1123,9 +1237,39 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // Liveness probe (pre-gate, unauthenticated): uptime checks and platform
     // health probes land here. Deliberately no I/O and no dependencies — a 200
     // means "the process is serving requests", nothing more.
-    if (req.method === "GET" && (url === "/health" || url === "/healthz")) {
+    if (req.method === "GET" && url === "/healthz") {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+    // Health detail (pre-gate, unauthenticated, still no I/O): version, uptime,
+    // event-loop lag percentiles, heap/RSS and the live tenant / turn / session
+    // counters — what an operator needs to tell "slow" from "down". Always 200:
+    // `ok:false` means "lagging", not "dead"; /healthz is the liveness probe.
+    if (req.method === "GET" && url === "/health") {
+      const full = healthPayload(
+        loopMonitor,
+        healthCounters(),
+        cloudEdition ? "cloud" : "mac",
+        watchdogLagMs,
+      );
+      // Hosted edition: this endpoint faces the public internet from here, so
+      // the unauthenticated answer is health only. tenants / sessions /
+      // pending_turns are live usage metrics and heap / RSS / uptime expose
+      // restart and load patterns; none are needed to tell "lagging" from
+      // "fine". An authenticated caller gets the full payload further down,
+      // and /healthz is still the unauthenticated liveness probe.
+      // trustLoopback: false — the hosted container must never treat its own
+      // (or the proxy's) loopback as the owner, the same rule the gate below uses.
+      const healthAuthed = isRequestAuthorized(
+        req.socket.remoteAddress ?? "",
+        webToken,
+        presentedToken(req, url),
+        false,
+      );
+      const body = cloudEdition && !healthAuthed ? publicHealthPayload(full) : full;
+      res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+      res.end(JSON.stringify(body));
       return;
     }
 
@@ -1569,7 +1713,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         const report = await sweepUserAutonomy({
           ...(opts.model ? { model: opts.model } : {}),
           ...(maxRuns !== undefined ? { maxRuns } : {}),
-          tools: opts.tools,
+          tools: autonomyTools,
           cwd: process.cwd(),
         });
         logInfo(
@@ -2915,6 +3059,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         connection: "keep-alive",
       });
       res.write(`data: ${JSON.stringify({ type: "snapshot", text: initial })}\n\n`);
+      attachSseHeartbeat(req, res); // T-11 — an idle terminal is still a live stream
       const onOut = (e: { id: string; chunk: string }) => {
         if (e.id !== id) return;
         try {
@@ -3153,16 +3298,22 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         orientation: "any",
         background_color: "#0a0d2b",
         theme_color: "#0a0d2b",
-        // Real raster sizes, not sizes:"any". Chrome requires a 192 and a 512
-        // to treat the app as installable and picks by declared size; with
-        // "any" on a single non-square-declared PNG it fell back to a page
-        // screenshot on both Chrome and iOS. Both files are generated by
-        // scripts/optimize-assets.ts with the maskable safe-zone inset
-        // (art inside the central 80% circle), which is what lets one file
-        // serve purpose "any maskable".
+        // Real, declared sizes (T-12). `sizes: "any"` on a raster PNG makes
+        // Chrome and iOS treat the icon as unusable for the home screen and
+        // fall back to a screenshot of the page — which is the "the installed
+        // app has no icon" the v0.24 review recorded. The maskable variant is
+        // a SEPARATE file, not the same bytes relabelled: a maskable icon must
+        // carry its own safe-zone padding, and declaring an unpadded icon
+        // maskable gets its edges cropped by the platform's mask.
         icons: [
-          { src: "/assets/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any maskable" },
-          { src: "/assets/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any maskable" },
+          { src: "/assets/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+          { src: "/assets/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+          {
+            src: "/assets/icon-512-maskable.png",
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "maskable",
+          },
         ],
       }));
       return;
@@ -3182,7 +3333,8 @@ const CACHE = 'lisa-v9-icons';
 const ASSET_PATHS = ['/assets/lisa-mascot.png', '/assets/background-tile.png',
   '/assets/icon-soul.png', '/assets/icon-skill.png', '/assets/icon-memory.png',
   '/assets/icon-tool.png', '/assets/icon-send.png',
-  '/assets/icon-192.png', '/assets/icon-512.png', '/assets/apple-touch-icon.png'];
+  '/assets/icon-192.png', '/assets/icon-512.png', '/assets/icon-512-maskable.png',
+  '/assets/apple-touch-icon.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -3266,6 +3418,9 @@ self.addEventListener('fetch', (event) => {
       res.write(`data: ${JSON.stringify({ type: "hello", session: sessionId })}\n\n`);
       // Send current mood right away
       res.write(`data: ${JSON.stringify({ type: "mood", slug: moodBus.current() })}\n\n`);
+      // Keep-alive (T-11): /events can idle for minutes and every proxy in the
+      // path treats a silent socket as dead.
+      attachSseHeartbeat(req, res);
       // Pin this subscriber to the account it authenticated as (B2). null on the
       // Mac edition and the shared-token demo → one implicit user, sees all.
       const unsubscribe = eventClients.add(res, cloud ? accountUid : null);
@@ -3311,8 +3466,24 @@ self.addEventListener('fetch', (event) => {
       const { listSessionsOnDisk } = await import("../sessions/list.js");
       const { lisaSessionsResponse } = await import("./api-contract.js");
       const sessions = await listSessionsOnDisk();
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify(lisaSessionsResponse(sessions)));
+      const body = JSON.stringify(lisaSessionsResponse(sessions));
+      // ETag over the response body (T-4). The shell, the tab strip and the
+      // iOS roster all poll this; between polls the answer is usually
+      // byte-identical, and a 304 saves serializing and shipping it again.
+      // "no-cache" (not "no-store") is what makes a client revalidate rather
+      // than either caching blindly or never asking.
+      const etag = `W/"${crypto.createHash("sha1").update(body).digest("base64url")}"`;
+      if (etagMatches(req.headers["if-none-match"], etag)) {
+        res.writeHead(304, { etag, "cache-control": "no-cache" });
+        res.end();
+        return;
+      }
+      res.writeHead(200, {
+        "content-type": "application/json",
+        etag,
+        "cache-control": "no-cache",
+      });
+      res.end(body);
       return;
     }
 
@@ -3646,14 +3817,11 @@ self.addEventListener('fetch', (event) => {
     }
 
     if (req.method === "GET" && url === "/api/config/status") {
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(
-        JSON.stringify({
-          configured: !!process.env.ANTHROPIC_API_KEY,
-          anthropic: !!process.env.ANTHROPIC_API_KEY,
-          openai: !!process.env.OPENAI_API_KEY,
-        }),
-      );
+      // Reports EVERY provider Lisa can route (derived from the preset table),
+      // not just the two the popup used to know about. Never the key values —
+      // only whether each one is present.
+      res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+      res.end(JSON.stringify(configStatusPayload(opts.model)));
       return;
     }
 
@@ -3675,7 +3843,7 @@ self.addEventListener('fetch', (event) => {
       }
       const body = await readRequestText(req, res);
       if (body === null) return;
-      let payload: { anthropicKey?: unknown; openaiKey?: unknown };
+      let payload: unknown;
       try {
         payload = JSON.parse(body || "{}");
       } catch {
@@ -3683,30 +3851,16 @@ self.addEventListener('fetch', (event) => {
         res.end("bad json");
         return;
       }
-      const updates: Record<string, string> = {};
-      const anthropic = typeof payload.anthropicKey === "string" ? payload.anthropicKey.trim() : "";
-      const openai = typeof payload.openaiKey === "string" ? payload.openaiKey.trim() : "";
-      if (!anthropic && !openai) {
-        res.writeHead(400, { "content-type": "text/plain" });
-        res.end("no keys provided");
+      // Whitelist, not filter: an env name outside the closed set is a 400 and
+      // nothing is written. This endpoint writes into process.env, so anything
+      // less is an environment-injection surface (PATH, NODE_OPTIONS, …).
+      const parsed = parseConfigSave(payload);
+      if (!parsed.ok) {
+        res.writeHead(parsed.status, { "content-type": "text/plain" });
+        res.end(parsed.error);
         return;
       }
-      if (anthropic) {
-        if (!/^[\x21-\x7e]{20,}$/.test(anthropic)) {
-          res.writeHead(400, { "content-type": "text/plain" });
-          res.end("anthropic key looks malformed");
-          return;
-        }
-        updates.ANTHROPIC_API_KEY = anthropic;
-      }
-      if (openai) {
-        if (!/^[\x21-\x7e]{20,}$/.test(openai)) {
-          res.writeHead(400, { "content-type": "text/plain" });
-          res.end("openai key looks malformed");
-          return;
-        }
-        updates.OPENAI_API_KEY = openai;
-      }
+      const updates = parsed.updates;
       try {
         await saveConfigEnv(updates);
       } catch (err) {
@@ -3749,13 +3903,28 @@ self.addEventListener('fetch', (event) => {
       });
       const send = (event: object) =>
         res.write(`data: ${JSON.stringify(event)}\n\n`);
+      // T-11 — the dream can be silent for most of its 90 s deadline.
+      attachSseHeartbeat(req, res);
       // Join the single-flight run (S3). If the background lazy path started
       // the dream first, replay its transcript so the ceremony is complete,
       // then stream the remaining steps live.
       const key = scopedUid() ?? "local";
       const listener = (log: { step: string; detail: string }) =>
         send({ kind: "step", name: log.step, detail: log.detail });
-      const run = startBirthOnce(key, (emit) => runBirth(accountUid, emit));
+      // Cancellation (T-8): if the browser closes the stream, stop the dream —
+      // but ONLY when this request is the one that started it. The birth hub is
+      // single-flight, so a late watcher walking away must never abort the run
+      // other watchers (and the lazy background path) are still riding on.
+      const abortBirth = new AbortController();
+      let weStartedTheRun = false;
+      const run = startBirthOnce(key, (emit) => {
+        weStartedTheRun = true;
+        return runBirth(accountUid, emit, abortBirth.signal);
+      });
+      const onClose = () => {
+        if (weStartedTheRun && run.listeners.size <= 1) abortBirth.abort();
+      };
+      req.on("close", onClose);
       for (const log of run.steps) listener(log);
       run.listeners.add(listener);
       try {
@@ -3764,8 +3933,15 @@ self.addEventListener('fetch', (event) => {
         if (runtime) runtime.prompt = undefined; // pick the newborn soul up next turn
         send({ kind: "done", message: "she is alive" });
       } catch (err) {
-        send({ kind: "error", message: (err as Error).message });
+        // The frame carries a CODE the UI can branch on and a human message
+        // written by the classifier — never the provider's raw text, which can
+        // be a whole JSON error body.
+        const { classifyBirthError } = await import("../soul/birth.js");
+        const info = classifyBirthError(err);
+        logError(`[birth] failed (${info.code}): ${String((err as Error).message).slice(0, 200)}`);
+        send({ kind: "error", code: info.code, message: info.message, retryable: info.retryable });
       } finally {
+        req.off("close", onClose);
         run.listeners.delete(listener);
         res.end();
       }
@@ -3953,6 +4129,10 @@ self.addEventListener('fetch', (event) => {
         if (res.writableEnded || res.destroyed) return;
         res.write(`data: ${JSON.stringify(event)}\n\n`);
       };
+      // Keep-alive (T-11): a long tool call or a thinking model can leave this
+      // stream silent well past a proxy's idle timeout, and a reconnect drops
+      // the half-streamed answer.
+      const stopChatHeartbeat = attachSseHeartbeat(req, res);
       // Per-turn cancellation: if the client disconnects (taps Stop / closes the
       // app), abort THIS turn's agent so it stops burning tokens and the next
       // queued turn isn't stuck behind an abandoned run.
@@ -4016,7 +4196,11 @@ self.addEventListener('fetch', (event) => {
             userMessage: message,
             userFiles: files,
             model: opts.model,
-            thinking: opts.thinking,
+            thinking: policy.thinking,
+            compaction: policy.compaction,
+            // Approval gating on the web surface (T-7). undefined under
+            // "auto", so the default path is byte-identical to before.
+            approval: webApproval,
             // Pre-debit breaker (B4): a single turn can never burn past what
             // the account could pay for. Conservatively prices every token at
             // the output rate.
@@ -4122,6 +4306,7 @@ self.addEventListener('fetch', (event) => {
           if (!errorSent) send({ type: "error", message: (err as Error).message });
         } finally {
           moodBus.off("mood", onMood);
+          stopChatHeartbeat();
           res.end();
         }
       };
@@ -4145,6 +4330,13 @@ self.addEventListener('fetch', (event) => {
     }
 
     if (req.method === "POST" && url === "/reflect") {
+      // "off" means off on every path, not just the timer — otherwise
+      // --no-reflect would still let the UI trigger a model call.
+      if (policy.reflection === "off") {
+        res.writeHead(409, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "reflection_disabled" }));
+        return;
+      }
       let inferencePermit: InferencePermit | null = null;
       try {
         const acct = cloud && accountUid ? await getAccount(accountUid) : null;
@@ -4203,6 +4395,44 @@ self.addEventListener('fetch', (event) => {
     res.writeHead(404);
     res.end();
   });
-  server.listen(opts.port, host);
+
+  // Tear down everything that would otherwise outlive the listener: the
+  // schedulers' timers, the orchestrator hub (whose claude-code watcher holds a
+  // non-unref'd retry timer), the sense sources, the idle watcher and our
+  // mood-bus subscriptions. Registered on 'close' rather than exposed as a
+  // method so the returned http.Server keeps its ordinary lifecycle — callers
+  // (and tests) just server.close(). Idempotent by construction.
+  server.on("close", () => {
+    for (const t of [adviseTimer, mailTimer, mailKick, kbBriefTimer, kbBriefKick, mailPoll, reflectTimer]) {
+      if (t) clearTimeout(t);
+    }
+    if (screenTimer) {
+      clearInterval(screenTimer);
+      screenTimer = null;
+    }
+    loopMonitor.stop();
+    idleWatcher?.stop();
+    moodBus.off("mood", onMoodEvent);
+    moodBus.off("chat_start", onChatStart);
+    moodBus.off("chat_end", onChatEnd);
+    void (async () => {
+      await hubStarted;
+      await hub.stop().catch(() => {});
+      await senseStarted;
+      await senseService.stopAll().catch(() => {});
+    })();
+  });
+
+  // Await the bind so a caller learns about EADDRINUSE / EACCES as a rejected
+  // promise instead of an unhandled 'error' event, and so `server.address()`
+  // is populated on return (port 0 in tests resolves to the real port).
+  await new Promise<void>((resolve, reject) => {
+    const onError = (err: Error) => reject(err);
+    server.once("error", onError);
+    server.listen(opts.port, host, () => {
+      server.off("error", onError);
+      resolve();
+    });
+  });
   return server;
 }
