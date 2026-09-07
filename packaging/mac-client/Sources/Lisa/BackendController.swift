@@ -4,19 +4,24 @@
 //
 //  Owns the lifecycle of the local LISA backend (`lisa serve --web`) from the
 //  Mac app's side:
-//    • on launch, if the backend isn't already up, start it (auto-start);
+//    • on launch (and on reopen), if the backend isn't already up, start it;
 //    • a manual start() the offline UIs (menu-bar popover, main window splash,
-//      island pill) call as a fallback.
+//      island pill) call as a fallback;
+//    • when a start attempt dies, `lastFailure` carries the backend's OWN error
+//      line out of ~/.lisa/backend.log so the offline UIs can say why. A
+//      launcher that silently fails is worse than no launcher — the user is
+//      told to run a command that will fail the same way.
 //
 //  Start command resolution:
 //    1. ~/.lisa/serve-command.txt — a full command line, if present (escape
 //       hatch for running from source, e.g. "node /path/dist/cli.js serve --web").
-//    2. otherwise `lisa serve --web --host 0.0.0.0` — resolved on the login
-//       shell's PATH (covers `npm i -g @oratis/lisa` / Homebrew installs), with
-//       LisaSetup.shellPrelude so nvm / fnm / Homebrew-managed tools resolve too.
-//       If `lisa` doesn't resolve, the start script says so immediately and the
-//       install wizard (BackendSetupController, UX-7) takes over instead of a
-//       20 s poll timing out into a hint.
+//    2. the backend embedded in this bundle — Contents/Resources/backend/dist
+//       run by Contents/Resources/node-runtime/bin/node (both staged by
+//       embed-runtime.sh). This is the path for a user who only downloaded the
+//       DMG: nothing installed, no Node, no npm, and the app still comes up.
+//    3. otherwise `lisa serve --web --host 0.0.0.0` — resolved on the login
+//       shell's PATH (covers `npm i -g @oratis/lisa` / Homebrew installs, and
+//       a `swift run` dev build with no embedded backend).
 //
 //  LAN-reachable by default (decision ②): a paired phone can reach the Mac over
 //  Wi-Fi without the user remembering `--host 0.0.0.0`. This is safe only because
@@ -33,7 +38,6 @@
 
 import AppKit
 import Foundation
-import LisaSetup
 
 @MainActor
 final class BackendController {
@@ -44,19 +48,50 @@ final class BackendController {
     /// resolves, so the offline UIs can update.
     static let statusChanged = Notification.Name("ai.meetlisa.backendStatusChanged")
 
-    /// Default: bind all interfaces so a phone on the same Wi-Fi can reach it.
-    /// Token-gated for non-loopback callers (see start() / the header note).
-    static let defaultCommand = "lisa serve --web --host 0.0.0.0"
-
     private let probeURL = URL(string: "http://localhost:5757/")!
     private(set) var isStarting = false
 
-    /// Where the detached backend's stdout/stderr go (the wizard offers to open it).
+    /// Callers waiting on the in-flight start (the install wizard, restart(),
+    /// the menu bar's "Start backend"). Drained exactly once by finishStart(),
+    /// which hands over the SAME classified note it stores in `lastFailure` —
+    /// the wizard shows it verbatim, so "timeout" is a last resort, not the
+    /// usual answer.
+    private var startWaiters: [(Bool, String?) -> Void] = []
+
+    /// Where the detached backend's stdout/stderr go. The install wizard
+    /// (BackendSetupController, UX-7) offers to open it.
     var backendLogPath: String { lisaPath("backend.log") }
 
     /// True when ~/.lisa/serve-command.txt overrides the start command — the
-    /// user runs the backend their own way, so the `lisa` CLI check doesn't apply.
-    var hasServeOverride: Bool { overrideCommand() != nil }
+    /// user runs the backend their own way, so neither the embedded backend nor
+    /// the `lisa` CLI check applies and the wizard must not offer to "fix" it.
+    var hasServeOverride: Bool {
+        guard let txt = try? String(contentsOfFile: lisaPath("serve-command.txt"), encoding: .utf8)
+        else { return false }
+        return !txt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Why the last start attempt failed — the backend's OWN line from
+    /// ~/.lisa/backend.log (a missing dependency, `lisa` not on PATH, the port
+    /// already taken), not a generic "it didn't come up". The offline surfaces
+    /// show this so a backend that dies the instant it launches is a readable
+    /// failure instead of a silent one. Nil once a start succeeds.
+    private(set) var lastFailure: String?
+
+    /// backend.log size at the moment we spawned, so we only ever read what
+    /// THIS attempt wrote (the log is append-only across launches).
+    private var logMark: UInt64 = 0
+
+    /// Which of the three start paths the last attempt used, so a failure can
+    /// name it. "command not found" means something very different depending on
+    /// whether it came from the user's own serve-command.txt override or from a
+    /// build with no embedded backend.
+    private enum CommandSource {
+        case fileOverride   // ~/.lisa/serve-command.txt
+        case embedded       // Contents/Resources/backend, run by the bundled node
+        case path           // `lisa` on the login shell's PATH
+    }
+    private var commandSource: CommandSource = .path
 
     // MARK: - Launch auto-start
 
@@ -100,12 +135,6 @@ final class BackendController {
         try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path)
     }
 
-    /// Callers waiting on the outcome of the next start attempt (restart(),
-    /// start(completion:)). Drained — on the main actor — by post(), right
-    /// after the status notification goes out, so a waiter sees exactly one
-    /// resolution: (up, note).
-    private var startWaiters: [(Bool, String?) -> Void] = []
-
     /// Stop the (detached) backend and start a fresh one so config.env changes
     /// apply. The backend was launched with nohup, so we match its command line;
     /// killing only `lisa serve --web` variants keeps unrelated processes safe.
@@ -115,7 +144,10 @@ final class BackendController {
         kill.arguments = ["-f", "serve --web"]
         kill.terminationHandler = { _ in
             // Give the old process a beat to release the port, then hop back to
-            // the main actor: the waiter list and start() are both isolated there.
+            // the main actor: the waiter list and start() are both isolated
+            // there. A self-removing NotificationCenter observer would need to
+            // mutate its own token after a sendable closure captured it, which
+            // is a hard error under -warnings-as-errors (T-11).
             Task { @MainActor [weak self] in
                 try? await Task.sleep(nanoseconds: 800_000_000)
                 guard let self else { return }
@@ -128,28 +160,25 @@ final class BackendController {
 
     // MARK: - Probe
 
-    func probe(_ completion: @escaping @MainActor (Bool) -> Void) {
+    func probe(_ completion: @escaping (Bool) -> Void) {
         var req = URLRequest(url: probeURL, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 2)
         req.httpMethod = "HEAD"
         URLSession.shared.dataTask(with: req) { _, resp, _ in
             let up = (resp as? HTTPURLResponse) != nil
-            DispatchQueue.main.async { MainActor.assumeIsolated { completion(up) } }
+            DispatchQueue.main.async { completion(up) }
         }.resume()
     }
 
     // MARK: - Start
 
     /// Spawn the backend (detached) and poll until it answers. No-op while a
-    /// start is already in flight — an optional `completion` still gets that
-    /// in-flight attempt's outcome. When the `lisa` CLI can't be found on the
-    /// login shell, the install wizard opens instead (UX-7).
+    /// start is already in flight.
     func start(completion: ((Bool, String?) -> Void)? = nil) {
         if let completion { startWaiters.append(completion) }
         guard !isStarting else { return }
         isStarting = true
 
-        let override = overrideCommand()
-        let command = override ?? Self.defaultCommand
+        let command = resolveCommand()
         // The default command binds 0.0.0.0; arm the token gate so the server will
         // accept it (and reject unauthenticated LAN callers). Harmless for a
         // loopback override — loopback is trusted regardless.
@@ -158,55 +187,193 @@ final class BackendController {
         try? FileManager.default.createDirectory(
             atPath: (logPath as NSString).deletingLastPathComponent,
             withIntermediateDirectories: true)
+        logMark = logSize()
+        lastFailure = nil
 
-        // Login shell + PATH prelude (nvm / fnm / Homebrew / npm-global), then
-        // nohup + & + disown so the backend survives this shell, the launcher, and
-        // the app. Without an override the script first checks that `lisa`
-        // resolves and reports LISA_MISSING instead of spawning a shell error.
-        let script = BackendSetup.startScript(command: command, logPath: logPath, requireCLI: override == nil)
-        ShellRunner.run(script, environment: ["LISA_WEB_TOKEN": webToken]) { [weak self] result in
-            guard let self else { return }
-            if result.output.contains(BackendSetup.missingMarker) {
-                self.isStarting = false
-                self.post(up: false, note: "lisa CLI not installed")
-                BackendSetupController.shared.presentForMissingCLI()
-                return
-            }
-            guard result.output.contains(BackendSetup.spawnedMarker) else {
-                self.isStarting = false
-                let why = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
-                self.post(up: false, note: "spawn failed: \(why.isEmpty ? "exit \(result.status)" : why)")
-                return
-            }
-            self.pollUntilUp(attempts: 25)
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        // Inherit the app's environment (HOME etc.) and inject the web token; the
+        // login shell rebuilds PATH. Setting `environment` replaces it wholesale,
+        // so start from the current environment rather than a bare dictionary.
+        var env = ProcessInfo.processInfo.environment
+        env["LISA_WEB_TOKEN"] = webToken
+        proc.environment = env
+        // -l: login shell (PATH has npm-global / Homebrew). nohup + & + disown:
+        // fully detach so the backend survives this shell, the launcher, and the app.
+        proc.arguments = ["-lc", "nohup \(command) >> '\(logPath)' 2>&1 & disown"]
+        do {
+            try proc.run()
+        } catch {
+            finishStart(up: false, note: "spawn failed: \(error.localizedDescription)")
+            return
         }
+        pollUntilUp(attempts: 25)
     }
 
     private func pollUntilUp(attempts: Int) {
         guard attempts > 0 else {
-            isStarting = false
-            post(up: false, note: "timeout")
+            finishStart(up: false, note: crashNote() ?? "no response from localhost:5757 after 20s")
             return
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
             self?.probe { up in
                 guard let self else { return }
-                if up { self.isStarting = false; self.post(up: true) }
-                else { self.pollUntilUp(attempts: attempts - 1) }
+                if up { self.finishStart(up: true); return }
+                // A backend that dies on launch (missing dependency, `lisa` not
+                // installed, port taken) writes why to backend.log and never
+                // binds. Surface that instead of counting 20s of silence down to
+                // "timeout" — but only after ~2.5s, so a slow-but-healthy start
+                // is never cut short by something it logged on the way up.
+                if attempts <= 22, let note = self.crashNote() {
+                    self.finishStart(up: false, note: note)
+                    return
+                }
+                self.pollUntilUp(attempts: attempts - 1)
             }
         }
     }
 
+    /// Single exit point for a start attempt: clears the in-flight flag, records
+    /// the failure reason, and notifies the offline UIs.
+    private func finishStart(up: Bool, note: String? = nil) {
+        isStarting = false
+        let detail = up ? nil : note.map(describeFailure)
+        lastFailure = detail
+        let waiters = startWaiters
+        startWaiters = []
+        post(up: up, note: detail)
+        for waiter in waiters { waiter(up, detail) }
+    }
+
+    /// Prefix a raw error with the start path it came from — the difference
+    /// between "something says command not found" and "the override you wrote
+    /// in ~/.lisa/serve-command.txt is what failed".
+    private func describeFailure(_ note: String) -> String {
+        switch commandSource {
+        case .fileOverride:
+            return "~/.lisa/serve-command.txt failed — " + note
+        case .embedded:
+            return "The bundled backend failed — " + note
+        case .path:
+            return "No backend found — " + note
+        }
+    }
+
+    // MARK: - Crash detection
+
+    /// The backend's own fatal line from what it appended to backend.log since
+    /// this attempt spawned, or nil while it is still booting quietly.
+    ///
+    /// Deliberately narrow: Node refusing to load a module, the port already
+    /// taken, or the login shell refusing to spawn the command at all ("zsh:1:
+    /// command not found: lisa"). A broad "contains error" match would call a
+    /// healthy start dead over a warning it logged on the way up.
+    private func crashNote() -> String? {
+        let fatal = [
+            "ERR_MODULE_NOT_FOUND", "MODULE_NOT_FOUND", "ERR_REQUIRE_ESM",
+            "Cannot find package", "Cannot find module",
+            "command not found", "EADDRINUSE",
+        ]
+        var echo: String?
+        for line in appendedLogLines() {
+            guard line.hasPrefix("zsh:") || fatal.contains(where: { line.contains($0) })
+            else { continue }
+            // Node prints the offending source line ("throw new ERR_MODULE_…")
+            // and a stack before the readable one ("Error [ERR_MODULE_NOT_FOUND]:
+            // Cannot find package 'undici' …"). Show the message; keep the echo
+            // only if no better line turns up.
+            if line.hasPrefix("throw ") || line.hasPrefix("at ") {
+                if echo == nil { echo = line }
+                continue
+            }
+            return String(line.prefix(200))
+        }
+        return echo.map { String($0.prefix(200)) }
+    }
+
+    /// Non-empty, trimmed lines the backend wrote since `logMark`.
+    private func appendedLogLines() -> [String] {
+        guard let handle = FileHandle(forReadingAtPath: lisaPath("backend.log")) else { return [] }
+        defer { try? handle.close() }
+        do {
+            try handle.seek(toOffset: logMark)
+            let data = try handle.readToEnd() ?? Data()
+            guard let text = String(data: data, encoding: .utf8) else { return [] }
+            return text
+                .split(separator: "\n")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+        } catch {
+            return []
+        }
+    }
+
+    private func logSize() -> UInt64 {
+        let attrs = try? FileManager.default.attributesOfItem(atPath: lisaPath("backend.log"))
+        return (attrs?[.size] as? NSNumber)?.uint64Value ?? 0
+    }
+
     // MARK: - Helpers
 
-    /// ~/.lisa/serve-command.txt, if present and non-empty: a full-control
-    /// escape hatch (run from source, or force a different host) — we don't
-    /// touch its host, and we don't check for the `lisa` CLI.
-    private func overrideCommand() -> String? {
+    private func resolveCommand() -> String {
+        // serve-command.txt is a full-control escape hatch (run from source, or
+        // force a different host) — we don't touch its host.
         let override = lisaPath("serve-command.txt")
-        guard let txt = try? String(contentsOfFile: override, encoding: .utf8) else { return nil }
-        let t = txt.trimmingCharacters(in: .whitespacesAndNewlines)
-        return t.isEmpty ? nil : t
+        if let txt = try? String(contentsOfFile: override, encoding: .utf8) {
+            let t = txt.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !t.isEmpty {
+                // Deliberately still wins over the embedded backend: someone who
+                // wrote this file wants their own tree to run, and silently
+                // swapping in the bundled copy would hide their edits.
+                commandSource = .fileOverride
+                return t
+            }
+        }
+        // Everything below binds all interfaces so a phone on the same Wi-Fi can
+        // reach it. Token-gated for non-loopback callers (see start() / header).
+        if let embedded = embeddedCommand() {
+            commandSource = .embedded
+            return embedded
+        }
+        commandSource = .path
+        return "lisa serve --web --host 0.0.0.0"
+    }
+
+    // MARK: - Embedded backend
+
+    /// The backend shipped inside this bundle, as a ready-to-run command line,
+    /// or nil when this build has none (a `swift run` dev build, or one made
+    /// with LISA_SKIP_EMBED=1).
+    ///
+    /// Prefers the embedded Node so the app depends on nothing the user has to
+    /// install; falls back to a system Node if only the JS half is present.
+    private func embeddedCommand() -> String? {
+        guard let resources = Bundle.main.resourceURL else { return nil }
+        let cli = resources.appendingPathComponent("backend/dist/cli.js").path
+        guard FileManager.default.isReadableFile(atPath: cli) else { return nil }
+        guard let node = embeddedNode() ?? systemNode() else { return nil }
+        return "\(shellQuote(node)) \(shellQuote(cli)) serve --web --host 0.0.0.0"
+    }
+
+    /// Contents/Resources/node-runtime/bin/node, if this build embeds one.
+    private func embeddedNode() -> String? {
+        guard let resources = Bundle.main.resourceURL else { return nil }
+        let node = resources.appendingPathComponent("node-runtime/bin/node").path
+        return FileManager.default.isExecutableFile(atPath: node) ? node : nil
+    }
+
+    /// A Node already on the machine. The login shell's PATH is not consulted
+    /// here — this runs before we spawn one — so check where Homebrew and the
+    /// official installer put it.
+    private func systemNode() -> String? {
+        let candidates = ["/opt/homebrew/bin/node", "/usr/local/bin/node", "/usr/bin/node"]
+        return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
+    }
+
+    /// POSIX single-quoting — the command is handed to `zsh -lc`, and a user
+    /// can install Lisa.app under a path with spaces or quotes in it.
+    private func shellQuote(_ path: String) -> String {
+        "'" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
     // MARK: - Web token (arms the LAN auth gate)
@@ -272,10 +439,5 @@ final class BackendController {
         var info: [String: Any] = ["up": up]
         if let note { info["note"] = note }
         NotificationCenter.default.post(name: BackendController.statusChanged, object: nil, userInfo: info)
-        // Resolve restart() / start(completion:) callers after the broadcast, so
-        // the UIs they update have already seen the new state.
-        let waiters = startWaiters
-        startWaiters.removeAll()
-        for waiter in waiters { waiter(up, note) }
     }
 }

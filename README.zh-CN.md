@@ -17,8 +17,9 @@
 ```sh
 # 1. 安装 —— 三选一（Node ≥ 22.19）
 brew install oratis/tap/lisa              # Homebrew（CLI）
-npm install -g @oratis/lisa               # npm（CLI，也是 Lisa.app 连的 backend）
-#    Mac App：到 https://github.com/oratis/LISA/releases/latest 下载 Lisa-Suite.dmg
+npm install -g @oratis/lisa               # npm（CLI）
+#    Mac App：下载 Lisa-Suite.dmg —— 自带后端，完全不需要 Node
+#    https://github.com/oratis/LISA/releases/latest
 
 # 2. 一个 provider key —— 默认 Anthropic，20+ 个 provider 都能用
 mkdir -p ~/.lisa

@@ -7,7 +7,11 @@
 # Output (in dist-release/):
 #   - Lisa-Suite-v<VERSION>.dmg   disk image with Lisa.app + an /Applications
 #                                  drag target (name kept for release/link
-#                                  back-compat)
+#                                  back-compat). ~156 MB: the app embeds the
+#                                  backend and a universal Node runtime so a
+#                                  fresh Mac needs nothing installed. Set
+#                                  LISA_EMBED_ARCHS=arm64 for an Apple-Silicon-
+#                                  only build (~90 MB smaller).
 #   - Lisa-Suite-v<VERSION>.dmg.sha256
 #
 # Phases (first positional arg, default "full"):
@@ -90,12 +94,22 @@ sign_one() {
     local app="$1"
     local entitlements="$2"
     echo "→ Codesigning $app with hardened runtime…"
-    local args=(--force --deep --options runtime --timestamp
+    local args=(--force --options runtime --timestamp
                 --sign "$APPLE_SIGNING_IDENTITY")
     if [ -f "$entitlements" ]; then
         args+=(--entitlements "$entitlements")
     fi
-    codesign "${args[@]}" "$app"
+    # Inside-out, as codesign requires: the embedded Node runtime is a bare
+    # Mach-O under Resources/, which --deep does not treat as nested code, so
+    # sign it explicitly first. It needs the same entitlements the app already
+    # declares — V8 wants the allow-jit / allow-unsigned-executable-memory pair
+    # that the embedded WKWebView also wants — so the same file is reused.
+    local node="$app/Contents/Resources/node-runtime/bin/node"
+    if [ -f "$node" ]; then
+        echo "  ↳ embedded node runtime"
+        codesign "${args[@]}" "$node"
+    fi
+    codesign "${args[@]}" --deep "$app"
     codesign --verify --deep --strict --verbose=1 "$app"
 }
 
@@ -129,20 +143,18 @@ Drag Lisa.app onto Applications:
 The notch pill ("Lisa Island") is built in — turn it on from
 Lisa ▸ Settings… ▸ Show Lisa Island.
 
-Before launching the app, install + start the LISA backend:
+Nothing else to install. Lisa.app carries its own backend and its own
+Node runtime, and starts them for you the first time you open it — no
+Node, no npm, no terminal. The app then asks for an LLM key in its own
+setup screen.
 
-    # macOS, with Node 20+:
-    npm install -g @oratis/lisa
-    mkdir -p ~/.lisa
-    echo 'ANTHROPIC_API_KEY=sk-ant-...' > ~/.lisa/config.env
+Prefer the command line, or already have the CLI?
+
+    npm install -g @oratis/lisa      # or: brew install oratis/tap/lisa
     lisa serve --web
 
-Or download the standalone bundle ("lisa-mac-bundle-*.zip") from the
-same release and run:
-
-    bin/lisa serve --web
-
-The apps load http://localhost:5757 — make sure it's running.
+The app uses an already-running backend on localhost:5757 when it finds
+one, so an existing install keeps working exactly as before.
 
 Source / docs: https://github.com/oratis/LISA
 EOF

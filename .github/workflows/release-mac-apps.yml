@@ -75,6 +75,17 @@ jobs:
             exit 1
           fi
 
+      # Lisa.app embeds the compiled backend (packaging/mac-client/embed-runtime.sh
+      # stages dist/ + production node_modules + an official Node into the
+      # bundle), so dist/ has to exist before the app is assembled. Without this
+      # the app would ship as a bare window again and every DMG user would be
+      # back to installing the CLI by hand.
+      - name: Build the backend (dist/) for embedding
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build
+
       - name: Import Apple Developer ID certificate
         # Ephemeral keychain — created here, deleted at job end. Lifted
         # from the Markup workflow with cosmetic renames.

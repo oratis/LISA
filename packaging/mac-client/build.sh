@@ -6,6 +6,8 @@
 #   1. swift build -c release  (universal binary, falls back to host arch)
 #   2. iconset → .icns from src/web/assets/lisa-mascot.png (1024x1024)
 #   3. assemble Lisa.app bundle (Contents/MacOS, Resources, Info.plist)
+#   3.5 embed the backend + a Node runtime (embed-runtime.sh) so the app is
+#       self-contained — needs dist/ built; LISA_SKIP_EMBED=1 skips it
 #   4. ad-hoc codesign so Gatekeeper at least doesn't reject outright
 #
 # Output: packaging/mac-client/Lisa.app
@@ -116,8 +118,18 @@ if [ -f Resources/MenuBarIcon.png ]; then
     cp Resources/MenuBarIcon.png "$APP/Contents/Resources/MenuBarIcon.png"
 fi
 
+# ── 3.5 embed the backend + Node runtime ────────────────────────────
+# Without this the app is only a window: it spawns `lisa serve --web` off the
+# login shell's PATH, so a user who just downloaded the DMG has no backend at
+# all. embed-runtime.sh stages dist/ + production node_modules + an official
+# node into Contents/Resources. LISA_SKIP_EMBED=1 skips it for fast Swift-only
+# iteration (the app falls back to `lisa` on PATH, as it always did).
+bash "$(dirname "$0")/embed-runtime.sh" "$APP"
+
 # ── 4. ad-hoc sign ──────────────────────────────────────────────────
 # Proper signing (Developer ID + notarization) is Phase 4.
+# NB: the embedded node is signed by embed-runtime.sh — --deep does not reach
+# a bare Mach-O under Resources/, and it must be signed to run on arm64.
 codesign --force --deep --sign - "$APP" >/dev/null 2>&1 || true
 
 # Force Finder/Dock to pick up the new icon (the system caches by bundle path).
