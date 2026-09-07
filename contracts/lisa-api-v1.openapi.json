@@ -473,7 +473,8 @@
           "task",
           "startedAt",
           "alive",
-          "hasLog"
+          "hasLog",
+          "status"
         ],
         "properties": {
           "id": {
@@ -501,6 +502,35 @@
           },
           "hasLog": {
             "type": "boolean"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "running",
+              "ok",
+              "failed",
+              "unknown"
+            ],
+            "description": "running | ok (observed exit 0) | failed (non-zero exit or signal) | unknown (not alive, no exit observed). `alive: false` alone does not mean success: the child is detached, so a crash, an OOM kill and a clean finish are indistinguishable from the pid."
+          },
+          "exitCode": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Observed exit code. null when the process died by signal; absent when no exit was ever observed."
+          },
+          "exitSignal": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Signal name when the process died by signal."
+          },
+          "exitedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the exit was observed."
           }
         },
         "additionalProperties": false
@@ -560,6 +590,35 @@
           },
           "tail": {
             "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "running",
+              "ok",
+              "failed",
+              "unknown"
+            ],
+            "description": "running | ok (observed exit 0) | failed (non-zero exit or signal) | unknown (not alive, no exit observed). `alive: false` alone does not mean success: the child is detached, so a crash, an OOM kill and a clean finish are indistinguishable from the pid."
+          },
+          "exitCode": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Observed exit code. null when the process died by signal; absent when no exit was ever observed."
+          },
+          "exitSignal": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Signal name when the process died by signal."
+          },
+          "exitedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the exit was observed."
           }
         },
         "additionalProperties": false

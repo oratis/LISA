@@ -91,10 +91,54 @@ export function loadLedger(): DispatchEntry[] {
   }
 }
 
+/**
+ * Write the ledger atomically — tmp file then rename, the sync twin of
+ * atomicWrite() in ../fs-utils.ts.
+ *
+ * A bare writeFileSync truncates before it writes, so a concurrent reader sees
+ * an empty or half-written file and loadLedger()'s catch silently returns [],
+ * losing every live dispatch. That window is real here and got wider with
+ * recordExit(): a `lisa serve` and a `lisa` CLI run share one ~/.lisa, and
+ * recordExit fires from an async "close" listener, so a second read-modify-
+ * write can land in the middle of the first. rename(2) is atomic within a
+ * filesystem, so a reader sees either the old ledger or the new one.
+ */
 function saveLedger(entries: DispatchEntry[]): void {
   const file = ledgerPath();
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(entries, null, 2));
+  const tmp = `${file}.${process.pid.toString(36)}.${Date.now().toString(36)}.tmp`;
+  try {
+    fs.writeFileSync(tmp, JSON.stringify(entries, null, 2));
+    fs.renameSync(tmp, file);
+  } catch (err) {
+    try {
+      fs.unlinkSync(tmp);
+    } catch {
+      // never existed — ignore
+    }
+    throw err;
+  }
+}
+
+/**
+ * Boot epoch (seconds) from /proc/stat, cached for the life of the process.
+ *
+ * The Linux token below is `starttime` in clock ticks *since boot*, so on its
+ * own it repeats after a reboot: a fresh process can be handed both the same
+ * pid and the same ticks-since-boot as a pre-reboot entry still inside the 24h
+ * retention window, and the guard would wave it through as the same process.
+ * Scoping the token to btime makes the pair unique across reboots.
+ */
+let cachedBtime: string | null | undefined;
+function linuxBootEpoch(): string | null {
+  if (cachedBtime !== undefined) return cachedBtime;
+  try {
+    const m = /^btime\s+(\d+)$/m.exec(fs.readFileSync("/proc/stat", "utf8"));
+    cachedBtime = m?.[1] ?? null;
+  } catch {
+    cachedBtime = null;
+  }
+  return cachedBtime ?? null;
 }
 
 /**
@@ -103,9 +147,22 @@ function saveLedger(entries: DispatchEntry[]): void {
  * reused, because a recycled pid necessarily started later.
  *
  * Linux reads field 22 of /proc/<pid>/stat (starttime, in clock ticks since
- * boot). Everything else shells out to `ps -o lstart=`, which POSIX gives us on
- * macOS and the BSDs. Returns null if the process is gone or the probe fails —
- * callers must treat null as "cannot tell", never as a mismatch.
+ * boot), scoped to the boot epoch. Everything else shells out to
+ * `ps -o lstart=`, which POSIX gives us on macOS and the BSDs. Returns null if
+ * the process is gone or the probe fails — callers must treat null as "cannot
+ * tell", never as a mismatch.
+ *
+ * The `ps` environment is pinned to LC_ALL=C / TZ=UTC because `lstart` is
+ * rendered in the caller's locale and timezone, which makes it useless as an
+ * identity across processes that do not share them. Measured on macOS for one
+ * unchanged pid: TZ alone produced "Mon Sep  7 13:23:46 2026" (UTC),
+ * "22:23:46" (Asia/Tokyo), "09:23:46" (America/New_York), and LC_ALL reshaped
+ * the whole string ("Mo.  7 Sep." for de_DE, "一  9月/ 7" for zh_CN). A
+ * `lisa serve` under launchd and a `lisa` CLI run from a configured login
+ * shell therefore disagreed about every token, so isAlive() reported every
+ * running dispatch dead — and signal_agent, seeing "already exited", deleted
+ * the ledger row instead of signalling, making a runaway agent permanently
+ * uncancellable.
  */
 export function processStartToken(pid: number): string | null {
   if (!Number.isInteger(pid) || pid <= 1) return null;
@@ -116,7 +173,9 @@ export function processStartToken(pid: number): string | null {
       // split after the LAST ')' — fields 3.. are then whitespace-separated.
       const rest = stat.slice(stat.lastIndexOf(")") + 1).trim().split(/\s+/);
       const starttime = rest[19]; // field 22 == index 19 of fields 3..
-      return starttime ? `lt:${starttime}` : null;
+      if (!starttime) return null;
+      const boot = linuxBootEpoch();
+      return boot ? `lt1:${boot}:${starttime}` : `lt1:?:${starttime}`;
     } catch {
       return null;
     }
@@ -125,13 +184,29 @@ export function processStartToken(pid: number): string | null {
     const res = spawnSync("ps", ["-o", "lstart=", "-p", String(pid)], {
       encoding: "utf8",
       timeout: 2000,
+      env: { ...process.env, LC_ALL: "C", LANG: "C", TZ: "UTC" },
     });
     if (res.status !== 0 || !res.stdout) return null;
     const line = res.stdout.trim();
-    return line ? `ps:${line}` : null;
+    return line ? `ps1:${line}` : null;
   } catch {
     return null;
   }
+}
+
+/**
+ * The scheme prefix of a token ("ps1", "lt1", and the retired "ps"/"lt").
+ *
+ * Tokens are only comparable within one scheme. Entries written before the
+ * locale pinning above carry a `ps:` token rendered in whatever locale the
+ * writer happened to have, so comparing one against a freshly-pinned `ps1:`
+ * token is guaranteed to mismatch and would report every pre-upgrade dispatch
+ * dead. Different schemes mean "cannot tell", which is the same fail-open path
+ * a failed probe already takes.
+ */
+function tokenScheme(token: string): string {
+  const i = token.indexOf(":");
+  return i === -1 ? token : token.slice(0, i);
 }
 
 /**
@@ -156,7 +231,11 @@ export function isAlive(pid: number, startToken?: string): boolean {
   }
   if (startToken) {
     const current = processStartToken(pid);
-    if (current && current !== startToken) return false; // pid was recycled
+    // Only comparable within one token scheme — see tokenScheme(). A null
+    // probe, or a token written by an older scheme, means "cannot tell".
+    if (current && tokenScheme(current) === tokenScheme(startToken) && current !== startToken) {
+      return false; // pid was recycled
+    }
   }
   return true;
 }
@@ -246,10 +325,24 @@ export function recordExit(
 export function listLiveDispatches(): DispatchEntry[] {
   const all = loadLedger();
   const now = Date.now();
-  const keep = all.filter((e) => entryIsAlive(e) || now - e.startedAt < RETAIN_MS);
+  // Probe each entry at most once. entryIsAlive() can shell out to `ps`
+  // (measured 1.79 ms vs 0.001 ms for kill(pid, 0)) and this runs inside the
+  // /api/dispatch/list request handler over an unbounded ledger, so the old
+  // shape — one probe in the `keep` filter, a second in the returned filter —
+  // blocked the event loop for twice as long as it needed to.
+  const recent = new Set<DispatchEntry>();
+  const live = new Set<DispatchEntry>();
+  for (const e of all) {
+    // Cheap test first: a recent entry is retained whether or not it is alive,
+    // but it still needs the probe to decide whether it is *returned*.
+    if (now - e.startedAt < RETAIN_MS) recent.add(e);
+    if (entryIsAlive(e)) live.add(e);
+  }
+  const keep = all.filter((e) => live.has(e) || recent.has(e));
   if (keep.length !== all.length) {
+    const kept = new Set(keep);
     for (const e of all) {
-      if (!keep.includes(e) && e.logPath) {
+      if (!kept.has(e) && e.logPath) {
         try {
           fs.unlinkSync(e.logPath);
         } catch {
@@ -259,7 +352,7 @@ export function listLiveDispatches(): DispatchEntry[] {
     }
     saveLedger(keep);
   }
-  return all.filter((e) => entryIsAlive(e));
+  return all.filter((e) => live.has(e));
 }
 
 /** All retained dispatches (live + recently-finished). For status / result readback. */
@@ -280,6 +373,43 @@ export interface DispatchView {
   startedAt: string;
   alive: boolean;
   hasLog: boolean;
+  /**
+   * What actually happened, for clients that would otherwise have to infer it
+   * from `alive` alone:
+   *
+   * - `running`  — still alive.
+   * - `ok`       — observed exit code 0.
+   * - `failed`   — observed a non-zero exit code, or death by signal.
+   * - `unknown`  — not alive, and no exit was ever observed (the agent
+   *                outlived the LISA process that launched it).
+   *
+   * `alive: false` on its own says nothing about success: the child is
+   * detached, so a crash, an OOM kill and a clean finish all look identical
+   * from the pid. Rendering the three as one green "Done" is what this
+   * replaces.
+   */
+  status: DispatchStatusKind;
+  /** Observed exit code; null when it died by signal, absent when unobserved. */
+  exitCode?: number | null;
+  /** Signal name when it died by signal. */
+  exitSignal?: string | null;
+  /** ISO-8601 when the exit was observed. */
+  exitedAt?: string;
+}
+
+export type DispatchStatusKind = "running" | "ok" | "failed" | "unknown";
+
+/**
+ * Classify a ledger entry. Gated on `exitedAt` (set only for an exit we
+ * actually watched) rather than on `exitCode`, because a signal death
+ * legitimately stores exitCode: null.
+ */
+export function dispatchStatusKind(e: DispatchEntry, alive: boolean): DispatchStatusKind {
+  if (alive) return "running";
+  if (e.exitedAt === undefined) return "unknown";
+  if (e.exitSignal) return "failed";
+  if (typeof e.exitCode === "number") return e.exitCode === 0 ? "ok" : "failed";
+  return "unknown";
 }
 
 export function toDispatchView(e: DispatchEntry, alive: boolean): DispatchView {
@@ -292,6 +422,10 @@ export function toDispatchView(e: DispatchEntry, alive: boolean): DispatchView {
     startedAt: new Date(e.startedAt).toISOString(),
     alive,
     hasLog: !!e.logPath,
+    status: dispatchStatusKind(e, alive),
+    ...(e.exitCode !== undefined ? { exitCode: e.exitCode } : {}),
+    ...(e.exitSignal ? { exitSignal: e.exitSignal } : {}),
+    ...(e.exitedAt !== undefined ? { exitedAt: new Date(e.exitedAt).toISOString() } : {}),
   };
 }
 
