@@ -3,11 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import fs from "node:fs/promises";
 import { registerChannel } from "./registry.js";
-import type {
-  ChannelAdapter,
-  IncomingMessage,
-  OutgoingMessage,
-} from "./types.js";
+import type { ChannelAdapter, IncomingMessage, OutgoingMessage } from "./types.js";
 
 const CHAT_DB = path.join(os.homedir(), "Library", "Messages", "chat.db");
 
@@ -33,7 +29,9 @@ export class IMessageChannel implements ChannelAdapter {
     }
     this.handler = handler;
     this.lastRowId = await this.maxRowId();
-    this.timer = setInterval(() => this.tick(), this.intervalMs);
+    this.timer = setInterval(() => {
+      void this.tick();
+    }, this.intervalMs);
   }
 
   private async tick(): Promise<void> {
@@ -67,9 +65,7 @@ export class IMessageChannel implements ChannelAdapter {
       child.stderr.on("data", (b) => (stderr += b.toString("utf8")));
       child.on("error", reject);
       child.on("close", (code) =>
-        code === 0
-          ? resolve()
-          : reject(new Error(`osascript exited ${code}: ${stderr.trim()}`)),
+        code === 0 ? resolve() : reject(new Error(`osascript exited ${code}: ${stderr.trim()}`)),
       );
     });
   }
@@ -99,9 +95,7 @@ export class IMessageChannel implements ChannelAdapter {
                  WHERE m.ROWID > ${rowId} AND m.text IS NOT NULL
                  ORDER BY m.ROWID ASC LIMIT 50;`;
     const out = await this.runSqlite(sql);
-    const rows: ReturnType<IMessageChannel["fetchSince"]> extends Promise<infer R>
-      ? R
-      : never = [];
+    const rows: ReturnType<IMessageChannel["fetchSince"]> extends Promise<infer R> ? R : never = [];
     for (const line of out.split("\n")) {
       if (!line.trim()) continue;
       const parts = line.split("|");

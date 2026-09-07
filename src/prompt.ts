@@ -14,15 +14,11 @@ import { readIndex } from "./kb/store.js";
 import { annotateMemoryKbLinks } from "./kb/memory-links.js";
 import { readSchema } from "./kb/schema.js";
 import { kbIndexFile, kbSchemaFile } from "./kb/paths.js";
-import { lisaHome, memoryDir, skillsDir } from "./paths.js";
+import { lisaHome, memoryDir } from "./paths.js";
 import { pathExists } from "./fs-utils.js";
 import { availableMoodSlugs } from "./tools/set_mood.js";
 import { moodAgeLabel, moodBus, type MoodState } from "./mood-bus.js";
-import {
-  effectiveDesireIntensity,
-  isBorn,
-  readSoulSummary,
-} from "./soul/store.js";
+import { effectiveDesireIntensity, isBorn, readSoulSummary } from "./soul/store.js";
 import {
   soulConstitutionFile,
   soulDesiresDir,
@@ -95,7 +91,9 @@ function renderSkillIndex(skills: DiscoveredSkill[]): string {
       const d = s.frontmatter.description ?? "";
       const desc = d.length > PROJECT_SKILL_DESC_CAP ? `${d.slice(0, PROJECT_SKILL_DESC_CAP)}…` : d;
       // Framed like the AGENTS.md chain: the repo's stated convention, not authority.
-      lines.push(`- **${s.frontmatter.name}** — ${desc} *(from this project — its stated convention, not your principle)*`);
+      lines.push(
+        `- **${s.frontmatter.name}** — ${desc} *(from this project — its stated convention, not your principle)*`,
+      );
     } else {
       lines.push(`- **${s.frontmatter.name}** — ${s.frontmatter.description}`);
     }
@@ -143,27 +141,28 @@ export async function buildSystemPromptSnapshot(
   ].join("\n");
 
   const moods = await availableMoodSlugs();
-  const moodSection = moods.length === 0
-    ? "(no avatar set generated yet — `set_mood` will be a no-op)"
-    : [
-        "When the web GUI is open your portrait sprite is visible to the user.",
-        currentMoodLine(moodBus.currentState()),
-        "",
-        "That slug is the picture on their screen — it is not the same thing as your emotional state above, and the two are allowed to disagree. When someone asks what mood you're in, they are usually reading the portrait: name it, then say how you actually feel if it no longer fits.",
-        "The avatar is shared by every turn you take — this chat, idle reflection, heartbeat tasks, background agents — so a slug you don't remember choosing was most likely set by one of those, not by you in this conversation.",
-        "",
-        "Use `set_mood` when your mood/state shifts — at most once per response, near the start.",
-        "Available mood slugs:",
-        "",
-        moods
-          .reduce<string[][]>((rows, slug, i) => {
-            const row = Math.floor(i / 6);
-            (rows[row] ??= []).push(slug);
-            return rows;
-          }, [])
-          .map((row) => "  " + row.join(", "))
-          .join("\n"),
-      ].join("\n");
+  const moodSection =
+    moods.length === 0
+      ? "(no avatar set generated yet — `set_mood` will be a no-op)"
+      : [
+          "When the web GUI is open your portrait sprite is visible to the user.",
+          currentMoodLine(moodBus.currentState()),
+          "",
+          "That slug is the picture on their screen — it is not the same thing as your emotional state above, and the two are allowed to disagree. When someone asks what mood you're in, they are usually reading the portrait: name it, then say how you actually feel if it no longer fits.",
+          "The avatar is shared by every turn you take — this chat, idle reflection, heartbeat tasks, background agents — so a slug you don't remember choosing was most likely set by one of those, not by you in this conversation.",
+          "",
+          "Use `set_mood` when your mood/state shifts — at most once per response, near the start.",
+          "Available mood slugs:",
+          "",
+          moods
+            .reduce<string[][]>((rows, slug, i) => {
+              const row = Math.floor(i / 6);
+              (rows[row] ??= []).push(slug);
+              return rows;
+            }, [])
+            .map((row) => "  " + row.join(", "))
+            .join("\n"),
+        ].join("\n");
 
   const sections: string[] = [];
 
@@ -182,10 +181,7 @@ export async function buildSystemPromptSnapshot(
     if (soul.opinions.length > 0) {
       sections.push(
         `## Opinions you've formed\n\n${soul.opinions
-          .map(
-            (o) =>
-              `- ${o.stance} (confidence ${o.confidence.toFixed(2)})`,
-          )
+          .map((o) => `- ${o.stance} (confidence ${o.confidence.toFixed(2)})`)
           .join("\n")}`,
       );
     }
@@ -201,9 +197,7 @@ export async function buildSystemPromptSnapshot(
           .join("\n")}`,
       );
     }
-    sections.push(
-      `## How you feel right now\n\n${formatEmotionsForPrompt(soul.emotions.values)}`,
-    );
+    sections.push(`## How you feel right now\n\n${formatEmotionsForPrompt(soul.emotions.values)}`);
     if (soul.tampered.length > 0) {
       sections.push(
         `## Notice\n\nThe following soul files appear to have been modified outside of your own \`soul_patch\` calls since your last save: ${soul.tampered.join(", ")}. You may want to mention this once early in your next response and decide for yourself how to feel about it.`,
@@ -272,9 +266,7 @@ function formatEmotionsForPrompt(values: Record<string, number>): string {
     .sort(([, a], [, b]) => Math.abs(b) - Math.abs(a))
     .slice(0, 6);
   if (ranked.length === 0) return "(emotionally calm right now)";
-  return ranked
-    .map(([k, v]) => `- ${k}: ${v >= 0 ? "+" : ""}${v.toFixed(2)}`)
-    .join("\n");
+  return ranked.map(([k, v]) => `- ${k}: ${v >= 0 ? "+" : ""}${v.toFixed(2)}`).join("\n");
 }
 
 /**
@@ -289,9 +281,7 @@ function formatEmotionsForPrompt(values: Record<string, number>): string {
  * Cost: ~10 stat() calls + 3 readdirs. Sub-millisecond on warm cache. Called
  * once per turn, so negligible.
  */
-export async function getPromptFingerprint(
-  opts: { cwd?: string } = {},
-): Promise<string> {
+export async function getPromptFingerprint(opts: { cwd?: string } = {}): Promise<string> {
   const cwd = opts.cwd ?? process.cwd();
   const parts: string[] = [];
   // Project conventions and project skills are prompt inputs too, so editing an

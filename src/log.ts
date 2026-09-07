@@ -63,7 +63,10 @@ function closeSink(): void {
   if (!sink) return;
   try {
     fs.closeSync(sink.fd);
-  } catch {}
+  } catch {
+    // Already closed, or the fd died with the process's stdio. Either way the
+    // sink is being dropped — there is nothing left to recover.
+  }
   sink = null;
 }
 
@@ -90,7 +93,9 @@ function fileSink(env: NodeJS.ProcessEnv = process.env): FileSink | null {
     sink = { path: target, fd, size: fs.fstatSync(fd).size };
   } catch (err) {
     brokenPaths.add(target);
-    console.error(`[log] cannot open LISA_LOG_FILE ${target}: ${(err as Error).message} — logging to stderr`);
+    console.error(
+      `[log] cannot open LISA_LOG_FILE ${target}: ${(err as Error).message} — logging to stderr`,
+    );
     sink = null;
   }
   return sink;
@@ -104,10 +109,15 @@ function fileSink(env: NodeJS.ProcessEnv = process.env): FileSink | null {
 function rotate(s: FileSink): void {
   try {
     fs.closeSync(s.fd);
-  } catch {}
+  } catch {
+    // The fd is being replaced regardless; a failed close cannot stop rotation.
+  }
   try {
     fs.rmSync(`${s.path}.${LOG_FILE_KEEP}`, { force: true });
-  } catch {}
+  } catch {
+    // The oldest generation may not exist yet, and force:true already swallows
+    // ENOENT — anything else (a locked file) must not abort the rotation.
+  }
   for (let i = LOG_FILE_KEEP - 1; i >= 1; i--) {
     try {
       fs.renameSync(`${s.path}.${i}`, `${s.path}.${i + 1}`);
@@ -117,14 +127,21 @@ function rotate(s: FileSink): void {
   }
   try {
     fs.renameSync(s.path, `${s.path}.1`);
-  } catch {}
+  } catch {
+    // Someone moved or deleted the live log under us; reopening below restores
+    // a working sink, which matters more than preserving this generation.
+  }
   const fd = fs.openSync(s.path, "a");
   s.fd = fd;
   s.size = fs.fstatSync(fd).size;
 }
 
 /** The line written to LISA_LOG_FILE. Exported for tests. */
-export function formatFileLine(severity: LogSeverity, message: string, at: Date = new Date()): string {
+export function formatFileLine(
+  severity: LogSeverity,
+  message: string,
+  at: Date = new Date(),
+): string {
   // Always timestamped text, whatever LISA_LOG_FORMAT says: that variable
   // describes what the *platform's* log collector wants from stdout/stderr,
   // while this file is read by a human with `tail -f`.
@@ -146,7 +163,9 @@ function writeToFile(severity: LogSeverity, message: string): boolean {
     // A broken sink must never take the process down or swallow the line.
     brokenPaths.add(s.path);
     closeSink();
-    console.error(`[log] LISA_LOG_FILE write failed: ${(err as Error).message} — logging to stderr`);
+    console.error(
+      `[log] LISA_LOG_FILE write failed: ${(err as Error).message} — logging to stderr`,
+    );
     return false;
   }
 }

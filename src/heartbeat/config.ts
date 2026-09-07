@@ -29,13 +29,14 @@ export const DEFAULT_HEARTBEAT_BUDGET_TOKENS = 500_000;
 const FILE = path.join(lisaGlobalHome(), "heartbeat.json");
 
 export async function loadHeartbeatConfig(): Promise<HeartbeatConfig> {
-  if (!(await pathExists(FILE))) return { tasks: [], budgetTokens: DEFAULT_HEARTBEAT_BUDGET_TOKENS };
+  if (!(await pathExists(FILE)))
+    return { tasks: [], budgetTokens: DEFAULT_HEARTBEAT_BUDGET_TOKENS };
   const raw = await fs.readFile(FILE, "utf8");
   let parsed: HeartbeatConfig;
   try {
     parsed = JSON.parse(raw) as HeartbeatConfig;
   } catch (err) {
-    throw new Error(`failed to parse ${FILE}: ${(err as Error).message}`);
+    throw new Error(`failed to parse ${FILE}: ${(err as Error).message}`, { cause: err });
   }
   return {
     tasks: parsed.tasks ?? [],

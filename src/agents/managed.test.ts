@@ -31,16 +31,23 @@ function scripted(queue: ProviderResult[]): Provider {
 const editTool: ToolDefinition = {
   name: "edit", // in DEFAULT_MUTATING_TOOLS → triggers approval-pause
   description: "edit a file",
-  inputSchema: { type: "object" } as Anthropic.Tool.InputSchema,
-  async execute() { return "edited"; },
+  inputSchema: { type: "object" },
+  async execute() {
+    return "edited";
+  },
 };
 
 function waitFor(fn: () => boolean, ms = 3000): Promise<void> {
   return new Promise((resolve, reject) => {
     const t0 = Date.now();
     const iv = setInterval(() => {
-      if (fn()) { clearInterval(iv); resolve(); }
-      else if (Date.now() - t0 > ms) { clearInterval(iv); reject(new Error("waitFor timeout")); }
+      if (fn()) {
+        clearInterval(iv);
+        resolve();
+      } else if (Date.now() - t0 > ms) {
+        clearInterval(iv);
+        reject(new Error("waitFor timeout"));
+      }
     }, 10);
   });
 }
@@ -65,7 +72,10 @@ describe("ManagedAgent — approval-paused tool flow", () => {
     assert.equal(a.view().stateReason, "permission");
 
     assert.equal(reg.decide(v.id, true), true);
-    await waitFor(() => { const x = a.view(); return x.state === "waiting" && !x.pending; });
+    await waitFor(() => {
+      const x = a.view();
+      return x.state === "waiting" && !x.pending;
+    });
 
     const view = a.view();
     assert.ok(view.lastTools.includes("edit"), "tool recorded");
@@ -82,7 +92,15 @@ describe("ManagedAgent — approval-paused tool flow", () => {
       task: "x",
       cwd: "/tmp",
       systemPrompt: "sys",
-      tools: [{ ...editTool, async execute() { ran = true; return "ran"; } }],
+      tools: [
+        {
+          ...editTool,
+          async execute() {
+            ran = true;
+            return "ran";
+          },
+        },
+      ],
       provider: scripted([turn([toolUse("edit", {})], "tool_use"), turn([text("ok")], "end_turn")]),
     });
     const a = reg.get(v.id)!;
@@ -102,7 +120,10 @@ describe("ManagedAgent — follow-ups + cancel", () => {
       cwd: "/tmp",
       systemPrompt: "sys",
       tools: [],
-      provider: scripted([turn([text("first-done")], "end_turn"), turn([text("second-done")], "end_turn")]),
+      provider: scripted([
+        turn([text("first-done")], "end_turn"),
+        turn([text("second-done")], "end_turn"),
+      ]),
     });
     const a = reg.get(v.id)!;
     await waitFor(() => a.view().state === "waiting" && a.view().lastText === "first-done");

@@ -1,11 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import {
-  FOCUS_MIN_OVERLAP,
-  pickFocusedDesire,
-  recentUserText,
-  tokenize,
-} from "./desire-focus.js";
+import { FOCUS_MIN_OVERLAP, pickFocusedDesire, recentUserText, tokenize } from "./desire-focus.js";
 import type { DesireEntry } from "./types.js";
 import type { StoredMessage } from "../types.js";
 
@@ -54,10 +49,7 @@ describe("pickFocusedDesire", () => {
   });
 
   test("returns null on a tie (no single desire is clearly the subject)", () => {
-    const tie = [
-      d("a", "alpha beta", "gamma delta"),
-      d("b", "alpha beta", "gamma delta"),
-    ];
+    const tie = [d("a", "alpha beta", "gamma delta"), d("b", "alpha beta", "gamma delta")];
     assert.equal(pickFocusedDesire(tie, "alpha beta gamma"), null);
   });
 
@@ -76,8 +68,10 @@ describe("pickFocusedDesire", () => {
 });
 
 describe("recentUserText", () => {
-  const mk = (role: StoredMessage["role"], text: string): StoredMessage =>
-    ({ role, content: [{ type: "text", text }] }) as StoredMessage;
+  const mk = (role: StoredMessage["role"], text: string): StoredMessage => ({
+    role,
+    content: [{ type: "text", text }],
+  });
 
   test("joins the last N user messages, ignoring assistant turns", () => {
     const history: StoredMessage[] = [

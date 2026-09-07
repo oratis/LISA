@@ -71,9 +71,7 @@ export function parseAiderState(tail: string): {
     const t = l.trim();
     return t.length > 0 && !t.startsWith("####");
   });
-  return replied
-    ? { state: "waiting", reason: "assistant" }
-    : { state: "working", reason: "user" };
+  return replied ? { state: "waiting", reason: "assistant" } : { state: "working", reason: "user" };
 }
 
 const ACTIVITY_MAX_FILES = 10;
@@ -97,7 +95,10 @@ const FENCE_RE = /^\s*(```|~~~)/;
 const ACTIVITY_ERROR_RE = /(litellm\.\w*error|\w*APIError|exception|error:)/i;
 
 function looksLikePath(token: string): boolean {
-  const t = token.trim().replace(/^`+|`+$/g, "").trim();
+  const t = token
+    .trim()
+    .replace(/^`+|`+$/g, "")
+    .trim();
   if (!t || /\s/.test(t)) return false;
   return PATHISH_RE.test(t);
 }
@@ -143,7 +144,11 @@ export function parseAiderActivity(markdown: string): SessionActivity {
         while (j >= 0 && lines[j]!.trim() === "") j--;
       }
       if (j >= 0 && looksLikePath(lines[j]!)) {
-        files.push(lines[j]!.trim().replace(/^`+|`+$/g, "").trim());
+        files.push(
+          lines[j]!.trim()
+            .replace(/^`+|`+$/g, "")
+            .trim(),
+        );
       }
     }
 
@@ -167,7 +172,7 @@ function summarizeError(line: string): string {
   // Strip aider's "> " info prefix, then keep up to the first sentence/segment
   // boundary so we surface the error class, not a full message or traceback.
   const stripped = line.replace(/^\s*>\s*/, "").trim();
-  const head = stripped.split(/[—–\-]{1,2}\s|[.{[]|,\s/)[0]!.trim() || stripped;
+  const head = stripped.split(/[—–-]{1,2}\s|[.{[]|,\s/)[0]!.trim() || stripped;
   return head.slice(0, ACTIVITY_ERROR_CAP).trim();
 }
 
@@ -197,7 +202,12 @@ export async function walkHistories(root: string, maxDepth = MAX_DEPTH): Promise
     }
     for (const e of entries) {
       if (e.isFile() && e.name === HISTORY_FILE) out.push(path.join(dir, e.name));
-      else if (e.isDirectory() && depth < maxDepth && !e.name.startsWith(".") && e.name !== "node_modules") {
+      else if (
+        e.isDirectory() &&
+        depth < maxDepth &&
+        !e.name.startsWith(".") &&
+        e.name !== "node_modules"
+      ) {
         await rec(path.join(dir, e.name), depth + 1);
       }
     }
@@ -249,8 +259,7 @@ export class AiderObserver extends EventEmitter implements AgentObserver {
       .map((r) => r.replace(/^~/, os.homedir()));
     // Tier 2: derive structural activity only at visibility "activity"/"intent".
     // At "metadata"/"off" we stay metadata-only (the privacy-minimal default).
-    this.computeActivity =
-      cfg.visibility === "activity" || cfg.visibility === "intent";
+    this.computeActivity = cfg.visibility === "activity" || cfg.visibility === "intent";
   }
 
   async start(emit: (s: AgentSession) => void): Promise<void> {

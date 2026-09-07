@@ -364,7 +364,9 @@ export class JsonlOutboxStore implements OutboxStore {
     } catch (err) {
       // Losing a compaction only wastes disk; losing an event would lose money,
       // so this never propagates.
-      logError(`[billing] outbox compaction failed (uid ${redactId(uid)}): ${describeError(err, uid)}`);
+      logError(
+        `[billing] outbox compaction failed (uid ${redactId(uid)}): ${describeError(err, uid)}`,
+      );
     }
   }
 }
@@ -376,12 +378,14 @@ export class JsonlOutboxStore implements OutboxStore {
 // lisa-outbox-tenants/{shard}       — sticky registry of tenants that ever opened one
 const TENANT_SHARDS = 8;
 
-function tenantShard(uid: string): string {
+/** Exported for tests: sharding must be deterministic and stay in range. */
+export function tenantShard(uid: string): string {
   const h = crypto.createHash("sha256").update(uid).digest();
   return `lisa-outbox-tenants/${h[0]! % TENANT_SHARDS}`;
 }
 
-function isAlreadyExists(err: unknown): boolean {
+/** Exported for tests: this is the append idempotency classification. */
+export function isAlreadyExists(err: unknown): boolean {
   return err instanceof FirestoreError && (err.status === 409 || err.status === 412);
 }
 
@@ -478,19 +482,23 @@ export class FirestoreOutboxStore implements OutboxStore {
       });
       this.registered.delete(uid);
     } catch (err) {
-      logInfo(`[billing] outbox index prune skipped (uid ${redactId(uid)}): ${describeError(err, uid)}`);
+      logInfo(
+        `[billing] outbox index prune skipped (uid ${redactId(uid)}): ${describeError(err, uid)}`,
+      );
     }
   }
 }
 
-function readIds(data: Record<string, unknown> | null, field = "open"): string[] {
+/** Exported for tests: defensive parse of a Firestore array field. */
+export function readIds(data: Record<string, unknown> | null, field = "open"): string[] {
   const raw = data?.[field];
   return Array.isArray(raw) ? raw.filter((v): v is string => typeof v === "string") : [];
 }
-function toDoc(event: UsageEvent): Record<string, unknown> {
+/** Exported for tests: a money record must survive the round trip intact. */
+export function toDoc(event: UsageEvent): Record<string, unknown> {
   return { ...event, lastError: event.lastError ?? "" };
 }
-function fromDoc(data: Record<string, unknown>): UsageEvent {
+export function fromDoc(data: Record<string, unknown>): UsageEvent {
   const event = { ...data } as unknown as UsageEvent;
   if (!event.lastError) delete event.lastError;
   return event;
@@ -564,7 +572,10 @@ export function defaultSettlementDeps(): SettlementDeps {
 
 function wrapDebitError(err: unknown, uid: string): BillingStateError {
   if (err instanceof BillingStateError) return err;
-  return new BillingStateError("balance_unavailable", `balance commit failed: ${describeError(err, uid)}`);
+  return new BillingStateError(
+    "balance_unavailable",
+    `balance commit failed: ${describeError(err, uid)}`,
+  );
 }
 
 /**

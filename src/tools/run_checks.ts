@@ -71,8 +71,15 @@ export const runChecksTool: ToolDefinition<RunChecksInput, string> = {
   inputSchema: {
     type: "object",
     properties: {
-      cwd: { type: "string", description: "Absolute path inside the repo. Defaults to the current directory." },
-      only: { type: "array", items: { type: "string" }, description: "Subset: any of typecheck/lint/test/build. Omit to run all detected." },
+      cwd: {
+        type: "string",
+        description: "Absolute path inside the repo. Defaults to the current directory.",
+      },
+      only: {
+        type: "array",
+        items: { type: "string" },
+        description: "Subset: any of typecheck/lint/test/build. Omit to run all detected.",
+      },
     },
     additionalProperties: false,
   },
@@ -81,7 +88,7 @@ export const runChecksTool: ToolDefinition<RunChecksInput, string> = {
     if (!(await isDir(cwd))) return `(not a directory: ${cwd})`;
     const root = (await gitRoot(cwd, ctx.signal)) ?? cwd;
 
-    let scripts: Record<string, string> = {};
+    let scripts: Record<string, string>;
     try {
       const pkg = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
       scripts = (pkg.scripts as Record<string, string>) ?? {};
@@ -94,7 +101,12 @@ export const runChecksTool: ToolDefinition<RunChecksInput, string> = {
     }
 
     // Pick the package manager from the lockfile.
-    const has = async (f: string) => isDir(root).then(() => readFile(path.join(root, f)).then(() => true).catch(() => false));
+    const has = async (f: string) =>
+      isDir(root).then(() =>
+        readFile(path.join(root, f))
+          .then(() => true)
+          .catch(() => false),
+      );
     let pm = "npm";
     if (await has("pnpm-lock.yaml")) pm = "pnpm";
     else if (await has("yarn.lock")) pm = "yarn";
@@ -103,7 +115,11 @@ export const runChecksTool: ToolDefinition<RunChecksInput, string> = {
     const results: string[] = [];
     const failures: string[] = [];
     for (const c of checks) {
-      const r = await runIn(root, pm, ["run", c.script], { timeoutMs: 240_000, signal: ctx.signal, maxBytes: 200_000 });
+      const r = await runIn(root, pm, ["run", c.script], {
+        timeoutMs: 240_000,
+        signal: ctx.signal,
+        maxBytes: 200_000,
+      });
       if (r.spawnError) {
         results.push(`✗ ${c.name} (couldn't run ${pm})`);
         continue;

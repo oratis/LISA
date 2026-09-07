@@ -40,7 +40,10 @@ const facts = (over: Partial<InstallFacts> = {}): InstallFacts => ({
 describe("detectInstall", () => {
   test("a Cellar path is Homebrew, wherever the prefix is", () => {
     const d = detectInstall(
-      facts({ realEntry: "/opt/homebrew/Cellar/lisa/0.24.0/libexec/dist/cli.js", brewPrefix: null }),
+      facts({
+        realEntry: "/opt/homebrew/Cellar/lisa/0.24.0/libexec/dist/cli.js",
+        brewPrefix: null,
+      }),
     );
     assert.equal(d.flavor, "homebrew");
   });
@@ -76,7 +79,11 @@ describe("detectInstall", () => {
   test("the npm global prefix alone is enough when the shim isn't a package path", () => {
     assert.equal(
       detectInstall(
-        facts({ realEntry: "/Users/x/.nvm/versions/node/v22.0.0/bin/lisa", brewPrefix: null, npmPrefix: "/Users/x/.nvm/versions/node/v22.0.0" }),
+        facts({
+          realEntry: "/Users/x/.nvm/versions/node/v22.0.0/bin/lisa",
+          brewPrefix: null,
+          npmPrefix: "/Users/x/.nvm/versions/node/v22.0.0",
+        }),
       ).flavor,
       "npm-global",
     );
@@ -85,14 +92,22 @@ describe("detectInstall", () => {
   test("a checkout wins over nothing, and a Cellar path still wins over a checkout", () => {
     assert.equal(
       detectInstall(
-        facts({ realEntry: "/Users/x/Projects/LISA/dist/cli.js", brewPrefix: null, npmPrefix: null, repoRoot: "/Users/x/Projects/LISA" }),
+        facts({
+          realEntry: "/Users/x/Projects/LISA/dist/cli.js",
+          brewPrefix: null,
+          npmPrefix: null,
+          repoRoot: "/Users/x/Projects/LISA",
+        }),
       ).flavor,
       "source",
     );
     // `brew install` of a checkout-shaped path: Cellar is conclusive.
     assert.equal(
       detectInstall(
-        facts({ realEntry: "/opt/homebrew/Cellar/lisa/0.24.0/libexec/dist/cli.js", repoRoot: "/opt/homebrew/Cellar/lisa/0.24.0" }),
+        facts({
+          realEntry: "/opt/homebrew/Cellar/lisa/0.24.0/libexec/dist/cli.js",
+          repoRoot: "/opt/homebrew/Cellar/lisa/0.24.0",
+        }),
       ).flavor,
       "homebrew",
     );
@@ -100,7 +115,8 @@ describe("detectInstall", () => {
 
   test("no evidence at all is 'unknown', not a guess", () => {
     assert.equal(
-      detectInstall(facts({ realEntry: "/somewhere/odd/lisa", brewPrefix: null, npmPrefix: null })).flavor,
+      detectInstall(facts({ realEntry: "/somewhere/odd/lisa", brewPrefix: null, npmPrefix: null }))
+        .flavor,
       "unknown",
     );
   });
@@ -130,7 +146,10 @@ describe("upgradeCommands", () => {
 
 describe("kickstartCommand", () => {
   test("targets the user's GUI domain and forces a restart", () => {
-    assert.equal(formatStep(kickstartCommand(501)), `launchctl kickstart -k gui/501/${AUTOSTART_LABEL}`);
+    assert.equal(
+      formatStep(kickstartCommand(501)),
+      `launchctl kickstart -k gui/501/${AUTOSTART_LABEL}`,
+    );
   });
 
   test("the label still matches src/autostart/install.ts", async () => {
@@ -259,7 +278,10 @@ describe("runUpgrade", () => {
 
   test("an npm-global install runs the npm command", async () => {
     const h = harness({
-      facts: { realEntry: `/usr/local/lib/node_modules/${PACKAGE_NAME}/dist/cli.js`, brewPrefix: null },
+      facts: {
+        realEntry: `/usr/local/lib/node_modules/${PACKAGE_NAME}/dist/cli.js`,
+        brewPrefix: null,
+      },
     });
     await h.call();
     assert.equal(h.ran[0], `npm install -g ${PACKAGE_NAME}@latest`);
@@ -312,7 +334,11 @@ describe("a failed upgrade says what to do about it", () => {
   });
 
   test("registry / DNS / connection failures are the network case", () => {
-    for (const out of ["getaddrinfo ENOTFOUND registry.npmjs.org", "npm ERR! code ETIMEDOUT", "ECONNRESET"]) {
+    for (const out of [
+      "getaddrinfo ENOTFOUND registry.npmjs.org",
+      "npm ERR! code ETIMEDOUT",
+      "ECONNRESET",
+    ]) {
       assert.equal(classifyUpgradeFailure(out), "network", out.slice(0, 30));
     }
   });
@@ -330,7 +356,8 @@ describe("a failed upgrade says what to do about it", () => {
   test("classification reads the whole message, not just its first line", () => {
     // runCmd rejects with `npm exited 1: <stderr>`, and the needle is almost
     // never on line one.
-    const real = "npm exited 1: npm ERR! code EACCES\nnpm ERR! syscall mkdir\nnpm ERR! path /usr/local/lib";
+    const real =
+      "npm exited 1: npm ERR! code EACCES\nnpm ERR! syscall mkdir\nnpm ERR! path /usr/local/lib";
     assert.equal(classifyUpgradeFailure(real), "permissions");
   });
 
@@ -356,7 +383,10 @@ describe("a failed upgrade says what to do about it", () => {
     for (const kind of ["permissions", "network", "node-too-old", "unknown"] as const) {
       const lines = failureAdvice(kind, "npm-global");
       assert.ok(lines.length > 0, kind);
-      assert.ok(lines.every((l) => l.trim().length > 0), kind);
+      assert.ok(
+        lines.every((l) => l.trim().length > 0),
+        kind,
+      );
     }
   });
 

@@ -18,24 +18,17 @@ export interface HookOutput {
   stderr: string;
 }
 
-export async function runHook(
-  hook: HookSpec,
-  env: HookEnv,
-  cwd: string,
-): Promise<HookOutput> {
+export async function runHook(hook: HookSpec, env: HookEnv, cwd: string): Promise<HookOutput> {
   return await new Promise<HookOutput>((resolve, reject) => {
     const child = spawn("/bin/bash", ["-lc", hook.command], {
       cwd,
-      env: { ...process.env, ...env } as Record<string, string>,
+      env: { ...process.env, ...env },
     });
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", (b: Buffer) => (stdout += b.toString("utf8")));
     child.stderr.on("data", (b: Buffer) => (stderr += b.toString("utf8")));
-    const timer = setTimeout(
-      () => child.kill("SIGTERM"),
-      hook.timeout_ms ?? 10_000,
-    );
+    const timer = setTimeout(() => child.kill("SIGTERM"), hook.timeout_ms ?? 10_000);
     child.on("error", (err) => {
       clearTimeout(timer);
       reject(err);

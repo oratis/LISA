@@ -18,13 +18,13 @@ process.env.LISA_LOG_FORMAT = "text";
 
 import type { AccountRecord } from "../web/accounts.js";
 import type { ReconcileDeps } from "./reconcile.js";
+import { cmdBillingReconcile } from "../cli/billing-reconcile.js";
 import type { SettlementDeps, UsageEvent } from "./outbox.js";
 
 const { MemoryOutboxStore, newUsageEvent, SETTLED_REPLAY_WINDOW_MS } = await import("./outbox.js");
 const {
   reconcileOnce,
   startBillingReconciler,
-  cmdBillingReconcile,
   RECONCILE_MAX_ATTEMPTS,
   RECONCILE_PENDING_GRACE_MS,
 } = await import("./reconcile.js");
@@ -45,7 +45,14 @@ const USAGE = { inputTokens: 10, outputTokens: 10, cacheReadTokens: 0, cacheWrit
 
 function event(overrides: Partial<UsageEvent> = {}, acct: AccountRecord = ACCT): UsageEvent {
   const ev = newUsageEvent(
-    { acct, kind: "gw", model: "claude-sonnet-4-6", usage: USAGE, costMicros: 777, reservationId: "r" },
+    {
+      acct,
+      kind: "gw",
+      model: "claude-sonnet-4-6",
+      usage: USAGE,
+      costMicros: 777,
+      reservationId: "r",
+    },
     T0 - 2 * RECONCILE_PENDING_GRACE_MS,
   );
   return { ...ev, ...overrides };
@@ -173,7 +180,10 @@ describe("reconcileOnce", () => {
     assert.equal(r.skipped, 2, "needs_human + within-grace are skipped");
     assert.equal(r.escalated, 0);
     assert.equal(l.state.calls, 0, "dry run never debits");
-    assert.deepEqual(store.calls.filter((c) => c.op !== "listOpen" && c.op !== "listTenants" && c.op !== "get"), []);
+    assert.deepEqual(
+      store.calls.filter((c) => c.op !== "listOpen" && c.op !== "listTenants" && c.op !== "get"),
+      [],
+    );
     assert.equal((await store.get(UID, pending.id))!.status, "pending");
   });
 
@@ -197,7 +207,11 @@ describe("reconcileOnce", () => {
     await store.append(ev);
     const r = await reconcileOnce({}, deps(store, l));
     assert.equal(r.escalated, 1);
-    assert.equal(l.state.calls, 0, "the idempotency key may have aged out — a replay could double charge");
+    assert.equal(
+      l.state.calls,
+      0,
+      "the idempotency key may have aged out — a replay could double charge",
+    );
     assert.match((await store.get(UID, ev.id))!.lastError!, /replay_window/);
   });
 
@@ -240,10 +254,21 @@ describe("startBillingReconciler", () => {
       intervalMs: 15,
       run: async () => {
         runs += 1;
-        return { scanned: 0, committed: 0, escalated: 0, skipped: 0, failed: 0, tenants: 0, dryRun: false };
+        return {
+          scanned: 0,
+          committed: 0,
+          escalated: 0,
+          skipped: 0,
+          failed: 0,
+          tenants: 0,
+          dryRun: false,
+        };
       },
     });
-    assert.ok(await until(() => runs >= 2), `expected the initial run plus at least one tick, got ${runs}`);
+    assert.ok(
+      await until(() => runs >= 2),
+      `expected the initial run plus at least one tick, got ${runs}`,
+    );
     handle.stop();
     const seen = runs;
     await new Promise((r) => setTimeout(r, 60));
@@ -265,10 +290,17 @@ describe("startBillingReconciler", () => {
         throw new Error("boom");
       },
     });
-    assert.ok(await until(() => attempts >= 2), `expected at least two attempted runs, got ${attempts}`);
+    assert.ok(
+      await until(() => attempts >= 2),
+      `expected at least two attempted runs, got ${attempts}`,
+    );
     handle.stop();
     assert.ok(locks >= 2);
-    assert.equal(attempts, locks - 1, "the first lock refusal skipped the run; later ticks ran and threw");
+    assert.equal(
+      attempts,
+      locks - 1,
+      "the first lock refusal skipped the run; later ticks ran and threw",
+    );
     assert.ok(logs.lines.some((l) => l.includes("[billing]") && l.includes("boom")));
   });
 
@@ -285,7 +317,15 @@ describe("startBillingReconciler", () => {
         maxInFlight = Math.max(maxInFlight, inFlight);
         await new Promise((r) => setTimeout(r, 15));
         inFlight -= 1;
-        return { scanned: 0, committed: 0, escalated: 0, skipped: 0, failed: 0, tenants: 0, dryRun: false };
+        return {
+          scanned: 0,
+          committed: 0,
+          escalated: 0,
+          skipped: 0,
+          failed: 0,
+          tenants: 0,
+          dryRun: false,
+        };
       },
     });
     // Several intervals must elapse while one run is still in flight.
@@ -304,7 +344,7 @@ describe("lisa billing reconcile (operator CLI)", () => {
     await cmdBillingReconcile(["--dry-run", "--json"], deps(store, l));
     const json = logs.lines.find((x) => x.trim().startsWith("{"));
     assert.ok(json, "a JSON report line");
-    const report = JSON.parse(json!) as { scanned: number; committed: number; dryRun: boolean };
+    const report = JSON.parse(json) as { scanned: number; committed: number; dryRun: boolean };
     assert.equal(report.dryRun, true);
     assert.equal(report.scanned, 1);
     assert.equal(report.committed, 1);
@@ -315,7 +355,11 @@ describe("lisa billing reconcile (operator CLI)", () => {
   test("the default text report names every counter; --uid narrows the scan; --resolve closes a parked event by hand", async () => {
     const store = new MemoryOutboxStore();
     const l = ledger();
-    const parked = event({ status: "needs_human", attempts: RECONCILE_MAX_ATTEMPTS, lastError: "x" });
+    const parked = event({
+      status: "needs_human",
+      attempts: RECONCILE_MAX_ATTEMPTS,
+      lastError: "x",
+    });
     await store.append(parked);
     await cmdBillingReconcile(["--uid", UID], deps(store, l));
     const text = logs.lines.join("\n");

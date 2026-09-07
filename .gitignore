@@ -23,3 +23,10 @@ docs/paper/
 __pycache__/
 research/learning-in-referencing/paper/tmp/
 research/learning-in-referencing/p12/*_smoke.json
+
+# Test tooling output: c8 coverage, Playwright reports, and the throwaway
+# LISA_HOMEs the e2e suite spins up under .tmp/e2e.
+coverage/
+playwright-report/
+test-results/
+.tmp/

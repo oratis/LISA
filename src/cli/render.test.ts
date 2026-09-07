@@ -1,3 +1,9 @@
+/* eslint-disable no-control-regex --
+ * These assertions match real ANSI escape sequences (\x1b[…m) because the
+ * thing under test is exactly whether the renderer emits or suppresses them.
+ * The rule exists to catch control characters that got into a pattern by
+ * accident; here they are the pattern.
+ */
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -65,7 +71,10 @@ describe("createEventRenderer — piped (non-TTY) output", () => {
     h.advance(1200);
     h.send({ type: "tool_call_end", toolName: "bash", toolResult: "42 passing" });
     h.r.endTurn();
-    const lines = h.stderr.text().split("\n").filter((l) => l.length > 0);
+    const lines = h.stderr
+      .text()
+      .split("\n")
+      .filter((l) => l.length > 0);
     assert.deepEqual(lines, ["⚙ bash  npm test", "✓ bash (1.2s)"]);
   });
 

@@ -34,12 +34,20 @@ export interface PushPrefs {
   brief: boolean;
 }
 export function defaultPushPrefs(): PushPrefs {
-  return { done: true, error: true, permission: true, idle: true, advisor: false, mail: true, brief: true };
+  return {
+    done: true,
+    error: true,
+    permission: true,
+    idle: true,
+    advisor: false,
+    mail: true,
+    brief: true,
+  };
 }
 export function normalizePushPrefs(p: Partial<PushPrefs> | null | undefined): PushPrefs {
   const base = defaultPushPrefs();
   if (!p || typeof p !== "object") return base;
-  const pick = (k: keyof PushPrefs): boolean => (typeof p[k] === "boolean" ? (p[k] as boolean) : base[k]);
+  const pick = (k: keyof PushPrefs): boolean => (typeof p[k] === "boolean" ? p[k] : base[k]);
   return {
     done: pick("done"),
     error: pick("error"),
@@ -86,9 +94,15 @@ export function loadPush(): PushSubscription[] {
     return parsed
       .filter(
         (s): s is PushSubscription =>
-          !!s && typeof (s as PushSubscription).id === "string" && typeof (s as PushSubscription).target === "string",
+          !!s &&
+          typeof (s as PushSubscription).id === "string" &&
+          typeof (s as PushSubscription).target === "string",
       )
-      .map((s) => ({ ...s, kind: s.kind === "apns" ? "apns" : "ntfy", prefs: normalizePushPrefs(s.prefs) }));
+      .map((s) => ({
+        ...s,
+        kind: s.kind === "apns" ? "apns" : "ntfy",
+        prefs: normalizePushPrefs(s.prefs),
+      }));
   } catch {
     return [];
   }
@@ -153,13 +167,19 @@ export function listLiveActivities(): LiveActivityReg[] {
     if (!Array.isArray(parsed)) return [];
     return parsed.filter(
       (r): r is LiveActivityReg =>
-        !!r && typeof (r as LiveActivityReg).sessionId === "string" && typeof (r as LiveActivityReg).token === "string",
+        !!r &&
+        typeof (r as LiveActivityReg).sessionId === "string" &&
+        typeof (r as LiveActivityReg).token === "string",
     );
   } catch {
     return [];
   }
 }
-export function registerLiveActivity(sessionId: string, token: string, now: number = Date.now()): void {
+export function registerLiveActivity(
+  sessionId: string,
+  token: string,
+  now: number = Date.now(),
+): void {
   const list = listLiveActivities().filter((r) => r.sessionId !== sessionId);
   list.push({ sessionId, token, createdAt: now });
   const file = liveActivitiesPath();
@@ -204,12 +224,33 @@ export function agentPushEvents(prev: AgentSession | undefined, next: AgentSessi
   const who = `${next.agent} · ${next.project || next.agent}`;
   const click = agentDeepLink(next.agent, next.sessionId);
   if (next.state === "done" && prev?.state !== "done")
-    out.push({ pref: "done", title: `${who} — done`, body: "Finished.", priority: "default", tag: "done", click });
+    out.push({
+      pref: "done",
+      title: `${who} — done`,
+      body: "Finished.",
+      priority: "default",
+      tag: "done",
+      click,
+    });
   if (next.state === "error" && prev?.state !== "error")
-    out.push({ pref: "error", title: `${who} — error`, body: next.stateReason || "errored", priority: "high", tag: "error", click });
+    out.push({
+      pref: "error",
+      title: `${who} — error`,
+      body: next.stateReason || "errored",
+      priority: "high",
+      tag: "error",
+      click,
+    });
   const pend = next.activity?.pendingPermission;
   if (pend && pend !== prev?.activity?.pendingPermission)
-    out.push({ pref: "permission", title: `${who} — needs permission`, body: `waiting on: ${pend}`, priority: "high", tag: "permission", click });
+    out.push({
+      pref: "permission",
+      title: `${who} — needs permission`,
+      body: `waiting on: ${pend}`,
+      priority: "high",
+      tag: "permission",
+      click,
+    });
   return out;
 }
 
@@ -223,7 +264,7 @@ export async function sendNtfy(
   server: string,
   topic: string,
   ev: { title: string; body: string; priority: "high" | "default"; click?: string },
-  fetchImpl: FetchLike = fetch as unknown as FetchLike,
+  fetchImpl: FetchLike = fetch,
 ): Promise<boolean> {
   try {
     const base = (server || "https://ntfy.sh").replace(/\/+$/, "");
@@ -267,10 +308,15 @@ export function apnsConfigFromEnv(env: NodeJS.ProcessEnv = process.env): ApnsCon
   if (!keyId || !teamId || !raw) return null;
   let key = raw;
   if (!raw.includes("BEGIN")) {
-    try { key = fs.readFileSync(raw, "utf8"); } catch { return null; }
+    try {
+      key = fs.readFileSync(raw, "utf8");
+    } catch {
+      return null;
+    }
   }
   const topic = env.LISA_APNS_TOPIC || "ai.meetlisa.main";
-  const host = env.LISA_APNS_ENV === "production" ? "api.push.apple.com" : "api.sandbox.push.apple.com";
+  const host =
+    env.LISA_APNS_ENV === "production" ? "api.push.apple.com" : "api.sandbox.push.apple.com";
   return { keyId, teamId, key, topic, host };
 }
 
@@ -279,7 +325,10 @@ function b64url(buf: Buffer): string {
 }
 
 /** Build a signed ES256 provider JWT for APNs. Pure given (cfg, nowSec). */
-export function buildApnsJwt(cfg: Pick<ApnsConfig, "keyId" | "teamId" | "key">, nowSec: number): string {
+export function buildApnsJwt(
+  cfg: Pick<ApnsConfig, "keyId" | "teamId" | "key">,
+  nowSec: number,
+): string {
   const header = b64url(Buffer.from(JSON.stringify({ alg: "ES256", kid: cfg.keyId })));
   const claims = b64url(Buffer.from(JSON.stringify({ iss: cfg.teamId, iat: nowSec })));
   const signingInput = `${header}.${claims}`;
@@ -291,7 +340,11 @@ export function buildApnsJwt(cfg: Pick<ApnsConfig, "keyId" | "teamId" | "key">, 
 }
 
 /** Build the APNs JSON payload from a push event. Pure. */
-export function buildApnsPayload(ev: { title: string; body: string; click?: string }): Record<string, unknown> {
+export function buildApnsPayload(ev: {
+  title: string;
+  body: string;
+  click?: string;
+}): Record<string, unknown> {
   return {
     aps: { alert: { title: ev.title, body: ev.body }, sound: "default" },
     // Custom key the app reads on tap to deep-link (mirrors the ntfy Click URL).
@@ -316,14 +369,20 @@ const realApnsPost: ApnsPoster = (o) =>
     const done = (s: number) => {
       if (settled) return;
       settled = true;
-      try { client.close(); } catch { /* already closing */ }
+      try {
+        client.close();
+      } catch {
+        /* already closing */
+      }
       resolve({ status: s });
     };
     client.on("error", () => done(0));
     const req = client.request({ ":method": "POST", ":path": o.path, ...o.headers });
     req.setEncoding("utf8");
     req.setTimeout(10_000, () => done(0)); // don't leak a hung connection
-    req.on("response", (h) => { status = Number(h[":status"]) || 0; });
+    req.on("response", (h) => {
+      status = Number(h[":status"]) || 0;
+    });
     req.on("data", () => {});
     req.on("end", () => done(status));
     req.on("error", () => done(0));
@@ -376,7 +435,9 @@ export interface LiveActivityState {
 export function liveActivityState(s: AgentSession): LiveActivityState {
   const a = s.activity;
   const last = a?.lastTools && a.lastTools.length ? a.lastTools[a.lastTools.length - 1] : undefined;
-  const detail = a?.pendingPermission ? `⚠ ${a.pendingPermission}` : (s.stateReason || last || s.state);
+  const detail = a?.pendingPermission
+    ? `⚠ ${a.pendingPermission}`
+    : s.stateReason || last || s.state;
   return { state: s.state, detail, turns: a?.turnCount ?? 0 };
 }
 
@@ -432,7 +493,11 @@ export interface PushBridgeOpts {
   /** Registered Live Activity tokens (tests). Default: the on-disk store. */
   liveActivities?: () => LiveActivityReg[];
   /** Injected Live Activity delivery (tests). Default: real APNs liveactivity. */
-  liveDeliver?: (token: string, cs: LiveActivityState, event: "update" | "end") => void | Promise<void>;
+  liveDeliver?: (
+    token: string,
+    cs: LiveActivityState,
+    event: "update" | "end",
+  ) => void | Promise<void>;
   now?: () => number;
   log?: (m: string) => void;
   throttleMs?: number;
@@ -444,7 +509,11 @@ export class PushBridge {
   private readonly subs: () => PushSubscription[];
   private readonly deliverFn: (sub: PushSubscription, ev: PushEvent) => void | Promise<void>;
   private readonly liveActivities: () => LiveActivityReg[];
-  private readonly liveDeliverFn: (token: string, cs: LiveActivityState, event: "update" | "end") => void | Promise<void>;
+  private readonly liveDeliverFn: (
+    token: string,
+    cs: LiveActivityState,
+    event: "update" | "end",
+  ) => void | Promise<void>;
   private readonly now: () => number;
   private readonly log: (m: string) => void;
   private readonly throttleMs: number;
@@ -457,7 +526,8 @@ export class PushBridge {
     this.throttleMs = opts.throttleMs ?? 30_000;
     this.deliverFn = opts.deliver ?? ((sub, ev) => this.defaultDeliver(sub, ev));
     this.liveActivities = opts.liveActivities ?? listLiveActivities;
-    this.liveDeliverFn = opts.liveDeliver ?? ((token, cs, event) => this.defaultLiveDeliver(token, cs, event));
+    this.liveDeliverFn =
+      opts.liveDeliver ?? ((token, cs, event) => this.defaultLiveDeliver(token, cs, event));
   }
 
   onAgentUpdate(next: AgentSession): void {
@@ -476,9 +546,12 @@ export class PushBridge {
     const terminal = next.state === "done" || next.state === "error";
     const key = `la#${next.sessionId}`;
     // Throttle progress refreshes, but always let a terminal "end" through.
-    if (!terminal && this.now() - (this.lastSent.get(key) ?? -Infinity) < this.liveThrottleMs) return;
+    if (!terminal && this.now() - (this.lastSent.get(key) ?? -Infinity) < this.liveThrottleMs)
+      return;
     this.lastSent.set(key, this.now());
-    void Promise.resolve(this.liveDeliverFn(reg.token, liveActivityState(next), terminal ? "end" : "update")).catch(() => {});
+    void Promise.resolve(
+      this.liveDeliverFn(reg.token, liveActivityState(next), terminal ? "end" : "update"),
+    ).catch(() => {});
     if (terminal) unregisterLiveActivity(next.sessionId);
   }
 
@@ -501,7 +574,14 @@ export class PushBridge {
   /** Daily mail digest push (default priority). */
   onMailDigest(text: string, click?: string): void {
     this.fire(
-      { pref: "mail", title: "📬 Mail digest", body: text.slice(0, 240), priority: "default", tag: "mail-digest", click },
+      {
+        pref: "mail",
+        title: "📬 Mail digest",
+        body: text.slice(0, 240),
+        priority: "default",
+        tag: "mail-digest",
+        click,
+      },
       `mail-digest#${this.now()}`,
     );
   }
@@ -509,7 +589,14 @@ export class PushBridge {
   /** Daily KB feeds brief push (default priority). */
   onKbBrief(text: string, click?: string): void {
     this.fire(
-      { pref: "brief", title: "📰 Daily brief", body: text.slice(0, 240), priority: "default", tag: "kb-brief", click },
+      {
+        pref: "brief",
+        title: "📰 Daily brief",
+        body: text.slice(0, 240),
+        priority: "default",
+        tag: "kb-brief",
+        click,
+      },
       `kb-brief#${this.now()}`,
     );
   }
@@ -517,7 +604,14 @@ export class PushBridge {
   /** Important-mail alert (high priority); `tag` dedups per message. */
   onMailImportant(ev: { title: string; body: string; click?: string; tag: string }): void {
     this.fire(
-      { pref: "mail", title: ev.title, body: ev.body.slice(0, 240), priority: "high", tag: ev.tag, click: ev.click },
+      {
+        pref: "mail",
+        title: ev.title,
+        body: ev.body.slice(0, 240),
+        priority: "high",
+        tag: ev.tag,
+        click: ev.click,
+      },
       `mail#${ev.tag}`,
     );
   }
@@ -525,7 +619,13 @@ export class PushBridge {
   /** Billing anomaly (B8d): a single account crossed the daily face threshold. */
   onBillingAnomaly(text: string): void {
     this.fire(
-      { pref: "error", title: "LISA billing anomaly", body: text.slice(0, 240), priority: "high", tag: "billing-anomaly" },
+      {
+        pref: "error",
+        title: "LISA billing anomaly",
+        body: text.slice(0, 240),
+        priority: "high",
+        tag: "billing-anomaly",
+      },
       "billing#anomaly",
     );
   }
@@ -546,7 +646,9 @@ export class PushBridge {
     } else {
       const cfg = apnsConfigFromEnv();
       if (!cfg) {
-        this.log(`[push] apns not configured (set LISA_APNS_KEY/_KEY_ID/_TEAM_ID) — would notify ${sub.id}: ${ev.title}`);
+        this.log(
+          `[push] apns not configured (set LISA_APNS_KEY/_KEY_ID/_TEAM_ID) — would notify ${sub.id}: ${ev.title}`,
+        );
         return;
       }
       const ok = await sendApns(cfg, sub.target, ev);
@@ -554,7 +656,11 @@ export class PushBridge {
     }
   }
 
-  private async defaultLiveDeliver(token: string, cs: LiveActivityState, event: "update" | "end"): Promise<void> {
+  private async defaultLiveDeliver(
+    token: string,
+    cs: LiveActivityState,
+    event: "update" | "end",
+  ): Promise<void> {
     const cfg = apnsConfigFromEnv();
     if (!cfg) {
       this.log(`[push] live-activity ${event} skipped (no APNs key)`);

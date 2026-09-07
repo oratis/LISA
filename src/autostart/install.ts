@@ -28,12 +28,7 @@ export interface AutostartOptions {
 }
 
 const PLIST_LABEL = "ai.lisa.autostart";
-const PLIST_PATH = path.join(
-  os.homedir(),
-  "Library",
-  "LaunchAgents",
-  `${PLIST_LABEL}.plist`,
-);
+const PLIST_PATH = path.join(os.homedir(), "Library", "LaunchAgents", `${PLIST_LABEL}.plist`);
 /**
  * Two logs, on purpose (T-6). The process writes its own operational log to
  * SERVE_LOG via LISA_LOG_FILE, where src/log.ts rotates it at 10 MB × 5 —
@@ -55,7 +50,7 @@ function launchdLogPath(): string {
 export function serveArgs(opts: AutostartOptions): string[] {
   const args = ["serve", "--web"];
   if (opts.port && opts.port !== 5757) args.push("--port", String(opts.port));
-  const channels = opts.imessage ? ["imessage"] : opts.channels ?? [];
+  const channels = opts.imessage ? ["imessage"] : (opts.channels ?? []);
   if (channels.length) args.push("--channels", channels.join(","));
   return args;
 }
@@ -190,18 +185,13 @@ export function renderPlist(opts: {
   /** Extra EnvironmentVariables entries, merged over the PATH default. */
   env?: Record<string, string>;
 }): string {
-  const argvXml = opts.argv
-    .map((a) => `        <string>${escapeXml(a)}</string>`)
-    .join("\n");
+  const argvXml = opts.argv.map((a) => `        <string>${escapeXml(a)}</string>`).join("\n");
   const envEntries: Record<string, string> = {
     PATH: "/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin",
     ...opts.env,
   };
   const envXml = Object.entries(envEntries)
-    .map(
-      ([k, v]) =>
-        `        <key>${escapeXml(k)}</key>\n        <string>${escapeXml(v)}</string>`,
-    )
+    .map(([k, v]) => `        <key>${escapeXml(k)}</key>\n        <string>${escapeXml(v)}</string>`)
     .join("\n");
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

@@ -9,7 +9,10 @@ describe("pr_status summarizeChecks", () => {
   test("any failure → ✗ (even amid successes)", () =>
     assert.equal(summarizeChecks([{ conclusion: "SUCCESS" }, { conclusion: "FAILURE" }]), "✗"));
   test("pending (no fail) → ⏳", () =>
-    assert.equal(summarizeChecks([{ conclusion: "SUCCESS" }, { status: "IN_PROGRESS", conclusion: null }]), "⏳"));
+    assert.equal(
+      summarizeChecks([{ conclusion: "SUCCESS" }, { status: "IN_PROGRESS", conclusion: null }]),
+      "⏳",
+    ));
   test("failure dominates pending", () =>
     assert.equal(summarizeChecks([{ status: "IN_PROGRESS" }, { state: "ERROR" }]), "✗"));
 });
@@ -24,12 +27,16 @@ describe("pr_status formatPR", () => {
       reviewDecision: "APPROVED",
       statusCheckRollup: [{ conclusion: "SUCCESS" }],
     });
-    assert.match(line, /#42 ✓ CI · approved · feat: add thing  \[feat\/thing\]/);
+    assert.match(line, /#42 ✓ CI · approved · feat: add thing {2}\[feat\/thing\]/);
   });
   test("marks drafts and changes-requested", () => {
     const line = formatPR({
-      number: 7, title: "wip", headRefName: "wip", isDraft: true,
-      reviewDecision: "CHANGES_REQUESTED", statusCheckRollup: [{ conclusion: "FAILURE" }],
+      number: 7,
+      title: "wip",
+      headRefName: "wip",
+      isDraft: true,
+      reviewDecision: "CHANGES_REQUESTED",
+      statusCheckRollup: [{ conclusion: "FAILURE" }],
     });
     assert.match(line, /#7 ✗ CI · changes requested · wip \(draft\)/);
   });

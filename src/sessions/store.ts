@@ -54,7 +54,7 @@ export class SessionStore {
         const entry = JSON.parse(line) as Partial<SessionEntry>;
         // Keep the LAST one seen — same answer as the old backwards scan.
         if (entry.type === "prompt" && "fingerprint" in entry) {
-          fingerprint = entry.fingerprint as string;
+          fingerprint = entry.fingerprint;
         }
       } catch {
         // Skip a torn line rather than failing the whole open.
@@ -105,10 +105,7 @@ export class SessionStore {
    * Returns whether an entry was actually appended (tests and telemetry care;
    * callers generally don't).
    */
-  async appendPrompt(
-    text: string,
-    reason: "initial" | "rebuilt",
-  ): Promise<boolean> {
+  async appendPrompt(text: string, reason: "initial" | "rebuilt"): Promise<boolean> {
     const fingerprint = promptFingerprint(text);
     if (fingerprint === this.lastPromptFingerprint) return false;
     const entry: SessionEntry = {
@@ -151,7 +148,11 @@ export class SessionStore {
     const summaryOf = (line: string): string | undefined => {
       try {
         const entry = JSON.parse(line) as Partial<SessionEntry>;
-        if (entry.type === "reflection" && "summary" in entry && typeof entry.summary === "string") {
+        if (
+          entry.type === "reflection" &&
+          "summary" in entry &&
+          typeof entry.summary === "string"
+        ) {
           return entry.summary;
         }
       } catch {
@@ -222,21 +223,6 @@ export class SessionStore {
     const base = total - ring.length;
     return { messages: ring.slice(start - base, end - base), hasMore: start > 0 };
   }
-}
-
-/** Last `prompt` entry's fingerprint in an already-read session file, if any. */
-function lastPromptFingerprintIn(lines: string[]): string | undefined {
-  for (let index = lines.length - 1; index >= 1; index--) {
-    try {
-      const entry = JSON.parse(lines[index]!) as Partial<SessionEntry>;
-      if (entry.type === "prompt" && "fingerprint" in entry) {
-        return entry.fingerprint as string;
-      }
-    } catch {
-      // Skip a corrupt line and keep scanning backwards.
-    }
-  }
-  return undefined;
 }
 
 function stamp(): string {

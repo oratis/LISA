@@ -10,7 +10,7 @@ const ZERO_USAGE = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheW
 
 function okResult(text: string): ProviderResult {
   return {
-    content: [{ type: "text", text, citations: null } as Anthropic.TextBlock],
+    content: [{ type: "text", text, citations: null }],
     stopReason: "end_turn",
     usage: ZERO_USAGE,
   };
@@ -29,8 +29,14 @@ describe("FallbackProvider", () => {
   test("uses the primary when it succeeds; the fallback is never called", async () => {
     const calls: string[] = [];
     const fp = new FallbackProvider([
-      { model: "m1", provider: fakeProvider(async (o) => (calls.push(o.model), okResult("from m1"))) },
-      { model: "m2", provider: fakeProvider(async (o) => (calls.push(o.model), okResult("from m2"))) },
+      {
+        model: "m1",
+        provider: fakeProvider(async (o) => (calls.push(o.model), okResult("from m1"))),
+      },
+      {
+        model: "m2",
+        provider: fakeProvider(async (o) => (calls.push(o.model), okResult("from m2"))),
+      },
     ]);
     assert.equal(textOf(await fp.runTurn(baseOpts())), "from m1");
     assert.deepEqual(calls, ["m1"]);
@@ -39,8 +45,17 @@ describe("FallbackProvider", () => {
   test("falls through on error, running each link with its own model id", async () => {
     const calls: string[] = [];
     const fp = new FallbackProvider([
-      { model: "m1", provider: fakeProvider(async (o) => { calls.push(o.model); throw new Error("boom"); }) },
-      { model: "m2", provider: fakeProvider(async (o) => (calls.push(o.model), okResult("from m2"))) },
+      {
+        model: "m1",
+        provider: fakeProvider(async (o) => {
+          calls.push(o.model);
+          throw new Error("boom");
+        }),
+      },
+      {
+        model: "m2",
+        provider: fakeProvider(async (o) => (calls.push(o.model), okResult("from m2"))),
+      },
     ]);
     assert.equal(textOf(await fp.runTurn(baseOpts())), "from m2");
     assert.deepEqual(calls, ["m1", "m2"]);
@@ -48,8 +63,18 @@ describe("FallbackProvider", () => {
 
   test("throws the last error when every link fails", async () => {
     const fp = new FallbackProvider([
-      { model: "m1", provider: fakeProvider(async () => { throw new Error("first"); }) },
-      { model: "m2", provider: fakeProvider(async () => { throw new Error("last"); }) },
+      {
+        model: "m1",
+        provider: fakeProvider(async () => {
+          throw new Error("first");
+        }),
+      },
+      {
+        model: "m2",
+        provider: fakeProvider(async () => {
+          throw new Error("last");
+        }),
+      },
     ]);
     await assert.rejects(fp.runTurn(baseOpts()), /last/);
   });

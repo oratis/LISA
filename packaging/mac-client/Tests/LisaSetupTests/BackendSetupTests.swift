@@ -48,14 +48,16 @@ final class BackendSetupTests: XCTestCase {
     }
 
     func testDecideNodeAtFloorIsFine() {
-        let r = ToolchainReport(nodePath: "/usr/local/bin/node", nodeVersion: "v20.0.0")
-        XCTAssertEqual(BackendSetup.decide(r), .cliMissing(nodeVersion: "v20.0.0"))
+        // The floor is 22.19 (package.json engines.node), not 22 — see
+        // meetsNodeFloor.
+        let r = ToolchainReport(nodePath: "/usr/local/bin/node", nodeVersion: "v22.19.0")
+        XCTAssertEqual(BackendSetup.decide(r), .cliMissing(nodeVersion: "v22.19.0"))
     }
 
     func testDecideCliMissing() {
-        let r = ToolchainReport(nodePath: "/opt/homebrew/bin/node", nodeVersion: "v22.4.0",
+        let r = ToolchainReport(nodePath: "/opt/homebrew/bin/node", nodeVersion: "v22.19.0",
                                 npmPath: "/opt/homebrew/bin/npm")
-        XCTAssertEqual(BackendSetup.decide(r), .cliMissing(nodeVersion: "v22.4.0"))
+        XCTAssertEqual(BackendSetup.decide(r), .cliMissing(nodeVersion: "v22.19.0"))
     }
 
     func testDecideReadyWhenCliPresent() {
@@ -161,4 +163,41 @@ final class BackendSetupTests: XCTestCase {
         XCTAssertEqual(SetupState.ready(lisaVersion: "0.24.0").summary, "Lisa backend v0.24.0 is installed.")
         XCTAssertEqual(SetupState.ready(lisaVersion: nil).summary, "Lisa backend is installed.")
     }
+
+    // ── the Node floor is major.minor, not major ────────────────────────────
+    //
+    // package.json moved engines.node to >=22.19.0 because undici (a
+    // production dependency) calls worker_threads APIs added in 22.10. A
+    // major-only check reports Node 22.5 as fine and then runs an
+    // `npm install -g` that npm refuses with EBADENGINE — the wizard telling
+    // you your environment is good minutes before it breaks, which is the
+    // whole failure this floor exists to prevent.
+    func testNodeVersionPartsParsesMajorAndMinor() {
+        XCTAssertEqual(BackendSetup.nodeVersionParts("v22.19.0")?.major, 22)
+        XCTAssertEqual(BackendSetup.nodeVersionParts("v22.19.0")?.minor, 19)
+        XCTAssertEqual(BackendSetup.nodeVersionParts("24.3.1")?.minor, 3)
+        XCTAssertEqual(BackendSetup.nodeVersionParts("22")?.minor, 0)
+        XCTAssertNil(BackendSetup.nodeVersionParts("not-a-version"))
+    }
+
+    func testNodeFloorRejectsTheVersionsThatInstallAndThenBreak() {
+        XCTAssertFalse(BackendSetup.meetsNodeFloor((major: 20, minor: 19)))
+        XCTAssertFalse(BackendSetup.meetsNodeFloor((major: 22, minor: 0)))
+        XCTAssertFalse(BackendSetup.meetsNodeFloor((major: 22, minor: 18)))
+        XCTAssertTrue(BackendSetup.meetsNodeFloor((major: 22, minor: 19)))
+        XCTAssertTrue(BackendSetup.meetsNodeFloor((major: 22, minor: 20)))
+        XCTAssertTrue(BackendSetup.meetsNodeFloor((major: 24, minor: 0)))
+    }
+
+    func testDecideCallsNode22_18TooOld() {
+        let report = ToolchainReport(
+            nodePath: "/opt/homebrew/bin/node", nodeVersion: "v22.18.0",
+            lisaPath: nil, lisaVersion: nil, brewPath: "/opt/homebrew/bin/brew",
+            hasServeOverride: false
+        )
+        guard case .nodeTooOld = BackendSetup.decide(report) else {
+            return XCTFail("22.18 is below the 22.19 floor and must not reach the install step")
+        }
+    }
+
 }

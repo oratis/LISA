@@ -64,10 +64,7 @@ export function tenantRuntimeOptions(
   const maxEntries = Number(env.LISA_TENANT_RUNTIME_MAX);
   return {
     ttlMs: (Number.isFinite(ttlMinutes) && ttlMinutes > 0 ? ttlMinutes : 30) * 60_000,
-    maxEntries:
-      Number.isInteger(maxEntries) && maxEntries > 0
-        ? maxEntries
-        : 100,
+    maxEntries: Number.isInteger(maxEntries) && maxEntries > 0 ? maxEntries : 100,
   };
 }
 
@@ -119,8 +116,8 @@ export class TenantRuntimeRegistry<T> {
       release: () => {
         if (released) return;
         released = true;
-        entry!.pins = Math.max(0, entry!.pins - 1);
-        entry!.lastAccessAt = this.now();
+        entry.pins = Math.max(0, entry.pins - 1);
+        entry.lastAccessAt = this.now();
         this.sweep();
       },
     };

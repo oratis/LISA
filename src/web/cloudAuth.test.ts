@@ -29,10 +29,15 @@ function b64url(obj: unknown): string {
 }
 
 /** Mint a signed Apple-style identity token for tests. */
-function mintToken(claims: Record<string, unknown>, opts: { kid?: string; alg?: string } = {}): string {
+function mintToken(
+  claims: Record<string, unknown>,
+  opts: { kid?: string; alg?: string } = {},
+): string {
   const header = { alg: opts.alg ?? "RS256", kid: opts.kid ?? "test-kid", typ: "JWT" };
   const signingInput = `${b64url(header)}.${b64url(claims)}`;
-  const sig = crypto.sign("RSA-SHA256", Buffer.from(signingInput), privateKey).toString("base64url");
+  const sig = crypto
+    .sign("RSA-SHA256", Buffer.from(signingInput), privateKey)
+    .toString("base64url");
   return `${signingInput}.${sig}`;
 }
 
@@ -60,7 +65,10 @@ test("verifies a well-formed Apple identity token", async () => {
 });
 
 test("accepts aud given as an array", async () => {
-  const id = await verifyAppleIdentityToken(mintToken({ ...baseClaims, aud: ["other", AUD] }), opts);
+  const id = await verifyAppleIdentityToken(
+    mintToken({ ...baseClaims, aud: ["other", AUD] }),
+    opts,
+  );
   assert.equal(id.sub, "001234.abcd");
 });
 
@@ -84,7 +92,11 @@ test("nonce: rejects a wrong, absent, or unhashed nonce (#261)", async () => {
   );
   // the claim is the HASH, not the raw value — an echoed raw nonce is rejected
   await assert.rejects(
-    () => verifyAppleIdentityToken(mintToken({ ...baseClaims, nonce: "n-abc" }), { ...opts, expectedNonce: "n-abc" }),
+    () =>
+      verifyAppleIdentityToken(mintToken({ ...baseClaims, nonce: "n-abc" }), {
+        ...opts,
+        expectedNonce: "n-abc",
+      }),
     AppleAuthError,
   );
 });
@@ -157,15 +169,15 @@ test("subAllowed: empty allowlist admits anyone; non-empty restricts", () => {
 });
 
 test("webServicesId parses from env; absent → null (B8b)", () => {
-  const on = appleSignInConfig({ LISA_CLOUD_APPLE_WEB_SID: " ai.meetlisa.web " } as NodeJS.ProcessEnv);
+  const on = appleSignInConfig({ LISA_CLOUD_APPLE_WEB_SID: " ai.meetlisa.web " });
   assert.equal(on.webServicesId, "ai.meetlisa.web");
-  assert.equal(appleSignInConfig({} as NodeJS.ProcessEnv).webServicesId, null);
+  assert.equal(appleSignInConfig({}).webServicesId, null);
 });
 
 test("audienceForClient picks the surface's aud and rejects unconfigured web (B8b)", () => {
-  const cfg = appleSignInConfig({ LISA_CLOUD_APPLE_WEB_SID: "ai.meetlisa.web" } as NodeJS.ProcessEnv);
+  const cfg = appleSignInConfig({ LISA_CLOUD_APPLE_WEB_SID: "ai.meetlisa.web" });
   assert.equal(audienceForClient(cfg, "native"), "ai.meetlisa.main");
   assert.equal(audienceForClient(cfg, "web"), "ai.meetlisa.web");
-  const bare = appleSignInConfig({} as NodeJS.ProcessEnv);
+  const bare = appleSignInConfig({});
   assert.equal(audienceForClient(bare, "web"), null);
 });

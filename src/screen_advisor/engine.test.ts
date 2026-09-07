@@ -58,10 +58,12 @@ describe("load/save config", () => {
 
 describe("parseSuggestion", () => {
   test("plain JSON object", () => {
-    const s = parseSuggestion('{"title":"Fix the failing test","rationale":"auth.test.ts is red","task":"Open src/auth.test.ts and fix the failing assertion"}');
+    const s = parseSuggestion(
+      '{"title":"Fix the failing test","rationale":"auth.test.ts is red","task":"Open src/auth.test.ts and fix the failing assertion"}',
+    );
     assert.equal(s?.title, "Fix the failing test");
     assert.equal(s?.rationale, "auth.test.ts is red");
-    assert.match(s!.task, /auth\.test\.ts/);
+    assert.match(s.task, /auth\.test\.ts/);
   });
   test("strips ```json fences", () => {
     const s = parseSuggestion('```json\n{"title":"Do X","task":"do x in foo.ts"}\n```');
@@ -96,7 +98,10 @@ describe("analyzeScreenshot", () => {
       async runTurn(opts) {
         // assert the image rides along as a base64 image block
         const content = opts.messages[0]!.content as Array<{ type: string }>;
-        assert.ok(content.some((b) => b.type === "image"), "image block present");
+        assert.ok(
+          content.some((b) => b.type === "image"),
+          "image block present",
+        );
         return { content: [{ type: "text", text: reply }] };
       },
     };

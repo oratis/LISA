@@ -15,7 +15,10 @@ describe("buildDispatchArgv — headless invocations", () => {
     assert.deepEqual(buildDispatchArgv("codex", "do x"), { cmd: "codex", args: ["exec", "do x"] });
   });
   test("opencode → opencode run <task>", () => {
-    assert.deepEqual(buildDispatchArgv("opencode", "do x"), { cmd: "opencode", args: ["run", "do x"] });
+    assert.deepEqual(buildDispatchArgv("opencode", "do x"), {
+      cmd: "opencode",
+      args: ["run", "do x"],
+    });
   });
   test("aider → aider --message <task> --yes", () => {
     assert.deepEqual(buildDispatchArgv("aider", "do x"), {
@@ -24,7 +27,10 @@ describe("buildDispatchArgv — headless invocations", () => {
     });
   });
   test("copilot → copilot -p <task>", () => {
-    assert.deepEqual(buildDispatchArgv("copilot", "do x"), { cmd: "copilot", args: ["-p", "do x"] });
+    assert.deepEqual(buildDispatchArgv("copilot", "do x"), {
+      cmd: "copilot",
+      args: ["-p", "do x"],
+    });
   });
 
   test("task is a single argv element — no shell injection surface", () => {
@@ -82,7 +88,7 @@ describe("launchAgent captures the exit status (F4)", () => {
     const res = await launchAgent("claude", "do a thing", TMP);
     assert.equal(res.error, undefined, `launch failed: ${res.error ?? ""}`);
     assert.ok(res.id, "expected a ledger id");
-    const entry = await waitForExit(res.id as string);
+    const entry = await waitForExit(res.id);
     assert.ok(entry, "exit status was never recorded");
     assert.equal(entry?.exitCode, 3);
     assert.equal(entry?.exitSignal, null);
@@ -94,7 +100,7 @@ describe("launchAgent captures the exit status (F4)", () => {
     const { launchAgent } = await import("./dispatch_agent.js");
     const res = await launchAgent("claude", "slower thing", TMP);
     assert.equal(res.error, undefined, `launch failed: ${res.error ?? ""}`);
-    const entry = await waitForExit(res.id as string);
+    const entry = await waitForExit(res.id);
     assert.ok(entry, "exit status was never recorded");
     assert.equal(entry?.exitCode, 0);
   });

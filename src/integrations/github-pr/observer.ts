@@ -75,13 +75,7 @@ const FAIL_CONCLUSIONS = new Set([
   "ACTION_REQUIRED",
   "STARTUP_FAILURE",
 ]);
-const PENDING_STATUSES = new Set([
-  "QUEUED",
-  "IN_PROGRESS",
-  "PENDING",
-  "WAITING",
-  "REQUESTED",
-]);
+const PENDING_STATUSES = new Set(["QUEUED", "IN_PROGRESS", "PENDING", "WAITING", "REQUESTED"]);
 
 /** Reduce a check rollup to one verdict. Pure. */
 export function classifyChecks(
@@ -96,10 +90,7 @@ export function classifyChecks(
     if (FAIL_CONCLUSIONS.has(conclusion) || state === "FAILURE" || state === "ERROR") {
       return "failing"; // any failure dominates
     }
-    if (
-      (status && status !== "COMPLETED" && PENDING_STATUSES.has(status)) ||
-      state === "PENDING"
-    ) {
+    if ((status && status !== "COMPLETED" && PENDING_STATUSES.has(status)) || state === "PENDING") {
       pending = true;
     }
   }
@@ -117,8 +108,7 @@ export function mapPrToSession(pr: RawPr): AgentSession {
   const repoFull = pr.repoFullName ?? pr.repository?.nameWithOwner ?? undefined;
   const state = (pr.state ?? "").toUpperCase();
   const title = (pr.title ?? "").trim();
-  const shortTitle =
-    title.length > TITLE_MAX ? title.slice(0, TITLE_MAX - 1) + "…" : title;
+  const shortTitle = title.length > TITLE_MAX ? title.slice(0, TITLE_MAX - 1) + "…" : title;
   const sessionId = `${repoFull ?? "?"}#${pr.number}`;
   const label = `${repoBasename(repoFull)}#${pr.number}${shortTitle ? `: ${shortTitle}` : ""}`;
   const lastMtime = pr.updatedAt ? Date.parse(pr.updatedAt) || 0 : 0;
@@ -190,7 +180,7 @@ async function runGh(args: string[]): Promise<string | null> {
 /** Default fetcher: the user's open PRs, optionally scoped to configured repos. */
 async function ghFetchPrs(cfg: AgentIntegrationConfig): Promise<RawPr[]> {
   const repos = Array.isArray((cfg as { repos?: unknown }).repos)
-    ? ((cfg as { repos: unknown[] }).repos.filter((r) => typeof r === "string") as string[])
+    ? (cfg as { repos: unknown[] }).repos.filter((r) => typeof r === "string")
     : [];
 
   if (repos.length > 0) {
@@ -198,7 +188,18 @@ async function ghFetchPrs(cfg: AgentIntegrationConfig): Promise<RawPr[]> {
       "number,title,state,isDraft,mergedAt,updatedAt,headRefName,reviewDecision,statusCheckRollup";
     const out: RawPr[] = [];
     for (const r of repos) {
-      const s = await runGh(["pr", "list", "-R", r, "--state", "open", "--limit", "30", "--json", FIELDS]);
+      const s = await runGh([
+        "pr",
+        "list",
+        "-R",
+        r,
+        "--state",
+        "open",
+        "--limit",
+        "30",
+        "--json",
+        FIELDS,
+      ]);
       if (!s) continue;
       try {
         for (const p of JSON.parse(s) as RawPr[]) {
@@ -215,8 +216,16 @@ async function ghFetchPrs(cfg: AgentIntegrationConfig): Promise<RawPr[]> {
   // Zero-config: open PRs I authored across all of GitHub. Search has no
   // check/review fields, so these map to "awaiting review" / "draft".
   const s = await runGh([
-    "search", "prs", "--author", "@me", "--state", "open", "--limit", "30",
-    "--json", "number,title,state,isDraft,updatedAt,repository",
+    "search",
+    "prs",
+    "--author",
+    "@me",
+    "--state",
+    "open",
+    "--limit",
+    "30",
+    "--json",
+    "number,title,state,isDraft,updatedAt,repository",
   ]);
   if (!s) return [];
   try {
@@ -310,11 +319,16 @@ export class GithubPrObserver extends EventEmitter implements AgentObserver {
     for (const [id, prev] of [...this.sessions]) {
       if (seen.has(id)) continue;
       if (this.emitFn && prev.state !== "done") {
-        this.emitFn({ ...prev, state: "done", stateReason: "closed/merged", lastMtime: this.now() });
+        this.emitFn({
+          ...prev,
+          state: "done",
+          stateReason: "closed/merged",
+          lastMtime: this.now(),
+        });
       }
       this.sessions.delete(id);
     }
   }
 }
 
-registerIntegration("github-pr", (cfg) => new GithubPrObserver(cfg as GithubPrObserverOptions));
+registerIntegration("github-pr", (cfg) => new GithubPrObserver(cfg));

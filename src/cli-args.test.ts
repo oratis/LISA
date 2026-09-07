@@ -5,19 +5,28 @@ import { isVerboseArgv, parseArgs } from "./cli-args.js";
 describe("parseArgs — raw / passthrough subcommand routing", () => {
   test("mail: every trailing flag reaches the handler verbatim, even would-be global ones", () => {
     const a = parseArgs([
-      "mail", "connect",
-      "--email", "me@gmail.com",
-      "--host", "imap.gmail.com",
-      "--port", "993",
-      "--provider", "gmail",
+      "mail",
+      "connect",
+      "--email",
+      "me@gmail.com",
+      "--host",
+      "imap.gmail.com",
+      "--port",
+      "993",
+      "--provider",
+      "gmail",
     ]);
     assert.equal(a.subcommand, "mail");
     assert.deepEqual(a.subargs, [
       "connect",
-      "--email", "me@gmail.com",
-      "--host", "imap.gmail.com",
-      "--port", "993",
-      "--provider", "gmail",
+      "--email",
+      "me@gmail.com",
+      "--host",
+      "imap.gmail.com",
+      "--port",
+      "993",
+      "--provider",
+      "gmail",
     ]);
     // …and none of those were consumed as global settings:
     assert.equal(a.host, "127.0.0.1");
@@ -25,16 +34,36 @@ describe("parseArgs — raw / passthrough subcommand routing", () => {
   });
 
   test("kb: passthrough — its --title/--tags/--force flags reach the handler verbatim", () => {
-    const a = parseArgs(["kb", "add", "https://x.dev/a", "--title", "T", "--tags", "a,b", "--force"]);
+    const a = parseArgs([
+      "kb",
+      "add",
+      "https://x.dev/a",
+      "--title",
+      "T",
+      "--tags",
+      "a,b",
+      "--force",
+    ]);
     assert.equal(a.subcommand, "kb");
-    assert.deepEqual(a.subargs, ["add", "https://x.dev/a", "--title", "T", "--tags", "a,b", "--force"]);
+    assert.deepEqual(a.subargs, [
+      "add",
+      "https://x.dev/a",
+      "--title",
+      "T",
+      "--tags",
+      "a,b",
+      "--force",
+    ]);
   });
 
   test("autostart: recognized global flags are parsed into the global fields (not swallowed)", () => {
     const a = parseArgs([
-      "autostart", "install",
-      "--port", "8080",
-      "--channels", "imessage,sms",
+      "autostart",
+      "install",
+      "--port",
+      "8080",
+      "--channels",
+      "imessage,sms",
       "--imessage",
     ]);
     assert.equal(a.subcommand, "autostart");

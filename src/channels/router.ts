@@ -5,10 +5,7 @@ import { buildSystemPromptSnapshot, type PromptSnapshot } from "../prompt.js";
 import { reflectOnSession } from "../reflect.js";
 import { SessionStore } from "../sessions/store.js";
 import { sandboxModeForProfile } from "../sandbox/sandbox.js";
-import type {
-  StoredMessage,
-  ToolDefinition,
-} from "../types.js";
+import type { StoredMessage, ToolDefinition } from "../types.js";
 import type { ChannelAdapter, IncomingMessage } from "./types.js";
 
 export interface RouterOptions {
@@ -73,10 +70,7 @@ export class ChannelRouter {
     return `${channel}:${msg.threadId ?? msg.from}`;
   }
 
-  private async getOrCreateThread(
-    channel: string,
-    msg: IncomingMessage,
-  ): Promise<ThreadContext> {
+  private async getOrCreateThread(channel: string, msg: IncomingMessage): Promise<ThreadContext> {
     const key = this.threadKey(channel, msg);
     let ctx = this.threads.get(key);
     if (ctx) return ctx;
@@ -97,12 +91,13 @@ export class ChannelRouter {
     return ctx;
   }
 
-  private async handleIncoming(
-    channel: ChannelAdapter,
-    msg: IncomingMessage,
-  ): Promise<void> {
+  private async handleIncoming(channel: ChannelAdapter, msg: IncomingMessage): Promise<void> {
     // Any inbound message resets the idle clock.
-    try { getIdleWatcher(60 * 60_000).tick(); } catch {}
+    try {
+      getIdleWatcher(60 * 60_000).tick();
+    } catch {
+      // idle bookkeeping is best-effort; never block an inbound message
+    }
     const ctx = await this.getOrCreateThread(channel.name, msg);
     if (ctx.busy) {
       ctx.queue.push(msg);

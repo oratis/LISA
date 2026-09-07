@@ -1,0 +1,17 @@
+{
+  "all": true,
+  "src": ["src"],
+  "extension": [".ts"],
+  "exclude": [
+    "**/*.test.ts",
+    "**/*.generated.ts",
+    "src/web/assets/**",
+    "dist/**",
+    "node_modules/**",
+    "scripts/**",
+    "tests/**"
+  ],
+  "reporter": ["text-summary", "lcov", "json-summary"],
+  "reports-dir": "coverage",
+  "clean": true
+}

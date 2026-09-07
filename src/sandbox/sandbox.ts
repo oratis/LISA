@@ -58,10 +58,7 @@ export async function wrapArgvForSandbox(
 }
 
 /** Shared core: wrap a full argv (`program[0]` = executable) for `spec.mode`. */
-async function wrapProgram(
-  spec: SandboxSpec,
-  program: string[],
-): Promise<SandboxedCommand> {
+async function wrapProgram(spec: SandboxSpec, program: string[]): Promise<SandboxedCommand> {
   if (!modeIsBounded(spec.mode)) {
     return { command: program[0]!, args: program.slice(1) };
   }
@@ -72,10 +69,7 @@ async function wrapProgram(
       allowNetwork: spec.allowNetwork,
       mode: spec.mode,
     });
-    const tmp = path.join(
-      os.tmpdir(),
-      `lisa-seatbelt-${crypto.randomBytes(4).toString("hex")}.sb`,
-    );
+    const tmp = path.join(os.tmpdir(), `lisa-seatbelt-${crypto.randomBytes(4).toString("hex")}.sb`);
     await fs.writeFile(tmp, policy, "utf8");
     return {
       command: "/usr/bin/sandbox-exec",
@@ -83,7 +77,9 @@ async function wrapProgram(
       cleanup: async () => {
         try {
           await fs.unlink(tmp);
-        } catch {}
+        } catch {
+          // profile already gone — cleanup is best-effort
+        }
       },
     };
   }
@@ -99,15 +95,12 @@ async function wrapProgram(
         : "no supported confinement mechanism, ") +
       `or set LISA_SANDBOX_MODE=danger-full-access to run unconfined on purpose. ` +
       `Refusing to run the command unconfined while a sandbox was requested.`,
-);
+  );
 }
 
 /** True when this host has a mechanism that can actually enforce a bounded mode. */
 export function sandboxEnforceable(): boolean {
-  return (
-    process.platform === "darwin" ||
-    (process.platform === "linux" && hasBubblewrap())
-  );
+  return process.platform === "darwin" || (process.platform === "linux" && hasBubblewrap());
 }
 
 let warnedUnenforceable = false;
@@ -165,12 +158,7 @@ export function _resetUntrustedWarningForTest(): void {
  * exit non-zero, which surfaces, rather than silently running unconfined.
  */
 function bwrapArgs(spec: SandboxSpec): string[] {
-  const args = [
-    "--ro-bind", "/", "/",
-    "--dev", "/dev",
-    "--proc", "/proc",
-    "--die-with-parent",
-  ];
+  const args = ["--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--die-with-parent"];
   if (spec.mode === "workspace-write") {
     args.push("--bind", spec.cwd, spec.cwd);
     args.push("--bind", os.tmpdir(), os.tmpdir());
@@ -197,10 +185,7 @@ export function _resetBubblewrapProbeForTest(): void {
   bubblewrapChecked = undefined;
 }
 
-export function defaultSandboxSpec(opts: {
-  cwd: string;
-  mode?: SandboxMode;
-}): SandboxSpec {
+export function defaultSandboxSpec(opts: { cwd: string; mode?: SandboxMode }): SandboxSpec {
   return {
     mode: resolveSandboxMode(opts.mode),
     allowNetwork: process.env.LISA_SANDBOX_NETWORK !== "0",

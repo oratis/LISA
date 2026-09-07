@@ -83,7 +83,7 @@ export interface OpencodeRow {
 
 function defaultDbPath(cfg: AgentIntegrationConfig): string {
   const home = cfg.home
-    ? (cfg.home as string).replace(/^~/, os.homedir())
+    ? cfg.home.replace(/^~/, os.homedir())
     : process.env.XDG_DATA_HOME
       ? path.join(process.env.XDG_DATA_HOME, "opencode")
       : path.join(os.homedir(), ".local", "share", "opencode");
@@ -204,9 +204,7 @@ export function parseRecentMessages(raw: string | null | undefined): Record<stri
  *
  * Returns undefined when there is nothing structural to report.
  */
-export function extractActivity(
-  messages: Record<string, unknown>[],
-): SessionActivity | undefined {
+export function extractActivity(messages: Record<string, unknown>[]): SessionActivity | undefined {
   if (!Array.isArray(messages) || messages.length === 0) return undefined;
 
   let turnCount = 0;
@@ -222,7 +220,7 @@ export function extractActivity(
     const errLabel = errorReasonOf(msg);
     if (errLabel) lastError = errLabel;
 
-    const parts = (msg as Record<string, unknown>).parts;
+    const parts = msg.parts;
     if (!Array.isArray(parts)) continue;
     for (const part of parts) {
       if (!part || typeof part !== "object") continue;
@@ -337,11 +335,7 @@ export function parseLastMessage(raw: string | null | undefined): LastMsg {
     error = true;
     const m = err.data?.message;
     errorReason =
-      typeof m === "string"
-        ? m.slice(0, 80)
-        : typeof err.name === "string"
-          ? err.name
-          : "error";
+      typeof m === "string" ? m.slice(0, 80) : typeof err.name === "string" ? err.name : "error";
   }
   return { role, completed, error, errorReason };
 }
@@ -469,7 +463,10 @@ export class OpencodeObserver extends EventEmitter implements AgentObserver {
       if (this.computeActivity && s.cwd) {
         const gitBranch = await this.resolveBranch(s.cwd);
         if (gitBranch) {
-          s.activity = { ...(s.activity ?? { turnCount: 0, lastTools: [], filesTouched: [] }), gitBranch };
+          s.activity = {
+            ...(s.activity ?? { turnCount: 0, lastTools: [], filesTouched: [] }),
+            gitBranch,
+          };
         }
       }
       const prev = this.sessions.get(s.sessionId);
@@ -481,4 +478,4 @@ export class OpencodeObserver extends EventEmitter implements AgentObserver {
   }
 }
 
-registerIntegration("opencode", (cfg) => new OpencodeObserver(cfg as OpencodeObserverOptions));
+registerIntegration("opencode", (cfg) => new OpencodeObserver(cfg));

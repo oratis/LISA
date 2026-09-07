@@ -4,7 +4,7 @@
  * Subscription plans are rate-limited, not metered, and the per-window limit
  * isn't published in token terms — so we do NOT invent a "headroom %". What we
  * CAN show truthfully is *consumption*: Claude Code records per-turn token usage
- * in its local transcripts (`~/.claude/projects/**​/*.jsonl`), each line stamped
+ * in its local transcripts (`~/.claude/projects/<project>/*.jsonl`), each line stamped
  * with a `timestamp` and a `message.usage` object. Summing those over Claude's
  * rolling ~5-hour limit window (and since local midnight) is real usage from
  * local data — the same `usage` field the claude-code observer already reads, so

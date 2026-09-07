@@ -9,8 +9,14 @@ import {
   interfaceRank,
 } from "./pairing.js";
 
-const v4 = (address: string, internal = false): os.NetworkInterfaceInfo =>
-  ({ address, family: "IPv4", internal, netmask: "", mac: "", cidr: null } as os.NetworkInterfaceInfo);
+const v4 = (address: string, internal = false): os.NetworkInterfaceInfo => ({
+  address,
+  family: "IPv4",
+  internal,
+  netmask: "",
+  mac: "",
+  cidr: null,
+});
 
 describe("interfaceRank", () => {
   test("en* beats unknown beats VPN/virtual beats awdl", () => {

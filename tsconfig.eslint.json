@@ -1,0 +1,30 @@
+{
+  // Lint-only program: tsconfig.json (the build config) deliberately excludes
+  // *.test.ts, and scripts/build-release.sh runs `tsc -p tsconfig.json`, so the
+  // test files cannot be folded into it. ESLint's type-aware rules need every
+  // linted file in ONE program, hence this superset. Never used for emit.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "allowJs": true,
+    // The Playwright specs run page.evaluate() callbacks in the browser, so
+    // they reference document/HTMLElement. tsconfig.json deliberately has no
+    // DOM lib (this is a Node server); adding it here keeps the type-aware
+    // lint rules working on tests/e2e without touching the build program.
+    "lib": ["ES2023", "DOM"]
+  },
+  "include": [
+    "src/**/*",
+    "scripts/**/*.ts",
+    "scripts/**/*.mjs",
+    "tests/**/*",
+    "types/**/*",
+    "eslint.config.js",
+    "playwright.config.ts"
+  ],
+  "exclude": ["node_modules", "dist", "src/web/assets"]
+}

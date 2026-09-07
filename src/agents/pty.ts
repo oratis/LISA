@@ -150,7 +150,10 @@ const ESC = String.fromCharCode(27); // U+001B
 const CSI = String.fromCharCode(155); // U+009B
 const BEL = String.fromCharCode(7); // U+0007
 const ANSI = new RegExp(
-  "[" + ESC + CSI + "][[\\]()#;?]*" +
+  "[" +
+    ESC +
+    CSI +
+    "][[\\]()#;?]*" +
     "(?:(?:(?:(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]+)*|[a-zA-Z\\d]+(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]*)*)?" +
     BEL +
     ")|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-ntqry=><~]))",
@@ -159,7 +162,6 @@ const ANSI = new RegExp(
 
 /** Strip ANSI escape sequences + common bare control bytes (CR/backspace). Pure. */
 export function stripAnsi(s: string): string {
-  // eslint-disable-next-line no-control-regex
   return s.replace(ANSI, "").replace(/[\r\b]/g, "");
 }
 
@@ -183,8 +185,7 @@ async function loadPty(): Promise<PtyModuleLike | null> {
     // node-pty (it's an optionalDependency that may be absent). Resolved at runtime.
     const spec: string = "node-pty";
     const mod: { spawn?: unknown; default?: unknown } = await import(spec);
-    const resolved =
-      mod && typeof mod.spawn === "function" ? mod : ((mod && mod.default) ?? mod);
+    const resolved = mod && typeof mod.spawn === "function" ? mod : ((mod && mod.default) ?? mod);
     return resolved as PtyModuleLike;
   } catch {
     return null;
@@ -215,7 +216,13 @@ export class PtyAgent {
   private lastChunkAt: number;
   private lastMtime: number;
 
-  private constructor(id: string, opts: PtyStartOpts, cli: string, proc: IPtyLike, now: () => number) {
+  private constructor(
+    id: string,
+    opts: PtyStartOpts,
+    cli: string,
+    proc: IPtyLike,
+    now: () => number,
+  ) {
     this.id = id;
     this.agent = normalizeAgentKind(opts.agent);
     this.cli = cli;
@@ -254,7 +261,8 @@ export class PtyAgent {
           "codex has no liveness signal to guard against transcript corruption",
       );
     }
-    const cli = opts.cli ?? (kind === "claude-code" ? detectClaudeBinary() : resolveCli(opts.agent));
+    const cli =
+      opts.cli ?? (kind === "claude-code" ? detectClaudeBinary() : resolveCli(opts.agent));
     // Adopt an existing session by id: `claude --resume <id>` (claude-only, guarded above).
     const resumeArgs = opts.resumeSessionId ? ["--resume", opts.resumeSessionId] : [];
     const args = [...resumeArgs, ...(opts.args ?? [])];

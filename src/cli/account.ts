@@ -27,7 +27,11 @@ import { formatMicroUSD } from "../billing/prices.js";
  */
 let prompts: readline.Interface | null = null;
 function promptStream(): readline.Interface {
-  prompts ??= readline.createInterface({ input: process.stdin, output: process.stderr, terminal: true });
+  prompts ??= readline.createInterface({
+    input: process.stdin,
+    output: process.stderr,
+    terminal: true,
+  });
   return prompts;
 }
 function closePrompts(): void {
@@ -43,10 +47,13 @@ function ask(question: string, opts: { hidden?: boolean } = {}): Promise<string>
       const stream = process.stderr;
       const origWrite = stream.write.bind(stream);
       let muted = false;
-      (stream as unknown as { write: typeof origWrite }).write = ((chunk: never, ...rest: never[]) => {
+      (stream as unknown as { write: typeof origWrite }).write = (
+        chunk: never,
+        ...rest: never[]
+      ) => {
         if (muted) return true;
         return origWrite(chunk, ...rest);
-      }) as typeof origWrite;
+      };
       rl.question(question, (answer) => {
         (stream as unknown as { write: typeof origWrite }).write = origWrite;
         origWrite("\n");
@@ -82,8 +89,17 @@ async function post(
     return { ok: false, status: 0, code: "unreachable", body: {} };
   }
   let body: Record<string, unknown> = {};
-  try { body = (await res.json()) as Record<string, unknown>; } catch { /* text body */ }
-  return { ok: res.ok, status: res.status, code: typeof body.error === "string" ? body.error : "", body };
+  try {
+    body = (await res.json()) as Record<string, unknown>;
+  } catch {
+    /* text body */
+  }
+  return {
+    ok: res.ok,
+    status: res.status,
+    code: typeof body.error === "string" ? body.error : "",
+    body,
+  };
 }
 
 const HINTS: Record<string, string> = {
@@ -170,7 +186,11 @@ async function loginWithPassword(base: string, email: string): Promise<Session |
 export async function cmdLogin(subargs: string[]): Promise<void> {
   const usePassword = subargs.includes("--password");
   const positional = subargs.filter((a) => !a.startsWith("-"));
-  const base = (positional[0] ?? process.env.LISA_MANAGED_BASE ?? "https://cloud.meetlisa.ai").replace(/\/+$/, "");
+  const base = (
+    positional[0] ??
+    process.env.LISA_MANAGED_BASE ??
+    "https://cloud.meetlisa.ai"
+  ).replace(/\/+$/, "");
   try {
     const email = (await ask(`LISA Cloud (${base})\nEmail: `)).trim();
     if (!email) {
@@ -203,7 +223,7 @@ export async function cmdBilling(subargs: string[]): Promise<void> {
   // `billing reconcile` is an OPERATOR command against THIS host's ledger
   // (T-8), not a call to the cloud API — dispatch before the session check.
   if (subargs[0] === "reconcile") {
-    const { cmdBillingReconcile } = await import("../billing/reconcile.js");
+    const { cmdBillingReconcile } = await import("./billing-reconcile.js");
     return cmdBillingReconcile(subargs.slice(1));
   }
   const managed = managedConfig();
@@ -224,15 +244,22 @@ export async function cmdBilling(subargs: string[]): Promise<void> {
       return;
     }
     const quota = (await quotaRes.json()) as {
-      available?: boolean; tier?: string; windowMicroUSD?: number;
-      spentMicroUSD?: number; remainingMicroUSD?: number; paidMicroUSD?: number; resetAt?: number;
+      available?: boolean;
+      tier?: string;
+      windowMicroUSD?: number;
+      spentMicroUSD?: number;
+      remainingMicroUSD?: number;
+      paidMicroUSD?: number;
+      resetAt?: number;
     };
     const usage = (await usageRes.json()) as {
       window12h?: { microUSD: number; turns: number };
       today?: { microUSD: number; turns: number };
     };
     if (!quota.available) {
-      console.error("Signed in, but this connection isn't an account session — run `lisa login` again.");
+      console.error(
+        "Signed in, but this connection isn't an account session — run `lisa login` again.",
+      );
       return;
     }
     console.log(`tier:        ${quota.tier}`);
@@ -241,8 +268,14 @@ export async function cmdBilling(subargs: string[]): Promise<void> {
         (quota.resetAt ? ` (resets ${new Date(quota.resetAt).toLocaleTimeString()})` : ""),
     );
     console.log(`credits:     ${formatMicroUSD(Math.max(0, quota.paidMicroUSD ?? 0))}`);
-    if (usage.window12h) console.log(`last 12h:    ${formatMicroUSD(usage.window12h.microUSD)} across ${usage.window12h.turns} turns`);
-    if (usage.today) console.log(`today:       ${formatMicroUSD(usage.today.microUSD)} across ${usage.today.turns} turns`);
+    if (usage.window12h)
+      console.log(
+        `last 12h:    ${formatMicroUSD(usage.window12h.microUSD)} across ${usage.window12h.turns} turns`,
+      );
+    if (usage.today)
+      console.log(
+        `today:       ${formatMicroUSD(usage.today.microUSD)} across ${usage.today.turns} turns`,
+      );
   } catch {
     console.error(`✗ could not reach ${managed.base}`);
     process.exitCode = 1;

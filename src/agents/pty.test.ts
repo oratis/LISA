@@ -74,7 +74,20 @@ async function withFlag<T>(fn: () => Promise<T> | T): Promise<T> {
 
 test("stripAnsi removes color, OSC-8 hyperlinks, and bare control bytes", () => {
   const s =
-    ESC + "[31mred" + ESC + "[0m " + ESC + "]8;;http://example.com/x" + BEL + "link" + ESC + "]8;;" + BEL + " done" + ESC + "[2K";
+    ESC +
+    "[31mred" +
+    ESC +
+    "[0m " +
+    ESC +
+    "]8;;http://example.com/x" +
+    BEL +
+    "link" +
+    ESC +
+    "]8;;" +
+    BEL +
+    " done" +
+    ESC +
+    "[2K";
   assert.equal(stripAnsi(s), "red link done");
   assert.equal(stripAnsi("a\rb\bc"), "abc");
   assert.equal(stripAnsi("plain"), "plain");
@@ -186,7 +199,15 @@ test("resume-adopt is claude-only — codex resume is refused, not silently down
     // transcript corruption. Refusing (vs. silently starting a fresh session)
     // keeps the API honest. See docs/PTY_AGENTS.md.
     await assert.rejects(
-      () => reg.start({ agent: "codex", task: "", cwd: "/tmp/p", resumeSessionId: "abc-123", cli: "codex", ptyModule: f.module }),
+      () =>
+        reg.start({
+          agent: "codex",
+          task: "",
+          cwd: "/tmp/p",
+          resumeSessionId: "abc-123",
+          cli: "codex",
+          ptyModule: f.module,
+        }),
       /only supported for claude/i,
     );
     assert.equal(f.spawnCount, 0); // never spawned anything
@@ -197,7 +218,7 @@ test("process exit marks the agent done", async () => {
   await withFlag(async () => {
     const f = fakePty();
     const reg = new PtyRegistry();
-    const v = await reg.start({ agent: "codex", task: "go", cwd: "/tmp/p", ptyModule: f.module });
+    await reg.start({ agent: "codex", task: "go", cwd: "/tmp/p", ptyModule: f.module });
     f.emitExit(0);
     const view = reg.list()[0];
     assert.equal(view.agent, "codex");

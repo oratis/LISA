@@ -85,7 +85,8 @@ function codeDigest(email: string, code: string): string {
 function validRecords(parsed: unknown): OtpRecord[] {
   if (!Array.isArray(parsed)) return [];
   return parsed.filter(
-    (r): r is OtpRecord => !!r && typeof (r as OtpRecord).email === "string" && typeof (r as OtpRecord).day === "string",
+    (r): r is OtpRecord =>
+      !!r && typeof (r as OtpRecord).email === "string" && typeof (r as OtpRecord).day === "string",
   );
 }
 
@@ -118,7 +119,7 @@ const OTP_DOC = "lisa-global/otps";
 async function loadRecords(): Promise<OtpRecord[]> {
   if (firestoreEnabled()) {
     const doc = await getDoc(OTP_DOC);
-    return validRecords((doc?.data.list as unknown) ?? []);
+    return validRecords(doc?.data.list ?? []);
   }
   return loadFile();
 }
@@ -140,7 +141,7 @@ function prune(list: OtpRecord[], now: number): OtpRecord[] {
 async function mutate<T>(fn: (list: OtpRecord[]) => T, now: number): Promise<T> {
   if (firestoreEnabled()) {
     return casUpdate(OTP_DOC, (current) => {
-      const list = prune(validRecords((current?.list as unknown) ?? []), now);
+      const list = prune(validRecords(current?.list ?? []), now);
       const result = fn(list);
       return { next: { list: list as unknown as Record<string, unknown>[] }, result };
     });
@@ -165,7 +166,10 @@ function findOrCreate(list: OtpRecord[], email: string, now: number): OtpRecord 
  * never recoverable afterwards. Any outstanding challenge is replaced, so the
  * newest code is always the only valid one.
  */
-export async function requestEmailOtp(emailRaw: string, now: number = Date.now()): Promise<OtpRequestResult> {
+export async function requestEmailOtp(
+  emailRaw: string,
+  now: number = Date.now(),
+): Promise<OtpRequestResult> {
   const email = normalizeEmail(emailRaw);
   const code = generateCode();
   const hash = codeDigest(email, code);
@@ -190,7 +194,11 @@ export async function requestEmailOtp(emailRaw: string, now: number = Date.now()
         new Date(now).getUTCMonth(),
         new Date(now).getUTCDate() + 1,
       );
-      return { ok: false as const, reason: "daily_cap" as const, retryAfterSec: Math.ceil((midnight - now) / 1000) };
+      return {
+        ok: false as const,
+        reason: "daily_cap" as const,
+        retryAfterSec: Math.ceil((midnight - now) / 1000),
+      };
     }
     rec.codeHash = hash;
     rec.expiresAt = now + OTP_TTL_MS;

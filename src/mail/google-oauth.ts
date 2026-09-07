@@ -56,7 +56,11 @@ function parseTokens(json: Record<string, unknown>, now: number): GoogleTokens {
   };
 }
 
-async function postToken(body: URLSearchParams, fetchImpl: FetchLike, now: number): Promise<GoogleTokens> {
+async function postToken(
+  body: URLSearchParams,
+  fetchImpl: FetchLike,
+  now: number,
+): Promise<GoogleTokens> {
   const res = await fetchImpl(TOKEN_URL, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -70,7 +74,7 @@ async function postToken(body: URLSearchParams, fetchImpl: FetchLike, now: numbe
 /** Exchange an auth code for tokens. */
 export async function exchangeCode(
   o: { code: string; clientId: string; clientSecret: string; redirectUri: string },
-  fetchImpl: FetchLike = fetch as unknown as FetchLike,
+  fetchImpl: FetchLike = fetch,
   now: number = Date.now(),
 ): Promise<GoogleTokens> {
   return postToken(
@@ -89,7 +93,7 @@ export async function exchangeCode(
 /** Refresh an access token (refresh_token is reused, not returned). */
 export async function refreshAccessToken(
   o: { refreshToken: string; clientId: string; clientSecret: string },
-  fetchImpl: FetchLike = fetch as unknown as FetchLike,
+  fetchImpl: FetchLike = fetch,
   now: number = Date.now(),
 ): Promise<GoogleTokens> {
   const t = await postToken(

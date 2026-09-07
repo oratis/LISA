@@ -1,6 +1,12 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { SSE_HEARTBEAT_MS, SSE_PING, attachSseHeartbeat, sseHeartbeatMs, startSseHeartbeat } from "./sse.js";
+import {
+  SSE_HEARTBEAT_MS,
+  SSE_PING,
+  attachSseHeartbeat,
+  sseHeartbeatMs,
+  startSseHeartbeat,
+} from "./sse.js";
 
 class FakeRes {
   writes: string[] = [];

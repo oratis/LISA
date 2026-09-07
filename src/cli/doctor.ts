@@ -14,16 +14,7 @@
 import { execSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
-import {
-  dim,
-  fail,
-  green,
-  grey,
-  heading,
-  ok,
-  rule,
-  warn,
-} from "./colors.js";
+import { dim, fail, green, grey, heading, ok, rule, warn } from "./colors.js";
 import { lisaHome } from "../paths.js";
 import { CONFIG_ENV_PATH } from "../env.js";
 import { displayPath } from "./display-path.js";
@@ -40,13 +31,16 @@ interface Check {
 
 const checks: Check[] = [
   {
-    label: "Node version ≥ 20",
+    label: "Node version ≥ 22.19",
     critical: true,
     run: async () => {
-      const major = parseInt(process.versions.node.split(".")[0]!, 10);
-      return major >= 20
+      const [major = 0, minor = 0] = process.versions.node.split(".").map((n) => parseInt(n, 10));
+      return major >= 23 || (major === 22 && minor >= 19)
         ? { ok: true, detail: `node ${process.versions.node}` }
-        : { ok: false, detail: `node ${process.versions.node} (need ≥ 20)` };
+        : {
+            ok: false,
+            detail: `node ${process.versions.node} (need ≥ 22.19 — undici, a production dependency, uses APIs added in 22.10)`,
+          };
     },
   },
   {
@@ -67,7 +61,10 @@ const checks: Check[] = [
     run: async () => {
       return (await pathExists(lisaHome()))
         ? { ok: true, detail: displayPath(lisaHome()) }
-        : { ok: false, detail: `${displayPath(lisaHome())} not yet created (will be on first run)` };
+        : {
+            ok: false,
+            detail: `${displayPath(lisaHome())} not yet created (will be on first run)`,
+          };
     },
   },
   {
@@ -171,17 +168,27 @@ export async function runDoctor(): Promise<void> {
   for (const p of OPENAI_COMPAT_PRESETS) {
     const set = !!process.env[p.apiKeyEnv];
     const flag = set ? green("●") : grey("○");
-    console.log(`  ${flag} ${p.name.padEnd(28)} ${dim(p.apiKeyEnv.padEnd(22))} ${dim(p.modelPrefixes.join(", "))}`);
+    console.log(
+      `  ${flag} ${p.name.padEnd(28)} ${dim(p.apiKeyEnv.padEnd(22))} ${dim(p.modelPrefixes.join(", "))}`,
+    );
   }
 
   // Summary
   console.log();
   console.log(rule());
   if (criticalFailures > 0) {
-    console.log(fail(`${criticalFailures} critical failure${criticalFailures === 1 ? "" : "s"} — Lisa won't run reliably`));
+    console.log(
+      fail(
+        `${criticalFailures} critical failure${criticalFailures === 1 ? "" : "s"} — Lisa won't run reliably`,
+      ),
+    );
     process.exit(1);
   } else if (failures > 0) {
-    console.log(warn(`${failures} non-critical issue${failures === 1 ? "" : "s"} — Lisa will run but degraded`));
+    console.log(
+      warn(
+        `${failures} non-critical issue${failures === 1 ? "" : "s"} — Lisa will run but degraded`,
+      ),
+    );
   } else {
     console.log(ok("all checks passed"));
   }

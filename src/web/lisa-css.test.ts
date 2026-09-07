@@ -36,11 +36,28 @@ function parseColor(value: string, tokens: Record<string, string>): RGBA {
   const hex = v.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
   if (hex) {
     let h = hex[1]!;
-    if (h.length === 3) h = h.split("").map((c) => c + c).join("");
-    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16), 1];
+    if (h.length === 3)
+      h = h
+        .split("")
+        .map((c) => c + c)
+        .join("");
+    return [
+      parseInt(h.slice(0, 2), 16),
+      parseInt(h.slice(2, 4), 16),
+      parseInt(h.slice(4, 6), 16),
+      1,
+    ];
   }
-  const rgba = v.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)$/);
-  if (rgba) return [Number(rgba[1]), Number(rgba[2]), Number(rgba[3]), rgba[4] === undefined ? 1 : Number(rgba[4])];
+  const rgba = v.match(
+    /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)$/,
+  );
+  if (rgba)
+    return [
+      Number(rgba[1]),
+      Number(rgba[2]),
+      Number(rgba[3]),
+      rgba[4] === undefined ? 1 : Number(rgba[4]),
+    ];
   throw new Error(`unparseable color: ${value}`);
 }
 
@@ -115,7 +132,8 @@ describe("theme tokens meet WCAG AA contrast on the surfaces they are used on", 
     // The focus ring is a non-text indicator: WCAG 1.4.11 asks for 3:1
     // against the adjacent surface.
     test(`${themeName} --accent (focus ring) on the base surface ≥ 3:1`, () => {
-      const base = themeName === "Nebula" ? nebSurfaces["--bg-deep"]! : calmSurfaces["--bg-card (#fff)"]!;
+      const base =
+        themeName === "Nebula" ? nebSurfaces["--bg-deep"]! : calmSurfaces["--bg-card (#fff)"]!;
       const ratio = contrast(text(theme, "--accent"), base);
       assert.ok(ratio >= 3, `${theme["--accent"]} is ${ratio.toFixed(2)}:1`);
     });
@@ -168,7 +186,9 @@ describe("minimum text size", () => {
 
 describe("reduced motion", () => {
   test("a prefers-reduced-motion block silences the looping animations", () => {
-    const block = MAIN_CSS.match(/@media \(prefers-reduced-motion: reduce\)\s*\{([\s\S]*?)\n  \}/);
+    const block = MAIN_CSS.match(
+      /@media \(prefers-reduced-motion: reduce\)\s*\{([\s\S]*?)\n {2}\}/,
+    );
     assert.ok(block, "reduced-motion block missing");
     assert.match(block[1]!, /animation:\s*none/);
     assert.match(block[1]!, /scroll-behavior:\s*auto/);

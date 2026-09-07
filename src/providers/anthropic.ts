@@ -1,16 +1,17 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { proxyAwareFetch } from "../proxy-bootstrap.js";
 import { withStreamRetry } from "./stream-retry.js";
-import type {
-  Provider,
-  ProviderResult,
-  ProviderRunOpts,
-} from "./types.js";
+import type { Provider, ProviderResult, ProviderRunOpts } from "./types.js";
 
-/** Structural shape shared by `messages.stream` and `beta.messages.stream`. */
+/**
+ * Structural shape shared by `messages.stream` and `beta.messages.stream`.
+ * The two return different concrete stream classes (and different Message
+ * types), and only the compaction path needs the beta one, so the call site
+ * picks between them behind this interface.
+ */
 interface StreamLike {
   on(event: "text" | "thinking", cb: (delta: string) => void): unknown;
-  finalMessage(): Promise<unknown>;
+  finalMessage(): Promise<Anthropic.Message | Anthropic.Beta.BetaMessage>;
 }
 
 export class AnthropicProvider implements Provider {
@@ -58,9 +59,7 @@ export class AnthropicProvider implements Provider {
     const params: Anthropic.MessageCreateParamsStreaming = {
       model: opts.model,
       max_tokens: opts.maxTokens ?? 16_000,
-      system: [
-        { type: "text", text: opts.systemPrompt, cache_control: systemCache },
-      ],
+      system: [{ type: "text", text: opts.systemPrompt, cache_control: systemCache }],
       tools,
       messages,
       stream: true,
@@ -76,20 +75,23 @@ export class AnthropicProvider implements Provider {
     // idle/reflect calls default to effort "low", so without this gate every one
     // of them routed to Haiku would fail outright (and the relay doesn't strip it).
     if (opts.effort && modelSupportsEffort(opts.model)) {
-      (params as { output_config?: { effort?: string } }).output_config = {
-        ...(params as { output_config?: { effort?: string } }).output_config,
-        effort: opts.effort,
-      };
+      params.output_config = { ...params.output_config, effort: opts.effort };
     }
-    const extras: { betas?: string[]; context_management?: object } = {};
+    // Context compaction is still a beta, so these two fields exist only on
+    // beta.messages' params. They travel separately and are merged in at the
+    // call site rather than widening `params` for every request.
+    type CompactionParams = Pick<
+      Anthropic.Beta.Messages.MessageCreateParamsStreaming,
+      "betas" | "context_management"
+    >;
+    const extras: CompactionParams = {};
     if (opts.compaction) {
       extras.betas = ["compact-2026-01-12"];
       extras.context_management = { edits: [{ type: "compact_20260112" }] };
     }
 
     const onText = (delta: string) => opts.handlers?.onTextDelta?.(delta);
-    const onThinking = (delta: string) =>
-      opts.handlers?.onThinkingDelta?.(delta);
+    const onThinking = (delta: string) => opts.handlers?.onThinkingDelta?.(delta);
 
     // Second argument is the SDK's per-request options; `signal` aborts the
     // in-flight HTTP stream (the SDK then throws APIUserAbortError).
@@ -100,32 +102,30 @@ export class AnthropicProvider implements Provider {
     // retries don't cover these — they're thrown while iterating a 200 stream —
     // so without this a momentary proxy/network blip surfaces as a hard error.
     // Safe because we only retry while no delta has been forwarded yet.
-    const message = await withStreamRetry(
-      { signal: opts.signal },
-      async (markEmitted) => {
-        const stream: StreamLike = opts.compaction
-          ? (this.client.beta.messages.stream(
-              { ...params, ...extras } as Anthropic.Beta.MessageCreateParamsStreaming,
-              requestOpts,
-            ) as unknown as StreamLike)
-          : (this.client.messages.stream(params, requestOpts) as unknown as StreamLike);
-        if (opts.handlers?.onTextDelta) {
-          stream.on("text", (t) => {
-            markEmitted();
-            onText(t);
-          });
-        }
-        if (opts.handlers?.onThinkingDelta) {
-          stream.on("thinking", (t) => {
-            markEmitted();
-            onThinking(t);
-          });
-        }
-        return (await stream.finalMessage()) as Anthropic.Message;
-      },
-    );
+    const message = await withStreamRetry({ signal: opts.signal }, async (markEmitted) => {
+      const stream: StreamLike = opts.compaction
+        ? this.client.beta.messages.stream({ ...params, ...extras }, requestOpts)
+        : this.client.messages.stream(params, requestOpts);
+      if (opts.handlers?.onTextDelta) {
+        stream.on("text", (t) => {
+          markEmitted();
+          onText(t);
+        });
+      }
+      if (opts.handlers?.onThinkingDelta) {
+        stream.on("thinking", (t) => {
+          markEmitted();
+          onThinking(t);
+        });
+      }
+      // BetaMessage's content is a superset of Message's: the extra block
+      // kinds are beta-only tool results this client never asks for. The
+      // narrowing is inherent to supporting both endpoints, not a leftover
+      // from an older SDK's types.
+      return (await stream.finalMessage()) as Anthropic.Message;
+    });
     return {
-      content: message.content as Anthropic.ContentBlock[],
+      content: message.content,
       stopReason: message.stop_reason ?? "end_turn",
       usage: {
         inputTokens: message.usage?.input_tokens ?? 0,
@@ -153,14 +153,12 @@ export function modelSupportsEffort(model: string): boolean {
   return !/haiku/i.test(model);
 }
 
-function withCacheBreakpoint(
-  messages: Anthropic.MessageParam[],
-): Anthropic.MessageParam[] {
+function withCacheBreakpoint(messages: Anthropic.MessageParam[]): Anthropic.MessageParam[] {
   if (messages.length === 0) return messages;
   const out = messages.slice();
   const last = out[out.length - 1]!;
   if (typeof last.content === "string") return out;
-  const content = last.content as Anthropic.ContentBlockParam[];
+  const content = last.content;
   if (content.length === 0) return out;
   const cloned = content.map((block, idx) => {
     if (idx !== content.length - 1) return block;

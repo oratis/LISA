@@ -20,7 +20,4 @@
 
 import { readFileSync } from "node:fs";
 
-export const MAIN_CSS = readFileSync(
-  new URL("./assets/client/main.css", import.meta.url),
-  "utf8",
-);
+export const MAIN_CSS = readFileSync(new URL("./assets/client/main.css", import.meta.url), "utf8");

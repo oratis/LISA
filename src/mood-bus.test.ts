@@ -90,16 +90,25 @@ describe("moodBus — the read side (currentState / origin / persistence)", () =
   });
 
   test("the slug is mirrored to <home>/current-mood.json", async () => {
-    // The mirror is written fire-and-forget (see persist()), so wait for the
-    // content rather than assuming the write landed before this line — and for
-    // content, not mere existence: an in-flight write is briefly an empty file
-    // (which is exactly why load() tolerates a torn read).
+    // The mirror is written fire-and-forget AND best-effort — persist()
+    // swallows every error on purpose, because a cosmetic write must never
+    // fail a turn. So this cannot just wait for one write to land: under a
+    // loaded full-suite run (or c8) that write can be dropped outright (EMFILE
+    // and friends) and no amount of waiting produces the file. Re-issuing the
+    // same set on each pass is what the production path does too — memory is
+    // the source of truth and the next set re-persists — and it keeps the
+    // assertion about behaviour rather than about one syscall's luck.
+    // Reading for CONTENT, not mere existence: an in-flight write is briefly
+    // an empty file, which is exactly why load() tolerates a torn read.
     let raw: { slug?: string; at?: number; by?: string } = {};
-    for (let i = 0; i < 50 && !raw.slug; i++) {
+    const deadline = Date.now() + 10_000;
+    while (raw.slug !== "cheering" && Date.now() < deadline) {
+      homeScope.run(HOME_D, () => moodBus.set("cheering"));
+      await new Promise((r) => setTimeout(r, 10));
       try {
         raw = JSON.parse(fs.readFileSync(moodFile(HOME_D), "utf8"));
       } catch {
-        await new Promise((r) => setTimeout(r, 10));
+        raw = {};
       }
     }
     assert.equal(raw.slug, "cheering");
@@ -129,16 +138,25 @@ describe("moodBus — the read side (currentState / origin / persistence)", () =
     const home = homeForUid(uid);
     fs.mkdirSync(home, { recursive: true });
     fs.writeFileSync(moodFile(home), "{not json");
-    assert.equal(homeScope.run(home, () => moodBus.current()), "neutral");
+    assert.equal(
+      homeScope.run(home, () => moodBus.current()),
+      "neutral",
+    );
   });
 
   test("forget(uid) deletes the mirror and never resurrects it from disk", () => {
     moodBus.forget(UID_D);
     assert.equal(fs.existsSync(moodFile(HOME_D)), false);
-    assert.equal(homeScope.run(HOME_D, () => moodBus.current()), "neutral");
+    assert.equal(
+      homeScope.run(HOME_D, () => moodBus.current()),
+      "neutral",
+    );
     // Even if the unlink had failed, the scope stays marked-hydrated.
     fs.writeFileSync(moodFile(HOME_D), JSON.stringify({ slug: "happy", at: 1, by: "x" }));
-    assert.equal(homeScope.run(HOME_D, () => moodBus.current()), "neutral");
+    assert.equal(
+      homeScope.run(HOME_D, () => moodBus.current()),
+      "neutral",
+    );
   });
 });
 

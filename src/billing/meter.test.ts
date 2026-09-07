@@ -9,7 +9,8 @@ process.env.LISA_HOME = TMP;
 
 const { homeScope, homeForUid } = await import("../paths.js");
 const { recordUsage, readUsage, summarizeUsage, claimAnomalyAlert } = await import("./meter.js");
-const { costMicroUSD, priceForModel, modelTier, formatMicroUSD, MARGIN } = await import("./prices.js");
+const { costMicroUSD, priceForModel, modelTier, formatMicroUSD, MARGIN } =
+  await import("./prices.js");
 
 const U = (i: number, o: number, cr = 0, cw = 0) => ({
   inputTokens: i,
@@ -47,7 +48,12 @@ describe("prices", () => {
 
 describe("meter ledger", () => {
   test("record → read → summarize round-trip", async () => {
-    const rec = await recordUsage("chat", "glm-4.6", U(1000, 2000), new Date("2026-07-22T10:00:00Z"));
+    const rec = await recordUsage(
+      "chat",
+      "glm-4.6",
+      U(1000, 2000),
+      new Date("2026-07-22T10:00:00Z"),
+    );
     assert.ok(rec);
     assert.equal(rec.model, "glm-4.6");
     assert.ok(rec.microUSD > 0);
@@ -123,9 +129,10 @@ describe("anomaly alert claim (cross-instance dedup)", () => {
     }
   };
 
-  const reply = (status: number): typeof fetch =>
-    (async () =>
-      new Response(status === 200 ? "{}" : "denied", { status })) as unknown as typeof fetch;
+  const reply =
+    (status: number): typeof fetch =>
+    async () =>
+      new Response(status === 200 ? "{}" : "denied", { status });
 
   test("Firestore off → always claims (Mac edition keeps the in-process Set)", async () => {
     let called = false;

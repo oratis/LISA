@@ -35,7 +35,10 @@ export interface Remote {
 
 /** Parse a git remote URL (scp or https/ssh) into host/owner/repo. Pure. */
 export function parseRemote(url: string): Remote | null {
-  let s = url.trim().replace(/\.git$/i, "").replace(/\/$/, "");
+  const s = url
+    .trim()
+    .replace(/\.git$/i, "")
+    .replace(/\/$/, "");
   // scp-like: git@github.com:owner/repo  (also ssh://git@github.com/owner/repo)
   let m = s.match(/^(?:ssh:\/\/)?[^@\s]*@([^:/]+)[:/](.+)$/i);
   if (!m) {
@@ -95,9 +98,19 @@ export const githubLinkTool: ToolDefinition<GithubLinkInput, string> = {
     type: "object",
     properties: {
       target: { type: "string", enum: ["repo", "branch", "commit", "file", "pr", "issue"] },
-      cwd: { type: "string", description: "Absolute path inside the repo. Defaults to the current directory." },
-      ref: { type: "string", description: "Branch name or commit sha. Defaults to the current branch (for file/branch) or HEAD." },
-      path: { type: "string", description: "For target:file — absolute or repo-relative file path." },
+      cwd: {
+        type: "string",
+        description: "Absolute path inside the repo. Defaults to the current directory.",
+      },
+      ref: {
+        type: "string",
+        description:
+          "Branch name or commit sha. Defaults to the current branch (for file/branch) or HEAD.",
+      },
+      path: {
+        type: "string",
+        description: "For target:file — absolute or repo-relative file path.",
+      },
       start_line: { type: "integer", minimum: 1 },
       end_line: { type: "integer", minimum: 1 },
       number: { type: "integer", minimum: 1, description: "For target:pr or issue." },
@@ -111,21 +124,31 @@ export const githubLinkTool: ToolDefinition<GithubLinkInput, string> = {
     const root = await gitRoot(cwd, ctx.signal);
     if (!root) return `(not a git repo: ${cwd})`;
 
-    const remoteR = await runIn(root, "git", ["-C", root, "remote", "get-url", "origin"], { timeoutMs: 5000, signal: ctx.signal });
+    const remoteR = await runIn(root, "git", ["-C", root, "remote", "get-url", "origin"], {
+      timeoutMs: 5000,
+      signal: ctx.signal,
+    });
     if (remoteR.code !== 0) return "(no `origin` remote on this repo)";
     const remote = parseRemote(remoteR.stdout);
-    if (!remote) return `(couldn't parse a GitHub URL from origin: ${remoteR.stdout.trim().slice(0, 120)})`;
+    if (!remote)
+      return `(couldn't parse a GitHub URL from origin: ${remoteR.stdout.trim().slice(0, 120)})`;
 
     const target = input.target ?? "repo";
 
     // Resolve a default ref for branch/file when none given.
     let ref = input.ref;
     if (!ref && (target === "branch" || target === "file")) {
-      const b = await runIn(root, "git", ["-C", root, "rev-parse", "--abbrev-ref", "HEAD"], { timeoutMs: 5000, signal: ctx.signal });
+      const b = await runIn(root, "git", ["-C", root, "rev-parse", "--abbrev-ref", "HEAD"], {
+        timeoutMs: 5000,
+        signal: ctx.signal,
+      });
       if (b.code === 0) ref = b.stdout.trim();
     }
     if (!ref && target === "commit") {
-      const h = await runIn(root, "git", ["-C", root, "rev-parse", "HEAD"], { timeoutMs: 5000, signal: ctx.signal });
+      const h = await runIn(root, "git", ["-C", root, "rev-parse", "HEAD"], {
+        timeoutMs: 5000,
+        signal: ctx.signal,
+      });
       if (h.code === 0) ref = h.stdout.trim();
     }
 
@@ -136,11 +159,18 @@ export const githubLinkTool: ToolDefinition<GithubLinkInput, string> = {
       if (filePath.startsWith("..")) return `(file is outside the repo: ${input.path})`;
     }
 
-    const built = buildUrl(remote, target, { ref, path: filePath, startLine: input.start_line, endLine: input.end_line, number: input.number });
+    const built = buildUrl(remote, target, {
+      ref,
+      path: filePath,
+      startLine: input.start_line,
+      endLine: input.end_line,
+      number: input.number,
+    });
     if (typeof built !== "string") return `(${built.error})`;
 
     if (input.open) {
-      const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "cmd" : "xdg-open";
+      const opener =
+        process.platform === "darwin" ? "open" : process.platform === "win32" ? "cmd" : "xdg-open";
       const args = process.platform === "win32" ? ["/c", "start", built] : [built];
       runIn(root, opener, args, { timeoutMs: 5000, signal: ctx.signal }).catch(() => {});
       return `${built}\n(opened in browser)`;

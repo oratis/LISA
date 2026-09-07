@@ -26,7 +26,8 @@ function findTextPart(node: BodyNode | undefined): { part: string; html: boolean
     const n = stack.shift()!;
     const type = (n.type ?? "").toLowerCase();
     if (n.part && type === "text/plain") return { part: n.part, html: false };
-    if (n.part && type === "text/html" && !htmlFallback) htmlFallback = { part: n.part, html: true };
+    if (n.part && type === "text/html" && !htmlFallback)
+      htmlFallback = { part: n.part, html: true };
     if (n.childNodes) stack.push(...n.childNodes);
   }
   return htmlFallback;
@@ -47,7 +48,7 @@ async function streamToString(stream: NodeJS.ReadableStream, maxBytes: number): 
   const chunks: Buffer[] = [];
   let total = 0;
   for await (const chunk of stream) {
-    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as string);
+    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     chunks.push(buf);
     total += buf.length;
     if (total >= maxBytes) break;
@@ -77,7 +78,7 @@ export class ImapConnector implements MailConnector {
       await this.client.connect();
       this.connected = true;
     }
-    const lock = await this.client.getMailboxLock("INBOX", { readOnly: true } as never);
+    const lock = await this.client.getMailboxLock("INBOX", { readOnly: true });
     const out: RawMail[] = [];
     try {
       const found = await this.client.search({ since: new Date(opts.sinceMs) }, { uid: true });
@@ -117,7 +118,7 @@ export class ImapConnector implements MailConnector {
         const dl = await this.client.download(String(msg.uid), part.part, {
           uid: true,
           maxBytes: SNIPPET_FETCH_BYTES,
-        } as never);
+        });
         let text = await streamToString(dl.content, SNIPPET_FETCH_BYTES);
         if (part.html) text = stripHtml(text);
         snippet = text.replace(/\s+/g, " ").trim().slice(0, SNIPPET_CHARS);

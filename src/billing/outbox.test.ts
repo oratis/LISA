@@ -34,10 +34,18 @@ const {
   newUsageEvent,
   describeError,
   outboxEnabled,
+  tenantShard,
+  isAlreadyExists,
+  readIds,
+  toDoc,
+  fromDoc,
+  defaultOutboxStore,
+  _resetOutboxStoreForTests,
 } = await import("./outbox.js");
 const { reconcileOnce } = await import("./reconcile.js");
 const { admitInference } = await import("./admission.js");
-const { debitTurn, readBalance, creditPurchase, BillingStateError, SETTLED_MAX } = await import("./quota.js");
+const { debitTurn, readBalance, creditPurchase, BillingStateError, SETTLED_MAX } =
+  await import("./quota.js");
 const { homeScope, homeForUid } = await import("../paths.js");
 const { redactId } = await import("../log.js");
 
@@ -79,7 +87,9 @@ function fakeLedger(opts: { failTimes?: number; error?: () => Error } = {}) {
     state.calls += 1;
     if (failures > 0) {
       failures -= 1;
-      throw opts.error?.() ?? new Error(`balance store down for ${UID} Bearer sk-secret-token-123456`);
+      throw (
+        opts.error?.() ?? new Error(`balance store down for ${UID} Bearer sk-secret-token-123456`)
+      );
     }
     if (eventId && applied.has(eventId)) return false;
     if (eventId) applied.add(eventId);
@@ -103,7 +113,12 @@ function captureLogs(): { lines: string[]; restore: () => void } {
   console.error = (...args: unknown[]) => {
     lines.push(args.map(String).join(" "));
   };
-  return { lines, restore: () => { console.error = orig; } };
+  return {
+    lines,
+    restore: () => {
+      console.error = orig;
+    },
+  };
 }
 
 let logs: ReturnType<typeof captureLogs>;
@@ -125,7 +140,11 @@ describe("usage outbox — settlement failure injection", () => {
       settleUsage(input(), deps(store, ledger)),
       (err: unknown) => err instanceof BillingStateError && err.code === "outbox_unavailable",
     );
-    assert.equal(ledger.state.calls, 0, "the balance must not be touched when the event is not durable");
+    assert.equal(
+      ledger.state.calls,
+      0,
+      "the balance must not be touched when the event is not durable",
+    );
     assert.equal(ledger.state.balance, 0);
     assert.deepEqual(await store.listOpen(UID), []);
     // Logged loudly, but never with the raw uid.
@@ -187,7 +206,11 @@ describe("usage outbox — settlement failure injection", () => {
     const result = await settleUsage(input(), deps(store, ledger));
     assert.ok(result.eventId);
     assert.equal(result.applied, true);
-    assert.equal(result.committed, false, "the caller learns the mark did not land, but the turn is paid");
+    assert.equal(
+      result.committed,
+      false,
+      "the caller learns the mark did not land, but the turn is paid",
+    );
     assert.equal(ledger.state.balance, -4_200);
     // The event is still open; the debit already happened.
     const open = await store.listOpen(UID);
@@ -218,7 +241,13 @@ describe("usage outbox — settlement failure injection", () => {
       { store, debit: ledger.debit, loadAccount: async () => ACCT, now: () => T0 },
     );
     assert.deepEqual(
-      { scanned: first.scanned, committed: first.committed, escalated: first.escalated, skipped: first.skipped, failed: first.failed },
+      {
+        scanned: first.scanned,
+        committed: first.committed,
+        escalated: first.escalated,
+        skipped: first.skipped,
+        failed: first.failed,
+      },
       { scanned: 1, committed: 1, escalated: 0, skipped: 0, failed: 0 },
     );
     assert.equal(ledger.state.balance, -4_200);
@@ -290,7 +319,10 @@ describe("usage outbox — settlement failure injection", () => {
     const store = new MemoryOutboxStore();
     const ledger = fakeLedger({
       failTimes: 1,
-      error: () => new Error(`commit lisa-balances/${UID} failed (503) Authorization: Bearer ya29.secret-token-value`),
+      error: () =>
+        new Error(
+          `commit lisa-balances/${UID} failed (503) Authorization: Bearer ya29.secret-token-value`,
+        ),
     });
     await assert.rejects(settleUsage(input(), deps(store, ledger)));
     const all = logs.lines.join("\n");
@@ -343,7 +375,7 @@ describe("usage outbox — settlement failure injection", () => {
     assert.ok(result.eventId);
     assert.equal(result.applied, true);
     assert.equal(result.committed, true);
-    const ev = await store.get(UID, result.eventId!);
+    const ev = await store.get(UID, result.eventId);
     assert.ok(ev);
     assert.equal(ev.uid, UID);
     assert.equal(ev.kind, "chat");
@@ -369,13 +401,25 @@ describe("usage outbox — the balance ledger's idempotency key (quota.ts)", () 
   test("debitTurn(eventId) applies once; a replay returns false and leaves the balance alone", async () => {
     await homeScope.run(homeForUid("em-idem"), async () => {
       await creditPurchase({ at: T0, microUSD: 5_000_000, transactionId: "seed-idem" }, T0);
-      assert.equal(await debitTurn(ACCT, "claude-sonnet-4-6", 1_000_000, T0, { eventId: "evt-1" }), true);
-      assert.equal(await debitTurn(ACCT, "claude-sonnet-4-6", 1_000_000, T0 + 1, { eventId: "evt-1" }), false);
+      assert.equal(
+        await debitTurn(ACCT, "claude-sonnet-4-6", 1_000_000, T0, { eventId: "evt-1" }),
+        true,
+      );
+      assert.equal(
+        await debitTurn(ACCT, "claude-sonnet-4-6", 1_000_000, T0 + 1, { eventId: "evt-1" }),
+        false,
+      );
       const b = await readBalance();
       assert.equal(b.paidMicroUSD, 4_000_000);
-      assert.deepEqual(b.settled?.map((s) => s.id), ["evt-1"]);
+      assert.deepEqual(
+        b.settled?.map((s) => s.id),
+        ["evt-1"],
+      );
       // A different event id is a real charge; no id means the legacy (non-idempotent) debit.
-      assert.equal(await debitTurn(ACCT, "claude-sonnet-4-6", 1_000_000, T0 + 2, { eventId: "evt-2" }), true);
+      assert.equal(
+        await debitTurn(ACCT, "claude-sonnet-4-6", 1_000_000, T0 + 2, { eventId: "evt-2" }),
+        true,
+      );
       assert.equal(await debitTurn(ACCT, "claude-sonnet-4-6", 1_000_000, T0 + 3), true);
       assert.equal((await readBalance()).paidMicroUSD, 2_000_000);
     });
@@ -402,8 +446,14 @@ describe("usage outbox — the balance ledger's idempotency key (quota.ts)", () 
       JSON.stringify({ paidMicroUSD: 1, purchases: [], settled: [{ id: 42, at: "x" }] }),
     );
     await homeScope.run(home, async () => {
-      await assert.rejects(readBalance(), (err: unknown) => err instanceof BillingStateError && err.code === "balance_corrupt");
-      await assert.rejects(debitTurn(ACCT, "claude-sonnet-4-6", 1, T0, { eventId: "e" }), BillingStateError);
+      await assert.rejects(
+        readBalance(),
+        (err: unknown) => err instanceof BillingStateError && err.code === "balance_corrupt",
+      );
+      await assert.rejects(
+        debitTurn(ACCT, "claude-sonnet-4-6", 1, T0, { eventId: "e" }),
+        BillingStateError,
+      );
     });
   });
 });
@@ -413,7 +463,13 @@ describe("usage outbox — end to end on the local JSONL store with the real bal
   const acct: AccountRecord = { ...ACCT, uid };
   const realDebit: SettlementDeps["debit"] = (a, event, eventId) =>
     homeScope.run(homeForUid(a.uid), () =>
-      debitTurn(a, event.model, event.costMicros, event.createdAt, eventId ? { eventId } : undefined),
+      debitTurn(
+        a,
+        event.model,
+        event.costMicros,
+        event.createdAt,
+        eventId ? { eventId } : undefined,
+      ),
     );
 
   test("settle writes the event before the debit and marks it committed after", async () => {
@@ -423,11 +479,21 @@ describe("usage outbox — end to end on the local JSONL store with the real bal
     );
     assert.equal(result.committed, true);
     const file = path.join(homeForUid(uid), "billing", "outbox.jsonl");
-    const lines = fs.readFileSync(file, "utf8").trim().split("\n").map((l) => JSON.parse(l) as UsageEvent);
-    assert.deepEqual(lines.map((l) => l.status), ["pending", "committed"]);
+    const lines = fs
+      .readFileSync(file, "utf8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as UsageEvent);
+    assert.deepEqual(
+      lines.map((l) => l.status),
+      ["pending", "committed"],
+    );
     const balance = await homeScope.run(homeForUid(uid), readBalance);
     assert.equal(balance.window?.spentMicroUSD, 4_200);
-    assert.deepEqual(balance.settled?.map((s) => s.id), [result.eventId]);
+    assert.deepEqual(
+      balance.settled?.map((s) => s.id),
+      [result.eventId],
+    );
   });
 
   test("an unwritable outbox fails closed: no debit, no ledger change", async () => {
@@ -438,7 +504,12 @@ describe("usage outbox — end to end on the local JSONL store with the real bal
     fs.mkdirSync(path.join(homeForUid(uid2), "billing", "outbox.jsonl"), { recursive: true });
     await assert.rejects(
       homeScope.run(homeForUid(uid2), () =>
-        settleUsage(input({ acct: acct2 }), { store, debit: realDebit, now: () => T0, enabled: () => true }),
+        settleUsage(input({ acct: acct2 }), {
+          store,
+          debit: realDebit,
+          now: () => T0,
+          enabled: () => true,
+        }),
       ),
       (err: unknown) => err instanceof BillingStateError && err.code === "outbox_unavailable",
     );
@@ -455,11 +526,20 @@ describe("usage outbox — end to end on the local JSONL store with the real bal
     fs.writeFileSync(path.join(billing, "balance.json"), "{corrupt");
     await assert.rejects(
       homeScope.run(homeForUid(uid3), () =>
-        settleUsage(input({ acct: acct3 }), { store, debit: realDebit, now: () => T0, enabled: () => true }),
+        settleUsage(input({ acct: acct3 }), {
+          store,
+          debit: realDebit,
+          now: () => T0,
+          enabled: () => true,
+        }),
       ),
       (err: unknown) => err instanceof BillingStateError && err.code === "balance_corrupt",
     );
-    assert.equal(fs.readFileSync(path.join(billing, "balance.json"), "utf8"), "{corrupt", "never overwritten");
+    assert.equal(
+      fs.readFileSync(path.join(billing, "balance.json"), "utf8"),
+      "{corrupt",
+      "never overwritten",
+    );
     let open = await store.listOpen(uid3);
     assert.equal(open.length, 1);
     assert.equal(open[0]!.status, "failed");
@@ -485,7 +565,10 @@ describe("usage outbox — end to end on the local JSONL store with the real bal
 
 describe("describeError", () => {
   test("keeps the class, code and a short message; strips the uid and bearer tokens", () => {
-    const err = new BillingStateError("balance_unavailable", `commit lisa-balances/${UID} failed Bearer abc.def-ghi`);
+    const err = new BillingStateError(
+      "balance_unavailable",
+      `commit lisa-balances/${UID} failed Bearer abc.def-ghi`,
+    );
     const text = describeError(err, UID);
     assert.ok(text.startsWith("BillingStateError(balance_unavailable)"));
     assert.ok(!text.includes(UID));
@@ -493,5 +576,79 @@ describe("describeError", () => {
     assert.ok(!text.includes("abc.def-ghi"));
     assert.ok(describeError("plain string").includes("plain string"));
     assert.ok(describeError(new Error("x".repeat(500))).length < 260);
+  });
+});
+
+describe("outbox document + sharding helpers", () => {
+  // These sit on the cloud path, which the local suite cannot exercise without
+  // a Firestore emulator — but they are pure, and each encodes an invariant
+  // money depends on.
+  const event = {
+    id: "evt-1",
+    uid: "u-1",
+    kind: "chat",
+    model: "claude-sonnet-4-6",
+    costMicros: 1234,
+    createdAt: 1_700_000_000_000,
+    status: "pending",
+    attempts: 0,
+    reservationId: "r-1",
+    usage: { inputTokens: 10, outputTokens: 20, cacheReadTokens: 0, cacheWriteTokens: 0 },
+  } as unknown as UsageEvent;
+
+  test("a usage event survives the document round trip unchanged", () => {
+    assert.deepEqual(fromDoc(toDoc(event)), event);
+  });
+
+  test("lastError is stored as '' and comes back absent, never as the empty string", () => {
+    // Firestore rejects an undefined field, so it is written as "" and dropped
+    // on read. A round-tripped event must not grow a falsy lastError that a
+    // later reader treats as "this failed once".
+    const doc = toDoc(event);
+    assert.equal(doc.lastError, "");
+    assert.equal("lastError" in fromDoc(doc), false);
+
+    const failed = { ...event, lastError: "boom" } as UsageEvent;
+    assert.equal(toDoc(failed).lastError, "boom");
+    assert.equal(fromDoc(toDoc(failed)).lastError, "boom");
+  });
+
+  test("tenant sharding is deterministic and stays inside the shard range", () => {
+    assert.equal(tenantShard("u-1"), tenantShard("u-1"));
+    const seen = new Set<string>();
+    for (let i = 0; i < 200; i++) seen.add(tenantShard(`uid-${i}`));
+    assert.ok(seen.size > 1, "sharding should actually spread");
+    for (const p of seen)
+      assert.match(p, /^lisa-outbox-tenants\/[0-7]$/, `shard out of range: ${p}`);
+  });
+
+  test("readIds keeps only strings and never throws on a malformed field", () => {
+    assert.deepEqual(readIds({ open: ["a", "b"] }), ["a", "b"]);
+    assert.deepEqual(readIds({ open: ["a", 1, null, { x: 1 }, "b"] }), ["a", "b"]);
+    assert.deepEqual(readIds({ open: "not-an-array" }), []);
+    assert.deepEqual(readIds({}), []);
+    assert.deepEqual(readIds(null), []);
+    assert.deepEqual(readIds({ other: ["a"] }, "other"), ["a"]);
+  });
+
+  test("only a real FirestoreError 409/412 counts as 'already appended'", () => {
+    // The append is idempotent by id via an exists:false precondition, so those
+    // statuses mean "already durable". Anything else is a real failure and has
+    // to fail the settlement closed — including a look-alike error object.
+    class LookAlike extends Error {
+      status = 409;
+    }
+    assert.equal(isAlreadyExists(new Error("nope")), false);
+    assert.equal(isAlreadyExists(null), false);
+    assert.equal(isAlreadyExists(undefined), false);
+    assert.equal(isAlreadyExists(new LookAlike()), false, "duck typing must not pass");
+  });
+
+  test("the default store is memoized, and the test reset forgets it", () => {
+    _resetOutboxStoreForTests();
+    const a = defaultOutboxStore();
+    assert.equal(defaultOutboxStore(), a, "memoized within an edition");
+    _resetOutboxStoreForTests();
+    assert.notEqual(defaultOutboxStore(), a, "reset must forget the adapter");
   });
 });

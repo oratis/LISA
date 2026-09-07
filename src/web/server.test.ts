@@ -199,7 +199,7 @@ describe("T-7 the server honours its RuntimePolicy", () => {
     serveWeb: true,
   };
 
-  test("reflection:\"off\" refuses POST /reflect instead of quietly running a model call", async () => {
+  test('reflection:"off" refuses POST /reflect instead of quietly running a model call', async () => {
     const policy = buildRuntimePolicy({ ...base, reflect: false }, { LISA_EDITION: "mac" });
     assert.equal(policy.reflection, "off");
     const srv = await boot({ policy, reflect: false });
@@ -212,7 +212,7 @@ describe("T-7 the server honours its RuntimePolicy", () => {
     }
   });
 
-  test("reflection:\"manual\" keeps the route reachable (no 409) while running no heartbeat", async () => {
+  test('reflection:"manual" keeps the route reachable (no 409) while running no heartbeat', async () => {
     const policy = buildRuntimePolicy({ ...base }, { LISA_EDITION: "cloud" });
     assert.equal(policy.reflection, "manual");
     // Boot with the cloud policy but the mac edition, so the route is not
@@ -238,8 +238,10 @@ describe("T-7 the server honours its RuntimePolicy", () => {
     try {
       const r = await request(srv.port, "GET", "/api/tools");
       if (r.status === 200) {
-        const names = (JSON.parse(r.text) as { tools?: { name: string }[] }).tools?.map((t) => t.name) ?? [];
-        if (names.length) assert.equal(names.includes("bash"), false, "cloud-chat must not expose bash");
+        const names =
+          (JSON.parse(r.text) as { tools?: { name: string }[] }).tools?.map((t) => t.name) ?? [];
+        if (names.length)
+          assert.equal(names.includes("bash"), false, "cloud-chat must not expose bash");
       }
     } finally {
       await srv.close();
@@ -271,7 +273,7 @@ describe("T-4 /api/sessions ETag revalidation", () => {
       assert.equal(first.headers["cache-control"], "no-cache");
 
       const second = await request(srv.port, "GET", "/api/sessions", {
-        headers: { "if-none-match": etag! },
+        headers: { "if-none-match": etag },
       });
       assert.equal(second.status, 304);
       assert.equal(second.text, "");
@@ -306,7 +308,13 @@ describe("T-9 /api/config over the real server", () => {
         anthropic: boolean;
         openai: boolean;
         model: string;
-        providers: { id: string; envKey: string; label: string; modelPrefixes: string[]; configured: boolean }[];
+        providers: {
+          id: string;
+          envKey: string;
+          label: string;
+          modelPrefixes: string[];
+          configured: boolean;
+        }[];
       };
       // Legacy fields survive for the old popup.
       assert.equal(typeof body.configured, "boolean");
@@ -341,7 +349,11 @@ describe("T-9 /api/config over the real server", () => {
       const raw = fs.readFileSync(configEnv, "utf8");
       assert.match(raw, /ZHIPU_API_KEY=/);
       assert.match(raw, /LISA_MODEL=glm-4/);
-      assert.equal(fs.statSync(configEnv).mode & 0o777, 0o600, "0600, like every other secret in ~/.lisa");
+      assert.equal(
+        fs.statSync(configEnv).mode & 0o777,
+        0o600,
+        "0600, like every other secret in ~/.lisa",
+      );
 
       // …and the status endpoint now agrees it is configured.
       const status = JSON.parse((await request(srv.port, "GET", "/api/config/status")).text) as {
@@ -425,7 +437,10 @@ describe("T-12 PWA manifest icons", () => {
       assert.equal(bySrc.get("/assets/icon-512.png")?.sizes, "512x512");
       // `sizes: "any"` on a raster PNG is what made the platforms reject the
       // icon and fall back to a page screenshot.
-      assert.equal(m.icons.some((i) => i.sizes === "any"), false);
+      assert.equal(
+        m.icons.some((i) => i.sizes === "any"),
+        false,
+      );
       for (const i of m.icons) {
         assert.equal(i.type, "image/png");
         assert.match(i.sizes, /^\d+x\d+$/);
@@ -435,7 +450,10 @@ describe("T-12 PWA manifest icons", () => {
       const maskable = m.icons.filter((i) => i.purpose === "maskable");
       assert.equal(maskable.length, 1);
       assert.equal(maskable[0]!.src, "/assets/icon-512-maskable.png");
-      assert.equal(m.icons.some((i) => i.purpose === "any" && i.src === maskable[0]!.src), false);
+      assert.equal(
+        m.icons.some((i) => i.purpose === "any" && i.src === maskable[0]!.src),
+        false,
+      );
     } finally {
       await srv.close();
     }

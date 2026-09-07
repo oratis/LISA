@@ -81,7 +81,10 @@ const PASSTHROUGH_SUBCOMMANDS = new Set(["mail", "kb", "billing"]);
  * in place before any module touches fetch. LISA_DEBUG=1 is the env form for
  * launchd / scripts that can't edit the command line.
  */
-export function isVerboseArgv(argv: readonly string[], env: NodeJS.ProcessEnv = process.env): boolean {
+export function isVerboseArgv(
+  argv: readonly string[],
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
   const debug = env.LISA_DEBUG;
   if (debug && debug !== "0" && debug.toLowerCase() !== "false") return true;
   return argv.includes("--verbose");
@@ -140,8 +143,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
       const n = parseInt(v, 10);
       if (!Number.isFinite(n) || n < 0) throw new Error(`bad --idle: ${v}`);
       out.idleMinutes = n;
-    }
-    else if (arg === "--web") out.serveWeb = true;
+    } else if (arg === "--web") out.serveWeb = true;
     else if (arg === "--imessage") out.serveImessage = true;
     else if (arg === "--channels") {
       out.serveChannels = mustNext(argv, ++i, "--channels")
@@ -154,15 +156,13 @@ export function parseArgs(argv: string[]): ParsedArgs {
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
-    }
-    else if (arg === "--model") {
+    } else if (arg === "--model") {
       out.model = mustNext(argv, ++i, "--model");
       out.modelExplicit = true;
     } else if (arg.startsWith("--model=")) {
       out.model = arg.slice("--model=".length);
       out.modelExplicit = true;
-    }
-    else if (arg === "--provider") {
+    } else if (arg === "--provider") {
       const v = mustNext(argv, ++i, "--provider");
       process.env.LISA_PROVIDER = v;
     } else if (arg === "--approval") {

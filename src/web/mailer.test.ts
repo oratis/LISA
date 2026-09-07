@@ -23,19 +23,6 @@ function recordingFetch(response = { id: "email_123" }, status = 200) {
   return { calls, fn };
 }
 
-/** Strip tags/entities so the HTML can be compared as prose. */
-function htmlToText(html: string): string {
-  return html
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 const ALL_MAILS: Array<[string, Mail]> = [
   ["signInCode", signInCodeEmail("123456", 10)],
   ["verification", verificationEmail("https://cloud.meetlisa.ai/verify?token=abc123")],
@@ -49,7 +36,10 @@ describe("mailer — sending identity", () => {
   });
 
   test("LISA_MAIL_FROM overrides; blank falls back to the default", () => {
-    assert.equal(mailerConfig({ LISA_MAIL_FROM: "L <hi@mail.meetlisa.ai>" }).from, "L <hi@mail.meetlisa.ai>");
+    assert.equal(
+      mailerConfig({ LISA_MAIL_FROM: "L <hi@mail.meetlisa.ai>" }).from,
+      "L <hi@mail.meetlisa.ai>",
+    );
     assert.match(mailerConfig({ LISA_MAIL_FROM: "   " }).from, /no-reply@mail\.meetlisa\.ai/);
   });
 });
@@ -180,8 +170,12 @@ describe("mailer — transport", () => {
     console.error = (...args: unknown[]) => void logged.push(args.join(" "));
     let r;
     try {
-      r = await sendVerificationEmail("a@b.co", "https://x/verify?token=t", CFG,
-        recordingFetch({ id: "" }, 422).fn);
+      r = await sendVerificationEmail(
+        "a@b.co",
+        "https://x/verify?token=t",
+        CFG,
+        recordingFetch({ id: "" }, 422).fn,
+      );
     } finally {
       console.error = original;
     }
@@ -195,7 +189,9 @@ describe("mailer — transport", () => {
     console.error = () => {};
     let r;
     try {
-      const boom = (async () => { throw new Error("ECONNRESET"); }) as unknown as typeof fetch;
+      const boom = (async () => {
+        throw new Error("ECONNRESET");
+      }) as unknown as typeof fetch;
       r = await sendVerificationEmail("a@b.co", "https://x/verify?token=t", CFG, boom);
     } finally {
       console.error = original;

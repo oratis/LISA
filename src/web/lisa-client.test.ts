@@ -48,10 +48,7 @@ describe("idle-note sentinel regex survives template-literal cooking", () => {
     const sentinel = new RegExp(lit.slice(1, lastSlash), lit.slice(lastSlash + 1));
 
     const note = "[while you were away] I tidied your notes while you were out.";
-    assert.ok(
-      sentinel.test(note),
-      `served regex ${sentinel} failed to match a real idle note`,
-    );
+    assert.ok(sentinel.test(note), `served regex ${sentinel} failed to match a real idle note`);
     assert.equal(
       note.replace(sentinel, ""),
       "I tidied your notes while you were out.",
@@ -92,7 +89,7 @@ function extractFunction(src: string, name: string): string {
   const start = src.indexOf(head);
   assert.ok(start >= 0, `function ${name} not found in MAIN_CLIENT_JS`);
   let depth = 0;
-  let i = src.indexOf("{", start);
+  const i = src.indexOf("{", start);
   assert.ok(i >= 0, `function ${name} has no body`);
   for (let j = i; j < src.length; j++) {
     if (src[j] === "{") depth++;
@@ -112,10 +109,16 @@ describe("sessionLabel names an empty session instead of showing its raw id (UX-
   const ID = "20260905-220846-9f7d58";
 
   test("a session with no messages reads as a new session, not the id", () => {
-    assert.equal(label({ id: ID, messageCount: 0, startedAt: "2026-09-05T22:08:46Z" }), "New session · 2m");
+    assert.equal(
+      label({ id: ID, messageCount: 0, startedAt: "2026-09-05T22:08:46Z" }),
+      "New session · 2m",
+    );
   });
   test("the first user message still wins once there is one", () => {
-    assert.equal(label({ id: ID, messageCount: 1, firstUserMessage: "fix the mail sweep" }), "fix the mail sweep");
+    assert.equal(
+      label({ id: ID, messageCount: 1, firstUserMessage: "fix the mail sweep" }),
+      "fix the mail sweep",
+    );
   });
   test("long names are ellipsised to 30 chars", () => {
     const long = "a".repeat(80);
@@ -164,13 +167,15 @@ describe("collapsed right rail keeps a way in (UX-5)", () => {
 describe("birth errors are classified into human copy (UX-1)", () => {
   // The copy comes from the i18n table now, so the sandbox needs that block
   // too — which also means these assertions run against the real strings.
-  const src =
-    MAIN_CLIENT_JS.slice(
-      MAIN_CLIENT_JS.indexOf("const BIRTH_ERROR_TEXT = {"),
-      MAIN_CLIENT_JS.indexOf("function showBirthError("),
-    );
+  const src = MAIN_CLIENT_JS.slice(
+    MAIN_CLIENT_JS.indexOf("const BIRTH_ERROR_TEXT = {"),
+    MAIN_CLIENT_JS.indexOf("function showBirthError("),
+  );
   const ctx = i18nContext();
-  runInContext(`${I18N_SRC}\n${src}; globalThis.__code = birthErrorCode; globalThis.__text = BIRTH_ERROR_TEXT;`, ctx);
+  runInContext(
+    `${I18N_SRC}\n${src}; globalThis.__code = birthErrorCode; globalThis.__text = BIRTH_ERROR_TEXT;`,
+    ctx,
+  );
   const code = (ctx as { __code: (ev: unknown) => string }).__code;
   const text = (ctx as { __text: Record<string, string> }).__text;
 
@@ -199,7 +204,7 @@ describe("birth errors are classified into human copy (UX-1)", () => {
   test("every class has copy, and none of it is JSON", () => {
     for (const k of ["auth", "timeout", "network", "rate_limit", "unknown"]) {
       assert.ok(text[k] && text[k].length > 20, `missing copy for ${k}`);
-      assert.ok(!text[k]!.includes("{"), `copy for ${k} leaks a payload`);
+      assert.ok(!text[k].includes("{"), `copy for ${k} leaks a payload`);
     }
   });
   test("the raw payload goes to the title attribute, never to textContent", () => {
@@ -229,7 +234,16 @@ describe("provider picker works against both server generations (UX-1)", () => {
     const list = c.lisaProviderList({ configured: true, anthropic: true, openai: false });
     assert.ok(list.length >= 8, `only ${list.length} providers`);
     const ids = list.map((p) => p.id);
-    for (const want of ["anthropic", "openai", "deepseek", "zhipu", "dashscope", "moonshot", "gemini", "custom"]) {
+    for (const want of [
+      "anthropic",
+      "openai",
+      "deepseek",
+      "zhipu",
+      "dashscope",
+      "moonshot",
+      "gemini",
+      "custom",
+    ]) {
       assert.ok(ids.includes(want), `missing ${want}`);
     }
     assert.equal(list.find((p) => p.id === "anthropic")!.configured, true);
@@ -239,8 +253,20 @@ describe("provider picker works against both server generations (UX-1)", () => {
   test("a served providers block wins, including providers this client has never heard of", () => {
     const list = c.lisaProviderList({
       providers: [
-        { id: "zhipu", envKey: "ZHIPU_API_KEY", label: "Zhipu GLM", modelPrefixes: ["glm-"], configured: true },
-        { id: "brandnew", envKey: "BRANDNEW_API_KEY", label: "Brand New Co", modelPrefixes: ["bn-"], configured: false },
+        {
+          id: "zhipu",
+          envKey: "ZHIPU_API_KEY",
+          label: "Zhipu GLM",
+          modelPrefixes: ["glm-"],
+          configured: true,
+        },
+        {
+          id: "brandnew",
+          envKey: "BRANDNEW_API_KEY",
+          label: "Brand New Co",
+          modelPrefixes: ["bn-"],
+          configured: false,
+        },
       ],
     });
     assert.equal(JSON.stringify(list.map((p) => p.id)), JSON.stringify(["zhipu", "brandnew"]));
@@ -299,7 +325,10 @@ describe("provider picker works against both server generations (UX-1)", () => {
 describe("interface language table (UX-8)", () => {
   const ctxEn = i18nContext();
   runInContext(`${I18N_SRC}; globalThis.__tr = tr; globalThis.__loc = LISA_LOCALE;`, ctxEn);
-  const ctxZh = createContext({ navigator: { language: "zh-CN" }, document: { documentElement: {} } });
+  const ctxZh = createContext({
+    navigator: { language: "zh-CN" },
+    document: { documentElement: {} },
+  });
   runInContext(`${I18N_SRC}; globalThis.__tr = tr; globalThis.__loc = LISA_LOCALE;`, ctxZh);
   const en = ctxEn as { __tr: (k: string, v?: Record<string, unknown>) => string; __loc: string };
   const zh = ctxZh as { __tr: (k: string, v?: Record<string, unknown>) => string; __loc: string };
@@ -307,17 +336,29 @@ describe("interface language table (UX-8)", () => {
   test("navigator.language picks the locale, and document.lang follows", () => {
     assert.equal(en.__loc, "en");
     assert.equal(zh.__loc, "zh-CN");
-    assert.equal((ctxEn as { document: { documentElement: { lang?: string } } }).document.documentElement.lang, "en");
-    assert.equal((ctxZh as { document: { documentElement: { lang?: string } } }).document.documentElement.lang, "zh-CN");
+    assert.equal(
+      (ctxEn as { document: { documentElement: { lang?: string } } }).document.documentElement.lang,
+      "en",
+    );
+    assert.equal(
+      (ctxZh as { document: { documentElement: { lang?: string } } }).document.documentElement.lang,
+      "zh-CN",
+    );
   });
 
   test("both tables define exactly the same keys", () => {
-    const keys = (c: object) => {
-      const ctx = createContext({ navigator: { language: "en" }, document: { documentElement: {} } });
-      runInContext(`${I18N_SRC}; globalThis.__k = Object.keys(LISA_STRINGS.en).sort().join(","); globalThis.__z = Object.keys(LISA_STRINGS['zh-CN']).sort().join(",");`, ctx);
+    const keys = () => {
+      const ctx = createContext({
+        navigator: { language: "en" },
+        document: { documentElement: {} },
+      });
+      runInContext(
+        `${I18N_SRC}; globalThis.__k = Object.keys(LISA_STRINGS.en).sort().join(","); globalThis.__z = Object.keys(LISA_STRINGS['zh-CN']).sort().join(",");`,
+        ctx,
+      );
       return ctx as { __k: string; __z: string };
     };
-    const k = keys({});
+    const k = keys();
     assert.equal(k.__k, k.__z, "en and zh-CN tables have drifted apart");
   });
 
@@ -374,7 +415,10 @@ describe("no call site of the i18n helper is left un-renamed (UX-8)", () => {
 describe("backend liveness is surfaced (UX-10)", () => {
   test("every /events frame and the open event count as liveness", () => {
     assert.match(MAIN_CLIENT_JS, /es\.addEventListener\('open', noteEventBytes\)/);
-    assert.match(MAIN_CLIENT_JS, /es\.addEventListener\('message', \(e\) => \{\s*noteEventBytes\(\);/);
+    assert.match(
+      MAIN_CLIENT_JS,
+      /es\.addEventListener\('message', \(e\) => \{\s*noteEventBytes\(\);/,
+    );
     assert.match(MAIN_CLIENT_JS, /es\.onerror = \(\) => \{[\s\S]{0,120}setConnPill\(true\)/);
   });
   test("the quiet window is 45s and a quiet-but-open socket is probed, not assumed dead", () => {
@@ -385,7 +429,10 @@ describe("backend liveness is surfaced (UX-10)", () => {
     );
     // readyState !== OPEN is decided locally; only the half-open case costs a
     // request, and that one is rate-limited.
-    assert.match(fn, /es\.readyState !== 1 \) \{ setConnPill\(true\); return; \}|es\.readyState !== 1\) \{ setConnPill\(true\); return; \}/);
+    assert.match(
+      fn,
+      /es\.readyState !== 1 \) \{ setConnPill\(true\); return; \}|es\.readyState !== 1\) \{ setConnPill\(true\); return; \}/,
+    );
     assert.match(fn, /fetch\('\/health'/);
     assert.match(fn, /connProbeAt < 30_000/);
   });
@@ -403,7 +450,10 @@ describe("backend liveness is surfaced (UX-10)", () => {
 
 describe("small fixes (UX-11)", () => {
   const ctx = i18nContext();
-  runInContext(`${I18N_SRC}\n${extractFunction(MAIN_CLIENT_JS, "abbrevPath")}; globalThis.__ab = abbrevPath;`, ctx);
+  runInContext(
+    `${I18N_SRC}\n${extractFunction(MAIN_CLIENT_JS, "abbrevPath")}; globalThis.__ab = abbrevPath;`,
+    ctx,
+  );
   const ab = (ctx as { __ab: (p: unknown) => string }).__ab;
 
   test("home directories abbreviate to ~, everything else is left alone", () => {
@@ -470,9 +520,19 @@ describe("keyboard shortcuts (UX-11)", () => {
 
   test("every shortcut in the help list has copy in both locales", () => {
     const ctx = i18nContext();
-    runInContext(`${I18N_SRC}; globalThis.__tr = tr; globalThis.__zh = LISA_STRINGS['zh-CN'];`, ctx);
+    runInContext(
+      `${I18N_SRC}; globalThis.__tr = tr; globalThis.__zh = LISA_STRINGS['zh-CN'];`,
+      ctx,
+    );
     const c = ctx as { __tr: (k: string) => string; __zh: Record<string, string> };
-    for (const key of ["kbd.switch", "kbd.focus", "kbd.find", "kbd.close", "kbd.send", "kbd.help"]) {
+    for (const key of [
+      "kbd.switch",
+      "kbd.focus",
+      "kbd.find",
+      "kbd.close",
+      "kbd.send",
+      "kbd.help",
+    ]) {
       assert.ok(c.__tr(key) !== key, `missing en copy for ${key}`);
       assert.ok(c.__zh[key], `missing zh-CN copy for ${key}`);
     }
@@ -503,7 +563,10 @@ function dispatchState(d: unknown): { cls: string; label: string } {
 
 describe("dispatch card status", () => {
   test("the source really was extracted", () => {
-    assert.ok(DISPATCH_STATE_SRC.includes("case 'failed'"), "dispatchState not found in the served bytes");
+    assert.ok(
+      DISPATCH_STATE_SRC.includes("case 'failed'"),
+      "dispatchState not found in the served bytes",
+    );
   });
 
   test("each server status maps to its own label and colour class", () => {

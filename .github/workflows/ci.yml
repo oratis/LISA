@@ -1,7 +1,9 @@
-name: CI — typecheck + tests
+name: CI
 
-# Gates every push and PR with the regression net. Tests use Node's built-in
-# runner (node --test) via the tsx loader — no extra test deps to install.
+# Every surface this repo ships gets a gate here. Node core runs on the whole
+# supported matrix for every change; the native clients and the website only
+# run when their tree changed, because a macOS runner costs 10x an ubuntu one
+# and an iOS simulator test takes minutes.
 
 on:
   push:
@@ -9,16 +11,92 @@ on:
   pull_request:
   workflow_dispatch:
 
+# One in-flight run per branch. main is exempt from cancellation: its runs are
+# what release tags are cut from, so a superseded main run still needs to
+# finish and record a result.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
 jobs:
-  check:
+  # Which surfaces changed. GitHub's `paths:` filter is workflow-wide, not
+  # per-job, so the decision is computed once here and consumed via `needs`.
+  changes:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
+    outputs:
+      website: ${{ steps.filter.outputs.website }}
+      macos: ${{ steps.filter.outputs.macos }}
+      ios: ${{ steps.filter.outputs.ios }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - id: filter
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          case "$EVENT" in
+            pull_request) BASE="$PR_BASE" ;;
+            push) BASE="$PUSH_BEFORE" ;;
+            *) BASE="" ;;
+          esac
+
+          # No usable base (workflow_dispatch, a branch's first push, a force
+          # push that orphaned `before`): fail open and run every surface. A
+          # path filter that silently skips is worse than a slow run.
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ] \
+             || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            echo "no usable base ref (event=$EVENT, base=${BASE:-none}) — running every surface"
+            CHANGED="$(git ls-files)"
+          else
+            CHANGED="$(git diff --name-only "$BASE...HEAD")"
+            echo "changed files vs $BASE:"
+            printf '%s\n' "$CHANGED" | sed 's/^/  /'
+          fi
+
+          emit() {
+            if printf '%s\n' "$CHANGED" | grep -qE "$2"; then v=true; else v=false; fi
+            echo "$1=$v" >> "$GITHUB_OUTPUT"
+            echo "$1=$v"
+          }
+          # Editing this workflow re-runs everything, so a change to a job is
+          # proved by the job itself rather than by a follow-up commit.
+          emit website '^website/|^src/web/assets/|^scripts/lisa-moods\.ts$|^\.github/workflows/ci\.yml$'
+          emit macos   '^packaging/mac-client/|^\.github/workflows/ci\.yml$'
+          emit ios     '^packaging/ios-companion/|^\.github/workflows/ci\.yml$'
+
+  # The regression net, on every runtime we claim to support.
+  #
+  # 20 is deliberately absent: undici 8.x (a production dependency) declares
+  # `engines: node >=22.19.0` and its webidl layer calls worker_threads'
+  # markAsUncloneable, which does not exist before Node 22.10 — the suite dies
+  # with 26 failures on 20.20. `engines` in package.json now says the same
+  # thing, so the matrix, the manifest and @types/node agree.
+  core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["22", "24"]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # format:check diffs against the merge-base with the target branch,
+          # so it needs history, not just the tip commit.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v6
         with:
-          node-version: "22"
+          node-version: ${{ matrix.node }}
           cache: "npm"
 
       - name: Install
@@ -30,6 +108,12 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Lint
+        run: npm run lint
+
+      - name: Format (files changed against the base branch)
+        run: npm run format:check
+
       - name: Test
         run: npm test
 
@@ -39,3 +123,179 @@ jobs:
           if find dist -name '*.test.js' | grep -q .; then
             echo "::error ::test files leaked into dist/"; exit 1
           fi
+
+  # Coverage is a single-version job: the numbers do not differ across the Node
+  # matrix, and running c8 on every entry would multiply CI time for one report.
+  coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install
+        run: npm ci
+
+      - name: Test with coverage
+        run: npm run test:coverage
+
+      - name: Upload lcov
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lcov
+          path: coverage/lcov.info
+          if-no-files-found: error
+          retention-days: 14
+
+  # Production-dependency advisories only: dev-tree findings (build tooling that
+  # never ships and never sees untrusted input) would make this gate noise.
+  # `high` is the bar because moderate advisories in transitive deps sit
+  # unfixable for weeks and a permanently red gate teaches people to ignore it.
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install
+        run: npm ci
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+  # Browser smoke for the web shell. Offline and free: every instance runs
+  # against a throwaway LISA_HOME and a stub Anthropic server, so no test here
+  # ever calls a model.
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck the specs
+        run: npm run typecheck:e2e
+
+      # --with-deps pulls the shared libraries headless Chromium needs on a
+      # bare ubuntu runner; without it the browser launches and immediately dies.
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Playwright smoke
+        run: npm run test:e2e
+
+      - name: Upload report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # The Astro site. Until now it was only built by website-deploy.yml on pushes
+  # to main, so a PR could break it and nobody found out until merge.
+  website:
+    needs: changes
+    if: needs.changes.outputs.website == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install
+        working-directory: website
+        run: npm ci
+
+      # `npm run build` triggers the `prebuild` lifecycle hook, which snapshots
+      # the mood list and symlinks src/web/assets — do not call astro directly.
+      - name: Build
+        working-directory: website
+        run: npm run build
+
+      - name: Pages exist
+        working-directory: website
+        run: |
+          test -f dist/index.html
+          test -f dist/zh-CN/index.html
+
+  # macOS client. Debug, not release: release runs a universal build plus
+  # iconutil and codesign, none of which prove more about the source.
+  macos:
+    needs: changes
+    if: needs.changes.outputs.macos == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Toolchain
+        run: |
+          swift --version
+          xcodebuild -version
+
+      - name: swift build -c debug
+        working-directory: packaging/mac-client
+        run: swift build -c debug
+
+  # iOS companion (Lisa Pocket). Simulator builds need no signing, which is why
+  # this can run on a public runner at all — build.sh already passes
+  # CODE_SIGNING_ALLOWED=NO.
+  ios:
+    needs: changes
+    if: needs.changes.outputs.ios == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      # build.sh defaults to "iPhone 17 Pro". Hardcoding a device here would
+      # break the day GitHub rolls the runner image, so ask the installed Xcode
+      # what it actually has and pass that through.
+      - name: Pick an available iPhone simulator
+        id: sim
+        run: |
+          set -euo pipefail
+          NAME="$(xcrun simctl list devices available --json | python3 -c '
+          import json, sys
+          devices = json.load(sys.stdin)["devices"]
+          names = [d["name"] for rt in sorted(devices) for d in devices[rt] if d["name"].startswith("iPhone")]
+          print(names[-1] if names else "")
+          ')"
+          if [ -z "$NAME" ]; then
+            echo "::error ::no iPhone simulator available on this runner"
+            xcrun simctl list devices available
+            exit 1
+          fi
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "using simulator: $NAME"
+
+      - name: Build + test Lisa Pocket
+        working-directory: packaging/ios-companion
+        run: ./build.sh test "platform=iOS Simulator,name=${{ steps.sim.outputs.name }}"

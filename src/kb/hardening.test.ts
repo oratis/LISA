@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { ToolContext, ToolDefinition } from "../types.js";
+import type { ToolContext } from "../types.js";
 
 const TMP = mkdtempSync(path.join(os.tmpdir(), "lisa-kb-hardening-"));
 process.env.LISA_HOME = TMP;
@@ -18,7 +18,11 @@ const { DEFAULT_SCHEMA } = await import("./schema.js");
 
 after(() => rmSync(TMP, { recursive: true, force: true }));
 
-const CTX: ToolContext = { cwd: process.cwd(), signal: new AbortController().signal, log: () => {} };
+const CTX: ToolContext = {
+  cwd: process.cwd(),
+  signal: new AbortController().signal,
+  log: () => {},
+};
 
 describe("D3 closure #1 — autonomous kb_ingest is watchlist-only", () => {
   test("hostMatches: dot-boundary both directions, no suffix spoofing", () => {
@@ -42,17 +46,22 @@ describe("D3 closure #1 — autonomous kb_ingest is watchlist-only", () => {
       path.join(kbDir(), "feeds.json"),
       JSON.stringify({ feeds: [{ id: "b", url: "https://rss.blog.example.com/feed" }] }),
     );
-    await assert.doesNotReject(() => assertAutonomousIngestAllowed("https://blog.example.com/post/1"));
-    await assert.rejects(() => assertAutonomousIngestAllowed("https://evil.example.net/x"), /not on the user's watchlist/);
+    await assert.doesNotReject(() =>
+      assertAutonomousIngestAllowed("https://blog.example.com/post/1"),
+    );
+    await assert.rejects(
+      () => assertAutonomousIngestAllowed("https://evil.example.net/x"),
+      /not on the user's watchlist/,
+    );
   });
 
   test("autonomousSubset swaps in the restricted kb_ingest; other surfaces keep the plain one", async () => {
     const auto = registry.autonomousSubset(registry.buildToolRegistry());
     const ingest = auto.find((t) => t.name === "kb_ingest");
     assert.ok(ingest, "kb_ingest stays available to autonomous runs");
-    assert.match(ingest!.description, /watchlist/, "restricted variant is the one exposed");
+    assert.match(ingest.description, /watchlist/, "restricted variant is the one exposed");
     await assert.rejects(
-      () => ingest!.execute({ url: "https://evil.example.net/x" }, CTX) as Promise<unknown>,
+      () => ingest.execute({ url: "https://evil.example.net/x" }, CTX),
       /watchlist/,
     );
     const plain = kbTools.find((t) => t.name === "kb_ingest")!;
@@ -61,7 +70,7 @@ describe("D3 closure #1 — autonomous kb_ingest is watchlist-only", () => {
 
   test("restrictKbIngestToWatchlist leaves other tools untouched", () => {
     const other = kbTools.find((t) => t.name === "kb_read")!;
-    assert.equal(restrictKbIngestToWatchlist(other as ToolDefinition), other);
+    assert.equal(restrictKbIngestToWatchlist(other), other);
   });
 });
 
@@ -85,11 +94,19 @@ describe("D3 closure #3 — kb_read fences external content", () => {
   });
 
   test("brief entries are fenced too; chat captures and wiki pages are not", async () => {
-    const brief = await store.addSource({ title: "Brief 2026-07-23", body: "- item", origin: "brief" });
+    const brief = await store.addSource({
+      title: "Brief 2026-07-23",
+      body: "- item",
+      origin: "brief",
+    });
     const briefOut = (await read.execute({ layer: "sources", slug: brief.slug }, CTX)) as string;
     assert.match(briefOut, /<<<EXTERNAL-CONTENT>>>/);
 
-    const chat = await store.addSource({ title: "Chat note", body: "user said hi", origin: "chat" });
+    const chat = await store.addSource({
+      title: "Chat note",
+      body: "user said hi",
+      origin: "chat",
+    });
     const chatOut = (await read.execute({ layer: "sources", slug: chat.slug }, CTX)) as string;
     assert.doesNotMatch(chatOut, /<<<EXTERNAL-CONTENT>>>/);
 

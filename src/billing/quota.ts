@@ -96,10 +96,7 @@ const EMPTY: BalanceState = { paidMicroUSD: 0, purchases: [] };
 export class BillingStateError extends Error {
   constructor(
     public readonly code:
-      | "balance_unavailable"
-      | "balance_corrupt"
-      | "purchase_conflict"
-      | "outbox_unavailable",
+      "balance_unavailable" | "balance_corrupt" | "purchase_conflict" | "outbox_unavailable",
     message: string,
   ) {
     super(message);
@@ -128,14 +125,13 @@ function parseBalance(parsed: unknown): BalanceState {
     if (
       !item ||
       typeof item !== "object" ||
-      !safeInteger((item as PurchaseEntry).at) ||
-      !safeInteger((item as PurchaseEntry).microUSD) ||
-      ((item as PurchaseEntry).transactionId !== undefined &&
-        typeof (item as PurchaseEntry).transactionId !== "string")
+      !safeInteger(item.at) ||
+      !safeInteger(item.microUSD) ||
+      (item.transactionId !== undefined && typeof item.transactionId !== "string")
     ) {
       throw new BillingStateError("balance_corrupt", "balance store has an invalid purchase");
     }
-    purchases.push({ ...(item as PurchaseEntry) });
+    purchases.push({ ...item });
   }
   let window: BalanceState["window"];
   if (raw.window !== undefined) {
@@ -154,13 +150,25 @@ function parseBalance(parsed: unknown): BalanceState {
     // Fail closed on a malformed ring: dropping it silently would let the
     // reconciler double-charge a replay it can no longer recognise.
     if (!Array.isArray(raw.settled)) {
-      throw new BillingStateError("balance_corrupt", "balance store has an invalid settlement ring");
+      throw new BillingStateError(
+        "balance_corrupt",
+        "balance store has an invalid settlement ring",
+      );
     }
     settled = [];
     for (const item of raw.settled) {
       const entry = item as Partial<SettledEntry> | null;
-      if (!entry || typeof entry !== "object" || typeof entry.id !== "string" || !entry.id || !safeInteger(entry.at)) {
-        throw new BillingStateError("balance_corrupt", "balance store has an invalid settlement entry");
+      if (
+        !entry ||
+        typeof entry !== "object" ||
+        typeof entry.id !== "string" ||
+        !entry.id ||
+        !safeInteger(entry.at)
+      ) {
+        throw new BillingStateError(
+          "balance_corrupt",
+          "balance store has an invalid settlement entry",
+        );
       }
       settled.push({ id: entry.id, at: entry.at });
     }
@@ -205,7 +213,10 @@ export async function readBalance(): Promise<BalanceState> {
       return d ? parseBalance(d.data) : emptyBalance();
     } catch (err) {
       if (err instanceof BillingStateError) throw err;
-      throw new BillingStateError("balance_unavailable", `balance store is unavailable: ${(err as Error).message}`);
+      throw new BillingStateError(
+        "balance_unavailable",
+        `balance store is unavailable: ${(err as Error).message}`,
+      );
     }
   }
   let text: string;
@@ -213,13 +224,19 @@ export async function readBalance(): Promise<BalanceState> {
     text = await fs.readFile(balanceFile(), "utf8");
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") return emptyBalance();
-    throw new BillingStateError("balance_unavailable", `balance store is unavailable: ${(err as Error).message}`);
+    throw new BillingStateError(
+      "balance_unavailable",
+      `balance store is unavailable: ${(err as Error).message}`,
+    );
   }
   try {
     return parseBalance(JSON.parse(text));
   } catch (err) {
     if (err instanceof BillingStateError) throw err;
-    throw new BillingStateError("balance_corrupt", `balance store is corrupt: ${(err as Error).message}`);
+    throw new BillingStateError(
+      "balance_corrupt",
+      `balance store is corrupt: ${(err as Error).message}`,
+    );
   }
 }
 
@@ -229,9 +246,7 @@ async function writeBalance(state: BalanceState): Promise<void> {
 }
 
 /** Mutate the balance atomically (Firestore CAS or the file lock). */
-export async function updateBalance<T>(
-  fn: (state: BalanceState) => T,
-): Promise<T> {
+export async function updateBalance<T>(fn: (state: BalanceState) => T): Promise<T> {
   const doc = balanceDocPath();
   if (doc) {
     return casUpdate(doc, (current) => {
@@ -267,10 +282,14 @@ export function tierFor(acct: AccountRecord, state: BalanceState, now: number): 
 
 export function windowAllowance(tier: QuotaTier): number {
   switch (tier) {
-    case "tier2": return TIER2_WINDOW;
-    case "tier1": return TIER1_WINDOW;
-    case "free": return FREE_WINDOW_FULL;
-    case "free-unverified": return FREE_WINDOW_UNVERIFIED;
+    case "tier2":
+      return TIER2_WINDOW;
+    case "tier1":
+      return TIER1_WINDOW;
+    case "free":
+      return FREE_WINDOW_FULL;
+    case "free-unverified":
+      return FREE_WINDOW_UNVERIFIED;
   }
 }
 
@@ -296,7 +315,10 @@ function liveWindow(state: BalanceState, now: number): { start: number; spentMic
   return state.window;
 }
 
-export async function quotaStatus(acct: AccountRecord, now: number = Date.now()): Promise<QuotaStatus> {
+export async function quotaStatus(
+  acct: AccountRecord,
+  now: number = Date.now(),
+): Promise<QuotaStatus> {
   const state = await readBalance();
   const tier = tierFor(acct, state, now);
   const allowance = windowAllowance(tier);
@@ -394,10 +416,15 @@ export async function debitTurn(
  * credited but the transaction state had not yet advanced to `credited`.
  * Returns true when this call added funds and false for an identical replay.
  */
-export async function creditPurchase(entry: PurchaseEntry, now: number = Date.now()): Promise<boolean> {
+export async function creditPurchase(
+  entry: PurchaseEntry,
+  now: number = Date.now(),
+): Promise<boolean> {
   return updateBalance((state) => {
     if (entry.transactionId) {
-      const existing = state.purchases.find((purchase) => purchase.transactionId === entry.transactionId);
+      const existing = state.purchases.find(
+        (purchase) => purchase.transactionId === entry.transactionId,
+      );
       if (existing) {
         if (existing.microUSD !== entry.microUSD) {
           throw new BillingStateError(

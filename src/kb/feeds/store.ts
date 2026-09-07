@@ -93,7 +93,9 @@ export async function loadFeedsConfig(): Promise<FeedsConfig> {
   try {
     parsed = JSON.parse(await fs.readFile(file, "utf8")) as Record<string, unknown>;
   } catch (err) {
-    console.error(`[kb-brief] ${file} is not valid JSON (${(err as Error).message}) — feeds disabled until fixed`);
+    console.error(
+      `[kb-brief] ${file} is not valid JSON (${(err as Error).message}) — feeds disabled until fixed`,
+    );
     return empty;
   }
   const rawFeeds = Array.isArray(parsed.feeds) ? parsed.feeds : [];
@@ -105,7 +107,9 @@ export async function loadFeedsConfig(): Promise<FeedsConfig> {
       id: typeof feed.id === "string" && feed.id ? feed.id : `feed-${feeds.length + 1}`,
       kind: typeof feed.kind === "string" ? feed.kind : "rss",
       url: feed.url,
-      tags: Array.isArray(feed.tags) ? feed.tags.filter((t): t is string => typeof t === "string") : [],
+      tags: Array.isArray(feed.tags)
+        ? feed.tags.filter((t): t is string => typeof t === "string")
+        : [],
       max: typeof feed.max === "number" && feed.max > 0 ? Math.floor(feed.max) : undefined,
       weight: typeof feed.weight === "number" && feed.weight > 0 ? feed.weight : undefined,
     });
@@ -135,7 +139,7 @@ export async function loadFeedsState(): Promise<FeedsState> {
   try {
     const parsed = JSON.parse(await fs.readFile(file, "utf8")) as Partial<FeedsState>;
     return {
-      seen: parsed.seen && typeof parsed.seen === "object" ? (parsed.seen as Record<string, string[]>) : {},
+      seen: parsed.seen && typeof parsed.seen === "object" ? parsed.seen : {},
       lastBriefDate: typeof parsed.lastBriefDate === "string" ? parsed.lastBriefDate : null,
     };
   } catch {

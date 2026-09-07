@@ -1,9 +1,5 @@
 import { registerChannel } from "./registry.js";
-import type {
-  ChannelAdapter,
-  IncomingMessage,
-  OutgoingMessage,
-} from "./types.js";
+import type { ChannelAdapter, IncomingMessage, OutgoingMessage } from "./types.js";
 
 interface TelegramOptions {
   token: string;
@@ -46,7 +42,9 @@ export class TelegramChannel implements ChannelAdapter {
     // Disable any old webhook so long-poll works.
     try {
       await this.api("deleteWebhook", { drop_pending_updates: false });
-    } catch {}
+    } catch {
+      // no webhook to remove (or transient API error) — long-poll anyway
+    }
     void this.poll();
   }
 

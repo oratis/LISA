@@ -6,7 +6,7 @@ import { isDisposableEmail } from "./email-domains.js";
 const CFG = { siteKey: "sk", secret: "sec", enabled: true };
 
 function fakeFetch(status: number, body: unknown): typeof fetch {
-  return (async () => new Response(JSON.stringify(body), { status })) as typeof fetch;
+  return async () => new Response(JSON.stringify(body), { status });
 }
 
 describe("turnstile (S3)", () => {
@@ -26,12 +26,21 @@ describe("turnstile (S3)", () => {
   });
 
   test("verifies through siteverify; success flag decides", async () => {
-    assert.equal(await verifyTurnstile("tok", "1.2.3.4", CFG, fakeFetch(200, { success: true })), true);
-    assert.equal(await verifyTurnstile("tok", "1.2.3.4", CFG, fakeFetch(200, { success: false })), false);
+    assert.equal(
+      await verifyTurnstile("tok", "1.2.3.4", CFG, fakeFetch(200, { success: true })),
+      true,
+    );
+    assert.equal(
+      await verifyTurnstile("tok", "1.2.3.4", CFG, fakeFetch(200, { success: false })),
+      false,
+    );
   });
 
   test("fails CLOSED: empty token, HTTP error, network error", async () => {
-    assert.equal(await verifyTurnstile("", "1.2.3.4", CFG, fakeFetch(200, { success: true })), false);
+    assert.equal(
+      await verifyTurnstile("", "1.2.3.4", CFG, fakeFetch(200, { success: true })),
+      false,
+    );
     assert.equal(await verifyTurnstile("tok", "1.2.3.4", CFG, fakeFetch(500, {})), false);
     const boom = (async () => {
       throw new Error("net down");

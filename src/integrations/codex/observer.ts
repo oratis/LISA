@@ -75,14 +75,13 @@ export class CodexObserver extends EventEmitter implements AgentObserver {
   constructor(cfg: CodexObserverOptions) {
     super();
     const home = cfg.home
-      ? (cfg.home as string).replace(/^~/, os.homedir())
-      : process.env.CODEX_HOME ?? path.join(os.homedir(), ".codex");
+      ? cfg.home.replace(/^~/, os.homedir())
+      : (process.env.CODEX_HOME ?? path.join(os.homedir(), ".codex"));
     this.sessionsRoot = path.join(home, "sessions");
     // Tier 2: compute structural activity when visibility is "activity" or
     // "intent". At "metadata"/"off" we stay metadata-only (cheaper, and the
     // privacy-minimal default) — mirrors the claude-code observer.
-    this.computeActivity =
-      cfg.visibility === "activity" || cfg.visibility === "intent";
+    this.computeActivity = cfg.visibility === "activity" || cfg.visibility === "intent";
     this.resolveBranch = cfg.gitBranch ?? cwdGitBranch;
   }
 
@@ -152,14 +151,15 @@ export class CodexObserver extends EventEmitter implements AgentObserver {
       const st = await fsp.stat(full);
       if (!st.isFile()) return;
       const { state, reason, cwd } = await parseCodexState(full);
-      let activity = this.computeActivity
-        ? await parseCodexActivity(full)
-        : undefined;
+      let activity = this.computeActivity ? await parseCodexActivity(full) : undefined;
       // O-D1: enrich with the branch derived from cwd (Codex doesn't record one).
       if (this.computeActivity && cwd) {
         const gitBranch = await this.resolveBranch(cwd);
         if (gitBranch) {
-          activity = { ...(activity ?? { turnCount: 0, lastTools: [], filesTouched: [] }), gitBranch };
+          activity = {
+            ...(activity ?? { turnCount: 0, lastTools: [], filesTouched: [] }),
+            gitBranch,
+          };
         }
       }
       this.sessions.set(full, {
@@ -257,7 +257,7 @@ export async function parseCodexState(
       typeof e.role === "string"
         ? e.role
         : typeof (e.message as { role?: unknown })?.role === "string"
-          ? ((e.message as { role: string }).role)
+          ? (e.message as { role: string }).role
           : undefined;
     // Heuristic: last meaningful entry from the assistant → it just spoke
     // (waiting for the user); from the user / a tool call → working.
@@ -297,9 +297,7 @@ const PATH_KEYS = ["file_path", "path", "filename"];
 /** function_call name substrings that denote a shell/exec call. */
 const SHELL_NAME_RE = /shell|bash|exec/i;
 
-export async function parseCodexActivity(
-  filePath: string,
-): Promise<SessionActivity | undefined> {
+export async function parseCodexActivity(filePath: string): Promise<SessionActivity | undefined> {
   let size: number;
   try {
     const st = await fsp.stat(filePath);
@@ -438,9 +436,7 @@ function parseArguments(raw: unknown): Record<string, unknown> | undefined {
       return undefined;
     }
   }
-  return parsed && typeof parsed === "object"
-    ? (parsed as Record<string, unknown>)
-    : undefined;
+  return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : undefined;
 }
 
 /**
@@ -596,9 +592,7 @@ const TRANSCRIPT_TAIL_BYTES = 256 * 1024;
 const MAX_TRANSCRIPT_ENTRIES = 160;
 const MAX_TEXT_CHARS = 4000;
 
-export async function parseCodexTranscript(
-  filePath: string,
-): Promise<AgentTranscriptEntry[]> {
+export async function parseCodexTranscript(filePath: string): Promise<AgentTranscriptEntry[]> {
   let size: number;
   try {
     const st = await fsp.stat(filePath);
@@ -661,8 +655,7 @@ export async function parseCodexTranscript(
     const ts = readString(obj.timestamp);
     const msg = obj.message;
     const m = msg && typeof msg === "object" ? (msg as Record<string, unknown>) : null;
-    const role =
-      readString(obj.role) ?? (m ? readString(m.role) : undefined);
+    const role = readString(obj.role) ?? (m ? readString(m.role) : undefined);
 
     if (type === "function_call") {
       const name = readString(obj.name);

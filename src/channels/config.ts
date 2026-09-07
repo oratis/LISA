@@ -22,9 +22,9 @@ export async function loadChannelsConfig(): Promise<ChannelsConfig> {
     const parsed = JSON.parse(expandEnv(raw)) as ChannelsConfig;
     return { channels: parsed.channels ?? {} };
   } catch (err) {
-    throw new Error(
-      `failed to parse ${CHANNELS_CONFIG_PATH}: ${(err as Error).message}`,
-    );
+    throw new Error(`failed to parse ${CHANNELS_CONFIG_PATH}: ${(err as Error).message}`, {
+      cause: err,
+    });
   }
 }
 

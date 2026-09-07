@@ -8,8 +8,9 @@ import { spawn } from "node:child_process";
 
 /** Escape a string for inclusion as XML text/attribute content in a plist. */
 export function escapeXml(s: string): string {
-  return s.replace(/[<>&"']/g, (c) =>
-    ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&apos;" }[c]!),
+  return s.replace(
+    /[<>&"']/g,
+    (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&apos;" })[c]!,
   );
 }
 
@@ -23,9 +24,7 @@ export function runCmd(cmd: string, args: string[]): Promise<string> {
     child.stderr.on("data", (b) => (stderr += b.toString("utf8")));
     child.on("error", reject);
     child.on("close", (code) =>
-      code === 0
-        ? resolve(stdout)
-        : reject(new Error(`${cmd} exited ${code}: ${stderr.trim()}`)),
+      code === 0 ? resolve(stdout) : reject(new Error(`${cmd} exited ${code}: ${stderr.trim()}`)),
     );
   });
 }
@@ -40,12 +39,16 @@ export async function resolveLisaBin(): Promise<string> {
     const out = await runCmd("which", ["lisa"]);
     const trimmed = out.trim();
     if (trimmed) return trimmed;
-  } catch {}
+  } catch {
+    // `which` failed or lisa is not on PATH — try the local build next
+  }
   const here = path.resolve(process.cwd(), "dist", "cli.js");
   try {
     await fs.access(here);
     return `node ${here}`;
-  } catch {}
+  } catch {
+    // no local build either — fall back to the bare command name
+  }
   return "lisa";
 }
 
@@ -57,8 +60,7 @@ export async function resolveLisaBin(): Promise<string> {
  */
 export async function resolveLisaArgv(displayedBin: string): Promise<string[]> {
   if (displayedBin.startsWith("node ")) {
-    const nodePath =
-      (await runCmd("which", ["node"]).catch(() => "node")).trim() || "node";
+    const nodePath = (await runCmd("which", ["node"]).catch(() => "node")).trim() || "node";
     return [nodePath, displayedBin.slice("node ".length)];
   }
   return [displayedBin];

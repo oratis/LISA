@@ -1,16 +1,8 @@
 import http from "node:http";
 import crypto from "node:crypto";
 import { registerChannel } from "./registry.js";
-import type {
-  ChannelAdapter,
-  IncomingMessage,
-  OutgoingMessage,
-} from "./types.js";
-import {
-  BodyTooLargeError,
-  CTRL_BODY_LIMIT,
-  readCappedText,
-} from "../web/http-body.js";
+import type { ChannelAdapter, IncomingMessage, OutgoingMessage } from "./types.js";
+import { BodyTooLargeError, CTRL_BODY_LIMIT, readCappedText } from "../web/http-body.js";
 
 interface FeishuOptions {
   /** Feishu / Lark App ID (cli_...) */
@@ -81,12 +73,8 @@ export class FeishuChannel implements ChannelAdapter {
   async start(handler: (msg: IncomingMessage) => Promise<void>): Promise<void> {
     this.handler = handler;
     this.server = http.createServer((req, res) => void this.onRequest(req, res));
-    await new Promise<void>((resolve) =>
-      this.server!.listen(this.opts.port, resolve),
-    );
-    console.error(
-      `[feishu] listening on http://localhost:${this.opts.port}/feishu`,
-    );
+    await new Promise<void>((resolve) => this.server!.listen(this.opts.port, resolve));
+    console.error(`[feishu] listening on http://localhost:${this.opts.port}/feishu`);
   }
 
   async stop(): Promise<void> {
@@ -128,10 +116,7 @@ export class FeishuChannel implements ChannelAdapter {
 
   // ─── HTTP handler ─────────────────────────────────────────────────────────
 
-  private async onRequest(
-    req: http.IncomingMessage,
-    res: http.ServerResponse,
-  ): Promise<void> {
+  private async onRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     if (req.method !== "POST" || !req.url?.startsWith("/feishu")) {
       res.writeHead(404);
       res.end();
@@ -205,7 +190,7 @@ export class FeishuChannel implements ChannelAdapter {
         typeof payload.token === "string"
           ? payload.token
           : typeof header?.token === "string"
-            ? (header.token as string)
+            ? header.token
             : "";
       if (!presented || !timingSafeEqualStr(presented, this.opts.verificationToken)) {
         console.error("[feishu] rejected event: verification token mismatch");
@@ -259,11 +244,7 @@ export class FeishuChannel implements ChannelAdapter {
       const senderId = sender.sender_id as Record<string, string> | undefined;
       const openId = senderId?.open_id ?? "";
 
-      if (
-        this.opts.allowedUserIds?.length &&
-        !this.opts.allowedUserIds.includes(openId)
-      )
-        return;
+      if (this.opts.allowedUserIds?.length && !this.opts.allowedUserIds.includes(openId)) return;
 
       const contentRaw = message.content as string;
       let text = "";
@@ -317,9 +298,7 @@ export class FeishuChannel implements ChannelAdapter {
       expire: number;
     };
     if (json.code !== 0) {
-      throw new Error(
-        `feishu get token error ${json.code}: ${json.msg}`,
-      );
+      throw new Error(`feishu get token error ${json.code}: ${json.msg}`);
     }
     this.tokenCache = {
       token: json.tenant_access_token,
@@ -344,10 +323,7 @@ export class FeishuChannel implements ChannelAdapter {
     const data = buf.subarray(16);
 
     const decipher = crypto.createDecipheriv("aes-256-cbc", aesKey, iv);
-    const decrypted = Buffer.concat([
-      decipher.update(data),
-      decipher.final(),
-    ]).toString("utf8");
+    const decrypted = Buffer.concat([decipher.update(data), decipher.final()]).toString("utf8");
     return JSON.parse(decrypted) as Record<string, unknown>;
   }
 }
@@ -372,9 +348,7 @@ registerChannel("feishu", (cfg) => {
   return new FeishuChannel({
     appId: String(cfg.appId ?? ""),
     appSecret: String(cfg.appSecret ?? ""),
-    verificationToken: cfg.verificationToken
-      ? String(cfg.verificationToken)
-      : undefined,
+    verificationToken: cfg.verificationToken ? String(cfg.verificationToken) : undefined,
     encryptKey: cfg.encryptKey ? String(cfg.encryptKey) : undefined,
     port: typeof cfg.port === "number" ? cfg.port : 5820,
     allowedUserIds: Array.isArray(cfg.allowedUserIds)

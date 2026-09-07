@@ -20,20 +20,24 @@ describe("provider config list (T-9)", () => {
     for (const preset of OPENAI_COMPAT_PRESETS) {
       const row = list.find((p) => p.envKey === preset.apiKeyEnv);
       assert.ok(row, preset.apiKeyEnv);
-      assert.equal(row!.label, preset.name);
-      assert.deepEqual(row!.modelPrefixes, preset.modelPrefixes);
+      assert.equal(row.label, preset.name);
+      assert.deepEqual(row.modelPrefixes, preset.modelPrefixes);
     }
     assert.equal(list.find((p) => p.envKey === "ZHIPU_API_KEY")?.id, "zhipu");
   });
 
   test("configured reflects the environment, and the alternate credential names", () => {
-    assert.equal(providerConfigList({}).every((p) => !p.configured), true);
+    assert.equal(
+      providerConfigList({}).every((p) => !p.configured),
+      true,
+    );
     const withZhipu = providerConfigList({ ZHIPU_API_KEY: KEY });
     assert.equal(withZhipu.find((p) => p.id === "zhipu")!.configured, true);
     assert.equal(withZhipu.find((p) => p.id === "anthropic")!.configured, false);
     // Anthropic's OAuth token and Google's alternate name both count.
     assert.equal(
-      providerConfigList({ ANTHROPIC_AUTH_TOKEN: KEY }).find((p) => p.id === "anthropic")!.configured,
+      providerConfigList({ ANTHROPIC_AUTH_TOKEN: KEY }).find((p) => p.id === "anthropic")!
+        .configured,
       true,
     );
     assert.equal(
@@ -41,7 +45,10 @@ describe("provider config list (T-9)", () => {
       true,
     );
     // Whitespace is not a key.
-    assert.equal(providerConfigList({ OPENAI_API_KEY: "  " }).find((p) => p.id === "openai")!.configured, false);
+    assert.equal(
+      providerConfigList({ OPENAI_API_KEY: "  " }).find((p) => p.id === "openai")!.configured,
+      false,
+    );
   });
 });
 
@@ -68,7 +75,9 @@ describe("/api/config/status payload", () => {
   });
 
   test("the payload never contains a key value", () => {
-    const json = JSON.stringify(configStatusPayload("m", { ANTHROPIC_API_KEY: KEY, ZHIPU_API_KEY: KEY }));
+    const json = JSON.stringify(
+      configStatusPayload("m", { ANTHROPIC_API_KEY: KEY, ZHIPU_API_KEY: KEY }),
+    );
     assert.equal(json.includes(KEY), false);
   });
 });
@@ -80,7 +89,11 @@ describe("/api/config/save body", () => {
   });
 
   test("model and baseUrl map onto LISA_MODEL / LISA_BASE_URL", () => {
-    const r = parseConfigSave({ keys: { LISA_API_KEY: KEY }, model: "glm-4", baseUrl: "https://api.example.com/v1" });
+    const r = parseConfigSave({
+      keys: { LISA_API_KEY: KEY },
+      model: "glm-4",
+      baseUrl: "https://api.example.com/v1",
+    });
     assert.ok(r.ok);
     assert.deepEqual(r.updates, {
       LISA_API_KEY: KEY,
@@ -90,7 +103,13 @@ describe("/api/config/save body", () => {
   });
 
   test("an env name outside the whitelist is a 400 — nothing is written", () => {
-    for (const bad of ["PATH", "NODE_OPTIONS", "LISA_EDITION", "LISA_WEB_TOKEN", "ANTHROPIC_API_KEY_"]) {
+    for (const bad of [
+      "PATH",
+      "NODE_OPTIONS",
+      "LISA_EDITION",
+      "LISA_WEB_TOKEN",
+      "ANTHROPIC_API_KEY_",
+    ]) {
       const r = parseConfigSave({ keys: { [bad]: KEY } });
       assert.equal(r.ok, false, bad);
       if (!r.ok) {

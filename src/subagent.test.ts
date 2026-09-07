@@ -11,7 +11,11 @@ function usage(o: Partial<ProviderUsage> = {}): ProviderUsage {
   return { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, ...o };
 }
 function textTurn(text: string, u: Partial<ProviderUsage> = {}): ProviderResult {
-  return { content: [{ type: "text", text } as Anthropic.ContentBlock], stopReason: "end_turn", usage: usage(u) };
+  return {
+    content: [{ type: "text", text } as Anthropic.ContentBlock],
+    stopReason: "end_turn",
+    usage: usage(u),
+  };
 }
 function toolTurn(name: string, u: Partial<ProviderUsage> = {}): ProviderResult {
   return {
@@ -22,12 +26,22 @@ function toolTurn(name: string, u: Partial<ProviderUsage> = {}): ProviderResult 
 }
 function scripted(queue: ProviderResult[], tail?: ProviderResult): Provider {
   let i = 0;
-  return { name: "fake", async runTurn() { return i < queue.length ? queue[i++]! : tail ?? (() => { throw new Error("drained"); })(); } };
+  return {
+    name: "fake",
+    async runTurn() {
+      return i < queue.length
+        ? queue[i++]!
+        : (tail ??
+            (() => {
+              throw new Error("drained");
+            })());
+    },
+  };
 }
 const echoTool: ToolDefinition = {
   name: "echo",
   description: "echo",
-  inputSchema: { type: "object" } as Anthropic.Tool.InputSchema,
+  inputSchema: { type: "object" },
   execute: async () => "ok",
 };
 function opts(over: Partial<SubagentOptions>): SubagentOptions {
@@ -98,9 +112,7 @@ describe("runSubagent", () => {
       },
     };
 
-    const r = await runSubagent(
-      opts({ provider, model: "claude-haiku-4-5-20251001" }),
-    );
+    const r = await runSubagent(opts({ provider, model: "claude-haiku-4-5-20251001" }));
 
     assert.equal(r.text, "done"); // the call succeeded, not a 400
     assert.equal(capturedParams?.model, "claude-haiku-4-5-20251001");

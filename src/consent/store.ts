@@ -19,13 +19,7 @@ import os from "node:os";
 import path from "node:path";
 
 /** A sensitive ambient signal. Open-ended, but these are the canonical ones. */
-export type ConsentSignal =
-  | "screen"
-  | "voice"
-  | "clipboard"
-  | "selection"
-  | "mail"
-  | (string & {});
+export type ConsentSignal = "screen" | "voice" | "clipboard" | "selection" | "mail" | (string & {});
 
 /** The consent-gated signals — all OFF until the user explicitly grants each. */
 export const SENSE_SIGNALS: ConsentSignal[] = ["screen", "voice", "clipboard", "selection", "mail"];
@@ -70,10 +64,15 @@ export function loadConsent(): ConsentState {
   }
   try {
     const parsed = JSON.parse(raw) as Partial<ConsentState>;
-    if (!parsed || typeof parsed !== "object" || typeof parsed.grants !== "object" || !parsed.grants) {
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      typeof parsed.grants !== "object" ||
+      !parsed.grants
+    ) {
       return { grants: {} };
     }
-    return { grants: parsed.grants as Record<string, ConsentGrant> };
+    return { grants: parsed.grants };
   } catch {
     return { grants: {} }; // corrupt → treat as nothing granted (fail closed)
   }

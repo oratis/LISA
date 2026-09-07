@@ -1,6 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { pickImportant, formatAlert, alertLevel, pollMinutes, DEFAULT_ALERT_LEVEL, DEFAULT_POLL_MINUTES } from "./alerts.js";
+import {
+  pickImportant,
+  formatAlert,
+  alertLevel,
+  pollMinutes,
+  DEFAULT_ALERT_LEVEL,
+  DEFAULT_POLL_MINUTES,
+} from "./alerts.js";
 import type { MailItem } from "./types.js";
 
 function item(o: Partial<MailItem> = {}): MailItem {
@@ -28,12 +35,20 @@ test("pickImportant filters by threshold and sorts importance then date", () => 
     item({ uid: "c", importance: 3, date: 50 }),
     item({ uid: "d", importance: 2, date: 200 }),
   ];
-  assert.deepEqual(pickImportant(items, 3).map((i) => i.uid), ["c"]);
-  assert.deepEqual(pickImportant(items, 2).map((i) => i.uid), ["c", "d", "b"]);
+  assert.deepEqual(
+    pickImportant(items, 3).map((i) => i.uid),
+    ["c"],
+  );
+  assert.deepEqual(
+    pickImportant(items, 2).map((i) => i.uid),
+    ["c", "d", "b"],
+  );
 });
 
 test("formatAlert builds push title/body/tag + a proactive chat line", () => {
-  const a = formatAlert(item({ uid: "9", accountId: "qq", subject: "Sign the lease", importance: 3 }));
+  const a = formatAlert(
+    item({ uid: "9", accountId: "qq", subject: "Sign the lease", importance: 3 }),
+  );
   assert.equal(a.title, "📬 Important mail");
   assert.match(a.body, /Jane Doe: Sign the lease/);
   assert.equal(a.tag, "qq:9");
@@ -43,10 +58,10 @@ test("formatAlert builds push title/body/tag + a proactive chat line", () => {
 });
 
 test("alertLevel + pollMinutes read env with safe defaults", () => {
-  assert.equal(alertLevel({ LISA_MAIL_ALERT_LEVEL: "2" } as NodeJS.ProcessEnv), 2);
-  assert.equal(alertLevel({} as NodeJS.ProcessEnv), DEFAULT_ALERT_LEVEL);
-  assert.equal(alertLevel({ LISA_MAIL_ALERT_LEVEL: "5" } as NodeJS.ProcessEnv), DEFAULT_ALERT_LEVEL);
-  assert.equal(pollMinutes({} as NodeJS.ProcessEnv), DEFAULT_POLL_MINUTES);
-  assert.equal(pollMinutes({ LISA_MAIL_POLL_MINUTES: "0" } as NodeJS.ProcessEnv), 0);
-  assert.equal(pollMinutes({ LISA_MAIL_POLL_MINUTES: "15" } as NodeJS.ProcessEnv), 15);
+  assert.equal(alertLevel({ LISA_MAIL_ALERT_LEVEL: "2" }), 2);
+  assert.equal(alertLevel({}), DEFAULT_ALERT_LEVEL);
+  assert.equal(alertLevel({ LISA_MAIL_ALERT_LEVEL: "5" }), DEFAULT_ALERT_LEVEL);
+  assert.equal(pollMinutes({}), DEFAULT_POLL_MINUTES);
+  assert.equal(pollMinutes({ LISA_MAIL_POLL_MINUTES: "0" }), 0);
+  assert.equal(pollMinutes({ LISA_MAIL_POLL_MINUTES: "15" }), 15);
 });

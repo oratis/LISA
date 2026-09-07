@@ -10,8 +10,12 @@ import {
 } from "./capabilities.js";
 import { sandboxModeForProfile, untrustedSurfaceMode } from "../sandbox/sandbox.js";
 
-const fake = (name: string): ToolDefinition =>
-  ({ name, description: name, inputSchema: { type: "object" }, execute: async () => "" }) as ToolDefinition;
+const fake = (name: string): ToolDefinition => ({
+  name,
+  description: name,
+  inputSchema: { type: "object" },
+  execute: async () => "",
+});
 
 describe("capability profiles", () => {
   test("maps editions to explicit profiles", () => {
@@ -107,7 +111,12 @@ describe("autonomy + device profiles (T-13)", () => {
     process.env.LISA_SANDBOX_MODE = "danger-full-access";
     try {
       assert.equal(sandboxModeForProfile("local-owner"), "danger-full-access");
-      for (const p of ["local-autonomy", "cloud-autonomy", "cloud-chat", "remote-device"] as const) {
+      for (const p of [
+        "local-autonomy",
+        "cloud-autonomy",
+        "cloud-chat",
+        "remote-device",
+      ] as const) {
         // untrustedSurfaceMode() caps at workspace-write where the host can
         // enforce it, and warns-and-passes-through where it cannot; either way
         // it is never looser than what the owner asked for.

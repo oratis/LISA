@@ -59,7 +59,7 @@ export function parseOllamaEmbedding(body: string): number[] | null {
   try {
     const j = JSON.parse(body) as { embedding?: unknown };
     return Array.isArray(j.embedding) && j.embedding.every((x) => typeof x === "number")
-      ? (j.embedding as number[])
+      ? j.embedding
       : null;
   } catch {
     return null;
@@ -83,7 +83,9 @@ export class OllamaEmbedder implements Embedder {
       const res = await this.post(`${this.host}/api/embeddings`, { model: this.model, prompt: t });
       const emb = res.ok ? parseOllamaEmbedding(res.body) : null;
       if (!emb) {
-        throw new Error(`ollama embedding failed for "${this.model}" (status ${res.status || "unreachable"})`);
+        throw new Error(
+          `ollama embedding failed for "${this.model}" (status ${res.status || "unreachable"})`,
+        );
       }
       out.push(emb);
     }

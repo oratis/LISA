@@ -23,10 +23,10 @@ test("viewBox is module-units and includes the margin (quiet zone)", () => {
   const svg = qrSvg(URL, { margin: 4 });
   const vb = svg.match(/viewBox="0 0 (\d+) (\d+)"/);
   assert.ok(vb);
-  const total = Number(vb![1]);
+  const total = Number(vb[1]);
   // total = moduleCount + 2*margin; with margin 4 that's at least 8 bigger than 21 (v1)
   assert.ok(total >= 21 + 8);
-  assert.equal(vb![1], vb![2]); // square
+  assert.equal(vb[1], vb[2]); // square
 });
 
 test("size option scales the pixel dimensions, not the viewBox", () => {

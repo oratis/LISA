@@ -21,11 +21,16 @@ import { displayPath } from "./display-path.js";
 
 export const PACKAGE_NAME = "@oratis/lisa";
 /**
- * package.json `engines.node`, and BackendSetup.minimumNodeMajor in the Mac
- * client — keep the three in sync. upgrade.test.ts reads package.json and
- * fails if this drifts from it.
+ * package.json `engines.node`, src/cli/doctor.ts's Node check, and
+ * BackendSetup.minimumNode* in the Mac client — keep the four in sync.
+ * upgrade.test.ts reads package.json and fails if this drifts from it.
+ *
+ * The floor is major.minor, not just major: undici (a production dependency)
+ * calls worker_threads APIs added in 22.10, so Node 22.0–22.18 installs and
+ * then fails at runtime.
  */
-export const MIN_NODE_MAJOR = 20;
+export const MIN_NODE_MAJOR = 22;
+export const MIN_NODE_MINOR = 19;
 /** The tap formula from README.md (`brew install oratis/tap/lisa`). */
 export const BREW_FORMULA = "oratis/tap/lisa";
 /**
@@ -78,9 +83,15 @@ export function detectInstall(facts: InstallFacts): Detection {
   const brewPrefix = facts.brewPrefix?.replace(/\/+$/, "") ?? "";
 
   if (real.includes("/Cellar/")) {
-    return { flavor: "homebrew", reason: `runs from a Homebrew Cellar path (${displayPath(real)})` };
+    return {
+      flavor: "homebrew",
+      reason: `runs from a Homebrew Cellar path (${displayPath(real)})`,
+    };
   }
-  if (brewPrefix && (real.startsWith(`${brewPrefix}/opt/`) || real.startsWith(`${brewPrefix}/Cellar/`))) {
+  if (
+    brewPrefix &&
+    (real.startsWith(`${brewPrefix}/opt/`) || real.startsWith(`${brewPrefix}/Cellar/`))
+  ) {
     return { flavor: "homebrew", reason: `runs from ${displayPath(brewPrefix)}` };
   }
   if (real.includes(`/node_modules/${PACKAGE_NAME}/`)) {
@@ -91,7 +102,10 @@ export function detectInstall(facts: InstallFacts): Detection {
   }
   const npmPrefix = facts.npmPrefix?.replace(/\/+$/, "") ?? "";
   if (npmPrefix && real.startsWith(`${npmPrefix}/`)) {
-    return { flavor: "npm-global", reason: `runs from the npm global prefix ${displayPath(npmPrefix)}` };
+    return {
+      flavor: "npm-global",
+      reason: `runs from the npm global prefix ${displayPath(npmPrefix)}`,
+    };
   }
   if (facts.repoRoot) {
     return { flavor: "source", reason: `a source checkout at ${displayPath(facts.repoRoot)}` };
@@ -153,7 +167,14 @@ export function classifyUpgradeFailure(output: string): UpgradeFailure {
     return "permissions";
   }
   if (o.includes("ebadengine") || o.includes("unsupported engine")) return "node-too-old";
-  for (const needle of ["enotfound", "etimedout", "econnreset", "econnrefused", "eai_again", "network"]) {
+  for (const needle of [
+    "enotfound",
+    "etimedout",
+    "econnreset",
+    "econnrefused",
+    "eai_again",
+    "network",
+  ]) {
     if (o.includes(needle)) return "network";
   }
   return "unknown";
@@ -177,9 +198,14 @@ export function failureAdvice(kind: UpgradeFailure, flavor: InstallFlavor): stri
         `  npm install -g ${PACKAGE_NAME}@latest`,
       ];
     case "network":
-      return ["Couldn't reach the registry. Check your connection (and any proxy or VPN), then retry."];
+      return [
+        "Couldn't reach the registry. Check your connection (and any proxy or VPN), then retry.",
+      ];
     case "node-too-old":
-      return [`This Node.js is too old for Lisa — install Node ${MIN_NODE_MAJOR} or newer, then retry.`];
+      return [
+        `This Node.js is too old for Lisa — install Node ${MIN_NODE_MAJOR}.${MIN_NODE_MINOR} or newer, then retry.`,
+        "(undici, a production dependency, uses worker_threads APIs added in 22.10.)",
+      ];
     case "unknown":
       return [
         "The message above is the tool's own. Running the command yourself shows its full output:",
@@ -236,7 +262,9 @@ export async function findRepoRoot(start: string): Promise<string | null> {
     try {
       await fs.access(path.join(dir, ".git"));
       return dir;
-    } catch {}
+    } catch {
+      // No .git here — keep walking up until the filesystem root.
+    }
     const parent = path.dirname(dir);
     if (parent === dir) break;
     dir = parent;
@@ -249,7 +277,10 @@ export async function gatherFacts(argv1 = process.argv[1] ?? ""): Promise<Instal
   let realEntry = entry;
   try {
     realEntry = await fs.realpath(entry);
-  } catch {}
+  } catch {
+    // A bare name, a deleted shim, or a permission wall: fall back to argv[1]
+    // as given. Detection degrades to a guess rather than failing the command.
+  }
   const brewPrefix = await runCmd("brew", ["--prefix"])
     .then((s) => s.trim())
     .catch(() => null);
@@ -349,7 +380,8 @@ export async function runUpgrade(opts: UpgradeOptions = {}): Promise<number> {
     return 0;
   }
 
-  const restart = facts.platform === "darwin" && (await (opts.autostartLoaded ?? defaultAutostartLoaded)());
+  const restart =
+    facts.platform === "darwin" && (await (opts.autostartLoaded ?? defaultAutostartLoaded)());
   const all = restart ? [...steps, kickstartCommand(uid)] : steps;
 
   if (opts.dryRun) {

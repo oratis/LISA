@@ -17,10 +17,7 @@ import { getIdleWatcher } from "../idle/watcher.js";
 import { moodBus } from "../mood-bus.js";
 import { providerForModel } from "../providers/registry.js";
 import { buildSystemPromptSnapshot, getPromptFingerprint } from "../prompt.js";
-import {
-  readActiveWebSession,
-  writeActiveWebSession,
-} from "../sessions/active.js";
+import { readActiveWebSession, writeActiveWebSession } from "../sessions/active.js";
 import { listSessionsOnDisk } from "../sessions/list.js";
 import { SessionStore } from "../sessions/store.js";
 import { reflectOnSession } from "../reflect.js";
@@ -31,11 +28,7 @@ import {
   decideReflect,
 } from "./reflect-scheduler.js";
 import { listDesires, desireActivity, pickCurrentDesire } from "../soul/store.js";
-import {
-  FOCUS_FRESHNESS_MS,
-  pickFocusedDesire,
-  recentUserText,
-} from "../soul/desire-focus.js";
+import { FOCUS_FRESHNESS_MS, pickFocusedDesire, recentUserText } from "../soul/desire-focus.js";
 import { ISLAND_HTML } from "./island.js";
 import { LOGIN_HTML } from "./login.js";
 import { recordUsage, summarizeUsage, setAnomalySink } from "../billing/meter.js";
@@ -52,7 +45,14 @@ import {
   IapError,
   PaymentStateError,
 } from "../billing/iap.js";
-import { stripeConfig, verifyStripeSignature, classifyStripeEvent, createCheckoutSession, sessionIdForPaymentIntent, STRIPE_PACKS } from "../billing/stripe.js";
+import {
+  stripeConfig,
+  verifyStripeSignature,
+  classifyStripeEvent,
+  createCheckoutSession,
+  sessionIdForPaymentIntent,
+  STRIPE_PACKS,
+} from "../billing/stripe.js";
 import { ACCOUNT_HTML } from "./account-page.js";
 import { handleGateway } from "./gateway.js";
 import {
@@ -68,10 +68,7 @@ import {
   CTRL_BODY_LIMIT,
   RICH_BODY_LIMIT,
 } from "./http-body.js";
-import {
-  agentSessionsResponse,
-  applyApiVersionHeader,
-} from "./api-contract.js";
+import { agentSessionsResponse, applyApiVersionHeader } from "./api-contract.js";
 import { ipRateOk } from "../billing/limits.js";
 import { ROOM_HTML } from "./room.js";
 import { renderMainHtml, mainHtmlCsp } from "./lisa-html.js";
@@ -92,7 +89,15 @@ import { polishDictationMetered, type DictationProvider } from "../voice/dictati
 import { admitMedia, type MediaPermit } from "../billing/media-admission.js";
 import { recordMediaUsage, summarizeMediaUsage } from "../billing/media-meter.js";
 import { MEDIA_PRICES_VERSION } from "../billing/media-prices.js";
-import { listGrants, grant, revoke, revokeAll, isGranted, SENSE_SIGNALS, SIGNAL_DESCRIPTIONS } from "../consent/store.js";
+import {
+  listGrants,
+  grant,
+  revoke,
+  revokeAll,
+  isGranted,
+  SENSE_SIGNALS,
+  SIGNAL_DESCRIPTIONS,
+} from "../consent/store.js";
 import { signalAgentTool } from "../tools/signal_agent.js";
 import { managedRegistry } from "../agents/managed.js";
 import { ptyRegistry, ptyEnabled, normalizeAgentKind } from "../agents/pty.js";
@@ -106,10 +111,21 @@ import { isDigestDue, digestHour } from "../mail/scheduler.js";
 import { loadAccounts, addAccount, removeAccount, setAccountEnabled } from "../mail/accounts.js";
 import { inferHost } from "../mail/hosts.js";
 import type { DailyDigest } from "../mail/types.js";
-import { listRecentDispatches, entryIsAlive, toDispatchView, readDispatchOutput } from "../integrations/dispatch-ledger.js";
+import {
+  listRecentDispatches,
+  entryIsAlive,
+  toDispatchView,
+  readDispatchOutput,
+} from "../integrations/dispatch-ledger.js";
 import { loadControlPolicy, saveControlPolicy, type ControlPolicy } from "../control/policy.js";
 import { loadAutonomyState, saveAutonomyState, type AutonomyState } from "../autonomy/state.js";
-import { mintDevice, verifyDeviceToken, touchDevice, listDevices, revokeDevice } from "./devices.js";
+import {
+  mintDevice,
+  verifyDeviceToken,
+  touchDevice,
+  listDevices,
+  revokeDevice,
+} from "./devices.js";
 import {
   loadOrCreateSessionSecret,
   mintSession,
@@ -149,7 +165,16 @@ import { sweepToken, sweepUserAutonomy } from "./autonomy-sweep.js";
 import { turnstileConfig, verifyTurnstile } from "./turnstile.js";
 import { isDisposableEmail } from "./email-domains.js";
 import { readBalance, creditPurchase } from "../billing/quota.js";
-import { PushBridge, listPush, registerPush, unregisterPush, setPushPrefs, registerLiveActivity, unregisterLiveActivity, type PushPrefs } from "./push.js";
+import {
+  PushBridge,
+  listPush,
+  registerPush,
+  unregisterPush,
+  setPushPrefs,
+  registerLiveActivity,
+  unregisterLiveActivity,
+  type PushPrefs,
+} from "./push.js";
 import { SenseService } from "../sense/service.js";
 import { ScreenSource } from "../sense/screen.js";
 import { VoiceSource } from "../sense/voice.js";
@@ -180,10 +205,7 @@ import { detectLanHost, buildPairUrl } from "./pairing.js";
 import { TenantEventBus, sameTenant } from "./event-bus.js";
 import { qrSvg } from "./qr-svg.js";
 import { resolveClientIp } from "./client-ip.js";
-import {
-  selectWebModelContextForTurn,
-  webContextBudgetTokens,
-} from "./context-budget.js";
+import { selectWebModelContextForTurn, webContextBudgetTokens } from "./context-budget.js";
 import {
   configuredPublicOrigin,
   requireCloudPublicOrigin,
@@ -191,7 +213,6 @@ import {
 } from "./public-origin.js";
 import {
   autonomyProfileForEdition,
-  capabilityProfileForEdition,
   isCloudDeniedRoute,
   toolsForCapabilityProfile,
   isNonCanonicalPath,
@@ -216,8 +237,6 @@ import type { ToolDefinition, StoredMessage } from "../types.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ASSETS_DIR = path.join(__dirname, "assets");
 const MUSIC_DIR = path.join(ASSETS_DIR, "room", "music");
-
-
 
 export interface WebServerOptions {
   port: number;
@@ -432,9 +451,7 @@ async function resumeOrCreateWebSession(model: string): Promise<SessionStore> {
   try {
     const cwd = process.cwd();
     const sessions = await listSessionsOnDisk();
-    const candidate = sessions.find(
-      (s) => s.cwd === cwd && s.messageCount > 0,
-    );
+    const candidate = sessions.find((s) => s.cwd === cwd && s.messageCount > 0);
     if (candidate) {
       const s = await SessionStore.open(candidate.id);
       logInfo(
@@ -459,7 +476,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // is configured; local mode has a deterministic loopback fallback.
   const publicOrigin = cloudEdition
     ? requireCloudPublicOrigin()
-    : configuredPublicOrigin() ?? `http://localhost:${opts.port}`;
+    : (configuredPublicOrigin() ?? `http://localhost:${opts.port}`);
   // The policy is the single source of truth for surface behaviour. Derived
   // from the legacy options when a caller doesn't build one, so an omitted
   // policy reproduces the pre-T-7 behaviour exactly.
@@ -511,11 +528,20 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const acct = await ensureSeededAccount(email, password);
       await homeScope.run(homeForUid(acct.uid), async () => {
         const bal = await readBalance();
-        if (bal.paidMicroUSD < 20_000_000 && !bal.purchases.some((p) => p.transactionId === "operator-seed")) {
-          await creditPurchase({ at: Date.now(), microUSD: 20_000_000, transactionId: "operator-seed" });
+        if (
+          bal.paidMicroUSD < 20_000_000 &&
+          !bal.purchases.some((p) => p.transactionId === "operator-seed")
+        ) {
+          await creditPurchase({
+            at: Date.now(),
+            microUSD: 20_000_000,
+            transactionId: "operator-seed",
+          });
         }
       });
-      logInfo(`[accounts] reviewer demo account ready: ${redactEmail(email)} (${redactId(acct.uid)})`);
+      logInfo(
+        `[accounts] reviewer demo account ready: ${redactEmail(email)} (${redactId(acct.uid)})`,
+      );
     } catch (e) {
       logError(`[accounts] reviewer seed failed: ${(e as Error).message}`);
     }
@@ -759,9 +785,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // Codex/OpenCode/… as adapters land) and merges their sessions into one
   // normalized stream. Privacy: structural metadata only (see types.ts +
   // each adapter). Replaces the single-purpose ClaudeCodeWatcher wiring.
-  const orchestratorCfg = await loadOrchestratorConfig(
-    path.join(lisaHome(), "agents.json"),
-  );
+  const orchestratorCfg = await loadOrchestratorConfig(path.join(lisaHome(), "agents.json"));
   const hub = new OrchestratorHub(orchestratorCfg, {
     log: (msg) => logInfo(msg),
   });
@@ -872,9 +896,16 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       // Post the digest into the chat too (the "here's your mail" moment), in
       // addition to the push — but only on the scheduled daily run, not manual.
       if (!force && digest.total > 0) {
-        broadcast({ type: "idle_message", text: formatDigestText(digest), at: new Date().toISOString(), source: "mail" });
+        broadcast({
+          type: "idle_message",
+          text: formatDigestText(digest),
+          at: new Date().toISOString(),
+          source: "mail",
+        });
       }
-      logInfo(`[mail] digest ${digest.date}: ${digest.total} mail · ${digest.needsYou.length} need-you`);
+      logInfo(
+        `[mail] digest ${digest.date}: ${digest.total} mail · ${digest.needsYou.length} need-you`,
+      );
       return digest;
     } catch (err) {
       logError(`[mail] digest sweep failed: ${(err as Error).message}`);
@@ -901,12 +932,24 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const { runDailyBrief } = await import("../kb/feeds/service.js");
       const result = await runDailyBrief({ force });
       if (!result) return false;
-      broadcast({ type: "kb_brief_update", date: result.brief.date, total: result.brief.total, at: new Date().toISOString() });
+      broadcast({
+        type: "kb_brief_update",
+        date: result.brief.date,
+        total: result.brief.total,
+        at: new Date().toISOString(),
+      });
       pushBridge.onKbBrief(result.text);
       if (!force) {
-        broadcast({ type: "idle_message", text: result.text, at: new Date().toISOString(), source: "kb" });
+        broadcast({
+          type: "idle_message",
+          text: result.text,
+          at: new Date().toISOString(),
+          source: "kb",
+        });
       }
-      logInfo(`[kb-brief] ${result.brief.date}: ${result.brief.total} item(s) · ${result.brief.ingested.length} ingested`);
+      logInfo(
+        `[kb-brief] ${result.brief.date}: ${result.brief.total} item(s) · ${result.brief.ingested.length} ingested`,
+      );
       return true;
     } catch (err) {
       logError(`[kb-brief] failed: ${(err as Error).message}`);
@@ -939,10 +982,17 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           for (const item of important.slice(0, 3)) {
             const alert = formatAlert(item);
             pushBridge.onMailImportant({ title: alert.title, body: alert.body, tag: alert.tag });
-            broadcast({ type: "idle_message", text: alert.chat, at: new Date().toISOString(), source: "mail" });
+            broadcast({
+              type: "idle_message",
+              text: alert.chat,
+              at: new Date().toISOString(),
+              source: "mail",
+            });
           }
           broadcast({ type: "mail_digest_update", at: new Date().toISOString() });
-          logInfo(`[mail] ${important.length} important new mail (alerted ${Math.min(3, important.length)})`);
+          logInfo(
+            `[mail] ${important.length} important new mail (alerted ${Math.min(3, important.length)})`,
+          );
         } catch (err) {
           logError(`[mail] poll failed: ${(err as Error).message}`);
         } finally {
@@ -970,7 +1020,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // consent grant (re-checked each tick so revoke-all stops it within one
     // interval) IN ADDITION to the advisor's own enabled flag. This unifies all
     // screen capture under the consent framework (FOUNDATIONS §1).
-    if (screenTickRunning || !screenCfg.enabled || !captureSupported() || !isGranted("screen")) return;
+    if (screenTickRunning || !screenCfg.enabled || !captureSupported() || !isGranted("screen"))
+      return;
     screenTickRunning = true;
     try {
       const shot = await captureScreenshot("full");
@@ -1012,7 +1063,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   if (screenCfg.enabled) {
     logInfo(`[screen-advisor] enabled — every ${screenCfg.intervalMinutes}m`);
     if (!isGranted("screen")) {
-      logInfo("[screen-advisor] waiting on `screen` consent — grant it (`lisa consent grant screen`) to start capturing.");
+      logInfo(
+        "[screen-advisor] waiting on `screen` consent — grant it (`lisa consent grant screen`) to start capturing.",
+      );
     }
   }
 
@@ -1041,7 +1094,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // mid-conversation knows there's something to read. Cleared via
   // POST /api/island/dismiss-unread. Per design doc §6 Q2: latest wins,
   // no inbox-style accumulation.
-  let serverStartedAt = Date.now();
+  const serverStartedAt = Date.now();
 
   // ── Idle mode ───────────────────────────────────────────────────────
   // Declared here (rather than beside the reflect scheduler below) so the dream's
@@ -1062,9 +1115,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const ctx = globalChat;
       ctx.activity.idleRunning = true;
       const startedAt = new Date().toISOString();
-      logInfo(
-        `[idle] firing after ${Math.round(watcher.idleFor() / 60_000)}m of inactivity`,
-      );
+      logInfo(`[idle] firing after ${Math.round(watcher.idleFor() / 60_000)}m of inactivity`);
       broadcast({ type: "idle_start", at: startedAt });
       try {
         // Match the note's language to how the user actually writes (the most
@@ -1126,9 +1177,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       }
     });
     watcher.start();
-    logInfo(
-      `[idle] watching — will fire after ${opts.idleMinutes}m of no input`,
-    );
+    logInfo(`[idle] watching — will fire after ${opts.idleMinutes}m of no input`);
   }
 
   // ── Reflection scheduler (PLAN_DESIRE_EVOLUTION_v1.0 §3 PR1) ──────────────
@@ -1155,48 +1204,53 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // stale resumed conversation can't pin a focus. Stamped in the POST /chat path.
   // Only the "scheduled" mode gets a background heartbeat. "manual" keeps the
   // POST /reflect route and nothing else; "off" refuses both.
-  const reflectTimer: NodeJS.Timeout | null = policy.reflection !== "scheduled" ? null : setInterval(() => {
-    // Capture the ACTIVE ctx for this reflection: the summary must land in
-    // the session it reflects, even if the user switches mid-flight (F6).
-    const ctx = globalChat;
-    const currentUserCount = countUserMessages(ctx.history);
-    const decision = decideReflect({
-      newUserMessages: currentUserCount - ctx.activity.lastReflectedUserCount,
-      idleMs: reflectClock.idleFor(),
-      debounceMs: reflectDebounceMs,
-      inFlight: ctx.activity.reflecting || ctx.activity.idleRunning,
-    });
-    if (!decision.shouldReflect) return;
-    ctx.activity.reflecting = true;
-    const snapshot = ctx.history.slice();
-    const snapshotUserCount = currentUserCount;
-    void (async () => {
-      try {
-        const r = await reflectOnSession({
-          history: snapshot,
-          sessionId: ctx.session.id,
-          model: opts.model,
-        });
-        // Advance the marker only on success, so a failed reflect retries next
-        // tick instead of silently dropping the conversation.
-        ctx.activity.lastReflectedUserCount = snapshotUserCount;
-        await ctx.session.appendReflection(r.summary);
-        ctx.reflectionSummary = r.summary;
-        broadcast({
-          type: "reflect_done",
-          summary: r.summary,
-          at: new Date().toISOString(),
-        });
-        // The summary and applied lines are distilled conversation content —
-        // log counts, not text.
-        logInfo(`[reflect] ${decision.reason} → summary updated (${r.summary.length} chars, ${r.applied.length} applied)`);
-      } catch (err) {
-        logError(`[reflect] failed: ${(err as Error).message}`);
-      } finally {
-        ctx.activity.reflecting = false;
-      }
-    })();
-  }, REFLECT_CHECK_INTERVAL_MS);
+  const reflectTimer: NodeJS.Timeout | null =
+    policy.reflection !== "scheduled"
+      ? null
+      : setInterval(() => {
+          // Capture the ACTIVE ctx for this reflection: the summary must land in
+          // the session it reflects, even if the user switches mid-flight (F6).
+          const ctx = globalChat;
+          const currentUserCount = countUserMessages(ctx.history);
+          const decision = decideReflect({
+            newUserMessages: currentUserCount - ctx.activity.lastReflectedUserCount,
+            idleMs: reflectClock.idleFor(),
+            debounceMs: reflectDebounceMs,
+            inFlight: ctx.activity.reflecting || ctx.activity.idleRunning,
+          });
+          if (!decision.shouldReflect) return;
+          ctx.activity.reflecting = true;
+          const snapshot = ctx.history.slice();
+          const snapshotUserCount = currentUserCount;
+          void (async () => {
+            try {
+              const r = await reflectOnSession({
+                history: snapshot,
+                sessionId: ctx.session.id,
+                model: opts.model,
+              });
+              // Advance the marker only on success, so a failed reflect retries next
+              // tick instead of silently dropping the conversation.
+              ctx.activity.lastReflectedUserCount = snapshotUserCount;
+              await ctx.session.appendReflection(r.summary);
+              ctx.reflectionSummary = r.summary;
+              broadcast({
+                type: "reflect_done",
+                summary: r.summary,
+                at: new Date().toISOString(),
+              });
+              // The summary and applied lines are distilled conversation content —
+              // log counts, not text.
+              logInfo(
+                `[reflect] ${decision.reason} → summary updated (${r.summary.length} chars, ${r.applied.length} applied)`,
+              );
+            } catch (err) {
+              logError(`[reflect] failed: ${(err as Error).message}`);
+            } finally {
+              ctx.activity.reflecting = false;
+            }
+          })();
+        }, REFLECT_CHECK_INTERVAL_MS);
   // Don't let the reflection heartbeat keep the process alive on its own.
   reflectTimer?.unref();
 
@@ -1322,7 +1376,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       // Web tokens (Apple JS popup on the login page, B8b) carry the Services
       // ID as `aud`, native ones the bundle id. Reject a surface that isn't
       // configured rather than verifying against the wrong audience.
-      const client = payload.client === "web" ? "web" as const : "native" as const;
+      const client = payload.client === "web" ? ("web" as const) : ("native" as const);
       const audience = audienceForClient(cfg, client);
       if (!audience) {
         res.writeHead(404, { "content-type": "text/plain" });
@@ -1387,7 +1441,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       }
       if (!ipRateOk(`auth:${clientIp(req, remoteAddr)}`, AUTH_IP_LIMIT, AUTH_IP_WINDOW_MS)) {
         res.writeHead(429, { "content-type": "application/json" });
-        res.end(JSON.stringify({ error: "rate_limited", retryAfterSec: Math.ceil(AUTH_IP_WINDOW_MS / 1000) }));
+        res.end(
+          JSON.stringify({
+            error: "rate_limited",
+            retryAfterSec: Math.ceil(AUTH_IP_WINDOW_MS / 1000),
+          }),
+        );
         return;
       }
       const payload = await readJsonBody(req, res);
@@ -1413,7 +1472,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           "content-type": "application/json",
           "set-cookie": `lisa_token=${encodeURIComponent(session)}; HttpOnly; SameSite=Strict; Path=/${isCloud() ? "; Secure" : ""}`,
         });
-        res.end(JSON.stringify({ ok: true, token: session, uid: acct.uid, verified: acct.verified }));
+        res.end(
+          JSON.stringify({ ok: true, token: session, uid: acct.uid, verified: acct.verified }),
+        );
       } catch (e) {
         if (e instanceof AccountError) {
           res.writeHead(400, { "content-type": "application/json" });
@@ -1436,18 +1497,17 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       res.end(
         JSON.stringify({
           accounts: cloud && !!sessionSecret,
-          appleWeb: cloud && cfg.enabled && !!cfg.webServicesId
-            ? { servicesId: cfg.webServicesId }
-            : null,
+          appleWeb:
+            cloud && cfg.enabled && !!cfg.webServicesId ? { servicesId: cfg.webServicesId } : null,
           // Client ids are public by design (they identify the app, they don't
           // authorize it); each client draws its button only if its own id is
           // present. The iOS app also needs it to build the PKCE request.
-          google: cloud && gcfg.enabled
-            ? { webClientId: gcfg.webClientId, iosClientId: gcfg.iosClientId }
-            : null,
-          turnstile: cloud && turnstileConfig().enabled
-            ? { siteKey: turnstileConfig().siteKey }
-            : null,
+          google:
+            cloud && gcfg.enabled
+              ? { webClientId: gcfg.webClientId, iosClientId: gcfg.iosClientId }
+              : null,
+          turnstile:
+            cloud && turnstileConfig().enabled ? { siteKey: turnstileConfig().siteKey } : null,
           stripe: cloud && !!stripeConfig().secretKey,
         }),
       );
@@ -1478,7 +1538,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         }
         return;
       }
-      const sig = typeof req.headers["stripe-signature"] === "string" ? req.headers["stripe-signature"] : "";
+      const sig =
+        typeof req.headers["stripe-signature"] === "string" ? req.headers["stripe-signature"] : "";
       if (!verifyStripeSignature(raw, sig, scfg.webhookSecret)) {
         res.writeHead(401, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: "bad_signature" }));
@@ -1486,7 +1547,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       }
       try {
         const summary = classifyStripeEvent(JSON.parse(raw) as Record<string, unknown>);
-        if (summary.kind === "credit" && summary.uid && summary.pack && STRIPE_PACKS[summary.pack]) {
+        if (
+          summary.kind === "credit" &&
+          summary.uid &&
+          summary.pack &&
+          STRIPE_PACKS[summary.pack]
+        ) {
           try {
             const credited = await creditExternalTransaction(
               summary.uid,
@@ -1494,7 +1560,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
               `stripe.pack.${summary.pack}`,
               STRIPE_PACKS[summary.pack]!.faceMicroUSD,
             );
-            logInfo(`[stripe] credited ${credited} micro-USD to ${redactId(summary.uid)} (session ${redactId(summary.id ?? "")})`);
+            logInfo(
+              `[stripe] credited ${credited} micro-USD to ${redactId(summary.uid)} (session ${redactId(summary.id ?? "")})`,
+            );
           } catch (e) {
             if (!(e instanceof IapError && e.code === "duplicate_transaction")) throw e;
             // replayed webhook — already credited, fine
@@ -1534,7 +1602,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       // from a spoofable header. See ipRateOk's note.
       if (!ipRateOk(`auth:${clientIp(req, remoteAddr)}`, AUTH_IP_LIMIT, AUTH_IP_WINDOW_MS)) {
         res.writeHead(429, { "content-type": "application/json" });
-        res.end(JSON.stringify({ error: "rate_limited", retryAfterSec: Math.ceil(AUTH_IP_WINDOW_MS / 1000) }));
+        res.end(
+          JSON.stringify({
+            error: "rate_limited",
+            retryAfterSec: Math.ceil(AUTH_IP_WINDOW_MS / 1000),
+          }),
+        );
         return;
       }
       const body = await readJsonBody(req, res);
@@ -1562,7 +1635,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         }
         if (!ipRateOk(`reg:${clientIp(req, remoteAddr)}`, REG_IP_LIMIT, REG_IP_WINDOW_MS)) {
           res.writeHead(429, { "content-type": "application/json" });
-          res.end(JSON.stringify({ error: "rate_limited", retryAfterSec: Math.ceil(REG_IP_WINDOW_MS / 1000) }));
+          res.end(
+            JSON.stringify({
+              error: "rate_limited",
+              retryAfterSec: Math.ceil(REG_IP_WINDOW_MS / 1000),
+            }),
+          );
           return;
         }
       }
@@ -1588,7 +1666,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           // Pin the session for browser clients (web island); Bearer clients ignore it.
           "set-cookie": `lisa_token=${encodeURIComponent(session)}; HttpOnly; SameSite=Strict; Path=/${isCloud() ? "; Secure" : ""}`,
         });
-        res.end(JSON.stringify({ ok: true, token: session, uid: acct.uid, verified: acct.verified }));
+        res.end(
+          JSON.stringify({ ok: true, token: session, uid: acct.uid, verified: acct.verified }),
+        );
       } catch (e) {
         if (e instanceof AccountError) {
           const status = e.code === "throttled" ? 429 : e.code === "email_taken" ? 409 : 400;
@@ -1607,7 +1687,10 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // request a code, then spend it. Spending one both registers and signs in,
     // because reading the mail IS the proof of ownership; there is no password
     // to choose and the address comes out verified (full free window).
-    if (req.method === "POST" && (url === "/api/auth/otp/request" || url === "/api/auth/otp/verify")) {
+    if (
+      req.method === "POST" &&
+      (url === "/api/auth/otp/request" || url === "/api/auth/otp/verify")
+    ) {
       if (!cloud || !sessionSecret) {
         res.writeHead(404, { "content-type": "text/plain" });
         res.end("accounts not available on this edition");
@@ -1617,7 +1700,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       // are the per-address cooldown, the daily send cap and the attempt limit.
       if (!ipRateOk(`auth:${clientIp(req, remoteAddr)}`, AUTH_IP_LIMIT, AUTH_IP_WINDOW_MS)) {
         res.writeHead(429, { "content-type": "application/json" });
-        res.end(JSON.stringify({ error: "rate_limited", retryAfterSec: Math.ceil(AUTH_IP_WINDOW_MS / 1000) }));
+        res.end(
+          JSON.stringify({
+            error: "rate_limited",
+            retryAfterSec: Math.ceil(AUTH_IP_WINDOW_MS / 1000),
+          }),
+        );
         return;
       }
       const body = await readJsonBody(req, res);
@@ -1672,7 +1760,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const code = typeof body.code === "string" ? body.code : "";
       const spent = await verifyEmailOtp(email, code);
       if (!spent.ok) {
-        res.writeHead(spent.reason === "too_many_attempts" ? 429 : 401, { "content-type": "application/json" });
+        res.writeHead(spent.reason === "too_many_attempts" ? 429 : 401, {
+          "content-type": "application/json",
+        });
         res.end(JSON.stringify({ error: spent.reason }));
         return;
       }
@@ -1683,7 +1773,15 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           "content-type": "application/json",
           "set-cookie": `lisa_token=${encodeURIComponent(session)}; HttpOnly; SameSite=Strict; Path=/${isCloud() ? "; Secure" : ""}`,
         });
-        res.end(JSON.stringify({ ok: true, token: session, uid: acct.uid, verified: acct.verified, created }));
+        res.end(
+          JSON.stringify({
+            ok: true,
+            token: session,
+            uid: acct.uid,
+            verified: acct.verified,
+            created,
+          }),
+        );
       } catch (e) {
         if (e instanceof AccountError) {
           res.writeHead(400, { "content-type": "application/json" });
@@ -1707,7 +1805,10 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end("not available");
         return;
       }
-      const presented = (req.headers.authorization ?? "").toString().replace(/^Bearer\s+/i, "").trim();
+      const presented = (req.headers.authorization ?? "")
+        .toString()
+        .replace(/^Bearer\s+/i, "")
+        .trim();
       if (!presented || !timingSafeEqualStr(presented, secret)) {
         res.writeHead(401, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: "unauthorized" }));
@@ -1715,7 +1816,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       }
       const body = await readJsonBody(req, res);
       if (!body) return; // 413 already sent
-      const maxRuns = typeof body.maxRuns === "number" && body.maxRuns > 0 ? Math.floor(body.maxRuns) : undefined;
+      const maxRuns =
+        typeof body.maxRuns === "number" && body.maxRuns > 0 ? Math.floor(body.maxRuns) : undefined;
       try {
         const report = await sweepUserAutonomy({
           ...(opts.model ? { model: opts.model } : {}),
@@ -1757,7 +1859,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         const type = String(outer.notificationType ?? "");
         if (type === "REFUND" || type === "REVOKE") {
           const data = (outer.data ?? {}) as Record<string, unknown>;
-          const txJws = typeof data.signedTransactionInfo === "string" ? data.signedTransactionInfo : "";
+          const txJws =
+            typeof data.signedTransactionInfo === "string" ? data.signedTransactionInfo : "";
           if (!txJws) throw new IapError("malformed_jws");
           const tx = await verifyAppleJWS(txJws);
           const transactionId = String(tx.transactionId ?? "");
@@ -1904,7 +2007,14 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       res.end(
         JSON.stringify(
           acct
-            ? { signedIn: true, uid: acct.uid, kind: acct.kind, email: acct.email ?? null, verified: acct.verified, plan: "free" }
+            ? {
+                signedIn: true,
+                uid: acct.uid,
+                kind: acct.kind,
+                email: acct.email ?? null,
+                verified: acct.verified,
+                plan: "free",
+              }
             : { signedIn: false },
         ),
       );
@@ -1913,7 +2023,10 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
 
     // ── Inference gateway (B6): key-free managed LLM calls from signed-in
     // Macs/CLIs. Account sessions only — never the shared demo token.
-    if (req.method === "POST" && (url.startsWith("/gw/anthropic/") || url.startsWith("/gw/openai/"))) {
+    if (
+      req.method === "POST" &&
+      (url.startsWith("/gw/anthropic/") || url.startsWith("/gw/openai/"))
+    ) {
       try {
         const acct = cloud && accountUid ? await getAccount(accountUid) : null;
         if (!acct) {
@@ -1958,7 +2071,11 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         // otherwise a free sandbox tester Apple ID could mint credits by POSTing
         // a sandbox JWS here. LISA_IAP_ALLOW_SANDBOX=1 re-opts a non-prod
         // cloud/staging deploy back in for testing.
-        if (cloud && process.env.LISA_IAP_ALLOW_SANDBOX !== "1" && tx.environment !== "Production") {
+        if (
+          cloud &&
+          process.env.LISA_IAP_ALLOW_SANDBOX !== "1" &&
+          tx.environment !== "Production"
+        ) {
           logWarn(
             `[iap] rejected non-Production tx in cloud: env=${tx.environment ?? "?"} product=${tx.productId} tx=${redactId(tx.transactionId)} uid=${redactId(accountUid)}`,
           );
@@ -1969,7 +2086,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         const credited = await creditTransaction(accountUid, tx);
         const acct = await getAccount(accountUid);
         const q = acct ? await quotaStatus(acct) : null;
-        logInfo(`[iap] credited ${credited} micro-USD to ${redactId(accountUid)} (${tx.productId}, tx ${redactId(tx.transactionId)}, ${tx.environment ?? "?"})`);
+        logInfo(
+          `[iap] credited ${credited} micro-USD to ${redactId(accountUid)} (${tx.productId}, tx ${redactId(tx.transactionId)}, ${tx.environment ?? "?"})`,
+        );
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ ok: true, creditedMicroUSD: credited, quota: q }));
       } catch (e) {
@@ -2103,7 +2222,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         return;
       }
       const raw = await beginEmailVerification(acct.uid);
-      const mail = raw ? await sendVerificationEmail(acct.email, verificationUrl(publicOrigin, raw)) : null;
+      const mail = raw
+        ? await sendVerificationEmail(acct.email, verificationUrl(publicOrigin, raw))
+        : null;
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, sent: mail?.sent ?? false }));
       return;
@@ -2145,10 +2266,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // handlers run; the client edition descriptor is presentation only.
     if (cloud && isCloudDeniedRoute(url)) {
       res.writeHead(403, { "content-type": "application/json" });
-      res.end(JSON.stringify({
-        error: "capability_denied",
-        profile: capabilityProfile,
-      }));
+      res.end(
+        JSON.stringify({
+          error: "capability_denied",
+          profile: capabilityProfile,
+        }),
+      );
       return;
     }
 
@@ -2159,9 +2282,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         publishApproved:
           opts.socialConnectorTools && opts.socialConnectorTools.length
             ? async (id, digest) => {
-                const { publishApprovedSocialDraft } = await import(
-                  "../sense/social/runner.js"
-                );
+                const { publishApprovedSocialDraft } = await import("../sense/social/runner.js");
                 return publishApprovedSocialDraft(id, digest, {
                   connectorTools: opts.socialConnectorTools!,
                 });
@@ -2222,7 +2343,10 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // Island widget — designed to be opened in a tiny browser window
     // (Arc, Vivaldi PWA, Safari split). See docs/MAC_ISLAND_PLAN.md.
     if (req.method === "GET" && (url === "/island" || url.startsWith("/island?"))) {
-      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+      res.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+      });
       res.end(ISLAND_HTML);
       return;
     }
@@ -2230,7 +2354,10 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // Room — an ambient, state-driven pixel-art living space where Lisa "lives".
     // Reuses /events + /api/island/ping. See docs/PLAN_ROOM_v1.0.md.
     if (req.method === "GET" && (url === "/room" || url.startsWith("/room?"))) {
-      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+      res.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+      });
       res.end(ROOM_HTML);
       return;
     }
@@ -2257,15 +2384,17 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         }
         const unread = islandChat.activity.lastIdleMessage;
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({
-          online: true,
-          mood: moodBus.current(),
-          has_unread_idle_message: unread !== null,
-          last_idle_message_at: unread?.at ?? null,
-          last_idle_message_text: unread?.text ?? null,
-          current_desire: currentDesire,
-          uptime_sec: Math.round((Date.now() - serverStartedAt) / 1000),
-        }));
+        res.end(
+          JSON.stringify({
+            online: true,
+            mood: moodBus.current(),
+            has_unread_idle_message: unread !== null,
+            last_idle_message_at: unread?.at ?? null,
+            last_idle_message_text: unread?.text ?? null,
+            current_desire: currentDesire,
+            uptime_sec: Math.round((Date.now() - serverStartedAt) / 1000),
+          }),
+        );
       } finally {
         islandRuntime.release();
       }
@@ -2343,7 +2472,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       try {
         const parsed = visionBody ? (JSON.parse(visionBody) as { mode?: CaptureMode }) : {};
         if (parsed.mode === "full" || parsed.mode === "interactive") mode = parsed.mode;
-      } catch { /* default interactive */ }
+      } catch {
+        /* default interactive */
+      }
       try {
         const shot = await captureScreenshot(mode);
         res.writeHead(200, { "content-type": "application/json" });
@@ -2380,13 +2511,14 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       }
       // Pick an extension Whisper accepts based on the recorder's mimeType.
       const mt = payload.mediaType ?? "audio/webm";
-      const ext = mt.includes("mp4") || mt.includes("m4a")
-        ? "m4a"
-        : mt.includes("ogg")
-          ? "ogg"
-          : mt.includes("wav")
-            ? "wav"
-            : "webm";
+      const ext =
+        mt.includes("mp4") || mt.includes("m4a")
+          ? "m4a"
+          : mt.includes("ogg")
+            ? "ogg"
+            : mt.includes("wav")
+              ? "wav"
+              : "webm";
       const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
       const tmp = path.join(os.tmpdir(), `lisa-rec-${stamp}-${process.pid}.${ext}`);
       let mediaPermit: MediaPermit | null = null;
@@ -2434,9 +2566,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
               const admission = await admitInference(acct, opts.model);
               if (admission.ok) polishPermit = admission.permit;
               else {
-                logInfo(
-                  `[voice] dictation polish skipped: ${JSON.stringify(admission.body)}`,
-                );
+                logInfo(`[voice] dictation polish skipped: ${JSON.stringify(admission.body)}`);
                 text = transcript;
               }
             }
@@ -2529,10 +2659,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end("bad json");
         return;
       }
-      if (
-        typeof fPayload.agent !== "string" ||
-        typeof fPayload.sessionId !== "string"
-      ) {
+      if (typeof fPayload.agent !== "string" || typeof fPayload.sessionId !== "string") {
         res.writeHead(400, { "content-type": "text/plain" });
         res.end("agent and sessionId required");
         return;
@@ -2617,7 +2744,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end("bad json");
         return;
       }
-      const action = payload.action === "list" ? "list" : payload.action === "cancel" ? "cancel" : null;
+      const action =
+        payload.action === "list" ? "list" : payload.action === "cancel" ? "cancel" : null;
       if (!action) {
         res.writeHead(400, { "content-type": "text/plain" });
         res.end("action must be 'list' or 'cancel'");
@@ -2654,7 +2782,11 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const prBody = await readRequestText(req, res);
       if (prBody === null) return;
       let payload: { name?: unknown; platform?: unknown; host?: unknown } = {};
-      try { payload = prBody ? JSON.parse(prBody) : {}; } catch { /* tolerate */ }
+      try {
+        payload = prBody ? JSON.parse(prBody) : {};
+      } catch {
+        /* tolerate */
+      }
       const name = typeof payload.name === "string" ? payload.name : "device";
       const platform = typeof payload.platform === "string" ? payload.platform : "ios";
       const { id, token, device } = mintDevice(name, platform);
@@ -2673,7 +2805,19 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       // browser equivalent of the CLI's terminal QR). Only when we have a url.
       const qr = url ? qrSvg(url) : undefined;
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ ok: true, id, token, port: opts.port, host, url, boundHost, qrSvg: qr, device }));
+      res.end(
+        JSON.stringify({
+          ok: true,
+          id,
+          token,
+          port: opts.port,
+          host,
+          url,
+          boundHost,
+          qrSvg: qr,
+          device,
+        }),
+      );
       return;
     }
     if (req.method === "GET" && url === "/api/devices") {
@@ -2690,7 +2834,11 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const rvBody = await readRequestText(req, res);
       if (rvBody === null) return;
       let payload: { id?: unknown } = {};
-      try { payload = rvBody ? JSON.parse(rvBody) : {}; } catch { /* tolerate */ }
+      try {
+        payload = rvBody ? JSON.parse(rvBody) : {};
+      } catch {
+        /* tolerate */
+      }
       const removed = revokeDevice(typeof payload.id === "string" ? payload.id : "");
       res.writeHead(removed ? 200 : 404, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: removed }));
@@ -2703,10 +2851,21 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     if (req.method === "POST" && url === "/api/push/register") {
       const puBody = await readRequestText(req, res);
       if (puBody === null) return;
-      let payload: { kind?: unknown; target?: unknown; server?: unknown; prefs?: Partial<PushPrefs> } = {};
-      try { payload = puBody ? JSON.parse(puBody) : {}; } catch { /* tolerate */ }
+      let payload: {
+        kind?: unknown;
+        target?: unknown;
+        server?: unknown;
+        prefs?: Partial<PushPrefs>;
+      } = {};
+      try {
+        payload = puBody ? JSON.parse(puBody) : {};
+      } catch {
+        /* tolerate */
+      }
       if (typeof payload.target !== "string" || !payload.target.trim()) {
-        res.writeHead(400, { "content-type": "text/plain" }); res.end("target required (ntfy topic or apns token)"); return;
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("target required (ntfy topic or apns token)");
+        return;
       }
       const sub = registerPush({
         kind: typeof payload.kind === "string" ? payload.kind : "ntfy",
@@ -2722,8 +2881,17 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const puBody = await readRequestText(req, res);
       if (puBody === null) return;
       let payload: { id?: unknown; target?: unknown } = {};
-      try { payload = puBody ? JSON.parse(puBody) : {}; } catch { /* tolerate */ }
-      const key = typeof payload.id === "string" ? payload.id : typeof payload.target === "string" ? payload.target : "";
+      try {
+        payload = puBody ? JSON.parse(puBody) : {};
+      } catch {
+        /* tolerate */
+      }
+      const key =
+        typeof payload.id === "string"
+          ? payload.id
+          : typeof payload.target === "string"
+            ? payload.target
+            : "";
       const removed = unregisterPush(key);
       res.writeHead(removed ? 200 : 404, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: removed }));
@@ -2735,9 +2903,15 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const laBody = await readRequestText(req, res);
       if (laBody === null) return;
       let payload: { sessionId?: unknown; token?: unknown } = {};
-      try { payload = laBody ? JSON.parse(laBody) : {}; } catch { /* tolerate */ }
+      try {
+        payload = laBody ? JSON.parse(laBody) : {};
+      } catch {
+        /* tolerate */
+      }
       if (typeof payload.sessionId !== "string" || !payload.sessionId) {
-        res.writeHead(400, { "content-type": "text/plain" }); res.end("sessionId required"); return;
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("sessionId required");
+        return;
       }
       if (typeof payload.token === "string" && payload.token) {
         registerLiveActivity(payload.sessionId, payload.token);
@@ -2757,8 +2931,13 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const puBody = await readRequestText(req, res);
       if (puBody === null) return;
       let payload: { id?: unknown; prefs?: Partial<PushPrefs> } = {};
-      try { payload = puBody ? JSON.parse(puBody) : {}; } catch { /* tolerate */ }
-      const sub = typeof payload.id === "string" ? setPushPrefs(payload.id, payload.prefs ?? {}) : null;
+      try {
+        payload = puBody ? JSON.parse(puBody) : {};
+      } catch {
+        /* tolerate */
+      }
+      const sub =
+        typeof payload.id === "string" ? setPushPrefs(payload.id, payload.prefs ?? {}) : null;
       res.writeHead(sub ? 200 : 404, { "content-type": "application/json" });
       res.end(JSON.stringify(sub ? { ok: true, subscription: sub } : { ok: false }));
       return;
@@ -2778,24 +2957,42 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     if (req.method === "POST" && url === "/api/mail/connect") {
       const mBody = await readRequestText(req, res);
       if (mBody === null) return;
-      let p: { email?: unknown; host?: unknown; port?: unknown; password?: unknown; label?: unknown };
-      try { p = JSON.parse(mBody || "{}"); } catch {
-        res.writeHead(400, { "content-type": "text/plain" }); res.end("bad json"); return;
+      let p: {
+        email?: unknown;
+        host?: unknown;
+        port?: unknown;
+        password?: unknown;
+        label?: unknown;
+      };
+      try {
+        p = JSON.parse(mBody || "{}");
+      } catch {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("bad json");
+        return;
       }
       const email = typeof p.email === "string" ? p.email.trim() : "";
       const password = typeof p.password === "string" ? p.password : "";
       if (!email.includes("@") || !password) {
-        res.writeHead(400, { "content-type": "text/plain" }); res.end("email + password required"); return;
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("email + password required");
+        return;
       }
       const host = typeof p.host === "string" && p.host ? p.host : inferHost(email);
       if (!host) {
-        res.writeHead(400, { "content-type": "text/plain" }); res.end("Could not detect the IMAP host — add it manually."); return;
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("Could not detect the IMAP host — add it manually.");
+        return;
       }
       const port = typeof p.port === "number" ? p.port : 993;
       // Verify the credentials actually sign in before storing them: a mailbox
       // that silently fails every sweep is exactly the confusion we avoid here.
       try {
-        await probeAccount({ provider: "imap", email, host, port }, { password }, { timeoutMs: 20_000 });
+        await probeAccount(
+          { provider: "imap", email, host, port },
+          { password },
+          { timeoutMs: 20_000 },
+        );
       } catch (err) {
         res.writeHead(401, { "content-type": "text/plain" });
         res.end(friendlyMailError(err, email, host));
@@ -2827,7 +3024,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       else if (action === "enable") ok = setAccountEnabled(id, true);
       else if (action === "disable") ok = setAccountEnabled(id, false);
       else {
-        res.writeHead(400, { "content-type": "text/plain" }); res.end("action must be remove|enable|disable"); return;
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("action must be remove|enable|disable");
+        return;
       }
       if (ok) broadcast({ type: "mail_accounts_update", at: new Date().toISOString() });
       res.writeHead(ok ? 200 : 404, { "content-type": "application/json" });
@@ -2843,7 +3042,13 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const swept = await sweepAll();
       if (!swept.blocked) afterMailDigest(swept.digest);
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ ok: !swept.blocked, digest: swept.digest, newItems: swept.newItems.length }));
+      res.end(
+        JSON.stringify({
+          ok: !swept.blocked,
+          digest: swept.digest,
+          newItems: swept.newItems.length,
+        }),
+      );
       return;
     }
 
@@ -2863,8 +3068,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const cpBody = await readRequestText(req, res);
       if (cpBody === null) return;
       let payload: Partial<ControlPolicy>;
-      try { payload = JSON.parse(cpBody || "{}"); } catch {
-        res.writeHead(400, { "content-type": "text/plain" }); res.end("bad json"); return;
+      try {
+        payload = JSON.parse(cpBody || "{}");
+      } catch {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("bad json");
+        return;
       }
       try {
         const saved = saveControlPolicy({ ...loadControlPolicy(), ...payload });
@@ -2891,8 +3100,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const asBody = await readRequestText(req, res);
       if (asBody === null) return;
       let payload: Partial<AutonomyState>;
-      try { payload = JSON.parse(asBody || "{}"); } catch {
-        res.writeHead(400, { "content-type": "text/plain" }); res.end("bad json"); return;
+      try {
+        payload = JSON.parse(asBody || "{}");
+      } catch {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("bad json");
+        return;
       }
       try {
         const saved = saveAutonomyState({ ...loadAutonomyState(), ...payload });
@@ -2928,11 +3141,13 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         return;
       }
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({
-        ok: true,
-        ...toDispatchView(entry, entryIsAlive(entry)),
-        tail: readDispatchOutput(entry, 4000),
-      }));
+      res.end(
+        JSON.stringify({
+          ok: true,
+          ...toDispatchView(entry, entryIsAlive(entry)),
+          tail: readDispatchOutput(entry, 4000),
+        }),
+      );
       return;
     }
 
@@ -2941,15 +3156,26 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const mBody = await readRequestText(req, res);
       if (mBody === null) return;
       let payload: { task?: unknown; cwd?: unknown; model?: unknown };
-      try { payload = JSON.parse(mBody || "{}"); } catch {
-        res.writeHead(400, { "content-type": "text/plain" }); res.end("bad json"); return;
+      try {
+        payload = JSON.parse(mBody || "{}");
+      } catch {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("bad json");
+        return;
       }
       if (typeof payload.task !== "string" || !payload.task.trim()) {
-        res.writeHead(400, { "content-type": "text/plain" }); res.end("task required"); return;
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("task required");
+        return;
       }
-      const cwd = typeof payload.cwd === "string" && payload.cwd.startsWith("/") ? payload.cwd : process.cwd();
+      const cwd =
+        typeof payload.cwd === "string" && payload.cwd.startsWith("/")
+          ? payload.cwd
+          : process.cwd();
       // A managed agent doesn't control other agents — drop dispatch/signal.
-      const tools = runtimeTools.filter((t) => t.name !== "dispatch_agent" && t.name !== "signal_agent");
+      const tools = runtimeTools.filter(
+        (t) => t.name !== "dispatch_agent" && t.name !== "signal_agent",
+      );
       const systemPrompt =
         `You are a delegated agent working in ${cwd}, launched by the user through Lisa. ` +
         `Complete the user's task using the available tools, then report what you did concisely. ` +
@@ -2974,9 +3200,14 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const mBody = await readRequestText(req, res);
       if (mBody === null) return;
       let payload: { text?: unknown; allow?: unknown } = {};
-      try { payload = mBody ? JSON.parse(mBody) : {}; } catch { /* tolerate empty/none */ }
+      try {
+        payload = mBody ? JSON.parse(mBody) : {};
+      } catch {
+        /* tolerate empty/none */
+      }
       let ok = false;
-      if (action === "send" && typeof payload.text === "string") ok = managedRegistry.send(id, payload.text);
+      if (action === "send" && typeof payload.text === "string")
+        ok = managedRegistry.send(id, payload.text);
       else if (action === "cancel") ok = managedRegistry.cancel(id);
       else if (action === "approve") ok = managedRegistry.decide(id, payload.allow !== false);
       else {
@@ -2997,17 +3228,24 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const pBody = await readRequestText(req, res);
       if (pBody === null) return;
       let payload: { agent?: unknown; task?: unknown; cwd?: unknown; resumeSessionId?: unknown };
-      try { payload = JSON.parse(pBody || "{}"); } catch {
-        res.writeHead(400, { "content-type": "text/plain" }); res.end("bad json"); return;
+      try {
+        payload = JSON.parse(pBody || "{}");
+      } catch {
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("bad json");
+        return;
       }
       if (!ptyEnabled()) {
         res.writeHead(503, { "content-type": "text/plain" });
         res.end("PTY agents are disabled — set LISA_PTY_AGENTS=1 to enable this spike");
         return;
       }
-      const agent = typeof payload.agent === "string" && payload.agent.trim() ? payload.agent : "claude";
+      const agent =
+        typeof payload.agent === "string" && payload.agent.trim() ? payload.agent : "claude";
       const resumeSessionId =
-        typeof payload.resumeSessionId === "string" && payload.resumeSessionId ? payload.resumeSessionId : undefined;
+        typeof payload.resumeSessionId === "string" && payload.resumeSessionId
+          ? payload.resumeSessionId
+          : undefined;
       // Adopting an external session is the highest-risk control action — gate it
       // behind remoteAdoptExternal; starting a fresh agent is ordinary control.
       if (denyRemote(resumeSessionId ? "adoptExternal" : "control")) return;
@@ -3016,20 +3254,29 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       // it — refuse with a clear 400 rather than silently spawning a fresh session.
       if (resumeSessionId && normalizeAgentKind(agent) !== "claude-code") {
         res.writeHead(400, { "content-type": "text/plain" });
-        res.end(`resume-adopt is only supported for claude sessions (got "${agent}"); start a fresh agent instead`);
+        res.end(
+          `resume-adopt is only supported for claude sessions (got "${agent}"); start a fresh agent instead`,
+        );
         return;
       }
       // Adopting an existing session needs no task (it continues the convo); a
       // fresh agent does. Guard: never resume a session that's currently live.
       if (!resumeSessionId && (typeof payload.task !== "string" || !payload.task.trim())) {
-        res.writeHead(400, { "content-type": "text/plain" }); res.end("task required"); return;
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("task required");
+        return;
       }
       if (resumeSessionId && liveClaudeSessionIds().has(resumeSessionId)) {
         res.writeHead(409, { "content-type": "text/plain" });
-        res.end("that session is currently live (open in the app/terminal) — close it first; resuming a live session would corrupt its transcript");
+        res.end(
+          "that session is currently live (open in the app/terminal) — close it first; resuming a live session would corrupt its transcript",
+        );
         return;
       }
-      const cwd = typeof payload.cwd === "string" && payload.cwd.startsWith("/") ? payload.cwd : process.cwd();
+      const cwd =
+        typeof payload.cwd === "string" && payload.cwd.startsWith("/")
+          ? payload.cwd
+          : process.cwd();
       try {
         const view = await ptyRegistry.start({
           agent,
@@ -3050,7 +3297,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const id = url.slice("/api/agents/pty/".length, -"/output".length);
       const out = ptyRegistry.output(decodeURIComponent(id));
       if (out === null) {
-        res.writeHead(404, { "content-type": "application/json" }); res.end(JSON.stringify({ ok: false }));
+        res.writeHead(404, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: false }));
         return;
       }
       res.writeHead(200, { "content-type": "application/json" });
@@ -3111,9 +3359,14 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const pBody = await readRequestText(req, res);
       if (pBody === null) return;
       let payload: { text?: unknown } = {};
-      try { payload = pBody ? JSON.parse(pBody) : {}; } catch { /* tolerate */ }
+      try {
+        payload = pBody ? JSON.parse(pBody) : {};
+      } catch {
+        /* tolerate */
+      }
       let ok = false;
-      if (action === "send" && typeof payload.text === "string") ok = ptyRegistry.send(id, payload.text);
+      if (action === "send" && typeof payload.text === "string")
+        ok = ptyRegistry.send(id, payload.text);
       else if (action === "cancel") ok = ptyRegistry.cancel(id);
       else {
         res.writeHead(400, { "content-type": "text/plain" });
@@ -3138,10 +3391,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       res.end(JSON.stringify({ ok: true, grants: listGrants() }));
       return;
     }
-    if (
-      req.method === "POST" &&
-      (url === "/api/consent/grant" || url === "/api/consent/revoke")
-    ) {
+    if (req.method === "POST" && (url === "/api/consent/grant" || url === "/api/consent/revoke")) {
       const cBody = await readRequestText(req, res);
       if (cBody === null) return;
       let payload: { signal?: unknown };
@@ -3186,9 +3436,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const q = new URL(url, "http://localhost").searchParams;
       const agent = q.get("agent") ?? "";
       const id = q.get("id") ?? "";
-      const session = hub
-        .list()
-        .find((s) => s.agent === agent && s.sessionId === id);
+      const session = hub.list().find((s) => s.agent === agent && s.sessionId === id);
       if (!session) {
         res.writeHead(404, { "content-type": "application/json" });
         res.end(JSON.stringify({ ok: false, error: "unknown_session" }));
@@ -3197,19 +3445,13 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       let steps: unknown[] = [];
       if (session.activity && session.jsonlPath) {
         if (agent === "claude-code") {
-          const { parseSessionSteps } = await import(
-            "../integrations/claude-code/parser.js"
-          );
+          const { parseSessionSteps } = await import("../integrations/claude-code/parser.js");
           steps = await parseSessionSteps(session.jsonlPath);
         } else if (agent === "codex") {
-          const { parseCodexSteps } = await import(
-            "../integrations/codex/observer.js"
-          );
+          const { parseCodexSteps } = await import("../integrations/codex/observer.js");
           steps = await parseCodexSteps(session.jsonlPath);
         } else if (agent === "aider") {
-          const { parseAiderSteps } = await import(
-            "../integrations/aider/observer.js"
-          );
+          const { parseAiderSteps } = await import("../integrations/aider/observer.js");
           steps = await parseAiderSteps(session.jsonlPath);
         }
       }
@@ -3238,9 +3480,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const q = new URL(url, "http://localhost").searchParams;
       const agent = q.get("agent") ?? "";
       const id = q.get("id") ?? "";
-      const session = hub
-        .list()
-        .find((s) => s.agent === agent && s.sessionId === id);
+      const session = hub.list().find((s) => s.agent === agent && s.sessionId === id);
       if (!session) {
         res.writeHead(404, { "content-type": "application/json" });
         res.end(JSON.stringify({ ok: false, error: "unknown_session" }));
@@ -3249,14 +3489,10 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       let entries: unknown[] = [];
       if (session.activity && session.jsonlPath) {
         if (agent === "claude-code") {
-          const { parseSessionTranscript } = await import(
-            "../integrations/claude-code/parser.js"
-          );
+          const { parseSessionTranscript } = await import("../integrations/claude-code/parser.js");
           entries = await parseSessionTranscript(session.jsonlPath);
         } else if (agent === "codex") {
-          const { parseCodexTranscript } = await import(
-            "../integrations/codex/observer.js"
-          );
+          const { parseCodexTranscript } = await import("../integrations/codex/observer.js");
           entries = await parseCodexTranscript(session.jsonlPath);
         }
       }
@@ -3304,34 +3540,36 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         "content-type": "application/manifest+json; charset=utf-8",
         "cache-control": "public, max-age=86400",
       });
-      res.end(JSON.stringify({
-        name: "LISA",
-        short_name: "Lisa",
-        description: "An AI agent with a real self.",
-        start_url: "/",
-        scope: "/",
-        display: "standalone",
-        orientation: "any",
-        background_color: "#0a0d2b",
-        theme_color: "#0a0d2b",
-        // Real, declared sizes (T-12). `sizes: "any"` on a raster PNG makes
-        // Chrome and iOS treat the icon as unusable for the home screen and
-        // fall back to a screenshot of the page — which is the "the installed
-        // app has no icon" the v0.24 review recorded. The maskable variant is
-        // a SEPARATE file, not the same bytes relabelled: a maskable icon must
-        // carry its own safe-zone padding, and declaring an unpadded icon
-        // maskable gets its edges cropped by the platform's mask.
-        icons: [
-          { src: "/assets/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
-          { src: "/assets/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
-          {
-            src: "/assets/icon-512-maskable.png",
-            sizes: "512x512",
-            type: "image/png",
-            purpose: "maskable",
-          },
-        ],
-      }));
+      res.end(
+        JSON.stringify({
+          name: "LISA",
+          short_name: "Lisa",
+          description: "An AI agent with a real self.",
+          start_url: "/",
+          scope: "/",
+          display: "standalone",
+          orientation: "any",
+          background_color: "#0a0d2b",
+          theme_color: "#0a0d2b",
+          // Real, declared sizes (T-12). `sizes: "any"` on a raster PNG makes
+          // Chrome and iOS treat the icon as unusable for the home screen and
+          // fall back to a screenshot of the page — which is the "the installed
+          // app has no icon" the v0.24 review recorded. The maskable variant is
+          // a SEPARATE file, not the same bytes relabelled: a maskable icon must
+          // carry its own safe-zone padding, and declaring an unpadded icon
+          // maskable gets its edges cropped by the platform's mask.
+          icons: [
+            { src: "/assets/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+            { src: "/assets/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+            {
+              src: "/assets/icon-512-maskable.png",
+              sizes: "512x512",
+              type: "image/png",
+              purpose: "maskable",
+            },
+          ],
+        }),
+      );
       return;
     }
 
@@ -3465,8 +3703,7 @@ self.addEventListener('fetch', (event) => {
       }
       const runtime = await ctxForRequest();
       try {
-        const { messages, hasMore } =
-          await runtime.value.session.readMessagePage(page, pageSize);
+        const { messages, hasMore } = await runtime.value.session.readMessagePage(page, pageSize);
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ messages, hasMore, page }));
       } finally {
@@ -3563,11 +3800,7 @@ self.addEventListener('fetch', (event) => {
       return;
     }
 
-    if (
-      req.method === "POST" &&
-      url.startsWith("/api/sessions/") &&
-      url.endsWith("/activate")
-    ) {
+    if (req.method === "POST" && url.startsWith("/api/sessions/") && url.endsWith("/activate")) {
       const id = url.slice("/api/sessions/".length, -"/activate".length);
       if (!/^[A-Za-z0-9_-]+$/.test(id)) {
         res.writeHead(400, { "content-type": "application/json" });
@@ -3576,17 +3809,13 @@ self.addEventListener('fetch', (event) => {
       }
       const runtime = await ctxForRequest();
       try {
-        const active = await swapChatSession(runtime.value, () =>
-          SessionStore.open(id),
-        );
+        const active = await swapChatSession(runtime.value, () => SessionStore.open(id));
         broadcast({ type: "session_switched", session: active });
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ ok: true, id: active }));
       } catch (err) {
         res.writeHead(404, { "content-type": "application/json" });
-        res.end(
-          JSON.stringify({ ok: false, error: (err as Error).message }),
-        );
+        res.end(JSON.stringify({ ok: false, error: (err as Error).message }));
       } finally {
         runtime.release();
       }
@@ -3610,10 +3839,7 @@ self.addEventListener('fetch', (event) => {
 
     if (req.method === "GET" && url === "/api/memory") {
       const { readMemory } = await import("../memory/store.js");
-      const [user, memory] = await Promise.all([
-        readMemory("user"),
-        readMemory("memory"),
-      ]);
+      const [user, memory] = await Promise.all([readMemory("user"), readMemory("memory")]);
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ user, memory }));
       return;
@@ -3660,11 +3886,22 @@ self.addEventListener('fetch', (event) => {
         res.end("empty content");
         return;
       }
-      const title = (payload.title ?? "").trim() || content.split("\n")[0]!.slice(0, 60) || "capture";
+      const title =
+        (payload.title ?? "").trim() || content.split("\n")[0]!.slice(0, 60) || "capture";
       const { addSource } = await import("../kb/store.js");
-      const entry = await addSource({ title, body: content, tags: payload.tags, origin: payload.origin || "chat" });
+      const entry = await addSource({
+        title,
+        body: content,
+        tags: payload.tags,
+        origin: payload.origin || "chat",
+      });
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ ok: true, entry: { layer: entry.layer, slug: entry.slug, title: entry.title } }));
+      res.end(
+        JSON.stringify({
+          ok: true,
+          entry: { layer: entry.layer, slug: entry.slug, title: entry.title },
+        }),
+      );
       return;
     }
     // Latest daily brief (K-H) — the feeds/<date>.json written for the UI.
@@ -3680,9 +3917,18 @@ self.addEventListener('fetch', (event) => {
       // Cloud edition: rate-limit this heavy route so an authenticated caller
       // can't loop it into an outbound-request amplifier / subprocess DoS. The
       // single-user loopback (Mac) edition is exempt.
-      if (cloud && !ipRateOk(`kb-ingest:${clientIp(req, remoteAddr)}`, KB_INGEST_IP_LIMIT, KB_INGEST_WINDOW_MS)) {
+      if (
+        cloud &&
+        !ipRateOk(`kb-ingest:${clientIp(req, remoteAddr)}`, KB_INGEST_IP_LIMIT, KB_INGEST_WINDOW_MS)
+      ) {
         res.writeHead(429, { "content-type": "application/json" });
-        res.end(JSON.stringify({ ok: false, error: "rate_limited", retryAfterSec: Math.ceil(KB_INGEST_WINDOW_MS / 1000) }));
+        res.end(
+          JSON.stringify({
+            ok: false,
+            error: "rate_limited",
+            retryAfterSec: Math.ceil(KB_INGEST_WINDOW_MS / 1000),
+          }),
+        );
         return;
       }
       let body: string;
@@ -3727,7 +3973,11 @@ self.addEventListener('fetch', (event) => {
             ok: true,
             deduped: result.deduped,
             via: result.via,
-            entry: { layer: result.entry.layer, slug: result.entry.slug, title: result.entry.title },
+            entry: {
+              layer: result.entry.layer,
+              slug: result.entry.slug,
+              title: result.entry.title,
+            },
             transcript: result.entry.extra?.transcript,
           }),
         );
@@ -3917,8 +4167,7 @@ self.addEventListener('fetch', (event) => {
         "cache-control": "no-cache",
         connection: "keep-alive",
       });
-      const send = (event: object) =>
-        res.write(`data: ${JSON.stringify(event)}\n\n`);
+      const send = (event: object) => res.write(`data: ${JSON.stringify(event)}\n\n`);
       // T-11 — the dream can be silent for most of its 90 s deadline.
       attachSseHeartbeat(req, res);
       // Join the single-flight run (S3). If the background lazy path started
@@ -4019,9 +4268,7 @@ self.addEventListener('fetch', (event) => {
     }
 
     if (req.method === "GET" && url.startsWith("/assets/")) {
-      const safe = path
-        .normalize(url.slice("/assets/".length))
-        .replace(/^[/\\]+/, "");
+      const safe = path.normalize(url.slice("/assets/".length)).replace(/^[/\\]+/, "");
       if (safe.includes("..")) {
         res.writeHead(400);
         res.end();
@@ -4068,10 +4315,7 @@ self.addEventListener('fetch', (event) => {
         files = parsed.files;
         // F6 — an explicit session target (Mac edition only; validated and
         // resolved after the lease below). Optional: old clients omit it.
-        if (
-          typeof parsed.sessionId === "string" &&
-          /^[A-Za-z0-9_-]+$/.test(parsed.sessionId)
-        ) {
+        if (typeof parsed.sessionId === "string" && /^[A-Za-z0-9_-]+$/.test(parsed.sessionId)) {
           targetSessionId = parsed.sessionId;
         }
       } catch (err) {
@@ -4116,11 +4360,7 @@ self.addEventListener('fetch', (event) => {
       // F6 — Mac edition: an explicit sessionId routes this turn to that
       // session's OWN ctx (own chain ⇒ turns in different sessions run
       // concurrently). Cloud per-uid contexts ignore it (single-ctx).
-      if (
-        targetSessionId &&
-        chat === globalChat &&
-        targetSessionId !== chat.session.id
-      ) {
+      if (targetSessionId && chat === globalChat && targetSessionId !== chat.session.id) {
         try {
           chat = await ctxForSessionId(targetSessionId);
         } catch {
@@ -4132,7 +4372,9 @@ self.addEventListener('fetch', (event) => {
         }
       }
       // User just talked — reset the idle watcher + stamp focus freshness.
-      try { getIdleWatcher(60 * 60_000).tick(); } catch {}
+      try {
+        getIdleWatcher(60 * 60_000).tick();
+      } catch {}
       chat.activity.lastUserMessageAt = Date.now();
       res.writeHead(200, {
         "content-type": "text/event-stream",
@@ -4229,8 +4471,7 @@ self.addEventListener('fetch', (event) => {
                 anyText = true;
                 send({ type: "text", text: ev.text });
               }
-              if (ev.type === "tool_call_start")
-                anyTool = true;
+              if (ev.type === "tool_call_start") anyTool = true;
               if (ev.type === "tool_call_start")
                 send({
                   type: "tool_start",
@@ -4243,9 +4484,7 @@ self.addEventListener('fetch', (event) => {
                   name: ev.toolName,
                   isError: ev.isError === true,
                   resultPreview:
-                    typeof ev.toolResult === "string"
-                      ? ev.toolResult.slice(0, 200)
-                      : "",
+                    typeof ev.toolResult === "string" ? ev.toolResult.slice(0, 200) : "",
                 });
               if (ev.type === "system_prompt_rebuilt")
                 send({ type: "soul_reload", message: ev.message ?? "" });
@@ -4257,32 +4496,44 @@ self.addEventListener('fetch', (event) => {
             // Same plugin hook wiring as the CLI turn — PreToolUse can block,
             // PostToolUse can rewrite. (Was CLI-only; web tool calls bypassed
             // every configured hook.)
-            preToolHook: hooks.length === 0 ? undefined : async (name, input) => {
-              const r = await fireHooks(
-                "PreToolUse",
-                hooks,
-                { TOOL_NAME: name, TOOL_INPUT: JSON.stringify(input), SESSION_ID: chat.session.id, LISA_HOME: lisaHome(), CLAUDE_PROJECT_DIR: process.cwd() },
-                process.cwd(),
-              );
-              if (r.blocked.length > 0) return { block: r.blocked.join("; ") };
-            },
-            postToolHook: hooks.length === 0 ? undefined : async (name, input, result, isError) => {
-              const r = await fireHooks(
-                "PostToolUse",
-                hooks,
-                {
-                  TOOL_NAME: name,
-                  TOOL_INPUT: JSON.stringify(input),
-                  TOOL_RESULT: result,
-                  TOOL_ERROR: isError ? "1" : "",
-                  SESSION_ID: chat.session.id,
-                  LISA_HOME: lisaHome(),
-                  CLAUDE_PROJECT_DIR: process.cwd(),
-                },
-                process.cwd(),
-              );
-              if (r.rewriteResult != null) return { rewriteResult: r.rewriteResult };
-            },
+            preToolHook:
+              hooks.length === 0
+                ? undefined
+                : async (name, input) => {
+                    const r = await fireHooks(
+                      "PreToolUse",
+                      hooks,
+                      {
+                        TOOL_NAME: name,
+                        TOOL_INPUT: JSON.stringify(input),
+                        SESSION_ID: chat.session.id,
+                        LISA_HOME: lisaHome(),
+                        CLAUDE_PROJECT_DIR: process.cwd(),
+                      },
+                      process.cwd(),
+                    );
+                    if (r.blocked.length > 0) return { block: r.blocked.join("; ") };
+                  },
+            postToolHook:
+              hooks.length === 0
+                ? undefined
+                : async (name, input, result, isError) => {
+                    const r = await fireHooks(
+                      "PostToolUse",
+                      hooks,
+                      {
+                        TOOL_NAME: name,
+                        TOOL_INPUT: JSON.stringify(input),
+                        TOOL_RESULT: result,
+                        TOOL_ERROR: isError ? "1" : "",
+                        SESSION_ID: chat.session.id,
+                        LISA_HOME: lisaHome(),
+                        CLAUDE_PROJECT_DIR: process.cwd(),
+                      },
+                      process.cwd(),
+                    );
+                    if (r.rewriteResult != null) return { rewriteResult: r.rewriteResult };
+                  },
             onMessagePersist: (m) => chat.session.appendMessage(m),
             onPromptPersist: (text, reason) => chat.session.appendPrompt(text, reason),
             hotReload: {
@@ -4419,7 +4670,15 @@ self.addEventListener('fetch', (event) => {
   // method so the returned http.Server keeps its ordinary lifecycle — callers
   // (and tests) just server.close(). Idempotent by construction.
   server.on("close", () => {
-    for (const t of [adviseTimer, mailTimer, mailKick, kbBriefTimer, kbBriefKick, mailPoll, reflectTimer]) {
+    for (const t of [
+      adviseTimer,
+      mailTimer,
+      mailKick,
+      kbBriefTimer,
+      kbBriefKick,
+      mailPoll,
+      reflectTimer,
+    ]) {
       if (t) clearTimeout(t);
     }
     if (screenTimer) {
