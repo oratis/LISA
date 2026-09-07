@@ -16,6 +16,9 @@ import {
   upgradeCommands,
   type InstallFacts,
   type Step,
+  classifyUpgradeFailure,
+  failureAdvice,
+  MIN_NODE_MAJOR,
 } from "./upgrade.js";
 
 /**
@@ -290,5 +293,80 @@ describe("runUpgrade", () => {
     assert.equal(await h.call(), 0);
     assert.match(h.text(), /couldn't restart the daemon/);
     assert.match(h.text(), /run it yourself: launchctl kickstart/);
+  });
+});
+
+describe("a failed upgrade says what to do about it", () => {
+  // `npm install -g` failing on EACCES is the single most common way this
+  // command fails, and #371 already taught the Mac wizard the no-sudo prefix
+  // fix. The CLI printed npm's first line and stopped, so the same user got a
+  // dead end from one surface and a fix from the other.
+  test("EACCES / EPERM / permission denied are the permissions case", () => {
+    for (const out of [
+      "npm ERR! code EACCES\nnpm ERR! syscall mkdir",
+      "npm ERR! code EPERM",
+      "Error: permission denied, mkdir '/usr/local/lib/node_modules'",
+    ]) {
+      assert.equal(classifyUpgradeFailure(out), "permissions", out.slice(0, 30));
+    }
+  });
+
+  test("registry / DNS / connection failures are the network case", () => {
+    for (const out of ["getaddrinfo ENOTFOUND registry.npmjs.org", "npm ERR! code ETIMEDOUT", "ECONNRESET"]) {
+      assert.equal(classifyUpgradeFailure(out), "network", out.slice(0, 30));
+    }
+  });
+
+  test("an engine mismatch is called out as Node, not as a generic failure", () => {
+    assert.equal(classifyUpgradeFailure("npm ERR! code EBADENGINE"), "node-too-old");
+    assert.equal(classifyUpgradeFailure("Unsupported engine for @oratis/lisa"), "node-too-old");
+  });
+
+  test("anything else stays unknown rather than guessing", () => {
+    assert.equal(classifyUpgradeFailure("npm ERR! something new"), "unknown");
+    assert.equal(classifyUpgradeFailure(""), "unknown");
+  });
+
+  test("classification reads the whole message, not just its first line", () => {
+    // runCmd rejects with `npm exited 1: <stderr>`, and the needle is almost
+    // never on line one.
+    const real = "npm exited 1: npm ERR! code EACCES\nnpm ERR! syscall mkdir\nnpm ERR! path /usr/local/lib";
+    assert.equal(classifyUpgradeFailure(real), "permissions");
+  });
+
+  test("the permissions advice is the same no-sudo prefix move the Mac wizard runs", () => {
+    const advice = failureAdvice("permissions", "npm-global").join("\n");
+    for (const needle of [
+      'npm config set prefix "$HOME/.npm-global"',
+      ".zprofile",
+      'export PATH="$HOME/.npm-global/bin:$PATH"',
+      "npm install -g @oratis/lisa@latest",
+    ]) {
+      assert.ok(advice.includes(needle), `advice should carry: ${needle}`);
+    }
+    // "no sudo" in the prose is the point; an actual `sudo npm` command is not.
+    const commands = failureAdvice("permissions", "npm-global").filter((l) => l.startsWith("  "));
+    assert.ok(
+      commands.every((l) => !/\bsudo\b/.test(l)),
+      "never hand someone a sudo npm install — that is what creates the root-owned folder",
+    );
+  });
+
+  test("every failure kind produces non-empty, actionable advice", () => {
+    for (const kind of ["permissions", "network", "node-too-old", "unknown"] as const) {
+      const lines = failureAdvice(kind, "npm-global");
+      assert.ok(lines.length > 0, kind);
+      assert.ok(lines.every((l) => l.trim().length > 0), kind);
+    }
+  });
+
+  test("MIN_NODE_MAJOR tracks package.json engines.node", async () => {
+    const fs = await import("node:fs/promises");
+    const url = await import("node:url");
+    const path = await import("node:path");
+    const root = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../..");
+    const pkg = JSON.parse(await fs.readFile(path.join(root, "package.json"), "utf8"));
+    const declared = Number(/(\d+)/.exec(String(pkg.engines?.node ?? ""))?.[1]);
+    assert.equal(MIN_NODE_MAJOR, declared, "keep upgrade.ts in sync with engines.node");
   });
 });

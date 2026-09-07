@@ -20,6 +20,12 @@ import { bold, dim, fail, green, grey, heading, ok, rule, warn } from "./colors.
 import { displayPath } from "./display-path.js";
 
 export const PACKAGE_NAME = "@oratis/lisa";
+/**
+ * package.json `engines.node`, and BackendSetup.minimumNodeMajor in the Mac
+ * client — keep the three in sync. upgrade.test.ts reads package.json and
+ * fails if this drifts from it.
+ */
+export const MIN_NODE_MAJOR = 20;
 /** The tap formula from README.md (`brew install oratis/tap/lisa`). */
 export const BREW_FORMULA = "oratis/tap/lisa";
 /**
@@ -127,6 +133,59 @@ export function manualInstructions(flavor: InstallFlavor, repoRoot?: string | nu
     `  brew upgrade ${BREW_FORMULA}`,
     `  npm install -g ${PACKAGE_NAME}@latest`,
   ];
+}
+
+/**
+ * Why an upgrade command failed, from the tool's own combined output.
+ *
+ * Mirrors classifyInstallFailure() in
+ * packaging/mac-client/Sources/LisaSetup/BackendSetup.swift — both surfaces run
+ * the same `npm install -g`, so they must hand out the same fix. The Mac wizard
+ * gained one in #371 while `lisa upgrade` still printed npm's first line and
+ * stopped, which left the CLI user at a dead end for the single most common
+ * failure this command has.
+ */
+export type UpgradeFailure = "permissions" | "network" | "node-too-old" | "unknown";
+
+export function classifyUpgradeFailure(output: string): UpgradeFailure {
+  const o = output.toLowerCase();
+  if (o.includes("eacces") || o.includes("eperm") || o.includes("permission denied")) {
+    return "permissions";
+  }
+  if (o.includes("ebadengine") || o.includes("unsupported engine")) return "node-too-old";
+  for (const needle of ["enotfound", "etimedout", "econnreset", "econnrefused", "eai_again", "network"]) {
+    if (o.includes(needle)) return "network";
+  }
+  return "unknown";
+}
+
+/**
+ * What to tell someone after a failed upgrade. The permissions branch is the
+ * standard no-sudo npm prefix move, verbatim the same commands the Mac wizard
+ * offers, so the two surfaces cannot drift into contradicting each other.
+ */
+export function failureAdvice(kind: UpgradeFailure, flavor: InstallFlavor): string[] {
+  switch (kind) {
+    case "permissions":
+      return [
+        "npm can't write to its global folder — it's owned by root.",
+        "The standard fix moves global packages into your home folder (no sudo), then retries:",
+        '  mkdir -p "$HOME/.npm-global"',
+        '  npm config set prefix "$HOME/.npm-global"',
+        `  grep -qs 'npm-global/bin' "$HOME/.zprofile" || echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> "$HOME/.zprofile"`,
+        '  export PATH="$HOME/.npm-global/bin:$PATH"',
+        `  npm install -g ${PACKAGE_NAME}@latest`,
+      ];
+    case "network":
+      return ["Couldn't reach the registry. Check your connection (and any proxy or VPN), then retry."];
+    case "node-too-old":
+      return [`This Node.js is too old for Lisa — install Node ${MIN_NODE_MAJOR} or newer, then retry.`];
+    case "unknown":
+      return [
+        "The message above is the tool's own. Running the command yourself shows its full output:",
+        ...manualInstructions(flavor),
+      ];
+  }
 }
 
 export function kickstartCommand(uid: number, label = AUTOSTART_LABEL): Step {
@@ -311,7 +370,15 @@ export async function runUpgrade(opts: UpgradeOptions = {}): Promise<number> {
     try {
       await run(s);
     } catch (err) {
-      log(`  ${fail((err as Error).message.split("\n")[0] ?? "failed")}`);
+      const message = (err as Error).message;
+      log(`  ${fail(message.split("\n")[0] ?? "failed")}`);
+      log("");
+      log(heading("What to do"));
+      // Classify on the whole message: runCmd puts the command's stderr in it,
+      // and the needle (EACCES, EBADENGINE, …) is rarely on the first line.
+      for (const line of failureAdvice(classifyUpgradeFailure(message), detection.flavor)) {
+        log(`  ${line}`);
+      }
       log("");
       log(rule());
       log(fail(`\`${formatStep(s)}\` failed — Lisa is still on ${before}`));
