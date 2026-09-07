@@ -50,7 +50,48 @@ import { renderMarkdown } from "./md-render.js";
  */
 const MD_RENDER_JS = `function __name(t){return t}\n${renderMarkdown}`;
 
-export const MAIN_HTML = `<!doctype html>
+/**
+ * Content-Security-Policy for the shell (T-4).
+ *
+ * The page carries two inline <script> blocks, so a policy without
+ * 'unsafe-inline' needs a per-response nonce — which is the point: with a
+ * nonce, an injected <script> (from a tool result, a mail subject, an agent's
+ * output rendered as Markdown) cannot run, because the attacker cannot guess
+ * the nonce. The stylesheet stays 'unsafe-inline': the client sets style="…"
+ * on elements in dozens of places and nonces do not apply to style attributes.
+ *
+ * Every directive is as narrow as the shell actually needs:
+ *   img-src / media-src   data: + blob: for attachment previews and recorded
+ *                         dictation, which are read into object URLs.
+ *   frame-src 'self'      the Room iframe loads /room from this origin.
+ *   connect-src 'self'    fetch + EventSource only ever talk to the backend.
+ *   object-src 'none'     nothing embeds plugins.
+ * Applied to GET / only — the API routes return JSON and the asset route
+ * serves images, neither of which a document policy helps.
+ */
+export function mainHtmlCsp(nonce: string): string {
+  return [
+    "default-src 'self'",
+    `script-src 'self' 'nonce-${nonce}'`,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:",
+    "media-src 'self' blob: data:",
+    "connect-src 'self'",
+    "frame-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+  ].join("; ");
+}
+
+/**
+ * Render the shell. `nonce` is stamped on both inline <script> tags so they
+ * survive the script-src above; omit it (the MAIN_HTML export below) and the
+ * page is byte-identical to the pre-CSP version, which is what the tests and
+ * any non-HTTP consumer want.
+ */
+export function renderMainHtml(opts: { nonce?: string } = {}): string {
+  const nonceAttr = opts.nonce ? ` nonce="${opts.nonce}"` : "";
+  return `<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -71,7 +112,7 @@ ${MAIN_CSS}
      so a fresh profile never flashes the 3-column layout during the long tail
      of inline JS at the end of <body>. MAIN_CLIENT_JS re-applies the same
      class idempotently and owns the toggle from then on. -->
-<script>
+<script${nonceAttr}>
 try { if (localStorage.getItem('lisaRightbar') !== 'open') document.body.classList.add('rb-collapsed'); }
 catch (e) { document.body.classList.add('rb-collapsed'); }
 </script>
@@ -380,8 +421,17 @@ catch (e) { document.body.classList.add('rb-collapsed'); }
   </div>
 </div>
 
-<script>
+<script${nonceAttr}>
 ${MD_RENDER_JS}
 ${MAIN_CLIENT_JS}
 </script>
 </body></html>`;
+}
+
+/**
+ * The nonce-less shell. Kept as a named export because every consumer that is
+ * not an HTTP response (tests, tooling) wants a stable string, and because a
+ * page served without the CSP header must not carry a nonce attribute that
+ * says nothing.
+ */
+export const MAIN_HTML = renderMainHtml();
