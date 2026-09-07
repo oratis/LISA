@@ -64,7 +64,7 @@ final class HotkeyManager {
         )
 
         // Register ⌃⌥S. keyCode 1 = 's' on the ANSI layout.
-        var hotKeyID = EventHotKeyID(signature: Self.signature, id: Self.hotKeyIDValue)
+        let hotKeyID = EventHotKeyID(signature: Self.signature, id: Self.hotKeyIDValue)
         let modifiers = UInt32(controlKey | optionKey)
         RegisterEventHotKey(
             UInt32(kVK_ANSI_S),
@@ -75,7 +75,6 @@ final class HotkeyManager {
             &hotKeyRef,
         )
         FileHandle.standardError.write(Data("[lisa] global hotkey ⌃⌥S registered\n".utf8))
-        _ = hotKeyID // silence unused-mutation warning
     }
 
     func unregister() {

@@ -9,7 +9,14 @@ struct SettingsView: View {
     @State private var pairText = ""
     @State private var policy: ControlPolicy?
     @State private var ntfyTopic = ""
+    @State private var ntfyServer = ""
+    @State private var transport: PushTransport = .ntfy
     @State private var prefs = PushPrefs()
+    /// What the Mac says it will actually publish to (GET /api/push/list).
+    @State private var pushSubs: [PushSubscriptionDTO] = []
+    @State private var pushLoaded = false
+    @State private var testBusy = false
+    @State private var testStatus = ""
     @State private var status = ""
     @State private var showScanner = false
     @State private var showUnpairConfirm = false
@@ -97,36 +104,104 @@ struct SettingsView: View {
                     }
                 }
 
-                Section("Push (ntfy)") {
-                    TextField("ntfy topic", text: $ntfyTopic)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
+                Section("Notifications") {
+                    Picker("Deliver via", selection: $transport) {
+                        ForEach(PushTransport.allCases) { t in Text(t.label).tag(t) }
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityLabel("Notification transport")
+
+                    if transport == .ntfy {
+                        TextField("ntfy topic", text: $ntfyTopic)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                            .accessibilityHint("Anyone who knows this topic can read your alerts — make it hard to guess")
+                        TextField("ntfy server (optional)", text: $ntfyServer)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                            .keyboardType(.URL)
+                    }
+
+                    // The honest line: built from GET /api/push/list, never from
+                    // "we sent a register request" (the UX-12 dead end).
+                    Text(PushSettings.stateLine(transport: transport, subs: pushSubs, loaded: pushLoaded,
+                                                apnsToken: app.apnsToken, ntfyTopic: ntfyTopic))
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if transport == .apns {
+                        Button("Enable push notifications") {
+                            Task { await app.enablePush(prefs: prefs); await loadPush() }
+                        }
+                        if !app.pushStatus.isEmpty {
+                            Text(app.pushStatus).font(.caption).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    } else {
+                        Button("Register") {
+                            Task { @MainActor in
+                                do {
+                                    _ = try await app.client.pushRegister(
+                                        kind: "ntfy", target: ntfyTopic.trimmed,
+                                        server: ntfyServer.trimmed.isEmpty ? nil : ntfyServer.trimmed,
+                                        prefs: prefs)
+                                    saveNtfyDefaults()
+                                    app.notify("Your Mac will publish to “\(ntfyTopic.trimmed)”.")
+                                    await loadPush()
+                                } catch {
+                                    app.notify((error as? LocalizedError)?.errorDescription ?? "Couldn't register push.", ok: false)
+                                }
+                            }
+                        }
+                        .disabled(ntfyTopic.trimmed.isEmpty)
+
+                        // A real end-to-end check: publishing to an ntfy topic is
+                        // an unauthenticated POST, so the phone can prove the topic
+                        // + the ntfy app work without involving the Mac at all.
+                        // There is no equivalent for APNs — the server exposes no
+                        // test endpoint and Apple delivery can't be triggered from
+                        // the device — so the button is honestly ntfy-only.
+                        Button("Send a test notification") { Task { await sendTestNotification() } }
+                            .disabled(ntfyTopic.trimmed.isEmpty || testBusy)
+                        if !testStatus.isEmpty {
+                            Text(testStatus).font(.caption).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+
+                Section("Notify me about") {
                     Toggle("Agent done", isOn: $prefs.done)
                     Toggle("Agent error", isOn: $prefs.error)
                     Toggle("Needs permission", isOn: $prefs.permission)
                     Toggle("While-away notes", isOn: $prefs.idle)   // was mislabeled "Reve notes" (B11)
                     Toggle("Advisor tips", isOn: $prefs.advisor)    // was hardcoded, never exposed (B11)
                     Toggle("Mail digest + alerts", isOn: $prefs.mail)
-                    Button("Register push") {
-                        Task { @MainActor in
-                            do {
-                                try await app.client.pushRegister(kind: "ntfy", target: ntfyTopic, prefs: prefs)
-                                app.notify("Push registered.")
-                            } catch {
-                                app.notify((error as? LocalizedError)?.errorDescription ?? "Couldn't register push.", ok: false)
+                    Toggle("Daily feeds brief", isOn: $prefs.brief)  // server had it; the app never showed it
+                    if let sub = registeredSub {
+                        // Flipping a switch used to do nothing until you happened
+                        // to re-register. Say so, and give it a button.
+                        if PushSettings.hasUnsavedPrefs(local: prefs, registered: sub.prefs) {
+                            Button("Save preferences") {
+                                Task { @MainActor in
+                                    do {
+                                        try await app.client.pushSetPrefs(id: sub.id, prefs: prefs)
+                                        app.notify("Preferences saved.")
+                                        await loadPush()
+                                    } catch {
+                                        app.notify((error as? LocalizedError)?.errorDescription ?? "Couldn't save preferences.", ok: false)
+                                    }
+                                }
                             }
+                            Text("Unsaved — these apply once you tap Save preferences.")
+                                .font(.caption).foregroundStyle(Theme.waiting)
+                        } else {
+                            Text("In sync with your Mac.").font(.caption).foregroundStyle(.secondary)
                         }
+                    } else {
+                        Text("These apply when you register a destination above.")
+                            .font(.caption).foregroundStyle(.secondary)
                     }
-                    .disabled(ntfyTopic.isEmpty)
-                }
-
-                Section("Push (APNs)") {
-                    Button("Enable push notifications") { Task { await app.enablePush() } }
-                    if !app.pushStatus.isEmpty {
-                        Text(app.pushStatus).font(.caption).foregroundStyle(.secondary)
-                    }
-                    Text("Native Apple Push. Delivery needs an APNs key set on the Mac; ntfy works without one.")
-                        .font(.caption).foregroundStyle(.secondary)
                 }
 
                 Section("Remote-control policy (set on the Mac)") {
@@ -196,6 +271,8 @@ struct SettingsView: View {
             .navigationTitle("Settings")
             .onAppear(perform: syncFromConfig)
             .task { policy = try? await app.client.controlPolicy(); await app.loadProactive(); await app.refreshAccount() }
+            .task(id: app.config) { await loadPush() }
+            .onChange(of: transport) { _, _ in adoptRegisteredPrefs() }
             .sheet(isPresented: $showScanner) {
                 QRScanSheet(onScanned: handleScan, onError: { status = $0 })
             }
@@ -216,6 +293,65 @@ struct SettingsView: View {
         host = app.config.host
         portText = String(app.config.port)
         token = app.config.token ?? ""
+        let d = UserDefaults.standard
+        // The topic used to live only in @State — leave Settings and it was gone,
+        // so the section couldn't tell you what your Mac was publishing to.
+        if ntfyTopic.isEmpty { ntfyTopic = d.string(forKey: "lisa.ntfy.topic") ?? "" }
+        if ntfyServer.isEmpty { ntfyServer = d.string(forKey: "lisa.ntfy.server") ?? "" }
+        if let saved = d.string(forKey: "lisa.push.transport"), let t = PushTransport(rawValue: saved) {
+            transport = t
+        }
+    }
+
+    private func saveNtfyDefaults() {
+        let d = UserDefaults.standard
+        d.set(ntfyTopic.trimmed, forKey: "lisa.ntfy.topic")
+        d.set(ntfyServer.trimmed, forKey: "lisa.ntfy.server")
+        d.set(transport.rawValue, forKey: "lisa.push.transport")
+    }
+
+    /// The destination this screen is currently talking about, as the Mac has it.
+    private var registeredSub: PushSubscriptionDTO? {
+        PushSettings.current(pushSubs, transport: transport,
+                             target: transport == .apns ? (app.apnsToken ?? "") : ntfyTopic.trimmed)
+    }
+
+    private func loadPush() async {
+        guard app.config.isConfigured else { pushLoaded = true; return }
+        pushSubs = (try? await app.client.pushList()) ?? []
+        pushLoaded = true
+        // Adopt a topic we've never seen locally, so a phone that was set up on
+        // another device (or reinstalled) shows the truth instead of a blank field.
+        if ntfyTopic.trimmed.isEmpty, let n = pushSubs.first(where: { $0.transport == .ntfy }) {
+            ntfyTopic = n.target
+            ntfyServer = n.server ?? ""
+        }
+        adoptRegisteredPrefs()
+    }
+
+    /// Start the toggles from what the Mac stored, so "unsaved" means a real edit.
+    private func adoptRegisteredPrefs() {
+        if let p = registeredSub?.prefs { prefs = p }
+        app.pushPrefs = prefs
+        saveNtfyDefaults()
+    }
+
+    private func sendTestNotification() async {
+        testBusy = true
+        defer { testBusy = false }
+        testStatus = "Sending…"
+        saveNtfyDefaults()
+        switch await NtfyTester.send(server: ntfyServer.trimmed.isEmpty ? nil : ntfyServer.trimmed,
+                                     topic: ntfyTopic.trimmed) {
+        case .sent:
+            testStatus = "Sent. It should appear in the ntfy app within a few seconds — if it doesn't, you're not subscribed to that topic there."
+        case .badTopic:
+            testStatus = "That topic isn't usable as a URL — try letters, digits, - and _."
+        case .rejected(let code):
+            testStatus = "The ntfy server refused it (HTTP \(code)). A self-hosted server may need auth, which Lisa Pocket doesn't send."
+        case .unreachable(let why):
+            testStatus = "Couldn't reach the ntfy server: \(why)"
+        }
     }
 
     /// Probe the just-applied Mac pairing and report the real outcome into the

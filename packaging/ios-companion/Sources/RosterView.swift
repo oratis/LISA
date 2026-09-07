@@ -101,6 +101,13 @@ func sortRows(_ rows: [AgentSession]) -> [AgentSession] {
     }
 }
 
+/// The spoken twin of `stateColor` — a pending permission outranks the raw
+/// state in both, so the pip's colour and its VoiceOver label never disagree.
+func statusPhrase(_ s: AgentSession) -> String {
+    if let p = s.activity?.pendingPermission { return "needs you: \(p)" }
+    return GlanceColors.phrase(s.state)
+}
+
 func stateColor(_ s: AgentSession) -> Color {
     if s.activity?.pendingPermission != nil { return Theme.waiting }
     switch s.state {
@@ -252,6 +259,9 @@ struct RosterView: View {
                             }
                         }
                         .listRowBackground(Theme.card)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("\(s.displayName), \(s.messageCount) messages")
+                        .accessibilityHint("Makes this Lisa's active session")
                     }
                 } header: { Text("LISA · \(lisaSessions.count)") }
             }
@@ -343,15 +353,19 @@ struct NeedsYouCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.s) {
             HStack(spacing: 8) {
-                StatusDot(color: stateColor(session))
+                StatusDot(color: stateColor(session), label: statusPhrase(session))
                 Text(session.project).font(.subheadline.weight(.medium)).foregroundStyle(Theme.text).lineLimit(1)
                 Text(session.agent).font(.caption2).foregroundStyle(Theme.secondary)
                 Spacer()
                 Button(action: onOpen) {
                     HStack(spacing: 2) { Text("Open"); Image(systemName: "chevron.right") }
                         .font(.caption).foregroundStyle(Theme.accent)
+                        .frame(minWidth: 44, minHeight: 44, alignment: .trailing)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Open \(session.project)")
+                .accessibilityHint("Shows this agent's full session")
             }
             if let pend = session.activity?.pendingPermission {
                 Text("Paused on: \(pend)").font(.caption).foregroundStyle(Theme.secondary)
@@ -422,7 +436,7 @@ struct RosterRow: View {
     }
 
     private var rowLabel: String {
-        var s = "\(session.project), \(session.agent), \(session.state)"
+        var s = "\(session.project), \(session.agent), \(GlanceColors.phrase(session.state))"
         if let p = session.activity?.pendingPermission { s += ", needs you: \(p)" }
         else if session.resumable == true { s += ", resumable" }
         return s
@@ -455,6 +469,8 @@ struct ProactiveBanner: View {
                 .labelsHidden()
                 .tint(Theme.green)
                 .disabled(app.proactiveBusy || !app.proactiveAvailable)
+                .accessibilityLabel("Proactive mode")
+                .accessibilityValue(app.proactiveEnabled ? "Lisa acts on her own when idle" : "Lisa waits for you")
         }
         .padding(14)
         .background(Theme.green.opacity(0.10), in: RoundedRectangle(cornerRadius: Theme.cardRadius))
@@ -629,9 +645,16 @@ struct SessionDetailView: View {
                     Button("Cancel", role: .destructive) { act { try await app.client.ptyCancel(session.sessionId) } }
                     if !canControl { remoteBlockedNote }
                 }
-                Button("Load output") { act { output = try await app.client.ptyOutput(session.sessionId) } }
-                if !output.isEmpty {
-                    CodeBlock(text: output, maxHeight: 200)
+                // Live attach for a running session (SSE snapshot + chunks, with
+                // reconnect); the one-shot pull stays for a finished one, where
+                // there is nothing left to stream.
+                if isTerminal {
+                    Button("Load output") { act { output = try await app.client.ptyOutput(session.sessionId) } }
+                    if !output.isEmpty {
+                        CodeBlock(text: output, maxHeight: 200)
+                    }
+                } else {
+                    PTYLiveOutput(sessionId: session.sessionId)
                 }
             }
             .disabled(!isTerminal && !canControl)

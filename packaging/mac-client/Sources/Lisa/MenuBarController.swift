@@ -288,7 +288,16 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             start.bezelStyle = .rounded
             start.keyEquivalent = "\r"
             start.isEnabled = !starting
-            v.addArrangedSubview(start)
+            // Second door (UX-7): "isn't running" and "was never installed" look
+            // identical from here, so offer the wizard next to the start button.
+            let setup = NSButton(title: "Set Up…", target: self, action: #selector(openBackendSetup))
+            setup.bezelStyle = .rounded
+            setup.isEnabled = !starting
+            let startRow = NSStackView(views: [start, setup])
+            startRow.orientation = .horizontal
+            startRow.alignment = .centerY
+            startRow.spacing = 8
+            v.addArrangedSubview(startRow)
             v.widthAnchor.constraint(equalToConstant: inner).isActive = true
             stack.addArrangedSubview(v)
         } else {
@@ -596,6 +605,11 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     @objc private func pairPhone() {
         popover?.close()
         PairController.shared.showPairing()
+    }
+
+    @objc private func openBackendSetup() {
+        popover?.performClose(nil)
+        BackendSetupController.shared.presentFromMenu()
     }
 
     @objc private func startBackend() {

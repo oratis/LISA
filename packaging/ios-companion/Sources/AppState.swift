@@ -43,6 +43,13 @@ final class AppState: ObservableObject {
     @Published var appearance: String
     /// Last APNs registration outcome, shown in Settings.
     @Published var pushStatus = ""
+    /// The device token iOS handed us, once it has. nil means Apple never issued
+    /// one here (the Simulator, or notifications denied) — Settings says so
+    /// instead of implying push is live.
+    @Published var apnsToken: String?
+    /// The event toggles the user last chose, so an APNs registration carries the
+    /// same preferences the ntfy path would (they used to be hardcoded defaults).
+    var pushPrefs = PushPrefs()
     /// Drives the first-run onboarding cover (docs/PLAN_IOS_ONBOARDING_v1.0.md).
     @Published var showOnboarding = false
     /// Transient toast for action feedback (so a failed control/mutation — now
@@ -114,13 +121,16 @@ final class AppState: ObservableObject {
     }
 
     // ── APNs registration (client half; delivery needs the Mac's APNs key) ──
-    func enablePush() async {
+    /// Ask iOS for permission + a device token, then hand it to the Mac. Carries
+    /// the user's current toggles rather than silently registering the defaults.
+    func enablePush(prefs: PushPrefs? = nil) async {
+        if let prefs { pushPrefs = prefs }
         do {
             let granted = try await UNUserNotificationCenter.current()
                 .requestAuthorization(options: [.alert, .sound, .badge])
-            guard granted else { pushStatus = "Notifications not allowed in iOS Settings."; return }
+            guard granted else { pushStatus = "Notifications are off for Lisa Pocket in iOS Settings."; return }
             UIApplication.shared.registerForRemoteNotifications()
-            pushStatus = "Registering for push…"
+            pushStatus = "Asking Apple for a device token…"
         } catch {
             pushStatus = error.localizedDescription
         }
@@ -128,12 +138,17 @@ final class AppState: ObservableObject {
 
     private func onApnsToken(_ hex: String?) async {
         guard let hex, !hex.isEmpty else {
-            pushStatus = "APNs unavailable here (no token — e.g. the Simulator)."
+            apnsToken = nil
+            pushStatus = "Apple didn't issue a token here — the Simulator never does. Use an ntfy topic instead."
             return
         }
+        apnsToken = hex
         do {
-            try await client.pushRegister(kind: "apns", target: hex, prefs: PushPrefs())
-            pushStatus = "Push registered (APNs)."
+            try await client.pushRegister(kind: "apns", target: hex, prefs: pushPrefs)
+            // Deliberately NOT "push registered": the Mac stored the token, but
+            // whether Apple ever delivers depends on LISA_APNS_* over there, which
+            // /api/push/* doesn't report. Settings' state line says the rest.
+            pushStatus = "Token sent to your Mac."
         } catch {
             pushStatus = (error as? LocalizedError)?.errorDescription ?? "\(error)"
         }

@@ -242,6 +242,152 @@ final class LisaPocketTests: XCTestCase {
         XCTAssertFalse(InstallMethod.app.isCLI)
     }
 
+    // ── PTY live stream: bounded buffer + an honest connection phrase ──
+
+    func testPTYBufferKeepsShortOutputIntact() {
+        XCTAssertEqual(PTYBuffer.appending("world", to: "hello "), "hello world")
+        XCTAssertEqual(PTYBuffer.trimmed("short"), "short")
+    }
+
+    func testPTYBufferTrimsToTheTailOnALineBoundary() {
+        // 20 chars of head, then a newline, then the tail we care about.
+        let text = String(repeating: "x", count: 20) + "\n" + String(repeating: "y", count: 40)
+        let out = PTYBuffer.trimmed(text, limit: 45)
+        XCTAssertEqual(out, String(repeating: "y", count: 40),
+                       "the leading partial line is dropped when it's cheap to do so")
+        XCTAssertLessThanOrEqual(out.count, 45)
+    }
+
+    func testPTYBufferFallsBackToARawTailWhenNoNearbyNewline() {
+        let text = String(repeating: "z", count: 5000)   // one enormous line
+        let out = PTYBuffer.trimmed(text, limit: 100)
+        XCTAssertEqual(out.count, 100)
+    }
+
+    func testPTYBufferAppendStaysBounded() {
+        var text = ""
+        for _ in 0..<50 { text = PTYBuffer.appending(String(repeating: "a", count: 100) + "\n", to: text, limit: 500) }
+        XCTAssertLessThanOrEqual(text.count, 500)
+    }
+
+    func testPTYStreamStatePhrasesAreDistinctAndNameTheReason() {
+        XCTAssertEqual(PTYStreamState.live.phrase, "live")
+        XCTAssertEqual(PTYStreamState.ended.phrase, "finished")
+        XCTAssertTrue(PTYStreamState.retrying(seconds: 4).phrase.contains("4s"))
+        XCTAssertEqual(PTYStreamState.blocked("Remote control is disabled on this Mac — no live output.").phrase,
+                       "Remote control is disabled on this Mac — no live output.")
+    }
+
+    // ── push transport: the topic URL, and an honest state line ──
+
+    func testNtfyPublishURLDefaultsToNtfySh() {
+        XCTAssertEqual(PushSettings.ntfyPublishURL(server: nil, topic: "lisa-abc")?.absoluteString,
+                       "https://ntfy.sh/lisa-abc")
+        XCTAssertEqual(PushSettings.ntfyPublishURL(server: "", topic: " lisa-abc ")?.absoluteString,
+                       "https://ntfy.sh/lisa-abc")
+    }
+
+    func testNtfyPublishURLAcceptsBareHostAndTrimsSlashes() {
+        XCTAssertEqual(PushSettings.ntfyPublishURL(server: "ntfy.example.com", topic: "t")?.absoluteString,
+                       "https://ntfy.example.com/t")
+        XCTAssertEqual(PushSettings.ntfyPublishURL(server: "http://10.0.0.9:8080/", topic: "t")?.absoluteString,
+                       "http://10.0.0.9:8080/t")
+    }
+
+    func testNtfyPublishURLRejectsEmptyTopic() {
+        XCTAssertNil(PushSettings.ntfyPublishURL(server: nil, topic: "   "))
+    }
+
+    func testStateLineNeverClaimsApnsDeliveryWorks() {
+        let token = "abc123"
+        let registered = [PushSubscriptionDTO(id: "1", kind: "apns", target: token)]
+        let line = PushSettings.stateLine(transport: .apns, subs: registered, loaded: true,
+                                          apnsToken: token, ntfyTopic: "")
+        // The old copy said "Push registered (APNs)" with no Apple key anywhere —
+        // the exact dead end UX-12 flagged. The line must name the dependency.
+        XCTAssertTrue(line.contains("LISA_APNS_"))
+        XCTAssertFalse(line.lowercased().contains("push registered"))
+
+        let noToken = PushSettings.stateLine(transport: .apns, subs: [], loaded: true,
+                                             apnsToken: nil, ntfyTopic: "")
+        XCTAssertTrue(noToken.contains("Simulator"))
+
+        let notSent = PushSettings.stateLine(transport: .apns, subs: [], loaded: true,
+                                             apnsToken: token, ntfyTopic: "")
+        XCTAssertTrue(notSent.contains("doesn't have it yet"))
+    }
+
+    func testStateLineDistinguishesRegisteredFromADifferentTopic() {
+        let subs = [PushSubscriptionDTO(id: "1", kind: "ntfy", target: "old-topic", server: "https://ntfy.example.com")]
+        let mismatch = PushSettings.stateLine(transport: .ntfy, subs: subs, loaded: true,
+                                              apnsToken: nil, ntfyTopic: "new-topic")
+        XCTAssertTrue(mismatch.contains("old-topic"))
+        XCTAssertTrue(mismatch.contains("different topic"))
+
+        let matched = PushSettings.stateLine(transport: .ntfy, subs: subs, loaded: true,
+                                             apnsToken: nil, ntfyTopic: "old-topic")
+        XCTAssertTrue(matched.contains("ntfy.example.com"))
+
+        let none = PushSettings.stateLine(transport: .ntfy, subs: [], loaded: true,
+                                          apnsToken: nil, ntfyTopic: "t")
+        XCTAssertTrue(none.contains("Not registered yet"))
+
+        XCTAssertTrue(PushSettings.stateLine(transport: .ntfy, subs: [], loaded: false,
+                                             apnsToken: nil, ntfyTopic: "t").contains("Checking"))
+    }
+
+    func testUnsavedPrefsOnlyWhenSomethingIsRegistered() {
+        var local = PushPrefs()
+        XCTAssertFalse(PushSettings.hasUnsavedPrefs(local: local, registered: nil))
+        XCTAssertFalse(PushSettings.hasUnsavedPrefs(local: local, registered: PushPrefs()))
+        local.advisor = true
+        XCTAssertTrue(PushSettings.hasUnsavedPrefs(local: local, registered: PushPrefs()))
+    }
+
+    func testPushSubscriptionDecodesTolerantlyAndPrefsFallBack() throws {
+        // A Mac that predates `brief` / `server` must still produce a usable row.
+        let json = Data("""
+        {"subscriptions":[{"id":"a1","kind":"ntfy","target":"topic","prefs":{"done":false,"error":true,"permission":true,"idle":true,"advisor":false,"mail":true}},
+                          {"id":"a2","kind":"apns","target":"deadbeef","server":null,"prefs":null,"createdAt":1}]}
+        """.utf8)
+        let list = try JSONDecoder().decode(PushListResponse.self, from: json).subscriptions
+        XCTAssertEqual(list.count, 2)
+        XCTAssertEqual(list[0].transport, .ntfy)
+        XCTAssertEqual(list[0].prefs?.done, false)
+        XCTAssertEqual(list[0].prefs?.brief, true, "a missing preference falls back to its default")
+        XCTAssertNil(list[0].server)
+        XCTAssertEqual(list[1].transport, .apns)
+        XCTAssertNil(list[1].prefs)
+    }
+
+    func testPushPrefsJSONCarriesEveryServerKey() {
+        let keys = Set(PushPrefs().json.keys)
+        XCTAssertEqual(keys, ["done", "error", "permission", "idle", "advisor", "mail", "brief"])
+    }
+
+    // ── a11y: every status pip has a word, and it matches the colour bucket ──
+
+    func testGlanceColorsPhraseCoversEveryStateBucket() {
+        XCTAssertEqual(GlanceColors.phrase("working"), "working")
+        XCTAssertEqual(GlanceColors.phrase("waiting"), "waiting on you")
+        XCTAssertEqual(GlanceColors.phrase("error"), "errored")
+        XCTAssertEqual(GlanceColors.phrase("done"), "done")
+        XCTAssertEqual(GlanceColors.phrase("something-new"), "idle")
+        XCTAssertEqual(GlanceColors.phrase(""), "idle")
+    }
+
+    func testStatusPhraseAgreesWithStateColorOnPendingPermission() {
+        // stateColor paints a pending permission amber regardless of raw state;
+        // the spoken label has to make the same call or they contradict.
+        let pending = session("working", pending: "Bash(rm -rf)")
+        XCTAssertEqual(statusPhrase(pending), "needs you: Bash(rm -rf)")
+        XCTAssertEqual(stateColor(pending), Theme.waiting)
+
+        XCTAssertEqual(statusPhrase(session("working")), "working")
+        XCTAssertEqual(statusPhrase(session("error")), "errored")
+        XCTAssertEqual(statusPhrase(session("mystery")), "idle")
+    }
+
     func testOnboardingDottedSequence() {
         XCTAssertEqual(OnboardingStep.dotted, [.install, .start, .pair, .scan, .connect])
         XCTAssertEqual(OnboardingStep.welcome.rawValue, 0)        // welcome/mode are pre-flow
@@ -271,5 +417,55 @@ final class LisaPocketTests: XCTestCase {
         // rather than build a redirect Google will reject.
         XCTAssertNil(GoogleSignIn.redirectScheme(clientId: "123-abc.example.com"))
         XCTAssertNil(GoogleSignIn.redirectScheme(clientId: ""))
+    }
+
+    // ── DispatchKind — a dead pid is not the same as a clean finish ──────────
+    private func dispatch(status: String?, alive: Bool, exitCode: Int? = nil,
+                          exitSignal: String? = nil) -> DispatchView {
+        DispatchView(id: "d1", agent: "claude", pid: 42, cwd: "/p", task: "t",
+                     startedAt: "1970-01-01T00:00:00.000Z", alive: alive, hasLog: false,
+                     status: status, exitCode: exitCode, exitSignal: exitSignal, exitedAt: nil)
+    }
+
+    func testDispatchKindFromServerStatus() {
+        XCTAssertEqual(dispatch(status: "running", alive: true).kind, .running)
+        XCTAssertEqual(dispatch(status: "ok", alive: false).kind, .ok)
+        XCTAssertEqual(dispatch(status: "failed", alive: false).kind, .failed)
+        XCTAssertEqual(dispatch(status: "unknown", alive: false).kind, .unknown)
+    }
+
+    func testDispatchKindFallsBackForAPreStatusServer() {
+        // An older backend sends only `alive`. Never infer success from it: the
+        // agent is detached, so a crash and a clean finish look identical.
+        XCTAssertEqual(dispatch(status: nil, alive: true).kind, .running)
+        XCTAssertEqual(dispatch(status: nil, alive: false).kind, .unknown)
+        XCTAssertNotEqual(dispatch(status: nil, alive: false).kind, .ok)
+    }
+
+    func testDispatchKindIgnoresAnUnrecognisedStatus() {
+        XCTAssertEqual(dispatch(status: "banana", alive: false).kind, .unknown)
+    }
+
+    func testDispatchDetailNamesTheExitCodeOrSignal() {
+        let failed = dispatch(status: "failed", alive: false, exitCode: 127)
+        XCTAssertEqual(DispatchDetailView.detailStatus(nil, entry: failed), "failed (exit 127)")
+
+        let killed = dispatch(status: "failed", alive: false, exitSignal: "SIGKILL")
+        XCTAssertEqual(DispatchDetailView.detailStatus(nil, entry: killed), "killed by SIGKILL")
+
+        let ok = dispatch(status: "ok", alive: false, exitCode: 0)
+        XCTAssertEqual(DispatchDetailView.detailStatus(nil, entry: ok), "finished (exit 0)")
+
+        let unknown = dispatch(status: nil, alive: false)
+        XCTAssertEqual(DispatchDetailView.detailStatus(nil, entry: unknown),
+                       "exited — status not captured")
+    }
+
+    func testEveryDispatchKindSpeaksItsStateForVoiceOver() {
+        // The dot's colour carries no information for VoiceOver, so each state
+        // must be distinguishable in words alone.
+        let spoken = [DispatchKind.running, .ok, .failed, .unknown].map(\.accessibleLabel)
+        XCTAssertEqual(Set(spoken).count, 4, "each state needs its own spoken label")
+        XCTAssertFalse(spoken.contains { $0.isEmpty })
     }
 }

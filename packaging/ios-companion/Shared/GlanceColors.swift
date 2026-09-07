@@ -12,6 +12,19 @@ enum GlanceColors {
     static let done    = rgb(0x3DDC97)
     static let idle    = rgb(0x6B7299)
 
+    /// State → a word, so a status pip is never colour-only (review D1). Lives
+    /// beside the palette because the widget and Live Activity targets can't see
+    /// the app's copy and must read the same phrase VoiceOver hears in the roster.
+    static func phrase(_ state: String) -> String {
+        switch state {
+        case "working": return "working"
+        case "waiting": return "waiting on you"
+        case "error":   return "errored"
+        case "done":    return "done"
+        default:        return "idle"
+        }
+    }
+
     /// State → color, using the same buckets as the roster.
     static func forState(_ state: String) -> Color {
         switch state {

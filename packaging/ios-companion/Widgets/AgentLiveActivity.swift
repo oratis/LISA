@@ -10,6 +10,7 @@ struct AgentLiveActivity: Widget {
             // Lock Screen / banner
             HStack(spacing: 10) {
                 Circle().fill(activityColor(context.state.state)).frame(width: 10, height: 10)
+                    .accessibilityHidden(true)   // the combined label below says the state
                 VStack(alignment: .leading, spacing: 2) {
                     Text("\(context.attributes.agent) · \(context.attributes.project)")
                         .font(.headline).lineLimit(1)
@@ -19,6 +20,11 @@ struct AgentLiveActivity: Widget {
                 Text("\(context.state.turns)t").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
             }
             .padding()
+            // One spoken sentence, with the state as a word — the dot's colour was
+            // the only thing carrying it on the Lock Screen (D1).
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(context.attributes.agent), \(context.attributes.project), \(GlanceColors.phrase(context.state.state))")
+            .accessibilityValue("\(context.state.detail), \(context.state.turns) turns")
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
@@ -32,6 +38,8 @@ struct AgentLiveActivity: Widget {
                         Text("\(context.state.turns) turns")     // B22 — was dropped in expanded
                             .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
                     }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("\(GlanceColors.phrase(context.state.state)), \(context.state.turns) turns")
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     Text("\(context.attributes.project) — \(context.state.detail)")
@@ -39,10 +47,13 @@ struct AgentLiveActivity: Widget {
                 }
             } compactLeading: {
                 Circle().fill(activityColor(context.state.state)).frame(width: 8, height: 8)
+                    .accessibilityLabel("Agent \(GlanceColors.phrase(context.state.state))")
             } compactTrailing: {
                 Text("\(context.state.turns)").font(.caption2.monospacedDigit())
+                    .accessibilityLabel("\(context.state.turns) turns")
             } minimal: {
                 Circle().fill(activityColor(context.state.state)).frame(width: 8, height: 8)
+                    .accessibilityLabel("Agent \(GlanceColors.phrase(context.state.state))")
             }
         }
     }

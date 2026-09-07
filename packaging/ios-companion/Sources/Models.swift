@@ -92,6 +92,52 @@ struct DispatchView: Codable, Identifiable, Hashable {
     var startedAt: String
     var alive: Bool
     var hasLog: Bool
+    /// running | ok | failed | unknown. Optional so an older server (which
+    /// sent only `alive`) still decodes; `kind` falls back to alive then.
+    var status: String?
+    var exitCode: Int?
+    var exitSignal: String?
+    var exitedAt: String?
+
+    var kind: DispatchKind { DispatchKind(status, alive: alive) }
+}
+
+/// What actually happened to a dispatch.
+///
+/// `alive: false` on its own says nothing about success — the agent is spawned
+/// detached, so a crash, an OOM kill and a clean finish are indistinguishable
+/// from the pid. The roster used to render all three as one grey "exited".
+enum DispatchKind {
+    case running, ok, failed, unknown
+
+    init(_ raw: String?, alive: Bool) {
+        switch raw {
+        case "running": self = .running
+        case "ok": self = .ok
+        case "failed": self = .failed
+        case "unknown": self = .unknown
+        default: self = alive ? .running : .unknown   // pre-status server
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .running: return "running"
+        case .ok: return "finished"
+        case .failed: return "failed"
+        case .unknown: return "status unknown"
+        }
+    }
+
+    /// Spoken by VoiceOver — the dot's colour is not available to it.
+    var accessibleLabel: String {
+        switch self {
+        case .running: return "running"
+        case .ok: return "finished successfully"
+        case .failed: return "failed"
+        case .unknown: return "exited, status not captured"
+        }
+    }
 }
 
 struct DispatchListResponse: Codable {
@@ -107,6 +153,12 @@ struct DispatchStatus: Codable {
     var startedAt: String?
     var alive: Bool?
     var tail: String?
+    var status: String?
+    var exitCode: Int?
+    var exitSignal: String?
+    var exitedAt: String?
+
+    var kind: DispatchKind { DispatchKind(status, alive: alive ?? false) }
 }
 
 struct IslandPing: Codable {
@@ -139,6 +191,38 @@ struct PushPrefs: Codable, Equatable {
     var idle: Bool = true
     var advisor: Bool = false
     var mail: Bool = true
+    /// Daily knowledge-base feeds brief — the server has always had it; the app
+    /// silently left it at the server default and never showed the switch.
+    var brief: Bool = true
+
+    /// Tolerant: a Mac that predates a preference just doesn't send that key, and
+    /// the missing switch should fall back to its default rather than throwing
+    /// away the whole subscription.
+    init(done: Bool = true, error: Bool = true, permission: Bool = true, idle: Bool = true,
+         advisor: Bool = false, mail: Bool = true, brief: Bool = true) {
+        self.done = done; self.error = error; self.permission = permission
+        self.idle = idle; self.advisor = advisor; self.mail = mail; self.brief = brief
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        func flag(_ k: CodingKeys, _ fallback: Bool) -> Bool {
+            (try? c.decodeIfPresent(Bool.self, forKey: k)) .flatMap { $0 } ?? fallback
+        }
+        done = flag(.done, true)
+        error = flag(.error, true)
+        permission = flag(.permission, true)
+        idle = flag(.idle, true)
+        advisor = flag(.advisor, false)
+        mail = flag(.mail, true)
+        brief = flag(.brief, true)
+    }
+
+    /// The wire shape `/api/push/register` and `/api/push/prefs` expect.
+    var json: [String: Any] {
+        ["done": done, "error": error, "permission": permission,
+         "idle": idle, "advisor": advisor, "mail": mail, "brief": brief]
+    }
 }
 
 // ── Mail (read-only digest + accounts) ──

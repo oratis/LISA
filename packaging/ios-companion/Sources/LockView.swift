@@ -11,11 +11,16 @@ struct LockView: View {
             Color(.systemBackground).ignoresSafeArea()
             VStack(spacing: 16) {
                 Image(systemName: "lock.fill").font(.largeTitle).foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
                 Text("Lisa Pocket is locked").font(.headline)
+                    .accessibilityAddTraits(.isHeader)
                 Button { Task { await app.unlock() } } label: {
                     Label("Unlock", systemImage: "faceid")
+                        .frame(minHeight: 44)
                 }
                 .buttonStyle(.borderedProminent)
+                .accessibilityLabel("Unlock")
+                .accessibilityHint("Asks for Face ID or your passcode")
             }
         }
         .task { await app.unlock() }

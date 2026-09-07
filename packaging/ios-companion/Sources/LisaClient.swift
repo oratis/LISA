@@ -36,6 +36,13 @@ enum LisaError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .notConfigured: return "Not paired yet — add your Mac in Settings."
+        case .http(403):
+            // Hosted Lisa denies the machine-level routes (push, dispatch,
+            // mail, consent, devices — CLOUD_DENIED_ROUTE_PREFIXES in
+            // src/web/capabilities.ts). "HTTP 403" told the user nothing about
+            // why registering a push destination silently never worked.
+            return "This Lisa won't do that (403). Hosted Lisa keeps machine-level "
+                 + "features — push, dispatch, mail — on your own Mac; pair with it instead."
         case .http(let code): return "Server returned HTTP \(code)."
         case .decode: return "Couldn't read the server response."
         case .unsupportedAPIVersion(let version):
@@ -428,6 +435,13 @@ final class LisaClient {
         struct R: Codable { var ok: Bool; var output: String? }
         return (try await decode("/api/agents/pty/\(id)/output", as: R.self)).output ?? ""
     }
+    /// Live attach: a `snapshot` frame with the current tail, then a `chunk` per
+    /// burst, then `end` when the agent finishes. Same control gate as send/cancel,
+    /// so a Mac with remote control off answers 403.
+    func ptyStream(_ id: String) -> AsyncThrowingStream<SSEMessage, Error> {
+        let enc = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
+        return sse("/api/agents/pty/\(enc)/stream")
+    }
     /// Adopt an idle claude session by id (resume-adopt). Returns the HTTP code
     /// (409 ⇒ the session is still live; 403 ⇒ remote adoption disabled).
     func adopt(sessionId: String) async throws -> Int {
@@ -439,9 +453,32 @@ final class LisaClient {
     func registerLiveActivity(sessionId: String, token: String) async throws {
         try await fire("/api/push/live-activity", json: ["sessionId": sessionId, "token": token])
     }
-    func pushRegister(kind: String, target: String, prefs: PushPrefs) async throws {
-        let p: [String: Any] = ["done": prefs.done, "error": prefs.error, "permission": prefs.permission, "idle": prefs.idle, "advisor": prefs.advisor, "mail": prefs.mail]
-        try await fire("/api/push/register", json: ["kind": kind, "target": target, "prefs": p])
+    /// Register a delivery destination and return what the server stored — the
+    /// caller needs the subscription id to update prefs later without
+    /// re-registering.
+    @discardableResult
+    func pushRegister(kind: String, target: String, server: String? = nil,
+                      prefs: PushPrefs) async throws -> PushSubscriptionDTO? {
+        struct R: Codable { var ok: Bool?; var subscription: PushSubscriptionDTO? }
+        var body: [String: Any] = ["kind": kind, "target": target, "prefs": prefs.json]
+        if let server, !server.isEmpty { body["server"] = server }
+        return (try await decode("/api/push/register", method: "POST", json: body, as: R.self)).subscription
+    }
+
+    /// Every destination the Mac will publish to — the honest basis for the
+    /// "is push actually wired up" line in Settings.
+    func pushList() async throws -> [PushSubscriptionDTO] {
+        try await decode("/api/push/list", as: PushListResponse.self).subscriptions
+    }
+
+    /// Change the event toggles on an existing subscription (no re-register, so a
+    /// registered APNs token isn't churned just to turn off advisor tips).
+    func pushSetPrefs(id: String, prefs: PushPrefs) async throws {
+        try await fire("/api/push/prefs", json: ["id": id, "prefs": prefs.json])
+    }
+
+    func pushUnregister(id: String) async throws {
+        try await fire("/api/push/unregister", json: ["id": id])
     }
 
     // ── chat ──

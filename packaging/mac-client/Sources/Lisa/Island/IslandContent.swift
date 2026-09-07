@@ -36,7 +36,10 @@ final class IslandContent: NSViewController, WKNavigationDelegate, WKScriptMessa
         let config = WKWebViewConfiguration()
         // Receive postMessage from window.webkit.messageHandlers.island.
         config.userContentController.add(self, name: "island")
-        config.processPool = WKProcessPool()
+        // Same persistent data store as the chat window's WKWebView (WebContent),
+        // so /island sees the same cookies + localStorage as /. (Replaces the
+        // deprecated, no-op-since-macOS-12 `processPool = WKProcessPool()`.)
+        config.websiteDataStore = .default()
 
         let preferences = WKWebpagePreferences()
         preferences.allowsContentJavaScript = true
