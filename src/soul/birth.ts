@@ -227,8 +227,33 @@ async function birthInner(opts: BirthOptions): Promise<BirthResult> {
   }
 }
 
-/** One LLM turn → parsed birth output. Separated so the caller can retry. */
-async function dreamSoul(
+/**
+ * The seed as the LLM sees it — `bornOn` deliberately removed.
+ *
+ * `bornOn` is sha256(hostname + username): a stable, low-entropy device
+ * fingerprint that an adversary holding a candidate (hostname, username) pair
+ * can confirm offline with a single hash. It contributes nothing to the dream —
+ * the personality is derived from `randomness` and `bigFive` — so there is no
+ * reason to hand a machine identifier to a third-party model provider on every
+ * birth. The full seed (bornOn included) is still written to disk by
+ * writeSeed(); this only narrows what crosses the wire.
+ *
+ * Exported for the regression test in birth.test.ts.
+ */
+export function seedForPrompt(seed: SoulSeed): Omit<SoulSeed, "bornOn"> {
+  const { bornOn: _bornOn, ...rest } = seed;
+  return rest;
+}
+
+/**
+ * One LLM turn → parsed birth output. Separated so the caller can retry.
+ *
+ * Exported for the regression test in birth.test.ts: this is the only place the
+ * birth prompt is actually assembled, so a test that asserts on anything else
+ * (seedForPrompt's return value, a re-derived payload) cannot fail when this
+ * line stops calling it.
+ */
+export async function dreamSoul(
   provider: ReturnType<typeof providerForModel>,
   model: string,
   seed: SoulSeed,
@@ -244,7 +269,7 @@ async function dreamSoul(
           {
             type: "text",
             text:
-              `Seed:\n${JSON.stringify(seed, null, 2)}\n\nBirth yourself. Output JSON only.`,
+              `Seed:\n${JSON.stringify(seedForPrompt(seed), null, 2)}\n\nBirth yourself. Output JSON only.`,
           },
         ],
       },

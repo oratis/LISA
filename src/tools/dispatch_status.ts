@@ -14,7 +14,7 @@
  */
 import type { ToolDefinition } from "../types.js";
 import {
-  isAlive,
+  entryIsAlive,
   listRecentDispatches,
   readDispatchOutput,
   type DispatchEntry,
@@ -38,11 +38,30 @@ function indent(text: string): string {
     .join("\n");
 }
 
+/**
+ * Status label for a dispatch. Only claims success when an exit code was
+ * actually observed: the process is spawned detached, so a dead pid on its own
+ * says nothing about whether the agent succeeded, crashed, or was OOM-killed.
+ * Rendering all three as "✓ finished" is what this replaces.
+ */
+export function statusLabel(e: DispatchEntry, live: boolean): string {
+  if (live) return "▶ running";
+  if (e.exitSignal) return `✗ killed by ${e.exitSignal}`;
+  if (typeof e.exitCode === "number") {
+    return e.exitCode === 0 ? "✓ exit 0" : `✗ exit ${e.exitCode}`;
+  }
+  return "• exited (status not captured)";
+}
+
 function render(e: DispatchEntry, now: number, maxBytes: number): string {
-  const live = isAlive(e.pid);
+  const live = entryIsAlive(e);
   const age = Math.max(0, Math.round((now - e.startedAt) / 1000));
+  const unknown = !live && e.exitSignal == null && typeof e.exitCode !== "number";
   const head =
-    `${live ? "▶ running" : "✓ finished"} · ${e.agent} (pid ${e.pid}, ${fmtAge(age)} ago) · id ${e.id}\n` +
+    `${statusLabel(e, live)} · ${e.agent} (pid ${e.pid}, ${fmtAge(age)} ago) · id ${e.id}\n` +
+    (unknown
+      ? "  note: the agent outlived this LISA process, so its exit status was never seen — judge it from the output below\n"
+      : "") +
     `  task: ${e.task.slice(0, 100)}`;
   const out = readDispatchOutput(e, maxBytes).trim();
   if (!out) return `${head}\n  (no output captured${e.logPath ? " yet" : ""})`;

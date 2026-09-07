@@ -11,7 +11,12 @@ import {
   COST_SPIKE_TOKENS,
 } from "./detectors.js";
 import { decide, scoreSuggestion, applyDismissal } from "./engine.js";
-import { emptyAdvisorState, type AdvisorInput, type Suggestion } from "./types.js";
+import {
+  emptyAdvisorState,
+  SUGGESTION_CATEGORIES,
+  type AdvisorInput,
+  type Suggestion,
+} from "./types.js";
 import type { AgentSession } from "../integrations/types.js";
 
 const NOW = 1_700_000_000_000;
@@ -227,5 +232,65 @@ describe("engine — relevance bar + throttle + dedup", () => {
     state = applyDismissal(state, "x", "stuck");
     const after = scoreSuggestion(cand({ urgency: "notice" }), state);
     assert.ok(after < before, "score drops after dismissals");
+  });
+});
+
+describe("suggestion categories match what detectors actually emit", () => {
+  // tsconfig excludes *.test.ts and tsx does not typecheck, so this has to be
+  // a runtime check to be worth anything. SUGGESTION_CATEGORIES is the single
+  // source of truth the type is derived from; these two tests tie it to the
+  // detectors and to the number the READMEs document.
+  test("there are exactly five, and they are the five the READMEs list", () => {
+    assert.deepEqual([...SUGGESTION_CATEGORIES].sort(), [
+      "conflict",
+      "cost_spike",
+      "idle",
+      "ready",
+      "stuck",
+    ]);
+    assert.equal(SUGGESTION_CATEGORIES.length, 5);
+  });
+
+  test("every category a detector produces is declared, and every declared one is produced", () => {
+    const produced = new Set<string>();
+    const push = (list: Suggestion[]) => list.forEach((s) => produced.add(s.category));
+
+    // Reuse the exact fixtures the per-detector tests above already prove fire.
+    push(detectStuck(input([sess({ state: "waiting", stateReason: "idle", lastMtime: NOW - STUCK_MS - 1000 })])));
+    push(
+      detectConflict(
+        input([
+          sess({ agent: "claude-code", sessionId: "a", cwd: "/repo", state: "working" }),
+          sess({ agent: "codex", sessionId: "b", cwd: "/repo", state: "working" }),
+        ]),
+      ),
+    );
+    push(
+      detectCostSpike(
+        input([
+          sess({
+            sessionId: "a",
+            activity: {
+              turnCount: 1,
+              lastTools: [],
+              filesTouched: [],
+              tokens: { input: COST_SPIKE_TOKENS, output: 100 },
+            },
+          }),
+        ]),
+      ),
+    );
+    push(detectReady(input([sess({ state: "waiting", stateReason: "end_turn" })])));
+    push(detectIdleCapacity(input([], { pendingDesireCount: 2 })));
+
+    const declared = new Set<string>(SUGGESTION_CATEGORIES);
+    for (const c of produced) {
+      assert.ok(declared.has(c), `detector emitted an undeclared category: ${c}`);
+    }
+    // The other direction is the one that caught repeated_failure: a declared
+    // category no detector can ever emit is dead code that misleads the docs.
+    for (const c of declared) {
+      assert.ok(produced.has(c), `no detector emits "${c}" — dead category, delete it or implement it`);
+    }
   });
 });

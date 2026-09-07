@@ -126,3 +126,77 @@ describe("loadOrchestratorConfig", () => {
     assert.deepEqual(cfg, DEFAULT_ORCHESTRATOR_CONFIG);
   });
 });
+
+describe("built-in observer roster (the number the READMEs claim)", () => {
+  // The READMEs said "all five observers" while ten shipped, and the directory
+  // tree 490 lines below listed seven plus an ellipsis — so the README
+  // contradicted itself as well as the code. Pin the count here: prose can't
+  // be tested, but the fact it describes can be.
+  const EXPECTED = [
+    "aider",
+    "claude-code",
+    "codex",
+    "git",
+    "github-pr",
+    "managed",
+    "opencode",
+    "pty",
+    "shell",
+    "takoapi",
+  ];
+
+  test("ten integrations ship, and they are exactly these", () => {
+    const keys = Object.keys(DEFAULT_ORCHESTRATOR_CONFIG.integrations).sort();
+    assert.equal(keys.length, 10, "README says ten observers — update both if this changes");
+    assert.deepEqual(keys, EXPECTED);
+  });
+
+  test("registerBuiltinIntegrations registers one observer per configured key", async () => {
+    const { registerBuiltinIntegrations, listAvailableIntegrations } = await import("./registry.js");
+    await registerBuiltinIntegrations();
+    assert.deepEqual(listAvailableIntegrations().sort(), EXPECTED);
+  });
+
+  test("exactly three are enabled by default — the rest are opt-in", () => {
+    const on = Object.entries(DEFAULT_ORCHESTRATOR_CONFIG.integrations)
+      .filter(([, cfg]) => cfg.enabled)
+      .map(([name]) => name)
+      .sort();
+    assert.deepEqual(on, ["claude-code", "managed", "pty"]);
+  });
+});
+
+describe("agents.json merges per key", () => {
+  // The READMEs point you at ~/.lisa/agents.json to switch on one of the seven
+  // opt-in observers, and the obvious hand-edit is to write just that one.
+  // A whole-map replace made that edit silently drop the three defaults, so
+  // "enable codex" also turned Claude Code, managed and pty observation OFF —
+  // with no error and nothing in the UI to say so.
+  const mkTmp = async (body: unknown) => {
+    const fs = await import("node:fs/promises");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "lisa-agents-"));
+    const file = path.join(dir, "agents.json");
+    await fs.writeFile(file, JSON.stringify(body), "utf8");
+    return file;
+  };
+
+  test("a partial integrations map keeps the defaults it does not mention", async () => {
+    const file = await mkTmp({ integrations: { codex: { enabled: true } } });
+    const cfg = await loadOrchestratorConfig(file);
+    assert.equal(cfg.integrations.codex.enabled, true, "the edit takes effect");
+    for (const name of Object.keys(DEFAULT_ORCHESTRATOR_CONFIG.integrations)) {
+      assert.ok(cfg.integrations[name], `${name} must survive a partial edit`);
+    }
+    assert.equal(cfg.integrations["claude-code"].enabled, true, "a default stays on");
+    assert.equal(cfg.integrations.managed.enabled, true);
+    assert.equal(cfg.integrations.pty.enabled, true);
+  });
+
+  test("an explicit disable still wins over the default", async () => {
+    const file = await mkTmp({ integrations: { "claude-code": { enabled: false } } });
+    const cfg = await loadOrchestratorConfig(file);
+    assert.equal(cfg.integrations["claude-code"].enabled, false, "merge must not resurrect a default");
+  });
+});

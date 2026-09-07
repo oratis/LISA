@@ -105,7 +105,7 @@ import { isDigestDue, digestHour } from "../mail/scheduler.js";
 import { loadAccounts, addAccount, removeAccount, setAccountEnabled } from "../mail/accounts.js";
 import { inferHost } from "../mail/hosts.js";
 import type { DailyDigest } from "../mail/types.js";
-import { listRecentDispatches, isAlive, toDispatchView, readDispatchOutput } from "../integrations/dispatch-ledger.js";
+import { listRecentDispatches, entryIsAlive, toDispatchView, readDispatchOutput } from "../integrations/dispatch-ledger.js";
 import { loadControlPolicy, saveControlPolicy, type ControlPolicy } from "../control/policy.js";
 import { loadAutonomyState, saveAutonomyState, type AutonomyState } from "../autonomy/state.js";
 import { mintDevice, verifyDeviceToken, touchDevice, listDevices, revokeDevice } from "./devices.js";
@@ -192,6 +192,7 @@ import {
   capabilityProfileForEdition,
   isCloudDeniedRoute,
   toolsForCapabilityProfile,
+  isNonCanonicalPath,
 } from "./capabilities.js";
 import type { ToolDefinition, StoredMessage } from "../types.js";
 
@@ -1107,6 +1108,17 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   const server = http.createServer(async (req, res) => {
     const url = req.url ?? "/";
     applyApiVersionHeader(url, res);
+
+    // Every routing decision below — the cloud deny-list, denyRemote(), each
+    // handler's own startsWith/=== — reads this raw url, but isCloudDeniedRoute
+    // matches the NORMALIZED pathname. A dot-segment path exploits that
+    // disagreement: it normalizes to "/" (so the deny gate passes it) while
+    // still matching its handler's raw prefix. Reject before anything routes.
+    if (isNonCanonicalPath(url)) {
+      res.writeHead(400, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "bad_request_path" }));
+      return;
+    }
 
     // Liveness probe (pre-gate, unauthenticated): uptime checks and platform
     // health probes land here. Deliberately no I/O and no dependencies — a 200
@@ -2737,7 +2749,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // Complements /api/agent/signal's action:"list" (which returns prose): this is
     // JSON for clients (the iOS roster). Structural only — never the captured log.
     if (req.method === "GET" && url === "/api/dispatch/list") {
-      const dispatches = listRecentDispatches().map((e) => toDispatchView(e, isAlive(e.pid)));
+      const dispatches = listRecentDispatches().map((e) => toDispatchView(e, entryIsAlive(e)));
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ dispatches }));
       return;
@@ -2758,7 +2770,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({
         ok: true,
-        ...toDispatchView(entry, isAlive(entry.pid)),
+        ...toDispatchView(entry, entryIsAlive(entry)),
         tail: readDispatchOutput(entry, 4000),
       }));
       return;

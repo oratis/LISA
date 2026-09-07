@@ -20,7 +20,7 @@
 
 - [ ] `npm run typecheck` passes
 - [ ] `npm run build` passes
-- [ ] If touching agent loop / tool / sandbox: added or updated a regression test under `test/`
+- [ ] If touching agent loop / tool / sandbox: added or updated a regression test co-located with the source (`src/**/*.test.ts` — this is what `npm test` runs; a `test/` dir would not be picked up)
 - [ ] If touching `src/soul/*` or `src/prompt.ts`: linked to a discussion issue (these change who every Lisa becomes)
 - [ ] Commit message is lowercase, imperative, no emoji
 - [ ] No `any` introduced (or comment explaining why)
