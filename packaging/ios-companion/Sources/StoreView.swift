@@ -18,7 +18,14 @@ final class CreditsStore: ObservableObject {
         "ai.meetlisa.main.credits.20",
     ]
 
+    /// Why the pack list looks the way it does. App Review's 2.1(b) rejection
+    /// ("we cannot locate the In-App Purchases", 2026-08-04) is exactly what a
+    /// silently-empty list looks like from the outside, so every state other
+    /// than `.loaded` must say something and offer a way to try again.
+    enum LoadState: Equatable { case idle, loading, loaded, failed }
+
     @Published var products: [Product] = []
+    @Published private(set) var loadState: LoadState = .idle
     @Published var busy = false
     @Published var message: String?
     private var updatesTask: Task<Void, Never>?
@@ -34,10 +41,21 @@ final class CreditsStore: ObservableObject {
         }
     }
 
-    func loadProducts() async {
-        guard products.isEmpty else { return }
-        let loaded = (try? await Product.products(for: Self.productIDs)) ?? []
-        products = loaded.sorted { $0.price < $1.price }
+    /// Fetch the packs from the App Store. An empty result counts as a failure:
+    /// StoreKit answers with an empty array (not an error) when the products
+    /// aren't available to this storefront/sandbox yet, and showing a blank
+    /// sheet for that is how the IAPs became "impossible to locate".
+    func loadProducts(force: Bool = false) async {
+        if !force, loadState == .loading || loadState == .loaded { return }
+        loadState = .loading
+        do {
+            let loaded = try await Product.products(for: Self.productIDs)
+            products = loaded.sorted { $0.price < $1.price }
+            loadState = products.isEmpty ? .failed : .loaded
+        } catch {
+            products = []
+            loadState = .failed
+        }
     }
 
     func purchase(_ product: Product, app: AppState) async {
@@ -94,8 +112,21 @@ struct PaywallSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    if store.products.isEmpty {
+                    switch store.loadState {
+                    case .idle, .loading:
                         HStack { ProgressView(); Text("Loading packs…").foregroundStyle(.secondary) }
+                    case .failed:
+                        VStack(alignment: .leading, spacing: 6) {
+                            Label("Couldn't load the credit packs.", systemImage: "exclamationmark.triangle")
+                                .foregroundStyle(Theme.danger)
+                            Text("The App Store didn't return the packs — usually a dropped connection or a temporary App Store hiccup.")
+                                .font(.caption).foregroundStyle(.secondary)
+                            Button("Try again") { Task { await store.loadProducts(force: true) } }
+                                .font(.callout.weight(.semibold))
+                        }
+                        .padding(.vertical, 2)
+                    case .loaded:
+                        EmptyView()
                     }
                     ForEach(store.products, id: \.id) { product in
                         Button {

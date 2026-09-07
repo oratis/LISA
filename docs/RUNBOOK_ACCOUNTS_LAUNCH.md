@@ -129,6 +129,13 @@ My Apps → Lisa Pocket → **Monetization → In-App Purchases** → ⊕，类�
 顺手在 **Users and Access → Sandbox Testers** 建一个 sandbox 测试账号，
 真机 dev build 里可免费走完整购买流（TestFlight 构建的 IAP 本身就不扣真钱）。
 
+> ⚠️ **送审前必设**：cloud 版默认拒绝一切非 Production 的 StoreKit JWS（B5 防白嫖），
+> 而 **App 审核员就是在 Apple sandbox 里买**——不放行的话他们会看到
+> `Couldn't credit the purchase (sandbox_rejected)`，下一封拒信就是 2.1/3.1.1。
+> 用具名白名单放行审核账号，别整片打开：
+> `gcloud run services update lisa-cloud --region <region> --update-env-vars LISA_IAP_SANDBOX_ACCOUNTS=<审核账号邮箱>`
+> （`LISA_IAP_ALLOW_SANDBOX=1` 仍然只用于整片 staging；上架后把变量删掉。）
+
 ## Phase 5 — Small Business Program（10 min，随时可做）
 
 developer.apple.com/app-store/small-business-program/ → Enroll（需要

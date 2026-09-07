@@ -13,6 +13,10 @@ struct ChatMessage: Identifiable, Equatable {
     var text: String = ""
     var tools: [String] = []
     var status: Status = .ok
+    /// The turn died because the session allowance is spent (HTTP 402). Drives
+    /// the inline "Add credits…" button — a second route to the In-App
+    /// Purchases that doesn't depend on the Settings quota card rendering.
+    var needsCredits: Bool = false
     var isError: Bool { status == .error }
     /// Terminal states the user can retry from (nothing useful landed).
     var isRetryable: Bool { status == .error || status == .empty || status == .cancelled }
@@ -145,6 +149,13 @@ final class ChatModel: ObservableObject {
         }
     }
 
+    /// The gateway refuses an unaffordable turn with a clean 402 before it
+    /// streams anything — that's "out of allowance", not a failure to reach us.
+    static func isQuotaExhausted(_ error: Error) -> Bool {
+        if case LisaError.http(402) = error { return true }
+        return false
+    }
+
     /// A thrown stream: a user-initiated stop reads as `.cancelled`; anything else
     /// is a real error. Either way it's retryable.
     private func markFailed(_ idx: Int, _ error: Error) {
@@ -153,11 +164,13 @@ final class ChatModel: ObservableObject {
         if cancelled {
             messages[idx].status = .cancelled
             if messages[idx].text.isEmpty { messages[idx].text = "Stopped." }
-        } else if case LisaError.http(402) = error {
+        } else if Self.isQuotaExhausted(error) {
             // Quota exhausted (B4): the server refused the turn with a clean 402
-            // before streaming. Same copy as the web paywall (strings.ts).
+            // before streaming. Same copy as the web paywall (strings.ts), minus
+            // the "go to Settings" pointer — the button below opens the packs.
             messages[idx].status = .error
-            messages[idx].text = "Your free allowance for this session is used up — it refreshes every 12 hours. Add credits in Settings → LISA account to keep going now."
+            messages[idx].needsCredits = true
+            messages[idx].text = "Your free allowance for this session is used up — it refreshes every 12 hours. Add credits to keep going now."
         } else {
             messages[idx].status = .error
             let msg = (error as? LocalizedError)?.errorDescription ?? "Couldn't reach Lisa."
@@ -170,6 +183,7 @@ struct ChatView: View {
     @EnvironmentObject var app: AppState
     @StateObject private var model = ChatModel()
     @State private var input = ""
+    @State private var showPaywall = false
     private static let bottomID = "chat-bottom"
 
     var body: some View {
@@ -194,6 +208,7 @@ struct ChatView: View {
             }
             .task(id: app.config) { model.startMood(app.client); await model.loadHistory(app.client) }
             .onDisappear { model.stopMood() }
+            .sheet(isPresented: $showPaywall) { PaywallSheet().environmentObject(app) }
         }
     }
 
@@ -275,7 +290,11 @@ struct ChatView: View {
                         // A blank streaming bubble is stood in for by the typing
                         // indicator below — don't render an empty bubble.
                         if !isWaitingBubble(msg) {
-                            MessageBubble(message: msg, onRetry: retryAction(for: msg))
+                            MessageBubble(
+                                message: msg,
+                                onRetry: retryAction(for: msg),
+                                onAddCredits: msg.needsCredits ? { showPaywall = true } : nil
+                            )
                         }
                     }
                     if showTyping {
@@ -364,6 +383,9 @@ struct ChatView: View {
 struct MessageBubble: View {
     let message: ChatMessage
     var onRetry: (() -> Void)? = nil
+    /// Present when the turn was refused for lack of credits — the in-chat
+    /// route to the In-App Purchases (see `ChatMessage.needsCredits`).
+    var onAddCredits: (() -> Void)? = nil
 
     var body: some View {
         HStack {
@@ -383,6 +405,16 @@ struct MessageBubble: View {
                             ThemePill(text: tool, color: Theme.accent)
                         }
                     }
+                }
+                if let onAddCredits {
+                    Button(action: onAddCredits) {
+                        Label("Add credits…", systemImage: "plus.circle")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Theme.accent)
+                    .padding(.top, 1)
+                    .accessibilityLabel("Add credits")
                 }
                 if let onRetry {
                     Button(action: onRetry) {

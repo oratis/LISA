@@ -399,13 +399,18 @@ struct AccountCard: View {
                     }
                     LabeledContent("Tier", value: Self.tierLabels[q.tier ?? "free"] ?? (q.tier ?? "Free"))
                     LabeledContent("Credits", value: Self.dollars(max(0, q.paidMicroUSD ?? 0)))
-                    Button {
-                        showPaywall = true
-                    } label: {
-                        Label("Add credits…", systemImage: "plus.circle")
-                    }
                 } else {
                     LabeledContent("Plan", value: (acct.plan ?? "free").capitalized)
+                }
+                // The way to the In-App Purchases must NOT depend on the quota
+                // fetch: App Review rejected 1.1 under Guideline 2.1(b) because
+                // a `/api/billing/quota` that timed out, 401'd or 503'd left the
+                // app with no route to the packs at all ("we cannot locate the
+                // In-App Purchases"). Signed in ⇒ this button exists.
+                Button {
+                    showPaywall = true
+                } label: {
+                    Label("Add credits…", systemImage: "plus.circle")
                 }
                 Button("Sign out") {
                     app.signOutCloud()

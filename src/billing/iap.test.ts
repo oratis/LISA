@@ -16,6 +16,7 @@ const {
   IapError,
   PaymentStateError,
   oidToDer,
+  sandboxCreditAllowed,
 } =
   await import("./iap.js");
 const { homeScope, homeForUid } = await import("../paths.js");
@@ -239,5 +240,38 @@ describe("credit + dedup + refund", () => {
     );
     const index = JSON.parse(fs.readFileSync(indexFile, "utf8")) as Array<{ status: string }>;
     assert.equal(index[0]?.status, "pending");
+  });
+});
+
+describe("sandbox credit allowlist (App Review buys in Apple's sandbox)", () => {
+  const who = { uid: "uid-reviewer", email: "reviewer@meetlisa.ai" };
+
+  test("closed by default — no env, no sandbox credit", () => {
+    assert.equal(sandboxCreditAllowed(who, {}), false);
+  });
+
+  test("LISA_IAP_ALLOW_SANDBOX=1 opens a whole staging deploy", () => {
+    assert.equal(sandboxCreditAllowed({ uid: "anyone" }, { LISA_IAP_ALLOW_SANDBOX: "1" }), true);
+  });
+
+  test("allowlist matches on email or uid, case/space insensitive", () => {
+    const env = { LISA_IAP_SANDBOX_ACCOUNTS: " Reviewer@MeetLisa.ai , uid-two " };
+    assert.equal(sandboxCreditAllowed(who, env), true);
+    assert.equal(sandboxCreditAllowed({ uid: "uid-two" }, env), true);
+    assert.equal(sandboxCreditAllowed({ uid: "UID-TWO" }, env), true);
+  });
+
+  test("a non-listed buyer is still rejected", () => {
+    const env = { LISA_IAP_SANDBOX_ACCOUNTS: "reviewer@meetlisa.ai" };
+    assert.equal(sandboxCreditAllowed({ uid: "attacker", email: "free@tester.com" }, env), false);
+  });
+
+  test("an empty/blank allowlist never matches an account with no uid or email", () => {
+    assert.equal(sandboxCreditAllowed({ uid: null, email: null }, { LISA_IAP_SANDBOX_ACCOUNTS: " , ," }), false);
+    // A buyer whose fields are absent must not match a non-empty allowlist either.
+    assert.equal(
+      sandboxCreditAllowed({ uid: undefined, email: undefined }, { LISA_IAP_SANDBOX_ACCOUNTS: "reviewer@meetlisa.ai" }),
+      false,
+    );
   });
 });

@@ -71,6 +71,35 @@ export const PRODUCTS: Record<string, number> = {
 
 export const EXPECTED_BUNDLE = "ai.meetlisa.main";
 
+/**
+ * May an Apple **Sandbox** transaction credit this account on a cloud deploy?
+ *
+ * B5 rejects non-Production JWS outright because sandbox purchases are signed
+ * with the same cert chain, cost $0, and would let any sandbox tester Apple ID
+ * mint credits. But App Review buys in that very sandbox, so a blanket reject
+ * shows the reviewer "Couldn't credit the purchase (sandbox_rejected)" — which
+ * reads as a broken in-app purchase (Guideline 2.1 / 3.1.1).
+ *
+ * The middle ground: name the review accounts. `LISA_IAP_SANDBOX_ACCOUNTS` is a
+ * comma-separated allowlist of account emails and/or uids ("reviewer@x.com,uid_1");
+ * only those may credit from sandbox. `LISA_IAP_ALLOW_SANDBOX=1` still opens a
+ * whole non-production deploy (staging), unchanged.
+ */
+export function sandboxCreditAllowed(
+  who: { uid?: string | null; email?: string | null },
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  if (env.LISA_IAP_ALLOW_SANDBOX === "1") return true;
+  const allow = (env.LISA_IAP_SANDBOX_ACCOUNTS ?? "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  if (allow.length === 0) return false;
+  return [who.uid, who.email]
+    .map((v) => v?.trim().toLowerCase())
+    .some((v) => !!v && allow.includes(v));
+}
+
 const APPLE_ROOT_URL = "https://www.apple.com/certificateauthority/AppleRootCA-G3.cer";
 
 /**
