@@ -31,13 +31,16 @@ interface Check {
 
 const checks: Check[] = [
   {
-    label: "Node version ≥ 20",
+    label: "Node version ≥ 22.19",
     critical: true,
     run: async () => {
-      const major = parseInt(process.versions.node.split(".")[0]!, 10);
-      return major >= 20
+      const [major = 0, minor = 0] = process.versions.node.split(".").map((n) => parseInt(n, 10));
+      return major >= 23 || (major === 22 && minor >= 19)
         ? { ok: true, detail: `node ${process.versions.node}` }
-        : { ok: false, detail: `node ${process.versions.node} (need ≥ 20)` };
+        : {
+            ok: false,
+            detail: `node ${process.versions.node} (need ≥ 22.19 — undici, a production dependency, uses APIs added in 22.10)`,
+          };
     },
   },
   {
