@@ -74,7 +74,7 @@ import {
 } from "./api-contract.js";
 import { ipRateOk } from "../billing/limits.js";
 import { ROOM_HTML } from "./room.js";
-import { MAIN_HTML } from "./lisa-html.js";
+import { renderMainHtml, mainHtmlCsp } from "./lisa-html.js";
 import { OrchestratorHub, loadOrchestratorConfig } from "../integrations/hub.js";
 import { setCurrentHub } from "../integrations/current-hub.js";
 import { advise, dismissSuggestion, formatDigest } from "../advisor/engine.js";
@@ -2194,11 +2194,20 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     };
 
     if (req.method === "GET" && (url === "/" || url.startsWith("/?"))) {
+      // A fresh nonce per response: the shell's two inline <script> blocks
+      // carry it, so an injected <script> (a tool result, a mail subject, an
+      // agent's Markdown) cannot execute. See mainHtmlCsp for the policy.
+      const cspNonce = crypto.randomBytes(16).toString("base64");
       // no-store: never cache the shell, or a WKWebView / browser keeps rendering
       // an old GUI after `lisa` is updated (the shell carries the current markup +
       // asset references). Fixes the "removed element still shows" stale-cache bug.
-      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
-      res.end(MAIN_HTML);
+      // It is also what makes a per-response nonce safe to use.
+      res.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+        "content-security-policy": mainHtmlCsp(cspNonce),
+      });
+      res.end(renderMainHtml({ nonce: cspNonce }));
       return;
     }
 

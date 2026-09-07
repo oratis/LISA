@@ -18,14 +18,17 @@
  * unchanged:
  *   log, input, form, sendBtn, sessionId, fileInput, attachPreview,
  *   mascot, mascotTag, modalBg, modalTitle, modalBody, modalClose,
- *   cfgOverlay, cfgForm, cfgAnthropic, cfgOpenai, cfgSave, cfgError,
- *   birthOverlay, birthSteps, birthFinal, birthEnter, birthError,
+ *   cfgOverlay, cfgForm, cfgTitle, cfgReason, cfgConsole, cfgProvider,
+ *   cfgKeyLabel, cfgKey, cfgBaseUrlField, cfgBaseUrl, cfgModelField, cfgModel,
+ *   cfgSave, cfgError,
+ *   birthOverlay, birthSteps, birthFinal, birthEnter, birthError, birthActions,
  *   attachBtn
  *
  * New IDs for the sidebar live blocks (wired in the trailing
  * "sidebar live wiring" script section):
  *   identitySub, sbDesire, sbClaudeCard, sbClaudeCount, sbClaudeRows,
- *   sbReflection, sbReflectionBody, sbSessionBadge
+ *   sbReflection, sbReflectionBody, sbSessionBadge,
+ *   connPill, switcherOverlay, switcherInput, switcherList
  */
 
 import { MAIN_CSS } from "./lisa-css.js";
@@ -47,7 +50,48 @@ import { renderMarkdown } from "./md-render.js";
  */
 const MD_RENDER_JS = `function __name(t){return t}\n${renderMarkdown}`;
 
-export const MAIN_HTML = `<!doctype html>
+/**
+ * Content-Security-Policy for the shell (T-4).
+ *
+ * The page carries two inline <script> blocks, so a policy without
+ * 'unsafe-inline' needs a per-response nonce — which is the point: with a
+ * nonce, an injected <script> (from a tool result, a mail subject, an agent's
+ * output rendered as Markdown) cannot run, because the attacker cannot guess
+ * the nonce. The stylesheet stays 'unsafe-inline': the client sets style="…"
+ * on elements in dozens of places and nonces do not apply to style attributes.
+ *
+ * Every directive is as narrow as the shell actually needs:
+ *   img-src / media-src   data: + blob: for attachment previews and recorded
+ *                         dictation, which are read into object URLs.
+ *   frame-src 'self'      the Room iframe loads /room from this origin.
+ *   connect-src 'self'    fetch + EventSource only ever talk to the backend.
+ *   object-src 'none'     nothing embeds plugins.
+ * Applied to GET / only — the API routes return JSON and the asset route
+ * serves images, neither of which a document policy helps.
+ */
+export function mainHtmlCsp(nonce: string): string {
+  return [
+    "default-src 'self'",
+    `script-src 'self' 'nonce-${nonce}'`,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:",
+    "media-src 'self' blob: data:",
+    "connect-src 'self'",
+    "frame-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+  ].join("; ");
+}
+
+/**
+ * Render the shell. `nonce` is stamped on both inline <script> tags so they
+ * survive the script-src above; omit it (the MAIN_HTML export below) and the
+ * page is byte-identical to the pre-CSP version, which is what the tests and
+ * any non-HTTP consumer want.
+ */
+export function renderMainHtml(opts: { nonce?: string } = {}): string {
+  const nonceAttr = opts.nonce ? ` nonce="${opts.nonce}"` : "";
+  return `<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -68,7 +112,7 @@ ${MAIN_CSS}
      so a fresh profile never flashes the 3-column layout during the long tail
      of inline JS at the end of <body>. MAIN_CLIENT_JS re-applies the same
      class idempotently and owns the toggle from then on. -->
-<script>
+<script${nonceAttr}>
 try { if (localStorage.getItem('lisaRightbar') !== 'open') document.body.classList.add('rb-collapsed'); }
 catch (e) { document.body.classList.add('rb-collapsed'); }
 </script>
@@ -78,6 +122,9 @@ catch (e) { document.body.classList.add('rb-collapsed'); }
   <!-- ╔════════════════ Title bar (drag zone) ════════════════╗ -->
   <div class="titlebar">
     <span>Lisa</span><span class="session-tag" id="titlebarSession"></span>
+    <!-- Backend liveness (UX-10). Hidden until the /events stream is down or
+         has gone silent past the heartbeat window. -->
+    <span class="conn-pill" id="connPill" role="status" aria-live="polite" hidden></span>
   </div>
 
   <!-- ╔════════════════ Sidebar ════════════════╗ -->
@@ -98,7 +145,7 @@ catch (e) { document.body.classList.add('rb-collapsed'); }
       </div>
     </div>
 
-    <!-- Primary navigation (九宫格 3×3 view switcher — wired in setupConsole) -->
+    <!-- Primary navigation (3×3 tile grid view switcher — wired in setupConsole) -->
     <nav class="nav-list" id="navList">
       <button class="nav-item active" type="button" data-view="chat"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg></span><span class="nav-label">Chat</span></button>
       <button class="nav-item" type="button" data-view="dashboard"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg></span><span class="nav-label">Dashboard</span></button>
@@ -142,7 +189,7 @@ catch (e) { document.body.classList.add('rb-collapsed'); }
     <!-- Chat view (default home) — function bar + log + attachments + composer -->
     <div class="view active" id="viewChat">
 
-    <!-- Top icon function bar (功能区): session tabs (left) + quick panels
+    <!-- Top icon function bar: session tabs (left) + quick panels
          + find (right). #tabStrip is rendered by the sidebar-live block. -->
     <div class="fnbar" id="fnbar">
       <div class="tabstrip" id="tabStrip"></div>
@@ -169,6 +216,11 @@ catch (e) { document.body.classList.add('rb-collapsed'); }
       <div class="as-foot" id="asFoot"></div>
     </div>
 
+    <!-- Screen-reader status for the chat (aria-live): coarse turn state only
+         ("Lisa is thinking" / "replying" / "finished"), never the streamed
+         text — position:absolute via .sr-only so it takes no grid row. -->
+    <div id="chatStatus" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+
     <!-- Chat log (messages, tool blocks, idle blocks injected here) -->
     <div id="log"></div>
 
@@ -177,7 +229,9 @@ catch (e) { document.body.classList.add('rb-collapsed'); }
 
     <!-- Composer -->
     <form id="form">
-      <input type="file" id="fileInput" accept="image/*,.pdf,.txt,.md,.csv,.json" multiple>
+      <!-- tabindex=-1: it is off-screened (1×1, opacity 0) and opened by the
+           ＋ menu, so it must not be a keyboard Tab stop. -->
+      <input type="file" id="fileInput" accept="image/*,.pdf,.txt,.md,.csv,.json" multiple tabindex="-1">
       <div class="plus-wrap">
         <button type="button" id="plusBtn" title="Attach or screenshot" aria-label="Attach or screenshot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
         <div class="plus-menu" id="plusMenu">
@@ -221,7 +275,9 @@ catch (e) { document.body.classList.add('rb-collapsed'); }
     <div class="rb-sec" id="sbNeeds">
       <div class="h">
         <div class="left">needs you</div>
-        <div class="count" id="sbNeedsCount"></div>
+        <!-- aria-live: a new approval request is announced ("2 agents need
+             you") without the user having to find the rail. -->
+        <div class="count" id="sbNeedsCount" aria-live="polite" aria-atomic="true"></div>
       </div>
       <div id="sbNeedsRows">
         <div class="session-empty">all clear ✓</div>
@@ -297,21 +353,36 @@ catch (e) { document.body.classList.add('rb-collapsed'); }
 <div class="cfg-overlay" id="cfgOverlay">
   <div class="cfg-card">
     <div class="cfg-stars">✦  ✦  ✦  ✦  ✦</div>
-    <div class="cfg-title">SET · API · KEY</div>
+    <div class="cfg-title" id="cfgTitle">SET · API · KEY</div>
+    <!-- Only filled when the gate is REOPENED after a failed birth (UX-1):
+         it explains why the user is looking at this form a second time. -->
+    <div class="cfg-reason" id="cfgReason" style="display:none"></div>
     <div class="cfg-sub">
-      Lisa needs an Anthropic API key to wake up.<br>
-      <a href="https://console.anthropic.com/" target="_blank" rel="noopener">Get one at console.anthropic.com</a>
+      Lisa needs one model API key to wake up.<br>
+      <a id="cfgConsole" href="https://console.anthropic.com/" target="_blank" rel="noopener">Get one at console.anthropic.com</a>
     </div>
     <form id="cfgForm">
+      <!-- Provider picker (UX-1 wave 2). Options are built at runtime from
+           /api/config/status.providers, with a built-in table as the fallback
+           for servers that don't report one yet. -->
       <label class="cfg-field">
-        <span class="cfg-label">ANTHROPIC_API_KEY</span>
-        <input class="cfg-input" id="cfgAnthropic" type="password" autocomplete="off"
-               spellcheck="false" placeholder="sk-ant-..." required>
+        <span class="cfg-label">PROVIDER</span>
+        <select class="cfg-input" id="cfgProvider"></select>
       </label>
       <label class="cfg-field">
-        <span class="cfg-label">OPENAI_API_KEY <span class="opt">(optional · for gpt-* models)</span></span>
-        <input class="cfg-input" id="cfgOpenai" type="password" autocomplete="off"
-               spellcheck="false" placeholder="sk-...">
+        <span class="cfg-label" id="cfgKeyLabel">ANTHROPIC_API_KEY</span>
+        <input class="cfg-input" id="cfgKey" type="password" autocomplete="off"
+               spellcheck="false" placeholder="sk-ant-..." required>
+      </label>
+      <label class="cfg-field" id="cfgBaseUrlField" style="display:none">
+        <span class="cfg-label">BASE URL <span class="opt">(OpenAI-compatible endpoint)</span></span>
+        <input class="cfg-input" id="cfgBaseUrl" type="text" autocomplete="off"
+               spellcheck="false" placeholder="https://host/v1">
+      </label>
+      <label class="cfg-field" id="cfgModelField">
+        <span class="cfg-label">MODEL <span class="opt">(optional · provider default)</span></span>
+        <input class="cfg-input" id="cfgModel" type="text" autocomplete="off"
+               spellcheck="false" placeholder="claude-sonnet-4-6">
       </label>
       <div class="cfg-help">
         Saved to <code>~/.lisa/config.env</code> with mode 0600. Stays on this machine.
@@ -324,6 +395,16 @@ catch (e) { document.body.classList.add('rb-collapsed'); }
   </div>
 </div>
 
+<!-- ⌘K session switcher (UX-11). Hidden until opened; the list is built
+     from the same session cache the sidebar tree uses. -->
+<div class="kbd-overlay" id="switcherOverlay" hidden>
+  <div class="kbd-panel" role="dialog" aria-modal="true" aria-label="Switch session">
+    <input class="kbd-input" id="switcherInput" type="text" autocomplete="off"
+           spellcheck="false" placeholder="Switch session…" aria-controls="switcherList">
+    <div class="kbd-list" id="switcherList" role="listbox"></div>
+  </div>
+</div>
+
 <!-- Birth ritual full-screen overlay -->
 <div class="birth-overlay" id="birthOverlay">
   <div class="birth-content">
@@ -333,12 +414,24 @@ catch (e) { document.body.classList.add('rb-collapsed'); }
     <div class="birth-final" id="birthFinal"></div>
     <button class="birth-enter" id="birthEnter">ENTER</button>
     <div class="birth-error" id="birthError"></div>
+    <!-- Cancel while streaming; Change key / Try again after a failure (UX-1).
+         Empty and hidden otherwise. -->
+    <div class="birth-actions" id="birthActions" style="display:none"></div>
     <div class="birth-stars" style="margin-top: 24px;">✦  ✦  ✦  ✦  ✦</div>
   </div>
 </div>
 
-<script>
+<script${nonceAttr}>
 ${MD_RENDER_JS}
 ${MAIN_CLIENT_JS}
 </script>
 </body></html>`;
+}
+
+/**
+ * The nonce-less shell. Kept as a named export because every consumer that is
+ * not an HTTP response (tests, tooling) wants a stable string, and because a
+ * page served without the CSP header must not carry a nonce attribute that
+ * says nothing.
+ */
+export const MAIN_HTML = renderMainHtml();
