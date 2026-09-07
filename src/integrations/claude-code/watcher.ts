@@ -48,11 +48,11 @@ import {
 } from "./parser.js";
 import type { SessionActivity } from "../types.js";
 
-const CLAUDE_HOME       = process.env.CLAUDE_HOME ?? path.join(os.homedir(), ".claude");
-const PROJECTS_DIR      = path.join(CLAUDE_HOME, "projects");
-const DEBOUNCE_MS       = 200;
-const ACTIVE_WINDOW_MS  = 30 * 60_000;
-const MAX_LISTED        = 10;
+const CLAUDE_HOME = process.env.CLAUDE_HOME ?? path.join(os.homedir(), ".claude");
+const PROJECTS_DIR = path.join(CLAUDE_HOME, "projects");
+const DEBOUNCE_MS = 200;
+const ACTIVE_WINDOW_MS = 30 * 60_000;
+const MAX_LISTED = 10;
 
 /**
  * After Claude Code writes an `assistant` line with stop_reason=tool_use
@@ -160,7 +160,10 @@ export class ClaudeCodeWatcher extends EventEmitter {
    * parse plus the current clock — so re-deriving from the cache gives the
    * identical answer for a stat-identical file.
    */
-  private parseCache = new Map<string, { mtimeMs: number; size: number; parsed: SessionStateInfo; activity?: SessionActivity }>();
+  private parseCache = new Map<
+    string,
+    { mtimeMs: number; size: number; parsed: SessionStateInfo; activity?: SessionActivity }
+  >();
   private readonly log: Log;
   private readonly computeActivity: boolean;
   private started = false;
@@ -377,8 +380,15 @@ export class ClaudeCodeWatcher extends EventEmitter {
 
     const prev = this.sessions.get(fullPath);
     const { parsed, activity } = await this.parseWithCache(fullPath, st.mtimeMs, st.size);
-    const info = this.makeInfo(fullPath, st.mtimeMs, st.size,
-                               parsed.state, parsed.reason, parsed.cwd, activity);
+    const info = this.makeInfo(
+      fullPath,
+      st.mtimeMs,
+      st.size,
+      parsed.state,
+      parsed.reason,
+      parsed.cwd,
+      activity,
+    );
     this.sessions.set(fullPath, info);
 
     if (!prev) {
@@ -459,8 +469,7 @@ export class ClaudeCodeWatcher extends EventEmitter {
 
   private async repollActive(): Promise<void> {
     const cutoff = Date.now() - ACTIVE_WINDOW_MS;
-    const candidates = [...this.sessions.entries()]
-      .filter(([, info]) => info.lastMtime >= cutoff);
+    const candidates = [...this.sessions.entries()].filter(([, info]) => info.lastMtime >= cutoff);
     for (const [filePath, prev] of candidates) {
       let st: fs.Stats;
       try {
@@ -474,9 +483,15 @@ export class ClaudeCodeWatcher extends EventEmitter {
       // snapshot is carried over for the same reason: it labels a stall
       // ("stalled on <tool>") and re-extracting it would be wasted I/O.
       const { parsed, activity } = await this.parseWithCache(filePath, st.mtimeMs, st.size);
-      const info = this.makeInfo(filePath, st.mtimeMs, st.size,
-                                 parsed.state, parsed.reason, parsed.cwd,
-                                 activity ?? prev.activity);
+      const info = this.makeInfo(
+        filePath,
+        st.mtimeMs,
+        st.size,
+        parsed.state,
+        parsed.reason,
+        parsed.cwd,
+        activity ?? prev.activity,
+      );
       // No file growth here — only re-emit when the DERIVED state
       // changed (working → waiting after staleness).
       if (info.state !== prev.state || info.stateReason !== prev.stateReason) {

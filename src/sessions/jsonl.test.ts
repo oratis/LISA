@@ -32,7 +32,10 @@ describe("jsonlLines", () => {
   });
 
   test("breaking out early does not leave the read stream open", async () => {
-    const p = write("big.jsonl", Array.from({ length: 5000 }, (_, i) => `{"i":${i}}`));
+    const p = write(
+      "big.jsonl",
+      Array.from({ length: 5000 }, (_, i) => `{"i":${i}}`),
+    );
     for await (const line of jsonlLines(p)) {
       assert.equal(line, '{"i":0}');
       break; // the generator's finally must destroy the stream
@@ -56,7 +59,10 @@ describe("tailLines", () => {
   });
 
   test("a bigger file returns only the tail, and drops the torn first line", async () => {
-    const p = write("wide.jsonl", Array.from({ length: 200 }, (_, i) => `{"i":${i},"pad":"${"x".repeat(50)}"}`));
+    const p = write(
+      "wide.jsonl",
+      Array.from({ length: 200 }, (_, i) => `{"i":${i},"pad":"${"x".repeat(50)}"}`),
+    );
     const t = await tailLines(p, 512);
     assert.equal(t.complete, false);
     assert.ok(t.lines.length > 0 && t.lines.length < 200);

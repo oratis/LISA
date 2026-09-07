@@ -24,11 +24,19 @@ function session(project: string, id: string, ageMs: number): string {
   fs.writeFileSync(
     file,
     [
-      JSON.stringify({ type: "user", cwd: "/Users/x/Projects/Demo", message: { role: "user", content: "hi" } }),
+      JSON.stringify({
+        type: "user",
+        cwd: "/Users/x/Projects/Demo",
+        message: { role: "user", content: "hi" },
+      }),
       JSON.stringify({
         type: "assistant",
         cwd: "/Users/x/Projects/Demo",
-        message: { role: "assistant", stop_reason: "end_turn", content: [{ type: "text", text: "ok" }] },
+        message: {
+          role: "assistant",
+          stop_reason: "end_turn",
+          content: [{ type: "text", text: "ok" }],
+        },
       }),
     ].join("\n") + "\n",
   );

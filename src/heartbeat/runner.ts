@@ -24,10 +24,7 @@ import { recordAutonomyRun, type AutonomyKind } from "../autonomy/runs.js";
 import { recentAgentRecap } from "../orchestrator/recent-recap.js";
 import type { ToolDefinition } from "../types.js";
 import type { Provider } from "../providers/types.js";
-import {
-  loadHeartbeatConfig,
-  type HeartbeatTask,
-} from "./config.js";
+import { loadHeartbeatConfig, type HeartbeatTask } from "./config.js";
 
 const STATE_FILE = path.join(lisaGlobalHome(), "heartbeat-state.json");
 const RUN_LOCK = path.join(lisaGlobalHome(), "heartbeat.lock");
@@ -148,8 +145,7 @@ async function runHeartbeatInner(opts: {
     ...desireTasks.map((task) => ({ task, tools: selfDrivenTools })),
     ...builtinTasks.map((task) => ({
       task,
-      tools:
-        task.name === "builtin:desire_review" ? reviewTools : selfDrivenTools,
+      tools: task.name === "builtin:desire_review" ? reviewTools : selfDrivenTools,
     })),
   ];
 
@@ -177,12 +173,8 @@ async function runHeartbeatInner(opts: {
 
     // For desire tasks, snapshot the progress entry count before so we can
     // detect whether Lisa actually called desire_progress_log during the run.
-    const desireSlug = task.name.startsWith("desire:")
-      ? task.name.slice("desire:".length)
-      : null;
-    const progressBefore = desireSlug
-      ? (await parseDesireProgress(desireSlug)).entries.length
-      : 0;
+    const desireSlug = task.name.startsWith("desire:") ? task.name.slice("desire:".length) : null;
+    const progressBefore = desireSlug ? (await parseDesireProgress(desireSlug)).entries.length : 0;
 
     const startedAt = new Date().toISOString();
     const t0 = Date.now();
@@ -190,9 +182,9 @@ async function runHeartbeatInner(opts: {
       ? "desire"
       : task.name === "builtin:desire_review"
         ? "desire-review"
-      : task.name === "builtin:weekly_examen"
-        ? "examen"
-        : "heartbeat";
+        : task.name === "builtin:weekly_examen"
+          ? "examen"
+          : "heartbeat";
     let result;
     try {
       result = await runSubagent({
@@ -223,14 +215,9 @@ async function runHeartbeatInner(opts: {
     state.lastRunAt[task.name] = new Date().toISOString();
     const trimmed = result.text.trim();
     const silent = trimmed === "" || /^\(no update\)$/i.test(trimmed);
-    const reviewSlug =
-      task.name === "builtin:desire_review"
-        ? reviewTargetSlug(task.prompt)
-        : null;
+    const reviewSlug = task.name === "builtin:desire_review" ? reviewTargetSlug(task.prompt) : null;
     const reviewFallback =
-      reviewSlug !== null
-        ? await ensureReviewRecorded(reviewSlug, startedAt)
-        : false;
+      reviewSlug !== null ? await ensureReviewRecorded(reviewSlug, startedAt) : false;
 
     // Auto-fallback: if a desire heartbeat finished but Lisa didn't log
     // progress, write a stub entry so we don't silently lose the run.
@@ -329,11 +316,7 @@ export async function runDesireReviewOnce(opts: {
             outputTokens: result.outputTokens,
             toolCalls: result.toolCallCount,
             outcome:
-              result.stopReason === "budget_exceeded"
-                ? "blocked"
-                : text
-                  ? "done"
-                  : "no-update",
+              result.stopReason === "budget_exceeded" ? "blocked" : text ? "done" : "no-update",
             note:
               result.stopReason === "budget_exceeded"
                 ? "token budget reached"
@@ -383,10 +366,7 @@ function reviewTargetSlug(prompt: string): string | null {
  * desire is not re-reviewed on every scheduler tick. Closing the target also
  * counts as a completed review.
  */
-async function ensureReviewRecorded(
-  slug: string,
-  startedAt: string,
-): Promise<boolean> {
+async function ensureReviewRecorded(slug: string, startedAt: string): Promise<boolean> {
   const target = (await listDesires()).find((desire) => desire.slug === slug);
   if (!target || target.closed) return false;
   const reviewed = Date.parse(target.lastReviewedAt ?? "");
@@ -572,11 +552,9 @@ export async function buildDesireReviewPrompt(now: Date): Promise<string | null>
   )[0]!;
   const progress = await readDesireProgress(target.slug);
   const sources = (target.sources ?? []).map((url) => `- ${url}`).join("\n") || "(none)";
-  const strength = effectiveDesireIntensity(
-    target,
-    now.getTime(),
-    activity[target.slug],
-  ).toFixed(3);
+  const strength = effectiveDesireIntensity(target, now.getTime(), activity[target.slug]).toFixed(
+    3,
+  );
 
   return `This is a scheduled review of ONE desire. It is your desire, not a user request.
 

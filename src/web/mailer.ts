@@ -203,7 +203,9 @@ export function verificationEmail(link: string): Mail {
       heading("Confirm your email") +
         para("Confirm this address for your LISA account:") +
         cta("Verify this address", link) +
-        para("Verifying raises your free session allowance to the full amount. The link expires in 24 hours.") +
+        para(
+          "Verifying raises your free session allowance to the full amount. The link expires in 24 hours.",
+        ) +
         muted("If you didn't create a LISA account, ignore this mail."),
       { preheader: "Confirm your address to unlock the full free allowance" },
     ),
@@ -219,7 +221,14 @@ export async function sendSignInCodeEmail(
   cfg: MailerConfig = mailerConfig(),
   fetchFn: typeof fetch = fetch,
 ): Promise<MailResult> {
-  return deliver("signin_code", to, signInCodeEmail(code, ttlMinutes), `code ${code}`, cfg, fetchFn);
+  return deliver(
+    "signin_code",
+    to,
+    signInCodeEmail(code, ttlMinutes),
+    `code ${code}`,
+    cfg,
+    fetchFn,
+  );
 }
 
 export async function sendVerificationEmail(

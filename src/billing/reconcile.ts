@@ -19,7 +19,11 @@ import crypto from "node:crypto";
 import type { AccountRecord } from "../web/accounts.js";
 import { getAccount } from "../web/accounts.js";
 import { logError, logInfo, redactId } from "../log.js";
-import { firestoreEnabled, acquireLease, releaseLease as releaseFsLease } from "../cloud/firestore.js";
+import {
+  firestoreEnabled,
+  acquireLease,
+  releaseLease as releaseFsLease,
+} from "../cloud/firestore.js";
 import {
   commitUsageEvent,
   defaultDebit,
@@ -185,7 +189,12 @@ export async function reconcileOnce(
         // a second time" are indistinguishable. A person decides.
         report.escalated += 1;
         report.parked!.push(refOf(event));
-        await park(deps, event, "replay_window: older than the balance ledger's idempotency window", dryRun);
+        await park(
+          deps,
+          event,
+          "replay_window: older than the balance ledger's idempotency window",
+          dryRun,
+        );
         continue;
       }
 

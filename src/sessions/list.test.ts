@@ -12,12 +12,17 @@ import path from "node:path";
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "lisa-sessions-"));
 process.env.LISA_HOME = TMP;
 
-const { clearSessionSummaryCache, listSessionsOnDisk, sessionSummaryCacheSize } = await import("./list.js");
+const { clearSessionSummaryCache, listSessionsOnDisk, sessionSummaryCacheSize } =
+  await import("./list.js");
 const { sessionsDir } = await import("../paths.js");
 
 after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 
-function writeSession(id: string, userTexts: string[], startedAt = `2026-01-01T00:00:0${id.length % 10}Z`): string {
+function writeSession(
+  id: string,
+  userTexts: string[],
+  startedAt = `2026-01-01T00:00:0${id.length % 10}Z`,
+): string {
   const dir = sessionsDir();
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, `${id}.jsonl`);
@@ -62,7 +67,11 @@ describe("listSessionsOnDisk cache", () => {
     assert.equal(fs.statSync(file).size, size);
 
     const second = await listSessionsOnDisk();
-    assert.deepEqual(second.find((s) => s.id === "s2"), cached, "served from cache, not re-parsed");
+    assert.deepEqual(
+      second.find((s) => s.id === "s2"),
+      cached,
+      "served from cache, not re-parsed",
+    );
   });
 
   test("appending to a session invalidates its entry (size changed)", async () => {
@@ -95,7 +104,10 @@ describe("listSessionsOnDisk cache", () => {
     const withIt = sessionSummaryCacheSize();
     fs.rmSync(file);
     const list = await listSessionsOnDisk();
-    assert.equal(list.some((s) => s.id === "s5"), false);
+    assert.equal(
+      list.some((s) => s.id === "s5"),
+      false,
+    );
     assert.equal(sessionSummaryCacheSize(), withIt - 1);
   });
 

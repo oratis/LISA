@@ -89,7 +89,10 @@ function decodeJson(segment: string): Record<string, unknown> {
  * signature, wrong issuer/audience, expired, unverified email). Returns the
  * identity on success.
  */
-export async function verifyGoogleIdToken(idToken: string, opts: VerifyGoogleOptions): Promise<GoogleIdentity> {
+export async function verifyGoogleIdToken(
+  idToken: string,
+  opts: VerifyGoogleOptions,
+): Promise<GoogleIdentity> {
   const now = opts.now ?? Date.now;
   const tolerance = opts.clockToleranceSec ?? 60;
 
@@ -108,7 +111,10 @@ export async function verifyGoogleIdToken(idToken: string, opts: VerifyGoogleOpt
   const jwk = keys.find((k) => k.kid === kid && k.kty === "RSA");
   if (!jwk) throw new GoogleAuthError("no matching Google signing key");
 
-  const pubKey = crypto.createPublicKey({ key: jwk as unknown as crypto.JsonWebKey, format: "jwk" });
+  const pubKey = crypto.createPublicKey({
+    key: jwk as unknown as crypto.JsonWebKey,
+    format: "jwk",
+  });
   const signingInput = Buffer.from(`${headerB64}.${payloadB64}`, "utf8");
   if (!crypto.verify("RSA-SHA256", signingInput, pubKey, b64urlToBuffer(sigB64))) {
     throw new GoogleAuthError("bad signature");
@@ -122,7 +128,8 @@ export async function verifyGoogleIdToken(idToken: string, opts: VerifyGoogleOpt
   // An empty audience list means nothing is configured — reject rather than
   // vacuously pass.
   const aud = claims.aud;
-  const audOk = opts.audiences.length > 0 && typeof aud === "string" && opts.audiences.includes(aud);
+  const audOk =
+    opts.audiences.length > 0 && typeof aud === "string" && opts.audiences.includes(aud);
   if (!audOk) throw new GoogleAuthError("wrong audience");
 
   const nowSec = Math.floor(now() / 1000);
@@ -133,7 +140,8 @@ export async function verifyGoogleIdToken(idToken: string, opts: VerifyGoogleOpt
 
   if (opts.expectedNonce !== undefined) {
     const got = typeof claims.nonce === "string" ? claims.nonce : "";
-    if (!got || !timingSafeEqualStr(got, opts.expectedNonce)) throw new GoogleAuthError("nonce mismatch");
+    if (!got || !timingSafeEqualStr(got, opts.expectedNonce))
+      throw new GoogleAuthError("nonce mismatch");
   }
 
   const sub = typeof claims.sub === "string" ? claims.sub : "";

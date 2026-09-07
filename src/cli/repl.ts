@@ -36,15 +36,11 @@ export interface ReplOptions {
 
 const MULTILINE_DELIM = `"""`;
 
-export async function runRepl(
-  handlers: ReplHandlers,
-  options: ReplOptions = {},
-): Promise<void> {
+export async function runRepl(handlers: ReplHandlers, options: ReplOptions = {}): Promise<void> {
   const input = options.input ?? process.stdin;
   const out = options.output ?? process.stderr;
   const terminal = options.terminal ?? (input as NodeJS.ReadStream).isTTY === true;
-  const historyFile =
-    options.historyFile === undefined ? historyPath() : options.historyFile;
+  const historyFile = options.historyFile === undefined ? historyPath() : options.historyFile;
 
   // Only a terminal session has history: piped stdin has no ↑ to press, and a
   // scripted `lisa < script.txt` must not pollute the user's history file.
@@ -103,9 +99,11 @@ export async function runRepl(
   }
 
   rl.on("line", (raw) => {
-    pending = pending.then(() => handleLine(raw)).catch((err) => {
-      out.write(`[error] ${(err as Error).message}\n`);
-    });
+    pending = pending
+      .then(() => handleLine(raw))
+      .catch((err) => {
+        out.write(`[error] ${(err as Error).message}\n`);
+      });
   });
 
   await new Promise<void>((resolve) =>
@@ -121,9 +119,7 @@ export async function runRepl(
   if (persist) {
     try {
       // rl.history is newest-first; the file is oldest-first.
-      const lines = ((rl as unknown as { history?: string[] }).history ?? [])
-        .slice()
-        .reverse();
+      const lines = ((rl as unknown as { history?: string[] }).history ?? []).slice().reverse();
       await saveHistory(lines, historyFile);
     } catch {
       // A history file we cannot write is never worth failing a session over.

@@ -48,8 +48,13 @@ describe("configureProxyFromEnv", () => {
   test("verbose: announces exactly once on install (fresh module instance)", async () => {
     clearProxyEnv();
     process.env.HTTPS_PROXY = "http://127.0.0.1:7897";
-    const fresh = (await import("./proxy-bootstrap.js?instance=verbose")) as typeof import("./proxy-bootstrap.js");
-    assert.equal(fresh.isProxyInstalled(), false, "query-string import must yield a new module instance");
+    const fresh =
+      (await import("./proxy-bootstrap.js?instance=verbose")) as typeof import("./proxy-bootstrap.js");
+    assert.equal(
+      fresh.isProxyInstalled(),
+      false,
+      "query-string import must yield a new module instance",
+    );
     const logs: string[] = [];
     fresh.configureProxyFromEnv({ log: (m) => logs.push(m), verbose: true });
     fresh.configureProxyFromEnv({ log: (m) => logs.push(m), verbose: true });

@@ -78,9 +78,15 @@ export function detectInstall(facts: InstallFacts): Detection {
   const brewPrefix = facts.brewPrefix?.replace(/\/+$/, "") ?? "";
 
   if (real.includes("/Cellar/")) {
-    return { flavor: "homebrew", reason: `runs from a Homebrew Cellar path (${displayPath(real)})` };
+    return {
+      flavor: "homebrew",
+      reason: `runs from a Homebrew Cellar path (${displayPath(real)})`,
+    };
   }
-  if (brewPrefix && (real.startsWith(`${brewPrefix}/opt/`) || real.startsWith(`${brewPrefix}/Cellar/`))) {
+  if (
+    brewPrefix &&
+    (real.startsWith(`${brewPrefix}/opt/`) || real.startsWith(`${brewPrefix}/Cellar/`))
+  ) {
     return { flavor: "homebrew", reason: `runs from ${displayPath(brewPrefix)}` };
   }
   if (real.includes(`/node_modules/${PACKAGE_NAME}/`)) {
@@ -91,7 +97,10 @@ export function detectInstall(facts: InstallFacts): Detection {
   }
   const npmPrefix = facts.npmPrefix?.replace(/\/+$/, "") ?? "";
   if (npmPrefix && real.startsWith(`${npmPrefix}/`)) {
-    return { flavor: "npm-global", reason: `runs from the npm global prefix ${displayPath(npmPrefix)}` };
+    return {
+      flavor: "npm-global",
+      reason: `runs from the npm global prefix ${displayPath(npmPrefix)}`,
+    };
   }
   if (facts.repoRoot) {
     return { flavor: "source", reason: `a source checkout at ${displayPath(facts.repoRoot)}` };
@@ -354,7 +363,8 @@ export async function runUpgrade(opts: UpgradeOptions = {}): Promise<number> {
     return 0;
   }
 
-  const restart = facts.platform === "darwin" && (await (opts.autostartLoaded ?? defaultAutostartLoaded)());
+  const restart =
+    facts.platform === "darwin" && (await (opts.autostartLoaded ?? defaultAutostartLoaded)());
   const all = restart ? [...steps, kickstartCommand(uid)] : steps;
 
   if (opts.dryRun) {

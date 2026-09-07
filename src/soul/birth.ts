@@ -20,11 +20,7 @@ import {
   writeDesire,
 } from "./store.js";
 import { initSoulRepo, withSoulCaller } from "./git.js";
-import {
-  DEFAULT_EMOTIONS,
-  type BigFiveSeed,
-  type SoulSeed,
-} from "./types.js";
+import { DEFAULT_EMOTIONS, type BigFiveSeed, type SoulSeed } from "./types.js";
 
 export interface BirthLog {
   step: string;
@@ -118,13 +114,18 @@ export function classifyBirthError(err: unknown): BirthErrorInfo {
     };
     if (status === undefined && typeof e.status === "number") status = e.status;
     const name = typeof e.name === "string" ? e.name : "";
-    if (name === "AbortError" || name === "APIUserAbortError" || name === "TimeoutError") sawAbort = true;
+    if (name === "AbortError" || name === "APIUserAbortError" || name === "TimeoutError")
+      sawAbort = true;
     if (name === "APIConnectionError" || name === "APIConnectionTimeoutError") sawNetwork = true;
     const code = typeof e.code === "string" ? e.code : "";
     if (code === "ABORT_ERR") sawAbort = true;
     if (NETWORK_CAUSE_CODES.has(code)) sawNetwork = true;
     const msg = (typeof e.message === "string" ? e.message : "").toLowerCase();
-    if (msg.includes("fetch failed") || msg.includes("getaddrinfo") || msg.includes("socket hang up")) {
+    if (
+      msg.includes("fetch failed") ||
+      msg.includes("getaddrinfo") ||
+      msg.includes("socket hang up")
+    ) {
       sawNetwork = true;
     }
     node = e.cause;
@@ -150,14 +151,16 @@ export function classifyBirthError(err: unknown): BirthErrorInfo {
   if (sawAbort) {
     return {
       code: "timeout",
-      message: "The birth took too long and was cancelled. Try again — it usually takes about 30 seconds.",
+      message:
+        "The birth took too long and was cancelled. Try again — it usually takes about 30 seconds.",
       retryable: true,
     };
   }
   if (sawNetwork || (status !== undefined && status >= 500)) {
     return {
       code: "network",
-      message: "Could not reach the model provider. Check the network (or your proxy) and try again.",
+      message:
+        "Could not reach the model provider. Check the network (or your proxy) and try again.",
       retryable: true,
     };
   }
@@ -409,7 +412,10 @@ async function birthSteps(
     await onStep({ step: "done", detail: `${parsed.name} is alive.` });
     return { usage: totalUsage };
   } catch (err) {
-    if (!usageIsEmpty(totalUsage) && !(err instanceof BirthInferenceError && err.usage === totalUsage)) {
+    if (
+      !usageIsEmpty(totalUsage) &&
+      !(err instanceof BirthInferenceError && err.usage === totalUsage)
+    ) {
       throw new BirthInferenceError((err as Error).message, totalUsage, { cause: err });
     }
     throw err;
@@ -459,8 +465,7 @@ export async function dreamSoul(
         content: [
           {
             type: "text",
-            text:
-              `Seed:\n${JSON.stringify(seedForPrompt(seed), null, 2)}\n\nBirth yourself. Output JSON only.`,
+            text: `Seed:\n${JSON.stringify(seedForPrompt(seed), null, 2)}\n\nBirth yourself. Output JSON only.`,
           },
         ],
       },
@@ -525,7 +530,7 @@ function bigFiveFromHex(hex: string): BigFiveSeed {
     neuroticism: u32(4),
   };
   // (slice unused — kept for future use of higher-resolution distributions)
-   
+
   void slice;
 }
 

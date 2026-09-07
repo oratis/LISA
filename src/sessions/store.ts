@@ -148,7 +148,11 @@ export class SessionStore {
     const summaryOf = (line: string): string | undefined => {
       try {
         const entry = JSON.parse(line) as Partial<SessionEntry>;
-        if (entry.type === "reflection" && "summary" in entry && typeof entry.summary === "string") {
+        if (
+          entry.type === "reflection" &&
+          "summary" in entry &&
+          typeof entry.summary === "string"
+        ) {
           return entry.summary;
         }
       } catch {

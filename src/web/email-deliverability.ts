@@ -27,8 +27,7 @@
 import dns from "node:dns/promises";
 
 export type DeliverabilityVerdict =
-  | { ok: true }
-  | { ok: false; reason: "typo" | "no_such_domain"; suggestion?: string };
+  { ok: true } | { ok: false; reason: "typo" | "no_such_domain"; suggestion?: string };
 
 /** Mistyped TLDs. Each maps to what was almost certainly meant. */
 const TLD_TYPOS: Record<string, string> = {

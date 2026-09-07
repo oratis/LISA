@@ -131,9 +131,9 @@ export class EventLoopMonitor {
   constructor(opts: EventLoopMonitorOptions = {}) {
     this.histogram =
       opts.histogram ??
-      (monitorEventLoopDelay({
+      monitorEventLoopDelay({
         resolution: opts.resolutionMs ?? DEFAULT_RESOLUTION_MS,
-      }));
+      });
     this.windowMs = opts.windowMs ?? DEFAULT_WINDOW_MS;
     this.warnMs = opts.warnMs ?? DEFAULT_WARN_MS;
     this.warnEveryMs = opts.warnEveryMs ?? DEFAULT_WARN_EVERY_MS;
@@ -350,7 +350,9 @@ export function packageVersion(): string {
   if (cachedVersion !== null) return cachedVersion;
   try {
     const here = path.dirname(fileURLToPath(import.meta.url));
-    const pkg = JSON.parse(readFileSync(path.resolve(here, "..", "..", "package.json"), "utf8")) as {
+    const pkg = JSON.parse(
+      readFileSync(path.resolve(here, "..", "..", "package.json"), "utf8"),
+    ) as {
       version?: string;
     };
     cachedVersion = pkg.version ?? "unknown";

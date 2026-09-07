@@ -61,7 +61,14 @@ interface Args {
 }
 
 function parseArgs(argv: string[]): Args {
-  const args: Args = { dryRun: false, filter: undefined, estimate: false, icons: false, jobs: 4, top: 20 };
+  const args: Args = {
+    dryRun: false,
+    filter: undefined,
+    estimate: false,
+    icons: false,
+    jobs: 4,
+    top: 20,
+  };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === "--dry-run") args.dryRun = true;
@@ -71,7 +78,9 @@ function parseArgs(argv: string[]): Args {
     else if (a === "--jobs") args.jobs = Math.max(1, parseInt(argv[++i] ?? "4", 10) || 4);
     else if (a === "--top") args.top = Math.max(1, parseInt(argv[++i] ?? "20", 10) || 20);
     else if (a === "--help" || a === "-h") {
-      console.log("usage: optimize-assets.ts [--dry-run] [--filter <substr>] [--estimate] [--icons] [--jobs N] [--top N]");
+      console.log(
+        "usage: optimize-assets.ts [--dry-run] [--filter <substr>] [--estimate] [--icons] [--jobs N] [--top N]",
+      );
       process.exit(0);
     } else {
       console.error(`unknown argument: ${a}`);
@@ -172,7 +181,8 @@ interface Decoded {
 async function decode(buf: Buffer): Promise<Decoded> {
   const meta = await sharp(buf).metadata();
   const { data, info } = await sharp(buf).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-  if (info.channels !== 4) throw new Error(`expected 4 channels after ensureAlpha, got ${info.channels}`);
+  if (info.channels !== 4)
+    throw new Error(`expected 4 channels after ensureAlpha, got ${info.channels}`);
   return {
     width: info.width,
     height: info.height,
@@ -200,7 +210,7 @@ function countColours(rgba: Buffer): { colours: number; allOpaque: boolean } {
   for (let i = 0; i < u32.length; i++) {
     const v = u32[i]!;
     seen.add(v);
-    if ((v >>> 24) !== 0xff && allOpaque) allOpaque = false;
+    if (v >>> 24 !== 0xff && allOpaque) allOpaque = false;
   }
   return { colours: seen.size, allOpaque };
 }
@@ -240,9 +250,20 @@ async function optimiseFile(rel: string, dryRun: boolean): Promise<FileResult> {
   const buf = await fs.readFile(abs);
   const dir = path.dirname(rel) === "." ? "(root)" : path.dirname(rel) + "/";
   const base: FileResult = {
-    rel, dir, before: buf.length, after: buf.length, method: "unchanged", assertions: 0,
-    colours: 0, allOpaque: false, width: 0, height: 0, hasAlpha: false,
-    fileHash: createHash("sha256").update(buf).digest("hex"), pixelHash: "", bestCandidate: buf.length,
+    rel,
+    dir,
+    before: buf.length,
+    after: buf.length,
+    method: "unchanged",
+    assertions: 0,
+    colours: 0,
+    allOpaque: false,
+    width: 0,
+    height: 0,
+    hasAlpha: false,
+    fileHash: createHash("sha256").update(buf).digest("hex"),
+    pixelHash: "",
+    bestCandidate: buf.length,
   };
 
   const chunks = parseChunks(buf);
@@ -252,11 +273,16 @@ async function optimiseFile(rel: string, dryRun: boolean): Promise<FileResult> {
   const ref = await decode(buf);
   const { colours, allOpaque } = countColours(ref.rgba);
   Object.assign(base, {
-    colours, allOpaque, width: ref.width, height: ref.height, hasAlpha: ref.hasAlpha,
+    colours,
+    allOpaque,
+    width: ref.width,
+    height: ref.height,
+    hasAlpha: ref.hasAlpha,
     pixelHash: createHash("sha256").update(ref.rgba).digest("hex"),
   });
 
-  if (unknown.length) return { ...base, skipped: `unhandled ancillary chunk(s): ${unknown.join(", ")}` };
+  if (unknown.length)
+    return { ...base, skipped: `unhandled ancillary chunk(s): ${unknown.join(", ")}` };
   if (ref.depth !== "uchar") return { ...base, skipped: `unsupported bit depth (${ref.depth})` };
   if (ref.orientation !== undefined && ref.orientation !== 1) {
     return { ...base, skipped: `EXIF orientation ${ref.orientation} would be lost` };
@@ -265,11 +291,15 @@ async function optimiseFile(rel: string, dryRun: boolean): Promise<FileResult> {
   const candidates: Candidate[] = [
     {
       name: "truecolour+adaptive",
-      encode: () => sharp(buf).png({ palette: false, compressionLevel: 9, adaptiveFiltering: true }).toBuffer(),
+      encode: () =>
+        sharp(buf).png({ palette: false, compressionLevel: 9, adaptiveFiltering: true }).toBuffer(),
     },
     {
       name: "truecolour",
-      encode: () => sharp(buf).png({ palette: false, compressionLevel: 9, adaptiveFiltering: false }).toBuffer(),
+      encode: () =>
+        sharp(buf)
+          .png({ palette: false, compressionLevel: 9, adaptiveFiltering: false })
+          .toBuffer(),
     },
   ];
   if (colours <= 256) {
@@ -277,7 +307,14 @@ async function optimiseFile(rel: string, dryRun: boolean): Promise<FileResult> {
       name: `palette(${colours})`,
       encode: () =>
         sharp(buf)
-          .png({ palette: true, colours: Math.max(2, colours), quality: 100, effort: 10, dither: 0, compressionLevel: 9 })
+          .png({
+            palette: true,
+            colours: Math.max(2, colours),
+            quality: 100,
+            effort: 10,
+            dither: 0,
+            compressionLevel: 9,
+          })
           .toBuffer(),
     });
   }
@@ -320,7 +357,13 @@ async function optimiseFile(rel: string, dryRun: boolean): Promise<FileResult> {
     }
     assertions++;
   }
-  return { ...base, after: best.bytes.length, method: best.name, assertions, bestCandidate: best.bytes.length };
+  return {
+    ...base,
+    after: best.bytes.length,
+    method: best.name,
+    assertions,
+    bestCandidate: best.bytes.length,
+  };
 }
 
 // ─── derived icons ──────────────────────────────────────────────────────────
@@ -343,8 +386,18 @@ const DERIVED_ICONS: DerivedIcon[] = [
   // platform crops to its own mask, so a maskable icon has to carry its own
   // safe-zone padding; declaring the unpadded icon maskable just loses its
   // edges. src/web/server.ts's manifest declares exactly these three.
-  { file: "icon-512-maskable.png", size: 512, maskable: true, purpose: 'web manifest, purpose "maskable"' },
-  { file: "apple-touch-icon.png", size: 180, maskable: false, purpose: "iOS home screen (iOS applies its own superellipse mask)" },
+  {
+    file: "icon-512-maskable.png",
+    size: 512,
+    maskable: true,
+    purpose: 'web manifest, purpose "maskable"',
+  },
+  {
+    file: "apple-touch-icon.png",
+    size: 180,
+    maskable: false,
+    purpose: "iOS home screen (iOS applies its own superellipse mask)",
+  },
 ];
 
 /** Maskable safe zone: a circle of diameter 80% of the icon, i.e. radius 0.4 × size. */
@@ -368,7 +421,11 @@ function sampleFieldColour(ref: Decoded, bandFraction = 0.06): { r: number; g: n
   }
   let field = 0;
   let bestCount = -1;
-  for (const [key, n] of counts) if (n > bestCount) { field = key; bestCount = n; }
+  for (const [key, n] of counts)
+    if (n > bestCount) {
+      field = key;
+      bestCount = n;
+    }
   return { r: (field >> 16) & 0xff, g: (field >> 8) & 0xff, b: field & 0xff };
 }
 
@@ -389,7 +446,8 @@ function artRadius(ref: Decoded, field: { r: number; g: number; b: number }): nu
         Math.abs(ref.rgba[p]! - field.r) <= FIELD_TOLERANCE &&
         Math.abs(ref.rgba[p + 1]! - field.g) <= FIELD_TOLERANCE &&
         Math.abs(ref.rgba[p + 2]! - field.b) <= FIELD_TOLERANCE
-      ) continue;
+      )
+        continue;
       const r = Math.hypot(x - cx, y - cy);
       if (r > maxR) maxR = r;
     }
@@ -419,7 +477,8 @@ async function deriveIcons(dryRun: boolean): Promise<void> {
   const master = await fs.readFile(masterAbs);
   const masterChunks = parseChunks(master);
   const ref = await decode(master);
-  if (ref.width !== ref.height) throw new Error(`${ICON_MASTER} must be square, got ${ref.width}x${ref.height}`);
+  if (ref.width !== ref.height)
+    throw new Error(`${ICON_MASTER} must be square, got ${ref.width}x${ref.height}`);
 
   const background = sampleFieldColour(ref);
   const hex = `#${background.r.toString(16).padStart(2, "0")}${background.g.toString(16).padStart(2, "0")}${background.b.toString(16).padStart(2, "0")}`;
@@ -438,7 +497,8 @@ async function deriveIcons(dryRun: boolean): Promise<void> {
     const top = Math.floor(pad / 2);
 
     let pipeline = sharp(master);
-    if (inner !== ref.width) pipeline = pipeline.resize(inner, inner, { kernel: "lanczos3", fit: "fill" });
+    if (inner !== ref.width)
+      pipeline = pipeline.resize(inner, inner, { kernel: "lanczos3", fit: "fill" });
     // flatten first so the master's transparent rounded corners become field
     // colour; extend then continues that field out to the full icon square.
     pipeline = pipeline.flatten({ background });
@@ -448,7 +508,9 @@ async function deriveIcons(dryRun: boolean): Promise<void> {
     // Same chunk policy as the optimiser (master's colour-space chunks kept,
     // sharp's pHYs dropped) so a follow-up `optimize-assets` run is a no-op.
     const out = rebuildWithColourChunks(
-      await pipeline.png({ palette: false, compressionLevel: 9, adaptiveFiltering: true }).toBuffer(),
+      await pipeline
+        .png({ palette: false, compressionLevel: 9, adaptiveFiltering: true })
+        .toBuffer(),
       masterChunks,
     );
 
@@ -496,7 +558,12 @@ async function estimateWebp(r: FileResult): Promise<void> {
   for (let p = 0; visiblyExact && p < ref.rgba.length; p += 4) {
     const a = ref.rgba[p + 3];
     if (a !== dec.rgba[p + 3]) visiblyExact = false;
-    else if (a !== 0 && (ref.rgba[p] !== dec.rgba[p] || ref.rgba[p + 1] !== dec.rgba[p + 1] || ref.rgba[p + 2] !== dec.rgba[p + 2])) {
+    else if (
+      a !== 0 &&
+      (ref.rgba[p] !== dec.rgba[p] ||
+        ref.rgba[p + 1] !== dec.rgba[p + 1] ||
+        ref.rgba[p + 2] !== dec.rgba[p + 2])
+    ) {
       visiblyExact = false;
     }
   }
@@ -505,11 +572,16 @@ async function estimateWebp(r: FileResult): Promise<void> {
 }
 
 function recommendation(r: FileResult): string {
-  if (r.rel.startsWith("room/room")) return "scene background at the zlib floor — lazy-load per theme (only the active theme's 3 scenes are needed)";
-  if (r.rel.startsWith("room/")) return "only loaded by /room — ship with the room bundle, not the core UI";
-  if (r.rel.startsWith("lisa/")) return "already fetched on demand by slug — serve .webp when Accept allows, or make the mood pack an optional download";
-  if (r.rel === "lisa-mascot.png") return "1024² but rendered ≤ 96 px + favicon — a 256² variant for the UI would cut it > 90% (reference change)";
-  if (r.rel === "background-tile.png") return "not referenced by any CSS, only by the SW precache list — candidate for removal (reference change)";
+  if (r.rel.startsWith("room/room"))
+    return "scene background at the zlib floor — lazy-load per theme (only the active theme's 3 scenes are needed)";
+  if (r.rel.startsWith("room/"))
+    return "only loaded by /room — ship with the room bundle, not the core UI";
+  if (r.rel.startsWith("lisa/"))
+    return "already fetched on demand by slug — serve .webp when Accept allows, or make the mood pack an optional download";
+  if (r.rel === "lisa-mascot.png")
+    return "1024² but rendered ≤ 96 px + favicon — a 256² variant for the UI would cut it > 90% (reference change)";
+  if (r.rel === "background-tile.png")
+    return "not referenced by any CSS, only by the SW precache list — candidate for removal (reference change)";
   return "convert to WebP lossless once the reference can change";
 }
 
@@ -544,7 +616,10 @@ async function walkPngs(dir: string, rel = ""): Promise<string[]> {
   return out.sort();
 }
 
-async function otherPayload(dir: string, rel = ""): Promise<Map<string, { files: number; bytes: number }>> {
+async function otherPayload(
+  dir: string,
+  rel = "",
+): Promise<Map<string, { files: number; bytes: number }>> {
   const acc = new Map<string, { files: number; bytes: number }>();
   for (const e of await fs.readdir(dir, { withFileTypes: true })) {
     const r = rel ? `${rel}/${e.name}` : e.name;
@@ -585,7 +660,9 @@ async function main(): Promise<void> {
 
   let files = await walkPngs(ASSETS_DIR);
   if (args.filter) files = files.filter((f) => f.includes(args.filter!));
-  console.log(`${args.dryRun ? "dry-run: " : ""}optimising ${files.length} PNG(s) under ${path.relative(process.cwd(), ASSETS_DIR)} (jobs=${args.jobs})`);
+  console.log(
+    `${args.dryRun ? "dry-run: " : ""}optimising ${files.length} PNG(s) under ${path.relative(process.cwd(), ASSETS_DIR)} (jobs=${args.jobs})`,
+  );
 
   let failures = 0;
   const results = await pool(files, args.jobs, async (rel) => {
@@ -593,9 +670,13 @@ async function main(): Promise<void> {
       const r = await optimiseFile(rel, args.dryRun);
       if (r.skipped) console.log(`  - ${rel} skipped: ${r.skipped}`);
       else if (r.after < r.before) {
-        console.log(`  ${args.dryRun ? "~" : "✓"} ${rel} ${fmtInt(r.before)} → ${fmtInt(r.after)} B (${pct(r.before, r.after)}, ${r.method})`);
+        console.log(
+          `  ${args.dryRun ? "~" : "✓"} ${rel} ${fmtInt(r.before)} → ${fmtInt(r.after)} B (${pct(r.before, r.after)}, ${r.method})`,
+        );
       } else {
-        console.log(`  · ${rel} ${fmtInt(r.before)} B already optimal (best exact candidate ${pct(r.before, r.bestCandidate)})`);
+        console.log(
+          `  · ${rel} ${fmtInt(r.before)} B already optimal (best exact candidate ${pct(r.before, r.bestCandidate)})`,
+        );
       }
       return r;
     } catch (err) {
@@ -612,17 +693,31 @@ async function main(): Promise<void> {
   const rows: string[][] = [];
   const sum = (rs: FileResult[], k: "before" | "after") => rs.reduce((a, r) => a + r[k], 0);
   for (const [dir, rs] of [...dirs].sort((a, b) => sum(b[1], "before") - sum(a[1], "before"))) {
-    rows.push([dir, String(rs.length), fmtBytes(sum(rs, "before")), fmtBytes(sum(rs, "after")), pct(sum(rs, "before"), sum(rs, "after"))]);
+    rows.push([
+      dir,
+      String(rs.length),
+      fmtBytes(sum(rs, "before")),
+      fmtBytes(sum(rs, "after")),
+      pct(sum(rs, "before"), sum(rs, "after")),
+    ]);
   }
   const before = sum(ok, "before");
   const after = sum(ok, "after");
-  rows.push(["**total PNG**", String(ok.length), fmtBytes(before), fmtBytes(after), pct(before, after)]);
+  rows.push([
+    "**total PNG**",
+    String(ok.length),
+    fmtBytes(before),
+    fmtBytes(after),
+    pct(before, after),
+  ]);
   const assertions = ok.reduce((a, r) => a + r.assertions, 0);
   const changed = ok.filter((r) => r.after < r.before).length;
   const skipped = ok.filter((r) => r.skipped).length;
 
   console.log(`\n## PNG size by directory${args.dryRun ? " (dry-run)" : ""}\n`);
-  console.log(table(["directory", "files", "before", "after", "saved"], ["l", "r", "r", "r", "r"], rows));
+  console.log(
+    table(["directory", "files", "before", "after", "saved"], ["l", "r", "r", "r", "r"], rows),
+  );
   console.log(
     `\n${changed} file(s) reduced, ${ok.length - changed - skipped} already optimal, ${skipped} skipped, ${failures} failed; ` +
       `${fmtBytes(before - after)} saved; ${assertions} pixel-identical assertions passed; ${((Date.now() - t0) / 1000).toFixed(1)}s`,
@@ -639,17 +734,27 @@ async function main(): Promise<void> {
   // Estimate table: what a lossy-in-transparent-pixels WebP or a reference change would buy.
   const totalPayload = after + [...other.values()].reduce((a, v) => a + v.bytes, 0);
   if (args.estimate || totalPayload > TARGET_BYTES) {
-    console.log(`\n## Still ${fmtBytes(totalPayload)} of assets (target < ${fmtBytes(TARGET_BYTES)}) — what lossless PNG cannot do\n`);
+    console.log(
+      `\n## Still ${fmtBytes(totalPayload)} of assets (target < ${fmtBytes(TARGET_BYTES)}) — what lossless PNG cannot do\n`,
+    );
     await pool(ok, args.jobs, estimateWebp);
     const largest = [...ok].sort((a, b) => b.after - a.after).slice(0, args.top);
     const estRows = largest.map((r) => [
       r.rel,
       fmtBytes(r.after),
       `${r.width}×${r.height}${r.hasAlpha ? " RGBA" : " RGB"}, ${fmtInt(r.colours)} colours`,
-      r.webpLossless !== undefined ? `${fmtBytes(r.webpLossless)} (${pct(r.after, r.webpLossless)})${r.webpVisiblyExact ? "" : " ⚠ visible diff"}` : "—",
+      r.webpLossless !== undefined
+        ? `${fmtBytes(r.webpLossless)} (${pct(r.after, r.webpLossless)})${r.webpVisiblyExact ? "" : " ⚠ visible diff"}`
+        : "—",
       recommendation(r),
     ]);
-    console.log(table(["file", "PNG now", "pixels", "WebP lossless", "recommendation"], ["l", "r", "l", "r", "l"], estRows));
+    console.log(
+      table(
+        ["file", "PNG now", "pixels", "WebP lossless", "recommendation"],
+        ["l", "r", "l", "r", "l"],
+        estRows,
+      ),
+    );
     const webpTotal = ok.reduce((a, r) => a + (r.webpLossless ?? r.after), 0);
     const notVisiblyExact = ok.filter((r) => r.webpVisiblyExact === false).length;
 
@@ -660,15 +765,38 @@ async function main(): Promise<void> {
     const webpRows: string[][] = [];
     for (const [dir, rs] of [...dirs].sort((a, b) => sum(b[1], "after") - sum(a[1], "after"))) {
       const w = rs.reduce((a, r) => a + (r.webpLossless ?? r.after), 0);
-      webpRows.push([dir, String(rs.length), fmtBytes(sum(rs, "after")), fmtBytes(w), pct(sum(rs, "after"), w)]);
+      webpRows.push([
+        dir,
+        String(rs.length),
+        fmtBytes(sum(rs, "after")),
+        fmtBytes(w),
+        pct(sum(rs, "after"), w),
+      ]);
     }
     for (const [dir, v] of [...other].sort((a, b) => b[1].bytes - a[1].bytes)) {
-      webpRows.push([`${dir} (non-PNG)`, String(v.files), fmtBytes(v.bytes), fmtBytes(v.bytes), "—"]);
+      webpRows.push([
+        `${dir} (non-PNG)`,
+        String(v.files),
+        fmtBytes(v.bytes),
+        fmtBytes(v.bytes),
+        "—",
+      ]);
     }
-    webpRows.push(["**assets total**", String(ok.length + [...other.values()].reduce((a, v) => a + v.files, 0)),
-      fmtBytes(after + otherBytes), fmtBytes(webpTotal + otherBytes), pct(after + otherBytes, webpTotal + otherBytes)]);
+    webpRows.push([
+      "**assets total**",
+      String(ok.length + [...other.values()].reduce((a, v) => a + v.files, 0)),
+      fmtBytes(after + otherBytes),
+      fmtBytes(webpTotal + otherBytes),
+      pct(after + otherBytes, webpTotal + otherBytes),
+    ]);
     console.log(`\nBundle roll-up — what each directory costs today and as lossless WebP:\n`);
-    console.log(table(["bundle", "files", "now", "WebP lossless", "delta"], ["l", "r", "r", "r", "r"], webpRows));
+    console.log(
+      table(
+        ["bundle", "files", "now", "WebP lossless", "delta"],
+        ["l", "r", "r", "r", "r"],
+        webpRows,
+      ),
+    );
     if (webpTotal + otherBytes > TARGET_BYTES) {
       console.log(
         `\nEven all-WebP leaves ${fmtBytes(webpTotal + otherBytes)} — still over the ${fmtBytes(TARGET_BYTES)} target, ` +
@@ -690,8 +818,10 @@ async function main(): Promise<void> {
     };
     const byPixels = groups((r) => `${r.width}x${r.height}:${r.pixelHash}`);
     const byFile = groups((r) => r.fileHash);
-    console.log(`\nDuplicate frames: ${byPixels.length === 0 ? "none — no two PNGs decode to the same pixels" : byPixels.map((g) => g.join(" = ")).join("; ")}` +
-      `${byFile.length ? ` (byte-identical files: ${byFile.map((g) => g.join(" = ")).join("; ")})` : ""}`);
+    console.log(
+      `\nDuplicate frames: ${byPixels.length === 0 ? "none — no two PNGs decode to the same pixels" : byPixels.map((g) => g.join(" = ")).join("; ")}` +
+        `${byFile.length ? ` (byte-identical files: ${byFile.map((g) => g.join(" = ")).join("; ")})` : ""}`,
+    );
   }
 
   if (failures) process.exit(1);

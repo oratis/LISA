@@ -107,7 +107,10 @@ describe("probeHealth", () => {
 
   test("a 503 is reachable-but-unhealthy, and fails", async () => {
     await withServer(
-      { "/health": { status: 503, body: '{"ok":false}' }, "/healthz": { status: 503, body: '{"ok":false}' } },
+      {
+        "/health": { status: 503, body: '{"ok":false}' },
+        "/healthz": { status: 503, body: '{"ok":false}' },
+      },
       async (base) => {
         const r = await probeHealth(base);
         assert.equal(r.reachable, false);

@@ -13,7 +13,10 @@ import {
 const NS = 1e6;
 
 /** A histogram we script: p50/p99/max in ms, reset() clears to zero. */
-function fakeHistogram(): LagHistogram & { set(p50: number, p99: number, max: number): void; enabled: number } {
+function fakeHistogram(): LagHistogram & {
+  set(p50: number, p99: number, max: number): void;
+  enabled: number;
+} {
   let p50 = 0;
   let p99 = 0;
   let max = 0;
@@ -87,7 +90,10 @@ describe("event loop monitor — readout", () => {
   test("a window snapshot converts ns → ms and the histogram is reset after each readout", () => {
     const x = harness();
     const snap = window(x, 1.5, 12, 40);
-    assert.deepEqual({ p50: snap.p50, p99: snap.p99, max: snap.max }, { p50: 1.5, p99: 12, max: 40 });
+    assert.deepEqual(
+      { p50: snap.p50, p99: snap.p99, max: snap.max },
+      { p50: 1.5, p99: 12, max: 40 },
+    );
     assert.equal(x.h.count, 0, "reset after readout");
     assert.deepEqual(x.m.latest(), snap);
   });
@@ -174,7 +180,10 @@ describe("event loop monitor — self-watchdog", () => {
     assert.equal(watchdogThresholdFromEnv({ LISA_WATCHDOG_LAG_MS: "0" }), 0);
     assert.equal(watchdogThresholdFromEnv({ LISA_WATCHDOG_LAG_MS: "2500" }), 2500);
     assert.equal(watchdogThresholdFromEnv({ LISA_WATCHDOG_LAG_MS: "-1" }), DEFAULT_WATCHDOG_LAG_MS);
-    assert.equal(watchdogThresholdFromEnv({ LISA_WATCHDOG_LAG_MS: "soon" }), DEFAULT_WATCHDOG_LAG_MS);
+    assert.equal(
+      watchdogThresholdFromEnv({ LISA_WATCHDOG_LAG_MS: "soon" }),
+      DEFAULT_WATCHDOG_LAG_MS,
+    );
   });
 });
 
@@ -219,7 +228,10 @@ describe("health payload", () => {
   test("ok flips to false while the last window is over the warn line", () => {
     const x = harness();
     window(x, 1, 4_000, 5_000);
-    assert.equal(healthPayload(x.m, { tenants: 0, pending_turns: 0, sessions: 0 }, "cloud", 0).ok, false);
+    assert.equal(
+      healthPayload(x.m, { tenants: 0, pending_turns: 0, sessions: 0 }, "cloud", 0).ok,
+      false,
+    );
   });
 });
 

@@ -77,10 +77,7 @@ export interface ProbeOptions {
   now?: () => number;
 }
 
-export async function probeHealth(
-  baseUrl: string,
-  opts: ProbeOptions = {},
-): Promise<ProbeResult> {
+export async function probeHealth(baseUrl: string, opts: ProbeOptions = {}): Promise<ProbeResult> {
   const url = normalizeProbeUrl(baseUrl);
   const doFetch = opts.fetchImpl ?? fetch;
   const now = opts.now ?? (() => Date.now());
@@ -143,7 +140,7 @@ async function readJson(res: Response): Promise<HealthPayload | null> {
   try {
     const text = await res.text();
     const parsed: unknown = JSON.parse(text);
-    return parsed && typeof parsed === "object" ? (parsed) : null;
+    return parsed && typeof parsed === "object" ? parsed : null;
   } catch {
     // A 200 with a non-JSON body still proves the socket is alive; treat the
     // telemetry as simply absent.
@@ -158,9 +155,7 @@ export function collectWarnings(
   const out: string[] = [];
   const p99 = payload?.event_loop_lag_ms?.p99;
   if (typeof p99 === "number" && p99 > LAG_P99_WARN_MS) {
-    out.push(
-      `event loop lag p99 ${fmtMs(p99)} > ${LAG_P99_WARN_MS}ms — requests will stall`,
-    );
+    out.push(`event loop lag p99 ${fmtMs(p99)} > ${LAG_P99_WARN_MS}ms — requests will stall`);
   }
   if (latencyMs > LAG_P99_WARN_MS) {
     out.push(`/health itself took ${fmtMs(latencyMs)} to answer`);
@@ -197,9 +192,7 @@ export function formatProbe(r: ProbeResult): string[] {
   }
 
   const p = r.payload ?? {};
-  lines.push(
-    `  ${ok(`${r.endpoint} ${r.status}`)}${grey(`  ${fmtMs(r.latencyMs)} round-trip`)}`,
-  );
+  lines.push(`  ${ok(`${r.endpoint} ${r.status}`)}${grey(`  ${fmtMs(r.latencyMs)} round-trip`)}`);
   const rows: [string, string][] = [];
   if (p.version) rows.push(["version", p.version]);
   if (p.edition) rows.push(["edition", p.edition]);
@@ -223,9 +216,7 @@ export function formatProbe(r: ProbeResult): string[] {
   if (typeof p.pending_turns === "number") rows.push(["pending turns", String(p.pending_turns)]);
 
   if (rows.length === 0) {
-    lines.push(
-      `  ${dim("no telemetry — this server answers {ok:true} only (pre-0.25 /health)")}`,
-    );
+    lines.push(`  ${dim("no telemetry — this server answers {ok:true} only (pre-0.25 /health)")}`);
   } else {
     const width = Math.max(...rows.map(([k]) => k.length));
     for (const [k, v] of rows) lines.push(`  ${dim((k + ":").padEnd(width + 2))} ${v}`);

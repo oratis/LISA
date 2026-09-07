@@ -6,10 +6,13 @@ import { applySecurityHeaders, SECURITY_HEADERS } from "./security-headers.js";
 /** One real request against a throwaway server, no keep-alive. */
 function get(port: number, path: string): Promise<http.IncomingMessage> {
   return new Promise((resolve, reject) => {
-    const req = http.request({ host: "127.0.0.1", port, path, method: "GET", agent: false }, (res) => {
-      res.resume();
-      res.on("end", () => resolve(res));
-    });
+    const req = http.request(
+      { host: "127.0.0.1", port, path, method: "GET", agent: false },
+      (res) => {
+        res.resume();
+        res.on("end", () => resolve(res));
+      },
+    );
     req.on("error", reject);
     req.end();
   });
