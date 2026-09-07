@@ -39,7 +39,7 @@ jobs:
       # gate to a job-level env var. "true" iff the ASC API key is wired.
       HAS_IOS_SIGNING: ${{ secrets.ASC_KEY_ID != '' }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Skip notice (no Apple credentials)
         if: ${{ env.HAS_IOS_SIGNING != 'true' }}
