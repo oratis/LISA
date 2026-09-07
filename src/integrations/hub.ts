@@ -168,7 +168,13 @@ export async function loadOrchestratorConfig(
   try {
     const parsed = JSON.parse(raw) as Partial<OrchestratorConfig>;
     return {
-      integrations: parsed.integrations ?? DEFAULT_ORCHESTRATOR_CONFIG.integrations,
+      // Merge per key, never whole-map replace. agents.json is hand-edited —
+      // the READMEs tell you to open it to turn on one of the seven opt-in
+      // observers — and the obvious edit is to write just the integration you
+      // want. A whole-map replace made that edit silently drop the three
+      // defaults (claude-code, managed, pty), so enabling codex turned
+      // Claude Code observation off.
+      integrations: { ...DEFAULT_ORCHESTRATOR_CONFIG.integrations, ...(parsed.integrations ?? {}) },
       visibility: parsed.visibility ?? DEFAULT_ORCHESTRATOR_CONFIG.visibility,
     };
   } catch {

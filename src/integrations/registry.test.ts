@@ -4,6 +4,7 @@ import {
   registerIntegration,
   makeIntegration,
   listAvailableIntegrations,
+  registerBuiltinIntegrations,
   _resetIntegrationsForTest,
 } from "./registry.js";
 import type { AgentObserver, AgentSession } from "./types.js";
@@ -52,5 +53,31 @@ describe("integration registry", () => {
     });
     const obs = await makeIntegration("slow", {});
     assert.equal(obs.agent, "slow");
+  });
+});
+
+describe("_resetIntegrationsForTest is undoable", () => {
+  // The built-ins register as a side effect of importing their observer
+  // modules, and ESM caches modules — so the second registerBuiltinIntegrations()
+  // used to import ten already-evaluated modules and register nothing. The
+  // reset was a one-way door: any test running after one that called it got
+  // `unknown integration "claude-code"`, and the hub suite passed only because
+  // its reset happened to be the last thing in the file.
+  test("built-ins come back after a reset", async () => {
+    await registerBuiltinIntegrations();
+    const first = listAvailableIntegrations();
+    assert.ok(first.includes("claude-code"), "built-ins register on the first call");
+    assert.equal(first.length, 10);
+
+    _resetIntegrationsForTest();
+    assert.deepEqual(listAvailableIntegrations(), [], "reset empties the registry");
+
+    await registerBuiltinIntegrations();
+    assert.deepEqual(
+      listAvailableIntegrations(),
+      first,
+      "a second call must re-register, not rely on module side effects",
+    );
+    await assert.doesNotReject(() => makeIntegration("claude-code", { enabled: true }));
   });
 });
