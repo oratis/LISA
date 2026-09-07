@@ -334,7 +334,11 @@ describe("a failed upgrade says what to do about it", () => {
   });
 
   test("registry / DNS / connection failures are the network case", () => {
-    for (const out of ["getaddrinfo ENOTFOUND registry.npmjs.org", "npm ERR! code ETIMEDOUT", "ECONNRESET"]) {
+    for (const out of [
+      "getaddrinfo ENOTFOUND registry.npmjs.org",
+      "npm ERR! code ETIMEDOUT",
+      "ECONNRESET",
+    ]) {
       assert.equal(classifyUpgradeFailure(out), "network", out.slice(0, 30));
     }
   });
@@ -352,7 +356,8 @@ describe("a failed upgrade says what to do about it", () => {
   test("classification reads the whole message, not just its first line", () => {
     // runCmd rejects with `npm exited 1: <stderr>`, and the needle is almost
     // never on line one.
-    const real = "npm exited 1: npm ERR! code EACCES\nnpm ERR! syscall mkdir\nnpm ERR! path /usr/local/lib";
+    const real =
+      "npm exited 1: npm ERR! code EACCES\nnpm ERR! syscall mkdir\nnpm ERR! path /usr/local/lib";
     assert.equal(classifyUpgradeFailure(real), "permissions");
   });
 
@@ -378,7 +383,10 @@ describe("a failed upgrade says what to do about it", () => {
     for (const kind of ["permissions", "network", "node-too-old", "unknown"] as const) {
       const lines = failureAdvice(kind, "npm-global");
       assert.ok(lines.length > 0, kind);
-      assert.ok(lines.every((l) => l.trim().length > 0), kind);
+      assert.ok(
+        lines.every((l) => l.trim().length > 0),
+        kind,
+      );
     }
   });
 

@@ -563,7 +563,10 @@ function dispatchState(d: unknown): { cls: string; label: string } {
 
 describe("dispatch card status", () => {
   test("the source really was extracted", () => {
-    assert.ok(DISPATCH_STATE_SRC.includes("case 'failed'"), "dispatchState not found in the served bytes");
+    assert.ok(
+      DISPATCH_STATE_SRC.includes("case 'failed'"),
+      "dispatchState not found in the served bytes",
+    );
   });
 
   test("each server status maps to its own label and colour class", () => {

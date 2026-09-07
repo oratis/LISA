@@ -54,10 +54,7 @@ export function activeAgentInCwd(cwd: string): string | null {
   if (!hub) return null; // no monitor → can't check; allow
   const clash = hub
     .list()
-    .find(
-      (s) =>
-        s.cwd === cwd && (s.state === "working" || s.state === "waiting"),
-    );
+    .find((s) => s.cwd === cwd && (s.state === "working" || s.state === "waiting"));
   return clash ? `${clash.agent} (${clash.project})` : null;
 }
 
@@ -139,11 +136,24 @@ export async function launchAgent(
       stdio: outFd !== undefined ? ["ignore", outFd, outFd] : "ignore",
     });
   } catch (err) {
-    if (outFd !== undefined) try { fs.closeSync(outFd); } catch { /* ignore */ }
-    return { error: `Failed to launch ${agent}: ${(err as Error).message}. Is "${cmd}" installed and on PATH?`, cmd };
+    if (outFd !== undefined)
+      try {
+        fs.closeSync(outFd);
+      } catch {
+        /* ignore */
+      }
+    return {
+      error: `Failed to launch ${agent}: ${(err as Error).message}. Is "${cmd}" installed and on PATH?`,
+      cmd,
+    };
   }
   // The child dup'd the fd for its stdio; close our copy.
-  if (outFd !== undefined) try { fs.closeSync(outFd); } catch { /* ignore */ }
+  if (outFd !== undefined)
+    try {
+      fs.closeSync(outFd);
+    } catch {
+      /* ignore */
+    }
 
   // Fingerprint the process NOW, not after the 150 ms race below. child.pid is
   // known the moment spawn() returns, and the token is only obtainable while
@@ -167,8 +177,17 @@ export async function launchAgent(
   // for a one-shot CLI invocation that exits first. In that case the entry
   // keeps exitCode: undefined and renders as "status not captured" — never as
   // a success.
-  interface ExitStatus { code: number | null; signal: NodeJS.Signals | null }
+  interface ExitStatus {
+    code: number | null;
+    signal: NodeJS.Signals | null;
+  }
   const pending: { exit: ExitStatus | null } = { exit: null };
+  // Assigned exactly once, but not here: saveExit below closes over this
+  // binding and can run BEFORE the assignment (the "close" listener fires
+  // during the launch race for a fast-exiting agent). Merging the declaration
+  // into that later assignment — what prefer-const suggests — puts the
+  // closure's read in the temporal dead zone and throws.
+  // eslint-disable-next-line prefer-const
   let ledgerId: string | undefined;
   const saveExit = (code: number | null, signal: NodeJS.Signals | null): void => {
     if (ledgerId === undefined) return;
@@ -188,7 +207,11 @@ export async function launchAgent(
     child.once("error", (e: NodeJS.ErrnoException) => {
       if (settled) return;
       settled = true;
-      resolve(e.code === "ENOENT" ? `"${cmd}" not found on PATH — is ${agent} installed?` : `launch error: ${e.message}`);
+      resolve(
+        e.code === "ENOENT"
+          ? `"${cmd}" not found on PATH — is ${agent} installed?`
+          : `launch error: ${e.message}`,
+      );
     });
     setTimeout(() => {
       if (settled) return;
@@ -197,7 +220,12 @@ export async function launchAgent(
     }, 150);
   });
   if (launchError) {
-    if (logPath) try { fs.unlinkSync(logPath); } catch { /* ignore */ }
+    if (logPath)
+      try {
+        fs.unlinkSync(logPath);
+      } catch {
+        /* ignore */
+      }
     return { error: launchError, cmd };
   }
 
@@ -238,16 +266,19 @@ export const dispatchAgentTool: ToolDefinition<DispatchInput, string> = {
       },
       task: {
         type: "string",
-        description: "The task/prompt to give the agent (passed as a single argument, not a shell string).",
+        description:
+          "The task/prompt to give the agent (passed as a single argument, not a shell string).",
         minLength: 1,
       },
       cwd: {
         type: "string",
-        description: "Absolute working directory the agent should run in. Defaults to the current directory.",
+        description:
+          "Absolute working directory the agent should run in. Defaults to the current directory.",
       },
       force: {
         type: "boolean",
-        description: "Launch even if another agent is already active in this directory (default false — dispatch refuses to avoid clobbering).",
+        description:
+          "Launch even if another agent is already active in this directory (default false — dispatch refuses to avoid clobbering).",
       },
     },
     required: ["agent", "task"],
@@ -272,7 +303,9 @@ export const dispatchAgentTool: ToolDefinition<DispatchInput, string> = {
     const { pid, error, id } = await launchAgent(input.agent, input.task, cwd, ctx.log);
     if (error) return error;
 
-    ctx.log(`[dispatch] launched ${input.agent} (pid ${pid}) in ${cwd}: ${input.task.slice(0, 80)}`);
+    ctx.log(
+      `[dispatch] launched ${input.agent} (pid ${pid}) in ${cwd}: ${input.task.slice(0, 80)}`,
+    );
     return (
       `Launched ${input.agent} (pid ${pid}) in ${cwd}.\n` +
       `Running autonomously — I won't block on it. Check whether it finished and read ` +

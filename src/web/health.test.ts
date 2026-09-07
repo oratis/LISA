@@ -280,7 +280,9 @@ describe("the unauthenticated health payload (hosted edition)", () => {
   test("an unhealthy deployment still reports unhealthy", () => {
     const x = harness();
     window(x, 4000, 9000, 12000);
-    const pub = publicHealthPayload(healthPayload(x.m, { tenants: 1, pending_turns: 0, sessions: 1 }, "cloud", 5000));
+    const pub = publicHealthPayload(
+      healthPayload(x.m, { tenants: 1, pending_turns: 0, sessions: 1 }, "cloud", 5000),
+    );
     assert.equal(pub.ok, false, "lagging must still be visible without a token");
   });
 });
