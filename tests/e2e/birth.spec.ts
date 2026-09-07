@@ -8,7 +8,7 @@ import { startLisa, type LisaInstance } from "./helpers/lisa-server.js";
  * UX-1 is the P0 here: a 401 is retried like a transient failure, the raw
  * provider JSON is rendered at the user, and ENTER just reloads into the same
  * dead end because the key gate never comes back. The assertions describing the
- * fixed behaviour are test.fixme until the UX stream lands it; the assertions
+ * fixed behaviour were test.fixme until the UX stream landed it; they are live now and the assertions
  * describing what happens today (the overlay opens, an error surfaces, the soul
  * is NOT written) run now and would catch a regression either way.
  */
@@ -48,7 +48,7 @@ test.describe("birth · invalid key (401)", () => {
     expect(lisa.stub?.requestCount ?? 0).toBeGreaterThan(0);
   });
 
-  test.fixme("UX-1 · the error is human, not raw provider JSON", async ({ page }) => {
+  test("UX-1 · the error is human, not raw provider JSON", async ({ page }) => {
     await page.goto(lisa.baseURL);
     const err = page.locator("#birthError");
     await expect(err).not.toBeEmpty({ timeout: 30_000 });
@@ -59,7 +59,7 @@ test.describe("birth · invalid key (401)", () => {
     expect(text.toLowerCase()).toMatch(/key/);
   });
 
-  test.fixme("UX-1 · a Change key button returns to the gate", async ({ page }) => {
+  test("UX-1 · a Change key button returns to the gate", async ({ page }) => {
     await page.goto(lisa.baseURL);
     await expect(page.locator("#birthError")).not.toBeEmpty({ timeout: 30_000 });
 
@@ -68,7 +68,7 @@ test.describe("birth · invalid key (401)", () => {
     await changeKey.click();
 
     await expect(page.locator("#cfgOverlay")).toHaveClass(/\bopen\b/);
-    await expect(page.locator("#cfgAnthropic")).toBeVisible();
+    await expect(page.locator("#cfgKey")).toBeVisible();
   });
 });
 

@@ -22,8 +22,16 @@ test.describe("first run · API key gate", () => {
     const gate = page.locator("#cfgOverlay");
     await expect(gate).toHaveClass(/\bopen\b/);
     await expect(page.locator("#cfgOverlay .cfg-title")).toHaveText(/SET · API · KEY/);
-    await expect(page.locator("#cfgAnthropic")).toBeVisible();
+    await expect(page.locator("#cfgKey")).toBeVisible();
     await expect(page.locator("#cfgSave")).toBeVisible();
+
+    // UX-6: the gate is provider-agnostic. The picker must actually be
+    // populated — an empty <select> would leave a first-time user with a key
+    // field labelled for a provider they may not have an account with, which
+    // is the exact dead end this replaced.
+    const providers = page.locator("#cfgProvider option");
+    expect(await providers.count()).toBeGreaterThan(1);
+    await expect(page.locator("#cfgKeyLabel")).toHaveText(/_API_KEY$|_KEY$/);
 
     // The birth ritual must NOT start before there is a key to birth with.
     await expect(page.locator("#birthOverlay")).not.toHaveClass(/\bopen\b/);
@@ -34,7 +42,7 @@ test.describe("first run · API key gate", () => {
     await expect(page.locator("#cfgOverlay")).toHaveClass(/\bopen\b/);
 
     // required attribute → the browser blocks submit; the request never leaves.
-    await expect(page.locator("#cfgAnthropic")).toHaveAttribute("required", "");
+    await expect(page.locator("#cfgKey")).toHaveAttribute("required", "");
 
     const status = await page.evaluate(async () => {
       const res = await fetch("/api/config/status");

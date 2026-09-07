@@ -15,7 +15,7 @@
 ## 60 秒上手
 
 ```sh
-# 1. 安装 —— 三选一（Node ≥ 20）
+# 1. 安装 —— 三选一（Node ≥ 22.19）
 brew install oratis/tap/lisa              # Homebrew（CLI）
 npm install -g @oratis/lisa               # npm（CLI，也是 Lisa.app 连的 backend）
 #    Mac App：到 https://github.com/oratis/LISA/releases/latest 下载 Lisa-Suite.dmg

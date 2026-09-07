@@ -8,7 +8,7 @@ import { startLisa, type LisaInstance } from "./helpers/lisa-server.js";
  *
  * UX-2 found that at 375px `body.rb-collapsed .frame` (specificity 0,1,1) beats
  * the ≤720px media query (0,0,1), so the main pane collapses to 75px and the
- * send button lands off-screen. Those assertions live here as test.fixme until
+ * send button lands off-screen. Those assertions are live here now that
  * the UX stream lands the fix; everything else runs today.
  */
 const VIEWPORTS = [
@@ -71,13 +71,15 @@ test.describe("layout breakpoints", () => {
     }
   }
 
-  // ── UX-2: these are the two assertions that fail on today's CSS ──────────
+  // ── UX-2: the two assertions that used to fail on the shipped CSS ────────
   //
-  // Flip these from test.fixme to test once the UX stream's fix lands
-  // (limit `body.rb-collapsed .frame` to min-width:721px, give #viewChat
-  // min-width:0, make #fnbar scroll or collapse below 720px).
+  // They were test.fixme while the fix lived on another branch. It landed —
+  // `body.rb-collapsed .frame` is scoped to min-width:721px, #viewChat pins its
+  // column to minmax(0,1fr), and #fnbar sheds its quick-panel buttons below
+  // 720px — so these are live, and they are what stops the regression from
+  // coming back.
   for (const rail of ["collapsed", "open"] as const) {
-    test.fixme(`UX-2 · phone 375 · rail ${rail} · .main fills the viewport and SEND is on screen`, async ({
+    test(`UX-2 · phone 375 · rail ${rail} · .main fills the viewport and SEND is on screen`, async ({
       page,
     }) => {
       await page.setViewportSize({ width: 375, height: 812 });
