@@ -45,7 +45,11 @@ test("parseSessionSteps: ordered structural steps, no content leakage", async ()
       message: {
         role: "assistant",
         content: [
-          { type: "tool_use", name: "Read", input: { file_path: "/Users/x/" + SECRET + "-dir/notes.md" } },
+          {
+            type: "tool_use",
+            name: "Read",
+            input: { file_path: "/Users/x/" + SECRET + "-dir/notes.md" },
+          },
         ],
       },
     }) +
@@ -59,7 +63,9 @@ test("parseSessionSteps: ordered structural steps, no content leakage", async ()
       type: "assistant",
       message: {
         role: "assistant",
-        content: [{ type: "tool_use", name: "Bash", input: { command: "grep " + SECRET + " -r ." } }],
+        content: [
+          { type: "tool_use", name: "Bash", input: { command: "grep " + SECRET + " -r ." } },
+        ],
       },
     }) +
     line({

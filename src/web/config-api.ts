@@ -63,7 +63,10 @@ const EXTRA_WRITABLE_KEYS = ["LISA_API_KEY", "LISA_BASE_URL", "LISA_MODEL"] as c
 
 /** `DEEPSEEK_API_KEY` → `deepseek`. */
 function slugForEnvKey(envKey: string): string {
-  return envKey.replace(/_API_KEY$/, "").toLowerCase().replace(/_/g, "-");
+  return envKey
+    .replace(/_API_KEY$/, "")
+    .toLowerCase()
+    .replace(/_/g, "-");
 }
 
 function isConfigured(envKey: string, env: NodeJS.ProcessEnv): boolean {
@@ -128,8 +131,7 @@ export function configStatusPayload(
 }
 
 export type ConfigSaveParse =
-  | { ok: true; updates: Record<string, string> }
-  | { ok: false; status: number; error: string };
+  { ok: true; updates: Record<string, string> } | { ok: false; status: number; error: string };
 
 /** Printable ASCII, no spaces, long enough to be a real credential. */
 const KEY_SHAPE = /^[\x21-\x7e]{20,}$/;

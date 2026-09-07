@@ -65,7 +65,11 @@ export async function cmdBillingReconcile(
   }
 
   const report = await reconcileOnce(
-    { dryRun: argv.includes("--dry-run"), retryHuman: argv.includes("--retry-human"), ...(uid ? { uid } : {}) },
+    {
+      dryRun: argv.includes("--dry-run"),
+      retryHuman: argv.includes("--retry-human"),
+      ...(uid ? { uid } : {}),
+    },
     deps,
   );
 
@@ -73,10 +77,14 @@ export async function cmdBillingReconcile(
     console.log(JSON.stringify(report));
     return;
   }
-  console.log(`${report.dryRun ? "dry run — nothing was written" : "reconcile"} across ${report.tenants} tenant(s)`);
+  console.log(
+    `${report.dryRun ? "dry run — nothing was written" : "reconcile"} across ${report.tenants} tenant(s)`,
+  );
   console.log(`  scanned:   ${report.scanned}`);
   console.log(`  committed: ${report.committed}`);
-  console.log(`  failed:    ${report.failed} (will retry, under the ${RECONCILE_MAX_ATTEMPTS}-attempt cap)`);
+  console.log(
+    `  failed:    ${report.failed} (will retry, under the ${RECONCILE_MAX_ATTEMPTS}-attempt cap)`,
+  );
   console.log(`  escalated: ${report.escalated}`);
   console.log(`  skipped:   ${report.skipped}`);
   for (const p of report.parked ?? []) {

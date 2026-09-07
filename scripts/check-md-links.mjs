@@ -196,7 +196,9 @@ for (const file of files) {
     if (fragment && abs.endsWith(".md") && fs.statSync(abs).isFile()) {
       const anchors = anchorsOf(abs);
       if (!anchors.has(fragment)) {
-        problems.push(`${rel}:${line}: ${target} — no heading/anchor "#${fragment}" in ${path.relative(ROOT, abs)}`);
+        problems.push(
+          `${rel}:${line}: ${target} — no heading/anchor "#${fragment}" in ${path.relative(ROOT, abs)}`,
+        );
       }
     }
   }
@@ -205,7 +207,9 @@ for (const file of files) {
 // A PENDING entry whose file now exists is stale: delete it, don't keep a hole.
 for (const [rel, reason] of PENDING) {
   if (fs.existsSync(path.resolve(ROOT, rel))) {
-    problems.push(`${rel} now exists — drop it from PENDING in ${path.basename(fileURLToPath(import.meta.url))} (was: ${reason})`);
+    problems.push(
+      `${rel} now exists — drop it from PENDING in ${path.basename(fileURLToPath(import.meta.url))} (was: ${reason})`,
+    );
   }
 }
 

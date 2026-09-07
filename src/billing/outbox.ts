@@ -364,7 +364,9 @@ export class JsonlOutboxStore implements OutboxStore {
     } catch (err) {
       // Losing a compaction only wastes disk; losing an event would lose money,
       // so this never propagates.
-      logError(`[billing] outbox compaction failed (uid ${redactId(uid)}): ${describeError(err, uid)}`);
+      logError(
+        `[billing] outbox compaction failed (uid ${redactId(uid)}): ${describeError(err, uid)}`,
+      );
     }
   }
 }
@@ -478,7 +480,9 @@ export class FirestoreOutboxStore implements OutboxStore {
       });
       this.registered.delete(uid);
     } catch (err) {
-      logInfo(`[billing] outbox index prune skipped (uid ${redactId(uid)}): ${describeError(err, uid)}`);
+      logInfo(
+        `[billing] outbox index prune skipped (uid ${redactId(uid)}): ${describeError(err, uid)}`,
+      );
     }
   }
 }
@@ -564,7 +568,10 @@ export function defaultSettlementDeps(): SettlementDeps {
 
 function wrapDebitError(err: unknown, uid: string): BillingStateError {
   if (err instanceof BillingStateError) return err;
-  return new BillingStateError("balance_unavailable", `balance commit failed: ${describeError(err, uid)}`);
+  return new BillingStateError(
+    "balance_unavailable",
+    `balance commit failed: ${describeError(err, uid)}`,
+  );
 }
 
 /**

@@ -124,7 +124,11 @@ describe("LISA_LOG_FILE sink (T-6)", () => {
     for (let i = 1; i <= LOG_FILE_KEEP; i++) {
       assert.equal(fs.existsSync(`${file}.${i}`), true, `.${i} should exist`);
     }
-    assert.equal(fs.existsSync(`${file}.${LOG_FILE_KEEP + 1}`), false, "oldest generation is dropped");
+    assert.equal(
+      fs.existsSync(`${file}.${LOG_FILE_KEEP + 1}`),
+      false,
+      "oldest generation is dropped",
+    );
     // .1 is the previous live file (newest rotation), .5 the oldest.
     assert.match(fs.readFileSync(`${file}.1`, "utf8"), new RegExp(`gen${LOG_FILE_KEEP} `));
     assert.match(fs.readFileSync(`${file}.${LOG_FILE_KEEP}`, "utf8"), /gen1 /);

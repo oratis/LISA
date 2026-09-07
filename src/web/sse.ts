@@ -55,7 +55,10 @@ export interface SseClosable {
  * Start pinging `res`. Returns a stop function; call it when the stream ends.
  * Safe to call the stop function more than once.
  */
-export function startSseHeartbeat(res: SseWritable, intervalMs: number = sseHeartbeatMs()): () => void {
+export function startSseHeartbeat(
+  res: SseWritable,
+  intervalMs: number = sseHeartbeatMs(),
+): () => void {
   const timer = setInterval(() => {
     if (res.writableEnded || res.destroyed) {
       clearInterval(timer);

@@ -75,9 +75,7 @@ export function configureProxyFromEnv(
     installedUrl = url;
     if (opts.verbose) opts.log?.(proxyStatusLine()!);
   } catch (err) {
-    opts.log?.(
-      `[proxy] failed to install ProxyAgent for ${url}: ${(err as Error).message}`,
-    );
+    opts.log?.(`[proxy] failed to install ProxyAgent for ${url}: ${(err as Error).message}`);
   }
 }
 
@@ -117,8 +115,7 @@ export const proxyAwareFetch: typeof fetch = async (
   if (ct) return r;
   // Body looks like JSON? Stream → text → re-construct with content-type set.
   const text = await r.text();
-  const looksJson =
-    text.trimStart().startsWith("{") || text.trimStart().startsWith("[");
+  const looksJson = text.trimStart().startsWith("{") || text.trimStart().startsWith("[");
   const newHeaders = new Headers(r.headers);
   if (looksJson) newHeaders.set("content-type", "application/json");
   return new Response(text, {

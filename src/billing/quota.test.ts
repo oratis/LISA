@@ -9,19 +9,39 @@ process.env.LISA_HOME = TMP;
 
 const quota = await import("./quota.js");
 const {
-  precheckTurn, debitTurn, quotaStatus, creditPurchase, clawbackPurchase, readBalance,
+  precheckTurn,
+  debitTurn,
+  quotaStatus,
+  creditPurchase,
+  clawbackPurchase,
+  readBalance,
   BillingStateError,
-  WINDOW_MS, FREE_WINDOW_FULL, FREE_WINDOW_UNVERIFIED, TIER1_WINDOW, TIER2_WINDOW,
+  WINDOW_MS,
+  FREE_WINDOW_FULL,
+  FREE_WINDOW_UNVERIFIED,
+  TIER1_WINDOW,
+  TIER2_WINDOW,
 } = quota;
 import type { AccountRecord } from "../web/accounts.js";
 
 const T0 = 1_750_000_000_000;
 
 const APPLE: AccountRecord = {
-  uid: "apple-1", kind: "apple", createdAt: T0, lastLoginAt: T0, verified: true, sessionVersion: 0,
+  uid: "apple-1",
+  kind: "apple",
+  createdAt: T0,
+  lastLoginAt: T0,
+  verified: true,
+  sessionVersion: 0,
 };
 const EMAIL_UNVERIFIED: AccountRecord = {
-  uid: "em-1", kind: "email", email: "a@b.co", createdAt: T0, lastLoginAt: T0, verified: false, sessionVersion: 0,
+  uid: "em-1",
+  kind: "email",
+  email: "a@b.co",
+  createdAt: T0,
+  lastLoginAt: T0,
+  verified: false,
+  sessionVersion: 0,
 };
 
 beforeEach(() => {
@@ -53,8 +73,7 @@ describe("quota engine", () => {
     assert.equal(balance.purchases.length, 1);
     await assert.rejects(
       creditPurchase({ at: T0, microUSD: 6_000_000, transactionId: "idem-1" }, T0 + 2),
-      (err: unknown) =>
-        err instanceof BillingStateError && err.code === "purchase_conflict",
+      (err: unknown) => err instanceof BillingStateError && err.code === "purchase_conflict",
     );
   });
 

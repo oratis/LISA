@@ -72,12 +72,21 @@ describe("autostart plist logging (T-6)", () => {
   test("launchd captures stdout/stderr into the *raw* log, not the rotated one", () => {
     // If these pointed at serve.log, launchd would append to the same file the
     // process rotates out from under it and the rotation would leak an fd.
-    assert.match(plist, /<key>StandardOutPath<\/key>\s*<string>\/Users\/x\/\.lisa\/serve\.launchd\.log<\/string>/);
-    assert.match(plist, /<key>StandardErrorPath<\/key>\s*<string>\/Users\/x\/\.lisa\/serve\.launchd\.log<\/string>/);
+    assert.match(
+      plist,
+      /<key>StandardOutPath<\/key>\s*<string>\/Users\/x\/\.lisa\/serve\.launchd\.log<\/string>/,
+    );
+    assert.match(
+      plist,
+      /<key>StandardErrorPath<\/key>\s*<string>\/Users\/x\/\.lisa\/serve\.launchd\.log<\/string>/,
+    );
   });
 
   test("LISA_LOG_FILE is exported so the process owns rotation of the main log", () => {
-    assert.match(plist, /<key>LISA_LOG_FILE<\/key>\s*<string>\/Users\/x\/\.lisa\/serve\.log<\/string>/);
+    assert.match(
+      plist,
+      /<key>LISA_LOG_FILE<\/key>\s*<string>\/Users\/x\/\.lisa\/serve\.log<\/string>/,
+    );
   });
 
   test("the PATH default survives alongside injected env vars", () => {

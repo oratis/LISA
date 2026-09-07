@@ -142,7 +142,9 @@ function sniffCwd(line: string): string | undefined {
       const cwd = (obj as Record<string, unknown>).cwd;
       if (typeof cwd === "string" && cwd.startsWith("/")) return cwd;
     }
-  } catch { /* skip */ }
+  } catch {
+    /* skip */
+  }
   return undefined;
 }
 
@@ -174,7 +176,7 @@ function decide(line: string): SessionStateInfo | null {
   const stopReason = readNestedStopReason(e);
   const subtype = readString(e.subtype);
   const isError = e.is_error === true || e.error === true;
-  const hookErrors = typeof e.hookErrors === "number" && (e.hookErrors) > 0;
+  const hookErrors = typeof e.hookErrors === "number" && e.hookErrors > 0;
 
   if (isError || hookErrors) {
     return { state: "error", reason: "is_error" };
@@ -187,9 +189,9 @@ function decide(line: string): SessionStateInfo | null {
     //              Claude continues) — so we report "working" unless
     //              the tool requires permission, which surfaces as a
     //              separate system entry we'd see later.
-    if (stopReason === "end_turn")      return { state: "waiting", reason: "end_turn" };
-    if (stopReason === "tool_use")      return { state: "working", reason: "tool_use" };
-    if (stopReason === "max_tokens")    return { state: "waiting", reason: "max_tokens" };
+    if (stopReason === "end_turn") return { state: "waiting", reason: "end_turn" };
+    if (stopReason === "tool_use") return { state: "working", reason: "tool_use" };
+    if (stopReason === "max_tokens") return { state: "waiting", reason: "max_tokens" };
     if (stopReason === "stop_sequence") return { state: "waiting", reason: "stop_sequence" };
     // Unknown / no stop_reason yet — likely streaming in progress.
     return { state: "working", reason: "assistant" };
@@ -262,9 +264,7 @@ const MAX_TOOLS = 6;
 const MAX_FILES = 10;
 const PATH_KEYS = ["file_path", "path", "notebook_path"];
 
-export async function parseSessionActivity(
-  filePath: string,
-): Promise<SessionActivity | undefined> {
+export async function parseSessionActivity(filePath: string): Promise<SessionActivity | undefined> {
   let size: number;
   try {
     const st = await fsp.stat(filePath);
@@ -540,9 +540,7 @@ const TRANSCRIPT_TAIL_BYTES = 256 * 1024;
 const MAX_TRANSCRIPT_ENTRIES = 160;
 const MAX_TEXT_CHARS = 4000;
 
-export async function parseSessionTranscript(
-  filePath: string,
-): Promise<AgentTranscriptEntry[]> {
+export async function parseSessionTranscript(filePath: string): Promise<AgentTranscriptEntry[]> {
   let size: number;
   try {
     const st = await fsp.stat(filePath);

@@ -70,14 +70,24 @@ describe("buildRuntimePolicy — the three surfaces", () => {
 describe("buildRuntimePolicy — flags actually change the policy", () => {
   test("--no-reflect turns reflection off on every surface", () => {
     for (const env of [MAC, CLOUD]) {
-      const p = buildRuntimePolicy({ ...ARGS, subcommand: "serve", serveWeb: true, reflect: false }, env);
+      const p = buildRuntimePolicy(
+        { ...ARGS, subcommand: "serve", serveWeb: true, reflect: false },
+        env,
+      );
       assert.equal(p.reflection, "off", JSON.stringify(env));
     }
   });
 
   test("--think / --compact / --approval flow through", () => {
     const p = buildRuntimePolicy(
-      { ...ARGS, subcommand: "serve", serveWeb: true, thinking: true, compaction: true, approval: "ask-mutating" },
+      {
+        ...ARGS,
+        subcommand: "serve",
+        serveWeb: true,
+        thinking: true,
+        compaction: true,
+        approval: "ask-mutating",
+      },
       MAC,
     );
     assert.equal(p.thinking, true);
@@ -86,12 +96,17 @@ describe("buildRuntimePolicy — flags actually change the policy", () => {
   });
 
   test("--sandbox beats LISA_SANDBOX_MODE", () => {
-    const p = buildRuntimePolicy({ ...ARGS, sandbox: "read-only" }, { ...MAC, LISA_SANDBOX_MODE: "workspace-write" });
+    const p = buildRuntimePolicy(
+      { ...ARGS, sandbox: "read-only" },
+      { ...MAC, LISA_SANDBOX_MODE: "workspace-write" },
+    );
     assert.equal(p.sandboxMode, "read-only");
   });
 
   test("describeRuntimePolicy prints every field for the startup banner", () => {
-    const line = describeRuntimePolicy(buildRuntimePolicy({ ...ARGS, subcommand: "serve", serveWeb: true }, MAC));
+    const line = describeRuntimePolicy(
+      buildRuntimePolicy({ ...ARGS, subcommand: "serve", serveWeb: true }, MAC),
+    );
     assert.equal(
       line,
       "surface=local-web reflection=scheduled approval=auto thinking=off compaction=off " +
@@ -108,7 +123,10 @@ describe("non-interactive approval callback", () => {
   });
 
   test("auto ⇒ no callback at all (the fast path is untouched)", () => {
-    assert.equal(buildNonInteractiveApprovalCallback(cfg("auto"), () => {}), undefined);
+    assert.equal(
+      buildNonInteractiveApprovalCallback(cfg("auto"), () => {}),
+      undefined,
+    );
   });
 
   test("ask denies everything, because a server has no terminal to prompt at", async () => {

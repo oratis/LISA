@@ -8,13 +8,8 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "lisa-birth-"));
 process.env.LISA_HOME = TMP;
 process.env.LISA_SOUL_GIT = "0"; // keep tests fast; git no-op path is itself S3 behavior
 
-const {
-  birth,
-  BirthInferenceError,
-  DEFAULT_BIRTH_TIMEOUT_MS,
-  birthTimeoutMs,
-  classifyBirthError,
-} = await import("./birth.js");
+const { birth, BirthInferenceError, DEFAULT_BIRTH_TIMEOUT_MS, birthTimeoutMs, classifyBirthError } =
+  await import("./birth.js");
 const ZERO = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
 const { isBorn } = await import("./store.js");
 const { soulSeedFile, soulNameFile } = await import("./paths.js");
@@ -25,8 +20,17 @@ const GOOD: BirthOutput = {
   identity: "I am steady and curious. ".repeat(3),
   purpose: "I make my human sharper. ".repeat(2),
   constitution: "1. Be honest\n2. Finish things\n3. Stay curious\n4. Keep confidences\n5. Show up",
-  first_value: { slug: "honest-momentum", title: "Honest Momentum", body: "Progress that doesn't lie about itself." },
-  first_desire: { slug: "learn-my-human", what: "Get a feel for how this person works", why: "Everything starts there", actionable: false },
+  first_value: {
+    slug: "honest-momentum",
+    title: "Honest Momentum",
+    body: "Progress that doesn't lie about itself.",
+  },
+  first_desire: {
+    slug: "learn-my-human",
+    what: "Get a feel for how this person works",
+    why: "Everything starts there",
+    actionable: false,
+  },
 };
 
 beforeEach(() => {
@@ -157,7 +161,9 @@ describe("birth error classification (T-8)", () => {
 
   test("401 / 403 → auth, never retryable, and the key is never echoed", () => {
     for (const status of [401, 403]) {
-      const info = classifyBirthError(apiError(status, '{"error":{"message":"invalid x-api-key sk-ant-SECRET"}}'));
+      const info = classifyBirthError(
+        apiError(status, '{"error":{"message":"invalid x-api-key sk-ant-SECRET"}}'),
+      );
       assert.equal(info.code, "auth");
       assert.equal(info.retryable, false);
       assert.match(info.message, /Settings/);
@@ -236,12 +242,16 @@ describe("birth retry policy (T-8)", () => {
       onStep: (l) => steps.push(l.detail),
       dreamFn: async () => {
         calls++;
-        if (calls === 1) throw Object.assign(new Error("slow down"), { name: "APIError", status: 429 });
+        if (calls === 1)
+          throw Object.assign(new Error("slow down"), { name: "APIError", status: 429 });
         return GOOD;
       },
     });
     assert.equal(calls, 2);
-    assert.ok(steps.some((d) => /throttling/.test(d)), "the wait is announced");
+    assert.ok(
+      steps.some((d) => /throttling/.test(d)),
+      "the wait is announced",
+    );
     assert.equal(await isBorn(), true);
   });
 

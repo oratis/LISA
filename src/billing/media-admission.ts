@@ -26,8 +26,7 @@ export interface MediaPermit {
 }
 
 export type MediaAdmission =
-  | { ok: true; permit: MediaPermit }
-  | { ok: false; status: number; body: Record<string, unknown> };
+  { ok: true; permit: MediaPermit } | { ok: false; status: number; body: Record<string, unknown> };
 
 export interface MediaAdmissionDependencies {
   limits(uid: string): LimitVerdict;
@@ -64,9 +63,7 @@ const DEFAULT_DEPS: MediaAdmissionDependencies = {
   },
 };
 
-function quotaRejection(
-  pre: Exclude<PrecheckResult, { ok: true }>,
-): MediaAdmission {
+function quotaRejection(pre: Exclude<PrecheckResult, { ok: true }>): MediaAdmission {
   if (pre.error === "premium_requires_balance") {
     return { ok: false, status: 402, body: { error: pre.error, tier: pre.tier } };
   }

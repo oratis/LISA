@@ -66,7 +66,11 @@ function cmpVersion(a, b) {
 
 function git(args) {
   try {
-    return execFileSync("git", args, { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    return execFileSync("git", args, {
+      cwd: ROOT,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
   } catch {
     return "";
   }
@@ -80,8 +84,10 @@ function git(args) {
  */
 function repathLinks(text) {
   return text.replace(/\]\(([^)\s]+)(\s+"[^"]*")?\)/g, (whole, target, title = "") => {
-    if (/^[a-z][a-z0-9+.-]*:/i.test(target) || target.startsWith("#") || target.startsWith("/")) return whole;
-    if (target.startsWith("docs/") || target.startsWith("../") || target.startsWith("./")) return whole;
+    if (/^[a-z][a-z0-9+.-]*:/i.test(target) || target.startsWith("#") || target.startsWith("/"))
+      return whole;
+    if (target.startsWith("docs/") || target.startsWith("../") || target.startsWith("./"))
+      return whole;
     return `](docs/${target}${title})`;
   });
 }
@@ -165,7 +171,9 @@ function generate() {
     if (firstKept >= 0) tail = existing.slice(firstKept);
   }
 
-  return [HEADER, "", ...entries, MARKER, "", tail.trim(), ""].join("\n").replace(/\n{3,}/g, "\n\n");
+  return [HEADER, "", ...entries, MARKER, "", tail.trim(), ""]
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n");
 }
 
 const check = process.argv.includes("--check");

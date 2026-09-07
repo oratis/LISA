@@ -8,7 +8,10 @@ import { listGrants } from "../consent/store.js";
 import { discoverSocialConnectors } from "../sense/social/manifest.js";
 import { listSocialDrafts } from "../sense/social/drafts.js";
 import { installBundledOpenConnector } from "../sense/social/connectors/plugin.js";
-import { runOpenSocialConnectorServer, type OpenConnectorPlatform } from "../sense/social/connectors/server.js";
+import {
+  runOpenSocialConnectorServer,
+  type OpenConnectorPlatform,
+} from "../sense/social/connectors/server.js";
 import { connectBlueskyAccount } from "../sense/social/connectors/bluesky.js";
 import { connectMastodonAccount } from "../sense/social/connectors/mastodon.js";
 import { publicAccount } from "../sense/social/connectors/accounts.js";
@@ -42,19 +45,16 @@ export async function runSenseCommand(subargs: string[]): Promise<number> {
       return 0;
     }
     if (action === "install") {
-      const requested = subargs
-        .slice(2)
-        .filter((value) => value !== "--force");
-      const platforms = (requested.length ? requested : ["bluesky", "mastodon"]) as OpenConnectorPlatform[];
+      const requested = subargs.slice(2).filter((value) => value !== "--force");
+      const platforms = (
+        requested.length ? requested : ["bluesky", "mastodon"]
+      ) as OpenConnectorPlatform[];
       if (platforms.some((value) => value !== "bluesky" && value !== "mastodon")) {
         console.error("usage: lisa sense social install [bluesky] [mastodon] [--force]");
         return 2;
       }
       for (const platform of platforms) {
-        const root = await installBundledOpenConnector(
-          platform,
-          subargs.includes("--force"),
-        );
+        const root = await installBundledOpenConnector(platform, subargs.includes("--force"));
         console.log(`installed ${platform}: ${root}`);
       }
       console.log("Restart the LISA server to load the connector MCP servers and skills.");
@@ -63,11 +63,13 @@ export async function runSenseCommand(subargs: string[]): Promise<number> {
     if (action === "connect") {
       const platform = subargs[2];
       if (!process.stdin.isTTY) {
-        console.error("account linking needs an interactive TTY so credentials are not passed in argv");
+        console.error(
+          "account linking needs an interactive TTY so credentials are not passed in argv",
+        );
         return 2;
       }
       if (platform === "bluesky") {
-        const handle = subargs[3] ?? await ask("Bluesky handle: ");
+        const handle = subargs[3] ?? (await ask("Bluesky handle: "));
         const service = subargs[4];
         const password = await ask("Bluesky app password: ", true);
         try {
@@ -79,7 +81,7 @@ export async function runSenseCommand(subargs: string[]): Promise<number> {
         return 0;
       }
       if (platform === "mastodon") {
-        const instance = subargs[3] ?? await ask("Mastodon instance (e.g. mastodon.social): ");
+        const instance = subargs[3] ?? (await ask("Mastodon instance (e.g. mastodon.social): "));
         const token = await ask("Mastodon user access token: ", true);
         try {
           const account = await connectMastodonAccount(instance, token);
@@ -166,8 +168,12 @@ export async function runSenseCommand(subargs: string[]): Promise<number> {
   }
 
   if (sub === "list" || sub === "recent" || sub === "status") {
-    const granted = listGrants().filter((g) => g.granted).map((g) => g.signal);
-    console.log(`Sense — granted: ${granted.length ? granted.join(", ") : "(none; all off — `lisa consent grant <signal>`)"}\n`);
+    const granted = listGrants()
+      .filter((g) => g.granted)
+      .map((g) => g.signal);
+    console.log(
+      `Sense — granted: ${granted.length ? granted.join(", ") : "(none; all off — `lisa consent grant <signal>`)"}\n`,
+    );
     const events = readSenseEvents();
     if (events.length === 0) {
       console.log("  (no recent ambient events)");
@@ -199,10 +205,10 @@ function ask(question: string, hidden = false): Promise<string> {
     const stream = process.stderr;
     const original = stream.write.bind(stream);
     let muted = false;
-    (stream as unknown as { write: typeof original }).write = ((chunk: never, ...rest: never[]) => {
+    (stream as unknown as { write: typeof original }).write = (chunk: never, ...rest: never[]) => {
       if (muted) return true;
       return original(chunk, ...rest);
-    });
+    };
     prompt!.question(question, (answer) => {
       (stream as unknown as { write: typeof original }).write = original;
       original("\n");

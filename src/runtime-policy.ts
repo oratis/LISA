@@ -146,7 +146,9 @@ export function buildNonInteractiveApprovalCallback(
     if (cfg.mode === "ask-mutating" && !isMutatingCall(cfg, toolName, toolInput)) {
       return { allow: true };
     }
-    log(`[approval] denied ${toolName} — mode=${cfg.mode}, no interactive approver on this surface`);
+    log(
+      `[approval] denied ${toolName} — mode=${cfg.mode}, no interactive approver on this surface`,
+    );
     return { allow: false, reason };
   };
 }

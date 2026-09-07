@@ -93,7 +93,9 @@ function fileSink(env: NodeJS.ProcessEnv = process.env): FileSink | null {
     sink = { path: target, fd, size: fs.fstatSync(fd).size };
   } catch (err) {
     brokenPaths.add(target);
-    console.error(`[log] cannot open LISA_LOG_FILE ${target}: ${(err as Error).message} — logging to stderr`);
+    console.error(
+      `[log] cannot open LISA_LOG_FILE ${target}: ${(err as Error).message} — logging to stderr`,
+    );
     sink = null;
   }
   return sink;
@@ -135,7 +137,11 @@ function rotate(s: FileSink): void {
 }
 
 /** The line written to LISA_LOG_FILE. Exported for tests. */
-export function formatFileLine(severity: LogSeverity, message: string, at: Date = new Date()): string {
+export function formatFileLine(
+  severity: LogSeverity,
+  message: string,
+  at: Date = new Date(),
+): string {
   // Always timestamped text, whatever LISA_LOG_FORMAT says: that variable
   // describes what the *platform's* log collector wants from stdout/stderr,
   // while this file is read by a human with `tail -f`.
@@ -157,7 +163,9 @@ function writeToFile(severity: LogSeverity, message: string): boolean {
     // A broken sink must never take the process down or swallow the line.
     brokenPaths.add(s.path);
     closeSink();
-    console.error(`[log] LISA_LOG_FILE write failed: ${(err as Error).message} — logging to stderr`);
+    console.error(
+      `[log] LISA_LOG_FILE write failed: ${(err as Error).message} — logging to stderr`,
+    );
     return false;
   }
 }

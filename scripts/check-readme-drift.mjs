@@ -117,6 +117,8 @@ for (const [a, b] of pairs) {
 }
 
 if (drift) {
-  console.error("Headings must match in level and order (text may differ). Add, remove or re-level the section in the other language.");
+  console.error(
+    "Headings must match in level and order (text may differ). Add, remove or re-level the section in the other language.",
+  );
   process.exit(1);
 }

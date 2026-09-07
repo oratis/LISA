@@ -71,7 +71,10 @@ describe("createEventRenderer — piped (non-TTY) output", () => {
     h.advance(1200);
     h.send({ type: "tool_call_end", toolName: "bash", toolResult: "42 passing" });
     h.r.endTurn();
-    const lines = h.stderr.text().split("\n").filter((l) => l.length > 0);
+    const lines = h.stderr
+      .text()
+      .split("\n")
+      .filter((l) => l.length > 0);
     assert.deepEqual(lines, ["⚙ bash  npm test", "✓ bash (1.2s)"]);
   });
 

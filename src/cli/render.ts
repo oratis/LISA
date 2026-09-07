@@ -260,7 +260,9 @@ export function createEventRenderer(opts: RendererOptions): EventRenderer {
           clearStatus();
           break;
         case "system_prompt_rebuilt":
-          writeLine(p.dim(verbose && event.message ? `[soul updated] ${event.message}` : "[soul updated]"));
+          writeLine(
+            p.dim(verbose && event.message ? `[soul updated] ${event.message}` : "[soul updated]"),
+          );
           break;
         case "error":
           writeLine(p.red(`[error] ${event.message ?? "unknown error"}`));
@@ -318,7 +320,7 @@ export function summarizeToolInput(input: unknown, max = 80): string {
   else if (typeof input === "object") {
     const obj = input as Record<string, unknown>;
     const action = typeof obj.action === "string" ? obj.action : "";
-    const key = PREFERRED_KEYS.find((k) => typeof obj[k] === "string" && (obj[k]).length > 0);
+    const key = PREFERRED_KEYS.find((k) => typeof obj[k] === "string" && obj[k].length > 0);
     if (key) s = action ? `${action} ${obj[key] as string}` : (obj[key] as string);
     else if (action) s = action;
     else s = safeJson(input);

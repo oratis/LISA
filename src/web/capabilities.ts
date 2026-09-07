@@ -25,11 +25,7 @@ import { cloudSafeSubset } from "../tools/registry.js";
  *                       and not the owner's keyboard.
  */
 export type CapabilityProfile =
-  | "local-owner"
-  | "local-autonomy"
-  | "cloud-chat"
-  | "cloud-autonomy"
-  | "remote-device";
+  "local-owner" | "local-autonomy" | "cloud-chat" | "cloud-autonomy" | "remote-device";
 
 /**
  * Profiles that get the cloud-safe tool subset. Written as the allow-list's
@@ -76,10 +72,7 @@ const CLOUD_DENIED_ROUTE_PREFIXES = [
   "/api/vision/",
 ] as const;
 
-const CLOUD_DENIED_EXACT_ROUTES = new Set([
-  "/api/kb/ingest",
-  "/api/plans",
-]);
+const CLOUD_DENIED_EXACT_ROUTES = new Set(["/api/kb/ingest", "/api/plans"]);
 
 export function isCloudDeniedRoute(rawUrl: string): boolean {
   let pathname: string;

@@ -76,7 +76,9 @@ export function buildIdleSystemPrompt(): string {
     // a scheduled chore..." sentence (line 3 in the default).
     const idx = lines.findIndex((l) => l.startsWith("This is not a scheduled chore"));
     if (idx >= 0) {
-      lines[idx] = IDLE_PREAMBLE_COMMITMENT_AWARE + "look around inside yourself and decide what YOU want to do with this window. Concrete things you have access to:";
+      lines[idx] =
+        IDLE_PREAMBLE_COMMITMENT_AWARE +
+        "look around inside yourself and decide what YOU want to do with this window. Concrete things you have access to:";
       // Drop the now-redundant continuation on the next line.
       if (lines[idx + 1]?.startsWith("- soul_read")) {
         // keep, it's the bullet list
@@ -120,10 +122,14 @@ export async function runIdleOnce(opts: {
   // concurrently and race on soul writes. timeoutMs:0 → if another idle run
   // is in flight, skip silently instead of queueing a second reflection.
   try {
-    return await withFileLock(idleRunLock(), () => runIdleInner(opts, idleMin, opts.userLanguageSample), {
-      timeoutMs: 0,
-      staleMs: 2 * 60 * 60_000, // 2h: an idle run older than this is a crashed holder
-    });
+    return await withFileLock(
+      idleRunLock(),
+      () => runIdleInner(opts, idleMin, opts.userLanguageSample),
+      {
+        timeoutMs: 0,
+        staleMs: 2 * 60 * 60_000, // 2h: an idle run older than this is a crashed holder
+      },
+    );
   } catch (err) {
     if ((err as Error).message?.includes("timed out acquiring lock")) {
       console.error("[idle] another idle run is already in flight — skipping");
@@ -171,7 +177,10 @@ async function runIdleInner(
     // note and then appends "(no update)", or wraps it in punctuation. Strip a
     // trailing "(no update)" so the marker never leaks into a shown note; if
     // nothing survives, the whole run was internal → silent.
-    const text = result.text.trim().replace(/\n*\(\s*no\s+update\s*\)[.。]?\s*$/i, "").trim();
+    const text = result.text
+      .trim()
+      .replace(/\n*\(\s*no\s+update\s*\)[.。]?\s*$/i, "")
+      .trim();
     const silent = text === "";
     const outcome: AutonomyOutcome =
       result.stopReason === "budget_exceeded" ? "blocked" : silent ? "no-update" : "done";

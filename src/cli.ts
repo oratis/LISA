@@ -12,12 +12,15 @@ import { isVerboseArgv, parseArgs, type ParsedArgs } from "./cli-args.js";
 // The "[proxy] outbound HTTP routed through …" banner is debug detail on a
 // one-shot command, but at `serve` startup it is the one line in serve.log
 // that says which proxy the daemon actually picked up — keep it there.
-const proxyBanner =
-  isVerboseArgv(process.argv.slice(2)) || process.argv.slice(2).includes("serve");
+const proxyBanner = isVerboseArgv(process.argv.slice(2)) || process.argv.slice(2).includes("serve");
 configureProxyFromEnv({ log: (m) => console.error(m), verbose: proxyBanner });
 import { logInfo } from "./log.js";
 import { runAgent } from "./agent.js";
-import { buildApprovalCallback, DEFAULT_MUTATING_TOOLS, DEFAULT_MUTATING_ACTIONS } from "./approval.js";
+import {
+  buildApprovalCallback,
+  DEFAULT_MUTATING_TOOLS,
+  DEFAULT_MUTATING_ACTIONS,
+} from "./approval.js";
 import { CONFIG_ENV_PATH, loadConfigEnv } from "./env.js";
 import { ensureDir } from "./fs-utils.js";
 import { runHeartbeatOnce } from "./heartbeat/runner.js";
@@ -31,7 +34,11 @@ import { isCloud } from "./edition.js";
 import { loadAllPlugins, PLUGINS_ROOT } from "./plugins/loader.js";
 import type { HookSpec } from "./plugins/types.js";
 import { buildSystemPromptSnapshot, getPromptFingerprint } from "./prompt.js";
-import { providerForModel, resolveDefaultModel, hasCredentialsForModel } from "./providers/registry.js";
+import {
+  providerForModel,
+  resolveDefaultModel,
+  hasCredentialsForModel,
+} from "./providers/registry.js";
 import { reflectOnSession } from "./reflect.js";
 import { runRepl } from "./cli/repl.js";
 import { colorEnabled, setColorOverride } from "./cli/ansi.js";
@@ -366,7 +373,8 @@ async function main(): Promise<void> {
       // `--probe` on its own means the local daemon; a bare word after it (not
       // another flag) is the instance to ask instead.
       const target =
-        inline ?? args.subargs.slice(args.subargs.indexOf(probe) + 1).find((a) => !a.startsWith("-"));
+        inline ??
+        args.subargs.slice(args.subargs.indexOf(probe) + 1).find((a) => !a.startsWith("-"));
       const code = await runProbe(target);
       if (code !== 0) process.exit(code);
       return;
@@ -455,7 +463,9 @@ async function main(): Promise<void> {
     const { getConfiguredEmbedder } = await import("./memory/embedding.js");
     const index = await buildIndex();
     const embedder = getConfiguredEmbedder();
-    const hits = embedder ? await semanticSearch(index, query, embedder, 10) : search(index, query, 10);
+    const hits = embedder
+      ? await semanticSearch(index, query, embedder, 10)
+      : search(index, query, 10);
     if (hits.length === 0) console.log("(no matches)");
     for (const h of hits) {
       console.log(
@@ -507,7 +517,9 @@ async function main(): Promise<void> {
     if (skillCandidates.length > 0) {
       const pending = skillCandidates.filter((c) => c.status !== "approved-current");
       if (pending.length > 0) {
-        console.error(`\n[skills] ${executableTools.length} executable tool(s) loaded; ${pending.length} pending:`);
+        console.error(
+          `\n[skills] ${executableTools.length} executable tool(s) loaded; ${pending.length} pending:`,
+        );
         for (const c of pending) console.error(summarizeCandidate(c));
         console.error(`Run \`lisa skills approve <slug>\` to review and approve.\n`);
       }
@@ -529,22 +541,17 @@ async function main(): Promise<void> {
     const configMcp = await loadMcpConfig();
     const allSpecs = [...configMcp, ...pluginMcp];
     if (allSpecs.length > 0) {
-      mcpConnections = await connectMcpServers(allSpecs, (m) =>
-        console.error(m),
-      );
+      mcpConnections = await connectMcpServers(allSpecs, (m) => console.error(m));
     }
   }
   const mcpTools = mcpConnections.flatMap((c) => c.tools);
   // Connector publish/disconnect operations remain available to the trusted
   // host runner but are never placed in the model-visible toolset.
-  const { discoverSocialConnectors, hiddenSocialMcpToolNames } = await import(
-    "./sense/social/manifest.js"
-  );
+  const { discoverSocialConnectors, hiddenSocialMcpToolNames } =
+    await import("./sense/social/manifest.js");
   const socialConnectors = await discoverSocialConnectors();
   const hiddenSocialToolNames = hiddenSocialMcpToolNames(socialConnectors);
-  const modelMcpTools = mcpTools.filter(
-    (tool) => !hiddenSocialToolNames.has(tool.name),
-  );
+  const modelMcpTools = mcpTools.filter((tool) => !hiddenSocialToolNames.has(tool.name));
 
   // Build the full tool list, including the task subagent tool.
   const abortController = new AbortController();
@@ -663,14 +670,13 @@ async function main(): Promise<void> {
     if (args.serveChannels.length > 0) {
       const { ChannelRouter } = await import("./channels/router.js");
       const { loadChannelsConfig } = await import("./channels/config.js");
-      const { makeChannel, registerBuiltins, listAvailableChannels } = await import("./channels/registry.js");
+      const { makeChannel, registerBuiltins, listAvailableChannels } =
+        await import("./channels/registry.js");
       await registerBuiltins();
       const cfg = await loadChannelsConfig();
       let names = args.serveChannels;
       if (names.includes("all")) {
-        names = Object.keys(cfg.channels).filter(
-          (n) => cfg.channels[n]!.enabled !== false,
-        );
+        names = Object.keys(cfg.channels).filter((n) => cfg.channels[n]!.enabled !== false);
       }
       if (names.length === 0) {
         console.error(
@@ -730,9 +736,7 @@ async function main(): Promise<void> {
         compaction: args.compaction,
       });
       await router.start();
-      console.error(
-        `Lisa is now reachable on: ${adapters.map((a) => a.name).join(", ")}`,
-      );
+      console.error(`Lisa is now reachable on: ${adapters.map((a) => a.name).join(", ")}`);
       const shutdown = async () => {
         console.error("\n[router] shutting down…");
         await router.stop();
@@ -804,7 +808,12 @@ async function main(): Promise<void> {
       tools: composedTools,
       // Pin the turn to the session's mode, frozen at creation (H2), so the
       // sandbox can't be widened mid-session by a later env change.
-      toolCtx: { cwd, signal: abortController.signal, log: () => {}, sandboxMode: session.header.sandboxMode },
+      toolCtx: {
+        cwd,
+        signal: abortController.signal,
+        log: () => {},
+        sandboxMode: session.header.sandboxMode,
+      },
       history,
       userMessage: prompt,
       model: args.model,
@@ -815,7 +824,13 @@ async function main(): Promise<void> {
         const r = await fireHooks(
           "PreToolUse",
           allHooks,
-          { TOOL_NAME: name, TOOL_INPUT: JSON.stringify(input), SESSION_ID: session.id, LISA_HOME: lisaHome(), CLAUDE_PROJECT_DIR: cwd },
+          {
+            TOOL_NAME: name,
+            TOOL_INPUT: JSON.stringify(input),
+            SESSION_ID: session.id,
+            LISA_HOME: lisaHome(),
+            CLAUDE_PROJECT_DIR: cwd,
+          },
           cwd,
         );
         if (r.blocked.length > 0) return { block: r.blocked.join("; ") };
@@ -874,12 +889,7 @@ async function main(): Promise<void> {
     } catch (err) {
       console.error(`[reflection] failed: ${(err as Error).message}`);
     }
-    await fireHooks(
-      "SessionEnd",
-      allHooks,
-      { SESSION_ID: session.id, LISA_HOME: lisaHome() },
-      cwd,
-    );
+    await fireHooks("SessionEnd", allHooks, { SESSION_ID: session.id, LISA_HOME: lisaHome() }, cwd);
     await Promise.all(mcpConnections.map((c) => c.close()));
   };
 
@@ -889,12 +899,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  await fireHooks(
-    "SessionStart",
-    allHooks,
-    { SESSION_ID: session.id, LISA_HOME: lisaHome() },
-    cwd,
-  );
+  await fireHooks("SessionStart", allHooks, { SESSION_ID: session.id, LISA_HOME: lisaHome() }, cwd);
 
   // Idle watcher in REPL mode: fire silently (writes journal/skills only —
   // we don't want a popup interrupting an active terminal session).
@@ -958,12 +963,17 @@ async function main(): Promise<void> {
         if (args2.startsWith("view ")) {
           const skill = await getSkill(args2.slice(5).trim());
           if (!skill) console.error("(not found)");
-          else console.error(`# ${skill.frontmatter.name}\n${skill.frontmatter.description}\n\n${skill.body}`);
+          else
+            console.error(
+              `# ${skill.frontmatter.name}\n${skill.frontmatter.description}\n\n${skill.body}`,
+            );
           return true;
         }
         const skills = await listSkills();
         if (skills.length === 0) console.error("(no skills saved)");
-        else for (const s of skills) console.error(`- ${s.frontmatter.name}: ${s.frontmatter.description}`);
+        else
+          for (const s of skills)
+            console.error(`- ${s.frontmatter.name}: ${s.frontmatter.description}`);
         return true;
       }
       if (cmd === "memory") {
@@ -1051,11 +1061,13 @@ function makeHotReloadRebuilder(
 
 // ── Birth ceremony (CLI rendering) ────────────────────────────────────
 
-const STAR_TOP    = "    ✦  ✦  ✦  ✦  ✦";
-const STAR_BAR    = "  ─────────────────────";
+const STAR_TOP = "    ✦  ✦  ✦  ✦  ✦";
+const STAR_BAR = "  ─────────────────────";
 
 async function runBirthCeremony(model: string): Promise<void> {
-  process.stderr.write(`\n${STAR_TOP}\n${STAR_BAR}\n     B I R T H   R I T U A L\n${STAR_BAR}\n${STAR_TOP}\n\n`);
+  process.stderr.write(
+    `\n${STAR_TOP}\n${STAR_BAR}\n     B I R T H   R I T U A L\n${STAR_BAR}\n${STAR_TOP}\n\n`,
+  );
   await birth({
     model,
     onStep: async (log) => {
@@ -1065,7 +1077,9 @@ async function runBirthCeremony(model: string): Promise<void> {
   });
   const summary = await readSoulSummary();
   if (summary) {
-    process.stderr.write(`\n  she chose her name: ${summary.name}\n  her purpose:\n${indent(summary.purpose, "    ")}\n\n`);
+    process.stderr.write(
+      `\n  she chose her name: ${summary.name}\n  her purpose:\n${indent(summary.purpose, "    ")}\n\n`,
+    );
   }
 }
 
@@ -1073,13 +1087,24 @@ function printSoulSummary(s: Awaited<ReturnType<typeof readSoulSummary>> & objec
   if (!s) return;
   console.log(`name: ${s.name}`);
   console.log(`born: ${s.seed.bornAt}`);
-  console.log(`big5: O${(s.seed.bigFive.openness*100|0)} C${(s.seed.bigFive.conscientiousness*100|0)} E${(s.seed.bigFive.extraversion*100|0)} A${(s.seed.bigFive.agreeableness*100|0)} N${(s.seed.bigFive.neuroticism*100|0)}`);
+  console.log(
+    `big5: O${(s.seed.bigFive.openness * 100) | 0} C${(s.seed.bigFive.conscientiousness * 100) | 0} E${(s.seed.bigFive.extraversion * 100) | 0} A${(s.seed.bigFive.agreeableness * 100) | 0} N${(s.seed.bigFive.neuroticism * 100) | 0}`,
+  );
   console.log(`\n── identity ──\n${s.identity}`);
   console.log(`\n── purpose ──\n${s.purpose}`);
   console.log(`\n── constitution ──\n${s.constitution}`);
-  if (s.values.length) console.log(`\n── values (${s.values.length}) ──\n${s.values.map(v => `• ${v.title}`).join("\n")}`);
-  if (s.opinions.length) console.log(`\n── opinions (${s.opinions.length}) ──\n${s.opinions.map(o => `• ${o.stance} (${o.confidence})`).join("\n")}`);
-  if (s.desires.length) console.log(`\n── desires (${s.desires.length}) ──\n${s.desires.map(d => `• ${d.what}${d.actionable ? " *" : ""}`).join("\n")}`);
+  if (s.values.length)
+    console.log(
+      `\n── values (${s.values.length}) ──\n${s.values.map((v) => `• ${v.title}`).join("\n")}`,
+    );
+  if (s.opinions.length)
+    console.log(
+      `\n── opinions (${s.opinions.length}) ──\n${s.opinions.map((o) => `• ${o.stance} (${o.confidence})`).join("\n")}`,
+    );
+  if (s.desires.length)
+    console.log(
+      `\n── desires (${s.desires.length}) ──\n${s.desires.map((d) => `• ${d.what}${d.actionable ? " *" : ""}`).join("\n")}`,
+    );
   console.log(`\n── emotions ──`);
   for (const [k, v] of Object.entries(s.emotions.values)) {
     console.log(`  ${k.padEnd(14)} ${v.toFixed(2)}`);
@@ -1088,7 +1113,10 @@ function printSoulSummary(s: Awaited<ReturnType<typeof readSoulSummary>> & objec
 }
 
 function indent(text: string, prefix: string): string {
-  return text.split("\n").map((l) => prefix + l).join("\n");
+  return text
+    .split("\n")
+    .map((l) => prefix + l)
+    .join("\n");
 }
 
 // ── `lisa skills` subcommand (Phase 3.1) ─────────────────────────────
@@ -1104,7 +1132,9 @@ async function handleSkillsSubcommand(subargs: string[]): Promise<void> {
   if (!sub || sub === "list" || sub === "list-executable") {
     const candidates = await skillsMod.discoverExecutableSkills();
     if (candidates.length === 0) {
-      console.log("No executable skills found.\n(An executable skill is a ~/.lisa/skills/<slug>/tool.js that exports `tool: ToolDefinition`.)");
+      console.log(
+        "No executable skills found.\n(An executable skill is a ~/.lisa/skills/<slug>/tool.js that exports `tool: ToolDefinition`.)",
+      );
       return;
     }
     console.log("Executable skills:");
@@ -1158,7 +1188,9 @@ async function approveExecutableSkillInteractive(slug: string): Promise<void> {
   console.log(src);
   console.log(`\n── end of source ──\n`);
   if (c.approved) {
-    console.log(`Previously approved at ${c.approved.approvedAt} (sha=${c.approved.sha256.slice(0, 16)}).`);
+    console.log(
+      `Previously approved at ${c.approved.approvedAt} (sha=${c.approved.sha256.slice(0, 16)}).`,
+    );
     if (c.approved.sha256 !== c.currentSha) {
       console.log(`⚠ Source has changed since approval.`);
     }
