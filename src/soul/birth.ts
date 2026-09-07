@@ -260,13 +260,19 @@ async function birthInner(opts: BirthOptions): Promise<BirthResult> {
   // connection and then never streams leaves the ceremony spinning forever —
   // and the browser with an open SSE stream and no way to tell why. The
   // controller is combined with the caller's signal so a closed stream also
-  // stops the dream. Unref'd + cleared so it never holds the process open.
+  // stops the dream.
+  //
+  // The timer is deliberately NOT unref'd. It is the only thing standing
+  // between a silent provider and a hung ceremony, so it has to be able to
+  // fire — and a watchdog that cannot keep the loop alive is exactly the one
+  // that never runs when a dream is the only work in flight (no socket, no
+  // other timer). The `finally` below clears it, which is what actually
+  // guarantees it never outlives the birth.
   const deadlineCtl = new AbortController();
   const deadline = setTimeout(
     () => deadlineCtl.abort(new Error("birth deadline exceeded")),
     opts.timeoutMs ?? birthTimeoutMs(),
   );
-  deadline.unref?.();
   const signal = opts.signal
     ? AbortSignal.any([opts.signal, deadlineCtl.signal])
     : deadlineCtl.signal;
@@ -333,7 +339,12 @@ async function birthSteps(
       if (!retryableInternally(info.code)) throw e;
       if (info.code === "rate_limit") {
         await onStep({ step: "soul", detail: "the provider is throttling — waiting a moment…" });
-        await delay(opts.rateLimitBackoffMs ?? RATE_LIMIT_BACKOFF_MS, undefined, { signal, ref: false });
+        // Not unref'd: this is a wait the ceremony is in the middle of, not a
+        // background timer. Unref'ing it let the loop drain during the pause,
+        // so the retry could simply never happen — the process exits, or under
+        // node:test the pending promise is reported as "still pending but the
+        // event loop has already resolved". `signal` still cancels the wait.
+        await delay(opts.rateLimitBackoffMs ?? RATE_LIMIT_BACKOFF_MS, undefined, { signal });
       }
       await onStep({
         // info.message, never the raw provider text: it reaches a browser.
