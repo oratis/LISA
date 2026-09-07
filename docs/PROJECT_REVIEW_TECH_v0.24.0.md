@@ -101,7 +101,7 @@ web/
 
 **证据**
 
-- [`src/web/lisa-client.ts`](../src/web/lisa-client.ts)：46 个顶层函数、47 个顶层可变状态、69 处 `innerHTML`、88 处 `esc()`；`lisa-css.ts` 2,899 行同样是字符串。
+- [`src/web/lisa-client.ts`](../src/web/lisa-client.ts)：46 个顶层函数、47 个顶层可变状态、69 处 `innerHTML`、71 处 `esc()`；`lisa-css.ts` 2,899 行同样是字符串。
 - 正确性靠 `html-syntax.test.ts`（`vm.Script` 编译）和 `lisa-html-snapshot.test.ts`（钉字节）保证——后者 v0.22 以来改了 18 次；文件头注释明确写着反斜杠转义必须"按最终输出写"，`typecheck` 看不见。
 - `md-render.ts` 已经证明了另一条路：源码注入（`renderMarkdown.toString()`），有单元测试。
 - 没有 ESLint，`innerHTML` 的转义完全靠约定。

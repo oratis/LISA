@@ -84,7 +84,7 @@ LISA 的 Web 工作台在 v0.23 完成三栏 Session Shell 重构后，桌面态
 | 右栏折叠（v0.24 默认） | `300px 75px` | 75px | 681px | 屏外 |
 | 右栏展开 | `375px` | 375px | 681px | left 583–667，屏外 |
 
-- [`src/web/lisa-css.ts:2422`](../src/web/lisa-css.ts#L2422) `body.rb-collapsed .frame { grid-template-columns: 300px 1fr }`（特异性 0,1,1）覆盖了 [`:2443`](../src/web/lisa-css.ts#L2443) 的 `@media (max-width:720px) .frame { 1fr }`（0,0,1），连 `grid-template-areas` 也一起被覆盖回两列。
+- [`src/web/lisa-css.ts:2422`](../src/web/lisa-css.ts#L2422) `body.rb-collapsed .frame { grid-template-columns: 300px 1fr }`（特异性 0,2,1：两个类 + 一个类型选择器）覆盖了 [`:2443`](../src/web/lisa-css.ts#L2443) 的 `@media (max-width:720px) .frame { 1fr }`（0,1,0——媒体查询不贡献特异性），连 `grid-template-areas` 也一起被覆盖回两列。
 - 720px 媒体块没有触碰 `#fnbar` / `.tabstrip` / `.fn-find`；功能栏 12 个 34px 图标 + tab 条 + 搜索框的最小内容宽度约 681px，`#viewChat` 是 grid，跟随内容撑到 681px；`.main` `overflow:hidden` 把溢出部分直接裁掉。
 - 768px（平板）和 1024px 正常：右栏隐藏，主区 468 / 724px。
 
