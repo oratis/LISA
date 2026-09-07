@@ -1,5 +1,39 @@
 # 审查基线
 
+## 2026-09-07 优化落地
+
+2026-09-05 审查提出的两份计划已按主题拆成 8 条独立可审阅的 PR，堆叠在文档 PR 之上：
+
+| 顺序 | PR | 范围 |
+| --- | --- | --- |
+| 0 | [#368](https://github.com/oratis/LISA/pull/368) | 两份审查文档 + `.codex` 基线 |
+| 1 | [#369](https://github.com/oratis/LISA/pull/369) | 资源无损压缩 39.1→32.2 MB、PWA 图标 |
+| 2 | [#370](https://github.com/oratis/LISA/pull/370) | README 拆分、GUIDE、中英对齐检查、CHANGELOG 生成、docs 归档 |
+| 3 | [#371](https://github.com/oratis/LISA/pull/371) | Swift 警告清零并转错误、Mac 后端安装向导、iOS a11y 与推送通道 |
+| 4 | [#372](https://github.com/oratis/LISA/pull/372) | CLI：REPL 打磨、`doctor --probe`、`lisa upgrade` |
+| 5 | [#373](https://github.com/oratis/LISA/pull/373) | 服务端：/health 与看门狗、RuntimePolicy、会话索引、出生流程、SSE 心跳、安全头 |
+| 6 | [#374](https://github.com/oratis/LISA/pull/374) | 计费 usage outbox + 对账（T-8） |
+| 7 | [#375](https://github.com/oratis/LISA/pull/375) | Web：移动端 P0、首次运行 P0、a11y、客户端脱离模板字符串、CSP |
+| 8 | [#376](https://github.com/oratis/LISA/pull/376) | 工程门禁：lint / 格式 / 覆盖率 / Dependabot / CI 矩阵 / e2e、依赖升级 |
+
+集成后的验证（Node 22 与 Node 24 双跑）：
+
+| 检查 | 结果 |
+| --- | --- |
+| typecheck / typecheck:client | 通过 |
+| lint | 0 error，69 warning（均为基线条目） |
+| `npm test` | 1,951 通过 / 0 失败 / 0 取消 / 1 跳过（此前 1,645） |
+| build / check:api-contract | 通过 |
+| website | 12 页 |
+| macOS swift build（debug + release） | 通过，0 警告（此前 14） |
+| iOS 模拟器测试 | 44 通过（此前 29） |
+
+集成阶段发现并修复的三处跨流缺陷（各流单独验证时都看不到）：
+
+1. **出生流程的两个定时器被 unref**，Node 22 下事件循环会在退避期间排空——生产中表现为 `lisa birth` 静默退出、留下半写的 soul 目录。Node 20/22/24 矩阵是发现它的唯一原因。
+2. **lint 基线在合并后失效**：37 个错误出现在任何单条流都看不到的新文件里；顺带把 `cmdBillingReconcile` 从 `src/billing/` 移到 `src/cli/`，让 `no-console` 在计费模块继续有意义。
+3. **文档链接检查器首次运行**即抓到审查文档里一个失效锚点和一条过期豁免。
+
 ## 2026-09-05 验证结果
 
 基线提交：`26266a5`（v0.24.0 + #359–#367）。详细结论与计划：
