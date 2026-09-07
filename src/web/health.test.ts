@@ -5,6 +5,7 @@ import {
   EventLoopMonitor,
   healthPayload,
   packageVersion,
+  publicHealthPayload,
   watchdogThresholdFromEnv,
   type LagHistogram,
 } from "./health.js";
@@ -219,5 +220,55 @@ describe("health payload", () => {
     const x = harness();
     window(x, 1, 4_000, 5_000);
     assert.equal(healthPayload(x.m, { tenants: 0, pending_turns: 0, sessions: 0 }, "cloud", 0).ok, false);
+  });
+});
+
+describe("the unauthenticated health payload (hosted edition)", () => {
+  // /health runs before the auth gate so `lisa doctor --probe` works without
+  // credentials. On a Mac that is the machine's owner; on the hosted edition
+  // the same endpoint faces the public internet, where tenants / sessions /
+  // pending_turns are live usage metrics and heap / RSS / uptime make restart
+  // and load patterns observable. /healthz is the liveness probe, so nothing
+  // operational needs the detail to be public.
+  const full = () => {
+    const x = harness();
+    window(x, 1.25, 3.75, 9.5);
+    return healthPayload(x.m, { tenants: 7, pending_turns: 2, sessions: 41 }, "cloud", 5000);
+  };
+
+  test("carries no usage or resource numbers", () => {
+    const pub = publicHealthPayload(full());
+    for (const field of [
+      "tenants",
+      "sessions",
+      "pending_turns",
+      "heap_used_mb",
+      "rss_mb",
+      "uptime_s",
+      "version",
+      "watchdog_lag_ms",
+    ] as const) {
+      assert.equal(pub[field], undefined, `${field} must not be served unauthenticated`);
+    }
+    // Belt and braces: no stringified value of a counter survives anywhere.
+    const body = JSON.stringify(pub);
+    for (const n of ["7", "41"]) {
+      assert.ok(!body.includes(n), `counter ${n} leaked into ${body}`);
+    }
+  });
+
+  test("still answers the question a public probe asks", () => {
+    const pub = publicHealthPayload(full());
+    assert.equal(pub.ok, true);
+    assert.deepEqual(pub.event_loop_lag_ms, { p50: 1.3, p99: 3.8, max: 9.5 });
+    assert.deepEqual(pub.event_loop_lag_1m_ms, { p99: 3.8, max: 9.5 });
+    assert.equal(pub.edition, "cloud");
+  });
+
+  test("an unhealthy deployment still reports unhealthy", () => {
+    const x = harness();
+    window(x, 4000, 9000, 12000);
+    const pub = publicHealthPayload(healthPayload(x.m, { tenants: 1, pending_turns: 0, sessions: 1 }, "cloud", 5000));
+    assert.equal(pub.ok, false, "lagging must still be visible without a token");
   });
 });

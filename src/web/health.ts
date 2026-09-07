@@ -285,6 +285,31 @@ export interface HealthPayload {
  * (window snapshot, process counters, cached package version) so the endpoint
  * itself cannot become the thing that lags.
  */
+/**
+ * The subset of the health payload that is safe to serve without a token.
+ *
+ * /health runs BEFORE the auth gate so an operator can tell "slow" from "down"
+ * without credentials, and `lisa doctor --probe` deliberately sends none. On a
+ * single-user Mac that is fine — the caller is the machine's owner. On the
+ * hosted edition the same endpoint faces the public internet, where
+ * `tenants` / `sessions` / `pending_turns` are live business metrics (how many
+ * people use this deployment, how busy is it right now), and heap/RSS/uptime
+ * make restart and load patterns observable. None of that is needed to answer
+ * "is it healthy or lagging", which is what a public probe is for.
+ *
+ * /healthz remains the unauthenticated liveness probe, so nothing operational
+ * depends on the detail being public. An authenticated caller still gets the
+ * full payload.
+ */
+export function publicHealthPayload(full: HealthPayload): Partial<HealthPayload> {
+  return {
+    ok: full.ok,
+    event_loop_lag_ms: full.event_loop_lag_ms,
+    event_loop_lag_1m_ms: full.event_loop_lag_1m_ms,
+    edition: full.edition,
+  };
+}
+
 export function healthPayload(
   monitor: EventLoopMonitor,
   counters: HealthRuntimeCounters,
