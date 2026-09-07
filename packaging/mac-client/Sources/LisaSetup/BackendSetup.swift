@@ -90,7 +90,7 @@ public enum SetupState: Equatable {
         case .nodeMissing:
             return "Node.js isn't installed on this Mac — the backend runs on it."
         case .nodeTooOld(let found, _):
-            return "Node.js \(found) is too old — the backend needs \(BackendSetup.minimumNodeMajor) or newer."
+            return "Node.js \(found) is too old — the backend needs \(BackendSetup.minimumNodeMajor).\(BackendSetup.minimumNodeMinor) or newer."
         case .cliMissing(let node):
             return "Node.js \(node) found — the Lisa backend isn't installed yet."
         }
@@ -125,7 +125,7 @@ public enum InstallFailure: Equatable {
         case .network:
             return "Check your connection (and any proxy or VPN), then retry."
         case .nodeTooOld:
-            return "Install Node.js \(BackendSetup.minimumNodeMajor) or newer (Homebrew or nodejs.org), then Re-check."
+            return "Install Node.js \(BackendSetup.minimumNodeMajor).\(BackendSetup.minimumNodeMinor) or newer (Homebrew or nodejs.org), then Re-check."
         case .unknown:
             return "The log below has npm's own message. You can also run the command in Terminal."
         }
@@ -133,8 +133,17 @@ public enum InstallFailure: Equatable {
 }
 
 public enum BackendSetup {
-    /// package.json `engines.node` — keep in sync.
-    public static let minimumNodeMajor = 20
+    /// package.json `engines.node` — keep in sync with it, src/cli/doctor.ts
+    /// and MIN_NODE_MAJOR/MIN_NODE_MINOR in src/cli/upgrade.ts.
+    ///
+    /// The floor is major.minor: undici (a production dependency) calls
+    /// worker_threads APIs added in 22.10, so Node 22.0–22.18 installs and then
+    /// fails at runtime. Checking the major alone let the wizard report a
+    /// perfectly good environment and then run an `npm install -g` that npm
+    /// refuses with EBADENGINE — the tool telling you it is fine minutes
+    /// before it breaks, which is the failure this floor exists to prevent.
+    public static let minimumNodeMajor = 22
+    public static let minimumNodeMinor = 19
     public static let npmPackage = "@oratis/lisa"
     public static let installCommand = "npm install -g @oratis/lisa"
     public static let manualServeCommand = "lisa serve --web"
@@ -217,10 +226,10 @@ public enum BackendSetup {
         if r.hasServeOverride || r.lisaPath != nil {
             return .ready(lisaVersion: r.lisaVersion)
         }
-        guard let nodeVersion = r.nodeVersion, let major = nodeMajor(nodeVersion) else {
+        guard let nodeVersion = r.nodeVersion, let parts = nodeVersionParts(nodeVersion) else {
             return .nodeMissing(brewAvailable: brew)
         }
-        if major < minimumNodeMajor {
+        if !meetsNodeFloor(parts) {
             return .nodeTooOld(found: nodeVersion, brewAvailable: brew)
         }
         return .cliMissing(nodeVersion: nodeVersion)
@@ -228,10 +237,28 @@ public enum BackendSetup {
 
     /// "v22.4.0" / "22.4.0" → 22. nil when there's no leading number.
     public static func nodeMajor(_ version: String) -> Int? {
+        nodeVersionParts(version)?.major
+    }
+
+    /// "v22.19.0" → (22, 19). The minor matters: the floor is 22.19, so a
+    /// major-only check waves Node 22.0–22.18 through and the install then
+    /// fails with EBADENGINE.
+    public static func nodeVersionParts(_ version: String) -> (major: Int, minor: Int)? {
         var s = Substring(version.trimmingCharacters(in: .whitespacesAndNewlines))
         if s.hasPrefix("v") || s.hasPrefix("V") { s = s.dropFirst() }
-        let digits = s.prefix { $0.isNumber }
-        return digits.isEmpty ? nil : Int(digits)
+        let majorDigits = s.prefix { $0.isNumber }
+        guard !majorDigits.isEmpty, let major = Int(majorDigits) else { return nil }
+        var rest = s.dropFirst(majorDigits.count)
+        guard rest.hasPrefix(".") else { return (major, 0) }   // "22" → 22.0
+        rest = rest.dropFirst()
+        let minorDigits = rest.prefix { $0.isNumber }
+        return (major, Int(minorDigits) ?? 0)
+    }
+
+    /// Does this Node satisfy package.json's `engines.node` floor?
+    public static func meetsNodeFloor(_ parts: (major: Int, minor: Int)) -> Bool {
+        parts.major > minimumNodeMajor
+            || (parts.major == minimumNodeMajor && parts.minor >= minimumNodeMinor)
     }
 
     /// Classify a failed install from npm's combined output. Only meaningful
