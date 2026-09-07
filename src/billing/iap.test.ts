@@ -266,6 +266,19 @@ describe("sandbox credit allowlist (App Review buys in Apple's sandbox)", () => 
     assert.equal(sandboxCreditAllowed({ uid: "attacker", email: "free@tester.com" }, env), false);
   });
 
+  test("the seeded reviewer account is allowlisted with no extra config", () => {
+    const env = { LISA_REVIEWER_SEED: "Reviewer@MeetLisa.ai:hunter2:with:colons" };
+    assert.equal(sandboxCreditAllowed({ email: "reviewer@meetlisa.ai" }, env), true);
+    // Only the email half of the seed counts — never the password.
+    assert.equal(sandboxCreditAllowed({ email: "hunter2:with:colons" }, env), false);
+    assert.equal(sandboxCreditAllowed({ email: "someone@else.com" }, env), false);
+  });
+
+  test("a malformed seed (no colon, or a leading colon) allowlists nobody", () => {
+    assert.equal(sandboxCreditAllowed({ email: "reviewer@meetlisa.ai" }, { LISA_REVIEWER_SEED: "reviewer@meetlisa.ai" }), false);
+    assert.equal(sandboxCreditAllowed({ email: "" }, { LISA_REVIEWER_SEED: ":only-a-password" }), false);
+  });
+
   test("an empty/blank allowlist never matches an account with no uid or email", () => {
     assert.equal(sandboxCreditAllowed({ uid: null, email: null }, { LISA_IAP_SANDBOX_ACCOUNTS: " , ," }), false);
     // A buyer whose fields are absent must not match a non-empty allowlist either.

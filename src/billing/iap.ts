@@ -80,10 +80,15 @@ export const EXPECTED_BUNDLE = "ai.meetlisa.main";
  * shows the reviewer "Couldn't credit the purchase (sandbox_rejected)" — which
  * reads as a broken in-app purchase (Guideline 2.1 / 3.1.1).
  *
- * The middle ground: name the review accounts. `LISA_IAP_SANDBOX_ACCOUNTS` is a
- * comma-separated allowlist of account emails and/or uids ("reviewer@x.com,uid_1");
- * only those may credit from sandbox. `LISA_IAP_ALLOW_SANDBOX=1` still opens a
- * whole non-production deploy (staging), unchanged.
+ * The middle ground: name the review accounts. The **seeded reviewer account is
+ * allowlisted automatically** — `LISA_REVIEWER_SEED="email:password"` already
+ * names it on every cloud deploy, and making the operator remember a second
+ * variable is the same "one forgotten step and the reviewer sees a failure"
+ * shape that caused the 2.1(b) rejection in the first place. Extra accounts go
+ * in `LISA_IAP_SANDBOX_ACCOUNTS` (comma-separated emails and/or uids), and
+ * `LISA_IAP_ALLOW_SANDBOX=1` still opens a whole non-production deploy.
+ *
+ * Everyone else keeps the B5 behaviour: sandbox JWS credits nothing.
  */
 export function sandboxCreditAllowed(
   who: { uid?: string | null; email?: string | null },
@@ -94,6 +99,10 @@ export function sandboxCreditAllowed(
     .split(",")
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
+  const seed = env.LISA_REVIEWER_SEED ?? "";
+  const seedIdx = seed.indexOf(":");
+  // Only the email half; a seed with no ":" isn't a credential pair at all.
+  if (seedIdx > 0) allow.push(seed.slice(0, seedIdx).trim().toLowerCase());
   if (allow.length === 0) return false;
   return [who.uid, who.email]
     .map((v) => v?.trim().toLowerCase())

@@ -213,9 +213,10 @@ instance provided for review.
       relaunch, and confirm the button is *still* there: it must not depend on
       `/api/billing/quota` (that dependency is what got 1.1 rejected under
       Guideline 2.1(b) — see [`REVIEW_RESPONSE_2.1b.md`](REVIEW_RESPONSE_2.1b.md))
-- [ ] **Sandbox purchases credit the review account** —
-      `LISA_IAP_SANDBOX_ACCOUNTS=<review account email>` set on the review-facing
-      Cloud Run service, or App Review's sandbox buy fails with `sandbox_rejected`
+- [ ] **Sandbox purchases credit the review account** — the review-facing service
+      runs a build that includes `sandboxCreditAllowed()` (it allowlists the
+      `LISA_REVIEWER_SEED` account automatically); on an older revision App
+      Review's sandbox buy fails with `sandbox_rejected`
 - [ ] **社交媒体年龄分级** questions answered in ASC → App 信息 (mandatory once you
       submit again)
 - [ ] Build attached to the version → **Submit for Review**

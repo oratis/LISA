@@ -73,16 +73,15 @@ sheet and bought a pack would have seen
 rejection on the next round.
 
 `sandboxCreditAllowed()` (`src/billing/iap.ts`) now allows sandbox transactions
-for a **named allowlist** instead of blanket-opening the hole:
+for a **named allowlist** instead of blanket-opening the hole — and the seeded
+review account is on that list **automatically**, because
+`LISA_REVIEWER_SEED="email:password"` already names it on every cloud deploy.
+No new environment variable to remember (forgetting one is the same failure
+shape that caused this rejection); just deploy the updated server.
 
-```bash
-gcloud run services update lisa-cloud --region <region> \
-  --update-env-vars LISA_IAP_SANDBOX_ACCOUNTS=reviewer@meetlisa.ai
-```
-
-`LISA_IAP_ALLOW_SANDBOX=1` still opens a whole staging deploy; with neither set
-the behaviour is unchanged (reject). **Do this before resubmitting**, and drop
-the variable once the app is approved.
+`LISA_IAP_SANDBOX_ACCOUNTS=a@b.com,uid-x` adds further accounts and
+`LISA_IAP_ALLOW_SANDBOX=1` still opens a whole staging deploy. Everyone else
+keeps the old behaviour: a sandbox JWS credits nothing.
 
 ## ✅ Paste-ready reply (App Store Connect → the message → 回复 App 审核)
 
@@ -139,8 +138,9 @@ Best regards,
 
 ## Before you resubmit — three things
 
-- [ ] `LISA_IAP_SANDBOX_ACCOUNTS=<review account email>` set on the review-facing
-      Cloud Run service (see above), so a sandbox purchase actually credits.
+- [ ] **Deploy the updated server** to the review-facing service (`lisa-cloud`,
+      which serves `cloud.meetlisa.ai`) — the sandbox allowance ships in the
+      code, so an old revision still answers `sandbox_rejected`.
 - [ ] **社交媒体年龄分级 / social-media age-rating questions** in ASC → App 信息.
       The banner's grace period ends **2026-09-07**, and answering becomes
       mandatory the moment you submit again.

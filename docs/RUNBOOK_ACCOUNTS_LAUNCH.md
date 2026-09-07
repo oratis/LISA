@@ -132,9 +132,11 @@ My Apps → Lisa Pocket → **Monetization → In-App Purchases** → ⊕，类�
 > ⚠️ **送审前必设**：cloud 版默认拒绝一切非 Production 的 StoreKit JWS（B5 防白嫖），
 > 而 **App 审核员就是在 Apple sandbox 里买**——不放行的话他们会看到
 > `Couldn't credit the purchase (sandbox_rejected)`，下一封拒信就是 2.1/3.1.1。
-> 用具名白名单放行审核账号，别整片打开：
-> `gcloud run services update lisa-cloud --region <region> --update-env-vars LISA_IAP_SANDBOX_ACCOUNTS=<审核账号邮箱>`
-> （`LISA_IAP_ALLOW_SANDBOX=1` 仍然只用于整片 staging；上架后把变量删掉。）
+> `sandboxCreditAllowed()`（`src/billing/iap.ts`）用具名白名单放行，且**自动包含
+> `LISA_REVIEWER_SEED` 里那个审核账号**——不用再记一个环境变量（"少设一个变量"
+> 正是这次被拒的同一种病）。只要把新代码部署到 `lisa-cloud` 即可；旧 revision
+> 仍会 `sandbox_rejected`。需要额外账号时用 `LISA_IAP_SANDBOX_ACCOUNTS=a@b.com,uid-x`，
+> `LISA_IAP_ALLOW_SANDBOX=1` 仍然只用于整片 staging。
 
 ## Phase 5 — Small Business Program（10 min，随时可做）
 
