@@ -3257,15 +3257,30 @@ if ('serviceWorker' in navigator) {
   // message can never be typed into a session that's about to be switched
   // away (the "sent but nothing happened" race).
   let switching = false;
+  // The keyboard hint does not fit a phone composer: at 375px the textarea is
+  // ~160px wide, so "Talk to Lisa…  (Enter to send · Shift+Enter for newline)"
+  // wraps and gets clipped mid-word. The hint is also useless there — a soft
+  // keyboard has no Shift+Enter. Narrow screens get the short form; the
+  // matchMedia listener keeps it right across rotation and window resizes.
+  const composerNarrow = window.matchMedia('(max-width: 720px)');
+  function composerHint() {
+    return composerNarrow.matches
+      ? 'Talk to Lisa…'
+      : 'Talk to Lisa…  (Enter to send · Shift+Enter for newline)';
+  }
   function setComposerLocked(on) {
     try {
       input.disabled = on;
       sendBtn.disabled = on;
-      input.placeholder = on
-        ? 'switching session…'
-        : 'Talk to Lisa…  (Enter to send · Shift+Enter for newline)';
+      input.placeholder = on ? 'switching session…' : composerHint();
     } catch (e) {}
   }
+  try {
+    input.placeholder = composerHint();
+    composerNarrow.addEventListener('change', function () {
+      if (!input.disabled) input.placeholder = composerHint();
+    });
+  } catch (e) {}
   async function postSessionMutation(url) {
     const ctrl = new AbortController();
     const timer = setTimeout(function () { ctrl.abort(); }, 8000);
