@@ -22,9 +22,9 @@ import { MAIN_CLIENT_JS } from "./lisa-client.js";
  * product promise — one GET, no secondary requests, a saved copy still runs —
  * so "inlined verbatim" is the invariant, not "these exact bytes".
  *
-const EXPECTED_LENGTH = 372423;
-const EXPECTED_SHA256 =
-  "149b154212461a19b5183e71f22efc51ee1bc2f7a9ebbf750368d4a30f9cbd89";
+ * Syntax validity of the inlined script is covered separately by
+ * html-syntax.test.ts, which compiles every inline <script> with vm.Script.
+ */
 
 /** The client sources that must be inlined into the shell, in load order. */
 const CLIENT_FILES = ["main.css", "main.js"] as const;
