@@ -4,9 +4,9 @@
 
 ## 当前基线
 
-- 审查日期：2026-07-26
+- 审查日期：2026-09-05（上一轮 2026-07-26）
 - 审查原始基线：`237f1f036969ece484a60a0f6bc73552dd211883`（v0.21.0）
-- 当前发布基线：`17dbeedca01caf7fc99cb69420784387a34565b8`（v0.22.0）
+- 当前发布基线：`26266a5`（v0.24.0 + #359–#367）；v0.22.0 基线 `17dbeedca01caf7fc99cb69420784387a34565b8`
 - 稳定化工作：#307–#323 已按安全边界、计费、租户状态、上下文、SSRF 和
   跨端协议拆分推进；当前事实以 `main`、测试和部署配置为准
 - 审查范围：Node/TypeScript 核心、Web、CLI、知识库、Soul、自治机制、编排器、Cloud 账户与计费、macOS/iOS 客户端、官网、打包与 CI
@@ -20,7 +20,9 @@
 
 整体审查与优化路线图位于：
 
-- [../docs/PROJECT_REVIEW_AND_OPTIMIZATION_v0.21.0.md](../docs/PROJECT_REVIEW_AND_OPTIMIZATION_v0.21.0.md)
+- [../docs/PROJECT_REVIEW_TECH_v0.24.0.md](../docs/PROJECT_REVIEW_TECH_v0.24.0.md)：2026-09-05 技术审查与优化计划（当前）
+- [../docs/PROJECT_REVIEW_UX_v0.24.0.md](../docs/PROJECT_REVIEW_UX_v0.24.0.md)：2026-09-05 UX 审查与优化计划（当前）
+- [../docs/PROJECT_REVIEW_AND_OPTIMIZATION_v0.21.0.md](../docs/PROJECT_REVIEW_AND_OPTIMIZATION_v0.21.0.md)：2026-07-26 全项目审查（上一轮）
 
 ## 使用约定
 

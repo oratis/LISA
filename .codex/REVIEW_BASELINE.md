@@ -1,5 +1,25 @@
 # 审查基线
 
+## 2026-09-05 验证结果
+
+基线提交：`26266a5`（v0.24.0 + #359–#367）。详细结论与计划：
+[../docs/PROJECT_REVIEW_TECH_v0.24.0.md](../docs/PROJECT_REVIEW_TECH_v0.24.0.md)、
+[../docs/PROJECT_REVIEW_UX_v0.24.0.md](../docs/PROJECT_REVIEW_UX_v0.24.0.md)。
+
+| 检查 | 结果 |
+| --- | --- |
+| `npm run typecheck` / `npm run build` | 通过 |
+| `npm test` | 1,645 个测试；1,644 通过，1 个 PTY 跳过，0 失败（22s） |
+| `website/npm run build` | 通过；12 页 |
+| macOS `swift build -c debug` | 通过；14 个警告（Sendable、WKProcessPool 未变） |
+| iOS Simulator 测试（iPhone 17 Pro） | 29 通过，0 失败 |
+| `npm audit --omit=dev` | 3 个（1 high `fast-uri`、2 moderate `hono`/`qs`），均为传递依赖且可修 |
+
+本轮判定：v0.21 的 P0 安全边界已全部落地；主要矛盾转为可维护性（`server.ts` 单闭包、
+客户端字符串）、可靠性（本机实例间歇卡顿、`/health` 无信息）与工程门禁（无 lint /
+覆盖率 / Dependabot，PR CI 不覆盖原生与官网）。UX 侧两个 P0：错 key 后的首次运行
+死胡同、#367 之后移动端布局失效。
+
 ## 2026-07-26 验证结果
 
 基线提交：`237f1f036969ece484a60a0f6bc73552dd211883`
