@@ -28,7 +28,12 @@ import path from "node:path";
 import crypto from "node:crypto";
 import type { ToolDefinition } from "../types.js";
 import { getCurrentHub } from "../integrations/current-hub.js";
-import { recordDispatch, recordExit, dispatchLogDir } from "../integrations/dispatch-ledger.js";
+import {
+  recordDispatch,
+  recordExit,
+  dispatchLogDir,
+  processStartToken,
+} from "../integrations/dispatch-ledger.js";
 
 interface DispatchInput {
   agent: "claude" | "codex" | "opencode" | "aider" | "copilot";
@@ -140,6 +145,16 @@ export async function launchAgent(
   // The child dup'd the fd for its stdio; close our copy.
   if (outFd !== undefined) try { fs.closeSync(outFd); } catch { /* ignore */ }
 
+  // Fingerprint the process NOW, not after the 150 ms race below. child.pid is
+  // known the moment spawn() returns, and the token is only obtainable while
+  // the process is alive — probing it after the race means a short-lived agent
+  // is already reaped and processStartToken() returns null, so the entry falls
+  // back to bare-pid identity for the full 24 h retention window. That is
+  // exactly the population most at risk: an agent that dies in 150 ms frees its
+  // pid immediately, and `signal_agent cancel` on the recycled pid would signal
+  // whatever unrelated process group inherited it.
+  const startToken = typeof child.pid === "number" ? processStartToken(child.pid) : null;
+
   // Capture the exit status so dispatch_status can stop claiming a success it
   // never observed. This listener MUST be attached now, before the 150 ms
   // launch race below — an agent that exits inside that window emits "close"
@@ -190,7 +205,7 @@ export async function launchAgent(
   let id: string | undefined;
   if (typeof pid === "number") {
     try {
-      id = recordDispatch({ agent, pid, cwd, task, logPath, now: startedAt }).id;
+      id = recordDispatch({ agent, pid, cwd, task, logPath, startToken, now: startedAt }).id;
     } catch (err) {
       log?.(`[dispatch] ledger write failed (non-fatal): ${(err as Error).message}`);
     }
