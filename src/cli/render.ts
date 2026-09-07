@@ -318,7 +318,7 @@ export function summarizeToolInput(input: unknown, max = 80): string {
   else if (typeof input === "object") {
     const obj = input as Record<string, unknown>;
     const action = typeof obj.action === "string" ? obj.action : "";
-    const key = PREFERRED_KEYS.find((k) => typeof obj[k] === "string" && (obj[k] as string).length > 0);
+    const key = PREFERRED_KEYS.find((k) => typeof obj[k] === "string" && (obj[k]).length > 0);
     if (key) s = action ? `${action} ${obj[key] as string}` : (obj[key] as string);
     else if (action) s = action;
     else s = safeJson(input);

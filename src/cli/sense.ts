@@ -202,7 +202,7 @@ function ask(question: string, hidden = false): Promise<string> {
     (stream as unknown as { write: typeof original }).write = ((chunk: never, ...rest: never[]) => {
       if (muted) return true;
       return original(chunk, ...rest);
-    }) as typeof original;
+    });
     prompt!.question(question, (answer) => {
       (stream as unknown as { write: typeof original }).write = original;
       original("\n");

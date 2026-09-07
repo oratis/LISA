@@ -566,7 +566,7 @@ async function main(): Promise<void> {
       signal: abortController.signal,
       defaultModel: args.model,
     });
-    composedTools.push(taskTool as ToolDefinition);
+    composedTools.push(taskTool);
   }
   composedTools.sort((a, b) => a.name.localeCompare(b.name));
 

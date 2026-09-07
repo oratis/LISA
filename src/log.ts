@@ -63,7 +63,10 @@ function closeSink(): void {
   if (!sink) return;
   try {
     fs.closeSync(sink.fd);
-  } catch {}
+  } catch {
+    // Already closed, or the fd died with the process's stdio. Either way the
+    // sink is being dropped — there is nothing left to recover.
+  }
   sink = null;
 }
 
@@ -104,10 +107,15 @@ function fileSink(env: NodeJS.ProcessEnv = process.env): FileSink | null {
 function rotate(s: FileSink): void {
   try {
     fs.closeSync(s.fd);
-  } catch {}
+  } catch {
+    // The fd is being replaced regardless; a failed close cannot stop rotation.
+  }
   try {
     fs.rmSync(`${s.path}.${LOG_FILE_KEEP}`, { force: true });
-  } catch {}
+  } catch {
+    // The oldest generation may not exist yet, and force:true already swallows
+    // ENOENT — anything else (a locked file) must not abort the rotation.
+  }
   for (let i = LOG_FILE_KEEP - 1; i >= 1; i--) {
     try {
       fs.renameSync(`${s.path}.${i}`, `${s.path}.${i + 1}`);
@@ -117,7 +125,10 @@ function rotate(s: FileSink): void {
   }
   try {
     fs.renameSync(s.path, `${s.path}.1`);
-  } catch {}
+  } catch {
+    // Someone moved or deleted the live log under us; reopening below restores
+    // a working sink, which matters more than preserving this generation.
+  }
   const fd = fs.openSync(s.path, "a");
   s.fd = fd;
   s.size = fs.fstatSync(fd).size;

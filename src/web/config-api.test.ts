@@ -20,8 +20,8 @@ describe("provider config list (T-9)", () => {
     for (const preset of OPENAI_COMPAT_PRESETS) {
       const row = list.find((p) => p.envKey === preset.apiKeyEnv);
       assert.ok(row, preset.apiKeyEnv);
-      assert.equal(row!.label, preset.name);
-      assert.deepEqual(row!.modelPrefixes, preset.modelPrefixes);
+      assert.equal(row.label, preset.name);
+      assert.deepEqual(row.modelPrefixes, preset.modelPrefixes);
     }
     assert.equal(list.find((p) => p.envKey === "ZHIPU_API_KEY")?.id, "zhipu");
   });

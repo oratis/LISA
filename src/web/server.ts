@@ -191,7 +191,6 @@ import {
 } from "./public-origin.js";
 import {
   autonomyProfileForEdition,
-  capabilityProfileForEdition,
   isCloudDeniedRoute,
   toolsForCapabilityProfile,
 } from "./capabilities.js";
@@ -1035,7 +1034,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // mid-conversation knows there's something to read. Cleared via
   // POST /api/island/dismiss-unread. Per design doc §6 Q2: latest wins,
   // no inbox-style accumulation.
-  let serverStartedAt = Date.now();
+  const serverStartedAt = Date.now();
 
   // ── Idle mode ───────────────────────────────────────────────────────
   // Declared here (rather than beside the reflect scheduler below) so the dream's

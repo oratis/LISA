@@ -83,13 +83,13 @@ test("parseSessionSteps: ordered structural steps, no content leakage", async ()
 
     const read = steps.find((s) => s.tool === "Read");
     assert.ok(read, "Read tool step present");
-    assert.equal(read!.target, "notes.md"); // basename only — directory (with secret) stripped
-    assert.equal(read!.turn, 1);
-    assert.equal(read!.isError, true); // is_error tool_result attributed to latest tool
+    assert.equal(read.target, "notes.md"); // basename only — directory (with secret) stripped
+    assert.equal(read.turn, 1);
+    assert.equal(read.isError, true); // is_error tool_result attributed to latest tool
 
     const bash = steps.find((s) => s.tool === "Bash");
     assert.ok(bash, "Bash tool step present");
-    assert.equal(bash!.target, "$ grep"); // argv[0] only
+    assert.equal(bash.target, "$ grep"); // argv[0] only
 
     const assistants = steps.filter((s) => s.kind === "assistant");
     assert.equal(assistants.length, 1); // tool_use-only assistant lines are not text markers

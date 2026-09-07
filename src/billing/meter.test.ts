@@ -124,8 +124,8 @@ describe("anomaly alert claim (cross-instance dedup)", () => {
   };
 
   const reply = (status: number): typeof fetch =>
-    (async () =>
-      new Response(status === 200 ? "{}" : "denied", { status })) as unknown as typeof fetch;
+    async () =>
+      new Response(status === 200 ? "{}" : "denied", { status });
 
   test("Firestore off → always claims (Mac edition keeps the in-process Set)", async () => {
     let called = false;

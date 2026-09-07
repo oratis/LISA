@@ -500,7 +500,7 @@ function bigFiveFromHex(hex: string): BigFiveSeed {
     neuroticism: u32(4),
   };
   // (slice unused — kept for future use of higher-resolution distributions)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+   
   void slice;
 }
 

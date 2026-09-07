@@ -1,3 +1,9 @@
+/* eslint-disable no-control-regex --
+ * These assertions match real ANSI escape sequences (\x1b[…m) because the
+ * thing under test is exactly whether the renderer emits or suppresses them.
+ * The rule exists to catch control characters that got into a pattern by
+ * accident; here they are the pattern.
+ */
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {

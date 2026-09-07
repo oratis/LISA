@@ -174,7 +174,7 @@ function decide(line: string): SessionStateInfo | null {
   const stopReason = readNestedStopReason(e);
   const subtype = readString(e.subtype);
   const isError = e.is_error === true || e.error === true;
-  const hookErrors = typeof e.hookErrors === "number" && (e.hookErrors as number) > 0;
+  const hookErrors = typeof e.hookErrors === "number" && (e.hookErrors) > 0;
 
   if (isError || hookErrors) {
     return { state: "error", reason: "is_error" };

@@ -271,7 +271,7 @@ describe("T-4 /api/sessions ETag revalidation", () => {
       assert.equal(first.headers["cache-control"], "no-cache");
 
       const second = await request(srv.port, "GET", "/api/sessions", {
-        headers: { "if-none-match": etag! },
+        headers: { "if-none-match": etag },
       });
       assert.equal(second.status, 304);
       assert.equal(second.text, "");

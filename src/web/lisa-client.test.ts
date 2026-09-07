@@ -92,7 +92,7 @@ function extractFunction(src: string, name: string): string {
   const start = src.indexOf(head);
   assert.ok(start >= 0, `function ${name} not found in MAIN_CLIENT_JS`);
   let depth = 0;
-  let i = src.indexOf("{", start);
+  const i = src.indexOf("{", start);
   assert.ok(i >= 0, `function ${name} has no body`);
   for (let j = i; j < src.length; j++) {
     if (src[j] === "{") depth++;
@@ -199,7 +199,7 @@ describe("birth errors are classified into human copy (UX-1)", () => {
   test("every class has copy, and none of it is JSON", () => {
     for (const k of ["auth", "timeout", "network", "rate_limit", "unknown"]) {
       assert.ok(text[k] && text[k].length > 20, `missing copy for ${k}`);
-      assert.ok(!text[k]!.includes("{"), `copy for ${k} leaks a payload`);
+      assert.ok(!text[k].includes("{"), `copy for ${k} leaks a payload`);
     }
   });
   test("the raw payload goes to the title attribute, never to textContent", () => {
@@ -312,12 +312,12 @@ describe("interface language table (UX-8)", () => {
   });
 
   test("both tables define exactly the same keys", () => {
-    const keys = (c: object) => {
+    const keys = () => {
       const ctx = createContext({ navigator: { language: "en" }, document: { documentElement: {} } });
       runInContext(`${I18N_SRC}; globalThis.__k = Object.keys(LISA_STRINGS.en).sort().join(","); globalThis.__z = Object.keys(LISA_STRINGS['zh-CN']).sort().join(",");`, ctx);
       return ctx as { __k: string; __z: string };
     };
-    const k = keys({});
+    const k = keys();
     assert.equal(k.__k, k.__z, "en and zh-CN tables have drifted apart");
   });
 
