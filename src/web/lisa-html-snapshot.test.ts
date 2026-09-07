@@ -43,7 +43,7 @@ import { MAIN_HTML } from "./lisa-html.js";
  * Then: Room v2 — the room→parent bridge moved to a richer, same-origin-guarded
  * {type:'lisa-room', action, prefill} protocol (open-chat / switch-view) at
  * module scope; the old room_open_chat listener was removed as superseded.
- * Then: personal knowledge base (docs/PLAN_KNOWLEDGE_BASE_v1.0.md) — a
+ * Then: personal knowledge base (docs/archive/plans/PLAN_KNOWLEDGE_BASE_v1.0.md) — a
  * "Knowledge" nav item + #viewKb (a live-search list/reader over /api/kb*), a
  * KB select-toggle in the function bar driving a floating capture bar (chat
  * messages → md source), and the kbCapture client block, all with their CSS.
@@ -208,9 +208,18 @@ import { MAIN_HTML } from "./lisa-html.js";
  * full-size mascot — the mascot was the only icon the page ever declared,
  * which is why iOS rendered a home-screen screenshot.
  */
-const EXPECTED_LENGTH = 308222;
+/*
+ * +56 bytes = 4 × len("archive/plans/"): PLAN_UI_SESSION_SHELL_v1.0.md and
+ * PLAN_KNOWLEDGE_BASE_v1.0.md moved to docs/archive/plans/, and four of the
+ * references to them live in CSS/JS *comments that ship inside MAIN_HTML*.
+ * Nothing rendered changed. Re-derive with:
+ *   node --import tsx --input-type=module -e 'import{MAIN_HTML}from"./src/web/lisa-html.ts";
+ *     import{createHash}from"node:crypto";console.log(MAIN_HTML.length,
+ *     createHash("sha256").update(MAIN_HTML).digest("hex"))'
+ */
+const EXPECTED_LENGTH = 308278;
 const EXPECTED_SHA256 =
-  "c7968294f66257468a0af8b203e64a726393ee924f7f2ceae879fb81e6b67678";
+  "7f917ddabef2d044a35ccf23e799f52755e0e6700d460479ea3b716597afbdeb";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);

@@ -32,25 +32,51 @@ hashes the published npm tarball, so npm must go first).
 
    `npm version` updates `package.json`, makes a commit, and creates the tag.
 
-2. **(Optional) Write release notes**
+2. **Write release notes**
 
    If `docs/RELEASE_v0.2.1.md` exists, the workflow uses it as the release
-   body. Otherwise the release uses auto-generated commit notes.
+   body. Otherwise the release uses auto-generated commit notes. It is also the
+   only source for that version's `CHANGELOG.md` entry (next step), so skipping
+   it leaves a hole in the changelog.
 
-3. **Push**
+3. **Regenerate the changelog**
+
+   ```bash
+   npm run changelog     # rewrites CHANGELOG.md from docs/RELEASE_v*.md
+   git add CHANGELOG.md && git commit -m "docs: changelog for vX.Y.Z"
+   ```
+
+   `CHANGELOG.md` is generated, not written: `scripts/gen-changelog.mjs` reads
+   every `docs/RELEASE_v*.md` and emits one Keep-a-Changelog entry per release —
+   the note's headline paragraph, its `##` section titles as bullets, and links
+   to the note and the GitHub release. That is the whole reason to write a good
+   headline paragraph and good section titles: they *are* the changelog entry.
+
+   The date comes from the `vX.Y.Z` tag when it exists, so run this **after**
+   `npm version` created the tag and the entry gets the real release date; run it
+   before tagging and the entry falls back to the release note's commit date and
+   will need regenerating. `npm run changelog -- --check` fails when the file is
+   stale. Both need full history and tags, which a shallow CI clone does not
+   have — that is why this is a release step and not a CI gate.
+
+   Releases at 0.12.0 and below predate the release-note convention and are
+   hand-written. They live below the `gen-changelog:handwritten` marker comment
+   and are copied through untouched; never edit above the marker.
+
+4. **Push**
 
    ```bash
    git push --follow-tags
    ```
 
-4. **Watch the workflows**
+5. **Watch the workflows**
 
    Both `Release` (Ubuntu, ~5 min) and `Release — Mac apps` (macOS, ~15 min)
    trigger off the tag. The latter takes longer when signing + notarizing
    are enabled — Apple's notary service can sit on a submission for
    2–10 minutes.
 
-5. **Publish to npm** (manual)
+6. **Publish to npm** (manual)
 
    ```bash
    npm publish --access public
@@ -60,7 +86,7 @@ hashes the published npm tarball, so npm must go first).
    scoped packages default to *restricted* — without the flag npm 404s on the
    `PUT`. `prepublishOnly` runs typecheck + test + build first.
 
-6. **Bump the Homebrew tap** (manual — after npm publish lands on the registry)
+7. **Bump the Homebrew tap** (manual — after npm publish lands on the registry)
 
    ```bash
    gh workflow run "Release — Homebrew tap"

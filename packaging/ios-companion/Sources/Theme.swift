@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Agent-console palette — mirrors the web shell tokens (src/web/lisa-css.ts,
-/// token table: docs/PLAN_UI_SESSION_SHELL_v1.0.md §2): each color carries a
+/// token table: docs/archive/plans/PLAN_UI_SESSION_SHELL_v1.0.md §2): each color carries a
 /// dark ("Nebula") and light ("Calm") variant, resolved by the trait
 /// environment — the appearance picker in Settings drives
 /// `.preferredColorScheme` at the root, and every `Theme.*` follows.

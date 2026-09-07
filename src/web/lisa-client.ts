@@ -1423,7 +1423,7 @@ input.addEventListener('input', () => {
 });
 
 // ── KB capture: select chat messages → save to the knowledge base ────
-// (docs/PLAN_KNOWLEDGE_BASE_v1.0.md, requirement #2). Toggle select mode from
+// (docs/archive/plans/PLAN_KNOWLEDGE_BASE_v1.0.md, requirement #2). Toggle select mode from
 // the function bar, tick messages, "Add to KB" writes a Layer-1 source verbatim.
 (function kbCapture() {
   var toggle = document.getElementById('fnKbSelect');
@@ -3856,7 +3856,7 @@ if ('serviceWorker' in navigator) {
       '<div class="view-scroll"><div id="settingsScroll"><div class="view-empty">loading…</div></div></div>';
     Promise.all([getJSON('/api/config/status'), getJSON('/api/edition')]).then(function (res) { renderSettings(res[0], res[1]); });
   }
-  // ── Knowledge base view (docs/PLAN_KNOWLEDGE_BASE_v1.0.md) ──────────
+  // ── Knowledge base view (docs/archive/plans/PLAN_KNOWLEDGE_BASE_v1.0.md) ──────────
   function kbRenderList(entries, container) {
     if (!entries || !entries.length) {
       container.innerHTML = '<div class="view-empty">Nothing here yet. In Chat, select messages and "Add to KB", or ask Lisa to save something.</div>';

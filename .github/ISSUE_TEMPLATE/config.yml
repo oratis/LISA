@@ -4,5 +4,5 @@ contact_links:
     url: https://github.com/oratis/LISA/discussions
     about: For "how do I do X", design questions, sharing what you built — Discussions is the right place.
   - name: 📖 Documentation
-    url: https://github.com/oratis/LISA#readme
-    about: README covers install, soul system, channels, all subcommands, and the capability matrix.
+    url: https://github.com/oratis/LISA/blob/main/docs/GUIDE.md
+    about: The guide covers install, soul system, channels, all subcommands, and the capability matrix.

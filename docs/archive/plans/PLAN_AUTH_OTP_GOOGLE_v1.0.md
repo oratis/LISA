@@ -1,7 +1,7 @@
 # PLAN — 邮箱验证码登录 + Google 登录 / Email-OTP & Google Sign-In (v1.0)
 
 **Status: IMPLEMENTED（代码侧全部落地，2026-07-24；等运营配置见 §4/§6）。**
-承接 [PLAN_ACCOUNTS_BILLING_v1.0.md](PLAN_ACCOUNTS_BILLING_v1.0.md)
+承接 [PLAN_ACCOUNTS_BILLING_v1.0.md](../../PLAN_ACCOUNTS_BILLING_v1.0.md)
 (B1 邮箱+密码 / SIWA、B8a 验证链接、B8b SIWA-web)。目标:① 邮箱**验证码(OTP)
 免密登录**成为邮箱路径的默认形态;② 新增 **Google 登录**(推翻原 §4 "不加 Google"
 的裁决——当时的顾虑是 4.8 连带义务,但 SIWA 已上线且处主位,义务已满足)。
@@ -10,13 +10,13 @@
 
 | 组件 | 位置 | 现状 |
 | --- | --- | --- |
-| 邮箱+密码账号(scrypt) | [src/web/accounts.ts](../src/web/accounts.ts) | ✅ 保留不动(ASC 审核账号必须 user/pass) |
-| 验证**链接**(提额 $1→$5) | accounts.ts `mintVerifyToken` + [mailer.ts](../src/web/mailer.ts) | ⚠️ OTP 上线后此流程被吸收(见 §2.3) |
-| SIWA(iOS 原生 + web Services ID) | [cloudAuth.ts](../src/web/cloudAuth.ts) / [login.ts](../src/web/login.ts) | ✅ 线上原生已启用;web 端 `appleWeb:null` 待配 |
+| 邮箱+密码账号(scrypt) | [src/web/accounts.ts](../../../src/web/accounts.ts) | ✅ 保留不动(ASC 审核账号必须 user/pass) |
+| 验证**链接**(提额 $1→$5) | accounts.ts `mintVerifyToken` + [mailer.ts](../../../src/web/mailer.ts) | ⚠️ OTP 上线后此流程被吸收(见 §2.3) |
+| SIWA(iOS 原生 + web Services ID) | [cloudAuth.ts](../../../src/web/cloudAuth.ts) / [login.ts](../../../src/web/login.ts) | ✅ 线上原生已启用;web 端 `appleWeb:null` 待配 |
 | Google 登录 | — | ✗ 全库为零 |
 | OTP | — | ✗ 全库为零 |
 | 发信 | mailer.ts(Resend) | ⚠️ OTP **硬依赖**线上 RESEND_API_KEY(现在缺失只降级打日志) |
-| 登录限流/锁定 | accounts.ts 锁定 + [billing/limits.ts](../src/billing/limits.ts) | ✅ OTP 复用同一套 |
+| 登录限流/锁定 | accounts.ts 锁定 + [billing/limits.ts](../../../src/billing/limits.ts) | ✅ OTP 复用同一套 |
 
 ## 2. 设计
 
@@ -33,7 +33,7 @@
   "注册+验证链接"两步流被吸收**,`/api/auth/verify/*` 保留兼容存量邮件。
 * **存储**:pending-OTP 独立表(未注册邮箱尚无 account record):file 模式
   `/data/otp.json`(复用 fs-utils 原子写+锁,读时惰性清理过期);Firestore 模式
-  `otps` 集合 CAS(与 [firestore.ts](../src/cloud/firestore.ts) 现有模式一致)。
+  `otps` 集合 CAS(与 [firestore.ts](../../../src/cloud/firestore.ts) 现有模式一致)。
 * **密码路径保留**:`/api/auth/login` 原样;UI 上折叠为 "Use password instead"。
   审核账号 `reviewer@meetlisa.ai` 继续密码登录,ASC 表单不变。
 
@@ -113,6 +113,6 @@ reader 的缓冲(非 TTY 下第二个 prompt 永远读空);`lisa login` 的兜�
 `lisa --help` 首次列出 login/logout/billing。
 
 **仍待人工(operator)**:见 §4 与
-[RUNBOOK_ACCOUNTS_LAUNCH.md](RUNBOOK_ACCOUNTS_LAUNCH.md) Phase 8–9 ——
+[RUNBOOK_ACCOUNTS_LAUNCH.md](../../RUNBOOK_ACCOUNTS_LAUNCH.md) Phase 8–9 ——
 Resend 发信域核实(**OTP 硬依赖**)、GCP OAuth consent + 两个 client ID、
 带新 env 重部署、iOS 1.2 打 TestFlight(`git tag pocket-v1.2.0`,CI 已配齐)。

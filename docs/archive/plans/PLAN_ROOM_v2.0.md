@@ -2,7 +2,7 @@
 
 > 目标：把 Room 从"会随真实状态变化的静态 diorama"升级成"**她真的在这里生活**"——参考已上线 Steam 的 **BSide: Olivia Lin（林离，米哈游）** 的动画与生活体系，但守住 LISA 的差异化（真实内在自我、诚实投影）。同时把房间里的**可交互部件做成客户端内闭环**——点击后在同一个 WKWebView 内完成，**永不弹出浏览器**。
 >
-> 参考：BSide 深度调研（本文 §2，附源）、[docs/PLAN_ROOM_v1.0.md](PLAN_ROOM_v1.0.md)、[src/web/room.ts](../src/web/room.ts)、[src/web/island.ts](../src/web/island.ts)。
+> 参考：BSide 深度调研（本文 §2，附源）、[docs/PLAN_ROOM_v1.0.md](../../PLAN_ROOM_v1.0.md)、[src/web/room.ts](../../../src/web/room.ts)、[src/web/island.ts](../../../src/web/island.ts)。
 > 编写日期：2026-07-14。本文含**现状 review + 对齐计划 + 客户端内闭环架构 + 正反方辩论 + 分阶段计划**。
 >
 > **✅ 实现状态（2026-07-14）**：Phase **A**（客户端内闭环 + SW network-first）、**B**（抬头对视 presence beat）、**C**（自主活动库 read/tea/listen/stretch/window + 时段加权调度 + 中性字幕，守 §0 诚实线）、**D**（点书架回响真实 `current_desire`；望窗活动；夜里换睡衣；多封信累积）、**Phase E 换景**（阳光房备选主题 + ❖ 一键切换，localStorage 持久化）**均已落地、验证、部署**。分三个 PR：#221（A/B/C/D-lite 核心）、#222（房间随时间：望窗+睡衣+信件累积）、换景 PR。
@@ -35,7 +35,7 @@
 
 ## 1. 现状 review：当前 Room 有哪些动画和能力
 
-### 1.1 动画清单（全 CSS/JS，无引擎，见 [room.ts](../src/web/room.ts)）
+### 1.1 动画清单（全 CSS/JS，无引擎，见 [room.ts](../../../src/web/room.ts)）
 | 动画 | 触发 | 实现 |
 |---|---|---|
 | 呼吸 | 常驻 | `@keyframes breathe` scaleY+位移；站 4.4s / 坐 5.8s / 睡 6.6s |

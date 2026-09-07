@@ -86,9 +86,12 @@ export interface Capabilities {
 
 ### 验收
 
-- [ ] `ToolContext.caps` 落地，local 提供方通过全部现有测试且无行为变化；
-- [ ] 七个 fs/shell 工具不再直接 `import node:fs` / `node:child_process`（留一条 lint/grep 断言防回归）；
-- [ ] 新增一个内存 fs 提供方，至少 3 个工具测试用它跑，不落盘。
+- [x] `ToolContext.caps` 落地，local 提供方通过全部现有测试且无行为变化；
+  <br>证据：`src/types.ts:43` `caps?:` 为可选字段（不传 = local 磁盘，既有构造点无需改动），提供方在 `src/capabilities/{local,memory}.ts`。
+- [x] 七个 fs/shell 工具不再直接 `import node:fs` / `node:child_process`（留一条 lint/grep 断言防回归）；
+  <br>证据：七个工具源文件里 `node:fs` / `node:child_process` 的 import 计数为 0；防回归断言是 `src/capabilities/seam.test.ts:35`（“migrated tools import neither node:fs nor node:child_process”）与 `:56`（每个工具都过 `capsOf`）。
+- [x] 新增一个内存 fs 提供方，至少 3 个工具测试用它跑，不落盘。
+  <br>证据：`src/capabilities/memory.ts`；`seam.test.ts:80–134` 用它跑了 read / write / edit / ls / apply_patch 五个工具（`:87` 断言“write never touches the disk”），另有 bash 的失败路径 `:176`。
 
 ---
 
@@ -119,9 +122,12 @@ export interface Capabilities {
 
 ### 验收
 
-- [ ] `write`/`edit`/`apply_patch` 在 `workspace-write` 下拒绝写出根目录（含 `../` 与符号链接逃逸），有测试；
-- [ ] Linux 无 bwrap/Landlock 时 `workspace-write` 抛 `SANDBOX_UNAVAILABLE`，**不**静默降级，有测试；
-- [ ] `SessionHeader` 记录 `sandboxMode`，`version` 升到 2 且旧会话可读；
+- [x] `write`/`edit`/`apply_patch` 在 `workspace-write` 下拒绝写出根目录（含 `../` 与符号链接逃逸），有测试；
+  <br>证据：`src/capabilities/sandboxed.ts:53–72` 比较 realpath；测试 `sandboxed.test.ts:66`（`../` 逃逸）、`:75`（绝对路径）、`:87`（符号链接）、`:99`（edit 与 apply_patch 同样受限）。
+- [x] Linux 无 bwrap/Landlock 时 `workspace-write` 抛 `SANDBOX_UNAVAILABLE`，**不**静默降级，有测试；
+  <br>证据：`src/sandbox/mode.ts:38` `code = "SANDBOX_UNAVAILABLE"`；测试 `mode.test.ts:108`（“a bounded mode on an unsupported platform refuses instead of degrading”）与 `:170`。
+- [x] `SessionHeader` 记录 `sandboxMode`，`version` 升到 2 且旧会话可读；
+  <br>证据：`src/sessions/store.ts:51/65/72`（字段 + `version: 2`）；v1 兼容读在 `src/sessions/replay.ts:40`，由 `replay.test.ts` 的 `V1_HEADER` 覆盖。
 - [ ] `docs/FOOTPRINT.md` / README 的安全叙事同步更新（1.0 判定标准第 2 条：叙事 = 代码）。
 
 ---

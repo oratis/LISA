@@ -116,6 +116,8 @@ web/
 
 **验收**：`npm run typecheck` 覆盖客户端；`lisa-html-snapshot.test.ts` 不再随每个 UI PR 变更；`innerHTML` 只允许出现在被 lint 标注为已转义的 helper 里。
 
+<a id="t-3"></a>
+
 ### T-3 · P1 · 可靠性：本机实例的间歇性卡顿与不可见的健康状态
 
 **证据**

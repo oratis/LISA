@@ -8,7 +8,7 @@ import { assertSafeSlug } from "../soul/slug.js";
  * provenance), separate from soul/ so a large KB never bloats soul history and
  * the privacy boundary stays clean (soul = Lisa's private self, kb = shared).
  *
- * Layers (see docs/PLAN_KNOWLEDGE_BASE_v1.0.md):
+ * Layers (see docs/archive/plans/PLAN_KNOWLEDGE_BASE_v1.0.md):
  *   sources/  — Layer 1, immutable raw captures (chat excerpts, pasted docs)
  *   wiki/     — Layer 2, Lisa-maintained concept/entity/synthesis pages
  *   SCHEMA.md — Layer 3, the rules doc telling Lisa how to work the KB
