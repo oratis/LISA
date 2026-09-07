@@ -168,7 +168,7 @@ describe("minimum text size", () => {
 
 describe("reduced motion", () => {
   test("a prefers-reduced-motion block silences the looping animations", () => {
-    const block = MAIN_CSS.match(/@media \(prefers-reduced-motion: reduce\)\s*\{([\s\S]*?)\n  \}/);
+    const block = MAIN_CSS.match(/@media \(prefers-reduced-motion: reduce\)\s*\{([\s\S]*?)\n {2}\}/);
     assert.ok(block, "reduced-motion block missing");
     assert.match(block[1]!, /animation:\s*none/);
     assert.match(block[1]!, /scroll-behavior:\s*auto/);

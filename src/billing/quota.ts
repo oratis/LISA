@@ -128,14 +128,14 @@ function parseBalance(parsed: unknown): BalanceState {
     if (
       !item ||
       typeof item !== "object" ||
-      !safeInteger((item as PurchaseEntry).at) ||
-      !safeInteger((item as PurchaseEntry).microUSD) ||
-      ((item as PurchaseEntry).transactionId !== undefined &&
-        typeof (item as PurchaseEntry).transactionId !== "string")
+      !safeInteger((item).at) ||
+      !safeInteger((item).microUSD) ||
+      ((item).transactionId !== undefined &&
+        typeof (item).transactionId !== "string")
     ) {
       throw new BillingStateError("balance_corrupt", "balance store has an invalid purchase");
     }
-    purchases.push({ ...(item as PurchaseEntry) });
+    purchases.push({ ...(item) });
   }
   let window: BalanceState["window"];
   if (raw.window !== undefined) {

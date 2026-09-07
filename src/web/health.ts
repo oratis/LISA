@@ -133,7 +133,7 @@ export class EventLoopMonitor {
       opts.histogram ??
       (monitorEventLoopDelay({
         resolution: opts.resolutionMs ?? DEFAULT_RESOLUTION_MS,
-      }) as unknown as LagHistogram);
+      }));
     this.windowMs = opts.windowMs ?? DEFAULT_WINDOW_MS;
     this.warnMs = opts.warnMs ?? DEFAULT_WARN_MS;
     this.warnEveryMs = opts.warnEveryMs ?? DEFAULT_WARN_EVERY_MS;

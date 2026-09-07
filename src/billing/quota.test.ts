@@ -79,7 +79,7 @@ describe("quota engine", () => {
     await precheckTurn(APPLE, "glm-4.6", T0);
     // burn the whole free window + $1 of paid
     await debitTurn(APPLE, "glm-4.6", FREE_WINDOW_FULL + 1_000_000, T0 + 1000);
-    let q = await quotaStatus(APPLE, T0 + 2000);
+    const q = await quotaStatus(APPLE, T0 + 2000);
     assert.equal(q.remainingMicroUSD, 0);
     assert.equal(q.paidMicroUSD, 1_000_000);
     // still ok: paid remains

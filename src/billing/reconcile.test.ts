@@ -18,13 +18,13 @@ process.env.LISA_LOG_FORMAT = "text";
 
 import type { AccountRecord } from "../web/accounts.js";
 import type { ReconcileDeps } from "./reconcile.js";
+import { cmdBillingReconcile } from "../cli/billing-reconcile.js";
 import type { SettlementDeps, UsageEvent } from "./outbox.js";
 
 const { MemoryOutboxStore, newUsageEvent, SETTLED_REPLAY_WINDOW_MS } = await import("./outbox.js");
 const {
   reconcileOnce,
   startBillingReconciler,
-  cmdBillingReconcile,
   RECONCILE_MAX_ATTEMPTS,
   RECONCILE_PENDING_GRACE_MS,
 } = await import("./reconcile.js");
@@ -304,7 +304,7 @@ describe("lisa billing reconcile (operator CLI)", () => {
     await cmdBillingReconcile(["--dry-run", "--json"], deps(store, l));
     const json = logs.lines.find((x) => x.trim().startsWith("{"));
     assert.ok(json, "a JSON report line");
-    const report = JSON.parse(json!) as { scanned: number; committed: number; dryRun: boolean };
+    const report = JSON.parse(json) as { scanned: number; committed: number; dryRun: boolean };
     assert.equal(report.dryRun, true);
     assert.equal(report.scanned, 1);
     assert.equal(report.committed, 1);

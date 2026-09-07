@@ -236,7 +236,9 @@ export async function findRepoRoot(start: string): Promise<string | null> {
     try {
       await fs.access(path.join(dir, ".git"));
       return dir;
-    } catch {}
+    } catch {
+      // No .git here — keep walking up until the filesystem root.
+    }
     const parent = path.dirname(dir);
     if (parent === dir) break;
     dir = parent;
@@ -249,7 +251,10 @@ export async function gatherFacts(argv1 = process.argv[1] ?? ""): Promise<Instal
   let realEntry = entry;
   try {
     realEntry = await fs.realpath(entry);
-  } catch {}
+  } catch {
+    // A bare name, a deleted shim, or a permission wall: fall back to argv[1]
+    // as given. Detection degrades to a guess rather than failing the command.
+  }
   const brewPrefix = await runCmd("brew", ["--prefix"])
     .then((s) => s.trim())
     .catch(() => null);

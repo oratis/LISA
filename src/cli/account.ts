@@ -46,7 +46,7 @@ function ask(question: string, opts: { hidden?: boolean } = {}): Promise<string>
       (stream as unknown as { write: typeof origWrite }).write = ((chunk: never, ...rest: never[]) => {
         if (muted) return true;
         return origWrite(chunk, ...rest);
-      }) as typeof origWrite;
+      });
       rl.question(question, (answer) => {
         (stream as unknown as { write: typeof origWrite }).write = origWrite;
         origWrite("\n");
@@ -203,7 +203,7 @@ export async function cmdBilling(subargs: string[]): Promise<void> {
   // `billing reconcile` is an OPERATOR command against THIS host's ledger
   // (T-8), not a call to the cloud API — dispatch before the session check.
   if (subargs[0] === "reconcile") {
-    const { cmdBillingReconcile } = await import("../billing/reconcile.js");
+    const { cmdBillingReconcile } = await import("./billing-reconcile.js");
     return cmdBillingReconcile(subargs.slice(1));
   }
   const managed = managedConfig();

@@ -343,7 +343,7 @@ describe("usage outbox — settlement failure injection", () => {
     assert.ok(result.eventId);
     assert.equal(result.applied, true);
     assert.equal(result.committed, true);
-    const ev = await store.get(UID, result.eventId!);
+    const ev = await store.get(UID, result.eventId);
     assert.ok(ev);
     assert.equal(ev.uid, UID);
     assert.equal(ev.kind, "chat");

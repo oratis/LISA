@@ -143,7 +143,7 @@ async function readJson(res: Response): Promise<HealthPayload | null> {
   try {
     const text = await res.text();
     const parsed: unknown = JSON.parse(text);
-    return parsed && typeof parsed === "object" ? (parsed as HealthPayload) : null;
+    return parsed && typeof parsed === "object" ? (parsed) : null;
   } catch {
     // A 200 with a non-JSON body still proves the socket is alive; treat the
     // telemetry as simply absent.

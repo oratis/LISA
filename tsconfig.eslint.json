@@ -22,6 +22,7 @@
     "scripts/**/*.ts",
     "scripts/**/*.mjs",
     "tests/**/*",
+    "types/**/*",
     "eslint.config.js",
     "playwright.config.ts"
   ],

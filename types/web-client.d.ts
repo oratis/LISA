@@ -1,3 +1,11 @@
+/* eslint-disable @typescript-eslint/no-explicit-any --
+ * This file exists to make `tsc --checkJs` usable on assets/client/main.js: a
+ * hand-written browser bundle that hangs helpers off window and reads
+ * properties the DOM lib types more narrowly than the runtime guarantees.
+ * The loose index signatures ARE the mechanism — replacing them with precise
+ * types would mean writing a second, parallel type model of the client, which
+ * is the cost this ambient file exists to avoid. Nothing here is emitted.
+ */
 /**
  * Ambient declarations for the browser client (src/web/assets/client/main.js),
  * used only by tsconfig.client.json. Nothing here is part of the server build:
