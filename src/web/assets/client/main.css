@@ -3240,3 +3240,93 @@
     .chat-empty .ce-starter, .copy-btn { transition: none; }
     #log { scroll-behavior: auto; }
   }
+
+/* ── Status toast (#lisaBanner) ────────────────────────────────────
+   The safety-net message for "backend unreachable" / uncaught UI errors.
+   It used to be a wide red slab pinned at top:12px, which sat on top of
+   the Mac window's title bar AND the whole top function bar. It is now a
+   compact bottom-anchored toast: JS sets its bottom offset per call so
+   it rides just above the composer (and hugs the window edge on views
+   that have none), and it draws from the theme tokens, not hard-coded pink.
+   NB: an explicit [hidden] rule is required — the #id display below would
+   otherwise out-specify the UA's [hidden] { display: none }. */
+#lisaBanner {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  z-index: 10000;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: min(520px, calc(100vw - 48px));
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--bg-card-strong);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.42);
+  color: var(--fg-2);
+  font-size: 12.5px;
+  line-height: 1.5;
+  user-select: text;
+  animation: lisaToastIn 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+#lisaBanner[hidden] { display: none; }
+@keyframes lisaToastIn {
+  from { opacity: 0; transform: translate(-50%, 10px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+#lisaBanner .lt-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--err-color);
+  box-shadow: 0 0 0 3px var(--err-soft);
+}
+#lisaBanner .lt-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  min-width: 0;
+}
+#lisaBanner .lt-msg { color: var(--fg); }
+/* "info" = a transient, expected wait (the client is still starting the
+   backend). Calm accent + a slow pulse, so a 3-second hiccup never reads
+   as a failure. */
+#lisaBanner[data-tone="info"] {
+  border-color: var(--border-strong);
+  background: var(--bg-card-strong);
+}
+#lisaBanner[data-tone="info"] .lt-dot {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  animation: lisaToastPulse 1.5s ease-in-out infinite;
+}
+@keyframes lisaToastPulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.3; }
+}
+#lisaBanner[data-tone="error"] {
+  border-color: rgba(255, 85, 119, 0.42);
+  background:
+    linear-gradient(0deg, var(--err-soft), var(--err-soft)),
+    var(--bg-card-strong);
+}
+#lisaBanner .lt-cmd {
+  padding: 3px 9px;
+  border-radius: 7px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-new);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11.5px;
+  color: var(--fg);
+  cursor: copy;
+  user-select: all;
+  transition: background 120ms ease, color 120ms ease;
+}
+#lisaBanner .lt-cmd:hover { background: var(--accent-soft); color: var(--accent); }
+#lisaBanner .lt-cmd.copied { color: var(--accent); }
+#lisaBanner .lt-cmd.copied::after { content: "  copied"; opacity: 0.65; }
