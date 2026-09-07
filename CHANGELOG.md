@@ -7,6 +7,23 @@ Entries from 0.13.0 onward are generated from `docs/RELEASE_v*.md` by
 `npm run changelog` — edit the release note, not this file. See
 [docs/RELEASING.md](docs/RELEASING.md).
 
+## [0.25.0] — 2026-09-08
+
+**The review-and-optimization release.** Two full-project reviews of v0.24.0 — one UX, one technical — turned 24 findings into nine merged PRs (#365, #368–#376). Two P0s are gone: the phone layout that collapsed the main pane to 75px, and the first-run dead end that trapped anyone who typed a wrong API key. Underneath that: hosted-edition boundary fixes, a durable billing outbox, a self-watchdog for the backend, and the engineering gates — lint, formatter, coverage floors, dependency bot, a real CI matrix, an offline browser smoke — that 60k lines of TypeScript had been running without. Plans in [PROJECT_REVIEW_UX_v0.24.0.md](docs/PROJECT_REVIEW_UX_v0.24.0.md) and [PROJECT_REVIEW_TECH_v0.24.0.md](docs/PROJECT_REVIEW_TECH_v0.24.0.md).
+
+- ⚠️ Node 22.19 is now the minimum
+- 📱 The phone layout works again (#375)
+- 🔑 First run survives a wrong key (#375)
+- 🔒 Hosted-edition boundaries (#365, #373)
+- ⚙️ The backend notices when it wedges (#373)
+- 💳 Usage settlement is durable (#374)
+- 🖥 CLI polish (#372)
+- 🍎 Mac and iOS (#371)
+- 📦 Assets and docs (#369, #370)
+- 🧰 Engineering gates (#376)
+
+[Release notes](docs/RELEASE_v0.25.0.md) · [GitHub release](https://github.com/oratis/LISA/releases/tag/v0.25.0)
+
 ## [0.24.0] — 2026-08-14
 
 **The harness-alignment release.** Three changes that are less about new surface than about removing things that were quietly wedged: tools no longer hardcode *where* they execute, session logs no longer omit the one input that actually shapes the model's behaviour, and Lisa finally reads the instruction file the rest of the ecosystem already agreed on. Design + gap analysis in [docs/PLAN_HARNESS_ALIGNMENT_v1.0.md](docs/PLAN_HARNESS_ALIGNMENT_v1.0.md); shipped as PRs #356–#360.
