@@ -64,6 +64,13 @@ describe("parseArgs — raw / passthrough subcommand routing", () => {
     assert.deepEqual(a.subargs, ["connect", "--email", "me@x.com"]);
   });
 
+  test("billing keeps its own flags: `billing reconcile --dry-run` reaches the handler", () => {
+    // T-8: the reconciler's flags are money-adjacent — a swallowed --dry-run
+    // would turn "show me what you would do" into "go do it".
+    const args = parseArgs(["billing", "reconcile", "--dry-run", "--uid", "em-1"]);
+    assert.deepEqual(args.subargs, ["reconcile", "--dry-run", "--uid", "em-1"]);
+  });
+
   test("an unknown flag in global position throws", () => {
     assert.throws(() => parseArgs(["--totallybogus"]), /unknown flag: --totallybogus/);
   });

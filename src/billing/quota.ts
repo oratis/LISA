@@ -18,6 +18,13 @@
  *
  * Storage: `<active home>/billing/balance.json` — the fast path beside the
  * usage.jsonl audit ledger; atomic writes under the billing lock.
+ *
+ * T-8: the balance is also the idempotency boundary for the usage OUTBOX
+ * (outbox.ts). A metered turn is debited under its outbox event id, and the
+ * ids of recently applied events ride along in `settled` — so a replay of the
+ * same event (reconciler after a crash between "balance written" and "event
+ * marked committed") is refused here, by the ledger itself, not by a caller
+ * remembering to check.
  */
 import path from "node:path";
 import fs from "node:fs/promises";
@@ -49,6 +56,14 @@ export interface PurchaseEntry {
   transactionId?: string;
 }
 
+/** One applied outbox event — the ledger-side idempotency key (T-8). */
+export interface SettledEntry {
+  /** Outbox event id. */
+  id: string;
+  /** ms since epoch when the debit was applied. */
+  at: number;
+}
+
 export interface BalanceState {
   /** Paid balance, micro-USD. Never expires; may go negative after a refund. */
   paidMicroUSD: number;
@@ -56,7 +71,18 @@ export interface BalanceState {
   purchases: PurchaseEntry[];
   /** The active free window, if one has been opened. */
   window?: { start: number; spentMicroUSD: number };
+  /**
+   * Recently applied outbox event ids, oldest first. Bounded by SETTLED_MAX
+   * and SETTLED_TTL_MS because this document is read on every turn; the
+   * reconciler refuses to replay anything that could have aged out of it.
+   */
+  settled?: SettledEntry[];
 }
+
+/** How many applied event ids the balance remembers (see SettledEntry). */
+export const SETTLED_MAX = 1000;
+/** How long an applied event id is remembered. Older replays are escalated, never re-applied. */
+export const SETTLED_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 function balanceFile(): string {
   return path.join(billingDir(), "balance.json");
@@ -69,7 +95,11 @@ const EMPTY: BalanceState = { paidMicroUSD: 0, purchases: [] };
 
 export class BillingStateError extends Error {
   constructor(
-    public readonly code: "balance_unavailable" | "balance_corrupt" | "purchase_conflict",
+    public readonly code:
+      | "balance_unavailable"
+      | "balance_corrupt"
+      | "purchase_conflict"
+      | "outbox_unavailable",
     message: string,
   ) {
     super(message);
@@ -119,11 +149,42 @@ function parseBalance(parsed: unknown): BalanceState {
     }
     window = { ...raw.window };
   }
+  let settled: SettledEntry[] | undefined;
+  if (raw.settled !== undefined) {
+    // Fail closed on a malformed ring: dropping it silently would let the
+    // reconciler double-charge a replay it can no longer recognise.
+    if (!Array.isArray(raw.settled)) {
+      throw new BillingStateError("balance_corrupt", "balance store has an invalid settlement ring");
+    }
+    settled = [];
+    for (const item of raw.settled) {
+      const entry = item as Partial<SettledEntry> | null;
+      if (!entry || typeof entry !== "object" || typeof entry.id !== "string" || !entry.id || !safeInteger(entry.at)) {
+        throw new BillingStateError("balance_corrupt", "balance store has an invalid settlement entry");
+      }
+      settled.push({ id: entry.id, at: entry.at });
+    }
+  }
   return {
     paidMicroUSD: raw.paidMicroUSD,
     purchases,
     ...(window ? { window } : {}),
+    ...(settled && settled.length ? { settled } : {}),
   };
+}
+
+/** Has this outbox event already been applied to the balance? */
+export function settledContains(state: BalanceState, eventId: string): boolean {
+  return !!state.settled?.some((entry) => entry.id === eventId);
+}
+
+/** Remember an applied event id, keeping the ring within its size/age bounds. */
+function noteSettled(state: BalanceState, eventId: string, now: number): void {
+  const ring = state.settled ?? [];
+  ring.push({ id: eventId, at: now });
+  let kept = ring.filter((entry) => now - entry.at <= SETTLED_TTL_MS);
+  if (kept.length > SETTLED_MAX) kept = kept.slice(kept.length - SETTLED_MAX);
+  state.settled = kept;
 }
 
 // B9: with Firestore enabled AND a per-uid scope active, the balance lives in
@@ -288,27 +349,38 @@ export async function precheckTurn(
  * Debit one metered turn AFTER it ran: free window first (standard models),
  * then paid balance. Premium models bill paid only. A concurrent overshoot may
  * push paid slightly negative — absorbed by the next purchase.
+ *
+ * With `opts.eventId` (the outbox event, T-8) the debit is idempotent: the id
+ * is checked against and recorded in the balance's `settled` ring inside the
+ * same atomic update, so the reconciler can replay a torn settlement without
+ * ever charging twice. Returns true when this call changed the balance, false
+ * for a replay (or nothing to charge).
  */
 export async function debitTurn(
   acct: AccountRecord,
   model: string,
   microUSD: number,
   now: number = Date.now(),
-): Promise<void> {
-  if (microUSD <= 0) return;
-  await updateBalance((state) => {
+  opts: { eventId?: string } = {},
+): Promise<boolean> {
+  if (microUSD <= 0) return false;
+  const eventId = opts.eventId;
+  return updateBalance((state) => {
+    if (eventId && settledContains(state, eventId)) return false;
     if (modelTier(model) === "premium") {
       state.paidMicroUSD -= microUSD;
-      return;
+    } else {
+      const tier = tierFor(acct, state, now);
+      const w = liveWindow(state, now);
+      const allowance = windowAllowance(tier);
+      const freeLeft = Math.max(0, allowance - w.spentMicroUSD);
+      const fromFree = Math.min(freeLeft, microUSD);
+      w.spentMicroUSD += fromFree;
+      const rest = microUSD - fromFree;
+      if (rest > 0) state.paidMicroUSD -= rest;
     }
-    const tier = tierFor(acct, state, now);
-    const w = liveWindow(state, now);
-    const allowance = windowAllowance(tier);
-    const freeLeft = Math.max(0, allowance - w.spentMicroUSD);
-    const fromFree = Math.min(freeLeft, microUSD);
-    w.spentMicroUSD += fromFree;
-    const rest = microUSD - fromFree;
-    if (rest > 0) state.paidMicroUSD -= rest;
+    if (eventId) noteSettled(state, eventId, now);
+    return true;
   });
 }
 
