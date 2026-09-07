@@ -334,8 +334,16 @@ interface DerivedIcon {
 }
 
 const DERIVED_ICONS: DerivedIcon[] = [
-  { file: "icon-192.png", size: 192, maskable: true, purpose: 'web manifest, purpose "any maskable"' },
-  { file: "icon-512.png", size: 512, maskable: true, purpose: 'web manifest, purpose "any maskable"' },
+  // purpose "any" — full-bleed. An inset icon declared "any" renders visibly
+  // smaller than every other icon in Chrome's app list, so the safe-zone
+  // padding belongs only on the maskable variant below.
+  { file: "icon-192.png", size: 192, maskable: false, purpose: 'web manifest, purpose "any"' },
+  { file: "icon-512.png", size: 512, maskable: false, purpose: 'web manifest, purpose "any"' },
+  // purpose "maskable" — a SEPARATE file, not the same bytes relabelled. The
+  // platform crops to its own mask, so a maskable icon has to carry its own
+  // safe-zone padding; declaring the unpadded icon maskable just loses its
+  // edges. src/web/server.ts's manifest declares exactly these three.
+  { file: "icon-512-maskable.png", size: 512, maskable: true, purpose: 'web manifest, purpose "maskable"' },
   { file: "apple-touch-icon.png", size: 180, maskable: false, purpose: "iOS home screen (iOS applies its own superellipse mask)" },
 ];
 

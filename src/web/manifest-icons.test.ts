@@ -40,7 +40,10 @@ function manifestIcons(): { src: string; sizes: string; purpose: string }[] {
   const block = /icons:\s*\[([\s\S]*?)\]/.exec(serverSrc);
   assert.ok(block, "could not find the manifest icons array in server.ts");
   const out: { src: string; sizes: string; purpose: string }[] = [];
-  const entry = /\{\s*src:\s*"([^"]+)"\s*,\s*sizes:\s*"([^"]+)"\s*,\s*type:\s*"[^"]+"\s*,\s*purpose:\s*"([^"]+)"\s*\}/g;
+  // Entries are written both inline and split over lines, with or without a
+  // trailing comma — match all of those shapes.
+  const entry =
+    /\{\s*src:\s*"([^"]+)"\s*,\s*sizes:\s*"([^"]+)"\s*,\s*type:\s*"[^"]+"\s*,\s*purpose:\s*"([^"]+)"\s*,?\s*\}/g;
   for (const m of block[1].matchAll(entry)) {
     out.push({ src: m[1] as string, sizes: m[2] as string, purpose: m[3] as string });
   }
@@ -72,12 +75,23 @@ describe("PWA manifest icons", () => {
     assert.ok(declared.includes("512x512"), "Chrome needs a 512x512 for the splash screen");
   });
 
-  test("the maskable-inset files are the ones declared maskable", () => {
-    for (const icon of manifestIcons()) {
-      assert.match(
-        icon.purpose,
-        /maskable/,
-        `${icon.src}: optimize-assets insets 192/512 into the safe zone, so say maskable`,
+  test("maskable is its own file, never the unpadded icon relabelled", () => {
+    const icons = manifestIcons();
+    const maskable = icons.filter((i) => i.purpose.split(/\s+/).includes("maskable"));
+    assert.equal(maskable.length, 1, "exactly one maskable icon");
+    const plain = icons.filter((i) => !i.purpose.split(/\s+/).includes("maskable"));
+    assert.ok(plain.length >= 2, "and the full-bleed icons stay purpose any");
+
+    // The platform crops a maskable icon to its own mask, so it has to carry
+    // safe-zone padding of its own. Sharing bytes with an unpadded icon loses
+    // the edges; padding the "any" icon makes it render visibly small next to
+    // every other app. Different files is the only way to get both right — so
+    // assert they really are different bytes.
+    const bytes = (src: string) => fs.readFileSync(path.join(ASSETS, src.slice("/assets/".length)));
+    for (const p of plain) {
+      assert.ok(
+        !bytes(p.src).equals(bytes(maskable[0]!.src)),
+        `${maskable[0]!.src} must not be ${p.src} relabelled`,
       );
     }
   });
@@ -97,7 +111,7 @@ describe("PWA manifest icons", () => {
     // Cache-first for /assets/*: an icon missing from ASSET_PATHS is fetched
     // from the network on first install, which is exactly when the home-screen
     // icon is being chosen.
-    for (const f of ["icon-192.png", "icon-512.png", "apple-touch-icon.png"]) {
+    for (const f of ["icon-192.png", "icon-512.png", "icon-512-maskable.png", "apple-touch-icon.png"]) {
       assert.ok(
         serverSrc.includes(`'/assets/${f}'`),
         `${f} is generated and served but not in the service worker precache list`,

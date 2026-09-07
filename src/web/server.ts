@@ -198,7 +198,12 @@ import {
 import { applySecurityHeaders } from "./security-headers.js";
 import { configStatusPayload, parseConfigSave } from "./config-api.js";
 import { attachSseHeartbeat } from "./sse.js";
-import { EventLoopMonitor, healthPayload, watchdogThresholdFromEnv } from "./health.js";
+import {
+  EventLoopMonitor,
+  healthPayload,
+  publicHealthPayload,
+  watchdogThresholdFromEnv,
+} from "./health.js";
 import {
   buildNonInteractiveApprovalCallback,
   buildRuntimePolicy,
@@ -1242,12 +1247,29 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // counters — what an operator needs to tell "slow" from "down". Always 200:
     // `ok:false` means "lagging", not "dead"; /healthz is the liveness probe.
     if (req.method === "GET" && url === "/health") {
-      res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
-      res.end(
-        JSON.stringify(
-          healthPayload(loopMonitor, healthCounters(), cloudEdition ? "cloud" : "mac", watchdogLagMs),
-        ),
+      const full = healthPayload(
+        loopMonitor,
+        healthCounters(),
+        cloudEdition ? "cloud" : "mac",
+        watchdogLagMs,
       );
+      // Hosted edition: this endpoint faces the public internet from here, so
+      // the unauthenticated answer is health only. tenants / sessions /
+      // pending_turns are live usage metrics and heap / RSS / uptime expose
+      // restart and load patterns; none are needed to tell "lagging" from
+      // "fine". An authenticated caller gets the full payload further down,
+      // and /healthz is still the unauthenticated liveness probe.
+      // trustLoopback: false — the hosted container must never treat its own
+      // (or the proxy's) loopback as the owner, the same rule the gate below uses.
+      const healthAuthed = isRequestAuthorized(
+        req.socket.remoteAddress ?? "",
+        webToken,
+        presentedToken(req, url),
+        false,
+      );
+      const body = cloudEdition && !healthAuthed ? publicHealthPayload(full) : full;
+      res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+      res.end(JSON.stringify(body));
       return;
     }
 
@@ -3311,7 +3333,8 @@ const CACHE = 'lisa-v9-icons';
 const ASSET_PATHS = ['/assets/lisa-mascot.png', '/assets/background-tile.png',
   '/assets/icon-soul.png', '/assets/icon-skill.png', '/assets/icon-memory.png',
   '/assets/icon-tool.png', '/assets/icon-send.png',
-  '/assets/icon-192.png', '/assets/icon-512.png', '/assets/apple-touch-icon.png'];
+  '/assets/icon-192.png', '/assets/icon-512.png', '/assets/icon-512-maskable.png',
+  '/assets/apple-touch-icon.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
