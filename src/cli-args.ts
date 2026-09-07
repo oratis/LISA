@@ -19,6 +19,10 @@ export interface ParsedArgs {
   idleMinutes: number;
   /** True when --model was passed, so a LISA_MODEL default from config.env won't override it. */
   modelExplicit: boolean;
+  /** `--verbose` or LISA_DEBUG=1: startup banners, full tool results, hot-reload details. */
+  verbose: boolean;
+  /** `--no-color`: force plain output even on a TTY (NO_COLOR is handled in cli/ansi.ts). */
+  noColor: boolean;
   subcommand?:
     | "resume"
     | "sessions"
@@ -44,7 +48,8 @@ export interface ParsedArgs {
     | "kb"
     | "login"
     | "logout"
-    | "billing";
+    | "billing"
+    | "upgrade";
   subargs: string[];
   serveWeb: boolean;
   serveImessage: boolean;
@@ -60,7 +65,7 @@ export interface ParsedArgs {
  * --model`), so those must still reach the global parser — only *unrecognized*
  * trailing flags are collected verbatim for the handler.
  */
-const RAW_SUBCOMMANDS = new Set(["heartbeat", "autostart"]);
+const RAW_SUBCOMMANDS = new Set(["heartbeat", "autostart", "doctor", "upgrade"]);
 
 /**
  * Subcommands whose handler re-parses *all* of its trailing args itself, so
@@ -70,6 +75,18 @@ const RAW_SUBCOMMANDS = new Set(["heartbeat", "autostart"]);
  */
 const PASSTHROUGH_SUBCOMMANDS = new Set(["mail", "kb"]);
 
+/**
+ * Is this a debug run? Decided from the raw argv + env rather than ParsedArgs
+ * because the proxy bridge runs at module load, before parseArgs — it must be
+ * in place before any module touches fetch. LISA_DEBUG=1 is the env form for
+ * launchd / scripts that can't edit the command line.
+ */
+export function isVerboseArgv(argv: readonly string[], env: NodeJS.ProcessEnv = process.env): boolean {
+  const debug = env.LISA_DEBUG;
+  if (debug && debug !== "0" && debug.toLowerCase() !== "false") return true;
+  return argv.includes("--verbose");
+}
+
 export function parseArgs(argv: string[]): ParsedArgs {
   const out: ParsedArgs = {
     showHelp: false,
@@ -78,6 +95,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
     compaction: false,
     model: DEFAULT_MODEL,
     modelExplicit: false,
+    verbose: isVerboseArgv([], process.env),
+    noColor: false,
     approval: "auto",
     loadMcp: true,
     loadPlugins: true,
@@ -112,6 +131,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
     else if (arg === "--compact") out.compaction = true;
     else if (arg === "--no-mcp") out.loadMcp = false;
     else if (arg === "--no-plugins") out.loadPlugins = false;
+    else if (arg === "--verbose") out.verbose = true;
+    else if (arg === "--no-color" || arg === "--no-colour") out.noColor = true;
     else if (arg === "--voice") out.voice = true;
     else if (arg === "--no-idle") out.idleMinutes = 0;
     else if (arg === "--idle") {
@@ -198,7 +219,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
       first === "kb" ||
       first === "login" ||
       first === "logout" ||
-      first === "billing"
+      first === "billing" ||
+      first === "upgrade"
     ) {
       out.subcommand = first;
       out.subargs = positional.slice(1);

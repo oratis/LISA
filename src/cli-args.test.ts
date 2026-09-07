@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { parseArgs } from "./cli-args.js";
+import { isVerboseArgv, parseArgs } from "./cli-args.js";
 
 describe("parseArgs — raw / passthrough subcommand routing", () => {
   test("mail: every trailing flag reaches the handler verbatim, even would-be global ones", () => {
@@ -74,5 +74,39 @@ describe("parseArgs — raw / passthrough subcommand routing", () => {
     assert.equal(a.model, "mail");
     assert.equal(a.subcommand, undefined);
     assert.equal(a.prompt, "hello world");
+  });
+});
+
+describe("parseArgs — verbosity", () => {
+  test("--verbose sets verbose and is not treated as a prompt word", () => {
+    const a = parseArgs(["--verbose", "hello"]);
+    assert.equal(a.verbose, true);
+    assert.equal(a.prompt, "hello");
+  });
+
+  test("verbose defaults to false without LISA_DEBUG", () => {
+    const prev = process.env.LISA_DEBUG;
+    delete process.env.LISA_DEBUG;
+    try {
+      assert.equal(parseArgs(["status"]).verbose, false);
+    } finally {
+      if (prev !== undefined) process.env.LISA_DEBUG = prev;
+    }
+  });
+});
+
+describe("isVerboseArgv", () => {
+  test("--verbose anywhere in argv", () => {
+    assert.equal(isVerboseArgv(["serve", "--web", "--verbose"], {}), true);
+    assert.equal(isVerboseArgv(["serve", "--web"], {}), false);
+  });
+
+  test("LISA_DEBUG=1 (and any other truthy spelling) turns it on; 0/false/empty do not", () => {
+    assert.equal(isVerboseArgv([], { LISA_DEBUG: "1" }), true);
+    assert.equal(isVerboseArgv([], { LISA_DEBUG: "true" }), true);
+    assert.equal(isVerboseArgv([], { LISA_DEBUG: "0" }), false);
+    assert.equal(isVerboseArgv([], { LISA_DEBUG: "false" }), false);
+    assert.equal(isVerboseArgv([], { LISA_DEBUG: "" }), false);
+    assert.equal(isVerboseArgv([], {}), false);
   });
 });

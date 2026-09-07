@@ -8,7 +8,13 @@ import { dirname, resolve as resolvePath } from "node:path";
 // re-call this after config.env loads (inside main()) to handle proxies set
 // in ~/.lisa/config.env.
 import { configureProxyFromEnv } from "./proxy-bootstrap.js";
-configureProxyFromEnv({ log: (m) => console.error(m) });
+import { isVerboseArgv, parseArgs, type ParsedArgs } from "./cli-args.js";
+// The "[proxy] outbound HTTP routed through …" banner is debug detail on a
+// one-shot command, but at `serve` startup it is the one line in serve.log
+// that says which proxy the daemon actually picked up — keep it there.
+const proxyBanner =
+  isVerboseArgv(process.argv.slice(2)) || process.argv.slice(2).includes("serve");
+configureProxyFromEnv({ log: (m) => console.error(m), verbose: proxyBanner });
 import { logInfo } from "./log.js";
 import { runAgent } from "./agent.js";
 import { buildApprovalCallback, DEFAULT_MUTATING_TOOLS, DEFAULT_MUTATING_ACTIONS } from "./approval.js";
@@ -17,7 +23,7 @@ import { ensureDir } from "./fs-utils.js";
 import { runHeartbeatOnce } from "./heartbeat/runner.js";
 import { fireHooks } from "./hooks/runner.js";
 import { DEFAULT_MODEL } from "./llm.js";
-import { parseArgs, type ParsedArgs } from "./cli-args.js";
+import { displayPath } from "./cli/display-path.js";
 import { connectMcpServers } from "./mcp/client.js";
 import { loadMcpConfig } from "./mcp/config.js";
 import { lisaHome } from "./paths.js";
@@ -28,13 +34,15 @@ import { buildSystemPromptSnapshot, getPromptFingerprint } from "./prompt.js";
 import { providerForModel, resolveDefaultModel, hasCredentialsForModel } from "./providers/registry.js";
 import { reflectOnSession } from "./reflect.js";
 import { runRepl } from "./cli/repl.js";
+import { colorEnabled, setColorOverride } from "./cli/ansi.js";
+import { createEventRenderer, type EventRenderer } from "./cli/render.js";
 import { listSessionsOnDisk, loadSessionMessages } from "./sessions/list.js";
 import { SessionStore } from "./sessions/store.js";
 import { birth } from "./soul/birth.js";
 import { isBorn, readSoulSummary } from "./soul/store.js";
 import { createTaskTool } from "./tools/task.js";
 import { buildToolRegistry, cloudSafeSubset, readOnlySubset } from "./tools/registry.js";
-import type { AgentEvent, StoredMessage, ToolDefinition } from "./types.js";
+import type { StoredMessage, ToolDefinition } from "./types.js";
 
 const HELP = `Lisa — your self-evolving local AI assistant.
 
@@ -50,6 +58,11 @@ INSPECTION
                                desires, sessions, providers, heartbeat last-run.
   lisa doctor                  Health check (config, network, git, providers).
                                Exits non-zero on critical issues.
+  lisa doctor --probe [url]    Ask a running backend how it feels: version,
+                               uptime, event-loop lag (p50/p99/max), heap and
+                               tenants. Defaults to http://127.0.0.1:5757; a
+                               bare port or a full URL both work. Warns above
+                               1s of p99 lag, exits non-zero if unreachable.
   lisa monitor                 TUI live dashboard (mood + soul commits + events
                                + heartbeat). Polls every 2s. Ctrl-C to quit.
   lisa soul                    Print full soul summary.
@@ -74,6 +87,12 @@ INSPECTION
                                per-device token via a running serve (localhost).
 
 LIFECYCLE
+  lisa upgrade [--check|--dry-run]
+                               Upgrade this install (Homebrew formula or npm
+                               global), then restart the login agent so the
+                               running daemon picks up the new code. --check
+                               only compares installed vs published; --dry-run
+                               prints the commands without running them.
   lisa birth                   Run the birth ritual (auto-runs on first launch).
   lisa heartbeat run [name]    Run heartbeat tasks once (incl. self-driven desires).
   lisa heartbeat install [--load] [--every <30m|1h|...>]
@@ -144,6 +163,8 @@ FLAGS
   --no-idle             Disable idle mode entirely.
   --host <addr>         Bind address for serve --web (default: 127.0.0.1).
                         Non-loopback binds require LISA_WEB_TOKEN to be set.
+  --verbose             Startup banners, full tool results, hot-reload detail.
+  --no-color            Plain output even on a terminal (so is NO_COLOR=1).
 
 REPL slash commands:
   /help, /exit, /quit
@@ -156,11 +177,19 @@ REPL slash commands:
   /clear                Forget current in-memory history (session log preserved).
   /save <text>          Append to MEMORY.md immediately.
 
-Data: ${lisaHome()}
-Plugins: ${PLUGINS_ROOT}/<name>/{commands,agents,skills,hooks,.lisa-plugin/plugin.json}
-MCP:     ${lisaHome()}/mcp.json   (Claude-Code-style {"mcpServers": {...}})
-Heartbeat: ${lisaHome()}/heartbeat.json   ({"tasks": [{name, prompt, ...}]})
-Config:  ${CONFIG_ENV_PATH}   (KEY=VALUE)`;
+REPL editing:
+  ↑ / ↓                 Browse previous prompts — kept across sessions in
+                        ${displayPath(lisaHome())}/history (last 1000, mode 0600).
+  """                   Open a multi-line prompt; """ again to send it.
+  Tool calls show as one line each (⚙ running → ✓ / ✗ with a duration);
+  --verbose adds the full result. Only Lisa's words go to stdout, so
+  \`lisa "…" > answer.md\` captures the answer and nothing else.
+
+Data: ${displayPath(lisaHome())}
+Plugins: ${displayPath(PLUGINS_ROOT)}/<name>/{commands,agents,skills,hooks,.lisa-plugin/plugin.json}
+MCP:     ${displayPath(lisaHome())}/mcp.json   (Claude-Code-style {"mcpServers": {...}})
+Heartbeat: ${displayPath(lisaHome())}/heartbeat.json   ({"tasks": [{name, prompt, ...}]})
+Config:  ${displayPath(CONFIG_ENV_PATH)}   (KEY=VALUE)`;
 
 function readPackageVersion(): string {
   try {
@@ -195,6 +224,10 @@ async function main(): Promise<void> {
     return;
   }
 
+  // `--no-color` is a process-wide decision (doctor/status/monitor read it via
+  // cli/colors.ts, the REPL renderer via cli/ansi.ts), so record it once here.
+  if (args.noColor) setColorOverride(false);
+
   await ensureDir(lisaHome());
   loadConfigEnv();
   const cloudEdition = isCloud();
@@ -205,8 +238,11 @@ async function main(): Promise<void> {
     args.model = resolveDefaultModel();
   }
   // Re-bridge proxy in case HTTPS_PROXY was set in config.env rather than
-  // the shell. configureProxyFromEnv is idempotent.
-  configureProxyFromEnv({ log: (m) => console.error(m) });
+  // the shell. configureProxyFromEnv is idempotent, so this logs at most once.
+  configureProxyFromEnv({
+    log: (m) => console.error(m),
+    verbose: args.verbose || args.subcommand === "serve",
+  });
 
   // ── soul-only subcommands (don't need agent loop) ─────────────────────
   if (args.subcommand === "birth") {
@@ -269,7 +305,7 @@ async function main(): Promise<void> {
           : "configured ✓";
       console.log(`  ${name.padEnd(12)} ${status}`);
     }
-    console.log(`\nConfig: ${CHANNELS_CONFIG_PATH}`);
+    console.log(`\nConfig: ${displayPath(CHANNELS_CONFIG_PATH)}`);
     console.log(`Start: lisa serve --channels <comma-list>  (or --channels all)`);
     return;
   }
@@ -323,8 +359,30 @@ async function main(): Promise<void> {
   }
 
   if (args.subcommand === "doctor") {
+    const probe = args.subargs.find((a) => a === "--probe" || a.startsWith("--probe="));
+    if (probe) {
+      const { runProbe } = await import("./cli/probe.js");
+      const inline = probe.startsWith("--probe=") ? probe.slice("--probe=".length) : undefined;
+      // `--probe` on its own means the local daemon; a bare word after it (not
+      // another flag) is the instance to ask instead.
+      const target =
+        inline ?? args.subargs.slice(args.subargs.indexOf(probe) + 1).find((a) => !a.startsWith("-"));
+      const code = await runProbe(target);
+      if (code !== 0) process.exit(code);
+      return;
+    }
     const { runDoctor } = await import("./cli/doctor.js");
     await runDoctor();
+    return;
+  }
+
+  if (args.subcommand === "upgrade") {
+    const { runUpgrade } = await import("./cli/upgrade.js");
+    const code = await runUpgrade({
+      check: args.subargs.includes("--check"),
+      dryRun: args.subargs.includes("--dry-run"),
+    });
+    if (code !== 0) process.exit(code);
     return;
   }
 
@@ -413,8 +471,13 @@ async function main(): Promise<void> {
   const isWebServe = args.subcommand === "serve" && args.serveWeb;
   if (!isWebServe && !hasCredentialsForModel(args.model)) {
     console.error(
-      `Lisa needs an API key for ${args.model}. Set the provider key in your shell or in ${CONFIG_ENV_PATH} ` +
-        `— e.g. ANTHROPIC_API_KEY (https://console.anthropic.com/), OPENAI_API_KEY, or a preset key like ZHIPU_API_KEY for glm-*.`,
+      [
+        `Lisa needs an API key for ${args.model}.`,
+        `Set the provider key in your shell or in ${displayPath(CONFIG_ENV_PATH)}, e.g.`,
+        `  ANTHROPIC_API_KEY=sk-ant-…   (https://console.anthropic.com/)`,
+        `  OPENAI_API_KEY=…             or a preset key like ZHIPU_API_KEY for glm-*`,
+        `Run \`lisa doctor\` to see which providers are configured.`,
+      ].join("\n"),
     );
     process.exit(1);
   }
@@ -706,8 +769,17 @@ async function main(): Promise<void> {
 
   const rebuildPrompt = makeHotReloadRebuilder(initialFingerprint, snapshot.text);
 
+  const renderer: EventRenderer = createEventRenderer({
+    stdout: process.stdout,
+    stderr: process.stderr,
+    color: colorEnabled({ isTTY: process.stderr.isTTY === true, noColorFlag: args.noColor }),
+    verbose: args.verbose,
+    tty: process.stderr.isTTY === true,
+    columns: process.stderr.columns,
+  });
+
   const turn = async (prompt: string): Promise<void> => {
-    process.stdout.write("\nLisa> ");
+    renderer.beginTurn();
     // Per-turn freshness: pick up any cross-session writes to soul / skills /
     // memory (e.g. she patched her own soul during the previous turn). The
     // closure caches by fingerprint so this is cheap when nothing changed.
@@ -751,15 +823,18 @@ async function main(): Promise<void> {
         );
         if (r.rewriteResult != null) return { rewriteResult: r.rewriteResult };
       },
-      onEvent: renderEvent,
+      onEvent: (e) => renderer.onEvent(e),
       onMessagePersist: (msg) => session.appendMessage(msg),
       onPromptPersist: (text, reason) => session.appendPrompt(text, reason),
       hotReload: {
         initialFingerprint: fresh.fingerprint,
         rebuild: rebuildPrompt,
       },
+    }).finally(() => {
+      // Also on failure: an abandoned spinner would keep redrawing over the
+      // error message.
+      renderer.endTurn();
     });
-    process.stdout.write("\n");
     history.length = 0;
     history.push(...result.history);
     if (result.cacheReadTokens || result.cacheWriteTokens || result.inputTokens) {
@@ -932,34 +1007,6 @@ async function main(): Promise<void> {
       await finish();
     },
   });
-}
-
-function renderEvent(event: AgentEvent): void {
-  switch (event.type) {
-    case "text_delta":
-      if (event.text) process.stdout.write(event.text);
-      break;
-    case "thinking_delta":
-      break;
-    case "tool_call_start": {
-      const inputPreview = JSON.stringify(event.toolInput).slice(0, 120);
-      process.stderr.write(`\n[tool ${event.toolName} ${inputPreview}]\n`);
-      break;
-    }
-    case "tool_call_end":
-      if (event.isError) {
-        process.stderr.write(`[tool ${event.toolName} ✗ ${event.toolResult}]\n`);
-      }
-      break;
-    case "system_prompt_rebuilt":
-      process.stderr.write(`[soul] ${event.message}\n`);
-      break;
-    case "error":
-      process.stderr.write(`\n[error] ${event.message}\n`);
-      break;
-    default:
-      break;
-  }
 }
 
 /**

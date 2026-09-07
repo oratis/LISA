@@ -17,7 +17,7 @@ end
 # ── helper: did the user already type a subcommand? ─────────────────
 function __lisa_no_subcommand
     set cmd (commandline -opc)
-    set sub resume sessions serve heartbeat autostart search birth soul channels skills wishlist status doctor monitor autonomy model consent sense agents
+    set sub resume sessions serve heartbeat autostart upgrade search birth soul channels skills wishlist status doctor monitor autonomy model consent sense agents pair mail kb login logout billing
     for word in $cmd[2..-1]
         if contains -- $word $sub
             return 1
@@ -56,6 +56,13 @@ complete -c lisa -n __lisa_no_subcommand -f -a model      -d "local model lifecy
 complete -c lisa -n __lisa_no_subcommand -f -a consent    -d "consent for ambient signals"
 complete -c lisa -n __lisa_no_subcommand -f -a sense      -d "recent ambient sense events"
 complete -c lisa -n __lisa_no_subcommand -f -a agents     -d "agent sessions snapshot"
+complete -c lisa -n __lisa_no_subcommand -f -a upgrade    -d "upgrade this install + restart the daemon"
+complete -c lisa -n __lisa_no_subcommand -f -a pair       -d "show a QR to pair a phone"
+complete -c lisa -n __lisa_no_subcommand -f -a mail       -d "mail setup and inbox"
+complete -c lisa -n __lisa_no_subcommand -f -a kb         -d "knowledge base"
+complete -c lisa -n __lisa_no_subcommand -f -a login      -d "sign in to Lisa Cloud"
+complete -c lisa -n __lisa_no_subcommand -f -a logout     -d "sign out of Lisa Cloud"
+complete -c lisa -n __lisa_no_subcommand -f -a billing    -d "allowance, credits, usage"
 
 # ── model / consent / sense sub-actions ─────────────────────────────
 complete -c lisa -n "__lisa_using_subcommand model" -f -a "list install use health" -d "model action"
@@ -70,6 +77,11 @@ complete -c lisa -n "__lisa_using_subcommand skills" -f -a disable  -d "block a 
 complete -c lisa -n "__lisa_using_subcommand skills" -f -a enable   -d "remove disable"
 complete -c lisa -n "__lisa_using_subcommand skills" -f -a audit    -d "show audit trail"
 complete -c lisa -n "__lisa_using_subcommand skills" -f -a "(__lisa_skill_slugs)" -d "skill slug"
+
+# ── doctor / upgrade flags ──────────────────────────────────────────
+complete -c lisa -n "__lisa_using_subcommand doctor" -f -l probe -d "probe a running backend's /health"
+complete -c lisa -n "__lisa_using_subcommand upgrade" -f -l check -d "only compare installed vs published"
+complete -c lisa -n "__lisa_using_subcommand upgrade" -f -l dry-run -d "print the commands, run nothing"
 
 # ── heartbeat sub-actions ───────────────────────────────────────────
 complete -c lisa -n "__lisa_using_subcommand heartbeat" -f -a run       -d "run once"
@@ -91,6 +103,8 @@ complete -c lisa -l no-mcp             -d "skip MCP loading"
 complete -c lisa -l no-plugins         -d "skip plugin loading"
 complete -c lisa -l voice              -d "enable speak/transcribe"
 complete -c lisa -l no-idle            -d "disable idle mode"
+complete -c lisa -l verbose            -d "startup banners + full tool results"
+complete -c lisa -l no-color           -d "plain output even on a terminal"
 complete -c lisa -l web                -d "start web UI (with serve)"
 complete -c lisa -l imessage           -d "start iMessage (with serve)"
 
