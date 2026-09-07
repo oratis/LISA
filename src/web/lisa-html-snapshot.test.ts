@@ -203,10 +203,14 @@ import { MAIN_HTML } from "./lisa-html.js";
  * body.rb-collapsed before .frame is parsed so a fresh profile never flashes
  * the 3-column layout while the big inline bundle at the end of <body> is
  * still loading. #fnPanel still toggles and persists it.
+ * Then: the apple-touch-icon <link> points at the generated 180x180
+ * /assets/apple-touch-icon.png (with an explicit sizes=) instead of the
+ * full-size mascot — the mascot was the only icon the page ever declared,
+ * which is why iOS rendered a home-screen screenshot.
  */
-const EXPECTED_LENGTH = 308201;
+const EXPECTED_LENGTH = 308222;
 const EXPECTED_SHA256 =
-  "08a2d262d3ccbc01c761bb4562bfc47c673650725f050105dbc8a36741b700ba";
+  "c7968294f66257468a0af8b203e64a726393ee924f7f2ceae879fb81e6b67678";
 
 test("MAIN_HTML length is byte-identical to the pre-split snapshot", () => {
   assert.equal(MAIN_HTML.length, EXPECTED_LENGTH);
