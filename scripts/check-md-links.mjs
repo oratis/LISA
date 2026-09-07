@@ -36,16 +36,7 @@ const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "research"]);
  * outlive its cause — you are forced to delete the entry rather than let it rot
  * into a permanent hole in the check.
  */
-const PENDING = new Map([
-  [
-    "assets/screenshots/shell-nebula.png",
-    "session-shell screenshots are regenerated in a separate change (UX-6)",
-  ],
-  [
-    "assets/screenshots/shell-calm.png",
-    "session-shell screenshots are regenerated in a separate change (UX-6)",
-  ],
-]);
+const PENDING = new Map([]);
 
 const roots = process.argv.slice(2).length ? process.argv.slice(2) : DEFAULT_ROOTS;
 
