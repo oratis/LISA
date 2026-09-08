@@ -121,7 +121,18 @@ for arch in $ARCHS; do
     tarball="node-$NODE_VERSION-darwin-$arch.tar.gz"
     tgz="$CACHE/node/$tarball"
     if [ ! -s "$tgz" ]; then
-        echo "▸ downloading $tarball…"
+        # The braces are required, not style. Under a UTF-8 locale, bash 3.2
+        # (what /bin/bash still is on macOS, runners included) swallows the
+        # bytes of a following multibyte character into the identifier: an
+        # unbraced expansion here names a variable "tarball" plus the ellipsis,
+        # which is unset, and `set -u` aborts the release build. Reproduced
+        # exactly:
+        #   LC_ALL=en_US.UTF-8 bash -uc 'v=x; echo "$v<ellipsis>"'
+        #     -> bash: v<ellipsis>: unbound variable
+        #   LC_ALL=C            ... -> fine
+        # So a C-locale shell and every bash 5 hide it, and this only ever
+        # failed on the tag-triggered release job.
+        echo "▸ downloading ${tarball}…"
         curl -fsSL "https://nodejs.org/dist/$NODE_VERSION/$tarball" -o "$tgz"
     fi
     # We are about to ship this binary to users — never skip the checksum.
