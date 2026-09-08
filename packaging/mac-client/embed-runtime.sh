@@ -60,6 +60,22 @@ RES="$APP/Contents/Resources"
 NODE_VERSION="${LISA_NODE_VERSION:-v22.23.2}"
 ARCHS="${LISA_EMBED_ARCHS:-arm64 x64}"
 
+# Checksums for PINNED_NODE_VERSION, committed to the repo.
+#
+# The script already verifies each tarball against nodejs.org's SHASUMS256.txt,
+# but that file comes from the same host over the same connection as the
+# tarball: anything able to serve a tampered binary can serve a sums file that
+# matches it. Node publishes a detached GPG signature for SHASUMS256.txt, and
+# checking it would mean carrying (and rotating) their release keyring in the
+# build. Pinning the hash here gets the same property more cheaply — the
+# expected value lives in version control, so changing it is a reviewed commit,
+# and this binary is signed into a notarized DMG and handed to users.
+#
+# Bumping Node: set both, from `curl https://nodejs.org/dist/<v>/SHASUMS256.txt`.
+PINNED_NODE_VERSION="v22.23.2"
+PINNED_SHA256_arm64="61130f394c1630d211dd50aecc4353d379480f36d3ac913cd85dbba1aed585c6"
+PINNED_SHA256_x64="58e99022c2ff89395576cc7fd4d98cea24bb68081475d5f88b801ee8729fb026"
+
 # ── 1. backend: dist/ + production node_modules ─────────────────────
 if [ ! -f "$REPO_ROOT/dist/cli.js" ]; then
     echo "✗ $REPO_ROOT/dist/cli.js missing — run 'npm run build' first" >&2
@@ -109,7 +125,20 @@ for arch in $ARCHS; do
         curl -fsSL "https://nodejs.org/dist/$NODE_VERSION/$tarball" -o "$tgz"
     fi
     # We are about to ship this binary to users — never skip the checksum.
-    expected="$(awk -v f="$tarball" '$2 == f { print $1 }' "$SUMS")"
+    #
+    # Prefer the value pinned in this file over the one fetched alongside the
+    # tarball. Only fall back to SHASUMS256.txt when NODE_VERSION was overridden
+    # away from the pin (a deliberate local experiment), and say so loudly:
+    # a release build must never take its expected hash from the same place as
+    # the artefact it is checking.
+    pinned_var="PINNED_SHA256_$arch"
+    expected="${!pinned_var:-}"
+    if [ "$NODE_VERSION" != "$PINNED_NODE_VERSION" ] || [ -z "$expected" ]; then
+        echo "⚠ $NODE_VERSION is not the pinned $PINNED_NODE_VERSION — falling back to" >&2
+        echo "  nodejs.org's own SHASUMS256.txt. Do NOT ship a release built this way;" >&2
+        echo "  update PINNED_NODE_VERSION / PINNED_SHA256_* instead." >&2
+        expected="$(awk -v f="$tarball" '$2 == f { print $1 }' "$SUMS")"
+    fi
     if [ -z "$expected" ]; then
         echo "✗ $tarball is not listed in SHASUMS256.txt for $NODE_VERSION" >&2
         exit 1
