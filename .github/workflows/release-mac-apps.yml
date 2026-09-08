@@ -33,7 +33,7 @@ on:
         required: true
 
 permissions:
-  contents: write   # needed to attach assets to the GitHub Release
+  contents: write # needed to attach assets to the GitHub Release
 
 jobs:
   mac-apps:
