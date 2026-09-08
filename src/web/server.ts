@@ -2073,7 +2073,11 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         // a sandbox JWS here. Exceptions (see sandboxCreditAllowed): the named
         // App Review accounts, who buy in Apple's sandbox and must see the
         // purchase succeed, and LISA_IAP_ALLOW_SANDBOX=1 for a staging deploy.
-        if (cloud && tx.environment !== "Production") {
+        // Only a transaction that reaches crediting through the allowlist
+        // exception below is marked and capped as sandbox — see
+        // SANDBOX_TX_PREFIX in ../billing/iap.ts.
+        const sandboxCredit = cloud && tx.environment !== "Production";
+        if (sandboxCredit) {
           const buyer = await getAccount(accountUid);
           if (!sandboxCreditAllowed({ uid: accountUid, email: buyer?.email })) {
             logWarn(
@@ -2087,7 +2091,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
             `[iap] crediting SANDBOX tx for an allowlisted review account: product=${tx.productId} tx=${redactId(tx.transactionId)} uid=${redactId(accountUid)}`,
           );
         }
-        const credited = await creditTransaction(accountUid, tx);
+        const credited = await creditTransaction(accountUid, tx, Date.now(), {
+          sandbox: sandboxCredit,
+        });
         const acct = await getAccount(accountUid);
         const q = acct ? await quotaStatus(acct) : null;
         logInfo(

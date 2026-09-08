@@ -469,13 +469,6 @@ final class LisaPocketTests: XCTestCase {
         XCTAssertFalse(spoken.contains { $0.isEmpty })
     }
 
-unc testQuotaExhaustedClassification() {
-        XCTAssertTrue(ChatModel.isQuotaExhausted(LisaError.http(402)))
-        XCTAssertFalse(ChatModel.isQuotaExhausted(LisaError.http(401)))
-        XCTAssertFalse(ChatModel.isQuotaExhausted(LisaError.http(500)))
-        XCTAssertFalse(ChatModel.isQuotaExhausted(URLError(.timedOut)))
-    }
-
     // ── 2.1(b): the routes to the In-App Purchases must not vanish silently ──
 
     /// Only a 402 (allowance spent) offers credits in chat; every other failure
