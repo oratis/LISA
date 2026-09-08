@@ -7,6 +7,14 @@ Entries from 0.13.0 onward are generated from `docs/RELEASE_v*.md` by
 `npm run changelog` — edit the release note, not this file. See
 [docs/RELEASING.md](docs/RELEASING.md).
 
+## [0.26.1] — 2026-09-08
+
+**The v0.26.0 DMG.** v0.26.0 is the release that makes Lisa.app self-contained, and its Mac job failed before producing a disk image — so it shipped the CLI bundles with the one asset it was about missing. Same contents, plus the one-character fix that lets the DMG build.
+
+- 🔧 `embed-runtime.sh` under a UTF-8 locale
+
+[Release notes](docs/RELEASE_v0.26.1.md) · [GitHub release](https://github.com/oratis/LISA/releases/tag/v0.26.1)
+
 ## [0.26.0] — 2026-09-08
 
 **Lisa.app now brings its own backend.** Downloading the DMG used to get you an app that couldn't do anything: it looked for `lisa serve --web` on the login shell's PATH, so you had to install Node and `npm i -g @oratis/lisa` first — the disk image's own README said so. The app now carries a full backend and its own Node runtime, and starts them the first time you open it. Alongside that: the In-App Purchases App Review couldn't find are reachable again, and the "backend offline" banner stopped covering the window it was describing.
