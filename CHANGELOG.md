@@ -7,6 +7,16 @@ Entries from 0.13.0 onward are generated from `docs/RELEASE_v*.md` by
 `npm run changelog` — edit the release note, not this file. See
 [docs/RELEASING.md](docs/RELEASING.md).
 
+## [0.26.0] — 2026-09-08
+
+**Lisa.app now brings its own backend.** Downloading the DMG used to get you an app that couldn't do anything: it looked for `lisa serve --web` on the login shell's PATH, so you had to install Node and `npm i -g @oratis/lisa` first — the disk image's own README said so. The app now carries a full backend and its own Node runtime, and starts them the first time you open it. Alongside that: the In-App Purchases App Review couldn't find are reachable again, and the "backend offline" banner stopped covering the window it was describing.
+
+- 🖥 A DMG that works on a Mac with nothing installed
+- 💳 The In-App Purchases are findable again
+- 🔔 The offline banner became a bottom toast
+
+[Release notes](docs/RELEASE_v0.26.0.md) · [GitHub release](https://github.com/oratis/LISA/releases/tag/v0.26.0)
+
 ## [0.25.0] — 2026-09-08
 
 **The review-and-optimization release.** Two full-project reviews of v0.24.0 — one UX, one technical — turned 24 findings into nine merged PRs (#365, #368–#376). Two P0s are gone: the phone layout that collapsed the main pane to 75px, and the first-run dead end that trapped anyone who typed a wrong API key. Underneath that: hosted-edition boundary fixes, a durable billing outbox, a self-watchdog for the backend, and the engineering gates — lint, formatter, coverage floors, dependency bot, a real CI matrix, an offline browser smoke — that 60k lines of TypeScript had been running without. Plans in [PROJECT_REVIEW_UX_v0.24.0.md](docs/PROJECT_REVIEW_UX_v0.24.0.md) and [PROJECT_REVIEW_TECH_v0.24.0.md](docs/PROJECT_REVIEW_TECH_v0.24.0.md).
