@@ -23,11 +23,18 @@ if [ "${1:-}" = "--debug" ]; then
     CONFIG="debug"
 fi
 
-cd "$(dirname "$0")"
+# Resolve this script's directory BEFORE the cd, and use it for every sibling
+# path below. `dirname "$0"` is relative to the ORIGINAL cwd, so re-deriving it
+# after the cd resolves against the wrong base: `bash packaging/mac-client/build.sh`
+# from the repo root looked for packaging/mac-client/packaging/mac-client/… .
+# CI happens to invoke this as `cd packaging/mac-client && bash build.sh`, where
+# dirname is "." and the bug is invisible.
+HERE="$(cd "$(dirname "$0")" && pwd)"
+cd "$HERE"
 REPO_ROOT="$(cd ../.. && pwd)"
 # App icon: the dedicated pixel-girl icon (scripts/generate-app-icon.ts),
 # falling back to the website mascot if it hasn't been generated.
-MASCOT="$(dirname "$0")/Resources/app-icon-1024.png"
+MASCOT="$HERE/Resources/app-icon-1024.png"
 if [ ! -f "$MASCOT" ]; then
     MASCOT="$REPO_ROOT/src/web/assets/lisa-mascot.png"
 fi
@@ -124,7 +131,7 @@ fi
 # all. embed-runtime.sh stages dist/ + production node_modules + an official
 # node into Contents/Resources. LISA_SKIP_EMBED=1 skips it for fast Swift-only
 # iteration (the app falls back to `lisa` on PATH, as it always did).
-bash "$(dirname "$0")/embed-runtime.sh" "$APP"
+bash "$HERE/embed-runtime.sh" "$APP"
 
 # ── 4. ad-hoc sign ──────────────────────────────────────────────────
 # Proper signing (Developer ID + notarization) is Phase 4.
