@@ -16,8 +16,12 @@ const {
   IapError,
   PaymentStateError,
   oidToDer,
-} =
-  await import("./iap.js");
+  sandboxCreditAllowed,
+  sandboxCreditedMicroUSD,
+  sandboxCeilingExceeded,
+  SANDBOX_TX_PREFIX,
+  SANDBOX_CREDIT_CEILING_MICRO_USD,
+} = await import("./iap.js");
 const { homeScope, homeForUid } = await import("../paths.js");
 const { creditPurchase, readBalance } = await import("./quota.js");
 
@@ -36,7 +40,10 @@ describe("JWS shape validation", () => {
       `${b64({ alg: "ES256" })}.${b64({})}.sig`, // no x5c
       `${b64({ alg: "RS256", x5c: ["a", "b"] })}.${b64({})}.sig`, // wrong alg
     ]) {
-      await assert.rejects(verifyAppleJWS(bad, { now: 0 }), (e: unknown) => (e as InstanceType<typeof IapError>).code === "malformed_jws");
+      await assert.rejects(
+        verifyAppleJWS(bad, { now: 0 }),
+        (e: unknown) => (e as InstanceType<typeof IapError>).code === "malformed_jws",
+      );
     }
   });
 });
@@ -65,7 +72,11 @@ describe("OID DER encoding (#265)", () => {
 });
 
 describe("transaction payload validation", () => {
-  const good = { transactionId: "1000000123", productId: "ai.meetlisa.main.credits.10", bundleId: "ai.meetlisa.main" };
+  const good = {
+    transactionId: "1000000123",
+    productId: "ai.meetlisa.main.credits.10",
+    bundleId: "ai.meetlisa.main",
+  };
 
   test("accepts a known product on our bundle", () => {
     const tx = validateTransaction(good);
@@ -73,9 +84,18 @@ describe("transaction payload validation", () => {
   });
 
   test("wrong bundle / unknown product / missing id → typed errors", () => {
-    assert.throws(() => validateTransaction({ ...good, bundleId: "com.evil.app" }), (e: unknown) => (e as InstanceType<typeof IapError>).code === "wrong_bundle");
-    assert.throws(() => validateTransaction({ ...good, productId: "ai.meetlisa.main.credits.999" }), (e: unknown) => (e as InstanceType<typeof IapError>).code === "unknown_product");
-    assert.throws(() => validateTransaction({ ...good, transactionId: "" }), (e: unknown) => (e as InstanceType<typeof IapError>).code === "malformed_jws");
+    assert.throws(
+      () => validateTransaction({ ...good, bundleId: "com.evil.app" }),
+      (e: unknown) => (e as InstanceType<typeof IapError>).code === "wrong_bundle",
+    );
+    assert.throws(
+      () => validateTransaction({ ...good, productId: "ai.meetlisa.main.credits.999" }),
+      (e: unknown) => (e as InstanceType<typeof IapError>).code === "unknown_product",
+    );
+    assert.throws(
+      () => validateTransaction({ ...good, transactionId: "" }),
+      (e: unknown) => (e as InstanceType<typeof IapError>).code === "malformed_jws",
+    );
   });
 });
 
@@ -95,8 +115,14 @@ describe("credit + dedup + refund", () => {
       assert.equal(b.purchases[0]!.transactionId, "tx-1");
     });
     // Same transaction, same OR different account → duplicate.
-    await assert.rejects(creditTransaction("em-alpha", tx, 2000), (e: unknown) => (e as InstanceType<typeof IapError>).code === "duplicate_transaction");
-    await assert.rejects(creditTransaction("em-beta", tx, 3000), (e: unknown) => (e as InstanceType<typeof IapError>).code === "duplicate_transaction");
+    await assert.rejects(
+      creditTransaction("em-alpha", tx, 2000),
+      (e: unknown) => (e as InstanceType<typeof IapError>).code === "duplicate_transaction",
+    );
+    await assert.rejects(
+      creditTransaction("em-beta", tx, 3000),
+      (e: unknown) => (e as InstanceType<typeof IapError>).code === "duplicate_transaction",
+    );
     await homeScope.run(homeForUid("em-beta"), async () => {
       const b = await readBalance();
       assert.equal(b.paidMicroUSD, 0);
@@ -120,7 +146,10 @@ describe("credit + dedup + refund", () => {
     });
     assert.equal(await refundTransaction("tx-never"), null);
     // The index entry survives the refund, so a replayed credit stays deduped.
-    await assert.rejects(creditTransaction("em-gamma", { ...tx, transactionId: "tx-2" }, 2000), (e: unknown) => (e as InstanceType<typeof IapError>).code === "duplicate_transaction");
+    await assert.rejects(
+      creditTransaction("em-gamma", { ...tx, transactionId: "tx-2" }, 2000),
+      (e: unknown) => (e as InstanceType<typeof IapError>).code === "duplicate_transaction",
+    );
   });
 
   test("a pending transaction safely resumes after balance credit without double-crediting", async () => {
@@ -154,7 +183,9 @@ describe("credit + dedup + refund", () => {
       assert.equal(balance.paidMicroUSD, PRODUCTS[tx.productId]);
       assert.equal(balance.purchases.length, 1);
     });
-    const index = JSON.parse(fs.readFileSync(path.join(TMP, "iap-transactions.json"), "utf8")) as Array<{ status: string }>;
+    const index = JSON.parse(
+      fs.readFileSync(path.join(TMP, "iap-transactions.json"), "utf8"),
+    ) as Array<{ status: string }>;
     assert.equal(index[0]?.status, "credited");
   });
 
@@ -181,8 +212,7 @@ describe("credit + dedup + refund", () => {
       await assert.rejects(
         creditTransaction("em-firestore", { ...tx, transactionId: "tx-firestore" }, 1000),
         (err: unknown) =>
-          err instanceof PaymentStateError &&
-          err.code === "transaction_store_unavailable",
+          err instanceof PaymentStateError && err.code === "transaction_store_unavailable",
       );
     } finally {
       globalThis.fetch = originalFetch;
@@ -208,8 +238,7 @@ describe("credit + dedup + refund", () => {
     );
     await assert.rejects(
       creditTransaction("em-attacker", { ...tx, transactionId: "tx-conflict" }, 2000),
-      (err: unknown) =>
-        err instanceof PaymentStateError && err.code === "transaction_conflict",
+      (err: unknown) => err instanceof PaymentStateError && err.code === "transaction_conflict",
     );
     await homeScope.run(homeForUid("em-attacker"), async () => {
       assert.equal((await readBalance()).paidMicroUSD, 0);
@@ -234,10 +263,120 @@ describe("credit + dedup + refund", () => {
     await assert.rejects(
       refundTransaction("tx-pending-refund"),
       (err: unknown) =>
-        err instanceof PaymentStateError &&
-        err.code === "transaction_store_unavailable",
+        err instanceof PaymentStateError && err.code === "transaction_store_unavailable",
     );
     const index = JSON.parse(fs.readFileSync(indexFile, "utf8")) as Array<{ status: string }>;
     assert.equal(index[0]?.status, "pending");
+  });
+});
+
+describe("sandbox credit allowlist (App Review buys in Apple's sandbox)", () => {
+  const who = { uid: "uid-reviewer", email: "reviewer@meetlisa.ai" };
+
+  test("closed by default — no env, no sandbox credit", () => {
+    assert.equal(sandboxCreditAllowed(who, {}), false);
+  });
+
+  test("LISA_IAP_ALLOW_SANDBOX=1 opens a whole staging deploy", () => {
+    assert.equal(sandboxCreditAllowed({ uid: "anyone" }, { LISA_IAP_ALLOW_SANDBOX: "1" }), true);
+  });
+
+  test("allowlist matches on email or uid, case/space insensitive", () => {
+    const env = { LISA_IAP_SANDBOX_ACCOUNTS: " Reviewer@MeetLisa.ai , uid-two " };
+    assert.equal(sandboxCreditAllowed(who, env), true);
+    assert.equal(sandboxCreditAllowed({ uid: "uid-two" }, env), true);
+    assert.equal(sandboxCreditAllowed({ uid: "UID-TWO" }, env), true);
+  });
+
+  test("a non-listed buyer is still rejected", () => {
+    const env = { LISA_IAP_SANDBOX_ACCOUNTS: "reviewer@meetlisa.ai" };
+    assert.equal(sandboxCreditAllowed({ uid: "attacker", email: "free@tester.com" }, env), false);
+  });
+
+  test("the seeded reviewer account is allowlisted with no extra config", () => {
+    const env = { LISA_REVIEWER_SEED: "Reviewer@MeetLisa.ai:hunter2:with:colons" };
+    assert.equal(sandboxCreditAllowed({ email: "reviewer@meetlisa.ai" }, env), true);
+    // Only the email half of the seed counts — never the password.
+    assert.equal(sandboxCreditAllowed({ email: "hunter2:with:colons" }, env), false);
+    assert.equal(sandboxCreditAllowed({ email: "someone@else.com" }, env), false);
+  });
+
+  test("a malformed seed (no colon, or a leading colon) allowlists nobody", () => {
+    assert.equal(
+      sandboxCreditAllowed(
+        { email: "reviewer@meetlisa.ai" },
+        { LISA_REVIEWER_SEED: "reviewer@meetlisa.ai" },
+      ),
+      false,
+    );
+    assert.equal(
+      sandboxCreditAllowed({ email: "" }, { LISA_REVIEWER_SEED: ":only-a-password" }),
+      false,
+    );
+  });
+
+  test("an empty/blank allowlist never matches an account with no uid or email", () => {
+    assert.equal(
+      sandboxCreditAllowed({ uid: null, email: null }, { LISA_IAP_SANDBOX_ACCOUNTS: " , ," }),
+      false,
+    );
+    // A buyer whose fields are absent must not match a non-empty allowlist either.
+    assert.equal(
+      sandboxCreditAllowed(
+        { uid: undefined, email: undefined },
+        { LISA_IAP_SANDBOX_ACCOUNTS: "reviewer@meetlisa.ai" },
+      ),
+      false,
+    );
+  });
+});
+
+describe("sandbox credits are marked and bounded", () => {
+  // sandboxCreditAllowed opens a hole in B5 for the review account. That
+  // account's password is typed into App Store Connect — it leaves the
+  // operator's control by design — and every sandbox purchase carries a fresh
+  // transaction id, so the dedupe key does not stop repeats. A reviewer needs
+  // to see a purchase succeed a few times, not spend without limit.
+  const prod = (id: string, micro: number) => ({ at: 0, microUSD: micro, transactionId: id });
+  const sandbox = (id: string, micro: number) => ({
+    at: 0,
+    microUSD: micro,
+    transactionId: `${SANDBOX_TX_PREFIX}${id}`,
+  });
+
+  test("only sandbox-prefixed purchases count toward the ceiling", () => {
+    assert.equal(sandboxCreditedMicroUSD([]), 0);
+    assert.equal(sandboxCreditedMicroUSD([prod("tx-1", 5_000_000)]), 0);
+    assert.equal(
+      sandboxCreditedMicroUSD([prod("tx-1", 5_000_000), sandbox("tx-2", 20_000_000)]),
+      20_000_000,
+    );
+    // A real purchase must never be crowded out by the sandbox allowance.
+    assert.equal(
+      sandboxCreditedMicroUSD([sandbox("a", 10_000_000), sandbox("b", 10_000_000)]),
+      20_000_000,
+    );
+  });
+
+  test("a purchase with no transactionId is not mistaken for a sandbox one", () => {
+    assert.equal(sandboxCreditedMicroUSD([{ at: 0, microUSD: 20_000_000 }]), 0);
+  });
+
+  test("the ceiling is on the total, and the incoming purchase counts", () => {
+    const under = [sandbox("a", SANDBOX_CREDIT_CEILING_MICRO_USD - 5_000_000)];
+    assert.equal(
+      sandboxCeilingExceeded(under, 5_000_000),
+      false,
+      "exactly at the ceiling is allowed",
+    );
+    assert.equal(sandboxCeilingExceeded(under, 5_000_001), true, "one micro over is refused");
+    assert.equal(sandboxCeilingExceeded([], SANDBOX_CREDIT_CEILING_MICRO_USD + 1), true);
+  });
+
+  test("the operator seed grant does not eat the reviewer's sandbox allowance", () => {
+    // server.ts seeds the review account with $20 under transactionId
+    // "operator-seed" — a production-shaped entry, so it must not count.
+    assert.equal(sandboxCreditedMicroUSD([prod("operator-seed", 20_000_000)]), 0);
+    assert.equal(sandboxCeilingExceeded([prod("operator-seed", 20_000_000)], 5_000_000), false);
   });
 });

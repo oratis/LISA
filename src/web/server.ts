@@ -42,6 +42,7 @@ import {
   creditTransaction,
   creditExternalTransaction,
   refundTransaction,
+  sandboxCreditAllowed,
   IapError,
   PaymentStateError,
 } from "../billing/iap.js";
@@ -2069,21 +2070,30 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         // SAME cert chain as Production and cost the buyer $0. In the cloud
         // edition, only real (Production) purchases may credit funded balance —
         // otherwise a free sandbox tester Apple ID could mint credits by POSTing
-        // a sandbox JWS here. LISA_IAP_ALLOW_SANDBOX=1 re-opts a non-prod
-        // cloud/staging deploy back in for testing.
-        if (
-          cloud &&
-          process.env.LISA_IAP_ALLOW_SANDBOX !== "1" &&
-          tx.environment !== "Production"
-        ) {
+        // a sandbox JWS here. Exceptions (see sandboxCreditAllowed): the named
+        // App Review accounts, who buy in Apple's sandbox and must see the
+        // purchase succeed, and LISA_IAP_ALLOW_SANDBOX=1 for a staging deploy.
+        // Only a transaction that reaches crediting through the allowlist
+        // exception below is marked and capped as sandbox — see
+        // SANDBOX_TX_PREFIX in ../billing/iap.ts.
+        const sandboxCredit = cloud && tx.environment !== "Production";
+        if (sandboxCredit) {
+          const buyer = await getAccount(accountUid);
+          if (!sandboxCreditAllowed({ uid: accountUid, email: buyer?.email })) {
+            logWarn(
+              `[iap] rejected non-Production tx in cloud: env=${tx.environment ?? "?"} product=${tx.productId} tx=${redactId(tx.transactionId)} uid=${redactId(accountUid)}`,
+            );
+            res.writeHead(400, { "content-type": "application/json" });
+            res.end(JSON.stringify({ ok: false, error: "sandbox_rejected" }));
+            return;
+          }
           logWarn(
-            `[iap] rejected non-Production tx in cloud: env=${tx.environment ?? "?"} product=${tx.productId} tx=${redactId(tx.transactionId)} uid=${redactId(accountUid)}`,
+            `[iap] crediting SANDBOX tx for an allowlisted review account: product=${tx.productId} tx=${redactId(tx.transactionId)} uid=${redactId(accountUid)}`,
           );
-          res.writeHead(400, { "content-type": "application/json" });
-          res.end(JSON.stringify({ ok: false, error: "sandbox_rejected" }));
-          return;
         }
-        const credited = await creditTransaction(accountUid, tx);
+        const credited = await creditTransaction(accountUid, tx, Date.now(), {
+          sandbox: sandboxCredit,
+        });
         const acct = await getAccount(accountUid);
         const q = acct ? await quotaStatus(acct) : null;
         logInfo(

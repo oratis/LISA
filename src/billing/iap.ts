@@ -26,14 +26,8 @@ import path from "node:path";
 import crypto, { X509Certificate } from "node:crypto";
 import { lisaGlobalHome, homeScope, homeForUid } from "../paths.js";
 import { withFileLock } from "../soul/lock.js";
-import { creditPurchase, clawbackPurchase } from "./quota.js";
-import {
-  casUpdate,
-  firestoreEnabled,
-  getDoc,
-  setDoc,
-  FirestoreError,
-} from "../cloud/firestore.js";
+import { creditPurchase, clawbackPurchase, readBalance } from "./quota.js";
+import { casUpdate, firestoreEnabled, getDoc, setDoc, FirestoreError } from "../cloud/firestore.js";
 
 export class IapError extends Error {
   constructor(
@@ -54,7 +48,8 @@ export class IapError extends Error {
 
 export class PaymentStateError extends Error {
   constructor(
-    public readonly code: "transaction_store_unavailable" | "transaction_conflict",
+    public readonly code:
+      "transaction_store_unavailable" | "transaction_conflict" | "sandbox_ceiling",
     message: string,
   ) {
     super(message);
@@ -70,6 +65,79 @@ export const PRODUCTS: Record<string, number> = {
 };
 
 export const EXPECTED_BUNDLE = "ai.meetlisa.main";
+
+/**
+ * May an Apple **Sandbox** transaction credit this account on a cloud deploy?
+ *
+ * B5 rejects non-Production JWS outright because sandbox purchases are signed
+ * with the same cert chain, cost $0, and would let any sandbox tester Apple ID
+ * mint credits. But App Review buys in that very sandbox, so a blanket reject
+ * shows the reviewer "Couldn't credit the purchase (sandbox_rejected)" — which
+ * reads as a broken in-app purchase (Guideline 2.1 / 3.1.1).
+ *
+ * The middle ground: name the review accounts. The **seeded reviewer account is
+ * allowlisted automatically** — `LISA_REVIEWER_SEED="email:password"` already
+ * names it on every cloud deploy, and making the operator remember a second
+ * variable is the same "one forgotten step and the reviewer sees a failure"
+ * shape that caused the 2.1(b) rejection in the first place. Extra accounts go
+ * in `LISA_IAP_SANDBOX_ACCOUNTS` (comma-separated emails and/or uids), and
+ * `LISA_IAP_ALLOW_SANDBOX=1` still opens a whole non-production deploy.
+ *
+ * Everyone else keeps the B5 behaviour: sandbox JWS credits nothing.
+ */
+export function sandboxCreditAllowed(
+  who: { uid?: string | null; email?: string | null },
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  if (env.LISA_IAP_ALLOW_SANDBOX === "1") return true;
+  const allow = (env.LISA_IAP_SANDBOX_ACCOUNTS ?? "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  const seed = env.LISA_REVIEWER_SEED ?? "";
+  const seedIdx = seed.indexOf(":");
+  // Only the email half; a seed with no ":" isn't a credential pair at all.
+  if (seedIdx > 0) allow.push(seed.slice(0, seedIdx).trim().toLowerCase());
+  if (allow.length === 0) return false;
+  return [who.uid, who.email]
+    .map((v) => v?.trim().toLowerCase())
+    .some((v) => !!v && allow.includes(v));
+}
+
+/**
+ * Sandbox purchases are marked in the ledger, and capped.
+ *
+ * An allowlisted account (see sandboxCreditAllowed) buys in Apple's sandbox for
+ * $0, and every sandbox purchase carries a fresh transaction id — so the
+ * dedupe key does not stop repeats. Left unbounded, whoever holds the review
+ * account's password mints unlimited credit, and that password is by design
+ * handed to Apple in App Store Connect: it leaves the operator's control.
+ *
+ * A reviewer needs to see a purchase succeed a handful of times, not spend an
+ * unbounded amount, so the exception is bounded. The prefix also keeps a
+ * sandbox transaction id from ever colliding with a Production one in the
+ * dedupe/clawback key space.
+ */
+export const SANDBOX_TX_PREFIX = "sandbox:";
+/** Total face value one account may ever be credited from sandbox purchases. */
+export const SANDBOX_CREDIT_CEILING_MICRO_USD = 100_000_000; // $100
+
+/** Face value already credited to `purchases` by sandbox transactions. */
+export function sandboxCreditedMicroUSD(
+  purchases: readonly { microUSD: number; transactionId?: string }[],
+): number {
+  return purchases
+    .filter((p) => p.transactionId?.startsWith(SANDBOX_TX_PREFIX))
+    .reduce((sum, p) => sum + p.microUSD, 0);
+}
+
+/** Would crediting `microUSD` more push this account past the sandbox ceiling? */
+export function sandboxCeilingExceeded(
+  purchases: readonly { microUSD: number; transactionId?: string }[],
+  microUSD: number,
+): boolean {
+  return sandboxCreditedMicroUSD(purchases) + microUSD > SANDBOX_CREDIT_CEILING_MICRO_USD;
+}
 
 const APPLE_ROOT_URL = "https://www.apple.com/certificateauthority/AppleRootCA-G3.cer";
 
@@ -296,7 +364,10 @@ function txIndexLock(): string {
 
 function parseTxEntry(value: unknown): TxIndexEntry {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new PaymentStateError("transaction_store_unavailable", "transaction index contains an invalid entry");
+    throw new PaymentStateError(
+      "transaction_store_unavailable",
+      "transaction index contains an invalid entry",
+    );
   }
   const raw = value as Partial<TxIndexEntry>;
   const status = raw.status ?? "credited"; // pre-state-machine entries were fully credited
@@ -313,7 +384,10 @@ function parseTxEntry(value: unknown): TxIndexEntry {
     raw.at! < 0 ||
     !["pending", "credited", "refund_pending", "refunded"].includes(status)
   ) {
-    throw new PaymentStateError("transaction_store_unavailable", "transaction index contains an invalid entry");
+    throw new PaymentStateError(
+      "transaction_store_unavailable",
+      "transaction index contains an invalid entry",
+    );
   }
   return {
     transactionId: raw.transactionId,
@@ -327,11 +401,17 @@ function parseTxEntry(value: unknown): TxIndexEntry {
 
 function parseTxIndex(parsed: unknown): TxIndexEntry[] {
   if (!Array.isArray(parsed)) {
-    throw new PaymentStateError("transaction_store_unavailable", "transaction index must contain an array");
+    throw new PaymentStateError(
+      "transaction_store_unavailable",
+      "transaction index must contain an array",
+    );
   }
   const entries = parsed.map(parseTxEntry);
   if (new Set(entries.map((entry) => entry.transactionId)).size !== entries.length) {
-    throw new PaymentStateError("transaction_store_unavailable", "transaction index contains duplicate ids");
+    throw new PaymentStateError(
+      "transaction_store_unavailable",
+      "transaction index contains duplicate ids",
+    );
   }
   return entries;
 }
@@ -425,9 +505,13 @@ async function reserveTransaction(
   if (firestoreEnabled()) {
     try {
       try {
-        await setDoc(transactionDocPath(transactionId), fresh as unknown as Record<string, unknown>, {
-          exists: false,
-        });
+        await setDoc(
+          transactionDocPath(transactionId),
+          fresh as unknown as Record<string, unknown>,
+          {
+            exists: false,
+          },
+        );
         return fresh;
       } catch (err) {
         if (!(err instanceof FirestoreError && (err.status === 409 || err.status === 412))) {
@@ -490,10 +574,7 @@ async function markCredited(expected: TxIndexEntry): Promise<void> {
         };
       });
     } catch (err) {
-      throw transactionStoreFailure(
-        `marking transaction ${expected.transactionId} credited`,
-        err,
-      );
+      throw transactionStoreFailure(`marking transaction ${expected.transactionId} credited`, err);
     }
     return;
   }
@@ -534,7 +615,10 @@ export async function creditExternalTransaction(
   now: number = Date.now(),
 ): Promise<number> {
   if (!uid || !transactionId || !productId || !Number.isSafeInteger(microUSD) || microUSD <= 0) {
-    throw new PaymentStateError("transaction_conflict", "transaction identity and positive amount are required");
+    throw new PaymentStateError(
+      "transaction_conflict",
+      "transaction identity and positive amount are required",
+    );
   }
   const reserved = await reserveTransaction(uid, transactionId, productId, microUSD, now);
   await homeScope.run(homeForUid(uid), () =>
@@ -552,15 +636,44 @@ export async function creditExternalTransaction(
 }
 
 /** Credit a VERIFIED Apple transaction to `uid` (IAP flavor of the above). */
-export async function creditTransaction(uid: string, tx: AppleTransaction, now: number = Date.now()): Promise<number> {
-  return creditExternalTransaction(uid, tx.transactionId, tx.productId, PRODUCTS[tx.productId]!, now);
+export async function creditTransaction(
+  uid: string,
+  tx: AppleTransaction,
+  now: number = Date.now(),
+  opts: { sandbox?: boolean } = {},
+): Promise<number> {
+  const faceValue = PRODUCTS[tx.productId]!;
+  // `sandbox` is passed in, never re-derived here: the caller is the only place
+  // that knows this transaction reached crediting through the allowlist
+  // exception (see sandboxCreditAllowed). Re-deriving it from
+  // `tx.environment !== "Production"` would also catch the local edition, where
+  // the field is often simply absent and B5 never applied.
+  if (!opts.sandbox) {
+    return creditExternalTransaction(uid, tx.transactionId, tx.productId, faceValue, now);
+  }
+  const balance = await homeScope.run(homeForUid(uid), () => readBalance());
+  if (sandboxCeilingExceeded(balance.purchases, faceValue)) {
+    throw new PaymentStateError(
+      "sandbox_ceiling",
+      `sandbox credit ceiling reached for this account (${SANDBOX_CREDIT_CEILING_MICRO_USD} micro-USD)`,
+    );
+  }
+  return creditExternalTransaction(
+    uid,
+    `${SANDBOX_TX_PREFIX}${tx.transactionId}`,
+    tx.productId,
+    faceValue,
+    now,
+  );
 }
 
 /**
  * Reverse a refunded transaction (ASN V2 REFUND/REVOKE): find the owning uid
  * in the global index and claw the credit back from that account's balance.
  */
-export async function refundTransaction(transactionId: string): Promise<{ uid: string; microUSD: number } | null> {
+export async function refundTransaction(
+  transactionId: string,
+): Promise<{ uid: string; microUSD: number } | null> {
   type PreparedRefund = {
     entry: TxIndexEntry;
     resumed: boolean;
@@ -569,27 +682,30 @@ export async function refundTransaction(transactionId: string): Promise<{ uid: s
   let prepared: PreparedRefund | null = null;
   if (firestoreEnabled()) {
     try {
-      prepared = await casUpdate<PreparedRefund | null>(transactionDocPath(transactionId), (current) => {
-        if (!current) return { next: null, result: null };
-        const entry = parseTxEntry(current);
-        if (entry.status === "pending") {
-          throw new PaymentStateError(
-            "transaction_store_unavailable",
-            `transaction ${transactionId} credit is still pending; refund must retry`,
-          );
-        }
-        if (entry.status === "refunded") {
-          return { next: null, result: { entry, resumed: true, alreadyRefunded: true } };
-        }
-        if (entry.status === "refund_pending") {
-          return { next: null, result: { entry, resumed: true, alreadyRefunded: false } };
-        }
-        const next: TxIndexEntry = { ...entry, status: "refund_pending" };
-        return {
-          next: next as unknown as Record<string, unknown>,
-          result: { entry: next, resumed: false, alreadyRefunded: false },
-        };
-      });
+      prepared = await casUpdate<PreparedRefund | null>(
+        transactionDocPath(transactionId),
+        (current) => {
+          if (!current) return { next: null, result: null };
+          const entry = parseTxEntry(current);
+          if (entry.status === "pending") {
+            throw new PaymentStateError(
+              "transaction_store_unavailable",
+              `transaction ${transactionId} credit is still pending; refund must retry`,
+            );
+          }
+          if (entry.status === "refunded") {
+            return { next: null, result: { entry, resumed: true, alreadyRefunded: true } };
+          }
+          if (entry.status === "refund_pending") {
+            return { next: null, result: { entry, resumed: true, alreadyRefunded: false } };
+          }
+          const next: TxIndexEntry = { ...entry, status: "refund_pending" };
+          return {
+            next: next as unknown as Record<string, unknown>,
+            result: { entry: next, resumed: false, alreadyRefunded: false },
+          };
+        },
+      );
     } catch (err) {
       throw transactionStoreFailure(`preparing refund ${transactionId}`, err);
     }

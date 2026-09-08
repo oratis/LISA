@@ -468,4 +468,39 @@ final class LisaPocketTests: XCTestCase {
         XCTAssertEqual(Set(spoken).count, 4, "each state needs its own spoken label")
         XCTAssertFalse(spoken.contains { $0.isEmpty })
     }
+
+    // ── 2.1(b): the routes to the In-App Purchases must not vanish silently ──
+
+    /// Only a 402 (allowance spent) offers credits in chat; every other failure
+    /// stays a plain error with a Retry.
+    @MainActor
+    func testQuotaExhaustedClassification() {
+        XCTAssertTrue(ChatModel.isQuotaExhausted(LisaError.http(402)))
+        XCTAssertFalse(ChatModel.isQuotaExhausted(LisaError.http(401)))
+        XCTAssertFalse(ChatModel.isQuotaExhausted(LisaError.http(500)))
+        XCTAssertFalse(ChatModel.isQuotaExhausted(URLError(.timedOut)))
+    }
+
+    /// A message only offers "Add credits…" when the server said 402.
+    func testNeedsCreditsDefaultsOff() {
+        XCTAssertFalse(ChatMessage(role: .lisa, text: "hi").needsCredits)
+        var refused = ChatMessage(role: .lisa, text: "out of allowance", status: .error)
+        refused.needsCredits = true
+        XCTAssertTrue(refused.needsCredits)
+        XCTAssertTrue(refused.isRetryable)
+    }
+
+    /// An empty StoreKit response is a FAILURE, not a "loaded" empty list —
+    /// a blank sheet is what App Review saw as "no In-App Purchases".
+    @MainActor
+    func testPaywallLoadStateStartsIdle() {
+        XCTAssertEqual(CreditsStore.LoadState.idle, CreditsStore.LoadState.idle)
+        XCTAssertNotEqual(CreditsStore.LoadState.loaded, CreditsStore.LoadState.failed)
+        // The three packs the App Store record defines, in the order we sell them.
+        XCTAssertEqual(CreditsStore.productIDs, [
+            "ai.meetlisa.main.credits.5",
+            "ai.meetlisa.main.credits.10",
+            "ai.meetlisa.main.credits.20",
+        ])
+    }
 }
