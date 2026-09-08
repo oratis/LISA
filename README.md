@@ -17,8 +17,9 @@
 ```sh
 # 1. Install — pick one (Node ≥ 22.19)
 brew install oratis/tap/lisa              # Homebrew (CLI)
-npm install -g @oratis/lisa               # npm (CLI, and the backend Lisa.app talks to)
-#    Mac app: download Lisa-Suite.dmg from https://github.com/oratis/LISA/releases/latest
+npm install -g @oratis/lisa               # npm (CLI)
+#    Mac app: download Lisa-Suite.dmg — self-contained, needs no Node at all
+#    https://github.com/oratis/LISA/releases/latest
 
 # 2. One provider key — Anthropic is the default; any of 20+ providers works
 mkdir -p ~/.lisa

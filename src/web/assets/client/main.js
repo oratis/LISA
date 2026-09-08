@@ -1,24 +1,82 @@
 // ── First-run safety net: never leave the user with a silent dead UI. Any
-// uncaught error / unreachable backend surfaces as a banner instead of nothing.
-function lisaBanner(msg) {
+// uncaught error / unreachable backend surfaces as a status toast instead of
+// nothing.
+//
+// Styled from main.css (#lisaBanner) rather than inline, so it follows the
+// active theme, and anchored to the BOTTOM: the old top:12px slab covered the
+// Mac window's title bar and the entire top function bar — the first thing a
+// user saw when the backend was down was a message covering the UI it was
+// describing.
+//   lisaBanner(msg, opts) — opts.tone: 'info' (a wait we expect to resolve)
+//   or 'error' (default); opts.cmd: a shell command shown as a copy-on-click
+//   chip under the message.
+function lisaBanner(msg, opts) {
+  var o = opts || {};
   var el = document.getElementById('lisaBanner');
   if (!el) {
     el = document.createElement('div');
     el.id = 'lisaBanner';
-    el.style.cssText = 'position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:99999;max-width:min(700px,92vw);padding:11px 16px;border-radius:12px;background:rgba(255,85,119,.14);border:1px solid rgba(255,85,119,.5);color:#ffc2cf;font:13px/1.5 -apple-system,system-ui,sans-serif;box-shadow:0 8px 30px rgba(0,0,0,.5);user-select:text';
+    el.setAttribute('role', 'status');
+    var dot = document.createElement('span');
+    dot.className = 'lt-dot';
+    var body = document.createElement('span');
+    body.className = 'lt-body';
+    var msgEl = document.createElement('span');
+    msgEl.className = 'lt-msg';
+    var cmdEl = document.createElement('code');
+    cmdEl.className = 'lt-cmd';
+    cmdEl.title = 'Click to copy';
+    cmdEl.hidden = true;
+    cmdEl.addEventListener('click', function () { lisaCopyCmd(cmdEl); });
+    body.appendChild(msgEl);
+    body.appendChild(cmdEl);
+    el.appendChild(dot);
+    el.appendChild(body);
     document.body.appendChild(el);
   }
-  el.textContent = msg;
+  el.dataset.tone = (o.tone === 'info') ? 'info' : 'error';
+  el.querySelector('.lt-msg').textContent = msg;
+  var cmd = el.querySelector('.lt-cmd');
+  cmd.textContent = o.cmd || '';
+  cmd.hidden = !o.cmd;
+  // Ride just above the composer while the chat view is up; hug the window
+  // edge on views that have none. Re-measured on every call, so a textarea
+  // that grew while the user typed never ends up covering the toast.
+  var composer = document.getElementById('form');
+  var lift = (composer && composer.offsetParent)
+    ? Math.round(composer.getBoundingClientRect().height) + 14
+    : 18;
+  el.style.bottom = lift + 'px';
   el.hidden = false;
+}
+function lisaCopyCmd(el) {
+  // clipboard API needs a secure context AND a focused document; when either is
+  // missing (http:// from the phone, an unfocused window) fall back to selecting
+  // the chip so the command is one Cmd-C away either way.
+  var selectIt = function () {
+    try {
+      var range = document.createRange();
+      range.selectNodeContents(el);
+      var sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } catch (e) {}
+  };
+  var flash = function () {
+    el.classList.add('copied');
+    setTimeout(function () { el.classList.remove('copied'); }, 1400);
+  };
+  if (!navigator.clipboard) { selectIt(); return; }
+  navigator.clipboard.writeText(el.textContent).then(flash, selectIt);
 }
 function lisaClearBanner() { var el = document.getElementById('lisaBanner'); if (el) el.hidden = true; }
 function lisaSleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 window.addEventListener('error', function (e) {
-  if (e && e.message) lisaBanner('Lisa UI error: ' + e.message + ' — reload (Cmd-R); restart the backend if it persists.');
+  if (e && e.message) lisaBanner('Interface error — reload the page to recover. (' + e.message + ')');
 });
 window.addEventListener('unhandledrejection', function (e) {
   var r = e && e.reason;
-  lisaBanner('Lisa task failed: ' + ((r && r.message) ? r.message : String(r)));
+  lisaBanner('That request failed: ' + ((r && r.message) ? r.message : String(r)));
 });
 
 // ── Interface language (UX-8) ────────────────────────────────────
@@ -1233,6 +1291,7 @@ async function startBirthStream() {
   }
 }
 
+let startupTries = 0;
 async function startupGate() {
   // Retry: the page can render a hair before the backend's API routes answer,
   // and a transient miss must not silently skip onboarding (the old bug — a
@@ -1243,10 +1302,19 @@ async function startupGate() {
     catch (e) { if (i < 5) await lisaSleep(700); }
   }
   if (!cfg) {
-    lisaBanner('Cannot reach Lisa backend on localhost:5757. Start it:  lisa serve --web  (install once: npm i -g @oratis/lisa). Retrying…');
+    // The desktop app starts the backend for us on launch, so the first few
+    // seconds of silence are normal — say so calmly, and only escalate to an
+    // error (with the manual command) once the wait stops looking routine.
+    startupTries++;
+    if (startupTries <= 2) {
+      lisaBanner('Waking Lisa up…', { tone: 'info' });
+    } else {
+      lisaBanner('Lisa is not answering yet — still retrying. You can start her backend yourself:', { cmd: 'lisa serve --web' });
+    }
     setTimeout(startupGate, 3000);
     return;
   }
+  startupTries = 0;
   lisaClearBanner();
   cfgStatus = cfg;
   cfgRenderProviders(cfg);

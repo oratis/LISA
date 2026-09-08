@@ -89,12 +89,14 @@ Download the **signed + notarized** disk image from the latest GitHub Release �
 
 The DMG contains **Lisa.app** — full chat client (sidebar + glass-morphism UI) with the **Island** built in: a pill widget that lives by the menu bar / notch and shows her mood + agent activity at a glance (toggle it from the menu-bar popover or ⌘, preferences; the standalone LisaIsland.app was folded into Lisa.app in v0.7).
 
-It's a universal binary (Intel + Apple Silicon). After dragging it to `/Applications`, install the LISA backend and start it:
+It's a universal binary (Intel + Apple Silicon) and it is **self-contained** — the app
+carries its own backend and its own Node runtime, and starts them the first time you open
+it. Nothing to install first: no Node, no npm, no terminal. Drag it to `/Applications`,
+open it, and set your LLM key in the app's own setup screen.
 
-```sh
-npm install -g @oratis/lisa
-lisa serve --web                # apps load http://localhost:5757
-```
+Already have the CLI? The app uses a backend that's already listening on
+`localhost:5757`, so an existing `npm i -g @oratis/lisa` / Homebrew install keeps working
+unchanged.
 
 #### 📟 Homebrew (CLI only)
 

@@ -283,6 +283,12 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             v.addArrangedSubview(wrappedLabel(
                 starting ? "Starting the Lisa backend…" : "The Lisa backend isn't running.",
                 size: 12, color: .secondaryLabelColor, width: inner))
+            // Why the last auto-start died, straight from backend.log — otherwise
+            // "Start Lisa backend" just fails again with nothing to go on.
+            if !starting, let why = BackendController.shared.lastFailure {
+                v.addArrangedSubview(wrappedLabel(
+                    why, size: 10.5, color: .tertiaryLabelColor, width: inner))
+            }
             let start = NSButton(title: starting ? "Starting…" : "Start Lisa backend",
                                  target: self, action: #selector(startBackend))
             start.bezelStyle = .rounded

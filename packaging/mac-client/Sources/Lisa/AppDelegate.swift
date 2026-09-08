@@ -120,6 +120,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        // Coming back to the app is the other moment "the client started" means
+        // to a user — and the backend may have died since launch. ensureRunning
+        // probes first and no-ops while a start is already in flight, so this is
+        // free when everything is healthy.
+        BackendController.shared.ensureRunning()
         if !flag {
             showMainWindow()
         }

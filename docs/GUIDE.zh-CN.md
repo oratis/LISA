@@ -86,12 +86,12 @@ echo 'ANTHROPIC_API_KEY=sk-ant-...' > ~/.lisa/config.env
 
 DMG 里是 **Lisa.app** —— 完整聊天客户端（侧边栏 + 玻璃拟态界面），**灵动岛内置其中**：菜单栏/刘海下的小胶囊，一眼看到 Lisa 心情 + agent 活动（在菜单栏弹窗或 ⌘, 偏好里开关；独立的 LisaIsland.app 已在 v0.7 并入 Lisa.app）。
 
-Universal binary（Intel + Apple Silicon）。拖到 `/Applications` 之后，装 backend 并启动：
+Universal binary（Intel + Apple Silicon），而且是**自带后端**的：app 内置了自己的 backend
+和自己的 Node 运行时，第一次打开就会自动拉起来。不需要先装 Node、不需要 npm、不需要开终端
+—— 拖到 `/Applications`、双击、在 app 自己的设置页填上 LLM key 就能用。
 
-```sh
-npm install -g @oratis/lisa
-lisa serve --web                # app 从 http://localhost:5757 读
-```
+已经装过 CLI？app 发现 `localhost:5757` 上已经有后端在跑时会直接用它，所以原来的
+`npm i -g @oratis/lisa` / Homebrew 安装照常工作。
 
 #### 📟 Homebrew（只装 CLI）
 

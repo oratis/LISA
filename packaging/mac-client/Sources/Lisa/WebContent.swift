@@ -213,10 +213,17 @@ final class WebContent: NSViewController, WKNavigationDelegate, WKUIDelegate, WK
     /// real chat UI's dark theme; replaced atomically when the next
     /// retry succeeds (the actual page load replaces the entire document).
     private func loadOfflineSplash(error: Error) {
-        let html = Self.offlineHTML(errorMessage: error.localizedDescription)
+        // Prefer the backend's OWN reason for not being there — BackendController
+        // reads it out of ~/.lisa/backend.log after a start attempt dies. WebKit's
+        // error only ever says "could not connect", never why.
+        let detail = BackendController.shared.lastFailure
+            ?? "Last error: " + error.localizedDescription
+        let html = Self.offlineHTML(errorMessage: detail)
         webView.loadHTMLString(html, baseURL: nil)
     }
 
+    /// `errorMessage` is already a full sentence (see loadOfflineSplash) — the
+    /// backend's own exit line when we have it, WebKit's connection error if not.
     static func offlineHTML(errorMessage: String) -> String {
         // Bridge from JS → Swift via window.webkit.messageHandlers.island
         // isn't wired here, so the retry button just reloads the WebView's
@@ -278,8 +285,8 @@ final class WebContent: NSViewController, WKNavigationDelegate, WKUIDelegate, WK
         <div class=\"card\">
           <h1>LISA backend offline</h1>
           <p class=\"sub\">
-            Lisa.app loads its chat from <code>http://localhost:5757</code> — but
-            that server isn't responding right now.
+            Lisa.app starts its own backend on <code>http://localhost:5757</code>
+            — that server isn't answering yet.
           </p>
 
           <div class=\"row\">
@@ -300,11 +307,10 @@ final class WebContent: NSViewController, WKNavigationDelegate, WKUIDelegate, WK
             }
           </script>
 
-          <h2>Or start it manually</h2>
-          <pre>npm install -g @oratis/lisa     # one-time
-        lisa serve --web                # start the backend</pre>
+          <h2>If it keeps failing</h2>
+          <pre>tail -n 40 ~/.lisa/backend.log</pre>
 
-          <div class=\"err\">Last error: \(escaped)</div>
+          <div class=\"err\">\(escaped)</div>
           <p class=\"hint\">
             Lisa.app will also retry automatically every 4 seconds.
             Once the backend is up, this page disappears on its own.
