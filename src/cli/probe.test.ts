@@ -176,7 +176,16 @@ describe("warnings", () => {
   });
 
   test("a lagging server prints the warning glyph and still exits 0", async () => {
-    const laggy = { ...RICH, event_loop_lag_ms: { p50: 4, p99: 2300, max: 9000 } };
+    // ok:false is what a lagging instance actually sends — health.ts derives it
+    // from the watchdog. The fixture used to say ok:true, which is why the
+    // probe could treat "degraded" as "unreachable" without a test noticing:
+    // a stalling backend was reported as down, and the runbook turns a non-zero
+    // probe into a restart.
+    const laggy = {
+      ...RICH,
+      ok: false,
+      event_loop_lag_ms: { p50: 4, p99: 2300, max: 9000 },
+    };
     await withServer({ "/health": { body: JSON.stringify(laggy) } }, async (base) => {
       const lines: string[] = [];
       const code = await runProbe(base, { log: (l) => lines.push(l) });
@@ -184,6 +193,8 @@ describe("warnings", () => {
       const text = lines.join("\n");
       assert.match(text, /⚠/);
       assert.match(text, /p99 2300ms/);
+      assert.match(text, /unhealthy/);
+      assert.doesNotMatch(text, /unreachable/);
     });
   });
 });
