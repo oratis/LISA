@@ -38,7 +38,7 @@ invisible), then shows exactly one next step:
 
 | It found | You get |
 |---|---|
-| No Node.js (or older than 20) | `brew install node` with a Copy button, a nodejs.org link, and **Re-check** |
+| No Node.js (or older than 22.19) | `brew install node` with a Copy button, a nodejs.org link, and **Re-check** |
 | Node.js but no backend | **Install backend** — runs `npm install -g @oratis/lisa` with live output and a spinner, then starts `lisa serve --web` |
 | Everything | **Start backend**, plus **Update backend** to pull the latest release |
 
