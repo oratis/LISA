@@ -90,7 +90,7 @@ public enum SetupState: Equatable {
         case .nodeMissing:
             return "Node.js isn't installed on this Mac — the backend runs on it."
         case .nodeTooOld(let found, _):
-            return "Node.js \(found) is too old — the backend needs \(BackendSetup.minimumNodeMajor) or newer."
+            return "Node.js \(found) is too old — the backend needs \(BackendSetup.minimumNodeMajor).\(BackendSetup.minimumNodeMinorOnMajor) or newer."
         case .cliMissing(let node):
             return "Node.js \(node) found — the Lisa backend isn't installed yet."
         }
@@ -133,8 +133,14 @@ public enum InstallFailure: Equatable {
 }
 
 public enum BackendSetup {
-    /// package.json `engines.node` — keep in sync.
-    public static let minimumNodeMajor = 20
+    /// package.json `engines.node` — keep in sync. The floor is 22.19 because
+    /// undici (a production dependency) calls worker_threads APIs added in
+    /// 22.10; on anything older `npm i -g` prints EBADENGINE as a *warning*,
+    /// installs anyway, and the backend then dies at runtime. The wizard must
+    /// refuse earlier than that, or its one-click install produces a broken
+    /// backend and tells the user everything went fine.
+    public static let minimumNodeMajor = 22
+    public static let minimumNodeMinorOnMajor = 19
     public static let npmPackage = "@oratis/lisa"
     public static let installCommand = "npm install -g @oratis/lisa"
     public static let manualServeCommand = "lisa serve --web"
@@ -217,16 +223,34 @@ public enum BackendSetup {
         if r.hasServeOverride || r.lisaPath != nil {
             return .ready(lisaVersion: r.lisaVersion)
         }
-        guard let nodeVersion = r.nodeVersion, let major = nodeMajor(nodeVersion) else {
+        guard let nodeVersion = r.nodeVersion, nodeMajor(nodeVersion) != nil else {
             return .nodeMissing(brewAvailable: brew)
         }
-        if major < minimumNodeMajor {
+        if !nodeIsSupported(nodeVersion) {
             return .nodeTooOld(found: nodeVersion, brewAvailable: brew)
         }
         return .cliMissing(nodeVersion: nodeVersion)
     }
 
     /// "v22.4.0" / "22.4.0" → 22. nil when there's no leading number.
+    /// True when this Node satisfies package.json's `engines.node`. Checks the
+    /// minor too: 22.0–22.18 are the versions that install and then fail.
+    public static func nodeIsSupported(_ version: String) -> Bool {
+        guard let major = nodeMajor(version) else { return false }
+        if major > minimumNodeMajor { return true }
+        if major < minimumNodeMajor { return false }
+        return (nodeMinor(version) ?? 0) >= minimumNodeMinorOnMajor
+    }
+
+    public static func nodeMinor(_ version: String) -> Int? {
+        var s = Substring(version.trimmingCharacters(in: .whitespacesAndNewlines))
+        if s.hasPrefix("v") || s.hasPrefix("V") { s = s.dropFirst() }
+        let parts = s.split(separator: ".", maxSplits: 2, omittingEmptySubsequences: false)
+        guard parts.count > 1 else { return nil }
+        let digits = parts[1].prefix { $0.isNumber }
+        return digits.isEmpty ? nil : Int(digits)
+    }
+
     public static func nodeMajor(_ version: String) -> Int? {
         var s = Substring(version.trimmingCharacters(in: .whitespacesAndNewlines))
         if s.hasPrefix("v") || s.hasPrefix("V") { s = s.dropFirst() }

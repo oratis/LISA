@@ -48,18 +48,35 @@ final class BackendSetupTests: XCTestCase {
     }
 
     func testDecideNodeAtFloorIsFine() {
-        let r = ToolchainReport(nodePath: "/usr/local/bin/node", nodeVersion: "v20.0.0")
-        XCTAssertEqual(BackendSetup.decide(r), .cliMissing(nodeVersion: "v20.0.0"))
+        let r = ToolchainReport(nodePath: "/usr/local/bin/node", nodeVersion: "v22.19.0")
+        XCTAssertEqual(BackendSetup.decide(r), .cliMissing(nodeVersion: "v22.19.0"))
+    }
+
+    /// The whole reason the check reads the minor: 22.0–22.18 install without
+    /// error (npm only warns EBADENGINE) and then die inside undici at runtime.
+    /// A wizard that waves these through ships a broken backend and says it
+    /// succeeded.
+    func testDecideNodeMajorRightMinorTooOld() {
+        let r = ToolchainReport(nodePath: "/usr/local/bin/node", nodeVersion: "v22.4.0")
+        XCTAssertEqual(BackendSetup.decide(r), .nodeTooOld(found: "v22.4.0", brewAvailable: false))
+    }
+
+    func testNodeIsSupportedBoundaries() {
+        XCTAssertFalse(BackendSetup.nodeIsSupported("v20.19.0"))
+        XCTAssertFalse(BackendSetup.nodeIsSupported("v22.18.9"))
+        XCTAssertTrue(BackendSetup.nodeIsSupported("v22.19.0"))
+        XCTAssertTrue(BackendSetup.nodeIsSupported("v24.12.0"))
+        XCTAssertFalse(BackendSetup.nodeIsSupported("nonsense"))
     }
 
     func testDecideCliMissing() {
-        let r = ToolchainReport(nodePath: "/opt/homebrew/bin/node", nodeVersion: "v22.4.0",
+        let r = ToolchainReport(nodePath: "/opt/homebrew/bin/node", nodeVersion: "v22.19.0",
                                 npmPath: "/opt/homebrew/bin/npm")
-        XCTAssertEqual(BackendSetup.decide(r), .cliMissing(nodeVersion: "v22.4.0"))
+        XCTAssertEqual(BackendSetup.decide(r), .cliMissing(nodeVersion: "v22.19.0"))
     }
 
     func testDecideReadyWhenCliPresent() {
-        let r = ToolchainReport(nodePath: "/opt/homebrew/bin/node", nodeVersion: "v22.4.0",
+        let r = ToolchainReport(nodePath: "/opt/homebrew/bin/node", nodeVersion: "v22.19.0",
                                 lisaPath: "/opt/homebrew/bin/lisa", lisaVersion: "0.24.0")
         XCTAssertEqual(BackendSetup.decide(r), .ready(lisaVersion: "0.24.0"))
     }
@@ -157,7 +174,7 @@ final class BackendSetupTests: XCTestCase {
     func testSummariesNameTheBlocker() {
         XCTAssertTrue(SetupState.nodeMissing(brewAvailable: false).summary.contains("Node.js isn't installed"))
         XCTAssertTrue(SetupState.nodeTooOld(found: "v18.1.0", brewAvailable: true).summary.contains("v18.1.0"))
-        XCTAssertTrue(SetupState.cliMissing(nodeVersion: "v22.4.0").summary.contains("isn't installed yet"))
+        XCTAssertTrue(SetupState.cliMissing(nodeVersion: "v22.19.0").summary.contains("isn't installed yet"))
         XCTAssertEqual(SetupState.ready(lisaVersion: "0.24.0").summary, "Lisa backend v0.24.0 is installed.")
         XCTAssertEqual(SetupState.ready(lisaVersion: nil).summary, "Lisa backend is installed.")
     }

@@ -806,21 +806,51 @@ function lisaProviderList(status) {
                needsModel: !!h.needsModel, configured: conf, served: false };
     });
   }
-  return served.map(function (p) {
+  const merged = served.map(function (p) {
     const h = hintOf(p.envKey, p.id) || EMPTY_PROVIDER_HINT;
+    // needsModel comes from the SERVED row, not the hint table. Deriving it
+    // from local hints meant every provider this client has no hint for (Grok,
+    // Mistral, Perplexity, Ark, MiniMax, Hunyuan…) silently reported
+    // needsModel:false: the gate then saved a key with no LISA_MODEL, the
+    // server kept routing to Claude, and the user was told they were
+    // configured. Anything that is not Anthropic or OpenAI is reached by model
+    // prefix, so it needs a pinned model — and the server already tells us a
+    // usable default in modelPrefixes[0].
+    const prefixes = Array.isArray(p.modelPrefixes) ? p.modelPrefixes : [];
+    const builtIn = p.envKey === 'ANTHROPIC_API_KEY' || p.envKey === 'OPENAI_API_KEY';
     return {
       id: p.id || h.id || p.envKey,
       envKey: p.envKey || h.envKey || '',
       label: p.label || h.label || p.id || p.envKey,
       placeholder: h.placeholder || 'key...',
-      model: h.model || '',
+      model: h.model || prefixes[0] || '',
       consoleUrl: h.consoleUrl || '',
       custom: !!h.custom,
-      needsModel: !!h.needsModel,
+      needsModel: h.needsModel !== undefined && h.envKey ? !!h.needsModel : !builtIn,
       configured: !!p.configured,
       served: true,
     };
   });
+  // The served list stays authoritative for NAMED providers: one the server
+  // does not enumerate is one /api/config/save would reject, so offering it
+  // would just produce a 400. The exception is the client-only custom row —
+  // "Custom (OpenAI-compatible)" writes LISA_API_KEY + LISA_BASE_URL rather
+  // than a named provider's key, so providerConfigList() has nothing to report
+  // for it even though both keys ARE writable. Dropping it with the wholesale
+  // replace made Ollama, LM Studio and every self-hosted endpoint unreachable
+  // from the GUI, with the BASE URL field permanently hidden.
+  const seen = {};
+  for (let i = 0; i < merged.length; i++) seen[merged[i].envKey] = true;
+  for (let i = 0; i < LISA_PROVIDER_FALLBACK.length; i++) {
+    const h = LISA_PROVIDER_FALLBACK[i];
+    if (!h.custom || seen[h.envKey]) continue;
+    merged.push({
+      id: h.id, envKey: h.envKey, label: h.label, placeholder: h.placeholder,
+      model: h.model, consoleUrl: h.consoleUrl, custom: true,
+      needsModel: !!h.needsModel, configured: false, served: false,
+    });
+  }
+  return merged;
 }
 // One body understood by both generations of the endpoint: the new
 // {keys, model, baseUrl} shape plus every legacy field name.
@@ -1199,6 +1229,18 @@ async function startBirthStream() {
 
   try {
     const res = await fetch('/api/birth', { method: 'POST', signal: ctrl.signal });
+    if (res.status === 409) {
+      // 409 = she is already born. Reaching this is not a failure: the soul was
+      // written and the SSE stream was cut before the `done` frame (a laptop
+      // that slept, a proxy reset, a second tab that finished the ceremony
+      // first). Showing the error card here offered a "Try again" that could
+      // only ever 409 again — a dead end in front of a Lisa that exists. Close
+      // the ritual and let the normal startup path pick her up.
+      clearBirthActions();
+      birthOverlay.classList.remove('open');
+      location.reload();
+      return;
+    }
     if (!res.ok) {
       // An HTTP-level refusal carries no SSE frame — classify it the same way.
       showBirthError({ code: res.status === 401 || res.status === 403 ? 'auth' : 'unknown',

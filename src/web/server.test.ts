@@ -376,6 +376,40 @@ describe("T-9 /api/config over the real server", () => {
       await srv.close();
     }
   });
+
+  test("saving a key for another provider re-points the model this process uses", async () => {
+    // The whole non-Anthropic onboarding path depends on this. A first run has
+    // no key, so the server boots on DEFAULT_MODEL; the gate then offers every
+    // provider. If the model stayed a boot-time constant, someone who pasted a
+    // DeepSeek key got it written to config.env and then watched every turn go
+    // to Claude — which fails, because there is no Anthropic key. The key was
+    // saved, the UI said "configured", and nothing worked.
+    const srv = await boot({ model: "claude-sonnet-4-6" });
+    cleanup.push("DEEPSEEK_API_KEY", "LISA_MODEL");
+    try {
+      const before = JSON.parse((await request(srv.port, "GET", "/session")).text) as {
+        model: string;
+      };
+      assert.equal(before.model, "claude-sonnet-4-6");
+
+      const saved = await request(srv.port, "POST", "/api/config/save", {
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ keys: { DEEPSEEK_API_KEY: KEY }, model: "deepseek-chat" }),
+      });
+      assert.equal(saved.status, 200);
+
+      const after = JSON.parse((await request(srv.port, "GET", "/session")).text) as {
+        model: string;
+      };
+      assert.equal(
+        after.model,
+        "deepseek-chat",
+        "the running server still routes to the old model",
+      );
+    } finally {
+      await srv.close();
+    }
+  });
 });
 
 describe("T-11 SSE keep-alive on the real server", () => {
@@ -423,7 +457,7 @@ describe("T-11 SSE keep-alive on the real server", () => {
 });
 
 describe("T-12 PWA manifest icons", () => {
-  test("declares real 192/512 sizes plus a separate maskable variant", async () => {
+  test("declares real 192/512 maskable sizes, and every icon is actually served", async () => {
     const srv = await boot();
     try {
       const r = await request(srv.port, "GET", "/manifest.webmanifest");
@@ -445,15 +479,23 @@ describe("T-12 PWA manifest icons", () => {
         assert.equal(i.type, "image/png");
         assert.match(i.sizes, /^\d+x\d+$/);
       }
-      // The maskable icon is its own file: relabelling an unpadded icon
-      // maskable gets its edges cropped by the platform mask.
-      const maskable = m.icons.filter((i) => i.purpose === "maskable");
-      assert.equal(maskable.length, 1);
-      assert.equal(maskable[0]!.src, "/assets/icon-512-maskable.png");
-      assert.equal(
-        m.icons.some((i) => i.purpose === "any" && i.src === maskable[0]!.src),
-        false,
+      // At least one icon must be maskable, or Android crops the art with its
+      // own mask. Both files are generated safe-zone-inset by
+      // scripts/optimize-assets.ts, so both carry "any maskable".
+      assert.ok(
+        m.icons.some((i) => (i.purpose ?? "").split(/\s+/).includes("maskable")),
+        "no maskable icon declared",
       );
+
+      // Every declared icon must actually be servable. Asserting the manifest's
+      // CONTENT is not enough: the first version of this test did exactly that
+      // and happily passed while naming a file no build step ever produced, so
+      // the only maskable entry 404'd on every install. Fetch them.
+      for (const i of m.icons) {
+        const icon = await request(srv.port, "GET", i.src);
+        assert.equal(icon.status, 200, `${i.src} is declared but not served`);
+        assert.equal(icon.headers["content-type"], "image/png");
+      }
     } finally {
       await srv.close();
     }
