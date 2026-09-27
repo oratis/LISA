@@ -509,17 +509,11 @@ final class LisaClient {
                     try LisaAPICompatibility.validate(resp)
                     let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
                     guard (200..<300).contains(code) else { continuation.finish(throwing: LisaError.http(code)); return }
-                    var dataLines: [String] = []
-                    for try await line in bytes.lines {
-                        if line.isEmpty {
-                            if !dataLines.isEmpty {
-                                let joined = dataLines.joined(separator: "\n")
-                                if let msg = SSEMessage(json: joined) { continuation.yield(msg) }
-                                dataLines.removeAll()
-                            }
-                        } else if line.hasPrefix("data:") {
-                            dataLines.append(String(line.dropFirst(line.hasPrefix("data: ") ? 6 : 5)))
-                        }
+                    var decoder = SSEDecoder()
+                    // Foundation's AsyncLineSequence skips empty lines, but
+                    // those lines are the event boundaries in SSE.
+                    for try await byte in bytes {
+                        if let message = decoder.append(byte) { continuation.yield(message) }
                     }
                     continuation.finish()
                 } catch {
@@ -528,6 +522,42 @@ final class LisaClient {
             }
             continuation.onTermination = { _ in task.cancel() }
         }
+    }
+}
+
+/// Incremental SSE framing. Decode UTF-8 only after the complete line arrives;
+/// preserve blank lines and accept LF, CRLF, or CR without double-dispatching.
+struct SSEDecoder {
+    private var line: [UInt8] = []
+    private var dataLines: [String] = []
+    private var skipLF = false
+
+    mutating func append(_ byte: UInt8) -> SSEMessage? {
+        if byte == 10 {
+            if skipLF { skipLF = false; return nil }
+            return finishLine()
+        }
+        if byte == 13 {
+            skipLF = true
+            return finishLine()
+        }
+        skipLF = false
+        line.append(byte)
+        return nil
+    }
+
+    private mutating func finishLine() -> SSEMessage? {
+        let text = String(decoding: line, as: UTF8.self)
+        line.removeAll(keepingCapacity: true)
+        if text.isEmpty {
+            defer { dataLines.removeAll(keepingCapacity: true) }
+            guard !dataLines.isEmpty else { return nil }
+            return SSEMessage(json: dataLines.joined(separator: "\n"))
+        }
+        if text.hasPrefix("data:") {
+            dataLines.append(String(text.dropFirst(text.hasPrefix("data: ") ? 6 : 5)))
+        }
+        return nil
     }
 }
 

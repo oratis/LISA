@@ -12,8 +12,9 @@ struct OnboardingFlow: View {
 
     @State private var step: OnboardingStep = .welcome
     @State private var method: InstallMethod = .homebrew
-    @State private var showManual = false
-    @State private var manualMode: ConnectionMode = .mac
+    // The presented item owns its mode; a separate Boolean sheet can capture
+    // the old default mode when selection and presentation change together.
+    @State private var manualMode: ConnectionMode?
     @State private var scanNote: String?
     @State private var rescanToken = 0
     @State private var verifying = false
@@ -26,9 +27,9 @@ struct OnboardingFlow: View {
         }
         .preferredColorScheme(app.preferredScheme)
         .tint(Theme.accent)
-        .sheet(isPresented: $showManual) {
-            OnboardingManualEntry(mode: manualMode) {
-                showManual = false
+        .sheet(item: $manualMode) { mode in
+            OnboardingManualEntry(mode: mode) {
+                manualMode = nil
                 go(.connect)
             }
             .environmentObject(app)
@@ -50,7 +51,7 @@ struct OnboardingFlow: View {
     // ── navigation ──────────────────────────────────────────────
     private func go(_ s: OnboardingStep) { withAnimation(.easeInOut(duration: 0.2)) { step = s } }
     private func skip() { app.finishOnboarding(paired: false) }
-    private func openManual(_ m: ConnectionMode) { manualMode = m; showManual = true }
+    private func openManual(_ m: ConnectionMode) { manualMode = m }
 
     // ── 0 · Welcome ─────────────────────────────────────────────
     private var welcomeScreen: some View {
@@ -216,7 +217,7 @@ struct OnboardingFlow: View {
         ZStack {
             QRScannerView(
                 onScan: { value in
-                    guard !showManual else { return }   // ignore decodes while the manual sheet is up (A11)
+                    guard manualMode == nil else { return }   // ignore decodes while the manual sheet is up (A11)
                     if app.applyPairing(value) { go(.connect) }
                     // Stay on the scanner and let them re-aim instead of yanking
                     // them into a form for a momentary mis-scan (A10/A11).

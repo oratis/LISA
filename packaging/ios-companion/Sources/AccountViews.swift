@@ -96,6 +96,11 @@ struct CloudSignInForm: View {
         } footer: {
             Text("Sign in and go — no Mac, no API key, no password to remember. New here? The code creates your account. A free usage allowance refreshes every 12 hours.")
         }
+        // Attach discovery to visible content. A trailing empty Section in a
+        // lazy Form may never appear, leaving configured sign-in options hidden.
+        .task(id: cloudURL) {
+            googleClientId = await app.authConfig(baseURL: cloudURL)?.google?.iosClientId
+        }
 
         Section {
             DisclosureGroup("Use a password instead") {
@@ -131,11 +136,6 @@ struct CloudSignInForm: View {
         }
         if let error {
             Section { Text(error).font(.caption).foregroundStyle(Theme.danger) }
-        }
-        // Re-asked whenever the URL changes: two instances can offer different
-        // sign-in surfaces.
-        Section {} .task(id: cloudURL) {
-            googleClientId = await app.authConfig(baseURL: cloudURL)?.google?.iosClientId
         }
     }
 

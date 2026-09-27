@@ -4,6 +4,44 @@ import XCTest
 /// Logic tests for the pure helpers — no network, no Keychain, no app launch.
 final class LisaPocketTests: XCTestCase {
 
+    func testHistoryAcceptsLegacyTextAndStoredContentBlocks() throws {
+        let source = #"{"messages":[{"role":"user","content":"Hello"},{"role":"assistant","content":[{"type":"text","text":"First"},{"type":"tool_use","name":"kb_list","input":{}},{"type":"text","text":"Second"}]},{"role":"user","content":[{"type":"tool_result","content":"Internal output"}]}],"hasMore":true,"page":2}"#
+        let history = try JSONDecoder().decode(HistoryResponse.self, from: Data(source.utf8))
+        XCTAssertEqual(history.messages.map(\.content), ["Hello", "First\nSecond", ""])
+        XCTAssertEqual(history.messages[1].tools, ["kb_list"])
+        XCTAssertTrue(history.hasMore)
+        XCTAssertEqual(history.page, 2)
+    }
+
+    func testHistoryIgnoresNonDisplayBlocks() throws {
+        let source = #"{"role":"assistant","content":[{"type":"thinking","thinking":"Private reasoning"},{"type":"image","source":{"type":"base64"}},{"type":"text","text":"Visible reply"}]}"#
+        let message = try JSONDecoder().decode(HistoryMessage.self, from: Data(source.utf8))
+        XCTAssertEqual(message.content, "Visible reply")
+        XCTAssertTrue(message.tools.isEmpty)
+    }
+
+    func testSSEDecoderPreservesBlankEventBoundaries() {
+        var decoder = SSEDecoder()
+        let source = "data: {\"type\":\"text\",\"text\":\"Hello\"}\n\ndata: {\"type\":\"done\"}\n\n"
+        let messages = source.utf8.compactMap { decoder.append($0) }
+        XCTAssertEqual(messages.map(\.type), ["text", "done"])
+        XCTAssertEqual(messages.first?.text, "Hello")
+    }
+
+    func testSSEDecoderHandlesCRLFMultilineAndUTF8() {
+        var decoder = SSEDecoder()
+        let source = ": heartbeat\r\ndata: {\"type\":\"text\",\r\ndata: \"text\":\"你好 ☀️\"}\r\n\r\n"
+        let messages = source.utf8.compactMap { decoder.append($0) }
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages.first?.text, "你好 ☀️")
+    }
+
+    func testSSEDecoderIgnoresKeepaliveAndUnfinishedEvent() {
+        var decoder = SSEDecoder()
+        let source = ": ping\r\revent: update\rdata:{\"type\":\"done\"}\r\rdata: {\"type\":\"text\",\"text\":\"unfinished\"}\n"
+        XCTAssertEqual(source.utf8.compactMap { decoder.append($0) }.map(\.type), ["done"])
+    }
+
     @MainActor
     func testPurchaseAccountBindingMatchesServer() {
         XCTAssertEqual(CreditsStore.accountToken(uid: "buyer-a").uuidString.lowercased(), "516122a1-3bf8-303f-9fbf-f13a64d42582")
