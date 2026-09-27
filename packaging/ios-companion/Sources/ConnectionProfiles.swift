@@ -22,12 +22,15 @@ final class ConnectionProfiles {
                 let old = ServerConfig(host: host, port: defaults.integer(forKey: "lisa.port"),
                                        token: readToken("default"),
                                        scheme: defaults.string(forKey: "lisa.scheme") ?? "http")
-                let mode: ConnectionMode = host == "cloud.meetlisa.ai" ? .cloud
+                let inferred: ConnectionMode = host == "cloud.meetlisa.ai" ? .cloud
                     : old.isPrivateLAN ? .mac
                     : ConnectionMode(rawValue: defaults.string(forKey: "lisa.mode") ?? "") ?? .mac
+                let previous = defaults.string(forKey: "lisa.profiles.legacyMode")
+                let mode = previous.flatMap(ConnectionMode.init(rawValue:)) ?? inferred
+                defaults.set(mode.rawValue, forKey: "lisa.profiles.legacyMode")
                 var migrated = old
                 if migrated.port == 0 { migrated.port = migrated.scheme == "https" ? 443 : 5757 }
-                activeMode = mode
+                if previous == nil { activeMode = mode }
                 guard save(migrated, for: mode) else { return }
             }
             // Keep the legacy credential as a recovery copy; it is never read
@@ -42,7 +45,8 @@ final class ConnectionProfiles {
     }
 
     func load(_ mode: ConnectionMode) -> ServerConfig {
-        if !defaults.bool(forKey: "lisa.profiles.migrated"), mode == activeMode,
+        if !defaults.bool(forKey: "lisa.profiles.migrated"),
+           mode.rawValue == defaults.string(forKey: "lisa.profiles.legacyMode"),
            let host = defaults.string(forKey: "lisa.host"), !host.isEmpty {
             let scheme = defaults.string(forKey: "lisa.scheme") ?? "http"
             let port = defaults.integer(forKey: "lisa.port")
@@ -66,7 +70,9 @@ final class ConnectionProfiles {
         defaults.set(config.host, forKey: prefix + "host")
         defaults.set(config.port, forKey: prefix + "port")
         defaults.set(config.scheme, forKey: prefix + "scheme")
-        if normalized == nil { writeToken("default", nil) }
+        let ownsLegacy = mode.rawValue == defaults.string(forKey: "lisa.profiles.legacyMode")
+        if ownsLegacy { defaults.set(true, forKey: "lisa.profiles.migrated") }
+        if normalized == nil, ownsLegacy { writeToken("default", nil) }
         return true
     }
 }

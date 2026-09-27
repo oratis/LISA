@@ -91,6 +91,36 @@ final class LisaPocketTests: XCTestCase {
         XCTAssertFalse(profiles.load(.mac).isConfigured)
     }
 
+    func testFailedMigrationCannotFollowModeSwitchOrEraseOtherConnection() {
+        let suite = "lisa-migration-switch-" + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set("mac.example", forKey: "lisa.host")
+        defaults.set("mac", forKey: "lisa.mode")
+        var tokens = ["default": "legacy"]
+        var canWriteMac = false
+        let make = { ConnectionProfiles(defaults: defaults,
+            readToken: { tokens[$0] }, writeToken: { account, token in
+                if account != "mac" || canWriteMac { tokens[account] = token }
+            }) }
+        let profiles = make()
+        profiles.activeMode = .cloud
+        XCTAssertFalse(profiles.load(.cloud).isConfigured)
+        XCTAssertEqual(profiles.load(.mac).token, "legacy")
+        XCTAssertTrue(profiles.save(ServerConfig(host: "", port: 443, token: nil, scheme: "https"), for: .cloud))
+        XCTAssertEqual(tokens["default"], "legacy")
+        XCTAssertFalse(defaults.bool(forKey: "lisa.profiles.migrated"))
+        let retry = make()
+        XCTAssertEqual(retry.activeMode, .cloud)
+        XCTAssertFalse(retry.load(.cloud).isConfigured)
+        XCTAssertEqual(retry.load(.mac).host, "mac.example")
+        canWriteMac = true
+        let recovered = make()
+        XCTAssertTrue(defaults.bool(forKey: "lisa.profiles.migrated"))
+        XCTAssertEqual(recovered.activeMode, .cloud)
+        XCTAssertEqual(recovered.load(.mac).token, "legacy")
+    }
+
     private func session(_ state: String, id: String = "s", agent: String = "claude-code",
                          pending: String? = nil, mtime: String? = nil) -> AgentSession {
         let activity = pending.map {
