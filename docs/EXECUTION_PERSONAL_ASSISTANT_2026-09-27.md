@@ -19,7 +19,7 @@
 | Lint / 格式 | 0 errors；69 条原有 warnings；format:check 与 diff --check 通过 |
 | 依赖与打包 | 根项目生产依赖 audit 为 0；npm pack 预检 1211 文件，未发现密钥/证书文件；网站安装报告的 10 个开发依赖告警未在此轮消除 |
 | iPhone | iPhone 17 / iOS 26.4 模拟器，65 XCTest，0 failures（含 SSE、历史解码及图片请求） |
-| iPad | iPad Air 11-inch (M4) / iOS 26.5 模拟器，62 XCTest，0 failures；追加历史解码后的构建成功，但锁屏后 test runner preflight 被系统拒绝 |
+| iPad | iPad Air 11-inch (M4) / iOS 26.5 模拟器，65 XCTest，0 failures（一次系统 preflight 拒绝后重跑通过） |
 | PR CI | [36327123042](https://github.com/oratis/LISA/actions/runs/36327123042)：Node 22/24、覆盖率、audit、浏览器 E2E、网站、iOS 均通过 |
 | 扩展 CI | [36327302675](https://github.com/oratis/LISA/actions/runs/36327302675)：相同提交全部平台通过，含 Mac 编译 |
 | iOS 签名 | archive/export/upload 成功，Apple 处理状态 VALID |
@@ -68,6 +68,8 @@ AI 接收方现在是 Google Gemini。经用户明确授权，将 Cuddler 已有
 [v0.27.1](https://github.com/oratis/LISA/releases/tag/v0.27.1) 已完成 [GitHub/npm 发布](https://github.com/oratis/LISA/actions/runs/36329974413)、[Mac 签名与公证](https://github.com/oratis/LISA/actions/runs/36329974348) 和 [Homebrew 更新](https://github.com/oratis/LISA/actions/runs/36330320301)。Mac DMG 已作为 release asset 上传。npm tarball 在发布同步后 HTTP 200，shasum 为 `c69b021ba153e69ca336938f8ea7ad7d3df0a4e1`；Homebrew 首次因 tarball 未同步失败，确认可下载后重跑成功。App Store 实际送审仍未完成，不能把代码发布当成商店已通过审核。
 
 ## 原生验收发现与修复
+
+[PR #392](https://github.com/oratis/LISA/pull/392)。最终本地 iPhone/iPad 均为 65 项测试通过；原生界面验收与单测分开记录。
 
 1. 首次点击 Cloud 时，布尔 sheet 捕获了初始 Mac 模式。改为按 ConnectionMode item 呈现，实际 iPhone 已确认显示 Cloud 登录表单。
 2. Google 登录配置请求附着在 lazy Form 尾部空 Section，初始页面未发起请求。改为附着在可见账号 Section；按钮显示及交互登录仍待继续验收。
