@@ -18,13 +18,13 @@
 | 类型与契约 | 服务端、客户端 typecheck，生成 API contract 检查和 build 通过 |
 | Lint / 格式 | 0 errors；69 条原有 warnings；format:check 与 diff --check 通过 |
 | 依赖与打包 | 根项目生产依赖 audit 为 0；npm pack 预检 1211 文件，未发现密钥/证书文件；网站安装报告的 10 个开发依赖告警未在此轮消除 |
-| iPhone | iPhone 17 / iOS 26.4 模拟器，59 XCTest，0 failures |
-| iPad | iPad Air 11-inch (M4) / iOS 26.5 模拟器，59 XCTest，0 failures |
+| iPhone | iPhone 17 / iOS 26.4 模拟器，65 XCTest，0 failures（含 SSE、历史解码及图片请求） |
+| iPad | iPad Air 11-inch (M4) / iOS 26.5 模拟器，65 XCTest，0 failures（一次系统 preflight 拒绝后重跑通过） |
 | PR CI | [36327123042](https://github.com/oratis/LISA/actions/runs/36327123042)：Node 22/24、覆盖率、audit、浏览器 E2E、网站、iOS 均通过 |
 | 扩展 CI | [36327302675](https://github.com/oratis/LISA/actions/runs/36327302675)：相同提交全部平台通过，含 Mac 编译 |
 | iOS 签名 | archive/export/upload 成功，Apple 处理状态 VALID |
 
-没有把 XCTest 写成真机 UI E2E。当前原生 UI 工具不能连接 Simulator；真机 APNs、Apple/Google 交互登录、真实 StoreKit 沙盒购买及新截图仍缺验收证据。
+没有把 XCTest 写成真机 UI E2E。已通过 Xcode 27 的 Device Hub 找到原生模拟器界面，纠正早先“无法连接 Simulator”的判断。原生 iPhone 已验证云入口、审核账号登录、取消 AI 同意保留草稿、Google Gemini 披露及真实写作回复。真机 APNs、Apple/Google 交互登录和真实 StoreKit 沙盒购买仍缺验收证据。
 
 ## 生产部署与回滚
 
@@ -41,7 +41,7 @@ AI 接收方现在是 Google Gemini。经用户明确授权，将 Cuddler 已有
 
 灰度及切流后的生产验证：审核账号登录、账户、额度和 `/api/auth/config` 均通过；真实 SSE 聊天与 `kb_list` 的调用/结果/回答流程均正常结束，无 error；追加计算测试返回 43，写作测试返回完整句子。免费额度产生扣费，审核账号付费余额保持不变。零付费余额的新账号可用性另由额度回归测试覆盖，没有把它写成实际新账号端到端验证。App 使用的 `https://cloud.meetlisa.ai` 域名也完成登录、计算和写作复验。正式流量 100% 指向 `lisa-cloud-00027-qal`，临时灰度 tag 已移除；旧 revision 保留用于回滚，但回滚会恢复尚无额度的 GLM 配置。
 
-[英文支持](https://meetlisa.ai/support/)、[英文隐私](https://meetlisa.ai/privacy/)、[中文支持](https://meetlisa.ai/zh-CN/support/)、[中文隐私](https://meetlisa.ai/zh-CN/privacy/) 在前轮部署后均 HTTP 200，英文页面已浏览器检查。此次未改网站和 iOS 二进制。
+[英文支持](https://meetlisa.ai/support/)、[英文隐私](https://meetlisa.ai/privacy/)、[中文支持](https://meetlisa.ai/zh-CN/support/)、[中文隐私](https://meetlisa.ai/zh-CN/privacy/) 在前轮部署后均 HTTP 200，英文页面已浏览器检查。模型恢复发布未改网站和 iOS 二进制；后续原生验收又发现并修复下述 iOS 问题。
 
 回滚使用 Cloud Run update-traffic 指向表中原 revision；不用删除用户持久卷或覆盖历史版本。npm 版本不可原地覆盖，后续修复需要递增版本。
 
@@ -65,4 +65,17 @@ AI 接收方现在是 Google Gemini。经用户明确授权，将 Cuddler 已有
 - Mac app/DMG：[发布流水线](https://github.com/oratis/LISA/actions/runs/36327573488) 成功，两次 notarization 均 Accepted，staple 和签名验证通过。
 - Homebrew 首次运行因 npm tarball 尚未同步而失败，已补上有上限的下载重试（最多 12 次重试，重试总时限 600 秒），仍只计算真实 npm tarball 的 SHA-256，不用 GitHub 的另一个 tarball 代替。[重试后的 Homebrew 工作流](https://github.com/oratis/LISA/actions/runs/36328169164) 已成功，远端 formula 已更新为 0.27.0。
 
-生产模型服务已恢复；0.27.1 的代码分发状态随发布流水线另行核验。App Store 实际送审仍未完成，不能把代码发布当成商店已通过审核。
+[v0.27.1](https://github.com/oratis/LISA/releases/tag/v0.27.1) 已完成 [GitHub/npm 发布](https://github.com/oratis/LISA/actions/runs/36329974413)、[Mac 签名与公证](https://github.com/oratis/LISA/actions/runs/36329974348) 和 [Homebrew 更新](https://github.com/oratis/LISA/actions/runs/36330320301)。Mac DMG 已作为 release asset 上传。npm tarball 在发布同步后 HTTP 200，shasum 为 `c69b021ba153e69ca336938f8ea7ad7d3df0a4e1`；Homebrew 首次因 tarball 未同步失败，确认可下载后重跑成功。App Store 实际送审仍未完成，不能把代码发布当成商店已通过审核。
+
+## 原生验收发现与修复
+
+[PR #392](https://github.com/oratis/LISA/pull/392)。最终本地 iPhone/iPad 均为 65 项测试通过；原生界面验收与单测分开记录。
+
+1. 首次点击 Cloud 时，布尔 sheet 捕获了初始 Mac 模式。改为按 ConnectionMode item 呈现，实际 iPhone 已确认显示 Cloud 登录表单。
+2. Google 登录配置请求附着在 lazy Form 尾部空 Section，初始页面未发起请求。改为附着在可见账号 Section；按钮显示及交互登录仍待继续验收。
+3. `URLSession.AsyncBytes.lines` 丢弃空行，而 SSE 用空行分隔事件；服务端有回复时原生 App 仍显示没有回复。改为按字节增量解析，覆盖 LF、CRLF、CR、多行 data、中文 UTF-8、心跳及未完成帧。修复后 iPhone 真实云聊天返回了完整的两句邀请文案。
+4. 生产历史 API 返回字符串或 Anthropic content blocks，旧 iOS 只接受字符串，解码失败后整个历史页为空。新增兼容解码，显示 text 和工具名称，跳过工具结果与 thinking 等内部块。生产 API 只检查了消息结构，没有把聊天内容或凭据提交到仓库。
+
+5. 原生头像使用带 token 查询参数的 URL，而服务端静态资源处理把查询串视为文件名，图片显示占位图。改为通过 Authorization 请求头加载，凭据不再进入图片 URL；生产相同路径使用请求头认证返回 HTTP 200 / image/png。
+
+以上修复使用有临时签名的模拟器构建；未签名模拟器会缺 Keychain entitlement，不能据此修改正式安全存储。截图已采集原始 onboarding、登录、Home 和 AI 同意页面；后续原生操作被 Mac 锁屏阻止，已请求手动解锁。需要继续完成当前二进制的 iPhone/iPad 截图、Google 按钮与历史恢复验收、StoreKit 沙盒验收，然后再正式送审。

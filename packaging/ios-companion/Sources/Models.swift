@@ -176,8 +176,32 @@ struct ControlPolicy: Codable, Equatable {
 }
 
 // /api/history?page=N — newest page first (page 0), older pages as N grows.
-struct HistoryResponse: Codable { var messages: [HistoryMessage]; var hasMore: Bool; var page: Int }
-struct HistoryMessage: Codable { var role: String; var content: String }
+struct HistoryResponse: Decodable { var messages: [HistoryMessage]; var hasMore: Bool; var page: Int }
+struct HistoryMessage: Decodable {
+    var role: String
+    var content: String
+    var tools: [String]
+
+    private enum CodingKeys: String, CodingKey { case role, content }
+    private struct Block: Decodable {
+        var type: String
+        var text: String?
+        var name: String?
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        role = try values.decode(String.self, forKey: .role)
+        if let text = try? values.decode(String.self, forKey: .content) {
+            content = text
+            tools = []
+        } else {
+            let blocks = try values.decode([Block].self, forKey: .content)
+            content = blocks.filter { $0.type == "text" }.compactMap(\.text).joined(separator: "\n")
+            tools = blocks.filter { $0.type == "tool_use" }.compactMap(\.name)
+        }
+    }
+}
 
 /// /api/autonomy/state — the "Proactive mode" master switch (idle + heartbeat).
 struct AutonomyState: Codable, Equatable {

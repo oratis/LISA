@@ -39,7 +39,7 @@
 | A3 | P0 | 云端隐藏或解释不支持的主机能力 | 无 Mac 可独立登录聊天，Mac agents 仍可到达 | 已实现并发布 |
 | A4 | P1 | 个人助手首屏与日常任务草稿入口、默认中心登录 | 一键草稿可编辑，真实发送才执行 | 已实现并发布 |
 | A5 | P0 | AI 数据使用说明、商店文案、支持与审核路径 | 内容与云/本地行为一致，无虚假隐私承诺 | 已实现并发布 |
-| A6 | P0 | 全库基线、iOS 单测/构建、iPhone/iPad 实测 | 记录命令与真实结果，不把静态审查写成 E2E | 后端通过，iPhone/iPad 各 59 项单测通过；原生 UI/真机验收未完成 |
+| A6 | P0 | 全库基线、iOS 单测/构建、iPhone/iPad 实测 | 记录命令与真实结果，不把静态审查写成 E2E | 后端通过；追加 iOS 修复后 iPhone/iPad 各 65 项通过；原生云对话通过，真机/商店验收未完成 |
 | A7 | P0 | 文档 PR、实施 PR、合并/发布与审核 | PR 链接、制品、部署版本、ASC 状态均可核验 | PR 已合并、代码已发布；送审阻塞 |
 
 ## 后续产品工程（不伪报为本轮完成）
@@ -68,7 +68,7 @@
 
 - 文档 PR #387 已通过 CI 并合并。
 - 后端最新 2058 项：2057 pass / 0 fail / 1 skip；类型检查、客户端类型检查、API contract 和 build 已通过。基线唯一失败为测试误用真实 Codex，现已隔离 PATH。
-- iPhone 和 iPad 最终各通过 59 项 XCTest，覆盖 Keychain 失败后切换模式、重启和恢复的回归。模拟器逻辑测试不等于原生 UI、真机 APNs 或 StoreKit 沙盒端到端验证；当前 UI 工具不能连接 Simulator。
+- iPhone 和 iPad 最终各通过 59 项 XCTest，覆盖 Keychain 失败后切换模式、重启和恢复的回归。模拟器逻辑测试不等于原生 UI、真机 APNs 或 StoreKit 沙盒端到端验证；随后通过 Device Hub 恢复了原生操作，发现并修复了云入口、SSE 与历史解码问题；见最新执行记录。
 - 审核账号真实 login、auth/me、billing/quota、island/ping 均 200，未在 Git 中保存凭据。灰度 revision `lisa-cloud-00024-ruh` 已配置限定审核账号的 IAP sandbox allowlist；未验证真实 StoreKit 购买。
 - 新增 AI 接收方披露接口与 iOS 发送前同意；自定义 endpoint 只显示 hostname，不返回 URL 内凭据。新增 StoreKit appAccountToken 绑定和跨账号拒绝测试。
 - 当前尚未声明真机 APNs、Apple/Google 交互登录、真实沙盒购买成功或审核通过；需要后续实际证据。

@@ -39,7 +39,7 @@ final class ChatModel: ObservableObject {
     // ── history ──
     func loadHistory(_ client: LisaClient) async {
         guard messages.isEmpty, let r = try? await client.history(page: 0) else { return }
-        messages = r.messages.map(Self.map)
+        messages = r.messages.compactMap(Self.map)
         page = 0
         hasMore = r.hasMore
     }
@@ -49,13 +49,15 @@ final class ChatModel: ObservableObject {
         loadingHistory = true
         defer { loadingHistory = false }
         guard let r = try? await client.history(page: page + 1) else { return }
-        messages.insert(contentsOf: r.messages.map(Self.map), at: 0)
+        messages.insert(contentsOf: r.messages.compactMap(Self.map), at: 0)
         page += 1
         hasMore = r.hasMore
     }
 
-    private static func map(_ m: HistoryMessage) -> ChatMessage {
-        ChatMessage(role: m.role == "user" ? .user : .lisa, text: m.content)
+    private static func map(_ m: HistoryMessage) -> ChatMessage? {
+        // Tool-result-only records are model context, not a user chat bubble.
+        guard !m.content.isEmpty || !m.tools.isEmpty else { return nil }
+        return ChatMessage(role: m.role == "user" ? .user : .lisa, text: m.content, tools: m.tools)
     }
 
     // ── mood (seed from a ping, then track the SSE, reconnect with backoff) ──
@@ -273,18 +275,7 @@ struct ChatView: View {
     private func moodAvatar(_ size: CGFloat) -> some View {
         let slug = model.mood.isEmpty ? "neutral" : model.mood
         let safe = slug.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? slug
-        return Group {
-            if let url = app.client.assetURL("/assets/lisa/\(safe).png") {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let img): img.resizable().scaledToFit()
-                    default: Image(systemName: "person.crop.circle.fill").resizable().scaledToFit().foregroundStyle(Theme.secondary)
-                    }
-                }
-            } else {
-                Image(systemName: "person.crop.circle.fill").resizable().scaledToFit().foregroundStyle(Theme.secondary)
-            }
-        }
+        return ServerPortrait(client: app.client, path: "/assets/lisa/\(safe).png")
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .accessibilityHidden(true)   // chatHeader's combined label already says the mood

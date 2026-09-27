@@ -221,19 +221,7 @@ struct HomeView: View {
     private func portrait(_ size: CGFloat) -> some View {
         let slug = (ping?.mood.isEmpty == false ? ping!.mood : "neutral")
         let safe = slug.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? slug
-        return Group {
-            if let url = app.client.assetURL("/assets/lisa/\(safe).png") {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let img): img.resizable().scaledToFit()
-                    case .empty: ProgressView()
-                    default: Image(systemName: "person.crop.circle.fill").resizable().scaledToFit().foregroundStyle(Theme.secondary)
-                    }
-                }
-            } else {
-                Image(systemName: "person.crop.circle.fill").resizable().scaledToFit().foregroundStyle(Theme.secondary)
-            }
-        }
+        return ServerPortrait(client: app.client, path: "/assets/lisa/\(safe).png")
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: 14))
         // The portrait IS the mood readout — an unlabeled AsyncImage would drop
