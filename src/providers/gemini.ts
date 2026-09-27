@@ -19,7 +19,7 @@
  * conversion needed).
  *
  * Limitations vs Anthropic / OpenAI:
- *   - No prompt caching equivalent; cacheReadTokens always 0.
+ *   - Explicit cache creation is not exposed; implicit cache reads are metered.
  *   - Gemini may emit only one functionCall per turn for some models; we
  *     handle multiple if present, but don't rely on it.
  */
@@ -89,6 +89,7 @@ export class GeminiProvider implements Provider {
       const toolCalls: Array<{ id: string; name: string; args: Record<string, unknown> }> = [];
       let inputTokens = 0;
       let outputTokens = 0;
+      let cacheReadTokens = 0;
 
       for await (const chunk of stream) {
         const cand = chunk.candidates?.[0];
@@ -112,8 +113,11 @@ export class GeminiProvider implements Provider {
         // usageMetadata is on the final chunk
         const usage = chunk.usageMetadata;
         if (usage) {
-          inputTokens = usage.promptTokenCount ?? 0;
-          outputTokens = usage.candidatesTokenCount ?? 0;
+          // Gemini's prompt count includes cached tokens, while our provider
+          // contract prices them separately. Thinking is billed as output.
+          cacheReadTokens = usage.cachedContentTokenCount ?? 0;
+          inputTokens = Math.max(0, (usage.promptTokenCount ?? 0) - cacheReadTokens);
+          outputTokens = (usage.candidatesTokenCount ?? 0) + (usage.thoughtsTokenCount ?? 0);
         }
       }
 
@@ -142,7 +146,7 @@ export class GeminiProvider implements Provider {
         usage: {
           inputTokens,
           outputTokens,
-          cacheReadTokens: 0,
+          cacheReadTokens,
           cacheWriteTokens: 0,
         },
       };

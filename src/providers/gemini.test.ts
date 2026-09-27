@@ -36,9 +36,7 @@ function makeFakeClient(captured: { params?: CapturedParams }, chunks: Chunk[]) 
 
 const TEXT_CHUNKS: Chunk[] = [
   {
-    candidates: [
-      { content: { parts: [{ text: "hi" }] }, finishReason: "STOP" },
-    ],
+    candidates: [{ content: { parts: [{ text: "hi" }] }, finishReason: "STOP" }],
     usageMetadata: { promptTokenCount: 5, candidatesTokenCount: 2 },
   },
 ];
@@ -57,10 +55,7 @@ describe("GeminiProvider — abort signal passthrough", () => {
   test("generateContentStream receives the signal as config.abortSignal", async () => {
     const provider = new GeminiProvider({ apiKey: "test-key" });
     const captured: { params?: CapturedParams } = {};
-    (provider as unknown as { client: unknown }).client = makeFakeClient(
-      captured,
-      TEXT_CHUNKS,
-    );
+    (provider as unknown as { client: unknown }).client = makeFakeClient(captured, TEXT_CHUNKS);
     const ac = new AbortController();
 
     const result = await provider.runTurn(baseOpts(ac.signal));
@@ -75,10 +70,7 @@ describe("GeminiProvider — abort signal passthrough", () => {
   test("no signal in opts → config.abortSignal is undefined (SDK accepts)", async () => {
     const provider = new GeminiProvider({ apiKey: "test-key" });
     const captured: { params?: CapturedParams } = {};
-    (provider as unknown as { client: unknown }).client = makeFakeClient(
-      captured,
-      TEXT_CHUNKS,
-    );
+    (provider as unknown as { client: unknown }).client = makeFakeClient(captured, TEXT_CHUNKS);
 
     await provider.runTurn(baseOpts());
 
@@ -95,4 +87,27 @@ describe("GeminiProvider — lazy SDK loading", () => {
       "client must stay null until the first runTurn",
     );
   });
+});
+
+test("Gemini meters thinking output and cached input without double counting", async () => {
+  const provider = new GeminiProvider({ apiKey: "test-key" });
+  (provider as unknown as { client: unknown }).client = makeFakeClient({}, [
+    { candidates: [{ content: { parts: [{ text: "hi" }] } }] },
+    {
+      usageMetadata: {
+        promptTokenCount: 100,
+        cachedContentTokenCount: 60,
+        candidatesTokenCount: 12,
+        thoughtsTokenCount: 28,
+      },
+    },
+  ]);
+  const result = await provider.runTurn(baseOpts());
+  assert.deepEqual(result.usage, {
+    inputTokens: 40,
+    outputTokens: 40,
+    cacheReadTokens: 60,
+    cacheWriteTokens: 0,
+  });
+  assert.equal(result.content[0].type === "text" && result.content[0].text, "hi");
 });
