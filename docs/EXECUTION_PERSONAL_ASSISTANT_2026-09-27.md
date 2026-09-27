@@ -54,6 +54,6 @@
 ## 发布渠道
 
 - [GitHub Release v0.27.0](https://github.com/oratis/LISA/releases/tag/v0.27.0) 已发布源码、Mac/Linux 运行包、DMG 和校验文件。下载正式 Mac 运行包后 SHA-256 校验通过，执行 CLI 返回 `0.27.0`。
-- GitHub / npm：[发布流水线](https://github.com/oratis/LISA/actions/runs/36327573505) 成功。npm 于 14:57 UTC 接受 `@oratis/lisa@0.27.0` 与签名 provenance；当前注册表仍在处理，查询版本返回 404，尚不能称为可安装。
+- GitHub / npm：[发布流水线](https://github.com/oratis/LISA/actions/runs/36327573505) 成功。npm 于 14:57 UTC 接受 `@oratis/lisa@0.27.0` 与签名 provenance；版本元数据已可查询，但 tarball 曾继续返回 404；可安装状态须以 tarball 验证为准。
 - Mac app/DMG：[发布流水线](https://github.com/oratis/LISA/actions/runs/36327573488) 成功，两次 notarization 均 Accepted，staple 和签名验证通过。
-- Homebrew 更新须等待 npm tarball 真正可下载，再计算其 SHA-256；不能用 GitHub 的另一个 tarball 代替。
+- Homebrew 首次运行因 npm tarball 尚未同步而失败，已补上有上限的下载重试（最多 12 次重试，重试总时限 600 秒），仍只计算真实 npm tarball 的 SHA-256，不用 GitHub 的另一个 tarball 代替。最终执行结果待回填。
