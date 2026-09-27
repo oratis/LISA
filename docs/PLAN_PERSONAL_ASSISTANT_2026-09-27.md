@@ -78,4 +78,4 @@
 - 云灰度的 `/health`、登录、额度和 `/api/auth/config` 均通过；披露接收方为 Zhipu (GLM)。原生产 `lisa-cloud-00023-lb7` 和新灰度的真实 `/chat` 均返回 SSE error：上游 429「余额不足或无可用资源包」。HTTP 200 的 SSE 握手不等于聊天成功。这是当时已验证的上游服务阻碍。随后经授权使用 Cuddler 已有 Google 凭据，生产切换至 Gemini 2.5 Flash（`lisa-cloud-00027-qal`），聊天、只读工具与免费额度扣费灰度验收已通过，付费余额不变；详见执行记录。
 - 网站灰度 `lisa-web-00015-ron` 的中英文 privacy/support 四个页面均 HTTP 200；浏览器确认英文内容。生产原 revision 为 `lisa-web-00012-c49`，保留回滚目标。
 - App Store 英文 description、promotional text、keywords、support URL 和 subtitle 已通过官方 API 更新。审核密码仍仅保留在 ASC 和本机临时文件。
-- 最终二进制 1.2 (1790520396) 已获 Apple VALID 并绑定到版本，状态为 PREPARE_FOR_SUBMISSION，尚未提交审核。必须补核最新拒审原文、ASC 隐私答案/年龄分级、当前截图和真实沙盒购买。浏览器当前未登录，不能把隐私 manifest 当成已更新商店隐私问卷。
+- 追加原生修复后的二进制 1.2 (1790524731) 已获 Apple VALID 并绑定到版本，替换 1790520396，状态为 PREPARE_FOR_SUBMISSION，尚未提交审核。必须补核最新拒审原文、ASC 隐私答案/年龄分级、当前截图和真实沙盒购买。浏览器当前未登录，不能把隐私 manifest 当成已更新商店隐私问卷。

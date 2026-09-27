@@ -1,6 +1,6 @@
 # Personal assistant 执行与发布记录
 
-日期：2026-09-27。此次调研对象为 Meta Muse；依据公开官方材料，未声称拿到其闭源代码或完成登录后的实机体验。
+日期：2026-09-27；原生修复及构建状态更新至 2026-09-28（北京时间）。此次调研对象为 Meta Muse；依据公开官方材料，未声称拿到其闭源代码或完成登录后的实机体验。
 
 ## 代码与交付
 
@@ -47,8 +47,8 @@ AI 接收方现在是 Google Gemini。经用户明确授权，将 Cuddler 已有
 
 ## App Store 实际状态及阻碍
 
-- App `6784690058` / bundle `ai.meetlisa.main`，iOS **1.2 (1790520396)**。
-- Build `e1cadc89-88f2-4ca6-8bac-ebeb6e9e1efe` 已 VALID，并绑定到版本 `9865f871-42af-4453-894f-63fe41e464ea`。当前 **PREPARE_FOR_SUBMISSION**，没有点击提交审核，也没有宣称已获批。
+- App `6784690058` / bundle `ai.meetlisa.main`，当前选中 iOS **1.2 (1790524731)**。
+- 新 build `24b838e9-c610-46ff-af18-027e9a7add54` 已 VALID，并通过官方 API 绑定到版本 `9865f871-42af-4453-894f-63fe41e464ea`，替换旧 build `1790520396`。读回确认当前 **PREPARE_FOR_SUBMISSION**，releaseType 为 **AFTER_APPROVAL**；没有提交审核，也没有宣称已获批。
 - 官方 API 已更新英文描述、推广语、关键词、副标题、支持链接、隐私链接和审核说明；保留原审核账号/联系方式，未把密码或 token 提交到 Git。
 - 最新已知历史提交为 2026-09-09，四个审核项（app 和三个 IAP）曾被拒绝。浏览器尚未登录，无法核对该次拒审正文；不能把 7/8 月历史拒审原因当成 9 月原因。
 
@@ -69,7 +69,7 @@ AI 接收方现在是 Google Gemini。经用户明确授权，将 Cuddler 已有
 
 ## 原生验收发现与修复
 
-[PR #392](https://github.com/oratis/LISA/pull/392)。最终本地 iPhone/iPad 均为 65 项测试通过；原生界面验收与单测分开记录。
+[PR #392](https://github.com/oratis/LISA/pull/392) 已合并，commit `37bd8684e9b03e58f08c94e7c6950793561b895f`。[CI](https://github.com/oratis/LISA/actions/runs/36331388546) 的 Node 22/24、coverage、audit、浏览器 E2E、iOS 及独立 docs 检查全部通过；未变更的 Mac/网站按路径规则跳过。最终本地 iPhone/iPad 均为 65 项测试通过；原生界面验收与单测分开记录。
 
 1. 首次点击 Cloud 时，布尔 sheet 捕获了初始 Mac 模式。改为按 ConnectionMode item 呈现，实际 iPhone 已确认显示 Cloud 登录表单。
 2. Google 登录配置请求附着在 lazy Form 尾部空 Section，初始页面未发起请求。改为附着在可见账号 Section；按钮显示及交互登录仍待继续验收。
@@ -79,3 +79,7 @@ AI 接收方现在是 Google Gemini。经用户明确授权，将 Cuddler 已有
 5. 原生头像使用带 token 查询参数的 URL，而服务端静态资源处理把查询串视为文件名，图片显示占位图。改为通过 Authorization 请求头加载，凭据不再进入图片 URL；生产相同路径使用请求头认证返回 HTTP 200 / image/png。
 
 以上修复使用有临时签名的模拟器构建；未签名模拟器会缺 Keychain entitlement，不能据此修改正式安全存储。截图已采集原始 onboarding、登录、Home 和 AI 同意页面；后续原生操作被 Mac 锁屏阻止，已请求手动解锁。需要继续完成当前二进制的 iPhone/iPad 截图、Google 按钮与历史恢复验收、StoreKit 沙盒验收，然后再正式送审。
+
+[签名与上传工作流](https://github.com/oratis/LISA/actions/runs/36331498667) 在已验证提交 `a4c7bc4` 上生成 1.2 (1790524731)，archive/export/upload 全部成功。其源码树与 PR #392 合并后的 main 一致。Apple 处理为 VALID 后才绑定新版；没有给测试人员发送邀请。
+
+剩余工作需要已解锁的 Mac 和已登录的 App Store Connect：核对 2026-09-09 拒审正文及隐私/年龄分级；继续原生 Google 登录、历史恢复、头像和 Cloud/Mac 切换验收；采集新版 iPhone/iPad 截图；确认三个仍为 REJECTED 的内购商品能加载并完成真实沙盒到账，处理审核项后正式提交。已有四张原始 iPhone 截图保存于本地，标记为未完成素材，没有上传为最终截图。临时审核登录文件与 UI 操作内存中的密码副本已清理，现有 ASC 审核账号不变。
