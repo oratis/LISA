@@ -26,6 +26,8 @@ enum ConnectionMode: String, CaseIterable, Identifiable {
 
 @MainActor
 final class AppState: ObservableObject {
+    private let profiles: ConnectionProfiles
+    @Published var chatDraft = ""
     @Published var config: ServerConfig
     @Published private(set) var client: LisaClient
     /// User's chosen data plane (My Mac vs LISA Cloud). Persisted; UX-only for now —
@@ -75,10 +77,10 @@ final class AppState: ObservableObject {
 
     init() {
         let d = UserDefaults.standard
-        let host = d.string(forKey: "lisa.host") ?? ""
-        let storedPort = d.integer(forKey: "lisa.port")
-        let scheme = d.string(forKey: "lisa.scheme") ?? "http"
-        var cfg = ServerConfig(host: host, port: storedPort == 0 ? 5757 : storedPort, token: TokenStore.load(), scheme: scheme)
+        let profiles = ConnectionProfiles(defaults: d)
+        self.profiles = profiles
+        let mode = profiles.activeMode
+        var cfg = profiles.load(mode)
         #if DEBUG
         // Dev/screenshot hook: launch pre-paired via `LISA_DEV_PAIR=host|port|token|scheme`
         // (e.g. simctl --setenv) so populated screens can be captured without driving
@@ -93,7 +95,7 @@ final class AppState: ObservableObject {
         #endif
         self.config = cfg
         self.client = LisaClient(config: cfg)
-        self.connectionMode = ConnectionMode(rawValue: d.string(forKey: "lisa.mode") ?? "") ?? .mac
+        self.connectionMode = mode
         self.appearance = d.string(forKey: "lisa.appearance") ?? "nebula"
         let lockOn = d.bool(forKey: "lisa.biometricLock")
         self.biometricLockEnabled = lockOn
@@ -155,8 +157,10 @@ final class AppState: ObservableObject {
     }
 
     func setConnectionMode(_ m: ConnectionMode) {
+        guard m != connectionMode else { return }
+        profiles.activeMode = m
         connectionMode = m
-        UserDefaults.standard.set(m.rawValue, forKey: "lisa.mode")
+        activate(profiles.load(m))
     }
 
     /// One-tap escape from an unreachable LAN pairing: flip to the LISA Cloud data
@@ -170,7 +174,7 @@ final class AppState: ObservableObject {
     /// Paired to a home-Wi-Fi address but currently on cellular → that Mac is
     /// unreachable; surface the R3 banner.
     var lanUnreachableOnCellular: Bool {
-        config.isConfigured && config.isPrivateLAN && onCellular
+        connectionMode == .mac && config.isConfigured && config.isPrivateLAN && onCellular
     }
 
     /// Persist the appearance choice ("nebula" | "calm" | "auto").
@@ -184,29 +188,54 @@ final class AppState: ObservableObject {
         appearance == "calm" ? .light : appearance == "auto" ? nil : .dark
     }
 
-    func update(host: String, port: Int, token: String?, scheme: String = "http") {
-        let cfg = ServerConfig(host: host, port: port, token: token, scheme: scheme)
+    /// Replace the active transport and discard all state belonging to its predecessor.
+    private func activate(_ cfg: ServerConfig) {
+        guard cfg != config else { return }
         config = cfg
         client = LisaClient(config: cfg)
-        let d = UserDefaults.standard
-        d.set(host, forKey: "lisa.host")
-        d.set(port, forKey: "lisa.port")
-        d.set(scheme, forKey: "lisa.scheme")
-        if let token, !token.isEmpty { TokenStore.save(token) } else { TokenStore.delete() }
+        account = nil
+        pendingSession = nil
+        chatDraft = ""
+        pushStatus = ""
+        proactiveAvailable = false
+        SharedStore.writeSnapshot(.empty)
+        WidgetCenter.shared.reloadAllTimelines()
+        LiveActivityController.endAll()
+    }
+
+    @discardableResult
+    func update(host: String, port: Int, token: String?, scheme: String = "http",
+                mode: ConnectionMode? = nil) -> Bool {
+        let target = mode ?? connectionMode
+        let cfg = ServerConfig(host: host, port: port, token: token, scheme: scheme)
+        guard profiles.save(cfg, for: target) else {
+            notify("Couldn't save the connection securely. Unlock your device and try again.", ok: false)
+            return false
+        }
+        profiles.activeMode = target
+        connectionMode = target
+        activate(cfg)
+        return true
+    }
+
+    func compose(_ draft: String) {
+        chatDraft = draft
+        selectedTab = 1
     }
 
     /// Apply a pairing string (from QR / paste). Returns false if unparseable.
-    func applyPairing(_ raw: String) -> Bool {
-        guard let cfg = AppState.parsePairing(raw) else { return false }
-        update(host: cfg.host, port: cfg.port, token: cfg.token, scheme: cfg.scheme)
-        return true
+    func applyPairing(_ raw: String, mode: ConnectionMode = .mac) -> Bool {
+        guard let cfg = AppState.parsePairing(raw), mode != .cloud || cfg.scheme == "https" else { return false }
+        return update(host: cfg.host, port: cfg.port, token: cfg.token, scheme: cfg.scheme, mode: mode)
     }
 
     /// Refresh the home-Widget snapshot independent of the Dispatch tab — it used
     /// to be written only while that tab was on screen, so the widget went stale
     /// whenever the user lived elsewhere (review A5). Called on launch + foreground.
     func refreshWidgetSnapshot() async {
-        guard config.isConfigured, let s = try? await client.sessions() else { return }
+        let expected = config
+        guard connectionMode == .mac, config.isConfigured,
+              let s = try? await client.sessions(), config == expected else { return }
         SharedStore.writeSnapshot(rosterCounts(s))
         WidgetCenter.shared.reloadAllTimelines()
     }
@@ -237,9 +266,10 @@ final class AppState: ObservableObject {
         var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !s.isEmpty else { return nil }
         if !s.contains("://") { s = "https://" + s }
-        guard let comps = URLComponents(string: s), let host = comps.host, !host.isEmpty else { return nil }
-        let scheme = comps.scheme == "http" ? "http" : "https"
-        let port = comps.port ?? (scheme == "https" ? 443 : 5757)
+        guard let comps = URLComponents(string: s), let host = comps.host, !host.isEmpty,
+              comps.scheme == "https", comps.user == nil, comps.password == nil else { return nil }
+        let scheme = "https"
+        let port = comps.port ?? 443
         return ServerConfig(host: host, port: port, token: nil, scheme: scheme)
     }
 
@@ -251,7 +281,8 @@ final class AppState: ObservableObject {
         guard let base = AppState.parseCloudBase(raw) else { throw LisaError.notConfigured }
         let token = try await LisaClient.exchangeAppleToken(base: base, identityToken: identityToken,
                                                             rawNonce: rawNonce)
-        update(host: base.host, port: base.port, token: token, scheme: base.scheme)
+        guard update(host: base.host, port: base.port, token: token, scheme: base.scheme, mode: .cloud)
+        else { throw LisaError.secureStorage }
         await refreshAccount()
     }
 
@@ -272,7 +303,8 @@ final class AppState: ObservableObject {
         guard let base = AppState.parseCloudBase(raw) else { throw LisaError.notConfigured }
         let token = try await LisaClient.emailAuth(base: base, email: email,
                                                   password: password, register: register)
-        update(host: base.host, port: base.port, token: token, scheme: base.scheme)
+        guard update(host: base.host, port: base.port, token: token, scheme: base.scheme, mode: .cloud)
+        else { throw LisaError.secureStorage }
         await refreshAccount()
     }
 
@@ -288,7 +320,8 @@ final class AppState: ObservableObject {
     func connectCloudWithGoogle(baseURL raw: String, idToken: String, nonce: String?) async throws {
         guard let base = AppState.parseCloudBase(raw) else { throw LisaError.notConfigured }
         let token = try await LisaClient.exchangeGoogleToken(base: base, idToken: idToken, nonce: nonce)
-        update(host: base.host, port: base.port, token: token, scheme: base.scheme)
+        guard update(host: base.host, port: base.port, token: token, scheme: base.scheme, mode: .cloud)
+        else { throw LisaError.secureStorage }
         await refreshAccount()
     }
 
@@ -304,7 +337,8 @@ final class AppState: ObservableObject {
     func connectCloudWithCode(baseURL raw: String, email: String, code: String) async throws {
         guard let base = AppState.parseCloudBase(raw) else { throw LisaError.notConfigured }
         let token = try await LisaClient.verifySignInCode(base: base, email: email, code: code)
-        update(host: base.host, port: base.port, token: token, scheme: base.scheme)
+        guard update(host: base.host, port: base.port, token: token, scheme: base.scheme, mode: .cloud)
+        else { throw LisaError.secureStorage }
         await refreshAccount()
     }
 
@@ -312,9 +346,13 @@ final class AppState: ObservableObject {
     /// clears to signed-out shape on a definitive 401).
     func refreshAccount() async {
         guard config.isConfigured else { account = nil; return }
+        let expected = config
         do {
-            account = try await client.authMe()
+            let value = try await client.authMe()
+            guard config == expected else { return }
+            account = value
         } catch LisaError.http(401), LisaError.http(403) {
+            guard config == expected else { return }
             account = LisaClient.AccountMe(signedIn: false)
         } catch {
             // unreachable — keep whatever we knew
@@ -323,8 +361,7 @@ final class AppState: ObservableObject {
 
     /// Drop the account session locally (the token is stateless server-side).
     func signOutCloud() {
-        update(host: config.host, port: config.port, token: nil, scheme: config.scheme)
-        account = nil
+        if update(host: "", port: 443, token: nil, scheme: "https", mode: .cloud) { account = nil }
     }
 
     /// In-app account deletion (App Store 5.1.1(v)): server-side delete, then

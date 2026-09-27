@@ -88,6 +88,7 @@ addenv OPENAI_API_KEY        "${OPENAI_API_KEY:-}"
 # Optional: Sign in with Apple for the iOS app (src/web/cloudAuth.ts). Off unless
 # LISA_CLOUD_APPLE_SIGNIN is set; LISA_CLOUD_APPLE_SUBS is an optional allowlist of
 # Apple `sub`s, LISA_CLOUD_APPLE_AUD overrides the expected bundle id.
+addenv LISA_IAP_SANDBOX_ACCOUNTS "${LISA_IAP_SANDBOX_ACCOUNTS:-}"
 addenv LISA_CLOUD_APPLE_SIGNIN  "${LISA_CLOUD_APPLE_SIGNIN:-}"
 addenv LISA_CLOUD_APPLE_SUBS    "${LISA_CLOUD_APPLE_SUBS:-}"
 addenv LISA_CLOUD_APPLE_AUD     "${LISA_CLOUD_APPLE_AUD:-}"

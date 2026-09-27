@@ -1,5 +1,6 @@
 import SwiftUI
 import StoreKit
+import CryptoKit
 
 /// Consumable credit packs (PLAN_ACCOUNTS_BILLING B5).
 ///
@@ -58,12 +59,31 @@ final class CreditsStore: ObservableObject {
         }
     }
 
+    static func accountToken(uid: String) -> UUID {
+        let hex = SHA256.hash(data: Data("lisa-iap:\(uid)".utf8)).prefix(16)
+            .map { String(format: "%02x", $0) }.joined()
+        let chars = Array(hex)
+        let value = [0..<8, 8..<12, 12..<16, 16..<20, 20..<32]
+            .map { String(chars[$0]) }.joined(separator: "-")
+        return UUID(uuidString: value)!
+    }
+
+    func reconcile(app: AppState) async {
+        guard app.connectionMode == .cloud, app.account?.signedIn == true else { return }
+        for await result in StoreKit.Transaction.unfinished { await credit(result, app: app) }
+    }
+
     func purchase(_ product: Product, app: AppState) async {
+        guard app.connectionMode == .cloud, app.account?.signedIn == true,
+              let uid = app.account?.uid else {
+            message = "Sign in to your LISA Cloud account before purchasing credits."
+            return
+        }
         busy = true
         defer { busy = false }
         message = nil
         do {
-            switch try await product.purchase() {
+            switch try await product.purchase(options: [.appAccountToken(Self.accountToken(uid: uid))]) {
             case .success(let verification):
                 await credit(verification, app: app)
             case .userCancelled:
@@ -81,8 +101,16 @@ final class CreditsStore: ObservableObject {
     /// Server-credit a verified transaction, then finish it.
     private func credit(_ verification: VerificationResult<StoreKit.Transaction>, app: AppState) async {
         guard case .verified(let tx) = verification else { return }
+        // Never forward an App Store receipt to a paired Mac.
+        guard app.connectionMode == .cloud, app.account?.signedIn == true,
+              let uid = app.account?.uid else { return }
+        if let bound = tx.appAccountToken, bound != Self.accountToken(uid: uid) {
+            message = "Sign in to the LISA account used for this purchase to receive its credits."
+            return
+        }
+        let client = app.client
         do {
-            let r = try await app.client.iapSubmit(jws: verification.jwsRepresentation)
+            let r = try await client.iapSubmit(jws: verification.jwsRepresentation)
             if r.ok {
                 await tx.finish()
                 message = "Credits added."

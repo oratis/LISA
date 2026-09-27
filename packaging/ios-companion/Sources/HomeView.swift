@@ -23,16 +23,24 @@ struct HomeView: View {
         NavigationStack {
             Group {
                 if !app.config.isConfigured {
-                    ContentUnavailableView("Not paired", systemImage: "wifi.slash",
-                                           description: Text("Add your Mac in Settings."))
+                    ContentUnavailableView {
+                        Label("Your personal assistant", systemImage: "sparkles")
+                    } description: {
+                        Text("Plan your day, write a first draft, and work through ideas with Lisa. Sign in to the cloud or connect your Mac.")
+                    } actions: {
+                        Button("Get started") { app.presentOnboarding() }
+                            .buttonStyle(.borderedProminent)
+                    }
                 } else {
                     ScrollView {
                         VStack(spacing: Theme.Space.m) {
+                            connectionCard
+                            assistantStarters
                             moodHero
                             if let d = ping?.current_desire, !d.isEmpty { wantsCard(d) }
-                            agentsCard
+                            if app.connectionMode == .mac { agentsCard }
                             if mailAccounts > 0, let m = mailDigest { mailCard(m) }
-                            recapCard
+                            if app.connectionMode == .mac { recapCard }
                             if !suggestions.isEmpty { suggestionsCard }
                             mindCard
                             if let error {
@@ -54,6 +62,30 @@ struct HomeView: View {
     }
 
     // ── cards ──────────────────────────────────────────────────────────
+
+    private var connectionCard: some View {
+        HStack {
+            Label(app.connectionMode.label, systemImage: app.connectionMode == .cloud ? "cloud" : "desktopcomputer")
+                .font(.subheadline.weight(.semibold))
+            Spacer()
+            Button("Manage") { app.selectedTab = 3 }
+        }.consoleCard()
+    }
+
+    private var assistantStarters: some View {
+        cardShell("What can I help with?", "sparkles") {
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(AssistantStarter.all) { starter in
+                    Button { app.compose(starter.prompt) } label: {
+                        Label(starter.title, systemImage: starter.icon)
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    }
+                    .buttonStyle(.plain).foregroundStyle(Theme.accent)
+                    .accessibilityHint("Opens an editable message. Nothing is sent yet.")
+                }
+            }
+        }
+    }
 
     private var moodHero: some View {
         HStack(spacing: Theme.Space.m) {
@@ -216,20 +248,26 @@ struct HomeView: View {
 
     private func load() async {
         guard app.config.isConfigured else { return }
-        async let pingResult = app.client.islandPing()
-        async let recapResult = app.client.recap(sinceMinutes: window)
-        async let advisorResult = app.client.advisorLatest()
-        async let mailDigestResult = app.client.mailDigest()
-        async let mailAccountsResult = app.client.mailAccounts()
-        async let sessionsResult = app.client.sessions()
-        let p = try? await pingResult
+        let expected = app.config
+        let client = app.client
+        let p = try? await client.islandPing()
+        guard !Task.isCancelled, app.config == expected else { return }
         ping = p
-        recap = (try? await recapResult)?.text ?? ""
-        suggestions = (try? await advisorResult)?.suggestions ?? []
-        mailDigest = try? await mailDigestResult
-        mailAccounts = (try? await mailAccountsResult)?.accounts.count ?? 0
-        counts = rosterCounts((try? await sessionsResult) ?? [])
-        error = p == nil ? "Couldn't reach Lisa." : nil
+        error = p == nil ? "Couldn't reach Lisa. Pull to retry or check Settings." : nil
+        guard app.connectionMode == .mac else { return }
+        async let recapResult = client.recap(sinceMinutes: window)
+        async let advisorResult = client.advisorLatest()
+        async let mailDigestResult = client.mailDigest()
+        async let mailAccountsResult = client.mailAccounts()
+        async let sessionsResult = client.sessions()
+        let values = await (try? recapResult, try? advisorResult, try? mailDigestResult,
+                            try? mailAccountsResult, try? sessionsResult)
+        guard !Task.isCancelled, app.config == expected else { return }
+        recap = values.0?.text ?? ""
+        suggestions = values.1?.suggestions ?? []
+        mailDigest = values.2
+        mailAccounts = values.3?.accounts.count ?? 0
+        counts = rosterCounts(values.4 ?? [])
     }
 
     private func dismiss(_ s: AdvisorSuggestion) {

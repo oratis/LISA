@@ -184,6 +184,12 @@ struct ChatView: View {
     @StateObject private var model = ChatModel()
     @State private var input = ""
     @State private var showPaywall = false
+    @State private var consentRecipients: [String] = []
+    @State private var acceptedRecipients: [String] = []
+    @State private var pendingText = ""
+    @State private var showAIConsent = false
+    @State private var checkingConsent = false
+    @State private var loadedConfig: ServerConfig?
     private static let bottomID = "chat-bottom"
 
     var body: some View {
@@ -206,10 +212,45 @@ struct ChatView: View {
                     .accessibilityLabel("Load earlier messages")
                 }
             }
-            .task(id: app.config) { model.startMood(app.client); await model.loadHistory(app.client) }
-            .onDisappear { model.stopMood() }
+            .task(id: app.config) {
+                loadedConfig = app.config
+                model.startMood(app.client)
+                await model.loadHistory(app.client)
+            }
+            .onDisappear {
+                model.stopMood()
+                if loadedConfig != app.config { model.cancel() }
+            }
+            .onAppear { consumeDraft() }
+            .onChange(of: app.chatDraft) { _, _ in consumeDraft() }
             .sheet(isPresented: $showPaywall) { PaywallSheet().environmentObject(app) }
+            .sheet(isPresented: $showAIConsent) {
+                NavigationStack {
+                    List {
+                        Section("Who receives your data") {
+                            Text("Your message, relevant conversation history, assistant memory and tool results are processed by your connected LISA server and these configured AI services:")
+                            ForEach(consentRecipients, id: \.self) { Text($0) }
+                        }
+                        Section("Your choice") {
+                            Text("This is needed to generate AI responses. AI can make mistakes. Only send information you want these services to process. You can cancel and keep using Settings without sending a message.")
+                            Link("Privacy policy", destination: URL(string: "https://meetlisa.ai/privacy")!)
+                            Button("Allow and send this message") {
+                                acceptedRecipients = consentRecipients
+                                showAIConsent = false
+                                deliver(pendingText)
+                            }.buttonStyle(.borderedProminent)
+                            Button("Cancel", role: .cancel) { showAIConsent = false }
+                        }
+                    }.navigationTitle("AI data sharing")
+                }
+            }
         }
+    }
+
+    private func consumeDraft() {
+        guard !app.chatDraft.isEmpty else { return }
+        input = app.chatDraft
+        app.chatDraft = ""
     }
 
     /// Compact inline header: small mood portrait + "Lisa · <mood>" (redesign —
@@ -249,7 +290,7 @@ struct ChatView: View {
         .accessibilityHidden(true)   // chatHeader's combined label already says the mood
     }
 
-    private let quickCommands = ["What are the agents doing?", "Summarize today", "Any blockers?"]
+    private let quickCommands = ["Help me plan my day", "Help me write a draft", "Break down a goal"]
 
     /// Tappable quick-command chips above the composer — there's always a next move.
     @ViewBuilder private var quickChips: some View {
@@ -257,14 +298,14 @@ struct ChatView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: Theme.Space.s) {
                     ForEach(quickCommands, id: \.self) { cmd in
-                        Button { model.send(cmd, client: app.client) } label: {
+                        Button { input = cmd } label: {
                             Text(cmd).font(.caption)
                                 .padding(.horizontal, 12).padding(.vertical, 7)
                                 .background(Theme.accent.opacity(0.14), in: Capsule())
                                 .foregroundStyle(Theme.accent)
                         }
                         .buttonStyle(.plain)
-                        .accessibilityHint("Sends this as a message")
+                        .accessibilityHint("Adds an editable draft. Tap Send when ready.")
                     }
                 }
                 .padding(.horizontal).padding(.vertical, Theme.Space.s)
@@ -336,7 +377,7 @@ struct ChatView: View {
     private func retryAction(for msg: ChatMessage) -> (() -> Void)? {
         guard !model.sending, msg.role == .lisa, msg.isRetryable,
               msg.id == model.messages.last?.id else { return nil }
-        return { model.resend(client: app.client) }
+        return { requestSend(model.messages.last(where: { $0.role == .user })?.text ?? "") }
     }
 
     private func scrollToBottom(_ proxy: ScrollViewProxy) {
@@ -364,14 +405,35 @@ struct ChatView: View {
                 .frame(width: 44, height: 44)
                 .accessibilityLabel("Send message")
                 .accessibilityHint("Sends what you typed to Lisa")
-                .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || checkingConsent || !app.config.isConfigured)
             }
         }
         .padding()
     }
 
     private func sendCurrent() {
-        let text = input
+        requestSend(input)
+    }
+
+    private func requestSend(_ text: String) {
+        guard !checkingConsent, !model.sending, !text.trimmed.isEmpty else { return }
+        checkingConsent = true
+        let expected = app.config
+        Task { @MainActor in
+            defer { checkingConsent = false }
+            let disclosure = try? await LisaClient.authConfig(base: expected).dataProcessing
+            guard app.config == expected else { return }
+            guard let disclosure, disclosure.version == 1, !disclosure.recipients.isEmpty else {
+                app.notify("Couldn't load AI provider information. Retry, or update your LISA server before sending.", ok: false)
+                return
+            }
+            consentRecipients = disclosure.recipients
+            if acceptedRecipients == consentRecipients { deliver(text) }
+            else { pendingText = text; showAIConsent = true }
+        }
+    }
+
+    private func deliver(_ text: String) {
         input = ""
         model.send(text, client: app.client)
     }

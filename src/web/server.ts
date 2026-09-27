@@ -15,6 +15,7 @@ import { planUsage, formatUsage } from "../model/plan-usage.js";
 import { runIdleOnce } from "../idle/runner.js";
 import { getIdleWatcher } from "../idle/watcher.js";
 import { moodBus } from "../mood-bus.js";
+import { aiRecipients } from "./ai-disclosure.js";
 import { providerForModel } from "../providers/registry.js";
 import { buildSystemPromptSnapshot, getPromptFingerprint } from "../prompt.js";
 import { readActiveWebSession, writeActiveWebSession } from "../sessions/active.js";
@@ -1498,6 +1499,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       res.end(
         JSON.stringify({
           accounts: cloud && !!sessionSecret,
+          dataProcessing: { version: 1, recipients: aiRecipients(opts.model) },
           appleWeb:
             cloud && cfg.enabled && !!cfg.webServicesId ? { servicesId: cfg.webServicesId } : null,
           // Client ids are public by design (they identify the app, they don't

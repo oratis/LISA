@@ -1,14 +1,14 @@
 ---
 import Base from "../../layouts/Base.astro";
 ---
-<Base title="隐私" lang="zh-CN" description="Lisa 隐私政策——本地优先,不向我们的服务器收集任何数据。">
+<Base title="隐私" lang="zh-CN" description="LISA 云与本地 Mac 模式的账号、对话及 AI 数据处理说明。">
   <header class="page-head">
-    <p class="eyebrow"><span class="rule"></span> 隐私 <b>· 更新于 2026-06-26</b></p>
+    <p class="eyebrow"><span class="rule"></span> 隐私 <b>· 更新于 2026-09-27</b></p>
     <h1>隐私政策</h1>
     <p class="lede">
-      Lisa 是<strong>本地优先</strong>的。两个客户端 —— <strong>Lisa</strong>(macOS)和
-      <strong>Lisa Pocket</strong>(iOS)—— 连接的是<em>你自己</em>运行或选择的 Lisa 后端。
-      在正常使用下,我们不运营任何接收你个人数据的服务器,也不会出售、出租或分享任何数据。
+      LISA 是个人 AI 助手，支持由我们运营的 <strong>LISA Cloud</strong> 与
+      <strong>自己的 Mac</strong> 两种模式。云模式存储和处理账号及助手数据；
+      本地模式使用你选择的后端及 AI 提供商。我们不出售个人数据，不使用广告追踪 SDK。
     </p>
   </header>
 
@@ -17,9 +17,9 @@ import Base from "../../layouts/Base.astro";
     <p class="big">本地模式:对我们,什么都不收集。</p>
     <p>
       Lisa Pocket 与 Lisa 不含任何分析统计、广告标识或第三方追踪 SDK。
-      默认(本地)模式下不存在由 Lisa 运营的账户体系。若你自愿开通
+      本地模式不要求 LISA Cloud 账号。若你自愿开通
       <strong>LISA Cloud 账号</strong>,我们持有的仅限下文列出的内容 ——
-      你的邮箱、登录标识与你的 Lisa 数据 —— 且一键即可全部删除。
+      你的邮箱、登录标识与你的 Lisa 数据 —— 可以在应用内申请删除账号。
     </p>
   </div>
 
@@ -29,7 +29,7 @@ import Base from "../../layouts/Base.astro";
       <ul>
         <li>
           <strong>连接设置</strong> —— 你后端的地址和一个设备令牌存放在你的设备上
-          (iOS 钥匙串 / 应用偏好),用于重新连接,绝不会发送给我们。
+          (iOS 钥匙串 / 应用偏好)，用于重新连接。令牌只发送给它授权的后端；云模式下该后端为 LISA Cloud。
         </li>
         <li>
           <strong>你的对话与 Lisa 的记忆(“灵魂”)</strong> 存放在你连接的后端上 ——
@@ -42,9 +42,10 @@ import Base from "../../layouts/Base.astro";
     <section class="pol">
       <p class="eyebrow"><b>你的后端与大模型提供商</b></p>
       <p>
-        当你聊天时,消息由配置在<em>你</em>后端上的大语言模型提供商
-        (如 Anthropic、智谱/GLM、OpenAI、Google)用<em>你</em>的 API key 处理,
-        受该提供商的隐私政策约束。我们不拦截、不中转。
+        消息及相关对话历史、记忆和工具结果会交给所配置的 AI 服务商处理，例如
+        Anthropic、智谱/GLM、OpenAI 或 Google。云模式通过 LISA Cloud 转发，
+        Mac 模式遵循你的提供商配置。iOS 会在发送聊天消息前列出所配置的接收方并请求同意。
+        服务商处理受其政策约束。本地模型可以在 Mac 上推理，但“连接 Mac”本身不表示数据不出设备。
       </p>
     </section>
 
@@ -69,10 +70,10 @@ import Base from "../../layouts/Base.astro";
         </li>
         <li>
           <strong>删除</strong> —— 应用内"删除账号"会移除账号记录并<strong>完整抹除</strong>
-          账号家目录,所有会话即刻失效。没有软删除,没有保留期。
+          账号家目录，所有会话即刻失效。用于防止重复充值及退款的支付交易记录独立于对话存储。服务商记录与基础设施备份遵循各自的保留政策；数据请求请联系我们。
         </li>
         <li>
-          公开的审核/演示实例仍是<strong>共享且限流</strong>的 —— 请勿在其中输入敏感信息。
+          App Review 演示账号与审核员共享，请勿放入个人信息。普通云账号的助手数据按账号分开。
         </li>
       </ul>
     </section>

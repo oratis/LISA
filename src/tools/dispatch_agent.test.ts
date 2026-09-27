@@ -107,8 +107,16 @@ describe("launchAgent captures the exit status (F4)", () => {
 
   test("a missing binary is still reported as a launch error, not an exit", async () => {
     const { launchAgent } = await import("./dispatch_agent.js");
-    const res = await launchAgent("codex", "x", TMP); // no fake `codex` on PATH
-    assert.match(res.error ?? "", /not found on PATH|Failed to launch/);
-    assert.equal(res.id, undefined);
+    // Developer machines may have the real Codex installed. Never execute it
+    // (or depend on its absence) when testing an ENOENT launch.
+    const previousPath = process.env.PATH;
+    process.env.PATH = BIN;
+    try {
+      const res = await launchAgent("codex", "x", TMP);
+      assert.match(res.error ?? "", /not found on PATH|Failed to launch/);
+      assert.equal(res.id, undefined);
+    } finally {
+      process.env.PATH = previousPath;
+    }
   });
 });

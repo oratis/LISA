@@ -4,6 +4,123 @@ import XCTest
 /// Logic tests for the pure helpers — no network, no Keychain, no app launch.
 final class LisaPocketTests: XCTestCase {
 
+    @MainActor
+    func testPurchaseAccountBindingMatchesServer() {
+        XCTAssertEqual(CreditsStore.accountToken(uid: "buyer-a").uuidString.lowercased(), "516122a1-3bf8-303f-9fbf-f13a64d42582")
+        XCTAssertNotEqual(CreditsStore.accountToken(uid: "buyer-a"), CreditsStore.accountToken(uid: "buyer-b"))
+    }
+
+    func testCloudLoginRejectsInsecureAndCredentialBearingURLs() {
+        XCTAssertNil(AppState.parseCloudBase("http://cloud.example"))
+        XCTAssertNil(AppState.parseCloudBase("ftp://cloud.example"))
+        XCTAssertNil(AppState.parseCloudBase("https://user:secret@cloud.example"))
+    }
+
+    func testConnectionProfilesPreserveBothModesAcrossRestart() {
+        let suite = "lisa-profiles-test-" + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var tokens: [String: String] = [:]
+        let make = { ConnectionProfiles(defaults: defaults,
+            readToken: { tokens[$0] }, writeToken: { tokens[$0] = $1 }) }
+        let profiles = make()
+        XCTAssertEqual(profiles.activeMode, .cloud)
+        let mac = ServerConfig(host: "192.168.1.2", port: 5757, token: "mac-secret")
+        let cloud = ServerConfig(host: "cloud.meetlisa.ai", port: 443, token: "cloud-secret", scheme: "https")
+        profiles.save(mac, for: .mac)
+        profiles.save(cloud, for: .cloud)
+        profiles.activeMode = .mac
+        let reopened = make()
+        XCTAssertEqual(reopened.activeMode, .mac)
+        XCTAssertEqual(reopened.load(.mac), mac)
+        XCTAssertEqual(reopened.load(.cloud), cloud)
+        XCTAssertFalse(defaults.dictionaryRepresentation().values.contains { ($0 as? String)?.contains("secret") == true })
+        var signedOut = cloud
+        signedOut.token = nil
+        reopened.save(signedOut, for: .cloud)
+        XCTAssertNil(reopened.load(.cloud).token)
+        XCTAssertEqual(reopened.load(.mac), mac)
+    }
+
+    func testLegacyConnectionMigrationUsesActualHostAndRunsOnlyOnce() {
+        let suite = "lisa-migration-test-" + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set("cloud", forKey: "lisa.mode") // old picker didn't change transport
+        defaults.set("192.168.1.9", forKey: "lisa.host")
+        var tokens = ["default": "legacy-secret"]
+        let make = { ConnectionProfiles(defaults: defaults,
+            readToken: { tokens[$0] }, writeToken: { tokens[$0] = $1 }) }
+        let profiles = make()
+        XCTAssertEqual(profiles.activeMode, .mac)
+        XCTAssertEqual(profiles.load(.mac).token, "legacy-secret")
+        XCTAssertEqual(profiles.load(.mac).port, 5757)
+        XCTAssertNil(profiles.load(.cloud).token)
+        profiles.save(ServerConfig(host: "", port: 5757, token: nil), for: .mac)
+        XCTAssertFalse(make().load(.mac).isConfigured)
+        XCTAssertNil(tokens["default"])
+    }
+
+    func testFailedKeychainMigrationRetainsLegacyConnectionForRetry() {
+        let suite = "lisa-keychain-failure-" + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set("192.168.1.9", forKey: "lisa.host")
+        let profiles = ConnectionProfiles(defaults: defaults,
+            readToken: { $0 == "default" ? "legacy" : nil }, writeToken: { _, _ in })
+        XCTAssertFalse(defaults.bool(forKey: "lisa.profiles.migrated"))
+        XCTAssertEqual(profiles.load(.mac).host, "192.168.1.9")
+        XCTAssertEqual(profiles.load(.mac).token, "legacy")
+        XCTAssertFalse(profiles.save(ServerConfig(host: "cloud.example", port: 443, token: "new"), for: .cloud))
+        XCTAssertFalse(profiles.load(.cloud).isConfigured)
+    }
+
+    func testLegacyCloudMigrationKeepsHTTPSAndCloudCredential() {
+        let suite = "lisa-cloud-migration-test-" + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set("mac", forKey: "lisa.mode")
+        defaults.set("cloud.meetlisa.ai", forKey: "lisa.host")
+        defaults.set("https", forKey: "lisa.scheme")
+        var tokens = ["default": "cloud-secret"]
+        let profiles = ConnectionProfiles(defaults: defaults,
+            readToken: { tokens[$0] }, writeToken: { tokens[$0] = $1 })
+        XCTAssertEqual(profiles.activeMode, .cloud)
+        XCTAssertEqual(profiles.load(.cloud).port, 443)
+        XCTAssertEqual(profiles.load(.cloud).token, "cloud-secret")
+        XCTAssertFalse(profiles.load(.mac).isConfigured)
+    }
+
+    func testFailedMigrationCannotFollowModeSwitchOrEraseOtherConnection() {
+        let suite = "lisa-migration-switch-" + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set("mac.example", forKey: "lisa.host")
+        defaults.set("mac", forKey: "lisa.mode")
+        var tokens = ["default": "legacy"]
+        var canWriteMac = false
+        let make = { ConnectionProfiles(defaults: defaults,
+            readToken: { tokens[$0] }, writeToken: { account, token in
+                if account != "mac" || canWriteMac { tokens[account] = token }
+            }) }
+        let profiles = make()
+        profiles.activeMode = .cloud
+        XCTAssertFalse(profiles.load(.cloud).isConfigured)
+        XCTAssertEqual(profiles.load(.mac).token, "legacy")
+        XCTAssertTrue(profiles.save(ServerConfig(host: "", port: 443, token: nil, scheme: "https"), for: .cloud))
+        XCTAssertEqual(tokens["default"], "legacy")
+        XCTAssertFalse(defaults.bool(forKey: "lisa.profiles.migrated"))
+        let retry = make()
+        XCTAssertEqual(retry.activeMode, .cloud)
+        XCTAssertFalse(retry.load(.cloud).isConfigured)
+        XCTAssertEqual(retry.load(.mac).host, "mac.example")
+        canWriteMac = true
+        let recovered = make()
+        XCTAssertTrue(defaults.bool(forKey: "lisa.profiles.migrated"))
+        XCTAssertEqual(recovered.activeMode, .cloud)
+        XCTAssertEqual(recovered.load(.mac).token, "legacy")
+    }
+
     private func session(_ state: String, id: String = "s", agent: String = "claude-code",
                          pending: String? = nil, mtime: String? = nil) -> AgentSession {
         let activity = pending.map {

@@ -1,6 +1,6 @@
 import Foundation
 
-struct ServerConfig: Equatable {
+struct ServerConfig: Hashable {
     var host: String          // "192.168.3.162", "mac.tailnet.ts.net", or "lisa-cloud-xxx.run.app"
     var port: Int
     var token: String?        // device or global token (nil only for loopback, unused from a phone)
@@ -29,13 +29,15 @@ struct ServerConfig: Equatable {
 
 enum LisaError: LocalizedError {
     case notConfigured
+    case secureStorage
     case http(Int)
     case decode
     case unsupportedAPIVersion(Int)
 
     var errorDescription: String? {
         switch self {
-        case .notConfigured: return "Not paired yet — add your Mac in Settings."
+        case .secureStorage: return "Couldn't save your connection in Keychain. Unlock your device and try again."
+        case .notConfigured: return "Connect to LISA Cloud or pair your Mac in Settings."
         case .http(403):
             // Hosted Lisa denies the machine-level routes (push, dispatch,
             // mail, consent, devices — CLOUD_DENIED_ROUTE_PREFIXES in
@@ -143,8 +145,13 @@ final class LisaClient {
             let webClientId: String?
             let iosClientId: String?
         }
+        struct DataProcessing: Decodable, Equatable {
+            let version: Int
+            let recipients: [String]
+        }
         let accounts: Bool?
         let google: Google?
+        let dataProcessing: DataProcessing?
     }
 
     static func authConfig(base: ServerConfig, session: URLSession = .shared) async throws -> AuthConfig {

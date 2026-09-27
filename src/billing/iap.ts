@@ -36,6 +36,7 @@ export class IapError extends Error {
       | "bad_chain"
       | "bad_signature"
       | "wrong_bundle"
+      | "wrong_account"
       | "unknown_product"
       | "duplicate_transaction"
       | "root_unavailable"
@@ -265,6 +266,13 @@ export interface AppleTransaction {
   /** "Production" | "Sandbox" (Xcode/TestFlight). */
   environment?: string;
   purchaseDate?: number;
+  appAccountToken?: string;
+}
+
+/** Stable opaque StoreKit account binding; shared with the iOS client. */
+export function iapAccountToken(uid: string): string {
+  const hex = crypto.createHash("sha256").update(`lisa-iap:${uid}`).digest("hex").slice(0, 32);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 /**
@@ -336,6 +344,8 @@ export function validateTransaction(payload: Record<string, unknown>): AppleTran
     bundleId: String(payload.bundleId ?? ""),
     environment: typeof payload.environment === "string" ? payload.environment : undefined,
     purchaseDate: typeof payload.purchaseDate === "number" ? payload.purchaseDate : undefined,
+    appAccountToken:
+      typeof payload.appAccountToken === "string" ? payload.appAccountToken : undefined,
   };
   if (!tx.transactionId) throw new IapError("malformed_jws");
   if (tx.bundleId !== EXPECTED_BUNDLE) throw new IapError("wrong_bundle");
@@ -642,6 +652,12 @@ export async function creditTransaction(
   now: number = Date.now(),
   opts: { sandbox?: boolean } = {},
 ): Promise<number> {
+  if (
+    tx.appAccountToken !== undefined &&
+    tx.appAccountToken.toLowerCase() !== iapAccountToken(uid)
+  ) {
+    throw new IapError("wrong_account");
+  }
   const faceValue = PRODUCTS[tx.productId]!;
   // `sandbox` is passed in, never re-derived here: the caller is the only place
   // that knows this transaction reached crediting through the allowlist
