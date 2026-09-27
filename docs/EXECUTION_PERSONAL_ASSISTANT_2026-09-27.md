@@ -18,7 +18,7 @@
 | 类型与契约 | 服务端、客户端 typecheck，生成 API contract 检查和 build 通过 |
 | Lint / 格式 | 0 errors；69 条原有 warnings；format:check 与 diff --check 通过 |
 | 依赖与打包 | 根项目生产依赖 audit 为 0；npm pack 预检 1211 文件，未发现密钥/证书文件；网站安装报告的 10 个开发依赖告警未在此轮消除 |
-| iPhone | iPhone 17 / iOS 26.4 模拟器，64 XCTest，0 failures（含 SSE 和历史解码） |
+| iPhone | iPhone 17 / iOS 26.4 模拟器，65 XCTest，0 failures（含 SSE、历史解码及图片请求） |
 | iPad | iPad Air 11-inch (M4) / iOS 26.5 模拟器，62 XCTest，0 failures；追加历史解码后的构建成功，但锁屏后 test runner preflight 被系统拒绝 |
 | PR CI | [36327123042](https://github.com/oratis/LISA/actions/runs/36327123042)：Node 22/24、覆盖率、audit、浏览器 E2E、网站、iOS 均通过 |
 | 扩展 CI | [36327302675](https://github.com/oratis/LISA/actions/runs/36327302675)：相同提交全部平台通过，含 Mac 编译 |
@@ -73,5 +73,7 @@ AI 接收方现在是 Google Gemini。经用户明确授权，将 Cuddler 已有
 2. Google 登录配置请求附着在 lazy Form 尾部空 Section，初始页面未发起请求。改为附着在可见账号 Section；按钮显示及交互登录仍待继续验收。
 3. `URLSession.AsyncBytes.lines` 丢弃空行，而 SSE 用空行分隔事件；服务端有回复时原生 App 仍显示没有回复。改为按字节增量解析，覆盖 LF、CRLF、CR、多行 data、中文 UTF-8、心跳及未完成帧。修复后 iPhone 真实云聊天返回了完整的两句邀请文案。
 4. 生产历史 API 返回字符串或 Anthropic content blocks，旧 iOS 只接受字符串，解码失败后整个历史页为空。新增兼容解码，显示 text 和工具名称，跳过工具结果与 thinking 等内部块。生产 API 只检查了消息结构，没有把聊天内容或凭据提交到仓库。
+
+5. 原生头像使用带 token 查询参数的 URL，而服务端静态资源处理把查询串视为文件名，图片显示占位图。改为通过 Authorization 请求头加载，凭据不再进入图片 URL；生产相同路径使用请求头认证返回 HTTP 200 / image/png。
 
 以上修复使用有临时签名的模拟器构建；未签名模拟器会缺 Keychain entitlement，不能据此修改正式安全存储。截图已采集原始 onboarding、登录、Home 和 AI 同意页面；后续原生操作被 Mac 锁屏阻止，已请求手动解锁。需要继续完成当前二进制的 iPhone/iPad 截图、Google 按钮与历史恢复验收、StoreKit 沙盒验收，然后再正式送审。

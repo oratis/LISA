@@ -4,6 +4,14 @@ import XCTest
 /// Logic tests for the pure helpers — no network, no Keychain, no app launch.
 final class LisaPocketTests: XCTestCase {
 
+    func testPortraitRequestAuthenticatesWithoutCredentialInURL() throws {
+        let client = LisaClient(config: ServerConfig(host: "cloud.example", port: 443, token: "private-token", scheme: "https"))
+        let request = try client.makeRequest("/assets/lisa/neutral.png", timeout: 15)
+        XCTAssertEqual(request.url?.absoluteString, "https://cloud.example/assets/lisa/neutral.png")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer private-token")
+        XCTAssertEqual(request.timeoutInterval, 15)
+    }
+
     func testHistoryAcceptsLegacyTextAndStoredContentBlocks() throws {
         let source = #"{"messages":[{"role":"user","content":"Hello"},{"role":"assistant","content":[{"type":"text","text":"First"},{"type":"tool_use","name":"kb_list","input":{}},{"type":"text","text":"Second"}]},{"role":"user","content":[{"type":"tool_result","content":"Internal output"}]}],"hasMore":true,"page":2}"#
         let history = try JSONDecoder().decode(HistoryResponse.self, from: Data(source.utf8))

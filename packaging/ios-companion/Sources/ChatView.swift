@@ -275,18 +275,7 @@ struct ChatView: View {
     private func moodAvatar(_ size: CGFloat) -> some View {
         let slug = model.mood.isEmpty ? "neutral" : model.mood
         let safe = slug.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? slug
-        return Group {
-            if let url = app.client.assetURL("/assets/lisa/\(safe).png") {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let img): img.resizable().scaledToFit()
-                    default: Image(systemName: "person.crop.circle.fill").resizable().scaledToFit().foregroundStyle(Theme.secondary)
-                    }
-                }
-            } else {
-                Image(systemName: "person.crop.circle.fill").resizable().scaledToFit().foregroundStyle(Theme.secondary)
-            }
-        }
+        return ServerPortrait(client: app.client, path: "/assets/lisa/\(safe).png")
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .accessibilityHidden(true)   // chatHeader's combined label already says the mood
