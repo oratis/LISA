@@ -6,6 +6,7 @@
 
 - [调研及计划 PR #387](https://github.com/oratis/LISA/pull/387)：已合并。见 [Muse 调研](RESEARCH_MUSE_2026-09-27.md) 和 [功能审查/执行计划](PLAN_PERSONAL_ASSISTANT_2026-09-27.md)。
 - [实施 PR #388](https://github.com/oratis/LISA/pull/388)：全部 PR 检查通过后合并。提交 `f4022e07d6650e09cab2a9877bdce049e6799803`，tag `v0.27.0`。
+- [模型恢复 PR #391](https://github.com/oratis/LISA/pull/391)：接入经授权复用的 Google 凭据，补齐 Gemini 计费、免费额度和工具调用。
 - 云登录优先的 onboarding、个人助手任务草稿入口、独立 Cloud/Mac Keychain 配置、旧配置迁移与失败恢复、切换清理私有状态、发送前 AI 接收方同意、购买账号绑定和隐私/支持页面已实现。
 - 云与 Mac 仍是独立实例，不自动同步历史或记忆；云端不开放主机级 agents、邮件、推送接口。通用持久任务、云连接器和跨设备同步仍是计划中的后续工程，未宣称实现。
 
@@ -13,7 +14,7 @@
 
 | 检查 | 结果 |
 | --- | --- |
-| 后端全量测试 | 2053 tests，2052 pass / 0 fail / 1 skip |
+| 后端全量测试 | 2058 tests，2057 pass / 0 fail / 1 skip（含模型恢复回归） |
 | 类型与契约 | 服务端、客户端 typecheck，生成 API contract 检查和 build 通过 |
 | Lint / 格式 | 0 errors；69 条原有 warnings；format:check 与 diff --check 通过 |
 | 依赖与打包 | 根项目生产依赖 audit 为 0；npm pack 预检 1211 文件，未发现密钥/证书文件；网站安装报告的 10 个开发依赖告警未在此轮消除 |
@@ -31,12 +32,16 @@
 
 | 服务 | 当前 100% revision | 原 revision（回滚目标） |
 | --- | --- | --- |
-| Cloud | `lisa-cloud-00024-ruh` | `lisa-cloud-00023-lb7` |
+| Cloud | `lisa-cloud-00027-qal` | `lisa-cloud-00024-ruh` |
 | 网站 | `lisa-web-00015-ron` | `lisa-web-00012-c49` |
 
-后端镜像 digest：`sha256:7b97c7d3cf36ed3e67f9c0352e86755e2ffa18f3a7ac3fc2f8b4ad95dfdeefad`。镜像构建后追加的源代码变更只涉及 iOS 和文档，服务端内容一致。保留原环境、持久卷和单实例限制，增补只针对审核账户的 sandbox IAP allowlist，仍验证 Apple 签名并限制额度。
+后端镜像 digest：`sha256:c96722cacc0393d478954a67a183ef60cbebf86a5ff09b62614838e029419899`，源代码提交 `ea2df31`；[Cloud Build](https://console.cloud.google.com/cloud-build/builds/86987513-a347-477b-8bf5-86606da5e8d3?project=oratis-491316) 成功。后续只追加文档。保留持久卷和单实例限制，继续使用仅针对审核账户的 sandbox IAP allowlist，仍验证 Apple 签名并限制额度。
 
-发布后 `/health`、`/api/auth/config`、审核账户密码登录复验通过；AI 接收方为 Zhipu (GLM)。[英文支持](https://meetlisa.ai/support/)、[英文隐私](https://meetlisa.ai/privacy/)、[中文支持](https://meetlisa.ai/zh-CN/support/)、[中文隐私](https://meetlisa.ai/zh-CN/privacy/) 均 HTTP 200，英文页面已浏览器检查。
+AI 接收方现在是 Google Gemini。经用户明确授权，将 Cuddler 已有 Google AI 凭据存入 LISA 的 Secret Manager `lisa-gemini-api-key`，revision 固定引用 version 1；仅为 LISA 现有运行服务账号授予该 secret 的访问权。Cuddler 项目未修改。两边共享上游额度，轮换时需分别更新各自的 secret。仓库、日志和文档不包含密钥值。
+
+灰度及切流后的生产验证：审核账号登录、账户、额度和 `/api/auth/config` 均通过；真实 SSE 聊天与 `kb_list` 的调用/结果/回答流程均正常结束，无 error；追加计算测试返回 43，写作测试返回完整句子。免费额度产生扣费，审核账号付费余额保持不变。零付费余额的新账号可用性另由额度回归测试覆盖，没有把它写成实际新账号端到端验证。App 使用的 `https://cloud.meetlisa.ai` 域名也完成登录、计算和写作复验。正式流量 100% 指向 `lisa-cloud-00027-qal`，临时灰度 tag 已移除；旧 revision 保留用于回滚，但回滚会恢复尚无额度的 GLM 配置。
+
+[英文支持](https://meetlisa.ai/support/)、[英文隐私](https://meetlisa.ai/privacy/)、[中文支持](https://meetlisa.ai/zh-CN/support/)、[中文隐私](https://meetlisa.ai/zh-CN/privacy/) 在前轮部署后均 HTTP 200，英文页面已浏览器检查。此次未改网站和 iOS 二进制。
 
 回滚使用 Cloud Run update-traffic 指向表中原 revision；不用删除用户持久卷或覆盖历史版本。npm 版本不可原地覆盖，后续修复需要递增版本。
 
@@ -47,7 +52,9 @@
 - 官方 API 已更新英文描述、推广语、关键词、副标题、支持链接、隐私链接和审核说明；保留原审核账号/联系方式，未把密码或 token 提交到 Git。
 - 最新已知历史提交为 2026-09-09，四个审核项（app 和三个 IAP）曾被拒绝。浏览器尚未登录，无法核对该次拒审正文；不能把 7/8 月历史拒审原因当成 9 月原因。
 
-**真实阻碍：模型服务不可用。** 原生产和灰度真实对话均返回 SSE error：上游 429「余额不足或无可用资源包」。HTTP 200 只是 SSE 握手，不能据此认定聊天成功。新增代码已发布，但没有修复运营方 GLM 账号额度。需要为现有账号恢复额度，或提供经授权的可用模型服务配置，再测试真实对话。购买 LISA credits 不能解决运营方模型账号的额度问题。
+**模型服务阻碍已解除。** 早先 GLM 的真实对话返回上游 429「余额不足或无可用资源包」，而 Cuddler 的 GLM 凭据与它相同。Cuddler 的 Google 凭据实际可用，生产已切换至 Gemini 2.5 Flash。首次工具灰度又暴露 AUTO 模式的 `MALFORMED_FUNCTION_CALL` / 空回复，改用官方 VALIDATED 模式后工具往返通过；无效调用现在明确报错，不伪装成成功。HTTP 200 的 SSE 握手仍不作为聊天成功的充分证据。
+
+模型恢复代码的 [CI](https://github.com/oratis/LISA/actions/runs/36329518601) 全部适用检查通过：Node 22/24、coverage、audit、浏览器 E2E；未改动的 iOS/Mac/网站按路径规则跳过。
 
 **剩余送审工作：** 获得已登录 ASC 会话，核对最新拒审原文；核准 App Privacy 和年龄分级答案，替换为实际新版 iPhone/iPad 截图；验证 StoreKit 商品加载及沙盒到账；完成这些后解决待处理审核项并提交。隐私 manifest、TestFlight 上传、绑定 build 和审核通过是不同状态。
 
@@ -58,4 +65,4 @@
 - Mac app/DMG：[发布流水线](https://github.com/oratis/LISA/actions/runs/36327573488) 成功，两次 notarization 均 Accepted，staple 和签名验证通过。
 - Homebrew 首次运行因 npm tarball 尚未同步而失败，已补上有上限的下载重试（最多 12 次重试，重试总时限 600 秒），仍只计算真实 npm tarball 的 SHA-256，不用 GitHub 的另一个 tarball 代替。[重试后的 Homebrew 工作流](https://github.com/oratis/LISA/actions/runs/36328169164) 已成功，远端 formula 已更新为 0.27.0。
 
-代码分发、生产后端/网站和审核材料准备已完成；恢复云模型额度及实际 App Store 送审仍未完成，不能把此次代码发布当成个人助手已全面可用或商店已通过审核。
+生产模型服务已恢复；0.27.1 的代码分发状态随发布流水线另行核验。App Store 实际送审仍未完成，不能把代码发布当成商店已通过审核。

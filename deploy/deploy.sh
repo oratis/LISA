@@ -12,6 +12,7 @@
 #       ZHIPU_API_KEY    → GLM (set LISA_MODEL=glm-4.6; defaulted if unset)
 #       ANTHROPIC_API_KEY→ Claude (LISA_MODEL defaults to claude-sonnet-4-6)
 #       OPENAI_API_KEY   → GPT (set LISA_MODEL=gpt-4o)
+#       GEMINI_API_KEY   → Gemini (LISA_MODEL defaults to gemini-2.5-flash)
 #   RATE-LIMIT whichever key you use — it funds the public demo.
 # Persistence (C2): a GCS bucket is mounted at /data (= $LISA_HOME) so the soul +
 # sessions survive restarts/redeploys (Cloud Run's own FS is ephemeral). The
@@ -41,14 +42,15 @@ PROJECT="${PROJECT:-oratis-491316}"; REGION="${REGION:-us-central1}"; SERVICE="$
 : "${LISA_WEB_TOKEN:?set LISA_WEB_TOKEN (the demo password)}"
 
 # Require at least one LLM key (the demo soul is born by an LLM).
-if [ -z "${ANTHROPIC_API_KEY:-}${ZHIPU_API_KEY:-}${OPENAI_API_KEY:-}" ]; then
-  echo "✗ set one LLM provider key: ZHIPU_API_KEY (GLM), ANTHROPIC_API_KEY (Claude), or OPENAI_API_KEY (GPT)" >&2
+if [ -z "${ANTHROPIC_API_KEY:-}${ZHIPU_API_KEY:-}${OPENAI_API_KEY:-}${GEMINI_API_KEY:-}" ]; then
+  echo "✗ set one LLM provider key: ZHIPU_API_KEY (GLM), ANTHROPIC_API_KEY (Claude), OPENAI_API_KEY (GPT), or GEMINI_API_KEY (Gemini)" >&2
   exit 1
 fi
 # Default the model from the key in use so the GLM path "just works".
 if [ -z "${LISA_MODEL:-}" ]; then
   if   [ -n "${ZHIPU_API_KEY:-}" ];     then LISA_MODEL="glm-4.6"
   elif [ -n "${OPENAI_API_KEY:-}" ];    then LISA_MODEL="gpt-4o"
+  elif [ -n "${GEMINI_API_KEY:-}" ];    then LISA_MODEL="gemini-2.5-flash"
   fi   # else: leave unset → Anthropic default (claude-sonnet-4-6)
 fi
 
@@ -59,7 +61,7 @@ fi
 #   on every deploy) and reach the container via --set-secrets; only
 #   non-sensitive config stays in env vars. The PRODUCTION setting.
 SECRETS_MODE="${SECRETS_MODE:-env}"
-SECRET_VARS=" LISA_WEB_TOKEN ANTHROPIC_API_KEY ZHIPU_API_KEY OPENAI_API_KEY RESEND_API_KEY STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET LISA_TURNSTILE_SECRET LISA_SWEEP_TOKEN LISA_REVIEWER_SEED "
+SECRET_VARS=" LISA_WEB_TOKEN ANTHROPIC_API_KEY ZHIPU_API_KEY OPENAI_API_KEY GEMINI_API_KEY RESEND_API_KEY STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET LISA_TURNSTILE_SECRET LISA_SWEEP_TOKEN LISA_REVIEWER_SEED "
 PENDING_SECRETS=()
 SET_SECRETS=""
 # Build the env list with a custom '##' delimiter (gcloud's ^d^ syntax) so
@@ -85,6 +87,7 @@ addenv LISA_MODEL            "${LISA_MODEL:-}"
 addenv ANTHROPIC_API_KEY     "${ANTHROPIC_API_KEY:-}"
 addenv ZHIPU_API_KEY         "${ZHIPU_API_KEY:-}"
 addenv OPENAI_API_KEY        "${OPENAI_API_KEY:-}"
+addenv GEMINI_API_KEY        "${GEMINI_API_KEY:-}"
 # Optional: Sign in with Apple for the iOS app (src/web/cloudAuth.ts). Off unless
 # LISA_CLOUD_APPLE_SIGNIN is set; LISA_CLOUD_APPLE_SUBS is an optional allowlist of
 # Apple `sub`s, LISA_CLOUD_APPLE_AUD overrides the expected bundle id.

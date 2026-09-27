@@ -19,12 +19,12 @@
  * conversion needed).
  *
  * Limitations vs Anthropic / OpenAI:
- *   - No prompt caching equivalent; cacheReadTokens always 0.
+ *   - Explicit cache creation is not exposed; implicit cache reads are metered.
  *   - Gemini may emit only one functionCall per turn for some models; we
  *     handle multiple if present, but don't rely on it.
  */
 import type Anthropic from "@anthropic-ai/sdk";
-import type { Content, GoogleGenAI, Part } from "@google/genai";
+import type { Content, FunctionCallingConfigMode, GoogleGenAI, Part } from "@google/genai";
 import type { StoredMessage } from "../types.js";
 import { withStreamRetry } from "./stream-retry.js";
 import type { Provider, ProviderResult, ProviderRunOpts } from "./types.js";
@@ -81,6 +81,18 @@ export class GeminiProvider implements Provider {
           abortSignal: opts.signal,
           systemInstruction: opts.systemPrompt,
           tools,
+          // AUTO can produce MALFORMED_FUNCTION_CALL or empty completions with
+          // the full registry. VALIDATED still permits ordinary text replies
+          // while constraining function calls to the supplied schemas.
+          ...(tools
+            ? {
+                toolConfig: {
+                  functionCallingConfig: {
+                    mode: "VALIDATED" as FunctionCallingConfigMode,
+                  },
+                },
+              }
+            : {}),
           maxOutputTokens: opts.maxTokens ?? 16_000,
         },
       });
@@ -89,9 +101,13 @@ export class GeminiProvider implements Provider {
       const toolCalls: Array<{ id: string; name: string; args: Record<string, unknown> }> = [];
       let inputTokens = 0;
       let outputTokens = 0;
+      let cacheReadTokens = 0;
 
       for await (const chunk of stream) {
         const cand = chunk.candidates?.[0];
+        if (cand?.finishReason === "MALFORMED_FUNCTION_CALL") {
+          throw new Error("Gemini could not form a valid tool call. Please retry.");
+        }
         const parts = cand?.content?.parts ?? [];
         for (const p of parts) {
           if (typeof p.text === "string" && p.text.length > 0) {
@@ -112,8 +128,11 @@ export class GeminiProvider implements Provider {
         // usageMetadata is on the final chunk
         const usage = chunk.usageMetadata;
         if (usage) {
-          inputTokens = usage.promptTokenCount ?? 0;
-          outputTokens = usage.candidatesTokenCount ?? 0;
+          // Gemini's prompt count includes cached tokens, while our provider
+          // contract prices them separately. Thinking is billed as output.
+          cacheReadTokens = usage.cachedContentTokenCount ?? 0;
+          inputTokens = Math.max(0, (usage.promptTokenCount ?? 0) - cacheReadTokens);
+          outputTokens = (usage.candidatesTokenCount ?? 0) + (usage.thoughtsTokenCount ?? 0);
         }
       }
 
@@ -142,7 +161,7 @@ export class GeminiProvider implements Provider {
         usage: {
           inputTokens,
           outputTokens,
-          cacheReadTokens: 0,
+          cacheReadTokens,
           cacheWriteTokens: 0,
         },
       };

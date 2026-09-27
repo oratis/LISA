@@ -20,6 +20,22 @@ const U = (i: number, o: number, cr = 0, cw = 0) => ({
 });
 
 describe("prices", () => {
+  test("only the verified Gemini Flash model uses standard pricing", () => {
+    assert.equal(modelTier("gemini-2.5-flash"), "standard");
+    for (const model of [
+      "gemini-2.5-flash-lite",
+      "gemini-2.5-flash-image",
+      "gemini-2.5-flash-preview",
+      "gemini-2.5-pro",
+    ]) {
+      assert.equal(modelTier(model), "premium");
+    }
+    assert.equal(
+      costMicroUSD("gemini-2.5-flash", U(1_000_000, 1_000_000, 1_000_000)),
+      Math.round((0.3 + 2.5 + 0.03) * MARGIN * 1e6),
+    );
+  });
+
   test("glm is standard tier; claude/gpt/unknown are premium", () => {
     assert.equal(modelTier("glm-4.6"), "standard");
     assert.equal(modelTier("claude-sonnet-4-6"), "premium");
