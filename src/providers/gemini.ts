@@ -24,7 +24,7 @@
  *     handle multiple if present, but don't rely on it.
  */
 import type Anthropic from "@anthropic-ai/sdk";
-import type { Content, GoogleGenAI, Part } from "@google/genai";
+import type { Content, FunctionCallingConfigMode, GoogleGenAI, Part } from "@google/genai";
 import type { StoredMessage } from "../types.js";
 import { withStreamRetry } from "./stream-retry.js";
 import type { Provider, ProviderResult, ProviderRunOpts } from "./types.js";
@@ -81,6 +81,18 @@ export class GeminiProvider implements Provider {
           abortSignal: opts.signal,
           systemInstruction: opts.systemPrompt,
           tools,
+          // AUTO can produce MALFORMED_FUNCTION_CALL or empty completions with
+          // the full registry. VALIDATED still permits ordinary text replies
+          // while constraining function calls to the supplied schemas.
+          ...(tools
+            ? {
+                toolConfig: {
+                  functionCallingConfig: {
+                    mode: "VALIDATED" as FunctionCallingConfigMode,
+                  },
+                },
+              }
+            : {}),
           maxOutputTokens: opts.maxTokens ?? 16_000,
         },
       });
@@ -93,6 +105,9 @@ export class GeminiProvider implements Provider {
 
       for await (const chunk of stream) {
         const cand = chunk.candidates?.[0];
+        if (cand?.finishReason === "MALFORMED_FUNCTION_CALL") {
+          throw new Error("Gemini could not form a valid tool call. Please retry.");
+        }
         const parts = cand?.content?.parts ?? [];
         for (const p of parts) {
           if (typeof p.text === "string" && p.text.length > 0) {

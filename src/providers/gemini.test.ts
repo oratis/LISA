@@ -16,7 +16,7 @@ import type { ProviderRunOpts } from "./types.js";
 interface CapturedParams {
   model?: string;
   contents?: unknown;
-  config?: { abortSignal?: AbortSignal; systemInstruction?: string };
+  config?: { abortSignal?: AbortSignal; systemInstruction?: string; toolConfig?: unknown };
 }
 
 type Chunk = Record<string, unknown>;
@@ -110,4 +110,60 @@ test("Gemini meters thinking output and cached input without double counting", a
     cacheWriteTokens: 0,
   });
   assert.equal(result.content[0].type === "text" && result.content[0].text, "hi");
+});
+
+test("Gemini uses validated tools and preserves the tool-result round trip", async () => {
+  const provider = new GeminiProvider({ apiKey: "test-key" });
+  const captured: { params?: CapturedParams } = {};
+  (provider as unknown as { client: unknown }).client = makeFakeClient(captured, [
+    {
+      candidates: [
+        {
+          content: { parts: [{ functionCall: { name: "kb_list", args: {} } }] },
+          finishReason: "STOP",
+        },
+      ],
+    },
+  ]);
+  const opts = {
+    ...baseOpts(),
+    tools: [
+      {
+        name: "kb_list",
+        description: "List entries",
+        inputSchema: { type: "object" as const, properties: {} },
+        execute: async () => "empty",
+      },
+    ],
+  };
+  const result = await provider.runTurn(opts);
+  assert.equal(result.stopReason, "tool_use");
+  assert.deepEqual(captured.params?.config?.toolConfig, {
+    functionCallingConfig: { mode: "VALIDATED" },
+  });
+  const call = result.content[0];
+  assert.equal(call.type, "tool_use");
+  if (call.type !== "tool_use") throw new Error("Expected a tool call");
+  assert.equal(call.name, "kb_list");
+  assert.ok(call.id);
+  (provider as unknown as { client: unknown }).client = makeFakeClient(captured, TEXT_CHUNKS);
+  await provider.runTurn({
+    ...opts,
+    messages: [
+      ...opts.messages,
+      { role: "assistant", content: result.content },
+      { role: "user", content: [{ type: "tool_result", tool_use_id: call.id, content: "empty" }] },
+    ],
+  });
+  assert.deepEqual((captured.params?.contents as Array<{ parts: unknown[] }>)?.at(-1)?.parts, [
+    { functionResponse: { id: call.id, name: "kb_list", response: { output: "empty" } } },
+  ]);
+});
+
+test("Gemini surfaces malformed function calls instead of silent empty success", async () => {
+  const provider = new GeminiProvider({ apiKey: "test-key" });
+  (provider as unknown as { client: unknown }).client = makeFakeClient({}, [
+    { candidates: [{ finishReason: "MALFORMED_FUNCTION_CALL" }] },
+  ]);
+  await assert.rejects(provider.runTurn(baseOpts()), /could not form a valid tool call/);
 });
