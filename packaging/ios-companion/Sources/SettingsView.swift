@@ -55,8 +55,9 @@ struct SettingsView: View {
                             .keyboardType(.numberPad)
                         SecureField("Device token", text: $token)
                         Button("Save") {
-                            app.update(host: host, port: Int(portText) ?? 5757, token: token.isEmpty ? nil : token)
-                            status = "Saved."
+                            let saved = app.update(host: host, port: Int(portText) ?? 5757,
+                                                   token: token.isEmpty ? nil : token, scheme: app.config.scheme)
+                            status = saved ? "Saved." : "Couldn't save securely. Try again."
                         }
                     }
 
@@ -301,9 +302,10 @@ struct SettingsView: View {
             }
             .confirmationDialog("Unpair this Mac?", isPresented: $showUnpairConfirm, titleVisibility: .visible) {
                 Button("Unpair", role: .destructive) {
-                    app.update(host: "", port: 5757, token: nil)
-                    syncFromConfig()
-                    status = "Unpaired — the device token was removed from this iPhone."
+                    if app.update(host: "", port: 5757, token: nil) {
+                        syncFromConfig()
+                        status = "Unpaired — the device token was removed from this iPhone."
+                    }
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {

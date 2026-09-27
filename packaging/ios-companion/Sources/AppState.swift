@@ -225,7 +225,7 @@ final class AppState: ObservableObject {
 
     /// Apply a pairing string (from QR / paste). Returns false if unparseable.
     func applyPairing(_ raw: String, mode: ConnectionMode = .mac) -> Bool {
-        guard let cfg = AppState.parsePairing(raw) else { return false }
+        guard let cfg = AppState.parsePairing(raw), mode != .cloud || cfg.scheme == "https" else { return false }
         return update(host: cfg.host, port: cfg.port, token: cfg.token, scheme: cfg.scheme, mode: mode)
     }
 
@@ -361,8 +361,7 @@ final class AppState: ObservableObject {
 
     /// Drop the account session locally (the token is stateless server-side).
     func signOutCloud() {
-        update(host: config.host, port: config.port, token: nil, scheme: config.scheme)
-        account = nil
+        if update(host: "", port: 443, token: nil, scheme: "https", mode: .cloud) { account = nil }
     }
 
     /// In-app account deletion (App Store 5.1.1(v)): server-side delete, then

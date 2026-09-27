@@ -428,10 +428,11 @@ struct OnboardingManualEntry: View {
             TextField("Port", text: $portText).keyboardType(.numberPad)
             SecureField("Device token", text: $token)
             Button("Connect") {
-                app.update(host: host.trimmingCharacters(in: .whitespaces),
-                           port: Int(portText) ?? 5757,
-                           token: token.isEmpty ? nil : token, scheme: "http")
-                if app.config.isConfigured { finish() } else { error = "Enter a host and token." }
+                let saved = app.update(host: host.trimmingCharacters(in: .whitespaces),
+                                       port: Int(portText) ?? 5757,
+                                       token: token.isEmpty ? nil : token, scheme: "http", mode: .mac)
+                if saved && app.config.isConfigured { finish() }
+                else { error = "Couldn't save the connection. Check the host and token, then retry." }
             }
             .disabled(host.isEmpty || token.isEmpty)
         }
