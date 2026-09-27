@@ -67,7 +67,7 @@
 - 已完成后端类型检查与全量测试，见下方结果。
 
 - 文档 PR #387 已通过 CI 并合并。
-- 后端当前 2053 项：2052 pass / 0 fail / 1 skip；类型检查、客户端类型检查、API contract 和 build 已通过。基线唯一失败为测试误用真实 Codex，现已隔离 PATH。
+- 后端最新 2058 项：2057 pass / 0 fail / 1 skip；类型检查、客户端类型检查、API contract 和 build 已通过。基线唯一失败为测试误用真实 Codex，现已隔离 PATH。
 - iPhone 和 iPad 最终各通过 59 项 XCTest，覆盖 Keychain 失败后切换模式、重启和恢复的回归。模拟器逻辑测试不等于原生 UI、真机 APNs 或 StoreKit 沙盒端到端验证；当前 UI 工具不能连接 Simulator。
 - 审核账号真实 login、auth/me、billing/quota、island/ping 均 200，未在 Git 中保存凭据。灰度 revision `lisa-cloud-00024-ruh` 已配置限定审核账号的 IAP sandbox allowlist；未验证真实 StoreKit 购买。
 - 新增 AI 接收方披露接口与 iOS 发送前同意；自定义 endpoint 只显示 hostname，不返回 URL 内凭据。新增 StoreKit appAccountToken 绑定和跨账号拒绝测试。
@@ -75,7 +75,7 @@
 
 ### 2026-09-27 灰度与送审阻碍
 
-- 云灰度的 `/health`、登录、额度和 `/api/auth/config` 均通过；披露接收方为 Zhipu (GLM)。原生产 `lisa-cloud-00023-lb7` 和新灰度的真实 `/chat` 均返回 SSE error：上游 429「余额不足或无可用资源包」。HTTP 200 的 SSE 握手不等于聊天成功。这是已验证的上游服务阻碍，必须恢复可用额度并重新验收对话才能送审；不能用用户购买 LISA credits 解决运营方模型账号欠费。
+- 云灰度的 `/health`、登录、额度和 `/api/auth/config` 均通过；披露接收方为 Zhipu (GLM)。原生产 `lisa-cloud-00023-lb7` 和新灰度的真实 `/chat` 均返回 SSE error：上游 429「余额不足或无可用资源包」。HTTP 200 的 SSE 握手不等于聊天成功。这是当时已验证的上游服务阻碍。随后经授权使用 Cuddler 已有 Google 凭据，生产切换至 Gemini 2.5 Flash（`lisa-cloud-00027-qal`），聊天、只读工具与免费额度扣费灰度验收已通过，付费余额不变；详见执行记录。
 - 网站灰度 `lisa-web-00015-ron` 的中英文 privacy/support 四个页面均 HTTP 200；浏览器确认英文内容。生产原 revision 为 `lisa-web-00012-c49`，保留回滚目标。
 - App Store 英文 description、promotional text、keywords、support URL 和 subtitle 已通过官方 API 更新。审核密码仍仅保留在 ASC 和本机临时文件。
 - 最终二进制 1.2 (1790520396) 已获 Apple VALID 并绑定到版本，状态为 PREPARE_FOR_SUBMISSION，尚未提交审核。必须补核最新拒审原文、ASC 隐私答案/年龄分级、当前截图和真实沙盒购买。浏览器当前未登录，不能把隐私 manifest 当成已更新商店隐私问卷。
