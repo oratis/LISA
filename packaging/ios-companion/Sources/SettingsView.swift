@@ -34,7 +34,7 @@ struct SettingsView: View {
                     .pickerStyle(.segmented)
                 } footer: {
                     Text(app.connectionMode == .mac
-                         ? "Talk to your own Mac running Lisa — your data stays on your Mac."
+                         ? "Run Lisa on your Mac. Your configured AI provider may process messages."
                          : "Use hosted LISA Cloud — no Mac needed.")
                 }
 
@@ -43,7 +43,7 @@ struct SettingsView: View {
                         Label("Set up / re-pair…", systemImage: "wand.and.stars")
                     }
                 } footer: {
-                    Text("Walk through installing LISA on your Mac and pairing this iPhone.")
+                    Text("Sign in to LISA Cloud or connect your own Mac. Each connection is saved separately.")
                 }
 
                 if app.connectionMode == .mac {
@@ -104,6 +104,7 @@ struct SettingsView: View {
                     }
                 }
 
+                if app.connectionMode == .mac {
                 Section("Notifications") {
                     Picker("Deliver via", selection: $transport) {
                         ForEach(PushTransport.allCases) { t in Text(t.label).tag(t) }
@@ -214,6 +215,8 @@ struct SettingsView: View {
                     Text("Change these on the Mac (localhost only).").font(.caption).foregroundStyle(.secondary)
                 }
 
+                }
+
                 Section("Appearance") {
                     Picker("Theme", selection: Binding(
                         get: { app.appearance },
@@ -226,6 +229,7 @@ struct SettingsView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
 
+                if app.connectionMode == .mac {
                 Section("Autonomy") {
                     Toggle("Proactive mode", isOn: Binding(
                         get: { app.proactiveEnabled },
@@ -245,6 +249,16 @@ struct SettingsView: View {
                     NavigationLink { SenseView() } label: { Label("Sense (consent)", systemImage: "sensor.tag.radiowaves.forward") }
                 }
 
+                }
+
+                Section("About and data") {
+                    NavigationLink { AssistantPrivacyView() } label: {
+                        Label("AI and your data", systemImage: "hand.raised")
+                    }
+                    Link("Privacy policy", destination: URL(string: "https://meetlisa.ai/privacy")!)
+                    Link("Support", destination: URL(string: "https://meetlisa.ai/support")!)
+                }
+
                 Section("Security") {
                     Toggle("Require Face ID / passcode", isOn: Binding(
                         get: { app.biometricLockEnabled },
@@ -253,11 +267,14 @@ struct SettingsView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
 
+                if app.connectionMode == .mac {
                 Section("Disconnect") {
                     Button("Unpair this Mac", role: .destructive) { showUnpairConfirm = true }
                         .disabled(!app.config.isConfigured)
                     Text("Removes the saved connection + device token from this iPhone. Your Mac and its data are untouched — pair again any time.")
                         .font(.caption).foregroundStyle(.secondary)
+                }
+
                 }
 
                 // "Inspect Lisa" (Soul/Memory/Skills/Tools) moved to the Lisa home
@@ -270,8 +287,14 @@ struct SettingsView: View {
             .consoleBackground()
             .navigationTitle("Settings")
             .onAppear(perform: syncFromConfig)
-            .task { policy = try? await app.client.controlPolicy(); await app.loadProactive(); await app.refreshAccount() }
-            .task(id: app.config) { await loadPush() }
+            .task(id: app.config) {
+                await app.refreshAccount()
+                if app.connectionMode == .mac {
+                    policy = try? await app.client.controlPolicy()
+                    await app.loadProactive()
+                    await loadPush()
+                }
+            }
             .onChange(of: transport) { _, _ in adoptRegisteredPrefs() }
             .sheet(isPresented: $showScanner) {
                 QRScanSheet(onScanned: handleScan, onError: { status = $0 })

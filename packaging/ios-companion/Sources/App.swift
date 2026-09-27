@@ -24,11 +24,17 @@ struct RootView: View {
                 .tabItem { Label("Home", systemImage: "house") }.tag(0)
             ChatView()
                 .tabItem { Label("Chat", systemImage: "bubble.left.and.bubble.right") }.tag(1)
-            RosterView()
-                .tabItem { Label("Agents", systemImage: "cpu") }.tag(2)
+            Group {
+                if app.connectionMode == .mac { RosterView() }
+                else { MacFeaturesView() }
+            }
+            .tabItem { Label("My Mac", systemImage: "desktopcomputer") }.tag(2)
             SettingsView()
                 .tabItem { Label("Settings", systemImage: "gearshape") }.tag(3)
         }
+        // Recreate view state when the endpoint OR credential changes. A cached
+        // transcript, account sheet or session must never cross that boundary.
+        .id(app.config)
         .tint(Theme.accent)                                  // cyan active tab + links + controls
         // Appearance follows the Settings picker: Nebula (dark, default) ·
         // Calm (light) · Auto (system). Theme.* colors are trait-aware.
@@ -67,10 +73,14 @@ struct RootView: View {
                 ReachabilityBanner { app.switchToCloud() }
             }
         }
-        .task { await app.refreshWidgetSnapshot() }          // keep the widget fresh off-tab (A5)
+        .task(id: app.config) { await app.refreshWidgetSnapshot() }          // keep the widget fresh off-tab (A5)
         // Unfinished-purchase listener (B5): StoreKit re-delivers transactions
         // the server never credited; the server-side dedup makes replays safe.
-        .task { CreditsStore.shared.start(app: app) }
+        .task(id: app.config) {
+            CreditsStore.shared.start(app: app)
+            await app.refreshAccount()
+            await CreditsStore.shared.reconcile(app: app)
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase == .background { app.lockIfEnabled() }  // re-arm when leaving foreground
             if phase == .active { Task { await app.refreshWidgetSnapshot() } }

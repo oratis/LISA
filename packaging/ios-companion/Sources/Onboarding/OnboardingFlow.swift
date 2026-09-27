@@ -64,7 +64,7 @@ struct OnboardingFlow: View {
                     VStack(spacing: 10) {
                         Text("Meet Lisa")
                             .font(.largeTitle.weight(.bold)).foregroundStyle(Theme.text)
-                        Text("She lives on your Mac. This is your window to her — chat, check on her agents, and stay in the loop from anywhere.")
+                        Text("Your personal AI assistant for plans, writing, and everyday questions. Use LISA Cloud anywhere, or connect your own Mac.")
                             .font(.body).foregroundStyle(Theme.secondary)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 32)
@@ -75,8 +75,8 @@ struct OnboardingFlow: View {
         }
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 8) {
-                OnboardingPrimaryButton(title: "Get started") { go(.mode) }
-                OnboardingSecondaryButton(title: "I already have LISA running") { go(.pair) }
+                OnboardingPrimaryButton(title: "Continue with LISA Cloud") { app.setConnectionMode(.cloud); openManual(.cloud) }
+                OnboardingSecondaryButton(title: "Connect my Mac") { app.setConnectionMode(.mac); go(.mode) }
             }
             .padding(.bottom, 24)
         }
@@ -98,7 +98,7 @@ struct OnboardingFlow: View {
                         app.setConnectionMode(.cloud); openManual(.cloud)
                     }
                     OnboardingChoiceCard(systemImage: "desktopcomputer",
-                                         title: "My Mac", subtitle: "Advanced: private and local — your data never leaves your Mac.",
+                                         title: "My Mac", subtitle: "Run Lisa on your own Mac. AI processing follows your chosen model provider.",
                                          selected: app.connectionMode == .mac) {
                         app.setConnectionMode(.mac); go(.install)
                     }

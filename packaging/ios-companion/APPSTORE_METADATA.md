@@ -1,114 +1,52 @@
-# App Store listing — Lisa Pocket (metadata draft)
+# Lisa Pocket — App Store metadata (2026-09-27)
 
-Copy-ready text for the App Store Connect listing fields, with Apple's length
-limits noted. Keep this in sync with [`RELEASE.md`](RELEASE.md) (the submission
-runbook) and the website (`website/src/pages/`) so the store, the site, and the
-app tell one story. Nothing here is an account action — paste it into ASC →
-**App Information** / the version's **Version Information** when you submit.
-
-> Lisa Pocket is a **thin companion client**: it talks only to *your own* Mac
-> running LISA (local-first) or a LISA Cloud instance you point it at. It
-> collects nothing to a Lisa-operated server — the listing copy must not imply
-> a hosted account/service is required.
-
----
-
-## Names & short fields
-
-| Field | Limit | Value |
-| --- | --- | --- |
-| **App Name** | 30 | `Lisa Pocket` |
-| **Subtitle** | 30 | `Your AI's window, on the go` |
-| **Promotional text** | 170 | `Chat with the AI that lives on your Mac, watch the coding agents she's running, and approve their next step — from the café, the couch, anywhere.` |
-
-*Promotional text* is editable without a new review, so use it for timely lines.
-
-## Keywords
-
-≤ 100 characters, comma-separated, **no spaces after commas** (Apple counts
-them), don't repeat the app name or category:
-
-```
-AI agent,assistant,companion,coding,Claude,Codex,dispatch,remote,monitor,self-hosted,private,pair
-```
-
-## URLs
+This replaces the obsolete “thin client / collects nothing” listing. Bundle ID stays `ai.meetlisa.main`. The independent LISA brand belongs to the open-source project at https://github.com/oratis/LISA; no affiliation with Meta Muse or other similarly named apps is claimed.
 
 | Field | Value |
 | --- | --- |
-| **Support URL** | `https://meetlisa.ai/` (or a dedicated `/support` if added) |
-| **Marketing URL** | `https://meetlisa.ai/` |
-| **Privacy Policy URL** | `https://meetlisa.ai/privacy` (live — `website/src/pages/privacy.astro`) |
+| Name | Lisa Pocket |
+| Subtitle | Your personal AI assistant |
+| Promotional text | Plan your day, draft a message, and work through ideas with Lisa. Sign in to LISA Cloud or connect your own Mac, with separate saved connections. |
+| Keywords | assistant,productivity,planning,writing,ideas,chat,personal,Mac,open-source |
+| Support | https://meetlisa.ai/support |
+| Privacy | https://meetlisa.ai/privacy |
+| Marketing | https://meetlisa.ai/ |
+| Primary category | Productivity |
 
-## Categorization
+## Description
 
-| Field | Value | Why |
-| --- | --- | --- |
-| **Primary category** | Productivity | It's a remote console for work your Mac is doing. |
-| **Secondary category** | Developer Tools | Core use is watching/steering coding agents (Claude Code, Codex, Aider). |
-| **Age rating** | 4+ | No objectionable content; user-generated chat is with the user's own AI, not a social feed. (Confirm the questionnaire — unrestricted web access is *not* enabled in-app.) |
+Lisa Pocket is the mobile app for LISA, an independent, open-source personal AI assistant.
 
-## Description (≤ 4000 chars)
+MAKE A START
+Plan your day, write a first draft, or turn an idea into manageable next steps. Suggested starting points open editable messages so you decide what to send. Chat with Lisa, see tool activity, and retry or stop a response.
 
-```
-Lisa Pocket is your window to LISA — an AI agent with a real self that lives on
-your own Mac. The app is a thin, private companion: it connects only to your
-Mac (over your Wi-Fi or tailnet) or to a LISA Cloud instance you choose. Your
-conversations and data stay between your phone and your machine.
+LISA CLOUD
+Sign in with your LISA account and use the assistant without setting up a Mac or an AI API key. Available sign-in options include Apple, Google and email. AI use is subject to your account allowance; optional consumable credit packs are available in Settings.
 
-CHAT FROM ANYWHERE
-Pick up the conversation with Lisa wherever you are. She runs on your Mac; this
-is the pocket-sized way in.
+CONNECT YOUR MAC
+Pair your own Mac running LISA to chat with that instance and manage its coding agents. Local integrations, agent controls, activity notifications, widgets and Live Activities depend on your Mac configuration and permissions. Your Mac needs to be reachable over your network or tailnet.
 
-WATCH HER AGENTS WORK
-LISA orchestrates the coding agents on your Mac — Claude Code, Codex, Aider and
-more. Lisa Pocket shows you the live roster: what each agent is doing, how many
-turns in, which files it has touched, and when it's blocked waiting on you.
+TWO SAVED CONNECTIONS
+Switch between Cloud and My Mac without re-entering the other connection. Each instance has its own conversations and assistant data; switching does not automatically copy them.
 
-STEER WITHOUT A LAPTOP
-When an agent stops to ask permission — "run this command?", "apply this edit?"
-— approve, reject, or cancel right from your phone. The work keeps moving while
-you're away from your desk.
+YOUR DATA AND CHOICES
+Before sending a chat message, the app explains which configured AI services can process your message and relevant context and asks for permission. Local mode may also use a remote AI provider, depending on your setup. Read the privacy policy, unpair your Mac, or delete your cloud account from Settings. AI can make mistakes; review important results.
 
-A GLANCE IS ENOUGH
-Live Activities and the Dynamic Island keep the current agent's progress on your
-lock screen. Home Screen widgets show it without opening the app.
+Learn more at meetlisa.ai.
 
-PRIVATE BY DESIGN
-Your choice of two ways to run: sign in to LISA Cloud (email or Apple — a free
-usage allowance refreshes every 12 hours), or connect your own Mac, where
-pairing is QR-based, every connection is gated by a revocable per-device token,
-and nothing ever reaches a Lisa-operated server.
+## Review notes
 
-GETTING STARTED
-Sign in and go — no setup needed. Prefer fully local? LISA is free and open
-source: the in-app setup walks you through installing it on your Mac, starting
-it reachably, and scanning the pairing QR.
+1. Launch → Continue with LISA Cloud. Expand “Use a password instead” for the existing demo credentials in App Review Information. No Mac, QR code, emailed OTP, or purchase is required to review cloud chat.
+2. Open Chat, enter a message, tap Send. Review the configured AI recipients and choose Allow and send this message. Cancel sends no message.
+3. Home offers editable daily-planning, writing and goal-planning starters. Settings shows which connection is active.
+4. To inspect in-app purchases, open Settings → LISA account → Add credits. Starter, Plus and Max packs are consumable credits. This entry does not depend on the allowance request succeeding. The review account must be sandbox-allowlisted on the backend before submission.
+5. Account deletion: Settings → LISA account → Delete account → Delete account and data. Mac unpairing is separate.
+6. My Mac features require the user's own reachable Mac. In cloud mode this tab explains the optional setup; it does not attempt unsupported host-control APIs.
 
-LISA is open source (MIT). Learn more at meetlisa.ai.
-```
+## Submission gates
 
-## Notes for whoever fills ASC
-
-- **⚠️ Guideline 4.1(a) (copycat) history**: the first submission was rejected as
-  resembling a third-party "Lisa.ai." It's a name collision (several unrelated
-  "Lisa" AI apps exist) — LISA is our own open-source, self-hosted product. The
-  appeal + fallback rename options live in
-  [`REVIEW_RESPONSE_4.1a.md`](REVIEW_RESPONSE_4.1a.md). Lead the **App Review
-  Notes** with the "our own open-source product (meetlisa.ai / github.com/oratis/LISA)"
-  framing (already updated in the submission checklist §7.3).
-- **App Privacy** (updated for B1 accounts): declare **Email Address** and
-  **User ID** — App Functionality, linked to the user, **no tracking** — to match
-  `Sources/PrivacyInfo.xcprivacy`. The local (My Mac) and BYO-token modes still
-  collect nothing, but ASC's answer covers the app's maximum collection.
-- **App Review Information** → sign-in / demo notes are already drafted in
-  [`RELEASE.md`](RELEASE.md) §"App Review notes" (point the reviewer at the LISA
-  Cloud demo so they need no Mac).
-- The description deliberately frames the app as a **companion/client** so it
-  doesn't read as a standalone service (avoids "what does this do without the
-  Mac?" rejections under Guideline 2.1 — the cloud-demo path is the answer).
-- Keep install commands (`brew install oratis/tap/lisa`, `npm install -g
-  @oratis/lisa`) consistent with `Sources/Onboarding/OnboardingModel.swift` and
-  the README.
-</content>
-</invoke>
+- Update ASC App Privacy to cover Email Address, User ID, user content (chat/assistant memory), purchases, and product interaction used for usage metering, linked to the account for app functionality; no tracking. The binary manifest alone does not change ASC disclosures. Verify the precise content category against the ASC questionnaire.
+- Answer the current age-rating questions from the actual AI/chat and web-tool capabilities; do not reuse the old assumed 4+ answer.
+- Replace screenshots with the current UI on iPhone and iPad.
+- Verify the real review account, StoreKit products, sandbox credit delivery and the live support/privacy pages. Do not place credentials in Git.
+- Record the current rejection reason and address it explicitly; historical 2.1(b)/4.1(a) notes are not proof of the latest reason.

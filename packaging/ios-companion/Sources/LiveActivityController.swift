@@ -59,6 +59,14 @@ enum LiveActivityController {
         }
     }
 
+    static func endAll() {
+        let previous = Activity<AgentActivityAttributes>.activities
+        activities.removeAll()
+        Task {
+            for activity in previous { await activity.end(nil, dismissalPolicy: .immediate) }
+        }
+    }
+
     private static func contentState(for s: AgentSession) -> AgentActivityAttributes.ContentState {
         AgentActivityAttributes.ContentState(state: s.state, detail: detail(for: s), turns: s.activity?.turnCount ?? 0)
     }

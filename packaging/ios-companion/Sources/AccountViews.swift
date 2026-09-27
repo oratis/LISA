@@ -39,8 +39,10 @@ struct CloudSignInForm: View {
 
     var body: some View {
         Section {
-            TextField("LISA Cloud URL", text: $cloudURL)
-                .autocorrectionDisabled().textInputAutocapitalization(.never).keyboardType(.URL)
+            Label("Your LISA account", systemImage: "person.crop.circle")
+                .font(.headline)
+            Text("Sign in to your personal assistant. No Mac or API key is needed.")
+                .font(.subheadline).foregroundStyle(.secondary)
             #if LISA_ENABLE_SIWA
             SignInWithAppleButton(.continue,
                 onRequest: { req in
@@ -112,7 +114,9 @@ struct CloudSignInForm: View {
         }
 
         Section {
-            DisclosureGroup("Advanced: connect with a token link") {
+            DisclosureGroup("Advanced: server and token link") {
+                TextField("LISA Cloud URL", text: $cloudURL)
+                    .autocorrectionDisabled().textInputAutocapitalization(.never).keyboardType(.URL)
                 TextField("https://…/?token=", text: $pasteText)
                     .autocorrectionDisabled().textInputAutocapitalization(.never).keyboardType(.URL)
                 Button("Connect") { applyPaste() }
@@ -283,7 +287,7 @@ struct CloudSignInForm: View {
 
     private func applyPaste() {
         error = nil
-        guard app.applyPairing(pasteText) else {
+        guard app.applyPairing(pasteText, mode: .cloud) else {
             error = "Couldn't read that cloud URL — paste the full https://…/?token=… link."
             return
         }

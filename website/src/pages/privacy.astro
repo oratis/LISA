@@ -1,15 +1,15 @@
 ---
 import Base from "../layouts/Base.astro";
 ---
-<Base title="Privacy" lang="en" description="Lisa's privacy policy — a local-first AI that collects nothing to our servers.">
+<Base title="Privacy" lang="en" description="How LISA Cloud and local Mac mode process accounts, conversations, and AI requests.">
   <header class="page-head">
-    <p class="eyebrow"><span class="rule"></span> PRIVACY <b>· updated 2026-07-24</b></p>
+    <p class="eyebrow"><span class="rule"></span> PRIVACY <b>· updated 2026-09-27</b></p>
     <h1>Privacy Policy</h1>
     <p class="lede">
-      Lisa is <strong>local-first</strong>. The apps — <strong>Lisa</strong> (macOS) and
-      <strong>Lisa Pocket</strong> (iOS) — are clients to a Lisa backend that <em>you</em> run
-      or choose. We do not operate a server that receives your personal data in normal use,
-      and we do not sell, rent, or share any data.
+      LISA is a personal AI assistant with two modes: <strong>LISA Cloud</strong>, operated
+      by us, and a backend on <strong>your own Mac</strong>. Cloud mode processes and stores
+      your account and assistant data. Local mode uses the server and AI providers you choose.
+      We do not sell your personal data or use advertising tracking SDKs.
     </p>
   </header>
 
@@ -18,10 +18,9 @@ import Base from "../layouts/Base.astro";
     <p class="big">Local mode: nothing — to us.</p>
     <p>
       Lisa Pocket and Lisa collect no analytics, no advertising identifiers, and contain no
-      third-party tracking SDKs. There is no Lisa-operated account system in the default
-      (local) mode. If you opt into a <strong>LISA Cloud account</strong>, we hold exactly
+      third-party tracking SDKs. Local mode does not require a LISA Cloud account. If you opt into a <strong>LISA Cloud account</strong>, we hold exactly
       what the section below lists — your email, your sign-in identifier, and your Lisa's
-      data — and one click deletes all of it.
+      data. You can request account deletion within the app.
     </p>
   </div>
 
@@ -32,7 +31,8 @@ import Base from "../layouts/Base.astro";
         <li>
           <strong>Connection settings</strong> — the address of your backend and a device
           token are stored on your device (the iOS Keychain / app preferences) so the app can
-          reconnect. They are never sent to us.
+          reconnect. The connection token is sent only to the backend it authenticates, including
+          LISA Cloud when you choose cloud mode.
         </li>
         <li>
           <strong>Your conversations and Lisa’s memory (“soul”)</strong> live on the backend
@@ -46,9 +46,13 @@ import Base from "../layouts/Base.astro";
       <p class="eyebrow"><b>Your backend &amp; LLM providers</b></p>
       <p>
         When you chat, your messages are processed by the large-language-model provider
-        configured on <em>your</em> backend (e.g. Anthropic, Zhipu/GLM, OpenAI, Google), using
-        <em>your</em> API key. That processing is governed by that provider’s privacy policy.
-        We do not intercept or relay it.
+        configured on your backend (such as Anthropic, Zhipu/GLM, OpenAI, or Google).
+        LISA Cloud relays requests using the service's configured providers; a local Mac uses
+        your configuration. Relevant conversation history, memory, and tool results may be
+        included with your message. The iOS app names the configured services and asks for
+        permission before sending a chat message. Provider processing is governed by its own
+        policy. A local model can keep inference on your Mac; local mode alone does not imply
+        that a remote model never receives data.
       </p>
     </section>
 
@@ -75,11 +79,13 @@ import Base from "../layouts/Base.astro";
         <li>
           <strong>Deletion</strong> — "Delete account" in the app removes the account record
           and wipes the per-account home entirely; every session is invalidated at that
-          instant. No soft-delete, no retention window.
+          instant. Payment transaction records used for deduplication and refunds are separate
+          from conversation storage. Provider-side records and infrastructure backups follow
+          their respective retention policies; contact us for a data request.
         </li>
         <li>
-          The public review/demo instance remains <strong>shared and rate-limited</strong> —
-          please don't put sensitive information into it.
+          The App Review demonstration account is shared with reviewers. Do not place personal
+          information in that account. Ordinary cloud accounts have separate assistant data.
         </li>
       </ul>
     </section>
