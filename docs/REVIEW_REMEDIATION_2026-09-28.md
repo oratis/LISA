@@ -19,10 +19,20 @@ Apple 引用 **5.1.1(i)、5.1.2(i)**：在向第三方 AI 发送个人信息前�
 
 ## 验证与当前状态
 
-- iPhone 17 Pro Max / iOS 26.5 专用模拟器：68 XCTest，0 failures。包括未成年人未确认、接收方/账号/服务器变更和撤回期间请求失效的回归测试。
-- 中英文 Astro 网站构建通过。
-- 原生首次 Cloud 入口、Apple/Google 登录按钮显示已核实；其余原生回归、最终截图、新签名构建、网站部署及正式送审正在完成。本文不把测试通过或隐私标签发布写成 App 已通过审核。
-- 截图原件及后台证据保留在本机 `tmp/appstore-2026-09-28`，不包含密码或访问令牌，不提交 Git。
+- 最终源码 `316c35ff4697758a5c263211ebfe2304820958ea` 在专用 iPhone 17 Pro Max / iOS 26.5、iPad Pro 13-inch (M5) / iPadOS 26.5 上各通过 **68 XCTest，0 failures**。覆盖接收方/账号/服务器变更、18+ 前置条件和撤回时请求代际失效。
+- 原生人工操作验证：首次 Cloud 入口、Apple/Google 按钮、审核账号密码登录、头像、历史恢复、真实流式回复、取消保留草稿、撤回后再次询问，以及 iPad 的 Cloud → My Mac → Cloud 返回原账号。没有把按钮显示写成 Apple/Google OAuth 交互登录已完成。
+- [PR #395](https://github.com/oratis/LISA/pull/395) 已合并为 `b2749410d8ca3b2bba1c6f42c989114511033b0d`；[CI 36375530351](https://github.com/oratis/LISA/actions/runs/36375530351) 的 iOS、Node 22/24、coverage、audit、E2E、website 和独立 docs 检查通过。未改变的 macOS 按路径规则跳过。
+- [签名上传 36375556510](https://github.com/oratis/LISA/actions/runs/36375556510) 成功；Apple 已将 **1.2 (1790567703)**、build ID `9e5063be-503d-4a9e-a730-a0e15580aea0` 处理为 **VALID**，并已绑定版本 1.2。保留 **AFTER_APPROVAL** 自动发布设置。较早的 1790567511 为中间构建，不是当前选择。
+- 中英文 Astro 构建、预发布浏览器排版及正式域名核对通过。网站生产 100% 流量为 `lisa-web-00017-qip`，隐私页日期 2026-09-28；前一版本 `lisa-web-00015-ron` 可作回滚参考。临时 canary 标签已移除。
+- 新的 en-US 商店素材为 iPhone 1290×2796、iPad 2064×2752，各五张，均来自相应原生模拟器。旧素材先备份，替换后核对 Apple 的 COMPLETE 状态、顺序与尺寸。截图原件、字体许可证、渲染配置、SHA-256 manifest、旧素材及后台证据保留在本机 `tmp/appstore-2026-09-28`，不含密码或访问令牌，不提交 Git。
+- ASC 描述和审核说明已同步成年人要求、实际 AI 接收方、事前同意与撤回路径。七项隐私类别已发布，18+ 已保存。
+
+## 尚未完成的商店验收
+
+- 已将修复后的 App 与三个随 App 退回的 IAP 标记为 resolved；四个审核项及 iOS 版本已读回 **READY_FOR_REVIEW**。原 review submission 仍为 **UNRESOLVED_ISSUES**、等待正式重新提交；不能把 READY_FOR_REVIEW、VALID、PR 合并或网站发布写成已经提交/通过审核。
+- 未绑定本地 StoreKit 测试配置的临时签名模拟器访问商品时显示可重试的加载失败。因此**没有完成真实 App Store sandbox 购买及服务器到账验收**；本地 StoreKit fixture 或后端 receipt 单测均不能替代。审核账号 sandbox allowlist 已存在，三个商品因关联 App 被拒而退回的审核项现已标记为可重新审核。无购买成功、收费或到账的虚构记录。
+- Gemini 官方条款要求 API 客户端面向其支持地区。当前 ASC 开放全部 175 个地区，其中 **CHN（中国大陆）、HKG（香港）、MAC（澳门）、RUS（俄罗斯）、BLR（白俄罗斯）、MMR（缅甸）、AFG（阿富汗）** 不在核对到的 Gemini 支持清单中；`availableInNewTerritories` 也为 true。尚未更改这些地区。待用户决定：排除七个地区并关闭自动新增地区，或保留市场并改用经验证可覆盖这些地区的提供商；当前 GLM 凭据余额不足，不能作为已验证替代方案。
+- 推送真机验收、实际 Apple/Google OAuth 登录及更完整的云任务/连接器等后续产品工程，仍按[计划](PLAN_PERSONAL_ASSISTANT_2026-09-27.md)区分，不声称所有能力都已实现。
 
 ## 政策依据
 
@@ -30,3 +40,5 @@ Apple 引用 **5.1.1(i)、5.1.2(i)**：在向第三方 AI 发送个人信息前�
 - [Apple App Privacy](https://developer.apple.com/app-store/app-privacy-details/)：收集类别、用途、关联和追踪定义。
 - [Gemini API 条款](https://ai.google.dev/gemini-api/terms)：2026-03-23 生效版本，18+、已启用计费项目的付费处理规则。
 - [Google 数据处理附录](https://business.safety.google/processorterms/)：受托处理、保密、安全和适用删除义务。没有声称任意用户自托管提供商都受 LISA 的托管协议覆盖。
+
+- [Gemini 支持地区](https://ai.google.dev/gemini-api/docs/available-regions)：与 ASC 175 个已选地区逐项核对，调整市场前保留用户决策。
