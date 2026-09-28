@@ -10,12 +10,10 @@
   snapshot the widget reads), C617.1 (file timestamps, app-owned files), 35F9.1
   (boot time, session age), 85F4.1 (disk space, cache management).
 
-  Data collection (updated for B1 accounts, PLAN_ACCOUNTS_BILLING): the optional
-  LISA account (Sign in with Apple / email+password on the hosted LISA Cloud)
-  collects an email address and a user ID, linked to the user, for app
-  functionality only — no tracking; AI processing is disclosed before chat. The My Mac (local) mode
-  mode sends data to the chosen backend. ASC App Privacy answers must match:
-  "Email Address" + "User ID" (App Functionality, linked, no tracking).
+  Cloud accounts, purchases, chat content, usage metering and service diagnostics
+  are linked to the account. AI content also supports personalized replies through
+  assistant memory. No advertising or cross-app tracking. ASC answers must match
+  these declarations. My Mac sends data to the user's independently chosen backend.
 -->
 <plist version="1.0">
 <dict>
@@ -51,7 +49,21 @@
             <key>NSPrivacyCollectedDataTypeLinked</key><true/>
             <key>NSPrivacyCollectedDataTypeTracking</key><false/>
             <key>NSPrivacyCollectedDataTypePurposes</key>
-            <array><string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string></array>
+            <array>
+                <string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+                <string>NSPrivacyCollectedDataTypePurposeProductPersonalization</string>
+            </array>
+        </dict>
+        <dict>
+            <key>NSPrivacyCollectedDataType</key>
+            <string>NSPrivacyCollectedDataTypeEmailsOrTextMessages</string>
+            <key>NSPrivacyCollectedDataTypeLinked</key><true/>
+            <key>NSPrivacyCollectedDataTypeTracking</key><false/>
+            <key>NSPrivacyCollectedDataTypePurposes</key>
+            <array>
+                <string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+                <string>NSPrivacyCollectedDataTypePurposeProductPersonalization</string>
+            </array>
         </dict>
         <dict>
             <key>NSPrivacyCollectedDataType</key>
@@ -63,7 +75,15 @@
         </dict>
         <dict>
             <key>NSPrivacyCollectedDataType</key>
-            <string>NSPrivacyCollectedDataTypeProductInteraction</string>
+            <string>NSPrivacyCollectedDataTypeOtherUsageData</string>
+            <key>NSPrivacyCollectedDataTypeLinked</key><true/>
+            <key>NSPrivacyCollectedDataTypeTracking</key><false/>
+            <key>NSPrivacyCollectedDataTypePurposes</key>
+            <array><string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string></array>
+        </dict>
+        <dict>
+            <key>NSPrivacyCollectedDataType</key>
+            <string>NSPrivacyCollectedDataTypeOtherDiagnosticData</string>
             <key>NSPrivacyCollectedDataTypeLinked</key><true/>
             <key>NSPrivacyCollectedDataTypeTracking</key><false/>
             <key>NSPrivacyCollectedDataTypePurposes</key>

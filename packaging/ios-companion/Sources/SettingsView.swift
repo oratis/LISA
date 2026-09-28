@@ -105,6 +105,22 @@ struct SettingsView: View {
                     }
                 }
 
+                Section {
+                    Text(app.aiConsent.isGranted
+                         ? "Allowed for this connection: " + app.aiConsent.recipients.joined(separator: ", ")
+                         : "Permission is required before sending your next message to AI services.")
+                        .font(.footnote)
+                    Button("Withdraw AI consent") {
+                        app.aiConsent.revoke()
+                        app.notify("AI permission withdrawn. Your next message will ask again.")
+                    }
+                    Link("Privacy policy", destination: URL(string: "https://meetlisa.ai/privacy")!)
+                } header: {
+                    Text("AI data sharing")
+                } footer: {
+                    Text("Stops an active chat request and asks again before future messages from this app. Data already sent cannot be recalled. This does not delete your history or change automations you configured on your Mac.")
+                }
+
                 if app.connectionMode == .mac {
                 Section("Notifications") {
                     Picker("Deliver via", selection: $transport) {

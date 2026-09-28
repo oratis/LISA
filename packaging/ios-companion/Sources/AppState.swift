@@ -28,6 +28,7 @@ enum ConnectionMode: String, CaseIterable, Identifiable {
 final class AppState: ObservableObject {
     private let profiles: ConnectionProfiles
     @Published var chatDraft = ""
+    @Published var aiConsent = AISharingConsent()
     @Published var config: ServerConfig
     @Published private(set) var client: LisaClient
     /// User's chosen data plane (My Mac vs LISA Cloud). Persisted; UX-only for now —
@@ -191,6 +192,7 @@ final class AppState: ObservableObject {
     /// Replace the active transport and discard all state belonging to its predecessor.
     private func activate(_ cfg: ServerConfig) {
         guard cfg != config else { return }
+        aiConsent.revoke()
         config = cfg
         client = LisaClient(config: cfg)
         account = nil
