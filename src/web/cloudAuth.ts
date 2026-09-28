@@ -8,12 +8,9 @@
  * it here against Apple's published public keys and, on success, hand back the
  * cloud session token so the phone can authenticate like any other client.
  *
- * Scope is deliberately single-tenant (matches the deployed M0/C2 demo: one
- * shared soul behind one `LISA_WEB_TOKEN`). Verifying Apple's signature lets a
- * reviewer — or any operator-approved Apple ID — sign in instead of pasting the
- * token, which is the App Store reviewability unlock. Per-`uid` isolation +
- * Firebase + account deletion stay deferred C3 work; this module does NOT mint
- * per-user state.
+ * The server uses the verified subject to resolve an isolated cloud account
+ * and mint its session. Authorization-code exchange and token revocation live
+ * in apple-authorization.ts; this module only verifies identity tokens.
  *
  * No external dependencies: Apple uses RS256, which Node verifies natively from
  * a JWK via `node:crypto`. The verifier is pure (JWKS fetch + clock injected) so
@@ -33,7 +30,7 @@ export interface AppleJWK {
 
 /** The verified subset of an Apple identity token we act on. */
 export interface AppleIdentity {
-  /** Stable, team-scoped user id (`sub`). The account key if/when we go multi-tenant. */
+  /** Stable, team-scoped user id (`sub`). Distinct from the random Lisa account uid. */
   sub: string;
   /** Present only when the user shared it (first sign-in, or always for real email). */
   email?: string;
@@ -120,7 +117,10 @@ export async function verifyAppleIdentityToken(
   if (!jwk) throw new AppleAuthError("no matching Apple signing key");
 
   // RS256 = RSASSA-PKCS1-v1_5 over SHA-256. Node imports the JWK directly.
-  const pubKey = crypto.createPublicKey({ key: jwk as unknown as crypto.JsonWebKey, format: "jwk" });
+  const pubKey = crypto.createPublicKey({
+    key: jwk as unknown as crypto.JsonWebKey,
+    format: "jwk",
+  });
   const signingInput = Buffer.from(`${headerB64}.${payloadB64}`, "utf8");
   const ok = crypto.verify("RSA-SHA256", signingInput, pubKey, b64urlToBuffer(sigB64));
   if (!ok) throw new AppleAuthError("bad signature");
@@ -154,9 +154,11 @@ export async function verifyAppleIdentityToken(
 
   const email = typeof claims.email === "string" ? claims.email : undefined;
   const emailVerified =
-    claims.email_verified === true || claims.email_verified === "true" ? true
-    : claims.email_verified === false || claims.email_verified === "false" ? false
-    : undefined;
+    claims.email_verified === true || claims.email_verified === "true"
+      ? true
+      : claims.email_verified === false || claims.email_verified === "false"
+        ? false
+        : undefined;
 
   return { sub, email, emailVerified };
 }

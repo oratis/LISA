@@ -3,14 +3,14 @@
  * (docs/PLAN_ACCOUNTS_BILLING_v1.0.md §6.1, milestone B1).
  *
  * Three account kinds share one store (`$lisaHome()/accounts.json`, 0600):
- *  - **Apple** (`apple-<sub>`): created/updated on every verified Sign in with
+ *  - **Apple** (`apple-<random>`): created/updated on every verified Sign in with
  *    Apple. No password material — Apple is the authority.
  *  - **Email** (`em-<random>`): self-serve, keyed by the address. Password
  *    material is OPTIONAL: accounts born from a mailed one-time code
  *    (src/web/otp.ts) carry no scrypt params at all, and the password path
  *    rejects them constant-time like any other bad credential. App Review's
  *    demo account is the password kind (ASC insists on user/pass).
- *  - **Google** (`g-<sub>`): created on the first verified Google sign-in.
+ *  - **Google** (`g-<random>`): created on the first verified Google sign-in.
  *
  * **One address, one account.** Email and Google accounts both *claim* their
  * address (`EMAIL_OWNER_KINDS`), so every lookup spans both kinds and a person
@@ -18,6 +18,8 @@
  * uid — and therefore the same balance. Apple is excluded on purpose: its
  * private-relay addresses are per-app aliases, not a claim on a real inbox.
  *
+ * New OAuth accounts get random uids; re-registering after deletion cannot
+ * resurrect an old session or its data directory. Existing uids are preserved.
  * Every account carries a `sessionVersion`; session tokens embed it and the
  *  gate rejects a mismatch — so deleting an account (App Store 5.1.1(v)) or a
  * future password change invalidates all outstanding sessions statelessly.
@@ -71,6 +73,10 @@ export interface AccountRecord {
   sessionVersion: number;
   /** Google's stable account id — set on any account a Google sign-in owns. */
   googleSub?: string;
+  /** Apple's stable subject. Legacy records encoded it in uid instead. */
+  appleSub?: string;
+  /** Encrypted Apple refresh token, used only for account-deletion revocation. */
+  appleAuthorization?: { clientId: string; encryptedRefreshToken: string };
   /** SHA-256 of the outstanding verification token (email kind, unverified). */
   verifyTokenHash?: string;
   /** Verification-token expiry, ms epoch. */
@@ -199,7 +205,12 @@ export function validPassword(pw: string): boolean {
  * handful of concurrent unauthenticated /register or /login calls stalled every
  * other request — a cheap DoS. The callback form runs on the libuv threadpool.
  */
-function scryptAsync(pw: string, salt: Buffer, keyLen: number, opts: crypto.ScryptOptions): Promise<Buffer> {
+function scryptAsync(
+  pw: string,
+  salt: Buffer,
+  keyLen: number,
+  opts: crypto.ScryptOptions,
+): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     crypto.scrypt(pw, salt, keyLen, opts, (err, key) => (err ? reject(err) : resolve(key)));
   });
@@ -208,7 +219,13 @@ function scryptAsync(pw: string, salt: Buffer, keyLen: number, opts: crypto.Scry
 async function hashPassword(pw: string): Promise<ScryptParams> {
   const salt = crypto.randomBytes(16);
   const key = await scryptAsync(pw, salt, SCRYPT.keyLen, SCRYPT);
-  return { saltHex: salt.toString("hex"), keyHex: key.toString("hex"), N: SCRYPT.N, r: SCRYPT.r, p: SCRYPT.p };
+  return {
+    saltHex: salt.toString("hex"),
+    keyHex: key.toString("hex"),
+    N: SCRYPT.N,
+    r: SCRYPT.r,
+    p: SCRYPT.p,
+  };
 }
 
 async function passwordMatches(pw: string, p: ScryptParams): Promise<boolean> {
@@ -428,10 +445,14 @@ export async function upsertAppleAccount(
   email: string | undefined,
   now: number = Date.now(),
 ): Promise<AccountRecord> {
-  const uid = appleUid(sub);
+  const legacyUid = appleUid(sub);
+  const uid = `apple-${crypto.randomBytes(18).toString("hex")}`;
   return mutateAccounts((list) => {
-    const existing = list.find((a) => a.uid === uid);
+    const existing = list.find(
+      (a) => a.kind === "apple" && (a.appleSub === sub || (!a.appleSub && a.uid === legacyUid)),
+    );
     if (existing) {
+      existing.appleSub = sub;
       existing.lastLoginAt = now;
       if (email && !existing.email) existing.email = normalizeEmail(email);
       return existing;
@@ -439,6 +460,7 @@ export async function upsertAppleAccount(
     const rec: AccountRecord = {
       uid,
       kind: "apple",
+      appleSub: sub,
       email: email ? normalizeEmail(email) : undefined,
       createdAt: now,
       lastLoginAt: now,
@@ -474,7 +496,7 @@ export async function upsertGoogleAccount(
 ): Promise<AccountRecord> {
   const email = normalizeEmail(emailRaw);
   if (!validEmail(email)) throw new AccountError("invalid_email");
-  const uid = googleUid(sub);
+  const uid = `g-${crypto.randomBytes(18).toString("hex")}`;
   return mutateAccounts((list) => {
     const bySub = list.find((a) => a.googleSub === sub);
     if (bySub) {
@@ -502,6 +524,18 @@ export async function upsertGoogleAccount(
     };
     list.push(rec);
     return rec;
+  });
+}
+
+/** Store a revocable authorization without ever returning it from auth/me. */
+export async function saveAppleAuthorization(
+  uid: string,
+  authorization: NonNullable<AccountRecord["appleAuthorization"]>,
+): Promise<void> {
+  await mutateAccounts((list) => {
+    const acct = list.find((a) => a.uid === uid && a.kind === "apple");
+    if (!acct) throw new AccountStoreError("Apple account no longer exists");
+    acct.appleAuthorization = authorization;
   });
 }
 
@@ -542,8 +576,13 @@ export async function sessionAccountValid(uid: string, sv: number): Promise<bool
  * verified=true (full free window). Idempotent; never rotates an existing
  * password. Returns the record.
  */
-export async function ensureSeededAccount(email: string, password: string, now: number = Date.now()): Promise<AccountRecord> {
-  const existing = (await getAccountByEmail(email)) ?? (await createEmailAccount(email, password, now));
+export async function ensureSeededAccount(
+  email: string,
+  password: string,
+  now: number = Date.now(),
+): Promise<AccountRecord> {
+  const existing =
+    (await getAccountByEmail(email)) ?? (await createEmailAccount(email, password, now));
   return mutateAccounts((list) => {
     const live = list.find((a) => a.uid === existing.uid);
     if (live && !live.verified) live.verified = true;
@@ -559,7 +598,10 @@ const VERIFY_TTL_MS = 24 * 60 * 60 * 1000;
  * email account. Returns the RAW token once — it goes into the mailed link —
  * or null when the uid isn't an unverified email account.
  */
-export async function beginEmailVerification(uid: string, now: number = Date.now()): Promise<string | null> {
+export async function beginEmailVerification(
+  uid: string,
+  now: number = Date.now(),
+): Promise<string | null> {
   const token = crypto.randomBytes(24).toString("hex");
   const hash = crypto.createHash("sha256").update(token).digest("hex");
   return mutateAccounts((list) => {
@@ -576,7 +618,10 @@ export async function beginEmailVerification(uid: string, now: number = Date.now
  * On success the account is marked verified (free window levels $1 → $5) and
  * the token is cleared. Returns the account or null.
  */
-export async function confirmEmailVerification(rawToken: string, now: number = Date.now()): Promise<AccountRecord | null> {
+export async function confirmEmailVerification(
+  rawToken: string,
+  now: number = Date.now(),
+): Promise<AccountRecord | null> {
   if (!rawToken) return null;
   const presented = crypto.createHash("sha256").update(rawToken).digest();
   return mutateAccounts((list) => {
@@ -588,7 +633,8 @@ export async function confirmEmailVerification(rawToken: string, now: number = D
       } catch {
         continue;
       }
-      if (stored.length !== presented.length || !crypto.timingSafeEqual(stored, presented)) continue;
+      if (stored.length !== presented.length || !crypto.timingSafeEqual(stored, presented))
+        continue;
       if (!acct.verifyExpiresAt || acct.verifyExpiresAt < now) return null; // matched but stale
       acct.verified = true;
       delete acct.verifyTokenHash;

@@ -1,0 +1,76 @@
+# Lisa Pocket 送审前全面自检
+
+日期：2026-09-28。基线为 `8a5a8f2`（PR #397）。目标是减少本次审核的实际失败点；测试通过不等于 Apple 已批准。
+
+本轮开始时，App Store Connect 的 1.2 (1790567703)、review submission 与三个内购均为 **WAITING_FOR_REVIEW**，发行方式为 **AFTER_APPROVAL**。该构建包含上一轮 AI 告知整改，**尚未包含本文新增修复**。最新发布和送审证据记录在本文末尾。
+
+## 审核依据与范围
+
+实际最近拒审为 5.1.1(i) / 5.1.2(i)：第三方 AI 的数据范围、接收者、事前同意和同等隐私保护。历史还出现过品牌、登录及内购入口问题。本轮从首次启动、云端登录、Mac 连接、AI 同意、聊天、账号生命周期、StoreKit、隐私披露及后台送审资料逐项核查。
+
+依据：
+
+- [App Review Guidelines](https://developer.apple.com/app-store/review/guidelines/)
+- [Offering account deletion in your app](https://developer.apple.com/support/offering-account-deletion-in-your-app/)
+- [TN3194: Handling account deletions and revoking tokens for Sign in with Apple](https://developer.apple.com/documentation/technotes/tn3194-handling-account-deletions-and-revoking-tokens-for-sign-in-with-apple)
+- [Revoke tokens](https://developer.apple.com/documentation/signinwithapplerestapi/revoke-tokens)
+- [用户停止使用 Apple 登录的官方说明](https://support.apple.com/en-us/102571)
+
+## 本轮发现并修复的问题
+
+| 风险 | 原有行为 | 修复和证据 |
+| --- | --- | --- |
+| 删除后旧登录会话复活 | Apple / Google 的 uid 由第三方 subject 决定；删除再注册可回到相同 uid 与 sessionVersion | 新账户使用随机 uid，独立保存 subject；现有账号原地兼容迁移。回归覆盖删除再注册后旧 token 不能恢复、旧 Apple 账号迁移 |
+| Apple 授权未撤销 | iOS 只上传 identity token；删除 Lisa 数据时无法调用 Apple revoke | iOS 同时上传 authorization code；后端验证 Apple 返回的身份与 nonce，AES-GCM 加密保存账号和 client ID 绑定的 refresh token；删除前调用 revoke。私钥需独立配置，禁止使用 ASC 上传密钥代替 |
+| 早期 Apple 账号没有授权令牌 | 服务端缺少历史 token，不能承诺自动撤销 | 按 TN3194 仍删除 Lisa 数据，并返回明确的手动解除关联说明；原生 App 显示 Apple 官方入口，不伪称已完成自动撤销 |
+| 删除失败却显示成功 | 文件清理异常曾被忽略，先删除账号会丢失重试凭据 | 清理或 Apple revoke 失败返回 503，保留账号以便重试；客户端仅在成功后退出。真实 HTTP 测试覆盖两种失败及重试 |
+| 删除后并发写回数据 | 正在运行的聊天、初始化、后台云任务可能晚于删除完成 | 禁止新增该账号请求，终止活动响应并等待处理器结束；后台 sweep 参与同一等待机制并重新确认账号仍存在；超过等待上限报告失败而非假成功；只关闭该租户 SSE |
+| 读取页面即开始 AI 推理 | 任意账号请求曾触发 soul 初始化，包括 Settings / 历史 / 删除 | 延迟到用户实际发送聊天消息后执行；读取账号信息的 HTTP 测试确认没有模型请求及新增 soul 数据 |
+| Apple 外部撤销后仍保留原生登录 | App 未检查系统授权状态 | 启动、回到前台和 credentialRevokedNotification 时检查；撤销只清除对应 Cloud 连接，不影响 Mac 或切换后的账号 |
+| 内购失败反馈不完整 | 无法验证的交易及恢复失败可能无提示，恢复可重复发起 | 明确提示验证失败、恢复失败；购买与恢复共享 busy 保护；未到账交易不 finish，可再次投递；恢复文案说明消耗型余额保存在 Lisa 账号，不重复生成额度 |
+
+Apple 授权令牌不会出现在 `/api/auth/me`、日志或文档。使用现有持久会话 secret 进行独立用途的密钥派生，AES-GCM 的附加认证数据绑定 uid / client ID，复制到其他账号或 App ID 会失败。新密钥仅应启用 Lisa Pocket 的 Sign in with Apple。
+
+生产仍使用单实例文件账户存储。删除等待机制按这一部署边界实现；切换为多实例前需增加跨实例生命周期协调，不能仅放开 Cloud Run 实例数。
+
+## 验证矩阵
+
+| 项目 | 本轮结果 | 验证边界 |
+| --- | --- | --- |
+| 后端全量测试 | 2072 项：2071 passed、1 skipped、0 failed | 包括实际 HTTP 账号删除、Apple JWT/code 交换身份一致性、加密、重注册、tenant SSE、sweep 删除协调 |
+| TypeScript / 浏览器类型 / API 契约 | 通过 | API 契约检查与主构建通过 |
+| ESLint | 0 errors、70 warnings | 未将仓库既有 warning 写成零警告 |
+| iPhone 原生测试 | 71 XCTest，0 failures | iPhone 17 Pro Max / iOS 26.5 专用模拟器 |
+| iPad 原生测试 | 71 XCTest，0 failures | iPad Pro 13-inch (M5) / iPadOS 26.5 专用模拟器 |
+| 新增原生生命周期测试 | 3 项通过 | Apple code 请求体、删除返回 follow-up、失败响应保留重试能力 |
+| 隐私页 | 中英文 Astro 构建通过 | 补充授权令牌加密保存、删除撤销及早期账号说明 |
+| 内购商品 | 原生界面加载 Starter / Plus / Max，显示 $4.99 / $9.99 / $19.99 | 三项 ASC product ID、文案、review screenshot COMPLETE 均核实 |
+| 恢复购买取消 | Apple 账号提示出现；取消后明确提示失败，按钮恢复 | 未输入 Apple 密码，未发生真实付款 |
+| 审核账号 | 已登录，账户、免费额度及 $20 余额可见 | 保留审核账号，未删除其数据 |
+| Cloud ↔ Mac | 专用模拟器连接隔离的本机服务；真实 Gemini 回复 21+22=43；切回 Cloud 后原账号及历史恢复 | 本地目录不含用户原有资料；本地测试消息未混入 Cloud 历史 |
+| AI 同意与撤回 | 前轮已人工验证；本轮原生单测继续覆盖 | 取消保留草稿、18+、接收方/连接变化、撤回与发送竞态 |
+| 真机 Apple / Google OAuth | 尚未完成交互验收 | 按钮显示、协议测试不能替代真实身份提供商登录 |
+| 真机 Sandbox 内购到账 | 尚未完成 | 商品可见、收据测试不能替代 Apple sandbox 付款 → 服务端到账 → 重投不重复充值 |
+
+## 送审资料复核
+
+- 版本、bundle ID、内购 product ID 一致；三项为 consumable，随 App 一起等待审核。
+- 审核入口无需 Mac、邮箱验证码或先购买：Continue with LISA Cloud → Use a password instead，使用 ASC 保管的专用审核凭据。
+- 截图仍是当前原生界面，iPhone / iPad 各五张；没有使用网页冒充原生 App。
+- AI 告知明确 Google Gemini、消息、相关历史、记忆及工具结果；云端使用已验证开启计费的 Gemini 项目。
+- 隐私标签、manifest、英文/中文政策覆盖账号、用户内容、购买、使用及诊断信息，声明不追踪；18+ 问卷已保存。
+- 发行范围维持已批准的 168 个地区，关闭自动新增地区；不在本轮改变售价或扩大发行范围。
+- 旧 IAP 审核说明中如有“sandbox purchase completes”的历史表述，应改为操作说明，不能把未复验的支付闭环写成已通过。
+- 审核通过后自动发布可以保留；正式批准结果由 Apple 决定。
+
+## 待完成的上线条件
+
+1. **配置 Lisa 专用 Apple 登录密钥。** Apple Developer 页面已准备好 `Lisa SignIn Revocation`，仅关联 `ai.meetlisa.main`，尚未点击 Register。已向用户询问是否创建并存入 LISA 的 Google Secret Manager。创建凭据属于浏览器工具明确要求操作时确认的事项，不视为测试通过即可跳过。
+2. **真机验收。** 已发现配对的 iPhone，尚未获准安装本轮测试构建。需要实际 Apple 登录与 sandbox 内购到账；用户自行处理 Apple 登录或购买确认。
+3. **部署及更换审核构建。** 合并修复、检查 CI、上传签名构建，待 Apple 处理 VALID 后再更换当前等待审核的包。不能把本地测试包或旧 build 的 WAITING_FOR_REVIEW 状态当成本轮修复已送审。
+
+密钥、审核密码、会话 token 均不进入 Git。模拟器证据保存在本机 `tmp/review-self-audit-2026-09-28`。该目录不是公共文档链接目标。
+
+## 发布及最终复核记录
+
+待部署、签名上传与重新提交时，追加精确 PR、commit、Cloud Run revision、build ID、审核状态及未完成项。

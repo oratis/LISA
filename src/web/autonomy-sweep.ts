@@ -24,7 +24,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { homeScope, homeForUid, lisaHome } from "../paths.js";
 import { atomicWrite } from "../fs-utils.js";
-import { loadAccounts, type AccountRecord } from "./accounts.js";
+import { getAccount, loadAccounts, type AccountRecord } from "./accounts.js";
 import { readBalance, tierFor, type QuotaTier } from "../billing/quota.js";
 import { killSwitchOn, globalSpendExceeded } from "../billing/limits.js";
 import { recordUsage } from "../billing/meter.js";
@@ -38,10 +38,7 @@ import { listSessionsOnDisk, loadSessionMessages } from "../sessions/list.js";
 import { reflectOnSession } from "../reflect.js";
 import { DEFAULT_MODEL } from "../llm.js";
 import { isBorn } from "../soul/store.js";
-import {
-  runDesireReviewOnce,
-  type DesireReviewRunResult,
-} from "../heartbeat/runner.js";
+import { runDesireReviewOnce, type DesireReviewRunResult } from "../heartbeat/runner.js";
 import type { ToolDefinition } from "../types.js";
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -107,7 +104,9 @@ async function readCheckpoint(): Promise<SweepCheckpoint | null> {
           typeof parsed.reflected.sessionId !== "string" ||
           !Number.isInteger(parsed.reflected.userMessages) ||
           parsed.reflected.userMessages < 0)) ||
-      (parsed.status !== undefined && parsed.status !== "pending" && parsed.status !== "completed") ||
+      (parsed.status !== undefined &&
+        parsed.status !== "pending" &&
+        parsed.status !== "completed") ||
       (parsed.startedAt !== undefined &&
         (typeof parsed.startedAt !== "number" || !Number.isFinite(parsed.startedAt))) ||
       (parsed.pendingAction !== undefined &&
@@ -167,9 +166,7 @@ export function conversationNeedsReflection(
 ): boolean {
   return (
     userMessages > 0 &&
-    (!cursor ||
-      cursor.sessionId !== sessionId ||
-      userMessages > cursor.userMessages)
+    (!cursor || cursor.sessionId !== sessionId || userMessages > cursor.userMessages)
   );
 }
 
@@ -188,6 +185,8 @@ export async function sweepUserAutonomy(
     cwd?: string;
     /** Test seam; production uses the bounded heartbeat implementation. */
     reviewFn?: typeof runDesireReviewOnce;
+    /** Coordinate account deletion with any background writes. Null skips a deleting account. */
+    beginAccountWork?: (uid: string) => (() => void) | null;
   } = {},
 ): Promise<SweepReport> {
   const now = opts.now ?? Date.now();
@@ -211,11 +210,23 @@ export async function sweepUserAutonomy(
       outcomes.push({ uid: acct.uid, action: "skipped", reason: "service_paused" });
       break;
     }
-    const outcome = await homeScope.run(homeForUid(acct.uid), () =>
-      sweepOne(acct, now, opts),
-    );
-    outcomes.push(outcome);
-    if (outcome.action !== "skipped") ran++;
+    const finish = opts.beginAccountWork?.(acct.uid);
+    if (finish === null) {
+      outcomes.push({ uid: acct.uid, action: "skipped", reason: "account_deleting" });
+      continue;
+    }
+    try {
+      // The sweep's initial directory snapshot may outlive a deleted account.
+      if (!(await getAccount(acct.uid))) {
+        outcomes.push({ uid: acct.uid, action: "skipped", reason: "account_deleted" });
+        continue;
+      }
+      const outcome = await homeScope.run(homeForUid(acct.uid), () => sweepOne(acct, now, opts));
+      outcomes.push(outcome);
+      if (outcome.action !== "skipped") ran++;
+    } finally {
+      finish?.();
+    }
   }
   return { scanned: active.length, ran, outcomes };
 }
@@ -257,11 +268,7 @@ async function sweepOne(
       const userMessages = messages.filter((message) => message.role === "user").length;
       if (
         messages.length >= 2 &&
-        conversationNeedsReflection(
-          checkpoint?.reflected,
-          latest.id,
-          userMessages,
-        )
+        conversationNeedsReflection(checkpoint?.reflected, latest.id, userMessages)
       ) {
         await writeCheckpoint({
           at: checkpoint?.at ?? 0,
@@ -291,11 +298,7 @@ async function sweepOne(
         // Autonomy is free to the user, but its face cost stays audited and
         // contributes to the global daily cap.
         if (result.usage) {
-          await recordUsage(
-            "autonomy",
-            opts.model ?? DEFAULT_MODEL,
-            result.usage,
-          );
+          await recordUsage("autonomy", opts.model ?? DEFAULT_MODEL, result.usage);
         }
         return { uid: acct.uid, action: "reflected" };
       }
@@ -351,16 +354,17 @@ async function sweepOne(
     }
     return { uid: acct.uid, action: "skipped", reason: "unchanged" };
   } catch (e) {
-    return { uid: acct.uid, action: "skipped", reason: `error: ${(e as Error).message.slice(0, 120)}` };
+    return {
+      uid: acct.uid,
+      action: "skipped",
+      reason: `error: ${(e as Error).message.slice(0, 120)}`,
+    };
   } finally {
     await guard.release();
   }
 }
 
-async function meterReview(
-  model: string,
-  review: DesireReviewRunResult,
-): Promise<void> {
+async function meterReview(model: string, review: DesireReviewRunResult): Promise<void> {
   await recordUsage("autonomy", model, {
     inputTokens: review.inputTokens,
     outputTokens: review.outputTokens,

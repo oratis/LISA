@@ -324,10 +324,11 @@ struct CloudSignInForm: View {
             // One nonce per request: consume it so a second sign-in can't reuse it.
             let raw = appleRawNonce
             appleRawNonce = nil
+            let authorizationCode = cred.authorizationCode.flatMap { String(data: $0, encoding: .utf8) }
             Task {
                 do {
                     try await app.connectCloudWithApple(baseURL: cloudURL, identityToken: idToken,
-                                                        rawNonce: raw)
+                                                        rawNonce: raw, authorizationCode: authorizationCode)
                     await verifyThenReport()
                 } catch LisaError.http(404) {
                     busy = false

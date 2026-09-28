@@ -88,15 +88,17 @@ final class LisaClient {
     /// hashes it and compares against the token's `nonce` claim, which proves
     /// the token was issued for THIS request. nil ⇒ omitted (older instances).
     static func exchangeAppleToken(base: ServerConfig, identityToken: String, rawNonce: String? = nil,
+                                   authorizationCode: String? = nil,
                                    session: URLSession = .shared) async throws -> String {
         guard let baseURL = base.baseURL, let url = URL(string: "/api/auth/apple", relativeTo: baseURL) else {
             throw LisaError.notConfigured
         }
-        var req = URLRequest(url: url)
+        var req = URLRequest(url: url, timeoutInterval: 30)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         var payload: [String: String] = ["identityToken": identityToken]
         if let rawNonce { payload["nonce"] = rawNonce }
+        if let authorizationCode { payload["authorizationCode"] = authorizationCode }
         req.httpBody = try JSONSerialization.data(withJSONObject: payload)
         let (data, resp) = try await session.data(for: req)
         try LisaAPICompatibility.validate(resp)
@@ -256,6 +258,7 @@ final class LisaClient {
         var email: String?
         var verified: Bool?
         var plan: String?
+        var appleUserId: String?
     }
 
     func authMe() async throws -> AccountMe {
@@ -295,9 +298,15 @@ final class LisaClient {
 
     /// In-app account deletion (App Store 5.1.1(v)) — `DELETE /api/account`.
     /// Only works when the connection uses an account session.
-    func deleteAccount() async throws {
-        struct R: Decodable { let ok: Bool }
-        _ = try await decode("/api/account", method: "DELETE", as: R.self)
+    struct AccountDeletion: Decodable {
+        let ok: Bool
+        let requiresManualAppleRevocation: Bool?
+    }
+
+    func deleteAccount() async throws -> AccountDeletion {
+        let result = try await decode("/api/account", method: "DELETE", as: AccountDeletion.self)
+        guard result.ok else { throw LisaError.decode }
+        return result
     }
 
     /// Re-send the email-verification mail (`POST /api/auth/verify/resend`).
