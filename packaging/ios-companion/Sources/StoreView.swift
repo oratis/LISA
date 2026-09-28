@@ -74,6 +74,7 @@ final class CreditsStore: ObservableObject {
     }
 
     func purchase(_ product: Product, app: AppState) async {
+        guard !busy else { return }
         guard app.connectionMode == .cloud, app.account?.signedIn == true,
               let uid = app.account?.uid else {
             message = "Sign in to your LISA Cloud account before purchasing credits."
@@ -100,7 +101,10 @@ final class CreditsStore: ObservableObject {
 
     /// Server-credit a verified transaction, then finish it.
     private func credit(_ verification: VerificationResult<StoreKit.Transaction>, app: AppState) async {
-        guard case .verified(let tx) = verification else { return }
+        guard case .verified(let tx) = verification else {
+            message = "The App Store couldn't verify this purchase. No credits have been applied. Please try again or contact support."
+            return
+        }
         // Never forward an App Store receipt to a paired Mac.
         guard app.connectionMode == .cloud, app.account?.signedIn == true,
               let uid = app.account?.uid else { return }
@@ -125,8 +129,21 @@ final class CreditsStore: ObservableObject {
         }
     }
 
-    func restore() async {
-        try? await AppStore.sync()
+    func restore(app: AppState) async {
+        guard !busy else { return }
+        busy = true
+        defer { busy = false }
+        message = nil
+        do {
+            try await AppStore.sync()
+            await reconcile(app: app)
+            await app.refreshAccount()
+            if message == nil {
+                message = "Purchases checked. Credits are saved in your LISA account; consumed packs are not restored as new credits."
+            }
+        } catch {
+            message = "Couldn't check App Store purchases. Please try again."
+        }
     }
 }
 
@@ -179,7 +196,8 @@ struct PaywallSheet: View {
                 }
 
                 Section {
-                    Button("Restore purchases") { Task { await store.restore() } }
+                    Button("Restore purchases") { Task { await store.restore(app: app) } }
+                        .disabled(store.busy)
                 }
 
                 if let msg = store.message {

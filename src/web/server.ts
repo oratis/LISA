@@ -141,6 +141,7 @@ import {
   createEmailAccount,
   verifyEmailLogin,
   upsertAppleAccount,
+  saveAppleAuthorization,
   deleteAccount,
   getAccount,
   sessionAccountValid,
@@ -203,6 +204,14 @@ import {
   audienceForClient,
   appleRequireNonce,
 } from "./cloudAuth.js";
+import {
+  appleAuthorizationConfig,
+  exchangeAppleAuthorizationCode,
+  encryptAppleRefreshToken,
+  decryptAppleRefreshToken,
+  revokeAppleAuthorization,
+  AppleAuthorizationError,
+} from "./apple-authorization.js";
 import { detectLanHost, buildPairUrl } from "./pairing.js";
 import { TenantEventBus, sameTenant } from "./event-bus.js";
 import { qrSvg } from "./qr-svg.js";
@@ -732,26 +741,21 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     }
   };
 
-  // Lazy per-user birth (B2, hub'd in S3): a signed-in user's first request
-  // seeds THEIR soul (the entrypoint's one-shot birth only covers the shared/
-  // global home). Runs through the single-flight birth hub so the visible
-  // ceremony (POST /api/birth) and this background path share ONE dream —
-  // never two LLM calls racing on writeSeed. Chat before it completes simply
-  // runs with the bare prompt and the soul arrives mid-conversation.
-  const ensureUserBirth = (uid: string): void => {
-    void (async () => {
-      try {
-        const { isBorn } = await import("../soul/store.js");
-        if (await isBorn()) return; // reads inside the per-uid scope
-        logInfo(`[accounts] birthing a soul for ${redactId(uid)}…`);
-        await startBirthOnce(uid, (emit) => runBirth(uid, emit)).promise;
-        const runtime = tenantRuntimes.peek(lisaHome());
-        if (runtime) runtime.prompt = undefined; // pick the newborn soul up next turn
-        logInfo(`[accounts] soul born for ${redactId(uid)}`);
-      } catch (e) {
-        logError(`[accounts] birth failed for ${redactId(uid)}: ${(e as Error).message}`);
-      }
-    })();
+  // Seed a cloud account's soul only when the user actually sends a message.
+  // Reading settings/history or deleting an account must never start inference.
+  // Await the single-flight birth so deletion can drain the whole request.
+  const ensureUserBirth = async (uid: string): Promise<void> => {
+    try {
+      const { isBorn } = await import("../soul/store.js");
+      if (await isBorn()) return; // reads inside the per-uid scope
+      logInfo(`[accounts] birthing a soul for ${redactId(uid)}…`);
+      await startBirthOnce(uid, (emit) => runBirth(uid, emit)).promise;
+      const runtime = tenantRuntimes.peek(lisaHome());
+      if (runtime) runtime.prompt = undefined; // pick the newborn soul up next turn
+      logInfo(`[accounts] soul born for ${redactId(uid)}`);
+    } catch (e) {
+      logError(`[accounts] birth failed for ${redactId(uid)}: ${(e as Error).message}`);
+    }
   };
 
   // ── Persistent /events SSE subscribers (mood + idle broadcasts) ─────
@@ -1278,7 +1282,28 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // is safe to abandon at shutdown (every event it did not reach stays open).
   if (isCloud()) startBillingReconciler();
 
-  const server = http.createServer(async (req, res) => {
+  const deletingAccounts = new Set<string>();
+  const accountRequests = new Map<string, Set<{ done: Promise<void>; stop: () => void }>>();
+  const requestFinished = new WeakMap<http.IncomingMessage, () => void>();
+  const beginAccountWork = (uid: string, stop: () => void): (() => void) | null => {
+    if (deletingAccounts.has(uid)) return null;
+    let finish!: () => void;
+    const work = {
+      done: new Promise<void>((resolve) => {
+        finish = resolve;
+      }),
+      stop,
+    };
+    const requests = accountRequests.get(uid) ?? new Set();
+    requests.add(work);
+    accountRequests.set(uid, requests);
+    return () => {
+      requests.delete(work);
+      if (requests.size === 0) accountRequests.delete(uid);
+      finish();
+    };
+  };
+  const handleRequest = async (req: http.IncomingMessage, res: http.ServerResponse) => {
     const url = req.url ?? "/";
     applyApiVersionHeader(url, res);
     // T-10: every response — HTML shell, JSON, SSE, assets, 404s — carries the
@@ -1408,7 +1433,39 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         }
         // B1: mint a per-uid account session (no longer the shared LISA_WEB_TOKEN).
         // The uid keys per-user isolation (B2) and billing (B3+).
+        const authorizationCode =
+          typeof payload.authorizationCode === "string" ? payload.authorizationCode : "";
+        const authorizationConfig = appleAuthorizationConfig();
+        let refreshToken: string | undefined;
+        if (authorizationCode && authorizationConfig) {
+          const tokens = await exchangeAppleAuthorizationCode(
+            authorizationConfig,
+            audience,
+            authorizationCode,
+            client === "web" && process.env.LISA_APPLE_WEB_REDIRECT_URI
+              ? { redirectUri: process.env.LISA_APPLE_WEB_REDIRECT_URI }
+              : {},
+          );
+          const codeIdentity = await verifyAppleIdentityToken(tokens.identityToken, {
+            audience,
+            fetchKeys: fetchAppleKeys,
+            ...(nonce ? { expectedNonce: nonce } : {}),
+          });
+          if (codeIdentity.sub !== id.sub)
+            throw new AppleAuthError("authorization identity mismatch");
+          refreshToken = tokens.refreshToken;
+        }
         const acct = await upsertAppleAccount(id.sub, id.email);
+        if (refreshToken)
+          await saveAppleAuthorization(acct.uid, {
+            clientId: audience,
+            encryptedRefreshToken: encryptAppleRefreshToken(
+              refreshToken,
+              sessionSecret,
+              acct.uid,
+              audience,
+            ),
+          });
         const session = mintSession(acct.uid, sessionSecret, { sv: acct.sessionVersion });
         res.writeHead(200, {
           "content-type": "application/json",
@@ -1827,6 +1884,10 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           ...(maxRuns !== undefined ? { maxRuns } : {}),
           tools: autonomyTools,
           cwd: process.cwd(),
+          beginAccountWork: (uid) =>
+            beginAccountWork(uid, () => {
+              /* drain background writes */
+            }),
         });
         logInfo(
           `[sweep] scanned ${report.scanned} active accounts, ran ${report.ran} autonomy action(s)`,
@@ -1995,10 +2056,18 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       // resolves into this account's subtree, including across awaits
       // (AsyncLocalStorage.enterWith sticks to this async chain).
       if (cloud && accountUid) {
+        if (deletingAccounts.has(accountUid)) {
+          res.writeHead(409, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "account_deletion_in_progress" }));
+          return;
+        }
+        if (!(req.method === "DELETE" && url === "/api/account")) {
+          const finish = beginAccountWork(accountUid, () => res.destroy());
+          if (finish) requestFinished.set(req, finish);
+        }
         const uidHome = homeForUid(accountUid);
         await fs.mkdir(uidHome, { recursive: true });
         homeScope.enterWith(uidHome);
-        ensureUserBirth(accountUid);
       }
     }
 
@@ -2014,6 +2083,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
                 signedIn: true,
                 uid: acct.uid,
                 kind: acct.kind,
+                appleUserId:
+                  acct.kind === "apple" ? (acct.appleSub ?? acct.uid.slice("apple-".length)) : null,
                 email: acct.email ?? null,
                 verified: acct.verified,
                 plan: "free",
@@ -2250,10 +2321,43 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end(JSON.stringify({ error: "account_session_required" }));
         return;
       }
-      const removed = await deleteAccount(accountUid);
-      // Remove the per-uid home + in-memory context. The account record going
-      // away already killed every session via the sv-check.
+      deletingAccounts.add(accountUid);
+      let removed = false;
+      let requiresManualAppleRevocation = false;
       try {
+        const acct = await getAccount(accountUid);
+        requiresManualAppleRevocation = acct?.kind === "apple" && !acct.appleAuthorization;
+        if (acct?.appleAuthorization) {
+          const config = appleAuthorizationConfig();
+          if (!config || !sessionSecret)
+            throw new AppleAuthorizationError("apple_revocation_failed");
+          const authorization = acct.appleAuthorization;
+          await revokeAppleAuthorization(
+            config,
+            authorization.clientId,
+            decryptAppleRefreshToken(
+              authorization.encryptedRefreshToken,
+              sessionSecret,
+              acct.uid,
+              authorization.clientId,
+            ),
+          );
+        }
+        // Stop chats and wait for their final writes before removing data. A
+        // disconnected response alone does not mean its handler has finished.
+        const requests = [...(accountRequests.get(accountUid) ?? [])];
+        for (const work of requests) work.stop();
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          await Promise.race([
+            Promise.all(requests.map((work) => work.done)),
+            new Promise<never>((_, reject) => {
+              timer = setTimeout(() => reject(new Error("account requests still active")), 20_000);
+            }),
+          ]);
+        } finally {
+          if (timer) clearTimeout(timer);
+        }
         const userHome = homeForUid(accountUid);
         // Refuse to follow a surprising path — belt & braces against uid tampering
         // (uids are server-minted, but cheap to double-check).
@@ -2262,14 +2366,23 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         }
         tenantRuntimes.delete(userHome);
         moodBus.forget(accountUid); // keyed by uid, not home path
+        eventClients.removeTenant(accountUid, (sink) => sink.end());
+        removed = await deleteAccount(accountUid);
       } catch (e) {
-        logError(`[auth] account home cleanup failed: ${(e as Error).message}`);
+        logError(
+          `[auth] account deletion incomplete: ${e instanceof AppleAuthorizationError ? e.code : "cleanup_failed"}`,
+        );
+        res.writeHead(503, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: "account_deletion_incomplete" }));
+        return;
+      } finally {
+        deletingAccounts.delete(accountUid);
       }
       res.writeHead(200, {
         "content-type": "application/json",
         "set-cookie": `lisa_token=; Max-Age=0; HttpOnly; SameSite=Strict; Path=/${isCloud() ? "; Secure" : ""}`,
       });
-      res.end(JSON.stringify({ ok: true, removed }));
+      res.end(JSON.stringify({ ok: true, removed, requiresManualAppleRevocation }));
       return;
     }
 
@@ -4202,6 +4315,7 @@ self.addEventListener('fetch', (event) => {
         if (weStartedTheRun && run.listeners.size <= 1) abortBirth.abort();
       };
       req.on("close", onClose);
+      res.on("close", onClose);
       for (const log of run.steps) listener(log);
       run.listeners.add(listener);
       try {
@@ -4219,6 +4333,7 @@ self.addEventListener('fetch', (event) => {
         send({ kind: "error", code: info.code, message: info.message, retryable: info.retryable });
       } finally {
         req.off("close", onClose);
+        res.off("close", onClose);
         run.listeners.delete(listener);
         res.end();
       }
@@ -4335,6 +4450,10 @@ self.addEventListener('fetch', (event) => {
         res.end(JSON.stringify({ error: `bad request: ${(err as Error).message}` }));
         return;
       }
+      // Cloud setup may call AI; do it only after an explicit chat request,
+      // never while merely opening Settings, viewing history or deleting an account.
+      if (cloud && accountUid) await ensureUserBirth(accountUid);
+      if (res.destroyed) return;
       // ── Quota gate (B4) — signed-in cloud accounts only; the legacy shared-
       // token demo stays operator-funded and ungated. Runs BEFORE the SSE
       // handshake so exhaustion is a clean HTTP 402 the clients can route to
@@ -4408,6 +4527,7 @@ self.addEventListener('fetch', (event) => {
       // queued turn isn't stuck behind an abandoned run.
       const turnAbort = new AbortController();
       req.on("close", () => turnAbort.abort());
+      res.on("close", () => turnAbort.abort());
       // The moodBus is process-wide: another tenant's concurrent turn emits on
       // it too. Only forward mood ticks that originate in THIS caller's home
       // scope (B2), so a cloud account never sees another account's mood. Mac /
@@ -4673,6 +4793,16 @@ self.addEventListener('fetch', (event) => {
 
     res.writeHead(404);
     res.end();
+  };
+  const server = http.createServer((req, res) => {
+    void handleRequest(req, res)
+      .catch(() => {
+        logError("[web] request failed");
+        if (!res.headersSent) res.writeHead(500, { "content-type": "application/json" });
+        if (!res.writableEnded && !res.destroyed)
+          res.end(JSON.stringify({ error: "request_failed" }));
+      })
+      .finally(() => requestFinished.get(req)?.());
   });
 
   // Tear down everything that would otherwise outlive the listener: the

@@ -93,7 +93,9 @@ import Base from "../layouts/Base.astro";
           <strong>What we store</strong> — your email address, a sign-in identifier
           (Apple/Google <code>sub</code> or a password hash — never the password itself), and
           your Lisa's per-account home: her soul, your conversations, and anything you add to
-          her knowledge base. Stored on Google Cloud (us-central1), isolated per account.
+          her knowledge base. We also encrypt and store the Apple authorization token when supplied,
+          so we can revoke that authorization when you delete your account.
+          Stored on Google Cloud (us-central1), isolated per account.
         </li>
         <li>
           <strong>What we process</strong> — chat messages pass through the account's metered
@@ -121,7 +123,10 @@ import Base from "../layouts/Base.astro";
           <strong>Deletion</strong> — "Delete account" in the app removes the account record
           and wipes the per-account home entirely; every session is invalidated at that
           instant. Payment transaction records used for deduplication and refunds are separate
-          from conversation storage. Provider-side records and infrastructure backups follow
+          from conversation storage. For Apple sign-ins with a saved authorization token,
+          deletion also revokes that authorization. For an earlier sign-in without a saved token,
+          we delete the Lisa data and show Apple's instructions for removing the remaining Apple connection. Provider-side records
+          and infrastructure backups follow
           their respective retention policies; contact us for a data request.
         </li>
         <li>
