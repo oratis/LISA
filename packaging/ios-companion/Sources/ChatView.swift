@@ -445,6 +445,7 @@ struct ChatView: View {
 
     private func deliver(_ text: String) {
         guard app.aiConsent.allows(server: app.config, recipients: consentRecipients) else { return }
+        app.cancelActiveChat = { [weak model = model] in model?.cancel() }
         input = ""
         model.send(text, client: app.client)
     }

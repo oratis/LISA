@@ -111,7 +111,7 @@ struct SettingsView: View {
                          : "Permission is required before sending your next message to AI services.")
                         .font(.footnote)
                     Button("Withdraw AI consent") {
-                        app.aiConsent.revoke()
+                        app.withdrawAIConsent()
                         app.notify("AI permission withdrawn. Your next message will ask again.")
                     }
                     Link("Privacy policy", destination: URL(string: "https://meetlisa.ai/privacy")!)

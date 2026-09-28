@@ -29,6 +29,14 @@ final class AppState: ObservableObject {
     private let profiles: ConnectionProfiles
     @Published var chatDraft = ""
     @Published var aiConsent = AISharingConsent()
+    /// Retained at app scope so withdrawal also stops a chat on an inactive tab.
+    var cancelActiveChat: (() -> Void)?
+
+    func withdrawAIConsent() {
+        aiConsent.revoke()
+        cancelActiveChat?()
+        cancelActiveChat = nil
+    }
     @Published var config: ServerConfig
     @Published private(set) var client: LisaClient
     /// User's chosen data plane (My Mac vs LISA Cloud). Persisted; UX-only for now —
@@ -192,7 +200,7 @@ final class AppState: ObservableObject {
     /// Replace the active transport and discard all state belonging to its predecessor.
     private func activate(_ cfg: ServerConfig) {
         guard cfg != config else { return }
-        aiConsent.revoke()
+        withdrawAIConsent()
         config = cfg
         client = LisaClient(config: cfg)
         account = nil
