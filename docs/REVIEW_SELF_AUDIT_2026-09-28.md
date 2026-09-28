@@ -78,5 +78,5 @@ Apple 授权令牌不会出现在 `/api/auth/me`、日志或文档。使用现�
 - Cloud Run 后端 **lisa-cloud-00030-lut**、网站 **lisa-web-00020-hev** 各承接 100% 流量。临时验证 tag 已移除；上一个后端 **lisa-cloud-00027-qal**、网站 **lisa-web-00017-qip** 保留作为回滚目标。
 - 后端先在零流量地址，再在 `https://cloud.meetlisa.ai` 完成健康、实际审核账号登录、账号验证、额度、Google Gemini 接收方和真实 SSE 计算回复的检查；无 error 帧且收到 done。`https://meetlisa.ai/privacy`、中文隐私页及 support 均 HTTP 200，并读回新增条款。
 - 发布后比较 Cloud Run 配置：环境变量、持久卷和运行服务账号均保持一致，min=max=1；**Apple revocation 私钥仍未配置**，不是已完成自动撤销的生产验收。
-- [签名上传 36382628920](https://github.com/oratis/LISA/actions/runs/36382628920) 于北京时间 13:39:39 成功上传 **1.2 (1790573792)**；尚未把它替换进审核队列。当前仍是 **1790567703 / WAITING_FOR_REVIEW**，保留 AFTER_APPROVAL。
+- [签名上传 36382628920](https://github.com/oratis/LISA/actions/runs/36382628920) 于北京时间 13:39:39 成功上传 **1.2 (1790573792)**。Apple 随后处理为 **VALID**，build ID `7bc17d8f-1573-494f-a77f-a40415063e3e`；尚未把它替换进审核队列。当前仍是 **1790567703 / WAITING_FOR_REVIEW**，保留 AFTER_APPROVAL。
 - 完整验证证据在本机自检目录，未包含密码、私钥、session token 或原始收据。
