@@ -44,7 +44,7 @@ Apple 授权令牌不会出现在 `/api/auth/me`、日志或文档。使用现�
 | iPad 原生测试 | 71 XCTest，0 failures | iPad Pro 13-inch (M5) / iPadOS 26.5 专用模拟器 |
 | 新增原生生命周期测试 | 3 项通过 | Apple code 请求体、删除返回 follow-up、失败响应保留重试能力 |
 | 隐私页 | 中英文 Astro 构建通过 | 补充授权令牌加密保存、删除撤销及早期账号说明 |
-| 内购商品 | 原生界面加载 Starter / Plus / Max，显示 $4.99 / $9.99 / $19.99 | 三项 ASC product ID、文案、review screenshot COMPLETE 均核实 |
+| 内购商品 | 模拟器界面显示 Starter / Plus / Max 与 $4.99 / $9.99 / $19.99 | 开发 scheme 带 StoreKit fixture，仅记为界面验证；ASC 商品配置与 review screenshot COMPLETE 已核实，真实商店加载仍需 TestFlight |
 | 恢复购买取消 | Apple 账号提示出现；取消后明确提示失败，按钮恢复 | 未输入 Apple 密码，未发生真实付款 |
 | 审核账号 | 已登录，账户、免费额度及 $20 余额可见 | 保留审核账号，未删除其数据 |
 | Cloud ↔ Mac | 专用模拟器连接隔离的本机服务；真实 Gemini 回复 21+22=43；切回 Cloud 后原账号及历史恢复 | 本地目录不含用户原有资料；本地测试消息未混入 Cloud 历史 |
@@ -60,17 +60,23 @@ Apple 授权令牌不会出现在 `/api/auth/me`、日志或文档。使用现�
 - AI 告知明确 Google Gemini、消息、相关历史、记忆及工具结果；云端使用已验证开启计费的 Gemini 项目。
 - 隐私标签、manifest、英文/中文政策覆盖账号、用户内容、购买、使用及诊断信息，声明不追踪；18+ 问卷已保存。
 - 发行范围维持已批准的 168 个地区，关闭自动新增地区；不在本轮改变售价或扩大发行范围。
-- 旧 IAP 审核说明中如有“sandbox purchase completes”的历史表述，应改为操作说明，不能把未复验的支付闭环写成已通过。
+- 已通过 ASC API 把三个 IAP 的历史审核备注统一改为准确的登录、购买入口、余额检查和消耗型恢复说明，移除未复验的支付完成声称；逐项读回相同文本，状态仍为 WAITING_FOR_REVIEW。
 - 审核通过后自动发布可以保留；正式批准结果由 Apple 决定。
 
 ## 待完成的上线条件
 
 1. **配置 Lisa 专用 Apple 登录密钥。** Apple Developer 页面已准备好 `Lisa SignIn Revocation`，仅关联 `ai.meetlisa.main`，尚未点击 Register。已向用户询问是否创建并存入 LISA 的 Google Secret Manager。创建凭据属于浏览器工具明确要求操作时确认的事项，不视为测试通过即可跳过。
 2. **真机验收。** 已发现配对的 iPhone，尚未获准安装本轮测试构建。需要实际 Apple 登录与 sandbox 内购到账；用户自行处理 Apple 登录或购买确认。
-3. **部署及更换审核构建。** 合并修复、检查 CI、上传签名构建，待 Apple 处理 VALID 后再更换当前等待审核的包。不能把本地测试包或旧 build 的 WAITING_FOR_REVIEW 状态当成本轮修复已送审。
+3. **更换审核构建。** 代码与服务已发布，签名上传已成功。待 Apple 处理 VALID 并完成前述密钥与验收后，更换当前等待审核的包。不能把旧 build 的 WAITING_FOR_REVIEW 状态当成本轮修复已送审。
 
 密钥、审核密码、会话 token 均不进入 Git。模拟器证据保存在本机 `tmp/review-self-audit-2026-09-28`。该目录不是公共文档链接目标。
 
 ## 发布及最终复核记录
 
-待部署、签名上传与重新提交时，追加精确 PR、commit、Cloud Run revision、build ID、审核状态及未完成项。
+- [PR #398](https://github.com/oratis/LISA/pull/398) 已合并，merge commit `c78f781d79154e08cd63aa8e19a23026e93b6dde`；实际验证与签名构建源码为 `fb2f74d14d5923278076055518eb8fb85b83c458`，与该合并结果的代码相同。
+- [CI 36382412417](https://github.com/oratis/LISA/actions/runs/36382412417) 全部必跑项通过：iOS、Node 22/24、coverage、audit、E2E、website；独立 docs workflow 通过，未改动的 macOS 按路径规则跳过。
+- Cloud Run 后端 **lisa-cloud-00030-lut**、网站 **lisa-web-00020-hev** 各承接 100% 流量。临时验证 tag 已移除；上一个后端 **lisa-cloud-00027-qal**、网站 **lisa-web-00017-qip** 保留作为回滚目标。
+- 后端先在零流量地址，再在 `https://cloud.meetlisa.ai` 完成健康、实际审核账号登录、账号验证、额度、Google Gemini 接收方和真实 SSE 计算回复的检查；无 error 帧且收到 done。`https://meetlisa.ai/privacy`、中文隐私页及 support 均 HTTP 200，并读回新增条款。
+- 发布后比较 Cloud Run 配置：环境变量、持久卷和运行服务账号均保持一致，min=max=1；**Apple revocation 私钥仍未配置**，不是已完成自动撤销的生产验收。
+- [签名上传 36382628920](https://github.com/oratis/LISA/actions/runs/36382628920) 于北京时间 13:39:39 成功上传 **1.2 (1790573792)**；尚未把它替换进审核队列。当前仍是 **1790567703 / WAITING_FOR_REVIEW**，保留 AFTER_APPROVAL。
+- 完整验证证据在本机自检目录，未包含密码、私钥、session token 或原始收据。
