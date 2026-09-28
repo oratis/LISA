@@ -2,6 +2,8 @@
 
 日期：2026-09-28。本文补充 [执行记录](EXECUTION_PERSONAL_ASSISTANT_2026-09-27.md)，将本次实际拒审与历史问题区分。
 
+**当前状态：已正式重新提交。** 北京时间 2026-09-28 12:25:57，Apple 接受 iOS **1.2 (1790567703)** 与三个内购项目；版本、review submission 和三个 IAP 均读回 **WAITING_FOR_REVIEW**。保留审核通过后自动发布（**AFTER_APPROVAL**）。这是进入审核队列的回执，尚未获批或在商店上架。
+
 ## 核实的拒审原因
 
 已通过登录后的 App Store Connect 读取提交 `1f0010d4-7318-44c7-b292-90ac1d8eb248` 的反馈：9 月 9 日提交、9 月 11 日审核（后台显示北京时间 9 月 12 日），设备 iPhone 17 Pro Max，被审核的构建为 **1.2 (1788854713)**。当前版本后来绑定的新构建不能被误认为本次被拒的构建。
@@ -27,11 +29,17 @@ Apple 引用 **5.1.1(i)、5.1.2(i)**：在向第三方 AI 发送个人信息前�
 - 新的 en-US 商店素材为 iPhone 1290×2796、iPad 2064×2752，各五张，均来自相应原生模拟器。旧素材先备份，替换后核对 Apple 的 COMPLETE 状态、顺序与尺寸。截图原件、字体许可证、渲染配置、SHA-256 manifest、旧素材及后台证据保留在本机 `tmp/appstore-2026-09-28`，不含密码或访问令牌，不提交 Git。
 - ASC 描述和审核说明已同步成年人要求、实际 AI 接收方、事前同意与撤回路径。七项隐私类别已发布，18+ 已保存。
 
-## 尚未完成的商店验收
+## 正式重新提交与发行范围
 
-- 已将修复后的 App 与三个随 App 退回的 IAP 标记为 resolved；四个审核项及 iOS 版本已读回 **READY_FOR_REVIEW**。原 review submission 仍为 **UNRESOLVED_ISSUES**、等待正式重新提交；不能把 READY_FOR_REVIEW、VALID、PR 合并或网站发布写成已经提交/通过审核。
-- 未绑定本地 StoreKit 测试配置的临时签名模拟器访问商品时显示可重试的加载失败。因此**没有完成真实 App Store sandbox 购买及服务器到账验收**；本地 StoreKit fixture 或后端 receipt 单测均不能替代。审核账号 sandbox allowlist 已存在，三个商品因关联 App 被拒而退回的审核项现已标记为可重新审核。无购买成功、收费或到账的虚构记录。
-- Gemini 官方条款要求 API 客户端面向其支持地区。当前 ASC 开放全部 175 个地区，其中 **CHN（中国大陆）、HKG（香港）、MAC（澳门）、RUS（俄罗斯）、BLR（白俄罗斯）、MMR（缅甸）、AFG（阿富汗）** 不在核对到的 Gemini 支持清单中；`availableInNewTerritories` 也为 true。尚未更改这些地区。待用户决定：排除七个地区并关闭自动新增地区，或保留市场并改用经验证可覆盖这些地区的提供商；当前 GLM 凭据余额不足，不能作为已验证替代方案。
+- 用户在收到具体地区建议和沙盒验收缺口说明后，明确回复“同意你的意见，直接操作”。据此将发行范围从 175 个地区调整为 **168**，排除 **CHN（中国大陆）、HKG（香港）、MAC（澳门）、RUS（俄罗斯）、BLR（白俄罗斯）、MMR（缅甸）、AFG（阿富汗）**，并关闭自动新增地区。Apple API 读回上述七项 `available: false`、其他 168 项为 true，`availableInNewTerritories: false`；后台显示“168 个可用 / 7 个国家和地区未供应”。Apple 提示地区变更最长需 24 小时生效。
+- 原 App 与三个随 App 退回的 IAP 标记为 resolved 后，通过官方 API 正式重新提交原 review submission `1f0010d4-7318-44c7-b292-90ac1d8eb248`。Apple 返回 `submittedDate: 2026-09-28T04:25:57.945Z`、`state: WAITING_FOR_REVIEW`。
+- 随后读回 iOS 版本 `9865f871-42af-4453-894f-63fe41e464ea` 为 **WAITING_FOR_REVIEW**，选中 build `9e5063be-503d-4a9e-a730-a0e15580aea0` / **1790567703** 仍为 **VALID**，`releaseType: AFTER_APPROVAL`。Starter Credits、Plus Credits、Max Credits 三个 IAP 也均为 **WAITING_FOR_REVIEW**；登录后台的[提交详情](https://appstoreconnect.apple.com/apps/6784690058/distribution/reviewsubmissions/details/1f0010d4-7318-44c7-b292-90ac1d8eb248)显示四个项目“等待审核”。
+- 本机 `tmp/appstore-2026-09-28/evidence/` 留存 `availability-168.png`、`asc-waiting-for-review.png` 与不含凭据的 `submission-final.json`。没有改变 Apple 芯片 Mac / Vision Pro 的供应选项、分发方式、价格或现有审核账号。
+
+## 验收边界与后续工作
+
+- 未绑定本地 StoreKit 测试配置的临时签名模拟器访问商品时显示可重试的加载失败。因此**没有完成真实 App Store sandbox 购买及服务器到账验收**；本地 StoreKit fixture 或后端 receipt 单测均不能替代。审核账号 sandbox allowlist 已存在，三个商品因关联 App 被拒而退回的审核项已随 App 重新提交。无购买成功、收费或到账的虚构记录。
+- 用户已知晓真实 StoreKit sandbox 验收缺口并批准继续送审；此次送审不改变该项未完成的事实。Apple 后续审核结果仍待返回，不能将队列状态解释为支付验收成功或审核通过。若恢复上述七个市场，须先验证可覆盖目标地区的提供商；现有 GLM 凭据余额不足，不能作为已验证替代方案。
 - 推送真机验收、实际 Apple/Google OAuth 登录及更完整的云任务/连接器等后续产品工程，仍按[计划](PLAN_PERSONAL_ASSISTANT_2026-09-27.md)区分，不声称所有能力都已实现。
 
 ## 政策依据
@@ -40,5 +48,4 @@ Apple 引用 **5.1.1(i)、5.1.2(i)**：在向第三方 AI 发送个人信息前�
 - [Apple App Privacy](https://developer.apple.com/app-store/app-privacy-details/)：收集类别、用途、关联和追踪定义。
 - [Gemini API 条款](https://ai.google.dev/gemini-api/terms)：2026-03-23 生效版本，18+、已启用计费项目的付费处理规则。
 - [Google 数据处理附录](https://business.safety.google/processorterms/)：受托处理、保密、安全和适用删除义务。没有声称任意用户自托管提供商都受 LISA 的托管协议覆盖。
-
-- [Gemini 支持地区](https://ai.google.dev/gemini-api/docs/available-regions)：与 ASC 175 个已选地区逐项核对，调整市场前保留用户决策。
+- [Gemini 支持地区](https://ai.google.dev/gemini-api/docs/available-regions)：与 ASC 原 175 个已选地区逐项核对后，经用户明确批准排除七个地区并关闭自动新增。
