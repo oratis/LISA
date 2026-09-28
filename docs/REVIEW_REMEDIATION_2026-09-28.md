@@ -29,8 +29,8 @@ Apple 引用 **5.1.1(i)、5.1.2(i)**：在向第三方 AI 发送个人信息前�
 
 ## 尚未完成的商店验收
 
-- iOS 版本仍为 **PREPARE_FOR_SUBMISSION**，原 review submission 仍待解决/重新提交；不能把 VALID、PR 合并或网站发布写成已经提交/通过审核。
-- 未绑定本地 StoreKit 测试配置的临时签名模拟器访问商品时显示可重试的加载失败。因此**没有完成真实 App Store sandbox 购买及服务器到账验收**；本地 StoreKit fixture 或后端 receipt 单测均不能替代。审核账号 sandbox allowlist 已存在，三个商品仍因关联 App 被拒而退回。无购买成功、收费或到账的虚构记录。
+- 已将修复后的 App 与三个随 App 退回的 IAP 标记为 resolved；四个审核项及 iOS 版本已读回 **READY_FOR_REVIEW**。原 review submission 仍为 **UNRESOLVED_ISSUES**、等待正式重新提交；不能把 READY_FOR_REVIEW、VALID、PR 合并或网站发布写成已经提交/通过审核。
+- 未绑定本地 StoreKit 测试配置的临时签名模拟器访问商品时显示可重试的加载失败。因此**没有完成真实 App Store sandbox 购买及服务器到账验收**；本地 StoreKit fixture 或后端 receipt 单测均不能替代。审核账号 sandbox allowlist 已存在，三个商品因关联 App 被拒而退回的审核项现已标记为可重新审核。无购买成功、收费或到账的虚构记录。
 - Gemini 官方条款要求 API 客户端面向其支持地区。当前 ASC 开放全部 175 个地区，其中 **CHN（中国大陆）、HKG（香港）、MAC（澳门）、RUS（俄罗斯）、BLR（白俄罗斯）、MMR（缅甸）、AFG（阿富汗）** 不在核对到的 Gemini 支持清单中；`availableInNewTerritories` 也为 true。尚未更改这些地区。待用户决定：排除七个地区并关闭自动新增地区，或保留市场并改用经验证可覆盖这些地区的提供商；当前 GLM 凭据余额不足，不能作为已验证替代方案。
 - 推送真机验收、实际 Apple/Google OAuth 登录及更完整的云任务/连接器等后续产品工程，仍按[计划](PLAN_PERSONAL_ASSISTANT_2026-09-27.md)区分，不声称所有能力都已实现。
 
