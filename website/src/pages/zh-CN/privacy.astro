@@ -3,7 +3,7 @@ import Base from "../../layouts/Base.astro";
 ---
 <Base title="隐私" lang="zh-CN" description="LISA 云与本地 Mac 模式的账号、对话及 AI 数据处理说明。">
   <header class="page-head">
-    <p class="eyebrow"><span class="rule"></span> 隐私 <b>· 更新于 2026-09-27</b></p>
+    <p class="eyebrow"><span class="rule"></span> 隐私 <b>· 更新于 2026-09-28</b></p>
     <h1>隐私政策</h1>
     <p class="lede">
       LISA 是个人 AI 助手，支持由我们运营的 <strong>LISA Cloud</strong> 与
@@ -42,10 +42,34 @@ import Base from "../../layouts/Base.astro";
     <section class="pol">
       <p class="eyebrow"><b>你的后端与大模型提供商</b></p>
       <p>
-        消息及相关对话历史、记忆和工具结果会交给所配置的 AI 服务商处理，例如
-        Anthropic、智谱/GLM、OpenAI 或 Google。云模式通过 LISA Cloud 转发，
-        Mac 模式遵循你的提供商配置。iOS 会在发送聊天消息前列出所配置的接收方并请求同意。
-        服务商处理受其政策约束。本地模型可以在 Mac 上推理，但“连接 Mac”本身不表示数据不出设备。
+        LISA Cloud 将你的消息、相关对话历史、助手记忆及工具结果交给
+        <strong>Google Gemini</strong> 生成回复，其中可能包含你在这些材料中提供的个人信息。
+        我们通过已启用计费的 Google Cloud 项目使用 Gemini API。根据 Google 的
+        <a href="https://ai.google.dev/gemini-api/terms">付费服务条款</a>，提示词和回复不用于改进其产品。
+        Google 可能为防止滥用、安全或法律要求而有限期保留这些内容，并在其自身或代理机构设有设施的国家处理数据。
+      </p>
+      <p>
+        我们委托处理个人信息的第三方必须提供与本政策相同或同等的数据保护，包括限定处理目的、保密、
+        安全措施及适用的删除义务。付费 Gemini 的提示词和回复受 Google
+        <a href="https://business.safety.google/processorterms/">数据处理附录</a>保护；
+        服务运行与计费元数据另受 Google 适用的隐私及数据保护条款约束。
+      </p>
+      <p>
+        使用自己的 Mac 时，由你选择服务器及 AI 服务商，例如 Anthropic、OpenAI、Google 或智谱/GLM，
+        请在使用前检查其条款和配置。这些独立配置的服务并非由我们运营。
+        本地模型可以在 Mac 上推理，但“连接 Mac”本身不表示远程模型不会接收数据。
+      </p>
+    </section>
+
+    <section class="pol">
+      <p class="eyebrow"><b>Lisa Pocket 中的同意与撤回</b></p>
+      <p>
+        iOS 应用会在发送聊天消息前，明确列出配置的 AI 接收方、说明数据种类并请求你的明确同意。
+        取消会保留草稿且不发送。同意仅对当前应用会话和连接有效；接收方改变后会再次询问。
+        在 <strong>Settings → AI data sharing → Withdraw AI consent</strong> 中，
+        你可以停止正在进行的聊天请求，并要求应用在今后发送消息前重新获得同意。
+        撤回无法召回已处理的信息，也不删除历史记录；它不会关闭你在 Mac 上独立配置的自动任务，
+        请在自己的服务器上停止这些任务。删除数据请使用下文的账号删除功能，或通过邮件私下联系我们。
       </p>
     </section>
 
@@ -64,9 +88,16 @@ import Base from "../../layouts/Base.astro";
           不含消息内容。
         </li>
         <li>
-          <strong>子处理者</strong> —— 大模型推理(如智谱/GLM、Anthropic、OpenAI)、
+          <strong>服务提供商</strong> —— Google Cloud（托管与存储）、Google Gemini（AI 推理）、
           Resend(验证与登录验证码邮件)、Stripe(网页充值)、Apple(Apple 登录与 iOS 内购)、
-          Google(Google 登录)、Cloudflare(注册时的人机校验)。各自受其隐私政策约束。
+          Google(Google 登录)、Cloudflare(注册时的人机校验)。这些服务仅接收履行相应功能所需的数据，
+          如发送登录邮件所需的邮箱、认证所需的账号标识、充值所需的交易标识和购买凭证。
+          我们不会从 Apple 或 Stripe 收到你的完整银行卡信息。
+        </li>
+        <li>
+          <strong>运行数据</strong> —— 服务日志可能包含请求 IP 地址、时间、路径、响应状态、错误、
+          账号或交易标识，用于运行服务、防止滥用和排查故障，不用于广告或跨应用追踪。
+          账号数据保留至你删除；运行、支付及提供商记录按安全、记账、争议处理和法律义务所需保留。
         </li>
         <li>
           <strong>删除</strong> —— 应用内"删除账号"会移除账号记录并<strong>完整抹除</strong>
@@ -87,8 +118,10 @@ import Base from "../../layouts/Base.astro";
     </section>
 
     <section class="pol">
-      <p class="eyebrow"><b>儿童</b></p>
-      <p>Lisa 并非面向 13 岁以下儿童,也不会有意收集他们的数据。</p>
+      <p class="eyebrow"><b>年龄要求</b></p>
+      <p>LISA 面向年满 18 岁的成年人。Lisa Pocket 会在启用 AI 聊天前要求确认。
+        未满 18 岁请勿使用本服务。如果我们获悉持有未成年人的个人信息，将采取删除措施；
+        请通过下方邮箱私下联系我们。</p>
     </section>
 
     <section class="pol">
@@ -128,6 +161,7 @@ import Base from "../../layouts/Base.astro";
     .policy { display: grid; gap: 2rem; margin-top: 2.2rem; }
     .pol .eyebrow { margin-bottom: .5rem; }
     .pol p { margin: 0; max-width: 72ch; }
+    .pol p + p { margin-top: .9rem; }
     .pol ul { margin: 0; padding-left: 1.2rem; max-width: 72ch; }
     .pol li { margin: .5rem 0; color: var(--muted); }
     .pol li strong { color: var(--ink); }

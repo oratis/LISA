@@ -4,6 +4,37 @@ import XCTest
 /// Logic tests for the pure helpers — no network, no Keychain, no app launch.
 final class LisaPocketTests: XCTestCase {
 
+    func testAIConsentRequiresAdultAndDisclosedRecipients() {
+        var consent = AISharingConsent()
+        let server = ServerConfig(host: "cloud.example", port: 443, token: "session", scheme: "https")
+        XCTAssertFalse(consent.grant(server: server, recipients: ["Google Gemini"], isAdult: false, generation: consent.generation))
+        XCTAssertFalse(consent.grant(server: server, recipients: [], isAdult: true, generation: consent.generation))
+        XCTAssertFalse(consent.isGranted)
+        XCTAssertTrue(consent.grant(server: server, recipients: ["Google Gemini"], isAdult: true, generation: consent.generation))
+        XCTAssertTrue(consent.allows(server: server, recipients: ["Google Gemini"]))
+    }
+
+    func testAIConsentDoesNotFollowAccountServerOrProviderChanges() {
+        var consent = AISharingConsent()
+        let server = ServerConfig(host: "cloud.example", port: 443, token: "session", scheme: "https")
+        consent.grant(server: server, recipients: ["Google Gemini"], isAdult: true, generation: consent.generation)
+        XCTAssertFalse(consent.allows(server: server, recipients: ["Other provider"]))
+        XCTAssertFalse(consent.allows(server: ServerConfig(host: "cloud.example", port: 443, token: "other-account", scheme: "https"), recipients: ["Google Gemini"]))
+        XCTAssertFalse(consent.allows(server: ServerConfig(host: "mac.local", port: 5757, token: "session"), recipients: ["Google Gemini"]))
+    }
+
+    func testRevocationRejectsPendingDisclosureAndRequiresFreshConsent() {
+        var consent = AISharingConsent()
+        let server = ServerConfig(host: "cloud.example", port: 443, token: "session", scheme: "https")
+        let pending = consent.generation
+        consent.grant(server: server, recipients: ["Google Gemini"], isAdult: true, generation: pending)
+        consent.revoke()
+        XCTAssertFalse(consent.isGranted)
+        XCTAssertFalse(consent.allows(server: server, recipients: ["Google Gemini"]))
+        XCTAssertFalse(consent.grant(server: server, recipients: ["Google Gemini"], isAdult: true, generation: pending))
+        XCTAssertTrue(consent.grant(server: server, recipients: ["Google Gemini"], isAdult: true, generation: consent.generation))
+    }
+
     func testPortraitRequestAuthenticatesWithoutCredentialInURL() throws {
         let client = LisaClient(config: ServerConfig(host: "cloud.example", port: 443, token: "private-token", scheme: "https"))
         let request = try client.makeRequest("/assets/lisa/neutral.png", timeout: 15)
