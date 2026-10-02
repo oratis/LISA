@@ -62,7 +62,7 @@ export function payloadDigest(tool: string, input: unknown, key?: Buffer | strin
 }
 
 const VALUE = `("[^"\\n]{0,512}"|'[^'\\n]{0,512}'|[^\\s"'&;,]{1,512})`;
-const NOT_LENGTH = "(?!<\\d{1,9} (?:chars|items)>)";
+const NOT_LENGTH = "(?!<(?:\\d{1,9} (?:chars|items)|number)>)";
 
 /**
  * Secret-shaped substrings. Deliberately over-eager: a false positive costs a
@@ -115,7 +115,9 @@ const EMAIL_SOURCE =
 const EMAIL_RE = new RegExp(EMAIL_SOURCE);
 const EMAIL_ALL_RE = new RegExp(EMAIL_SOURCE, "g");
 const PHONE_RE = /(?<![\w.+-])\+?\d[\d\s().-]{7,24}\d(?![\w-])/g;
-const CARD_RE = /(?<![\d -])\d(?:[ -]?\d){12,18}(?![\d-])/g;
+// Not preceded by a digit, or by a digit and one separator: a long digit run
+// is tried once from its start, never again from every position inside it.
+const CARD_RE = /(?<!\d[ -]?)\d(?:[ -]?\d){12,18}(?![\d-])/g;
 const IBAN_RE = /(?<![A-Za-z0-9])[A-Z]{2}\d{2}[A-Z0-9]{11,30}(?![A-Za-z0-9])/;
 
 function replaceAll(text: string, patterns: RegExp[]): string {

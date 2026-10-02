@@ -588,7 +588,7 @@ function genericDestinations(input: Record<string, unknown>): Destinations {
 }
 
 const FETCHER =
-  "curl|wget|nc|ncat|netcat|ssh|scp|sftp|rsync|ftp|telnet|gh|glab|aria2c|httpie|http|https|xh|lynx|w3m|links";
+  "curl|wget|nc|ncat|netcat|ssh|scp|sftp|rsync|ftp|telnet|gh|glab|aria2c|httpie|http|https|xh|lynx|w3m|links|npx|bunx|pnpx|uvx|pipx";
 const PACKAGE_MANAGER =
   "npm|pnpm|yarn|bun|bunx|npx|pip|pip3|pipx|uv|poetry|brew|gem|bundle|cargo|go|apt|apt-get|dnf|yum|pacman|docker|podman|composer|nuget|dotnet";
 
