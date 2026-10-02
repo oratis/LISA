@@ -12,16 +12,19 @@
  */
 import { buildSystemPromptSnapshot } from "../prompt.js";
 import { TaskRunner, type TaskRunnerOptions } from "./runner.js";
+import { checkWatcher } from "./watchers.js";
 
 export const TASK_TICK_MS = 30_000;
 
 /**
  * A TaskRunner with the production defaults filled in: Lisa's real system
- * prompt for the working directory. Callers supply tools, model and wiring.
+ * prompt for the working directory and the real watcher checks. Callers supply
+ * tools, model and wiring.
  */
 export function createTaskRunner(opts: TaskRunnerOptions): TaskRunner {
   return new TaskRunner({
     buildSystemPrompt: async () => (await buildSystemPromptSnapshot({ cwd: opts.cwd })).text,
+    checkWatch: checkWatcher,
     ...opts,
   });
 }

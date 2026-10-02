@@ -101,6 +101,8 @@ export interface WatchState {
   lastFingerprint?: string;
   /** Last boolean condition (appears/disappears/above/below) — the hysteresis bit. */
   lastCondition?: boolean;
+  /** Consecutive observations contradicting `lastCondition` (re-arm counter). */
+  contrary?: number;
   /** Recently seen item ids (rss guid / mail uid), capped. */
   seen?: string[];
   /** Consecutive fetch failures (drives backoff + a single "watch is failing" notice). */
