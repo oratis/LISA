@@ -68,7 +68,7 @@ export interface ParsedArgs {
  * --model`), so those must still reach the global parser — only *unrecognized*
  * trailing flags are collected verbatim for the handler.
  */
-const RAW_SUBCOMMANDS = new Set(["heartbeat", "autostart", "doctor", "upgrade", "secret"]);
+const RAW_SUBCOMMANDS = new Set(["heartbeat", "autostart", "doctor", "upgrade", "secret", "tasks"]);
 
 /**
  * Subcommands whose handler re-parses *all* of its trailing args itself, so

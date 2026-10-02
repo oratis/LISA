@@ -51,6 +51,11 @@ test("`lisa tasks …` parses as a subcommand with its arguments", () => {
   assert.equal(args.subcommand, "tasks");
   assert.deepEqual(args.subargs, ["enable", "t_abc"]);
   assert.equal(parseArgs(["tasks"]).subcommand, "tasks");
+  // Flags after `tasks` belong to the subcommand, not to the global parser.
+  assert.deepEqual(parseArgs(["tasks", "migrate-heartbeat", "--dry-run"]).subargs, [
+    "migrate-heartbeat",
+    "--dry-run",
+  ]);
 });
 
 test("list: empty, then one line per task", async () => {

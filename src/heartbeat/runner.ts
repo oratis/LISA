@@ -105,12 +105,20 @@ async function runHeartbeatInner(opts: {
     console.error(`[scheduled-dispatch] error: ${(err as Error).message}`);
   }
 
-  // The user's chores are routines in the Task Engine now (W1): anything still
-  // in heartbeat.json is moved across, then whatever is due runs through the
-  // same runner + lease as `serve --web`, so tasks keep running when the web
-  // server is down and never run twice when it is up. This happens BEFORE the
-  // config is loaded below, so a migrated chore is not also run the old way.
+  // Task Engine (W1): whatever is due runs through the same runner + lease as
+  // `serve --web`, so tasks keep running when the web server is down and never
+  // run twice when it is up. heartbeat.json chores are NOT moved: they run
+  // below exactly as before, unless the user migrated one explicitly with
+  // `lisa tasks migrate-heartbeat` — a chore whose routine has been switched on
+  // is skipped here, so it never runs both ways.
   let taskResults: HeartbeatRunResult[] = [];
+  let stillOnHeartbeat: (chores: HeartbeatTask[]) => Promise<HeartbeatTask[]> = (c) =>
+    Promise.resolve(c);
+  try {
+    ({ stillOnHeartbeat } = await import("../tasks/heartbeat-migration.js"));
+  } catch (err) {
+    console.error(`[tasks] error: ${(err as Error).message}`);
+  }
   try {
     const { runTasksFromHeartbeat } = await import("../tasks/heartbeat-bridge.js");
     taskResults = await runTasksFromHeartbeat(opts);
@@ -154,7 +162,7 @@ async function runHeartbeatInner(opts: {
   const selfDrivenTools = autonomousSubset(opts.tools);
   const reviewTools = desireReviewSubset(opts.tools);
   const runs: Array<{ task: HeartbeatTask; tools: ToolDefinition[] }> = [
-    ...cfg.tasks.map((task) => ({ task, tools: opts.tools })),
+    ...(await stillOnHeartbeat(cfg.tasks)).map((task) => ({ task, tools: opts.tools })),
     ...desireTasks.map((task) => ({ task, tools: selfDrivenTools })),
     ...builtinTasks.map((task) => ({
       task,

@@ -107,6 +107,9 @@ LIFECYCLE
   lisa tasks [list|show <id>|run <id>|enable <id>|disable <id>|rm <id>]
                                Routines, watchers and one-offs Lisa runs for you.
                                New tasks start off; \`enable\` is how you confirm one.
+  lisa tasks migrate-heartbeat [--dry-run]
+                               Move heartbeat.json chores into routines. Never
+                               automatic; migrated chores are read-only for now.
   lisa heartbeat run [name]    Run heartbeat tasks once (incl. self-driven desires).
   lisa heartbeat install [--load] [--every <30m|1h|...>]
                                Install macOS launchd plist (or print cron line).

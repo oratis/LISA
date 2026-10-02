@@ -17,7 +17,6 @@ import {
   type CardDeliverDeps,
   type TaskReachOut,
 } from "../tasks/delivery.js";
-import { migrateHeartbeatTasks } from "../tasks/heartbeat-migration.js";
 import type { ModelGate, TaskEngineEvent, TaskRunner, WatchCheck } from "../tasks/runner.js";
 import {
   createTaskRunner,
@@ -118,17 +117,6 @@ export function createTaskHost(opts: TaskHostOptions): TaskHost {
   let scheduler: TaskSchedulerHandle | null = null;
   if (!opts.cloud) {
     local = make(null);
-    // First start after the upgrade: heartbeat.json chores become routines.
-    // Idempotent, and a failure only means they keep running the old way.
-    void migrateHeartbeatTasks()
-      .then((m) => {
-        if (m.migrated.length > 0) {
-          opts.log?.(`[tasks] moved ${m.migrated.length} heartbeat.json task(s) into routines`);
-        }
-      })
-      .catch((err) =>
-        opts.log?.(`[tasks] heartbeat.json migration skipped: ${(err as Error).message}`),
-      );
     if (opts.schedule ?? true) {
       scheduler = startTaskScheduler(local, { ...(opts.log ? { log: opts.log } : {}) });
     }

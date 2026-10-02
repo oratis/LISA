@@ -7,6 +7,8 @@
  *   lisa tasks disable <id>  Turn it off
  *   lisa tasks rm <id>       Remove a task and its run history
  *   lisa tasks run <id>      Run it once, now, and print the result
+ *   lisa tasks migrate-heartbeat [--dry-run]
+ *                            Move heartbeat.json chores into routines (never automatic)
  *
  * Everything except `run` only touches the store, so it works while the web
  * server is running (per-task file locks) and needs no model. `run` needs the
@@ -16,6 +18,7 @@
  * Ids may be abbreviated to any unique prefix.
  */
 import { isCloud } from "../edition.js";
+import { describeMigration, migrateHeartbeatTasks } from "../tasks/heartbeat-migration.js";
 import { disableTask, enableTask } from "../tasks/lifecycle.js";
 import type { TaskRunner } from "../tasks/runner.js";
 import { deleteTask, getTask, listRuns, listTasks, loadRun, updateTask } from "../tasks/store.js";
@@ -27,7 +30,8 @@ const USAGE =
   "       lisa tasks run <id>\n" +
   "       lisa tasks enable <id>\n" +
   "       lisa tasks disable <id>\n" +
-  "       lisa tasks rm <id>";
+  "       lisa tasks rm <id>\n" +
+  "       lisa tasks migrate-heartbeat [--dry-run]";
 
 type Out = (line: string) => void;
 
@@ -137,6 +141,13 @@ export async function runTasksCommand(
     // A run in flight in another process notices the task is gone at its next checkpoint.
     await deleteTask(task.id);
     out(`removed "${task.title}" (${task.id})`);
+    return 0;
+  }
+
+  if (sub === "migrate-heartbeat") {
+    const dryRun = args.includes("--dry-run");
+    const result = await migrateHeartbeatTasks({ dryRun, now: now() });
+    for (const l of describeMigration(result)) out(l);
     return 0;
   }
 

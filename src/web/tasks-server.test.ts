@@ -1,7 +1,7 @@
 /**
  * The Task Engine inside the REAL web server (startWebServer, Mac edition):
- * the route hook, the scheduler's first tick, heartbeat.json migration at
- * start, and a result travelling outbox → reach-out gate → conversation + SSE.
+ * the route hook, the scheduler's first tick, heartbeat.json being left alone
+ * at start, and a result travelling outbox → reach-out gate → conversation + SSE.
  *
  * No model is called: the delivered result is placed in the outbox directly,
  * exactly as a run in another process (the heartbeat CLI) would have left it.
@@ -34,7 +34,7 @@ for (const k of [
   delete process.env[k];
 }
 
-// Seeded BEFORE the server starts: a chore to migrate, and a finished run's
+// Seeded BEFORE the server starts: a chore (which must stay put), and a finished run's
 // notice that no process has been able to deliver yet.
 fs.writeFileSync(
   path.join(TMP, "heartbeat.json"),
@@ -170,19 +170,17 @@ describe("task engine in the real server", () => {
     assert.equal((await request("GET", `/api/tasks/${task.id}`)).status, 404);
   });
 
-  test("heartbeat.json chores are routines after the first start", async () => {
-    await until(async () => (await getTask(heartbeatTaskId("disk check"))) !== null);
-    const routine = (await getTask(heartbeatTaskId("disk check")))!;
-    assert.equal(routine.kind, "routine");
-    assert.equal(routine.enabled, true);
-    assert.deepEqual(routine.schedule, { expr: "daily:03:00" });
-    assert.deepEqual(routine.origin, { kind: "heartbeat" });
-    assert.deepEqual(
-      JSON.parse(fs.readFileSync(path.join(TMP, "heartbeat.json"), "utf8")).tasks,
-      [],
+  test("starting the server does not migrate heartbeat.json", async () => {
+    // Give the scheduler's first tick time to have happened.
+    await until(async () =>
+      (await listOutbox()).some((e) => e.id === NOTICE_ID && e.state === "delivered"),
     );
-    assert.ok(fs.existsSync(path.join(TMP, "heartbeat.json.pre-tasks.bak")));
-    assert.ok((await listTasks()).length >= 1);
+    assert.equal(await getTask(heartbeatTaskId("disk check")), null);
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(TMP, "heartbeat.json"), "utf8")).tasks, [
+      { name: "disk check", prompt: "Check disk.", schedule: "daily:03:00" },
+    ]);
+    assert.equal(fs.existsSync(path.join(TMP, "heartbeat.json.pre-tasks.bak")), false);
+    assert.ok(!(await listTasks()).some((t) => t.origin.kind === "heartbeat"));
   });
 
   test("a result left in the outbox is delivered once: a card in the conversation, via the reach-out gate", async () => {

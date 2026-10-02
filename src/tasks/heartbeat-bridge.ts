@@ -2,10 +2,13 @@
  * The Task Engine as `lisa heartbeat run` drives it.
  *
  * launchd wakes the heartbeat CLI every 30 minutes whether or not the web
- * server is up. This is what makes tasks run in that case: migrate any chores
- * still in heartbeat.json, then run whatever is due — through the same runner
- * and the same per-task lease the server uses, so a task the server is already
- * on is simply skipped here.
+ * server is up. This is what makes tasks run in that case: whatever is due
+ * runs through the same runner and the same per-task lease the server uses, so
+ * a task the server is already on is simply skipped here.
+ *
+ * heartbeat.json is NOT touched here. Its chores keep running from the
+ * heartbeat as they always have; moving one into the engine is the user's
+ * explicit `lisa tasks migrate-heartbeat`.
  *
  * Results are returned for heartbeat.log (as before) AND go through the
  * outbox. This process has no conversation to deliver into, so notices wait
@@ -14,7 +17,6 @@
 import { logInfo } from "../log.js";
 import type { ToolDefinition } from "../types.js";
 import { isNoUpdate } from "./frame.js";
-import { migrateHeartbeatTasks } from "./heartbeat-migration.js";
 import type { TaskRunner, TaskRunnerOptions } from "./runner.js";
 import { createTaskRunner, runDueTasksOnce } from "./scheduler.js";
 import { getTask, listTasks, loadRun } from "./store.js";
@@ -37,20 +39,6 @@ export async function runTasksFromHeartbeat(opts: {
   log?: (msg: string) => void;
 }): Promise<HeartbeatTaskResult[]> {
   const log = opts.log ?? logInfo;
-  try {
-    const migration = await migrateHeartbeatTasks();
-    if (migration.migrated.length > 0) {
-      log(
-        `[tasks] moved ${migration.migrated.length} heartbeat.json task(s) into routines ` +
-          `(backup: ${migration.backup ?? "none"})`,
-      );
-    }
-    for (const left of migration.left)
-      log(`[tasks] left "${left.name}" in heartbeat.json: ${left.reason}`);
-  } catch (err) {
-    log(`[tasks] heartbeat.json migration skipped: ${(err as Error).message}`);
-  }
-
   const runner: TaskRunner = createTaskRunner({
     tools: opts.tools,
     model: opts.model,

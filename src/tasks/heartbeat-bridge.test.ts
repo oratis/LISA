@@ -56,20 +56,45 @@ function provider(reply: (prompt: string) => string): { provider: Provider; prom
 
 const base = { tools: [], cwd: os.tmpdir(), model: "claude-test", log: () => {} };
 
-test("a heartbeat tick migrates heartbeat.json and runs the chores that are due — once", async () => {
-  fs.writeFileSync(
-    heartbeatFile(),
-    JSON.stringify({
-      tasks: [
-        { name: "disk check", prompt: "Check free disk space." },
-        { name: "quiet one", prompt: "Say nothing." },
-        { name: "later", prompt: "Not yet.", schedule: "every:6h" },
-        { name: "off", prompt: "Never.", enabled: false },
-      ],
-    }),
+const NOW0 = Date.parse("2026-10-02T08:00:00Z");
+
+async function dueTask(title: string, over: Record<string, unknown> = {}) {
+  return await createTask(
+    {
+      kind: "routine",
+      title,
+      instruction: `Do ${title}.`,
+      origin: { kind: "api" },
+      schedule: { expr: "every:1h" },
+      notify: "silent_on_noop",
+      enabled: true,
+      state: "scheduled",
+      nextRunAt: NOW0,
+      ...over,
+    },
+    NOW0 - 1000,
   );
-  const fake = provider((p) => (p.includes("Say nothing") ? "(no update)" : "Disk is 91% full."));
-  const runnerOptions = { provider: fake.provider, unattendedAllowed: () => true };
+}
+
+test("a heartbeat tick runs due tasks once and does NOT touch heartbeat.json", async () => {
+  // The reviewer's t7: a chore that needs bash, a disabled builtin override, two same-name chores.
+  const config = {
+    budgetTokens: 50_000,
+    tasks: [
+      { name: "disk check", prompt: "Run `df -h /` and tell me if the disk is over 90% full." },
+      { name: "builtin:weekly_examen", prompt: "(disabled by me)", enabled: false },
+      { name: "dup", prompt: "first prompt" },
+      { name: "dup", prompt: "second, different prompt" },
+    ],
+  };
+  fs.writeFileSync(heartbeatFile(), JSON.stringify(config, null, 2));
+  const before = fs.readFileSync(heartbeatFile(), "utf8");
+
+  await dueTask("loud");
+  await dueTask("quiet");
+  await dueTask("later", { nextRunAt: NOW0 + 6 * 3_600_000 });
+  const fake = provider((p) => (p.includes("Do quiet") ? "(no update)" : "Disk is 91% full."));
+  const runnerOptions = { provider: fake.provider, unattendedAllowed: () => true, now: () => NOW0 };
 
   const results = await runTasksFromHeartbeat({
     ...base,
@@ -79,13 +104,20 @@ test("a heartbeat tick migrates heartbeat.json and runs the chores that are due 
   assert.deepEqual(
     results.sort((a, b) => a.task.localeCompare(b.task)),
     [
-      { task: "task:disk check", output: "Disk is 91% full.", silent: false },
-      { task: "task:quiet one", output: "(no update)", silent: true },
+      { task: "task:loud", output: "Disk is 91% full.", silent: false },
+      { task: "task:quiet", output: "(no update)", silent: true },
     ],
   );
-  assert.equal(fake.prompts.length, 2, "the scheduled-later and the disabled chore did not run");
-  assert.deepEqual(JSON.parse(fs.readFileSync(heartbeatFile(), "utf8")).tasks, []);
-  assert.equal((await listTasks()).length, 4);
+  assert.equal(fake.prompts.length, 2);
+
+  // heartbeat.json is byte-for-byte what it was; no chore became a task.
+  assert.equal(fs.readFileSync(heartbeatFile(), "utf8"), before);
+  assert.deepEqual((await listTasks()).map((t) => t.title).sort(), ["later", "loud", "quiet"]);
+  assert.equal(await getTask(heartbeatTaskId("disk check")), null);
+  assert.deepEqual(
+    fs.readdirSync(home).filter((n) => n.includes(".bak")),
+    [],
+  );
 
   // The result is waiting in the outbox for a process that can deliver it;
   // the quiet run produced no notice at all.
@@ -104,28 +136,22 @@ test("a heartbeat tick migrates heartbeat.json and runs the chores that are due 
   assert.equal(fake.prompts.length, 2);
 });
 
-test("`lisa heartbeat run <name>` runs just that task, due or not", async () => {
-  fs.writeFileSync(
-    heartbeatFile(),
-    JSON.stringify({
-      tasks: [{ name: "later", prompt: "Weekly thing.", schedule: "weekly:mon@09:00" }],
-    }),
-  );
+test("`lisa heartbeat run <name>` runs just the task with that title, due or not", async () => {
+  const task = await dueTask("later", {
+    schedule: { expr: "weekly:mon@09:00", tz: "UTC" },
+    nextRunAt: NOW0 + 86_400_000,
+  });
   const fake = provider(() => "Done.");
   const results = await runTasksFromHeartbeat({
     ...base,
     signal: new AbortController().signal,
     taskFilter: "later",
-    runnerOptions: { provider: fake.provider },
+    runnerOptions: { provider: fake.provider, now: () => NOW0 },
   });
   assert.deepEqual(results, [{ task: "task:later", output: "Done.", silent: false }]);
-  assert.equal(
-    (await getTask(heartbeatTaskId("later")))!.state,
-    "scheduled",
-    "still on its schedule",
-  );
+  assert.equal((await getTask(task.id))!.state, "scheduled", "still on its schedule");
 
-  // A filter that names one of Lisa's own heartbeat tasks is not ours to run.
+  // A filter that names one of Lisa's own heartbeat tasks, or a chore, is not ours to run.
   const none = await runTasksFromHeartbeat({
     ...base,
     signal: new AbortController().signal,
