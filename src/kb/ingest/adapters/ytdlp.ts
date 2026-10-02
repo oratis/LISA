@@ -12,11 +12,16 @@ import { execFile } from "node:child_process";
 const YTDLP_TIMEOUT_MS = 45_000;
 const MAX_JSON_BYTES = 30 * 1024 * 1024;
 
+/** argv for yt-dlp. `--` keeps a URL from ever being parsed as an option (`--exec …`). */
+export function ytDlpArgs(url: string): string[] {
+  return ["--no-warnings", "--skip-download", "--no-playlist", "--dump-single-json", "--", url];
+}
+
 export function ytDlpDumpJson(url: string): Promise<Record<string, unknown> | null> {
   return new Promise((resolve) => {
     execFile(
       "yt-dlp",
-      ["--no-warnings", "--skip-download", "--no-playlist", "--dump-single-json", url],
+      ytDlpArgs(url),
       { timeout: YTDLP_TIMEOUT_MS, maxBuffer: MAX_JSON_BYTES },
       (err, stdout) => {
         if (err) return resolve(null); // ENOENT (not installed) included

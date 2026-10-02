@@ -50,6 +50,11 @@ export function formatAudit(json: string): string {
   return `${total} vulnerabilit${total === 1 ? "y" : "ies"}: ${parts.join(", ")}  (run \`npm audit\` for detail)`;
 }
 
+/** `name`, `@scope/name`, optionally `@range` — and never something npm would parse as a flag. */
+export function isNpmPackageSpec(spec: string): boolean {
+  return /^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*(?:@[A-Za-z0-9^~<>=|.*+ -]{1,64})?$/i.test(spec);
+}
+
 export const npmInfoTool: ToolDefinition<NpmInput, string> = {
   name: "npm_info",
   description:
@@ -70,7 +75,10 @@ export const npmInfoTool: ToolDefinition<NpmInput, string> = {
   async execute(input, ctx) {
     if (input.action === "view") {
       if (!input.package) return "(view needs a package name)";
-      const r = await runIn(ctx.cwd, "npm", ["view", input.package, "--json"], { timeoutMs: 20000, signal: ctx.signal, maxBytes: 200_000 });
+      // A leading "-" would be read by npm as an option (--registry=…,
+      // --userconfig=…); "--" ends option parsing for good measure.
+      if (!isNpmPackageSpec(input.package)) return "(not a package name)";
+      const r = await runIn(ctx.cwd, "npm", ["view", "--json", "--", input.package], { timeoutMs: 20000, signal: ctx.signal, maxBytes: 200_000 });
       if (r.spawnError) return "(npm isn't installed)";
       if (r.code !== 0) return `(npm view failed: ${r.stderr.trim().slice(0, 160) || "no such package?"})`;
       return formatView(r.stdout);

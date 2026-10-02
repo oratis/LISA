@@ -32,7 +32,15 @@ interface GithubInput {
 
 /** Build the gh argv for an action (without the leading "gh"). Pure + tested. */
 export function buildGhArgs(input: GithubInput): { args: string[] } | { error: string } {
-  const need = (v: unknown, name: string) => v == null || v === "" ? `${input.action} needs ${name}` : null;
+  const need = (v: unknown, name: string) => {
+    if (v == null || v === "") return `${input.action} needs ${name}`;
+    // A number is spliced into argv as a positional: it must be a positive
+    // integer, or `String(number)` could be read by gh as a flag.
+    if (Object.is(v, input.number) && !(Number.isInteger(v) && (v as number) > 0)) {
+      return `${input.action} needs a positive integer number`;
+    }
+    return null;
+  };
   switch (input.action) {
     case "issue_list":
       return { args: ["issue", "list", "--state", input.state ?? "open", "--limit", "30", "--json", "number,title,state,author,labels"] };
