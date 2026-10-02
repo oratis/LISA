@@ -362,11 +362,20 @@ export function redactKnownSecrets(text: string, values: Iterable<string>): stri
     if (typeof v !== "string" || v.length < SECRET_REDACT_MIN_LENGTH) continue;
     for (const variant of redactionVariants(v)) needles.add(variant);
   }
-  // Longest first, so a value that contains another is removed whole.
-  const ordered = [...needles].sort((a, b) => b.length - a.length);
-  let out = text;
-  for (const needle of ordered) {
-    if (out.includes(needle)) out = out.split(needle).join(SECRET_REDACTION);
-  }
-  return out;
+  if (needles.size === 0) return text;
+  // One pass, longest alternative first, so a value that contains another is
+  // removed whole and inserted placeholders are never scanned again. Existing
+  // placeholders are stepped over, which keeps the function idempotent even
+  // for a value like "secret" that occurs inside the placeholder itself.
+  const pattern = new RegExp(
+    [...needles]
+      .sort((a, b) => b.length - a.length)
+      .map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+      .join("|"),
+    "g",
+  );
+  return text
+    .split(SECRET_REDACTION)
+    .map((part) => part.replace(pattern, SECRET_REDACTION))
+    .join(SECRET_REDACTION);
 }

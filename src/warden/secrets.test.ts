@@ -247,3 +247,14 @@ test("redactKnownSecrets: longest first, short values skipped, idempotent", () =
   assert.equal(redactKnownSecrets("", [VALUE_A]), "");
   assert.equal(redactKnownSecrets("nothing here", []), "nothing here");
 });
+
+test("redactKnownSecrets: values that look like the placeholder or like a regex", () => {
+  // "secret" and "redacted" occur inside "[redacted: secret]" itself.
+  const awkward = ["secret", "redacted"];
+  const once = redactKnownSecrets("the secret was redacted, see [redacted: secret]", awkward);
+  assert.equal(once, `the ${SECRET_REDACTION} was ${SECRET_REDACTION}, see ${SECRET_REDACTION}`);
+  assert.equal(redactKnownSecrets(once, awkward), once, "must not rewrite its own placeholders");
+
+  const regexy = "a.b*c(d)[e]{2}$|^\\";
+  assert.equal(redactKnownSecrets(`<${regexy}> axbxc`, [regexy]), `<${SECRET_REDACTION}> axbxc`);
+});
