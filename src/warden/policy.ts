@@ -312,10 +312,16 @@ function forcedAsk(req: ActionRequest, ctx: PolicyContext): Forced | null {
       bindTargets: true,
     };
   }
-  if (req.category === "read" && req.sensitivePath === true) {
+  if (
+    req.sensitivePath === true &&
+    (req.category === "read" || req.category === "write" || req.category === "delete")
+  ) {
     return {
       ruleId: "system:credential-path",
-      reason: "This reads a location that holds credentials.",
+      reason:
+        req.category === "read"
+          ? "This reads a location that holds credentials."
+          : "This changes a location that holds credentials.",
       scopes: ["once", "target"],
       grants: "bound",
     };

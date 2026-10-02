@@ -74,14 +74,16 @@ test("default matrix: interactive chat", () => {
     "ask",
   );
   assert.equal(verdict({ ...chat, category: "exec", sandboxed: true }), "allow");
+  // Review 3: nothing unconfined runs unasked, the local owner included.
   assert.equal(
     verdict({ ...chat, category: "exec", sandboxed: false }),
-    "allow",
-    "local owner, danger-full-access",
+    "ask",
+    "unsandboxed exec asks for every origin",
   );
   assert.equal(
     verdict({ ...chat, category: "write", sandboxed: false, withinWorkspace: true }),
-    "allow",
+    "ask",
+    "a workspace write with no sandbox behind it asks",
   );
   assert.equal(verdict({ ...chat, category: "network" }), "allow");
   for (const category of ["send", "publish", "delete"] as const) {
@@ -106,7 +108,10 @@ test("taint flips write, exec and network to ask in chat", () => {
   assert.equal(verdict({ ...tainted, category: "exec", sandboxed: false }), "ask");
   assert.equal(verdict({ ...tainted, category: "network" }), "ask");
   assert.equal(verdict({ ...tainted, category: "send" }), "ask");
-  assert.equal(evaluate(req({ ...tainted, category: "exec" }), ctx()).ruleId, "system:tainted-run");
+  assert.equal(
+    evaluate(req({ ...tainted, category: "exec", sandboxed: true }), ctx()).ruleId,
+    "system:tainted-run",
+  );
 });
 
 test("default matrix: task / routine / watcher need the envelope", () => {
