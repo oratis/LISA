@@ -34,14 +34,30 @@ export function advisorStatePath(): string {
   return path.join(lisaHome(), "advisor-state.json");
 }
 
+/**
+ * The scoring formula on its own: urgency × actionability × dismissal-decay.
+ * Shared with the reach-out value gate (src/reachout/gate.ts) so an unsolicited
+ * notice and an advisor suggestion are judged by one rule. Pure.
+ */
+export function relevanceScore(input: {
+  urgency: keyof typeof URGENCY_WEIGHT;
+  actionable: boolean;
+  dismissals: number;
+}): number {
+  const urgency = URGENCY_WEIGHT[input.urgency];
+  const actionability = input.actionable ? 1 : 0.5;
+  // Each dismissal of this category halves its pull (learns to shut up).
+  const decay = 1 / (1 + Math.max(0, input.dismissals) * 1.0);
+  return urgency * actionability * decay;
+}
+
 /** Relevance score = urgency × actionability × dismissal-decay. */
 export function scoreSuggestion(s: Suggestion, state: AdvisorState): number {
-  const urgency = URGENCY_WEIGHT[s.urgency];
-  const actionability = s.action ? 1 : 0.5;
-  const catDismissals = state.categoryDismissals[s.category] ?? 0;
-  // Each dismissal of this category halves its pull (learns to shut up).
-  const decay = 1 / (1 + catDismissals * 1.0);
-  return urgency * actionability * decay;
+  return relevanceScore({
+    urgency: s.urgency,
+    actionable: Boolean(s.action),
+    dismissals: state.categoryDismissals[s.category] ?? 0,
+  });
 }
 
 /** Has this exact condition been surfaced recently (→ suppress as dup)? */
@@ -145,9 +161,7 @@ export async function dismissSuggestion(
 
 // ── I/O ─────────────────────────────────────────────────────────────────
 
-export async function loadAdvisorState(
-  p: string = advisorStatePath(),
-): Promise<AdvisorState> {
+export async function loadAdvisorState(p: string = advisorStatePath()): Promise<AdvisorState> {
   try {
     const raw = await fsp.readFile(p, "utf8");
     const parsed = JSON.parse(raw) as Partial<AdvisorState>;
@@ -187,7 +201,10 @@ export async function advise(
  * (the user explicitly asked, so don't suppress) and WITHOUT mutating state.
  * Used by the advise_now tool.
  */
-export function adviseNow(input: AdvisorInput, state: AdvisorState = emptyAdvisorState()): Suggestion[] {
+export function adviseNow(
+  input: AdvisorInput,
+  state: AdvisorState = emptyAdvisorState(),
+): Suggestion[] {
   const cands = runAllDetectors(input);
   for (const c of cands) c.score = scoreSuggestion(c, state);
   return cands
