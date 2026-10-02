@@ -175,9 +175,12 @@ export async function sweepUserTasks(opts: {
         const started = await homeScope.run(homeForUid(uid), async () => {
           const runner = opts.runnerFor(uid);
           if (!runner) return -1;
+          // The sweep's budget is per RUN, not per tenant: one tenant with many
+          // due tasks cannot spend more than what is left of it.
           const pass = await runDueTasksOnce(runner, {
             maxMs: opts.maxMsPerTenant ?? 10 * 60_000,
             now,
+            maxStarts: maxRuns - ran,
           });
           return pass.started.length;
         });

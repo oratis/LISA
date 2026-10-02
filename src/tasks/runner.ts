@@ -33,6 +33,7 @@ import type { Provider, ProviderUsage } from "../providers/types.js";
 import type { SandboxMode } from "../sandbox/mode.js";
 import { sandboxModeForProfile } from "../sandbox/sandbox.js";
 import { validateToolInput } from "../tools/validate.js";
+import { stripSensitiveTokens } from "../warden/hygiene.js";
 import type { AgentEvent, StoredMessage, ToolDefinition } from "../types.js";
 import {
   buildResumeNote,
@@ -237,6 +238,24 @@ function looksLikeAuthFailure(message: string): boolean {
   return /\b(401|403)\b|unauthori[sz]ed|invalid.{0,12}api.?key|authentication|permission.denied|credentials?\b.{0,24}(missing|expired|invalid)/i.test(
     message,
   );
+}
+
+/**
+ * What a notify-mode watcher tells the user: the summary, and WHICH items
+ * fired it. The items are text from outside (a feed title, a page fragment, a
+ * mail subject), so they are cleaned of one-time codes and sign-in links,
+ * bounded, and quoted line by line — they are shown, never interpreted.
+ */
+export function describeHit(hit: { summary: string; detail?: string }): string {
+  if (!hit.detail?.trim()) return hit.summary;
+  const cleaned = stripSensitiveTokens(hit.detail).text;
+  const lines = cleaned
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .slice(0, 8)
+    .map((l) => `> ${l.length > 240 ? `${l.slice(0, 239)}…` : l}`);
+  return lines.length ? `${hit.summary}\n${lines.join("\n")}` : hit.summary;
 }
 
 interface SettledNotice {
@@ -495,9 +514,10 @@ export class TaskRunner {
    * due task up to the concurrency cap. Runs proceed in the background; use
    * drain() to wait for them. Never throws.
    */
-  async tick(): Promise<{ started: string[] }> {
+  async tick(opts: { maxStarts?: number } = {}): Promise<{ started: string[] }> {
     const started: string[] = [];
     if (this.stopped) return { started };
+    const maxStarts = opts.maxStarts ?? Infinity;
     try {
       await drainOutbox(this.deliver(), this.now());
     } catch (err) {
@@ -523,6 +543,7 @@ export class TaskRunner {
           (a.nextRunAt ?? 0) - (b.nextRunAt ?? 0),
       );
     for (const task of candidates) {
+      if (started.length >= maxStarts) break;
       if (this.active.size >= this.concurrency) break;
       // A task another process is running is skipped here, without using a slot.
       if (await this.launch(task.id)) started.push(task.id);
@@ -984,7 +1005,11 @@ export class TaskRunner {
     try {
       const surface =
         typeof this.opts.tools === "function" ? await this.opts.tools() : this.opts.tools;
-      const tools = taskToolset(surface, task.envelope);
+      // A run started by a watcher hit carries text an outsider controls: it
+      // gets what a remote channel gets (no skill_manage, no KB writes, …).
+      const tools = taskToolset(surface, task.envelope, {
+        untrustedInput: run.input !== undefined,
+      });
       const toolMap = new Map(tools.map((t) => [t.name, t]));
 
       const handle = (this.opts.approvalFactory ?? getTaskApprovalFactory())?.({
@@ -1360,6 +1385,28 @@ export class TaskRunner {
         error: (err as Error).message,
       };
     }
+    if (slot.controller.signal.aborted && slot.stop !== "cancelled") {
+      // Shutdown (or a lost lease) cut the check off. That says nothing about
+      // the watched thing: record nothing, count no failure, poll again later.
+      if (slot.leaseLost) throw new LeaseLost();
+      return;
+    }
+    if (slot.stop === "cancelled") {
+      // The user cancelled the poll: back to rest, nothing recorded against the watcher.
+      const rested = await this.saveTask(
+        task.id,
+        (t) => {
+          delete t.cancelRequestedAt;
+          delete t.queued;
+          t.state = restingState(t);
+          if (t.enabled) t.nextRunAt = nextRunAfter(t, now, cloud);
+          else delete t.nextRunAt;
+        },
+        now,
+      );
+      if (rested) this.emit({ type: "task_updated", task: rested });
+      return;
+    }
     const hit = outcome.hit;
     const failures = outcome.error ? (outcome.watch.failures ?? 1) : 0;
 
@@ -1383,7 +1430,7 @@ export class TaskRunner {
         stopReason: "watch_hit",
         summary: run.summary.slice(0, 500),
       });
-      await this.notify(task, run, "watch_hit", hit.summary, "high");
+      await this.notify(task, run, "watch_hit", describeHit(hit), "high");
     }
 
     const updated = await this.saveTask(

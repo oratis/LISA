@@ -359,6 +359,49 @@ test("the sweep runs each tenant's due tasks inside that tenant's home, one tena
   assert.equal(fs.existsSync(path.join(homeForUid(idle), "tasks")), false);
 });
 
+test("the sweep's run budget is counted per run, not per tenant", async () => {
+  const greedy = freshUid();
+  const next = freshUid();
+  await inTenant(greedy, async () => {
+    for (const title of ["a", "b", "c", "d"]) await dueTask(greedy, title);
+  });
+  await inTenant(next, async () => void (await dueTask(next)));
+  let modelCalls = 0;
+  const report = await sweepUserTasks({
+    accounts: async () => [{ uid: greedy }, { uid: next }],
+    accountExists: async () => true,
+    paused: () => false,
+    now: () => NOW,
+    maxRuns: 2,
+    runnerFor: (uid) =>
+      tenantRunner(
+        uid,
+        {
+          name: "fake",
+          async runTurn() {
+            modelCalls++;
+            return {
+              content: [{ type: "text", text: "ok" } as never],
+              stopReason: "end_turn",
+              usage: { inputTokens: 1, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+            };
+          },
+        },
+        admission().deps,
+      ),
+  });
+  assert.equal(report.ran, 2);
+  assert.equal(
+    modelCalls,
+    2,
+    "one tenant with four due tasks does not get four runs out of a budget of two",
+  );
+  assert.deepEqual(report.outcomes, [
+    { uid: greedy, started: 2 },
+    { uid: next, started: 0, skipped: "sweep_budget" },
+  ]);
+});
+
 test("the sweep honours the service pause, the per-sweep budget, account deletion and a missing runner", async () => {
   const uids = [freshUid(), freshUid(), freshUid(), freshUid()];
   for (const uid of uids) await inTenant(uid, async () => void (await dueTask(uid)));

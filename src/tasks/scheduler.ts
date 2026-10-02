@@ -74,8 +74,15 @@ export function startTaskScheduler(
  */
 export async function runDueTasksOnce(
   runner: TaskRunner,
-  opts: { signal?: AbortSignal; maxMs?: number; now?: () => number } = {},
+  opts: {
+    signal?: AbortSignal;
+    maxMs?: number;
+    now?: () => number;
+    /** Hard cap on runs started by this call (a sweep's remaining budget). */
+    maxStarts?: number;
+  } = {},
 ): Promise<{ started: string[] }> {
+  const maxStarts = opts.maxStarts ?? Infinity;
   const now = opts.now ?? Date.now;
   const deadline = now() + (opts.maxMs ?? 25 * 60_000);
   const started: string[] = [];
@@ -87,7 +94,8 @@ export async function runDueTasksOnce(
   try {
     for (;;) {
       if (opts.signal?.aborted || now() >= deadline) break;
-      const pass = await runner.tick();
+      if (started.length >= maxStarts) break;
+      const pass = await runner.tick({ maxStarts: maxStarts - started.length });
       if (pass.started.length === 0 && runner.activeCount === 0) break;
       started.push(...pass.started);
       await runner.drain();
