@@ -24,7 +24,7 @@ const DATA_NOUN =
 const DATA_CONNECTION_PATTERNS: RegExp[] = [
   // "connect your calendar", "linking another account" — the verb directly on the target.
   new RegExp(
-    `\\b(?:connect|link|hook up|authori[sz]e)(?:ing)? (?:me to )?(?:your|another|more|additional)\\b[^.!?\\n]{0,30}\\b${DATA_NOUN}\\b`,
+    `\\b(?:connect(?:ing)?|link(?:ing)?|hook(?:ing)? up|authori[sz](?:e|ing)) (?:me to )?(?:your|another|more|additional)\\b[^.!?\\n]{0,30}\\b${DATA_NOUN}\\b`,
     "i",
   ),
   // "grant me access to your inbox", "give me permission to read your contacts"
@@ -32,8 +32,8 @@ const DATA_CONNECTION_PATTERNS: RegExp[] = [
     `\\b(?:grant|give) me (?:access|permission)\\b[^.!?\\n]{0,30}\\b(?:your|another|more|additional)\\b[^.!?\\n]{0,30}\\b${DATA_NOUN}\\b`,
     "i",
   ),
-  // 请/可以/要不要 … 连接/绑定/授权 … 账号/邮箱 (no 的 in between: "你绑定的邮箱" is a description)
-  /(?:请|可以|能不能|要不要|不妨|建议|帮我|让我|如果你|再)[^。！？\n]{0,8}(?:连接|绑定|授权|接入|关联)[^。！？\n的]{0,10}(?:账号|帐号|邮箱|日历|通讯录|相册|位置|银行|数据源)/,
+  // 请/可以/要不要 … 连接/绑定/授权 … 账号/邮箱 ("绑定的邮箱" — verb + 的 — is a description, not an ask)
+  /(?:请|可以|能不能|要不要|不妨|建议|帮我|让我|如果你|再)[^。！？\n]{0,8}(?:连接|绑定|授权|接入|关联)(?!的|过的|了的)[^。！？\n]{0,10}(?:账号|帐号|邮箱|日历|通讯录|相册|位置|银行|数据源)/,
 ];
 
 const PRESSURE_PATTERNS: RegExp[] = [
