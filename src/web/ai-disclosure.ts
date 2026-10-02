@@ -1,4 +1,30 @@
+import { isCloud } from "../edition.js";
 import { OPENAI_COMPAT_PRESETS } from "../providers/registry.js";
+import { cloudWebToolsEnabled } from "../tools/cloud_web.js";
+
+/**
+ * Non-AI third parties that receive data when Lisa uses her web tools in a
+ * chat turn. They belong in the same list the client shows before a message is
+ * sent ("who receives your data"): `web_search` sends the search text — which
+ * the model derives from the conversation — to DuckDuckGo, and `web_fetch`
+ * requests a URL from whatever site it names. Neither sends account
+ * identifiers, and both leave from the server's address, not the user's.
+ *
+ * The iOS consent record is the exact recipient list, so a deployment that
+ * gains (or switches off) the web tools re-prompts on the next message — which
+ * is the point: the hosted edition must not start sending queries to a new
+ * third party under a consent that never named it.
+ */
+export const WEB_SEARCH_RECIPIENT = "DuckDuckGo (web search queries)";
+export const WEB_FETCH_RECIPIENT = "Websites Lisa opens for you (page requests)";
+
+/** Web-tool recipients for the chat surface this process serves. */
+export function webToolRecipients(env: NodeJS.ProcessEnv = process.env): string[] {
+  // Local edition: the owner's chat has always had both tools. Hosted edition:
+  // only while the kill switch leaves them on.
+  if (isCloud(env) && !cloudWebToolsEnabled(env)) return [];
+  return [WEB_SEARCH_RECIPIENT, WEB_FETCH_RECIPIENT];
+}
 
 /** Public recipient names only. Never serialize a configured URL's credentials,
  * query, path, or the API key while explaining who may process chat context. */
@@ -37,5 +63,6 @@ export function aiRecipients(model: string, env: NodeJS.ProcessEnv = process.env
     }
   }
   if (env.LISA_MANAGED_SESSION) recipients.add("LISA Cloud");
+  for (const recipient of webToolRecipients(env)) recipients.add(recipient);
   return [...recipients].sort();
 }
