@@ -499,6 +499,91 @@ test("known misses", () => {
   );
 });
 
+// ── split codes: two groups merge, three or more do not ──
+
+test("split codes: exactly two equal groups joined by one space are one code", () => {
+  otp("Your verification code is 482 913.", ["482 913"]);
+  otp("Your verification code is 4829 1357.", ["4829 1357"]);
+  // One placeholder for the pair — not one per group.
+  assert.equal(
+    stripSensitiveTokens("Your verification code is 4829 1357.").text,
+    `Your verification code is ${REDACTED_OTP}.`,
+  );
+  // Unequal groups, or more than one space, are not a split code.
+  untouched("Your verification code is 482  913.");
+  otp("Your verification code is 482 9135.", ["9135"], ["482 "]);
+});
+
+test("split codes: three or more groups are a phone or card number and are not merged", () => {
+  // Three-digit groups are not codes on their own, so nothing is removed.
+  untouched("Your verification code is 123 456 789.");
+  untouched("Your verification code is 123 456 789 012.");
+  // Four-digit groups are each a code on their own: three placeholders, never
+  // a merged pair plus a leftover.
+  assert.deepEqual(stripSensitiveTokens("Your verification code is 1234 5678 9012."), {
+    text: `Your verification code is ${REDACTED_OTP} ${REDACTED_OTP} ${REDACTED_OTP}.`,
+    removed: { ...NONE, otp: 3 },
+  });
+  // A pair with a digit group hanging off either end is "three groups" too.
+  otp("Your verification code is 123 456 7890.", ["7890"], ["123 456 "]);
+  otp("Your verification code is 7890 123 456.", ["7890"], [" 123 456"]);
+});
+
+test("split codes: a long run of pairs and three-group numbers, in one text", () => {
+  // Each line is its own sentence with its own "code is" glue, so the result
+  // can be predicted line by line. A merge that went wrong anywhere — a missed
+  // pair, a run skipped or duplicated while merging — would show up as a
+  // different line or a different count.
+  const kinds: Array<{ line: (n: number) => string; clean: (n: number) => string; codes: number }> =
+    [
+      {
+        line: (n) => `Your code is ${100 + (n % 900)} ${999 - (n % 900)}.`,
+        clean: () => `Your code is ${REDACTED_OTP}.`,
+        codes: 1,
+      },
+      {
+        // three 3-digit groups: left alone
+        line: (n) => `Your code is ${100 + (n % 900)} 456 789.`,
+        clean: (n) => `Your code is ${100 + (n % 900)} 456 789.`,
+        codes: 0,
+      },
+      {
+        line: (n) => `Your code is ${1000 + (n % 9000)} 5678.`,
+        clean: () => `Your code is ${REDACTED_OTP}.`,
+        codes: 1,
+      },
+      {
+        // four 4-digit groups: not merged; only the group glued to "code is" goes
+        line: (n) => `Your code is ${1000 + (n % 9000)} 5678 9012 3456.`,
+        clean: () => `Your code is ${REDACTED_OTP} 5678 9012 3456.`,
+        codes: 1,
+      },
+    ];
+  const lines: string[] = [];
+  const expected: string[] = [];
+  let codes = 0;
+  for (let n = 0; n < 6_000; n++) {
+    const kind = kinds[n % kinds.length]!;
+    lines.push(kind.line(n));
+    expected.push(kind.clean(n));
+    codes += kind.codes;
+  }
+  const out = stripSensitiveTokens(lines.join("\n"));
+  assert.equal(out.removed.otp, codes);
+  assert.equal(
+    out.text === expected.join("\n"),
+    true,
+    "long text differs from the per-line result",
+  );
+  assert.deepEqual(stripSensitiveTokens(out.text), { text: out.text, removed: NONE });
+
+  // The same shape with nothing announcing a code: every pair merges (and is
+  // then ignored), and the text comes back byte-for-byte.
+  const quiet = "123 456 x ".repeat(8_000);
+  assert.equal(stripSensitiveTokens(quiet).text === quiet, true);
+  assert.deepEqual(stripSensitiveTokens(quiet).removed, NONE);
+});
+
 // ── robustness ──
 
 test("non-string and empty input", () => {

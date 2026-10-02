@@ -556,16 +556,16 @@ function looksLikeSomethingElse(shadow: string, start: number, end: number): boo
 
 /** Every alphanumeric run of the shadow, in order, tagged with what it could be. */
 function scanRuns(shadow: string): Run[] {
-  const out: Run[] = [];
+  const raw: Run[] = [];
   for (const m of shadow.matchAll(RUN_RE)) {
     const start = m.index;
     const end = start + m[0].length;
     if (m[0].startsWith(MASK_DONE)) {
-      out.push({ start, end, kind: "done" });
+      raw.push({ start, end, kind: "done" });
       continue;
     }
     const shape = tokenShape(m[0]);
-    out.push({
+    raw.push({
       start,
       end,
       kind: shape && !looksLikeSomethingElse(shadow, start, end) ? shape : "text",
@@ -573,25 +573,42 @@ function scanRuns(shadow: string): Run[] {
   }
   // "123 456" / "1234 5678": two equal groups written with one space are one
   // code. Three or more groups is a phone or card number, not a split code.
+  //
+  // One pass that builds a new array — never an in-place splice, which would
+  // make a text full of such pairs cost O(n²). Neighbours are read from `raw`:
+  // a pair only merges when neither neighbour is an adjacent digit group, so a
+  // merged run can never be the neighbour that decides a later pair.
   const isDigits = (r: Run | undefined, n?: number): boolean => {
     if (!r) return false;
-    const t = shadow.slice(r.start, r.end);
-    return n === undefined ? /^\d+$/.test(t) : t.length === n && /^\d+$/.test(t);
+    const len = r.end - r.start;
+    if (n !== undefined && len !== n) return false;
+    for (let i = r.start; i < r.end; i++) {
+      const c = shadow.charCodeAt(i);
+      if (c < 48 || c > 57) return false;
+    }
+    return true;
   };
   const adjacent = (a: Run | undefined, b: Run | undefined): boolean =>
     !!a && !!b && b.start - a.end === 1 && shadow[a.end] === " ";
-  for (let i = 0; i + 1 < out.length; i++) {
-    const a = out[i]!;
-    const b = out[i + 1]!;
-    if (!adjacent(a, b)) continue;
-    const pair = (isDigits(a, 3) && isDigits(b, 3)) || (isDigits(a, 4) && isDigits(b, 4));
-    if (!pair) continue;
-    const prev = out[i - 1];
-    const next = out[i + 2];
-    const longer = (adjacent(b, next) && isDigits(next)) || (adjacent(prev, a) && isDigits(prev));
-    if (!longer && !looksLikeSomethingElse(shadow, a.start, b.end)) {
-      out.splice(i, 2, { start: a.start, end: b.end, kind: "digits" });
+  const out: Run[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    const a = raw[i]!;
+    const b = raw[i + 1];
+    const pair =
+      b !== undefined &&
+      adjacent(a, b) &&
+      ((isDigits(a, 3) && isDigits(b, 3)) || (isDigits(a, 4) && isDigits(b, 4)));
+    if (pair) {
+      const prev = raw[i - 1];
+      const next = raw[i + 2];
+      const longer = (adjacent(b, next) && isDigits(next)) || (adjacent(prev, a) && isDigits(prev));
+      if (!longer && !looksLikeSomethingElse(shadow, a.start, b.end)) {
+        out.push({ start: a.start, end: b.end, kind: "digits" });
+        i++; // `b` is part of the merged run
+        continue;
+      }
     }
+    out.push(a);
   }
   return out;
 }
