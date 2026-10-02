@@ -41,6 +41,7 @@ export interface ParsedArgs {
     | "autonomy"
     | "model"
     | "consent"
+    | "reachout"
     | "sense"
     | "agents"
     | "pair"
@@ -212,6 +213,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
       first === "autonomy" ||
       first === "model" ||
       first === "consent" ||
+      first === "reachout" ||
       first === "sense" ||
       first === "agents" ||
       first === "pair" ||
