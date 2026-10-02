@@ -3,6 +3,7 @@
  * poll feeds freshly-classified items here; what survives becomes a high-priority
  * push + a proactive chat message.
  */
+import { sanitizeMailFields } from "../warden/hygiene-mail.js";
 import type { MailItem } from "./types.js";
 
 export const DEFAULT_ALERT_LEVEL = 3;
@@ -47,8 +48,15 @@ export interface MailAlert {
   chat: string;
 }
 
-/** Format one important item into a push + chat alert. Pure. */
-export function formatAlert(i: MailItem): MailAlert {
+/**
+ * Format one important item into a push + chat alert. Pure.
+ *
+ * The alert text goes to a lock screen and into the chat transcript, so it is
+ * passed through inbound hygiene here as well (idempotent — items coming from
+ * the sweep service are already clean).
+ */
+export function formatAlert(item: MailItem): MailAlert {
+  const i = sanitizeMailFields(item).mail;
   const sender = who(i.from);
   const subject = i.subject.slice(0, 100) || "(no subject)";
   return {
