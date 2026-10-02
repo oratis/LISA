@@ -4,7 +4,12 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, test } from "node:test";
-import { crossSiteProblem, createWebWarden, handleWardenApi, wardenTrust } from "./warden-api.js";
+import {
+  crossSiteProblem,
+  createWebWarden,
+  handleWardenApi,
+  wardenTrust,
+} from "./warden-api.js";
 import { WardenInbox } from "../warden/inbox.js";
 import { createGrants, loadGrants } from "../warden/grants.js";
 import { loadRules } from "../warden/rules.js";
@@ -84,6 +89,13 @@ function request(uid: string | null, over: Partial<ActionRequest> = {}): ActionR
   };
 }
 
+const PAYLOAD = {
+  body: "LGTM — " + "x".repeat(400) + " END-OF-BODY",
+  action: "pr_comment",
+  repo: "o/r",
+  number: 7,
+};
+
 async function call(
   method: string,
   route: string,
@@ -113,17 +125,26 @@ async function call(
   return { status: res.status, body: parsed };
 }
 
-/** Queue an approval for `uid` and return its id plus the waiter. */
-async function queue(uid: string | null, over: Partial<ActionRequest> = {}) {
+/** Queue an approval for `uid` and return its id, digest and the waiter. */
+async function queue(
+  uid: string | null,
+  over: Partial<ActionRequest> = {},
+  extra: { scopes?: ActionRequest["category"][] } = {},
+) {
+  void extra;
   const before = events.length;
-  const waiting = inbox.request(request(uid, over), {
+  const req = request(uid, over);
+  const waiting = inbox.request(req, {
     home: homeFor(uid),
     reason: "needs approval",
+    payload: PAYLOAD,
+    primaryKeys: ["action", "repo", "number", "body"],
   });
-  for (let i = 0; i < 400 && events.length === before; i++)
+  for (let i = 0; i < 400 && events.length === before; i++) {
     await new Promise((r) => setTimeout(r, 5));
+  }
   const event = events[before]!.event;
-  return { id: event.id, waiting };
+  return { id: event.id, digest: req.digest, waiting };
 }
 
 describe("warden API", () => {
@@ -133,8 +154,8 @@ describe("warden API", () => {
     assert.deepEqual((await call("GET", "/api/sense/social/drafts")).body, { raw: "unhandled" });
   });
 
-  test("list → approve round trip resolves the waiting turn", async () => {
-    const { id, waiting } = await queue(null);
+  test("list → show → approve round trip resolves the waiting turn", async () => {
+    const { id, digest, waiting } = await queue(null);
     const list = await call("GET", "/api/approvals");
     assert.equal(list.status, 200);
     const approvals = list.body.approvals as Array<Record<string, unknown>>;
@@ -144,10 +165,12 @@ describe("warden API", () => {
     assert.equal(approvals[0]!.reason, "needs approval");
     assert.equal("home" in approvals[0]!, false);
     assert.equal("uid" in approvals[0]!, false);
+    assert.equal("payload" in approvals[0]!, false);
+    assert.equal(JSON.stringify(list.body).includes("END-OF-BODY"), false, "the list is the short form");
     assert.equal(list.body.canApprove, true);
 
     const approved = await call("POST", `/api/approvals/${id}/approve`, {
-      body: { scope: "always" },
+      body: { scope: "always", digest },
     });
     assert.equal(approved.status, 200);
     assert.equal(approved.body.verdict, "approved");
@@ -156,7 +179,55 @@ describe("warden API", () => {
     assert.equal((await loadGrants(homeFor(null))).grants.length, 1);
     assert.deepEqual((await call("GET", "/api/approvals")).body.approvals, []);
     // Replays find nothing.
-    assert.equal((await call("POST", `/api/approvals/${id}/approve`, { body: {} })).status, 404);
+    assert.equal(
+      (await call("POST", `/api/approvals/${id}/approve`, { body: { digest } })).status,
+      404,
+    );
+  });
+
+  test("review 5: GET /api/approvals/{id} serves the whole payload, in the classifier's order, to approvers only", async () => {
+    const { id, digest, waiting } = await queue(null);
+    const detail = await call("GET", `/api/approvals/${id}`);
+    assert.equal(detail.status, 200);
+    const approval = detail.body.approval as Record<string, unknown>;
+    assert.equal(approval.id, id);
+    assert.equal(approval.digest, digest);
+    const fields = detail.body.fields as Array<{ key: string; value: string; primary: boolean }>;
+    assert.deepEqual(
+      fields.map((f) => f.key),
+      ["action", "repo", "number", "body"],
+      "not the model's key order",
+    );
+    assert.ok(fields[3]!.value.endsWith("END-OF-BODY"), "the body is whole");
+    // A caller who cannot approve is not shown the payload.
+    const untrusted = await call("GET", `/api/approvals/${id}`, { trust: "none" });
+    assert.equal(untrusted.status, 403);
+    assert.equal(JSON.stringify(untrusted.body).includes("END-OF-BODY"), false);
+    assert.equal((await call("GET", "/api/approvals/apr_nope")).status, 404);
+    assert.equal((await call("DELETE", `/api/approvals/${id}`)).status, 405);
+    await call("POST", `/api/approvals/${id}/deny`, { body: {} });
+    await waiting;
+  });
+
+  test("review 5: approving without the digest of what was shown is refused", async () => {
+    const { id, digest, waiting } = await queue(null);
+    let settled = false;
+    void waiting.then(() => {
+      settled = true;
+    });
+    const route = `/api/approvals/${id}/approve`;
+    for (const body of [{}, { scope: "always" }, { digest: "" }, { digest: 5 }]) {
+      const res = await call("POST", route, { body });
+      assert.equal(res.status, 400, JSON.stringify(body));
+      assert.equal(res.body.error, "digest_required");
+    }
+    const stale = await call("POST", route, { body: { digest: "0".repeat(63) + "x" } });
+    assert.equal(stale.status, 409);
+    assert.equal(stale.body.error, "digest_mismatch");
+    assert.equal(settled, false);
+    assert.equal((await loadGrants(homeFor(null))).grants.length, 0);
+    assert.equal((await call("POST", route, { body: { digest } })).status, 200);
+    assert.equal((await waiting).approved, true);
   });
 
   test("deny resolves the turn as not approved", async () => {
@@ -168,7 +239,7 @@ describe("warden API", () => {
   });
 
   test("an untrusted caller can look but cannot approve, deny, change rules or revoke", async () => {
-    const { id, waiting } = await queue(null);
+    const { id, digest, waiting } = await queue(null);
     let settled = false;
     void waiting.then(() => {
       settled = true;
@@ -178,7 +249,7 @@ describe("warden API", () => {
     assert.equal(list.status, 200);
     assert.equal(list.body.canApprove, false);
     for (const [method, route, body] of [
-      ["POST", `/api/approvals/${id}/approve`, { scope: "always" }],
+      ["POST", `/api/approvals/${id}/approve`, { scope: "always", digest }],
       ["POST", `/api/approvals/${id}/deny`, {}],
       ["PUT", "/api/warden/rules", { categories: { exec: "auto" } }],
       ["DELETE", `/api/warden/grants/${grant!.id}`, undefined],
@@ -194,7 +265,7 @@ describe("warden API", () => {
   });
 
   test("cloud tenant isolation: one account cannot see, approve, deny or revoke another's", async () => {
-    const { id: idB, waiting } = await queue("userB");
+    const { id: idB, digest, waiting } = await queue("userB");
     let settled = false;
     void waiting.then(() => {
       settled = true;
@@ -210,9 +281,12 @@ describe("warden API", () => {
     assert.deepEqual((await call("GET", "/api/approvals", asA)).body.approvals, []);
     assert.deepEqual((await call("GET", "/api/warden/grants", asA)).body.grants, []);
     assert.deepEqual((await call("GET", "/api/warden/audit", asA)).body.entries, []);
+    const peek = await call("GET", `/api/approvals/${idB}`, asA);
+    assert.equal(peek.status, 404);
+    assert.equal(JSON.stringify(peek.body).includes("END-OF-BODY"), false);
     const approve = await call("POST", `/api/approvals/${idB}/approve`, {
       ...asA,
-      body: { scope: "always" },
+      body: { scope: "always", digest },
     });
     assert.equal(approve.status, 404);
     assert.equal(approve.body.error, "approval_not_found");
@@ -223,7 +297,8 @@ describe("warden API", () => {
     assert.equal((await call("DELETE", `/api/warden/grants/${grantB!.id}`, asA)).status, 404);
     // The unscoped (shared-token) caller is not userB either.
     assert.equal(
-      (await call("POST", `/api/approvals/${idB}/approve`, { trust: "loopback", body: {} })).status,
+      (await call("POST", `/api/approvals/${idB}/approve`, { trust: "loopback", body: { digest } }))
+        .status,
       404,
     );
     // A uid in the body or query is ignored.
@@ -231,7 +306,7 @@ describe("warden API", () => {
       (
         await call("POST", `/api/approvals/${idB}/approve?uid=userB`, {
           ...asA,
-          body: { uid: "userB", scope: "once" },
+          body: { uid: "userB", scope: "once", digest },
         })
       ).status,
       404,
@@ -261,39 +336,32 @@ describe("warden API", () => {
       ((await call("GET", "/api/approvals", asB)).body.approvals as unknown[]).length,
       1,
     );
+    assert.equal((await call("GET", `/api/approvals/${idB}`, asB)).status, 200);
     assert.equal(
       ((await call("GET", "/api/warden/audit", asB)).body.entries as unknown[]).length,
       1,
     );
     assert.equal(
-      (await call("POST", `/api/approvals/${idB}/approve`, { ...asB, body: {} })).status,
+      (await call("POST", `/api/approvals/${idB}/approve`, { ...asB, body: { digest } })).status,
       200,
     );
     assert.equal((await waiting).approved, true);
   });
 
-  test("bad answers: scope, digest, content type, JSON, size", async () => {
-    const { id, waiting } = await queue(null, { targets: [] });
+  test("bad answers: scope, content type, JSON, size", async () => {
+    const { id, digest, waiting } = await queue(null, { targets: [] });
     const route = `/api/approvals/${id}/approve`;
     assert.equal(
-      (await call("POST", route, { body: { scope: "forever" } })).body.error,
+      (await call("POST", route, { body: { scope: "forever", digest } })).body.error,
       "invalid_scope",
     );
     assert.equal(
-      (await call("POST", route, { body: { scope: "task" } })).body.error,
+      (await call("POST", route, { body: { scope: "task", digest } })).body.error,
       "scope_not_applicable",
     );
     assert.equal(
-      (await call("POST", route, { body: { digest: "0".repeat(63) + "x" } })).status,
-      409,
-    );
-    assert.equal(
-      (
-        await call("POST", route, {
-          body: "scope=always",
-          headers: { "content-type": "text/plain" },
-        })
-      ).status,
+      (await call("POST", route, { body: "scope=always", headers: { "content-type": "text/plain" } }))
+        .status,
       415,
     );
     assert.equal(
@@ -324,20 +392,21 @@ describe("warden API", () => {
   });
 
   test("cross-site and rebinding requests are refused", async () => {
-    const { id, waiting } = await queue(null);
+    const { id, digest, waiting } = await queue(null);
     const route = `/api/approvals/${id}/approve`;
     const cross = await call("POST", route, {
-      body: {},
+      body: { digest },
       headers: { origin: "https://evil.example" },
     });
     assert.equal(cross.status, 403);
     assert.equal(cross.body.error, "cross_origin_request");
     assert.equal(
-      (await call("POST", route, { body: {}, headers: { "sec-fetch-site": "cross-site" } })).status,
+      (await call("POST", route, { body: { digest }, headers: { "sec-fetch-site": "cross-site" } }))
+        .status,
       403,
     );
     assert.equal(
-      (await call("POST", route, { body: {}, headers: { origin: "null" } })).status,
+      (await call("POST", route, { body: { digest }, headers: { origin: "null" } })).status,
       403,
     );
     assert.equal(
@@ -356,10 +425,7 @@ describe("warden API", () => {
 
     const fake = (headers: http.IncomingHttpHeaders) => ({ headers }) as http.IncomingMessage;
     // Loopback trust requires a loopback Host (DNS rebinding / tunnels).
-    assert.equal(
-      crossSiteProblem(fake({ host: "evil.example:5757" }), true, null),
-      "untrusted_host",
-    );
+    assert.equal(crossSiteProblem(fake({ host: "evil.example:5757" }), true, null), "untrusted_host");
     assert.equal(crossSiteProblem(fake({ host: "evil.example" }), false, null), null);
     for (const host of [
       "localhost:5757",
@@ -406,16 +472,26 @@ describe("warden API", () => {
     assert.deepEqual(initial.body.behaviors, ["auto", "preapproved", "ask", "handoff"]);
 
     const put = await call("PUT", "/api/warden/rules", {
-      body: { rules: { categories: { exec: "ask" }, tools: { bash: "handoff" } } },
+      body: {
+        rules: {
+          categories: { exec: "ask" },
+          tools: { bash: "handoff" },
+          trustedMcpServers: ["gmail"],
+        },
+      },
     });
     assert.equal(put.status, 200);
     assert.equal((await loadRules(homeFor(null))).rules.categories.exec, "ask");
+    assert.deepEqual((await loadRules(homeFor(null))).rules.trustedMcpServers, ["gmail"]);
 
     for (const bad of [
       { categories: { purchase: "auto" } },
       { categories: { credential: "ask" } },
       { categories: { exec: "allow" } },
       { categories: { everything: "auto" } },
+      { tools: { bash: "constructor" } },
+      { trustedMcpServers: "all" },
+      { trustedMcpServers: ["ok", "bad name with spaces"] },
       { version: 2 },
     ]) {
       const res = await call("PUT", "/api/warden/rules", { body: bad });
@@ -445,11 +521,7 @@ describe("warden API", () => {
     assert.equal((await call("POST", "/api/warden/grants", { body: {} })).status, 405);
 
     for (let i = 0; i < 3; i++) {
-      await auditDecision(
-        request(null),
-        { verdict: "allow", reason: "r" },
-        { home: homeFor(null) },
-      );
+      await auditDecision(request(null), { verdict: "allow", reason: "r" }, { home: homeFor(null) });
     }
     const all = (await call("GET", "/api/warden/audit")).body.entries as Array<
       Record<string, unknown>
@@ -506,51 +578,135 @@ describe("wardenTrust", () => {
 });
 
 describe("createWebWarden", () => {
-  test("is inert unless the policy selects warden", () => {
-    const off = createWebWarden(
-      { approval: "auto", surface: "local-web", sandboxMode: "danger-full-access" },
-      () => {},
-    );
+  const POLICY = {
+    approval: "warden" as const,
+    surface: "local-web" as const,
+    sandboxMode: "workspace-write" as const,
+  };
+  let home: string;
+  let previous: string | undefined;
+  let workspace: string;
+
+  beforeEach(() => {
+    home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "lisa-warden-web-")));
+    workspace = path.join(home, "ws");
+    fs.mkdirSync(workspace, { recursive: true });
+    previous = process.env.LISA_HOME;
+    process.env.LISA_HOME = home;
+  });
+  afterEach(() => {
+    if (previous === undefined) delete process.env.LISA_HOME;
+    else process.env.LISA_HOME = previous;
+    fs.rmSync(home, { recursive: true, force: true });
+  });
+
+  const base = () => ({
+    uid: null,
+    sandboxMode: undefined,
+    workspaceRoot: workspace,
+    tools: [],
+    owner: true,
+  });
+  const make = () => createWebWarden(POLICY, () => {}, { approvalTimeoutMs: 20 });
+
+  test("is inert unless the policy selects warden", async () => {
+    const off = createWebWarden({ ...POLICY, approval: "auto" }, () => {});
     assert.equal(off.enabled, false);
-    assert.equal(
-      off.turn({ uid: null, sandboxMode: undefined, workspaceRoot: "/w", tools: [] }),
-      undefined,
-    );
+    assert.equal(await off.turn(base()), undefined);
   });
 
   test("taint carries across the turns of one conversation, and not to another", async () => {
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), "lisa-warden-web-"));
-    const previous = process.env.LISA_HOME;
-    process.env.LISA_HOME = home;
-    try {
-      const warden = createWebWarden(
-        { approval: "warden", surface: "local-web", sandboxMode: "danger-full-access" },
-        () => {},
-        { approvalTimeoutMs: 20 },
-      );
-      const turn = (conversationId: string) =>
-        warden.turn({
-          uid: null,
-          sandboxMode: undefined,
-          workspaceRoot: "/w",
-          tools: [],
-          conversationId,
-        })!;
-      const first = turn("c1");
-      assert.deepEqual(await first.approval("bash", { command: "ls" }), { allow: true });
-      assert.deepEqual(await first.approval("web_fetch", { url: "https://example.com" }), {
-        allow: true,
-      });
-      // Next turn of the same conversation: the fetched page is still in history.
-      const second = turn("c1");
-      assert.equal((await second.approval("bash", { command: "ls" })).allow, false);
-      // A different conversation is unaffected.
-      assert.deepEqual(await turn("c2").approval("bash", { command: "ls" }), { allow: true });
-      await warden.inbox.shutdown();
-    } finally {
-      if (previous === undefined) delete process.env.LISA_HOME;
-      else process.env.LISA_HOME = previous;
-      fs.rmSync(home, { recursive: true, force: true });
+    const warden = make();
+    const turn = async (conversationId: string) =>
+      (await warden.turn({ ...base(), conversationId, hasHistory: true }))!;
+    const first = await turn("c1");
+    assert.deepEqual(await first.approval("bash", { command: "ls" }), { allow: true });
+    assert.deepEqual(await first.approval("web_search", { query: "x" }), { allow: true });
+    // Next turn of the same conversation: the search results are still in history.
+    const second = await turn("c1");
+    assert.equal((await second.approval("bash", { command: "ls" })).allow, false);
+    // A different conversation is unaffected.
+    assert.deepEqual(await (await turn("c2")).approval("bash", { command: "ls" }), {
+      allow: true,
+    });
+    await warden.inbox.shutdown();
+  });
+
+  test("review 7: taint survives a restart, and a corrupt taint file taints every conversation with history", async () => {
+    const before = make();
+    const t1 = (await before.turn({ ...base(), conversationId: "c1" }))!;
+    await t1.approval("web_search", { query: "x" });
+    await before.inbox.shutdown();
+    // Give the fire-and-forget persist a moment.
+    for (let i = 0; i < 100 && !fs.existsSync(path.join(home, "warden", "tainted.json")); i++) {
+      await new Promise((r) => setTimeout(r, 10));
     }
+    const stored = JSON.parse(fs.readFileSync(path.join(home, "warden", "tainted.json"), "utf8"));
+    assert.deepEqual(stored, { version: 1, ids: ["c1"] }, "ids only");
+
+    // A new process: no in-memory state at all.
+    const after = make();
+    const resumed = (await after.turn({ ...base(), conversationId: "c1", hasHistory: true }))!;
+    assert.equal((await resumed.approval("bash", { command: "ls" })).allow, false);
+    const fresh = (await after.turn({ ...base(), conversationId: "c9", hasHistory: true }))!;
+    assert.deepEqual(await fresh.approval("bash", { command: "ls" }), { allow: true });
+
+    fs.writeFileSync(path.join(home, "warden", "tainted.json"), "{broken");
+    const withHistory = (await after.turn({ ...base(), conversationId: "c9", hasHistory: true }))!;
+    assert.equal((await withHistory.approval("bash", { command: "ls" })).allow, false);
+    const brandNew = (await after.turn({ ...base(), conversationId: "c10", hasHistory: false }))!;
+    assert.deepEqual(await brandNew.approval("bash", { command: "ls" }), { allow: true });
+    await after.inbox.shutdown();
+  });
+
+  test("review 7: a turn with attachments starts tainted", async () => {
+    const warden = make();
+    const turn = (await warden.turn({ ...base(), conversationId: "c1", hasAttachments: true }))!;
+    assert.equal((await turn.approval("bash", { command: "ls" })).allow, false);
+    await warden.inbox.shutdown();
+  });
+
+  test("review low: a caller who cannot approve does not get owner defaults", async () => {
+    const warden = make();
+    const owner = (await warden.turn({ ...base(), conversationId: "o", owner: true }))!;
+    assert.deepEqual(await owner.approval("bash", { command: "ls" }), { allow: true });
+    // A LAN device with a token: authenticated, but not an approver.
+    const remote = (await warden.turn({ ...base(), conversationId: "r", owner: false }))!;
+    assert.equal((await remote.approval("bash", { command: "ls" })).allow, false);
+    assert.equal((await remote.approval("write", { path: "a.ts", content: "x" })).allow, false);
+    assert.deepEqual(await remote.approval("read", { path: "a.ts" }), { allow: true });
+    await warden.inbox.shutdown();
+  });
+
+  test("review 4: URLs the user typed or a tool returned are remembered across turns of a conversation", async () => {
+    const warden = make();
+    const first = (await warden.turn({
+      ...base(),
+      conversationId: "c1",
+      userText: "read https://docs.example/a please",
+    }))!;
+    assert.deepEqual(await first.approval("web_fetch", { url: "https://docs.example/a" }), {
+      allow: true,
+    });
+    first.observe({
+      type: "tool_call_end",
+      toolName: "web_fetch",
+      toolResult: "see https://docs.example/b",
+    });
+    const second = (await warden.turn({ ...base(), conversationId: "c1", hasHistory: true }))!;
+    assert.deepEqual(await second.approval("web_fetch", { url: "https://docs.example/b" }), {
+      allow: true,
+    });
+    assert.equal(
+      (await second.approval("web_fetch", { url: "https://evil.example/?d=x" })).allow,
+      false,
+    );
+    // Another conversation never saw that URL.
+    const other = (await warden.turn({ ...base(), conversationId: "c2", hasAttachments: true }))!;
+    assert.equal(
+      (await other.approval("web_fetch", { url: "https://docs.example/b" })).allow,
+      false,
+    );
+    await warden.inbox.shutdown();
   });
 });

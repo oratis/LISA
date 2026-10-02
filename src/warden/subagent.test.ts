@@ -68,8 +68,9 @@ test("a subagent's tool calls are decided by the parent's Warden session", async
     surface: "local-web",
     uid: null,
     origin: { kind: "chat" },
-    sandboxMode: "danger-full-access",
-    workspaceRoot: "/work/project",
+    // Confined: an untainted chat may run the shell without asking.
+    sandboxMode: "workspace-write",
+    workspaceRoot: home,
     inbox,
     home,
   });
@@ -81,7 +82,7 @@ test("a subagent's tool calls are decided by the parent's Warden session", async
     cwd: "/work/project",
     signal: new AbortController().signal,
     provider: scripted([
-      { name: "bash", input: { command: "ls" } }, // untainted, local owner: allowed
+      { name: "bash", input: { command: "ls" } }, // untainted and sandboxed: allowed
       { name: "web_fetch", input: { url: "https://example.com" } }, // read: allowed, taints
       { name: "bash", input: { command: "ls" } }, // now tainted: asks, expires ⇒ denied
       { name: "github", input: { action: "pr_merge", repo: "o/r" } }, // publish: asks ⇒ denied

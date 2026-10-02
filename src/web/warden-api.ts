@@ -464,6 +464,17 @@ export function createWebWarden(
     }
     return urls;
   };
+  // Conversations tainted in THIS process, so the next turn sees it even if
+  // the write to tainted.json has not landed yet. The file is the durable copy.
+  const taintedNow = new Set<string>();
+  const rememberTaint = (key: string, conversationId: string, home: string): Promise<void> => {
+    taintedNow.add(key);
+    if (taintedNow.size > MAX_CONVERSATIONS_TRACKED * 10) {
+      const oldest = taintedNow.values().next().value;
+      if (oldest !== undefined) taintedNow.delete(oldest);
+    }
+    return markConversationTainted(conversationId, home).catch(() => undefined);
+  };
   return {
     inbox,
     enabled,
@@ -471,14 +482,16 @@ export function createWebWarden(
       if (!enabled) return undefined;
       const home = lisaHome();
       const conversationId = turn.conversationId;
+      const key = `${turn.uid ?? ""}\u0000${conversationId ?? ""}`;
       // Taint belongs to the conversation and survives a restart: the fetched
       // page is still in the history. Attachments are untrusted content too.
       const carried =
         conversationId !== undefined &&
-        (await isConversationTainted(conversationId, {
-          home,
-          hasHistory: turn.hasHistory === true,
-        }));
+        (taintedNow.has(key) ||
+          (await isConversationTainted(conversationId, {
+            home,
+            hasHistory: turn.hasHistory === true,
+          })));
       const session = createWardenSession({
         surface: policy.surface,
         uid: turn.uid,
@@ -494,20 +507,16 @@ export function createWebWarden(
         signal: turn.signal,
         home,
         initialTaint: carried || turn.hasAttachments === true,
-        knownUrls:
-          conversationId !== undefined
-            ? urlsFor(`${turn.uid ?? ""}\u0000${conversationId}`)
-            : undefined,
+        knownUrls: conversationId !== undefined ? urlsFor(key) : undefined,
         userText: turn.userText,
         onTaint: () => {
-          if (conversationId === undefined) return;
-          void markConversationTainted(conversationId, home).catch(() => undefined);
+          if (conversationId !== undefined) void rememberTaint(key, conversationId, home);
         },
       });
       // A turn that starts tainted because of an attachment taints the
       // conversation for its later turns as well.
       if (session.tainted && !carried && conversationId !== undefined) {
-        await markConversationTainted(conversationId, home).catch(() => undefined);
+        await rememberTaint(key, conversationId, home);
       }
       return { approval: session.approval, observe: (event) => session.observe(event) };
     },
