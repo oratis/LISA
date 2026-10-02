@@ -237,3 +237,97 @@ describe("reach-out API", () => {
     assert.equal(fs.existsSync(path.join(home, "reachout")), false);
   });
 });
+
+// ── contract conformance ───────────────────────────────────────────────────
+
+interface Schema {
+  $ref?: string;
+  type?: string | string[];
+  const?: unknown;
+  enum?: unknown[];
+  required?: string[];
+  properties?: Record<string, Schema>;
+  additionalProperties?: boolean | Schema;
+  minimum?: number;
+}
+
+const contract = JSON.parse(
+  fs.readFileSync(new URL("../../contracts/lisa-api-v1.openapi.json", import.meta.url), "utf8"),
+) as {
+  paths: Record<string, Record<string, unknown>>;
+  components: { schemas: Record<string, Schema> };
+};
+
+function violations(input: Schema, value: unknown, at = "$"): string[] {
+  const schema = input.$ref
+    ? contract.components.schemas[input.$ref.replace("#/components/schemas/", "")]!
+    : input;
+  const out: string[] = [];
+  if (schema.const !== undefined && value !== schema.const) out.push(`${at} != const`);
+  if (schema.enum && !schema.enum.includes(value)) out.push(`${at} not in enum`);
+  const types = Array.isArray(schema.type) ? schema.type : schema.type ? [schema.type] : [];
+  if (types.length > 0) {
+    const actual = value === null ? "null" : Number.isInteger(value) ? "integer" : typeof value;
+    const okType = types.includes(actual) || (actual === "integer" && types.includes("number"));
+    if (!okType) return [`${at} expected ${types.join("|")}, got ${actual}`];
+  }
+  if (typeof value === "number" && schema.minimum !== undefined && value < schema.minimum) {
+    out.push(`${at} below minimum`);
+  }
+  if (value !== null && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    for (const key of schema.required ?? []) if (!(key in record)) out.push(`${at}.${key} missing`);
+    for (const [key, child] of Object.entries(schema.properties ?? {})) {
+      if (key in record) out.push(...violations(child, record[key], `${at}.${key}`));
+    }
+    if (schema.additionalProperties === false) {
+      for (const key of Object.keys(record)) {
+        if (!(key in (schema.properties ?? {}))) out.push(`${at}.${key} not allowed`);
+      }
+    }
+  }
+  return out;
+}
+
+const ref = (name: string): Schema => ({ $ref: `#/components/schemas/${name}` });
+
+describe("reach-out API matches contracts/lisa-api-v1.openapi.json", () => {
+  test("the four operations are in the contract", () => {
+    assert.ok(contract.paths["/api/reachout/settings"]?.get);
+    assert.ok(contract.paths["/api/reachout/settings"]?.put);
+    assert.ok(contract.paths["/api/reachout/ledger"]?.get);
+    assert.ok(contract.paths["/api/reachout/feedback"]?.post);
+  });
+
+  test("real responses satisfy their schemas", async () => {
+    const view = await call("GET", "/api/reachout/settings");
+    assert.deepEqual(violations(ref("ReachOutSettingsView"), view.body), []);
+
+    const patch = {
+      dial: "high",
+      quietHours: { tz: "Asia/Tokyo" },
+      compliance: { usageReminderMinutes: 120 },
+    };
+    assert.deepEqual(violations(ref("ReachOutSettingsPatch"), patch), []);
+    const put = await call("PUT", "/api/reachout/settings", patch);
+    assert.equal(put.status, 200);
+    assert.deepEqual(violations(ref("ReachOutSettingsView"), put.body), []);
+
+    const id = await sendNotice(home, "t");
+    const fb = await call("POST", "/api/reachout/feedback", { id, verdict: "useful" });
+    assert.deepEqual(violations(ref("ReachOutFeedbackResult"), fb.body), []);
+
+    const ledger = await call("GET", "/api/reachout/ledger?days=30");
+    assert.deepEqual(violations(ref("ReachOutLedgerAggregate"), ledger.body), []);
+
+    const bad = await call("PUT", "/api/reachout/settings", { dial: "x" });
+    assert.deepEqual(violations(ref("ErrorResponse"), bad.body), []);
+  });
+
+  test("the validator itself rejects a wrong shape (it is not vacuous)", () => {
+    assert.notDeepEqual(
+      violations(ref("ReachOutSettingsView"), { settings: { dial: "loud" } }),
+      [],
+    );
+  });
+});
