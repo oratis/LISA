@@ -60,7 +60,7 @@ import type {
   TaskRunState,
   WatchState,
 } from "./types.js";
-import { getTaskApprovalFactory, getTaskDeliver } from "./wiring.js";
+import { getDefaultTaskDeliver, getTaskApprovalFactory, getTaskDeliver } from "./wiring.js";
 
 /** Marks a side-effecting call that was started but whose result was never recorded. */
 export const IN_FLIGHT = "[in-flight]";
@@ -235,7 +235,7 @@ export class TaskRunner {
   }
 
   private deliver(): TaskDeliver | undefined {
-    return this.opts.deliver ?? getTaskDeliver();
+    return this.opts.deliver ?? getTaskDeliver() ?? getDefaultTaskDeliver();
   }
 
   // ── scheduling ──

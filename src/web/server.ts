@@ -183,6 +183,7 @@ import { ScreenSource } from "../sense/screen.js";
 import { VoiceSource } from "../sense/voice.js";
 import { appendSenseEvent, readSenseEvents } from "../sense/log.js";
 import { handleSocialApi } from "./social-api.js";
+import { createTaskHost } from "./tasks-host.js";
 import {
   loadScreenAdvisorConfig,
   saveScreenAdvisorConfig,
@@ -801,6 +802,43 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // Billing anomalies reach the operator's phone through the same channel as
   // agent errors (B8d) — pref "error", throttled inside the bridge.
   setAnomalySink((text) => pushBridge.onBillingAnomaly(text));
+  // ── Task Engine (W1): durable routines / watchers / one-offs ────────
+  // Everything lives in tasks-host.ts; this is only the wiring to the pieces
+  // that are closures of this server (conversation, SSE fan-out, push).
+  const taskHost = createTaskHost({
+    cloud: cloudEdition,
+    profile: capabilityProfile,
+    tools: autonomyTools,
+    model: opts.model,
+    cwd: process.cwd(),
+    broadcast,
+    log: logInfo,
+    // Mac edition only: push subscriptions are one machine-wide channel.
+    ...(cloudEdition ? {} : { push: (_notice, card) => pushBridge.onIdleMessage(card) }),
+    withConversation: async (fn) => {
+      const lease = await ctxForRequest();
+      const ctx = lease.value;
+      // Queue behind any chat turn on this conversation, like a turn would.
+      const job = ctx.chain.then(() =>
+        fn({
+          history: ctx.history,
+          append: async (message) => {
+            await ctx.session.appendMessage(message);
+            ctx.history.push(message);
+          },
+        }),
+      );
+      ctx.chain = job.then(
+        () => {},
+        () => {},
+      );
+      try {
+        return await job;
+      } finally {
+        lease.release();
+      }
+    },
+  });
   hub.on("update", (session: AgentSession) => {
     // L6 — record the transition in the orchestrator journal so the
     // cross-agent recap can answer "what happened while I was away?" even for
@@ -2417,6 +2455,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     ) {
       return;
     }
+    if (await taskHost.handle(req, res, url, accountUid)) return;
 
     // Per-request gate for high-risk control actions from REMOTE callers. The Mac
     // owner (loopback) is never gated; a remote (token) device may take only what
@@ -4828,6 +4867,7 @@ self.addEventListener('fetch', (event) => {
       screenTimer = null;
     }
     loopMonitor.stop();
+    void taskHost.stop();
     idleWatcher?.stop();
     moodBus.off("mood", onMoodEvent);
     moodBus.off("chat_start", onChatStart);
