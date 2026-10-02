@@ -10,6 +10,7 @@
  *     channel either — the heartbeat CLI — they wait in the outbox, durably,
  *     for the next process that has one.
  */
+import type { TaskEngineEvent } from "./runner.js";
 import type { TaskApprovalFactory, TaskDeliver } from "./types.js";
 
 let approvalFactory: TaskApprovalFactory | undefined;
@@ -45,4 +46,28 @@ export function setDefaultTaskDeliver(fn: TaskDeliver | undefined): void {
 
 export function getDefaultTaskDeliver(): TaskDeliver | undefined {
   return defaultDeliver;
+}
+
+let eventSink: ((event: TaskEngineEvent) => void) | undefined;
+
+/**
+ * Where task changes made OUTSIDE a runner or the API go — i.e. by the model's
+ * task tools. The web server points this at its tenant-aware SSE fan-out so a
+ * task Lisa drafts in chat appears in an open Tasks view at once.
+ */
+export function setTaskEventSink(sink: ((event: TaskEngineEvent) => void) | undefined): void {
+  eventSink = sink;
+}
+
+export function getTaskEventSink(): ((event: TaskEngineEvent) => void) | undefined {
+  return eventSink;
+}
+
+/** Best-effort: a missing or throwing sink never affects the caller. */
+export function emitTaskEvent(event: TaskEngineEvent): void {
+  try {
+    eventSink?.(event);
+  } catch {
+    // SSE is a courtesy; the store is the source of truth.
+  }
 }

@@ -47,6 +47,7 @@ import { takoapiTool } from "./takoapi.js";
 import { writeTool } from "./write.js";
 import { kbTools, restrictKbIngestToWatchlist } from "../kb/tool.js";
 import { socialComposeTool } from "../sense/social/tool.js";
+import { CLOUD_TASK_TOOL_NAMES, TASK_ENGINE_TOOL_NAMES, taskEngineTools } from "./task_index.js";
 
 export interface ToolRegistryOptions {
   includeVoice?: boolean;
@@ -109,6 +110,8 @@ export function buildToolRegistry(opts: ToolRegistryOptions = {}): ToolDefinitio
     // Personal knowledge base (docs/archive/plans/PLAN_KNOWLEDGE_BASE_v1.0.md):
     // kb_search / kb_read / kb_list (read) + kb_add / kb_write (jailed writes).
     ...kbTools,
+    // Task Engine (W1): task_create / task_list / task_update / task_cancel / watch_create.
+    ...taskEngineTools,
   ];
   if (opts.includeVoice) {
     tools.push(speakTool, transcribeTool);
@@ -179,6 +182,8 @@ export const AUTONOMOUS_BLOCKED_TOOL_NAMES = new Set([
   // takoapi calls spend the user's TAKO_KEY and send data to a remote agent —
   // not something an unattended/remote-origin run should do on its own.
   "takoapi",
+  // Unattended work must not create, edit or cancel unattended work.
+  ...TASK_ENGINE_TOOL_NAMES,
 ]);
 
 export function autonomousSubset(tools: ToolDefinition[]): ToolDefinition[] {
@@ -304,5 +309,9 @@ export const CLOUD_ALLOWED_TOOL_NAMES = new Set([
 ]);
 
 export function cloudSafeSubset(tools: ToolDefinition[]): ToolDefinition[] {
-  return tools.filter((t) => CLOUD_ALLOWED_TOOL_NAMES.has(t.name));
+  // Task tools join the hosted set only while the operator has cloud tasks on.
+  const tasksOn = process.env.LISA_CLOUD_TASKS === "1";
+  return tools.filter(
+    (t) => CLOUD_ALLOWED_TOOL_NAMES.has(t.name) || (tasksOn && CLOUD_TASK_TOOL_NAMES.has(t.name)),
+  );
 }

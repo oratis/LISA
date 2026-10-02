@@ -15,7 +15,12 @@ import { createTaskCardDeliver, type CardDeliverDeps } from "../tasks/delivery.j
 import type { ModelGate, TaskEngineEvent, TaskRunner, WatchCheck } from "../tasks/runner.js";
 import { createTaskRunner, startTaskScheduler, type TaskSchedulerHandle } from "../tasks/scheduler.js";
 import type { TaskNotice } from "../tasks/types.js";
-import { getDefaultTaskDeliver, setDefaultTaskDeliver } from "../tasks/wiring.js";
+import {
+  getDefaultTaskDeliver,
+  getTaskEventSink,
+  setDefaultTaskDeliver,
+  setTaskEventSink,
+} from "../tasks/wiring.js";
 import type { ToolDefinition } from "../types.js";
 import { cloudTasksEnabled, handleTasksApi } from "./tasks-api.js";
 
@@ -63,6 +68,8 @@ export function createTaskHost(opts: TaskHostOptions): TaskHost {
   // The channel of last resort; a Reach-out gate installed with setTaskDeliver
   // takes precedence and may call this one to pass a notice through.
   setDefaultTaskDeliver(cardDeliver);
+  // Changes the model makes through its task tools reach open clients too.
+  setTaskEventSink(onEvent);
 
   const make = (uid: string | null): TaskRunner =>
     createTaskRunner({
@@ -118,6 +125,7 @@ export function createTaskHost(opts: TaskHostOptions): TaskHost {
     runnerFor,
     stop: async () => {
       if (getDefaultTaskDeliver() === cardDeliver) setDefaultTaskDeliver(undefined);
+      if (getTaskEventSink() === onEvent) setTaskEventSink(undefined);
       await scheduler?.stop();
       await local?.stop();
       await Promise.all([...tenants.values()].map((r) => r.stop()));
