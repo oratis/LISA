@@ -85,7 +85,7 @@ export async function markRan(id: string, when: number): Promise<void> {
 }
 
 /** Parse "every:<N><m|h|d>" → interval ms, or null if not that form. */
-function parseEvery(schedule: string): number | null {
+export function parseEvery(schedule: string): number | null {
   const m = schedule.match(/^every:(\d+)([mhd])$/i);
   if (!m) return null;
   const n = parseInt(m[1]!, 10);
@@ -94,7 +94,7 @@ function parseEvery(schedule: string): number | null {
 }
 
 /** Parse "daily:HH:MM" → {h, m}, or null. */
-function parseDaily(schedule: string): { h: number; m: number } | null {
+export function parseDaily(schedule: string): { h: number; m: number } | null {
   const m = schedule.match(/^daily:(\d{1,2}):(\d{2})$/i);
   if (!m) return null;
   const h = parseInt(m[1]!, 10);
