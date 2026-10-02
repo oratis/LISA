@@ -4900,6 +4900,9 @@ if ('serviceWorker' in navigator) {
     html += '<div class="view-sec-label">Automation</div><div class="set-card">';
     html += '<div class="set-row"><div class="set-main"><div class="set-name">Proactive mode</div><div class="set-sub">Let Lisa watch your agents, tasks and signals and act when you are away</div></div>' + sw('setProactiveToggle', proactiveOn) + '</div>';
     html += '</div>';
+    // Reach-out charter controls (docs/POLICY_REACH_OUT.md): filled in by
+    // loadReachOut() once /api/reachout/settings answers.
+    html += '<div class="view-sec-label">Proactivity</div><div class="set-card" id="setReachOut"><div class="set-row"><div class="set-note">loading…</div></div></div>';
     html += '<div class="view-sec-label">Display</div><div class="set-card">';
     html += '<div class="set-row"><div class="set-main"><div class="set-name">Compact mode</div><div class="set-sub">Dock Lisa as a narrow stacked panel at any window width</div></div>' + sw('setCompactToggle', compactOn) + '</div>';
     html += '</div>';
@@ -4988,6 +4991,89 @@ if ('serviceWorker' in navigator) {
     });
     // Refresh Proactive state from the server so the switch reflects truth.
     syncProactive();
+    loadReachOut();
+  }
+
+  // ── Proactivity: how much Lisa may reach out (dial · quiet hours · sources).
+  //    "Proactive mode" above is whether she acts on her own; this is how much
+  //    she may interrupt. Approvals and critical alerts are never held back. ──
+  var RO_DIALS = [['off', 'Off — in the app only'], ['low', 'Low — 1 push a day'], ['normal', 'Normal — 3 pushes a day'], ['high', 'High — 8 pushes a day']];
+  var RO_SOURCES = [
+    ['task', 'Task results', 'Your own tasks and routines finishing'],
+    ['watcher', 'Watchers', 'Something you asked her to watch changed'],
+    ['mail', 'Mail', 'Daily digest and important-mail alerts'],
+    ['brief', 'Daily brief', 'Knowledge-base feeds brief'],
+    ['advisor', 'Agent advisor', 'Stuck or conflicting coding agents'],
+    ['idle', 'While you were away', 'Notes from her idle time'],
+    ['desire', 'Her own notes', 'Progress on her own desires — in the app unless push is on below'],
+    ['system', 'System', 'Security and host events']
+  ];
+  function renderReachOut(view) {
+    var box = document.getElementById('setReachOut');
+    if (!box) return;
+    if (!view || !view.settings) { box.innerHTML = '<div class="set-row"><div class="set-note">Proactivity settings are unavailable.</div></div>'; return; }
+    var s = view.settings, b = view.budget || {}, q = s.quietHours || {}, src = s.sources || {};
+    var sw = function (id, on) {
+      return '<div class="set-switch' + (on ? ' on' : '') + '" id="' + id + '" role="switch" aria-checked="' + (on ? 'true' : 'false') + '" tabindex="0"><span class="knob"></span></div>';
+    };
+    var row = function (name, sub, control) {
+      return '<div class="set-row"><div class="set-main"><div class="set-name">' + esc(name) + '</div><div class="set-sub">' + esc(sub) + '</div></div>' + control + '</div>';
+    };
+    var opts = '';
+    for (var i = 0; i < RO_DIALS.length; i++) {
+      opts += '<option value="' + RO_DIALS[i][0] + '"' + (RO_DIALS[i][0] === s.dial ? ' selected' : '') + '>' + esc(RO_DIALS[i][1]) + '</option>';
+    }
+    var used = (typeof b.usedToday === 'number' && typeof b.daily === 'number') ? (b.usedToday + ' of ' + b.daily + ' used today. ') : '';
+    var h = row('How proactive', used + 'Approvals and critical alerts always get through.',
+      '<select class="set-input" id="roDial" style="width:auto" aria-label="How proactive">' + opts + '</select>');
+    var times = '<span style="display:flex;gap:6px;align-items:center">' +
+      '<input class="set-input" id="roQuietStart" type="time" style="width:auto" aria-label="Quiet hours start" value="' + esc(q.start || '22:00') + '">' +
+      '<input class="set-input" id="roQuietEnd" type="time" style="width:auto" aria-label="Quiet hours end" value="' + esc(q.end || '08:00') + '">' +
+      sw('roQuietToggle', !!q.enabled) + '</span>';
+    h += row('Quiet hours', (view.quietNow ? 'Quiet now. ' : '') + 'Pushes wait until the window ends' + (q.tz ? ' (' + q.tz + ')' : '') + '.', times);
+    for (var j = 0; j < RO_SOURCES.length; j++) {
+      h += row(RO_SOURCES[j][1], RO_SOURCES[j][2], sw('roSrc_' + RO_SOURCES[j][0], src[RO_SOURCES[j][0]] !== false));
+    }
+    h += row('Push her own notes', 'Let notes about her own desires use push too', sw('roDesirePush', !!s.desirePush));
+    var note = function (text) { return '<div class="set-row"><div class="set-note">' + esc(text) + '</div></div>'; };
+    if (view.channelsAvailable && view.channelsAvailable.push === false) {
+      h += note('Push is not available here, so everything stays in the app.');
+    }
+    if (view.proactiveMode === false) {
+      h += note('Proactive mode is off, so idle notes and her own notes stay in the app.');
+    }
+    box.innerHTML = h;
+
+    var onSwitch = function (id, fn) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      var go = function () { fn(!el.classList.contains('on')); };
+      el.addEventListener('click', go);
+      el.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+    };
+    var dial = /** @type {HTMLSelectElement | null} */ (document.getElementById('roDial'));
+    if (dial) dial.addEventListener('change', function () { saveReachOut({ dial: dial.value }); });
+    var qs = /** @type {HTMLInputElement | null} */ (document.getElementById('roQuietStart'));
+    var qe = /** @type {HTMLInputElement | null} */ (document.getElementById('roQuietEnd'));
+    var saveQuiet = function () {
+      if (qs && qe && qs.value && qe.value && qs.value !== qe.value) saveReachOut({ quietHours: { start: qs.value, end: qe.value } });
+    };
+    if (qs) qs.addEventListener('change', saveQuiet);
+    if (qe) qe.addEventListener('change', saveQuiet);
+    onSwitch('roQuietToggle', function (on) { saveReachOut({ quietHours: { enabled: on } }); });
+    onSwitch('roDesirePush', function (on) { saveReachOut({ desirePush: on }); });
+    RO_SOURCES.forEach(function (def) {
+      onSwitch('roSrc_' + def[0], function (on) { var p = {}; p[def[0]] = on; saveReachOut({ sources: p }); });
+    });
+  }
+  function loadReachOut() {
+    getJSON('/api/reachout/settings').then(renderReachOut).catch(function () { renderReachOut(null); });
+  }
+  function saveReachOut(patch) {
+    fetch('/api/reachout/settings', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(patch) })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (view) { if (view) renderReachOut(view); else loadReachOut(); })
+      .catch(function () { loadReachOut(); });
   }
   function loadSettings() {
     views.settings.innerHTML =
