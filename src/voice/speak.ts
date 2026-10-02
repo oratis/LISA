@@ -25,8 +25,6 @@ export async function speak(opts: SpeakOptions): Promise<void> {
   return await new Promise<void>((resolve, reject) => {
     const child = spawn("/usr/bin/say", sayArgs(opts));
     child.on("error", reject);
-    child.on("close", (code) =>
-      code === 0 ? resolve() : reject(new Error(`say exited ${code}`)),
-    );
+    child.on("close", (code) => (code === 0 ? resolve() : reject(new Error(`say exited ${code}`))));
   });
 }

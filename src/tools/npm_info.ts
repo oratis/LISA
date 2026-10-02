@@ -16,7 +16,11 @@ interface NpmInput {
 /** Pure: format `npm view --json` metadata. Exported for tests. */
 export function formatView(json: string): string {
   let d: any;
-  try { d = JSON.parse(json); } catch { return json.trim(); }
+  try {
+    d = JSON.parse(json);
+  } catch {
+    return json.trim();
+  }
   if (Array.isArray(d)) d = d[d.length - 1]; // version range → newest match
   const lines = [
     `${d.name}@${d.version}`,
@@ -32,27 +36,43 @@ export function formatView(json: string): string {
 /** Pure: format `npm outdated --json`. Exported for tests. */
 export function formatOutdated(json: string): string {
   let d: Record<string, any>;
-  try { d = JSON.parse(json || "{}"); } catch { return json.trim(); }
+  try {
+    d = JSON.parse(json || "{}");
+  } catch {
+    return json.trim();
+  }
   const names = Object.keys(d);
   if (names.length === 0) return "(all dependencies up to date)";
-  return `${names.length} outdated:\n` + names.map((n) => `  ${n}: ${d[n].current ?? "?"} → ${d[n].latest ?? "?"}`).join("\n");
+  return (
+    `${names.length} outdated:\n` +
+    names.map((n) => `  ${n}: ${d[n].current ?? "?"} → ${d[n].latest ?? "?"}`).join("\n")
+  );
 }
 
 /** Pure: summarise `npm audit --json` (npm v7+ shape). Exported for tests. */
 export function formatAudit(json: string): string {
   let d: any;
-  try { d = JSON.parse(json); } catch { return json.trim(); }
+  try {
+    d = JSON.parse(json);
+  } catch {
+    return json.trim();
+  }
   const v = d?.metadata?.vulnerabilities;
   if (!v) return "(no audit data)";
-  const total = (v.critical ?? 0) + (v.high ?? 0) + (v.moderate ?? 0) + (v.low ?? 0) + (v.info ?? 0);
+  const total =
+    (v.critical ?? 0) + (v.high ?? 0) + (v.moderate ?? 0) + (v.low ?? 0) + (v.info ?? 0);
   if (total === 0) return "(no known vulnerabilities)";
-  const parts = ["critical", "high", "moderate", "low", "info"].filter((k) => v[k]).map((k) => `${v[k]} ${k}`);
+  const parts = ["critical", "high", "moderate", "low", "info"]
+    .filter((k) => v[k])
+    .map((k) => `${v[k]} ${k}`);
   return `${total} vulnerabilit${total === 1 ? "y" : "ies"}: ${parts.join(", ")}  (run \`npm audit\` for detail)`;
 }
 
 /** `name`, `@scope/name`, optionally `@range` — and never something npm would parse as a flag. */
 export function isNpmPackageSpec(spec: string): boolean {
-  return /^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*(?:@[A-Za-z0-9^~<>=|.*+ -]{1,64})?$/i.test(spec);
+  return /^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*(?:@[A-Za-z0-9^~<>=|.*+ -]{1,64})?$/i.test(
+    spec,
+  );
 }
 
 export const npmInfoTool: ToolDefinition<NpmInput, string> = {
@@ -66,8 +86,14 @@ export const npmInfoTool: ToolDefinition<NpmInput, string> = {
     type: "object",
     properties: {
       action: { type: "string", enum: ["view", "outdated", "audit"] },
-      package: { type: "string", description: "Package name (optionally name@range) for action:'view'." },
-      cwd: { type: "string", description: "Repo path for outdated/audit. Defaults to current directory." },
+      package: {
+        type: "string",
+        description: "Package name (optionally name@range) for action:'view'.",
+      },
+      cwd: {
+        type: "string",
+        description: "Repo path for outdated/audit. Defaults to current directory.",
+      },
     },
     required: ["action"],
     additionalProperties: false,
@@ -78,9 +104,14 @@ export const npmInfoTool: ToolDefinition<NpmInput, string> = {
       // A leading "-" would be read by npm as an option (--registry=…,
       // --userconfig=…); "--" ends option parsing for good measure.
       if (!isNpmPackageSpec(input.package)) return "(not a package name)";
-      const r = await runIn(ctx.cwd, "npm", ["view", "--json", "--", input.package], { timeoutMs: 20000, signal: ctx.signal, maxBytes: 200_000 });
+      const r = await runIn(ctx.cwd, "npm", ["view", "--json", "--", input.package], {
+        timeoutMs: 20000,
+        signal: ctx.signal,
+        maxBytes: 200_000,
+      });
       if (r.spawnError) return "(npm isn't installed)";
-      if (r.code !== 0) return `(npm view failed: ${r.stderr.trim().slice(0, 160) || "no such package?"})`;
+      if (r.code !== 0)
+        return `(npm view failed: ${r.stderr.trim().slice(0, 160) || "no such package?"})`;
       return formatView(r.stdout);
     }
 
@@ -90,15 +121,24 @@ export const npmInfoTool: ToolDefinition<NpmInput, string> = {
 
     if (input.action === "outdated") {
       // npm outdated exits non-zero when there ARE outdated deps — that's not an error.
-      const r = await runIn(root, "npm", ["outdated", "--json"], { timeoutMs: 60000, signal: ctx.signal, maxBytes: 200_000 });
+      const r = await runIn(root, "npm", ["outdated", "--json"], {
+        timeoutMs: 60000,
+        signal: ctx.signal,
+        maxBytes: 200_000,
+      });
       if (r.spawnError) return "(npm isn't installed)";
       return formatOutdated(r.stdout || "{}");
     }
 
     // audit
-    const r = await runIn(root, "npm", ["audit", "--json"], { timeoutMs: 60000, signal: ctx.signal, maxBytes: 400_000 });
+    const r = await runIn(root, "npm", ["audit", "--json"], {
+      timeoutMs: 60000,
+      signal: ctx.signal,
+      maxBytes: 400_000,
+    });
     if (r.spawnError) return "(npm isn't installed)";
-    if (!r.stdout.trim()) return `(npm audit produced no output${r.stderr ? ": " + r.stderr.trim().slice(0, 120) : ""})`;
+    if (!r.stdout.trim())
+      return `(npm audit produced no output${r.stderr ? ": " + r.stderr.trim().slice(0, 120) : ""})`;
     return formatAudit(r.stdout);
   },
 };

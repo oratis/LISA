@@ -330,7 +330,15 @@ const DELETE_WORDS = new Set([
   "unlink",
 ]);
 const SEND_WORDS = new Set(["send", "reply", "forward", "invite", "notify", "sms", "dm"]);
-const PUBLISH_WORDS = new Set(["post", "publish", "tweet", "share", "merge", "release", "announce"]);
+const PUBLISH_WORDS = new Set([
+  "post",
+  "publish",
+  "tweet",
+  "share",
+  "merge",
+  "release",
+  "announce",
+]);
 /** Any other verb that changes something. Its presence means "not a read". */
 const MUTATE_WORDS = new Set([
   "create",

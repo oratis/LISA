@@ -106,7 +106,11 @@ async function readOrCreateDigestKey(file: string): Promise<Buffer> {
   const key = crypto.randomBytes(32);
   try {
     // "wx": never overwrite a key another process created in the meantime.
-    await fs.writeFile(file, key.toString("hex") + "\n", { encoding: "utf8", mode: 0o600, flag: "wx" });
+    await fs.writeFile(file, key.toString("hex") + "\n", {
+      encoding: "utf8",
+      mode: 0o600,
+      flag: "wx",
+    });
     return key;
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;

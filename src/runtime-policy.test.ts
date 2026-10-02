@@ -198,7 +198,8 @@ describe("approval mode warden (W2a) is opt-in", () => {
 
   test("an unknown LISA_APPROVAL is an error, not a silent auto", () => {
     assert.throws(
-      () => buildRuntimePolicy({ ...WEB, approvalExplicit: false }, { ...MAC, LISA_APPROVAL: "on" }),
+      () =>
+        buildRuntimePolicy({ ...WEB, approvalExplicit: false }, { ...MAC, LISA_APPROVAL: "on" }),
       /bad LISA_APPROVAL/,
     );
   });

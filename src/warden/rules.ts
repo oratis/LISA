@@ -268,7 +268,10 @@ export function ruleFor(rules: WardenRules, req: RuleSubject): MatchedRule | und
   const match = matchRules(rules, req);
   if (match.target && match.targetsCovered) return match.target;
   let chosen = match.target ? match.strictBase : match.base;
-  if (match.target && (!chosen || strictness(match.target.behavior) > strictness(chosen.behavior))) {
+  if (
+    match.target &&
+    (!chosen || strictness(match.target.behavior) > strictness(chosen.behavior))
+  ) {
     // A partial target rule that is at least "ask" still tightens; a looser
     // one is ignored (it would otherwise speak for recipients it never named).
     if (strictness(match.target.behavior) >= strictness("ask")) chosen = match.target;

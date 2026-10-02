@@ -294,7 +294,10 @@ test("review 8: only the scopes the policy offered can be used", async () => {
   }
   assert.equal(settled, false);
   assert.equal((await loadGrants(home)).grants.length, 0);
-  assert.equal((await inbox.resolve(null, event.id, { approve: true, digest: req.digest })).ok, true);
+  assert.equal(
+    (await inbox.resolve(null, event.id, { approve: true, digest: req.digest })).ok,
+    true,
+  );
   assert.deepEqual(await waiting, { approved: true, scope: "once" });
 });
 
@@ -617,9 +620,5 @@ test("an approval whose audit line cannot be written is not honoured", async () 
   const outcome = await waiting;
   assert.equal(outcome.approved, false);
   assert.match(outcome.reason ?? "", /could not be recorded/);
-  assert.equal(
-    (await loadGrants(home)).grants.length,
-    0,
-    "the grant it created is taken back",
-  );
+  assert.equal((await loadGrants(home)).grants.length, 0, "the grant it created is taken back");
 });

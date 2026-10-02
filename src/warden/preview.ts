@@ -290,7 +290,7 @@ function shown(value: unknown): string {
   }
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   if (Array.isArray(value) && value.every((item) => typeof item === "string")) {
-    const items = (value as string[]).slice(0, 3).map((item) => shown(item));
+    const items = value.slice(0, 3).map((item) => shown(item));
     return `[${items.join(", ")}${value.length > 3 ? `, +${value.length - 3}` : ""}]`;
   }
   return shape(value);
@@ -350,7 +350,10 @@ function fieldText(value: unknown): string {
  * classifier's order. Values are never clipped; secret-shaped substrings are
  * masked (the digest still covers the real value).
  */
-export function displayPayload(input: unknown, primaryKeys: readonly string[] = []): PayloadField[] {
+export function displayPayload(
+  input: unknown,
+  primaryKeys: readonly string[] = [],
+): PayloadField[] {
   if (input === null || input === undefined) return [];
   if (typeof input !== "object" || Array.isArray(input)) {
     return [{ key: "input", value: redactSecrets(fieldText(input)), primary: true }];

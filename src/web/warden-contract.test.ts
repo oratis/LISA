@@ -173,7 +173,13 @@ describe("web client approval cards", () => {
     assert.match(MAIN_CLIENT_JS, /ev\.type === 'approval_resolved'/);
     assert.match(block, /'\/api\/approvals\/' \+ encodeURIComponent\(id\)/);
     assert.match(block, /'content-type': 'application\/json'/);
-    for (const label of ["Approve once", "Approve for this task", "For 24 hours", "Always", "Deny"]) {
+    for (const label of [
+      "Approve once",
+      "Approve for this task",
+      "For 24 hours",
+      "Always",
+      "Deny",
+    ]) {
       assert.ok(block.includes(label), label);
     }
   });

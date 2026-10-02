@@ -4,12 +4,7 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, test } from "node:test";
-import {
-  crossSiteProblem,
-  createWebWarden,
-  handleWardenApi,
-  wardenTrust,
-} from "./warden-api.js";
+import { crossSiteProblem, createWebWarden, handleWardenApi, wardenTrust } from "./warden-api.js";
 import { WardenInbox } from "../warden/inbox.js";
 import { createGrants, loadGrants } from "../warden/grants.js";
 import { loadRules } from "../warden/rules.js";
@@ -166,7 +161,11 @@ describe("warden API", () => {
     assert.equal("home" in approvals[0]!, false);
     assert.equal("uid" in approvals[0]!, false);
     assert.equal("payload" in approvals[0]!, false);
-    assert.equal(JSON.stringify(list.body).includes("END-OF-BODY"), false, "the list is the short form");
+    assert.equal(
+      JSON.stringify(list.body).includes("END-OF-BODY"),
+      false,
+      "the list is the short form",
+    );
     assert.equal(list.body.canApprove, true);
 
     const approved = await call("POST", `/api/approvals/${id}/approve`, {
@@ -360,8 +359,12 @@ describe("warden API", () => {
       "scope_not_applicable",
     );
     assert.equal(
-      (await call("POST", route, { body: "scope=always", headers: { "content-type": "text/plain" } }))
-        .status,
+      (
+        await call("POST", route, {
+          body: "scope=always",
+          headers: { "content-type": "text/plain" },
+        })
+      ).status,
       415,
     );
     assert.equal(
@@ -425,7 +428,10 @@ describe("warden API", () => {
 
     const fake = (headers: http.IncomingHttpHeaders) => ({ headers }) as http.IncomingMessage;
     // Loopback trust requires a loopback Host (DNS rebinding / tunnels).
-    assert.equal(crossSiteProblem(fake({ host: "evil.example:5757" }), true, null), "untrusted_host");
+    assert.equal(
+      crossSiteProblem(fake({ host: "evil.example:5757" }), true, null),
+      "untrusted_host",
+    );
     assert.equal(crossSiteProblem(fake({ host: "evil.example" }), false, null), null);
     for (const host of [
       "localhost:5757",
@@ -521,7 +527,11 @@ describe("warden API", () => {
     assert.equal((await call("POST", "/api/warden/grants", { body: {} })).status, 405);
 
     for (let i = 0; i < 3; i++) {
-      await auditDecision(request(null), { verdict: "allow", reason: "r" }, { home: homeFor(null) });
+      await auditDecision(
+        request(null),
+        { verdict: "allow", reason: "r" },
+        { home: homeFor(null) },
+      );
     }
     const all = (await call("GET", "/api/warden/audit")).body.entries as Array<
       Record<string, unknown>

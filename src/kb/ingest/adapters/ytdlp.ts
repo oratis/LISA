@@ -27,7 +27,9 @@ export function ytDlpDumpJson(url: string): Promise<Record<string, unknown> | nu
         if (err) return resolve(null); // ENOENT (not installed) included
         try {
           const parsed = JSON.parse(stdout) as unknown;
-          resolve(parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null);
+          resolve(
+            parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null,
+          );
         } catch {
           resolve(null);
         }

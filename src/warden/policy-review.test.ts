@@ -224,17 +224,29 @@ test("review 4: in a tainted run, a fetch to an address the conversation never c
   );
   // Untainted, or a destination the model did not compose, or a fixed service: no ask.
   assert.equal(evaluate(built("web_fetch", { url: exfil }), ctx()).verdict, "allow");
-  const known = built("web_fetch", { url: "https://docs.example/page" }, {
-    ...tainted,
-    isKnownUrl: (url: string) => url === "https://docs.example/page",
-  });
+  const known = built(
+    "web_fetch",
+    { url: "https://docs.example/page" },
+    {
+      ...tainted,
+      isKnownUrl: (url: string) => url === "https://docs.example/page",
+    },
+  );
   assert.equal(known.destinationKnown, true);
   assert.equal(evaluate(known, ctx()).verdict, "allow");
-  const appended = built("web_fetch", { url: "https://docs.example/page?d=secret" }, {
-    ...tainted,
-    isKnownUrl: (url: string) => url === "https://docs.example/page",
-  });
-  assert.equal(evaluate(appended, ctx()).verdict, "ask", "the same host with data appended is not known");
+  const appended = built(
+    "web_fetch",
+    { url: "https://docs.example/page?d=secret" },
+    {
+      ...tainted,
+      isKnownUrl: (url: string) => url === "https://docs.example/page",
+    },
+  );
+  assert.equal(
+    evaluate(appended, ctx()).verdict,
+    "ask",
+    "the same host with data appended is not known",
+  );
   assert.equal(evaluate(built("web_search", { query: "x" }, tainted), ctx()).verdict, "allow");
   assert.equal(
     evaluate(built("github_link", { target: "commit" }, tainted), ctx()).verdict,
@@ -266,8 +278,10 @@ test("review 4: a host grant or a user rule covers tainted egress; a tool-wide g
     "allow",
   );
   assert.equal(
-    evaluate(other, ctx({ rules: parseRules({ tools: { web_fetch: "auto" } }), rulesCorrupt: true }))
-      .verdict,
+    evaluate(
+      other,
+      ctx({ rules: parseRules({ tools: { web_fetch: "auto" } }), rulesCorrupt: true }),
+    ).verdict,
     "ask",
   );
 });
@@ -275,7 +289,13 @@ test("review 4: a host grant or a user rule covers tainted egress; a tool-wide g
 test("review 4: credential paths ask in every run; a tainted run asks for any read outside the workspace", () => {
   const ws = "/work/project";
   const read = (p: string, over: Partial<ActionRequest> = {}) =>
-    req({ tool: "read", category: "read", targets: [p], withinWorkspace: p.startsWith(ws), ...over });
+    req({
+      tool: "read",
+      category: "read",
+      targets: [p],
+      withinWorkspace: p.startsWith(ws),
+      ...over,
+    });
   const key = read("/Users/x/.ssh/id_ed25519", { sensitivePath: true });
   const result = evaluate(key, ctx());
   assert.equal(result.verdict, "ask");
@@ -283,7 +303,10 @@ test("review 4: credential paths ask in every run; a tainted run asks for any re
   assert.deepEqual(result.scopes, ["once", "target"]);
   // Not a tool-wide grant, not a tool-wide rule…
   assert.equal(evaluate(key, ctx({ grants: grantsFor(key, "always", NOW) })).verdict, "ask");
-  assert.equal(evaluate(key, ctx({ rules: parseRules({ tools: { read: "auto" } }) })).verdict, "ask");
+  assert.equal(
+    evaluate(key, ctx({ rules: parseRules({ tools: { read: "auto" } }) })).verdict,
+    "ask",
+  );
   // …but a grant for exactly that file is.
   assert.equal(evaluate(key, ctx({ grants: grantsFor(key, "target", NOW) })).verdict, "allow");
   assert.equal(evaluate({ ...key, origin: { kind: "autonomy" } }, ctx()).verdict, "deny");
@@ -304,14 +327,20 @@ test("review 4: credential paths ask in every run; a tainted run asks for any re
   assert.equal(evaluate(read(`${ws}/src/a.ts`, { tainted: true }), ctx()).verdict, "allow");
   // Non-path reads are unaffected.
   assert.equal(evaluate(built("kb_read", { id: "x" }, { tainted: true }), ctx()).verdict, "allow");
-  assert.equal(evaluate(built("memory_search", { q: "x" }, { tainted: true }), ctx()).verdict, "allow");
+  assert.equal(
+    evaluate(built("memory_search", { q: "x" }, { tainted: true }), ctx()).verdict,
+    "allow",
+  );
 });
 
 test("review 6: a target grant covers every recipient or nothing", () => {
   const send = (input: unknown) => built("mcp__gmail__send_email", input);
   const first = send({ to: ["alice@corp.com"], subject: "hi", body: "x" });
   const grants = grantsFor(first, "target", NOW);
-  assert.equal(evaluate(send({ to: "alice@corp.com", body: "y" }), ctx({ grants })).verdict, "allow");
+  assert.equal(
+    evaluate(send({ to: "alice@corp.com", body: "y" }), ctx({ grants })).verdict,
+    "allow",
+  );
   for (const input of [
     { to: [...Array(16).fill("alice@corp.com"), "attacker@evil.example"], body: "x" },
     { to: ["alice@corp.com", { email: "attacker@evil.example" }], body: "x" },
@@ -330,12 +359,23 @@ test("review 6: a target grant covers every recipient or nothing", () => {
   const post = (channel: string) =>
     built("mcp__slack__post_message", { conversation: channel, text: "hello" });
   assert.throws(() => grantsFor(post("C-TEAM"), "target", NOW), /cannot be enumerated/);
-  const forged = [{ ...grantsFor(first, "always", NOW)[0]!, scope: "target" as const, tool: "mcp__slack__post_message", category: "publish" as const, target: "mcp:slack" }];
+  const forged = [
+    {
+      ...grantsFor(first, "always", NOW)[0]!,
+      scope: "target" as const,
+      tool: "mcp__slack__post_message",
+      category: "publish" as const,
+      target: "mcp:slack",
+    },
+  ];
   assert.equal(evaluate(post("C-PUBLIC-ANNOUNCE"), ctx({ grants: forged })).verdict, "ask");
 });
 
 test("review 6: a command that names Warden's state gets a once-only, digest-bound approval", () => {
-  const guard = (command: string) => ({ ...built("bash", { command }, { tainted: true }), guarded: true });
+  const guard = (command: string) => ({
+    ...built("bash", { command }, { tainted: true }),
+    guarded: true,
+  });
   const harmless = guard(`grep -rn "/api/approvals" src | head`);
   const asked = evaluate(harmless, ctx());
   assert.equal(asked.verdict, "ask");
@@ -343,7 +383,11 @@ test("review 6: a command that names Warden's state gets a once-only, digest-bou
   assert.deepEqual(asked.scopes, ["once"]);
   const other = guard("printf '{}' > ~/.lisa/warden/grants.json");
   for (const scope of ["always", "24h"] as const) {
-    assert.equal(evaluate(other, ctx({ grants: grantsFor(harmless, scope, NOW) })).verdict, "ask", scope);
+    assert.equal(
+      evaluate(other, ctx({ grants: grantsFor(harmless, scope, NOW) })).verdict,
+      "ask",
+      scope,
+    );
   }
   assert.throws(() => grantsFor(harmless, "target", NOW), "exec has no target scope");
   // Only the grant for that exact command covers it, and only that command.
@@ -374,7 +418,11 @@ test("review 8: tool-wide grants do not survive taint for side effects", () => {
     );
   }
   // A task-scoped grant is bound to the task, and holds.
-  const inTask = built("bash", { command: "ls" }, { origin: { kind: "task" }, taskId: "t1", tainted: true });
+  const inTask = built(
+    "bash",
+    { command: "ls" },
+    { origin: { kind: "task" }, taskId: "t1", tainted: true },
+  );
   assert.equal(evaluate(inTask, ctx({ grants: grantsFor(inTask, "task", NOW) })).verdict, "allow");
 });
 
@@ -415,7 +463,8 @@ test("review 8: a user rule stricter than a grant wins, whichever is newer", () 
   );
   const handoff = parseRules({ tools: { github: "handoff" } });
   assert.equal(
-    evaluate(r, ctx({ grants: [...standing, ...grantsFor(r, "once", NOW)], rules: handoff })).verdict,
+    evaluate(r, ctx({ grants: [...standing, ...grantsFor(r, "once", NOW)], rules: handoff }))
+      .verdict,
     "handoff",
   );
 });
@@ -427,16 +476,29 @@ test("review 9: skill_manage asks in a tainted run; other self-writes do not", (
   assert.equal(skill.ruleId, "system:tainted-skill-write");
   assert.deepEqual(skill.scopes, ["once"]);
   for (const action of ["patch", "rewrite", "delete"]) {
-    assert.equal(evaluate(built("skill_manage", { action }, tainted), ctx()).verdict, "ask", action);
-  }
-  assert.equal(evaluate(built("skill_manage", { action: "view" }, tainted), ctx()).verdict, "allow");
-  assert.equal(evaluate(built("skill_manage", { action: "create" }), ctx()).verdict, "allow");
-  for (const tool of ["memory", "soul_patch", "kb_write", "kb_add", "soul_journal"]) {
-    assert.equal(evaluate(built(tool, { action: "append" }, tainted), ctx()).verdict, "allow", tool);
+    assert.equal(
+      evaluate(built("skill_manage", { action }, tainted), ctx()).verdict,
+      "ask",
+      action,
+    );
   }
   assert.equal(
-    evaluate(built("skill_manage", { action: "create" }, { ...tainted, origin: { kind: "autonomy" } }), ctx())
-      .verdict,
+    evaluate(built("skill_manage", { action: "view" }, tainted), ctx()).verdict,
+    "allow",
+  );
+  assert.equal(evaluate(built("skill_manage", { action: "create" }), ctx()).verdict, "allow");
+  for (const tool of ["memory", "soul_patch", "kb_write", "kb_add", "soul_journal"]) {
+    assert.equal(
+      evaluate(built(tool, { action: "append" }, tainted), ctx()).verdict,
+      "allow",
+      tool,
+    );
+  }
+  assert.equal(
+    evaluate(
+      built("skill_manage", { action: "create" }, { ...tainted, origin: { kind: "autonomy" } }),
+      ctx(),
+    ).verdict,
     "deny",
     "the proactive channel cannot ask",
   );

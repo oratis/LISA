@@ -33,7 +33,12 @@ test("review_diff: a target can no longer be a git option (was: --output=<path> 
     assert.equal(Array.isArray(args), false, bad);
   }
   assert.deepEqual(gitDiffArgs("main...HEAD"), ["diff", "--end-of-options", "main...HEAD"]);
-  assert.deepEqual(gitDiffArgs("HEAD~3", ["--stat"]), ["diff", "--stat", "--end-of-options", "HEAD~3"]);
+  assert.deepEqual(gitDiffArgs("HEAD~3", ["--stat"]), [
+    "diff",
+    "--stat",
+    "--end-of-options",
+    "HEAD~3",
+  ]);
   assert.deepEqual(gitDiffArgs("head", ["--stat"]), ["diff", "--stat", "HEAD"]);
   assert.deepEqual(gitDiffArgs("staged"), ["diff", "--cached"]);
 
@@ -60,7 +65,13 @@ test("review_diff: a target can no longer be a git option (was: --output=<path> 
 });
 
 test("npm_info view: the package is validated and passed after `--` (was: --registry=… as a package)", async () => {
-  for (const bad of ["--registry=https://evil.example/", "-g", "--userconfig=/etc/passwd", "", "a b; rm"]) {
+  for (const bad of [
+    "--registry=https://evil.example/",
+    "-g",
+    "--userconfig=/etc/passwd",
+    "",
+    "a b; rm",
+  ]) {
     assert.equal(isNpmPackageSpec(bad), false, bad);
     const out = await npmInfoTool.execute({ action: "view", package: bad }, ctx(os.tmpdir()));
     assert.match(out, /package name/, bad);
@@ -142,7 +153,13 @@ test("github_link: git argv is fixed; the opener receives one https URL built fr
 });
 
 test("dispatch_status, inspect_agent, list_agents, agent_recap, advise_now spawn nothing", async () => {
-  for (const file of ["dispatch_status", "inspect_agent", "list_agents", "agent_recap", "advise_now"]) {
+  for (const file of [
+    "dispatch_status",
+    "inspect_agent",
+    "list_agents",
+    "agent_recap",
+    "advise_now",
+  ]) {
     const src = await source(`../tools/${file}.ts`);
     assert.equal(/\brunIn\(|\bspawn\(|\bexecFile\(|shell\.(run|exec)\(/.test(src), false, file);
   }

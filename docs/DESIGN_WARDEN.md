@@ -4,19 +4,22 @@ Warden is the deterministic layer that decides whether a tool call may run. The 
 
 Plan: [PLAN_ALWAYS_ON_UPGRADE_2026-09-30.md](PLAN_ALWAYS_ON_UPGRADE_2026-09-30.md) §W2. Threat model: [THREAT_MODEL.md](THREAT_MODEL.md). Reach-out charter: [POLICY_REACH_OUT.md](POLICY_REACH_OUT.md).
 
+## Status: opt-in
+
+Warden is off unless asked for. `lisa serve --web` with no flag behaves as before (`auto`). Turn it on with `--approval warden`, or with `LISA_APPROVAL=warden` for a backend an app launches. The default will flip in a later PR, once a native approver exists (see "Known limits").
+
 ## Pipeline
 
 One Warden session per agent run (`createWardenSession`). For every tool call:
 
-1. **Classify** (`classify.ts`) — an explicit table maps the tool and its input to a category (`read`, `self`, `draft`, `write`, `exec`, `network`, `send`, `publish`, `purchase`, `delete`, `credential`), its targets, and whether it is confined by the sandbox. A tool that is not in the table is a `write` that asks. MCP annotations may lower a tool to `read` and nothing safer; a mutating verb in the tool name overrides a `readOnlyHint`.
-2. **Build the request** (`request.ts`, `preview.ts`) — a sha256 digest of the exact payload, a redacted preview of at most 240 characters, and detected data classes. The raw input is never stored.
+1. **Classify** (`classify.ts`) — an explicit table maps the tool and its input to a category (`read`, `self`, `draft`, `write`, `exec`, `network`, `send`, `publish`, `purchase`, `delete`, `credential`), its targets, and whether it is confined by the sandbox. Paths are resolved through symlinks first. A tool that is not in the table is a `write` that asks.
+2. **Build the request** (`request.ts`, `preview.ts`) — an HMAC digest of the exact payload under a per-home key, a short redacted preview, and detected data classes.
 3. **Evaluate** (`policy.ts`) — a pure function, in this order:
    1. system invariants;
-   2. a user rule of `handoff` (it outranks any older grant);
-   3. grants (exact match);
-   4. the new-recipient rule;
-   5. the remaining user rules;
-   6. the default matrix.
+   2. a user rule of `handoff`;
+   3. grants, narrowed by what the request is (see "Grants");
+   4. forced asks (see below);
+   5. user rules, then the default matrix, then the context floor.
 4. **Audit** (`audit.ts`) — one JSONL line per decision and per resolution.
 5. **Act** — `allow` runs, `deny` returns the reason to the model, `ask` waits in the inbox, `handoff` refuses and files an inbox item telling the user to do the step themselves.
 
@@ -27,30 +30,79 @@ These cannot be changed by rules, grants or a task envelope.
 - `purchase` and `credential` are always handed back to the user.
 - Origin `autonomy` (idle, Reve, desire and examen runs) may only `read` and write Lisa's own home (`self`). Everything else is denied, and it never raises an approval.
 - The cloud surface never allows `exec` or a host file write.
-- Warden's own state directory cannot be written by a file tool. A shell command that names that directory or the approval API always asks for that exact command, whatever grants exist.
+- Warden's own state directory cannot be written or deleted by a file tool. The check follows symlinks and ignores case.
 
 ## Default matrix
 
-| Category | Chat | Chat after taint | Task / routine / watcher | Channel / MCP |
+| Category | Chat | Chat after taint | Task / routine / watcher | Channel / MCP / remote device |
 |---|---|---|---|---|
-| read, self, draft | auto | auto | auto | auto |
+| read, self, draft | auto | auto (see forced asks) | auto | auto |
 | write inside a sandboxed workspace | auto | ask | preapproved | ask |
-| write inside the workspace, no sandbox | auto for the local owner | ask | ask | ask |
-| write outside the workspace | ask | ask | ask | ask |
+| write with no sandbox, or outside the workspace | ask | ask | ask | ask |
 | exec, sandboxed | auto | ask | preapproved | ask |
-| exec, no sandbox | auto for the local owner | ask | ask | ask |
+| exec, no sandbox (`danger-full-access`) | ask | ask | ask | ask |
 | network (non-read) | auto | ask | preapproved | ask |
 | send, publish, delete | ask | ask | preapproved | ask |
 | purchase, credential | handoff | handoff | handoff | handoff |
 
+- **Unsandboxed exec asks for every origin**, the local owner included. A full-access shell can do anything every other tool can, so leaving it `auto` would make every other ask advisory. A user who wants the old behaviour sets a rule (`tools.bash = auto`) knowingly; taint and a remote origin still override it.
 - **preapproved** means allowed only when the task's capability envelope covers the action; otherwise it asks.
-- **New-recipient rule.** A `send`, `publish` or `network` action that carries PII, a secret or a private message asks unless a grant bound to that exact payload or to every recipient exists. A blanket grant or an `auto` rule does not cover it. An outbound read whose URL carries a credential asks too.
-- **Taint.** A run is tainted once a taint-source tool is allowed (`web_fetch`, `web_search`, `kb_ingest`, `takoapi`, `task`, an open-world MCP tool, a shell command that reaches the network). On the web surface the taint stays with the conversation for the life of the server process, because the fetched text stays in the history.
-- **User rules** (`rules.json`) set one of four behaviours per category, tool or target: `auto`, `preapproved`, `ask`, `handoff`. They can tighten anything. They cannot loosen a system invariant, and an `auto` rule does not survive taint, a remote origin, or a corrupt rules file.
+- A web chat from a caller who could not answer an approval (a LAN device token, a shared web token) is treated as a remote origin, not as the owner.
+
+## Forced asks
+
+These ask whatever the matrix says.
+
+- **New recipient.** A `send`, `publish` or `network` action that carries PII, a secret or a private message. An outbound read whose URL carries a credential asks too.
+- **Tainted egress.** In a tainted run, `web_fetch`, `kb_ingest`, `github_link {open}` and MCP calls ask unless the exact URL already appeared verbatim in the conversation — in what the user wrote or in an earlier tool result — so the model cannot have appended data to it. A grant for the host, or a user rule that covers it, also allows it. `web_search` stays `auto`: its destination is the search provider, not a host a page picked.
+- **Credential locations.** A read, write or delete under `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.kube`, `~/.netrc` and similar, under `<lisaHome>/warden`, or of the provider-key file asks in every run.
+- **Tainted reads outside the workspace.** In a tainted run, reading a file outside the workspace asks.
+- **Skills.** In a tainted run, `skill_manage` asks: a skill can change what Lisa does later.
+- **Commands that name Warden.** A command that mentions Warden's state directory, its approval API or its CLI asks for that exact command, every time.
+
+## Taint
+
+A run is tainted once a taint-source call is allowed:
+
+- `web_fetch`, `web_search`, `kb_ingest`, `takoapi`, `task`;
+- `github` issue, PR and run views, `pr_status`, `review_diff {pr}`, `npm_info`;
+- `dispatch_status`, `inspect_agent`, `agent_recap`, `transcribe`;
+- every `mcp__*` call, unless the user listed the server under `trustedMcpServers` in their rules — a server's own annotations never lower taint;
+- any tool the table does not know;
+- a shell command that looks like it reaches the network;
+- a user message with attachments.
+
+On the web surface taint belongs to the conversation. Tainted conversation ids are kept in `<lisaHome>/warden/tainted.json` (ids only, bounded), so taint survives a restart. If that file is corrupt, every conversation that already has history is treated as tainted.
 
 ## Grants
 
-`once` (bound to the payload digest, consumed on use), `task`, `target`, `24h`, `always`. Matching is exact on tool, category, method, and the trust column the approval was given in — an `always` approved in the owner's chat does not apply to a remote channel or a task.
+`once` (bound to the payload digest, consumed on use), `task`, `target`, `24h`, `always`. Matching is exact on tool, category, method, and the trust column the approval was given in.
+
+- A `target` grant matches only when every target of the request is covered. If the targets could not be enumerated completely — too many recipients, a nested value, a key the classifier does not know — no `target` scope is offered and no target grant or target rule applies.
+- Tool-wide `always` and `24h` grants do not apply in a tainted run to exec, a write outside the workspace, network, send, publish or delete.
+- The card never offers `always` or `24h` for exec, or for anything asked in a tainted run. The one exception is tainted egress, where `24h` is offered and is bound to the host.
+- A user rule stricter than a grant wins, whichever is newer. Under an explicit `ask` rule only the approval of that exact payload counts.
+- A command that names Warden's state gets no scope wider than `once`.
+
+## User rules
+
+`rules.json` sets one of four behaviours per category, tool or target: `auto`, `preapproved`, `ask`, `handoff`.
+
+- Rules can tighten anything. They cannot loosen a system invariant, and an `auto` rule does not survive taint, a remote origin, or a corrupt rules file.
+- A target rule loosens only when every target of the request has one; otherwise the stricter of the tool and category rules applies.
+- Rule maps are read by own property only, and a value that is not one of the four behaviours counts as `ask`.
+
+## MCP tools
+
+An annotation can only make a tool stricter. An MCP tool is a `read` only when it has `readOnlyHint: true`, its name (split on snake_case and camelCase) contains a lookup verb, and contains no side-effect verb. Names that mention paying or credentials are handed back to the user. Everything else is at least a `write` that asks.
+
+## The approval card
+
+- The inbox keeps the full tool input in memory, never in `pending.json`, the audit log or an SSE event.
+- `GET /api/approvals/{id}` serves the whole payload to a caller who may approve. Fields come in an order the classifier chose (the command, path, URL, recipients and body first), never the model's key order. Long values scroll; nothing is clipped. Secret-shaped substrings are masked.
+- Approving requires the digest of what was displayed. A missing or stale digest is refused.
+- After a restart the payload is gone, so an orphaned approval cannot be approved; it expires as a deny.
+- A payload larger than 2 MiB cannot be reviewed and is refused.
 
 ## Failing closed
 
@@ -59,6 +111,8 @@ These cannot be changed by rules, grants or a task envelope.
 | `rules.json` corrupt or unreadable | No user rules; every side effect is floored at `ask` |
 | `grants.json` corrupt or unreadable | No grants |
 | `pending.json` corrupt or hand-edited | Nothing is restored; it can never approve anything |
+| `tainted.json` corrupt | Every conversation with history is tainted |
+| Digest key unreadable or malformed | Every call is denied |
 | Approval unanswered (default 10 minutes), turn cancelled, server shutdown, restart | Deny |
 | Audit line cannot be written | The side effect does not run |
 | Any exception while deciding | Deny |
@@ -68,20 +122,30 @@ These cannot be changed by rules, grants or a task envelope.
 
 Per tenant, under `<lisaHome>/warden/`, files mode 0600:
 
-- `rules.json`, `grants.json` — atomic writes under a file lock.
-- `pending.json` — a mirror of the in-memory inbox, so a restart can expire orphaned approvals and show hand-offs again. It is never a source of approval: approving needs a live waiter in the server process.
-- `audit.jsonl` — rotated on 5 MiB or a UTC day boundary, pruned after about 30 days. It holds the redacted preview, digest, category, masked recipients, verdict and latency. It never holds raw inputs, tokens, OTPs or message bodies.
+- `rules.json`, `grants.json`, `tainted.json` — atomic writes under a file lock.
+- `digest.key` — the per-home HMAC key for payload digests.
+- `pending.json` — a mirror of the in-memory inbox, so a restart can expire orphaned approvals and show hand-offs again. It is never a source of approval.
+- `audit.jsonl` — rotated on 5 MiB or a UTC day boundary, pruned after about 30 days. It holds the short preview, the digest, category, masked recipients, verdict, latency, and whether the run was tainted. For keys outside a fixed structural list it holds the key name and length, never the value.
+
+Sandboxed commands cannot reach any of it: every bounded sandbox profile denies reads and writes under `<lisaHome>/warden` and connections to the LISA server's own port (`src/sandbox/protect.ts`).
 
 ## Integration points
 
 - `createWardenSession(options)` returns `{ approval, observe, decide, tainted }`. Pass `approval` to `runAgent`, feed `observe` from `onEvent`, and put `approval` on the tool context so nested runs (the `task` subagent) stay gated.
 - `WardenInbox` takes an emitter `(event, uid) => void`. The host must deliver each event only to subscribers of that `uid`.
-- HTTP: `/api/approvals`, `/api/approvals/{id}/approve`, `/api/approvals/{id}/deny`, `/api/warden/rules`, `/api/warden/grants`, `/api/warden/grants/{id}`, `/api/warden/audit`. State-changing routes require the loopback owner or a signed-in per-user session, a JSON content type, and a same-origin request.
-- Approval mode `warden` is the default for `lisa serve --web`. `--approval auto` restores the previous behaviour.
+- HTTP: `/api/approvals`, `/api/approvals/{id}`, `/api/approvals/{id}/approve`, `/api/approvals/{id}/deny`, `/api/warden/rules`, `/api/warden/grants`, `/api/warden/grants/{id}`, `/api/warden/audit`. State-changing routes require the loopback owner or a signed-in per-user session, a JSON content type, and a same-origin request.
+- CLI: `lisa approvals [list | show <id> | approve <id> --digest <digest> | deny <id>]`, `lisa warden rules|grants|audit`.
 
 ## Known limits
 
-- Under `danger-full-access`, an untainted local-owner chat runs shell commands without asking, and a shell can edit any file. The string guard on Warden's state is best effort; the sandbox is the real boundary.
-- The inbox is in-process. A multi-instance deployment needs a shared store before approvals can be answered from another instance.
-- A paired device token cannot approve yet; approving needs loopback or an account session.
-- Only web chat turns are wired. IM channels, heartbeat and idle runs, managed agents and the CLI REPL do not go through Warden yet.
+- **There is no native approver yet, and that is why Warden is opt-in.** Over HTTP on loopback there is no way to tell the user's browser from a local process. A process the user runs unsandboxed can read `/api/approvals/{id}`, approve with the digest it finds there, or rewrite the rules — and so can a shell command the user approved. Until approvals are signed by a native approver (the Mac app with a Keychain-bound key, or a paired phone with Face ID), Warden protects against a model that has not been given an unconfined shell, not against one that has. That approver is the follow-up that gates flipping the default.
+- **The workspace root is the server's working directory.** Under launchd and Lisa.app that is `/`, which confines nothing: every file write and every tainted read then asks. This must be fixed before the default flips.
+- **String checks are best effort.** The check for commands that name Warden's state, and the check for shell commands that reach the network, are string matches. `p=approvals; curl …/api/$p` passes the first; an alias or an encoded payload passes the second. They catch the common case and are not a boundary.
+- **Linux.** bubblewrap cannot filter one TCP port. With the network allowed, a sandboxed command on Linux can still connect to the LISA port.
+- **Memory poisoning.** In a tainted run `memory`, `soul_patch`, `kb_write` and `kb_add` are still `auto`, and what they write loads into later, untainted conversations. The audit log marks those writes as made in a tainted run; undoing them is provenance work that is not in this PR.
+- **Reads inside the workspace do not taint.** `read`, `grep` and `kb_read` can return text someone else wrote (a cloned repository, an ingested page). Tainting on them would taint every coding conversation at once, so they are left out, knowingly.
+- **Known URLs are kept in memory.** After a restart a tainted conversation asks again for URLs it had already seen.
+- **The CLI REPL.** `--approval warden` there falls back to the stdin prompt and leaves the `task` subagent ungated, as `ask-mutating` already did.
+- **The inbox is in-process.** A multi-instance deployment needs a shared store before approvals can be answered from another instance.
+- **Only web chat turns are wired.** IM channels, heartbeat and idle runs and managed agents do not go through Warden yet.
+- **A paired device token cannot approve.** Approving needs loopback or an account session.
