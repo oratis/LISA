@@ -35,26 +35,32 @@ test("managed and custom Anthropic routes are disclosed alongside model identity
   );
 });
 
-test("hosted edition discloses the web tools' third parties while they are enabled", () => {
-  assert.deepEqual(aiRecipients("gemini-2.5-flash", { LISA_EDITION: "cloud" }), [
-    WEB_SEARCH_RECIPIENT,
-    "Google Gemini",
-    WEB_FETCH_RECIPIENT,
-  ]);
-  assert.deepEqual(webToolRecipients({ LISA_EDITION: "cloud" }), WEB);
-});
-
-test("the kill switch removes them from the hosted disclosure", () => {
-  for (const off of ["0", "false", "off"]) {
-    const env = { LISA_EDITION: "cloud", LISA_CLOUD_WEB_TOOLS: off };
-    assert.deepEqual(aiRecipients("gemini-2.5-flash", env), ["Google Gemini"]);
-    assert.deepEqual(webToolRecipients(env), []);
+test("hosted edition, default: the recipient list is what it was before the web tools existed", () => {
+  // Variable unset, empty or unparseable ⇒ tools off ⇒ nothing new is disclosed
+  // and no existing consent record is invalidated.
+  for (const value of [undefined, "", "0", "false", "off", "enabled"]) {
+    const env = { LISA_EDITION: "cloud", LISA_CLOUD_WEB_TOOLS: value };
+    assert.deepEqual(aiRecipients("gemini-2.5-flash", env), ["Google Gemini"], String(value));
+    assert.deepEqual(webToolRecipients(env), [], String(value));
   }
 });
 
-test("the local edition always discloses them — the kill switch is cloud-only", () => {
+test("hosted edition discloses the web tools' third parties once they are switched on", () => {
+  for (const value of ["1", "true", "on", "yes"]) {
+    const env = { LISA_EDITION: "cloud", LISA_CLOUD_WEB_TOOLS: value };
+    assert.deepEqual(aiRecipients("gemini-2.5-flash", env), [
+      WEB_SEARCH_RECIPIENT,
+      "Google Gemini",
+      WEB_FETCH_RECIPIENT,
+    ]);
+    assert.deepEqual(webToolRecipients(env), WEB);
+  }
+});
+
+test("the local edition always discloses them — the switch is cloud-only", () => {
   assert.deepEqual(webToolRecipients({}), WEB);
   assert.deepEqual(webToolRecipients({ LISA_CLOUD_WEB_TOOLS: "0" }), WEB);
+  assert.deepEqual(webToolRecipients({ LISA_EDITION: "mac", LISA_CLOUD_WEB_TOOLS: "" }), WEB);
 });
 
 test("disclosure and capability agree: listed iff the cloud chat profile has the tools", async () => {
@@ -67,7 +73,8 @@ test("disclosure and capability agree: listed iff the cloud chat profile has the
   }));
   const before = process.env.LISA_CLOUD_WEB_TOOLS;
   try {
-    for (const flag of [undefined, "0"]) {
+    const seen: boolean[] = [];
+    for (const flag of [undefined, "", "0", "off", "garbage", "1", "true", "on", "yes"]) {
       if (flag === undefined) delete process.env.LISA_CLOUD_WEB_TOOLS;
       else process.env.LISA_CLOUD_WEB_TOOLS = flag;
       const available = toolsForCapabilityProfile(tools, "cloud-chat").some(
@@ -76,7 +83,10 @@ test("disclosure and capability agree: listed iff the cloud chat profile has the
       const disclosed =
         webToolRecipients({ LISA_EDITION: "cloud", LISA_CLOUD_WEB_TOOLS: flag }).length > 0;
       assert.equal(disclosed, available, `LISA_CLOUD_WEB_TOOLS=${flag ?? "(unset)"}`);
+      seen.push(available);
     }
+    // Both states were exercised — the agreement is not vacuous.
+    assert.deepEqual(seen, [false, false, false, false, false, true, true, true, true]);
   } finally {
     if (before === undefined) delete process.env.LISA_CLOUD_WEB_TOOLS;
     else process.env.LISA_CLOUD_WEB_TOOLS = before;

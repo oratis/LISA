@@ -7,8 +7,9 @@
  * multi-tenant, internet-facing deployment needs on top of the SSRF guard in
  * web_fetch.ts:
  *
- *  - a global kill switch (`LISA_CLOUD_WEB_TOOLS=0`), checked both when the
- *    tool list is built and again on every call;
+ *  - an explicit opt-in (`LISA_CLOUD_WEB_TOOLS=1`): the tools are OFF unless
+ *    the operator turns them on, checked both when the tool list is built and
+ *    again on every call;
  *  - per-tenant hourly limits, keyed by the server-derived uid of the active
  *    request scope (never by anything the client or the model supplies);
  *  - a hard wall-clock deadline per call;
@@ -33,10 +34,15 @@ export type CloudWebToolKind = "search" | "fetch";
 
 type Env = Record<string, string | undefined>;
 
-/** The kill switch. Anything other than an explicit "off" value leaves the tools on. */
+/**
+ * The hosted web tools are opt-in. They send data to third parties the privacy
+ * policy has to name first, so the safe state is the one a forgotten or
+ * dropped variable produces: only an explicit `1 | true | on | yes` enables
+ * them. Unset, empty, or anything else means off.
+ */
 export function cloudWebToolsEnabled(env: Env = process.env): boolean {
   const raw = (env.LISA_CLOUD_WEB_TOOLS ?? "").trim().toLowerCase();
-  return !(raw === "0" || raw === "false" || raw === "off" || raw === "no");
+  return raw === "1" || raw === "true" || raw === "on" || raw === "yes";
 }
 
 export interface CloudWebLimits {
@@ -296,7 +302,7 @@ function govern(
           new CloudWebToolError(
             403,
             "web_tools_disabled",
-            `${name} is switched off on this service (403).`,
+            `${name} is not enabled on this service (403).`,
           ),
         );
       }
@@ -380,7 +386,7 @@ export function createCloudWebTools(deps: CloudWebDependencies = {}): ToolDefini
 
 /**
  * Swap any `web_search` / `web_fetch` in a cloud tool list for its governed
- * hosted instance — or drop both when the kill switch is off.
+ * hosted instance — or drop both unless the operator has opted in.
  *
  * The incoming tool object is NOT wrapped: whatever was registered under those
  * names is replaced by an instance this module built, so the hosted policy

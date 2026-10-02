@@ -282,10 +282,11 @@ export function remoteSafeSubset(tools: ToolDefinition[]): ToolDefinition[] {
  * to a deny-list. Every tool here resolves storage through the active
  * per-account Lisa home and does not execute a host process.
  *
- * `web_search` / `web_fetch` are the two exceptions to "does not reach out":
- * they are admitted only as the governed hosted instances built by
- * cloud_web.ts (SSRF guard with pinned addresses, standard ports only, a
- * deadline, per-tenant hourly limits, `LISA_CLOUD_WEB_TOOLS=0` kill switch).
+ * `web_search` / `web_fetch` are the two exceptions to "does not reach out".
+ * They are OFF unless the operator sets `LISA_CLOUD_WEB_TOOLS=1`, and then
+ * admitted only as the governed hosted instances built by cloud_web.ts (SSRF
+ * guard with pinned addresses, standard ports only, a deadline, per-tenant
+ * hourly limits).
  * `cloudSafeSubset` performs that substitution itself, so no caller can obtain
  * the ungoverned local tools through the cloud allow-list.
  */

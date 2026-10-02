@@ -181,10 +181,56 @@ describe("cloudSafeSubset — hosted multi-tenant toolset", () => {
     }
   });
 
+  /** Run `fn` with LISA_CLOUD_WEB_TOOLS set to `value` (undefined = unset), then restore. */
+  function withSwitch<T>(value: string | undefined, fn: () => T): T {
+    const before = process.env.LISA_CLOUD_WEB_TOOLS;
+    if (value === undefined) delete process.env.LISA_CLOUD_WEB_TOOLS;
+    else process.env.LISA_CLOUD_WEB_TOOLS = value;
+    const restore = (): void => {
+      if (before === undefined) delete process.env.LISA_CLOUD_WEB_TOOLS;
+      else process.env.LISA_CLOUD_WEB_TOOLS = before;
+    };
+    try {
+      const result = fn();
+      if (result instanceof Promise) return result.finally(restore) as T;
+      restore();
+      return result;
+    } catch (err) {
+      restore();
+      throw err;
+    }
+  }
+
+  test("web tools are OFF by default: unset, empty or unparseable leaves them out", () => {
+    const baseline = withSwitch(undefined, () => cloudSafeSubset(SAMPLE).map((t) => t.name));
+    assert.equal(baseline.includes("web_search"), false);
+    assert.equal(baseline.includes("web_fetch"), false);
+    for (const value of ["", " ", "0", "false", "off", "no", "2", "enabled"]) {
+      assert.deepEqual(
+        withSwitch(value, () => cloudSafeSubset(SAMPLE).map((t) => t.name)),
+        baseline,
+        JSON.stringify(value),
+      );
+    }
+  });
+
+  test("LISA_CLOUD_WEB_TOOLS=1 adds both web tools and nothing else", () => {
+    const off = withSwitch(undefined, () => cloudSafeSubset(SAMPLE).map((t) => t.name));
+    for (const value of ["1", "true", "on", "yes"]) {
+      const on = withSwitch(value, () => cloudSafeSubset(SAMPLE).map((t) => t.name));
+      assert.deepEqual(
+        on.filter((n) => n !== "web_search" && n !== "web_fetch"),
+        off,
+        value,
+      );
+      assert.equal(on.includes("web_search") && on.includes("web_fetch"), true, value);
+    }
+  });
+
   test("admits web_search / web_fetch only as governed hosted instances", async () => {
     const locals = SAMPLE.filter((t) => t.name === "web_search" || t.name === "web_fetch");
     assert.equal(locals.length, 2);
-    const subset = cloudSafeSubset(SAMPLE);
+    const subset = withSwitch("1", () => cloudSafeSubset(SAMPLE));
     const ctx = { cwd: "/", signal: new AbortController().signal, log: () => {} };
     for (const name of ["web_search", "web_fetch"]) {
       const hosted = subset.find((t) => t.name === name);
@@ -194,43 +240,38 @@ describe("cloudSafeSubset — hosted multi-tenant toolset", () => {
       assert.equal(locals.includes(hosted), false, `${name} must be replaced`);
       // And the replacement is the governed one — outside a tenant request
       // scope it refuses instead of running.
-      await assert.rejects(
-        () => hosted.execute({ url: "https://example.com/", query: "x" }, ctx),
-        /only available inside a signed-in account/,
+      await withSwitch("1", () =>
+        assert.rejects(
+          () => hosted.execute({ url: "https://example.com/", query: "x" }, ctx),
+          /only available inside a signed-in account/,
+        ),
+      );
+      // The switch is consulted again at call time: with it gone, a tool that
+      // was listed earlier refuses.
+      await withSwitch(undefined, () =>
+        assert.rejects(
+          () => hosted.execute({ url: "https://example.com/", query: "x" }, ctx),
+          /not enabled on this service/,
+        ),
       );
     }
   });
 
   test("the cloud subset is idempotent — a second pass keeps the same governed tools", () => {
-    const once = cloudSafeSubset(SAMPLE);
-    const twice = cloudSafeSubset(once);
+    const [once, twice] = withSwitch("1", () => {
+      const first = cloudSafeSubset(SAMPLE);
+      return [first, cloudSafeSubset(first)];
+    });
     assert.deepEqual(
       twice.map((t) => t.name),
       once.map((t) => t.name),
     );
     for (const name of ["web_search", "web_fetch"]) {
+      assert.ok(once.find((t) => t.name === name));
       assert.equal(
         twice.find((t) => t.name === name),
         once.find((t) => t.name === name),
       );
-    }
-  });
-
-  test("LISA_CLOUD_WEB_TOOLS=0 removes both web tools and nothing else", () => {
-    const before = process.env.LISA_CLOUD_WEB_TOOLS;
-    const withTools = cloudSafeSubset(SAMPLE).map((t) => t.name);
-    process.env.LISA_CLOUD_WEB_TOOLS = "0";
-    try {
-      const without = cloudSafeSubset(SAMPLE).map((t) => t.name);
-      assert.equal(without.includes("web_search"), false);
-      assert.equal(without.includes("web_fetch"), false);
-      assert.deepEqual(
-        without,
-        withTools.filter((n) => n !== "web_search" && n !== "web_fetch"),
-      );
-    } finally {
-      if (before === undefined) delete process.env.LISA_CLOUD_WEB_TOOLS;
-      else process.env.LISA_CLOUD_WEB_TOOLS = before;
     }
   });
 

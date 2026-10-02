@@ -51,6 +51,7 @@ function hosted(
   const lookups: string[] = [];
   const audit: CloudWebAuditEvent[] = [];
   const env = opts.env ?? {};
+  if (!("LISA_CLOUD_WEB_TOOLS" in env)) env.LISA_CLOUD_WEB_TOOLS = "1";
   const limits = cloudWebLimits(env);
   const limiter = new TenantWebRateLimiter({
     windowMs: limits.windowMs,
@@ -99,12 +100,16 @@ after(() => {
   else process.env.LISA_EDITION = previousEdition;
 });
 
-describe("cloud web tools — kill switch and limits config", () => {
-  test("is on unless explicitly switched off", () => {
-    assert.equal(cloudWebToolsEnabled({}), true);
-    assert.equal(cloudWebToolsEnabled({ LISA_CLOUD_WEB_TOOLS: "1" }), true);
-    for (const off of ["0", "false", "off", "no", " OFF "]) {
-      assert.equal(cloudWebToolsEnabled({ LISA_CLOUD_WEB_TOOLS: off }), false, off);
+describe("cloud web tools — opt-in switch and limits config", () => {
+  test("is OFF unless explicitly switched on", () => {
+    // The state a forgotten or dropped variable produces must be the safe one.
+    assert.equal(cloudWebToolsEnabled({}), false);
+    assert.equal(cloudWebToolsEnabled({ LISA_CLOUD_WEB_TOOLS: undefined }), false);
+    for (const on of ["1", "true", "on", "yes", " ON ", "True", "YES"]) {
+      assert.equal(cloudWebToolsEnabled({ LISA_CLOUD_WEB_TOOLS: on }), true, on);
+    }
+    for (const off of ["", " ", "0", "false", "off", "no", "2", "enabled", "y", "1 1", "null"]) {
+      assert.equal(cloudWebToolsEnabled({ LISA_CLOUD_WEB_TOOLS: off }), false, JSON.stringify(off));
     }
   });
 
@@ -832,7 +837,11 @@ describe("hosted web_search — its own outbound path goes through the guard", (
 });
 
 describe("cloud web tools — per-tenant rate limits", () => {
-  const env = { LISA_CLOUD_WEB_SEARCH_PER_HOUR: "2", LISA_CLOUD_WEB_FETCH_PER_HOUR: "3" };
+  const env = {
+    LISA_CLOUD_WEB_TOOLS: "1",
+    LISA_CLOUD_WEB_SEARCH_PER_HOUR: "2",
+    LISA_CLOUD_WEB_FETCH_PER_HOUR: "3",
+  };
   const page = (): Response =>
     new Response(DDG_PAGE, { status: 200, headers: { "content-type": "text/html" } });
 
@@ -972,7 +981,7 @@ describe("cloud web tools — tenant scope and kill switch", () => {
   test("the tenant is the server-derived request scope (homeScope), by default", async () => {
     const limiter = new TenantWebRateLimiter({ windowMs: 3_600_000, maxTenants: 100 });
     const [fetchTool] = createCloudWebTools({
-      env: { LISA_CLOUD_WEB_FETCH_PER_HOUR: "1" },
+      env: { LISA_CLOUD_WEB_TOOLS: "1", LISA_CLOUD_WEB_FETCH_PER_HOUR: "1" },
       lookup: publicLookup,
       transport: async () =>
         new Response("ok", { status: 200, headers: { "content-type": "text/plain" } }),
@@ -991,11 +1000,43 @@ describe("cloud web tools — tenant scope and kill switch", () => {
     assert.deepEqual(limiter.usage("u2"), { search: 0, fetch: 1 });
   });
 
-  test("the kill switch is re-checked on every call", async () => {
-    const env: Record<string, string | undefined> = {};
+  test("off by default: a tool that exists anyway refuses at call time", async () => {
+    // governCloudWebTools would not even list the tools with the variable
+    // unset; this is the second line of defence, for a tool object that was
+    // built earlier or by some other path.
+    for (const env of [{}, { LISA_CLOUD_WEB_TOOLS: "" }, { LISA_CLOUD_WEB_TOOLS: "maybe" }]) {
+      const sent: string[] = [];
+      const [fetchTool, searchTool] = createCloudWebTools({
+        env,
+        lookup: publicLookup,
+        transport: async (url) => {
+          sent.push(url);
+          return new Response("ok", { status: 200, headers: { "content-type": "text/plain" } });
+        },
+        limiter: new TenantWebRateLimiter({ windowMs: 3_600_000, maxTenants: 100 }),
+        audit: () => {},
+        uid: () => "tenant-a",
+      });
+      for (const call of [
+        () => fetchTool!.execute({ url: "https://example.com/" }, ctx()),
+        () => searchTool!.execute({ query: "x" }, ctx()),
+      ]) {
+        await assert.rejects(call, (err: unknown) => {
+          assert.ok(err instanceof CloudWebToolError);
+          assert.equal(err.status, 403);
+          assert.equal(err.code, "web_tools_disabled");
+          return true;
+        });
+      }
+      assert.deepEqual(sent, [], JSON.stringify(env));
+    }
+  });
+
+  test("the switch is re-checked on every call", async () => {
+    const env: Record<string, string | undefined> = { LISA_CLOUD_WEB_TOOLS: "1" };
     const h = hosted({ env });
     await h.fetch.execute({ url: "https://example.com/" }, ctx());
-    env.LISA_CLOUD_WEB_TOOLS = "0";
+    delete env.LISA_CLOUD_WEB_TOOLS; // e.g. a redeploy that dropped the variable
     for (const call of [
       () => h.fetch.execute({ url: "https://example.com/" }, ctx()),
       () => h.search.execute({ query: "x" }, ctx()),
@@ -1010,7 +1051,7 @@ describe("cloud web tools — tenant scope and kill switch", () => {
     assert.equal(h.sent.length, 1);
   });
 
-  test("governCloudWebTools drops both tools when switched off", () => {
+  test("governCloudWebTools lists the tools only when switched on", () => {
     const fake = (name: string): ToolDefinition => ({
       name,
       description: name,
@@ -1018,12 +1059,15 @@ describe("cloud web tools — tenant scope and kill switch", () => {
       execute: async () => "LOCAL",
     });
     const tools = [fake("memory"), fake("web_fetch"), fake("web_search")];
+    for (const env of [{}, { LISA_CLOUD_WEB_TOOLS: "0" }, { LISA_CLOUD_WEB_TOOLS: "" }]) {
+      assert.deepEqual(
+        governCloudWebTools(tools, { env }).map((t) => t.name),
+        ["memory"],
+        JSON.stringify(env),
+      );
+    }
     assert.deepEqual(
-      governCloudWebTools(tools, { env: { LISA_CLOUD_WEB_TOOLS: "0" } }).map((t) => t.name),
-      ["memory"],
-    );
-    assert.deepEqual(
-      governCloudWebTools(tools, { env: {} }).map((t) => t.name),
+      governCloudWebTools(tools, { env: { LISA_CLOUD_WEB_TOOLS: "1" } }).map((t) => t.name),
       ["memory", "web_fetch", "web_search"],
     );
   });
@@ -1041,7 +1085,7 @@ describe("cloud web tools — tenant scope and kill switch", () => {
     });
     const limiter = new TenantWebRateLimiter({ windowMs: 3_600_000, maxTenants: 100 });
     const deps: CloudWebDependencies = {
-      env: {},
+      env: { LISA_CLOUD_WEB_TOOLS: "1" },
       lookup: publicLookup,
       transport: async () =>
         new Response("hosted", { status: 200, headers: { "content-type": "text/plain" } }),
@@ -1062,7 +1106,7 @@ describe("cloud web tools — tenant scope and kill switch", () => {
 
   test("a later wrapper's copy of a governed tool stays governed", async () => {
     const deps: CloudWebDependencies = {
-      env: {},
+      env: { LISA_CLOUD_WEB_TOOLS: "1" },
       lookup: publicLookup,
       transport: async () =>
         new Response("hosted", { status: 200, headers: { "content-type": "text/plain" } }),
@@ -1111,7 +1155,7 @@ describe("cloud web tools — audit trail", () => {
 
   test("a failing audit sink does not change the result of the call", async () => {
     const [fetchTool] = createCloudWebTools({
-      env: {},
+      env: { LISA_CLOUD_WEB_TOOLS: "1" },
       lookup: publicLookup,
       transport: async () =>
         new Response("ok", { status: 200, headers: { "content-type": "text/plain" } }),
@@ -1143,7 +1187,17 @@ describe("end to end — the real cloud toolset against a live internal listener
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const port = (server.address() as import("node:net").AddressInfo).port;
     const before = process.env.LISA_CLOUD_WEB_FETCH_PER_HOUR;
+    const beforeSwitch = process.env.LISA_CLOUD_WEB_TOOLS;
     process.env.LISA_CLOUD_WEB_FETCH_PER_HOUR = "1000";
+    // With the switch unset the production toolset has no web tools at all.
+    delete process.env.LISA_CLOUD_WEB_TOOLS;
+    assert.deepEqual(
+      toolsForCapabilityProfile(cloudSafeSubset(buildToolRegistry()), "cloud-chat")
+        .map((t) => t.name)
+        .filter((name) => name === "web_fetch" || name === "web_search"),
+      [],
+    );
+    process.env.LISA_CLOUD_WEB_TOOLS = "1";
     try {
       const tools = toolsForCapabilityProfile(cloudSafeSubset(buildToolRegistry()), "cloud-chat");
       const fetchTool = tools.find((t) => t.name === "web_fetch")!;
@@ -1176,6 +1230,8 @@ describe("end to end — the real cloud toolset against a live internal listener
     } finally {
       if (before === undefined) delete process.env.LISA_CLOUD_WEB_FETCH_PER_HOUR;
       else process.env.LISA_CLOUD_WEB_FETCH_PER_HOUR = before;
+      if (beforeSwitch === undefined) delete process.env.LISA_CLOUD_WEB_TOOLS;
+      else process.env.LISA_CLOUD_WEB_TOOLS = beforeSwitch;
       server.closeAllConnections();
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }

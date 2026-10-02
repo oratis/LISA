@@ -107,14 +107,40 @@ describe("autonomy + device profiles (T-13)", () => {
     );
   });
 
-  test("hosted web tools are for attended cloud chat only", () => {
+  /** Run `fn` with LISA_CLOUD_WEB_TOOLS set to `value` (undefined = unset), then restore. */
+  function withWebSwitch<T>(value: string | undefined, fn: () => T): T {
+    const before = process.env.LISA_CLOUD_WEB_TOOLS;
+    if (value === undefined) delete process.env.LISA_CLOUD_WEB_TOOLS;
+    else process.env.LISA_CLOUD_WEB_TOOLS = value;
+    try {
+      return fn();
+    } finally {
+      if (before === undefined) delete process.env.LISA_CLOUD_WEB_TOOLS;
+      else process.env.LISA_CLOUD_WEB_TOOLS = before;
+    }
+  }
+
+  test("hosted web tools are opt-in, and then for attended cloud chat only", () => {
     const tools = [fake("soul_read"), fake("web_search"), fake("web_fetch"), fake("bash")];
     const names = (p: Parameters<typeof toolsForCapabilityProfile>[1]) =>
       toolsForCapabilityProfile(tools, p).map((t) => t.name);
-    assert.deepEqual(names("cloud-chat"), ["soul_read", "web_search", "web_fetch"]);
-    // Unattended server-side runs and remote devices never reach out.
-    assert.deepEqual(names("cloud-autonomy"), ["soul_read"]);
-    assert.deepEqual(names("remote-device"), ["soul_read"]);
+    // Default (variable unset): no profile gets them.
+    withWebSwitch(undefined, () => {
+      for (const p of ["cloud-chat", "cloud-autonomy", "remote-device"] as const) {
+        assert.deepEqual(names(p), ["soul_read"], p);
+      }
+    });
+    withWebSwitch("1", () => {
+      assert.deepEqual(names("cloud-chat"), ["soul_read", "web_search", "web_fetch"]);
+      // Unattended server-side runs and remote devices never reach out.
+      assert.deepEqual(names("cloud-autonomy"), ["soul_read"]);
+      assert.deepEqual(names("remote-device"), ["soul_read"]);
+    });
+    // The local profiles are not governed by the cloud switch at all.
+    withWebSwitch(undefined, () => {
+      assert.deepEqual(names("local-owner"), ["soul_read", "web_search", "web_fetch", "bash"]);
+      assert.deepEqual(names("local-autonomy"), ["soul_read", "web_search", "web_fetch", "bash"]);
+    });
   });
 
   test("the cloud desire review has no browsing tools to budget", () => {
@@ -129,11 +155,16 @@ describe("autonomy + device profiles (T-13)", () => {
       fake("web_search"),
       fake("web_fetch"),
     ];
-    const review = desireReviewSubset(toolsForCapabilityProfile(registry, "cloud-autonomy"));
-    assert.deepEqual(
-      review.map((t) => t.name),
-      ["soul_read", "soul_journal", "desire_close"],
-    );
+    for (const value of [undefined, "1"]) {
+      const review = withWebSwitch(value, () =>
+        desireReviewSubset(toolsForCapabilityProfile(registry, "cloud-autonomy")),
+      );
+      assert.deepEqual(
+        review.map((t) => t.name),
+        ["soul_read", "soul_journal", "desire_close"],
+        `LISA_CLOUD_WEB_TOOLS=${value ?? "(unset)"}`,
+      );
+    }
   });
 
   test("sandboxModeForProfile: only the owner's own keyboard gets the env default", () => {

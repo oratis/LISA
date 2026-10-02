@@ -11,7 +11,7 @@ import { cloudWebToolsEnabled } from "../tools/cloud_web.js";
  * identifiers, and both leave from the server's address, not the user's.
  *
  * The iOS consent record is the exact recipient list, so a deployment that
- * gains (or switches off) the web tools re-prompts on the next message — which
+ * turns the web tools on (or off again) re-prompts on the next message — which
  * is the point: the hosted edition must not start sending queries to a new
  * third party under a consent that never named it.
  */
@@ -21,7 +21,8 @@ export const WEB_FETCH_RECIPIENT = "Websites Lisa opens for you (page requests)"
 /** Web-tool recipients for the chat surface this process serves. */
 export function webToolRecipients(env: NodeJS.ProcessEnv = process.env): string[] {
   // Local edition: the owner's chat has always had both tools. Hosted edition:
-  // only while the kill switch leaves them on.
+  // only once the operator has opted in (LISA_CLOUD_WEB_TOOLS=1) — with the
+  // variable unset the list is exactly what it was before the tools existed.
   if (isCloud(env) && !cloudWebToolsEnabled(env)) return [];
   return [WEB_SEARCH_RECIPIENT, WEB_FETCH_RECIPIENT];
 }
