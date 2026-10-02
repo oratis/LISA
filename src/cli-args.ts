@@ -46,6 +46,7 @@ export interface ParsedArgs {
     | "pair"
     | "mail"
     | "kb"
+    | "secret"
     | "login"
     | "logout"
     | "billing"
@@ -65,7 +66,7 @@ export interface ParsedArgs {
  * --model`), so those must still reach the global parser — only *unrecognized*
  * trailing flags are collected verbatim for the handler.
  */
-const RAW_SUBCOMMANDS = new Set(["heartbeat", "autostart", "doctor", "upgrade"]);
+const RAW_SUBCOMMANDS = new Set(["heartbeat", "autostart", "doctor", "upgrade", "secret"]);
 
 /**
  * Subcommands whose handler re-parses *all* of its trailing args itself, so
@@ -217,6 +218,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
       first === "pair" ||
       first === "mail" ||
       first === "kb" ||
+      first === "secret" ||
       first === "login" ||
       first === "logout" ||
       first === "billing" ||
