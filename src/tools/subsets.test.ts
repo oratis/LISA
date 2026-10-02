@@ -154,9 +154,13 @@ describe("remoteSafeSubset — IM-channel toolset", () => {
 });
 
 describe("cloudSafeSubset — hosted multi-tenant toolset", () => {
-  test("uses an allow-list and rejects host, process, network-fetch, and unknown plugin tools", () => {
+  test("uses an allow-list and rejects host, process, ingest, and unknown plugin tools", () => {
     const unknown = fake("operator_plugin_secret");
-    const names = new Set(cloudSafeSubset([...SAMPLE, unknown]).map((t) => t.name));
+    const names = new Set(
+      cloudSafeSubset([...SAMPLE, unknown, fake("kb_ingest"), fake("takoapi"), fake("github")]).map(
+        (t) => t.name,
+      ),
+    );
     for (const blocked of [
       "bash",
       "read",
@@ -164,13 +168,69 @@ describe("cloudSafeSubset — hosted multi-tenant toolset", () => {
       "grep",
       "ls",
       "task",
-      "web_fetch",
       "dispatch_agent",
       "mcp",
       "skill_manage",
+      // Outbound tools other than the two governed web tools stay out.
+      "kb_ingest",
+      "takoapi",
+      "github",
       "operator_plugin_secret",
     ]) {
       assert.equal(names.has(blocked), false, `${blocked} must be blocked`);
+    }
+  });
+
+  test("admits web_search / web_fetch only as governed hosted instances", async () => {
+    const locals = SAMPLE.filter((t) => t.name === "web_search" || t.name === "web_fetch");
+    assert.equal(locals.length, 2);
+    const subset = cloudSafeSubset(SAMPLE);
+    const ctx = { cwd: "/", signal: new AbortController().signal, log: () => {} };
+    for (const name of ["web_search", "web_fetch"]) {
+      const hosted = subset.find((t) => t.name === name);
+      assert.ok(hosted, `${name} must be in the cloud subset`);
+      // Not the tool object that was passed in: the local instance (here a fake
+      // that would "succeed") is replaced, never wrapped or passed through.
+      assert.equal(locals.includes(hosted), false, `${name} must be replaced`);
+      // And the replacement is the governed one — outside a tenant request
+      // scope it refuses instead of running.
+      await assert.rejects(
+        () => hosted.execute({ url: "https://example.com/", query: "x" }, ctx),
+        /only available inside a signed-in account/,
+      );
+    }
+  });
+
+  test("the cloud subset is idempotent — a second pass keeps the same governed tools", () => {
+    const once = cloudSafeSubset(SAMPLE);
+    const twice = cloudSafeSubset(once);
+    assert.deepEqual(
+      twice.map((t) => t.name),
+      once.map((t) => t.name),
+    );
+    for (const name of ["web_search", "web_fetch"]) {
+      assert.equal(
+        twice.find((t) => t.name === name),
+        once.find((t) => t.name === name),
+      );
+    }
+  });
+
+  test("LISA_CLOUD_WEB_TOOLS=0 removes both web tools and nothing else", () => {
+    const before = process.env.LISA_CLOUD_WEB_TOOLS;
+    const withTools = cloudSafeSubset(SAMPLE).map((t) => t.name);
+    process.env.LISA_CLOUD_WEB_TOOLS = "0";
+    try {
+      const without = cloudSafeSubset(SAMPLE).map((t) => t.name);
+      assert.equal(without.includes("web_search"), false);
+      assert.equal(without.includes("web_fetch"), false);
+      assert.deepEqual(
+        without,
+        withTools.filter((n) => n !== "web_search" && n !== "web_fetch"),
+      );
+    } finally {
+      if (before === undefined) delete process.env.LISA_CLOUD_WEB_TOOLS;
+      else process.env.LISA_CLOUD_WEB_TOOLS = before;
     }
   });
 

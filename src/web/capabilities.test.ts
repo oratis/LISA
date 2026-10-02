@@ -9,6 +9,7 @@ import {
   toolsForCapabilityProfile,
 } from "./capabilities.js";
 import { sandboxModeForProfile, untrustedSurfaceMode } from "../sandbox/sandbox.js";
+import { desireReviewSubset } from "../tools/registry.js";
 
 const fake = (name: string): ToolDefinition => ({
   name,
@@ -103,6 +104,35 @@ describe("autonomy + device profiles (T-13)", () => {
     assert.deepEqual(
       toolsForCapabilityProfile(tools, "cloud-autonomy").map((t) => t.name),
       toolsForCapabilityProfile(tools, "cloud-chat").map((t) => t.name),
+    );
+  });
+
+  test("hosted web tools are for attended cloud chat only", () => {
+    const tools = [fake("soul_read"), fake("web_search"), fake("web_fetch"), fake("bash")];
+    const names = (p: Parameters<typeof toolsForCapabilityProfile>[1]) =>
+      toolsForCapabilityProfile(tools, p).map((t) => t.name);
+    assert.deepEqual(names("cloud-chat"), ["soul_read", "web_search", "web_fetch"]);
+    // Unattended server-side runs and remote devices never reach out.
+    assert.deepEqual(names("cloud-autonomy"), ["soul_read"]);
+    assert.deepEqual(names("remote-device"), ["soul_read"]);
+  });
+
+  test("the cloud desire review has no browsing tools to budget", () => {
+    // server.ts hands the sweep toolsForCapabilityProfile(tools, cloud-autonomy);
+    // the review then narrows it with desireReviewSubset. The web tools must be
+    // gone BEFORE that step — the review's 1-search/2-fetch budget is a volume
+    // bound, not a decision that unattended cloud runs may browse.
+    const registry = [
+      fake("soul_read"),
+      fake("soul_journal"),
+      fake("desire_close"),
+      fake("web_search"),
+      fake("web_fetch"),
+    ];
+    const review = desireReviewSubset(toolsForCapabilityProfile(registry, "cloud-autonomy"));
+    assert.deepEqual(
+      review.map((t) => t.name),
+      ["soul_read", "soul_journal", "desire_close"],
     );
   });
 
