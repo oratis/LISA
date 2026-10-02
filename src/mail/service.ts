@@ -13,8 +13,17 @@ import { buildDigest } from "./digest.js";
 import { saveDigest, loadSeen, markSeen } from "./store.js";
 import { ImapConnector } from "./connectors/imap.js";
 import { GmailConnector } from "./connectors/gmail.js";
+import { logInfo, redactId } from "../log.js";
+import { hygieneLogLine, sanitizeMailBatch } from "../warden/hygiene-mail.js";
 import type { Provider } from "../providers/types.js";
-import type { DailyDigest, MailAccount, MailConnector, MailItem, MailSecret } from "./types.js";
+import type {
+  DailyDigest,
+  MailAccount,
+  MailConnector,
+  MailItem,
+  MailSecret,
+  RawMail,
+} from "./types.js";
 
 export type ConnectorFactory = (account: MailAccount, secret: MailSecret) => MailConnector;
 
@@ -111,6 +120,19 @@ export interface SweepResult {
   blocked?: boolean;
 }
 
+/**
+ * Inbound hygiene (plan W2b): the one place fetched mail enters LISA. One-time
+ * codes and sign-in / password-reset links are removed here, before the
+ * classifier, the digest, an alert or the chat can see them. Only counts are
+ * logged — never a subject, an address or a removed value.
+ */
+function cleanInbound(account: MailAccount, fetched: RawMail[]): RawMail[] {
+  const batch = sanitizeMailBatch(fetched);
+  const line = hygieneLogLine(`account=${redactId(account.id)}`, batch, fetched.length);
+  if (line) logInfo(line);
+  return batch.mails;
+}
+
 export async function sweepAll(opts: SweepOpts = {}): Promise<SweepResult> {
   const now = opts.now ?? Date.now;
   const sinceMs = opts.sinceMs ?? now() - 24 * 60 * 60 * 1000;
@@ -137,10 +159,13 @@ export async function sweepAll(opts: SweepOpts = {}): Promise<SweepResult> {
     let connector: MailConnector | null = null;
     try {
       connector = factory(account, secret);
-      const raws = (await connector.listSince({ sinceMs, limit })).map((r) => ({
-        ...r,
-        accountId: account.id,
-      }));
+      const raws = cleanInbound(
+        account,
+        (await connector.listSince({ sinceMs, limit })).map((r) => ({
+          ...r,
+          accountId: account.id,
+        })),
+      );
       if (raws.length === 0) {
         markSwept(account.id, now());
         continue;
@@ -204,7 +229,12 @@ export async function pollNewMail(opts: SweepOpts = {}): Promise<MailItem[]> {
         accountId: account.id,
       }));
       const seen = loadSeen(account.id);
-      const fresh = raws.filter((r) => !seen.has(r.uid));
+      // Only unseen messages go any further, so only they are cleaned (and
+      // counted in the log) — once, on the poll that first sees them.
+      const fresh = cleanInbound(
+        account,
+        raws.filter((r) => !seen.has(r.uid)),
+      );
       if (fresh.length) {
         out.push(
           ...(await classifyMail(fresh, {

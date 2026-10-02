@@ -5,6 +5,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { sanitizeDigest } from "../warden/hygiene-mail.js";
 import type { DailyDigest } from "./types.js";
 
 function lisaHome(): string {
@@ -28,11 +29,19 @@ export function saveDigest(d: DailyDigest): void {
   });
 }
 
+/**
+ * The latest digest, passed through inbound hygiene on the way out. A digest
+ * written before hygiene existed still holds raw subjects and snippets on disk;
+ * this is what keeps a one-time code or reset link in it from reaching the
+ * client or the chat. Current digests are already clean and pass unchanged.
+ */
 export function latestDigest(): DailyDigest | null {
   try {
-    return JSON.parse(
-      fs.readFileSync(path.join(mailDir(), "latest-digest.json"), "utf8"),
-    ) as DailyDigest;
+    return sanitizeDigest(
+      JSON.parse(
+        fs.readFileSync(path.join(mailDir(), "latest-digest.json"), "utf8"),
+      ) as DailyDigest,
+    );
   } catch {
     return null;
   }
