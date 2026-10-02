@@ -749,7 +749,11 @@ export class TaskRunner {
           return;
         },
         postToolHook: async (name, input, text, isError) => {
-          if (isSideEffectingCall(name, input)) {
+          // An error out of a call we aborted says nothing about whether its
+          // effect landed — leave it in-flight ("outcome unknown") rather than
+          // recording a failure the resumed run would trust.
+          const aborted = isError && slot.controller.signal.aborted;
+          if (isSideEffectingCall(name, input) && !aborted) {
             run.executedDigests[digestCall(name, input)] = clip(
               isError ? `[error] ${text}` : text,
               MAX_RECORDED_RESULT,
