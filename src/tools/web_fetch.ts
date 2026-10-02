@@ -81,17 +81,23 @@ export async function withDeadline<T>(
     throw new Error("outbound deadline must be a positive number of milliseconds");
   }
   const controller = new AbortController();
-  const onParentAbort = (): void => controller.abort(parent?.reason);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let onParentAbort: () => void = () => {};
+  // Settles on whichever comes first: the deadline or the caller going away.
+  const expired = new Promise<never>((_, reject) => {
+    const stop = (reason: unknown): void => {
+      controller.abort(reason);
+      reject(reason instanceof Error ? reason : new Error("outbound request aborted"));
+    };
+    onParentAbort = () => stop(parent?.reason);
+    timer = setTimeout(
+      () => stop(new Error(`outbound request timed out after ${timeoutMs}ms`)),
+      timeoutMs,
+    );
+  });
+  expired.catch(() => {});
   if (parent?.aborted) onParentAbort();
   else parent?.addEventListener("abort", onParentAbort, { once: true });
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const expired = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => {
-      const err = new Error(`outbound request timed out after ${timeoutMs}ms`);
-      controller.abort(err);
-      reject(err);
-    }, timeoutMs);
-  });
   const running = work(controller.signal);
   // The loser of the race still settles; never let that surface as unhandled.
   running.catch(() => {});
@@ -223,6 +229,7 @@ export async function fetchFollowingSafeRedirects(
   const initialOrigin = new URL(startUrl).origin;
   let current = startUrl;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    signal?.throwIfAborted();
     const currentUrl = new URL(current);
     assertAllowedUrl(currentUrl, dependencies.policy);
     const addresses = await resolvePublicAddresses(
