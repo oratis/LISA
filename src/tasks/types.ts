@@ -241,6 +241,12 @@ export type TaskApprovalFactory = (ctx: TaskApprovalContext) => TaskApprovalHand
 export type TaskNoticeKind = "task_result" | "watch_hit" | "task_needs_you" | "task_failed";
 
 export interface TaskNotice {
+  /**
+   * Stable idempotency key (`<runId>-<kind>`). The outbox may hand the same
+   * notice to deliver() again after a crash; a deliver() that has already
+   * handled this id must not notify twice.
+   */
+  id: string;
   uid: string | null;
   taskId: string;
   runId: string;
