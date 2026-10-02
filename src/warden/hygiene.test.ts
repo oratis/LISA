@@ -347,9 +347,23 @@ test("links: ordinary links are kept intact", () => {
     "查看详情：https://example.cn/news/2026/10/02/12345.html。",
     "The handle secret://gmail/work is not a link.",
     "Track it: https://example.com/track?id=12345",
+    "Manage email preferences: https://news.example.com/preferences?token=abcdef123456",
   ]) {
     untouched(text);
   }
+});
+
+test("links: mailing-list wording does not excuse a real sign-in or reset link", () => {
+  link(
+    "https://example.com/account/preferences/confirm-email?token=abcdef123456",
+    "https://example.com/account/preferences/confirm-email?token=abcdef123456",
+    "signin",
+  );
+  link(
+    "https://example.com/unsubscribe/../reset-password?token=abcdef123456",
+    "https://example.com/unsubscribe/../reset-password?token=abcdef123456",
+    "reset",
+  );
 });
 
 test("links: a link cut off by snippet truncation is judged by its path", () => {

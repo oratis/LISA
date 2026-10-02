@@ -166,7 +166,8 @@ const RESET_WORD_RE = /^(?:reset|recover|forgot|password|passwd|pwd$)/;
 /** Host labels that mark an identity service (`login.example.com`). */
 const AUTH_HOST_RE = /^(?:login|signin|auth|oauth|sso|idp|accounts?|identity|passport)$/;
 /** Mailing-list plumbing: carries a token, but not one that signs anyone in. */
-const LIST_WORD_RE = /^(?:unsubscribe|unsub|optout|preferences|subscriptions?|pixel)$/;
+const UNSUBSCRIBE_WORD_RE = /^(?:unsubscribe|unsub|optout)$/;
+const LIST_WORD_RE = /^(?:preferences|subscriptions?|pixel)$/;
 
 /** Parameter names that are a credential whatever the endpoint is called. */
 const STRONG_PARAM_RE =
@@ -282,9 +283,14 @@ function classifyUrl(raw: string, before: string, tail: boolean, depth = 0): Lin
     }
   }
 
-  // Mailing-list plumbing (unsubscribe, preferences) carries tokens too, but
-  // not ones that sign anyone in — GitHub's "unsubscribe-auth/<token>" included.
-  if (!resetPath && !nested && pathWords.some((w) => LIST_WORD_RE.test(w))) return null;
+  // Mailing-list plumbing carries tokens too, but not ones that sign anyone in.
+  // An unsubscribe link is exempt even with auth wording (GitHub's
+  // "unsubscribe-auth/<token>"); a "preferences" link only when nothing else
+  // about the URL says sign-in.
+  if (!resetPath && !nested) {
+    if (pathWords.some((w) => UNSUBSCRIBE_WORD_RE.test(w))) return null;
+    if (!keyworded && pathWords.some((w) => LIST_WORD_RE.test(w))) return null;
+  }
 
   const strongParam = params.some(
     ([, value], i) => value.length >= 4 && STRONG_PARAM_RE.test(names[i]!),
