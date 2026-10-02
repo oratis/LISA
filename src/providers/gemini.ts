@@ -29,14 +29,25 @@ import type { StoredMessage } from "../types.js";
 import { withStreamRetry } from "./stream-retry.js";
 import type { Provider, ProviderResult, ProviderRunOpts } from "./types.js";
 
+export interface GeminiProviderOptions {
+  apiKey?: string;
+  baseURL?: string;
+  /**
+   * Extra request headers. The LISA gateway authenticates the account session
+   * from `Authorization: Bearer …`, which the Google client does not send on
+   * its own (it uses `x-goog-api-key`).
+   */
+  headers?: Record<string, string>;
+}
+
 export class GeminiProvider implements Provider {
   readonly name = "gemini";
   // Lazily constructed on first runTurn so that merely importing the provider
   // registry (Anthropic-only users, unit tests) doesn't load @google/genai.
   private client: GoogleGenAI | null = null;
-  private readonly clientOpts: { apiKey?: string; baseURL?: string };
+  private readonly clientOpts: GeminiProviderOptions;
 
-  constructor(opts: { apiKey?: string; baseURL?: string } = {}) {
+  constructor(opts: GeminiProviderOptions = {}) {
     this.clientOpts = opts;
   }
 
@@ -48,7 +59,14 @@ export class GeminiProvider implements Provider {
       // via httpOptions.
       this.client = new GoogleGenAI({
         apiKey: this.clientOpts.apiKey,
-        ...(this.clientOpts.baseURL ? { httpOptions: { baseUrl: this.clientOpts.baseURL } } : {}),
+        ...(this.clientOpts.baseURL || this.clientOpts.headers
+          ? {
+              httpOptions: {
+                ...(this.clientOpts.baseURL ? { baseUrl: this.clientOpts.baseURL } : {}),
+                ...(this.clientOpts.headers ? { headers: this.clientOpts.headers } : {}),
+              },
+            }
+          : {}),
       });
     }
     return this.client;

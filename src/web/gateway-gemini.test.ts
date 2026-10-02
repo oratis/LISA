@@ -1208,3 +1208,208 @@ describe("POST /gw/gemini — settlement failure and reconciliation", () => {
     }
   });
 });
+
+describe("POST /gw/gemini — driven by the real @google/genai client", () => {
+  // The face has to accept what LISA's own Gemini provider actually sends, not
+  // what this file assumes it sends: the SDK builds the path, the query and the
+  // request body, and parses the stream that comes back through the gateway.
+  const TOOL_STREAM =
+    [
+      {
+        candidates: [
+          {
+            content: { role: "model", parts: [{ text: "Checking. " }] },
+            index: 0,
+          },
+        ],
+        usageMetadata: { promptTokenCount: 900, cachedContentTokenCount: 256, thoughtsTokenCount: 64 },
+      },
+      {
+        candidates: [
+          {
+            content: {
+              role: "model",
+              parts: [{ functionCall: { name: "lookup", args: { q: "weather" } } }],
+            },
+            finishReason: "STOP",
+            index: 0,
+          },
+        ],
+        usageMetadata: {
+          promptTokenCount: 900,
+          cachedContentTokenCount: 256,
+          candidatesTokenCount: 18,
+          thoughtsTokenCount: 64,
+          totalTokenCount: 982,
+        },
+      },
+    ]
+      .map((chunk) => `data: ${JSON.stringify(chunk)}\r\n\r\n`)
+      .join("");
+
+  test("GeminiProvider → gateway → upstream: accepted, parsed, and metered identically on both sides", async () => {
+    const { GeminiProvider } = await import("../providers/gemini.js");
+    const { upstream, adm, deps } = setup(() => sseResponse(TOOL_STREAM, [33, 200]));
+    const gw = await gateway(deps);
+    try {
+      const provider = new GeminiProvider({
+        apiKey: "client-session-token",
+        baseURL: `${gw.base}/gw/gemini`,
+      });
+      const deltas: string[] = [];
+      const result = await provider.runTurn({
+        model: MODEL,
+        systemPrompt: "You are terse.",
+        tools: [
+          {
+            name: "lookup",
+            description: "look something up",
+            inputSchema: { type: "object", properties: { q: { type: "string" } } },
+            execute: async () => "",
+          },
+        ],
+        messages: [{ role: "user", content: "What's the weather?" }],
+        maxTokens: 2_048,
+        signal: new AbortController().signal,
+        handlers: { onTextDelta: (text) => deltas.push(text) },
+      });
+
+      // The SDK's request reached the upstream through the validated route…
+      assert.equal(upstream.calls.length, 1);
+      const call = upstream.calls[0]!;
+      assert.equal(
+        call.url,
+        `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:streamGenerateContent?alt=sse`,
+      );
+      assert.equal(call.headers["x-goog-api-key"], OPERATOR_KEY);
+      assert.equal(JSON.stringify(call).includes("client-session-token"), false);
+      // …with its own body shape intact (system prompt, tools, validated calling, ceiling).
+      assert.equal(validateGeminiRequest(call.body), null);
+      assert.ok(Array.isArray(call.body.contents));
+      assert.ok(call.body.systemInstruction);
+      assert.ok(Array.isArray(call.body.tools));
+      assert.equal(
+        (call.body.generationConfig as { maxOutputTokens?: number }).maxOutputTokens,
+        2_048,
+      );
+
+      // …and the SDK parsed the stream the gateway passed back.
+      assert.deepEqual(deltas, ["Checking. "]);
+      assert.equal(result.stopReason, "tool_use");
+      const toolUse = result.content.find((b) => b.type === "tool_use");
+      assert.ok(toolUse && toolUse.type === "tool_use");
+      assert.equal(toolUse.name, "lookup");
+      assert.deepEqual(toolUse.input, { q: "weather" });
+
+      // The gateway billed exactly what the client-side provider counted.
+      assert.equal(adm.settled.length, 1);
+      assert.deepEqual(adm.settled[0]!.usage, result.usage);
+      assert.deepEqual(result.usage, {
+        inputTokens: 644, // 900 − 256
+        outputTokens: 82, // 18 + 64 thinking
+        cacheReadTokens: 256,
+        cacheWriteTokens: 0,
+      });
+      assert.deepEqual(gw.errors, []);
+    } finally {
+      await gw.close();
+    }
+  });
+
+  test("a signed-in client with no Gemini key reaches the face through the provider registry", async () => {
+    const { providerForModel, hasCredentialsForModel, managedGeminiServed } =
+      await import("../providers/registry.js");
+    const SESSION = "s1.managed.session";
+    const { upstream, adm, deps } = setup(() => sseResponse(TOOL_STREAM, []));
+    // Stand in for server.ts's gate: the account session arrives as a Bearer
+    // token (presentedToken), and only then is the gateway handler reached.
+    const seenAuth: Array<string | undefined> = [];
+    const server = http.createServer((req, res) => {
+      seenAuth.push(req.headers.authorization);
+      if (req.headers.authorization !== `Bearer ${SESSION}`) {
+        res.writeHead(401, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "unauthorized" }));
+        return;
+      }
+      void handleGateway(req, res, req.url ?? "", ACCT, deps);
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+
+    const keys = [
+      "LISA_MANAGED_SESSION",
+      "LISA_MANAGED_BASE",
+      "GEMINI_API_KEY",
+      "GOOGLE_API_KEY",
+      "LISA_MODEL_FALLBACK",
+      "LISA_BASE_URL",
+      "LISA_PROVIDER",
+    ] as const;
+    const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+    for (const k of keys) delete process.env[k];
+    process.env.LISA_MANAGED_SESSION = SESSION;
+    process.env.LISA_MANAGED_BASE = base;
+    try {
+      // The key gate: served Gemini models pass on a managed session; the rest do not.
+      assert.equal(hasCredentialsForModel(MODEL), true);
+      assert.equal(managedGeminiServed(MODEL), true);
+      for (const unserved of ["gemini-2.5-pro", "gemini-2.5-flash-lite", "gemini-2.0-pro"]) {
+        assert.equal(hasCredentialsForModel(unserved), false, unserved);
+      }
+
+      const result = await providerForModel(MODEL).runTurn({
+        model: MODEL,
+        systemPrompt: "sys",
+        tools: [],
+        messages: [{ role: "user", content: "hi" }],
+        signal: new AbortController().signal,
+      });
+      assert.deepEqual(seenAuth, [`Bearer ${SESSION}`]);
+      assert.equal(upstream.calls.length, 1);
+      // The session never travels past the gateway.
+      assert.equal(JSON.stringify(upstream.calls[0]).includes(SESSION), false);
+      assert.equal(upstream.calls[0]!.headers["x-goog-api-key"], OPERATOR_KEY);
+      assert.deepEqual(adm.settled[0]!.usage, result.usage);
+    } finally {
+      for (const k of keys) {
+        if (saved[k] === undefined) delete process.env[k];
+        else process.env[k] = saved[k];
+      }
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  test("a user's own Gemini key still wins over the managed session", async () => {
+    const { hasOwnCredentialsForModel } = await import("../providers/registry.js");
+    assert.equal(hasOwnCredentialsForModel(MODEL, { GEMINI_API_KEY: "mine" }), true);
+    assert.equal(hasOwnCredentialsForModel(MODEL, { LISA_MANAGED_SESSION: "s" }), false);
+  });
+
+  test("a gateway refusal surfaces to the client as an error, not an empty answer", async () => {
+    const { GeminiProvider } = await import("../providers/gemini.js");
+    const adm = admission({
+      precheck: async () => ({ ok: false, error: "quota_exhausted", resetAt: 1, tier: "free" }),
+    });
+    const { deps } = setup(() => {
+      throw new Error("the upstream must not be called");
+    }, adm);
+    const gw = await gateway(deps);
+    try {
+      const provider = new GeminiProvider({ apiKey: "s", baseURL: `${gw.base}/gw/gemini` });
+      await assert.rejects(
+        () =>
+          provider.runTurn({
+            model: MODEL,
+            systemPrompt: "sys",
+            tools: [],
+            messages: [{ role: "user", content: "hi" }],
+            signal: new AbortController().signal,
+          }),
+        /quota_exhausted|402/,
+      );
+    } finally {
+      await gw.close();
+    }
+  });
+});
