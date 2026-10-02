@@ -157,3 +157,47 @@ describe("non-interactive approval callback", () => {
     assert.equal((await cb("github", { action: "issue_create" })).allow, false);
   });
 });
+
+describe("approval mode warden (W2a)", () => {
+  const WEB = { ...ARGS, subcommand: "serve", serveWeb: true };
+
+  test("serve --web with no --approval defaults to warden on both web surfaces", () => {
+    assert.equal(buildRuntimePolicy({ ...WEB, approvalExplicit: false }, MAC).approval, "warden");
+    assert.equal(buildRuntimePolicy({ ...WEB, approvalExplicit: false }, CLOUD).approval, "warden");
+  });
+
+  test("an explicit --approval always wins, including --approval auto", () => {
+    for (const approval of ["auto", "ask", "ask-mutating", "warden"] as const) {
+      const p = buildRuntimePolicy({ ...WEB, approval, approvalExplicit: true }, MAC);
+      assert.equal(p.approval, approval);
+    }
+  });
+
+  test("the CLI surface and hand-built policies keep their mode", () => {
+    assert.equal(buildRuntimePolicy({ ...ARGS, approvalExplicit: false }, MAC).approval, "auto");
+    assert.equal(buildRuntimePolicy({ ...WEB }, MAC).approval, "auto");
+  });
+
+  test("the startup banner names the mode", () => {
+    const line = describeRuntimePolicy(buildRuntimePolicy({ ...WEB, approvalExplicit: false }, MAC));
+    assert.match(line, /approval=warden/);
+  });
+
+  test("without a Warden session the non-interactive fallback denies what mutates", async () => {
+    const logs: string[] = [];
+    const cb = buildNonInteractiveApprovalCallback(
+      {
+        mode: "warden",
+        mutatingTools: DEFAULT_MUTATING_TOOLS,
+        mutatingActions: DEFAULT_MUTATING_ACTIONS,
+      },
+      (m) => logs.push(m),
+    );
+    assert.ok(cb, "warden must never produce an undefined (allow-all) callback");
+    assert.deepEqual(await cb("read", { path: "a" }), { allow: true });
+    assert.equal((await cb("bash", { command: "ls" })).allow, false);
+    assert.equal((await cb("github", { action: "pr_merge" })).allow, false);
+    assert.deepEqual(await cb("github", { action: "pr_view" }), { allow: true });
+    assert.equal(logs.length, 2);
+  });
+});

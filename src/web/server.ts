@@ -183,6 +183,7 @@ import { ScreenSource } from "../sense/screen.js";
 import { VoiceSource } from "../sense/voice.js";
 import { appendSenseEvent, readSenseEvents } from "../sense/log.js";
 import { handleSocialApi } from "./social-api.js";
+import { createWebWarden, handleWardenApi } from "./warden-api.js";
 import {
   loadScreenAdvisorConfig,
   saveScreenAdvisorConfig,
@@ -277,6 +278,8 @@ export interface WebServerOptions {
    * unchanged without one.
    */
   policy?: RuntimePolicy;
+  /** Injected model provider (tests). Omitted ⇒ resolved from `model`. */
+  provider?: ReturnType<typeof providerForModel>;
 }
 
 interface AdvisorCardSuggestion {
@@ -522,6 +525,11 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     },
     logWarn,
   );
+  // Warden (W2a): under approval mode "warden" every chat turn gets a policy
+  // session, and "ask" waits on this inbox instead of being denied. Inbox
+  // events go out on the tenant-aware /events stream, addressed to the uid the
+  // item belongs to.
+  const warden = createWebWarden(policy, (event, uid) => broadcast(event, uid));
   // Account sessions (PLAN_ACCOUNTS_BILLING B1): the signing secret lives in
   // $lisaHome() (auto-created 0600; durable on the cloud's /data mount). Only the
   // cloud edition mints/verifies account sessions today — the Mac edition gains
@@ -582,6 +590,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // new key without restarting the server.
   let cachedProvider: ReturnType<typeof providerForModel> | null = null;
   const getProvider = () => {
+    if (opts.provider) return opts.provider;
     if (!cachedProvider) cachedProvider = providerForModel(opts.model);
     return cachedProvider;
   };
@@ -2413,6 +2422,18 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
                 });
               }
             : undefined,
+      })
+    ) {
+      return;
+    }
+
+    if (
+      await handleWardenApi(req, res, url, {
+        inbox: warden.inbox,
+        uid: scopedUid(),
+        home: lisaHome(),
+        allowApproval: (!cloud && isLoopbackAddress(remoteAddr)) || accountUid !== null,
+        loopbackTrust: accountUid === null,
       })
     ) {
       return;
@@ -4569,6 +4590,14 @@ self.addEventListener('fetch', (event) => {
                 `sending ~${modelContext.estimatedTokens} history tokens`,
             );
           }
+          const wardenTurn = warden.turn({
+            uid: scopedUid(),
+            sandboxMode: chat.session.header.sandboxMode,
+            workspaceRoot: process.cwd(),
+            tools: runtimeTools,
+            signal: AbortSignal.any([abort.signal, turnAbort.signal]),
+            conversationId: chat.session.id,
+          });
           const result = await runAgent({
             provider: getProvider(),
             systemPrompt: fresh.text + modelContext.systemSuffix,
@@ -4589,8 +4618,10 @@ self.addEventListener('fetch', (event) => {
             thinking: policy.thinking,
             compaction: policy.compaction,
             // Approval gating on the web surface (T-7). undefined under
-            // "auto", so the default path is byte-identical to before.
-            approval: webApproval,
+            // "auto", so that path is byte-identical to before. Under "warden"
+            // the turn's Warden session decides; webApproval stays as the
+            // fail-closed fallback.
+            approval: wardenTurn?.approval ?? webApproval,
             // Pre-debit breaker (B4): a single turn can never burn past what
             // the account could pay for. Conservatively prices every token at
             // the output rate.
@@ -4599,6 +4630,7 @@ self.addEventListener('fetch', (event) => {
                 ? tokensAffordable(opts.model, quotaBudgetMicroUSD)
                 : undefined,
             onEvent: (ev) => {
+              wardenTurn?.observe(ev);
               if (ev.type === "text_delta" && ev.text) {
                 anyText = true;
                 send({ type: "text", text: ev.text });
@@ -4829,6 +4861,8 @@ self.addEventListener('fetch', (event) => {
     }
     loopMonitor.stop();
     idleWatcher?.stop();
+    // Anything still waiting for an approval is denied, not left hanging.
+    void warden.inbox.shutdown();
     moodBus.off("mood", onMoodEvent);
     moodBus.off("chat_start", onChatStart);
     moodBus.off("chat_end", onChatEnd);

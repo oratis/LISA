@@ -215,6 +215,11 @@ test("unknown tools are writes that ask, tightened by a mutating verb", () => {
   assert.equal(c.withinWorkspace, false);
   assert.equal(cat("send_invoice"), "send");
   assert.equal(cat("delete_everything"), "delete");
+  // An exec-sounding name must not turn an unknown tool into (auto-allowed) exec.
+  for (const name of ["deploy_widget", "run_shell", "exec_command", "eval_js", "spawn_worker"]) {
+    assert.equal(cat(name), "write", name);
+    assert.equal(cat(`mcp__srv__${name}`, {}, fakeTool("x")), "write", name);
+  }
   // A readOnlyHint on a non-MCP unknown tool is not honoured at all.
   assert.equal(cat("plugin_thing", {}, fakeTool("plugin_thing", { readOnlyHint: true })), "write");
 });

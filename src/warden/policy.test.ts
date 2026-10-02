@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { defaultBehavior, envelopeCovers, evaluate, type PolicyContext } from "./policy.js";
 import { defaultRules, parseRules } from "./rules.js";
 import { grantsFor } from "./grants.js";
+import { buildActionRequest } from "./request.js";
 import {
   ACTION_CATEGORIES,
   ORIGIN_KINDS,
@@ -341,6 +342,35 @@ test("grants: exact match on tool, category, method, column and scope binding", 
   assert.equal(evaluate(r, ctx({ grants: day })).verdict, "allow");
   assert.equal(evaluate(r, ctx({ grants: day, now: NOW + 24 * 3600_000 })).verdict, "ask");
   assert.equal(evaluate(r, ctx({ grants: day, now: NOW + 24 * 3600_000 - 1 })).verdict, "allow");
+});
+
+test("no unlisted tool is ever auto-allowed, whatever it is called", () => {
+  const names = [
+    "deploy_widget",
+    "run_shell",
+    "exec_command",
+    "bash2",
+    "write_file",
+    "read_secrets",
+    "totally_harmless",
+    "mcp__srv__exec",
+    "mcp__srv__anything",
+    "send_it",
+    "",
+  ];
+  for (const sandboxMode of ["danger-full-access", "workspace-write", "read-only"] as const) {
+    for (const name of names) {
+      const { req: built } = buildActionRequest(name, { path: "a.ts", command: "ls" }, undefined, {
+        uid: null,
+        surface: "local-web",
+        origin: { kind: "chat" },
+        workspaceRoot: "/work/project",
+        sandboxMode,
+        tainted: false,
+      });
+      assert.notEqual(evaluate(built, ctx()).verdict, "allow", `${name} under ${sandboxMode}`);
+    }
+  }
 });
 
 test("defaultBehavior never returns auto for an unrecognised category", () => {

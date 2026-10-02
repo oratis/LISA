@@ -170,6 +170,11 @@ function writePaths(name: string, input: Record<string, unknown>): string[] | nu
 /**
  * Verb tokens that only ever TIGHTEN an unlisted tool's category. Checked on
  * `_`/`-`-separated tokens of the tool name so `list_messages` is not a send.
+ *
+ * Every category here is one the default matrix never auto-allows. "exec" is
+ * deliberately absent: unsandboxed exec is "auto" for the local owner, so
+ * re-labelling an unknown `deploy_widget` as exec would LOOSEN it from a write
+ * that asks to a call that runs.
  */
 const VERB_CATEGORIES: Array<[ActionCategory, Set<string>]> = [
   ["purchase", new Set(["buy", "purchase", "pay", "checkout", "subscribe"])],
@@ -177,7 +182,6 @@ const VERB_CATEGORIES: Array<[ActionCategory, Set<string>]> = [
   ["delete", new Set(["delete", "remove", "destroy", "drop", "purge", "trash", "erase", "wipe"])],
   ["send", new Set(["send", "reply", "forward"])],
   ["publish", new Set(["post", "publish", "tweet", "share", "merge"])],
-  ["exec", new Set(["exec", "execute", "shell", "eval", "spawn", "deploy"])],
 ];
 
 function categoryFromName(toolName: string): ActionCategory | undefined {

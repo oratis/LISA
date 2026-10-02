@@ -142,6 +142,14 @@ KNOWLEDGE BASE
   lisa kb search "<query>"     Search sources + wiki (TF-IDF).
   lisa kb brief [YYYY-MM-DD]   Print a daily feeds brief (needs kb/feeds.json).
 
+APPROVALS (Warden — needs a running \`lisa serve --web\`)
+  lisa approvals               List pending approvals.
+  lisa approvals approve <id> [--scope once|task|target|24h|always]
+  lisa approvals deny <id> [--reason "..."]
+  lisa warden rules [show|set <category> <auto|preapproved|ask|handoff>]
+  lisa warden grants [list|revoke <id>]
+  lisa warden audit [--limit N]
+
 LISA CLOUD (managed inference — models without a BYO key run key-free)
   lisa login [url] [--password]
                                Sign in. Mails a one-time code by default, and
@@ -162,7 +170,9 @@ FLAGS
   --think               Enable adaptive thinking each turn.
   --no-reflect          Skip end-of-session reflection.
   --compact             Enable Anthropic context compaction beta.
-  --approval <mode>     auto | ask | ask-mutating  (default: auto)
+  --approval <mode>     auto | ask | ask-mutating | warden  (default: auto;
+                        serve --web defaults to warden: side effects are decided
+                        by policy and "ask" waits in the approval inbox)
   --no-mcp              Skip loading MCP servers.
   --no-plugins          Skip loading plugins.
   --voice               Enable speak/transcribe tools.
@@ -443,6 +453,12 @@ async function main(): Promise<void> {
     process.exit(await runKbCommand(args.subargs));
   }
 
+  if (args.subcommand === "approvals" || args.subcommand === "warden") {
+    const { runApprovalsCommand, runWardenCommand } = await import("./cli/warden.js");
+    const run = args.subcommand === "approvals" ? runApprovalsCommand : runWardenCommand;
+    process.exit(await run(args.subargs));
+  }
+
   if (args.subcommand === "sessions") {
     const sessions = await listSessionsOnDisk();
     for (const s of sessions) {
@@ -636,6 +652,8 @@ async function main(): Promise<void> {
         thinking: args.thinking,
         compaction: args.compaction,
         approval: args.approval,
+        // No --approval ⇒ the web surface runs under Warden (W2a).
+        approvalExplicit: args.approvalExplicit,
       });
       logInfo(`[runtime] ${describeRuntimePolicy(policy)}`);
       await startWebServer({

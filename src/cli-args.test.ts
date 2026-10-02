@@ -146,3 +146,34 @@ describe("isVerboseArgv", () => {
     assert.equal(isVerboseArgv([], {}), false);
   });
 });
+
+describe("parseArgs — approval mode", () => {
+  test("no flag: auto, not explicit (so serve --web can default to warden)", () => {
+    const a = parseArgs(["serve", "--web"]);
+    assert.equal(a.approval, "auto");
+    assert.equal(a.approvalExplicit, false);
+  });
+
+  test("--approval is recorded as explicit for every valid mode", () => {
+    for (const mode of ["auto", "ask", "ask-mutating", "warden"]) {
+      const a = parseArgs(["serve", "--web", "--approval", mode]);
+      assert.equal(a.approval, mode);
+      assert.equal(a.approvalExplicit, true);
+    }
+  });
+
+  test("an unknown mode is rejected", () => {
+    assert.throws(() => parseArgs(["--approval", "yolo"]), /bad --approval mode/);
+    assert.throws(() => parseArgs(["--approval", "allow"]), /bad --approval mode/);
+  });
+
+  test("approvals / warden are passthrough subcommands", () => {
+    const a = parseArgs(["approvals", "approve", "apr_1", "--scope", "always", "--port", "6000"]);
+    assert.equal(a.subcommand, "approvals");
+    assert.deepEqual(a.subargs, ["approve", "apr_1", "--scope", "always", "--port", "6000"]);
+    assert.equal(a.port, 5757, "--port is the handler's, not the global one");
+    const w = parseArgs(["warden", "rules", "set", "exec", "ask"]);
+    assert.equal(w.subcommand, "warden");
+    assert.deepEqual(w.subargs, ["rules", "set", "exec", "ask"]);
+  });
+});
