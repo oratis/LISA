@@ -145,6 +145,11 @@ KNOWLEDGE BASE
   lisa kb search "<query>"     Search sources + wiki (TF-IDF).
   lisa kb brief [YYYY-MM-DD]   Print a daily feeds brief (needs kb/feeds.json).
 
+SECRETS (tools get the value through a secret://<name> handle; it is never shown)
+  lisa secret set <name>       Store a secret (hidden prompt, or pipe it on stdin).
+  lisa secret list             List names and timestamps.
+  lisa secret rm <name>        Delete a secret.
+
 LISA CLOUD (managed inference — models without a BYO key run key-free)
   lisa login [url] [--password]
                                Sign in. Mails a one-time code by default, and
@@ -449,6 +454,11 @@ async function main(): Promise<void> {
   if (args.subcommand === "kb") {
     const { runKbCommand } = await import("./cli/kb.js");
     process.exit(await runKbCommand(args.subargs));
+  }
+
+  if (args.subcommand === "secret") {
+    const { runSecretCommand } = await import("./cli/secret.js");
+    process.exit(await runSecretCommand(args.subargs));
   }
 
   if (args.subcommand === "sessions") {
