@@ -267,9 +267,20 @@ describe("web chat under approval mode warden", () => {
       const pending = await api(srv.port, "GET", "/api/approvals");
       assert.equal((pending.body.approvals as unknown[]).length, 1);
 
-      const approved = await api(srv.port, "POST", `/api/approvals/${String(asked.id)}/approve`, {
-        scope: "once",
-      });
+      // The approver reads the whole payload (secret masked), then approves its digest.
+      const route = `/api/approvals/${String(asked.id)}`;
+      const detail = await api(srv.port, "GET", route);
+      assert.equal(detail.status, 200);
+      const fields = detail.body.fields as Array<{ key: string; value: string }>;
+      assert.deepEqual(fields.map((f) => f.key).sort(), ["target", "token"]);
+      assert.equal(JSON.stringify(detail.body).includes("SECRETSECRET"), false);
+      const digest = (detail.body.approval as { digest: string }).digest;
+      assert.equal(digest, asked.digest);
+
+      const blind = await api(srv.port, "POST", `${route}/approve`, { scope: "once" });
+      assert.equal(blind.status, 400, "no digest, no approval");
+      assert.equal(calls.length, 0);
+      const approved = await api(srv.port, "POST", `${route}/approve`, { scope: "once", digest });
       assert.equal(approved.status, 200);
 
       const end = await chat.waitFor((e) => e.type === "tool_end");
