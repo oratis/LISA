@@ -57,7 +57,7 @@ const SECRET_PATTERNS: RegExp[] = [
   /\bAIza[0-9A-Za-z_-]{30,}\b/g,
   /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g,
   /\b(?:Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{12,}/gi,
-  /\b(?:password|passwd|pwd|secret|token|api[_-]?key|apikey|access[_-]?key|auth|otp|passcode|verification[_ -]?code)\b\s*[=:]\s*("[^"]*"|'[^']*'|[^\s"'&;,]+)/gi,
+  /\b(?:password|passwd|pwd|secret|token|api[_-]?key|apikey|access[_-]?key|auth|otp|passcode|verification[_ -]?code)\b\s*[=:]\s*(?!<\d+ (?:chars|items)>)("[^"]*"|'[^']*'|[^\s"'&;,]+)/gi,
 ];
 
 /**
@@ -227,6 +227,13 @@ export function maskRecipient(target: string): string {
   const local = target.slice(0, at);
   const hash = createHash("sha256").update(local.toLowerCase()).digest("hex").slice(0, 8);
   return `${hash}@${target.slice(at + 1)}`;
+}
+
+/** Mask every email address inside free text (audit previews, notes). */
+export function maskEmails(text: string): string {
+  return text.replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, (email) =>
+    maskRecipient(email),
+  );
 }
 
 /** Targets as they may appear in the audit log: recipients masked, long values clipped. */

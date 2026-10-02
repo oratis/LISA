@@ -14,7 +14,7 @@
 import path from "node:path";
 import { logWarn } from "../log.js";
 import { auditQuietly, auditResolution } from "./audit.js";
-import { createGrants, scopeProblem } from "./grants.js";
+import { createGrants, revokeGrant, scopeProblem } from "./grants.js";
 import {
   newId,
   quarantineCorrupt,
@@ -110,7 +110,8 @@ export type ResolveError =
   | "not_approvable"
   | "invalid_scope"
   | "scope_not_applicable"
-  | "digest_mismatch";
+  | "digest_mismatch"
+  | "audit_failed";
 
 export type ResolveResult =
   | { ok: true; id: string; verdict: "approved" | "denied" | "dismissed"; scope?: GrantScope; grantIds?: string[]; grantError?: string }
@@ -397,12 +398,24 @@ export class WardenInbox {
       }
     }
     const effective: GrantScope = grantError ? "once" : scope;
-    await this.conclude(
+    const honoured = await this.conclude(
       item,
       "approved",
       { approved: true, scope: effective },
       { scope: effective, grantId: grantIds?.[0] },
     );
+    if (!honoured) {
+      // The approval could not be recorded, so it did not happen: take back
+      // any grant it created.
+      for (const grantId of grantIds ?? []) {
+        await revokeGrant(grantId, item.home, this.now()).catch(() => undefined);
+      }
+      return {
+        ok: false,
+        error: "audit_failed",
+        message: "The approval could not be recorded in the audit log, so it was not applied.",
+      };
+    }
     return { ok: true, id, verdict: "approved", scope: effective, grantIds, grantError };
   }
 
@@ -565,7 +578,7 @@ export class WardenInbox {
     resolution: "approved" | "denied" | "expired" | "cancelled",
     outcome: ApprovalOutcome,
     extra: { note?: string; scope?: GrantScope; grantId?: string } = {},
-  ): Promise<void> {
+  ): Promise<boolean> {
     const tenant = this.tenants.get(tenantKey(item.uid));
     const audit = auditResolution(item.request, resolution, {
       home: item.home,
@@ -599,6 +612,7 @@ export class WardenInbox {
           : resolution,
       effective.approved ? extra.scope : undefined,
     );
+    return effective.approved;
   }
 
   private announce(item: Item): void {

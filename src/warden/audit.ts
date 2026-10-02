@@ -13,7 +13,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { logWarn } from "../log.js";
-import { auditTargets, redactSecrets } from "./preview.js";
+import { auditTargets, maskEmails, redactSecrets } from "./preview.js";
 import { wardenDir } from "./store.js";
 import type { ActionRequest, Decision, GrantScope } from "./types.js";
 
@@ -62,7 +62,8 @@ export function auditFile(home?: string): string {
 
 function clip(text: string | undefined, max: number): string | undefined {
   if (text === undefined) return undefined;
-  const safe = redactSecrets(text);
+  // The card shows the user the real recipient; the log keeps only a masked one.
+  const safe = maskEmails(redactSecrets(text));
   return safe.length <= max ? safe : safe.slice(0, max - 1) + "…";
 }
 
