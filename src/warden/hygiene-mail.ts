@@ -46,7 +46,7 @@ function dropMark(text: string): string {
 export function sanitizeMailFields<T extends MailTextFields>(
   mail: T,
 ): { mail: T; removed: HygieneCounts } {
-  let removed = emptyHygieneCounts();
+  let removed: HygieneCounts;
   // Edited through the base shape; every other field of T is carried over as is.
   const next: MailTextFields = { ...mail };
 
