@@ -184,6 +184,34 @@ test("a torn last line in a run log does not lose the earlier checkpoint", async
   });
 });
 
+test("a record appended after a torn line is not glued onto it and lost (reviewer probe t6)", async () => {
+  await withHome(async () => {
+    const task = await createTask(base);
+    const run = await createRun(task.id);
+    await appendRunMessage(task.id, run.id, { role: "user", content: "frame" });
+    const file = path.join(tasksDir(), "runs", task.id, `${run.id}.jsonl`);
+    // A crash mid-append: half a record, no newline.
+    await fsp.appendFile(
+      file,
+      '{"t":"msg","at":1,"message":{"role":"assistant","content":[{"type":"te',
+    );
+    // What a resume writes first — the resume counter must survive.
+    run.state = "interrupted";
+    run.resumes = 1;
+    await checkpointRun(run);
+    let loaded = (await loadRun(task.id, run.id))!;
+    assert.equal(loaded.run.resumes, 1);
+    assert.equal(loaded.run.state, "interrupted");
+    await appendRunMessage(task.id, run.id, { role: "assistant", content: "x" });
+    loaded = (await loadRun(task.id, run.id))!;
+    assert.deepEqual(
+      loaded.messages.map((m) => m.content),
+      ["frame", "x"],
+    );
+    assert.equal(loaded.run.resumes, 1);
+  });
+});
+
 test("run ids are capped per task and old run logs are pruned", async () => {
   await withHome(async () => {
     const task = await createTask(base);

@@ -55,6 +55,7 @@ import {
   listTasks,
   loadRun,
   resetRunMessages,
+  TaskGoneError,
   updateTask,
   type LoadedRun,
   type RunEvent,
@@ -150,6 +151,13 @@ export interface TaskRunnerOptions {
   host?: "home" | "cloud";
   /** Max runs in flight in this runner. Default 2 at home, 1 per tenant in the cloud. */
   concurrency?: number;
+  /**
+   * Register a run as in-flight work of its tenant (the web server's
+   * account-deletion bookkeeping). `stop` cancels the run. Return a function to
+   * call when the run has ended, or null to refuse the run (the account is
+   * being deleted).
+   */
+  trackRun?: (stop: () => void) => (() => void) | null;
   /** False pauses scheduled (not manual) runs. Default: the Proactive master switch. */
   unattendedAllowed?: () => boolean;
   checkWatch?: WatchCheck;
@@ -633,6 +641,21 @@ export class TaskRunner {
     }
     const held = lease;
     slot.lease = held;
+    // Account deletion must be able to see, stop and wait for this run.
+    let finishWork: (() => void) | null | undefined;
+    try {
+      finishWork = this.opts.trackRun?.(() => {
+        slot.stop = "cancelled";
+        slot.controller.abort();
+      });
+    } catch {
+      finishWork = undefined;
+    }
+    if (finishWork === null) {
+      await held.release().catch(() => {});
+      this.active.delete(taskId);
+      return false;
+    }
     const p = this.current
       .run(slot, () => this.runTask(taskId, slot))
       .catch((err) => {
@@ -643,12 +666,18 @@ export class TaskRunner {
           );
           return;
         }
+        if (err instanceof TaskGoneError) {
+          // Deleted (or its whole home was) while it ran: nothing is put back.
+          this.log(`task ${taskId}: removed while running — stopped`);
+          return;
+        }
         this.log(`task ${taskId} failed outside its run: ${(err as Error).stack ?? String(err)}`);
       })
       .finally(async () => {
         await held.release().catch(() => {});
         this.active.delete(taskId);
         this.inflight.delete(p);
+        finishWork?.();
       });
     this.inflight.add(p);
     return true;
@@ -1133,6 +1162,8 @@ export class TaskRunner {
       await logChain;
       // Lost lease: not an outcome of the run at all. Nothing is recorded.
       if (err instanceof LeaseLost || slot.leaseLost) throw new LeaseLost();
+      // The task was deleted under the run: there is nowhere to record anything.
+      if (err instanceof TaskGoneError) throw err;
       const stop = slot.stop ?? (err instanceof TaskStop ? err.stop : null);
       if (stop === "cancelled") return { state: "cancelled", stopReason: "cancelled", summary: "" };
       if (stop) {
@@ -1276,7 +1307,7 @@ export class TaskRunner {
       );
       await drainOutbox(this.deliver(), this.now());
     } catch (err) {
-      if (err instanceof LeaseLost) throw err;
+      if (err instanceof LeaseLost || err instanceof TaskGoneError) throw err;
       // The notice is durable (or will be re-derived); delivery is retried at the next tick.
       this.log(`delivery of ${run.id} deferred: ${(err as Error).message}`);
     }

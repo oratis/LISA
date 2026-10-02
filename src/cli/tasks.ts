@@ -21,7 +21,8 @@ import { isCloud } from "../edition.js";
 import { describeMigration, migrateHeartbeatTasks } from "../tasks/heartbeat-migration.js";
 import { disableTask, enableTask } from "../tasks/lifecycle.js";
 import type { TaskRunner } from "../tasks/runner.js";
-import { deleteTask, getTask, listRuns, listTasks, loadRun, updateTask } from "../tasks/store.js";
+import { removeTask } from "../tasks/removal.js";
+import { getTask, listRuns, listTasks, loadRun, updateTask } from "../tasks/store.js";
 import type { Task } from "../tasks/types.js";
 
 const USAGE =
@@ -138,9 +139,12 @@ export async function runTasksCommand(
   if (sub === "rm") {
     const task = await resolve(id, err);
     if (!task) return 2;
-    // A run in flight in another process notices the task is gone at its next checkpoint.
-    await deleteTask(task.id);
+    // A run in flight (here it can only be in another process, e.g. the web
+    // server) is asked to stop and waited for before the files go.
+    const { waited, stillRunning } = await removeTask(task.id, { now });
     out(`removed "${task.title}" (${task.id})`);
+    if (stillRunning) err("(a run was still in flight; it stops at its next step)");
+    else if (waited) err("(waited for its run to stop)");
     return 0;
   }
 

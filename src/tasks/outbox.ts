@@ -31,9 +31,9 @@
  */
 import fsp from "node:fs/promises";
 import path from "node:path";
-import { atomicWrite, pathExists } from "../fs-utils.js";
+import { pathExists } from "../fs-utils.js";
 import { withFileLock } from "../soul/lock.js";
-import { tasksDir } from "./store.js";
+import { TaskGoneError, tasksDir, writeInPlace } from "./store.js";
 import type { TaskDeliver, TaskNotice } from "./types.js";
 
 export type OutboxState = "pending" | "delivering" | "delivered" | "suppressed" | "failed";
@@ -78,11 +78,26 @@ async function readEntry(id: string): Promise<OutboxEntry | null> {
 }
 
 async function writeEntry(entry: OutboxEntry): Promise<void> {
-  await atomicWrite(entryFile(entry.id), JSON.stringify(entry, null, 2));
+  await writeInPlace(entryFile(entry.id), JSON.stringify(entry, null, 2), "the outbox");
 }
 
 function lockFor(id: string): string {
   return path.join(outboxDir(), ".locks", `${id}.lock`);
+}
+
+/**
+ * Make `tasks/outbox/.locks`, one level at a time and only under an existing
+ * tasks directory: the outbox never brings a deleted home back.
+ */
+async function ensureOutbox(): Promise<void> {
+  if (!(await pathExists(tasksDir()))) throw new TaskGoneError("the tasks directory");
+  for (const dir of [outboxDir(), path.join(outboxDir(), ".locks")]) {
+    await fsp.mkdir(dir).catch((e: NodeJS.ErrnoException) => {
+      if (e.code === "EEXIST") return;
+      if (e.code === "ENOENT") throw new TaskGoneError("the tasks directory");
+      throw e;
+    });
+  }
 }
 
 /**
@@ -91,6 +106,7 @@ function lockFor(id: string): string {
  */
 export async function enqueueNotice(notice: TaskNotice, now = Date.now()): Promise<OutboxEntry> {
   const id = notice.id;
+  await ensureOutbox();
   return await withFileLock(lockFor(id), async () => {
     if (await pathExists(entryFile(id))) {
       const existing = await readEntry(id);

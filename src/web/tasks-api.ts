@@ -13,15 +13,8 @@
 import type http from "node:http";
 import { disableTask, enableTask } from "../tasks/lifecycle.js";
 import type { TaskEngineEvent, TaskRunner } from "../tasks/runner.js";
-import {
-  createTask,
-  deleteTask,
-  getTask,
-  listRuns,
-  listTasks,
-  loadRun,
-  updateTask,
-} from "../tasks/store.js";
+import { removeTask } from "../tasks/removal.js";
+import { createTask, getTask, listRuns, listTasks, loadRun, updateTask } from "../tasks/store.js";
 import { isSafeId, type Task, type TaskRun } from "../tasks/types.js";
 import { applyTaskEdit, parseNewTask } from "../tasks/validate.js";
 import { BodyTooLargeError, readCappedText } from "./http-body.js";
@@ -195,9 +188,8 @@ export async function handleTasksApi(
         return true;
       }
       if (method === "DELETE") {
-        // Stop a run in flight first; it notices the missing task at its next checkpoint too.
-        await opts.runner?.cancel(id).catch(() => false);
-        const removed = await deleteTask(id);
+        // A run in flight is cancelled and waited for before the files go.
+        const { removed } = await removeTask(id, { runner: opts.runner, now });
         if (removed) {
           opts.emit?.({ type: "task_deleted", taskId: id });
           json(res, 200, { ok: true });

@@ -11,7 +11,11 @@ import type { TaskNotice } from "./types.js";
 async function withHome<T>(fn: () => Promise<T>): Promise<T> {
   const home = await fsp.mkdtemp(path.join(os.tmpdir(), "lisa-tasks-outbox-"));
   try {
-    return await homeScope.run(home, fn);
+    return await homeScope.run(home, async () => {
+      // A notice only ever exists for a task, so the tasks directory is there.
+      await fsp.mkdir(tasksDir(), { recursive: true });
+      return await fn();
+    });
   } finally {
     await fsp.rm(home, { recursive: true, force: true });
   }

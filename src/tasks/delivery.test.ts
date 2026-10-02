@@ -233,6 +233,7 @@ after(() => {
 beforeEach(() => {
   home = fs.mkdtempSync(path.join(os.tmpdir(), "lisa-task-delivery-"));
   process.env.LISA_HOME = home;
+  fs.mkdirSync(path.join(home, "tasks"));
 });
 afterEach(() => {
   fs.rmSync(home, { recursive: true, force: true });

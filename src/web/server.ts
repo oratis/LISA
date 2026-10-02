@@ -844,8 +844,14 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         lease.release();
       }
     },
-    // Hosted: every model call of a tenant's run goes through billing admission.
-    ...(cloudEdition ? { modelGateFor: (uid: string) => cloudModelGate(uid) } : {}),
+    // Hosted: every model call of a tenant's run goes through billing admission,
+    // and every run is registered as account work so deletion can stop and await it.
+    ...(cloudEdition
+      ? {
+          modelGateFor: (uid: string) => cloudModelGate(uid),
+          trackWork: (uid: string, stop: () => void) => beginAccountWork(uid, stop),
+        }
+      : {}),
     withConversation: async (fn) => {
       const lease = await ctxForRequest();
       const ctx = lease.value;
@@ -2499,6 +2505,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           await fs.rm(userHome, { recursive: true, force: true });
         }
         tenantRuntimes.delete(userHome);
+        await taskHost.forgetTenant(accountUid);
         moodBus.forget(accountUid); // keyed by uid, not home path
         eventClients.removeTenant(accountUid, (sink) => sink.end());
         removed = await deleteAccount(accountUid);

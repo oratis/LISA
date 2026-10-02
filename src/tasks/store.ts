@@ -21,7 +21,8 @@
 import { randomBytes } from "node:crypto";
 import fsp from "node:fs/promises";
 import path from "node:path";
-import { appendLine, atomicWrite, pathExists } from "../fs-utils.js";
+import { randomBytes as randomSuffix } from "node:crypto";
+import { pathExists } from "../fs-utils.js";
 import { lisaHome } from "../paths.js";
 import { withFileLock } from "../soul/lock.js";
 import { validateSchedule } from "./schedule.js";
@@ -186,8 +187,56 @@ async function readTaskFile(id: string): Promise<Task | null> {
   return null;
 }
 
+/**
+ * The task (or the whole home it lived in) is gone. Thrown by every write that
+ * would otherwise have to re-create a directory: a run in flight when its task
+ * or its account is deleted must stop, not put the data back.
+ */
+export class TaskGoneError extends Error {
+  constructor(what: string) {
+    super(`${what} no longer exists`);
+    this.name = "TaskGoneError";
+  }
+}
+
+function gone(e: unknown, what: string): never {
+  if ((e as NodeJS.ErrnoException)?.code === "ENOENT") throw new TaskGoneError(what);
+  throw e;
+}
+
+/** mkdir, one level, tolerating "already there". Never recursive. */
+async function mkdirOne(dir: string, what: string): Promise<void> {
+  try {
+    await fsp.mkdir(dir);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "EEXIST") return;
+    gone(e, what);
+  }
+}
+
+/**
+ * Atomic write that never creates a directory. Used for everything except
+ * creating a task: only an explicit create may bring `tasks/` into being.
+ */
+export async function writeInPlace(file: string, content: string, what: string): Promise<void> {
+  const tmp = `${file}.${randomSuffix(6).toString("hex")}.tmp`;
+  try {
+    await fsp.writeFile(tmp, content, "utf8");
+    await fsp.rename(tmp, file);
+  } catch (e) {
+    await fsp.rm(tmp, { force: true }).catch(() => {});
+    gone(e, what);
+  }
+}
+
 async function writeTaskFile(task: Task): Promise<void> {
-  await atomicWrite(taskFile(task.id), JSON.stringify(task, null, 2));
+  await writeInPlace(taskFile(task.id), JSON.stringify(task, null, 2), `task ${task.id}`);
+}
+
+/** Take a task's write lock without the lock helper re-creating a deleted home. */
+async function withTaskLock<T>(id: string, fn: () => Promise<T>): Promise<T> {
+  await mkdirOne(path.dirname(taskLockPath(id)), "the tasks directory");
+  return await withFileLock(taskLockPath(id), fn);
 }
 
 // ── tasks ──
@@ -268,7 +317,9 @@ export async function createTask(input: NewTask, now = Date.now()): Promise<Task
     authFailureCount: 0,
     runs: [],
   };
-  await withFileLock(taskLockPath(id), async () => {
+  // Creating a task is the one operation allowed to bring the directories into being.
+  await fsp.mkdir(path.join(tasksDir(), "runs"), { recursive: true });
+  await withTaskLock(id, async () => {
     // Exclusive create: an id collision (or a replayed migration) must not
     // silently overwrite an existing task. The check and the atomic write are
     // both under the per-id lock, so a reader never sees a half-made file.
@@ -289,7 +340,10 @@ export async function updateTask(
   now = Date.now(),
 ): Promise<Task | null> {
   if (!isSafeId(id)) return null;
-  return await withFileLock(taskLockPath(id), async () => {
+  // Checked before the lock: a deleted task (or home) is not locked, and so
+  // nothing is created for it.
+  if (!(await pathExists(taskFile(id)))) return null;
+  return await withTaskLock(id, async () => {
     const current = await readTaskFile(id);
     if (!current) return null;
     const result = mutate(current);
@@ -306,7 +360,8 @@ export async function updateTask(
 /** Remove a task and its run logs. True when the task existed. */
 export async function deleteTask(id: string): Promise<boolean> {
   if (!isSafeId(id)) return false;
-  return await withFileLock(taskLockPath(id), async () => {
+  if (!(await pathExists(taskFile(id)))) return false;
+  return await withTaskLock(id, async () => {
     try {
       await fsp.unlink(taskFile(id));
     } catch (e) {
@@ -342,7 +397,15 @@ export interface LoadedRun {
 
 async function appendRecord(taskId: string, runId: string, rec: RunRecord): Promise<void> {
   if (!isSafeId(taskId) || !isSafeId(runId)) throw new Error("invalid task/run id");
-  await appendLine(runFile(taskId, runId), JSON.stringify(rec));
+  // Each record is written as "\n<json>\n". The leading newline terminates a
+  // torn tail left by a crash mid-append, so the record that follows it is
+  // never glued onto the fragment and lost with it (readers skip blank lines).
+  // No mkdir: if the run's directory is gone, so is the task.
+  try {
+    await fsp.appendFile(runFile(taskId, runId), `\n${JSON.stringify(rec)}\n`, "utf8");
+  } catch (e) {
+    gone(e, `task ${taskId}`);
+  }
 }
 
 /** Start a run: write its first checkpoint and link it from the task. */
@@ -362,6 +425,10 @@ export async function createRun(
     executedDigests: {},
     ...(init.input !== undefined ? { input: init.input } : {}),
   };
+  // The run's directory is made only for a task that exists, one level at a time.
+  if (!(await pathExists(taskFile(taskId)))) throw new TaskGoneError(`task ${taskId}`);
+  await mkdirOne(path.join(tasksDir(), "runs"), "the tasks directory");
+  await mkdirOne(runsDir(taskId), `task ${taskId}`);
   await appendRecord(taskId, run.id, { t: "run", at: now, run });
   let dropped: string[] = [];
   await updateTask(

@@ -46,6 +46,7 @@ const { enqueueNotice, listOutbox } = await import("../tasks/outbox.js");
 const { getTask, listTasks } = await import("../tasks/store.js");
 const { heartbeatTaskId } = await import("../tasks/heartbeat-migration.js");
 const NOTICE_ID = "r_0123456789abcdef-task-result";
+fs.mkdirSync(path.join(TMP, "tasks"));
 await enqueueNotice({
   id: NOTICE_ID,
   uid: null,

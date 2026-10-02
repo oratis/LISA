@@ -53,6 +53,11 @@ export interface TaskHostOptions {
   pushSink?: PushSink;
   /** Keep a delivered note as the current tenant's "latest note" (the island's unread state). */
   rememberNote?: (note: { text: string; at: string }) => void | Promise<void>;
+  /**
+   * Hosted edition: the server's account-work registry (the one account
+   * deletion stops and waits on). Every tenant run registers through it.
+   */
+  trackWork?: (uid: string, stop: () => void) => (() => void) | null;
   /** Hosted edition: billing admission for the tenant's model calls. Required to run cloud tasks. */
   modelGateFor?: (uid: string) => ModelGate;
   checkWatch?: WatchCheck;
@@ -73,6 +78,8 @@ export interface TaskHost {
   ): Promise<boolean>;
   /** The runner for a tenant (null uid = the Mac edition's single user). */
   runnerFor(uid: string | null): TaskRunner | null;
+  /** Account deletion: stop the tenant's runs and drop its runner. Resolves when they have ended. */
+  forgetTenant(uid: string): Promise<void>;
   stop(): Promise<void>;
 }
 
@@ -111,6 +118,9 @@ export function createTaskHost(opts: TaskHostOptions): TaskHost {
       ...(opts.checkWatch ? { checkWatch: opts.checkWatch } : {}),
       ...(opts.log ? { log: opts.log } : {}),
       ...(uid && opts.modelGateFor ? { modelGate: opts.modelGateFor(uid) } : {}),
+      ...(uid && opts.trackWork
+        ? { trackRun: (stop: () => void) => opts.trackWork!(uid, stop) }
+        : {}),
     });
 
   let local: TaskRunner | null = null;
@@ -166,6 +176,12 @@ export function createTaskHost(opts: TaskHostOptions): TaskHost {
       });
     },
     runnerFor,
+    forgetTenant: async (uid) => {
+      const runner = tenants.get(uid);
+      if (!runner) return;
+      tenants.delete(uid);
+      await runner.stop();
+    },
     stop: async () => {
       if (getDefaultTaskDeliver() === cardDeliver) setDefaultTaskDeliver(undefined);
       if (getTaskEventSink() === onEvent) setTaskEventSink(undefined);

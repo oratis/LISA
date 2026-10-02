@@ -325,6 +325,21 @@ export async function acquireLease(
   };
 }
 
+/**
+ * Is some live runner holding this task's lease right now? Read-only: it takes
+ * nothing and steals nothing.
+ */
+export async function taskLeaseHeld(taskId: string, now: number = Date.now()): Promise<boolean> {
+  let read: Read;
+  try {
+    read = await readLease(leasePath(`task-${taskId}`));
+  } catch {
+    return false;
+  }
+  if (read.kind !== "ok") return false;
+  return !(await holderIsGone(read.body, now, psStartedAt));
+}
+
 /** The lease that serialises runs of one task. */
 export function acquireTaskLease(
   taskId: string,
