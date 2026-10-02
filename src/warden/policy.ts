@@ -246,7 +246,9 @@ export function evaluate(req: ActionRequest, ctx: PolicyContext): PolicyResult {
     });
   }
 
-  let behavior = defaultBehavior(req);
+  // The untainted default, so that when taint is what forces the ask, the
+  // floor below — not a generic default — is recorded as the reason.
+  let behavior = defaultBehavior({ ...req, tainted: false });
   let ruleId = `default:${req.category}`;
   const user = ruleFor(ctx.rules, req);
   if (user) {

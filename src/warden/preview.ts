@@ -58,8 +58,14 @@ const SECRET_PATTERNS: RegExp[] = [
   /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g,
   /\b(?:Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{12,}/gi,
   /\b(?:password|passwd|pwd|secret|token|api[_-]?key|apikey|access[_-]?key|auth|otp|passcode|verification[_ -]?code)\b\s*[=:]\s*("[^"]*"|'[^']*'|[^\s"'&;,]+)/gi,
-  /\b[A-Fa-f0-9]{40,}\b/g,
 ];
+
+/**
+ * Masked in previews but NOT counted as a detected secret: long hex is usually
+ * a commit SHA or a digest, and flagging it would make every fetch of a commit
+ * URL ask.
+ */
+const REDACT_ONLY_PATTERNS: RegExp[] = [/\b[A-Fa-f0-9]{40,}\b/g];
 
 const EMAIL_RE = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/;
 const PHONE_RE = /(?<![\w.-])\+?\d[\d\s().-]{7,}\d(?![\w-])/g;
@@ -69,7 +75,7 @@ const IBAN_RE = /\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b/;
 /** Mask secret-shaped substrings. */
 export function redactSecrets(text: string): string {
   let out = text;
-  for (const re of SECRET_PATTERNS) {
+  for (const re of [...SECRET_PATTERNS, ...REDACT_ONLY_PATTERNS]) {
     re.lastIndex = 0;
     out = out.replace(re, "[REDACTED]");
   }
