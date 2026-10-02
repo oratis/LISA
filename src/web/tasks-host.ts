@@ -105,6 +105,9 @@ export function createTaskHost(opts: TaskHostOptions): TaskHost {
   // Hosted: one runner per tenant, kept while the process lives so cancel can
   // reach a run started by an earlier request or sweep.
   const tenants = new Map<string, TaskRunner>();
+  // Bounded (INVARIANTS 身份 2): past the cap, the longest-idle runner with
+  // nothing in flight is dropped. A runner holds no state that is not on disk.
+  const MAX_TENANT_RUNNERS = 256;
   const runnerFor = (uid: string | null): TaskRunner | null => {
     if (!opts.cloud) return local;
     // No admission wired ⇒ no cloud runs. Never an unmetered model call.
@@ -112,10 +115,20 @@ export function createTaskHost(opts: TaskHostOptions): TaskHost {
     // A runner only ever works inside its tenant's home scope.
     if (scopedUid() !== uid) return null;
     let runner = tenants.get(uid);
-    if (!runner) {
+    if (runner) {
+      tenants.delete(uid); // re-insert: Map order doubles as recency
+    } else {
       runner = make(uid);
-      tenants.set(uid, runner);
+      if (tenants.size >= MAX_TENANT_RUNNERS) {
+        for (const [other, idle] of tenants) {
+          if (idle.activeCount === 0) {
+            tenants.delete(other);
+            break;
+          }
+        }
+      }
     }
+    tenants.set(uid, runner);
     return runner;
   };
 

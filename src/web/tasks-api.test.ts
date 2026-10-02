@@ -106,7 +106,10 @@ async function api(
 ): Promise<{ status: number; body: any }> {
   const res = await fetch(`${origin}${pathname}`, {
     method,
-    headers: { ...headers, ...(body !== undefined ? { "content-type": "application/json" } : {}) },
+    headers: {
+      ...(method === "POST" || method === "PATCH" ? { "content-type": "application/json" } : {}),
+      ...headers,
+    },
     body: body === undefined ? undefined : typeof body === "string" ? body : JSON.stringify(body),
   });
   const textBody = await res.text();
@@ -280,6 +283,28 @@ describe("tasks API — validation and limits", () => {
     }
     assert.deepEqual((await api("GET", `/api/tasks/${id}`)).body.task, body.task);
     assert.equal((await api("PATCH", "/api/tasks/t_doesnotexist", { title: "x" })).status, 404);
+    await api("DELETE", `/api/tasks/${id}`);
+  });
+
+  test("state-changing requests must be application/json (CSRF guard), body or not", async () => {
+    const { body } = await api("POST", "/api/tasks", routine);
+    const id = body.task.id as string;
+    for (const type of ["text/plain", "application/x-www-form-urlencoded", ""]) {
+      const headers = { ...MAC, "content-type": type };
+      for (const [method, pathname, payload] of [
+        ["POST", "/api/tasks", JSON.stringify({ ...routine, enabled: true })],
+        ["PATCH", `/api/tasks/${id}`, JSON.stringify({ enabled: true })],
+        ["POST", `/api/tasks/${id}/run`, undefined],
+        ["POST", `/api/tasks/${id}/cancel`, undefined],
+      ] as const) {
+        const res = await api(method, pathname, payload, headers);
+        assert.equal(res.status, 415, `${method} ${pathname} as "${type}"`);
+        assert.deepEqual(res.body, { error: "unsupported_media_type" });
+      }
+    }
+    const after = (await api("GET", `/api/tasks/${id}`)).body.task;
+    assert.equal(after.enabled, false);
+    assert.deepEqual(after.runs, []);
     await api("DELETE", `/api/tasks/${id}`);
   });
 

@@ -93,6 +93,20 @@ export async function handleTasksApi(
   const now = opts.now ?? Date.now;
   const ctx = { cloud: opts.cloud };
   const method = req.method ?? "GET";
+
+  // CSRF guard, same rule as the server's readJsonBody: a cross-site page can
+  // only send a "simple" POST (text/plain, form-encoded) without a preflight
+  // this server never answers. Requiring application/json on every
+  // state-changing POST/PATCH — including the body-less run / cancel — keeps a
+  // web page the Mac owner happens to open from creating or starting a task on
+  // the loopback API. (DELETE is never a simple request.)
+  if (method === "POST" || method === "PATCH") {
+    const ctype = String(req.headers["content-type"] ?? "").toLowerCase();
+    if (!ctype.includes("application/json")) {
+      json(res, 415, { error: "unsupported_media_type" });
+      return true;
+    }
+  }
   const parts = pathname.split("/").slice(3); // after /api/tasks
   const [id, sub, runId, extra] = parts;
 

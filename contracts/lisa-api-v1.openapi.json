@@ -339,8 +339,12 @@
           },
           "413": {
             "$ref": "#/components/responses/Error"
+          },
+          "415": {
+            "$ref": "#/components/responses/Error"
           }
-        }
+        },
+        "description": "Requires Content-Type: application/json, also when the body is empty."
       }
     },
     "/api/tasks/{id}": {
@@ -429,8 +433,12 @@
           },
           "413": {
             "$ref": "#/components/responses/Error"
+          },
+          "415": {
+            "$ref": "#/components/responses/Error"
           }
-        }
+        },
+        "description": "Requires Content-Type: application/json, also when the body is empty."
       },
       "delete": {
         "operationId": "deleteTask",
@@ -507,10 +515,14 @@
           "409": {
             "$ref": "#/components/responses/Error"
           },
+          "415": {
+            "$ref": "#/components/responses/Error"
+          },
           "503": {
             "$ref": "#/components/responses/Error"
           }
-        }
+        },
+        "description": "Requires Content-Type: application/json, also when the body is empty."
       }
     },
     "/api/tasks/{id}/cancel": {
@@ -547,8 +559,12 @@
           },
           "404": {
             "$ref": "#/components/responses/Error"
+          },
+          "415": {
+            "$ref": "#/components/responses/Error"
           }
-        }
+        },
+        "description": "Requires Content-Type: application/json, also when the body is empty."
       }
     },
     "/api/tasks/{id}/runs": {
