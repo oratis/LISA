@@ -792,4 +792,5 @@
 
 | PR | 内容 | 状态 |
 |---|---|---|
-| 本 PR | 竞品调研、升级方案、附录备忘 | 提交中 |
+| [#400](https://github.com/oratis/LISA/pull/400) | 竞品调研、升级方案、附录备忘 | 已合并（2026-10-02） |
+| 决策文档 PR | Reach-out 章程、威胁模型 v0、AUTONOMY / ROADMAP / IDENTITY 决策改写、官网 iOS 文案更正 | 提交中 |
