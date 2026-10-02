@@ -86,6 +86,7 @@ async function boot(opts: {
   approval: "warden" | "auto" | "default";
   tool: ToolDefinition;
   provider: Provider;
+  env?: Record<string, string>;
 }): Promise<Booted> {
   const policy = buildRuntimePolicy(
     {
@@ -97,7 +98,7 @@ async function boot(opts: {
       approval: opts.approval === "default" ? "auto" : opts.approval,
       approvalExplicit: opts.approval !== "default",
     },
-    { LISA_EDITION: "mac" },
+    { LISA_EDITION: "mac", ...(opts.env ?? {}) },
   );
   const server = await startWebServer({
     port: 0,
@@ -210,36 +211,31 @@ after(() => {
 });
 
 describe("web chat under approval mode warden", () => {
-  test("serve --web defaults to warden; an explicit --approval wins; the CLI stays auto", () => {
-    const args = { reflect: true, thinking: false, compaction: false, approval: "auto" as const };
-    const web = { ...args, subcommand: "serve", serveWeb: true };
-    assert.equal(
-      buildRuntimePolicy({ ...web, approvalExplicit: false }, { LISA_EDITION: "mac" }).approval,
-      "warden",
-    );
-    assert.equal(
-      buildRuntimePolicy({ ...web, approvalExplicit: false }, { LISA_EDITION: "cloud" }).approval,
-      "warden",
-    );
-    assert.equal(
-      buildRuntimePolicy({ ...web, approvalExplicit: true }, { LISA_EDITION: "mac" }).approval,
-      "auto",
-    );
-    assert.equal(
-      buildRuntimePolicy({ ...web }, { LISA_EDITION: "mac" }).approval,
-      "auto",
-      "hand-built policies are unchanged",
-    );
-    assert.equal(
-      buildRuntimePolicy({ ...args, approvalExplicit: false }, { LISA_EDITION: "mac" }).approval,
-      "auto",
-    );
+  test("Warden is opt-in: with no flag a side-effecting call runs ungated, as before", async () => {
+    const calls: unknown[] = [];
+    const srv = await boot({
+      approval: "default",
+      tool: recordingTool("deploy_widget", calls),
+      provider: scriptedProvider("deploy_widget", {}),
+    });
+    try {
+      const chat = sse(srv.port, "POST", "/chat", { message: "ship it" });
+      const end = await chat.waitFor((e) => e.type === "tool_end");
+      assert.equal(end.isError, false);
+      await chat.done;
+      assert.equal(calls.length, 1);
+      assert.deepEqual((await api(srv.port, "GET", "/api/approvals")).body.approvals, []);
+    } finally {
+      await srv.close();
+    }
   });
 
   test("a side-effecting call waits on the inbox and proceeds on approve", async () => {
     const calls: unknown[] = [];
+    // Opted in through the environment, the way an app-launched backend would.
     const srv = await boot({
       approval: "default",
+      env: { LISA_APPROVAL: "warden" },
       tool: recordingTool("deploy_widget", calls),
       provider: scriptedProvider("deploy_widget", {
         target: "prod",

@@ -13,7 +13,7 @@ export interface ParsedArgs {
   compaction: boolean;
   model: string;
   approval: ApprovalMode;
-  /** True when --approval was passed; false lets `serve --web` default to warden. */
+  /** True when --approval was passed; otherwise `serve --web` also honours LISA_APPROVAL. */
   approvalExplicit: boolean;
   loadMcp: boolean;
   loadPlugins: boolean;

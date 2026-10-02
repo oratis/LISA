@@ -178,9 +178,10 @@ FLAGS
   --think               Enable adaptive thinking each turn.
   --no-reflect          Skip end-of-session reflection.
   --compact             Enable Anthropic context compaction beta.
-  --approval <mode>     auto | ask | ask-mutating | warden  (default: auto;
-                        serve --web defaults to warden: side effects are decided
-                        by policy and "ask" waits in the approval inbox)
+  --approval <mode>     auto | ask | ask-mutating | warden  (default: auto)
+                        warden (serve --web only): side effects are decided by
+                        policy and "ask" waits in the approval inbox. Also set
+                        by LISA_APPROVAL=warden when the flag is absent.
   --no-mcp              Skip loading MCP servers.
   --no-plugins          Skip loading plugins.
   --voice               Enable speak/transcribe tools.
@@ -670,7 +671,7 @@ async function main(): Promise<void> {
         thinking: args.thinking,
         compaction: args.compaction,
         approval: args.approval,
-        // No --approval ⇒ the web surface runs under Warden (W2a).
+        // No --approval ⇒ LISA_APPROVAL may pick the mode; else legacy auto.
         approvalExplicit: args.approvalExplicit,
       });
       logInfo(`[runtime] ${describeRuntimePolicy(policy)}`);

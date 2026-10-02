@@ -148,7 +148,7 @@ describe("isVerboseArgv", () => {
 });
 
 describe("parseArgs — approval mode", () => {
-  test("no flag: auto, not explicit (so serve --web can default to warden)", () => {
+  test("no flag: auto, and recorded as not explicit (so LISA_APPROVAL may apply)", () => {
     const a = parseArgs(["serve", "--web"]);
     assert.equal(a.approval, "auto");
     assert.equal(a.approvalExplicit, false);

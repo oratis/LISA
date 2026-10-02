@@ -158,31 +158,58 @@ describe("non-interactive approval callback", () => {
   });
 });
 
-describe("approval mode warden (W2a)", () => {
+describe("approval mode warden (W2a) is opt-in", () => {
   const WEB = { ...ARGS, subcommand: "serve", serveWeb: true };
 
-  test("serve --web with no --approval defaults to warden on both web surfaces", () => {
-    assert.equal(buildRuntimePolicy({ ...WEB, approvalExplicit: false }, MAC).approval, "warden");
-    assert.equal(buildRuntimePolicy({ ...WEB, approvalExplicit: false }, CLOUD).approval, "warden");
-  });
-
-  test("an explicit --approval always wins, including --approval auto", () => {
-    for (const approval of ["auto", "ask", "ask-mutating", "warden"] as const) {
-      const p = buildRuntimePolicy({ ...WEB, approval, approvalExplicit: true }, MAC);
-      assert.equal(p.approval, approval);
-    }
-  });
-
-  test("the CLI surface and hand-built policies keep their mode", () => {
+  test("no flag means the legacy auto on every surface", () => {
+    assert.equal(buildRuntimePolicy({ ...WEB, approvalExplicit: false }, MAC).approval, "auto");
+    assert.equal(buildRuntimePolicy({ ...WEB, approvalExplicit: false }, CLOUD).approval, "auto");
     assert.equal(buildRuntimePolicy({ ...ARGS, approvalExplicit: false }, MAC).approval, "auto");
     assert.equal(buildRuntimePolicy({ ...WEB }, MAC).approval, "auto");
   });
 
-  test("the startup banner names the mode", () => {
-    const line = describeRuntimePolicy(
-      buildRuntimePolicy({ ...WEB, approvalExplicit: false }, MAC),
+  test("--approval warden turns it on; an explicit flag always wins", () => {
+    for (const approval of ["auto", "ask", "ask-mutating", "warden"] as const) {
+      const p = buildRuntimePolicy({ ...WEB, approval, approvalExplicit: true }, MAC);
+      assert.equal(p.approval, approval);
+    }
+    const p = buildRuntimePolicy(
+      { ...WEB, approval: "auto", approvalExplicit: true },
+      { ...MAC, LISA_APPROVAL: "warden" },
     );
-    assert.match(line, /approval=warden/);
+    assert.equal(p.approval, "auto", "the flag beats the environment");
+  });
+
+  test("LISA_APPROVAL=warden opts an app-launched web backend in", () => {
+    for (const env of [MAC, CLOUD]) {
+      const p = buildRuntimePolicy(
+        { ...WEB, approvalExplicit: false },
+        { ...env, LISA_APPROVAL: "warden" },
+      );
+      assert.equal(p.approval, "warden");
+    }
+    // …but never changes the terminal REPL.
+    assert.equal(
+      buildRuntimePolicy({ ...ARGS, approvalExplicit: false }, { ...MAC, LISA_APPROVAL: "warden" })
+        .approval,
+      "auto",
+    );
+  });
+
+  test("an unknown LISA_APPROVAL is an error, not a silent auto", () => {
+    assert.throws(
+      () => buildRuntimePolicy({ ...WEB, approvalExplicit: false }, { ...MAC, LISA_APPROVAL: "on" }),
+      /bad LISA_APPROVAL/,
+    );
+  });
+
+  test("the startup banner names the mode", () => {
+    const off = describeRuntimePolicy(buildRuntimePolicy({ ...WEB, approvalExplicit: false }, MAC));
+    assert.match(off, /approval=auto/);
+    const on = describeRuntimePolicy(
+      buildRuntimePolicy({ ...WEB, approval: "warden", approvalExplicit: true }, MAC),
+    );
+    assert.match(on, /approval=warden/);
   });
 
   test("without a Warden session the non-interactive fallback denies what mutates", async () => {

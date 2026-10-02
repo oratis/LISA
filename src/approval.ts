@@ -3,8 +3,8 @@ import type { ApprovalCallback, ApprovalDecision } from "./agent.js";
 
 /**
  * `warden` — every tool call is decided by the deterministic Warden policy
- * (src/warden/) and "ask" waits on the approval inbox. It is a web-surface
- * mode: the server builds a Warden session per turn. The terminal REPL has no
+ * (src/warden/) and "ask" waits on the approval inbox. It is an OPT-IN
+ * web-surface mode: the server builds a Warden session per turn. The terminal REPL has no
  * inbox client, so there it degrades to the stricter-or-equal `ask-mutating`
  * stdin prompt.
  */

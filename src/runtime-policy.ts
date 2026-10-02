@@ -22,7 +22,12 @@
  * profile applies; it never becomes the only thing standing between a cloud
  * user and a host tool.
  */
-import { type ApprovalMode, type ApprovalConfig, isMutatingCall } from "./approval.js";
+import {
+  APPROVAL_MODES,
+  type ApprovalMode,
+  type ApprovalConfig,
+  isMutatingCall,
+} from "./approval.js";
 import type { ApprovalCallback } from "./agent.js";
 import { edition } from "./edition.js";
 import { resolveSandboxMode, type SandboxMode } from "./sandbox/mode.js";
@@ -60,9 +65,8 @@ export interface RuntimePolicyArgs {
   compaction: boolean;
   approval: ApprovalMode;
   /**
-   * Whether `--approval` was given. Pass `false` to let the surface pick its
-   * default: the web surfaces (local-web, cloud) then run under `warden`.
-   * Omitted ⇒ `approval` is used as-is (callers that build a policy by hand).
+   * Whether `--approval` was given on the command line. When it was not, the
+   * web surfaces also honour `LISA_APPROVAL`.
    */
   approvalExplicit?: boolean;
   /** Explicit --sandbox, if the surface has one. */
@@ -88,13 +92,26 @@ function reflectionFor(surface: RuntimeSurface, args: RuntimePolicyArgs): Reflec
 
 /**
  * The approval mode for a surface. An explicit `--approval` always wins. With
- * no flag, the web surfaces default to `warden` (PLAN_ALWAYS_ON_UPGRADE W2a):
- * side effects are decided by policy and "ask" waits on the approval inbox.
- * The attended CLI keeps its historical `auto`.
+ * no flag the mode is the legacy `auto` on every surface — Warden is OPT-IN
+ * (`--approval warden`), because only the web client can answer an approval
+ * today and a native client would park a turn until it expired.
+ *
+ * `LISA_APPROVAL` is the env form of the flag for the web surfaces, so a
+ * backend launched by an app that cannot edit the command line can opt in. A
+ * value that is not a known mode is an error, never a silent `auto`.
  */
-function approvalFor(surface: RuntimeSurface, args: RuntimePolicyArgs): ApprovalMode {
-  if (args.approvalExplicit === false && surface !== "cli") return "warden";
-  return args.approval;
+function approvalFor(
+  surface: RuntimeSurface,
+  args: RuntimePolicyArgs,
+  env: NodeJS.ProcessEnv,
+): ApprovalMode {
+  if (args.approvalExplicit === true || surface === "cli") return args.approval;
+  const named = env.LISA_APPROVAL?.trim();
+  if (!named) return args.approval;
+  if (!(APPROVAL_MODES as readonly string[]).includes(named)) {
+    throw new Error(`bad LISA_APPROVAL "${named}" — expected one of ${APPROVAL_MODES.join(" | ")}`);
+  }
+  return named as ApprovalMode;
 }
 
 /**
@@ -111,7 +128,7 @@ export function buildRuntimePolicy(
     surface,
     reflection: reflectionFor(surface, args),
     compaction: args.compaction,
-    approval: approvalFor(surface, args),
+    approval: approvalFor(surface, args, env),
     thinking: args.thinking,
     capabilities: capabilityProfileForEdition(ed),
     sandboxMode: resolveSandboxMode(args.sandbox),
