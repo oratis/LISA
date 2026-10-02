@@ -59,10 +59,16 @@ export interface RunAgentOptions {
    */
   onPromptPersist?: (text: string, reason: "initial" | "rebuilt") => Promise<unknown> | unknown;
   approval?: ApprovalCallback;
+  /**
+   * Runs after approval and before execution. `block` refuses the call with an
+   * error result. `cachedResult` answers the call WITHOUT executing the tool —
+   * the Task Engine uses it to replay a side effect that already completed
+   * before an interruption, so a resumed run never repeats it.
+   */
   preToolHook?: (
     name: string,
     input: unknown,
-  ) => Promise<{ block?: string; rewriteResult?: string } | void>;
+  ) => Promise<{ block?: string; rewriteResult?: string; cachedResult?: string } | void>;
   postToolHook?: (
     name: string,
     input: unknown,
@@ -415,6 +421,21 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
             toolName: call.name,
             isError: true,
             toolResult: hook.block,
+          });
+          continue;
+        }
+        if (hook?.cachedResult != null) {
+          // Answered from a recorded result: the tool is NOT executed (and so
+          // postToolHook, which reports executions, is not called either).
+          toolResults.push({
+            type: "tool_result",
+            tool_use_id: call.id,
+            content: hook.cachedResult,
+          });
+          onEvent?.({
+            type: "tool_call_end",
+            toolName: call.name,
+            toolResult: hook.cachedResult.slice(0, 240),
           });
           continue;
         }
