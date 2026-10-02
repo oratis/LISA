@@ -628,8 +628,11 @@ export class TaskRunner {
 
     const remainingMs = budget.wallclockMs - elapsedBefore;
     if (remainingMs <= 0) stopWith("budget_wallclock");
+    // Deliberately NOT unref'd: while a run is in flight this breaker must be
+    // able to fire even if nothing else is keeping the event loop alive (a
+    // provider or tool waiting on a promise with no handle behind it). It is
+    // cleared in the finally below, so it never outlives the run.
     const wallclock = setTimeout(() => stopWith("budget_wallclock"), Math.max(0, remainingMs));
-    wallclock.unref?.();
 
     try {
       const surface =
