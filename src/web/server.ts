@@ -184,6 +184,7 @@ import { VoiceSource } from "../sense/voice.js";
 import { appendSenseEvent, readSenseEvents } from "../sense/log.js";
 import { handleSocialApi } from "./social-api.js";
 import { createWebWarden, handleWardenApi, wardenTrust } from "./warden-api.js";
+import { protectFromSandbox } from "../sandbox/protect.js";
 import { handleReachOutApi } from "./reachout-api.js";
 import {
   advisorNotice,
@@ -4955,6 +4956,9 @@ self.addEventListener('fetch', (event) => {
     const onError = (err: Error) => reject(err);
     server.once("error", onError);
     server.listen(opts.port, host, () => {
+      // A confined shell must not be able to reach the approval API.
+      const bound = server.address();
+      if (bound && typeof bound === "object") protectFromSandbox({ port: bound.port });
       server.off("error", onError);
       resolve();
     });
