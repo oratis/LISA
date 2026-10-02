@@ -26,20 +26,10 @@ function raw(o: Partial<RawMail> = {}): RawMail {
 }
 
 test("importanceSignals detects security codes, finance, urgency, newsletters, automated", () => {
-  assert.ok(
-    importanceSignals(raw({ subject: "Your verification code is 123456" })).includes(
-      "security-code",
-    ),
-  );
-  assert.ok(
-    importanceSignals(raw({ subject: "Invoice #42 due", snippet: "payment" })).includes("finance"),
-  );
-  assert.ok(
-    importanceSignals(raw({ subject: "URGENT: action required" })).includes("urgent-language"),
-  );
-  assert.ok(
-    importanceSignals(raw({ snippet: "click unsubscribe to stop" })).includes("newsletter"),
-  );
+  assert.ok(importanceSignals(raw({ subject: "Your verification code is 123456" })).includes("security-code"));
+  assert.ok(importanceSignals(raw({ subject: "Invoice #42 due", snippet: "payment" })).includes("finance"));
+  assert.ok(importanceSignals(raw({ subject: "URGENT: action required" })).includes("urgent-language"));
+  assert.ok(importanceSignals(raw({ snippet: "click unsubscribe to stop" })).includes("newsletter"));
   assert.ok(importanceSignals(raw({ fromAddress: "no-reply@service.com" })).includes("automated"));
   assert.deepEqual(importanceSignals(raw({ subject: "lunch?", snippet: "wanna grab food" })), []);
 });
@@ -86,11 +76,7 @@ test("parseClassification clamps a malicious importance and rejects an unknown c
 });
 
 test("parseClassification falls back to heuristics on non-JSON output", () => {
-  const items = parseClassification(
-    "the model said something weird",
-    [raw({ subject: "URGENT do this" })],
-    1,
-  );
+  const items = parseClassification("the model said something weird", [raw({ subject: "URGENT do this" })], 1);
   assert.equal(items[0].category, "urgent");
   assert.equal(items[0].importance, 2);
 });
