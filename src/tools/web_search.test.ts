@@ -98,10 +98,10 @@ describe("web_search — ambient egress (local user behind a proxy)", () => {
     const calls: Array<{ url: string; redirect: RequestRedirect | undefined }> = [];
     const tool = createWebSearchTool({
       egress: "ambient",
-      ambientFetch: (async (input: string | URL | Request, init?: RequestInit) => {
+      ambientFetch: async (input: string | URL | Request, init?: RequestInit) => {
         calls.push({ url: String(input), redirect: init?.redirect });
         return page();
-      }) as typeof fetch,
+      },
     });
     const out = await tool.execute({ query: "x" }, ctx());
     assert.deepEqual(calls, [{ url: "https://html.duckduckgo.com/html/?q=x", redirect: "manual" }]);
@@ -117,10 +117,10 @@ describe("web_search — ambient egress (local user behind a proxy)", () => {
       let calls = 0;
       const tool = createWebSearchTool({
         egress: "ambient",
-        ambientFetch: (async () => {
+        ambientFetch: async () => {
           calls++;
           return new Response(null, { status: 302, headers: { location } });
-        }) as typeof fetch,
+        },
       });
       await assert.rejects(() => tool.execute({ query: "x" }, ctx()), pattern);
       assert.equal(calls, 1);
@@ -130,11 +130,11 @@ describe("web_search — ambient egress (local user behind a proxy)", () => {
   test("a redirect loop inside the provider is cut off", async () => {
     const tool = createWebSearchTool({
       egress: "ambient",
-      ambientFetch: (async () =>
+      ambientFetch: async () =>
         new Response(null, {
           status: 302,
           headers: { location: "https://duckduckgo.com/html/" },
-        })) as typeof fetch,
+        }),
     });
     await assert.rejects(() => tool.execute({ query: "x" }, ctx()), /too many redirects/);
   });

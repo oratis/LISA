@@ -82,7 +82,10 @@ describe("assertAllowedUrl", () => {
   });
   test("rejects private hosts", () => {
     assert.throws(() => assertAllowedUrl(new URL("http://127.0.0.1:8000/")), /private/);
-    assert.throws(() => assertAllowedUrl(new URL("http://169.254.169.254/latest/meta-data/")), /private/);
+    assert.throws(
+      () => assertAllowedUrl(new URL("http://169.254.169.254/latest/meta-data/")),
+      /private/,
+    );
   });
   test("strips IPv6 brackets before checking", () => {
     assert.throws(() => assertAllowedUrl(new URL("http://[::1]:9000/")), /private/);
@@ -98,9 +101,7 @@ describe("assertAllowedUrl", () => {
   });
 });
 
-const publicLookup: DnsLookupAll = async () => [
-  { address: "93.184.216.34", family: 4 },
-];
+const publicLookup: DnsLookupAll = async () => [{ address: "93.184.216.34", family: 4 }];
 
 function stubTransport(
   handler: (url: string, init: RequestInit, pinned: ResolvedAddress) => Response,
@@ -166,12 +167,7 @@ describe("fetchFollowingSafeRedirects — closes the SSRF redirect bypass", () =
     );
     await assert.rejects(
       () =>
-        fetchFollowingSafeRedirects(
-          "https://evil.example.com/start",
-          undefined,
-          undefined,
-          deps,
-        ),
+        fetchFollowingSafeRedirects("https://evil.example.com/start", undefined, undefined, deps),
       /private\/loopback/,
     );
   });
@@ -186,13 +182,7 @@ describe("fetchFollowingSafeRedirects — closes the SSRF redirect bypass", () =
         : new Response("creds", { status: 200 }),
     );
     await assert.rejects(
-      () =>
-        fetchFollowingSafeRedirects(
-          "https://evil.example.com/",
-          undefined,
-          undefined,
-          deps,
-        ),
+      () => fetchFollowingSafeRedirects("https://evil.example.com/", undefined, undefined, deps),
       /private\/loopback/,
     );
   });
@@ -217,19 +207,12 @@ describe("fetchFollowingSafeRedirects — closes the SSRF redirect bypass", () =
 
   test("pins the transport to the address returned by the validated lookup", async () => {
     let observed: ResolvedAddress | undefined;
-    const lookup: DnsLookupAll = async () => [
-      { address: "2606:4700:4700::1111", family: 6 },
-    ];
+    const lookup: DnsLookupAll = async () => [{ address: "2606:4700:4700::1111", family: 6 }];
     const deps = dependencies((_url, _init, pinned) => {
       observed = pinned;
       return new Response("ok");
     }, lookup);
-    await fetchFollowingSafeRedirects(
-      "https://public.example/",
-      undefined,
-      undefined,
-      deps,
-    );
+    await fetchFollowingSafeRedirects("https://public.example/", undefined, undefined, deps);
     assert.deepEqual(observed, {
       address: "2606:4700:4700::1111",
       family: 6,
@@ -253,13 +236,7 @@ describe("fetchFollowingSafeRedirects — closes the SSRF redirect bypass", () =
       });
     }, lookup);
     await assert.rejects(
-      () =>
-        fetchFollowingSafeRedirects(
-          "https://first.example/",
-          undefined,
-          undefined,
-          deps,
-        ),
+      () => fetchFollowingSafeRedirects("https://first.example/", undefined, undefined, deps),
       /blocked address 10\.0\.0\.2/,
     );
     assert.equal(transportCalls, 1);
@@ -297,13 +274,7 @@ describe("fetchFollowingSafeRedirects — closes the SSRF redirect bypass", () =
       });
     });
     await assert.rejects(
-      () =>
-        fetchFollowingSafeRedirects(
-          "https://x.example.com/?n=0",
-          undefined,
-          undefined,
-          deps,
-        ),
+      () => fetchFollowingSafeRedirects("https://x.example.com/?n=0", undefined, undefined, deps),
       /too many redirects/,
     );
   });
@@ -325,10 +296,7 @@ test("renderFetchedResponse fences response as untrusted external content", asyn
 });
 
 test("response bodies are cancelled at the raw byte cap before rendering", async () => {
-  const raw = await readResponseTextCapped(
-    new Response("x".repeat(10_000)),
-    1_001,
-  );
+  const raw = await readResponseTextCapped(new Response("x".repeat(10_000)), 1_001);
   assert.equal(Buffer.byteLength(raw.text, "utf8"), 1_001);
   assert.equal(raw.truncated, true);
 });
