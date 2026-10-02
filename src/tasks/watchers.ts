@@ -20,13 +20,16 @@
  *   - What comes back is data. Hit text is clipped, and when a task runs its
  *     instruction on a hit the runner frames it as an untrusted observation.
  *   - Mail hits carry sender and subject only — never a body, not even the
- *     snippet the mail module keeps.
+ *     snippet the mail module keeps — and both pass through the mail inbound
+ *     hygiene filter (warden/hygiene-mail.ts) first, so a one-time code or a
+ *     sign-in link in a subject line never reaches a notice or a model.
  */
 import { createHash } from "node:crypto";
 import vm from "node:vm";
 import { isGranted } from "../consent/store.js";
 import { parseFeed } from "../kb/feeds/rss.js";
 import type { MailConnector } from "../mail/types.js";
+import { sanitizeMailBatch, sanitizeMailFields } from "../warden/hygiene-mail.js";
 import {
   fetchFollowingSafeRedirects,
   htmlToText,
@@ -420,8 +423,12 @@ async function defaultListMail(sinceMs: number): Promise<WatchMail[]> {
       }
       // Read-only listing. Deliberately does NOT touch the mail module's own
       // seen-state: a watcher must not swallow that module's alerts.
-      const raws = await connector.listSince({ sinceMs, limit: 200 });
+      const fetched = await connector.listSince({ sinceMs, limit: 200 });
       reached++;
+      // Inbound hygiene (W2b), applied where mail enters — same as the mail
+      // service does. Subject and snippet are read together here because a
+      // one-time code is often announced in one and printed in the other.
+      const raws = sanitizeMailBatch(fetched).mails;
       for (const r of raws) {
         // Metadata only leaves this function — no snippet, no body.
         out.push({
@@ -452,7 +459,14 @@ async function checkMail(
 ): Promise<WatchOutcome> {
   const prev = task.watch;
   const sinceMs = Math.min(prev?.lastCheckedAt ?? now, now) - 24 * 3_600_000;
-  const mails = await (deps.listMail ?? defaultListMail)(sinceMs, signal);
+  const listed = await (deps.listMail ?? defaultListMail)(sinceMs, signal);
+  // Cleaned again here (the filter is idempotent) so that no source of mail —
+  // an injected lister, a future caller — can put a one-time code or a sign-in
+  // link into a notice, the conversation, or a model's context.
+  const mails = listed.map((m) => {
+    const cleaned = sanitizeMailFields({ from: m.from, subject: m.subject, snippet: "" }).mail;
+    return { ...m, from: cleaned.from ?? m.from, subject: cleaned.subject };
+  });
   const from = trigger.from?.toLowerCase();
   const subject = trigger.subject?.toLowerCase();
   const matching = mails.filter(

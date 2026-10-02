@@ -447,6 +447,23 @@ test("mail: baseline first, then new mail matching sender and subject — metada
   assert.equal((await check(watcher(trigger, hit.watch), { signal, now: NOW })).hit, undefined);
 });
 
+test("mail: a one-time code or sign-in link in a subject never reaches the hit", async () => {
+  let inbox: WatchMail[] = [];
+  const check = createWatchCheck({ listMail: async () => inbox });
+  const trigger: TriggerSpec = { kind: "mail", from: "bank" };
+  const base = await check(watcher(trigger), { signal, now: NOW });
+  inbox = [
+    mail("7", "Bank", "Your verification code is 482913"),
+    mail("8", "Bank", "Sign in: https://bank.example.com/login?token=abcdef0123456789abcdef"),
+  ];
+  const hit = await check(watcher(trigger, base.watch), { signal, now: NOW + 60_000 });
+  assert.equal(hit.hit!.summary, "2 new matching messages.");
+  const said = `${hit.hit!.summary}\n${hit.hit!.detail}`;
+  assert.ok(!said.includes("482913"), "the code is gone");
+  assert.ok(!said.includes("abcdef0123456789abcdef"), "the sign-in token is gone");
+  assert.match(said, /Bank/);
+});
+
 test("mail: an unconnected mail module is a failure the user is told about, not a silent no-op", async () => {
   const check = createWatchCheck({
     listMail: async () => {
