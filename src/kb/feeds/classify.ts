@@ -6,7 +6,7 @@
  * model failure degrades to neutral defaults instead of dropping items.
  */
 import { runSubagent } from "../../subagent.js";
-import { DEFAULT_MODEL } from "../../llm.js";
+import { routeBackgroundCall } from "../../model/router.js";
 import { BRIEF_CATEGORIES, type BriefCategory, type BriefImportance } from "./brief.js";
 import type { FeedItem } from "./rss.js";
 
@@ -128,13 +128,16 @@ export async function classifyFeedItems(
   const runModel =
     opts.runModel ??
     (async (prompt: string, system: string) => {
+      // Feed triage is small-model work (W12).
+      const call = routeBackgroundCall("classify", { model: opts.model });
       const res = await runSubagent({
         prompt,
         systemPrompt: system,
         tools: [],
         cwd: process.cwd(),
         signal: opts.signal ?? new AbortController().signal,
-        model: opts.model ?? DEFAULT_MODEL,
+        model: call.model,
+        provider: call.provider,
         budgetTokens: 20_000,
       });
       return { text: res.text, tokens: res.inputTokens + res.outputTokens };

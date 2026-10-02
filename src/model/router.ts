@@ -203,6 +203,42 @@ export function routeModel(purpose: ModelPurpose, ctx: RouteContext = {}): strin
   return resolveRoute(purpose, ctx).model;
 }
 
+export interface BackgroundCall {
+  model: string;
+  /** Set only when the caller pinned one, or the route is a local runtime. */
+  provider?: Provider;
+  /** Null when the caller pinned a provider and no routing was applied. */
+  route: ModelRoute | null;
+}
+
+/**
+ * Model (and, when needed, provider) for a background call site such as mail
+ * or feed classification.
+ *
+ * A caller that injects a provider has already bound it to its own model, so
+ * nothing is rerouted there. Otherwise the strong model is the caller's
+ * `model`, else LISA_MODEL, else the built-in default, and the purpose's tier
+ * decides. For a hosted-API route `provider` is left unset on purpose: the
+ * call site resolves it from the model id exactly as it did before.
+ */
+export function routeBackgroundCall(
+  purpose: ModelPurpose,
+  opts: { model?: string; provider?: Provider; env?: Env } = {},
+): BackgroundCall {
+  if (opts.provider) {
+    return { model: opts.model ?? DEFAULT_MODEL, provider: opts.provider, route: null };
+  }
+  const route = resolveRoute(purpose, {
+    ...(opts.model ? { model: opts.model } : {}),
+    ...(opts.env ? { env: opts.env } : {}),
+  });
+  return {
+    model: route.model,
+    ...(route.local ? { provider: providerForRoute(route) } : {}),
+    route,
+  };
+}
+
 /** The provider that serves a route — a local runtime's endpoint when the route names one. */
 export function providerForRoute(route: ModelRoute): Provider {
   if (route.local) {

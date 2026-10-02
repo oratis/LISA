@@ -9,6 +9,7 @@ import {
   modelFamily,
   providerForRoute,
   resolveRoute,
+  routeBackgroundCall,
   routeModel,
   tierForPurpose,
   type ModelPurpose,
@@ -284,5 +285,66 @@ describe("resolveRoute — hosted edition never routes to a costlier or unpriced
     assert.equal(billingSafeInCloud("claude-opus-4-8", "claude-sonnet-4-6"), false);
     // the same model is trivially safe.
     assert.equal(billingSafeInCloud("gemini-2.5-flash", "gemini-2.5-flash"), true);
+  });
+});
+
+describe("routeBackgroundCall — what a background call site passes to the model", () => {
+  const pinned = {
+    name: "pinned",
+    runTurn: async () => {
+      throw new Error("unused");
+    },
+  };
+
+  test("a caller-pinned provider is never rerouted", () => {
+    const call = routeBackgroundCall("classify", {
+      model: "claude-sonnet-4-6",
+      provider: pinned,
+      env: { ANTHROPIC_API_KEY: "k", LISA_MODEL_SMALL: "gpt-4o-mini", OPENAI_API_KEY: "k" },
+    });
+    assert.equal(call.model, "claude-sonnet-4-6");
+    assert.equal(call.provider, pinned);
+    assert.equal(call.route, null);
+    // With no model either, the previous default is kept.
+    assert.equal(routeBackgroundCall("classify", { provider: pinned }).model, "claude-sonnet-4-6");
+  });
+
+  test("a hosted-API route returns only the model id; the call site resolves the provider", () => {
+    const call = routeBackgroundCall("classify", {
+      model: "claude-sonnet-4-6",
+      env: { ANTHROPIC_API_KEY: "k" },
+    });
+    assert.equal(call.model, "claude-haiku-4-5");
+    assert.equal(call.provider, undefined);
+    assert.equal(call.route?.source, "auto");
+  });
+
+  test("with no model passed, LISA_MODEL is the strong model", () => {
+    const call = routeBackgroundCall("classify", {
+      env: { LISA_MODEL: "gpt-4o", OPENAI_API_KEY: "k" },
+    });
+    assert.equal(call.model, "gpt-4o-mini");
+    const stays = routeBackgroundCall("classify", {
+      env: { LISA_MODEL: "glm-4.6", ZHIPU_API_KEY: "k" },
+    });
+    assert.equal(stays.model, "glm-4.6");
+  });
+
+  test("a local route carries the local runtime's provider", () => {
+    const call = routeBackgroundCall("classify", {
+      model: "claude-sonnet-4-6",
+      env: { LISA_MODEL_SMALL: "local://ollama/llama3.2" },
+    });
+    assert.equal(call.model, "llama3.2");
+    assert.ok(call.provider instanceof OpenAIProvider);
+  });
+
+  test("the hosted production configuration is unchanged", () => {
+    const call = routeBackgroundCall("classify", {
+      model: "gemini-2.5-flash",
+      env: { LISA_EDITION: "cloud", GEMINI_API_KEY: "k" },
+    });
+    assert.equal(call.model, "gemini-2.5-flash");
+    assert.equal(call.provider, undefined);
   });
 });
