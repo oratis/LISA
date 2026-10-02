@@ -42,6 +42,7 @@ function runnerFor(key: string): TaskRunner {
       provider,
       unattendedAllowed: () => true,
       log: () => {},
+      onEvent: (e) => emitted.push(e),
     });
     runners.set(key, runner);
   }
@@ -381,5 +382,116 @@ describe("tasks API — tenancy and the cloud flag", () => {
     const ok = await api("POST", "/api/tasks", { ...routine, schedule: "every:30m" }, alice);
     assert.equal(ok.status, 201);
     assert.ok(ok.body.task.budget.wallclockMs <= 15 * 60_000);
+  });
+});
+
+// ── contract: what the server sends matches contracts/lisa-api-v1.openapi.json ──
+
+interface Schema {
+  $ref?: string;
+  type?: string | string[];
+  const?: unknown;
+  enum?: unknown[];
+  required?: string[];
+  properties?: Record<string, Schema>;
+  items?: Schema;
+  additionalProperties?: boolean;
+}
+const contract = JSON.parse(
+  fs.readFileSync(new URL("../../contracts/lisa-api-v1.openapi.json", import.meta.url), "utf8"),
+) as { paths: Record<string, unknown>; components: { schemas: Record<string, Schema> } };
+
+function violations(input: Schema, value: unknown, at = "$"): string[] {
+  const schema = input.$ref
+    ? contract.components.schemas[input.$ref.replace("#/components/schemas/", "")]
+    : input;
+  if (!schema) return [`${at}: unresolved ${input.$ref}`];
+  const out: string[] = [];
+  if (schema.const !== undefined && value !== schema.const) out.push(`${at} must equal ${String(schema.const)}`);
+  if (schema.enum && !schema.enum.includes(value)) out.push(`${at} not in enum`);
+  const types = Array.isArray(schema.type) ? schema.type : schema.type ? [schema.type] : [];
+  const actual =
+    value === null ? "null" : Array.isArray(value) ? "array" : Number.isInteger(value) ? "integer" : typeof value;
+  if (types.length && !types.includes(actual) && !(actual === "integer" && types.includes("number"))) {
+    return [`${at} expected ${types.join("|")}, got ${actual}`];
+  }
+  if (Array.isArray(value) && schema.items) {
+    value.forEach((item, i) => out.push(...violations(schema.items!, item, `${at}[${i}]`)));
+  }
+  if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+    const record = value as Record<string, unknown>;
+    for (const key of schema.required ?? []) if (!(key in record)) out.push(`${at}.${key} is required`);
+    for (const [key, child] of Object.entries(schema.properties ?? {})) {
+      if (key in record) out.push(...violations(child, record[key], `${at}.${key}`));
+    }
+  }
+  return out;
+}
+const conforms = (name: string, value: unknown) =>
+  assert.deepEqual(violations({ $ref: `#/components/schemas/${name}` }, value), [], name);
+
+describe("tasks API — contract", () => {
+  test("every task route is in the OpenAPI document", () => {
+    for (const route of [
+      "/api/tasks",
+      "/api/tasks/{id}",
+      "/api/tasks/{id}/run",
+      "/api/tasks/{id}/cancel",
+      "/api/tasks/{id}/runs",
+      "/api/tasks/{id}/runs/{runId}",
+    ]) {
+      assert.ok(contract.paths[route], route);
+    }
+  });
+
+  test("responses and SSE events conform to their schemas", async () => {
+    const created = await api("POST", "/api/tasks", {
+      ...routine,
+      envelope: { tools: ["web_fetch"], categories: ["web"] },
+      budget: { tokens: 50_000 },
+    });
+    conforms("TaskResponse", created.body);
+    const id = created.body.task.id as string;
+    conforms("TaskListResponse", (await api("GET", "/api/tasks")).body);
+    conforms("TaskResponse", (await api("PATCH", `/api/tasks/${id}`, { enabled: true })).body);
+
+    emitted.length = 0;
+    const queued = await api("POST", `/api/tasks/${id}/run`);
+    conforms("TaskRunQueuedResponse", queued.body);
+    await runnerFor("mac").drain();
+    const runs = (await api("GET", `/api/tasks/${id}/runs`)).body;
+    conforms("TaskRunListResponse", runs);
+    conforms("TaskRunDetailResponse", (await api("GET", `/api/tasks/${id}/runs/${runs.runs[0].id}`)).body);
+    conforms("TaskCancelResponse", (await api("POST", `/api/tasks/${id}/cancel`)).body);
+    conforms("ErrorResponse", (await api("GET", "/api/tasks/t_doesnotexist")).body);
+    conforms("ErrorResponse", (await api("POST", "/api/tasks", {})).body);
+    conforms("TaskOkResponse", (await api("DELETE", `/api/tasks/${id}`)).body);
+
+    const byType = (type: string) => emitted.find((e) => e.type === type);
+    conforms("TaskUpdatedEvent", byType("task_updated"));
+    conforms("TaskRunStartedEvent", byType("task_run_started"));
+    conforms("TaskRunFinishedEvent", byType("task_run_finished"));
+    conforms("TaskDeletedEvent", byType("task_deleted"));
+  });
+
+  test("a delivered task card conforms to TaskResultEvent", async () => {
+    const { createTaskCardDeliver } = await import("../tasks/delivery.js");
+    const events: unknown[] = [];
+    const deliver = createTaskCardDeliver({
+      withConversation: (fn) => fn({ history: [], append: async () => {} }),
+      broadcast: (e) => events.push(e),
+    });
+    await deliver({
+      id: "r_0123456789abcdef-task-result",
+      uid: null,
+      taskId: "t_0123456789ab",
+      runId: "r_0123456789abcdef",
+      title: "Morning brief",
+      summary: "ok",
+      status: "succeeded",
+      priority: "normal",
+      kind: "task_result",
+    });
+    conforms("TaskResultEvent", events[0]);
   });
 });

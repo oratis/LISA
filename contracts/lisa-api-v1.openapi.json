@@ -275,6 +275,365 @@
           }
         }
       }
+    },
+    "/api/tasks": {
+      "get": {
+        "operationId": "listTasks",
+        "responses": {
+          "200": {
+            "description": "Every task of the signed-in account, oldest first.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskListResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createTask",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The created task. Disabled unless `enabled: true` was sent.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/tasks/{id}": {
+      "get": {
+        "operationId": "getTask",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One task.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateTask",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The task after the edit. `enabled` turns it on or off.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteTask",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The task and its run history were removed.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskOkResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/tasks/{id}/run": {
+      "post": {
+        "operationId": "runTask",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "A run was queued (a test run when the task is disabled).",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskRunQueuedResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/tasks/{id}/cancel": {
+      "post": {
+        "operationId": "cancelTask",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Whether a run or a queued start was cancelled.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskCancelResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/tasks/{id}/runs": {
+      "get": {
+        "operationId": "listTaskRuns",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The task's runs, newest first.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskRunListResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/tasks/{id}/runs/{runId}": {
+      "get": {
+        "operationId": "getTaskRun",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "runId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One run and its activity trail.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskRunDetailResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -677,7 +1036,7 @@
           }
         },
         "additionalProperties": true,
-        "description": "Open event envelope. Clients must ignore unknown types and additive fields; known v1 types include agent_session_update, claude_session_update, mood, chat_start, chat_delta, chat_end, idle_message, advisor_suggestions, screen_suggestion, sense_event, reflect_done and error."
+        "description": "Open event envelope. Clients must ignore unknown types and additive fields; known v1 types include agent_session_update, claude_session_update, mood, chat_start, chat_delta, chat_end, idle_message, advisor_suggestions, screen_suggestion, sense_event, reflect_done, task_updated, task_deleted, task_run_started, task_run_finished, task_result and error."
       },
       "LisaSession": {
         "type": "object",
@@ -742,6 +1101,757 @@
           },
           "id": {
             "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "TaskSchedule": {
+        "type": "object",
+        "required": [
+          "expr"
+        ],
+        "properties": {
+          "expr": {
+            "type": "string",
+            "description": "at:<ISO-8601> | every:<n>(m|h|d) | daily:HH:MM | weekdays:HH:MM | weekly:<mon..sun>@HH:MM | cron:<m h dom mon dow>"
+          },
+          "tz": {
+            "type": "string",
+            "description": "IANA time zone; the host's zone when omitted."
+          }
+        },
+        "additionalProperties": true
+      },
+      "TaskTrigger": {
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "web",
+              "rss",
+              "mail"
+            ]
+          },
+          "url": {
+            "type": "string"
+          },
+          "selector": {
+            "type": "string"
+          },
+          "regex": {
+            "type": "string"
+          },
+          "contains": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "changed",
+              "appears",
+              "disappears",
+              "above",
+              "below"
+            ]
+          },
+          "threshold": {
+            "type": "number"
+          },
+          "keywords": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "from": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "every": {
+            "type": "string",
+            "description": "Poll interval, every:<n>(m|h|d). Default every:30m."
+          },
+          "onHit": {
+            "type": "string",
+            "enum": [
+              "notify",
+              "run"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "TaskEnvelope": {
+        "type": "object",
+        "properties": {
+          "categories": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "targets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": true
+      },
+      "TaskBudget": {
+        "type": "object",
+        "required": [
+          "tokens",
+          "wallclockMs",
+          "maxToolCalls"
+        ],
+        "properties": {
+          "tokens": {
+            "type": "integer"
+          },
+          "usdMicros": {
+            "type": "integer"
+          },
+          "wallclockMs": {
+            "type": "integer"
+          },
+          "maxToolCalls": {
+            "type": "integer"
+          }
+        },
+        "additionalProperties": true
+      },
+      "Task": {
+        "type": "object",
+        "required": [
+          "id",
+          "version",
+          "owner",
+          "kind",
+          "title",
+          "instruction",
+          "origin",
+          "host",
+          "budget",
+          "notify",
+          "state",
+          "enabled",
+          "createdDisabled",
+          "createdAt",
+          "updatedAt",
+          "authFailureCount",
+          "runs"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "owner": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "oneoff",
+              "routine",
+              "watcher",
+              "goal"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "instruction": {
+            "type": "string"
+          },
+          "origin": {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "messageId": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true
+          },
+          "host": {
+            "type": "string",
+            "enum": [
+              "home",
+              "cloud",
+              "any"
+            ]
+          },
+          "schedule": {
+            "$ref": "#/components/schemas/TaskSchedule"
+          },
+          "trigger": {
+            "$ref": "#/components/schemas/TaskTrigger"
+          },
+          "envelope": {
+            "$ref": "#/components/schemas/TaskEnvelope"
+          },
+          "budget": {
+            "$ref": "#/components/schemas/TaskBudget"
+          },
+          "notify": {
+            "type": "string",
+            "enum": [
+              "always",
+              "on_change",
+              "on_hit",
+              "silent_on_noop"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "scheduled",
+              "queued",
+              "running",
+              "awaiting_approval",
+              "awaiting_input",
+              "succeeded",
+              "failed",
+              "cancelled",
+              "expired",
+              "paused"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "createdDisabled": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "integer",
+            "description": "Epoch milliseconds."
+          },
+          "updatedAt": {
+            "type": "integer"
+          },
+          "enabledAt": {
+            "type": "integer"
+          },
+          "lastRunAt": {
+            "type": "integer"
+          },
+          "nextRunAt": {
+            "type": "integer"
+          },
+          "authFailureCount": {
+            "type": "integer"
+          },
+          "lastSummary": {
+            "type": "string"
+          },
+          "activeRunId": {
+            "type": "string"
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": true
+      },
+      "TaskRun": {
+        "type": "object",
+        "required": [
+          "id",
+          "taskId",
+          "startedAt",
+          "state",
+          "tokens",
+          "toolCalls",
+          "sideEffects"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "taskId": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "integer"
+          },
+          "endedAt": {
+            "type": "integer"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "interrupted",
+              "awaiting_approval",
+              "awaiting_input",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ]
+          },
+          "stopReason": {
+            "type": "string"
+          },
+          "tokens": {
+            "type": "object",
+            "required": [
+              "in",
+              "out"
+            ],
+            "properties": {
+              "in": {
+                "type": "integer"
+              },
+              "out": {
+                "type": "integer"
+              }
+            },
+            "additionalProperties": true
+          },
+          "costMicros": {
+            "type": "integer"
+          },
+          "toolCalls": {
+            "type": "integer"
+          },
+          "sideEffects": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many state-changing calls the run recorded."
+          },
+          "resumes": {
+            "type": "integer"
+          },
+          "elapsedMs": {
+            "type": "integer"
+          },
+          "manual": {
+            "type": "boolean"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "TaskRunEvent": {
+        "type": "object",
+        "required": [
+          "type",
+          "at"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "tool_call | tool_result | replayed | denied | info | error | resume"
+          },
+          "at": {
+            "type": "integer"
+          },
+          "toolName": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "isError": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": true
+      },
+      "TaskCreateRequest": {
+        "type": "object",
+        "required": [
+          "title",
+          "instruction"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "oneoff",
+              "routine",
+              "watcher",
+              "goal"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "instruction": {
+            "type": "string"
+          },
+          "schedule": {
+            "$ref": "#/components/schemas/TaskSchedule"
+          },
+          "trigger": {
+            "$ref": "#/components/schemas/TaskTrigger"
+          },
+          "envelope": {
+            "$ref": "#/components/schemas/TaskEnvelope"
+          },
+          "budget": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "notify": {
+            "type": "string",
+            "enum": [
+              "always",
+              "on_change",
+              "on_hit",
+              "silent_on_noop"
+            ]
+          },
+          "host": {
+            "type": "string",
+            "enum": [
+              "home",
+              "cloud",
+              "any"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": true
+      },
+      "TaskUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "instruction": {
+            "type": "string"
+          },
+          "schedule": {
+            "$ref": "#/components/schemas/TaskSchedule"
+          },
+          "trigger": {
+            "$ref": "#/components/schemas/TaskTrigger"
+          },
+          "envelope": {
+            "$ref": "#/components/schemas/TaskEnvelope"
+          },
+          "budget": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "notify": {
+            "type": "string",
+            "enum": [
+              "always",
+              "on_change",
+              "on_hit",
+              "silent_on_noop"
+            ]
+          },
+          "host": {
+            "type": "string",
+            "enum": [
+              "home",
+              "cloud",
+              "any"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "TaskListResponse": {
+        "type": "object",
+        "required": [
+          "tasks"
+        ],
+        "properties": {
+          "tasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Task"
+            }
+          }
+        },
+        "additionalProperties": true
+      },
+      "TaskResponse": {
+        "type": "object",
+        "required": [
+          "task"
+        ],
+        "properties": {
+          "task": {
+            "$ref": "#/components/schemas/Task"
+          }
+        },
+        "additionalProperties": true
+      },
+      "TaskOkResponse": {
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": true
+      },
+      "TaskRunQueuedResponse": {
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "task": {
+            "$ref": "#/components/schemas/Task"
+          }
+        },
+        "additionalProperties": true
+      },
+      "TaskCancelResponse": {
+        "type": "object",
+        "required": [
+          "ok",
+          "cancelled"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "cancelled": {
+            "type": "boolean"
+          },
+          "task": {
+            "$ref": "#/components/schemas/Task"
+          }
+        },
+        "additionalProperties": true
+      },
+      "TaskRunListResponse": {
+        "type": "object",
+        "required": [
+          "runs"
+        ],
+        "properties": {
+          "runs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskRun"
+            }
+          }
+        },
+        "additionalProperties": true
+      },
+      "TaskRunDetailResponse": {
+        "type": "object",
+        "required": [
+          "run",
+          "events"
+        ],
+        "properties": {
+          "run": {
+            "$ref": "#/components/schemas/TaskRun"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskRunEvent"
+            }
+          }
+        },
+        "additionalProperties": true
+      },
+      "TaskUpdatedEvent": {
+        "type": "object",
+        "required": [
+          "type",
+          "task"
+        ],
+        "properties": {
+          "type": {
+            "const": "task_updated"
+          },
+          "task": {
+            "$ref": "#/components/schemas/Task"
+          }
+        },
+        "additionalProperties": true
+      },
+      "TaskDeletedEvent": {
+        "type": "object",
+        "required": [
+          "type",
+          "taskId"
+        ],
+        "properties": {
+          "type": {
+            "const": "task_deleted"
+          },
+          "taskId": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "TaskRunStartedEvent": {
+        "type": "object",
+        "required": [
+          "type",
+          "taskId",
+          "runId",
+          "resumed"
+        ],
+        "properties": {
+          "type": {
+            "const": "task_run_started"
+          },
+          "taskId": {
+            "type": "string"
+          },
+          "runId": {
+            "type": "string"
+          },
+          "resumed": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": true
+      },
+      "TaskRunFinishedEvent": {
+        "type": "object",
+        "required": [
+          "type",
+          "taskId",
+          "runId",
+          "state"
+        ],
+        "properties": {
+          "type": {
+            "const": "task_run_finished"
+          },
+          "taskId": {
+            "type": "string"
+          },
+          "runId": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "stopReason": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "TaskResultEvent": {
+        "type": "object",
+        "required": [
+          "type",
+          "id",
+          "taskId",
+          "runId",
+          "kind",
+          "title",
+          "summary",
+          "status",
+          "priority",
+          "text",
+          "at"
+        ],
+        "properties": {
+          "type": {
+            "const": "task_result"
+          },
+          "id": {
+            "type": "string",
+            "description": "Stable notice id; a client that has shown it must not show it again."
+          },
+          "taskId": {
+            "type": "string"
+          },
+          "runId": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "task_result",
+              "watch_hit",
+              "task_needs_you",
+              "task_failed"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "low",
+              "normal",
+              "high"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "The card as stored in the conversation."
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
           }
         },
         "additionalProperties": true
