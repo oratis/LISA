@@ -90,7 +90,8 @@ export interface ModelGate {
         settle(usage: ProviderUsage): Promise<void>;
         release(): Promise<void>;
       }
-    | { ok: false; reason: string }
+    /** `transient`: contention or a rate limit — the run is retried later, not reported. */
+    | { ok: false; reason: string; transient?: boolean }
   >;
 }
 
@@ -650,6 +651,9 @@ export class TaskRunner {
           }
           const admission = this.opts.modelGate ? await this.opts.modelGate.admit(model) : null;
           if (admission && !admission.ok) {
+            // Busy (the tenant is mid-chat-turn) or rate-limited: an ordinary
+            // failure, retried with backoff. No allowance: stop and tell the user.
+            if (admission.transient) throw new Error(`admission busy: ${admission.reason}`);
             stopWith("admission_denied", admission.reason);
             throw new TaskStop("admission_denied", admission.reason);
           }

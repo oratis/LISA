@@ -184,6 +184,8 @@ import { VoiceSource } from "../sense/voice.js";
 import { appendSenseEvent, readSenseEvents } from "../sense/log.js";
 import { handleSocialApi } from "./social-api.js";
 import { createTaskHost } from "./tasks-host.js";
+import { cloudTasksEnabled } from "./tasks-api.js";
+import { cloudModelGate, sweepUserTasks } from "../tasks/cloud.js";
 import {
   loadScreenAdvisorConfig,
   saveScreenAdvisorConfig,
@@ -814,7 +816,10 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     broadcast,
     log: logInfo,
     // Mac edition only: push subscriptions are one machine-wide channel.
-    ...(cloudEdition ? {} : { push: (_notice, card) => pushBridge.onIdleMessage(card) }),
+    // Hosted: every model call of a tenant's run goes through billing admission.
+    ...(cloudEdition
+      ? { modelGateFor: (uid: string) => cloudModelGate(uid) }
+      : { push: (_notice, card) => pushBridge.onIdleMessage(card) }),
     withConversation: async (fn) => {
       const lease = await ctxForRequest();
       const ctx = lease.value;
@@ -1930,8 +1935,17 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         logInfo(
           `[sweep] scanned ${report.scanned} active accounts, ran ${report.ran} autonomy action(s)`,
         );
+        // Cloud tasks ride the same sweep (LISA_CLOUD_TASKS=1 only; default off).
+        const tasks = cloudTasksEnabled()
+          ? await sweepUserTasks({
+              runnerFor: (uid) => taskHost.runnerFor(uid),
+              beginAccountWork: (uid) => beginAccountWork(uid, () => {}),
+              ...(maxRuns !== undefined ? { maxRuns } : {}),
+            })
+          : undefined;
+        if (tasks) logInfo(`[sweep] tasks: ${tasks.scanned} tenant(s) with tasks, ${tasks.ran} run(s)`);
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify(report));
+        res.end(JSON.stringify(tasks ? { ...report, tasks } : report));
       } catch (e) {
         // A sweep-wide failure (e.g. the accounts store is unreadable) must
         // answer the scheduler cleanly rather than hang the request — per-uid
