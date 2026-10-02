@@ -972,6 +972,37 @@ test("the token budget stops a run before the next model call", async () => {
   });
 });
 
+test("the token budget counts cache reads and writes (reviewer probe t8b)", async () => {
+  await withHome(async () => {
+    const task = await dueRoutine({
+      budget: { tokens: 1000, wallclockMs: 600_000, maxToolCalls: 40 },
+    });
+    let n = 0;
+    // 10 fresh tokens per call — and 170 000 cached ones.
+    const usage = {
+      inputTokens: 5,
+      outputTokens: 5,
+      cacheReadTokens: 150_000,
+      cacheWriteTokens: 20_000,
+    };
+    const provider: Provider = {
+      name: "fake",
+      async runTurn() {
+        n++;
+        return n <= 20 ? { ...turn([call("read", { p: n })]), usage } : { ...say("done"), usage };
+      },
+    };
+    const runner = makeRunner({ provider, tools: [tool("read")] });
+    await runner.tick();
+    await runner.drain();
+    const run = (await listRuns((await getTask(task.id))!))[0]!;
+    assert.equal(n, 1, "the first call already blew the 1 000-token budget");
+    assert.equal(run.state, "failed");
+    assert.equal(run.stopReason, "budget_tokens");
+    assert.deepEqual(run.tokens, { in: 5, out: 5, cacheRead: 150_000, cacheWrite: 20_000 });
+  });
+});
+
 test("the tool-call budget blocks further calls and ends the run", async () => {
   await withHome(async () => {
     const task = await dueRoutine({

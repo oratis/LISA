@@ -125,7 +125,7 @@ export interface TaskEnvelope {
 }
 
 export interface TaskBudget {
-  /** Cumulative input+output token ceiling per run. */
+  /** Cumulative token ceiling per run: input + output + cache reads + cache writes. */
   tokens: number;
   /** Optional spend ceiling per run, in millionths of a USD. */
   usdMicros?: number;
@@ -213,7 +213,12 @@ export interface TaskRun {
   endedAt?: number;
   state: TaskRunState;
   stopReason?: string;
-  tokens: { in: number; out: number };
+  /**
+   * Tokens the run has processed. Cache reads and writes are counted too: they
+   * are tokens the provider processed and billed, and a long run is mostly
+   * cache traffic — leaving them out makes the budget meaningless.
+   */
+  tokens: { in: number; out: number; cacheRead?: number; cacheWrite?: number };
   costMicros?: number;
   toolCalls: number;
   /** sha256(tool + canonical input) → recorded result, for exactly-once side effects. */
@@ -237,6 +242,12 @@ export interface TaskRun {
   summary?: string;
   artifacts?: TaskArtifact[];
   error?: string;
+}
+
+/** Every token a run has processed, cached or not — what `budget.tokens` is measured against. */
+export function tokensSpent(run: Pick<TaskRun, "tokens">): number {
+  const t = run.tokens;
+  return t.in + t.out + (t.cacheRead ?? 0) + (t.cacheWrite ?? 0);
 }
 
 export interface TaskArtifact {

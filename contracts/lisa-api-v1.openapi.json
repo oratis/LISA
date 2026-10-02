@@ -2021,6 +2021,14 @@
             "items": {
               "type": "string"
             }
+          },
+          "pausedReason": {
+            "type": "string",
+            "description": "Why the engine switched the task off by itself. Cleared when the user enables it."
+          },
+          "resumeAt": {
+            "type": "integer",
+            "description": "The active run is parked after a failed attempt and resumes (same run) at this time."
           }
         },
         "additionalProperties": true
@@ -2077,9 +2085,16 @@
               },
               "out": {
                 "type": "integer"
+              },
+              "cacheRead": {
+                "type": "integer"
+              },
+              "cacheWrite": {
+                "type": "integer"
               }
             },
-            "additionalProperties": true
+            "additionalProperties": true,
+            "description": "Tokens processed. The run's token budget is measured against the sum of all four."
           },
           "costMicros": {
             "type": "integer"

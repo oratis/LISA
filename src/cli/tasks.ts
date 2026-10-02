@@ -23,7 +23,7 @@ import { disableTask, enableTask } from "../tasks/lifecycle.js";
 import type { TaskRunner } from "../tasks/runner.js";
 import { removeTask } from "../tasks/removal.js";
 import { getTask, listRuns, listTasks, loadRun, updateTask } from "../tasks/store.js";
-import type { Task } from "../tasks/types.js";
+import { tokensSpent, type Task } from "../tasks/types.js";
 
 const USAGE =
   "usage: lisa tasks [list]\n" +
@@ -110,7 +110,7 @@ export async function runTasksCommand(
       const cost = run.costMicros ? ` · $${(run.costMicros / 1_000_000).toFixed(4)}` : "";
       out(
         `${when(run.startedAt)}  ${run.state}${run.stopReason ? ` (${run.stopReason})` : ""} · ` +
-          `${run.tokens.in + run.tokens.out} tokens · ${run.toolCalls} tool calls${cost}`,
+          `${tokensSpent(run)} tokens · ${run.toolCalls} tool calls${cost}`,
       );
       const note = run.summary ?? run.error;
       if (note) out(`    ${note.replace(/\s+/g, " ").slice(0, 240)}`);
@@ -192,7 +192,7 @@ export async function runTaskNow(
     return 1;
   }
   err(
-    `[${run.state}${run.stopReason ? ` · ${run.stopReason}` : ""}] ${run.tokens.in + run.tokens.out} tokens, ${run.toolCalls} tool calls`,
+    `[${run.state}${run.stopReason ? ` · ${run.stopReason}` : ""}] ${tokensSpent(run)} tokens, ${run.toolCalls} tool calls`,
   );
   if (run.summary) out(run.summary);
   if (run.error) err(run.error);

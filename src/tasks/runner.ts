@@ -60,6 +60,7 @@ import {
   type LoadedRun,
   type RunEvent,
 } from "./store.js";
+import { tokensSpent } from "./types.js";
 import type {
   Task,
   TaskApprovalFactory,
@@ -999,7 +1000,7 @@ export class TaskRunner {
           // Every model call clears the same breakers, in the same order.
           if (await cancelRequested()) throw new TaskStop("cancelled");
           if (slot.stop) throw new TaskStop(slot.stop, slot.stopDetail);
-          if (run.tokens.in + run.tokens.out >= budget.tokens) {
+          if (tokensSpent(run) >= budget.tokens) {
             stopWith("budget_tokens");
             throw new TaskStop("budget_tokens");
           }
@@ -1024,6 +1025,12 @@ export class TaskRunner {
             const result = await inner.runTurn(o);
             run.tokens.in += result.usage.inputTokens;
             run.tokens.out += result.usage.outputTokens;
+            if (result.usage.cacheReadTokens > 0) {
+              run.tokens.cacheRead = (run.tokens.cacheRead ?? 0) + result.usage.cacheReadTokens;
+            }
+            if (result.usage.cacheWriteTokens > 0) {
+              run.tokens.cacheWrite = (run.tokens.cacheWrite ?? 0) + result.usage.cacheWriteTokens;
+            }
             try {
               run.costMicros = (run.costMicros ?? 0) + costMicroUSD(model, result.usage);
             } catch {
