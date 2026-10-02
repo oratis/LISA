@@ -91,7 +91,7 @@ test("chores become routines with their schedule honoured; the file is backed up
 
   const disk = (await getTask(heartbeatTaskId("disk check")))!;
   assert.deepEqual(disk.schedule, { expr: "every:30m" });
-  assert.equal(disk.nextRunAt, NOW + 30 * 60_000);
+  assert.equal(disk.nextRunAt, NOW, "a chore with no schedule ran on every tick — it is due at once");
 
   const weekly = (await getTask(heartbeatTaskId("weekly review")))!;
   assert.deepEqual(weekly.schedule, { expr: "cron:0 18 * * 5" });

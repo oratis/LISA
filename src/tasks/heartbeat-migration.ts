@@ -72,6 +72,10 @@ export function scheduleForChore(raw: unknown): ScheduleSpec {
   return { expr: LEGACY_HEARTBEAT_SCHEDULE };
 }
 
+function hasOwnSchedule(raw: unknown): boolean {
+  return typeof raw === "string" && scheduleForChore(raw).expr !== LEGACY_HEARTBEAT_SCHEDULE;
+}
+
 interface RawChore {
   name?: unknown;
   prompt?: unknown;
@@ -134,7 +138,20 @@ export async function migrateHeartbeatTasks(now = Date.now()): Promise<Heartbeat
           },
           now,
         );
-        if (chore.enabled !== false) await updateTask(id, (t) => enableTask(t, now), now);
+        if (chore.enabled !== false) {
+          await updateTask(
+            id,
+            (t) => {
+              enableTask(t, now);
+              // A chore with no schedule of its own ran on every tick, this
+              // one included — so it is due now, not in half an hour.
+              if (t.schedule?.expr === LEGACY_HEARTBEAT_SCHEDULE && !hasOwnSchedule(chore.schedule)) {
+                t.nextRunAt = now;
+              }
+            },
+            now,
+          );
+        }
         result.migrated.push(name);
       } catch (err) {
         remaining.push(chore);

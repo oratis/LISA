@@ -28,8 +28,18 @@ export function nextRunAfter(task: Task, from: number, cloud = false): number | 
     const failures = Math.min(task.watch?.failures ?? 0, 6);
     return from + Math.min(6 * 3_600_000, watchIntervalMs(task, cloud) * 2 ** failures);
   }
-  if (task.schedule) return nextRun(task.schedule, from) ?? undefined;
-  return undefined;
+  if (!task.schedule) return undefined;
+  const every = everyIntervalMs(task.schedule.expr);
+  if (every !== null && task.nextRunAt !== undefined) {
+    // An interval keeps its PHASE: the next slot is counted from the slot that
+    // was due, not from when the run happened to finish. Otherwise a task
+    // driven by the 30-minute launchd wake-up — which arrives a moment before
+    // "finish + 30 min" — would run only every other wake-up.
+    if (task.nextRunAt > from) return task.nextRunAt; // not due yet (a manual run): unchanged
+    const slots = Math.floor((from - task.nextRunAt) / every) + 1; // skips missed slots: no catch-up burst
+    return task.nextRunAt + slots * every;
+  }
+  return nextRun(task.schedule, from) ?? undefined;
 }
 
 /** Where a task sits when nothing is running or queued. */

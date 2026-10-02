@@ -105,6 +105,19 @@ async function runHeartbeatInner(opts: {
     console.error(`[scheduled-dispatch] error: ${(err as Error).message}`);
   }
 
+  // The user's chores are routines in the Task Engine now (W1): anything still
+  // in heartbeat.json is moved across, then whatever is due runs through the
+  // same runner + lease as `serve --web`, so tasks keep running when the web
+  // server is down and never run twice when it is up. This happens BEFORE the
+  // config is loaded below, so a migrated chore is not also run the old way.
+  let taskResults: HeartbeatRunResult[] = [];
+  try {
+    const { runTasksFromHeartbeat } = await import("../tasks/heartbeat-bridge.js");
+    taskResults = await runTasksFromHeartbeat(opts);
+  } catch (err) {
+    console.error(`[tasks] error: ${(err as Error).message}`);
+  }
+
   const cfg = await loadHeartbeatConfig();
   const budget = cfg.budgetTokens && cfg.budgetTokens > 0 ? cfg.budgetTokens : Infinity;
   let tokensSpent = 0;
@@ -156,7 +169,7 @@ async function runHeartbeatInner(opts: {
     ? `${HEARTBEAT_SYSTEM}\n\n## recent agent-fleet activity (structural metadata, for your awareness)\n${fleetRecap}`
     : HEARTBEAT_SYSTEM;
 
-  const out: HeartbeatRunResult[] = [];
+  const out: HeartbeatRunResult[] = [...taskResults];
   for (const { task, tools } of runs) {
     if (task.enabled === false) continue;
     if (opts.taskFilter && task.name !== opts.taskFilter) continue;
