@@ -23,12 +23,16 @@ export function saveDigest(d: DailyDigest): void {
   const dir = path.join(mailDir(), "digests");
   ensure(dir);
   fs.writeFileSync(path.join(dir, `${d.date}.json`), JSON.stringify(d, null, 2), { mode: 0o600 });
-  fs.writeFileSync(path.join(mailDir(), "latest-digest.json"), JSON.stringify(d, null, 2), { mode: 0o600 });
+  fs.writeFileSync(path.join(mailDir(), "latest-digest.json"), JSON.stringify(d, null, 2), {
+    mode: 0o600,
+  });
 }
 
 export function latestDigest(): DailyDigest | null {
   try {
-    return JSON.parse(fs.readFileSync(path.join(mailDir(), "latest-digest.json"), "utf8")) as DailyDigest;
+    return JSON.parse(
+      fs.readFileSync(path.join(mailDir(), "latest-digest.json"), "utf8"),
+    ) as DailyDigest;
   } catch {
     return null;
   }

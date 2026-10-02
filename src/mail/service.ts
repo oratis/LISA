@@ -56,7 +56,10 @@ export async function probeAccount(
     if (opts.timeoutMs && opts.timeoutMs > 0) {
       let timer: ReturnType<typeof setTimeout> | undefined;
       const timeout = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error("timed out reaching the mail server")), opts.timeoutMs);
+        timer = setTimeout(
+          () => reject(new Error("timed out reaching the mail server")),
+          opts.timeoutMs,
+        );
       });
       try {
         await Promise.race([run, timeout]);
@@ -134,7 +137,10 @@ export async function sweepAll(opts: SweepOpts = {}): Promise<SweepResult> {
     let connector: MailConnector | null = null;
     try {
       connector = factory(account, secret);
-      const raws = (await connector.listSince({ sinceMs, limit })).map((r) => ({ ...r, accountId: account.id }));
+      const raws = (await connector.listSince({ sinceMs, limit })).map((r) => ({
+        ...r,
+        accountId: account.id,
+      }));
       if (raws.length === 0) {
         markSwept(account.id, now());
         continue;
@@ -152,7 +158,10 @@ export async function sweepAll(opts: SweepOpts = {}): Promise<SweepResult> {
       allItems.push(...items);
       allNew.push(...items.filter((i) => freshUids.has(i.uid)));
 
-      markSeen(account.id, raws.map((r) => r.uid));
+      markSeen(
+        account.id,
+        raws.map((r) => r.uid),
+      );
       markSwept(account.id, now());
     } catch {
       // one bad account (auth error, network) must not sink the whole sweep
@@ -190,15 +199,26 @@ export async function pollNewMail(opts: SweepOpts = {}): Promise<MailItem[]> {
     let connector: MailConnector | null = null;
     try {
       connector = factory(account, secret);
-      const raws = (await connector.listSince({ sinceMs, limit })).map((r) => ({ ...r, accountId: account.id }));
+      const raws = (await connector.listSince({ sinceMs, limit })).map((r) => ({
+        ...r,
+        accountId: account.id,
+      }));
       const seen = loadSeen(account.id);
       const fresh = raws.filter((r) => !seen.has(r.uid));
       if (fresh.length) {
         out.push(
-          ...(await classifyMail(fresh, { provider: opts.provider, model: opts.model, now, signal: opts.signal })),
+          ...(await classifyMail(fresh, {
+            provider: opts.provider,
+            model: opts.model,
+            now,
+            signal: opts.signal,
+          })),
         );
       }
-      markSeen(account.id, raws.map((r) => r.uid));
+      markSeen(
+        account.id,
+        raws.map((r) => r.uid),
+      );
       markSwept(account.id, now());
     } catch {
       // skip a failing account
