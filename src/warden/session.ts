@@ -376,9 +376,12 @@ const WARDEN_STATE_PATTERN = new RegExp(
 
 /**
  * Does an exec input name Warden's state files, its approval API or its CLI?
- * BEST EFFORT: `p=approvals; curl …/api/$p` passes this check. What actually
- * keeps a confined command away from Warden is the sandbox profile
- * (src/sandbox/protect.ts); an unconfined command asks by default.
+ * DEFENCE IN DEPTH, not a boundary: `p=approvals; curl …/api/$p` passes this
+ * check. A confined command is additionally denied the directory and the port
+ * by its sandbox profile (src/sandbox/protect.ts), and an unconfined one asks
+ * by default — but once the user lets an unconfined command run, nothing here
+ * stops it from approving on loopback. Closing that needs approvals signed by
+ * a native approver (docs/DESIGN_WARDEN.md, known limits).
  */
 export function mentionsWardenState(input: unknown, wardenPath: string): boolean {
   let text: string;
