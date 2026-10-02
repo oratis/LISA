@@ -387,6 +387,14 @@ export function isBlockedIp(address: string): boolean {
   return true;
 }
 
+/**
+ * The production transport: connects to exactly the validated address and
+ * never resolves the hostname itself. Exported so the pinning is testable
+ * against a real socket, not only through an injected stand-in.
+ */
+export const pinnedTransport: PinnedTransport = (url, init, pinned) =>
+  fetchPinned(url, init, pinned);
+
 async function fetchPinned(
   url: string,
   init: RequestInit,
