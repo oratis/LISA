@@ -144,6 +144,14 @@ export function createWardenSession(opts: WardenSessionOptions): WardenSession {
       dataClassHints: opts.dataClassHints,
       now: started,
     });
+    // A shell command that names Warden's state directory or its approval API
+    // is flagged as touching protected state, which makes the policy ask for
+    // this exact command whatever grants or rules exist. Best effort — a
+    // string match cannot see through obfuscation; the sandbox is the real
+    // boundary.
+    if (req.category === "exec" && mentionsWardenState(toolInput, protectedPaths[0]!)) {
+      req.targets = [...req.targets, protectedPaths[0]!];
+    }
     let result = await policyFor(req);
 
     if (result.verdict === "allow" && result.grantIds && result.grantIds.length > 0) {
@@ -263,6 +271,20 @@ export function createWardenSession(opts: WardenSessionOptions): WardenSession {
       return tainted;
     },
   };
+}
+
+const WARDEN_STATE_PATTERN =
+  /warden[\\/](?:rules|grants|pending|audit)|\.lisa[\\/]warden|\/api\/(?:approvals|warden)\b/i;
+
+/** Does an exec input name Warden's state files or its approval API? */
+export function mentionsWardenState(input: unknown, wardenPath: string): boolean {
+  let text: string;
+  try {
+    text = typeof input === "string" ? input : JSON.stringify(input) ?? "";
+  } catch {
+    return true; // unserialisable exec input: assume the worst
+  }
+  return text.includes(wardenPath) || WARDEN_STATE_PATTERN.test(text);
 }
 
 /** A minimal request for the error path, where classification itself may have thrown. */

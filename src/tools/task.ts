@@ -70,6 +70,9 @@ export function createTaskTool(deps: {
         // A dispatched subagent inherits the parent turn's confinement — it must
         // not be able to escape the sandbox its caller runs under. H2.
         sandboxMode: ctx?.sandboxMode,
+        // …and the parent turn's approval gate: without this a subagent would
+        // run its tools with no Warden decision at all.
+        approval: ctx?.approval,
       });
       return `[subagent: ${input.description} — ${result.toolCallCount} tool calls, ${result.outputTokens} tokens]\n${result.text}`;
     },

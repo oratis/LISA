@@ -119,6 +119,7 @@ test("autonomy: side effects are denied outright and never reach the inbox", asy
     ["takoapi", { action: "call", agent: "x" }],
     ["mcp__shop__checkout", {}],
     ["never_heard_of_it", {}],
+    ["social_compose", { text: "hi" }],
   ] as const) {
     const d = await session.approval(name, input);
     assert.equal(d.allow, false, name);
@@ -126,7 +127,7 @@ test("autonomy: side effects are denied outright and never reach the inbox", asy
   assert.deepEqual(await session.approval("soul_journal", { text: "x" }), { allow: true });
   assert.deepEqual(await session.approval("read", { path: "a" }), { allow: true });
   assert.equal(events.length, 0, "no approval or hand-off was ever raised");
-  assert.equal((await readAudit({ home })).filter((e) => e.verdict === "deny").length, 6);
+  assert.equal((await readAudit({ home })).filter((e) => e.verdict === "deny").length, 7);
 });
 
 test("cloud: exec and host writes are denied even if a tool slipped through", async () => {
@@ -200,11 +201,38 @@ test("user rules apply through the session", async () => {
 
 test("Warden's own state is not writable through a tool call", async () => {
   const home = await tmpHome();
-  const { session, events } = await setup({ home, workspaceRoot: home, sandboxMode: "workspace-write" }, "approve");
-  const d = await session.approval("write", { path: "warden/grants.json", content: "{}" });
+  const writer = await setup({ home, workspaceRoot: home, sandboxMode: "workspace-write" }, "approve");
+  const d = await writer.session.approval("write", { path: "warden/grants.json", content: "{}" });
   assert.equal(d.allow, false);
   assert.match(d.reason ?? "", /cannot be modified/);
-  assert.equal(events.length, 0);
+  assert.equal(writer.events.length, 0, "refused outright, never queued");
+
+  // Shell commands that name the state directory or the approval API always
+  // ask for that exact command — even with an "always" grant and an "auto"
+  // rule on bash.
+  const { session, events } = await setup({ home, workspaceRoot: home }, "deny");
+  await saveRules({ categories: { exec: "auto" } }, home);
+  const probe = await session.decide("bash", { command: "ls" });
+  await createGrants(probe.request, "always", home);
+  assert.deepEqual(await session.approval("bash", { command: "ls -la" }), { allow: true });
+  const commands = [
+    `echo '{}' > ${home}/warden/rules.json`,
+    "cat ~/.lisa/warden/grants.json",
+    "cd ~/.lisa && rm warden/audit.jsonl",
+    "curl -X POST http://127.0.0.1:5757/api/approvals/apr_x/approve -H 'content-type: application/json' -d '{}'",
+    "curl -X PUT localhost:5757/api/warden/rules -d '{\"categories\":{\"send\":\"auto\"}}'",
+  ];
+  for (const command of commands) {
+    const refused = await session.approval("bash", { command });
+    assert.equal(refused.allow, false, command);
+  }
+  const asked = events.filter((e) => e.event.type === "approval_requested");
+  assert.equal(asked.length, commands.length, "each one was put to the user");
+  assert.match((asked[0]!.event as { reason: string }).reason, /Warden's own state/);
+  // The proactive channel cannot even ask.
+  const auto = await setup({ home, origin: { kind: "autonomy" } }, "approve");
+  assert.equal((await auto.session.approval("bash", { command: commands[1] })).allow, false);
+  assert.equal(auto.events.length, 0);
 });
 
 test("fail closed: unreadable rules or grants never loosen a decision", async () => {

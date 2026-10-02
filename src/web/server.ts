@@ -4610,6 +4610,8 @@ self.addEventListener('fetch', (event) => {
               // Pin the turn to the session's mode, frozen at creation (H2), so
               // concurrent sessions confine independently of the process env.
               sandboxMode: chat.session.header.sandboxMode,
+              // Handed to nested runs (the task subagent) so they stay gated.
+              approval: wardenTurn?.approval ?? webApproval,
             },
             history: modelContext.history,
             userMessage: message,

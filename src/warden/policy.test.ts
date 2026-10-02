@@ -48,6 +48,8 @@ const SIDE_EFFECTING: ActionCategory[] = ["write", "exec", "network", "send", "p
 test("read, self and draft are allowed for every origin, surface and taint state", () => {
   for (const category of ["read", "self", "draft"] as const) {
     for (const kind of ORIGIN_KINDS) {
+      // The proactive channel may not even draft (POLICY_REACH_OUT).
+      if (kind === "autonomy" && category === "draft") continue;
       for (const surface of ["cli", "local-web", "cloud"] as RuntimeSurface[]) {
         for (const tainted of [false, true]) {
           assert.equal(
@@ -137,10 +139,10 @@ test("default matrix: channel and mcp origins ask for every side effect", () => 
   }
 });
 
-test("invariant: autonomy is read-only — everything but read/self/draft is denied", () => {
+test("invariant: autonomy is read-only — everything but read/self is denied", () => {
   for (const category of ACTION_CATEGORIES) {
     const v = verdict({ origin: { kind: "autonomy" }, category, sandboxed: true, withinWorkspace: true });
-    if (category === "read" || category === "self" || category === "draft") assert.equal(v, "allow");
+    if (category === "read" || category === "self") assert.equal(v, "allow");
     else assert.equal(v, "deny", category);
   }
 });

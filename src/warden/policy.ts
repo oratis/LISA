@@ -151,9 +151,9 @@ export function envelopeCovers(req: ActionRequest, envelope: TaskEnvelope | unde
 
 function systemInvariant(req: ActionRequest, ctx: PolicyContext): Decision | null {
   // The proactive channel is read-only: Lisa's self-driven runs may read and
-  // write her own home, nothing else. Checked first so an autonomous run never
-  // produces an inbox item either (POLICY_REACH_OUT).
-  if (req.origin.kind === "autonomy" && !isBenign(req.category)) {
+  // write her own home, nothing else — not even a draft. Checked first so an
+  // autonomous run never produces an inbox item either (POLICY_REACH_OUT).
+  if (req.origin.kind === "autonomy" && req.category !== "read" && req.category !== "self") {
     return {
       verdict: "deny",
       reason:
@@ -189,21 +189,23 @@ function systemInvariant(req: ActionRequest, ctx: PolicyContext): Decision | nul
       };
     }
   }
-  if (req.category === "write" && ctx.protectedPaths && ctx.protectedPaths.length > 0) {
-    const touches = req.targets.some(
-      (target) =>
-        path.isAbsolute(target) &&
-        ctx.protectedPaths!.some((protectedPath) => insidePath(protectedPath, target)),
-    );
-    if (touches) {
-      return {
-        verdict: "deny",
-        reason: "Warden's own rules, grants and audit files cannot be modified by a tool call.",
-        ruleId: "system:warden-state-protected",
-      };
-    }
+  if (req.category === "write" && touchesProtected(req, ctx)) {
+    return {
+      verdict: "deny",
+      reason: "Warden's own rules, grants and audit files cannot be modified by a tool call.",
+      ruleId: "system:warden-state-protected",
+    };
   }
   return null;
+}
+
+function touchesProtected(req: ActionRequest, ctx: PolicyContext): boolean {
+  if (!ctx.protectedPaths || ctx.protectedPaths.length === 0) return false;
+  return req.targets.some(
+    (target) =>
+      path.isAbsolute(target) &&
+      ctx.protectedPaths!.some((protectedPath) => insidePath(protectedPath, target)),
+  );
 }
 
 function finalize(req: ActionRequest, result: PolicyResult): PolicyResult {
@@ -227,13 +229,28 @@ export function evaluate(req: ActionRequest, ctx: PolicyContext): PolicyResult {
   if (invariant) return finalize(req, invariant);
 
   const sensitiveEgress = needsRecipientGrant(req);
-  const granted = matchGrants(req, ctx.grants, now, { boundOnly: sensitiveEgress });
+  // A shell command the caller flagged as naming Warden's state or approval
+  // API. The flag is a string heuristic, so it asks (every time, for this
+  // exact command) rather than denies: a developer grepping their own checkout
+  // for "/api/approvals" must still be able to say yes.
+  const guardedExec = req.category === "exec" && touchesProtected(req, ctx);
+  const granted = matchGrants(req, ctx.grants, now, {
+    boundOnly: sensitiveEgress || guardedExec,
+  });
   if (granted) {
     return finalize(req, {
       verdict: "allow",
       reason: `Covered by a ${granted[0]!.scope} grant.`,
       grantId: granted[0]!.id,
       grantIds: granted.map((g) => g.id),
+    });
+  }
+
+  if (guardedExec) {
+    return finalize(req, {
+      verdict: "ask",
+      reason: "This command refers to Warden's own state files or approval API.",
+      ruleId: "system:warden-state-guard",
     });
   }
 
