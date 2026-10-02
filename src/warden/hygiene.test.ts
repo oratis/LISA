@@ -435,13 +435,43 @@ test("known over-redaction: a number in the sentence after an OTP keyword", () =
   ]);
   // Every code-shaped token in the code's own sentence goes with it.
   otp("Your verification code for iPhone15 is 482913", ["iPhone15", "482913"]);
+  // "the <word> code <digits>" with a word that is not on the exclusion list.
+  otp("The door code 4821 changes on Monday.", ["4821"]);
+});
+
+test("known over-redaction: links that grant something other than a sign-in", () => {
+  // A click tracker that follows the words "log in" in marketing mail.
+  link(
+    "Log in to see your weekly stats: https://click.mail.example.com/ls/click?upn=u001.AbCdEfGh1234567890IjKlMnOpQrStUvWxYz",
+    "https://click.mail.example.com/ls/click?upn=u001.AbCdEfGh1234567890IjKlMnOpQrStUvWxYz",
+    "signin",
+  );
+  // A newsletter double opt-in confirmation.
+  link(
+    "Confirm your subscription: https://newsletter.example.com/subscribe/confirm?email=me@example.com&id=abcdef0123456789",
+    "https://newsletter.example.com/subscribe/confirm?email=me@example.com&id=abcdef0123456789",
+    "signin",
+  );
+  // A workspace invitation.
+  link(
+    "You've been invited to join Acme on Slack: https://join.slack.com/t/acme/invite/zt-2abcdEFGH-ijklMNOP1234567",
+    "https://join.slack.com/t/acme/invite/zt-2abcdEFGH-ijklMNOP1234567",
+    "signin",
+  );
+  // An OAuth authorization request.
+  link(
+    "Authorize the app: https://github.com/login/oauth/authorize?client_id=Iv1.abcdef1234567890&scope=repo",
+    "https://github.com/login/oauth/authorize?client_id=Iv1.abcdef1234567890&scope=repo",
+    "signin",
+  );
 });
 
 test("known misses", () => {
   // No keyword and no "code is" glue: a bare number is indistinguishable from data.
   untouched("482913\nThanks for signing up!");
-  // A keyword fused to its code by a hyphen is one token, and is not split.
+  // A keyword fused to its code is one token, and is not split.
   untouched("otp-482913");
+  untouched("OTP482913");
   // All-letter codes are not recognised.
   untouched("Or paste this temporary login code: abcd-efgh-ijkl-mnop");
   untouched("Your verification code is QWERTY.");
