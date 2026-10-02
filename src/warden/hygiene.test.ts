@@ -110,6 +110,24 @@ test("otp/other Latin-script languages", () => {
 
 // ── one-time codes: Chinese / Japanese / Korean ──
 
+test("otp/en: shapes seen in the wild", () => {
+  otp("Hi, your Steam Guard code is R7K2M. Enter it to log in.", ["R7K2M"]);
+  otp("<#> Your ExampleApp code is: 482913 FA+9qCX9VSu", ["482913"], ["FA+9qCX9VSu"]);
+  otp("Use 482 913 to verify your Instagram account.", ["482 913"], ["Instagram"]);
+  otp("Your Lyft code 482913 expires soon", ["482913"]);
+  otp("PayPal: Your security code is 482913. Your code expires in 10 minutes.", ["482913"]);
+  otp(
+    "Dear customer, 482913 is the OTP for your transaction at SHOP. OTPs are SECRET. DO NOT disclose it.",
+    ["482913"],
+  );
+  otp(
+    "[GitHub] Please verify your device. Verification code: 482913. If this was not you, visit https://github.com/settings/security now.",
+    ["482913"],
+    ["https://github.com/settings/security"],
+  );
+  otp("【美团】482913（登录验证码，请完成验证），如非本人操作，请忽略本短信。", ["482913"]);
+});
+
 test("otp/zh: common SMS-style and mail layouts", () => {
   otp("【天猫】验证码482913，您正在登录，5分钟内有效，请勿泄露。", ["482913"], ["5分钟"]);
   otp("您的验证码是：482913，请在10分钟内完成验证。", ["482913"], ["10分钟"]);
@@ -162,6 +180,13 @@ test("otp: other kinds of 'code' are not credentials", () => {
     "Zip code: 94103",
     "The source code is in repo 12345678.",
     "Country code: 0086",
+    "Dial the area code 0755 first.",
+    "The code review for PR 482913 is ready.",
+    "Enter 5000 as the amount, then press Pay.",
+    "Hi John, thanks for your payment of $4829.00 on 10/02/2026. Your confirmation number is 88213441.",
+    "【招商银行】您尾号8820的信用卡于10月02日消费人民币1234.50元，可用额度56789.00元。",
+    // A parcel pickup code is something the user wants read back, not a login credential.
+    "您的包裹已到达，取件码 4821，请于今日 18:00 前取件。",
   ]) {
     untouched(text);
   }
@@ -415,7 +440,10 @@ test("known over-redaction: a number in the sentence after an OTP keyword", () =
 test("known misses", () => {
   // No keyword and no "code is" glue: a bare number is indistinguishable from data.
   untouched("482913\nThanks for signing up!");
+  // A keyword fused to its code by a hyphen is one token, and is not split.
+  untouched("otp-482913");
   // All-letter codes are not recognised.
+  untouched("Or paste this temporary login code: abcd-efgh-ijkl-mnop");
   untouched("Your verification code is QWERTY.");
   // A temporary PASSWORD is not a one-time code and is out of scope here.
   untouched("Your temporary password is Xy7$kLp9!q");

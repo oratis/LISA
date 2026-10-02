@@ -381,6 +381,7 @@ const STRONG_KEYWORD_RE = new RegExp(
         "temporary code",
         "single-use code",
         "sms code",
+        "guard code",
         "one[- ]time (?:pass)?(?:code|password|passcode|pin)",
         "otp",
         "2fa",
@@ -424,17 +425,22 @@ const DIGITS_ONLY_KEYWORD_RE =
   /confirm|activation|access|approval|^(?:enter|use|type|input|provide) |following code|code below|确认码|確認碼|確認コード|確認番号|激活|확인/i;
 
 /**
- * The bare word "code" / "PIN" announces a one-time code only when it is glued
- * to the number: `code: 123456`, `Your code is 123456`, `コード：123456`.
+ * The bare word "code" / "PIN" announces a one-time code only when it is tied
+ * to the number: `code: 123456`, `Your code is: 123456`, `コード：123456`, or
+ * `your Lyft code 123456`. Exactly one group captures the word itself.
  */
 const WEAK_FORWARD_RE =
-  /(?<![a-z])(?:code|pin|c[oó]digo|codice|kode)(?![a-z])\s*(?:is|are|:|=)\s*["'“‘]?$|(?:代码|コード|코드)\s*(?:为|為|是|は|:|=)?\s*["'“‘「]?$/i;
+  /(?<![a-z])(code|pin|c[oó]digo|codice|kode)(?![a-z])\s*(?:(?:is|are)\s*[:=]?|[:=])\s*["'“‘]?$|(代码|コード|코드)\s*(?:为|為|是|は|:|=)?\s*["'“‘「]?$|(?<![a-z])(?:your|my|the|this)\s+(?:[a-z]+\s+)?(code|pin)\s+$/i;
 /** …unless it is a kind of code that is not a credential. */
 const NOT_A_SECRET_CODE_RE =
-  /(?:promo(?:tion(?:al)?)?|discount|coupon|voucher|referral|invite|gift|zip|postal|area|country|dial(?:ing)?|error|status|exit|response|http|product|item|tracking|source|color|colour|qr|bar|优惠|折扣|兑换|兌換|邀请|邀請|邮政|郵政|邮编|区号|區號|错误|錯誤|状态|狀態)\s*$/i;
+  /(?:promo(?:tion(?:al)?)?|discount|coupon|voucher|referral|invite|gift|zip|postal|area|country|dial(?:ing)?|error|status|exit|response|http|product|item|model|part|sku|tracking|booking|reservation|source|color|colour|qr|bar|bank|sort|branch|tax|hs|course|class|building|dress|employee|student|customer|member|store|project|cost|billing|优惠|折扣|兑换|兌換|邀请|邀請|邮政|郵政|邮编|区号|區號|错误|錯誤|状态|狀態)\s*$/i;
 /** `123456 is your Uber code`. */
 const WEAK_BACKWARD_RE =
   /^\s+(?:is|as)\s+(?:your|the)\s+[^.!?\d\n]{0,30}?(?<![a-z])(?:code|pin)(?![a-z])/i;
+/** `Use 482 913 to verify your account` / `Enter 482913 to sign in`: no noun at all. */
+const IMPERATIVE_BEFORE_RE = /(?<![a-z])(?:use|enter|type|input)\s+(?:the\s+)?(?:code\s+)?$/i;
+const IMPERATIVE_AFTER_RE =
+  /^\s+to\s+(?:verify|confirm|log|sign|authenticate|complete|finish|reset|access|continue|proceed|activate|validate)(?![a-z])/i;
 
 /**
  * What may sit between a code and the keyword that follows it: a linking word
@@ -525,7 +531,7 @@ function tokenShape(token: string): "digits" | "alnum" | null {
   if (/^(?:\d{3}-\d{3}|\d{4}-\d{4}|[A-Z]{1,3}-\d{4,8})$/.test(token)) return "digits";
   const letters = /[A-Za-z]/.test(token);
   const digits = token.match(/\d/g)?.length ?? 0;
-  if (letters && digits >= 2 && /^[A-Za-z0-9]{6,10}$/.test(token)) return "alnum";
+  if (letters && digits >= 2 && /^[A-Za-z0-9]{5,10}$/.test(token)) return "alnum";
   if (letters && digits >= 1 && /^[A-Z0-9]{3,5}-[A-Z0-9]{3,5}$/.test(token)) return "alnum";
   return null;
 }
@@ -661,9 +667,18 @@ function stripCodes(text: string, counts: HygieneCounts): string {
   for (const run of runs) {
     if (run.kind !== "digits" || taken.has(run)) continue;
     const before = shadow.slice(Math.max(0, run.start - 40), run.start);
+    const after = shadow.slice(run.end, run.end + 60);
     const weak = WEAK_FORWARD_RE.exec(before);
-    if (weak && !NOT_A_SECRET_CODE_RE.test(before.slice(0, weak.index))) taken.add(run);
-    else if (WEAK_BACKWARD_RE.test(shadow.slice(run.end, run.end + 60))) taken.add(run);
+    if (weak) {
+      const word = (weak[1] ?? weak[2] ?? weak[3] ?? "").toLowerCase();
+      const at = weak.index + weak[0].toLowerCase().lastIndexOf(word);
+      if (!NOT_A_SECRET_CODE_RE.test(before.slice(0, at))) taken.add(run);
+    } else if (
+      WEAK_BACKWARD_RE.test(after) ||
+      (IMPERATIVE_BEFORE_RE.test(before) && IMPERATIVE_AFTER_RE.test(after))
+    ) {
+      taken.add(run);
+    }
   }
 
   if (taken.size === 0) return text;
