@@ -3,11 +3,12 @@
  * import from here; the files behind it are implementation.
  */
 export * from "./types.js";
-export { createWardenSession } from "./session.js";
+export { KnownUrls, createWardenSession } from "./session.js";
 export type { WardenSession, WardenSessionOptions, WardenOutcome } from "./session.js";
 export { WardenInbox, DEFAULT_APPROVAL_TIMEOUT_MS } from "./inbox.js";
 export type {
   ApprovalOutcome,
+  InboxItemDetail,
   InboxItemView,
   InboxOptions,
   ResolveResult,
@@ -31,4 +32,5 @@ export { loadGrants, createGrants, revokeGrant, matchGrants } from "./grants.js"
 export type { StoredGrant, LoadedGrants } from "./grants.js";
 export { readAudit, appendAudit } from "./audit.js";
 export type { AuditEntry } from "./audit.js";
+export { isConversationTainted, markConversationTainted } from "./taint.js";
 export { wardenDir } from "./store.js";
