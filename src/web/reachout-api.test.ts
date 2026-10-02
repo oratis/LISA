@@ -50,12 +50,17 @@ afterEach(async () => {
   fs.rmSync(home, { recursive: true, force: true });
 });
 
+/** Loose JSON for assertions: any property path can be read, leaves are compared by assert. */
+interface Loose {
+  [key: string]: Loose;
+}
+
 async function call(
   method: string,
   route: string,
   body?: unknown,
   uid?: string,
-): Promise<{ status: number; body: Record<string, any> }> {
+): Promise<{ status: number; body: Loose }> {
   const res = await fetch(origin + route, {
     method,
     headers: {
@@ -65,7 +70,7 @@ async function call(
     body: body === undefined ? undefined : typeof body === "string" ? body : JSON.stringify(body),
   });
   const text = await res.text();
-  return { status: res.status, body: text ? (JSON.parse(text) as Record<string, any>) : {} };
+  return { status: res.status, body: text ? (JSON.parse(text) as Loose) : {} };
 }
 
 async function sendNotice(targetHome: string, title: string): Promise<string> {
