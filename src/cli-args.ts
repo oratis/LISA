@@ -3,7 +3,7 @@
  * entrypoint (`cli.ts` runs `main()` on import). `cli.ts` re-exports nothing but
  * consumes `parseArgs`/`ParsedArgs` from here.
  */
-import type { ApprovalMode } from "./approval.js";
+import { APPROVAL_MODES, type ApprovalMode } from "./approval.js";
 import { DEFAULT_MODEL } from "./llm.js";
 
 export interface ParsedArgs {
@@ -13,6 +13,8 @@ export interface ParsedArgs {
   compaction: boolean;
   model: string;
   approval: ApprovalMode;
+  /** True when --approval was passed; false lets `serve --web` default to warden. */
+  approvalExplicit: boolean;
   loadMcp: boolean;
   loadPlugins: boolean;
   voice: boolean;
@@ -101,6 +103,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     verbose: isVerboseArgv([], process.env),
     noColor: false,
     approval: "auto",
+    approvalExplicit: false,
     loadMcp: true,
     loadPlugins: true,
     voice: false,
@@ -167,10 +170,11 @@ export function parseArgs(argv: string[]): ParsedArgs {
       process.env.LISA_PROVIDER = v;
     } else if (arg === "--approval") {
       const v = mustNext(argv, ++i, "--approval") as ApprovalMode;
-      if (!["auto", "ask", "ask-mutating"].includes(v)) {
+      if (!APPROVAL_MODES.includes(v)) {
         throw new Error(`bad --approval mode: ${v}`);
       }
       out.approval = v;
+      out.approvalExplicit = true;
     } else if (arg === "--port") {
       out.port = parseInt(mustNext(argv, ++i, "--port"), 10);
     } else if (arg === "--host") {

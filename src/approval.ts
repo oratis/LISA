@@ -1,7 +1,16 @@
 import readline from "node:readline";
 import type { ApprovalCallback, ApprovalDecision } from "./agent.js";
 
-export type ApprovalMode = "auto" | "ask" | "ask-mutating";
+/**
+ * `warden` — every tool call is decided by the deterministic Warden policy
+ * (src/warden/) and "ask" waits on the approval inbox. It is a web-surface
+ * mode: the server builds a Warden session per turn. The terminal REPL has no
+ * inbox client, so there it degrades to the stricter-or-equal `ask-mutating`
+ * stdin prompt.
+ */
+export type ApprovalMode = "auto" | "ask" | "ask-mutating" | "warden";
+
+export const APPROVAL_MODES: readonly ApprovalMode[] = ["auto", "ask", "ask-mutating", "warden"];
 
 export interface ApprovalConfig {
   mode: ApprovalMode;
@@ -52,7 +61,10 @@ export function buildApprovalCallback(
 ): ApprovalCallback | undefined {
   if (cfg.mode === "auto") return undefined;
   return async (toolName: string, toolInput: unknown): Promise<ApprovalDecision> => {
-    if (cfg.mode === "ask-mutating" && !isMutatingCall(cfg, toolName, toolInput)) {
+    if (
+      (cfg.mode === "ask-mutating" || cfg.mode === "warden") &&
+      !isMutatingCall(cfg, toolName, toolInput)
+    ) {
       return { allow: true };
     }
     const preview = previewInput(toolInput);

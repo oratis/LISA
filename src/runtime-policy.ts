@@ -59,6 +59,12 @@ export interface RuntimePolicyArgs {
   thinking: boolean;
   compaction: boolean;
   approval: ApprovalMode;
+  /**
+   * Whether `--approval` was given. Pass `false` to let the surface pick its
+   * default: the web surfaces (local-web, cloud) then run under `warden`.
+   * Omitted ⇒ `approval` is used as-is (callers that build a policy by hand).
+   */
+  approvalExplicit?: boolean;
   /** Explicit --sandbox, if the surface has one. */
   sandbox?: SandboxMode;
 }
@@ -81,6 +87,17 @@ function reflectionFor(surface: RuntimeSurface, args: RuntimePolicyArgs): Reflec
 }
 
 /**
+ * The approval mode for a surface. An explicit `--approval` always wins. With
+ * no flag, the web surfaces default to `warden` (PLAN_ALWAYS_ON_UPGRADE W2a):
+ * side effects are decided by policy and "ask" waits on the approval inbox.
+ * The attended CLI keeps its historical `auto`.
+ */
+function approvalFor(surface: RuntimeSurface, args: RuntimePolicyArgs): ApprovalMode {
+  if (args.approvalExplicit === false && surface !== "cli") return "warden";
+  return args.approval;
+}
+
+/**
  * Build the policy for this process. `env` is a parameter (not read straight
  * from `process.env`) so tests can snapshot all three surfaces in one run.
  */
@@ -94,7 +111,7 @@ export function buildRuntimePolicy(
     surface,
     reflection: reflectionFor(surface, args),
     compaction: args.compaction,
-    approval: args.approval,
+    approval: approvalFor(surface, args),
     thinking: args.thinking,
     capabilities: capabilityProfileForEdition(ed),
     sandboxMode: resolveSandboxMode(args.sandbox),
@@ -135,6 +152,9 @@ export function buildNonInteractiveApprovalCallback(
   log: (msg: string) => void,
 ): ApprovalCallback | undefined {
   if (cfg.mode === "auto") return undefined;
+  // "warden" lands here only when a caller did not build a Warden session for
+  // the turn. That is a wiring gap, and the answer to it is the same as for
+  // ask-mutating with no approver: deny what mutates.
   const reason =
     cfg.mode === "ask"
       ? "Tool approval is required on this surface but there is no interactive approver " +
@@ -143,7 +163,7 @@ export function buildNonInteractiveApprovalCallback(
         "interactive approver (the web server has no terminal). Run this from the CLI, or start the " +
         "server with --approval auto.";
   return async (toolName: string, toolInput: unknown) => {
-    if (cfg.mode === "ask-mutating" && !isMutatingCall(cfg, toolName, toolInput)) {
+    if (cfg.mode !== "ask" && !isMutatingCall(cfg, toolName, toolInput)) {
       return { allow: true };
     }
     log(
