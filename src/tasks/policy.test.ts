@@ -200,7 +200,7 @@ test("review_diff cannot overwrite a file from an unattended run with no approva
     const victim = path.join(sandbox, "victim.conf");
     await fsp.writeFile(victim, "important user data\n");
 
-    const transcript = await runOnce([reviewDiffTool as ToolDefinition], repo, {
+    const transcript = await runOnce([reviewDiffTool], repo, {
       type: "tool_use",
       id: "tu_1",
       name: "review_diff",
