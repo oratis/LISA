@@ -42,7 +42,15 @@ import type { MailTrigger, RssTrigger, Task, WatchState, WebTrigger } from "./ty
 const MAX_BODY_BYTES = 1_000_000;
 const FETCH_TIMEOUT_MS = 20_000;
 const REGEX_TIMEOUT_MS = 250;
-const MAX_SEEN = 500;
+/** Hard bound on turning a fetched page or feed into the text that is compared. */
+const EXTRACT_TIMEOUT_MS = 1_000;
+/**
+ * How many item ids a feed / mailbox watcher remembers, and how many items of
+ * one fetch it looks at. The same number on purpose: the memory always covers
+ * everything a fetch can contain, so nothing in the feed as fetched can be
+ * forgotten and look new again.
+ */
+const MAX_SEEN = 2_000;
 const MAX_CHANGE_MEMORY = 20;
 /** Consecutive contrary observations needed to leave the "condition is true" state. */
 const REARM_AFTER = 2;
@@ -113,8 +121,11 @@ function parseSelector(selector: string): SimpleSelector {
   return out;
 }
 
-function attr(attrs: string, name: string): string | null {
-  const m = attrs.match(new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i"));
+const ID_ATTR = /\bid\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i;
+const CLASS_ATTR = /\bclass\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i;
+
+function attr(attrs: string, re: RegExp): string | null {
+  const m = re.exec(attrs);
   return m ? (m[1] ?? m[2] ?? m[3] ?? "") : null;
 }
 
@@ -134,6 +145,58 @@ const VOID_TAGS = new Set([
   "wbr",
 ]);
 
+interface TagToken {
+  name: string;
+  close: boolean;
+  /** Offsets of `<` and of the character after `>`. */
+  start: number;
+  end: number;
+  attrs: string;
+}
+
+const TAG_NAME = /[a-zA-Z][a-zA-Z0-9]*/y;
+
+/**
+ * Every tag in the document, in one left-to-right pass.
+ *
+ * Linear by construction: the position of the next `>` is searched for once
+ * and reused for every `<` before it, and the scan ends at the first `<` with
+ * no `>` after it. (The regex this replaces re-scanned to the end of the input
+ * from every `<` — a page of `<a<a<a…` with no `>` took seconds and froze the
+ * event loop.)
+ */
+function scanTags(html: string): TagToken[] {
+  const tags: TagToken[] = [];
+  let i = 0;
+  let gt = -1;
+  for (;;) {
+    const lt = html.indexOf("<", i);
+    if (lt < 0) break;
+    if (gt <= lt) {
+      gt = html.indexOf(">", lt + 1);
+      if (gt < 0) break; // nothing after this point can be a complete tag
+    }
+    let j = lt + 1;
+    const close = html.charCodeAt(j) === 47; // "/"
+    if (close) j++;
+    TAG_NAME.lastIndex = j;
+    const name = TAG_NAME.exec(html);
+    if (!name || TAG_NAME.lastIndex > gt) {
+      i = lt + 1; // a stray "<" — not a tag
+      continue;
+    }
+    tags.push({
+      name: name[0].toLowerCase(),
+      close,
+      start: lt,
+      end: gt + 1,
+      attrs: html.slice(TAG_NAME.lastIndex, gt),
+    });
+    i = gt + 1;
+  }
+  return tags;
+}
+
 /**
  * Inner HTML of every element matching a tag/#id/.class selector (max 20).
  * A deliberately small matcher — enough to point at "the price" or "the stock
@@ -142,35 +205,55 @@ const VOID_TAGS = new Set([
 export function selectHtml(html: string, selector: string): string[] {
   const want = parseSelector(selector);
   const out: string[] = [];
-  const open = /<([a-zA-Z][a-zA-Z0-9]*)\b([^>]*)>/g;
-  for (let m = open.exec(html); m && out.length < 20; m = open.exec(html)) {
-    const tag = m[1]!.toLowerCase();
-    const attrs = m[2] ?? "";
-    if (want.tag && tag !== want.tag) continue;
-    if (want.id !== undefined && attr(attrs, "id") !== want.id) continue;
+  const tags = scanTags(html);
+  for (let t = 0; t < tags.length && out.length < 20; t++) {
+    const tag = tags[t]!;
+    if (tag.close) continue;
+    if (want.tag && tag.name !== want.tag) continue;
+    if (want.id !== undefined && attr(tag.attrs, ID_ATTR) !== want.id) continue;
     if (want.classes.length) {
-      const have = new Set((attr(attrs, "class") ?? "").split(/\s+/));
+      const have = new Set((attr(tag.attrs, CLASS_ATTR) ?? "").split(/\s+/));
       if (!want.classes.every((c) => have.has(c))) continue;
     }
-    if (VOID_TAGS.has(tag) || attrs.trimEnd().endsWith("/")) {
+    if (VOID_TAGS.has(tag.name) || tag.attrs.trimEnd().endsWith("/")) {
       out.push("");
       continue;
     }
     // Walk to the matching close tag, counting nested elements of the same name.
-    const walker = new RegExp(`<(/?)${tag}\\b[^>]*>`, "gi");
-    walker.lastIndex = open.lastIndex;
     let depth = 1;
     let end = html.length;
-    for (let w = walker.exec(html); w; w = walker.exec(html)) {
-      depth += w[1] ? -1 : 1;
+    for (let w = t + 1; w < tags.length; w++) {
+      const other = tags[w]!;
+      if (other.name !== tag.name) continue;
+      if (!other.close && other.attrs.trimEnd().endsWith("/")) continue;
+      depth += other.close ? -1 : 1;
       if (depth === 0) {
-        end = w.index;
+        end = other.start;
         break;
       }
     }
-    out.push(html.slice(open.lastIndex, end));
+    out.push(html.slice(tag.end, end));
   }
   return out;
+}
+
+/**
+ * Run `fn` with a hard time limit. Everything a watcher does to a fetched page
+ * — tag scanning, HTML-to-text, feed parsing — is synchronous work on content
+ * an outsider controls, so all of it runs under this: a page built to be slow
+ * costs the limit once and counts as a failed check (which backs off), instead
+ * of blocking the event loop for as long as it likes on every poll.
+ */
+export function withinTimeLimit<T>(
+  fn: () => T,
+  ms: number,
+): { ok: true; value: T } | { ok: false } {
+  try {
+    return { ok: true, value: vm.runInNewContext("fn()", { fn }, { timeout: ms }) as T };
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException)?.code === "ERR_SCRIPT_EXECUTION_TIMEOUT") return { ok: false };
+    throw e;
+  }
 }
 
 /**
@@ -244,6 +327,29 @@ function remember(seen: string[] | undefined, ids: string[], cap: number): strin
   return merged.slice(Math.max(0, merged.length - cap));
 }
 
+/** A stable, bounded stand-in for an item id (feed guids can be whole URLs). */
+function seenKey(id: string): string {
+  return id.length <= 24 ? id : `h:${sha(id).slice(0, 20)}`;
+}
+
+/**
+ * The seen-list after a fetch: everything in THIS fetch first, then what was
+ * remembered before, oldest-seen dropped from the tail. Because the current
+ * fetch is always kept whole, an item that is still in the feed can never be
+ * evicted — which is what made a long feed fire on every poll.
+ */
+function rememberFetch(current: string[], previous: string[] | undefined, cap: number): string[] {
+  const out: string[] = [];
+  const have = new Set<string>();
+  for (const key of [...current, ...(previous ?? [])]) {
+    if (have.has(key)) continue;
+    have.add(key);
+    out.push(key);
+    if (out.length >= cap) break;
+  }
+  return out;
+}
+
 function failed(task: Task, error: string): WatchOutcome {
   return { watch: { ...task.watch, failures: (task.watch?.failures ?? 0) + 1 }, error };
 }
@@ -261,15 +367,19 @@ async function checkWeb(
     return failed(task, `HTTP ${page.status} from the watched page`);
 
   const isHtml = /html|xml/i.test(page.contentType) || /^\s*</.test(page.text);
-  let text: string;
-  if (trigger.selector) {
-    const parts = selectHtml(page.text, trigger.selector);
-    // A selector that matches nothing is an observation ("it is not there"),
-    // not an error: that is exactly what `disappears` waits for.
-    text = parts.map((p) => htmlToText(p)).join("\n");
-  } else {
-    text = isHtml ? htmlToText(page.text) : page.text;
-  }
+  const selector = trigger.selector;
+  const extracted = withinTimeLimit(() => {
+    if (selector) {
+      // A selector that matches nothing is an observation ("it is not there"),
+      // not an error: that is exactly what `disappears` waits for.
+      return selectHtml(page.text, selector)
+        .map((part) => htmlToText(part))
+        .join("\n");
+    }
+    return isHtml ? htmlToText(page.text) : page.text;
+  }, EXTRACT_TIMEOUT_MS);
+  if (!extracted.ok) return failed(task, "the page took too long to process");
+  const text = extracted.value;
 
   let value: string | null = text;
   let matched = true;
@@ -353,22 +463,23 @@ async function checkRss(
   const page = await fetchText(trigger.url, signal, deps);
   if (page.status < 200 || page.status >= 300)
     return failed(task, `HTTP ${page.status} from the feed`);
-  const feed = parseFeed(page.text);
-  const ids = feed.items.map((i) => i.id);
+  const parsed = withinTimeLimit(() => parseFeed(page.text), EXTRACT_TIMEOUT_MS);
+  if (!parsed.ok) return failed(task, "the feed took too long to process");
+  const feed = parsed.value;
+  // Only the head of an enormous feed is considered — the same bound as the
+  // memory, so every item considered is also remembered.
+  const items = feed.items.slice(0, MAX_SEEN);
+  const keys = items.map((i) => seenKey(i.id));
   const prev = task.watch;
   // First look at a feed: everything already in it is old news.
   if (prev?.seen === undefined)
-    return { watch: { ...prev, seen: remember([], ids, MAX_SEEN), failures: 0 } };
+    return { watch: { ...prev, seen: rememberFetch(keys, undefined, MAX_SEEN), failures: 0 } };
 
   const known = new Set(prev.seen);
-  const fresh = feed.items.filter((i) => !known.has(i.id));
+  const fresh = items.filter((_, index) => !known.has(keys[index]!));
   const watch: WatchState = {
     ...prev,
-    seen: remember(
-      prev.seen,
-      fresh.map((i) => i.id),
-      MAX_SEEN,
-    ),
+    seen: rememberFetch(keys, prev.seen, MAX_SEEN),
     failures: 0,
   };
   const keywords = (trigger.keywords ?? []).map((k) => k.toLowerCase());
@@ -476,16 +587,18 @@ async function checkMail(
         m.fromAddress.toLowerCase().includes(from)) &&
       (!subject || m.subject.toLowerCase().includes(subject)),
   );
-  const idOf = (m: WatchMail): string => `${m.accountId}:${m.uid}`;
+  const idOf = (m: WatchMail): string => seenKey(`${m.accountId}:${m.uid}`);
   // First look: mail that is already there is not news.
   if (prev?.seen === undefined) {
-    return { watch: { ...prev, seen: remember([], matching.map(idOf), MAX_SEEN), failures: 0 } };
+    return {
+      watch: { ...prev, seen: rememberFetch(matching.map(idOf), undefined, MAX_SEEN), failures: 0 },
+    };
   }
   const known = new Set(prev.seen);
   const fresh = matching.filter((m) => !known.has(idOf(m)));
   const watch: WatchState = {
     ...prev,
-    seen: remember(prev.seen, fresh.map(idOf), MAX_SEEN),
+    seen: rememberFetch(matching.map(idOf), prev.seen, MAX_SEEN),
     failures: 0,
   };
   if (fresh.length === 0) return { watch };

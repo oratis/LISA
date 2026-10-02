@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { SafeFetchDependencies } from "../tools/web_fetch.js";
 import type { Task, TriggerSpec, WatchState } from "./types.js";
+import * as watchersModule from "./watchers.js";
 import {
   createWatchCheck,
   observeCondition,
@@ -379,7 +380,7 @@ test("rss: existing items are a baseline; only new items matching a keyword hit,
   items = [{ id: "3", title: "v1.1 released" }, ...items];
   const boring = await check(watcher(trigger, first.watch), { signal, now: NOW });
   assert.equal(boring.hit, undefined, "new, but no keyword");
-  assert.deepEqual(boring.watch.seen, ["1", "2", "3"]);
+  assert.deepEqual(boring.watch.seen, ["3", "1", "2"], "this fetch first, then what was known");
 
   items = [
     { id: "5", title: "Patch notes", summary: "Fixes cve-2026-1234 in the parser" },
@@ -444,6 +445,7 @@ test("mail: baseline first, then new mail matching sender and subject — metada
   assert.equal(hit.hit!.summary, "1 new matching message.");
   assert.match(hit.hit!.detail!, /Landlord <landlord@example\.com>: RENT increase notice/);
   assert.deepEqual(hit.watch.seen, ["acct1:1", "acct1:4"]);
+  assert.equal(hit.hit!.key.startsWith("mail:"), true);
   assert.equal((await check(watcher(trigger, hit.watch), { signal, now: NOW })).hit, undefined);
 });
 
@@ -493,4 +495,116 @@ test("mail: with consent not granted the default path refuses before touching an
     else process.env.LISA_HOME = previous;
     fs.rmSync(home, { recursive: true, force: true });
   }
+});
+
+// ── hostile or enormous input ──
+
+test("selectHtml is linear on input built to make a tag scanner quadratic (reviewer probe t5)", () => {
+  for (const html of [
+    "<a".repeat(160_000), // 320 KB, no ">" anywhere
+    "< ".repeat(160_000) + ">", // stray "<" everywhere, one ">" at the very end
+    "<div class=x>".repeat(25_000), // 325 KB of opens that never close
+    `<span class="price"${" x".repeat(150_000)}>9</span>`, // one enormous tag
+  ]) {
+    const started = performance.now();
+    selectHtml(html, "span.price");
+    selectHtml(html, "div.x");
+    const took = performance.now() - started;
+    assert.ok(took < 500, `took ${took.toFixed(0)} ms on ${html.slice(0, 12)}…`);
+  }
+  // …and still correct on the inputs that are merely odd.
+  assert.deepEqual(selectHtml('<p>1 < 2</p><span class="price">$5</span>', "span.price"), ["$5"]);
+  assert.deepEqual(selectHtml("<div class=x>a<div class=x>b</div>c</div>", "div.x"), [
+    "a<div class=x>b</div>c",
+    "b",
+  ]);
+  assert.deepEqual(selectHtml('<div class="x"/><div class="x">in</div>', "div.x"), ["", "in"]);
+});
+
+test("the whole page-processing step is time-bounded: a page built to be slow is a failed check, not a frozen loop", async () => {
+  // Nothing closes any of these comments or scripts: the tag-stripping regexes
+  // in htmlToText rescan to the end from each one.
+  const hostile = "<!--".repeat(60_000) + "<script".repeat(60_000);
+  const { deps } = site(() => ({ body: hostile }));
+  const check = createWatchCheck(deps);
+  for (const trigger of [
+    { kind: "web", url: "https://example.com/", mode: "changed" },
+    { kind: "web", url: "https://example.com/", mode: "appears", selector: "div.x", contains: "y" },
+  ] as TriggerSpec[]) {
+    const started = performance.now();
+    const outcome = await check(watcher(trigger), { signal, now: NOW });
+    const took = performance.now() - started;
+    assert.ok(took < 4000, `bounded (${took.toFixed(0)} ms)`);
+    // Either it was fast enough, or it was cut off and reported — never a hit.
+    if (outcome.error) {
+      assert.match(outcome.error, /took too long to process/);
+      assert.equal(outcome.watch.failures, 1);
+    }
+    assert.equal(outcome.hit, undefined);
+  }
+});
+
+test("withinTimeLimit cuts synchronous work off and reports it; ordinary errors pass through", () => {
+  const { withinTimeLimit } = watchersModule;
+  assert.deepEqual(
+    withinTimeLimit(() => 41 + 1, 50),
+    { ok: true, value: 42 },
+  );
+  const started = performance.now();
+  const spin = withinTimeLimit(() => {
+    for (;;) {
+      // deliberately endless
+    }
+  }, 60);
+  assert.deepEqual(spin, { ok: false });
+  assert.ok(performance.now() - started < 2000);
+  assert.throws(
+    () =>
+      withinTimeLimit(() => {
+        throw new RangeError("boom");
+      }, 50),
+    /boom/,
+  );
+});
+
+function bigFeed(n: number, newest = n): string {
+  const items = Array.from({ length: n }, (_, i) => {
+    const id = newest - i;
+    return `<item><title>Post ${id}</title><link>https://example.com/p/${id}</link><guid>https://example.com/a-rather-long-guid/${id}</guid></item>`;
+  }).join("");
+  return `<?xml version="1.0"?><rss version="2.0"><channel><title>Big feed</title>${items}</channel></rss>`;
+}
+
+test("an unchanged feed never fires, however long it is (reviewer probe t9)", async () => {
+  for (const n of [400, 600, 2500]) {
+    const body = bigFeed(n);
+    const { deps } = site(() => ({ type: "application/rss+xml", body }));
+    const check = createWatchCheck(deps);
+    const trigger: TriggerSpec = { kind: "rss", url: "https://example.com/feed.xml" };
+    let watch: WatchState | undefined;
+    const hits: Array<string | null> = [];
+    for (let i = 0; i < 6; i++) {
+      const outcome = await check(watcher(trigger, watch), { signal, now: NOW + i * 60_000 });
+      assert.equal(outcome.error, undefined);
+      hits.push(outcome.hit?.summary ?? null);
+      watch = outcome.watch;
+    }
+    assert.deepEqual(hits, [null, null, null, null, null, null], `${n} items`);
+    assert.ok(watch!.seen!.length <= 2000, "the memory is bounded");
+    assert.ok(JSON.stringify(watch).length < 80_000, "…and so is its size on disk");
+  }
+});
+
+test("a long feed still reports exactly the new items, once", async () => {
+  let body = bigFeed(600);
+  const { deps } = site(() => ({ type: "application/rss+xml", body }));
+  const check = createWatchCheck(deps);
+  const trigger: TriggerSpec = { kind: "rss", url: "https://example.com/feed.xml" };
+  const base = await check(watcher(trigger), { signal, now: NOW });
+  body = bigFeed(600, 603); // three new posts at the head, three old ones fell off the tail
+  const next = await check(watcher(trigger, base.watch), { signal, now: NOW + 1 });
+  assert.equal(next.hit!.summary, "3 new items in Big feed.");
+  assert.match(next.hit!.detail!, /Post 603/);
+  const again = await check(watcher(trigger, next.watch), { signal, now: NOW + 2 });
+  assert.equal(again.hit, undefined);
 });
