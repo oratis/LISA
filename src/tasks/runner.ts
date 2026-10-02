@@ -22,6 +22,7 @@
  *                calls are denied (policy.ts);
  *   delivery     results go through the outbox (outbox.ts), never directly.
  */
+import { AsyncLocalStorage } from "node:async_hooks";
 import { randomBytes } from "node:crypto";
 import { runAgent, type ApprovalCallback } from "../agent.js";
 import { getAutonomyEnabled } from "../autonomy/state.js";
@@ -155,6 +156,8 @@ export interface TaskRunnerOptions {
   onEvent?: (event: TaskEngineEvent) => void;
   sandboxMode?: SandboxMode;
   leaseTtlMs?: number;
+  /** Lease renewal period (tests). Default ttl/3. */
+  leaseRenewEveryMs?: number;
   now?: () => number;
   log?: (msg: string) => void;
 }
@@ -177,6 +180,17 @@ class TaskStop extends Error {
   }
 }
 
+/**
+ * This runner no longer holds the task's lease (a renewal failed, or the lease
+ * on disk is someone else's). It stops at once and writes nothing more: the
+ * run now belongs to whoever holds the lease.
+ */
+class LeaseLost extends Error {
+  constructor() {
+    super("task lease lost");
+  }
+}
+
 /** Thrown out of drive() on shutdown: the run is left resumable, not failed. */
 class Interrupted extends Error {
   constructor() {
@@ -188,6 +202,8 @@ interface Slot {
   controller: AbortController;
   stop: StopReason | null;
   stopDetail?: string;
+  lease?: TaskLease;
+  leaseLost?: boolean;
 }
 
 interface Outcome {
@@ -218,6 +234,8 @@ export class TaskRunner {
   private readonly owner = `${process.pid}-${randomBytes(6).toString("hex")}`;
   private readonly active = new Map<string, Slot>();
   private readonly inflight = new Set<Promise<void>>();
+  /** The slot (and so the lease) of the run the current async context belongs to. */
+  private readonly current = new AsyncLocalStorage<Slot>();
   private readonly now: () => number;
   private readonly host: "home" | "cloud";
   private readonly concurrency: number;
@@ -252,6 +270,58 @@ export class TaskRunner {
 
   private deliver(): TaskDeliver | undefined {
     return this.opts.deliver ?? getTaskDeliver() ?? getDefaultTaskDeliver();
+  }
+
+  // ── fencing: every write a run makes is conditional on still holding the lease ──
+
+  /**
+   * Throws LeaseLost unless the calling run still owns its task's lease. Called
+   * before every store write and every side-effecting tool call of a run.
+   * Outside a run (API-side runNow / cancel) there is no lease and no check.
+   */
+  private async fence(): Promise<void> {
+    const slot = this.current.getStore();
+    if (!slot) return;
+    if (slot.leaseLost || !slot.lease || !(await slot.lease.verify())) {
+      slot.leaseLost = true;
+      slot.controller.abort();
+      throw new LeaseLost();
+    }
+  }
+
+  private async saveRun(...args: Parameters<typeof checkpointRun>): Promise<void> {
+    await this.fence();
+    await checkpointRun(...args);
+  }
+
+  private async saveTask(...args: Parameters<typeof updateTask>): Promise<Task | null> {
+    await this.fence();
+    return await updateTask(...args);
+  }
+
+  private async saveMessage(...args: Parameters<typeof appendRunMessage>): Promise<void> {
+    await this.fence();
+    await appendRunMessage(...args);
+  }
+
+  private async saveEvent(...args: Parameters<typeof appendRunEvent>): Promise<void> {
+    await this.fence();
+    await appendRunEvent(...args);
+  }
+
+  private async saveReset(...args: Parameters<typeof resetRunMessages>): Promise<void> {
+    await this.fence();
+    await resetRunMessages(...args);
+  }
+
+  private async newRun(...args: Parameters<typeof createRun>): Promise<TaskRun> {
+    await this.fence();
+    return await createRun(...args);
+  }
+
+  private async saveNotice(...args: Parameters<typeof enqueueNotice>): Promise<void> {
+    await this.fence();
+    await enqueueNotice(...args);
   }
 
   // ── scheduling ──
@@ -328,7 +398,7 @@ export class TaskRunner {
     if (this.active.has(taskId) || task.activeRunId)
       return { ok: false, reason: "already_running" };
     const now = this.now();
-    const updated = await updateTask(
+    const updated = await this.saveTask(
       taskId,
       (t) => {
         if (t.activeRunId) return false;
@@ -352,7 +422,7 @@ export class TaskRunner {
   async cancel(taskId: string): Promise<boolean> {
     const now = this.now();
     let found = false;
-    const updated = await updateTask(
+    const updated = await this.saveTask(
       taskId,
       (t) => {
         if (t.activeRunId) {
@@ -409,6 +479,13 @@ export class TaskRunner {
         owner: this.owner,
         ttlMs: this.opts.leaseTtlMs ?? DEFAULT_LEASE_TTL_MS,
         now: this.now,
+        ...(this.opts.leaseRenewEveryMs ? { renewEveryMs: this.opts.leaseRenewEveryMs } : {}),
+        // A renewal that fails or errors: we can no longer vouch for ownership.
+        // Abort whatever is in flight; the fence stops every write after that.
+        onLost: () => {
+          slot.leaseLost = true;
+          slot.controller.abort();
+        },
       });
     } catch (err) {
       this.log(`cannot take the lease for ${taskId}: ${(err as Error).message}`);
@@ -418,9 +495,17 @@ export class TaskRunner {
       return false;
     }
     const held = lease;
-    const p = this.runTask(taskId, slot)
+    slot.lease = held;
+    const p = this.current
+      .run(slot, () => this.runTask(taskId, slot))
       .catch((err) => {
         if (err instanceof Interrupted) return;
+        if (err instanceof LeaseLost || slot.leaseLost) {
+          this.log(
+            `task ${taskId}: lease lost — stopped without writing; its new holder continues it`,
+          );
+          return;
+        }
         this.log(`task ${taskId} failed outside its run: ${(err as Error).stack ?? String(err)}`);
       })
       .finally(async () => {
@@ -448,7 +533,7 @@ export class TaskRunner {
           return;
         }
         // The pointer outlived its run (finished or lost) — clear it and carry on.
-        await updateTask(task.id, (t) => {
+        await this.saveTask(task.id, (t) => {
           delete t.activeRunId;
           if (t.state === "running") t.state = restingState(t);
         });
@@ -482,12 +567,12 @@ export class TaskRunner {
   }
 
   private async expire(task: Task, now: number): Promise<void> {
-    const run = await createRun(task.id, { state: "failed" }, now);
+    const run = await this.newRun(task.id, { state: "failed" }, now);
     run.endedAt = now;
     run.stopReason = "expired";
     run.summary = `This was due at ${new Date(task.nextRunAt!).toISOString()} but LISA was not running then. It was not run.`;
-    await checkpointRun(run, now);
-    const updated = await updateTask(
+    await this.saveRun(run, now);
+    const updated = await this.saveTask(
       task.id,
       (t) => {
         t.state = "expired";
@@ -502,13 +587,13 @@ export class TaskRunner {
   private async startRun(task: Task, slot: Slot, manual: boolean): Promise<void> {
     const now = this.now();
     const input = task.queued?.input;
-    const run = await createRun(
+    const run = await this.newRun(
       task.id,
       { state: "running", ...(input !== undefined ? { input } : {}) },
       now,
     );
     if (manual) run.manual = true;
-    const started = await updateTask(
+    const started = await this.saveTask(
       task.id,
       (t) => {
         t.state = "running";
@@ -519,7 +604,7 @@ export class TaskRunner {
       now,
     );
     if (!started) return; // deleted under us
-    await checkpointRun(run, now);
+    await this.saveRun(run, now);
     this.emit({ type: "task_run_started", taskId: task.id, runId: run.id, resumed: false });
     this.emit({ type: "task_updated", task: started });
     const outcome = await this.drive(started, run, [], buildTaskFrame(task, run, now), slot);
@@ -554,14 +639,14 @@ export class TaskRunner {
     run.state = "interrupted";
     run.attempts = attempts;
     run.lastError = why.slice(0, 500);
-    await checkpointRun(run, now);
-    await appendRunEvent(
+    await this.saveRun(run, now);
+    await this.saveEvent(
       task.id,
       run.id,
       { type: "error", summary: `attempt ${attempts} failed: ${run.lastError.slice(0, 200)}` },
       now,
     );
-    const parked = await updateTask(
+    const parked = await this.saveTask(
       task.id,
       (t) => {
         // The pointer stays: the retry is a resume of THIS run.
@@ -586,8 +671,8 @@ export class TaskRunner {
         : undefined;
     run.state = "interrupted";
     if (!retry) run.resumes = (run.resumes ?? 0) + 1;
-    await checkpointRun(run, now);
-    await appendRunEvent(
+    await this.saveRun(run, now);
+    await this.saveEvent(
       task.id,
       run.id,
       {
@@ -625,18 +710,18 @@ export class TaskRunner {
       return;
     }
     if (plan.kind === "restart") {
-      if (loaded.messages.length > 0) await resetRunMessages(task.id, run.id, 0, now);
+      if (loaded.messages.length > 0) await this.saveReset(task.id, run.id, 0, now);
       userMessage = `${buildTaskFrame(task, run, now)}\n\n${note}`;
     } else {
       // Rewrite the log's tail so it matches the history the model is given.
-      await resetRunMessages(task.id, run.id, plan.keep, now);
-      await appendRunMessage(task.id, run.id, plan.last, now);
+      await this.saveReset(task.id, run.id, plan.keep, now);
+      await this.saveMessage(task.id, run.id, plan.last, now);
       history = plan.history;
     }
 
     run.state = "running";
-    await checkpointRun(run, now);
-    const resumed = await updateTask(task.id, (t) => {
+    await this.saveRun(run, now);
+    const resumed = await this.saveTask(task.id, (t) => {
       t.state = "running";
       delete t.resumeAt;
     });
@@ -671,7 +756,7 @@ export class TaskRunner {
     let logChain: Promise<void> = Promise.resolve();
     const logEvent = (event: RunEvent): void => {
       logChain = logChain
-        .then(() => appendRunEvent(task.id, run.id, event, this.now()))
+        .then(() => this.saveEvent(task.id, run.id, event, this.now()))
         .catch(() => {});
     };
 
@@ -778,7 +863,7 @@ export class TaskRunner {
                 throw new TaskStop("settlement_failed", why);
               }
             }
-            await checkpointRun(run, this.now());
+            await this.saveRun(run, this.now());
             return result;
           } finally {
             if (admission?.ok) await admission.release().catch(() => {});
@@ -807,7 +892,7 @@ export class TaskRunner {
         moodOrigin: "a task run",
         approval,
         onMessagePersist: async (message) => {
-          await appendRunMessage(task.id, run.id, message, this.now());
+          await this.saveMessage(task.id, run.id, message, this.now());
         },
         onEvent: (event: AgentEvent) => {
           try {
@@ -836,6 +921,8 @@ export class TaskRunner {
           }
           if (slot.stop) return { block: `run is stopping (${slot.stop})` };
           if (!isSideEffectingCall(name, input)) return;
+          // Fencing: a runner that no longer owns the lease must not act.
+          await this.fence();
           const digest = digestCall(name, input);
           const recorded = replay.get(digest);
           if (recorded !== undefined) {
@@ -860,7 +947,7 @@ export class TaskRunner {
           // Write-ahead: if we die inside the tool, the resumed run knows it started.
           run.executedDigests[digest] = IN_FLIGHT;
           touch();
-          await checkpointRun(run, this.now());
+          await this.saveRun(run, this.now());
           return;
         },
         postToolHook: async (name, input, text, isError) => {
@@ -875,7 +962,7 @@ export class TaskRunner {
             );
           }
           touch();
-          await checkpointRun(run, this.now());
+          await this.saveRun(run, this.now());
           await cancelRequested();
         },
       });
@@ -890,9 +977,12 @@ export class TaskRunner {
           error: "ran out of turns",
         };
       }
+      if (slot.leaseLost) throw new LeaseLost();
       return { state: "succeeded", stopReason: result.stopReason, summary: text };
     } catch (err) {
       await logChain;
+      // Lost lease: not an outcome of the run at all. Nothing is recorded.
+      if (err instanceof LeaseLost || slot.leaseLost) throw new LeaseLost();
       const stop = slot.stop ?? (err instanceof TaskStop ? err.stop : null);
       if (stop === "cancelled") return { state: "cancelled", stopReason: "cancelled", summary: "" };
       if (stop) {
@@ -933,7 +1023,7 @@ export class TaskRunner {
     run.stopReason = outcome.stopReason;
     if (outcome.summary) run.summary = clip(outcome.summary, MAX_SUMMARY);
     if (outcome.error) run.error = outcome.error;
-    await checkpointRun(run, now);
+    await this.saveRun(run, now);
 
     const cloud = this.host === "cloud";
     const manual = !!run.manual;
@@ -944,7 +1034,7 @@ export class TaskRunner {
       priority: TaskNotice["priority"];
     } | null = null;
 
-    const updated = await updateTask(
+    const updated = await this.saveTask(
       task.id,
       (t) => {
         delete t.activeRunId;
@@ -1069,7 +1159,7 @@ export class TaskRunner {
     priority: TaskNotice["priority"],
   ): Promise<void> {
     try {
-      await enqueueNotice(
+      await this.saveNotice(
         {
           id: noticeId(run.id, kind),
           uid: task.owner,
@@ -1086,6 +1176,7 @@ export class TaskRunner {
       );
       await drainOutbox(this.deliver(), this.now());
     } catch (err) {
+      if (err instanceof LeaseLost) throw err;
       // The notice is durable (or will be re-derived); delivery is retried at the next tick.
       this.log(`delivery of ${run.id} deferred: ${(err as Error).message}`);
     }
@@ -1120,11 +1211,11 @@ export class TaskRunner {
       const existing = await loadRun(task.id, runId);
       const run =
         existing?.run ??
-        (await createRun(task.id, { id: runId, state: "succeeded", input: hit.detail }, now));
+        (await this.newRun(task.id, { id: runId, state: "succeeded", input: hit.detail }, now));
       run.endedAt = now;
       run.stopReason = "watch_hit";
       run.summary = clip(hit.summary, MAX_SUMMARY);
-      await checkpointRun(run, now);
+      await this.saveRun(run, now);
       this.emit({
         type: "task_run_finished",
         taskId: task.id,
@@ -1136,7 +1227,7 @@ export class TaskRunner {
       await this.notify(task, run, "watch_hit", hit.summary, "high");
     }
 
-    const updated = await updateTask(
+    const updated = await this.saveTask(
       task.id,
       (t) => {
         t.watch = {
@@ -1171,11 +1262,12 @@ export class TaskRunner {
     if (outcome.error && failures === MAX_BLOCKED && updated) {
       const runId = `r_${digestCall(task.id, `failing:${task.watch?.lastCheckedAt ?? 0}`).slice(0, 16)}`;
       const existing = await loadRun(task.id, runId);
-      const run = existing?.run ?? (await createRun(task.id, { id: runId, state: "failed" }, now));
+      const run =
+        existing?.run ?? (await this.newRun(task.id, { id: runId, state: "failed" }, now));
       run.endedAt = now;
       run.stopReason = "watch_failing";
       run.error = outcome.error.slice(0, 500);
-      await checkpointRun(run, now);
+      await this.saveRun(run, now);
       await this.notify(
         updated,
         run,

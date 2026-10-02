@@ -231,6 +231,193 @@ test("two runners over one home run a due task exactly once", async () => {
   });
 });
 
+test("a holder that stalls past its lease TTL is not stolen from: one run, one side effect (reviewer probe t3)", async () => {
+  await withHome(async () => {
+    const task = await dueRoutine();
+    let clock = NOW;
+    let sent = 0;
+    const gate = deferred();
+    const inTool = deferred();
+    const tools = [
+      tool("read", async () => {
+        inTool.resolve();
+        await gate.promise;
+        return "file contents";
+      }),
+      tool("send_message", async () => (sent++, "message sent")),
+    ];
+    const approvalFactory = () => ({ approval: () => ({ allow: true }) });
+    const { notices, deliver } = collector();
+    const script = () =>
+      scripted([
+        turn([call("read", { path: "/x" })]),
+        turn([call("send_message", { to: "sam", body: "hi" })]),
+        say("done"),
+      ]);
+    const A = script();
+    const B = script();
+    const a = makeRunner({
+      provider: A.provider,
+      tools,
+      approvalFactory,
+      deliver,
+      now: () => clock,
+    });
+    const b = makeRunner({
+      provider: B.provider,
+      tools,
+      approvalFactory,
+      deliver,
+      now: () => clock,
+    });
+    await a.tick();
+    await inTool.promise; // A is inside a tool call, holding the lease
+    assert.deepEqual((await b.tick()).started, []);
+    clock += 91_000; // past the 90 s TTL with no renewal from A (its loop is "blocked")
+    assert.deepEqual(
+      (await b.tick()).started,
+      [],
+      "a live holder is not stolen from on expiry alone",
+    );
+    gate.resolve();
+    await a.drain();
+    await b.drain();
+    assert.equal(sent, 1);
+    assert.equal(B.calls.length, 0);
+    assert.equal((await getTask(task.id))!.runs.length, 1);
+    assert.deepEqual(
+      notices.map((n) => n.summary),
+      ["done"],
+    );
+  });
+});
+
+/** Overwrite a task's lease as if another host had taken it over after an expiry. */
+async function stealLease(taskId: string): Promise<string> {
+  const { tasksDir } = await import("./store.js");
+  const file = path.join(tasksDir(), ".leases", `task-${taskId}.lease`);
+  await fsp.writeFile(
+    file,
+    JSON.stringify({
+      owner: "another-host-runner",
+      token: "their-token",
+      pid: 4242,
+      host: "another-host",
+      started: 1,
+      ts: Date.now(),
+      expiresAt: Date.now() + 3_600_000,
+    }),
+  );
+  return file;
+}
+
+test("fencing: a runner whose lease was taken stops — no side effect, no checkpoint, no finish", async () => {
+  await withHome(async () => {
+    const task = await dueRoutine();
+    let sent = 0;
+    const gate = deferred();
+    const inTool = deferred();
+    const tools = [
+      tool("read", async () => {
+        inTool.resolve();
+        await gate.promise;
+        return "file contents";
+      }),
+      tool("send_message", async () => (sent++, "message sent")),
+    ];
+    const approvalFactory = () => ({ approval: () => ({ allow: true }) });
+    const { notices, deliver } = collector();
+    const A = scripted([
+      turn([call("read", { path: "/x" }), call("send_message", { to: "sam" })]),
+      say("A done"),
+    ]);
+    const events: string[] = [];
+    const a = makeRunner({
+      provider: A.provider,
+      tools,
+      approvalFactory,
+      deliver,
+      onEvent: (e) => events.push(e.type),
+    });
+    await a.tick();
+    await inTool.promise;
+    const runId = (await getTask(task.id))!.activeRunId!;
+    const before = (await loadRun(task.id, runId))!;
+
+    const leaseFile = await stealLease(task.id); // A does not know yet
+    gate.resolve(); // A's tool returns; its next step is a checkpoint, then send_message
+    await a.drain();
+
+    assert.equal(sent, 0, "the side-effecting call after the loss never ran");
+    assert.equal(A.calls.length, 1, "no further model call");
+    const after = (await loadRun(task.id, runId))!;
+    assert.equal(
+      after.run.state,
+      "running",
+      "not finished, not failed: it is someone else's run now",
+    );
+    assert.equal(after.messages.length, before.messages.length, "nothing appended to the run log");
+    assert.equal(after.run.toolCalls, before.run.toolCalls, "no checkpoint written");
+    const t = (await getTask(task.id))!;
+    assert.equal(t.activeRunId, runId);
+    assert.equal(t.state, "running");
+    assert.equal(notices.length, 0);
+    assert.ok(!events.includes("task_run_finished"));
+    assert.equal(
+      JSON.parse(await fsp.readFile(leaseFile, "utf8")).owner,
+      "another-host-runner",
+      "the loser did not release the winner's lease",
+    );
+
+    // The new holder finishes and lets go; the run is then resumed and completed — once.
+    await fsp.rm(leaseFile);
+    const B = scripted([turn([call("send_message", { to: "sam" })]), say("B done")]);
+    const b = makeRunner({ provider: B.provider, tools, approvalFactory, deliver });
+    await b.tick();
+    await b.drain();
+    assert.equal(sent, 1);
+    assert.deepEqual((await getTask(task.id))!.runs, [runId]);
+    assert.deepEqual(
+      notices.map((n) => n.summary),
+      ["B done"],
+    );
+  });
+});
+
+test("a failed lease renewal aborts the run in flight and leaves it resumable", async () => {
+  await withHome(async () => {
+    const task = await dueRoutine();
+    const reached = deferred();
+    let aborted = false;
+    const { notices, deliver } = collector();
+    const a = makeRunner({
+      deliver,
+      leaseRenewEveryMs: 20,
+      provider: scripted([
+        async (o) => {
+          reached.resolve();
+          try {
+            return await hang(o.signal);
+          } finally {
+            aborted = true;
+          }
+        },
+      ]).provider,
+    });
+    await a.tick();
+    await reached.promise;
+    const leaseFile = await stealLease(task.id);
+    await a.drain(); // the next renewal finds the lease taken and aborts the model call
+    assert.equal(aborted, true);
+    const t = (await getTask(task.id))!;
+    assert.ok(t.activeRunId, "still the active run");
+    assert.equal((await loadRun(task.id, t.activeRunId))!.run.state, "running");
+    assert.equal(t.resumeAt, undefined, "not parked as a failed attempt either");
+    assert.equal(notices.length, 0);
+    assert.equal(JSON.parse(await fsp.readFile(leaseFile, "utf8")).owner, "another-host-runner");
+  });
+});
+
 test("concurrency is capped and the longest-waiting task goes first", async () => {
   await withHome(async () => {
     const recent = await dueRoutine({ title: "recent" });
