@@ -71,3 +71,45 @@ export async function quarantineCorrupt(file: string, error: string): Promise<vo
 export function newId(prefix: string): string {
   return `${prefix}_${crypto.randomBytes(9).toString("base64url")}`;
 }
+
+const digestKeys = new Map<string, Promise<Buffer>>();
+
+/**
+ * The per-home key the payload digest is an HMAC under, at
+ * `<home>/warden/digest.key` (0600). Created on first use. If the key cannot
+ * be read or created this REJECTS — the caller then has no digest and must not
+ * decide anything.
+ */
+export function loadDigestKey(home?: string): Promise<Buffer> {
+  const file = path.join(wardenDir(home), "digest.key");
+  let pending = digestKeys.get(file);
+  if (!pending) {
+    pending = readOrCreateDigestKey(file);
+    digestKeys.set(file, pending);
+    pending.catch(() => digestKeys.delete(file));
+  }
+  return pending;
+}
+
+async function readOrCreateDigestKey(file: string): Promise<Buffer> {
+  const parse = (raw: string): Buffer => {
+    const text = raw.trim();
+    if (!/^[0-9a-f]{64}$/.test(text)) throw new Error("warden digest key is malformed");
+    return Buffer.from(text, "hex");
+  };
+  try {
+    return parse(await fs.readFile(file, "utf8"));
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+  }
+  await fs.mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
+  const key = crypto.randomBytes(32);
+  try {
+    // "wx": never overwrite a key another process created in the meantime.
+    await fs.writeFile(file, key.toString("hex") + "\n", { encoding: "utf8", mode: 0o600, flag: "wx" });
+    return key;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+    return parse(await fs.readFile(file, "utf8"));
+  }
+}

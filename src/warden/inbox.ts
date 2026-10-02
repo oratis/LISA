@@ -15,6 +15,7 @@ import path from "node:path";
 import { logWarn } from "../log.js";
 import { auditQuietly, auditResolution } from "./audit.js";
 import { createGrants, revokeGrant, scopeProblem } from "./grants.js";
+import { MAX_REVIEWABLE_BYTES, canonicalJson, displayPayload } from "./preview.js";
 import { newId, quarantineCorrupt, readJsonState, wardenDir, writeJsonAtomic } from "./store.js";
 import {
   GRANT_SCOPES,
@@ -24,6 +25,7 @@ import {
   type ApprovalRequestedEvent,
   type GrantScope,
   type InboxItemKind,
+  type PayloadField,
   type WardenEmit,
 } from "./types.js";
 
@@ -71,6 +73,16 @@ interface Item {
   expiresAt: number;
   request: ActionRequest;
   reason: string;
+  /** Scopes the policy allows this item to be approved with. */
+  scopes: GrantScope[];
+  /** A "24h" approval is bound to the request's targets. */
+  bindTargets: boolean;
+  /**
+   * The full tool input the digest covers. IN MEMORY ONLY — never written to
+   * pending.json, the audit log or an SSE event. Absent on an item restored
+   * after a restart, which is why such an item cannot be approved.
+   */
+  payload?: { input: unknown; primaryKeys: string[] };
   settle?: (outcome: ApprovalOutcome) => void;
   timer?: NodeJS.Timeout;
   detachAbort?: () => void;
@@ -98,8 +110,16 @@ interface PendingFile {
   items: PendingRecord[];
 }
 
+/** One pending item plus the whole payload its digest covers. */
+export interface InboxItemDetail {
+  approval: InboxItemView;
+  /** Every field of the tool input, primary fields first, values unclipped. */
+  fields: PayloadField[];
+}
+
 export type ResolveError =
   | "not_found"
+  | "digest_required"
   | "expired"
   | "not_approvable"
   | "invalid_scope"
@@ -132,6 +152,17 @@ export interface RequestOptions {
   home: string;
   /** Deterministic policy reason shown on the card. */
   reason: string;
+  /**
+   * The tool input the digest covers, kept in memory so the approver can be
+   * shown all of it. Required: an approval nobody could read is not one.
+   */
+  payload: unknown;
+  /** Input keys in the order the card shows them (from the classifier). */
+  primaryKeys?: string[];
+  /** Scopes the policy allows. Default: whatever the request's shape permits. */
+  scopes?: GrantScope[];
+  /** A "24h" approval is bound to the request's targets. */
+  bindTargets?: boolean;
   timeoutMs?: number;
   /** Cancels the wait (turn aborted / client gone). Cancellation is a deny. */
   signal?: AbortSignal;
@@ -186,7 +217,7 @@ function tenantKey(uid: string | null): string {
 
 function scopesFor(item: Item): GrantScope[] {
   if (item.kind !== "approval") return [];
-  return GRANT_SCOPES.filter((scope) => scopeProblem(item.request, scope) === null);
+  return item.scopes.filter((scope) => scopeProblem(item.request, scope) === null);
 }
 
 function view(item: Item): InboxItemView {
@@ -246,6 +277,20 @@ export class WardenInbox {
         reason: "Too many approvals are already waiting; answer those first.",
       };
     }
+    // A person can only approve what they can read. A payload too large to
+    // show in full is refused rather than approved on the strength of a summary.
+    let payloadBytes: number;
+    try {
+      payloadBytes = canonicalJson(opts.payload).length;
+    } catch {
+      return { approved: false, reason: "The request could not be rendered for review." };
+    }
+    if (payloadBytes > MAX_REVIEWABLE_BYTES) {
+      return {
+        approved: false,
+        reason: "The request is too large to show in full for review, so it was not run.",
+      };
+    }
     const timeoutMs = Math.max(1, opts.timeoutMs ?? this.defaultTimeoutMs);
     const createdAt = this.now();
     const item: Item = {
@@ -257,6 +302,9 @@ export class WardenInbox {
       expiresAt: createdAt + timeoutMs,
       request: req,
       reason: opts.reason,
+      scopes: opts.scopes ?? [...GRANT_SCOPES],
+      bindTargets: opts.bindTargets === true,
+      payload: { input: opts.payload, primaryKeys: opts.primaryKeys ?? [] },
     };
     const outcome = new Promise<ApprovalOutcome>((resolve) => {
       item.settle = resolve;
@@ -279,8 +327,18 @@ export class WardenInbox {
       item.detachAbort = () => opts.signal!.removeEventListener("abort", onAbort);
     }
     tenant.items.set(item.id, item);
+    // The signal may have fired while this call was awaiting above — before
+    // the listener existed. A listener added to an already-aborted signal never
+    // runs, which used to leave the item pending and approvable for a dead turn.
+    if (opts.signal?.aborted) {
+      await this.finish(item, "cancelled", {
+        approved: false,
+        reason: "The turn was cancelled before the approval was answered.",
+      });
+      return await outcome;
+    }
     await this.persist(tenant);
-    this.announce(item);
+    if (tenant.items.get(item.id) === item) this.announce(item);
     return await outcome;
   }
 
@@ -308,6 +366,8 @@ export class WardenInbox {
       expiresAt: createdAt + this.handoffTtlMs,
       request: req,
       reason: opts.reason,
+      scopes: [],
+      bindTargets: false,
     };
     tenant.items.set(item.id, item);
     await this.persist(tenant);
@@ -320,6 +380,21 @@ export class WardenInbox {
     const tenant = await this.tenant(uid, home);
     this.sweep(tenant);
     return [...tenant.items.values()].sort((a, b) => a.createdAt - b.createdAt).map(view);
+  }
+
+  /**
+   * One pending item with the whole payload its digest covers, for a caller
+   * who may approve. Null when the item is not this tenant's, is gone, or has
+   * no payload in memory (restored after a restart).
+   */
+  detail(uid: string | null, id: string): InboxItemDetail | null {
+    const item = this.tenants.get(tenantKey(uid))?.items.get(id);
+    if (!item || this.now() >= item.expiresAt) return null;
+    if (item.kind === "approval" && !item.payload) return null;
+    return {
+      approval: view(item),
+      fields: item.payload ? displayPayload(item.payload.input, item.payload.primaryKeys) : [],
+    };
   }
 
   /**
@@ -347,9 +422,6 @@ export class WardenInbox {
         await this.persist(tenant);
       }
       return { ok: false, error: "expired" };
-    }
-    if (typeof answer.digest === "string" && answer.digest !== item.request.digest) {
-      return { ok: false, error: "digest_mismatch" };
     }
     const note = typeof answer.reason === "string" ? answer.reason.slice(0, 500) : undefined;
 
@@ -379,10 +451,34 @@ export class WardenInbox {
         message: "A hand-off cannot be approved: the user has to do this step themselves.",
       };
     }
+    // Approving is a statement about a payload the approver saw. It must name
+    // that payload's digest, and the payload must still be here to have been seen.
+    if (!item.payload) {
+      return {
+        ok: false,
+        error: "not_approvable",
+        message: "This request can no longer be shown in full, so it cannot be approved.",
+      };
+    }
+    if (typeof answer.digest !== "string" || answer.digest === "") {
+      return {
+        ok: false,
+        error: "digest_required",
+        message: "Approve with the digest of the payload you reviewed.",
+      };
+    }
+    if (answer.digest !== item.request.digest) return { ok: false, error: "digest_mismatch" };
     const scope = answer.scope === undefined ? "once" : answer.scope;
     if (!isGrantScope(scope)) return { ok: false, error: "invalid_scope" };
     const problem = scopeProblem(item.request, scope);
     if (problem) return { ok: false, error: "scope_not_applicable", message: problem };
+    if (!item.scopes.includes(scope)) {
+      return {
+        ok: false,
+        error: "scope_not_applicable",
+        message: `This request cannot be approved with scope "${scope}".`,
+      };
+    }
 
     // Claim the item before any await so a concurrent approve/deny/expiry loses.
     if (!this.claim(item)) return { ok: false, error: "not_found" };
@@ -390,9 +486,11 @@ export class WardenInbox {
     let grantError: string | undefined;
     if (scope !== "once") {
       try {
-        grantIds = (await createGrants(item.request, scope, item.home, this.now())).map(
-          (g) => g.id,
-        );
+        grantIds = (
+          await createGrants(item.request, scope, item.home, this.now(), {
+            bindTargets: scope === "24h" && item.bindTargets,
+          })
+        ).map((g) => g.id);
       } catch (err) {
         // The user approved THIS payload; a failed grant write narrows the
         // approval to this one call rather than widening or losing it.
@@ -527,6 +625,8 @@ export class WardenInbox {
           // The uid comes from the caller's authenticated scope, never the file.
           request: { ...record.request, uid },
           reason: record.reason,
+          scopes: [],
+          bindTargets: false,
         });
         continue;
       }

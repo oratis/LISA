@@ -111,6 +111,29 @@ export interface ActionRequest {
   withinWorkspace?: boolean;
   /** The call sends data off this host. */
   egress?: boolean;
+  /**
+   * For an off-host call: could untrusted content have picked where it goes?
+   * "chosen" = the destination is an argument (a URL to fetch, a remote agent
+   * to call). "fixed" = it is the tool's own service (the search provider,
+   * the npm registry). Only "chosen" destinations are an exfiltration channel.
+   */
+  destination?: "fixed" | "chosen";
+  /**
+   * Set by the session: the exact destination URL already appeared verbatim in
+   * the conversation (a user message or an earlier tool result), so the model
+   * did not compose it — it cannot have appended data to it.
+   */
+  destinationKnown?: boolean;
+  /**
+   * False when the recipients / destinations could not be enumerated completely
+   * (too many, nested, or under keys the classifier does not know). Such a
+   * request is never covered by a target grant or loosened by a target rule.
+   */
+  targetsComplete?: boolean;
+  /** A path the call touches is a credential location or Warden's own state. */
+  sensitivePath?: boolean;
+  /** Set by the session: an exec whose text names Warden's state or approval API. */
+  guarded?: boolean;
   /** True when untrusted external content entered this agent run before the call. */
   tainted: boolean;
 }
@@ -179,6 +202,15 @@ export interface ApprovalRequestedEvent {
   reason: string;
   /** Scopes this item can be approved with (empty for a hand-off). */
   scopes: GrantScope[];
+}
+
+/** One field of the payload an approval covers, as the card shows it. */
+export interface PayloadField {
+  key: string;
+  /** The whole value (secrets masked) — never clipped. */
+  value: string;
+  /** Shown first: the field that says what the call does. */
+  primary: boolean;
 }
 
 export interface ApprovalResolvedEvent {

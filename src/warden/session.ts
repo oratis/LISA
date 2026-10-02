@@ -13,15 +13,17 @@
 import type { ApprovalCallback, ApprovalDecision } from "../agent.js";
 import type { AgentEvent, ToolDefinition } from "../types.js";
 import type { SandboxMode } from "../sandbox/mode.js";
-import { lisaHome } from "../paths.js";
+import { lisaGlobalHome, lisaHome } from "../paths.js";
+import { protectFromSandbox } from "../sandbox/protect.js";
 import { logWarn } from "../log.js";
+import path from "node:path";
 import { auditDecision, auditQuietly } from "./audit.js";
 import { loadGrants, useGrants, type LoadedGrants } from "./grants.js";
 import type { WardenInbox } from "./inbox.js";
 import { evaluate, type PolicyResult } from "./policy.js";
 import { buildActionRequest } from "./request.js";
-import { loadRules, type LoadedRules } from "./rules.js";
-import { wardenDir } from "./store.js";
+import { defaultRules, loadRules, type LoadedRules } from "./rules.js";
+import { loadDigestKey, wardenDir } from "./store.js";
 import type {
   ActionRequest,
   DataClass,
@@ -30,6 +32,40 @@ import type {
   RuntimeSurface,
   TaskEnvelope,
 } from "./types.js";
+
+/**
+ * URLs that have appeared verbatim in a conversation — in what the user wrote
+ * or in an earlier tool result. A fetch of one of these was not composed by the
+ * model, so it cannot carry data the model appended.
+ */
+export class KnownUrls {
+  private readonly urls = new Set<string>();
+  constructor(private readonly max = 4000) {}
+
+  /** Record every http(s) URL found in `text`. */
+  note(text: unknown): void {
+    if (typeof text !== "string" || text.length === 0) return;
+    // Bounded scan: a tool result can be megabytes.
+    const scan = text.length > 1_000_000 ? text.slice(0, 1_000_000) : text;
+    for (const match of scan.matchAll(/https?:\/\/[^\s"'<>`\\)\]}]{1,2048}/g)) {
+      const url = match[0].replace(/[.,;:!?]+$/, "");
+      if (this.urls.has(url)) continue;
+      if (this.urls.size >= this.max) {
+        const oldest = this.urls.values().next().value;
+        if (oldest !== undefined) this.urls.delete(oldest);
+      }
+      this.urls.add(url);
+    }
+  }
+
+  has(url: string): boolean {
+    return this.urls.has(url) || this.urls.has(url.replace(/[.,;:!?]+$/, ""));
+  }
+
+  get size(): number {
+    return this.urls.size;
+  }
+}
 
 export interface WardenSessionOptions {
   surface: RuntimeSurface;
@@ -47,8 +83,20 @@ export interface WardenSessionOptions {
   envelope?: TaskEnvelope;
   /** Short, host-supplied statement of what the run is for (shown on cards). */
   purpose?: string;
-  /** The run already carries untrusted external content (e.g. a resumed conversation). */
+  /**
+   * The run already carries untrusted content: a resumed conversation that
+   * read the web, or a user message with attachments.
+   */
   initialTaint?: boolean;
+  /** Called once, the first time the run becomes tainted (persist it). */
+  onTaint?: () => void;
+  /**
+   * URLs already seen in this conversation. Share one instance across the
+   * turns of a conversation; the session adds what the tool results contain.
+   */
+  knownUrls?: KnownUrls;
+  /** Text the USER wrote this turn: URLs in it are destinations the user chose. */
+  userText?: string;
   /** Tenant home. Defaults to `lisaHome()` captured NOW — create the session inside the request scope. */
   home?: string;
   loadRules?: () => Promise<LoadedRules>;
@@ -69,7 +117,7 @@ export interface WardenOutcome {
 }
 
 export interface WardenSession {
-  /** Pass to `runAgent({ approval })`. */
+  /** Pass to `runAgent({ approval })` and to `toolCtx.approval`. */
   approval: ApprovalCallback;
   /** Feed every AgentEvent from `runAgent({ onEvent })`. */
   observe(event: AgentEvent): void;
@@ -99,20 +147,42 @@ export function createWardenSession(opts: WardenSessionOptions): WardenSession {
   const rulesLoader = opts.loadRules ?? (() => loadRules(home));
   const grantsLoader = opts.loadGrants ?? (() => loadGrants(home, now()));
   const protectedPaths = [wardenDir(home)];
+  // Reads of these always ask: Warden's state, and the operator's provider keys.
+  const sensitivePaths = [
+    wardenDir(home),
+    path.join(lisaGlobalHome(), "config.env"),
+    path.join(lisaGlobalHome(), "warden"),
+  ];
+  // …and they are unreachable from a sandboxed shell, not only from file tools.
+  protectFromSandbox({ path: protectedPaths[0] });
+  const knownUrls = opts.knownUrls ?? new KnownUrls();
+  knownUrls.note(opts.userText);
   /** Names of taint-source tools this session allowed and has not yet seen finish. */
   const armed = new Map<string, number>();
   let tainted = opts.initialTaint === true;
 
-  async function policyFor(req: ActionRequest): Promise<PolicyResult> {
-    // A loader that THROWS is treated exactly like a corrupt file: no user
-    // rules and no grants, with every side effect floored at "ask".
-    let rules: LoadedRules;
+  const taint = (): void => {
+    if (tainted) return;
+    tainted = true;
     try {
-      rules = await rulesLoader();
+      opts.onTaint?.();
+    } catch (err) {
+      log(`[warden] onTaint threw: ${(err as Error).message}`);
+    }
+  };
+
+  async function loadRulesSafely(): Promise<LoadedRules> {
+    // A loader that THROWS is treated exactly like a corrupt file: no user
+    // rules, with every side effect floored at "ask".
+    try {
+      return await rulesLoader();
     } catch (err) {
       log(`[warden] rules unavailable (${(err as Error).message}); side effects will ask`);
-      rules = { rules: { version: 1, categories: {}, tools: {}, targets: {} }, corrupt: true };
+      return { rules: defaultRules(), corrupt: true };
     }
+  }
+
+  async function policyFor(req: ActionRequest, rules: LoadedRules): Promise<PolicyResult> {
     let grants: LoadedGrants;
     try {
       grants = await grantsLoader();
@@ -132,7 +202,10 @@ export function createWardenSession(opts: WardenSessionOptions): WardenSession {
 
   async function pipeline(toolName: string, toolInput: unknown): Promise<WardenOutcome> {
     const started = now();
-    const { req, taintSource } = buildActionRequest(
+    const rules = await loadRulesSafely();
+    // No key ⇒ no digest ⇒ this throws and the call is denied by `decide`.
+    const digestKey = await loadDigestKey(home);
+    const { req, taintSource, primaryKeys } = buildActionRequest(
       toolName,
       toolInput,
       toolsByName.get(toolName),
@@ -146,18 +219,22 @@ export function createWardenSession(opts: WardenSessionOptions): WardenSession {
         tainted,
         purpose: opts.purpose,
         dataClassHints: opts.dataClassHints,
+        // A corrupt rules file trusts no server.
+        trustedMcpServers: rules.corrupt ? [] : rules.rules.trustedMcpServers,
+        sensitivePaths,
+        digestKey,
+        isKnownUrl: (url) => knownUrls.has(url),
         now: started,
       },
     );
-    // A shell command that names Warden's state directory or its approval API
-    // is flagged as touching protected state, which makes the policy ask for
-    // this exact command whatever grants or rules exist. Best effort — a
-    // string match cannot see through obfuscation; the sandbox is the real
-    // boundary.
+    // A command that names Warden's state directory, its approval API or its
+    // CLI is flagged, which makes the policy ask for this exact command
+    // whatever grants or rules exist. Defence in depth only: a string match
+    // cannot see through a variable or an encoded payload.
     if (req.category === "exec" && mentionsWardenState(toolInput, protectedPaths[0]!)) {
-      req.targets = [...req.targets, protectedPaths[0]!];
+      req.guarded = true;
     }
-    let result = await policyFor(req);
+    let result = await policyFor(req, rules);
 
     if (result.verdict === "allow" && result.grantIds && result.grantIds.length > 0) {
       // Record the use and consume a "once" grant. Losing that race (or failing
@@ -173,6 +250,7 @@ export function createWardenSession(opts: WardenSessionOptions): WardenSession {
           verdict: "ask",
           reason: "The grant covering this action is no longer available.",
           ruleId: "system:grant-unavailable",
+          scopes: ["once"],
         };
       }
     }
@@ -184,7 +262,7 @@ export function createWardenSession(opts: WardenSessionOptions): WardenSession {
         // taint-source call is let through, not only once `observe` sees it
         // finish — a host that forgets to wire `observe` must not get a
         // weaker policy.
-        tainted = true;
+        taint();
       }
       return { decision: { allow: true }, request: req, verdict: result };
     };
@@ -222,6 +300,10 @@ export function createWardenSession(opts: WardenSessionOptions): WardenSession {
         const outcome = await opts.inbox.request(req, {
           home,
           reason: result.reason,
+          payload: toolInput,
+          primaryKeys,
+          scopes: result.scopes,
+          bindTargets: result.bindTargets,
           timeoutMs: opts.approvalTimeoutMs,
           signal: opts.signal,
         });
@@ -265,11 +347,14 @@ export function createWardenSession(opts: WardenSessionOptions): WardenSession {
     decide,
     observe(event: AgentEvent): void {
       if (event.type !== "tool_call_end" || !event.toolName) return;
+      // Whatever a tool returned is now part of the conversation: a URL in it
+      // is one the model can fetch without having composed it.
+      knownUrls.note(event.toolResult);
       const pending = armed.get(event.toolName) ?? 0;
       if (pending <= 0) return;
       if (pending === 1) armed.delete(event.toolName);
       else armed.set(event.toolName, pending - 1);
-      tainted = true;
+      taint();
     },
     get tainted() {
       return tainted;
@@ -277,10 +362,24 @@ export function createWardenSession(opts: WardenSessionOptions): WardenSession {
   };
 }
 
-const WARDEN_STATE_PATTERN =
-  /warden[\\/](?:rules|grants|pending|audit)|\.lisa[\\/]warden|\/api\/(?:approvals|warden)\b/i;
+const WARDEN_STATE_PATTERN = new RegExp(
+  [
+    "warden[\\\\/](?:rules|grants|pending|audit|tainted|digest)",
+    "\\.lisa[\\\\/]warden",
+    "\\/api\\/(?:approvals|warden)\\b",
+    // The CLI that edits the same state: `lisa warden …`, `lisa approvals …`,
+    // `node dist/cli.js warden …`.
+    "\\b(?:lisa|cli\\.[cm]?[jt]s)[\"']?\\s+(?:warden|approvals)\\b",
+  ].join("|"),
+  "i",
+);
 
-/** Does an exec input name Warden's state files or its approval API? */
+/**
+ * Does an exec input name Warden's state files, its approval API or its CLI?
+ * BEST EFFORT: `p=approvals; curl …/api/$p` passes this check. What actually
+ * keeps a confined command away from Warden is the sandbox profile
+ * (src/sandbox/protect.ts); an unconfined command asks by default.
+ */
 export function mentionsWardenState(input: unknown, wardenPath: string): boolean {
   let text: string;
   try {
