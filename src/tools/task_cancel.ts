@@ -19,7 +19,12 @@ export const taskCancelTool: ToolDefinition<TaskCancelInput, string> = {
   description:
     "Stop a task's current run (or a run that is queued to start). The task itself stays; a routine " +
     "carries on at its next scheduled time — use task_update with pause: true to switch it off. Get ids from task_list.",
-  annotations: { title: "Cancel task run", readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+  annotations: {
+    title: "Cancel task run",
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: true,
+  },
   inputSchema: {
     type: "object",
     properties: { id: { type: "string" } },

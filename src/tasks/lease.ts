@@ -113,7 +113,10 @@ async function createExclusive(file: string, body: string): Promise<boolean> {
  * Try to take the named lease. Resolves to null — immediately, without
  * waiting — when a live holder has it.
  */
-export async function acquireLease(name: string, opts: AcquireLeaseOptions = {}): Promise<TaskLease | null> {
+export async function acquireLease(
+  name: string,
+  opts: AcquireLeaseOptions = {},
+): Promise<TaskLease | null> {
   const file = leasePath(name);
   const ttlMs = opts.ttlMs ?? DEFAULT_LEASE_TTL_MS;
   const now = opts.now ?? Date.now;
@@ -199,6 +202,9 @@ export async function acquireLease(name: string, opts: AcquireLeaseOptions = {})
 }
 
 /** The lease that serialises runs of one task. */
-export function acquireTaskLease(taskId: string, opts?: AcquireLeaseOptions): Promise<TaskLease | null> {
+export function acquireTaskLease(
+  taskId: string,
+  opts?: AcquireLeaseOptions,
+): Promise<TaskLease | null> {
   return acquireLease(`task-${taskId}`, opts);
 }

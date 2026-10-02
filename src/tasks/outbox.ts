@@ -143,10 +143,17 @@ export interface DrainResult {
  * processes: each entry is claimed under its own lock, and a contender that
  * cannot take the lock skips the entry rather than waiting.
  */
-export async function drainOutbox(deliver: TaskDeliver | undefined, now = Date.now()): Promise<DrainResult> {
+export async function drainOutbox(
+  deliver: TaskDeliver | undefined,
+  now = Date.now(),
+): Promise<DrainResult> {
   const result: DrainResult = { delivered: 0, suppressed: 0, deferred: 0, failed: 0 };
   for (const listed of await listOutbox()) {
-    if (listed.state === "delivered" || listed.state === "suppressed" || listed.state === "failed") {
+    if (
+      listed.state === "delivered" ||
+      listed.state === "suppressed" ||
+      listed.state === "failed"
+    ) {
       if (now - listed.updatedAt > RETAIN_MS) {
         await fsp.rm(entryFile(listed.id), { force: true }).catch(() => {});
       }

@@ -13,7 +13,15 @@
 import type http from "node:http";
 import { disableTask, enableTask } from "../tasks/lifecycle.js";
 import type { TaskEngineEvent, TaskRunner } from "../tasks/runner.js";
-import { createTask, deleteTask, getTask, listRuns, listTasks, loadRun, updateTask } from "../tasks/store.js";
+import {
+  createTask,
+  deleteTask,
+  getTask,
+  listRuns,
+  listTasks,
+  loadRun,
+  updateTask,
+} from "../tasks/store.js";
 import { isSafeId, type Task, type TaskRun } from "../tasks/types.js";
 import { applyTaskEdit, parseNewTask } from "../tasks/validate.js";
 import { BodyTooLargeError, readCappedText } from "./http-body.js";
@@ -49,7 +57,9 @@ export interface TasksApiOptions {
  * RESULTS of side-effecting calls — internal state, and potentially sensitive —
  * so only its size leaves the process.
  */
-export function publicRun(run: TaskRun): Omit<TaskRun, "executedDigests"> & { sideEffects: number } {
+export function publicRun(
+  run: TaskRun,
+): Omit<TaskRun, "executedDigests"> & { sideEffects: number } {
   const { executedDigests, ...rest } = run;
   return { ...rest, sideEffects: Object.keys(executedDigests ?? {}).length };
 }
@@ -226,11 +236,13 @@ export async function handleTasksApi(
       // Without a runner in this process the flag still reaches the one that owns the run.
       const cancelled = opts.runner
         ? await opts.runner.cancel(id)
-        : !!(await updateTask(id, (t: Task) => {
-            if (!t.activeRunId) return false;
-            t.cancelRequestedAt = now();
-            return;
-          }))?.cancelRequestedAt;
+        : !!(
+            await updateTask(id, (t: Task) => {
+              if (!t.activeRunId) return false;
+              t.cancelRequestedAt = now();
+              return;
+            })
+          )?.cancelRequestedAt;
       json(res, 200, { ok: true, cancelled, task: await getTask(id) });
       return true;
     }

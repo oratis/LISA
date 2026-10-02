@@ -44,8 +44,10 @@ function cadence(task: Task): string {
 
 function line(task: Task): string {
   const status = task.enabled ? task.state : `${task.state}, off`;
-  return `${task.id}  ${task.kind.padEnd(7)}  ${status.padEnd(16)}  ${task.title}\n` +
-    `    ${cadence(task)} · next ${when(task.nextRunAt)} · last ${when(task.lastRunAt)}`;
+  return (
+    `${task.id}  ${task.kind.padEnd(7)}  ${status.padEnd(16)}  ${task.title}\n` +
+    `    ${cadence(task)} · next ${when(task.nextRunAt)} · last ${when(task.lastRunAt)}`
+  );
 }
 
 /** Resolve an id or unique prefix. */
@@ -58,7 +60,11 @@ async function resolve(idOrPrefix: string | undefined, err: Out): Promise<Task |
   if (exact) return exact;
   const matches = (await listTasks()).filter((t) => t.id.startsWith(idOrPrefix));
   if (matches.length === 1) return matches[0]!;
-  err(matches.length === 0 ? `no task matches "${idOrPrefix}"` : `"${idOrPrefix}" is ambiguous (${matches.length} tasks)`);
+  err(
+    matches.length === 0
+      ? `no task matches "${idOrPrefix}"`
+      : `"${idOrPrefix}" is ambiguous (${matches.length} tasks)`,
+  );
   return null;
 }
 
@@ -117,9 +123,11 @@ export async function runTasksCommand(
     );
     if (!updated) return 2;
     if (sub === "disable") out(`"${updated.title}" is off.`);
-    else if (updated.nextRunAt !== undefined) out(`"${updated.title}" is on — next run ${when(updated.nextRunAt)}.`);
+    else if (updated.nextRunAt !== undefined)
+      out(`"${updated.title}" is on — next run ${when(updated.nextRunAt)}.`);
     else out(`"${updated.title}" is on.`);
-    if (sub === "enable" && isCloud()) err("(hosted edition: tasks run only while LISA_CLOUD_TASKS=1)");
+    if (sub === "enable" && isCloud())
+      err("(hosted edition: tasks run only while LISA_CLOUD_TASKS=1)");
     return 0;
   }
 
@@ -168,7 +176,9 @@ export async function runTaskNow(
     err(`"${task.title}" did not start — another process holds it. Try again in a moment.`);
     return 1;
   }
-  err(`[${run.state}${run.stopReason ? ` · ${run.stopReason}` : ""}] ${run.tokens.in + run.tokens.out} tokens, ${run.toolCalls} tool calls`);
+  err(
+    `[${run.state}${run.stopReason ? ` · ${run.stopReason}` : ""}] ${run.tokens.in + run.tokens.out} tokens, ${run.toolCalls} tool calls`,
+  );
   if (run.summary) out(run.summary);
   if (run.error) err(run.error);
   return run.state === "succeeded" ? 0 : 1;

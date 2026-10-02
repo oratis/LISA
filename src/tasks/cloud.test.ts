@@ -83,7 +83,12 @@ function scripted(replies: Array<{ text?: string; tool?: string; tokens?: number
           ? [{ type: "tool_use", id: `tu_${i}`, name: r.tool, input: {} } as never]
           : [{ type: "text", text: r.text ?? "" } as never],
         stopReason: r.tool ? "tool_use" : "end_turn",
-        usage: { inputTokens: r.tokens ?? 5, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+        usage: {
+          inputTokens: r.tokens ?? 5,
+          outputTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+        },
       };
     },
   };
@@ -108,9 +113,21 @@ async function dueTask(uid: string, title = "Hourly check") {
   );
 }
 
-function tenantRunner(uid: string, provider: Provider, deps: AdmissionDependencies, lookup = async () => account(uid)) {
+function tenantRunner(
+  uid: string,
+  provider: Provider,
+  deps: AdmissionDependencies,
+  lookup = async () => account(uid),
+) {
   return new TaskRunner({
-    tools: [{ name: "kb_search", description: "", inputSchema: { type: "object" }, execute: async () => "none" }],
+    tools: [
+      {
+        name: "kb_search",
+        description: "",
+        inputSchema: { type: "object" },
+        execute: async () => "none",
+      },
+    ],
     model: "m",
     cwd: os.tmpdir(),
     provider,
@@ -134,7 +151,10 @@ test("each model call of a cloud run is admitted, settled as `task` usage, and r
   await inTenant(uid, async () => {
     const task = await dueTask(uid);
     const { calls, settled, deps } = admission();
-    const { provider } = scripted([{ tool: "kb_search", tokens: 7 }, { text: "Nothing new.", tokens: 9 }]);
+    const { provider } = scripted([
+      { tool: "kb_search", tokens: 7 },
+      { text: "Nothing new.", tokens: 9 },
+    ]);
     const runner = tenantRunner(uid, provider, deps);
     await runner.tick();
     await runner.drain();
@@ -147,7 +167,11 @@ test("each model call of a cloud run is admitted, settled as `task` usage, and r
         ["task", 9],
       ],
     );
-    assert.notEqual(settled[0]!.reservationId, settled[1]!.reservationId, "one reservation per call");
+    assert.notEqual(
+      settled[0]!.reservationId,
+      settled[1]!.reservationId,
+      "one reservation per call",
+    );
     assert.equal((await listRuns((await getTask(task.id))!))[0]!.state, "succeeded");
   });
 });
@@ -157,7 +181,12 @@ test("no allowance: the run is refused before any model call and nothing is sett
   await inTenant(uid, async () => {
     const task = await dueTask(uid);
     const { calls, settled, deps } = admission({
-      precheck: async () => ({ ok: false, error: "quota_exhausted", resetAt: NOW + 3_600_000, tier: "free" }),
+      precheck: async () => ({
+        ok: false,
+        error: "quota_exhausted",
+        resetAt: NOW + 3_600_000,
+        tier: "free",
+      }),
     });
     const script = scripted([{ text: "never" }]);
     const runner = tenantRunner(uid, script.provider, deps);
@@ -172,7 +201,11 @@ test("no allowance: the run is refused before any model call and nothing is sett
     assert.match(run.error!, /quota_exhausted/);
     assert.deepEqual(run.tokens, { in: 0, out: 0 });
     const after = (await getTask(task.id))!;
-    assert.equal(after.state, "scheduled", "waits for its next occurrence instead of hammering admission");
+    assert.equal(
+      after.state,
+      "scheduled",
+      "waits for its next occurrence instead of hammering admission",
+    );
     assert.equal(after.authFailureCount, 1);
   });
 });
@@ -203,9 +236,15 @@ test("the kill switch / service pause and a missing account both deny", async ()
   await inTenant(uid, async () => {
     const paused = cloudModelGate(uid, {
       lookup: async () => account(uid),
-      deps: admission({ preflight: () => ({ ok: false, status: 402, body: { error: "service_paused" } }) }).deps,
+      deps: admission({
+        preflight: () => ({ ok: false, status: 402, body: { error: "service_paused" } }),
+      }).deps,
     });
-    assert.deepEqual(await paused.admit("m"), { ok: false, reason: "service_paused", transient: false });
+    assert.deepEqual(await paused.admit("m"), {
+      ok: false,
+      reason: "service_paused",
+      transient: false,
+    });
     const gone = cloudModelGate(uid, { lookup: async () => null, deps: admission().deps });
     assert.deepEqual(await gone.admit("m"), { ok: false, reason: "account_not_found" });
   });
@@ -257,7 +296,8 @@ test("the sweep runs each tenant's due tasks inside that tenant's home, one tena
   const bob = freshUid();
   const idle = freshUid(); // has an account, no tasks
   const ids: Record<string, string> = {};
-  for (const uid of [alice, bob]) await inTenant(uid, async () => void (ids[uid] = (await dueTask(uid, `for ${uid}`)).id));
+  for (const uid of [alice, bob])
+    await inTenant(uid, async () => void (ids[uid] = (await dueTask(uid, `for ${uid}`)).id));
   fs.mkdirSync(homeForUid(idle), { recursive: true });
 
   const scopes: Array<string | null> = [];
@@ -303,7 +343,11 @@ test("the sweep runs each tenant's due tasks inside that tenant's home, one tena
   for (const uid of [alice, bob]) {
     await inTenant(uid, async () => {
       const tasks = await listTasks();
-      assert.deepEqual(tasks.map((t) => t.id), [ids[uid]], "a tenant sees only its own task");
+      assert.deepEqual(
+        tasks.map((t) => t.id),
+        [ids[uid]],
+        "a tenant sees only its own task",
+      );
       assert.equal((await listRuns(tasks[0]!))[0]!.summary, `done for ${uid}`);
     });
   }
@@ -320,7 +364,12 @@ test("the sweep honours the service pause, the per-sweep budget, account deletio
     return tenantRunner(uid, scripted([{ text: "ok" }]).provider, admission().deps);
   };
 
-  const paused = await sweepUserTasks({ accounts, accountExists: async () => true, paused: () => true, runnerFor });
+  const paused = await sweepUserTasks({
+    accounts,
+    accountExists: async () => true,
+    paused: () => true,
+    runnerFor,
+  });
   assert.deepEqual(paused.outcomes, [{ uid: uids[0], started: 0, skipped: "service_paused" }]);
   assert.equal(paused.ran, 0);
   assert.deepEqual(built, []);
@@ -356,7 +405,9 @@ function host(over: { cloudEnabled: boolean; gate: boolean }) {
     reachOut: async () => ({ id: "ro_1", deliver: false, channels: [], reason: "no-channel" }),
     withConversation: (fn) => fn({ history: [], append: async () => {} }),
     cloudEnabled: over.cloudEnabled,
-    ...(over.gate ? { modelGateFor: (uid: string) => cloudModelGate(uid, { deps: admission().deps }) } : {}),
+    ...(over.gate
+      ? { modelGateFor: (uid: string) => cloudModelGate(uid, { deps: admission().deps }) }
+      : {}),
   });
 }
 
@@ -372,7 +423,11 @@ test("hosted edition: no runner without the flag, none without admission, none o
       const runner = on.runnerFor(uid);
       assert.ok(runner);
       assert.equal(on.runnerFor(uid), runner, "one runner per tenant, reused");
-      assert.equal(on.runnerFor("someone-else"), null, "a runner is only handed out inside its own scope");
+      assert.equal(
+        on.runnerFor("someone-else"),
+        null,
+        "a runner is only handed out inside its own scope",
+      );
     });
     assert.equal(on.runnerFor(uid), null, "…and not outside any scope");
     assert.equal(on.runnerFor(null), null);

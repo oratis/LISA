@@ -156,14 +156,18 @@ export async function fireDue(
       result = { error: (err as Error).message };
     }
     await markRan(e.id, now);
-    fired.push(`${e.agent} in ${e.cwd} — ${result.error ? "FAILED: " + result.error : "pid " + result.pid}`);
+    fired.push(
+      `${e.agent} in ${e.cwd} — ${result.error ? "FAILED: " + result.error : "pid " + result.pid}`,
+    );
   }
   return fired;
 }
 
 /** Human description of an entry for listing. */
 export function describeScheduled(e: ScheduledDispatch): string {
-  const last = e.lastRunAt ? new Date(e.lastRunAt).toISOString().slice(0, 16).replace("T", " ") : "never";
+  const last = e.lastRunAt
+    ? new Date(e.lastRunAt).toISOString().slice(0, 16).replace("T", " ")
+    : "never";
   const task = e.task.length > 60 ? e.task.slice(0, 57) + "…" : e.task;
   return `• ${e.id}  ${e.agent} @ ${e.schedule}  (${e.runs}/${e.maxRuns} runs, last ${last})\n    ${e.cwd}\n    "${task}"`;
 }

@@ -75,9 +75,18 @@ function clip(text: string, max: number): string {
   return t.length <= max ? t : `${t.slice(0, max)}…`;
 }
 
-async function fetchText(url: string, signal: AbortSignal, deps: WatcherDeps): Promise<FetchedText> {
+async function fetchText(
+  url: string,
+  signal: AbortSignal,
+  deps: WatcherDeps,
+): Promise<FetchedText> {
   const timeout = AbortSignal.timeout(FETCH_TIMEOUT_MS);
-  const res = await fetchFollowingSafeRedirects(url, AbortSignal.any([signal, timeout]), undefined, deps.safeFetch);
+  const res = await fetchFollowingSafeRedirects(
+    url,
+    AbortSignal.any([signal, timeout]),
+    undefined,
+    deps.safeFetch,
+  );
   const { text } = await readResponseTextCapped(res, MAX_BODY_BYTES);
   return { status: res.status, contentType: res.headers.get("content-type") ?? "", text };
 }
@@ -106,7 +115,21 @@ function attr(attrs: string, name: string): string | null {
   return m ? (m[1] ?? m[2] ?? m[3] ?? "") : null;
 }
 
-const VOID_TAGS = new Set(["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"]);
+const VOID_TAGS = new Set([
+  "area",
+  "base",
+  "br",
+  "col",
+  "embed",
+  "hr",
+  "img",
+  "input",
+  "link",
+  "meta",
+  "source",
+  "track",
+  "wbr",
+]);
 
 /**
  * Inner HTML of every element matching a tag/#id/.class selector (max 20).
@@ -151,7 +174,10 @@ export function selectHtml(html: string, selector: string): string[] {
  * Run a user-supplied regex with a hard time limit, so a pathological pattern
  * (catastrophic backtracking) costs a quarter of a second, not the event loop.
  */
-export function safeRegexExec(pattern: string, text: string): { match: string | null } | { error: string } {
+export function safeRegexExec(
+  pattern: string,
+  text: string,
+): { match: string | null } | { error: string } {
   let re: RegExp;
   try {
     re = new RegExp(pattern, "i");
@@ -159,9 +185,11 @@ export function safeRegexExec(pattern: string, text: string): { match: string | 
     return { error: "invalid regular expression" };
   }
   try {
-    const m = vm.runInNewContext("re.exec(text)", { re, text }, { timeout: REGEX_TIMEOUT_MS }) as
-      | RegExpExecArray
-      | null;
+    const m = vm.runInNewContext(
+      "re.exec(text)",
+      { re, text },
+      { timeout: REGEX_TIMEOUT_MS },
+    ) as RegExpExecArray | null;
     return { match: m ? (m[1] ?? m[0] ?? "") : null };
   } catch {
     return { error: "regular expression took too long on this page" };
@@ -181,7 +209,10 @@ function firstNumber(text: string): number | null {
  * Fold one observation of a boolean condition into the watch state.
  * `fire` is true exactly when the debounced condition goes false → true.
  */
-export function observeCondition(prev: WatchState | undefined, condition: boolean): { watch: WatchState; fire: boolean } {
+export function observeCondition(
+  prev: WatchState | undefined,
+  condition: boolean,
+): { watch: WatchState; fire: boolean } {
   const watch: WatchState = { ...prev };
   const was = prev?.lastCondition ?? false;
   if (condition) {
@@ -216,9 +247,15 @@ function failed(task: Task, error: string): WatchOutcome {
 
 // ── web ──
 
-async function checkWeb(task: Task, trigger: WebTrigger, signal: AbortSignal, deps: WatcherDeps): Promise<WatchOutcome> {
+async function checkWeb(
+  task: Task,
+  trigger: WebTrigger,
+  signal: AbortSignal,
+  deps: WatcherDeps,
+): Promise<WatchOutcome> {
   const page = await fetchText(trigger.url, signal, deps);
-  if (page.status < 200 || page.status >= 300) return failed(task, `HTTP ${page.status} from the watched page`);
+  if (page.status < 200 || page.status >= 300)
+    return failed(task, `HTTP ${page.status} from the watched page`);
 
   const isHtml = /html|xml/i.test(page.contentType) || /^\s*</.test(page.text);
   let text: string;
@@ -249,7 +286,8 @@ async function checkWeb(task: Task, trigger: WebTrigger, signal: AbortSignal, de
     const fingerprint = sha(value ?? "");
     const prev = task.watch;
     const watch: WatchState = { ...prev, lastFingerprint: fingerprint, failures: 0 };
-    if (prev?.lastFingerprint === undefined || prev.lastFingerprint === fingerprint) return { watch };
+    if (prev?.lastFingerprint === undefined || prev.lastFingerprint === fingerprint)
+      return { watch };
     // Content we have already reported (a page flipping between two states) stays quiet.
     if (prev.seen?.includes(fingerprint)) return { watch };
     watch.seen = remember(prev.seen ?? [prev.lastFingerprint], [fingerprint], MAX_CHANGE_MEMORY);
@@ -266,10 +304,15 @@ async function checkWeb(task: Task, trigger: WebTrigger, signal: AbortSignal, de
   let condition: boolean;
   let describe: string;
   if (trigger.mode === "appears" || trigger.mode === "disappears") {
-    const present = matched && (trigger.selector && !trigger.regex && !trigger.contains ? text.trim() !== "" : true);
+    const present =
+      matched &&
+      (trigger.selector && !trigger.regex && !trigger.contains ? text.trim() !== "" : true);
     condition = trigger.mode === "appears" ? present : !present;
     const what = trigger.contains ?? trigger.regex ?? trigger.selector ?? "the watched text";
-    describe = trigger.mode === "appears" ? `"${clip(what, 80)}" is now on ${where}.` : `"${clip(what, 80)}" is no longer on ${where}.`;
+    describe =
+      trigger.mode === "appears"
+        ? `"${clip(what, 80)}" is now on ${where}.`
+        : `"${clip(what, 80)}" is no longer on ${where}.`;
   } else {
     const n = value === null ? null : firstNumber(value);
     if (n === null) return failed(task, "no number found where the watcher looks");
@@ -289,25 +332,42 @@ async function checkWeb(task: Task, trigger: WebTrigger, signal: AbortSignal, de
       // twice (a lost state write) maps to one hit, a later re-fire to another.
       key: `${trigger.mode}:${task.watch?.lastHitAt ?? 0}:${sha(value ?? "").slice(0, 16)}`,
       summary: describe,
-      ...(value && trigger.mode !== "disappears" ? { detail: `Observed: ${clip(value, 600)}` } : {}),
+      ...(value && trigger.mode !== "disappears"
+        ? { detail: `Observed: ${clip(value, 600)}` }
+        : {}),
     },
   };
 }
 
 // ── rss ──
 
-async function checkRss(task: Task, trigger: RssTrigger, signal: AbortSignal, deps: WatcherDeps): Promise<WatchOutcome> {
+async function checkRss(
+  task: Task,
+  trigger: RssTrigger,
+  signal: AbortSignal,
+  deps: WatcherDeps,
+): Promise<WatchOutcome> {
   const page = await fetchText(trigger.url, signal, deps);
-  if (page.status < 200 || page.status >= 300) return failed(task, `HTTP ${page.status} from the feed`);
+  if (page.status < 200 || page.status >= 300)
+    return failed(task, `HTTP ${page.status} from the feed`);
   const feed = parseFeed(page.text);
   const ids = feed.items.map((i) => i.id);
   const prev = task.watch;
   // First look at a feed: everything already in it is old news.
-  if (prev?.seen === undefined) return { watch: { ...prev, seen: remember([], ids, MAX_SEEN), failures: 0 } };
+  if (prev?.seen === undefined)
+    return { watch: { ...prev, seen: remember([], ids, MAX_SEEN), failures: 0 } };
 
   const known = new Set(prev.seen);
   const fresh = feed.items.filter((i) => !known.has(i.id));
-  const watch: WatchState = { ...prev, seen: remember(prev.seen, fresh.map((i) => i.id), MAX_SEEN), failures: 0 };
+  const watch: WatchState = {
+    ...prev,
+    seen: remember(
+      prev.seen,
+      fresh.map((i) => i.id),
+      MAX_SEEN,
+    ),
+    failures: 0,
+  };
   const keywords = (trigger.keywords ?? []).map((k) => k.toLowerCase());
   const hits = fresh.filter((item) => {
     if (keywords.length === 0) return true;
@@ -315,12 +375,19 @@ async function checkRss(task: Task, trigger: RssTrigger, signal: AbortSignal, de
     return keywords.some((k) => hay.includes(k));
   });
   if (hits.length === 0) return { watch };
-  const lines = hits.slice(0, 5).map((i) => `- ${clip(i.title, 160)}${i.link ? ` — ${i.link}` : ""}`);
+  const lines = hits
+    .slice(0, 5)
+    .map((i) => `- ${clip(i.title, 160)}${i.link ? ` — ${i.link}` : ""}`);
   if (hits.length > 5) lines.push(`…and ${hits.length - 5} more`);
   return {
     watch,
     hit: {
-      key: `rss:${sha(hits.map((i) => i.id).sort().join("\n")).slice(0, 24)}`,
+      key: `rss:${sha(
+        hits
+          .map((i) => i.id)
+          .sort()
+          .join("\n"),
+      ).slice(0, 24)}`,
       summary: `${hits.length} new item${hits.length === 1 ? "" : "s"} in ${clip(feed.title ?? new URL(trigger.url).hostname, 80)}.`,
       detail: lines.join("\n"),
     },
@@ -344,7 +411,9 @@ async function defaultListMail(sinceMs: number): Promise<WatchMail[]> {
     try {
       if (account.provider === "gmail") {
         const { GmailConnector } = await import("../mail/connectors/gmail.js");
-        connector = new GmailConnector(account, secret, { onTokenRefresh: (t) => setSecret(account.id, t) });
+        connector = new GmailConnector(account, secret, {
+          onTokenRefresh: (t) => setSecret(account.id, t),
+        });
       } else {
         const { ImapConnector } = await import("../mail/connectors/imap.js");
         connector = new ImapConnector(account, secret);
@@ -355,7 +424,14 @@ async function defaultListMail(sinceMs: number): Promise<WatchMail[]> {
       reached++;
       for (const r of raws) {
         // Metadata only leaves this function — no snippet, no body.
-        out.push({ uid: r.uid, accountId: account.id, from: r.from, fromAddress: r.fromAddress, subject: r.subject, date: r.date });
+        out.push({
+          uid: r.uid,
+          accountId: account.id,
+          from: r.from,
+          fromAddress: r.fromAddress,
+          subject: r.subject,
+          date: r.date,
+        });
       }
     } catch {
       // One unreachable mailbox must not fail the others.
@@ -367,7 +443,13 @@ async function defaultListMail(sinceMs: number): Promise<WatchMail[]> {
   return out;
 }
 
-async function checkMail(task: Task, trigger: MailTrigger, signal: AbortSignal, deps: WatcherDeps, now: number): Promise<WatchOutcome> {
+async function checkMail(
+  task: Task,
+  trigger: MailTrigger,
+  signal: AbortSignal,
+  deps: WatcherDeps,
+  now: number,
+): Promise<WatchOutcome> {
   const prev = task.watch;
   const sinceMs = Math.min(prev?.lastCheckedAt ?? now, now) - 24 * 3_600_000;
   const mails = await (deps.listMail ?? defaultListMail)(sinceMs, signal);
@@ -375,7 +457,9 @@ async function checkMail(task: Task, trigger: MailTrigger, signal: AbortSignal, 
   const subject = trigger.subject?.toLowerCase();
   const matching = mails.filter(
     (m) =>
-      (!from || m.from.toLowerCase().includes(from) || m.fromAddress.toLowerCase().includes(from)) &&
+      (!from ||
+        m.from.toLowerCase().includes(from) ||
+        m.fromAddress.toLowerCase().includes(from)) &&
       (!subject || m.subject.toLowerCase().includes(subject)),
   );
   const idOf = (m: WatchMail): string => `${m.accountId}:${m.uid}`;
@@ -385,7 +469,11 @@ async function checkMail(task: Task, trigger: MailTrigger, signal: AbortSignal, 
   }
   const known = new Set(prev.seen);
   const fresh = matching.filter((m) => !known.has(idOf(m)));
-  const watch: WatchState = { ...prev, seen: remember(prev.seen, fresh.map(idOf), MAX_SEEN), failures: 0 };
+  const watch: WatchState = {
+    ...prev,
+    seen: remember(prev.seen, fresh.map(idOf), MAX_SEEN),
+    failures: 0,
+  };
   if (fresh.length === 0) return { watch };
   const lines = fresh
     .sort((a, b) => b.date - a.date)

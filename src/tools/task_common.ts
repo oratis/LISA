@@ -30,7 +30,9 @@ export function announce(task: Task): void {
 }
 
 function when(ms: number | undefined): string {
-  return ms === undefined ? "—" : new Date(ms).toISOString().slice(0, 16).replace("T", " ") + " UTC";
+  return ms === undefined
+    ? "—"
+    : new Date(ms).toISOString().slice(0, 16).replace("T", " ") + " UTC";
 }
 
 /** One line per task, for listings. */
@@ -53,10 +55,16 @@ export function confirmationCard(task: Task, verb: "Created" | "Updated"): strin
   if (task.trigger) {
     const t = task.trigger;
     const target = t.kind === "mail" ? [t.from, t.subject].filter(Boolean).join(" / ") : t.url;
-    lines.push(`Watches: ${t.kind} ${target} — every ${(t.every ?? "every:30m").replace("every:", "")}, on hit: ${t.onHit ?? "notify"}`);
+    lines.push(
+      `Watches: ${t.kind} ${target} — every ${(t.every ?? "every:30m").replace("every:", "")}, on hit: ${t.onHit ?? "notify"}`,
+    );
   }
-  lines.push(`Does: ${task.instruction.length > 300 ? `${task.instruction.slice(0, 297)}…` : task.instruction}`);
-  lines.push(`Notify: ${task.notify}. Budget per run: ${task.budget.tokens} tokens, ${Math.round(task.budget.wallclockMs / 60_000)} min, ${task.budget.maxToolCalls} tool calls.`);
+  lines.push(
+    `Does: ${task.instruction.length > 300 ? `${task.instruction.slice(0, 297)}…` : task.instruction}`,
+  );
+  lines.push(
+    `Notify: ${task.notify}. Budget per run: ${task.budget.tokens} tokens, ${Math.round(task.budget.wallclockMs / 60_000)} min, ${task.budget.maxToolCalls} tool calls.`,
+  );
   lines.push(
     `Nothing runs until the user turns it on — in the Tasks view, or with \`lisa tasks enable ${task.id}\`. ` +
       `You cannot enable it yourself. Tell the user what you set up and that it is waiting for them.`,

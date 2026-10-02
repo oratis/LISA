@@ -3,7 +3,14 @@
  * the CLI and the runner): enabling, disabling, and working out when a task
  * runs next. Pure functions over a Task — the caller persists the result.
  */
-import { everyIntervalMs, firstRun, isOneShot, MIN_EVERY_MS_CLOUD, MIN_EVERY_MS_LOCAL, nextRun } from "./schedule.js";
+import {
+  everyIntervalMs,
+  firstRun,
+  isOneShot,
+  MIN_EVERY_MS_CLOUD,
+  MIN_EVERY_MS_LOCAL,
+  nextRun,
+} from "./schedule.js";
 import type { Task, TaskState } from "./types.js";
 
 export const DEFAULT_WATCH_EVERY = "every:30m";

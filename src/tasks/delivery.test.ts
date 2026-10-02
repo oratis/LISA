@@ -11,7 +11,12 @@ import type { ReachOutNotice, ReachOutResult } from "../reachout/types.js";
 import type { StoredMessage } from "../types.js";
 import type { PushEvent } from "../web/push.js";
 import { makeServerReachOut } from "../web/reachout-wiring.js";
-import { createTaskCardDeliver, formatTaskCard, reachOutNoticeFor, type TaskReachOut } from "./delivery.js";
+import {
+  createTaskCardDeliver,
+  formatTaskCard,
+  reachOutNoticeFor,
+  type TaskReachOut,
+} from "./delivery.js";
 import { drainOutbox, enqueueNotice, listOutbox } from "./outbox.js";
 import type { TaskNotice } from "./types.js";
 
@@ -64,18 +69,31 @@ test("what the gate is told: source by kind, the user's own result, no dedupe ke
   for (const kind of ["task_result", "watch_hit", "task_needs_you", "task_failed"] as const) {
     const n = reachOutNoticeFor(notice({ kind }));
     assert.equal(n.dedupeKey, undefined);
-    assert.equal(n.solicited, undefined, "left to the gate: task and watcher are solicited by nature");
+    assert.equal(
+      n.solicited,
+      undefined,
+      "left to the gate: task and watcher are solicited by nature",
+    );
   }
 });
 
 // ── with a scripted gate ──
 
 /** A gate that allows the given channels and runs their transports, like reachOut(). */
-function scriptedGate(channels: Array<"inapp" | "push">, reason: ReachOutResult["reason"] = "solicited") {
+function scriptedGate(
+  channels: Array<"inapp" | "push">,
+  reason: ReachOutResult["reason"] = "solicited",
+) {
   const asked: ReachOutNotice[] = [];
   const gate: TaskReachOut = async (n, transports) => {
     asked.push(n);
-    const stamped = { ...n, id: `ro_${asked.length}`, from: "Lisa" as const, ai: true as const, at: "2026-10-02T08:00:00.000Z" };
+    const stamped = {
+      ...n,
+      id: `ro_${asked.length}`,
+      from: "Lisa" as const,
+      ai: true as const,
+      at: "2026-10-02T08:00:00.000Z",
+    };
     for (const channel of channels) {
       try {
         if (channel === "inapp") await transports.inapp(stamped);
@@ -93,7 +111,9 @@ function conversation(over: { failAppend?: boolean } = {}) {
   const history: StoredMessage[] = [];
   return {
     history,
-    withConversation: <T>(fn: (c: { history: StoredMessage[]; append(m: StoredMessage): Promise<void> }) => Promise<T>) =>
+    withConversation: <T>(
+      fn: (c: { history: StoredMessage[]; append(m: StoredMessage): Promise<void> }) => Promise<T>,
+    ) =>
       fn({
         history,
         append: async (m) => {
@@ -271,7 +291,9 @@ test("default settings: a task result is delivered in-app and pushed, and lands 
 
 test("a watcher hit goes out as source `watcher`, high priority", async () => {
   const w = realWiring(NOON);
-  await w.deliver(notice({ id: "r_0123456789abcdef-watch-hit", kind: "watch_hit", priority: "high" }));
+  await w.deliver(
+    notice({ id: "r_0123456789abcdef-watch-hit", kind: "watch_hit", priority: "high" }),
+  );
   assert.equal(w.pushed[0]!.priority, "high");
   assert.equal(decisions()[0]!.source, "watcher");
 });
@@ -282,7 +304,12 @@ test("the user switched task notifications off: nothing is stored or pushed; the
   await saveReachOutSettings(settings, home);
   const w = realWiring(NOON);
   await enqueueNotice(notice());
-  assert.deepEqual(await drainOutbox(w.deliver), { delivered: 0, suppressed: 1, deferred: 0, failed: 0 });
+  assert.deepEqual(await drainOutbox(w.deliver), {
+    delivered: 0,
+    suppressed: 1,
+    deferred: 0,
+    failed: 0,
+  });
   assert.equal(w.convo.history.length, 0);
   assert.equal(w.pushed.length, 0);
   const [entry] = await listOutbox();

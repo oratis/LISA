@@ -145,7 +145,10 @@ export async function migrateHeartbeatTasks(now = Date.now()): Promise<Heartbeat
               enableTask(t, now);
               // A chore with no schedule of its own ran on every tick, this
               // one included — so it is due now, not in half an hour.
-              if (t.schedule?.expr === LEGACY_HEARTBEAT_SCHEDULE && !hasOwnSchedule(chore.schedule)) {
+              if (
+                t.schedule?.expr === LEGACY_HEARTBEAT_SCHEDULE &&
+                !hasOwnSchedule(chore.schedule)
+              ) {
                 t.nextRunAt = now;
               }
             },

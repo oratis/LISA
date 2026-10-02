@@ -125,7 +125,10 @@ test("zonedTimeToUtc round-trips ordinary times", () => {
     iso(zonedTimeToUtc({ y: 2026, mo: 7, d: 4, h: 12, mi: 0 }, "Asia/Shanghai")),
     "2026-07-04T04:00:00.000Z",
   );
-  assert.equal(iso(zonedTimeToUtc({ y: 2026, mo: 1, d: 1, h: 0, mi: 0 }, "UTC")), "2026-01-01T00:00:00.000Z");
+  assert.equal(
+    iso(zonedTimeToUtc({ y: 2026, mo: 1, d: 1, h: 0, mi: 0 }, "UTC")),
+    "2026-01-01T00:00:00.000Z",
+  );
 });
 
 test("weekdays: skips the weekend", () => {

@@ -87,7 +87,10 @@ export function denySideEffects(): ApprovalCallback {
  * minus task management and the subagent spawner, narrowed to the task's
  * envelope when it names tools.
  */
-export function taskToolset(surfaceTools: ToolDefinition[], envelope?: TaskEnvelope): ToolDefinition[] {
+export function taskToolset(
+  surfaceTools: ToolDefinition[],
+  envelope?: TaskEnvelope,
+): ToolDefinition[] {
   const allowed = envelope?.tools ? new Set(envelope.tools) : null;
   return (
     surfaceTools

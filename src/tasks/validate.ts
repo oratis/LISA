@@ -5,7 +5,12 @@
  *
  * Everything here is pure: unknown JSON in, a typed value or a short reason out.
  */
-import { MIN_EVERY_MS_CLOUD, MIN_EVERY_MS_LOCAL, parseSchedule, validateSchedule } from "./schedule.js";
+import {
+  MIN_EVERY_MS_CLOUD,
+  MIN_EVERY_MS_LOCAL,
+  parseSchedule,
+  validateSchedule,
+} from "./schedule.js";
 import type { NewTask } from "./store.js";
 import {
   DEFAULT_TASK_BUDGET,
@@ -59,7 +64,9 @@ function stringList(v: unknown, field: string): Result<string[] | undefined> {
   const out: string[] = [];
   for (const item of v) {
     if (typeof item !== "string" || !item.trim() || item.length > LIMITS.listItemLength) {
-      return fail(`${field} entries must be non-empty strings of at most ${LIMITS.listItemLength} characters`);
+      return fail(
+        `${field} entries must be non-empty strings of at most ${LIMITS.listItemLength} characters`,
+      );
     }
     out.push(item.trim());
   }
@@ -70,13 +77,20 @@ export function parseScheduleSpec(v: unknown, ctx: ValidateContext): Result<Sche
   // A bare string is accepted as shorthand for { expr }.
   const spec = typeof v === "string" ? { expr: v } : v;
   if (!isObject(spec) || typeof spec.expr !== "string") return fail("schedule.expr is required");
-  if (spec.tz !== undefined && typeof spec.tz !== "string") return fail("schedule.tz must be a string");
+  if (spec.tz !== undefined && typeof spec.tz !== "string")
+    return fail("schedule.tz must be a string");
   const value: ScheduleSpec = { expr: spec.expr.trim(), ...(spec.tz ? { tz: spec.tz } : {}) };
   const problem = validateSchedule(value, { cloud: ctx.cloud });
   return problem ? fail(problem) : { ok: true, value };
 }
 
-const WATCH_MODES: readonly WatchCompareMode[] = ["changed", "appears", "disappears", "above", "below"];
+const WATCH_MODES: readonly WatchCompareMode[] = [
+  "changed",
+  "appears",
+  "disappears",
+  "above",
+  "below",
+];
 
 function httpUrl(v: unknown, field: string): Result<string> {
   if (typeof v !== "string" || v.length > LIMITS.url) return fail(`${field} must be a URL`);
@@ -86,7 +100,8 @@ function httpUrl(v: unknown, field: string): Result<string> {
   } catch {
     return fail(`${field} is not a valid URL`);
   }
-  if (url.protocol !== "http:" && url.protocol !== "https:") return fail(`${field} must be http(s)`);
+  if (url.protocol !== "http:" && url.protocol !== "https:")
+    return fail(`${field} must be http(s)`);
   if (url.username || url.password) return fail(`${field} must not carry credentials`);
   return { ok: true, value: url.toString() };
 }
@@ -101,15 +116,17 @@ export function parseTriggerSpec(v: unknown, ctx: ValidateContext): Result<Trigg
     const parsed = parseSchedule(v.every.trim());
     if (parsed?.kind !== "every") return fail("trigger.every must be of the form every:<n>(m|h|d)");
     const floor = ctx.cloud ? MIN_EVERY_MS_CLOUD : MIN_EVERY_MS_LOCAL;
-    if (parsed.everyMs < floor) return fail(`trigger.every must be at least ${floor / 60_000} minutes`);
+    if (parsed.everyMs < floor)
+      return fail(`trigger.every must be at least ${floor / 60_000} minutes`);
     every = v.every.trim();
   }
   if (v.onHit !== undefined && v.onHit !== "notify" && v.onHit !== "run") {
     return fail('trigger.onHit must be "notify" or "run"');
   }
-  const common = {
+  const onHit = v.onHit === "notify" || v.onHit === "run" ? v.onHit : undefined;
+  const common: { every?: string; onHit?: "notify" | "run" } = {
     ...(every ? { every } : {}),
-    ...(v.onHit ? { onHit: v.onHit } : {}),
+    ...(onHit ? { onHit } : {}),
   };
 
   if (v.kind === "web") {
@@ -121,7 +138,10 @@ export function parseTriggerSpec(v: unknown, ctx: ValidateContext): Result<Trigg
     }
     for (const field of ["selector", "regex", "contains"] as const) {
       const value = v[field];
-      if (value !== undefined && (typeof value !== "string" || !value || value.length > LIMITS.pattern)) {
+      if (
+        value !== undefined &&
+        (typeof value !== "string" || !value || value.length > LIMITS.pattern)
+      ) {
         return fail(`trigger.${field} must be a string of at most ${LIMITS.pattern} characters`);
       }
     }
@@ -132,7 +152,10 @@ export function parseTriggerSpec(v: unknown, ctx: ValidateContext): Result<Trigg
         return fail("trigger.regex is not a valid regular expression");
       }
     }
-    if (typeof v.selector === "string" && !/^(?:[a-zA-Z][a-zA-Z0-9]*)?(?:[#.][\w-]+)*$/.test(v.selector)) {
+    if (
+      typeof v.selector === "string" &&
+      !/^(?:[a-zA-Z][a-zA-Z0-9]*)?(?:[#.][\w-]+)*$/.test(v.selector)
+    ) {
       return fail("trigger.selector supports only tag, #id and .class (e.g. span.price, #stock)");
     }
     if ((mode === "appears" || mode === "disappears") && !v.contains && !v.regex) {
@@ -165,15 +188,25 @@ export function parseTriggerSpec(v: unknown, ctx: ValidateContext): Result<Trigg
     if (!keywords.ok) return keywords;
     return {
       ok: true,
-      value: { kind: "rss", url: url.value, ...(keywords.value ? { keywords: keywords.value } : {}), ...common },
+      value: {
+        kind: "rss",
+        url: url.value,
+        ...(keywords.value ? { keywords: keywords.value } : {}),
+        ...common,
+      },
     };
   }
 
   if (v.kind === "mail") {
     for (const field of ["from", "subject"] as const) {
       const value = v[field];
-      if (value !== undefined && (typeof value !== "string" || !value.trim() || value.length > LIMITS.pattern)) {
-        return fail(`trigger.${field} must be a non-empty string of at most ${LIMITS.pattern} characters`);
+      if (
+        value !== undefined &&
+        (typeof value !== "string" || !value.trim() || value.length > LIMITS.pattern)
+      ) {
+        return fail(
+          `trigger.${field} must be a non-empty string of at most ${LIMITS.pattern} characters`,
+        );
       }
     }
     if (!v.from && !v.subject) return fail("a mail trigger needs trigger.from or trigger.subject");
@@ -201,7 +234,11 @@ export function parseEnvelope(v: unknown): Result<TaskEnvelope> {
   return { ok: true, value: out };
 }
 
-export function parseBudget(v: unknown, ctx: ValidateContext, base: TaskBudget = DEFAULT_TASK_BUDGET): Result<TaskBudget> {
+export function parseBudget(
+  v: unknown,
+  ctx: ValidateContext,
+  base: TaskBudget = DEFAULT_TASK_BUDGET,
+): Result<TaskBudget> {
   if (!isObject(v)) return fail("budget must be an object");
   const out: TaskBudget = { ...base };
   for (const field of ["tokens", "wallclockMs", "maxToolCalls"] as const) {
@@ -233,7 +270,11 @@ export function defaultBudget(ctx: ValidateContext): TaskBudget {
   };
 }
 
-function shapeProblem(kind: Task["kind"], schedule?: ScheduleSpec, trigger?: TriggerSpec): string | null {
+function shapeProblem(
+  kind: Task["kind"],
+  schedule?: ScheduleSpec,
+  trigger?: TriggerSpec,
+): string | null {
   if (kind === "watcher" && !trigger) return "a watcher needs a trigger";
   if (kind !== "watcher" && trigger) return "only a watcher takes a trigger";
   if (kind === "routine" && !schedule) return "a routine needs a schedule";
@@ -254,7 +295,8 @@ export function parseNewTask(
 ): Result<NewTask> {
   if (!isObject(body)) return fail("body must be a JSON object");
   const kind = body.kind ?? (body.trigger ? "watcher" : body.schedule ? "routine" : "oneoff");
-  if (!TASK_KINDS.includes(kind as Task["kind"])) return fail(`kind must be one of ${TASK_KINDS.join(", ")}`);
+  if (!TASK_KINDS.includes(kind as Task["kind"]))
+    return fail(`kind must be one of ${TASK_KINDS.join(", ")}`);
   const title = text(body.title, "title", LIMITS.title);
   if (!title.ok) return title;
   const instruction = text(body.instruction, "instruction", LIMITS.instruction);
@@ -270,7 +312,8 @@ export function parseNewTask(
     enabled: false,
   };
   if (body.host !== undefined) {
-    if (!TASK_HOSTS.includes(body.host as Task["host"])) return fail(`host must be one of ${TASK_HOSTS.join(", ")}`);
+    if (!TASK_HOSTS.includes(body.host as Task["host"]))
+      return fail(`host must be one of ${TASK_HOSTS.join(", ")}`);
     value.host = body.host as Task["host"];
   }
   if (body.notify !== undefined) {
@@ -304,7 +347,16 @@ export function parseNewTask(
 }
 
 /** Fields a PATCH may carry besides `enabled`. */
-const EDITABLE = ["title", "instruction", "schedule", "trigger", "envelope", "budget", "notify", "host"] as const;
+const EDITABLE = [
+  "title",
+  "instruction",
+  "schedule",
+  "trigger",
+  "envelope",
+  "budget",
+  "notify",
+  "host",
+] as const;
 
 /**
  * Apply an edit to a task in place. Returns a reason when the edit is not
@@ -330,11 +382,13 @@ export function applyTaskEdit(task: Task, body: unknown, ctx: ValidateContext): 
     next.instruction = instruction.value;
   }
   if (body.notify !== undefined) {
-    if (!TASK_NOTIFY.includes(body.notify as Task["notify"])) return `notify must be one of ${TASK_NOTIFY.join(", ")}`;
+    if (!TASK_NOTIFY.includes(body.notify as Task["notify"]))
+      return `notify must be one of ${TASK_NOTIFY.join(", ")}`;
     next.notify = body.notify as Task["notify"];
   }
   if (body.host !== undefined) {
-    if (!TASK_HOSTS.includes(body.host as Task["host"])) return `host must be one of ${TASK_HOSTS.join(", ")}`;
+    if (!TASK_HOSTS.includes(body.host as Task["host"]))
+      return `host must be one of ${TASK_HOSTS.join(", ")}`;
     next.host = body.host as Task["host"];
   }
   if (body.schedule !== undefined) {

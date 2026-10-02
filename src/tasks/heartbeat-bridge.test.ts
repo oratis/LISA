@@ -6,7 +6,13 @@ import path from "node:path";
 import type { Provider } from "../providers/types.js";
 import { runTasksFromHeartbeat } from "./heartbeat-bridge.js";
 import { heartbeatFile, heartbeatTaskId } from "./heartbeat-migration.js";
-import { disableTask, enableTask, nextRunAfter, restingState, watchIntervalMs } from "./lifecycle.js";
+import {
+  disableTask,
+  enableTask,
+  nextRunAfter,
+  restingState,
+  watchIntervalMs,
+} from "./lifecycle.js";
 import { listOutbox } from "./outbox.js";
 import { createTask, getTask, listTasks } from "./store.js";
 import type { Task } from "./types.js";
@@ -65,7 +71,11 @@ test("a heartbeat tick migrates heartbeat.json and runs the chores that are due 
   const fake = provider((p) => (p.includes("Say nothing") ? "(no update)" : "Disk is 91% full."));
   const runnerOptions = { provider: fake.provider, unattendedAllowed: () => true };
 
-  const results = await runTasksFromHeartbeat({ ...base, signal: new AbortController().signal, runnerOptions });
+  const results = await runTasksFromHeartbeat({
+    ...base,
+    signal: new AbortController().signal,
+    runnerOptions,
+  });
   assert.deepEqual(
     results.sort((a, b) => a.task.localeCompare(b.task)),
     [
@@ -85,7 +95,11 @@ test("a heartbeat tick migrates heartbeat.json and runs the chores that are due 
   assert.equal(outbox[0]!.notice.summary, "Disk is 91% full.");
 
   // The very next tick has nothing due.
-  const again = await runTasksFromHeartbeat({ ...base, signal: new AbortController().signal, runnerOptions });
+  const again = await runTasksFromHeartbeat({
+    ...base,
+    signal: new AbortController().signal,
+    runnerOptions,
+  });
   assert.deepEqual(again, []);
   assert.equal(fake.prompts.length, 2);
 });
@@ -93,7 +107,9 @@ test("a heartbeat tick migrates heartbeat.json and runs the chores that are due 
 test("`lisa heartbeat run <name>` runs just that task, due or not", async () => {
   fs.writeFileSync(
     heartbeatFile(),
-    JSON.stringify({ tasks: [{ name: "later", prompt: "Weekly thing.", schedule: "weekly:mon@09:00" }] }),
+    JSON.stringify({
+      tasks: [{ name: "later", prompt: "Weekly thing.", schedule: "weekly:mon@09:00" }],
+    }),
   );
   const fake = provider(() => "Done.");
   const results = await runTasksFromHeartbeat({
@@ -103,7 +119,11 @@ test("`lisa heartbeat run <name>` runs just that task, due or not", async () => 
     runnerOptions: { provider: fake.provider },
   });
   assert.deepEqual(results, [{ task: "task:later", output: "Done.", silent: false }]);
-  assert.equal((await getTask(heartbeatTaskId("later")))!.state, "scheduled", "still on its schedule");
+  assert.equal(
+    (await getTask(heartbeatTaskId("later")))!.state,
+    "scheduled",
+    "still on its schedule",
+  );
 
   // A filter that names one of Lisa's own heartbeat tasks is not ours to run.
   const none = await runTasksFromHeartbeat({
@@ -147,7 +167,11 @@ test("an every: routine driven only by 30-minute wake-ups runs on every wake-up,
     clock = start + (wake + 1) * 30 * 60_000;
   }
   assert.equal(fake.prompts.length, 4);
-  assert.equal((await getTask(task.id))!.nextRunAt, start + 4 * 30 * 60_000, "the phase did not drift");
+  assert.equal(
+    (await getTask(task.id))!.nextRunAt,
+    start + 4 * 30 * 60_000,
+    "the phase did not drift",
+  );
 });
 
 // ── lifecycle (pure) ──
@@ -178,7 +202,11 @@ function fakeTask(over: Partial<Task>): Task {
 test("an interval keeps its phase, skips missed slots, and a manual run does not move it", () => {
   const H = 3_600_000;
   const t = fakeTask({ schedule: { expr: "every:1h" }, nextRunAt: 10 * H });
-  assert.equal(nextRunAfter(t, 10 * H + 5000), 11 * H, "counted from the slot, not from the finish");
+  assert.equal(
+    nextRunAfter(t, 10 * H + 5000),
+    11 * H,
+    "counted from the slot, not from the finish",
+  );
   assert.equal(nextRunAfter(t, 13 * H + 1), 14 * H, "three missed slots are skipped, not replayed");
   assert.equal(nextRunAfter(t, 9 * H), 10 * H, "not due yet: unchanged");
   assert.equal(nextRunAfter(fakeTask({ schedule: { expr: "every:1h" } }), 10 * H), 11 * H);
@@ -203,7 +231,11 @@ test("enable / disable / resting state", () => {
   assert.equal(adhoc.state, "queued", "no schedule: runs once, now");
   assert.equal(adhoc.nextRunAt, now);
 
-  const inFlight = fakeTask({ schedule: { expr: "every:1h" }, activeRunId: "r_0123456789abcdef", state: "running" });
+  const inFlight = fakeTask({
+    schedule: { expr: "every:1h" },
+    activeRunId: "r_0123456789abcdef",
+    state: "running",
+  });
   enableTask(inFlight, now);
   assert.equal(inFlight.state, "running", "a run in flight is not disturbed");
   disableTask(inFlight);
@@ -212,7 +244,10 @@ test("enable / disable / resting state", () => {
 });
 
 test("a failing watcher's poll interval backs off, capped", () => {
-  const w = fakeTask({ kind: "watcher", trigger: { kind: "rss", url: "https://example.com/f", every: "every:10m" } });
+  const w = fakeTask({
+    kind: "watcher",
+    trigger: { kind: "rss", url: "https://example.com/f", every: "every:10m" },
+  });
   assert.equal(watchIntervalMs(w), 10 * 60_000);
   assert.equal(watchIntervalMs(w, true), 30 * 60_000, "the hosted floor");
   assert.equal(nextRunAfter(w, 0), 10 * 60_000);

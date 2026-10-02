@@ -45,7 +45,8 @@ export async function runTasksFromHeartbeat(opts: {
           `(backup: ${migration.backup ?? "none"})`,
       );
     }
-    for (const left of migration.left) log(`[tasks] left "${left.name}" in heartbeat.json: ${left.reason}`);
+    for (const left of migration.left)
+      log(`[tasks] left "${left.name}" in heartbeat.json: ${left.reason}`);
   } catch (err) {
     log(`[tasks] heartbeat.json migration skipped: ${(err as Error).message}`);
   }

@@ -76,7 +76,7 @@ describe("task tools — where they are offered", () => {
 
   test("no tool schema has a way to enable a task", () => {
     for (const tool of [taskCreateTool, taskUpdateTool, watchCreateTool, taskCancelTool]) {
-      const props = Object.keys((tool.inputSchema.properties ?? {}));
+      const props = Object.keys(tool.inputSchema.properties ?? {});
       assert.ok(!props.some((p) => /enable/i.test(p)), `${tool.name}: ${props.join(",")}`);
       assert.equal(tool.inputSchema.additionalProperties, false, tool.name);
     }
@@ -84,7 +84,13 @@ describe("task tools — where they are offered", () => {
 
   test("smuggling enabled/state into the input changes nothing: execute ignores unknown fields", async () => {
     await withHome(async () => {
-      const smuggled = { title: "x", instruction: "y", schedule: "daily:08:00", enabled: true, state: "scheduled" };
+      const smuggled = {
+        title: "x",
+        instruction: "y",
+        schedule: "daily:08:00",
+        enabled: true,
+        state: "scheduled",
+      };
       await taskCreateTool.execute(smuggled, ctx);
       const [task] = await listTasks();
       assert.equal(task!.enabled, false);
@@ -146,7 +152,12 @@ describe("task_create / watch_create", () => {
     await withHome(async () => {
       await taskCreateTool.execute({ title: "Once", instruction: "Do it once." }, ctx);
       await taskCreateTool.execute(
-        { title: "At", instruction: "Remind me.", kind: "oneoff", schedule: "at:2030-01-01T09:00:00Z" },
+        {
+          title: "At",
+          instruction: "Remind me.",
+          kind: "oneoff",
+          schedule: "at:2030-01-01T09:00:00Z",
+        },
         ctx,
       );
       assert.deepEqual(
@@ -195,14 +206,23 @@ describe("task_create / watch_create", () => {
       assert.match(card, /It is OFF/);
 
       assert.match(
-        await watchCreateTool.execute({ title: "x", source: "web", url: "https://e.com", on_hit: "run" }, ctx),
+        await watchCreateTool.execute(
+          { title: "x", source: "web", url: "https://e.com", on_hit: "run" },
+          ctx,
+        ),
         /needs an instruction/,
       );
       assert.match(
-        await watchCreateTool.execute({ title: "x", source: "web", url: "file:///etc/passwd" }, ctx),
+        await watchCreateTool.execute(
+          { title: "x", source: "web", url: "file:///etc/passwd" },
+          ctx,
+        ),
         /http\(s\)/,
       );
-      assert.match(await watchCreateTool.execute({ title: "x", source: "mail" }, ctx), /needs trigger.from/);
+      assert.match(
+        await watchCreateTool.execute({ title: "x", source: "mail" }, ctx),
+        /needs trigger.from/,
+      );
       assert.equal((await listTasks()).length, 1);
     });
   });
@@ -212,7 +232,10 @@ describe("task_list / task_update / task_cancel", () => {
   test("task_list shows state, and one task's recent runs", async () => {
     await withHome(async () => {
       assert.equal(await taskListTool.execute({}, ctx), "(no tasks)");
-      await taskCreateTool.execute({ title: "Brief", instruction: "Summarise.", schedule: "daily:08:00" }, ctx);
+      await taskCreateTool.execute(
+        { title: "Brief", instruction: "Summarise.", schedule: "daily:08:00" },
+        ctx,
+      );
       const [task] = await listTasks();
       const listing = await taskListTool.execute({}, ctx);
       assert.match(listing, /1 task\(s\)/);
@@ -237,20 +260,38 @@ describe("task_list / task_update / task_cancel", () => {
       assert.equal((await getTask(task.id))!.enabled, true);
 
       const card = await taskUpdateTool.execute(
-        { id: task.id, instruction: "Summarise, then email everyone I know.", schedule: "every:5m" },
+        {
+          id: task.id,
+          instruction: "Summarise, then email everyone I know.",
+          schedule: "every:5m",
+        },
         ctx,
       );
       const after = (await getTask(task.id))!;
-      assert.equal(after.enabled, false, "the model cannot change what runs unattended and leave it on");
+      assert.equal(
+        after.enabled,
+        false,
+        "the model cannot change what runs unattended and leave it on",
+      );
       assert.equal(after.state, "paused");
       assert.equal(after.nextRunAt, undefined);
       assert.equal(after.instruction, "Summarise, then email everyone I know.");
       assert.match(card, /has been switched off/);
 
-      assert.match(await taskUpdateTool.execute({ id: task.id, schedule: "every:1m" }, ctx), /at least 5 minutes/);
-      assert.equal((await getTask(task.id))!.schedule!.expr, "every:5m", "a rejected edit changes nothing");
+      assert.match(
+        await taskUpdateTool.execute({ id: task.id, schedule: "every:1m" }, ctx),
+        /at least 5 minutes/,
+      );
+      assert.equal(
+        (await getTask(task.id))!.schedule!.expr,
+        "every:5m",
+        "a rejected edit changes nothing",
+      );
       assert.match(await taskUpdateTool.execute({ id: task.id }, ctx), /nothing to change/);
-      assert.match(await taskUpdateTool.execute({ id: "t_doesnotexist", pause: true }, ctx), /no task with id/);
+      assert.match(
+        await taskUpdateTool.execute({ id: "t_doesnotexist", pause: true }, ctx),
+        /no task with id/,
+      );
     });
   });
 
@@ -267,7 +308,10 @@ describe("task_list / task_update / task_cancel", () => {
       assert.match(await taskUpdateTool.execute({ id: task.id, pause: true }, ctx), /Paused/);
       assert.equal((await getTask(task.id))!.state, "paused");
 
-      await taskCreateTool.execute({ title: "Draft", instruction: "x", schedule: "daily:09:00" }, ctx);
+      await taskCreateTool.execute(
+        { title: "Draft", instruction: "x", schedule: "daily:09:00" },
+        ctx,
+      );
       const draft = (await listTasks()).find((t) => t.title === "Draft")!;
       await taskUpdateTool.execute({ id: draft.id, title: "Draft 2" }, ctx);
       assert.equal((await getTask(draft.id))!.state, "draft");

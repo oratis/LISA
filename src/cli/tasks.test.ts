@@ -73,7 +73,10 @@ test("enable is the user's confirmation; disable turns it back off; ids may be p
     const task = await createTask(routine);
     const now = Date.parse("2026-10-02T07:00:00Z");
     const enabled = capture();
-    assert.equal(await runTasksCommand(["enable", task.id.slice(0, 6)], { ...enabled.io, now: () => now }), 0);
+    assert.equal(
+      await runTasksCommand(["enable", task.id.slice(0, 6)], { ...enabled.io, now: () => now }),
+      0,
+    );
     const on = (await getTask(task.id))!;
     assert.equal(on.enabled, true);
     assert.equal(on.state, "scheduled");
@@ -126,7 +129,13 @@ test("run reports a failed run with a non-zero exit, and a busy task without run
         throw new Error("model unreachable");
       },
     };
-    const runner = new TaskRunner({ tools: [], model: "m", cwd: os.tmpdir(), provider: failing, log: () => {} });
+    const runner = new TaskRunner({
+      tools: [],
+      model: "m",
+      cwd: os.tmpdir(),
+      provider: failing,
+      log: () => {},
+    });
     const failed = capture();
     assert.equal(await runTaskNow(task.id, runner, failed.io), 1);
     assert.ok(failed.err.some((l) => /model unreachable/.test(l)));

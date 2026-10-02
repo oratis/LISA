@@ -130,7 +130,8 @@ export function parseTask(raw: unknown, expectedId?: string): Parsed {
     typeof obj.enabled === "boolean" &&
     typeof obj.createdAt === "number" &&
     typeof obj.updatedAt === "number" &&
-    (obj.schedule === undefined || (isObject(obj.schedule) && typeof obj.schedule.expr === "string")) &&
+    (obj.schedule === undefined ||
+      (isObject(obj.schedule) && typeof obj.schedule.expr === "string")) &&
     (obj.trigger === undefined || (isObject(obj.trigger) && typeof obj.trigger.kind === "string"));
   if (!valid) return { ok: false, reason: "corrupt" };
 
@@ -422,7 +423,8 @@ export async function loadRun(taskId: string, runId: string): Promise<LoadedRun 
     if (rec.t === "run" && isObject(rec.run)) run = rec.run;
     else if (rec.t === "msg" && isObject(rec.message)) messages.push(rec.message);
     else if (rec.t === "event" && isObject(rec.event)) events.push({ ...rec.event, at: rec.at });
-    else if (rec.t === "reset" && Number.isInteger(rec.keep)) messages = messages.slice(0, rec.keep);
+    else if (rec.t === "reset" && Number.isInteger(rec.keep))
+      messages = messages.slice(0, rec.keep);
   }
   if (!run || run.id !== runId || run.taskId !== taskId) return null;
   if (!isObject(run.executedDigests)) run.executedDigests = {};

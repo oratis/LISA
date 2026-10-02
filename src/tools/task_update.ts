@@ -27,7 +27,12 @@ export const taskUpdateTool: ToolDefinition<TaskUpdateInput, string> = {
   description:
     "Edit a task's title, instruction, schedule or notify policy, or pause it (pause: true). Any edit " +
     "switches the task OFF until the user turns it back on — you cannot enable a task. Get ids from task_list.",
-  annotations: { title: "Update task", readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+  annotations: {
+    title: "Update task",
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: true,
+  },
   inputSchema: {
     type: "object",
     properties: {
@@ -52,7 +57,8 @@ export const taskUpdateTool: ToolDefinition<TaskUpdateInput, string> = {
       edit.schedule = { expr: input.schedule, ...(input.timezone ? { tz: input.timezone } : {}) };
     }
     const edited = Object.keys(edit).length > 0;
-    if (!edited && input.pause !== true) return "(nothing to change — pass a field to edit, or pause: true)";
+    if (!edited && input.pause !== true)
+      return "(nothing to change — pass a field to edit, or pause: true)";
 
     let problem: string | null = null;
     let wasEnabled = false;
@@ -70,7 +76,8 @@ export const taskUpdateTool: ToolDefinition<TaskUpdateInput, string> = {
     if (!task) return `(no task with id "${input.id.slice(0, 80)}")`;
     if (problem) return `(not updated: ${problem as string})`;
     announce(task);
-    if (!edited) return `Paused "${task.title}" (${task.id}). It stays off until the user turns it on.`;
+    if (!edited)
+      return `Paused "${task.title}" (${task.id}). It stays off until the user turns it on.`;
     return (
       confirmationCard(task, "Updated") +
       (wasEnabled ? "\nIt was on before this edit and has been switched off — say so." : "")

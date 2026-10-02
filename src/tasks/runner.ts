@@ -33,7 +33,13 @@ import type { SandboxMode } from "../sandbox/mode.js";
 import { sandboxModeForProfile } from "../sandbox/sandbox.js";
 import { validateToolInput } from "../tools/validate.js";
 import type { AgentEvent, StoredMessage, ToolDefinition } from "../types.js";
-import { buildResumeNote, buildTaskFrame, isNoUpdate, planResume, TASK_SYSTEM_ADDENDUM } from "./frame.js";
+import {
+  buildResumeNote,
+  buildTaskFrame,
+  isNoUpdate,
+  planResume,
+  TASK_SYSTEM_ADDENDUM,
+} from "./frame.js";
 import { acquireTaskLease, DEFAULT_LEASE_TTL_MS, type TaskLease } from "./lease.js";
 import { isRecurring, nextRunAfter, restingState } from "./lifecycle.js";
 import { drainOutbox, enqueueNotice, noticeId } from "./outbox.js";
@@ -119,7 +125,10 @@ export interface WatchOutcome {
   error?: string;
 }
 
-export type WatchCheck = (task: Task, ctx: { signal: AbortSignal; now: number }) => Promise<WatchOutcome>;
+export type WatchCheck = (
+  task: Task,
+  ctx: { signal: AbortSignal; now: number },
+) => Promise<WatchOutcome>;
 
 export interface TaskRunnerOptions {
   /** The surface's capability-profile tools; narrowed per task by its envelope. */
@@ -190,7 +199,9 @@ interface Outcome {
 }
 
 function clip(text: string, max: number): string {
-  return text.length <= max ? text : `${text.slice(0, max)}\n…[truncated ${text.length - max} chars]`;
+  return text.length <= max
+    ? text
+    : `${text.slice(0, max)}\n…[truncated ${text.length - max} chars]`;
 }
 
 function looksLikeAuthFailure(message: string): boolean {
@@ -300,11 +311,15 @@ export class TaskRunner {
    * on a disabled task — that is the "test run". The run starts immediately if
    * there is capacity, otherwise at the next tick.
    */
-  async runNow(taskId: string, input?: string): Promise<{ ok: true } | { ok: false; reason: string }> {
+  async runNow(
+    taskId: string,
+    input?: string,
+  ): Promise<{ ok: true } | { ok: false; reason: string }> {
     const task = await getTask(taskId);
     if (!task) return { ok: false, reason: "not_found" };
     if (task.host !== "any" && task.host !== this.host) return { ok: false, reason: "wrong_host" };
-    if (this.active.has(taskId) || task.activeRunId) return { ok: false, reason: "already_running" };
+    if (this.active.has(taskId) || task.activeRunId)
+      return { ok: false, reason: "already_running" };
     const now = this.now();
     const updated = await updateTask(
       taskId,
@@ -341,7 +356,8 @@ export class TaskRunner {
         if (t.state === "queued") {
           delete t.queued;
           t.state = restingState(t);
-          if (t.enabled && isRecurring(t)) t.nextRunAt = nextRunAfter(t, now, this.host === "cloud");
+          if (t.enabled && isRecurring(t))
+            t.nextRunAt = nextRunAfter(t, now, this.host === "cloud");
           else delete t.nextRunAt;
           found = true;
           return;
@@ -479,7 +495,11 @@ export class TaskRunner {
   private async startRun(task: Task, slot: Slot, manual: boolean): Promise<void> {
     const now = this.now();
     const input = task.queued?.input;
-    const run = await createRun(task.id, { state: "running", ...(input !== undefined ? { input } : {}) }, now);
+    const run = await createRun(
+      task.id,
+      { state: "running", ...(input !== undefined ? { input } : {}) },
+      now,
+    );
     if (manual) run.manual = true;
     const started = await updateTask(
       task.id,
@@ -505,7 +525,12 @@ export class TaskRunner {
     run.state = "interrupted";
     run.resumes = (run.resumes ?? 0) + 1;
     await checkpointRun(run, now);
-    await appendRunEvent(task.id, run.id, { type: "resume", summary: `resume #${run.resumes}` }, now);
+    await appendRunEvent(
+      task.id,
+      run.id,
+      { type: "resume", summary: `resume #${run.resumes}` },
+      now,
+    );
 
     if (task.cancelRequestedAt) {
       await this.finish(task, run, { state: "cancelled", stopReason: "cancelled", summary: "" });
@@ -578,7 +603,9 @@ export class TaskRunner {
     // Run-log appends are fire-and-forget from sync callbacks but must stay ordered.
     let logChain: Promise<void> = Promise.resolve();
     const logEvent = (event: RunEvent): void => {
-      logChain = logChain.then(() => appendRunEvent(task.id, run.id, event, this.now())).catch(() => {});
+      logChain = logChain
+        .then(() => appendRunEvent(task.id, run.id, event, this.now()))
+        .catch(() => {});
     };
 
     const stopWith = (stop: StopReason, detail?: string): void => {
@@ -605,7 +632,8 @@ export class TaskRunner {
     wallclock.unref?.();
 
     try {
-      const surface = typeof this.opts.tools === "function" ? await this.opts.tools() : this.opts.tools;
+      const surface =
+        typeof this.opts.tools === "function" ? await this.opts.tools() : this.opts.tools;
       const tools = taskToolset(surface, task.envelope);
       const toolMap = new Map(tools.map((t) => [t.name, t]));
 
@@ -689,7 +717,8 @@ export class TaskRunner {
           log: (m) => this.log(`${task.id}: ${m}`),
           // Unattended ⇒ the bounded sandbox mode, whatever the process default is.
           sandboxMode:
-            this.opts.sandboxMode ?? sandboxModeForProfile(cloud ? "cloud-autonomy" : "local-autonomy"),
+            this.opts.sandboxMode ??
+            sandboxModeForProfile(cloud ? "cloud-autonomy" : "local-autonomy"),
         },
         history,
         userMessage,
@@ -714,7 +743,8 @@ export class TaskRunner {
               type: "tool_result",
               toolName: event.toolName,
               isError: !!event.isError,
-              summary: typeof event.toolResult === "string" ? event.toolResult.slice(0, 240) : undefined,
+              summary:
+                typeof event.toolResult === "string" ? event.toolResult.slice(0, 240) : undefined,
             });
           }
         },
@@ -773,7 +803,12 @@ export class TaskRunner {
 
       const text = result.finalText.trim();
       if (result.stopReason === "max_iterations") {
-        return { state: "failed", stopReason: "max_iterations", summary: text, error: "ran out of turns" };
+        return {
+          state: "failed",
+          stopReason: "max_iterations",
+          summary: text,
+          error: "ran out of turns",
+        };
       }
       return { state: "succeeded", stopReason: result.stopReason, summary: text };
     } catch (err) {
@@ -822,7 +857,11 @@ export class TaskRunner {
     const cloud = this.host === "cloud";
     const manual = !!run.manual;
     const noop = outcome.state === "succeeded" && isNoUpdate(outcome.summary);
-    let notice: { kind: TaskNotice["kind"]; summary: string; priority: TaskNotice["priority"] } | null = null;
+    let notice: {
+      kind: TaskNotice["kind"];
+      summary: string;
+      priority: TaskNotice["priority"];
+    } | null = null;
 
     const updated = await updateTask(
       task.id,
@@ -935,8 +974,13 @@ export class TaskRunner {
     });
     if (updated) this.emit({ type: "task_updated", task: updated });
     // `notice` is assigned inside the updateTask callback, which TS cannot see.
-    const pending = notice as { kind: TaskNotice["kind"]; summary: string; priority: TaskNotice["priority"] } | null;
-    if (pending) await this.notify(updated ?? task, run, pending.kind, pending.summary, pending.priority);
+    const pending = notice as {
+      kind: TaskNotice["kind"];
+      summary: string;
+      priority: TaskNotice["priority"];
+    } | null;
+    if (pending)
+      await this.notify(updated ?? task, run, pending.kind, pending.summary, pending.priority);
   }
 
   private async notify(
@@ -1003,7 +1047,14 @@ export class TaskRunner {
       run.stopReason = "watch_hit";
       run.summary = clip(hit.summary, MAX_SUMMARY);
       await checkpointRun(run, now);
-      this.emit({ type: "task_run_finished", taskId: task.id, runId, state: "succeeded", stopReason: "watch_hit", summary: run.summary.slice(0, 500) });
+      this.emit({
+        type: "task_run_finished",
+        taskId: task.id,
+        runId,
+        state: "succeeded",
+        stopReason: "watch_hit",
+        summary: run.summary.slice(0, 500),
+      });
       await this.notify(task, run, "watch_hit", hit.summary, "high");
     }
 
@@ -1024,7 +1075,9 @@ export class TaskRunner {
           // Same write as the watch state: the hit is consumed and the run
           // queued atomically, so a crash cannot queue it twice.
           t.state = "queued";
-          t.queued = { input: clip(`${hit.summary}${hit.detail ? `\n\n${hit.detail}` : ""}`, 6000) };
+          t.queued = {
+            input: clip(`${hit.summary}${hit.detail ? `\n\n${hit.detail}` : ""}`, 6000),
+          };
           t.nextRunAt = now;
           return;
         }

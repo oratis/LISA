@@ -2024,7 +2024,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
               ...(maxRuns !== undefined ? { maxRuns } : {}),
             })
           : undefined;
-        if (tasks) logInfo(`[sweep] tasks: ${tasks.scanned} tenant(s) with tasks, ${tasks.ran} run(s)`);
+        if (tasks)
+          logInfo(`[sweep] tasks: ${tasks.scanned} tenant(s) with tasks, ${tasks.ran} run(s)`);
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify(tasks ? { ...report, tasks } : report));
       } catch (e) {

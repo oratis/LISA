@@ -56,7 +56,12 @@ function site(pages: () => { status?: number; type?: string; body: string }) {
 }
 
 /** Poll repeatedly, threading the watch state the way the runner does. */
-async function poll(trigger: TriggerSpec, deps: WatcherDeps, bodies: string[], onEach?: () => void) {
+async function poll(
+  trigger: TriggerSpec,
+  deps: WatcherDeps,
+  bodies: string[],
+  onEach?: () => void,
+) {
   const check = createWatchCheck(deps);
   let watch: WatchState | undefined;
   const hits: Array<string | null> = [];
@@ -107,19 +112,30 @@ test("observeCondition fires on the rising edge and needs two contrary readings 
   }
   //                     F      T     T      F(1)   T      F(1)   F(2)   T
   assert.deepEqual(fired, [false, true, false, false, false, false, false, true]);
-  assert.equal(observeCondition(undefined, true).fire, true, "already true on the first look is a hit");
+  assert.equal(
+    observeCondition(undefined, true).fire,
+    true,
+    "already true on the first look is a hit",
+  );
 });
 
 // ── web ──
 
 test("web/changed: the first look is a baseline; a change hits once; flapping back stays quiet", async () => {
   let body = "";
-  const { deps } = site(() => ({ body: `<html><body><h1>${body}</h1><script>ads(${Math.random()})</script></body></html>` }));
+  const { deps } = site(() => ({
+    body: `<html><body><h1>${body}</h1><script>ads(${Math.random()})</script></body></html>`,
+  }));
   const bodies = ["Closed", "Closed", "Open", "Open", "Closed", "Open", "Sold out"];
   let i = 0;
-  const hits = await poll({ kind: "web", url: "https://example.com/status", mode: "changed" }, deps, bodies, () => {
-    body = bodies[i++]!;
-  });
+  const hits = await poll(
+    { kind: "web", url: "https://example.com/status", mode: "changed" },
+    deps,
+    bodies,
+    () => {
+      body = bodies[i++]!;
+    },
+  );
   assert.deepEqual(
     hits.map((h) => h !== null),
     //  base   same   change same   back   again  new
@@ -132,7 +148,16 @@ test("web/changed: the first look is a baseline; a change hits once; flapping ba
 test("web/appears + contains: edge-triggered, with hysteresis against a flapping page", async () => {
   let body = "";
   const { deps } = site(() => ({ body: `<p>${body}</p>` }));
-  const bodies = ["Sold out", "AVAILABLE now", "available", "Sold out", "Available", "Sold out", "Sold out", "Available"];
+  const bodies = [
+    "Sold out",
+    "AVAILABLE now",
+    "available",
+    "Sold out",
+    "Available",
+    "Sold out",
+    "Sold out",
+    "Available",
+  ];
   let i = 0;
   const hits = await poll(
     { kind: "web", url: "https://example.com/camp", mode: "appears", contains: "available" },
@@ -152,7 +177,11 @@ test("web/appears + contains: edge-triggered, with hysteresis against a flapping
 test("web/disappears: fires when the text (or the selected element) goes away", async () => {
   let body = "";
   const { deps } = site(() => ({ body }));
-  const bodies = ['<div id="banner">Waitlist only</div>', '<div id="banner">Waitlist only</div>', "<div>Book now</div>"];
+  const bodies = [
+    '<div id="banner">Waitlist only</div>',
+    '<div id="banner">Waitlist only</div>',
+    "<div>Book now</div>",
+  ];
   let i = 0;
   const bySelector = await poll(
     { kind: "web", url: "https://example.com/", mode: "disappears", selector: "#banner" },
@@ -216,16 +245,22 @@ test("web/below with selector + regex reads a price and fires when it crosses th
 
 test("web: a non-2xx page, a missing number and a runaway regex are failures, not hits", async () => {
   const check = createWatchCheck(site(() => ({ status: 503, body: "busy" })).deps);
-  const down = await check(watcher({ kind: "web", url: "https://example.com/", mode: "disappears", contains: "x" }), {
-    signal,
-    now: NOW,
-  });
+  const down = await check(
+    watcher({ kind: "web", url: "https://example.com/", mode: "disappears", contains: "x" }),
+    {
+      signal,
+      now: NOW,
+    },
+  );
   assert.match(down.error!, /HTTP 503/);
   assert.equal(down.hit, undefined, "an outage must not look like 'it disappeared'");
   assert.equal(down.watch.failures, 1);
 
   const noNumber = await createWatchCheck(site(() => ({ body: "<p>call us</p>" })).deps)(
-    watcher({ kind: "web", url: "https://example.com/", mode: "above", threshold: 5 }, { failures: 2 }),
+    watcher(
+      { kind: "web", url: "https://example.com/", mode: "above", threshold: 5 },
+      { failures: 2 },
+    ),
     { signal, now: NOW },
   );
   assert.match(noNumber.error!, /no number found/);
@@ -275,10 +310,13 @@ test("a public name that resolves to a private address, or redirects to one, is 
       },
     },
   });
-  const a = await rebinding(watcher({ kind: "web", url: "https://innocent.example.com/", mode: "changed" }), {
-    signal,
-    now: NOW,
-  });
+  const a = await rebinding(
+    watcher({ kind: "web", url: "https://innocent.example.com/", mode: "changed" }),
+    {
+      signal,
+      now: NOW,
+    },
+  );
   assert.match(a.error!, /blocked address 10\.1\.2\.3/);
   assert.deepEqual(sent, []);
 
@@ -287,16 +325,26 @@ test("a public name that resolves to a private address, or redirects to one, is 
       lookup: async () => [{ address: "93.184.216.34", family: 4 }],
       transport: async (url) => {
         sent.push(url);
-        return new Response(null, { status: 302, headers: { location: "http://169.254.169.254/latest/meta-data/" } });
+        return new Response(null, {
+          status: 302,
+          headers: { location: "http://169.254.169.254/latest/meta-data/" },
+        });
       },
     },
   });
-  const b = await redirecting(watcher({ kind: "web", url: "https://innocent.example.com/", mode: "changed" }), {
-    signal,
-    now: NOW,
-  });
+  const b = await redirecting(
+    watcher({ kind: "web", url: "https://innocent.example.com/", mode: "changed" }),
+    {
+      signal,
+      now: NOW,
+    },
+  );
   assert.match(b.error!, /refusing to fetch private\/loopback host/);
-  assert.deepEqual(sent, ["https://innocent.example.com/"], "the redirect target was never requested");
+  assert.deepEqual(
+    sent,
+    ["https://innocent.example.com/"],
+    "the redirect target was never requested",
+  );
 });
 
 // ── rss ──
@@ -318,7 +366,11 @@ test("rss: existing items are a baseline; only new items matching a keyword hit,
   ];
   const { deps } = site(() => ({ type: "application/rss+xml", body: feed(items) }));
   const check = createWatchCheck(deps);
-  const trigger: TriggerSpec = { kind: "rss", url: "https://example.com/feed.xml", keywords: ["security", "CVE"] };
+  const trigger: TriggerSpec = {
+    kind: "rss",
+    url: "https://example.com/feed.xml",
+    keywords: ["security", "CVE"],
+  };
 
   const first = await check(watcher(trigger), { signal, now: NOW });
   assert.equal(first.hit, undefined, "the backlog is not news");
@@ -383,7 +435,11 @@ test("mail: baseline first, then new mail matching sender and subject — metada
   assert.deepEqual(base.watch.seen, ["acct1:1"]);
   assert.equal(sinceSeen[0], NOW - 24 * 3_600_000);
 
-  inbox = [...inbox, mail("3", "Landlord", "Lease renewal"), mail("4", "Landlord", "RENT increase notice")];
+  inbox = [
+    ...inbox,
+    mail("3", "Landlord", "Lease renewal"),
+    mail("4", "Landlord", "RENT increase notice"),
+  ];
   const hit = await check(watcher(trigger, base.watch), { signal, now: NOW + 60_000 });
   assert.equal(hit.hit!.summary, "1 new matching message.");
   assert.match(hit.hit!.detail!, /Landlord <landlord@example\.com>: RENT increase notice/);
@@ -410,7 +466,10 @@ test("mail: with consent not granted the default path refuses before touching an
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "lisa-watch-mail-"));
   process.env.LISA_HOME = home;
   try {
-    const outcome = await createWatchCheck()(watcher({ kind: "mail", from: "x" }), { signal, now: NOW });
+    const outcome = await createWatchCheck()(watcher({ kind: "mail", from: "x" }), {
+      signal,
+      now: NOW,
+    });
     assert.match(outcome.error!, /mail access has not been granted/);
   } finally {
     if (previous === undefined) delete process.env.LISA_HOME;

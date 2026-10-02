@@ -21,7 +21,12 @@
  * decision, not whether the card was stored, and a retry after a failed append
  * must not be dropped as a duplicate.)
  */
-import type { ReachOutNotice, ReachOutResult, ReachOutTransports, StampedNotice } from "../reachout/types.js";
+import type {
+  ReachOutNotice,
+  ReachOutResult,
+  ReachOutTransports,
+  StampedNotice,
+} from "../reachout/types.js";
 import type { StoredMessage } from "../types.js";
 import type { TaskDeliver, TaskNotice } from "./types.js";
 

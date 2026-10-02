@@ -289,7 +289,12 @@ export function isSafeId(id: unknown): id is string {
 }
 
 export const TASK_KINDS: readonly TaskKind[] = ["oneoff", "routine", "watcher", "goal"];
-export const TASK_NOTIFY: readonly TaskNotify[] = ["always", "on_change", "on_hit", "silent_on_noop"];
+export const TASK_NOTIFY: readonly TaskNotify[] = [
+  "always",
+  "on_change",
+  "on_hit",
+  "silent_on_noop",
+];
 export const TASK_HOSTS: readonly TaskHost[] = ["home", "cloud", "any"];
 
 /** States from which nothing further happens without the user. */

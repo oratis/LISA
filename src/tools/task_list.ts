@@ -29,7 +29,9 @@ export const taskListTool: ToolDefinition<TaskListInput, string> = {
       for (const run of runs) {
         const at = new Date(run.startedAt).toISOString().slice(0, 16).replace("T", " ");
         const note = run.summary ?? run.error ?? "";
-        lines.push(`  run ${at} — ${run.state}${run.stopReason ? ` (${run.stopReason})` : ""}${note ? `: ${note.slice(0, 200)}` : ""}`);
+        lines.push(
+          `  run ${at} — ${run.state}${run.stopReason ? ` (${run.stopReason})` : ""}${note ? `: ${note.slice(0, 200)}` : ""}`,
+        );
       }
       if (runs.length === 0) lines.push("  (no runs yet)");
       return lines.join("\n");

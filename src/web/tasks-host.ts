@@ -12,10 +12,18 @@
 import type http from "node:http";
 import { scopedUid } from "../paths.js";
 import { createReachOutTransports, type PushSink } from "../reachout/deliver.js";
-import { createTaskCardDeliver, type CardDeliverDeps, type TaskReachOut } from "../tasks/delivery.js";
+import {
+  createTaskCardDeliver,
+  type CardDeliverDeps,
+  type TaskReachOut,
+} from "../tasks/delivery.js";
 import { migrateHeartbeatTasks } from "../tasks/heartbeat-migration.js";
 import type { ModelGate, TaskEngineEvent, TaskRunner, WatchCheck } from "../tasks/runner.js";
-import { createTaskRunner, startTaskScheduler, type TaskSchedulerHandle } from "../tasks/scheduler.js";
+import {
+  createTaskRunner,
+  startTaskScheduler,
+  type TaskSchedulerHandle,
+} from "../tasks/scheduler.js";
 import {
   getDefaultTaskDeliver,
   getTaskEventSink,
@@ -58,7 +66,12 @@ export interface TaskHostOptions {
 
 export interface TaskHost {
   /** Route hook: resolves true when the request was a `/api/tasks*` one. */
-  handle(req: http.IncomingMessage, res: http.ServerResponse, url: string, uid: string | null): Promise<boolean>;
+  handle(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    url: string,
+    uid: string | null,
+  ): Promise<boolean>;
   /** The runner for a tenant (null uid = the Mac edition's single user). */
   runnerFor(uid: string | null): TaskRunner | null;
   stop(): Promise<void>;
@@ -113,7 +126,9 @@ export function createTaskHost(opts: TaskHostOptions): TaskHost {
           opts.log?.(`[tasks] moved ${m.migrated.length} heartbeat.json task(s) into routines`);
         }
       })
-      .catch((err) => opts.log?.(`[tasks] heartbeat.json migration skipped: ${(err as Error).message}`));
+      .catch((err) =>
+        opts.log?.(`[tasks] heartbeat.json migration skipped: ${(err as Error).message}`),
+      );
     if (opts.schedule ?? true) {
       scheduler = startTaskScheduler(local, { ...(opts.log ? { log: opts.log } : {}) });
     }

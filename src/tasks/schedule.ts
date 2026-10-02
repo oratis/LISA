@@ -37,9 +37,7 @@ interface CalendarSchedule {
 }
 
 export type ParsedSchedule =
-  | { kind: "at"; at: number }
-  | { kind: "every"; everyMs: number }
-  | CalendarSchedule;
+  { kind: "at"; at: number } | { kind: "every"; everyMs: number } | CalendarSchedule;
 
 const DOW_NAMES = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 
@@ -110,7 +108,14 @@ export function parseSchedule(expr: string): ParsedSchedule | null {
 
   const daily = parseDaily(s);
   if (daily) {
-    return { kind: "calendar", minutes: [daily.m], hours: [daily.h], dom: null, months: null, dow: null };
+    return {
+      kind: "calendar",
+      minutes: [daily.m],
+      hours: [daily.h],
+      dom: null,
+      months: null,
+      dow: null,
+    };
   }
   if (lower.startsWith("weekdays:")) {
     const t = hhmm(s.slice("weekdays:".length));
@@ -130,7 +135,14 @@ export function parseSchedule(expr: string): ParsedSchedule | null {
     const day = DOW_NAMES.indexOf(m[1]!);
     const t = hhmm(m[2]!);
     if (day < 0 || !t) return null;
-    return { kind: "calendar", minutes: [t.m], hours: [t.h], dom: null, months: null, dow: new Set([day]) };
+    return {
+      kind: "calendar",
+      minutes: [t.m],
+      hours: [t.h],
+      dom: null,
+      months: null,
+      dow: new Set([day]),
+    };
   }
   if (lower.startsWith("cron:")) return parseCron(s.slice("cron:".length));
   return null;
@@ -150,7 +162,10 @@ function isValidTimeZone(tz: string): boolean {
  * minimum `every:` interval (a tenant must not be able to schedule a model
  * call every five minutes on shared infrastructure).
  */
-export function validateSchedule(spec: ScheduleSpec, opts: { cloud?: boolean } = {}): string | null {
+export function validateSchedule(
+  spec: ScheduleSpec,
+  opts: { cloud?: boolean } = {},
+): string | null {
   if (!spec || typeof spec.expr !== "string") return "schedule.expr is required";
   const parsed = parseSchedule(spec.expr);
   if (!parsed) {
@@ -218,7 +233,14 @@ function wallAt(utcMs: number, tz: string): Wall & { s: number } {
   for (const p of formatter(tz).formatToParts(new Date(utcMs))) {
     if (p.type !== "literal") out[p.type] = parseInt(p.value, 10);
   }
-  return { y: out.year!, mo: out.month!, d: out.day!, h: out.hour!, mi: out.minute!, s: out.second! };
+  return {
+    y: out.year!,
+    mo: out.month!,
+    d: out.day!,
+    h: out.hour!,
+    mi: out.minute!,
+    s: out.second!,
+  };
 }
 
 /** Zone offset (local − UTC) in ms at a UTC instant. */
@@ -240,7 +262,9 @@ export function zonedTimeToUtc(w: Wall, tz: string): number {
   const candidates = before === after ? [naive - before] : [naive - before, naive - after];
   const valid = candidates.filter((utc) => {
     const back = wallAt(utc, tz);
-    return back.y === w.y && back.mo === w.mo && back.d === w.d && back.h === w.h && back.mi === w.mi;
+    return (
+      back.y === w.y && back.mo === w.mo && back.d === w.d && back.h === w.h && back.mi === w.mi
+    );
   });
   if (valid.length) return Math.min(...valid);
   // Nonexistent local time: interpret it with the pre-transition offset.

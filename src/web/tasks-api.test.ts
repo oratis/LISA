@@ -142,7 +142,10 @@ describe("tasks API — CRUD", () => {
     assert.equal(task.createdDisabled, true);
     assert.deepEqual(task.origin, { kind: "api" });
     assert.equal(task.owner, null);
-    assert.deepEqual(emitted.map((e) => e.type), ["task_updated"]);
+    assert.deepEqual(
+      emitted.map((e) => e.type),
+      ["task_updated"],
+    );
 
     const listed = await api("GET", "/api/tasks");
     assert.equal(listed.status, 200);
@@ -150,7 +153,10 @@ describe("tasks API — CRUD", () => {
 
     assert.equal((await api("GET", `/api/tasks/${task.id}`)).body.task.title, "Morning brief");
 
-    const edited = await api("PATCH", `/api/tasks/${task.id}`, { title: "Daily brief", notify: "silent_on_noop" });
+    const edited = await api("PATCH", `/api/tasks/${task.id}`, {
+      title: "Daily brief",
+      notify: "silent_on_noop",
+    });
     assert.equal(edited.status, 200);
     assert.equal(edited.body.task.title, "Daily brief");
     assert.equal(edited.body.task.notify, "silent_on_noop");
@@ -181,7 +187,12 @@ describe("tasks API — CRUD", () => {
     const created = await api("POST", "/api/tasks", {
       title: "Campsite",
       instruction: "Tell me when a site opens.",
-      trigger: { kind: "web", url: "https://example.com/sites", mode: "appears", contains: "Available" },
+      trigger: {
+        kind: "web",
+        url: "https://example.com/sites",
+        mode: "appears",
+        contains: "Available",
+      },
       enabled: true,
     });
     assert.equal(created.status, 201);
@@ -233,7 +244,10 @@ describe("tasks API — CRUD", () => {
     const id = body.task.id as string;
     const noRunner = { ...MAC, "x-no-runner": "1" };
     assert.equal((await api("POST", `/api/tasks/${id}/run`, undefined, noRunner)).status, 503);
-    assert.equal((await api("POST", `/api/tasks/${id}/cancel`, undefined, noRunner)).body.cancelled, false);
+    assert.equal(
+      (await api("POST", `/api/tasks/${id}/cancel`, undefined, noRunner)).body.cancelled,
+      false,
+    );
     await api("DELETE", `/api/tasks/${id}`);
   });
 });
@@ -244,18 +258,58 @@ describe("tasks API — validation and limits", () => {
     ["no instruction", { title: "x" }, /instruction is required/],
     ["long title", { title: "x".repeat(201), instruction: "x" }, /title is too long/],
     ["unknown kind", { ...routine, kind: "cron" }, /kind must be one of/],
-    ["routine without schedule", { title: "x", instruction: "x", kind: "routine" }, /needs a schedule/],
+    [
+      "routine without schedule",
+      { title: "x", instruction: "x", kind: "routine" },
+      /needs a schedule/,
+    ],
     ["bad schedule", { ...routine, schedule: "hourly" }, /unrecognised schedule/],
     ["too frequent", { ...routine, schedule: "every:1m" }, /at least 5 minutes/],
     ["bad tz", { ...routine, schedule: { expr: "daily:09:00", tz: "Mars/Olympus" } }, /time zone/],
     ["routine with at:", { ...routine, schedule: "at:2030-01-01T00:00:00Z" }, /use kind "oneoff"/],
-    ["trigger on a routine", { ...routine, kind: "routine", trigger: { kind: "rss", url: "https://e.com/f" } }, /only a watcher/],
-    ["file: url", { title: "w", instruction: "w", trigger: { kind: "web", url: "file:///etc/passwd" } }, /http\(s\)/],
-    ["url with credentials", { title: "w", instruction: "w", trigger: { kind: "web", url: "https://u:p@e.com/" } }, /credentials/],
-    ["bad regex", { title: "w", instruction: "w", trigger: { kind: "web", url: "https://e.com", regex: "(" } }, /regular expression/],
-    ["threshold missing", { title: "w", instruction: "w", trigger: { kind: "web", url: "https://e.com", mode: "below" } }, /threshold/],
-    ["fast watcher", { title: "w", instruction: "w", trigger: { kind: "rss", url: "https://e.com/f", every: "every:1m" } }, /at least 5 minutes/],
-    ["empty mail trigger", { title: "w", instruction: "w", trigger: { kind: "mail" } }, /needs trigger.from or trigger.subject/],
+    [
+      "trigger on a routine",
+      { ...routine, kind: "routine", trigger: { kind: "rss", url: "https://e.com/f" } },
+      /only a watcher/,
+    ],
+    [
+      "file: url",
+      { title: "w", instruction: "w", trigger: { kind: "web", url: "file:///etc/passwd" } },
+      /http\(s\)/,
+    ],
+    [
+      "url with credentials",
+      { title: "w", instruction: "w", trigger: { kind: "web", url: "https://u:p@e.com/" } },
+      /credentials/,
+    ],
+    [
+      "bad regex",
+      { title: "w", instruction: "w", trigger: { kind: "web", url: "https://e.com", regex: "(" } },
+      /regular expression/,
+    ],
+    [
+      "threshold missing",
+      {
+        title: "w",
+        instruction: "w",
+        trigger: { kind: "web", url: "https://e.com", mode: "below" },
+      },
+      /threshold/,
+    ],
+    [
+      "fast watcher",
+      {
+        title: "w",
+        instruction: "w",
+        trigger: { kind: "rss", url: "https://e.com/f", every: "every:1m" },
+      },
+      /at least 5 minutes/,
+    ],
+    [
+      "empty mail trigger",
+      { title: "w", instruction: "w", trigger: { kind: "mail" } },
+      /needs trigger.from or trigger.subject/,
+    ],
     ["huge budget", { ...routine, budget: { tokens: 10_000_000 } }, /budget.tokens/],
     ["envelope not a list", { ...routine, envelope: { tools: "bash" } }, /envelope.tools/],
     ["bad notify", { ...routine, notify: "loudly" }, /notify must be one of/],
@@ -314,7 +368,10 @@ describe("tasks API — validation and limits", () => {
   test("malformed JSON, oversized bodies, bad ids and wrong methods", async () => {
     assert.equal((await api("POST", "/api/tasks", "{ nope")).status, 400);
     assert.equal((await api("POST", "/api/tasks", "[1,2]")).status, 400);
-    const big = await api("POST", "/api/tasks", { ...routine, instruction: "x".repeat(TASK_BODY_LIMIT + 10) });
+    const big = await api("POST", "/api/tasks", {
+      ...routine,
+      instruction: "x".repeat(TASK_BODY_LIMIT + 10),
+    });
     assert.equal(big.status, 413);
     assert.equal(big.body.error, "body_too_large");
     assert.equal((await api("GET", "/api/tasks/..%2F..%2Fetc")).status, 404);
@@ -357,11 +414,20 @@ describe("tasks API — tenancy and the cloud flag", () => {
       ["GET", "/api/tasks/t_0123456789ab/runs"],
       ["GET", "/api/tasks/t_0123456789ab/runs/r_0123456789abcdef"],
     ] as const) {
-      const res = await api(method, pathname, method === "GET" || method === "DELETE" ? undefined : routine, headers);
+      const res = await api(
+        method,
+        pathname,
+        method === "GET" || method === "DELETE" ? undefined : routine,
+        headers,
+      );
       assert.equal(res.status, 403, `${method} ${pathname}`);
       assert.deepEqual(res.body, { error: "capability_denied", profile: "cloud-chat" });
     }
-    assert.equal(fs.existsSync(path.join(homeForUid("alice"), "tasks")), false, "nothing was written");
+    assert.equal(
+      fs.existsSync(path.join(homeForUid("alice"), "tasks")),
+      false,
+      "nothing was written",
+    );
   });
 
   test("a hosted request with no account is refused even with the flag on", async () => {
@@ -385,7 +451,9 @@ describe("tasks API — tenancy and the cloud flag", () => {
     assert.equal((await api("GET", `/api/tasks/${id}/runs`, undefined, bob)).status, 404);
     assert.equal((await api("DELETE", `/api/tasks/${id}`, undefined, bob)).status, 404);
     // The single-user (global) scope does not see tenant tasks either.
-    assert.ok(!(await api("GET", "/api/tasks")).body.tasks.some((t: { id: string }) => t.id === id));
+    assert.ok(
+      !(await api("GET", "/api/tasks")).body.tasks.some((t: { id: string }) => t.id === id),
+    );
 
     const still = await api("GET", `/api/tasks/${id}`, undefined, alice);
     assert.equal(still.status, 200);
@@ -397,7 +465,12 @@ describe("tasks API — tenancy and the cloud flag", () => {
     const fast = await api("POST", "/api/tasks", { ...routine, schedule: "every:10m" }, alice);
     assert.equal(fast.status, 400);
     assert.match(fast.body.message, /at least 30 minutes/);
-    const pricey = await api("POST", "/api/tasks", { ...routine, budget: { tokens: 1_000_000 } }, alice);
+    const pricey = await api(
+      "POST",
+      "/api/tasks",
+      { ...routine, budget: { tokens: 1_000_000 } },
+      alice,
+    );
     assert.match(pricey.body.message, /between 1000 and 400000/);
     const watch = await api(
       "POST",
@@ -435,12 +508,23 @@ function violations(input: Schema, value: unknown, at = "$"): string[] {
     : input;
   if (!schema) return [`${at}: unresolved ${input.$ref}`];
   const out: string[] = [];
-  if (schema.const !== undefined && value !== schema.const) out.push(`${at} must equal ${String(schema.const)}`);
+  if (schema.const !== undefined && value !== schema.const)
+    out.push(`${at} must equal ${String(schema.const)}`);
   if (schema.enum && !schema.enum.includes(value)) out.push(`${at} not in enum`);
   const types = Array.isArray(schema.type) ? schema.type : schema.type ? [schema.type] : [];
   const actual =
-    value === null ? "null" : Array.isArray(value) ? "array" : Number.isInteger(value) ? "integer" : typeof value;
-  if (types.length && !types.includes(actual) && !(actual === "integer" && types.includes("number"))) {
+    value === null
+      ? "null"
+      : Array.isArray(value)
+        ? "array"
+        : Number.isInteger(value)
+          ? "integer"
+          : typeof value;
+  if (
+    types.length &&
+    !types.includes(actual) &&
+    !(actual === "integer" && types.includes("number"))
+  ) {
     return [`${at} expected ${types.join("|")}, got ${actual}`];
   }
   if (Array.isArray(value) && schema.items) {
@@ -448,7 +532,8 @@ function violations(input: Schema, value: unknown, at = "$"): string[] {
   }
   if (value !== null && typeof value === "object" && !Array.isArray(value)) {
     const record = value as Record<string, unknown>;
-    for (const key of schema.required ?? []) if (!(key in record)) out.push(`${at}.${key} is required`);
+    for (const key of schema.required ?? [])
+      if (!(key in record)) out.push(`${at}.${key} is required`);
     for (const [key, child] of Object.entries(schema.properties ?? {})) {
       if (key in record) out.push(...violations(child, record[key], `${at}.${key}`));
     }
@@ -489,7 +574,10 @@ describe("tasks API — contract", () => {
     await runnerFor("mac").drain();
     const runs = (await api("GET", `/api/tasks/${id}/runs`)).body;
     conforms("TaskRunListResponse", runs);
-    conforms("TaskRunDetailResponse", (await api("GET", `/api/tasks/${id}/runs/${runs.runs[0].id}`)).body);
+    conforms(
+      "TaskRunDetailResponse",
+      (await api("GET", `/api/tasks/${id}/runs/${runs.runs[0].id}`)).body,
+    );
     conforms("TaskCancelResponse", (await api("POST", `/api/tasks/${id}/cancel`)).body);
     conforms("ErrorResponse", (await api("GET", "/api/tasks/t_doesnotexist")).body);
     conforms("ErrorResponse", (await api("POST", "/api/tasks", {})).body);
@@ -508,7 +596,13 @@ describe("tasks API — contract", () => {
     const deliver = createTaskCardDeliver({
       // A gate that allows in-app, as reachOut() does for a task result by default.
       reachOut: async (n, transports) => {
-        await transports.inapp({ ...n, id: "ro_1", from: "Lisa", ai: true, at: new Date().toISOString() });
+        await transports.inapp({
+          ...n,
+          id: "ro_1",
+          from: "Lisa",
+          ai: true,
+          at: new Date().toISOString(),
+        });
         return { id: "ro_1", deliver: true, channels: ["inapp"], reason: "solicited" };
       },
       withConversation: (fn) => fn({ history: [], append: async () => {} }),

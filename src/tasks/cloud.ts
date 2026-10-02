@@ -24,7 +24,12 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import { admitInference, type AdmissionDependencies } from "../billing/admission.js";
 import { globalSpendExceeded, killSwitchOn } from "../billing/limits.js";
-import { acquireLease, firestoreEnabled, releaseLease, type LeaseHandle } from "../cloud/firestore.js";
+import {
+  acquireLease,
+  firestoreEnabled,
+  releaseLease,
+  type LeaseHandle,
+} from "../cloud/firestore.js";
 import { homeForUid, homeScope } from "../paths.js";
 import { getAccount, loadAccounts, type AccountRecord } from "../web/accounts.js";
 import type { ModelGate, TaskRunner } from "./runner.js";
@@ -54,7 +59,10 @@ export function cloudModelGate(
         ? await admitInference(acct, model, opts.deps)
         : await admitInference(acct, model);
       if (!admission.ok) {
-        const reason = typeof admission.body.error === "string" ? admission.body.error : `http_${admission.status}`;
+        const reason =
+          typeof admission.body.error === "string"
+            ? admission.body.error
+            : `http_${admission.status}`;
         // 429 = this tenant is mid-turn or rate-limited: worth retrying later.
         // Anything else (402 quota / service paused) needs the user or operator.
         return { ok: false, reason, transient: admission.status === 429 };
@@ -179,7 +187,11 @@ export async function sweepUserTasks(opts: {
           ran += started;
         }
       } catch (err) {
-        outcomes.push({ uid, started: 0, skipped: `error: ${(err as Error).message.slice(0, 120)}` });
+        outcomes.push({
+          uid,
+          started: 0,
+          skipped: `error: ${(err as Error).message.slice(0, 120)}`,
+        });
       } finally {
         if (remote) await releaseLease(remote).catch(() => {});
         inFlight.delete(uid);

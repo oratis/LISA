@@ -30,7 +30,8 @@ function when(ms: number): string {
 export function buildTaskFrame(task: Task, run: TaskRun, now: number): string {
   const lines: string[] = [`[task] ${task.title}`, ""];
   const meta = [`kind: ${task.kind}`];
-  if (task.schedule) meta.push(`schedule: ${task.schedule.expr}${task.schedule.tz ? ` (${task.schedule.tz})` : ""}`);
+  if (task.schedule)
+    meta.push(`schedule: ${task.schedule.expr}${task.schedule.tz ? ` (${task.schedule.tz})` : ""}`);
   meta.push(`now: ${when(now)}`);
   lines.push(meta.join(" · "), "", "## What to do", task.instruction.trim());
 
@@ -38,7 +39,10 @@ export function buildTaskFrame(task: Task, run: TaskRun, now: number): string {
     lines.push("", "## Last run");
     if (task.lastRunAt !== undefined) lines.push(`Ran at ${when(task.lastRunAt)}.`);
     if (task.lastSummary) {
-      lines.push("What you reported then (so you can tell what changed):", task.lastSummary.slice(0, 2000));
+      lines.push(
+        "What you reported then (so you can tell what changed):",
+        task.lastSummary.slice(0, 2000),
+      );
     }
   } else {
     lines.push("", "This is the first run of this task.");

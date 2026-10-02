@@ -8,7 +8,13 @@
 import { createTask } from "../tasks/store.js";
 import { parseNewTask } from "../tasks/validate.js";
 import type { ToolDefinition } from "../types.js";
-import { announce, atTaskLimit, confirmationCard, MAX_TASKS_FROM_TOOLS, toolContext } from "./task_common.js";
+import {
+  announce,
+  atTaskLimit,
+  confirmationCard,
+  MAX_TASKS_FROM_TOOLS,
+  toolContext,
+} from "./task_common.js";
 
 interface WatchCreateInput {
   title: string;
@@ -37,24 +43,59 @@ export const watchCreateTool: ToolDefinition<WatchCreateInput, string> = {
     "'mail': from and/or subject (needs the mail module connected). every: every:<n>(m|h|d), default " +
     "every:30m, minimum 5m. A hit notifies by default; on_hit 'run' runs `instruction` with the " +
     "observation. The watcher is created OFF — you cannot turn it on; tell the user it is waiting for them.",
-  annotations: { title: "Create watcher", readOnlyHint: false, destructiveHint: false, idempotentHint: false },
+  annotations: {
+    title: "Create watcher",
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+  },
   inputSchema: {
     type: "object",
     properties: {
       title: { type: "string", minLength: 1, maxLength: 200 },
       source: { type: "string", enum: ["web", "rss", "mail"] },
       url: { type: "string", description: "http(s) URL of the page or feed (web / rss)." },
-      mode: { type: "string", enum: ["changed", "appears", "disappears", "above", "below"], description: "web only. Default: changed." },
-      contains: { type: "string", maxLength: 300, description: "Text to look for (appears / disappears)." },
-      regex: { type: "string", maxLength: 300, description: "Regex; its first capture group (or whole match) is the watched value." },
-      selector: { type: "string", maxLength: 300, description: "Narrow the page first: tag, #id or .class (e.g. span.price)." },
+      mode: {
+        type: "string",
+        enum: ["changed", "appears", "disappears", "above", "below"],
+        description: "web only. Default: changed.",
+      },
+      contains: {
+        type: "string",
+        maxLength: 300,
+        description: "Text to look for (appears / disappears).",
+      },
+      regex: {
+        type: "string",
+        maxLength: 300,
+        description: "Regex; its first capture group (or whole match) is the watched value.",
+      },
+      selector: {
+        type: "string",
+        maxLength: 300,
+        description: "Narrow the page first: tag, #id or .class (e.g. span.price).",
+      },
       threshold: { type: "number", description: "Number to compare against (above / below)." },
-      keywords: { type: "array", items: { type: "string" }, maxItems: 64, description: "rss: any-of keywords; empty = every new item." },
+      keywords: {
+        type: "array",
+        items: { type: "string" },
+        maxItems: 64,
+        description: "rss: any-of keywords; empty = every new item.",
+      },
       from: { type: "string", maxLength: 300, description: "mail: sender contains." },
       subject: { type: "string", maxLength: 300, description: "mail: subject contains." },
       every: { type: "string", description: "Poll interval, e.g. every:15m. Default every:30m." },
-      on_hit: { type: "string", enum: ["notify", "run"], description: "notify (default) or run the instruction with the hit." },
-      instruction: { type: "string", maxLength: 8000, description: "What to do on a hit when on_hit is 'run'; otherwise a note on why this is watched." },
+      on_hit: {
+        type: "string",
+        enum: ["notify", "run"],
+        description: "notify (default) or run the instruction with the hit.",
+      },
+      instruction: {
+        type: "string",
+        maxLength: 8000,
+        description:
+          "What to do on a hit when on_hit is 'run'; otherwise a note on why this is watched.",
+      },
     },
     required: ["title", "source"],
     additionalProperties: false,
@@ -65,7 +106,18 @@ export const watchCreateTool: ToolDefinition<WatchCreateInput, string> = {
       return "(not created: on_hit 'run' needs an instruction to run)";
     }
     const trigger: Record<string, unknown> = { kind: input.source };
-    for (const key of ["url", "mode", "contains", "regex", "selector", "threshold", "keywords", "from", "subject", "every"] as const) {
+    for (const key of [
+      "url",
+      "mode",
+      "contains",
+      "regex",
+      "selector",
+      "threshold",
+      "keywords",
+      "from",
+      "subject",
+      "every",
+    ] as const) {
       if (input[key] !== undefined) trigger[key] = input[key];
     }
     if (input.on_hit) trigger.onHit = input.on_hit;
@@ -73,13 +125,15 @@ export const watchCreateTool: ToolDefinition<WatchCreateInput, string> = {
       {
         kind: "watcher",
         title: input.title,
-        instruction: input.instruction?.trim() || `Tell me when the watched condition is met: ${input.title}`,
+        instruction:
+          input.instruction?.trim() || `Tell me when the watched condition is met: ${input.title}`,
         trigger,
       },
       { cloud: ctx.cloud, origin: { kind: "chat" }, owner: ctx.owner },
     );
     if (!parsed.ok) return `(not created: ${parsed.error})`;
-    if (await atTaskLimit()) return `(not created: there are already ${MAX_TASKS_FROM_TOOLS} tasks — remove some first)`;
+    if (await atTaskLimit())
+      return `(not created: there are already ${MAX_TASKS_FROM_TOOLS} tasks — remove some first)`;
     const task = await createTask({ ...parsed.value, enabled: false, createdDisabled: true });
     announce(task);
     return confirmationCard(task, "Created");
