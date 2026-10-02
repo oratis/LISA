@@ -62,6 +62,7 @@ export function restingState(task: Task): TaskState {
 export function enableTask(task: Task, now: number): void {
   task.enabled = true;
   task.enabledAt = now;
+  delete task.pausedReason;
   task.authFailureCount = 0;
   task.failureCount = 0;
   delete task.cancelRequestedAt;
@@ -78,6 +79,18 @@ export function enableTask(task: Task, now: number): void {
     task.state = "queued";
     task.nextRunAt = now;
   }
+}
+
+/**
+ * The engine switches a task off by itself, with a reason the user can read.
+ * It stays off until the user enables it again — nothing retries on its own.
+ */
+export function pauseTask(task: Task, reason: string): void {
+  task.enabled = false;
+  task.state = "paused";
+  task.pausedReason = reason.slice(0, 300);
+  delete task.nextRunAt;
+  delete task.queued;
 }
 
 /** Turn a task off. A run already in flight is left to finish; nothing new starts. */

@@ -72,11 +72,25 @@ function completedEffects(run: TaskRun, inFlightMarker: string): { done: number;
   return { done, unknown };
 }
 
-export function buildResumeNote(run: TaskRun, inFlightMarker: string): string {
+/**
+ * The note a continued run starts with. A run continues for one of two
+ * reasons, and the model is told which: the process restarted under it, or the
+ * previous attempt hit an error and this is the retry. Either way it is the
+ * SAME run — its history is above and its side effects are on record.
+ */
+export function buildResumeNote(
+  run: TaskRun,
+  inFlightMarker: string,
+  retry?: { attempt: number; error?: string },
+): string {
   const { done, unknown } = completedEffects(run, inFlightMarker);
   const parts = [
-    `[system note] This run was interrupted (LISA restarted) and is now being resumed from its last checkpoint. ` +
-      `Everything above already happened — do not redo it.`,
+    retry
+      ? `[system note] The previous attempt at this run stopped on an error` +
+        `${retry.error ? ` (${retry.error.slice(0, 200)})` : ""}. This is retry ${retry.attempt} of the same run, ` +
+        `continuing from its last checkpoint. Everything above already happened — do not redo it.`
+      : `[system note] This run was interrupted (LISA restarted) and is now being resumed from its last checkpoint. ` +
+        `Everything above already happened — do not redo it.`,
   ];
   if (done > 0) {
     parts.push(

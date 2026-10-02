@@ -201,12 +201,9 @@ test("no allowance: the run is refused before any model call and nothing is sett
     assert.match(run.error!, /quota_exhausted/);
     assert.deepEqual(run.tokens, { in: 0, out: 0 });
     const after = (await getTask(task.id))!;
-    assert.equal(
-      after.state,
-      "scheduled",
-      "waits for its next occurrence instead of hammering admission",
-    );
-    assert.equal(after.authFailureCount, 1);
+    assert.equal(after.state, "paused", "switched off, not left to hammer admission every hour");
+    assert.equal(after.enabled, false);
+    assert.match(after.pausedReason!, /quota_exhausted/);
   });
 });
 
@@ -262,9 +259,13 @@ test("a busy tenant (chat turn in flight) or a rate limit is transient: the run 
     assert.equal(script.calls(), 0);
     const after = (await getTask(task.id))!;
     assert.equal(after.state, "queued");
-    assert.equal(after.nextRunAt, NOW + 60_000);
+    assert.equal(after.resumeAt, NOW + 60_000, "parked: the SAME run resumes later");
+    assert.ok(after.activeRunId);
     assert.equal(after.authFailureCount, 0, "not counted as a refusal");
-    assert.equal((await listRuns(after))[0]!.stopReason, "error");
+    assert.equal(after.enabled, true);
+    const parked = (await listRuns(after))[0]!;
+    assert.equal(parked.state, "interrupted");
+    assert.match(parked.lastError!, /admission busy: turn_in_progress/);
   });
 });
 
@@ -285,7 +286,11 @@ test("a settlement failure fails closed: the run stops and the lease is still re
     assert.ok(calls.includes("release"));
     const run = (await listRuns((await getTask(task.id))!))[0]!;
     assert.equal(run.state, "failed");
+    assert.equal(run.stopReason, "settlement_failed");
     assert.match(run.error!, /usage outbox unavailable/);
+    const after = (await getTask(task.id))!;
+    assert.equal(after.state, "paused", "a settlement failure is not retried");
+    assert.match(after.pausedReason!, /usage outbox unavailable/);
   });
 });
 

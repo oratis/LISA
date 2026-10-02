@@ -162,6 +162,12 @@ export interface Task {
   enabledAt?: number;
   lastRunAt?: number;
   nextRunAt?: number;
+  /**
+   * Why the engine switched the task off by itself (allowance refused, a
+   * settlement that could not be recorded, repeated credential failures, a
+   * schedule that cannot be computed). Cleared when the user enables it again.
+   */
+  pausedReason?: string;
   /** Consecutive auth failures; the scheduler pauses the task past a threshold. */
   authFailureCount: number;
   /** Consecutive failed runs (drives retry backoff; reset on success). */
@@ -176,6 +182,12 @@ export interface Task {
    * and must be resumed.
    */
   activeRunId?: string;
+  /**
+   * Set while the active run is parked between attempts: it failed on a
+   * transient error and will be RESUMED — same run, same history, same ledger
+   * of side effects — at this time. Never a fresh run.
+   */
+  resumeAt?: number;
   /** Set by a cancel request; the runner (in whichever process) stops at its next checkpoint. */
   cancelRequestedAt?: number;
   /** Why the task is `queued`: a manual "run now", a retry, or a watcher hit with its input. */
@@ -208,6 +220,10 @@ export interface TaskRun {
   executedDigests: Record<string, string>;
   /** How many times this run was resumed after an interruption. */
   resumes?: number;
+  /** Failed attempts so far. Each retry continues this run; none starts a new one. */
+  attempts?: number;
+  /** Why the last attempt stopped, when the run is parked for a retry. */
+  lastError?: string;
   /** Wall-clock time spent executing, summed across resumed segments. */
   elapsedMs?: number;
   /** Started by the user ("run now"/test run) rather than by the schedule. */

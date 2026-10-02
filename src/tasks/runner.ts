@@ -41,7 +41,7 @@ import {
   TASK_SYSTEM_ADDENDUM,
 } from "./frame.js";
 import { acquireTaskLease, DEFAULT_LEASE_TTL_MS, type TaskLease } from "./lease.js";
-import { isRecurring, nextRunAfter, restingState } from "./lifecycle.js";
+import { isRecurring, nextRunAfter, pauseTask, restingState } from "./lifecycle.js";
 import { drainOutbox, enqueueNotice, noticeId } from "./outbox.js";
 import { denySideEffects, digestCall, isSideEffectingCall, taskToolset } from "./policy.js";
 import { isOneShot } from "./schedule.js";
@@ -165,7 +165,8 @@ type StopReason =
   | "budget_usd"
   | "budget_wallclock"
   | "budget_tool_calls"
-  | "admission_denied";
+  | "admission_denied"
+  | "settlement_failed";
 
 class TaskStop extends Error {
   constructor(
@@ -196,6 +197,8 @@ interface Outcome {
   error?: string;
   /** Credential or allowance problem — retrying will not help until the user acts. */
   blocked?: boolean;
+  /** Billing refused or could not record the run: the task is switched off at once. */
+  pause?: boolean;
 }
 
 function clip(text: string, max: number): string {
@@ -256,8 +259,12 @@ export class TaskRunner {
   /** Is there work on this task for this runner at `now`? The lease has the final say. */
   private isDue(task: Task, now: number, unattended: boolean): boolean {
     if (task.host !== "any" && task.host !== this.host) return false;
-    // An interrupted run is always finished (or cancelled), even when paused.
-    if (task.activeRunId) return true;
+    // A run in flight belongs to the occurrence that started it: it is always
+    // carried to an end, even when the task has since been paused. One that is
+    // parked between attempts waits for its retry time (or a cancel).
+    if (task.activeRunId) {
+      return !!task.cancelRequestedAt || task.resumeAt === undefined || task.resumeAt <= now;
+    }
     const due = task.nextRunAt !== undefined && task.nextRunAt <= now;
     if (task.state === "queued") {
       if (task.queued?.manual) return true;
@@ -516,19 +523,77 @@ export class TaskRunner {
     this.emit({ type: "task_run_started", taskId: task.id, runId: run.id, resumed: false });
     this.emit({ type: "task_updated", task: started });
     const outcome = await this.drive(started, run, [], buildTaskFrame(task, run, now), slot);
-    await this.finish(started, run, outcome);
+    await this.conclude(started, run, outcome);
+  }
+
+  /**
+   * An attempt has ended. A transient failure of a scheduled run does not end
+   * the RUN: it is parked and later resumed with its history and its ledger of
+   * side effects, so nothing it already did is done again. Everything else
+   * finishes the run.
+   */
+  private async conclude(task: Task, run: TaskRun, outcome: Outcome): Promise<void> {
+    if (
+      outcome.state === "failed" &&
+      outcome.stopReason === "error" &&
+      !outcome.blocked &&
+      !run.manual
+    ) {
+      const attempts = (run.attempts ?? 0) + 1;
+      const current = await getTask(task.id);
+      if (current?.enabled && attempts <= MAX_RETRIES) {
+        await this.park(current, run, attempts, outcome.error ?? outcome.stopReason);
+        return;
+      }
+    }
+    await this.finish(task, run, outcome);
+  }
+
+  private async park(task: Task, run: TaskRun, attempts: number, why: string): Promise<void> {
+    const now = this.now();
+    run.state = "interrupted";
+    run.attempts = attempts;
+    run.lastError = why.slice(0, 500);
+    await checkpointRun(run, now);
+    await appendRunEvent(
+      task.id,
+      run.id,
+      { type: "error", summary: `attempt ${attempts} failed: ${run.lastError.slice(0, 200)}` },
+      now,
+    );
+    const parked = await updateTask(
+      task.id,
+      (t) => {
+        // The pointer stays: the retry is a resume of THIS run.
+        t.activeRunId = run.id;
+        t.state = "queued";
+        t.failureCount = attempts;
+        t.resumeAt = now + (RETRY_BACKOFF_MS[attempts - 1] ?? 15 * 60_000);
+      },
+      now,
+    );
+    if (parked) this.emit({ type: "task_updated", task: parked });
   }
 
   private async resume(task: Task, loaded: LoadedRun, slot: Slot): Promise<void> {
     const run = loaded.run;
     const now = this.now();
+    // Two ways to get here: the holder died (an interruption), or the run was
+    // parked after a failed attempt and its retry time has come.
+    const retry =
+      task.resumeAt !== undefined && (run.attempts ?? 0) > 0
+        ? { attempt: run.attempts!, ...(run.lastError ? { error: run.lastError } : {}) }
+        : undefined;
     run.state = "interrupted";
-    run.resumes = (run.resumes ?? 0) + 1;
+    if (!retry) run.resumes = (run.resumes ?? 0) + 1;
     await checkpointRun(run, now);
     await appendRunEvent(
       task.id,
       run.id,
-      { type: "resume", summary: `resume #${run.resumes}` },
+      {
+        type: "resume",
+        summary: retry ? `retry #${retry.attempt}` : `resume #${run.resumes ?? 0}`,
+      },
       now,
     );
 
@@ -536,17 +601,18 @@ export class TaskRunner {
       await this.finish(task, run, { state: "cancelled", stopReason: "cancelled", summary: "" });
       return;
     }
-    if (run.resumes > MAX_RESUMES) {
+    if ((run.resumes ?? 0) > MAX_RESUMES) {
       await this.finish(task, run, {
         state: "failed",
         stopReason: "too_many_interruptions",
         summary: "",
-        error: `interrupted ${run.resumes} times — giving up rather than looping`,
+        error: `interrupted ${run.resumes ?? 0} times — giving up rather than looping`,
       });
       return;
     }
 
-    const plan = planResume(loaded.messages, buildResumeNote(run, IN_FLIGHT));
+    const note = buildResumeNote(run, IN_FLIGHT, retry);
+    const plan = planResume(loaded.messages, note);
     let history: StoredMessage[] = [];
     let userMessage = "";
     if (plan.kind === "finished") {
@@ -560,7 +626,7 @@ export class TaskRunner {
     }
     if (plan.kind === "restart") {
       if (loaded.messages.length > 0) await resetRunMessages(task.id, run.id, 0, now);
-      userMessage = `${buildTaskFrame(task, run, now)}\n\n${buildResumeNote(run, IN_FLIGHT)}`;
+      userMessage = `${buildTaskFrame(task, run, now)}\n\n${note}`;
     } else {
       // Rewrite the log's tail so it matches the history the model is given.
       await resetRunMessages(task.id, run.id, plan.keep, now);
@@ -572,11 +638,12 @@ export class TaskRunner {
     await checkpointRun(run, now);
     const resumed = await updateTask(task.id, (t) => {
       t.state = "running";
+      delete t.resumeAt;
     });
     this.emit({ type: "task_run_started", taskId: task.id, runId: run.id, resumed: true });
     if (resumed) this.emit({ type: "task_updated", task: resumed });
     const outcome = await this.drive(resumed ?? task, run, history, userMessage, slot);
-    await this.finish(resumed ?? task, run, outcome);
+    await this.conclude(resumed ?? task, run, outcome);
   }
 
   // ── the agent loop, with its breakers ──
@@ -700,7 +767,17 @@ export class TaskRunner {
             }
             touch();
             // Settle before anything else can fail: usage that was spent is owed.
-            if (admission?.ok) await admission.settle(result.usage);
+            // If it cannot be recorded, stop for good — never spend again on a
+            // run whose last call is unpaid, and never "retry" into more of it.
+            if (admission?.ok) {
+              try {
+                await admission.settle(result.usage);
+              } catch (err) {
+                const why = (err as Error)?.message ?? String(err);
+                stopWith("settlement_failed", why.slice(0, 300));
+                throw new TaskStop("settlement_failed", why);
+              }
+            }
             await checkpointRun(run, this.now());
             return result;
           } finally {
@@ -825,7 +902,8 @@ export class TaskRunner {
           stopReason: stop,
           summary: "",
           error: detail ?? stop,
-          blocked: stop === "admission_denied",
+          blocked: stop === "admission_denied" || stop === "settlement_failed",
+          pause: stop === "admission_denied" || stop === "settlement_failed",
         };
       }
       const message = (err as Error)?.message ?? String(err);
@@ -870,6 +948,7 @@ export class TaskRunner {
       task.id,
       (t) => {
         delete t.activeRunId;
+        delete t.resumeAt;
         delete t.cancelRequestedAt;
         delete t.queued;
         t.lastRunAt = now;
@@ -921,19 +1000,22 @@ export class TaskRunner {
         const why = outcome.error ?? outcome.stopReason;
         if (outcome.blocked) {
           t.authFailureCount += 1;
-          if (t.authFailureCount === 1 || t.authFailureCount >= MAX_BLOCKED) {
+          // Billing said no (or could not record the spend): off at once. A
+          // credential-looking error gets a few occurrences before that.
+          const pauseNow = recurring && (outcome.pause || t.authFailureCount >= MAX_BLOCKED);
+          if (pauseNow || t.authFailureCount === 1) {
             notice = {
               kind: "task_needs_you",
-              summary:
-                t.authFailureCount >= MAX_BLOCKED
-                  ? `Paused after ${t.authFailureCount} runs in a row were refused (${why}). Fix the cause, then re-enable it.`
-                  : `This run was refused (${why}). It will be tried again on its next occurrence.`,
+              summary: pauseNow
+                ? outcome.pause
+                  ? `Paused: ${why}. Nothing will run until you turn it back on.`
+                  : `Paused after ${t.authFailureCount} runs in a row were refused (${why}). Fix the cause, then re-enable it.`
+                : `This run was refused (${why}). It will be tried again on its next occurrence.`,
               priority: "high",
             };
           }
-          if (t.authFailureCount >= MAX_BLOCKED && recurring) {
-            t.state = "paused";
-            delete t.nextRunAt;
+          if (pauseNow) {
+            pauseTask(t, why);
             return;
           }
           if (recurring || !t.enabled) next();
@@ -944,14 +1026,7 @@ export class TaskRunner {
           return;
         }
 
-        const retriable = outcome.stopReason === "error" && !manual && t.enabled;
-        t.failureCount = (t.failureCount ?? 0) + 1;
-        if (retriable && t.failureCount <= MAX_RETRIES) {
-          t.state = "queued";
-          t.queued = run.input !== undefined ? { input: run.input } : {};
-          t.nextRunAt = now + (RETRY_BACKOFF_MS[t.failureCount - 1] ?? 15 * 60_000);
-          return;
-        }
+        // Retries were already spent by conclude(): this is the final word.
         t.failureCount = 0;
         notice = {
           kind: "task_failed",

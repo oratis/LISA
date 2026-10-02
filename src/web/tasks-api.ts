@@ -177,8 +177,9 @@ export async function handleTasksApi(
             problem = applyTaskEdit(t, body, ctx);
             if (problem) return false;
             const rescheduled = body.schedule !== undefined || body.trigger !== undefined;
-            if (body.enabled === true && (!t.enabled || rescheduled)) enableTask(t, now());
-            else if (body.enabled === false && t.enabled) disableTask(t);
+            if (body.enabled === true && (!t.enabled || rescheduled || t.state === "paused")) {
+              enableTask(t, now());
+            } else if (body.enabled === false && t.enabled) disableTask(t);
             // An edited schedule on an enabled task takes effect at once.
             else if (rescheduled && t.enabled) enableTask(t, now());
             return;

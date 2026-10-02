@@ -756,7 +756,7 @@ test("cancelling a one-off leaves it cancelled; cancelling a queued task un-queu
 
 // ── failure, retry, blocked ──
 
-test("a transient failure is retried with backoff, then reported once", async () => {
+test("a transient failure is retried with backoff — as the SAME run — then reported once", async () => {
   await withHome(async () => {
     const task = await dueRoutine();
     let clock = NOW;
@@ -775,12 +775,18 @@ test("a transient failure is retried with backoff, then reported once", async ()
     await runner.drain();
     let t = (await getTask(task.id))!;
     assert.equal(t.state, "queued");
-    assert.equal(t.nextRunAt, NOW + 60_000);
+    assert.equal(t.resumeAt, NOW + 60_000);
+    assert.ok(t.activeRunId, "the run is parked, not ended");
     assert.equal(notices.length, 0, "a retry is pending — nothing to tell yet");
+    const runId = t.activeRunId;
+    const parked = (await loadRun(task.id, runId))!.run;
+    assert.equal(parked.state, "interrupted");
+    assert.equal(parked.attempts, 1);
+    assert.match(parked.lastError!, /529 overloaded/);
 
     assert.deepEqual((await runner.tick()).started, [], "inside the backoff window");
     for (let i = 0; i < MAX_RETRIES; i++) {
-      clock = (await getTask(task.id))!.nextRunAt!;
+      clock = (await getTask(task.id))!.resumeAt!;
       await runner.tick();
       await runner.drain();
     }
@@ -788,11 +794,140 @@ test("a transient failure is retried with backoff, then reported once", async ()
     assert.equal(calls, MAX_RETRIES + 1);
     assert.equal(t.state, "scheduled");
     assert.equal(t.failureCount, 0);
+    assert.equal(t.resumeAt, undefined);
+    assert.equal(t.activeRunId, undefined);
     assert.equal(new Date(t.nextRunAt!).toISOString(), "2026-10-03T08:00:00.000Z");
     assert.equal(notices.length, 1);
     assert.equal(notices[0]!.kind, "task_failed");
     assert.match(notices[0]!.summary, /529 overloaded/);
-    assert.equal(t.runs.length, MAX_RETRIES + 1);
+    assert.deepEqual(t.runs, [runId], "three attempts, one run");
+  });
+});
+
+test("a retry does not repeat the side effects of the failed attempt (reviewer probe t1)", async () => {
+  await withHome(async () => {
+    const task = await dueRoutine();
+    let clock = NOW;
+    let sent = 0;
+    const tools = [tool("send_message", async () => (sent++, "message sent"))];
+    const approvalFactory = () => ({ approval: () => ({ allow: true }) });
+    const { notices, deliver } = collector();
+    const overloaded = () => {
+      throw new Error("529 overloaded_error");
+    };
+    // The scripted model re-sends on every attempt — the worst case. The
+    // ledger, not the model's good sense, is what must prevent a duplicate.
+    const { provider, calls } = scripted([
+      turn([call("send_message", { to: "sam", body: "running late" })]),
+      overloaded,
+      turn([call("send_message", { to: "sam", body: "running late" })]),
+      overloaded,
+      turn([call("send_message", { to: "sam", body: "running late" })]),
+      say("Told Sam."),
+    ]);
+    const runner = makeRunner({ provider, tools, approvalFactory, deliver, now: () => clock });
+
+    await runner.tick();
+    await runner.drain();
+    assert.equal(sent, 1);
+    clock += 61_000;
+    await runner.tick();
+    await runner.drain();
+    clock += 5 * 60_000 + 1000;
+    await runner.tick();
+    await runner.drain();
+
+    const t = (await getTask(task.id))!;
+    assert.equal(sent, 1, "one occurrence, one message — across three attempts");
+    assert.equal(t.runs.length, 1, "the retries resumed the same run");
+    assert.equal(t.state, "scheduled");
+    const loaded = (await loadRun(task.id, t.runs[0]!))!;
+    assert.equal(loaded.run.state, "succeeded");
+    assert.equal(loaded.run.attempts, 2);
+    assert.deepEqual(
+      notices.map((n) => `${n.kind}:${n.summary}`),
+      ["task_result:Told Sam."],
+    );
+
+    // The retried attempt was shown what had already happened, and told why it is running.
+    const retryPrompt = JSON.stringify(calls[2]!.messages);
+    assert.match(retryPrompt, /message sent/, "the first attempt's tool result is in the history");
+    assert.match(retryPrompt, /previous attempt at this run stopped on an error/);
+    assert.match(retryPrompt, /529 overloaded_error/);
+    assert.match(retryPrompt, /retry 1 of the same run/);
+    // …and its re-issued call was answered from the ledger.
+    assert.match(String(resultsOf(loaded.messages).at(-1)!.content), /^\[replayed\]/);
+  });
+});
+
+test("an attempt that fails before its first model call restarts the same run with the retry note", async () => {
+  await withHome(async () => {
+    const task = await dueRoutine();
+    let clock = NOW;
+    const { provider, calls } = scripted([
+      () => {
+        throw new Error("ECONNRESET");
+      },
+      say("Done on the second try."),
+    ]);
+    const runner = makeRunner({ provider, now: () => clock });
+    await runner.tick();
+    await runner.drain();
+    clock += 61_000;
+    await runner.tick();
+    await runner.drain();
+    const t = (await getTask(task.id))!;
+    assert.equal(t.runs.length, 1);
+    assert.equal((await listRuns(t))[0]!.summary, "Done on the second try.");
+    const prompt = JSON.stringify(calls[1]!.messages);
+    assert.match(prompt, /Summarise what matters today/);
+    assert.match(prompt, /retry 1 of the same run/);
+    assert.equal(calls[1]!.messages.length, 1, "one user message: frame + note");
+  });
+});
+
+test("a parked run can be cancelled, and a manual run is never auto-retried", async () => {
+  await withHome(async () => {
+    const task = await dueRoutine();
+    const failing: Provider = {
+      name: "fake",
+      async runTurn() {
+        throw new Error("upstream 529");
+      },
+    };
+    const { notices, deliver } = collector();
+    const runner = makeRunner({ provider: failing, deliver });
+    await runner.tick();
+    await runner.drain();
+    assert.ok((await getTask(task.id))!.resumeAt);
+    assert.deepEqual(await runner.runNow(task.id), { ok: false, reason: "already_running" });
+    assert.equal(await runner.cancel(task.id), true);
+    // The cancel is honoured at the next tick, without waiting out the backoff.
+    assert.deepEqual((await runner.tick()).started, [task.id]);
+    await runner.drain();
+    const t = (await getTask(task.id))!;
+    assert.equal(t.state, "scheduled");
+    assert.equal(t.activeRunId, undefined);
+    assert.equal(t.resumeAt, undefined);
+    assert.equal((await listRuns(t))[0]!.state, "cancelled");
+    assert.equal(notices.length, 0);
+
+    const draft = await dueRoutine({
+      title: "manual",
+      enabled: false,
+      state: "draft",
+      nextRunAt: undefined,
+    });
+    await runner.runNow(draft.id);
+    await runner.drain();
+    const d = (await getTask(draft.id))!;
+    assert.equal(d.resumeAt, undefined);
+    assert.equal(
+      (await listRuns(d))[0]!.state,
+      "failed",
+      "the user is watching: fail now, no silent retry",
+    );
+    assert.equal(notices.at(-1)!.kind, "task_failed");
   });
 });
 
@@ -815,6 +950,8 @@ test("credential failures are not retried; the task is paused after a few and sa
     }
     const t = (await getTask(task.id))!;
     assert.equal(t.state, "paused");
+    assert.equal(t.enabled, false);
+    assert.match(t.pausedReason!, /401 Unauthorized/);
     assert.equal(t.authFailureCount, MAX_BLOCKED);
     assert.equal(t.nextRunAt, undefined);
     assert.deepEqual(
@@ -855,8 +992,18 @@ test("every model call goes through admission; a denial stops the run before any
     assert.equal(run.stopReason, "admission_denied");
     assert.match(run.error!, /quota_exhausted/);
     assert.deepEqual(run.tokens, { in: 0, out: 0 });
+    assert.equal(notices.length, 1);
     assert.equal(notices[0]!.kind, "task_needs_you");
-    assert.equal((await getTask(task.id))!.state, "scheduled", "not retried in a loop");
+    assert.match(notices[0]!.summary, /^Paused: quota_exhausted/);
+    // Refused by billing ⇒ switched off, with the reason, until the user turns it back on.
+    const after = (await getTask(task.id))!;
+    assert.equal(after.state, "paused");
+    assert.equal(after.enabled, false);
+    assert.match(after.pausedReason!, /quota_exhausted/);
+    assert.equal(after.nextRunAt, undefined);
+    assert.equal(after.resumeAt, undefined, "not parked for a retry");
+    assert.deepEqual((await runner.tick()).started, []);
+    assert.deepEqual(admitted, ["claude-test"], "admission is not asked again");
   });
 });
 
@@ -906,12 +1053,9 @@ test("admission mid-run denial stops the run; a failing settlement fails closed 
     const run = (await listRuns((await getTask(denied.id))!))[0]!;
     assert.equal(run.stopReason, "admission_denied");
     assert.equal(run.toolCalls, 1);
+    assert.equal((await getTask(denied.id))!.state, "paused");
 
-    await updateTask(denied.id, (t) => {
-      t.enabled = false;
-      t.state = "paused";
-    });
-    const failing = await dueRoutine({ title: "settle fails" });
+    const failing = await dueRoutine({ title: "settle fails", schedule: { expr: "every:1h" } });
     let released = 0;
     const second = scripted([turn([call("read")]), say("never")]);
     const closed = makeRunner({
@@ -934,7 +1078,63 @@ test("admission mid-run denial stops the run; a failing settlement fails closed 
     assert.equal(released, 1);
     const failedRun = (await listRuns((await getTask(failing.id))!))[0]!;
     assert.equal(failedRun.state, "failed");
+    assert.equal(failedRun.stopReason, "settlement_failed");
     assert.match(failedRun.error!, /usage outbox unavailable/);
+
+    // Reviewer probe t8(a): it used to be retried — three model calls and three
+    // failed settlements per occurrence, every occurrence. Now: once, then off.
+    let clock = NOW;
+    const paused = (await getTask(failing.id))!;
+    assert.equal(paused.state, "paused");
+    assert.equal(paused.enabled, false);
+    assert.match(paused.pausedReason!, /usage outbox unavailable/);
+    const later = makeRunner({
+      provider: second.provider,
+      tools: [tool("read")],
+      host: "cloud",
+      now: () => clock,
+      modelGate: { admit: async () => assert.fail("a paused task must not ask for admission") },
+    });
+    for (let i = 0; i < 5; i++) {
+      clock += 3_600_000;
+      assert.deepEqual((await later.tick()).started, []);
+    }
+    assert.equal(second.calls.length, 1);
+    assert.equal((await getTask(failing.id))!.runs.length, 1);
+  });
+});
+
+test("a task the engine paused comes back when the user enables it", async () => {
+  await withHome(async () => {
+    const task = await dueRoutine({ schedule: { expr: "every:1h" } });
+    let allow = false;
+    const { provider } = scripted([say("back in business")]);
+    const runner = makeRunner({
+      provider,
+      host: "cloud",
+      modelGate: {
+        admit: async () =>
+          allow
+            ? { ok: true, settle: async () => {}, release: async () => {} }
+            : { ok: false, reason: "quota_exhausted" },
+      },
+    });
+    await runner.tick();
+    await runner.drain();
+    assert.equal((await getTask(task.id))!.state, "paused");
+
+    allow = true;
+    const { enableTask } = await import("./lifecycle.js");
+    await updateTask(task.id, (t) => {
+      enableTask(t, NOW);
+      t.nextRunAt = NOW;
+    });
+    const enabled = (await getTask(task.id))!;
+    assert.equal(enabled.pausedReason, undefined);
+    assert.equal(enabled.authFailureCount, 0);
+    await runner.tick();
+    await runner.drain();
+    assert.equal((await listRuns((await getTask(task.id))!))[0]!.summary, "back in business");
   });
 });
 
