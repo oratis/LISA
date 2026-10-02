@@ -60,6 +60,28 @@ export interface Origin {
   id?: string;
 }
 
+/**
+ * The trust column of the default matrix an origin falls in. Grants are bound
+ * to the column they were approved in, so an "always" approved in the owner's
+ * attended chat is not standing permission for a remote channel.
+ */
+export type OriginColumn = "chat" | "task" | "channel";
+
+export function originColumn(origin: Origin): OriginColumn {
+  switch (origin.kind) {
+    case "chat":
+    case "cli":
+      return "chat";
+    case "task":
+    case "routine":
+    case "watcher":
+      return "task";
+    default:
+      // channel, mcp, autonomy and anything unrecognised: the strictest column.
+      return "channel";
+  }
+}
+
 export interface ActionRequest {
   id: string;
   /** ISO-8601 */
@@ -85,6 +107,10 @@ export interface ActionRequest {
   preview: string;
   /** True when the effect is confined by the workspace sandbox. */
   sandboxed: boolean;
+  /** Every path the call writes resolves inside the workspace (a path check, not enforcement). */
+  withinWorkspace?: boolean;
+  /** The call sends data off this host. */
+  egress?: boolean;
   /** True when untrusted external content entered this agent run before the call. */
   tainted: boolean;
 }
