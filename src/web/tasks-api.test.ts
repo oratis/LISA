@@ -103,6 +103,9 @@ async function api(
   pathname: string,
   body?: unknown,
   headers: Headers = MAC,
+  // Test bodies are poked at freely (res.body.task.id); the contract tests
+  // below are what check their shape.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<{ status: number; body: any }> {
   const res = await fetch(`${origin}${pathname}`, {
     method,

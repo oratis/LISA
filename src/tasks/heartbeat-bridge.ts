@@ -11,6 +11,7 @@
  * outbox. This process has no conversation to deliver into, so notices wait
  * there until the web server's next tick delivers them.
  */
+import { logInfo } from "../log.js";
 import type { ToolDefinition } from "../types.js";
 import { isNoUpdate } from "./frame.js";
 import { migrateHeartbeatTasks } from "./heartbeat-migration.js";
@@ -35,7 +36,7 @@ export async function runTasksFromHeartbeat(opts: {
   runnerOptions?: Partial<TaskRunnerOptions>;
   log?: (msg: string) => void;
 }): Promise<HeartbeatTaskResult[]> {
-  const log = opts.log ?? ((m: string) => console.error(m));
+  const log = opts.log ?? logInfo;
   try {
     const migration = await migrateHeartbeatTasks();
     if (migration.migrated.length > 0) {
@@ -58,7 +59,7 @@ export async function runTasksFromHeartbeat(opts: {
     ...opts.runnerOptions,
   });
 
-  let started: string[] = [];
+  let started: string[];
   if (opts.taskFilter) {
     const match = (await listTasks()).find((t) => t.title === opts.taskFilter);
     if (!match) return [];

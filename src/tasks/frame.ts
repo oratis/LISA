@@ -93,7 +93,7 @@ export function buildResumeNote(run: TaskRun, inFlightMarker: string): string {
 type Block = Exclude<StoredMessage["content"], string>[number];
 
 function blocks(content: StoredMessage["content"]): Block[] {
-  return typeof content === "string" ? [{ type: "text", text: content } as Block] : content;
+  return typeof content === "string" ? [{ type: "text", text: content }] : content;
 }
 
 function hasToolUse(message: StoredMessage): boolean {
@@ -138,7 +138,7 @@ export function planResume(messages: StoredMessage[], note: string): ResumePlan 
   }
   const merged: StoredMessage = {
     role: "user",
-    content: [...blocks(last.content), { type: "text", text: note } as Block],
+    content: [...blocks(last.content), { type: "text", text: note }],
   };
   return {
     kind: "continue",

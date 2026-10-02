@@ -279,7 +279,7 @@ test("a watcher hit goes out as source `watcher`, high priority", async () => {
 test("the user switched task notifications off: nothing is stored or pushed; the outbox marks it suppressed", async () => {
   const settings = defaultReachOutSettings();
   settings.sources.task = false;
-  saveReachOutSettings(settings, home);
+  await saveReachOutSettings(settings, home);
   const w = realWiring(NOON);
   await enqueueNotice(notice());
   assert.deepEqual(await drainOutbox(w.deliver), { delivered: 0, suppressed: 1, deferred: 0, failed: 0 });
@@ -293,7 +293,7 @@ test("the user switched task notifications off: nothing is stored or pushed; the
 test("quiet hours: the card is stored now, the push is held by the gate — not sent, not lost", async () => {
   const settings = defaultReachOutSettings();
   settings.quietHours = { ...settings.quietHours, enabled: true, start: "22:00", end: "07:00" };
-  saveReachOutSettings(settings, home);
+  await saveReachOutSettings(settings, home);
   const w = realWiring(new Date("2026-10-02T23:30:00"));
   try {
     assert.deepEqual(await w.deliver(notice()), { delivered: true });
@@ -311,7 +311,7 @@ test("quiet hours: the card is stored now, the push is held by the gate — not 
 test("dial off: in-app only", async () => {
   const settings = defaultReachOutSettings();
   settings.dial = "off";
-  saveReachOutSettings(settings, home);
+  await saveReachOutSettings(settings, home);
   const w = realWiring(NOON);
   assert.deepEqual(await w.deliver(notice()), { delivered: true });
   assert.equal(w.convo.history.length, 1);

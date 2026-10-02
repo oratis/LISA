@@ -109,7 +109,7 @@ export function parseTriggerSpec(v: unknown, ctx: ValidateContext): Result<Trigg
   }
   const common = {
     ...(every ? { every } : {}),
-    ...(v.onHit ? { onHit: v.onHit as "notify" | "run" } : {}),
+    ...(v.onHit ? { onHit: v.onHit } : {}),
   };
 
   if (v.kind === "web") {

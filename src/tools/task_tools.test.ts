@@ -76,7 +76,7 @@ describe("task tools — where they are offered", () => {
 
   test("no tool schema has a way to enable a task", () => {
     for (const tool of [taskCreateTool, taskUpdateTool, watchCreateTool, taskCancelTool]) {
-      const props = Object.keys((tool.inputSchema.properties ?? {}) as Record<string, unknown>);
+      const props = Object.keys((tool.inputSchema.properties ?? {}));
       assert.ok(!props.some((p) => /enable/i.test(p)), `${tool.name}: ${props.join(",")}`);
       assert.equal(tool.inputSchema.additionalProperties, false, tool.name);
     }
@@ -85,7 +85,7 @@ describe("task tools — where they are offered", () => {
   test("smuggling enabled/state into the input changes nothing: execute ignores unknown fields", async () => {
     await withHome(async () => {
       const smuggled = { title: "x", instruction: "y", schedule: "daily:08:00", enabled: true, state: "scheduled" };
-      await taskCreateTool.execute(smuggled as never, ctx);
+      await taskCreateTool.execute(smuggled, ctx);
       const [task] = await listTasks();
       assert.equal(task!.enabled, false);
       assert.equal(task!.state, "draft");

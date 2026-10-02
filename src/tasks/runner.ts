@@ -26,6 +26,7 @@ import { randomBytes } from "node:crypto";
 import { runAgent, type ApprovalCallback } from "../agent.js";
 import { getAutonomyEnabled } from "../autonomy/state.js";
 import { costMicroUSD } from "../billing/prices.js";
+import { logInfo } from "../log.js";
 import { providerForModel } from "../providers/registry.js";
 import type { Provider, ProviderUsage } from "../providers/types.js";
 import type { SandboxMode } from "../sandbox/mode.js";
@@ -224,7 +225,7 @@ export class TaskRunner {
   }
 
   private log(msg: string): void {
-    (this.opts.log ?? ((m: string) => console.error(m)))(`[tasks] ${msg}`);
+    (this.opts.log ?? logInfo)(`[tasks] ${msg}`);
   }
 
   private emit(event: TaskEngineEvent): void {
