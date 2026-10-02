@@ -249,6 +249,7 @@ export async function createTask(input: NewTask, now = Date.now()): Promise<Task
     createdDisabled: input.createdDisabled ?? !enabled,
     createdAt: now,
     updatedAt: now,
+    ...(enabled ? { enabledAt: now } : {}),
     ...(input.nextRunAt !== undefined ? { nextRunAt: input.nextRunAt } : {}),
     authFailureCount: 0,
     runs: [],
@@ -333,11 +334,12 @@ async function appendRecord(taskId: string, runId: string, rec: RunRecord): Prom
 /** Start a run: write its first checkpoint and link it from the task. */
 export async function createRun(
   taskId: string,
-  init: Partial<Pick<TaskRun, "input" | "state">> = {},
+  init: Partial<Pick<TaskRun, "id" | "input" | "state">> = {},
   now = Date.now(),
 ): Promise<TaskRun> {
+  if (init.id !== undefined && !isSafeId(init.id)) throw new Error(`invalid run id: ${init.id}`);
   const run: TaskRun = {
-    id: newRunId(),
+    id: init.id ?? newRunId(),
     taskId,
     startedAt: now,
     state: init.state ?? "running",
@@ -351,6 +353,7 @@ export async function createRun(
   await updateTask(
     taskId,
     (task) => {
+      if (task.runs.includes(run.id)) return false;
       task.runs.push(run.id);
       if (task.runs.length > MAX_RUNS_PER_TASK) {
         dropped = task.runs.splice(0, task.runs.length - MAX_RUNS_PER_TASK);

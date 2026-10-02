@@ -156,6 +156,8 @@ export interface Task {
   createdDisabled: boolean;
   createdAt: number;
   updatedAt: number;
+  /** When the user last turned it on. Unset ⇒ never enabled (still a draft). */
+  enabledAt?: number;
   lastRunAt?: number;
   nextRunAt?: number;
   /** Consecutive auth failures; the scheduler pauses the task past a threshold. */
@@ -166,6 +168,16 @@ export interface Task {
   lastResultFingerprint?: string;
   /** Short summary of the last finished run, fed into the next run's task frame. */
   lastSummary?: string;
+  /**
+   * The run currently in flight. Set when a run starts and cleared when it
+   * finishes; a value here with no live lease means the run was interrupted
+   * and must be resumed.
+   */
+  activeRunId?: string;
+  /** Set by a cancel request; the runner (in whichever process) stops at its next checkpoint. */
+  cancelRequestedAt?: number;
+  /** Why the task is `queued`: a manual "run now", a retry, or a watcher hit with its input. */
+  queued?: { manual?: boolean; input?: string };
   /** Run ids, oldest first, capped at MAX_RUNS_PER_TASK. */
   runs: string[];
 }
@@ -194,6 +206,10 @@ export interface TaskRun {
   executedDigests: Record<string, string>;
   /** How many times this run was resumed after an interruption. */
   resumes?: number;
+  /** Wall-clock time spent executing, summed across resumed segments. */
+  elapsedMs?: number;
+  /** Started by the user ("run now"/test run) rather than by the schedule. */
+  manual?: boolean;
   /** Input handed to the run by a watcher hit, if any. */
   input?: string;
   summary?: string;
