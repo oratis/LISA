@@ -4663,13 +4663,19 @@ self.addEventListener('fetch', (event) => {
                 `sending ~${modelContext.estimatedTokens} history tokens`,
             );
           }
-          const wardenTurn = warden.turn({
+          const wardenTurn = await warden.turn({
             uid: scopedUid(),
             sandboxMode: chat.session.header.sandboxMode,
             workspaceRoot: process.cwd(),
             tools: runtimeTools,
             signal: AbortSignal.any([abort.signal, turnAbort.signal]),
             conversationId: chat.session.id,
+            // Only a caller who could answer an approval gets owner defaults.
+            owner: wardenTrust({ cloud, loopback: isLoopbackAddress(remoteAddr), accountUid })
+              .allowApproval,
+            userText: message,
+            hasAttachments: Array.isArray(files) && files.length > 0,
+            hasHistory: chat.history.length > 0,
           });
           const result = await runAgent({
             provider: getProvider(),

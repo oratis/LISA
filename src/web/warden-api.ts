@@ -2,7 +2,8 @@
  * Warden HTTP surface: the approval inbox, rules, grants and audit.
  *
  *   GET    /api/approvals                  pending items for this tenant
- *   POST   /api/approvals/{id}/approve     body {scope?, digest?}
+ *   GET    /api/approvals/{id}             one item with the WHOLE payload (approvers only)
+ *   POST   /api/approvals/{id}/approve     body {digest, scope?}
  *   POST   /api/approvals/{id}/deny        body {reason?}
  *   GET    /api/warden/rules               PUT /api/warden/rules
  *   GET    /api/warden/grants              DELETE /api/warden/grants/{id}
@@ -24,7 +25,8 @@ import { lisaHome } from "../paths.js";
 import { BodyTooLargeError, readCappedText } from "./http-body.js";
 import { configuredPublicOrigin } from "./public-origin.js";
 import { WardenInbox, type ResolveResult } from "../warden/inbox.js";
-import { createWardenSession } from "../warden/session.js";
+import { KnownUrls, createWardenSession } from "../warden/session.js";
+import { isConversationTainted, markConversationTainted } from "../warden/taint.js";
 import { appendAudit, readAudit } from "../warden/audit.js";
 import { loadGrants, revokeGrant } from "../warden/grants.js";
 import { LOCKED_CATEGORIES, RulesValidationError, loadRules, saveRules } from "../warden/rules.js";
@@ -172,6 +174,7 @@ async function bodyObject(req: http.IncomingMessage): Promise<Record<string, unk
 
 const RESOLVE_STATUS: Record<string, number> = {
   not_found: 404,
+  digest_required: 400,
   expired: 410,
   not_approvable: 409,
   invalid_scope: 400,
@@ -192,7 +195,8 @@ function sendResolve(res: http.ServerResponse, result: ResolveResult): void {
     });
     return;
   }
-  json(res, RESOLVE_STATUS[result.error] ?? 400, {
+  const status = Object.hasOwn(RESOLVE_STATUS, result.error) ? RESOLVE_STATUS[result.error]! : 400;
+  json(res, status, {
     error: result.error === "not_found" ? "approval_not_found" : result.error,
     message: result.message,
   });
@@ -248,6 +252,27 @@ export async function handleWardenApi(
         approvals: await opts.inbox.list(opts.uid, opts.home),
         canApprove: opts.allowApproval,
       });
+      return true;
+    }
+
+    const detail = pathname.match(/^\/api\/approvals\/([^/]+)$/);
+    if (detail) {
+      if (method !== "GET") {
+        json(res, 405, { error: "method_not_allowed" });
+        return true;
+      }
+      // The full payload is shown only to someone who could approve it: the
+      // short, redacted preview in the list is what every other caller gets.
+      if (!opts.allowApproval) {
+        json(res, 403, { error: "trusted_local_confirmation_required" });
+        return true;
+      }
+      const found = opts.inbox.detail(opts.uid, decodeURIComponent(detail[1]!));
+      if (!found) {
+        json(res, 404, { error: "approval_not_found" });
+        return true;
+      }
+      json(res, 200, found);
       return true;
     }
 
@@ -375,6 +400,30 @@ export interface WebWardenTurn {
   observe(event: AgentEvent): void;
 }
 
+export interface WebWardenTurnOptions {
+  uid: string | null;
+  sandboxMode: SandboxMode | undefined;
+  workspaceRoot: string;
+  tools: ToolDefinition[];
+  signal?: AbortSignal;
+  /** Conversation id: taint and known URLs belong to the conversation. */
+  conversationId?: string;
+  /**
+   * Is the caller someone who could answer an approval — the loopback owner or
+   * a signed-in account? Anyone else who passed the auth gate (a LAN device
+   * token, a shared web token) is a remote origin and gets the strictest
+   * column: no owner defaults for a caller who cannot approve.
+   */
+  owner: boolean;
+  /** What the user wrote this turn: URLs in it are destinations the user chose. */
+  userText?: string;
+  /** The turn carries attachments — content the user did not type. */
+  hasAttachments?: boolean;
+  /** The conversation already has turns (decides the corrupt-taint-file case). */
+  hasHistory?: boolean;
+  origin?: Origin;
+}
+
 export interface WebWarden {
   inbox: WardenInbox;
   /** True when the runtime policy selected approval mode "warden". */
@@ -384,19 +433,10 @@ export interface WebWarden {
    * "warden" (the caller then keeps its legacy approval callback). Call it
    * inside the request's home scope.
    */
-  turn(opts: {
-    uid: string | null;
-    sandboxMode: SandboxMode | undefined;
-    workspaceRoot: string;
-    tools: ToolDefinition[];
-    signal?: AbortSignal;
-    /** Conversation id: taint carries across the turns of one conversation. */
-    conversationId?: string;
-    origin?: Origin;
-  }): WebWardenTurn | undefined;
+  turn(opts: WebWardenTurnOptions): Promise<WebWardenTurn | undefined>;
 }
 
-const MAX_TAINTED_CONVERSATIONS = 5000;
+const MAX_CONVERSATIONS_TRACKED = 500;
 
 /** Build the process's inbox and the per-turn session factory for the web server. */
 export function createWebWarden(
@@ -410,48 +450,66 @@ export function createWebWarden(
     (Number.isFinite(envTimeout) && envTimeout >= 1000 ? envTimeout : undefined);
   const inbox = new WardenInbox({ emit, defaultTimeoutMs: timeoutMs });
   const enabled = policy.approval === "warden";
-  // Fetched content stays in the conversation history, so a conversation that
-  // has read untrusted content stays tainted for its later turns. Bounded,
-  // insertion-ordered; the oldest conversation is forgotten first.
-  const taintedConversations = new Set<string>();
+  // URLs seen per conversation (in memory; after a restart nothing is "known",
+  // which only makes a tainted fetch ask). Insertion-ordered LRU.
+  const urlsByConversation = new Map<string, KnownUrls>();
+  const urlsFor = (key: string): KnownUrls => {
+    let urls = urlsByConversation.get(key);
+    if (urls) urlsByConversation.delete(key);
+    else urls = new KnownUrls();
+    urlsByConversation.set(key, urls);
+    if (urlsByConversation.size > MAX_CONVERSATIONS_TRACKED) {
+      const oldest = urlsByConversation.keys().next().value;
+      if (oldest !== undefined) urlsByConversation.delete(oldest);
+    }
+    return urls;
+  };
   return {
     inbox,
     enabled,
-    turn(turn) {
+    async turn(turn) {
       if (!enabled) return undefined;
-      const key =
-        turn.conversationId !== undefined ? `${turn.uid ?? ""}\u0000${turn.conversationId}` : null;
+      const home = lisaHome();
+      const conversationId = turn.conversationId;
+      // Taint belongs to the conversation and survives a restart: the fetched
+      // page is still in the history. Attachments are untrusted content too.
+      const carried =
+        conversationId !== undefined &&
+        (await isConversationTainted(conversationId, {
+          home,
+          hasHistory: turn.hasHistory === true,
+        }));
       const session = createWardenSession({
         surface: policy.surface,
         uid: turn.uid,
-        origin: turn.origin ?? { kind: "chat", id: turn.conversationId },
+        origin:
+          turn.origin ??
+          (turn.owner
+            ? { kind: "chat", id: conversationId }
+            : { kind: "channel", id: "remote-device" }),
         sandboxMode: turn.sandboxMode ?? policy.sandboxMode,
         workspaceRoot: turn.workspaceRoot,
         inbox,
         tools: turn.tools,
         signal: turn.signal,
-        home: lisaHome(),
-        initialTaint: key !== null && taintedConversations.has(key),
+        home,
+        initialTaint: carried || turn.hasAttachments === true,
+        knownUrls:
+          conversationId !== undefined
+            ? urlsFor(`${turn.uid ?? ""}\u0000${conversationId}`)
+            : undefined,
+        userText: turn.userText,
+        onTaint: () => {
+          if (conversationId === undefined) return;
+          void markConversationTainted(conversationId, home).catch(() => undefined);
+        },
       });
-      const remember = () => {
-        if (key === null || !session.tainted || taintedConversations.has(key)) return;
-        taintedConversations.add(key);
-        if (taintedConversations.size > MAX_TAINTED_CONVERSATIONS) {
-          const oldest = taintedConversations.values().next().value;
-          if (oldest !== undefined) taintedConversations.delete(oldest);
-        }
-      };
-      return {
-        approval: async (name, input) => {
-          const decision = await session.approval(name, input);
-          remember();
-          return decision;
-        },
-        observe: (event) => {
-          session.observe(event);
-          remember();
-        },
-      };
+      // A turn that starts tainted because of an attachment taints the
+      // conversation for its later turns as well.
+      if (session.tainted && !carried && conversationId !== undefined) {
+        await markConversationTainted(conversationId, home).catch(() => undefined);
+      }
+      return { approval: session.approval, observe: (event) => session.observe(event) };
     },
   };
 }
