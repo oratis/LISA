@@ -276,6 +276,137 @@
         }
       }
     },
+    "/api/reachout/settings": {
+      "get": {
+        "operationId": "getReachOutSettings",
+        "responses": {
+          "200": {
+            "description": "The caller's reach-out controls (docs/POLICY_REACH_OUT.md): proactivity dial, per-source switches, quiet hours, channels, plus today's unsolicited budget. Scoped to the signed-in account in the cloud edition.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReachOutSettingsView"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "updateReachOutSettings",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReachOutSettingsPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Merges the patch over the stored settings and returns the new view. Unknown fields and invalid values are rejected, not ignored.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReachOutSettingsView"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/reachout/ledger": {
+      "get": {
+        "operationId": "getReachOutLedger",
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 90,
+              "default": 7
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Aggregates of the reach-out ledger for the last N local days: delivered / deferred / dropped per source and the useful rate. Never returns ledger rows or any message text.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReachOutLedgerAggregate"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/reachout/feedback": {
+      "post": {
+        "operationId": "sendReachOutFeedback",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReachOutFeedback"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Records the user's verdict on a delivered notice. Feeds the value gate: dismissed kinds push less.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReachOutFeedbackResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/approvals": {
       "get": {
         "operationId": "listApprovals",
@@ -1048,6 +1179,501 @@
           }
         },
         "additionalProperties": true
+      },
+      "ReachOutSettings": {
+        "type": "object",
+        "required": [
+          "version",
+          "dial",
+          "sources",
+          "quietHours",
+          "channels",
+          "desirePush",
+          "compliance"
+        ],
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "dial": {
+            "type": "string",
+            "enum": [
+              "off",
+              "low",
+              "normal",
+              "high"
+            ]
+          },
+          "sources": {
+            "type": "object",
+            "required": [
+              "task",
+              "watcher",
+              "approval",
+              "mail",
+              "brief",
+              "advisor",
+              "idle",
+              "desire",
+              "system"
+            ],
+            "properties": {
+              "task": {
+                "type": "boolean"
+              },
+              "watcher": {
+                "type": "boolean"
+              },
+              "approval": {
+                "type": "boolean"
+              },
+              "mail": {
+                "type": "boolean"
+              },
+              "brief": {
+                "type": "boolean"
+              },
+              "advisor": {
+                "type": "boolean"
+              },
+              "idle": {
+                "type": "boolean"
+              },
+              "desire": {
+                "type": "boolean"
+              },
+              "system": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
+          "quietHours": {
+            "type": "object",
+            "required": [
+              "enabled",
+              "start",
+              "end",
+              "tz"
+            ],
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "start": {
+                "type": "string",
+                "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+              },
+              "end": {
+                "type": "string",
+                "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+              },
+              "tz": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "channels": {
+            "type": "object",
+            "required": [
+              "inapp",
+              "push",
+              "im"
+            ],
+            "properties": {
+              "inapp": {
+                "type": "boolean"
+              },
+              "push": {
+                "type": "boolean"
+              },
+              "im": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
+          "desirePush": {
+            "type": "boolean"
+          },
+          "compliance": {
+            "type": "object",
+            "required": [
+              "aiDisclosure",
+              "usageReminderMinutes",
+              "dependencyNudges"
+            ],
+            "properties": {
+              "aiDisclosure": {
+                "const": true
+              },
+              "usageReminderMinutes": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 15
+              },
+              "dependencyNudges": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReachOutSettingsPatch": {
+        "type": "object",
+        "description": "Any subset of ReachOutSettings; nested objects are merged field by field.",
+        "properties": {
+          "dial": {
+            "type": "string",
+            "enum": [
+              "off",
+              "low",
+              "normal",
+              "high"
+            ]
+          },
+          "sources": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "boolean"
+            }
+          },
+          "quietHours": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "start": {
+                "type": "string",
+                "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+              },
+              "end": {
+                "type": "string",
+                "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+              },
+              "tz": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "channels": {
+            "type": "object",
+            "properties": {
+              "inapp": {
+                "type": "boolean"
+              },
+              "push": {
+                "type": "boolean"
+              },
+              "im": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
+          "desirePush": {
+            "type": "boolean"
+          },
+          "compliance": {
+            "type": "object",
+            "properties": {
+              "aiDisclosure": {
+                "const": true
+              },
+              "usageReminderMinutes": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 15
+              },
+              "dependencyNudges": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReachOutSettingsView": {
+        "type": "object",
+        "required": [
+          "settings",
+          "proactiveMode",
+          "budget",
+          "budgets",
+          "quietNow",
+          "channelsAvailable"
+        ],
+        "properties": {
+          "settings": {
+            "$ref": "#/components/schemas/ReachOutSettings"
+          },
+          "proactiveMode": {
+            "type": "boolean"
+          },
+          "budget": {
+            "type": "object",
+            "required": [
+              "dial",
+              "daily",
+              "usedToday",
+              "remaining"
+            ],
+            "properties": {
+              "dial": {
+                "type": "string",
+                "enum": [
+                  "off",
+                  "low",
+                  "normal",
+                  "high"
+                ]
+              },
+              "daily": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "usedToday": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "remaining": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false
+          },
+          "budgets": {
+            "type": "object",
+            "required": [
+              "off",
+              "low",
+              "normal",
+              "high"
+            ],
+            "properties": {
+              "off": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "low": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "normal": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "high": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false
+          },
+          "quietNow": {
+            "type": "boolean"
+          },
+          "channelsAvailable": {
+            "type": "object",
+            "required": [
+              "inapp",
+              "push",
+              "im"
+            ],
+            "properties": {
+              "inapp": {
+                "type": "boolean"
+              },
+              "push": {
+                "type": "boolean"
+              },
+              "im": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": true
+      },
+      "ReachOutTally": {
+        "type": "object",
+        "required": [
+          "delivered",
+          "deferred",
+          "dropped",
+          "interrupted",
+          "useful",
+          "dismissed"
+        ],
+        "properties": {
+          "delivered": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "deferred": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "dropped": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "interrupted": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "useful": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "dismissed": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReachOutLedgerAggregate": {
+        "type": "object",
+        "required": [
+          "days",
+          "since",
+          "totals",
+          "bySource",
+          "budgetUsedToday",
+          "usefulRate"
+        ],
+        "properties": {
+          "days": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "since": {
+            "type": "string"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/ReachOutTally"
+          },
+          "bySource": {
+            "type": "object",
+            "required": [
+              "task",
+              "watcher",
+              "approval",
+              "mail",
+              "brief",
+              "advisor",
+              "idle",
+              "desire",
+              "system"
+            ],
+            "properties": {
+              "task": {
+                "$ref": "#/components/schemas/ReachOutTally"
+              },
+              "watcher": {
+                "$ref": "#/components/schemas/ReachOutTally"
+              },
+              "approval": {
+                "$ref": "#/components/schemas/ReachOutTally"
+              },
+              "mail": {
+                "$ref": "#/components/schemas/ReachOutTally"
+              },
+              "brief": {
+                "$ref": "#/components/schemas/ReachOutTally"
+              },
+              "advisor": {
+                "$ref": "#/components/schemas/ReachOutTally"
+              },
+              "idle": {
+                "$ref": "#/components/schemas/ReachOutTally"
+              },
+              "desire": {
+                "$ref": "#/components/schemas/ReachOutTally"
+              },
+              "system": {
+                "$ref": "#/components/schemas/ReachOutTally"
+              }
+            },
+            "additionalProperties": false
+          },
+          "budgetUsedToday": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "usefulRate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          }
+        },
+        "additionalProperties": true
+      },
+      "ReachOutFeedback": {
+        "type": "object",
+        "required": [
+          "id",
+          "verdict"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "useful",
+              "dismissed"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReachOutFeedbackResult": {
+        "type": "object",
+        "required": [
+          "ok",
+          "id",
+          "verdict"
+        ],
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "id": {
+            "type": "string"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "useful",
+              "dismissed"
+            ]
+          }
+        },
+        "additionalProperties": false
       },
       "ApprovalItem": {
         "type": "object",

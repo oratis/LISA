@@ -87,6 +87,9 @@ INSPECTION
   lisa consent <sub>           Consent for sensitive ambient signals (default
                                all off): list, grant <signal>, revoke <signal>,
                                revoke-all.
+  lisa reachout <sub>          When Lisa may contact you on her own: show,
+                               set dial <off|low|normal|high>, quiet
+                               <HH:MM-HH:MM>, source <name> on|off, ledger.
   lisa sense [list]            Recent ambient sense events + granted signals.
   lisa sense social            Social connector manifests + publish drafts.
   lisa agents                  Snapshot of agent sessions across all observers.
@@ -426,6 +429,11 @@ async function main(): Promise<void> {
   if (args.subcommand === "consent") {
     const { runConsentCommand } = await import("./cli/consent.js");
     process.exit(await runConsentCommand(args.subargs));
+  }
+
+  if (args.subcommand === "reachout") {
+    const { runReachOutCommand } = await import("./cli/reachout.js");
+    process.exit(await runReachOutCommand(args.subargs));
   }
 
   if (args.subcommand === "sense") {
