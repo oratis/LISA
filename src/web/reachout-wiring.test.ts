@@ -16,7 +16,8 @@ import { formatAlert } from "../mail/alerts.js";
 import type { MailItem } from "../mail/types.js";
 import { homeForUid, homeScope } from "../paths.js";
 import { DeferQueue } from "../reachout/defer.js";
-import { readLedger } from "../reachout/ledger.js";
+import { localMoment } from "../reachout/clock.js";
+import { budgetUsed, readLedger } from "../reachout/ledger.js";
 import type { ReachOutResult, StampedNotice } from "../reachout/types.js";
 import { defaultPushPrefs, PushBridge, type PushEvent, type PushSubscription } from "./push.js";
 import {
@@ -158,28 +159,13 @@ describe("pre-gate senders still deliver under default settings", () => {
     const inapp: StampedNotice[] = [];
     const push = (b: PushBridge) =>
       b.onMailImportant({ title: alert.title, body: alert.body, tag: alert.tag });
-    const out = await r.via(mailAlertNotice(alert), {
+    const out = await r.via(mailAlertNotice(alert, "poll-1"), {
       inapp: (n) => void inapp.push(n),
       push: () => push(r.bridge),
     });
     assertDeliveredAsBefore(out, r, inapp, baseline(push));
     assert.equal(r.pushed[0]!.priority, "high");
-  });
-
-  test("important-mail alerts: a poll's burst of three all push (the poll's own cap)", async () => {
-    const r = rig();
-    let posted = 0;
-    for (const uid of [1, 2, 3]) {
-      const alert = formatAlert({ ...MAIL_ITEM, uid } as MailItem);
-      const out = await r.via(mailAlertNotice(alert), {
-        inapp: () => void posted++,
-        push: () =>
-          r.bridge.onMailImportant({ title: alert.title, body: alert.body, tag: alert.tag }),
-      });
-      assert.deepEqual(out.channels, ["inapp", "push"], `alert ${uid}`);
-    }
-    assert.equal(posted, 3);
-    assert.equal(r.pushed.length, 3);
+    assert.equal(out.countsBudget, true);
   });
 
   test("KB daily brief", async () => {
@@ -263,23 +249,99 @@ describe("pre-gate senders still deliver under default settings", () => {
     );
     assert.equal(r.pushed[0]!.title, "Lisa — 你不在的时候");
   });
+});
 
-  test("a typical day — digest, brief and one idle note — all push (3 = the default budget)", async () => {
-    const r = rig();
-    const a = await r.via(
-      mailDigestNotice({ text: "d", date: "2026-10-02", needsYou: 1, manual: false }),
-      { inapp: () => {}, push: () => r.bridge.onMailDigest("d") },
-    );
-    const b = await r.via(kbBriefNotice({ text: "b", date: "2026-10-02", manual: false }), {
+describe("the daily budget is spent on what matters", () => {
+  const used = (): number => budgetUsed(readLedger(home), localMoment(NOON, null).day);
+  const digest = (r: Rig) =>
+    r.via(mailDigestNotice({ text: "d", date: "2026-10-02", needsYou: 1, manual: false }), {
+      inapp: () => {},
+      push: () => r.bridge.onMailDigest("d"),
+    });
+  const brief = (r: Rig) =>
+    r.via(kbBriefNotice({ text: "b", date: "2026-10-02", manual: false }), {
       inapp: () => {},
       push: () => r.bridge.onKbBrief("b"),
     });
-    const c = await r.via(idleNoteNotice("n"), {
+  const idle = (r: Rig, text: string) =>
+    r.via(idleNoteNotice(text), { inapp: () => {}, push: () => r.bridge.onIdleMessage(text) });
+  const alert = (r: Rig, uid: number, pollKey: string) => {
+    const a = formatAlert({ ...MAIL_ITEM, uid } as MailItem);
+    return r.via(mailAlertNotice(a, pollKey), {
       inapp: () => {},
-      push: () => r.bridge.onIdleMessage("n"),
+      push: () => r.bridge.onMailImportant({ title: a.title, body: a.body, tag: a.tag }),
     });
-    for (const out of [a, b, c]) assert.deepEqual(out.channels, ["inapp", "push"]);
+  };
+
+  test("the scheduled digest and brief are solicited: they push without spending budget", async () => {
+    const r = rig();
+    for (const out of [await digest(r), await brief(r)]) {
+      assert.deepEqual(out.channels, ["inapp", "push"]);
+      assert.equal(out.reason, "solicited");
+      assert.equal(out.countsBudget, undefined);
+    }
+    assert.equal(used(), 0);
+  });
+
+  test("digest + brief + idle note in one day do not block a later important-mail alert", async () => {
+    const r = rig();
+    await digest(r);
+    await brief(r);
+    assert.deepEqual((await idle(r, "n1")).channels, ["inapp", "push"]);
+    const out = await alert(r, 1, "poll-14:00");
+    assert.deepEqual(out.channels, ["inapp", "push"]);
+    assert.equal(out.reason, "ok");
+    assert.equal(used(), 2);
+    assert.equal(r.pushed.length, 4);
+    assert.equal(r.pushed[3]!.priority, "high");
+  });
+
+  test("three alerts from one poll all push and cost one unit", async () => {
+    const r = rig();
+    const outs = [await alert(r, 1, "p1"), await alert(r, 2, "p1"), await alert(r, 3, "p1")];
+    for (const out of outs) assert.deepEqual(out.channels, ["inapp", "push"]);
+    assert.deepEqual(
+      outs.map((o) => o.countsBudget === true),
+      [true, false, false],
+    );
+    assert.equal(used(), 1);
     assert.equal(r.pushed.length, 3);
+    // Two units are still there for the rest of the day.
+    assert.deepEqual((await idle(r, "n1")).channels, ["inapp", "push"]);
+    assert.deepEqual((await idle(r, "n2")).channels, ["inapp", "push"]);
+    assert.deepEqual((await idle(r, "n3")).channels, ["inapp"]);
+  });
+
+  test("alerts from two polls cost two units", async () => {
+    const r = rig();
+    await alert(r, 1, "p1");
+    await alert(r, 2, "p1");
+    assert.equal(used(), 1);
+    await alert(r, 3, "p2");
+    assert.equal(used(), 2);
+    assert.deepEqual((await idle(r, "n1")).channels, ["inapp", "push"]);
+    assert.equal(used(), 3);
+    assert.equal((await alert(r, 4, "p3")).reason, "over-budget");
+  });
+
+  test("a poll that takes the last unit pushes all of its alerts", async () => {
+    const r = rig();
+    await idle(r, "n1");
+    await idle(r, "n2");
+    const outs = [await alert(r, 1, "p1"), await alert(r, 2, "p1"), await alert(r, 3, "p1")];
+    for (const out of outs) assert.deepEqual(out.channels, ["inapp", "push"]);
+    assert.equal(used(), 3);
+  });
+
+  test("a poll that arrives over budget stays in-app as a whole — the first alert decides", async () => {
+    const r = rig();
+    for (const n of ["n1", "n2", "n3"]) await idle(r, n);
+    const outs = [await alert(r, 1, "p1"), await alert(r, 2, "p1")];
+    for (const out of outs) {
+      assert.deepEqual(out.channels, ["inapp"]);
+      assert.equal(out.reason, "over-budget");
+    }
+    assert.equal(used(), 3);
   });
 });
 

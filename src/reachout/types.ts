@@ -52,6 +52,13 @@ export interface ReachOutNotice {
   requestsDataConnection?: boolean;
   /** Red line: the wording applies emotional pressure, guilt or dependency. */
   emotionalPressure?: boolean;
+  /**
+   * Unsolicited notices sharing a `budgetKey` on the same local day spend ONE
+   * unit of the daily budget between them (e.g. one mail poll's burst of
+   * alerts). The first one decides whether budget is available; the rest
+   * ride on its answer.
+   */
+  budgetKey?: string;
 }
 
 /** Why the gate decided what it decided. Stable strings — they land in the ledger. */

@@ -11,12 +11,15 @@
  *                                     quiet hours (the push goes out silent).
  *   4. Source switched off          → dropped.
  *   5. Dial "off"                   → in-app only.
- *   6. Solicited (the user's own task / routine / watcher)
+ *   6. Solicited (the user's own task / routine / watcher, or a scheduled
+ *      item they switched on: the mail digest, the daily brief)
  *                                   → no budget, no value gate; quiet hours
  *                                     defer the push.
  *   7. Unsolicited                  → `desire` stays in-app unless opted in;
  *                                     then the value gate; then the daily
- *                                     budget; then quiet hours defer the push.
+ *                                     budget (notices sharing a `budgetKey`
+ *                                     spend one unit between them); then
+ *                                     quiet hours defer the push.
  *
  * In-app delivery is the baseline: rules 5–7 only ever take the interrupting
  * channels (push, IM) away. The gate never throws to a sender.
@@ -28,6 +31,7 @@ import { inQuietHours, localMoment, quietHoursEnd } from "./clock.js";
 import { DeferQueue, sharedDeferQueue } from "./defer.js";
 import {
   appendLedger,
+  budgetShare,
   budgetUsed,
   netDismissals,
   newLedgerId,
@@ -111,6 +115,11 @@ export interface GateContext {
   budgetUsed: number;
   /** A notice with the same dedupe key was let through inside the window. */
   duplicate: boolean;
+  /**
+   * What an earlier notice with the same `budgetKey` settled today: "paid" ⇒
+   * this one rides on that unit; "denied" ⇒ it is over budget too.
+   */
+  budgetShare?: "paid" | "denied" | null;
   /** Net dismissals of this source+kind inside the feedback window. */
   dismissals: number;
   /** The "Proactive mode" master switch. */
@@ -193,14 +202,19 @@ export function decideReachOut(notice: ReachOutNotice, ctx: GateContext): ReachO
   if (notice.source === "desire" && !settings.desirePush) return inAppOnly("desire-in-app-only");
   const score = valueScore(notice, ctx.dismissals);
   if (score < VALUE_BAR) return inAppOnly("below-value-bar", { score });
-  if (ctx.budgetUsed >= DAILY_BUDGET[dial]) return inAppOnly("over-budget", { score });
-  if (quiet) return deferPush({ score, countsBudget: true });
+  // A group sharing a `budgetKey` spends one unit: the first member decides.
+  const rides = ctx.budgetShare === "paid";
+  if (!rides && (ctx.budgetShare === "denied" || ctx.budgetUsed >= DAILY_BUDGET[dial])) {
+    return inAppOnly("over-budget", { score });
+  }
+  const spend: Partial<ReachOutDecision> = rides ? {} : { countsBudget: true };
+  if (quiet) return deferPush({ score, ...spend });
   return {
     deliver: true,
     channels: [...inapp, ...interrupting],
     reason: "ok",
     score,
-    countsBudget: true,
+    ...spend,
   };
 }
 
@@ -290,10 +304,12 @@ export async function reachOut(
       const proactiveMode = deps.proactiveMode
         ? deps.proactiveMode()
         : homeScope.run(home, () => getAutonomyEnabled());
+      const day = localMoment(now, current.quietHours.tz).day;
       const d = decideReachOut(notice, {
         settings: current,
         now,
-        budgetUsed: budgetUsed(entries, localMoment(now, current.quietHours.tz).day),
+        budgetUsed: budgetUsed(entries, day),
+        budgetShare: budgetShare(entries, notice.budgetKey, day),
         duplicate: seenRecently(entries, notice.dedupeKey, now),
         dismissals: netDismissals(entries, notice.source, notice.kind, now),
         proactiveMode,

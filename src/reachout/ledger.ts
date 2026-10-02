@@ -54,6 +54,8 @@ export interface LedgerNoticeEntry {
   bodyLen: number;
   /** sha256 prefix of the dedupe key, when one was given. */
   dedupe?: string;
+  /** sha256 prefix of the budget key, when the notice shares its budget unit. */
+  budgetKey?: string;
 }
 
 export interface LedgerFeedbackEntry {
@@ -145,6 +147,7 @@ export function noticeEntry(
   }
   if (typeof decision.score === "number") entry.score = Math.round(decision.score * 1000) / 1000;
   if (notice.dedupeKey) entry.dedupe = hashText(notice.dedupeKey);
+  if (notice.budgetKey) entry.budgetKey = hashText(notice.budgetKey);
   return entry;
 }
 
@@ -236,6 +239,27 @@ export function budgetUsed(entries: LedgerEntry[], day: string): number {
   let n = 0;
   for (const e of entries) if (e.type === "notice" && e.budget && e.day === day) n++;
   return n;
+}
+
+/**
+ * What an earlier notice with the same `budgetKey` settled for today's shared
+ * unit: "paid" (one of them spent it — the rest ride for free), "denied" (the
+ * first was over budget — the rest are too), or null (nobody has asked yet).
+ */
+export function budgetShare(
+  entries: LedgerEntry[],
+  budgetKey: string | undefined,
+  day: string,
+): "paid" | "denied" | null {
+  if (!budgetKey) return null;
+  const h = hashText(budgetKey);
+  let denied = false;
+  for (const e of entries) {
+    if (e.type !== "notice" || e.budgetKey !== h || e.day !== day) continue;
+    if (e.budget) return "paid";
+    if (e.reason === "over-budget") denied = true;
+  }
+  return denied ? "denied" : null;
 }
 
 /** Was a notice with this dedupe key let through inside the window? */

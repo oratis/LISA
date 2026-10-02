@@ -772,3 +772,85 @@ test("sources are covered: every charter source has a decision path", () => {
   }
   assert.equal(seen.size, 9);
 });
+
+// ── shared budget units (`budgetKey`) ──────────────────────────────────────
+
+test("budgetKey, pure rule: a paid group rides free, a denied group stays denied", () => {
+  const n = notice({ kind: "important", priority: "high", budgetKey: "poll-1" });
+  // Nobody in the group has asked yet: the normal check applies, and it pays.
+  const first = decideReachOut(n, ctx({ budgetShare: null }));
+  assert.deepEqual([first.channels, first.countsBudget], [["inapp", "push"], true]);
+  // The unit is paid: push without spending, even with the day's budget gone.
+  const rider = decideReachOut(n, ctx({ budgetShare: "paid", budgetUsed: 99 }));
+  assert.deepEqual(rider.channels, ["inapp", "push"]);
+  assert.equal(rider.reason, "ok");
+  assert.equal(rider.countsBudget, undefined);
+  // The first was over budget: the rest are too, even if budget looks free now.
+  const denied = decideReachOut(n, ctx({ budgetShare: "denied", budgetUsed: 0 }));
+  assert.deepEqual([denied.channels, denied.reason], [["inapp"], "over-budget"]);
+});
+
+test("budgetKey does not bypass the other rules: value gate, dial, source switch, quiet hours", () => {
+  const share = { budgetShare: "paid" as const };
+  const n = notice({ budgetKey: "poll-1" });
+  assert.equal(decideReachOut(n, ctx({ ...share, dismissals: 3 })).reason, "below-value-bar");
+  assert.equal(
+    decideReachOut(n, ctx({ ...share, settings: utcSettings({ dial: "off" }) })).reason,
+    "dial-off",
+  );
+  const off = utcSettings();
+  off.sources.mail = false;
+  assert.equal(decideReachOut(n, ctx({ ...share, settings: off })).reason, "source-off");
+  const night = decideReachOut(n, ctx({ ...share, now: NIGHT }));
+  assert.deepEqual([night.deferred, night.countsBudget], [["push"], undefined]);
+});
+
+test("budgetKey through the ledger: one unit per key per local day, and the key is stored hashed", async () => {
+  const home = await homeWith((s) => {
+    s.quietHours.enabled = false;
+  });
+  const send = (key: string, i: number, at = NOON) =>
+    reachOut(
+      notice({ kind: "important", priority: "high", title: `a${key}${i}`, budgetKey: key }),
+      recorder(home, at).deps,
+    );
+  const a = [await send("poll-A", 1), await send("poll-A", 2), await send("poll-A", 3)];
+  assert.deepEqual(
+    a.map((r) => [r.channels.includes("push"), r.countsBudget === true]),
+    [
+      [true, true],
+      [true, false],
+      [true, false],
+    ],
+  );
+  await send("poll-B", 1);
+  await send("poll-C", 1);
+  // Three keys = three units = the whole default budget.
+  assert.equal(
+    (await reachOut(notice({ title: "plain" }), recorder(home, NOON).deps)).reason,
+    "over-budget",
+  );
+  // A fourth poll is refused as a whole…
+  const d = [await send("poll-D", 1), await send("poll-D", 2)];
+  assert.deepEqual(
+    d.map((r) => r.reason),
+    ["over-budget", "over-budget"],
+  );
+  // …but a member of an already-paid poll still rides.
+  assert.deepEqual((await send("poll-A", 4)).channels, ["inapp", "push"]);
+  // The same key on the next local day is a new unit.
+  const tomorrow = new Date(NOON.getTime() + 24 * 3_600_000);
+  assert.equal((await send("poll-A", 5, tomorrow)).countsBudget, true);
+  assert.ok(!fs.readFileSync(reachOutLedgerPath(home), "utf8").includes("poll-"));
+});
+
+test("solicited notices never spend budget, with or without a budgetKey", () => {
+  const d = decideReachOut(
+    notice({ kind: "digest", solicited: true, budgetKey: "x" }),
+    ctx({ budgetUsed: 99, budgetShare: "denied" }),
+  );
+  assert.deepEqual(
+    [d.channels, d.reason, d.countsBudget],
+    [["inapp", "push"], "solicited", undefined],
+  );
+});

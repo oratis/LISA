@@ -11,7 +11,12 @@
  */
 import type { ReachOutNotice } from "./types.js";
 
-/** Daily mail digest. `manual` = the user pressed "sweep now" — their own request. */
+/**
+ * Daily mail digest. Solicited either way: the scheduled digest is something
+ * the user switched on (mail consent + a connected account), and a manual
+ * sweep is the user pressing "sweep now". So: no value gate, no budget — but
+ * the source switch, dial "off" and quiet hours still apply.
+ */
 export function mailDigestNotice(input: {
   text: string;
   date: string;
@@ -26,18 +31,21 @@ export function mailDigestNotice(input: {
     body: input.text,
     priority: "normal",
     actionable: input.needsYou > 0,
-    solicited: input.manual,
+    solicited: true,
     // One scheduled digest per day; a manual sweep is never a duplicate.
     ...(input.manual ? {} : { dedupeKey: `mail-digest:${input.date}` }),
   };
 }
 
-/** Important-mail alert (intraday poll). `tag` is the alert's account:uid. */
-export function mailAlertNotice(alert: {
-  title: string;
-  body: string;
-  tag: string;
-}): ReachOutNotice {
+/**
+ * Important-mail alert (intraday poll). `tag` is the alert's account:uid.
+ * Unsolicited and budgeted — but every alert from one poll carries that poll's
+ * `budgetKey`, so a burst of three costs one unit of the daily budget, not three.
+ */
+export function mailAlertNotice(
+  alert: { title: string; body: string; tag: string },
+  pollKey: string,
+): ReachOutNotice {
   return {
     uid: null,
     source: "mail",
@@ -47,10 +55,14 @@ export function mailAlertNotice(alert: {
     priority: "high",
     actionable: true,
     dedupeKey: `mail:${alert.tag}`,
+    budgetKey: `mail-poll:${pollKey}`,
   };
 }
 
-/** Daily knowledge-base brief. `manual` = the user asked for it now. */
+/**
+ * Daily knowledge-base brief. Solicited either way, like the mail digest: the
+ * user set the feeds and the schedule up. `manual` = they asked for it now.
+ */
 export function kbBriefNotice(input: {
   text: string;
   date: string;
@@ -63,7 +75,7 @@ export function kbBriefNotice(input: {
     title: "📰 Daily brief",
     body: input.text,
     priority: "normal",
-    solicited: input.manual,
+    solicited: true,
     ...(input.manual ? {} : { dedupeKey: `kb-brief:${input.date}` }),
   };
 }

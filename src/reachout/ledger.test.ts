@@ -6,6 +6,7 @@ import path from "node:path";
 import {
   aggregateLedger,
   appendLedger,
+  budgetShare,
   budgetUsed,
   hashText,
   netDismissals,
@@ -274,4 +275,32 @@ test("aggregateLedger clamps days and reports no rate when nothing reached the u
   assert.equal(agg.days, 90);
   assert.equal(agg.usefulRate, null);
   assert.equal(aggregateLedger([], 0, NOW, "UTC").days, 1);
+});
+
+test("budgetShare: paid once any member spent the unit, denied if the first was over budget", () => {
+  const key = "mail-poll:2026-10-02T12:00";
+  const h = hashText(key);
+  assert.equal(budgetShare([], key, "2026-10-02"), null);
+  assert.equal(budgetShare([entry({ budgetKey: h })], undefined, "2026-10-02"), null);
+  assert.equal(budgetShare([entry({ budgetKey: h })], key, "2026-10-02"), "paid");
+  assert.equal(budgetShare([entry({ budgetKey: h })], "another poll", "2026-10-02"), null);
+  // Yesterday's unit does not carry over.
+  assert.equal(budgetShare([entry({ budgetKey: h })], key, "2026-10-03"), null);
+  const refused = entry({
+    budgetKey: h,
+    budget: false,
+    reason: "over-budget",
+    channels: ["inapp"],
+  });
+  assert.equal(budgetShare([refused], key, "2026-10-02"), "denied");
+  // A member that never reached the budget check settles nothing.
+  const quiet = entry({
+    budgetKey: h,
+    budget: false,
+    reason: "below-value-bar",
+    channels: ["inapp"],
+  });
+  assert.equal(budgetShare([quiet], key, "2026-10-02"), null);
+  // Paid wins over an earlier refusal (cannot happen in one day, but be explicit).
+  assert.equal(budgetShare([refused, entry({ budgetKey: h })], key, "2026-10-02"), "paid");
 });

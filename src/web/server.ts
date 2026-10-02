@@ -901,8 +901,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // build + push the classified digest. Inert unless `mail` consent is granted
   // and at least one account is connected.
   let mailSweepRunning = false;
-  // `manual` = the user pressed "sweep now": their own request, so it is exempt
-  // from the unsolicited budget, and (as before) it posts no chat message.
+  // The digest is solicited either way (the user switched it on), so it never
+  // spends the unsolicited budget. `manual` = the user pressed "sweep now",
+  // which (as before) posts no chat message.
   const afterMailDigest = (digest: DailyDigest, manual: boolean): void => {
     broadcast({
       type: "mail_digest_update",
@@ -1020,9 +1021,11 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         try {
           const important = pickImportant(await pollNewMail(), alertLevel());
           if (important.length === 0) return;
+          // One poll = one unit of the daily reach-out budget, however many alerts.
+          const pollKey = new Date().toISOString();
           for (const item of important.slice(0, 3)) {
             const alert = formatAlert(item);
-            await reachOutVia(mailAlertNotice(alert), {
+            await reachOutVia(mailAlertNotice(alert, pollKey), {
               inapp: (n) =>
                 broadcast({
                   type: "idle_message",
