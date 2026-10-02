@@ -155,12 +155,22 @@ const FALLBACK: ModelPrice = {
   tier: "premium",
 };
 
-export function priceForModel(model: string): ModelPrice {
+/**
+ * The table row that prices `model`, or null when no row matches and it would
+ * be charged at the conservative fallback. Callers that must not serve or
+ * route to a model LISA has no verified rate for (the gateway's Gemini face,
+ * the model router in the hosted edition) check this instead of guessing.
+ */
+export function explicitPriceForModel(model: string): ModelPrice | null {
   const m = model.trim().toLowerCase();
   for (const { prefix, exact, price } of TABLE) {
     if (exact ? m === prefix : m.startsWith(prefix)) return price;
   }
-  return FALLBACK;
+  return null;
+}
+
+export function priceForModel(model: string): ModelPrice {
+  return explicitPriceForModel(model) ?? FALLBACK;
 }
 
 export function modelTier(model: string): ModelTier {
