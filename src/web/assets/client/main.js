@@ -5236,18 +5236,38 @@ if ('serviceWorker' in navigator) {
 // ── Warden approvals (W2a) ──────────────────────────────────────────────
 // A side-effecting tool call that the policy will not auto-allow waits in the
 // server's approval inbox. This renders it as an inline card in the chat log
-// and in a small pending list, and answers through /api/approvals. Everything
-// shown comes from the server's REDACTED preview and is set with textContent:
-// previews are derived from model-proposed input and must never be parsed as
-// HTML. (A full inbox view is a later PR.)
+// and in a small pending list, and answers through /api/approvals.
+//
+// The card shows the WHOLE payload the approval covers — fetched from
+// GET /api/approvals/{id}, in the order the server chose — and approving sends
+// back the digest of exactly that payload. A caller the server will not show
+// the payload to gets no approve button at all. Everything is set with
+// textContent: the payload is model-proposed input and must never be parsed
+// as HTML. (A full inbox view is a later PR.)
 (function () {
   var chatLog = document.getElementById('log');
   if (!chatLog) return;
   /** @type {Record<string, { item: any, card: HTMLElement, row: HTMLElement | null }>} */
-  var pending = {};
+  var pending = Object.create(null);
   var panel = null;
   var panelList = null;
   var panelTitle = null;
+  var SCOPE_LABELS = {
+    once: 'Approve once',
+    task: 'Approve for this task',
+    target: 'Always for this destination',
+    '24h': 'For 24 hours',
+    always: 'Always',
+  };
+  var RESULT_WORDS = {
+    approved: 'Approved',
+    denied: 'Denied',
+    expired: 'Expired — not run',
+    dismissed: 'Dismissed',
+  };
+  function own(map, key) {
+    return typeof key === 'string' && Object.prototype.hasOwnProperty.call(map, key) ? map[key] : undefined;
+  }
 
   function el(tag, cls, text) {
     var node = document.createElement(tag);
@@ -5305,7 +5325,9 @@ if ('serviceWorker' in navigator) {
     });
   }
 
-  function actions(item, compact) {
+  // `digest` is the digest of the payload this card displayed, or null when the
+  // payload could not be shown — in which case there is nothing to approve.
+  function actions(item, digest, compact) {
     var wrap = el('div', 'warden-actions');
     var status = el('span', 'warden-status');
     var buttons = [];
@@ -5319,15 +5341,14 @@ if ('serviceWorker' in navigator) {
     if (item.kind === 'handoff') {
       add('Dismiss', 'deny', 'deny', {});
     } else {
-      var scopes = Array.isArray(item.scopes) ? item.scopes : ['once', 'always'];
-      add('Approve once', 'approve', 'approve', { scope: 'once', digest: item.digest });
-      if (!compact) {
-        if (item.taskId && scopes.indexOf('task') >= 0) {
-          add('Approve for this task', 'approve-wide', 'approve', { scope: 'task', digest: item.digest });
-        }
-        if (scopes.indexOf('always') >= 0) {
-          add('Always', 'approve-wide', 'approve', { scope: 'always', digest: item.digest });
-        }
+      var scopes = Array.isArray(item.scopes) ? item.scopes : [];
+      if (digest) {
+        scopes.forEach(function (scope) {
+          var label = own(SCOPE_LABELS, scope);
+          if (!label) return;
+          if (compact && scope !== 'once') return;
+          add(label, scope === 'once' ? 'approve' : 'approve-wide', 'approve', { scope: scope, digest: digest });
+        });
       }
       add('Deny', 'deny', 'deny', {});
     }
@@ -5335,12 +5356,25 @@ if ('serviceWorker' in navigator) {
     return wrap;
   }
 
+  function renderFields(holder, fields) {
+    holder.textContent = '';
+    fields.forEach(function (field) {
+      var box = el('div', 'warden-field' + (field.primary ? ' primary' : ''));
+      box.appendChild(el('div', 'warden-field-key', field.key));
+      // The whole value: long ones scroll, nothing is cut.
+      box.appendChild(el('pre', 'warden-field-value', field.value));
+      holder.appendChild(box);
+    });
+  }
+
   function buildCard(item) {
     var card = el('div', 'warden-card' + (item.kind === 'handoff' ? ' handoff' : ''));
     card.setAttribute('data-approval-id', item.id);
     card.appendChild(el('div', 'warden-title',
       item.kind === 'handoff' ? 'This needs you' : 'Lisa is asking to run: ' + item.tool));
-    card.appendChild(el('div', 'warden-preview', item.preview));
+    var payload = el('div', 'warden-payload');
+    payload.appendChild(el('div', 'warden-preview', item.preview));
+    card.appendChild(payload);
     if (Array.isArray(item.targets) && item.targets.length) {
       card.appendChild(el('div', 'warden-meta', 'To: ' + item.targets.join(', ')));
     }
@@ -5352,13 +5386,13 @@ if ('serviceWorker' in navigator) {
         card.appendChild(el('div', 'warden-meta', 'Expires ' + when.toLocaleTimeString() + ' — unanswered means no.'));
       }
     }
-    card.appendChild(actions(item, false));
-    return card;
+    return { card: card, payload: payload };
   }
 
   function show(item) {
-    if (!item || typeof item.id !== 'string' || pending[item.id]) return;
-    var card = buildCard(item);
+    if (!item || typeof item.id !== 'string' || own(pending, item.id)) return;
+    var built = buildCard(item);
+    var card = built.card;
     if (typeof removeChatEmpty === 'function') removeChatEmpty();
     chatLog.appendChild(card);
     chatLog.scrollTop = chatLog.scrollHeight;
@@ -5368,21 +5402,48 @@ if ('serviceWorker' in navigator) {
     label.type = 'button';
     label.addEventListener('click', function () { card.scrollIntoView({ block: 'center' }); });
     row.appendChild(label);
-    row.appendChild(actions(item, true));
     panelList.appendChild(row);
     pending[item.id] = { item: item, card: card, row: row };
     refreshPanel();
+
+    if (item.kind === 'handoff') {
+      card.appendChild(actions(item, null, false));
+      row.appendChild(actions(item, null, true));
+      return;
+    }
+    // Buttons appear only once the full payload is on screen.
+    var loading = el('div', 'warden-meta', 'Loading the full request…');
+    card.appendChild(loading);
+    fetch('/api/approvals/' + encodeURIComponent(item.id)).then(function (r) {
+      return r.ok ? r.json() : null;
+    }).then(function (detail) {
+      if (!own(pending, item.id)) return;
+      loading.remove();
+      var approval = detail && detail.approval;
+      if (detail && approval && Array.isArray(detail.fields) && typeof approval.digest === 'string') {
+        renderFields(built.payload, detail.fields);
+        var shown = { id: item.id, kind: item.kind, scopes: approval.scopes };
+        card.appendChild(actions(shown, approval.digest, false));
+        row.appendChild(actions(shown, approval.digest, true));
+      } else {
+        card.appendChild(el('div', 'warden-meta',
+          'The full request can only be shown, and approved, on the computer running Lisa or from a signed-in account.'));
+        card.appendChild(actions(item, null, false));
+      }
+    }).catch(function () {
+      if (!own(pending, item.id)) return;
+      loading.textContent = 'Could not load the full request, so it cannot be approved from here.';
+      card.appendChild(actions(item, null, false));
+    });
   }
 
   function finish(id, verdict) {
-    var entry = pending[id];
+    var entry = own(pending, id);
     if (!entry) return;
     delete pending[id];
-    var words = { approved: 'Approved', denied: 'Denied', expired: 'Expired — not run', dismissed: 'Dismissed' };
     entry.card.classList.add('resolved');
-    var old = entry.card.querySelector('.warden-actions');
-    if (old) old.remove();
-    entry.card.appendChild(el('div', 'warden-result ' + verdict, words[verdict] || verdict));
+    Array.prototype.forEach.call(entry.card.querySelectorAll('.warden-actions'), function (node) { node.remove(); });
+    entry.card.appendChild(el('div', 'warden-result ' + (own(RESULT_WORDS, verdict) ? verdict : ''), own(RESULT_WORDS, verdict) || 'Closed'));
     if (entry.row) entry.row.remove();
     refreshPanel();
   }
@@ -5394,7 +5455,7 @@ if ('serviceWorker' in navigator) {
   function loadPending() {
     fetch('/api/approvals').then(function (r) { return r.ok ? r.json() : null; }).then(function (data) {
       if (!data || !Array.isArray(data.approvals)) return;
-      var live = {};
+      var live = Object.create(null);
       data.approvals.forEach(function (item) { live[item.id] = true; show(item); });
       Object.keys(pending).forEach(function (id) { if (!live[id]) finish(id, 'expired'); });
     }).catch(function () {});

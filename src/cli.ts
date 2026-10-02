@@ -147,7 +147,8 @@ KNOWLEDGE BASE
 
 APPROVALS (Warden — needs a running \`lisa serve --web --approval warden\`)
   lisa approvals               List pending approvals.
-  lisa approvals approve <id> [--scope once|task|target|24h|always]
+  lisa approvals show <id>     The whole request, and its digest.
+  lisa approvals approve <id> --digest <digest> [--scope once|task|target|24h|always]
   lisa approvals deny <id> [--reason "..."]
   lisa warden rules [show|set <category> <auto|preapproved|ask|handoff>]
   lisa warden grants [list|revoke <id>]

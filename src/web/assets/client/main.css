@@ -3356,6 +3356,28 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.warden-field { margin-top: 8px; }
+.warden-field-key {
+  color: var(--fg-2);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 3px;
+}
+.warden-field-value {
+  margin: 0;
+  max-height: 220px;
+  overflow: auto;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-new);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.warden-field.primary .warden-field-value { border-color: var(--accent-glow); }
 .warden-meta { color: var(--fg-2); font-size: 12px; margin-top: 5px; overflow-wrap: anywhere; }
 .warden-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
 .warden-btn {

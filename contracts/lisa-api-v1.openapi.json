@@ -432,6 +432,44 @@
         }
       }
     },
+    "/api/approvals/{id}": {
+      "get": {
+        "operationId": "getApproval",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One pending item with the whole payload its digest covers. Served only to a caller who may approve.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalDetail"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/approvals/{id}/approve": {
       "post": {
         "operationId": "approveApproval",
@@ -1741,7 +1779,7 @@
           },
           "digest": {
             "type": "string",
-            "description": "sha256 of the exact payload this approval is bound to."
+            "description": "HMAC of the exact payload this approval is bound to (per-home key)."
           },
           "taskId": {
             "type": "string"
@@ -1797,14 +1835,17 @@
       },
       "ApprovalApproveRequest": {
         "type": "object",
+        "required": [
+          "digest"
+        ],
         "properties": {
+          "digest": {
+            "type": "string",
+            "description": "The digest of the payload the approver was shown (from GET /api/approvals/{id}). Required; a missing or stale digest is refused."
+          },
           "scope": {
             "type": "string",
             "description": "Open set; v1 values: once, task, target, 24h, always."
-          },
-          "digest": {
-            "type": "string",
-            "description": "Optional: reject if the item's digest differs."
           }
         },
         "additionalProperties": true
@@ -1882,6 +1923,13 @@
           "updatedAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "trustedMcpServers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "MCP servers whose results the user vouches for (they do not taint a run)."
           }
         },
         "additionalProperties": true
@@ -2081,6 +2129,9 @@
           "latencyMs": {
             "type": "integer",
             "minimum": 0
+          },
+          "tainted": {
+            "type": "boolean"
           }
         },
         "additionalProperties": true
@@ -2096,6 +2147,48 @@
             "items": {
               "$ref": "#/components/schemas/WardenAuditEntry"
             }
+          }
+        },
+        "additionalProperties": true
+      },
+      "ApprovalPayloadField": {
+        "type": "object",
+        "required": [
+          "key",
+          "value",
+          "primary"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string",
+            "description": "The whole value, secrets masked, never clipped."
+          },
+          "primary": {
+            "type": "boolean",
+            "description": "Shown first: the field that says what the call does."
+          }
+        },
+        "additionalProperties": true
+      },
+      "ApprovalDetail": {
+        "type": "object",
+        "required": [
+          "approval",
+          "fields"
+        ],
+        "properties": {
+          "approval": {
+            "$ref": "#/components/schemas/ApprovalItem"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ApprovalPayloadField"
+            },
+            "description": "Every field of the tool input, in the server's order (primary fields first)."
           }
         },
         "additionalProperties": true

@@ -67,6 +67,7 @@ describe("warden API contract", () => {
   test("every Warden route is in the OpenAPI contract", () => {
     const expected: Array<[string, string]> = [
       ["/api/approvals", "get"],
+      ["/api/approvals/{id}", "get"],
       ["/api/approvals/{id}/approve", "post"],
       ["/api/approvals/{id}/deny", "post"],
       ["/api/warden/rules", "get"],
@@ -84,7 +85,12 @@ describe("warden API contract", () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "lisa-warden-contract-"));
     const events: WardenEvent[] = [];
     const inbox = new WardenInbox({ emit: (event) => events.push(event) });
-    void inbox.request(req, { home, reason: "publish needs approval" });
+    void inbox.request(req, {
+      home,
+      reason: "publish needs approval",
+      payload: { body: "LGTM", action: "pr_comment", repo: "o/r" },
+      primaryKeys: ["action", "repo", "body"],
+    });
     for (let i = 0; i < 400 && events.length === 0; i++) await new Promise((r) => setTimeout(r, 5));
     const [item] = await inbox.list(null, home);
     assertSatisfies("ApprovalItem", item as unknown as Record<string, unknown>);
@@ -113,7 +119,28 @@ describe("warden API contract", () => {
       assert.ok(card[key] !== undefined, `approval_requested.${key}`);
     }
 
-    const resolved = await inbox.resolve(null, item!.id, { approve: true, scope: "task" });
+    // The detail DTO: the item plus every field of the payload.
+    const detail = inbox.detail(null, item!.id);
+    assert.ok(detail);
+    assertSatisfies("ApprovalDetail", detail as unknown as Record<string, unknown>);
+    assert.deepEqual(
+      detail.fields.map((f) => f.key),
+      ["action", "repo", "body"],
+    );
+    for (const field of detail.fields) {
+      assertSatisfies("ApprovalPayloadField", field as unknown as Record<string, unknown>);
+    }
+    assert.deepEqual(
+      contract.components.schemas.ApprovalApproveRequest!.required,
+      ["digest"],
+      "the contract says approving needs the digest",
+    );
+
+    const resolved = await inbox.resolve(null, item!.id, {
+      approve: true,
+      scope: "task",
+      digest: req.digest,
+    });
     assert.equal(resolved.ok, true);
 
     const [grant] = await createGrants(req, "target", home);
@@ -146,9 +173,25 @@ describe("web client approval cards", () => {
     assert.match(MAIN_CLIENT_JS, /ev\.type === 'approval_resolved'/);
     assert.match(block, /'\/api\/approvals\/' \+ encodeURIComponent\(id\)/);
     assert.match(block, /'content-type': 'application\/json'/);
-    for (const label of ["Approve once", "Approve for this task", "Always", "Deny"]) {
+    for (const label of ["Approve once", "Approve for this task", "For 24 hours", "Always", "Deny"]) {
       assert.ok(block.includes(label), label);
     }
+  });
+
+  test("review 5: the card renders the whole payload from the detail route before any approve button exists", () => {
+    assert.match(block, /fetch\('\/api\/approvals\/' \+ encodeURIComponent\(item\.id\)\)/);
+    assert.match(block, /renderFields\(built\.payload, detail\.fields\)/);
+    // Approve buttons are built only with a digest in hand…
+    assert.match(block, /if \(digest\) \{\s+scopes\.forEach/);
+    // …which is the digest of the payload that was just rendered.
+    assert.match(block, /actions\(shown, approval\.digest, false\)/);
+    // No payload ⇒ deny only.
+    assert.match(block, /actions\(item, null, false\)/);
+    // The scopes come from the server, never a client-side default.
+    assert.equal(/\['once', 'always'\]/.test(block), false);
+    // Maps keyed by server strings are read by own property.
+    assert.match(block, /Object\.create\(null\)/);
+    assert.match(block, /hasOwnProperty\.call\(map, key\)/);
   });
 
   test("previews are never parsed as HTML", () => {
@@ -157,7 +200,7 @@ describe("web client approval cards", () => {
   });
 
   test("approving sends the digest the card was rendered from", () => {
-    assert.match(block, /scope: 'once', digest: item\.digest/);
-    assert.match(block, /scope: 'always', digest: item\.digest/);
+    assert.match(block, /\{ scope: scope, digest: digest \}/);
+    assert.equal(/digest: item\.digest/.test(block), false, "never the digest from the SSE event");
   });
 });

@@ -3,7 +3,8 @@
  * from a terminal (headless hosts, SSH).
  *
  *   lisa approvals [list] [--port N]
- *   lisa approvals approve <id> [--scope once|task|target|24h|always] [--port N]
+ *   lisa approvals show <id> [--port N]            the WHOLE payload, and its digest
+ *   lisa approvals approve <id> --digest <digest> [--scope once|task|target|24h|always] [--port N]
  *   lisa approvals deny <id> [--reason "..."] [--port N]
  *   lisa warden rules [show]
  *   lisa warden rules set <category> <auto|preapproved|ask|handoff>
@@ -18,7 +19,8 @@
 import { Agent, setGlobalDispatcher } from "undici";
 import { readAudit } from "../warden/audit.js";
 import { loadGrants, revokeGrant } from "../warden/grants.js";
-import { LOCKED_CATEGORIES, loadRules, setCategoryRule } from "../warden/rules.js";
+import { LOCKED_CATEGORIES, loadRules, ownBehavior, setCategoryRule } from "../warden/rules.js";
+import type { PayloadField } from "../warden/types.js";
 import {
   ACTION_CATEGORIES,
   GRANT_SCOPES,
@@ -30,7 +32,8 @@ import {
 
 const APPROVALS_USAGE =
   "usage: lisa approvals [list] [--port N]\n" +
-  `       lisa approvals approve <id> [--scope ${GRANT_SCOPES.join("|")}] [--port N]\n` +
+  "       lisa approvals show <id> [--port N]\n" +
+  `       lisa approvals approve <id> --digest <digest> [--scope ${GRANT_SCOPES.join("|")}] [--port N]\n` +
   '       lisa approvals deny <id> [--reason "..."] [--port N]';
 
 const WARDEN_USAGE =
@@ -135,6 +138,46 @@ export async function runApprovalsCommand(
     return 0;
   }
 
+  /** Fetch one item with its whole payload; null (after reporting) when it cannot be shown. */
+  const fetchDetail = async (
+    id: string,
+  ): Promise<{ digest: string; scopes: string[]; fields: PayloadField[] } | null> => {
+    const res = await call("GET", `/api/approvals/${encodeURIComponent(id)}`);
+    if (!res) return null;
+    const body = (await res.json().catch(() => ({}))) as {
+      approval?: { digest?: unknown; scopes?: unknown };
+      fields?: unknown;
+      error?: unknown;
+    };
+    if (!res.ok || typeof body.approval?.digest !== "string" || !Array.isArray(body.fields)) {
+      out.error(`show failed (${res.status}): ${String(body.error ?? "unknown")}`);
+      return null;
+    }
+    return {
+      digest: body.approval.digest,
+      scopes: Array.isArray(body.approval.scopes) ? body.approval.scopes.map(String) : [],
+      fields: body.fields as PayloadField[],
+    };
+  };
+
+  if (action === "show") {
+    const id = rest[1];
+    if (!id) {
+      out.error(APPROVALS_USAGE);
+      return 2;
+    }
+    const detail = await fetchDetail(id);
+    if (!detail) return 1;
+    for (const field of detail.fields) {
+      out.log(`── ${field.key}${field.primary ? "" : " (other)"}`);
+      out.log(String(field.value));
+    }
+    out.log(`── digest ${detail.digest}`);
+    out.log(`── scopes ${detail.scopes.join(", ") || "(none)"}`);
+    out.log(`To approve exactly this: lisa approvals approve ${id} --digest ${detail.digest}`);
+    return 0;
+  }
+
   if (action === "approve" || action === "deny") {
     const id = rest[1];
     if (!id) {
@@ -148,7 +191,16 @@ export async function runApprovalsCommand(
         out.error(`bad --scope "${scope}" — expected one of ${GRANT_SCOPES.join(" | ")}`);
         return 2;
       }
-      body = { scope };
+      // An approval names the payload that was read. The digest comes from
+      // `lisa approvals show <id>`; it is never looked up on the user's behalf.
+      const digest = flags.digest;
+      if (!digest || digest === "true" || digest.length < 12) {
+        out.error(
+          `approve needs --digest. Run \`lisa approvals show ${id}\` to read the request and get its digest.`,
+        );
+        return 2;
+      }
+      body = { scope, digest };
     } else if (flags.reason && flags.reason !== "true") {
       body = { reason: flags.reason };
     }
@@ -189,8 +241,8 @@ export async function runWardenCommand(
         );
       }
       for (const category of ACTION_CATEGORIES) {
-        const locked = LOCKED_CATEGORIES[category];
-        const set = rules.categories[category];
+        const locked = ownBehavior(LOCKED_CATEGORIES, category);
+        const set = ownBehavior(rules.categories, category);
         out.log(`${category.padEnd(11)} ${locked ? `${locked} (fixed)` : (set ?? "default")}`);
       }
       for (const [tool, behavior] of Object.entries(rules.tools)) {
