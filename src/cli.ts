@@ -145,13 +145,18 @@ KNOWLEDGE BASE
   lisa kb search "<query>"     Search sources + wiki (TF-IDF).
   lisa kb brief [YYYY-MM-DD]   Print a daily feeds brief (needs kb/feeds.json).
 
-APPROVALS (Warden — needs a running \`lisa serve --web\`)
+APPROVALS (Warden — needs a running \`lisa serve --web --approval warden\`)
   lisa approvals               List pending approvals.
   lisa approvals approve <id> [--scope once|task|target|24h|always]
   lisa approvals deny <id> [--reason "..."]
   lisa warden rules [show|set <category> <auto|preapproved|ask|handoff>]
   lisa warden grants [list|revoke <id>]
   lisa warden audit [--limit N]
+
+SECRETS (tools get the value through a secret://<name> handle; it is never shown)
+  lisa secret set <name>       Store a secret (hidden prompt, or pipe it on stdin).
+  lisa secret list             List names and timestamps.
+  lisa secret rm <name>        Delete a secret.
 
 LISA CLOUD (managed inference — models without a BYO key run key-free)
   lisa login [url] [--password]
@@ -465,6 +470,11 @@ async function main(): Promise<void> {
     const { runApprovalsCommand, runWardenCommand } = await import("./cli/warden.js");
     const run = args.subcommand === "approvals" ? runApprovalsCommand : runWardenCommand;
     process.exit(await run(args.subargs));
+  }
+
+  if (args.subcommand === "secret") {
+    const { runSecretCommand } = await import("./cli/secret.js");
+    process.exit(await runSecretCommand(args.subargs));
   }
 
   if (args.subcommand === "sessions") {
