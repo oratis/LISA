@@ -11,11 +11,11 @@
  */
 import type http from "node:http";
 import { scopedUid } from "../paths.js";
-import { createTaskCardDeliver, type CardDeliverDeps } from "../tasks/delivery.js";
+import { createReachOutTransports, type PushSink } from "../reachout/deliver.js";
+import { createTaskCardDeliver, type CardDeliverDeps, type TaskReachOut } from "../tasks/delivery.js";
 import { migrateHeartbeatTasks } from "../tasks/heartbeat-migration.js";
 import type { ModelGate, TaskEngineEvent, TaskRunner, WatchCheck } from "../tasks/runner.js";
 import { createTaskRunner, startTaskScheduler, type TaskSchedulerHandle } from "../tasks/scheduler.js";
-import type { TaskNotice } from "../tasks/types.js";
 import {
   getDefaultTaskDeliver,
   getTaskEventSink,
@@ -34,11 +34,18 @@ export interface TaskHostOptions {
   model: string;
   cwd: string;
   /** Tenant-aware SSE broadcast (origin defaults to the current home scope). */
-  broadcast: (event: Record<string, unknown>) => void;
+  broadcast: (event: Record<string, unknown>, origin?: string | null) => void;
   /** Access to the current tenant's conversation, serialised with its chat turns. */
   withConversation: CardDeliverDeps["withConversation"];
-  /** Optional push for delivered cards (Mac edition: the PushBridge idle path). */
-  push?: (notice: TaskNotice, card: string) => void;
+  /**
+   * The server's reach-out gate (reachout-wiring.ts `makeServerReachOut`).
+   * Every task result is delivered through it — never around it.
+   */
+  reachOut: TaskReachOut;
+  /** The machine-level push channel (PushBridge). The gate decides if and when it fires. */
+  pushSink?: PushSink;
+  /** Keep a delivered note as the current tenant's "latest note" (the island's unread state). */
+  rememberNote?: (note: { text: string; at: string }) => void | Promise<void>;
   /** Hosted edition: billing admission for the tenant's model calls. Required to run cloud tasks. */
   modelGateFor?: (uid: string) => ModelGate;
   checkWatch?: WatchCheck;
@@ -62,12 +69,22 @@ export function createTaskHost(opts: TaskHostOptions): TaskHost {
   const onEvent = (event: TaskEngineEvent): void => opts.broadcast({ ...event });
 
   const cardDeliver = createTaskCardDeliver({
+    reachOut: opts.reachOut,
     withConversation: opts.withConversation,
-    broadcast: opts.broadcast,
-    ...(opts.push ? { push: opts.push } : {}),
+    broadcast: (event) => opts.broadcast(event),
+    // The gate's generic transports: the standard in-app note event (+ the
+    // tenant's latest-note memory) and the push. Which of them fire, and when,
+    // is the gate's decision.
+    transports: createReachOutTransports({
+      inapp: {
+        emit: (event, uid) => opts.broadcast(event, uid),
+        ...(opts.rememberNote ? { remember: (note) => opts.rememberNote!(note) } : {}),
+      },
+      ...(opts.pushSink ? { push: opts.pushSink } : {}),
+    }),
   });
-  // The channel of last resort; a Reach-out gate installed with setTaskDeliver
-  // takes precedence and may call this one to pass a notice through.
+  // The default delivery. A deliver installed with setTaskDeliver takes
+  // precedence (and may call this one to pass a notice through).
   setDefaultTaskDeliver(cardDeliver);
   // Changes the model makes through its task tools reach open clients too.
   setTaskEventSink(onEvent);

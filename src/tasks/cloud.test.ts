@@ -353,6 +353,7 @@ function host(over: { cloudEnabled: boolean; gate: boolean }) {
     model: "m",
     cwd: os.tmpdir(),
     broadcast: () => {},
+    reachOut: async () => ({ id: "ro_1", deliver: false, channels: [], reason: "no-channel" }),
     withConversation: (fn) => fn({ history: [], append: async () => {} }),
     cloudEnabled: over.cloudEnabled,
     ...(over.gate ? { modelGateFor: (uid: string) => cloudModelGate(uid, { deps: admission().deps }) } : {}),

@@ -2494,9 +2494,18 @@
           "at": {
             "type": "string",
             "format": "date-time"
+          },
+          "from": {
+            "type": "string",
+            "description": "Always \"Lisa\" — the reach-out gate stamps every proactive message."
+          },
+          "reachOutId": {
+            "type": "string",
+            "description": "Reach-out ledger id; pass it to POST /api/reachout/feedback. The gate also emits an idle_message (source task|watcher) carrying the same id."
           }
         },
-        "additionalProperties": true
+        "additionalProperties": true,
+        "description": "A task result the reach-out gate let through. The same result is stored as a card in the conversation."
       }
     }
   }

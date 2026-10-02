@@ -503,6 +503,11 @@ describe("tasks API — contract", () => {
     const { createTaskCardDeliver } = await import("../tasks/delivery.js");
     const events: unknown[] = [];
     const deliver = createTaskCardDeliver({
+      // A gate that allows in-app, as reachOut() does for a task result by default.
+      reachOut: async (n, transports) => {
+        await transports.inapp({ ...n, id: "ro_1", from: "Lisa", ai: true, at: new Date().toISOString() });
+        return { id: "ro_1", deliver: true, channels: ["inapp"], reason: "solicited" };
+      },
       withConversation: (fn) => fn({ history: [], append: async () => {} }),
       broadcast: (e) => events.push(e),
     });

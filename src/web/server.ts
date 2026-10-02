@@ -823,7 +823,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   scheduleServerCatchUp({ pushBridge, log: (m) => logInfo(m) });
   // ── Task Engine (W1): durable routines / watchers / one-offs ────────
   // Everything lives in tasks-host.ts; this is only the wiring to the pieces
-  // that are closures of this server (conversation, SSE fan-out, push).
+  // that are closures of this server (conversation, SSE fan-out, the gate).
   const taskHost = createTaskHost({
     cloud: cloudEdition,
     profile: capabilityProfile,
@@ -832,6 +832,18 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     cwd: process.cwd(),
     broadcast,
     log: logInfo,
+    // Results reach the user through the reach-out gate, like every other
+    // proactive message; the gate decides whether the push channel fires.
+    reachOut: reachOutVia,
+    pushSink: pushBridge,
+    rememberNote: async (note) => {
+      const lease = await ctxForRequest();
+      try {
+        lease.value.activity.lastIdleMessage = note;
+      } finally {
+        lease.release();
+      }
+    },
     // Hosted: every model call of a tenant's run goes through billing admission.
     ...(cloudEdition ? { modelGateFor: (uid: string) => cloudModelGate(uid) } : {}),
     withConversation: async (fn) => {
