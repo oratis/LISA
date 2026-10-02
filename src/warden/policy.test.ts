@@ -404,6 +404,19 @@ test("user rules: tighten freely, loosen only within the floors", () => {
   assert.equal(verdict({ tool: "other", category: "publish" }, { rules: layered }), "allow");
 });
 
+test("a handoff rule outranks a grant that predates it; an ask rule does not", () => {
+  const r = req({ tool: "github", category: "publish", method: "pr_merge", targets: ["o/r"] });
+  const grants = [...grantsFor(r, "always", NOW), ...grantsFor(r, "once", NOW)];
+  assert.equal(evaluate(r, ctx({ grants })).verdict, "allow");
+  const handBack = parseRules({ categories: { publish: "handoff" } });
+  const result = evaluate(r, ctx({ grants, rules: handBack }));
+  assert.equal(result.verdict, "handoff");
+  assert.equal(result.grantId, undefined);
+  // "ask" + the user having answered "always" is exactly how a grant is meant to work.
+  const ask = parseRules({ categories: { publish: "ask" } });
+  assert.equal(evaluate(r, ctx({ grants, rules: ask })).verdict, "allow");
+});
+
 test("a corrupt rules file floors every side effect at ask", () => {
   for (const category of SIDE_EFFECTING) {
     const result = evaluate(

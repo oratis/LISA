@@ -183,7 +183,7 @@ import { ScreenSource } from "../sense/screen.js";
 import { VoiceSource } from "../sense/voice.js";
 import { appendSenseEvent, readSenseEvents } from "../sense/log.js";
 import { handleSocialApi } from "./social-api.js";
-import { createWebWarden, handleWardenApi } from "./warden-api.js";
+import { createWebWarden, handleWardenApi, wardenTrust } from "./warden-api.js";
 import {
   loadScreenAdvisorConfig,
   saveScreenAdvisorConfig,
@@ -2432,8 +2432,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         inbox: warden.inbox,
         uid: scopedUid(),
         home: lisaHome(),
-        allowApproval: (!cloud && isLoopbackAddress(remoteAddr)) || accountUid !== null,
-        loopbackTrust: accountUid === null,
+        ...wardenTrust({ cloud, loopback: isLoopbackAddress(remoteAddr), accountUid }),
       })
     ) {
       return;

@@ -228,6 +228,18 @@ export function evaluate(req: ActionRequest, ctx: PolicyContext): PolicyResult {
   const invariant = systemInvariant(req, ctx);
   if (invariant) return finalize(req, invariant);
 
+  // A "handoff" rule is the user saying "never do this for me". No approval
+  // could have been given under it, so a grant that predates the rule does not
+  // outrank it.
+  const user = ruleFor(ctx.rules, req);
+  if (user?.behavior === "handoff") {
+    return finalize(req, {
+      verdict: "handoff",
+      reason: "Your rules hand this kind of action back to you.",
+      ruleId: user.ruleId,
+    });
+  }
+
   const sensitiveEgress = needsRecipientGrant(req);
   // A shell command the caller flagged as naming Warden's state or approval
   // API. The flag is a string heuristic, so it asks (every time, for this
@@ -266,7 +278,6 @@ export function evaluate(req: ActionRequest, ctx: PolicyContext): PolicyResult {
   // floor below — not a generic default — is recorded as the reason.
   let behavior = defaultBehavior({ ...req, tainted: false });
   let ruleId = `default:${req.category}`;
-  const user = ruleFor(ctx.rules, req);
   if (user) {
     behavior = user.behavior;
     ruleId = user.ruleId;

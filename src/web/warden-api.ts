@@ -51,6 +51,31 @@ export interface WardenApiOptions {
   loopbackTrust: boolean;
 }
 
+/**
+ * Who may answer approvals and change Warden state, from what the server's
+ * auth gate established about the caller.
+ *
+ *  - A signed-in per-user session may (cloud or not).
+ *  - The loopback peer may on the Mac edition — the person at the machine.
+ *    On the hosted edition loopback is a proxy hop, not an owner.
+ *  - Anyone else who passed the gate (shared web token, paired-device token
+ *    from the LAN) can read their inbox but not answer it.
+ *
+ * `loopbackTrust` is true only when loopback is the SOLE reason the caller is
+ * trusted; that is when the Host header has to be a loopback name too.
+ */
+export function wardenTrust(caller: {
+  cloud: boolean;
+  loopback: boolean;
+  accountUid: string | null;
+}): Pick<WardenApiOptions, "allowApproval" | "loopbackTrust"> {
+  const loopbackOwner = !caller.cloud && caller.loopback;
+  return {
+    allowApproval: loopbackOwner || caller.accountUid !== null,
+    loopbackTrust: loopbackOwner && caller.accountUid === null,
+  };
+}
+
 function json(res: http.ServerResponse, status: number, value: unknown): void {
   res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
   res.end(JSON.stringify(value));

@@ -4,7 +4,7 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, test } from "node:test";
-import { crossSiteProblem, createWebWarden, handleWardenApi } from "./warden-api.js";
+import { crossSiteProblem, createWebWarden, handleWardenApi, wardenTrust } from "./warden-api.js";
 import { WardenInbox } from "../warden/inbox.js";
 import { createGrants, loadGrants } from "../warden/grants.js";
 import { loadRules } from "../warden/rules.js";
@@ -472,6 +472,36 @@ describe("warden API", () => {
       1,
     );
     assert.equal((await call("GET", "/api/warden/nope")).status, 404);
+  });
+});
+
+describe("wardenTrust", () => {
+  test("who may approve, and when the Host header must be loopback", () => {
+    // The person at the Mac.
+    assert.deepEqual(wardenTrust({ cloud: false, loopback: true, accountUid: null }), {
+      allowApproval: true,
+      loopbackTrust: true,
+    });
+    // A paired phone / shared web token over the LAN: may read, may not answer,
+    // and is not held to a loopback Host.
+    assert.deepEqual(wardenTrust({ cloud: false, loopback: false, accountUid: null }), {
+      allowApproval: false,
+      loopbackTrust: false,
+    });
+    // A signed-in cloud account.
+    assert.deepEqual(wardenTrust({ cloud: true, loopback: false, accountUid: "u1" }), {
+      allowApproval: true,
+      loopbackTrust: false,
+    });
+    // On the hosted edition loopback is a proxy hop, never an owner.
+    assert.deepEqual(wardenTrust({ cloud: true, loopback: true, accountUid: null }), {
+      allowApproval: false,
+      loopbackTrust: false,
+    });
+    assert.deepEqual(wardenTrust({ cloud: true, loopback: true, accountUid: "u1" }), {
+      allowApproval: true,
+      loopbackTrust: false,
+    });
   });
 });
 

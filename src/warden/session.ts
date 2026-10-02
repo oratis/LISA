@@ -15,7 +15,7 @@ import type { AgentEvent, ToolDefinition } from "../types.js";
 import type { SandboxMode } from "../sandbox/mode.js";
 import { lisaHome } from "../paths.js";
 import { logWarn } from "../log.js";
-import { auditDecision } from "./audit.js";
+import { auditDecision, auditQuietly } from "./audit.js";
 import { loadGrants, useGrants, type LoadedGrants } from "./grants.js";
 import type { WardenInbox } from "./inbox.js";
 import { evaluate, type PolicyResult } from "./policy.js";
@@ -253,11 +253,10 @@ export function createWardenSession(opts: WardenSessionOptions): WardenSession {
         reason: "Warden could not evaluate this action, so it was not run.",
         ruleId: "system:warden-error",
       };
-      return {
-        decision: { allow: false, reason: verdict.reason },
-        request: buildFallbackRequest(toolName, opts, now()),
-        verdict,
-      };
+      const request = buildFallbackRequest(toolName, opts, now());
+      // The refusal is still a decision; record it if the log is reachable.
+      await auditQuietly(auditDecision(request, verdict, { home, now: now() }));
+      return { decision: { allow: false, reason: verdict.reason }, request, verdict };
     }
   }
 
