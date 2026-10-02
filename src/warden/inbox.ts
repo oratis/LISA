@@ -15,13 +15,7 @@ import path from "node:path";
 import { logWarn } from "../log.js";
 import { auditQuietly, auditResolution } from "./audit.js";
 import { createGrants, revokeGrant, scopeProblem } from "./grants.js";
-import {
-  newId,
-  quarantineCorrupt,
-  readJsonState,
-  wardenDir,
-  writeJsonAtomic,
-} from "./store.js";
+import { newId, quarantineCorrupt, readJsonState, wardenDir, writeJsonAtomic } from "./store.js";
 import {
   GRANT_SCOPES,
   isActionCategory,
@@ -114,7 +108,14 @@ export type ResolveError =
   | "audit_failed";
 
 export type ResolveResult =
-  | { ok: true; id: string; verdict: "approved" | "denied" | "dismissed"; scope?: GrantScope; grantIds?: string[]; grantError?: string }
+  | {
+      ok: true;
+      id: string;
+      verdict: "approved" | "denied" | "dismissed";
+      scope?: GrantScope;
+      grantIds?: string[];
+      grantError?: string;
+    }
   | { ok: false; error: ResolveError; message?: string };
 
 export interface InboxOptions {
@@ -389,7 +390,9 @@ export class WardenInbox {
     let grantError: string | undefined;
     if (scope !== "once") {
       try {
-        grantIds = (await createGrants(item.request, scope, item.home, this.now())).map((g) => g.id);
+        grantIds = (await createGrants(item.request, scope, item.home, this.now())).map(
+          (g) => g.id,
+        );
       } catch (err) {
         // The user approved THIS payload; a failed grant write narrows the
         // approval to this one call rather than widening or losing it.

@@ -9,13 +9,7 @@
 import path from "node:path";
 import { withFileLock } from "../soul/lock.js";
 import { logWarn } from "../log.js";
-import {
-  newId,
-  quarantineCorrupt,
-  readJsonState,
-  wardenDir,
-  writeJsonAtomic,
-} from "./store.js";
+import { newId, quarantineCorrupt, readJsonState, wardenDir, writeJsonAtomic } from "./store.js";
 import {
   isActionCategory,
   isGrantScope,
@@ -91,7 +85,7 @@ function parseGrant(value: unknown): StoredGrant | null {
     taskId: g.taskId,
     digest: g.digest,
     method: g.method,
-    column: g.column as OriginColumn | undefined,
+    column: g.column,
     expiresAt: g.expiresAt,
     uses: g.uses,
     lastUsedAt: g.lastUsedAt,

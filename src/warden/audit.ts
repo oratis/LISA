@@ -108,7 +108,9 @@ async function rotateIfNeeded(dir: string, now: number): Promise<void> {
   await prune(dir, now);
 }
 
-async function rolledFiles(dir: string): Promise<Array<{ name: string; day: string; seq: number }>> {
+async function rolledFiles(
+  dir: string,
+): Promise<Array<{ name: string; day: string; seq: number }>> {
   let names: string[];
   try {
     names = await fs.readdir(dir);

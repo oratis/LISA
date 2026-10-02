@@ -87,7 +87,12 @@ function request(uid: string | null, over: Partial<ActionRequest> = {}): ActionR
 async function call(
   method: string,
   route: string,
-  opts: { uid?: string; trust?: "loopback" | "account" | "none"; body?: unknown; headers?: Record<string, string> } = {},
+  opts: {
+    uid?: string;
+    trust?: "loopback" | "account" | "none";
+    body?: unknown;
+    headers?: Record<string, string>;
+  } = {},
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   const headers: Record<string, string> = { ...(opts.headers ?? {}) };
   if (opts.uid) headers["x-test-uid"] = opts.uid;
@@ -99,7 +104,7 @@ async function call(
   }
   const res = await fetch(origin + route, { method, headers, body });
   const text = await res.text();
-  let parsed: Record<string, unknown> = {};
+  let parsed: Record<string, unknown>;
   try {
     parsed = JSON.parse(text) as Record<string, unknown>;
   } catch {
@@ -111,8 +116,12 @@ async function call(
 /** Queue an approval for `uid` and return its id plus the waiter. */
 async function queue(uid: string | null, over: Partial<ActionRequest> = {}) {
   const before = events.length;
-  const waiting = inbox.request(request(uid, over), { home: homeFor(uid), reason: "needs approval" });
-  for (let i = 0; i < 400 && events.length === before; i++) await new Promise((r) => setTimeout(r, 5));
+  const waiting = inbox.request(request(uid, over), {
+    home: homeFor(uid),
+    reason: "needs approval",
+  });
+  for (let i = 0; i < 400 && events.length === before; i++)
+    await new Promise((r) => setTimeout(r, 5));
   const event = events[before]!.event;
   return { id: event.id, waiting };
 }
@@ -137,7 +146,9 @@ describe("warden API", () => {
     assert.equal("uid" in approvals[0]!, false);
     assert.equal(list.body.canApprove, true);
 
-    const approved = await call("POST", `/api/approvals/${id}/approve`, { body: { scope: "always" } });
+    const approved = await call("POST", `/api/approvals/${id}/approve`, {
+      body: { scope: "always" },
+    });
     assert.equal(approved.status, 200);
     assert.equal(approved.body.verdict, "approved");
     assert.equal(approved.body.scope, "always");
@@ -189,58 +200,125 @@ describe("warden API", () => {
       settled = true;
     });
     const [grantB] = await createGrants(request("userB"), "always", homeFor("userB"));
-    await auditDecision(request("userB"), { verdict: "ask", reason: "r" }, { home: homeFor("userB") });
+    await auditDecision(
+      request("userB"),
+      { verdict: "ask", reason: "r" },
+      { home: homeFor("userB") },
+    );
 
     const asA = { uid: "userA", trust: "account" as const };
     assert.deepEqual((await call("GET", "/api/approvals", asA)).body.approvals, []);
     assert.deepEqual((await call("GET", "/api/warden/grants", asA)).body.grants, []);
     assert.deepEqual((await call("GET", "/api/warden/audit", asA)).body.entries, []);
-    const approve = await call("POST", `/api/approvals/${idB}/approve`, { ...asA, body: { scope: "always" } });
+    const approve = await call("POST", `/api/approvals/${idB}/approve`, {
+      ...asA,
+      body: { scope: "always" },
+    });
     assert.equal(approve.status, 404);
     assert.equal(approve.body.error, "approval_not_found");
-    assert.equal((await call("POST", `/api/approvals/${idB}/deny`, { ...asA, body: {} })).status, 404);
+    assert.equal(
+      (await call("POST", `/api/approvals/${idB}/deny`, { ...asA, body: {} })).status,
+      404,
+    );
     assert.equal((await call("DELETE", `/api/warden/grants/${grantB!.id}`, asA)).status, 404);
     // The unscoped (shared-token) caller is not userB either.
-    assert.equal((await call("POST", `/api/approvals/${idB}/approve`, { trust: "loopback", body: {} })).status, 404);
+    assert.equal(
+      (await call("POST", `/api/approvals/${idB}/approve`, { trust: "loopback", body: {} })).status,
+      404,
+    );
     // A uid in the body or query is ignored.
     assert.equal(
-      (await call("POST", `/api/approvals/${idB}/approve?uid=userB`, { ...asA, body: { uid: "userB", scope: "once" } })).status,
+      (
+        await call("POST", `/api/approvals/${idB}/approve?uid=userB`, {
+          ...asA,
+          body: { uid: "userB", scope: "once" },
+        })
+      ).status,
       404,
     );
     // A rules change by A lands in A's home only.
-    assert.equal((await call("PUT", "/api/warden/rules", { ...asA, body: { categories: { send: "handoff" } } })).status, 200);
+    assert.equal(
+      (
+        await call("PUT", "/api/warden/rules", {
+          ...asA,
+          body: { categories: { send: "handoff" } },
+        })
+      ).status,
+      200,
+    );
     assert.equal((await loadRules(homeFor("userA"))).rules.categories.send, "handoff");
     assert.deepEqual((await loadRules(homeFor("userB"))).rules.categories, {});
 
     assert.equal(settled, false, "B's approval is untouched");
     assert.equal((await loadGrants(homeFor("userB"))).grants.length, 1);
-    assert.equal(events.every((e) => e.uid === "userB"), true);
+    assert.equal(
+      events.every((e) => e.uid === "userB"),
+      true,
+    );
 
     const asB = { uid: "userB", trust: "account" as const };
-    assert.equal(((await call("GET", "/api/approvals", asB)).body.approvals as unknown[]).length, 1);
-    assert.equal(((await call("GET", "/api/warden/audit", asB)).body.entries as unknown[]).length, 1);
-    assert.equal((await call("POST", `/api/approvals/${idB}/approve`, { ...asB, body: {} })).status, 200);
+    assert.equal(
+      ((await call("GET", "/api/approvals", asB)).body.approvals as unknown[]).length,
+      1,
+    );
+    assert.equal(
+      ((await call("GET", "/api/warden/audit", asB)).body.entries as unknown[]).length,
+      1,
+    );
+    assert.equal(
+      (await call("POST", `/api/approvals/${idB}/approve`, { ...asB, body: {} })).status,
+      200,
+    );
     assert.equal((await waiting).approved, true);
   });
 
   test("bad answers: scope, digest, content type, JSON, size", async () => {
     const { id, waiting } = await queue(null, { targets: [] });
     const route = `/api/approvals/${id}/approve`;
-    assert.equal((await call("POST", route, { body: { scope: "forever" } })).body.error, "invalid_scope");
-    assert.equal((await call("POST", route, { body: { scope: "task" } })).body.error, "scope_not_applicable");
-    assert.equal((await call("POST", route, { body: { digest: "0".repeat(63) + "x" } })).status, 409);
-    assert.equal((await call("POST", route, { body: "scope=always", headers: { "content-type": "text/plain" } })).status, 415);
     assert.equal(
-      (await call("POST", route, { body: "scope=always", headers: { "content-type": "application/x-www-form-urlencoded" } })).status,
+      (await call("POST", route, { body: { scope: "forever" } })).body.error,
+      "invalid_scope",
+    );
+    assert.equal(
+      (await call("POST", route, { body: { scope: "task" } })).body.error,
+      "scope_not_applicable",
+    );
+    assert.equal(
+      (await call("POST", route, { body: { digest: "0".repeat(63) + "x" } })).status,
+      409,
+    );
+    assert.equal(
+      (
+        await call("POST", route, {
+          body: "scope=always",
+          headers: { "content-type": "text/plain" },
+        })
+      ).status,
+      415,
+    );
+    assert.equal(
+      (
+        await call("POST", route, {
+          body: "scope=always",
+          headers: { "content-type": "application/x-www-form-urlencoded" },
+        })
+      ).status,
       415,
     );
     assert.equal((await call("POST", route)).status, 415, "no body, no content type");
     assert.equal((await call("POST", route, { body: "{not json" })).status, 400);
     assert.equal((await call("POST", route, { body: "[]" })).status, 400);
-    assert.equal((await call("POST", route, { body: { reason: "x".repeat(70 * 1024) } })).status, 413);
+    assert.equal(
+      (await call("POST", route, { body: { reason: "x".repeat(70 * 1024) } })).status,
+      413,
+    );
     assert.equal((await call("GET", route)).status, 405);
     assert.equal((await call("DELETE", "/api/approvals")).status, 405);
-    assert.equal(((await call("GET", "/api/approvals")).body.approvals as unknown[]).length, 1, "still pending");
+    assert.equal(
+      ((await call("GET", "/api/approvals")).body.approvals as unknown[]).length,
+      1,
+      "still pending",
+    );
     await call("POST", `/api/approvals/${id}/deny`, { body: {} });
     assert.equal((await waiting).approved, false);
   });
@@ -248,12 +326,29 @@ describe("warden API", () => {
   test("cross-site and rebinding requests are refused", async () => {
     const { id, waiting } = await queue(null);
     const route = `/api/approvals/${id}/approve`;
-    const cross = await call("POST", route, { body: {}, headers: { origin: "https://evil.example" } });
+    const cross = await call("POST", route, {
+      body: {},
+      headers: { origin: "https://evil.example" },
+    });
     assert.equal(cross.status, 403);
     assert.equal(cross.body.error, "cross_origin_request");
-    assert.equal((await call("POST", route, { body: {}, headers: { "sec-fetch-site": "cross-site" } })).status, 403);
-    assert.equal((await call("POST", route, { body: {}, headers: { origin: "null" } })).status, 403);
-    assert.equal((await call("PUT", "/api/warden/rules", { body: {}, headers: { origin: "https://evil.example" } })).status, 403);
+    assert.equal(
+      (await call("POST", route, { body: {}, headers: { "sec-fetch-site": "cross-site" } })).status,
+      403,
+    );
+    assert.equal(
+      (await call("POST", route, { body: {}, headers: { origin: "null" } })).status,
+      403,
+    );
+    assert.equal(
+      (
+        await call("PUT", "/api/warden/rules", {
+          body: {},
+          headers: { origin: "https://evil.example" },
+        })
+      ).status,
+      403,
+    );
     // Same-origin is fine.
     const same = await call("POST", `/api/approvals/${id}/deny`, { body: {}, headers: { origin } });
     assert.equal(same.status, 200);
@@ -261,9 +356,18 @@ describe("warden API", () => {
 
     const fake = (headers: http.IncomingHttpHeaders) => ({ headers }) as http.IncomingMessage;
     // Loopback trust requires a loopback Host (DNS rebinding / tunnels).
-    assert.equal(crossSiteProblem(fake({ host: "evil.example:5757" }), true, null), "untrusted_host");
+    assert.equal(
+      crossSiteProblem(fake({ host: "evil.example:5757" }), true, null),
+      "untrusted_host",
+    );
     assert.equal(crossSiteProblem(fake({ host: "evil.example" }), false, null), null);
-    for (const host of ["localhost:5757", "127.0.0.1:5757", "[::1]:5757", "lisa.localhost", "127.0.0.2"]) {
+    for (const host of [
+      "localhost:5757",
+      "127.0.0.1:5757",
+      "[::1]:5757",
+      "lisa.localhost",
+      "127.0.0.2",
+    ]) {
       assert.equal(crossSiteProblem(fake({ host }), true, null), null, host);
     }
     for (const host of ["127.0.0.1.evil.example", "localhost.evil.example", "", "10.0.0.5:5757"]) {
@@ -272,14 +376,25 @@ describe("warden API", () => {
     assert.equal(crossSiteProblem(fake({}), true, null), "untrusted_host");
     // The operator's canonical origin is accepted even when a proxy rewrote Host.
     assert.equal(
-      crossSiteProblem(fake({ host: "internal.run.app", origin: "https://cloud.example" }), false, "https://cloud.example"),
+      crossSiteProblem(
+        fake({ host: "internal.run.app", origin: "https://cloud.example" }),
+        false,
+        "https://cloud.example",
+      ),
       null,
     );
     assert.equal(
-      crossSiteProblem(fake({ host: "internal.run.app", origin: "https://cloud.example.evil.test" }), false, "https://cloud.example"),
+      crossSiteProblem(
+        fake({ host: "internal.run.app", origin: "https://cloud.example.evil.test" }),
+        false,
+        "https://cloud.example",
+      ),
       "cross_origin_request",
     );
-    assert.equal(crossSiteProblem(fake({ host: "a", origin: "not a url" }), false, null), "bad_origin");
+    assert.equal(
+      crossSiteProblem(fake({ host: "a", origin: "not a url" }), false, null),
+      "bad_origin",
+    );
   });
 
   test("rules: read, replace, and reject invalid or invariant-breaking documents", async () => {
@@ -290,7 +405,9 @@ describe("warden API", () => {
     assert.deepEqual(initial.body.locked, { purchase: "handoff", credential: "handoff" });
     assert.deepEqual(initial.body.behaviors, ["auto", "preapproved", "ask", "handoff"]);
 
-    const put = await call("PUT", "/api/warden/rules", { body: { rules: { categories: { exec: "ask" }, tools: { bash: "handoff" } } } });
+    const put = await call("PUT", "/api/warden/rules", {
+      body: { rules: { categories: { exec: "ask" }, tools: { bash: "handoff" } } },
+    });
     assert.equal(put.status, 200);
     assert.equal((await loadRules(homeFor(null))).rules.categories.exec, "ask");
 
@@ -305,7 +422,11 @@ describe("warden API", () => {
       assert.equal(res.status, 400, JSON.stringify(bad));
       assert.equal(res.body.error, "invalid_rules");
     }
-    assert.equal((await loadRules(homeFor(null))).rules.categories.exec, "ask", "unchanged by rejected writes");
+    assert.equal(
+      (await loadRules(homeFor(null))).rules.categories.exec,
+      "ask",
+      "unchanged by rejected writes",
+    );
     assert.equal((await call("POST", "/api/warden/rules", { body: {} })).status, 405);
 
     fs.writeFileSync(path.join(homeFor(null), "warden", "rules.json"), "{oops");
@@ -324,21 +445,42 @@ describe("warden API", () => {
     assert.equal((await call("POST", "/api/warden/grants", { body: {} })).status, 405);
 
     for (let i = 0; i < 3; i++) {
-      await auditDecision(request(null), { verdict: "allow", reason: "r" }, { home: homeFor(null) });
+      await auditDecision(
+        request(null),
+        { verdict: "allow", reason: "r" },
+        { home: homeFor(null) },
+      );
     }
-    const all = (await call("GET", "/api/warden/audit")).body.entries as Array<Record<string, unknown>>;
+    const all = (await call("GET", "/api/warden/audit")).body.entries as Array<
+      Record<string, unknown>
+    >;
     assert.equal(all.length, 4, "3 decisions + the revoke");
-    assert.equal(all.some((e) => e.kind === "grant_revoked"), true);
-    assert.equal(((await call("GET", "/api/warden/audit?limit=2")).body.entries as unknown[]).length, 2);
-    assert.equal(((await call("GET", "/api/warden/audit?limit=abc")).body.entries as unknown[]).length, 4);
-    assert.equal(((await call("GET", "/api/warden/audit?limit=-5")).body.entries as unknown[]).length, 1);
+    assert.equal(
+      all.some((e) => e.kind === "grant_revoked"),
+      true,
+    );
+    assert.equal(
+      ((await call("GET", "/api/warden/audit?limit=2")).body.entries as unknown[]).length,
+      2,
+    );
+    assert.equal(
+      ((await call("GET", "/api/warden/audit?limit=abc")).body.entries as unknown[]).length,
+      4,
+    );
+    assert.equal(
+      ((await call("GET", "/api/warden/audit?limit=-5")).body.entries as unknown[]).length,
+      1,
+    );
     assert.equal((await call("GET", "/api/warden/nope")).status, 404);
   });
 });
 
 describe("createWebWarden", () => {
   test("is inert unless the policy selects warden", () => {
-    const off = createWebWarden({ approval: "auto", surface: "local-web", sandboxMode: "danger-full-access" }, () => {});
+    const off = createWebWarden(
+      { approval: "auto", surface: "local-web", sandboxMode: "danger-full-access" },
+      () => {},
+    );
     assert.equal(off.enabled, false);
     assert.equal(
       off.turn({ uid: null, sandboxMode: undefined, workspaceRoot: "/w", tools: [] }),
@@ -357,10 +499,18 @@ describe("createWebWarden", () => {
         { approvalTimeoutMs: 20 },
       );
       const turn = (conversationId: string) =>
-        warden.turn({ uid: null, sandboxMode: undefined, workspaceRoot: "/w", tools: [], conversationId })!;
+        warden.turn({
+          uid: null,
+          sandboxMode: undefined,
+          workspaceRoot: "/w",
+          tools: [],
+          conversationId,
+        })!;
       const first = turn("c1");
       assert.deepEqual(await first.approval("bash", { command: "ls" }), { allow: true });
-      assert.deepEqual(await first.approval("web_fetch", { url: "https://example.com" }), { allow: true });
+      assert.deepEqual(await first.approval("web_fetch", { url: "https://example.com" }), {
+        allow: true,
+      });
       // Next turn of the same conversation: the fetched page is still in history.
       const second = turn("c1");
       assert.equal((await second.approval("bash", { command: "ls" })).allow, false);

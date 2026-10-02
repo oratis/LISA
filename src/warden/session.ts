@@ -132,18 +132,23 @@ export function createWardenSession(opts: WardenSessionOptions): WardenSession {
 
   async function pipeline(toolName: string, toolInput: unknown): Promise<WardenOutcome> {
     const started = now();
-    const { req, taintSource } = buildActionRequest(toolName, toolInput, toolsByName.get(toolName), {
-      uid: opts.uid,
-      surface: opts.surface,
-      origin: opts.origin,
-      taskId: opts.taskId,
-      workspaceRoot: opts.workspaceRoot,
-      sandboxMode: opts.sandboxMode,
-      tainted,
-      purpose: opts.purpose,
-      dataClassHints: opts.dataClassHints,
-      now: started,
-    });
+    const { req, taintSource } = buildActionRequest(
+      toolName,
+      toolInput,
+      toolsByName.get(toolName),
+      {
+        uid: opts.uid,
+        surface: opts.surface,
+        origin: opts.origin,
+        taskId: opts.taskId,
+        workspaceRoot: opts.workspaceRoot,
+        sandboxMode: opts.sandboxMode,
+        tainted,
+        purpose: opts.purpose,
+        dataClassHints: opts.dataClassHints,
+        now: started,
+      },
+    );
     // A shell command that names Warden's state directory or its approval API
     // is flagged as touching protected state, which makes the policy ask for
     // this exact command whatever grants or rules exist. Best effort — a
@@ -280,7 +285,7 @@ const WARDEN_STATE_PATTERN =
 export function mentionsWardenState(input: unknown, wardenPath: string): boolean {
   let text: string;
   try {
-    text = typeof input === "string" ? input : JSON.stringify(input) ?? "";
+    text = typeof input === "string" ? input : (JSON.stringify(input) ?? "");
   } catch {
     return true; // unserialisable exec input: assume the worst
   }

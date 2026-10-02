@@ -257,8 +257,7 @@ export function evaluate(req: ActionRequest, ctx: PolicyContext): PolicyResult {
   if (sensitiveEgress) {
     return finalize(req, {
       verdict: "ask",
-      reason:
-        "This sends personal or secret data to a recipient you have not approved before.",
+      reason: "This sends personal or secret data to a recipient you have not approved before.",
       ruleId: "system:new-recipient-sensitive-data",
     });
   }

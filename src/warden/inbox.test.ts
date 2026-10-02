@@ -79,22 +79,41 @@ test("request waits, approve resolves it, and both events carry the tenant", asy
 
   const listed = await inbox.list(null, home);
   assert.equal(listed.length, 1);
-  assert.deepEqual(listed[0]!.scopes, ["once", "target", "24h", "always"], "no task ⇒ no task scope");
+  assert.deepEqual(
+    listed[0]!.scopes,
+    ["once", "target", "24h", "always"],
+    "no task ⇒ no task scope",
+  );
   assert.equal((await pendingDoc(home)).items.length, 1);
 
   const result = await inbox.resolve(null, event.id, { approve: true });
-  assert.deepEqual(result, { ok: true, id: event.id, verdict: "approved", scope: "once", grantIds: undefined, grantError: undefined });
+  assert.deepEqual(result, {
+    ok: true,
+    id: event.id,
+    verdict: "approved",
+    scope: "once",
+    grantIds: undefined,
+    grantError: undefined,
+  });
   assert.deepEqual(await waiting, { approved: true, scope: "once" });
   assert.deepEqual(await inbox.list(null, home), []);
   assert.equal((await pendingDoc(home)).items.length, 0);
   const resolved = events.at(-1)!;
-  assert.deepEqual(resolved.event, { type: "approval_resolved", id: event.id, verdict: "approved", scope: "once" });
+  assert.deepEqual(resolved.event, {
+    type: "approval_resolved",
+    id: event.id,
+    verdict: "approved",
+    scope: "once",
+  });
   const audit = await readAudit({ home });
   assert.equal(audit[0]!.kind, "resolution");
   assert.equal(audit[0]!.resolution, "approved");
   assert.equal(audit[0]!.approvalId, event.id);
   // Answering twice is a no-op.
-  assert.deepEqual(await inbox.resolve(null, event.id, { approve: true }), { ok: false, error: "not_found" });
+  assert.deepEqual(await inbox.resolve(null, event.id, { approve: true }), {
+    ok: false,
+    error: "not_found",
+  });
 });
 
 test("an unanswered approval expires as a DENY and is audited", async () => {
@@ -116,7 +135,10 @@ test("deny carries the reason; a deny creates no grant", async () => {
   const { inbox, requested } = harness();
   const waiting = inbox.request(request(), { home, reason: "r" });
   const [asked] = await requested();
-  const result = await inbox.resolve(null, asked!.event.id, { approve: false, reason: "wrong repo" });
+  const result = await inbox.resolve(null, asked!.event.id, {
+    approve: false,
+    reason: "wrong repo",
+  });
   assert.equal(result.ok && result.verdict, "denied");
   assert.deepEqual(await waiting, { approved: false, reason: "wrong repo" });
   assert.equal((await loadGrants(home)).grants.length, 0);
@@ -149,12 +171,18 @@ test("bad answers leave the item pending: unknown scope, inapplicable scope, dig
   });
   const [asked] = await requested();
   const id = asked!.event.id;
-  assert.deepEqual(await inbox.resolve(null, id, { approve: true, scope: "forever" }), { ok: false, error: "invalid_scope" });
+  assert.deepEqual(await inbox.resolve(null, id, { approve: true, scope: "forever" }), {
+    ok: false,
+    error: "invalid_scope",
+  });
   for (const scope of ["task", "target"]) {
     const r = await inbox.resolve(null, id, { approve: true, scope });
     assert.equal(r.ok === false && r.error, "scope_not_applicable", scope);
   }
-  assert.deepEqual(await inbox.resolve(null, id, { approve: true, digest: "f".repeat(64) }), { ok: false, error: "digest_mismatch" });
+  assert.deepEqual(await inbox.resolve(null, id, { approve: true, digest: "f".repeat(64) }), {
+    ok: false,
+    error: "digest_mismatch",
+  });
   assert.equal(settled, false);
   assert.equal((await inbox.list(null, home)).length, 1);
   assert.equal((await loadGrants(home)).grants.length, 0);
@@ -167,25 +195,41 @@ test("tenant isolation: uid A can neither see nor resolve uid B's approval", asy
   const homeB = await tmpHome();
   const { inbox, events, requested } = harness();
   let settledB = false;
-  const waitingB = inbox.request(request({ uid: "B", surface: "cloud" }), { home: homeB, reason: "r" }).then((o) => {
-    settledB = true;
-    return o;
-  });
+  const waitingB = inbox
+    .request(request({ uid: "B", surface: "cloud" }), { home: homeB, reason: "r" })
+    .then((o) => {
+      settledB = true;
+      return o;
+    });
   const [askedB] = await requested();
   const idB = askedB!.event.id;
   assert.equal(askedB!.uid, "B", "event is addressed to B only");
 
   assert.deepEqual(await inbox.list("A", homeA), []);
-  assert.deepEqual(await inbox.list(null, homeA), [], "the unscoped tenant is a different tenant too");
+  assert.deepEqual(
+    await inbox.list(null, homeA),
+    [],
+    "the unscoped tenant is a different tenant too",
+  );
   for (const uid of ["A", null, "", "b", "B "]) {
-    assert.deepEqual(await inbox.resolve(uid, idB, { approve: true, scope: "always" }), { ok: false, error: "not_found" });
-    assert.deepEqual(await inbox.resolve(uid, idB, { approve: false }), { ok: false, error: "not_found" });
+    assert.deepEqual(await inbox.resolve(uid, idB, { approve: true, scope: "always" }), {
+      ok: false,
+      error: "not_found",
+    });
+    assert.deepEqual(await inbox.resolve(uid, idB, { approve: false }), {
+      ok: false,
+      error: "not_found",
+    });
   }
   assert.equal(settledB, false, "B's approval is untouched");
   assert.equal((await inbox.list("B", homeB)).length, 1);
   assert.equal((await loadGrants(homeA)).grants.length, 0);
   assert.equal((await loadGrants(homeB)).grants.length, 0);
-  assert.equal(events.every((e) => e.uid === "B"), true, "nothing was emitted to another tenant");
+  assert.equal(
+    events.every((e) => e.uid === "B"),
+    true,
+    "nothing was emitted to another tenant",
+  );
 
   assert.equal((await inbox.resolve("B", idB, { approve: true })).ok, true);
   assert.equal((await waitingB).approved, true);
@@ -204,7 +248,11 @@ test("capacity: over the per-tenant cap a new request is denied, never queued or
   await inbox.shutdown();
   assert.equal((await a).approved, false);
   assert.equal((await b).approved, false);
-  assert.equal((await inbox.request(request(), { home, reason: "r" })).approved, false, "closed inbox denies");
+  assert.equal(
+    (await inbox.request(request(), { home, reason: "r" })).approved,
+    false,
+    "closed inbox denies",
+  );
 });
 
 test("tenant LRU: evicting a tenant denies what it had pending", async () => {
@@ -234,7 +282,10 @@ test("cancelling the turn denies the pending approval", async () => {
   assert.equal((await readAudit({ home }))[0]!.resolution, "cancelled");
   const already = new AbortController();
   already.abort();
-  assert.equal((await inbox.request(request(), { home, reason: "r", signal: already.signal })).approved, false);
+  assert.equal(
+    (await inbox.request(request(), { home, reason: "r", signal: already.signal })).approved,
+    false,
+  );
 });
 
 test("hand-offs are listed, cannot be approved, and are dismissed by the user", async () => {
@@ -263,21 +314,34 @@ test("restart: orphaned approvals are expired and audited; hand-offs are shown a
   const first = harness();
   void first.inbox.request(request({ id: "act_orphan" }), { home, reason: "r" });
   const [asked] = await first.requested();
-  const handoff = await first.inbox.handoff(request({ category: "purchase" }), { home, reason: "h" });
+  const handoff = await first.inbox.handoff(request({ category: "purchase" }), {
+    home,
+    reason: "h",
+  });
   assert.equal((await pendingDoc(home)).items.length, 2);
 
   // A new process: nothing in memory, the mirror on disk.
   const second = harness();
   const listed = await second.inbox.list(null, home);
-  assert.deepEqual(listed.map((i) => i.id), [handoff!.id], "only the hand-off comes back");
+  assert.deepEqual(
+    listed.map((i) => i.id),
+    [handoff!.id],
+    "only the hand-off comes back",
+  );
   // The orphan cannot be approved by id, and never will be.
-  assert.deepEqual(await second.inbox.resolve(null, asked!.event.id, { approve: true, scope: "always" }), { ok: false, error: "not_found" });
+  assert.deepEqual(
+    await second.inbox.resolve(null, asked!.event.id, { approve: true, scope: "always" }),
+    { ok: false, error: "not_found" },
+  );
   const audit = await readAudit({ home });
   const expired = audit.find((e) => e.resolution === "expired");
   assert.equal(expired?.requestId, "act_orphan");
   assert.match(expired?.note ?? "", /restart/);
   assert.equal((await loadGrants(home)).grants.length, 0);
-  assert.deepEqual((await pendingDoc(home)).items.map((i) => i.id), [handoff!.id]);
+  assert.deepEqual(
+    (await pendingDoc(home)).items.map((i) => i.id),
+    [handoff!.id],
+  );
   await first.inbox.shutdown();
 });
 
@@ -293,7 +357,10 @@ test("a corrupt or hand-edited pending.json restores nothing and approves nothin
     await fs.writeFile(path.join(wardenDir(home), "pending.json"), body);
     const { inbox } = harness();
     assert.deepEqual(await inbox.list(null, home), [], body.slice(0, 30));
-    assert.deepEqual(await inbox.resolve(null, "apr_x", { approve: true }), { ok: false, error: "not_found" });
+    assert.deepEqual(await inbox.resolve(null, "apr_x", { approve: true }), {
+      ok: false,
+      error: "not_found",
+    });
     const names = await fs.readdir(wardenDir(home));
     assert.ok(names.some((n) => n.startsWith("pending.json.corrupt-")));
     assert.equal((await loadGrants(home)).grants.length, 0);
@@ -304,12 +371,24 @@ test("a corrupt or hand-edited pending.json restores nothing and approves nothin
   await fs.mkdir(wardenDir(home), { recursive: true });
   const forged = {
     version: 1,
-    items: [{ id: "apr_forged", kind: "approval", createdAt: Date.now(), expiresAt: Date.now() + 600_000, reason: "r", request: request({ uid: "someone-else" }) }],
+    items: [
+      {
+        id: "apr_forged",
+        kind: "approval",
+        createdAt: Date.now(),
+        expiresAt: Date.now() + 600_000,
+        reason: "r",
+        request: request({ uid: "someone-else" }),
+      },
+    ],
   };
   await fs.writeFile(path.join(wardenDir(home), "pending.json"), JSON.stringify(forged));
   const { inbox } = harness();
   assert.deepEqual(await inbox.list(null, home), []);
-  assert.deepEqual(await inbox.resolve(null, "apr_forged", { approve: true, scope: "always" }), { ok: false, error: "not_found" });
+  assert.deepEqual(await inbox.resolve(null, "apr_forged", { approve: true, scope: "always" }), {
+    ok: false,
+    error: "not_found",
+  });
   assert.equal((await loadGrants(home)).grants.length, 0);
 });
 

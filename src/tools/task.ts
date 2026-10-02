@@ -41,7 +41,8 @@ export function createTaskTool(deps: {
         },
         prompt: {
           type: "string",
-          description: "Self-contained instructions. The sub-agent has no memory of this conversation.",
+          description:
+            "Self-contained instructions. The sub-agent has no memory of this conversation.",
         },
         type: {
           type: "string",
@@ -56,10 +57,8 @@ export function createTaskTool(deps: {
       required: ["description", "prompt"],
     },
     async execute(input, ctx) {
-      const tools =
-        input.type === "explore" ? deps.readOnlyToolset() : deps.fullToolset();
-      const system =
-        input.type === "explore" ? EXPLORE_SYSTEM : GENERAL_SYSTEM;
+      const tools = input.type === "explore" ? deps.readOnlyToolset() : deps.fullToolset();
+      const system = input.type === "explore" ? EXPLORE_SYSTEM : GENERAL_SYSTEM;
       const result = await runSubagent({
         prompt: input.prompt,
         systemPrompt: system,

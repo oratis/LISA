@@ -18,9 +18,7 @@ export function wardenDir(home: string = lisaHome()): string {
 }
 
 export type ReadState<T> =
-  | { state: "missing" }
-  | { state: "ok"; value: T }
-  | { state: "corrupt"; error: string };
+  { state: "missing" } | { state: "ok"; value: T } | { state: "corrupt"; error: string };
 
 /**
  * Read and validate a JSON state file. Only ENOENT is "missing"; an unreadable,
@@ -62,7 +60,9 @@ export async function quarantineCorrupt(file: string, error: string): Promise<vo
   const aside = `${file}.corrupt-${Date.now()}`;
   try {
     await fs.rename(file, aside);
-    logWarn(`[warden] ${path.basename(file)} is corrupt (${error}); moved to ${path.basename(aside)}`);
+    logWarn(
+      `[warden] ${path.basename(file)} is corrupt (${error}); moved to ${path.basename(aside)}`,
+    );
   } catch {
     logWarn(`[warden] ${path.basename(file)} is corrupt (${error}); could not move it aside`);
   }

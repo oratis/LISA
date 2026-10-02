@@ -65,11 +65,24 @@ test("read, self and draft are allowed for every origin, surface and taint state
 
 test("default matrix: interactive chat", () => {
   const chat = { origin: { kind: "chat" as const } };
-  assert.equal(verdict({ ...chat, category: "write", sandboxed: true, withinWorkspace: true }), "allow");
-  assert.equal(verdict({ ...chat, category: "write", sandboxed: false, withinWorkspace: false }), "ask");
+  assert.equal(
+    verdict({ ...chat, category: "write", sandboxed: true, withinWorkspace: true }),
+    "allow",
+  );
+  assert.equal(
+    verdict({ ...chat, category: "write", sandboxed: false, withinWorkspace: false }),
+    "ask",
+  );
   assert.equal(verdict({ ...chat, category: "exec", sandboxed: true }), "allow");
-  assert.equal(verdict({ ...chat, category: "exec", sandboxed: false }), "allow", "local owner, danger-full-access");
-  assert.equal(verdict({ ...chat, category: "write", sandboxed: false, withinWorkspace: true }), "allow");
+  assert.equal(
+    verdict({ ...chat, category: "exec", sandboxed: false }),
+    "allow",
+    "local owner, danger-full-access",
+  );
+  assert.equal(
+    verdict({ ...chat, category: "write", sandboxed: false, withinWorkspace: true }),
+    "allow",
+  );
   assert.equal(verdict({ ...chat, category: "network" }), "allow");
   for (const category of ["send", "publish", "delete"] as const) {
     assert.equal(verdict({ ...chat, category }), "ask", category);
@@ -81,8 +94,14 @@ test("default matrix: interactive chat", () => {
 
 test("taint flips write, exec and network to ask in chat", () => {
   const tainted = { origin: { kind: "chat" as const }, tainted: true };
-  assert.equal(verdict({ ...tainted, category: "write", sandboxed: true, withinWorkspace: true }), "ask");
-  assert.equal(verdict({ ...tainted, category: "write", sandboxed: false, withinWorkspace: true }), "ask");
+  assert.equal(
+    verdict({ ...tainted, category: "write", sandboxed: true, withinWorkspace: true }),
+    "ask",
+  );
+  assert.equal(
+    verdict({ ...tainted, category: "write", sandboxed: false, withinWorkspace: true }),
+    "ask",
+  );
   assert.equal(verdict({ ...tainted, category: "exec", sandboxed: true }), "ask");
   assert.equal(verdict({ ...tainted, category: "exec", sandboxed: false }), "ask");
   assert.equal(verdict({ ...tainted, category: "network" }), "ask");
@@ -93,33 +112,64 @@ test("taint flips write, exec and network to ask in chat", () => {
 test("default matrix: task / routine / watcher need the envelope", () => {
   for (const kind of ["task", "routine", "watcher"] as const) {
     const o = { origin: { kind }, taskId: "t1" };
-    assert.equal(verdict({ ...o, category: "write", sandboxed: true, withinWorkspace: true }), "ask", kind);
+    assert.equal(
+      verdict({ ...o, category: "write", sandboxed: true, withinWorkspace: true }),
+      "ask",
+      kind,
+    );
     assert.equal(verdict({ ...o, category: "exec", sandboxed: true }), "ask");
     assert.equal(verdict({ ...o, category: "exec", sandboxed: false }), "ask");
-    assert.equal(verdict({ ...o, category: "write", sandboxed: false, withinWorkspace: true }), "ask");
+    assert.equal(
+      verdict({ ...o, category: "write", sandboxed: false, withinWorkspace: true }),
+      "ask",
+    );
     assert.equal(verdict({ ...o, category: "network" }), "ask");
     assert.equal(verdict({ ...o, category: "send" }), "ask");
 
     const envelope = { categories: ["write", "exec", "network", "send"] as ActionCategory[] };
-    assert.equal(verdict({ ...o, category: "write", sandboxed: true, withinWorkspace: true }, { envelope }), "allow");
+    assert.equal(
+      verdict({ ...o, category: "write", sandboxed: true, withinWorkspace: true }, { envelope }),
+      "allow",
+    );
     assert.equal(verdict({ ...o, category: "exec", sandboxed: true }, { envelope }), "allow");
     assert.equal(verdict({ ...o, category: "network" }, { envelope }), "allow");
     assert.equal(verdict({ ...o, category: "send" }, { envelope }), "allow");
     // The envelope satisfies "preapproved" only — never an "ask" default.
     assert.equal(verdict({ ...o, category: "exec", sandboxed: false }, { envelope }), "ask");
-    assert.equal(verdict({ ...o, category: "write", sandboxed: false, withinWorkspace: false }, { envelope }), "ask");
-    assert.equal(verdict({ ...o, category: "purchase" }, { envelope: { categories: ["purchase"] } }), "handoff");
+    assert.equal(
+      verdict({ ...o, category: "write", sandboxed: false, withinWorkspace: false }, { envelope }),
+      "ask",
+    );
+    assert.equal(
+      verdict({ ...o, category: "purchase" }, { envelope: { categories: ["purchase"] } }),
+      "handoff",
+    );
   }
 });
 
 test("a tainted task may only reach off-host targets its envelope named", () => {
   const o = { origin: { kind: "task" as const }, taskId: "t1", tainted: true };
   const loose = { categories: ["network", "write"] as ActionCategory[] };
-  assert.equal(verdict({ ...o, category: "network", targets: ["evil.test"] }, { envelope: loose }), "ask");
-  assert.equal(verdict({ ...o, category: "write", sandboxed: true, withinWorkspace: true }, { envelope: loose }), "allow");
+  assert.equal(
+    verdict({ ...o, category: "network", targets: ["evil.test"] }, { envelope: loose }),
+    "ask",
+  );
+  assert.equal(
+    verdict(
+      { ...o, category: "write", sandboxed: true, withinWorkspace: true },
+      { envelope: loose },
+    ),
+    "allow",
+  );
   const named = { categories: ["network"] as ActionCategory[], targets: ["api.good.test"] };
-  assert.equal(verdict({ ...o, category: "network", targets: ["api.good.test"] }, { envelope: named }), "allow");
-  assert.equal(verdict({ ...o, category: "network", targets: ["evil.test"] }, { envelope: named }), "ask");
+  assert.equal(
+    verdict({ ...o, category: "network", targets: ["api.good.test"] }, { envelope: named }),
+    "allow",
+  );
+  assert.equal(
+    verdict({ ...o, category: "network", targets: ["evil.test"] }, { envelope: named }),
+    "ask",
+  );
   assert.equal(verdict({ ...o, category: "network", targets: [] }, { envelope: named }), "ask");
   assert.equal(envelopeCovers(req({ category: "exec" }), undefined), false);
   assert.equal(envelopeCovers(req({ category: "exec" }), {}), false);
@@ -141,7 +191,12 @@ test("default matrix: channel and mcp origins ask for every side effect", () => 
 
 test("invariant: autonomy is read-only — everything but read/self is denied", () => {
   for (const category of ACTION_CATEGORIES) {
-    const v = verdict({ origin: { kind: "autonomy" }, category, sandboxed: true, withinWorkspace: true });
+    const v = verdict({
+      origin: { kind: "autonomy" },
+      category,
+      sandboxed: true,
+      withinWorkspace: true,
+    });
     if (category === "read" || category === "self") assert.equal(v, "allow");
     else assert.equal(v, "deny", category);
   }
@@ -186,7 +241,14 @@ test("invariant: purchase and credential hand off everywhere, whatever rules and
 test("invariant: cloud never allows exec or host writes", () => {
   for (const kind of ["chat", "task", "channel"] as OriginKind[]) {
     for (const category of ["exec", "write"] as const) {
-      const r = req({ surface: "cloud", uid: "u1", category, origin: { kind }, sandboxed: true, withinWorkspace: true });
+      const r = req({
+        surface: "cloud",
+        uid: "u1",
+        category,
+        origin: { kind },
+        sandboxed: true,
+        withinWorkspace: true,
+      });
       const grants = grantsFor(r, "always", NOW);
       const rules = parseRules({ categories: { exec: "auto", write: "auto" } });
       const result = evaluate(r, ctx({ grants, rules, envelope: { categories: [category] } }));
@@ -196,7 +258,13 @@ test("invariant: cloud never allows exec or host writes", () => {
   }
   // A connector write is not a host write: it goes through the normal ask path.
   assert.equal(
-    verdict({ surface: "cloud", uid: "u1", category: "write", connector: "notion", tool: "mcp__notion__update" }),
+    verdict({
+      surface: "cloud",
+      uid: "u1",
+      category: "write",
+      connector: "notion",
+      tool: "mcp__notion__update",
+    }),
     "ask",
   );
 });
@@ -231,7 +299,10 @@ test("new-recipient rule: sensitive data to an unapproved recipient always asks"
   // A blanket grant, a 24h grant, an "auto" rule and an envelope do NOT cover it.
   const blanket = [...grantsFor(send, "always", NOW), ...grantsFor(send, "24h", NOW)];
   const rules = parseRules({ categories: { send: "auto" } });
-  const result = evaluate(send, ctx({ grants: blanket, rules, envelope: { categories: ["send"] } }));
+  const result = evaluate(
+    send,
+    ctx({ grants: blanket, rules, envelope: { categories: ["send"] } }),
+  );
   assert.equal(result.verdict, "ask");
   assert.equal(result.ruleId, "system:new-recipient-sensitive-data");
 
@@ -249,7 +320,10 @@ test("new-recipient rule: sensitive data to an unapproved recipient always asks"
   for (const dataClass of ["pii", "secret", "private-message"] as const) {
     for (const category of ["send", "publish", "network"] as const) {
       assert.equal(
-        verdict({ category, dataClasses: [dataClass], targets: ["x.test"], tool: "t" }, { rules: parseRules({ categories: { [category]: "auto" } }) }),
+        verdict(
+          { category, dataClasses: [dataClass], targets: ["x.test"], tool: "t" },
+          { rules: parseRules({ categories: { [category]: "auto" } }) },
+        ),
         "ask",
         `${dataClass}/${category}`,
       );
@@ -260,14 +334,26 @@ test("new-recipient rule: sensitive data to an unapproved recipient always asks"
 });
 
 test("a credential in an outbound read (exfiltration shape) asks; plain PII lookups do not", () => {
-  const fetch = { tool: "web_fetch", category: "read" as const, egress: true, targets: ["evil.test"] };
+  const fetch = {
+    tool: "web_fetch",
+    category: "read" as const,
+    egress: true,
+    targets: ["evil.test"],
+  };
   assert.equal(verdict({ ...fetch, dataClasses: ["secret"] }), "ask");
   assert.equal(verdict({ ...fetch, dataClasses: ["pii"] }), "allow");
-  assert.equal(verdict({ tool: "memory", category: "self", dataClasses: ["secret"] }), "allow", "not off-host");
+  assert.equal(
+    verdict({ tool: "memory", category: "self", dataClasses: ["secret"] }),
+    "allow",
+    "not off-host",
+  );
 });
 
 test("user rules: tighten freely, loosen only within the floors", () => {
-  const strict = parseRules({ categories: { exec: "ask", read: "ask" }, tools: { web_fetch: "handoff" } });
+  const strict = parseRules({
+    categories: { exec: "ask", read: "ask" },
+    tools: { web_fetch: "handoff" },
+  });
   assert.equal(verdict({ category: "exec", sandboxed: true }, { rules: strict }), "ask");
   assert.equal(verdict({ category: "read", tool: "read" }, { rules: strict }), "ask");
   assert.equal(verdict({ category: "read", tool: "web_fetch" }, { rules: strict }), "handoff");
@@ -279,10 +365,18 @@ test("user rules: tighten freely, loosen only within the floors", () => {
   assert.equal(verdict({ category: "send", tainted: true }, { rules: loose }), "ask");
   assert.equal(verdict({ category: "exec", tainted: true }, { rules: loose }), "ask");
   assert.equal(verdict({ category: "exec", origin: { kind: "channel" } }, { rules: loose }), "ask");
-  assert.equal(verdict({ category: "exec", origin: { kind: "autonomy" } }, { rules: loose }), "deny");
+  assert.equal(
+    verdict({ category: "exec", origin: { kind: "autonomy" } }, { rules: loose }),
+    "deny",
+  );
   assert.equal(verdict({ category: "exec", surface: "cloud" }, { rules: loose }), "deny");
   // A tainted task with an "auto" rule still needs its envelope.
-  const task = { category: "exec" as const, origin: { kind: "task" as const }, tainted: true, sandboxed: true };
+  const task = {
+    category: "exec" as const,
+    origin: { kind: "task" as const },
+    tainted: true,
+    sandboxed: true,
+  };
   assert.equal(verdict(task, { rules: loose }), "ask");
   assert.equal(verdict(task, { rules: loose, envelope: { categories: ["exec"] } }), "allow");
 
@@ -292,9 +386,21 @@ test("user rules: tighten freely, loosen only within the floors", () => {
     tools: { github: "ask" },
     targets: { "o/prod": "handoff", "o/play": "auto" },
   });
-  assert.equal(verdict({ tool: "github", category: "publish", targets: ["o/other"] }, { rules: layered }), "ask");
-  assert.equal(verdict({ tool: "github", category: "publish", targets: ["o/play"] }, { rules: layered }), "allow");
-  assert.equal(verdict({ tool: "github", category: "publish", targets: ["o/play", "o/prod"] }, { rules: layered }), "handoff");
+  assert.equal(
+    verdict({ tool: "github", category: "publish", targets: ["o/other"] }, { rules: layered }),
+    "ask",
+  );
+  assert.equal(
+    verdict({ tool: "github", category: "publish", targets: ["o/play"] }, { rules: layered }),
+    "allow",
+  );
+  assert.equal(
+    verdict(
+      { tool: "github", category: "publish", targets: ["o/play", "o/prod"] },
+      { rules: layered },
+    ),
+    "handoff",
+  );
   assert.equal(verdict({ tool: "other", category: "publish" }, { rules: layered }), "allow");
 });
 
@@ -311,7 +417,13 @@ test("a corrupt rules file floors every side effect at ask", () => {
 });
 
 test("grants: exact match on tool, category, method, column and scope binding", () => {
-  const r = req({ tool: "github", category: "publish", method: "pr_comment", targets: ["o/r"], taskId: "t1" });
+  const r = req({
+    tool: "github",
+    category: "publish",
+    method: "pr_comment",
+    targets: ["o/r"],
+    taskId: "t1",
+  });
   const always = grantsFor(r, "always", NOW);
   const allowed = evaluate(r, ctx({ grants: always }));
   assert.equal(allowed.verdict, "allow");
@@ -322,8 +434,14 @@ test("grants: exact match on tool, category, method, column and scope binding", 
   assert.equal(evaluate({ ...r, tool: "gitlab" }, ctx({ grants: always })).verdict, "ask");
   assert.equal(evaluate({ ...r, category: "delete" }, ctx({ grants: always })).verdict, "ask");
   // A grant approved in chat is not standing permission for a remote channel or a task.
-  assert.equal(evaluate({ ...r, origin: { kind: "channel" } }, ctx({ grants: always })).verdict, "ask");
-  assert.equal(evaluate({ ...r, origin: { kind: "task" } }, ctx({ grants: always })).verdict, "ask");
+  assert.equal(
+    evaluate({ ...r, origin: { kind: "channel" } }, ctx({ grants: always })).verdict,
+    "ask",
+  );
+  assert.equal(
+    evaluate({ ...r, origin: { kind: "task" } }, ctx({ grants: always })).verdict,
+    "ask",
+  );
 
   // once: bound to the digest.
   const once = grantsFor(r, "once", NOW);

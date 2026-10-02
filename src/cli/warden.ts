@@ -75,7 +75,8 @@ const consoleOut: Out = { log: (l) => console.log(l), error: (l) => console.erro
 type Fetch = (url: string, init?: RequestInit) => Promise<Response>;
 
 function describeItem(item: Record<string, unknown>): string {
-  const targets = Array.isArray(item.targets) && item.targets.length ? ` → ${item.targets.join(", ")}` : "";
+  const targets =
+    Array.isArray(item.targets) && item.targets.length ? ` → ${item.targets.join(", ")}` : "";
   const kind = item.kind === "handoff" ? "HANDOFF " : "";
   return (
     `${String(item.id)}  ${kind}[${String(item.category)}] ${String(item.preview)}${targets}\n` +
@@ -190,9 +191,7 @@ export async function runWardenCommand(
       for (const category of ACTION_CATEGORIES) {
         const locked = LOCKED_CATEGORIES[category];
         const set = rules.categories[category];
-        out.log(
-          `${category.padEnd(11)} ${locked ? `${locked} (fixed)` : (set ?? "default")}`,
-        );
+        out.log(`${category.padEnd(11)} ${locked ? `${locked} (fixed)` : (set ?? "default")}`);
       }
       for (const [tool, behavior] of Object.entries(rules.tools)) {
         out.log(`tool   ${tool}: ${behavior}`);
@@ -227,7 +226,8 @@ export async function runWardenCommand(
       if (corrupt) out.error("grants.json is corrupt and is being treated as empty.");
       if (grants.length === 0) out.log("No grants.");
       for (const g of grants) {
-        const binding = g.target ?? g.taskId ?? (g.digest ? `payload ${g.digest.slice(0, 12)}` : "");
+        const binding =
+          g.target ?? g.taskId ?? (g.digest ? `payload ${g.digest.slice(0, 12)}` : "");
         out.log(
           `${g.id}  ${g.scope.padEnd(6)} ${g.tool}${g.method ? `.${g.method}` : ""} [${g.category}]` +
             `${binding ? ` ${binding}` : ""}${g.expiresAt ? ` until ${g.expiresAt}` : ""} uses=${g.uses}`,
@@ -261,7 +261,10 @@ export async function runWardenCommand(
     });
     if (entries.length === 0) out.log("No audit entries.");
     for (const e of entries.reverse()) {
-      const what = e.kind === "resolution" ? `→ ${e.resolution}${e.scope ? `/${e.scope}` : ""}` : (e.verdict ?? e.kind);
+      const what =
+        e.kind === "resolution"
+          ? `→ ${e.resolution}${e.scope ? `/${e.scope}` : ""}`
+          : (e.verdict ?? e.kind);
       out.log(`${e.at}  ${String(what).padEnd(18)} ${e.preview ?? e.tool ?? ""}`);
     }
     return 0;

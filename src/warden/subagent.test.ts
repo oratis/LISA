@@ -35,7 +35,12 @@ function scripted(calls: Array<{ name: string; input: unknown }>): Provider {
       }
       return {
         content: [
-          { type: "tool_use", id: `tu_${turn}`, name: next.name, input: next.input } as Anthropic.ToolUseBlock,
+          {
+            type: "tool_use",
+            id: `tu_${turn}`,
+            name: next.name,
+            input: next.input,
+          } as Anthropic.ToolUseBlock,
         ],
         stopReason: "tool_use",
         usage: USAGE,
@@ -87,10 +92,12 @@ test("a subagent's tool calls are decided by the parent's Warden session", async
   assert.deepEqual(ran, ["bash", "web_fetch"], "the tainted bash and the publish never ran");
   assert.equal(session.tainted, true, "taint set inside the subagent is the parent's taint");
   const decisions = (await readAudit({ home })).filter((e) => e.kind === "decision");
-  assert.deepEqual(
-    decisions.map((e) => `${e.tool}:${e.verdict}`).reverse(),
-    ["bash:allow", "web_fetch:allow", "bash:ask", "github:ask"],
-  );
+  assert.deepEqual(decisions.map((e) => `${e.tool}:${e.verdict}`).reverse(), [
+    "bash:allow",
+    "web_fetch:allow",
+    "bash:ask",
+    "github:ask",
+  ]);
   await inbox.shutdown();
 });
 

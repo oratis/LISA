@@ -179,7 +179,9 @@ describe("approval mode warden (W2a)", () => {
   });
 
   test("the startup banner names the mode", () => {
-    const line = describeRuntimePolicy(buildRuntimePolicy({ ...WEB, approvalExplicit: false }, MAC));
+    const line = describeRuntimePolicy(
+      buildRuntimePolicy({ ...WEB, approvalExplicit: false }, MAC),
+    );
     assert.match(line, /approval=warden/);
   });
 

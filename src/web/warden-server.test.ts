@@ -51,9 +51,7 @@ function scriptedProvider(tool: string, input: unknown): Provider {
       turns++;
       if (turns === 1) {
         return {
-          content: [
-            { type: "tool_use", id: "tu_1", name: tool, input } as Anthropic.ToolUseBlock,
-          ],
+          content: [{ type: "tool_use", id: "tu_1", name: tool, input } as Anthropic.ToolUseBlock],
           stopReason: "tool_use",
           usage: USAGE,
         };
@@ -127,7 +125,10 @@ interface Sse {
   events: Array<Record<string, unknown>>;
   done: Promise<void>;
   close: () => void;
-  waitFor: (pred: (e: Record<string, unknown>) => boolean, ms?: number) => Promise<Record<string, unknown>>;
+  waitFor: (
+    pred: (e: Record<string, unknown>) => boolean,
+    ms?: number,
+  ) => Promise<Record<string, unknown>>;
 }
 
 /** Open an SSE request (GET /events or POST /chat) and collect its `data:` frames. */
@@ -212,11 +213,27 @@ describe("web chat under approval mode warden", () => {
   test("serve --web defaults to warden; an explicit --approval wins; the CLI stays auto", () => {
     const args = { reflect: true, thinking: false, compaction: false, approval: "auto" as const };
     const web = { ...args, subcommand: "serve", serveWeb: true };
-    assert.equal(buildRuntimePolicy({ ...web, approvalExplicit: false }, { LISA_EDITION: "mac" }).approval, "warden");
-    assert.equal(buildRuntimePolicy({ ...web, approvalExplicit: false }, { LISA_EDITION: "cloud" }).approval, "warden");
-    assert.equal(buildRuntimePolicy({ ...web, approvalExplicit: true }, { LISA_EDITION: "mac" }).approval, "auto");
-    assert.equal(buildRuntimePolicy({ ...web }, { LISA_EDITION: "mac" }).approval, "auto", "hand-built policies are unchanged");
-    assert.equal(buildRuntimePolicy({ ...args, approvalExplicit: false }, { LISA_EDITION: "mac" }).approval, "auto");
+    assert.equal(
+      buildRuntimePolicy({ ...web, approvalExplicit: false }, { LISA_EDITION: "mac" }).approval,
+      "warden",
+    );
+    assert.equal(
+      buildRuntimePolicy({ ...web, approvalExplicit: false }, { LISA_EDITION: "cloud" }).approval,
+      "warden",
+    );
+    assert.equal(
+      buildRuntimePolicy({ ...web, approvalExplicit: true }, { LISA_EDITION: "mac" }).approval,
+      "auto",
+    );
+    assert.equal(
+      buildRuntimePolicy({ ...web }, { LISA_EDITION: "mac" }).approval,
+      "auto",
+      "hand-built policies are unchanged",
+    );
+    assert.equal(
+      buildRuntimePolicy({ ...args, approvalExplicit: false }, { LISA_EDITION: "mac" }).approval,
+      "auto",
+    );
   });
 
   test("a side-effecting call waits on the inbox and proceeds on approve", async () => {
@@ -224,7 +241,10 @@ describe("web chat under approval mode warden", () => {
     const srv = await boot({
       approval: "default",
       tool: recordingTool("deploy_widget", calls),
-      provider: scriptedProvider("deploy_widget", { target: "prod", token: "sk-ant-api03-SECRETSECRETSECRET1234" }),
+      provider: scriptedProvider("deploy_widget", {
+        target: "prod",
+        token: "sk-ant-api03-SECRETSECRETSECRET1234",
+      }),
     });
     const stream = sse(srv.port, "GET", "/events");
     try {
@@ -235,16 +255,25 @@ describe("web chat under approval mode warden", () => {
       assert.equal(asked.tool, "deploy_widget");
       assert.equal(asked.category, "write");
       assert.equal(asked.kind, "approval");
-      assert.equal(JSON.stringify(asked).includes("SECRETSECRET"), false, "the card carries no secret");
+      assert.equal(
+        JSON.stringify(asked).includes("SECRETSECRET"),
+        false,
+        "the card carries no secret",
+      );
 
       // The turn is parked: the tool has not run, the chat stream is still open.
       await new Promise((r) => setTimeout(r, 150));
       assert.equal(calls.length, 0, "not executed before approval");
-      assert.equal(chat.events.some((e) => e.type === "tool_end"), false);
+      assert.equal(
+        chat.events.some((e) => e.type === "tool_end"),
+        false,
+      );
       const pending = await api(srv.port, "GET", "/api/approvals");
       assert.equal((pending.body.approvals as unknown[]).length, 1);
 
-      const approved = await api(srv.port, "POST", `/api/approvals/${String(asked.id)}/approve`, { scope: "once" });
+      const approved = await api(srv.port, "POST", `/api/approvals/${String(asked.id)}/approve`, {
+        scope: "once",
+      });
       assert.equal(approved.status, 200);
 
       const end = await chat.waitFor((e) => e.type === "tool_end");
@@ -254,8 +283,14 @@ describe("web chat under approval mode warden", () => {
       await stream.waitFor((e) => e.type === "approval_resolved" && e.verdict === "approved");
       await chat.done;
 
-      const audit = (await api(srv.port, "GET", "/api/warden/audit")).body.entries as Array<Record<string, unknown>>;
-      assert.ok(audit.some((e) => e.kind === "decision" && e.verdict === "ask" && e.tool === "deploy_widget"));
+      const audit = (await api(srv.port, "GET", "/api/warden/audit")).body.entries as Array<
+        Record<string, unknown>
+      >;
+      assert.ok(
+        audit.some(
+          (e) => e.kind === "decision" && e.verdict === "ask" && e.tool === "deploy_widget",
+        ),
+      );
       assert.ok(audit.some((e) => e.kind === "resolution" && e.resolution === "approved"));
       assert.equal(JSON.stringify(audit).includes("SECRETSECRET"), false);
       assert.deepEqual((await api(srv.port, "GET", "/api/approvals")).body.approvals, []);
@@ -277,7 +312,9 @@ describe("web chat under approval mode warden", () => {
       await stream.waitFor((e) => e.type === "hello");
       const chat = sse(srv.port, "POST", "/chat", { message: "ship it" });
       const asked = await stream.waitFor((e) => e.type === "approval_requested");
-      const denied = await api(srv.port, "POST", `/api/approvals/${String(asked.id)}/deny`, { reason: "not today" });
+      const denied = await api(srv.port, "POST", `/api/approvals/${String(asked.id)}/deny`, {
+        reason: "not today",
+      });
       assert.equal(denied.status, 200);
       const end = await chat.waitFor((e) => e.type === "tool_end");
       assert.equal(end.isError, true);
@@ -302,7 +339,10 @@ describe("web chat under approval mode warden", () => {
       await stream.waitFor((e) => e.type === "hello");
       const chat = sse(srv.port, "POST", "/chat", { message: "ship it" });
       const asked = await stream.waitFor((e) => e.type === "approval_requested");
-      const resolved = await stream.waitFor((e) => e.type === "approval_resolved" && e.id === asked.id, 6000);
+      const resolved = await stream.waitFor(
+        (e) => e.type === "approval_resolved" && e.id === asked.id,
+        6000,
+      );
       assert.equal(resolved.verdict, "expired");
       const end = await chat.waitFor((e) => e.type === "tool_end");
       assert.equal(end.isError, true);
@@ -310,7 +350,10 @@ describe("web chat under approval mode warden", () => {
       await chat.done;
       assert.equal(calls.length, 0);
       // Too late to approve.
-      assert.equal((await api(srv.port, "POST", `/api/approvals/${String(asked.id)}/approve`, {})).status, 404);
+      assert.equal(
+        (await api(srv.port, "POST", `/api/approvals/${String(asked.id)}/approve`, {})).status,
+        404,
+      );
       assert.equal(calls.length, 0);
     } finally {
       stream.close();
@@ -332,7 +375,10 @@ describe("web chat under approval mode warden", () => {
       const asked = await stream.waitFor((e) => e.type === "approval_requested");
       chat.close();
       await stream.waitFor((e) => e.type === "approval_resolved" && e.id === asked.id);
-      assert.equal((await api(srv.port, "POST", `/api/approvals/${String(asked.id)}/approve`, {})).status, 404);
+      assert.equal(
+        (await api(srv.port, "POST", `/api/approvals/${String(asked.id)}/approve`, {})).status,
+        404,
+      );
       await new Promise((r) => setTimeout(r, 100));
       assert.equal(calls.length, 0);
     } finally {

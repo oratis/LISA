@@ -55,7 +55,7 @@ function request(over: Partial<ActionRequest> = {}): ActionRequest {
     targets: ["o/r"],
     dataClasses: [],
     digest: "a".repeat(64),
-    preview: "github(action=\"pr_comment\")",
+    preview: 'github(action="pr_comment")',
     sandboxed: false,
     tainted: false,
     ...over,
@@ -115,7 +115,10 @@ test("grants: scope bindings are required", () => {
   assert.equal(scopeProblem({ ...subject, targets: [] }, "target") !== null, true);
   assert.throws(() => grantsFor({ ...subject, taskId: undefined }, "task", 0), GrantScopeError);
   const perTarget = grantsFor({ ...subject, targets: ["a", "b", "a"] }, "target", 0);
-  assert.deepEqual(perTarget.map((g) => g.target), ["a", "b"]);
+  assert.deepEqual(
+    perTarget.map((g) => g.target),
+    ["a", "b"],
+  );
 });
 
 test("grants: a corrupt store means NO grants, and is set aside on the next write", async () => {
@@ -125,8 +128,14 @@ test("grants: a corrupt store means NO grants, and is set aside on the next writ
     JSON.stringify({ version: 99, grants: [] }),
     JSON.stringify({ version: 1, grants: "all" }),
     // One invalid entry poisons the whole file — including a scope with no binding.
-    JSON.stringify({ version: 1, grants: [{ ...grantsFor(subject, "always", 0)[0], scope: "task" }] }),
-    JSON.stringify({ version: 1, grants: [{ ...grantsFor(subject, "always", 0)[0], scope: "forever" }] }),
+    JSON.stringify({
+      version: 1,
+      grants: [{ ...grantsFor(subject, "always", 0)[0], scope: "task" }],
+    }),
+    JSON.stringify({
+      version: 1,
+      grants: [{ ...grantsFor(subject, "always", 0)[0], scope: "forever" }],
+    }),
     JSON.stringify({ version: 1, grants: [grantsFor(subject, "always", 0)[0], { id: "x" }] }),
   ]) {
     const home = await tmpHome();
@@ -141,7 +150,10 @@ test("grants: a corrupt store means NO grants, and is set aside on the next writ
     );
     await createGrants(subject, "always", home);
     const names = await fs.readdir(wardenDir(home));
-    assert.ok(names.some((n) => n.startsWith("grants.json.corrupt-")), "evidence kept");
+    assert.ok(
+      names.some((n) => n.startsWith("grants.json.corrupt-")),
+      "evidence kept",
+    );
     assert.equal((await loadGrants(home)).grants.length, 1);
   }
 });
@@ -198,14 +210,23 @@ test("rules: a corrupt file falls back to built-in defaults, flagged, never to a
     assert.equal(loaded.corrupt, true, body);
     assert.deepEqual(loaded.rules.categories, {});
     // Even the calls the defaults would auto-allow now ask.
-    const exec = request({ tool: "bash", method: undefined, category: "exec", sandboxed: true, targets: [] });
+    const exec = request({
+      tool: "bash",
+      method: undefined,
+      category: "exec",
+      sandboxed: true,
+      targets: [],
+    });
     assert.equal(
       evaluate(exec, { rules: loaded.rules, rulesCorrupt: loaded.corrupt, grants: [] }).verdict,
       "ask",
     );
     assert.equal(
-      evaluate(request({ category: "purchase" }), { rules: loaded.rules, rulesCorrupt: true, grants: [] })
-        .verdict,
+      evaluate(request({ category: "purchase" }), {
+        rules: loaded.rules,
+        rulesCorrupt: true,
+        grants: [],
+      }).verdict,
       "handoff",
     );
     await assert.rejects(setCategoryRule("exec", "auto", home), /corrupt/);
@@ -217,8 +238,17 @@ test("rules: a corrupt file falls back to built-in defaults, flagged, never to a
 test("audit: decisions and resolutions are appended and read newest-first", async () => {
   const home = await tmpHome();
   const req = request({ targets: ["Alice@example.com"] });
-  await auditDecision(req, { verdict: "ask", reason: "needs approval", ruleId: "default:publish" }, { home, latencyMs: 3 });
-  await auditResolution(req, "approved", { home, approvalId: "apr_1", scope: "once", latencyMs: 1200 });
+  await auditDecision(
+    req,
+    { verdict: "ask", reason: "needs approval", ruleId: "default:publish" },
+    { home, latencyMs: 3 },
+  );
+  await auditResolution(req, "approved", {
+    home,
+    approvalId: "apr_1",
+    scope: "once",
+    latencyMs: 1200,
+  });
   const entries = await readAudit({ home });
   assert.equal(entries.length, 2);
   assert.equal(entries[0]!.kind, "resolution");
@@ -240,10 +270,17 @@ test("audit: rotates on size and day boundary, prunes after retention, skips tor
   // Make the active file look like it was last written on day 0.
   await fs.utimes(auditFile(home), new Date(t0), new Date(t0));
   const t1 = t0 + day;
-  await appendAudit({ at: new Date(t1).toISOString(), kind: "decision", note: "next-day" }, home, t1);
+  await appendAudit(
+    { at: new Date(t1).toISOString(), kind: "decision", note: "next-day" },
+    home,
+    t1,
+  );
   let names = (await fs.readdir(wardenDir(home))).sort();
   assert.equal(names.filter((n) => /^audit-20260801-\d+\.jsonl$/.test(n)).length, 1);
-  assert.deepEqual((await readAudit({ home })).map((e) => e.note), ["next-day", "old"]);
+  assert.deepEqual(
+    (await readAudit({ home })).map((e) => e.note),
+    ["next-day", "old"],
+  );
 
   // A torn trailing line does not break reading.
   await fs.appendFile(auditFile(home), '{"at":"x","kind":"deci');
@@ -254,15 +291,21 @@ test("audit: rotates on size and day boundary, prunes after retention, skips tor
   const t2 = t0 + 40 * day;
   await appendAudit({ at: new Date(t2).toISOString(), kind: "decision", note: "later" }, home, t2);
   names = await fs.readdir(wardenDir(home));
-  assert.equal(names.some((n) => n.startsWith("audit-20260801-")), false, "pruned");
-  assert.equal(names.some((n) => n.startsWith("audit-20260802-")), false, "pruned");
+  assert.equal(
+    names.some((n) => n.startsWith("audit-20260801-")),
+    false,
+    "pruned",
+  );
+  assert.equal(
+    names.some((n) => n.startsWith("audit-20260802-")),
+    false,
+    "pruned",
+  );
 });
 
 test("audit: an unwritable log rejects (callers must then refuse the side effect)", async () => {
   const home = await tmpHome();
   // A FILE where the warden directory should be.
   await fs.writeFile(path.join(home, "warden"), "not a directory");
-  await assert.rejects(
-    auditDecision(request(), { verdict: "allow", reason: "x" }, { home }),
-  );
+  await assert.rejects(auditDecision(request(), { verdict: "allow", reason: "x" }, { home }));
 });

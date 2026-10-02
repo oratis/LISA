@@ -99,7 +99,17 @@ describe("warden API contract", () => {
         `approval_requested.${key} is not in ApprovalItem`,
       );
     }
-    for (const key of ["id", "at", "tool", "category", "targets", "preview", "digest", "expiresAt", "origin"]) {
+    for (const key of [
+      "id",
+      "at",
+      "tool",
+      "category",
+      "targets",
+      "preview",
+      "digest",
+      "expiresAt",
+      "origin",
+    ]) {
       assert.ok(card[key] !== undefined, `approval_requested.${key}`);
     }
 
@@ -109,7 +119,11 @@ describe("warden API contract", () => {
     const [grant] = await createGrants(req, "target", home);
     assertSatisfies("WardenGrant", grant as unknown as Record<string, unknown>);
 
-    await auditDecision(req, { verdict: "ask", reason: "r", ruleId: "default:publish" }, { home, latencyMs: 2 });
+    await auditDecision(
+      req,
+      { verdict: "ask", reason: "r", ruleId: "default:publish" },
+      { home, latencyMs: 2 },
+    );
     const entries = await readAudit({ home });
     for (const entry of entries) {
       const schema = contract.components.schemas.WardenAuditEntry!;

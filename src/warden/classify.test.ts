@@ -82,7 +82,12 @@ test("writes to Lisa's own home classify as self; social_compose is a draft", ()
 });
 
 test("file writes carry resolved paths and are sandboxed only inside a confined workspace", () => {
-  const inside = classifyToolCall("write", { path: "src/a.ts", content: "x" }, undefined, sandboxedCtx);
+  const inside = classifyToolCall(
+    "write",
+    { path: "src/a.ts", content: "x" },
+    undefined,
+    sandboxedCtx,
+  );
   assert.equal(inside.category, "write");
   assert.deepEqual(inside.targets, ["/work/project/src/a.ts"]);
   assert.equal(inside.withinWorkspace, true);
@@ -154,12 +159,24 @@ test("github: mutating actions publish, known reads read, unknown actions publis
   for (const action of DEFAULT_MUTATING_ACTIONS.github!) {
     assert.equal(cat("github", { action }), "publish", action);
   }
-  for (const action of ["issue_list", "issue_view", "pr_view", "run_list", "run_view", "release_list"]) {
+  for (const action of [
+    "issue_list",
+    "issue_view",
+    "pr_view",
+    "run_list",
+    "run_view",
+    "release_list",
+  ]) {
     assert.equal(cat("github", { action }), "read", action);
   }
   assert.equal(cat("github", { action: "repo_delete" }), "publish");
   assert.equal(cat("github", {}), "publish");
-  const c = classifyToolCall("github", { action: "pr_merge", repo: "o/r" }, undefined, sandboxedCtx);
+  const c = classifyToolCall(
+    "github",
+    { action: "pr_merge", repo: "o/r" },
+    undefined,
+    sandboxedCtx,
+  );
   assert.equal(c.method, "pr_merge");
   assert.deepEqual(c.targets, ["o/r"]);
 });
@@ -184,7 +201,10 @@ test("mcp tools: annotations may lower to read, never further; mutating verbs wi
   // A server that labels its send tool read-only does not get a free pass.
   assert.equal(cat("mcp__gmail__send_email", {}, fakeTool("x", { readOnlyHint: true })), "send");
   assert.equal(cat("mcp__shop__checkout", {}, fakeTool("x", { readOnlyHint: true })), "purchase");
-  assert.equal(cat("mcp__vault__get_password", {}, fakeTool("x", { readOnlyHint: true })), "credential");
+  assert.equal(
+    cat("mcp__vault__get_password", {}, fakeTool("x", { readOnlyHint: true })),
+    "credential",
+  );
   assert.equal(cat("mcp__x__post_tweet", {}, fakeTool("x")), "publish");
   // Nouns that merely contain a verb are not escalated.
   assert.equal(cat("mcp__gmail__list_messages", {}, fakeTool("x", { readOnlyHint: true })), "read");
@@ -241,7 +261,12 @@ test("taint sources", () => {
 });
 
 test("web_fetch targets the hostname and is egress", () => {
-  const c = classifyToolCall("web_fetch", { url: "https://Example.com/a?b=1" }, undefined, sandboxedCtx);
+  const c = classifyToolCall(
+    "web_fetch",
+    { url: "https://Example.com/a?b=1" },
+    undefined,
+    sandboxedCtx,
+  );
   assert.deepEqual(c.targets, ["example.com"]);
   assert.equal(c.egress, true);
   assert.deepEqual(
@@ -308,7 +333,9 @@ test("data classes are detected deterministically", () => {
   assert.deepEqual(detectDataClasses({ card: "4242 4242 4242 4242" }), ["financial"]);
   assert.deepEqual(detectDataClasses({ when: "2026-10-02 18:56:01", n: 12 }), []);
   assert.deepEqual(
-    detectDataClasses({ url: "https://github.com/o/r/commit/0123456789abcdef0123456789abcdef01234567" }),
+    detectDataClasses({
+      url: "https://github.com/o/r/commit/0123456789abcdef0123456789abcdef01234567",
+    }),
     [],
   );
   assert.deepEqual(detectDataClasses({}, ["health"]), ["health"]);

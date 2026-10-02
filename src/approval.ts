@@ -42,11 +42,7 @@ export const DEFAULT_MUTATING_ACTIONS: Record<string, string[]> = {
 };
 
 /** Does this tool call change state (so ask-mutating should prompt)? */
-export function isMutatingCall(
-  cfg: ApprovalConfig,
-  toolName: string,
-  input: unknown,
-): boolean {
+export function isMutatingCall(cfg: ApprovalConfig, toolName: string, input: unknown): boolean {
   if (cfg.mutatingTools.has(toolName)) return true;
   const actions = cfg.mutatingActions?.[toolName];
   if (actions && input && typeof input === "object") {
@@ -56,9 +52,7 @@ export function isMutatingCall(
   return false;
 }
 
-export function buildApprovalCallback(
-  cfg: ApprovalConfig,
-): ApprovalCallback | undefined {
+export function buildApprovalCallback(cfg: ApprovalConfig): ApprovalCallback | undefined {
   if (cfg.mode === "auto") return undefined;
   return async (toolName: string, toolInput: unknown): Promise<ApprovalDecision> => {
     if (
@@ -68,9 +62,7 @@ export function buildApprovalCallback(
       return { allow: true };
     }
     const preview = previewInput(toolInput);
-    process.stderr.write(
-      `\n[approval] ${toolName}(${preview})\n  [y]es / [n]o (default n) > `,
-    );
+    process.stderr.write(`\n[approval] ${toolName}(${preview})\n  [y]es / [n]o (default n) > `);
     const answer = await (cfg.readLine ?? readSingleLine)();
     if (/^y(es)?$/i.test(answer.trim())) {
       return { allow: true };

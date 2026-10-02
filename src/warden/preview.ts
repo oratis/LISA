@@ -26,7 +26,7 @@ export function canonicalJson(value: unknown): string {
     seen.add(v);
     if (Array.isArray(v)) return v.map(walk);
     const out: Record<string, unknown> = {};
-    for (const key of Object.keys(v as Record<string, unknown>).sort()) {
+    for (const key of Object.keys(v).sort()) {
       const child = (v as Record<string, unknown>)[key];
       if (child === undefined) continue;
       out[key] = walk(child);

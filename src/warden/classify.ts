@@ -185,7 +185,10 @@ const VERB_CATEGORIES: Array<[ActionCategory, Set<string>]> = [
 ];
 
 function categoryFromName(toolName: string): ActionCategory | undefined {
-  const tokens = toolName.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  const tokens = toolName
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
   for (const [category, verbs] of VERB_CATEGORIES) {
     if (tokens.some((token) => verbs.has(token))) return category;
   }
@@ -360,8 +363,7 @@ export function classifyToolCall(
 
   if (WRITE_TOOLS.has(name)) {
     const paths = writePaths(name, rec);
-    const within =
-      paths !== null && paths.every((p) => isInsideWorkspace(ctx.workspaceRoot, p));
+    const within = paths !== null && paths.every((p) => isInsideWorkspace(ctx.workspaceRoot, p));
     return {
       ...base,
       category: "write",

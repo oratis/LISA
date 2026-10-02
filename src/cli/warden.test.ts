@@ -12,7 +12,11 @@ import type { ActionRequest } from "../warden/types.js";
 function capture() {
   const lines: string[] = [];
   const errors: string[] = [];
-  return { lines, errors, out: { log: (l: string) => lines.push(l), error: (l: string) => errors.push(l) } };
+  return {
+    lines,
+    errors,
+    out: { log: (l: string) => lines.push(l), error: (l: string) => errors.push(l) },
+  };
 }
 
 function tmpHome(): string {
@@ -56,22 +60,41 @@ describe("lisa approvals", () => {
       if (url.endsWith("/api/approvals")) {
         return Response.json({
           approvals: [
-            { id: "apr_1", kind: "approval", category: "publish", preview: "github(…)", targets: ["o/r"], reason: "publish needs approval", expiresAt: "2026-10-02T12:10:00Z" },
+            {
+              id: "apr_1",
+              kind: "approval",
+              category: "publish",
+              preview: "github(…)",
+              targets: ["o/r"],
+              reason: "publish needs approval",
+              expiresAt: "2026-10-02T12:10:00Z",
+            },
           ],
         });
       }
-      if (url.includes("/apr_gone/")) return Response.json({ error: "approval_not_found" }, { status: 404 });
-      return Response.json({ ok: true, verdict: url.endsWith("/approve") ? "approved" : "denied", scope: "always" });
+      if (url.includes("/apr_gone/"))
+        return Response.json({ error: "approval_not_found" }, { status: 404 });
+      return Response.json({
+        ok: true,
+        verdict: url.endsWith("/approve") ? "approved" : "denied",
+        scope: "always",
+      });
     };
 
     const list = capture();
-    assert.equal(await runApprovalsCommand(["--port", "6001"], { fetch: fakeFetch, out: list.out }), 0);
+    assert.equal(
+      await runApprovalsCommand(["--port", "6001"], { fetch: fakeFetch, out: list.out }),
+      0,
+    );
     assert.equal(calls[0]!.url, "http://127.0.0.1:6001/api/approvals");
     assert.match(list.lines[0]!, /apr_1 {2}\[publish\] github\(…\) → o\/r/);
 
     const approve = capture();
     assert.equal(
-      await runApprovalsCommand(["approve", "apr_1", "--scope", "always"], { fetch: fakeFetch, out: approve.out }),
+      await runApprovalsCommand(["approve", "apr_1", "--scope", "always"], {
+        fetch: fakeFetch,
+        out: approve.out,
+      }),
       0,
     );
     assert.equal(calls[1]!.url, "http://127.0.0.1:5757/api/approvals/apr_1/approve");
@@ -81,13 +104,19 @@ describe("lisa approvals", () => {
 
     const deny = capture();
     assert.equal(
-      await runApprovalsCommand(["deny", "apr_1", "--reason", "nope"], { fetch: fakeFetch, out: deny.out }),
+      await runApprovalsCommand(["deny", "apr_1", "--reason", "nope"], {
+        fetch: fakeFetch,
+        out: deny.out,
+      }),
       0,
     );
     assert.deepEqual(JSON.parse(calls[2]!.body!), { reason: "nope" });
 
     const gone = capture();
-    assert.equal(await runApprovalsCommand(["approve", "apr_gone"], { fetch: fakeFetch, out: gone.out }), 1);
+    assert.equal(
+      await runApprovalsCommand(["approve", "apr_gone"], { fetch: fakeFetch, out: gone.out }),
+      1,
+    );
     assert.match(gone.errors[0]!, /approval_not_found/);
   });
 
@@ -99,9 +128,18 @@ describe("lisa approvals", () => {
     };
     const o = capture();
     assert.equal(await runApprovalsCommand(["approve"], { fetch: fakeFetch, out: o.out }), 2);
-    assert.equal(await runApprovalsCommand(["approve", "x", "--scope", "forever"], { fetch: fakeFetch, out: o.out }), 2);
+    assert.equal(
+      await runApprovalsCommand(["approve", "x", "--scope", "forever"], {
+        fetch: fakeFetch,
+        out: o.out,
+      }),
+      2,
+    );
     assert.equal(await runApprovalsCommand(["frobnicate"], { fetch: fakeFetch, out: o.out }), 2);
-    assert.equal(await runApprovalsCommand(["list", "--port", "abc"], { fetch: fakeFetch, out: o.out }), 2);
+    assert.equal(
+      await runApprovalsCommand(["list", "--port", "abc"], { fetch: fakeFetch, out: o.out }),
+      2,
+    );
     assert.equal(called, 0);
   });
 
@@ -124,17 +162,29 @@ describe("lisa warden", () => {
     assert.ok(show.lines.some((l) => /^exec\s+default/.test(l)));
 
     const set = capture();
-    assert.equal(await runWardenCommand(["rules", "set", "exec", "ask"], { out: set.out, home }), 0);
+    assert.equal(
+      await runWardenCommand(["rules", "set", "exec", "ask"], { out: set.out, home }),
+      0,
+    );
     assert.equal((await loadRules(home)).rules.categories.exec, "ask");
 
     const locked = capture();
-    assert.equal(await runWardenCommand(["rules", "set", "purchase", "auto"], { out: locked.out, home }), 1);
+    assert.equal(
+      await runWardenCommand(["rules", "set", "purchase", "auto"], { out: locked.out, home }),
+      1,
+    );
     assert.match(locked.errors[0]!, /fixed/);
     assert.equal((await loadRules(home)).rules.categories.purchase, undefined);
 
     const bad = capture();
-    assert.equal(await runWardenCommand(["rules", "set", "exec", "allow"], { out: bad.out, home }), 2);
-    assert.equal(await runWardenCommand(["rules", "set", "teleport", "auto"], { out: bad.out, home }), 2);
+    assert.equal(
+      await runWardenCommand(["rules", "set", "exec", "allow"], { out: bad.out, home }),
+      2,
+    );
+    assert.equal(
+      await runWardenCommand(["rules", "set", "teleport", "auto"], { out: bad.out, home }),
+      2,
+    );
     assert.equal(await runWardenCommand([], { out: bad.out, home }), 2);
   });
 
@@ -153,11 +203,20 @@ describe("lisa warden", () => {
     const [grant] = await createGrants(req, "always", home);
     const list = capture();
     assert.equal(await runWardenCommand(["grants"], { out: list.out, home }), 0);
-    assert.match(list.lines[0]!, new RegExp(`^${grant!.id} {2}always github\\.pr_comment \\[publish\\]`));
+    assert.match(
+      list.lines[0]!,
+      new RegExp(`^${grant!.id} {2}always github\\.pr_comment \\[publish\\]`),
+    );
     const revoke = capture();
-    assert.equal(await runWardenCommand(["grants", "revoke", grant!.id], { out: revoke.out, home }), 0);
+    assert.equal(
+      await runWardenCommand(["grants", "revoke", grant!.id], { out: revoke.out, home }),
+      0,
+    );
     assert.deepEqual((await loadGrants(home)).grants, []);
-    assert.equal(await runWardenCommand(["grants", "revoke", grant!.id], { out: revoke.out, home }), 1);
+    assert.equal(
+      await runWardenCommand(["grants", "revoke", grant!.id], { out: revoke.out, home }),
+      1,
+    );
 
     await auditDecision(req, { verdict: "ask", reason: "r" }, { home });
     const audit = capture();

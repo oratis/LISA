@@ -155,9 +155,7 @@ export async function setCategoryRule(
 ): Promise<WardenRules> {
   const { rules, corrupt } = await loadRules(home);
   if (corrupt) {
-    throw new RulesValidationError(
-      "rules.json is corrupt; fix or delete it before changing rules",
-    );
+    throw new RulesValidationError("rules.json is corrupt; fix or delete it before changing rules");
   }
   return await saveRules(
     { ...rules, categories: { ...rules.categories, [category]: behavior } },
