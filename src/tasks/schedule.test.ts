@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  defaultTimeZone,
   everyIntervalMs,
   firstRun,
   isOneShot,
@@ -160,4 +161,30 @@ test("cron: lists, ranges, steps and the dom/dow OR rule", () => {
 
 test("nextRun is null for an unparseable spec", () => {
   assert.equal(nextRun({ expr: "whenever" }, Date.now()), null);
+});
+
+test("an invalid LISA_TZ is ignored with one warning, not allowed to break every calendar schedule", () => {
+  const previous = process.env.LISA_TZ;
+  const warnings: string[] = [];
+  try {
+    process.env.LISA_TZ = "Europe/Berlinn";
+    const system = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    assert.equal(
+      defaultTimeZone((m) => warnings.push(m)),
+      system,
+    );
+    assert.equal(
+      defaultTimeZone((m) => warnings.push(m)),
+      system,
+    );
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0]!, /LISA_TZ="Europe\/Berlinn" is not a valid time zone/);
+    // …so a tz-less schedule still computes.
+    assert.notEqual(nextRun({ expr: "daily:09:00" }, Date.parse("2026-10-02T00:00:00Z")), null);
+    process.env.LISA_TZ = "Asia/Tokyo";
+    assert.equal(defaultTimeZone(), "Asia/Tokyo");
+  } finally {
+    if (previous === undefined) delete process.env.LISA_TZ;
+    else process.env.LISA_TZ = previous;
+  }
 });

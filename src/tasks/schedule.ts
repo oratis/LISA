@@ -148,7 +148,7 @@ export function parseSchedule(expr: string): ParsedSchedule | null {
   return null;
 }
 
-function isValidTimeZone(tz: string): boolean {
+export function isValidTimeZone(tz: string): boolean {
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: tz });
     return true;
@@ -271,8 +271,25 @@ export function zonedTimeToUtc(w: Wall, tz: string): number {
   return naive - before;
 }
 
-export function defaultTimeZone(): string {
-  return process.env.LISA_TZ || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+let warnedBadEnvZone: string | null = null;
+
+/**
+ * The zone wall-clock schedules use when a task names none: LISA_TZ, else the
+ * system zone. An invalid LISA_TZ is ignored (with one warning) rather than
+ * allowed to break every calendar schedule in the process.
+ */
+export function defaultTimeZone(
+  warn: (msg: string) => void = (m) => process.stderr.write(`${m}\n`),
+): string {
+  const system = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  const env = process.env.LISA_TZ;
+  if (!env) return system;
+  if (isValidTimeZone(env)) return env;
+  if (warnedBadEnvZone !== env) {
+    warnedBadEnvZone = env;
+    warn(`[tasks] LISA_TZ="${env.slice(0, 60)}" is not a valid time zone — using ${system}`);
+  }
+  return system;
 }
 
 function calendarDayMatches(s: CalendarSchedule, y: number, mo: number, d: number): boolean {

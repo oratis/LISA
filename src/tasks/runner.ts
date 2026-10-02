@@ -229,6 +229,143 @@ function looksLikeAuthFailure(message: string): boolean {
   );
 }
 
+interface SettledNotice {
+  kind: TaskNotice["kind"];
+  summary: string;
+  priority: TaskNotice["priority"];
+}
+
+/**
+ * The task's transition when one of its runs has ended, and the notices that
+ * ending produces. Pure in the sense that matters: it reads only the task and
+ * the run's terminal record, so it can be applied to a copy (to learn the
+ * notices) and then to the stored task, or re-applied after a crash.
+ */
+function settleTask(t: Task, run: TaskRun, now: number, cloud: boolean): SettledNotice[] {
+  const notices: SettledNotice[] = [];
+  const manual = !!run.manual;
+  const summary = run.summary ?? "";
+  const noop = run.state === "succeeded" && isNoUpdate(summary);
+  // A manual run of a one-off that is still waiting for its time is a test
+  // run: it must not use the occurrence up.
+  const pendingOneShot =
+    manual &&
+    t.enabled &&
+    !!t.schedule &&
+    isOneShot(t.schedule) &&
+    t.nextRunAt !== undefined &&
+    t.nextRunAt > now;
+
+  delete t.activeRunId;
+  delete t.resumeAt;
+  delete t.cancelRequestedAt;
+  delete t.queued;
+  t.lastRunAt = now;
+  const recurring = isRecurring(t);
+
+  /** Back to rest, with the next occurrence — or switched off if there is none to compute. */
+  const next = (): void => {
+    t.state = restingState(t);
+    if (!(t.enabled && recurring)) {
+      delete t.nextRunAt;
+      return;
+    }
+    let at: number | undefined;
+    let problem: string | null = null;
+    try {
+      at = nextRunAfter(t, now, cloud);
+      if (at === undefined) problem = "its schedule never fires again";
+    } catch (err) {
+      problem = `its schedule cannot be computed (${(err as Error).message.slice(0, 120)})`;
+    }
+    if (problem) {
+      // Never leave a task due with no way to move it forward: that is a loop.
+      pauseTask(t, problem);
+      notices.push({
+        kind: "task_needs_you",
+        summary: `Paused: ${problem}. Fix the schedule, then turn it back on.`,
+        priority: "high",
+      });
+      return;
+    }
+    t.nextRunAt = at;
+  };
+  /** A non-recurring task ends in `state`; a recurring or disabled one goes back to rest. */
+  const end = (state: "succeeded" | "failed" | "cancelled"): void => {
+    if (pendingOneShot) {
+      t.state = "scheduled"; // nextRunAt untouched: its real occurrence is still ahead
+      return;
+    }
+    if (recurring || !t.enabled) next();
+    else {
+      t.state = state;
+      delete t.nextRunAt;
+    }
+  };
+
+  if (run.state === "succeeded") {
+    t.failureCount = 0;
+    t.authFailureCount = 0;
+    if (!noop) t.lastSummary = clip(summary, 2000);
+    const fingerprint = digestCall("summary", summary);
+    const changed = fingerprint !== t.lastResultFingerprint;
+    t.lastResultFingerprint = fingerprint;
+    const tell =
+      manual ||
+      t.notify === "always" ||
+      (t.notify === "silent_on_noop" && !noop) ||
+      (t.notify === "on_change" && changed && !noop) ||
+      (t.notify === "on_hit" && (run.input !== undefined ? !noop : false));
+    if (tell) {
+      notices.push({
+        kind: "task_result",
+        summary: noop ? "Ran. Nothing to report." : summary,
+        priority: "normal",
+      });
+    }
+    end("succeeded");
+    return notices;
+  }
+
+  if (run.state === "cancelled") {
+    end("cancelled");
+    return notices;
+  }
+
+  // failed
+  const why = run.error ?? run.stopReason ?? "failed";
+  if (run.blocked) {
+    t.authFailureCount += 1;
+    // Billing said no (or could not record the spend): off at once. A
+    // credential-looking error gets a few occurrences before that.
+    const pauseNow = recurring && (!!run.pausesTask || t.authFailureCount >= MAX_BLOCKED);
+    if (pauseNow || t.authFailureCount === 1) {
+      notices.push({
+        kind: "task_needs_you",
+        summary: pauseNow
+          ? run.pausesTask
+            ? `Paused: ${why}. Nothing will run until you turn it back on.`
+            : `Paused after ${t.authFailureCount} runs in a row were refused (${why}). Fix the cause, then re-enable it.`
+          : `This run was refused (${why}). It will be tried again on its next occurrence.`,
+        priority: "high",
+      });
+    }
+    if (pauseNow) pauseTask(t, why);
+    else end("failed");
+    return notices;
+  }
+
+  // Retries were already spent before the run was ended: this is the final word.
+  t.failureCount = 0;
+  notices.push({
+    kind: "task_failed",
+    summary: `Did not finish: ${why}.${summary ? `\n\nLast output:\n${summary}` : ""}`,
+    priority: "normal",
+  });
+  end("failed");
+  return notices;
+}
+
 export class TaskRunner {
   private readonly opts: TaskRunnerOptions;
   private readonly owner = `${process.pid}-${randomBytes(6).toString("hex")}`;
@@ -532,12 +669,21 @@ export class TaskRunner {
           await this.resume(task, loaded, slot);
           return;
         }
-        // The pointer outlived its run (finished or lost) — clear it and carry on.
+        if (loaded) {
+          // The run is over but its bookkeeping never landed (a crash, or a
+          // failed write, between the terminal record and the task update).
+          // Complete THAT finish — deliver its result, compute the next run —
+          // instead of running the task a second time.
+          await this.completeFinish(task.id, loaded.run);
+          return;
+        }
+        // The run log itself is gone: nothing to complete. Clear the pointer.
         await this.saveTask(task.id, (t) => {
           delete t.activeRunId;
-          if (t.state === "running") t.state = restingState(t);
+          delete t.resumeAt;
+          if (t.state === "running" || t.state === "queued") t.state = restingState(t);
         });
-        task.activeRunId = undefined;
+        return;
       }
 
       const manual = task.state === "queued" && !!task.queued?.manual;
@@ -567,11 +713,16 @@ export class TaskRunner {
   }
 
   private async expire(task: Task, now: number): Promise<void> {
-    const run = await this.newRun(task.id, { state: "failed" }, now);
+    // Derived id + notice before the state change: a crash anywhere in here is
+    // repeated harmlessly (same run, same notice id) at the next tick.
+    const runId = `r_${digestCall(task.id, `expired:${task.nextRunAt ?? 0}`).slice(0, 16)}`;
+    const existing = await loadRun(task.id, runId);
+    const run = existing?.run ?? (await this.newRun(task.id, { id: runId, state: "failed" }, now));
     run.endedAt = now;
     run.stopReason = "expired";
     run.summary = `This was due at ${new Date(task.nextRunAt!).toISOString()} but LISA was not running then. It was not run.`;
     await this.saveRun(run, now);
+    await this.notify(task, run, "task_failed", run.summary, "low");
     const updated = await this.saveTask(
       task.id,
       (t) => {
@@ -581,7 +732,6 @@ export class TaskRunner {
       now,
     );
     if (updated) this.emit({ type: "task_updated", task: updated });
-    await this.notify(task, run, "task_failed", run.summary, "low");
   }
 
   private async startRun(task: Task, slot: Slot, manual: boolean): Promise<void> {
@@ -1016,6 +1166,17 @@ export class TaskRunner {
 
   // ── finishing a run ──
 
+  /**
+   * End a run. Two steps, and a crash between them loses nothing:
+   *
+   *   1. the run's terminal record is written — from here on the run is over,
+   *      and everything needed to finish the bookkeeping is in that record;
+   *   2. completeFinish() derives the notice and the task's next state from it.
+   *
+   * If the process dies after 1, the task still points at a run that is
+   * already terminal; the next tick sees that and runs step 2 again instead of
+   * running the task again (runTask).
+   */
   private async finish(task: Task, run: TaskRun, outcome: Outcome): Promise<void> {
     const now = this.now();
     run.state = outcome.state;
@@ -1023,132 +1184,71 @@ export class TaskRunner {
     run.stopReason = outcome.stopReason;
     if (outcome.summary) run.summary = clip(outcome.summary, MAX_SUMMARY);
     if (outcome.error) run.error = outcome.error;
+    if (outcome.blocked) run.blocked = true;
+    if (outcome.pause) run.pausesTask = true;
     await this.saveRun(run, now);
+    await this.completeFinish(task.id, run);
+  }
 
+  /**
+   * Bring the task in line with a run that has ended. Idempotent: the notices
+   * have stable ids and are enqueued BEFORE the task is updated, and the task
+   * update is what clears `activeRunId` — so re-running this after a crash at
+   * any point enqueues nothing twice and loses nothing.
+   */
+  private async completeFinish(taskId: string, run: TaskRun): Promise<void> {
+    const before = await getTask(taskId);
+    if (!before) return; // deleted while it ran
+    const now = run.endedAt ?? this.now();
     const cloud = this.host === "cloud";
-    const manual = !!run.manual;
-    const noop = outcome.state === "succeeded" && isNoUpdate(outcome.summary);
-    let notice: {
-      kind: TaskNotice["kind"];
-      summary: string;
-      priority: TaskNotice["priority"];
-    } | null = null;
 
+    // Dry run on a copy to learn which notices this ending produces…
+    const notices = settleTask(structuredClone(before), run, now, cloud);
+    for (const n of notices) {
+      await this.saveNotice(
+        {
+          id: noticeId(run.id, n.kind),
+          uid: before.owner,
+          taskId: before.id,
+          runId: run.id,
+          title: before.title,
+          summary: clip(n.summary, 4000),
+          status: run.state,
+          ...(run.artifacts ? { artifacts: run.artifacts } : {}),
+          priority: n.priority,
+          kind: n.kind,
+        },
+        this.now(),
+      );
+    }
+    // …then the same transition for real. This write ends the finish.
     const updated = await this.saveTask(
-      task.id,
+      taskId,
       (t) => {
-        delete t.activeRunId;
-        delete t.resumeAt;
-        delete t.cancelRequestedAt;
-        delete t.queued;
-        t.lastRunAt = now;
-        const recurring = isRecurring(t);
-        const next = (): void => {
-          t.state = restingState(t);
-          if (t.enabled && recurring) t.nextRunAt = nextRunAfter(t, now, cloud);
-          else delete t.nextRunAt;
-        };
-
-        if (outcome.state === "succeeded") {
-          t.failureCount = 0;
-          t.authFailureCount = 0;
-          if (!noop) t.lastSummary = clip(outcome.summary, 2000);
-          const fingerprint = digestCall("summary", outcome.summary);
-          const changed = fingerprint !== t.lastResultFingerprint;
-          t.lastResultFingerprint = fingerprint;
-          const tell =
-            manual ||
-            t.notify === "always" ||
-            (t.notify === "silent_on_noop" && !noop) ||
-            (t.notify === "on_change" && changed && !noop) ||
-            (t.notify === "on_hit" && (run.input !== undefined ? !noop : false));
-          if (tell) {
-            notice = {
-              kind: "task_result",
-              summary: noop ? "Ran. Nothing to report." : outcome.summary,
-              priority: "normal",
-            };
-          }
-          if (recurring || !t.enabled) next();
-          else {
-            t.state = "succeeded";
-            delete t.nextRunAt;
-          }
-          return;
-        }
-
-        if (outcome.state === "cancelled") {
-          if (recurring || !t.enabled) next();
-          else {
-            t.state = "cancelled";
-            delete t.nextRunAt;
-          }
-          return;
-        }
-
-        // failed
-        const why = outcome.error ?? outcome.stopReason;
-        if (outcome.blocked) {
-          t.authFailureCount += 1;
-          // Billing said no (or could not record the spend): off at once. A
-          // credential-looking error gets a few occurrences before that.
-          const pauseNow = recurring && (outcome.pause || t.authFailureCount >= MAX_BLOCKED);
-          if (pauseNow || t.authFailureCount === 1) {
-            notice = {
-              kind: "task_needs_you",
-              summary: pauseNow
-                ? outcome.pause
-                  ? `Paused: ${why}. Nothing will run until you turn it back on.`
-                  : `Paused after ${t.authFailureCount} runs in a row were refused (${why}). Fix the cause, then re-enable it.`
-                : `This run was refused (${why}). It will be tried again on its next occurrence.`,
-              priority: "high",
-            };
-          }
-          if (pauseNow) {
-            pauseTask(t, why);
-            return;
-          }
-          if (recurring || !t.enabled) next();
-          else {
-            t.state = "failed";
-            delete t.nextRunAt;
-          }
-          return;
-        }
-
-        // Retries were already spent by conclude(): this is the final word.
-        t.failureCount = 0;
-        notice = {
-          kind: "task_failed",
-          summary: `Did not finish: ${why}.${outcome.summary ? `\n\nLast output:\n${outcome.summary}` : ""}`,
-          priority: "normal",
-        };
-        if (recurring || !t.enabled) next();
-        else {
-          t.state = "failed";
-          delete t.nextRunAt;
-        }
+        settleTask(t, run, now, cloud);
       },
-      now,
+      this.now(),
     );
 
     this.emit({
       type: "task_run_finished",
-      taskId: task.id,
+      taskId,
       runId: run.id,
       state: run.state,
       ...(run.stopReason ? { stopReason: run.stopReason } : {}),
       ...(run.summary ? { summary: run.summary.slice(0, 500) } : {}),
     });
     if (updated) this.emit({ type: "task_updated", task: updated });
-    // `notice` is assigned inside the updateTask callback, which TS cannot see.
-    const pending = notice as {
-      kind: TaskNotice["kind"];
-      summary: string;
-      priority: TaskNotice["priority"];
-    } | null;
-    if (pending)
-      await this.notify(updated ?? task, run, pending.kind, pending.summary, pending.priority);
+    if (notices.length > 0) await this.flushOutbox(run.id);
+  }
+
+  private async flushOutbox(runId: string): Promise<void> {
+    try {
+      await drainOutbox(this.deliver(), this.now());
+    } catch (err) {
+      // The notice is durable; delivery is retried at the next tick.
+      this.log(`delivery of ${runId} deferred: ${(err as Error).message}`);
+    }
   }
 
   private async notify(

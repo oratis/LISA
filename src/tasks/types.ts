@@ -220,6 +220,10 @@ export interface TaskRun {
   executedDigests: Record<string, string>;
   /** How many times this run was resumed after an interruption. */
   resumes?: number;
+  /** The run ended on a credential / allowance problem (kept so a finish can be completed later). */
+  blocked?: boolean;
+  /** The run ended on a billing refusal that switches the task off. */
+  pausesTask?: boolean;
   /** Failed attempts so far. Each retry continues this run; none starts a new one. */
   attempts?: number;
   /** Why the last attempt stopped, when the run is parked for a retry. */

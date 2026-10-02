@@ -772,6 +772,179 @@ test("a run that keeps getting interrupted is given up, not resumed forever", as
   });
 });
 
+// ── finishing is recoverable ──
+
+/** The on-disk state a crash leaves between the run's terminal record and the task update. */
+async function finishedButNotSettled(summary: string) {
+  const { checkpointRun, createRun } = await import("./store.js");
+  const task = await dueRoutine();
+  const run = await createRun(task.id, { state: "running" }, NOW);
+  await updateTask(
+    task.id,
+    (t) => {
+      t.state = "running";
+      t.activeRunId = run.id;
+    },
+    NOW,
+  );
+  run.executedDigests.abc = "message sent";
+  run.state = "succeeded";
+  run.endedAt = NOW;
+  run.stopReason = "end_turn";
+  run.summary = summary;
+  await checkpointRun(run, NOW);
+  return { task, run };
+}
+
+test("a crash after the terminal run record completes THAT finish — the task is not run again (reviewer probe t2)", async () => {
+  await withHome(async () => {
+    const { task, run } = await finishedButNotSettled("Sent the weekly report to the team.");
+    let sent = 0;
+    const tools = [tool("send_message", async () => (sent++, "message sent"))];
+    const { notices, deliver } = collector();
+    const { provider, calls } = scripted([
+      turn([call("send_message", { to: "team", body: "weekly report" })]),
+      say("Sent the weekly report to the team (again)."),
+    ]);
+    const runner = makeRunner({
+      provider,
+      tools,
+      deliver,
+      approvalFactory: () => ({ approval: () => ({ allow: true }) }),
+    });
+    for (let i = 0; i < 3; i++) {
+      await runner.tick();
+      await runner.drain();
+    }
+    const t = (await getTask(task.id))!;
+    assert.equal(calls.length, 0, "no second run");
+    assert.equal(sent, 0);
+    assert.deepEqual(t.runs, [run.id]);
+    assert.equal(t.state, "scheduled");
+    assert.equal(t.activeRunId, undefined);
+    assert.equal(t.lastSummary, "Sent the weekly report to the team.");
+    assert.equal(new Date(t.nextRunAt!).toISOString(), "2026-10-03T08:00:00.000Z");
+    assert.deepEqual(
+      notices.map((n) => [n.runId, n.summary]),
+      [[run.id, "Sent the weekly report to the team."]],
+      "the original result is delivered, once",
+    );
+  });
+});
+
+test("a crash between enqueueing the notice and updating the task loses nothing and duplicates nothing", async () => {
+  await withHome(async () => {
+    const { task, run } = await finishedButNotSettled("All quiet.");
+    // The notice made it to the outbox (and was even delivered) before the crash.
+    const { enqueueNotice, noticeId } = await import("./outbox.js");
+    const { notices, deliver } = collector();
+    await enqueueNotice({
+      id: noticeId(run.id, "task_result"),
+      uid: null,
+      taskId: task.id,
+      runId: run.id,
+      title: task.title,
+      summary: "All quiet.",
+      status: "succeeded",
+      priority: "normal",
+      kind: "task_result",
+    });
+    const runner = makeRunner({ provider: scripted([]).provider, deliver });
+    await runner.tick();
+    await runner.drain();
+    await runner.tick();
+    await runner.drain();
+    assert.equal(notices.length, 1);
+    assert.equal((await listOutbox()).length, 1);
+    assert.equal((await getTask(task.id))!.state, "scheduled");
+  });
+});
+
+test("a task file with an invalid time zone loads switched off, with the reason — it never loops (reviewer probe t10)", async () => {
+  await withHome(async () => {
+    const task = await dueRoutine();
+    const { tasksDir } = await import("./store.js");
+    const file = path.join(tasksDir(), `${task.id}.json`);
+    const raw = JSON.parse(await fsp.readFile(file, "utf8"));
+    raw.schedule.tz = "Europe/Berlinn";
+    await fsp.writeFile(file, JSON.stringify(raw, null, 2));
+
+    const loaded = (await getTask(task.id))!;
+    assert.equal(loaded.enabled, false);
+    assert.equal(loaded.state, "paused");
+    assert.match(loaded.pausedReason!, /time zone "Europe\/Berlinn"/);
+
+    let clock = NOW;
+    let modelCalls = 0;
+    const provider: Provider = {
+      name: "fake",
+      async runTurn() {
+        modelCalls++;
+        return say("Here is your brief.");
+      },
+    };
+    const runner = makeRunner({ provider, now: () => clock });
+    for (let i = 0; i < 10; i++) {
+      await runner.tick();
+      await runner.drain();
+      clock += 30_000;
+    }
+    assert.equal(modelCalls, 0);
+    assert.equal((await getTask(task.id))!.runs.length, 0);
+  });
+});
+
+test("a schedule with no next occurrence pauses the task after its run, with a visible reason — it does not stay due", async () => {
+  await withHome(async () => {
+    // 30 February: parses, never fires.
+    const task = await dueRoutine({ schedule: { expr: "cron:0 0 30 2 *", tz: "UTC" } });
+    let clock = NOW;
+    const { provider, calls } = scripted([say("Ran once.")]);
+    const { notices, deliver } = collector();
+    const runner = makeRunner({ provider, deliver, now: () => clock });
+    for (let i = 0; i < 5; i++) {
+      await runner.tick();
+      await runner.drain();
+      clock += 30_000;
+    }
+    assert.equal(calls.length, 1, "one run, not one per tick");
+    const t = (await getTask(task.id))!;
+    assert.equal(t.state, "paused");
+    assert.equal(t.enabled, false);
+    assert.match(t.pausedReason!, /never fires again/);
+    assert.equal(t.nextRunAt, undefined);
+    assert.deepEqual(notices.map((n) => n.kind).sort(), ["task_needs_you", "task_result"]);
+  });
+});
+
+test("a manual run of a one-off that is still waiting for its time does not use it up", async () => {
+  await withHome(async () => {
+    const due = NOW + 86_400_000;
+    const task = await dueRoutine({
+      kind: "oneoff",
+      schedule: { expr: `at:${new Date(due).toISOString()}` },
+      nextRunAt: due,
+    });
+    let clock = NOW;
+    const { provider, calls } = scripted([say("test run"), say("the real one")]);
+    const runner = makeRunner({ provider, now: () => clock });
+    assert.deepEqual(await runner.runNow(task.id), { ok: true });
+    await runner.drain();
+    let t = (await getTask(task.id))!;
+    assert.equal(t.state, "scheduled", "still waiting for its occurrence");
+    assert.equal(t.nextRunAt, due);
+    assert.equal(calls.length, 1);
+
+    clock = due;
+    await runner.tick();
+    await runner.drain();
+    t = (await getTask(task.id))!;
+    assert.equal(calls.length, 2);
+    assert.equal(t.state, "succeeded");
+    assert.equal(t.runs.length, 2);
+  });
+});
+
 // ── breakers ──
 
 test("the token budget stops a run before the next model call", async () => {

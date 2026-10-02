@@ -219,3 +219,30 @@ test("stores are isolated per home scope", async () => {
     assert.equal((await listTasks()).length, 1);
   });
 });
+
+test("a stored schedule that cannot be used loads switched off with the reason; the file is not rewritten", async () => {
+  await withHome(async () => {
+    const good = await createTask({
+      ...base,
+      schedule: { expr: "daily:08:00", tz: "UTC" },
+      enabled: true,
+      state: "scheduled",
+      nextRunAt: 123,
+    });
+    const file = path.join(tasksDir(), `${good.id}.json`);
+    for (const [schedule, reason] of [
+      [{ expr: "daily:08:00", tz: "Mars/Olympus" }, /time zone/],
+      [{ expr: "whenever" }, /unrecognised schedule/],
+    ] as const) {
+      const text = JSON.stringify({ ...good, schedule });
+      await fsp.writeFile(file, text);
+      const loaded = (await getTask(good.id))!;
+      assert.equal(loaded.enabled, false);
+      assert.equal(loaded.state, "paused");
+      assert.match(loaded.pausedReason!, reason);
+      assert.equal(loaded.nextRunAt, undefined);
+      assert.equal(await fsp.readFile(file, "utf8"), text, "reading never writes");
+      assert.equal((await listTasks()).length, 1, "not quarantined either");
+    }
+  });
+});
