@@ -132,7 +132,10 @@ describe("validateGeminiRequest — anything it cannot price is refused", () => 
       validateGeminiRequest({
         contents: [
           user,
-          { role: "model", parts: [{ functionCall: { name: "f", args: {} }, thoughtSignature: "s" }] },
+          {
+            role: "model",
+            parts: [{ functionCall: { name: "f", args: {} }, thoughtSignature: "s" }],
+          },
           { role: "user", parts: [{ functionResponse: { name: "f", response: { ok: true } } }] },
           {
             role: "user",
@@ -169,7 +172,11 @@ describe("validateGeminiRequest — anything it cannot price is refused", () => 
 
   const refused: Array<[string, Record<string, unknown>, RegExp]> = [
     ["no contents", {}, /contents must be a non-empty array/],
-    ["Google Search grounding", { contents: [user], tools: [{ googleSearch: {} }] }, /googleSearch/],
+    [
+      "Google Search grounding",
+      { contents: [user], tools: [{ googleSearch: {} }] },
+      /googleSearch/,
+    ],
     [
       "Google Search grounding (snake_case)",
       { contents: [user], tools: [{ google_search: {} }] },
@@ -187,7 +194,11 @@ describe("validateGeminiRequest — anything it cannot price is refused", () => 
       { contents: [user], tools: [{ functionDeclarations: [], googleSearch: {} }] },
       /googleSearch/,
     ],
-    ["a cached-content reference", { contents: [user], cachedContent: "cachedContents/x" }, /cachedContent/],
+    [
+      "a cached-content reference",
+      { contents: [user], cachedContent: "cachedContents/x" },
+      /cachedContent/,
+    ],
     ["a model override in the body", { contents: [user], model: "gemini-2.5-pro" }, /"model"/],
     [
       "a file URI",
@@ -201,12 +212,18 @@ describe("validateGeminiRequest — anything it cannot price is refused", () => 
     ],
     [
       "inline audio",
-      { contents: [{ role: "user", parts: [{ inlineData: { mimeType: "audio/mp3", data: "A" } }] }] },
+      {
+        contents: [{ role: "user", parts: [{ inlineData: { mimeType: "audio/mp3", data: "A" } }] }],
+      },
       /audio\/mp3/,
     ],
     [
       "inline video",
-      { contents: [{ role: "user", parts: [{ inline_data: { mime_type: "video/mp4", data: "A" } }] }] },
+      {
+        contents: [
+          { role: "user", parts: [{ inline_data: { mime_type: "video/mp4", data: "A" } }] },
+        ],
+      },
       /video\/mp4/,
     ],
     [
@@ -238,7 +255,11 @@ describe("validateGeminiRequest — anything it cannot price is refused", () => 
       /only TEXT response modality/,
     ],
     ["speech config", { contents: [user], generationConfig: { speechConfig: {} } }, /speechConfig/],
-    ["several candidates", { contents: [user], generationConfig: { candidateCount: 4 } }, /candidateCount/],
+    [
+      "several candidates",
+      { contents: [user], generationConfig: { candidateCount: 4 } },
+      /candidateCount/,
+    ],
     [
       "several candidates (snake_case)",
       { contents: [user], generation_config: { candidate_count: 2 } },
@@ -249,8 +270,16 @@ describe("validateGeminiRequest — anything it cannot price is refused", () => 
       { contents: [user], generationConfig: { maxOutputTokens: "lots" } },
       /maxOutputTokens/,
     ],
-    ["tools that are not an array", { contents: [user], tools: { googleSearch: {} } }, /tools must be an array/],
-    ["parts that are not objects", { contents: [{ role: "user", parts: ["hi"] }] }, /must be objects/],
+    [
+      "tools that are not an array",
+      { contents: [user], tools: { googleSearch: {} } },
+      /tools must be an array/,
+    ],
+    [
+      "parts that are not objects",
+      { contents: [{ role: "user", parts: ["hi"] }] },
+      /must be objects/,
+    ],
   ];
   for (const [label, body, pattern] of refused) {
     test(`refuses ${label}`, () => assert.match(validateGeminiRequest(body) ?? "", pattern));
@@ -298,7 +327,11 @@ describe("usageMetadata metering (v0.27.1 semantics)", () => {
   test("a cached count that only appears in the last chunk is still split out", () => {
     let counts = mergeGeminiUsage(ZERO_GEMINI_USAGE, { usageMetadata: { promptTokenCount: 1000 } });
     counts = mergeGeminiUsage(counts, {
-      usageMetadata: { promptTokenCount: 1000, cachedContentTokenCount: 400, candidatesTokenCount: 5 },
+      usageMetadata: {
+        promptTokenCount: 1000,
+        cachedContentTokenCount: 400,
+        candidatesTokenCount: 5,
+      },
     });
     assert.deepEqual(geminiUsageToProvider(counts), {
       inputTokens: 600,
@@ -335,7 +368,11 @@ describe("usageMetadata metering (v0.27.1 semantics)", () => {
   test("garbage counters are zero, never NaN or negative", () => {
     assert.deepEqual(
       usageFromGeminiJson({
-        usageMetadata: { promptTokenCount: "many", candidatesTokenCount: null, cachedContentTokenCount: 9 },
+        usageMetadata: {
+          promptTokenCount: "many",
+          candidatesTokenCount: null,
+          cachedContentTokenCount: 9,
+        },
       }),
       { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
     );
@@ -347,7 +384,9 @@ describe("usageMetadata metering (v0.27.1 semantics)", () => {
     assert.deepEqual(
       usageFromGeminiJson([
         { usageMetadata: { promptTokenCount: 500, candidatesTokenCount: 10 } },
-        { usageMetadata: { promptTokenCount: 500, candidatesTokenCount: 30, thoughtsTokenCount: 5 } },
+        {
+          usageMetadata: { promptTokenCount: 500, candidatesTokenCount: 30, thoughtsTokenCount: 5 },
+        },
       ]),
       { inputTokens: 500, outputTokens: 35, cacheReadTokens: 0, cacheWriteTokens: 0 },
     );
@@ -366,7 +405,9 @@ describe("clampGeminiOutput — the output side is held to the admitted budget",
   });
 
   test("a client ceiling above the budget is lowered; one below it is kept", () => {
-    const high: Record<string, unknown> = { generationConfig: { maxOutputTokens: 60_000, temperature: 1 } };
+    const high: Record<string, unknown> = {
+      generationConfig: { maxOutputTokens: 60_000, temperature: 1 },
+    };
     clampGeminiOutput(high, MODEL, 35_000);
     assert.deepEqual(high.generationConfig, { maxOutputTokens: 10_000, temperature: 1 });
 
@@ -431,7 +472,7 @@ function chunked(pieces: Uint8Array[]): ReadableStream<Uint8Array> {
   let i = 0;
   return new ReadableStream<Uint8Array>({
     pull(controller) {
-      if (i < pieces.length) controller.enqueue(pieces[i++]!);
+      if (i < pieces.length) controller.enqueue(pieces[i++]);
       else controller.close();
     },
   });
@@ -444,7 +485,7 @@ function fakeUpstream(respond: (captured: Captured) => Response | Promise<Respon
   const calls: Captured[] = [];
   return {
     calls,
-    fetch: (async (input: string | URL | Request, init?: RequestInit) => {
+    fetch: async (input: string | URL | Request, init?: RequestInit) => {
       const captured: Captured = {
         url: String(input),
         headers: { ...(init?.headers as Record<string, string>) },
@@ -452,7 +493,7 @@ function fakeUpstream(respond: (captured: Captured) => Response | Promise<Respon
       };
       calls.push(captured);
       return await respond(captured);
-    }) as typeof fetch,
+    },
   };
 }
 
@@ -539,10 +580,19 @@ function setup(
   return { upstream, adm, deps };
 }
 
-const post = (base: string, pathname: string, body: unknown, headers: Record<string, string> = {}) =>
+const post = (
+  base: string,
+  pathname: string,
+  body: unknown,
+  headers: Record<string, string> = {},
+) =>
   fetch(`${base}${pathname}`, {
     method: "POST",
-    headers: { "content-type": "application/json", authorization: "Bearer client-session", ...headers },
+    headers: {
+      "content-type": "application/json",
+      authorization: "Bearer client-session",
+      ...headers,
+    },
     body: JSON.stringify(body),
   });
 
@@ -557,47 +607,52 @@ const STREAM = `/gw/gemini/v1beta/models/${MODEL}:streamGenerateContent?alt=sse`
  * the API reference — there is no provider key in this environment to record
  * a live one.)
  */
-const SSE_FIXTURE =
-  [
-    {
-      candidates: [{ content: { role: "model", parts: [{ text: "…thinking…", thought: true }] }, index: 0 }],
-      usageMetadata: {
-        promptTokenCount: 4096,
-        cachedContentTokenCount: 3072,
-        thoughtsTokenCount: 310,
-        totalTokenCount: 4406,
-      },
-      modelVersion: MODEL,
+const SSE_FIXTURE = [
+  {
+    candidates: [
+      { content: { role: "model", parts: [{ text: "…thinking…", thought: true }] }, index: 0 },
+    ],
+    usageMetadata: {
+      promptTokenCount: 4096,
+      cachedContentTokenCount: 3072,
+      thoughtsTokenCount: 310,
+      totalTokenCount: 4406,
     },
-    {
-      candidates: [{ content: { role: "model", parts: [{ text: "这是摘要：" }] }, index: 0 }],
-      usageMetadata: {
-        promptTokenCount: 4096,
-        cachedContentTokenCount: 3072,
-        candidatesTokenCount: 6,
-        thoughtsTokenCount: 512,
-        totalTokenCount: 4614,
-      },
-      modelVersion: MODEL,
+    modelVersion: MODEL,
+  },
+  {
+    candidates: [{ content: { role: "model", parts: [{ text: "这是摘要：" }] }, index: 0 }],
+    usageMetadata: {
+      promptTokenCount: 4096,
+      cachedContentTokenCount: 3072,
+      candidatesTokenCount: 6,
+      thoughtsTokenCount: 512,
+      totalTokenCount: 4614,
     },
-    {
-      candidates: [
-        { content: { role: "model", parts: [{ text: " three points." }] }, finishReason: "STOP", index: 0 },
-      ],
-      usageMetadata: {
-        promptTokenCount: 4096,
-        cachedContentTokenCount: 3072,
-        candidatesTokenCount: 41,
-        thoughtsTokenCount: 512,
-        totalTokenCount: 4649,
-        promptTokensDetails: [{ modality: "TEXT", tokenCount: 4096 }],
+    modelVersion: MODEL,
+  },
+  {
+    candidates: [
+      {
+        content: { role: "model", parts: [{ text: " three points." }] },
+        finishReason: "STOP",
+        index: 0,
       },
-      modelVersion: MODEL,
-      responseId: "resp_1",
+    ],
+    usageMetadata: {
+      promptTokenCount: 4096,
+      cachedContentTokenCount: 3072,
+      candidatesTokenCount: 41,
+      thoughtsTokenCount: 512,
+      totalTokenCount: 4649,
+      promptTokensDetails: [{ modality: "TEXT", tokenCount: 4096 }],
     },
-  ]
-    .map((chunk) => `data: ${JSON.stringify(chunk)}\r\n\r\n`)
-    .join("");
+    modelVersion: MODEL,
+    responseId: "resp_1",
+  },
+]
+  .map((chunk) => `data: ${JSON.stringify(chunk)}\r\n\r\n`)
+  .join("");
 
 const FIXTURE_USAGE: ProviderUsage = {
   inputTokens: 1024, // 4096 prompt − 3072 cached
@@ -623,7 +678,9 @@ function sseResponse(text: string, cuts: number[]): Response {
 describe("POST /gw/gemini — streaming", () => {
   test("passes the stream through byte for byte and meters it from usageMetadata", async () => {
     // Cut mid-line, mid-JSON and inside the multi-byte "…" / CJK characters.
-    const { upstream, adm, deps } = setup(() => sseResponse(SSE_FIXTURE, [7, 61, 62, 300, 301, 555]));
+    const { upstream, adm, deps } = setup(() =>
+      sseResponse(SSE_FIXTURE, [7, 61, 62, 300, 301, 555]),
+    );
     const gw = await gateway(deps);
     try {
       const res = await post(gw.base, STREAM, REQUEST);
@@ -648,7 +705,12 @@ describe("POST /gw/gemini — streaming", () => {
   test("the result does not depend on where the network cut the stream", async () => {
     const bytes = new TextEncoder().encode(SSE_FIXTURE).length;
     for (const cuts of [[], [1], [bytes - 1], Array.from({ length: 40 }, (_, i) => (i + 1) * 17)]) {
-      const { adm, deps } = setup(() => sseResponse(SSE_FIXTURE, cuts.filter((c) => c < bytes)));
+      const { adm, deps } = setup(() =>
+        sseResponse(
+          SSE_FIXTURE,
+          cuts.filter((c) => c < bytes),
+        ),
+      );
       const gw = await gateway(deps);
       try {
         const res = await post(gw.base, STREAM, REQUEST);
@@ -773,12 +835,20 @@ describe("POST /gw/gemini — non-streaming", () => {
     const { adm, deps } = setup(() =>
       json([
         { usageMetadata: { promptTokenCount: 200, candidatesTokenCount: 4 } },
-        { usageMetadata: { promptTokenCount: 200, candidatesTokenCount: 12, thoughtsTokenCount: 88 } },
+        {
+          usageMetadata: {
+            promptTokenCount: 200,
+            candidatesTokenCount: 12,
+            thoughtsTokenCount: 88,
+          },
+        },
       ]),
     );
     const gw = await gateway(deps);
     try {
-      await (await post(gw.base, `/gw/gemini/v1beta/models/${MODEL}:streamGenerateContent`, REQUEST)).text();
+      await (
+        await post(gw.base, `/gw/gemini/v1beta/models/${MODEL}:streamGenerateContent`, REQUEST)
+      ).text();
       assert.deepEqual(adm.settled[0]!.usage, {
         inputTokens: 200,
         outputTokens: 100,
@@ -925,13 +995,55 @@ describe("POST /gw/gemini — admission", () => {
   });
 
   const refusedBeforeAdmission: Array<[string, string, unknown, number, string]> = [
-    ["an unpriced model", `/gw/gemini/v1beta/models/gemini-2.5-pro:generateContent`, REQUEST, 400, "model_not_supported"],
-    ["flash-lite", `/gw/gemini/v1beta/models/gemini-2.5-flash-lite:generateContent`, REQUEST, 400, "model_not_supported"],
-    ["an image model", `/gw/gemini/v1beta/models/gemini-2.5-flash-image:generateContent`, REQUEST, 400, "model_not_supported"],
-    ["search grounding", GENERATE, { ...REQUEST, tools: [{ googleSearch: {} }] }, 400, "unsupported_request"],
-    ["a cached-content reference", GENERATE, { ...REQUEST, cachedContent: "cachedContents/abc" }, 400, "unsupported_request"],
-    ["another method", `/gw/gemini/v1beta/models/${MODEL}:countTokens`, REQUEST, 404, "unsupported_gemini_route"],
-    ["a client key in the query", `${GENERATE}?key=CLIENT`, REQUEST, 404, "unsupported_gemini_route"],
+    [
+      "an unpriced model",
+      `/gw/gemini/v1beta/models/gemini-2.5-pro:generateContent`,
+      REQUEST,
+      400,
+      "model_not_supported",
+    ],
+    [
+      "flash-lite",
+      `/gw/gemini/v1beta/models/gemini-2.5-flash-lite:generateContent`,
+      REQUEST,
+      400,
+      "model_not_supported",
+    ],
+    [
+      "an image model",
+      `/gw/gemini/v1beta/models/gemini-2.5-flash-image:generateContent`,
+      REQUEST,
+      400,
+      "model_not_supported",
+    ],
+    [
+      "search grounding",
+      GENERATE,
+      { ...REQUEST, tools: [{ googleSearch: {} }] },
+      400,
+      "unsupported_request",
+    ],
+    [
+      "a cached-content reference",
+      GENERATE,
+      { ...REQUEST, cachedContent: "cachedContents/abc" },
+      400,
+      "unsupported_request",
+    ],
+    [
+      "another method",
+      `/gw/gemini/v1beta/models/${MODEL}:countTokens`,
+      REQUEST,
+      404,
+      "unsupported_gemini_route",
+    ],
+    [
+      "a client key in the query",
+      `${GENERATE}?key=CLIENT`,
+      REQUEST,
+      404,
+      "unsupported_gemini_route",
+    ],
     ["a JSON array body", GENERATE, [REQUEST], 400, "bad_json"],
   ];
   for (const [label, pathname, body, status, error] of refusedBeforeAdmission) {
@@ -1018,8 +1130,18 @@ describe("POST /gw/gemini — settlement failure and reconciliation", () => {
       },
       settle: async (acct, source, model, usage, reservationId) => {
         const microUSD = costMicroUSD(model, usage);
-        await settleUsage({ acct, kind: source, model, usage, costMicros: microUSD, reservationId }, settlement);
-        return { at: new Date(T0).toISOString(), source, model, ...usage, microUSD, pricesVersion: 2 };
+        await settleUsage(
+          { acct, kind: source, model, usage, costMicros: microUSD, reservationId },
+          settlement,
+        );
+        return {
+          at: new Date(T0).toISOString(),
+          source,
+          model,
+          ...usage,
+          microUSD,
+          pricesVersion: 2,
+        };
       },
     };
     return { deps, log, settlement };
@@ -1122,7 +1244,12 @@ describe("POST /gw/gemini — settlement failure and reconciliation", () => {
         new Response(
           JSON.stringify({
             candidates: [{ content: { parts: [{ text: "the answer" }] } }],
-            usageMetadata: { promptTokenCount: 4096, cachedContentTokenCount: 3072, candidatesTokenCount: 41, thoughtsTokenCount: 512 },
+            usageMetadata: {
+              promptTokenCount: 4096,
+              cachedContentTokenCount: 3072,
+              candidatesTokenCount: 41,
+              thoughtsTokenCount: 512,
+            },
           }),
           { status: 200, headers: { "content-type": "application/json" } },
         ),
@@ -1213,39 +1340,42 @@ describe("POST /gw/gemini — driven by the real @google/genai client", () => {
   // The face has to accept what LISA's own Gemini provider actually sends, not
   // what this file assumes it sends: the SDK builds the path, the query and the
   // request body, and parses the stream that comes back through the gateway.
-  const TOOL_STREAM =
-    [
-      {
-        candidates: [
-          {
-            content: { role: "model", parts: [{ text: "Checking. " }] },
-            index: 0,
-          },
-        ],
-        usageMetadata: { promptTokenCount: 900, cachedContentTokenCount: 256, thoughtsTokenCount: 64 },
-      },
-      {
-        candidates: [
-          {
-            content: {
-              role: "model",
-              parts: [{ functionCall: { name: "lookup", args: { q: "weather" } } }],
-            },
-            finishReason: "STOP",
-            index: 0,
-          },
-        ],
-        usageMetadata: {
-          promptTokenCount: 900,
-          cachedContentTokenCount: 256,
-          candidatesTokenCount: 18,
-          thoughtsTokenCount: 64,
-          totalTokenCount: 982,
+  const TOOL_STREAM = [
+    {
+      candidates: [
+        {
+          content: { role: "model", parts: [{ text: "Checking. " }] },
+          index: 0,
         },
+      ],
+      usageMetadata: {
+        promptTokenCount: 900,
+        cachedContentTokenCount: 256,
+        thoughtsTokenCount: 64,
       },
-    ]
-      .map((chunk) => `data: ${JSON.stringify(chunk)}\r\n\r\n`)
-      .join("");
+    },
+    {
+      candidates: [
+        {
+          content: {
+            role: "model",
+            parts: [{ functionCall: { name: "lookup", args: { q: "weather" } } }],
+          },
+          finishReason: "STOP",
+          index: 0,
+        },
+      ],
+      usageMetadata: {
+        promptTokenCount: 900,
+        cachedContentTokenCount: 256,
+        candidatesTokenCount: 18,
+        thoughtsTokenCount: 64,
+        totalTokenCount: 982,
+      },
+    },
+  ]
+    .map((chunk) => `data: ${JSON.stringify(chunk)}\r\n\r\n`)
+    .join("");
 
   test("GeminiProvider → gateway → upstream: accepted, parsed, and metered identically on both sides", async () => {
     const { GeminiProvider } = await import("../providers/gemini.js");

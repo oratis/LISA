@@ -170,7 +170,11 @@ describe("resolveRoute — small purposes, local edition", () => {
   });
 
   test("a local user's explicit small model is honoured even when the price table does not know it", () => {
-    const env = { ANTHROPIC_API_KEY: "k", DEEPSEEK_API_KEY: "k", LISA_MODEL_SMALL: "deepseek-chat" };
+    const env = {
+      ANTHROPIC_API_KEY: "k",
+      DEEPSEEK_API_KEY: "k",
+      LISA_MODEL_SMALL: "deepseek-chat",
+    };
     assert.equal(routeModel("triage", { model: "claude-sonnet-4-6", env }), "deepseek-chat");
   });
 

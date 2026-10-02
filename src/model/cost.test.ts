@@ -313,7 +313,12 @@ describe("checkCostCap — decided before the provider call", () => {
     }
 
     test("unreadable usage stops the run instead of counting as zero spend", () => {
-      for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, -1, undefined as unknown as number]) {
+      for (const bad of [
+        Number.NaN,
+        Number.POSITIVE_INFINITY,
+        -1,
+        undefined as unknown as number,
+      ]) {
         const verdict = checkCostCap({
           model,
           capMicroUSD: 1_000_000,

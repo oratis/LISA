@@ -390,7 +390,12 @@ describe("runAgent — per-run USD cap (costCapMicroUSD)", () => {
   // gemini-2.5-flash at face value: input $0.42/M, output $3.50/M.
   const MODEL = "gemini-2.5-flash";
   // One tool_use turn that costs 10k × 0.42 + 2k × 3.5 = 4_200 + 7_000 = 11_200 micro-USD.
-  const TURN = { inputTokens: 10_000, outputTokens: 2_000, cacheReadTokens: 0, cacheWriteTokens: 0 };
+  const TURN = {
+    inputTokens: 10_000,
+    outputTokens: 2_000,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+  };
 
   /**
    * A provider that always wants another tool call, bills 10k prompt tokens

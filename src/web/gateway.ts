@@ -339,7 +339,8 @@ export function validateGeminiRequest(body: Record<string, unknown>): string | n
     if (!GEMINI_TOP_LEVEL.has(key)) return `field "${key}" is not supported`;
   }
   const contents = body.contents;
-  if (!Array.isArray(contents) || contents.length === 0) return "contents must be a non-empty array";
+  if (!Array.isArray(contents) || contents.length === 0)
+    return "contents must be a non-empty array";
   for (const content of contents) {
     const problem = validateGeminiParts(content, "contents");
     if (problem) return problem;
@@ -377,7 +378,10 @@ export function validateGeminiRequest(body: Record<string, unknown>): string | n
     const candidates = field(config, "candidateCount", "candidate_count");
     if (candidates !== undefined && candidates !== 1) return "candidateCount must be 1";
     const maxOut = field(config, "maxOutputTokens", "max_output_tokens");
-    if (maxOut !== undefined && !(typeof maxOut === "number" && Number.isInteger(maxOut) && maxOut > 0)) {
+    if (
+      maxOut !== undefined &&
+      !(typeof maxOut === "number" && Number.isInteger(maxOut) && maxOut > 0)
+    ) {
       return "maxOutputTokens must be a positive integer";
     }
   }
@@ -399,7 +403,7 @@ export function clampGeminiOutput(
 ): number | null {
   const affordable = tokensAffordable(model, Number.isFinite(budgetMicroUSD) ? budgetMicroUSD : 0);
   const key = body.generation_config !== undefined ? "generation_config" : "generationConfig";
-  const config = isObject(body[key]) ? (body[key] as Record<string, unknown>) : {};
+  const config = isObject(body[key]) ? body[key] : {};
   const snake = config.max_output_tokens !== undefined && config.maxOutputTokens === undefined;
   const requested = snake ? config.max_output_tokens : config.maxOutputTokens;
   const wanted = typeof requested === "number" ? requested : Number.POSITIVE_INFINITY;

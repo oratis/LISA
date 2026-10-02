@@ -154,7 +154,7 @@ export function resolveRoute(purpose: ModelPurpose, ctx: RouteContext = {}): Mod
   const tier = tierForPurpose(purpose);
   if (tier === "strong") return { purpose, tier, model: strong, source: "strong" };
 
-  const cloud = isCloud(env as NodeJS.ProcessEnv);
+  const cloud = isCloud(env);
   const stay = (reason: string): ModelRoute => ({
     purpose,
     tier,

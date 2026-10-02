@@ -164,9 +164,10 @@ export function detectProvider(model: string): ProviderName {
  * for an Anthropic-compatible gateway/proxy) takes precedence over
  * ANTHROPIC_API_KEY (`x-api-key`), matching Claude Code's precedence. Pure.
  */
-export function resolveAnthropicAuth(
-  env: Record<string, string | undefined> = process.env,
-): { apiKey?: string; authToken?: string } {
+export function resolveAnthropicAuth(env: Record<string, string | undefined> = process.env): {
+  apiKey?: string;
+  authToken?: string;
+} {
   const authToken = env.ANTHROPIC_AUTH_TOKEN?.trim();
   if (authToken) return { authToken };
   return { apiKey: env.ANTHROPIC_API_KEY };

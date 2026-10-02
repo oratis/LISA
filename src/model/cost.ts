@@ -8,12 +8,7 @@
  * Amounts are micro-USD integers (1e-6 USD), rounded UP: an estimate or a cap
  * check that rounds in the user's favour is one that can be exceeded.
  */
-import {
-  MARGIN,
-  costMicroUSD,
-  explicitPriceForModel,
-  priceForModel,
-} from "../billing/prices.js";
+import { MARGIN, costMicroUSD, explicitPriceForModel, priceForModel } from "../billing/prices.js";
 import type { ProviderUsage } from "../providers/types.js";
 
 /**
@@ -97,9 +92,7 @@ function dollars(microUSD: number): string {
  */
 export function formatCostEstimate(estimate: RunCostEstimate | number): string {
   const est: Pick<RunCostEstimate, "microUSD" | "priced" | "local"> =
-    typeof estimate === "number"
-      ? { microUSD: estimate, priced: true, local: false }
-      : estimate;
+    typeof estimate === "number" ? { microUSD: estimate, priced: true, local: false } : estimate;
   if (est.local) return "$0.00 (local model)";
   if (!Number.isFinite(est.microUSD) || est.microUSD < 0) return "unknown";
   if (est.microUSD === 0) return "$0.00";
@@ -260,8 +253,7 @@ export function checkCostCap(input: CostCapInput): CostCapVerdict {
     (promptTokens * Math.max(price.inPerM, price.cacheWritePerM)) / 1_000_000,
   );
   const remaining = cap - spentMicroUSD - promptReserve;
-  const affordableOutput =
-    remaining > 0 ? Math.floor((remaining * 1_000_000) / price.outPerM) : 0;
+  const affordableOutput = remaining > 0 ? Math.floor((remaining * 1_000_000) / price.outPerM) : 0;
   if (!Number.isFinite(affordableOutput) || affordableOutput < MIN_USEFUL_OUTPUT_TOKENS) {
     return {
       proceed: false,
