@@ -64,6 +64,7 @@ import { tokensSpent } from "./types.js";
 import type {
   Task,
   TaskApprovalFactory,
+  TaskEffect,
   TaskDeliver,
   TaskNotice,
   TaskRun,
@@ -929,8 +930,22 @@ export class TaskRunner {
       run.elapsedMs = elapsedBefore + (this.now() - segmentStart);
     };
 
-    // Side effects recorded before this segment: replayed, never re-executed.
-    const replay = new Map(Object.entries(run.executedDigests));
+    // Side effects recorded before this segment, per call, in the order they
+    // happened. A resumed run that issues one of them again is answered from
+    // here instead of executing — once per recorded execution: the entry is
+    // consumed, so a call made MORE often than it was recorded executes
+    // normally. A recorded failure is not here at all: it may be retried.
+    run.effects ??= Object.entries(run.executedDigests).map(([d, r]) =>
+      r === IN_FLIGHT ? { d, s: "started" as const } : { d, s: "done" as const, r },
+    );
+    const replay = new Map<string, TaskEffect[]>();
+    for (const effect of run.effects) {
+      if (effect.s === "error") continue;
+      const queue = replay.get(effect.d);
+      if (queue) queue.push(effect);
+      else replay.set(effect.d, [effect]);
+    }
+    const replayable = (digest: string): boolean => (replay.get(digest)?.length ?? 0) > 0;
 
     // Run-log appends are fire-and-forget from sync callbacks but must stay ordered.
     let logChain: Promise<void> = Promise.resolve();
@@ -987,7 +1002,7 @@ export class TaskRunner {
       const approval: ApprovalCallback = async (name, input) => {
         // Already approved and executed before the interruption: it is answered
         // from the ledger below, so there is nothing new to approve.
-        if (isSideEffectingCall(name, input) && replay.has(digestCall(name, input))) {
+        if (isSideEffectingCall(name, input) && replayable(digestCall(name, input))) {
           return { allow: true };
         }
         return await gate(name, input);
@@ -1110,10 +1125,10 @@ export class TaskRunner {
           // Fencing: a runner that no longer owns the lease must not act.
           await this.fence();
           const digest = digestCall(name, input);
-          const recorded = replay.get(digest);
+          const recorded = replay.get(digest)?.shift();
           if (recorded !== undefined) {
             logEvent({ type: "replayed", toolName: name });
-            if (recorded === IN_FLIGHT) {
+            if (recorded.s === "started") {
               return {
                 cachedResult:
                   `[not re-executed] This exact call was started before the run was interrupted and its ` +
@@ -1124,7 +1139,7 @@ export class TaskRunner {
             return {
               cachedResult:
                 `[replayed] This exact call already completed before the run was interrupted. It was ` +
-                `not executed again. Recorded result:\n${recorded}`,
+                `not executed again. Recorded result:\n${recorded.r ?? ""}`,
             };
           }
           // A call the agent loop is about to reject as malformed never executes.
@@ -1132,6 +1147,7 @@ export class TaskRunner {
           if (tool && !validateToolInput(tool.inputSchema, input).ok) return;
           // Write-ahead: if we die inside the tool, the resumed run knows it started.
           run.executedDigests[digest] = IN_FLIGHT;
+          run.effects!.push({ d: digest, s: "started" });
           touch();
           await this.saveRun(run, this.now());
           return;
@@ -1142,10 +1158,15 @@ export class TaskRunner {
           // recording a failure the resumed run would trust.
           const aborted = isError && slot.controller.signal.aborted;
           if (isSideEffectingCall(name, input) && !aborted) {
-            run.executedDigests[digestCall(name, input)] = clip(
-              isError ? `[error] ${text}` : text,
-              MAX_RECORDED_RESULT,
-            );
+            const digest = digestCall(name, input);
+            const recorded = clip(text, MAX_RECORDED_RESULT);
+            run.executedDigests[digest] = isError ? `[error] ${recorded}` : recorded;
+            // Close the entry preToolHook opened for this execution.
+            const open = run.effects!.findLast((e) => e.d === digest && e.s === "started");
+            if (open) {
+              open.s = isError ? "error" : "done";
+              open.r = recorded;
+            }
           }
           touch();
           await this.saveRun(run, this.now());

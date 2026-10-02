@@ -52,9 +52,12 @@ export interface TasksApiOptions {
  */
 export function publicRun(
   run: TaskRun,
-): Omit<TaskRun, "executedDigests"> & { sideEffects: number } {
-  const { executedDigests, ...rest } = run;
-  return { ...rest, sideEffects: Object.keys(executedDigests ?? {}).length };
+): Omit<TaskRun, "executedDigests" | "effects"> & { sideEffects: number } {
+  const { executedDigests, effects, ...rest } = run;
+  return {
+    ...rest,
+    sideEffects: effects ? effects.length : Object.keys(executedDigests ?? {}).length,
+  };
 }
 
 function json(res: http.ServerResponse, status: number, value: unknown): void {

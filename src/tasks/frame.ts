@@ -65,6 +65,13 @@ export function buildTaskFrame(task: Task, run: TaskRun, now: number): string {
 function completedEffects(run: TaskRun, inFlightMarker: string): { done: number; unknown: number } {
   let done = 0;
   let unknown = 0;
+  if (run.effects) {
+    for (const e of run.effects) {
+      if (e.s === "started") unknown++;
+      else if (e.s === "done") done++;
+    }
+    return { done, unknown };
+  }
   for (const value of Object.values(run.executedDigests)) {
     if (value === inFlightMarker) unknown++;
     else done++;

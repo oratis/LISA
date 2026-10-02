@@ -706,6 +706,111 @@ test("an identical side-effecting call repeated inside one uninterrupted run exe
   });
 });
 
+test("after a resume each recorded execution answers ONE replayed call; a further identical call executes", async () => {
+  await withHome(async () => {
+    const task = await dueRoutine();
+    let ran = 0;
+    const tools = [tool("append_line", async () => `appended (execution ${++ran})`)];
+    const approvalFactory = () => ({ approval: () => ({ allow: true }) });
+    const same = () => turn([call("append_line", { file: "log.txt", line: "tick" })]);
+
+    // Process 1: the same call, legitimately, twice — then it dies.
+    const reached = deferred();
+    const a = makeRunner({
+      tools,
+      approvalFactory,
+      provider: scripted([
+        same(),
+        same(),
+        (o) => {
+          reached.resolve();
+          return hang(o.signal);
+        },
+      ]).provider,
+    });
+    await a.tick();
+    await reached.promise;
+    await a.stop();
+    assert.equal(ran, 2);
+    const runId = (await getTask(task.id))!.activeRunId!;
+    assert.deepEqual(
+      (await loadRun(task.id, runId))!.run.effects!.map((e) => e.s),
+      ["done", "done"],
+    );
+
+    // Process 2: the model issues it three more times.
+    const b = makeRunner({
+      tools,
+      approvalFactory,
+      provider: scripted([same(), same(), same(), say("done")]).provider,
+    });
+    await b.tick();
+    await b.drain();
+
+    assert.equal(ran, 3, "two answered from the ledger, the third is a new execution");
+    const loaded = (await loadRun(task.id, runId))!;
+    const tail = resultsOf(loaded.messages)
+      .slice(-3)
+      .map((r) => String(r.content));
+    assert.match(tail[0]!, /^\[replayed\][\s\S]*execution 1\)/);
+    assert.match(tail[1]!, /^\[replayed\][\s\S]*execution 2\)/);
+    assert.equal(tail[2], "appended (execution 3)");
+    assert.equal(loaded.run.effects!.length, 3);
+    assert.equal(loaded.events.filter((e) => e.type === "replayed").length, 2);
+  });
+});
+
+test("a call recorded as failed is not replayed as a result: after a resume it can be tried again", async () => {
+  await withHome(async () => {
+    const task = await dueRoutine();
+    let attempts = 0;
+    const tools = [
+      tool("send_message", async () => {
+        if (++attempts === 1) throw new Error("smtp: connection refused");
+        return "message sent";
+      }),
+    ];
+    const approvalFactory = () => ({ approval: () => ({ allow: true }) });
+    const send = () => turn([call("send_message", { to: "sam" })]);
+
+    const reached = deferred();
+    const a = makeRunner({
+      tools,
+      approvalFactory,
+      provider: scripted([
+        send(),
+        (o) => {
+          reached.resolve();
+          return hang(o.signal);
+        },
+      ]).provider,
+    });
+    await a.tick();
+    await reached.promise;
+    await a.stop();
+    const runId = (await getTask(task.id))!.activeRunId!;
+    assert.deepEqual(
+      (await loadRun(task.id, runId))!.run.effects!.map((e) => e.s),
+      ["error"],
+    );
+
+    const b = makeRunner({
+      tools,
+      approvalFactory,
+      provider: scripted([send(), say("Sent on the second try.")]).provider,
+    });
+    await b.tick();
+    await b.drain();
+    assert.equal(attempts, 2, "executed again — not answered with the old failure");
+    const loaded = (await loadRun(task.id, runId))!;
+    assert.equal(String(resultsOf(loaded.messages).at(-1)!.content), "message sent");
+    assert.deepEqual(
+      loaded.run.effects!.map((e) => e.s),
+      ["error", "done"],
+    );
+  });
+});
+
 test("a run that had already answered when it was interrupted is finished without another model call", async () => {
   await withHome(async () => {
     const task = await dueRoutine();

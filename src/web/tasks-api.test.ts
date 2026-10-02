@@ -220,6 +220,7 @@ describe("tasks API — CRUD", () => {
     assert.equal(run.manual, true);
     assert.equal(run.summary, "ran it");
     assert.equal(run.executedDigests, undefined, "the ledger never leaves the process");
+    assert.equal(run.effects, undefined, "…in either of its forms");
     assert.equal(run.sideEffects, 0);
 
     const detail = await api("GET", `/api/tasks/${id}/runs/${run.id}`);

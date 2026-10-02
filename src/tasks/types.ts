@@ -221,8 +221,14 @@ export interface TaskRun {
   tokens: { in: number; out: number; cacheRead?: number; cacheWrite?: number };
   costMicros?: number;
   toolCalls: number;
-  /** sha256(tool + canonical input) → recorded result, for exactly-once side effects. */
+  /** sha256(tool + canonical input) → the LAST recorded result of that call (for inspection). */
   executedDigests: Record<string, string>;
+  /**
+   * The ledger proper: every execution of a side-effecting call, in order.
+   * One entry per execution, so the same call made twice is two entries — a
+   * resumed run replays exactly as many as were recorded, each once.
+   */
+  effects?: TaskEffect[];
   /** How many times this run was resumed after an interruption. */
   resumes?: number;
   /** The run ended on a credential / allowance problem (kept so a finish can be completed later). */
@@ -242,6 +248,18 @@ export interface TaskRun {
   summary?: string;
   artifacts?: TaskArtifact[];
   error?: string;
+}
+
+export interface TaskEffect {
+  /** sha256(tool + canonical input). */
+  d: string;
+  /**
+   * started — written before the tool ran; no result was ever recorded (unknown outcome).
+   * done    — it returned; `r` is what it returned.
+   * error   — it threw; nothing is assumed to have happened, and it is never replayed.
+   */
+  s: "started" | "done" | "error";
+  r?: string;
 }
 
 /** Every token a run has processed, cached or not — what `budget.tokens` is measured against. */
