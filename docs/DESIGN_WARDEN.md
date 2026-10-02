@@ -12,10 +12,11 @@ One Warden session per agent run (`createWardenSession`). For every tool call:
 2. **Build the request** (`request.ts`, `preview.ts`) — a sha256 digest of the exact payload, a redacted preview of at most 240 characters, and detected data classes. The raw input is never stored.
 3. **Evaluate** (`policy.ts`) — a pure function, in this order:
    1. system invariants;
-   2. grants (exact match);
-   3. the new-recipient rule;
-   4. user rules;
-   5. the default matrix.
+   2. a user rule of `handoff` (it outranks any older grant);
+   3. grants (exact match);
+   4. the new-recipient rule;
+   5. the remaining user rules;
+   6. the default matrix.
 4. **Audit** (`audit.ts`) — one JSONL line per decision and per resolution.
 5. **Act** — `allow` runs, `deny` returns the reason to the model, `ask` waits in the inbox, `handoff` refuses and files an inbox item telling the user to do the step themselves.
 
