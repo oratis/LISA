@@ -792,6 +792,11 @@ function connectEvents() {
       if (typeof window.refreshTokens === 'function') window.refreshTokens();
     } else if (ev.type === 'mail_digest_update' || ev.type === 'mail_accounts_update') {
       if (typeof window.refreshMail === 'function') window.refreshMail();
+    } else if (ev.type === 'approval_requested') {
+      // Warden (W2a): a tool call is waiting for the user's answer.
+      if (typeof window.lisaApprovalRequested === 'function') window.lisaApprovalRequested(ev);
+    } else if (ev.type === 'approval_resolved') {
+      if (typeof window.lisaApprovalResolved === 'function') window.lisaApprovalResolved(ev);
     }
   });
   es.onerror = () => {
@@ -5140,4 +5145,174 @@ if ('serviceWorker' in navigator) {
     var h = (location.hash || '').replace('#', '');
     if (views[h] && h !== active) showView(h);
   });
+})();
+
+// ── Warden approvals (W2a) ──────────────────────────────────────────────
+// A side-effecting tool call that the policy will not auto-allow waits in the
+// server's approval inbox. This renders it as an inline card in the chat log
+// and in a small pending list, and answers through /api/approvals. Everything
+// shown comes from the server's REDACTED preview and is set with textContent:
+// previews are derived from model-proposed input and must never be parsed as
+// HTML. (A full inbox view is a later PR.)
+(function () {
+  var chatLog = document.getElementById('log');
+  if (!chatLog) return;
+  /** @type {Record<string, { item: any, card: HTMLElement, row: HTMLElement | null }>} */
+  var pending = {};
+  var panel = null;
+  var panelList = null;
+  var panelTitle = null;
+
+  function el(tag, cls, text) {
+    var node = document.createElement(tag);
+    if (cls) node.className = cls;
+    if (text !== undefined && text !== null) node.textContent = String(text);
+    return node;
+  }
+
+  function ensurePanel() {
+    if (panel) return;
+    panel = el('div', 'warden-pending');
+    panel.setAttribute('role', 'region');
+    panel.setAttribute('aria-label', 'Pending approvals');
+    panelTitle = el('div', 'warden-pending-title');
+    panelList = el('div', 'warden-pending-list');
+    panel.appendChild(panelTitle);
+    panel.appendChild(panelList);
+    document.body.appendChild(panel);
+  }
+
+  function refreshPanel() {
+    var count = Object.keys(pending).length;
+    if (count === 0) {
+      if (panel) panel.hidden = true;
+      return;
+    }
+    ensurePanel();
+    panel.hidden = false;
+    panelTitle.textContent = count === 1 ? '1 approval waiting' : count + ' approvals waiting';
+  }
+
+  function answer(id, action, body, buttons, status) {
+    buttons.forEach(function (b) { b.disabled = true; });
+    status.textContent = action === 'approve' ? 'Approving…' : 'Sending…';
+    fetch('/api/approvals/' + encodeURIComponent(id) + '/' + action, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (data) {
+        if (r.ok) {
+          finish(id, data.verdict || (action === 'approve' ? 'approved' : 'denied'));
+          return;
+        }
+        if (r.status === 404 || r.status === 410) {
+          finish(id, 'expired');
+          return;
+        }
+        status.textContent = 'Could not ' + action + ': ' + (data.error || r.status);
+        buttons.forEach(function (b) { b.disabled = false; });
+      });
+    }).catch(function () {
+      status.textContent = 'Could not reach Lisa. Try again.';
+      buttons.forEach(function (b) { b.disabled = false; });
+    });
+  }
+
+  function actions(item, compact) {
+    var wrap = el('div', 'warden-actions');
+    var status = el('span', 'warden-status');
+    var buttons = [];
+    function add(label, cls, action, body) {
+      var b = el('button', 'warden-btn ' + cls, label);
+      b.type = 'button';
+      b.addEventListener('click', function () { answer(item.id, action, body, buttons, status); });
+      buttons.push(b);
+      wrap.appendChild(b);
+    }
+    if (item.kind === 'handoff') {
+      add('Dismiss', 'deny', 'deny', {});
+    } else {
+      var scopes = Array.isArray(item.scopes) ? item.scopes : ['once', 'always'];
+      add('Approve once', 'approve', 'approve', { scope: 'once', digest: item.digest });
+      if (!compact) {
+        if (item.taskId && scopes.indexOf('task') >= 0) {
+          add('Approve for this task', 'approve-wide', 'approve', { scope: 'task', digest: item.digest });
+        }
+        if (scopes.indexOf('always') >= 0) {
+          add('Always', 'approve-wide', 'approve', { scope: 'always', digest: item.digest });
+        }
+      }
+      add('Deny', 'deny', 'deny', {});
+    }
+    wrap.appendChild(status);
+    return wrap;
+  }
+
+  function buildCard(item) {
+    var card = el('div', 'warden-card' + (item.kind === 'handoff' ? ' handoff' : ''));
+    card.setAttribute('data-approval-id', item.id);
+    card.appendChild(el('div', 'warden-title',
+      item.kind === 'handoff' ? 'This needs you' : 'Lisa is asking to run: ' + item.tool));
+    card.appendChild(el('div', 'warden-preview', item.preview));
+    if (Array.isArray(item.targets) && item.targets.length) {
+      card.appendChild(el('div', 'warden-meta', 'To: ' + item.targets.join(', ')));
+    }
+    if (item.purpose) card.appendChild(el('div', 'warden-meta', 'For: ' + item.purpose));
+    card.appendChild(el('div', 'warden-meta', item.reason || ''));
+    if (item.kind !== 'handoff' && item.expiresAt) {
+      var when = new Date(item.expiresAt);
+      if (!isNaN(when.getTime())) {
+        card.appendChild(el('div', 'warden-meta', 'Expires ' + when.toLocaleTimeString() + ' — unanswered means no.'));
+      }
+    }
+    card.appendChild(actions(item, false));
+    return card;
+  }
+
+  function show(item) {
+    if (!item || typeof item.id !== 'string' || pending[item.id]) return;
+    var card = buildCard(item);
+    if (typeof removeChatEmpty === 'function') removeChatEmpty();
+    chatLog.appendChild(card);
+    chatLog.scrollTop = chatLog.scrollHeight;
+    ensurePanel();
+    var row = el('div', 'warden-pending-row');
+    var label = el('button', 'warden-pending-label', (item.kind === 'handoff' ? 'Needs you: ' : '') + item.preview);
+    label.type = 'button';
+    label.addEventListener('click', function () { card.scrollIntoView({ block: 'center' }); });
+    row.appendChild(label);
+    row.appendChild(actions(item, true));
+    panelList.appendChild(row);
+    pending[item.id] = { item: item, card: card, row: row };
+    refreshPanel();
+  }
+
+  function finish(id, verdict) {
+    var entry = pending[id];
+    if (!entry) return;
+    delete pending[id];
+    var words = { approved: 'Approved', denied: 'Denied', expired: 'Expired — not run', dismissed: 'Dismissed' };
+    entry.card.classList.add('resolved');
+    var old = entry.card.querySelector('.warden-actions');
+    if (old) old.remove();
+    entry.card.appendChild(el('div', 'warden-result ' + verdict, words[verdict] || verdict));
+    if (entry.row) entry.row.remove();
+    refreshPanel();
+  }
+
+  window.lisaApprovalRequested = function (ev) { show(ev); };
+  window.lisaApprovalResolved = function (ev) { if (ev && typeof ev.id === 'string') finish(ev.id, ev.verdict); };
+
+  // Anything already waiting when the page loads (or after a reconnect).
+  function loadPending() {
+    fetch('/api/approvals').then(function (r) { return r.ok ? r.json() : null; }).then(function (data) {
+      if (!data || !Array.isArray(data.approvals)) return;
+      var live = {};
+      data.approvals.forEach(function (item) { live[item.id] = true; show(item); });
+      Object.keys(pending).forEach(function (id) { if (!live[id]) finish(id, 'expired'); });
+    }).catch(function () {});
+  }
+  loadPending();
+  setInterval(loadPending, 30000);
 })();

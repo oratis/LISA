@@ -177,6 +177,8 @@ export interface ApprovalRequestedEvent {
   origin: Origin;
   /** Why Warden is asking (deterministic policy reason, never model text). */
   reason: string;
+  /** Scopes this item can be approved with (empty for a hand-off). */
+  scopes: GrantScope[];
 }
 
 export interface ApprovalResolvedEvent {

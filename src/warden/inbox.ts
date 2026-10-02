@@ -633,6 +633,7 @@ export class WardenInbox {
       taskId: v.taskId,
       origin: v.origin,
       reason: v.reason,
+      scopes: v.scopes,
     };
     this.safeEmit(event, item.uid);
   }
