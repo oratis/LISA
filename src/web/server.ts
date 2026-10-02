@@ -192,6 +192,7 @@ import {
   mailDigestNotice,
   makeServerReachOut,
   reachOutApiOptions,
+  scheduleServerCatchUp,
 } from "./reachout-wiring.js";
 import {
   loadScreenAdvisorConfig,
@@ -815,6 +816,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // Senders keep their own in-app / push closures, so what they say is
   // unchanged; the gate only decides whether each channel fires.
   const reachOutVia = makeServerReachOut({ pushBridge, log: (m) => logInfo(m) });
+  // Pushes held by quiet hours do not survive a restart; announce them once.
+  scheduleServerCatchUp({ pushBridge, log: (m) => logInfo(m) });
   hub.on("update", (session: AgentSession) => {
     // L6 — record the transition in the orchestrator journal so the
     // cross-agent recap can answer "what happened while I was away?" even for

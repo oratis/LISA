@@ -3,9 +3,10 @@
  * window ends.
  *
  * In memory on purpose: holding a notice on disk would mean writing its title
- * and body there, and the ledger's promise is that reach-out never does. The
- * cost is that a restart during quiet hours loses the held push (the in-app
- * copy was already delivered when the gate decided).
+ * and body there, and the ledger's promise is that reach-out never does. A
+ * restart during quiet hours therefore loses the held push itself (the in-app
+ * copy was already delivered when the gate decided); catchup.ts replaces it
+ * with one content-free "N updates" push, worked out from the ledger.
  */
 import type { ReachOutChannel } from "./types.js";
 

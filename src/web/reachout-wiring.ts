@@ -4,8 +4,9 @@
  * booting a server (see reachout-wiring.test.ts, which proves each pre-gate
  * sender still delivers under default settings).
  */
-import { scopedUid } from "../paths.js";
-import { hasReachOutImHook } from "../reachout/deliver.js";
+import { lisaGlobalHome, scopedUid } from "../paths.js";
+import { scheduleQuietHoursCatchUp } from "../reachout/catchup.js";
+import { createReachOutTransports, hasReachOutImHook, type PushSink } from "../reachout/deliver.js";
 import type { DeferQueue } from "../reachout/defer.js";
 import { reachOut } from "../reachout/gate.js";
 import type { ReachOutNotice, ReachOutResult, ReachOutTransports } from "../reachout/types.js";
@@ -75,4 +76,32 @@ export function reachOutApiOptions(cloud: boolean): ReachOutApiOptions {
     pushAvailable: !cloud && scopedUid() === null,
     imAvailable: hasReachOutImHook(),
   };
+}
+
+/**
+ * On server start: pushes that quiet hours were holding when the last process
+ * stopped are gone (they lived in memory), so queue one content-free catch-up
+ * push for them. Only the operator home is checked — a signed-in cloud tenant
+ * has no push or IM channel, so nothing of theirs is ever deferred. Never
+ * throws: a bad ledger must not stop the server from starting.
+ */
+export function scheduleServerCatchUp(opts: {
+  pushBridge: PushSink;
+  log?: (message: string) => void;
+  now?: () => Date;
+  deferQueue?: DeferQueue;
+}): number {
+  try {
+    return scheduleQuietHoursCatchUp({
+      home: lisaGlobalHome(),
+      uid: null,
+      transports: createReachOutTransports({ push: opts.pushBridge }),
+      log: opts.log,
+      now: opts.now,
+      deferQueue: opts.deferQueue,
+    });
+  } catch (err) {
+    opts.log?.(`[reachout] catch-up scheduling failed: ${(err as Error).message}`);
+    return 0;
+  }
 }

@@ -55,6 +55,12 @@ export {
   type PushSink,
 } from "./deliver.js";
 export { DeferQueue, sharedDeferQueue } from "./defer.js";
+export {
+  CATCH_UP_WINDOW_MS,
+  pendingDeferred,
+  scheduleQuietHoursCatchUp,
+  type CatchUpDeps,
+} from "./catchup.js";
 export { inQuietHours, localMoment, quietHoursEnd } from "./clock.js";
 export { looksLikeDataConnectionAsk, looksLikeEmotionalPressure, redLineFor } from "./redlines.js";
 export {

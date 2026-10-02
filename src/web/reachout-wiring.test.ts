@@ -28,6 +28,7 @@ import {
   mailDigestNotice,
   makeServerReachOut,
   reachOutApiOptions,
+  scheduleServerCatchUp,
   type ServerReachOut,
 } from "./reachout-wiring.js";
 
@@ -431,5 +432,46 @@ describe("wiring", () => {
       false,
     );
     assert.equal(reachOutApiOptions(false).imAvailable, false);
+  });
+});
+
+describe("restart during quiet hours", () => {
+  test("the server's catch-up sends one content-free push through the real bridge at 08:00", async () => {
+    const before = rig(NIGHT);
+    const out = await before.via(idleNoteNotice("PRIVATE note text"), {
+      inapp: () => {},
+      push: () => before.bridge.onIdleMessage("PRIVATE note text"),
+    });
+    assert.deepEqual(out.deferred, ["push"]);
+    // Restart: a new bridge and a new (empty) in-memory queue.
+    const restartAt = new Date(2026, 9, 3, 1, 0, 0);
+    const after = rig(restartAt);
+    assert.equal(
+      scheduleServerCatchUp({
+        pushBridge: after.bridge,
+        now: () => restartAt,
+        deferQueue: after.queue,
+      }),
+      1,
+    );
+    assert.equal(after.pushed.length, 0);
+    await after.queue.flushDue(new Date(2026, 9, 3, 8, 0, 0));
+    assert.equal(after.pushed.length, 1);
+    assert.equal(after.pushed[0]!.title, "Lisa");
+    assert.equal(after.pushed[0]!.body, "1 update while you were in quiet hours");
+    assert.equal(after.pushed[0]!.pref, "idle");
+    assert.doesNotMatch(JSON.stringify(after.pushed), /PRIVATE/);
+    // A second restart finds nothing left to announce.
+    const again = rig(new Date(2026, 9, 3, 9, 0, 0));
+    assert.equal(scheduleServerCatchUp({ pushBridge: again.bridge, deferQueue: again.queue }), 0);
+  });
+
+  test("a clean start queues nothing, and a broken home cannot stop the server starting", () => {
+    const r = rig();
+    assert.equal(scheduleServerCatchUp({ pushBridge: r.bridge, deferQueue: r.queue }), 0);
+    assert.equal(r.queue.size(), 0);
+    fs.mkdirSync(path.join(home, "reachout"), { recursive: true });
+    fs.mkdirSync(path.join(home, "reachout", "ledger.jsonl")); // a directory where the file should be
+    assert.equal(scheduleServerCatchUp({ pushBridge: r.bridge, deferQueue: r.queue }), 0);
   });
 });
