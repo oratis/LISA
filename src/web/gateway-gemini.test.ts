@@ -750,6 +750,21 @@ describe("POST /gw/gemini — streaming", () => {
     }
   });
 
+  test("a final event with no trailing newline is still metered", async () => {
+    // The last event carries the totals; a stream that ends right after its
+    // closing brace must not fall back to the earlier, smaller counters.
+    const unterminated = SSE_FIXTURE.replace(/\r\n\r\n$/, "");
+    assert.notEqual(unterminated, SSE_FIXTURE);
+    const { adm, deps } = setup(() => sseResponse(unterminated, [90]));
+    const gw = await gateway(deps);
+    try {
+      assert.equal(await (await post(gw.base, STREAM, REQUEST)).text(), unterminated);
+      assert.deepEqual(adm.settled[0]!.usage, FIXTURE_USAGE);
+    } finally {
+      await gw.close();
+    }
+  });
+
   test("a stream with no usageMetadata at all is billed by the byte floor, never free", async () => {
     const body = `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: "hi" }] } }] })}\r\n\r\n`;
     const { adm, deps } = setup(() => sseResponse(body, []));

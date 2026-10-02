@@ -648,31 +648,39 @@ export async function handleGateway(
     const reader = upstream.body.getReader();
     const decoder = new TextDecoder();
     let carry = "";
+    const meterLine = (rawLine: string): void => {
+      const line = rawLine.trim();
+      if (!line.startsWith("data:")) return;
+      const payload = line.slice(5).trim();
+      if (!payload || payload === "[DONE]") return;
+      try {
+        const obj = JSON.parse(payload) as Record<string, unknown>;
+        if (face === "gemini") {
+          geminiCounts = mergeGeminiUsage(geminiCounts, obj);
+          usage = geminiUsageToProvider(geminiCounts);
+        } else {
+          usage = foldUsage(face, obj, usage);
+        }
+      } catch {
+        /* non-JSON data line */
+      }
+    };
     try {
       for (;;) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          // The final event may arrive without a trailing newline; it is
+          // usually the one that carries the usage totals.
+          meterLine(carry + decoder.decode());
+          break;
+        }
         responseBytes += value.length;
         res.write(Buffer.from(value));
         carry += decoder.decode(value, { stream: true });
         let nl: number;
         while ((nl = carry.indexOf("\n")) >= 0) {
-          const line = carry.slice(0, nl).trim();
+          meterLine(carry.slice(0, nl));
           carry = carry.slice(nl + 1);
-          if (!line.startsWith("data:")) continue;
-          const payload = line.slice(5).trim();
-          if (!payload || payload === "[DONE]") continue;
-          try {
-            const obj = JSON.parse(payload) as Record<string, unknown>;
-            if (face === "gemini") {
-              geminiCounts = mergeGeminiUsage(geminiCounts, obj);
-              usage = geminiUsageToProvider(geminiCounts);
-            } else {
-              usage = foldUsage(face, obj, usage);
-            }
-          } catch {
-            /* non-JSON data line */
-          }
         }
       }
     } catch {
