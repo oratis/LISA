@@ -235,6 +235,12 @@ interface Slot {
   stopDetail?: string;
   lease?: TaskLease;
   leaseLost?: boolean;
+  /**
+   * Set when the run must stop as INTERRUPTED (left resumable, nothing more
+   * written): the outcome of a state-changing call that already ran could not
+   * be recorded. The value says why, for the log.
+   */
+  interrupted?: string;
 }
 
 interface Outcome {
@@ -720,7 +726,12 @@ export class TaskRunner {
     const p = this.current
       .run(slot, () => this.runTask(taskId, slot))
       .catch((err) => {
-        if (err instanceof Interrupted) return;
+        if (err instanceof Interrupted) {
+          if (slot.interrupted) {
+            this.log(`task ${taskId}: stopped — ${slot.interrupted}; it resumes at the next tick`);
+          }
+          return;
+        }
         if (err instanceof TaskGoneError || slot.lease?.gone) {
           // Deleted (or its whole home was) while it ran: nothing is put back.
           this.log(`task ${taskId}: removed while running — stopped`);
@@ -1100,6 +1111,10 @@ export class TaskRunner {
           // Every model call clears the same breakers, in the same order.
           if (await cancelRequested()) throw new TaskStop("cancelled");
           if (slot.stop) throw new TaskStop(slot.stop, slot.stopDetail);
+          // Stopping (shutdown, a lost lease, an unrecordable outcome): no
+          // further model call in this segment, whatever the provider would do
+          // with an aborted signal.
+          if (slot.controller.signal.aborted) throw new Interrupted();
           if (tokensSpent(run) >= budget.tokens) {
             stopWith("budget_tokens");
             throw new TaskStop("budget_tokens");
@@ -1206,6 +1221,7 @@ export class TaskRunner {
             return { block: "the tool-call budget for this run is exhausted" };
           }
           if (slot.stop) return { block: `run is stopping (${slot.stop})` };
+          if (slot.controller.signal.aborted) return { block: "run is stopping" };
           if (!isSideEffectingCall(name, input)) return;
           // Fencing: a runner that no longer owns the lease must not act.
           await this.fence();
@@ -1231,10 +1247,21 @@ export class TaskRunner {
           const tool = toolMap.get(name);
           if (tool && !validateToolInput(tool.inputSchema, input).ok) return;
           // Write-ahead: if we die inside the tool, the resumed run knows it started.
+          const previous = run.executedDigests[digest];
+          const entry: TaskEffect = { d: digest, s: "started" };
           run.executedDigests[digest] = IN_FLIGHT;
-          run.effects!.push({ d: digest, s: "started" });
+          run.effects!.push(entry);
           touch();
-          await this.saveRun(run, this.now());
+          try {
+            await this.saveRun(run, this.now());
+          } catch (err) {
+            // Not recorded, so not executed (the throw stops the call): take
+            // the entry back, so no later checkpoint claims it ever started.
+            run.effects!.splice(run.effects!.indexOf(entry), 1);
+            if (previous === undefined) delete run.executedDigests[digest];
+            else run.executedDigests[digest] = previous;
+            throw err;
+          }
           return;
         },
         postToolHook: async (name, input, text, isError) => {
@@ -1252,6 +1279,28 @@ export class TaskRunner {
               open.s = isError ? "error" : "done";
               open.r = recorded;
             }
+            touch();
+            try {
+              await this.saveRun(run, this.now());
+            } catch (err) {
+              // The call HAS run; only recording its outcome failed. That must
+              // never reach the model as a tool error — it would issue the
+              // call again, and it would execute again. Stop the run as
+              // interrupted instead, with the ledger as it is on disk
+              // (`started`): the resume answers a re-issued call with
+              // "outcome unknown; not executed again".
+              if (open) {
+                open.s = "started";
+                delete open.r;
+              }
+              run.executedDigests[digest] = IN_FLIGHT;
+              if (err instanceof LeaseLost || err instanceof TaskGoneError) throw err;
+              slot.interrupted = `the outcome of ${name} could not be recorded (${String((err as Error)?.message ?? err).slice(0, 160)})`;
+              slot.controller.abort();
+              return;
+            }
+            await cancelRequested();
+            return;
           }
           touch();
           await this.saveRun(run, this.now());
@@ -1260,6 +1309,9 @@ export class TaskRunner {
       });
       await logChain;
 
+      // Stopped as interrupted (an outcome that could not be recorded): not an
+      // ending of the run, whatever the loop returned.
+      if (slot.interrupted) throw new Interrupted();
       const text = result.finalText.trim();
       if (result.stopReason === "max_iterations") {
         return {

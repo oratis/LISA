@@ -59,6 +59,9 @@ All three drivers take the task's lease before touching it. Whoever loses skips 
 
 Every execution of a side-effecting call is one entry in `run.effects`, written **before** the tool runs (`started`) and closed **after** (`done` with its result, or `error`).
 
+- If the `started` entry cannot be written, the call does not run (the attempt fails like any transient error and is retried).
+- If the call has run but its outcome cannot be written, the model is never told the call failed: the run stops at once as interrupted (through its `AbortSignal`), the entry stays `started`, and the resume treats it as below.
+
 When a run continues — after an interruption or as a retry — the entries recorded so far become a replay queue per call:
 
 - a `done` entry answers one re-issued call with its recorded result, then is consumed;

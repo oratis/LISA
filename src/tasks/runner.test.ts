@@ -876,6 +876,105 @@ test("a crash INSIDE a side-effecting call is never re-executed: the model is to
   });
 });
 
+test("a side effect whose outcome cannot be checkpointed is never reported to the model as failed, and never runs twice (reviewer probe h1-posthook-eio)", async () => {
+  await withHome(async () => {
+    const task = await dueRoutine();
+    let sent = 0;
+    const tools = [tool("send_message", async () => `sent #${++sent}`)];
+    const approvalFactory = () => ({ approval: () => ({ allow: true }) });
+    const { notices, deliver } = collector();
+    const send = () => call("send_message", { to: "boss", body: "invoice" });
+    const sawError = (o: ProviderRunOpts) =>
+      resultsOf(o.messages).some((r) => r.is_error === true || /EIO/.test(String(r.content)));
+    // A model that issues the call again on its second turn: after being told
+    // it failed (the bug), or after a resume (it repeats it anyway).
+    const { provider, calls } = scripted([
+      turn([send()]),
+      turn([send()]),
+      say("Sent the invoice."),
+    ]);
+    const logs: string[] = [];
+    const runner = makeRunner({
+      provider,
+      tools,
+      approvalFactory,
+      deliver,
+      log: (m) => logs.push(m),
+    });
+
+    // One I/O error, on the checkpoint that records the send as done.
+    const fault = failing("appendFile", (_p, data) => String(data).includes('"s":"done"'), "EIO");
+    try {
+      await runner.tick();
+      await runner.drain();
+    } finally {
+      fault.restore();
+    }
+    assert.equal(fault.hits, 1);
+    assert.equal(sent, 1);
+    assert.equal(calls.length, 1, "the run stopped at once: no model call after the failure");
+    const stopped = (await getTask(task.id))!;
+    const runId = stopped.activeRunId!;
+    assert.ok(runId, "stopped as interrupted, resumable");
+    const mid = (await loadRun(task.id, runId))!.run;
+    assert.equal(mid.state, "running");
+    assert.deepEqual(
+      mid.effects!.map((e) => e.s),
+      ["started"],
+      "the ledger says what is known: started, outcome unrecorded",
+    );
+    assert.ok(
+      logs.some((l) => /could not be recorded/.test(l)),
+      logs.join(" | "),
+    );
+
+    // The next tick resumes it; the model issues the call again and is told
+    // its outcome is unknown — it is not executed again.
+    assert.deepEqual((await runner.tick()).started, [task.id]);
+    await runner.drain();
+    assert.equal(sent, 1, "the side effect happened exactly once");
+    for (const c of calls) assert.equal(sawError(c), false, "the model was never told it failed");
+    const done = (await loadRun(task.id, runId))!;
+    assert.equal(done.run.state, "succeeded");
+    assert.match(String(resultsOf(done.messages).at(-1)!.content), /^\[not re-executed\]/);
+    assert.equal(notices.length, 1);
+  });
+});
+
+test("a side-effecting call whose write-ahead checkpoint fails does not run, and is not later claimed as started", async () => {
+  await withHome(async () => {
+    const task = await dueRoutine({ schedule: { expr: "every:30m" } });
+    let now = NOW;
+    let sent = 0;
+    const tools = [tool("send_message", async () => `sent #${++sent}`)];
+    const approvalFactory = () => ({ approval: () => ({ allow: true }) });
+    const send = () => call("send_message", { to: "boss" });
+    const { provider } = scripted([turn([send()]), turn([send()]), say("done")]);
+    const runner = makeRunner({ provider, tools, approvalFactory, now: () => now });
+    const fault = failing(
+      "appendFile",
+      (_p, data) => String(data).includes('"s":"started"') && fault.hits === 0,
+      "EIO",
+    );
+    try {
+      await runner.tick();
+      await runner.drain();
+    } finally {
+      fault.restore();
+    }
+    assert.equal(sent, 0, "the call never ran");
+    const parked = (await getTask(task.id))!;
+    assert.ok(parked.resumeAt, "an ordinary failed attempt: parked for a retry");
+    const runId = parked.activeRunId!;
+    assert.deepEqual((await loadRun(task.id, runId))!.run.effects ?? [], []);
+    now = parked.resumeAt! + 1;
+    await runner.tick();
+    await runner.drain();
+    assert.equal(sent, 1, "the retry executes it: it had never run");
+    assert.equal((await loadRun(task.id, runId))!.run.state, "succeeded");
+  });
+});
+
 test("an identical side-effecting call repeated inside one uninterrupted run executes each time", async () => {
   await withHome(async () => {
     await dueRoutine();
