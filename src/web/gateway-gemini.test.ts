@@ -23,6 +23,7 @@ import type { ProviderUsage } from "../providers/types.js";
 import type { GatewayDependencies } from "./gateway.js";
 
 const {
+  canonicalGeminiRequest,
   clampGeminiOutput,
   geminiModelServed,
   geminiUsageToProvider,
@@ -286,6 +287,212 @@ describe("validateGeminiRequest — anything it cannot price is refused", () => 
   }
 });
 
+describe("canonicalGeminiRequest — one spelling per field, and only validated fields go upstream", () => {
+  const user = { role: "user", parts: [{ text: "hi" }] };
+  // Google accepts both the proto name and the camelCase JSON name of every
+  // field. Each of these used to pass the validator on one spelling and reach
+  // the upstream with the other.
+  const twoSpellings: Array<[string, Record<string, unknown>]> = [
+    [
+      "maxOutputTokens / max_output_tokens",
+      { contents: [user], generationConfig: { maxOutputTokens: 100, max_output_tokens: 65_536 } },
+    ],
+    [
+      "candidateCount / candidate_count",
+      { contents: [user], generationConfig: { candidateCount: 1, candidate_count: 8 } },
+    ],
+    [
+      "responseModalities / response_modalities",
+      {
+        contents: [user],
+        generationConfig: { responseModalities: ["TEXT"], response_modalities: ["AUDIO"] },
+      },
+    ],
+    [
+      "generationConfig / generation_config",
+      {
+        contents: [user],
+        generationConfig: { maxOutputTokens: 65_536 },
+        generation_config: { candidate_count: 8, response_modalities: ["AUDIO"] },
+      },
+    ],
+    [
+      "systemInstruction / system_instruction",
+      {
+        contents: [user],
+        systemInstruction: { parts: [{ text: "be brief" }] },
+        system_instruction: {
+          parts: [{ file_data: { file_uri: "https://x/v.mp4", mime_type: "video/mp4" } }],
+        },
+      },
+    ],
+    [
+      "inlineData / inline_data in one part",
+      {
+        contents: [
+          {
+            role: "user",
+            parts: [
+              {
+                inlineData: { mimeType: "image/png", data: "AAAA" },
+                inline_data: { mime_type: "audio/wav", data: "AAAA" },
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    [
+      "mimeType / mime_type in one blob",
+      {
+        contents: [
+          {
+            role: "user",
+            parts: [{ inlineData: { mimeType: "image/png", mime_type: "audio/wav", data: "A" } }],
+          },
+        ],
+      },
+    ],
+    [
+      "thinkingBudget / thinking_budget",
+      {
+        contents: [user],
+        generationConfig: { thinkingConfig: { thinkingBudget: 0, thinking_budget: 24_576 } },
+      },
+    ],
+    [
+      "tools / function_declarations next to functionDeclarations",
+      {
+        contents: [user],
+        tools: [{ functionDeclarations: [], function_declarations: [{ name: "f" }] }],
+      },
+    ],
+    [
+      "a field of a nested parameter schema",
+      {
+        contents: [user],
+        tools: [
+          {
+            functionDeclarations: [
+              {
+                name: "f",
+                parameters: {
+                  type: "OBJECT",
+                  properties: { list: { type: "ARRAY", maxItems: 1, max_items: 9 } },
+                },
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  ];
+  for (const [label, body] of twoSpellings) {
+    test(`refuses ${label}`, () => {
+      const check = canonicalGeminiRequest(body);
+      assert.equal(check.ok, false);
+      assert.match(check.ok ? "" : check.reason, /are the same field/);
+    });
+  }
+
+  test("a snake_case-only request is accepted, validated, and rebuilt in camelCase", () => {
+    const check = canonicalGeminiRequest({
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: "look" }, { inline_data: { mime_type: " Image/PNG ", data: "AAAA" } }],
+        },
+        {
+          role: "model",
+          parts: [{ function_call: { name: "f", args: { user_id: 1 } }, thought_signature: "s" }],
+        },
+        { role: "user", parts: [{ function_response: { name: "f", response: { ok: true } } }] },
+      ],
+      system_instruction: { parts: [{ text: "be brief" }] },
+      tools: [
+        { function_declarations: [{ name: "f", parameters_json_schema: { type: "object" } }] },
+      ],
+      tool_config: {
+        function_calling_config: { mode: "VALIDATED", allowed_function_names: ["f"] },
+      },
+      generation_config: {
+        max_output_tokens: 512,
+        candidate_count: 1,
+        response_modalities: ["text"],
+        thinking_config: { thinking_budget: 128, include_thoughts: false },
+      },
+      safety_settings: [{ category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" }],
+    });
+    assert.ok(check.ok, check.ok ? "" : check.reason);
+    assert.deepEqual(check.request, {
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: "look" }, { inlineData: { mimeType: "image/png", data: "AAAA" } }],
+        },
+        {
+          role: "model",
+          parts: [{ thoughtSignature: "s", functionCall: { name: "f", args: { user_id: 1 } } }],
+        },
+        { role: "user", parts: [{ functionResponse: { name: "f", response: { ok: true } } }] },
+      ],
+      systemInstruction: { parts: [{ text: "be brief" }] },
+      tools: [{ functionDeclarations: [{ name: "f", parametersJsonSchema: { type: "object" } }] }],
+      toolConfig: { functionCallingConfig: { mode: "VALIDATED", allowedFunctionNames: ["f"] } },
+      generationConfig: {
+        candidateCount: 1,
+        maxOutputTokens: 512,
+        responseModalities: ["TEXT"],
+        thinkingConfig: { thinkingBudget: 128, includeThoughts: false },
+      },
+      safetySettings: [{ category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" }],
+    });
+  });
+
+  test("keys of free-form JSON are the caller's data, not fields: both spellings may appear", () => {
+    const check = canonicalGeminiRequest({
+      contents: [
+        {
+          role: "model",
+          parts: [{ functionCall: { name: "f", args: { user_id: 1, userId: 2 } } }],
+        },
+      ],
+      tools: [
+        {
+          functionDeclarations: [
+            {
+              name: "f",
+              parameters: {
+                type: "OBJECT",
+                properties: { file_path: { type: "STRING" }, filePath: { type: "STRING" } },
+              },
+              parametersJsonSchema: { properties: { a_b: {}, aB: {} } },
+            },
+          ],
+        },
+      ],
+    });
+    assert.ok(check.ok, check.ok ? "" : check.reason);
+  });
+
+  test("the rebuilt request is a new object; the client's own object is never forwarded", () => {
+    const body = { contents: [user], generationConfig: { maxOutputTokens: 10 } };
+    const check = canonicalGeminiRequest(body);
+    assert.ok(check.ok);
+    assert.notEqual(check.request, body);
+    assert.notEqual(check.request.generationConfig, body.generationConfig);
+    assert.notEqual((check.request.contents as unknown[])[0], user);
+  });
+
+  test("a __proto__ key is refused, not forwarded", () => {
+    const body = JSON.parse(
+      '{"contents":[{"role":"user","parts":[{"text":"a"}]}],' +
+        '"generationConfig":{"__proto__":{"candidateCount":8},"maxOutputTokens":5}}',
+    ) as Record<string, unknown>;
+    assert.match(validateGeminiRequest(body) ?? "", /__proto__/);
+  });
+});
+
 describe("usageMetadata metering (v0.27.1 semantics)", () => {
   test("thinking tokens are output; cached prompt tokens are billed once, at the cache rate", () => {
     const usage = usageFromGeminiJson({
@@ -416,10 +623,15 @@ describe("clampGeminiOutput — the output side is held to the admitted budget",
     assert.deepEqual(low.generationConfig, { maxOutputTokens: 500 });
   });
 
-  test("the snake_case spelling is clamped in place, not duplicated", () => {
-    const body: Record<string, unknown> = { generation_config: { max_output_tokens: 60_000 } };
-    clampGeminiOutput(body, MODEL, 35_000);
-    assert.deepEqual(body, { generation_config: { max_output_tokens: 10_000 } });
+  test("a snake_case ceiling is clamped in the rebuilt request, under the camelCase name", () => {
+    const check = canonicalGeminiRequest({
+      contents: [{ role: "user", parts: [{ text: "hi" }] }],
+      generation_config: { max_output_tokens: 60_000 },
+    });
+    assert.ok(check.ok);
+    clampGeminiOutput(check.request, MODEL, 35_000);
+    assert.deepEqual(check.request.generationConfig, { maxOutputTokens: 10_000 });
+    assert.equal("generation_config" in check.request, false);
   });
 
   test("a budget beyond the model's own limit leaves the request untouched", () => {
@@ -923,6 +1135,31 @@ describe("POST /gw/gemini — non-streaming", () => {
       await gw.close();
     }
   });
+
+  test("a snake_case request reaches Google rebuilt in camelCase, clamped under the one name", async () => {
+    const adm = admission({
+      precheck: async () => ({ ok: true, budgetMicroUSD: 35_000 }), // buys 10k output tokens
+    });
+    const { upstream, deps } = setup(() => json(RESPONSE), adm);
+    const gw = await gateway(deps);
+    try {
+      const res = await post(gw.base, GENERATE, {
+        contents: [
+          { role: "user", parts: [{ inline_data: { mime_type: "image/png", data: "A" } }] },
+        ],
+        system_instruction: { parts: [{ text: "be brief" }] },
+        generation_config: { max_output_tokens: 65_536, temperature: 0.5 },
+      });
+      assert.equal(res.status, 200);
+      assert.deepEqual(upstream.calls[0]!.body, {
+        contents: [{ role: "user", parts: [{ inlineData: { mimeType: "image/png", data: "A" } }] }],
+        systemInstruction: { parts: [{ text: "be brief" }] },
+        generationConfig: { maxOutputTokens: 10_000, temperature: 0.5 },
+      });
+    } finally {
+      await gw.close();
+    }
+  });
 });
 
 describe("POST /gw/gemini — admission", () => {
@@ -1060,6 +1297,56 @@ describe("POST /gw/gemini — admission", () => {
       "unsupported_gemini_route",
     ],
     ["a JSON array body", GENERATE, [REQUEST], 400, "bad_json"],
+    [
+      "an output ceiling sent under both spellings",
+      GENERATE,
+      { ...REQUEST, generationConfig: { maxOutputTokens: 100, max_output_tokens: 65_536 } },
+      400,
+      "unsupported_request",
+    ],
+    [
+      "generation_config next to generationConfig",
+      GENERATE,
+      {
+        ...REQUEST,
+        generationConfig: { maxOutputTokens: 65_536 },
+        generation_config: { candidate_count: 8, response_modalities: ["AUDIO"] },
+      },
+      400,
+      "unsupported_request",
+    ],
+    [
+      "audio inline_data next to an inlineData image",
+      GENERATE,
+      {
+        contents: [
+          {
+            role: "user",
+            parts: [
+              {
+                inlineData: { mimeType: "image/png", data: "A" },
+                inline_data: { mime_type: "audio/wav", data: "A" },
+              },
+            ],
+          },
+        ],
+      },
+      400,
+      "unsupported_request",
+    ],
+    [
+      "a video file in system_instruction next to systemInstruction",
+      GENERATE,
+      {
+        ...REQUEST,
+        systemInstruction: { parts: [{ text: "be brief" }] },
+        system_instruction: {
+          parts: [{ file_data: { file_uri: "https://x/v.mp4", mime_type: "video/mp4" } }],
+        },
+      },
+      400,
+      "unsupported_request",
+    ],
   ];
   for (const [label, pathname, body, status, error] of refusedBeforeAdmission) {
     test(`${label}: refused with ${status} before admission and before the upstream`, async () => {

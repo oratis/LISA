@@ -18,8 +18,8 @@
  * several things per request or at non-text rates (search grounding, code
  * execution, audio and image output, audio input), and the price table only
  * has token rates for text. So that face serves only models with an explicit
- * price row, and refuses any request field it cannot price — see
- * `validateGeminiRequest`. Everything it does serve is metered from
+ * price row, and sends upstream only a request it rebuilt from fields it can
+ * price — see `canonicalGeminiRequest`. Everything it does serve is metered from
  * `usageMetadata` exactly as the Gemini provider meters it (v0.27.1): thinking
  * tokens as output, cached prompt tokens separately from input.
  *
@@ -265,7 +265,10 @@ export function geminiModelServed(model: string): boolean {
   return model.startsWith("gemini-") && explicitPriceForModel(model) !== null;
 }
 
-/** Accept both JSON spellings the Generative Language API takes. */
+/**
+ * Read a field of a Google RESPONSE under either JSON spelling. Requests are
+ * never read this way — see `canonicalGeminiRequest`.
+ */
 function field(obj: Record<string, unknown>, camel: string, snake: string): unknown {
   return obj[camel] !== undefined ? obj[camel] : obj[snake];
 }
@@ -274,118 +277,421 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-const GEMINI_TOP_LEVEL = new Set([
-  "contents",
-  "systemInstruction",
-  "system_instruction",
-  "generationConfig",
-  "generation_config",
-  "tools",
-  "toolConfig",
-  "tool_config",
-  "safetySettings",
-  "safety_settings",
-]);
+// ── The Gemini request: validated, then rebuilt ─────────────────────────────
+//
+// Google's JSON parser accepts every request field under two names: the proto
+// field name (`max_output_tokens`) and its lowerCamelCase JSON name
+// (`maxOutputTokens`). A validator that reads one spelling while the client's
+// object is forwarded as sent can be walked around with the other. So this
+// face never forwards the client's object. It reads each supported field under
+// either name, validates it, and builds a new camelCase request out of the
+// validated values alone. A field sent under both names in one object is
+// refused, and so is every field that is not listed below.
+//
+// Values the API treats as free-form JSON — `functionCall.args`,
+// `functionResponse.response`, `parametersJsonSchema`, `responseJsonSchema` —
+// are forwarded as sent: their keys are the caller's data, not API fields, and
+// nothing in them is billed. `Schema` messages (`parameters`, `response`,
+// `responseSchema`) are forwarded as sent too, after the two-spellings check.
 
-const GEMINI_PART_KEYS = new Set([
-  "text",
-  "thought",
-  "thoughtSignature",
-  "thought_signature",
-  "functionCall",
-  "function_call",
-  "functionResponse",
-  "function_response",
-  "inlineData",
-  "inline_data",
-]);
+class GeminiRefusal extends Error {}
+
+function refuse(reason: string): never {
+  throw new GeminiRefusal(reason);
+}
+
+/** The lowerCamelCase JSON name proto3 derives from a field name: `max_output_tokens` → `maxOutputTokens`. */
+function jsonName(key: string): string {
+  return key.replace(/_([a-z0-9])/g, (_match, ch: string) => ch.toUpperCase());
+}
+
+/** Refuses an object that carries one field under two spellings. */
+function refuseTwoSpellings(value: Record<string, unknown>, where: string): void {
+  const spelledAs = new Map<string, string>();
+  for (const key of Object.keys(value)) {
+    const name = jsonName(key);
+    const other = spelledAs.get(name);
+    if (other !== undefined) {
+      refuse(`${where}: "${other}" and "${key}" are the same field; send it once`);
+    }
+    spelledAs.set(name, key);
+  }
+}
+
+/**
+ * The fields of one request message, keyed by their camelCase name. Refuses a
+ * value that is not an object, a field sent under two spellings, and any field
+ * not in `allowed`.
+ */
+function messageFields(
+  value: unknown,
+  where: string,
+  allowed: ReadonlySet<string>,
+): Map<string, unknown> {
+  if (!isObject(value)) refuse(`${where} must be an object`);
+  refuseTwoSpellings(value, where);
+  const fields = new Map<string, unknown>();
+  for (const key of Object.keys(value)) {
+    const name = jsonName(key);
+    if (!allowed.has(name)) refuse(`${where}: field "${key}" is not supported`);
+    fields.set(name, value[key]);
+  }
+  return fields;
+}
+
+function str(value: unknown, where: string): string {
+  if (typeof value !== "string") refuse(`${where} must be a string`);
+  return value;
+}
+
+function bool(value: unknown, where: string): boolean {
+  if (typeof value !== "boolean") refuse(`${where} must be true or false`);
+  return value;
+}
+
+function finite(value: unknown, where: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) refuse(`${where} must be a number`);
+  return value;
+}
+
+function integer(value: unknown, where: string, min = Number.MIN_SAFE_INTEGER): number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < min) {
+    refuse(`${where} must be an integer of at least ${min}`);
+  }
+  return value;
+}
+
+function stringList(value: unknown, where: string): string[] {
+  if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) {
+    refuse(`${where} must be a list of strings`);
+  }
+  return value;
+}
+
+/** Free-form JSON object (function arguments, function results): forwarded as sent. */
+function jsonObject(value: unknown, where: string): Record<string, unknown> {
+  if (!isObject(value)) refuse(`${where} must be an object`);
+  return value;
+}
+
+const SCHEMA_MAX_DEPTH = 64;
+
+/**
+ * A `Schema` message describes JSON and is forwarded as sent; it is still
+ * checked, at every level, for a field sent under both names. The keys of
+ * `properties` are the caller's property names, so they are not checked
+ * against each other.
+ */
+function checkSchema(value: unknown, where: string, depth = 0): void {
+  if (depth > SCHEMA_MAX_DEPTH) refuse(`${where}: schema nested too deeply`);
+  if (Array.isArray(value)) {
+    value.forEach((item, i) => checkSchema(item, `${where}[${i}]`, depth + 1));
+    return;
+  }
+  if (!isObject(value)) return;
+  refuseTwoSpellings(value, where);
+  for (const [key, sub] of Object.entries(value)) {
+    const name = jsonName(key);
+    if (name === "properties" && isObject(sub)) {
+      for (const [prop, schema] of Object.entries(sub)) {
+        checkSchema(schema, `${where}.${key}.${prop}`, depth + 1);
+      }
+    } else if (name === "items" || name === "anyOf") {
+      checkSchema(sub, `${where}.${key}`, depth + 1);
+    }
+  }
+}
+
+function schema(value: unknown, where: string): Record<string, unknown> {
+  if (!isObject(value)) refuse(`${where} must be an object`);
+  checkSchema(value, where);
+  return value;
+}
 
 /** Inline media billed at the text/image input rate. Audio and video are not. */
 const GEMINI_INLINE_MIME = /^(image\/(png|jpeg|webp|heic|heif)|application\/pdf|text\/plain)$/;
 
-function validateGeminiParts(owner: unknown, where: string): string | null {
-  if (owner === undefined) return null;
-  if (!isObject(owner)) return `${where} must be an object`;
-  const parts = owner.parts;
-  if (parts === undefined) return null;
-  if (!Array.isArray(parts)) return `${where}.parts must be an array`;
-  for (const part of parts) {
-    if (!isObject(part)) return `${where}.parts entries must be objects`;
-    for (const key of Object.keys(part)) {
-      if (!GEMINI_PART_KEYS.has(key)) return `${where}: part field "${key}" is not supported`;
-    }
-    const inline = field(part, "inlineData", "inline_data");
-    if (inline !== undefined) {
-      const mime = isObject(inline) ? field(inline, "mimeType", "mime_type") : undefined;
-      if (typeof mime !== "string" || !GEMINI_INLINE_MIME.test(mime.trim().toLowerCase())) {
-        return `${where}: inline data of type "${String(mime)}" is not supported`;
-      }
-    }
+const REQUEST_FIELDS = new Set([
+  "contents",
+  "systemInstruction",
+  "tools",
+  "toolConfig",
+  "generationConfig",
+  "safetySettings",
+]);
+const CONTENT_FIELDS = new Set(["role", "parts"]);
+const PART_FIELDS = new Set([
+  "text",
+  "thought",
+  "thoughtSignature",
+  "functionCall",
+  "functionResponse",
+  "inlineData",
+]);
+const FUNCTION_CALL_FIELDS = new Set(["id", "name", "args"]);
+const FUNCTION_RESPONSE_FIELDS = new Set(["id", "name", "response"]);
+const BLOB_FIELDS = new Set(["mimeType", "data"]);
+const TOOL_FIELDS = new Set(["functionDeclarations"]);
+const FUNCTION_DECLARATION_FIELDS = new Set([
+  "name",
+  "description",
+  "parameters",
+  "parametersJsonSchema",
+  "response",
+  "responseJsonSchema",
+]);
+const TOOL_CONFIG_FIELDS = new Set(["functionCallingConfig"]);
+const FUNCTION_CALLING_CONFIG_FIELDS = new Set(["mode", "allowedFunctionNames"]);
+const FUNCTION_CALLING_MODES = new Set(["MODE_UNSPECIFIED", "AUTO", "ANY", "NONE", "VALIDATED"]);
+const SAFETY_SETTING_FIELDS = new Set(["category", "threshold"]);
+const GENERATION_CONFIG_FIELDS = new Set([
+  "temperature",
+  "topP",
+  "topK",
+  "candidateCount",
+  "maxOutputTokens",
+  "stopSequences",
+  "seed",
+  "presencePenalty",
+  "frequencyPenalty",
+  "responseMimeType",
+  "responseSchema",
+  "responseJsonSchema",
+  "responseModalities",
+  "thinkingConfig",
+]);
+const THINKING_CONFIG_FIELDS = new Set(["thinkingBudget", "includeThoughts"]);
+/** Structured output is still text, billed at the text output rate. */
+const TEXT_RESPONSE_MIME = new Set(["text/plain", "application/json", "text/x.enum"]);
+
+function buildPart(value: unknown, where: string): Record<string, unknown> {
+  const fields = messageFields(value, where, PART_FIELDS);
+  const part: Record<string, unknown> = {};
+  if (fields.has("text")) part.text = str(fields.get("text"), `${where}.text`);
+  if (fields.has("thought")) part.thought = bool(fields.get("thought"), `${where}.thought`);
+  if (fields.has("thoughtSignature")) {
+    part.thoughtSignature = str(fields.get("thoughtSignature"), `${where}.thoughtSignature`);
   }
-  return null;
+  if (fields.has("functionCall")) {
+    const at = `${where}.functionCall`;
+    const call = messageFields(fields.get("functionCall"), at, FUNCTION_CALL_FIELDS);
+    part.functionCall = {
+      ...(call.has("id") ? { id: str(call.get("id"), `${at}.id`) } : {}),
+      name: str(call.get("name"), `${at}.name`),
+      ...(call.has("args") ? { args: jsonObject(call.get("args"), `${at}.args`) } : {}),
+    };
+  }
+  if (fields.has("functionResponse")) {
+    const at = `${where}.functionResponse`;
+    const response = messageFields(fields.get("functionResponse"), at, FUNCTION_RESPONSE_FIELDS);
+    part.functionResponse = {
+      ...(response.has("id") ? { id: str(response.get("id"), `${at}.id`) } : {}),
+      name: str(response.get("name"), `${at}.name`),
+      response: jsonObject(response.get("response"), `${at}.response`),
+    };
+  }
+  if (fields.has("inlineData")) {
+    const at = `${where}.inlineData`;
+    const blob = messageFields(fields.get("inlineData"), at, BLOB_FIELDS);
+    const mime = blob.get("mimeType");
+    const mimeType = typeof mime === "string" ? mime.trim().toLowerCase() : "";
+    if (!GEMINI_INLINE_MIME.test(mimeType)) {
+      refuse(`${where}: inline data of type "${String(mime)}" is not supported`);
+    }
+    part.inlineData = { mimeType, data: str(blob.get("data"), `${at}.data`) };
+  }
+  return part;
 }
 
-/**
- * Refuse any request the gateway cannot price from token counts alone.
- *
- * This is an allow-list. Whatever is not named here — Google Search grounding,
- * code execution, URL context, cached-content references, file URIs, audio or
- * video input, image or audio output, more than one candidate — is rejected
- * with a 400 before admission, so nothing unpriced reaches the upstream on the
- * operator's key. Returns the reason, or null when the request is acceptable.
- */
-export function validateGeminiRequest(body: Record<string, unknown>): string | null {
-  for (const key of Object.keys(body)) {
-    if (!GEMINI_TOP_LEVEL.has(key)) return `field "${key}" is not supported`;
+function buildContent(value: unknown, where: string): Record<string, unknown> {
+  const fields = messageFields(value, where, CONTENT_FIELDS);
+  const content: Record<string, unknown> = {};
+  if (fields.has("role")) content.role = str(fields.get("role"), `${where}.role`);
+  if (fields.has("parts")) {
+    const parts = fields.get("parts");
+    if (!Array.isArray(parts)) refuse(`${where}.parts must be an array`);
+    content.parts = parts.map((part, i) => {
+      if (!isObject(part)) refuse(`${where}.parts entries must be objects`);
+      return buildPart(part, `${where}.parts[${i}]`);
+    });
   }
-  const contents = body.contents;
-  if (!Array.isArray(contents) || contents.length === 0)
-    return "contents must be a non-empty array";
-  for (const content of contents) {
-    const problem = validateGeminiParts(content, "contents");
-    if (problem) return problem;
-  }
-  const system = field(body, "systemInstruction", "system_instruction");
-  const systemProblem = validateGeminiParts(system, "systemInstruction");
-  if (systemProblem) return systemProblem;
+  return content;
+}
 
-  const tools = body.tools;
-  if (tools !== undefined) {
-    if (!Array.isArray(tools)) return "tools must be an array";
-    for (const tool of tools) {
-      if (!isObject(tool)) return "tools entries must be objects";
-      for (const key of Object.keys(tool)) {
-        if (key !== "functionDeclarations" && key !== "function_declarations") {
-          return `tool "${key}" is not supported (function declarations only)`;
-        }
+function buildTool(value: unknown, where: string): Record<string, unknown> {
+  // Built-in tools (Search grounding, code execution, URL context, …) are
+  // billed per request or per query; only function declarations are served.
+  const fields = messageFields(value, where, TOOL_FIELDS);
+  const tool: Record<string, unknown> = {};
+  if (fields.has("functionDeclarations")) {
+    const declarations = fields.get("functionDeclarations");
+    if (!Array.isArray(declarations)) refuse(`${where}.functionDeclarations must be an array`);
+    tool.functionDeclarations = declarations.map((declaration, i) => {
+      const at = `${where}.functionDeclarations[${i}]`;
+      const decl = messageFields(declaration, at, FUNCTION_DECLARATION_FIELDS);
+      const out: Record<string, unknown> = { name: str(decl.get("name"), `${at}.name`) };
+      if (decl.has("description"))
+        out.description = str(decl.get("description"), `${at}.description`);
+      for (const key of ["parameters", "response"]) {
+        if (decl.has(key)) out[key] = schema(decl.get(key), `${at}.${key}`);
       }
-    }
+      for (const key of ["parametersJsonSchema", "responseJsonSchema"]) {
+        if (decl.has(key)) out[key] = decl.get(key);
+      }
+      return out;
+    });
   }
+  return tool;
+}
 
-  const config = field(body, "generationConfig", "generation_config");
-  if (config !== undefined) {
-    if (!isObject(config)) return "generationConfig must be an object";
-    const modalities = field(config, "responseModalities", "response_modalities");
-    if (modalities !== undefined) {
-      const textOnly =
-        Array.isArray(modalities) &&
-        modalities.every((m) => typeof m === "string" && m.toUpperCase() === "TEXT");
-      if (!textOnly) return "only TEXT response modality is supported";
+function buildToolConfig(value: unknown): Record<string, unknown> {
+  const fields = messageFields(value, "toolConfig", TOOL_CONFIG_FIELDS);
+  const config: Record<string, unknown> = {};
+  if (fields.has("functionCallingConfig")) {
+    const at = "toolConfig.functionCallingConfig";
+    const calling = messageFields(
+      fields.get("functionCallingConfig"),
+      at,
+      FUNCTION_CALLING_CONFIG_FIELDS,
+    );
+    const out: Record<string, unknown> = {};
+    if (calling.has("mode")) {
+      const mode = str(calling.get("mode"), `${at}.mode`);
+      if (!FUNCTION_CALLING_MODES.has(mode)) refuse(`${at}.mode "${mode}" is not supported`);
+      out.mode = mode;
     }
-    if (field(config, "speechConfig", "speech_config") !== undefined) {
-      return "speechConfig is not supported";
+    if (calling.has("allowedFunctionNames")) {
+      out.allowedFunctionNames = stringList(
+        calling.get("allowedFunctionNames"),
+        `${at}.allowedFunctionNames`,
+      );
     }
-    const candidates = field(config, "candidateCount", "candidate_count");
-    if (candidates !== undefined && candidates !== 1) return "candidateCount must be 1";
-    const maxOut = field(config, "maxOutputTokens", "max_output_tokens");
-    if (
-      maxOut !== undefined &&
-      !(typeof maxOut === "number" && Number.isInteger(maxOut) && maxOut > 0)
-    ) {
-      return "maxOutputTokens must be a positive integer";
-    }
+    config.functionCallingConfig = out;
   }
-  return null;
+  return config;
+}
+
+function buildGenerationConfig(value: unknown): Record<string, unknown> {
+  const where = "generationConfig";
+  const fields = messageFields(value, where, GENERATION_CONFIG_FIELDS);
+  const config: Record<string, unknown> = {};
+  for (const key of ["temperature", "topP", "presencePenalty", "frequencyPenalty"]) {
+    if (fields.has(key)) config[key] = finite(fields.get(key), `${where}.${key}`);
+  }
+  for (const key of ["topK", "seed"]) {
+    if (fields.has(key)) config[key] = integer(fields.get(key), `${where}.${key}`);
+  }
+  if (fields.has("candidateCount")) {
+    if (fields.get("candidateCount") !== 1) refuse("candidateCount must be 1");
+    config.candidateCount = 1;
+  }
+  if (fields.has("maxOutputTokens")) {
+    const maxOut = fields.get("maxOutputTokens");
+    if (!(typeof maxOut === "number" && Number.isSafeInteger(maxOut) && maxOut > 0)) {
+      refuse("maxOutputTokens must be a positive integer");
+    }
+    config.maxOutputTokens = maxOut;
+  }
+  if (fields.has("stopSequences")) {
+    config.stopSequences = stringList(fields.get("stopSequences"), `${where}.stopSequences`);
+  }
+  if (fields.has("responseMimeType")) {
+    const mime = str(fields.get("responseMimeType"), `${where}.responseMimeType`);
+    if (!TEXT_RESPONSE_MIME.has(mime)) refuse(`response type "${mime}" is not supported`);
+    config.responseMimeType = mime;
+  }
+  if (fields.has("responseSchema")) {
+    config.responseSchema = schema(fields.get("responseSchema"), `${where}.responseSchema`);
+  }
+  if (fields.has("responseJsonSchema"))
+    config.responseJsonSchema = fields.get("responseJsonSchema");
+  if (fields.has("responseModalities")) {
+    const modalities = fields.get("responseModalities");
+    const textOnly =
+      Array.isArray(modalities) &&
+      modalities.every((m) => typeof m === "string" && m.toUpperCase() === "TEXT");
+    if (!textOnly) refuse("only TEXT response modality is supported");
+    config.responseModalities = modalities.map(() => "TEXT");
+  }
+  if (fields.has("thinkingConfig")) {
+    const at = `${where}.thinkingConfig`;
+    const thinking = messageFields(fields.get("thinkingConfig"), at, THINKING_CONFIG_FIELDS);
+    const out: Record<string, unknown> = {};
+    // -1 asks for dynamic thinking; the output ceiling still bounds it.
+    if (thinking.has("thinkingBudget")) {
+      out.thinkingBudget = integer(thinking.get("thinkingBudget"), `${at}.thinkingBudget`, -1);
+    }
+    if (thinking.has("includeThoughts")) {
+      out.includeThoughts = bool(thinking.get("includeThoughts"), `${at}.includeThoughts`);
+    }
+    config.thinkingConfig = out;
+  }
+  return config;
+}
+
+function buildGeminiRequest(body: Record<string, unknown>): Record<string, unknown> {
+  const fields = messageFields(body, "request", REQUEST_FIELDS);
+  const contents = fields.get("contents");
+  if (!Array.isArray(contents) || contents.length === 0) {
+    refuse("contents must be a non-empty array");
+  }
+  const request: Record<string, unknown> = {
+    contents: contents.map((content, i) => buildContent(content, `contents[${i}]`)),
+  };
+  if (fields.has("systemInstruction")) {
+    request.systemInstruction = buildContent(fields.get("systemInstruction"), "systemInstruction");
+  }
+  if (fields.has("tools")) {
+    const tools = fields.get("tools");
+    if (!Array.isArray(tools)) refuse("tools must be an array");
+    request.tools = tools.map((tool, i) => buildTool(tool, `tools[${i}]`));
+  }
+  if (fields.has("toolConfig")) request.toolConfig = buildToolConfig(fields.get("toolConfig"));
+  if (fields.has("generationConfig")) {
+    request.generationConfig = buildGenerationConfig(fields.get("generationConfig"));
+  }
+  if (fields.has("safetySettings")) {
+    const settings = fields.get("safetySettings");
+    if (!Array.isArray(settings)) refuse("safetySettings must be an array");
+    request.safetySettings = settings.map((setting, i) => {
+      const at = `safetySettings[${i}]`;
+      const s = messageFields(setting, at, SAFETY_SETTING_FIELDS);
+      return {
+        ...(s.has("category") ? { category: str(s.get("category"), `${at}.category`) } : {}),
+        ...(s.has("threshold") ? { threshold: str(s.get("threshold"), `${at}.threshold`) } : {}),
+      };
+    });
+  }
+  return request;
+}
+
+export type GeminiRequestCheck =
+  { ok: true; request: Record<string, unknown> } | { ok: false; reason: string };
+
+/**
+ * Validate a client's Gemini request and rebuild it from the validated fields.
+ *
+ * The rebuilt request — camelCase, nothing but the fields listed above — is
+ * the only thing sent upstream. Whatever is not listed (Google Search
+ * grounding, code execution, URL context, cached-content references, file
+ * URIs, audio or video input, image or audio output, more than one candidate,
+ * any field this face does not know) is refused, and so is a field sent under
+ * both of its JSON names. handleGateway runs this before admission, so a
+ * refused request takes no turn lease and reaches no upstream.
+ */
+export function canonicalGeminiRequest(body: Record<string, unknown>): GeminiRequestCheck {
+  try {
+    return { ok: true, request: buildGeminiRequest(body) };
+  } catch (err) {
+    if (err instanceof GeminiRefusal) return { ok: false, reason: err.message };
+    throw err;
+  }
+}
+
+/** The refusal reason for a request, or null when it can be served. */
+export function validateGeminiRequest(body: Record<string, unknown>): string | null {
+  const check = canonicalGeminiRequest(body);
+  return check.ok ? null : check.reason;
 }
 
 /** Above this the model's own output limit is the binding one; no need to send a ceiling. */
@@ -394,23 +700,22 @@ const GEMINI_MODEL_OUTPUT_LIMIT = 65_536;
 /**
  * Cost reservation for one Gemini call: hold the output side to what the
  * admitted budget can pay for. Thinking tokens count against
- * `maxOutputTokens`, so the ceiling covers them too. Mutates `body`.
+ * `maxOutputTokens`, so the ceiling covers them too.
+ *
+ * Takes the request `canonicalGeminiRequest` rebuilt — the only output limit
+ * it can carry is `generationConfig.maxOutputTokens` — and mutates it.
  */
 export function clampGeminiOutput(
-  body: Record<string, unknown>,
+  request: Record<string, unknown>,
   model: string,
   budgetMicroUSD: number,
 ): number | null {
   const affordable = tokensAffordable(model, Number.isFinite(budgetMicroUSD) ? budgetMicroUSD : 0);
-  const key = body.generation_config !== undefined ? "generation_config" : "generationConfig";
-  const config = isObject(body[key]) ? body[key] : {};
-  const snake = config.max_output_tokens !== undefined && config.maxOutputTokens === undefined;
-  const requested = snake ? config.max_output_tokens : config.maxOutputTokens;
-  const wanted = typeof requested === "number" ? requested : Number.POSITIVE_INFINITY;
-  const ceiling = Math.min(wanted, affordable);
+  const config = isObject(request.generationConfig) ? request.generationConfig : {};
+  const requested = typeof config.maxOutputTokens === "number" ? config.maxOutputTokens : undefined;
+  const ceiling = Math.min(requested ?? Number.POSITIVE_INFINITY, affordable);
   if (ceiling >= GEMINI_MODEL_OUTPUT_LIMIT && requested === undefined) return null;
-  if (ceiling === requested) return ceiling;
-  body[key] = { ...config, [snake ? "max_output_tokens" : "maxOutputTokens"]: ceiling };
+  request.generationConfig = { ...config, maxOutputTokens: ceiling };
   return ceiling;
 }
 
@@ -554,6 +859,9 @@ export async function handleGateway(
     res.end(JSON.stringify({ error: "model_required" }));
     return;
   }
+  // What is sent upstream. The Gemini face replaces the client's object with
+  // one rebuilt from validated fields; the other faces forward the body.
+  let outbound = body;
   if (geminiRoute) {
     // Both checks run BEFORE admission: a request this face cannot price must
     // not take the tenant's turn lease, let alone reach the upstream.
@@ -561,11 +869,12 @@ export async function handleGateway(
       sendJson(res, 400, { error: "model_not_supported", model });
       return;
     }
-    const problem = validateGeminiRequest(body);
-    if (problem) {
-      sendJson(res, 400, { error: "unsupported_request", detail: problem });
+    const check = canonicalGeminiRequest(body);
+    if (!check.ok) {
+      sendJson(res, 400, { error: "unsupported_request", detail: check.reason });
       return;
     }
+    outbound = check.request;
   }
   const plan = planUpstream(face, subpath, model, req.headers, deps.env ?? process.env);
   if (!plan) {
@@ -585,10 +894,10 @@ export async function handleGateway(
     const stream = body.stream === true;
     if (stream && face === "openai") {
       // Ask the upstream to append the usage chunk so the tee-parser can meter.
-      body.stream_options = { ...(body.stream_options ?? {}), include_usage: true };
+      outbound.stream_options = { ...(body.stream_options ?? {}), include_usage: true };
     }
     if (face === "gemini") {
-      clampGeminiOutput(body, model, admission.permit.budgetMicroUSD);
+      clampGeminiOutput(outbound, model, admission.permit.budgetMicroUSD);
     }
 
     let upstream: Response;
@@ -596,7 +905,7 @@ export async function handleGateway(
       upstream = await (deps.fetch ?? fetch)(plan.url, {
         method: "POST",
         headers: plan.headers,
-        body: JSON.stringify(body),
+        body: JSON.stringify(outbound),
       });
     } catch {
       res.writeHead(502, { "content-type": "application/json" });
