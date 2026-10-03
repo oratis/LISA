@@ -6,20 +6,27 @@
  * heartbeat CLI and `lisa tasks run`, so a task behaves identically whichever
  * of them picks it up — and the per-task lease guarantees only one does.
  *
- * What a run is guaranteed:
- *   lease        one runner at a time, across processes (lease.ts);
+ * What a run is guaranteed (docs/DESIGN_TASK_ENGINE.md has the long form):
+ *   lease        one runner at a time, across processes (lease.ts), with
+ *                fencing: ownership is re-checked before every write and every
+ *                side-effecting call, and a runner that lost the lease stops
+ *                without writing;
  *   checkpoint   the run record is appended after every model call and every
  *                tool call, and every message as soon as it exists;
  *   resume       a run whose holder died is continued — same run id, saved
  *                history, a note telling the model what already happened;
- *   exactly-once a side-effecting call is recorded BEFORE it executes
- *                (in-flight) and AFTER (its result). A resumed run that
- *                re-issues it gets the recorded result, or — when the outcome
- *                is unknown — is told so. It is never executed twice;
- *   budgets      tokens, spend, wall-clock and tool calls each stop the run;
+ *   retry        a transient failure parks the run and RESUMES it later; a
+ *                retry never starts a fresh run with an empty ledger;
+ *   exactly-once each execution of a side-effecting call is a ledger entry,
+ *                written BEFORE it runs and closed AFTER. A continued run that
+ *                re-issues it is answered from the ledger (once per recorded
+ *                execution), or told its outcome is unknown. Not run twice;
+ *   finish       the terminal run record comes first; a task that points at a
+ *                terminal run completes that finish instead of running again;
+ *   budgets      tokens (cached ones too), spend, wall-clock and tool calls;
  *   cancel       an AbortSignal in-process, a flag on the task across processes;
- *   approval     from the injected factory; with none wired, side-effecting
- *                calls are denied (policy.ts);
+ *   approval     from the injected factory; with none wired, only verified
+ *                read-only calls pass (policy.ts);
  *   delivery     results go through the outbox (outbox.ts), never directly.
  */
 import { AsyncLocalStorage } from "node:async_hooks";
