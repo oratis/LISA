@@ -26,6 +26,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { Content, FunctionCallingConfigMode, GoogleGenAI, Part } from "@google/genai";
 import type { StoredMessage } from "../types.js";
+import { normalizeModelId } from "../billing/prices.js";
 import { withStreamRetry } from "./stream-retry.js";
 import type { Provider, ProviderResult, ProviderRunOpts } from "./types.js";
 
@@ -92,7 +93,9 @@ export class GeminiProvider implements Provider {
     // a transient empty-stream retry (see withStreamRetry).
     return withStreamRetry({ signal: opts.signal }, async (markEmitted) => {
       const stream = await client.models.generateContentStream({
-        model: opts.model,
+        // Gemini ids are lower-case; send the normalised form the managed-key
+        // gate checked and the gateway route admits.
+        model: normalizeModelId(opts.model),
         contents,
         config: {
           // Aborts the in-flight request (the SDK then throws an abort error).

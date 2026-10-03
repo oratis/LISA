@@ -2161,6 +2161,64 @@ describe("POST /gw/gemini — driven by the real @google/genai client", () => {
     }
   });
 
+  test("a model id in another case reaches the face in the one form both sides check", async () => {
+    // The key gate lower-cased the id and the route admits only lower case:
+    // LISA_MODEL=Gemini-2.5-Flash passed the gate, then every turn was a 404.
+    const { providerForModel, hasCredentialsForModel } = await import("../providers/registry.js");
+    const { upstream, adm, deps } = setup(() => sseResponse(TOOL_STREAM, []));
+    const server = http.createServer((req, res) => {
+      void handleGateway(req, res, req.url ?? "", ACCT, deps);
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const keys = [
+      "LISA_MANAGED_SESSION",
+      "LISA_MANAGED_BASE",
+      "GEMINI_API_KEY",
+      "GOOGLE_API_KEY",
+      "LISA_MODEL_FALLBACK",
+      "LISA_BASE_URL",
+      "LISA_PROVIDER",
+    ] as const;
+    const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+    for (const k of keys) delete process.env[k];
+    process.env.LISA_MANAGED_SESSION = "s1.managed.session";
+    process.env.LISA_MANAGED_BASE = base;
+    try {
+      for (const model of ["Gemini-2.5-Flash", "GEMINI-2.5-FLASH ", "gemini-2.5-flash"]) {
+        assert.equal(hasCredentialsForModel(model), true, model);
+        await providerForModel(model).runTurn({
+          model,
+          systemPrompt: "sys",
+          tools: [],
+          messages: [{ role: "user", content: "hi" }],
+          signal: new AbortController().signal,
+        });
+      }
+      assert.equal(upstream.calls.length, 3);
+      for (const call of upstream.calls) {
+        assert.equal(
+          call.url,
+          `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:streamGenerateContent?alt=sse`,
+        );
+      }
+      assert.ok(adm.settled.every((s) => s.model === MODEL));
+      // The face itself still admits only the normalised id.
+      assert.equal(geminiModelServed("Gemini-2.5-Flash"), false);
+      assert.equal(
+        parseGeminiRoute(`/gw/gemini/v1beta/models/Gemini-2.5-Flash:generateContent`),
+        null,
+      );
+    } finally {
+      for (const k of keys) {
+        if (saved[k] === undefined) delete process.env[k];
+        else process.env[k] = saved[k];
+      }
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
   test("a user's own Gemini key still wins over the managed session", async () => {
     const { hasOwnCredentialsForModel } = await import("../providers/registry.js");
     assert.equal(hasOwnCredentialsForModel(MODEL, { GEMINI_API_KEY: "mine" }), true);

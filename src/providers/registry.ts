@@ -3,7 +3,7 @@ import { GeminiProvider } from "./gemini.js";
 import { OpenAIProvider } from "./openai.js";
 import { FallbackProvider } from "./fallback.js";
 import { DEFAULT_MODEL } from "../llm.js";
-import { explicitPriceForModel } from "../billing/prices.js";
+import { explicitPriceForModel, normalizeModelId } from "../billing/prices.js";
 import type { Provider } from "./types.js";
 
 export type ProviderName = "anthropic" | "openai" | "gemini";
@@ -217,7 +217,9 @@ export function hasCredentialsForModel(
  * not wave through a model every managed turn would then be refused for.
  */
 export function managedGeminiServed(model: string): boolean {
-  const m = model.trim().toLowerCase();
+  // GeminiProvider sends this same normalised id, so a model that passes here
+  // is the one the gateway's route admits.
+  const m = normalizeModelId(model);
   return m.startsWith("gemini-") && explicitPriceForModel(m) !== null;
 }
 

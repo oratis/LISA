@@ -176,7 +176,7 @@ export function resolveRoute(purpose: ModelPurpose, ctx: RouteContext = {}): Mod
         tier,
         model: local.model,
         source: "configured",
-        local: { backend: local.backend, ...localEndpoint(local.backend) },
+        local: { backend: local.backend, ...localEndpoint(local.backend, env) },
       };
     }
     if (configured === strong) return { purpose, tier, model: strong, source: "configured" };

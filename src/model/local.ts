@@ -62,15 +62,39 @@ export const defaultRuntime: LocalRuntime = {
   },
 };
 
-/** Default OpenAI-compatible endpoints per local backend. Pure. */
-export function localEndpoint(backend: string): { host: string; baseURL: string; apiKey: string } {
+/**
+ * OLLAMA_HOST read the way Ollama reads it: the scheme is optional (http) and
+ * so is a bare host's port (11434). The common server setting
+ * `0.0.0.0:11434` becomes `http://0.0.0.0:11434`; without a scheme it would be
+ * no URL at all.
+ */
+export function ollamaHostURL(raw: string): string {
+  const value = raw.trim();
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) return value;
+  try {
+    const url = new URL(`http://${value}`);
+    if (!url.port) url.port = "11434";
+    return `${url.protocol}//${url.host}${url.pathname === "/" ? "" : url.pathname}`;
+  } catch {
+    return `http://${value}`;
+  }
+}
+
+/** Default OpenAI-compatible endpoints per local backend. Pure given `env`. */
+export function localEndpoint(
+  backend: string,
+  env: Record<string, string | undefined> = process.env,
+): { host: string; baseURL: string; apiKey: string } {
   const hosts: Record<string, string> = {
     ollama: "http://localhost:11434",
     lmstudio: "http://localhost:1234",
     llamacpp: "http://localhost:8080",
   };
-  const envHost = backend === "ollama" ? process.env.OLLAMA_HOST : undefined;
-  const host = (envHost || hosts[backend] || hosts.ollama!).replace(/\/$/, "");
+  const envHost = backend === "ollama" ? env.OLLAMA_HOST?.trim() : undefined;
+  const host = (envHost ? ollamaHostURL(envHost) : hosts[backend] || hosts.ollama!).replace(
+    /\/$/,
+    "",
+  );
   return { host, baseURL: `${host}/v1`, apiKey: backend };
 }
 

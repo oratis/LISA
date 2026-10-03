@@ -37,7 +37,7 @@ import { findPreset } from "../providers/registry.js";
 import type { ProviderUsage } from "../providers/types.js";
 import type { AccountRecord } from "./accounts.js";
 import { admitInference, type InferenceAdmission } from "../billing/admission.js";
-import { explicitPriceForModel, tokensAffordable } from "../billing/prices.js";
+import { explicitPriceForModel, normalizeModelId, tokensAffordable } from "../billing/prices.js";
 import { readCappedText, BodyTooLargeError } from "./http-body.js";
 import { estimateUsageFromBytes } from "../billing/usage-floor.js";
 
@@ -249,10 +249,16 @@ export function parseGeminiRoute(rawUrl: string): GeminiRoute | null {
 /**
  * May this model be served through the Gemini face? Only a Gemini model with
  * its own row in the price table: an id priced at the generic fallback could
- * be an image, audio or preview model whose real rate is above it.
+ * be an image, audio or preview model whose real rate is above it. Only the
+ * normalised id (`normalizeModelId`) is accepted — the form GeminiProvider
+ * sends and the managed-key gate (`managedGeminiServed`) checks.
  */
 export function geminiModelServed(model: string): boolean {
-  return model.startsWith("gemini-") && explicitPriceForModel(model) !== null;
+  return (
+    model === normalizeModelId(model) &&
+    model.startsWith("gemini-") &&
+    explicitPriceForModel(model) !== null
+  );
 }
 
 /**

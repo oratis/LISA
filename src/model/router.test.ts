@@ -213,6 +213,13 @@ describe("resolveRoute — small purposes, local edition", () => {
     assert.equal(lm.local?.baseURL, "http://localhost:1234/v1");
   });
 
+  test("a local route reads OLLAMA_HOST from the env it was given, and adds the scheme", () => {
+    const route = resolveRoute("classify", {
+      env: { LISA_MODEL_SMALL: "local://ollama/qwen2.5:3b", OLLAMA_HOST: "0.0.0.0:11434" },
+    });
+    assert.equal(route.local?.baseURL, "http://0.0.0.0:11434/v1");
+  });
+
   test("a malformed local reference keeps the strong model", () => {
     const route = resolveRoute("classify", {
       model: "claude-sonnet-4-6",
