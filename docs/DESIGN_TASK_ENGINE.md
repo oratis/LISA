@@ -49,8 +49,8 @@ All three drivers take the task's lease before touching it. Whoever loses skips 
 | --- | --- |
 | One runner at a time | The lease, with fencing |
 | Nothing lost on a crash | The run record is appended after every model call and every tool call; messages as they exist |
-| Resume, not restart | A run whose holder died continues under the same run id with its saved history and a note about what already happened. Given up after 3 interruptions |
-| A retry is a resume | A transient failure does not end the run. It is parked (`task.resumeAt`) and resumed — same run id, same history, same ledger — up to 2 times with backoff, and the model is told the previous attempt failed and why |
+| Resume, not restart | A run whose holder died continues under the same run id with its saved history and a note about what already happened — if the start gate is still open (see "Who runs tasks"). Given up after 3 interruptions |
+| A retry is a resume | A transient failure does not end the run. It is parked (`task.resumeAt`) and resumed — same run id, same history, same ledger — up to 2 times with backoff, and the model is told the previous attempt failed and why. The resume passes the start gate too |
 | No repeated side effect | See "The ledger" |
 | Finishing is recoverable | See "Finishing a run" |
 | Bounded | Token (cache reads and writes included), spend, wall-clock and tool-call ceilings per run |
