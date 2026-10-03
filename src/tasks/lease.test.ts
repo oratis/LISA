@@ -34,6 +34,18 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
   return { promise, resolve };
 }
 
+/**
+ * Delete a directory the way a test means it: all at once. A recursive rm is
+ * not atomic — renewals still running would see the lease file gone while its
+ * directory still exists, or write into it mid-removal (ENOTEMPTY). Moving
+ * the directory away first makes every path under it vanish in one step.
+ */
+async function vanish(dir: string): Promise<void> {
+  const away = `${dir}.gone-${process.pid}-${Math.random().toString(36).slice(2)}`;
+  await fsp.rename(dir, away);
+  await fsp.rm(away, { recursive: true, force: true, maxRetries: 10 });
+}
+
 const exists = (file: string) =>
   fsp.stat(file).then(
     () => true,
@@ -250,7 +262,7 @@ test("a renewal that finds the lease gone, or errors, reports it lost", async ()
       onLost: () => lost2++,
     });
     assert.ok(b);
-    await fsp.rm(path.dirname(leaseFile("erroring")), { recursive: true, force: true });
+    await vanish(path.dirname(leaseFile("erroring")));
     await fsp.writeFile(path.dirname(leaseFile("erroring")), "not a directory");
     await new Promise((r) => setTimeout(r, 120));
     assert.equal(lost2, 1);
@@ -406,7 +418,7 @@ test("a lease whose directory was deleted is gone: renewal, verify and release c
       onLost: () => lost++,
     });
     assert.ok(a);
-    await fsp.rm(tasksDir(), { recursive: true, force: true }); // the task or the home was deleted
+    await vanish(tasksDir()); // the task or the home was deleted
     for (let i = 0; i < 100 && lost === 0; i++) await new Promise((r) => setTimeout(r, 10));
     assert.equal(lost, 1);
     assert.equal(a.gone, true);
@@ -418,7 +430,7 @@ test("a lease whose directory was deleted is gone: renewal, verify and release c
     await fsp.mkdir(tasksDir(), { recursive: true });
     const b = await acquireLease("deleted-too", { autoRenew: false });
     assert.ok(b);
-    await fsp.rm(tasksDir(), { recursive: true, force: true });
+    await vanish(tasksDir());
     assert.equal(await b.verify(), false);
     assert.equal(b.gone, true);
     await b.release();

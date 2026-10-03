@@ -27,6 +27,18 @@ import {
 
 const NOW = Date.parse("2026-10-02T08:00:00Z");
 
+/**
+ * Delete a directory the way a test means it: all at once. A recursive rm is
+ * not atomic — renewals still running would see the lease file gone while its
+ * directory still exists, or write into it mid-removal (ENOTEMPTY). Moving
+ * the directory away first makes every path under it vanish in one step.
+ */
+async function vanish(dir: string): Promise<void> {
+  const away = `${dir}.gone-${process.pid}-${Math.random().toString(36).slice(2)}`;
+  await fsp.rename(dir, away);
+  await fsp.rm(away, { recursive: true, force: true, maxRetries: 10 });
+}
+
 async function withHome<T>(fn: (home: string) => Promise<T>): Promise<T> {
   const home = await fsp.mkdtemp(path.join(os.tmpdir(), "lisa-tasks-removal-"));
   try {
@@ -196,7 +208,7 @@ test("lease renewals after the home was deleted re-create nothing; the run stops
     });
     await runner.tick();
     await inTool.promise;
-    await fsp.rm(home, { recursive: true, force: true });
+    await vanish(home);
     await new Promise((r) => setTimeout(r, 150)); // several renewals fall due meanwhile
     await assert.rejects(fsp.stat(home), /ENOENT/, "no renewal brought the home back");
     gate.resolve();
