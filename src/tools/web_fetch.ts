@@ -1,4 +1,5 @@
 import type { ToolDefinition } from "../types.js";
+import { isCloud } from "../edition.js";
 import dns from "node:dns/promises";
 import net from "node:net";
 import { Agent, fetch as undiciFetch } from "undici";
@@ -213,7 +214,14 @@ export async function resolvePublicAddresses(
       throw new Error(`DNS returned an invalid address family for ${host}`);
     }
     if (isBlockedIp(entry.address)) {
-      throw new Error(`refusing DNS result for ${host}: blocked address ${entry.address}`);
+      // Hosted: never tell a tenant what the service's resolver answers for a
+      // name — with private zones that would map the internal network. A
+      // local owner sees the address (it explains, say, a fake-ip refusal).
+      throw new Error(
+        isCloud()
+          ? `refusing DNS result for ${host}: it resolves to a non-public address`
+          : `refusing DNS result for ${host}: blocked address ${entry.address}`,
+      );
     }
   }
   return addresses;

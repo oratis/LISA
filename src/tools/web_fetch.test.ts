@@ -132,6 +132,32 @@ describe("resolvePublicAddresses — validates every DNS answer", () => {
     }
   });
 
+  test("the hosted edition does not echo the refused address; the local edition does", async () => {
+    const lookup: DnsLookupAll = async () => [{ address: "10.0.0.1", family: 4 }];
+    const previous = process.env.LISA_EDITION;
+    try {
+      process.env.LISA_EDITION = "cloud";
+      await assert.rejects(
+        () => resolvePublicAddresses("mix.example", lookup),
+        (err: Error) => {
+          assert.equal(
+            err.message,
+            "refusing DNS result for mix.example: it resolves to a non-public address",
+          );
+          return true;
+        },
+      );
+      delete process.env.LISA_EDITION;
+      await assert.rejects(
+        () => resolvePublicAddresses("mix.example", lookup),
+        /refusing DNS result for mix\.example: blocked address 10\.0\.0\.1/,
+      );
+    } finally {
+      if (previous === undefined) delete process.env.LISA_EDITION;
+      else process.env.LISA_EDITION = previous;
+    }
+  });
+
   test("rejects a hostname resolving to loopback before transport", async () => {
     const lookup: DnsLookupAll = async () => [{ address: "127.0.0.1", family: 4 }];
     await assert.rejects(

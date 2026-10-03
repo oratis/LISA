@@ -88,6 +88,20 @@ function hosted(
   };
 }
 
+/**
+ * The hosted DNS refusal is generic: it must not tell a tenant what the
+ * service's resolver returned for a name (review F5).
+ */
+function nonPublicRefusal(...addresses: string[]): (err: unknown) => boolean {
+  return (err) => {
+    const message = (err as Error).message;
+    assert.match(message, /resolves to a non-public address/);
+    assert.equal(/blocked address/.test(message), false, message);
+    for (const address of addresses) assert.equal(message.includes(address), false, message);
+    return true;
+  };
+}
+
 // The suite runs as the hosted edition: this is the configuration the tools are
 // being admitted to, and web_search's egress choice depends on it.
 let previousEdition: string | undefined;
@@ -318,7 +332,7 @@ describe("hosted web_fetch — SSRF deny paths (nothing may reach the wire)", ()
       const h = hosted({ lookup: async () => answers });
       await assert.rejects(
         () => h.fetch.execute({ url: "https://innocent.example.com/" }, ctx()),
-        /blocked address/,
+        nonPublicRefusal(...answers.map((answer) => answer.address)),
       );
       assert.deepEqual(h.sent, []);
     });
@@ -438,7 +452,7 @@ describe("hosted web_fetch — redirects are re-validated on every hop", () => {
     });
     await assert.rejects(
       () => h.fetch.execute({ url: "https://start.example.com/" }, ctx()),
-      /blocked address 10\.9\.9\.9/,
+      nonPublicRefusal("10.9.9.9"),
     );
     assert.equal(h.sent.length, 1);
   });
@@ -506,7 +520,7 @@ describe("hosted web_fetch — DNS rebinding", () => {
     });
     await assert.rejects(
       () => h.fetch.execute({ url: "https://rebind.example.com/" }, ctx()),
-      /blocked address 127\.0\.0\.1/,
+      nonPublicRefusal("127.0.0.1"),
     );
     assert.equal(h.sent.length, 1);
   });
@@ -766,7 +780,10 @@ describe("hosted web_search — its own outbound path goes through the guard", (
   test("a poisoned resolver cannot point the search at an internal address", async () => {
     for (const address of ["169.254.169.254", "127.0.0.1", "10.0.0.7"]) {
       const h = hosted({ lookup: async () => [{ address, family: 4 }], respond: page });
-      await assert.rejects(() => h.search.execute({ query: "x" }, ctx()), /blocked address/);
+      await assert.rejects(
+        () => h.search.execute({ query: "x" }, ctx()),
+        nonPublicRefusal(address),
+      );
       assert.deepEqual(h.sent, []);
     }
   });
