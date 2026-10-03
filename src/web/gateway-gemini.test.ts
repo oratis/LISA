@@ -1907,6 +1907,86 @@ describe("POST /gw/* — a stream cut before its final usage event (every face)"
   }
 });
 
+describe("POST /gw/* — a buffered body that fails mid-read (every face)", () => {
+  const NON_STREAMING: Array<[string, string, Record<string, unknown>]> = [
+    ["gemini", GENERATE, REQUEST],
+    [
+      "anthropic",
+      "/gw/anthropic/v1/messages",
+      {
+        model: "claude-sonnet-4-6",
+        max_tokens: 4_000,
+        messages: [{ role: "user", content: "hi" }],
+      },
+    ],
+    [
+      "openai",
+      "/gw/openai/v1/chat/completions",
+      { model: "gpt-4o", messages: [{ role: "user", content: "hi" }] },
+    ],
+  ];
+  const partial = `{"candidates":[{"content":{"parts":[{"text":"${"x".repeat(5_000)}`;
+
+  function brokenJson(status: number): Response {
+    let sent = false;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (!sent) {
+          sent = true;
+          controller.enqueue(new TextEncoder().encode(partial));
+        } else controller.error(new Error("upstream reset"));
+      },
+    });
+    return new Response(body, { status, headers: { "content-type": "application/json" } });
+  }
+
+  for (const [face, pathname, body] of NON_STREAMING) {
+    test(`${face}: a 2xx is settled at the byte floor of what arrived, then released; the client gets a 502`, async () => {
+      const adm = admission();
+      const upstream = fakeUpstream(() => brokenJson(200));
+      const gw = await gateway({
+        fetch: upstream.fetch,
+        admit: (acct, model) => admitInference(acct, model, adm.deps),
+        env: ALL_FACES_ENV,
+      });
+      try {
+        const res = await post(gw.base, pathname, body);
+        assert.equal(res.status, 502);
+        assert.deepEqual(await res.json(), { error: "upstream_read_failed" });
+        assert.equal(adm.settled.length, 1);
+        assert.deepEqual(adm.settled[0]!.usage, {
+          inputTokens: Math.ceil(Buffer.byteLength(JSON.stringify(upstream.calls[0]!.body)) / 4),
+          outputTokens: Math.ceil(Buffer.byteLength(partial) / 4),
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+        });
+        assert.deepEqual(adm.log.slice(-2), ["settle", "release"]);
+        assert.deepEqual(gw.errors, []);
+      } finally {
+        await gw.close();
+      }
+    });
+
+    test(`${face}: a non-2xx that fails mid-read is not billed, and still released`, async () => {
+      const adm = admission();
+      const upstream = fakeUpstream(() => brokenJson(500));
+      const gw = await gateway({
+        fetch: upstream.fetch,
+        admit: (acct, model) => admitInference(acct, model, adm.deps),
+        env: ALL_FACES_ENV,
+      });
+      try {
+        const res = await post(gw.base, pathname, body);
+        assert.equal(res.status, 502);
+        assert.deepEqual(adm.settled, []);
+        assert.equal(adm.log.at(-1), "release");
+      } finally {
+        await gw.close();
+      }
+    });
+  }
+});
+
 describe("POST /gw/gemini — driven by the real @google/genai client", () => {
   // The face has to accept what LISA's own Gemini provider actually sends, not
   // what this file assumes it sends: the SDK builds the path, the query and the

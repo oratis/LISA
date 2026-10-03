@@ -823,6 +823,20 @@ export function isFinalUsageEvent(face: GatewayFace, obj: Record<string, unknown
   );
 }
 
+/** Read a whole response body, reporting each chunk's size as it arrives. */
+async function readBody(response: Response, onBytes: (bytes: number) => void): Promise<string> {
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return text + decoder.decode();
+    onBytes(value.length);
+    text += decoder.decode(value, { stream: true });
+  }
+}
+
 /** Test seams; production uses the real upstream fetch and the real admission boundary. */
 export interface GatewayDependencies {
   fetch?: typeof fetch;
@@ -973,8 +987,21 @@ export async function handleGateway(
     const contentType = upstream.headers.get("content-type") ?? "application/json";
     if (!upstream.body || !contentType.includes("text/event-stream")) {
       // Non-streaming (or error) response: buffer, meter, forward as-is.
-      const text = await upstream.text();
-      responseBytes = Buffer.byteLength(text, "utf8");
+      let text: string;
+      try {
+        text = await readBody(upstream, (bytes) => (responseBytes += bytes));
+      } catch {
+        // The upstream answered, then its body failed mid-read. It has billed
+        // the operator for what it generated, so a 2xx is settled at the byte
+        // floor of what arrived (non-2xx stays unbilled); the client gets a
+        // 502, since a partial body is not an answer.
+        if (upstream.ok) {
+          usageFinal = false;
+          await settle();
+        }
+        sendJson(res, 502, { error: "upstream_read_failed" });
+        return;
+      }
       if (upstream.ok) {
         try {
           usage =
