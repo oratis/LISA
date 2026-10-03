@@ -608,3 +608,78 @@ test("a long feed still reports exactly the new items, once", async () => {
   const again = await check(watcher(trigger, next.watch), { signal, now: NOW + 2 });
   assert.equal(again.hit, undefined);
 });
+
+/** A feed of the posts with these numbers, in this order. */
+function feedOf(ids: number[]): string {
+  const items = ids
+    .map(
+      (id) =>
+        `<item><title>Post ${id}</title><link>https://example.com/p/${id}</link><guid>https://example.com/a-rather-long-guid/${id}</guid></item>`,
+    )
+    .join("");
+  return `<?xml version="1.0"?><rss version="2.0"><channel><title>Big feed</title>${items}</channel></rss>`;
+}
+const range = (from: number, to: number): number[] =>
+  Array.from({ length: to - from + 1 }, (_, i) => from + i);
+
+test("a feed longer than the memory reports new items at either end, and nothing else (reviewer probe m6-rss)", async () => {
+  const cases: Array<{ label: string; bodies: string[]; expect: Array<string | null> }> = [
+    {
+      label: "oldest-first, growing at the end",
+      bodies: [feedOf(range(1, 2100)), feedOf(range(1, 2101)), feedOf(range(1, 2103))],
+      expect: [null, "Post 2101", "Post 2102,Post 2103"],
+    },
+    {
+      label: "newest-first, growing at the top",
+      bodies: [
+        feedOf(range(1, 2500).reverse()),
+        feedOf(range(1, 2501).reverse()),
+        feedOf(range(1, 2501).reverse()),
+      ],
+      expect: [null, "Post 2501", null],
+    },
+    {
+      label: "oldest-first, rotating (the oldest falls off the top)",
+      bodies: [feedOf(range(1, 2500)), feedOf(range(2, 2501)), feedOf(range(4, 2503))],
+      expect: [null, "Post 2501", "Post 2502,Post 2503"],
+    },
+    {
+      label: "newest-first, rotating (the oldest falls off the end)",
+      bodies: [feedOf(range(1, 2500).reverse()), feedOf(range(2, 2501).reverse())],
+      expect: [null, "Post 2501"],
+    },
+    {
+      label: "newest-first, an old item bumped to the top above new ones",
+      bodies: [
+        feedOf(range(1, 2500).reverse()),
+        feedOf([7, 2502, 2501, ...range(1, 2500).reverse()]),
+      ],
+      expect: [null, "Post 2501,Post 2502"],
+    },
+  ];
+  for (const { label, bodies, expect } of cases) {
+    let body = bodies[0]!;
+    const { deps } = site(() => ({ type: "application/rss+xml", body }));
+    const check = createWatchCheck(deps);
+    const trigger: TriggerSpec = { kind: "rss", url: "https://example.com/feed.xml" };
+    let watch: WatchState | undefined;
+    const seen: Array<string | null> = [];
+    for (let i = 0; i < bodies.length; i++) {
+      body = bodies[i]!;
+      const outcome = await check(watcher(trigger, watch), { signal, now: NOW + i * 60_000 });
+      assert.equal(outcome.error, undefined);
+      seen.push(
+        outcome.hit
+          ? [...outcome.hit.detail!.matchAll(/Post (\d+)/g)]
+              .map((m) => Number(m[1]))
+              .sort((a, b) => a - b)
+              .map((n) => `Post ${n}`)
+              .join(",")
+          : null,
+      );
+      watch = outcome.watch;
+      assert.ok(watch.seen!.length <= 2000, `${label}: the memory stays bounded`);
+    }
+    assert.deepEqual(seen, expect, label);
+  }
+});

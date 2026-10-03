@@ -454,6 +454,57 @@ async function checkWeb(
 
 // ── rss ──
 
+type FeedEntry = { id: string; title: string; summary?: string; link?: string };
+
+/**
+ * Which items of a feed are looked at, and remembered, and which of them are
+ * new.
+ *
+ * A feed of up to MAX_SEEN items is taken whole: every item not remembered is
+ * new. A longer feed is taken at both ends — its first and last MAX_SEEN/2
+ * items — because new items arrive at the top of a newest-first feed and at
+ * the bottom of an oldest-first one; memory stays bounded either way. In each
+ * end window an unknown item is new, except for the run of unknown items at
+ * the window's INNER edge (facing the middle of the feed): those are old
+ * items that slid into the window as the feed grew or dropped entries. When a
+ * whole window is unknown, all of it is new. An item inserted into the middle
+ * of a long feed is never seen.
+ */
+function feedWindows<T extends FeedEntry>(
+  items: T[],
+): { considered: T[]; fresh: (known: Set<string>) => T[] } {
+  const isNew = (known: Set<string>) => (i: T) => !known.has(seenKey(i.id));
+  if (items.length <= MAX_SEEN) {
+    return { considered: items, fresh: (known) => items.filter(isNew(known)) };
+  }
+  const half = Math.floor(MAX_SEEN / 2);
+  const head = items.slice(0, half);
+  const tail = items.slice(items.length - half);
+  const inWindow = (window: T[], known: Set<string>, innerAtEnd: boolean): T[] => {
+    const unknown = window.map(isNew(known));
+    let lo = 0;
+    let hi = window.length;
+    if (innerAtEnd) while (hi > 0 && unknown[hi - 1]) hi--;
+    else while (lo < window.length && unknown[lo]) lo++;
+    if (hi === 0 || lo === window.length) return window; // nothing known at this end: all new
+    return window.filter((_, k) => unknown[k] && k >= lo && k < hi);
+  };
+  return {
+    considered: [...head, ...tail],
+    fresh: (known) => {
+      const out: T[] = [];
+      const have = new Set<string>();
+      for (const item of [...inWindow(head, known, true), ...inWindow(tail, known, false)]) {
+        const key = seenKey(item.id);
+        if (have.has(key)) continue;
+        have.add(key);
+        out.push(item);
+      }
+      return out;
+    },
+  };
+}
+
 async function checkRss(
   task: Task,
   trigger: RssTrigger,
@@ -466,17 +517,14 @@ async function checkRss(
   const parsed = withinTimeLimit(() => parseFeed(page.text), EXTRACT_TIMEOUT_MS);
   if (!parsed.ok) return failed(task, "the feed took too long to process");
   const feed = parsed.value;
-  // Only the head of an enormous feed is considered — the same bound as the
-  // memory, so every item considered is also remembered.
-  const items = feed.items.slice(0, MAX_SEEN);
-  const keys = items.map((i) => seenKey(i.id));
+  const { considered, fresh: freshIn } = feedWindows(feed.items);
+  const keys = considered.map((i) => seenKey(i.id));
   const prev = task.watch;
   // First look at a feed: everything already in it is old news.
   if (prev?.seen === undefined)
     return { watch: { ...prev, seen: rememberFetch(keys, undefined, MAX_SEEN), failures: 0 } };
 
-  const known = new Set(prev.seen);
-  const fresh = items.filter((_, index) => !known.has(keys[index]!));
+  const fresh = freshIn(new Set(prev.seen));
   const watch: WatchState = {
     ...prev,
     seen: rememberFetch(keys, prev.seen, MAX_SEEN),
