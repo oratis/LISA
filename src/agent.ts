@@ -1,7 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { AgentEvent, StoredMessage, ToolContext, ToolDefinition } from "./types.js";
 import type { Provider } from "./providers/types.js";
-import { checkCostCap, reservePromptTokens } from "./model/cost.js";
+import { RunCostCap } from "./model/cost.js";
 import { moodBus, withMoodOrigin } from "./mood-bus.js";
 import { validateToolInput } from "./tools/validate.js";
 
@@ -206,8 +206,9 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
   let currentFingerprint = opts.hotReload?.initialFingerprint;
 
   // Only a capped run pays for sizing its prompt (see the cap check below).
-  const capped = opts.costCapMicroUSD !== undefined;
-  const toolsBytes = capped
+  const costCap =
+    opts.costCapMicroUSD !== undefined ? new RunCostCap(opts.costCapMicroUSD, model) : null;
+  const toolsBytes = costCap
     ? Buffer.byteLength(
         JSON.stringify(
           tools.map((t) => ({
@@ -218,9 +219,6 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
         ),
       )
     : 0;
-  // What the provider actually counted for the previous request's prompt. The
-  // next request re-sends all of it, so it is a floor under the byte estimate.
-  let lastPromptTokens = 0;
 
   // ── soul_object enforcement (Phase 2.1) ─────────────────────────────
   // Lisa's soul_object tool registers a constitutional objection here. When
@@ -255,19 +253,12 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
     // definitions and the whole transcript, so its prompt is sized from exactly
     // those bytes; the provider is then held to the output ceiling that fits.
     let turnMaxTokens = maxTokens;
-    if (capped) {
-      const verdict = checkCostCap({
-        model,
-        capMicroUSD: opts.costCapMicroUSD as number,
-        spent: { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens },
-        nextPromptTokens: Math.max(
-          lastPromptTokens,
-          reservePromptTokens(
-            Buffer.byteLength(currentSystemPrompt) +
-              toolsBytes +
-              Buffer.byteLength(JSON.stringify(messages)),
-          ),
-        ),
+    if (costCap) {
+      const verdict = costCap.admit({
+        promptBytes:
+          Buffer.byteLength(currentSystemPrompt) +
+          toolsBytes +
+          Buffer.byteLength(JSON.stringify(messages)),
         maxTokens,
       });
       if (!verdict.proceed) {
@@ -354,8 +345,7 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
     cacheWriteTokens += result.usage.cacheWriteTokens;
     inputTokens += result.usage.inputTokens;
     outputTokens += result.usage.outputTokens;
-    lastPromptTokens =
-      result.usage.inputTokens + result.usage.cacheReadTokens + result.usage.cacheWriteTokens;
+    costCap?.charge({ usage: result.usage, output: result.content });
     stopReason = result.stopReason;
 
     // OpenAI/Gemini turns can yield neither text nor tool calls, i.e. an

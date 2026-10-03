@@ -586,6 +586,45 @@ describe("runAgent — per-run USD cap (costCapMicroUSD)", () => {
     assert.equal(r.stopReason, "budget_exceeded");
   });
 
+  test("a provider that answers but reports zero usage still exhausts the cap", async () => {
+    // An OpenAI-compatible endpoint that ignores include_usage. Counting its
+    // zeros as free let a $0.05 run reach 31× its cap; each call is now charged
+    // what it was admitted with, so even a provider that really did spend its
+    // whole output ceiling every time stays under the cap.
+    const calls: ProviderRunOpts[] = [];
+    let trueSpend = 0;
+    const provider: Provider = {
+      name: "fake",
+      async runTurn(opts: ProviderRunOpts): Promise<ProviderResult> {
+        calls.push(opts);
+        const bytes =
+          Buffer.byteLength(opts.systemPrompt) + Buffer.byteLength(JSON.stringify(opts.messages));
+        trueSpend += Math.ceil(
+          (Math.ceil(bytes / 4) * 3_500_000 + (opts.maxTokens ?? 16_000) * 14_000_000) / 1_000_000,
+        );
+        return {
+          content: [toolUseBlock(`tu_${calls.length}`)],
+          stopReason: "tool_use",
+          usage: ZERO_USAGE,
+        };
+      },
+    };
+    const r = await runAgent({
+      provider,
+      systemPrompt: "sys",
+      tools: [echoTool],
+      toolCtx: makeToolCtx(),
+      history: [],
+      userMessage: "go",
+      model: "gpt-4o",
+      maxIterations: 32,
+      costCapMicroUSD: 50_000,
+    });
+    assert.equal(r.stopReason, "budget_exceeded");
+    assert.ok(calls.length < 32, `${calls.length} calls`);
+    assert.ok(trueSpend <= 50_000, `true spend ${trueSpend} over ${calls.length} calls`);
+  });
+
   test("a large transcript is counted before it is sent", async () => {
     // ~300 KB of history reserves ~100k prompt tokens = 42_000 micro-USD,
     // which a $0.03 cap cannot cover: no call is made.

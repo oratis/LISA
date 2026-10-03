@@ -39,6 +39,7 @@ import type { AccountRecord } from "./accounts.js";
 import { admitInference, type InferenceAdmission } from "../billing/admission.js";
 import { explicitPriceForModel, tokensAffordable } from "../billing/prices.js";
 import { readCappedText, BodyTooLargeError } from "./http-body.js";
+import { estimateUsageFromBytes } from "../billing/usage-floor.js";
 
 /**
  * Gateway body cap (#266). Far larger than the control-plane cap: LLM payloads
@@ -46,9 +47,6 @@ import { readCappedText, BodyTooLargeError } from "./http-body.js";
  * an unbounded read OOMs the instance before any quota gate runs.
  */
 const GW_BODY_LIMIT = Number(process.env.LISA_GW_MAX_BODY_MB || 20) * 1_048_576;
-
-/** Chars-per-token used only for the missing-usage debit floor (#264). */
-const BYTES_PER_TOKEN_EST = 4;
 
 export type GatewayFace = "anthropic" | "openai" | "gemini";
 
@@ -168,18 +166,10 @@ function num(v: unknown): number {
 /**
  * Debit floor for an upstream that answered 2xx but reported no usage (#264).
  * Without it a provider that omits the usage block — or an SSE stream the
- * client cut before the usage chunk — bills 0, i.e. free inference. A coarse
- * bytes/4 estimate is wrong in the user's favour on cache-heavy turns and in
- * ours on nothing, which is the right direction to be wrong in.
+ * client cut before the usage chunk — bills 0, i.e. free inference. Shared
+ * with the per-run USD cap; re-exported here for the gateway's callers.
  */
-export function estimateUsageFromBytes(requestBytes: number, responseBytes: number): ProviderUsage {
-  return {
-    inputTokens: Math.ceil(Math.max(0, requestBytes) / BYTES_PER_TOKEN_EST),
-    outputTokens: Math.ceil(Math.max(0, responseBytes) / BYTES_PER_TOKEN_EST),
-    cacheReadTokens: 0,
-    cacheWriteTokens: 0,
-  };
-}
+export { estimateUsageFromBytes };
 
 /** True when the upstream reported nothing billable at all. */
 function usageIsEmpty(u: ProviderUsage): boolean {

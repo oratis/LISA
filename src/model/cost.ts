@@ -10,6 +10,7 @@
  */
 import { MARGIN, costMicroUSD, explicitPriceForModel, priceForModel } from "../billing/prices.js";
 import type { ProviderUsage } from "../providers/types.js";
+import { estimateUsageFromBytes } from "../billing/usage-floor.js";
 
 /**
  * Whose price an estimate quotes.
@@ -175,8 +176,12 @@ export interface CostCapInput {
   model: string;
   /** The run's ceiling, micro-USD. */
   capMicroUSD: number;
-  /** Usage already reported by the provider for this run. */
-  spent: ProviderUsage;
+  /**
+   * What the run has spent so far, micro-USD — the sum of `capChargeMicroUSD`
+   * over its calls. Anything but a non-negative finite number (NaN after a
+   * call whose usage could not be read) stops the run.
+   */
+  spentMicroUSD: number;
   /** Conservative size of the NEXT request's prompt, in tokens. */
   nextPromptTokens: number;
   /** The output ceiling the caller would use without a cap. */
@@ -197,6 +202,10 @@ export type CostCapVerdict =
       message: string;
     };
 
+function unreadableCount(count: unknown): boolean {
+  return typeof count !== "number" || !Number.isFinite(count) || count < 0;
+}
+
 /**
  * Decide, BEFORE a provider call, whether a capped run may make it.
  *
@@ -207,19 +216,15 @@ export type CostCapVerdict =
  * reserved. With both in place a run cannot cross its cap by more than the
  * error of the prompt-size estimate.
  *
- * Fails closed: a cap that is not a positive finite number stops the run. An
- * unpriced model is reserved at the conservative fallback rate.
+ * Fails closed: a cap that is not a positive finite number stops the run, and
+ * so does a spend that is not a readable amount. An unpriced model is reserved
+ * at the conservative fallback rate.
  */
 export function checkCostCap(input: CostCapInput): CostCapVerdict {
   // costMicroUSD maps a non-finite token count to 0 (right for a ledger line,
-  // wrong for a cap: it would read as "nothing spent"). Check first.
-  const counts = [
-    input.spent.inputTokens,
-    input.spent.outputTokens,
-    input.spent.cacheReadTokens,
-    input.spent.cacheWriteTokens,
-  ];
-  if (counts.some((count) => typeof count !== "number" || !Number.isFinite(count) || count < 0)) {
+  // wrong for a cap: it would read as "nothing spent"), so capChargeMicroUSD
+  // reports such a call as NaN, which lands here.
+  if (unreadableCount(input.spentMicroUSD)) {
     return {
       proceed: false,
       reason: "usage_unreadable",
@@ -227,7 +232,7 @@ export function checkCostCap(input: CostCapInput): CostCapVerdict {
       message: "cost cap: the run's token usage is not a readable number — stopping",
     };
   }
-  const spentMicroUSD = costMicroUSD(input.model, input.spent);
+  const spentMicroUSD = input.spentMicroUSD;
   const cap = input.capMicroUSD;
   if (typeof cap !== "number" || !Number.isFinite(cap) || cap <= 0) {
     return {
@@ -270,4 +275,116 @@ export function checkCostCap(input: CostCapInput): CostCapVerdict {
       ? Math.floor(input.maxTokens)
       : affordableOutput;
   return { proceed: true, maxTokens: Math.min(ceiling, affordableOutput), spentMicroUSD };
+}
+
+/** One provider call, as the cap counts it. */
+export interface CappedCall {
+  model: string;
+  usage: ProviderUsage;
+  /** UTF-8 bytes sent as the prompt (system prompt, tool definitions, transcript). */
+  promptBytes: number;
+  /** UTF-8 bytes of the output returned (0 for an empty answer). */
+  outputBytes: number;
+  /** What the call was admitted with: its prompt reservation and its output ceiling. */
+  reservedPromptTokens: number;
+  maxTokens: number;
+}
+
+/**
+ * What one provider call counts against a run's cap, micro-USD.
+ *
+ * Normally the reported usage at the price table's rates. A zero that cannot
+ * be true is read as "not reported", never as "free": every call sends a
+ * prompt, and a call that returned output generated it. So when the provider
+ * reports no prompt tokens, or no output tokens next to non-empty output (or
+ * nothing at all — an OpenAI-compatible endpoint that ignores
+ * `include_usage`), that side is charged what the call was admitted with —
+ * the prompt tokens reserved for it, the output ceiling it was held to — and
+ * never less than the gateway's byte floor (#264) for the bytes actually sent
+ * and returned. Output falls back to its ceiling rather than its bytes because
+ * thinking tokens are billed as output and never show up in the bytes.
+ *
+ * NaN when a reported count is not a non-negative finite number; checkCostCap
+ * stops the run on it.
+ */
+export function capChargeMicroUSD(call: CappedCall): number {
+  const { usage } = call;
+  const counts = [
+    usage.inputTokens,
+    usage.outputTokens,
+    usage.cacheReadTokens,
+    usage.cacheWriteTokens,
+  ];
+  if (counts.some(unreadableCount)) return Number.NaN;
+  const floor = estimateUsageFromBytes(call.promptBytes, call.outputBytes);
+  const promptReported = usage.inputTokens + usage.cacheReadTokens + usage.cacheWriteTokens > 0;
+  // Zero output is believable only for an empty answer from a provider that
+  // did report its prompt.
+  const outputReported = usage.outputTokens > 0 || (call.outputBytes === 0 && promptReported);
+  return costMicroUSD(call.model, {
+    ...usage,
+    inputTokens: promptReported
+      ? usage.inputTokens
+      : Math.max(call.reservedPromptTokens, floor.inputTokens),
+    outputTokens: outputReported
+      ? usage.outputTokens
+      : Math.max(call.maxTokens, floor.outputTokens),
+  });
+}
+
+/**
+ * The per-run cap's bookkeeping for the agent loop: `admit` before each
+ * provider call, `charge` after it.
+ */
+export class RunCostCap {
+  private spent = 0;
+  /** What the provider counted for the previous request's prompt: a floor under the next. */
+  private lastPromptTokens = 0;
+  private admitted: { promptBytes: number; promptTokens: number; maxTokens: number } | null = null;
+
+  constructor(
+    readonly capMicroUSD: number,
+    private readonly model: string,
+  ) {}
+
+  /** Micro-USD counted against the cap so far; NaN once a call's usage could not be read. */
+  get spentMicroUSD(): number {
+    return this.spent;
+  }
+
+  /**
+   * May the next call be made? `promptBytes` is the UTF-8 size of everything
+   * it will send. On `proceed`, pass the verdict's `maxTokens` to the provider.
+   */
+  admit(next: { promptBytes: number; maxTokens: number }): CostCapVerdict {
+    const promptTokens = Math.max(this.lastPromptTokens, reservePromptTokens(next.promptBytes));
+    const verdict = checkCostCap({
+      model: this.model,
+      capMicroUSD: this.capMicroUSD,
+      spentMicroUSD: this.spent,
+      nextPromptTokens: promptTokens,
+      maxTokens: next.maxTokens,
+    });
+    this.admitted = verdict.proceed
+      ? { promptBytes: next.promptBytes, promptTokens, maxTokens: verdict.maxTokens }
+      : null;
+    return verdict;
+  }
+
+  /** Count the call made after `admit` against the cap. */
+  charge(call: { usage: ProviderUsage; output: readonly unknown[] }): void {
+    const admitted = this.admitted ?? { promptBytes: 0, promptTokens: 0, maxTokens: 0 };
+    this.admitted = null;
+    this.spent += capChargeMicroUSD({
+      model: this.model,
+      usage: call.usage,
+      promptBytes: admitted.promptBytes,
+      outputBytes: call.output.length === 0 ? 0 : Buffer.byteLength(JSON.stringify(call.output)),
+      reservedPromptTokens: admitted.promptTokens,
+      maxTokens: admitted.maxTokens,
+    });
+    const { inputTokens, cacheReadTokens, cacheWriteTokens } = call.usage;
+    const prompt = inputTokens + cacheReadTokens + cacheWriteTokens;
+    if (Number.isFinite(prompt) && prompt > 0) this.lastPromptTokens = prompt;
+  }
 }
