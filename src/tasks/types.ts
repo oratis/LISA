@@ -206,6 +206,9 @@ export type TaskRunState =
   | "failed"
   | "cancelled";
 
+/** manual — the user ("run now", a test run); scheduled — the schedule; watcher — a watcher hit. */
+export type TaskRunTrigger = "manual" | "scheduled" | "watcher";
+
 export interface TaskRun {
   id: string;
   taskId: string;
@@ -243,6 +246,13 @@ export interface TaskRun {
   elapsedMs?: number;
   /** Started by the user ("run now"/test run) rather than by the schedule. */
   manual?: boolean;
+  /**
+   * What started the run, written in its FIRST record (createRun) — so whether
+   * it may continue is read from the run itself and never depends on task
+   * state a failed write or a crash could lose. Absent on older runs; there
+   * `manual` decides.
+   */
+  trigger?: TaskRunTrigger;
   /** Input handed to the run by a watcher hit, if any. */
   input?: string;
   summary?: string;

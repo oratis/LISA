@@ -411,7 +411,7 @@ async function appendRecord(taskId: string, runId: string, rec: RunRecord): Prom
 /** Start a run: write its first checkpoint and link it from the task. */
 export async function createRun(
   taskId: string,
-  init: Partial<Pick<TaskRun, "id" | "input" | "state">> = {},
+  init: Partial<Pick<TaskRun, "id" | "input" | "state" | "trigger">> = {},
   now = Date.now(),
 ): Promise<TaskRun> {
   if (init.id !== undefined && !isSafeId(init.id)) throw new Error(`invalid run id: ${init.id}`);
@@ -423,6 +423,9 @@ export async function createRun(
     tokens: { in: 0, out: 0 },
     toolCalls: 0,
     executedDigests: {},
+    // Who started it is in the FIRST record: nothing that fails later can lose it.
+    ...(init.trigger !== undefined ? { trigger: init.trigger } : {}),
+    ...(init.trigger === "manual" ? { manual: true } : {}),
     ...(init.input !== undefined ? { input: init.input } : {}),
   };
   // The run's directory is made only for a task that exists, one level at a time.

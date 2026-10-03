@@ -1847,6 +1847,67 @@ test("an interrupted run is not resumed with Proactive off — unless the user s
   }
 });
 
+test("a manual run stays manual when its first checkpoint fails: the trigger is in the run's first record (reviewer probe n2-gate D)", async () => {
+  await withHome(async () => {
+    const task = await dueRoutine({ enabled: false, state: "draft", nextRunAt: undefined });
+    const { provider, calls } = scripted([say("manual result")]);
+    const { notices, deliver } = collector();
+    // Fail the run's SECOND record — the first checkpoint after the task points at the run.
+    let runRecords = 0;
+    const fault = failing(
+      "appendFile",
+      (_p, data) => String(data).includes('"t":"run"') && ++runRecords === 2,
+      "EIO",
+    );
+    const a = makeRunner({ provider, deliver, unattendedAllowed: () => false });
+    try {
+      assert.deepEqual(await a.runNow(task.id), { ok: true });
+      await a.drain();
+    } finally {
+      fault.restore();
+    }
+    assert.equal(fault.hits, 1);
+    const runId = (await getTask(task.id))!.activeRunId!;
+    assert.ok(runId, "the run was left behind");
+    const onDisk = (await loadRun(task.id, runId))!.run;
+    assert.equal(onDisk.trigger, "manual", "the first record already says who started it");
+    assert.equal(calls.length, 0);
+
+    // The next process, Proactive still off: the user's run continues.
+    const b = makeRunner({ provider, deliver, unattendedAllowed: () => false });
+    assert.deepEqual((await b.tick()).started, [task.id]);
+    await b.drain();
+    const run = (await loadRun(task.id, runId))!.run;
+    assert.equal(calls.length, 1, "continued, not cancelled as an unattended run");
+    assert.equal(run.state, "succeeded");
+    assert.equal(run.manual, true);
+    const t = (await getTask(task.id))!;
+    assert.equal(t.state, "draft");
+    assert.equal(t.activeRunId, undefined);
+    assert.equal(notices.length, 1);
+    assert.equal(notices[0]!.kind, "task_result");
+  });
+});
+
+test("every run records what started it", async () => {
+  await withHome(async () => {
+    const routine = await dueRoutine();
+    const draft = await dueRoutine({
+      title: "draft",
+      enabled: false,
+      state: "draft",
+      nextRunAt: undefined,
+    });
+    const runner = makeRunner({ provider: scripted([say("a"), say("b")]).provider });
+    await runner.tick();
+    await runner.runNow(draft.id);
+    await runner.drain();
+    const first = async (id: string) => (await listRuns((await getTask(id))!))[0]!;
+    assert.equal((await first(routine.id)).trigger, "scheduled");
+    assert.equal((await first(draft.id)).trigger, "manual");
+  });
+});
+
 test("credential failures are not retried; the task is paused after a few and says so once", async () => {
   await withHome(async () => {
     const task = await dueRoutine({ schedule: { expr: "every:1h" } });
@@ -2300,6 +2361,7 @@ test("a watcher set to run its instruction on a hit hands the observation to the
     const after = (await getTask(task.id))!;
     assert.equal(after.state, "scheduled");
     assert.equal(after.nextRunAt, NOW + 30 * 60_000);
+    assert.equal((await listRuns(after))[0]!.trigger, "watcher");
   });
 });
 

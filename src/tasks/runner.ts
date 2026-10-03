@@ -82,9 +82,18 @@ import type {
   TaskNotice,
   TaskRun,
   TaskRunState,
+  TaskRunTrigger,
   WatchState,
 } from "./types.js";
 import { getDefaultTaskDeliver, getTaskApprovalFactory, getTaskDeliver } from "./wiring.js";
+
+/**
+ * Did the user start this run by hand? Read from the run record only — its
+ * trigger is in its first record — never from the task's transient state.
+ */
+function startedByUser(run: TaskRun): boolean {
+  return run.trigger !== undefined ? run.trigger === "manual" : !!run.manual;
+}
 
 /** Marks a side-effecting call that was started but whose result was never recorded. */
 export const IN_FLIGHT = "[in-flight]";
@@ -313,7 +322,7 @@ interface SettledNotice {
  */
 function settleTask(t: Task, run: TaskRun, now: number, cloud: boolean): SettledNotice[] {
   const notices: SettledNotice[] = [];
-  const manual = !!run.manual;
+  const manual = startedByUser(run);
   const summary = run.summary ?? "";
   const noop = run.state === "succeeded" && isNoUpdate(summary);
   // A manual run of a one-off that is still waiting for its time is a test
@@ -838,7 +847,9 @@ export class TaskRunner {
     // repeated harmlessly (same run, same notice id) at the next tick.
     const runId = `r_${digestCall(task.id, `expired:${task.nextRunAt ?? 0}`).slice(0, 16)}`;
     const existing = await loadRun(task.id, runId);
-    const run = existing?.run ?? (await this.newRun(task.id, { id: runId, state: "failed" }, now));
+    const run =
+      existing?.run ??
+      (await this.newRun(task.id, { id: runId, state: "failed", trigger: "scheduled" }, now));
     run.endedAt = now;
     run.stopReason = "expired";
     run.summary = `This was due at ${new Date(task.nextRunAt!).toISOString()} but LISA was not running then. It was not run.`;
@@ -858,12 +869,18 @@ export class TaskRunner {
   private async startRun(task: Task, slot: Slot, manual: boolean): Promise<void> {
     const now = this.now();
     const input = task.queued?.input;
+    // The trigger goes into the run's first record, before the task points at
+    // it: a run on disk always says whether the user started it.
+    const trigger: TaskRunTrigger = manual
+      ? "manual"
+      : input !== undefined
+        ? "watcher"
+        : "scheduled";
     const run = await this.newRun(
       task.id,
-      { state: "running", ...(input !== undefined ? { input } : {}) },
+      { state: "running", trigger, ...(input !== undefined ? { input } : {}) },
       now,
     );
-    if (manual) run.manual = true;
     const started = await this.saveTask(
       task.id,
       (t) => {
@@ -893,7 +910,7 @@ export class TaskRunner {
       outcome.state === "failed" &&
       outcome.stopReason === "error" &&
       !outcome.blocked &&
-      !run.manual
+      !startedByUser(run)
     ) {
       const attempts = (run.attempts ?? 0) + 1;
       const current = await getTask(task.id);
@@ -947,7 +964,7 @@ export class TaskRunner {
     // had already given its final answer is not continued, only finished (no
     // model call, no tool call): that is not gated, like any other finish.
     const answered = planResume(loaded.messages, "").kind === "finished";
-    if (!run.manual && !answered) {
+    if (!startedByUser(run) && !answered) {
       const closed = !this.unattendedAllowed()
         ? { stop: "proactive_off", why: "Proactive is off" }
         : !task.enabled
@@ -1552,7 +1569,11 @@ export class TaskRunner {
       const existing = await loadRun(task.id, runId);
       const run =
         existing?.run ??
-        (await this.newRun(task.id, { id: runId, state: "succeeded", input: hit.detail }, now));
+        (await this.newRun(
+          task.id,
+          { id: runId, state: "succeeded", input: hit.detail, trigger: "watcher" },
+          now,
+        ));
       run.endedAt = now;
       run.stopReason = "watch_hit";
       run.summary = cleanHitSummary(hit.summary);
@@ -1607,7 +1628,8 @@ export class TaskRunner {
       const runId = `r_${digestCall(task.id, `failing:${task.watch?.lastCheckedAt ?? 0}`).slice(0, 16)}`;
       const existing = await loadRun(task.id, runId);
       const run =
-        existing?.run ?? (await this.newRun(task.id, { id: runId, state: "failed" }, now));
+        existing?.run ??
+        (await this.newRun(task.id, { id: runId, state: "failed", trigger: "watcher" }, now));
       run.endedAt = now;
       run.stopReason = "watch_failing";
       run.error = outcome.error.slice(0, 500);
