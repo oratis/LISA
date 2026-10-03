@@ -281,6 +281,71 @@ describe("validateGeminiRequest — anything it cannot price is refused", () => 
       { contents: [{ role: "user", parts: ["hi"] }] },
       /must be objects/,
     ],
+    // Allow-listed, not deny-listed: a generationConfig, toolConfig, Content or
+    // Part field this face does not know is refused, whatever it is.
+    ...(
+      [
+        ["mediaResolution", "MEDIA_RESOLUTION_HIGH"],
+        ["imageConfig", { aspectRatio: "1:1" }],
+        ["enableAffectiveDialog", true],
+        ["responseLogprobs", true],
+        ["someNewBilledFeature", 1],
+      ] as const
+    ).map(([key, value]): [string, Record<string, unknown>, RegExp] => [
+      `generationConfig.${key}`,
+      { contents: [user], generationConfig: { [key]: value } },
+      new RegExp(`generationConfig: field "${key}"`),
+    ]),
+    [
+      "a non-text response type",
+      { contents: [user], generationConfig: { responseMimeType: "image/png" } },
+      /image\/png/,
+    ],
+    [
+      "toolConfig.retrievalConfig (Maps grounding)",
+      { contents: [user], toolConfig: { retrievalConfig: { latLng: { latitude: 1 } } } },
+      /toolConfig: field "retrievalConfig"/,
+    ],
+    [
+      "an unknown function-calling field",
+      { contents: [user], tool_config: { function_calling_config: { stream_function_call: 1 } } },
+      /stream_function_call/,
+    ],
+    [
+      "a field on a Content",
+      { contents: [{ role: "user", parts: [{ text: "x" }], cachedContent: "cachedContents/abc" }] },
+      /contents\[0\]: field "cachedContent"/,
+    ],
+    [
+      "a field on a Part",
+      { contents: [{ role: "user", parts: [{ text: "x", videoMetadata: { fps: 24 } }] }] },
+      /videoMetadata/,
+    ],
+    [
+      "media inside a function response",
+      {
+        contents: [
+          {
+            role: "user",
+            parts: [
+              {
+                functionResponse: {
+                  name: "f",
+                  response: {},
+                  parts: [{ inlineData: { mimeType: "audio/wav", data: "A" } }],
+                },
+              },
+            ],
+          },
+        ],
+      },
+      /functionResponse: field "parts"/,
+    ],
+    [
+      "a thinking field the face does not know",
+      { contents: [user], generationConfig: { thinkingConfig: { thinkingLevel: "HIGH" } } },
+      /thinkingLevel/,
+    ],
   ];
   for (const [label, body, pattern] of refused) {
     test(`refuses ${label}`, () => assert.match(validateGeminiRequest(body) ?? "", pattern));
@@ -632,6 +697,44 @@ describe("clampGeminiOutput — the output side is held to the admitted budget",
     clampGeminiOutput(check.request, MODEL, 35_000);
     assert.deepEqual(check.request.generationConfig, { maxOutputTokens: 10_000 });
     assert.equal("generation_config" in check.request, false);
+  });
+
+  test("thinking counts against the ceiling: a larger thinking budget is lowered to it", () => {
+    const thinkingAt = (thinkingBudget: number, budget: number): unknown => {
+      const request: Record<string, unknown> = {
+        generationConfig: { thinkingConfig: { thinkingBudget, includeThoughts: true } },
+      };
+      clampGeminiOutput(request, MODEL, budget);
+      return (request.generationConfig as Record<string, unknown>).thinkingConfig;
+    };
+    // 3_500 micro-USD buys 1_000 output tokens.
+    assert.deepEqual(thinkingAt(24_576, 3_500), { thinkingBudget: 1_000, includeThoughts: true });
+    assert.deepEqual(thinkingAt(-1, 3_500), { thinkingBudget: 1_000, includeThoughts: true });
+    assert.deepEqual(thinkingAt(500, 3_500), { thinkingBudget: 500, includeThoughts: true });
+    assert.deepEqual(thinkingAt(0, 3_500), { thinkingBudget: 0, includeThoughts: true });
+    // Dynamic thinking whose own limit is under the ceiling is left alone.
+    assert.deepEqual(thinkingAt(-1, 200_000), { thinkingBudget: -1, includeThoughts: true });
+
+    // The ceiling pays for thoughts and answer together: the meter bills
+    // both as output, and a call that uses the whole ceiling fits the budget.
+    const budget = 3_500;
+    const request: Record<string, unknown> = {
+      generationConfig: { thinkingConfig: { thinkingBudget: 24_576 } },
+    };
+    const ceiling = clampGeminiOutput(request, MODEL, budget)!;
+    const thoughts = (
+      (request.generationConfig as Record<string, unknown>).thinkingConfig as {
+        thinkingBudget: number;
+      }
+    ).thinkingBudget;
+    assert.ok(thoughts <= ceiling);
+    const usage = geminiUsageToProvider({
+      ...ZERO_GEMINI_USAGE,
+      thoughts,
+      candidates: ceiling - thoughts,
+    });
+    assert.equal(usage.outputTokens, ceiling);
+    assert.ok(costMicroUSD(MODEL, usage) <= budget);
   });
 
   test("a budget beyond the model's own limit leaves the request untouched", () => {
@@ -1131,6 +1234,28 @@ describe("POST /gw/gemini — non-streaming", () => {
       await (await post(gw.base, GENERATE, REQUEST)).text();
       assert.deepEqual(upstream.calls[0]!.body.generationConfig, { maxOutputTokens: 10_000 });
       assert.deepEqual(upstream.calls[1]!.body.generationConfig, { maxOutputTokens: 10_000 });
+    } finally {
+      await gw.close();
+    }
+  });
+
+  test("a thinking budget above the clamped ceiling reaches Google lowered to it", async () => {
+    const adm = admission({
+      precheck: async () => ({ ok: true, budgetMicroUSD: 3_500 }), // buys 1k output tokens
+    });
+    const { upstream, deps } = setup(() => json(RESPONSE), adm);
+    const gw = await gateway(deps);
+    try {
+      await (
+        await post(gw.base, GENERATE, {
+          ...REQUEST,
+          generation_config: { thinking_config: { thinking_budget: 24_576 } },
+        })
+      ).text();
+      assert.deepEqual(upstream.calls[0]!.body.generationConfig, {
+        thinkingConfig: { thinkingBudget: 1_000 },
+        maxOutputTokens: 1_000,
+      });
     } finally {
       await gw.close();
     }

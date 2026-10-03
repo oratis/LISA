@@ -698,9 +698,21 @@ export function validateGeminiRequest(body: Record<string, unknown>): string | n
 const GEMINI_MODEL_OUTPUT_LIMIT = 65_536;
 
 /**
+ * The largest thinking budget Gemini 2.5 Flash (the one model this face
+ * serves) accepts; dynamic thinking (`thinkingBudget: -1`) stays within it.
+ */
+const GEMINI_THINKING_BUDGET_LIMIT = 24_576;
+
+/**
  * Cost reservation for one Gemini call: hold the output side to what the
- * admitted budget can pay for. Thinking tokens count against
- * `maxOutputTokens`, so the ceiling covers them too.
+ * admitted budget can pay for.
+ *
+ * Thinking is counted against the same ceiling. Gemini 2.5 counts thinking
+ * tokens against `maxOutputTokens`, and the meter bills them as output, so
+ * the ceiling is what the call's whole output — thoughts plus answer — may
+ * cost. A thinking budget above the ceiling (or dynamic thinking, whose limit
+ * is above it) is lowered to the ceiling, so the request never asks for more
+ * thinking than the reservation pays for.
  *
  * Takes the request `canonicalGeminiRequest` rebuilt — the only output limit
  * it can carry is `generationConfig.maxOutputTokens` — and mutates it.
@@ -715,7 +727,14 @@ export function clampGeminiOutput(
   const requested = typeof config.maxOutputTokens === "number" ? config.maxOutputTokens : undefined;
   const ceiling = Math.min(requested ?? Number.POSITIVE_INFINITY, affordable);
   if (ceiling >= GEMINI_MODEL_OUTPUT_LIMIT && requested === undefined) return null;
-  request.generationConfig = { ...config, maxOutputTokens: ceiling };
+  const clamped: Record<string, unknown> = { ...config, maxOutputTokens: ceiling };
+  const thinking = isObject(config.thinkingConfig) ? config.thinkingConfig : null;
+  if (thinking && typeof thinking.thinkingBudget === "number") {
+    const asked =
+      thinking.thinkingBudget < 0 ? GEMINI_THINKING_BUDGET_LIMIT : thinking.thinkingBudget;
+    if (asked > ceiling) clamped.thinkingConfig = { ...thinking, thinkingBudget: ceiling };
+  }
+  request.generationConfig = clamped;
   return ceiling;
 }
 
