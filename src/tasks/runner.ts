@@ -49,7 +49,12 @@ import {
   planResume,
   TASK_SYSTEM_ADDENDUM,
 } from "./frame.js";
-import { acquireTaskLease, DEFAULT_LEASE_TTL_MS, type TaskLease } from "./lease.js";
+import {
+  acquireTaskLease,
+  DEFAULT_LEASE_TTL_MS,
+  sweepOrphanLeases,
+  type TaskLease,
+} from "./lease.js";
 import { isRecurring, nextRunAfter, pauseTask, restingState } from "./lifecycle.js";
 import { drainOutbox, enqueueNotice, noticeId } from "./outbox.js";
 import { denySideEffects, digestCall, isSideEffectingCall, taskToolset } from "./policy.js";
@@ -530,6 +535,10 @@ export class TaskRunner {
     } catch (err) {
       this.log(`outbox drain failed: ${(err as Error).message}`);
     }
+    // A lease this process could not release (its removal failed) blocks its
+    // task for every other process on this host: clear such orphans first.
+    const swept = await sweepOrphanLeases().catch(() => 0);
+    if (swept > 0) this.log(`removed ${swept} lease(s) left behind by an earlier run here`);
     let tasks: Task[];
     try {
       tasks = await listTasks();
@@ -692,7 +701,7 @@ export class TaskRunner {
         if (err instanceof Interrupted) return;
         if (err instanceof LeaseLost || slot.leaseLost) {
           this.log(
-            `task ${taskId}: lease lost — stopped without writing; its new holder continues it`,
+            `task ${taskId}: lease lost — stopped without writing; whoever holds the lease next continues the run`,
           );
           return;
         }

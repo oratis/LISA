@@ -30,6 +30,12 @@ export interface FileLockOpts {
   timeoutMs?: number;
   /** Poll interval while waiting for the lock. */
   pollMs?: number;
+  /**
+   * Create the lock's directory (recursively) when it is missing. Default
+   * true. False for locks that must never bring a deleted directory back: a
+   * missing directory then fails the call with ENOENT.
+   */
+  createDir?: boolean;
 }
 
 const DEFAULTS = { staleMs: 30_000, timeoutMs: 10_000, pollMs: 50 };
@@ -81,7 +87,7 @@ export async function withFileLock<T>(
   opts: FileLockOpts = {},
 ): Promise<T> {
   const { staleMs, timeoutMs, pollMs } = { ...DEFAULTS, ...opts };
-  await ensureDir(path.dirname(lockPath));
+  if (opts.createDir !== false) await ensureDir(path.dirname(lockPath));
   const deadline = Date.now() + timeoutMs;
 
   // ── acquire ──

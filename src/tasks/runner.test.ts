@@ -1,8 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { promisify } from "node:util";
 import type Anthropic from "@anthropic-ai/sdk";
 import { homeScope } from "../paths.js";
 import type { Provider, ProviderResult, ProviderRunOpts } from "../providers/types.js";
@@ -15,15 +18,23 @@ import {
   TaskRunner,
   type TaskRunnerOptions,
 } from "./runner.js";
-import { createTask, getTask, listRuns, loadRun, updateTask, type NewTask } from "./store.js";
+import {
+  createTask,
+  getTask,
+  listRuns,
+  loadRun,
+  tasksDir,
+  updateTask,
+  type NewTask,
+} from "./store.js";
 import type { Task, TaskNotice } from "./types.js";
 
 // ── harness ──
 
-async function withHome<T>(fn: () => Promise<T>): Promise<T> {
+async function withHome<T>(fn: (home: string) => Promise<T>): Promise<T> {
   const home = await fsp.mkdtemp(path.join(os.tmpdir(), "lisa-tasks-runner-"));
   try {
-    return await homeScope.run(home, fn);
+    return await homeScope.run(home, () => fn(home));
   } finally {
     await fsp.rm(home, { recursive: true, force: true });
   }
@@ -416,6 +427,152 @@ test("a failed lease renewal aborts the run in flight and leaves it resumable", 
     assert.equal(notices.length, 0);
     assert.equal(JSON.parse(await fsp.readFile(leaseFile, "utf8")).owner, "another-host-runner");
   });
+});
+
+/** Make fs calls of one kind fail with `code` for paths `match` accepts, until restored. */
+function failing<K extends "writeFile" | "rm" | "appendFile">(
+  kind: K,
+  match: (target: string, data?: unknown) => boolean,
+  code: string,
+): { restore(): void; hits: number } {
+  const real = fsp[kind].bind(fsp) as (...args: unknown[]) => Promise<unknown>;
+  const state = {
+    hits: 0,
+    restore: () => {
+      (fsp as Record<string, unknown>)[kind] = real;
+    },
+  };
+  (fsp as Record<string, unknown>)[kind] = async (target: unknown, ...rest: unknown[]) => {
+    if (match(String(target), rest[0])) {
+      state.hits++;
+      throw Object.assign(new Error(`${code}: injected`), { code });
+    }
+    return real(target, ...rest);
+  };
+  return state;
+}
+
+const execFileP = promisify(execFile);
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+
+/** One scheduler tick over `home`, in a separate node process. */
+async function tickInAnotherProcess(
+  home: string,
+  now: number,
+): Promise<{ started: string[]; modelCalls: number }> {
+  const mod = (rel: string) => JSON.stringify(pathToFileURL(path.join(REPO_ROOT, "src", rel)).href);
+  const script = path.join(home, "other-process.mts");
+  await fsp.writeFile(
+    script,
+    `import { homeScope } from ${mod("paths.ts")};
+import { TaskRunner } from ${mod("tasks/runner.ts")};
+let modelCalls = 0;
+const home = process.argv[2];
+const out = await homeScope.run(home, async () => {
+  const runner = new TaskRunner({
+    tools: [],
+    model: "claude-test",
+    cwd: home,
+    unattendedAllowed: () => true,
+    log: () => {},
+    now: () => ${now},
+    deliver: async () => ({ delivered: true }),
+    provider: {
+      name: "fake",
+      async runTurn() {
+        modelCalls++;
+        return {
+          content: [{ type: "text", text: "done in the other process" }],
+          stopReason: "end_turn",
+          usage: { inputTokens: 1, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+        };
+      },
+    },
+  });
+  const { started } = await runner.tick();
+  await runner.drain();
+  return { started, modelCalls };
+});
+console.log(JSON.stringify(out));
+`,
+  );
+  const { stdout } = await execFileP(process.execPath, ["--import", "tsx", script, home], {
+    cwd: REPO_ROOT,
+    env: { ...process.env, LISA_HOME: home },
+    timeout: 60_000,
+  });
+  return JSON.parse(stdout.trim().split("\n").at(-1)!) as { started: string[]; modelCalls: number };
+}
+
+test("a renewal that ERRORS while the lease is still ours does not strand the task: this process, or another one, continues the run (reviewer probes h2-stuck, h2-stuck-xproc)", async () => {
+  for (const continuedBy of [
+    "this process",
+    "this process, release failed too",
+    "another process",
+  ]) {
+    await withHome(async (home) => {
+      const task = await dueRoutine();
+      const leaseFile = path.join(tasksDir(), ".leases", `task-${task.id}.lease`);
+      const inTool = deferred();
+      const gate = deferred();
+      let reads = 0;
+      const tools = [
+        tool("read", async () => {
+          if (++reads === 1) {
+            inTool.resolve();
+            await gate.promise;
+          }
+          return "contents";
+        }),
+      ];
+      const { provider, calls } = scripted([
+        turn([call("read", { path: "/x" })]),
+        say("done here"),
+      ]);
+      const a = makeRunner({ provider, tools, leaseRenewEveryMs: 15 });
+      await a.tick();
+      await inTool.promise;
+      // The lease directory refuses writes for a moment: a renewal errors
+      // although the lease on disk is still A's.
+      const leases = path.dirname(leaseFile);
+      const fault = failing("writeFile", (p) => p.startsWith(leases), "EACCES");
+      await new Promise((r) => setTimeout(r, 120));
+      fault.restore();
+      assert.ok(fault.hits > 0, "a renewal ran into the fault");
+      const releaseFault =
+        continuedBy === "this process, release failed too"
+          ? failing("rm", (p) => p === leaseFile, "EIO")
+          : null;
+      gate.resolve();
+      await a.drain();
+      releaseFault?.restore();
+
+      const stopped = (await getTask(task.id))!;
+      const runId = stopped.activeRunId;
+      assert.ok(runId, `${continuedBy}: the run stopped and stays resumable`);
+      assert.equal((await loadRun(task.id, runId))!.run.state, "running");
+      if (!releaseFault) {
+        await assert.rejects(fsp.stat(leaseFile), /ENOENT/, `${continuedBy}: the lease was let go`);
+      }
+
+      if (continuedBy === "another process") {
+        const other = await tickInAnotherProcess(home, NOW);
+        assert.deepEqual(other.started, [task.id], "the other process took the task");
+        assert.equal(other.modelCalls, 1);
+      } else {
+        // The next tick here, hours later or at once: it is not blocked.
+        assert.deepEqual((await a.tick()).started, [task.id], continuedBy);
+        await a.drain();
+        assert.equal(calls.length, 2);
+      }
+      const t = (await getTask(task.id))!;
+      assert.equal(t.activeRunId, undefined, `${continuedBy}: finished`);
+      assert.equal(t.state, "scheduled");
+      const run = (await loadRun(task.id, runId))!.run;
+      assert.equal(run.state, "succeeded", `${continuedBy}: the SAME run was continued`);
+      await assert.rejects(fsp.stat(leaseFile), /ENOENT/);
+    });
+  }
 });
 
 test("concurrency is capped and the longest-waiting task goes first", async () => {

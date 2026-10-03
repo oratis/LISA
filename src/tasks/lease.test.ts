@@ -4,7 +4,7 @@ import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { homeScope } from "../paths.js";
-import { acquireLease, acquireTaskLease } from "./lease.js";
+import { acquireLease, acquireTaskLease, sweepOrphanLeases } from "./lease.js";
 import { tasksDir } from "./store.js";
 
 async function withHome<T>(fn: () => Promise<T>): Promise<T> {
@@ -28,6 +28,33 @@ async function plant(name: string, body: Record<string, unknown>): Promise<void>
 }
 const ownerOf = async (name: string) =>
   (JSON.parse(await fsp.readFile(leaseFile(name), "utf8")) as { owner: string }).owner;
+const exists = (file: string) =>
+  fsp.stat(file).then(
+    () => true,
+    () => false,
+  );
+
+/** Make fs calls of one kind fail with `code` for paths `match` accepts, while `on()` is true. */
+function failing<K extends "writeFile" | "rm">(
+  kind: K,
+  match: (target: string) => boolean,
+  code: string,
+): { on: boolean; restore(): void } {
+  const real = fsp[kind].bind(fsp) as (...args: unknown[]) => Promise<unknown>;
+  const state = {
+    on: true,
+    restore: () => {
+      (fsp as Record<string, unknown>)[kind] = real;
+    },
+  };
+  (fsp as Record<string, unknown>)[kind] = async (target: unknown, ...rest: unknown[]) => {
+    if (state.on && match(String(target))) {
+      throw Object.assign(new Error(`${code}: injected`), { code });
+    }
+    return real(target, ...rest);
+  };
+  return state;
+}
 
 test("a held lease cannot be taken again until it is released", async () => {
   await withHome(async () => {
@@ -288,5 +315,73 @@ test("lease names are path-safe, and a lease never re-creates a deleted tasks di
     await fsp.rm(tasksDir(), { recursive: true, force: true });
     await assert.rejects(acquireLease("orphan", { autoRenew: false }));
     await assert.rejects(fsp.stat(tasksDir()), /ENOENT/);
+  });
+});
+
+test("a lease reported lost because a renewal ERRORED is still removed on release: it was still ours (reviewer probe h2-stuck)", async () => {
+  await withHome(async () => {
+    let lost = 0;
+    const a = await acquireLease("transient", {
+      ttlMs: 60_000,
+      renewEveryMs: 15,
+      onLost: () => lost++,
+    });
+    assert.ok(a);
+    // The lease directory refuses writes for a moment: the renewal errors.
+    const dir = path.dirname(leaseFile("transient"));
+    const fault = failing("writeFile", (p) => p.startsWith(dir), "EACCES");
+    try {
+      for (let i = 0; i < 100 && lost === 0; i++) await new Promise((r) => setTimeout(r, 10));
+    } finally {
+      fault.on = false;
+      fault.restore();
+    }
+    assert.equal(lost, 1);
+    assert.equal(a.lost, true);
+    assert.equal(
+      await ownerOf("transient"),
+      a.owner,
+      "on disk the lease is still this acquisition",
+    );
+    await a.release();
+    assert.equal(
+      await exists(leaseFile("transient")),
+      false,
+      "released, not left to block the task",
+    );
+    const b = await acquireLease("transient", { autoRenew: false });
+    assert.ok(b);
+    await b.release();
+  });
+});
+
+test("a lease this process could not release is an orphan: the sweep removes it, a contender here takes it, a held one is untouched", async () => {
+  await withHome(async () => {
+    const orphan = async (name: string): Promise<void> => {
+      const a = await acquireLease(name, { autoRenew: false });
+      assert.ok(a);
+      const fault = failing("rm", (p) => p === leaseFile(name), "EIO");
+      try {
+        await a.release(); // its removal fails: the file stays, naming this live process
+      } finally {
+        fault.restore();
+      }
+      assert.equal(await ownerOf(name), a.owner);
+    };
+
+    await orphan("swept");
+    const held = await acquireLease("held", { autoRenew: false });
+    assert.ok(held);
+    assert.equal(await sweepOrphanLeases(), 1);
+    assert.equal(await exists(leaseFile("swept")), false);
+    assert.equal(await held.verify(), true, "a lease a run here still holds is not an orphan");
+    assert.equal(await sweepOrphanLeases(), 0);
+
+    await orphan("taken");
+    const c = await acquireLease("taken", { autoRenew: false });
+    assert.ok(c, "a contender in the same process takes an orphan at once");
+    assert.equal(await acquireLease("taken", { autoRenew: false }), null, "but not a held lease");
+    await c.release();
+    await held.release();
   });
 });

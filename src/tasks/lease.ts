@@ -23,6 +23,13 @@
  *     mine?". The runner asks before every side-effecting call and every
  *     write, and a failed or erroring renewal reports the lease lost.
  *
+ * A lease reported lost because a renewal ERRORED (a transient disk error) is
+ * usually still ours on disk. `release()` removes it anyway — compare-and-swap
+ * on the token — and if even that fails, the process's own tick removes it
+ * later (sweepOrphanLeases): a lease naming a live process is never stolen by
+ * anyone else on this host, so an orphan left in place would strand its task
+ * until the process exits.
+ *
  * Mutation is compare-and-swap. Creation is exclusive (link(), O_EXCL where
  * hard links are missing). Stealing, renewing and releasing each run under a
  * short mutex and act only on the exact body they just read — a contender can
@@ -64,7 +71,10 @@ export interface TaskLease {
   renew(): Promise<boolean>;
   /** Fencing check: is the lease on disk still this acquisition? */
   verify(): Promise<boolean>;
-  /** Stop renewing and give the lease up (no-op if it was already lost). */
+  /**
+   * Stop renewing and give the lease up. Also after it was reported lost: the
+   * file is removed if it still carries this acquisition's token.
+   */
   release(): Promise<void>;
 }
 
@@ -84,6 +94,15 @@ export interface AcquireLeaseOptions {
 }
 
 const SELF_STARTED = Math.round(Date.now() - process.uptime() * 1000);
+
+/**
+ * Fencing tokens of the leases this process holds right now: acquired (or
+ * being acquired) and not yet released. A lease file that names this process
+ * but carries none of these tokens is an orphan — a release that could not
+ * remove it — and nobody else on this host could ever take it, because its
+ * holder (this process) is alive. See sweepOrphanLeases().
+ */
+const heldHere = new Set<string>();
 
 function leasePath(name: string): string {
   if (!/^[a-z0-9_][a-z0-9_-]{0,80}$/.test(name)) throw new Error(`invalid lease name: ${name}`);
@@ -148,11 +167,16 @@ async function holderIsGone(
 ): Promise<boolean> {
   if (body.host !== os.hostname()) return body.expiresAt <= now;
   if (!(body.pid > 0)) return body.expiresAt <= now;
-  // This very process: a second runner in it waits like anyone else.
   if (body.pid === process.pid) {
-    return (
-      typeof body.started === "number" && Math.abs(body.started - SELF_STARTED) > START_TOLERANCE_MS
-    );
+    // A previous life of this pid.
+    if (
+      typeof body.started === "number" &&
+      Math.abs(body.started - SELF_STARTED) > START_TOLERANCE_MS
+    )
+      return true;
+    // This very process. A run here holding it: a second runner waits like
+    // anyone else. Nothing here holding it: an orphan, free to take.
+    return !(typeof body.token === "string" && heldHere.has(body.token));
   }
   try {
     process.kill(body.pid, 0);
@@ -196,9 +220,18 @@ async function createExclusive(file: string, body: string): Promise<boolean> {
   }
 }
 
-/** The short mutex every steal / renew / release of one lease runs under. */
+/**
+ * The short mutex every steal / renew / release of one lease runs under. It
+ * never creates a directory: when the lease directory is gone (the task or the
+ * whole home was deleted), so is the lease, and the call fails with ENOENT.
+ */
 function mutate<T>(file: string, fn: () => Promise<T>): Promise<T> {
-  return withFileLock(`${file}.mx`, fn, { staleMs: 15_000, timeoutMs: 5_000, pollMs: 15 });
+  return withFileLock(`${file}.mx`, fn, {
+    staleMs: 15_000,
+    timeoutMs: 5_000,
+    pollMs: 15,
+    createDir: false,
+  });
 }
 
 /**
@@ -232,9 +265,9 @@ export async function acquireLease(
       expiresAt: now() + ttlMs,
     } satisfies LeaseBody);
 
-  let acquired = await createExclusive(file, body());
-  if (!acquired) {
-    acquired = await mutate(file, async () => {
+  const take = async (): Promise<boolean> => {
+    if (await createExclusive(file, body())) return true;
+    return await mutate(file, async () => {
       // Under the mutex nobody else can steal, renew or release this lease, so
       // what is read here is exactly what gets judged — and removed.
       const current = await readLease(file);
@@ -247,6 +280,16 @@ export async function acquireLease(
       await fsp.rm(file, { force: true });
       return await createExclusive(file, body());
     });
+  };
+
+  // Registered before the file exists: a contender in this process that reads
+  // the new lease must never mistake it for an orphan.
+  heldHere.add(token);
+  let acquired = false;
+  try {
+    acquired = await take();
+  } finally {
+    if (!acquired) heldHere.delete(token);
   }
   if (!acquired) return null;
 
@@ -317,12 +360,72 @@ export async function acquireLease(
       if (released) return;
       released = true;
       stopTimer();
-      if (lost) return;
-      await mutate(file, async () => {
-        if (isMine(await readLease(file))) await fsp.rm(file, { force: true });
-      }).catch(() => {});
+      // Lost or not. A renewal that ERRORED marks the lease lost while the
+      // file on disk is still this acquisition; left there, it would name a
+      // live holder (this process) for as long as the process lives. The
+      // removal is compare-and-swap on the token, so a lease someone else
+      // took is never touched. If it fails, the token is no longer held here
+      // and the next tick's sweep removes the orphan.
+      try {
+        await mutate(file, async () => {
+          if (isMine(await readLease(file))) await fsp.rm(file, { force: true });
+        });
+      } catch {
+        // swept later
+      } finally {
+        heldHere.delete(token);
+      }
     },
   };
+}
+
+/** Is this a lease of this very process that no live acquisition here holds? */
+function isOrphanHere(read: Read): read is { kind: "ok"; body: LeaseBody } {
+  return (
+    read.kind === "ok" &&
+    read.body.host === os.hostname() &&
+    read.body.pid === process.pid &&
+    typeof read.body.started === "number" &&
+    Math.abs(read.body.started - SELF_STARTED) <= START_TOLERANCE_MS &&
+    !(typeof read.body.token === "string" && heldHere.has(read.body.token))
+  );
+}
+
+/**
+ * Remove the leases of this process that no run here holds any more: a
+ * release whose removal failed left them behind. Called on every scheduler
+ * tick. Another process on this host can never take such a lease (its holder,
+ * this process, is alive), so only this process can clean it up. Each removal
+ * is compare-and-swap on the body just read. Best effort: what cannot be
+ * removed now is tried again at the next tick. Returns how many were removed.
+ */
+export async function sweepOrphanLeases(): Promise<number> {
+  const dir = path.join(tasksDir(), ".leases");
+  let names: string[];
+  try {
+    names = await fsp.readdir(dir);
+  } catch {
+    return 0;
+  }
+  let removed = 0;
+  for (const name of names) {
+    if (!name.endsWith(".lease")) continue;
+    const file = path.join(dir, name);
+    try {
+      const seen = await readLease(file);
+      if (!isOrphanHere(seen)) continue;
+      await mutate(file, async () => {
+        const again = await readLease(file);
+        if (isOrphanHere(again) && again.body.token === seen.body.token) {
+          await fsp.rm(file, { force: true });
+          removed++;
+        }
+      });
+    } catch {
+      // next tick
+    }
+  }
+  return removed;
 }
 
 /**
