@@ -26,8 +26,8 @@ Everything is under `<lisaHome>/tasks/`, so on the hosted edition each tenant ha
 One `TaskRunner` class, three drivers:
 
 - `serve --web` ticks every 30 s. The first tick resumes runs a previous process left behind.
-- `lisa heartbeat run` (launchd, every 30 min) runs what is due, so tasks run when the web server is down.
-- `lisa tasks run <id>` runs one task now.
+- `lisa heartbeat run` (launchd, every 30 min) runs what is due, so tasks run when the web server is down. A named run, `lisa heartbeat run <name>`, runs heartbeat chores only, never a task (a title is not an identity: the model can draft a task with any title).
+- `lisa tasks run <id>` runs one task now, by id.
 
 Starting a run and continuing one — a retry after its backoff, or a resume after a crash — pass the same gate. A run the user did not start by hand needs the Proactive master switch (`autonomy/state.json`) on and the task enabled; a manual run (`lisa tasks run`, `POST /api/tasks/{id}/run`) needs only that the task still exists. When the gate is closed at the moment a run would continue, the run ends as `cancelled` with the reason (`proactive_off` / `task_disabled`, "Not continued: …") in its run history, the task goes back to rest with its next occurrence computed, and no notice is sent. A run executing in a process at the moment the switch flips is not stopped by it; cancel stops that one.
 

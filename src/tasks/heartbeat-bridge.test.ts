@@ -144,30 +144,32 @@ test("a heartbeat tick runs due tasks once and does NOT touch heartbeat.json", a
   assert.equal(fake.prompts.length, 2);
 });
 
-test("`lisa heartbeat run <name>` runs just the task with that title, due or not", async () => {
-  const task = await dueTask("later", {
+test("`lisa heartbeat run <name>` runs heartbeat chores only: never a task with that title, not even a drafted one", async () => {
+  const later = await dueTask("later", {
     schedule: { expr: "weekly:mon@09:00", tz: "UTC" },
     nextRunAt: NOW0 + 86_400_000,
   });
+  // What the model can draft: a switched-off task whose title shadows a chore.
+  const drafted = await dueTask("disk check", { enabled: false, state: "draft" });
+  const due = await dueTask("due now", { nextRunAt: NOW0 - 1000 });
   const fake = provider(() => "Done.");
-  const results = await runTasksFromHeartbeat({
-    ...base,
-    signal: new AbortController().signal,
-    taskFilter: "later",
-    runnerOptions: { provider: fake.provider, now: () => NOW0 },
-  });
-  assert.deepEqual(results, [{ task: "task:later", output: "Done.", silent: false }]);
-  assert.equal((await getTask(task.id))!.state, "scheduled", "still on its schedule");
-
-  // A filter that names one of Lisa's own heartbeat tasks, or a chore, is not ours to run.
-  const none = await runTasksFromHeartbeat({
-    ...base,
-    signal: new AbortController().signal,
-    taskFilter: "desire:learn-rust",
-    runnerOptions: { provider: fake.provider },
-  });
-  assert.deepEqual(none, []);
-  assert.equal(fake.prompts.length, 1);
+  const logs: string[] = [];
+  for (const name of ["later", "disk check", "desire:learn-rust"]) {
+    const results = await runTasksFromHeartbeat({
+      ...base,
+      signal: new AbortController().signal,
+      taskFilter: name,
+      runnerOptions: { provider: fake.provider, unattendedAllowed: () => true, now: () => NOW0 },
+      log: (m) => logs.push(m),
+    });
+    assert.deepEqual(results, [], name);
+  }
+  assert.equal(fake.prompts.length, 0, "no task ran — not the named ones, not the due one");
+  for (const t of [later, drafted, due]) assert.deepEqual((await getTask(t.id))!.runs, []);
+  assert.ok(
+    logs.some((l) => l.includes(`lisa tasks run ${later.id}`)),
+    "the user is told how to run a task",
+  );
 });
 
 test("an every: routine driven only by 30-minute wake-ups runs on every wake-up, not every other", async () => {

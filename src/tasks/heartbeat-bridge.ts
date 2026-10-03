@@ -32,13 +32,27 @@ export async function runTasksFromHeartbeat(opts: {
   cwd: string;
   signal: AbortSignal;
   model: string;
-  /** `lisa heartbeat run <name>`: run only the task with this title. */
+  /**
+   * `lisa heartbeat run <name>`: a named heartbeat run runs heartbeat chores
+   * only — no task runs. A task is run by id, with `lisa tasks run <id>`.
+   */
   taskFilter?: string;
   /** Test seam. */
   runnerOptions?: Partial<TaskRunnerOptions>;
   log?: (msg: string) => void;
 }): Promise<HeartbeatTaskResult[]> {
   const log = opts.log ?? logInfo;
+  if (opts.taskFilter !== undefined) {
+    // A title is not an identity (the model can draft a task with any title,
+    // switched off): a named heartbeat run never runs a task. Point the way.
+    const match = (await listTasks().catch(() => [])).find((t) => t.title === opts.taskFilter);
+    if (match) {
+      log(
+        `[tasks] "${match.title}" is a task, not a heartbeat chore — run it with \`lisa tasks run ${match.id}\``,
+      );
+    }
+    return [];
+  }
   const runner: TaskRunner = createTaskRunner({
     tools: opts.tools,
     model: opts.model,
@@ -48,26 +62,7 @@ export async function runTasksFromHeartbeat(opts: {
     ...opts.runnerOptions,
   });
 
-  let started: string[];
-  if (opts.taskFilter) {
-    const match = (await listTasks()).find((t) => t.title === opts.taskFilter);
-    if (!match) return [];
-    const onAbort = (): void => void runner.stop();
-    opts.signal.addEventListener("abort", onAbort, { once: true });
-    try {
-      const queued = await runner.runNow(match.id);
-      if (!queued.ok) {
-        log(`[tasks] "${match.title}" not run: ${queued.reason}`);
-        return [];
-      }
-      await runner.drain();
-      started = [match.id];
-    } finally {
-      opts.signal.removeEventListener("abort", onAbort);
-    }
-  } else {
-    started = (await runDueTasksOnce(runner, { signal: opts.signal })).started;
-  }
+  const started = (await runDueTasksOnce(runner, { signal: opts.signal })).started;
 
   const results: HeartbeatTaskResult[] = [];
   for (const id of new Set(started)) {
