@@ -107,22 +107,26 @@ async function ensureOutbox(): Promise<void> {
 export async function enqueueNotice(notice: TaskNotice, now = Date.now()): Promise<OutboxEntry> {
   const id = notice.id;
   await ensureOutbox();
-  return await withFileLock(lockFor(id), async () => {
-    if (await pathExists(entryFile(id))) {
-      const existing = await readEntry(id);
-      if (existing) return existing;
-    }
-    const entry: OutboxEntry = {
-      id,
-      notice,
-      state: "pending",
-      attempts: 0,
-      createdAt: now,
-      updatedAt: now,
-    };
-    await writeEntry(entry);
-    return entry;
-  });
+  return await withFileLock(
+    lockFor(id),
+    async () => {
+      if (await pathExists(entryFile(id))) {
+        const existing = await readEntry(id);
+        if (existing) return existing;
+      }
+      const entry: OutboxEntry = {
+        id,
+        notice,
+        state: "pending",
+        attempts: 0,
+        createdAt: now,
+        updatedAt: now,
+      };
+      await writeEntry(entry);
+      return entry;
+    },
+    { createDir: false },
+  );
 }
 
 export async function listOutbox(): Promise<OutboxEntry[]> {
@@ -180,6 +184,8 @@ export async function drainOutbox(
       continue;
     }
     try {
+      // The home may have been deleted since the listing: nothing is re-created.
+      await ensureOutbox();
       await withFileLock(
         lockFor(listed.id),
         async () => {
@@ -233,7 +239,7 @@ export async function drainOutbox(
         },
         // deliver() runs under the lock, so a holder may legitimately be slow;
         // contenders give up at once instead of queueing behind it.
-        { timeoutMs: 0, staleMs: 5 * 60_000 },
+        { timeoutMs: 0, staleMs: 5 * 60_000, createDir: false },
       );
     } catch (err) {
       if (!(err as Error).message?.includes("timed out acquiring lock")) throw err;

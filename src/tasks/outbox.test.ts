@@ -200,3 +200,27 @@ test("two drains racing deliver a notice once between them", async () => {
     assert.equal(calls, 1);
   });
 });
+
+test("draining after the home was deleted re-creates nothing", async () => {
+  await withHome(async () => {
+    await enqueueNotice(notice("r_0000000000000001"), 1);
+    await enqueueNotice(notice("r_0000000000000002"), 2);
+    const home = path.dirname(tasksDir());
+    // The account is deleted between the outbox listing and the first delivery.
+    const realReadFile = fsp.readFile.bind(fsp);
+    let reads = 0;
+    (fsp as { readFile: unknown }).readFile = async (target: unknown, ...rest: unknown[]) => {
+      const out = await (realReadFile as (...a: unknown[]) => Promise<unknown>)(target, ...rest);
+      if (String(target).endsWith(".json") && String(target).includes("outbox") && ++reads === 2) {
+        await fsp.rm(home, { recursive: true, force: true });
+      }
+      return out;
+    };
+    try {
+      await drainOutbox(async () => ({ delivered: true })).catch(() => null);
+    } finally {
+      (fsp as { readFile: unknown }).readFile = realReadFile;
+    }
+    await assert.rejects(fsp.stat(home), /ENOENT/, "no outbox directory brought the home back");
+  });
+});

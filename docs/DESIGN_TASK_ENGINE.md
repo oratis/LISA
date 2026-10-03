@@ -19,7 +19,7 @@ Everything is under `<lisaHome>/tasks/`, so on the hosted edition each tenant ha
 - A task file that does not parse or validate is renamed to `<id>.json.<ts>.corrupt` and skipped. A file written by a newer build is skipped and left in place.
 - A task whose schedule cannot be used (an invalid time zone, an unknown expression) loads switched off with `pausedReason` set. Reading never writes.
 - `LISA_TZ` (the zone for schedules that name none) is checked when a runner is built: an invalid value is reported once and the system zone is used.
-- Only creating a task creates directories. Every other write fails with `TaskGoneError` when its directory is missing, so a run in flight cannot put a deleted task, or a deleted account's home, back.
+- Only creating a task creates the tasks directory (recursively). Other writes create at most their own subdirectory one level inside an existing tasks directory (`.leases`, `.locks`, `outbox`, a run's directory), never recursively; lease renewal and release create nothing at all. Every other write fails with `TaskGoneError` when its directory is missing, so a run in flight cannot put a deleted task, or a deleted account's home, back. A run whose lease directory has disappeared stops as removed.
 - Run-log records are written as `\n<json>\n`. A torn line left by a crash is skipped by the reader and does not swallow the record after it.
 
 ## Who runs tasks
@@ -28,7 +28,7 @@ One `TaskRunner` class, three drivers:
 
 - `serve --web` ticks every 30 s. The first tick resumes runs a previous process left behind.
 - `lisa heartbeat run` (launchd, every 30 min) runs what is due, so tasks run when the web server is down. A named run, `lisa heartbeat run <name>`, runs heartbeat chores only, never a task (a title is not an identity: the model can draft a task with any title).
-- `lisa tasks run <id>` runs one task now, by id.
+- `lisa tasks run <id>` runs one task now, by id. A manual run of a one-off that is still waiting for its time is a test run and does not use the occurrence up — unless the run ends after the scheduled time, in which case the occurrence is used up.
 
 Starting a run and continuing one — a retry after its backoff, or a resume after a crash — pass the same gate. A run the user did not start by hand needs the Proactive master switch (`autonomy/state.json`) on and the task enabled; a manual run (`lisa tasks run`, `POST /api/tasks/{id}/run`) needs only that the task still exists. When the gate is closed at the moment a run would continue, the run ends as `cancelled` with the reason (`proactive_off` / `task_disabled`, "Not continued: …") in its run history, the task goes back to rest with its next occurrence computed, and no notice is sent. A run executing in a process at the moment the switch flips is not stopped by it; cancel stops that one.
 
@@ -38,9 +38,10 @@ All three drivers take the task's lease before touching it. Whoever loses skips 
 
 - **Creation is exclusive** (`link()`, `O_EXCL` where hard links are missing).
 - **A live holder on this host is never stolen from**, however long its lease has been expired. "Expired" only means "did not renew" — a blocked event loop or a sleeping laptop — and a holder that wakes up must not find a second runner on its run. Liveness is the pid plus the process start time recorded in the lease, so a recycled pid does not keep a dead holder's lease alive.
-- **A dead holder is stolen from at once; a holder on another host, on expiry.**
-- **Stealing, renewing and releasing are compare-and-swap.** Each runs under a short mutex and acts only on the lease body it just read.
-- **Fencing.** Every acquisition has a token. The runner re-reads the lease and checks the token before every store write and before every side-effecting tool call. A renewal that fails or errors aborts the run through its `AbortSignal`. A runner that has lost the lease writes nothing more and does not finish the run: it now belongs to the new holder.
+- **A dead holder is stolen from at once; a holder on another host, on expiry.** On the hosted edition every holder counts as being on another host: Cloud Run instances can share a hostname (and pids), so a pid proves nothing there and only expiry frees a lease.
+- **Stealing, renewing and releasing are compare-and-swap.** Each runs under a short mutex and acts only on the lease body it just read. The mutex is itself taken from a holder stalled inside it for over 15 s, so stealing does not rely on it alone: the stale file is moved to a private name and compared with the body that was judged before it is removed (a fresh lease found there is put back), and an acquisition re-reads the lease after writing it and succeeds only if the file carries its token.
+- **Fencing.** Every acquisition has a token. The runner re-reads the lease and checks the token before every store write and before every side-effecting tool call. A renewal that fails or errors aborts the run through its `AbortSignal`, and a runner that has lost the lease writes nothing more and does not finish the run. The run itself stays resumable: whoever holds the lease next continues it.
+- **Release, even after a loss.** A renewal that merely errored (a transient disk error) reports the lease lost while the file on disk is still this runner's. Releasing removes it anyway, compare-and-swap on the token, so the next tick — here or in another process — can continue the run. If that removal fails too, the file names a live process and nobody else on the host may take it; the process therefore keeps the tokens it holds, treats a lease of its own pid and start time with none of them as an orphan, and removes such orphans at every tick (not on the hosted edition, where they simply expire).
 
 ## What a run is guaranteed
 
@@ -153,4 +154,4 @@ The task tools (`task_create`, `watch_create`, `task_update`) can draft and edit
 
 This holds for the task tools only. In an attended chat on the Mac edition the model also has `bash` and file tools; `lisa tasks enable <id>` from a shell, or an edit to the task file, would switch a task on. Closing that is the approval layer's job (exec asks), not the engine's.
 
-`DELETE /api/tasks/{id}` and `lisa tasks rm` cancel a run in flight and wait for it to let go of the lease before deleting.
+`DELETE /api/tasks/{id}` and `lisa tasks rm` cancel a run in flight and wait for it to let go of the lease before deleting. The wait is capped at 10 s; after that the task is deleted anyway. What refuses the run's later writes is the store, not the lease: the task's files are gone, so every write fails with `TaskGoneError` and the run stops at its next write. Every side-effecting call is preceded by a checkpoint write (the ledger's `started` entry), so it cannot act after that point either. Its lease file stays until the run releases it.
