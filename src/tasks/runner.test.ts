@@ -967,7 +967,7 @@ test("a side-effecting call whose write-ahead checkpoint fails does not run, and
     assert.ok(parked.resumeAt, "an ordinary failed attempt: parked for a retry");
     const runId = parked.activeRunId!;
     assert.deepEqual((await loadRun(task.id, runId))!.run.effects ?? [], []);
-    now = parked.resumeAt! + 1;
+    now = parked.resumeAt + 1;
     await runner.tick();
     await runner.drain();
     assert.equal(sent, 1, "the retry executes it: it had never run");
