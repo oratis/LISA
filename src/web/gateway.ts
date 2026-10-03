@@ -20,8 +20,10 @@
  * has token rates for text. So that face serves only models with an explicit
  * price row, and sends upstream only a request it rebuilt from fields it can
  * price — see `canonicalGeminiRequest`. Everything it does serve is metered from
- * `usageMetadata` exactly as the Gemini provider meters it (v0.27.1): thinking
- * tokens as output, cached prompt tokens separately from input.
+ * `usageMetadata` the way the Gemini provider meters it (v0.27.1): thinking
+ * tokens as output, cached prompt tokens separately from input. One addition:
+ * `toolUsePromptTokenCount` is billed as input here and not counted by the
+ * provider, so the gateway can bill more than the client counted, never less.
  *
  * Per request: session auth (handled by the server gate — accountUid arrives
  * here non-null), quota precheck (B4; premium models need paid balance),
@@ -778,10 +780,12 @@ export function mergeGeminiUsage(
 }
 
 /**
- * Billable usage from Gemini's counters — the same mapping as
+ * Billable usage from Gemini's counters — the mapping of
  * src/providers/gemini.ts (v0.27.1): `promptTokenCount` INCLUDES cached
  * tokens, so they are subtracted and billed at the cache-read rate instead of
- * twice; thinking tokens are output.
+ * twice; thinking tokens are output. Unlike the provider, tool-use prompt
+ * tokens are added to input (over-bills only; this face refuses built-in
+ * tools, so the count is normally 0).
  */
 export function geminiUsageToProvider(counts: GeminiUsageCounts): ProviderUsage {
   const cacheReadTokens = Math.min(counts.cached, counts.prompt);
