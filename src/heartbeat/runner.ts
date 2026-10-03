@@ -24,10 +24,14 @@ import { recordAutonomyRun, type AutonomyKind } from "../autonomy/runs.js";
 import { recentAgentRecap } from "../orchestrator/recent-recap.js";
 import type { ToolDefinition } from "../types.js";
 import type { Provider } from "../providers/types.js";
-import { loadHeartbeatConfig, type HeartbeatTask } from "./config.js";
+import {
+  HEARTBEAT_RUN_LOCK_STALE_MS,
+  heartbeatRunLockPath,
+  loadHeartbeatConfig,
+  type HeartbeatTask,
+} from "./config.js";
 
 const STATE_FILE = path.join(lisaGlobalHome(), "heartbeat-state.json");
-const RUN_LOCK = path.join(lisaGlobalHome(), "heartbeat.lock");
 
 interface HeartbeatState {
   lastRunAt: Record<string, string>;
@@ -75,9 +79,10 @@ export async function runHeartbeatOnce(opts: {
   // one is still running (long desires + short interval), skip rather than
   // double-run and race on soul state. timeoutMs:0 → fail fast, don't wait.
   try {
-    return await withFileLock(RUN_LOCK, () => runHeartbeatInner(opts), {
+    // Shared with `lisa tasks migrate-heartbeat`, which holds it while chores move.
+    return await withFileLock(heartbeatRunLockPath(), () => runHeartbeatInner(opts), {
       timeoutMs: 0,
-      staleMs: 6 * 60 * 60_000, // 6h: a heartbeat that's been "running" longer is surely dead
+      staleMs: HEARTBEAT_RUN_LOCK_STALE_MS, // a heartbeat "running" longer is surely dead
     });
   } catch (err) {
     if ((err as Error).message?.includes("timed out acquiring lock")) {
@@ -103,6 +108,27 @@ async function runHeartbeatInner(opts: {
     for (const f of fired) console.error(`[scheduled-dispatch] fired ${f}`);
   } catch (err) {
     console.error(`[scheduled-dispatch] error: ${(err as Error).message}`);
+  }
+
+  // Task Engine (W1): whatever is due runs through the same runner + lease as
+  // `serve --web`, so tasks keep running when the web server is down and never
+  // run twice when it is up. heartbeat.json chores are NOT moved: they run
+  // below exactly as before, unless the user migrated one explicitly with
+  // `lisa tasks migrate-heartbeat` — a chore whose routine has been switched on
+  // is skipped here, so it never runs both ways.
+  let taskResults: HeartbeatRunResult[] = [];
+  let stillOnHeartbeat: (chores: HeartbeatTask[]) => Promise<HeartbeatTask[]> = (c) =>
+    Promise.resolve(c);
+  try {
+    ({ stillOnHeartbeat } = await import("../tasks/heartbeat-migration.js"));
+  } catch (err) {
+    console.error(`[tasks] error: ${(err as Error).message}`);
+  }
+  try {
+    const { runTasksFromHeartbeat } = await import("../tasks/heartbeat-bridge.js");
+    taskResults = await runTasksFromHeartbeat(opts);
+  } catch (err) {
+    console.error(`[tasks] error: ${(err as Error).message}`);
   }
 
   const cfg = await loadHeartbeatConfig();
@@ -141,7 +167,7 @@ async function runHeartbeatInner(opts: {
   const selfDrivenTools = autonomousSubset(opts.tools);
   const reviewTools = desireReviewSubset(opts.tools);
   const runs: Array<{ task: HeartbeatTask; tools: ToolDefinition[] }> = [
-    ...cfg.tasks.map((task) => ({ task, tools: opts.tools })),
+    ...(await stillOnHeartbeat(cfg.tasks)).map((task) => ({ task, tools: opts.tools })),
     ...desireTasks.map((task) => ({ task, tools: selfDrivenTools })),
     ...builtinTasks.map((task) => ({
       task,
@@ -156,7 +182,7 @@ async function runHeartbeatInner(opts: {
     ? `${HEARTBEAT_SYSTEM}\n\n## recent agent-fleet activity (structural metadata, for your awareness)\n${fleetRecap}`
     : HEARTBEAT_SYSTEM;
 
-  const out: HeartbeatRunResult[] = [];
+  const out: HeartbeatRunResult[] = [...taskResults];
   for (const { task, tools } of runs) {
     if (task.enabled === false) continue;
     if (opts.taskFilter && task.name !== opts.taskFilter) continue;
