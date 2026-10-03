@@ -46,7 +46,7 @@ export function createWebFetchTool(
       try {
         parsed = new URL(input.url);
       } catch {
-        throw new Error(`bad URL: ${input.url}`);
+        throw new Error(`bad URL: ${quoteUntrusted(input.url)}`);
       }
       assertAllowedUrl(parsed, options.policy);
 
@@ -57,8 +57,10 @@ export function createWebFetchTool(
         // redirect:"follow" a public URL could 301 → http://127.0.0.1:8000 and
         // the fetch would reach the internal service (SSRF). We re-run the
         // private-host + protocol check on each Location before following.
-        const res = await fetchFollowingSafeRedirects(input.url, signal, undefined, options);
-        return await renderFetchedResponse(input.url, res, input.format, max);
+        // The parsed form is used from here on: it percent-encodes `<`, `>`,
+        // quotes and controls, so the URL cannot carry a fence marker.
+        const res = await fetchFollowingSafeRedirects(parsed.href, signal, undefined, options);
+        return await renderFetchedResponse(parsed.href, res, input.format, max);
       });
     },
   };
@@ -514,12 +516,48 @@ const TEXTUAL_APPLICATION_TYPES = new Set([
   "application/toml",
 ]);
 
+/** Invisible format characters: zero-width (non-)joiners and spaces, soft hyphen, bidi, tags. */
+const INVISIBLE_FORMAT = /\p{Cf}/gu;
 /**
- * Defang fence look-alikes inside fetched content so a page cannot close the
- * EXTERNAL-CONTENT block early and have what follows read as trusted text.
+ * A run of two or more angle brackets — ASCII or a form NFKC folds to one
+ * (fullwidth ＜＞, small ﹤﹥) — even with invisible or combining characters
+ * between them.
+ */
+const ANGLE_BRACKET_RUN =
+  /[<>\uFE64\uFE65\uFF1C\uFF1E](?:[\p{Default_Ignorable_Code_Point}\p{M}]*[<>\uFE64\uFE65\uFF1C\uFF1E])+/gu;
+
+function defangBracketRun(run: string): string {
+  let out = "";
+  for (const ch of run) {
+    const folded = ch.normalize("NFKC");
+    if (folded === "<") out += "[";
+    else if (folded === ">") out += "]";
+  }
+  return out;
+}
+
+/**
+ * Defang fence look-alikes in text from outside so it cannot close the
+ * EXTERNAL-CONTENT block early (or open a fake one) and have what follows
+ * read as trusted text. Matching on the marker's words is not enough — a zero-
+ * width space, a Unicode hyphen, a Cyrillic letter or fullwidth brackets all
+ * slip past — so invisible format characters are removed and every run of
+ * two or more angle brackets becomes square brackets, whatever it encloses.
+ * Single brackets and other punctuation (including CJK 《》〈〉) are untouched.
  */
 export function neutralizeExternalMarkers(text: string): string {
-  return text.replace(/<<<(?=\s*(?:END-)?EXTERNAL-CONTENT)/gi, "[[[");
+  return text.replace(INVISIBLE_FORMAT, "").replace(ANGLE_BRACKET_RUN, defangBracketRun);
+}
+
+/**
+ * Quote untrusted text for a fence attribute or a message: defanged, then
+ * JSON-quoted with U+2028 / U+2029 escaped too (JSON.stringify leaves those
+ * line separators raw).
+ */
+export function quoteUntrusted(text: string): string {
+  return JSON.stringify(neutralizeExternalMarkers(text))
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
 }
 
 export async function renderFetchedResponse(
@@ -552,8 +590,14 @@ export async function renderFetchedResponse(
   const inner = neutralizeExternalMarkers(
     `HTTP ${response.status} ${response.statusText}\ncontent-type: ${contentType}\n\n${body}`,
   );
+  let source = sourceUrl;
+  try {
+    source = new URL(sourceUrl).href;
+  } catch {
+    // Not a URL: shown as given, defanged and quoted below.
+  }
   return (
-    `<<<EXTERNAL-CONTENT source=${JSON.stringify(sourceUrl)}>>>\n` +
+    `<<<EXTERNAL-CONTENT source=${quoteUntrusted(source)}>>>\n` +
     `${inner}\n` +
     `<<<END-EXTERNAL-CONTENT>>>`
   );

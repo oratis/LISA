@@ -5,6 +5,7 @@ import {
   fetchFollowingSafeRedirects,
   htmlToText,
   neutralizeExternalMarkers,
+  quoteUntrusted,
   readResponseTextCapped,
   withDeadline,
   type OutboundPolicy,
@@ -143,19 +144,24 @@ export function createWebSearchTool(
               );
         if (!res.ok) {
           await res.body?.cancel().catch(() => {});
-          throw new Error(`duckduckgo HTTP ${res.status} ${res.statusText}`);
+          throw new Error(
+            `duckduckgo HTTP ${res.status} ${neutralizeExternalMarkers(res.statusText)}`,
+          );
         }
         return (await readResponseTextCapped(res, MAX_RESULT_PAGE_BYTES)).text;
       });
       const results = parseDuckDuckGo(html, limit);
+      // The query is model-written and may echo page text: defanged and
+      // quoted (U+2028 / U+2029 escaped) wherever it is shown.
+      const quotedQuery = quoteUntrusted(query);
       if (results.length === 0) {
-        return `(no results for "${query}" — DDG may have throttled or changed layout)`;
+        return `(no results for ${quotedQuery} — DDG may have throttled or changed layout)`;
       }
       const body = results
         .map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}`)
         .join("\n\n");
       return (
-        `<<<EXTERNAL-CONTENT source="web_search" query=${JSON.stringify(query)}>>>\n` +
+        `<<<EXTERNAL-CONTENT source="web_search" query=${quotedQuery}>>>\n` +
         `${neutralizeExternalMarkers(body)}\n<<<END-EXTERNAL-CONTENT>>>`
       );
     },
