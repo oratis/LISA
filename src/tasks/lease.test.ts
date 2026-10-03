@@ -28,6 +28,12 @@ async function plant(name: string, body: Record<string, unknown>): Promise<void>
 }
 const ownerOf = async (name: string) =>
   (JSON.parse(await fsp.readFile(leaseFile(name), "utf8")) as { owner: string }).owner;
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((r) => (resolve = r));
+  return { promise, resolve };
+}
+
 const exists = (file: string) =>
   fsp.stat(file).then(
     () => true,
@@ -412,5 +418,62 @@ test("a lease whose directory was deleted is gone: renewal, verify and release c
     assert.equal(b.gone, true);
     await b.release();
     await assert.rejects(fsp.stat(tasksDir()), /ENOENT/);
+  });
+});
+
+test("a contender stalled inside the steal mutex past its staleness cannot win alongside the one that stole the mutex (reviewer probe h2-t4c-new)", async () => {
+  await withHome(async () => {
+    const name = "stalled-steal";
+    const file = leaseFile(name);
+    await plant(name, {
+      owner: "dead",
+      token: "t",
+      pid: 2 ** 30,
+      host: os.hostname(),
+      started: 1,
+      ts: 1,
+      expiresAt: 2,
+    });
+    // B is descheduled at the moment it acts on the body it judged stale —
+    // whichever call that is (removing it, or moving it aside).
+    const stalled = deferred();
+    const resume = deferred();
+    const realRm = fsp.rm.bind(fsp);
+    const realRename = fsp.rename.bind(fsp);
+    let first = true;
+    const stallOnce = async (target: unknown): Promise<void> => {
+      if (first && String(target) === file) {
+        first = false;
+        stalled.resolve();
+        await resume.promise;
+      }
+    };
+    (fsp as { rm: typeof fsp.rm }).rm = async (target, options) => {
+      await stallOnce(target);
+      return realRm(target, options);
+    };
+    (fsp as { rename: typeof fsp.rename }).rename = async (from, to) => {
+      await stallOnce(from);
+      return realRename(from, to);
+    };
+    // B's stall outlasts the mutex's 15 s staleness: the clock jumps 20 s.
+    const realNow = Date.now;
+    try {
+      const pB = acquireLease(name, { owner: "B", autoRenew: false });
+      await stalled.promise;
+      Date.now = () => realNow() + 20_000;
+      const A = await acquireLease(name, { owner: "A", autoRenew: false });
+      resume.resolve();
+      const B = await pB;
+      assert.equal([A, B].filter(Boolean).length, 1, "exactly one acquisition reports success");
+      const holder = (A ?? B)!;
+      assert.equal(await ownerOf(name), holder.owner);
+      assert.equal(await holder.verify(), true);
+      await holder.release();
+    } finally {
+      Date.now = realNow;
+      (fsp as { rm: typeof fsp.rm }).rm = realRm;
+      (fsp as { rename: typeof fsp.rename }).rename = realRename;
+    }
   });
 });

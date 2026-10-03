@@ -34,7 +34,11 @@
  * hard links are missing). Stealing, renewing and releasing each run under a
  * short mutex and act only on the exact body they just read — a contender can
  * never remove a lease other than the one it judged stale, and a holder can
- * never renew or release a lease that is no longer its own.
+ * never renew or release a lease that is no longer its own. The mutex itself
+ * is stolen from a holder stalled inside it for over 15 s, so stealing does
+ * not rely on it alone: the judged file is moved aside and compared before it
+ * is removed (removeIfUnchanged), and an acquisition re-reads the lease after
+ * writing it and succeeds only if the file carries its token.
  */
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -115,7 +119,9 @@ function leasePath(name: string): string {
 }
 
 type Read =
-  { kind: "missing" } | { kind: "malformed"; ageMs: number } | { kind: "ok"; body: LeaseBody };
+  | { kind: "missing" }
+  | { kind: "malformed"; ageMs: number; raw: string }
+  | { kind: "ok"; body: LeaseBody; raw: string };
 
 async function readLease(file: string): Promise<Read> {
   let raw: string;
@@ -137,13 +143,13 @@ async function readLease(file: string): Promise<Read> {
       typeof body.pid === "number" &&
       typeof body.host === "string"
     ) {
-      return { kind: "ok", body };
+      return { kind: "ok", body, raw };
     }
   } catch {
     // fall through
   }
   const stat = await fsp.stat(file).catch(() => null);
-  return { kind: "malformed", ageMs: stat ? Date.now() - stat.mtimeMs : 0 };
+  return { kind: "malformed", ageMs: stat ? Date.now() - stat.mtimeMs : 0, raw };
 }
 
 /** Start time of another process on this host, via `ps`. null when it cannot be determined. */
@@ -226,6 +232,34 @@ async function createExclusive(file: string, body: string): Promise<boolean> {
 }
 
 /**
+ * Remove the lease file only if it still holds exactly `judged` — the body a
+ * contender read and found stale. The file is first moved to a private name,
+ * so the comparison and the removal are made on the same file even when the
+ * mutex was not exclusive (a holder stalled inside it longer than its
+ * staleness limit). A body that turns out to be different is someone's fresh
+ * lease: it is put back, unless an even newer one already took the path.
+ * True when the judged body is no longer at the path.
+ */
+async function removeIfUnchanged(file: string, judged: string): Promise<boolean> {
+  const aside = `${file}.${process.pid}.${randomBytes(4).toString("hex")}.judged`;
+  try {
+    await fsp.rename(file, aside);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return true; // already gone
+    throw e;
+  }
+  try {
+    const moved = await fsp.readFile(aside, "utf8").catch(() => null);
+    if (moved === judged) return true;
+    if (moved !== null) await createExclusive(file, moved).catch(() => false);
+    else await fsp.link(aside, file).catch(() => {});
+    return false;
+  } finally {
+    await fsp.rm(aside, { force: true }).catch(() => {});
+  }
+}
+
+/**
  * The short mutex every steal / renew / release of one lease runs under. It
  * never creates a directory: when the lease directory is gone (the task or the
  * whole home was deleted), so is the lease, and the call fails with ENOENT.
@@ -271,20 +305,26 @@ export async function acquireLease(
     } satisfies LeaseBody);
 
   const take = async (): Promise<boolean> => {
-    if (await createExclusive(file, body())) return true;
-    return await mutate(file, async () => {
-      // Under the mutex nobody else can steal, renew or release this lease, so
-      // what is read here is exactly what gets judged — and removed.
-      const current = await readLease(file);
-      if (current.kind === "missing") return await createExclusive(file, body());
-      if (current.kind === "malformed") {
-        if (current.ageMs < MALFORMED_GRACE_MS) return false; // may be mid-write
-      } else if (!(await holderIsGone(current.body, now(), startedAt))) {
-        return false;
-      }
-      await fsp.rm(file, { force: true });
-      return await createExclusive(file, body());
-    });
+    const created =
+      (await createExclusive(file, body())) ||
+      (await mutate(file, async () => {
+        const current = await readLease(file);
+        if (current.kind === "missing") return await createExclusive(file, body());
+        if (current.kind === "malformed") {
+          if (current.ageMs < MALFORMED_GRACE_MS) return false; // may be mid-write
+        } else if (!(await holderIsGone(current.body, now(), startedAt))) {
+          return false;
+        }
+        // Compare-and-swap: only the exact body judged stale is removed.
+        if (!(await removeIfUnchanged(file, current.raw))) return false;
+        return await createExclusive(file, body());
+      }));
+    if (!created) return false;
+    // Written — but is it still there? A contender that stole the mutex from
+    // a stalled holder could have replaced it since. Report success only for
+    // the body on disk now.
+    const after = await readLease(file);
+    return after.kind === "ok" && after.body.token === token;
   };
 
   // Registered before the file exists: a contender in this process that reads
@@ -411,7 +451,7 @@ export async function acquireLease(
 }
 
 /** Is this a lease of this very process that no live acquisition here holds? */
-function isOrphanHere(read: Read): read is { kind: "ok"; body: LeaseBody } {
+function isOrphanHere(read: Read): read is Extract<Read, { kind: "ok" }> {
   return (
     read.kind === "ok" &&
     read.body.host === os.hostname() &&
@@ -447,7 +487,7 @@ export async function sweepOrphanLeases(): Promise<number> {
       if (!isOrphanHere(seen)) continue;
       await mutate(file, async () => {
         const again = await readLease(file);
-        if (isOrphanHere(again) && again.body.token === seen.body.token) {
+        if (isOrphanHere(again) && again.raw === seen.raw) {
           await fsp.rm(file, { force: true });
           removed++;
         }
