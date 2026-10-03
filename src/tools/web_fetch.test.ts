@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import {
+  HTML_TO_TEXT_MAX_INPUT,
   createWebFetchTool,
+  htmlToText,
   isTextualContentType,
   neutralizeExternalMarkers,
   pinnedTransport,
@@ -502,6 +504,71 @@ describe("content handling", () => {
     );
     assert.equal(output.match(/<<<END-EXTERNAL-CONTENT>>>/g)?.length, 1);
     assert.match(output, /<<<END-EXTERNAL-CONTENT>>>$/);
+  });
+});
+
+describe("htmlToText — one linear pass over at most 256 KB of markup", () => {
+  const CAP = 256 * 1024;
+  // Each of these used to be rescanned to the end of the input from every
+  // repetition: 400 KB of `<p` took over a minute of synchronous CPU, which no
+  // deadline can interrupt (review F1).
+  const hostile: Array<[string, string]> = [
+    ["unclosed <script", "<script"],
+    ["unclosed comment", "<!--"],
+    ["unclosed <p", "<p"],
+    ["bare <", "<"],
+    ["unclosed <style", "<style"],
+    ["unclosed <noscript", "<noscript"],
+    ["a mix of all of them", "<p<!--<script<style<"],
+  ];
+  for (const [label, unit] of hostile) {
+    test(`${label}, repeated up to the cap, converts in well under a second`, () => {
+      const html = unit.repeat(Math.ceil(CAP / unit.length));
+      const started = performance.now();
+      htmlToText(html);
+      const elapsed = performance.now() - started;
+      assert.ok(elapsed < 250, `${label}: ${elapsed.toFixed(0)} ms`);
+    });
+  }
+
+  test("markup past the cap is not read, whatever max_chars asks for", () => {
+    assert.equal(HTML_TO_TEXT_MAX_INPUT, CAP);
+    assert.equal(htmlToText("x".repeat(1_000_000)).length, CAP);
+  });
+
+  test("ordinary markup converts as before: line breaks, entities, no script or style", () => {
+    assert.equal(
+      htmlToText(
+        '<html><head><style>p{color:red}</style><script>var a = "<p>";</script></head>' +
+          "<body><h1>Title</h1><p>One &amp; two</p><!-- note --><div>Three<br>four</div>" +
+          "<noscript>enable js</noscript></body></html>",
+      ),
+      "Title\n\nOne & two\n\nThree\nfour",
+    );
+    assert.equal(htmlToText("a <> b"), "a <> b");
+    assert.equal(htmlToText("x <p unterminated"), "x <p unterminated");
+  });
+
+  test("an unclosed script, style, noscript or comment hides the rest, as in a browser", () => {
+    assert.equal(htmlToText("<p>shown</p><script>steal()"), "shown");
+    assert.equal(htmlToText("<p>shown</p><style>a{}"), "shown");
+    assert.equal(htmlToText("<p>shown</p><noscript>x"), "shown");
+    assert.equal(htmlToText("<p>shown</p><!-- hidden"), "shown");
+    assert.equal(htmlToText("<SCRIPT>x()</Script\n>after"), "after");
+  });
+
+  test("a page longer than the cap is reported as truncated", async () => {
+    // 400 KB of markup, 50 K characters of text: under max_chars, over the cap.
+    const out = await renderFetchedResponse(
+      "https://example.com/",
+      new Response("<b>x</b>".repeat(50_000), {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      }),
+      undefined,
+      200_000,
+    );
+    assert.match(out, /\[truncated at 200000 chars\]/);
   });
 });
 

@@ -519,10 +519,12 @@ export async function renderFetchedResponse(
     const rawByteLimit = Math.max(64_000, Math.min(2_000_000, maxChars * 8));
     const raw = await readResponseTextCapped(response, rawByteLimit);
     body = raw.text;
+    let truncated = raw.truncated;
     if (format !== "raw" && /html|xml/i.test(contentType)) {
+      truncated ||= body.length > HTML_TO_TEXT_MAX_INPUT;
       body = htmlToText(body);
     }
-    if (body.length > maxChars || raw.truncated) {
+    if (body.length > maxChars || truncated) {
       body = body.slice(0, maxChars) + `\n\n[truncated at ${maxChars} chars]`;
     }
   }
@@ -574,14 +576,88 @@ export async function readResponseTextCapped(
   return { text, truncated };
 }
 
+/**
+ * The most markup `htmlToText` reads, whatever `max_chars` asks for. The
+ * conversion is synchronous, so no deadline can interrupt it; bounding its
+ * input is what bounds its cost. Longer pages are cut and reported truncated.
+ */
+export const HTML_TO_TEXT_MAX_INPUT = 256 * 1024;
+
+/** Elements whose content is never text: dropped whole, up to their end tag. */
+const SKIPPED_ELEMENTS = ["script", "style", "noscript"] as const;
+type SkippedElement = (typeof SKIPPED_ELEMENTS)[number];
+const SKIPPED_ELEMENT_END: Record<SkippedElement, RegExp> = {
+  script: /<\/script(?=[\s/>])/gi,
+  style: /<\/style(?=[\s/>])/gi,
+  noscript: /<\/noscript(?=[\s/>])/gi,
+};
+/** Tags that become a line break (matched on the tag's first few characters). */
+const LINE_BREAK_TAG = /^\/?(?:p|div|br|li|tr|h[1-6]|section|article|header|footer|nav|hr)/i;
+const WORD_CHAR = /\w/;
+
+function skippedElementAt(html: string, lt: number): SkippedElement | null {
+  for (const name of SKIPPED_ELEMENTS) {
+    if (
+      html.slice(lt + 1, lt + 1 + name.length).toLowerCase() === name &&
+      !WORD_CHAR.test(html.charAt(lt + 1 + name.length))
+    ) {
+      return name;
+    }
+  }
+  return null;
+}
+
+/**
+ * HTML to readable text in a single forward pass.
+ *
+ * Linear on purpose. The previous chain of regexes (`<script\b[\s\S]*?<\/script>`,
+ * `<!--[\s\S]*?-->`, `<[^>]+>`, …) rescanned to the end of the input from every
+ * unclosed `<script`, `<style`, `<!--`, `<p` or bare `<`, so a few hundred KB of
+ * hostile markup held the event loop — every tenant on the process — for over
+ * a minute, beyond the reach of any timer. Here every search either consumes
+ * what it scanned or ends the pass. Like a browser, an unclosed comment,
+ * script, style or noscript runs to the end of the input.
+ */
 export function htmlToText(html: string): string {
-  return html
-    .replace(/<script\b[\s\S]*?<\/script>/gi, "")
-    .replace(/<style\b[\s\S]*?<\/style>/gi, "")
-    .replace(/<noscript\b[\s\S]*?<\/noscript>/gi, "")
-    .replace(/<!--[\s\S]*?-->/g, "")
-    .replace(/<\/?(?:p|div|br|li|tr|h[1-6]|section|article|header|footer|nav|hr)[^>]*>/gi, "\n")
-    .replace(/<[^>]+>/g, "")
+  const input = html.length > HTML_TO_TEXT_MAX_INPUT ? html.slice(0, HTML_TO_TEXT_MAX_INPUT) : html;
+  const out: string[] = [];
+  let pos = 0;
+  while (pos < input.length) {
+    const lt = input.indexOf("<", pos);
+    if (lt === -1) break;
+    out.push(input.slice(pos, lt));
+    if (input.startsWith("<!--", lt)) {
+      const end = input.indexOf("-->", lt + 4);
+      pos = end === -1 ? input.length : end + 3;
+      continue;
+    }
+    const skipped = skippedElementAt(input, lt);
+    if (skipped) {
+      const endTag = SKIPPED_ELEMENT_END[skipped];
+      endTag.lastIndex = lt + 1 + skipped.length;
+      const close = endTag.exec(input);
+      const end = close ? input.indexOf(">", close.index) : -1;
+      pos = end === -1 ? input.length : end + 1;
+      continue;
+    }
+    // Any other tag: `<`, at least one character, then the next `>`.
+    const gt = input.indexOf(">", lt + 1);
+    if (gt === -1) {
+      // No `>` anywhere ahead, so no later `<` can open a tag either.
+      pos = lt;
+      break;
+    }
+    if (gt === lt + 1) {
+      out.push("<");
+      pos = lt + 1;
+      continue;
+    }
+    if (LINE_BREAK_TAG.test(input.slice(lt + 1, Math.min(gt, lt + 9)))) out.push("\n");
+    pos = gt + 1;
+  }
+  out.push(input.slice(pos));
+  return out
+    .join("")
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")

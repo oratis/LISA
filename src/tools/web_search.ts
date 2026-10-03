@@ -160,19 +160,52 @@ export function createWebSearchTool(
 
 export const webSearchTool: ToolDefinition<WebSearchInput, string> = createWebSearchTool();
 
+/** An opening `<a …>` tag longer than this is skipped, not parsed. */
+const MAX_ANCHOR_TAG_CHARS = 4_096;
+const CLASS_ATTRIBUTE = /\sclass="([^"]*)"/;
+const HREF_ATTRIBUTE = /\shref="([^"]+)"/;
+const ANCHOR_NAME_END = /\s/;
+
+/**
+ * Pull result links and snippets out of the provider's HTML page in one
+ * forward pass. Linear on purpose: the regexes this replaces rescanned from
+ * every `<a` to the end of the input, so ~12 KB of unclosed result anchors took
+ * most of a minute of synchronous CPU. Every search below either consumes what
+ * it scanned or ends the pass.
+ */
 export function parseDuckDuckGo(html: string, limit: number): SearchResult[] {
   const out: SearchResult[] = [];
-  const linkRe = /<a[^>]*class="[^"]*\bresult__a\b[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
-  const snipRe = /<a[^>]*class="[^"]*\bresult__snippet\b[^"]*"[^>]*>([\s\S]*?)<\/a>/g;
-
   const links: { url: string; title: string }[] = [];
-  let m: RegExpExecArray | null;
-  while ((m = linkRe.exec(html)) && links.length < limit * 2) {
-    links.push({ url: unwrapDdgUrl(m[1]!), title: htmlToText(m[2]!) });
-  }
   const snippets: string[] = [];
-  while ((m = snipRe.exec(html)) && snippets.length < limit * 2) {
-    snippets.push(htmlToText(m[1]!));
+  let pos = 0;
+  while (links.length < limit * 2 || snippets.length < limit * 2) {
+    const open = html.indexOf("<a", pos);
+    if (open === -1) break;
+    if (!ANCHOR_NAME_END.test(html.charAt(open + 2))) {
+      pos = open + 2;
+      continue;
+    }
+    const tagEnd = html.indexOf(">", open + 3);
+    if (tagEnd === -1) break;
+    pos = tagEnd + 1;
+    if (tagEnd - open > MAX_ANCHOR_TAG_CHARS) continue;
+    const tag = html.slice(open, tagEnd);
+    const classes = (CLASS_ATTRIBUTE.exec(tag)?.[1] ?? "").split(/\s+/);
+    const isLink = classes.includes("result__a");
+    const isSnippet = classes.includes("result__snippet");
+    if (!isLink && !isSnippet) continue;
+    const close = html.indexOf("</a>", pos);
+    if (close === -1) break;
+    const inner = html.slice(pos, close);
+    pos = close + 4;
+    if (isLink) {
+      const href = HREF_ATTRIBUTE.exec(tag)?.[1];
+      if (href && links.length < limit * 2) {
+        links.push({ url: unwrapDdgUrl(href), title: htmlToText(inner) });
+      }
+    } else if (snippets.length < limit * 2) {
+      snippets.push(htmlToText(inner));
+    }
   }
   for (let i = 0; i < links.length && out.length < limit; i++) {
     const link = links[i]!;

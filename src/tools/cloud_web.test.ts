@@ -643,6 +643,29 @@ describe("hosted web_fetch — size, time and content handling", () => {
     });
   }
 
+  test("a hostile page cannot hold the process: the HTML step is linear and capped", async () => {
+    // Before, 400 KB of unclosed `<p` took 21-50 s of synchronous CPU here and
+    // the 3 s deadline never fired, because no timer runs while the CPU is held.
+    const h = hosted({
+      env: { LISA_CLOUD_WEB_TIMEOUT_MS: "3000" },
+      respond: () =>
+        new Response("<p".repeat(200_000), {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        }),
+    });
+    for (const max_chars of [undefined, 50_000, 200_000]) {
+      const started = performance.now();
+      const out = (await h.fetch.execute(
+        { url: "https://hostile.example.com/", ...(max_chars ? { max_chars } : {}) },
+        ctx(),
+      )) as string;
+      const elapsed = performance.now() - started;
+      assert.match(out, /\[truncated at \d+ chars\]/);
+      assert.ok(elapsed < 1_000, `max_chars=${max_chars ?? "default"}: ${elapsed.toFixed(0)} ms`);
+    }
+  });
+
   test("HTML is reduced to text; scripts and styles are dropped", async () => {
     const h = hosted({
       respond: () =>

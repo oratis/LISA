@@ -37,6 +37,31 @@ describe("parseDuckDuckGo", () => {
     assert.equal(parseDuckDuckGo(PAGE, 1).length, 1);
     assert.deepEqual(parseDuckDuckGo("<html></html>", 10), []);
   });
+
+  test("hostile result markup is parsed in one linear pass", () => {
+    // ~12 KB of the first shape took ~50 s with the previous regexes (review F1);
+    // 1 MB is the most of a results page the tool ever reads.
+    const shapes: Array<[string, (size: number) => string, number]> = [
+      ["unclosed result anchors", (n) => '<a class="result__a" href="x"'.repeat(n / 29), 0],
+      ["an unterminated class", (n) => '<a class="result__a ' + "x ".repeat(n / 2), 0],
+      ["bare anchors", (n) => "<a ".repeat(n / 3), 0],
+      [
+        "endless complete results",
+        (n) => '<a class="result__a" href="https://e.example/">t</a>'.repeat(n / 50),
+        20,
+      ],
+    ];
+    for (const [label, build, expected] of shapes) {
+      for (const size of [12_000, 1_000_000]) {
+        const html = build(size);
+        const started = performance.now();
+        const results = parseDuckDuckGo(html, 20);
+        const elapsed = performance.now() - started;
+        assert.equal(results.length, expected, label);
+        assert.ok(elapsed < 250, `${label} at ${size} chars: ${elapsed.toFixed(0)} ms`);
+      }
+    }
+  });
 });
 
 describe("SEARCH_OUTBOUND_POLICY", () => {
