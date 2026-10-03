@@ -36,6 +36,14 @@ export interface FileLockOpts {
    * missing directory then fails the call with ENOENT.
    */
   createDir?: boolean;
+  /**
+   * Also treat the lock as abandoned at once when its holder's pid is not
+   * alive on this host. Default true. False where processes that share the
+   * lock do not share a pid namespace (instances of the hosted edition over
+   * one volume): there a holder elsewhere would look dead here, so only the
+   * lock's age (`staleMs`) frees it.
+   */
+  pidLiveness?: boolean;
 }
 
 const DEFAULTS = { staleMs: 30_000, timeoutMs: 10_000, pollMs: 50 };
@@ -50,7 +58,7 @@ function delay(ms: number): Promise<void> {
 }
 
 /** Is the process holding this lock gone or the lock too old to trust? */
-async function isStale(lockPath: string, staleMs: number): Promise<boolean> {
+async function isStale(lockPath: string, staleMs: number, pidLiveness: boolean): Promise<boolean> {
   let body: LockBody;
   try {
     body = JSON.parse(await fsp.readFile(lockPath, "utf8")) as LockBody;
@@ -67,7 +75,7 @@ async function isStale(lockPath: string, staleMs: number): Promise<boolean> {
   // Best-effort liveness: signal 0 throws ESRCH if the pid is dead. Only
   // meaningful on the same host; on a different host kill() may report the
   // wrong answer, so we still rely primarily on the ts timeout above.
-  if (typeof body.pid === "number" && body.pid > 0) {
+  if (pidLiveness && typeof body.pid === "number" && body.pid > 0) {
     try {
       process.kill(body.pid, 0);
     } catch (e) {
@@ -129,7 +137,7 @@ export async function withFileLock<T>(
       await fsp.rm(tmp, { force: true }).catch(() => {});
       if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
       // Held by someone. Steal if stale, else wait.
-      if (await isStale(lockPath, staleMs)) {
+      if (await isStale(lockPath, staleMs, opts.pidLiveness !== false)) {
         // Steal atomically: rename the stale file to a unique name so only one
         // contender can claim it. Losers get ENOENT and just retry the link
         // race — nobody unconditionally rm's a path that may already hold a

@@ -41,7 +41,7 @@ const exists = (file: string) =>
   );
 
 /** Make fs calls of one kind fail with `code` for paths `match` accepts, while `on()` is true. */
-function failing<K extends "writeFile" | "rm">(
+function failing<K extends "writeFile" | "rm" | "rename">(
   kind: K,
   match: (target: string) => boolean,
   code: string,
@@ -366,11 +366,16 @@ test("a lease this process could not release is an orphan: the sweep removes it,
     const orphan = async (name: string): Promise<void> => {
       const a = await acquireLease(name, { autoRenew: false });
       assert.ok(a);
-      const fault = failing("rm", (p) => p === leaseFile(name), "EIO");
+      // Its removal fails (the move aside, or the unlink): the file stays,
+      // naming this live process.
+      const faults = [
+        failing("rm", (p) => p === leaseFile(name), "EIO"),
+        failing("rename", (p) => p === leaseFile(name), "EIO"),
+      ];
       try {
-        await a.release(); // its removal fails: the file stays, naming this live process
+        await a.release();
       } finally {
-        fault.restore();
+        for (const f of faults.reverse()) f.restore();
       }
       assert.equal(await ownerOf(name), a.owner);
     };
@@ -525,5 +530,100 @@ test("hosted edition: a holder is never judged by its pid — instances can shar
       if (realEdition === undefined) delete process.env.LISA_EDITION;
       else process.env.LISA_EDITION = realEdition;
     }
+  });
+});
+
+/**
+ * On the `nth` read of `file`, run `meanwhile` before handing back what was
+ * read — a holder that read its lease under the mutex and then stalled past
+ * the mutex's staleness, while a contender took the lease.
+ */
+function afterRead(
+  file: string,
+  nth: number,
+  meanwhile: () => Promise<void>,
+): { fired: boolean; restore(): void } {
+  const real = fsp.readFile.bind(fsp) as (...args: unknown[]) => Promise<unknown>;
+  let reads = 0;
+  const state = {
+    fired: false,
+    restore: () => {
+      (fsp as Record<string, unknown>).readFile = real;
+    },
+  };
+  (fsp as Record<string, unknown>).readFile = async (target: unknown, ...rest: unknown[]) => {
+    const out = await real(target, ...rest);
+    if (!state.fired && String(target) === file && ++reads === nth) {
+      state.fired = true;
+      state.restore();
+      await meanwhile();
+    }
+    return out;
+  };
+  return state;
+}
+
+test("a late release, renewal or sweep never acts on the next holder's lease: each is compare-and-swap on the body moved aside (reviewer probe n1-release-stall)", async () => {
+  for (const op of ["release", "renew", "sweep"] as const) {
+    await withHome(async () => {
+      const name = `late-${op}`;
+      const file = leaseFile(name);
+      const a = await acquireLease(name, { owner: "A", autoRenew: false });
+      assert.ok(a);
+      if (op === "sweep") {
+        // A release that could not remove the file: an orphan of this process.
+        const faults = [
+          failing("rm", (p) => p === file, "EIO"),
+          failing("rename", (p) => p === file, "EIO"),
+        ];
+        try {
+          await a.release();
+        } finally {
+          for (const f of faults.reverse()) f.restore();
+        }
+      }
+      // B judges A's lease stale (its mutex stolen from A's stalled call) and takes it.
+      let b: Awaited<ReturnType<typeof acquireLease>> = null;
+      const hook = afterRead(file, op === "sweep" ? 2 : 1, async () => {
+        await fsp.rm(file);
+        b = await acquireLease(name, { owner: "B", autoRenew: false });
+      });
+      try {
+        if (op === "release") await a.release();
+        if (op === "renew") assert.equal(await a.renew(), false, "not ours any more");
+        if (op === "sweep") assert.equal(await sweepOrphanLeases(), 0);
+      } finally {
+        hook.restore();
+      }
+      assert.ok(hook.fired);
+      const holder = b as Awaited<ReturnType<typeof acquireLease>>;
+      assert.ok(holder, "B took the lease");
+      assert.equal(await ownerOf(name), "B", `${op}: B's lease is still on disk`);
+      assert.equal(await holder.verify(), true, `${op}: B still holds it`);
+      if (op === "renew") assert.equal(a.lost, true, "the late renewal reports the lease lost");
+      await holder.release();
+    });
+  }
+});
+
+test("a renewal never makes its own holder's verify() fail, though it moves the file aside", async () => {
+  await withHome(async () => {
+    let lost = 0;
+    const a = await acquireLease("busy", { autoRenew: false, onLost: () => lost++ });
+    assert.ok(a);
+    for (let i = 0; i < 200; i++) {
+      const [renewed, ...verified] = await Promise.all([
+        a.renew(),
+        a.verify(),
+        a.verify(),
+        a.verify(),
+      ]);
+      assert.equal(renewed, true);
+      assert.deepEqual(verified, [true, true, true], `round ${i}`);
+    }
+    assert.equal(lost, 0);
+    assert.equal(await ownerOf("busy"), a.owner);
+    await a.release();
+    assert.equal(await exists(leaseFile("busy")), false);
   });
 });

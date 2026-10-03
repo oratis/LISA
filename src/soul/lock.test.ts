@@ -30,7 +30,13 @@ describe("withFileLock", () => {
 
   test("releases the lock after the fn throws", async () => {
     const lp = lockPath();
-    await assert.rejects(() => withFileLock(lp, async () => { throw new Error("boom"); }), /boom/);
+    await assert.rejects(
+      () =>
+        withFileLock(lp, async () => {
+          throw new Error("boom");
+        }),
+      /boom/,
+    );
     await assert.rejects(() => fsp.stat(lp), /ENOENT/, "lock released on error too");
   });
 
@@ -51,15 +57,19 @@ describe("withFileLock", () => {
     let maxInside = 0;
     const events: string[] = [];
     async function critical(tag: string) {
-      await withFileLock(lp, async () => {
-        inside++;
-        maxInside = Math.max(maxInside, inside);
-        assert.equal(inside, 1, `holder ${tag} entered while another holder was inside the lock`);
-        events.push(`${tag}-enter`);
-        await new Promise((r) => setTimeout(r, 5)); // yield: a broken lock would interleave here
-        events.push(`${tag}-exit`);
-        inside--;
-      }, { pollMs: 1 });
+      await withFileLock(
+        lp,
+        async () => {
+          inside++;
+          maxInside = Math.max(maxInside, inside);
+          assert.equal(inside, 1, `holder ${tag} entered while another holder was inside the lock`);
+          events.push(`${tag}-enter`);
+          await new Promise((r) => setTimeout(r, 5)); // yield: a broken lock would interleave here
+          events.push(`${tag}-exit`);
+          inside--;
+        },
+        { pollMs: 1 },
+      );
     }
     // Several real contenders (not just two) — more contention, stronger proof.
     const tags = ["A", "B", "C", "D", "E"];
@@ -89,10 +99,14 @@ describe("withFileLock", () => {
     const held = new Promise<void>((r) => (release = r));
     let acquired!: () => void;
     const inside = new Promise<void>((r) => (acquired = r));
-    const holder = withFileLock(lp, async () => {
-      acquired();
-      await held;
-    }, { staleMs: 60_000 });
+    const holder = withFileLock(
+      lp,
+      async () => {
+        acquired();
+        await held;
+      },
+      { staleMs: 60_000 },
+    );
     await inside; // holder definitely owns the lock now
 
     // A second acquirer should give up after its timeout. Generous timeout so
@@ -113,6 +127,42 @@ describe("withFileLock", () => {
     await fsp.writeFile(lp, JSON.stringify({ pid: 999999, ts: Date.now() - 999_999 }));
     const out = await withFileLock(lp, async () => "stolen", { staleMs: 1000, timeoutMs: 1000 });
     assert.equal(out, "stolen", "should steal the stale lock and run");
+  });
+
+  test("pidLiveness false (hosted: instances share a volume, not a pid namespace): a fresh lock is never stolen for its pid, only by age", async () => {
+    // A holder on another instance: its pid does not exist here.
+    const deadPid = 2 ** 22 + 12345;
+    const fresh = () => JSON.stringify({ pid: deadPid, ts: Date.now() });
+
+    const lp = lockPath();
+    await fsp.writeFile(lp, fresh());
+    await assert.rejects(
+      () =>
+        withFileLock(lp, async () => "stolen", {
+          pidLiveness: false,
+          staleMs: 60_000,
+          timeoutMs: 200,
+          pollMs: 10,
+        }),
+      /timed out acquiring lock/,
+      "a live-looking-elsewhere holder keeps its lock",
+    );
+    assert.equal(JSON.parse(await fsp.readFile(lp, "utf8")).pid, deadPid, "untouched");
+
+    // Once old enough it is stolen, pid or no pid.
+    await fsp.writeFile(lp, JSON.stringify({ pid: deadPid, ts: Date.now() - 120_000 }));
+    assert.equal(
+      await withFileLock(lp, async () => "aged out", { pidLiveness: false, staleMs: 60_000 }),
+      "aged out",
+    );
+
+    // The default still judges by pid on this host: stolen at once.
+    const lp2 = lockPath();
+    await fsp.writeFile(lp2, fresh());
+    assert.equal(
+      await withFileLock(lp2, async () => "stolen", { staleMs: 60_000, timeoutMs: 1000 }),
+      "stolen",
+    );
   });
 
   test("steals a malformed lock file", async () => {
@@ -150,13 +200,18 @@ describe("withFileLock", () => {
       const held = new Promise<void>((r) => (release = r));
       let acquired!: () => void;
       const inside = new Promise<void>((r) => (acquired = r));
-      const holder = withFileLock(lp, async () => {
-        acquired();
-        await held;
-      }, { staleMs: 60_000 });
+      const holder = withFileLock(
+        lp,
+        async () => {
+          acquired();
+          await held;
+        },
+        { staleMs: 60_000 },
+      );
       await inside;
       await assert.rejects(
-        () => withFileLock(lp, async () => "never", { timeoutMs: 300, pollMs: 10, staleMs: 60_000 }),
+        () =>
+          withFileLock(lp, async () => "never", { timeoutMs: 300, pollMs: 10, staleMs: 60_000 }),
         /timed out acquiring lock/,
       );
       release();

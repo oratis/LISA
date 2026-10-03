@@ -33,14 +33,28 @@
  * until the process exits.
  *
  * Mutation is compare-and-swap. Creation is exclusive (link(), O_EXCL where
- * hard links are missing). Stealing, renewing and releasing each run under a
- * short mutex and act only on the exact body they just read — a contender can
- * never remove a lease other than the one it judged stale, and a holder can
- * never renew or release a lease that is no longer its own. The mutex itself
- * is stolen from a holder stalled inside it for over 15 s, so stealing does
- * not rely on it alone: the judged file is moved aside and compared before it
- * is removed (removeIfUnchanged), and an acquisition re-reads the lease after
- * writing it and succeeds only if the file carries its token.
+ * hard links are missing). Stealing, renewing, releasing and the orphan sweep
+ * each run under a short mutex, but none relies on it alone: the mutex is
+ * taken from a holder stalled inside it for over 15 s — and, with pid
+ * liveness (this host), at once from one whose pid is not alive here; on the
+ * hosted edition by age only. So each of them acts on the file after moving
+ * it aside to a private name and comparing it there with the body it read
+ * (removeIfUnchanged, replaceIfUnchanged): a different body — a lease someone
+ * took meanwhile — is put back, and a renewal installs its new body with an
+ * exclusive create. A contender never removes a lease other than the one it
+ * judged stale, and a holder never renews over or removes a lease that is no
+ * longer its own, however late its call lands. An acquisition re-reads the
+ * lease after writing it and succeeds only if the file carries its token.
+ *
+ * The limit: while a file is moved aside its path is empty for an instant
+ * (a rename, a read, a link — longer on a FUSE volume). A contender whose
+ * exclusive create lands in that instant gets the lease. If the file moved
+ * aside was a renewing holder's own, its renewal fails and it stops; if it was
+ * someone else's (a late call), it cannot be put back and that holder fails
+ * its next verify() and stops. Either way it is a hand-off to one holder,
+ * never two — fencing (verify() before every write and side effect) stops the
+ * one that lost. verify() waits out its own holder's renewal, so a renewal
+ * never makes its own holder look lost.
  */
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -280,16 +294,56 @@ async function removeIfUnchanged(file: string, judged: string): Promise<boolean>
 }
 
 /**
+ * Renewal's compare-and-swap: replace the lease body only if the file still
+ * holds exactly `judged` (the holder's own body, just read). Like
+ * removeIfUnchanged, the file is moved aside and compared there, so a renewal
+ * that stalled past the mutex's staleness can never overwrite a lease someone
+ * took meanwhile: a different body is put back and the renewal fails. The new
+ * body is then created exclusively, so if a contender created its lease in
+ * the instant the path was empty, that contender keeps it and the renewal
+ * fails (the holder stops: fencing). If the new body cannot be written, the
+ * judged one is put back — on disk the lease stays the holder's.
+ */
+async function replaceIfUnchanged(file: string, judged: string, next: string): Promise<boolean> {
+  const aside = `${file}.${process.pid}.${randomBytes(4).toString("hex")}.judged`;
+  try {
+    await fsp.rename(file, aside);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return false; // gone: not ours
+    throw e;
+  }
+  try {
+    const moved = await fsp.readFile(aside, "utf8").catch(() => null);
+    if (moved !== judged) {
+      if (moved !== null) await createExclusive(file, moved).catch(() => false);
+      else await fsp.link(aside, file).catch(() => {});
+      return false;
+    }
+    try {
+      return await createExclusive(file, next);
+    } catch (e) {
+      await fsp.link(aside, file).catch(() => createExclusive(file, judged).catch(() => false));
+      throw e;
+    }
+  } finally {
+    await fsp.rm(aside, { force: true }).catch(() => {});
+  }
+}
+
+/**
  * The short mutex every steal / renew / release of one lease runs under. It
  * never creates a directory: when the lease directory is gone (the task or the
  * whole home was deleted), so is the lease, and the call fails with ENOENT.
+ * Without pid liveness (hosted) a mutex holder is judged by age only, like a
+ * lease holder: a pid from another instance proves nothing here.
  */
-function mutate<T>(file: string, fn: () => Promise<T>): Promise<T> {
+function mutate<T>(file: string, fn: () => Promise<T>, pidLiveness: boolean): Promise<T> {
   return withFileLock(`${file}.mx`, fn, {
     staleMs: 15_000,
     timeoutMs: 5_000,
     pollMs: 15,
     createDir: false,
+    pidLiveness,
   });
 }
 
@@ -328,18 +382,22 @@ export async function acquireLease(
   const take = async (): Promise<boolean> => {
     const created =
       (await createExclusive(file, body())) ||
-      (await mutate(file, async () => {
-        const current = await readLease(file);
-        if (current.kind === "missing") return await createExclusive(file, body());
-        if (current.kind === "malformed") {
-          if (current.ageMs < MALFORMED_GRACE_MS) return false; // may be mid-write
-        } else if (!(await holderIsGone(current.body, now(), startedAt, pidLiveness))) {
-          return false;
-        }
-        // Compare-and-swap: only the exact body judged stale is removed.
-        if (!(await removeIfUnchanged(file, current.raw))) return false;
-        return await createExclusive(file, body());
-      }));
+      (await mutate(
+        file,
+        async () => {
+          const current = await readLease(file);
+          if (current.kind === "missing") return await createExclusive(file, body());
+          if (current.kind === "malformed") {
+            if (current.ageMs < MALFORMED_GRACE_MS) return false; // may be mid-write
+          } else if (!(await holderIsGone(current.body, now(), startedAt, pidLiveness))) {
+            return false;
+          }
+          // Compare-and-swap: only the exact body judged stale is removed.
+          if (!(await removeIfUnchanged(file, current.raw))) return false;
+          return await createExclusive(file, body());
+        },
+        pidLiveness,
+      ));
     if (!created) return false;
     // Written — but is it still there? A contender that stole the mutex from
     // a stalled holder could have replaced it since. Report success only for
@@ -363,6 +421,12 @@ export async function acquireLease(
   let lost = false;
   let gone = false;
   let timer: NodeJS.Timeout | null = null;
+  /**
+   * Set while a renewal has the file moved aside, and counted: verify() waits
+   * out our own renewal and re-reads when one overlapped its read.
+   */
+  let swapping: Promise<unknown> | null = null;
+  let swaps = 0;
 
   /** The lease directory is gone, and with it the lease (a deleted task or home). */
   const directoryGone = async (): Promise<boolean> => {
@@ -389,19 +453,31 @@ export async function acquireLease(
     }
   };
 
-  const isMine = (read: Read): boolean => read.kind === "ok" && read.body.token === token;
+  const isMine = (read: Read): read is Extract<Read, { kind: "ok" }> =>
+    read.kind === "ok" && read.body.token === token;
 
   const renew = async (): Promise<boolean> => {
     if (released || lost) return false;
     let held: boolean;
     try {
-      held = await mutate(file, async () => {
-        if (!isMine(await readLease(file))) return false;
-        const tmp = `${file}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
-        await fsp.writeFile(tmp, body());
-        await fsp.rename(tmp, file);
-        return true;
-      });
+      held = await mutate(
+        file,
+        async () => {
+          const current = await readLease(file);
+          if (!isMine(current)) return false;
+          // Compare-and-swap on the body just read: a renewal that stalled
+          // never overwrites a lease someone else took meanwhile.
+          swaps++;
+          const swap = replaceIfUnchanged(file, current.raw, body());
+          swapping = swap.catch(() => {});
+          try {
+            return await swap;
+          } finally {
+            swapping = null;
+          }
+        },
+        pidLiveness,
+      );
     } catch (e) {
       if (!(await directoryGone())) throw e;
       held = false;
@@ -436,11 +512,17 @@ export async function acquireLease(
     renew,
     verify: async () => {
       if (released || lost) return false;
-      let mine: boolean;
-      try {
-        mine = isMine(await readLease(file));
-      } catch {
-        mine = false;
+      let mine = false;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        // Our own renewal leaves the path empty for an instant: not a loss.
+        while (swapping) await swapping;
+        const seen = swaps;
+        try {
+          mine = isMine(await readLease(file));
+        } catch {
+          mine = false;
+        }
+        if (mine || (swaps === seen && !swapping)) break;
       }
       if (!mine) {
         if (await directoryGone()) gone = true;
@@ -455,13 +537,20 @@ export async function acquireLease(
       // Lost or not. A renewal that ERRORED marks the lease lost while the
       // file on disk is still this acquisition; left there, it would name a
       // live holder (this process) for as long as the process lives. The
-      // removal is compare-and-swap on the token, so a lease someone else
-      // took is never touched. If it fails, the token is no longer held here
-      // and the next tick's sweep removes the orphan.
+      // removal is compare-and-swap — on the token, then on the exact body
+      // moved aside (removeIfUnchanged) — so a lease someone else took is
+      // never removed, even by a release that stalled past the mutex's
+      // staleness. If it fails, the token is no longer held here and the
+      // next tick's sweep removes the orphan.
       try {
-        await mutate(file, async () => {
-          if (isMine(await readLease(file))) await fsp.rm(file, { force: true });
-        });
+        await mutate(
+          file,
+          async () => {
+            const current = await readLease(file);
+            if (isMine(current)) await removeIfUnchanged(file, current.raw);
+          },
+          pidLiveness,
+        );
       } catch {
         // swept later
       } finally {
@@ -509,13 +598,18 @@ export async function sweepOrphanLeases(opts: { pidLiveness?: boolean } = {}): P
     try {
       const seen = await readLease(file);
       if (!isOrphanHere(seen)) continue;
-      await mutate(file, async () => {
-        const again = await readLease(file);
-        if (isOrphanHere(again) && again.raw === seen.raw) {
-          await fsp.rm(file, { force: true });
-          removed++;
-        }
-      });
+      const judged = seen.raw;
+      await mutate(
+        file,
+        async () => {
+          const again = await readLease(file);
+          if (isOrphanHere(again) && again.raw === judged) {
+            // Compare-and-swap on the body moved aside, like a steal.
+            if (await removeIfUnchanged(file, again.raw)) removed++;
+          }
+        },
+        true,
+      );
     } catch {
       // next tick
     }
