@@ -560,7 +560,9 @@ export class TaskRunner {
     const due = task.nextRunAt !== undefined && task.nextRunAt <= now;
     if (task.state === "queued") {
       if (task.queued?.manual) return true;
-      return unattended && (due || task.nextRunAt === undefined);
+      // Queued by the engine (a watcher hit, an enabled one-off): starting it
+      // is a non-manual run, so it needs the switch on AND the task enabled.
+      return unattended && task.enabled && (due || task.nextRunAt === undefined);
     }
     return unattended && task.enabled && task.state === "scheduled" && due;
   }
@@ -1579,7 +1581,10 @@ export class TaskRunner {
         if (!outcome.error) delete t.watch.lastError;
         delete t.queued;
         if (hit) t.lastRunAt = now;
-        if (hit && t.trigger?.onHit === "run") {
+        // `t` is re-read here, under the lease: a watcher switched off while
+        // its check was in flight records the hit (its baseline moves on) but
+        // queues no run — starting a non-manual run needs the task enabled.
+        if (hit && t.trigger?.onHit === "run" && t.enabled) {
           // Same write as the watch state: the hit is consumed and the run
           // queued atomically, so a crash cannot queue it twice.
           t.state = "queued";
