@@ -119,7 +119,7 @@ Web, RSS and mail checks run without a model call.
 - Turning a fetched page or feed into the text that is compared — tag scanning, HTML-to-text, feed parsing, the user's regex — runs under a hard time limit. Content built to be slow is a failed check, which backs off.
 - The first observation is a baseline. Hits are edge-triggered with hysteresis (two contrary readings to re-arm), and a `changed` page that returns to content already reported stays quiet.
 - A feed or mailbox watcher remembers every item of the current fetch (up to 2,000) and forgets oldest-seen first, so an item still in the feed never looks new again.
-- A hit notifies by default, naming the items that fired it (cleaned of one-time codes and sign-in links, bounded, quoted). `onHit: "run"` runs the instruction with the observation wrapped in a per-run tag it cannot close.
+- A hit notifies by default with a summary line and the items that fired it. Both are text from outside (a feed's title, a page fragment, a mail subject): each is cleaned of one-time codes and sign-in links and bounded, the summary to one line, the items quoted line by line. The card stores that text inside the external-content markers (`<<<EXTERNAL-CONTENT source="watcher">>>` … `<<<END-EXTERNAL-CONTENT>>>`, which the text cannot forge), so a later turn reads it as data, not as Lisa's own words. `onHit: "run"` runs the instruction with the observation wrapped in a per-run tag it cannot close.
 - Mail hits carry sender and subject only, after the mail inbound hygiene filter.
 - Shutdown or cancellation during a check is not a watcher failure.
 

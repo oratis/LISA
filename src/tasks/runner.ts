@@ -267,13 +267,28 @@ function looksLikeAuthFailure(message: string): boolean {
 }
 
 /**
+ * A watcher hit's summary line as it may be stored and shown. It embeds text
+ * from outside (a feed's title, a page fragment), so it is cleaned exactly
+ * like the item lines below: no one-time codes or sign-in links, one line,
+ * bounded.
+ */
+export function cleanHitSummary(summary: string): string {
+  const line = stripSensitiveTokens(summary).text.replace(/\s+/g, " ").trim();
+  if (!line) return "The watcher fired.";
+  return line.length > 240 ? `${line.slice(0, 239)}…` : line;
+}
+
+/**
  * What a notify-mode watcher tells the user: the summary, and WHICH items
- * fired it. The items are text from outside (a feed title, a page fragment, a
- * mail subject), so they are cleaned of one-time codes and sign-in links,
- * bounded, and quoted line by line — they are shown, never interpreted.
+ * fired it. All of it is text from outside (a feed title, a page fragment, a
+ * mail subject), so it is cleaned of one-time codes and sign-in links,
+ * bounded, and the items quoted line by line — shown, never interpreted. The
+ * card that carries it into the conversation wraps it in the external-content
+ * markers (delivery.ts), so a later turn reads it as data, not as Lisa's words.
  */
 export function describeHit(hit: { summary: string; detail?: string }): string {
-  if (!hit.detail?.trim()) return hit.summary;
+  const summary = cleanHitSummary(hit.summary);
+  if (!hit.detail?.trim()) return summary;
   const cleaned = stripSensitiveTokens(hit.detail).text;
   const lines = cleaned
     .split("\n")
@@ -281,7 +296,7 @@ export function describeHit(hit: { summary: string; detail?: string }): string {
     .filter(Boolean)
     .slice(0, 8)
     .map((l) => `> ${l.length > 240 ? `${l.slice(0, 239)}…` : l}`);
-  return lines.length ? `${hit.summary}\n${lines.join("\n")}` : hit.summary;
+  return lines.length ? `${summary}\n${lines.join("\n")}` : summary;
 }
 
 interface SettledNotice {
@@ -1532,7 +1547,7 @@ export class TaskRunner {
         (await this.newRun(task.id, { id: runId, state: "succeeded", input: hit.detail }, now));
       run.endedAt = now;
       run.stopReason = "watch_hit";
-      run.summary = clip(hit.summary, MAX_SUMMARY);
+      run.summary = cleanHitSummary(hit.summary);
       await this.saveRun(run, now);
       this.emit({
         type: "task_run_finished",
