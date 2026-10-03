@@ -10,6 +10,7 @@ import {
   neutralizeExternalMarkers,
   pinnedTransport,
   withDeadline,
+  isInternalHostName,
   isPrivateHost,
   isBlockedIp,
   readResponseTextCapped,
@@ -303,7 +304,7 @@ test("response bodies are cancelled at the raw byte cap before rendering", async
   assert.equal(raw.truncated, true);
 });
 
-describe("isPrivateHost — internal names are refused without consulting DNS", () => {
+describe("isInternalHostName — internal names a policy can refuse without consulting DNS", () => {
   for (const h of [
     "metadata.google.internal",
     "metadata.google.internal.",
@@ -316,10 +317,15 @@ describe("isPrivateHost — internal names are refused without consulting DNS", 
     "router.localdomain",
     "host.home.arpa",
   ]) {
-    test(`blocks ${h}`, () => assert.equal(isPrivateHost(h), true));
+    test(`names ${h}`, () => assert.equal(isInternalHostName(h), true));
+    // The baseline is the local edition's guard and stays as before this PR:
+    // such a name is refused by its DNS answer, not by name.
+    test(`leaves ${h} to the DNS check in the baseline`, () => {
+      assert.equal(isPrivateHost(h), false);
+    });
   }
   for (const h of ["internal.example.com", "local.example.com", "metadata.example.com"]) {
-    test(`still allows ${h}`, () => assert.equal(isPrivateHost(h), false));
+    test(`still allows ${h}`, () => assert.equal(isInternalHostName(h), false));
   }
 });
 
@@ -348,10 +354,14 @@ describe("assertAllowedUrl — outbound policy can only refuse more", () => {
   test("a permissive policy cannot bring a private host back", () => {
     const policy = { allowHost: () => true, allowedPorts: [80, 8000] };
     assert.throws(() => assertAllowedUrl(new URL("http://127.0.0.1:8000/"), policy), /private/);
-    assert.throws(
-      () => assertAllowedUrl(new URL("http://metadata.google.internal/"), policy),
-      /private/,
-    );
+    assert.throws(() => assertAllowedUrl(new URL("http://localhost:8000/"), policy), /private/);
+  });
+  test("refuseInternalNames refuses internal names by name", () => {
+    const policy = { refuseInternalNames: true, allowHost: () => true };
+    for (const url of ["http://metadata.google.internal/", "https://db.prod.internal/"]) {
+      assert.doesNotThrow(() => assertAllowedUrl(new URL(url)));
+      assert.throws(() => assertAllowedUrl(new URL(url), policy), /private\/loopback/);
+    }
   });
   test("the policy is enforced on redirect hops", async () => {
     let sent = 0;
@@ -614,5 +624,25 @@ describe("createWebFetchTool — local default", () => {
     );
     assert.match(out, /ok/);
     assert.deepEqual(sent, ["https://example.com:8443/x"]);
+  });
+
+  test("an internal-looking name is judged by its DNS answer, as before this PR", async () => {
+    const sent: string[] = [];
+    const answers: Record<string, ResolvedAddress[]> = {
+      "intranet.corp.internal": [{ address: "93.184.216.34", family: 4 }],
+      "nas.local": [{ address: "192.168.1.20", family: 4 }],
+    };
+    const tool = createWebFetchTool({
+      lookup: async (hostname) => answers[hostname] ?? [],
+      transport: async (url) => {
+        sent.push(url);
+        return new Response("ok", { status: 200, headers: { "content-type": "text/plain" } });
+      },
+    });
+    const call = (url: string) =>
+      tool.execute({ url }, { cwd: "/", signal: new AbortController().signal, log: () => {} });
+    assert.match(await call("https://intranet.corp.internal/"), /ok/);
+    await assert.rejects(() => call("http://nas.local/"), /blocked address/);
+    assert.deepEqual(sent, ["https://intranet.corp.internal/"]);
   });
 });

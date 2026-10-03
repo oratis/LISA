@@ -19,12 +19,19 @@ const page = (): Response =>
   new Response(PAGE, { status: 200, headers: { "content-type": "text/html" } });
 
 // These tests describe the LOCAL edition; the hosted behaviour is in cloud_web.test.ts.
+// The local default egress is the process fetch, so it is replaced for the run:
+// a test that forgets its stub fails instead of reaching the real provider.
 let previousEdition: string | undefined;
+const realFetch = globalThis.fetch;
 before(() => {
   previousEdition = process.env.LISA_EDITION;
   delete process.env.LISA_EDITION;
+  globalThis.fetch = async () => {
+    throw new Error("web_search test tried to reach the network");
+  };
 });
 after(() => {
+  globalThis.fetch = realFetch;
   if (previousEdition !== undefined) process.env.LISA_EDITION = previousEdition;
 });
 
@@ -76,10 +83,70 @@ describe("SEARCH_OUTBOUND_POLICY", () => {
   });
 });
 
-describe("web_search — guarded egress (the default without a proxy)", () => {
+describe("web_search — local edition default egress", () => {
+  test("is the process fetch even with no proxy configured (Clash / Surge fake-ip DNS)", async () => {
+    // TUN "fake-ip" mode answers 198.18.0.0/15 for every name and sets no
+    // *_PROXY variable. The guarded path refuses that answer as reserved, so a
+    // guarded default broke local search for these users (review F2).
+    let lookups = 0;
+    let pinnedSends = 0;
+    const calls: string[] = [];
+    const tool = createWebSearchTool({
+      lookup: async () => {
+        lookups++;
+        return [{ address: "198.18.0.7", family: 4 }];
+      },
+      transport: async () => {
+        pinnedSends++;
+        return page();
+      },
+      ambientFetch: async (input: string | URL | Request) => {
+        calls.push(String(input));
+        return page();
+      },
+    });
+    const out = await tool.execute({ query: "weather" }, ctx());
+    assert.deepEqual(calls, ["https://html.duckduckgo.com/html/?q=weather"]);
+    assert.equal(lookups, 0);
+    assert.equal(pinnedSends, 0);
+    assert.match(out, /1\. Alpha/);
+  });
+
+  test("the hosted edition stays guarded, whatever options are passed", async () => {
+    const previous = process.env.LISA_EDITION;
+    process.env.LISA_EDITION = "cloud";
+    try {
+      for (const egress of [undefined, "ambient", "guarded"] as const) {
+        let ambientCalls = 0;
+        const sent: string[] = [];
+        const tool = createWebSearchTool({
+          ...(egress ? { egress } : {}),
+          lookup: publicLookup,
+          transport: async (url) => {
+            sent.push(url);
+            return page();
+          },
+          ambientFetch: async () => {
+            ambientCalls++;
+            return page();
+          },
+        });
+        await tool.execute({ query: "x" }, ctx());
+        assert.equal(ambientCalls, 0, String(egress));
+        assert.equal(sent.length, 1, String(egress));
+      }
+    } finally {
+      if (previous === undefined) delete process.env.LISA_EDITION;
+      else process.env.LISA_EDITION = previous;
+    }
+  });
+});
+
+describe("web_search — guarded egress (always in cloud, opt-in locally)", () => {
   test("resolves, validates and pins the provider address", async () => {
     const sent: Array<{ url: string; pinned: ResolvedAddress; ua: string | null }> = [];
     const tool = createWebSearchTool({
+      egress: "guarded",
       lookup: publicLookup,
       transport: async (url, init, pinned) => {
         sent.push({ url, pinned, ua: new Headers(init.headers).get("user-agent") });
@@ -98,6 +165,7 @@ describe("web_search — guarded egress (the default without a proxy)", () => {
   test("a provider name that resolves to a private address is refused", async () => {
     let sent = 0;
     const tool = createWebSearchTool({
+      egress: "guarded",
       lookup: async () => [{ address: "127.0.0.1", family: 4 }],
       transport: async () => {
         sent++;
@@ -110,6 +178,7 @@ describe("web_search — guarded egress (the default without a proxy)", () => {
 
   test("a redirect off the provider is refused", async () => {
     const tool = createWebSearchTool({
+      egress: "guarded",
       lookup: publicLookup,
       transport: async () =>
         new Response(null, { status: 302, headers: { location: "http://169.254.169.254/" } }),
@@ -118,7 +187,7 @@ describe("web_search — guarded egress (the default without a proxy)", () => {
   });
 });
 
-describe("web_search — ambient egress (local user behind a proxy)", () => {
+describe("web_search — ambient egress (the local default)", () => {
   test("uses the process fetch, with redirects handled manually", async () => {
     const calls: Array<{ url: string; redirect: RequestRedirect | undefined }> = [];
     const tool = createWebSearchTool({

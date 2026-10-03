@@ -124,6 +124,13 @@ export interface OutboundPolicy {
   allowedProtocols?: readonly ("http:" | "https:")[];
   /** Host allow-list predicate, applied to every hop including redirects. */
   allowHost?: (hostname: string) => boolean;
+  /**
+   * Refuse names that are internal by construction (`isInternalHostName`)
+   * without consulting DNS. Off in the baseline so the local edition keeps
+   * its previous behaviour (there such a name is still refused when it
+   * resolves to a private or reserved address); the hosted policy turns it on.
+   */
+  refuseInternalNames?: boolean;
 }
 
 /** Throw if the URL isn't http(s) or resolves to a private/loopback host. */
@@ -139,6 +146,9 @@ export function assertAllowedUrl(u: URL, policy?: OutboundPolicy): void {
     throw new Error(`refusing to fetch private/loopback host: ${host}`);
   }
   if (!policy) return;
+  if (policy.refuseInternalNames && isInternalHostName(host)) {
+    throw new Error(`refusing to fetch private/loopback host: ${host}`);
+  }
   if (policy.allowedProtocols && !policy.allowedProtocols.includes(u.protocol)) {
     throw new Error(`outbound policy refuses ${u.protocol} URLs`);
   }
@@ -268,25 +278,36 @@ export async function fetchFollowingSafeRedirects(
 /**
  * Names that are internal by construction. Their addresses are refused by the
  * DNS check anyway (the metadata service lives at 169.254.169.254); naming them
- * here means the refusal does not depend on what a resolver happens to return.
+ * lets a policy refuse them without depending on what a resolver returns.
+ * Applied only where a policy sets `refuseInternalNames` (the hosted edition).
  */
-const BLOCKED_HOSTNAMES = new Set([
-  "localhost",
+const INTERNAL_HOSTNAMES = new Set([
   "metadata",
   "metadata.google.internal",
   "metadata.goog",
   "instance-data",
 ]);
-const BLOCKED_HOST_SUFFIXES = [".localhost", ".internal", ".local", ".localdomain", ".home.arpa"];
+const INTERNAL_HOST_SUFFIXES = [".internal", ".local", ".localdomain", ".home.arpa"];
 
-export function isPrivateHost(host: string): boolean {
-  const normalized = host
+function normalizeHost(host: string): string {
+  return host
     .toLowerCase()
     .replace(/^\[|\]$/g, "")
     .replace(/\.$/, "");
-  if (BLOCKED_HOSTNAMES.has(normalized)) return true;
-  if (BLOCKED_HOST_SUFFIXES.some((suffix) => normalized.endsWith(suffix))) return true;
+}
+
+/** The baseline, every edition: loopback names and private/reserved IP literals. */
+export function isPrivateHost(host: string): boolean {
+  const normalized = normalizeHost(host);
+  if (normalized === "localhost" || normalized.endsWith(".localhost")) return true;
   return net.isIP(normalized) !== 0 && isBlockedIp(normalized);
+}
+
+/** Cloud metadata names and internal-only DNS suffixes (see INTERNAL_HOSTNAMES). */
+export function isInternalHostName(host: string): boolean {
+  const normalized = normalizeHost(host);
+  if (INTERNAL_HOSTNAMES.has(normalized)) return true;
+  return INTERNAL_HOST_SUFFIXES.some((suffix) => normalized.endsWith(suffix));
 }
 
 function ipv4Number(address: string): number | null {

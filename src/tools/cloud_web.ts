@@ -89,10 +89,15 @@ export function cloudWebLimits(env: Env = process.env): CloudWebLimits {
 
 /**
  * The hosted outbound policy layered on the baseline SSRF guard: only the
- * standard web ports. The service must not be usable to reach other protocols'
- * ports on third-party hosts (or to port-scan them) from its own address.
+ * standard web ports — the service must not be usable to reach other
+ * protocols' ports on third-party hosts (or to port-scan them) from its own
+ * address — and internal names (cloud metadata, `*.internal`, `*.local`, …)
+ * refused by name, before DNS is consulted.
  */
-export const HOSTED_OUTBOUND_POLICY: OutboundPolicy = { allowedPorts: [80, 443] };
+export const HOSTED_OUTBOUND_POLICY: OutboundPolicy = {
+  allowedPorts: [80, 443],
+  refuseInternalNames: true,
+};
 
 export type CloudWebRefusalCode =
   "web_tools_disabled" | "no_tenant_scope" | "rate_limited" | "limiter_at_capacity";

@@ -1,6 +1,5 @@
 import type { ToolDefinition } from "../types.js";
 import { isCloud } from "../edition.js";
-import { isProxyInstalled } from "../proxy-bootstrap.js";
 import {
   assertAllowedUrl,
   fetchFollowingSafeRedirects,
@@ -46,6 +45,7 @@ export const SEARCH_OUTBOUND_POLICY: OutboundPolicy = {
   allowedProtocols: ["https:"],
   allowedPorts: [443],
   allowHost: (hostname) => hostname === "duckduckgo.com" || hostname.endsWith(".duckduckgo.com"),
+  refuseInternalNames: true,
 };
 
 export interface WebSearchToolOptions extends SafeFetchDependencies {
@@ -55,11 +55,15 @@ export interface WebSearchToolOptions extends SafeFetchDependencies {
    *    to exactly the validated address (the web_fetch path). Always used by
    *    the hosted edition.
    *  - "ambient": the process's own fetch, which honours a configured
-   *    HTTPS_PROXY. A local user behind a proxy cannot reach the provider any
-   *    other way, and with a proxy it is the proxy that resolves DNS, so
-   *    address pinning is not available — the host allow-list and manual
-   *    redirect validation still apply.
-   * Unset: "ambient" only when a proxy is installed on a non-cloud edition.
+   *    HTTPS_PROXY and whatever the machine's network does to DNS. Address
+   *    pinning is not available there; the host allow-list, https/443 and
+   *    manual redirect validation still apply on every hop.
+   * Unset: "ambient" on every non-cloud edition. A local user's network is
+   * theirs to shape: behind an HTTPS_PROXY the proxy resolves DNS, and a
+   * Clash / Surge TUN "fake-ip" setup answers 198.18.0.0/15 for every name
+   * with no proxy variable set — the guarded path refuses that answer as
+   * reserved, so local search would stop working for those users. The
+   * hosted edition is always "guarded", whatever is passed here.
    */
   egress?: "guarded" | "ambient";
   /** Test seam for the ambient path. */
@@ -71,7 +75,7 @@ export interface WebSearchToolOptions extends SafeFetchDependencies {
 function resolveEgress(options: WebSearchToolOptions): "guarded" | "ambient" {
   // The hosted edition never takes the unpinned path, whatever was configured.
   if (isCloud()) return "guarded";
-  return options.egress ?? (isProxyInstalled() ? "ambient" : "guarded");
+  return options.egress ?? "ambient";
 }
 
 async function fetchAmbient(
