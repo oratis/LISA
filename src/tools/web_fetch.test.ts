@@ -53,6 +53,15 @@ describe("isPrivateHost — blocks internal ranges", () => {
     "fc00::1",
     "fd12:3456::1",
     "fe80::1",
+    // Review F4: every trailing dot is stripped, and two missing IPv6 ranges.
+    "localhost..",
+    "localhost...",
+    "a.localhost..",
+    "::ffff:0:7f00:1", // IPv4-translated 127.0.0.1
+    "::ffff:0:a9fe:a9fe", // IPv4-translated 169.254.169.254
+    "::ffff:0:127.0.0.1",
+    "fec0::1", // site-local
+    "feff:ffff::1",
   ]) {
     test(`blocks ${h}`, () => assert.equal(isPrivateHost(h), true));
   }
@@ -113,6 +122,16 @@ function stubTransport(
 }
 
 describe("resolvePublicAddresses — validates every DNS answer", () => {
+  test("refuses IPv4-translated and site-local IPv6 answers", async () => {
+    for (const address of ["::ffff:0:7f00:1", "::ffff:0:a9fe:a9fe", "fec0::1"]) {
+      await assert.rejects(
+        () => resolvePublicAddresses("v6.example.com", async () => [{ address, family: 6 }]),
+        /blocked address/,
+        address,
+      );
+    }
+  });
+
   test("rejects a hostname resolving to loopback before transport", async () => {
     const lookup: DnsLookupAll = async () => [{ address: "127.0.0.1", family: 4 }];
     await assert.rejects(
@@ -308,6 +327,7 @@ describe("isInternalHostName — internal names a policy can refuse without cons
   for (const h of [
     "metadata.google.internal",
     "metadata.google.internal.",
+    "metadata.google.internal..",
     "METADATA.GOOGLE.INTERNAL",
     "metadata.goog",
     "metadata",

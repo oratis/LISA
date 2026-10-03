@@ -160,7 +160,7 @@ export function assertAllowedUrl(u: URL, policy?: OutboundPolicy): void {
       throw new Error(`outbound policy refuses port ${port}`);
     }
   }
-  if (policy.allowHost && !policy.allowHost(host.replace(/\.$/, ""))) {
+  if (policy.allowHost && !policy.allowHost(host.replace(/\.+$/, ""))) {
     throw new Error(`outbound policy refuses host: ${host}`);
   }
 }
@@ -202,10 +202,7 @@ export async function resolvePublicAddresses(
   hostname: string,
   lookup: DnsLookupAll = defaultLookup,
 ): Promise<ResolvedAddress[]> {
-  const host = hostname
-    .toLowerCase()
-    .replace(/^\[|\]$/g, "")
-    .replace(/\.$/, "");
+  const host = normalizeHost(hostname);
   const literalFamily = net.isIP(host);
   const addresses = literalFamily
     ? [{ address: host, family: literalFamily as 4 | 6 }]
@@ -291,11 +288,16 @@ const INTERNAL_HOSTNAMES = new Set([
 ]);
 const INTERNAL_HOST_SUFFIXES = [".internal", ".local", ".localdomain", ".home.arpa"];
 
+/**
+ * Lower-case, no IPv6 brackets, no trailing dots. ALL trailing dots: the URL
+ * parser keeps `localhost..` or `metadata.google.internal..` as written, and
+ * stripping only one left a name that no longer matched its block entry.
+ */
 function normalizeHost(host: string): string {
   return host
     .toLowerCase()
     .replace(/^\[|\]$/g, "")
-    .replace(/\.$/, "");
+    .replace(/\.+$/, "");
 }
 
 /** The baseline, every edition: loopback names and private/reserved IP literals. */
@@ -381,6 +383,8 @@ const BLOCKED_V6: Array<[string, number]> = [
   ["::1", 128],
   ["::", 96],
   ["::ffff:0:0", 96],
+  // IPv4-translated (RFC 2765 SIIT), e.g. ::ffff:0:7f00:1 for 127.0.0.1.
+  ["::ffff:0:0:0", 96],
   ["64:ff9b::", 96],
   ["64:ff9b:1::", 48],
   ["100::", 64],
@@ -393,6 +397,8 @@ const BLOCKED_V6: Array<[string, number]> = [
   ["5f00::", 16],
   ["fc00::", 7],
   ["fe80::", 10],
+  // Site-local (deprecated by RFC 3879, still routed on some internal networks).
+  ["fec0::", 10],
   ["ff00::", 8],
 ];
 
