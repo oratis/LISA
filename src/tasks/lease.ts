@@ -51,10 +51,16 @@
  * exclusive create lands in that instant gets the lease. If the file moved
  * aside was a renewing holder's own, its renewal fails and it stops; if it was
  * someone else's (a late call), it cannot be put back and that holder fails
- * its next verify() and stops. Either way it is a hand-off to one holder,
- * never two — fencing (verify() before every write and side effect) stops the
- * one that lost. verify() waits out its own holder's renewal, so a renewal
- * never makes its own holder look lost.
+ * its next verify() and stops. Either way fencing (verify() before every
+ * write and side effect) stops the one that lost. verify() waits out its own
+ * holder's renewal, so a renewal never makes its own holder look lost.
+ *
+ * Known gaps (docs/DESIGN_TASK_ENGINE.md, "Known gaps"): a late call stalled
+ * past both the mutex staleness and the holder's TTL can put a holder's body
+ * back after another holder came and went in the gap, reviving the old lease
+ * (ABA); on the hosted edition a dead instance's mutex outlasts the 5 s
+ * operation timeout, and without hard links the mutex can be entered twice;
+ * a process killed mid-swap leaves an inert `*.judged` file.
  */
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
