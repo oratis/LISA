@@ -46,14 +46,36 @@ export const EXTERNAL_OPEN = '<<<EXTERNAL-CONTENT source="watcher">>>';
 export const EXTERNAL_CLOSE = "<<<END-EXTERNAL-CONTENT>>>";
 
 /**
- * Outside text, fenced so that a later turn reads it as data. Runs of three or
- * more angle brackets inside are defused, so the text can neither close the
- * fence nor open one of its own.
+ * Characters that render as nothing (zero-width spaces and joiners, bidi
+ * controls, variation selectors, …): they can split or visually reorder a
+ * marker without changing how it looks.
+ */
+const INVISIBLE = /\p{Default_Ignorable_Code_Point}/gu;
+
+/**
+ * A character whose compatibility form (NFKC) is an angle bracket — fullwidth
+ * ＜ ＞, small ﹤ ﹥ — folded to it. Only those: NFKC over the whole text would
+ * also rewrite CJK fullwidth punctuation (，：) in the quoted text, and only
+ * brackets matter for the markers.
+ */
+function foldBracket(ch: string): string {
+  const folded = ch.normalize("NFKC");
+  return /[<>]/.test(folded) ? folded : ch;
+}
+
+/**
+ * Outside text, fenced so that a later turn reads it as data. It is
+ * normalised first — invisible characters removed, look-alike brackets folded
+ * — so a marker disguised that way becomes a plain one, and then every run of
+ * two or more angle brackets is defused (‹ ›): the text can neither close the
+ * fence nor open one of its own, nor show something that looks like either.
  */
 function asExternal(text: string): string {
   const defused = text
-    .replace(/<{3,}/g, (m) => "‹".repeat(m.length))
-    .replace(/>{3,}/g, (m) => "›".repeat(m.length));
+    .replace(INVISIBLE, "")
+    .replace(/[^\p{ASCII}]/gu, foldBracket)
+    .replace(/<{2,}/g, (m) => "‹".repeat(m.length))
+    .replace(/>{2,}/g, (m) => "›".repeat(m.length));
   return `${EXTERNAL_OPEN}\n${defused}\n${EXTERNAL_CLOSE}`;
 }
 
