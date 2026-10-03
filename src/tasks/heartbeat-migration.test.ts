@@ -384,11 +384,11 @@ test("a routine the user switches off gives its chore back to the heartbeat; one
   assert.deepEqual(await waysOf([disk]), [[]], "paused by the engine: skipped, and the user knows");
   assert.deepEqual(await stillOnHeartbeat([disk]), []);
 
-  // The user switches the routine off and restores the chore: the old way again.
-  await updateTask(idOf(disk), (t) => {
-    disableTask(t);
-    delete t.pausedReason;
-  });
+  // The user switches the routine off and restores the chore: the old way
+  // again. Switching it off explicitly clears the engine's reason (reviewer
+  // finding 7: a stale reason kept the chore off both ways).
+  await updateTask(idOf(disk), (t) => disableTask(t));
+  assert.equal((await getTask(idOf(disk)))!.pausedReason, undefined);
   assert.deepEqual(await assertExactlyOneWay([disk], "routine off, chore restored"), ["heartbeat"]);
 
   // Asking to migrate again moves it again.

@@ -6,7 +6,9 @@ import path from "node:path";
 import { after, before, beforeEach, describe, test } from "node:test";
 import { homeForUid, homeScope } from "../paths.js";
 import type { Provider } from "../providers/types.js";
+import { pauseTask } from "../tasks/lifecycle.js";
 import { TaskRunner, type TaskEngineEvent } from "../tasks/runner.js";
+import { updateTask } from "../tasks/store.js";
 import { handleTasksApi, MAX_TASKS, TASK_BODY_LIMIT } from "./tasks-api.js";
 
 // One server, three "editions" selected per request by header:
@@ -181,6 +183,28 @@ describe("tasks API — CRUD", () => {
     assert.equal(emitted.at(-1)!.type, "task_deleted");
     assert.equal((await api("GET", `/api/tasks/${task.id}`)).status, 404);
     assert.equal((await api("DELETE", `/api/tasks/${task.id}`)).status, 404);
+  });
+
+  test("switching off a task the engine paused clears the engine's reason; enabling clears it too", async () => {
+    const created = await api("POST", "/api/tasks", { ...routine, enabled: true });
+    const id = created.body.task.id as string;
+    await updateTask(id, (t) => pauseTask(t, "credentials expired"));
+    assert.equal(
+      (await api("GET", `/api/tasks/${id}`)).body.task.pausedReason,
+      "credentials expired",
+    );
+
+    const off = await api("PATCH", `/api/tasks/${id}`, { enabled: false });
+    assert.equal(off.status, 200);
+    assert.equal(off.body.task.enabled, false);
+    assert.equal(off.body.task.state, "paused");
+    assert.equal(off.body.task.pausedReason, undefined, "the user's own act replaces it");
+
+    await updateTask(id, (t) => pauseTask(t, "credentials expired"));
+    const on = await api("PATCH", `/api/tasks/${id}`, { enabled: true });
+    assert.equal(on.body.task.enabled, true);
+    assert.equal(on.body.task.pausedReason, undefined);
+    await api("DELETE", `/api/tasks/${id}`);
   });
 
   test("the API may create a task already enabled; a watcher starts due", async () => {

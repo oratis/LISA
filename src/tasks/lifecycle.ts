@@ -93,9 +93,14 @@ export function pauseTask(task: Task, reason: string): void {
   delete task.queued;
 }
 
-/** Turn a task off. A run already in flight is left to finish; nothing new starts. */
+/**
+ * Turn a task off. A run already in flight is left to finish; nothing new
+ * starts. The user's explicit act replaces any reason the engine had paused
+ * it for (as enabling does): it is now simply off.
+ */
 export function disableTask(task: Task): void {
   task.enabled = false;
+  delete task.pausedReason;
   delete task.queued;
   if (task.activeRunId) return;
   task.state = "paused";

@@ -175,7 +175,10 @@ export async function handleTasksApi(
             const rescheduled = body.schedule !== undefined || body.trigger !== undefined;
             if (body.enabled === true && (!t.enabled || rescheduled || t.state === "paused")) {
               enableTask(t, now());
-            } else if (body.enabled === false && t.enabled) disableTask(t);
+            } else if (body.enabled === false && (t.enabled || t.pausedReason !== undefined)) {
+              // Also an engine-paused task: switching it off is the user's own act now.
+              disableTask(t);
+            }
             // An edited schedule on an enabled task takes effect at once.
             else if (rescheduled && t.enabled) enableTask(t, now());
             return;
