@@ -17,6 +17,10 @@ export interface SubagentOptions {
   effort?: "low" | "medium" | "high" | "xhigh" | "max";
   /** Cumulative (input+output) token ceiling; stops the run early when reached. */
   budgetTokens?: number;
+  /** Hard USD ceiling for the run, micro-USD — see RunAgentOptions.costCapMicroUSD. */
+  costCapMicroUSD?: number;
+  /** Hears every amount counted against the cap — see RunAgentOptions.onCostCharged. */
+  onCostCharged?: (microUSD: number) => void;
   /** Injectable provider (tests); defaults to providerForModel(model). */
   provider?: Provider;
   /**
@@ -67,6 +71,10 @@ export async function runSubagent(opts: SubagentOptions): Promise<SubagentResult
     },
     maxIterations: 32,
     budgetTokens: opts.budgetTokens,
+    // `undefined` means "no cap"; any other value — including a bad one —
+    // reaches the breaker, which fails closed.
+    costCapMicroUSD: opts.costCapMicroUSD,
+    onCostCharged: opts.onCostCharged,
     moodOrigin: opts.moodOrigin ?? "a background agent",
   });
   return {

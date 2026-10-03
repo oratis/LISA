@@ -3,6 +3,7 @@ import { GeminiProvider } from "./gemini.js";
 import { OpenAIProvider } from "./openai.js";
 import { FallbackProvider } from "./fallback.js";
 import { DEFAULT_MODEL } from "../llm.js";
+import { explicitPriceForModel, normalizeModelId } from "../billing/prices.js";
 import type { Provider } from "./types.js";
 
 export type ProviderName = "anthropic" | "openai" | "gemini";
@@ -163,9 +164,10 @@ export function detectProvider(model: string): ProviderName {
  * for an Anthropic-compatible gateway/proxy) takes precedence over
  * ANTHROPIC_API_KEY (`x-api-key`), matching Claude Code's precedence. Pure.
  */
-export function resolveAnthropicAuth(
-  env: Record<string, string | undefined> = process.env,
-): { apiKey?: string; authToken?: string } {
+export function resolveAnthropicAuth(env: Record<string, string | undefined> = process.env): {
+  apiKey?: string;
+  authToken?: string;
+} {
   const authToken = env.ANTHROPIC_AUTH_TOKEN?.trim();
   if (authToken) return { authToken };
   return { apiKey: env.ANTHROPIC_API_KEY };
@@ -200,10 +202,25 @@ export function hasCredentialsForModel(
   model: string,
   env: Record<string, string | undefined> = process.env,
 ): boolean {
-  // A managed session can drive any gateway-served model (anthropic/openai
-  // faces); gemini has no gateway face yet.
-  if (managedConfig(env) && detectProvider(model) !== "gemini") return true;
+  // A managed session can drive any gateway-served model. The anthropic and
+  // openai faces take any model id; the gemini face serves only what it can
+  // price (see managedGeminiServed).
+  if (managedConfig(env)) {
+    if (detectProvider(model) !== "gemini" || managedGeminiServed(model)) return true;
+  }
   return hasOwnCredentialsForModel(model, env);
+}
+
+/**
+ * The gateway's Gemini face refuses models without a verified price row
+ * (src/web/gateway.ts `geminiModelServed`). Mirrored here so the key gate does
+ * not wave through a model every managed turn would then be refused for.
+ */
+export function managedGeminiServed(model: string): boolean {
+  // GeminiProvider sends this same normalised id, so a model that passes here
+  // is the one the gateway's route admits.
+  const m = normalizeModelId(model);
+  return m.startsWith("gemini-") && explicitPriceForModel(m) !== null;
 }
 
 /** BYO credentials only (ignores the managed session). */
@@ -272,7 +289,16 @@ function resolveProvider(model: string): Provider {
         baseURL: `${managed.base}/gw/openai/v1`,
       });
     }
-    // gemini: no gateway face yet — fall through to the normal resolution.
+    if (provider === "gemini" && managedGeminiServed(model)) {
+      // The Google client sends its key as x-goog-api-key; the gateway reads
+      // the account session from Authorization, so pass it there as well.
+      return new GeminiProvider({
+        apiKey: managed.session,
+        baseURL: `${managed.base}/gw/gemini`,
+        headers: { authorization: `Bearer ${managed.session}` },
+      });
+    }
+    // Any other gemini model: not served by the gateway — fall through.
   }
   if (provider === "anthropic") {
     return new AnthropicProvider({

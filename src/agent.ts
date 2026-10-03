@@ -1,6 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { AgentEvent, StoredMessage, ToolContext, ToolDefinition } from "./types.js";
 import type { Provider } from "./providers/types.js";
+import { RunCostCap } from "./model/cost.js";
 import { moodBus, withMoodOrigin } from "./mood-bus.js";
 import { validateToolInput } from "./tools/validate.js";
 
@@ -85,6 +86,41 @@ export interface RunAgentOptions {
    * unbounded tokens unattended. Unset = no ceiling.
    */
   budgetTokens?: number;
+  /**
+   * Optional hard USD ceiling for the whole run, in micro-USD at the price
+   * table's rates (see src/model/cost.ts). Unlike `budgetTokens`, it is checked
+   * BEFORE every provider call including the first: a call is made only if its
+   * worst case — the prompt plus the output ceiling — still fits, and the
+   * output ceiling passed to the provider is clamped to what is left. The run
+   * stops with stopReason "budget_exceeded".
+   *
+   * Fails closed: any value that is set but is not a positive finite number
+   * (0, NaN, null from a config file) stops the run before it calls the model.
+   * Unset = no ceiling.
+   *
+   * How far a run can end above it: only the last call's prompt can be larger
+   * than reserved (the output is held to its ceiling, and every earlier error
+   * is in the spend the next check reads). The reservation counts each ASCII
+   * digit as a token, every other 3 bytes as one, plus 512 framing tokens, and
+   * from the second call on builds on the prompt size the provider reported.
+   * So the overrun is at most the input rate (or cache-write, if dearer) times
+   * two thirds of the non-digit bytes added since the previous call (on the
+   * first call, of the whole prompt, less the framing allowance): text denser
+   * than 3 bytes a token, at worst one token per byte. Against a provider that
+   * reports no usage this shortfall is never observed and can recur per call.
+   * Details: `RunCostCap` in src/model/cost.ts.
+   *
+   * Subagents spend inside it: the loop puts a `costCap` handle on the tool
+   * context (see ToolContext), and the task tool starts each subagent with
+   * what is left and counts what it spends.
+   */
+  costCapMicroUSD?: number;
+  /**
+   * Hears every amount counted against `costCapMicroUSD`, as it is counted.
+   * A parent run passes this to a subagent to count the subagent's spend
+   * against its own cap.
+   */
+  onCostCharged?: (microUSD: number) => void;
   /** When set, the system prompt is rebuilt between turns if its source state changed. */
   hotReload?: PromptHotReload;
 }
@@ -100,8 +136,8 @@ export interface RunAgentResult {
   /**
    * The provider's stop reason from the final turn ("end_turn", "max_tokens",
    * …), or "max_iterations" when the loop hit `maxIterations` while the model
-   * still wanted to call tools, or "budget_exceeded" when `budgetTokens` was
-   * reached (both mean the run was truncated, not finished).
+   * still wanted to call tools, or "budget_exceeded" when `budgetTokens` or
+   * `costCapMicroUSD` was reached (all mean the run was truncated, not finished).
    */
   stopReason: string;
 }
@@ -191,6 +227,32 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
   let currentSystemPrompt = systemPrompt;
   let currentFingerprint = opts.hotReload?.initialFingerprint;
 
+  // Only a capped run pays for sizing its prompt (see the cap check below).
+  // A fallback chain may serve a call with any of its models.
+  const costCap =
+    opts.costCapMicroUSD !== undefined
+      ? new RunCostCap(
+          opts.costCapMicroUSD,
+          [model, ...(provider.models ?? [])],
+          opts.onCostCharged,
+        )
+      : null;
+  toolCtx.costCap = costCap
+    ? {
+        remainingMicroUSD: () => costCap.remainingMicroUSD,
+        charge: (microUSD) => costCap.add(microUSD),
+      }
+    : undefined;
+  const toolsJson = costCap
+    ? JSON.stringify(
+        tools.map((t) => ({
+          name: t.name,
+          description: t.description,
+          input_schema: t.inputSchema,
+        })),
+      )
+    : "";
+
   // ── soul_object enforcement (Phase 2.1) ─────────────────────────────
   // Lisa's soul_object tool registers a constitutional objection here. When
   // the LLM finishes a turn (stopReason !== tool_use) with un-surfaced
@@ -219,15 +281,14 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
       });
       break;
     }
-    iterations++;
-
     // Mid-session prompt hot-reload (Phase 1.1). Skip on the very first turn —
     // the caller already supplied a fresh prompt. From turn 2 on, check whether
     // the prompt-influencing state changed (soul / skills / memory) and rebuild
     // if so. The next provider call will pay one cache miss on the system
     // prompt; this is the price of the agent actually experiencing her own
-    // mid-session self-update.
-    if (opts.hotReload && iterations > 1) {
+    // mid-session self-update. Rebuilt BEFORE the cost cap check below, so the
+    // cap sizes the prompt that will actually be sent.
+    if (opts.hotReload && iterations > 0) {
       try {
         const next = await opts.hotReload.rebuild();
         if (next.fingerprint !== currentFingerprint) {
@@ -243,6 +304,28 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
         toolCtx.log(`[hot-reload] skipped: ${(err as Error).message.slice(0, 200)}`);
       }
     }
+
+    // USD cap (same clean stop point as the token breaker, but also applied to
+    // the first call). The next request re-sends the system prompt, the tool
+    // definitions and the whole transcript, so its prompt is sized from exactly
+    // those bytes; the provider is then held to the output ceiling that fits.
+    let turnMaxTokens = maxTokens;
+    if (costCap) {
+      const verdict = costCap.admit({
+        prompt: [currentSystemPrompt, toolsJson, JSON.stringify(messages)],
+        maxTokens,
+      });
+      if (!verdict.proceed) {
+        stopReason = "budget_exceeded";
+        onEvent?.({
+          type: "info",
+          message: `[agent] ${verdict.message} after ${iterations} iteration(s) — stopping (stopReason=budget_exceeded)`,
+        });
+        break;
+      }
+      turnMaxTokens = verdict.maxTokens;
+    }
+    iterations++;
 
     onEvent?.({ type: "turn_start" });
 
@@ -264,7 +347,7 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
         systemPrompt: currentSystemPrompt,
         tools,
         messages,
-        maxTokens,
+        maxTokens: turnMaxTokens,
         thinking,
         compaction,
         effort,
@@ -293,6 +376,7 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
     cacheWriteTokens += result.usage.cacheWriteTokens;
     inputTokens += result.usage.inputTokens;
     outputTokens += result.usage.outputTokens;
+    costCap?.charge({ usage: result.usage, output: result.content, model: result.model });
     stopReason = result.stopReason;
 
     // OpenAI/Gemini turns can yield neither text nor tool calls, i.e. an

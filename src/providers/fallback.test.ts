@@ -79,6 +79,25 @@ describe("FallbackProvider", () => {
     await assert.rejects(fp.runTurn(baseOpts()), /last/);
   });
 
+  test("the result names the model that served it, and the chain lists every model", async () => {
+    const fp = new FallbackProvider([
+      {
+        model: "m1",
+        provider: fakeProvider(async () => {
+          throw new Error("down");
+        }),
+      },
+      { model: "m2", provider: fakeProvider(async () => okResult("from m2")) },
+    ]);
+    assert.deepEqual(fp.models, ["m1", "m2"]);
+    assert.equal((await fp.runTurn(baseOpts())).model, "m2");
+    const healthy = new FallbackProvider([
+      { model: "m1", provider: fakeProvider(async () => okResult("from m1")) },
+      { model: "m2", provider: fakeProvider(async () => okResult("from m2")) },
+    ]);
+    assert.equal((await healthy.runTurn(baseOpts())).model, "m1");
+  });
+
   test("an empty chain is a programmer error", () => {
     assert.throws(() => new FallbackProvider([]), /at least one/);
   });

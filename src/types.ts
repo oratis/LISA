@@ -49,6 +49,16 @@ export interface ToolContext {
    * environment default (`resolveSandboxMode()` re-read per call).
    */
   sandboxMode?: import("./sandbox/mode.js").SandboxMode;
+  /**
+   * Set by the agent loop when the run has a USD cap (`costCapMicroUSD`). A
+   * tool that makes model calls of its own — a subagent — must spend inside
+   * it: give the work at most `remainingMicroUSD()` and report every amount
+   * it spends with `charge`, which the run counts against its own cap.
+   */
+  costCap?: {
+    remainingMicroUSD(): number;
+    charge(microUSD: number): void;
+  };
 }
 
 export type StoredMessage = Anthropic.MessageParam;
