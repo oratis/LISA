@@ -680,6 +680,41 @@ describe("runAgent — per-run USD cap (costCapMicroUSD)", () => {
     }
   });
 
+  test("tools see the cap's remainder on a capped run, and nothing on an uncapped one", async () => {
+    const seen: Array<number | undefined> = [];
+    const probe: ToolDefinition = {
+      name: "echo",
+      description: "records the cap handle",
+      inputSchema: { type: "object" as const },
+      execute: async (_input, ctx) => {
+        seen.push(ctx.costCap?.remainingMicroUSD());
+        ctx.costCap?.charge(1_000);
+        return "ok";
+      },
+    };
+    const toolCtx = makeToolCtx();
+    for (const cap of [1_000_000, undefined]) {
+      const { provider } = makeFakeProvider([
+        { content: [toolUseBlock("tu")], stopReason: "tool_use", usage: TURN },
+        { content: [textBlock("done")], stopReason: "end_turn", usage: TURN },
+      ]);
+      await runAgent({
+        provider,
+        systemPrompt: "sys",
+        tools: [probe],
+        toolCtx,
+        history: [],
+        userMessage: "go",
+        model: MODEL,
+        costCapMicroUSD: cap,
+      });
+    }
+    assert.equal(seen.length, 2);
+    // After one 11_200 call: 1_000_000 − 11_200 left.
+    assert.equal(seen[0], 988_800);
+    assert.equal(seen[1], undefined, "a stale handle must not leak into the uncapped run");
+  });
+
   test("a large transcript is counted before it is sent", async () => {
     // ~300 KB of history reserves ~100k prompt tokens = 42_000 micro-USD,
     // which a $0.03 cap cannot cover: no call is made.

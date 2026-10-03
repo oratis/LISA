@@ -97,8 +97,18 @@ export interface RunAgentOptions {
    * Fails closed: any value that is set but is not a positive finite number
    * (0, NaN, null from a config file) stops the run before it calls the model.
    * Unset = no ceiling.
+   *
+   * Subagents spend inside it: the loop puts a `costCap` handle on the tool
+   * context (see ToolContext), and the task tool starts each subagent with
+   * what is left and counts what it spends.
    */
   costCapMicroUSD?: number;
+  /**
+   * Hears every amount counted against `costCapMicroUSD`, as it is counted.
+   * A parent run passes this to a subagent to count the subagent's spend
+   * against its own cap.
+   */
+  onCostCharged?: (microUSD: number) => void;
   /** When set, the system prompt is rebuilt between turns if its source state changed. */
   hotReload?: PromptHotReload;
 }
@@ -209,8 +219,18 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
   // A fallback chain may serve a call with any of its models.
   const costCap =
     opts.costCapMicroUSD !== undefined
-      ? new RunCostCap(opts.costCapMicroUSD, [model, ...(provider.models ?? [])])
+      ? new RunCostCap(
+          opts.costCapMicroUSD,
+          [model, ...(provider.models ?? [])],
+          opts.onCostCharged,
+        )
       : null;
+  toolCtx.costCap = costCap
+    ? {
+        remainingMicroUSD: () => costCap.remainingMicroUSD,
+        charge: (microUSD) => costCap.add(microUSD),
+      }
+    : undefined;
   const toolsBytes = costCap
     ? Buffer.byteLength(
         JSON.stringify(

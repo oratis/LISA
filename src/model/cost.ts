@@ -392,9 +392,15 @@ export class RunCostCap {
 
   private readonly models: readonly string[];
 
+  /**
+   * `onCharge` hears every amount as it is counted — this run's own calls and
+   * whatever its subagents report — so a parent run can count it against its
+   * own cap even if this run later throws.
+   */
   constructor(
     readonly capMicroUSD: number,
     models: CapModels,
+    private readonly onCharge?: (microUSD: number) => void,
   ) {
     this.models = modelList(models);
   }
@@ -402,6 +408,23 @@ export class RunCostCap {
   /** Micro-USD counted against the cap so far; NaN once a call's usage could not be read. */
   get spentMicroUSD(): number {
     return this.spent;
+  }
+
+  /** What is left to spend, micro-USD; 0 once the cap is spent or the spend is unreadable. */
+  get remainingMicroUSD(): number {
+    const left = this.capMicroUSD - this.spent;
+    return Number.isFinite(left) && left > 0 ? left : 0;
+  }
+
+  /**
+   * Count spend made outside this run's own provider calls — a subagent's —
+   * against the cap. An amount that is not a non-negative finite number makes
+   * the spend unreadable, which stops the run.
+   */
+  add(microUSD: number): void {
+    const amount = unreadableCount(microUSD) ? Number.NaN : microUSD;
+    this.spent += amount;
+    this.onCharge?.(amount);
   }
 
   /**
@@ -428,7 +451,7 @@ export class RunCostCap {
     const admitted = this.admitted ?? { promptBytes: 0, promptTokens: 0, maxTokens: 0 };
     this.admitted = null;
     const served = call.model;
-    this.spent += capChargeMicroUSD({
+    const amount = capChargeMicroUSD({
       model:
         served === undefined
           ? this.models
@@ -441,6 +464,8 @@ export class RunCostCap {
       reservedPromptTokens: admitted.promptTokens,
       maxTokens: admitted.maxTokens,
     });
+    this.spent += amount;
+    this.onCharge?.(amount);
     const { inputTokens, cacheReadTokens, cacheWriteTokens } = call.usage;
     const prompt = inputTokens + cacheReadTokens + cacheWriteTokens;
     if (Number.isFinite(prompt) && prompt > 0) this.lastPromptTokens = prompt;

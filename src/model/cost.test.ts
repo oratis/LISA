@@ -520,6 +520,29 @@ describe("RunCostCap — admit before each call, charge after it", () => {
     assert.equal(chargeFor("gpt-4o-mini"), costMicroUSD("claude-opus-4-1", usage));
   });
 
+  test("spend from outside the run's own calls counts, and every amount is passed up", () => {
+    const heard: number[] = [];
+    const cap = new RunCostCap(100_000, "gemini-2.5-flash", (m) => heard.push(m));
+    assert.equal(cap.remainingMicroUSD, 100_000);
+    assert.ok(cap.admit({ promptBytes: 300, maxTokens: 1_000 }).proceed);
+    cap.charge({ usage: { ...ZERO, inputTokens: 100, outputTokens: 100 }, output: ["x"] });
+    cap.add(60_000); // a subagent's spend
+    assert.equal(heard.length, 2);
+    assert.equal(cap.spentMicroUSD, heard[0]! + 60_000);
+    assert.equal(cap.remainingMicroUSD, 100_000 - cap.spentMicroUSD);
+    cap.add(50_000);
+    assert.equal(cap.remainingMicroUSD, 0);
+    assert.ok(!cap.admit({ promptBytes: 300, maxTokens: 1_000 }).proceed);
+  });
+
+  test("an unreadable subagent spend stops the run", () => {
+    const cap = new RunCostCap(100_000, "gemini-2.5-flash");
+    cap.add(Number.NaN);
+    assert.equal(cap.remainingMicroUSD, 0);
+    const verdict = cap.admit({ promptBytes: 300, maxTokens: 1_000 });
+    assert.ok(!verdict.proceed && verdict.reason === "usage_unreadable");
+  });
+
   test("unreadable usage makes the next admit stop", () => {
     const cap = new RunCostCap(1_000_000, "gemini-2.5-flash");
     assert.ok(cap.admit({ promptBytes: 300, maxTokens: 16_000 }).proceed);
