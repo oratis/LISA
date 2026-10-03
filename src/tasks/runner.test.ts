@@ -1289,6 +1289,23 @@ test("a task file with an invalid time zone loads switched off, with the reason 
   });
 });
 
+test("an invalid LISA_TZ is reported once, when the runner is built — not at its first calendar schedule", async () => {
+  const previous = process.env.LISA_TZ;
+  process.env.LISA_TZ = `Not/A_Zone_${process.pid}`;
+  try {
+    const logs: string[] = [];
+    makeRunner({ provider: scripted([]).provider, log: (m) => logs.push(m) });
+    assert.equal(logs.length, 1, "warned at construction, before any tick");
+    assert.match(logs[0]!, /LISA_TZ=".*" is not a valid time zone — using /);
+    const again: string[] = [];
+    makeRunner({ provider: scripted([]).provider, log: (m) => again.push(m) });
+    assert.deepEqual(again, [], "once per process");
+  } finally {
+    if (previous === undefined) delete process.env.LISA_TZ;
+    else process.env.LISA_TZ = previous;
+  }
+});
+
 test("a schedule with no next occurrence pauses the task after its run, with a visible reason — it does not stay due", async () => {
   await withHome(async () => {
     // 30 February: parses, never fires.

@@ -58,7 +58,7 @@ import {
 import { isRecurring, nextRunAfter, pauseTask, restingState } from "./lifecycle.js";
 import { drainOutbox, enqueueNotice, noticeId } from "./outbox.js";
 import { denySideEffects, digestCall, isSideEffectingCall, taskToolset } from "./policy.js";
-import { isOneShot } from "./schedule.js";
+import { defaultTimeZone, isOneShot } from "./schedule.js";
 import {
   appendRunEvent,
   appendRunMessage,
@@ -453,6 +453,9 @@ export class TaskRunner {
     this.now = opts.now ?? Date.now;
     this.host = opts.host ?? "home";
     this.concurrency = opts.concurrency ?? (this.host === "cloud" ? 1 : 2);
+    // Validate LISA_TZ now, at startup, not at the first calendar schedule: an
+    // invalid zone is reported once and the system zone is used instead.
+    defaultTimeZone((msg) => (opts.log ?? logInfo)(msg));
   }
 
   get activeCount(): number {

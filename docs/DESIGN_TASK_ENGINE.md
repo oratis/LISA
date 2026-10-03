@@ -18,6 +18,7 @@ Everything is under `<lisaHome>/tasks/`, so on the hosted edition each tenant ha
 
 - A task file that does not parse or validate is renamed to `<id>.json.<ts>.corrupt` and skipped. A file written by a newer build is skipped and left in place.
 - A task whose schedule cannot be used (an invalid time zone, an unknown expression) loads switched off with `pausedReason` set. Reading never writes.
+- `LISA_TZ` (the zone for schedules that name none) is checked when a runner is built: an invalid value is reported once and the system zone is used.
 - Only creating a task creates directories. Every other write fails with `TaskGoneError` when its directory is missing, so a run in flight cannot put a deleted task, or a deleted account's home, back.
 - Run-log records are written as `\n<json>\n`. A torn line left by a crash is skipped by the reader and does not swallow the record after it.
 
