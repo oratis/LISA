@@ -1763,6 +1763,150 @@ describe("POST /gw/gemini — settlement failure and reconciliation", () => {
   });
 });
 
+// ── every face: what reached the client is billed ───────────────────────────
+
+const ALL_FACES_ENV = {
+  GEMINI_API_KEY: OPERATOR_KEY,
+  ANTHROPIC_API_KEY: "operator-anthropic-key",
+  OPENAI_API_KEY: "operator-openai-key",
+};
+
+interface FaceCase {
+  face: "gemini" | "anthropic" | "openai";
+  path: string;
+  body: Record<string, unknown>;
+  /** SSE events the upstream sends before it is cut. */
+  beforeCut: string[];
+  /** Events that complete the stream normally. */
+  rest: string[];
+  reportedInput: number;
+  /** Output the complete stream reports. */
+  reportedOutput: number;
+}
+
+const sse = (obj: unknown): string => `data: ${JSON.stringify(obj)}\n\n`;
+const LONG = "y".repeat(4_000);
+
+const FACES: FaceCase[] = [
+  {
+    face: "gemini",
+    path: STREAM,
+    body: REQUEST,
+    beforeCut: [
+      sse({
+        candidates: [{ content: { parts: [{ text: LONG }] } }],
+        usageMetadata: { promptTokenCount: 100 },
+      }),
+      sse({ candidates: [{ content: { parts: [{ text: LONG }] } }] }),
+    ],
+    rest: [
+      sse({
+        candidates: [{ content: { parts: [{ text: "." }] }, finishReason: "STOP" }],
+        usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 2_001 },
+      }),
+    ],
+    reportedInput: 100,
+    reportedOutput: 2_001,
+  },
+  {
+    face: "anthropic",
+    path: "/gw/anthropic/v1/messages",
+    body: {
+      model: "claude-sonnet-4-6",
+      stream: true,
+      max_tokens: 4_000,
+      messages: [{ role: "user", content: "hi" }],
+    },
+    beforeCut: [
+      sse({ type: "message_start", message: { usage: { input_tokens: 100, output_tokens: 1 } } }),
+      sse({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: LONG } }),
+      sse({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: LONG } }),
+    ],
+    rest: [
+      sse({
+        type: "message_delta",
+        delta: { stop_reason: "end_turn" },
+        usage: { output_tokens: 2_000 },
+      }),
+      sse({ type: "message_stop" }),
+    ],
+    reportedInput: 100,
+    reportedOutput: 2_001,
+  },
+  {
+    face: "openai",
+    path: "/gw/openai/v1/chat/completions",
+    body: { model: "gpt-4o", stream: true, messages: [{ role: "user", content: "hi" }] },
+    beforeCut: [
+      // An OpenAI-compatible upstream that states the prompt up front.
+      sse({ choices: [{ delta: { content: LONG } }], usage: { prompt_tokens: 100 } }),
+      sse({ choices: [{ delta: { content: LONG } }], usage: null }),
+    ],
+    rest: [
+      sse({ choices: [], usage: { prompt_tokens: 0, completion_tokens: 2_001 } }),
+      "data: [DONE]\n\n",
+    ],
+    reportedInput: 100,
+    reportedOutput: 2_001,
+  },
+];
+
+function streamThenMaybeCut(events: string[], cut: boolean): Response {
+  let i = 0;
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (i < events.length) controller.enqueue(new TextEncoder().encode(events[i++]));
+      else if (cut) controller.error(new Error("upstream reset"));
+      else controller.close();
+    },
+  });
+  return new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } });
+}
+
+describe("POST /gw/* — a stream cut before its final usage event (every face)", () => {
+  for (const c of FACES) {
+    test(`${c.face}: the output already forwarded is billed by its bytes, not as zero`, async () => {
+      const adm = admission();
+      const upstream = fakeUpstream(() => streamThenMaybeCut(c.beforeCut, true));
+      const gw = await gateway({
+        fetch: upstream.fetch,
+        admit: (acct, model) => admitInference(acct, model, adm.deps),
+        env: ALL_FACES_ENV,
+      });
+      try {
+        const received = await (await post(gw.base, c.path, c.body)).text().catch(() => "");
+        assert.ok(received.length >= 8_000, "the text reached the client");
+        const forwarded = c.beforeCut.reduce((n, e) => n + Buffer.byteLength(e), 0);
+        assert.equal(adm.settled.length, 1);
+        const usage = adm.settled[0]!.usage;
+        assert.equal(usage.inputTokens, c.reportedInput);
+        assert.equal(usage.outputTokens, Math.ceil(forwarded / 4));
+        assert.deepEqual(adm.log.slice(-2), ["settle", "release"]);
+      } finally {
+        await gw.close();
+      }
+    });
+
+    test(`${c.face}: a complete stream is billed as reported, never by its bytes`, async () => {
+      const adm = admission();
+      const upstream = fakeUpstream(() => streamThenMaybeCut([...c.beforeCut, ...c.rest], false));
+      const gw = await gateway({
+        fetch: upstream.fetch,
+        admit: (acct, model) => admitInference(acct, model, adm.deps),
+        env: ALL_FACES_ENV,
+      });
+      try {
+        await (await post(gw.base, c.path, c.body)).text();
+        const usage = adm.settled[0]!.usage;
+        assert.equal(usage.inputTokens, c.reportedInput);
+        assert.equal(usage.outputTokens, c.reportedOutput);
+      } finally {
+        await gw.close();
+      }
+    });
+  }
+});
+
 describe("POST /gw/gemini — driven by the real @google/genai client", () => {
   // The face has to accept what LISA's own Gemini provider actually sends, not
   // what this file assumes it sends: the SDK builds the path, the query and the

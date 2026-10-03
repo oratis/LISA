@@ -797,6 +797,32 @@ export function usageFromGeminiJson(body: unknown): ProviderUsage {
   return geminiUsageToProvider(counts);
 }
 
+/**
+ * Does this streamed event carry the response's FINAL usage? Until one has
+ * been seen, the counters read so far can lag behind the text already
+ * forwarded — an upstream that cuts the stream after a prompt-only chunk
+ * would otherwise leave that output unbilled.
+ *
+ *  - anthropic: `message_delta` carries the final output count.
+ *  - openai-compatible: the usage chunk (`include_usage`) carries
+ *    `completion_tokens`.
+ *  - gemini: the last chunk names a `finishReason`, next to the final
+ *    `usageMetadata`.
+ */
+export function isFinalUsageEvent(face: GatewayFace, obj: Record<string, unknown>): boolean {
+  if (face === "anthropic") return obj.type === "message_delta" && isObject(obj.usage);
+  if (face === "openai") {
+    return isObject(obj.usage) && typeof obj.usage.completion_tokens === "number";
+  }
+  const candidates = obj.candidates;
+  return (
+    Array.isArray(candidates) &&
+    candidates.some(
+      (c) => isObject(c) && typeof field(c, "finishReason", "finish_reason") === "string",
+    )
+  );
+}
+
 /** Test seams; production uses the real upstream fetch and the real admission boundary. */
 export interface GatewayDependencies {
   fetch?: typeof fetch;
@@ -925,14 +951,22 @@ export async function handleGateway(
     let usage: ProviderUsage = { ...ZERO };
     let geminiCounts = ZERO_GEMINI_USAGE;
     let responseBytes = 0;
+    // False while a stream has not yet delivered its final usage event.
+    let usageFinal = true;
     const settle = async () => {
       // A 2xx with no usage at all is a billing hole, not a free turn (#264):
-      // fall back to a byte estimate. Non-2xx settles at whatever we parsed
-      // (normally zero) — the user shouldn't pay for an upstream error.
-      const u =
-        upstream.ok && usageIsEmpty(usage)
-          ? estimateUsageFromBytes(requestBytes, responseBytes)
-          : usage;
+      // fall back to a byte estimate. A stream that ended before its final
+      // usage event has its output billed at no less than the byte floor of
+      // what was forwarded. Non-2xx settles at whatever we parsed (normally
+      // zero) — the user shouldn't pay for an upstream error.
+      let u = usage;
+      if (upstream.ok) {
+        const floor = estimateUsageFromBytes(requestBytes, responseBytes);
+        if (usageIsEmpty(usage)) u = floor;
+        else if (!usageFinal) {
+          u = { ...usage, outputTokens: Math.max(usage.outputTokens, floor.outputTokens) };
+        }
+      }
       await admission.permit.settle("gw", u);
     };
 
@@ -966,6 +1000,7 @@ export async function handleGateway(
     const reader = upstream.body.getReader();
     const decoder = new TextDecoder();
     let carry = "";
+    usageFinal = false;
     const meterLine = (rawLine: string): void => {
       const line = rawLine.trim();
       if (!line.startsWith("data:")) return;
@@ -973,6 +1008,7 @@ export async function handleGateway(
       if (!payload || payload === "[DONE]") return;
       try {
         const obj = JSON.parse(payload) as Record<string, unknown>;
+        if (isObject(obj) && isFinalUsageEvent(face, obj)) usageFinal = true;
         if (face === "gemini") {
           geminiCounts = mergeGeminiUsage(geminiCounts, obj);
           usage = geminiUsageToProvider(geminiCounts);
