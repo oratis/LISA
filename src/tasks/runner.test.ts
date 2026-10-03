@@ -1124,8 +1124,9 @@ test("a run that had already answered when it was interrupted is finished withou
       t.activeRunId = runId;
     });
 
+    // Even with Proactive off by now: finishing an answered run is not continuing it.
     const { provider, calls } = scripted([]);
-    const runner2 = makeRunner({ provider, deliver });
+    const runner2 = makeRunner({ provider, deliver, unattendedAllowed: () => false });
     await runner2.tick();
     await runner2.drain();
     assert.equal(calls.length, 0);

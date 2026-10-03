@@ -941,8 +941,11 @@ export class TaskRunner {
     // started by hand needs only that the task still exists (it does: we are
     // here). Any other run needs the Proactive switch on and the task enabled;
     // when either is off now, the run ends as cancelled — visible in the run
-    // history, no notice — and the task goes back to rest.
-    if (!run.manual) {
+    // history, no notice — and the task goes back to rest. A run whose model
+    // had already given its final answer is not continued, only finished (no
+    // model call, no tool call): that is not gated, like any other finish.
+    const answered = planResume(loaded.messages, "").kind === "finished";
+    if (!run.manual && !answered) {
       const closed = !this.unattendedAllowed()
         ? { stop: "proactive_off", why: "Proactive is off" }
         : !task.enabled
