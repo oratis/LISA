@@ -273,6 +273,38 @@ describe("checkCostCap — decided before the provider call", () => {
     assert.ok(!verdict.proceed && verdict.reason === "next_turn_unaffordable");
   });
 
+  test("a call several models may serve is reserved at the dearest of them", () => {
+    const flash = checkCostCap({
+      model: "gemini-2.5-flash",
+      capMicroUSD: 100_000,
+      spentMicroUSD: 0,
+      nextPromptTokens: 1_000,
+      maxTokens: 1_000_000,
+    });
+    const chain = checkCostCap({
+      model: ["gemini-2.5-flash", "claude-opus-4-1"],
+      capMicroUSD: 100_000,
+      spentMicroUSD: 0,
+      nextPromptTokens: 1_000,
+      maxTokens: 1_000_000,
+    });
+    const opus = checkCostCap({
+      model: "claude-opus-4-1",
+      capMicroUSD: 100_000,
+      spentMicroUSD: 0,
+      nextPromptTokens: 1_000,
+      maxTokens: 1_000_000,
+    });
+    assert.ok(flash.proceed && chain.proceed && opus.proceed);
+    assert.equal(chain.maxTokens, opus.maxTokens);
+    assert.ok(chain.maxTokens < flash.maxTokens);
+    // Whichever link serves it, the admitted call fits under the cap.
+    for (const m of ["gemini-2.5-flash", "claude-opus-4-1"]) {
+      const worst = costMicroUSD(m, { ...ZERO, inputTokens: 1_000, outputTokens: chain.maxTokens });
+      assert.ok(worst <= 100_000, `${m}: ${worst}`);
+    }
+  });
+
   test("an unpriced model is reserved at the conservative fallback rate", () => {
     const known = checkCostCap({
       model: "gemini-2.5-flash",
@@ -471,6 +503,21 @@ describe("RunCostCap — admit before each call, charge after it", () => {
         ((1_000_000 - spent - promptReserve) * 1e6) / priceForModel("gemini-2.5-flash").outPerM,
       ),
     );
+  });
+
+  test("a call is charged at the model that served it, or at the dearest when that is unknown", () => {
+    const usage = { ...ZERO, inputTokens: 1_000, outputTokens: 1_000 };
+    const chargeFor = (served: string | undefined): number => {
+      const cap = new RunCostCap(10_000_000, ["gemini-2.5-flash", "claude-opus-4-1"]);
+      assert.ok(cap.admit({ promptBytes: 300, maxTokens: 16_000 }).proceed);
+      cap.charge({ usage, output: ["x"], model: served });
+      return cap.spentMicroUSD;
+    };
+    assert.equal(chargeFor("gemini-2.5-flash"), costMicroUSD("gemini-2.5-flash", usage));
+    assert.equal(chargeFor("claude-opus-4-1"), costMicroUSD("claude-opus-4-1", usage));
+    assert.equal(chargeFor(undefined), costMicroUSD("claude-opus-4-1", usage));
+    // A model outside the list is not taken at its word if a listed one is dearer.
+    assert.equal(chargeFor("gpt-4o-mini"), costMicroUSD("claude-opus-4-1", usage));
   });
 
   test("unreadable usage makes the next admit stop", () => {

@@ -8,7 +8,13 @@
  * Amounts are micro-USD integers (1e-6 USD), rounded UP: an estimate or a cap
  * check that rounds in the user's favour is one that can be exceeded.
  */
-import { MARGIN, costMicroUSD, explicitPriceForModel, priceForModel } from "../billing/prices.js";
+import {
+  MARGIN,
+  costMicroUSD,
+  explicitPriceForModel,
+  priceForModel,
+  type ModelPrice,
+} from "../billing/prices.js";
 import type { ProviderUsage } from "../providers/types.js";
 import { estimateUsageFromBytes } from "../billing/usage-floor.js";
 
@@ -172,8 +178,34 @@ export function reservePromptTokens(bytes: number): number {
   return Math.ceil(bytes / RESERVE_BYTES_PER_TOKEN);
 }
 
+/**
+ * The model a call runs on — or, when it may be served by any of several (a
+ * fallback chain), all of them: the cap then reserves and charges at the
+ * dearest.
+ */
+export type CapModels = string | readonly string[];
+
+function modelList(models: CapModels): readonly string[] {
+  return typeof models === "string" ? [models] : models;
+}
+
+/** Each rate at its maximum over `models`: a reservation no serving model can exceed. */
+function dearestRates(models: CapModels): ModelPrice {
+  const prices = modelList(models).map((m) => priceForModel(m));
+  if (prices.length === 0) return priceForModel("");
+  const top = (rate: (p: ModelPrice) => number): number => Math.max(...prices.map(rate));
+  return {
+    inPerM: top((p) => p.inPerM),
+    outPerM: top((p) => p.outPerM),
+    cacheWritePerM: top((p) => p.cacheWritePerM),
+    cacheReadPerM: top((p) => p.cacheReadPerM),
+    tier: prices.some((p) => p.tier === "premium") ? "premium" : "standard",
+  };
+}
+
 export interface CostCapInput {
-  model: string;
+  /** The model the next call runs on, or every model that may serve it. */
+  model: CapModels;
   /** The run's ceiling, micro-USD. */
   capMicroUSD: number;
   /**
@@ -218,7 +250,8 @@ function unreadableCount(count: unknown): boolean {
  *
  * Fails closed: a cap that is not a positive finite number stops the run, and
  * so does a spend that is not a readable amount. An unpriced model is reserved
- * at the conservative fallback rate.
+ * at the conservative fallback rate; a call that several models may serve, at
+ * the dearest rate among them.
  */
 export function checkCostCap(input: CostCapInput): CostCapVerdict {
   // costMicroUSD maps a non-finite token count to 0 (right for a ledger line,
@@ -250,7 +283,7 @@ export function checkCostCap(input: CostCapInput): CostCapVerdict {
       message: `cost cap ${dollars(cap)} reached (spent ${dollars(spentMicroUSD)})`,
     };
   }
-  const price = priceForModel(input.model);
+  const price = dearestRates(input.model);
   const promptTokens = Number.isFinite(input.nextPromptTokens)
     ? Math.max(0, input.nextPromptTokens)
     : Number.POSITIVE_INFINITY;
@@ -279,7 +312,8 @@ export function checkCostCap(input: CostCapInput): CostCapVerdict {
 
 /** One provider call, as the cap counts it. */
 export interface CappedCall {
-  model: string;
+  /** The model that served the call; when that is not known, every model that may have. */
+  model: CapModels;
   usage: ProviderUsage;
   /** UTF-8 bytes sent as the prompt (system prompt, tool definitions, transcript). */
   promptBytes: number;
@@ -304,6 +338,8 @@ export interface CappedCall {
  * and returned. Output falls back to its ceiling rather than its bytes because
  * thinking tokens are billed as output and never show up in the bytes.
  *
+ * Priced at the model that served the call; given several, at the dearest.
+ *
  * NaN when a reported count is not a non-negative finite number; checkCostCap
  * stops the run on it.
  */
@@ -321,7 +357,7 @@ export function capChargeMicroUSD(call: CappedCall): number {
   // Zero output is believable only for an empty answer from a provider that
   // did report its prompt.
   const outputReported = usage.outputTokens > 0 || (call.outputBytes === 0 && promptReported);
-  return costMicroUSD(call.model, {
+  const charged: ProviderUsage = {
     ...usage,
     inputTokens: promptReported
       ? usage.inputTokens
@@ -329,12 +365,24 @@ export function capChargeMicroUSD(call: CappedCall): number {
     outputTokens: outputReported
       ? usage.outputTokens
       : Math.max(call.maxTokens, floor.outputTokens),
-  });
+  };
+  const models = modelList(call.model);
+  if (models.length === 0) return costMicroUSD("", charged);
+  return Math.max(...models.map((m) => costMicroUSD(m, charged)));
+}
+
+function sameModel(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
 }
 
 /**
  * The per-run cap's bookkeeping for the agent loop: `admit` before each
  * provider call, `charge` after it.
+ *
+ * `models` is every model a call may be served by — the requested model, plus
+ * a fallback chain's links. Each call is reserved at the dearest of them and
+ * charged at the one the provider says served it (the dearest when it does
+ * not say, or names one outside the list).
  */
 export class RunCostCap {
   private spent = 0;
@@ -342,10 +390,14 @@ export class RunCostCap {
   private lastPromptTokens = 0;
   private admitted: { promptBytes: number; promptTokens: number; maxTokens: number } | null = null;
 
+  private readonly models: readonly string[];
+
   constructor(
     readonly capMicroUSD: number,
-    private readonly model: string,
-  ) {}
+    models: CapModels,
+  ) {
+    this.models = modelList(models);
+  }
 
   /** Micro-USD counted against the cap so far; NaN once a call's usage could not be read. */
   get spentMicroUSD(): number {
@@ -359,7 +411,7 @@ export class RunCostCap {
   admit(next: { promptBytes: number; maxTokens: number }): CostCapVerdict {
     const promptTokens = Math.max(this.lastPromptTokens, reservePromptTokens(next.promptBytes));
     const verdict = checkCostCap({
-      model: this.model,
+      model: this.models,
       capMicroUSD: this.capMicroUSD,
       spentMicroUSD: this.spent,
       nextPromptTokens: promptTokens,
@@ -371,12 +423,18 @@ export class RunCostCap {
     return verdict;
   }
 
-  /** Count the call made after `admit` against the cap. */
-  charge(call: { usage: ProviderUsage; output: readonly unknown[] }): void {
+  /** Count the call made after `admit` against the cap; `model` is the one that served it, if known. */
+  charge(call: { usage: ProviderUsage; output: readonly unknown[]; model?: string }): void {
     const admitted = this.admitted ?? { promptBytes: 0, promptTokens: 0, maxTokens: 0 };
     this.admitted = null;
+    const served = call.model;
     this.spent += capChargeMicroUSD({
-      model: this.model,
+      model:
+        served === undefined
+          ? this.models
+          : this.models.some((m) => sameModel(m, served))
+            ? served
+            : [...this.models, served],
       usage: call.usage,
       promptBytes: admitted.promptBytes,
       outputBytes: call.output.length === 0 ? 0 : Buffer.byteLength(JSON.stringify(call.output)),

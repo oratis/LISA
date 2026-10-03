@@ -206,8 +206,11 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
   let currentFingerprint = opts.hotReload?.initialFingerprint;
 
   // Only a capped run pays for sizing its prompt (see the cap check below).
+  // A fallback chain may serve a call with any of its models.
   const costCap =
-    opts.costCapMicroUSD !== undefined ? new RunCostCap(opts.costCapMicroUSD, model) : null;
+    opts.costCapMicroUSD !== undefined
+      ? new RunCostCap(opts.costCapMicroUSD, [model, ...(provider.models ?? [])])
+      : null;
   const toolsBytes = costCap
     ? Buffer.byteLength(
         JSON.stringify(
@@ -345,7 +348,7 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
     cacheWriteTokens += result.usage.cacheWriteTokens;
     inputTokens += result.usage.inputTokens;
     outputTokens += result.usage.outputTokens;
-    costCap?.charge({ usage: result.usage, output: result.content });
+    costCap?.charge({ usage: result.usage, output: result.content, model: result.model });
     stopReason = result.stopReason;
 
     // OpenAI/Gemini turns can yield neither text nor tool calls, i.e. an

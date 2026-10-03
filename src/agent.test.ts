@@ -625,6 +625,61 @@ describe("runAgent — per-run USD cap (costCapMicroUSD)", () => {
     assert.ok(trueSpend <= 50_000, `true spend ${trueSpend} over ${calls.length} calls`);
   });
 
+  test("a fallback to a dearer model is reserved and charged at that model's rate", async () => {
+    // LISA_MODEL_FALLBACK=claude-opus-4-1 behind gemini-2.5-flash, primary down.
+    // Pricing the run at the requested model let it reach 10× its cap.
+    const { FallbackProvider } = await import("./providers/fallback.js");
+    const { costMicroUSD } = await import("./billing/prices.js");
+    const served: ProviderRunOpts[] = [];
+    let trueSpend = 0;
+    const opus: Provider = {
+      name: "opus",
+      async runTurn(opts: ProviderRunOpts): Promise<ProviderResult> {
+        served.push(opts);
+        const bytes =
+          Buffer.byteLength(opts.systemPrompt) + Buffer.byteLength(JSON.stringify(opts.messages));
+        const usage = {
+          inputTokens: Math.ceil(bytes / 4),
+          outputTokens: opts.maxTokens ?? 16_000,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+        };
+        trueSpend += costMicroUSD(opts.model, usage);
+        return { content: [toolUseBlock(`tu_${served.length}`)], stopReason: "tool_use", usage };
+      },
+    };
+    const down: Provider = {
+      name: "flash",
+      async runTurn(): Promise<ProviderResult> {
+        throw new Error("primary down");
+      },
+    };
+    const quiet = console.error;
+    console.error = () => {};
+    try {
+      const r = await runAgent({
+        provider: new FallbackProvider([
+          { model: MODEL, provider: down },
+          { model: "claude-opus-4-1", provider: opus },
+        ]),
+        systemPrompt: "sys",
+        tools: [echoTool],
+        toolCtx: makeToolCtx(),
+        history: [],
+        userMessage: "go",
+        model: MODEL,
+        maxIterations: 32,
+        costCapMicroUSD: 100_000,
+      });
+      assert.equal(r.stopReason, "budget_exceeded");
+      assert.ok(served.length >= 1);
+      assert.ok(served.every((o) => o.model === "claude-opus-4-1"));
+      assert.ok(trueSpend <= 100_000, `true spend ${trueSpend} over ${served.length} calls`);
+    } finally {
+      console.error = quiet;
+    }
+  });
+
   test("a large transcript is counted before it is sent", async () => {
     // ~300 KB of history reserves ~100k prompt tokens = 42_000 micro-USD,
     // which a $0.03 cap cannot cover: no call is made.
