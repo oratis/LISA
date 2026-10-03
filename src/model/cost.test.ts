@@ -6,11 +6,13 @@ import {
   RunCostCap,
   capChargeMicroUSD,
   checkCostCap,
+  PROMPT_FRAMING_TOKENS,
   estimateRoutineMonthlyCost,
   estimateRunCost,
   formatCostEstimate,
   formatRoutineEstimate,
   reservePromptTokens,
+  reservePromptTokensForText,
 } from "./cost.js";
 
 const ZERO = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
@@ -465,6 +467,8 @@ describe("capChargeMicroUSD — what one call counts against the cap", () => {
 });
 
 describe("RunCostCap — admit before each call, charge after it", () => {
+  const PROMPT_300 = "x".repeat(300);
+
   test("a provider that never reports usage still exhausts the cap", () => {
     // gpt-4o, $0.05 cap. The probe that found this ran 32 calls to 31× the cap.
     const cap = new RunCostCap(50_000, "gpt-4o");
@@ -472,7 +476,7 @@ describe("RunCostCap — admit before each call, charge after it", () => {
     let trueSpend = 0;
     for (;;) {
       const promptBytes = 300 + 150 * calls;
-      const verdict = cap.admit({ promptBytes, maxTokens: 16_000 });
+      const verdict = cap.admit({ prompt: ["x".repeat(promptBytes)], maxTokens: 16_000 });
       if (!verdict.proceed) break;
       calls++;
       // Worst case the provider may really have billed: the prompt at four
@@ -490,10 +494,10 @@ describe("RunCostCap — admit before each call, charge after it", () => {
 
   test("the previous call's real prompt is a floor under the next reservation", () => {
     const cap = new RunCostCap(1_000_000, "gemini-2.5-flash");
-    assert.ok(cap.admit({ promptBytes: 300, maxTokens: 16_000 }).proceed);
+    assert.ok(cap.admit({ prompt: [PROMPT_300], maxTokens: 16_000 }).proceed);
     cap.charge({ usage: { ...ZERO, inputTokens: 90_000, outputTokens: 10 }, output: ["x"] });
     // 300 bytes would reserve 100 tokens; the provider just counted 90k.
-    const verdict = cap.admit({ promptBytes: 300, maxTokens: 1_000_000 });
+    const verdict = cap.admit({ prompt: [PROMPT_300], maxTokens: 1_000_000 });
     assert.ok(verdict.proceed);
     const spent = cap.spentMicroUSD;
     const promptReserve = Math.ceil((90_000 * priceForModel("gemini-2.5-flash").inPerM) / 1e6);
@@ -509,7 +513,7 @@ describe("RunCostCap — admit before each call, charge after it", () => {
     const usage = { ...ZERO, inputTokens: 1_000, outputTokens: 1_000 };
     const chargeFor = (served: string | undefined): number => {
       const cap = new RunCostCap(10_000_000, ["gemini-2.5-flash", "claude-opus-4-1"]);
-      assert.ok(cap.admit({ promptBytes: 300, maxTokens: 16_000 }).proceed);
+      assert.ok(cap.admit({ prompt: [PROMPT_300], maxTokens: 16_000 }).proceed);
       cap.charge({ usage, output: ["x"], model: served });
       return cap.spentMicroUSD;
     };
@@ -524,7 +528,7 @@ describe("RunCostCap — admit before each call, charge after it", () => {
     const heard: number[] = [];
     const cap = new RunCostCap(100_000, "gemini-2.5-flash", (m) => heard.push(m));
     assert.equal(cap.remainingMicroUSD, 100_000);
-    assert.ok(cap.admit({ promptBytes: 300, maxTokens: 1_000 }).proceed);
+    assert.ok(cap.admit({ prompt: [PROMPT_300], maxTokens: 1_000 }).proceed);
     cap.charge({ usage: { ...ZERO, inputTokens: 100, outputTokens: 100 }, output: ["x"] });
     cap.add(60_000); // a subagent's spend
     assert.equal(heard.length, 2);
@@ -532,23 +536,68 @@ describe("RunCostCap — admit before each call, charge after it", () => {
     assert.equal(cap.remainingMicroUSD, 100_000 - cap.spentMicroUSD);
     cap.add(50_000);
     assert.equal(cap.remainingMicroUSD, 0);
-    assert.ok(!cap.admit({ promptBytes: 300, maxTokens: 1_000 }).proceed);
+    assert.ok(!cap.admit({ prompt: [PROMPT_300], maxTokens: 1_000 }).proceed);
   });
 
   test("an unreadable subagent spend stops the run", () => {
     const cap = new RunCostCap(100_000, "gemini-2.5-flash");
     cap.add(Number.NaN);
     assert.equal(cap.remainingMicroUSD, 0);
-    const verdict = cap.admit({ promptBytes: 300, maxTokens: 1_000 });
+    const verdict = cap.admit({ prompt: [PROMPT_300], maxTokens: 1_000 });
     assert.ok(!verdict.proceed && verdict.reason === "usage_unreadable");
   });
 
   test("unreadable usage makes the next admit stop", () => {
     const cap = new RunCostCap(1_000_000, "gemini-2.5-flash");
-    assert.ok(cap.admit({ promptBytes: 300, maxTokens: 16_000 }).proceed);
+    assert.ok(cap.admit({ prompt: [PROMPT_300], maxTokens: 16_000 }).proceed);
     cap.charge({ usage: { ...ZERO, inputTokens: Number.NaN }, output: [] });
-    const verdict = cap.admit({ promptBytes: 300, maxTokens: 16_000 });
+    const verdict = cap.admit({ prompt: [PROMPT_300], maxTokens: 16_000 });
     assert.ok(!verdict.proceed && verdict.reason === "usage_unreadable");
+  });
+});
+
+describe("reservePromptTokensForText — dense content is not under-counted", () => {
+  test("every ASCII digit is a token; everything else three bytes a token", () => {
+    assert.equal(reservePromptTokensForText(["7".repeat(300_000)]), 300_000);
+    assert.equal(reservePromptTokensForText(["abc"]), 1);
+    assert.equal(reservePromptTokensForText(["ab", "c1"]), 1 + 1);
+    assert.equal(reservePromptTokensForText(["你好"]), 2); // 6 bytes
+    assert.equal(reservePromptTokensForText([]), 0);
+  });
+
+  test("a digit-heavy tool result is reserved at no fewer tokens than any tokenizer makes of it", () => {
+    // 300 KB of digits: 1.5 bytes a token in the probe that found this, one
+    // digit a token for Gemini. Bytes / 3 would have reserved 100k.
+    const table = Array.from({ length: 30_000 }, (_, i) => String(1_000_000_000 + i)).join("");
+    assert.ok(reservePromptTokensForText([table]) >= table.length);
+  });
+});
+
+describe("RunCostCap — the prompt reservation", () => {
+  const model = "claude-sonnet-4-6";
+  const rate = Math.max(priceForModel(model).inPerM, priceForModel(model).cacheWritePerM);
+  const outRate = priceForModel(model).outPerM;
+  const ceilingFor = (cap: number, spent: number, promptTokens: number): number =>
+    Math.floor(((cap - spent - Math.ceil((promptTokens * rate) / 1e6)) * 1e6) / outRate);
+
+  test("the first call: the whole prompt estimated, plus the provider's framing", () => {
+    const cap = new RunCostCap(1_000_000, model);
+    const verdict = cap.admit({ prompt: ["x".repeat(3_000), "42"], maxTokens: 1_000_000 });
+    assert.ok(verdict.proceed);
+    assert.equal(verdict.maxTokens, ceilingFor(1_000_000, 0, 1_000 + 2 + PROMPT_FRAMING_TOKENS));
+  });
+
+  test("later calls: the reported prompt plus the estimate for what was added since", () => {
+    const cap = new RunCostCap(10_000_000, model);
+    const first = "x".repeat(3_000);
+    assert.ok(cap.admit({ prompt: [first], maxTokens: 1_000 }).proceed);
+    // The provider counted far more than estimated (dense content already in
+    // the transcript): that count is the base from now on.
+    cap.charge({ usage: { ...ZERO, inputTokens: 2_900, outputTokens: 10 }, output: ["x"] });
+    const added = "7".repeat(30_000);
+    const verdict = cap.admit({ prompt: [first + added], maxTokens: 10_000_000 });
+    assert.ok(verdict.proceed);
+    assert.equal(verdict.maxTokens, ceilingFor(10_000_000, cap.spentMicroUSD, 2_900 + 30_000));
   });
 });
 

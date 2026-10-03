@@ -433,6 +433,12 @@ export LISA_MODEL_SMALL=local://ollama/qwen2.5:3b
 
 If the small model has no credentials, the main model is used instead. On LISA Cloud a small model is used only when it is priced in LISA's price table at or below the main model, on the same billing tier.
 
+### A hard cost cap for one run (for integrators)
+
+`runAgent({ costCapMicroUSD })` / `runSubagent({ costCapMicroUSD })` stop a run before any model call whose worst case no longer fits under a USD ceiling (micro-USD, at the rates in `src/billing/prices.ts`), with `stopReason: "budget_exceeded"`. The output ceiling handed to the provider is clamped to what is left. A call that a fallback chain (`LISA_MODEL_FALLBACK`) may serve is reserved at the dearest link and charged at the link that answered; a provider that answers but reports zero usage is charged what the call was admitted with; subagents started by the `task` tool get what is left and their spend counts against the parent's cap.
+
+How far a run can end above its cap: by the input cost (at the dearer of the input and cache-write rates) of the prompt tokens its last call carried beyond the reservation, and no more. The reservation counts each ASCII digit as a token, every other 3 bytes of text as one, plus 512 tokens of provider framing, and from the second call on starts from the prompt size the provider reported for the previous call. Because no token is shorter than one byte, the shortfall is at most two thirds of the non-digit bytes added since the previous call (on the first call, of the whole prompt less the 512-token allowance), and only text that tokenizes far more densely than English — base64, hex, emoji, some scripts — gets near it. Against a provider that reports no usage at all, that shortfall is never observed, so it can recur on every call.
+
 ---
 
 ## Caveats by provider

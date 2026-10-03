@@ -98,6 +98,18 @@ export interface RunAgentOptions {
    * (0, NaN, null from a config file) stops the run before it calls the model.
    * Unset = no ceiling.
    *
+   * How far a run can end above it: only the last call's prompt can be larger
+   * than reserved (the output is held to its ceiling, and every earlier error
+   * is in the spend the next check reads). The reservation counts each ASCII
+   * digit as a token, every other 3 bytes as one, plus 512 framing tokens, and
+   * from the second call on builds on the prompt size the provider reported.
+   * So the overrun is at most the input rate (or cache-write, if dearer) times
+   * two thirds of the non-digit bytes added since the previous call (on the
+   * first call, of the whole prompt, less the framing allowance): text denser
+   * than 3 bytes a token, at worst one token per byte. Against a provider that
+   * reports no usage this shortfall is never observed and can recur per call.
+   * Details: `RunCostCap` in src/model/cost.ts.
+   *
    * Subagents spend inside it: the loop puts a `costCap` handle on the tool
    * context (see ToolContext), and the task tool starts each subagent with
    * what is left and counts what it spends.
@@ -231,17 +243,15 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
         charge: (microUSD) => costCap.add(microUSD),
       }
     : undefined;
-  const toolsBytes = costCap
-    ? Buffer.byteLength(
-        JSON.stringify(
-          tools.map((t) => ({
-            name: t.name,
-            description: t.description,
-            input_schema: t.inputSchema,
-          })),
-        ),
+  const toolsJson = costCap
+    ? JSON.stringify(
+        tools.map((t) => ({
+          name: t.name,
+          description: t.description,
+          input_schema: t.inputSchema,
+        })),
       )
-    : 0;
+    : "";
 
   // ── soul_object enforcement (Phase 2.1) ─────────────────────────────
   // Lisa's soul_object tool registers a constitutional objection here. When
@@ -302,10 +312,7 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
     let turnMaxTokens = maxTokens;
     if (costCap) {
       const verdict = costCap.admit({
-        promptBytes:
-          Buffer.byteLength(currentSystemPrompt) +
-          toolsBytes +
-          Buffer.byteLength(JSON.stringify(messages)),
+        prompt: [currentSystemPrompt, toolsJson, JSON.stringify(messages)],
         maxTokens,
       });
       if (!verdict.proceed) {

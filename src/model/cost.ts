@@ -179,6 +179,39 @@ export function reservePromptTokens(bytes: number): number {
 }
 
 /**
+ * Tokens a provider adds to every request that are not in its bytes: role and
+ * turn markers, and the tool-use preamble (Anthropic documents 313–346 tokens
+ * for it on current Claude models).
+ */
+export const PROMPT_FRAMING_TOKENS = 512;
+
+function asciiDigits(text: string): number {
+  let digits = 0;
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    if (code >= 48 && code <= 57) digits++;
+  }
+  return digits;
+}
+
+/**
+ * Conservative token count for prompt text, before framing. Every ASCII digit
+ * counts as a token of its own: tokenizers split long numbers into one- to
+ * three-digit tokens (Gemini's into single digits), and no token covers less
+ * than a byte, so a digit-heavy tool result — logs, tables, IDs — can never be
+ * under-counted. Every other three UTF-8 bytes count as one token.
+ */
+export function reservePromptTokensForText(parts: readonly string[]): number {
+  let digits = 0;
+  let bytes = 0;
+  for (const part of parts) {
+    digits += asciiDigits(part);
+    bytes += Buffer.byteLength(part);
+  }
+  return digits + reservePromptTokens(bytes - digits);
+}
+
+/**
  * The model a call runs on — or, when it may be served by any of several (a
  * fallback chain), all of them: the cap then reserves and charges at the
  * dearest.
@@ -383,12 +416,37 @@ function sameModel(a: string, b: string): boolean {
  * a fallback chain's links. Each call is reserved at the dearest of them and
  * charged at the one the provider says served it (the dearest when it does
  * not say, or names one outside the list).
+ *
+ * The bound. A run that keeps to the verdicts ends above its cap by at most
+ * the prompt tokens its LAST call carried beyond what was reserved for it,
+ * priced at the dearer of the input and cache-write rates. Output cannot add
+ * to it: the provider is held to the ceiling. An earlier call's shortfall
+ * cannot either: it is in the reported spend the next check reads. The
+ * reservation is `reservePromptTokensForText` + `PROMPT_FRAMING_TOKENS` for the
+ * whole prompt, and from the second call on at least the prompt size the
+ * provider last reported plus the estimate for what was added since. A token
+ * covers at least one byte and digits are already counted one per token, so
+ * the shortfall is at most two thirds of the non-digit bytes added since the
+ * previous call (of the whole prompt, less the framing allowance, on the
+ * first call) — reached only by text that tokenizes at about one byte a
+ * token. Exception: a provider that reports no usage is charged its
+ * reservation, so its shortfall is never observed and can recur on every call.
  */
 export class RunCostCap {
   private spent = 0;
-  /** What the provider counted for the previous request's prompt: a floor under the next. */
+  /**
+   * The prompt size the provider last reported, and this cap's own estimate
+   * of that same prompt: the next reservation is the reported size plus the
+   * estimate for what was added since, so only new content is ever estimated.
+   */
   private lastPromptTokens = 0;
-  private admitted: { promptBytes: number; promptTokens: number; maxTokens: number } | null = null;
+  private lastPromptEstimate = 0;
+  private admitted: {
+    promptBytes: number;
+    promptTokens: number;
+    promptEstimate: number;
+    maxTokens: number;
+  } | null = null;
 
   private readonly models: readonly string[];
 
@@ -428,11 +486,24 @@ export class RunCostCap {
   }
 
   /**
-   * May the next call be made? `promptBytes` is the UTF-8 size of everything
-   * it will send. On `proceed`, pass the verdict's `maxTokens` to the provider.
+   * May the next call be made? `prompt` is everything it will send (system
+   * prompt, tool definitions, transcript). On `proceed`, pass the verdict's
+   * `maxTokens` to the provider.
+   *
+   * The prompt is reserved at the larger of the conservative estimate of the
+   * whole of it (`reservePromptTokensForText` plus `PROMPT_FRAMING_TOKENS`)
+   * and, once a provider has reported a prompt size, that size plus the
+   * estimate for what was added since.
    */
-  admit(next: { promptBytes: number; maxTokens: number }): CostCapVerdict {
-    const promptTokens = Math.max(this.lastPromptTokens, reservePromptTokens(next.promptBytes));
+  admit(next: { prompt: readonly string[]; maxTokens: number }): CostCapVerdict {
+    const promptEstimate = reservePromptTokensForText(next.prompt);
+    const promptBytes = next.prompt.reduce((sum, part) => sum + Buffer.byteLength(part), 0);
+    const promptTokens = Math.max(
+      promptEstimate + PROMPT_FRAMING_TOKENS,
+      this.lastPromptTokens > 0
+        ? this.lastPromptTokens + Math.max(0, promptEstimate - this.lastPromptEstimate)
+        : 0,
+    );
     const verdict = checkCostCap({
       model: this.models,
       capMicroUSD: this.capMicroUSD,
@@ -441,14 +512,19 @@ export class RunCostCap {
       maxTokens: next.maxTokens,
     });
     this.admitted = verdict.proceed
-      ? { promptBytes: next.promptBytes, promptTokens, maxTokens: verdict.maxTokens }
+      ? { promptBytes, promptTokens, promptEstimate, maxTokens: verdict.maxTokens }
       : null;
     return verdict;
   }
 
   /** Count the call made after `admit` against the cap; `model` is the one that served it, if known. */
   charge(call: { usage: ProviderUsage; output: readonly unknown[]; model?: string }): void {
-    const admitted = this.admitted ?? { promptBytes: 0, promptTokens: 0, maxTokens: 0 };
+    const admitted = this.admitted ?? {
+      promptBytes: 0,
+      promptTokens: 0,
+      promptEstimate: 0,
+      maxTokens: 0,
+    };
     this.admitted = null;
     const served = call.model;
     const amount = capChargeMicroUSD({
@@ -468,6 +544,9 @@ export class RunCostCap {
     this.onCharge?.(amount);
     const { inputTokens, cacheReadTokens, cacheWriteTokens } = call.usage;
     const prompt = inputTokens + cacheReadTokens + cacheWriteTokens;
-    if (Number.isFinite(prompt) && prompt > 0) this.lastPromptTokens = prompt;
+    if (Number.isFinite(prompt) && prompt > 0) {
+      this.lastPromptTokens = prompt;
+      this.lastPromptEstimate = admitted.promptEstimate;
+    }
   }
 }

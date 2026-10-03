@@ -447,9 +447,10 @@ describe("runAgent — per-run USD cap (costCapMicroUSD)", () => {
 
   test("stops a looping run deterministically, and the run ends under its cap", async () => {
     // $0.03 cap, 11_200 per full turn. Turns 1 and 2 spend 22_400. Before turn
-    // 3 the loop reserves the 10k-token prompt (4_200) and has 3_400 left for
-    // output, so it admits the call with the output ceiling cut to 971 tokens.
-    // Before turn 4 not even the prompt fits: stop.
+    // 3 the loop reserves the 10k-token prompt the provider reported plus the
+    // estimate for the tool round added since (4_200 + a few), and has under
+    // 3_400 left for output, so it admits the call with the output ceiling cut
+    // to 964 tokens. Before turn 4 not even the prompt fits: stop.
     const { result, calls, events } = run(30_000);
     const r = await result;
     assert.equal(r.stopReason, "budget_exceeded");
@@ -460,9 +461,9 @@ describe("runAgent — per-run USD cap (costCapMicroUSD)", () => {
     assert.ok(calls[0]!.maxTokens! > 8_000 && calls[0]!.maxTokens! < 8_572);
     assert.deepEqual(
       calls.slice(1).map((c) => c.maxTokens),
-      [4_171, 971],
+      [4_164, 964],
     );
-    assert.equal(faceCost(r), 29_999);
+    assert.equal(faceCost(r), 29_974);
     assert.ok(faceCost(r) <= 30_000, "the run must end under its cap");
     const info = events.filter((e) => e.type === "info" && e.message?.includes("cost cap"));
     assert.equal(info.length, 1);
@@ -759,6 +760,97 @@ describe("runAgent — per-run USD cap (costCapMicroUSD)", () => {
     assert.equal(calls.length, 1, "the 2 MB prompt does not fit and is never sent");
     assert.ok(rebuilds >= 1);
     assert.ok(trueSpend <= 300_000, `true spend ${trueSpend}`);
+  });
+
+  test("a digit-heavy tool result does not push the run over its cap", async () => {
+    // 300 KB of digits that tokenize at 1.5 bytes a token: reserving them at 3
+    // bytes a token let a $2 run end at 1.28× its cap.
+    const big = "7".repeat(300_000);
+    const calls: ProviderRunOpts[] = [];
+    let trueSpend = 0;
+    const provider: Provider = {
+      name: "fake",
+      async runTurn(opts: ProviderRunOpts): Promise<ProviderResult> {
+        calls.push(opts);
+        const text = opts.systemPrompt + JSON.stringify(opts.messages);
+        const digits = (text.match(/[0-9]/g) ?? []).length;
+        const usage = {
+          inputTokens: Math.ceil(digits / 1.5) + Math.ceil((Buffer.byteLength(text) - digits) / 4),
+          outputTokens: Math.min(500, opts.maxTokens ?? 500),
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+        };
+        // claude-sonnet-4-6 at face value: input $4.20/M, output $21/M.
+        trueSpend += Math.ceil(
+          (usage.inputTokens * 4_200_000 + usage.outputTokens * 21_000_000) / 1e6,
+        );
+        return { content: [toolUseBlock(`tu_${calls.length}`)], stopReason: "tool_use", usage };
+      },
+    };
+    const r = await runAgent({
+      provider,
+      systemPrompt: "sys",
+      tools: [{ ...echoTool, execute: async () => big }],
+      toolCtx: makeToolCtx(),
+      history: [],
+      userMessage: "go",
+      model: "claude-sonnet-4-6",
+      maxIterations: 32,
+      costCapMicroUSD: 2_000_000,
+    });
+    assert.equal(r.stopReason, "budget_exceeded");
+    assert.ok(trueSpend <= 2_000_000, `true spend ${trueSpend} over ${calls.length} calls`);
+  });
+
+  test("the documented bound: at most two thirds of the last call's new non-digit bytes", async () => {
+    // The worst any tokenizer can do is one token per byte. A provider that
+    // tokenizes everything that densely is the case the reservation cannot
+    // see coming; the overshoot is still limited to the input cost of two
+    // thirds of what the last call added (see the costCapMicroUSD comment).
+    const result = "q".repeat(30_000);
+    const promptBytes: number[] = [];
+    let trueSpend = 0;
+    const provider: Provider = {
+      name: "fake",
+      async runTurn(opts: ProviderRunOpts): Promise<ProviderResult> {
+        const bytes =
+          Buffer.byteLength(opts.systemPrompt) + Buffer.byteLength(JSON.stringify(opts.messages));
+        promptBytes.push(bytes);
+        // Every output token it was allowed, too: no slack left to absorb it.
+        const usage = {
+          inputTokens: bytes,
+          outputTokens: Math.min(2_000, opts.maxTokens ?? 2_000),
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+        };
+        trueSpend += Math.ceil(
+          (usage.inputTokens * 420_000 + usage.outputTokens * 3_500_000) / 1e6,
+        );
+        return {
+          content: [toolUseBlock(`tu_${promptBytes.length}`)],
+          stopReason: "tool_use",
+          usage,
+        };
+      },
+    };
+    const cap = 100_000;
+    const r = await runAgent({
+      provider,
+      systemPrompt: "sys",
+      tools: [{ ...echoTool, execute: async () => result }],
+      toolCtx: makeToolCtx(),
+      history: [],
+      userMessage: "go",
+      model: MODEL,
+      maxIterations: 32,
+      costCapMicroUSD: cap,
+    });
+    assert.equal(r.stopReason, "budget_exceeded");
+    const n = promptBytes.length;
+    const added = n > 1 ? promptBytes[n - 1]! - promptBytes[n - 2]! : promptBytes[0]!;
+    const bound = Math.ceil(((2 / 3) * added * 420_000) / 1e6);
+    assert.ok(trueSpend > cap, "this provider is meant to overshoot");
+    assert.ok(trueSpend - cap <= bound, `over by ${trueSpend - cap}, bound ${bound}`);
   });
 
   test("a large transcript is counted before it is sent", async () => {
