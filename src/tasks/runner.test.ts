@@ -1618,6 +1618,118 @@ test("a parked run can be cancelled, and a manual run is never auto-retried", as
   });
 });
 
+test("a run parked for a retry does not continue once Proactive is off or the task is switched off: it ends cancelled, visibly, with no notice (reviewer probe park-switch)", async () => {
+  for (const act of ["proactive_off", "task_disabled"] as const) {
+    await withHome(async () => {
+      const task = await dueRoutine({ schedule: { expr: "every:30m" } });
+      let now = NOW;
+      let unattended = true;
+      let sent = 0;
+      const { provider, calls } = scripted([
+        async () => {
+          throw new Error("upstream 529 overloaded");
+        },
+        turn([call("send_message", { to: "boss" })]),
+        say("done"),
+      ]);
+      const { notices, deliver } = collector();
+      const runner = makeRunner({
+        provider,
+        deliver,
+        tools: [tool("send_message", async () => `sent ${++sent}`)],
+        approvalFactory: () => ({ approval: () => ({ allow: true }) }),
+        now: () => now,
+        unattendedAllowed: () => unattended,
+      });
+      await runner.tick();
+      await runner.drain();
+      const parked = (await getTask(task.id))!;
+      assert.ok(parked.activeRunId && parked.resumeAt, "parked for its retry");
+      const runId = parked.activeRunId;
+
+      if (act === "proactive_off") unattended = false;
+      else {
+        const { disableTask } = await import("./lifecycle.js");
+        await updateTask(task.id, (t) => disableTask(t));
+      }
+      now = parked.resumeAt + 1;
+      assert.deepEqual((await runner.tick()).started, [task.id], `${act}: picked up to be ended`);
+      await runner.drain();
+
+      assert.equal(calls.length, 1, `${act}: no further model call`);
+      assert.equal(sent, 0, `${act}: no side effect`);
+      const t = (await getTask(task.id))!;
+      assert.equal(t.activeRunId, undefined, `${act}: the pointer is cleared`);
+      assert.equal(t.resumeAt, undefined);
+      const run = (await loadRun(task.id, runId))!.run;
+      assert.equal(run.state, "cancelled");
+      assert.equal(run.stopReason, act);
+      assert.match(
+        run.summary ?? "",
+        act === "proactive_off" ? /Proactive is off/ : /the task was switched off/,
+      );
+      if (act === "proactive_off") {
+        assert.equal(t.state, "scheduled");
+        assert.ok(
+          t.nextRunAt !== undefined && t.nextRunAt > now,
+          "the next occurrence is computed",
+        );
+      } else {
+        assert.equal(t.state, "paused");
+        assert.equal(t.nextRunAt, undefined);
+      }
+      assert.equal(notices.length, 0, `${act}: no notice for this cancellation`);
+      // And it stays ended: later ticks do nothing.
+      now += 3_600_000;
+      if (act === "proactive_off") unattended = false;
+      assert.deepEqual((await runner.tick()).started, []);
+    });
+  }
+});
+
+test("an interrupted run is not resumed with Proactive off — unless the user started it by hand", async () => {
+  for (const manual of [false, true]) {
+    await withHome(async () => {
+      const task = manual
+        ? await dueRoutine({ enabled: false, state: "draft", nextRunAt: undefined })
+        : await dueRoutine();
+      const reached = deferred();
+      const first = scripted([
+        (o) => {
+          reached.resolve();
+          return hang(o.signal);
+        },
+      ]);
+      const a = makeRunner({ provider: first.provider });
+      if (manual) assert.deepEqual(await a.runNow(task.id), { ok: true });
+      else await a.tick();
+      await reached.promise;
+      await a.stop(); // the process goes away mid-run
+      const runId = (await getTask(task.id))!.activeRunId!;
+      assert.ok(runId);
+
+      // The next process starts with the Proactive switch off.
+      const second = scripted([say("finished after the restart")]);
+      const b = makeRunner({ provider: second.provider, unattendedAllowed: () => false });
+      assert.deepEqual((await b.tick()).started, [task.id]);
+      await b.drain();
+      const run = (await loadRun(task.id, runId))!.run;
+      const t = (await getTask(task.id))!;
+      assert.equal(t.activeRunId, undefined);
+      if (manual) {
+        assert.equal(second.calls.length, 1, "a manual run needs only that the task exists");
+        assert.equal(run.state, "succeeded");
+        assert.equal(t.state, "draft");
+      } else {
+        assert.equal(second.calls.length, 0, "a scheduled run is gated like a new one");
+        assert.equal(run.state, "cancelled");
+        assert.equal(run.stopReason, "proactive_off");
+        assert.equal(t.state, "scheduled");
+      }
+    });
+  }
+});
+
 test("credential failures are not retried; the task is paused after a few and says so once", async () => {
   await withHome(async () => {
     const task = await dueRoutine({ schedule: { expr: "every:1h" } });

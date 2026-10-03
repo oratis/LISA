@@ -512,12 +512,24 @@ export class TaskRunner {
 
   // ── scheduling ──
 
-  /** Is there work on this task for this runner at `now`? The lease has the final say. */
+  /** The Proactive master switch (or the injected stand-in). */
+  private unattendedAllowed(): boolean {
+    return (this.opts.unattendedAllowed ?? getAutonomyEnabled)();
+  }
+
+  /**
+   * Is there work on this task for this runner at `now`? The lease has the final say.
+   *
+   * A task with a run to continue — interrupted by a crash, or parked until
+   * its retry time — is due whatever the switches say: picking it up is how
+   * it gets ENDED when they are closed. Whether it may actually continue is
+   * decided under the lease by the same gate that starts runs (resume()): a
+   * scheduled run needs the Proactive switch on and the task enabled, a manual
+   * one only that the task still exists. A closed gate finishes it as
+   * cancelled; it is never left parked indefinitely.
+   */
   private isDue(task: Task, now: number, unattended: boolean): boolean {
     if (task.host !== "any" && task.host !== this.host) return false;
-    // A run in flight belongs to the occurrence that started it: it is always
-    // carried to an end, even when the task has since been paused. One that is
-    // parked between attempts waits for its retry time (or a cancel).
     if (task.activeRunId) {
       return !!task.cancelRequestedAt || task.resumeAt === undefined || task.resumeAt <= now;
     }
@@ -555,7 +567,7 @@ export class TaskRunner {
       return { started };
     }
     const now = this.now();
-    const unattended = (this.opts.unattendedAllowed ?? getAutonomyEnabled)();
+    const unattended = this.unattendedAllowed();
     const candidates = tasks
       .filter((t) => !this.active.has(t.id) && this.isDue(t, now, unattended))
       // Fair order: interrupted runs first, then whoever has waited longest
@@ -765,7 +777,7 @@ export class TaskRunner {
       }
 
       const manual = task.state === "queued" && !!task.queued?.manual;
-      const unattended = (this.opts.unattendedAllowed ?? getAutonomyEnabled)();
+      const unattended = this.unattendedAllowed();
       if (!manual && !this.isDue(task, now, unattended)) return;
 
       // A one-off whose moment passed long ago is reported, not run.
@@ -891,6 +903,32 @@ export class TaskRunner {
   private async resume(task: Task, loaded: LoadedRun, slot: Slot): Promise<void> {
     const run = loaded.run;
     const now = this.now();
+
+    if (task.cancelRequestedAt) {
+      await this.finish(task, run, { state: "cancelled", stopReason: "cancelled", summary: "" });
+      return;
+    }
+    // Continuing a run is gated exactly like starting one. A run the user
+    // started by hand needs only that the task still exists (it does: we are
+    // here). Any other run needs the Proactive switch on and the task enabled;
+    // when either is off now, the run ends as cancelled — visible in the run
+    // history, no notice — and the task goes back to rest.
+    if (!run.manual) {
+      const closed = !this.unattendedAllowed()
+        ? { stop: "proactive_off", why: "Proactive is off" }
+        : !task.enabled
+          ? { stop: "task_disabled", why: "the task was switched off" }
+          : null;
+      if (closed) {
+        await this.finish(task, run, {
+          state: "cancelled",
+          stopReason: closed.stop,
+          summary: `Not continued: ${closed.why}.`,
+        });
+        return;
+      }
+    }
+
     // Two ways to get here: the holder died (an interruption), or the run was
     // parked after a failed attempt and its retry time has come.
     const retry =
@@ -910,10 +948,6 @@ export class TaskRunner {
       now,
     );
 
-    if (task.cancelRequestedAt) {
-      await this.finish(task, run, { state: "cancelled", stopReason: "cancelled", summary: "" });
-      return;
-    }
     if ((run.resumes ?? 0) > MAX_RESUMES) {
       await this.finish(task, run, {
         state: "failed",
