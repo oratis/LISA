@@ -559,12 +559,19 @@ export class TaskRunner {
    * decided under the lease by the same gate that starts runs (resume()): a
    * scheduled run needs the Proactive switch on and the task enabled, a manual
    * one only that the task still exists. A closed gate finishes it as
-   * cancelled; it is never left parked indefinitely.
+   * cancelled — except one case: the run of an enabled ONE-OFF, with only the
+   * Proactive switch off, waits parked (`queued`) for the switch, because a
+   * one-off has no next occurrence and ending it would lose the task. While
+   * the switch is off such a parked run is not due.
    */
   private isDue(task: Task, now: number, unattended: boolean): boolean {
     if (task.host !== "any" && task.host !== this.host) return false;
     if (task.activeRunId) {
-      return !!task.cancelRequestedAt || task.resumeAt === undefined || task.resumeAt <= now;
+      if (task.cancelRequestedAt) return true;
+      if (task.state === "queued" && !unattended && task.enabled && !isRecurring(task)) {
+        return false;
+      }
+      return task.resumeAt === undefined || task.resumeAt <= now;
     }
     const due = task.nextRunAt !== undefined && task.nextRunAt <= now;
     if (task.state === "queued") {
@@ -976,7 +983,24 @@ export class TaskRunner {
     // when either is off now, the run ends as cancelled — visible in the run
     // history, no notice.
     if (!startedByUser(run)) {
-      const closed = !this.unattendedAllowed()
+      const proactiveOff = !this.unattendedAllowed();
+      if (proactiveOff && task.enabled && !isRecurring(task)) {
+        // Except an enabled one-off held back only by the Proactive switch: it
+        // has no next occurrence, so ending its run would lose the user's task,
+        // and starting it afresh later would repeat its side effects. The run
+        // stays parked — no model call, no tool call, nothing counted — and
+        // continues with its ledger once the switch is back on (isDue skips it
+        // until then). A disabled one-off is still cancelled below.
+        if (task.state !== "queued") {
+          const held = await this.saveTask(task.id, (t) => {
+            if (t.activeRunId !== run.id) return false;
+            t.state = "queued";
+          });
+          if (held) this.emit({ type: "task_updated", task: held });
+        }
+        return;
+      }
+      const closed = proactiveOff
         ? { stop: "proactive_off", why: "Proactive is off" }
         : !task.enabled
           ? { stop: "task_disabled", why: "the task was switched off" }

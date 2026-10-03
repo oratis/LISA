@@ -1844,6 +1844,127 @@ test("a run parked for a retry does not continue once Proactive is off or the ta
   }
 });
 
+/** An enabled one-off due at NOW. */
+const dueOneOff = (over: Partial<NewTask> = {}) =>
+  dueRoutine({
+    kind: "oneoff",
+    title: "Remind me",
+    schedule: { expr: `at:${new Date(NOW).toISOString()}`, tz: "UTC" },
+    ...over,
+  });
+
+test("a parked one-off waits for the Proactive switch instead of being cancelled, then continues with its ledger (reviewer probe n2-oneoff)", async () => {
+  await withHome(async () => {
+    const task = await dueOneOff();
+    let now = NOW;
+    let unattended = true;
+    let sent = 0;
+    const { provider, calls } = scripted([
+      turn([call("send_message", { to: "mum" })]),
+      async () => {
+        throw new Error("upstream 529 overloaded");
+      },
+      say("Reminder sent."),
+    ]);
+    const { notices, deliver } = collector();
+    const runner = makeRunner({
+      provider,
+      deliver,
+      tools: [tool("send_message", async () => `sent ${++sent}`)],
+      approvalFactory: () => ({ approval: () => ({ allow: true }) }),
+      now: () => now,
+      unattendedAllowed: () => unattended,
+    });
+    await runner.tick();
+    await runner.drain();
+    const parked = (await getTask(task.id))!;
+    assert.ok(parked.activeRunId && parked.resumeAt, "parked for its retry");
+    assert.equal(sent, 1);
+    const runId = parked.activeRunId;
+
+    // The switch goes off; the retry time passes, and passes again.
+    unattended = false;
+    for (const step of [1, 3_600_000]) {
+      now = parked.resumeAt + step;
+      assert.deepEqual((await runner.tick()).started, [], "not picked up while the switch is off");
+      await runner.drain();
+    }
+    let t = (await getTask(task.id))!;
+    assert.equal(t.activeRunId, runId, "still parked, same run");
+    assert.equal(t.state, "queued");
+    assert.equal((await loadRun(task.id, runId))!.run.state, "interrupted");
+    assert.equal(calls.length, 2, "no model call while off");
+    assert.equal(notices.length, 0);
+
+    // Back on: the same run continues, and its side effect is not repeated.
+    unattended = true;
+    assert.deepEqual((await runner.tick()).started, [task.id]);
+    await runner.drain();
+    const run = (await loadRun(task.id, runId))!.run;
+    assert.equal(run.state, "succeeded");
+    assert.equal(sent, 1, "the ledger kept the side effect from running twice");
+    t = (await getTask(task.id))!;
+    assert.equal(t.state, "succeeded");
+    assert.equal(t.activeRunId, undefined);
+    assert.equal(notices.length, 1);
+    assert.equal(notices[0]!.kind, "task_result");
+  });
+});
+
+test("a one-off's interrupted run also waits for the switch; a DISABLED one-off is still cancelled", async () => {
+  for (const disabled of [false, true]) {
+    await withHome(async () => {
+      const task = await dueOneOff();
+      const reached = deferred();
+      const first = scripted([
+        (o) => {
+          reached.resolve();
+          return hang(o.signal);
+        },
+      ]);
+      const a = makeRunner({ provider: first.provider });
+      await a.tick();
+      await reached.promise;
+      await a.stop(); // the process goes away mid-run
+      const runId = (await getTask(task.id))!.activeRunId!;
+      if (disabled) {
+        const { disableTask } = await import("./lifecycle.js");
+        await updateTask(task.id, (t) => disableTask(t));
+      }
+
+      let unattended = false;
+      const second = scripted([say("done after the switch came back")]);
+      const b = makeRunner({ provider: second.provider, unattendedAllowed: () => unattended });
+      await b.tick();
+      await b.drain();
+      let run = (await loadRun(task.id, runId))!.run;
+      let t = (await getTask(task.id))!;
+      if (disabled) {
+        assert.equal(run.state, "cancelled", "the user switched it off: it ends");
+        assert.equal(t.activeRunId, undefined);
+        assert.equal(second.calls.length, 0);
+        return;
+      }
+      assert.equal(second.calls.length, 0);
+      assert.equal(t.activeRunId, runId, "kept, not cancelled");
+      assert.equal(t.state, "queued");
+      assert.equal(run.state, "running");
+      assert.equal(run.resumes, undefined, "waiting is not a resume");
+      assert.deepEqual((await b.tick()).started, [], "and it is not picked up again while off");
+
+      unattended = true;
+      assert.deepEqual((await b.tick()).started, [task.id]);
+      await b.drain();
+      run = (await loadRun(task.id, runId))!.run;
+      t = (await getTask(task.id))!;
+      assert.equal(second.calls.length, 1);
+      assert.equal(run.state, "succeeded");
+      assert.equal(run.resumes, 1, "counted as the interruption it was, not as a retry");
+      assert.equal(t.state, "succeeded");
+    });
+  }
+});
+
 test("an interrupted run is not resumed with Proactive off — unless the user started it by hand", async () => {
   for (const manual of [false, true]) {
     await withHome(async () => {
