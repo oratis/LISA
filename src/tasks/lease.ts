@@ -11,6 +11,8 @@
  *
  *  1. The holder dies. Its lease becomes stealable — at once when its process
  *     is provably gone on this host, on expiry when it lived on another host.
+ *     On the hosted edition every holder counts as "another host": instances
+ *     can share a hostname and pids, so a pid proves nothing there.
  *  2. The holder is alive but stalled (a blocked event loop, a sleeping
  *     laptop). On this host a live holder is NEVER stolen from, however long
  *     its lease has been expired: "expired" only means "did not renew", and a
@@ -45,6 +47,7 @@ import { randomBytes } from "node:crypto";
 import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { isCloud } from "../edition.js";
 import { withFileLock } from "../soul/lock.js";
 import { tasksDir } from "./store.js";
 
@@ -100,6 +103,22 @@ export interface AcquireLeaseOptions {
   now?: () => number;
   /** Test seam: when did the process with this pid start (epoch ms)? null = cannot tell. */
   processStartedAt?: (pid: number) => Promise<number | null>;
+  /**
+   * Judge a holder on this host by its pid and process start time. Default:
+   * yes, except on the hosted edition — see pidLivenessDefault().
+   */
+  pidLiveness?: boolean;
+}
+
+/**
+ * Whether a holder's pid says anything about it. Not on the hosted edition:
+ * Cloud Run instances can share a hostname (and, in containers, pids), so a
+ * holder on another instance would look like a dead — or recycled — process
+ * here and be stolen from at once. There every holder is treated as remote:
+ * stolen from on expiry only.
+ */
+export function pidLivenessDefault(): boolean {
+  return !isCloud();
 }
 
 const SELF_STARTED = Math.round(Date.now() - process.uptime() * 1000);
@@ -175,8 +194,9 @@ async function holderIsGone(
   body: LeaseBody,
   now: number,
   startedAt: (pid: number) => Promise<number | null>,
+  pidLiveness: boolean,
 ): Promise<boolean> {
-  if (body.host !== os.hostname()) return body.expiresAt <= now;
+  if (!pidLiveness || body.host !== os.hostname()) return body.expiresAt <= now;
   if (!(body.pid > 0)) return body.expiresAt <= now;
   if (body.pid === process.pid) {
     // A previous life of this pid.
@@ -287,6 +307,7 @@ export async function acquireLease(
   const owner = opts.owner ?? `${process.pid}-${randomBytes(6).toString("hex")}`;
   const token = randomBytes(12).toString("hex");
   const startedAt = opts.processStartedAt ?? psStartedAt;
+  const pidLiveness = opts.pidLiveness ?? pidLivenessDefault();
   // Not recursive: the tasks directory must already exist. A lease is never
   // what brings a deleted home back.
   await fsp.mkdir(path.dirname(file)).catch((e: NodeJS.ErrnoException) => {
@@ -312,7 +333,7 @@ export async function acquireLease(
         if (current.kind === "missing") return await createExclusive(file, body());
         if (current.kind === "malformed") {
           if (current.ageMs < MALFORMED_GRACE_MS) return false; // may be mid-write
-        } else if (!(await holderIsGone(current.body, now(), startedAt))) {
+        } else if (!(await holderIsGone(current.body, now(), startedAt, pidLiveness))) {
           return false;
         }
         // Compare-and-swap: only the exact body judged stale is removed.
@@ -470,7 +491,10 @@ function isOrphanHere(read: Read): read is Extract<Read, { kind: "ok" }> {
  * is compare-and-swap on the body just read. Best effort: what cannot be
  * removed now is tried again at the next tick. Returns how many were removed.
  */
-export async function sweepOrphanLeases(): Promise<number> {
+export async function sweepOrphanLeases(opts: { pidLiveness?: boolean } = {}): Promise<number> {
+  // Without pid liveness a lease naming "this" pid may be another instance's;
+  // an orphan there simply expires and is stolen on expiry.
+  if (!(opts.pidLiveness ?? pidLivenessDefault())) return 0;
   const dir = path.join(tasksDir(), ".leases");
   let names: string[];
   try {
@@ -503,7 +527,11 @@ export async function sweepOrphanLeases(): Promise<number> {
  * Is some live runner holding this task's lease right now? Read-only: it takes
  * nothing and steals nothing.
  */
-export async function taskLeaseHeld(taskId: string, now: number = Date.now()): Promise<boolean> {
+export async function taskLeaseHeld(
+  taskId: string,
+  now: number = Date.now(),
+  opts: { pidLiveness?: boolean } = {},
+): Promise<boolean> {
   let read: Read;
   try {
     read = await readLease(leasePath(`task-${taskId}`));
@@ -511,7 +539,12 @@ export async function taskLeaseHeld(taskId: string, now: number = Date.now()): P
     return false;
   }
   if (read.kind !== "ok") return false;
-  return !(await holderIsGone(read.body, now, psStartedAt));
+  return !(await holderIsGone(
+    read.body,
+    now,
+    psStartedAt,
+    opts.pidLiveness ?? pidLivenessDefault(),
+  ));
 }
 
 /** The lease that serialises runs of one task. */

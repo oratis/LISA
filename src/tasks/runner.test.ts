@@ -575,6 +575,40 @@ test("a renewal that ERRORS while the lease is still ours does not strand the ta
   }
 });
 
+test("a hosted runner never judges a lease holder by its pid: only expiry frees it (instances share a hostname)", async () => {
+  await withHome(async () => {
+    const task = await dueRoutine();
+    const realHostname = os.hostname;
+    (os as { hostname: () => string }).hostname = () => "localhost";
+    try {
+      // Another instance holds the task: its pid means nothing in this one.
+      await fsp.mkdir(path.join(tasksDir(), ".leases"), { recursive: true });
+      await fsp.writeFile(
+        path.join(tasksDir(), ".leases", `task-${task.id}.lease`),
+        JSON.stringify({
+          owner: "instance-2",
+          token: "theirs",
+          pid: 2 ** 30,
+          host: "localhost",
+          started: 1,
+          ts: NOW,
+          expiresAt: NOW + 90_000,
+        }),
+      );
+      let now = NOW;
+      const { provider, calls } = scripted([say("done")]);
+      const cloud = makeRunner({ provider, host: "cloud", now: () => now });
+      assert.deepEqual((await cloud.tick()).started, [], "unexpired: not stolen");
+      now = NOW + 91_000;
+      assert.deepEqual((await cloud.tick()).started, [task.id], "expired: taken");
+      await cloud.drain();
+      assert.equal(calls.length, 1);
+    } finally {
+      (os as { hostname: () => string }).hostname = realHostname;
+    }
+  });
+});
+
 test("concurrency is capped and the longest-waiting task goes first", async () => {
   await withHome(async () => {
     const recent = await dueRoutine({ title: "recent" });

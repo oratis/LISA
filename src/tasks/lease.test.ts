@@ -4,7 +4,7 @@ import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { homeScope } from "../paths.js";
-import { acquireLease, acquireTaskLease, sweepOrphanLeases } from "./lease.js";
+import { acquireLease, acquireTaskLease, sweepOrphanLeases, taskLeaseHeld } from "./lease.js";
 import { tasksDir } from "./store.js";
 
 async function withHome<T>(fn: () => Promise<T>): Promise<T> {
@@ -474,6 +474,56 @@ test("a contender stalled inside the steal mutex past its staleness cannot win a
       Date.now = realNow;
       (fsp as { rm: typeof fsp.rm }).rm = realRm;
       (fsp as { rename: typeof fsp.rename }).rename = realRename;
+    }
+  });
+});
+
+test("hosted edition: a holder is never judged by its pid — instances can share a hostname — only expiry frees its lease", async () => {
+  await withHome(async () => {
+    const realHostname = os.hostname;
+    const realEdition = process.env.LISA_EDITION;
+    // Every Cloud Run instance may call itself the same thing.
+    (os as { hostname: () => string }).hostname = () => "localhost";
+    try {
+      const otherInstance = {
+        owner: "instance-2",
+        token: "tok",
+        host: "localhost",
+        started: 1,
+        ts: Date.now(),
+        expiresAt: Date.now() + 60_000,
+      };
+      // A pid that does not exist in THIS instance, and one that happens to equal ours.
+      for (const [name, pid] of [
+        ["task-hosted_dead", 2 ** 30],
+        ["task-hosted_same", process.pid],
+      ] as const) {
+        await plant(name, { ...otherInstance, pid });
+        assert.equal(
+          await acquireLease(name, { autoRenew: false, pidLiveness: false }),
+          null,
+          `${name}: unexpired, so respected`,
+        );
+        assert.equal(await taskLeaseHeld(name.slice(5), Date.now(), { pidLiveness: false }), true);
+        process.env.LISA_EDITION = "cloud"; // the hosted edition's default
+        assert.equal(await acquireLease(name, { autoRenew: false }), null, `${name}: by default`);
+        assert.equal(await sweepOrphanLeases(), 0, "no orphan sweep hosted");
+        delete process.env.LISA_EDITION;
+        // Expired: now it is stolen.
+        await plant(name, { ...otherInstance, pid, expiresAt: Date.now() - 1 });
+        const lease = await acquireLease(name, { autoRenew: false, pidLiveness: false });
+        assert.ok(lease, `${name}: stolen on expiry`);
+        await lease.release();
+      }
+      // The Mac edition, for contrast: a dead pid on "this host" is stolen at once.
+      await plant("task-mac_dead", { ...otherInstance, pid: 2 ** 30 });
+      const mac = await acquireLease("task-mac_dead", { autoRenew: false });
+      assert.ok(mac);
+      await mac.release();
+    } finally {
+      (os as { hostname: () => string }).hostname = realHostname;
+      if (realEdition === undefined) delete process.env.LISA_EDITION;
+      else process.env.LISA_EDITION = realEdition;
     }
   });
 });

@@ -545,7 +545,7 @@ export class TaskRunner {
     }
     // A lease this process could not release (its removal failed) blocks its
     // task for every other process on this host: clear such orphans first.
-    const swept = await sweepOrphanLeases().catch(() => 0);
+    const swept = await sweepOrphanLeases({ pidLiveness: this.host !== "cloud" }).catch(() => 0);
     if (swept > 0) this.log(`removed ${swept} lease(s) left behind by an earlier run here`);
     let tasks: Task[];
     try {
@@ -671,6 +671,8 @@ export class TaskRunner {
         owner: this.owner,
         ttlMs: this.opts.leaseTtlMs ?? DEFAULT_LEASE_TTL_MS,
         now: this.now,
+        // Hosted: a pid proves nothing across instances; expiry decides.
+        pidLiveness: this.host !== "cloud",
         ...(this.opts.leaseRenewEveryMs ? { renewEveryMs: this.opts.leaseRenewEveryMs } : {}),
         // A renewal that fails or errors: we can no longer vouch for ownership.
         // Abort whatever is in flight; the fence stops every write after that.
