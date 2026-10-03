@@ -956,15 +956,26 @@ export class TaskRunner {
       await this.finish(task, run, { state: "cancelled", stopReason: "cancelled", summary: "" });
       return;
     }
+    // A run whose model had already given its final answer is not continued,
+    // only finished (no model call, no tool call) and its answer delivered —
+    // whatever its interruption count, and whatever the switches say: that is
+    // not a resume, so it is neither gated nor counted.
+    const answered = planResume(loaded.messages, "");
+    if (answered.kind === "finished") {
+      // The model had already answered; only the bookkeeping was lost.
+      await this.finish(task, run, {
+        state: "succeeded",
+        stopReason: "end_turn",
+        summary: answered.finalText,
+      });
+      return;
+    }
     // Continuing a run is gated exactly like starting one. A run the user
     // started by hand needs only that the task still exists (it does: we are
     // here). Any other run needs the Proactive switch on and the task enabled;
     // when either is off now, the run ends as cancelled — visible in the run
-    // history, no notice — and the task goes back to rest. A run whose model
-    // had already given its final answer is not continued, only finished (no
-    // model call, no tool call): that is not gated, like any other finish.
-    const answered = planResume(loaded.messages, "").kind === "finished";
-    if (!startedByUser(run) && !answered) {
+    // history, no notice.
+    if (!startedByUser(run)) {
       const closed = !this.unattendedAllowed()
         ? { stop: "proactive_off", why: "Proactive is off" }
         : !task.enabled
@@ -1014,7 +1025,7 @@ export class TaskRunner {
     let history: StoredMessage[] = [];
     let userMessage = "";
     if (plan.kind === "finished") {
-      // The model had already answered; only the bookkeeping was lost.
+      // Unreachable: an answered history was finished above (same messages).
       await this.finish(task, run, {
         state: "succeeded",
         stopReason: "end_turn",

@@ -14,6 +14,7 @@ import { listOutbox } from "./outbox.js";
 import {
   IN_FLIGHT,
   MAX_BLOCKED,
+  MAX_RESUMES,
   MAX_RETRIES,
   TaskRunner,
   type TaskRunnerOptions,
@@ -1135,6 +1136,45 @@ test("a run that had already answered when it was interrupted is finished withou
     assert.equal(loaded.run.summary, "All quiet today.");
     assert.equal(notices.length, 1);
     assert.equal(notices[0]!.summary, "All quiet today.");
+  });
+});
+
+test("an answered run is finished and delivered even at its last allowed interruption (reviewer probe answered-maxres)", async () => {
+  await withHome(async () => {
+    const task = await dueRoutine();
+    const { notices, deliver } = collector();
+    const runner1 = makeRunner({ provider: scripted([say("THE ANSWER")]).provider });
+    await runner1.tick();
+    await runner1.drain();
+    const runId = (await getTask(task.id))!.runs[0]!;
+    const finished = (await loadRun(task.id, runId))!;
+    // Interrupted MAX_RESUMES times already, then the final answer landed but
+    // the terminal record did not.
+    const { checkpointRun } = await import("./store.js");
+    await checkpointRun({
+      ...finished.run,
+      state: "running",
+      resumes: MAX_RESUMES,
+      endedAt: undefined,
+      summary: undefined,
+    });
+    await updateTask(task.id, (t) => {
+      t.state = "running";
+      t.activeRunId = runId;
+    });
+
+    const { provider, calls } = scripted([]);
+    const runner2 = makeRunner({ provider, deliver });
+    await runner2.tick();
+    await runner2.drain();
+    assert.equal(calls.length, 0);
+    const run = (await loadRun(task.id, runId))!.run;
+    assert.equal(run.state, "succeeded", "not failed as too_many_interruptions");
+    assert.equal(run.summary, "THE ANSWER");
+    assert.equal(run.resumes, MAX_RESUMES, "finishing is not a resume");
+    assert.equal(notices.length, 1);
+    assert.equal(notices[0]!.kind, "task_result");
+    assert.equal(notices[0]!.summary, "THE ANSWER");
   });
 });
 
