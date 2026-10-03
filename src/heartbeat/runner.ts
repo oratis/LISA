@@ -24,10 +24,14 @@ import { recordAutonomyRun, type AutonomyKind } from "../autonomy/runs.js";
 import { recentAgentRecap } from "../orchestrator/recent-recap.js";
 import type { ToolDefinition } from "../types.js";
 import type { Provider } from "../providers/types.js";
-import { loadHeartbeatConfig, type HeartbeatTask } from "./config.js";
+import {
+  HEARTBEAT_RUN_LOCK_STALE_MS,
+  heartbeatRunLockPath,
+  loadHeartbeatConfig,
+  type HeartbeatTask,
+} from "./config.js";
 
 const STATE_FILE = path.join(lisaGlobalHome(), "heartbeat-state.json");
-const RUN_LOCK = path.join(lisaGlobalHome(), "heartbeat.lock");
 
 interface HeartbeatState {
   lastRunAt: Record<string, string>;
@@ -75,9 +79,10 @@ export async function runHeartbeatOnce(opts: {
   // one is still running (long desires + short interval), skip rather than
   // double-run and race on soul state. timeoutMs:0 → fail fast, don't wait.
   try {
-    return await withFileLock(RUN_LOCK, () => runHeartbeatInner(opts), {
+    // Shared with `lisa tasks migrate-heartbeat`, which holds it while chores move.
+    return await withFileLock(heartbeatRunLockPath(), () => runHeartbeatInner(opts), {
       timeoutMs: 0,
-      staleMs: 6 * 60 * 60_000, // 6h: a heartbeat that's been "running" longer is surely dead
+      staleMs: HEARTBEAT_RUN_LOCK_STALE_MS, // a heartbeat "running" longer is surely dead
     });
   } catch (err) {
     if ((err as Error).message?.includes("timed out acquiring lock")) {

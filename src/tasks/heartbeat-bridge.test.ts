@@ -113,7 +113,15 @@ test("a heartbeat tick runs due tasks once and does NOT touch heartbeat.json", a
   // heartbeat.json is byte-for-byte what it was; no chore became a task.
   assert.equal(fs.readFileSync(heartbeatFile(), "utf8"), before);
   assert.deepEqual((await listTasks()).map((t) => t.title).sort(), ["later", "loud", "quiet"]);
-  assert.equal(await getTask(heartbeatTaskId("disk check")), null);
+  assert.equal(
+    await getTask(
+      heartbeatTaskId({
+        name: "disk check",
+        prompt: "Run `df -h /` and tell me if the disk is over 90% full.",
+      })!,
+    ),
+    null,
+  );
   assert.deepEqual(
     fs.readdirSync(home).filter((n) => n.includes(".bak")),
     [],

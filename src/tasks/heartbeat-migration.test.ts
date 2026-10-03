@@ -1,9 +1,13 @@
 import { test, before, after, afterEach, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { runTasksCommand } from "../cli/tasks.js";
+import { heartbeatRunLockPath } from "../heartbeat/config.js";
+import { withFileLock } from "../soul/lock.js";
+import { disableTask, pauseTask } from "./lifecycle.js";
 import {
   budgetForChore,
   describeMigration,
@@ -15,6 +19,7 @@ import {
   MIGRATION_WARNING,
   scheduleForChore,
   stillOnHeartbeat,
+  type RawChore,
 } from "./heartbeat-migration.js";
 import { createTask, getTask, listTasks, updateTask } from "./store.js";
 
@@ -62,6 +67,61 @@ const CONFIG = {
 // 30 minutes, as if the launchd job were installed with its default.
 const migrate = (over: Parameters<typeof migrateHeartbeatTasks>[0] = {}) =>
   migrateHeartbeatTasks({ now: NOW, heartbeatIntervalSec: 1800, ...over });
+
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((r) => (resolve = r));
+  return { promise, resolve };
+}
+
+/** The routine id of a chore (it always has one in these tests). */
+const idOf = (chore: RawChore): string => heartbeatTaskId(chore)!;
+const chore = (name: string): RawChore => CONFIG.tasks.find((c) => c.name === name)!;
+
+/**
+ * For each chore, the ways it runs right now: "heartbeat" when the heartbeat
+ * would run it from heartbeat.json, "engine" when its routine is switched on.
+ */
+async function waysOf(chores: RawChore[]): Promise<string[][]> {
+  const inFile = (readHeartbeat().tasks as RawChore[]).filter((c) => c.enabled !== false);
+  const onHeartbeat = await stillOnHeartbeat(inFile);
+  const enabled = new Set((await listTasks()).filter((t) => t.enabled).map((t) => t.id));
+  return chores.map((c) => [
+    ...(onHeartbeat.some((h) => idOf(h) === idOf(c)) ? ["heartbeat"] : []),
+    ...(enabled.has(idOf(c)) ? ["engine"] : []),
+  ]);
+}
+
+/** Each chore runs exactly one way. */
+async function assertExactlyOneWay(chores: RawChore[], when: string): Promise<string[]> {
+  const ways = await waysOf(chores);
+  ways.forEach((w, i) =>
+    assert.equal(
+      w.length,
+      1,
+      `${when}: "${String(chores[i]!.name)}" runs ${w.join("+") || "nowhere"}`,
+    ),
+  );
+  return ways.map((w) => w[0]!);
+}
+
+/** Fail fs renames onto paths `match` accepts, `times` times. */
+function failRenames(match: (target: string) => boolean, times = 1): { restore(): void } {
+  const real = fsp.rename.bind(fsp);
+  let left = times;
+  (fsp as { rename: typeof fsp.rename }).rename = async (from, to) => {
+    if (left > 0 && match(String(to))) {
+      left--;
+      throw Object.assign(new Error("EIO: injected"), { code: "EIO" });
+    }
+    return real(from, to);
+  };
+  return {
+    restore: () => {
+      (fsp as { rename: typeof fsp.rename }).rename = real;
+    },
+  };
+}
 
 test("schedules: the chore's own when valid, bare cron accepted, otherwise the REAL heartbeat cadence", () => {
   assert.deepEqual(scheduleForChore("daily:08:00", 1800), {
@@ -118,19 +178,16 @@ test("--dry-run reports the plan and changes nothing", async () => {
   const original = fs.readFileSync(heartbeatFile(), "utf8");
   const result = await migrate({ dryRun: true });
   assert.deepEqual(
-    result.chores.map((c) => [
-      c.title,
-      c.schedule.expr,
-      c.cadence,
-      c.enabled,
-      c.action,
-      c.budget.tokens,
-    ]),
+    result.chores.map((c) => [c.title, c.schedule.expr, c.cadence, c.action, c.budget.tokens]),
     [
-      ["inbox triage", "daily:08:00", "own", true, "migrate", 250_000],
-      ["disk check", "every:30m", "heartbeat", true, "migrate", 250_000],
-      ["weekly review", "cron:0 18 * * 5", "own", false, "migrate", 250_000],
+      ["inbox triage", "daily:08:00", "own", "migrate", 250_000],
+      ["disk check", "every:30m", "heartbeat", "migrate", 250_000],
     ],
+  );
+  assert.deepEqual(
+    result.left.map((l) => l.name),
+    ["weekly review"],
+    "a chore switched off in heartbeat.json is not moved",
   );
   assert.equal(fs.readFileSync(heartbeatFile(), "utf8"), original);
   assert.deepEqual(await listTasks(), []);
@@ -141,14 +198,17 @@ test("--dry-run reports the plan and changes nothing", async () => {
   assert.match(text, /Nothing was changed/);
 });
 
-test("migrating moves chores with their schedule, budget and on/off state; the file is backed up", async () => {
+test("migrating moves the chores that are on, with their schedule and budget; the file is backed up", async () => {
   writeHeartbeat(CONFIG);
   const original = fs.readFileSync(heartbeatFile(), "utf8");
   const result = await migrate();
-  assert.deepEqual(result.migrated, ["inbox triage", "disk check", "weekly review"]);
-  assert.deepEqual(result.left, []);
+  assert.deepEqual(result.migrated, ["inbox triage", "disk check"]);
+  assert.deepEqual(
+    result.left.map((l) => l.name),
+    ["weekly review"],
+  );
 
-  const triage = (await getTask(heartbeatTaskId("inbox triage")))!;
+  const triage = (await getTask(idOf(chore("inbox triage"))))!;
   assert.equal(triage.kind, "routine");
   assert.equal(triage.instruction, "Triage my inbox.");
   assert.deepEqual(triage.origin, { kind: "heartbeat" });
@@ -161,19 +221,18 @@ test("migrating moves chores with their schedule, budget and on/off state; the f
   assert.equal(triage.budget.tokens, 250_000);
   assert.deepEqual(triage.envelope, { categories: [HEARTBEAT_LEGACY_CATEGORY] });
 
-  const disk = (await getTask(heartbeatTaskId("disk check")))!;
+  const disk = (await getTask(idOf(chore("disk check"))))!;
   assert.deepEqual(disk.schedule, { expr: "every:30m" });
   assert.equal(disk.nextRunAt, NOW, "it ran on every tick — it is due at once");
 
-  const weekly = (await getTask(heartbeatTaskId("weekly review")))!;
-  assert.equal(weekly.enabled, false, "a chore the user had switched off stays off");
-  assert.equal(weekly.enabledAt, undefined);
+  // The chore the user had switched off is left exactly as it was.
+  assert.equal(await getTask(idOf(chore("weekly review"))), null);
 
   assert.equal(fs.readFileSync(result.backup!, "utf8"), original);
   assert.deepEqual(readHeartbeat(), {
     budgetTokens: 250_000,
     somethingElse: { keep: "me" },
-    tasks: [],
+    tasks: [chore("weekly review")],
   });
   assert.match(describeMigration(result).join("\n"), new RegExp(MIGRATION_WARNING.slice(0, 40)));
 });
@@ -194,25 +253,62 @@ test("builtin:* overrides are never migrated — a disabled builtin stays disabl
   assert.deepEqual(readHeartbeat().tasks, [
     { name: "builtin:weekly_examen", prompt: "(disabled by me)", enabled: false },
   ]);
-  assert.equal(await getTask(heartbeatTaskId("builtin:weekly_examen")), null);
+  assert.equal(
+    await getTask(idOf({ name: "builtin:weekly_examen", prompt: "(disabled by me)" })),
+    null,
+  );
 });
 
-test("two chores with the same name both survive, as two routines", async () => {
-  writeHeartbeat({
-    tasks: [
-      { name: "dup", prompt: "first prompt" },
-      { name: "dup", prompt: "second, different prompt" },
-    ],
-  });
+test("two chores with the same name both survive, as two routines; an exact copy is the same chore", async () => {
+  const first = { name: "dup", prompt: "first prompt" };
+  const second = { name: "dup", prompt: "second, different prompt" };
+  writeHeartbeat({ tasks: [first, second, { ...first }] });
   const result = await migrate();
   assert.deepEqual(result.migrated, ["dup", "dup (2)"]);
+  assert.deepEqual(
+    result.chores.map((c) => c.action),
+    ["migrate", "migrate", "duplicate"],
+  );
   const tasks = await listTasks();
   assert.deepEqual(tasks.map((t) => t.instruction).sort(), [
     "first prompt",
     "second, different prompt",
   ]);
-  assert.notEqual(heartbeatTaskId("dup", 0), heartbeatTaskId("dup", 1));
+  assert.notEqual(idOf(first), idOf(second));
+  assert.match(describeMigration(result).join("\n"), /exact copy of an earlier chore/);
   assert.deepEqual(readHeartbeat().tasks, []);
+});
+
+test("a chore is identified by its content, not its position: a chore that failed to move keeps running the old way, and a re-run moves it (reviewer probe h4-migrate)", async () => {
+  const first = { name: "dup", prompt: "first" };
+  const second = { name: "dup", prompt: "second" };
+  writeHeartbeat({ tasks: [first, second] });
+  // Creating the second routine fails (an I/O error on its task file).
+  const fault = failRenames((to) => to.endsWith(`${idOf(second)}.json`));
+  let result;
+  try {
+    result = await migrate();
+  } finally {
+    fault.restore();
+  }
+  assert.deepEqual(result.migrated, ["dup"]);
+  assert.match(result.left[0]!.reason, /keeps running as before/);
+  assert.deepEqual(readHeartbeat().tasks, [second], "only the moved chore left the file");
+  // The failed one is now the FIRST "dup" in the file; it must not be taken
+  // for the first chore's routine.
+  assert.deepEqual(await assertExactlyOneWay([first, second], "after the partial failure"), [
+    "engine",
+    "heartbeat",
+  ]);
+
+  const rerun = await migrate({ now: NOW + 1000 });
+  assert.deepEqual(rerun.migrated, ["dup"]);
+  assert.deepEqual(readHeartbeat().tasks, []);
+  assert.deepEqual(await assertExactlyOneWay([first, second], "after the re-run"), [
+    "engine",
+    "engine",
+  ]);
+  assert.deepEqual((await listTasks()).map((t) => t.instruction).sort(), ["first", "second"]);
 });
 
 test("running it again changes nothing", async () => {
@@ -227,64 +323,137 @@ test("running it again changes nothing", async () => {
   assert.deepEqual(fs.readdirSync(home).sort(), filesBefore, "no second backup");
 });
 
-test("at every crash point a chore is runnable exactly one way, and a re-run finishes the job", async () => {
-  const chores = CONFIG.tasks.filter((c) => c.enabled !== false) as Array<{
-    name: string;
-    prompt: string;
-  }>;
-  const onHeartbeat = async () =>
-    (await stillOnHeartbeat(readHeartbeat().tasks)).map((c: { name: string }) => c.name);
-  const onEngine = async () => (await listTasks()).filter((t) => t.enabled).map((t) => t.title);
+test("at every crash point each chore runs exactly one way, and a re-run finishes the job", async () => {
+  const chores = CONFIG.tasks.filter((c) => c.enabled !== false) as RawChore[];
+  const disk = chore("disk check");
   writeHeartbeat({ tasks: chores });
+  assert.deepEqual(await assertExactlyOneWay(chores, "before anything"), [
+    "heartbeat",
+    "heartbeat",
+  ]);
 
-  // Before anything: the old way only.
-  assert.deepEqual(await onHeartbeat(), ["inbox triage", "disk check"]);
-  assert.deepEqual(await onEngine(), []);
+  // Crash after step 1 for "disk check": its routine exists, but switching it
+  // on fails (the second write of its task file).
+  let writes = 0;
+  const step2 = failRenames((to) => to.endsWith(`${idOf(disk)}.json`) && ++writes === 2);
+  try {
+    await migrate();
+  } finally {
+    step2.restore();
+  }
+  assert.ok(await getTask(idOf(disk)), "step 1 happened");
+  assert.deepEqual(await assertExactlyOneWay(chores, "after step 1"), ["engine", "heartbeat"]);
+  assert.deepEqual(readHeartbeat().tasks, [disk], "the chore that did not switch stays");
 
-  // Crash after step 1 for "disk check": the routine exists, switched off.
-  await createTask(
-    {
-      id: heartbeatTaskId("disk check"),
-      kind: "routine",
-      title: "disk check",
-      instruction: "Check free disk space.",
-      origin: { kind: "heartbeat" },
-      schedule: { expr: "every:30m" },
-    },
-    NOW,
-  );
-  assert.deepEqual(await onHeartbeat(), ["inbox triage", "disk check"], "still the old way");
-  assert.deepEqual(await onEngine(), []);
-
-  // The re-run finishes it: step 2 for both, then step 3.
-  const rerun = await migrate();
+  // The re-run switches it on, then cleans up.
+  const rerun = await migrate({ now: NOW + 1000 });
   assert.deepEqual(
     rerun.chores.map((c) => c.action),
-    ["migrate", "finish"],
+    ["finish"],
   );
-  assert.deepEqual((await onEngine()).sort(), ["disk check", "inbox triage"]);
+  assert.deepEqual(await assertExactlyOneWay(chores, "after the re-run"), ["engine", "engine"]);
+  assert.deepEqual(readHeartbeat().tasks, []);
 
-  // Crash between step 2 and step 3: heartbeat.json still lists them.
+  // Crash between step 2 and step 3: heartbeat.json cannot be rewritten.
+  fs.rmSync(path.join(home, "tasks"), { recursive: true, force: true });
   writeHeartbeat({ tasks: chores });
-  assert.deepEqual(
-    await onHeartbeat(),
-    [],
-    "the heartbeat skips a chore whose routine was switched on",
-  );
-  assert.deepEqual((await onEngine()).sort(), ["disk check", "inbox triage"]);
-
-  // …even after the user pauses the routine: it does not come back the old way.
-  await updateTask(heartbeatTaskId("disk check"), (t) => {
-    t.enabled = false;
-    t.state = "paused";
-  });
-  assert.deepEqual(await onHeartbeat(), []);
-
-  // The next re-run only cleans up.
-  const cleanup = await migrate({ now: NOW + 5000 });
+  const step3 = failRenames((to) => to === heartbeatFile());
+  try {
+    await assert.rejects(migrate({ now: NOW + 2000 }));
+  } finally {
+    step3.restore();
+  }
+  assert.equal(readHeartbeat().tasks.length, 2, "heartbeat.json still lists both");
+  assert.deepEqual(await assertExactlyOneWay(chores, "after step 2"), ["engine", "engine"]);
+  const cleanup = await migrate({ now: NOW + 3000 });
   assert.deepEqual(cleanup.migrated, []);
   assert.deepEqual(readHeartbeat().tasks, []);
-  assert.equal((await listTasks()).length, 2);
+  assert.deepEqual(await assertExactlyOneWay(chores, "after cleanup"), ["engine", "engine"]);
+});
+
+test("a routine the user switches off gives its chore back to the heartbeat; one the engine paused does not", async () => {
+  const disk = chore("disk check");
+  writeHeartbeat({ tasks: [disk] });
+  const result = await migrate();
+  assert.deepEqual(readHeartbeat().tasks, []);
+
+  // The engine paused it (a schedule it cannot compute, a billing refusal …):
+  // the user has been told; the chore does not silently fall back.
+  await updateTask(idOf(disk), (t) => pauseTask(t, "its schedule cannot be computed"));
+  fs.copyFileSync(result.backup!, heartbeatFile());
+  assert.deepEqual(await waysOf([disk]), [[]], "paused by the engine: skipped, and the user knows");
+  assert.deepEqual(await stillOnHeartbeat([disk]), []);
+
+  // The user switches the routine off and restores the chore: the old way again.
+  await updateTask(idOf(disk), (t) => {
+    disableTask(t);
+    delete t.pausedReason;
+  });
+  assert.deepEqual(await assertExactlyOneWay([disk], "routine off, chore restored"), ["heartbeat"]);
+
+  // Asking to migrate again moves it again.
+  const again = await migrate({ now: NOW + 1000 });
+  assert.deepEqual(
+    again.chores.map((c) => c.action),
+    ["finish"],
+  );
+  assert.deepEqual(await assertExactlyOneWay([disk], "migrated again"), ["engine"]);
+  assert.deepEqual(readHeartbeat().tasks, []);
+});
+
+test("the migration holds the heartbeat's run lock: it waits out a tick in progress, and gives up cleanly", async () => {
+  writeHeartbeat({ tasks: [chore("disk check")] });
+  // A heartbeat tick is in progress.
+  const tickDone = deferred();
+  const inTick = deferred();
+  const tick = withFileLock(heartbeatRunLockPath(), async () => {
+    inTick.resolve();
+    await tickDone.promise;
+  });
+  await inTick.promise;
+  await assert.rejects(migrate({ lockWaitMs: 100 }), /heartbeat run is in progress/);
+  assert.equal(readHeartbeat().tasks.length, 1, "nothing was changed");
+  assert.deepEqual(await listTasks(), []);
+
+  const waiting = migrate({ lockWaitMs: 5000 });
+  await new Promise((r) => setTimeout(r, 100));
+  assert.deepEqual(await listTasks(), [], "nothing moves while the tick runs");
+  tickDone.resolve();
+  await tick;
+  assert.deepEqual((await waiting).migrated, ["disk check"]);
+
+  // And while the migration holds it, a heartbeat tick cannot start.
+  writeHeartbeat({ tasks: [{ name: "other", prompt: "Other." }] });
+  const inMigration = deferred();
+  const finish = deferred();
+  const realReadFile = fsp.readFile.bind(fsp);
+  (fsp as { readFile: unknown }).readFile = async (target: unknown, ...rest: unknown[]) => {
+    if (String(target) === heartbeatFile()) {
+      inMigration.resolve();
+      await finish.promise;
+    }
+    return (realReadFile as (...a: unknown[]) => Promise<unknown>)(target, ...rest);
+  };
+  try {
+    const moving = migrate({ now: NOW + 1000 });
+    await inMigration.promise;
+    let tickRan = false;
+    await assert.rejects(
+      withFileLock(
+        heartbeatRunLockPath(),
+        async () => {
+          tickRan = true;
+        },
+        { timeoutMs: 0, staleMs: 6 * 3_600_000 },
+      ),
+      /timed out acquiring lock/,
+    );
+    assert.equal(tickRan, false);
+    finish.resolve();
+    assert.deepEqual((await moving).migrated, ["other"]);
+  } finally {
+    (fsp as { readFile: unknown }).readFile = realReadFile;
+  }
 });
 
 test("stillOnHeartbeat keeps unmigrated chores, builtin overrides and same-name twins apart", async () => {
@@ -297,8 +466,24 @@ test("stillOnHeartbeat keeps unmigrated chores, builtin overrides and same-name 
   writeHeartbeat({ tasks: chores });
   await migrate();
   assert.deepEqual(await stillOnHeartbeat(chores), [chores[1]]);
-  // A task that merely shares the id but did not come from heartbeat.json does not count.
-  assert.deepEqual(await stillOnHeartbeat([{ name: "unrelated" }]), [{ name: "unrelated" }]);
+  // Same name, different prompt or schedule: a different chore.
+  const edited = { name: "a", prompt: "1, edited" };
+  const rescheduled = { name: "a", prompt: "1", schedule: "daily:09:00" };
+  assert.deepEqual(await stillOnHeartbeat([edited, rescheduled]), [edited, rescheduled]);
+  // A task that merely has a heartbeat-looking id but did not come from heartbeat.json does not count.
+  const unrelated = { name: "unrelated", prompt: "u" };
+  await createTask(
+    {
+      id: idOf(unrelated),
+      kind: "routine",
+      title: "x",
+      instruction: "x",
+      origin: { kind: "api" },
+      enabled: true,
+    },
+    NOW,
+  );
+  assert.deepEqual(await stillOnHeartbeat([unrelated]), [unrelated]);
 });
 
 test("a chore that cannot be migrated stays in heartbeat.json; a malformed file is left alone", async () => {

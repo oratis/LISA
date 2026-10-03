@@ -150,7 +150,17 @@ export async function runTasksCommand(
 
   if (sub === "migrate-heartbeat") {
     const dryRun = args.includes("--dry-run");
-    const result = await migrateHeartbeatTasks({ dryRun, now: now() });
+    let result: Awaited<ReturnType<typeof migrateHeartbeatTasks>>;
+    try {
+      result = await migrateHeartbeatTasks({ dryRun, now: now() });
+    } catch (e) {
+      err(`migrate-heartbeat: ${(e as Error).message}`);
+      err(
+        "Every chore still runs exactly one way — from heartbeat.json or as its routine. " +
+          "Run the command again to finish.",
+      );
+      return 1;
+    }
     for (const l of describeMigration(result)) out(l);
     return 0;
   }

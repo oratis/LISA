@@ -176,7 +176,12 @@ describe("task engine in the real server", () => {
     await until(async () =>
       (await listOutbox()).some((e) => e.id === NOTICE_ID && e.state === "delivered"),
     );
-    assert.equal(await getTask(heartbeatTaskId("disk check")), null);
+    assert.equal(
+      await getTask(
+        heartbeatTaskId({ name: "disk check", prompt: "Check disk.", schedule: "daily:03:00" })!,
+      ),
+      null,
+    );
     assert.deepEqual(JSON.parse(fs.readFileSync(path.join(TMP, "heartbeat.json"), "utf8")).tasks, [
       { name: "disk check", prompt: "Check disk.", schedule: "daily:03:00" },
     ]);

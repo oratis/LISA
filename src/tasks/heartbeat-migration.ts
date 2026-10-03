@@ -12,16 +12,34 @@
  * switches on Lisa's own heartbeat work (a disabled `builtin:weekly_examen`
  * keeps the examen off); moving one would silently switch the builtin back on.
  *
+ * Identity. A chore is identified by its CONTENT — name, prompt and schedule —
+ * never by its position or by its name alone: removing one chore from the file
+ * must not make another one look like it. The routine's id is derived from
+ * that content (heartbeatTaskId), and the heartbeat's skip rule and this
+ * command's "already moved" check both go through it. Two chores with the
+ * same content are the same chore: they become one routine.
+ *
+ * Which way a chore runs. The heartbeat skips a chore while its routine
+ * exists and owns it — switched on, or switched off by the engine itself
+ * (`pausedReason`: the user has been told why). A routine the user switched
+ * off owns nothing: if the chore is (back) in heartbeat.json, the heartbeat
+ * runs it the old way.
+ *
  * Crash safety. A chore must be runnable exactly one way at every instant:
  *
  *   1. create the routine, DISABLED        → the chore still runs from heartbeat.json
  *   2. enable the routine (one atomic write) → the heartbeat stops running the chore
- *      at that same instant, because it skips every chore whose routine has
- *      ever been enabled (stillOnHeartbeat below)
- *   3. rewrite heartbeat.json without the migrated chores (backup first)
+ *      at that same instant (stillOnHeartbeat below)
+ *   3. rewrite heartbeat.json without the chores whose routine now owns them
+ *      (backup first). Every other chore stays, untouched.
  *
  * A crash after 1 leaves the old way; after 2, the new way; step 3 is cleanup.
- * Running the command again finishes whatever is left and changes nothing else.
+ * A chore whose routine could not be created or switched on stays in the file
+ * and keeps running the old way. Running the command again finishes whatever
+ * is left and changes nothing else.
+ *
+ * The command holds the heartbeat's run lock for its whole duration, so a
+ * heartbeat tick never sees a chore half-way through the switch.
  */
 import { createHash } from "node:crypto";
 import fsp from "node:fs/promises";
@@ -29,12 +47,13 @@ import os from "node:os";
 import path from "node:path";
 import { isCloud } from "../edition.js";
 import { atomicWrite, pathExists } from "../fs-utils.js";
+import { heartbeatRunLockPath, HEARTBEAT_RUN_LOCK_STALE_MS } from "../heartbeat/config.js";
 import { lisaGlobalHome } from "../paths.js";
 import { withFileLock } from "../soul/lock.js";
 import { enableTask } from "./lifecycle.js";
 import { MIN_EVERY_MS_LOCAL, parseSchedule, validateSchedule } from "./schedule.js";
-import { createTask, getTask, tasksDir, updateTask } from "./store.js";
-import { DEFAULT_TASK_BUDGET, type ScheduleSpec, type TaskBudget } from "./types.js";
+import { createTask, getTask, updateTask } from "./store.js";
+import { DEFAULT_TASK_BUDGET, type ScheduleSpec, type Task, type TaskBudget } from "./types.js";
 import { LIMITS } from "./validate.js";
 
 /** What the heartbeat's cadence is assumed to be when no launchd job is installed. */
@@ -51,18 +70,25 @@ export const MIGRATION_WARNING =
   "an unattended task may only make read-only calls today. A chore that needs those tools should " +
   "stay in heartbeat.json for now.";
 
+/** How long the command waits for a heartbeat tick in progress before giving up. */
+export const MIGRATION_LOCK_WAIT_MS = 30_000;
+
 export interface ChorePlan {
   name: string;
-  /** Position among the chores that share this name (0 for the first). */
-  occurrence: number;
   id: string;
   title: string;
   schedule: ScheduleSpec;
   /** Where the schedule came from. */
   cadence: "own" | "heartbeat" | "assumed";
   budget: TaskBudget;
-  enabled: boolean;
-  action: "migrate" | "finish" | "already";
+  /**
+   * migrate: no routine yet. finish: the routine exists but does not own the
+   * chore (a crash after step 1, or the user switched it off). already: the
+   * routine owns it. duplicate: an exact copy of an earlier chore in the file.
+   */
+  action: "migrate" | "finish" | "already" | "duplicate";
+  /** Set when the move failed: the chore stays in heartbeat.json and runs the old way. */
+  error?: string;
 }
 
 export interface HeartbeatMigrationResult {
@@ -78,10 +104,44 @@ export function heartbeatFile(): string {
   return path.join(lisaGlobalHome(), "heartbeat.json");
 }
 
-/** Stable task id for the n-th chore of a given name. */
-export function heartbeatTaskId(name: string, occurrence = 0): string {
-  const key = occurrence === 0 ? name : `${name}\n#${occurrence}`;
+/** A chore as heartbeat.json has it (any field may be missing or of the wrong type). */
+export interface RawChore {
+  name?: unknown;
+  prompt?: unknown;
+  enabled?: unknown;
+  schedule?: unknown;
+}
+
+/** The content that identifies a chore. Null when it has no name or no prompt. */
+function choreContent(chore: RawChore): { name: string; prompt: string; schedule: string } | null {
+  const name = typeof chore?.name === "string" ? chore.name.trim() : "";
+  const prompt = typeof chore?.prompt === "string" ? chore.prompt.trim() : "";
+  if (!name || !prompt) return null;
+  const schedule = typeof chore.schedule === "string" ? chore.schedule.trim() : "";
+  return { name, prompt, schedule };
+}
+
+/**
+ * The routine id of a chore, derived from its content (name, prompt and
+ * schedule) — never from its position in the file. Null for a chore with no
+ * name or no prompt, which is never migrated.
+ */
+export function heartbeatTaskId(chore: RawChore): string | null {
+  const content = choreContent(chore);
+  if (!content) return null;
+  const key = JSON.stringify([content.name, content.prompt, content.schedule]);
   return `hb_${createHash("sha256").update(key).digest("hex").slice(0, 12)}`;
+}
+
+/**
+ * Does this routine own its chore — so the heartbeat must not run it? While it
+ * is switched on, or the engine switched it off itself (the user was told
+ * why). A routine the user switched off does not.
+ */
+function routineOwnsChore(task: Task | null): boolean {
+  return (
+    !!task && task.origin.kind === "heartbeat" && (task.enabled || task.pausedReason !== undefined)
+  );
 }
 
 function launchdPlist(): string {
@@ -148,42 +208,23 @@ export function budgetForChore(budgetTokens: unknown): TaskBudget {
   return { ...DEFAULT_TASK_BUDGET, tokens: Math.max(min, Math.min(max, Math.floor(tokens))) };
 }
 
-interface RawChore {
-  name?: unknown;
-  prompt?: unknown;
-  enabled?: unknown;
-  schedule?: unknown;
-}
-
 const isBuiltinOverride = (name: string): boolean => name.startsWith("builtin:");
 
-/** Assign each chore its occurrence index among chores of the same name. */
-function withOccurrence<T extends RawChore>(
-  chores: T[],
-): Array<{ chore: T; name: string; occurrence: number }> {
-  const seen = new Map<string, number>();
-  return chores.map((chore) => {
-    const name = typeof chore?.name === "string" ? chore.name.trim() : "";
-    const occurrence = seen.get(name) ?? 0;
-    seen.set(name, occurrence + 1);
-    return { chore, name, occurrence };
-  });
-}
-
 /**
- * The chores the heartbeat should still run itself: every one whose routine has
- * NOT been switched on. Called by the heartbeat on each tick; it is what makes
- * step 2 above the single switch-over point. Never throws — on any doubt the
- * heartbeat keeps the chore.
+ * The chores the heartbeat should still run itself: every one whose routine
+ * does not own it (routineOwnsChore). Called by the heartbeat on each tick;
+ * it is what makes step 2 above the single switch-over point. Never throws —
+ * on any doubt the heartbeat keeps the chore.
  */
-export async function stillOnHeartbeat<T extends { name: string }>(chores: T[]): Promise<T[]> {
+export async function stillOnHeartbeat<T extends RawChore>(chores: T[]): Promise<T[]> {
   const out: T[] = [];
-  for (const { chore, name, occurrence } of withOccurrence(chores)) {
+  for (const chore of chores) {
     let moved = false;
-    if (name && !isBuiltinOverride(name)) {
+    const name = typeof chore?.name === "string" ? chore.name.trim() : "";
+    const id = heartbeatTaskId(chore);
+    if (id && !isBuiltinOverride(name)) {
       try {
-        const task = await getTask(heartbeatTaskId(name, occurrence));
-        moved = !!task && task.origin.kind === "heartbeat" && task.enabledAt !== undefined;
+        moved = routineOwnsChore(await getTask(id));
       } catch {
         moved = false;
       }
@@ -194,7 +235,13 @@ export async function stillOnHeartbeat<T extends { name: string }>(chores: T[]):
 }
 
 export async function migrateHeartbeatTasks(
-  opts: { dryRun?: boolean; now?: number; heartbeatIntervalSec?: number | null } = {},
+  opts: {
+    dryRun?: boolean;
+    now?: number;
+    heartbeatIntervalSec?: number | null;
+    /** How long to wait for a heartbeat tick in progress. */
+    lockWaitMs?: number;
+  } = {},
 ): Promise<HeartbeatMigrationResult> {
   const now = opts.now ?? Date.now();
   const dryRun = opts.dryRun === true;
@@ -228,42 +275,60 @@ export async function migrateHeartbeatTasks(
         : await installedHeartbeatIntervalSec();
     const budget = budgetForChore(config.budgetTokens);
 
-    const remaining: RawChore[] = [];
-    for (const { chore, name, occurrence } of withOccurrence(chores)) {
-      const prompt = typeof chore?.prompt === "string" ? chore.prompt.trim() : "";
+    const planned = new Set<string>();
+    const sameName = new Map<string, number>();
+    for (const chore of chores) {
+      const name = typeof chore?.name === "string" ? chore.name.trim() : "";
       if (name && isBuiltinOverride(name)) {
-        remaining.push(chore);
         result.left.push({ name, reason: "a switch on Lisa's own heartbeat work, not a chore" });
         continue;
       }
-      if (!name || !prompt) {
-        remaining.push(chore);
+      const id = heartbeatTaskId(chore);
+      if (!id) {
         result.left.push({ name: name || "(unnamed)", reason: "missing name or prompt" });
         continue;
       }
-      const id = heartbeatTaskId(name, occurrence);
+      if (chore.enabled === false) {
+        result.left.push({
+          name,
+          reason: "switched off there; turn it on and run this again to move it",
+        });
+        continue;
+      }
+      const prompt = (chore.prompt as string).trim();
+      const nth = (sameName.get(name) ?? 0) + 1;
+      sameName.set(name, nth);
       const { schedule, cadence } = scheduleForChore(chore.schedule, interval);
-      const enabled = chore.enabled !== false;
-      const existing = await getTask(id);
+      let existing: Task | null;
+      try {
+        existing = await getTask(id);
+      } catch (err) {
+        result.left.push({ name, reason: (err as Error).message.slice(0, 200) });
+        continue;
+      }
       const plan: ChorePlan = {
         name,
-        occurrence,
         id,
-        title: (occurrence === 0 ? name : `${name} (${occurrence + 1})`).slice(0, 200),
+        title: (nth === 1 ? name : `${name} (${nth})`).slice(0, 200),
         schedule,
         cadence,
         budget,
-        enabled,
-        action: !existing
-          ? "migrate"
-          : enabled && existing.enabledAt === undefined
-            ? "finish"
-            : "already",
+        action: planned.has(id)
+          ? "duplicate"
+          : !existing
+            ? "migrate"
+            : routineOwnsChore(existing)
+              ? "already"
+              : "finish",
       };
+      planned.add(id);
       result.chores.push(plan);
-      if (dryRun) continue;
+      if (dryRun || plan.action === "duplicate" || plan.action === "already") continue;
 
       try {
+        if (existing && existing.origin.kind !== "heartbeat") {
+          throw new Error(`a task with id ${id} exists and did not come from heartbeat.json`);
+        }
         // Step 1 — the routine exists but is off: the heartbeat still runs the chore.
         if (!existing) {
           await createTask(
@@ -286,26 +351,40 @@ export async function migrateHeartbeatTasks(
           );
         }
         // Step 2 — the switch-over. From this write on, the heartbeat skips the chore.
-        if (enabled && (!existing || existing.enabledAt === undefined)) {
-          await updateTask(
-            id,
-            (t) => {
-              enableTask(t, now);
-              // A chore with no schedule of its own ran on every tick, this one included.
-              if (cadence !== "own") t.nextRunAt = now;
-            },
-            now,
-          );
-        }
-        if (plan.action !== "already") result.migrated.push(plan.title);
+        const switched = await updateTask(
+          id,
+          (t) => {
+            if (t.enabled) return false;
+            enableTask(t, now);
+            // A chore with no schedule of its own ran on every tick, this one included.
+            if (cadence !== "own") t.nextRunAt = now;
+          },
+          now,
+        );
+        if (!switched?.enabled) throw new Error("the routine could not be switched on");
+        result.migrated.push(plan.title);
       } catch (err) {
-        remaining.push(chore);
-        result.left.push({ name, reason: (err as Error).message.slice(0, 200) });
+        plan.error = (err as Error).message.slice(0, 200);
+        result.left.push({
+          name: plan.title,
+          reason: `${plan.error} (it keeps running as before)`,
+        });
       }
     }
 
     if (dryRun) return result;
-    // Step 3 — cleanup. Only when there is something to remove.
+    // Step 3 — cleanup: drop exactly the chores a routine now owns, checked
+    // against the store, not against what this run meant to do.
+    const remaining: RawChore[] = [];
+    for (const chore of chores) {
+      const name = typeof chore?.name === "string" ? chore.name.trim() : "";
+      const id = heartbeatTaskId(chore);
+      let owned = false;
+      if (id && !isBuiltinOverride(name) && chore.enabled !== false) {
+        owned = routineOwnsChore(await getTask(id).catch(() => null));
+      }
+      if (!owned) remaining.push(chore);
+    }
     if (remaining.length === chores.length) return result;
     let backup = `${file}.pre-tasks.bak`;
     if (await pathExists(backup)) backup = `${file}.pre-tasks.${now}.bak`;
@@ -316,14 +395,31 @@ export async function migrateHeartbeatTasks(
   };
 
   if (dryRun) return await run();
-  return await withFileLock(path.join(tasksDir(), ".heartbeat-migration.lock"), run);
+  try {
+    // The heartbeat's own run lock: no tick can run, or start, while chores move.
+    return await withFileLock(heartbeatRunLockPath(), run, {
+      timeoutMs: opts.lockWaitMs ?? MIGRATION_LOCK_WAIT_MS,
+      staleMs: HEARTBEAT_RUN_LOCK_STALE_MS,
+      pollMs: 250,
+    });
+  } catch (err) {
+    if ((err as Error).message?.includes("timed out acquiring lock")) {
+      throw new Error(
+        "a heartbeat run is in progress — nothing was changed; run this again when it has finished",
+        { cause: err },
+      );
+    }
+    throw err;
+  }
 }
 
 /** Human-readable account of a migration (or of what one would do). */
 export function describeMigration(result: HeartbeatMigrationResult): string[] {
   const lines: string[] = [];
   const verb = result.dryRun ? "Would move" : "Moved";
-  const moving = result.chores.filter((c) => c.action !== "already");
+  const moving = result.chores.filter(
+    (c) => (c.action === "migrate" || c.action === "finish") && !c.error,
+  );
   if (result.chores.length === 0 && result.left.length === 0) {
     return ["Nothing to migrate: heartbeat.json has no chores."];
   }
@@ -336,11 +432,17 @@ export function describeMigration(result: HeartbeatMigrationResult): string[] {
           : "no heartbeat job is installed, so 30 minutes is assumed";
     lines.push(
       `${verb} "${c.title}" → routine ${c.id}: ${c.schedule.expr} (${cadence}), ` +
-        `${c.enabled ? "on" : "off, as it was"}, up to ${c.budget.tokens} tokens per run.`,
+        `up to ${c.budget.tokens} tokens per run.`,
     );
   }
   for (const c of result.chores.filter((x) => x.action === "already")) {
     lines.push(`"${c.title}" is already a routine (${c.id}).`);
+  }
+  for (const c of result.chores.filter((x) => x.action === "duplicate")) {
+    lines.push(
+      `"${c.title}" is an exact copy of an earlier chore (same name, prompt and schedule): ` +
+        `both are the one routine ${c.id}.`,
+    );
   }
   for (const l of result.left) lines.push(`Left in heartbeat.json: "${l.name}" — ${l.reason}.`);
   if (result.backup) lines.push(`Backup of the original: ${result.backup}`);

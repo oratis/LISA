@@ -130,10 +130,13 @@ Nothing is migrated automatically. `lisa heartbeat run` runs the chores in `hear
 `lisa tasks migrate-heartbeat [--dry-run]` moves chores into routines on request. It says what will move and that migrated chores can only make read-only calls until the approval layer is wired.
 
 - `builtin:*` entries are never moved: they are switches on Lisa's own heartbeat work.
-- Two chores with the same name become two routines.
+- A chore switched off in `heartbeat.json` is left there, untouched.
+- A chore is identified by its content — name, prompt and schedule — never by its name or its position in the file. The routine id is derived from that content, and both the heartbeat's skip rule and the command's "already moved" check use it. Two chores with the same name but a different prompt or schedule become two routines; two exact copies are one chore and become one routine.
 - A chore without a schedule of its own gets the installed heartbeat's real interval (read from the launchd plist; 30 minutes is assumed, and reported as an assumption, when none is installed).
 - `budgetTokens` becomes each routine's per-run token ceiling.
-- Order of writes: create the routine switched off; switch it on; rewrite `heartbeat.json` (after a backup). The heartbeat skips any chore whose routine has ever been switched on, so the second write is the single switch-over point: before it the chore runs the old way, after it the new way, never both and never neither. Running the command again finishes whatever is left.
+- The heartbeat skips a chore while its routine exists and is switched on, or was switched off by the engine itself (`pausedReason` set; the user has been told why). A routine the user switched off owns nothing: if its chore is (put back) in `heartbeat.json`, the heartbeat runs it the old way.
+- Order of writes: create the routine switched off; switch it on; rewrite `heartbeat.json` without exactly the chores a routine now owns (after a backup). The second write is the single switch-over point: before it the chore runs the old way, after it the new way. A chore whose routine could not be created or switched on stays in `heartbeat.json`, untouched, and keeps running the old way. At every point each chore runs exactly one way — the one exception being a routine the engine paused, which runs neither way until the user acts on the notice. Running the command again finishes whatever is left.
+- The command holds the heartbeat's run lock for its whole duration, so a heartbeat tick never sees a chore half-way. It waits up to 30 s for a tick in progress, then gives up without changing anything.
 
 ## Hosted edition
 
