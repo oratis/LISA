@@ -41,6 +41,7 @@ import { lsTool } from "./ls.js";
 import { readTool } from "./read.js";
 import { redeployTool } from "./redeploy.js";
 import { setMoodTool } from "./set_mood.js";
+import { governCloudWebTools } from "./cloud_web.js";
 import { webFetchTool } from "./web_fetch.js";
 import { webSearchTool } from "./web_search.js";
 import { takoapiTool } from "./takoapi.js";
@@ -279,8 +280,15 @@ export function remoteSafeSubset(tools: ToolDefinition[]): ToolDefinition[] {
  * executable skills, plugin tools, MCP tools, and future builtins must never
  * become cloud capabilities merely because somebody forgot to add their name
  * to a deny-list. Every tool here resolves storage through the active
- * per-account Lisa home and does not execute a host process or fetch an
- * arbitrary URL.
+ * per-account Lisa home and does not execute a host process.
+ *
+ * `web_search` / `web_fetch` are the two exceptions to "does not reach out".
+ * They are OFF unless the operator sets `LISA_CLOUD_WEB_TOOLS=1`, and then
+ * admitted only as the governed hosted instances built by cloud_web.ts (SSRF
+ * guard with pinned addresses, standard ports only, a deadline, per-tenant
+ * hourly limits).
+ * `cloudSafeSubset` performs that substitution itself, so no caller can obtain
+ * the ungoverned local tools through the cloud allow-list.
  */
 export const CLOUD_ALLOWED_TOOL_NAMES = new Set([
   "memory",
@@ -301,8 +309,10 @@ export const CLOUD_ALLOWED_TOOL_NAMES = new Set([
   "kb_list",
   "kb_add",
   "kb_write",
+  "web_fetch",
+  "web_search",
 ]);
 
 export function cloudSafeSubset(tools: ToolDefinition[]): ToolDefinition[] {
-  return tools.filter((t) => CLOUD_ALLOWED_TOOL_NAMES.has(t.name));
+  return governCloudWebTools(tools.filter((t) => CLOUD_ALLOWED_TOOL_NAMES.has(t.name)));
 }
