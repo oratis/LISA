@@ -67,6 +67,11 @@ export interface TaskLease {
   readonly owner: string;
   /** True once a renewal failed or found the lease in someone else's hands. */
   readonly lost: boolean;
+  /**
+   * True when the lease was lost because its directory no longer exists: the
+   * task, or the whole home, was deleted. Nothing is re-created for it.
+   */
+  readonly gone: boolean;
   /** Push the expiry forward. False when the lease is no longer ours. */
   renew(): Promise<boolean>;
   /** Fencing check: is the lease on disk still this acquisition? */
@@ -295,7 +300,18 @@ export async function acquireLease(
 
   let released = false;
   let lost = false;
+  let gone = false;
   let timer: NodeJS.Timeout | null = null;
+
+  /** The lease directory is gone, and with it the lease (a deleted task or home). */
+  const directoryGone = async (): Promise<boolean> => {
+    try {
+      await fsp.stat(path.dirname(file));
+      return false;
+    } catch (e) {
+      return (e as NodeJS.ErrnoException).code === "ENOENT";
+    }
+  };
 
   const stopTimer = (): void => {
     if (timer) clearInterval(timer);
@@ -316,14 +332,23 @@ export async function acquireLease(
 
   const renew = async (): Promise<boolean> => {
     if (released || lost) return false;
-    const held = await mutate(file, async () => {
-      if (!isMine(await readLease(file))) return false;
-      const tmp = `${file}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
-      await fsp.writeFile(tmp, body());
-      await fsp.rename(tmp, file);
-      return true;
-    });
-    if (!held) markLost();
+    let held: boolean;
+    try {
+      held = await mutate(file, async () => {
+        if (!isMine(await readLease(file))) return false;
+        const tmp = `${file}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
+        await fsp.writeFile(tmp, body());
+        await fsp.rename(tmp, file);
+        return true;
+      });
+    } catch (e) {
+      if (!(await directoryGone())) throw e;
+      held = false;
+    }
+    if (!held) {
+      if (await directoryGone()) gone = true;
+      markLost();
+    }
     return held;
   };
 
@@ -344,6 +369,9 @@ export async function acquireLease(
     get lost() {
       return lost;
     },
+    get gone() {
+      return gone;
+    },
     renew,
     verify: async () => {
       if (released || lost) return false;
@@ -353,7 +381,10 @@ export async function acquireLease(
       } catch {
         mine = false;
       }
-      if (!mine) markLost();
+      if (!mine) {
+        if (await directoryGone()) gone = true;
+        markLost();
+      }
       return mine;
     },
     release: async () => {

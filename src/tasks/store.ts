@@ -236,7 +236,7 @@ async function writeTaskFile(task: Task): Promise<void> {
 /** Take a task's write lock without the lock helper re-creating a deleted home. */
 async function withTaskLock<T>(id: string, fn: () => Promise<T>): Promise<T> {
   await mkdirOne(path.dirname(taskLockPath(id)), "the tasks directory");
-  return await withFileLock(taskLockPath(id), fn);
+  return await withFileLock(taskLockPath(id), fn, { createDir: false });
 }
 
 // ── tasks ──

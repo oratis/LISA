@@ -385,3 +385,32 @@ test("a lease this process could not release is an orphan: the sweep removes it,
     await held.release();
   });
 });
+
+test("a lease whose directory was deleted is gone: renewal, verify and release create nothing (reviewer probe m3-renew-home)", async () => {
+  await withHome(async () => {
+    let lost = 0;
+    const a = await acquireLease("deleted", {
+      ttlMs: 60_000,
+      renewEveryMs: 15,
+      onLost: () => lost++,
+    });
+    assert.ok(a);
+    await fsp.rm(tasksDir(), { recursive: true, force: true }); // the task or the home was deleted
+    for (let i = 0; i < 100 && lost === 0; i++) await new Promise((r) => setTimeout(r, 10));
+    assert.equal(lost, 1);
+    assert.equal(a.gone, true);
+    assert.equal(await a.verify(), false);
+    await a.release();
+    await assert.rejects(fsp.stat(tasksDir()), /ENOENT/, "nothing was re-created");
+
+    // verify() alone reaches the same verdict.
+    await fsp.mkdir(tasksDir(), { recursive: true });
+    const b = await acquireLease("deleted-too", { autoRenew: false });
+    assert.ok(b);
+    await fsp.rm(tasksDir(), { recursive: true, force: true });
+    assert.equal(await b.verify(), false);
+    assert.equal(b.gone, true);
+    await b.release();
+    await assert.rejects(fsp.stat(tasksDir()), /ENOENT/);
+  });
+});

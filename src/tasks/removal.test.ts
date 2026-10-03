@@ -186,6 +186,30 @@ test("a run in flight when its home is deleted re-creates nothing (reviewer prob
   });
 });
 
+test("lease renewals after the home was deleted re-create nothing; the run stops as removed (reviewer probe m3-renew-home)", async () => {
+  await withHome(async (home) => {
+    await dueRoutine();
+    const logs: string[] = [];
+    const { runner, gate, inTool, modelCalls } = blockedRun({
+      leaseRenewEveryMs: 20,
+      log: (m) => logs.push(m),
+    });
+    await runner.tick();
+    await inTool.promise;
+    await fsp.rm(home, { recursive: true, force: true });
+    await new Promise((r) => setTimeout(r, 150)); // several renewals fall due meanwhile
+    await assert.rejects(fsp.stat(home), /ENOENT/, "no renewal brought the home back");
+    gate.resolve();
+    await runner.drain();
+    await assert.rejects(fsp.stat(home), /ENOENT/, "nor did the release");
+    assert.equal(modelCalls(), 1);
+    assert.ok(
+      logs.some((l) => l.includes("removed while running")),
+      `stopped as a removed task: ${logs.join(" | ")}`,
+    );
+  });
+});
+
 test("a run in flight when its task is deleted stops and leaves nothing of the task behind", async () => {
   await withHome(async (home) => {
     const task = await dueRoutine();

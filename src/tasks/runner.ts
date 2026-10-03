@@ -214,6 +214,14 @@ class LeaseLost extends Error {
   }
 }
 
+/**
+ * Why a run that may no longer write stopped: its lease's directory is gone
+ * (the task, or the whole home, was deleted), or the lease was lost.
+ */
+function lostLease(slot: Slot): Error {
+  return slot.lease?.gone ? new TaskGoneError("the task's lease") : new LeaseLost();
+}
+
 /** Thrown out of drive() on shutdown: the run is left resumable, not failed. */
 class Interrupted extends Error {
   constructor() {
@@ -463,7 +471,7 @@ export class TaskRunner {
     if (slot.leaseLost || !slot.lease || !(await slot.lease.verify())) {
       slot.leaseLost = true;
       slot.controller.abort();
-      throw new LeaseLost();
+      throw lostLease(slot);
     }
   }
 
@@ -699,15 +707,15 @@ export class TaskRunner {
       .run(slot, () => this.runTask(taskId, slot))
       .catch((err) => {
         if (err instanceof Interrupted) return;
+        if (err instanceof TaskGoneError || slot.lease?.gone) {
+          // Deleted (or its whole home was) while it ran: nothing is put back.
+          this.log(`task ${taskId}: removed while running — stopped`);
+          return;
+        }
         if (err instanceof LeaseLost || slot.leaseLost) {
           this.log(
             `task ${taskId}: lease lost — stopped without writing; whoever holds the lease next continues the run`,
           );
-          return;
-        }
-        if (err instanceof TaskGoneError) {
-          // Deleted (or its whole home was) while it ran: nothing is put back.
-          this.log(`task ${taskId}: removed while running — stopped`);
           return;
         }
         this.log(`task ${taskId} failed outside its run: ${(err as Error).stack ?? String(err)}`);
@@ -1225,14 +1233,14 @@ export class TaskRunner {
           error: "ran out of turns",
         };
       }
-      if (slot.leaseLost) throw new LeaseLost();
+      if (slot.leaseLost) throw lostLease(slot);
       return { state: "succeeded", stopReason: result.stopReason, summary: text };
     } catch (err) {
       await logChain;
-      // Lost lease: not an outcome of the run at all. Nothing is recorded.
-      if (err instanceof LeaseLost || slot.leaseLost) throw new LeaseLost();
       // The task was deleted under the run: there is nowhere to record anything.
       if (err instanceof TaskGoneError) throw err;
+      // Lost lease: not an outcome of the run at all. Nothing is recorded.
+      if (err instanceof LeaseLost || slot.leaseLost) throw lostLease(slot);
       const stop = slot.stop ?? (err instanceof TaskStop ? err.stop : null);
       if (stop === "cancelled") return { state: "cancelled", stopReason: "cancelled", summary: "" };
       if (stop) {
@@ -1404,7 +1412,7 @@ export class TaskRunner {
     if (slot.controller.signal.aborted && slot.stop !== "cancelled") {
       // Shutdown (or a lost lease) cut the check off. That says nothing about
       // the watched thing: record nothing, count no failure, poll again later.
-      if (slot.leaseLost) throw new LeaseLost();
+      if (slot.leaseLost) throw lostLease(slot);
       return;
     }
     if (slot.stop === "cancelled") {
