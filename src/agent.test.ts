@@ -715,6 +715,52 @@ describe("runAgent — per-run USD cap (costCapMicroUSD)", () => {
     assert.equal(seen[1], undefined, "a stale handle must not leak into the uncapped run");
   });
 
+  test("a system prompt grown by hot-reload is counted before it is sent", async () => {
+    // The rebuild used to run after the cap check: a 2 MB prompt went out on a
+    // reservation sized for the old one, and the run ended at 7× its cap.
+    const calls: ProviderRunOpts[] = [];
+    let trueSpend = 0;
+    let rebuilds = 0;
+    const provider: Provider = {
+      name: "fake",
+      async runTurn(opts: ProviderRunOpts): Promise<ProviderResult> {
+        calls.push(opts);
+        const bytes =
+          Buffer.byteLength(opts.systemPrompt) + Buffer.byteLength(JSON.stringify(opts.messages));
+        // claude-sonnet-4-6 at face value: input $4.20/M, output $21/M.
+        trueSpend += Math.ceil((Math.ceil(bytes / 4) * 4_200_000 + 100 * 21_000_000) / 1_000_000);
+        return {
+          content: [toolUseBlock(`tu_${calls.length}`)],
+          stopReason: "tool_use",
+          usage: {
+            inputTokens: Math.ceil(bytes / 4),
+            outputTokens: 100,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+          },
+        };
+      },
+    };
+    const r = await runAgent({
+      provider,
+      systemPrompt: "sys",
+      tools: [echoTool],
+      toolCtx: makeToolCtx(),
+      history: [],
+      userMessage: "go",
+      model: "claude-sonnet-4-6",
+      costCapMicroUSD: 300_000,
+      hotReload: {
+        initialFingerprint: "0",
+        rebuild: async () => ({ text: "S".repeat(2_000_000), fingerprint: String(++rebuilds) }),
+      },
+    });
+    assert.equal(r.stopReason, "budget_exceeded");
+    assert.equal(calls.length, 1, "the 2 MB prompt does not fit and is never sent");
+    assert.ok(rebuilds >= 1);
+    assert.ok(trueSpend <= 300_000, `true spend ${trueSpend}`);
+  });
+
   test("a large transcript is counted before it is sent", async () => {
     // ~300 KB of history reserves ~100k prompt tokens = 42_000 micro-USD,
     // which a $0.03 cap cannot cover: no call is made.

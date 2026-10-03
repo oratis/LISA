@@ -271,6 +271,30 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
       });
       break;
     }
+    // Mid-session prompt hot-reload (Phase 1.1). Skip on the very first turn —
+    // the caller already supplied a fresh prompt. From turn 2 on, check whether
+    // the prompt-influencing state changed (soul / skills / memory) and rebuild
+    // if so. The next provider call will pay one cache miss on the system
+    // prompt; this is the price of the agent actually experiencing her own
+    // mid-session self-update. Rebuilt BEFORE the cost cap check below, so the
+    // cap sizes the prompt that will actually be sent.
+    if (opts.hotReload && iterations > 0) {
+      try {
+        const next = await opts.hotReload.rebuild();
+        if (next.fingerprint !== currentFingerprint) {
+          currentSystemPrompt = next.text;
+          currentFingerprint = next.fingerprint;
+          onEvent?.({
+            type: "system_prompt_rebuilt",
+            message: `system prompt rebuilt (${next.text.length} bytes)`,
+          });
+        }
+      } catch (err) {
+        // Hot-reload is best-effort; never crash the agent loop on it.
+        toolCtx.log(`[hot-reload] skipped: ${(err as Error).message.slice(0, 200)}`);
+      }
+    }
+
     // USD cap (same clean stop point as the token breaker, but also applied to
     // the first call). The next request re-sends the system prompt, the tool
     // definitions and the whole transcript, so its prompt is sized from exactly
@@ -295,29 +319,6 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
       turnMaxTokens = verdict.maxTokens;
     }
     iterations++;
-
-    // Mid-session prompt hot-reload (Phase 1.1). Skip on the very first turn —
-    // the caller already supplied a fresh prompt. From turn 2 on, check whether
-    // the prompt-influencing state changed (soul / skills / memory) and rebuild
-    // if so. The next provider call will pay one cache miss on the system
-    // prompt; this is the price of the agent actually experiencing her own
-    // mid-session self-update.
-    if (opts.hotReload && iterations > 1) {
-      try {
-        const next = await opts.hotReload.rebuild();
-        if (next.fingerprint !== currentFingerprint) {
-          currentSystemPrompt = next.text;
-          currentFingerprint = next.fingerprint;
-          onEvent?.({
-            type: "system_prompt_rebuilt",
-            message: `system prompt rebuilt (${next.text.length} bytes)`,
-          });
-        }
-      } catch (err) {
-        // Hot-reload is best-effort; never crash the agent loop on it.
-        toolCtx.log(`[hot-reload] skipped: ${(err as Error).message.slice(0, 200)}`);
-      }
-    }
 
     onEvent?.({ type: "turn_start" });
 
