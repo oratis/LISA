@@ -27,7 +27,7 @@ on:
         required: true
 
 permissions:
-  contents: write   # needed to create releases + upload assets
+  contents: write # needed to create releases + upload assets
 
 jobs:
   build:
@@ -136,7 +136,7 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read
-      id-token: write   # required by --provenance
+      id-token: write # required by --provenance
     steps:
       - uses: actions/checkout@v7
 
