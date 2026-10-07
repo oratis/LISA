@@ -20,7 +20,7 @@
 | **Mac app** | Web workspace, menu-bar Island, local tools and agent controls | Download the signed, notarized **Lisa-Suite.dmg** from Releases; Node and the backend are bundled |
 | **CLI / self-hosted web** | Local assistant, configurable providers, knowledge, integrations and development tools | Node **22.19+** and a provider key or local model |
 | **LISA Cloud** | Account-based chat, memory and knowledge tools, without setting up a Mac | [Sign in](https://meetlisa.ai/cloud/); usage allowance and optional credits apply |
-| **Lisa Pocket (iOS)** | Cloud chat or access to your reachable Mac; separate saved connections | Native app is in App Store review remediation; **not yet publicly approved** |
+| **Lisa Pocket (iOS)** | Cloud chat or access to your reachable Mac; separate saved connections | Native app has been resubmitted for App Store review; **not yet publicly approved** |
 
 Cloud and Mac are **separate instances**: their histories, memories and credentials do not automatically sync. Local tools need your Mac to be running and reachable. Cloud does not expose your Mac's shell, mail, coding agents or host-level push services.
 
@@ -89,7 +89,7 @@ The latest tagged package is **v0.27.1**. Current `main` includes later work; a 
 | Guarded cloud web search / fetch | [PR #404](https://github.com/oratis/LISA/pull/404), not merged; proposed feature is off by default |
 | Purpose-based model routing and cost controls | [PR #407](https://github.com/oratis/LISA/pull/407), not merged |
 | Cross-device memory, tenant-level push, calendar/mail-write connectors, computer use | Planned; not advertised as available |
-| iOS App Store | October 5 rejection: consumable-credit restore and AI disclosure; [current remediation](docs/REVIEW_2026-10-07.md) |
+| iOS App Store | Fixes for consumable-credit restore and AI disclosure resubmitted October 7 as **1.2 (1791346539)**; **waiting for review** ([evidence](docs/REVIEW_2026-10-07.md)) |
 
 Product research on Muse and other personal assistants informs the direction, with implementation boundaries documented in the [Muse review](docs/RESEARCH_MUSE_2026-09-27.md), [always-on research](docs/RESEARCH_ALWAYS_ON_AGENTS_2026-09-30.md) and [upgrade plan](docs/PLAN_ALWAYS_ON_UPGRADE_2026-09-30.md). LISA is an independent project.
 

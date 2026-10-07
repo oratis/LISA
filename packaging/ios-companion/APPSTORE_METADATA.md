@@ -53,4 +53,4 @@ Learn more at meetlisa.ai.
 
 The additional account-lifecycle and StoreKit audit is tracked in [self-audit evidence](../../docs/REVIEW_SELF_AUDIT_2026-09-28.md). Do not claim a real sandbox transaction passed until the payment and server credit have been observed.
 
-October 5 rejected build 1790567703 under 3.1.1 and 5.1.1/5.1.2. The next binary removes Apple consumable restore and strengthens explicit AI consent. See [current remediation](../../docs/REVIEW_2026-10-07.md) for verified status; these notes do not mean a new binary has been submitted.
+October 5 rejected build 1790567703 under 3.1.1 and 5.1.1/5.1.2. The next binary removes Apple consumable restore and strengthens explicit AI consent. See [current remediation](../../docs/REVIEW_2026-10-07.md) for verified status; the updated notes and native screenshot attachment were saved, and 1.2 (1791346539) plus all three IAPs were resubmitted on October 7 at 12:27 Asia/Shanghai. The Apple portal shows Waiting for Review, not approval.
