@@ -60,6 +60,7 @@ const PATH_READ_TOOLS = new Set(["read", "ls", "grep", "transcribe"]);
 
 /** Other reads: no host path, no destination of the model's choosing. */
 const READ_TOOLS = new Set([
+  "task_list",
   "memory_search",
   "kb_search",
   "kb_read",
@@ -84,6 +85,7 @@ const READ_TOOLS = new Set([
 
 /** Writes confined to Lisa's own home: soul, memory, kb, skills, desires, mood, voice output. */
 const SELF_TOOLS = new Set([
+  "task_cancel",
   "soul_patch",
   "soul_journal",
   "soul_feel",
@@ -100,7 +102,8 @@ const SELF_TOOLS = new Set([
   "speak",
 ]);
 
-const DRAFT_TOOLS = new Set(["social_compose"]);
+// Task edits always disable execution; the user must enable the reviewed draft.
+const DRAFT_TOOLS = new Set(["social_compose", "task_create", "watch_create", "task_update"]);
 const WRITE_TOOLS = new Set(["write", "edit", "apply_patch"]);
 
 /**

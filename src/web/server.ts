@@ -196,6 +196,9 @@ import {
   reachOutApiOptions,
   scheduleServerCatchUp,
 } from "./reachout-wiring.js";
+import { createTaskHost } from "./tasks-host.js";
+import { cloudTasksEnabled } from "./tasks-api.js";
+import { cloudModelGate, sweepUserTasks } from "../tasks/cloud.js";
 import {
   loadScreenAdvisorConfig,
   saveScreenAdvisorConfig,
@@ -835,6 +838,61 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   const reachOutVia = makeServerReachOut({ pushBridge, log: (m) => logInfo(m) });
   // Pushes held by quiet hours do not survive a restart; announce them once.
   scheduleServerCatchUp({ pushBridge, log: (m) => logInfo(m) });
+  // ── Task Engine (W1): durable routines / watchers / one-offs ────────
+  // Everything lives in tasks-host.ts; this is only the wiring to the pieces
+  // that are closures of this server (conversation, SSE fan-out, the gate).
+  const taskHost = createTaskHost({
+    cloud: cloudEdition,
+    profile: capabilityProfile,
+    tools: autonomyTools,
+    model: () => activeModel,
+    cwd: process.cwd(),
+    broadcast,
+    log: logInfo,
+    // Results reach the user through the reach-out gate, like every other
+    // proactive message; the gate decides whether the push channel fires.
+    reachOut: reachOutVia,
+    pushSink: pushBridge,
+    rememberNote: async (note) => {
+      const lease = await ctxForRequest();
+      try {
+        lease.value.activity.lastIdleMessage = note;
+      } finally {
+        lease.release();
+      }
+    },
+    // Hosted: every model call of a tenant's run goes through billing admission,
+    // and every run is registered as account work so deletion can stop and await it.
+    ...(cloudEdition
+      ? {
+          modelGateFor: (uid: string) => cloudModelGate(uid),
+          trackWork: (uid: string, stop: () => void) => beginAccountWork(uid, stop),
+        }
+      : {}),
+    withConversation: async (fn) => {
+      const lease = await ctxForRequest();
+      const ctx = lease.value;
+      // Queue behind any chat turn on this conversation, like a turn would.
+      const job = ctx.chain.then(() =>
+        fn({
+          history: ctx.history,
+          append: async (message) => {
+            await ctx.session.appendMessage(message);
+            ctx.history.push(message);
+          },
+        }),
+      );
+      ctx.chain = job.then(
+        () => {},
+        () => {},
+      );
+      try {
+        return await job;
+      } finally {
+        lease.release();
+      }
+    },
+  });
   hub.on("update", (session: AgentSession) => {
     // L6 — record the transition in the orchestrator journal so the
     // cross-agent recap can answer "what happened while I was away?" even for
@@ -1988,8 +2046,18 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         logInfo(
           `[sweep] scanned ${report.scanned} active accounts, ran ${report.ran} autonomy action(s)`,
         );
+        // Cloud tasks ride the same sweep (LISA_CLOUD_TASKS=1 only; default off).
+        const tasks = cloudTasksEnabled()
+          ? await sweepUserTasks({
+              runnerFor: (uid) => taskHost.runnerFor(uid),
+              beginAccountWork: (uid) => beginAccountWork(uid, () => {}),
+              ...(maxRuns !== undefined ? { maxRuns } : {}),
+            })
+          : undefined;
+        if (tasks)
+          logInfo(`[sweep] tasks: ${tasks.scanned} tenant(s) with tasks, ${tasks.ran} run(s)`);
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify(report));
+        res.end(JSON.stringify(tasks ? { ...report, tasks } : report));
       } catch (e) {
         // A sweep-wide failure (e.g. the accounts store is unreadable) must
         // answer the scheduler cleanly rather than hang the request — per-uid
@@ -2461,6 +2529,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           await fs.rm(userHome, { recursive: true, force: true });
         }
         tenantRuntimes.delete(userHome);
+        await taskHost.forgetTenant(accountUid);
         moodBus.forget(accountUid); // keyed by uid, not home path
         eventClients.removeTenant(accountUid, (sink) => sink.end());
         removed = await deleteAccount(accountUid);
@@ -2514,6 +2583,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       return;
     }
     if (await handleReachOutApi(req, res, url, reachOutApiOptions(cloud))) return;
+    if (await taskHost.handle(req, res, url, accountUid)) return;
 
     if (
       await handleWardenApi(req, res, url, {
@@ -4968,6 +5038,7 @@ self.addEventListener('fetch', (event) => {
       screenTimer = null;
     }
     loopMonitor.stop();
+    void taskHost.stop();
     idleWatcher?.stop();
     // Anything still waiting for an approval is denied, not left hanging.
     void warden.inbox.shutdown();

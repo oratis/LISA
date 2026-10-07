@@ -269,6 +269,53 @@ describe("runAgent — approval + hook gating (security-relevant)", () => {
     assert.match(String(allResults(r.history)[0]!.content), /hook blocked/);
   });
 
+  test("preToolHook cachedResult answers the call without executing the tool", async () => {
+    let ran = false;
+    let postHookCalls = 0;
+    const events: string[] = [];
+    const provider = scriptedProvider([
+      turn([toolUseBlock("echo", { n: 1 })], "tool_use"),
+      turn([textBlock("ok")], "end_turn"),
+    ]);
+    const r = await runAgent(
+      baseOpts({
+        provider,
+        tools: [
+          echoTool({
+            async execute() {
+              ran = true;
+              return "live";
+            },
+          }),
+        ],
+        preToolHook: async () => ({ cachedResult: "recorded earlier" }),
+        postToolHook: async () => {
+          postHookCalls++;
+        },
+        onEvent: (e) => {
+          if (e.type === "tool_call_end") events.push(`${e.toolName}:${e.isError ? "err" : "ok"}`);
+        },
+      }),
+    );
+    assert.equal(ran, false);
+    assert.equal(postHookCalls, 0);
+    const result = allResults(r.history)[0]!;
+    assert.equal(result.content, "recorded earlier");
+    assert.notEqual(result.is_error, true);
+    assert.deepEqual(events, ["echo:ok"]);
+  });
+
+  test("preToolHook block wins over cachedResult", async () => {
+    const provider = scriptedProvider([
+      turn([toolUseBlock("echo", {})], "tool_use"),
+      turn([textBlock("ok")], "end_turn"),
+    ]);
+    const r = await runAgent(
+      baseOpts({ provider, preToolHook: async () => ({ block: "policy", cachedResult: "x" }) }),
+    );
+    assert.match(String(allResults(r.history)[0]!.content), /hook blocked/);
+  });
+
   test("postToolHook can rewrite the tool result the model sees", async () => {
     const provider = scriptedProvider([
       turn([toolUseBlock("echo", {})], "tool_use"),

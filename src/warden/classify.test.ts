@@ -507,7 +507,20 @@ test("every tool the legacy gates treat as mutating is side-effecting for Warden
     assert.equal(benign.has(cat(name, {})), false, name);
   }
   for (const name of AUTONOMOUS_BLOCKED_TOOL_NAMES) {
-    if (name === "social_compose") continue; // a draft: publishing is a separate, digest-bound approval
+    // These are blocked from unattended contexts to prevent nested task
+    // management, regardless of effect category. Task tools cannot enable a
+    // draft; their explicit categories are covered separately below.
+    if (
+      [
+        "social_compose",
+        "task_create",
+        "watch_create",
+        "task_update",
+        "task_list",
+        "task_cancel",
+      ].includes(name)
+    )
+      continue;
     const category = cat(name, {});
     assert.equal(benign.has(category), false, `${name} → ${category}`);
   }
@@ -709,4 +722,13 @@ test("review 13: audit targets mask email and phone recipients", () => {
   assert.deepEqual(auditTargets(["example.com", "/work/a.ts"]), ["example.com", "/work/a.ts"]);
   assert.equal(maskEmails("call +1 (415) 555-0100 or bob@example.org").includes("555"), false);
   assert.equal(maskEmails("call +1 (415) 555-0100 or bob@example.org").includes("bob@"), false);
+});
+
+test("task tools distinguish reads, disabled drafts and cancellation", () => {
+  assert.equal(cat("task_list"), "read");
+  for (const name of ["task_create", "watch_create", "task_update"]) {
+    assert.equal(cat(name), "draft");
+    assert.equal(classify(name).egress, false);
+  }
+  assert.equal(cat("task_cancel"), "self");
 });
