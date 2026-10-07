@@ -141,6 +141,8 @@ source, and the changelog is the summary.
 
 ## Reviews
 
+- [2026-10-07 PA review and iOS remediation](REVIEW_2026-10-07.md): merged versus pending capabilities, October 5 rejection and current fixes.
+
 Point-in-time assessments. Each names its baseline commit; read the newest first.
 
 | Review | Baseline |
