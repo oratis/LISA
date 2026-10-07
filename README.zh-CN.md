@@ -85,9 +85,9 @@ Warden 尚未覆盖全部执行入口，也不能替代操作系统沙箱。凭�
 | --- | --- |
 | 个人助手入口、Cloud/Mac 隔离、流式回复与历史修复 | 已合并；原生与生产验证见[执行记录](docs/EXECUTION_PERSONAL_ASSISTANT_2026-09-27.md) |
 | Warden 核心 / 凭据代理 / 主动消息规则 | 已合并到 `main`；Web 聊天策略需要主动启用 |
-| 持久目标、例程和 watcher | [PR #403](https://github.com/oratis/LISA/pull/403)，已审查并集成；托管执行仍默认关闭 |
+| 持久目标、例程和 watcher | [PR #403](https://github.com/oratis/LISA/pull/403)，已合并；托管执行仍默认关闭 |
 | 受保护的云端网页搜索与抓取 | [PR #404](https://github.com/oratis/LISA/pull/404)，已合并；默认关闭，生产未启用 |
-| 按用途选择模型与成本控制 | [PR #407](https://github.com/oratis/LISA/pull/407)，已审查并集成；估算预算为主动接入的 API，不是全局费用上限 |
+| 按用途选择模型与成本控制 | [PR #407](https://github.com/oratis/LISA/pull/407)，已合并；估算预算为主动接入的 API，不是全局费用上限 |
 | 跨设备记忆、租户级推送、日历/邮件写入连接器、电脑操作 | 规划中，不作为现有能力宣传 |
 | iOS App Store | 消耗型额度恢复与 AI 告知已修复；10 月 7 日提交 **1.2 (1791346539)**，现为**等待审核**（[回执](docs/REVIEW_2026-10-07.md)） |
 

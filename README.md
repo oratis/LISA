@@ -85,9 +85,9 @@ The latest tagged package is **v0.27.1**. Current `main` includes later work; a 
 | --- | --- |
 | Personal-assistant entry, Cloud/Mac isolation, streaming/history fixes | Merged; native and production evidence recorded in the [execution log](docs/EXECUTION_PERSONAL_ASSISTANT_2026-09-27.md) |
 | Warden core / credential broker / reach-out gate | Merged to `main`; Warden web-chat policy requires opt-in |
-| Durable goals, routines and watchers | [PR #403](https://github.com/oratis/LISA/pull/403), reviewed and integrated; hosted execution remains off by default |
+| Durable goals, routines and watchers | [PR #403](https://github.com/oratis/LISA/pull/403), merged; hosted execution remains off by default |
 | Guarded cloud web search / fetch | [PR #404](https://github.com/oratis/LISA/pull/404), merged; off by default and disabled in production |
-| Purpose-based model routing and cost controls | [PR #407](https://github.com/oratis/LISA/pull/407), reviewed and integrated; estimated run budgets are an opt-in API, not a universal spending ceiling |
+| Purpose-based model routing and cost controls | [PR #407](https://github.com/oratis/LISA/pull/407), merged; estimated run budgets are an opt-in API, not a universal spending ceiling |
 | Cross-device memory, tenant-level push, calendar/mail-write connectors, computer use | Planned; not advertised as available |
 | iOS App Store | Fixes for consumable-credit restore and AI disclosure resubmitted October 7 as **1.2 (1791346539)**; **waiting for review** ([evidence](docs/REVIEW_2026-10-07.md)) |
 
