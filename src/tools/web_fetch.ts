@@ -101,10 +101,11 @@ export async function withDeadline<T>(
   expired.catch(() => {});
   if (parent?.aborted) onParentAbort();
   else parent?.addEventListener("abort", onParentAbort, { once: true });
-  const running = work(controller.signal);
-  // The loser of the race still settles; never let that surface as unhandled.
-  running.catch(() => {});
   try {
+    controller.signal.throwIfAborted();
+    const running = work(controller.signal);
+    // The loser of the race still settles; never let that surface as unhandled.
+    running.catch(() => {});
     return await Promise.race([running, expired]);
   } finally {
     clearTimeout(timer);
@@ -253,6 +254,8 @@ export async function fetchFollowingSafeRedirects(
       currentUrl.hostname,
       dependencies.lookup ?? defaultLookup,
     );
+    // DNS is not cancellable; never start egress after cancellation during lookup.
+    signal?.throwIfAborted();
     // Caller-supplied request data (cookies / API auth headers, POST body) is
     // scoped to the INITIAL origin: a cross-origin redirect must not replay a
     // login cookie (e.g. Bilibili SESSDATA) or re-POST to a different host. The

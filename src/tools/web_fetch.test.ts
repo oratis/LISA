@@ -267,6 +267,26 @@ describe("fetchFollowingSafeRedirects — closes the SSRF redirect bypass", () =
     });
   });
 
+  test("cancellation during DNS does not open a connection afterwards", async () => {
+    const controller = new AbortController();
+    let connected = false;
+    await assert.rejects(
+      () =>
+        fetchFollowingSafeRedirects("https://example.com/", controller.signal, undefined, {
+          lookup: async () => {
+            controller.abort(new Error("cancelled during DNS"));
+            return [{ address: "93.184.216.34", family: 4 }];
+          },
+          transport: async () => {
+            connected = true;
+            return new Response("unexpected");
+          },
+        }),
+      /cancelled during DNS/,
+    );
+    assert.equal(connected, false);
+  });
+
   test("DNS rebinding to a private answer stops before transport", async () => {
     let calls = 0;
     const lookup: DnsLookupAll = async () => {
@@ -751,6 +771,17 @@ describe("withDeadline", () => {
       /timed out after 20ms/,
     );
     assert.equal(aborted, true);
+  });
+  test("an already cancelled request never starts work", async () => {
+    let started = false;
+    await assert.rejects(
+      () =>
+        withDeadline(AbortSignal.abort(new Error("cancelled")), 1000, async () => {
+          started = true;
+        }),
+      /cancelled/,
+    );
+    assert.equal(started, false);
   });
   test("returns the result and clears the timer when the work finishes first", async () => {
     assert.equal(await withDeadline(undefined, 10_000, async () => "done"), "done");
