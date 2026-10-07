@@ -17,7 +17,7 @@ export interface SubagentOptions {
   effort?: "low" | "medium" | "high" | "xhigh" | "max";
   /** Cumulative (input+output) token ceiling; stops the run early when reached. */
   budgetTokens?: number;
-  /** Hard USD ceiling for the run, micro-USD — see RunAgentOptions.costCapMicroUSD. */
+  /** Estimated USD ceiling for the run, micro-USD — see RunAgentOptions.costCapMicroUSD. */
   costCapMicroUSD?: number;
   /** Hears every amount counted against the cap — see RunAgentOptions.onCostCharged. */
   onCostCharged?: (microUSD: number) => void;

@@ -72,7 +72,7 @@ describe("estimateRunCost — the same numbers the meter bills", () => {
   test("an unpriced model is quoted at the conservative fallback and flagged", () => {
     const est = estimateRunCost("gemini-2.5-flash-lite", 1_000_000, 0);
     assert.equal(est.priced, false);
-    assert.equal(est.microUSD, 4_200_000); // fallback $3/M × 1.4 — an upper bound
+    assert.equal(est.microUSD, 4_200_000); // fallback $3/M × 1.4 — a fallback estimate
     assert.ok(est.microUSD > estimateRunCost("gemini-2.5-flash", 1_000_000, 0).microUSD);
   });
 
@@ -114,9 +114,15 @@ describe("formatCostEstimate", () => {
     assert.equal(formatCostEstimate(12_345_678), "~$12.35");
   });
 
-  test("an unpriced model's figure is shown as an upper bound; local as free", () => {
-    assert.equal(formatCostEstimate(estimateRunCost("mystery-model", 100_000, 10_000)), "≤$0.63");
-    assert.equal(formatCostEstimate(estimateRunCost("mystery-model", 10, 10)), "≤$0.01");
+  test("an unpriced model's figure is shown as a fallback estimate; local as free", () => {
+    assert.equal(
+      formatCostEstimate(estimateRunCost("mystery-model", 100_000, 10_000)),
+      "~$0.63 (fallback rate; price unknown)",
+    );
+    assert.equal(
+      formatCostEstimate(estimateRunCost("mystery-model", 10, 10)),
+      "<$0.01 (fallback rate; price unknown)",
+    );
     assert.equal(
       formatCostEstimate(estimateRunCost("local://llama3.2", 100_000, 10_000)),
       "$0.00 (local model)",

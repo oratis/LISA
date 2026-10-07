@@ -122,7 +122,7 @@ const ZERO: ProviderUsage = {
 /**
  * Fold one upstream SSE `data:` JSON object into the running usage.
  * Anthropic: message_start carries input/cache counts, message_delta the
- * output count. OpenAI-compat: the final chunk (stream_options.include_usage)
+ * cumulative output count (take maxima, never sum snapshots). OpenAI-compat: the final chunk (stream_options.include_usage)
  * carries {usage:{prompt_tokens, completion_tokens}}.
  */
 export function foldUsage(
@@ -138,15 +138,15 @@ export function foldUsage(
       >;
       return {
         ...acc,
-        inputTokens: acc.inputTokens + num(usage.input_tokens),
-        cacheReadTokens: acc.cacheReadTokens + num(usage.cache_read_input_tokens),
-        cacheWriteTokens: acc.cacheWriteTokens + num(usage.cache_creation_input_tokens),
-        outputTokens: acc.outputTokens + num(usage.output_tokens),
+        inputTokens: Math.max(acc.inputTokens, num(usage.input_tokens)),
+        cacheReadTokens: Math.max(acc.cacheReadTokens, num(usage.cache_read_input_tokens)),
+        cacheWriteTokens: Math.max(acc.cacheWriteTokens, num(usage.cache_creation_input_tokens)),
+        outputTokens: Math.max(acc.outputTokens, num(usage.output_tokens)),
       };
     }
     if (obj.type === "message_delta") {
       const usage = (obj.usage ?? {}) as Record<string, unknown>;
-      return { ...acc, outputTokens: acc.outputTokens + num(usage.output_tokens) };
+      return { ...acc, outputTokens: Math.max(acc.outputTokens, num(usage.output_tokens)) };
     }
     return acc;
   }
@@ -154,8 +154,8 @@ export function foldUsage(
   if (usage && typeof usage === "object") {
     return {
       ...acc,
-      inputTokens: acc.inputTokens + num(usage.prompt_tokens),
-      outputTokens: acc.outputTokens + num(usage.completion_tokens),
+      inputTokens: Math.max(acc.inputTokens, num(usage.prompt_tokens)),
+      outputTokens: Math.max(acc.outputTokens, num(usage.completion_tokens)),
     };
   }
   return acc;
@@ -820,10 +820,18 @@ export function usageFromGeminiJson(body: unknown): ProviderUsage {
  *    `usageMetadata`.
  */
 export function isFinalUsageEvent(face: GatewayFace, obj: Record<string, unknown>): boolean {
-  if (face === "anthropic") return obj.type === "message_delta" && isObject(obj.usage);
-  if (face === "openai") {
-    return isObject(obj.usage) && typeof obj.usage.completion_tokens === "number";
+  const valid = (value: unknown): boolean =>
+    typeof value === "number" && Number.isFinite(value) && value >= 0;
+  if (face === "anthropic") {
+    return obj.type === "message_delta" && isObject(obj.usage) && valid(obj.usage.output_tokens);
   }
+  if (face === "openai") {
+    return isObject(obj.usage) && valid(obj.usage.completion_tokens);
+  }
+  const meta = field(obj, "usageMetadata", "usage_metadata");
+  // finishReason is an outcome, not proof that output usage was reported.
+  if (!isObject(meta) || !valid(field(meta, "candidatesTokenCount", "candidates_token_count")))
+    return false;
   const candidates = obj.candidates;
   return (
     Array.isArray(candidates) &&

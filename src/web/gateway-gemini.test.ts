@@ -1831,7 +1831,7 @@ const FACES: FaceCase[] = [
       sse({ type: "message_stop" }),
     ],
     reportedInput: 100,
-    reportedOutput: 2_001,
+    reportedOutput: 2_000,
   },
   {
     face: "openai",
@@ -1881,6 +1881,34 @@ describe("POST /gw/* — a stream cut before its final usage event (every face)"
         const usage = adm.settled[0]!.usage;
         assert.equal(usage.inputTokens, c.reportedInput);
         assert.equal(usage.outputTokens, Math.ceil(forwarded / 4));
+        assert.deepEqual(adm.log.slice(-2), ["settle", "release"]);
+      } finally {
+        await gw.close();
+      }
+    });
+
+    test(`${c.face}: a terminator without usable output counts keeps the byte floor`, async () => {
+      const endings =
+        c.face === "gemini"
+          ? [{ candidates: [{ finishReason: "STOP" }], usageMetadata: { promptTokenCount: 100 } }]
+          : c.face === "anthropic"
+            ? [{ type: "message_delta", usage: {} }]
+            : [{ choices: [], usage: { completion_tokens: -1 } }];
+      const events = [...c.beforeCut, ...endings.map(sse)];
+      const adm = admission();
+      const upstream = fakeUpstream(() => streamThenMaybeCut(events, false));
+      const gw = await gateway({
+        fetch: upstream.fetch,
+        admit: (acct, model) => admitInference(acct, model, adm.deps),
+        env: ALL_FACES_ENV,
+      });
+      try {
+        await (await post(gw.base, c.path, c.body)).text();
+        assert.equal(adm.settled.length, 1);
+        assert.equal(
+          adm.settled[0]!.usage.outputTokens,
+          Math.ceil(events.reduce((n, e) => n + Buffer.byteLength(e), 0) / 4),
+        );
         assert.deepEqual(adm.log.slice(-2), ["settle", "release"]);
       } finally {
         await gw.close();

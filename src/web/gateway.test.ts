@@ -1,7 +1,8 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 
-const { planUpstream, foldUsage, usageFromJson, estimateUsageFromBytes } = await import("./gateway.js");
+const { planUpstream, foldUsage, usageFromJson, estimateUsageFromBytes } =
+  await import("./gateway.js");
 const { managedConfig, hasCredentialsForModel } = await import("../providers/registry.js");
 const { costMicroUSD } = await import("../billing/prices.js");
 
@@ -9,15 +10,26 @@ const ZERO = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTo
 
 describe("planUpstream", () => {
   test("anthropic face swaps in the real key + version passthrough", () => {
-    const plan = planUpstream("anthropic", "/v1/messages", "claude-sonnet-4-6",
-      { "anthropic-version": "2024-01-01" }, { ANTHROPIC_API_KEY: "sk-real" });
+    const plan = planUpstream(
+      "anthropic",
+      "/v1/messages",
+      "claude-sonnet-4-6",
+      { "anthropic-version": "2024-01-01" },
+      { ANTHROPIC_API_KEY: "sk-real" },
+    );
     assert.equal(plan?.url, "https://api.anthropic.com/v1/messages");
     assert.equal(plan?.headers["x-api-key"], "sk-real");
     assert.equal(plan?.headers["anthropic-version"], "2024-01-01");
   });
 
   test("openai face routes GLM through its preset with the ZHIPU key", () => {
-    const plan = planUpstream("openai", "/chat/completions", "glm-4.6", {}, { ZHIPU_API_KEY: "zk" });
+    const plan = planUpstream(
+      "openai",
+      "/chat/completions",
+      "glm-4.6",
+      {},
+      { ZHIPU_API_KEY: "zk" },
+    );
     assert.ok(plan?.url.includes("bigmodel.cn"));
     assert.equal(plan?.headers.authorization, "Bearer zk");
   });
@@ -29,13 +41,31 @@ describe("planUpstream", () => {
 });
 
 describe("usage tee-parsing", () => {
-  test("anthropic stream: message_start + message_delta accumulate", () => {
-    let acc = foldUsage("anthropic", {
-      type: "message_start",
-      message: { usage: { input_tokens: 100, cache_read_input_tokens: 40, cache_creation_input_tokens: 10, output_tokens: 1 } },
-    }, ZERO);
+  test("anthropic stream: message_start and message_delta report cumulative totals", () => {
+    let acc = foldUsage(
+      "anthropic",
+      {
+        type: "message_start",
+        message: {
+          usage: {
+            input_tokens: 100,
+            cache_read_input_tokens: 40,
+            cache_creation_input_tokens: 10,
+            output_tokens: 1,
+          },
+        },
+      },
+      ZERO,
+    );
     acc = foldUsage("anthropic", { type: "message_delta", usage: { output_tokens: 250 } }, acc);
-    assert.deepEqual(acc, { inputTokens: 100, outputTokens: 251, cacheReadTokens: 40, cacheWriteTokens: 10 });
+    assert.deepEqual(acc, {
+      inputTokens: 100,
+      outputTokens: 250,
+      cacheReadTokens: 40,
+      cacheWriteTokens: 10,
+    });
+    acc = foldUsage("anthropic", { type: "message_delta", usage: { output_tokens: 250 } }, acc);
+    assert.equal(acc.outputTokens, 250, "repeated cumulative snapshots never double-charge");
   });
 
   test("openai stream: only the final usage chunk counts; content chunks are neutral", () => {
@@ -47,11 +77,16 @@ describe("usage tee-parsing", () => {
   });
 
   test("non-streaming JSON bodies for both faces", () => {
-    assert.deepEqual(
-      usageFromJson("anthropic", { usage: { input_tokens: 5, output_tokens: 7 } }),
-      { inputTokens: 5, outputTokens: 7, cacheReadTokens: 0, cacheWriteTokens: 0 },
+    assert.deepEqual(usageFromJson("anthropic", { usage: { input_tokens: 5, output_tokens: 7 } }), {
+      inputTokens: 5,
+      outputTokens: 7,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+    });
+    assert.equal(
+      usageFromJson("openai", { usage: { prompt_tokens: 3, completion_tokens: 4 } }).outputTokens,
+      4,
     );
-    assert.equal(usageFromJson("openai", { usage: { prompt_tokens: 3, completion_tokens: 4 } }).outputTokens, 4);
   });
 });
 
@@ -78,7 +113,10 @@ describe("managed mode resolution", () => {
   test("managedConfig parses env; empty session → null; base normalized", () => {
     assert.equal(managedConfig({}), null);
     assert.equal(managedConfig({ LISA_MANAGED_SESSION: "  " }), null);
-    const m = managedConfig({ LISA_MANAGED_SESSION: "s1.x.y", LISA_MANAGED_BASE: "https://cloud.example.com/" });
+    const m = managedConfig({
+      LISA_MANAGED_SESSION: "s1.x.y",
+      LISA_MANAGED_BASE: "https://cloud.example.com/",
+    });
     assert.equal(m?.base, "https://cloud.example.com");
     assert.equal(managedConfig({ LISA_MANAGED_SESSION: "t" })?.base, "https://cloud.meetlisa.ai");
   });

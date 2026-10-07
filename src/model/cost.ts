@@ -35,7 +35,7 @@ export interface RunCostEstimate {
   basis: CostBasis;
   /**
    * False when the model has no row in the price table: the conservative
-   * fallback rate was used, so the figure is an upper bound, not a quote.
+   * fallback rate was used. It is an estimate, not a ceiling on provider charges.
    */
   priced: boolean;
   /** True for a model served by a local runtime — no per-token charge at all. */
@@ -93,8 +93,8 @@ function dollars(microUSD: number): string {
 }
 
 /**
- * A short, honest label for a UI: "~$0.02", "<$0.01", "≤$0.42" when the model
- * is unpriced and the figure is only an upper bound, "$0.00 (local model)".
+ * A short UI label: "~$0.02", "<$0.01", or "$0.00 (local model)".
+ * Unknown prices are explicitly marked as fallback estimates, never ceilings.
  * Accepts a bare micro-USD amount as well.
  */
 export function formatCostEstimate(estimate: RunCostEstimate | number): string {
@@ -102,11 +102,12 @@ export function formatCostEstimate(estimate: RunCostEstimate | number): string {
     typeof estimate === "number" ? { microUSD: estimate, priced: true, local: false } : estimate;
   if (est.local) return "$0.00 (local model)";
   if (!Number.isFinite(est.microUSD) || est.microUSD < 0) return "unknown";
+  if (!est.priced) return `${formatCostEstimate(est.microUSD)} (fallback rate; price unknown)`;
   if (est.microUSD === 0) return "$0.00";
   // Round UP to the cent so the label never understates.
   const cents = Math.ceil(est.microUSD / 10_000) * 10_000;
-  if (est.microUSD < 10_000) return est.priced ? "<$0.01" : "≤$0.01";
-  return `${est.priced ? "~" : "≤"}${dollars(cents)}`;
+  if (est.microUSD < 10_000) return "<$0.01";
+  return `~${dollars(cents)}`;
 }
 
 /** Average tokens of one routine run: a split, or a bare total. */
@@ -160,7 +161,7 @@ export function formatRoutineEstimate(estimate: RoutineCostEstimate): string {
   return `${formatCostEstimate(estimate.perRun)}/run · ${formatCostEstimate(monthly)}/month`;
 }
 
-// ── Per-run hard cap ────────────────────────────────────────────────────────
+// ── Per-run estimated cost cap ────────────────────────────────────────────────────────
 
 /** Below this, a turn cannot say anything useful; stop instead of paying for a stub. */
 export const MIN_USEFUL_OUTPUT_TOKENS = 256;
@@ -417,20 +418,11 @@ function sameModel(a: string, b: string): boolean {
  * charged at the one the provider says served it (the dearest when it does
  * not say, or names one outside the list).
  *
- * The bound. A run that keeps to the verdicts ends above its cap by at most
- * the prompt tokens its LAST call carried beyond what was reserved for it,
- * priced at the dearer of the input and cache-write rates. Output cannot add
- * to it: the provider is held to the ceiling. An earlier call's shortfall
- * cannot either: it is in the reported spend the next check reads. The
- * reservation is `reservePromptTokensForText` + `PROMPT_FRAMING_TOKENS` for the
- * whole prompt, and from the second call on at least the prompt size the
- * provider last reported plus the estimate for what was added since. A token
- * covers at least one byte and digits are already counted one per token, so
- * the shortfall is at most two thirds of the non-digit bytes added since the
- * previous call (of the whole prompt, less the framing allowance, on the
- * first call) — reached only by text that tokenizes at about one byte a
- * token. Exception: a provider that reports no usage is charged its
- * reservation, so its shortfall is never observed and can recur on every call.
+ * This is an estimate-based circuit breaker, not a guaranteed billing ceiling.
+ * Prompt tokenization, provider framing, multimodal input and unreported usage
+ * can differ from the reservation. Provider prices can also differ from the
+ * local table, particularly for unknown models. Output is bounded only while
+ * the provider honors maxTokens. Reconcile actual usage in the billing layer.
  */
 export class RunCostCap {
   private spent = 0;

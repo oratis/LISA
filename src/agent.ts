@@ -87,7 +87,7 @@ export interface RunAgentOptions {
    */
   budgetTokens?: number;
   /**
-   * Optional hard USD ceiling for the whole run, in micro-USD at the price
+   * Optional estimated USD ceiling for the whole run, in micro-USD at the price
    * table's rates (see src/model/cost.ts). Unlike `budgetTokens`, it is checked
    * BEFORE every provider call including the first: a call is made only if its
    * worst case — the prompt plus the output ceiling — still fits, and the
@@ -98,17 +98,9 @@ export interface RunAgentOptions {
    * (0, NaN, null from a config file) stops the run before it calls the model.
    * Unset = no ceiling.
    *
-   * How far a run can end above it: only the last call's prompt can be larger
-   * than reserved (the output is held to its ceiling, and every earlier error
-   * is in the spend the next check reads). The reservation counts each ASCII
-   * digit as a token, every other 3 bytes as one, plus 512 framing tokens, and
-   * from the second call on builds on the prompt size the provider reported.
-   * So the overrun is at most the input rate (or cache-write, if dearer) times
-   * two thirds of the non-digit bytes added since the previous call (on the
-   * first call, of the whole prompt, less the framing allowance): text denser
-   * than 3 bytes a token, at worst one token per byte. Against a provider that
-   * reports no usage this shortfall is never observed and can recur per call.
-   * Details: `RunCostCap` in src/model/cost.ts.
+   * Prompt size and unknown prices are estimated, so actual charges may
+   * exceed this ceiling. Provider framing, multimodal input and missing usage
+   * prevent a universal overrun bound. See RunCostCap for the assumptions.
    *
    * Subagents spend inside it: the loop puts a `costCap` handle on the tool
    * context (see ToolContext), and the task tool starts each subagent with
