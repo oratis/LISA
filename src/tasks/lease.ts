@@ -462,13 +462,15 @@ export async function acquireLease(
   const isMine = (read: Read): read is Extract<Read, { kind: "ok" }> =>
     read.kind === "ok" && read.body.token === token;
 
-  const renew = async (): Promise<boolean> => {
+  let renewing: Promise<boolean> | null = null;
+  const renewOnce = async (): Promise<boolean> => {
     if (released || lost) return false;
     let held: boolean;
     try {
       held = await mutate(
         file,
         async () => {
+          if (released || lost) return false;
           const current = await readLease(file);
           if (!isMine(current)) return false;
           // Compare-and-swap on the body just read: a renewal that stalled
@@ -493,6 +495,20 @@ export async function acquireLease(
       markLost();
     }
     return held;
+  };
+
+  // A slow filesystem must not accumulate overlapping timer renewals. Release
+  // drains this operation before removing the lease or returning to deletion.
+  const renew = (): Promise<boolean> => {
+    if (released || lost) return Promise.resolve(false);
+    if (renewing) return renewing;
+    const pending = renewOnce();
+    renewing = pending;
+    const clear = () => {
+      if (renewing === pending) renewing = null;
+    };
+    void pending.then(clear, clear);
+    return pending;
   };
 
   if (opts.autoRenew !== false) {
@@ -540,6 +556,7 @@ export async function acquireLease(
       if (released) return;
       released = true;
       stopTimer();
+      await renewing?.catch(() => {});
       // Lost or not. A renewal that ERRORED marks the lease lost while the
       // file on disk is still this acquisition; left there, it would name a
       // live holder (this process) for as long as the process lives. The

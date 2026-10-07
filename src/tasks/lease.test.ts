@@ -239,35 +239,74 @@ test("fencing: a holder whose lease was taken cannot verify, renew or release it
 test("a renewal that finds the lease gone, or errors, reports it lost", async () => {
   await withHome(async () => {
     let lost = 0;
-    const a = await acquireLease("renewing", {
-      ttlMs: 60_000,
-      renewEveryMs: 15,
-      onLost: () => lost++,
-    });
+    const a = await acquireLease("renewing", { autoRenew: false, onLost: () => lost++ });
     assert.ok(a);
-    await new Promise((r) => setTimeout(r, 60));
-    assert.equal(lost, 0, "healthy renewals");
-    await fsp.rm(leaseFile("renewing"));
-    await new Promise((r) => setTimeout(r, 80));
-    assert.equal(lost, 1);
-    assert.equal(a.lost, true);
-    assert.equal(await a.verify(), false);
-    await a.release();
+    try {
+      assert.equal(await a.renew(), true);
+      assert.equal(lost, 0);
+      await fsp.rm(leaseFile("renewing"));
+      assert.equal(await a.renew(), false);
+      assert.equal(lost, 1);
+      assert.equal(a.lost, true);
+      assert.equal(await a.verify(), false);
+    } finally {
+      await a.release();
+    }
 
-    // An erroring renewal (the lease directory is gone): also lost.
-    let lost2 = 0;
+    const noticed = deferred();
     const b = await acquireLease("erroring", {
       ttlMs: 60_000,
       renewEveryMs: 15,
-      onLost: () => lost2++,
+      onLost: () => noticed.resolve(),
     });
     assert.ok(b);
-    await vanish(path.dirname(leaseFile("erroring")));
-    await fsp.writeFile(path.dirname(leaseFile("erroring")), "not a directory");
-    await new Promise((r) => setTimeout(r, 120));
-    assert.equal(lost2, 1);
-    await b.release();
-    await fsp.rm(path.dirname(leaseFile("erroring")), { force: true });
+    try {
+      await vanish(path.dirname(leaseFile("erroring")));
+      await fsp.writeFile(path.dirname(leaseFile("erroring")), "not a directory");
+      await noticed.promise;
+      assert.equal(b.lost, true);
+    } finally {
+      await b.release();
+      await fsp.rm(path.dirname(leaseFile("erroring")), { force: true });
+    }
+  });
+});
+
+test("release waits for an in-flight renewal and concurrent renewals share one operation", async () => {
+  await withHome(async () => {
+    const lease = await acquireLease("drain", { autoRenew: false });
+    assert.ok(lease);
+    const entered = deferred();
+    const proceed = deferred();
+    const realRename = fsp.rename.bind(fsp);
+    fsp.rename = async (from, to) => {
+      if (String(from) === leaseFile("drain")) {
+        entered.resolve();
+        await proceed.promise;
+      }
+      return realRename(from, to);
+    };
+    try {
+      const first = lease.renew();
+      await entered.promise;
+      assert.equal(lease.renew(), first);
+      let released = false;
+      const releasing = lease.release().then(() => {
+        released = true;
+      });
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.equal(released, false);
+      proceed.resolve();
+      await first;
+      await releasing;
+      assert.equal(await exists(leaseFile("drain")), false);
+      assert.equal(await exists(`${leaseFile("drain")}.mx`), false);
+      assert.equal(await lease.renew(), false);
+    } finally {
+      proceed.resolve();
+      fsp.rename = realRename;
+      await lease.release();
+    }
   });
 });
 

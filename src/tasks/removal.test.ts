@@ -276,13 +276,20 @@ test("removeTask without a runner flags the run (another process owns it) and gi
     await inTool.promise;
     // Seen from "another process": no runner handle. This tool ignores the
     // flag until it returns, so the wait times out and the task is removed anyway.
-    const stuck = removeTask(task.id, { waitMs: 150 });
-    await new Promise((r) => setTimeout(r, 30));
-    assert.equal(typeof (await getTask(task.id))!.cancelRequestedAt, "number");
-    assert.deepEqual(await stuck, { removed: true, waited: true, stillRunning: true });
-    gate.resolve();
-    await runner.drain();
-    assert.equal(await getTask(task.id), null);
+    const stuck = removeTask(task.id, { waitMs: 2000 });
+    try {
+      const deadline = Date.now() + 1500;
+      while (!(await getTask(task.id))?.cancelRequestedAt && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 10));
+      }
+      assert.equal(typeof (await getTask(task.id))?.cancelRequestedAt, "number");
+      assert.deepEqual(await stuck, { removed: true, waited: true, stillRunning: true });
+      assert.equal(await getTask(task.id), null);
+    } finally {
+      gate.resolve();
+      await stuck;
+      await runner.drain();
+    }
   });
 });
 

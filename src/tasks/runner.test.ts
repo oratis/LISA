@@ -187,6 +187,26 @@ test("a due routine runs, reschedules itself and delivers its result once", asyn
   });
 });
 
+test("an existing runner picks up a model change before its next run", async () => {
+  await withHome(async () => {
+    let model = "claude-first";
+    const { provider, calls } = scripted([say("first"), say("second")]);
+    const { deliver } = collector();
+    const runner = makeRunner({ provider, deliver, model: () => model });
+    await dueRoutine();
+    await runner.tick();
+    await runner.drain();
+    model = "gemini-second";
+    await dueRoutine();
+    await runner.tick();
+    await runner.drain();
+    assert.deepEqual(
+      calls.map((call) => call.model),
+      ["claude-first", "gemini-second"],
+    );
+  });
+});
+
 test("a task that is not due, disabled, or pinned to the other host is left alone", async () => {
   await withHome(async () => {
     await dueRoutine({ nextRunAt: NOW + 60_000 });

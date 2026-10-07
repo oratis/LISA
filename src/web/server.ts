@@ -845,7 +845,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     cloud: cloudEdition,
     profile: capabilityProfile,
     tools: autonomyTools,
-    model: opts.model,
+    model: () => activeModel,
     cwd: process.cwd(),
     broadcast,
     log: logInfo,
