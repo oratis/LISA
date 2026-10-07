@@ -2,11 +2,11 @@
 
 ## 一句话定位
 
-LISA 是一个以本地自主权为核心、带长期人格与记忆的 AI Agent。它把对话、工具、知识库、Soul、反思、自治、外部代理编排和原生客户端组合成一个持续运行的个人智能体。
+LISA 定位为开源 AI Personal Assistant（个人 AI 助手），帮助用户规划、写作、整理知识并连接工作流。支持账号登录的 Cloud 模式，以及运行在用户 Mac 上的本地实例；两者的聊天、记忆与凭据分别保存，不自动同步。长期身份、记忆与反思是软件机制，不代表真实人格或意识。
 
 ## 产品原则
 
-从当前代码可以归纳出四条主线：
+产品原则（2026-10-07）：
 
 1. **Local-first**：默认数据落在用户的 Lisa Home，本地运行不依赖 LISA Cloud。
 2. **Persistent self**：身份、目的、价值观、情绪、观点、欲望、关系、日志与技能会跨会话演进。
@@ -25,6 +25,8 @@ LISA 是一个以本地自主权为核心、带长期人格与记忆的 AI Agent
 | Soul | `src/soul/` | 持久人格、关系、情绪、观点、欲望、日志、记忆与 Git 溯源 |
 | Knowledge Base | `src/kb/` | 来源摄取、Wiki/Schema、检索、链接图和 Git 版本 |
 | Autonomy | `src/heartbeat.ts`、`src/idle.ts`、`src/web/autonomy-sweep.ts` | 心跳、空闲主动行为和 Cloud 扫描反思 |
+| Tasks | `src/tasks/` | 持久目标、例程、watcher、租约与恢复；Cloud 默认关闭 |
+| Warden / Reach-out | `src/warden/`、`src/reachout/` | Web 聊天动作策略（需 opt-in）、审批、审计及统一主动消息规则 |
 | Orchestrator | `src/orchestrator/` | 观察与管理 Claude、Codex、OpenCode、Aider、GitHub 等外部代理 |
 | macOS | `packaging/mac-client/` | Swift 原生壳、后端进程控制、Web 内容和 Island |
 | iOS | `packaging/ios-companion/` | SwiftUI 客户端、REST/SSE、Widget、Live Activity、认证与 IAP |
@@ -32,7 +34,7 @@ LISA 是一个以本地自主权为核心、带长期人格与记忆的 AI Agent
 
 ## 技术栈
 
-- Node.js 20+、TypeScript、ESM
+- Node.js 22.19+、TypeScript、ESM
 - 多 Provider：Anthropic、OpenAI、Google
 - MCP 与插件扩展
 - 手写 Node HTTP 服务与 SSE
@@ -40,7 +42,7 @@ LISA 是一个以本地自主权为核心、带长期人格与记忆的 AI Agent
 - Swift / SwiftUI 原生客户端
 - Astro 官网
 
-TypeScript 开启严格模式、`noUncheckedIndexedAccess` 和 `noImplicitOverride`。核心 `src/` 约 6.0 万行（非测试），Web 层是最大模块。
+TypeScript 开启严格模式、`noUncheckedIndexedAccess` 和 `noImplicitOverride`。历史规模数据见下文，不应作为当前行数引用。发布与审核以 docs 中最新实证记录为准。
 
 ## 常用验证命令
 

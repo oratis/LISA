@@ -1,0 +1,87 @@
+---
+import Base from "../layouts/Base.astro";
+const { lang = "en" } = Astro.props;
+const zh = lang === "zh-CN";
+const prefix = zh ? "/zh-CN" : "";
+const c = zh ? {
+  title: "LISA Cloud", description: "登录 LISA Cloud，使用个人 AI 助手规划、写作和整理知识。无需 Mac 或模型 API key。",
+  heading: "你的个人 AI 助手，", accent: "从登录开始。",
+  lede: "无需安装后端或准备模型 API key。用 LISA 账号开始对话，规划事务、起草内容，并建立自己的记忆与知识库。",
+  start: "打开 LISA Cloud", install: "在 Mac 上运行", note: "登录页提供可用的 Apple、Google 和邮箱选项。使用额度以账号页面为准。",
+  compare: "Cloud 与 Mac，各有自己的工作空间。", cols: ["", "你的 Mac", "LISA Cloud"],
+  rows: [
+    ["开始方式", "安装本地 app，配置自己的模型或托管登录", "登录 LISA 账号"],
+    ["聊天、记忆与知识库", "保存在本地 Lisa 实例", "保存在账号对应的云端实例"],
+    ["编程 agent、终端与本地集成", "按配置与权限使用", "不提供你 Mac 的本地能力"],
+    ["模型", "可选择供应商或本地模型", "使用服务配置的托管模型"],
+    ["手机访问", "Mac 必须开机并网络可达", "无需连接 Mac"],
+    ["跨实例同步", "聊天、记忆与凭据分别保存", "不会自动复制到 Mac"],
+    ["费用", "软件开源；模型和外部服务可能收费", "账号使用额度及可选额外充值"],
+  ],
+  control: "账号、额度和数据，由你管理。",
+  items: [
+    "Cloud 为每个账号隔离助手数据。云端不会获得你 Mac 的文件、终端或邮件权限。",
+    "Lisa Pocket 在 AI 聊天前说明接收方和数据用途；取消不会发送草稿，撤回同意后再次发送需要重新授权。",
+    "在设置中删除云端账号会移除 Lisa 账号数据并使会话失效。供应商记录、账单留存及 Apple 授权处理见隐私政策。",
+    "额外额度是消耗型购买。未使用余额保存在同一 LISA 账号；刷新余额不会恢复已用额度，也不会新建充值。",
+  ],
+  privacy: "阅读隐私政策", support: "获取支持", pocket: "Lisa Pocket 的 iPhone 与 iPad 版本正在等待 App Store 审核，尚未公开上架。",
+} : {
+  title: "LISA Cloud", description: "Sign in to your AI Personal Assistant for planning, writing and personal knowledge. LISA Cloud needs no Mac or model API key.",
+  heading: "Your personal AI assistant,", accent: "one sign-in away.",
+  lede: "Start a conversation with your LISA account, without installing a backend or bringing a model API key. Plan your work, draft content, and build your own memory and knowledge base.",
+  start: "Open LISA Cloud", install: "Run on your Mac", note: "The sign-in page shows available Apple, Google and email options. Check your account for the current usage allowance.",
+  compare: "Cloud and Mac, each with its own workspace.", cols: ["", "Your Mac", "LISA Cloud"],
+  rows: [
+    ["Getting started", "Install locally; configure a model or managed sign-in", "Sign in with a LISA account"],
+    ["Chat, memory & knowledge", "Saved within your local Lisa instance", "Saved within your account's cloud instance"],
+    ["Coding agents, terminal & integrations", "Available with setup and permissions", "Does not provide your Mac's local capabilities"],
+    ["Models", "Choose a provider or local model", "Use the service's configured hosted model"],
+    ["Mobile access", "Mac must be running and reachable", "No connection to a Mac required"],
+    ["Cross-instance sync", "Conversations, memories and credentials stay separate", "No automatic copying to your Mac"],
+    ["Cost", "Open-source software; model and service charges may apply", "Account allowance and optional additional credits"],
+  ],
+  control: "Manage your account, credit and data.",
+  items: [
+    "Each Cloud account has isolated assistant data. Cloud does not gain access to your Mac's files, terminal or mail.",
+    "Lisa Pocket explains AI recipients and data use before chat. Cancel keeps the draft unsent; withdrawing permission requires consent again before the next send.",
+    "Delete your cloud account in Settings to remove Lisa account data and invalidate sessions. The privacy policy explains provider records, billing retention and Apple authorization handling.",
+    "Extra credits are consumable purchases. Unused balance belongs to the same LISA account; refreshing it does not restore spending or create another purchase.",
+  ],
+  privacy: "Read the privacy policy", support: "Get support", pocket: "Lisa Pocket for iPhone and iPad is waiting for App Store review and is not publicly available yet.",
+};
+---
+<Base title={c.title} lang={lang} description={c.description}>
+  <header class="page-head">
+    <p class="eyebrow"><span class="rule"></span>LISA CLOUD · AI PERSONAL ASSISTANT</p>
+    <h1>{c.heading}<br /><span class="accent">{c.accent}</span></h1>
+    <p class="lede">{c.lede}</p>
+    <div class="actions"><a class="btn-primary" href="https://cloud.meetlisa.ai">{c.start} →</a><a class="btn-ghost" href={`${prefix}/install`}>{c.install}</a></div>
+    <p class="note">{c.note}</p>
+  </header>
+  <section class="section">
+    <h2>{c.compare}</h2>
+    <div class="comparison" tabindex="0" role="region" aria-label={c.compare}>
+      <table><thead><tr>{c.cols.map((col) => <th scope="col">{col}</th>)}</tr></thead><tbody>{c.rows.map(([label, mac, cloud]) => <tr><th scope="row">{label}</th><td>{mac}</td><td>{cloud}</td></tr>)}</tbody></table>
+    </div>
+  </section>
+  <section class="section">
+    <h2>{c.control}</h2>
+    <ul>{c.items.map((text) => <li>{text}</li>)}</ul>
+    <div class="actions"><a href={`${prefix}/privacy`}>{c.privacy} →</a><a href={`${prefix}/support`}>{c.support} →</a></div>
+    <p class="note">{c.pocket}</p>
+  </section>
+</Base>
+<style>
+  .lede { color:var(--muted); max-width:70ch; line-height:1.7; font-size:1.12rem; }
+  h1 { font-size:clamp(2.4rem,5vw,4.3rem); line-height:1.1; }
+  .actions { margin:1.5rem 0; }
+  .section { margin-top:3.5rem; }
+  .comparison { overflow-x:auto; margin-top:1.3rem; }
+  table { width:100%; min-width:640px; border-collapse:collapse; }
+  th,td { border:1px solid var(--border); padding:1rem; text-align:left; vertical-align:top; line-height:1.55; }
+  thead { background:var(--panel); }
+  td,li { color:var(--muted); }
+  ul { max-width:80ch; padding-left:1.3rem; }
+  li { margin:1rem 0; line-height:1.7; }
+</style>
