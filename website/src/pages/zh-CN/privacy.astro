@@ -3,7 +3,7 @@ import Base from "../../layouts/Base.astro";
 ---
 <Base title="隐私" lang="zh-CN" description="LISA 云与本地 Mac 模式的账号、对话及 AI 数据处理说明。">
   <header class="page-head">
-    <p class="eyebrow"><span class="rule"></span> 隐私 <b>· 更新于 2026-09-28</b></p>
+    <p class="eyebrow"><span class="rule"></span> 隐私 <b>· 更新于 2026-10-07</b></p>
     <h1>隐私政策</h1>
     <p class="lede">
       LISA 是个人 AI 助手，支持由我们运营的 <strong>LISA Cloud</strong> 与
@@ -59,6 +59,15 @@ import Base from "../../layouts/Base.astro";
         请在使用前检查其条款和配置。这些独立配置的服务并非由我们运营。
         本地模型可以在 Mac 上推理，但“连接 Mac”本身不表示远程模型不会接收数据。
       </p>
+    </section>
+
+    <section class="pol">
+      <p class="eyebrow"><b>网页搜索与页面请求</b></p>
+      <p>LISA Cloud 目前未启用网页工具。在自己的 Mac 上使用网页工具时，从你的请求中生成的
+        搜索词会发送给 DuckDuckGo，页面请求会将 URL 发送给目标网站。搜索词和 URL
+        可能包含你在请求中提供的个人信息；这些服务会看到后端的 IP 地址，并适用各自的隐私与保留政策。
+        请求不会附带 Lisa 账号令牌。结果可能作为上下文交给你选定的 AI 服务商。
+        如果未来更新启用云端网页工具，Lisa Pocket 会列出新增接收方，并在发送前重新征求同意。</p>
     </section>
 
     <section class="pol">
