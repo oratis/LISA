@@ -3,7 +3,9 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
 import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { buildMacosSeatbeltPolicy } from "./macos.js";
+import { sandboxProtections } from "./protect.js";
 import {
   SandboxUnavailableError,
   modeIsBounded,
@@ -64,10 +66,13 @@ async function wrapProgram(spec: SandboxSpec, program: string[]): Promise<Sandbo
   }
 
   if (process.platform === "darwin") {
+    const protections = sandboxProtections();
     const policy = buildMacosSeatbeltPolicy({
       cwd: spec.cwd,
       allowNetwork: spec.allowNetwork,
       mode: spec.mode,
+      denyPaths: protections.paths,
+      denyTcpPorts: protections.tcpPorts,
     });
     const tmp = path.join(os.tmpdir(), `lisa-seatbelt-${crypto.randomBytes(4).toString("hex")}.sb`);
     await fs.writeFile(tmp, policy, "utf8");
@@ -164,6 +169,12 @@ function bwrapArgs(spec: SandboxSpec): string[] {
     args.push("--bind", os.tmpdir(), os.tmpdir());
   }
   if (!spec.allowNetwork) args.push("--unshare-net");
+  // Hide Warden's state: an empty tmpfs over each protected directory. (bwrap
+  // cannot filter one TCP port; with the network allowed on Linux the LISA
+  // port stays reachable — see docs/DESIGN_WARDEN.md, known limits.)
+  for (const dir of sandboxProtections().paths) {
+    if (existsSync(dir)) args.push("--tmpfs", dir);
+  }
   args.push("--chdir", spec.cwd);
   return args;
 }

@@ -81,4 +81,40 @@ final class AccountLifecycleTests: XCTestCase {
             } catch { /* caller keeps the account signed in for retry */ }
         }
     }
+    @MainActor
+    func testCreditBalanceRefreshReadsLisaLedgerWithoutAppleRestore() async {
+        var requests = 0
+        AccountHTTPStub.handler = { request in
+            requests += 1
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertEqual(request.url?.path, "/api/billing/quota")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer test-session")
+            return (200, Data(#"{"available":true,"paidMicroUSD":12500000}"#.utf8))
+        }
+        let store = CreditsStore()
+        await store.refreshBalance(client: LisaClient(config: config, session: session), isCurrent: { true })
+        XCTAssertEqual(requests, 1)
+        XCTAssertTrue(store.message?.contains("$12.50") == true)
+        XCTAssertFalse(store.busy)
+    }
+
+    @MainActor
+    func testCreditBalanceRefreshDoesNotInventSuccessOrLeakAcrossConnections() async {
+        let store = CreditsStore()
+        let client = LisaClient(config: config, session: session)
+        for response in [(503, #"{"error":"unavailable"}"#),
+                         (200, #"{"available":false}"#),
+                         (200, #"{"available":true}"#)] {
+            AccountHTTPStub.handler = { _ in (response.0, Data(response.1.utf8)) }
+            await store.refreshBalance(client: client, isCurrent: { true })
+            XCTAssertNotNil(store.message)
+            XCTAssertFalse(store.message?.contains("Account balance:") == true)
+            XCTAssertFalse(store.busy)
+        }
+        AccountHTTPStub.handler = { _ in (200, Data(#"{"available":true,"paidMicroUSD":12500000}"#.utf8)) }
+        await store.refreshBalance(client: client, isCurrent: { false })
+        XCTAssertNil(store.message)
+        XCTAssertFalse(store.busy)
+    }
+
 }

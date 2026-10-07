@@ -12,6 +12,10 @@ export function buildMacosSeatbeltPolicy(opts: {
   cwd: string;
   allowNetwork: boolean;
   mode?: SandboxMode;
+  /** Directories the command may neither read nor write (see protect.ts). */
+  denyPaths?: string[];
+  /** TCP ports the command may not connect to, on any host. */
+  denyTcpPorts?: number[];
 }): string {
   const mode: SandboxMode = opts.mode ?? "workspace-write";
   const lines: string[] = [
@@ -29,21 +33,31 @@ export function buildMacosSeatbeltPolicy(opts: {
   ];
   if (mode === "workspace-write") {
     lines.push(
-      "(allow file-write* (subpath \"/tmp\"))",
-      "(allow file-write* (subpath \"/private/tmp\"))",
-      "(allow file-write* (subpath \"/var/folders\"))",
-      "(allow file-write* (subpath \"/private/var/folders\"))",
+      '(allow file-write* (subpath "/tmp"))',
+      '(allow file-write* (subpath "/private/tmp"))',
+      '(allow file-write* (subpath "/var/folders"))',
+      '(allow file-write* (subpath "/private/var/folders"))',
       `(allow file-write* (subpath ${jsonString(opts.cwd)}))`,
     );
   } else {
     // read-only: writing to /dev/null is what "no writes" means in practice —
     // countless tools redirect there and would otherwise die on startup.
-    lines.push("(allow file-write-data (literal \"/dev/null\"))");
+    lines.push('(allow file-write-data (literal "/dev/null"))');
   }
   if (opts.allowNetwork) {
     lines.push("(allow network*)");
   } else {
-    lines.push("(allow network* (local ip) (local tcp \"localhost:*\"))");
+    lines.push('(allow network* (local ip) (local tcp "localhost:*"))');
+  }
+  // Denials come LAST: in a seatbelt profile the last matching rule wins, so
+  // these hold even where the mode above allowed the workspace or the network.
+  for (const dir of opts.denyPaths ?? []) {
+    lines.push(`(deny file-read* file-write* (subpath ${jsonString(dir)}))`);
+  }
+  for (const port of opts.denyTcpPorts ?? []) {
+    if (!Number.isInteger(port) || port <= 0 || port > 65535) continue;
+    lines.push(`(deny network-outbound (remote tcp "localhost:${port}"))`);
+    lines.push(`(deny network-outbound (remote tcp "*:${port}"))`);
   }
   return lines.join("\n");
 }

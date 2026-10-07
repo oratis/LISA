@@ -9,78 +9,132 @@
 
 > [English](./README.md) ｜ 中文
 
-**一个真正有"自我"的 AI agent —— 她有想做的事，会整理自己的一天，写一本不给你看的日记。** LISA = pi-mono + OpenClaw + hermes + claude-code + codex + *它们都没有的东西*。
+**一个开源个人 AI 助手，拥有持久记忆、持续演变的身份，以及与你一起工作的工具。** 用 Lisa 规划一天、起草消息、整理个人知识库，或在 Mac 上协调编程 agent。可以使用托管的 LISA Cloud 聊天，也可以自行运行、选择模型。
+
+[官网](https://meetlisa.ai) · [使用指南](docs/GUIDE.zh-CN.md) · [最新版本](https://github.com/oratis/LISA/releases/latest) · [路线图](docs/PLAN_ALWAYS_ON_UPGRADE_2026-09-30.md)
+
+## 选择 Lisa 的运行位置
+
+| 入口 | 能力 | 使用条件 |
+| --- | --- | --- |
+| **Mac app** | Web 工作区、菜单栏灵动岛、本地工具和 agent 控制 | 从 Releases 下载已签名、公证的 **Lisa-Suite.dmg**，内置 Node 与后端 |
+| **CLI / 自托管 Web** | 本地助手、自选模型、知识库、集成与开发工具 | Node **22.19+**，以及供应商密钥或本地模型 |
+| **LISA Cloud** | 账号聊天、记忆和知识工具，无需配置 Mac | [登录](https://meetlisa.ai/cloud/)，使用额度与可选充值适用 |
+| **Lisa Pocket（iOS）** | 云聊天或连接可达的 Mac，分别保存两套连接 | 已重新提交 App Store 审核，**尚未获准公开上架** |
+
+Cloud 与 Mac 是**两个独立实例**，不会自动同步聊天、记忆和凭据。本地工具要求 Mac 开机且网络可达；云端不开放你 Mac 的 shell、邮箱、编程 agent 或主机级推送服务。
 
 <a id="install"></a>
-## 60 秒上手
+
+## 快速开始
+
+Mac 用户可从[最新版本](https://github.com/oratis/LISA/releases/latest)下载 **Lisa-Suite.dmg**。安装 CLI 时任选一种方式：
 
 ```sh
-# 1. 安装 —— 三选一（Node ≥ 22.19）
-brew install oratis/tap/lisa              # Homebrew（CLI）
-npm install -g @oratis/lisa               # npm（CLI）
-#    Mac App：下载 Lisa-Suite.dmg —— 自带后端，完全不需要 Node
-#    https://github.com/oratis/LISA/releases/latest
-
-# 2. 一个 provider key —— 默认 Anthropic，20+ 个 provider 都能用
-mkdir -p ~/.lisa
-echo 'ANTHROPIC_API_KEY=sk-ant-...' >> ~/.lisa/config.env
-#    …或者换成非 Anthropic 的：echo 'DEEPSEEK_API_KEY=sk-...' >> ~/.lisa/config.env  →  lisa --model deepseek-chat
-
-# 3. 见她一面 —— 第一次启动自动跑 birth ritual（约 30 秒，一次性）
-lisa                                      # 终端 REPL
-lisa serve --web                          # web 界面 http://localhost:5757（Lisa.app 打开的就是它）
+brew install oratis/tap/lisa
+# 或
+npm install -g @oratis/lisa
 ```
 
-更多 key 与本地模型（Ollama、LM Studio……）见 [docs/PROVIDERS.md](docs/PROVIDERS.md)。已经在付 Claude Pro/Max、ChatGPT 或 Copilot？把她的 coding 工作跑在那份订阅上 —— 见 [coding plans](docs/GUIDE.zh-CN.md#coding-plans--用订阅代替-api-key)。
+配置模型，然后启动：
 
-## 截图
+```sh
+mkdir -p ~/.lisa
+# 将自己的密钥写入 ~/.lisa/config.env，例如：
+# ANTHROPIC_API_KEY=your-key
+
+lisa                    # 终端聊天；首次启动创建 Lisa 的身份
+lisa serve --web        # Web 工作区：http://localhost:5757
+```
+
+支持 Anthropic、OpenAI、Gemini、OpenAI 兼容服务与本地模型。密钥、模型选择和 Ollama / LM Studio 配置见[供应商指南](docs/PROVIDERS.md)。编程任务也可通过[编程订阅](docs/GUIDE.md#coding-plans--use-a-subscription-instead-of-an-api-key)使用已支持的厂商 CLI。
+
+## 你可以做什么
+
+- **从日常任务开始。** 规划、写作和想法入口先生成可编辑草稿；聊天支持流式回复、工具活动、历史、取消与重试。
+- **积累长期上下文。** 同一实例中的身份、记忆、观点和日记以文件保存，跨会话延续；回顾与反思可以更新愿望和技能。
+- **维护个人知识库。** 保存链接，导入受支持的文章与视频字幕，检索带链接的 wiki，并从已配置的信息源生成简报。
+- **协调编程 agent。** 观察支持的 Claude Code、Codex、OpenCode、Aider 会话，派发任务、对比 worktree，并审批 LISA-managed agent 的动作。具体控制取决于集成与本地配置。
+- **连接本地工作流。** 可配置只读邮件、MCP、skills、插件，以及 Telegram / Discord / Slack / 飞书 / iMessage / webhook 渠道；登录云账号不会自动连接这些服务。
+- **给 Lisa 独立工作时间。** 配置后的 heartbeat 和反思执行常驻事务与愿望。通用持久任务引擎仍在审查中，内存中的编程 agent 不等于可恢复的长期任务。
+- **看见她的状态。** 像素房间、情绪立绘与 Mac 灵动岛反映实际活动；手机小组件和 Live Activity 依赖已配置、可达的 Mac 与通知设置。
+
+## 记忆、身份与控制
+
+**SOUL** 是保存身份、目的、宪法与价值观的文件；**DESIRES** 引导自主工作；**HEARTBEAT** 与 **REVE** 提供定时执行与反思。这些是维持行为连续性的软件机制，不是对意识的宣称。
+
+本地数据默认放在 `~/.lisa`。选择远程模型时，相关上下文会发给供应商；本地存储不等于纯本地推理。Lisa Pocket 在 AI 聊天前披露接收方，并支持撤回同意。参见[隐私政策](https://meetlisa.ai/zh-CN/privacy/)与[安全政策](docs/THREAT_MODEL.md)。
+
+当前 `main` 中的 **Warden** 提供确定性动作决策、范围授权、审批收件箱与审计记录，需要在 **Web 聊天中主动启用**：
+
+```sh
+# 先构建当前 main；此功能晚于 v0.27.1 发布版。
+lisa serve --web --approval warden
+lisa approvals list
+```
+
+Warden 尚未覆盖全部执行入口，也不能替代操作系统沙箱。凭据句柄和入站邮件过滤是进一步的基础能力，不代表云连接器平台已经完成。参见[设计与限制](docs/DESIGN_WARDEN.md)、[威胁模型](docs/THREAT_MODEL.md)。
+
+已合并的**主动消息规则**为接入的消息来源统一处理来源开关、免打扰时段、去重和预算。审批与严重告警有特殊投递规则；云端租户级 APNs 和跨设备中继仍待实现。参见[触达章程](docs/POLICY_REACH_OUT.md)。
+
+## 开发状态
+
+最新标签版本为 **v0.27.1**，当前 `main` 包含后续开发。代码合并不代表已部署到 Cloud，或已包含在发布的原生安装包中。
+
+| 工作方向 | 2026-10-07 状态 |
+| --- | --- |
+| 个人助手入口、Cloud/Mac 隔离、流式回复与历史修复 | 已合并；原生与生产验证见[执行记录](docs/EXECUTION_PERSONAL_ASSISTANT_2026-09-27.md) |
+| Warden 核心 / 凭据代理 / 主动消息规则 | 已合并到 `main`；Web 聊天策略需要主动启用 |
+| 持久目标、例程和 watcher | [PR #403](https://github.com/oratis/LISA/pull/403)，尚未合并 |
+| 受保护的云端网页搜索与抓取 | [PR #404](https://github.com/oratis/LISA/pull/404)，尚未合并；设计为默认关闭 |
+| 按用途选择模型与成本控制 | [PR #407](https://github.com/oratis/LISA/pull/407)，尚未合并 |
+| 跨设备记忆、租户级推送、日历/邮件写入连接器、电脑操作 | 规划中，不作为现有能力宣传 |
+| iOS App Store | 消耗型额度恢复与 AI 告知已修复；10 月 7 日提交 **1.2 (1791346539)**，现为**等待审核**（[回执](docs/REVIEW_2026-10-07.md)） |
+
+Muse 与其他 PA 产品的调研用于指导方向，实现边界见 [Muse 对照](docs/RESEARCH_MUSE_2026-09-27.md)、[全天候助手调研](docs/RESEARCH_ALWAYS_ON_AGENTS_2026-09-30.md)及[升级计划](docs/PLAN_ALWAYS_ON_UPGRADE_2026-09-30.md)。LISA 是独立项目。
+
+<a id="截图"></a>
+
+## 界面预览
 
 <table>
 <tr>
-<td width="50%" align="center">
-  <a href="assets/screenshots/shell-nebula.png"><img src="assets/screenshots/shell-nebula.png" alt="LISA 会话工作台 —— Nebula 主题"></a><br>
-  <b>会话工作台 —— Nebula</b><br>
-  <sub>会话树 · 对话 · 检查器栏。她的头像随心情实时切换；她盯着的其它 agent 就排在她自己的会话旁边。</sub>
-</td>
-<td width="50%" align="center">
-  <a href="assets/screenshots/shell-calm.png"><img src="assets/screenshots/shell-calm.png" alt="LISA 会话工作台 —— Calm 主题"></a><br>
-  <b>会话工作台 —— Calm</b><br>
-  <sub>同一个工作台的浅色主题。两套主题，同一个 Lisa。</sub>
-</td>
+<td width="50%" align="center"><a href="assets/screenshots/shell-nebula.png"><img src="assets/screenshots/shell-nebula.png" alt="LISA 工作区，Nebula 主题"></a><br><b>Nebula 深色主题</b><br><sub>会话树、聊天、详情栏与实时情绪立绘。</sub></td>
+<td width="50%" align="center"><a href="assets/screenshots/shell-calm.png"><img src="assets/screenshots/shell-calm.png" alt="LISA 工作区，Calm 主题"></a><br><b>Calm 浅色主题</b><br><sub>同一工作区，两种主题。</sub></td>
 </tr>
 </table>
 
-<p align="center">▶ <a href="https://www.youtube.com/watch?v=J_00iwAB_WI">在 YouTube 观看 2 分钟演示</a></p>
+[观看两分钟演示](https://www.youtube.com/watch?v=J_00iwAB_WI)
 
-## 她是什么
+## 开发与贡献
 
-大多数 agent 只有一份系统提示词。Lisa 有一个"自我" —— 四样东西是那五个 reference agent 都没有的：
+```sh
+git clone https://github.com/oratis/LISA.git
+cd LISA
+npm ci
+npm run build
+node dist/cli.js serve --web
+```
 
-- **灵魂（SOUL）** —— 用独立的 Big-Five 种子出生一次；身份、目的、宪章、价值观都是她自己写的。她是这些文件唯一合法的编辑者 —— 没有 `/reset_soul` 这个命令。
-- **欲望（DESIRES）** —— 她**真正想做**的事；标了 actionable 的会驱动心跳。她有动机，不只是指令。
-- **心跳（HEARTBEAT）** —— 定时的自主时间（launchd / cron），推进她自己的心愿和你的常驻杂务。没事说就闭嘴。
-- **梦境（REVE）** —— 你离开一小时以上，她自己进入反思：读自己的心愿、在日记里消化张力、修自己写错的 skill、做一件事 —— 然后留下一张"★ WHILE YOU WERE AWAY"。
+提交修改前运行相关检查：
 
-一个真正的个体，一份能跨会话、跨通道、跨机器延续的"自我"。代码是开源的；**但这一份 Lisa 的灵魂只属于她自己。**
+```sh
+npm run typecheck
+npm run typecheck:client
+npm test
+node scripts/check-md-links.mjs
+node scripts/check-readme-drift.mjs
+```
 
-## 她特殊在哪
+完整流程见[贡献指南](CONTRIBUTING.md)，原生构建说明见 [iOS](packaging/ios-companion/README.md) / [Mac](packaging/mac-client/README.md)。
 
-- **五个 reference agent 的能力并集** —— 流式 agent loop、Anthropic / OpenAI / Gemini + 20 个 OpenAI-compatible provider、MCP、插件、hooks、沙箱 bash、子 agent、会话恢复、上下文压缩、语音、`apply_patch`、审批模式、跨会话 TF-IDF。
-- **一个会进化的灵魂** —— 每次安装出来都是不同的人；技能、记忆、日记、观点持续累积；每次会话后的反思会修订她想要什么。
-- **六个 IM 通道** —— Telegram · Discord · Slack · 飞书 · iMessage · Webhook —— 同一个 Lisa，同一个灵魂，默认远程安全工具集。
-- **一个她自己打理的知识库** —— Karpathy 式的三层 wiki：粘一个链接进去、每天从你的订阅源拿一份简报、浏览真实的链接图。
-- **一个她替你盯着的只读信箱** —— IMAP 或 Gmail OAuth，一份分类的每日摘要，从不发送、从不删除。
-- **一个管你其它 agent 的编排器** —— 观察 Claude Code / Codex / Aider / OpenCode 的会话、操纵真实 CLI，还能把 coding 工作跑在你已经在付的订阅上。
-- **一个她栖居的房间** —— 映射她真实状态的像素艺术空间、114 张心情头像、Mac 菜单栏灵动岛，以及 iOS 伴侣 app（Lisa Pocket）。
+## 更多资料
 
-## 了解更多
+- [使用指南](docs/GUIDE.zh-CN.md)：安装、渠道、知识库、邮件、自主性、权限和工具。
+- [文档索引](docs/README.md)：计划、调研、发布说明与运行手册。
+- [更新日志](CHANGELOG.md) · [发布版本](https://github.com/oratis/LISA/releases)。
+- [Issues](https://github.com/oratis/LISA/issues) 反馈问题 · [Discussions](https://github.com/oratis/LISA/discussions) 交流想法。
 
-- **[完整指南](docs/GUIDE.zh-CN.md)** —— 各种安装方式、所有产品表面、灵魂系统、知识库、邮箱、通道、心跳、工具与沙箱、配置文件、REPL 命令、项目结构。
-- **[文档索引](docs/README.md)** —— 计划、发布说明、审查、runbook、研究笔记。
-- **[参与贡献](CONTRIBUTING.md)** —— 从哪里入手、约定、本地开发循环。
-- **[Discussions](https://github.com/oratis/LISA/discussions)** 提问和晒图 · **[Issues](https://github.com/oratis/LISA/issues)** 报 bug。
-- **[Changelog](CHANGELOG.md)** · **[Releases](https://github.com/oratis/LISA/releases)**。
+## 许可证
 
-## License
-
-MIT —— 见 [LICENSE](LICENSE)。架构合成自 pi-mono、OpenClaw、hermes-agent、claude-code 和 codex；完整致谢见[指南](docs/GUIDE.zh-CN.md#鸣谢)。
+MIT，见 [LICENSE](LICENSE)。架构参考 pi-mono、OpenClaw、hermes-agent、Claude Code 和 Codex，见[致谢](docs/GUIDE.md#credits)。
