@@ -1,5 +1,6 @@
 import type { Edition } from "../edition.js";
 import type { ToolDefinition } from "../types.js";
+import { CLOUD_WEB_TOOL_NAMES } from "../tools/cloud_web.js";
 import { cloudSafeSubset } from "../tools/registry.js";
 
 /**
@@ -43,11 +44,31 @@ export function autonomyProfileForEdition(edition: Edition): CapabilityProfile {
   return edition === "cloud" ? "cloud-autonomy" : "local-autonomy";
 }
 
+/**
+ * The only profile that may use the hosted web tools: a signed-in user's own,
+ * attended chat turn.
+ *
+ * `cloud-autonomy` is deliberately excluded even though the desire review's
+ * 1-search/2-fetch budget (`desireReviewSubset`) would technically apply to
+ * it. That budget bounds how MUCH a review browses, not WHETHER an unattended
+ * server-side run may send text derived from a tenant's soul to a third-party
+ * search provider — a run the user did not start, cannot see, and for which
+ * the disclosure/consent gate (which lives in the client's send path) was
+ * never consulted. Until autonomy has its own consent record, the hosted
+ * sweep stays offline. `remote-device` is excluded for the same reason it
+ * gets nothing else beyond the cloud-safe set.
+ */
+const WEB_TOOL_PROFILES: readonly CapabilityProfile[] = ["cloud-chat"];
+
 export function toolsForCapabilityProfile(
   tools: ToolDefinition[],
   profile: CapabilityProfile,
 ): ToolDefinition[] {
-  return FULL_HOST_PROFILES.includes(profile) ? tools : cloudSafeSubset(tools);
+  if (FULL_HOST_PROFILES.includes(profile)) return tools;
+  const subset = cloudSafeSubset(tools);
+  return WEB_TOOL_PROFILES.includes(profile)
+    ? subset
+    : subset.filter((tool) => !CLOUD_WEB_TOOL_NAMES.has(tool.name));
 }
 
 /**

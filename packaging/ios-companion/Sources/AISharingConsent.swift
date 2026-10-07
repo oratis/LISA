@@ -28,3 +28,13 @@ struct AISharingConsent {
         generation = UUID()
     }
 }
+
+/// One immutable presentation payload avoids reading stale @State from a
+/// boolean sheet on its first presentation (including an empty recipient list).
+struct AISharingRequest: Identifiable {
+    let id = UUID()
+    let server: ServerConfig
+    let recipients: [String]
+    let generation: UUID
+    let text: String
+}

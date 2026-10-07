@@ -89,6 +89,32 @@ describe("claude-code watcher startup (T-5)", () => {
     }
   });
 
+  test("startup does not announce the state it discovers", async () => {
+    // The failure this pins: initialScan() records every file as
+    // "unknown"/"unscanned", so the first parse always looks like a state
+    // change. Emitting it made every backend restart — launchd KeepAlive after
+    // a crash, `lisa upgrade`, the watchdog — re-push "errored" / "needs
+    // permission" for sessions the user was already notified about.
+    session("-Users-x-Projects-Restart", "dddddddd-0000-0000-0000-000000000001", 2_000);
+    session("-Users-x-Projects-Restart", "dddddddd-0000-0000-0000-000000000002", 3_000);
+
+    const w = new ClaudeCodeWatcher();
+    const seen: string[] = [];
+    w.on("update", (u: { event: string; sessionId: string }) =>
+      seen.push(`${u.event}:${u.sessionId}`),
+    );
+    try {
+      await w.start();
+      assert.deepEqual(seen, [], `startup emitted ${seen.length} update(s): ${seen.join(", ")}`);
+      // The state is still known — it was recorded, just not announced.
+      const active = w.listActive().filter((a) => a.projectLabel.includes("Restart"));
+      assert.equal(active.length, 2);
+      for (const a of active) assert.notEqual(a.state, "unknown");
+    } finally {
+      w.stop();
+    }
+  });
+
   test("a repoll of a stat-identical file reuses the parse instead of re-reading", async () => {
     const file = session("-Users-x-Projects-Demo", "cccccccc-0000-0000-0000-000000000001", 1_000);
     const when = new Date(Date.now() - 1_000);

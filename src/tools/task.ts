@@ -85,6 +85,9 @@ export function createTaskTool(deps: {
         ...(cap
           ? { costCapMicroUSD: remaining, onCostCharged: (microUSD) => cap.charge(microUSD) }
           : {}),
+        // …and the parent turn's approval gate: without this a subagent would
+        // run its tools with no Warden decision at all.
+        approval: ctx?.approval,
       });
       const stopped = result.stopReason === "budget_exceeded" ? ", stopped by its budget" : "";
       return `[subagent: ${input.description} — ${result.toolCallCount} tool calls, ${result.outputTokens} tokens${stopped}]\n${result.text}`;

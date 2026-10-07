@@ -29,12 +29,12 @@ Version 0 · 2026-10-02 · baseline main `50cd2e6` (v0.27.1). Status: **living d
 Concretely:
 
 - **Shipped.** External content is wrapped in `<<<EXTERNAL-CONTENT>>>` markers and treated as untrusted (`.codex/INVARIANTS.md` §Context 5).
-- **Planned (W2).** Every side-effecting tool call is decided by **Warden** (`src/warden/`), which returns allow / deny / ask / handoff.
+- **Shipped, opt-in (W2a; `--approval warden` or `LISA_APPROVAL=warden`).** Every side-effecting tool call is decided by **Warden** (`src/warden/`), which returns allow / deny / ask / handoff. The default flips once a native approver exists (see `docs/DESIGN_WARDEN.md`).
   - The model cannot change Warden's rules, grants or system invariants.
-  - "Ask" waits for a human answer in the approval inbox: web, iOS, the Mac Island, IM buttons.
+  - "Ask" waits for a human answer in the approval inbox: the web client today; iOS, the Mac Island and IM buttons later.
   - Approvals are bound to a digest of the exact payload. Unattended approvals expire after about 10 minutes, and expiry means **deny**.
-- **Planned (W2).** **Taint.** Once a turn has read untrusted content (web, mail, MCP, ingest), the next write, exec, network-write, send or publish in that turn asks first. This breaks the "lethal trifecta" of private data + untrusted content + an outbound channel.
-- **Planned (W2).** **New-recipient PII.** Personal, secret or private-message data going to a recipient with no existing grant always asks. This is the lesson from Muse's Marketplace address leak.
+- **Shipped, opt-in (W2a).** **Taint.** Once a conversation has read untrusted content (web, mail, MCP, ingest), every later write, exec, network-write, send or publish in that conversation asks first, and outbound requests to an address that did not appear verbatim in it ask too. Taint lasts for the whole conversation and survives a restart. This breaks the "lethal trifecta" of private data + untrusted content + an outbound channel.
+- **Shipped, opt-in (W2a).** **New-recipient PII.** Personal, secret or private-message data going to a recipient with no existing grant always asks. This is the lesson from Muse's Marketplace address leak.
 - **Shipped + planned (W3).** **Read-only proactive channel.** Lisa's own unattended runs (idle/Reve, desire pursuit, examen) use read-only tools plus writes to her own home. Warden denies anything else for `origin: autonomy`.
 
 ## Surfaces and mitigations

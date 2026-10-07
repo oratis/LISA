@@ -5,7 +5,7 @@
  * truncated further), never whole bodies — the privacy contract. Read-only:
  * opens the mailbox read-only and never sets flags / moves / deletes.
  */
-import { ImapFlow } from "imapflow";
+import { ImapFlow, type FetchMessageObject } from "imapflow";
 import type { MailAccount, MailConnector, MailSecret, RawMail } from "../types.js";
 
 const SNIPPET_FETCH_BYTES = 4096;
@@ -99,12 +99,7 @@ export class ImapConnector implements MailConnector {
   }
 
   private async toRaw(
-    msg: {
-      uid: number;
-      envelope?: { from?: { name?: string; address?: string }[]; subject?: string; date?: Date };
-      flags?: Set<string>;
-      bodyStructure?: BodyNode;
-    },
+    msg: FetchMessageObject,
     _opts: { sinceMs: number; limit: number },
   ): Promise<RawMail> {
     const env = msg.envelope ?? {};
@@ -126,13 +121,14 @@ export class ImapConnector implements MailConnector {
         snippet = "";
       }
     }
+    const parsedDate = env.date ? new Date(env.date).getTime() : NaN;
     return {
       uid: String(msg.uid),
       accountId: "", // filled by the caller (service) — connector is account-agnostic
       from,
       fromAddress: address,
       subject: env.subject ?? "",
-      date: env.date ? new Date(env.date).getTime() : Date.now(),
+      date: Number.isFinite(parsedDate) ? parsedDate : Date.now(),
       snippet,
       flags: msg.flags ? [...msg.flags] : [],
       mailbox: "INBOX",

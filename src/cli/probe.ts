@@ -108,7 +108,14 @@ export async function probeHealth(baseUrl: string, opts: ProbeOptions = {}): Pro
       if (res.status === 404 && endpoint !== ENDPOINTS[ENDPOINTS.length - 1]) continue;
       const payload = await readJson(res);
       const latencyMs = now() - started;
-      const reachable = res.ok && payload?.ok !== false;
+      // Reachable means the instance ANSWERED. It deliberately does not mean
+      // "answered ok:true": /health reports ok:false when the event loop is
+      // lagging, and folding that into reachability made a stalling-but-alive
+      // backend print "✗ unreachable — is the backend running?" and exit 1.
+      // The runbook wires a non-zero probe to a restart, so a server that was
+      // merely busy would have been killed, and the operator would have been
+      // told the wrong thing about why. Degradation is a warning, not absence.
+      const reachable = res.ok;
       return {
         url,
         endpoint,
@@ -153,6 +160,12 @@ export function collectWarnings(
   latencyMs: number,
 ): string[] {
   const out: string[] = [];
+  // The server's own verdict comes first: it sets ok:false when its watchdog
+  // considers the loop unhealthy, which it knows better than any threshold
+  // applied out here to a single sample.
+  if (payload?.ok === false) {
+    out.push("the instance reports itself unhealthy (ok:false) — see its logs");
+  }
   const p99 = payload?.event_loop_lag_ms?.p99;
   if (typeof p99 === "number" && p99 > LAG_P99_WARN_MS) {
     out.push(`event loop lag p99 ${fmtMs(p99)} > ${LAG_P99_WARN_MS}ms — requests will stall`);

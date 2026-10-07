@@ -792,6 +792,11 @@ function connectEvents() {
       if (typeof window.refreshTokens === 'function') window.refreshTokens();
     } else if (ev.type === 'mail_digest_update' || ev.type === 'mail_accounts_update') {
       if (typeof window.refreshMail === 'function') window.refreshMail();
+    } else if (ev.type === 'approval_requested') {
+      // Warden (W2a): a tool call is waiting for the user's answer.
+      if (typeof window.lisaApprovalRequested === 'function') window.lisaApprovalRequested(ev);
+    } else if (ev.type === 'approval_resolved') {
+      if (typeof window.lisaApprovalResolved === 'function') window.lisaApprovalResolved(ev);
     }
   });
   es.onerror = () => {
@@ -864,21 +869,51 @@ function lisaProviderList(status) {
                needsModel: !!h.needsModel, configured: conf, served: false };
     });
   }
-  return served.map(function (p) {
+  const merged = served.map(function (p) {
     const h = hintOf(p.envKey, p.id) || EMPTY_PROVIDER_HINT;
+    // needsModel comes from the SERVED row, not the hint table. Deriving it
+    // from local hints meant every provider this client has no hint for (Grok,
+    // Mistral, Perplexity, Ark, MiniMax, Hunyuan…) silently reported
+    // needsModel:false: the gate then saved a key with no LISA_MODEL, the
+    // server kept routing to Claude, and the user was told they were
+    // configured. Anything that is not Anthropic or OpenAI is reached by model
+    // prefix, so it needs a pinned model — and the server already tells us a
+    // usable default in modelPrefixes[0].
+    const prefixes = Array.isArray(p.modelPrefixes) ? p.modelPrefixes : [];
+    const builtIn = p.envKey === 'ANTHROPIC_API_KEY' || p.envKey === 'OPENAI_API_KEY';
     return {
       id: p.id || h.id || p.envKey,
       envKey: p.envKey || h.envKey || '',
       label: p.label || h.label || p.id || p.envKey,
       placeholder: h.placeholder || 'key...',
-      model: h.model || '',
+      model: h.model || prefixes[0] || '',
       consoleUrl: h.consoleUrl || '',
       custom: !!h.custom,
-      needsModel: !!h.needsModel,
+      needsModel: h.needsModel !== undefined && h.envKey ? !!h.needsModel : !builtIn,
       configured: !!p.configured,
       served: true,
     };
   });
+  // The served list stays authoritative for NAMED providers: one the server
+  // does not enumerate is one /api/config/save would reject, so offering it
+  // would just produce a 400. The exception is the client-only custom row —
+  // "Custom (OpenAI-compatible)" writes LISA_API_KEY + LISA_BASE_URL rather
+  // than a named provider's key, so providerConfigList() has nothing to report
+  // for it even though both keys ARE writable. Dropping it with the wholesale
+  // replace made Ollama, LM Studio and every self-hosted endpoint unreachable
+  // from the GUI, with the BASE URL field permanently hidden.
+  const seen = {};
+  for (let i = 0; i < merged.length; i++) seen[merged[i].envKey] = true;
+  for (let i = 0; i < LISA_PROVIDER_FALLBACK.length; i++) {
+    const h = LISA_PROVIDER_FALLBACK[i];
+    if (!h.custom || seen[h.envKey]) continue;
+    merged.push({
+      id: h.id, envKey: h.envKey, label: h.label, placeholder: h.placeholder,
+      model: h.model, consoleUrl: h.consoleUrl, custom: true,
+      needsModel: !!h.needsModel, configured: false, served: false,
+    });
+  }
+  return merged;
 }
 // One body understood by both generations of the endpoint: the new
 // {keys, model, baseUrl} shape plus every legacy field name.
@@ -1257,6 +1292,18 @@ async function startBirthStream() {
 
   try {
     const res = await fetch('/api/birth', { method: 'POST', signal: ctrl.signal });
+    if (res.status === 409) {
+      // 409 = she is already born. Reaching this is not a failure: the soul was
+      // written and the SSE stream was cut before the `done` frame (a laptop
+      // that slept, a proxy reset, a second tab that finished the ceremony
+      // first). Showing the error card here offered a "Try again" that could
+      // only ever 409 again — a dead end in front of a Lisa that exists. Close
+      // the ritual and let the normal startup path pick her up.
+      clearBirthActions();
+      birthOverlay.classList.remove('open');
+      location.reload();
+      return;
+    }
     if (!res.ok) {
       // An HTTP-level refusal carries no SSE frame — classify it the same way.
       showBirthError({ code: res.status === 401 || res.status === 403 ? 'auth' : 'unknown',
@@ -5226,4 +5273,235 @@ if ('serviceWorker' in navigator) {
     var h = (location.hash || '').replace('#', '');
     if (views[h] && h !== active) showView(h);
   });
+})();
+
+// ── Warden approvals (W2a) ──────────────────────────────────────────────
+// A side-effecting tool call that the policy will not auto-allow waits in the
+// server's approval inbox. This renders it as an inline card in the chat log
+// and in a small pending list, and answers through /api/approvals.
+//
+// The card shows the WHOLE payload the approval covers — fetched from
+// GET /api/approvals/{id}, in the order the server chose — and approving sends
+// back the digest of exactly that payload. A caller the server will not show
+// the payload to gets no approve button at all. Everything is set with
+// textContent: the payload is model-proposed input and must never be parsed
+// as HTML. (A full inbox view is a later PR.)
+(function () {
+  var chatLog = document.getElementById('log');
+  if (!chatLog) return;
+  /** @type {Record<string, { item: any, card: HTMLElement, row: HTMLElement | null }>} */
+  var pending = Object.create(null);
+  var panel = null;
+  var panelList = null;
+  var panelTitle = null;
+  var SCOPE_LABELS = {
+    once: 'Approve once',
+    task: 'Approve for this task',
+    target: 'Always for this destination',
+    '24h': 'For 24 hours',
+    always: 'Always',
+  };
+  var RESULT_WORDS = {
+    approved: 'Approved',
+    denied: 'Denied',
+    expired: 'Expired — not run',
+    dismissed: 'Dismissed',
+  };
+  function own(map, key) {
+    return typeof key === 'string' && Object.prototype.hasOwnProperty.call(map, key) ? map[key] : undefined;
+  }
+
+  function el(tag, cls, text) {
+    var node = document.createElement(tag);
+    if (cls) node.className = cls;
+    if (text !== undefined && text !== null) node.textContent = String(text);
+    return node;
+  }
+
+  function ensurePanel() {
+    if (panel) return;
+    panel = el('div', 'warden-pending');
+    panel.setAttribute('role', 'region');
+    panel.setAttribute('aria-label', 'Pending approvals');
+    panelTitle = el('div', 'warden-pending-title');
+    panelList = el('div', 'warden-pending-list');
+    panel.appendChild(panelTitle);
+    panel.appendChild(panelList);
+    document.body.appendChild(panel);
+  }
+
+  function refreshPanel() {
+    var count = Object.keys(pending).length;
+    if (count === 0) {
+      if (panel) panel.hidden = true;
+      return;
+    }
+    ensurePanel();
+    panel.hidden = false;
+    panelTitle.textContent = count === 1 ? '1 approval waiting' : count + ' approvals waiting';
+  }
+
+  function answer(id, action, body, buttons, status) {
+    buttons.forEach(function (b) { b.disabled = true; });
+    status.textContent = action === 'approve' ? 'Approving…' : 'Sending…';
+    fetch('/api/approvals/' + encodeURIComponent(id) + '/' + action, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (data) {
+        if (r.ok) {
+          finish(id, data.verdict || (action === 'approve' ? 'approved' : 'denied'));
+          return;
+        }
+        if (r.status === 404 || r.status === 410) {
+          finish(id, 'expired');
+          return;
+        }
+        status.textContent = 'Could not ' + action + ': ' + (data.error || r.status);
+        buttons.forEach(function (b) { b.disabled = false; });
+      });
+    }).catch(function () {
+      status.textContent = 'Could not reach Lisa. Try again.';
+      buttons.forEach(function (b) { b.disabled = false; });
+    });
+  }
+
+  // `digest` is the digest of the payload this card displayed, or null when the
+  // payload could not be shown — in which case there is nothing to approve.
+  function actions(item, digest, compact) {
+    var wrap = el('div', 'warden-actions');
+    var status = el('span', 'warden-status');
+    var buttons = [];
+    function add(label, cls, action, body) {
+      var b = el('button', 'warden-btn ' + cls, label);
+      b.type = 'button';
+      b.addEventListener('click', function () { answer(item.id, action, body, buttons, status); });
+      buttons.push(b);
+      wrap.appendChild(b);
+    }
+    if (item.kind === 'handoff') {
+      add('Dismiss', 'deny', 'deny', {});
+    } else {
+      var scopes = Array.isArray(item.scopes) ? item.scopes : [];
+      if (digest) {
+        scopes.forEach(function (scope) {
+          var label = own(SCOPE_LABELS, scope);
+          if (!label) return;
+          if (compact && scope !== 'once') return;
+          add(label, scope === 'once' ? 'approve' : 'approve-wide', 'approve', { scope: scope, digest: digest });
+        });
+      }
+      add('Deny', 'deny', 'deny', {});
+    }
+    wrap.appendChild(status);
+    return wrap;
+  }
+
+  function renderFields(holder, fields) {
+    holder.textContent = '';
+    fields.forEach(function (field) {
+      var box = el('div', 'warden-field' + (field.primary ? ' primary' : ''));
+      box.appendChild(el('div', 'warden-field-key', field.key));
+      // The whole value: long ones scroll, nothing is cut.
+      box.appendChild(el('pre', 'warden-field-value', field.value));
+      holder.appendChild(box);
+    });
+  }
+
+  function buildCard(item) {
+    var card = el('div', 'warden-card' + (item.kind === 'handoff' ? ' handoff' : ''));
+    card.setAttribute('data-approval-id', item.id);
+    card.appendChild(el('div', 'warden-title',
+      item.kind === 'handoff' ? 'This needs you' : 'Lisa is asking to run: ' + item.tool));
+    var payload = el('div', 'warden-payload');
+    payload.appendChild(el('div', 'warden-preview', item.preview));
+    card.appendChild(payload);
+    if (Array.isArray(item.targets) && item.targets.length) {
+      card.appendChild(el('div', 'warden-meta', 'To: ' + item.targets.join(', ')));
+    }
+    if (item.purpose) card.appendChild(el('div', 'warden-meta', 'For: ' + item.purpose));
+    card.appendChild(el('div', 'warden-meta', item.reason || ''));
+    if (item.kind !== 'handoff' && item.expiresAt) {
+      var when = new Date(item.expiresAt);
+      if (!isNaN(when.getTime())) {
+        card.appendChild(el('div', 'warden-meta', 'Expires ' + when.toLocaleTimeString() + ' — unanswered means no.'));
+      }
+    }
+    return { card: card, payload: payload };
+  }
+
+  function show(item) {
+    if (!item || typeof item.id !== 'string' || own(pending, item.id)) return;
+    var built = buildCard(item);
+    var card = built.card;
+    if (typeof removeChatEmpty === 'function') removeChatEmpty();
+    chatLog.appendChild(card);
+    chatLog.scrollTop = chatLog.scrollHeight;
+    ensurePanel();
+    var row = el('div', 'warden-pending-row');
+    var label = el('button', 'warden-pending-label', (item.kind === 'handoff' ? 'Needs you: ' : '') + item.preview);
+    label.type = 'button';
+    label.addEventListener('click', function () { card.scrollIntoView({ block: 'center' }); });
+    row.appendChild(label);
+    panelList.appendChild(row);
+    pending[item.id] = { item: item, card: card, row: row };
+    refreshPanel();
+
+    if (item.kind === 'handoff') {
+      card.appendChild(actions(item, null, false));
+      row.appendChild(actions(item, null, true));
+      return;
+    }
+    // Buttons appear only once the full payload is on screen.
+    var loading = el('div', 'warden-meta', 'Loading the full request…');
+    card.appendChild(loading);
+    fetch('/api/approvals/' + encodeURIComponent(item.id)).then(function (r) {
+      return r.ok ? r.json() : null;
+    }).then(function (detail) {
+      if (!own(pending, item.id)) return;
+      loading.remove();
+      var approval = detail && detail.approval;
+      if (detail && approval && Array.isArray(detail.fields) && typeof approval.digest === 'string') {
+        renderFields(built.payload, detail.fields);
+        var shown = { id: item.id, kind: item.kind, scopes: approval.scopes };
+        card.appendChild(actions(shown, approval.digest, false));
+        row.appendChild(actions(shown, approval.digest, true));
+      } else {
+        card.appendChild(el('div', 'warden-meta',
+          'The full request can only be shown, and approved, on the computer running Lisa or from a signed-in account.'));
+        card.appendChild(actions(item, null, false));
+      }
+    }).catch(function () {
+      if (!own(pending, item.id)) return;
+      loading.textContent = 'Could not load the full request, so it cannot be approved from here.';
+      card.appendChild(actions(item, null, false));
+    });
+  }
+
+  function finish(id, verdict) {
+    var entry = own(pending, id);
+    if (!entry) return;
+    delete pending[id];
+    entry.card.classList.add('resolved');
+    Array.prototype.forEach.call(entry.card.querySelectorAll('.warden-actions'), function (node) { node.remove(); });
+    entry.card.appendChild(el('div', 'warden-result ' + (own(RESULT_WORDS, verdict) ? verdict : ''), own(RESULT_WORDS, verdict) || 'Closed'));
+    if (entry.row) entry.row.remove();
+    refreshPanel();
+  }
+
+  window.lisaApprovalRequested = function (ev) { show(ev); };
+  window.lisaApprovalResolved = function (ev) { if (ev && typeof ev.id === 'string') finish(ev.id, ev.verdict); };
+
+  // Anything already waiting when the page loads (or after a reconnect).
+  function loadPending() {
+    fetch('/api/approvals').then(function (r) { return r.ok ? r.json() : null; }).then(function (data) {
+      if (!data || !Array.isArray(data.approvals)) return;
+      var live = Object.create(null);
+      data.approvals.forEach(function (item) { live[item.id] = true; show(item); });
+      Object.keys(pending).forEach(function (id) { if (!live[id]) finish(id, 'expired'); });
+    }).catch(function () {});
+  }
+  loadPending();
+  setInterval(loadPending, 30000);
 })();

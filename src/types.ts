@@ -59,6 +59,16 @@ export interface ToolContext {
     remainingMicroUSD(): number;
     charge(microUSD: number): void;
   };
+  /**
+   * The approval gate of the turn this tool is running in. A tool that starts
+   * a nested agent run (the `task` subagent) must hand it down, so the nested
+   * run's tool calls are decided by the same gate — and, under Warden, by the
+   * same session and taint state — instead of running ungated.
+   */
+  approval?: (
+    toolName: string,
+    toolInput: unknown,
+  ) => Promise<{ allow: boolean; reason?: string }> | { allow: boolean; reason?: string };
 }
 
 export type StoredMessage = Anthropic.MessageParam;
