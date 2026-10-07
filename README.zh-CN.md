@@ -20,7 +20,7 @@
 | **Mac app** | Web 工作区、菜单栏灵动岛、本地工具和 agent 控制 | 从 Releases 下载已签名、公证的 **Lisa-Suite.dmg**，内置 Node 与后端 |
 | **CLI / 自托管 Web** | 本地助手、自选模型、知识库、集成与开发工具 | Node **22.19+**，以及供应商密钥或本地模型 |
 | **LISA Cloud** | 账号聊天、记忆和知识工具，无需配置 Mac | [登录](https://meetlisa.ai/cloud/)，使用额度与可选充值适用 |
-| **Lisa Pocket（iOS）** | 云聊天或连接可达的 Mac，分别保存两套连接 | 正在修复 App Store 审核问题，**尚未获准公开上架** |
+| **Lisa Pocket（iOS）** | 云聊天或连接可达的 Mac，分别保存两套连接 | 已重新提交 App Store 审核，**尚未获准公开上架** |
 
 Cloud 与 Mac 是**两个独立实例**，不会自动同步聊天、记忆和凭据。本地工具要求 Mac 开机且网络可达；云端不开放你 Mac 的 shell、邮箱、编程 agent 或主机级推送服务。
 
@@ -89,7 +89,7 @@ Warden 尚未覆盖全部执行入口，也不能替代操作系统沙箱。凭�
 | 受保护的云端网页搜索与抓取 | [PR #404](https://github.com/oratis/LISA/pull/404)，尚未合并；设计为默认关闭 |
 | 按用途选择模型与成本控制 | [PR #407](https://github.com/oratis/LISA/pull/407)，尚未合并 |
 | 跨设备记忆、租户级推送、日历/邮件写入连接器、电脑操作 | 规划中，不作为现有能力宣传 |
-| iOS App Store | 10 月 5 日因消耗型额度恢复与 AI 告知被拒；见[本轮修复](docs/REVIEW_2026-10-07.md) |
+| iOS App Store | 消耗型额度恢复与 AI 告知已修复；10 月 7 日提交 **1.2 (1791346539)**，现为**等待审核**（[回执](docs/REVIEW_2026-10-07.md)） |
 
 Muse 与其他 PA 产品的调研用于指导方向，实现边界见 [Muse 对照](docs/RESEARCH_MUSE_2026-09-27.md)、[全天候助手调研](docs/RESEARCH_ALWAYS_ON_AGENTS_2026-09-30.md)及[升级计划](docs/PLAN_ALWAYS_ON_UPGRADE_2026-09-30.md)。LISA 是独立项目。
 
