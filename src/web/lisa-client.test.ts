@@ -269,7 +269,16 @@ describe("provider picker works against both server generations (UX-1)", () => {
         },
       ],
     });
-    assert.equal(JSON.stringify(list.map((p) => p.id)), JSON.stringify(["zhipu", "brandnew"]));
+    // The served list is authoritative for named providers — one the server
+    // does not enumerate would be refused by /api/config/save's whitelist. The
+    // custom endpoint is the exception: it writes LISA_API_KEY + LISA_BASE_URL,
+    // which the server never reports as a "provider" but does accept, so it has
+    // to survive the merge or self-hosted endpoints become unreachable.
+    assert.equal(
+      JSON.stringify(list.map((p) => p.id)),
+      JSON.stringify(["zhipu", "brandnew", "custom"]),
+    );
+    assert.equal(list[list.length - 1]!.custom, true);
     assert.equal(list[0]!.configured, true);
     // Local presentation hints still merge in for the ones we know.
     assert.equal(list[0]!.model, "glm-4-plus");

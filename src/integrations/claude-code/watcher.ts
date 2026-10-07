@@ -185,7 +185,16 @@ export class ClaudeCodeWatcher extends EventEmitter {
     await this.attachWatcher();
     // First real parse of the ACTIVE sessions only — the scan above deliberately
     // read nothing. Everything outside the 30 min window is never opened.
-    await this.repollActive();
+    //
+    // Silent, because this is not a transition: initialScan() recorded every
+    // file as state "unknown"/"unscanned", so the first parse ALWAYS looks like
+    // a change. Emitting it turned every backend restart — launchd KeepAlive
+    // after a crash, `lisa upgrade`, the T-3 watchdog — into a fresh round of
+    // "session errored" / "needs permission" pushes for sessions the user was
+    // already told about, possibly hours earlier. Subscribers that want the
+    // current picture pull it from listActive(); the event stream is for real
+    // transitions.
+    await this.repollActive({ silent: true });
     this.startRepollLoop();
   }
 
@@ -467,7 +476,7 @@ export class ClaudeCodeWatcher extends EventEmitter {
     if (this.repollTimer.unref) this.repollTimer.unref();
   }
 
-  private async repollActive(): Promise<void> {
+  private async repollActive(opts: { silent?: boolean } = {}): Promise<void> {
     const cutoff = Date.now() - ACTIVE_WINDOW_MS;
     const candidates = [...this.sessions.entries()].filter(([, info]) => info.lastMtime >= cutoff);
     for (const [filePath, prev] of candidates) {
@@ -496,7 +505,9 @@ export class ClaudeCodeWatcher extends EventEmitter {
       // changed (working → waiting after staleness).
       if (info.state !== prev.state || info.stateReason !== prev.stateReason) {
         this.sessions.set(filePath, info);
-        this.emitUpdate("state_changed", info);
+        // The startup sweep records the truth without announcing it: see
+        // start(). Only genuine transitions after boot reach subscribers.
+        if (!opts.silent) this.emitUpdate("state_changed", info);
       }
     }
   }

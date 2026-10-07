@@ -16,7 +16,7 @@ import { runIdleOnce } from "../idle/runner.js";
 import { getIdleWatcher } from "../idle/watcher.js";
 import { moodBus } from "../mood-bus.js";
 import { aiRecipients } from "./ai-disclosure.js";
-import { providerForModel } from "../providers/registry.js";
+import { providerForModel, resolveDefaultModel } from "../providers/registry.js";
 import { buildSystemPromptSnapshot, getPromptFingerprint } from "../prompt.js";
 import { readActiveWebSession, writeActiveWebSession } from "../sessions/active.js";
 import { listSessionsOnDisk } from "../sessions/list.js";
@@ -599,14 +599,21 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   const session = await resumeOrCreateWebSession(opts.model);
   await writeActiveWebSession(session.id);
   process.env.LISA_SESSION_ID = session.id;
+  // The model in effect right now. It starts as the one the CLI resolved at
+  // boot, but the key gate can change it: a first run has no key at all, so
+  // `opts.model` is only ever DEFAULT_MODEL there, and someone who configures
+  // DeepSeek (or Qwen, GLM, Grok…) needs the very next turn to route to it.
+  // Treating the model as a startup constant made the whole non-Anthropic
+  // onboarding path inert — the key was saved and then never used.
+  let activeModel = opts.model;
   // Lazy provider — the SDK reads ANTHROPIC_API_KEY at construction time,
   // so we can't build it before the user has set the key via the GUI popup.
   // Rebuilt after /api/config/save so the in-memory client picks up the
-  // new key without restarting the server.
+  // new key (and the new model) without restarting the server.
   let cachedProvider: ReturnType<typeof providerForModel> | null = null;
   const getProvider = () => {
     if (opts.provider) return opts.provider;
-    if (!cachedProvider) cachedProvider = providerForModel(opts.model);
+    if (!cachedProvider) cachedProvider = providerForModel(activeModel);
     return cachedProvider;
   };
   // Restore full history from the session file on startup (so context survives page refresh)
@@ -698,7 +705,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     const scoped = homeScope.getStore();
     if (!scoped) return { value: globalChat, release: () => {} };
     return tenantRuntimes.acquire(scoped, async () => {
-      const s = await resumeOrCreateWebSession(opts.model);
+      const s = await resumeOrCreateWebSession(activeModel);
       await writeActiveWebSession(s.id);
       const [{ messages }, reflectionSummary] = await Promise.all([
         s.readMessagePage(0, 9999),
@@ -740,19 +747,19 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   ): Promise<void> => {
     const { birth, BirthInferenceError } = await import("../soul/birth.js");
     if (!cloudEdition || !uid) {
-      await birth({ model: opts.model, onStep: emit, signal });
+      await birth({ model: activeModel, onStep: emit, signal });
       return;
     }
     const acct = await getAccount(uid);
     if (!acct) throw new Error("birth account no longer exists");
-    const admission = await admitInference(acct, opts.model);
+    const admission = await admitInference(acct, activeModel);
     if (!admission.ok) {
       const detail = "error" in admission.body ? admission.body.error : "inference_rejected";
       throw new Error(`birth admission rejected: ${detail}`);
     }
     try {
       try {
-        const result = await birth({ model: opts.model, onStep: emit, signal });
+        const result = await birth({ model: activeModel, onStep: emit, signal });
         await admission.permit.settle("birth", result.usage);
       } catch (err) {
         if (err instanceof BirthInferenceError) {
@@ -1152,7 +1159,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       if (!shot) return;
       const suggestion = await analyzeScreenshot({
         provider: getProvider() as unknown as SuggestionProvider,
-        model: opts.model,
+        model: activeModel,
         imageBase64: shot.data,
         mediaType: shot.mediaType,
       });
@@ -1269,7 +1276,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           tools: runtimeTools,
           cwd: process.cwd(),
           signal: abort.signal,
-          model: opts.model,
+          model: activeModel,
           idleMs: watcher.idleFor(),
           userLanguageSample,
         });
@@ -1373,7 +1380,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
               const r = await reflectOnSession({
                 history: snapshot,
                 sessionId: ctx.session.id,
-                model: opts.model,
+                model: activeModel,
               });
               // Advance the marker only on success, so a failed reflect retries next
               // tick instead of silently dropping the conversation.
@@ -1470,10 +1477,23 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       res.end(JSON.stringify({ ok: true }));
       return;
     }
-    // Health detail (pre-gate, unauthenticated, still no I/O): version, uptime,
-    // event-loop lag percentiles, heap/RSS and the live tenant / turn / session
-    // counters — what an operator needs to tell "slow" from "down". Always 200:
-    // `ok:false` means "lagging", not "dead"; /healthz is the liveness probe.
+    // Health detail (pre-gate): version, uptime, event-loop lag percentiles,
+    // heap/RSS and the live tenant / turn / session counters — what an operator
+    // needs to tell "slow" from "down". Always 200: `ok:false` means "lagging",
+    // not "dead"; /healthz is the liveness probe.
+    //
+    // The FULL payload goes only to a caller the gate would let in. It is a
+    // fingerprint: exact version, process uptime, memory, how many sessions
+    // exist and how many turns are in flight. That mattered for the hosted
+    // edition first, but it matters on a Mac too — `--host 0.0.0.0` is the
+    // documented way to reach Lisa from a phone, and it puts this endpoint in
+    // front of everyone on the café Wi-Fi. One rule for both editions: health
+    // (ok + lag + edition) is public, everything else needs the token.
+    //
+    // trustLoopback is on for the Mac edition only, where loopback IS the local
+    // owner — so `lisa doctor --probe` keeps its full read on the machine
+    // itself. The hosted container must never treat its own (or the proxy's)
+    // loopback as the owner, the same rule the gate below uses.
     if (req.method === "GET" && url === "/health") {
       const full = healthPayload(
         loopMonitor,
@@ -1481,21 +1501,13 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         cloudEdition ? "cloud" : "mac",
         watchdogLagMs,
       );
-      // Hosted edition: this endpoint faces the public internet from here, so
-      // the unauthenticated answer is health only. tenants / sessions /
-      // pending_turns are live usage metrics and heap / RSS / uptime expose
-      // restart and load patterns; none are needed to tell "lagging" from
-      // "fine". An authenticated caller gets the full payload further down,
-      // and /healthz is still the unauthenticated liveness probe.
-      // trustLoopback: false — the hosted container must never treat its own
-      // (or the proxy's) loopback as the owner, the same rule the gate below uses.
       const healthAuthed = isRequestAuthorized(
         req.socket.remoteAddress ?? "",
         webToken,
         presentedToken(req, url),
-        false,
+        !cloudEdition,
       );
-      const body = cloudEdition && !healthAuthed ? publicHealthPayload(full) : full;
+      const body = healthAuthed ? full : publicHealthPayload(full);
       res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
       res.end(JSON.stringify(body));
       return;
@@ -1696,7 +1708,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       res.end(
         JSON.stringify({
           accounts: cloud && !!sessionSecret,
-          dataProcessing: { version: 1, recipients: aiRecipients(opts.model) },
+          dataProcessing: { version: 1, recipients: aiRecipients(activeModel) },
           appleWeb:
             cloud && cfg.enabled && !!cfg.webServicesId ? { servicesId: cfg.webServicesId } : null,
           // Client ids are public by design (they identify the app, they don't
@@ -2020,7 +2032,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         typeof body.maxRuns === "number" && body.maxRuns > 0 ? Math.floor(body.maxRuns) : undefined;
       try {
         const report = await sweepUserAutonomy({
-          ...(opts.model ? { model: opts.model } : {}),
+          ...(activeModel ? { model: activeModel } : {}),
           ...(maxRuns !== undefined ? { maxRuns } : {}),
           tools: autonomyTools,
           cwd: process.cwd(),
@@ -2852,7 +2864,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           let polishPermit: InferencePermit | null = null;
           try {
             if (acct) {
-              const admission = await admitInference(acct, opts.model);
+              const admission = await admitInference(acct, activeModel);
               if (admission.ok) polishPermit = admission.permit;
               else {
                 logInfo(`[voice] dictation polish skipped: ${JSON.stringify(admission.body)}`);
@@ -2862,13 +2874,13 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
             if (text === undefined) {
               const polished = await polishDictationMetered({
                 provider: getProvider() as unknown as DictationProvider,
-                model: opts.model,
+                model: activeModel,
                 transcript,
               });
               text = polished.text;
               if (cloud && polished.usage) {
                 if (polishPermit) await polishPermit.settle("voice_dictation", polished.usage);
-                else await recordUsage("voice_dictation", opts.model, polished.usage);
+                else await recordUsage("voice_dictation", activeModel, polished.usage);
               }
             }
           } catch (err) {
@@ -3474,7 +3486,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         cwd,
         systemPrompt,
         tools,
-        model: typeof payload.model === "string" ? payload.model : opts.model,
+        model: typeof payload.model === "string" ? payload.model : activeModel,
       });
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, agent: view }));
@@ -3843,10 +3855,16 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           // Real, declared sizes (T-12). `sizes: "any"` on a raster PNG makes
           // Chrome and iOS treat the icon as unusable for the home screen and
           // fall back to a screenshot of the page — which is the "the installed
-          // app has no icon" the v0.24 review recorded. The maskable variant is
-          // a SEPARATE file, not the same bytes relabelled: a maskable icon must
-          // carry its own safe-zone padding, and declaring an unpadded icon
-          // maskable gets its edges cropped by the platform's mask.
+          // app has no icon" the v0.24 review recorded.
+          //
+          // Both files are declared "any maskable" rather than pointing a
+          // maskable entry at a third file. That is not a shortcut: the icons
+          // are generated by scripts/optimize-assets.ts, which insets the art
+          // inside the maskable safe circle (radius 0.4 × size) and ASSERTS
+          // that invariant on every run — so these bytes are genuinely safe to
+          // mask, and a separate file would be the same pixels under another
+          // name. Declaring a file that nothing generates is worse than either:
+          // the platform drops the only maskable entry and falls back.
           icons: [
             { src: "/assets/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
             { src: "/assets/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
@@ -3942,7 +3960,7 @@ self.addEventListener('fetch', (event) => {
       const runtime = await ctxForRequest();
       try {
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({ id: runtime.value.session.id, model: opts.model }));
+        res.end(JSON.stringify({ id: runtime.value.session.id, model: activeModel }));
       } finally {
         runtime.release();
       }
@@ -4078,7 +4096,7 @@ self.addEventListener('fetch', (event) => {
       const runtime = await ctxForRequest();
       try {
         const id = await swapChatSession(runtime.value, () =>
-          SessionStore.create({ cwd: process.cwd(), model: opts.model }),
+          SessionStore.create({ cwd: process.cwd(), model: activeModel }),
         );
         broadcast({ type: "session_switched", session: id });
         res.writeHead(200, { "content-type": "application/json" });
@@ -4376,7 +4394,7 @@ self.addEventListener('fetch', (event) => {
       // not just the two the popup used to know about. Never the key values —
       // only whether each one is present.
       res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
-      res.end(JSON.stringify(configStatusPayload(opts.model)));
+      res.end(JSON.stringify(configStatusPayload(activeModel)));
       return;
     }
 
@@ -4423,8 +4441,15 @@ self.addEventListener('fetch', (event) => {
         res.end((err as Error).message);
         return;
       }
-      // Force the next /chat to rebuild the provider so the new key is read.
+      // Force the next /chat to rebuild the provider so the new key is read —
+      // and re-resolve the model, because the key that just arrived may belong
+      // to a different provider than the one this process booted with. An
+      // explicit LISA_MODEL wins; otherwise resolveDefaultModel() picks from
+      // whichever key is now configured, exactly as a fresh `lisa serve` would.
+      const savedModel = updates["LISA_MODEL"];
+      activeModel = savedModel && savedModel.trim() ? savedModel.trim() : resolveDefaultModel();
       cachedProvider = null;
+      logInfo(`[config] keys saved (${Object.keys(updates).join(", ")}); model → ${activeModel}`);
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, saved: Object.keys(updates) }));
       return;
@@ -4628,7 +4653,7 @@ self.addEventListener('fetch', (event) => {
       try {
         quotaAcct = cloud && accountUid ? await getAccount(accountUid) : null;
         if (quotaAcct) {
-          const admission = await admitInference(quotaAcct, opts.model);
+          const admission = await admitInference(quotaAcct, activeModel);
           if (!admission.ok) {
             res.writeHead(admission.status, { "content-type": "application/json" });
             res.end(JSON.stringify(admission.body));
@@ -4765,7 +4790,7 @@ self.addEventListener('fetch', (event) => {
             history: modelContext.history,
             userMessage: message,
             userFiles: files,
-            model: opts.model,
+            model: activeModel,
             thinking: policy.thinking,
             compaction: policy.compaction,
             // Approval gating on the web surface (T-7). undefined under
@@ -4778,7 +4803,7 @@ self.addEventListener('fetch', (event) => {
             // the output rate.
             budgetTokens:
               quotaBudgetMicroUSD != null
-                ? tokensAffordable(opts.model, quotaBudgetMicroUSD)
+                ? tokensAffordable(activeModel, quotaBudgetMicroUSD)
                 : undefined,
             onEvent: (ev) => {
               wardenTurn?.observe(ev);
@@ -4880,7 +4905,7 @@ self.addEventListener('fetch', (event) => {
             // admitted them. The legacy shared-token cloud demo has no account
             // balance, so it remains operator-funded but still audited.
             if (inferencePermit) await inferencePermit.settle("chat", usage);
-            else await recordUsage("chat", opts.model, usage);
+            else await recordUsage("chat", activeModel, usage);
           }
           if (!anyText && !anyTool && !errorSent) send({ type: "empty" });
           send({ type: "done" });
@@ -4923,7 +4948,7 @@ self.addEventListener('fetch', (event) => {
       try {
         const acct = cloud && accountUid ? await getAccount(accountUid) : null;
         if (acct) {
-          const admission = await admitInference(acct, opts.model);
+          const admission = await admitInference(acct, activeModel);
           if (!admission.ok) {
             res.writeHead(admission.status, { "content-type": "application/json" });
             res.end(JSON.stringify(admission.body));
@@ -4950,7 +4975,7 @@ self.addEventListener('fetch', (event) => {
         const r = await reflectOnSession({
           history: chat.history,
           sessionId: chat.session.id,
-          model: opts.model,
+          model: activeModel,
         });
         chat.reflectionSummary = r.summary;
         if (inferencePermit && r.usage) {
