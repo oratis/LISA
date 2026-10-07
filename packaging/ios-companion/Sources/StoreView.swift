@@ -74,6 +74,7 @@ final class CreditsStore: ObservableObject {
     }
 
     func purchase(_ product: Product, app: AppState) async {
+        guard !busy else { return }
         guard app.connectionMode == .cloud, app.account?.signedIn == true,
               let uid = app.account?.uid else {
             message = "Sign in to your LISA Cloud account before purchasing credits."
@@ -100,7 +101,10 @@ final class CreditsStore: ObservableObject {
 
     /// Server-credit a verified transaction, then finish it.
     private func credit(_ verification: VerificationResult<StoreKit.Transaction>, app: AppState) async {
-        guard case .verified(let tx) = verification else { return }
+        guard case .verified(let tx) = verification else {
+            message = "The App Store couldn't verify this purchase. No credits have been applied. Please try again or contact support."
+            return
+        }
         // Never forward an App Store receipt to a paired Mac.
         guard app.connectionMode == .cloud, app.account?.signedIn == true,
               let uid = app.account?.uid else { return }
@@ -125,12 +129,31 @@ final class CreditsStore: ObservableObject {
         }
     }
 
-    func restore() async {
-        try? await AppStore.sync()
+    /// Consumable balances belong to the LISA account, not App Store restore.
+    /// This is a read-only ledger refresh: never prompts for Apple credentials,
+    /// mints credits, or reports a cached balance as a successful refresh.
+    func refreshBalance(client: LisaClient, isCurrent: () -> Bool) async {
+        guard !busy else { return }
+        busy = true
+        defer { busy = false }
+        message = nil
+        do {
+            let quota = try await client.billingQuota()
+            guard isCurrent() else { return }
+            guard quota.available, let paid = quota.paidMicroUSD else {
+                message = "Sign in to the LISA account used for your purchase to load its credit balance."
+                return
+            }
+            message = String(format: "Account balance: $%.2f in credits. Spent credits cannot be restored.", Double(paid) / 1_000_000)
+        } catch {
+            guard isCurrent() else { return }
+            message = "Couldn't refresh your LISA credit balance. Check your connection and try again."
+        }
     }
+
 }
 
-/// The paywall sheet: three packs, restore, and the tier explainer.
+/// The paywall sheet: three packs, account balance, and the tier explainer.
 struct PaywallSheet: View {
     @EnvironmentObject var app: AppState
     @StateObject private var store = CreditsStore.shared
@@ -179,7 +202,18 @@ struct PaywallSheet: View {
                 }
 
                 Section {
-                    Button("Restore purchases") { Task { await store.restore() } }
+                    Button("Refresh credit balance") {
+                        let expected = app.config
+                        let client = app.client
+                        Task {
+                            await store.refreshBalance(client: client, isCurrent: { app.config == expected })
+                        }
+                    }
+                        .disabled(store.busy || app.connectionMode != .cloud || app.account?.signedIn != true)
+                } header: {
+                    Text("Your LISA account balance")
+                } footer: {
+                    Text("Sign in to the same LISA account to access unused credits on another device or after reinstalling. These packs are consumable: Apple cannot restore spent credits. Unfinished purchases are credited automatically once verified.")
                 }
 
                 if let msg = store.message {
@@ -193,6 +227,7 @@ struct PaywallSheet: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } }
             }
             .task { await store.loadProducts() }
+            .onChange(of: app.config) { _, _ in store.message = nil }
         }
         .preferredColorScheme(app.preferredScheme)
     }

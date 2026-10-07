@@ -3,7 +3,7 @@ import Base from "../layouts/Base.astro";
 ---
 <Base title="Privacy" lang="en" description="How LISA Cloud and local Mac mode process accounts, conversations, and AI requests.">
   <header class="page-head">
-    <p class="eyebrow"><span class="rule"></span> PRIVACY <b>· updated 2026-09-27</b></p>
+    <p class="eyebrow"><span class="rule"></span> PRIVACY <b>· updated 2026-09-28</b></p>
     <h1>Privacy Policy</h1>
     <p class="lede">
       LISA is a personal AI assistant with two modes: <strong>LISA Cloud</strong>, operated
@@ -45,14 +45,44 @@ import Base from "../layouts/Base.astro";
     <section class="pol">
       <p class="eyebrow"><b>Your backend &amp; LLM providers</b></p>
       <p>
-        When you chat, your messages are processed by the large-language-model provider
-        configured on your backend (such as Anthropic, Zhipu/GLM, OpenAI, or Google).
-        LISA Cloud relays requests using the service's configured providers; a local Mac uses
-        your configuration. Relevant conversation history, memory, and tool results may be
-        included with your message. The iOS app names the configured services and asks for
-        permission before sending a chat message. Provider processing is governed by its own
-        policy. A local model can keep inference on your Mac; local mode alone does not imply
-        that a remote model never receives data.
+        LISA Cloud sends your message, relevant conversation history, assistant memory,
+        and tool results to <strong>Google Gemini</strong> to generate your response. This
+        can include personal information you put in those materials. We use Gemini API
+        through a Google Cloud project with active billing. Under Google's
+        <a href="https://ai.google.dev/gemini-api/terms">paid-service terms</a>, prompts and
+        responses are not used to improve Google's products. Google may retain them for
+        a limited period for abuse prevention, security, or legal requirements, and may
+        process them in countries where Google or its agents have facilities.
+      </p>
+      <p>
+        Third parties we engage to process personal data must provide the same or equal
+        protection as this policy, including limited-purpose processing, confidentiality,
+        security, and applicable deletion obligations. Google's
+        <a href="https://business.safety.google/processorterms/">Data Processing Addendum</a>
+        applies to paid Gemini prompts and responses. Service and billing metadata are
+        also processed under Google's applicable privacy and data-protection terms.
+      </p>
+      <p>
+        With your own Mac, you choose the server and AI provider (for example Anthropic,
+        OpenAI, Google, or Zhipu/GLM); review that provider's terms and settings before use.
+        Those independently configured services are not operated by us. A local model can
+        keep inference on your Mac; connecting a Mac alone does not keep remote inference
+        on your device.
+      </p>
+    </section>
+
+    <section class="pol">
+      <p class="eyebrow"><b>Consent and withdrawal in Lisa Pocket</b></p>
+      <p>
+        Before sending a chat message, the iOS app identifies the configured AI recipients,
+        explains the data involved, and asks for your explicit permission. Cancel leaves
+        the draft unsent. Consent is limited to the current app session and connection;
+        a changed recipient requires permission again. In <strong>Settings → AI data
+        sharing → Withdraw AI consent</strong>, you can stop an active chat request and
+        require fresh permission before future messages from this app. Withdrawal cannot
+        recall information already processed and does not erase your history. It does not
+        disable independent automations on your Mac; stop those on your own server.
+        Use account deletion below, or contact us privately, to request deletion.
       </p>
     </section>
 
@@ -63,7 +93,9 @@ import Base from "../layouts/Base.astro";
           <strong>What we store</strong> — your email address, a sign-in identifier
           (Apple/Google <code>sub</code> or a password hash — never the password itself), and
           your Lisa's per-account home: her soul, your conversations, and anything you add to
-          her knowledge base. Stored on Google Cloud (us-central1), isolated per account.
+          her knowledge base. We also encrypt and store the Apple authorization token when supplied,
+          so we can revoke that authorization when you delete your account.
+          Stored on Google Cloud (us-central1), isolated per account.
         </li>
         <li>
           <strong>What we process</strong> — chat messages pass through the account's metered
@@ -71,16 +103,30 @@ import Base from "../layouts/Base.astro";
           append-only usage ledger (model, token counts, cost) — not message content.
         </li>
         <li>
-          <strong>Sub-processors</strong> — LLM inference (e.g. Zhipu/GLM, Anthropic, OpenAI),
+          <strong>Service providers</strong> — Google Cloud (hosting and storage), Google Gemini (AI inference),
           Resend (verification &amp; sign-in code emails), Stripe (web top-ups), Apple
           (Sign in with Apple, iOS purchases), Google (Sign in with Google), Cloudflare
-          (bot-check on signup). Each is governed by its own policy.
+          (bot-check on signup). These services receive only the data needed for their
+          function, such as an email address for a sign-in email, an account identifier
+          for authentication, or transaction identifiers and purchase receipts for credits.
+          We do not receive your full payment card details from Apple or Stripe.
+        </li>
+        <li>
+          <strong>Operational data</strong> — service logs can include request IP addresses,
+          times, routes, response status, errors, and account or transaction identifiers.
+          We use these to operate the service, prevent abuse, and diagnose failures, not
+          for advertising or cross-app tracking. We retain account data until you delete
+          it; operational, payment, and provider records are kept as needed for security,
+          accounting, dispute handling, and legal obligations.
         </li>
         <li>
           <strong>Deletion</strong> — "Delete account" in the app removes the account record
           and wipes the per-account home entirely; every session is invalidated at that
           instant. Payment transaction records used for deduplication and refunds are separate
-          from conversation storage. Provider-side records and infrastructure backups follow
+          from conversation storage. For Apple sign-ins with a saved authorization token,
+          deletion also revokes that authorization. For an earlier sign-in without a saved token,
+          we delete the Lisa data and show Apple's instructions for removing the remaining Apple connection. Provider-side records
+          and infrastructure backups follow
           their respective retention policies; contact us for a data request.
         </li>
         <li>
@@ -100,8 +146,11 @@ import Base from "../layouts/Base.astro";
     </section>
 
     <section class="pol">
-      <p class="eyebrow"><b>Children</b></p>
-      <p>Lisa is not directed at children under 13 and does not knowingly collect their data.</p>
+      <p class="eyebrow"><b>Age requirement</b></p>
+      <p>LISA is intended for adults aged 18 or older. Lisa Pocket requires confirmation
+        before enabling AI chat. Do not use the service if you are under 18. If we learn
+        that we hold a minor's personal data, we will take steps to delete it; please
+        contact us privately using the email below.</p>
     </section>
 
     <section class="pol">
@@ -142,6 +191,7 @@ import Base from "../layouts/Base.astro";
     .policy { display: grid; gap: 2rem; margin-top: 2.2rem; }
     .pol .eyebrow { margin-bottom: .5rem; }
     .pol p { margin: 0; max-width: 72ch; }
+    .pol p + p { margin-top: .9rem; }
     .pol ul { margin: 0; padding-left: 1.2rem; max-width: 72ch; }
     .pol li { margin: .5rem 0; color: var(--muted); }
     .pol li strong { color: var(--ink); }

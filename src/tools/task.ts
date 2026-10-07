@@ -41,7 +41,8 @@ export function createTaskTool(deps: {
         },
         prompt: {
           type: "string",
-          description: "Self-contained instructions. The sub-agent has no memory of this conversation.",
+          description:
+            "Self-contained instructions. The sub-agent has no memory of this conversation.",
         },
         type: {
           type: "string",
@@ -56,10 +57,8 @@ export function createTaskTool(deps: {
       required: ["description", "prompt"],
     },
     async execute(input, ctx) {
-      const tools =
-        input.type === "explore" ? deps.readOnlyToolset() : deps.fullToolset();
-      const system =
-        input.type === "explore" ? EXPLORE_SYSTEM : GENERAL_SYSTEM;
+      const tools = input.type === "explore" ? deps.readOnlyToolset() : deps.fullToolset();
+      const system = input.type === "explore" ? EXPLORE_SYSTEM : GENERAL_SYSTEM;
       const result = await runSubagent({
         prompt: input.prompt,
         systemPrompt: system,
@@ -70,6 +69,9 @@ export function createTaskTool(deps: {
         // A dispatched subagent inherits the parent turn's confinement — it must
         // not be able to escape the sandbox its caller runs under. H2.
         sandboxMode: ctx?.sandboxMode,
+        // …and the parent turn's approval gate: without this a subagent would
+        // run its tools with no Warden decision at all.
+        approval: ctx?.approval,
       });
       return `[subagent: ${input.description} — ${result.toolCallCount} tool calls, ${result.outputTokens} tokens]\n${result.text}`;
     },

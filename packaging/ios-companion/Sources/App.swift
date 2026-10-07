@@ -1,4 +1,5 @@
 import SwiftUI
+import AuthenticationServices
 
 @main
 struct LisaPocketApp: App {
@@ -42,6 +43,14 @@ struct RootView: View {
         .toolbarBackground(Theme.panel, for: .tabBar)
         .toolbarBackground(.visible, for: .tabBar)
         .onOpenURL { app.handleDeepLink($0) }
+        .alert("Your Lisa account is deleted", isPresented: $app.showAppleRevocationHelp) {
+            Button("Apple instructions") {
+                UIApplication.shared.open(URL(string: "https://support.apple.com/en-us/102571")!)
+            }
+            Button("Done", role: .cancel) {}
+        } message: {
+            Text("For this earlier Apple sign-in, also open iPhone Settings → your name → Sign in with Apple → Lisa Pocket → Delete. Your Lisa cloud account and data have already been deleted.")
+        }
         .overlay { if app.locked { LockView() } }
         // Redact the app-switcher / multitasking snapshot: iOS captures the frame
         // at `.inactive` (before `.background`), so a cover keyed on "not active"
@@ -79,11 +88,19 @@ struct RootView: View {
         .task(id: app.config) {
             CreditsStore.shared.start(app: app)
             await app.refreshAccount()
+            await app.checkAppleCredential()
             await CreditsStore.shared.reconcile(app: app)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: ASAuthorizationAppleIDProvider.credentialRevokedNotification)) { _ in
+            Task { await app.checkAppleCredential() }
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .background { app.lockIfEnabled() }  // re-arm when leaving foreground
-            if phase == .active { Task { await app.refreshWidgetSnapshot() } }
+            if phase == .active { Task {
+                await app.refreshWidgetSnapshot()
+                await app.refreshAccount()
+                await app.checkAppleCredential()
+            } }
         }
     }
 }

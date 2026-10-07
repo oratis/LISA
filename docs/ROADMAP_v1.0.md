@@ -51,6 +51,8 @@ LISA 1.0 把现有的"灵魂叙事"（Soul · Desires · Heartbeat · Dreams）�
 
 ### 1.0 的判定标准（什么时候能叫 1.0）
 
+> **2026-10-02 修订**：[升级方案](PLAN_ALWAYS_ON_UPGRADE_2026-09-30.md) 获批后，1.0 另加三项必要条件：Task Engine（持久任务、routine、watcher）、Warden（确定性审批与凭据代理）、Home + Relay（随处可达、端到端加密）。Sense 的常驻屏幕和语音采集降为 1.x。下面四条仍然有效。
+
 1. **四支柱各自跨过可信阈值**：不是"demo 能跑"，而是"能当 daily-driver 且不撒谎"。
 2. **叙事 = 代码**（v0.9 review 的核心批评）：README / PITCH / 官网说的每一句，第一个认真读代码的 contributor 都能对上。
 3. **守住 v0.9.1 安全地板**：**常驻感知（Sense）是 1.0 最危险的隐私/攻击面扩张，本地 agent 命令回路（Dispatch）次之**——不得重开 RCE，不得在无 consent 下采集。（接入 TakoAPI 当 consumer 反而是小事——出站调用为主，见 §4。）

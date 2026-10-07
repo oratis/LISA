@@ -187,9 +187,7 @@ struct ChatView: View {
     @State private var input = ""
     @State private var showPaywall = false
     @State private var consentRecipients: [String] = []
-    @State private var acceptedRecipients: [String] = []
-    @State private var pendingText = ""
-    @State private var showAIConsent = false
+    @State private var consentRequest: AISharingRequest?
     @State private var checkingConsent = false
     @State private var loadedConfig: ServerConfig?
     private static let bottomID = "chat-bottom"
@@ -200,6 +198,11 @@ struct ChatView: View {
                 transcript
                 Divider()
                 quickChips
+                Text(app.aiConsent.isGranted
+                     ? "AI data sharing allowed: " + app.aiConsent.recipients.joined(separator: ", ")
+                     : "Before your first message, review and allow sharing with third-party AI.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .padding(.horizontal)
                 composer
             }
             .background(Theme.bgDeep.ignoresSafeArea())
@@ -225,25 +228,19 @@ struct ChatView: View {
             }
             .onAppear { consumeDraft() }
             .onChange(of: app.chatDraft) { _, _ in consumeDraft() }
+            .onChange(of: app.aiConsent.generation) { _, _ in
+                consentRequest = nil
+                model.cancel()
+            }
             .sheet(isPresented: $showPaywall) { PaywallSheet().environmentObject(app) }
-            .sheet(isPresented: $showAIConsent) {
-                NavigationStack {
-                    List {
-                        Section("Who receives your data") {
-                            Text("Your message, relevant conversation history, assistant memory and tool results are processed by your connected LISA server and these configured AI services:")
-                            ForEach(consentRecipients, id: \.self) { Text($0) }
-                        }
-                        Section("Your choice") {
-                            Text("This is needed to generate AI responses. AI can make mistakes. Only send information you want these services to process. You can cancel and keep using Settings without sending a message.")
-                            Link("Privacy policy", destination: URL(string: "https://meetlisa.ai/privacy")!)
-                            Button("Allow and send this message") {
-                                acceptedRecipients = consentRecipients
-                                showAIConsent = false
-                                deliver(pendingText)
-                            }.buttonStyle(.borderedProminent)
-                            Button("Cancel", role: .cancel) { showAIConsent = false }
-                        }
-                    }.navigationTitle("AI data sharing")
+            .sheet(item: $consentRequest) { request in
+                AISharingConsentSheet(request: request) {
+                    guard request.server == app.config,
+                          app.aiConsent.grant(server: request.server, recipients: request.recipients,
+                                              isAdult: true, generation: request.generation) else { return }
+                    consentRecipients = request.recipients
+                    consentRequest = nil
+                    deliver(request.text)
                 }
             }
         }
@@ -410,21 +407,27 @@ struct ChatView: View {
         guard !checkingConsent, !model.sending, !text.trimmed.isEmpty else { return }
         checkingConsent = true
         let expected = app.config
+        let generation = app.aiConsent.generation
         Task { @MainActor in
             defer { checkingConsent = false }
             let disclosure = try? await LisaClient.authConfig(base: expected).dataProcessing
-            guard app.config == expected else { return }
+            guard app.config == expected, app.aiConsent.generation == generation else { return }
             guard let disclosure, disclosure.version == 1, !disclosure.recipients.isEmpty else {
                 app.notify("Couldn't load AI provider information. Retry, or update your LISA server before sending.", ok: false)
                 return
             }
             consentRecipients = disclosure.recipients
-            if acceptedRecipients == consentRecipients { deliver(text) }
-            else { pendingText = text; showAIConsent = true }
+            if app.aiConsent.allows(server: expected, recipients: consentRecipients) { deliver(text) }
+            else {
+                consentRequest = AISharingRequest(server: expected, recipients: disclosure.recipients,
+                                                  generation: generation, text: text)
+            }
         }
     }
 
     private func deliver(_ text: String) {
+        guard app.aiConsent.allows(server: app.config, recipients: consentRecipients) else { return }
+        app.cancelActiveChat = { [weak model = model] in model?.cancel() }
         input = ""
         model.send(text, client: app.client)
     }

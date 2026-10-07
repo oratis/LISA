@@ -8,12 +8,8 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "lisa-sweep-"));
 process.env.LISA_HOME = TMP;
 process.env.LISA_SOUL_GIT = "0";
 
-const {
-  conversationNeedsReflection,
-  sweepToken,
-  sweepUserAutonomy,
-  SWEEP_INTERVALS_MS,
-} = await import("./autonomy-sweep.js");
+const { conversationNeedsReflection, sweepToken, sweepUserAutonomy, SWEEP_INTERVALS_MS } =
+  await import("./autonomy-sweep.js");
 const { homeScope, homeForUid } = await import("../paths.js");
 const { birth } = await import("../soul/birth.js");
 import type { BirthOutput } from "../soul/birth.js";
@@ -23,8 +19,17 @@ const GOOD: BirthOutput = {
   identity: "Steady and curious.",
   purpose: "Make my human sharper.",
   constitution: "1. Be honest\n2. Finish things\n3. Stay curious\n4. Keep confidences\n5. Show up",
-  first_value: { slug: "honest-momentum", title: "Honest Momentum", body: "Progress that doesn't lie." },
-  first_desire: { slug: "learn-my-human", what: "Learn my human", why: "Start there", actionable: false },
+  first_value: {
+    slug: "honest-momentum",
+    title: "Honest Momentum",
+    body: "Progress that doesn't lie.",
+  },
+  first_desire: {
+    slug: "learn-my-human",
+    what: "Learn my human",
+    why: "Start there",
+    actionable: false,
+  },
 };
 
 const NOW = 1_800_000_000_000;
@@ -34,7 +39,15 @@ function seedAccounts(records: object[]): void {
 }
 
 function acct(uid: string, lastLoginAt: number): object {
-  return { uid, kind: "email", email: `${uid}@x.co`, createdAt: 1, lastLoginAt, verified: true, sessionVersion: 0 };
+  return {
+    uid,
+    kind: "email",
+    email: `${uid}@x.co`,
+    createdAt: 1,
+    lastLoginAt,
+    verified: true,
+    sessionVersion: 0,
+  };
 }
 
 function seedSession(uid: string, id = "session-1", extraMessages: object[] = []): string {
@@ -42,9 +55,24 @@ function seedSession(uid: string, id = "session-1", extraMessages: object[] = []
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, `${id}.jsonl`);
   const lines = [
-    { type: "session", id, version: 1, startedAt: new Date(NOW).toISOString(), cwd: TMP, model: "test" },
-    { type: "message", ts: new Date(NOW).toISOString(), message: { role: "user", content: "hello" } },
-    { type: "message", ts: new Date(NOW).toISOString(), message: { role: "assistant", content: "hi" } },
+    {
+      type: "session",
+      id,
+      version: 1,
+      startedAt: new Date(NOW).toISOString(),
+      cwd: TMP,
+      model: "test",
+    },
+    {
+      type: "message",
+      ts: new Date(NOW).toISOString(),
+      message: { role: "user", content: "hello" },
+    },
+    {
+      type: "message",
+      ts: new Date(NOW).toISOString(),
+      message: { role: "assistant", content: "hi" },
+    },
     ...extraMessages,
   ];
   fs.writeFileSync(file, lines.map((line) => JSON.stringify(line)).join("\n") + "\n");
@@ -84,7 +112,10 @@ describe("autonomy sweep (S4)", () => {
     // fresh stamp → not_due (free tier: 24h interval)
     const autonomyDir = path.join(TMP, "users", "u-born", "autonomy");
     fs.mkdirSync(autonomyDir, { recursive: true });
-    fs.writeFileSync(path.join(autonomyDir, "last-cloud-sweep.json"), JSON.stringify({ at: NOW - 1000 }));
+    fs.writeFileSync(
+      path.join(autonomyDir, "last-cloud-sweep.json"),
+      JSON.stringify({ at: NOW - 1000 }),
+    );
     let report = await sweepUserAutonomy({ now: NOW });
     assert.deepEqual(report.outcomes, [{ uid: "u-born", action: "skipped", reason: "not_due" }]);
     // stamp older than the free interval → due, but no sessions to reflect on
@@ -93,7 +124,9 @@ describe("autonomy sweep (S4)", () => {
       JSON.stringify({ at: NOW - SWEEP_INTERVALS_MS.free - 1 }),
     );
     report = await sweepUserAutonomy({ now: NOW });
-    assert.deepEqual(report.outcomes, [{ uid: "u-born", action: "skipped", reason: "no_sessions" }]);
+    assert.deepEqual(report.outcomes, [
+      { uid: "u-born", action: "skipped", reason: "no_sessions" },
+    ]);
   });
 
   test("tier cadence: paid tiers sweep far more often than free", () => {
@@ -113,9 +146,7 @@ describe("autonomy sweep (S4)", () => {
 
   test("an idle cloud cadence can review a desire without a session", async () => {
     seedAccounts([acct("u-review", NOW - 1000)]);
-    await homeScope.run(homeForUid("u-review"), () =>
-      birth({ dreamFn: async () => GOOD }),
-    );
+    await homeScope.run(homeForUid("u-review"), () => birth({ dreamFn: async () => GOOD }));
     let calls = 0;
     const report = await sweepUserAutonomy({
       now: NOW,
@@ -133,18 +164,10 @@ describe("autonomy sweep (S4)", () => {
     });
     assert.equal(calls, 1, JSON.stringify(report));
     assert.equal(report.ran, 1);
-    assert.deepEqual(report.outcomes, [
-      { uid: "u-review", action: "reviewed" },
-    ]);
+    assert.deepEqual(report.outcomes, [{ uid: "u-review", action: "reviewed" }]);
     const stamp = JSON.parse(
       fs.readFileSync(
-        path.join(
-          TMP,
-          "users",
-          "u-review",
-          "autonomy",
-          "last-cloud-sweep.json",
-        ),
+        path.join(TMP, "users", "u-review", "autonomy", "last-cloud-sweep.json"),
         "utf8",
       ),
     ) as { at: number };
@@ -153,9 +176,7 @@ describe("autonomy sweep (S4)", () => {
 
   test("overlapping sweeps never review the same tenant concurrently", async () => {
     seedAccounts([acct("u-review-race", NOW - 1000)]);
-    await homeScope.run(homeForUid("u-review-race"), () =>
-      birth({ dreamFn: async () => GOOD }),
-    );
+    await homeScope.run(homeForUid("u-review-race"), () => birth({ dreamFn: async () => GOOD }));
     let calls = 0;
     const reviewFn = async () => {
       calls++;
@@ -298,4 +319,25 @@ describe("autonomy sweep (S4)", () => {
     assert.match(report.outcomes[0]?.reason ?? "", /error:/);
     assert.equal(calls, 0);
   });
+});
+
+test("deletion coordination skips a deleting account and releases work when a directory snapshot is stale", async () => {
+  seedAccounts([acct("u-deleting", NOW), acct("u-deleted", NOW)]);
+  let releases = 0;
+  const report = await sweepUserAutonomy({
+    now: NOW,
+    beginAccountWork: (uid) => {
+      if (uid === "u-deleting") return null;
+      seedAccounts([]);
+      return () => {
+        releases++;
+      };
+    },
+  });
+  assert.deepEqual(report.outcomes, [
+    { uid: "u-deleting", action: "skipped", reason: "account_deleting" },
+    { uid: "u-deleted", action: "skipped", reason: "account_deleted" },
+  ]);
+  assert.equal(releases, 1);
+  assert.equal(fs.existsSync(path.join(TMP, "users", "u-deleted")), false);
 });

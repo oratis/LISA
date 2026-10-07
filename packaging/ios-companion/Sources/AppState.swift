@@ -5,6 +5,7 @@ import UserNotifications
 import LocalAuthentication
 import WidgetKit
 import Network
+import AuthenticationServices
 
 /// A roster session a deep-link wants to open (agent + sessionId).
 struct PendingNav: Equatable { var agent: String; var id: String }
@@ -28,6 +29,16 @@ enum ConnectionMode: String, CaseIterable, Identifiable {
 final class AppState: ObservableObject {
     private let profiles: ConnectionProfiles
     @Published var chatDraft = ""
+    @Published var aiConsent = AISharingConsent()
+    @Published var showAppleRevocationHelp = false
+    /// Retained at app scope so withdrawal also stops a chat on an inactive tab.
+    var cancelActiveChat: (() -> Void)?
+
+    func withdrawAIConsent() {
+        aiConsent.revoke()
+        cancelActiveChat?()
+        cancelActiveChat = nil
+    }
     @Published var config: ServerConfig
     @Published private(set) var client: LisaClient
     /// User's chosen data plane (My Mac vs LISA Cloud). Persisted; UX-only for now —
@@ -191,6 +202,7 @@ final class AppState: ObservableObject {
     /// Replace the active transport and discard all state belonging to its predecessor.
     private func activate(_ cfg: ServerConfig) {
         guard cfg != config else { return }
+        withdrawAIConsent()
         config = cfg
         client = LisaClient(config: cfg)
         account = nil
@@ -277,10 +289,11 @@ final class AppState: ObservableObject {
     /// session token, then save the cloud connection. Throws on a bad cloud URL,
     /// an instance that hasn't enabled Sign in with Apple (404), or a rejected
     /// token (401). On success the connection is configured for `verifyConnection`.
-    func connectCloudWithApple(baseURL raw: String, identityToken: String, rawNonce: String? = nil) async throws {
+    func connectCloudWithApple(baseURL raw: String, identityToken: String, rawNonce: String? = nil,
+                               authorizationCode: String? = nil) async throws {
         guard let base = AppState.parseCloudBase(raw) else { throw LisaError.notConfigured }
         let token = try await LisaClient.exchangeAppleToken(base: base, identityToken: identityToken,
-                                                            rawNonce: rawNonce)
+                                                            rawNonce: rawNonce, authorizationCode: authorizationCode)
         guard update(host: base.host, port: base.port, token: token, scheme: base.scheme, mode: .cloud)
         else { throw LisaError.secureStorage }
         await refreshAccount()
@@ -367,8 +380,25 @@ final class AppState: ObservableObject {
     /// In-app account deletion (App Store 5.1.1(v)): server-side delete, then
     /// local sign-out. Throws so the UI can surface a failure.
     func deleteCloudAccount() async throws {
-        try await client.deleteAccount()
+        let expected = config
+        let result = try await client.deleteAccount()
+        guard config == expected else { return }
         signOutCloud()
+        showAppleRevocationHelp = result.requiresManualAppleRevocation == true
+    }
+
+    /// Apple can revoke authorization outside Lisa. Clear the matching local
+    /// session without affecting a Mac connection or a different cloud account.
+    func checkAppleCredential() async {
+        guard connectionMode == .cloud, account?.kind == "apple",
+              let user = account?.appleUserId else { return }
+        let expected = config
+        let state = try? await ASAuthorizationAppleIDProvider().credentialState(forUserID: user)
+        guard config == expected else { return }
+        if state == .revoked || state == .notFound {
+            signOutCloud()
+            notify("Apple sign-in was revoked. Sign in again to continue.", ok: false)
+        }
     }
 
     // ── first-run onboarding (docs/PLAN_IOS_ONBOARDING_v1.0.md) ──
