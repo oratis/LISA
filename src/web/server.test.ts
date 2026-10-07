@@ -525,3 +525,16 @@ describe("T-12 PWA manifest icons", () => {
     }
   });
 });
+
+test("public auth config discloses AI recipients without calling a model", async () => {
+  const s = await boot();
+  try {
+    const r = await request(s.port, "GET", "/api/auth/config");
+    assert.equal(r.status, 200);
+    const config = JSON.parse(r.text);
+    assert.equal(config.dataProcessing.version, 1);
+    assert.ok(config.dataProcessing.recipients.includes("Anthropic"));
+  } finally {
+    await s.close();
+  }
+});

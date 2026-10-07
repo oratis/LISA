@@ -1,6 +1,8 @@
 # PLAN — Identity & connection model: "one identity, two data planes" (v1.0)
 
-**Status: DESIGN, for review.** Resolves three questions raised about how the
+**Status: DESIGN, partly superseded (2026-10-02).** The approved [upgrade plan](PLAN_ALWAYS_ON_UPGRADE_2026-09-30.md) keeps "one identity" but replaces "two data planes the user picks between" with **one home + a relay**. Each account has one home Lisa (a Mac, or LISA Cloud for people without one); every other surface reaches that same Lisa through an end-to-end-encrypted relay. The reasoning below still explains why the account must not sit in front of the local connection.
+
+**Original status: DESIGN, for review.** Resolves three questions raised about how the
 iOS app connects and whether a cloud user system is warranted. Builds on the
 shipped pieces: per-device tokens ([devices.ts](../src/web/devices.ts)),
 scheme-aware iOS config (#161), the cloud edition flag

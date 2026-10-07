@@ -1,7 +1,16 @@
 import readline from "node:readline";
 import type { ApprovalCallback, ApprovalDecision } from "./agent.js";
 
-export type ApprovalMode = "auto" | "ask" | "ask-mutating";
+/**
+ * `warden` — every tool call is decided by the deterministic Warden policy
+ * (src/warden/) and "ask" waits on the approval inbox. It is an OPT-IN
+ * web-surface mode: the server builds a Warden session per turn. The terminal REPL has no
+ * inbox client, so there it degrades to the stricter-or-equal `ask-mutating`
+ * stdin prompt.
+ */
+export type ApprovalMode = "auto" | "ask" | "ask-mutating" | "warden";
+
+export const APPROVAL_MODES: readonly ApprovalMode[] = ["auto", "ask", "ask-mutating", "warden"];
 
 export interface ApprovalConfig {
   mode: ApprovalMode;
@@ -33,11 +42,7 @@ export const DEFAULT_MUTATING_ACTIONS: Record<string, string[]> = {
 };
 
 /** Does this tool call change state (so ask-mutating should prompt)? */
-export function isMutatingCall(
-  cfg: ApprovalConfig,
-  toolName: string,
-  input: unknown,
-): boolean {
+export function isMutatingCall(cfg: ApprovalConfig, toolName: string, input: unknown): boolean {
   if (cfg.mutatingTools.has(toolName)) return true;
   const actions = cfg.mutatingActions?.[toolName];
   if (actions && input && typeof input === "object") {
@@ -47,18 +52,17 @@ export function isMutatingCall(
   return false;
 }
 
-export function buildApprovalCallback(
-  cfg: ApprovalConfig,
-): ApprovalCallback | undefined {
+export function buildApprovalCallback(cfg: ApprovalConfig): ApprovalCallback | undefined {
   if (cfg.mode === "auto") return undefined;
   return async (toolName: string, toolInput: unknown): Promise<ApprovalDecision> => {
-    if (cfg.mode === "ask-mutating" && !isMutatingCall(cfg, toolName, toolInput)) {
+    if (
+      (cfg.mode === "ask-mutating" || cfg.mode === "warden") &&
+      !isMutatingCall(cfg, toolName, toolInput)
+    ) {
       return { allow: true };
     }
     const preview = previewInput(toolInput);
-    process.stderr.write(
-      `\n[approval] ${toolName}(${preview})\n  [y]es / [n]o (default n) > `,
-    );
+    process.stderr.write(`\n[approval] ${toolName}(${preview})\n  [y]es / [n]o (default n) > `);
     const answer = await (cfg.readLine ?? readSingleLine)();
     if (/^y(es)?$/i.test(answer.trim())) {
       return { allow: true };

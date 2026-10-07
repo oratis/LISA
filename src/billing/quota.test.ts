@@ -86,6 +86,17 @@ describe("quota engine", () => {
     assert.equal(q.resetAt, T0 + WINDOW_MS);
   });
 
+  test("Gemini Flash admits a new account without paid credits and debits its free window", async () => {
+    assert.equal((await readBalance()).paidMicroUSD, 0);
+    const pre = await precheckTurn(APPLE, "gemini-2.5-flash", T0);
+    assert.ok(pre.ok);
+    await debitTurn(APPLE, "gemini-2.5-flash", 10_000, T0 + 1);
+    const q = await quotaStatus(APPLE, T0 + 2);
+    assert.equal(q.paidMicroUSD, 0);
+    assert.equal(q.spentMicroUSD, 10_000);
+    assert.equal(q.remainingMicroUSD, FREE_WINDOW_FULL - 10_000);
+  });
+
   test("unverified email gets the reduced window", async () => {
     await precheckTurn(EMAIL_UNVERIFIED, "glm-4.6", T0);
     const q = await quotaStatus(EMAIL_UNVERIFIED, T0 + 1);

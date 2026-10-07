@@ -1,4 +1,5 @@
 import SwiftUI
+import AuthenticationServices
 
 @main
 struct LisaPocketApp: App {
@@ -24,11 +25,17 @@ struct RootView: View {
                 .tabItem { Label("Home", systemImage: "house") }.tag(0)
             ChatView()
                 .tabItem { Label("Chat", systemImage: "bubble.left.and.bubble.right") }.tag(1)
-            RosterView()
-                .tabItem { Label("Agents", systemImage: "cpu") }.tag(2)
+            Group {
+                if app.connectionMode == .mac { RosterView() }
+                else { MacFeaturesView() }
+            }
+            .tabItem { Label("My Mac", systemImage: "desktopcomputer") }.tag(2)
             SettingsView()
                 .tabItem { Label("Settings", systemImage: "gearshape") }.tag(3)
         }
+        // Recreate view state when the endpoint OR credential changes. A cached
+        // transcript, account sheet or session must never cross that boundary.
+        .id(app.config)
         .tint(Theme.accent)                                  // cyan active tab + links + controls
         // Appearance follows the Settings picker: Nebula (dark, default) ·
         // Calm (light) · Auto (system). Theme.* colors are trait-aware.
@@ -36,6 +43,14 @@ struct RootView: View {
         .toolbarBackground(Theme.panel, for: .tabBar)
         .toolbarBackground(.visible, for: .tabBar)
         .onOpenURL { app.handleDeepLink($0) }
+        .alert("Your Lisa account is deleted", isPresented: $app.showAppleRevocationHelp) {
+            Button("Apple instructions") {
+                UIApplication.shared.open(URL(string: "https://support.apple.com/en-us/102571")!)
+            }
+            Button("Done", role: .cancel) {}
+        } message: {
+            Text("For this earlier Apple sign-in, also open iPhone Settings → your name → Sign in with Apple → Lisa Pocket → Delete. Your Lisa cloud account and data have already been deleted.")
+        }
         .overlay { if app.locked { LockView() } }
         // Redact the app-switcher / multitasking snapshot: iOS captures the frame
         // at `.inactive` (before `.background`), so a cover keyed on "not active"
@@ -67,13 +82,25 @@ struct RootView: View {
                 ReachabilityBanner { app.switchToCloud() }
             }
         }
-        .task { await app.refreshWidgetSnapshot() }          // keep the widget fresh off-tab (A5)
+        .task(id: app.config) { await app.refreshWidgetSnapshot() }          // keep the widget fresh off-tab (A5)
         // Unfinished-purchase listener (B5): StoreKit re-delivers transactions
         // the server never credited; the server-side dedup makes replays safe.
-        .task { CreditsStore.shared.start(app: app) }
+        .task(id: app.config) {
+            CreditsStore.shared.start(app: app)
+            await app.refreshAccount()
+            await app.checkAppleCredential()
+            await CreditsStore.shared.reconcile(app: app)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: ASAuthorizationAppleIDProvider.credentialRevokedNotification)) { _ in
+            Task { await app.checkAppleCredential() }
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase == .background { app.lockIfEnabled() }  // re-arm when leaving foreground
-            if phase == .active { Task { await app.refreshWidgetSnapshot() } }
+            if phase == .active { Task {
+                await app.refreshWidgetSnapshot()
+                await app.refreshAccount()
+                await app.checkAppleCredential()
+            } }
         }
     }
 }

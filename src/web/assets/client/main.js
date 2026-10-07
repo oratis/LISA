@@ -792,6 +792,11 @@ function connectEvents() {
       if (typeof window.refreshTokens === 'function') window.refreshTokens();
     } else if (ev.type === 'mail_digest_update' || ev.type === 'mail_accounts_update') {
       if (typeof window.refreshMail === 'function') window.refreshMail();
+    } else if (ev.type === 'approval_requested') {
+      // Warden (W2a): a tool call is waiting for the user's answer.
+      if (typeof window.lisaApprovalRequested === 'function') window.lisaApprovalRequested(ev);
+    } else if (ev.type === 'approval_resolved') {
+      if (typeof window.lisaApprovalResolved === 'function') window.lisaApprovalResolved(ev);
     }
   });
   es.onerror = () => {
@@ -4942,6 +4947,9 @@ if ('serviceWorker' in navigator) {
     html += '<div class="view-sec-label">Automation</div><div class="set-card">';
     html += '<div class="set-row"><div class="set-main"><div class="set-name">Proactive mode</div><div class="set-sub">Let Lisa watch your agents, tasks and signals and act when you are away</div></div>' + sw('setProactiveToggle', proactiveOn) + '</div>';
     html += '</div>';
+    // Reach-out charter controls (docs/POLICY_REACH_OUT.md): filled in by
+    // loadReachOut() once /api/reachout/settings answers.
+    html += '<div class="view-sec-label">Proactivity</div><div class="set-card" id="setReachOut"><div class="set-row"><div class="set-note">loading…</div></div></div>';
     html += '<div class="view-sec-label">Display</div><div class="set-card">';
     html += '<div class="set-row"><div class="set-main"><div class="set-name">Compact mode</div><div class="set-sub">Dock Lisa as a narrow stacked panel at any window width</div></div>' + sw('setCompactToggle', compactOn) + '</div>';
     html += '</div>';
@@ -5030,6 +5038,89 @@ if ('serviceWorker' in navigator) {
     });
     // Refresh Proactive state from the server so the switch reflects truth.
     syncProactive();
+    loadReachOut();
+  }
+
+  // ── Proactivity: how much Lisa may reach out (dial · quiet hours · sources).
+  //    "Proactive mode" above is whether she acts on her own; this is how much
+  //    she may interrupt. Approvals and critical alerts are never held back. ──
+  var RO_DIALS = [['off', 'Off — in the app only'], ['low', 'Low — 1 push a day'], ['normal', 'Normal — 3 pushes a day'], ['high', 'High — 8 pushes a day']];
+  var RO_SOURCES = [
+    ['task', 'Task results', 'Your own tasks and routines finishing'],
+    ['watcher', 'Watchers', 'Something you asked her to watch changed'],
+    ['mail', 'Mail', 'Daily digest and important-mail alerts'],
+    ['brief', 'Daily brief', 'Knowledge-base feeds brief'],
+    ['advisor', 'Agent advisor', 'Stuck or conflicting coding agents'],
+    ['idle', 'While you were away', 'Notes from her idle time'],
+    ['desire', 'Her own notes', 'Progress on her own desires — in the app unless push is on below'],
+    ['system', 'System', 'Security and host events']
+  ];
+  function renderReachOut(view) {
+    var box = document.getElementById('setReachOut');
+    if (!box) return;
+    if (!view || !view.settings) { box.innerHTML = '<div class="set-row"><div class="set-note">Proactivity settings are unavailable.</div></div>'; return; }
+    var s = view.settings, b = view.budget || {}, q = s.quietHours || {}, src = s.sources || {};
+    var sw = function (id, on) {
+      return '<div class="set-switch' + (on ? ' on' : '') + '" id="' + id + '" role="switch" aria-checked="' + (on ? 'true' : 'false') + '" tabindex="0"><span class="knob"></span></div>';
+    };
+    var row = function (name, sub, control) {
+      return '<div class="set-row"><div class="set-main"><div class="set-name">' + esc(name) + '</div><div class="set-sub">' + esc(sub) + '</div></div>' + control + '</div>';
+    };
+    var opts = '';
+    for (var i = 0; i < RO_DIALS.length; i++) {
+      opts += '<option value="' + RO_DIALS[i][0] + '"' + (RO_DIALS[i][0] === s.dial ? ' selected' : '') + '>' + esc(RO_DIALS[i][1]) + '</option>';
+    }
+    var used = (typeof b.usedToday === 'number' && typeof b.daily === 'number') ? (b.usedToday + ' of ' + b.daily + ' used today. ') : '';
+    var h = row('How proactive', used + 'Approvals and critical alerts always get through.',
+      '<select class="set-input" id="roDial" style="width:auto" aria-label="How proactive">' + opts + '</select>');
+    var times = '<span style="display:flex;gap:6px;align-items:center">' +
+      '<input class="set-input" id="roQuietStart" type="time" style="width:auto" aria-label="Quiet hours start" value="' + esc(q.start || '22:00') + '">' +
+      '<input class="set-input" id="roQuietEnd" type="time" style="width:auto" aria-label="Quiet hours end" value="' + esc(q.end || '08:00') + '">' +
+      sw('roQuietToggle', !!q.enabled) + '</span>';
+    h += row('Quiet hours', (view.quietNow ? 'Quiet now. ' : '') + 'Pushes wait until the window ends' + (q.tz ? ' (' + q.tz + ')' : '') + '.', times);
+    for (var j = 0; j < RO_SOURCES.length; j++) {
+      h += row(RO_SOURCES[j][1], RO_SOURCES[j][2], sw('roSrc_' + RO_SOURCES[j][0], src[RO_SOURCES[j][0]] !== false));
+    }
+    h += row('Push her own notes', 'Let notes about her own desires use push too', sw('roDesirePush', !!s.desirePush));
+    var note = function (text) { return '<div class="set-row"><div class="set-note">' + esc(text) + '</div></div>'; };
+    if (view.channelsAvailable && view.channelsAvailable.push === false) {
+      h += note('Push is not available here, so everything stays in the app.');
+    }
+    if (view.proactiveMode === false) {
+      h += note('Proactive mode is off, so idle notes and her own notes stay in the app.');
+    }
+    box.innerHTML = h;
+
+    var onSwitch = function (id, fn) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      var go = function () { fn(!el.classList.contains('on')); };
+      el.addEventListener('click', go);
+      el.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+    };
+    var dial = /** @type {HTMLSelectElement | null} */ (document.getElementById('roDial'));
+    if (dial) dial.addEventListener('change', function () { saveReachOut({ dial: dial.value }); });
+    var qs = /** @type {HTMLInputElement | null} */ (document.getElementById('roQuietStart'));
+    var qe = /** @type {HTMLInputElement | null} */ (document.getElementById('roQuietEnd'));
+    var saveQuiet = function () {
+      if (qs && qe && qs.value && qe.value && qs.value !== qe.value) saveReachOut({ quietHours: { start: qs.value, end: qe.value } });
+    };
+    if (qs) qs.addEventListener('change', saveQuiet);
+    if (qe) qe.addEventListener('change', saveQuiet);
+    onSwitch('roQuietToggle', function (on) { saveReachOut({ quietHours: { enabled: on } }); });
+    onSwitch('roDesirePush', function (on) { saveReachOut({ desirePush: on }); });
+    RO_SOURCES.forEach(function (def) {
+      onSwitch('roSrc_' + def[0], function (on) { var p = {}; p[def[0]] = on; saveReachOut({ sources: p }); });
+    });
+  }
+  function loadReachOut() {
+    getJSON('/api/reachout/settings').then(renderReachOut).catch(function () { renderReachOut(null); });
+  }
+  function saveReachOut(patch) {
+    fetch('/api/reachout/settings', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(patch) })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (view) { if (view) renderReachOut(view); else loadReachOut(); })
+      .catch(function () { loadReachOut(); });
   }
   function loadSettings() {
     views.settings.innerHTML =
@@ -5182,4 +5273,235 @@ if ('serviceWorker' in navigator) {
     var h = (location.hash || '').replace('#', '');
     if (views[h] && h !== active) showView(h);
   });
+})();
+
+// ── Warden approvals (W2a) ──────────────────────────────────────────────
+// A side-effecting tool call that the policy will not auto-allow waits in the
+// server's approval inbox. This renders it as an inline card in the chat log
+// and in a small pending list, and answers through /api/approvals.
+//
+// The card shows the WHOLE payload the approval covers — fetched from
+// GET /api/approvals/{id}, in the order the server chose — and approving sends
+// back the digest of exactly that payload. A caller the server will not show
+// the payload to gets no approve button at all. Everything is set with
+// textContent: the payload is model-proposed input and must never be parsed
+// as HTML. (A full inbox view is a later PR.)
+(function () {
+  var chatLog = document.getElementById('log');
+  if (!chatLog) return;
+  /** @type {Record<string, { item: any, card: HTMLElement, row: HTMLElement | null }>} */
+  var pending = Object.create(null);
+  var panel = null;
+  var panelList = null;
+  var panelTitle = null;
+  var SCOPE_LABELS = {
+    once: 'Approve once',
+    task: 'Approve for this task',
+    target: 'Always for this destination',
+    '24h': 'For 24 hours',
+    always: 'Always',
+  };
+  var RESULT_WORDS = {
+    approved: 'Approved',
+    denied: 'Denied',
+    expired: 'Expired — not run',
+    dismissed: 'Dismissed',
+  };
+  function own(map, key) {
+    return typeof key === 'string' && Object.prototype.hasOwnProperty.call(map, key) ? map[key] : undefined;
+  }
+
+  function el(tag, cls, text) {
+    var node = document.createElement(tag);
+    if (cls) node.className = cls;
+    if (text !== undefined && text !== null) node.textContent = String(text);
+    return node;
+  }
+
+  function ensurePanel() {
+    if (panel) return;
+    panel = el('div', 'warden-pending');
+    panel.setAttribute('role', 'region');
+    panel.setAttribute('aria-label', 'Pending approvals');
+    panelTitle = el('div', 'warden-pending-title');
+    panelList = el('div', 'warden-pending-list');
+    panel.appendChild(panelTitle);
+    panel.appendChild(panelList);
+    document.body.appendChild(panel);
+  }
+
+  function refreshPanel() {
+    var count = Object.keys(pending).length;
+    if (count === 0) {
+      if (panel) panel.hidden = true;
+      return;
+    }
+    ensurePanel();
+    panel.hidden = false;
+    panelTitle.textContent = count === 1 ? '1 approval waiting' : count + ' approvals waiting';
+  }
+
+  function answer(id, action, body, buttons, status) {
+    buttons.forEach(function (b) { b.disabled = true; });
+    status.textContent = action === 'approve' ? 'Approving…' : 'Sending…';
+    fetch('/api/approvals/' + encodeURIComponent(id) + '/' + action, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (data) {
+        if (r.ok) {
+          finish(id, data.verdict || (action === 'approve' ? 'approved' : 'denied'));
+          return;
+        }
+        if (r.status === 404 || r.status === 410) {
+          finish(id, 'expired');
+          return;
+        }
+        status.textContent = 'Could not ' + action + ': ' + (data.error || r.status);
+        buttons.forEach(function (b) { b.disabled = false; });
+      });
+    }).catch(function () {
+      status.textContent = 'Could not reach Lisa. Try again.';
+      buttons.forEach(function (b) { b.disabled = false; });
+    });
+  }
+
+  // `digest` is the digest of the payload this card displayed, or null when the
+  // payload could not be shown — in which case there is nothing to approve.
+  function actions(item, digest, compact) {
+    var wrap = el('div', 'warden-actions');
+    var status = el('span', 'warden-status');
+    var buttons = [];
+    function add(label, cls, action, body) {
+      var b = el('button', 'warden-btn ' + cls, label);
+      b.type = 'button';
+      b.addEventListener('click', function () { answer(item.id, action, body, buttons, status); });
+      buttons.push(b);
+      wrap.appendChild(b);
+    }
+    if (item.kind === 'handoff') {
+      add('Dismiss', 'deny', 'deny', {});
+    } else {
+      var scopes = Array.isArray(item.scopes) ? item.scopes : [];
+      if (digest) {
+        scopes.forEach(function (scope) {
+          var label = own(SCOPE_LABELS, scope);
+          if (!label) return;
+          if (compact && scope !== 'once') return;
+          add(label, scope === 'once' ? 'approve' : 'approve-wide', 'approve', { scope: scope, digest: digest });
+        });
+      }
+      add('Deny', 'deny', 'deny', {});
+    }
+    wrap.appendChild(status);
+    return wrap;
+  }
+
+  function renderFields(holder, fields) {
+    holder.textContent = '';
+    fields.forEach(function (field) {
+      var box = el('div', 'warden-field' + (field.primary ? ' primary' : ''));
+      box.appendChild(el('div', 'warden-field-key', field.key));
+      // The whole value: long ones scroll, nothing is cut.
+      box.appendChild(el('pre', 'warden-field-value', field.value));
+      holder.appendChild(box);
+    });
+  }
+
+  function buildCard(item) {
+    var card = el('div', 'warden-card' + (item.kind === 'handoff' ? ' handoff' : ''));
+    card.setAttribute('data-approval-id', item.id);
+    card.appendChild(el('div', 'warden-title',
+      item.kind === 'handoff' ? 'This needs you' : 'Lisa is asking to run: ' + item.tool));
+    var payload = el('div', 'warden-payload');
+    payload.appendChild(el('div', 'warden-preview', item.preview));
+    card.appendChild(payload);
+    if (Array.isArray(item.targets) && item.targets.length) {
+      card.appendChild(el('div', 'warden-meta', 'To: ' + item.targets.join(', ')));
+    }
+    if (item.purpose) card.appendChild(el('div', 'warden-meta', 'For: ' + item.purpose));
+    card.appendChild(el('div', 'warden-meta', item.reason || ''));
+    if (item.kind !== 'handoff' && item.expiresAt) {
+      var when = new Date(item.expiresAt);
+      if (!isNaN(when.getTime())) {
+        card.appendChild(el('div', 'warden-meta', 'Expires ' + when.toLocaleTimeString() + ' — unanswered means no.'));
+      }
+    }
+    return { card: card, payload: payload };
+  }
+
+  function show(item) {
+    if (!item || typeof item.id !== 'string' || own(pending, item.id)) return;
+    var built = buildCard(item);
+    var card = built.card;
+    if (typeof removeChatEmpty === 'function') removeChatEmpty();
+    chatLog.appendChild(card);
+    chatLog.scrollTop = chatLog.scrollHeight;
+    ensurePanel();
+    var row = el('div', 'warden-pending-row');
+    var label = el('button', 'warden-pending-label', (item.kind === 'handoff' ? 'Needs you: ' : '') + item.preview);
+    label.type = 'button';
+    label.addEventListener('click', function () { card.scrollIntoView({ block: 'center' }); });
+    row.appendChild(label);
+    panelList.appendChild(row);
+    pending[item.id] = { item: item, card: card, row: row };
+    refreshPanel();
+
+    if (item.kind === 'handoff') {
+      card.appendChild(actions(item, null, false));
+      row.appendChild(actions(item, null, true));
+      return;
+    }
+    // Buttons appear only once the full payload is on screen.
+    var loading = el('div', 'warden-meta', 'Loading the full request…');
+    card.appendChild(loading);
+    fetch('/api/approvals/' + encodeURIComponent(item.id)).then(function (r) {
+      return r.ok ? r.json() : null;
+    }).then(function (detail) {
+      if (!own(pending, item.id)) return;
+      loading.remove();
+      var approval = detail && detail.approval;
+      if (detail && approval && Array.isArray(detail.fields) && typeof approval.digest === 'string') {
+        renderFields(built.payload, detail.fields);
+        var shown = { id: item.id, kind: item.kind, scopes: approval.scopes };
+        card.appendChild(actions(shown, approval.digest, false));
+        row.appendChild(actions(shown, approval.digest, true));
+      } else {
+        card.appendChild(el('div', 'warden-meta',
+          'The full request can only be shown, and approved, on the computer running Lisa or from a signed-in account.'));
+        card.appendChild(actions(item, null, false));
+      }
+    }).catch(function () {
+      if (!own(pending, item.id)) return;
+      loading.textContent = 'Could not load the full request, so it cannot be approved from here.';
+      card.appendChild(actions(item, null, false));
+    });
+  }
+
+  function finish(id, verdict) {
+    var entry = own(pending, id);
+    if (!entry) return;
+    delete pending[id];
+    entry.card.classList.add('resolved');
+    Array.prototype.forEach.call(entry.card.querySelectorAll('.warden-actions'), function (node) { node.remove(); });
+    entry.card.appendChild(el('div', 'warden-result ' + (own(RESULT_WORDS, verdict) ? verdict : ''), own(RESULT_WORDS, verdict) || 'Closed'));
+    if (entry.row) entry.row.remove();
+    refreshPanel();
+  }
+
+  window.lisaApprovalRequested = function (ev) { show(ev); };
+  window.lisaApprovalResolved = function (ev) { if (ev && typeof ev.id === 'string') finish(ev.id, ev.verdict); };
+
+  // Anything already waiting when the page loads (or after a reconnect).
+  function loadPending() {
+    fetch('/api/approvals').then(function (r) { return r.ok ? r.json() : null; }).then(function (data) {
+      if (!data || !Array.isArray(data.approvals)) return;
+      var live = Object.create(null);
+      data.approvals.forEach(function (item) { live[item.id] = true; show(item); });
+      Object.keys(pending).forEach(function (id) { if (!live[id]) finish(id, 'expired'); });
+    }).catch(function () {});
+  }
+  loadPending();
+  setInterval(loadPending, 30000);
 })();

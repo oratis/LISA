@@ -36,10 +36,7 @@ export interface EventSink {
  * is intentional: it is how the single-tenant Mac edition and the shared-token
  * demo (one implicit, unscoped user) keep receiving everything.
  */
-export function sameTenant(
-  subscriberUid: string | null,
-  originUid: string | null,
-): boolean {
+export function sameTenant(subscriberUid: string | null, originUid: string | null): boolean {
   return subscriberUid === originUid;
 }
 
@@ -72,6 +69,15 @@ export class TenantEventBus<S extends EventSink = EventSink> {
   /** Live subscriber count (diagnostics / tests). */
   get size(): number {
     return this.subscribers.size;
+  }
+
+  /** End a deleted account's existing streams as well as refusing new sessions. */
+  removeTenant(uid: string, close: (sink: S) => void): void {
+    for (const entry of this.subscribers) {
+      if (entry.uid !== uid) continue;
+      this.subscribers.delete(entry);
+      close(entry.sink);
+    }
   }
 
   /**

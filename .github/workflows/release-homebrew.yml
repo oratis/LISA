@@ -3,8 +3,8 @@ name: Release — Homebrew tap
 # Bumps the formula in the oratis/homebrew-tap repo to a published version.
 #
 # WHY manual (workflow_dispatch) and not tag-triggered: the formula pins the
-# sha256 of the *npm tarball*, and `npm publish` is a manual local step (it needs
-# npm credentials CI never sees). So this must run AFTER `npm publish` — it
+# sha256 of the *npm tarball*. release.yml publishes npm after building the
+# tagged artifacts, so this must run AFTER that workflow succeeds — it
 # fetches the real published tarball and hashes it. A hash computed any other way
 # (e.g. a CI rebuild) risks not matching the registry bytes, which would break
 # `brew install` for everyone.
@@ -56,8 +56,12 @@ jobs:
           V="${{ steps.ver.outputs.version }}"
           URL="https://registry.npmjs.org/@oratis/lisa/-/lisa-${V}.tgz"
           echo "Fetching $URL"
-          if ! curl -fsSL "$URL" -o /tmp/lisa.tgz; then
-            echo "::error::$URL not found on npm — run \`npm publish\` first, then re-run this workflow."
+          # npm can accept a publish and expose metadata before its tarball is
+          # downloadable. Bound retries instead of failing at the first 404.
+          if ! curl -fsSL --connect-timeout 15 --max-time 120 \
+            --retry 12 --retry-delay 15 --retry-max-time 600 --retry-all-errors \
+            "$URL" -o /tmp/lisa.tgz; then
+            echo "::error::$URL unavailable after bounded retries — check the npm publish run and registry, then re-run this workflow."
             exit 1
           fi
           SHA="$(sha256sum /tmp/lisa.tgz | cut -d' ' -f1)"
