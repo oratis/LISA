@@ -104,6 +104,12 @@ LIFECYCLE
                                only compares installed vs published; --dry-run
                                prints the commands without running them.
   lisa birth                   Run the birth ritual (auto-runs on first launch).
+  lisa tasks [list|show <id>|run <id>|enable <id>|disable <id>|rm <id>]
+                               Routines, watchers and one-offs Lisa runs for you.
+                               New tasks start off; \`enable\` is how you confirm one.
+  lisa tasks migrate-heartbeat [--dry-run]
+                               Move heartbeat.json chores into routines. Never
+                               automatic; migrated chores are read-only for now.
   lisa heartbeat run [name]    Run heartbeat tasks once (incl. self-driven desires).
   lisa heartbeat install [--load] [--every <30m|1h|...>]
                                Install macOS launchd plist (or print cron line).
@@ -479,6 +485,12 @@ async function main(): Promise<void> {
     process.exit(await runSecretCommand(args.subargs));
   }
 
+  // `lisa tasks run` needs the toolset and is handled further down, next to heartbeat.
+  if (args.subcommand === "tasks" && args.subargs[0] !== "run") {
+    const { runTasksCommand } = await import("./cli/tasks.js");
+    process.exit(await runTasksCommand(args.subargs));
+  }
+
   if (args.subcommand === "sessions") {
     const sessions = await listSessionsOnDisk();
     for (const s of sessions) {
@@ -612,6 +624,17 @@ async function main(): Promise<void> {
     composedTools.push(taskTool);
   }
   composedTools.sort((a, b) => a.name.localeCompare(b.name));
+
+  // `lisa tasks run <id>` — one task, now, through the same runner + lease as the server.
+  if (args.subcommand === "tasks") {
+    const { runTaskNow } = await import("./cli/tasks.js");
+    const { createTaskRunner } = await import("./tasks/scheduler.js");
+    const runner = createTaskRunner({ tools: composedTools, model: args.model, cwd });
+    abortController.signal.addEventListener("abort", () => void runner.stop(), { once: true });
+    const code = await runTaskNow(args.subargs[1], runner);
+    await Promise.all(mcpConnections.map((c) => c.close()));
+    process.exit(code);
+  }
 
   // Heartbeat sub-command — uses the assembled toolset.
   if (args.subcommand === "heartbeat") {

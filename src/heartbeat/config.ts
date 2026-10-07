@@ -47,3 +47,14 @@ export async function loadHeartbeatConfig(): Promise<HeartbeatConfig> {
 }
 
 export const HEARTBEAT_CONFIG_PATH = FILE;
+
+/**
+ * The lock a heartbeat run holds for its whole duration. `lisa tasks
+ * migrate-heartbeat` takes it too, so chores never move mid-tick.
+ */
+export function heartbeatRunLockPath(): string {
+  return path.join(lisaGlobalHome(), "heartbeat.lock");
+}
+
+/** A heartbeat that has been "running" longer than this is surely dead. */
+export const HEARTBEAT_RUN_LOCK_STALE_MS = 6 * 60 * 60_000;

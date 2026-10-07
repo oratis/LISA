@@ -85,7 +85,7 @@ export async function markRan(id: string, when: number): Promise<void> {
 }
 
 /** Parse "every:<N><m|h|d>" → interval ms, or null if not that form. */
-function parseEvery(schedule: string): number | null {
+export function parseEvery(schedule: string): number | null {
   const m = schedule.match(/^every:(\d+)([mhd])$/i);
   if (!m) return null;
   const n = parseInt(m[1]!, 10);
@@ -94,7 +94,7 @@ function parseEvery(schedule: string): number | null {
 }
 
 /** Parse "daily:HH:MM" → {h, m}, or null. */
-function parseDaily(schedule: string): { h: number; m: number } | null {
+export function parseDaily(schedule: string): { h: number; m: number } | null {
   const m = schedule.match(/^daily:(\d{1,2}):(\d{2})$/i);
   if (!m) return null;
   const h = parseInt(m[1]!, 10);
@@ -156,14 +156,18 @@ export async function fireDue(
       result = { error: (err as Error).message };
     }
     await markRan(e.id, now);
-    fired.push(`${e.agent} in ${e.cwd} — ${result.error ? "FAILED: " + result.error : "pid " + result.pid}`);
+    fired.push(
+      `${e.agent} in ${e.cwd} — ${result.error ? "FAILED: " + result.error : "pid " + result.pid}`,
+    );
   }
   return fired;
 }
 
 /** Human description of an entry for listing. */
 export function describeScheduled(e: ScheduledDispatch): string {
-  const last = e.lastRunAt ? new Date(e.lastRunAt).toISOString().slice(0, 16).replace("T", " ") : "never";
+  const last = e.lastRunAt
+    ? new Date(e.lastRunAt).toISOString().slice(0, 16).replace("T", " ")
+    : "never";
   const task = e.task.length > 60 ? e.task.slice(0, 57) + "…" : e.task;
   return `• ${e.id}  ${e.agent} @ ${e.schedule}  (${e.runs}/${e.maxRuns} runs, last ${last})\n    ${e.cwd}\n    "${task}"`;
 }
