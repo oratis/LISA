@@ -263,7 +263,19 @@ test("a renewal that finds the lease gone, or errors, reports it lost", async ()
     try {
       await vanish(path.dirname(leaseFile("erroring")));
       await fsp.writeFile(path.dirname(leaseFile("erroring")), "not a directory");
-      await noticed.promise;
+      // The production renewal timer is intentionally unref'ed. Keep this
+      // assertion alive on Node 22, but fail within a bounded time if it stalls.
+      let deadline: NodeJS.Timeout | undefined;
+      try {
+        await Promise.race([
+          noticed.promise,
+          new Promise<never>((_, reject) => {
+            deadline = setTimeout(() => reject(new Error("lease loss was not reported")), 5000);
+          }),
+        ]);
+      } finally {
+        clearTimeout(deadline);
+      }
       assert.equal(b.lost, true);
     } finally {
       await b.release();
