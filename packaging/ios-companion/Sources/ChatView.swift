@@ -187,11 +187,7 @@ struct ChatView: View {
     @State private var input = ""
     @State private var showPaywall = false
     @State private var consentRecipients: [String] = []
-    @State private var consentServer: ServerConfig?
-    @State private var consentGeneration: UUID?
-    @State private var isAdult = false
-    @State private var pendingText = ""
-    @State private var showAIConsent = false
+    @State private var consentRequest: AISharingRequest?
     @State private var checkingConsent = false
     @State private var loadedConfig: ServerConfig?
     private static let bottomID = "chat-bottom"
@@ -202,6 +198,11 @@ struct ChatView: View {
                 transcript
                 Divider()
                 quickChips
+                Text(app.aiConsent.isGranted
+                     ? "AI data sharing allowed: " + app.aiConsent.recipients.joined(separator: ", ")
+                     : "Before your first message, review and allow sharing with third-party AI.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .padding(.horizontal)
                 composer
             }
             .background(Theme.bgDeep.ignoresSafeArea())
@@ -228,34 +229,18 @@ struct ChatView: View {
             .onAppear { consumeDraft() }
             .onChange(of: app.chatDraft) { _, _ in consumeDraft() }
             .onChange(of: app.aiConsent.generation) { _, _ in
-                showAIConsent = false
-                pendingText = ""
-                isAdult = false
+                consentRequest = nil
                 model.cancel()
             }
             .sheet(isPresented: $showPaywall) { PaywallSheet().environmentObject(app) }
-            .sheet(isPresented: $showAIConsent) {
-                NavigationStack {
-                    List {
-                        Section("Who receives your data") {
-                            Text("Your message, relevant conversation history, assistant memory and tool results are processed by your connected LISA server and these configured AI services:")
-                            ForEach(consentRecipients, id: \.self) { Text($0) }
-                        }
-                        Section("Your choice") {
-                            Text("This is needed to generate AI responses. AI can make mistakes. Only send information you want these services to process. Cancel keeps your draft. You can withdraw permission in Settings → AI data sharing at any time.")
-                            Link("Privacy policy", destination: URL(string: "https://meetlisa.ai/privacy")!)
-                            Toggle("I am 18 or older", isOn: $isAdult)
-                            Button("Allow and send this message") {
-                                guard let server = consentServer, server == app.config,
-                                      let generation = consentGeneration,
-                                      app.aiConsent.grant(server: server, recipients: consentRecipients,
-                                                          isAdult: isAdult, generation: generation) else { return }
-                                showAIConsent = false
-                                deliver(pendingText)
-                            }.buttonStyle(.borderedProminent).disabled(!isAdult)
-                            Button("Cancel", role: .cancel) { showAIConsent = false }
-                        }
-                    }.navigationTitle("AI data sharing")
+            .sheet(item: $consentRequest) { request in
+                AISharingConsentSheet(request: request) {
+                    guard request.server == app.config,
+                          app.aiConsent.grant(server: request.server, recipients: request.recipients,
+                                              isAdult: true, generation: request.generation) else { return }
+                    consentRecipients = request.recipients
+                    consentRequest = nil
+                    deliver(request.text)
                 }
             }
         }
@@ -434,11 +419,8 @@ struct ChatView: View {
             consentRecipients = disclosure.recipients
             if app.aiConsent.allows(server: expected, recipients: consentRecipients) { deliver(text) }
             else {
-                consentServer = expected
-                consentGeneration = generation
-                isAdult = false
-                pendingText = text
-                showAIConsent = true
+                consentRequest = AISharingRequest(server: expected, recipients: disclosure.recipients,
+                                                  generation: generation, text: text)
             }
         }
     }

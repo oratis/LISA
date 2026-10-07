@@ -151,6 +151,15 @@ KNOWLEDGE BASE
   lisa kb search "<query>"     Search sources + wiki (TF-IDF).
   lisa kb brief [YYYY-MM-DD]   Print a daily feeds brief (needs kb/feeds.json).
 
+APPROVALS (Warden — needs a running \`lisa serve --web --approval warden\`)
+  lisa approvals               List pending approvals.
+  lisa approvals show <id>     The whole request, and its digest.
+  lisa approvals approve <id> --digest <digest> [--scope once|task|target|24h|always]
+  lisa approvals deny <id> [--reason "..."]
+  lisa warden rules [show|set <category> <auto|preapproved|ask|handoff>]
+  lisa warden grants [list|revoke <id>]
+  lisa warden audit [--limit N]
+
 SECRETS (tools get the value through a secret://<name> handle; it is never shown)
   lisa secret set <name>       Store a secret (hidden prompt, or pipe it on stdin).
   lisa secret list             List names and timestamps.
@@ -176,7 +185,10 @@ FLAGS
   --think               Enable adaptive thinking each turn.
   --no-reflect          Skip end-of-session reflection.
   --compact             Enable Anthropic context compaction beta.
-  --approval <mode>     auto | ask | ask-mutating  (default: auto)
+  --approval <mode>     auto | ask | ask-mutating | warden  (default: auto)
+                        warden (serve --web only): side effects are decided by
+                        policy and "ask" waits in the approval inbox. Also set
+                        by LISA_APPROVAL=warden when the flag is absent.
   --no-mcp              Skip loading MCP servers.
   --no-plugins          Skip loading plugins.
   --voice               Enable speak/transcribe tools.
@@ -462,6 +474,12 @@ async function main(): Promise<void> {
     process.exit(await runKbCommand(args.subargs));
   }
 
+  if (args.subcommand === "approvals" || args.subcommand === "warden") {
+    const { runApprovalsCommand, runWardenCommand } = await import("./cli/warden.js");
+    const run = args.subcommand === "approvals" ? runApprovalsCommand : runWardenCommand;
+    process.exit(await run(args.subargs));
+  }
+
   if (args.subcommand === "secret") {
     const { runSecretCommand } = await import("./cli/secret.js");
     process.exit(await runSecretCommand(args.subargs));
@@ -677,6 +695,8 @@ async function main(): Promise<void> {
         thinking: args.thinking,
         compaction: args.compaction,
         approval: args.approval,
+        // No --approval ⇒ LISA_APPROVAL may pick the mode; else legacy auto.
+        approvalExplicit: args.approvalExplicit,
       });
       logInfo(`[runtime] ${describeRuntimePolicy(policy)}`);
       await startWebServer({

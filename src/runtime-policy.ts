@@ -22,7 +22,12 @@
  * profile applies; it never becomes the only thing standing between a cloud
  * user and a host tool.
  */
-import { type ApprovalMode, type ApprovalConfig, isMutatingCall } from "./approval.js";
+import {
+  APPROVAL_MODES,
+  type ApprovalMode,
+  type ApprovalConfig,
+  isMutatingCall,
+} from "./approval.js";
 import type { ApprovalCallback } from "./agent.js";
 import { edition } from "./edition.js";
 import { resolveSandboxMode, type SandboxMode } from "./sandbox/mode.js";
@@ -59,6 +64,11 @@ export interface RuntimePolicyArgs {
   thinking: boolean;
   compaction: boolean;
   approval: ApprovalMode;
+  /**
+   * Whether `--approval` was given on the command line. When it was not, the
+   * web surfaces also honour `LISA_APPROVAL`.
+   */
+  approvalExplicit?: boolean;
   /** Explicit --sandbox, if the surface has one. */
   sandbox?: SandboxMode;
 }
@@ -81,6 +91,30 @@ function reflectionFor(surface: RuntimeSurface, args: RuntimePolicyArgs): Reflec
 }
 
 /**
+ * The approval mode for a surface. An explicit `--approval` always wins. With
+ * no flag the mode is the legacy `auto` on every surface — Warden is OPT-IN
+ * (`--approval warden`), because only the web client can answer an approval
+ * today and a native client would park a turn until it expired.
+ *
+ * `LISA_APPROVAL` is the env form of the flag for the web surfaces, so a
+ * backend launched by an app that cannot edit the command line can opt in. A
+ * value that is not a known mode is an error, never a silent `auto`.
+ */
+function approvalFor(
+  surface: RuntimeSurface,
+  args: RuntimePolicyArgs,
+  env: NodeJS.ProcessEnv,
+): ApprovalMode {
+  if (args.approvalExplicit === true || surface === "cli") return args.approval;
+  const named = env.LISA_APPROVAL?.trim();
+  if (!named) return args.approval;
+  if (!(APPROVAL_MODES as readonly string[]).includes(named)) {
+    throw new Error(`bad LISA_APPROVAL "${named}" — expected one of ${APPROVAL_MODES.join(" | ")}`);
+  }
+  return named as ApprovalMode;
+}
+
+/**
  * Build the policy for this process. `env` is a parameter (not read straight
  * from `process.env`) so tests can snapshot all three surfaces in one run.
  */
@@ -94,7 +128,7 @@ export function buildRuntimePolicy(
     surface,
     reflection: reflectionFor(surface, args),
     compaction: args.compaction,
-    approval: args.approval,
+    approval: approvalFor(surface, args, env),
     thinking: args.thinking,
     capabilities: capabilityProfileForEdition(ed),
     sandboxMode: resolveSandboxMode(args.sandbox),
@@ -135,6 +169,9 @@ export function buildNonInteractiveApprovalCallback(
   log: (msg: string) => void,
 ): ApprovalCallback | undefined {
   if (cfg.mode === "auto") return undefined;
+  // "warden" lands here only when a caller did not build a Warden session for
+  // the turn. That is a wiring gap, and the answer to it is the same as for
+  // ask-mutating with no approver: deny what mutates.
   const reason =
     cfg.mode === "ask"
       ? "Tool approval is required on this surface but there is no interactive approver " +
@@ -143,7 +180,7 @@ export function buildNonInteractiveApprovalCallback(
         "interactive approver (the web server has no terminal). Run this from the CLI, or start the " +
         "server with --approval auto.";
   return async (toolName: string, toolInput: unknown) => {
-    if (cfg.mode === "ask-mutating" && !isMutatingCall(cfg, toolName, toolInput)) {
+    if (cfg.mode !== "ask" && !isMutatingCall(cfg, toolName, toolInput)) {
       return { allow: true };
     }
     log(

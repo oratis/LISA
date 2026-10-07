@@ -3,7 +3,7 @@
  * entrypoint (`cli.ts` runs `main()` on import). `cli.ts` re-exports nothing but
  * consumes `parseArgs`/`ParsedArgs` from here.
  */
-import type { ApprovalMode } from "./approval.js";
+import { APPROVAL_MODES, type ApprovalMode } from "./approval.js";
 import { DEFAULT_MODEL } from "./llm.js";
 
 export interface ParsedArgs {
@@ -13,6 +13,8 @@ export interface ParsedArgs {
   compaction: boolean;
   model: string;
   approval: ApprovalMode;
+  /** True when --approval was passed; otherwise `serve --web` also honours LISA_APPROVAL. */
+  approvalExplicit: boolean;
   loadMcp: boolean;
   loadPlugins: boolean;
   voice: boolean;
@@ -52,7 +54,9 @@ export interface ParsedArgs {
     | "logout"
     | "billing"
     | "upgrade"
-    | "tasks";
+    | "tasks"
+    | "approvals"
+    | "warden";
   subargs: string[];
   serveWeb: boolean;
   serveImessage: boolean;
@@ -76,7 +80,7 @@ const RAW_SUBCOMMANDS = new Set(["heartbeat", "autostart", "doctor", "upgrade", 
  * global flags (`mail connect --host/--port/--provider …`), which would
  * otherwise be swallowed as global settings and never reach the handler.
  */
-const PASSTHROUGH_SUBCOMMANDS = new Set(["mail", "kb", "billing"]);
+const PASSTHROUGH_SUBCOMMANDS = new Set(["mail", "kb", "billing", "approvals", "warden"]);
 
 /**
  * Is this a debug run? Decided from the raw argv + env rather than ParsedArgs
@@ -104,6 +108,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     verbose: isVerboseArgv([], process.env),
     noColor: false,
     approval: "auto",
+    approvalExplicit: false,
     loadMcp: true,
     loadPlugins: true,
     voice: false,
@@ -170,10 +175,11 @@ export function parseArgs(argv: string[]): ParsedArgs {
       process.env.LISA_PROVIDER = v;
     } else if (arg === "--approval") {
       const v = mustNext(argv, ++i, "--approval") as ApprovalMode;
-      if (!["auto", "ask", "ask-mutating"].includes(v)) {
+      if (!APPROVAL_MODES.includes(v)) {
         throw new Error(`bad --approval mode: ${v}`);
       }
       out.approval = v;
+      out.approvalExplicit = true;
     } else if (arg === "--port") {
       out.port = parseInt(mustNext(argv, ++i, "--port"), 10);
     } else if (arg === "--host") {
@@ -226,7 +232,9 @@ export function parseArgs(argv: string[]): ParsedArgs {
       first === "logout" ||
       first === "billing" ||
       first === "upgrade" ||
-      first === "tasks"
+      first === "tasks" ||
+      first === "approvals" ||
+      first === "warden"
     ) {
       out.subcommand = first;
       out.subargs = positional.slice(1);
