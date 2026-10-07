@@ -424,7 +424,7 @@ Chat, planning and execution always run on your main model (`--model` / `LISA_MO
 | --- | --- |
 | unset | the small model of your main model's family, if you have a key for it: `claude-haiku-4-5` for Claude, `gemini-2.5-flash-lite` for Gemini, `gpt-4o-mini` for OpenAI. Other providers keep the main model. |
 | a model id (`gpt-4o-mini`, `deepseek-chat`, …) | that model, if you have a key for it |
-| `local://[backend/]model` (`local://ollama/qwen2.5:3b`) | that model on your local runtime (`ollama`, `lmstudio` or `llamacpp`) — nothing leaves your machine for these calls |
+| `local://[backend/]model` (`local://ollama/qwen2.5:3b`) | that model at your configured runtime endpoint (`ollama`, `lmstudio` or `llamacpp`); keep the endpoint on-device for local-only inference |
 
 ```sh
 export LISA_MODEL=claude-sonnet-4-6
