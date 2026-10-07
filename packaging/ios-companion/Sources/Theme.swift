@@ -166,3 +166,31 @@ struct StatCell: View {
         .accessibilityLabel("\(label): \(value)")
     }
 }
+
+/// Server portraits use the same header authentication as API calls. Putting
+/// the token in a query string both leaks it into URLs and changes the asset
+/// filename on older LISA servers, which respond with 404.
+struct ServerPortrait: View {
+    let client: LisaClient
+    let path: String
+    @State private var image: UIImage?
+
+    private var request: URLRequest? { try? client.makeRequest(path, timeout: 15) }
+
+    var body: some View {
+        Group {
+            if let image { Image(uiImage: image).resizable().scaledToFit() }
+            else { Image(systemName: "person.crop.circle.fill").resizable().scaledToFit().foregroundStyle(Theme.secondary) }
+        }
+        .task(id: request) {
+            image = nil
+            guard let request else { return }
+            do {
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return }
+                try Task.checkCancellation()
+                image = UIImage(data: data)
+            } catch { /* Keep the fallback; a later request or reconnect retries. */ }
+        }
+    }
+}

@@ -16,9 +16,7 @@ class FakeSink implements EventSink {
   }
   /** The `type` field of each event delivered, in order. */
   types(): string[] {
-    return this.frames.map(
-      (f) => JSON.parse(f.replace(/^data: /, "").trim()).type as string,
-    );
+    return this.frames.map((f) => JSON.parse(f.replace(/^data: /, "").trim()).type as string);
   }
   /** Everything ever written, joined — for "did any byte leak?" assertions. */
   raw(): string {
@@ -27,6 +25,21 @@ class FakeSink implements EventSink {
 }
 
 describe("TenantEventBus — cross-tenant isolation (B2)", () => {
+  test("deleting a tenant closes only its streams and removes future delivery", () => {
+    const bus = new TenantEventBus<FakeSink>();
+    const a = new FakeSink(),
+      b = new FakeSink();
+    bus.add(a, UID_A);
+    bus.add(b, UID_B);
+    const closed: FakeSink[] = [];
+    bus.removeTenant(UID_A, (sink) => closed.push(sink));
+    bus.broadcast({ type: "mood" }, UID_A);
+    bus.broadcast({ type: "mood" }, UID_B);
+    assert.deepEqual(closed, [a]);
+    assert.equal(bus.size, 1);
+    assert.deepEqual(a.frames, []);
+    assert.deepEqual(b.types(), ["mood"]);
+  });
   test("a uid-A event is never delivered to a uid-B subscriber", () => {
     const bus = new TenantEventBus<FakeSink>();
     const a = new FakeSink();
@@ -35,10 +48,7 @@ describe("TenantEventBus — cross-tenant isolation (B2)", () => {
     bus.add(b, UID_B);
 
     // The kind of event that carries private message TEXT.
-    bus.broadcast(
-      { type: "idle_message", text: "A's private musing", source: "advisor" },
-      UID_A,
-    );
+    bus.broadcast({ type: "idle_message", text: "A's private musing", source: "advisor" }, UID_A);
 
     assert.deepEqual(a.types(), ["idle_message"]);
     assert.deepEqual(b.frames, []); // B received nothing at all
@@ -142,9 +152,7 @@ describe("TenantEventBus — cross-tenant isolation (B2)", () => {
     bus.add(dead, UID_A);
     bus.add(live, UID_A);
 
-    assert.doesNotThrow(() =>
-      bus.broadcast({ type: "mood", slug: "happy" }, UID_A),
-    );
+    assert.doesNotThrow(() => bus.broadcast({ type: "mood", slug: "happy" }, UID_A));
     assert.deepEqual(live.types(), ["mood"]);
   });
 });

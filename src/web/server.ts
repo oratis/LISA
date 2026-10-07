@@ -15,6 +15,7 @@ import { planUsage, formatUsage } from "../model/plan-usage.js";
 import { runIdleOnce } from "../idle/runner.js";
 import { getIdleWatcher } from "../idle/watcher.js";
 import { moodBus } from "../mood-bus.js";
+import { aiRecipients } from "./ai-disclosure.js";
 import { providerForModel } from "../providers/registry.js";
 import { buildSystemPromptSnapshot, getPromptFingerprint } from "../prompt.js";
 import { readActiveWebSession, writeActiveWebSession } from "../sessions/active.js";
@@ -140,6 +141,7 @@ import {
   createEmailAccount,
   verifyEmailLogin,
   upsertAppleAccount,
+  saveAppleAuthorization,
   deleteAccount,
   getAccount,
   sessionAccountValid,
@@ -181,6 +183,19 @@ import { ScreenSource } from "../sense/screen.js";
 import { VoiceSource } from "../sense/voice.js";
 import { appendSenseEvent, readSenseEvents } from "../sense/log.js";
 import { handleSocialApi } from "./social-api.js";
+import { createWebWarden, handleWardenApi, wardenTrust } from "./warden-api.js";
+import { protectFromSandbox } from "../sandbox/protect.js";
+import { handleReachOutApi } from "./reachout-api.js";
+import {
+  advisorNotice,
+  idleNoteNotice,
+  kbBriefNotice,
+  mailAlertNotice,
+  mailDigestNotice,
+  makeServerReachOut,
+  reachOutApiOptions,
+  scheduleServerCatchUp,
+} from "./reachout-wiring.js";
 import {
   loadScreenAdvisorConfig,
   saveScreenAdvisorConfig,
@@ -202,6 +217,14 @@ import {
   audienceForClient,
   appleRequireNonce,
 } from "./cloudAuth.js";
+import {
+  appleAuthorizationConfig,
+  exchangeAppleAuthorizationCode,
+  encryptAppleRefreshToken,
+  decryptAppleRefreshToken,
+  revokeAppleAuthorization,
+  AppleAuthorizationError,
+} from "./apple-authorization.js";
 import { detectLanHost, buildPairUrl } from "./pairing.js";
 import { TenantEventBus, sameTenant } from "./event-bus.js";
 import { qrSvg } from "./qr-svg.js";
@@ -267,6 +290,8 @@ export interface WebServerOptions {
    * unchanged without one.
    */
   policy?: RuntimePolicy;
+  /** Injected model provider (tests). Omitted ⇒ resolved from `model`. */
+  provider?: ReturnType<typeof providerForModel>;
 }
 
 interface AdvisorCardSuggestion {
@@ -512,6 +537,11 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     },
     logWarn,
   );
+  // Warden (W2a): under approval mode "warden" every chat turn gets a policy
+  // session, and "ask" waits on this inbox instead of being denied. Inbox
+  // events go out on the tenant-aware /events stream, addressed to the uid the
+  // item belongs to.
+  const warden = createWebWarden(policy, (event, uid) => broadcast(event, uid));
   // Account sessions (PLAN_ACCOUNTS_BILLING B1): the signing secret lives in
   // $lisaHome() (auto-created 0600; durable on the cloud's /data mount). Only the
   // cloud edition mints/verifies account sessions today — the Mac edition gains
@@ -572,6 +602,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // new key without restarting the server.
   let cachedProvider: ReturnType<typeof providerForModel> | null = null;
   const getProvider = () => {
+    if (opts.provider) return opts.provider;
     if (!cachedProvider) cachedProvider = providerForModel(opts.model);
     return cachedProvider;
   };
@@ -731,26 +762,21 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     }
   };
 
-  // Lazy per-user birth (B2, hub'd in S3): a signed-in user's first request
-  // seeds THEIR soul (the entrypoint's one-shot birth only covers the shared/
-  // global home). Runs through the single-flight birth hub so the visible
-  // ceremony (POST /api/birth) and this background path share ONE dream —
-  // never two LLM calls racing on writeSeed. Chat before it completes simply
-  // runs with the bare prompt and the soul arrives mid-conversation.
-  const ensureUserBirth = (uid: string): void => {
-    void (async () => {
-      try {
-        const { isBorn } = await import("../soul/store.js");
-        if (await isBorn()) return; // reads inside the per-uid scope
-        logInfo(`[accounts] birthing a soul for ${redactId(uid)}…`);
-        await startBirthOnce(uid, (emit) => runBirth(uid, emit)).promise;
-        const runtime = tenantRuntimes.peek(lisaHome());
-        if (runtime) runtime.prompt = undefined; // pick the newborn soul up next turn
-        logInfo(`[accounts] soul born for ${redactId(uid)}`);
-      } catch (e) {
-        logError(`[accounts] birth failed for ${redactId(uid)}: ${(e as Error).message}`);
-      }
-    })();
+  // Seed a cloud account's soul only when the user actually sends a message.
+  // Reading settings/history or deleting an account must never start inference.
+  // Await the single-flight birth so deletion can drain the whole request.
+  const ensureUserBirth = async (uid: string): Promise<void> => {
+    try {
+      const { isBorn } = await import("../soul/store.js");
+      if (await isBorn()) return; // reads inside the per-uid scope
+      logInfo(`[accounts] birthing a soul for ${redactId(uid)}…`);
+      await startBirthOnce(uid, (emit) => runBirth(uid, emit)).promise;
+      const runtime = tenantRuntimes.peek(lisaHome());
+      if (runtime) runtime.prompt = undefined; // pick the newborn soul up next turn
+      logInfo(`[accounts] soul born for ${redactId(uid)}`);
+    } catch (e) {
+      logError(`[accounts] birth failed for ${redactId(uid)}: ${(e as Error).message}`);
+    }
   };
 
   // ── Persistent /events SSE subscribers (mood + idle broadcasts) ─────
@@ -796,6 +822,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // Billing anomalies reach the operator's phone through the same channel as
   // agent errors (B8d) — pref "error", throttled inside the bridge.
   setAnomalySink((text) => pushBridge.onBillingAnomaly(text));
+  // Every proactive message goes through the reach-out gate (POLICY_REACH_OUT).
+  // Senders keep their own in-app / push closures, so what they say is
+  // unchanged; the gate only decides whether each channel fires.
+  const reachOutVia = makeServerReachOut({ pushBridge, log: (m) => logInfo(m) });
+  // Pushes held by quiet hours do not survive a restart; announce them once.
+  scheduleServerCatchUp({ pushBridge, log: (m) => logInfo(m) });
   hub.on("update", (session: AgentSession) => {
     // L6 — record the transition in the orchestrator journal so the
     // cross-agent recap can answer "what happened while I was away?" even for
@@ -848,9 +880,15 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         if (surface.length === 0) return;
         const text = formatDigest(surface);
         const at = new Date().toISOString();
-        globalChat.activity.lastIdleMessage = { text, at };
-        broadcast({ type: "idle_message", text, at, source: "advisor" });
-        pushBridge.onIdleMessage(text);
+        const reached = await reachOutVia(advisorNotice({ text, suggestions: surface }), {
+          inapp: (n) => {
+            globalChat.activity.lastIdleMessage = { text, at };
+            broadcast({ type: "idle_message", text, at, source: "advisor", reachOutId: n.id });
+          },
+          push: () => pushBridge.onIdleMessage(text),
+        });
+        // Advisor switched off (or denied) ⇒ no card either.
+        if (!reached.channels.includes("inapp")) return;
         // Structured twin of the digest: same suggestions with id / urgency /
         // action attached so the island can render per-suggestion buttons
         // (act → prefill chat, ✕ → dismiss feeds the learning loop).
@@ -876,7 +914,10 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // build + push the classified digest. Inert unless `mail` consent is granted
   // and at least one account is connected.
   let mailSweepRunning = false;
-  const afterMailDigest = (digest: DailyDigest): void => {
+  // The digest is solicited either way (the user switched it on), so it never
+  // spends the unsolicited budget. `manual` = the user pressed "sweep now",
+  // which (as before) posts no chat message.
+  const afterMailDigest = (digest: DailyDigest, manual: boolean): void => {
     broadcast({
       type: "mail_digest_update",
       date: digest.date,
@@ -884,7 +925,24 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       needsYou: digest.needsYou.length,
       at: new Date().toISOString(),
     });
-    pushBridge.onMailDigest(formatDigestText(digest));
+    const text = formatDigestText(digest);
+    void reachOutVia(
+      mailDigestNotice({ text, date: digest.date, needsYou: digest.needsYou.length, manual }),
+      {
+        // The digest also lands in the chat (the "here's your mail" moment) —
+        // but only on the scheduled daily run, and only when there is mail.
+        inapp: (n) =>
+          broadcast({
+            type: "idle_message",
+            text,
+            at: new Date().toISOString(),
+            source: "mail",
+            reachOutId: n.id,
+          }),
+        push: () => pushBridge.onMailDigest(text),
+      },
+      { inapp: !manual && digest.total > 0 },
+    );
   };
   const runMailDigest = async (force: boolean): Promise<DailyDigest | null> => {
     if (mailSweepRunning || !isGranted("mail")) return null;
@@ -893,17 +951,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     mailSweepRunning = true;
     try {
       const { digest } = await sweepAll();
-      afterMailDigest(digest);
-      // Post the digest into the chat too (the "here's your mail" moment), in
-      // addition to the push — but only on the scheduled daily run, not manual.
-      if (!force && digest.total > 0) {
-        broadcast({
-          type: "idle_message",
-          text: formatDigestText(digest),
-          at: new Date().toISOString(),
-          source: "mail",
-        });
-      }
+      afterMailDigest(digest, force);
       logInfo(
         `[mail] digest ${digest.date}: ${digest.total} mail · ${digest.needsYou.length} need-you`,
       );
@@ -939,15 +987,21 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         total: result.brief.total,
         at: new Date().toISOString(),
       });
-      pushBridge.onKbBrief(result.text);
-      if (!force) {
-        broadcast({
-          type: "idle_message",
-          text: result.text,
-          at: new Date().toISOString(),
-          source: "kb",
-        });
-      }
+      void reachOutVia(
+        kbBriefNotice({ text: result.text, date: result.brief.date, manual: force }),
+        {
+          inapp: (n) =>
+            broadcast({
+              type: "idle_message",
+              text: result.text,
+              at: new Date().toISOString(),
+              source: "kb",
+              reachOutId: n.id,
+            }),
+          push: () => pushBridge.onKbBrief(result.text),
+        },
+        { inapp: !force },
+      );
       logInfo(
         `[kb-brief] ${result.brief.date}: ${result.brief.total} item(s) · ${result.brief.ingested.length} ingested`,
       );
@@ -980,14 +1034,25 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         try {
           const important = pickImportant(await pollNewMail(), alertLevel());
           if (important.length === 0) return;
+          // One poll = one unit of the daily reach-out budget, however many alerts.
+          const pollKey = new Date().toISOString();
           for (const item of important.slice(0, 3)) {
             const alert = formatAlert(item);
-            pushBridge.onMailImportant({ title: alert.title, body: alert.body, tag: alert.tag });
-            broadcast({
-              type: "idle_message",
-              text: alert.chat,
-              at: new Date().toISOString(),
-              source: "mail",
+            await reachOutVia(mailAlertNotice(alert, pollKey), {
+              inapp: (n) =>
+                broadcast({
+                  type: "idle_message",
+                  text: alert.chat,
+                  at: new Date().toISOString(),
+                  source: "mail",
+                  reachOutId: n.id,
+                }),
+              push: () =>
+                pushBridge.onMailImportant({
+                  title: alert.title,
+                  body: alert.body,
+                  tag: alert.tag,
+                }),
             });
           }
           broadcast({ type: "mail_digest_update", at: new Date().toISOString() });
@@ -1156,18 +1221,40 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         } else {
           // The idle note is conversation content — log that one went out and
           // how big it was, never the text itself.
-          logInfo(`[idle] → sent (${result.text.length} chars)`);
-          await ctx.session.appendMessage({
-            role: "assistant",
-            content: [{ type: "text", text: `[while you were away]\n${result.text}` }],
+          let posted = false;
+          const reached = await reachOutVia(idleNoteNotice(result.text), {
+            inapp: async (n) => {
+              await ctx.session.appendMessage({
+                role: "assistant",
+                content: [{ type: "text", text: `[while you were away]\n${result.text}` }],
+              });
+              ctx.history.push({
+                role: "assistant",
+                content: [{ type: "text", text: `[while you were away]\n${result.text}` }],
+              });
+              ctx.activity.lastIdleMessage = { text: result.text, at: startedAt };
+              broadcast({
+                type: "idle_message",
+                text: result.text,
+                at: startedAt,
+                reachOutId: n.id,
+              });
+              posted = true;
+            },
+            push: () => pushBridge.onIdleMessage(result.text),
           });
-          ctx.history.push({
-            role: "assistant",
-            content: [{ type: "text", text: `[while you were away]\n${result.text}` }],
-          });
-          ctx.activity.lastIdleMessage = { text: result.text, at: startedAt };
-          broadcast({ type: "idle_message", text: result.text, at: startedAt });
-          pushBridge.onIdleMessage(result.text);
+          if (posted) {
+            logInfo(`[idle] → sent (${result.text.length} chars)`);
+          } else if (reached.channels.includes("inapp")) {
+            // The gate allowed it but writing the note failed — surface that
+            // as the idle error it always was.
+            throw new Error("could not post the idle note");
+          } else {
+            // The gate withheld it (source off, or a red line). Close the
+            // idle indicator the way a silent run does.
+            logInfo(`[idle] note withheld by reach-out gate (${reached.reason})`);
+            broadcast({ type: "idle_done", silent: true });
+          }
         }
       } catch (err) {
         const msg = (err as Error).message;
@@ -1277,7 +1364,28 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // is safe to abandon at shutdown (every event it did not reach stays open).
   if (isCloud()) startBillingReconciler();
 
-  const server = http.createServer(async (req, res) => {
+  const deletingAccounts = new Set<string>();
+  const accountRequests = new Map<string, Set<{ done: Promise<void>; stop: () => void }>>();
+  const requestFinished = new WeakMap<http.IncomingMessage, () => void>();
+  const beginAccountWork = (uid: string, stop: () => void): (() => void) | null => {
+    if (deletingAccounts.has(uid)) return null;
+    let finish!: () => void;
+    const work = {
+      done: new Promise<void>((resolve) => {
+        finish = resolve;
+      }),
+      stop,
+    };
+    const requests = accountRequests.get(uid) ?? new Set();
+    requests.add(work);
+    accountRequests.set(uid, requests);
+    return () => {
+      requests.delete(work);
+      if (requests.size === 0) accountRequests.delete(uid);
+      finish();
+    };
+  };
+  const handleRequest = async (req: http.IncomingMessage, res: http.ServerResponse) => {
     const url = req.url ?? "/";
     applyApiVersionHeader(url, res);
     // T-10: every response — HTML shell, JSON, SSE, assets, 404s — carries the
@@ -1407,7 +1515,39 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         }
         // B1: mint a per-uid account session (no longer the shared LISA_WEB_TOKEN).
         // The uid keys per-user isolation (B2) and billing (B3+).
+        const authorizationCode =
+          typeof payload.authorizationCode === "string" ? payload.authorizationCode : "";
+        const authorizationConfig = appleAuthorizationConfig();
+        let refreshToken: string | undefined;
+        if (authorizationCode && authorizationConfig) {
+          const tokens = await exchangeAppleAuthorizationCode(
+            authorizationConfig,
+            audience,
+            authorizationCode,
+            client === "web" && process.env.LISA_APPLE_WEB_REDIRECT_URI
+              ? { redirectUri: process.env.LISA_APPLE_WEB_REDIRECT_URI }
+              : {},
+          );
+          const codeIdentity = await verifyAppleIdentityToken(tokens.identityToken, {
+            audience,
+            fetchKeys: fetchAppleKeys,
+            ...(nonce ? { expectedNonce: nonce } : {}),
+          });
+          if (codeIdentity.sub !== id.sub)
+            throw new AppleAuthError("authorization identity mismatch");
+          refreshToken = tokens.refreshToken;
+        }
         const acct = await upsertAppleAccount(id.sub, id.email);
+        if (refreshToken)
+          await saveAppleAuthorization(acct.uid, {
+            clientId: audience,
+            encryptedRefreshToken: encryptAppleRefreshToken(
+              refreshToken,
+              sessionSecret,
+              acct.uid,
+              audience,
+            ),
+          });
         const session = mintSession(acct.uid, sessionSecret, { sv: acct.sessionVersion });
         res.writeHead(200, {
           "content-type": "application/json",
@@ -1498,6 +1638,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       res.end(
         JSON.stringify({
           accounts: cloud && !!sessionSecret,
+          dataProcessing: { version: 1, recipients: aiRecipients(opts.model) },
           appleWeb:
             cloud && cfg.enabled && !!cfg.webServicesId ? { servicesId: cfg.webServicesId } : null,
           // Client ids are public by design (they identify the app, they don't
@@ -1825,6 +1966,10 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           ...(maxRuns !== undefined ? { maxRuns } : {}),
           tools: autonomyTools,
           cwd: process.cwd(),
+          beginAccountWork: (uid) =>
+            beginAccountWork(uid, () => {
+              /* drain background writes */
+            }),
         });
         logInfo(
           `[sweep] scanned ${report.scanned} active accounts, ran ${report.ran} autonomy action(s)`,
@@ -1993,10 +2138,18 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       // resolves into this account's subtree, including across awaits
       // (AsyncLocalStorage.enterWith sticks to this async chain).
       if (cloud && accountUid) {
+        if (deletingAccounts.has(accountUid)) {
+          res.writeHead(409, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "account_deletion_in_progress" }));
+          return;
+        }
+        if (!(req.method === "DELETE" && url === "/api/account")) {
+          const finish = beginAccountWork(accountUid, () => res.destroy());
+          if (finish) requestFinished.set(req, finish);
+        }
         const uidHome = homeForUid(accountUid);
         await fs.mkdir(uidHome, { recursive: true });
         homeScope.enterWith(uidHome);
-        ensureUserBirth(accountUid);
       }
     }
 
@@ -2012,6 +2165,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
                 signedIn: true,
                 uid: acct.uid,
                 kind: acct.kind,
+                appleUserId:
+                  acct.kind === "apple" ? (acct.appleSub ?? acct.uid.slice("apple-".length)) : null,
                 email: acct.email ?? null,
                 verified: acct.verified,
                 plan: "free",
@@ -2248,10 +2403,43 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         res.end(JSON.stringify({ error: "account_session_required" }));
         return;
       }
-      const removed = await deleteAccount(accountUid);
-      // Remove the per-uid home + in-memory context. The account record going
-      // away already killed every session via the sv-check.
+      deletingAccounts.add(accountUid);
+      let removed = false;
+      let requiresManualAppleRevocation = false;
       try {
+        const acct = await getAccount(accountUid);
+        requiresManualAppleRevocation = acct?.kind === "apple" && !acct.appleAuthorization;
+        if (acct?.appleAuthorization) {
+          const config = appleAuthorizationConfig();
+          if (!config || !sessionSecret)
+            throw new AppleAuthorizationError("apple_revocation_failed");
+          const authorization = acct.appleAuthorization;
+          await revokeAppleAuthorization(
+            config,
+            authorization.clientId,
+            decryptAppleRefreshToken(
+              authorization.encryptedRefreshToken,
+              sessionSecret,
+              acct.uid,
+              authorization.clientId,
+            ),
+          );
+        }
+        // Stop chats and wait for their final writes before removing data. A
+        // disconnected response alone does not mean its handler has finished.
+        const requests = [...(accountRequests.get(accountUid) ?? [])];
+        for (const work of requests) work.stop();
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          await Promise.race([
+            Promise.all(requests.map((work) => work.done)),
+            new Promise<never>((_, reject) => {
+              timer = setTimeout(() => reject(new Error("account requests still active")), 20_000);
+            }),
+          ]);
+        } finally {
+          if (timer) clearTimeout(timer);
+        }
         const userHome = homeForUid(accountUid);
         // Refuse to follow a surprising path — belt & braces against uid tampering
         // (uids are server-minted, but cheap to double-check).
@@ -2260,14 +2448,23 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         }
         tenantRuntimes.delete(userHome);
         moodBus.forget(accountUid); // keyed by uid, not home path
+        eventClients.removeTenant(accountUid, (sink) => sink.end());
+        removed = await deleteAccount(accountUid);
       } catch (e) {
-        logError(`[auth] account home cleanup failed: ${(e as Error).message}`);
+        logError(
+          `[auth] account deletion incomplete: ${e instanceof AppleAuthorizationError ? e.code : "cleanup_failed"}`,
+        );
+        res.writeHead(503, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: "account_deletion_incomplete" }));
+        return;
+      } finally {
+        deletingAccounts.delete(accountUid);
       }
       res.writeHead(200, {
         "content-type": "application/json",
         "set-cookie": `lisa_token=; Max-Age=0; HttpOnly; SameSite=Strict; Path=/${isCloud() ? "; Secure" : ""}`,
       });
-      res.end(JSON.stringify({ ok: true, removed }));
+      res.end(JSON.stringify({ ok: true, removed, requiresManualAppleRevocation }));
       return;
     }
 
@@ -2298,6 +2495,18 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
                 });
               }
             : undefined,
+      })
+    ) {
+      return;
+    }
+    if (await handleReachOutApi(req, res, url, reachOutApiOptions(cloud))) return;
+
+    if (
+      await handleWardenApi(req, res, url, {
+        inbox: warden.inbox,
+        uid: scopedUid(),
+        home: lisaHome(),
+        ...wardenTrust({ cloud, loopback: isLoopbackAddress(remoteAddr), accountUid }),
       })
     ) {
       return;
@@ -3050,7 +3259,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         return;
       }
       const swept = await sweepAll();
-      if (!swept.blocked) afterMailDigest(swept.digest);
+      if (!swept.blocked) afterMailDigest(swept.digest, true);
       res.writeHead(200, { "content-type": "application/json" });
       res.end(
         JSON.stringify({
@@ -4200,6 +4409,7 @@ self.addEventListener('fetch', (event) => {
         if (weStartedTheRun && run.listeners.size <= 1) abortBirth.abort();
       };
       req.on("close", onClose);
+      res.on("close", onClose);
       for (const log of run.steps) listener(log);
       run.listeners.add(listener);
       try {
@@ -4217,6 +4427,7 @@ self.addEventListener('fetch', (event) => {
         send({ kind: "error", code: info.code, message: info.message, retryable: info.retryable });
       } finally {
         req.off("close", onClose);
+        res.off("close", onClose);
         run.listeners.delete(listener);
         res.end();
       }
@@ -4333,6 +4544,10 @@ self.addEventListener('fetch', (event) => {
         res.end(JSON.stringify({ error: `bad request: ${(err as Error).message}` }));
         return;
       }
+      // Cloud setup may call AI; do it only after an explicit chat request,
+      // never while merely opening Settings, viewing history or deleting an account.
+      if (cloud && accountUid) await ensureUserBirth(accountUid);
+      if (res.destroyed) return;
       // ── Quota gate (B4) — signed-in cloud accounts only; the legacy shared-
       // token demo stays operator-funded and ungated. Runs BEFORE the SSE
       // handshake so exhaustion is a clean HTTP 402 the clients can route to
@@ -4406,6 +4621,7 @@ self.addEventListener('fetch', (event) => {
       // queued turn isn't stuck behind an abandoned run.
       const turnAbort = new AbortController();
       req.on("close", () => turnAbort.abort());
+      res.on("close", () => turnAbort.abort());
       // The moodBus is process-wide: another tenant's concurrent turn emits on
       // it too. Only forward mood ticks that originate in THIS caller's home
       // scope (B2), so a cloud account never sees another account's mood. Mac /
@@ -4447,6 +4663,20 @@ self.addEventListener('fetch', (event) => {
                 `sending ~${modelContext.estimatedTokens} history tokens`,
             );
           }
+          const wardenTurn = await warden.turn({
+            uid: scopedUid(),
+            sandboxMode: chat.session.header.sandboxMode,
+            workspaceRoot: process.cwd(),
+            tools: runtimeTools,
+            signal: AbortSignal.any([abort.signal, turnAbort.signal]),
+            conversationId: chat.session.id,
+            // Only a caller who could answer an approval gets owner defaults.
+            owner: wardenTrust({ cloud, loopback: isLoopbackAddress(remoteAddr), accountUid })
+              .allowApproval,
+            userText: message,
+            hasAttachments: Array.isArray(files) && files.length > 0,
+            hasHistory: chat.history.length > 0,
+          });
           const result = await runAgent({
             provider: getProvider(),
             systemPrompt: fresh.text + modelContext.systemSuffix,
@@ -4459,6 +4689,8 @@ self.addEventListener('fetch', (event) => {
               // Pin the turn to the session's mode, frozen at creation (H2), so
               // concurrent sessions confine independently of the process env.
               sandboxMode: chat.session.header.sandboxMode,
+              // Handed to nested runs (the task subagent) so they stay gated.
+              approval: wardenTurn?.approval ?? webApproval,
             },
             history: modelContext.history,
             userMessage: message,
@@ -4467,8 +4699,10 @@ self.addEventListener('fetch', (event) => {
             thinking: policy.thinking,
             compaction: policy.compaction,
             // Approval gating on the web surface (T-7). undefined under
-            // "auto", so the default path is byte-identical to before.
-            approval: webApproval,
+            // "auto", so that path is byte-identical to before. Under "warden"
+            // the turn's Warden session decides; webApproval stays as the
+            // fail-closed fallback.
+            approval: wardenTurn?.approval ?? webApproval,
             // Pre-debit breaker (B4): a single turn can never burn past what
             // the account could pay for. Conservatively prices every token at
             // the output rate.
@@ -4477,6 +4711,7 @@ self.addEventListener('fetch', (event) => {
                 ? tokensAffordable(opts.model, quotaBudgetMicroUSD)
                 : undefined,
             onEvent: (ev) => {
+              wardenTurn?.observe(ev);
               if (ev.type === "text_delta" && ev.text) {
                 anyText = true;
                 send({ type: "text", text: ev.text });
@@ -4671,6 +4906,16 @@ self.addEventListener('fetch', (event) => {
 
     res.writeHead(404);
     res.end();
+  };
+  const server = http.createServer((req, res) => {
+    void handleRequest(req, res)
+      .catch(() => {
+        logError("[web] request failed");
+        if (!res.headersSent) res.writeHead(500, { "content-type": "application/json" });
+        if (!res.writableEnded && !res.destroyed)
+          res.end(JSON.stringify({ error: "request_failed" }));
+      })
+      .finally(() => requestFinished.get(req)?.());
   });
 
   // Tear down everything that would otherwise outlive the listener: the
@@ -4697,6 +4942,8 @@ self.addEventListener('fetch', (event) => {
     }
     loopMonitor.stop();
     idleWatcher?.stop();
+    // Anything still waiting for an approval is denied, not left hanging.
+    void warden.inbox.shutdown();
     moodBus.off("mood", onMoodEvent);
     moodBus.off("chat_start", onChatStart);
     moodBus.off("chat_end", onChatEnd);
@@ -4715,6 +4962,9 @@ self.addEventListener('fetch', (event) => {
     const onError = (err: Error) => reject(err);
     server.once("error", onError);
     server.listen(opts.port, host, () => {
+      // A confined shell must not be able to reach the approval API.
+      const bound = server.address();
+      if (bound && typeof bound === "object") protectFromSandbox({ port: bound.port });
       server.off("error", onError);
       resolve();
     });

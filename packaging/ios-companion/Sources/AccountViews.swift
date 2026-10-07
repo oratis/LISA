@@ -39,8 +39,10 @@ struct CloudSignInForm: View {
 
     var body: some View {
         Section {
-            TextField("LISA Cloud URL", text: $cloudURL)
-                .autocorrectionDisabled().textInputAutocapitalization(.never).keyboardType(.URL)
+            Label("Your LISA account", systemImage: "person.crop.circle")
+                .font(.headline)
+            Text("Sign in to your personal assistant. No Mac or API key is needed.")
+                .font(.subheadline).foregroundStyle(.secondary)
             #if LISA_ENABLE_SIWA
             SignInWithAppleButton(.continue,
                 onRequest: { req in
@@ -94,6 +96,11 @@ struct CloudSignInForm: View {
         } footer: {
             Text("Sign in and go — no Mac, no API key, no password to remember. New here? The code creates your account. A free usage allowance refreshes every 12 hours.")
         }
+        // Attach discovery to visible content. A trailing empty Section in a
+        // lazy Form may never appear, leaving configured sign-in options hidden.
+        .task(id: cloudURL) {
+            googleClientId = await app.authConfig(baseURL: cloudURL)?.google?.iosClientId
+        }
 
         Section {
             DisclosureGroup("Use a password instead") {
@@ -112,7 +119,9 @@ struct CloudSignInForm: View {
         }
 
         Section {
-            DisclosureGroup("Advanced: connect with a token link") {
+            DisclosureGroup("Advanced: server and token link") {
+                TextField("LISA Cloud URL", text: $cloudURL)
+                    .autocorrectionDisabled().textInputAutocapitalization(.never).keyboardType(.URL)
                 TextField("https://…/?token=", text: $pasteText)
                     .autocorrectionDisabled().textInputAutocapitalization(.never).keyboardType(.URL)
                 Button("Connect") { applyPaste() }
@@ -127,11 +136,6 @@ struct CloudSignInForm: View {
         }
         if let error {
             Section { Text(error).font(.caption).foregroundStyle(Theme.danger) }
-        }
-        // Re-asked whenever the URL changes: two instances can offer different
-        // sign-in surfaces.
-        Section {} .task(id: cloudURL) {
-            googleClientId = await app.authConfig(baseURL: cloudURL)?.google?.iosClientId
         }
     }
 
@@ -283,7 +287,7 @@ struct CloudSignInForm: View {
 
     private func applyPaste() {
         error = nil
-        guard app.applyPairing(pasteText) else {
+        guard app.applyPairing(pasteText, mode: .cloud) else {
             error = "Couldn't read that cloud URL — paste the full https://…/?token=… link."
             return
         }
@@ -320,10 +324,11 @@ struct CloudSignInForm: View {
             // One nonce per request: consume it so a second sign-in can't reuse it.
             let raw = appleRawNonce
             appleRawNonce = nil
+            let authorizationCode = cred.authorizationCode.flatMap { String(data: $0, encoding: .utf8) }
             Task {
                 do {
                     try await app.connectCloudWithApple(baseURL: cloudURL, identityToken: idToken,
-                                                        rawNonce: raw)
+                                                        rawNonce: raw, authorizationCode: authorizationCode)
                     await verifyThenReport()
                 } catch LisaError.http(404) {
                     busy = false

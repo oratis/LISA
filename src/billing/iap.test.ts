@@ -13,6 +13,7 @@ const {
   creditTransaction,
   refundTransaction,
   PRODUCTS,
+  iapAccountToken,
   IapError,
   PaymentStateError,
   oidToDer,
@@ -379,4 +380,18 @@ describe("sandbox credits are marked and bounded", () => {
     assert.equal(sandboxCreditedMicroUSD([prod("operator-seed", 20_000_000)]), 0);
     assert.equal(sandboxCeilingExceeded([prod("operator-seed", 20_000_000)], 5_000_000), false);
   });
+});
+
+test("StoreKit account binding refuses another LISA account before crediting", async () => {
+  const tx = validateTransaction({
+    transactionId: "bound-purchase",
+    productId: "ai.meetlisa.main.credits.5",
+    bundleId: "ai.meetlisa.main",
+    appAccountToken: iapAccountToken("buyer-a"),
+  });
+  await assert.rejects(
+    creditTransaction("buyer-b", tx),
+    (e: unknown) => e instanceof IapError && e.code === "wrong_account",
+  );
+  assert.equal(iapAccountToken("buyer-a"), "516122a1-3bf8-303f-9fbf-f13a64d42582");
 });

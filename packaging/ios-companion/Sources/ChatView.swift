@@ -39,7 +39,7 @@ final class ChatModel: ObservableObject {
     // ── history ──
     func loadHistory(_ client: LisaClient) async {
         guard messages.isEmpty, let r = try? await client.history(page: 0) else { return }
-        messages = r.messages.map(Self.map)
+        messages = r.messages.compactMap(Self.map)
         page = 0
         hasMore = r.hasMore
     }
@@ -49,13 +49,15 @@ final class ChatModel: ObservableObject {
         loadingHistory = true
         defer { loadingHistory = false }
         guard let r = try? await client.history(page: page + 1) else { return }
-        messages.insert(contentsOf: r.messages.map(Self.map), at: 0)
+        messages.insert(contentsOf: r.messages.compactMap(Self.map), at: 0)
         page += 1
         hasMore = r.hasMore
     }
 
-    private static func map(_ m: HistoryMessage) -> ChatMessage {
-        ChatMessage(role: m.role == "user" ? .user : .lisa, text: m.content)
+    private static func map(_ m: HistoryMessage) -> ChatMessage? {
+        // Tool-result-only records are model context, not a user chat bubble.
+        guard !m.content.isEmpty || !m.tools.isEmpty else { return nil }
+        return ChatMessage(role: m.role == "user" ? .user : .lisa, text: m.content, tools: m.tools)
     }
 
     // ── mood (seed from a ping, then track the SSE, reconnect with backoff) ──
@@ -184,6 +186,10 @@ struct ChatView: View {
     @StateObject private var model = ChatModel()
     @State private var input = ""
     @State private var showPaywall = false
+    @State private var consentRecipients: [String] = []
+    @State private var consentRequest: AISharingRequest?
+    @State private var checkingConsent = false
+    @State private var loadedConfig: ServerConfig?
     private static let bottomID = "chat-bottom"
 
     var body: some View {
@@ -192,6 +198,11 @@ struct ChatView: View {
                 transcript
                 Divider()
                 quickChips
+                Text(app.aiConsent.isGranted
+                     ? "AI data sharing allowed: " + app.aiConsent.recipients.joined(separator: ", ")
+                     : "Before your first message, review and allow sharing with third-party AI.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .padding(.horizontal)
                 composer
             }
             .background(Theme.bgDeep.ignoresSafeArea())
@@ -206,10 +217,39 @@ struct ChatView: View {
                     .accessibilityLabel("Load earlier messages")
                 }
             }
-            .task(id: app.config) { model.startMood(app.client); await model.loadHistory(app.client) }
-            .onDisappear { model.stopMood() }
+            .task(id: app.config) {
+                loadedConfig = app.config
+                model.startMood(app.client)
+                await model.loadHistory(app.client)
+            }
+            .onDisappear {
+                model.stopMood()
+                if loadedConfig != app.config { model.cancel() }
+            }
+            .onAppear { consumeDraft() }
+            .onChange(of: app.chatDraft) { _, _ in consumeDraft() }
+            .onChange(of: app.aiConsent.generation) { _, _ in
+                consentRequest = nil
+                model.cancel()
+            }
             .sheet(isPresented: $showPaywall) { PaywallSheet().environmentObject(app) }
+            .sheet(item: $consentRequest) { request in
+                AISharingConsentSheet(request: request) {
+                    guard request.server == app.config,
+                          app.aiConsent.grant(server: request.server, recipients: request.recipients,
+                                              isAdult: true, generation: request.generation) else { return }
+                    consentRecipients = request.recipients
+                    consentRequest = nil
+                    deliver(request.text)
+                }
+            }
         }
+    }
+
+    private func consumeDraft() {
+        guard !app.chatDraft.isEmpty else { return }
+        input = app.chatDraft
+        app.chatDraft = ""
     }
 
     /// Compact inline header: small mood portrait + "Lisa · <mood>" (redesign —
@@ -232,24 +272,13 @@ struct ChatView: View {
     private func moodAvatar(_ size: CGFloat) -> some View {
         let slug = model.mood.isEmpty ? "neutral" : model.mood
         let safe = slug.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? slug
-        return Group {
-            if let url = app.client.assetURL("/assets/lisa/\(safe).png") {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let img): img.resizable().scaledToFit()
-                    default: Image(systemName: "person.crop.circle.fill").resizable().scaledToFit().foregroundStyle(Theme.secondary)
-                    }
-                }
-            } else {
-                Image(systemName: "person.crop.circle.fill").resizable().scaledToFit().foregroundStyle(Theme.secondary)
-            }
-        }
+        return ServerPortrait(client: app.client, path: "/assets/lisa/\(safe).png")
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .accessibilityHidden(true)   // chatHeader's combined label already says the mood
     }
 
-    private let quickCommands = ["What are the agents doing?", "Summarize today", "Any blockers?"]
+    private let quickCommands = ["Help me plan my day", "Help me write a draft", "Break down a goal"]
 
     /// Tappable quick-command chips above the composer — there's always a next move.
     @ViewBuilder private var quickChips: some View {
@@ -257,14 +286,14 @@ struct ChatView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: Theme.Space.s) {
                     ForEach(quickCommands, id: \.self) { cmd in
-                        Button { model.send(cmd, client: app.client) } label: {
+                        Button { input = cmd } label: {
                             Text(cmd).font(.caption)
                                 .padding(.horizontal, 12).padding(.vertical, 7)
                                 .background(Theme.accent.opacity(0.14), in: Capsule())
                                 .foregroundStyle(Theme.accent)
                         }
                         .buttonStyle(.plain)
-                        .accessibilityHint("Sends this as a message")
+                        .accessibilityHint("Adds an editable draft. Tap Send when ready.")
                     }
                 }
                 .padding(.horizontal).padding(.vertical, Theme.Space.s)
@@ -336,7 +365,7 @@ struct ChatView: View {
     private func retryAction(for msg: ChatMessage) -> (() -> Void)? {
         guard !model.sending, msg.role == .lisa, msg.isRetryable,
               msg.id == model.messages.last?.id else { return nil }
-        return { model.resend(client: app.client) }
+        return { requestSend(model.messages.last(where: { $0.role == .user })?.text ?? "") }
     }
 
     private func scrollToBottom(_ proxy: ScrollViewProxy) {
@@ -364,14 +393,41 @@ struct ChatView: View {
                 .frame(width: 44, height: 44)
                 .accessibilityLabel("Send message")
                 .accessibilityHint("Sends what you typed to Lisa")
-                .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || checkingConsent || !app.config.isConfigured)
             }
         }
         .padding()
     }
 
     private func sendCurrent() {
-        let text = input
+        requestSend(input)
+    }
+
+    private func requestSend(_ text: String) {
+        guard !checkingConsent, !model.sending, !text.trimmed.isEmpty else { return }
+        checkingConsent = true
+        let expected = app.config
+        let generation = app.aiConsent.generation
+        Task { @MainActor in
+            defer { checkingConsent = false }
+            let disclosure = try? await LisaClient.authConfig(base: expected).dataProcessing
+            guard app.config == expected, app.aiConsent.generation == generation else { return }
+            guard let disclosure, disclosure.version == 1, !disclosure.recipients.isEmpty else {
+                app.notify("Couldn't load AI provider information. Retry, or update your LISA server before sending.", ok: false)
+                return
+            }
+            consentRecipients = disclosure.recipients
+            if app.aiConsent.allows(server: expected, recipients: consentRecipients) { deliver(text) }
+            else {
+                consentRequest = AISharingRequest(server: expected, recipients: disclosure.recipients,
+                                                  generation: generation, text: text)
+            }
+        }
+    }
+
+    private func deliver(_ text: String) {
+        guard app.aiConsent.allows(server: app.config, recipients: consentRecipients) else { return }
+        app.cancelActiveChat = { [weak model = model] in model?.cancel() }
         input = ""
         model.send(text, client: app.client)
     }

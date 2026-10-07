@@ -2,7 +2,7 @@ import { runAgent } from "./agent.js";
 import { DEFAULT_MODEL } from "./llm.js";
 import { providerForModel } from "./providers/registry.js";
 import type { Provider } from "./providers/types.js";
-import type { ToolDefinition } from "./types.js";
+import type { ToolContext, ToolDefinition } from "./types.js";
 
 export interface SubagentOptions {
   prompt: string;
@@ -32,6 +32,11 @@ export interface SubagentOptions {
    * idle, heartbeat, feed/mail classification) may pin a bounded mode.
    */
   sandboxMode?: import("./sandbox/mode.js").SandboxMode;
+  /**
+   * The parent turn's approval gate. When set, every tool call the subagent
+   * makes is decided by it (and it is handed further down to nested runs).
+   */
+  approval?: ToolContext["approval"];
 }
 
 export interface SubagentResult {
@@ -56,7 +61,9 @@ export async function runSubagent(opts: SubagentOptions): Promise<SubagentResult
       signal: opts.signal,
       log: opts.log ?? (() => {}),
       sandboxMode: opts.sandboxMode,
+      approval: opts.approval,
     },
+    approval: opts.approval,
     history: [],
     userMessage: opts.prompt,
     model,

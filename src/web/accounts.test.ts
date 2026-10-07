@@ -186,7 +186,7 @@ describe("code-only (OTP) accounts", () => {
 describe("google accounts", () => {
   test("first sign-in creates a verified google account", async () => {
     const a = await upsertGoogleAccount("108123", "User@Example.com", 1000);
-    assert.equal(a.uid, googleUid("108123"));
+    assert.match(a.uid, /^g-[0-9a-f]{36}$/);
     assert.equal(a.kind, "google");
     assert.equal(a.email, "user@example.com");
     assert.equal(a.verified, true);
@@ -273,7 +273,7 @@ describe("google accounts", () => {
 describe("apple accounts", () => {
   test("upsert creates once, then updates lastLoginAt; uid is fs-safe", async () => {
     const a = await upsertAppleAccount("001234.abcdef.5678", "user@example.com", 1000);
-    assert.equal(a.uid, "apple-001234.abcdef.5678");
+    assert.match(a.uid, /^apple-[0-9a-f]{36}$/);
     assert.equal(a.verified, true);
     const b = await upsertAppleAccount("001234.abcdef.5678", undefined, 2000);
     assert.equal(b.uid, a.uid);
@@ -288,6 +288,45 @@ describe("apple accounts", () => {
 });
 
 describe("deletion + session validity", () => {
+  test("recreating an Apple or Google account never revives deleted sessions or data paths", async () => {
+    for (const create of [
+      () => upsertAppleAccount("001.deleted", "apple@example.com"),
+      () => upsertGoogleAccount("108deleted", "google@example.com"),
+    ]) {
+      const old = await create();
+      await deleteAccount(old.uid);
+      const fresh = await create();
+      assert.notEqual(fresh.uid, old.uid);
+      assert.equal(await sessionAccountValid(old.uid, old.sessionVersion), false);
+      assert.equal(await sessionAccountValid(fresh.uid, fresh.sessionVersion), true);
+    }
+  });
+
+  test("a legacy Apple account keeps its uid on login, but not after deletion", async () => {
+    const uid = appleUid("001.legacy");
+    fs.writeFileSync(
+      FILE,
+      JSON.stringify([
+        {
+          uid,
+          kind: "apple",
+          email: "legacy@example.com",
+          createdAt: 1,
+          lastLoginAt: 1,
+          verified: true,
+          sessionVersion: 0,
+        },
+      ]),
+    );
+    const existing = await upsertAppleAccount("001.legacy", undefined);
+    assert.equal(existing.uid, uid);
+    assert.equal(existing.appleSub, "001.legacy");
+    await deleteAccount(uid);
+    const fresh = await upsertAppleAccount("001.legacy", undefined);
+    assert.notEqual(fresh.uid, uid);
+    assert.equal(await sessionAccountValid(uid, 0), false);
+  });
+
   test("delete kills the record and its sessions via sv-check", async () => {
     const rec = await createEmailAccount("a@b.co", "password-123");
     assert.equal(await sessionAccountValid(rec.uid, rec.sessionVersion), true);

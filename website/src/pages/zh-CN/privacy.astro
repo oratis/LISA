@@ -1,14 +1,14 @@
 ---
 import Base from "../../layouts/Base.astro";
 ---
-<Base title="隐私" lang="zh-CN" description="Lisa 隐私政策——本地优先,不向我们的服务器收集任何数据。">
+<Base title="隐私" lang="zh-CN" description="LISA 云与本地 Mac 模式的账号、对话及 AI 数据处理说明。">
   <header class="page-head">
-    <p class="eyebrow"><span class="rule"></span> 隐私 <b>· 更新于 2026-06-26</b></p>
+    <p class="eyebrow"><span class="rule"></span> 隐私 <b>· 更新于 2026-09-28</b></p>
     <h1>隐私政策</h1>
     <p class="lede">
-      Lisa 是<strong>本地优先</strong>的。两个客户端 —— <strong>Lisa</strong>(macOS)和
-      <strong>Lisa Pocket</strong>(iOS)—— 连接的是<em>你自己</em>运行或选择的 Lisa 后端。
-      在正常使用下,我们不运营任何接收你个人数据的服务器,也不会出售、出租或分享任何数据。
+      LISA 是个人 AI 助手，支持由我们运营的 <strong>LISA Cloud</strong> 与
+      <strong>自己的 Mac</strong> 两种模式。云模式存储和处理账号及助手数据；
+      本地模式使用你选择的后端及 AI 提供商。我们不出售个人数据，不使用广告追踪 SDK。
     </p>
   </header>
 
@@ -17,9 +17,9 @@ import Base from "../../layouts/Base.astro";
     <p class="big">本地模式:对我们,什么都不收集。</p>
     <p>
       Lisa Pocket 与 Lisa 不含任何分析统计、广告标识或第三方追踪 SDK。
-      默认(本地)模式下不存在由 Lisa 运营的账户体系。若你自愿开通
+      本地模式不要求 LISA Cloud 账号。若你自愿开通
       <strong>LISA Cloud 账号</strong>,我们持有的仅限下文列出的内容 ——
-      你的邮箱、登录标识与你的 Lisa 数据 —— 且一键即可全部删除。
+      你的邮箱、登录标识与你的 Lisa 数据 —— 可以在应用内申请删除账号。
     </p>
   </div>
 
@@ -29,7 +29,7 @@ import Base from "../../layouts/Base.astro";
       <ul>
         <li>
           <strong>连接设置</strong> —— 你后端的地址和一个设备令牌存放在你的设备上
-          (iOS 钥匙串 / 应用偏好),用于重新连接,绝不会发送给我们。
+          (iOS 钥匙串 / 应用偏好)，用于重新连接。令牌只发送给它授权的后端；云模式下该后端为 LISA Cloud。
         </li>
         <li>
           <strong>你的对话与 Lisa 的记忆(“灵魂”)</strong> 存放在你连接的后端上 ——
@@ -42,9 +42,34 @@ import Base from "../../layouts/Base.astro";
     <section class="pol">
       <p class="eyebrow"><b>你的后端与大模型提供商</b></p>
       <p>
-        当你聊天时,消息由配置在<em>你</em>后端上的大语言模型提供商
-        (如 Anthropic、智谱/GLM、OpenAI、Google)用<em>你</em>的 API key 处理,
-        受该提供商的隐私政策约束。我们不拦截、不中转。
+        LISA Cloud 将你的消息、相关对话历史、助手记忆及工具结果交给
+        <strong>Google Gemini</strong> 生成回复，其中可能包含你在这些材料中提供的个人信息。
+        我们通过已启用计费的 Google Cloud 项目使用 Gemini API。根据 Google 的
+        <a href="https://ai.google.dev/gemini-api/terms">付费服务条款</a>，提示词和回复不用于改进其产品。
+        Google 可能为防止滥用、安全或法律要求而有限期保留这些内容，并在其自身或代理机构设有设施的国家处理数据。
+      </p>
+      <p>
+        我们委托处理个人信息的第三方必须提供与本政策相同或同等的数据保护，包括限定处理目的、保密、
+        安全措施及适用的删除义务。付费 Gemini 的提示词和回复受 Google
+        <a href="https://business.safety.google/processorterms/">数据处理附录</a>保护；
+        服务运行与计费元数据另受 Google 适用的隐私及数据保护条款约束。
+      </p>
+      <p>
+        使用自己的 Mac 时，由你选择服务器及 AI 服务商，例如 Anthropic、OpenAI、Google 或智谱/GLM，
+        请在使用前检查其条款和配置。这些独立配置的服务并非由我们运营。
+        本地模型可以在 Mac 上推理，但“连接 Mac”本身不表示远程模型不会接收数据。
+      </p>
+    </section>
+
+    <section class="pol">
+      <p class="eyebrow"><b>Lisa Pocket 中的同意与撤回</b></p>
+      <p>
+        iOS 应用会在发送聊天消息前，明确列出配置的 AI 接收方、说明数据种类并请求你的明确同意。
+        取消会保留草稿且不发送。同意仅对当前应用会话和连接有效；接收方改变后会再次询问。
+        在 <strong>Settings → AI data sharing → Withdraw AI consent</strong> 中，
+        你可以停止正在进行的聊天请求，并要求应用在今后发送消息前重新获得同意。
+        撤回无法召回已处理的信息，也不删除历史记录；它不会关闭你在 Mac 上独立配置的自动任务，
+        请在自己的服务器上停止这些任务。删除数据请使用下文的账号删除功能，或通过邮件私下联系我们。
       </p>
     </section>
 
@@ -55,7 +80,7 @@ import Base from "../../layouts/Base.astro";
           <strong>我们存储什么</strong> —— 你的邮箱地址、一个登录标识(Apple/Google 的
           <code>sub</code>,或密码散列 —— 绝不存明文密码),以及你的 Lisa 的独立账号家目录:
           她的灵魂、你们的对话、你加入她知识库的内容。存放于 Google Cloud(us-central1),
-          按账号隔离。
+          按账号隔离。如 Apple 登录提供授权令牌，我们会加密保存，以便在删除账号时撤销授权。
         </li>
         <li>
           <strong>我们处理什么</strong> —— 聊天消息经账号计费的大模型提供商处理以生成回复;
@@ -63,16 +88,23 @@ import Base from "../../layouts/Base.astro";
           不含消息内容。
         </li>
         <li>
-          <strong>子处理者</strong> —— 大模型推理(如智谱/GLM、Anthropic、OpenAI)、
+          <strong>服务提供商</strong> —— Google Cloud（托管与存储）、Google Gemini（AI 推理）、
           Resend(验证与登录验证码邮件)、Stripe(网页充值)、Apple(Apple 登录与 iOS 内购)、
-          Google(Google 登录)、Cloudflare(注册时的人机校验)。各自受其隐私政策约束。
+          Google(Google 登录)、Cloudflare(注册时的人机校验)。这些服务仅接收履行相应功能所需的数据，
+          如发送登录邮件所需的邮箱、认证所需的账号标识、充值所需的交易标识和购买凭证。
+          我们不会从 Apple 或 Stripe 收到你的完整银行卡信息。
+        </li>
+        <li>
+          <strong>运行数据</strong> —— 服务日志可能包含请求 IP 地址、时间、路径、响应状态、错误、
+          账号或交易标识，用于运行服务、防止滥用和排查故障，不用于广告或跨应用追踪。
+          账号数据保留至你删除；运行、支付及提供商记录按安全、记账、争议处理和法律义务所需保留。
         </li>
         <li>
           <strong>删除</strong> —— 应用内"删除账号"会移除账号记录并<strong>完整抹除</strong>
-          账号家目录,所有会话即刻失效。没有软删除,没有保留期。
+          账号家目录，所有会话即刻失效。已保存授权令牌的 Apple 登录会同时撤销授权；未保存令牌的早期登录会先删除 Lisa 数据，并显示 Apple 官方解除关联说明。用于防止重复充值及退款的支付交易记录独立于对话存储。服务商记录与基础设施备份遵循各自的保留政策；数据请求请联系我们。
         </li>
         <li>
-          公开的审核/演示实例仍是<strong>共享且限流</strong>的 —— 请勿在其中输入敏感信息。
+          App Review 演示账号与审核员共享，请勿放入个人信息。普通云账号的助手数据按账号分开。
         </li>
       </ul>
     </section>
@@ -86,8 +118,10 @@ import Base from "../../layouts/Base.astro";
     </section>
 
     <section class="pol">
-      <p class="eyebrow"><b>儿童</b></p>
-      <p>Lisa 并非面向 13 岁以下儿童,也不会有意收集他们的数据。</p>
+      <p class="eyebrow"><b>年龄要求</b></p>
+      <p>LISA 面向年满 18 岁的成年人。Lisa Pocket 会在启用 AI 聊天前要求确认。
+        未满 18 岁请勿使用本服务。如果我们获悉持有未成年人的个人信息，将采取删除措施；
+        请通过下方邮箱私下联系我们。</p>
     </section>
 
     <section class="pol">
@@ -127,6 +161,7 @@ import Base from "../../layouts/Base.astro";
     .policy { display: grid; gap: 2rem; margin-top: 2.2rem; }
     .pol .eyebrow { margin-bottom: .5rem; }
     .pol p { margin: 0; max-width: 72ch; }
+    .pol p + p { margin-top: .9rem; }
     .pol ul { margin: 0; padding-left: 1.2rem; max-width: 72ch; }
     .pol li { margin: .5rem 0; color: var(--muted); }
     .pol li strong { color: var(--ink); }

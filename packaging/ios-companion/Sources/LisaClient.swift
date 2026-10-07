@@ -1,6 +1,6 @@
 import Foundation
 
-struct ServerConfig: Equatable {
+struct ServerConfig: Hashable {
     var host: String          // "192.168.3.162", "mac.tailnet.ts.net", or "lisa-cloud-xxx.run.app"
     var port: Int
     var token: String?        // device or global token (nil only for loopback, unused from a phone)
@@ -29,13 +29,15 @@ struct ServerConfig: Equatable {
 
 enum LisaError: LocalizedError {
     case notConfigured
+    case secureStorage
     case http(Int)
     case decode
     case unsupportedAPIVersion(Int)
 
     var errorDescription: String? {
         switch self {
-        case .notConfigured: return "Not paired yet — add your Mac in Settings."
+        case .secureStorage: return "Couldn't save your connection in Keychain. Unlock your device and try again."
+        case .notConfigured: return "Connect to LISA Cloud or pair your Mac in Settings."
         case .http(403):
             // Hosted Lisa denies the machine-level routes (push, dispatch,
             // mail, consent, devices — CLOUD_DENIED_ROUTE_PREFIXES in
@@ -86,15 +88,17 @@ final class LisaClient {
     /// hashes it and compares against the token's `nonce` claim, which proves
     /// the token was issued for THIS request. nil ⇒ omitted (older instances).
     static func exchangeAppleToken(base: ServerConfig, identityToken: String, rawNonce: String? = nil,
+                                   authorizationCode: String? = nil,
                                    session: URLSession = .shared) async throws -> String {
         guard let baseURL = base.baseURL, let url = URL(string: "/api/auth/apple", relativeTo: baseURL) else {
             throw LisaError.notConfigured
         }
-        var req = URLRequest(url: url)
+        var req = URLRequest(url: url, timeoutInterval: 30)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         var payload: [String: String] = ["identityToken": identityToken]
         if let rawNonce { payload["nonce"] = rawNonce }
+        if let authorizationCode { payload["authorizationCode"] = authorizationCode }
         req.httpBody = try JSONSerialization.data(withJSONObject: payload)
         let (data, resp) = try await session.data(for: req)
         try LisaAPICompatibility.validate(resp)
@@ -143,8 +147,13 @@ final class LisaClient {
             let webClientId: String?
             let iosClientId: String?
         }
+        struct DataProcessing: Decodable, Equatable {
+            let version: Int
+            let recipients: [String]
+        }
         let accounts: Bool?
         let google: Google?
+        let dataProcessing: DataProcessing?
     }
 
     static func authConfig(base: ServerConfig, session: URLSession = .shared) async throws -> AuthConfig {
@@ -249,6 +258,7 @@ final class LisaClient {
         var email: String?
         var verified: Bool?
         var plan: String?
+        var appleUserId: String?
     }
 
     func authMe() async throws -> AccountMe {
@@ -288,9 +298,15 @@ final class LisaClient {
 
     /// In-app account deletion (App Store 5.1.1(v)) — `DELETE /api/account`.
     /// Only works when the connection uses an account session.
-    func deleteAccount() async throws {
-        struct R: Decodable { let ok: Bool }
-        _ = try await decode("/api/account", method: "DELETE", as: R.self)
+    struct AccountDeletion: Decodable {
+        let ok: Bool
+        let requiresManualAppleRevocation: Bool?
+    }
+
+    func deleteAccount() async throws -> AccountDeletion {
+        let result = try await decode("/api/account", method: "DELETE", as: AccountDeletion.self)
+        guard result.ok else { throw LisaError.decode }
+        return result
     }
 
     /// Re-send the email-verification mail (`POST /api/auth/verify/resend`).
@@ -299,19 +315,6 @@ final class LisaClient {
         struct R: Decodable { let ok: Bool; let sent: Bool?; let alreadyVerified: Bool? }
         let r = try await decode("/api/auth/verify/resend", method: "POST", as: R.self)
         return r.sent ?? (r.alreadyVerified ?? false)
-    }
-
-    /// URL for a server asset (e.g. a mood portrait at /assets/lisa/<slug>.png),
-    /// carrying the token as a query param so AsyncImage — which can't set an
-    /// Authorization header — still authenticates against a non-loopback server.
-    func assetURL(_ path: String) -> URL? {
-        guard config.isConfigured, let base = config.baseURL,
-              let abs = URL(string: path, relativeTo: base),
-              var comps = URLComponents(url: abs, resolvingAgainstBaseURL: true) else { return nil }
-        if let token = config.token, !token.isEmpty {
-            comps.queryItems = (comps.queryItems ?? []) + [URLQueryItem(name: "token", value: token)]
-        }
-        return comps.url
     }
 
     /// `timeout` bounds a short REST call so an unreachable host (a paired LAN IP
@@ -502,17 +505,11 @@ final class LisaClient {
                     try LisaAPICompatibility.validate(resp)
                     let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
                     guard (200..<300).contains(code) else { continuation.finish(throwing: LisaError.http(code)); return }
-                    var dataLines: [String] = []
-                    for try await line in bytes.lines {
-                        if line.isEmpty {
-                            if !dataLines.isEmpty {
-                                let joined = dataLines.joined(separator: "\n")
-                                if let msg = SSEMessage(json: joined) { continuation.yield(msg) }
-                                dataLines.removeAll()
-                            }
-                        } else if line.hasPrefix("data:") {
-                            dataLines.append(String(line.dropFirst(line.hasPrefix("data: ") ? 6 : 5)))
-                        }
+                    var decoder = SSEDecoder()
+                    // Foundation's AsyncLineSequence skips empty lines, but
+                    // those lines are the event boundaries in SSE.
+                    for try await byte in bytes {
+                        if let message = decoder.append(byte) { continuation.yield(message) }
                     }
                     continuation.finish()
                 } catch {
@@ -521,6 +518,42 @@ final class LisaClient {
             }
             continuation.onTermination = { _ in task.cancel() }
         }
+    }
+}
+
+/// Incremental SSE framing. Decode UTF-8 only after the complete line arrives;
+/// preserve blank lines and accept LF, CRLF, or CR without double-dispatching.
+struct SSEDecoder {
+    private var line: [UInt8] = []
+    private var dataLines: [String] = []
+    private var skipLF = false
+
+    mutating func append(_ byte: UInt8) -> SSEMessage? {
+        if byte == 10 {
+            if skipLF { skipLF = false; return nil }
+            return finishLine()
+        }
+        if byte == 13 {
+            skipLF = true
+            return finishLine()
+        }
+        skipLF = false
+        line.append(byte)
+        return nil
+    }
+
+    private mutating func finishLine() -> SSEMessage? {
+        let text = String(decoding: line, as: UTF8.self)
+        line.removeAll(keepingCapacity: true)
+        if text.isEmpty {
+            defer { dataLines.removeAll(keepingCapacity: true) }
+            guard !dataLines.isEmpty else { return nil }
+            return SSEMessage(json: dataLines.joined(separator: "\n"))
+        }
+        if text.hasPrefix("data:") {
+            dataLines.append(String(text.dropFirst(text.hasPrefix("data: ") ? 6 : 5)))
+        }
+        return nil
     }
 }
 

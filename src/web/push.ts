@@ -216,6 +216,8 @@ export interface PushEvent {
   tag: string;
   /** Optional deep-link opened when the notification is tapped (ntfy `Click`). */
   click?: string;
+  /** Deliver without sound/vibration where the transport can (reach-out quiet hours). */
+  silent?: boolean;
 }
 
 /** Which notifications a session's prev→next transition warrants. Pure. */
@@ -263,7 +265,13 @@ type FetchLike = (
 export async function sendNtfy(
   server: string,
   topic: string,
-  ev: { title: string; body: string; priority: "high" | "default"; click?: string },
+  ev: {
+    title: string;
+    body: string;
+    priority: "high" | "default";
+    click?: string;
+    silent?: boolean;
+  },
   fetchImpl: FetchLike = fetch,
 ): Promise<boolean> {
   try {
@@ -273,7 +281,8 @@ export async function sendNtfy(
       body: ev.body,
       headers: {
         Title: ev.title,
-        Priority: ev.priority === "high" ? "high" : "default",
+        // ntfy "low" = no sound or vibration; used for quiet-hours deliveries.
+        Priority: ev.silent ? "low" : ev.priority === "high" ? "high" : "default",
         // ntfy opens this URL when the notification is tapped — a lisapocket://
         // deep-link routes into the app (see agentDeepLink).
         ...(ev.click ? { Click: ev.click } : {}),
@@ -344,9 +353,11 @@ export function buildApnsPayload(ev: {
   title: string;
   body: string;
   click?: string;
+  silent?: boolean;
 }): Record<string, unknown> {
   return {
-    aps: { alert: { title: ev.title, body: ev.body }, sound: "default" },
+    // No `sound` key ⇒ the banner still shows but the phone stays quiet.
+    aps: { alert: { title: ev.title, body: ev.body }, ...(ev.silent ? {} : { sound: "default" }) },
     // Custom key the app reads on tap to deep-link (mirrors the ntfy Click URL).
     ...(ev.click ? { link: ev.click } : {}),
   };
@@ -398,7 +409,13 @@ let cachedApnsJwt: { token: string; at: number; id: string } | null = null;
 export async function sendApns(
   cfg: ApnsConfig,
   deviceToken: string,
-  ev: { title: string; body: string; priority: "high" | "default"; click?: string },
+  ev: {
+    title: string;
+    body: string;
+    priority: "high" | "default";
+    click?: string;
+    silent?: boolean;
+  },
   post: ApnsPoster = realApnsPost,
   nowSec: number = Math.floor(Date.now() / 1000),
 ): Promise<boolean> {
@@ -628,6 +645,20 @@ export class PushBridge {
       },
       "billing#anomaly",
     );
+  }
+
+  /**
+   * Generic entry point for the reach-out gate's push transport
+   * (src/reachout/deliver.ts). Same prefs filter + throttle as every other
+   * event. Callers outside the gate must not use this to bypass it.
+   */
+  notify(ev: PushEvent, throttleKey: string): void {
+    this.fire(ev, throttleKey);
+  }
+
+  /** Is anything subscribed at all? Lets the gate skip a push nobody would get. */
+  hasSubscribers(): boolean {
+    return this.subs().length > 0;
   }
 
   private fire(ev: PushEvent, throttleKey: string): void {

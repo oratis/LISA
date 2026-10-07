@@ -16,7 +16,7 @@
  */
 import type { ProviderUsage } from "../providers/types.js";
 
-export const PRICES_VERSION = 1;
+export const PRICES_VERSION = 2;
 export const MARGIN = 1.4;
 
 export type ModelTier = "standard" | "premium";
@@ -42,18 +42,104 @@ function face(usdPerM: number): number {
  * Longest-prefix match table. List prices as of 2026-07 — re-check the
  * provider price pages before onboarding a new model.
  */
-const TABLE: Array<{ prefix: string; price: ModelPrice }> = [
+const TABLE: Array<{ prefix: string; exact?: boolean; price: ModelPrice }> = [
+  // Google standard text/image pricing, verified 2026-09-27:
+  // https://ai.google.dev/gemini-api/docs/pricing#gemini-2.5-flash
+  // Exact match: Flash-Lite, image, audio and preview variants have other rates.
+  {
+    prefix: "gemini-2.5-flash",
+    exact: true,
+    price: {
+      inPerM: face(0.3),
+      outPerM: face(2.5),
+      cacheWritePerM: face(0.3),
+      cacheReadPerM: face(0.03),
+      tier: "standard",
+    },
+  },
   // GLM (Zhipu, open.bigmodel.cn) — the standard/free-window family.
-  { prefix: "glm-", price: { inPerM: face(0.6), outPerM: face(2.2), cacheWritePerM: face(0.6), cacheReadPerM: face(0.11), tier: "standard" } },
-  { prefix: "chatglm-", price: { inPerM: face(0.6), outPerM: face(2.2), cacheWritePerM: face(0.6), cacheReadPerM: face(0.11), tier: "standard" } },
+  {
+    prefix: "glm-",
+    price: {
+      inPerM: face(0.6),
+      outPerM: face(2.2),
+      cacheWritePerM: face(0.6),
+      cacheReadPerM: face(0.11),
+      tier: "standard",
+    },
+  },
+  {
+    prefix: "chatglm-",
+    price: {
+      inPerM: face(0.6),
+      outPerM: face(2.2),
+      cacheWritePerM: face(0.6),
+      cacheReadPerM: face(0.11),
+      tier: "standard",
+    },
+  },
   // Anthropic — premium (paid balance only).
-  { prefix: "claude-haiku", price: { inPerM: face(1), outPerM: face(5), cacheWritePerM: face(1.25), cacheReadPerM: face(0.1), tier: "premium" } },
-  { prefix: "claude-sonnet", price: { inPerM: face(3), outPerM: face(15), cacheWritePerM: face(3.75), cacheReadPerM: face(0.3), tier: "premium" } },
-  { prefix: "claude-opus", price: { inPerM: face(5), outPerM: face(25), cacheWritePerM: face(6.25), cacheReadPerM: face(0.5), tier: "premium" } },
-  { prefix: "claude-", price: { inPerM: face(3), outPerM: face(15), cacheWritePerM: face(3.75), cacheReadPerM: face(0.3), tier: "premium" } },
+  {
+    prefix: "claude-haiku",
+    price: {
+      inPerM: face(1),
+      outPerM: face(5),
+      cacheWritePerM: face(1.25),
+      cacheReadPerM: face(0.1),
+      tier: "premium",
+    },
+  },
+  {
+    prefix: "claude-sonnet",
+    price: {
+      inPerM: face(3),
+      outPerM: face(15),
+      cacheWritePerM: face(3.75),
+      cacheReadPerM: face(0.3),
+      tier: "premium",
+    },
+  },
+  {
+    prefix: "claude-opus",
+    price: {
+      inPerM: face(5),
+      outPerM: face(25),
+      cacheWritePerM: face(6.25),
+      cacheReadPerM: face(0.5),
+      tier: "premium",
+    },
+  },
+  {
+    prefix: "claude-",
+    price: {
+      inPerM: face(3),
+      outPerM: face(15),
+      cacheWritePerM: face(3.75),
+      cacheReadPerM: face(0.3),
+      tier: "premium",
+    },
+  },
   // OpenAI — premium.
-  { prefix: "gpt-4o-mini", price: { inPerM: face(0.15), outPerM: face(0.6), cacheWritePerM: face(0.15), cacheReadPerM: face(0.075), tier: "premium" } },
-  { prefix: "gpt-", price: { inPerM: face(2.5), outPerM: face(10), cacheWritePerM: face(2.5), cacheReadPerM: face(1.25), tier: "premium" } },
+  {
+    prefix: "gpt-4o-mini",
+    price: {
+      inPerM: face(0.15),
+      outPerM: face(0.6),
+      cacheWritePerM: face(0.15),
+      cacheReadPerM: face(0.075),
+      tier: "premium",
+    },
+  },
+  {
+    prefix: "gpt-",
+    price: {
+      inPerM: face(2.5),
+      outPerM: face(10),
+      cacheWritePerM: face(2.5),
+      cacheReadPerM: face(1.25),
+      tier: "premium",
+    },
+  },
 ];
 
 /**
@@ -61,12 +147,18 @@ const TABLE: Array<{ prefix: string; price: ModelPrice }> = [
  * a table gap can never hand out free inference; tier "premium" keeps it off
  * the free window.
  */
-const FALLBACK: ModelPrice = { inPerM: face(3), outPerM: face(15), cacheWritePerM: face(3.75), cacheReadPerM: face(0.3), tier: "premium" };
+const FALLBACK: ModelPrice = {
+  inPerM: face(3),
+  outPerM: face(15),
+  cacheWritePerM: face(3.75),
+  cacheReadPerM: face(0.3),
+  tier: "premium",
+};
 
 export function priceForModel(model: string): ModelPrice {
   const m = model.trim().toLowerCase();
-  for (const { prefix, price } of TABLE) {
-    if (m.startsWith(prefix)) return price;
+  for (const { prefix, exact, price } of TABLE) {
+    if (exact ? m === prefix : m.startsWith(prefix)) return price;
   }
   return FALLBACK;
 }
