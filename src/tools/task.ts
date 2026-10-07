@@ -1,4 +1,5 @@
 import type { ToolDefinition } from "../types.js";
+import type { Provider } from "../providers/types.js";
 import { runSubagent } from "../subagent.js";
 
 interface TaskInput {
@@ -23,6 +24,8 @@ export function createTaskTool(deps: {
   cwd: string;
   signal: AbortSignal;
   defaultModel: string;
+  /** Test seam: the provider for a subagent's model. Unset ⇒ the provider registry. */
+  providerFor?: (model: string) => Provider;
 }): ToolDefinition<TaskInput, string> {
   return {
     name: "task",
@@ -57,23 +60,37 @@ export function createTaskTool(deps: {
       required: ["description", "prompt"],
     },
     async execute(input, ctx) {
+      // A run with a USD cap spends inside it: the subagent gets what is left
+      // (and makes no call that does not fit), and every amount it spends is
+      // counted against the parent's cap as it is spent.
+      const cap = ctx?.costCap;
+      const remaining = cap?.remainingMicroUSD() ?? 0;
+      if (cap && !(remaining > 0)) {
+        return `[subagent: ${input.description} — not started: this run's cost cap is spent]`;
+      }
       const tools = input.type === "explore" ? deps.readOnlyToolset() : deps.fullToolset();
       const system = input.type === "explore" ? EXPLORE_SYSTEM : GENERAL_SYSTEM;
+      const model = input.model ?? deps.defaultModel;
       const result = await runSubagent({
         prompt: input.prompt,
         systemPrompt: system,
         tools,
         cwd: deps.cwd,
         signal: deps.signal,
-        model: input.model ?? deps.defaultModel,
+        model,
+        ...(deps.providerFor ? { provider: deps.providerFor(model) } : {}),
         // A dispatched subagent inherits the parent turn's confinement — it must
         // not be able to escape the sandbox its caller runs under. H2.
         sandboxMode: ctx?.sandboxMode,
+        ...(cap
+          ? { costCapMicroUSD: remaining, onCostCharged: (microUSD) => cap.charge(microUSD) }
+          : {}),
         // …and the parent turn's approval gate: without this a subagent would
         // run its tools with no Warden decision at all.
         approval: ctx?.approval,
       });
-      return `[subagent: ${input.description} — ${result.toolCallCount} tool calls, ${result.outputTokens} tokens]\n${result.text}`;
+      const stopped = result.stopReason === "budget_exceeded" ? ", stopped by its budget" : "";
+      return `[subagent: ${input.description} — ${result.toolCallCount} tool calls, ${result.outputTokens} tokens${stopped}]\n${result.text}`;
     },
   };
 }

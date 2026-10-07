@@ -12,6 +12,11 @@ export interface ProviderResult {
   content: Anthropic.ContentBlock[];
   stopReason: string;
   usage: ProviderUsage;
+  /**
+   * The model that actually served the call, when it can differ from the one
+   * requested (a fallback chain sets it). Unset ⇒ the requested model.
+   */
+  model?: string;
 }
 
 export interface ProviderStreamHandlers {
@@ -36,5 +41,11 @@ export interface ProviderRunOpts {
 
 export interface Provider {
   readonly name: string;
+  /**
+   * Every model a call may be served by, for a provider that can answer with
+   * a model other than the requested one (a fallback chain). Unset ⇒ only the
+   * requested model. The cost cap reserves for the dearest of them.
+   */
+  readonly models?: readonly string[];
   runTurn(opts: ProviderRunOpts): Promise<ProviderResult>;
 }

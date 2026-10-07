@@ -416,6 +416,31 @@ Her soul / journal / desires don't care which model wrote them. The birth artifa
 
 ---
 
+## A smaller model for background work
+
+Chat, planning and execution always run on your main model (`--model` / `LISA_MODEL`). Background classification — grading mail, triaging feed items — runs on a smaller one:
+
+| `LISA_MODEL_SMALL` | Background work uses |
+| --- | --- |
+| unset | the small model of your main model's family, if you have a key for it: `claude-haiku-4-5` for Claude, `gemini-2.5-flash-lite` for Gemini, `gpt-4o-mini` for OpenAI. Other providers keep the main model. |
+| a model id (`gpt-4o-mini`, `deepseek-chat`, …) | that model, if you have a key for it |
+| `local://[backend/]model` (`local://ollama/qwen2.5:3b`) | that model on your local runtime (`ollama`, `lmstudio` or `llamacpp`) — nothing leaves your machine for these calls |
+
+```sh
+export LISA_MODEL=claude-sonnet-4-6
+export LISA_MODEL_SMALL=local://ollama/qwen2.5:3b
+```
+
+If the small model has no credentials, the main model is used instead. On LISA Cloud a small model is used only when it is priced in LISA's price table at or below the main model, on the same billing tier.
+
+### An estimated cost budget for one run (for integrators)
+
+`runAgent({ costCapMicroUSD })` / `runSubagent({ costCapMicroUSD })` stop a run before any model call whose estimated reservation no longer fits under a USD ceiling (micro-USD, at the rates in `src/billing/prices.ts`), with `stopReason: "budget_exceeded"`. The output ceiling handed to the provider is clamped to what is left. A call that a fallback chain (`LISA_MODEL_FALLBACK`) may serve is reserved at the dearest link and charged at the link that answered; a provider that answers but reports zero usage is charged what the call was admitted with; subagents started by the `task` tool get what is left and their spend counts against the parent's cap.
+
+This is an estimate-based circuit breaker, not a guaranteed maximum charge. Prompt tokenization, provider framing, multimodal input, missing usage and prices outside the local table can cause an overrun. The output limit also depends on the provider honoring it. Unknown models display a fallback-rate estimate with an explicit unknown-price label. Production call sites must opt into this API; merging it does not apply a USD cap to every chat or scheduled task. Existing cloud admission and task token/time budgets still apply.
+
+---
+
 ## Caveats by provider
 
 | Provider | Notes |

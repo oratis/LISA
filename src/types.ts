@@ -50,6 +50,16 @@ export interface ToolContext {
    */
   sandboxMode?: import("./sandbox/mode.js").SandboxMode;
   /**
+   * Set by the agent loop when the run has a USD cap (`costCapMicroUSD`). A
+   * tool that makes model calls of its own — a subagent — must spend inside
+   * it: give the work at most `remainingMicroUSD()` and report every amount
+   * it spends with `charge`, which the run counts against its own cap.
+   */
+  costCap?: {
+    remainingMicroUSD(): number;
+    charge(microUSD: number): void;
+  };
+  /**
    * The approval gate of the turn this tool is running in. A tool that starts
    * a nested agent run (the `task` subagent) must hand it down, so the nested
    * run's tool calls are decided by the same gate — and, under Warden, by the

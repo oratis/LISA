@@ -26,17 +26,29 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { Content, FunctionCallingConfigMode, GoogleGenAI, Part } from "@google/genai";
 import type { StoredMessage } from "../types.js";
+import { normalizeModelId } from "../billing/prices.js";
 import { withStreamRetry } from "./stream-retry.js";
 import type { Provider, ProviderResult, ProviderRunOpts } from "./types.js";
+
+export interface GeminiProviderOptions {
+  apiKey?: string;
+  baseURL?: string;
+  /**
+   * Extra request headers. The LISA gateway authenticates the account session
+   * from `Authorization: Bearer …`, which the Google client does not send on
+   * its own (it uses `x-goog-api-key`).
+   */
+  headers?: Record<string, string>;
+}
 
 export class GeminiProvider implements Provider {
   readonly name = "gemini";
   // Lazily constructed on first runTurn so that merely importing the provider
   // registry (Anthropic-only users, unit tests) doesn't load @google/genai.
   private client: GoogleGenAI | null = null;
-  private readonly clientOpts: { apiKey?: string; baseURL?: string };
+  private readonly clientOpts: GeminiProviderOptions;
 
-  constructor(opts: { apiKey?: string; baseURL?: string } = {}) {
+  constructor(opts: GeminiProviderOptions = {}) {
     this.clientOpts = opts;
   }
 
@@ -48,7 +60,14 @@ export class GeminiProvider implements Provider {
       // via httpOptions.
       this.client = new GoogleGenAI({
         apiKey: this.clientOpts.apiKey,
-        ...(this.clientOpts.baseURL ? { httpOptions: { baseUrl: this.clientOpts.baseURL } } : {}),
+        ...(this.clientOpts.baseURL || this.clientOpts.headers
+          ? {
+              httpOptions: {
+                ...(this.clientOpts.baseURL ? { baseUrl: this.clientOpts.baseURL } : {}),
+                ...(this.clientOpts.headers ? { headers: this.clientOpts.headers } : {}),
+              },
+            }
+          : {}),
       });
     }
     return this.client;
@@ -74,7 +93,9 @@ export class GeminiProvider implements Provider {
     // a transient empty-stream retry (see withStreamRetry).
     return withStreamRetry({ signal: opts.signal }, async (markEmitted) => {
       const stream = await client.models.generateContentStream({
-        model: opts.model,
+        // Gemini ids are lower-case; send the normalised form the managed-key
+        // gate checked and the gateway route admits.
+        model: normalizeModelId(opts.model),
         contents,
         config: {
           // Aborts the in-flight request (the SDK then throws an abort error).

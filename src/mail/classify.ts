@@ -17,7 +17,7 @@
  * (the filter is idempotent) so no caller of this module can skip it.
  */
 import { runSubagent } from "../subagent.js";
-import { DEFAULT_MODEL } from "../llm.js";
+import { routeBackgroundCall } from "../model/router.js";
 import type { Provider } from "../providers/types.js";
 import {
   REDACTED_OTP,
@@ -233,14 +233,18 @@ export async function classifyMail(raws: RawMail[], opts: ClassifyOpts = {}): Pr
   for (let i = 0; i < raws.length; i += size) {
     const batch = raws.slice(i, i + size);
     try {
+      // Grading mail is small-model work (W12): routed to the small tier unless
+      // the caller pinned a provider. Resolved inside the try so an unusable
+      // route degrades to heuristics like any other model failure.
+      const call = routeBackgroundCall("classify", { model: opts.model, provider: opts.provider });
       const res = await runSubagent({
         prompt: buildClassifyPrompt(batch),
         systemPrompt: CLASSIFY_SYSTEM,
         tools: [],
         cwd: process.cwd(),
         signal: opts.signal ?? new AbortController().signal,
-        model: opts.model ?? DEFAULT_MODEL,
-        provider: opts.provider,
+        model: call.model,
+        provider: call.provider,
         budgetTokens: 20_000,
       });
       out.push(...parseClassification(res.text, batch, now()));

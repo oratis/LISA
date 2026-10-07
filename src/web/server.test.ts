@@ -542,3 +542,25 @@ test("public auth config discloses AI recipients without calling a model", async
     await s.close();
   }
 });
+
+test("every gateway face is behind the account-session gate, including /gw/gemini", async () => {
+  const s = await boot();
+  try {
+    for (const route of [
+      "/gw/anthropic/v1/messages",
+      "/gw/openai/v1/chat/completions",
+      "/gw/gemini/v1beta/models/gemini-2.5-flash:generateContent",
+      "/gw/gemini/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse",
+    ]) {
+      const r = await request(s.port, "POST", route, {
+        headers: { "content-type": "application/json", "x-goog-api-key": "not-a-session" },
+        body: JSON.stringify({ model: "x", contents: [{ role: "user", parts: [{ text: "hi" }] }] }),
+      });
+      // No account session ⇒ the gateway handler is never reached.
+      assert.equal(r.status, 403, route);
+      assert.deepEqual(JSON.parse(r.text), { error: "account_session_required" }, route);
+    }
+  } finally {
+    await s.close();
+  }
+});

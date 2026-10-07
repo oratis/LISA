@@ -2263,7 +2263,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // Macs/CLIs. Account sessions only — never the shared demo token.
     if (
       req.method === "POST" &&
-      (url.startsWith("/gw/anthropic/") || url.startsWith("/gw/openai/"))
+      (url.startsWith("/gw/anthropic/") ||
+        url.startsWith("/gw/openai/") ||
+        url.startsWith("/gw/gemini/"))
     ) {
       try {
         const acct = cloud && accountUid ? await getAccount(accountUid) : null;

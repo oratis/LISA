@@ -155,12 +155,31 @@ const FALLBACK: ModelPrice = {
   tier: "premium",
 };
 
-export function priceForModel(model: string): ModelPrice {
-  const m = model.trim().toLowerCase();
+/**
+ * A model id in the one form the price table, the managed-key gate and the
+ * gateway's Gemini route all use: trimmed, lower-case. A client sends this
+ * form, so the model it checked is the model the gateway serves.
+ */
+export function normalizeModelId(model: string): string {
+  return model.trim().toLowerCase();
+}
+
+/**
+ * The table row that prices `model`, or null when no row matches and it would
+ * be charged at the conservative fallback. Callers that must not serve or
+ * route to a model LISA has no verified rate for (the gateway's Gemini face,
+ * the model router in the hosted edition) check this instead of guessing.
+ */
+export function explicitPriceForModel(model: string): ModelPrice | null {
+  const m = normalizeModelId(model);
   for (const { prefix, exact, price } of TABLE) {
     if (exact ? m === prefix : m.startsWith(prefix)) return price;
   }
-  return FALLBACK;
+  return null;
+}
+
+export function priceForModel(model: string): ModelPrice {
+  return explicitPriceForModel(model) ?? FALLBACK;
 }
 
 export function modelTier(model: string): ModelTier {

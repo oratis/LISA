@@ -22,13 +22,21 @@ export class FallbackProvider implements Provider {
     if (chain.length === 0) throw new Error("FallbackProvider requires at least one link");
   }
 
+  /** Every link's model: any of them may serve a call. */
+  get models(): readonly string[] {
+    return this.chain.map((link) => link.model);
+  }
+
   async runTurn(opts: ProviderRunOpts): Promise<ProviderResult> {
     let lastErr: unknown;
     for (let i = 0; i < this.chain.length; i++) {
       const link = this.chain[i]!;
       try {
         // Each link runs with its own model id; everything else is unchanged.
-        return await link.provider.runTurn({ ...opts, model: link.model });
+        // The result names the model that served it, so usage is priced at
+        // that model's rate rather than the chain head's.
+        const result = await link.provider.runTurn({ ...opts, model: link.model });
+        return { ...result, model: result.model ?? link.model };
       } catch (err) {
         lastErr = err;
         const next = this.chain[i + 1];

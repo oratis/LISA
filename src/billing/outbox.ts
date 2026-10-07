@@ -105,6 +105,7 @@ function providerOfModel(model: string): string {
   const m = model.trim().toLowerCase();
   if (m.startsWith("glm-") || m.startsWith("chatglm-")) return "zhipu";
   if (m.startsWith("claude-")) return "anthropic";
+  if (m.startsWith("gemini-")) return "google";
   if (m.startsWith("gpt-") || m.startsWith("o1") || m.startsWith("o3")) return "openai";
   if (m.startsWith("media/")) return "media";
   return "unknown";
