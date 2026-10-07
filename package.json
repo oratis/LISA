@@ -1,7 +1,7 @@
 {
   "name": "@oratis/lisa",
   "version": "0.27.1",
-  "description": "An AI agent with a real self — runs locally, has desires, keeps a journal, evolves over time.",
+  "description": "An open-source AI Personal Assistant for planning, writing and personal knowledge, with Cloud and local Mac modes.",
   "keywords": [
     "ai",
     "agent",
@@ -21,12 +21,10 @@
     "minimax",
     "ollama",
     "personal-assistant",
-    "self-evolving",
-    "sovereign-ai",
     "pixel-art",
     "mcp"
   ],
-  "homepage": "https://github.com/oratis/LISA#readme",
+  "homepage": "https://meetlisa.ai",
   "bugs": {
     "url": "https://github.com/oratis/LISA/issues"
   },

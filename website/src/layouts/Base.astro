@@ -12,7 +12,7 @@ export interface Props {
   lang?: "en" | "zh-CN";
   description?: string;
 }
-const { title, lang = "en", description = "An AI agent with a real self — a self-evolving local AI." } = Astro.props;
+const { title, lang = "en", description = "LISA — an open-source AI Personal Assistant for planning, writing and personal knowledge." } = Astro.props;
 
 const navItems = lang === "zh-CN"
   ? [
@@ -44,7 +44,7 @@ const downloadHref = "https://github.com/oratis/LISA/releases/latest";
 const homeHref = lang === "zh-CN" ? "/zh-CN/" : "/";
 
 const canonical = new URL(Astro.url.pathname, Astro.site ?? "https://meetlisa.ai").href;
-const ogImage = "https://meetlisa.ai/og-cover.png";
+const ogImage = "https://meetlisa.ai/og-assistant-v2.png";
 
 // Footer link groups
 const productLinks = navItems.filter((i) => !i.external);
@@ -55,8 +55,8 @@ const projectLinks = [
   { href: lang === "zh-CN" ? "/zh-CN/privacy" : "/privacy", label: lang === "zh-CN" ? "隐私" : "Privacy" },
 ];
 const foot = lang === "zh-CN"
-  ? { product: "产品", project: "项目", tagline: "主权属于用户的本地 AI · 活在 ~/.lisa", rights: "MIT 开源 · 你的机器,你做主" }
-  : { product: "Product", project: "Project", tagline: "Sovereign local AI · lives in ~/.lisa", rights: "MIT open source · your machine, your rules" };
+  ? { product: "产品", project: "项目", tagline: "个人 AI 助手 · Cloud 或你的 Mac", rights: "MIT 开源 · 你的机器,你做主" }
+  : { product: "Product", project: "Project", tagline: "AI Personal Assistant · Cloud or your Mac", rights: "MIT open source · your machine, your rules" };
 ---
 <!doctype html>
 <html lang={lang}>
@@ -78,8 +78,8 @@ const foot = lang === "zh-CN"
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />
     <meta property="og:image" content={ogImage} />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
+    <meta property="og:image:width" content="1731" />
+    <meta property="og:image:height" content="909" />
     <meta property="og:locale" content={lang === "zh-CN" ? "zh_CN" : "en_US"} />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={`${title} · LISA`} />
@@ -91,7 +91,7 @@ const foot = lang === "zh-CN"
       <a class="brand" href={homeHref}>
         <img src="/assets/lisa-app-icon.png" alt="" />
         <span class="brand-name">LISA</span>
-        <span class="brand-badge">SOVEREIGN</span>
+        <span class="brand-badge">AI ASSISTANT</span>
       </a>
       <nav class="nav">
         {navItems.map(item => (
@@ -383,7 +383,7 @@ const foot = lang === "zh-CN"
       .btn { display: inline-flex; align-items: center; gap: .5rem; font-family: var(--display); font-weight: 600; font-size: 1rem; padding: .8rem 1.3rem; border-radius: 10px; background: var(--panel); color: var(--ink); border: 1px solid var(--border-lit); transition: border-color .15s, color .15s, transform .12s; }
       .btn:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
 
-      @media (max-width: 720px) {
+      @media (max-width: 1200px) {
         body { font-size: 16px; }
         .topbar { flex-wrap: wrap; gap: .6rem; }
         .nav { order: 3; width: 100%; margin-left: 0; }

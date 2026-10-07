@@ -11,7 +11,7 @@
 #
 # See docs/PUBLISH.md for the full release ritual.
 class Lisa < Formula
-  desc "AI agent with a real self — sovereign, evolving, OSS"
+  desc "Open-source AI Personal Assistant for Cloud and your Mac"
   homepage "https://github.com/oratis/LISA"
   # Use the npm tarball, NOT the GitHub source tarball — it ships pre-built
   # dist/ (compiled JS + 114 pixel-art mood portraits) so the formula doesn't

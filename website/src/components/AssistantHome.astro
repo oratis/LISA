@@ -1,0 +1,105 @@
+---
+import Base from "../layouts/Base.astro";
+const { lang = "en" } = Astro.props;
+const zh = lang === "zh-CN";
+const prefix = zh ? "/zh-CN" : "";
+const copy = zh ? {
+  title: "个人 AI 助手", description: "LISA 是开源 AI Personal Assistant，帮助你规划、写作、整理知识。登录云端，或连接你自己的 Mac。",
+  eyebrow: "AI PERSONAL ASSISTANT", heading: "把想法变成", accent: "下一步。",
+  lede: "和 Lisa 一起规划一天、起草消息、整理值得记住的内容。登录 LISA Cloud 即可开始，也可以在自己的 Mac 上运行，连接你的工具与工作流。",
+  cloud: "开始云端对话", mac: "下载 Mac 版", install: "其他安装方式", tags: "开源 · 持久记忆 · 自选模型",
+  starters: "从一件小事开始", prompts: ["帮我安排今天最重要的三件事。", "把这个想法写成一封清晰的邮件。", "整理这些笔记，找出下一步。"],
+  featureTitle: "为日常工作留出更多空间。",
+  features: [
+    ["规划与写作", "从草稿开始", "一起梳理目标、写作和研究思路。查看工具活动，随时停止或重试回复。"],
+    ["长期上下文", "让有用的内容留下来", "同一实例保存记忆和个人知识库，帮助后续对话延续上下文。"],
+    ["本地工作流", "连接自己的工具", "在 Mac 上配置邮件、MCP 和编程 agent。每项集成都需要相应的设置与权限。"],
+  ],
+  modeTitle: "选择适合你的运行方式。",
+  modes: [
+    ["LISA Cloud", "登录即可聊天", "无需准备 Mac 或模型 API key。账号提供使用额度，可按需购买额外额度。", "了解云端", "/zh-CN/cloud"],
+    ["你的 Mac", "在自己的环境中工作", "自行选择模型和本地集成。手机连接时，Mac 需要开机并可通过网络访问。", "安装指南", "/zh-CN/install"],
+  ],
+  boundary: "Cloud 与 Mac 分别保存聊天、记忆和凭据，不会自动同步。使用远程模型时，相关内容会发送给所选供应商。",
+  pocketTitle: "Lisa Pocket，随身入口。",
+  pocket: "iPhone 与 iPad app 支持 Cloud 和 My Mac 两套独立连接。当前版本已提交 App Store，等待审核，尚未公开上架。",
+  privacy: "你决定分享什么", privacyText: "Lisa Pocket 在发送 AI 聊天前说明接收方与数据用途，允许取消和撤回同意。云端账号可在设置中删除。AI 可能出错，请核对重要结果。",
+  policy: "隐私政策", source: "查看源码与开发状态", demo: "观看产品演示", cta: "从今天想完成的一件事开始。",
+} : {
+  title: "AI Personal Assistant", description: "LISA is an open-source AI Personal Assistant for planning, writing and personal knowledge. Sign in to Cloud or connect your own Mac.",
+  eyebrow: "AI PERSONAL ASSISTANT", heading: "Turn an idea into", accent: "your next step.",
+  lede: "Plan your day, draft a message, and keep useful ideas close with Lisa. Start with LISA Cloud, or run Lisa on your Mac and connect your own tools and workflow.",
+  cloud: "Start with Cloud", mac: "Download for Mac", install: "More ways to install", tags: "Open source · Persistent memory · Your choice of model",
+  starters: "Start with something small", prompts: ["Help me plan the three things that matter today.", "Turn this idea into a clear email.", "Organize these notes and suggest a next step."],
+  featureTitle: "Make room for everyday work.",
+  features: [
+    ["Planning & writing", "Start with a draft", "Work through goals, messages and research ideas. See tool activity, and stop or retry a response whenever you need."],
+    ["Lasting context", "Keep what is useful", "Memory and a personal knowledge base help conversations build on the context saved within your Lisa instance."],
+    ["Local workflows", "Connect your tools", "Configure mail, MCP and coding agents on your Mac. Each integration needs its own setup and permissions."],
+  ],
+  modeTitle: "Choose where Lisa works.",
+  modes: [
+    ["LISA Cloud", "Sign in and start chatting", "No Mac or model API key needed. An account allowance covers usage, with optional credit packs for more.", "Explore Cloud", "/cloud"],
+    ["Your Mac", "Work in your own environment", "Choose a model and local integrations. To connect from your phone, your Mac must be running and reachable.", "Installation guide", "/install"],
+  ],
+  boundary: "Cloud and Mac keep separate conversations, memories and credentials. They do not automatically sync. Remote models receive the relevant content you send them.",
+  pocketTitle: "Lisa Pocket, your mobile companion.",
+  pocket: "The iPhone and iPad app supports separate Cloud and My Mac connections. The current version has been submitted to the App Store and is waiting for review; it is not publicly available yet.",
+  privacy: "Choose what you share", privacyText: "Before AI chat, Lisa Pocket explains the recipients and data use. You can cancel or withdraw permission, and delete your cloud account in Settings. AI can make mistakes; check important results.",
+  policy: "Privacy policy", source: "Source & development status", demo: "Watch the product demo", cta: "Start with one thing you want to get done.",
+};
+---
+<Base title={copy.title} lang={lang} description={copy.description}>
+  <section class="hero">
+    <div>
+      <p class="eyebrow"><span class="rule"></span>{copy.eyebrow}</p>
+      <h1>{copy.heading}<br /><span class="accent">{copy.accent}</span></h1>
+      <p class="lede">{copy.lede}</p>
+      <div class="actions">
+        <a class="btn-primary" href="https://cloud.meetlisa.ai">{copy.cloud} →</a>
+        <a class="btn-ghost" href="https://github.com/oratis/LISA/releases/latest">{copy.mac}</a>
+      </div>
+      <p class="note">{copy.tags}</p>
+    </div>
+    <aside class="starter-panel" aria-label={copy.starters}>
+      <img src="/assets/lisa-app-icon.png" alt="Lisa" width="112" height="112" />
+      <h2>{copy.starters}</h2>
+      <ul>{copy.prompts.map((prompt) => <li>{prompt}</li>)}</ul>
+    </aside>
+  </section>
+  <section class="section">
+    <h2>{copy.featureTitle}</h2>
+    <div class="feature-grid">{copy.features.map(([label, title, text]) => <article class="card"><p class="clabel">{label}</p><h3>{title}</h3><p>{text}</p></article>)}</div>
+  </section>
+  <section class="section">
+    <h2>{copy.modeTitle}</h2>
+    <div class="mode-grid">{copy.modes.map(([label, title, text, link, href]) => <article class="card"><p class="clabel">{label}</p><h3>{title}</h3><p>{text}</p><a href={href}>{link} →</a></article>)}</div>
+    <p class="note boundary">{copy.boundary}</p>
+  </section>
+  <section class="section mode-grid">
+    <article><h2>{copy.pocketTitle}</h2><p class="lede">{copy.pocket}</p><a href="https://github.com/oratis/LISA">{copy.source} →</a></article>
+    <article><h2>{copy.privacy}</h2><p class="lede">{copy.privacyText}</p><a href={`${prefix}/privacy`}>{copy.policy} →</a></article>
+  </section>
+  <section class="cta-band">
+    <h2>{copy.cta}</h2>
+    <div class="actions"><a class="btn-primary" href="https://cloud.meetlisa.ai">{copy.cloud} →</a><a class="btn-ghost" href={`${prefix}/install`}>{copy.install}</a><a class="btn-ghost" href="https://www.youtube.com/watch?v=J_00iwAB_WI">{copy.demo} ↗</a></div>
+  </section>
+</Base>
+<style>
+  .hero { display:grid; grid-template-columns:1.25fr 1fr; gap:clamp(2rem,5vw,4rem); align-items:center; }
+  .lede { font-size:1.08rem; color:var(--muted); line-height:1.7; max-width:62ch; }
+  .hero h1 { font-size:clamp(2.5rem,5.3vw,4.6rem); line-height:1.08; letter-spacing:-.04em; }
+  .hero .actions { margin:1.7rem 0 1rem; }
+  .starter-panel { padding:2rem; border:1px solid var(--border); border-radius:24px; background:radial-gradient(ellipse at top right,#173139 0%,var(--panel) 70%); }
+  .starter-panel img { border-radius:26px; display:block; margin-bottom:1.4rem; }
+  .starter-panel h2 { font-size:1.2rem; }
+  .starter-panel ul { list-style:none; padding:0; margin:1rem 0 0; display:grid; gap:.75rem; }
+  .starter-panel li { border:1px solid var(--border); border-radius:12px; padding:.9rem 1rem; color:var(--ink); background:#0a0b0d80; line-height:1.5; }
+  .section { margin-top:4rem; }
+  .feature-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:1rem; margin-top:1.3rem; }
+  .mode-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:1.5rem; margin-top:1.3rem; }
+  .card a { display:inline-block; margin-top:1rem; }
+  .boundary { max-width:92ch; line-height:1.7; margin-top:1.2rem; }
+  .cta-band { margin-top:4rem; }
+  @media(max-width:820px) { .hero,.feature-grid,.mode-grid { grid-template-columns:1fr; } .hero { gap:2rem; } .starter-panel { padding:1.5rem; } .section { margin-top:3rem; } }
+</style>

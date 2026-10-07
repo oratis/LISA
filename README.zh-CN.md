@@ -9,7 +9,7 @@
 
 > [English](./README.md) ｜ 中文
 
-**一个开源个人 AI 助手，拥有持久记忆、持续演变的身份，以及与你一起工作的工具。** 用 Lisa 规划一天、起草消息、整理个人知识库，或在 Mac 上协调编程 agent。可以使用托管的 LISA Cloud 聊天，也可以自行运行、选择模型。
+**开源 AI Personal Assistant（个人 AI 助手），帮助你规划、写作和整理个人知识。** 用 Lisa 规划一天、起草消息、整理个人知识库，或在 Mac 上协调编程 agent。可以使用托管的 LISA Cloud 聊天，也可以自行运行、选择模型。
 
 [官网](https://meetlisa.ai) · [使用指南](docs/GUIDE.zh-CN.md) · [最新版本](https://github.com/oratis/LISA/releases/latest) · [路线图](docs/PLAN_ALWAYS_ON_UPGRADE_2026-09-30.md)
 
@@ -56,7 +56,7 @@ lisa serve --web        # Web 工作区：http://localhost:5757
 - **维护个人知识库。** 保存链接，导入受支持的文章与视频字幕，检索带链接的 wiki，并从已配置的信息源生成简报。
 - **协调编程 agent。** 观察支持的 Claude Code、Codex、OpenCode、Aider 会话，派发任务、对比 worktree，并审批 LISA-managed agent 的动作。具体控制取决于集成与本地配置。
 - **连接本地工作流。** 可配置只读邮件、MCP、skills、插件，以及 Telegram / Discord / Slack / 飞书 / iMessage / webhook 渠道；登录云账号不会自动连接这些服务。
-- **给 Lisa 独立工作时间。** 配置后的 heartbeat 和反思执行常驻事务与愿望。通用持久任务引擎仍在审查中，内存中的编程 agent 不等于可恢复的长期任务。
+- **给 Lisa 独立工作时间。** 当前 `main` 新增持久目标、例程与本地 watcher，支持保存运行记录、取消和恢复。聊天创建的任务默认关闭，需要你启用；托管任务默认关闭，未接入审批的任务副作用会被拒绝。
 - **看见她的状态。** 像素房间、情绪立绘与 Mac 灵动岛反映实际活动；手机小组件和 Live Activity 依赖已配置、可达的 Mac 与通知设置。
 
 ## 记忆、身份与控制
@@ -85,11 +85,13 @@ Warden 尚未覆盖全部执行入口，也不能替代操作系统沙箱。凭�
 | --- | --- |
 | 个人助手入口、Cloud/Mac 隔离、流式回复与历史修复 | 已合并；原生与生产验证见[执行记录](docs/EXECUTION_PERSONAL_ASSISTANT_2026-09-27.md) |
 | Warden 核心 / 凭据代理 / 主动消息规则 | 已合并到 `main`；Web 聊天策略需要主动启用 |
-| 持久目标、例程和 watcher | [PR #403](https://github.com/oratis/LISA/pull/403)，尚未合并 |
-| 受保护的云端网页搜索与抓取 | [PR #404](https://github.com/oratis/LISA/pull/404)，尚未合并；设计为默认关闭 |
-| 按用途选择模型与成本控制 | [PR #407](https://github.com/oratis/LISA/pull/407)，尚未合并 |
+| 持久目标、例程和 watcher | [PR #403](https://github.com/oratis/LISA/pull/403)，已审查并集成；托管执行仍默认关闭 |
+| 受保护的云端网页搜索与抓取 | [PR #404](https://github.com/oratis/LISA/pull/404)，已合并；默认关闭，生产未启用 |
+| 按用途选择模型与成本控制 | [PR #407](https://github.com/oratis/LISA/pull/407)，已审查并集成；估算预算为主动接入的 API，不是全局费用上限 |
 | 跨设备记忆、租户级推送、日历/邮件写入连接器、电脑操作 | 规划中，不作为现有能力宣传 |
 | iOS App Store | 消耗型额度恢复与 AI 告知已修复；10 月 7 日提交 **1.2 (1791346539)**，现为**等待审核**（[回执](docs/REVIEW_2026-10-07.md)） |
+
+逐 PR 修复、验证与发布条件见[十月集成审查](docs/REVIEW_OPEN_PRS_2026-10-07.md)。
 
 Muse 与其他 PA 产品的调研用于指导方向，实现边界见 [Muse 对照](docs/RESEARCH_MUSE_2026-09-27.md)、[全天候助手调研](docs/RESEARCH_ALWAYS_ON_AGENTS_2026-09-30.md)及[升级计划](docs/PLAN_ALWAYS_ON_UPGRADE_2026-09-30.md)。LISA 是独立项目。
 

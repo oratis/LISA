@@ -193,3 +193,5 @@ Smaller, self-contained design write-ups that aren't plans with phases.
 | [DESIGN_CONCEPT_BENCH.md](./DESIGN_CONCEPT_BENCH.md) | A constructed-language benchmark that turns misunderstanding into a controlled variable. |
 | [DESIGN_LEXICAL_ENTRY.md](./DESIGN_LEXICAL_ENTRY.md) | Token-triggered lexical-entry memory. |
 | [SHOW_HN_DRAFT.md](./SHOW_HN_DRAFT.md) | The launch post draft. |
+
+- [2026-10-07 open PR integration and App Store audit](./REVIEW_OPEN_PRS_2026-10-07.md) — per-PR fixes, AI Personal Assistant positioning and release gates.

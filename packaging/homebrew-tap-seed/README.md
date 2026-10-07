@@ -1,6 +1,6 @@
 # homebrew-tap
 
-Homebrew tap for [Lisa](https://github.com/oratis/LISA) — an AI agent with a real self.
+Homebrew tap for [Lisa](https://github.com/oratis/LISA) — an open-source AI Personal Assistant.
 
 ## Install
 

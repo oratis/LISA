@@ -9,7 +9,7 @@
 
 > English ｜ [中文](./README.zh-CN.md)
 
-**An open-source personal AI assistant with persistent memory, an evolving identity, and tools to work alongside you.** Plan a day, draft a message, build a personal knowledge base, or coordinate coding agents from your Mac. Use LISA Cloud for hosted chat, or run your own instance with your choice of model.
+**An open-source AI Personal Assistant for planning, writing and personal knowledge.** Plan a day, draft a message, build a personal knowledge base, or coordinate coding agents from your Mac. Use LISA Cloud for hosted chat, or run your own instance with your choice of model.
 
 [Website](https://meetlisa.ai) · [Guide](docs/GUIDE.md) · [Latest release](https://github.com/oratis/LISA/releases/latest) · [Roadmap](docs/PLAN_ALWAYS_ON_UPGRADE_2026-09-30.md)
 
@@ -56,7 +56,7 @@ Anthropic, OpenAI, Gemini, OpenAI-compatible services and local models are suppo
 - **Keep a personal knowledge base.** Save links, ingest supported articles and video transcripts, search a linked wiki, and generate briefs from configured feeds.
 - **Coordinate coding agents.** Observe supported Claude Code, Codex, OpenCode and Aider sessions; dispatch work, compare worktrees and approve LISA-managed agent actions. Available controls depend on the integration and local configuration.
 - **Connect your local workflow.** Optional read-only mail, MCP tools, skills, plugins and Telegram / Discord / Slack / Feishu / iMessage / webhook channels. These require setup; a cloud login does not connect them for you.
-- **Give Lisa time to work.** Configured heartbeat and reflection runs pursue standing chores and desires. The always-on personal task engine is still under review; an in-memory coding agent is not a durable task.
+- **Give Lisa time to work.** Current `main` adds durable goals, routines and local watchers, with saved runs, cancellation and recovery. Tasks drafted in chat stay off until you enable them. Hosted tasks remain off by default; task side effects without an approval integration are denied.
 - **Keep her in view.** A pixel-art room, mood portraits and the Mac Island reflect real activity. Mobile widgets and Live Activities depend on a configured, reachable Mac and notification setup.
 
 ## Memory, identity and control
@@ -85,11 +85,13 @@ The latest tagged package is **v0.27.1**. Current `main` includes later work; a 
 | --- | --- |
 | Personal-assistant entry, Cloud/Mac isolation, streaming/history fixes | Merged; native and production evidence recorded in the [execution log](docs/EXECUTION_PERSONAL_ASSISTANT_2026-09-27.md) |
 | Warden core / credential broker / reach-out gate | Merged to `main`; Warden web-chat policy requires opt-in |
-| Durable goals, routines and watchers | [PR #403](https://github.com/oratis/LISA/pull/403), not merged |
-| Guarded cloud web search / fetch | [PR #404](https://github.com/oratis/LISA/pull/404), not merged; proposed feature is off by default |
-| Purpose-based model routing and cost controls | [PR #407](https://github.com/oratis/LISA/pull/407), not merged |
+| Durable goals, routines and watchers | [PR #403](https://github.com/oratis/LISA/pull/403), reviewed and integrated; hosted execution remains off by default |
+| Guarded cloud web search / fetch | [PR #404](https://github.com/oratis/LISA/pull/404), merged; off by default and disabled in production |
+| Purpose-based model routing and cost controls | [PR #407](https://github.com/oratis/LISA/pull/407), reviewed and integrated; estimated run budgets are an opt-in API, not a universal spending ceiling |
 | Cross-device memory, tenant-level push, calendar/mail-write connectors, computer use | Planned; not advertised as available |
 | iOS App Store | Fixes for consumable-credit restore and AI disclosure resubmitted October 7 as **1.2 (1791346539)**; **waiting for review** ([evidence](docs/REVIEW_2026-10-07.md)) |
+
+The [October integration audit](docs/REVIEW_OPEN_PRS_2026-10-07.md) records per-PR fixes, validation and release gates.
 
 Product research on Muse and other personal assistants informs the direction, with implementation boundaries documented in the [Muse review](docs/RESEARCH_MUSE_2026-09-27.md), [always-on research](docs/RESEARCH_ALWAYS_ON_AGENTS_2026-09-30.md) and [upgrade plan](docs/PLAN_ALWAYS_ON_UPGRADE_2026-09-30.md). LISA is an independent project.
 
