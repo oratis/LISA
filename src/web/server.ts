@@ -1215,7 +1215,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           }
         }
         const result = await runIdleOnce({
-          tools: runtimeTools,
+          // Unattended ⇒ the autonomy profile (identical to runtimeTools on a
+          // Mac; in cloud it excludes the hosted web tools).
+          tools: autonomyTools,
           cwd: process.cwd(),
           signal: abort.signal,
           model: activeModel,
