@@ -162,7 +162,7 @@ describe("FirestoreOutboxStore", () => {
     assert.ok(indexWrite >= 0 && eventWrite >= 0);
     assert.ok(
       indexWrite < eventWrite,
-      "a dangling index id self-heals; an unindexed event is invisible forever",
+      "an in-flight index id must survive until its event becomes durable",
     );
   });
 
@@ -191,7 +191,7 @@ describe("FirestoreOutboxStore", () => {
     assert.equal(open[0]!.lastError, "ledger unavailable");
   });
 
-  test("listOpen prunes ids whose document is gone or already committed", async () => {
+  test("listOpen retains a missing document until its writer finishes", async () => {
     const store = new FirestoreOutboxStore();
     await store.append(event(ACCT.uid, "evt-live"));
     await store.append(event(ACCT.uid, "evt-vanished"));
@@ -204,15 +204,40 @@ describe("FirestoreOutboxStore", () => {
       open.map((e) => e.id),
       ["evt-live"],
     );
-    // Pruned for good, not re-walked on every sweep: a second listOpen reads
-    // the rewritten index and never touches the vanished id again.
+    // A missing event is indistinguishable from an in-flight append. Retry it.
     calls = [];
     await store.listOpen(ACCT.uid);
     assert.equal(
       calls.some((c) => c.includes("evt-vanished")),
-      false,
-      "the dangling id survived the prune",
+      true,
+      "an in-flight event must remain indexed",
     );
+  });
+
+  test("a sweep between index and event writes cannot strand the append", async () => {
+    const writer = new FirestoreOutboxStore();
+    const sweeper = new FirestoreOutboxStore();
+    const saved = globalThis.fetch;
+    let swept = false;
+    globalThis.fetch = async (url, init) => {
+      if (
+        !swept &&
+        String(url).includes(":commit") &&
+        String(init?.body).includes(`/events/evt-interleaved"`)
+      ) {
+        swept = true;
+        assert.deepEqual(await sweeper.listOpen(ACCT.uid), []);
+      }
+      return saved(url, init);
+    };
+    try {
+      await writer.append(event(ACCT.uid, "evt-interleaved"));
+      assert.ok(swept);
+      assert.deepEqual(await sweeper.listTenants(), [ACCT.uid]);
+      assert.equal((await sweeper.listOpen(ACCT.uid))[0]?.id, "evt-interleaved");
+    } finally {
+      globalThis.fetch = saved;
+    }
   });
 
   test("listOpen returns oldest first, so the reconciler drains in order", async () => {
@@ -252,19 +277,20 @@ describe("FirestoreOutboxStore", () => {
     assert.equal(afterMore, 1, "the shared registry document is written once per process per uid");
   });
 
-  test("draining a tenant's last event lets the registry forget it", async () => {
+  test("draining retains registration for another process with a cached registration", async () => {
     const store = new FirestoreOutboxStore();
     const e = event(ACCT.uid, "evt-last");
     await store.append(e);
     assert.deepEqual(await store.listTenants(), [ACCT.uid]);
 
     await store.update({ ...e, status: "committed" });
-    // A clean drain produces no STALE id — update() already removed the
-    // committed id from the index — so the registry used to keep this uid
-    // forever and the 15-minute reconcile sweep grew with every account that
-    // ever settled anything. An index that exists and is empty means drained.
     assert.deepEqual(await store.listOpen(ACCT.uid), []);
-    assert.deepEqual(await store.listTenants(), []);
+    assert.deepEqual(await store.listTenants(), [ACCT.uid]);
+    const sweeper = new FirestoreOutboxStore();
+    await sweeper.listOpen(ACCT.uid);
+    await store.append(event(ACCT.uid, "evt-after-drain"));
+    assert.deepEqual(await sweeper.listTenants(), [ACCT.uid]);
+    assert.equal((await sweeper.listOpen(ACCT.uid))[0]?.id, "evt-after-drain");
   });
 
   test("get returns null for an id this tenant never had", async () => {
@@ -276,7 +302,8 @@ describe("FirestoreOutboxStore", () => {
     const store = new FirestoreOutboxStore();
     await store.append(event(ACCT.uid, "evt-live-2"));
     await store.append(event(ACCT.uid, "evt-gone"));
-    docs.delete(`lisa-outbox/${ACCT.uid}/events/evt-gone`);
+    const terminal = docs.get(`lisa-outbox/${ACCT.uid}/events/evt-gone`)!;
+    terminal.fields.status = { stringValue: "committed" };
 
     const saved = globalThis.fetch;
     globalThis.fetch = async (url: string | URL | Request, init?: RequestInit) => {

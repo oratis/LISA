@@ -406,6 +406,10 @@ describe("T-9 /api/config over the real server", () => {
         "deepseek-chat",
         "the running server still routes to the old model",
       );
+      const config = JSON.parse((await request(srv.port, "GET", "/api/auth/config")).text) as {
+        dataProcessing: { recipients: string[] };
+      };
+      assert.ok(config.dataProcessing.recipients.includes("DeepSeek"));
     } finally {
       await srv.close();
     }

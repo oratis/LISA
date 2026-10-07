@@ -105,13 +105,14 @@ CHANNEL=$(gcloud alpha monitoring channels create --project $PROJECT \
   --channel-labels email_address=<OPS_EMAIL> --format 'value(name)')
 ```
 
-Uptime check 打 `/healthz`（专用 liveness 端点：无凭据、恒 200、零依赖。
-比 `/api/auth/config` 合适——后者还要 JSON 组装，不是纯活性信号）：
+公网 Uptime check 打 `/health`（无需凭据，HTTP 200，JSON 的 `ok` 表示健康状态）。
+2026-10-07 实测 `cloud.meetlisa.ai/healthz` 被托管平台拦截为 404；
+`/healthz` 仅用于可直达应用的内部 liveness 探测，不用于此公网监控：
 
 ```bash
 gcloud monitoring uptime create lisa-cloud-health \
   --resource-type uptime-url --resource-labels host=cloud.meetlisa.ai \
-  --path /healthz --project $PROJECT
+  --path /health --project $PROJECT
 ```
 
 日志告警一：异常消费（meter.ts，>$10/天/用户）。实际输出是小写的

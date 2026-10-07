@@ -398,15 +398,16 @@ export function isAlreadyExists(err: unknown): boolean {
  *
  * The tenant registry is STICKY on purpose: adding a uid is skipped entirely
  * once this process has seen it, so the steady-state cost is zero writes on a
- * shared document. Entries are pruned lazily, by the reconciler, when a
- * tenant's index turns out to be empty.
+ * shared document. Entries remain registered: removing one based on a separate
+ * index read races with append (including writers in other processes). Safe
+ * registry compaction requires an atomic multi-document protocol.
  */
 export class FirestoreOutboxStore implements OutboxStore {
   private readonly registered = new Set<string>();
 
   async append(event: UsageEvent): Promise<void> {
-    // Index FIRST: a dangling id is self-healing (listOpen prunes ids with no
-    // document), whereas an event nothing indexes would be invisible forever.
+    // Index FIRST: a missing event remains discoverable for append retries.
+    // An event without an index entry would be invisible to reconciliation.
     await this.registerTenant(event.uid);
     await casUpdate(`lisa-outbox/${event.uid}`, (current) => {
       const open = readIds(current);
@@ -442,23 +443,12 @@ export class FirestoreOutboxStore implements OutboxStore {
     const stale: string[] = [];
     for (const id of ids) {
       const event = await this.get(uid, id);
-      if (!event || event.status === "committed") stale.push(id);
-      else events.push(event);
+      // A missing document may still be in flight after its index write.
+      // Only a durable terminal event is safe to remove.
+      if (event?.status === "committed") stale.push(id);
+      else if (event) events.push(event);
     }
-    // Prune when something is stale, and ALSO when a tenant has simply drained:
-    // update() removes a committed id from the index directly, so a tenant that
-    // settles cleanly never produces a stale id and used to stay in the sticky
-    // registry forever. The reconciler walks that registry every 15 minutes, so
-    // the sweep's cost grew with every account that ever bought anything and
-    // never came back down.
-    //
-    // `index !== null` is load-bearing: append() registers the tenant BEFORE it
-    // writes the index, so a concurrent sweep can see a registered uid whose
-    // index document does not exist yet. Deregistering on that would strand the
-    // event being appended — its charge would never be reconciled. An index that
-    // EXISTS and is empty can only mean drained.
     if (stale.length) await this.pruneIndex(uid, stale);
-    else if (index && ids.length === 0) await this.forgetTenant(uid);
     return events.sort((a, b) => a.createdAt - b.createdAt);
   }
 
@@ -483,34 +473,13 @@ export class FirestoreOutboxStore implements OutboxStore {
 
   private async pruneIndex(uid: string, stale: string[]): Promise<void> {
     try {
-      const remaining = await casUpdate(`lisa-outbox/${uid}`, (current) => {
+      await casUpdate(`lisa-outbox/${uid}`, (current) => {
         const open = readIds(current).filter((id) => !stale.includes(id));
-        return { next: { uid, open }, result: open.length };
+        return { next: { uid, open }, result: undefined };
       });
-      if (remaining > 0) return;
-      await this.forgetTenant(uid);
     } catch (err) {
       logInfo(
         `[billing] outbox index prune skipped (uid ${redactId(uid)}): ${describeError(err, uid)}`,
-      );
-    }
-  }
-
-  /**
-   * Drop a drained tenant from the sticky registry. Best-effort by design: a
-   * uid left behind only costs one extra getDoc per sweep, while a failure that
-   * propagated would abort a reconcile pass that has real work queued behind it.
-   */
-  private async forgetTenant(uid: string): Promise<void> {
-    try {
-      await casUpdate(tenantShard(uid), (current) => {
-        const uids = readIds(current, "uids").filter((u) => u !== uid);
-        return { next: { uids }, result: undefined };
-      });
-      this.registered.delete(uid);
-    } catch (err) {
-      logInfo(
-        `[billing] outbox tenant deregister skipped (uid ${redactId(uid)}): ${describeError(err, uid)}`,
       );
     }
   }
