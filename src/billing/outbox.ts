@@ -398,15 +398,16 @@ export function isAlreadyExists(err: unknown): boolean {
  *
  * The tenant registry is STICKY on purpose: adding a uid is skipped entirely
  * once this process has seen it, so the steady-state cost is zero writes on a
- * shared document. Entries are pruned lazily, by the reconciler, when a
- * tenant's index turns out to be empty.
+ * shared document. Entries remain registered: removing one based on a separate
+ * index read races with append (including writers in other processes). Safe
+ * registry compaction requires an atomic multi-document protocol.
  */
 export class FirestoreOutboxStore implements OutboxStore {
   private readonly registered = new Set<string>();
 
   async append(event: UsageEvent): Promise<void> {
-    // Index FIRST: a dangling id is self-healing (listOpen prunes ids with no
-    // document), whereas an event nothing indexes would be invisible forever.
+    // Index FIRST: a missing event remains discoverable for append retries.
+    // An event without an index entry would be invisible to reconciliation.
     await this.registerTenant(event.uid);
     await casUpdate(`lisa-outbox/${event.uid}`, (current) => {
       const open = readIds(current);
@@ -442,8 +443,10 @@ export class FirestoreOutboxStore implements OutboxStore {
     const stale: string[] = [];
     for (const id of ids) {
       const event = await this.get(uid, id);
-      if (!event || event.status === "committed") stale.push(id);
-      else events.push(event);
+      // A missing document may still be in flight after its index write.
+      // Only a durable terminal event is safe to remove.
+      if (event?.status === "committed") stale.push(id);
+      else if (event) events.push(event);
     }
     if (stale.length) await this.pruneIndex(uid, stale);
     return events.sort((a, b) => a.createdAt - b.createdAt);
@@ -470,17 +473,10 @@ export class FirestoreOutboxStore implements OutboxStore {
 
   private async pruneIndex(uid: string, stale: string[]): Promise<void> {
     try {
-      const remaining = await casUpdate(`lisa-outbox/${uid}`, (current) => {
+      await casUpdate(`lisa-outbox/${uid}`, (current) => {
         const open = readIds(current).filter((id) => !stale.includes(id));
-        return { next: { uid, open }, result: open.length };
+        return { next: { uid, open }, result: undefined };
       });
-      if (remaining > 0) return;
-      // Nothing open: let the sticky registry forget this tenant too.
-      await casUpdate(tenantShard(uid), (current) => {
-        const uids = readIds(current, "uids").filter((u) => u !== uid);
-        return { next: { uids }, result: undefined };
-      });
-      this.registered.delete(uid);
     } catch (err) {
       logInfo(
         `[billing] outbox index prune skipped (uid ${redactId(uid)}): ${describeError(err, uid)}`,

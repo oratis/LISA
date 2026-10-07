@@ -257,9 +257,15 @@ jobs:
           swift --version
           xcodebuild -version
 
-      - name: swift build -c debug
+      # `swift test`, not `swift build`: build compiles only the two shipping
+      # targets, so the LisaSetup unit tests (the backend-install wizard's
+      # decision table) were invisible to CI — someone could break decide() and
+      # this job would still go green. Testing costs about a second on top of
+      # the build that was already being paid for, and it builds the same
+      # targets on the way.
+      - name: swift test
         working-directory: packaging/mac-client
-        run: swift build -c debug
+        run: swift test
 
   # iOS companion (Lisa Pocket). Simulator builds need no signing, which is why
   # this can run on a public runner at all — build.sh already passes
