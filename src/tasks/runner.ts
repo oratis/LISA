@@ -1305,7 +1305,7 @@ export class TaskRunner {
           const recorded = queue?.[0];
           // An unknown outcome is never consumed: a second identical request
           // must not turn uncertainty into permission to repeat the side effect.
-          if (recorded && recorded.s !== "started") queue!.shift();
+          if (recorded && recorded.s !== "started") queue.shift();
           if (recorded !== undefined) {
             logEvent({ type: "replayed", toolName: name });
             if (recorded.s === "started") {
