@@ -842,6 +842,7 @@ test("a crash INSIDE a side-effecting call is never re-executed: the model is to
     const tools = [
       tool("send_message", async (_input, ctx) => {
         started++;
+        if (started > 1) return "unexpected duplicate";
         inTool.resolve();
         return await hang(ctx.signal); // the process dies here, effect possibly done
       }),
@@ -862,6 +863,7 @@ test("a crash INSIDE a side-effecting call is never re-executed: the model is to
     ]);
 
     const second = scripted([
+      turn([call("send_message", { to: "sam" })]),
       turn([call("send_message", { to: "sam" })]),
       say("I could not confirm whether the message to Sam went out."),
     ]);

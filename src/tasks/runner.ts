@@ -1301,7 +1301,11 @@ export class TaskRunner {
           // Fencing: a runner that no longer owns the lease must not act.
           await this.fence();
           const digest = digestCall(name, input);
-          const recorded = replay.get(digest)?.shift();
+          const queue = replay.get(digest);
+          const recorded = queue?.[0];
+          // An unknown outcome is never consumed: a second identical request
+          // must not turn uncertainty into permission to repeat the side effect.
+          if (recorded && recorded.s !== "started") queue!.shift();
           if (recorded !== undefined) {
             logEvent({ type: "replayed", toolName: name });
             if (recorded.s === "started") {

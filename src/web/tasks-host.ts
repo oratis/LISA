@@ -38,7 +38,7 @@ export interface TaskHostOptions {
   profile: string;
   /** Tools of the surface's autonomy profile (already cloud-filtered when hosted). */
   tools: ToolDefinition[];
-  model: string;
+  model: string | (() => string);
   cwd: string;
   /** Tenant-aware SSE broadcast (origin defaults to the current home scope). */
   broadcast: (event: Record<string, unknown>, origin?: string | null) => void;
@@ -156,6 +156,9 @@ export function createTaskHost(opts: TaskHostOptions): TaskHost {
             break;
           }
         }
+        // Every cached runner is busy: never grow beyond the tenant cap.
+        // The caller gets no runner and may retry after one becomes idle.
+        if (tenants.size >= MAX_TENANT_RUNNERS) return null;
       }
     }
     tenants.set(uid, runner);
