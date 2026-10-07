@@ -183,6 +183,19 @@ import { ScreenSource } from "../sense/screen.js";
 import { VoiceSource } from "../sense/voice.js";
 import { appendSenseEvent, readSenseEvents } from "../sense/log.js";
 import { handleSocialApi } from "./social-api.js";
+import { createWebWarden, handleWardenApi, wardenTrust } from "./warden-api.js";
+import { protectFromSandbox } from "../sandbox/protect.js";
+import { handleReachOutApi } from "./reachout-api.js";
+import {
+  advisorNotice,
+  idleNoteNotice,
+  kbBriefNotice,
+  mailAlertNotice,
+  mailDigestNotice,
+  makeServerReachOut,
+  reachOutApiOptions,
+  scheduleServerCatchUp,
+} from "./reachout-wiring.js";
 import {
   loadScreenAdvisorConfig,
   saveScreenAdvisorConfig,
@@ -277,6 +290,8 @@ export interface WebServerOptions {
    * unchanged without one.
    */
   policy?: RuntimePolicy;
+  /** Injected model provider (tests). Omitted ⇒ resolved from `model`. */
+  provider?: ReturnType<typeof providerForModel>;
 }
 
 interface AdvisorCardSuggestion {
@@ -522,6 +537,11 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     },
     logWarn,
   );
+  // Warden (W2a): under approval mode "warden" every chat turn gets a policy
+  // session, and "ask" waits on this inbox instead of being denied. Inbox
+  // events go out on the tenant-aware /events stream, addressed to the uid the
+  // item belongs to.
+  const warden = createWebWarden(policy, (event, uid) => broadcast(event, uid));
   // Account sessions (PLAN_ACCOUNTS_BILLING B1): the signing secret lives in
   // $lisaHome() (auto-created 0600; durable on the cloud's /data mount). Only the
   // cloud edition mints/verifies account sessions today — the Mac edition gains
@@ -582,6 +602,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // new key without restarting the server.
   let cachedProvider: ReturnType<typeof providerForModel> | null = null;
   const getProvider = () => {
+    if (opts.provider) return opts.provider;
     if (!cachedProvider) cachedProvider = providerForModel(opts.model);
     return cachedProvider;
   };
@@ -801,6 +822,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // Billing anomalies reach the operator's phone through the same channel as
   // agent errors (B8d) — pref "error", throttled inside the bridge.
   setAnomalySink((text) => pushBridge.onBillingAnomaly(text));
+  // Every proactive message goes through the reach-out gate (POLICY_REACH_OUT).
+  // Senders keep their own in-app / push closures, so what they say is
+  // unchanged; the gate only decides whether each channel fires.
+  const reachOutVia = makeServerReachOut({ pushBridge, log: (m) => logInfo(m) });
+  // Pushes held by quiet hours do not survive a restart; announce them once.
+  scheduleServerCatchUp({ pushBridge, log: (m) => logInfo(m) });
   hub.on("update", (session: AgentSession) => {
     // L6 — record the transition in the orchestrator journal so the
     // cross-agent recap can answer "what happened while I was away?" even for
@@ -853,9 +880,15 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         if (surface.length === 0) return;
         const text = formatDigest(surface);
         const at = new Date().toISOString();
-        globalChat.activity.lastIdleMessage = { text, at };
-        broadcast({ type: "idle_message", text, at, source: "advisor" });
-        pushBridge.onIdleMessage(text);
+        const reached = await reachOutVia(advisorNotice({ text, suggestions: surface }), {
+          inapp: (n) => {
+            globalChat.activity.lastIdleMessage = { text, at };
+            broadcast({ type: "idle_message", text, at, source: "advisor", reachOutId: n.id });
+          },
+          push: () => pushBridge.onIdleMessage(text),
+        });
+        // Advisor switched off (or denied) ⇒ no card either.
+        if (!reached.channels.includes("inapp")) return;
         // Structured twin of the digest: same suggestions with id / urgency /
         // action attached so the island can render per-suggestion buttons
         // (act → prefill chat, ✕ → dismiss feeds the learning loop).
@@ -881,7 +914,10 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   // build + push the classified digest. Inert unless `mail` consent is granted
   // and at least one account is connected.
   let mailSweepRunning = false;
-  const afterMailDigest = (digest: DailyDigest): void => {
+  // The digest is solicited either way (the user switched it on), so it never
+  // spends the unsolicited budget. `manual` = the user pressed "sweep now",
+  // which (as before) posts no chat message.
+  const afterMailDigest = (digest: DailyDigest, manual: boolean): void => {
     broadcast({
       type: "mail_digest_update",
       date: digest.date,
@@ -889,7 +925,24 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       needsYou: digest.needsYou.length,
       at: new Date().toISOString(),
     });
-    pushBridge.onMailDigest(formatDigestText(digest));
+    const text = formatDigestText(digest);
+    void reachOutVia(
+      mailDigestNotice({ text, date: digest.date, needsYou: digest.needsYou.length, manual }),
+      {
+        // The digest also lands in the chat (the "here's your mail" moment) —
+        // but only on the scheduled daily run, and only when there is mail.
+        inapp: (n) =>
+          broadcast({
+            type: "idle_message",
+            text,
+            at: new Date().toISOString(),
+            source: "mail",
+            reachOutId: n.id,
+          }),
+        push: () => pushBridge.onMailDigest(text),
+      },
+      { inapp: !manual && digest.total > 0 },
+    );
   };
   const runMailDigest = async (force: boolean): Promise<DailyDigest | null> => {
     if (mailSweepRunning || !isGranted("mail")) return null;
@@ -898,17 +951,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     mailSweepRunning = true;
     try {
       const { digest } = await sweepAll();
-      afterMailDigest(digest);
-      // Post the digest into the chat too (the "here's your mail" moment), in
-      // addition to the push — but only on the scheduled daily run, not manual.
-      if (!force && digest.total > 0) {
-        broadcast({
-          type: "idle_message",
-          text: formatDigestText(digest),
-          at: new Date().toISOString(),
-          source: "mail",
-        });
-      }
+      afterMailDigest(digest, force);
       logInfo(
         `[mail] digest ${digest.date}: ${digest.total} mail · ${digest.needsYou.length} need-you`,
       );
@@ -944,15 +987,21 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         total: result.brief.total,
         at: new Date().toISOString(),
       });
-      pushBridge.onKbBrief(result.text);
-      if (!force) {
-        broadcast({
-          type: "idle_message",
-          text: result.text,
-          at: new Date().toISOString(),
-          source: "kb",
-        });
-      }
+      void reachOutVia(
+        kbBriefNotice({ text: result.text, date: result.brief.date, manual: force }),
+        {
+          inapp: (n) =>
+            broadcast({
+              type: "idle_message",
+              text: result.text,
+              at: new Date().toISOString(),
+              source: "kb",
+              reachOutId: n.id,
+            }),
+          push: () => pushBridge.onKbBrief(result.text),
+        },
+        { inapp: !force },
+      );
       logInfo(
         `[kb-brief] ${result.brief.date}: ${result.brief.total} item(s) · ${result.brief.ingested.length} ingested`,
       );
@@ -985,14 +1034,25 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         try {
           const important = pickImportant(await pollNewMail(), alertLevel());
           if (important.length === 0) return;
+          // One poll = one unit of the daily reach-out budget, however many alerts.
+          const pollKey = new Date().toISOString();
           for (const item of important.slice(0, 3)) {
             const alert = formatAlert(item);
-            pushBridge.onMailImportant({ title: alert.title, body: alert.body, tag: alert.tag });
-            broadcast({
-              type: "idle_message",
-              text: alert.chat,
-              at: new Date().toISOString(),
-              source: "mail",
+            await reachOutVia(mailAlertNotice(alert, pollKey), {
+              inapp: (n) =>
+                broadcast({
+                  type: "idle_message",
+                  text: alert.chat,
+                  at: new Date().toISOString(),
+                  source: "mail",
+                  reachOutId: n.id,
+                }),
+              push: () =>
+                pushBridge.onMailImportant({
+                  title: alert.title,
+                  body: alert.body,
+                  tag: alert.tag,
+                }),
             });
           }
           broadcast({ type: "mail_digest_update", at: new Date().toISOString() });
@@ -1161,18 +1221,40 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         } else {
           // The idle note is conversation content — log that one went out and
           // how big it was, never the text itself.
-          logInfo(`[idle] → sent (${result.text.length} chars)`);
-          await ctx.session.appendMessage({
-            role: "assistant",
-            content: [{ type: "text", text: `[while you were away]\n${result.text}` }],
+          let posted = false;
+          const reached = await reachOutVia(idleNoteNotice(result.text), {
+            inapp: async (n) => {
+              await ctx.session.appendMessage({
+                role: "assistant",
+                content: [{ type: "text", text: `[while you were away]\n${result.text}` }],
+              });
+              ctx.history.push({
+                role: "assistant",
+                content: [{ type: "text", text: `[while you were away]\n${result.text}` }],
+              });
+              ctx.activity.lastIdleMessage = { text: result.text, at: startedAt };
+              broadcast({
+                type: "idle_message",
+                text: result.text,
+                at: startedAt,
+                reachOutId: n.id,
+              });
+              posted = true;
+            },
+            push: () => pushBridge.onIdleMessage(result.text),
           });
-          ctx.history.push({
-            role: "assistant",
-            content: [{ type: "text", text: `[while you were away]\n${result.text}` }],
-          });
-          ctx.activity.lastIdleMessage = { text: result.text, at: startedAt };
-          broadcast({ type: "idle_message", text: result.text, at: startedAt });
-          pushBridge.onIdleMessage(result.text);
+          if (posted) {
+            logInfo(`[idle] → sent (${result.text.length} chars)`);
+          } else if (reached.channels.includes("inapp")) {
+            // The gate allowed it but writing the note failed — surface that
+            // as the idle error it always was.
+            throw new Error("could not post the idle note");
+          } else {
+            // The gate withheld it (source off, or a red line). Close the
+            // idle indicator the way a silent run does.
+            logInfo(`[idle] note withheld by reach-out gate (${reached.reason})`);
+            broadcast({ type: "idle_done", silent: true });
+          }
         }
       } catch (err) {
         const msg = (err as Error).message;
@@ -2417,6 +2499,18 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     ) {
       return;
     }
+    if (await handleReachOutApi(req, res, url, reachOutApiOptions(cloud))) return;
+
+    if (
+      await handleWardenApi(req, res, url, {
+        inbox: warden.inbox,
+        uid: scopedUid(),
+        home: lisaHome(),
+        ...wardenTrust({ cloud, loopback: isLoopbackAddress(remoteAddr), accountUid }),
+      })
+    ) {
+      return;
+    }
 
     // Per-request gate for high-risk control actions from REMOTE callers. The Mac
     // owner (loopback) is never gated; a remote (token) device may take only what
@@ -3165,7 +3259,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         return;
       }
       const swept = await sweepAll();
-      if (!swept.blocked) afterMailDigest(swept.digest);
+      if (!swept.blocked) afterMailDigest(swept.digest, true);
       res.writeHead(200, { "content-type": "application/json" });
       res.end(
         JSON.stringify({
@@ -4569,6 +4663,20 @@ self.addEventListener('fetch', (event) => {
                 `sending ~${modelContext.estimatedTokens} history tokens`,
             );
           }
+          const wardenTurn = await warden.turn({
+            uid: scopedUid(),
+            sandboxMode: chat.session.header.sandboxMode,
+            workspaceRoot: process.cwd(),
+            tools: runtimeTools,
+            signal: AbortSignal.any([abort.signal, turnAbort.signal]),
+            conversationId: chat.session.id,
+            // Only a caller who could answer an approval gets owner defaults.
+            owner: wardenTrust({ cloud, loopback: isLoopbackAddress(remoteAddr), accountUid })
+              .allowApproval,
+            userText: message,
+            hasAttachments: Array.isArray(files) && files.length > 0,
+            hasHistory: chat.history.length > 0,
+          });
           const result = await runAgent({
             provider: getProvider(),
             systemPrompt: fresh.text + modelContext.systemSuffix,
@@ -4581,6 +4689,8 @@ self.addEventListener('fetch', (event) => {
               // Pin the turn to the session's mode, frozen at creation (H2), so
               // concurrent sessions confine independently of the process env.
               sandboxMode: chat.session.header.sandboxMode,
+              // Handed to nested runs (the task subagent) so they stay gated.
+              approval: wardenTurn?.approval ?? webApproval,
             },
             history: modelContext.history,
             userMessage: message,
@@ -4589,8 +4699,10 @@ self.addEventListener('fetch', (event) => {
             thinking: policy.thinking,
             compaction: policy.compaction,
             // Approval gating on the web surface (T-7). undefined under
-            // "auto", so the default path is byte-identical to before.
-            approval: webApproval,
+            // "auto", so that path is byte-identical to before. Under "warden"
+            // the turn's Warden session decides; webApproval stays as the
+            // fail-closed fallback.
+            approval: wardenTurn?.approval ?? webApproval,
             // Pre-debit breaker (B4): a single turn can never burn past what
             // the account could pay for. Conservatively prices every token at
             // the output rate.
@@ -4599,6 +4711,7 @@ self.addEventListener('fetch', (event) => {
                 ? tokensAffordable(opts.model, quotaBudgetMicroUSD)
                 : undefined,
             onEvent: (ev) => {
+              wardenTurn?.observe(ev);
               if (ev.type === "text_delta" && ev.text) {
                 anyText = true;
                 send({ type: "text", text: ev.text });
@@ -4829,6 +4942,8 @@ self.addEventListener('fetch', (event) => {
     }
     loopMonitor.stop();
     idleWatcher?.stop();
+    // Anything still waiting for an approval is denied, not left hanging.
+    void warden.inbox.shutdown();
     moodBus.off("mood", onMoodEvent);
     moodBus.off("chat_start", onChatStart);
     moodBus.off("chat_end", onChatEnd);
@@ -4847,6 +4962,9 @@ self.addEventListener('fetch', (event) => {
     const onError = (err: Error) => reject(err);
     server.once("error", onError);
     server.listen(opts.port, host, () => {
+      // A confined shell must not be able to reach the approval API.
+      const bound = server.address();
+      if (bound && typeof bound === "object") protectFromSandbox({ port: bound.port });
       server.off("error", onError);
       resolve();
     });

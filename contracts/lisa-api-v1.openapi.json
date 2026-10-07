@@ -275,6 +275,478 @@
           }
         }
       }
+    },
+    "/api/reachout/settings": {
+      "get": {
+        "operationId": "getReachOutSettings",
+        "responses": {
+          "200": {
+            "description": "The caller's reach-out controls (docs/POLICY_REACH_OUT.md): proactivity dial, per-source switches, quiet hours, channels, plus today's unsolicited budget. Scoped to the signed-in account in the cloud edition.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReachOutSettingsView"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "updateReachOutSettings",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReachOutSettingsPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Merges the patch over the stored settings and returns the new view. Unknown fields and invalid values are rejected, not ignored.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReachOutSettingsView"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/reachout/ledger": {
+      "get": {
+        "operationId": "getReachOutLedger",
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 90,
+              "default": 7
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Aggregates of the reach-out ledger for the last N local days: delivered / deferred / dropped per source and the useful rate. Never returns ledger rows or any message text.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReachOutLedgerAggregate"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/reachout/feedback": {
+      "post": {
+        "operationId": "sendReachOutFeedback",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReachOutFeedback"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Records the user's verdict on a delivered notice. Feeds the value gate: dismissed kinds push less.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReachOutFeedbackResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/approvals": {
+      "get": {
+        "operationId": "listApprovals",
+        "responses": {
+          "200": {
+            "description": "Pending Warden approvals and hand-offs for the authenticated tenant.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalsResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/approvals/{id}": {
+      "get": {
+        "operationId": "getApproval",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One pending item with the whole payload its digest covers. Served only to a caller who may approve.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalDetail"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/approvals/{id}/approve": {
+      "post": {
+        "operationId": "approveApproval",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalApproveRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The approval was applied and the waiting action proceeds.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalResolution"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "410": {
+            "$ref": "#/components/responses/Error"
+          },
+          "415": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/approvals/{id}/deny": {
+      "post": {
+        "operationId": "denyApproval",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalDenyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The approval was denied (or the hand-off dismissed).",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalResolution"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "410": {
+            "$ref": "#/components/responses/Error"
+          },
+          "415": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/warden/rules": {
+      "get": {
+        "operationId": "getWardenRules",
+        "responses": {
+          "200": {
+            "description": "The tenant's Warden rules.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WardenRulesResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "putWardenRules",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WardenRules"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The rules were replaced.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WardenRulesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "415": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/warden/grants": {
+      "get": {
+        "operationId": "listWardenGrants",
+        "responses": {
+          "200": {
+            "description": "Active scoped grants.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WardenGrantsResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/warden/grants/{id}": {
+      "delete": {
+        "operationId": "revokeWardenGrant",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The grant was revoked.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WardenGrantRevocation"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/warden/audit": {
+      "get": {
+        "operationId": "listWardenAudit",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Most recent audit entries first.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WardenAuditResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -677,7 +1149,7 @@
           }
         },
         "additionalProperties": true,
-        "description": "Open event envelope. Clients must ignore unknown types and additive fields; known v1 types include agent_session_update, claude_session_update, mood, chat_start, chat_delta, chat_end, idle_message, advisor_suggestions, screen_suggestion, sense_event, reflect_done and error."
+        "description": "Open event envelope. Clients must ignore unknown types and additive fields; known v1 types include agent_session_update, claude_session_update, mood, chat_start, chat_delta, chat_end, idle_message, advisor_suggestions, screen_suggestion, sense_event, reflect_done, approval_requested, approval_resolved and error."
       },
       "LisaSession": {
         "type": "object",
@@ -742,6 +1214,981 @@
           },
           "id": {
             "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "ReachOutSettings": {
+        "type": "object",
+        "required": [
+          "version",
+          "dial",
+          "sources",
+          "quietHours",
+          "channels",
+          "desirePush",
+          "compliance"
+        ],
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "dial": {
+            "type": "string",
+            "enum": [
+              "off",
+              "low",
+              "normal",
+              "high"
+            ]
+          },
+          "sources": {
+            "type": "object",
+            "required": [
+              "task",
+              "watcher",
+              "approval",
+              "mail",
+              "brief",
+              "advisor",
+              "idle",
+              "desire",
+              "system"
+            ],
+            "properties": {
+              "task": {
+                "type": "boolean"
+              },
+              "watcher": {
+                "type": "boolean"
+              },
+              "approval": {
+                "type": "boolean"
+              },
+              "mail": {
+                "type": "boolean"
+              },
+              "brief": {
+                "type": "boolean"
+              },
+              "advisor": {
+                "type": "boolean"
+              },
+              "idle": {
+                "type": "boolean"
+              },
+              "desire": {
+                "type": "boolean"
+              },
+              "system": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
+          "quietHours": {
+            "type": "object",
+            "required": [
+              "enabled",
+              "start",
+              "end",
+              "tz"
+            ],
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "start": {
+                "type": "string",
+                "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+              },
+              "end": {
+                "type": "string",
+                "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+              },
+              "tz": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "channels": {
+            "type": "object",
+            "required": [
+              "inapp",
+              "push",
+              "im"
+            ],
+            "properties": {
+              "inapp": {
+                "type": "boolean"
+              },
+              "push": {
+                "type": "boolean"
+              },
+              "im": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
+          "desirePush": {
+            "type": "boolean"
+          },
+          "compliance": {
+            "type": "object",
+            "required": [
+              "aiDisclosure",
+              "usageReminderMinutes",
+              "dependencyNudges"
+            ],
+            "properties": {
+              "aiDisclosure": {
+                "const": true
+              },
+              "usageReminderMinutes": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 15
+              },
+              "dependencyNudges": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReachOutSettingsPatch": {
+        "type": "object",
+        "description": "Any subset of ReachOutSettings; nested objects are merged field by field.",
+        "properties": {
+          "dial": {
+            "type": "string",
+            "enum": [
+              "off",
+              "low",
+              "normal",
+              "high"
+            ]
+          },
+          "sources": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "boolean"
+            }
+          },
+          "quietHours": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "start": {
+                "type": "string",
+                "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+              },
+              "end": {
+                "type": "string",
+                "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+              },
+              "tz": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "channels": {
+            "type": "object",
+            "properties": {
+              "inapp": {
+                "type": "boolean"
+              },
+              "push": {
+                "type": "boolean"
+              },
+              "im": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
+          "desirePush": {
+            "type": "boolean"
+          },
+          "compliance": {
+            "type": "object",
+            "properties": {
+              "aiDisclosure": {
+                "const": true
+              },
+              "usageReminderMinutes": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 15
+              },
+              "dependencyNudges": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReachOutSettingsView": {
+        "type": "object",
+        "required": [
+          "settings",
+          "proactiveMode",
+          "budget",
+          "budgets",
+          "quietNow",
+          "channelsAvailable"
+        ],
+        "properties": {
+          "settings": {
+            "$ref": "#/components/schemas/ReachOutSettings"
+          },
+          "proactiveMode": {
+            "type": "boolean"
+          },
+          "budget": {
+            "type": "object",
+            "required": [
+              "dial",
+              "daily",
+              "usedToday",
+              "remaining"
+            ],
+            "properties": {
+              "dial": {
+                "type": "string",
+                "enum": [
+                  "off",
+                  "low",
+                  "normal",
+                  "high"
+                ]
+              },
+              "daily": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "usedToday": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "remaining": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false
+          },
+          "budgets": {
+            "type": "object",
+            "required": [
+              "off",
+              "low",
+              "normal",
+              "high"
+            ],
+            "properties": {
+              "off": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "low": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "normal": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "high": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false
+          },
+          "quietNow": {
+            "type": "boolean"
+          },
+          "channelsAvailable": {
+            "type": "object",
+            "required": [
+              "inapp",
+              "push",
+              "im"
+            ],
+            "properties": {
+              "inapp": {
+                "type": "boolean"
+              },
+              "push": {
+                "type": "boolean"
+              },
+              "im": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": true
+      },
+      "ReachOutTally": {
+        "type": "object",
+        "required": [
+          "delivered",
+          "deferred",
+          "dropped",
+          "interrupted",
+          "useful",
+          "dismissed"
+        ],
+        "properties": {
+          "delivered": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "deferred": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "dropped": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "interrupted": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "useful": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "dismissed": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReachOutLedgerAggregate": {
+        "type": "object",
+        "required": [
+          "days",
+          "since",
+          "totals",
+          "bySource",
+          "budgetUsedToday",
+          "usefulRate"
+        ],
+        "properties": {
+          "days": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "since": {
+            "type": "string"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/ReachOutTally"
+          },
+          "bySource": {
+            "type": "object",
+            "required": [
+              "task",
+              "watcher",
+              "approval",
+              "mail",
+              "brief",
+              "advisor",
+              "idle",
+              "desire",
+              "system"
+            ],
+            "properties": {
+              "task": {
+                "$ref": "#/components/schemas/ReachOutTally"
+              },
+              "watcher": {
+                "$ref": "#/components/schemas/ReachOutTally"
+              },
+              "approval": {
+                "$ref": "#/components/schemas/ReachOutTally"
+              },
+              "mail": {
+                "$ref": "#/components/schemas/ReachOutTally"
+              },
+              "brief": {
+                "$ref": "#/components/schemas/ReachOutTally"
+              },
+              "advisor": {
+                "$ref": "#/components/schemas/ReachOutTally"
+              },
+              "idle": {
+                "$ref": "#/components/schemas/ReachOutTally"
+              },
+              "desire": {
+                "$ref": "#/components/schemas/ReachOutTally"
+              },
+              "system": {
+                "$ref": "#/components/schemas/ReachOutTally"
+              }
+            },
+            "additionalProperties": false
+          },
+          "budgetUsedToday": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "usefulRate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          }
+        },
+        "additionalProperties": true
+      },
+      "ReachOutFeedback": {
+        "type": "object",
+        "required": [
+          "id",
+          "verdict"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "useful",
+              "dismissed"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReachOutFeedbackResult": {
+        "type": "object",
+        "required": [
+          "ok",
+          "id",
+          "verdict"
+        ],
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "id": {
+            "type": "string"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "useful",
+              "dismissed"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "ApprovalItem": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "at",
+          "expiresAt",
+          "tool",
+          "category",
+          "targets",
+          "preview",
+          "digest",
+          "origin",
+          "reason",
+          "scopes"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "description": "approval or handoff. A handoff cannot be approved, only dismissed."
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "connector": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string",
+            "description": "Open set; v1 values: read, self, draft, write, exec, network, send, publish, purchase, delete, credential."
+          },
+          "targets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "dataClasses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "preview": {
+            "type": "string",
+            "description": "Redacted rendering of the payload, at most 240 characters."
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "digest": {
+            "type": "string",
+            "description": "HMAC of the exact payload this approval is bound to (per-home key)."
+          },
+          "taskId": {
+            "type": "string"
+          },
+          "origin": {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why the policy is asking."
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "description": "Open set; v1 values: once, task, target, 24h, always."
+            },
+            "description": "Scopes this item may be approved with."
+          }
+        },
+        "additionalProperties": true
+      },
+      "ApprovalsResponse": {
+        "type": "object",
+        "required": [
+          "approvals"
+        ],
+        "properties": {
+          "approvals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ApprovalItem"
+            }
+          },
+          "canApprove": {
+            "type": "boolean",
+            "description": "Whether this caller is a trusted approver."
+          }
+        },
+        "additionalProperties": true
+      },
+      "ApprovalApproveRequest": {
+        "type": "object",
+        "required": [
+          "digest"
+        ],
+        "properties": {
+          "digest": {
+            "type": "string",
+            "description": "The digest of the payload the approver was shown (from GET /api/approvals/{id}). Required; a missing or stale digest is refused."
+          },
+          "scope": {
+            "type": "string",
+            "description": "Open set; v1 values: once, task, target, 24h, always."
+          }
+        },
+        "additionalProperties": true
+      },
+      "ApprovalDenyRequest": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "ApprovalResolution": {
+        "type": "object",
+        "required": [
+          "ok",
+          "id",
+          "verdict"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "verdict": {
+            "type": "string",
+            "description": "approved, denied or dismissed."
+          },
+          "scope": {
+            "type": "string",
+            "description": "Open set; v1 values: once, task, target, 24h, always."
+          },
+          "grantIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "grantError": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "WardenRules": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "integer"
+          },
+          "categories": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "description": "Open set; v1 values: auto, preapproved, ask, handoff."
+            }
+          },
+          "tools": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "description": "Open set; v1 values: auto, preapproved, ask, handoff."
+            }
+          },
+          "targets": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "description": "Open set; v1 values: auto, preapproved, ask, handoff."
+            }
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "trustedMcpServers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "MCP servers whose results the user vouches for (they do not taint a run)."
+          }
+        },
+        "additionalProperties": true
+      },
+      "WardenRulesResponse": {
+        "type": "object",
+        "required": [
+          "rules"
+        ],
+        "properties": {
+          "rules": {
+            "$ref": "#/components/schemas/WardenRules"
+          },
+          "corrupt": {
+            "type": "boolean"
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "behaviors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "locked": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "description": "Open set; v1 values: auto, preapproved, ask, handoff."
+            }
+          }
+        },
+        "additionalProperties": true
+      },
+      "WardenGrant": {
+        "type": "object",
+        "required": [
+          "id",
+          "createdAt",
+          "scope",
+          "tool",
+          "category",
+          "uses"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "scope": {
+            "type": "string",
+            "description": "Open set; v1 values: once, task, target, 24h, always."
+          },
+          "tool": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string",
+            "description": "Open set; v1 values: read, self, draft, write, exec, network, send, publish, purchase, delete, credential."
+          },
+          "target": {
+            "type": "string"
+          },
+          "taskId": {
+            "type": "string"
+          },
+          "digest": {
+            "type": "string"
+          },
+          "column": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "uses": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "lastUsedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": true
+      },
+      "WardenGrantsResponse": {
+        "type": "object",
+        "required": [
+          "grants"
+        ],
+        "properties": {
+          "grants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WardenGrant"
+            }
+          },
+          "corrupt": {
+            "type": "boolean"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": true
+      },
+      "WardenGrantRevocation": {
+        "type": "object",
+        "required": [
+          "ok",
+          "id"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "WardenAuditEntry": {
+        "type": "object",
+        "required": [
+          "at",
+          "kind"
+        ],
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "kind": {
+            "type": "string",
+            "description": "decision, resolution, grant_revoked or rules_updated."
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "approvalId": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string",
+            "description": "Open set; v1 values: read, self, draft, write, exec, network, send, publish, purchase, delete, credential."
+          },
+          "targets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "digest": {
+            "type": "string"
+          },
+          "preview": {
+            "type": "string"
+          },
+          "verdict": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "ruleId": {
+            "type": "string"
+          },
+          "grantId": {
+            "type": "string"
+          },
+          "resolution": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string",
+            "description": "Open set; v1 values: once, task, target, 24h, always."
+          },
+          "latencyMs": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "tainted": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": true
+      },
+      "WardenAuditResponse": {
+        "type": "object",
+        "required": [
+          "entries"
+        ],
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WardenAuditEntry"
+            }
+          }
+        },
+        "additionalProperties": true
+      },
+      "ApprovalPayloadField": {
+        "type": "object",
+        "required": [
+          "key",
+          "value",
+          "primary"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string",
+            "description": "The whole value, secrets masked, never clipped."
+          },
+          "primary": {
+            "type": "boolean",
+            "description": "Shown first: the field that says what the call does."
+          }
+        },
+        "additionalProperties": true
+      },
+      "ApprovalDetail": {
+        "type": "object",
+        "required": [
+          "approval",
+          "fields"
+        ],
+        "properties": {
+          "approval": {
+            "$ref": "#/components/schemas/ApprovalItem"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ApprovalPayloadField"
+            },
+            "description": "Every field of the tool input, in the server's order (primary fields first)."
           }
         },
         "additionalProperties": true

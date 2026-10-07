@@ -24,17 +24,27 @@ interface ReviewDiffInput {
   max_lines?: number;
 }
 
-function gitDiffArgs(target: string): string[] {
+/**
+ * The `git diff` argv for a target. `extra` flags go BEFORE the revision, and
+ * a model-supplied revision is always preceded by `--end-of-options`, so it can
+ * never be read as an option: `target: "--output=/path"` used to make this
+ * "read-only" tool overwrite an arbitrary file. A target that starts with `-`
+ * is refused outright (no ref or range does).
+ */
+export function gitDiffArgs(target: string, extra: string[] = []): string[] | { error: string } {
   switch (target) {
     case "working":
-      return ["diff"];
+      return ["diff", ...extra];
     case "staged":
-      return ["diff", "--cached"];
+      return ["diff", "--cached", ...extra];
     case "head":
     case "":
-      return ["diff", "HEAD"];
+      return ["diff", ...extra, "HEAD"];
     default:
-      return ["diff", target];
+      if (target.startsWith("-") || /[\0\n\r]/.test(target)) {
+        return { error: `not a git ref or range: ${target.slice(0, 80)}` };
+      }
+      return ["diff", ...extra, "--end-of-options", target];
   }
 }
 
@@ -59,10 +69,22 @@ export const reviewDiffTool: ToolDefinition<ReviewDiffInput, string> = {
   inputSchema: {
     type: "object",
     properties: {
-      cwd: { type: "string", description: "Absolute path inside the repo. Defaults to the current directory." },
-      target: { type: "string", description: '"head" (default, all uncommitted), "working", "staged", or a git ref/range like "main...HEAD".' },
+      cwd: {
+        type: "string",
+        description: "Absolute path inside the repo. Defaults to the current directory.",
+      },
+      target: {
+        type: "string",
+        description:
+          '"head" (default, all uncommitted), "working", "staged", or a git ref/range like "main...HEAD".',
+      },
       pr: { type: "integer", description: "Review this GitHub PR's diff instead (needs `gh`)." },
-      max_lines: { type: "integer", minimum: 50, maximum: 4000, description: "Max diff lines (default 600)." },
+      max_lines: {
+        type: "integer",
+        minimum: 50,
+        maximum: 4000,
+        description: "Max diff lines (default 600).",
+      },
     },
     additionalProperties: false,
   },
@@ -74,17 +96,34 @@ export const reviewDiffTool: ToolDefinition<ReviewDiffInput, string> = {
     const maxLines = input.max_lines ?? 600;
 
     if (typeof input.pr === "number") {
-      const r = await runIn(root, "gh", ["pr", "diff", String(input.pr)], { timeoutMs: 20000, signal: ctx.signal, maxBytes: 200_000 });
+      const r = await runIn(root, "gh", ["pr", "diff", String(input.pr)], {
+        timeoutMs: 20000,
+        signal: ctx.signal,
+        maxBytes: 200_000,
+      });
       if (r.spawnError) return "(the `gh` CLI isn't installed — needed to fetch PR diffs)";
-      if (r.code !== 0) return `(gh pr diff ${input.pr} failed: ${r.stderr.trim().slice(0, 200) || "unknown error"})`;
+      if (r.code !== 0)
+        return `(gh pr diff ${input.pr} failed: ${r.stderr.trim().slice(0, 200) || "unknown error"})`;
       return assembleReview(`PR #${input.pr} diff`, r.stdout, maxLines);
     }
 
     const target = (input.target ?? "head").trim();
     const args = gitDiffArgs(target);
-    const stat = await runIn(root, "git", ["-C", root, ...args, "--stat"], { timeoutMs: 10000, signal: ctx.signal });
-    const diff = await runIn(root, "git", ["-C", root, ...args], { timeoutMs: 15000, signal: ctx.signal, maxBytes: 200_000 });
-    if (diff.code !== 0) return `(git diff failed: ${diff.stderr.trim().slice(0, 200) || "bad target?"})`;
+    const statArgs = gitDiffArgs(target, ["--stat"]);
+    if (!Array.isArray(args) || !Array.isArray(statArgs)) {
+      return `(${Array.isArray(args) ? "bad target" : args.error})`;
+    }
+    const stat = await runIn(root, "git", ["-C", root, ...statArgs], {
+      timeoutMs: 10000,
+      signal: ctx.signal,
+    });
+    const diff = await runIn(root, "git", ["-C", root, ...args], {
+      timeoutMs: 15000,
+      signal: ctx.signal,
+      maxBytes: 200_000,
+    });
+    if (diff.code !== 0)
+      return `(git diff failed: ${diff.stderr.trim().slice(0, 200) || "bad target?"})`;
     return assembleReview(stat.stdout, diff.stdout, maxLines);
   },
 };
