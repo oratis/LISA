@@ -370,6 +370,35 @@ test("response bodies are cancelled at the raw byte cap before rendering", async
   assert.equal(raw.truncated, true);
 });
 
+test("a body of exactly the cap is not truncated, even if an empty chunk follows", async () => {
+  const stream = (...chunks: string[]): ReadableStream<Uint8Array> =>
+    new ReadableStream({
+      start(controller) {
+        for (const chunk of chunks) controller.enqueue(new TextEncoder().encode(chunk));
+        controller.close();
+      },
+    });
+  const exact = await readResponseTextCapped(new Response(stream("x".repeat(1_000), "")), 1_000);
+  assert.deepEqual(exact, { text: "x".repeat(1_000), truncated: false });
+  const over = await readResponseTextCapped(
+    new Response(stream("x".repeat(1_000), "", "y")),
+    1_000,
+  );
+  assert.deepEqual(over, { text: "x".repeat(1_000), truncated: true });
+  // At max_chars 1 000 web_fetch reads 64 000 bytes: a page of exactly that
+  // is read whole, so there is no "[markup cut …]" notice.
+  const tail = "</style><p>end</p>";
+  const page = `<style>${"x".repeat(64_000 - 7 - tail.length)}${tail}`;
+  const out = await renderFetchedResponse(
+    "https://example.com/",
+    new Response(stream(page, ""), { status: 200, headers: { "content-type": "text/html" } }),
+    undefined,
+    1_000,
+  );
+  assert.equal(page.length, 64_000);
+  assert.match(out, /\n\nend\n<<<END-EXTERNAL-CONTENT>>>$/);
+});
+
 describe("isInternalHostName — internal names a policy can refuse without consulting DNS", () => {
   for (const h of [
     "metadata.google.internal",

@@ -789,6 +789,8 @@ export async function readResponseTextCapped(
     while (true) {
       const chunk = await reader.read();
       if (chunk.done) break;
+      // An empty chunk carries nothing: it must not count as reading past the cap.
+      if (chunk.value.byteLength === 0) continue;
       const remaining = limit - bytes;
       if (remaining <= 0) {
         truncated = true;
