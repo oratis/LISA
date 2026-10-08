@@ -587,11 +587,13 @@ describe("content handling", () => {
       ...["<\u{85}", "<\u{0}\u{1F} ", `<${"\u{85}".repeat(1_000)}x`],
     ]) {
       // More than a fetched body ever holds (max_chars is at most 200 000).
+      // A linear pass takes milliseconds; the bound leaves room for a loaded
+      // CI machine (250 ms failed once at load ~105), as the htmlToText ones do.
       const text = unit.repeat(Math.ceil((256 * 1024) / unit.length));
       const started = performance.now();
       neutralizeExternalMarkers(text);
       const elapsed = performance.now() - started;
-      assert.ok(elapsed < 250, `${JSON.stringify(unit)}: ${elapsed.toFixed(0)} ms`);
+      assert.ok(elapsed < 1_000, `${JSON.stringify(unit)}: ${elapsed.toFixed(0)} ms`);
     }
   });
 
