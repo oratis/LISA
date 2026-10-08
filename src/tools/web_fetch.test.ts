@@ -687,8 +687,8 @@ describe("content handling", () => {
     ],
     ["spaces and combining marks", `<\u{301} <\u{301} <${M}>>>`, `[ [ [${M}]]]`],
     ["Canadian syllabics", `\u{1438}\u{1438}\u{1438}${M}\u{1433}\u{1433}\u{1433}`, `[[[${M}]]]`],
-    ["very-much-less-than signs", `\u{22D8}${M}\u{22D9}`, `[[[${M}]]]`],
-    ["triple nested signs", `\u{2AF7}${M}\u{2AF8}`, `[[[${M}]]]`],
+    ["very-much-less-than signs", `\u{22D8}${M}\u{22D9}`, `[${M}]`],
+    ["triple nested signs", `\u{2AF7}${M}\u{2AF8}`, `[${M}]`],
     [
       "single angle quotation marks",
       `\u{2039}\u{2039}\u{2039}${M}\u{203A}\u{203A}\u{203A}`,
@@ -702,7 +702,7 @@ describe("content handling", () => {
     ["heavy ornaments", `\u{276E}\u{276E}\u{276E}${M}\u{276F}\u{276F}\u{276F}`, `[[[${M}]]]`],
     ["modifier arrowheads", `\u{2C2}\u{2C2}\u{2C2}${M}\u{2C3}\u{2C3}\u{2C3}`, `[[[${M}]]]`],
     ["CJK angle brackets", `\u{3008}\u{3008}\u{3008}${M}\u{3009}\u{3009}\u{3009}`, `[[[${M}]]]`],
-    ["a much-less-than sign next to a bracket", `\u{226A}<${M}>\u{226B}`, `[[[${M}]]]`],
+    ["a much-less-than sign next to a bracket", `\u{226A}<${M}>\u{226B}`, `[[${M}]]`],
     ["mixed shapes and spaces", `<  \u{FF1C} \u{2039}${M}\u{203A} \u{FF1E} >`, `[  [ [${M}] ] ]`],
   ];
   /** What a reader takes for brackets once blanks and unseen characters are gone. */
@@ -739,6 +739,58 @@ describe("content handling", () => {
       }
     });
   }
+
+  // Every character BRACKET_PAIRS lists, both ways round.
+  const ALL_BRACKETS = [
+    ..."<>\u{FF1C}\u{FF1E}\u{FE64}\u{FE65}\u{2039}\u{203A}\u{2329}\u{232A}\u{3008}\u{3009}",
+    ..."\u{27E8}\u{27E9}\u{29FC}\u{29FD}\u{276C}\u{276D}\u{276E}\u{276F}\u{2770}\u{2771}",
+    ..."\u{2C2}\u{2C3}\u{1D236}\u{1D237}\u{1438}\u{1433}\u{16B2}\u{16F3F}",
+    ..."\u{226A}\u{226B}\u{27EA}\u{27EB}\u{2AA1}\u{2AA2}\u{22D8}\u{22D9}\u{2AF7}\u{2AF8}",
+  ];
+
+  test("the fold never makes text longer", () => {
+    // A character that counts three used to become three square brackets.
+    assert.equal(neutralizeExternalMarkers("\u{22D8}".repeat(1_000)), "[".repeat(1_000));
+    assert.equal(neutralizeExternalMarkers("\u{226B}".repeat(1_000)), "]".repeat(1_000));
+    let seed = 7;
+    const next = (n: number): number => (seed = (seed * 48_271) % 2_147_483_647) % n;
+    const alphabet = [...ALL_BRACKETS, " ", "\n", "\u{301}", "\u{200B}", "\u{2800}", "x"];
+    const pick = (): string => alphabet[next(alphabet.length)]!;
+    for (let i = 0; i < 2_000; i++) {
+      const text = Array.from({ length: 1 + next(40) }, pick).join("");
+      const out = neutralizeExternalMarkers(text);
+      assert.ok(out.length <= text.length, `${JSON.stringify(text)} -> ${JSON.stringify(out)}`);
+    }
+  });
+
+  test("the fenced output stays within max_chars and the fixed header and notices", async () => {
+    // A page of `⋘` came back three times as long as max_chars asked for.
+    const render = (body: string, contentType: string, format: "raw" | undefined, max: number) =>
+      renderFetchedResponse(
+        "https://example.com/",
+        new Response(body, { status: 200, headers: { "content-type": contentType } }),
+        format,
+        max,
+      );
+    for (const max of [1_000, 32_000]) {
+      const notices = `\n\n[truncated at ${max} chars]\n[markup cut at 99999 KB]`.length;
+      for (const unit of [...ALL_BRACKETS, "\u{22D8} ", "\u{226A}<"]) {
+        const body = unit.repeat(Math.ceil((max * 3) / unit.length));
+        for (const [contentType, format] of [
+          ["text/plain", undefined],
+          ["text/html", undefined],
+          ["text/html", "raw"],
+        ] as const) {
+          const fixed = (await render("", contentType, format, max)).length + notices;
+          const out = await render(body, contentType, format, max);
+          assert.ok(
+            out.length <= max + fixed,
+            `${JSON.stringify(unit)} ${contentType} ${format}: ${out.length} > ${max} + ${fixed}`,
+          );
+        }
+      }
+    }
+  });
 
   test("what the fold leaves as written, by design", () => {
     for (const text of [

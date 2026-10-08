@@ -624,7 +624,10 @@ const BRACKET_RUN = new RegExp(
 /**
  * Fold each stretch of a bracket run that points one way when two of its
  * brackets touch, or when it counts three or more; see neutralizeExternalMarkers.
- * A folded stretch keeps its blanks and drops the unseen characters inside it.
+ * A folded stretch keeps its blanks and drops the unseen characters inside it,
+ * and each bracket character becomes ONE square bracket, whatever it counts
+ * (`⋘` is `[`): the count only decides whether to fold, so the fold never
+ * makes text longer — it runs after the body is cut to `max_chars`.
  * A change of direction is left alone: `><` between adjacent tags, or `<>`,
  * is ordinary markup and never part of a fence marker.
  */
@@ -661,7 +664,7 @@ function defangBracketRun(run: string): string {
     gap = "";
     previous = bracket;
     written += ch;
-    folded += (bracket.opening ? "[" : "]").repeat(bracket.count);
+    folded += bracket.opening ? "[" : "]";
     count += bracket.count;
   }
   flush();
@@ -688,7 +691,8 @@ function defangBracketRun(run: string): string {
  *    `≪ ≫`, `⟪ ⟫` and `⪡ ⪢` count two (folded with one more same-way bracket
  *    beside them), and `⋘ ⋙`, `⫷ ⫸` three (folded alone). Letters (`ᐸ ᐳ ᚲ`,
  *    U+16F3F) never touch: they fold only at three, so a doubled syllable
- *    stays as written.
+ *    stays as written. Each folded character becomes one `[` or `]` (`⋘` is
+ *    `[`), so the result is never longer than the text it was given.
  * Not defused, left as written:
  *  - fewer than that: a single `<END-EXTERNAL-CONTENT>`, two blank-separated
  *    brackets `< <END-EXTERNAL-CONTENT> >`, a lone `≪` or `⟪` (as in maths);
