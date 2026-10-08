@@ -535,58 +535,110 @@ const TEXTUAL_APPLICATION_TYPES = new Set([
 
 /** Invisible format characters: zero-width (non-)joiners and spaces, soft hyphen, bidi, tags. */
 const INVISIBLE_FORMAT = /\p{Cf}/gu;
-/** Angle brackets: ASCII, fullwidth ＜＞ and small ﹤﹥. `true` = opening (`<`). */
-const ANGLE_BRACKETS: ReadonlyMap<string, boolean> = new Map([
-  ["<", true],
-  [">", false],
-  ["＜", true],
-  ["＞", false],
-  ["﹤", true],
-  ["﹥", false],
-]);
-const BRACKET_CLASS = [...ANGLE_BRACKETS.keys()].join("");
-/** Characters a reader does not see between two brackets: they still touch. */
-const UNSEEN_CLASS = "\\p{Default_Ignorable_Code_Point}\\p{M}";
-/**
- * Two or more brackets in a row, either way round, with only unseen characters
- * between them. The two classes are disjoint, so the match is linear.
- */
-const BRACKET_RUN = new RegExp(`[${BRACKET_CLASS}](?:[${UNSEEN_CLASS}]*[${BRACKET_CLASS}])+`, "gu");
+
+interface Bracket {
+  /** `<`-like (true) or `>`-like (false). */
+  opening: boolean;
+  /** How many brackets the character reads as: ≪ is two, ⋘ three. */
+  count: number;
+  /** A letter of some script (ᐸ is the Canadian syllable "pa"): never "touches". */
+  letter: boolean;
+}
 
 /**
- * Fold every stretch of the run that points one way and holds two or more
- * brackets (`<<`, `>>>`, `<` + combining mark + `<`) to square brackets,
- * dropping the unseen characters inside it. A change of direction is left
- * alone: `><` between two adjacent tags, or `<>`, is ordinary markup and never
- * part of a fence marker, which always has three brackets of one kind.
+ * Characters that read as angle brackets, written as code points so the
+ * source stays unambiguous: [opening, closing, how many brackets each is].
+ */
+const BRACKET_PAIRS: ReadonlyArray<readonly [string, string, number]> = [
+  ["<", ">", 1],
+  ["\u{FF1C}", "\u{FF1E}", 1], // fullwidth
+  ["\u{FE64}", "\u{FE65}", 1], // small
+  ["\u{2039}", "\u{203A}", 1], // single angle quotation marks
+  ["\u{2329}", "\u{232A}", 1], // angle brackets
+  ["\u{3008}", "\u{3009}", 1], // CJK angle brackets
+  ["\u{27E8}", "\u{27E9}", 1], // mathematical angle brackets
+  ["\u{29FC}", "\u{29FD}", 1], // curved angle brackets
+  ["\u{276C}", "\u{276D}", 1], // medium angle bracket ornaments
+  ["\u{276E}", "\u{276F}", 1], // heavy angle quotation mark ornaments
+  ["\u{2770}", "\u{2771}", 1], // heavy angle bracket ornaments
+  ["\u{02C2}", "\u{02C3}", 1], // modifier letter arrowheads
+  ["\u{1D236}", "\u{1D237}", 1], // Greek instrumental notation
+  ["\u{1438}", "\u{1433}", 1], // Canadian syllabics PA / PO (letters)
+  ["\u{16B2}", "\u{16F3F}", 1], // runic KAUNA / Miao (letters)
+  ["\u{226A}", "\u{226B}", 2], // much less / greater than
+  ["\u{27EA}", "\u{27EB}", 2], // mathematical double angle brackets
+  ["\u{2AA1}", "\u{2AA2}", 2], // double nested less / greater than
+  ["\u{22D8}", "\u{22D9}", 3], // very much less / greater than
+  ["\u{2AF7}", "\u{2AF8}", 3], // triple nested less / greater than
+];
+const BRACKETS: ReadonlyMap<string, Bracket> = new Map(
+  BRACKET_PAIRS.flatMap(([open, close, count]) =>
+    [open, close].map((ch): [string, Bracket] => [
+      ch,
+      { opening: ch === open, count, letter: /\p{L}/u.test(ch) },
+    ]),
+  ),
+);
+const BRACKET_CLASS = [...BRACKETS.keys()].join("");
+/** A bracket that is a fence's three brackets on its own (⋘). */
+const TRIPLE_CLASS = [...BRACKETS].flatMap(([ch, b]) => (b.count >= 3 ? [ch] : [])).join("");
+/** Characters a reader does not see between two brackets: the brackets still touch. */
+const UNSEEN = /[\p{Default_Ignorable_Code_Point}\p{M}]/gu;
+/** Blank space between two brackets: any Unicode white space, and the braille blank. */
+const BLANK = /[\s\u{2800}]/u;
+/**
+ * Two or more brackets with only unseen or blank characters between them,
+ * either way round, or one bracket that counts three. The between-class and
+ * the bracket class are disjoint, so the match is linear.
+ */
+const BRACKET_RUN = new RegExp(
+  `[${BRACKET_CLASS}](?:[\\p{Default_Ignorable_Code_Point}\\p{M}\\s\\u{2800}]*[${BRACKET_CLASS}])+` +
+    `|[${TRIPLE_CLASS}]`,
+  "gu",
+);
+
+/**
+ * Fold each stretch of a bracket run that points one way when two of its
+ * brackets touch, or when it counts three or more; see neutralizeExternalMarkers.
+ * A folded stretch keeps its blanks and drops the unseen characters inside it.
+ * A change of direction is left alone: `><` between adjacent tags, or `<>`,
+ * is ordinary markup and never part of a fence marker.
  */
 function defangBracketRun(run: string): string {
   let out = "";
-  let stretch = "";
+  let written = ""; // the stretch as written
+  let folded = ""; // the stretch with square brackets
   let opening: boolean | null = null;
-  let brackets = 0;
-  let unseen = "";
+  let count = 0;
+  let touching = false;
+  let previous: Bracket | null = null;
+  let gap = ""; // what lies since the previous bracket
   const flush = (): void => {
-    out += brackets >= 2 ? (opening ? "[" : "]").repeat(brackets) : stretch;
-    stretch = "";
-    brackets = 0;
+    out += touching || count >= 3 ? folded : written;
+    written = folded = "";
+    count = 0;
+    touching = false;
   };
   for (const ch of run) {
-    const isOpening = ANGLE_BRACKETS.get(ch);
-    if (isOpening === undefined) {
-      unseen += ch;
+    const bracket = BRACKETS.get(ch);
+    if (!bracket) {
+      gap += ch;
       continue;
     }
-    if (isOpening !== opening) {
+    if (bracket.opening !== opening) {
       flush();
-      out += unseen;
-      opening = isOpening;
+      out += gap;
+      opening = bracket.opening;
     } else {
-      stretch += unseen;
+      written += gap;
+      if (BLANK.test(gap)) folded += gap.replace(UNSEEN, "");
+      else if (!bracket.letter && !previous?.letter) touching = true;
     }
-    unseen = "";
-    stretch += ch;
-    brackets++;
+    gap = "";
+    previous = bracket;
+    written += ch;
+    folded += (bracket.opening ? "[" : "]").repeat(bracket.count);
+    count += bracket.count;
   }
   flush();
   return out;
@@ -597,11 +649,31 @@ function defangBracketRun(run: string): string {
  * EXTERNAL-CONTENT block early (or open a fake one) and have what follows
  * read as trusted text. Matching on the marker's words is not enough — a zero-
  * width space, a Unicode hyphen, a Cyrillic letter or fullwidth brackets all
- * slip past — so invisible format characters are removed and every run of
- * two or more angle brackets pointing the same way becomes square brackets,
- * whatever it encloses. Single brackets, `><` between adjacent tags (so
- * `format=raw` returns markup as it came), and other punctuation (including
- * CJK 《》〈〉) are untouched.
+ * slip past — so the brackets are what is folded, whatever they enclose.
+ *
+ * Defused:
+ *  - Invisible format characters (`\p{Cf}`: zero-width spaces and joiners,
+ *    bidi controls, tag characters, …) are removed first; see INVISIBLE_FORMAT.
+ *  - A run of brackets pointing one way becomes square brackets when two of
+ *    them touch — nothing, or only default-ignorable or combining characters,
+ *    between them (`<<`, `>>>`, `<` + U+0301 + `<`) — or when it counts three
+ *    or more with only blank space between (`< < <`, with any Unicode space,
+ *    tab, line break, or the U+2800 braille blank). The brackets are those in
+ *    BRACKET_PAIRS: ASCII, fullwidth and small `< >`, `‹ ›`, both `〈 〉`, `⟨ ⟩`,
+ *    `⧼ ⧽`, `❬ ❭`, `❮ ❯`, `❰ ❱`, `˂ ˃`, U+1D236 / U+1D237, `ᐸ ᐳ`, `ᚲ`, U+16F3F;
+ *    `≪ ≫`, `⟪ ⟫` and `⪡ ⪢` count two (folded with one more same-way bracket
+ *    beside them), and `⋘ ⋙`, `⫷ ⫸` three (folded alone). Letters (`ᐸ ᐳ ᚲ`,
+ *    U+16F3F) never touch: they fold only at three, so a doubled syllable
+ *    stays as written.
+ * Not defused, left as written:
+ *  - fewer than that: a single `<END-EXTERNAL-CONTENT>`, two blank-separated
+ *    brackets `< <END-EXTERNAL-CONTENT> >`, a lone `≪` or `⟪` (as in maths);
+ *  - characters not in the list: quotation marks `« »`, CJK `《 》`, `≮`,
+ *    triangles, arrows, ASCII art;
+ *  - entities the HTML step does not decode (`&#60;`), shown as written;
+ *  - a change of direction (`><`, `<>`): never part of a marker, and
+ *    `format=raw` must return markup as it came.
+ * The blank-space rule also folds a thrice-nested e-mail quote (`> > >`).
  */
 export function neutralizeExternalMarkers(text: string): string {
   return text.replace(INVISIBLE_FORMAT, "").replace(BRACKET_RUN, defangBracketRun);
@@ -609,9 +681,9 @@ export function neutralizeExternalMarkers(text: string): string {
 
 /**
  * Quote untrusted text for a fence attribute or a message: defanged, then
- * JSON-quoted with the line breaks JSON.stringify leaves raw escaped too \u2014
- * U+0085 (NEL), U+2028 and U+2029; it escapes only those below U+0020 \u2014 so
- * the quoted text stays on the line it is written on.
+ * JSON-quoted, with the line breaks JSON.stringify leaves raw (it escapes
+ * only those below U+0020) escaped too: U+0085 (NEL), U+2028 and U+2029.
+ * The quoted text stays on the line it is written on.
  */
 export function quoteUntrusted(text: string): string {
   return JSON.stringify(neutralizeExternalMarkers(text)).replace(
