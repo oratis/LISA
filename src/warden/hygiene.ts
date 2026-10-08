@@ -432,21 +432,31 @@ const DIGITS_ONLY_KEYWORD_RE =
 
 /**
  * The bare word "code" / "PIN" announces a one-time code only when it is tied
- * to the number: `code: 123456`, `Your code is: 123456`, `コード：123456`, or
- * `your Lyft code 123456`. Exactly one group captures the word itself.
+ * to the number: `code: 123456`, `Your code is: 123456`, `コード：123456`,
+ * `your Lyft code 123456`, or "code" right before it on the same line
+ * (`WhatsApp code 123-456`, `code 123456` — not "PIN", which also names a map
+ * pin or a part). Each alternative has one group, and it captures the word.
+ * Every quantifier is bounded by the 40-character window it is matched against.
  */
 const WEAK_FORWARD_RE =
-  /(?<![a-z])(code|pin|c[oó]digo|codice|kode)(?![a-z])\s*(?:(?:is|are)\s*[:=]?|[:=])\s*["'“‘]?$|(代码|コード|코드)\s*(?:为|為|是|は|:|=)?\s*["'“‘「]?$|(?<![a-z])(?:your|my|the|this)\s+(?:[a-z]+\s+)?(code|pin)\s+$/i;
+  /(?<![a-z])(code|pin|c[oó]digo|codice|kode)(?![a-z])\s{0,40}(?:(?:is|are)\s{0,40}[:=]?|[:=])\s{0,40}["'“‘]?$|(?<![a-z])(code|c[oó]digo|codice|kode)[ \t]{1,3}["'“‘]?$|(代码|コード|코드)\s{0,40}(?:为|為|是|は|:|=)?\s{0,40}["'“‘「]?$|(?<![a-z])(?:your|my|the|this)\s{1,40}(?:[a-z]{1,24}\s{1,40})?(code|pin)\s{1,40}$/i;
 /** …unless it is a kind of code that is not a credential. */
 const NOT_A_SECRET_CODE_RE =
-  /(?:promo(?:tion(?:al)?)?|discount|coupon|voucher|referral|invite|gift|zip|postal|area|country|dial(?:ing)?|error|status|exit|response|http|product|item|model|part|sku|tracking|booking|reservation|source|color|colour|qr|bar|bank|sort|branch|tax|hs|course|class|building|dress|employee|student|customer|member|store|project|cost|billing|优惠|折扣|兑换|兌換|邀请|邀請|邮政|郵政|邮编|区号|區號|错误|錯誤|状态|狀態)\s*$/i;
+  /(?:promo(?:tion(?:al)?)?|discount|coupon|voucher|referral|invite|gift|zip|postal|area|country|dial(?:ing)?|error|status|exit|response|reason|return|civil|penal|labou?r|http|product|item|model|part|sku|order|ref(?:erence)?|shipment|shipping|customs|tracking|pick-?up|booking|reservation|source|color|colour|qr|bar|bank|sort|branch|tax|hs|course|class|building|dress|employee|student|customer|member|store|project|cost|billing|优惠|折扣|兑换|兌換|邀请|邀請|邮政|郵政|邮编|区号|區號|错误|錯誤|状态|狀態)\s{0,40}$/i;
 /** `123456 is your Uber code`. */
 const WEAK_BACKWARD_RE =
   /^\s+(?:is|as)\s+(?:your|the)\s+[^.!?\d\n]{0,30}?(?<![a-z])(?:code|pin)(?![a-z])/i;
-/** `Use 482 913 to verify your account` / `Enter 482913 to sign in`: no noun at all. */
-const IMPERATIVE_BEFORE_RE = /(?<![a-z])(?:use|enter|type|input)\s+(?:the\s+)?(?:code\s+)?$/i;
+/**
+ * `Use 482 913 to verify your account` / `Enter 482913 to sign in`: no noun at
+ * all. A letters-and-digits code (`Use code ABC-123 to sign in`) needs more:
+ * the word "code" before it (group 1 here) and a sign-in, verify or reset verb
+ * after it (group 1 of IMPERATIVE_AFTER_RE) — "use code SAVE20 to complete your
+ * order" is a promotion. Quantifiers are bounded like WEAK_FORWARD_RE's.
+ */
+const IMPERATIVE_BEFORE_RE =
+  /(?<![a-z])(?:use|enter|type|input)\s{1,40}(?:(?:the|this|your)\s{1,40})?(code\s{1,40})?$/i;
 const IMPERATIVE_AFTER_RE =
-  /^\s+to\s+(?:verify|confirm|log|sign|authenticate|complete|finish|reset|access|continue|proceed|activate|validate)(?![a-z])/i;
+  /^\s{1,40}to\s{1,40}(?:((?:sign|log)[- ]?(?:in(?:to)?|on)|verify|authenticate|reset)|confirm|log|sign|complete|finish|access|continue|proceed|activate|validate)(?![a-z])/i;
 
 /**
  * What may sit between a code and the keyword that follows it: a linking word
@@ -572,12 +582,14 @@ function scanRuns(shadow: string): Run[] {
     });
   }
   // "123 456" / "1234 5678": two equal groups written with one space are one
-  // code. Three or more groups is a phone or card number, not a split code.
+  // code, and so is "48 29 13" — three groups of two, a common way to print a
+  // six-digit code. Anything longer is a phone or card number ("06 12 34 56
+  // 78", "123 456 789"), not a split code.
   //
   // One pass that builds a new array — never an in-place splice, which would
-  // make a text full of such pairs cost O(n²). Neighbours are read from `raw`:
-  // a pair only merges when neither neighbour is an adjacent digit group, so a
-  // merged run can never be the neighbour that decides a later pair.
+  // make a text full of such groups cost O(n²). Neighbours are read from `raw`:
+  // a group only merges when neither neighbour is an adjacent digit group, so a
+  // merged run can never be the neighbour that decides a later group.
   const isDigits = (r: Run | undefined, n?: number): boolean => {
     if (!r) return false;
     const len = r.end - r.start;
@@ -594,17 +606,22 @@ function scanRuns(shadow: string): Run[] {
   for (let i = 0; i < raw.length; i++) {
     const a = raw[i]!;
     const b = raw[i + 1];
-    const pair =
-      b !== undefined &&
-      adjacent(a, b) &&
-      ((isDigits(a, 3) && isDigits(b, 3)) || (isDigits(a, 4) && isDigits(b, 4)));
-    if (pair) {
+    const c = raw[i + 2];
+    // How many runs from `a` on make one split code, or 0.
+    let size = 0;
+    if (adjacent(a, b)) {
+      if (isDigits(a, 2) && isDigits(b, 2) && adjacent(b, c) && isDigits(c, 2)) size = 3;
+      else if ((isDigits(a, 3) && isDigits(b, 3)) || (isDigits(a, 4) && isDigits(b, 4))) size = 2;
+    }
+    if (size > 0) {
+      const last = raw[i + size - 1]!;
       const prev = raw[i - 1];
-      const next = raw[i + 2];
-      const longer = (adjacent(b, next) && isDigits(next)) || (adjacent(prev, a) && isDigits(prev));
-      if (!longer && !looksLikeSomethingElse(shadow, a.start, b.end)) {
-        out.push({ start: a.start, end: b.end, kind: "digits" });
-        i++; // `b` is part of the merged run
+      const next = raw[i + size];
+      const longer =
+        (adjacent(last, next) && isDigits(next)) || (adjacent(prev, a) && isDigits(prev));
+      if (!longer && !looksLikeSomethingElse(shadow, a.start, last.end)) {
+        out.push({ start: a.start, end: last.end, kind: "digits" });
+        i += size - 1; // the other groups are part of the merged run
         continue;
       }
     }
@@ -686,14 +703,20 @@ function stripCodes(text: string, counts: HygieneCounts): string {
     }
   }
 
-  // The bare word "code" / "PIN", glued to digits.
+  // The bare word "code" / "PIN", glued to digits; "use code … to sign in".
   for (const run of runs) {
-    if (run.kind !== "digits" || taken.has(run)) continue;
+    if ((run.kind !== "digits" && run.kind !== "alnum") || taken.has(run)) continue;
     const before = shadow.slice(Math.max(0, run.start - 40), run.start);
     const after = shadow.slice(run.end, run.end + 60);
+    if (run.kind === "alnum") {
+      if (IMPERATIVE_BEFORE_RE.exec(before)?.[1] && IMPERATIVE_AFTER_RE.exec(after)?.[1]) {
+        taken.add(run);
+      }
+      continue;
+    }
     const weak = WEAK_FORWARD_RE.exec(before);
     if (weak) {
-      const word = (weak[1] ?? weak[2] ?? weak[3] ?? "").toLowerCase();
+      const word = (weak[1] ?? weak[2] ?? weak[3] ?? weak[4] ?? "").toLowerCase();
       const at = weak.index + weak[0].toLowerCase().lastIndexOf(word);
       if (!NOT_A_SECRET_CODE_RE.test(before.slice(0, at))) taken.add(run);
     } else if (

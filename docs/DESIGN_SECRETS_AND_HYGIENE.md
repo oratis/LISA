@@ -116,12 +116,15 @@ idempotent, and it reports counts only.
 ### What is removed
 
 - **One-time codes** → `[redacted: one-time code]`. A 4–8 digit code (also
-  `123 456`, `123-456`, `G-123456`, full-width digits), or a 5–10 character
+  `123 456`, `123-456`, `48 29 13`, `G-123456`, full-width digits), or a 5–10 character
   letters-and-digits code, *near a keyword* (verification / security / login
   code, OTP, 2FA, passcode, 验证码, 校验码, 动态密码, 確認コード, 인증번호, …):
   after it within ~100 characters of prose, or before it joined by a linker
   (`123456 is your … code`, `482913（验证码）`). The bare words "code" / "PIN"
-  count only when tied to the number (`code: 123456`, `Your code is 123456`).
+  count only when tied to the number (`code: 123456`, `Your code is 123456`,
+  and for "code" also `WhatsApp code 123-456`). A letters-and-digits code with
+  no keyword is removed in `Use code ABC-123 to sign in` (sign in / log in /
+  verify / reset), not with any other verb.
 - **Sign-in, magic and e-mail-verification links** → `[redacted: sign-in link]`.
 - **Password-reset links** → `[redacted: password-reset link]`.
 
@@ -147,7 +150,8 @@ Over-redaction (false positives):
   code at all;
 - click-tracking links that follow the words "sign in" / "log in" in marketing
   mail; OAuth authorization links; double opt-in and invitation links;
-- a `the <word> code 1234` phrase whose word is not on the exclusion list.
+- a `the <word> code 1234` or `<word> code 1234` phrase whose word is not on
+  the exclusion list (`Civil Code 1714` is kept; `Code 2026 conference` is not).
 
 Misses (false negatives):
 
@@ -160,8 +164,9 @@ Misses (false negatives):
 - a code or token already split by the snippet cut.
 
 Deliberately kept: booking-style `confirmation code` / `activation code` values
-that contain letters, and parcel pickup codes (取件码) — things the user asks
-Lisa to read back.
+that contain letters, parcel pickup codes (取件码, `pickup code 4821`) and
+order, return, shipment and reference codes — things the user asks Lisa to
+read back.
 
 ### Where it is wired
 
