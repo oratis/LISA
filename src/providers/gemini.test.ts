@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { GeminiProvider } from "./gemini.js";
+import { GeminiProvider, geminiWireModel } from "./gemini.js";
 import type { ProviderRunOpts } from "./types.js";
 
 /**
@@ -75,6 +75,31 @@ describe("GeminiProvider — abort signal passthrough", () => {
     await provider.runTurn(baseOpts());
 
     assert.equal(captured.params?.config?.abortSignal, undefined);
+  });
+});
+
+describe("GeminiProvider — model id sent to Google", () => {
+  async function sentModel(model: string): Promise<string | undefined> {
+    const provider = new GeminiProvider({ apiKey: "test-key" });
+    const captured: { params?: CapturedParams } = {};
+    (provider as unknown as { client: unknown }).client = makeFakeClient(captured, TEXT_CHUNKS);
+    await provider.runTurn({ ...baseOpts(), model });
+    return captured.params?.model;
+  }
+
+  test("a base gemini-* id goes out lower-cased and trimmed", async () => {
+    assert.equal(await sentModel("Gemini-2.5-Flash"), "gemini-2.5-flash");
+    assert.equal(await sentModel(" GEMINI-2.5-FLASH "), "gemini-2.5-flash");
+  });
+
+  test("a tuned-model or resource name keeps its case (was lower-cased into a 404)", async () => {
+    assert.equal(await sentModel("tunedModels/My-Tuned-1"), "tunedModels/My-Tuned-1");
+    assert.equal(await sentModel(" models/gemini-2.5-flash "), "models/gemini-2.5-flash");
+  });
+
+  test("geminiWireModel matches what the provider sends", () => {
+    assert.equal(geminiWireModel("Gemini-2.5-Flash"), "gemini-2.5-flash");
+    assert.equal(geminiWireModel("tunedModels/My-Tuned-1"), "tunedModels/My-Tuned-1");
   });
 });
 

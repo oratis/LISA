@@ -41,6 +41,17 @@ export interface GeminiProviderOptions {
   headers?: Record<string, string>;
 }
 
+/**
+ * The model id sent to Google. Base `gemini-*` ids are case-insensitive, so
+ * they go out in the normalised form the managed-key gate checked and the
+ * gateway route admits. Anything else (`tunedModels/…`, `models/…`) is a
+ * resource name whose case matters: it goes out as written, only trimmed.
+ */
+export function geminiWireModel(model: string): string {
+  const normalised = normalizeModelId(model);
+  return normalised.startsWith("gemini-") ? normalised : model.trim();
+}
+
 export class GeminiProvider implements Provider {
   readonly name = "gemini";
   // Lazily constructed on first runTurn so that merely importing the provider
@@ -93,9 +104,7 @@ export class GeminiProvider implements Provider {
     // a transient empty-stream retry (see withStreamRetry).
     return withStreamRetry({ signal: opts.signal }, async (markEmitted) => {
       const stream = await client.models.generateContentStream({
-        // Gemini ids are lower-case; send the normalised form the managed-key
-        // gate checked and the gateway route admits.
-        model: normalizeModelId(opts.model),
+        model: geminiWireModel(opts.model),
         contents,
         config: {
           // Aborts the in-flight request (the SDK then throws an abort error).
