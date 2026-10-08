@@ -635,17 +635,30 @@ export async function renderFetchedResponse(
     // `maxChars` bounds output, but HTML stripping can shrink a response
     // dramatically. Bound the raw network body separately so a huge page cannot
     // be buffered in full before the output limit is applied.
-    const rawByteLimit = Math.max(64_000, Math.min(2_000_000, maxChars * 8));
+    const rawByteLimit = Math.max(64_000, Math.min(MAX_RAW_BODY_BYTES, maxChars * 8));
     const raw = await readResponseTextCapped(response, rawByteLimit);
     body = raw.text;
     let truncated = raw.truncated;
+    /** Bytes of markup converted, when the page was longer than that. */
+    let markupCut: number | null = null;
     if (format !== "raw" && /html|xml/i.test(contentType)) {
-      truncated ||= body.length > HTML_TO_TEXT_MAX_INPUT;
+      // Converted text can be far shorter than `maxChars` even when markup was
+      // left unread (a page with a large inline head): report the cut as what
+      // it is, not as a `max_chars` truncation that did not happen.
+      const converted = Math.min(body.length, HTML_TO_TEXT_MAX_INPUT);
+      if (raw.truncated || converted < body.length) {
+        markupCut = Buffer.byteLength(body.slice(0, converted), "utf8");
+      }
+      truncated = false;
       body = htmlToText(body);
     }
+    const notices: string[] = [];
     if (body.length > maxChars || truncated) {
-      body = body.slice(0, maxChars) + `\n\n[truncated at ${maxChars} chars]`;
+      body = body.slice(0, maxChars);
+      notices.push(`[truncated at ${maxChars} chars]`);
     }
+    if (markupCut !== null) notices.push(`[markup cut at ${Math.floor(markupCut / 1024)} KB]`);
+    if (notices.length > 0) body += `\n\n${notices.join("\n")}`;
   }
   const inner = neutralizeExternalMarkers(
     `HTTP ${response.status} ${response.statusText}\ncontent-type: ${contentType}\n\n${body}`,
@@ -701,12 +714,18 @@ export async function readResponseTextCapped(
   return { text, truncated };
 }
 
+/** The most of a response body web_fetch reads (it reads `max_chars` × 8, at least 64 KB). */
+const MAX_RAW_BODY_BYTES = 2_000_000;
+
 /**
- * The most markup `htmlToText` reads, whatever `max_chars` asks for. The
- * conversion is synchronous, so no deadline can interrupt it; bounding its
- * input is what bounds its cost. Longer pages are cut and reported truncated.
+ * The most markup `htmlToText` reads. The conversion is synchronous, so no
+ * deadline can interrupt it; bounding its input is what bounds its cost —
+ * it is linear, about 100 ms for 2 MB of hostile markup. Set above the most
+ * web_fetch ever reads, so a page is never cut here after being fetched (a
+ * large inline head used to push the article past a 256 KB cap); a longer
+ * input from another caller is cut, and web_fetch says "markup cut at N KB".
  */
-export const HTML_TO_TEXT_MAX_INPUT = 256 * 1024;
+export const HTML_TO_TEXT_MAX_INPUT = 2 * 1024 * 1024;
 
 /**
  * Elements whose content is never text: dropped whole, up to their end tag.

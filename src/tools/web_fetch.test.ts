@@ -748,11 +748,12 @@ describe("content handling", () => {
   });
 });
 
-describe("htmlToText — one linear pass over at most 256 KB of markup", () => {
-  const CAP = 256 * 1024;
+describe("htmlToText — one linear pass over at most 2 MB of markup", () => {
+  const CAP = 2 * 1024 * 1024;
   // Each of these used to be rescanned to the end of the input from every
   // repetition: 400 KB of `<p` took over a minute of synchronous CPU, which no
-  // deadline can interrupt (review F1).
+  // deadline can interrupt (review F1). At the 2 MB cap a linear pass takes
+  // tens of milliseconds; a quadratic one would take hours.
   const hostile: Array<[string, string]> = [
     ["unclosed <script", "<script"],
     ["unclosed comment", "<!--"],
@@ -771,18 +772,18 @@ describe("htmlToText — one linear pass over at most 256 KB of markup", () => {
     ["unclosed prefix-named tags", "<noscript-"],
   ];
   for (const [label, unit] of hostile) {
-    test(`${label}, repeated up to the cap, converts in well under a second`, () => {
+    test(`${label}, repeated up to the cap, converts in under a second`, () => {
       const html = unit.repeat(Math.ceil(CAP / unit.length));
       const started = performance.now();
       htmlToText(html);
       const elapsed = performance.now() - started;
-      assert.ok(elapsed < 250, `${label}: ${elapsed.toFixed(0)} ms`);
+      assert.ok(elapsed < 1_000, `${label}: ${elapsed.toFixed(0)} ms`);
     });
   }
 
   test("markup past the cap is not read, whatever max_chars asks for", () => {
     assert.equal(HTML_TO_TEXT_MAX_INPUT, CAP);
-    assert.equal(htmlToText("x".repeat(1_000_000)).length, CAP);
+    assert.equal(htmlToText("x".repeat(3_000_000)).length, CAP);
   });
 
   test("ordinary markup converts as before: line breaks, entities, no script or style", () => {
@@ -848,18 +849,55 @@ describe("htmlToText — one linear pass over at most 256 KB of markup", () => {
     assert.equal(htmlToText("<script>a</script-x>b</scripts>c</script>d"), "d");
   });
 
-  test("a page longer than the cap is reported as truncated", async () => {
-    // 400 KB of markup, 50 K characters of text: under max_chars, over the cap.
-    const out = await renderFetchedResponse(
-      "https://example.com/",
-      new Response("<b>x</b>".repeat(50_000), {
-        status: 200,
-        headers: { "content-type": "text/html" },
-      }),
+  const fetchHtml = (html: string, maxChars = 32_000): Promise<string> =>
+    renderFetchedResponse(
+      "https://news.example/a",
+      new Response(html, { status: 200, headers: { "content-type": "text/html" } }),
       undefined,
+      maxChars,
+    );
+  // ~400 KB: a head carrying ~360 KB of inline CSS and JSON, as large news and
+  // single-page-app pages do, then the article (review N7).
+  const bigHeadPage = (): string =>
+    `<html><head><style>${".c{color:#123456}".repeat(12_000)}</style>` +
+    `<script id="__DATA__" type="application/json">${JSON.stringify({ x: "y".repeat(180_000) })}</script>` +
+    `</head><body><article><h1>Headline</h1>${"<p>Paragraph of the article.</p>".repeat(400)}</article></body></html>`;
+
+  test("everything web_fetch reads is converted: a large head no longer hides the article", async () => {
+    // With a 256 KB cap on the conversion this returned no article text at all,
+    // and said "[truncated at 200000 chars]".
+    const out = await fetchHtml(bigHeadPage(), 200_000);
+    assert.ok(out.includes("\n\nHeadline\n\nParagraph of the article.\n"), out.slice(0, 200));
+    assert.equal(out.split("Paragraph of the article.").length - 1, 400);
+    assert.equal(/\[truncated at|\[markup cut at/.test(out), false, out.slice(-200));
+    // The most web_fetch reads (max_chars 200 000 → 1.6 MB) is under the cap.
+    const tail = await fetchHtml(
+      `<style>${"x{}".repeat(500_000)}</style><p>Last paragraph.</p>`,
       200_000,
     );
-    assert.match(out, /\[truncated at 200000 chars\]/);
+    assert.match(tail, /\n\nLast paragraph\.\n<<<END-EXTERNAL-CONTENT>>>$/);
+  });
+
+  test("markup left unread is reported as such, not as a max_chars truncation", async () => {
+    // At the default max_chars web_fetch reads 256 000 bytes, which ends inside
+    // the head: no text, and the notice must not claim 32 000 chars were cut.
+    const out = await fetchHtml(bigHeadPage());
+    assert.match(out, /\n\n\[markup cut at 250 KB\]\n<<<END-EXTERNAL-CONTENT>>>$/);
+    assert.doesNotMatch(out, /\[truncated at/);
+    // Text longer than max_chars from a page that was also cut: both notices.
+    const both = await fetchHtml("<p>word</p>".repeat(30_000), 1_000);
+    assert.match(
+      both,
+      /\n\n\[truncated at 1000 chars\]\n\[markup cut at 62 KB\]\n<<<END-EXTERNAL-CONTENT>>>$/,
+    );
+    // Plain text is never "markup": its cut stays a max_chars truncation.
+    const plain = await renderFetchedResponse(
+      "https://example.com/",
+      new Response("x".repeat(100_000), { status: 200, headers: { "content-type": "text/plain" } }),
+      undefined,
+      1_000,
+    );
+    assert.match(plain, /\n\n\[truncated at 1000 chars\]\n<<<END-EXTERNAL-CONTENT>>>$/);
   });
 });
 
