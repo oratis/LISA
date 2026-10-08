@@ -565,8 +565,6 @@ interface Bracket {
   opening: boolean;
   /** How many brackets the character reads as: ≪ is two, ⋘ three. */
   count: number;
-  /** A letter of some script (ᐸ is the Canadian syllable "pa"): never "touches". */
-  letter: boolean;
 }
 
 /**
@@ -597,19 +595,14 @@ const BRACKET_PAIRS: ReadonlyArray<readonly [string, string, number]> = [
 ];
 const BRACKETS: ReadonlyMap<string, Bracket> = new Map(
   BRACKET_PAIRS.flatMap(([open, close, count]) =>
-    [open, close].map((ch): [string, Bracket] => [
-      ch,
-      { opening: ch === open, count, letter: /\p{L}/u.test(ch) },
-    ]),
+    [open, close].map((ch): [string, Bracket] => [ch, { opening: ch === open, count }]),
   ),
 );
 const BRACKET_CLASS = [...BRACKETS.keys()].join("");
 /** A bracket that is a fence's three brackets on its own (⋘). */
 const TRIPLE_CLASS = [...BRACKETS].flatMap(([ch, b]) => (b.count >= 3 ? [ch] : [])).join("");
-/** Characters a reader does not see between two brackets: the brackets still touch. */
+/** Characters a reader does not see between two brackets: dropped when they are folded. */
 const UNSEEN = /[\p{Default_Ignorable_Code_Point}\p{M}]/gu;
-/** Blank space between two brackets: any Unicode white space, and the braille blank. */
-const BLANK = /[\s\u{2800}]/u;
 /**
  * Two or more brackets with only unseen or blank characters between them,
  * either way round, or one bracket that counts three. The between-class and
@@ -621,13 +614,16 @@ const BRACKET_RUN = new RegExp(
   "gu",
 );
 
+/** The fewest brackets a fence marker has (`<<<`, `>>>`): fewer are left as written. */
+const MARKER_BRACKETS = 3;
+
 /**
- * Fold each stretch of a bracket run that points one way when two of its
- * brackets touch, or when it counts three or more; see neutralizeExternalMarkers.
- * A folded stretch keeps its blanks and drops the unseen characters inside it,
- * and each bracket character becomes ONE square bracket, whatever it counts
- * (`⋘` is `[`): the count only decides whether to fold, so the fold never
- * makes text longer — it runs after the body is cut to `max_chars`.
+ * Fold each stretch of a bracket run that points one way when it counts
+ * three or more brackets; see neutralizeExternalMarkers. A folded stretch
+ * keeps its blanks and drops the unseen characters inside it, and each
+ * bracket character becomes ONE square bracket, whatever it counts (`⋘` is
+ * `[`): the count only decides whether to fold, so the fold never makes text
+ * longer — it runs after the body is cut to `max_chars`.
  * A change of direction is left alone: `><` between adjacent tags, or `<>`,
  * is ordinary markup and never part of a fence marker.
  */
@@ -637,14 +633,11 @@ function defangBracketRun(run: string): string {
   let folded = ""; // the stretch with square brackets
   let opening: boolean | null = null;
   let count = 0;
-  let touching = false;
-  let previous: Bracket | null = null;
   let gap = ""; // what lies since the previous bracket
   const flush = (): void => {
-    out += touching || count >= 3 ? folded : written;
+    out += count >= MARKER_BRACKETS ? folded : written;
     written = folded = "";
     count = 0;
-    touching = false;
   };
   for (const ch of run) {
     const bracket = BRACKETS.get(ch);
@@ -658,11 +651,9 @@ function defangBracketRun(run: string): string {
       opening = bracket.opening;
     } else {
       written += gap;
-      if (BLANK.test(gap)) folded += gap.replace(UNSEEN, "");
-      else if (!bracket.letter && !previous?.letter) touching = true;
+      folded += gap.replace(UNSEEN, "");
     }
     gap = "";
-    previous = bracket;
     written += ch;
     folded += bracket.opening ? "[" : "]";
     count += bracket.count;
@@ -681,27 +672,31 @@ function defangBracketRun(run: string): string {
  * Defused:
  *  - Invisible format characters (`\p{Cf}`: zero-width spaces and joiners,
  *    bidi controls, tag characters, …) are removed first; see INVISIBLE_FORMAT.
- *  - A run of brackets pointing one way becomes square brackets when two of
- *    them touch — nothing, or only default-ignorable or combining characters,
- *    between them (`<<`, `>>>`, `<` + U+0301 + `<`) — or when it counts three
- *    or more with only blank space between (`< < <`, with any Unicode space,
- *    tab, line break, or the U+2800 braille blank). The brackets are those in
- *    BRACKET_PAIRS: ASCII, fullwidth and small `< >`, `‹ ›`, both `〈 〉`, `⟨ ⟩`,
- *    `⧼ ⧽`, `❬ ❭`, `❮ ❯`, `❰ ❱`, `˂ ˃`, U+1D236 / U+1D237, `ᐸ ᐳ`, `ᚲ`, U+16F3F;
- *    `≪ ≫`, `⟪ ⟫` and `⪡ ⪢` count two (folded with one more same-way bracket
- *    beside them), and `⋘ ⋙`, `⫷ ⫸` three (folded alone). Letters (`ᐸ ᐳ ᚲ`,
- *    U+16F3F) never touch: they fold only at three, so a doubled syllable
- *    stays as written. Each folded character becomes one `[` or `]` (`⋘` is
- *    `[`), so the result is never longer than the text it was given.
+ *  - A run of brackets pointing one way becomes square brackets when it
+ *    counts three or more — as many as a fence marker has — with nothing
+ *    between them, or only default-ignorable or combining characters, or
+ *    blank space: any Unicode space, tab or line break, or the U+2800 braille
+ *    blank (`<<<`, `>>>>`, `< < <`, `<` + U+0301 + `<<`). The brackets are
+ *    those in BRACKET_PAIRS: ASCII, fullwidth and small `< >`, `‹ ›`, both
+ *    `〈 〉`, `⟨ ⟩`, `⧼ ⧽`, `❬ ❭`, `❮ ❯`, `❰ ❱`, `˂ ˃`, U+1D236 / U+1D237, `ᐸ ᐳ`,
+ *    `ᚲ`, U+16F3F; `≪ ≫`, `⟪ ⟫` and `⪡ ⪢` count two (folded with one more
+ *    same-way bracket beside them), and `⋘ ⋙`, `⫷ ⫸` three (folded alone).
+ *    Each folded character becomes one `[` or `]` (`⋘` is `[`), so the
+ *    result is never longer than the text it was given.
  * Not defused, left as written:
- *  - fewer than that: a single `<END-EXTERNAL-CONTENT>`, two blank-separated
- *    brackets `< <END-EXTERNAL-CONTENT> >`, a lone `≪` or `⟪` (as in maths);
+ *  - fewer than three: a single `<END-EXTERNAL-CONTENT>`, two brackets
+ *    `<<END-EXTERNAL-CONTENT>>` or `< <END-EXTERNAL-CONTENT> >`, a lone `≪` or
+ *    `⟪` (as in maths). Two is ordinary text and markup — `cout << x`,
+ *    `Vec<Vec<u8>>`, `a >> 2`, `<b>></b>` — and `format=raw` must return it
+ *    as served;
  *  - characters not in the list: quotation marks `« »`, CJK `《 》`, `≮`,
  *    triangles, arrows, ASCII art;
  *  - entities the HTML step does not decode (`&#60;`), shown as written;
  *  - a change of direction (`><`, `<>`): never part of a marker, and
  *    `format=raw` must return markup as it came.
- * The blank-space rule also folds a thrice-nested e-mail quote (`> > >`).
+ * Ordinary text with three is folded too: a Python prompt `>>>`, a bash
+ * here-string `<<<`, merge-conflict markers, a thrice-nested e-mail quote
+ * (`> > >`), a tripled syllable (`ᐸᐸᐸ`).
  */
 export function neutralizeExternalMarkers(text: string): string {
   return text.replace(INVISIBLE_FORMAT, "").replace(BRACKET_RUN, defangBracketRun);
