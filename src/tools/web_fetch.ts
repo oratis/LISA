@@ -665,17 +665,29 @@ export async function readResponseTextCapped(
  */
 export const HTML_TO_TEXT_MAX_INPUT = 256 * 1024;
 
-/** Elements whose content is never text: dropped whole, up to their end tag. */
+/**
+ * Elements whose content is never text: dropped whole, up to their end tag.
+ * The name must be the whole tag name — followed by whitespace, `/`, `>` or
+ * the end of the input — so `<script-loader>`, `<style-guide>` or ODF's
+ * `<style:style>` are ordinary tags and do not hide the rest of the page.
+ */
 const SKIPPED_ELEMENTS = ["script", "style", "noscript"] as const;
 type SkippedElement = (typeof SKIPPED_ELEMENTS)[number];
 const SKIPPED_ELEMENT_END: Record<SkippedElement, RegExp> = {
-  script: /<\/script(?=[\s/>])/gi,
-  style: /<\/style(?=[\s/>])/gi,
-  noscript: /<\/noscript(?=[\s/>])/gi,
+  script: /<\/script(?=[\t\n\f\r />])/gi,
+  style: /<\/style(?=[\t\n\f\r />])/gi,
+  noscript: /<\/noscript(?=[\t\n\f\r />])/gi,
 };
-/** Tags that become a line break (matched on the tag's first few characters). */
+/** What may follow a tag name: HTML whitespace, `/` or `>` (or the end of the input). */
+const TAG_NAME_END = /[\t\n\f\r />]/;
+/**
+ * Tags that become a line break, matched on the tag's first few characters.
+ * A prefix on purpose, unlike the skipped elements above: it only adds a line
+ * break, never hides text, and it is what the converter before the linear
+ * rewrite did (`<pre>`, `<link>`, `<track>` break the line too), so ordinary
+ * pages convert exactly as they did.
+ */
 const LINE_BREAK_TAG = /^\/?(?:p|div|br|li|tr|h[1-6]|section|article|header|footer|nav|hr)/i;
-const WORD_CHAR = /\w/;
 /**
  * What may follow a `<` that opens markup: a letter (a tag), `/` and a letter
  * (an end tag), `!` (comment, doctype, CDATA) or `?` (processing instruction).
@@ -691,9 +703,10 @@ function opensMarkup(html: string, lt: number): boolean {
 
 function skippedElementAt(html: string, lt: number): SkippedElement | null {
   for (const name of SKIPPED_ELEMENTS) {
+    const after = lt + 1 + name.length;
     if (
-      html.slice(lt + 1, lt + 1 + name.length).toLowerCase() === name &&
-      !WORD_CHAR.test(html.charAt(lt + 1 + name.length))
+      html.slice(lt + 1, after).toLowerCase() === name &&
+      (after >= html.length || TAG_NAME_END.test(html.charAt(after)))
     ) {
       return name;
     }

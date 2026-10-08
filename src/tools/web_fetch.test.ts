@@ -707,6 +707,9 @@ describe("htmlToText — one linear pass over at most 256 KB of markup", () => {
     ["a stray < before a digit, closed", "<1>"],
     ["a stray </ before a space", "</ "],
     ["stray < runs ending in a tag start", "<<<a"],
+    // Names that only start like a skipped element are ordinary tags.
+    ["prefix-named tags", "<style-x><script:y>"],
+    ["unclosed prefix-named tags", "<noscript-"],
   ];
   for (const [label, unit] of hostile) {
     test(`${label}, repeated up to the cap, converts in well under a second`, () => {
@@ -758,6 +761,32 @@ describe("htmlToText — one linear pass over at most 256 KB of markup", () => {
     assert.equal(htmlToText("<p>shown</p><noscript>x"), "shown");
     assert.equal(htmlToText("<p>shown</p><!-- hidden"), "shown");
     assert.equal(htmlToText("<SCRIPT>x()</Script\n>after"), "after");
+  });
+
+  test("script, style and noscript are matched by their whole name, not a prefix", () => {
+    // Before, `<style-guide>` was taken for `<style>`; its end tag never came,
+    // so everything after it was hidden.
+    assert.equal(htmlToText("<p>a</p><style-guide>b</style-guide><p>c</p>"), "a\nb\nc");
+    assert.equal(htmlToText("<p>a</p><script-x>b</script-x><p>c</p>"), "a\nb\nc");
+    assert.equal(htmlToText("<noscript-x>A</noscript-x> B"), "A B");
+    assert.equal(
+      htmlToText("<script-loader>Visible A</script-loader><p>Visible B</p>"),
+      "Visible A\nVisible B",
+    );
+    // XML goes through the same step (ODF, for one, has a `style:` namespace).
+    assert.equal(
+      htmlToText(
+        "<office:document><style:style style:name='P1'/><text:p>ODF body text</text:p></office:document>",
+      ),
+      "ODF body text",
+    );
+    // The real elements still go, whatever follows their name.
+    assert.equal(htmlToText("<script\ttype=x>a</script>b"), "b");
+    assert.equal(htmlToText("<style/>a{}</style>b"), "b");
+    assert.equal(htmlToText("<noscript>a</noscript\n>b"), "b");
+    assert.equal(htmlToText("x<script"), "x");
+    // Inside a script, only its own end tag ends it.
+    assert.equal(htmlToText("<script>a</script-x>b</scripts>c</script>d"), "d");
   });
 
   test("a page longer than the cap is reported as truncated", async () => {
