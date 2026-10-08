@@ -39,12 +39,12 @@ echo "    version: $VERSION"
 echo "    output:  $OUT/"
 echo
 
-# ─── 1. clean install + build (production-only deps) ───────────────
-echo "→ npm ci --omit=dev (production deps only)…"
-npm ci --omit=dev > /dev/null
-
-echo "→ Re-installing TypeScript locally to build (won't ship in the bundle)…"
-npm install --no-save --no-package-lock typescript@^5.7.0 > /dev/null
+# ─── 1. locked install + build, then remove development dependencies ──
+# Build with exactly the dependency graph that CI tested. Reinstalling only
+# TypeScript with `npm install --no-package-lock` also re-resolves runtime
+# ranges (including IMAP), making the release differ from the green test run.
+echo "→ npm ci --include=dev (locked build dependencies)…"
+npm ci --include=dev > /dev/null
 
 echo "→ npm run build…"
 # `copy-assets` makes a symlink; we need a REAL copy in the release bundle
@@ -54,10 +54,9 @@ mkdir -p dist/web
 rm -rf dist/web/assets
 cp -R src/web/assets dist/web/assets
 
-# TypeScript was only needed for the compile above — prune it back out so the
-# bundles' node_modules/ ships runtime deps only (dist/cli.js needs nothing
-# else; keeping the compiler would add ~22 MB per bundle).
-echo "→ npm prune --omit=dev (drop the build-only TypeScript)…"
+# Development tools were only needed for compilation. The bundles ship runtime
+# dependencies only, with the same locked versions used for the build.
+echo "→ npm prune --omit=dev (drop build tools)…"
 npm prune --omit=dev > /dev/null
 
 # ─── 2. source tarball (matches npm publish) ───────────────────────
@@ -165,7 +164,7 @@ echo "  ✓ $OUT/lisa-linux-bundle-v${VERSION}.tar.gz  ($(du -h "$OUT/lisa-linux
 # ─── 5. restore dev environment ────────────────────────────────────
 echo
 echo "→ Restoring dev environment (re-installing all deps + dev symlink)…"
-npm install > /dev/null
+npm ci --include=dev > /dev/null
 npm run copy-assets > /dev/null
 
 # ─── 6. summary + checksums ────────────────────────────────────────

@@ -68,7 +68,7 @@ lisa serve --web        # Web 工作区：http://localhost:5757
 当前 `main` 中的 **Warden** 提供确定性动作决策、范围授权、审批收件箱与审计记录，需要在 **Web 聊天中主动启用**：
 
 ```sh
-# Warden 自 v0.28.0 起随发布版提供。
+# Warden 自 v0.28.1 起随发布版提供。
 lisa serve --web --approval warden
 lisa approvals list
 ```
@@ -79,7 +79,7 @@ Warden 尚未覆盖全部执行入口，也不能替代操作系统沙箱。凭�
 
 ## 开发状态
 
-最新标签版本为 **v0.28.0**（[发布说明](docs/RELEASE_v0.28.0.md)），当前 `main` 可能包含后续开发。代码合并不代表已部署到 Cloud，或已包含在发布的原生安装包中。
+最新标签版本为 **v0.28.1**（[发布说明](docs/RELEASE_v0.28.1.md)），当前 `main` 可能包含后续开发。代码合并不代表已部署到 Cloud，或已包含在发布的原生安装包中。
 
 | 工作方向 | 2026-10-07 状态 |
 | --- | --- |

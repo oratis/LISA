@@ -7,9 +7,23 @@ Entries from 0.13.0 onward are generated from `docs/RELEASE_v*.md` by
 `npm run changelog` — edit the release note, not this file. See
 [docs/RELEASING.md](docs/RELEASING.md).
 
-## [0.28.0] — 2026-10-08
+## [0.28.1] — 2026-10-08
 
 LISA is an AI Personal Assistant for planning, writing and personal knowledge. This release introduces the Soft Ink visual identity and adds the groundwork for an assistant that works on your behalf while you are away — durable tasks and watchers, a deterministic approval layer, one gate for every proactive message, a credential broker and cost-aware model routing — and fixes a set of first-run, health and privacy issues. Most of the new machinery is off or opt-in; what changes on a default install is listed first.
+
+- Reproducible release packaging
+- Soft Ink: Lisa's new visual identity
+- What changes on a default install
+- New, opt-in or off by default
+- Behaviour changes to note
+- Also since v0.27.1
+- Known limits
+
+[Release notes](docs/RELEASE_v0.28.1.md) · [GitHub release](https://github.com/oratis/LISA/releases/tag/v0.28.1)
+
+## [0.28.0] — 2026-10-08
+
+**Packaging failed before publication.** No npm package or GitHub release was published for this tag. Use [v0.28.1](docs/RELEASE_v0.28.1.md), which contains the changes below and fixes the release builder.
 
 - Soft Ink: Lisa's new visual identity
 - What changes on a default install

@@ -1,8 +1,12 @@
-# LISA v0.28.0 — Soft Ink, Tasks & Trust
-
-**Packaging failed before publication.** No npm package or GitHub release was published for this tag. Use [v0.28.1](RELEASE_v0.28.1.md), which contains the changes below and fixes the release builder.
+# LISA v0.28.1 — Soft Ink, Tasks & Trust
 
 LISA is an AI Personal Assistant for planning, writing and personal knowledge. This release introduces the Soft Ink visual identity and adds the groundwork for an assistant that works on your behalf while you are away — durable tasks and watchers, a deterministic approval layer, one gate for every proactive message, a credential broker and cost-aware model routing — and fixes a set of first-run, health and privacy issues. Most of the new machinery is off or opt-in; what changes on a default install is listed first.
+
+## Reproducible release packaging
+
+The release builder now installs the complete locked dependency graph for compilation, then prunes development tools before packaging the CLI bundles. Previously it installed TypeScript with `--no-package-lock` after a production-only install, which also re-resolved runtime dependency ranges and caused an IMAP type error despite green CI. The development environment is restored with the same lockfile after packaging.
+
+v0.28.0 stopped at that packaging error before any npm package or GitHub release was published. v0.28.1 is the complete distribution of the changes below; the failed tag is retained without rewriting it.
 
 ## Soft Ink: Lisa's new visual identity
 
