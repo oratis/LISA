@@ -110,7 +110,7 @@ several are cited by name from source comments.
 
 ## Releases
 
-- [v0.28.0 — Soft Ink, Tasks & Trust](./RELEASE_v0.28.0.md)
+- [v0.28.1 — Soft Ink, Tasks & Trust](./RELEASE_v0.28.1.md)
 
 [RELEASING.md](./RELEASING.md) is the how. [CHANGELOG.md](../CHANGELOG.md) is
 generated from the notes below by `npm run changelog` — so the note is the
