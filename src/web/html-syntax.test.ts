@@ -1,6 +1,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import vm from "node:vm";
+import { readFileSync } from "node:fs";
 import { MAIN_HTML } from "./lisa-html.js";
 import { ISLAND_HTML } from "./island.js";
 import { ROOM_HTML } from "./room.js";
@@ -31,6 +32,10 @@ describe("inline page <script> blocks are syntactically valid JS", () => {
     ["ISLAND_HTML", ISLAND_HTML],
     ["ROOM_HTML", ROOM_HTML],
     ["LOGIN_HTML", LOGIN_HTML],
+    [
+      "ART_GALLERY",
+      readFileSync(new URL("./assets/visuals/soft-ink-v1/gallery.html", import.meta.url), "utf8"),
+    ],
   ] as const) {
     test(`${name} parses`, () => {
       const blocks = inlineScripts(html);

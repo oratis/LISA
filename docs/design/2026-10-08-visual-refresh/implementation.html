@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="zh-CN">
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>LISA Soft Ink · 实现范围</title>
+  <style>
+    body {
+      max-width: 960px;
+      margin: 48px auto;
+      padding: 0 24px;
+      background: #f5f7f4;
+      color: #172b33;
+      font:
+        16px/1.8 system-ui,
+        sans-serif;
+    }
+    h1 {
+      font-size: 38px;
+      line-height: 1.25;
+    }
+    h2 {
+      margin-top: 36px;
+      font-size: 25px;
+    }
+    a {
+      color: #176e70;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+    td,
+    th {
+      border-bottom: 1px solid #cbdad2;
+      padding: 14px 8px;
+      text-align: left;
+    }
+    img {
+      width: 100%;
+      border-radius: 18px;
+      border: 1px solid #dce6e0;
+    }
+    pre {
+      white-space: pre-wrap;
+      background: #e3f0e9;
+      padding: 20px;
+      border-radius: 12px;
+      font-size: 13px;
+    }
+    .note {
+      background: #e3f0e9;
+      padding: 20px;
+      border-radius: 14px;
+    }
+    small {
+      color: #52676d;
+    }
+  </style>
+  <p><a href="index.html">← 返回 B 版交互画廊</a></p>
+  <small>2026-10-08 · 已确认方向 B / Soft Ink · 首批实现</small>
+  <h1>统一 Lisa 的表情、场景与应用形象。</h1>
+  <p>
+    以最新远端 main（a0cce33）为基线，在 codex/lisa-visual-proposal
+    分支实现。原工作目录的未跟踪文件已保留，修改位于独立 worktree；尚未发布。
+  </p>
+  <table>
+    <tr>
+      <th>范围</th>
+      <th>已完成</th>
+      <th>接入位置</th>
+    </tr>
+    <tr>
+      <td>表情与头像</td>
+      <td>24 张核心画稿；114 个状态映射</td>
+      <td>Web 聊天、Island、iOS ServerPortrait、中英文官网表情目录</td>
+    </tr>
+    <tr>
+      <td>表情贴纸</td>
+      <td>8 张 512×512 透明 PNG，可单张下载</td>
+      <td>头像入口打开画廊；官网画廊</td>
+    </tr>
+    <tr>
+      <td>房间</td>
+      <td>书房、阳光房；12 格姿态与留声机图集；昼夜光照</td>
+      <td>现有 Room 的状态与活动系统，含坐姿和睡姿定位</td>
+    </tr>
+    <tr>
+      <td>场景插画</td>
+      <td>欢迎、规划、写作、知识库、回顾、连接中断共 6 张</td>
+      <td>欢迎插画已接入聊天空状态；其余 5 张作为后续页面资源展示于画廊</td>
+    </tr>
+    <tr>
+      <td>应用图标</td>
+      <td>统一 B 版角色</td>
+      <td>Web/PWA、Apple touch、Mac 应用与菜单栏、iOS App Icon</td>
+    </tr>
+  </table>
+  <h2>聊天中的实际效果</h2>
+  <img src="soft-ink-chat-preview.png" alt="接入 B 版头像与欢迎插画的 Lisa 聊天界面" />
+  <h2>房间中的实际效果</h2>
+  <img src="soft-ink-room-preview.png" alt="接入 B 版人物与书房背景的 Room 界面" />
+  <h2>加载与兼容</h2>
+  <p>
+    Web 和 Island 共用约 157 KiB 的小头像图集；欢迎插画约 21 KiB。首次无缓存的聊天角色资源，加上
+    192px 回退图标约 234 KiB，仍高于初始提案的 150 KiB
+    目标。表情切换复用缓存，并用请求序号避免快速切换时旧图片覆盖新状态；加载失败保留上一张有效头像。iOS
+    使用 PNG 图集，连接旧服务器时回退原始头像路径。
+  </p>
+  <p>
+    原有 114 个状态名称和单张像素 PNG 保留。其余 90 个状态当前复用相近的核心表情，没有宣称完成 114
+    张独立新画稿。旧客户端仍可使用原资源。
+  </p>
+  <h2>验证结果</h2>
+  <ul>
+    <li>
+      83
+      项相关测试通过：包含快速切换、失败重试、状态映射、页面脚本语法、主题对比度、图标尺寸、真实服务端
+      MIME 与画廊 CSP。
+    </li>
+    <li>TypeScript 服务端与客户端检查通过；Web 构建、官网 14 页面构建通过。</li>
+    <li>iOS Simulator 无签名编译成功。原生设备上的视觉验收尚未执行。</li>
+    <li>
+      浏览器验证了 319px
+      窄屏及桌面布局、深浅背景、表情切换、真实聊天与房间、单张贴纸下载；画廊无图片加载错误。
+    </li>
+    <li>改动文件 ESLint 无错误，server.ts 保留 8 项既有警告；Git diff 空白检查通过。</li>
+  </ul>
+  <h2>下一批可扩展范围</h2>
+  <p class="note">
+    逐个绘制剩余状态，优先天气、节日与服装；接入其余场景插画；继续打磨房间夜景窗外天空、复杂姿态与遮挡；进一步收紧首屏资源预算。这些内容未计入本次首批完成范围。
+  </p>
+  <h2>资源复现</h2>
+  <p>
+    未修改的 ImageGen PNG 原稿位于本目录 soft-ink-sources/。运行时资源位于
+    src/web/assets/visuals/soft-ink-v1/，manifest.json
+    是状态映射的唯一来源。图集裁切与尺寸导出是确定性的打包过程。
+  </p>
+  <pre>
+node scripts/sync-soft-ink.mjs
+node scripts/build-soft-ink-assets.mjs
+node scripts/build-soft-ink-icons.mjs
+npx tsx scripts/optimize-assets.ts --icons --filter soft-ink-v1 --jobs 2
+node scripts/build-soft-ink-review.mjs
+npm run format
+npm run build</pre>
+  <p>
+    <a href="soft-ink-prompts.txt">B 版完整生成提示词</a> ·
+    <a href="proposal.html">原始三方向提案</a>
+  </p>
+</html>

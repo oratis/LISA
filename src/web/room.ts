@@ -1,22 +1,14 @@
 /**
  * Lisa Room — an ambient, state-driven living space served at GET /room.
  *
- * A cozy pixel-art room where Lisa "lives". Unlike a scripted waifu wallpaper,
- * every layer here is driven by Lisa's REAL state: her current mood sprite,
- * whether she's thinking (chat_start/end), dreaming (Reve idle_*), what she's
- * pursuing (current_desire), the local time-of-day, and weather-flavored moods.
+ * A Soft Ink illustrated room driven by Lisa's current activity, mood,
+ * dreaming state, local time and weather. A geometry-locked background per
+ * room preserves furniture positions across day, dusk and night; a shared
+ * transparent pose atlas supplies the character and gramophone.
  *
- * Design: docs/PLAN_ROOM_v1.0.md. Renderer is a layered 2.5D diorama built from
- * plain DOM + CSS (no framework, no canvas, no bundler) — the same self-contained
- * pattern as src/web/island.ts. The three room backgrounds (day/dusk/night) and
- * Lisa's FULL-BODY character sprites are generated pixel art under /assets/room/.
- * Lisa is a full-body sprite (not a bust): an idle spritesheet (lisa-idle.png,
- * 2 frames: eyes open | closed — breathing via CSS, blink flips the frame) plus
- * pose sprites for sitting (lisa-sit.png) and sleeping curled up in the armchair
- * (lisa-sleep-sofa.png), swapped by mood/state. Sprites were generated via the "anchor → keyframes → chroma-key
- * + foot-anchor" pipeline (cf. Ludo.ai / chongdashu/ai-game-spritesheets):
- * gemini-2.5-flash-image made a full-body anchor from her existing face sprite,
- * pose/blink frames were edited from it for consistency, then keyed + normalized.
+ * Original interaction design: docs/PLAN_ROOM_v1.0.md.
+ * Artwork: /assets/visuals/soft-ink-v1/manifest.json and prompts.txt.
+ * Renderer: layered DOM + CSS, sharing existing state with the Island.
  *
  * Data sources (all pre-existing, shared with the Island):
  *   - SSE  GET /events            → mood / chat_start / chat_end / idle_* pulses
@@ -81,7 +73,7 @@ ${MD_RENDER_CSS}
     background-size: cover; background-position: center;
     transform: scale(1.06);
     opacity: 0; transition: opacity 1400ms ease;
-    image-rendering: pixelated;
+    image-rendering: auto;
   }
   .bg.show { opacity: 1; }
   /* .bg layer images are set in JS (renderBg) from the chosen room theme. */
@@ -98,83 +90,41 @@ ${MD_RENDER_CSS}
     box-shadow: inset 0 0 min(18vmin,180px) min(6vmin,60px) rgba(4,6,14,0.55);
   }
 
-  /* Lisa herself — composited standing on the rug, centered. Her 512² sprite is
-     a transparent bust; we anchor her bottom near the rug and let her breathe. */
-  /* Lisa — a FULL-BODY animated sprite standing on the rug (not a bust). The
-     idle sheet has 2 frames (eyes open | eyes closed) side by side; breathing
-     is a CSS transform, blinking flips the background frame. Pose swaps
-     (sit / sleep) change the image + box size. Foot-anchored so she stands
-     on the floor. */
+  /* Soft Ink pose atlas. Every frame uses the same square registration. */
   #lisa-wrap {
-    position: absolute; left: 49.7%; bottom: 7.5%;
-    transform: translateX(-50%);
-    transition: left 1000ms var(--spring), bottom 1000ms var(--spring);
-    pointer-events: none;
+    position: absolute; left: 49.7%; bottom: 7.5%; transform: translateX(-50%);
+    transition: left 1000ms var(--spring), bottom 1000ms var(--spring); pointer-events: none;
   }
-  #shadow {
-    position: absolute; left: 50%; bottom: -1%; transform: translateX(-50%);
-    width: 20vmin; height: 3vmin;
-    background: radial-gradient(50% 50% at 50% 50%, rgba(0,0,0,0.5), transparent 72%);
-    filter: blur(3px); transition: width 800ms ease;
-  }
+  #shadow { position: absolute; left: 50%; bottom: -1%; transform: translateX(-50%);
+    width: 18vmin; height: 3vmin; background: radial-gradient(50% 50% at 50% 50%, rgba(0,0,0,.4), transparent 72%); filter: blur(3px); }
   #lisa {
-    width: 31vmin; height: 46vmin;              /* standing box (512:768 aspect) */
-    background-image: url('/assets/room/lisa-idle.png');
-    background-repeat: no-repeat; background-size: 200% 100%; background-position: 0% 0%;
-    image-rendering: pixelated;
-    transform-origin: 50% 100%;
-    animation: breathe 4.4s ease-in-out infinite;
-    filter: drop-shadow(0 10px 10px rgba(0,0,0,0.32));
-    cursor: pointer; pointer-events: auto;
-    -webkit-user-drag: none; user-select: none;
-    transition: width 700ms var(--spring), height 700ms var(--spring), filter 500ms ease;
+    width: 46vmin; height: 46vmin;
+    background: url('/assets/visuals/soft-ink-v1/poses.webp') no-repeat 0% 0% / 400% 300%;
+    transform-origin: 50% 100%; animation: breathe 4.4s ease-in-out infinite;
+    filter: drop-shadow(0 6px 5px rgba(0,0,0,.22)); cursor: pointer; pointer-events: auto;
+    -webkit-user-drag: none; user-select: none; transition: width 400ms ease, height 400ms ease;
   }
-  #lisa.blink { background-position: 100% 0%; }
-  @keyframes breathe {
-    0%, 100% { transform: scaleY(1)     translateY(0); }
-    50%      { transform: scaleY(1.014) translateY(-0.3%); }
-  }
-  #lisa:hover { filter: drop-shadow(0 0 16px rgba(106,212,255,0.55)) drop-shadow(0 10px 10px rgba(0,0,0,0.4)); }
-
-  /* Sitting with her laptop — coding / reading / focused moods. contain +
-     bottom-anchor keeps her slim proportions (no stretch) whatever the crop. */
-  #lisa-wrap.sit #lisa {
-    background-image: url('/assets/room/lisa-sit.png');
-    background-size: contain; background-position: center bottom; background-repeat: no-repeat;
-    width: 30vmin; height: 34vmin; animation-duration: 5.8s;
-  }
-  #lisa-wrap.sit #lisa.blink { background-position: center bottom; }
-  #lisa-wrap.sit #shadow { width: 20vmin; }
-  /* Sleeping — curled up napping in the armchair (Reve / napping). She glides
-     over to the sofa on the right (the wrap's left/bottom transition) and curls
-     up; no floor shadow since she's up on the cushion, not the rug. */
-  #lisa-wrap.sleep { left: 69.5%; bottom: 31.5%; }
-  #lisa-wrap.sleep #lisa {
-    background-image: url('/assets/room/lisa-sleep-sofa.png');
-    background-size: contain; background-position: center bottom; background-repeat: no-repeat;
-    width: 17vmin; height: 26vmin; animation-duration: 6.6s;
-  }
-  #lisa-wrap.sleep #lisa.blink { background-position: center bottom; }
+  #lisa.blink { background-position: 33.333333% 0%; }
+  @keyframes breathe { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(1.008); } }
+  #lisa-wrap.sit #lisa, #lisa-wrap.sit #lisa.blink { width: 35vmin; height: 35vmin; background-position: 66.666667% 0%; }
+  #lisa-wrap.sit { left: 73%; bottom: 23%; }
+  #lisa-wrap.sit #shadow { opacity: 0; }
+  #lisa-wrap.sleep { left: 73%; bottom: 26%; }
+  #lisa-wrap.sleep #lisa, #lisa-wrap.sleep #lisa.blink { width: 27vmin; height: 27vmin; background-position: 100% 0%; animation-duration: 6.6s; }
   #lisa-wrap.sleep #shadow { opacity: 0; }
-
-  /* Presence beat (Phase B) — she looks up and meets your eyes. Single frame,
-     swapped in for ~1.6s when you open the room / focus the window / hover. */
-  #lisa.lookup {
-    background-image: url('/assets/room/lisa-lookup.png');
-    background-size: 100% 100%; background-position: 0 0;
-    filter: drop-shadow(0 0 14px rgba(106,212,255,0.45)) drop-shadow(0 10px 10px rgba(0,0,0,0.32));
-  }
-  /* Ambient activities at the standing spot (Phase C) — single-frame poses she
-     drifts through on her own when idle (reading / tea / music / stretch). */
-  #lisa-wrap.act-read    #lisa { background-image: url('/assets/room/lisa-read.png');    background-size: 100% 100%; background-position: 0 0; }
-  #lisa-wrap.act-tea     #lisa { background-image: url('/assets/room/lisa-tea.png');     background-size: 100% 100%; background-position: 0 0; }
-  #lisa-wrap.act-stretch #lisa { background-image: url('/assets/room/lisa-stretch.png'); background-size: 100% 100%; background-position: 0 0; }
-  #lisa-wrap.act-listen  #lisa { background-image: url('/assets/room/lisa-listen.png');  background-size: 100% 100%; background-position: 0 0; }
-  #lisa-wrap.act-window  #lisa { background-image: url('/assets/room/lisa-window.png');  background-size: 100% 100%; background-position: 0 0; }
-  /* Night (Phase D): she changes into pajamas for the evening — plain standing
-     idle only; activities keep the hoodie. Single frame, so no blink. */
-  #lisa-wrap.pjs #lisa { background-image: url('/assets/room/lisa-pajamas.png'); background-size: 100% 100%; background-position: 0 0; }
-  #lisa-wrap.pjs #lisa.blink { background-position: 0 0; }
+  #lisa.lookup { background-position: 0% 50%; }
+  #lisa-wrap.act-read #lisa { background-position: 33.333333% 50%; }
+  #lisa-wrap.act-tea #lisa { background-position: 66.666667% 50%; }
+  #lisa-wrap.act-stretch #lisa { background-position: 100% 50%; }
+  #lisa-wrap.act-listen #lisa { background-position: 0% 100%; }
+  #lisa-wrap.act-window #lisa { background-position: 33.333333% 100%; }
+  #lisa-wrap.pjs #lisa, #lisa-wrap.pjs #lisa.blink { background-position: 66.666667% 100%; }
+  body.art-paused * { animation-play-state: paused !important; }
+  body[data-room="room2"] #lisa-wrap.sit { left: 79%; bottom: 17%; }
+  body[data-room="room2"] #lisa-wrap.sleep { left: 79%; bottom: 20%; }
+  body[data-room="room2"] #glow-monitor { left: 10%; top: 64%; width: 11%; height: 8%; }
+  body[data-room="room2"] #shelf { left: 15%; top: 46%; width: 15%; height: 27%; }
+  body[data-room="room2"] #letter { left: 16%; top: 73%; }
 
   /* Monitor glow — sits over the desk's screen; pulses while she's thinking. */
   #glow-monitor {
@@ -278,9 +228,9 @@ ${MD_RENDER_CSS}
   /* ── Gramophone — a clickable prop that opens the music player. ── */
   #gramophone {
     position: absolute; left: 85%; bottom: 7.5%;
-    width: 14vmin; height: 21vmin;            /* sprite is 506:770 ≈ 0.657 */
-    background: url('/assets/room/gramophone.png') no-repeat center bottom / contain;
-    image-rendering: pixelated;
+    width: 19vmin; height: 19vmin;            /* square atlas cell */
+    background: url('/assets/visuals/soft-ink-v1/poses.webp') no-repeat 100% 100% / 400% 300%;
+    image-rendering: auto;
     cursor: pointer; pointer-events: auto;
     transform-origin: 50% 100%;
     filter: drop-shadow(0 6px 8px rgba(0,0,0,0.4));
@@ -572,7 +522,7 @@ ${renderMarkdown}
     letters: [], theme: 'room',
   };
   // Room theme (换景) — persisted; the .bg layer images are built from the prefix.
-  var THEMES = ['room', 'room2'];   // asset prefixes under /assets/room/
+  var THEMES = ['room', 'room2'];   // stable settings keys; artwork is versioned separately
   try { var _t = localStorage.getItem('lisa-room-theme'); if (_t && THEMES.indexOf(_t) >= 0) state.theme = _t; } catch (e) {}
 
   // ── Mood → a short "what she's doing" caption. Keeps the room honest:
@@ -606,14 +556,19 @@ ${renderMarkdown}
     if ((h >= 17 && h < 20) || (h >= 5 && h < 7)) return 'dusk';
     return 'night';
   }
-  function bgUrl(t) { return "url('/assets/room/" + state.theme + "-" + t + ".png')"; }
+  function bgUrl() {
+    return "url('/assets/visuals/soft-ink-v1/" + (state.theme === 'room2' ? 'sunroom' : 'room') + ".webp')";
+  }
   function renderBg() {
+    body.dataset.room = state.theme;
     ['day', 'dusk', 'night'].forEach(function (t) {
       var el = $('bg-' + t);
-      el.style.backgroundImage = bgUrl(t);
+      el.style.backgroundImage = bgUrl();
+      // One geometry-locked drawing; light changes never move furniture.
+      el.style.filter = t === 'night' ? 'brightness(.40) saturate(.65)' : t === 'dusk' ? 'brightness(.77) sepia(.22) saturate(.85)' : 'none';
       el.classList.toggle('show', t === state.tod);
     });
-    $('backdrop').style.backgroundImage = bgUrl(state.tod);
+    $('backdrop').style.backgroundImage = bgUrl();
   }
   function applyTOD() {
     var tod = timeOfDay();
@@ -1082,7 +1037,7 @@ ${renderMarkdown}
   scheduleBlink();
   scheduleAmbient();                                   // Phase C: autonomous ambient life
   setTimeout(presenceBeat, 900);                       // Phase B: greet you on open
-  document.addEventListener('visibilitychange', function () { if (!document.hidden) presenceBeat(); });
+  document.addEventListener('visibilitychange', function () { body.classList.toggle('art-paused', document.hidden); if (!document.hidden) presenceBeat(); });
   window.addEventListener('focus', presenceBeat);
   lisa.addEventListener('mouseenter', presenceBeat);
   pollPing();

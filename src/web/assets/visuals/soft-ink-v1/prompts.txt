@@ -1,0 +1,102 @@
+LISA / B Soft Ink — approved 2026-10-08
+
+Built-in image_gen. Reference: docs/design/2026-10-08-visual-refresh/assets/directions.png, middle column B.
+
+Atlas frames are consumed by product renderers. No text embedded in the art.
+
+
+
+ATLAS
+
+Use case: stylized-concept
+Asset type: production UI expression atlas for LISA, approved B / SOFT INK illustration style.
+Input image: design-direction board as reference ONLY. Use EXCLUSIVELY the MIDDLE column B character and smooth 2D drawing style. Ignore pixel art left and 3D right.
+Primary request: exactly 24 separate bust portraits in a precise 6 columns by 4 rows regular grid. Transparent background. No borders, no text, no labels, no checkerboard. All cells exactly equal. Prefer landscape 3:2 composition, ideally 2304x1536.
+Character identity: young adult woman with chin-length teal bob, side-swept fringe, large kind blue eyes, fair skin, faint blush, navy hooded sweater with only two tiny cyan angular stitch marks on chest. Premium clean 2D ink linework, smooth curves, flat cel shading, very subtle matte texture. NOT pixel art, NOT 3D. Same fixed hairstyle, face shape and garment in every cell.
+Composition: every portrait is centered front-facing head and shoulders, head occupies 58% of cell width, ALL eyes and shoulders share exactly the same baseline. Each whole portrait fits in the central 82% of its cell. Keep at least 9% transparent margin on every edge of every cell. No element crosses a cell edge. Clean fully opaque figure interiors and antialiased alpha contours only. No cast shadow.
+Left-to-right, top-to-bottom moods:
+Row 1: neutral soft smile; happy open warm smile eyes open; laughing eyes closed mouth laughing; giggling one hand lightly near mouth; thoughtful one hand on chin gaze up; confused one raised eyebrow slight head tilt.
+Row 2: surprised round eyes small O mouth; worried sympathetic inward raised brows; sad downcast eyes small frown no tears; apologetic earnest downward gaze hand on chest; grateful warm closed-eye smile palms gently together; proud satisfied confident smile.
+Row 3: determined attentive eyes small resolute smile; excited broad bright smile both small fists near shoulders; cheering one raised fist joyful smile; sleepy half closed eyes small relaxed mouth; focused coding attentive eyes subtle blue screen reflection no equipment; debugging intent slight brow furrow hand on chin no equipment.
+Row 4: research curious gaze upward index finger near temple; writing thoughtful gaze down holding a small pen; reading eyes looking down at a small navy book under the chin; tea calm smile holding a small teal cup near chest; stretching head and shoulders relaxed with one hand touching opposite shoulder (keep within cell); napping closed eyes cheek against own hand.
+Constraints: use exactly the SAME B identity throughout. Simplify hand anatomy carefully. Face size remains constant even with book/cup/gesture. No hairstyles or clothing changes, no glasses/headphones, no floating decorative symbols, no lettering, no watermark. This atlas will be consumed by a grid renderer, so equal cell registration and transparent gutters are essential.
+
+
+
+ATLAS-CLEAN
+
+Use case: background-extraction
+Asset type: transparent LISA Soft Ink expression atlas.
+Image 1 is the exact edit target. Remove ONLY the teal/navy gradient background from every cell, leaving genuine RGBA transparency. Background must be fully clear, not a color, checkerboard or new gradient. Preserve all 24 portraits in exactly their existing positions, size, layout, faces, outfits, outlines and props. Preserve interior whites and skin. Keep every figure fully opaque except the smooth antialiased outer contours. Do not change the 6 column by 4 row layout, do not add margins, do not reframe. No shadows outside figures, no halo, no text. Exactly same canvas framing as input.
+
+
+
+ROOM1
+
+Use case: style-transfer
+Asset type: finished background illustration for LISA's room, no character.
+Input image 1: precise room layout reference. Image 2: approved art direction reference, use ONLY the middle B / SOFT INK column's smooth illustrated style.
+Repaint image 1 as a beautiful clean hand-drawn 2D environment with smooth navy ink outlines and soft flat cel shading, subtle matte paper character. Preserve the exact architecture, camera viewpoint, framing and key furniture placements: teal walls, central arched window, left bookcase and desk, right green lounge armchair, central rug on wood floor. Same armchair seat position so a separate character sprite can sit on it. Remove all pixelation. Simplify tiny texture noise while preserving warmth and convincing furniture construction. Calm daylight, pale blue window sky, honey wood, teal/navy/cream palette. The scene is an adult personal assistant's cozy studio.
+No person, no animal, no text, no UI, no watermark, no decorative symbols. Square canvas. Fill the same complete room footprint including dark framing, no exterior environment. This is the production daylight master; light variations will be applied as overlays in the app so geometry stays fixed.
+
+
+
+ROOM2
+
+Use case: style-transfer
+Asset type: second LISA Room background, sunroom theme.
+Reference image 1: exact existing room layout. Reference image 2: approved style board, use ONLY MIDDLE B / SOFT INK smooth 2D illustration style.
+Repaint the exact room layout of image 1 as clean warm hand-drawn 2D art with thin smooth navy/brown ink contours, flat cel shading, subtly matte materials. Keep identical centered straight-on camera, large central arched multi-panel window, left work desk and bookcase, right woven cocoon chair, central circular rug, wood walls, hanging plants. Keep chair seat, desk and floor positions registered to the original so separately-rendered sprites continue to align. Same square framing. Reduce excessive leaf counts and tiny texture noise. Calm soft daylight, pale turquoise sky, muted honey wood, cream and teal. No pixelation, no 3D render, no person/animal/text/UI/watermark. Produce one single complete square background only.
+
+
+
+POSES
+
+Use case: stylized-concept
+Asset type: LISA Soft Ink full-body pose atlas for a 2D room.
+Reference image: use ONLY middle column B / SOFT INK character/style.
+Create exactly 12 isolated subjects in an equal 4 columns by 3 rows square-cell atlas. Overall canvas 4:3. Genuine transparent alpha background and gutters. No backgrounds, cell frames, labels or painted checkerboard.
+Same adult young woman in every character cell: chin-length teal bob, side swept fringe, blue eyes, navy hoodie with two small cyan stitch details, dark navy trousers, simple light teal sneakers. Smooth confident navy ink lines and tasteful cel shading; NOT pixel art or 3D. Natural adult proportions, relaxed anatomy, not chibi. Entire full body fits each cell with 10% margins, consistent head size across every pose. Standing feet near 90% cell height. Keep all subjects inside their cells.
+Cell order:
+row1 col1 standing relaxed facing front eyes open arms at side; col2 EXACT SAME standing stance and silhouette but eyes closed for blink; col3 seated on an invisible low stool three-quarter left with small laptop on knees, feet grounded; col4 curled comfortably asleep in an invisible armchair, legs tucked to the side, eyes shut.
+row2 col1 standing front looking up warmly one hand lightly raised greeting; col2 standing holding an open book at waist reading; col3 standing holding a small teal tea mug with both hands; col4 standing stretching gently with arms above head, fit within cell.
+row3 col1 standing relaxed listening to music eyes closed, simple headphones; col2 standing three-quarter turned away gazing toward a window offscreen; col3 standing in simple navy pajamas eyes relaxed (same face and body); col4 a single small gramophone with bronze horn and wood base, no character.
+Empty background fully transparent. All figures opaque. All poses same identity, outline weight, color palette and scale. No floating symbols, no text, no watermark. No furniture except laptop/book/cup/headphones/gramophone explicitly requested.
+
+
+
+STICKERS
+
+Use case: stylized-concept
+Asset type: LISA Soft Ink downloadable sticker pack atlas, eight poses.
+Reference: use ONLY middle B / SOFT INK character and 2D style.
+Create one transparent sheet with exactly 8 separate stickers aligned in a regular 4-column by 2-row grid of square cells. Overall 2:1 canvas. Genuine transparent alpha outside figures; no color, shadow or checkerboard background. No text.
+Same friendly adult young woman throughout: short teal bob, side swept fringe, blue eyes, subtle blush, navy hoodie with two tiny cyan stitch accents. Smooth 2D dark navy ink contours and restrained cel shading. Adult proportions, not childlike/chibi, no pixel art, no 3D.
+Stickers are waist-up with expressive hands, each fully inside its equal cell with generous 12% margin. Equal face sizes and consistent outfit/hair.
+Top row: greeting small wave; thumbs-up warm smile; thinking hand on chin; thanking palms together warm closed-eye smile.
+Bottom row: celebrating both hands lifted with two tiny restrained confetti pieces; reassuring hand over heart gentle smile; holding open navy notebook and pen ready to plan; taking a calm tea break holding mint cup.
+No lettering, no speech bubbles, no logo, no watermark, no white sticker outline baked in, no objects crossing cell boundaries. Clean opaque interiors with smooth alpha edges.
+
+
+
+SCENES
+
+Use case: illustration-story
+Asset type: six LISA Soft Ink spot illustrations for onboarding and empty states.
+Input reference: use ONLY the MIDDLE B / SOFT INK character and smooth 2D style.
+Create exactly six small editorial spot illustrations in a regular 3 columns by 2 rows grid of square cells, overall landscape 3:2. Genuine transparent background, no panels, no text, no lettering, no checkerboard.
+Same adult teal-bob-haired, blue-eyed young woman in navy hoodie, same face and clothing as B. Smooth navy ink contours and clean restrained cel shading, cream/teal/navy palette with modest amber accents, no pixels, no 3D. Consistent drawing scale. Each entire group fits its cell with 12% transparent margins.
+Top row: (1) welcome, friendly waist-up Lisa giving a small wave; (2) planning, Lisa at a small desk placing three blank cream note cards in a neat row; (3) writing, Lisa holding a navy notebook and pen composing.
+Bottom row: (4) knowledge, Lisa gently placing one book onto a small tidy stack; (5) return/recap, Lisa offering a folded paper note beside a small teacup; (6) connection interrupted, Lisa patiently holding two unplugged cable ends, composed and helpful rather than distressed.
+No words or symbols on paper, no background rooms, no extra characters, no watermark, no decorative sparkles. Subjects opaque with clean antialiased contour alpha.
+
+
+
+ICON
+
+Use case: stylized-concept
+Asset type: LISA app icon, approved Soft Ink direction.
+Input reference: use ONLY the middle column B / SOFT INK face and drawing style, not pixel art or 3D.
+Create one square high-quality app icon illustration, 1024x1024 if possible. Single warm friendly young adult woman, chin-length teal bob with side-swept fringe, kind blue eyes, fair skin and delicate blush, calm small smile. Smooth dark navy ink outlines, restrained cel shading, subtle matte finish, polished hand drawn 2D art. Navy hoodie with two tiny cyan angular stitching accents. Centered front-facing bust, same adult face proportions as middle reference. Simple solid very pale mint background. Head and shoulders centered and readable, generous 12% safe margin from top and sides, hoodie bottom reaches the bottom edge. Flat graphic confident silhouette. No rounded corners baked in, no outer frame, no letters, no text, no watermark, no sparkle, no circuitry wallpaper, no glow, no 3D, no pixels. Entire image opaque.
+
+

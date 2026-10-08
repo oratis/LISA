@@ -13,7 +13,13 @@
  * so the browser runs the exact unit-tested code instead of a drifting copy.
  */
 
-import { mergeAgentSession, aggregateAgentState, rosterLabel, formatActivity } from "./agent-roster.js";
+import { SOFT_INK_JS } from "./soft-ink.js";
+import {
+  mergeAgentSession,
+  aggregateAgentState,
+  rosterLabel,
+  formatActivity,
+} from "./agent-roster.js";
 import { renderMarkdown, MD_RENDER_CSS } from "./md-render.js";
 
 export const ISLAND_HTML = `<!doctype html>
@@ -108,7 +114,7 @@ ${MD_RENDER_CSS}
     object-position: 50% 22%;
     background: #15192a;
     flex-shrink: 0;
-    image-rendering: pixelated;
+    image-rendering: auto;
     border: 1px solid rgba(255, 255, 255, 0.10);
     box-shadow: 0 0 0 2px rgba(106, 212, 255, 0.10);
     pointer-events: none;
@@ -541,7 +547,7 @@ ${MD_RENDER_CSS}
 </head>
 <body>
   <div id="pill" role="button" tabindex="0" aria-label="Lisa island">
-    <img id="avatar" alt="" draggable="false" src="/assets/lisa/neutral.png" />
+    <img id="avatar" alt="" draggable="false" src="/assets/icon-192.png" />
     <div id="label">Lisa</div>
     <div id="dot" aria-hidden="true"></div>
   </div>
@@ -582,6 +588,7 @@ ${MD_RENDER_CSS}
   </div>
 
 <script>
+${SOFT_INK_JS}
 (() => {
   // ── Multi-agent roster reducer (Dispatch D4a) ──────────────────────
   // Source-injected from agent-roster.ts so the browser runs the exact,
@@ -605,6 +612,7 @@ ${MD_RENDER_CSS}
 
   const pill         = document.getElementById('pill');
   const avatar       = document.getElementById('avatar');
+  window.LisaArt.portrait(avatar, 'neutral');
   const dot          = document.getElementById('dot');
   const expand       = document.getElementById('expand');
   const desireBody   = document.getElementById('desire-body');
@@ -765,7 +773,7 @@ ${MD_RENDER_CSS}
     // Use the <img> src attribute — far more reliable than CSS
     // background-image in WKWebView, and lets the browser's standard
     // image cache + retry logic do its thing.
-    avatar.src = '/assets/lisa/' + encodeURIComponent(slug) + '.png';
+    window.LisaArt.portrait(avatar, slug);
   }
 
   function refreshDot() {

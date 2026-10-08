@@ -1,0 +1,60 @@
+LISA VISUAL REFRESH — IMAGEGEN PROMPTS
+
+2026-10-08 | Built-in image_gen tool | Concept assets, pending approval.
+
+Reference assets are from origin/main a0cce33. Existing source images were inspected before generation.
+
+
+
+01 — directions.png
+
+Use case: stylized-concept
+Asset type: visual direction comparison board for LISA, an existing personal AI assistant.
+Primary request: Create one polished landscape art-direction board with three equally sized vertical columns and generous neutral warm off-white space, comparing 3 alternative evolutions of the SAME character. This is a design proposal, not a finished product screen.
+Input images: Image 1 is the identity reference, not an edit target. Preserve her recognizable chin-length teal/cyan bob, side-swept fringe, blue eyes, fair skin, subtle blush and navy hooded sweater. Simplify circuit decoration to two modest cyan stitch traces; keep exactly the same navy outfit throughout all three columns. Show an adult-presenting friendly assistant character, not a child.
+Layout: Each column has a very large centered bust portrait at top (same neutral small warm smile and same crop, equal head sizes), then a row of three smaller portraits: thoughtful hand to chin, happy laughing, concerned sympathetic. Ensure clearly different expressions, consistent character inside each column. Lower edge contains 5 palette swatches drawn from the reference colors. Label columns with precise small black uppercase sans-serif titles, only text: "A / PIXEL SOUL", "B / SOFT INK", "C / SOFT VOLUME".
+A: exquisite crisp deliberately coarse pixel art, controlled 32-color appearance, bold clean pixel clusters, manually designed game portrait feeling, no busy dithering, no fuzzy edges. Pixel unit large enough to clearly see at preview size.
+B: sophisticated flat hand-drawn 2D illustration, warm expressive dark navy outlines, simple cel shading and restrained matte paper texture, same face and navy hoodie, strong readability, no pixelation.
+C: tasteful 3D miniature character in smooth matte clay-like material, soft diffused lighting, same teal bob, blue eyes and navy hoodie, no glossy toy plastic, expressive but not baby-like.
+Constraints: style is the only variable across columns. No logos, no UI chrome, no extra characters, no sci-fi accessories, no white hoodie, no long hair, no background glow, no watermark. Design work for comparison. At least 1536px wide landscape if possible.
+
+
+
+02 — expressions draft (superseded)
+
+Use case: stylized-concept
+Asset type: LISA pixel-art expression sheet, proposed next-generation core mood pack.
+Primary request: Generate a carefully aligned 4 columns by 3 rows expression sheet with exactly 12 bust portraits of the SAME LISA character, each centered within its own equal cell. A single sheet for design review. Genuine transparent alpha background over the WHOLE sheet, empty margins and gutters fully transparent, no checkerboard painting, no panels, no labels or text.
+Input images: Image 1 is an identity reference, not an edit target. Keep the teal chin-length bob, side swept fringe, blue eyes, fair skin with modest blush, and dark navy hoodie.
+Style: delightful premium deliberately crisp pixel art, readable large pixel clusters as if every cell were hand drawn on a 96x96 base grid then integer-upscaled, limited palette about 24-32 colors, two-tone hair highlights, dark navy outline, almost no dithering. Strong coherent silhouette, enlarged readable face, simple clothing with only a tiny pair of cyan circuit stitch marks on chest. No glow or blurry shading. Adult-presenting expressive young woman, not childlike.
+Identity lock: exact same haircut silhouette, face shape, head width, navy garment color, shoulder width and baseline in all twelve cells. Head occupies same location within cell. Only eyebrows, eyes, mouth and occasional foreground hand gestures change. Leave 12% safe margin inside every cell. No character or hand may cross a cell boundary.
+Cell order left to right:
+Row 1: 1 neutral calm soft smile; 2 happy warm open smile with arched crescent eyes; 3 thoughtful with one hand lightly touching chin and eyes looking up; 4 focused with eyebrows slightly lowered and attentive open eyes, mouth calm.
+Row 2: 5 surprised wide eyes and small O mouth; 6 confused one eyebrow raised with tiny tilted head; 7 worried sympathetic inward raised eyebrows, no tears; 8 apologetic small earnest lowered eyes and hand on chest.
+Row 3: 9 proud satisfied confident smile; 10 grateful hands gently together and warm smile; 11 sleepy lowered eyelids mouth small relaxed; 12 cheering one small raised fist and delighted smile.
+Constraints: Exactly 12 figures, evenly spaced 4x3 grid. All figures same scale. No props except specified hands, no keyboard, no alternate clothes, no floating symbols, no stars/hearts/questions, no white or cream garments, no background, no cast shadows, no captions, no typography, no watermark. The sheet must remain legible at small scale. Wide 4:3 composition.
+
+
+
+03 — expressions.png (cleanup iteration)
+
+Use case: precise-object-edit
+Asset type: revised LISA 12-expression concept sprite sheet.
+Input images: Image 1 is the exact edit target. Keep all 12 faces, expressions, hair silhouettes, hands, body positions, grid positions, colors and layout unchanged.
+Primary request: clean up the clothing and cutout edges only. On every hoodie remove the busy all-over circuitry. Use the SAME simple solid dark navy hoodie on all 12 portraits with only two small cyan angular stitch accents, one on each side of the chest; leave most of hoodie plain navy. Preserve hood fold shadows. Remove every stray electric-blue fringe, detached pixel noise and semitransparent halo on outer edges, replacing it with a clean crisp dark navy contour. Keep the exact character and readable deliberately pixel-art rendering.
+Constraints: genuine alpha transparency, fully transparent empty space and gutters. Do not add a background, shadow, labels, text, panels or checkerboard. Do not redesign the faces, change expressions, scale, alignment, ordering or cropping. Exactly 4 columns and 3 rows as in input.
+
+
+
+04 — room-triptych.png
+
+Use case: stylized-concept
+Asset type: LISA Room v3 environment art proposal, day / dusk / night triptych.
+Primary request: one wide triptych containing THREE equal square room illustrations with thin off-white gutters. They show EXACTLY the same cozy personal-assistant studio, viewed straight-on as an open-front diorama, with identical geometry and objects. Day at left, sunset in middle, quiet night at right. No text.
+Input images: Image 1 is the existing room reference. Preserve its core recognizability: wood interior, large central arched window, work desk and laptop on left, woven cocoon lounge chair on right, plants and circular woven floor rug. Image 2 is LISA's identity reference.
+Evolve the room into refined clear pixel art with deliberate visible pixel clusters, reduced visual clutter, calmer broad shapes, fewer leaves, balanced light, muted honey wood, navy shadows, teal details drawn from LISA. No photorealism, no painterly blur. Cohesive premium pixel game art.
+Composition: each room has about 25% empty floor; window simple with fewer subdivisions, a desk lamp on left, one plant beside the window, bookshelf on left, cozy chair on right, rug in center. Preserve furniture positions across all three images. No change of perspective. Character same across panels: teal chin-length bob with side-swept fringe, blue eyes, navy hoodie with minimal cyan circuit stitches, dark trousers and simple shoes. Adult-presenting proportions, same design as reference but full body. Modest size integrated into room, face readable. She sits at desk reading/writing in day; sits relaxed in lounge holding a book at dusk; rests in lounge under a navy blanket at night. Natural body anatomy, sitting grounded on chair, not floating. These are illustrative pose studies, not promises about live activity.
+Day: diffuse daylight with cool teal outside sky, restrained highlights.
+Dusk: muted peach and amber sky, desk lamp glowing, same room.
+Night: navy sky with a few stars, warm desk lamp and very subtle string lights, same room.
+Constraints: exact same architecture and furniture between panels, matching crop/scale, no interface elements, no words, no labels, no excessive particles, no neon, no new decorative objects that compete with character. This is an environment concept sheet, not production sprite layers. Wide landscape 3:1 triptych if possible.

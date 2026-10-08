@@ -183,13 +183,11 @@ struct ServerPortrait: View {
             else { Image(systemName: "person.crop.circle.fill").resizable().scaledToFit().foregroundStyle(Theme.secondary) }
         }
         .task(id: request) {
-            image = nil
-            guard let request else { return }
+            guard request != nil else { return }
             do {
-                let (data, response) = try await URLSession.shared.data(for: request)
-                guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return }
+                let next = try await LisaArtwork.load(client: client, path: path)
                 try Task.checkCancellation()
-                image = UIImage(data: data)
+                if let next { image = next }
             } catch { /* Keep the fallback; a later request or reconnect retries. */ }
         }
     }

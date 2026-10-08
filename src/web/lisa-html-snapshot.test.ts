@@ -27,7 +27,7 @@ import { MAIN_CLIENT_JS } from "./lisa-client.js";
  */
 
 /** The client sources that must be inlined into the shell, in load order. */
-const CLIENT_FILES = ["main.css", "main.js"] as const;
+const CLIENT_FILES = ["main.css", "soft-ink.js", "main.js"] as const;
 
 const clientDir = new URL("./assets/client/", import.meta.url);
 
@@ -56,6 +56,11 @@ describe("the client sources are real files, not template literals", () => {
 });
 
 describe("the served page inlines every client source verbatim", () => {
+  test("the shared artwork renderer is inlined before its consumers", () => {
+    const renderer = readFileSync(new URL("soft-ink.js", clientDir), "utf8");
+    assert.equal(MAIN_HTML.split(renderer).length - 1, 1);
+    assert.ok(MAIN_HTML.indexOf(renderer) < MAIN_HTML.indexOf(MAIN_CLIENT_JS));
+  });
   test("MAIN_HTML contains the stylesheet, once, inside <style>", () => {
     assert.ok(MAIN_HTML.includes(MAIN_CSS), "MAIN_CSS is not present verbatim");
     assert.equal(MAIN_HTML.split(MAIN_CSS).length - 1, 1, "MAIN_CSS appears more than once");

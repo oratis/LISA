@@ -1,0 +1,50 @@
+{
+  "date": "2026-10-08",
+  "baseline": "a0cce33",
+  "branch": "codex/lisa-visual-proposal",
+  "mode": "built-in image_gen",
+  "status": "concept proposal awaiting user confirmation",
+  "current": {
+    "moods": 114,
+    "moodMiB": 20.47,
+    "moodSize": [512, 512],
+    "categories": {
+      "emotion": 32,
+      "activity": 38,
+      "weather": 10,
+      "festive": 12,
+      "outfit": 6,
+      "persona": 16
+    },
+    "roomAssets": 17,
+    "roomMiB": 10.12
+  },
+  "generated": {
+    "directions": {
+      "width": 1536,
+      "height": 1024,
+      "alpha": false,
+      "bytes": 2007678
+    },
+    "expressions": {
+      "width": 1448,
+      "height": 1086,
+      "alpha": true,
+      "bytes": 1720479,
+      "transparentPixels": 505759,
+      "partialAlphaPixels": 1063634
+    },
+    "room-triptych": {
+      "width": 2172,
+      "height": 724,
+      "alpha": false,
+      "bytes": 2211076
+    }
+  },
+  "limitations": [
+    "Concept sheets are not pixel-grid-normalized production assets.",
+    "Small avatar crops and anatomy require individual review after style approval.",
+    "Room triptych is a flattened environment study; geometry differs slightly and needs locking before layering.",
+    "Performance budgets and asset quantities in the proposal are targets, not measured production results."
+  ]
+}

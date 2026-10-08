@@ -151,6 +151,39 @@ describe("T-10 security headers on the real server", () => {
   });
 });
 
+test("Soft Ink assets have browser MIME types and the gallery keeps nonce-based CSP", async () => {
+  const srv = await boot();
+  try {
+    const base = "/assets/visuals/soft-ink-v1/";
+    for (const [file, type] of [
+      ["portraits-small.webp", "image/webp"],
+      ["manifest.js", "application/javascript"],
+      ["manifest.json", "application/json"],
+      ["stickers/lisa-hello.png", "image/png"],
+    ]) {
+      const result = await request(srv.port, "GET", base + file);
+      assert.equal(result.status, 200);
+      assert.ok(result.headers["content-type"]?.startsWith(type!));
+      assert.equal(result.headers["x-content-type-options"], "nosniff");
+    }
+    const first = await request(srv.port, "GET", base + "gallery.html");
+    const second = await request(srv.port, "GET", base + "gallery.html");
+    assert.equal(first.status, 200);
+    assert.equal(first.headers["content-type"], "text/html; charset=utf-8");
+    assert.equal(first.headers["cache-control"], "no-store");
+    const nonce = first.text.match(/<script nonce="([^"]+)">/)?.[1];
+    assert.ok(nonce);
+    assert.ok(first.headers["content-security-policy"]?.includes("'nonce-" + nonce + "'"));
+    assert.notEqual(
+      first.headers["content-security-policy"],
+      second.headers["content-security-policy"],
+    );
+    assert.ok(!first.text.includes("<script>"));
+  } finally {
+    await srv.close();
+  }
+});
+
 describe("T-3 /health and /healthz", () => {
   let srv: Booted;
   test("boots", async () => {
