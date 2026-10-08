@@ -846,12 +846,15 @@ const TAG_NAME_END = /[\t\n\f\r />]/;
  */
 const LINE_BREAK_TAG = /^\/?(?:p|div|br|li|tr|h[1-6]|section|article|header|footer|nav|hr)/i;
 /**
- * What may follow a `<` that opens markup: a letter (a tag), `/` and a letter
- * (an end tag), `!` (comment, doctype, CDATA) or `?` (processing instruction).
- * Anything else — a space, a digit, `=`, another `<` — leaves the `<` as text,
- * as a browser does: `if a < b`, `x <= y`, `cout << x` keep their words.
+ * What may follow a `<` that opens markup: a letter (a tag), `!` (comment,
+ * doctype, CDATA), `?` (processing instruction), or `/` and any character.
+ * `</` and a letter is an end tag; `</` and anything else is what a browser
+ * calls a bogus comment and hides up to the next `>` (`</ note>`, `</1>`), and
+ * `</>` is dropped. Anything else after `<` — a space, a digit, `=`, another
+ * `<` — leaves the `<` as text, as a browser does: `if a < b`, `x <= y`,
+ * `cout << x` keep their words. So does a `</` that ends the input.
  */
-const MARKUP_AFTER_LT = /[\p{L}!?]|\/\p{L}/uy;
+const MARKUP_AFTER_LT = /[\p{L}!?]|\/[\s\S]/uy;
 
 function opensMarkup(html: string, lt: number): boolean {
   MARKUP_AFTER_LT.lastIndex = lt + 1;
