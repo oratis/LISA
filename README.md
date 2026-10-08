@@ -68,7 +68,7 @@ Local data lives under `~/.lisa` by default. Choosing a remote model sends relev
 On current `main`, **Warden** adds deterministic action decisions, scoped grants, an approval inbox and audit records. It is **opt-in for web chat**:
 
 ```sh
-# Build current main first; this is newer than the v0.27.1 release.
+# Warden ships in v0.28.0 and later.
 lisa serve --web --approval warden
 lisa approvals list
 ```
@@ -79,7 +79,7 @@ The merged **reach-out gate** applies source controls, quiet hours, deduplicatio
 
 ## Development status
 
-The latest tagged package is **v0.27.1**. Current `main` includes later work; a merged feature is not proof that it has been deployed to Cloud or released in a native binary.
+The latest tagged package is **v0.28.0** ([release notes](docs/RELEASE_v0.28.0.md)). Current `main` may include later work; a merged feature is not proof that it has been deployed to Cloud or released in a native binary.
 
 | Workstream | Status on 2026-10-07 |
 | --- | --- |

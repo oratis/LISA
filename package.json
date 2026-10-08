@@ -1,6 +1,6 @@
 {
   "name": "@oratis/lisa",
-  "version": "0.27.1",
+  "version": "0.28.0",
   "description": "An open-source AI Personal Assistant for planning, writing and personal knowledge, with Cloud and local Mac modes.",
   "keywords": [
     "ai",
