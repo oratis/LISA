@@ -7,6 +7,31 @@ Entries from 0.13.0 onward are generated from `docs/RELEASE_v*.md` by
 `npm run changelog` — edit the release note, not this file. See
 [docs/RELEASING.md](docs/RELEASING.md).
 
+## [0.28.0] — 2026-10-08
+
+LISA is an AI Personal Assistant for planning, writing and personal knowledge. This release introduces the Soft Ink visual identity and adds the groundwork for an assistant that works on your behalf while you are away — durable tasks and watchers, a deterministic approval layer, one gate for every proactive message, a credential broker and cost-aware model routing — and fixes a set of first-run, health and privacy issues. Most of the new machinery is off or opt-in; what changes on a default install is listed first.
+
+- Soft Ink: Lisa's new visual identity
+- What changes on a default install
+- New, opt-in or off by default
+- Behaviour changes to note
+- Also since v0.27.1
+- Known limits
+
+[Release notes](docs/RELEASE_v0.28.0.md) · [GitHub release](https://github.com/oratis/LISA/releases/tag/v0.28.0)
+
+## [0.27.1] — 2026-09-27
+
+LISA Cloud can use Gemini 2.5 Flash with the existing free allowance. Previously this model fell into the unknown-model premium tier, which would reject an account with no purchased credits even when its free allowance remained.
+
+[Release notes](docs/RELEASE_v0.27.1.md) · [GitHub release](https://github.com/oratis/LISA/releases/tag/v0.27.1)
+
+## [0.27.0] — 2026-09-27
+
+Lisa Pocket now opens with a cloud sign-in path and an optional Mac connection. Home offers editable prompts for daily planning, writing, and breaking down a goal. Mac-only agent and integration controls explain their requirements in cloud mode.
+
+[Release notes](docs/RELEASE_v0.27.0.md) · [GitHub release](https://github.com/oratis/LISA/releases/tag/v0.27.0)
+
 ## [0.26.1] — 2026-09-08
 
 **The v0.26.0 DMG.** v0.26.0 is the release that makes Lisa.app self-contained, and its Mac job failed before producing a disk image — so it shipped the CLI bundles with the one asset it was about missing. Same contents, plus the one-character fix that lets the DMG build.

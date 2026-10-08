@@ -1,0 +1,1287 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>LISA · 视觉体验升级提案</title>
+    <style>
+      :root {
+        --paper: #f7f7f2;
+        --ink: #172a30;
+        --muted: #52666b;
+        --line: #d9e2dd;
+        --teal: #146b6b;
+        --soft: #e5efeb;
+        --navy: #233552;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
+        scroll-padding-top: 80px;
+      }
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: var(--ink);
+        font:
+          16px/1.7 -apple-system,
+          BlinkMacSystemFont,
+          "PingFang SC",
+          "Microsoft YaHei",
+          sans-serif;
+      }
+      a {
+        color: var(--teal);
+        text-underline-offset: 4px;
+      }
+      button,
+      select {
+        font: inherit;
+      }
+      button {
+        cursor: pointer;
+      }
+      button:focus-visible,
+      a:focus-visible,
+      input:focus-visible {
+        outline: 3px solid #278584;
+        outline-offset: 4px;
+      }
+      header {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        background: rgba(247, 247, 242, 0.96);
+        border-bottom: 1px solid var(--line);
+      }
+      .top {
+        max-width: 1160px;
+        padding: 16px 28px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin: auto;
+        gap: 20px;
+      }
+      .brand {
+        font-weight: 800;
+        letter-spacing: 0.15em;
+      }
+      .top nav {
+        display: flex;
+        gap: 24px;
+        font-size: 13px;
+      }
+      .top a {
+        text-decoration: none;
+        color: var(--muted);
+      }
+      main {
+        max-width: 1160px;
+        padding: 0 28px 80px;
+        margin: auto;
+      }
+      .hero {
+        padding: 65px 0 46px;
+        display: grid;
+        grid-template-columns: 1.7fr 1fr;
+        align-items: center;
+        gap: 50px;
+      }
+      .eyebrow {
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--teal);
+        margin: 0 0 15px;
+      }
+      h1 {
+        font-size: clamp(34px, 4.4vw, 58px);
+        line-height: 1.22;
+        letter-spacing: -0.045em;
+        margin: 0 0 23px;
+        font-weight: 650;
+      }
+      h2 {
+        font-size: 29px;
+        letter-spacing: -0.035em;
+        line-height: 1.35;
+        margin: 0 0 14px;
+      }
+      h3 {
+        font-size: 19px;
+        line-height: 1.4;
+        margin: 0 0 10px;
+      }
+      p {
+        margin: 0 0 16px;
+      }
+      .lede {
+        color: var(--muted);
+        max-width: 670px;
+        font-size: 17px;
+      }
+      .badge {
+        display: inline-block;
+        border: 1px solid var(--line);
+        border-radius: 40px;
+        padding: 5px 12px;
+        font-size: 12px;
+        margin-right: 6px;
+      }
+      .hero-art {
+        padding: 22px;
+        background: var(--soft);
+        border-radius: 28px;
+        text-align: center;
+      }
+      .hero-art .sprite {
+        width: 100%;
+        aspect-ratio: 1;
+      }
+      .hero-art small {
+        display: block;
+        color: var(--muted);
+        margin-top: 10px;
+      }
+      .section {
+        padding: 46px 0;
+        border-top: 1px solid var(--line);
+      }
+      .intro {
+        max-width: 800px;
+        color: var(--muted);
+      }
+      .image-board {
+        display: block;
+        width: 100%;
+        border-radius: 16px;
+      }
+      .image-link {
+        display: block;
+        margin: 22px 0 12px;
+      }
+      figcaption,
+      .caption {
+        font-size: 13px;
+        color: var(--muted);
+        margin: 10px 0 20px;
+      }
+      .grid3 {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 18px;
+      }
+      .card {
+        padding: 24px;
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+      }
+      .card.recommend {
+        border: 2px solid var(--teal);
+        padding: 23px;
+      }
+      .card .label {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--teal);
+        margin-bottom: 12px;
+      }
+      .card p {
+        font-size: 14px;
+        color: var(--muted);
+        margin-bottom: 10px;
+      }
+      .card p:last-child {
+        margin-bottom: 0;
+      }
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 24px;
+        margin: 25px 0;
+      }
+      .stat strong {
+        font-size: 32px;
+        line-height: 1.3;
+        font-weight: 600;
+        display: block;
+      }
+      .stat span {
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .audit {
+        display: grid;
+        grid-template-columns: 1fr 1.6fr;
+        gap: 35px;
+        margin-top: 30px;
+      }
+      .current-portraits {
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
+        gap: 6px;
+        padding: 20px 12px;
+        background: #e9eef0;
+        border-radius: 16px;
+      }
+      .current-portraits figure {
+        margin: 0;
+        text-align: center;
+        flex: 1;
+        min-width: 0;
+      }
+      .current-portraits img {
+        width: 100%;
+        image-rendering: pixelated;
+      }
+      .current-portraits figcaption {
+        margin: 5px 0;
+        font-size: 12px;
+      }
+      .audit ul {
+        padding-left: 22px;
+        margin-top: 0;
+      }
+      .audit li {
+        margin-bottom: 10px;
+        font-size: 14px;
+      }
+      code {
+        font:
+          12px/1.5 ui-monospace,
+          SFMono-Regular,
+          Consolas,
+          monospace;
+        overflow-wrap: anywhere;
+        background: #edf1ed;
+        padding: 2px 5px;
+        border-radius: 4px;
+      }
+      .note {
+        border-left: 3px solid var(--teal);
+        padding: 8px 0 8px 20px;
+        margin: 25px 0;
+        color: var(--muted);
+        font-size: 14px;
+      }
+      .controls {
+        display: flex;
+        gap: 9px;
+        flex-wrap: wrap;
+        align-items: center;
+        margin: 20px 0;
+      }
+      .controls button,
+      .choice button {
+        padding: 8px 15px;
+        min-height: 44px;
+        border: 1px solid var(--line);
+        background: white;
+        color: var(--ink);
+        border-radius: 9px;
+      }
+      .controls button[aria-pressed="true"],
+      .choice button[aria-pressed="true"] {
+        background: var(--teal);
+        border-color: var(--teal);
+        color: #fff;
+      }
+      .controls .spacer {
+        flex: 1;
+      }
+      .demo {
+        --d-bg: #f6f7f9;
+        --d-panel: #fff;
+        --d-text: #1b2430;
+        --d-muted: #4d5666;
+        --d-border: #d5d9e2;
+        --d-accent: #4f5bd5;
+        border: 1px solid var(--d-border);
+        border-radius: 22px;
+        overflow: hidden;
+        background: var(--d-bg);
+        color: var(--d-text);
+      }
+      .demo[data-mode="dark"] {
+        --d-bg: #07091a;
+        --d-panel: #11163a;
+        --d-text: #e8eaff;
+        --d-muted: #aeb5d3;
+        --d-border: #39415e;
+        --d-accent: #6ad4ff;
+      }
+      .demo-head {
+        padding: 18px 22px;
+        border-bottom: 1px solid var(--d-border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 15px;
+        font-size: 13px;
+      }
+      .demo-head span {
+        color: var(--d-muted);
+      }
+      .demo-body {
+        display: grid;
+        grid-template-columns: 260px 1fr;
+        min-height: 300px;
+      }
+      .identity-demo {
+        padding: 28px;
+        text-align: center;
+        border-right: 1px solid var(--d-border);
+        background: var(--d-panel);
+      }
+      .identity-demo .sprite {
+        width: 160px;
+        height: 160px;
+        margin: 0 auto 16px;
+      }
+      .identity-demo strong {
+        display: block;
+        font-size: 20px;
+      }
+      .identity-demo span {
+        font-size: 13px;
+        color: var(--d-muted);
+      }
+      .conversation {
+        padding: 28px 35px;
+      }
+      .conversation .you {
+        margin-left: auto;
+        max-width: 290px;
+        background: var(--d-panel);
+        border: 1px solid var(--d-border);
+        border-radius: 14px 14px 3px 14px;
+        padding: 11px 16px;
+        font-size: 14px;
+      }
+      .reply {
+        margin-top: 28px;
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+      }
+      .reply p {
+        font-size: 15px;
+        margin-top: 8px;
+      }
+      .mini-portrait {
+        width: 36px;
+        height: 36px;
+        flex: 0 0 36px;
+        overflow: hidden;
+        border-radius: 50%;
+        background: var(--d-bg);
+      }
+      .mini-portrait .sprite {
+        width: 36px;
+        height: 36px;
+      }
+      .reply small {
+        color: var(--d-muted);
+      }
+      .status {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        border: 1px solid var(--d-border);
+        color: var(--d-muted);
+        font-size: 12px;
+        border-radius: 20px;
+        padding: 5px 10px;
+        margin-top: 16px;
+      }
+      .status i {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--d-accent);
+      }
+      .sprite {
+        background-image: url("assets/expressions.png");
+        background-size: 400% 300%;
+        background-repeat: no-repeat;
+        background-position: 0% 0%;
+        image-rendering: pixelated;
+      }
+      .mood-grid {
+        display: grid;
+        grid-template-columns: repeat(6, 1fr);
+        gap: 10px;
+        margin-top: 18px;
+      }
+      .mood {
+        padding: 10px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: #fff;
+        color: var(--ink);
+        min-width: 0;
+      }
+      .mood[aria-pressed="true"] {
+        outline: 2px solid var(--teal);
+        outline-offset: -2px;
+        background: var(--soft);
+      }
+      .mood .sprite {
+        width: 100%;
+        aspect-ratio: 1;
+      }
+      .mood span {
+        display: block;
+        font-size: 12px;
+        margin-top: 5px;
+      }
+      .sizes {
+        display: flex;
+        align-items: flex-end;
+        gap: 28px;
+        padding: 22px;
+        flex-wrap: wrap;
+        border-top: 1px solid var(--d-border);
+      }
+      .sizes .sample {
+        text-align: center;
+        font-size: 11px;
+        color: var(--d-muted);
+      }
+      .sizes .sprite {
+        margin: auto auto 8px;
+      }
+      .table-wrap {
+        overflow: auto;
+        margin: 24px 0;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 14px;
+        min-width: 640px;
+        text-align: left;
+      }
+      th {
+        font-size: 12px;
+        color: var(--muted);
+        font-weight: 600;
+      }
+      td,
+      th {
+        border-bottom: 1px solid var(--line);
+        padding: 15px 12px;
+        vertical-align: top;
+      }
+      th:first-child,
+      td:first-child {
+        padding-left: 0;
+      }
+      td:first-child {
+        font-weight: 600;
+        width: 16%;
+      }
+      td:last-child {
+        color: var(--muted);
+      }
+      .palette {
+        display: flex;
+        gap: 12px;
+        margin: 24px 0;
+      }
+      .swatch {
+        flex: 1;
+        font-size: 12px;
+      }
+      .swatch i {
+        display: block;
+        height: 42px;
+        border-radius: 8px;
+        margin-bottom: 8px;
+      }
+      .steps {
+        counter-reset: step;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 22px;
+        margin-top: 24px;
+      }
+      .step {
+        border-top: 3px solid var(--teal);
+        padding-top: 19px;
+      }
+      .step::before {
+        counter-increment: step;
+        content: "0" counter(step);
+        display: block;
+        font-size: 13px;
+        color: var(--teal);
+        margin-bottom: 10px;
+      }
+      .step p {
+        font-size: 14px;
+        color: var(--muted);
+      }
+      .checklist {
+        columns: 2;
+        column-gap: 40px;
+        padding-left: 20px;
+      }
+      .checklist li {
+        font-size: 14px;
+        margin: 0 0 12px;
+        break-inside: avoid;
+      }
+      .choice {
+        background: var(--soft);
+        padding: 32px;
+        border-radius: 20px;
+        margin-top: 28px;
+      }
+      .choice-buttons {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin: 20px 0;
+      }
+      .choice p {
+        font-size: 14px;
+        color: var(--muted);
+      }
+      #approval-text {
+        font-size: 17px;
+        color: var(--ink);
+        margin-bottom: 6px;
+      }
+      .source-list {
+        font-size: 13px;
+        line-height: 2;
+        padding-left: 20px;
+      }
+      footer {
+        border-top: 1px solid var(--line);
+        padding-top: 25px;
+        margin-top: 40px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      details {
+        margin-top: 20px;
+      }
+      summary {
+        cursor: pointer;
+        font-weight: 600;
+      }
+      details p {
+        font-size: 14px;
+        color: var(--muted);
+        margin-top: 16px;
+      }
+      .anchor-button {
+        display: inline-block;
+        margin-top: 10px;
+        background: var(--teal);
+        color: #fff;
+        text-decoration: none;
+        padding: 10px 18px;
+        border-radius: 10px;
+      }
+      @media (max-width: 760px) {
+        .top {
+          padding: 14px 18px;
+        }
+        .top nav {
+          gap: 12px;
+        }
+        .top nav a:nth-child(n + 3) {
+          display: none;
+        }
+        main {
+          padding: 0 18px 45px;
+        }
+        .hero {
+          grid-template-columns: 1fr;
+          gap: 22px;
+          padding: 36px 0;
+        }
+        .hero-art {
+          max-width: 300px;
+          width: 100%;
+          margin: auto;
+        }
+        .grid3,
+        .steps {
+          grid-template-columns: 1fr;
+        }
+        .stats {
+          grid-template-columns: 1fr 1fr;
+          gap: 20px;
+        }
+        .audit {
+          grid-template-columns: 1fr;
+          gap: 20px;
+        }
+        .demo-body {
+          grid-template-columns: 1fr;
+        }
+        .identity-demo {
+          display: none;
+        }
+        .conversation {
+          padding: 22px;
+        }
+        .mood-grid {
+          grid-template-columns: repeat(4, 1fr);
+          gap: 6px;
+        }
+        .mood {
+          padding: 5px;
+        }
+        .sizes {
+          gap: 15px;
+        }
+        .palette {
+          flex-wrap: wrap;
+        }
+        .swatch {
+          flex: 1 0 28%;
+        }
+        .checklist {
+          columns: 1;
+        }
+        .section {
+          padding: 34px 0;
+        }
+        .choice {
+          padding: 22px;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        html {
+          scroll-behavior: auto;
+        }
+      }
+      @media print {
+        header,
+        .controls,
+        .choice-buttons {
+          display: none;
+        }
+        main {
+          max-width: none;
+        }
+        .hero {
+          padding-top: 10px;
+        }
+        .section {
+          break-inside: avoid;
+        }
+        .demo-body {
+          min-height: 200px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="top">
+        <div class="brand">
+          LISA
+          <span style="font-weight: 400; color: var(--muted); letter-spacing: 0">
+            / VISUAL STUDY</span
+          >
+        </div>
+        <nav aria-label="方案章节">
+          <a href="#directions">风格方向</a><a href="#expressions">表情体验</a
+          ><a href="#scope">全局升级</a><a href="#decision">待确认</a>
+        </nav>
+      </div>
+    </header>
+    <main>
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Visual experience proposal · 2026.10.08</p>
+          <h1>让每一次回应，<br />都像同一个 Lisa。</h1>
+          <p class="lede">
+            以青色短发与像素气质为识别核心，统一表情、头像、房间和引导插画。让角色更有表现力，让工作界面更安静。
+          </p>
+          <span class="badge">基于 main · a0cce33</span><span class="badge">ImageGen 实图提案</span
+          ><span class="badge">待确认</span><br /><a class="anchor-button" href="#directions"
+            >比较三个方向 ↓</a
+          >
+        </div>
+        <div class="hero-art">
+          <div class="sprite" role="img" aria-label="推荐方向的 Lisa 平静表情样张"></div>
+          <small>A · Pixel Soul / 推荐方向概念样张</small>
+        </div>
+      </section>
+
+      <section class="section" id="audit">
+        <p class="eyebrow">01 / Current experience</p>
+        <h2>先统一角色，再扩展表现力。</h2>
+        <p class="intro">
+          LISA 已经有丰富的表情与房间系统。主要机会在资产之间的一致性，以及从 28pt
+          头像到大幅场景的使用分工。以下为最新代码与本地图片审阅结果。
+        </p>
+        <div class="stats">
+          <div class="stat"><strong>114</strong><span>现有情绪 / 活动等立绘</span></div>
+          <div class="stat">
+            <strong>20.47 MiB</strong><span>114 张 512 × 512 RGBA PNG 合计</span>
+          </div>
+          <div class="stat"><strong>17</strong><span>房间图片，合计 10.12 MiB</span></div>
+          <div class="stat"><strong>28–72</strong><span>主要头像显示尺寸（px / pt）</span></div>
+        </div>
+        <div class="audit">
+          <div>
+            <div class="current-portraits">
+              <figure>
+                <img src="assets/current-neutral.png" alt="现有平静表情，深色连帽衫" />
+                <figcaption>neutral</figcaption>
+              </figure>
+              <figure>
+                <img src="assets/current-happy.png" alt="现有开心表情，浅色连帽衫" />
+                <figcaption>happy</figcaption>
+              </figure>
+              <figure>
+                <img src="assets/current-working.png" alt="现有编码状态，带键盘与耳机" />
+                <figcaption>working-coding</figcaption>
+              </figure>
+            </div>
+            <p class="caption">现有资源原图，同尺寸直接显示。</p>
+          </div>
+          <ul>
+            <li>
+              <b>身份漂移：</b
+              >平静与开心的衣服分别为深色、浅色；头部和身体占比随状态变化。工作立绘加入键盘后，脸进一步缩小。
+            </li>
+            <li>
+              <b>用途混合：</b>32 个情绪、38 个活动、10 个天气、12 个节庆、6 个服装、16
+              个人设共享一类头像资源。
+            </li>
+            <li>
+              <b>跨端取景不同：</b>Web 56px、Island 36px 使用圆形 cover；iOS Chat 28pt、Home 72pt
+              通过 scaledToFit 展示。需要统一脸部安全区。
+            </li>
+            <li>
+              <b>已有基础值得保留：</b>Nebula / Calm
+              两套主题、语义颜色、减少动态效果和无障碍标签已在最新代码中存在。
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="section" id="directions">
+        <p class="eyebrow">02 / Art directions</p>
+        <h2>三个方向，一套角色身份。</h2>
+        <p class="intro">
+          保持青色短发、蓝眼睛、深蓝连帽衫，仅比较画法。推荐 A，保留已经建立的像素识别度；B、C
+          是完整替代方向，正式产品应选定一种主风格。
+        </p>
+        <a class="image-link" href="assets/directions.png" target="_blank" rel="noopener"
+          ><img
+            class="image-board"
+            src="assets/directions.png"
+            alt="三个风格方向对比：A 精修像素，B 柔和二维插画，C 柔和立体质感"
+        /></a>
+        <p class="caption">
+          ImageGen 生成的方向对比图。点击可打开大图；图中配色与绘制细节为概念探索。
+        </p>
+        <div class="grid3">
+          <article class="card recommend">
+            <div class="label">A / 推荐</div>
+            <h3>Pixel Soul · 精修像素</h3>
+            <p>统一头身、像素颗粒、发型与衣服。减少抖色和装饰，让眼睛与嘴成为表情重点。</p>
+            <p><b>适合：</b>延续当前品牌，跨 Web、Mac、iOS 和 Room。</p>
+            <p><b>代价：</b>仍需逐张校正像素网格与小头像，生成图不能直接当最终 sprite。</p>
+          </article>
+          <article class="card">
+            <div class="label">B / 替代方向</div>
+            <h3>Soft Ink · 柔和插画</h3>
+            <p>轻线条、简洁色块，表情更细腻，适合个人助手和分享贴纸。</p>
+            <p><b>适合：</b>希望降低像素风占比、加强日常亲和力。</p>
+            <p><b>代价：</b>角色、房间与品牌插画需要一起迁移；不能只换头像。</p>
+          </article>
+          <article class="card">
+            <div class="label">C / 替代方向</div>
+            <h3>Soft Volume · 立体质感</h3>
+            <p>更有体积与触感，角色展示更突出。</p>
+            <p><b>适合：</b>希望明显改变品牌的视觉方向。</p>
+            <p><b>代价：</b>统一视角、材质与动作更难；图中仅是栅格概念图，不包含 3D 模型。</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" id="expressions">
+        <p class="eyebrow">03 / Expression system</p>
+        <h2>表情讲情绪，状态说明进度。</h2>
+        <p class="intro">
+          推荐方向的 12
+          张概念样张，可切换表情、浅深底色，检查在不同尺寸中的表现。情绪变化不改动任务进度；真实工作状态继续通过文字和状态点表达。
+        </p>
+        <div class="controls" aria-label="预览设置">
+          <button type="button" data-mode-button="light" aria-pressed="true">Calm · 浅色</button
+          ><button type="button" data-mode-button="dark" aria-pressed="false">Nebula · 深色</button
+          ><span class="spacer"></span
+          ><span class="caption" style="margin: 0">点击下方表情切换预览</span>
+        </div>
+        <div class="demo" id="demo" data-mode="light">
+          <div class="demo-head"><b>LISA · 对话预览</b><span>示例内容 / 非运行中产品</span></div>
+          <div class="demo-body">
+            <div class="identity-demo">
+              <div class="sprite active-sprite" role="img" aria-label="Lisa 平静"></div>
+              <strong>Lisa</strong><span id="mood-label">平静 · neutral</span>
+            </div>
+            <div class="conversation">
+              <div class="you">帮我把今天的想法整理成一个计划。</div>
+              <div class="reply">
+                <div class="mini-portrait">
+                  <div class="sprite active-sprite" role="img" aria-label="Lisa 头像"></div>
+                </div>
+                <div>
+                  <b>Lisa</b>
+                  <p>可以。我们先挑出今天最重要的三件事，<br />再给它们留出合适的时间。</p>
+                  <small>表情与头像使用同一角色母版。</small><br /><span class="status"
+                    ><i></i>草稿已生成 · 待你查看</span
+                  >
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="sizes">
+            <div class="sample">
+              <div
+                class="sprite active-sprite"
+                style="width: 28px; height: 28px"
+                role="img"
+                aria-label="28像素头像预览"
+              ></div>
+              28 · Chat
+            </div>
+            <div class="sample">
+              <div
+                class="sprite active-sprite"
+                style="width: 36px; height: 36px"
+                role="img"
+                aria-label="36像素头像预览"
+              ></div>
+              36 · Island
+            </div>
+            <div class="sample">
+              <div
+                class="sprite active-sprite"
+                style="width: 56px; height: 56px"
+                role="img"
+                aria-label="56像素头像预览"
+              ></div>
+              56 · Web
+            </div>
+            <div class="sample">
+              <div
+                class="sprite active-sprite"
+                style="width: 72px; height: 72px"
+                role="img"
+                aria-label="72像素头像预览"
+              ></div>
+              72 · Home
+            </div>
+            <div class="sample">
+              <div
+                class="sprite active-sprite"
+                style="width: 112px; height: 112px"
+                role="img"
+                aria-label="112像素贴纸预览"
+              ></div>
+              112 · 贴纸研究
+            </div>
+          </div>
+        </div>
+        <div class="mood-grid" id="mood-grid" aria-label="表情选择"></div>
+        <p class="caption">
+          此处用整张概念表按网格预览，因此边界和取景尚未逐张校正。28 / 36 的示意为 CSS
+          px，并不等于已完成真机 pt 验收。正式版需单张导出、统一锚点，并重新绘制适合小尺寸的脸部。
+        </p>
+        <div class="grid3" style="margin-top: 24px">
+          <article class="card">
+            <h3>头像层 · 识别优先</h3>
+            <p>
+              28–72px/pt，头肩裁切、固定眼线、面部占比一致。小头像减少道具，最多 1
+              个手势。状态名称本地化。
+            </p>
+          </article>
+          <article class="card">
+            <h3>贴纸层 · 表达优先</h3>
+            <p>
+              112–240px，可加入手势与少量道具。默认由用户主动插入或分享，避免每条回复自动出现大表情。文案独立于图片，方便中英切换。
+            </p>
+          </article>
+          <article class="card">
+            <h3>场景层 · 氛围优先</h3>
+            <p>
+              房间、欢迎与回顾插画使用全身角色。活动和环境分层，头像不会因天气或衣服变化频繁失去识别度。
+            </p>
+          </article>
+        </div>
+        <div class="note">
+          <b>首批 24 个状态：</b>16
+          个情绪：neutral、happy、laughing、giggling、thoughtful、confused、surprised、worried、sad、apologetic、grateful、proud、determined、excited、cheering、sleepy；8
+          个活动：working-coding、working-debugging、working-research、working-writing、reading-book、drinking-tea、stretching、napping。当前“专注”样张是
+          working-coding 的简化头像研究，不新增 focused 状态。
+        </div>
+      </section>
+
+      <section class="section" id="room">
+        <p class="eyebrow">04 / A room that belongs to Lisa</p>
+        <h2>同一个房间，安静地经过一天。</h2>
+        <p class="intro">
+          保留木质房间、拱窗、书桌与藤椅，收敛纹理与装饰，用同一组几何和光照规则连接白天、黄昏、夜晚。角色保持与头像相同的发型和服装。
+        </p>
+        <a class="image-link" href="assets/room-triptych.png" target="_blank" rel="noopener"
+          ><img
+            class="image-board"
+            src="assets/room-triptych.png"
+            alt="Lisa 房间概念三联图：白天桌前工作、黄昏藤椅读书、夜间休息"
+        /></a>
+        <p class="caption">
+          昼 / 昏 /
+          夜氛围与姿态研究。成图存在细微家具差异，尚非可直接交叉淡入的背景资产。正式制作需锁定一个背景母版，再生成纯光照变体，并单独导出人物、道具与遮挡层。
+        </p>
+        <div class="grid3">
+          <article class="card">
+            <h3>场景分层</h3>
+            <p>
+              背景 / 灯光 / 角色 / 前景。保留现有两套房间主题，先精修一套通过验收，再扩展第二套；各
+              3 个时段。
+            </p>
+          </article>
+          <article class="card">
+            <h3>动作有依据</h3>
+            <p>
+              工作、阅读、回顾、休息来自已有活动信号。昼夜只改变光照，不能把“深夜”自动解释成睡觉。失联显示清晰离线状态。
+            </p>
+          </article>
+          <article class="card">
+            <h3>克制的动态</h3>
+            <p>
+              先做眨眼、呼吸和状态过渡。仅当前场景播放，页面隐藏时暂停；尊重减少动态效果设置。复杂动作放在第二阶段。
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" id="scope">
+        <p class="eyebrow">05 / Across the whole experience</p>
+        <h2>从一张表情，到完整的视觉系统。</h2>
+        <p class="intro">
+          延续现有主题语义：青色用于交互、暖色用于注意事项，绿色表示运行或完成。角色发色属于品牌识别，任务状态始终搭配文字，不能只靠表情或颜色判断。
+        </p>
+        <div class="palette">
+          <div class="swatch"><i style="background: #233552"></i>角色深蓝<br />#233552 · 提案</div>
+          <div class="swatch"><i style="background: #50bcc5"></i>角色青色<br />#50BCC5 · 提案</div>
+          <div class="swatch">
+            <i style="background: #6ad4ff"></i>Nebula 交互<br />#6AD4FF · 现有
+          </div>
+          <div class="swatch"><i style="background: #4f5bd5"></i>Calm 交互<br />#4F5BD5 · 现有</div>
+          <div class="swatch">
+            <i style="background: #ffd066"></i>注意 / 审批<br />#FFD066 · 现有深色
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>触点</th>
+                <th>建议改变</th>
+                <th>交付范围与边界</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>聊天与首页</td>
+                <td>固定头像取景；回复附近展示轻量状态；支持用户主动使用贴纸。</td>
+                <td>首批 24 张头像 + 8 张手势贴纸；贴纸入口属于后续功能实现。</td>
+              </tr>
+              <tr>
+                <td>Mac Island / iOS</td>
+                <td>为 28 / 36 尺寸制作简化脸部；统一切图；加载新表情时保留上一张。</td>
+                <td>Web、Island、Home、Chat 联动；iOS 继续沿用认证请求加载。</td>
+              </tr>
+              <tr>
+                <td>房间与动态</td>
+                <td>共用角色母版，固定脚部与座位锚点；光照与姿态独立。</td>
+                <td>
+                  先 1 套房间 × 3 时段，8 个基础姿态；后续第二套。动画先 2–4
+                  帧试作，不承诺本轮已生成。
+                </td>
+              </tr>
+              <tr>
+                <td>欢迎 / 引导 / 空状态</td>
+                <td>统一角色与道具语言；说明当前能做什么，并提供真实的下一步。</td>
+                <td>
+                  6 个插画场景：欢迎、规划、写作、知识库、离开后的回顾、连接中断。文字由 UI 渲染。
+                </td>
+              </tr>
+              <tr>
+                <td>功能图标</td>
+                <td>统一笔画、视觉尺寸、选中态；功能操作保持清楚可辨。</td>
+                <td>
+                  发送、记忆、技能、工具、身份等采用代码或矢量绘制；iOS 结合现有 SF
+                  Symbols。ImageGen 负责角色和插画探索。
+                </td>
+              </tr>
+              <tr>
+                <td>App icon / 品牌入口</td>
+                <td>使用审批后的角色母版；优化小尺寸轮廓、主体占比与背景。</td>
+                <td>App Icon、PWA、触摸图标、官网和分享封面统一导出；先看预览再替换发行资源。</td>
+              </tr>
+              <tr>
+                <td>官网表情画廊</td>
+                <td>更新预览、分类与说明，显示统一角色的完整表达范围。</td>
+                <td>同步实际生成来源与 prompt；现有中英页面不能继续把新资源写成 Seedream 生成。</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="section" id="delivery">
+        <p class="eyebrow">06 / Delivery plan</p>
+        <h2>用可验收的资产，逐步替换。</h2>
+        <div class="steps">
+          <div class="step">
+            <h3>锁定母版</h3>
+            <p>
+              确认 A / B /
+              C。细化正面、侧面、全身、发型、颜色和服装规则，先完成平静、开心、思考、专注四张单图。通过浅深底和小头像检查后，再扩展。
+            </p>
+            <p><b>验收：</b>四张都像同一个人；最小尺寸能分辨表情；无透明边缘杂色。</p>
+          </div>
+          <div class="step">
+            <h3>核心体验落地</h3>
+            <p>
+              完成 24 状态与 8 张贴纸，接入 Web / Mac /
+              iOS；统一取景与资源加载。替换一套房间的背景和基础动作，完成 6 个引导插画。
+            </p>
+            <p><b>验收：</b>跨端同一状态显示一致；无闪烁、错位、旧图残留；贴纸不干扰读内容。</p>
+          </div>
+          <div class="step">
+            <h3>全量扩展</h3>
+            <p>
+              迁移剩余 90 张表情，扩展第二套房间、节庆与服装。统一 App
+              icon、官网、表情画廊、分享素材；打包资源清单和生成记录。
+            </p>
+            <p><b>验收：</b>114 个 slug 均有新资源或明确兼容回退；完整尺寸、主题与缓存验收通过。</p>
+          </div>
+        </div>
+        <div class="note">
+          <b>现阶段状态：</b>已完成代码与资产盘点、三方向对比、12
+          表情概念样张、房间三时段概念图和本审阅页。尚未生成全部生产资源、接入产品、修改运行时、提交
+          PR 或发布版本。
+        </div>
+        <details open>
+          <summary>资源与交互规范草案</summary>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>项目</th>
+                  <th>目标规格</th>
+                  <th>验收方式</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>生产头像</td>
+                  <td>
+                    建议固定 96 × 96 逻辑像素母版，整数放大为 192 / 384；PNG 保底，Web 可选无损
+                    WebP。小尺寸使用独立 face crop。
+                  </td>
+                  <td>逐张校正像素网格、面部锚点、画面安全区；不把生成表直接切成最终素材。</td>
+                </tr>
+                <tr>
+                  <td>透明与颜色</td>
+                  <td>保留真实 alpha；发色与服装固定；角色画面不嵌入文案。</td>
+                  <td>黑、白、Nebula、Calm 四种底色检查锯齿、光晕、白边和错误半透明像素。</td>
+                </tr>
+                <tr>
+                  <td>体积预算</td>
+                  <td>
+                    建议小头像 ≤ 25 KiB / 张、384 立绘 ≤ 100 KiB / 张、首屏必需角色资源 ≤ 150 KiB。
+                  </td>
+                  <td>目标值，尚未证明。选定画风后以视觉质量和实际测量校准；不会预加载 114 张。</td>
+                </tr>
+                <tr>
+                  <td>切换策略</td>
+                  <td>
+                    预加载后 160–240ms 过渡，固定尺寸；连续 mood
+                    事件仅展示最新请求；失败保留上一张并可回退 neutral。
+                  </td>
+                  <td>快速切换、乱序加载、慢网、404；减少动态效果时直接切换。</td>
+                </tr>
+                <tr>
+                  <td>缓存与兼容</td>
+                  <td>
+                    保留 set_mood 与 SSE 的现有 slug；使用资源版本清单/带版本路径；旧 PNG
+                    路径继续兼容。
+                  </td>
+                  <td>
+                    现有 Service Worker 为 cache-first，必须验证升级后换图、离线回退及旧客户端。iOS
+                    认证头不变。
+                  </td>
+                </tr>
+                <tr>
+                  <td>无障碍</td>
+                  <td>
+                    保留可读状态和无障碍标签；重复装饰图隐藏；正文沿用当前 AA
+                    token；减少动态效果贯穿各端。
+                  </td>
+                  <td>键盘、VoiceOver、动态字体、对比度与 reduce-motion 手动检查。</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </details>
+        <details>
+          <summary>实现位置与核查依据</summary>
+          <ul class="source-list">
+            <li>
+              <code>scripts/lisa-moods.ts</code> / <code>src/web/assets/lisa/index.json</code>：114
+              状态目录、角色生成规则。
+            </li>
+            <li>
+              <code>src/web/assets/client/main.css</code>：56px 头像、两套主题、现有
+              reduced-motion。
+            </li>
+            <li>
+              <code>src/web/assets/client/main.js</code>：setMood 资源加载与 250ms
+              切换，需注意并发加载顺序。
+            </li>
+            <li>
+              <code>src/web/island.ts</code>：36px
+              头像；<code>src/web/room.ts</code>：两套房间、背景与动作层。
+            </li>
+            <li>
+              <code>packaging/ios-companion/Sources/Theme.swift</code>：ServerPortrait
+              使用认证请求与 scaledToFit；<code>ChatView.swift</code> /
+              <code>HomeView.swift</code>：28pt / 72pt。
+            </li>
+            <li>
+              <code>src/web/server.ts</code>：Service Worker <code>lisa-v9-icons</code> 和 /assets
+              的 cache-first 策略。
+            </li>
+            <li>
+              <code>website/src/pages/moods.astro</code> 及中文版：画廊、生成来源与 prompt 展示。
+            </li>
+            <li><code>docs/DESIGN_TOKENS.md</code>：沿用的语义颜色与现有可访问性约束。</li>
+          </ul>
+        </details>
+        <h3 style="margin-top: 28px">进入发布前的检查</h3>
+        <ul class="checklist">
+          <li>24 / 114 个状态的角色一致性和文件映射。</li>
+          <li>28、36、56、72 与大图的实际显示效果。</li>
+          <li>深浅主题、透明边缘、圆形安全区。</li>
+          <li>房间昼夜家具不跳动、角色不悬空或穿模。</li>
+          <li>加载失败、快速切换、缓存更新与离线回退。</li>
+          <li>iOS 真机 / 模拟器、WKWebView 与浏览器检查。</li>
+          <li>图标与状态文字可读，不依赖表情表达任务结果。</li>
+          <li>实现时运行相关现有测试、类型检查、原生构建与视觉验收。</li>
+        </ul>
+      </section>
+
+      <section class="section" id="decision">
+        <p class="eyebrow">07 / Decision</p>
+        <h2>本次建议确认三件事。</h2>
+        <p class="intro">
+          主风格、角色服装、第一阶段范围。推荐：A 精修像素；固定青色短发与深蓝连帽衫；先完成核心 24
+          状态和跨端头像，再逐步扩展全部视觉元素。
+        </p>
+        <div class="choice">
+          <h3>选择你希望继续深化的方向</h3>
+          <div class="choice-buttons">
+            <button type="button" data-direction="A" aria-pressed="true">
+              A · 精修像素（推荐）</button
+            ><button type="button" data-direction="B" aria-pressed="false">B · 柔和插画</button
+            ><button type="button" data-direction="C" aria-pressed="false">C · 立体质感</button>
+          </div>
+          <p id="approval-text" aria-live="polite">
+            建议确认：A 精修像素 + 深蓝连帽衫 + 核心 24 状态优先。
+          </p>
+          <p>这里的选择仅用于对比；请在聊天中确认方向或提出修改，之后再启动生产素材与产品接入。</p>
+        </div>
+      </section>
+      <footer>
+        审阅材料 · 2026-10-08 · 基线 a0cce33 · 使用内置 ImageGen 生成概念图，完整提示词见
+        <a href="prompts.txt">prompts.txt</a
+        >。<br />本方案中数量、大小、预算和交互时长是拟议规格；实际测量值仅限当前资产盘点。
+      </footer>
+    </main>
+    <script>
+      const moods = [
+        ["平静", "neutral"],
+        ["开心", "happy"],
+        ["思考", "thoughtful"],
+        ["专注", "working-coding"],
+        ["惊讶", "surprised"],
+        ["疑惑", "confused"],
+        ["担心", "worried"],
+        ["抱歉", "apologetic"],
+        ["自豪", "proud"],
+        ["感谢", "grateful"],
+        ["困倦", "sleepy"],
+        ["庆祝", "cheering"],
+      ];
+      const grid = document.getElementById("mood-grid");
+      moods.forEach(([label, slug], index) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "mood";
+        button.setAttribute("aria-pressed", String(index === 0));
+        button.setAttribute("aria-label", label + "，" + slug);
+        const sprite = document.createElement("div");
+        sprite.className = "sprite";
+        sprite.style.backgroundPosition =
+          ((index % 4) * 100) / 3 + "% " + Math.floor(index / 4) * 50 + "%";
+        sprite.setAttribute("aria-hidden", "true");
+        const caption = document.createElement("span");
+        caption.textContent = label;
+        button.append(sprite, caption);
+        button.addEventListener("click", () => {
+          grid
+            .querySelectorAll("button")
+            .forEach((b) => b.setAttribute("aria-pressed", String(b === button)));
+          document.querySelectorAll(".active-sprite").forEach((el) => {
+            el.style.backgroundPosition = sprite.style.backgroundPosition;
+            el.setAttribute("aria-label", "Lisa " + label);
+          });
+          document.getElementById("mood-label").textContent = label + " · " + slug;
+        });
+        grid.append(button);
+      });
+      document.querySelectorAll("[data-mode-button]").forEach((button) =>
+        button.addEventListener("click", () => {
+          document.getElementById("demo").dataset.mode = button.dataset.modeButton;
+          document
+            .querySelectorAll("[data-mode-button]")
+            .forEach((b) => b.setAttribute("aria-pressed", String(b === button)));
+        }),
+      );
+      const directionNames = { A: "A 精修像素", B: "B 柔和插画", C: "C 立体质感" };
+      document.querySelectorAll("[data-direction]").forEach((button) =>
+        button.addEventListener("click", () => {
+          document
+            .querySelectorAll("[data-direction]")
+            .forEach((b) => b.setAttribute("aria-pressed", String(b === button)));
+          document.getElementById("approval-text").textContent =
+            "当前选择：" +
+            directionNames[button.dataset.direction] +
+            " + 深蓝连帽衫 + 核心 24 状态优先。请在聊天中确认。";
+        }),
+      );
+    </script>
+  </body>
+</html>

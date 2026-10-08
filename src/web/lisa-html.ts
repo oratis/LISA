@@ -31,6 +31,7 @@
  *   connPill, switcherOverlay, switcherInput, switcherList
  */
 
+import { SOFT_INK_JS } from "./soft-ink.js";
 import { MAIN_CSS } from "./lisa-css.js";
 import { MAIN_CLIENT_JS } from "./lisa-client.js";
 import { renderMarkdown } from "./md-render.js";
@@ -66,8 +67,8 @@ const MD_RENDER_JS = `function __name(t){return t}\n${renderMarkdown}`;
  *   frame-src 'self'      the Room iframe loads /room from this origin.
  *   connect-src 'self'    fetch + EventSource only ever talk to the backend.
  *   object-src 'none'     nothing embeds plugins.
- * Applied to GET / only — the API routes return JSON and the asset route
- * serves images, neither of which a document policy helps.
+ * Applied to the main shell and bundled illustration gallery. JSON and
+ * image responses do not need a document policy.
  */
 export function mainHtmlCsp(nonce: string): string {
   return [
@@ -132,9 +133,9 @@ catch (e) { document.body.classList.add('rb-collapsed'); }
 
     <!-- Identity card -->
     <div class="identity">
-      <div class="avatar-wrap">
-        <img id="mascot" src="/assets/lisa-mascot.png" alt="Lisa" draggable="false">
-      </div>
+      <a class="avatar-wrap" href="/assets/visuals/soft-ink-v1/gallery.html" target="_blank" rel="noopener" aria-label="Lisa illustrations and stickers">
+        <img id="mascot" src="/assets/icon-192.png" alt="Lisa" draggable="false">
+      </a>
       <div>
         <h1>Lisa</h1>
         <p class="sub" id="identitySub">—</p>
@@ -242,7 +243,7 @@ catch (e) { document.body.classList.add('rb-collapsed'); }
       <button type="button" id="recordBtn" title="Dictate — speak and Lisa drops polished text in the box (hold to record a summary)" aria-label="Dictate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/></svg></button>
       <textarea id="input" placeholder="Talk to Lisa…  (Enter to send · Shift+Enter for newline)" autofocus></textarea>
       <button type="submit" id="sendBtn">
-        <img src="/assets/icon-send.png" alt="">
+        <svg viewBox="0 0 24 24" aria-hidden="true" width="22" height="22"><path d="M12 19V5m-6 6 6-6 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         SEND →
       </button>
     </form>
@@ -423,6 +424,7 @@ catch (e) { document.body.classList.add('rb-collapsed'); }
 
 <script${nonceAttr}>
 ${MD_RENDER_JS}
+${SOFT_INK_JS}
 ${MAIN_CLIENT_JS}
 </script>
 </body></html>`;

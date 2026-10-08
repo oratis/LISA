@@ -1518,6 +1518,12 @@ function renderChatEmpty() {
     card.className = 'chat-empty';
   }
   card.innerHTML = '';
+  const art = document.createElement('img');
+  art.className = 'ce-art';
+  art.alt = '';
+  art.width = 112; art.height = 112;
+  art.src = '/assets/visuals/soft-ink-v1/welcome.webp';
+  card.appendChild(art);
   const who = document.createElement('div');
   who.className = 'ce-who';
   const sub = document.getElementById('identitySub');
@@ -1562,26 +1568,20 @@ function renderChatEmpty() {
 }
 window.lisaRenderChatEmpty = renderChatEmpty;
 
-// ── mascot crossfade on mood event ──────────────────────────────────
+// ── Soft Ink portrait: one atlas, latest request wins, preserve last image on failure. ──
 const mascotEl = document.getElementById('mascot');
 const mascotTagEl = document.getElementById('mascotTag');
-let currentMood = 'neutral';
+let portraitRequest = 0;
 function setMood(slug) {
-  if (!slug || slug === currentMood) return;
-  const url = '/assets/lisa/' + encodeURIComponent(slug) + '.png';
-  const probe = new Image();
-  probe.onload = () => {
-    mascotEl.classList.add('fading');
-    setTimeout(() => {
-      mascotEl.src = url;
-      mascotTagEl.textContent = 'mood: ' + slug;
-      mascotEl.classList.remove('fading');
-      currentMood = slug;
-    }, 250);
-  };
-  probe.onerror = () => { /* asset not generated yet — keep current */ };
-  probe.src = url;
+  if (!slug) return;
+  const request = ++portraitRequest;
+  window.LisaArt.portrait(mascotEl, slug).then(function (loaded) {
+    if (!loaded || request !== portraitRequest) return;
+    mascotTagEl.textContent = slug.replace(/-/g, ' ');
+    mascotEl.alt = 'Lisa · ' + slug.replace(/-/g, ' ');
+  });
 }
+setMood('neutral');
 
 // ── modal panel: SOUL / SKILLS / MEMORY / TOOLS ──────────────────────
 const modalBg = document.getElementById('modalBg');

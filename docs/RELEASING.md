@@ -12,12 +12,13 @@ How to cut a new release that ships:
 |---|---|---|
 | `release.yml` | tag `v*.*.*` | source tarball, mac/linux CLI bundles |
 | `release-mac-apps.yml` | tag `v*.*.*` | `Lisa-Suite-vX.Y.Z.dmg` (Lisa.app) |
-| `npm publish` | manual (local) | npm package |
+| `release.yml` → `npm-publish` | after tag artifact build succeeds | npm package with provenance |
 | `release-homebrew.yml` | manual (`workflow_dispatch`) | bumped `oratis/homebrew-tap` formula |
 
 The two tag-triggered workflows attach to the same `vX.Y.Z` GitHub Release. The
-npm publish and Homebrew bump are manual and run *after* the tag (the tap formula
-hashes the published npm tarball, so npm must go first).
+npm publish runs automatically after the artifact build succeeds. The Homebrew
+bump is manual and runs after npm is verified (the tap formula hashes the
+published npm tarball, so npm must go first).
 
 ---
 
@@ -76,15 +77,17 @@ hashes the published npm tarball, so npm must go first).
    are enabled — Apple's notary service can sit on a submission for
    2–10 minutes.
 
-6. **Publish to npm** (manual)
+6. **Verify npm publication**
+
+   The `npm-publish` job in `release.yml` publishes tag pushes with provenance.
+   Wait for the whole workflow, then confirm the registry version:
 
    ```bash
-   npm publish --access public
+   npm view @oratis/lisa version
    ```
 
-   `--access public` is required: the package is scoped (`@oratis/lisa`), and
-   scoped packages default to *restricted* — without the flag npm 404s on the
-   `PUT`. `prepublishOnly` runs typecheck + test + build first.
+   Do not run a second local publish while CI is running. Manual workflow
+   dispatch rebuilds artifacts only; it intentionally skips npm publication.
 
 7. **Bump the Homebrew tap** (manual — after npm publish lands on the registry)
 

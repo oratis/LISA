@@ -1,6 +1,7 @@
 ---
 import Base from "../../layouts/Base.astro";
 import data from "../../data/moods.json";
+import art from "../../../../src/web/assets/visuals/soft-ink-v1/manifest.json";
 
 const { styleLock, moods } = data as {
   styleLock: string;
@@ -22,23 +23,16 @@ const categoryLabels: Record<string, string> = {
   persona: "角色",
 };
 ---
-<Base title="表情画廊" lang="zh-CN" description="Lisa 全部 114 张 mood 头像 —— 像素艺术、风格锁定、prompt 公开。">
+<Base title="表情画廊" lang="zh-CN" description="Lisa 的 114 个状态与 24 张柔和插画表情，生成提示词公开。">
   <header class="page-head">
-    <p class="eyebrow"><span class="rule"></span> 表情画廊 <b>· {moods.length} 张头像</b></p>
+    <p class="eyebrow"><span class="rule"></span> 表情画廊 <b>· {moods.length} 个状态</b></p>
     <h1>她的许多面孔</h1>
-    <p class="lede">
-      Lisa 在对话里用 <code>set_mood</code> 工具实时切换头像 —— 一共
-      <strong>{moods.length}</strong> 张风格锁定的变体:同一个角色,不同状态、穿搭、场景、角色扮演。
-    </p>
-    <p class="sub">
-      用 <a href="https://www.volcengine.com/product/ark" target="_blank" rel="noopener">Seedream</a>
-      生成,<code>sharp</code> chroma-key 抠成带透明通道的 PNG。所有 prompt 都公开 ——
-      可以拷走、改造、跑你自己的 <code>generate-lisa-moods.ts</code> 生成属于你自己的头像集。
-    </p>
+    <p class="lede">Lisa 的 <strong>114 个状态</strong>共享 <strong>24 张 Soft Ink 核心表情</strong>。其它状态采用对应表情，原有状态名称与含义保留。</p>
+    <p class="sub">使用内置 ImageGen 生成。查看完整提示词，或下载单张贴纸。 <a href="/assets/visuals/soft-ink-v1/gallery.html">Soft Ink</a> · <a href="/assets/visuals/soft-ink-v1/prompts.txt">Prompts</a></p>
   </header>
 
   <details class="disclosure">
-    <summary>风格锁定模板 —— 每条 prompt 共用的前缀</summary>
+    <summary>旧版像素资源的生成模板（兼容保留）</summary>
     <pre>{styleLock}</pre>
   </details>
 
@@ -48,12 +42,12 @@ const categoryLabels: Record<string, string> = {
       <div class="mood-grid">
         {grouped[cat]!.map((m) => (
           <figure class="mood">
-            <img src={`/assets/lisa/${m.slug}.png`} alt={m.slug} loading="lazy" />
+            <div class="mood-portrait" role="img" aria-label={m.slug} style={`background-image:url(${art.portraits.src});background-position:${((art.portraits.aliases[m.slug as keyof typeof art.portraits.aliases] ?? 0) % 6) * 20}% ${Math.floor((art.portraits.aliases[m.slug as keyof typeof art.portraits.aliases] ?? 0) / 6) * 100 / 3}%`}></div>
             <figcaption>
               <strong>{m.slug}</strong>
               <em>{m.hint}</em>
               <details>
-                <summary>prompt</summary>
+                <summary>旧版单图 prompt</summary>
                 <p>{m.prompt}</p>
               </details>
             </figcaption>
@@ -64,7 +58,7 @@ const categoryLabels: Record<string, string> = {
   ))}
 
   <section class="section">
-    <p class="eyebrow"><b>复刻你自己的</b></p>
+    <p class="eyebrow"><b>旧版生成脚本</b></p>
     <pre class="repro"><code>SEEDREAM_API_KEY=ark-... \
   npx tsx scripts/generate-lisa-moods.ts</code></pre>
     <p>
@@ -110,9 +104,10 @@ const categoryLabels: Record<string, string> = {
       transition: transform .16s ease, border-color .16s;
     }
     .mood:hover { transform: translateY(-3px); border-color: var(--border-lit); }
-    .mood img {
-      width: 100%; aspect-ratio: 1; object-fit: contain; background: var(--bg-elev);
-      border-radius: 8px; image-rendering: pixelated;
+    .mood-portrait {
+      aspect-ratio: 1; background-size: 600% 400%; background-repeat: no-repeat;
+      width: 100%; background-color: var(--bg-elev);
+      border-radius: 8px; image-rendering: auto;
     }
     .mood figcaption { margin-top: .55rem; }
     .mood figcaption strong {

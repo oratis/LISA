@@ -533,23 +533,133 @@ const TEXTUAL_APPLICATION_TYPES = new Set([
   "application/toml",
 ]);
 
-/** Invisible format characters: zero-width (non-)joiners and spaces, soft hyphen, bidi, tags. */
-const INVISIBLE_FORMAT = /\p{Cf}/gu;
 /**
- * A run of two or more angle brackets — ASCII or a form NFKC folds to one
- * (fullwidth ＜＞, small ﹤﹥) — even with invisible or combining characters
- * between them.
+ * Invisible format characters (general category Cf), removed from everything
+ * web_fetch and web_search show, `format=raw` included. They are removed so
+ * that none can sit inside a fence look-alike unseen, and so tag characters
+ * (hidden ASCII) and bidi overrides (text that displays in another order than
+ * it reads) never reach the model. The category is broad; removing it also:
+ *  - splits emoji joined with ZWJ (U+200D) into their parts — a family emoji
+ *    becomes the separate people — and strips the tag characters (U+E0020–
+ *    U+E007F) of subdivision flags, so England, Scotland and Wales show as a
+ *    plain black flag;
+ *  - drops ZWNJ (U+200C) and ZWJ in Persian, Arabic and Indic text, which can
+ *    change how letters join (a Devanagari half-form becomes a full conjunct);
+ *  - drops the RTL / LTR marks (U+200E, U+200F, U+061C) and the bidi
+ *    embeddings, overrides and isolates (U+202A–U+202E, U+2066–U+2069), so
+ *    mixed-direction text may display in a different order;
+ *  - drops the word joiner (U+2060) and invisible math operators (U+2061–
+ *    U+2064), the soft hyphen (U+00AD), the BOM / zero-width no-break space
+ *    (U+FEFF), the Mongolian vowel separator (U+180E), the Arabic number signs
+ *    (U+0600–U+0605, U+06DD, U+0890–U+0891, U+08E2), interlinear annotation
+ *    marks (U+FFF9–U+FFFB), and the rest of Cf: the Syriac abbreviation mark,
+ *    Kaithi number signs, Egyptian hieroglyph, shorthand and musical-beam
+ *    format controls, and the deprecated U+206A–U+206F.
+ * The letters themselves stay; what changes is how they join, break,
+ * display or order, and which flag a flag sequence shows.
  */
-const ANGLE_BRACKET_RUN =
-  /[<>\uFE64\uFE65\uFF1C\uFF1E](?:[\p{Default_Ignorable_Code_Point}\p{M}]*[<>\uFE64\uFE65\uFF1C\uFF1E])+/gu;
+const INVISIBLE_FORMAT = /\p{Cf}/gu;
 
+interface Bracket {
+  /** `<`-like (true) or `>`-like (false). */
+  opening: boolean;
+  /** How many brackets the character reads as: ≪ is two, ⋘ three. */
+  count: number;
+}
+
+/**
+ * Characters that read as angle brackets, written as code points so the
+ * source stays unambiguous: [opening, closing, how many brackets each is].
+ */
+const BRACKET_PAIRS: ReadonlyArray<readonly [string, string, number]> = [
+  ["<", ">", 1],
+  ["\u{FF1C}", "\u{FF1E}", 1], // fullwidth
+  ["\u{FE64}", "\u{FE65}", 1], // small
+  ["\u{2039}", "\u{203A}", 1], // single angle quotation marks
+  ["\u{2329}", "\u{232A}", 1], // angle brackets
+  ["\u{3008}", "\u{3009}", 1], // CJK angle brackets
+  ["\u{27E8}", "\u{27E9}", 1], // mathematical angle brackets
+  ["\u{29FC}", "\u{29FD}", 1], // curved angle brackets
+  ["\u{276C}", "\u{276D}", 1], // medium angle bracket ornaments
+  ["\u{276E}", "\u{276F}", 1], // heavy angle quotation mark ornaments
+  ["\u{2770}", "\u{2771}", 1], // heavy angle bracket ornaments
+  ["\u{02C2}", "\u{02C3}", 1], // modifier letter arrowheads
+  ["\u{1D236}", "\u{1D237}", 1], // Greek instrumental notation
+  ["\u{1438}", "\u{1433}", 1], // Canadian syllabics PA / PO (letters)
+  ["\u{16B2}", "\u{16F3F}", 1], // runic KAUNA / Miao (letters)
+  ["\u{226A}", "\u{226B}", 2], // much less / greater than
+  ["\u{27EA}", "\u{27EB}", 2], // mathematical double angle brackets
+  ["\u{2AA1}", "\u{2AA2}", 2], // double nested less / greater than
+  ["\u{22D8}", "\u{22D9}", 3], // very much less / greater than
+  ["\u{2AF7}", "\u{2AF8}", 3], // triple nested less / greater than
+];
+const BRACKETS: ReadonlyMap<string, Bracket> = new Map(
+  BRACKET_PAIRS.flatMap(([open, close, count]) =>
+    [open, close].map((ch): [string, Bracket] => [ch, { opening: ch === open, count }]),
+  ),
+);
+const BRACKET_CLASS = [...BRACKETS.keys()].join("");
+/** A bracket that is a fence's three brackets on its own (⋘). */
+const TRIPLE_CLASS = [...BRACKETS].flatMap(([ch, b]) => (b.count >= 3 ? [ch] : [])).join("");
+/** Characters a reader does not see between two brackets: dropped when they are folded. */
+const UNSEEN = /[\p{Default_Ignorable_Code_Point}\p{M}]/gu;
+/**
+ * Two or more brackets with only unseen, control or blank characters between
+ * them, either way round, or one bracket that counts three. The between-class
+ * and the bracket class are disjoint, so the match is linear.
+ */
+const BRACKET_RUN = new RegExp(
+  `[${BRACKET_CLASS}]` +
+    `(?:[\\p{Default_Ignorable_Code_Point}\\p{M}\\p{Cc}\\s\\u{2800}]*[${BRACKET_CLASS}])+` +
+    `|[${TRIPLE_CLASS}]`,
+  "gu",
+);
+
+/** The fewest brackets a fence marker has (`<<<`, `>>>`): fewer are left as written. */
+const MARKER_BRACKETS = 3;
+
+/**
+ * Fold each stretch of a bracket run that points one way when it counts
+ * three or more brackets; see neutralizeExternalMarkers. A folded stretch
+ * keeps its blanks and control characters, drops the unseen characters
+ * inside it, and each bracket character becomes ONE square bracket, whatever
+ * it counts (`⋘` is `[`): the count only decides whether to fold, so the fold
+ * never makes text longer — it runs after the body is cut to `max_chars`.
+ * A change of direction is left alone: `><` between adjacent tags, or `<>`,
+ * is ordinary markup and never part of a fence marker.
+ */
 function defangBracketRun(run: string): string {
   let out = "";
+  let written = ""; // the stretch as written
+  let folded = ""; // the stretch with square brackets
+  let opening: boolean | null = null;
+  let count = 0;
+  let gap = ""; // what lies since the previous bracket
+  const flush = (): void => {
+    out += count >= MARKER_BRACKETS ? folded : written;
+    written = folded = "";
+    count = 0;
+  };
   for (const ch of run) {
-    const folded = ch.normalize("NFKC");
-    if (folded === "<") out += "[";
-    else if (folded === ">") out += "]";
+    const bracket = BRACKETS.get(ch);
+    if (!bracket) {
+      gap += ch;
+      continue;
+    }
+    if (bracket.opening !== opening) {
+      flush();
+      out += gap;
+      opening = bracket.opening;
+    } else {
+      written += gap;
+      folded += gap.replace(UNSEEN, "");
+    }
+    gap = "";
+    written += ch;
+    folded += bracket.opening ? "[" : "]";
+    count += bracket.count;
   }
+  flush();
   return out;
 }
 
@@ -558,23 +668,54 @@ function defangBracketRun(run: string): string {
  * EXTERNAL-CONTENT block early (or open a fake one) and have what follows
  * read as trusted text. Matching on the marker's words is not enough — a zero-
  * width space, a Unicode hyphen, a Cyrillic letter or fullwidth brackets all
- * slip past — so invisible format characters are removed and every run of
- * two or more angle brackets becomes square brackets, whatever it encloses.
- * Single brackets and other punctuation (including CJK 《》〈〉) are untouched.
+ * slip past — so the brackets are what is folded, whatever they enclose.
+ *
+ * Defused:
+ *  - Invisible format characters (`\p{Cf}`: zero-width spaces and joiners,
+ *    bidi controls, tag characters, …) are removed first; see INVISIBLE_FORMAT.
+ *  - A run of brackets pointing one way becomes square brackets when it
+ *    counts three or more — as many as a fence marker has — with nothing
+ *    between them, or only default-ignorable or combining characters, C0 and
+ *    C1 control characters (`\p{Cc}`: NUL, NEL U+0085, U+001C–U+001F, …), or
+ *    blank space: any Unicode space, tab or line break, or the U+2800 braille
+ *    blank (`<<<`, `>>>>`, `< < <`, `<` + U+0301 + `<<`, `<` + NEL + `<` +
+ *    NEL + `<`). The brackets are those in BRACKET_PAIRS: ASCII, fullwidth
+ *    and small `< >`, `‹ ›`, both `〈 〉`, `⟨ ⟩`, `⧼ ⧽`, `❬ ❭`, `❮ ❯`, `❰ ❱`,
+ *    `˂ ˃`, U+1D236 / U+1D237, `ᐸ ᐳ`, `ᚲ`, U+16F3F; `≪ ≫`, `⟪ ⟫` and `⪡ ⪢`
+ *    count two (folded with one more same-way bracket beside them), and
+ *    `⋘ ⋙`, `⫷ ⫸` three (folded alone). Each folded character becomes one
+ *    `[` or `]` (`⋘` is `[`), so the result is never longer than the text it
+ *    was given.
+ * Not defused, left as written:
+ *  - fewer than three: a single `<END-EXTERNAL-CONTENT>`, two brackets
+ *    `<<END-EXTERNAL-CONTENT>>` or `< <END-EXTERNAL-CONTENT> >`, a lone `≪` or
+ *    `⟪` (as in maths). Two is ordinary text and markup — `cout << x`,
+ *    `Vec<Vec<u8>>`, `a >> 2`, `<b>></b>` — and `format=raw` must return it
+ *    as served;
+ *  - characters not in the list: quotation marks `« »`, CJK `《 》`, `≮`,
+ *    triangles, arrows, ASCII art;
+ *  - entities the HTML step does not decode (`&#60;`), shown as written;
+ *  - a change of direction (`><`, `<>`): never part of a marker, and
+ *    `format=raw` must return markup as it came.
+ * Ordinary text with three is folded too: a Python prompt `>>>`, a bash
+ * here-string `<<<`, merge-conflict markers, a thrice-nested e-mail quote
+ * (`> > >`), a tripled syllable (`ᐸᐸᐸ`).
  */
 export function neutralizeExternalMarkers(text: string): string {
-  return text.replace(INVISIBLE_FORMAT, "").replace(ANGLE_BRACKET_RUN, defangBracketRun);
+  return text.replace(INVISIBLE_FORMAT, "").replace(BRACKET_RUN, defangBracketRun);
 }
 
 /**
  * Quote untrusted text for a fence attribute or a message: defanged, then
- * JSON-quoted with U+2028 / U+2029 escaped too (JSON.stringify leaves those
- * line separators raw).
+ * JSON-quoted, with the line breaks JSON.stringify leaves raw (it escapes
+ * only those below U+0020) escaped too: U+0085 (NEL), U+2028 and U+2029.
+ * The quoted text stays on the line it is written on.
  */
 export function quoteUntrusted(text: string): string {
-  return JSON.stringify(neutralizeExternalMarkers(text))
-    .replace(/\u2028/g, "\\u2028")
-    .replace(/\u2029/g, "\\u2029");
+  return JSON.stringify(neutralizeExternalMarkers(text)).replace(
+    /[\u0085\u2028\u2029]/g,
+    (ch) => `\\u${ch.charCodeAt(0).toString(16).padStart(4, "0")}`,
+  );
 }
 
 export async function renderFetchedResponse(
@@ -592,17 +733,30 @@ export async function renderFetchedResponse(
     // `maxChars` bounds output, but HTML stripping can shrink a response
     // dramatically. Bound the raw network body separately so a huge page cannot
     // be buffered in full before the output limit is applied.
-    const rawByteLimit = Math.max(64_000, Math.min(2_000_000, maxChars * 8));
+    const rawByteLimit = Math.max(64_000, Math.min(MAX_RAW_BODY_BYTES, maxChars * 8));
     const raw = await readResponseTextCapped(response, rawByteLimit);
     body = raw.text;
     let truncated = raw.truncated;
+    /** Bytes of markup converted, when the page was longer than that. */
+    let markupCut: number | null = null;
     if (format !== "raw" && /html|xml/i.test(contentType)) {
-      truncated ||= body.length > HTML_TO_TEXT_MAX_INPUT;
+      // Converted text can be far shorter than `maxChars` even when markup was
+      // left unread (a page with a large inline head): report the cut as what
+      // it is, not as a `max_chars` truncation that did not happen.
+      const converted = Math.min(body.length, HTML_TO_TEXT_MAX_INPUT);
+      if (raw.truncated || converted < body.length) {
+        markupCut = Buffer.byteLength(body.slice(0, converted), "utf8");
+      }
+      truncated = false;
       body = htmlToText(body);
     }
+    const notices: string[] = [];
     if (body.length > maxChars || truncated) {
-      body = body.slice(0, maxChars) + `\n\n[truncated at ${maxChars} chars]`;
+      body = body.slice(0, maxChars);
+      notices.push(`[truncated at ${maxChars} chars]`);
     }
+    if (markupCut !== null) notices.push(`[markup cut at ${Math.floor(markupCut / 1024)} KB]`);
+    if (notices.length > 0) body += `\n\n${notices.join("\n")}`;
   }
   const inner = neutralizeExternalMarkers(
     `HTTP ${response.status} ${response.statusText}\ncontent-type: ${contentType}\n\n${body}`,
@@ -635,6 +789,8 @@ export async function readResponseTextCapped(
     while (true) {
       const chunk = await reader.read();
       if (chunk.done) break;
+      // An empty chunk carries nothing: it must not count as reading past the cap.
+      if (chunk.value.byteLength === 0) continue;
       const remaining = limit - bytes;
       if (remaining <= 0) {
         truncated = true;
@@ -658,30 +814,64 @@ export async function readResponseTextCapped(
   return { text, truncated };
 }
 
-/**
- * The most markup `htmlToText` reads, whatever `max_chars` asks for. The
- * conversion is synchronous, so no deadline can interrupt it; bounding its
- * input is what bounds its cost. Longer pages are cut and reported truncated.
- */
-export const HTML_TO_TEXT_MAX_INPUT = 256 * 1024;
+/** The most of a response body web_fetch reads (it reads `max_chars` × 8, at least 64 KB). */
+const MAX_RAW_BODY_BYTES = 2_000_000;
 
-/** Elements whose content is never text: dropped whole, up to their end tag. */
+/**
+ * The most markup `htmlToText` reads. The conversion is synchronous, so no
+ * deadline can interrupt it; bounding its input is what bounds its cost —
+ * it is linear, about 100 ms for 2 MB of hostile markup. Set above the most
+ * web_fetch ever reads, so a page is never cut here after being fetched (a
+ * large inline head used to push the article past a 256 KB cap); a longer
+ * input from another caller is cut, and web_fetch says "markup cut at N KB".
+ */
+export const HTML_TO_TEXT_MAX_INPUT = 2 * 1024 * 1024;
+
+/**
+ * Elements whose content is never text: dropped whole, up to their end tag.
+ * The name must be the whole tag name — followed by whitespace, `/`, `>` or
+ * the end of the input — so `<script-loader>`, `<style-guide>` or ODF's
+ * `<style:style>` are ordinary tags and do not hide the rest of the page.
+ */
 const SKIPPED_ELEMENTS = ["script", "style", "noscript"] as const;
 type SkippedElement = (typeof SKIPPED_ELEMENTS)[number];
 const SKIPPED_ELEMENT_END: Record<SkippedElement, RegExp> = {
-  script: /<\/script(?=[\s/>])/gi,
-  style: /<\/style(?=[\s/>])/gi,
-  noscript: /<\/noscript(?=[\s/>])/gi,
+  script: /<\/script(?=[\t\n\f\r />])/gi,
+  style: /<\/style(?=[\t\n\f\r />])/gi,
+  noscript: /<\/noscript(?=[\t\n\f\r />])/gi,
 };
-/** Tags that become a line break (matched on the tag's first few characters). */
+/** What may follow a tag name: HTML whitespace, `/` or `>` (or the end of the input). */
+const TAG_NAME_END = /[\t\n\f\r />]/;
+/**
+ * Tags that become a line break, matched on the tag's first few characters.
+ * A prefix on purpose, unlike the skipped elements above: it only adds a line
+ * break, never hides text, and it is what the converter before the linear
+ * rewrite did (`<pre>`, `<link>`, `<track>` break the line too), so ordinary
+ * pages convert exactly as they did.
+ */
 const LINE_BREAK_TAG = /^\/?(?:p|div|br|li|tr|h[1-6]|section|article|header|footer|nav|hr)/i;
-const WORD_CHAR = /\w/;
+/**
+ * What may follow a `<` that opens markup: a letter (a tag), `!` (comment,
+ * doctype, CDATA), `?` (processing instruction), or `/` and any character.
+ * `</` and a letter is an end tag; `</` and anything else is what a browser
+ * calls a bogus comment and hides up to the next `>` (`</ note>`, `</1>`), and
+ * `</>` is dropped. Anything else after `<` — a space, a digit, `=`, another
+ * `<` — leaves the `<` as text, as a browser does: `if a < b`, `x <= y`,
+ * `cout << x` keep their words. So does a `</` that ends the input.
+ */
+const MARKUP_AFTER_LT = /[\p{L}!?]|\/[\s\S]/uy;
+
+function opensMarkup(html: string, lt: number): boolean {
+  MARKUP_AFTER_LT.lastIndex = lt + 1;
+  return MARKUP_AFTER_LT.test(html);
+}
 
 function skippedElementAt(html: string, lt: number): SkippedElement | null {
   for (const name of SKIPPED_ELEMENTS) {
+    const after = lt + 1 + name.length;
     if (
-      html.slice(lt + 1, lt + 1 + name.length).toLowerCase() === name &&
-      !WORD_CHAR.test(html.charAt(lt + 1 + name.length))
+      html.slice(lt + 1, after).toLowerCase() === name &&
+      (after >= html.length || TAG_NAME_END.test(html.charAt(after)))
     ) {
       return name;
     }
@@ -698,19 +888,27 @@ function skippedElementAt(html: string, lt: number): SkippedElement | null {
  * hostile markup held the event loop — every tenant on the process — for over
  * a minute, beyond the reach of any timer. Here every search either consumes
  * what it scanned or ends the pass. Like a browser, an unclosed comment,
- * script, style or noscript runs to the end of the input.
+ * script, style or noscript runs to the end of the input, and a `<` that
+ * cannot start markup (`opensMarkup`) is text.
  */
 export function htmlToText(html: string): string {
   const input = html.length > HTML_TO_TEXT_MAX_INPUT ? html.slice(0, HTML_TO_TEXT_MAX_INPUT) : html;
   const out: string[] = [];
+  /** Start of the text not yet copied to `out`. */
   let pos = 0;
-  while (pos < input.length) {
-    const lt = input.indexOf("<", pos);
+  /** Where to look for the next `<`; past `pos` when a stray `<` was kept as text. */
+  let from = 0;
+  while (from < input.length) {
+    const lt = input.indexOf("<", from);
     if (lt === -1) break;
+    if (!opensMarkup(input, lt)) {
+      from = lt + 1;
+      continue;
+    }
     out.push(input.slice(pos, lt));
     if (input.startsWith("<!--", lt)) {
       const end = input.indexOf("-->", lt + 4);
-      pos = end === -1 ? input.length : end + 3;
+      pos = from = end === -1 ? input.length : end + 3;
       continue;
     }
     const skipped = skippedElementAt(input, lt);
@@ -719,23 +917,18 @@ export function htmlToText(html: string): string {
       endTag.lastIndex = lt + 1 + skipped.length;
       const close = endTag.exec(input);
       const end = close ? input.indexOf(">", close.index) : -1;
-      pos = end === -1 ? input.length : end + 1;
+      pos = from = end === -1 ? input.length : end + 1;
       continue;
     }
-    // Any other tag: `<`, at least one character, then the next `>`.
+    // Any other markup: from the `<` to the next `>`.
     const gt = input.indexOf(">", lt + 1);
     if (gt === -1) {
       // No `>` anywhere ahead, so no later `<` can open a tag either.
       pos = lt;
       break;
     }
-    if (gt === lt + 1) {
-      out.push("<");
-      pos = lt + 1;
-      continue;
-    }
     if (LINE_BREAK_TAG.test(input.slice(lt + 1, Math.min(gt, lt + 9)))) out.push("\n");
-    pos = gt + 1;
+    pos = from = gt + 1;
   }
   out.push(input.slice(pos));
   return out

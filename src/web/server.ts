@@ -3894,7 +3894,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         "service-worker-allowed": "/",
       });
       res.end(`
-const CACHE = 'lisa-v9-icons';
+const CACHE = 'lisa-v10-soft-ink';
 const ASSET_PATHS = ['/assets/lisa-mascot.png', '/assets/background-tile.png',
   '/assets/icon-soul.png', '/assets/icon-skill.png', '/assets/icon-memory.png',
   '/assets/icon-tool.png', '/assets/icon-send.png',
@@ -4597,11 +4597,28 @@ self.addEventListener('fetch', (event) => {
       try {
         const file = path.join(ASSETS_DIR, safe);
         const data = await fs.readFile(file);
-        const type = safe.endsWith(".png")
-          ? "image/png"
-          : safe.endsWith(".jpg") || safe.endsWith(".jpeg")
-            ? "image/jpeg"
-            : "application/octet-stream";
+        // Only the bundled gallery is executable HTML. It uses the same nonce
+        // policy as the main UI; arbitrary assets remain non-executable bytes.
+        if (safe === "visuals/soft-ink-v1/gallery.html") {
+          const cspNonce = crypto.randomBytes(16).toString("base64");
+          res.writeHead(200, {
+            "content-type": "text/html; charset=utf-8",
+            "content-security-policy": mainHtmlCsp(cspNonce),
+            "cache-control": "no-store",
+          });
+          res.end(data.toString("utf8").replace(/<script>/g, `<script nonce="${cspNonce}">`));
+          return;
+        }
+        const types: Record<string, string> = {
+          ".png": "image/png",
+          ".jpg": "image/jpeg",
+          ".jpeg": "image/jpeg",
+          ".webp": "image/webp",
+          ".js": "application/javascript; charset=utf-8",
+          ".json": "application/json; charset=utf-8",
+          ".txt": "text/plain; charset=utf-8",
+        };
+        const type = types[path.extname(safe)] ?? "application/octet-stream";
         res.writeHead(200, {
           "content-type": type,
           "cache-control": "public, max-age=86400",

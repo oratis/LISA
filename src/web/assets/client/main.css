@@ -289,7 +289,7 @@
     border-radius: 50%;
     object-fit: cover;
     object-position: 50% 22%;
-    image-rendering: pixelated;
+    image-rendering: auto;
     display: block;
     transition: opacity 250ms ease;
     user-select: none;
@@ -752,7 +752,7 @@
   .badge img {
     width: 14px;
     height: 14px;
-    image-rendering: pixelated;
+    image-rendering: auto;
     opacity: 0.8;
   }
 
@@ -3431,3 +3431,5 @@
   text-overflow: ellipsis;
 }
 .warden-pending-row .warden-actions { margin-top: 6px; }
+
+  .ce-art { display: block; width: 112px; height: 112px; object-fit: contain; margin: 0 0 16px; }
