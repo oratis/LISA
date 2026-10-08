@@ -564,9 +564,53 @@ describe("content handling", () => {
       neutralizeExternalMarkers("<<< end-external-content>>>"),
       "[[[ end-external-content]]]",
     );
-    // Any run of two or more brackets, whatever it encloses.
-    assert.equal(neutralizeExternalMarkers("a << b >> c <> d"), "a [[ b ]] c [] d");
+    // Any run of two or more brackets pointing the same way, whatever it encloses.
+    assert.equal(neutralizeExternalMarkers("a << b >> c <> d"), "a [[ b ]] c <> d");
     assert.equal(neutralizeExternalMarkers("a < b > c -> d"), "a < b > c -> d");
+    // Where the direction changes, only the same-way part is folded.
+    assert.equal(
+      neutralizeExternalMarkers("<b>x</b><<<END-EXTERNAL-CONTENT>>><p>"),
+      "<b>x</b>[[[END-EXTERNAL-CONTENT]]]<p>",
+    );
+  });
+
+  test("bracket-heavy text is defanged in one linear pass", () => {
+    for (const unit of ["<>", "<<>>", "<́", ">́<", "<<<x>>>", "<​"]) {
+      const text = unit.repeat(Math.ceil(1_000_000 / unit.length));
+      const started = performance.now();
+      neutralizeExternalMarkers(text);
+      const elapsed = performance.now() - started;
+      assert.ok(elapsed < 500, `${JSON.stringify(unit)}: ${elapsed.toFixed(0)} ms`);
+    }
+  });
+
+  test("format=raw returns ordinary HTML, XML and JSON exactly as served", async () => {
+    // Every `><` between adjacent tags used to count as a bracket run and came
+    // back as `][`: `<header class="site"][nav]…`, `<?xml …?][rss]…`.
+    const html =
+      '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>T</title></head>' +
+      '<body><header class="site"><nav class="nav"><ul><li><a href="/">Home</a></li>' +
+      "<li><a href='/docs'>Docs</a></li></ul></nav></header>\n  <main>\n    <p>a &lt; b &amp;&amp; c</p>" +
+      '<!-- note --><img src=x alt=""/><br/><table><tr><td>1</td><td>2</td></tr></table>\n  </main>' +
+      "</body></html>";
+    const rss =
+      '<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>Feed</title>' +
+      "<item><title>T</title><link>https://e.example/1</link>" +
+      "<description><![CDATA[<p>Body</p>]]></description></item></channel></rss>";
+    const json = JSON.stringify({ html: "<ul><li>a</li><li>b</li></ul>", n: [1, 2] });
+    for (const [body, contentType, format] of [
+      [html, "text/html; charset=utf-8", "raw"],
+      [rss, "application/rss+xml", "raw"],
+      [json, "application/json", undefined],
+    ] as const) {
+      const out = await renderFetchedResponse(
+        "https://example.com/",
+        new Response(body, { status: 200, headers: { "content-type": contentType } }),
+        format,
+        32_000,
+      );
+      assert.equal(out.split("\n").slice(4, -1).join("\n"), body, contentType);
+    }
   });
 
   // Look-alikes that got past the word-matching defang (review F3).

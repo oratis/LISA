@@ -535,21 +535,60 @@ const TEXTUAL_APPLICATION_TYPES = new Set([
 
 /** Invisible format characters: zero-width (non-)joiners and spaces, soft hyphen, bidi, tags. */
 const INVISIBLE_FORMAT = /\p{Cf}/gu;
+/** Angle brackets: ASCII, fullwidth ＜＞ and small ﹤﹥. `true` = opening (`<`). */
+const ANGLE_BRACKETS: ReadonlyMap<string, boolean> = new Map([
+  ["<", true],
+  [">", false],
+  ["＜", true],
+  ["＞", false],
+  ["﹤", true],
+  ["﹥", false],
+]);
+const BRACKET_CLASS = [...ANGLE_BRACKETS.keys()].join("");
+/** Characters a reader does not see between two brackets: they still touch. */
+const UNSEEN_CLASS = "\\p{Default_Ignorable_Code_Point}\\p{M}";
 /**
- * A run of two or more angle brackets — ASCII or a form NFKC folds to one
- * (fullwidth ＜＞, small ﹤﹥) — even with invisible or combining characters
- * between them.
+ * Two or more brackets in a row, either way round, with only unseen characters
+ * between them. The two classes are disjoint, so the match is linear.
  */
-const ANGLE_BRACKET_RUN =
-  /[<>\uFE64\uFE65\uFF1C\uFF1E](?:[\p{Default_Ignorable_Code_Point}\p{M}]*[<>\uFE64\uFE65\uFF1C\uFF1E])+/gu;
+const BRACKET_RUN = new RegExp(`[${BRACKET_CLASS}](?:[${UNSEEN_CLASS}]*[${BRACKET_CLASS}])+`, "gu");
 
+/**
+ * Fold every stretch of the run that points one way and holds two or more
+ * brackets (`<<`, `>>>`, `<` + combining mark + `<`) to square brackets,
+ * dropping the unseen characters inside it. A change of direction is left
+ * alone: `><` between two adjacent tags, or `<>`, is ordinary markup and never
+ * part of a fence marker, which always has three brackets of one kind.
+ */
 function defangBracketRun(run: string): string {
   let out = "";
+  let stretch = "";
+  let opening: boolean | null = null;
+  let brackets = 0;
+  let unseen = "";
+  const flush = (): void => {
+    out += brackets >= 2 ? (opening ? "[" : "]").repeat(brackets) : stretch;
+    stretch = "";
+    brackets = 0;
+  };
   for (const ch of run) {
-    const folded = ch.normalize("NFKC");
-    if (folded === "<") out += "[";
-    else if (folded === ">") out += "]";
+    const isOpening = ANGLE_BRACKETS.get(ch);
+    if (isOpening === undefined) {
+      unseen += ch;
+      continue;
+    }
+    if (isOpening !== opening) {
+      flush();
+      out += unseen;
+      opening = isOpening;
+    } else {
+      stretch += unseen;
+    }
+    unseen = "";
+    stretch += ch;
+    brackets++;
   }
+  flush();
   return out;
 }
 
@@ -559,11 +598,13 @@ function defangBracketRun(run: string): string {
  * read as trusted text. Matching on the marker's words is not enough — a zero-
  * width space, a Unicode hyphen, a Cyrillic letter or fullwidth brackets all
  * slip past — so invisible format characters are removed and every run of
- * two or more angle brackets becomes square brackets, whatever it encloses.
- * Single brackets and other punctuation (including CJK 《》〈〉) are untouched.
+ * two or more angle brackets pointing the same way becomes square brackets,
+ * whatever it encloses. Single brackets, `><` between adjacent tags (so
+ * `format=raw` returns markup as it came), and other punctuation (including
+ * CJK 《》〈〉) are untouched.
  */
 export function neutralizeExternalMarkers(text: string): string {
-  return text.replace(INVISIBLE_FORMAT, "").replace(ANGLE_BRACKET_RUN, defangBracketRun);
+  return text.replace(INVISIBLE_FORMAT, "").replace(BRACKET_RUN, defangBracketRun);
 }
 
 /**
