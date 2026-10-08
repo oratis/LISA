@@ -266,13 +266,18 @@
   /* Identity card */
   .identity {
     display: grid;
-    grid-template-columns: 56px 1fr;
+    grid-template-columns: 56px minmax(0, 1fr);
+    min-width: 0;
     gap: 12px;
     align-items: center;
     padding: 12px;
     background: var(--bg-card);
     border: 1px solid var(--border-new);
     border-radius: 14px;
+  }
+  .identity > div {
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
   .identity .avatar-wrap {
     width: 56px;
@@ -321,6 +326,7 @@
   }
   .identity .mood {
     display: inline-flex;
+    max-width: 100%;
     align-items: center;
     gap: 5px;
     margin-top: 4px;
@@ -332,6 +338,7 @@
   }
   .identity .mood::before {
     content: "";
+    flex-shrink: 0;
     width: 6px;
     height: 6px;
     border-radius: 50%;
