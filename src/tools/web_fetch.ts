@@ -676,6 +676,18 @@ const SKIPPED_ELEMENT_END: Record<SkippedElement, RegExp> = {
 /** Tags that become a line break (matched on the tag's first few characters). */
 const LINE_BREAK_TAG = /^\/?(?:p|div|br|li|tr|h[1-6]|section|article|header|footer|nav|hr)/i;
 const WORD_CHAR = /\w/;
+/**
+ * What may follow a `<` that opens markup: a letter (a tag), `/` and a letter
+ * (an end tag), `!` (comment, doctype, CDATA) or `?` (processing instruction).
+ * Anything else — a space, a digit, `=`, another `<` — leaves the `<` as text,
+ * as a browser does: `if a < b`, `x <= y`, `cout << x` keep their words.
+ */
+const MARKUP_AFTER_LT = /[\p{L}!?]|\/\p{L}/uy;
+
+function opensMarkup(html: string, lt: number): boolean {
+  MARKUP_AFTER_LT.lastIndex = lt + 1;
+  return MARKUP_AFTER_LT.test(html);
+}
 
 function skippedElementAt(html: string, lt: number): SkippedElement | null {
   for (const name of SKIPPED_ELEMENTS) {
@@ -698,19 +710,27 @@ function skippedElementAt(html: string, lt: number): SkippedElement | null {
  * hostile markup held the event loop — every tenant on the process — for over
  * a minute, beyond the reach of any timer. Here every search either consumes
  * what it scanned or ends the pass. Like a browser, an unclosed comment,
- * script, style or noscript runs to the end of the input.
+ * script, style or noscript runs to the end of the input, and a `<` that
+ * cannot start markup (`opensMarkup`) is text.
  */
 export function htmlToText(html: string): string {
   const input = html.length > HTML_TO_TEXT_MAX_INPUT ? html.slice(0, HTML_TO_TEXT_MAX_INPUT) : html;
   const out: string[] = [];
+  /** Start of the text not yet copied to `out`. */
   let pos = 0;
-  while (pos < input.length) {
-    const lt = input.indexOf("<", pos);
+  /** Where to look for the next `<`; past `pos` when a stray `<` was kept as text. */
+  let from = 0;
+  while (from < input.length) {
+    const lt = input.indexOf("<", from);
     if (lt === -1) break;
+    if (!opensMarkup(input, lt)) {
+      from = lt + 1;
+      continue;
+    }
     out.push(input.slice(pos, lt));
     if (input.startsWith("<!--", lt)) {
       const end = input.indexOf("-->", lt + 4);
-      pos = end === -1 ? input.length : end + 3;
+      pos = from = end === -1 ? input.length : end + 3;
       continue;
     }
     const skipped = skippedElementAt(input, lt);
@@ -719,23 +739,18 @@ export function htmlToText(html: string): string {
       endTag.lastIndex = lt + 1 + skipped.length;
       const close = endTag.exec(input);
       const end = close ? input.indexOf(">", close.index) : -1;
-      pos = end === -1 ? input.length : end + 1;
+      pos = from = end === -1 ? input.length : end + 1;
       continue;
     }
-    // Any other tag: `<`, at least one character, then the next `>`.
+    // Any other markup: from the `<` to the next `>`.
     const gt = input.indexOf(">", lt + 1);
     if (gt === -1) {
       // No `>` anywhere ahead, so no later `<` can open a tag either.
       pos = lt;
       break;
     }
-    if (gt === lt + 1) {
-      out.push("<");
-      pos = lt + 1;
-      continue;
-    }
     if (LINE_BREAK_TAG.test(input.slice(lt + 1, Math.min(gt, lt + 9)))) out.push("\n");
-    pos = gt + 1;
+    pos = from = gt + 1;
   }
   out.push(input.slice(pos));
   return out

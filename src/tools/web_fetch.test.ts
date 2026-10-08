@@ -702,6 +702,11 @@ describe("htmlToText — one linear pass over at most 256 KB of markup", () => {
     ["unclosed <style", "<style"],
     ["unclosed <noscript", "<noscript"],
     ["a mix of all of them", "<p<!--<script<style<"],
+    // A `<` that cannot open markup is skipped over as text, one step at a time.
+    ["a stray < before a space", "< "],
+    ["a stray < before a digit, closed", "<1>"],
+    ["a stray </ before a space", "</ "],
+    ["stray < runs ending in a tag start", "<<<a"],
   ];
   for (const [label, unit] of hostile) {
     test(`${label}, repeated up to the cap, converts in well under a second`, () => {
@@ -729,6 +734,22 @@ describe("htmlToText — one linear pass over at most 256 KB of markup", () => {
     );
     assert.equal(htmlToText("a <> b"), "a <> b");
     assert.equal(htmlToText("x <p unterminated"), "x <p unterminated");
+  });
+
+  test("a < that cannot start markup is text and does not swallow what follows", () => {
+    // Markup starts only at `<` + letter, `</` + letter, `<!` or `<?`, as in a
+    // browser. Before, any `<` ran to the next `>`, even across `</p>` or into
+    // a script, whose body then showed up as page text.
+    assert.equal(htmlToText("<p>if a < b then c</p><p>next</p>"), "if a < b then c\n\nnext");
+    assert.equal(htmlToText("<p>x <= y and z</p><p>next</p>"), "x <= y and z\n\nnext");
+    assert.equal(htmlToText("<pre>cout << x << endl;</pre>"), "cout << x << endl;");
+    assert.equal(htmlToText("<p>1 << 2</p><p>after</p>"), "1 << 2\n\nafter");
+    assert.equal(htmlToText("Price < 5 <script>var secret=1;</script> tail"), "Price < 5 tail");
+    assert.equal(htmlToText("a < b <!-- x > y --> c"), "a < b c");
+    assert.equal(htmlToText("I <3 it, 5 </ 6 > 4"), "I <3 it, 5 </ 6 > 4");
+    // Real markup still starts where it did.
+    assert.equal(htmlToText('<?xml version="1.0"?><rss><title>T</title></rss>'), "T");
+    assert.equal(htmlToText("<!DOCTYPE html><b>bold</b> <i>it</i></p>"), "bold it");
   });
 
   test("an unclosed script, style, noscript or comment hides the rest, as in a browser", () => {
