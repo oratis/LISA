@@ -756,6 +756,33 @@ describe("content handling", () => {
     assert.equal(neutralizeExternalMarkers("> > > quoted"), "] ] ] quoted");
   });
 
+  test("removing format characters also changes ordinary text, as documented", () => {
+    // Pins the side effects listed at INVISIBLE_FORMAT (review N6).
+    const sideEffects: Array<[string, string, string]> = [
+      [
+        "emoji ZWJ sequence splits",
+        "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}",
+        "\u{1F468}\u{1F469}\u{1F467}",
+      ],
+      [
+        "subdivision flag becomes a black flag",
+        "\u{1F3F4}\u{E0067}\u{E0062}\u{E0073}\u{E0063}\u{E0074}\u{E007F}",
+        "\u{1F3F4}",
+      ],
+      ["Persian ZWNJ", "\u{645}\u{6CC}\u{200C}\u{62E}", "\u{645}\u{6CC}\u{62E}"],
+      ["Devanagari half-form ZWJ", "\u{915}\u{94D}\u{200D}\u{937}", "\u{915}\u{94D}\u{937}"],
+      ["RTL and LTR marks", "\u{200F}\u{5E9}\u{5DC}\u{200E} x", "\u{5E9}\u{5DC} x"],
+      ["bidi isolates", "a \u{2067}\u{639}\u{2069} b", "a \u{639} b"],
+      ["word joiner", "no\u{2060}break", "nobreak"],
+      ["soft hyphen", "super\u{AD}cali", "supercali"],
+      ["byte order mark", "\u{FEFF}start", "start"],
+      ["Arabic number sign", "\u{600}\u{661}\u{662}", "\u{661}\u{662}"],
+    ];
+    for (const [label, input, expected] of sideEffects) {
+      assert.equal(neutralizeExternalMarkers(input), expected, label);
+    }
+  });
+
   test("ordinary punctuation, CJK included, is left alone", () => {
     const text = "「你好」，《书名》〈章〉【注】、。：；！？（）A\uFF1CB\uFF1EC x->y a < b";
     assert.equal(neutralizeExternalMarkers(text), text);

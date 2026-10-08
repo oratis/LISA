@@ -533,7 +533,31 @@ const TEXTUAL_APPLICATION_TYPES = new Set([
   "application/toml",
 ]);
 
-/** Invisible format characters: zero-width (non-)joiners and spaces, soft hyphen, bidi, tags. */
+/**
+ * Invisible format characters (general category Cf), removed from everything
+ * web_fetch and web_search show, `format=raw` included. They are removed so
+ * that none can sit inside a fence look-alike unseen, and so tag characters
+ * (hidden ASCII) and bidi overrides (text that displays in another order than
+ * it reads) never reach the model. The category is broad; removing it also:
+ *  - splits emoji joined with ZWJ (U+200D) into their parts — a family emoji
+ *    becomes the separate people — and strips the tag characters (U+E0020–
+ *    U+E007F) of subdivision flags, so England, Scotland and Wales show as a
+ *    plain black flag;
+ *  - drops ZWNJ (U+200C) and ZWJ in Persian, Arabic and Indic text, which can
+ *    change how letters join (a Devanagari half-form becomes a full conjunct);
+ *  - drops the RTL / LTR marks (U+200E, U+200F, U+061C) and the bidi
+ *    embeddings, overrides and isolates (U+202A–U+202E, U+2066–U+2069), so
+ *    mixed-direction text may display in a different order;
+ *  - drops the word joiner (U+2060) and invisible math operators (U+2061–
+ *    U+2064), the soft hyphen (U+00AD), the BOM / zero-width no-break space
+ *    (U+FEFF), the Mongolian vowel separator (U+180E), the Arabic number signs
+ *    (U+0600–U+0605, U+06DD, U+0890–U+0891, U+08E2), interlinear annotation
+ *    marks (U+FFF9–U+FFFB), and the rest of Cf: the Syriac abbreviation mark,
+ *    Kaithi number signs, Egyptian hieroglyph, shorthand and musical-beam
+ *    format controls, and the deprecated U+206A–U+206F.
+ * The letters themselves stay; what changes is how they join, break,
+ * display or order, and which flag a flag sequence shows.
+ */
 const INVISIBLE_FORMAT = /\p{Cf}/gu;
 
 interface Bracket {
