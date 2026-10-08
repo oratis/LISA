@@ -79,6 +79,27 @@ test("otp/en: the bare word 'code' or 'PIN', glued to digits", () => {
   otp("Your PIN: 4821", ["4821"]);
 });
 
+test("otp/en: the word 'code' right before the number, without a colon", () => {
+  otp("WhatsApp code 123-456", ["123-456"], ["WhatsApp"]);
+  otp("code 123456", ["123456"]);
+  otp("Your WhatsApp code 123-456. Don't share this code with others.", ["123-456"]);
+  otp("Enter code 482913 in the app.", ["482913"]);
+  otp("Tu código 482913 vence en 10 minutos.", ["482913"], ["10 minutos"]);
+  // Still one word, on the same line, and not a kind of code that is data.
+  untouched("Error code 5001 occurred.");
+  untouched("Zip code 94103");
+  untouched("Postcode 94103 and barcode 12345678 are on the label.");
+  untouched("Tracking code 12345678 — your parcel is on its way.");
+  untouched("Shipment code 12345678, customs code 85176200.");
+  untouched("Booking reference code 12345678");
+  untouched("Pickup code 4821 at locker 12.");
+  untouched("Order code 88213441");
+  untouched("Your return code 12345678 is attached.");
+  untouched("See Civil Code 1714 for details.");
+  // "PIN" alone also names a map pin or a part.
+  untouched("Map pin 4821");
+});
+
 test("otp/en: 'enter the following code' layouts", () => {
   otp(
     "Enter the following code to finish signing in:\n\n  904 113\n\nIt is valid for 15 minutes.",
@@ -86,6 +107,20 @@ test("otp/en: 'enter the following code' layouts", () => {
     ["15 minutes"],
   );
   otp("Please use the code below to verify your device. 739204", ["739204"]);
+});
+
+test("otp/en: 'use code ABC-123 to sign in' — letters and digits need a sign-in verb", () => {
+  otp("Use code ABC-123 to sign in", ["ABC-123"]);
+  otp("Enter the code XK7Q92 to log in to Acme.", ["XK7Q92"], ["Acme"]);
+  otp("Use this code A7K2M to verify your email address.", ["A7K2M"]);
+  otp("Use code ABC-123 to reset your password.", ["ABC-123"]);
+  // The same words with another verb are a promotion, a booking or a licence.
+  untouched("Use code SAVE20 to sign up and get 20% off.");
+  untouched("Use code WELCOME10 to complete your order.");
+  untouched("Use code K7XQ2M to confirm your booking.");
+  untouched("Use code AB12-CD34 to activate Windows.");
+  // Without the word "code", a product name is not taken for one.
+  untouched("Use Office365 to sign in.");
 });
 
 test("otp/en: bank-style message keeps the amount and the card tail", () => {
@@ -204,6 +239,31 @@ test("otp: dates, amounts and phone numbers near a keyword survive", () => {
     ["482913"],
     ["2026 Acme", "20261002"],
   );
+});
+
+test("otp: next to the new code formats, ordinary numbers in the same mail survive", () => {
+  const ordinary = [
+    "Order #123456 shipped.",
+    "Invoice 2026-10 total 123456 JPY.",
+    "Call me at 555 123 4567 about the order.",
+    "Delivery on 2026-10-03 at 12:30.",
+    "Tracking number 9400111899223344 via USPS.",
+    "UPS tracking: 1Z999AA10123456784.",
+    "Total: $1,284.00.",
+  ];
+  for (const text of ordinary) untouched(text);
+  const codes: Array<[string, string]> = [
+    ["WhatsApp code 123-456.", "123-456"],
+    ["code 482913.", "482913"],
+    ["Your one-time passcode is 48 29 13.", "48 29 13"],
+    ["Use code ABC-123 to sign in.", "ABC-123"],
+  ];
+  for (const [code, value] of codes) {
+    for (const text of ordinary) {
+      otp(`${code} ${text}`, [value], [text]);
+      otp(`${text} ${code}`, [value], [text]);
+    }
+  }
 });
 
 test("otp: a booking 'confirmation code' with letters is left for the model", () => {
@@ -451,6 +511,8 @@ test("known over-redaction: a number in the sentence after an OTP keyword", () =
   otp("Your verification code for iPhone15 is 482913", ["iPhone15", "482913"]);
   // "the <word> code <digits>" with a word that is not on the exclusion list.
   otp("The door code 4821 changes on Monday.", ["4821"]);
+  // …and "<word> code <digits>" without a colon: a year after "Code" goes too.
+  otp("Tickets for Code 2026 go on sale Monday.", ["2026"]);
 });
 
 test("known over-redaction: links that grant something other than a sign-in", () => {
@@ -527,6 +589,23 @@ test("split codes: three or more groups are a phone or card number and are not m
   // A pair with a digit group hanging off either end is "three groups" too.
   otp("Your verification code is 123 456 7890.", ["7890"], ["123 456 "]);
   otp("Your verification code is 7890 123 456.", ["7890"], [" 123 456"]);
+});
+
+test("split codes: exactly three groups of two digits are one code", () => {
+  // One placeholder for the three groups.
+  assert.deepEqual(stripSensitiveTokens("Your one-time passcode is 48 29 13"), {
+    text: `Your one-time passcode is ${REDACTED_OTP}`,
+    removed: { ...NONE, otp: 1 },
+  });
+  otp("Votre code de vérification : 48 29 13", ["48 29 13"]);
+  otp("48 29 13 is your Acme verification code.", ["48 29 13"], ["Acme"]);
+  // Two groups, four or more (a phone number), a double space or dashes (a
+  // date shape) are not a split code.
+  untouched("Your verification code is 48 29.");
+  untouched("Your verification code is 12 34 56 78.");
+  untouched("Your verification code is 06 12 34 56 78.");
+  untouched("Your one-time passcode is 48  29 13.");
+  untouched("Your one-time passcode is 48-29-13.");
 });
 
 test("split codes: a long run of pairs and three-group numbers, in one text", () => {
@@ -612,5 +691,76 @@ test("hostile input stays linear", () => {
     const ms = Number(process.hrtime.bigint() - started) / 1e6;
     assert.ok(ms < 2_000, `took ${ms.toFixed(0)} ms for ${text.slice(0, 24)}…`);
     assert.equal(typeof out.text, "string");
+  }
+});
+
+/**
+ * 200 KB of `unit` repeated, stripped within the same budget as above. Returns
+ * how many units there were and whether the text came back unchanged (a
+ * boolean, so a failure does not print 200 KB).
+ */
+function hostile(unit: string): { units: number; otp: number; unchanged: boolean } {
+  const units = Math.ceil((200 * 1024) / unit.length);
+  const text = unit.repeat(units);
+  const started = process.hrtime.bigint();
+  const out = stripSensitiveTokens(text);
+  const ms = Number(process.hrtime.bigint() - started) / 1e6;
+  assert.ok(ms < 2_000, `took ${ms.toFixed(0)} ms for ${JSON.stringify(unit)}`);
+  return { units, otp: out.removed.otp, unchanged: out.text === text };
+}
+
+test("hostile input: 'code' right before the number stays linear on 200 KB", () => {
+  for (const unit of ["WhatsApp code 123-456. ", "code 482913\n", "código 482913 "]) {
+    const r = hostile(unit);
+    assert.equal(r.otp, r.units, unit);
+  }
+  for (const unit of [
+    "code ",
+    "code \t ",
+    "code   \t 482913 ",
+    "codecode482913",
+    "promo code 482913 ",
+    "zip code \t94103 ",
+    "the the code code ",
+    "code: code is code = ",
+  ]) {
+    const r = hostile(unit);
+    assert.equal(r.unchanged, true, unit);
+    assert.equal(r.otp, 0, unit);
+  }
+});
+
+test("hostile input: 'use code … to sign in' stays linear on 200 KB", () => {
+  for (const unit of ["Use code ABC-123 to sign in. ", "Enter the code XK7Q92 to log in "]) {
+    const r = hostile(unit);
+    assert.equal(r.otp, r.units, unit);
+  }
+  for (const unit of [
+    "Use code SAVE20 to sign up. ",
+    "Use Office365 to sign in. ",
+    "ABC-123 to sign in ",
+    "use use the code ",
+    "Use code ABC-123 to to to ",
+    "Use code ABC-123 to sign-sign-sign ",
+  ]) {
+    const r = hostile(unit);
+    assert.equal(r.unchanged, true, unit);
+    assert.equal(r.otp, 0, unit);
+  }
+});
+
+test("hostile input: three-group split codes stay linear on 200 KB", () => {
+  const r = hostile("Your one-time passcode is 48 29 13. ");
+  assert.equal(r.otp, r.units);
+  for (const unit of [
+    "12 ", // one endless chain of two-digit groups: nothing merges
+    "12 34 56 x ", // every triple merges, nothing announces a code
+    "12 34 56 123 456 ",
+    "verification code 12 34 56 78 ",
+    "verification code 12:34 56 78 ",
+  ]) {
+    const h = hostile(unit);
+    assert.equal(h.unchanged, true, unit);
+    assert.equal(h.otp, 0, unit);
   }
 });
