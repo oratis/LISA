@@ -442,7 +442,7 @@ const WEAK_FORWARD_RE =
   /(?<![a-z])(code|pin|c[oó]digo|codice|kode)(?![a-z])\s{0,40}(?:(?:is|are)\s{0,40}[:=]?|[:=])\s{0,40}["'“‘]?$|(?<![a-z])(code|c[oó]digo|codice|kode)[ \t]{1,3}["'“‘]?$|(代码|コード|코드)\s{0,40}(?:为|為|是|は|:|=)?\s{0,40}["'“‘「]?$|(?<![a-z])(?:your|my|the|this)\s{1,40}(?:[a-z]{1,24}\s{1,40})?(code|pin)\s{1,40}$/i;
 /** …unless it is a kind of code that is not a credential. */
 const NOT_A_SECRET_CODE_RE =
-  /(?:promo(?:tion(?:al)?)?|discount|coupon|voucher|referral|invite|gift|zip|postal|area|country|dial(?:ing)?|error|status|exit|response|reason|return|civil|penal|labou?r|http|product|item|model|part|sku|order|tracking|pick-?up|booking|reservation|source|color|colour|qr|bar|bank|sort|branch|tax|hs|course|class|building|dress|employee|student|customer|member|store|project|cost|billing|优惠|折扣|兑换|兌換|邀请|邀請|邮政|郵政|邮编|区号|區號|错误|錯誤|状态|狀態)\s{0,40}$/i;
+  /(?:promo(?:tion(?:al)?)?|discount|coupon|voucher|referral|invite|gift|zip|postal|area|country|dial(?:ing)?|error|status|exit|response|reason|return|civil|penal|labou?r|http|product|item|model|part|sku|order|ref(?:erence)?|shipment|shipping|customs|tracking|pick-?up|booking|reservation|source|color|colour|qr|bar|bank|sort|branch|tax|hs|course|class|building|dress|employee|student|customer|member|store|project|cost|billing|优惠|折扣|兑换|兌換|邀请|邀請|邮政|郵政|邮编|区号|區號|错误|錯誤|状态|狀態)\s{0,40}$/i;
 /** `123456 is your Uber code`. */
 const WEAK_BACKWARD_RE =
   /^\s+(?:is|as)\s+(?:your|the)\s+[^.!?\d\n]{0,30}?(?<![a-z])(?:code|pin)(?![a-z])/i;

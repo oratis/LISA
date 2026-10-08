@@ -90,6 +90,8 @@ test("otp/en: the word 'code' right before the number, without a colon", () => {
   untouched("Zip code 94103");
   untouched("Postcode 94103 and barcode 12345678 are on the label.");
   untouched("Tracking code 12345678 — your parcel is on its way.");
+  untouched("Shipment code 12345678, customs code 85176200.");
+  untouched("Booking reference code 12345678");
   untouched("Pickup code 4821 at locker 12.");
   untouched("Order code 88213441");
   untouched("Your return code 12345678 is attached.");

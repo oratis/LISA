@@ -165,7 +165,8 @@ Misses (false negatives):
 
 Deliberately kept: booking-style `confirmation code` / `activation code` values
 that contain letters, parcel pickup codes (取件码, `pickup code 4821`) and
-order / return codes — things the user asks Lisa to read back.
+order, return, shipment and reference codes — things the user asks Lisa to
+read back.
 
 ### Where it is wired
 
