@@ -583,6 +583,8 @@ describe("content handling", () => {
       // Blank-separated runs, one character worth three, a bracket before a
       // long blank stretch that ends in a letter.
       ...["< ", "<\n", "> <", "\u{1438} ", "\u{22D8}", "\u{226A} ", `<${" ".repeat(1_000)}x`],
+      // Control characters between brackets, and before a letter.
+      ...["<\u{85}", "<\u{0}\u{1F} ", `<${"\u{85}".repeat(1_000)}x`],
     ]) {
       // More than a fetched body ever holds (max_chars is at most 200 000).
       const text = unit.repeat(Math.ceil((256 * 1024) / unit.length));
@@ -649,7 +651,7 @@ describe("content handling", () => {
   ];
   /** What a reader takes for brackets once blanks and unseen characters are gone. */
   const readsAs = (text: string): string =>
-    [...text.replace(/[\s\u{2800}\p{Default_Ignorable_Code_Point}\p{M}]/gu, "")]
+    [...text.replace(/[\s\u{2800}\p{Default_Ignorable_Code_Point}\p{M}\p{Cc}]/gu, "")]
       .map((ch) => {
         if ("<\u{FF1C}\u{FE64}\u{2039}\u{2329}\u{3008}\u{27E8}\u{276E}\u{2C2}\u{1438}".includes(ch))
           return "<";
@@ -707,6 +709,13 @@ describe("content handling", () => {
       `[\u{2800}[\u{2800}[${M}]\u{2800}]\u{2800}]`,
     ],
     ["spaces and combining marks", `<\u{301} <\u{301} <${M}>>>`, `[ [ [${M}]]]`],
+    // Control characters are not blank to JavaScript's `\s`, but read as nothing.
+    ["NELs", `<\u{85}<\u{85}<${M}>\u{85}>\u{85}>`, `[\u{85}[\u{85}[${M}]\u{85}]\u{85}]`],
+    [
+      "C0 and C1 controls",
+      `<\u{1F}<\u{0}<${M}>\u{1C}>\u{9F}>`,
+      `[\u{1F}[\u{0}[${M}]\u{1C}]\u{9F}]`,
+    ],
     ["Canadian syllabics", `\u{1438}\u{1438}\u{1438}${M}\u{1433}\u{1433}\u{1433}`, `[[[${M}]]]`],
     ["very-much-less-than signs", `\u{22D8}${M}\u{22D9}`, `[${M}]`],
     ["triple nested signs", `\u{2AF7}${M}\u{2AF8}`, `[${M}]`],
