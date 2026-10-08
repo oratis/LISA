@@ -1,6 +1,14 @@
-# LISA v0.28.0 — Tasks & Trust (foundations)
+# LISA v0.28.0 — Soft Ink, Tasks & Trust
 
-LISA is an AI Personal Assistant for planning, writing and personal knowledge. This release adds the groundwork for an assistant that works on your behalf while you are away — durable tasks and watchers, a deterministic approval layer, one gate for every proactive message, a credential broker and cost-aware model routing — and fixes a set of first-run, health and privacy issues. Most of the new machinery is off or opt-in; what changes on a default install is listed first.
+LISA is an AI Personal Assistant for planning, writing and personal knowledge. This release introduces the Soft Ink visual identity and adds the groundwork for an assistant that works on your behalf while you are away — durable tasks and watchers, a deterministic approval layer, one gate for every proactive message, a credential broker and cost-aware model routing — and fixes a set of first-run, health and privacy issues. Most of the new machinery is off or opt-in; what changes on a default install is listed first.
+
+## Soft Ink: Lisa's new visual identity
+
+- **24 core expressions** in the approved Soft Ink illustration style replace the Web and Island portraits. All 114 existing mood identifiers remain supported; the other 90 states reuse a related core expression, and the original individual PNG endpoints remain available for older clients.
+- **Eight downloadable stickers**, two illustrated rooms, a shared pose sheet and new app icons. Click Lisa's avatar to open the illustration gallery and download individual transparent PNGs. The room keeps its existing activity signals and changes lighting without moving its furniture.
+- **Six scene illustrations**, with the welcome illustration connected to the chat empty state; the other five are prepared for later surfaces. The bilingual website gallery uses the same expression map.
+- **Consistent, cached avatars.** Web and Island share a compact portrait atlas; rapid state changes cannot restore an older image, and failed loads preserve the last good portrait. The iOS source now uses the same mapping with a fallback for older servers; an updated iOS binary is a separate release.
+- The gallery supports light/dark previews and 28–72px comparisons. Generated masters, prompts, deterministic export scripts and the [review gallery](design/2026-10-08-visual-refresh/index.html) are included in the repository.
 
 ## What changes on a default install
 
@@ -34,6 +42,7 @@ LISA is an AI Personal Assistant for planning, writing and personal knowledge. T
 
 ## Known limits
 
+- The remaining 90 moods do not yet have independent Soft Ink drawings. Room night skies, complex pose occlusion and the remaining scene placements are follow-up work.
 - The Keychain backend of `lisa secret` has not been exercised against a real login keychain in CI; run `lisa secret set x`, `lisa secret list`, `lisa secret rm x` once on your Mac.
 - Hosted tasks are safe for a single instance only (see "Known gaps" in the Task Engine design).
 - No Tasks view or approval inbox in the iOS or Mac apps yet.
