@@ -609,13 +609,15 @@ export function neutralizeExternalMarkers(text: string): string {
 
 /**
  * Quote untrusted text for a fence attribute or a message: defanged, then
- * JSON-quoted with U+2028 / U+2029 escaped too (JSON.stringify leaves those
- * line separators raw).
+ * JSON-quoted with the line breaks JSON.stringify leaves raw escaped too \u2014
+ * U+0085 (NEL), U+2028 and U+2029; it escapes only those below U+0020 \u2014 so
+ * the quoted text stays on the line it is written on.
  */
 export function quoteUntrusted(text: string): string {
-  return JSON.stringify(neutralizeExternalMarkers(text))
-    .replace(/\u2028/g, "\\u2028")
-    .replace(/\u2029/g, "\\u2029");
+  return JSON.stringify(neutralizeExternalMarkers(text)).replace(
+    /[\u0085\u2028\u2029]/g,
+    (ch) => `\\u${ch.charCodeAt(0).toString(16).padStart(4, "0")}`,
+  );
 }
 
 export async function renderFetchedResponse(
