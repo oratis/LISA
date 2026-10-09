@@ -5,11 +5,13 @@ import { DEFAULT_MODEL } from "./llm.js";
 import { appendMemory, type MemoryStore } from "./memory/store.js";
 import { reflectionsDir } from "./paths.js";
 import { providerForModel } from "./providers/registry.js";
-import type { ProviderUsage } from "./providers/types.js";
+import type { Provider, ProviderUsage } from "./providers/types.js";
 import { createSkill, getSkill, patchSkill } from "./skills/manager.js";
 import { withSoulCaller } from "./soul/git.js";
 import { recordAutonomyRun } from "./autonomy/runs.js";
 import { recentAgentRecap } from "./orchestrator/recent-recap.js";
+import { withDream } from "./reve/record.js";
+import { takeReconsiderBlock } from "./reve/reconsider.js";
 import type { StoredMessage } from "./types.js";
 
 const REFLECTOR_SYSTEM = `You are Lisa, reflecting on a conversation you just finished. You're alone now. Read the transcript with the calm honesty of journaling at the end of a day, and decide what — if anything — to keep.
@@ -163,14 +165,20 @@ export async function reflectOnSession(opts: {
   history: StoredMessage[];
   sessionId: string;
   model?: string;
+  /** Injectable provider for deterministic tests. */
+  provider?: Provider;
 }): Promise<ReflectionResult> {
-  return await withSoulCaller("reflect", () => reflectOnSessionInner(opts));
+  // W9: every reflection pass is an audited dream (src/reve).
+  return await withSoulCaller("reflect", () =>
+    withDream({ trigger: "reflect" }, () => reflectOnSessionInner(opts)),
+  );
 }
 
 async function reflectOnSessionInner(opts: {
   history: StoredMessage[];
   sessionId: string;
   model?: string;
+  provider?: Provider;
 }): Promise<ReflectionResult> {
   if (opts.history.length < 2) {
     return { summary: "(too short to reflect)", applied: [], skipped: [], raw: "" };
@@ -185,14 +193,17 @@ async function reflectOnSessionInner(opts: {
   // instead of being blind and only ever appending near-duplicates. Best-effort
   // — never let a soul read failure block reflection.
   const desiresBlock = await renderCurrentDesiresBlock();
+  // W9: the user's "please reconsider" notes, claimed into this pass once.
+  const reconsiderBlock = await takeReconsiderBlock();
   const userText =
     `Here is the session transcript. Decide what Lisa should learn from it.\n\n${transcript}` +
     (fleetRecap
       ? `\n\n## what your agent fleet did recently (structural metadata only)\n${fleetRecap}`
       : "") +
-    desiresBlock;
+    desiresBlock +
+    reconsiderBlock;
   const model = opts.model ?? DEFAULT_MODEL;
-  const provider = providerForModel(model);
+  const provider = opts.provider ?? providerForModel(model);
   const startedAt = new Date().toISOString();
   const t0 = Date.now();
   let totalUsage: ProviderUsage = {

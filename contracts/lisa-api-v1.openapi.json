@@ -1122,6 +1122,289 @@
           }
         }
       }
+    },
+    "/api/reve/dreams": {
+      "get": {
+        "operationId": "listReveDreams",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Newest-first summaries of the caller's dream records (one per reflective pass that changed something, saw a reconsider note, or ran while a part could not be captured). `pendingReconsider` counts notes not yet acknowledged. Cloud: scoped to the signed-in account; a cloud caller without an account gets 403.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReveDreamListResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/reve/dreams/{id}": {
+      "get": {
+        "operationId": "getReveDream",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^d-\\d{8}T\\d{9}-[0-9a-f]{8}$"
+            },
+            "description": "Server-minted dream id (UTC millisecond stamp + random suffix)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One full dream record (per-file and per-commit diffs are size-capped) plus the reconsider requests filed against it. A record bigger than the 512 KiB record cap is served trimmed with `readTruncated: true`.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReveDreamResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/reve/dreams/{id}/revert": {
+      "post": {
+        "operationId": "revertReveDream",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^d-\\d{8}T\\d{9}-[0-9a-f]{8}$"
+            },
+            "description": "Server-minted dream id (UTC millisecond stamp + random suffix)."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReveRevertRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Reverts the dream's changes to the user's own data. Memory is reverted entry by entry against the current file (the dream's added entries taken out, its removed entries put back; never a whole pre-dream file). KB pages and skills are restored file by file only when unchanged since the dream (409 `revert_conflict` otherwise, unless `force`). A path that resolves outside its part's directory (a symlink) is a conflict `unsafe_target`. `soul` is refused (400). 403 for a cross-site request, a non-loopback Host on a loopback-trusted caller, or a caller who may not approve (shared token, paired device).",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReveRevertResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "description": "A selected KB page or skill changed since the dream (`modified_since`), has no pre-dream copy (`not_revertible`), or resolves outside its part's directory (`unsafe_target`). Nothing was written. With `force: true`, changed files are overwritten and the other two are skipped. Memory never conflicts on content (it reverts entry by entry).",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReveRevertConflict"
+                }
+              }
+            }
+          },
+          "415": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/reve/dreams/{id}/reconsider": {
+      "post": {
+        "operationId": "reconsiderReveDream",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^d-\\d{8}T\\d{9}-[0-9a-f]{8}$"
+            },
+            "description": "Server-minted dream id (UTC millisecond stamp + random suffix)."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReveReconsiderBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Queues the user's note for Lisa's next reflective pass (session reflection or an idle run), which decides for herself. Never edits soul files. A note is acknowledged only when a pass that saw it finishes; a pass that fails or dies puts it back, so it is never lost but may be shown again. 409 `no_soul_changes` when the dream did not touch her soul, 409 `dreams_disabled` when dreams are turned off (LISA_REVE_DREAMS), 429 `queue_full` when 200 notes are already waiting. 403 for a cross-site request, a non-loopback Host on a loopback-trusted caller, or a caller who may not approve (shared token, paired device).",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReveReconsiderResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "415": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/reve/reconsider": {
+      "get": {
+        "operationId": "listReveReconsider",
+        "responses": {
+          "200": {
+            "description": "The caller's reconsider queue: pending, claimed (shown to a pass still running) and delivered (acknowledged by a pass that finished).",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReveReconsiderListResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/reve/metrics": {
+      "get": {
+        "operationId": "getReveMetrics",
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 365,
+              "default": 30
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deterministic per-UTC-day sums of the drift indicators every dream carries (identity/purpose/constitution patches, values/opinions churn, desire churn, emotion volatility, memory/KB/skills activity), zero-filled.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReveMetricsSeries"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3342,6 +3625,1028 @@
           }
         },
         "additionalProperties": true
+      },
+      "ReveDreamMetrics": {
+        "type": "object",
+        "required": [
+          "identityPatches",
+          "purposePatches",
+          "constitutionPatches",
+          "valuesChurn",
+          "opinionsChurn",
+          "desireChurn",
+          "emotionVolatility",
+          "memoryEntriesAdded",
+          "memoryEntriesRemoved",
+          "kbFilesChanged",
+          "skillsTouched"
+        ],
+        "properties": {
+          "identityPatches": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "purposePatches": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "constitutionPatches": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "valuesChurn": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "opinionsChurn": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "desireChurn": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "emotionVolatility": {
+            "type": "number",
+            "minimum": 0
+          },
+          "memoryEntriesAdded": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "memoryEntriesRemoved": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "kbFilesChanged": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "skillsTouched": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": true
+      },
+      "ReveDreamSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "trigger",
+          "windowStart",
+          "windowEnd",
+          "outcome",
+          "capture",
+          "summary",
+          "parts",
+          "revertibleParts",
+          "soulCommitCount",
+          "changeCount",
+          "metrics",
+          "reverted"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "trigger": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "reflect",
+              "examen",
+              "desire-review"
+            ]
+          },
+          "task": {
+            "type": "string"
+          },
+          "windowStart": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "windowEnd": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "done",
+              "no-update",
+              "blocked",
+              "error",
+              "unknown"
+            ]
+          },
+          "capture": {
+            "type": "string",
+            "enum": [
+              "git",
+              "snapshot"
+            ]
+          },
+          "summary": {
+            "type": "string"
+          },
+          "parts": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "memory",
+                "kb",
+                "skills",
+                "soul"
+              ]
+            }
+          },
+          "revertibleParts": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "memory",
+                "kb",
+                "skills"
+              ]
+            }
+          },
+          "soulCommitCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "changeCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/ReveDreamMetrics"
+          },
+          "reverted": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": true
+      },
+      "ReveDreamListResponse": {
+        "type": "object",
+        "required": [
+          "dreams",
+          "corrupt",
+          "pendingReconsider"
+        ],
+        "properties": {
+          "dreams": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReveDreamSummary"
+            }
+          },
+          "corrupt": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Ids of records that exist but could not be parsed."
+          },
+          "pendingReconsider": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReveFileChange": {
+        "type": "object",
+        "required": [
+          "part",
+          "path",
+          "status",
+          "beforeHash",
+          "afterHash",
+          "linesAdded",
+          "linesRemoved",
+          "diff",
+          "diffTruncated",
+          "revertible"
+        ],
+        "properties": {
+          "part": {
+            "type": "string",
+            "enum": [
+              "memory",
+              "kb",
+              "skills",
+              "soul"
+            ]
+          },
+          "path": {
+            "type": "string",
+            "description": "Relative to the caller's home, POSIX separators."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "added",
+              "modified",
+              "deleted"
+            ]
+          },
+          "beforeHash": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "afterHash": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bytesBefore": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "bytesAfter": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "linesAdded": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "linesRemoved": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "diff": {
+            "type": "string"
+          },
+          "diffTruncated": {
+            "type": "boolean"
+          },
+          "entriesAdded": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "entriesRemoved": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "revertible": {
+            "type": "boolean",
+            "description": "Always false for soul files."
+          },
+          "notRevertibleReason": {
+            "type": "string",
+            "description": "Why a user-part change cannot be reverted, when it cannot."
+          }
+        },
+        "additionalProperties": true
+      },
+      "ReveSoulCommit": {
+        "type": "object",
+        "required": [
+          "sha",
+          "subject",
+          "opKind",
+          "caller",
+          "files",
+          "diff"
+        ],
+        "properties": {
+          "sha": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "opKind": {
+            "type": "string"
+          },
+          "caller": {
+            "type": "string"
+          },
+          "dreamId": {
+            "type": "string"
+          },
+          "reconsider": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "path",
+                "added",
+                "removed"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "added": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "removed": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "diff": {
+            "type": "string"
+          },
+          "diffTruncated": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": true
+      },
+      "ReveDreamRecord": {
+        "type": "object",
+        "required": [
+          "version",
+          "id",
+          "trigger",
+          "windowStart",
+          "windowEnd",
+          "autonomyRunIds",
+          "outcome",
+          "capture",
+          "soulCommits",
+          "changes",
+          "desires",
+          "emotions",
+          "skillsTouched",
+          "metrics",
+          "reconsiderDelivered",
+          "reverts",
+          "summary",
+          "truncated"
+        ],
+        "properties": {
+          "version": {
+            "const": 1
+          },
+          "id": {
+            "type": "string"
+          },
+          "trigger": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "reflect",
+              "examen",
+              "desire-review"
+            ]
+          },
+          "task": {
+            "type": "string"
+          },
+          "windowStart": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "windowEnd": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "autonomyRunIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "done",
+              "no-update",
+              "blocked",
+              "error",
+              "unknown"
+            ]
+          },
+          "capture": {
+            "type": "string",
+            "enum": [
+              "git",
+              "snapshot"
+            ]
+          },
+          "soulCommits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReveSoulCommit"
+            }
+          },
+          "soulHeadBefore": {
+            "type": "string"
+          },
+          "soulHeadAfter": {
+            "type": "string"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReveFileChange"
+            }
+          },
+          "desires": {
+            "type": "object",
+            "required": [
+              "added",
+              "revised",
+              "closed"
+            ],
+            "properties": {
+              "added": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "revised": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "closed": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "emotions": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "before",
+                  "after",
+                  "delta"
+                ],
+                "properties": {
+                  "before": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "number"
+                    }
+                  },
+                  "after": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "number"
+                    }
+                  },
+                  "delta": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "number"
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
+          "skillsTouched": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/ReveDreamMetrics"
+          },
+          "reconsiderDelivered": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reverts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "at",
+                "parts",
+                "files",
+                "forced"
+              ],
+              "properties": {
+                "at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "parts": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "memory",
+                      "kb",
+                      "skills"
+                    ]
+                  }
+                },
+                "files": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "forced": {
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "summary": {
+            "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "capped": {
+            "type": "boolean",
+            "description": "A snapshot cap was hit: a part left out, or some file's content not kept."
+          },
+          "uncaptured": {
+            "type": "array",
+            "description": "Parts the capture left out whole (over the file cap); their changes are not listed.",
+            "items": {
+              "type": "object",
+              "required": [
+                "part",
+                "reason",
+                "files"
+              ],
+              "properties": {
+                "part": {
+                  "type": "string",
+                  "enum": [
+                    "memory",
+                    "kb",
+                    "skills",
+                    "soul"
+                  ]
+                },
+                "reason": {
+                  "type": "string",
+                  "enum": [
+                    "too_many_files"
+                  ]
+                },
+                "files": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "skippedSymlinks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Symlinks met where a tracked file or directory would be; never followed (first 50)."
+          },
+          "readTruncated": {
+            "type": "boolean",
+            "description": "The stored record is over the 512 KiB cap; this view was trimmed (diffs first) to fit."
+          }
+        },
+        "additionalProperties": true
+      },
+      "ReveReconsiderItem": {
+        "type": "object",
+        "required": [
+          "id",
+          "dreamId",
+          "note",
+          "createdAt",
+          "status"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "dreamId": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "claimed",
+              "delivered"
+            ],
+            "description": "pending: waiting for a pass; claimed: shown to a pass that is still running; delivered: acknowledged by a pass that finished."
+          },
+          "deliveredAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "deliveredIn": {
+            "type": "string",
+            "description": "Dream id of the pass that received the note and finished."
+          },
+          "claimedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "claimedIn": {
+            "type": "string",
+            "description": "While claimed: the dream id of the running pass."
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReveDreamResponse": {
+        "type": "object",
+        "required": [
+          "dream",
+          "reconsider"
+        ],
+        "properties": {
+          "dream": {
+            "$ref": "#/components/schemas/ReveDreamRecord"
+          },
+          "reconsider": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReveReconsiderItem"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReveRevertRequest": {
+        "type": "object",
+        "required": [
+          "parts"
+        ],
+        "properties": {
+          "parts": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "enum": [
+                "memory",
+                "kb",
+                "skills"
+              ]
+            }
+          },
+          "force": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReveRevertResponse": {
+        "type": "object",
+        "required": [
+          "ok",
+          "dreamId",
+          "parts",
+          "reverted",
+          "alreadyReverted",
+          "skipped",
+          "forced"
+        ],
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "dreamId": {
+            "type": "string"
+          },
+          "parts": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "memory",
+                "kb",
+                "skills"
+              ]
+            }
+          },
+          "reverted": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "alreadyReverted": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "skipped": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "forced": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReveRevertConflict": {
+        "type": "object",
+        "required": [
+          "error",
+          "conflicts"
+        ],
+        "properties": {
+          "error": {
+            "const": "revert_conflict"
+          },
+          "conflicts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "path",
+                "reason"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string",
+                  "enum": [
+                    "modified_since",
+                    "not_revertible",
+                    "unsafe_target"
+                  ],
+                  "description": "modified_since: changed after the dream (KB / skills); not_revertible: no pre-dream copy; unsafe_target: the path resolves outside its part's directory (a symlink on the way, or the file is one)."
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReveReconsiderBody": {
+        "type": "object",
+        "required": [
+          "note"
+        ],
+        "properties": {
+          "note": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReveReconsiderResponse": {
+        "type": "object",
+        "required": [
+          "ok",
+          "request"
+        ],
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "request": {
+            "$ref": "#/components/schemas/ReveReconsiderItem"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReveReconsiderListResponse": {
+        "type": "object",
+        "required": [
+          "requests"
+        ],
+        "properties": {
+          "requests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReveReconsiderItem"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReveMetricsSeries": {
+        "type": "object",
+        "required": [
+          "days",
+          "from",
+          "to",
+          "series",
+          "totals"
+        ],
+        "properties": {
+          "days": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 365
+          },
+          "from": {
+            "type": "string",
+            "format": "date"
+          },
+          "to": {
+            "type": "string",
+            "format": "date"
+          },
+          "series": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "date",
+                "dreams",
+                "identityPatches",
+                "purposePatches",
+                "constitutionPatches",
+                "valuesChurn",
+                "opinionsChurn",
+                "desireChurn",
+                "emotionVolatility",
+                "memoryEntriesAdded",
+                "memoryEntriesRemoved",
+                "kbFilesChanged",
+                "skillsTouched"
+              ],
+              "properties": {
+                "date": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "dreams": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "identityPatches": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "purposePatches": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "constitutionPatches": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "valuesChurn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "opinionsChurn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "desireChurn": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "emotionVolatility": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "memoryEntriesAdded": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "memoryEntriesRemoved": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "kbFilesChanged": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "skillsTouched": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "totals": {
+            "type": "object",
+            "required": [
+              "dreams",
+              "identityPatches",
+              "purposePatches",
+              "constitutionPatches",
+              "valuesChurn",
+              "opinionsChurn",
+              "desireChurn",
+              "emotionVolatility",
+              "memoryEntriesAdded",
+              "memoryEntriesRemoved",
+              "kbFilesChanged",
+              "skillsTouched"
+            ],
+            "properties": {
+              "dreams": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "identityPatches": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "purposePatches": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "constitutionPatches": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "valuesChurn": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "opinionsChurn": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "desireChurn": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "emotionVolatility": {
+                "type": "number",
+                "minimum": 0
+              },
+              "memoryEntriesAdded": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "memoryEntriesRemoved": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "kbFilesChanged": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "skillsTouched": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
       }
     }
   }
