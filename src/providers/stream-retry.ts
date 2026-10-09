@@ -1,4 +1,16 @@
 import { setTimeout as delay } from "node:timers/promises";
+import type { ProviderRunOpts } from "./types.js";
+
+/** A provider call's retry options: its signal, and its failed-attempt hook. */
+export function streamRetryOpts(
+  opts: Pick<ProviderRunOpts, "model" | "signal" | "onAttemptFailed">,
+): StreamRetryOpts {
+  const hook = opts.onAttemptFailed;
+  return {
+    signal: opts.signal,
+    ...(hook ? { onAttemptFailed: (error: unknown) => hook({ model: opts.model, error }) } : {}),
+  };
+}
 
 export interface StreamRetryOpts {
   /** Max number of *additional* attempts after the first (default 2 → 3 total). */
@@ -7,6 +19,13 @@ export interface StreamRetryOpts {
   baseDelayMs?: number;
   /** Abort signal for the turn; a triggered signal stops retrying. */
   signal?: AbortSignal;
+  /**
+   * Asked before each retry, with the attempt that failed: false ⇒ do not
+   * retry, surface the error. Each retry re-sends (and may re-bill) the whole
+   * prompt, so a cost cap counts the failed attempt here
+   * (ProviderRunOpts.onAttemptFailed).
+   */
+  onAttemptFailed?: (err: unknown) => boolean;
 }
 
 /**
@@ -87,14 +106,12 @@ export async function withStreamRetry<T>(
       });
     } catch (err) {
       lastErr = err;
-      if (
-        i === maxRetries ||
-        emitted ||
-        opts.signal?.aborted ||
-        !isRetryableStreamError(err)
-      ) {
+      if (i === maxRetries || emitted || opts.signal?.aborted || !isRetryableStreamError(err)) {
         throw err;
       }
+      // The failed attempt was sent: whoever counts spend hears of it, and
+      // may refuse another.
+      if (opts.onAttemptFailed && !opts.onAttemptFailed(err)) throw err;
       try {
         await delay(baseDelayMs * (i + 1), undefined, { signal: opts.signal });
       } catch {

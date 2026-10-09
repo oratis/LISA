@@ -1,6 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { AgentEvent, StoredMessage, ToolContext, ToolDefinition } from "./types.js";
-import type { Provider } from "./providers/types.js";
+import { failedWithoutSpend, type Provider } from "./providers/types.js";
 import { RunCostCap } from "./model/cost.js";
 import { moodBus, withMoodOrigin } from "./mood-bus.js";
 import { validateToolInput } from "./tools/validate.js";
@@ -105,8 +105,10 @@ export interface RunAgentOptions {
    * Unset = no ceiling.
    *
    * Prompt size and unknown prices are estimated, so actual charges may
-   * exceed this ceiling. Provider framing, multimodal input and missing usage
-   * prevent a universal overrun bound. See RunCostCap for the assumptions.
+   * exceed this ceiling — by at most the error of the prompt estimates, output
+   * a provider produces past maxTokens and price-table differences: a call or
+   * retry that fails after it was sent is counted at its worst case. See
+   * RunCostCap for the residual bound.
    *
    * Subagents spend inside it: the loop puts a `costCap` handle on the tool
    * context (see ToolContext), and the task tool starts each subagent with
@@ -354,8 +356,24 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
           onTextDelta: (text) => onEvent?.({ type: "text_delta", text }),
           onThinkingDelta: (text) => onEvent?.({ type: "thinking_delta", text }),
         },
+        // A stream retry or the next fallback link re-sends the prompt: each
+        // failed attempt is counted at the call's worst case, and one more is
+        // made only if that still fits.
+        ...(costCap
+          ? {
+              onAttemptFailed: ({ error }: { error: unknown }) =>
+                failedWithoutSpend(error) || costCap.failedAttempt(),
+            }
+          : {}),
       });
     } catch (err) {
+      // A call that may have spent and then threw (a cut stream, a last
+      // fallback link that failed after output) is counted at its worst case
+      // before the error leaves this run, so a parent's cap hears of it too.
+      // One that certainly cost nothing (refused before it was sent, or by
+      // the provider with a 4xx / 503) is not.
+      if (failedWithoutSpend(err)) costCap?.release();
+      else costCap?.chargeFailed();
       const message = err instanceof Error ? err.message : String(err);
       onEvent?.({ type: "error", message });
       throw err;

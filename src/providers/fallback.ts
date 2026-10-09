@@ -40,6 +40,16 @@ export class FallbackProvider implements Provider {
       } catch (err) {
         lastErr = err;
         const next = this.chain[i + 1];
+        // The failed link was sent and may have been billed — after output,
+        // even (a cut stream). Whoever counts spend hears of it before the
+        // next link is tried, and may refuse it.
+        if (
+          next &&
+          opts.onAttemptFailed &&
+          !opts.onAttemptFailed({ model: link.model, error: err })
+        ) {
+          throw err;
+        }
         if (next) {
           console.error(
             `[provider] "${link.model}" failed (${(err as Error).message?.slice(0, 120)}) — ` +

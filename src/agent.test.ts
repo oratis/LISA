@@ -649,10 +649,12 @@ describe("runAgent — per-run USD cap (costCapMicroUSD)", () => {
         return { content: [toolUseBlock(`tu_${served.length}`)], stopReason: "tool_use", usage };
       },
     };
+    // The primary refuses at once (an HTTP 503): it did no work and bills
+    // nothing, so the cap lets the chain move on without counting it.
     const down: Provider = {
       name: "flash",
       async runTurn(): Promise<ProviderResult> {
-        throw new Error("primary down");
+        throw Object.assign(new Error("503 Service Unavailable"), { status: 503 });
       },
     };
     const quiet = console.error;

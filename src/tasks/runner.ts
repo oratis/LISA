@@ -37,7 +37,7 @@ import { costMicroUSD } from "../billing/prices.js";
 import { logInfo } from "../log.js";
 import { lisaHome } from "../paths.js";
 import { providerForModel } from "../providers/registry.js";
-import type { Provider, ProviderUsage } from "../providers/types.js";
+import { notSent, type Provider, type ProviderUsage } from "../providers/types.js";
 import type { SandboxMode } from "../sandbox/mode.js";
 import { sandboxModeForProfile } from "../sandbox/sandbox.js";
 import { validateToolInput } from "../tools/validate.js";
@@ -1304,32 +1304,33 @@ export class TaskRunner {
         name: inner.name,
         runTurn: async (o) => {
           // Every model call clears the same breakers, in the same order.
-          if (await cancelRequested()) throw new TaskStop("cancelled");
-          if (slot.stop) throw new TaskStop(slot.stop, slot.stopDetail);
+          if (await cancelRequested()) throw notSent(new TaskStop("cancelled"));
+          if (slot.stop) throw notSent(new TaskStop(slot.stop, slot.stopDetail));
           // Stopping (shutdown, a lost lease, an unrecordable outcome): no
           // further model call in this segment, whatever the provider would do
           // with an aborted signal.
-          if (slot.controller.signal.aborted) throw new Interrupted();
+          if (slot.controller.signal.aborted) throw notSent(new Interrupted());
           if (tokensSpent(run) >= budget.tokens) {
             stopWith("budget_tokens");
-            throw new TaskStop("budget_tokens");
+            throw notSent(new TaskStop("budget_tokens"));
           }
           // `>`: after the last allowed call the model still gets a turn to answer.
           if (run.toolCalls > budget.maxToolCalls) {
             stopWith("budget_tool_calls");
-            throw new TaskStop("budget_tool_calls");
+            throw notSent(new TaskStop("budget_tool_calls"));
           }
           if (budget.usdMicros !== undefined && (run.costMicros ?? 0) >= budget.usdMicros) {
             stopWith("budget_usd");
-            throw new TaskStop("budget_usd");
+            throw notSent(new TaskStop("budget_usd"));
           }
           const admission = this.opts.modelGate ? await this.opts.modelGate.admit(model) : null;
           if (admission && !admission.ok) {
             // Busy (the tenant is mid-chat-turn) or rate-limited: an ordinary
             // failure, retried with backoff. No allowance: stop and tell the user.
-            if (admission.transient) throw new Error(`admission busy: ${admission.reason}`);
+            if (admission.transient)
+              throw notSent(new Error(`admission busy: ${admission.reason}`));
             stopWith("admission_denied", admission.reason);
-            throw new TaskStop("admission_denied", admission.reason);
+            throw notSent(new TaskStop("admission_denied", admission.reason));
           }
           try {
             const result = await inner.runTurn(o);

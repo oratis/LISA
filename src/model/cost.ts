@@ -405,6 +405,15 @@ export function capChargeMicroUSD(call: CappedCall): number {
   return Math.max(...models.map((m) => costMicroUSD(m, charged)));
 }
 
+/** A call's worst case at the dearest rates: the prompt reservation plus the output ceiling. */
+function reservationMicroUSD(models: CapModels, promptTokens: number, maxTokens: number): number {
+  const price = dearestRates(models);
+  return (
+    Math.ceil((promptTokens * Math.max(price.inPerM, price.cacheWritePerM)) / 1_000_000) +
+    Math.ceil((maxTokens * price.outPerM) / 1_000_000)
+  );
+}
+
 function sameModel(a: string, b: string): boolean {
   return a.trim().toLowerCase() === b.trim().toLowerCase();
 }
@@ -418,11 +427,23 @@ function sameModel(a: string, b: string): boolean {
  * charged at the one the provider says served it (the dearest when it does
  * not say, or names one outside the list).
  *
+ * A call or an attempt that fails after it was sent — a cut stream, a stream
+ * retry, a fallback link, a subagent's last call — is counted at its worst
+ * case (`failedAttempt`, `chargeFailed`), and a further attempt is made only
+ * if another worst case still fits. Only failures that certainly cost nothing
+ * (`failedWithoutSpend`: refused before sending, unreachable host, 4xx / 503 /
+ * 529) are not counted.
+ *
  * This is an estimate-based circuit breaker, not a guaranteed billing ceiling.
- * Prompt tokenization, provider framing, multimodal input and unreported usage
- * can differ from the reservation. Provider prices can also differ from the
- * local table, particularly for unknown models. Output is bounded only while
- * the provider honors maxTokens. Reconcile actual usage in the billing layer.
+ * Residual bound: every attempt is admitted against its worst case and every
+ * failed one is counted at it, so a run's real spend exceeds the cap by at
+ * most the amount by which its calls' real prompts exceed their reservations
+ * (prompt tokenization — text denser than the 3-bytes-a-token estimate —
+ * provider framing beyond PROMPT_FRAMING_TOKENS, images that cost more than
+ * their per-image estimate), plus any output a provider produces beyond the
+ * maxTokens it was given, plus any difference between the provider's prices
+ * and the local table (unknown models use a fallback rate). Reconcile actual
+ * usage in the billing layer.
  */
 export class RunCostCap {
   private spent = 0;
@@ -438,6 +459,8 @@ export class RunCostCap {
     promptTokens: number;
     promptEstimate: number;
     maxTokens: number;
+    /** The call's worst case: its prompt reservation plus its output ceiling, at the dearest rates. */
+    reservationMicroUSD: number;
   } | null = null;
 
   private readonly models: readonly string[];
@@ -473,8 +496,7 @@ export class RunCostCap {
    */
   add(microUSD: number): void {
     const amount = unreadableCount(microUSD) ? Number.NaN : microUSD;
-    this.spent += amount;
-    this.onCharge?.(amount);
+    this.count(amount);
   }
 
   /**
@@ -504,9 +526,57 @@ export class RunCostCap {
       maxTokens: next.maxTokens,
     });
     this.admitted = verdict.proceed
-      ? { promptBytes, promptTokens, promptEstimate, maxTokens: verdict.maxTokens }
+      ? {
+          promptBytes,
+          promptTokens,
+          promptEstimate,
+          maxTokens: verdict.maxTokens,
+          reservationMicroUSD: reservationMicroUSD(this.models, promptTokens, verdict.maxTokens),
+        }
       : null;
     return verdict;
+  }
+
+  /**
+   * An attempt of the admitted call FAILED after it was sent, and another is
+   * about to be made (a stream retry, the next link of a fallback chain): see
+   * ProviderRunOpts.onAttemptFailed. The provider may have billed its prompt
+   * and any output before it failed, so it is counted at the call's worst
+   * case — what it was admitted with. True when one more attempt at that
+   * worst case still fits under the cap; false ends the call (the caller
+   * surfaces the error, already counted).
+   */
+  failedAttempt(): boolean {
+    const admitted = this.admitted;
+    if (!admitted) return false;
+    this.count(admitted.reservationMicroUSD);
+    const fits =
+      Number.isFinite(this.spent) && this.spent + admitted.reservationMicroUSD <= this.capMicroUSD;
+    if (!fits) this.admitted = null;
+    return fits;
+  }
+
+  /**
+   * The admitted call threw after it was sent — a cut stream, a fallback chain
+   * whose last link failed after output. Counted at its worst case, like a
+   * failed attempt, and reported to `onCharge` so a parent run's cap counts it
+   * too. Nothing when the call was already counted (a refused retry).
+   */
+  chargeFailed(): void {
+    const admitted = this.admitted;
+    if (!admitted) return;
+    this.admitted = null;
+    this.count(admitted.reservationMicroUSD);
+  }
+
+  /** The admitted call was never sent (refused before it left): nothing to count. */
+  release(): void {
+    this.admitted = null;
+  }
+
+  private count(microUSD: number): void {
+    this.spent += microUSD;
+    this.onCharge?.(microUSD);
   }
 
   /** Count the call made after `admit` against the cap; `model` is the one that served it, if known. */
@@ -532,8 +602,7 @@ export class RunCostCap {
       reservedPromptTokens: admitted.promptTokens,
       maxTokens: admitted.maxTokens,
     });
-    this.spent += amount;
-    this.onCharge?.(amount);
+    this.count(amount);
     const { inputTokens, cacheReadTokens, cacheWriteTokens } = call.usage;
     const prompt = inputTokens + cacheReadTokens + cacheWriteTokens;
     if (Number.isFinite(prompt) && prompt > 0) {
