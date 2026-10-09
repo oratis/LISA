@@ -5,7 +5,7 @@ import { DEFAULT_MODEL } from "./llm.js";
 import { appendMemory, type MemoryStore } from "./memory/store.js";
 import { reflectionsDir } from "./paths.js";
 import { providerForModel } from "./providers/registry.js";
-import type { ProviderUsage } from "./providers/types.js";
+import type { Provider, ProviderUsage } from "./providers/types.js";
 import { createSkill, getSkill, patchSkill } from "./skills/manager.js";
 import { withSoulCaller } from "./soul/git.js";
 import { recordAutonomyRun } from "./autonomy/runs.js";
@@ -165,6 +165,8 @@ export async function reflectOnSession(opts: {
   history: StoredMessage[];
   sessionId: string;
   model?: string;
+  /** Injectable provider for deterministic tests. */
+  provider?: Provider;
 }): Promise<ReflectionResult> {
   // W9: every reflection pass is an audited dream (src/reve).
   return await withSoulCaller("reflect", () =>
@@ -176,6 +178,7 @@ async function reflectOnSessionInner(opts: {
   history: StoredMessage[];
   sessionId: string;
   model?: string;
+  provider?: Provider;
 }): Promise<ReflectionResult> {
   if (opts.history.length < 2) {
     return { summary: "(too short to reflect)", applied: [], skipped: [], raw: "" };
@@ -200,7 +203,7 @@ async function reflectOnSessionInner(opts: {
     desiresBlock +
     reconsiderBlock;
   const model = opts.model ?? DEFAULT_MODEL;
-  const provider = providerForModel(model);
+  const provider = opts.provider ?? providerForModel(model);
   const startedAt = new Date().toISOString();
   const t0 = Date.now();
   let totalUsage: ProviderUsage = {

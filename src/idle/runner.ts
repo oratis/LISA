@@ -10,6 +10,7 @@ import { readIndex } from "../kb/store.js";
 import { withDream } from "../reve/record.js";
 import { takeReconsiderBlock } from "../reve/reconsider.js";
 import type { ToolDefinition } from "../types.js";
+import type { Provider } from "../providers/types.js";
 
 function idleRunLock(): string {
   return path.join(lisaHome(), "idle.lock");
@@ -111,6 +112,8 @@ export async function runIdleOnce(opts: {
    * Language-agnostic: she matches the sample rather than us detecting a locale.
    */
   userLanguageSample?: string;
+  /** Injectable provider for deterministic tests. */
+  provider?: Provider;
 }): Promise<IdleRunResult> {
   // Proactive-mode master switch (web/iOS "Proactive" toggle → ~/.lisa/autonomy/
   // state.json). When autonomy is off, idle reflection no-ops: Lisa only acts on
@@ -144,7 +147,13 @@ export async function runIdleOnce(opts: {
 }
 
 async function runIdleInner(
-  opts: { tools: ToolDefinition[]; cwd: string; signal: AbortSignal; model: string },
+  opts: {
+    tools: ToolDefinition[];
+    cwd: string;
+    signal: AbortSignal;
+    model: string;
+    provider?: Provider;
+  },
   idleMin: number,
   userLanguageSample?: string,
 ): Promise<IdleRunResult> {
@@ -172,6 +181,7 @@ async function runIdleInner(
       cwd: opts.cwd,
       signal: opts.signal,
       model: opts.model,
+      provider: opts.provider,
       // Unattended: confine to the untrusted-surface mode (defense in depth
       // atop the tool subset above). H2.
       sandboxMode: sandboxModeForProfile("local-autonomy"),
