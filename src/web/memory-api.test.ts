@@ -283,6 +283,35 @@ describe("memory entries API (Mac edition)", () => {
     assert.equal(read("memory/MEMORY.md"), "- one\n");
   });
 
+  test("the entries read refuses DNS rebinding and cross-site reads, like export", async () => {
+    write("memory/MEMORY.md", "- secret mac fact\n");
+    const rawGet = (headers: Record<string, string>) =>
+      new Promise<{ status: number; body: string }>((resolve, reject) => {
+        const r = http.request(`${origin}/api/memory/entries`, { headers }, (res) => {
+          let body = "";
+          res.on("data", (c: Buffer) => (body += c.toString()));
+          res.on("end", () => resolve({ status: res.statusCode ?? 0, body }));
+        });
+        r.on("error", reject);
+        r.end();
+      });
+    const rebind = await rawGet({ host: "evil.example.com" });
+    assert.equal(rebind.status, 403);
+    assert.match(rebind.body, /untrusted_host/);
+    assert.ok(!rebind.body.includes("secret mac fact"));
+    const cross = await call("GET", "/api/memory/entries", undefined, {
+      headers: { "sec-fetch-site": "cross-site" },
+    });
+    assert.equal(cross.status, 403);
+    const foreign = await call("GET", "/api/memory/entries", undefined, {
+      headers: { origin: "https://evil.example" },
+    });
+    assert.equal(foreign.status, 403);
+    // The owner's own page, and a paired device on the LAN, still read.
+    assert.equal((await entries())[0]!.entries.length, 1);
+    assert.equal((await entries({ remote: true }))[0]!.entries.length, 1);
+  });
+
   test("forget dry-run and apply over HTTP", async () => {
     write("memory/MEMORY.md", "- Project Falcon ships in May\n- likes tea\n");
     const dry = await call("POST", "/api/memory/forget", { query: "project falcon", dryRun: true });

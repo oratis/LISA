@@ -18,7 +18,11 @@
  *  - Mac: reads follow the server's normal auth; writes, forget and export
  *    need the loopback owner (with a loopback Host header — DNS rebinding)
  *    or an account session. A paired device token is read-only here.
- *  - State-changing routes and export refuse cross-site requests.
+ *  - Every route, the entries read included, refuses cross-site and
+ *    cross-origin requests, and a loopback-trusted caller must send a
+ *    loopback Host header (DNS rebinding can read as well as write). The
+ *    older GET /api/memory read in server.ts is a separate handler and does
+ *    not have this guard yet.
  *
  * Import is CLI-only for now (`lisa import`): an archive can be far larger
  * than any sane request-body limit, and replacing a soul over HTTP needs a
@@ -153,17 +157,17 @@ export async function handleMemoryApi(
     opts.cloud ? homeScope.run(home, fn) : fn();
 
   const isRead = method === "GET" && path === "/api/memory/entries";
-  if (!isRead) {
-    const loopbackOwner = !opts.cloud && opts.loopback;
-    if (!loopbackOwner && !opts.accountUid) {
-      json(res, 403, { error: "owner_required" });
-      return true;
-    }
-    const problem = crossSiteProblem(req, loopbackOwner && !opts.accountUid);
-    if (problem) {
-      json(res, 403, { error: problem });
-      return true;
-    }
+  const loopbackOwner = !opts.cloud && opts.loopback;
+  if (!isRead && !loopbackOwner && !opts.accountUid) {
+    json(res, 403, { error: "owner_required" });
+    return true;
+  }
+  // Every route, reads included: a loopback caller trusted for who it is must
+  // also name a loopback Host — a DNS-rebinding page can read, too.
+  const problem = crossSiteProblem(req, loopbackOwner && !opts.accountUid);
+  if (problem) {
+    json(res, 403, { error: problem });
+    return true;
   }
 
   try {
