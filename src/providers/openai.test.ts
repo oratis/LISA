@@ -21,7 +21,10 @@ function makeFakeClient(captured: Captured, chunks: Chunk[]) {
   return {
     chat: {
       completions: {
-        create: async (params: Record<string, unknown>, options?: { signal?: AbortSignal }) => {
+        create: async (
+          params: Record<string, unknown>,
+          options?: { signal?: AbortSignal },
+        ) => {
           captured.params = params;
           captured.options = options;
           return (async function* () {
@@ -53,7 +56,10 @@ describe("OpenAIProvider — abort signal passthrough", () => {
   test("chat.completions.create receives {signal} as request options (2nd arg)", async () => {
     const provider = new OpenAIProvider({ apiKey: "test-key" });
     const captured: Captured = {};
-    (provider as unknown as { client: unknown }).client = makeFakeClient(captured, TEXT_CHUNKS);
+    (provider as unknown as { client: unknown }).client = makeFakeClient(
+      captured,
+      TEXT_CHUNKS,
+    );
     const ac = new AbortController();
 
     const result = await provider.runTurn(baseOpts(ac.signal));
@@ -61,14 +67,19 @@ describe("OpenAIProvider — abort signal passthrough", () => {
     assert.equal(captured.options?.signal, ac.signal);
     assert.equal(captured.params?.model, "gpt-test");
     assert.equal(result.stopReason, "end_turn");
-    assert.deepEqual(result.content, [{ type: "text", text: "hello", citations: null }]);
+    assert.deepEqual(result.content, [
+      { type: "text", text: "hello", citations: null },
+    ]);
     assert.equal(result.usage.inputTokens, 5);
   });
 
   test("no signal in opts → request options carry signal: undefined (SDK accepts)", async () => {
     const provider = new OpenAIProvider({ apiKey: "test-key" });
     const captured: Captured = {};
-    (provider as unknown as { client: unknown }).client = makeFakeClient(captured, TEXT_CHUNKS);
+    (provider as unknown as { client: unknown }).client = makeFakeClient(
+      captured,
+      TEXT_CHUNKS,
+    );
 
     await provider.runTurn(baseOpts());
 

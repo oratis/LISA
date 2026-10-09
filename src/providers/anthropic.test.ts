@@ -96,7 +96,10 @@ describe("AnthropicProvider — abort signal passthrough", () => {
 });
 
 describe("AnthropicProvider — effort gating by model", () => {
-  function runWithModelAndEffort(model: string, effort?: ProviderRunOpts["effort"]) {
+  function runWithModelAndEffort(
+    model: string,
+    effort?: ProviderRunOpts["effort"],
+  ) {
     const provider = new AnthropicProvider({ apiKey: "test-key" });
     const captured: Captured = {};
     (provider as unknown as { client: unknown }).client = {
@@ -116,7 +119,10 @@ describe("AnthropicProvider — effort gating by model", () => {
     // The exact break: subagents/idle default to effort "low", and Haiku 4.5
     // 400s on output_config.effort. The gate must drop it so the SDK sends a
     // request Haiku accepts — and the turn completes normally.
-    const { captured, result } = await runWithModelAndEffort("claude-haiku-4-5-20251001", "low");
+    const { captured, result } = await runWithModelAndEffort(
+      "claude-haiku-4-5-20251001",
+      "low",
+    );
     assert.equal(captured.params?.output_config, undefined);
     assert.equal(result.stopReason, "end_turn");
   });

@@ -106,12 +106,9 @@ describe("resolveAnthropicAuth — Bearer gateway vs x-api-key", () => {
     );
   });
   test("blank/whitespace AUTH_TOKEN is ignored → falls back to apiKey", () => {
-    assert.deepEqual(
-      resolveAnthropicAuth({ ANTHROPIC_AUTH_TOKEN: "  ", ANTHROPIC_API_KEY: "sk" }),
-      {
-        apiKey: "sk",
-      },
-    );
+    assert.deepEqual(resolveAnthropicAuth({ ANTHROPIC_AUTH_TOKEN: "  ", ANTHROPIC_API_KEY: "sk" }), {
+      apiKey: "sk",
+    });
   });
   test("neither set → apiKey undefined", () => {
     assert.deepEqual(resolveAnthropicAuth({}), { apiKey: undefined });
@@ -127,18 +124,9 @@ describe("hasCredentialsForModel — the CLI key-gate matches the real provider 
   });
 
   test("claude-* accepts ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN", () => {
-    assert.equal(
-      hasCredentialsForModel("claude-sonnet-4-6", { ANTHROPIC_API_KEY: "sk-ant" }),
-      true,
-    );
-    assert.equal(
-      hasCredentialsForModel("claude-sonnet-4-6", { ANTHROPIC_AUTH_TOKEN: "tok" }),
-      true,
-    );
-    assert.equal(
-      hasCredentialsForModel("claude-sonnet-4-6", { ANTHROPIC_AUTH_TOKEN: "  " }),
-      false,
-    );
+    assert.equal(hasCredentialsForModel("claude-sonnet-4-6", { ANTHROPIC_API_KEY: "sk-ant" }), true);
+    assert.equal(hasCredentialsForModel("claude-sonnet-4-6", { ANTHROPIC_AUTH_TOKEN: "tok" }), true);
+    assert.equal(hasCredentialsForModel("claude-sonnet-4-6", { ANTHROPIC_AUTH_TOKEN: "  " }), false);
     assert.equal(hasCredentialsForModel("claude-sonnet-4-6", {}), false);
   });
 
