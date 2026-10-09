@@ -121,7 +121,7 @@ describe("forget", () => {
     await assert.rejects(forget("a\u0000b c"), ForgetError);
   });
 
-  test("dry-run counts every layer, changes nothing, and reports no content", async () => {
+  test("dry-run previews every layer with snippets, changes nothing, audits no content", async () => {
     seed();
     const before = new Map(
       [
@@ -151,10 +151,19 @@ describe("forget", () => {
     assert.ok(report.residuals.some((r) => /backup/i.test(r)));
     for (const [r, content] of before) assert.equal(read(r), content, `${r} changed by dry-run`);
     assert.ok(fs.existsSync(path.join(home, "kb/wiki/glacier-research.md")));
-    const json = JSON.stringify(report);
-    for (const secret of ["Oslo", "glaciology", "felt warm", "sister"]) {
-      assert.ok(!json.includes(secret), `report leaks content: ${secret}`);
-    }
+    // The preview shows each item with the text around the match, and why.
+    const at = (loc: string) => report.locations.find((l) => l.location.startsWith(loc));
+    assert.equal(at("memory/MEMORY.md#")?.snippet, "Sam's sister Alice lives in Oslo");
+    assert.equal(at("kb/wiki/glacier-research.md")?.action, "delete");
+    assert.equal(at("kb/wiki/glacier-research.md")?.why, "title");
+    assert.equal(at("kb/wiki/glacier-research.md")?.snippet, "Alice notes");
+    assert.equal(
+      at("soul/journal/2026-10-01.md:3")?.snippet,
+      "Sam told me about Alice today. I felt warm.",
+    );
+    assert.equal(at(`sessions/${SESSION}.jsonl:3`)?.snippet, "Tell me what you know about Alice");
+    assert.match(report.digest, /^[0-9a-f]{32}$/);
+    assert.equal(report.match.mode, "words");
     const audit = read("sovereignty/audit.jsonl");
     assert.match(audit, /"action":"forget.dry_run"/);
     assert.ok(!/alice/i.test(audit), "audit must not hold the query");
@@ -163,8 +172,21 @@ describe("forget", () => {
   test("apply cleans every layer, keeps structure, and leaves nothing findable", async () => {
     seed();
     await initSoulRepo();
-    const report = await forget("Alice");
+    const preview = await forget("Alice", { dryRun: true });
+    const report = await forget("Alice", { digest: preview.digest });
     assert.equal(report.dryRun, false);
+    assert.deepEqual(
+      report.locations.map((l) => l.id).sort(),
+      preview.locations.map((l) => l.id).sort(),
+      "apply changed exactly the previewed items",
+    );
+    assert.ok(
+      report.locations.every((l) => l.snippet === undefined),
+      "no content when applied",
+    );
+    for (const secret of ["Oslo", "glaciology", "felt warm", "sister"]) {
+      assert.ok(!JSON.stringify(report).includes(secret), `applied report leaks: ${secret}`);
+    }
     assert.ok(report.remaining);
     for (const [layer, n] of Object.entries(report.remaining)) {
       assert.equal(n, 0, `${layer} still has matches after forget`);
@@ -255,4 +277,114 @@ describe("forget", () => {
       "- Alice is a friend\n",
     );
   });
+
+  test("matches whole words only: 'Ann' spares annual, planning and announcement", async () => {
+    process.env.LISA_KB_NO_GIT = "1";
+    write(
+      "memory/MEMORY.md",
+      "- Ann is my cousin\n- annual review is on Friday\n- planning a trip to Rome\n",
+    );
+    write("kb/wiki/annual-report.md", "---\ntitle: Annual report\n---\nRevenue grew.\n");
+    write("kb/wiki/rome.md", "---\ntitle: Rome\n---\nThe announcement went out.\nColosseum.\n");
+    write("kb/wiki/family.md", "---\ntitle: Family\n---\nAnn's birthday is in May.\nCake.\n");
+    write("soul/journal/2026-10-01.md", "Talked about ANN and the annual plan.\n");
+    try {
+      const report = await forget("Ann");
+      assert.equal(
+        read("memory/MEMORY.md"),
+        "- annual review is on Friday\n- planning a trip to Rome\n",
+      );
+      assert.ok(fs.existsSync(path.join(home, "kb/wiki/annual-report.md")));
+      assert.equal(
+        read("kb/wiki/rome.md"),
+        "---\ntitle: Rome\n---\nThe announcement went out.\nColosseum.\n",
+      );
+      assert.match(read("kb/wiki/family.md"), new RegExp(`${escape(FORGOTTEN)}\\nCake\\.`));
+      assert.equal(
+        read("soul/journal/2026-10-01.md"),
+        `Talked about ${FORGOTTEN} and the annual plan.\n`,
+      );
+      assert.equal(report.counts.memory, 1);
+      assert.equal(report.counts.kb, 1);
+    } finally {
+      delete process.env.LISA_KB_NO_GIT;
+    }
+  });
+
+  test("a KB page is never deleted for its file name or provenance alone", async () => {
+    process.env.LISA_KB_NO_GIT = "1";
+    write(
+      "kb/sources/ann-call.md",
+      "---\ntitle: Call notes\nurl: https://example.com/ann\nauthor: Ann Lee\n---\nBudget is fine.\n",
+    );
+    write("kb/wiki/ann.md", "---\ntitle: Tea\ntags: [drinks]\n---\nOolong.\n");
+    write("kb/wiki/people.md", "---\ntitle: People\ntags: [ann, friends]\n---\nA list.\n");
+    try {
+      const preview = await forget("ann", { dryRun: true });
+      const report = await forget("ann", { digest: preview.digest });
+      // Kept: the title and tags don't name the topic.
+      assert.ok(fs.existsSync(path.join(home, "kb/wiki/ann.md")));
+      assert.equal(read("kb/wiki/ann.md"), "---\ntitle: Tea\ntags: [drinks]\n---\nOolong.\n");
+      const call = read("kb/sources/ann-call.md");
+      assert.ok(fs.existsSync(path.join(home, "kb/sources/ann-call.md")));
+      assert.match(call, /Budget is fine\./);
+      assert.ok(!/Ann Lee|example\.com\/ann/.test(call), "matching provenance values redacted");
+      // Deleted: a tag names it.
+      assert.ok(!fs.existsSync(path.join(home, "kb/wiki/people.md")));
+      assert.equal(preview.locations.find((l) => l.location === "kb/wiki/people.md")?.why, "tag");
+      // File names that mention it are listed, not acted on.
+      assert.deepEqual(
+        report.untouched
+          .filter((u) => u.layer === "kb")
+          .map((u) => [u.location, u.why])
+          .sort(),
+        [
+          ["kb/sources/ann-call.md", "file name"],
+          ["kb/wiki/ann.md", "file name"],
+        ],
+      );
+    } finally {
+      delete process.env.LISA_KB_NO_GIT;
+    }
+  });
+
+  test("CJK topics match the exact character sequence, and the preview says so", async () => {
+    write("memory/MEMORY.md", "- 我住在東京都内\n- 京都很美\n- met Ann at 東京都庁\n");
+    const preview = await forget("東京都", { dryRun: true });
+    assert.equal(preview.match.mode, "sequence");
+    assert.match(preview.match.note, /exact character sequence/);
+    assert.equal(preview.counts.memory, 2);
+    await forget("東京都", { digest: preview.digest });
+    assert.equal(read("memory/MEMORY.md"), "- 京都很美\n");
+    // A Latin word next to CJK text still counts as a whole word.
+    write("memory/MEMORY.md", "- 我和Ann去了\n- Annabel\n");
+    await forget("Ann");
+    assert.equal(read("memory/MEMORY.md"), "- Annabel\n");
+  });
+
+  test("apply refuses when the matches changed after the preview, and changes nothing", async () => {
+    write("memory/MEMORY.md", "- Ann is my cousin\n- likes tea\n");
+    write("soul/journal/2026-10-01.md", "Ann called.\n");
+    const preview = await forget("Ann", { dryRun: true });
+    // A new mention appears after the person saw the preview.
+    fs.appendFileSync(
+      path.join(home, "soul/journal/2026-10-01.md"),
+      "Ann's address is 5 Elm St.\n",
+    );
+    await assert.rejects(
+      forget("Ann", { digest: preview.digest }),
+      (e: Error) => e instanceof ForgetError && e.code === "preview_changed",
+    );
+    assert.equal(read("memory/MEMORY.md"), "- Ann is my cousin\n- likes tea\n");
+    assert.equal(read("soul/journal/2026-10-01.md"), "Ann called.\nAnn's address is 5 Elm St.\n");
+    // A fresh preview of the new state applies.
+    const again = await forget("Ann", { dryRun: true });
+    assert.equal(again.counts.journal, 2);
+    await forget("Ann", { digest: again.digest });
+    assert.equal(read("memory/MEMORY.md"), "- likes tea\n");
+  });
 });
+
+function escape(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}

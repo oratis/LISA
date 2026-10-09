@@ -60,8 +60,11 @@ describe("lisa forget", () => {
     write("memory/MEMORY.md", "- Project Falcon ships in May\n- likes tea\n");
     const t = io();
     assert.equal(await runForgetCommand(["project falcon", "--dry-run"], t), 0);
-    assert.ok(t.lines.some((l) => /dry run/.test(l)));
+    assert.ok(t.lines.some((l) => /preview \(nothing changed yet\)/.test(l)));
     assert.ok(t.lines.some((l) => /memory\s+1/.test(l)));
+    // Each item is listed with the text around the match.
+    assert.ok(t.lines.some((l) => /delete\s+memory\/MEMORY\.md#m_/.test(l)));
+    assert.ok(t.lines.some((l) => l.includes("“Project Falcon ships in May”")));
     assert.ok(
       t.lines.some((l) => /provider/i.test(l)),
       "residuals are listed",

@@ -291,11 +291,42 @@ describe("memory entries API (Mac edition)", () => {
     assert.equal(report.dryRun, true);
     assert.equal(report.counts.memory, 1);
     assert.equal(read("memory/MEMORY.md"), "- Project Falcon ships in May\n- likes tea\n");
-    const bad = await call("POST", "/api/memory/forget", { query: "x" });
+    const bad = await call("POST", "/api/memory/forget", { query: "x", dryRun: true });
     assert.equal(bad.status, 400);
-    const applied = await call("POST", "/api/memory/forget", { query: "project falcon" });
+    const applied = await call("POST", "/api/memory/forget", {
+      query: "project falcon",
+      digest: (dry.json.report as { digest: string }).digest,
+    });
     assert.equal(applied.status, 200);
     assert.equal(read("memory/MEMORY.md"), "- likes tea\n");
+  });
+
+  test("forget applies only a previewed set: no digest → 400, a changed set → 409", async () => {
+    write("memory/MEMORY.md", "- Project Falcon ships in May\n- likes tea\n");
+    const dry = await call("POST", "/api/memory/forget", { query: "project falcon", dryRun: true });
+    const report = dry.json.report as {
+      digest: string;
+      locations: { id: string; snippet?: string; location: string }[];
+    };
+    assert.match(report.locations[0]!.snippet ?? "", /Project Falcon ships in May/);
+    const noPreview = await call("POST", "/api/memory/forget", { query: "project falcon" });
+    assert.equal(noPreview.status, 400);
+    assert.equal(noPreview.json.error, "preview_required");
+    // Something new mentions it after the preview: apply refuses, nothing changes.
+    write(
+      "memory/MEMORY.md",
+      "- Project Falcon ships in May\n- likes tea\n- project falcon budget\n",
+    );
+    const stale = await call("POST", "/api/memory/forget", {
+      query: "project falcon",
+      digest: report.digest,
+    });
+    assert.equal(stale.status, 409);
+    assert.equal(stale.json.error, "preview_changed");
+    assert.equal(
+      read("memory/MEMORY.md"),
+      "- Project Falcon ships in May\n- likes tea\n- project falcon budget\n",
+    );
   });
 
   test("export streams a gzip'd tar of the owner's Lisa; sessions are opt-in", async () => {
@@ -377,10 +408,16 @@ describe("memory sovereignty API — cloud tenant isolation", () => {
   });
 
   test("uid A can't forget B's data", async () => {
+    const dry = await call(
+      "POST",
+      "/api/memory/forget",
+      { query: "secret plan", dryRun: true },
+      { cloud: true, uid: A, remote: true },
+    );
     const r = await call(
       "POST",
       "/api/memory/forget",
-      { query: "secret plan" },
+      { query: "secret plan", digest: (dry.json.report as { digest: string }).digest },
       { cloud: true, uid: A, remote: true },
     );
     assert.equal(r.status, 200);

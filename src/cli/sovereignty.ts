@@ -69,19 +69,25 @@ function parse(args: string[], valued: string[]): Parsed {
 
 function summarize(report: ForgetReport, io: CliIo): void {
   const total = FORGET_LAYERS.reduce((n, l) => n + report.counts[l], 0);
-  io.out(report.dryRun ? "Forget — dry run (nothing changed):" : "Forget — done:");
+  io.out(report.dryRun ? "Forget — preview (nothing changed yet):" : "Forget — done:");
+  if (report.dryRun) io.out(`  ${report.match.note}`);
   for (const layer of FORGET_LAYERS) {
     if (report.counts[layer] > 0) io.out(`  ${layer.padEnd(16)} ${report.counts[layer]}`);
   }
   if (total === 0) io.out("  (no mentions found)");
   if (report.locations.length) {
-    io.out("Locations:");
-    for (const l of report.locations)
-      io.out(`  ${l.action.padEnd(7)} ${l.location} (${l.matches})`);
+    io.out(report.dryRun ? "What will change:" : "What changed:");
+    for (const l of report.locations) {
+      const why = l.why ? ` [${l.why}]` : "";
+      io.out(`  ${l.action.padEnd(7)} ${l.location} (${l.matches})${why}`);
+      if (l.snippet) io.out(`          “${l.snippet}”`);
+    }
   }
   if (report.untouched.length) {
-    io.out("Mentioned in Lisa's own soul files (hers — not edited):");
-    for (const u of report.untouched) io.out(`  ${u.location} (${u.matches})`);
+    io.out("Mentioned but not edited (Lisa's own soul files; KB file names):");
+    for (const u of report.untouched) {
+      io.out(`  ${u.location} (${u.matches})${u.why ? ` [${u.why}]` : ""}`);
+    }
   }
   for (const e of report.errors) io.err(`  ! ${e.layer}: ${e.error}`);
   if (report.remaining) {
@@ -133,15 +139,18 @@ export async function runForgetCommand(args: string[], io: CliIo = defaultIo()):
         io.out("Cancelled; nothing changed.");
         return 1;
       }
+    } else if (!json) {
+      summarize(preview, io);
     }
-    const report = await forget(query);
+    // Apply exactly what the preview listed; refused if anything changed since.
+    const report = await forget(query, { digest: preview.digest });
     if (json) io.out(JSON.stringify(report, null, 2));
     else summarize(report, io);
     return report.errors.length ? 1 : 0;
   } catch (e) {
     if (e instanceof ForgetError) {
       io.err(e.message);
-      return 2;
+      return e.code === "preview_changed" ? 1 : 2;
     }
     throw e;
   }

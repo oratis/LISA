@@ -6,7 +6,8 @@
  *   POST   /api/memory/entries          { store, text } → append
  *   PUT    /api/memory/entries/{id}     { text }        → replace
  *   DELETE /api/memory/entries/{id}
- *   POST   /api/memory/forget           { query, dryRun? }
+ *   POST   /api/memory/forget           { query, dryRun: true } → preview
+ *                                        { query, digest }      → apply it
  *   GET    /api/export[?sessions=1]     application/gzip download
  *
  * Trust (server-side, never client-flagged):
@@ -117,7 +118,7 @@ function sendError(res: http.ServerResponse, e: unknown): void {
     return;
   }
   if (e instanceof ForgetError) {
-    json(res, 400, { error: e.code, message: e.message });
+    json(res, e.code === "preview_changed" ? 409 : 400, { error: e.code, message: e.message });
     return;
   }
   if (e instanceof Error && /timed out acquiring lock/.test(e.message)) {
@@ -219,9 +220,17 @@ export async function handleMemoryApi(
       }
       const body = await readJson(req, res);
       if (!body) return true;
-      const report = await run(() =>
-        forget(body.query as string, { dryRun: body.dryRun === true }),
-      );
+      const dryRun = body.dryRun === true;
+      // Apply only what a preview showed: the caller passes back its digest.
+      if (!dryRun && typeof body.digest !== "string") {
+        json(res, 400, {
+          error: "preview_required",
+          message: "preview first (dryRun: true) and pass its digest to apply",
+        });
+        return true;
+      }
+      const digest = dryRun ? undefined : (body.digest as string);
+      const report = await run(() => forget(body.query as string, { dryRun, digest }));
       json(res, 200, { report });
       return true;
     }

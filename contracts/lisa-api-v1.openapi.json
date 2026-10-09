@@ -1300,7 +1300,7 @@
     "/api/memory/forget": {
       "post": {
         "operationId": "forgetTopic",
-        "description": "Forget a topic across memory, KB, sessions, search indexes, relationships and (literal redactions only) Lisa's journal. dryRun returns counts and locations without changing anything. The report never carries content.",
+        "description": "Forget a topic across memory, KB, sessions, search indexes, relationships and (literal redactions only) Lisa's journal. The topic matches as whole words, case-insensitive (exact character sequence for scripts without spaces, see report.match). dryRun: true previews every item that would change, each with an id and a short snippet of the text around the match, plus a digest. Apply by sending the same query with that digest; the server re-plans and answers 409 preview_changed unless the set is exactly the previewed one. An applied report carries no content.",
         "requestBody": {
           "required": true,
           "content": {
@@ -1331,6 +1331,9 @@
             "$ref": "#/components/responses/Error"
           },
           "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "415": {
@@ -3766,25 +3769,35 @@
             "maxLength": 200
           },
           "dryRun": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "true previews; anything else applies and needs digest."
+          },
+          "digest": {
+            "type": "string",
+            "description": "The digest of the confirmed preview. Required to apply."
           }
         }
       },
       "ForgetLocation": {
         "type": "object",
         "required": [
+          "id",
           "layer",
           "location",
           "matches",
           "action"
         ],
         "properties": {
+          "id": {
+            "type": "string",
+            "description": "Stable item id; apply changes only previewed ids."
+          },
           "layer": {
             "type": "string"
           },
           "location": {
             "type": "string",
-            "description": "Home-relative path (memory entries as path#id). Never content."
+            "description": "Home-relative path; memory entries as path#id, transcript and soul-file lines as path:line."
           },
           "matches": {
             "type": "integer",
@@ -3799,6 +3812,14 @@
               "unlink",
               "none"
             ]
+          },
+          "snippet": {
+            "type": "string",
+            "description": "Dry run only: about 80 characters of text around the first match."
+          },
+          "why": {
+            "type": "string",
+            "description": "Why this action, e.g. title, tag, file name."
           }
         }
       },
@@ -3806,6 +3827,8 @@
         "type": "object",
         "required": [
           "dryRun",
+          "match",
+          "digest",
           "counts",
           "locations",
           "untouched",
@@ -3815,6 +3838,29 @@
         "properties": {
           "dryRun": {
             "type": "boolean"
+          },
+          "match": {
+            "type": "object",
+            "required": [
+              "mode",
+              "note"
+            ],
+            "properties": {
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "words",
+                  "sequence"
+                ]
+              },
+              "note": {
+                "type": "string"
+              }
+            }
+          },
+          "digest": {
+            "type": "string",
+            "description": "Digest of the previewed item ids; pass back to apply."
           },
           "counts": {
             "type": "object",

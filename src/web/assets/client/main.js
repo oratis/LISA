@@ -1702,11 +1702,20 @@ async function showMemory() {
       const { report } = await memoryApi('POST', '/api/memory/forget', { query, dryRun: true });
       const parts = Object.keys(report.counts).filter(k => report.counts[k] > 0).map(k => k + ' ' + report.counts[k]);
       if (!parts.length) { fout.textContent = 'Nothing mentions that.'; return; }
-      fout.innerHTML = escapeHtml('Found: ' + parts.join(' · ')) + ' <button id="memForgetGo">forget now</button>';
+      // Every item that will change, with the text around the match.
+      const items = (report.locations || []).filter(l => l.layer !== 'search_index').map(l =>
+        '<li><b>' + escapeHtml(l.action) + '</b> ' + escapeHtml(l.location) + (l.why ? ' (' + escapeHtml(l.why) + ')' : '') +
+        (l.snippet ? '<br><span class="desc">“' + escapeHtml(l.snippet) + '”</span>' : '') + '</li>').join('');
+      const untouched = (report.untouched || []).map(u => '<li>' + escapeHtml(u.location) + (u.why ? ' (' + escapeHtml(u.why) + ')' : '') + '</li>').join('');
+      fout.innerHTML = '<div>' + escapeHtml(report.match ? report.match.note : '') + '</div>' +
+        '<div>' + escapeHtml('Found: ' + parts.join(' · ')) + '</div>' +
+        '<ul style="max-height:16em;overflow:auto">' + items + '</ul>' +
+        (untouched ? '<div>Mentioned but not edited:</div><ul>' + untouched + '</ul>' : '') +
+        '<button id="memForgetGo">forget these</button>';
       document.getElementById('memForgetGo').addEventListener('click', async () => {
-        if (!window.confirm('Forget it everywhere? This cannot be undone here.\n\nNot reachable: ' + report.residuals.join(' '))) return;
+        if (!window.confirm('Forget the items listed? This cannot be undone here.\n\nNot reachable: ' + report.residuals.join(' '))) return;
         try {
-          const done = await memoryApi('POST', '/api/memory/forget', { query });
+          const done = await memoryApi('POST', '/api/memory/forget', { query, digest: report.digest });
           const left = Object.keys(done.report.remaining || {}).filter(k => done.report.remaining[k] > 0);
           showMemory().then(() => {
             const out = document.getElementById('memForgetOut');
