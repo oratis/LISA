@@ -206,6 +206,28 @@ describe("dream capture (soul git on)", () => {
     assert.equal(rec.metrics.identityPatches, 1);
   });
 
+  test("cloud edition: soul git defaults off, the snapshot path still captures the soul diff", async () => {
+    // A repo exists, but the cloud edition (GCS FUSE) never runs git by default.
+    delete process.env.LISA_SOUL_GIT;
+    process.env.LISA_EDITION = "cloud";
+    await _resetGitAvailableCache();
+    try {
+      await withDream({ trigger: "idle" }, async () => {
+        await soulStore.writeIdentity("I am Lisa, in the cloud.");
+      });
+      const rec = await onlyDream();
+      assert.equal(rec.capture, "snapshot");
+      assert.equal(rec.soulCommits.length, 0);
+      const id = rec.changes.find((ch) => ch.path === "soul/identity.md")!;
+      assert.match(id.diff, /\+ I am Lisa, in the cloud\./);
+      assert.match(id.diff, /- I am Lisa\./);
+      assert.equal(id.revertible, false);
+      assert.equal(rec.metrics.identityPatches, 1);
+    } finally {
+      delete process.env.LISA_EDITION;
+    }
+  });
+
   test("a concurrent dream's stamped commits are not attributed to this one", async () => {
     const a = await beginDream({ trigger: "idle" });
     const b = await beginDream({ trigger: "reflect" });
