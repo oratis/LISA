@@ -6,17 +6,24 @@
  * draft restricts what the run is offered; it pre-approves nothing. When the
  * user enables the task they are shown, in plain words, what it would do
  * without asking, and only their confirmation of exactly that — recorded as a
- * digest of the instruction, the schedule or trigger, the envelope and the
- * notify mode — lets Warden treat the envelope as "preapproved". Any change to
- * those fields makes the digest stop matching, so a confirmation never covers
- * a task it was not given for.
+ * digest of every field that reaches the run's prompt or bounds what a run may
+ * do: the title (the first line of the prompt), the instruction, the schedule
+ * or trigger, the host, the envelope, the notify mode and the budget — lets
+ * Warden treat the envelope as "preapproved". Any change to any of them makes
+ * the digest stop matching, so a confirmation never covers a task it was not
+ * given for (#422 review N1).
  *
  * Pure: no I/O. The callers that may confirm are the user's own surfaces —
  * `lisa tasks enable` and `PATCH /api/tasks/{id}` from a caller who may
  * approve. No model tool calls `confirmTask`.
  */
 import { createHash } from "node:crypto";
-import type { Task, TaskEnvelopeConfirmation } from "./types.js";
+import {
+  DEFAULT_APPROVAL_WAIT_MS,
+  DEFAULT_MAX_APPROVALS,
+  type Task,
+  type TaskEnvelopeConfirmation,
+} from "./types.js";
 
 function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical);
@@ -32,26 +39,39 @@ function canonical(value: unknown): unknown {
 
 type Confirmable = Pick<
   Task,
-  "kind" | "instruction" | "schedule" | "trigger" | "envelope" | "notify"
+  | "kind"
+  | "title"
+  | "instruction"
+  | "schedule"
+  | "trigger"
+  | "host"
+  | "envelope"
+  | "notify"
+  | "budget"
 >;
 
 /**
  * The digest of what a confirmation covers: sha256 hex of the canonical JSON
- * of the instruction, schedule, trigger, envelope and notify mode (and the
- * kind, which decides how the schedule is read). The title is not in it: it
- * changes nothing a run does.
+ * of every field that reaches the run's prompt frame (frame.ts) or bounds what
+ * a run may do — the title, the instruction, the schedule, the trigger, the
+ * host, the envelope, the notify mode and the budget, and the kind, which
+ * decides how the schedule is read. Nothing the frame quotes from the task is
+ * left out (#422 review N1).
  */
 export function taskDigest(task: Confirmable): string {
   const content = {
     kind: task.kind,
+    title: task.title,
     instruction: task.instruction,
     schedule: task.schedule ?? null,
     trigger: task.trigger ?? null,
+    host: task.host,
     envelope: task.envelope ?? null,
     notify: task.notify,
+    budget: task.budget,
   };
   return createHash("sha256")
-    .update("lisa.task-confirmation.v1\n")
+    .update("lisa.task-confirmation.v2\n")
     .update(JSON.stringify(canonical(content)))
     .digest("hex");
 }
@@ -122,6 +142,26 @@ function clip(text: string, max: number): string {
   return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
 }
 
+const HOST_WORDS: Readonly<Record<Task["host"], string>> = Object.freeze({
+  home: "this Mac only",
+  cloud: "the hosted edition only",
+  any: "this Mac or the hosted edition",
+});
+
+function budgetWords(budget: Task["budget"]): string {
+  const parts = [
+    `${budget.tokens} tokens`,
+    `${Math.round(budget.wallclockMs / 60_000)} min`,
+    `${budget.maxToolCalls} tool calls`,
+  ];
+  if (budget.usdMicros !== undefined) parts.push(`$${(budget.usdMicros / 1_000_000).toFixed(2)}`);
+  parts.push(
+    `at most ${budget.maxApprovals ?? DEFAULT_MAX_APPROVALS} approvals asked`,
+    `${Math.round((budget.approvalWaitMs ?? DEFAULT_APPROVAL_WAIT_MS) / 60_000)} min waiting for them`,
+  );
+  return parts.join(", ");
+}
+
 function whenWords(task: Confirmable): string {
   if (task.trigger) {
     const t = task.trigger;
@@ -151,9 +191,12 @@ function whenWords(task: Confirmable): string {
  */
 export function describeForConfirmation(task: Confirmable): string[] {
   const lines = [
+    `Title: ${task.title}`,
     `Instruction: ${clip(task.instruction, 600)}`,
     `When: ${whenWords(task)}`,
+    `Runs on: ${HOST_WORDS[task.host]}`,
     `Tells you: ${task.notify}`,
+    `Budget per run: ${budgetWords(task.budget)}`,
   ];
   const envelope = task.envelope;
   if (!envelopeCouldPreapprove(task)) {
