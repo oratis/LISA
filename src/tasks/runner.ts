@@ -44,12 +44,15 @@ import { notSent, type Provider, type ProviderUsage } from "../providers/types.j
 import { modeIsBounded, type SandboxMode } from "../sandbox/mode.js";
 import { sandboxModeForProfile } from "../sandbox/sandbox.js";
 import { validateToolInput } from "../tools/validate.js";
+import { isBuiltinTaintSource } from "../warden/classify.js";
 import { stripSensitiveTokens } from "../warden/hygiene.js";
 import type { AgentEvent, StoredMessage, ToolDefinition } from "../types.js";
 import { isEnvelopeConfirmed } from "./confirmation.js";
+import { runWasTainted } from "./external.js";
 import {
   buildResumeNote,
   buildTaskFrame,
+  frameInheritsTaint,
   isNoUpdate,
   planResume,
   TASK_SYSTEM_ADDENDUM,
@@ -366,6 +369,8 @@ interface SettledNotice {
   kind: TaskNotice["kind"];
   summary: string;
   priority: TaskNotice["priority"];
+  /** The summary quotes what the run itself wrote (not only the engine's words). */
+  carriesOutput?: boolean;
 }
 
 /**
@@ -395,6 +400,13 @@ function settleTask(t: Task, run: TaskRun, now: number, cloud: boolean): Settled
   delete t.queued;
   t.lastRunAt = now;
   const recurring = isRecurring(t);
+  // Taint travels with what a run leaves behind (#422 review N3): a tainted
+  // run that made state-changing calls may have written into the task's own
+  // folder, which every later run can read — so they all start tainted.
+  const tainted = runWasTainted(run);
+  if (tainted && ((run.effects?.length ?? 0) > 0 || Object.keys(run.executedDigests).length > 0)) {
+    t.workspaceTainted = true;
+  }
 
   /** Back to rest, with the next occurrence — or switched off if there is none to compute. */
   const next = (): void => {
@@ -439,7 +451,12 @@ function settleTask(t: Task, run: TaskRun, now: number, cloud: boolean): Settled
   if (run.state === "succeeded") {
     t.failureCount = 0;
     t.authFailureCount = 0;
-    if (!noop) t.lastSummary = clip(summary, 2000);
+    if (!noop) {
+      t.lastSummary = clip(summary, 2000);
+      // …and so does its summary: the next frame quotes it as data.
+      if (tainted) t.lastSummaryTainted = true;
+      else delete t.lastSummaryTainted;
+    }
     const fingerprint = digestCall("summary", summary);
     const changed = fingerprint !== t.lastResultFingerprint;
     t.lastResultFingerprint = fingerprint;
@@ -454,6 +471,7 @@ function settleTask(t: Task, run: TaskRun, now: number, cloud: boolean): Settled
         kind: "task_result",
         summary: noop ? "Ran. Nothing to report." : summary,
         priority: "normal",
+        carriesOutput: !noop,
       });
     }
     end("succeeded");
@@ -494,6 +512,7 @@ function settleTask(t: Task, run: TaskRun, now: number, cloud: boolean): Settled
     kind: "task_failed",
     summary: `Did not finish: ${why}.${summary ? `\n\nLast output:\n${summary}` : ""}`,
     priority: "normal",
+    carriesOutput: !!summary,
   });
   end("failed");
   return notices;
@@ -977,7 +996,14 @@ export class TaskRunner {
         : "scheduled";
     const run = await this.newRun(
       task.id,
-      { state: "running", trigger, ...(input !== undefined ? { input } : {}) },
+      {
+        state: "running",
+        trigger,
+        ...(input !== undefined ? { input } : {}),
+        // What an earlier tainted run left (its summary in this frame, or its
+        // writes in the folder) taints this run from its first call.
+        ...(frameInheritsTaint(task) ? { inheritedTaint: true } : {}),
+      },
       now,
     );
     const started = await this.saveTask(
@@ -1403,6 +1429,14 @@ export class TaskRunner {
       const tools = taskToolset(surface, task.envelope, {
         untrustedInput: run.input !== undefined,
       });
+      // The taint an earlier run left is the task's, and it does not change
+      // while a run is active: a run continued from before it was recorded
+      // takes it now (and keeps it, at its next checkpoint).
+      if (frameInheritsTaint(task)) run.inheritedTaint = true;
+      /** Recorded on the run; the next checkpoint persists it. */
+      const markTainted = (): void => {
+        run.tainted = true;
+      };
       const toolMap = new Map(tools.map((t) => [t.name, t]));
       // Unattended ⇒ the bounded sandbox mode, whatever the process default is.
       const sandboxMode =
@@ -1428,14 +1462,13 @@ export class TaskRunner {
         home: lisaHome(),
         title: task.title,
         // A run a watcher hit started quotes an outsider's text in its prompt,
-        // and a continued run that was tainted still has that content in its
-        // history: either way it is tainted from its first call.
-        tainted: run.input !== undefined || run.tainted === true,
+        // a continued run that was tainted still has that content in its
+        // history, and a run whose frame or folder carries what a tainted
+        // earlier run wrote reads that text: tainted from its first call.
+        tainted: runWasTainted(run),
         // Recorded on the run; the checkpoint after the call that tainted it
         // lands before that call's result is in the saved history.
-        onTaint: () => {
-          run.tainted = true;
-        },
+        onTaint: markTainted,
         cwd: workspace,
         sandboxMode,
         tools,
@@ -1451,6 +1484,10 @@ export class TaskRunner {
           return { allow: true };
         }
         const decision = await gate(name, input);
+        // The runner keeps its own record of taint, gate or no gate (the
+        // read-only allow-list lets a fetch through with Warden off): the
+        // summary and the folder carry it to the next run either way.
+        if (decision.allow && isBuiltinTaintSource(name)) markTainted();
         // The run is being stopped under this call — shutdown, a lost lease,
         // an outcome that could not be recorded — and that is what ended a
         // pending approval: nobody answered it. That refusal must not reach
@@ -1815,6 +1852,9 @@ export class TaskRunner {
           ...(run.artifacts ? { artifacts: run.artifacts } : {}),
           priority: n.priority,
           kind: n.kind,
+          // What a tainted run wrote reaches the conversation fenced, and
+          // taints it (delivery.ts).
+          ...(n.carriesOutput && runWasTainted(run) ? { tainted: true } : {}),
         },
         this.now(),
       );
@@ -1865,6 +1905,7 @@ export class TaskRunner {
     kind: TaskNotice["kind"],
     summary: string,
     priority: TaskNotice["priority"],
+    tainted = false,
   ): Promise<void> {
     try {
       await this.saveNotice(
@@ -1879,6 +1920,7 @@ export class TaskRunner {
           ...(run.artifacts ? { artifacts: run.artifacts } : {}),
           priority,
           kind,
+          ...(tainted ? { tainted: true } : {}),
         },
         this.now(),
       );
@@ -1958,7 +2000,8 @@ export class TaskRunner {
         stopReason: "watch_hit",
         summary: run.summary.slice(0, 500),
       });
-      await this.notify(task, run, "watch_hit", describeHit(hit), "high");
+      // Outside text by definition: fenced on the card, and it taints the conversation.
+      await this.notify(task, run, "watch_hit", describeHit(hit), "high", true);
     }
 
     const updated = await this.saveTask(

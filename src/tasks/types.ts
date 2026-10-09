@@ -229,6 +229,18 @@ export interface Task {
   /** Short summary of the last finished run, fed into the next run's task frame. */
   lastSummary?: string;
   /**
+   * `lastSummary` was written by a run that read outside content (#422 review
+   * N3). The next run's frame then quotes it inside the external-content
+   * markers, as data, and that run is tainted from its first call.
+   */
+  lastSummaryTainted?: boolean;
+  /**
+   * A run that had read outside content made state-changing calls while the
+   * task's own folder was writable to it: what it left there is outside text
+   * too, so every later run of the task starts tainted. Never cleared.
+   */
+  workspaceTainted?: boolean;
+  /**
    * The run currently in flight. Set when a run starts and cleared when it
    * finishes; a value here with no live lease means the run was interrupted
    * and must be resumed.
@@ -318,11 +330,18 @@ export interface TaskRun {
   /** Input handed to the run by a watcher hit, if any. */
   input?: string;
   /**
-   * Untrusted content has entered this run (the approval gate said so). Kept
+   * Untrusted content has entered this run (the approval gate said so, or the
+   * runner saw a call to a tool that returns outside text go through). Kept
    * on the run so a resumed or retried segment starts tainted: the content is
    * still in its history.
    */
   tainted?: boolean;
+  /**
+   * The run started tainted because of what an earlier run of the task left:
+   * a last summary written by a tainted run (quoted in this run's frame), or
+   * a folder a tainted run wrote to. Written in the run's first record.
+   */
+  inheritedTaint?: boolean;
   summary?: string;
   artifacts?: TaskArtifact[];
   error?: string;
@@ -471,6 +490,12 @@ export interface TaskNotice {
   artifacts?: TaskArtifact[];
   priority: "low" | "normal" | "high";
   kind: TaskNoticeKind;
+  /**
+   * The summary carries what a run that read outside content wrote. The card
+   * quotes it inside the external-content markers and taints the
+   * conversation it lands in (delivery.ts).
+   */
+  tainted?: boolean;
 }
 
 /** Hands a finished run's result to the user. The Reach-out gate plugs in here. */

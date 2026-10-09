@@ -160,6 +160,15 @@ const TAINT_TOOLS = new Set([
   "transcribe",
 ]);
 
+/**
+ * Is this builtin a taint source — does its result carry text the user did
+ * not write? For hosts that track taint without a Warden session of their own
+ * (the task runner records it on the run either way).
+ */
+export function isBuiltinTaintSource(name: string): boolean {
+  return TAINT_TOOLS.has(name);
+}
+
 /** Reads that talk to a fixed service of the tool's own. */
 const FIXED_EGRESS_READS = new Set(["web_search", "npm_info", "pr_status"]);
 

@@ -419,7 +419,7 @@ async function appendRecord(taskId: string, runId: string, rec: RunRecord): Prom
 /** Start a run: write its first checkpoint and link it from the task. */
 export async function createRun(
   taskId: string,
-  init: Partial<Pick<TaskRun, "id" | "input" | "state" | "trigger">> = {},
+  init: Partial<Pick<TaskRun, "id" | "input" | "state" | "trigger" | "inheritedTaint">> = {},
   now = Date.now(),
 ): Promise<TaskRun> {
   if (init.id !== undefined && !isSafeId(init.id)) throw new Error(`invalid run id: ${init.id}`);
@@ -435,6 +435,8 @@ export async function createRun(
     ...(init.trigger !== undefined ? { trigger: init.trigger } : {}),
     ...(init.trigger === "manual" ? { manual: true } : {}),
     ...(init.input !== undefined ? { input: init.input } : {}),
+    // …and so is a taint it inherited: a resumed run can never start clean.
+    ...(init.inheritedTaint === true ? { inheritedTaint: true } : {}),
   };
   // The run's directory is made only for a task that exists, one level at a time.
   if (!(await pathExists(taskFile(taskId)))) throw new TaskGoneError(`task ${taskId}`);

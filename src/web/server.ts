@@ -905,6 +905,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
             await ctx.session.appendMessage(message);
             ctx.history.push(message);
           },
+          // A card that carries outside text taints the conversation it
+          // lands in, so the next chat turn that reads it is tainted (N3).
+          markTainted: () => warden.markTainted(ctx.session.id, scopedUid()),
         }),
       );
       ctx.chain = job.then(
