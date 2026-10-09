@@ -24,6 +24,7 @@ import {
 } from "../tasks/store.js";
 import type { Task, TaskNotice } from "../tasks/types.js";
 import { readAudit } from "./audit.js";
+import { createGrants, loadGrants } from "./grants.js";
 import { WardenInbox } from "./inbox.js";
 import {
   createTaskApprovalFactory,
@@ -797,6 +798,125 @@ test("a notice the gate withholds leaves the approval in the inbox, where it can
     assert.equal(answer.ok, true);
     await runner.drain();
     assert.equal(writes.length, 1);
+    await inbox.shutdown();
+  });
+});
+
+// ── item 3: grants scoped to a task end with the run ──
+
+test("a task-scoped grant covers the rest of its run, is revoked when the run ends, and the next run asks again", async () => {
+  await withHome(async (home, ws) => {
+    const task = await dueRoutine({ nextRunAt: Date.now() - 1000 });
+    const { inbox, asked } = wardenInbox({ approveAfterMs: 0, scope: "task" });
+    const writes: unknown[] = [];
+    const first = scripted([
+      turn([call("write", { path: path.join(ws, "a.txt"), content: "one" })]),
+      turn([call("write", { path: path.join(ws, "b.txt"), content: "two" })]),
+      say("Wrote both."),
+    ]);
+    const runner = makeRunner(ws, {
+      provider: first.provider,
+      deliver: collector().deliver,
+      tools: [writeTool(writes)],
+      approvalFactory: factoryOn(inbox),
+      now: Date.now,
+    });
+    await runner.tick();
+    await runner.drain();
+    assert.equal(writes.length, 2);
+    assert.equal(asked().length, 1, "the second write was covered by the task grant");
+    assert.equal(
+      (await loadGrants(home)).grants.filter((g) => g.scope === "task").length,
+      0,
+      "revoked when the run ended",
+    );
+    const revoked = (await readAudit({ home })).filter((e) => e.kind === "grant_revoked");
+    assert.equal(revoked.length, 1);
+    assert.equal(revoked[0]!.taskId, task.id);
+    assert.equal(revoked[0]!.note, "the task's run ended");
+
+    // A later run of the same task asks again.
+    const second = new TaskRunner({
+      tools: [writeTool(writes)],
+      model: "claude-test",
+      cwd: ws,
+      unattendedAllowed: () => true,
+      log: () => {},
+      provider: scripted([
+        turn([call("write", { path: path.join(ws, "a.txt"), content: "three" })]),
+        say("Done."),
+      ]).provider,
+      deliver: collector().deliver,
+      approvalFactory: factoryOn(inbox),
+    });
+    assert.deepEqual(await second.runNow(task.id), { ok: true });
+    await second.drain();
+    assert.equal(asked().length, 2, "asked again");
+    assert.equal(writes.length, 3);
+    await inbox.shutdown();
+  });
+});
+
+test("a task-scoped grant is revoked whatever the outcome — a run that fails too", async () => {
+  await withHome(async (home, ws) => {
+    const task = await dueRoutine();
+    const { inbox } = wardenInbox({ approveAfterMs: 0, scope: "task" });
+    const runner = makeRunner(ws, {
+      provider: scripted([
+        turn([call("write", { path: path.join(ws, "a.txt"), content: "one" })]),
+        () => {
+          throw new Error("provider exploded");
+        },
+      ]).provider,
+      deliver: collector().deliver,
+      tools: [writeTool([])],
+      approvalFactory: factoryOn(inbox),
+      now: Date.now,
+    });
+    // A manual run is not retried: its failure ends it.
+    assert.deepEqual(await runner.runNow(task.id), { ok: true });
+    await runner.drain();
+    const [run] = await listRuns((await getTask(task.id))!);
+    assert.equal(run!.state, "failed");
+    assert.deepEqual((await loadGrants(home)).grants, []);
+    const revoked = (await readAudit({ home })).filter((e) => e.kind === "grant_revoked");
+    assert.equal(revoked.length, 1, "there was a task grant, and the failed run's end revoked it");
+    await inbox.shutdown();
+  });
+});
+
+test("a task grant an earlier run left behind does not cover the next run", async () => {
+  await withHome(async (home, ws) => {
+    const task = await dueRoutine({ nextRunAt: Date.now() - 1000 });
+    // Left by a run whose ending was never recorded with Warden on.
+    await createGrants(
+      {
+        tool: "write",
+        category: "write",
+        targets: [],
+        taskId: task.id,
+        digest: "x",
+        origin: { kind: "routine", id: task.id },
+      },
+      "task",
+      home,
+      Date.now() - 60_000,
+    );
+    const { inbox, asked } = wardenInbox("deny");
+    const writes: unknown[] = [];
+    const runner = makeRunner(ws, {
+      provider: writeScript(ws).provider,
+      deliver: collector().deliver,
+      tools: [writeTool(writes)],
+      approvalFactory: factoryOn(inbox),
+      now: Date.now,
+    });
+    await runner.tick();
+    await runner.drain();
+    assert.equal(asked().length, 1, "asked, not covered by the stale grant");
+    assert.equal(writes.length, 0);
+    const revoked = (await readAudit({ home })).filter((e) => e.kind === "grant_revoked");
+    assert.equal(revoked[revoked.length - 1]!.note, "left by an earlier run of the task");
     await inbox.shutdown();
   });
 });

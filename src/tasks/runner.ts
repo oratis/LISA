@@ -1614,6 +1614,16 @@ export class TaskRunner {
         this.now(),
       );
     }
+    // Whatever the gate granted "for this task" ends with the run, whatever
+    // its outcome. Before the write that ends the finish: if this throws, the
+    // task still points at the run and the next tick completes the finish —
+    // and this — again.
+    await this.approvalFactory()?.runEnded?.({
+      taskId: before.id,
+      runId: run.id,
+      uid: before.owner,
+      home: lisaHome(),
+    });
     // …then the same transition for real. This write ends the finish.
     const updated = await this.saveTask(
       taskId,

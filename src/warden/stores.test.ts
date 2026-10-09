@@ -10,6 +10,7 @@ import {
   loadGrants,
   matchGrants,
   revokeGrant,
+  revokeTaskGrants,
   scopeProblem,
   useGrants,
   GrantScopeError,
@@ -308,4 +309,32 @@ test("audit: an unwritable log rejects (callers must then refuse the side effect
   // A FILE where the warden directory should be.
   await fs.writeFile(path.join(home, "warden"), "not a directory");
   await assert.rejects(auditDecision(request(), { verdict: "allow", reason: "x" }, { home }));
+});
+
+test("revokeTaskGrants: only that task's task-scoped grants, only older ones when asked, no write when none", async () => {
+  const home = await tmpHome();
+  assert.deepEqual(await revokeTaskGrants("t1", home), []);
+  await assert.rejects(fs.stat(grantsFile(home)), "nothing to revoke ⇒ nothing written");
+
+  const t0 = Date.parse("2026-10-09T08:00:00Z");
+  const [old] = await createGrants(subject, "task", home, t0 - 60_000);
+  const [fresh] = await createGrants(subject, "task", home, t0 + 1_000);
+  const [other] = await createGrants({ ...subject, taskId: "t2" }, "task", home, t0);
+  const [always] = await createGrants(subject, "always", home, t0);
+
+  const early = await revokeTaskGrants("t1", home, t0 + 2_000, { createdBefore: t0 });
+  assert.deepEqual(
+    early.map((g) => g.id),
+    [old!.id],
+  );
+  const rest = await revokeTaskGrants("t1", home, t0 + 2_000);
+  assert.deepEqual(
+    rest.map((g) => g.id),
+    [fresh!.id],
+  );
+  assert.deepEqual(
+    (await loadGrants(home, t0 + 2_000)).grants.map((g) => g.id).sort(),
+    [other!.id, always!.id].sort(),
+    "another task's grant and a standing grant are left alone",
+  );
 });

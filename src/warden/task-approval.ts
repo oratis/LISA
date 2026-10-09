@@ -31,6 +31,8 @@ import type {
   TaskApprovalHandle,
   TaskEnvelope as TaskEngineEnvelope,
 } from "../tasks/types.js";
+import { appendAudit, auditQuietly } from "./audit.js";
+import { revokeTaskGrants } from "./grants.js";
 import type { InboxItemView, WardenInbox } from "./inbox.js";
 import { createWardenSession } from "./session.js";
 import { isActionCategory, type RuntimeSurface, type TaskEnvelope } from "./types.js";
@@ -104,7 +106,45 @@ export function createTaskApprovalFactory(opts: TaskApprovalFactoryOptions): Tas
     }
   };
 
-  const factory: TaskApprovalFactory = (ctx): TaskApprovalHandle => {
+  /** Revoke a task's task-scoped grants and audit each revocation. Throws if the store cannot be written. */
+  const revoke = async (
+    task: { taskId: string; uid: string | null; home: string },
+    why: string,
+    createdBefore?: number,
+  ): Promise<void> => {
+    const revoked = await revokeTaskGrants(
+      task.taskId,
+      task.home,
+      now(),
+      createdBefore !== undefined ? { createdBefore } : {},
+    );
+    for (const grant of revoked) {
+      await auditQuietly(
+        appendAudit(
+          {
+            at: new Date(now()).toISOString(),
+            kind: "grant_revoked",
+            uid: task.uid,
+            grantId: grant.id,
+            taskId: task.taskId,
+            tool: grant.tool,
+            category: grant.category,
+            scope: grant.scope,
+            note: why,
+          },
+          task.home,
+          now(),
+        ),
+      );
+    }
+  };
+
+  const factory: TaskApprovalFactory = async (ctx): Promise<TaskApprovalHandle> => {
+    // "For this task" means for this run of it. One an earlier run left
+    // behind — it crashed before its ending was recorded, or Warden was off
+    // when it ended — must not cover this run. A store that cannot be written
+    // fails the attempt (retried later) rather than run with it in place.
+    await revoke(ctx, "left by an earlier run of the task", ctx.runStartedAt);
     const session = createWardenSession({
       surface: opts.surface,
       uid: ctx.uid,
@@ -135,6 +175,10 @@ export function createTaskApprovalFactory(opts: TaskApprovalFactoryOptions): Tas
       log,
     });
     return { approval: session.approval, observe: (event) => session.observe(event) };
+  };
+  // Grants scoped to the task end with the run, whatever its outcome.
+  factory.runEnded = async (end) => {
+    await revoke(end, "the task's run ended");
   };
   return factory;
 }
