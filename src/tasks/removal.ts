@@ -42,7 +42,11 @@ export async function removeTask(
     stillRunning = await taskLeaseHeld(id);
   }
   const removed = await deleteTask(id);
-  // The task's own folder goes with it (best effort: the task is already gone).
-  if (removed) await removeTaskWorkspace(id).catch(() => {});
+  if (removed) {
+    // The task's own folder goes with it (best effort: the task is already gone)…
+    await removeTaskWorkspace(id).catch(() => {});
+    // …and so does whatever was granted "for this task".
+    await opts.runner?.taskRemoved(id);
+  }
   return { removed, waited, stillRunning };
 }

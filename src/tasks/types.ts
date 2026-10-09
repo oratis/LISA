@@ -446,6 +446,11 @@ export interface TaskApprovalFactory {
    * incomplete, so it is tried again at the next tick.
    */
   runEnded?: (ctx: TaskRunEndContext) => Promise<void>;
+  /**
+   * Called when a task has been deleted — also mid-run, when its run never
+   * gets to end normally. Whatever the gate granted "for this task" ends.
+   */
+  taskRemoved?: (ctx: Omit<TaskRunEndContext, "runId">) => Promise<void>;
 }
 
 export type TaskNoticeKind = "task_result" | "watch_hit" | "task_needs_you" | "task_failed";

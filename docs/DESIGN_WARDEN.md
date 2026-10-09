@@ -78,7 +78,7 @@ On the web surface taint belongs to the conversation. Tainted conversation ids a
 
 `once` (bound to the payload digest, consumed on use), `task`, `target`, `24h`, `always`. Matching is exact on tool, category, method, and the trust column the approval was given in.
 
-- A `task` grant lasts for one run of the task. It is revoked when the run ends, whatever the outcome (succeeded, failed, cancelled — also when that ending is completed by a later process after a crash), and every revocation is audited (`grant_revoked`). A task grant older than a run's start that is still there when the run starts (an ending recorded while Warden was off) is revoked before the run's first decision. A later run of the same task asks again.
+- A `task` grant lasts for one run of the task. It is revoked when the run ends, whatever the outcome (succeeded, failed, cancelled — also when that ending is completed by a later process after a crash), and every revocation is audited (`grant_revoked`). Deleting the task revokes them too — also mid-run, when the run never gets to end, and from `lisa tasks rm`. A task grant older than a run's start that is still there when the run starts (an ending recorded while Warden was off) is revoked before the run's first decision. A later run of the same task asks again.
 
 - A `target` grant matches only when every target of the request is covered. If the targets could not be enumerated completely — too many recipients, a nested value, a key the classifier does not know — no `target` scope is offered and no target grant or target rule applies.
 - Tool-wide `always` and `24h` grants do not apply in a tainted run to exec, a write outside the workspace, network, send, publish or delete.

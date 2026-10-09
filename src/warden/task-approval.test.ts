@@ -13,9 +13,12 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { homeScope } from "../paths.js";
 import type { Provider, ProviderResult, ProviderRunOpts } from "../providers/types.js";
 import type { ToolDefinition } from "../types.js";
+import { runTasksCommand } from "../cli/tasks.js";
+import { removeTask } from "../tasks/removal.js";
 import { TaskRunner, type TaskRunnerOptions } from "../tasks/runner.js";
 import {
   createTask,
+  deleteTask,
   getTask,
   listRuns,
   loadRun,
@@ -1062,4 +1065,80 @@ test("the ceilings are validated within their hard maximum", async () => {
   ] as const) {
     assert.equal(parseBudget(budget, { cloud }).ok, false, JSON.stringify(budget));
   }
+});
+
+// ── review of #422, L5: deleting a task ends its grants too ──
+
+const taskGrantsOf = async (home: string, taskId: string) =>
+  (await loadGrants(home)).grants.filter((g) => g.scope === "task" && g.taskId === taskId);
+
+test("a task deleted mid-run: its task-scoped grant is revoked although the run never ends", async () => {
+  await withHome(async (home, ws) => {
+    const task = await dueRoutine({ nextRunAt: Date.now() - 1000 });
+    const { inbox } = wardenInbox({ approveAfterMs: 0, scope: "task" });
+    const writes: unknown[] = [];
+    const runner = makeRunner(ws, {
+      provider: scripted([
+        turn([call("write", { path: path.join(ws, "a.txt"), content: "one" })]),
+        async () => {
+          // `lisa tasks rm` gave up waiting and deleted the files under the run.
+          assert.equal((await taskGrantsOf(home, task.id)).length, 1, "the grant exists now");
+          await deleteTask(task.id);
+          return turn([call("write", { path: path.join(ws, "b.txt"), content: "two" })]);
+        },
+        say("Wrote both."),
+      ]).provider,
+      deliver: collector().deliver,
+      tools: [writeTool(writes)],
+      approvalFactory: factoryOn(inbox),
+      now: Date.now,
+    });
+    await runner.tick();
+    await runner.drain();
+    assert.equal(await getTask(task.id), null);
+    assert.deepEqual(await taskGrantsOf(home, task.id), [], "revoked with the task");
+    const revoked = (await readAudit({ home })).filter((e) => e.kind === "grant_revoked");
+    assert.equal(revoked[0]!.note, "the task was deleted");
+    await inbox.shutdown();
+  });
+});
+
+test("deleting a task through the API path or `lisa tasks rm` revokes a grant it still has", async () => {
+  await withHome(async (home, ws) => {
+    const grantFor = (taskId: string) =>
+      createGrants(
+        {
+          tool: "write",
+          category: "write",
+          targets: [],
+          taskId,
+          digest: "x",
+          origin: { kind: "routine", id: taskId },
+        },
+        "task",
+        home,
+      );
+    const { inbox } = wardenInbox();
+    // The server: removeTask with its runner (DELETE /api/tasks/{id}).
+    const viaApi = await dueRoutine({ nextRunAt: Date.now() + 3_600_000 });
+    await grantFor(viaApi.id);
+    const runner = makeRunner(ws, {
+      provider: scripted([]).provider,
+      approvalFactory: factoryOn(inbox),
+      now: Date.now,
+    });
+    assert.equal((await removeTask(viaApi.id, { runner })).removed, true);
+    assert.deepEqual(await taskGrantsOf(home, viaApi.id), []);
+
+    // The terminal: no runner, no factory.
+    const viaCli = await dueRoutine({ nextRunAt: Date.now() + 3_600_000 });
+    await grantFor(viaCli.id);
+    assert.equal(await runTasksCommand(["rm", viaCli.id], { out: () => {}, err: () => {} }), 0);
+    assert.deepEqual(await taskGrantsOf(home, viaCli.id), []);
+    const notes = (await readAudit({ home }))
+      .filter((e) => e.kind === "grant_revoked")
+      .map((e) => e.note);
+    assert.deepEqual(notes, ["the task was deleted", "the task was deleted"]);
+    await inbox.shutdown();
+  });
 });

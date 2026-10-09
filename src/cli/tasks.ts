@@ -24,6 +24,8 @@
  */
 import readline from "node:readline/promises";
 import { isCloud } from "../edition.js";
+import { lisaHome, scopedUid } from "../paths.js";
+import { revokeGrantsOfRemovedTask } from "../warden/task-approval.js";
 import {
   confirmTask,
   describeForConfirmation,
@@ -265,6 +267,8 @@ export async function runTasksCommand(args: string[], io: TasksCommandIo = {}): 
     // A run in flight (here it can only be in another process, e.g. the web
     // server) is asked to stop and waited for before the files go.
     const { waited, stillRunning } = await removeTask(task.id, { now });
+    // No runner (or Warden factory) here: end the task's grants directly.
+    await revokeGrantsOfRemovedTask({ taskId: task.id, uid: scopedUid(), home: lisaHome() }, now);
     out(`removed "${task.title}" (${task.id})`);
     if (stillRunning) err("(a run was still in flight; it stops at its next step)");
     else if (waited) err("(waited for its run to stop)");

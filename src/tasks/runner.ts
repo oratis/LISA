@@ -38,7 +38,7 @@ import { runAgent, type ApprovalCallback } from "../agent.js";
 import { getAutonomyEnabled } from "../autonomy/state.js";
 import { costMicroUSD } from "../billing/prices.js";
 import { logInfo } from "../log.js";
-import { lisaGlobalHome, lisaHome } from "../paths.js";
+import { lisaGlobalHome, lisaHome, scopedUid } from "../paths.js";
 import { providerForModel } from "../providers/registry.js";
 import { notSent, type Provider, type ProviderUsage } from "../providers/types.js";
 import { modeIsBounded, type SandboxMode } from "../sandbox/mode.js";
@@ -757,6 +757,19 @@ export class TaskRunner {
     return found;
   }
 
+  /**
+   * A task was deleted: end whatever the gate granted "for this task". Called
+   * by the removal path (removal.ts) and by a run that finds its task gone.
+   * Never throws: the task is gone either way.
+   */
+  async taskRemoved(taskId: string): Promise<void> {
+    try {
+      await this.approvalFactory()?.taskRemoved?.({ taskId, uid: scopedUid(), home: lisaHome() });
+    } catch (err) {
+      this.log(`task ${taskId}: its grants could not be revoked: ${(err as Error).message}`);
+    }
+  }
+
   /** Resolve when every run this runner started has finished. */
   async drain(): Promise<void> {
     while (this.inflight.size > 0) await Promise.allSettled([...this.inflight]);
@@ -819,7 +832,7 @@ export class TaskRunner {
     }
     const p = this.current
       .run(slot, () => this.runTask(taskId, slot))
-      .catch((err) => {
+      .catch(async (err) => {
         if (err instanceof Interrupted) {
           if (slot.interrupted) {
             this.log(`task ${taskId}: stopped — ${slot.interrupted}; it resumes at the next tick`);
@@ -828,7 +841,10 @@ export class TaskRunner {
         }
         if (err instanceof TaskGoneError || slot.lease?.gone) {
           // Deleted (or its whole home was) while it ran: nothing is put back.
+          // Its run never ends normally, so what was granted "for this task"
+          // is revoked here (a gone home has no grants left to revoke).
           this.log(`task ${taskId}: removed while running — stopped`);
+          await this.taskRemoved(taskId);
           return;
         }
         if (err instanceof LeaseLost || slot.leaseLost) {
@@ -1753,7 +1769,11 @@ export class TaskRunner {
    */
   private async completeFinish(taskId: string, run: TaskRun): Promise<void> {
     const before = await getTask(taskId);
-    if (!before) return; // deleted while it ran
+    if (!before) {
+      // Deleted while it ran: its grants end with it.
+      await this.taskRemoved(taskId);
+      return;
+    }
     const now = run.endedAt ?? this.now();
     const cloud = this.host === "cloud";
 

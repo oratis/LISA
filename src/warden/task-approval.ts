@@ -42,6 +42,38 @@ import type { InboxItemView, WardenInbox } from "./inbox.js";
 import { createWardenSession } from "./session.js";
 import { isActionCategory, type RuntimeSurface, type TaskEnvelope } from "./types.js";
 
+/**
+ * Revoke a deleted task's task-scoped grants, auditing each — for a host with
+ * no factory at hand (`lisa tasks rm`). Writes nothing when there are none, so
+ * it never brings back a home that is gone.
+ */
+export async function revokeGrantsOfRemovedTask(
+  task: { taskId: string; uid: string | null; home: string },
+  now: () => number = Date.now,
+): Promise<number> {
+  const revoked = await revokeTaskGrants(task.taskId, task.home, now());
+  for (const grant of revoked) {
+    await auditQuietly(
+      appendAudit(
+        {
+          at: new Date(now()).toISOString(),
+          kind: "grant_revoked",
+          uid: task.uid,
+          grantId: grant.id,
+          taskId: task.taskId,
+          tool: grant.tool,
+          category: grant.category,
+          scope: grant.scope,
+          note: "the task was deleted",
+        },
+        task.home,
+        now(),
+      ),
+    );
+  }
+  return revoked.length;
+}
+
 /** The reach-out gate, as the factory needs it (web/reachout-wiring.ts `makeServerReachOut`). */
 export type ApprovalReachOut = (
   notice: ReachOutNotice,
@@ -186,9 +218,13 @@ export function createTaskApprovalFactory(opts: TaskApprovalFactoryOptions): Tas
     });
     return { approval: session.approval, observe: (event) => session.observe(event) };
   };
-  // Grants scoped to the task end with the run, whatever its outcome.
+  // Grants scoped to the task end with the run, whatever its outcome…
   factory.runEnded = async (end) => {
     await revoke(end, "the task's run ended");
+  };
+  // …and with the task: a task deleted mid-run never gets to end its run.
+  factory.taskRemoved = async (removed) => {
+    await revoke(removed, "the task was deleted");
   };
   return factory;
 }
