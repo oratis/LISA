@@ -7,7 +7,13 @@ import { clearIndexCache, buildIndex } from "../memory/vector.js";
 import { searchKb } from "../kb/search.js";
 import { gitLogOneline, initSoulRepo } from "../soul/git.js";
 import { loadSessionMessages } from "../sessions/list.js";
-import { FORGOTTEN, forget, ForgetError, readForgetNotice } from "./forget.js";
+import {
+  FORGOTTEN,
+  forget,
+  ForgetError,
+  OUTSIDE_ACCOUNT_HOME_STORES,
+  readForgetNotice,
+} from "./forget.js";
 
 let home: string;
 const saved: Record<string, string | undefined> = {};
@@ -261,6 +267,30 @@ describe("forget", () => {
     assert.deepEqual(report.errors, [{ layer: "memory", error: "memory_corrupt" }]);
     assert.ok(fs.readFileSync(path.join(home, "memory/MEMORY.md")).equals(before));
     assert.equal(read("soul/journal/2026-10-02.md"), `${FORGOTTEN} again.\n`);
+  });
+
+  test("a two-character CJK topic can be forgotten; short Latin ones still cannot", async () => {
+    write("memory/MEMORY.md", "- 机密 项目在周五开会\n- 天气很好\n");
+    await forget("机密", { apply: true });
+    assert.equal(read("memory/MEMORY.md"), "- 天气很好\n");
+    await assert.rejects(forget("机"), ForgetError);
+    await assert.rejects(forget("ab"), ForgetError);
+  });
+
+  test("in an account scope the report names the stores kept outside the account home", async () => {
+    const { homeScope, homeForUid } = await import("../paths.js");
+    const tenant = homeForUid("uid-scope");
+    fs.mkdirSync(path.join(tenant, "memory"), { recursive: true });
+    fs.writeFileSync(path.join(tenant, "memory", "MEMORY.md"), "- Alice is a friend\n");
+    const scoped = await homeScope.run(tenant, () => forget("alice"));
+    for (const store of OUTSIDE_ACCOUNT_HOME_STORES) {
+      assert.ok(scoped.notScanned.includes(store), store);
+      assert.ok(scoped.residuals.includes(`Not scanned: ${store}`), store);
+    }
+    const local = await forget("alice");
+    for (const store of OUTSIDE_ACCOUNT_HOME_STORES) {
+      assert.equal(local.notScanned.includes(store), false, store);
+    }
   });
 
   test("forget never reaches another tenant's home", async () => {

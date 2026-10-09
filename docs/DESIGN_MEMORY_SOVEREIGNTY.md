@@ -40,7 +40,7 @@ If a file is not clean UTF-8 (it contains NUL bytes or invalid sequences), it is
 
 ## Forget
 
-`src/sovereignty/forget.ts`. A query needs at least 3 characters.
+`src/sovereignty/forget.ts`. A query needs at least 3 characters, or 2 when it contains a Chinese, Japanese or Korean character (two characters are a whole word there).
 
 **Matching.** The topic matches as whole words, ignoring case and tolerating any whitespace between its words: "Ann" matches "Ann", "ann's" and "Ann-Marie", never "annual", "planning" or "announcement". A word edge is a letter, digit, mark or connector (`_`) of a script that puts spaces between words. Chinese, Japanese, Korean, Thai, Lao, Khmer and Myanmar text has no word boundaries, so there the query matches the exact character sequence, also inside longer words, and the preview says so (`report.match`). An existing `[forgotten by user]` placeholder is never matched, so forgetting "user" or "forgotten" cannot nest it and a second forget changes nothing.
 
@@ -60,6 +60,8 @@ If a file is not clean UTF-8 (it contains NUL bytes or invalid sequences), it is
 Lisa's own self (identity, values, opinions, desires) is never edited. Any mentions there are reported as `untouched`.
 
 **What is verified, and what is not.** `src/sovereignty/coverage.ts` classifies every top-level entry the code can create in a home as scanned, not scanned (can hold user text), holding no user text, or other (another account's home, import staging), plus a few unscanned files inside scanned areas (`soul/emotions.json`, `kb/feeds/`, `kb/.ingested.json`, `kb/SCHEMA.md`). Every report carries `scanned` (the areas forget searches) and `notScanned`: the entries present in this home that can hold user text but are not searched, for example `skills/`, `mail/`, `sense/`, `dispatches*`, `history`, `heartbeat*`, the logs, `warden/` pending approvals and `import-backups/`. An entry the registry does not know is listed as not classified. After applying, forget re-scans the scanned areas and returns the result as `remaining`, where each count should be 0; the CLI and the web panel say which areas that re-scan covered and list the not-scanned ones by name, never "nothing matches anywhere". `coverage.test.ts` scans `src/` for entries created under a home and fails on any that the registry does not classify.
+
+**On the hosted edition some text lives outside the account home.** A few modules still resolve their own home instead of `lisaHome()` — among them the mail store, the sense event log and the dispatch ledger — so inside an account scope they write to the process home, which forget (scoped to the account) does not search. Rather than let the not-scanned list come back empty, a forget run inside an account scope always adds `mail`, `sense` and `dispatches` to `notScanned` (and so to `residuals`) with that reason. Routing those modules through `lisaHome()` is a separate tenancy fix; when it lands, these entries come out of this list and into the scanned areas.
 
 After applying, forget writes `sovereignty/forget-notice.json`, a record with counts but no topic. For a week afterwards Lisa's prompt carries a Notice saying the person used Forget and which of her passages now read `[forgotten by user]`.
 

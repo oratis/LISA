@@ -53,7 +53,7 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { atomicWrite } from "../fs-utils.js";
-import { lisaHome, reflectionsDir, sessionsDir } from "../paths.js";
+import { lisaGlobalHome, lisaHome, reflectionsDir, sessionsDir } from "../paths.js";
 import {
   isMemoryStore,
   MEMORY_STORES,
@@ -74,6 +74,24 @@ import { notScannedIn, scannedAreas } from "./coverage.js";
 
 export const FORGOTTEN = "[forgotten by user]";
 export const FORGET_MIN_CHARS = 3;
+/**
+ * Two characters are a whole word in Chinese, Japanese and Korean (机密, 秘密,
+ * 비밀), so a query with any CJK character may be that short.
+ */
+export const FORGET_MIN_CHARS_CJK = 2;
+const CJK_RE = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
+
+/**
+ * Stores some modules still keep in the process home rather than the account
+ * home (they resolve their own path instead of `lisaHome()`). Inside an
+ * account scope — the hosted edition — forget cannot reach them, so the report
+ * names them instead of implying they were covered.
+ */
+export const OUTSIDE_ACCOUNT_HOME_STORES = [
+  "mail — mail digests and alerts are stored outside your account home on this edition; not scanned",
+  "sense — activity events are stored outside your account home on this edition; not scanned",
+  "dispatches — coding-agent dispatch records are stored outside your account home on this edition; not scanned",
+] as const;
 export const FORGET_MAX_CHARS = 200;
 
 export type ForgetLayer =
@@ -224,8 +242,9 @@ export function normalizeForgetQuery(raw: unknown): string {
     throw new ForgetError("invalid_query", "query contains control characters");
   }
   const len = [...q].length;
-  if (len < FORGET_MIN_CHARS) {
-    throw new ForgetError("invalid_query", `query must be at least ${FORGET_MIN_CHARS} characters`);
+  const min = CJK_RE.test(q) ? FORGET_MIN_CHARS_CJK : FORGET_MIN_CHARS;
+  if (len < min) {
+    throw new ForgetError("invalid_query", `query must be at least ${min} characters`);
   }
   if (len > FORGET_MAX_CHARS) {
     throw new ForgetError("invalid_query", `query must be at most ${FORGET_MAX_CHARS} characters`);
@@ -1201,7 +1220,10 @@ async function run(
       errors: [],
       residuals: [...FORGET_RESIDUALS],
       scanned: scannedAreas(),
-      notScanned: await notScannedIn(lisaHome()),
+      notScanned: [
+        ...(await notScannedIn(lisaHome())),
+        ...(lisaHome() !== lisaGlobalHome() ? OUTSIDE_ACCOUNT_HOME_STORES : []),
+      ],
     },
   };
   for (const n of ctx.report.notScanned) ctx.report.residuals.push(`Not scanned: ${n}`);
