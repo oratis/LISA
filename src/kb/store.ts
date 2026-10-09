@@ -419,6 +419,27 @@ export async function writeWiki(opts: {
   });
 }
 
+/**
+ * Rewrite an existing entry's body in place (user-initiated "forget" — the
+ * one sanctioned edit of an otherwise immutable source). Metadata is kept;
+ * returns false if the entry doesn't exist.
+ */
+export async function redactEntryBody(
+  layer: KbLayer,
+  slug: string,
+  body: string,
+): Promise<boolean> {
+  return withFileLock(kbLockPath(), async () => {
+    const file = entryFile(layer, slug);
+    if (!(await pathExists(file))) return false;
+    const entry = parseEntry(layer, slug, await fs.readFile(file, "utf8"));
+    await atomicWrite(file, serializeEntry({ ...entry, body }));
+    await regenerateIndexLocked();
+    await commitKb(`kb: user-forget ${layer}/${slug}`);
+    return true;
+  });
+}
+
 /** Delete an entry (user-initiated). Returns false if it didn't exist. */
 export async function removeEntry(layer: KbLayer, slug: string): Promise<boolean> {
   return withFileLock(kbLockPath(), async () => {
