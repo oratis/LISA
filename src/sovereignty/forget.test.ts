@@ -501,6 +501,54 @@ describe("forget", () => {
     assert.deepEqual([result.tool_use_id, result.content], ["toolu_1", FORGOTTEN]);
     assert.equal(parsed[1]!.fingerprint, "fp1");
   });
+
+  test("never matches its own placeholder: a second forget changes nothing", async () => {
+    write("soul/journal/2026-10-01.md", "I wonder about the user today.\n");
+    write("kb/wiki/notes.md", "---\ntitle: Notes\n---\nThe user said hi.\nOther.\n");
+    write(
+      `sessions/${SESSION}.jsonl`,
+      [
+        JSON.stringify({
+          type: "session",
+          id: SESSION,
+          version: 2,
+          startedAt: "t",
+          cwd: "/x",
+          model: "m",
+        }),
+        JSON.stringify({
+          type: "message",
+          ts: "t",
+          message: { role: "user", content: "ask the user" },
+        }),
+      ].join("\n") + "\n",
+    );
+    process.env.LISA_KB_NO_GIT = "1";
+    try {
+      const first = await forget("user");
+      assert.equal(first.remaining!.journal, 0);
+      assert.equal(first.remaining!.kb, 0);
+      assert.equal(first.remaining!.sessions, 0);
+      const journal = read("soul/journal/2026-10-01.md");
+      assert.equal(journal, `I wonder about the ${FORGOTTEN} today.\n`);
+      const kb = read("kb/wiki/notes.md");
+      const session = read(`sessions/${SESSION}.jsonl`);
+      for (const query of ["user", "forgotten", "by user", "forgotten by user", "[forgotten"]) {
+        const again = await forget(query, { dryRun: true });
+        assert.deepEqual(
+          again.locations.filter((l) => l.layer !== "search_index"),
+          [],
+          `${query} matched a placeholder`,
+        );
+        await forget(query);
+        assert.equal(read("soul/journal/2026-10-01.md"), journal, query);
+        assert.equal(read("kb/wiki/notes.md"), kb, query);
+        assert.equal(read(`sessions/${SESSION}.jsonl`), session, query);
+      }
+    } finally {
+      delete process.env.LISA_KB_NO_GIT;
+    }
+  });
 });
 
 function escape(s: string): string {

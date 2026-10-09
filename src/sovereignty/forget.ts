@@ -216,6 +216,10 @@ export function normalizeForgetQuery(raw: unknown): string {
  * Whole-word matcher: a query edge that is a letter or digit of a spaced
  * script must not continue into another letter or digit. Edges in an
  * unspaced script (or punctuation) match as they are.
+ *
+ * Existing placeholders are never matched: the text is matched piece by
+ * piece between occurrences of FORGOTTEN, so a query such as "user" or
+ * "forgotten" can't hit an earlier redaction (forget stays idempotent).
  */
 export function forgetMatcher(query: string): Matcher {
   const chars = [...query];
@@ -223,14 +227,23 @@ export function forgetMatcher(query: string): Matcher {
   const trail = WORD_CHAR_RE.test(chars[chars.length - 1] ?? "") ? `(?!${WORD_CHAR})` : "";
   const source = lead + query.split(" ").map(escapeRe).join("\\s+") + trail;
   const re = () => new RegExp(source, "giu");
+  const pieces = (s: string) => s.split(FORGOTTEN);
   return {
     mode: UNSPACED_RE.test(query) ? "sequence" : "words",
-    test: (s) => re().test(s),
-    count: (s) => [...s.matchAll(re())].length,
-    redact: (s) => s.replace(re(), FORGOTTEN),
+    test: (s) => pieces(s).some((p) => re().test(p)),
+    count: (s) => pieces(s).reduce((n, p) => n + [...p.matchAll(re())].length, 0),
+    redact: (s) =>
+      pieces(s)
+        .map((p) => p.replace(re(), FORGOTTEN))
+        .join(FORGOTTEN),
     first: (s) => {
-      const hit = re().exec(s);
-      return hit ? { index: hit.index, length: hit[0].length } : null;
+      let offset = 0;
+      for (const p of pieces(s)) {
+        const hit = re().exec(p);
+        if (hit) return { index: offset + hit.index, length: hit[0].length };
+        offset += p.length + FORGOTTEN.length;
+      }
+      return null;
     },
   };
 }
