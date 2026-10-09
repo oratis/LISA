@@ -957,3 +957,109 @@ test("a task grant an earlier run left behind does not cover the next run", asyn
     await inbox.shutdown();
   });
 });
+
+// ── review of #422, L4: waiting has a ceiling (probe p3) ──
+
+/** A model that keeps issuing writes that ask, then gives up. */
+function askingScript(ws: string, asks: number) {
+  let i = 0;
+  const provider: Provider = {
+    name: "fake",
+    runTurn: async () =>
+      ++i <= asks
+        ? turn([call("write", { path: path.join(ws, `f${i}.txt`), content: "x" })])
+        : say("gave up"),
+  };
+  return provider;
+}
+
+test("asks per run are capped: past the ceiling the run stops (approval_limit) with one notice", async () => {
+  await withHome(async (_home, ws) => {
+    const task = await dueRoutine({
+      nextRunAt: Date.now() - 1000,
+      budget: { tokens: 1_000_000, wallclockMs: 150, maxToolCalls: 12 },
+    });
+    // Nobody answers: every ask expires after 80 ms.
+    const { inbox, asked } = wardenInbox("ignore", 80);
+    const gate = gateRecorder();
+    const { notices, deliver } = collector();
+    const writes: unknown[] = [];
+    const runner = makeRunner(ws, {
+      provider: askingScript(ws, 10),
+      deliver,
+      tools: [writeTool(writes)],
+      approvalFactory: factoryOn(inbox, { reachOut: gate.reachOut }),
+      now: Date.now,
+    });
+    const t0 = Date.now();
+    await runner.tick();
+    await runner.drain();
+    const took = Date.now() - t0;
+
+    const [run] = await listRuns((await getTask(task.id))!);
+    assert.equal(run!.state, "failed");
+    assert.equal(run!.stopReason, "approval_limit");
+    assert.match(run!.error ?? "", /asked for approval 5 times/);
+    assert.equal(run!.approvals, 5);
+    assert.equal(gate.notices.length, 5, "the ask over the ceiling is not announced");
+    assert.equal(asked().length, 6);
+    assert.equal(writes.length, 0);
+    assert.deepEqual(
+      notices.map((n) => n.kind),
+      ["task_failed"],
+      "one notice for the stop",
+    );
+    assert.ok(took < 6 * 80 + 400, `stopped at the ceiling (${took} ms), not after 10 asks`);
+    await inbox.shutdown();
+  });
+});
+
+test("total waiting per run is capped and configurable per task: past it the run stops", async () => {
+  await withHome(async (_home, ws) => {
+    const task = await dueRoutine({
+      nextRunAt: Date.now() - 1000,
+      budget: { tokens: 1_000_000, wallclockMs: 60_000, maxToolCalls: 12, approvalWaitMs: 200 },
+    });
+    const { inbox, asked } = wardenInbox("ignore", 150);
+    const gate = gateRecorder();
+    const { notices, deliver } = collector();
+    const runner = makeRunner(ws, {
+      provider: askingScript(ws, 10),
+      deliver,
+      tools: [writeTool([])],
+      approvalFactory: factoryOn(inbox, { reachOut: gate.reachOut }),
+      now: Date.now,
+    });
+    const t0 = Date.now();
+    await runner.tick();
+    await runner.drain();
+    const took = Date.now() - t0;
+
+    const [run] = await listRuns((await getTask(task.id))!);
+    assert.equal(run!.stopReason, "approval_limit");
+    assert.match(run!.error ?? "", /waited 1 second for approvals in all/);
+    assert.equal(asked().length, 2, "the first ask expired; the second hit the ceiling");
+    assert.ok((run!.approvalWaitMs ?? 0) >= 190 && (run!.approvalWaitMs ?? 0) < 400);
+    assert.ok(took < 700, `${took} ms`);
+    assert.deepEqual(
+      notices.map((n) => n.kind),
+      ["task_failed"],
+    );
+    await inbox.shutdown();
+  });
+});
+
+test("the ceilings are validated within their hard maximum", async () => {
+  const { parseBudget } = await import("../tasks/validate.js");
+  const ok = parseBudget({ maxApprovals: 0, approvalWaitMs: 2 * 3_600_000 }, { cloud: false });
+  assert.ok(ok.ok && ok.value.maxApprovals === 0 && ok.value.approvalWaitMs === 7_200_000);
+  for (const [budget, cloud] of [
+    [{ maxApprovals: 21 }, false],
+    [{ maxApprovals: 1.5 }, false],
+    [{ approvalWaitMs: 7 * 3_600_000 }, false],
+    [{ approvalWaitMs: 30 * 60_000 }, true],
+    [{ approvalWaitMs: 1_000 }, false],
+  ] as const) {
+    assert.equal(parseBudget(budget, { cloud }).ok, false, JSON.stringify(budget));
+  }
+});

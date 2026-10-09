@@ -174,8 +174,10 @@ export function createTaskApprovalFactory(opts: TaskApprovalFactoryOptions): Tas
       // While the item is pending the run shows as awaiting approval, with its
       // wall clock stopped; the user is told once the item exists.
       onApprovalPending: async (item, req) => {
-        await ctx.approvalWait.started({ tool: req.tool, approvalId: item.id });
-        await tell(ctx, item);
+        const waits = await ctx.approvalWait.started({ tool: req.tool, approvalId: item.id });
+        // Past the run's ask / wait ceiling the run stops instead of waiting
+        // (its abort withdraws the item): nobody is told about this one.
+        if (waits !== false) await tell(ctx, item);
       },
       onApprovalSettled: async (outcome) => {
         await ctx.approvalWait.ended({ approved: outcome.approved });

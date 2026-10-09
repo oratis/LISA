@@ -2249,6 +2249,18 @@
           },
           "maxToolCalls": {
             "type": "integer"
+          },
+          "maxApprovals": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 20,
+            "description": "How many approvals one run may ask for (default 5). The next ask stops the run with stopReason `approval_limit` instead of waiting, and is not announced."
+          },
+          "approvalWaitMs": {
+            "type": "integer",
+            "minimum": 60000,
+            "maximum": 21600000,
+            "description": "Total time one run may wait for approvals, across its asks and segments (default 60 minutes; at most 6 hours, 15 minutes hosted). Past it the run stops with stopReason `approval_limit`."
           }
         },
         "additionalProperties": true
@@ -2525,6 +2537,16 @@
           },
           "elapsedMs": {
             "type": "integer"
+          },
+          "approvals": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Approvals the run asked for, across its segments (budget.maxApprovals)."
+          },
+          "approvalWaitMs": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Time the run spent waiting for approvals, across its segments (budget.approvalWaitMs)."
           },
           "manual": {
             "type": "boolean"

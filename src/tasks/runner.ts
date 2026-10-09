@@ -79,7 +79,14 @@ import {
   type LoadedRun,
   type RunEvent,
 } from "./store.js";
-import { tokensSpent } from "./types.js";
+import {
+  DEFAULT_APPROVAL_WAIT_MS,
+  DEFAULT_MAX_APPROVALS,
+  MAX_APPROVALS_LIMIT,
+  MAX_APPROVAL_WAIT_MS,
+  MAX_APPROVAL_WAIT_MS_CLOUD,
+  tokensSpent,
+} from "./types.js";
 import type {
   Task,
   TaskApprovalFactory,
@@ -247,7 +254,8 @@ type StopReason =
   | "budget_wallclock"
   | "budget_tool_calls"
   | "admission_denied"
-  | "settlement_failed";
+  | "settlement_failed"
+  | "approval_limit";
 
 class TaskStop extends Error {
   constructor(
@@ -1226,16 +1234,65 @@ export class TaskRunner {
     // process is still noticed — it aborts the run, which turns the pending
     // approval into a deny. The ask itself, its answer and its expiry are the
     // gate's (Warden's inbox).
+    //
+    // Waiting has a ceiling (#422 review L4): a run may ask at most
+    // `budget.maxApprovals` times (default 5) and wait at most
+    // `budget.approvalWaitMs` in all (default 60 minutes), both clamped to a
+    // hard maximum and counted across segments. Past either the run stops
+    // with `approval_limit` — one ordinary failure notice — instead of
+    // holding its slot and lease for hours and announcing ask after ask. The
+    // ask that would go over is not announced at all.
+    const maxApprovals = Math.max(
+      0,
+      Math.min(budget.maxApprovals ?? DEFAULT_MAX_APPROVALS, MAX_APPROVALS_LIMIT),
+    );
+    const waitCapMs = Math.max(
+      0,
+      Math.min(
+        budget.approvalWaitMs ?? DEFAULT_APPROVAL_WAIT_MS,
+        cloud ? MAX_APPROVAL_WAIT_MS_CLOUD : MAX_APPROVAL_WAIT_MS,
+      ),
+    );
+    const duration = (ms: number): string => {
+      const [n, unit] =
+        ms < 60_000
+          ? [Math.max(1, Math.ceil(ms / 1000)), "second"]
+          : [Math.round(ms / 60_000), "minute"];
+      return `${n} ${unit}${n === 1 ? "" : "s"}`;
+    };
+    const waitedTooLong = `it waited ${duration(waitCapMs)} for approvals in all, the most a run may (budget.approvalWaitMs); it stopped instead of waiting longer`;
     let waiting = 0;
+    /** Asks refused at the ceiling: their `ended` is not a wait ending. */
+    let refused = 0;
+    let waitCeiling: NodeJS.Timeout | undefined;
     let cancelPoll: NodeJS.Timeout | undefined;
     const approvalWait: TaskApprovalWait = {
       started: async ({ tool }) => {
+        const refuse = (why?: string): false => {
+          refused += 1;
+          if (why) stopWith("approval_limit", why);
+          return false;
+        };
+        // Already stopping: nothing to wait for, nobody to tell.
+        if (slot.stop || slot.controller.signal.aborted) return refuse();
+        const asked = (run.approvals ?? 0) + 1;
+        if (asked > maxApprovals) {
+          return refuse(
+            `it asked for approval ${maxApprovals} time${maxApprovals === 1 ? "" : "s"}, the most a run may (budget.maxApprovals); it stopped instead of asking again`,
+          );
+        }
+        if ((run.approvalWaitMs ?? 0) >= waitCapMs) return refuse(waitedTooLong);
+        run.approvals = asked;
         waiting += 1;
-        if (waiting > 1) return;
+        if (waiting > 1) return true;
         if (pausedAt === null) {
           clearTimeout(wallclock);
           pausedAt = this.now();
         }
+        waitCeiling = setTimeout(
+          () => stopWith("approval_limit", waitedTooLong),
+          Math.max(0, waitCapMs - (run.approvalWaitMs ?? 0)),
+        );
         cancelPoll = setInterval(
           () => void cancelRequested(),
           this.opts.approvalCancelPollMs ?? APPROVAL_CANCEL_POLL_MS,
@@ -1249,15 +1306,24 @@ export class TaskRunner {
           t.state = "awaiting_approval";
         });
         if (parked) this.emit({ type: "task_updated", task: parked });
+        return true;
       },
       ended: async ({ approved }) => {
+        if (refused > 0) {
+          refused -= 1;
+          return;
+        }
         if (waiting === 0) return;
         waiting -= 1;
         if (waiting > 0) return;
         clearInterval(cancelPoll);
         cancelPoll = undefined;
+        clearTimeout(waitCeiling);
+        waitCeiling = undefined;
         if (pausedAt !== null) {
-          pausedMs += this.now() - pausedAt;
+          const waited = this.now() - pausedAt;
+          pausedMs += waited;
+          run.approvalWaitMs = (run.approvalWaitMs ?? 0) + waited;
           pausedAt = null;
           if (!slot.stop) armWallclock();
         }
@@ -1648,6 +1714,7 @@ export class TaskRunner {
     } finally {
       clearTimeout(wallclock);
       clearInterval(cancelPoll);
+      clearTimeout(waitCeiling);
       touch();
     }
   }

@@ -152,7 +152,30 @@ export interface TaskBudget {
   wallclockMs: number;
   /** Tool-call ceiling per run. */
   maxToolCalls: number;
+  /**
+   * How many times a run may ask for an approval (default 5, at most
+   * MAX_APPROVALS_LIMIT). The next ask stops the run (`approval_limit`)
+   * instead of waiting — and is not announced.
+   */
+  maxApprovals?: number;
+  /**
+   * Total time a run may spend waiting for approvals, across its asks and
+   * segments (default 60 minutes, at most MAX_APPROVAL_WAIT_MS — 15 minutes
+   * hosted). Past it the run stops (`approval_limit`).
+   */
+  approvalWaitMs?: number;
 }
+
+/** Asks a run may make when its budget says nothing (#422 review L4). */
+export const DEFAULT_MAX_APPROVALS = 5;
+/** Hard ceiling on `budget.maxApprovals`, whatever a task file says. */
+export const MAX_APPROVALS_LIMIT = 20;
+/** Waiting a run may do when its budget says nothing. */
+export const DEFAULT_APPROVAL_WAIT_MS = 60 * 60_000;
+/** Hard ceiling on `budget.approvalWaitMs` at home… */
+export const MAX_APPROVAL_WAIT_MS = 6 * 3_600_000;
+/** …and hosted, where a waiting run holds its sweep request open. */
+export const MAX_APPROVAL_WAIT_MS_CLOUD = 15 * 60_000;
 
 export interface Task {
   id: string;
@@ -279,6 +302,10 @@ export interface TaskRun {
   lastError?: string;
   /** Wall-clock time spent executing, summed across resumed segments. */
   elapsedMs?: number;
+  /** Approvals the run has asked for, across its segments (`budget.maxApprovals`). */
+  approvals?: number;
+  /** Time spent waiting for approvals, across its segments (`budget.approvalWaitMs`). */
+  approvalWaitMs?: number;
   /** Started by the user ("run now"/test run) rather than by the schedule. */
   manual?: boolean;
   /**
@@ -378,8 +405,12 @@ export interface TaskApprovalContext {
 }
 
 export interface TaskApprovalWait {
-  /** An approval for `tool` is now pending. */
-  started(info: { tool: string; approvalId?: string }): Promise<void>;
+  /**
+   * An approval for `tool` is now pending. Resolves false when the run will
+   * not wait for it — it has asked or waited as much as its budget allows and
+   * is stopping (`approval_limit`): the gate must then not tell the user.
+   */
+  started(info: { tool: string; approvalId?: string }): Promise<boolean | void>;
   /** It was answered, expired or cancelled. Called once per `started`. */
   ended(info: { approved: boolean }): Promise<void>;
 }

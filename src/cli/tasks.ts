@@ -36,7 +36,12 @@ import { disableTask, enableTask } from "../tasks/lifecycle.js";
 import type { TaskRunner } from "../tasks/runner.js";
 import { removeTask } from "../tasks/removal.js";
 import { getTask, listRuns, listTasks, loadRun, updateTask } from "../tasks/store.js";
-import { tokensSpent, type Task } from "../tasks/types.js";
+import {
+  DEFAULT_APPROVAL_WAIT_MS,
+  DEFAULT_MAX_APPROVALS,
+  tokensSpent,
+  type Task,
+} from "../tasks/types.js";
 
 const USAGE =
   "usage: lisa tasks [list]\n" +
@@ -146,7 +151,9 @@ export async function runTasksCommand(args: string[], io: TasksCommandIo = {}): 
     out(`    notify ${task.notify} · host ${task.host} · origin ${task.origin.kind}`);
     out(
       `    budget ${task.budget.tokens} tokens, ${Math.round(task.budget.wallclockMs / 60_000)} min, ` +
-        `${task.budget.maxToolCalls} tool calls`,
+        `${task.budget.maxToolCalls} tool calls; at most ` +
+        `${task.budget.maxApprovals ?? DEFAULT_MAX_APPROVALS} approvals and ` +
+        `${Math.round((task.budget.approvalWaitMs ?? DEFAULT_APPROVAL_WAIT_MS) / 60_000)} min waiting for them`,
     );
     if (task.envelope?.tools) out(`    tools: ${task.envelope.tools.join(", ")}`);
     if (task.trigger) out(`    trigger: ${JSON.stringify(task.trigger)}`);

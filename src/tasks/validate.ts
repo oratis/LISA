@@ -15,6 +15,9 @@ import {
 import type { NewTask } from "./store.js";
 import {
   DEFAULT_TASK_BUDGET,
+  MAX_APPROVALS_LIMIT,
+  MAX_APPROVAL_WAIT_MS,
+  MAX_APPROVAL_WAIT_MS_CLOUD,
   TASK_HOSTS,
   TASK_KINDS,
   TASK_NOTIFY,
@@ -37,6 +40,8 @@ export const LIMITS = {
   tokens: { min: 1_000, max: 2_000_000, cloudMax: 400_000 },
   wallclockMs: { min: 10_000, max: 60 * 60_000, cloudMax: 15 * 60_000 },
   maxToolCalls: { min: 1, max: 200, cloudMax: 60 },
+  maxApprovals: { min: 0, max: MAX_APPROVALS_LIMIT, cloudMax: MAX_APPROVALS_LIMIT },
+  approvalWaitMs: { min: 60_000, max: MAX_APPROVAL_WAIT_MS, cloudMax: MAX_APPROVAL_WAIT_MS_CLOUD },
 } as const;
 
 export interface ValidateContext {
@@ -242,7 +247,13 @@ export function parseBudget(
 ): Result<TaskBudget> {
   if (!isObject(v)) return fail("budget must be an object");
   const out: TaskBudget = { ...base };
-  for (const field of ["tokens", "wallclockMs", "maxToolCalls"] as const) {
+  for (const field of [
+    "tokens",
+    "wallclockMs",
+    "maxToolCalls",
+    "maxApprovals",
+    "approvalWaitMs",
+  ] as const) {
     const value = v[field];
     if (value === undefined) continue;
     const { min, max, cloudMax } = LIMITS[field];
