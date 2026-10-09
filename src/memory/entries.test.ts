@@ -98,4 +98,64 @@ describe("memory entries edit/delete", () => {
     );
     assert.ok(!audit.includes("edited") && !audit.includes("appended"), "audit holds no content");
   });
+
+  test("headings keep their level, prose stays single-line, bullets may span lines", async () => {
+    writeStoreFile("MEMORY.md", "### Work\nsome prose\n- item\n");
+    const { entries } = await readMemoryStore("memory");
+    const [heading, prose, item] = entries;
+    await replaceMemoryEntry(heading!.id, "Projects");
+    await assert.rejects(
+      replaceMemoryEntry(prose!.id, "two\nlines"),
+      (e: MemoryEditError) => e.code === "invalid_entry",
+    );
+    const multi = await replaceMemoryEntry(item!.id, "first line\nsecond line");
+    assert.equal(multi.text, "first line\nsecond line");
+    assert.equal(readStoreFile("MEMORY.md"), "### Projects\nsome prose\n- first line\n  second line\n");
+    await assert.rejects(appendMemoryEntry("memory", "bad\u0007bell"), (e: MemoryEditError) => e.code === "invalid_entry");
+  });
+
+  test("byte caps are enforced and an oversize file can still shrink", async () => {
+    await assert.rejects(
+      appendMemoryEntry("user", "x".repeat(2100)),
+      (e: MemoryEditError) => e.code === "memory_full",
+    );
+    // A hand-edited file over its cap: flagged, appends refused, deletes allowed.
+    writeStoreFile("USER.md", `- ${"a".repeat(1500)}\n- ${"b".repeat(1500)}\n`);
+    const parsed = await readMemoryStore("user");
+    assert.ok(parsed.warnings.some((w) => /over its 2048-byte cap/.test(w)));
+    await assert.rejects(appendMemoryEntry("user", "more"), (e: MemoryEditError) => e.code === "memory_full");
+    await deleteMemoryEntry(parsed.entries[0]!.id);
+    assert.equal(readStoreFile("USER.md"), `- ${"b".repeat(1500)}\n`);
+  });
+
+  test("a corrupt file (NUL / invalid UTF-8) is listed but never rewritten", async () => {
+    const bad = Buffer.concat([Buffer.from("- ok\n- nul\u0000here\n"), Buffer.from([0xff, 0xfe, 0x0a])]);
+    writeStoreFile("MEMORY.md", bad);
+    const parsed = await readMemoryStore("memory");
+    assert.equal(parsed.corrupt, true);
+    assert.ok(parsed.warnings.length >= 2);
+    assert.ok(parsed.entries.length >= 2);
+    for (const attempt of [
+      () => appendMemoryEntry("memory", "x"),
+      () => replaceMemoryEntry(parsed.entries[0]!.id, "y"),
+      () => deleteMemoryEntry(parsed.entries[0]!.id),
+    ]) {
+      await assert.rejects(attempt(), (e: MemoryEditError) => e.code === "memory_corrupt");
+    }
+    assert.ok(fs.readFileSync(path.join(home, "memory", "MEMORY.md")).equals(bad));
+  });
+
+  test("concurrent edits from the API and the memory tool serialize on one lock", async () => {
+    const { appendMemory, removeFromMemory } = await import("./store.js");
+    writeStoreFile("MEMORY.md", "- drop me\n");
+    await Promise.all([
+      ...Array.from({ length: 10 }, (_, i) => appendMemoryEntry("memory", `api ${i}`)),
+      ...Array.from({ length: 5 }, (_, i) => appendMemory("memory", `tool ${i}`)),
+      removeFromMemory("memory", "drop me"),
+    ]);
+    const { entries } = await readMemoryStore("memory");
+    assert.equal(entries.length, 15);
+    assert.ok(!entries.some((e) => e.text === "drop me"));
+    assert.ok(!fs.existsSync(path.join(home, "memory", ".write.lock")), "lock released");
+  });
 });
