@@ -18,7 +18,8 @@
  *   taint     a run a watcher hit started is tainted from its first call (its
  *             prompt quotes an outsider's text), and so is a continued run that
  *             was tainted before;
- *   tenant    the task's uid and the home the run works in.
+ *   tenant    the uid and home of the scope the run works in (never the
+ *             task file's `owner`; a context naming another tenant is refused).
  *
  * An "ask" waits in the inbox like a chat turn's would. The engine is told
  * when the wait starts and ends (it shows the run as `awaiting_approval` and
@@ -28,6 +29,7 @@
  * or a cancelled run, and the model is told it did not run.
  */
 import { logWarn } from "../log.js";
+import { lisaHome, scopedUid } from "../paths.js";
 import { taskApprovalNotice } from "../reachout/senders.js";
 import type { ReachOutNotice, ReachOutResult } from "../reachout/types.js";
 import type {
@@ -177,6 +179,11 @@ export function createTaskApprovalFactory(opts: TaskApprovalFactoryOptions): Tas
   };
 
   const factory: TaskApprovalFactory = async (ctx): Promise<TaskApprovalHandle> => {
+    // The session's tenant is the scope the run works in. A context that
+    // names another one is refused: the attempt fails, never runs ungated.
+    if (ctx.uid !== scopedUid() || ctx.home !== lisaHome()) {
+      throw new Error("task approval context does not match the tenant scope it runs in");
+    }
     // "For this task" means for this run of it. One an earlier run left
     // behind — it crashed before its ending was recorded, or Warden was off
     // when it ended — must not cover this run. A store that cannot be written

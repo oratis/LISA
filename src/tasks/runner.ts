@@ -529,6 +529,15 @@ export class TaskRunner {
     return this.active.has(taskId);
   }
 
+  /**
+   * The tenant this runner works for: the uid of the home scope it runs in
+   * (null on the Mac edition). Every uid a run hands on — to the approval
+   * gate, to its notices — comes from here, not from the task file.
+   */
+  private tenant(): string | null {
+    return scopedUid();
+  }
+
   private log(msg: string): void {
     (this.opts.log ?? logInfo)(`[tasks] ${msg}`);
   }
@@ -1364,6 +1373,20 @@ export class TaskRunner {
     let capMessage: string | undefined;
 
     try {
+      // Whose run this is comes from the scope the runner works in (the
+      // authenticated tenant), never from the task file: a file that names
+      // another account is not run at all — no gate, no model call — and the
+      // task is switched off saying why (#422 review L8).
+      if (task.owner !== this.tenant()) {
+        return {
+          state: "failed",
+          stopReason: "owner_mismatch",
+          summary: "",
+          error: "the task file names a different account than the one running it",
+          blocked: true,
+          pause: true,
+        };
+      }
       if (capLeft !== undefined && !(capLeft > 0)) {
         // Spent in an earlier segment (a failed attempt counts): not one more call.
         return {
@@ -1401,7 +1424,7 @@ export class TaskRunner {
         // Only an envelope the user confirmed as they see it now is a
         // pre-approval; a drafted or edited one only restricts the toolset.
         envelopeConfirmed: isEnvelopeConfirmed(task),
-        uid: task.owner,
+        uid: this.tenant(),
         home: lisaHome(),
         title: task.title,
         // A run a watcher hit started quotes an outsider's text in its prompt,
@@ -1783,7 +1806,7 @@ export class TaskRunner {
       await this.saveNotice(
         {
           id: noticeId(run.id, n.kind),
-          uid: before.owner,
+          uid: this.tenant(),
           taskId: before.id,
           runId: run.id,
           title: before.title,
@@ -1803,7 +1826,7 @@ export class TaskRunner {
     await this.approvalFactory()?.runEnded?.({
       taskId: before.id,
       runId: run.id,
-      uid: before.owner,
+      uid: this.tenant(),
       home: lisaHome(),
     });
     // …then the same transition for real. This write ends the finish.
@@ -1847,7 +1870,7 @@ export class TaskRunner {
       await this.saveNotice(
         {
           id: noticeId(run.id, kind),
-          uid: task.owner,
+          uid: this.tenant(),
           taskId: task.id,
           runId: run.id,
           title: task.title,

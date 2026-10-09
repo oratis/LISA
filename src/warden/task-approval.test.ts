@@ -10,7 +10,7 @@ import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type Anthropic from "@anthropic-ai/sdk";
-import { homeScope } from "../paths.js";
+import { homeForUid, homeScope } from "../paths.js";
 import type { Provider, ProviderResult, ProviderRunOpts } from "../providers/types.js";
 import type { ToolDefinition } from "../types.js";
 import { runTasksCommand } from "../cli/tasks.js";
@@ -25,7 +25,7 @@ import {
   updateTask,
   type NewTask,
 } from "../tasks/store.js";
-import type { Task, TaskNotice } from "../tasks/types.js";
+import type { Task, TaskApprovalFactory, TaskNotice } from "../tasks/types.js";
 import { readAudit } from "./audit.js";
 import { createGrants, loadGrants } from "./grants.js";
 import { WardenInbox } from "./inbox.js";
@@ -1186,3 +1186,86 @@ test("the approval push is content-free; the task title and tool stay in the in-
     await inbox.shutdown();
   });
 });
+
+// ── review of #422, L8: the session's tenant is the scope, not the task file ──
+
+test("the Warden session's uid comes from the tenant scope; a task file naming another account is not run", async () => {
+  const uid = `u_${Date.now().toString(36)}`;
+  const tenantHome = homeForUid(uid);
+  await fsp.mkdir(tenantHome, { recursive: true });
+  try {
+    await homeScope.run(tenantHome, async () => {
+      const ws = path.join(tenantHome, "ws");
+      await fsp.mkdir(ws, { recursive: true });
+      const mine = await dueRoutine({ owner: uid, nextRunAt: Date.now() - 1000 });
+      const forged = await dueRoutine({
+        owner: "someone-else",
+        title: "Forged",
+        nextRunAt: Date.now() - 1000,
+      });
+      const seen: Array<{ taskId: string; uid: string | null }> = [];
+      const { inbox } = wardenInbox("ignore", 30);
+      const real = factoryOn(inbox);
+      const factory: TaskApprovalFactory = Object.assign(
+        async (ctx: Parameters<TaskApprovalFactory>[0]) => {
+          seen.push({ taskId: ctx.taskId, uid: ctx.uid });
+          return await real(ctx);
+        },
+        { runEnded: real.runEnded, taskRemoved: real.taskRemoved },
+      );
+      let modelCalls = 0;
+      const runner = makeRunner(ws, {
+        provider: {
+          name: "fake",
+          runTurn: async () => {
+            modelCalls++;
+            return turn([text("Nothing to do.")]);
+          },
+        },
+        deliver: collector().deliver,
+        tools: [writeTool([])],
+        approvalFactory: factory,
+        now: Date.now,
+      });
+      await runner.tick();
+      await runner.drain();
+
+      assert.deepEqual(seen, [{ taskId: mine.id, uid }], "only the tenant's own task got a gate");
+      assert.equal(modelCalls, 1, "the forged task made no model call");
+      const after = (await getTask(forged.id))!;
+      assert.equal(after.enabled, false, "switched off");
+      assert.match(after.pausedReason ?? "", /different account/);
+      const [run] = await listRuns(after);
+      assert.equal(run!.stopReason, "owner_mismatch");
+
+      // A context that names another tenant is refused by the factory itself.
+      await assert.rejects(
+        real({ ...fakeContext(mine.id, tenantHome), uid: "someone-else" }),
+        /does not match the tenant scope/,
+      );
+      await inbox.shutdown();
+    });
+  } finally {
+    await fsp.rm(tenantHome, { recursive: true, force: true });
+  }
+});
+
+function fakeContext(taskId: string, home: string): Parameters<TaskApprovalFactory>[0] {
+  return {
+    taskId,
+    runId: "r_0000000000000000",
+    runStartedAt: Date.now(),
+    origin: { kind: "routine", id: taskId },
+    envelopeConfirmed: false,
+    uid: null,
+    home,
+    title: "x",
+    tainted: false,
+    onTaint: () => {},
+    cwd: home,
+    sandboxMode: "workspace-write",
+    tools: [],
+    signal: new AbortController().signal,
+    approvalWait: { started: async () => true, ended: async () => {} },
+  };
+}
