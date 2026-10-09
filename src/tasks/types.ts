@@ -112,17 +112,35 @@ export interface WatchState {
 }
 
 /**
- * Capabilities the user approved when the task was created. The runner only
- * hands the model tools inside this envelope; anything outside it is not
- * offered at all (and Warden, once wired, treats it as out-of-envelope).
+ * What a task may use and — once the user has CONFIRMED it — what it may do
+ * without asking.
+ *
+ * Until it is confirmed (`Task.envelopeConfirmation`, confirmation.ts) an
+ * envelope only RESTRICTS: the runner offers the model only the tools inside
+ * it, and nothing is pre-approved. The model can draft one (task_create's
+ * `tools`); only the user's confirmation, given after seeing it in plain
+ * words, makes it a pre-approval — and even then taint overrides it for side
+ * effects (docs/DESIGN_WARDEN.md).
  */
 export interface TaskEnvelope {
-  /** Capability categories (e.g. "read", "web", "mail"). Informational to Warden. */
+  /**
+   * Action categories (Warden's: "write", "exec", "send", …). Labels Warden
+   * does not know ("web", "mail") are informational and pre-approve nothing.
+   */
   categories?: string[];
   /** Exact tool names allowed. Unset ⇒ every non-mutating tool on the surface. */
   tools?: string[];
-  /** Targets (hosts, paths, repos) the task may act on. Informational to Warden. */
+  /** Targets (hosts, paths, repos) a pre-approval is limited to. */
   targets?: string[];
+}
+
+export interface TaskEnvelopeConfirmation {
+  /** `taskDigest()` of the task as the user confirmed it. */
+  digest: string;
+  /** When they confirmed it. */
+  at: number;
+  /** Where: the terminal (`lisa tasks enable`) or the HTTP API. */
+  via: "cli" | "api";
 }
 
 export interface TaskBudget {
@@ -151,6 +169,16 @@ export interface Task {
   trigger?: TriggerSpec;
   watch?: WatchState;
   envelope?: TaskEnvelope;
+  /**
+   * The user confirmed the envelope as a pre-approval. Holds the digest
+   * (confirmation.ts `taskDigest`) of exactly what they were shown: the
+   * instruction, the schedule or trigger, the envelope and the notify mode.
+   * It counts only while that digest still matches the task, every edit of
+   * those fields clears it, and so does every enable. Only the user's own act
+   * sets it (`lisa tasks enable` on a terminal or with `--confirm <digest>`,
+   * `PATCH /api/tasks/{id}` from a caller who may approve); no model tool can.
+   */
+  envelopeConfirmation?: TaskEnvelopeConfirmation;
   budget: TaskBudget;
   notify: TaskNotify;
   state: TaskState;
@@ -315,6 +343,12 @@ export interface TaskApprovalContext {
   runStartedAt: number;
   origin: { kind: "task" | "routine" | "watcher"; id: string };
   envelope?: TaskEnvelope;
+  /**
+   * The user confirmed this envelope (confirmation.ts `isEnvelopeConfirmed`).
+   * False ⇒ the envelope only restricts what the run is offered and a gate
+   * must not treat it as a pre-approval of anything.
+   */
+  envelopeConfirmed: boolean;
   uid: string | null;
   /** The tenant home the run works in (`lisaHome()` inside the run's scope). */
   home: string;

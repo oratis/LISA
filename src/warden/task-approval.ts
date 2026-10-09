@@ -9,7 +9,12 @@
  *   origin    `task` / `routine` / `watcher` with the task id, so the default
  *             matrix's task column applies ("preapproved" = covered by the
  *             task's capability envelope, otherwise ask);
- *   envelope  the task's envelope, narrowed to what Warden understands;
+ *   envelope  the task's envelope, narrowed to what Warden understands —
+ *             and only when the user CONFIRMED it (src/tasks/confirmation.ts).
+ *             An unconfirmed envelope pre-approves nothing: it only restricted
+ *             the tools the run is offered. In a tainted run even a confirmed
+ *             one does not cover exec, delete, send, publish, network writes
+ *             or writes outside the run's workspace (policy.ts);
  *   taint     a run a watcher hit started is tainted from its first call (its
  *             prompt quotes an outsider's text), and so is a continued run that
  *             was tainted before;
@@ -154,7 +159,10 @@ export function createTaskApprovalFactory(opts: TaskApprovalFactoryOptions): Tas
       workspaceRoot: ctx.cwd,
       inbox: opts.inbox,
       tools: ctx.tools,
-      envelope: wardenEnvelope(ctx.envelope),
+      // A pre-approval only when the user confirmed it; otherwise the
+      // envelope has already done its job (restricting the toolset) and
+      // every side effect the matrix leaves to it asks.
+      envelope: ctx.envelopeConfirmed ? wardenEnvelope(ctx.envelope) : undefined,
       purpose: `${KIND_LABEL[ctx.origin.kind]} "${ctx.title.slice(0, 120)}"`,
       initialTaint: ctx.tainted,
       onTaint: ctx.onTaint,

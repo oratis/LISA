@@ -57,11 +57,16 @@ export function restingState(task: Task): TaskState {
 
 /**
  * Turn a task on. A scheduled task waits for its first occurrence; a watcher
- * polls at the next tick; a task with neither runs once, now.
+ * polls at the next tick; a task with neither runs once, now. It is on
+ * UNCONFIRMED: its envelope restricts but pre-approves nothing until the
+ * caller records the user's confirmation.
  */
 export function enableTask(task: Task, now: number): void {
   task.enabled = true;
   task.enabledAt = now;
+  // Every enable decides afresh whether the envelope is confirmed: the caller
+  // confirms (confirmation.ts) after this, when — and only when — the user did.
+  delete task.envelopeConfirmation;
   delete task.pausedReason;
   task.authFailureCount = 0;
   task.failureCount = 0;

@@ -5,6 +5,7 @@
  *
  * Everything here is pure: unknown JSON in, a typed value or a short reason out.
  */
+import { taskDigest } from "./confirmation.js";
 import {
   MIN_EVERY_MS_CLOUD,
   MIN_EVERY_MS_LOCAL,
@@ -421,9 +422,14 @@ export function applyTaskEdit(task: Task, body: unknown, ctx: ValidateContext): 
   }
   const problem = shapeProblem(next.kind, next.schedule, next.trigger);
   if (problem) return problem;
+  // A confirmation covers the task as the user saw it. Changing what it runs,
+  // when, with which envelope or how it tells them clears it: the envelope is
+  // a restriction again until they confirm the new version.
+  if (taskDigest(next) !== taskDigest(task)) delete next.envelopeConfirmation;
   Object.assign(task, next);
   if (!next.schedule) delete task.schedule;
   if (!next.envelope) delete task.envelope;
   if (!next.watch) delete task.watch;
+  if (!next.envelopeConfirmation) delete task.envelopeConfirmation;
   return null;
 }

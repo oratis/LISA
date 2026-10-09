@@ -2610,7 +2610,17 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       return;
     }
     if (await handleReachOutApi(req, res, url, reachOutApiOptions(cloud))) return;
-    if (await taskHost.handle(req, res, url, accountUid)) return;
+    if (
+      await taskHost.handle(
+        req,
+        res,
+        url,
+        accountUid,
+        wardenTrust({ cloud, loopback: isLoopbackAddress(remoteAddr), accountUid }),
+      )
+    ) {
+      return;
+    }
 
     if (
       await handleWardenApi(req, res, url, {

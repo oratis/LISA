@@ -43,6 +43,7 @@ import { sandboxModeForProfile } from "../sandbox/sandbox.js";
 import { validateToolInput } from "../tools/validate.js";
 import { stripSensitiveTokens } from "../warden/hygiene.js";
 import type { AgentEvent, StoredMessage, ToolDefinition } from "../types.js";
+import { isEnvelopeConfirmed } from "./confirmation.js";
 import {
   buildResumeNote,
   buildTaskFrame,
@@ -1273,6 +1274,9 @@ export class TaskRunner {
           id: task.id,
         },
         ...(task.envelope ? { envelope: task.envelope } : {}),
+        // Only an envelope the user confirmed as they see it now is a
+        // pre-approval; a drafted or edited one only restricts the toolset.
+        envelopeConfirmed: isEnvelopeConfirmed(task),
         uid: task.owner,
         home: lisaHome(),
         title: task.title,

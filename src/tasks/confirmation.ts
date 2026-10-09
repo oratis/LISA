@@ -1,0 +1,209 @@
+/**
+ * Confirming a task's envelope — the only thing that turns it from a
+ * restriction into a pre-approval.
+ *
+ * The model can draft a task and its envelope (`task_create`'s `tools`). That
+ * draft restricts what the run is offered; it pre-approves nothing. When the
+ * user enables the task they are shown, in plain words, what it would do
+ * without asking, and only their confirmation of exactly that — recorded as a
+ * digest of the instruction, the schedule or trigger, the envelope and the
+ * notify mode — lets Warden treat the envelope as "preapproved". Any change to
+ * those fields makes the digest stop matching, so a confirmation never covers
+ * a task it was not given for.
+ *
+ * Pure: no I/O. The callers that may confirm are the user's own surfaces —
+ * `lisa tasks enable` and `PATCH /api/tasks/{id}` from a caller who may
+ * approve. No model tool calls `confirmTask`.
+ */
+import { createHash } from "node:crypto";
+import type { Task, TaskEnvelopeConfirmation } from "./types.js";
+
+function canonical(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const key of Object.keys(value).sort()) {
+      out[key] = canonical((value as Record<string, unknown>)[key]);
+    }
+    return out;
+  }
+  return value;
+}
+
+type Confirmable = Pick<
+  Task,
+  "kind" | "instruction" | "schedule" | "trigger" | "envelope" | "notify"
+>;
+
+/**
+ * The digest of what a confirmation covers: sha256 hex of the canonical JSON
+ * of the instruction, schedule, trigger, envelope and notify mode (and the
+ * kind, which decides how the schedule is read). The title is not in it: it
+ * changes nothing a run does.
+ */
+export function taskDigest(task: Confirmable): string {
+  const content = {
+    kind: task.kind,
+    instruction: task.instruction,
+    schedule: task.schedule ?? null,
+    trigger: task.trigger ?? null,
+    envelope: task.envelope ?? null,
+    notify: task.notify,
+  };
+  return createHash("sha256")
+    .update("lisa.task-confirmation.v1\n")
+    .update(JSON.stringify(canonical(content)))
+    .digest("hex");
+}
+
+/** Does the envelope name anything a confirmation could pre-approve (a tool or a category)? */
+export function envelopeCouldPreapprove(task: Pick<Task, "envelope">): boolean {
+  const envelope = task.envelope;
+  return (
+    !!envelope && ((envelope.tools?.length ?? 0) > 0 || (envelope.categories?.length ?? 0) > 0)
+  );
+}
+
+/** True when the user confirmed the task exactly as it is now. */
+export function isEnvelopeConfirmed(
+  task: Confirmable & Pick<Task, "envelopeConfirmation">,
+): boolean {
+  const confirmation = task.envelopeConfirmation;
+  return typeof confirmation?.digest === "string" && confirmation.digest === taskDigest(task);
+}
+
+/** Record the user's confirmation of the task as it is now. */
+export function confirmTask(task: Task, now: number, via: TaskEnvelopeConfirmation["via"]): void {
+  task.envelopeConfirmation = { digest: taskDigest(task), at: now, via };
+}
+
+/** A stored confirmation, if it has the right shape; anything else is dropped (it can only grant). */
+export function parseConfirmation(value: unknown): TaskEnvelopeConfirmation | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const v = value as Record<string, unknown>;
+  if (typeof v.digest !== "string" || !/^[0-9a-f]{64}$/.test(v.digest)) return undefined;
+  if (typeof v.at !== "number" || !Number.isFinite(v.at)) return undefined;
+  if (v.via !== "cli" && v.via !== "api") return undefined;
+  return { digest: v.digest, at: v.at, via: v.via };
+}
+
+// ── what the user is shown ──
+
+const CATEGORY_WORDS: Readonly<Record<string, string>> = Object.freeze({
+  read: "read files and pages (reads never ask anyway)",
+  self: "write Lisa's own memory and notes",
+  draft: "write drafts",
+  write: "write files",
+  exec: "run commands",
+  network: "send requests to other services",
+  send: "send messages",
+  publish: "publish or post",
+  delete: "delete things",
+  purchase: "buy things (never: purchases are always handed back to you)",
+  credential: "enter credentials (never: always handed back to you)",
+});
+
+const TOOL_WORDS: Readonly<Record<string, string>> = Object.freeze({
+  bash: "run shell commands",
+  write: "write files",
+  edit: "edit files",
+  apply_patch: "change and delete files",
+  web_fetch: "fetch web pages",
+  web_search: "search the web",
+  github: "act on GitHub (including comments and merges)",
+  memory: "write Lisa's memory",
+  kb_write: "write the knowledge base",
+  kb_add: "add to the knowledge base",
+  takoapi: "call remote agents",
+});
+
+function clip(text: string, max: number): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
+}
+
+function whenWords(task: Confirmable): string {
+  if (task.trigger) {
+    const t = task.trigger;
+    const every = (t.every ?? "every:30m").replace("every:", "");
+    const what =
+      t.kind === "web"
+        ? `the page ${t.url} (${t.mode})`
+        : t.kind === "rss"
+          ? `the feed ${t.url}${t.keywords?.length ? ` for ${t.keywords.join(", ")}` : ""}`
+          : `your mail${t.from ? ` from "${t.from}"` : ""}${t.subject ? ` with subject "${t.subject}"` : ""}`;
+    const onHit =
+      t.onHit === "run"
+        ? "on a hit it runs the instruction with what it found"
+        : "on a hit it tells you";
+    return `watches ${what}, checked every ${every}; ${onHit}`;
+  }
+  if (task.schedule) {
+    return `${task.schedule.expr}${task.schedule.tz ? ` (${task.schedule.tz})` : ""}`;
+  }
+  return "once, as soon as it is on";
+}
+
+/**
+ * The confirmation screen, in plain words: what runs, when, and which actions
+ * would run without asking. The same lines are printed by `lisa tasks show` /
+ * `enable` and returned by `GET /api/tasks/{id}`.
+ */
+export function describeForConfirmation(task: Confirmable): string[] {
+  const lines = [
+    `Instruction: ${clip(task.instruction, 600)}`,
+    `When: ${whenWords(task)}`,
+    `Tells you: ${task.notify}`,
+  ];
+  const envelope = task.envelope;
+  if (!envelopeCouldPreapprove(task)) {
+    lines.push(
+      "Nothing is pre-approved: every action with a side effect asks you first (with Warden on) or is not run.",
+    );
+    if (envelope?.tools?.length) lines.push(`It may only use: ${envelope.tools.join(", ")}.`);
+    return lines;
+  }
+  lines.push("If you confirm, these actions will run without asking:");
+  for (const tool of envelope!.tools ?? []) {
+    const words = Object.hasOwn(TOOL_WORDS, tool) ? TOOL_WORDS[tool] : undefined;
+    lines.push(`  - the tool ${tool}${words ? ` (${words})` : ""}`);
+  }
+  for (const category of envelope!.categories ?? []) {
+    const words = Object.hasOwn(CATEGORY_WORDS, category) ? CATEGORY_WORDS[category] : undefined;
+    lines.push(
+      words
+        ? `  - any "${category}" action: ${words}`
+        : `  - "${category}" (a label, not a permission: it pre-approves nothing)`,
+    );
+  }
+  lines.push(
+    envelope!.targets?.length ? `  …only on: ${envelope!.targets.join(", ")}` : "  …on any target.",
+  );
+  if (envelope!.tools?.length) lines.push(`It may only use: ${envelope!.tools.join(", ")}.`);
+  lines.push(
+    "Even then it asks first before it runs a command, sends, publishes, deletes, makes another " +
+      "network write or writes outside its own folder once the run has read outside content " +
+      "(a web page, a mail, a watcher hit). Purchases and credentials are always handed back to you.",
+    "This applies only while the server runs with Warden on; otherwise an unattended run makes read-only calls only.",
+  );
+  return lines;
+}
+
+export interface TaskConfirmationView {
+  /** What `--confirm` / `confirmEnvelope` must name to confirm the task as it is now. */
+  digest: string;
+  /** The user confirmed the task as it is now. */
+  confirmed: boolean;
+  /** The envelope names something a confirmation would pre-approve. */
+  preapproves: boolean;
+  summary: string[];
+}
+
+export function confirmationView(task: Task): TaskConfirmationView {
+  return {
+    digest: taskDigest(task),
+    confirmed: isEnvelopeConfirmed(task),
+    preapproves: envelopeCouldPreapprove(task),
+    summary: describeForConfirmation(task),
+  };
+}

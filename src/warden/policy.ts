@@ -43,7 +43,11 @@ export interface PolicyContext {
   grants: StoredGrant[];
   /** The rules file existed but could not be trusted: nothing side-effecting is "auto". */
   rulesCorrupt?: boolean;
-  /** What the user pre-approved when the task was created. */
+  /**
+   * What the user CONFIRMED the task may do without asking. A host passes an
+   * envelope here only once the user confirmed it (src/tasks/confirmation.ts);
+   * a drafted one restricts the toolset and is never handed to the policy.
+   */
   envelope?: TaskEnvelope;
   /** Absolute paths the model may never write — Warden's own state. */
   protectedPaths?: string[];
@@ -147,8 +151,10 @@ export function defaultBehavior(req: ActionRequest): RuleBehavior {
  * The strictest behaviour the context forces regardless of user rules: a
  * tainted run, a remote origin or an untrustworthy rules file never
  * auto-allows a side effect. A tainted TASK is floored at "preapproved" rather
- * than "ask" — tasks read the web as a matter of course, and what keeps them
- * safe is that only the envelope the user approved can cover the action.
+ * than "ask" — tasks read the web as a matter of course — but in a tainted run
+ * the envelope (which the user must have confirmed) still covers only reads
+ * and writes inside the run's workspace: every other side effect asks
+ * (`taintOverridesEnvelope`).
  */
 function floorFor(req: ActionRequest, ctx: PolicyContext): MatchedRule {
   if (isBenign(req.category)) return { behavior: "auto", ruleId: "" };
@@ -176,6 +182,27 @@ export function envelopeCovers(req: ActionRequest, envelope: TaskEnvelope | unde
   // No target list: fine for confined local work, but a tainted run may only
   // reach off-host targets the envelope named (simplified tainted egress).
   return !(offHost && req.tainted);
+}
+
+/**
+ * In a tainted run, the side effects a confirmed envelope still does NOT
+ * pre-approve: exec, delete, send, publish, a network write, and a write
+ * outside the run's workspace. Reads, and writes inside the run's own
+ * workspace, stay as the envelope says.
+ */
+export function taintOverridesEnvelope(req: ActionRequest): boolean {
+  switch (req.category) {
+    case "exec":
+    case "delete":
+    case "send":
+    case "publish":
+    case "network":
+      return true;
+    case "write":
+      return req.withinWorkspace !== true;
+    default:
+      return false;
+  }
 }
 
 function touchesProtected(req: ActionRequest, ctx: PolicyContext): boolean {
@@ -456,6 +483,18 @@ export function evaluate(req: ActionRequest, ctx: PolicyContext): PolicyResult {
       return finalize(req, { verdict: "allow", reason: "Allowed by policy.", ruleId });
     case "preapproved":
       if (envelopeCovers(req, ctx.envelope)) {
+        // Taint overrides the envelope for side effects: what a page or a
+        // mail asked for is not what the user confirmed.
+        if (req.tainted && taintOverridesEnvelope(req)) {
+          return finalize(req, {
+            verdict: "ask",
+            reason:
+              "This run has read untrusted external content, so this action needs your " +
+              "approval even though the task pre-approves it.",
+            ruleId: "system:tainted-envelope",
+            scopes: offeredScopes(req, explicitAsk),
+          });
+        }
         return finalize(req, {
           verdict: "allow",
           reason: "Pre-approved by the task's capability envelope.",

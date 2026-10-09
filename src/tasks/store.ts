@@ -25,6 +25,7 @@ import { randomBytes as randomSuffix } from "node:crypto";
 import { pathExists } from "../fs-utils.js";
 import { lisaHome } from "../paths.js";
 import { withFileLock } from "../soul/lock.js";
+import { parseConfirmation } from "./confirmation.js";
 import { validateSchedule } from "./schedule.js";
 import type { StoredMessage } from "../types.js";
 import {
@@ -143,6 +144,12 @@ export function parseTask(raw: unknown, expectedId?: string): Parsed {
   if (typeof task.authFailureCount !== "number") task.authFailureCount = 0;
   if (!Array.isArray(task.runs)) task.runs = [];
   task.runs = task.runs.filter(isSafeId);
+  // A confirmation of the wrong shape is dropped: it could only ever grant.
+  if (task.envelopeConfirmation !== undefined) {
+    const confirmation = parseConfirmation(task.envelopeConfirmation);
+    if (confirmation) task.envelopeConfirmation = confirmation;
+    else delete task.envelopeConfirmation;
+  }
   // A schedule that cannot be computed (a hand-edited zone, an expression from
   // a newer build) must never reach the scheduler as a live task: it loads
   // switched off, saying why. Nothing is written until the user fixes it.

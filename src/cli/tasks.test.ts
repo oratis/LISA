@@ -7,6 +7,7 @@ import { parseArgs } from "../cli-args.js";
 import { homeScope } from "../paths.js";
 import type { Provider } from "../providers/types.js";
 import { TaskRunner } from "../tasks/runner.js";
+import { isEnvelopeConfirmed, taskDigest } from "../tasks/confirmation.js";
 import { createTask, getTask, listTasks } from "../tasks/store.js";
 import { runTaskNow, runTasksCommand } from "./tasks.js";
 
@@ -86,7 +87,9 @@ test("enable is the user's confirmation; disable turns it back off; ids may be p
     assert.equal(on.enabled, true);
     assert.equal(on.state, "scheduled");
     assert.equal(new Date(on.nextRunAt!).toISOString(), "2026-10-02T08:00:00.000Z");
-    assert.match(enabled.out[0]!, /is on — next run/);
+    // First what it does (no envelope here: nothing to pre-approve), then that it is on.
+    assert.match(enabled.out.join("\n"), /Nothing is pre-approved/);
+    assert.match(enabled.out.at(-1)!, /is on — next run/);
 
     const disabled = capture();
     assert.equal(await runTasksCommand(["disable", task.id], disabled.io), 0);
@@ -94,6 +97,47 @@ test("enable is the user's confirmation; disable turns it back off; ids may be p
     assert.equal(off.enabled, false);
     assert.equal(off.state, "paused");
     assert.equal(off.nextRunAt, undefined);
+  });
+});
+
+test("show prints what a confirmation would cover, and the digest that confirms it", async () => {
+  await withHome(async () => {
+    const task = await createTask({
+      ...routine,
+      envelope: { tools: ["bash"], categories: ["send"] },
+    });
+    const shown = capture();
+    assert.equal(await runTasksCommand(["show", task.id], shown.io), 0);
+    const screen = shown.out.join("\n");
+    assert.match(screen, /Not confirmed — its envelope only restricts/);
+    assert.match(screen, /If you confirm, these actions will run without asking:/);
+    assert.match(screen, /the tool bash \(run shell commands\)/);
+    assert.match(screen, /any "send" action: send messages/);
+    assert.match(screen, /on any target/);
+    assert.match(screen, /When: daily:08:00 \(UTC\)/);
+    assert.match(screen, new RegExp(`digest ${taskDigest(task)}`));
+    assert.match(screen, new RegExp(`lisa tasks enable ${task.id} --confirm ${taskDigest(task)}`));
+
+    // A wrong digest changes nothing; --confirm belongs to enable only.
+    const wrong = capture();
+    assert.equal(
+      await runTasksCommand(["enable", task.id, "--confirm", "0".repeat(64)], wrong.io),
+      2,
+    );
+    assert.equal((await getTask(task.id))!.enabled, false);
+    assert.equal(await runTasksCommand(["show", task.id, "--confirm", "x"], capture().io), 2);
+
+    const ok = capture();
+    assert.equal(
+      await runTasksCommand([`--confirm=${taskDigest(task)}`, "enable", task.id], ok.io),
+      0,
+    );
+    const on = (await getTask(task.id))!;
+    assert.equal(on.enabled, true);
+    assert.equal(isEnvelopeConfirmed(on), true);
+    const again = capture();
+    await runTasksCommand(["show", task.id], again.io);
+    assert.match(again.out.join("\n"), /Confirmed .* \(cli\):/);
   });
 });
 

@@ -9,8 +9,15 @@
  *
  * Hosted edition: the whole surface answers 403 `capability_denied` unless the
  * operator turned cloud tasks on (LISA_CLOUD_TASKS=1).
+ *
+ * Confirming an envelope (`PATCH {enabled: true, confirmEnvelope: <digest>}`)
+ * is the step that lets a task act without asking, so it takes what answering
+ * an approval takes: a caller who may approve and a same-origin request.
+ * `GET /api/tasks/{id}` returns the digest and the plain-words summary a
+ * client shows before asking the user.
  */
 import type http from "node:http";
+import { confirmationView, confirmTask, taskDigest } from "../tasks/confirmation.js";
 import { disableTask, enableTask } from "../tasks/lifecycle.js";
 import type { TaskEngineEvent, TaskRunner } from "../tasks/runner.js";
 import { removeTask } from "../tasks/removal.js";
@@ -18,6 +25,7 @@ import { createTask, getTask, listRuns, listTasks, loadRun, updateTask } from ".
 import { isSafeId, type Task, type TaskRun } from "../tasks/types.js";
 import { applyTaskEdit, parseNewTask } from "../tasks/validate.js";
 import { BodyTooLargeError, readCappedText } from "./http-body.js";
+import { crossSiteProblem } from "./warden-api.js";
 
 /** A task body is a title, an instruction and a few small specs — 64 KiB is generous. */
 export const TASK_BODY_LIMIT = 64 * 1024;
@@ -42,6 +50,15 @@ export interface TasksApiOptions {
   emit?: (event: TaskEngineEvent) => void;
   /** Override for tests; defaults to LISA_CLOUD_TASKS. */
   cloudEnabled?: boolean;
+  /**
+   * The caller may confirm what a task does without asking — the same people
+   * who may answer a Warden approval (warden-api.ts `wardenTrust`): the
+   * loopback owner on the Mac edition or a signed-in per-user session. Unset
+   * ⇒ nobody may (a paired device can still switch a task on, unconfirmed).
+   */
+  allowConfirm?: boolean;
+  /** The caller is trusted only because it connected from loopback (Host must then be loopback too). */
+  loopbackTrust?: boolean;
   now?: () => number;
 }
 
@@ -125,6 +142,14 @@ export async function handleTasksApi(
       }
       if (method === "POST") {
         const body = await bodyObject(req);
+        if (body.confirmEnvelope !== undefined) {
+          // The user confirms what they were shown: a task that exists, by its digest.
+          json(res, 400, {
+            error: "invalid_task",
+            message: "confirmEnvelope is accepted by PATCH /api/tasks/{id} once the task exists",
+          });
+          return true;
+        }
         const parsed = parseNewTask(body, { ...ctx, origin: { kind: "api" }, owner: opts.uid });
         if (!parsed.ok) {
           json(res, 400, { error: "invalid_task", message: parsed.error });
@@ -135,7 +160,8 @@ export async function handleTasksApi(
           return true;
         }
         let task = await createTask(parsed.value, now());
-        // The API is the user's own hand: it may create a task already enabled.
+        // The API is the user's own hand: it may create a task already enabled
+        // (unconfirmed: its envelope only restricts until a PATCH confirms it).
         if (body.enabled === true) {
           task = (await updateTask(task.id, (t) => enableTask(t, now()), now())) ?? task;
         }
@@ -156,22 +182,48 @@ export async function handleTasksApi(
     if (sub === undefined) {
       if (method === "GET") {
         const task = await getTask(id);
-        if (task) json(res, 200, { task });
+        if (task) json(res, 200, { task, confirmation: confirmationView(task) });
         else json(res, 404, { error: "not_found" });
         return true;
       }
       if (method === "PATCH") {
-        const body = await bodyObject(req);
+        const { confirmEnvelope, ...body } = await bodyObject(req);
         if (body.enabled !== undefined && typeof body.enabled !== "boolean") {
           json(res, 400, { error: "invalid_task", message: "enabled must be a boolean" });
           return true;
         }
+        if (confirmEnvelope !== undefined) {
+          if (typeof confirmEnvelope !== "string" || body.enabled !== true) {
+            json(res, 400, {
+              error: "invalid_task",
+              message: "confirmEnvelope is a digest string, sent with enabled: true",
+            });
+            return true;
+          }
+          if (!opts.allowConfirm) {
+            json(res, 403, { error: "trusted_local_confirmation_required" });
+            return true;
+          }
+          const crossSite = crossSiteProblem(req, opts.loopbackTrust === true);
+          if (crossSite) {
+            json(res, 403, { error: crossSite });
+            return true;
+          }
+        }
         let problem: string | null = null;
+        let mismatch = false;
         const task = await updateTask(
           id,
           (t) => {
             problem = applyTaskEdit(t, body, ctx);
             if (problem) return false;
+            // The digest names the task as the user saw it — after this
+            // request's own edits. Anything else confirms nothing and changes
+            // nothing.
+            if (confirmEnvelope !== undefined && taskDigest(t) !== confirmEnvelope) {
+              mismatch = true;
+              return false;
+            }
             const rescheduled = body.schedule !== undefined || body.trigger !== undefined;
             if (body.enabled === true && (!t.enabled || rescheduled || t.state === "paused")) {
               enableTask(t, now());
@@ -181,15 +233,22 @@ export async function handleTasksApi(
             }
             // An edited schedule on an enabled task takes effect at once.
             else if (rescheduled && t.enabled) enableTask(t, now());
+            if (confirmEnvelope !== undefined) confirmTask(t, now(), "api");
             return;
           },
           now(),
         );
         if (!task) json(res, 404, { error: "not_found" });
         else if (problem) json(res, 400, { error: "invalid_task", message: problem });
-        else {
+        else if (mismatch) {
+          json(res, 409, {
+            error: "confirmation_mismatch",
+            message: "the task is not what that digest describes; nothing was changed",
+            confirmation: confirmationView(task),
+          });
+        } else {
           opts.emit?.({ type: "task_updated", task });
-          json(res, 200, { task });
+          json(res, 200, { task, confirmation: confirmationView(task) });
         }
         return true;
       }

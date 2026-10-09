@@ -79,7 +79,11 @@ export interface WardenSessionOptions {
   inbox: WardenInbox;
   /** The run's tools, for annotation lookup on MCP tools. */
   tools?: ToolDefinition[];
-  /** What the user pre-approved when the task was created ("preapproved" behaviour). */
+  /**
+   * What the user CONFIRMED the task may do without asking ("preapproved"
+   * behaviour). Pass it only once confirmed; an unconfirmed envelope is not a
+   * pre-approval.
+   */
   envelope?: TaskEnvelope;
   /** Short, host-supplied statement of what the run is for (shown on cards). */
   purpose?: string;
@@ -395,10 +399,12 @@ const WARDEN_STATE_PATTERN = new RegExp(
   [
     "warden[\\\\/](?:rules|grants|pending|audit|tainted|digest)",
     "\\.lisa[\\\\/]warden",
-    "\\/api\\/(?:approvals|warden)\\b",
+    // The approval API, and the task API that confirms what a task may do
+    // without asking.
+    "\\/api\\/(?:approvals|warden|tasks)\\b",
     // The CLI that edits the same state: `lisa warden …`, `lisa approvals …`,
-    // `node dist/cli.js warden …`.
-    "\\b(?:lisa|cli\\.[cm]?[jt]s)[\"']?\\s+(?:warden|approvals)\\b",
+    // `lisa tasks enable …`, `node dist/cli.js warden …`.
+    "\\b(?:lisa|cli\\.[cm]?[jt]s)[\"']?\\s+(?:warden|approvals|tasks\\s+enable)\\b",
   ].join("|"),
   "i",
 );

@@ -114,8 +114,8 @@ A task the engine switched off comes back when the user enables it.
 
 The runner asks an injected `TaskApprovalFactory` for a gate per run (the runner's `approvalFactory` option, or process-wide `wiring.ts: setTaskApprovalFactory`). In Warden mode the web server passes Warden's (`src/warden/task-approval.ts`) to its runners. Each run then gets its own Warden session:
 
-- **Origin** `task`, `routine` or `watcher`, with the task id. The default matrix's task column applies: a write, sandboxed exec, network write, send, publish or delete is *preapproved* — allowed when the task's capability envelope covers it, asked about otherwise. Purchases and credentials are handed back to the user.
-- **Envelope.** The task's envelope, with categories Warden does not know (informational labels such as `web`) dropped.
+- **Origin** `task`, `routine` or `watcher`, with the task id. The default matrix's task column applies: a write, sandboxed exec, network write, send, publish or delete is *preapproved* — allowed when the task's envelope covers it and the user confirmed that envelope, asked about otherwise. Purchases and credentials are handed back to the user.
+- **Envelope.** Only a confirmed envelope (see "Confirming what a task may do") reaches Warden, with categories Warden does not know (informational labels such as `web`) dropped. An unconfirmed one has done its whole job once it narrowed the toolset. In a tainted run even a confirmed envelope does not cover exec, delete, send, publish, network writes or writes outside the run's workspace: they ask.
 - **Taint.** A run a watcher hit started is tainted from its first call: its prompt quotes an outsider's text. A run that became tainted (Warden saw a taint-source call allowed) records it on the run (`tainted`), so a resumed or retried segment starts tainted too — the content is still in its history.
 - **Tenant.** The task's uid and the home the run works in; the run's working directory is the workspace root.
 
@@ -190,6 +190,14 @@ Every hosted run registers as account work, so account deletion stops it and wai
 
 The task tools (`task_create`, `watch_create`, `task_update`) can draft and edit tasks but have no way to enable one: anything they create or edit ends up off. Enabling is the user's act, through `PATCH /api/tasks/{id}` or `lisa tasks enable`.
 
-This holds for the task tools only. In an attended chat on the Mac edition the model also has `bash` and file tools; `lisa tasks enable <id>` from a shell, or an edit to the task file, would switch a task on. Closing that is the approval layer's job (exec asks), not the engine's.
+### Confirming what a task may do
+
+A task's envelope is a restriction until the user confirms it (`src/tasks/confirmation.ts`). The model may draft one (`task_create`'s `tools`); it narrows the tools a run is offered and pre-approves nothing.
+
+- `lisa tasks enable <id>` prints the instruction, when it runs and, in plain words, which actions would run without asking. On a terminal it asks; `y` confirms, anything else switches the task on unconfirmed. Without a terminal it confirms only with `--confirm <digest>`, the digest `lisa tasks show <id>` prints. A digest that does not match the task changes nothing.
+- `PATCH /api/tasks/{id}` with `{enabled: true, confirmEnvelope: <digest>}` confirms, from a caller who may answer approvals (the loopback owner on the Mac edition or a signed-in session) in a same-origin request; anyone else gets 403 and a stale digest 409, and nothing changes. `GET /api/tasks/{id}` returns `confirmation: {digest, confirmed, preapproves, summary}` for a client to show. `POST /api/tasks` never confirms: a task created `enabled: true` is on, unconfirmed.
+- The confirmation (`task.envelopeConfirmation`) holds the digest of the instruction, kind, schedule or trigger, envelope and notify mode as shown, and counts only while it still matches. Every edit of those fields — `task_update`, an API edit — clears it (a title or budget edit does not), and so does every enable. `task_update` also switches the task off, as before; an API edit leaves it on, unconfirmed.
+
+This holds for the task tools only. In an attended chat on the Mac edition the model also has `bash` and file tools; `lisa tasks enable <id>` from a shell, or an edit to the task file, would switch a task on. Closing that is the approval layer's job (exec asks), not the engine's: under Warden a command that names `lisa tasks enable` or `/api/tasks` asks for that exact command, whatever the rules say, and a confined shell can neither write the Lisa home nor reach the server's port.
 
 `DELETE /api/tasks/{id}` and `lisa tasks rm` cancel a run in flight and wait for it to let go of the lease before deleting. The wait is capped at 10 s; after that the task is deleted anyway. What refuses the run's later writes is the store, not the lease: the task's files are gone, so every write fails with `TaskGoneError` and the run stops at its next write. Every side-effecting call is preceded by a checkpoint write (the ledger's `started` entry), so it cannot act after that point either. Its lease file stays until the run releases it.

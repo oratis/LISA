@@ -46,7 +46,7 @@ These cannot be changed by rules, grants or a task envelope.
 | purchase, credential | handoff | handoff | handoff | handoff |
 
 - **Unsandboxed exec asks for every origin**, the local owner included. A full-access shell can do anything every other tool can, so leaving it `auto` would make every other ask advisory. A user who wants the old behaviour sets a rule (`tools.bash = auto`) knowingly; taint and a remote origin still override it.
-- **preapproved** means allowed only when the task's capability envelope covers the action; otherwise it asks.
+- **preapproved** means allowed only when the task's envelope covers the action **and the user confirmed that envelope**; otherwise it asks. In a tainted run even a confirmed envelope does not cover exec, delete, send, publish, a network write or a write outside the run's workspace (see "Task envelopes").
 - A web chat from a caller who could not answer an approval (a LAN device token, a shared web token) is treated as a remote origin, not as the owner.
 
 ## Forced asks
@@ -58,7 +58,7 @@ These ask whatever the matrix says.
 - **Credential locations.** A read, write or delete under `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.kube`, `~/.netrc` and similar, under `<lisaHome>/warden`, or of the provider-key file asks in every run.
 - **Tainted reads outside the workspace.** In a tainted run, reading a file outside the workspace asks.
 - **Skills.** In a tainted run, `skill_manage` asks: a skill can change what Lisa does later.
-- **Commands that name Warden.** A command that mentions Warden's state directory, its approval API or its CLI asks for that exact command, every time.
+- **Commands that name Warden.** A command that mentions Warden's state directory, its approval API or its CLI — or the task API and `lisa tasks enable`, which confirm what a task may do without asking — asks for that exact command, every time.
 
 ## Taint
 
@@ -85,6 +85,15 @@ On the web surface taint belongs to the conversation. Tainted conversation ids a
 - The card never offers `always` or `24h` for exec, or for anything asked in a tainted run. The one exception is tainted egress, where `24h` is offered and is bound to the host.
 - A user rule stricter than a grant wins, whichever is newer. Under an explicit `ask` rule only the approval of that exact payload counts.
 - A command that names Warden's state gets no scope wider than `once`.
+
+## Task envelopes
+
+A task's envelope (`tools`, `categories`, `targets`) is a **restriction until the user confirms it**.
+
+- The model can draft one: `task_create`'s `tools`. A drafted or edited envelope narrows the tools the run is offered and pre-approves nothing; Warden gets no envelope for that run, so every action the matrix leaves to the envelope asks.
+- The user confirms it when they switch the task on. `lisa tasks enable <id>` prints the instruction, when it runs and, in plain words, which actions would run without asking, and asks on a terminal; elsewhere it needs `--confirm <digest>` (printed by `lisa tasks show <id>`). `PATCH /api/tasks/{id}` takes `{enabled: true, confirmEnvelope: <digest>}`, and only from a caller who may answer approvals, in a same-origin request; `GET /api/tasks/{id}` returns the digest and the summary for a client to show. Enabling without confirming is allowed: the envelope then only restricts.
+- The confirmation records the digest of exactly what was shown — instruction, kind, schedule or trigger, envelope, notify mode (`src/tasks/confirmation.ts`). It counts only while that digest matches the task; every edit of those fields (`task_update`, an API edit) and every enable clears it. No model tool can set it.
+- **Taint overrides the envelope for side effects.** In a tainted run — watcher-triggered, or after a taint source — a confirmed envelope still does not pre-approve exec, delete, send, publish, a network write or a write outside the run's workspace: they ask (`system:tainted-envelope`). Reads, and writes inside the run's own workspace, stay as the envelope says.
 
 ## User rules
 
@@ -134,7 +143,7 @@ Sandboxed commands cannot reach any of it: every bounded sandbox profile denies 
 ## Integration points
 
 - `createWardenSession(options)` returns `{ approval, observe, decide, tainted }`. Pass `approval` to `runAgent`, feed `observe` from `onEvent`, and put `approval` on the tool context so nested runs (the `task` subagent) stay gated.
-- **Task Engine runs.** `createTaskApprovalFactory` (`task-approval.ts`) is the Task Engine's gate in Warden mode: one session per unattended run, origin `task` / `routine` / `watcher` with the task id, the task's capability envelope (so the matrix's "preapproved" cells apply), the run's taint (a watcher-triggered run starts tainted), and the task's uid and home. The web server passes it to its task runners only when the approval mode is `warden`. **Unattended runs get more than read-only calls only with Warden on**: without it the engine allows only the verified read-only calls in `src/tasks/policy.ts`, and nothing waits for approval. The CLI drivers (`lisa heartbeat run`, `lisa tasks run`) have no inbox anyone could answer and stay read-only. An "ask" in a task run waits in the inbox like a chat turn's: the session's `onApprovalPending` / `onApprovalSettled` hooks let the engine show the run as `awaiting_approval` (wall clock paused), and the user is told through `reachOut()` with source `approval` — the notice names the task and the tool, never the payload. Expiry, restart and cancel behave as for chat (deny); after a restart the resumed run asks again (`docs/DESIGN_TASK_ENGINE.md`, "Waiting for an approval").
+- **Task Engine runs.** `createTaskApprovalFactory` (`task-approval.ts`) is the Task Engine's gate in Warden mode: one session per unattended run, origin `task` / `routine` / `watcher` with the task id, the task's envelope only if the user confirmed it (so the matrix's "preapproved" cells apply to what they confirmed, and to nothing else), the run's taint (a watcher-triggered run starts tainted), and the task's uid and home. The web server passes it to its task runners only when the approval mode is `warden`. **Unattended runs get more than read-only calls only with Warden on**: without it the engine allows only the verified read-only calls in `src/tasks/policy.ts`, and nothing waits for approval. The CLI drivers (`lisa heartbeat run`, `lisa tasks run`) have no inbox anyone could answer and stay read-only. An "ask" in a task run waits in the inbox like a chat turn's: the session's `onApprovalPending` / `onApprovalSettled` hooks let the engine show the run as `awaiting_approval` (wall clock paused), and the user is told through `reachOut()` with source `approval` — the notice names the task and the tool, never the payload. Expiry, restart and cancel behave as for chat (deny); after a restart the resumed run asks again (`docs/DESIGN_TASK_ENGINE.md`, "Waiting for an approval").
 - `WardenInbox` takes an emitter `(event, uid) => void`. The host must deliver each event only to subscribers of that `uid`.
 - HTTP: `/api/approvals`, `/api/approvals/{id}`, `/api/approvals/{id}/approve`, `/api/approvals/{id}/deny`, `/api/warden/rules`, `/api/warden/grants`, `/api/warden/grants/{id}`, `/api/warden/audit`. State-changing routes require the loopback owner or a signed-in per-user session, a JSON content type, and a same-origin request.
 - CLI: `lisa approvals [list | show <id> | approve <id> --digest <digest> | deny <id>]`, `lisa warden rules|grants|audit`.

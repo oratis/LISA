@@ -493,7 +493,7 @@
         ],
         "responses": {
           "200": {
-            "description": "One task.",
+            "description": "One task, with `confirmation`: the digest and plain-words summary a client shows before the user confirms what it may do without asking.",
             "headers": {
               "X-Lisa-API-Version": {
                 "$ref": "#/components/headers/ApiVersion"
@@ -562,6 +562,9 @@
           "404": {
             "$ref": "#/components/responses/Error"
           },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
           "413": {
             "$ref": "#/components/responses/Error"
           },
@@ -569,7 +572,7 @@
             "$ref": "#/components/responses/Error"
           }
         },
-        "description": "Requires Content-Type: application/json, also when the body is empty."
+        "description": "Requires Content-Type: application/json, also when the body is empty. Any edit of the instruction, schedule, trigger, envelope or notify mode clears an envelope confirmation; `confirmEnvelope` (with `enabled: true`) records one."
       },
       "delete": {
         "operationId": "deleteTask",
@@ -2192,6 +2195,39 @@
             }
           }
         },
+        "additionalProperties": true,
+        "description": "What a task may use. Until the user confirms it (`envelopeConfirmation`), it only restricts the tools a run is offered and pre-approves nothing. Confirmed, it lets the listed tools / categories run without asking — except, in a run that has read outside content, exec, delete, send, publish, network writes and writes outside the task's own workspace, which ask."
+      },
+      "TaskConfirmation": {
+        "type": "object",
+        "required": [
+          "digest",
+          "confirmed",
+          "preapproves",
+          "summary"
+        ],
+        "properties": {
+          "digest": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "sha256 of the task's instruction, kind, schedule, trigger, envelope and notify mode. Send it back as `confirmEnvelope` to confirm the task as shown."
+          },
+          "confirmed": {
+            "type": "boolean",
+            "description": "The user confirmed the task as it is now."
+          },
+          "preapproves": {
+            "type": "boolean",
+            "description": "The envelope names a tool or category a confirmation would pre-approve."
+          },
+          "summary": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Plain-words lines to show before asking: the instruction, when it runs, and which actions would run without asking."
+          }
+        },
         "additionalProperties": true
       },
       "TaskBudget": {
@@ -2297,6 +2333,33 @@
           },
           "envelope": {
             "$ref": "#/components/schemas/TaskEnvelope"
+          },
+          "envelopeConfirmation": {
+            "type": "object",
+            "required": [
+              "digest",
+              "at",
+              "via"
+            ],
+            "properties": {
+              "digest": {
+                "type": "string",
+                "description": "The task's confirmation digest when the user confirmed it."
+              },
+              "at": {
+                "type": "integer",
+                "description": "Epoch milliseconds."
+              },
+              "via": {
+                "type": "string",
+                "enum": [
+                  "cli",
+                  "api"
+                ]
+              }
+            },
+            "additionalProperties": true,
+            "description": "The user confirmed the envelope as a pre-approval. It counts only while `digest` equals the task's current digest (`TaskConfirmation.digest`); every edit of the instruction, schedule, trigger, envelope or notify mode, and every enable, clears it. Absent: the envelope only restricts."
           },
           "budget": {
             "$ref": "#/components/schemas/TaskBudget"
@@ -2600,6 +2663,10 @@
           },
           "enabled": {
             "type": "boolean"
+          },
+          "confirmEnvelope": {
+            "type": "string",
+            "description": "With `enabled: true`: confirm the envelope as a pre-approval. Must equal the task's current `confirmation.digest` after this request's own edits (409 `confirmation_mismatch` otherwise, and nothing changes). Accepted only from a caller who may answer approvals (the loopback owner or a signed-in session; 403 `trusted_local_confirmation_required`) in a same-origin request. Without it, enabling leaves the envelope a restriction."
           }
         },
         "additionalProperties": false
@@ -2627,6 +2694,9 @@
         "properties": {
           "task": {
             "$ref": "#/components/schemas/Task"
+          },
+          "confirmation": {
+            "$ref": "#/components/schemas/TaskConfirmation"
           }
         },
         "additionalProperties": true
