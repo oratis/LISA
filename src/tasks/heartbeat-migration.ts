@@ -5,8 +5,9 @@
  * `~/.lisa/heartbeat.json` exactly as it always has. This module backs the
  * explicit `lisa tasks migrate-heartbeat [--dry-run]` command, for a user who
  * wants a chore's schedule honoured and its result delivered — and who accepts
- * that, until the approval layer is wired, a migrated chore can only make
- * read-only tool calls (no shell, no file writes, no MCP).
+ * that, unless the server runs in Warden mode, a migrated chore can only make
+ * read-only tool calls (no shell, no file writes, no MCP); with Warden on,
+ * anything else asks for approval.
  *
  * What is never migrated: `builtin:*` entries. Those are not chores but
  * switches on Lisa's own heartbeat work (a disabled `builtin:weekly_examen`
@@ -66,8 +67,9 @@ export const HEARTBEAT_LEGACY_CATEGORY = "heartbeat-legacy";
 const HEARTBEAT_DEFAULT_BUDGET_TOKENS = 500_000;
 
 export const MIGRATION_WARNING =
-  "Migrated chores cannot run shell, file-writing or MCP tools until the approval layer is wired: " +
-  "an unattended task may only make read-only calls today. A chore that needs those tools should " +
+  "Migrated chores cannot run shell, file-writing or MCP tools unless the server runs in Warden mode " +
+  "(lisa serve --web --approval warden): without it an unattended task may only make read-only calls, " +
+  "and with it anything else waits for your approval. A chore that needs those tools unattended should " +
   "stay in heartbeat.json for now.";
 
 /** How long the command waits for a heartbeat tick in progress before giving up. */

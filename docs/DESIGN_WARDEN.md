@@ -132,6 +132,7 @@ Sandboxed commands cannot reach any of it: every bounded sandbox profile denies 
 ## Integration points
 
 - `createWardenSession(options)` returns `{ approval, observe, decide, tainted }`. Pass `approval` to `runAgent`, feed `observe` from `onEvent`, and put `approval` on the tool context so nested runs (the `task` subagent) stay gated.
+- **Task Engine runs.** `createTaskApprovalFactory` (`task-approval.ts`) is the Task Engine's gate in Warden mode: one session per unattended run, origin `task` / `routine` / `watcher` with the task id, the task's capability envelope (so the matrix's "preapproved" cells apply), the run's taint (a watcher-triggered run starts tainted), and the task's uid and home. The web server passes it to its task runners only when the approval mode is `warden`. **Unattended runs get more than read-only calls only with Warden on**: without it the engine allows only the verified read-only calls in `src/tasks/policy.ts`, and nothing waits for approval. The CLI drivers (`lisa heartbeat run`, `lisa tasks run`) have no inbox anyone could answer and stay read-only.
 - `WardenInbox` takes an emitter `(event, uid) => void`. The host must deliver each event only to subscribers of that `uid`.
 - HTTP: `/api/approvals`, `/api/approvals/{id}`, `/api/approvals/{id}/approve`, `/api/approvals/{id}/deny`, `/api/warden/rules`, `/api/warden/grants`, `/api/warden/grants/{id}`, `/api/warden/audit`. State-changing routes require the loopback owner or a signed-in per-user session, a JSON content type, and a same-origin request.
 - CLI: `lisa approvals [list | show <id> | approve <id> --digest <digest> | deny <id>]`, `lisa warden rules|grants|audit`.
@@ -147,5 +148,5 @@ Sandboxed commands cannot reach any of it: every bounded sandbox profile denies 
 - **Known URLs are kept in memory.** After a restart a tainted conversation asks again for URLs it had already seen.
 - **The CLI REPL.** `--approval warden` there falls back to the stdin prompt and leaves the `task` subagent ungated, as `ask-mutating` already did.
 - **The inbox is in-process.** A multi-instance deployment needs a shared store before approvals can be answered from another instance.
-- **Only web chat turns are wired.** IM channels, heartbeat and idle runs and managed agents do not go through Warden yet.
+- **Only web chat turns and the web server's Task Engine runs are wired.** IM channels, heartbeat chores and idle runs, managed agents and tasks run by the CLI drivers do not go through Warden yet.
 - **A paired device token cannot approve.** Approving needs loopback or an account session.

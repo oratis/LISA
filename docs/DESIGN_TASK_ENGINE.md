@@ -106,7 +106,16 @@ A task the engine switched off comes back when the user enables it.
 
 ## Approval
 
-The runner asks an injected `TaskApprovalFactory` for a gate per run (`wiring.ts: setTaskApprovalFactory`).
+**Unattended runs get more than read-only calls only with Warden on.** Warden mode is `lisa serve --web --approval warden` (or `LISA_APPROVAL=warden` for a backend an app launches). Without it, every run — scheduled, watcher-triggered or started by hand — may make only the verified read-only calls below; nothing else runs, nothing waits for approval.
+
+The runner asks an injected `TaskApprovalFactory` for a gate per run (the runner's `approvalFactory` option, or process-wide `wiring.ts: setTaskApprovalFactory`). In Warden mode the web server passes Warden's (`src/warden/task-approval.ts`) to its runners. Each run then gets its own Warden session:
+
+- **Origin** `task`, `routine` or `watcher`, with the task id. The default matrix's task column applies: a write, sandboxed exec, network write, send, publish or delete is *preapproved* — allowed when the task's capability envelope covers it, asked about otherwise. Purchases and credentials are handed back to the user.
+- **Envelope.** The task's envelope, with categories Warden does not know (informational labels such as `web`) dropped.
+- **Taint.** A run a watcher hit started is tainted from its first call: its prompt quotes an outsider's text. A run that became tainted (Warden saw a taint-source call allowed) records it on the run (`tainted`), so a resumed or retried segment starts tainted too — the content is still in its history.
+- **Tenant.** The task's uid and the home the run works in; the run's working directory is the workspace root.
+
+The CLI drivers (`lisa heartbeat run`, `lisa tasks run`) have no approval inbox anyone could answer, so they install nothing: a run they pick up gets the read-only allow-list even when the server runs in Warden mode. A task that needs approvals runs with the server up.
 
 With no factory wired — or one that returns no `approval` — the default applies, and it is an **allow-list**: a run may make only the calls in `UNATTENDED_READ_ONLY` (`policy.ts`), each verified to change nothing, some only for specific inputs (`github` for its read actions with a numeric id). Everything else is denied: every other builtin, every plugin, skill and MCP tool, and any tool added later. That includes writes to Lisa's own soul, memory and knowledge base — without an approval layer there is no decision record for them.
 
@@ -142,7 +151,7 @@ Web, RSS and mail checks run without a model call.
 
 Nothing is migrated automatically. `lisa heartbeat run` runs the chores in `heartbeat.json` exactly as before, and additionally runs due tasks.
 
-`lisa tasks migrate-heartbeat [--dry-run]` moves chores into routines on request. It says what will move and that migrated chores can only make read-only calls until the approval layer is wired.
+`lisa tasks migrate-heartbeat [--dry-run]` moves chores into routines on request. It says what will move, and that migrated chores can only make read-only calls unless the server runs in Warden mode (where anything else asks).
 
 - `builtin:*` entries are never moved: they are switches on Lisa's own heartbeat work.
 - A chore switched off in `heartbeat.json` is left there, untouched.
