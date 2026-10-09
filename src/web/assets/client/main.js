@@ -1614,14 +1614,108 @@ async function showSkills() {
   ).join('');
 }
 
-async function showMemory() {
-  openModal('MEMORY', '<div class="empty">loading…</div>');
+async function showMemoryReadOnly() {
   const data = await fetch('/api/memory').then(r => r.json());
   modalBody.innerHTML =
     '<h3>USER.md — what Lisa remembers about you</h3>' +
     '<pre>' + escapeHtml(data.user || '(empty)') + '</pre>' +
     '<h3>MEMORY.md — Lisa\'s working notes</h3>' +
     '<pre>' + escapeHtml(data.memory || '(empty)') + '</pre>';
+}
+
+// Memory sovereignty: view / edit / delete entries, forget a topic, export.
+// Falls back to the read-only view when the caller may not edit (403).
+async function memoryApi(method, url, body) {
+  const res = await fetch(url, {
+    method,
+    headers: body ? { 'content-type': 'application/json' } : {},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.message || json.error || ('HTTP ' + res.status));
+  return json;
+}
+
+async function showMemory() {
+  openModal('MEMORY', '<div class="empty">loading…</div>');
+  let data;
+  try { data = await memoryApi('GET', '/api/memory/entries'); }
+  catch (e) { return showMemoryReadOnly(); }
+  const labels = { user: 'USER.md — what Lisa remembers about you', memory: 'MEMORY.md — Lisa\'s working notes' };
+  let html =
+    '<div class="item"><div class="name">Forget a topic</div>' +
+    '<div class="desc">Erases it from memory, the knowledge base, past conversations and search. Lisa\'s journal gets literal redactions only, and she is told you used Forget.</div>' +
+    '<input id="memForgetQ" type="text" maxlength="200" placeholder="topic, name, project…"> ' +
+    '<button id="memForgetBtn">preview</button><div id="memForgetOut" class="desc"></div></div>' +
+    '<div class="item"><a href="/api/export" download>Export my Lisa (.tar.gz)</a> · ' +
+    '<a href="/api/export?sessions=1" download>with conversations</a>' +
+    '<div class="desc">Never includes secrets, keys, account or device records.</div></div>';
+  for (const store of ['user', 'memory']) {
+    const s = (data.stores || []).find(x => x.store === store);
+    if (!s) continue;
+    html += '<h3>' + escapeHtml(labels[store]) + ' <span class="desc">' + s.bytes + ' / ' + s.maxBytes + ' bytes</span></h3>';
+    if (s.corrupt) html += '<div class="empty">This file is not clean text — repair it by hand before editing here.</div>';
+    if (!s.entries.length) html += '<div class="empty">(empty)</div>';
+    for (const e of s.entries) {
+      html += '<div class="item" data-mem-id="' + escapeHtml(e.id) + '"><div class="desc mem-text">' + escapeHtml(e.text) + '</div>' +
+        (s.corrupt ? '' : '<button class="mem-edit">edit</button> <button class="mem-del">delete</button>') + '</div>';
+    }
+    if (!s.corrupt) {
+      html += '<div class="item"><input class="mem-new" data-store="' + store + '" type="text" placeholder="add an entry…"> <button class="mem-add" data-store="' + store + '">add</button></div>';
+    }
+  }
+  modalBody.innerHTML = html;
+  const fail = (e) => window.alert('Could not save: ' + (e && e.message ? e.message : e));
+  modalBody.querySelectorAll('.mem-del').forEach(btn => btn.addEventListener('click', async () => {
+    const id = btn.parentElement.getAttribute('data-mem-id');
+    if (!window.confirm('Delete this memory entry?')) return;
+    try { await memoryApi('DELETE', '/api/memory/entries/' + encodeURIComponent(id)); showMemory(); } catch (e) { fail(e); }
+  }));
+  modalBody.querySelectorAll('.mem-edit').forEach(btn => btn.addEventListener('click', () => {
+    const row = btn.parentElement;
+    const id = row.getAttribute('data-mem-id');
+    const textEl = row.querySelector('.mem-text');
+    const ta = document.createElement('textarea');
+    ta.value = textEl.textContent;
+    ta.rows = 3;
+    ta.style.width = '100%';
+    const save = document.createElement('button');
+    save.textContent = 'save';
+    save.addEventListener('click', async () => {
+      try { await memoryApi('PUT', '/api/memory/entries/' + encodeURIComponent(id), { text: ta.value }); showMemory(); } catch (e) { fail(e); }
+    });
+    row.replaceChildren(ta, save);
+    ta.focus();
+  }));
+  modalBody.querySelectorAll('.mem-add').forEach(btn => btn.addEventListener('click', async () => {
+    const store = btn.getAttribute('data-store');
+    const input = btn.parentElement.querySelector('.mem-new');
+    if (!input.value.trim()) return;
+    try { await memoryApi('POST', '/api/memory/entries', { store, text: input.value }); showMemory(); } catch (e) { fail(e); }
+  }));
+  const fq = document.getElementById('memForgetQ');
+  const fout = document.getElementById('memForgetOut');
+  document.getElementById('memForgetBtn').addEventListener('click', async () => {
+    const query = fq.value.trim();
+    if (!query) return;
+    try {
+      const { report } = await memoryApi('POST', '/api/memory/forget', { query, dryRun: true });
+      const parts = Object.keys(report.counts).filter(k => report.counts[k] > 0).map(k => k + ' ' + report.counts[k]);
+      if (!parts.length) { fout.textContent = 'Nothing mentions that.'; return; }
+      fout.innerHTML = escapeHtml('Found: ' + parts.join(' · ')) + ' <button id="memForgetGo">forget now</button>';
+      document.getElementById('memForgetGo').addEventListener('click', async () => {
+        if (!window.confirm('Forget it everywhere? This cannot be undone here.\n\nNot reachable: ' + report.residuals.join(' '))) return;
+        try {
+          const done = await memoryApi('POST', '/api/memory/forget', { query });
+          const left = Object.keys(done.report.remaining || {}).filter(k => done.report.remaining[k] > 0);
+          showMemory().then(() => {
+            const out = document.getElementById('memForgetOut');
+            if (out) out.textContent = left.length ? 'Forgotten, but still matching in: ' + left.join(', ') : 'Forgotten. Nothing still matches.';
+          });
+        } catch (e) { fail(e); }
+      });
+    } catch (e) { fail(e); }
+  });
 }
 
 async function showTools() {
