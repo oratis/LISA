@@ -25,6 +25,7 @@ import {
   diffSnapshots,
   emotionDelta,
   memoryEntryDelta,
+  skippedSymlinks,
   takeSnapshot,
   uncapturedParts,
   type Snapshot,
@@ -330,6 +331,10 @@ function renderMarkdown(rec: DreamRecord): string {
       );
     }
   }
+  if (rec.skippedSymlinks?.length) {
+    lines.push("", "## Symlinks skipped (never followed)");
+    for (const l of rec.skippedSymlinks) lines.push(`- ${l}`);
+  }
   if (rec.uncaptured?.length) {
     lines.push("", "## Not captured");
     for (const u of rec.uncaptured) {
@@ -484,6 +489,7 @@ async function finishDream(ctx: {
     truncated: changes.some((c) => c.diffTruncated) || commits.some((c) => c.diffTruncated),
     capped: ctx.before.capped || after.capped,
     uncaptured,
+    skippedSymlinks: skippedSymlinks(ctx.before, after),
   };
   const rec = fitRecord({ ...base, summary: renderSummary(base) });
 

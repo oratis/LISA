@@ -15,6 +15,12 @@
  *   soul    identity/purpose/constitution/name, values/, opinions/, desires/,
  *           relationships/, journal/ (last few days), emotions.json
  *
+ * Symlinks are never followed: every directory under the home is checked with
+ * lstat, a link (file or directory) is skipped and named in `symlinks`, and
+ * files are read with O_NOFOLLOW. So a link such as `kb/wiki -> soul/values`
+ * can neither put soul text into a revert sidecar nor make a soul file look
+ * like user data.
+ *
  * Caps never hide a file silently. A part whose tracked set would take the
  * pass past MAX_SNAPSHOT_FILES is left out WHOLE and named in `uncaptured`,
  * so within a captured part a path missing from the snapshot really did not
@@ -23,6 +29,7 @@
  * unknown, never "added" or "deleted", never revertible.
  */
 import crypto from "node:crypto";
+import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { lisaHome } from "../paths.js";
@@ -66,6 +73,8 @@ export interface Snapshot {
   unknown: Map<string, DreamPart>;
   /** Any cap was hit: a part left out, or some file's content not kept. */
   capped: boolean;
+  /** Symlinks met where a tracked file or directory would be (relPaths); never followed. */
+  symlinks: string[];
 }
 
 /** Order parts are captured in when the file cap is tight: the small, important ones first. */
@@ -79,16 +88,60 @@ function toRel(abs: string): string {
   return path.relative(lisaHome(), abs).split(path.sep).join("/");
 }
 
-async function listMd(dir: string, opts: { suffix?: string } = {}): Promise<string[]> {
-  const suffix = opts.suffix ?? ".md";
+interface Tracked {
+  files: string[];
+  symlinks: string[];
+}
+
+const byName = (a: { name: string }, b: { name: string }) =>
+  a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+
+/** True when `<home>/<rel…>` is a real directory: every component lstat'ed, no links. */
+async function realDir(rel: string[], t: Tracked): Promise<boolean> {
+  let cur = lisaHome();
+  for (const seg of rel) {
+    cur = path.join(cur, seg);
+    let st;
+    try {
+      st = await fs.lstat(cur);
+    } catch {
+      return false;
+    }
+    if (st.isSymbolicLink()) {
+      t.symlinks.push(toRel(cur));
+      return false;
+    }
+    if (!st.isDirectory()) return false;
+  }
+  return true;
+}
+
+/** `*.md` regular files in `<home>/<rel…>` (links recorded, never followed). */
+async function listMd(rel: string[], t: Tracked, keep?: (name: string) => boolean): Promise<void> {
+  if (!(await realDir(rel, t))) return;
+  const dir = path.join(lisaHome(), ...rel);
+  let entries;
   try {
-    const entries = await fs.readdir(dir, { withFileTypes: true });
-    return entries
-      .filter((e) => e.isFile() && !e.name.startsWith(".") && e.name.endsWith(suffix))
-      .map((e) => path.join(dir, e.name))
-      .sort();
+    entries = await fs.readdir(dir, { withFileTypes: true });
   } catch {
-    return [];
+    return;
+  }
+  for (const e of entries.sort(byName)) {
+    if (e.name.startsWith(".") || !e.name.endsWith(".md")) continue;
+    if (e.isSymbolicLink()) t.symlinks.push(toRel(path.join(dir, e.name)));
+    else if (e.isFile() && (!keep || keep(e.name))) t.files.push(path.join(dir, e.name));
+  }
+}
+
+/** `<home>/<rel…>` when it is a regular file (its directory already checked). */
+async function regularFile(rel: string[], t: Tracked): Promise<void> {
+  const abs = path.join(lisaHome(), ...rel);
+  try {
+    const st = await fs.lstat(abs);
+    if (st.isSymbolicLink()) t.symlinks.push(toRel(abs));
+    else if (st.isFile()) t.files.push(abs);
+  } catch {
+    // absent
   }
 }
 
@@ -101,56 +154,56 @@ function recentJournalNames(now: Date): Set<string> {
   return out;
 }
 
-/** The absolute paths a part tracks right now. Deterministic order. */
-export async function trackedFiles(part: DreamPart, now: Date = new Date()): Promise<string[]> {
-  const home = lisaHome();
-  if (part === "memory") return await listMd(path.join(home, "memory"));
+/** The absolute paths a part tracks right now (and the links skipped). Deterministic order. */
+export async function trackedFiles(part: DreamPart, now: Date = new Date()): Promise<Tracked> {
+  const t: Tracked = { files: [], symlinks: [] };
+  if (part === "memory") {
+    await listMd(["memory"], t);
+    return t;
+  }
   if (part === "kb") {
-    const kb = path.join(home, "kb");
-    const schema = path.join(kb, "SCHEMA.md");
-    return [
-      ...((await fileExists(schema)) ? [schema] : []),
-      ...(await listMd(path.join(kb, "sources"))),
-      ...(await listMd(path.join(kb, "wiki"))),
-    ];
+    if (!(await realDir(["kb"], t))) return t;
+    await regularFile(["kb", "SCHEMA.md"], t);
+    await listMd(["kb", "sources"], t);
+    await listMd(["kb", "wiki"], t);
+    return t;
   }
   if (part === "skills") {
-    const root = path.join(home, "skills");
-    const out: string[] = [];
+    if (!(await realDir(["skills"], t))) return t;
+    const root = path.join(lisaHome(), "skills");
+    let entries;
     try {
-      const entries = await fs.readdir(root, { withFileTypes: true });
-      for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-        if (!e.isDirectory() || e.name.startsWith(".")) continue;
-        const f = path.join(root, e.name, "SKILL.md");
-        if (await fileExists(f)) out.push(f);
-      }
+      entries = await fs.readdir(root, { withFileTypes: true });
     } catch {
-      // no skills dir yet
+      return t;
     }
-    return out;
+    for (const e of entries.sort(byName)) {
+      if (e.name.startsWith(".")) continue;
+      if (e.isSymbolicLink()) t.symlinks.push(toRel(path.join(root, e.name)));
+      else if (e.isDirectory()) await regularFile(["skills", e.name, "SKILL.md"], t);
+    }
+    return t;
   }
   // soul
-  const soul = path.join(home, "soul");
-  const top = ["identity.md", "purpose.md", "constitution.md", "name.md", "emotions.json"].map(
-    (n) => path.join(soul, n),
-  );
-  const out: string[] = [];
-  for (const f of top) if (await fileExists(f)) out.push(f);
+  if (!(await realDir(["soul"], t))) return t;
+  for (const n of ["identity.md", "purpose.md", "constitution.md", "name.md", "emotions.json"]) {
+    await regularFile(["soul", n], t);
+  }
   for (const sub of ["values", "opinions", "desires", "relationships"]) {
-    out.push(...(await listMd(path.join(soul, sub))));
+    await listMd(["soul", sub], t);
   }
   const recent = recentJournalNames(now);
-  out.push(
-    ...(await listMd(path.join(soul, "journal"))).filter((f) => recent.has(path.basename(f))),
-  );
-  return out;
+  await listMd(["soul", "journal"], t, (name) => recent.has(name));
+  return t;
 }
 
-async function fileExists(p: string): Promise<boolean> {
+/** Read a file without following a link at its last component (ELOOP if it is one). */
+async function readNoFollow(abs: string): Promise<string> {
+  const fh = await fs.open(abs, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0));
   try {
-    return (await fs.stat(p)).isFile();
-  } catch {
-    return false;
+    return await fh.readFile("utf8");
+  } finally {
+    await fh.close();
   }
 }
 
@@ -170,6 +223,7 @@ export async function takeSnapshot(
     uncaptured: [],
     unknown: new Map(),
     capped: false,
+    symlinks: [],
   };
   let budget = MAX_SNAPSHOT_TOTAL_BYTES;
   let count = 0;
@@ -177,7 +231,9 @@ export async function takeSnapshot(
     (p) => parts.includes(p) && (!opts.only || opts.only.includes(p)),
   );
   for (const part of wanted) {
-    const list = await trackedFiles(part, now);
+    const tracked = await trackedFiles(part, now);
+    snap.symlinks.push(...tracked.symlinks);
+    const list = tracked.files;
     if (count + list.length > MAX_SNAPSHOT_FILES) {
       // Leave the whole part out rather than a silent tail of it.
       snap.uncaptured.push({ part, reason: "too_many_files", files: list.length });
@@ -188,11 +244,14 @@ export async function takeSnapshot(
     for (const abs of list) {
       let content: string;
       try {
-        content = await fs.readFile(abs, "utf8");
+        content = await readNoFollow(abs);
       } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
         // Vanished between readdir and read: it is simply not there now.
+        // Replaced by a link meanwhile: a link is never followed.
         // Anything else: it exists, but its state is unknown.
-        if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+        if (code === "ELOOP") snap.symlinks.push(toRel(abs));
+        else if (code !== "ENOENT") {
           snap.unknown.set(toRel(abs), part);
           snap.capped = true;
         }
@@ -454,6 +513,11 @@ export function diffSnapshots(before: Snapshot, after: Snapshot): FileChange[] {
     out.push(change);
   }
   return out;
+}
+
+/** Links skipped by either snapshot, sorted, at most `max`. */
+export function skippedSymlinks(before: Snapshot, after: Snapshot, max = 50): string[] {
+  return [...new Set([...before.symlinks, ...after.symlinks])].sort().slice(0, max);
 }
 
 /** Parts left out of either snapshot (each part once, the larger count). */

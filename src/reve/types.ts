@@ -166,6 +166,8 @@ export interface DreamRecord {
   capped?: boolean;
   /** Parts not captured at all, and why. Their changes are not listed. */
   uncaptured?: UncapturedPartInfo[];
+  /** Symlinks met where a tracked file or directory would be; never followed (first 50). */
+  skippedSymlinks?: string[];
 }
 
 /** List-view projection of a dream. */

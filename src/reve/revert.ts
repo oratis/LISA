@@ -43,7 +43,12 @@ export class RevertInputError extends Error {
 
 export interface RevertConflict {
   path: string;
-  reason: "modified_since" | "not_revertible";
+  /**
+   * modified_since: changed after the dream (KB / skills); not_revertible: no
+   * pre-dream copy; unsafe_target: the path resolves outside its part's
+   * directory (a symlink on the way, or the file itself is one).
+   */
+  reason: "modified_since" | "not_revertible" | "unsafe_target";
 }
 
 export class RevertConflictError extends Error {
@@ -62,7 +67,7 @@ export interface RevertResult {
   reverted: string[];
   /** Files already at their pre-dream content. */
   alreadyReverted: string[];
-  /** Files skipped under `force` because no pre-dream content was kept. */
+  /** Files skipped under `force`: no pre-dream copy, or an unsafe target. */
   skipped: string[];
   forced: boolean;
 }
@@ -111,6 +116,57 @@ function safeTarget(c: FileChange): string | null {
   return abs.startsWith(home + path.sep) ? abs : null;
 }
 
+class UnsafeTargetError extends Error {
+  constructor(readonly relPath: string) {
+    super(`revert target escapes its directory: ${relPath}`);
+  }
+}
+
+/** macOS volumes are case-insensitive by default: compare paths the same way. */
+const samePath = (a: string, b: string) =>
+  process.platform === "darwin" || process.platform === "win32"
+    ? a.toLowerCase() === b.toLowerCase()
+    : a === b;
+
+/**
+ * The jail, checked against the filesystem (the regex in safeTarget only
+ * checks the text): every directory between the home and the target must be
+ * a real directory, not a link, and the target must not be a link either.
+ * With `create`, missing directories are made one level at a time under a
+ * checked parent (never `mkdir -p` through a link). Then the parent's
+ * realpath must equal realpath(home)/<the part's directory>.
+ */
+async function checkJail(relPath: string, abs: string, create: boolean): Promise<boolean> {
+  const home = path.resolve(lisaHome());
+  const dirs = relPath.split("/").slice(0, -1);
+  let cur = home;
+  for (const seg of dirs) {
+    cur = path.join(cur, seg);
+    let st;
+    try {
+      st = await fs.lstat(cur);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") return false;
+      if (!create) return true; // nothing below a missing directory can be a link
+      await fs.mkdir(cur);
+      st = await fs.lstat(cur);
+    }
+    if (st.isSymbolicLink() || !st.isDirectory()) return false;
+  }
+  try {
+    const st = await fs.lstat(abs);
+    if (st.isSymbolicLink() || !st.isFile()) return false;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") return false;
+  }
+  try {
+    const expected = path.join(await fs.realpath(home), ...dirs);
+    return samePath(await fs.realpath(path.dirname(abs)), expected);
+  } catch {
+    return !create; // parent missing: fine for a removal, never for a write
+  }
+}
+
 async function readOrNull(abs: string): Promise<string | null> {
   try {
     return await fs.readFile(abs, "utf8");
@@ -120,7 +176,14 @@ async function readOrNull(abs: string): Promise<string | null> {
   }
 }
 
-async function writeOrRemove(abs: string, content: string | null, part: UserPart): Promise<void> {
+async function writeOrRemove(
+  abs: string,
+  content: string | null,
+  part: UserPart,
+  relPath: string,
+): Promise<void> {
+  // Re-checked right before every write: the plan was made earlier.
+  if (!(await checkJail(relPath, abs, content !== null))) throw new UnsafeTargetError(relPath);
   if (content !== null) {
     await atomicWrite(abs, content);
     return;
@@ -205,6 +268,10 @@ export async function revertDream(
     const conflicts: RevertConflict[] = [];
     for (const c of selected) {
       const abs = safeTarget(c);
+      if (abs && !(await checkJail(c.path, abs, false))) {
+        conflicts.push({ path: c.path, reason: "unsafe_target" });
+        continue;
+      }
       if (c.part === "memory") {
         const delta = side?.memory?.[c.path];
         if (!abs || !c.revertible || !isDelta(delta)) {
@@ -245,18 +312,23 @@ export async function revertDream(
       }
     }
     if (conflicts.length && !force) throw new RevertConflictError(conflicts);
-    result.skipped = conflicts.filter((c) => c.reason === "not_revertible").map((c) => c.path);
+    result.skipped = conflicts.filter((c) => c.reason !== "modified_since").map((c) => c.path);
 
     const written: PlannedWrite[] = [];
     try {
       for (const w of plan) {
-        await writeOrRemove(w.abs, w.restore, w.change.part as UserPart);
+        await writeOrRemove(w.abs, w.restore, w.change.part as UserPart, w.change.path);
         written.push(w);
       }
     } catch (err) {
       // Roll back what we already wrote so a failed revert leaves no half state.
       for (const w of written.reverse()) {
-        await writeOrRemove(w.abs, w.current, w.change.part as UserPart).catch(() => undefined);
+        await writeOrRemove(w.abs, w.current, w.change.part as UserPart, w.change.path).catch(
+          () => undefined,
+        );
+      }
+      if (err instanceof UnsafeTargetError) {
+        throw new RevertConflictError([{ path: err.relPath, reason: "unsafe_target" }]);
       }
       throw err;
     }

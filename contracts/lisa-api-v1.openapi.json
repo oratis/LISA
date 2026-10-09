@@ -4229,6 +4229,13 @@
               },
               "additionalProperties": false
             }
+          },
+          "skippedSymlinks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Symlinks met where a tracked file or directory would be; never followed (first 50)."
           }
         },
         "additionalProperties": true
@@ -4397,8 +4404,10 @@
                   "type": "string",
                   "enum": [
                     "modified_since",
-                    "not_revertible"
-                  ]
+                    "not_revertible",
+                    "unsafe_target"
+                  ],
+                  "description": "modified_since: changed after the dream (KB / skills); not_revertible: no pre-dream copy; unsafe_target: the path resolves outside its part's directory (a symlink on the way, or the file is one)."
                 }
               },
               "additionalProperties": false

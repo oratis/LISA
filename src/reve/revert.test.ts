@@ -182,6 +182,78 @@ describe("revert of user-owned data", () => {
     assert.equal(fs.existsSync(path.join(home, "memory", "notes.md")), false);
   });
 
+  test("a directory link kb/wiki -> soul/values is never followed (#423 F1)", async () => {
+    fs.rmSync(path.join(home, "kb", "wiki"), { recursive: true, force: true });
+    write("soul/values/honesty.md", "ORIGINAL VALUE\n");
+    fs.symlinkSync(path.join(home, "soul", "values"), path.join(home, "kb", "wiki"));
+    const id = await idleDream(async () => {
+      // Lisa revises her own value during the pass.
+      write("soul/values/honesty.md", "LISA REVISED VALUE\n");
+    });
+    const rec = await readDream(id);
+    assert.ok(!rec.changes.some((c) => c.part === "kb"), "the soul file is not 'user data'");
+    assert.deepEqual(rec.skippedSymlinks, ["kb/wiki"]);
+    assert.ok(rec.changes.some((c) => c.path === "soul/values/honesty.md"));
+    const side = path.join(home, "reve", "dreams", `${id}.before.json`);
+    assert.ok(!fs.existsSync(side) || !fs.readFileSync(side, "utf8").includes("ORIGINAL VALUE"));
+    const res = await revertDream(id, { parts: ["kb"], force: true });
+    assert.deepEqual(res.reverted, []);
+    assert.equal(read("soul/values/honesty.md"), "LISA REVISED VALUE\n");
+  });
+
+  test("file links (SKILL.md -> identity, SCHEMA.md -> constitution) are skipped, never copied (#423 F1)", async () => {
+    write("soul/constitution.md", "C1\n");
+    fs.mkdirSync(path.join(home, "skills", "evil"), { recursive: true });
+    fs.symlinkSync(
+      path.join(home, "soul", "identity.md"),
+      path.join(home, "skills", "evil", "SKILL.md"),
+    );
+    fs.symlinkSync(path.join(home, "soul", "constitution.md"), path.join(home, "kb", "SCHEMA.md"));
+    const id = await idleDream(async () => {
+      write("soul/identity.md", "I am Lisa, changed.\n");
+      write("soul/constitution.md", "C2\n");
+      await appendMemory("memory", "a real memory change");
+    });
+    const rec = await readDream(id);
+    assert.deepEqual(rec.skippedSymlinks, ["kb/SCHEMA.md", "skills/evil/SKILL.md"]);
+    assert.ok(!rec.changes.some((c) => c.part === "skills" || c.part === "kb"));
+    const side = fs.readFileSync(path.join(home, "reve", "dreams", `${id}.before.json`), "utf8");
+    assert.ok(!side.includes("I am Lisa.") && !side.includes("C1"), "no soul text in the sidecar");
+    await revertDream(id, { parts: ["skills", "kb"], force: true });
+    assert.ok(fs.lstatSync(path.join(home, "skills", "evil", "SKILL.md")).isSymbolicLink());
+    assert.equal(read("soul/identity.md"), "I am Lisa, changed.\n");
+  });
+
+  test("a link planted after the dream is refused at revert time (#423 F1)", async () => {
+    const id = await idleDream(async () => {
+      write("kb/wiki/rust.md", "# Rust, by Lisa\n");
+    });
+    // Swap the real kb/wiki for a link into the soul, holding exactly what
+    // the dream left, so the hash check alone would pass.
+    fs.rmSync(path.join(home, "kb", "wiki"), { recursive: true });
+    write("soul/values/rust.md", "# Rust, by Lisa\n");
+    fs.symlinkSync(path.join(home, "soul", "values"), path.join(home, "kb", "wiki"));
+    await assert.rejects(revertDream(id, { parts: ["kb"] }), (err: unknown) => {
+      assert.ok(err instanceof RevertConflictError);
+      assert.deepEqual(err.conflicts, [{ path: "kb/wiki/rust.md", reason: "unsafe_target" }]);
+      return true;
+    });
+    const forced = await revertDream(id, { parts: ["kb"], force: true });
+    assert.deepEqual(forced.skipped, ["kb/wiki/rust.md"]);
+    assert.equal(read("soul/values/rust.md"), "# Rust, by Lisa\n", "the soul file is untouched");
+
+    // The target itself replaced by a link: refused too.
+    fs.rmSync(path.join(home, "kb", "wiki"));
+    fs.mkdirSync(path.join(home, "kb", "wiki"));
+    write("soul/identity.md", "# Rust, by Lisa\n");
+    fs.symlinkSync(
+      path.join(home, "soul", "identity.md"),
+      path.join(home, "kb", "wiki", "rust.md"),
+    );
+    await assert.rejects(revertDream(id, { parts: ["kb"] }), RevertConflictError);
+    assert.equal(read("soul/identity.md"), "# Rust, by Lisa\n");
+  });
+
   test("soul is never a revertible part", () => {
     assert.throws(() => parseRevertParts(["soul"]), RevertInputError);
     assert.throws(() => parseRevertParts(["memory", "identity"]), RevertInputError);
