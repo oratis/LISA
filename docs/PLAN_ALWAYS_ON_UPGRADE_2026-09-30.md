@@ -808,4 +808,4 @@
 | v0.28.0 | 发布：打包阶段因依赖重新解析失败，未发布 npm 包和 GitHub Release；标签保留不改写（[发布说明](RELEASE_v0.28.0.md)） | 未发布，由 v0.28.1 取代 |
 | [#420](https://github.com/oratis/LISA/pull/420) | 发布构建改用锁定依赖，发布 v0.28.1 | 已合并（2026-10-08） |
 | v0.28.1 | 发布：GitHub Release（含公证 DMG）、npm、Homebrew（[发布说明](RELEASE_v0.28.1.md)） | 已发布（2026-10-08） |
-| [#422](https://github.com/oratis/LISA/pull/422) | 第一批收尾接线：Task Engine × Warden（每次运行一个 Warden 会话、`awaiting_approval`、任务范围授权随运行结束撤销）、审批通知走 `reachOut()`（来源 `approval`）、`budget.usdMicros` 接入 #407 美元上限（含复审 R2、R4） | 开放；待独立对抗式审查 |
+| [#422](https://github.com/oratis/LISA/pull/422) | 第一批收尾接线：Task Engine × Warden（每次运行一个 Warden 会话、`awaiting_approval`、任务范围授权随运行结束撤销）、审批通知走 `reachOut()`（来源 `approval`）、`budget.usdMicros` 接入 #407 美元上限（含复审 R2、R4） | 开放。独立对抗式审查（2026-10-09）的 H1/H2/M3/L4–L8 已修复：信封须用户确认才算预批准、污染优先于信封、每个任务独立工作目录（Lisa home 对其只读）、放宽规则默认只对 chat 生效、审批次数/等待时长上限、推送不含内容、删任务撤销任务授权、会话 uid 取自租户作用域；待复审 |
