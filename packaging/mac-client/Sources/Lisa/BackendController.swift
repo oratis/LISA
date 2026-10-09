@@ -142,7 +142,7 @@ final class BackendController {
         let kill = Process()
         kill.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
         kill.arguments = ["-f", "serve --web"]
-        kill.terminationHandler = { _ in
+        kill.terminationHandler = { [weak self] _ in
             // Give the old process a beat to release the port, then hop back to
             // the main actor: the waiter list and start() are both isolated
             // there. A self-removing NotificationCenter observer would need to
