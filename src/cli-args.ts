@@ -3,6 +3,7 @@
  * entrypoint (`cli.ts` runs `main()` on import). `cli.ts` re-exports nothing but
  * consumes `parseArgs`/`ParsedArgs` from here.
  */
+import fs from "node:fs";
 import { APPROVAL_MODES, type ApprovalMode } from "./approval.js";
 import { DEFAULT_MODEL } from "./llm.js";
 
@@ -83,16 +84,82 @@ const RAW_SUBCOMMANDS = new Set(["heartbeat", "autostart", "doctor", "upgrade", 
  * global flags (`mail connect --host/--port/--provider …`), which would
  * otherwise be swallowed as global settings and never reach the handler.
  */
-const PASSTHROUGH_SUBCOMMANDS = new Set([
-  "mail",
-  "kb",
-  "billing",
-  "approvals",
-  "warden",
-  "forget",
-  "export",
-  "import",
-]);
+const PASSTHROUGH_SUBCOMMANDS = new Set(["mail", "kb", "billing", "approvals", "warden"]);
+
+/**
+ * Data commands (memory sovereignty). A one-shot prompt can start with these
+ * words — `lisa export the report to pdf`, `lisa forget it, just say hi` — so
+ * they are subcommands only when they are the FIRST word and the rest is
+ * exactly that command's own form:
+ *
+ *   export [--out F] [--include-sessions] [--force]
+ *   import <existing file> [--into H] [--replace]
+ *   forget <topic> [--dry-run] [--yes] [--json]     (one positional: quote it)
+ *
+ * (`--help` / `-h` alone also qualifies.) Anything else is parsed exactly as
+ * before these subcommands existed: a one-shot prompt, and an unknown flag is
+ * still an error.
+ */
+const DATA_SUBCOMMANDS: Record<
+  "export" | "import" | "forget",
+  { flags: readonly string[]; valued: readonly string[] }
+> = {
+  export: { flags: ["--include-sessions", "--force"], valued: ["--out"] },
+  import: { flags: ["--replace"], valued: ["--into"] },
+  forget: { flags: ["--dry-run", "--yes", "--json"], valued: [] },
+};
+
+function isDataSubcommand(word: string | undefined): word is keyof typeof DATA_SUBCOMMANDS {
+  return word === "export" || word === "import" || word === "forget";
+}
+
+function defaultIsFile(p: string): boolean {
+  try {
+    return fs.statSync(p).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/** Do `rest` (the tokens after the word) form exactly `cmd`'s own command line? */
+export function isDataCommandLine(
+  cmd: keyof typeof DATA_SUBCOMMANDS,
+  rest: readonly string[],
+  isFile: (p: string) => boolean = defaultIsFile,
+): boolean {
+  const spec = DATA_SUBCOMMANDS[cmd];
+  const positional: string[] = [];
+  const seen = new Set<string>();
+  let help = false;
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i]!;
+    if (a === "--help" || a === "-h") {
+      help = true;
+      continue;
+    }
+    const eq = a.startsWith("--") ? a.indexOf("=") : -1;
+    const name = eq > 0 ? a.slice(0, eq) : a;
+    if (spec.valued.includes(name)) {
+      if (seen.has(name)) return false;
+      seen.add(name);
+      if (eq > 0) {
+        if (eq === a.length - 1) return false;
+      } else {
+        const v = rest[++i];
+        if (v === undefined || v.startsWith("-")) return false;
+      }
+    } else if (a.startsWith("-")) {
+      if (!spec.flags.includes(a) || seen.has(a)) return false;
+      seen.add(a);
+    } else {
+      positional.push(a);
+    }
+  }
+  if (help) return positional.length <= (cmd === "export" ? 0 : 1);
+  if (cmd === "export") return positional.length === 0;
+  if (cmd === "forget") return positional.length === 1;
+  return positional.length === 1 && isFile(positional[0]!);
+}
 
 /**
  * Is this a debug run? Decided from the raw argv + env rather than ParsedArgs
@@ -109,7 +176,22 @@ export function isVerboseArgv(
   return argv.includes("--verbose");
 }
 
-export function parseArgs(argv: string[]): ParsedArgs {
+export function parseArgs(
+  argv: string[],
+  opts: { isFile?: (p: string) => boolean } = {},
+): ParsedArgs {
+  const parsed = parseArgvOnce(argv, true);
+  if (
+    isDataSubcommand(parsed.subcommand) &&
+    !isDataCommandLine(parsed.subcommand, parsed.subargs, opts.isFile)
+  ) {
+    // Not the command's own form: parse it as before the subcommand existed.
+    return parseArgvOnce(argv, false);
+  }
+  return parsed;
+}
+
+function parseArgvOnce(argv: string[], dataSubcommands: boolean): ParsedArgs {
   const out: ParsedArgs = {
     showHelp: false,
     reflect: true,
@@ -144,7 +226,10 @@ export function parseArgs(argv: string[]): ParsedArgs {
     // flags — --port/--channels/--imessage/--model — so those must fall through
     // to the parser below; only their *unrecognized* flags are collected, in
     // the --flag branch.)
-    if (positional.some((p) => PASSTHROUGH_SUBCOMMANDS.has(p))) {
+    if (
+      positional.some((p) => PASSTHROUGH_SUBCOMMANDS.has(p)) ||
+      (dataSubcommands && isDataSubcommand(positional[0]))
+    ) {
       positional.push(arg);
       continue;
     }
@@ -247,9 +332,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
       first === "tasks" ||
       first === "approvals" ||
       first === "warden" ||
-      first === "forget" ||
-      first === "export" ||
-      first === "import"
+      (dataSubcommands && isDataSubcommand(first))
     ) {
       out.subcommand = first;
       out.subargs = positional.slice(1);

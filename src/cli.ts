@@ -165,12 +165,15 @@ SECRETS (tools get the value through a secret://<name> handle; it is never shown
   lisa secret list             List names and timestamps.
   lisa secret rm <name>        Delete a secret.
 
-YOUR DATA (memory sovereignty)
-  lisa forget "<topic>" [--dry-run] [--yes]
-                               Erase a topic from memory, KB, sessions and
-                               indexes; Lisa's journal gets literal redactions.
-  lisa export [--out F] [--include-sessions]
-                               Export this Lisa as .tar.gz (never secrets).
+YOUR DATA (memory sovereignty) — only in exactly these forms; any other line
+starting with these words is a prompt
+  lisa forget "<topic>" [--dry-run] [--yes] [--json]
+                               Preview, then erase a topic (whole words; quote
+                               it) from memory, KB, sessions, tasks and indexes;
+                               Lisa's journal gets literal redactions.
+  lisa export [--out F] [--include-sessions] [--force]
+                               Export this Lisa as an UNENCRYPTED .tar.gz (never
+                               secrets); asks first when there is no --out.
   lisa import <file> [--into <home>] [--replace]
                                Import an export; --replace backs up first.
 

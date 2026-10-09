@@ -42,16 +42,51 @@ function io(answer: boolean | null = null): CliIo & { lines: string[]; errors: s
 }
 
 describe("cli args", () => {
-  test("forget/export/import are subcommands whose flags pass through", () => {
+  const isFile = (p: string) => p === "x.tar.gz";
+
+  test("forget/export/import are subcommands in exactly their own form", () => {
     const f = parseArgs(["forget", "project falcon", "--dry-run"]);
     assert.equal(f.subcommand, "forget");
     assert.deepEqual(f.subargs, ["project falcon", "--dry-run"]);
     const e = parseArgs(["export", "--out", "x.tar.gz", "--include-sessions"]);
     assert.equal(e.subcommand, "export");
     assert.deepEqual(e.subargs, ["--out", "x.tar.gz", "--include-sessions"]);
-    const i = parseArgs(["import", "x.tar.gz", "--into", "/tmp/h", "--replace"]);
+    assert.equal(parseArgs(["export"]).subcommand, "export");
+    assert.equal(parseArgs(["export", "--out=a.tar.gz", "--force"]).subcommand, "export");
+    const i = parseArgs(["import", "x.tar.gz", "--into", "/tmp/h", "--replace"], { isFile });
     assert.equal(i.subcommand, "import");
     assert.deepEqual(i.subargs, ["x.tar.gz", "--into", "/tmp/h", "--replace"]);
+    assert.equal(parseArgs(["forget", "--help"]).subcommand, "forget");
+  });
+
+  test("a prompt that merely starts with those words stays a prompt", () => {
+    for (const line of [
+      "export the report to pdf",
+      "import all my notes please",
+      "forget it, just say hi",
+      "forget about the meeting",
+      "export my notes",
+    ]) {
+      const a = parseArgs(line.split(" "), { isFile });
+      assert.equal(a.subcommand, undefined, line);
+      assert.equal(a.prompt, line, line);
+    }
+    // import needs an existing file.
+    assert.equal(
+      parseArgs(["import", "missing.tar.gz"], { isFile }).prompt,
+      "import missing.tar.gz",
+    );
+    // export/forget with flags they don't take are not the subcommand either:
+    // parsed as before, where an unknown flag is an error, never an action.
+    assert.throws(
+      () => parseArgs("forget about the meeting --yes".split(" ")),
+      /unknown flag: --yes/,
+    );
+    assert.throws(() => parseArgs(["export", "--yes"]), /unknown flag: --yes/);
+    // Global flags after the word still work for a prompt.
+    const g = parseArgs(["what", "should", "I", "export", "--model", "m-x"]);
+    assert.equal(g.prompt, "what should I export");
+    assert.equal(g.model, "m-x");
   });
 });
 
@@ -109,6 +144,33 @@ describe("lisa forget", () => {
 });
 
 describe("lisa export / import", () => {
+  test("export without --out asks first, refuses without a TTY, and says it is unencrypted", async () => {
+    write("soul/identity.md", "I am Lisa.\n");
+    const cwd = process.cwd();
+    process.chdir(root);
+    try {
+      const noTty = io(null);
+      assert.equal(await runExportCommand([], noTty), 2);
+      assert.match(noTty.errors.join("\n"), /unencrypted.*--out/);
+      const no = io(false);
+      assert.equal(await runExportCommand([], no), 1);
+      assert.deepEqual(
+        fs.readdirSync(root).filter((n) => n.endsWith(".tar.gz")),
+        [],
+        "nothing written without a yes",
+      );
+      const yes = io(true);
+      assert.equal(await runExportCommand([], yes), 0);
+      assert.equal(fs.readdirSync(root).filter((n) => n.endsWith(".tar.gz")).length, 1);
+      assert.ok(
+        yes.lines.some((l) => l.includes(`→ ${fs.realpathSync(root)}`) || l.includes(`→ ${root}`)),
+      );
+      assert.ok(yes.lines.some((l) => /NOT encrypted/.test(l)));
+    } finally {
+      process.chdir(cwd);
+    }
+  });
+
   test("export → import round trip through the CLI", async () => {
     write("soul/identity.md", "I am Lisa.\n");
     write("memory/MEMORY.md", "- likes tea\n");

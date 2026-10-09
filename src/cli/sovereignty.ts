@@ -7,8 +7,11 @@
  *
  * All three act on this machine's home (`LISA_HOME`, default ~/.lisa); `--into`
  * lets an operator import into another home (e.g. a cloud tenant's subtree).
- * Forget asks before it writes unless `--yes`; it refuses to run destructively
- * without a TTY or `--yes`.
+ * They are subcommands only in exactly these forms (cli-args.ts); any other
+ * line starting with these words is a one-shot prompt, as it always was.
+ * Forget always shows its preview first and asks before it writes unless
+ * `--yes`; it refuses to run destructively without a TTY or `--yes`. Export
+ * without `--out` asks first and refuses without a TTY.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -58,6 +61,8 @@ function parse(args: string[], valued: string[]): Parsed {
       const v = eq > 0 && a.startsWith("--") ? a.slice(eq + 1) : args[++i];
       if (!v) throw new Error(`${name} requires a value`);
       out.values.set(name, v);
+    } else if (a === "-h") {
+      out.flags.add("--help");
     } else if (a.startsWith("--")) {
       out.flags.add(a);
     } else {
@@ -182,10 +187,25 @@ export async function runExportCommand(args: string[], io: CliIo = defaultIo()):
     io.out("usage: lisa export [--out <file.tar.gz>] [--include-sessions] [--force]");
     return 0;
   }
-  const out = path.resolve(p.values.get("--out") ?? exportFileName());
+  const explicit = p.values.get("--out");
+  const out = path.resolve(explicit ?? exportFileName());
   if (fs.existsSync(out) && !p.flags.has("--force")) {
     io.err(`${out} already exists (pass --force to overwrite)`);
     return 2;
+  }
+  if (!explicit) {
+    // No --out: never drop an unencrypted copy of everything into the cwd
+    // without the person saying so.
+    if (!io.confirm) {
+      io.err(
+        `refusing to write an unencrypted export to ${out} without confirmation: pass --out <file.tar.gz>`,
+      );
+      return 2;
+    }
+    if (!(await io.confirm(`Write an UNENCRYPTED export of this Lisa to ${out}?`))) {
+      io.out("Cancelled; nothing written.");
+      return 1;
+    }
   }
   const manifest = await exportLisaToFile(
     { home: lisaHome(), includeSessions: p.flags.has("--include-sessions") },
@@ -193,6 +213,9 @@ export async function runExportCommand(args: string[], io: CliIo = defaultIo()):
   );
   const bytes = manifest.files.reduce((n, f) => n + f.size, 0);
   io.out(`Exported ${manifest.files.length} file(s), ${humanBytes(bytes)} → ${out}`);
+  io.out(
+    "The archive is NOT encrypted: it holds this Lisa's soul, memory and knowledge in plain text. Keep it private.",
+  );
   io.out(
     manifest.includesSessions
       ? "Includes session transcripts."
