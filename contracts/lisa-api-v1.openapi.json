@@ -1122,6 +1122,266 @@
           }
         }
       }
+    },
+    "/api/memory/entries": {
+      "get": {
+        "operationId": "listMemoryEntries",
+        "description": "MEMORY.md and USER.md parsed into entries with content-addressed ids. Cloud: account session required; the signed-in tenant's memory only.",
+        "responses": {
+          "200": {
+            "description": "Both memory stores.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryEntriesResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "appendMemoryEntry",
+        "description": "Append a bullet entry. Mac: loopback owner or account session; cloud: account session.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryEntryAppendRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new entry.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryEntryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "415": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/memory/entries/{id}": {
+      "put": {
+        "operationId": "replaceMemoryEntry",
+        "description": "Replace one entry's text. An id whose entry changed meanwhile no longer resolves (404).",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[mu]_[0-9a-f]{16}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryEntryReplaceRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated entry (its id changes with its text).",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryEntryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "415": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteMemoryEntry",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[mu]_[0-9a-f]{16}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The entry was removed.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryEntryDeleteResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/memory/forget": {
+      "post": {
+        "operationId": "forgetTopic",
+        "description": "Forget a topic across memory, KB, sessions, search indexes, relationships and (literal redactions only) Lisa's journal. dryRun returns counts and locations without changing anything. The report never carries content.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForgetRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "What was (or would be) forgotten, plus honest residuals.",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForgetResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "415": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/export": {
+      "get": {
+        "operationId": "exportLisa",
+        "description": "Download the caller's Lisa as a gzip'd tar (soul, MEMORY.md, USER.md, kb, skills, tasks, optional sessions) with manifest.json last. Never contains secrets, keys, accounts, devices, billing, warden/ or task leases/locks/outbox. Cloud: the signed-in tenant only; Mac: loopback owner only.",
+        "parameters": [
+          {
+            "name": "sessions",
+            "in": "query",
+            "required": false,
+            "description": "Include session transcripts (1 or true).",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1",
+                "true",
+                "0",
+                "false"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The archive (Content-Disposition: attachment).",
+            "headers": {
+              "X-Lisa-API-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              }
+            },
+            "content": {
+              "application/gzip": {
+                "schema": {
+                  "type": "string",
+                  "contentMediaType": "application/gzip"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3342,6 +3602,284 @@
           }
         },
         "additionalProperties": true
+      },
+      "MemoryEntry": {
+        "type": "object",
+        "required": [
+          "id",
+          "store",
+          "kind",
+          "text",
+          "line"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "store": {
+            "type": "string",
+            "enum": [
+              "memory",
+              "user"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "bullet",
+              "heading",
+              "text"
+            ]
+          },
+          "text": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "MemoryStoreView": {
+        "type": "object",
+        "required": [
+          "store",
+          "entries",
+          "bytes",
+          "maxBytes",
+          "corrupt",
+          "warnings"
+        ],
+        "properties": {
+          "store": {
+            "type": "string",
+            "enum": [
+              "memory",
+              "user"
+            ]
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemoryEntry"
+            }
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "maxBytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "corrupt": {
+            "type": "boolean",
+            "description": "Not clean UTF-8; edits are refused (409) until repaired."
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "MemoryEntriesResponse": {
+        "type": "object",
+        "required": [
+          "stores"
+        ],
+        "properties": {
+          "stores": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemoryStoreView"
+            }
+          }
+        }
+      },
+      "MemoryEntryAppendRequest": {
+        "type": "object",
+        "required": [
+          "store",
+          "text"
+        ],
+        "properties": {
+          "store": {
+            "type": "string",
+            "enum": [
+              "memory",
+              "user"
+            ]
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "MemoryEntryReplaceRequest": {
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "properties": {
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "MemoryEntryResponse": {
+        "type": "object",
+        "required": [
+          "entry"
+        ],
+        "properties": {
+          "entry": {
+            "$ref": "#/components/schemas/MemoryEntry"
+          }
+        }
+      },
+      "MemoryEntryDeleteResponse": {
+        "type": "object",
+        "required": [
+          "ok",
+          "id"
+        ],
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "id": {
+            "type": "string"
+          }
+        }
+      },
+      "ForgetRequest": {
+        "type": "object",
+        "required": [
+          "query"
+        ],
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 200
+          },
+          "dryRun": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ForgetLocation": {
+        "type": "object",
+        "required": [
+          "layer",
+          "location",
+          "matches",
+          "action"
+        ],
+        "properties": {
+          "layer": {
+            "type": "string"
+          },
+          "location": {
+            "type": "string",
+            "description": "Home-relative path (memory entries as path#id). Never content."
+          },
+          "matches": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "delete",
+              "redact",
+              "evict",
+              "unlink",
+              "none"
+            ]
+          }
+        }
+      },
+      "ForgetReport": {
+        "type": "object",
+        "required": [
+          "dryRun",
+          "counts",
+          "locations",
+          "untouched",
+          "errors",
+          "residuals"
+        ],
+        "properties": {
+          "dryRun": {
+            "type": "boolean"
+          },
+          "counts": {
+            "type": "object",
+            "description": "Matches per layer: memory, user, kb, memory_kb_links, sessions, reflections, search_index, relationships, journal.",
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "locations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ForgetLocation"
+            }
+          },
+          "untouched": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ForgetLocation"
+            }
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "layer",
+                "error"
+              ],
+              "properties": {
+                "layer": {
+                  "type": "string"
+                },
+                "error": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "residuals": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "remaining": {
+            "type": "object",
+            "description": "Matches per layer: memory, user, kb, memory_kb_links, sessions, reflections, search_index, relationships, journal.",
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      },
+      "ForgetResponse": {
+        "type": "object",
+        "required": [
+          "report"
+        ],
+        "properties": {
+          "report": {
+            "$ref": "#/components/schemas/ForgetReport"
+          }
+        }
       }
     }
   }

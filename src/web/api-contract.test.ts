@@ -257,3 +257,29 @@ describe("actual server DTOs conform to OpenAPI v1", () => {
     assert.ok(errors.some((error) => error.includes("expected string")));
   });
 });
+
+describe("memory sovereignty DTOs conform to OpenAPI v1", () => {
+  test("entries list, entry mutation and forget report match their schemas", async () => {
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const previous = process.env.LISA_HOME;
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "lisa-contract-mem-"));
+    process.env.LISA_HOME = home;
+    try {
+      fs.mkdirSync(path.join(home, "memory"), { recursive: true });
+      fs.writeFileSync(path.join(home, "memory", "MEMORY.md"), "# Notes\n- likes tea\nprose\n");
+      const { appendMemoryEntry, listMemoryEntries } = await import("../memory/entries.js");
+      const { forget } = await import("../sovereignty/forget.js");
+      const entry = await appendMemoryEntry("user", "prefers mornings");
+      assertContract("MemoryEntryResponse", { entry });
+      assertContract("MemoryEntriesResponse", { stores: await listMemoryEntries() });
+      assertContract("MemoryEntryDeleteResponse", { ok: true, id: entry.id });
+      assertContract("ForgetResponse", { report: await forget("likes tea", { dryRun: true }) });
+      assertContract("ForgetResponse", { report: await forget("likes tea") });
+    } finally {
+      if (previous === undefined) delete process.env.LISA_HOME;
+      else process.env.LISA_HOME = previous;
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  });
+});
