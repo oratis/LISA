@@ -343,10 +343,10 @@ describe("capture failures on the cloud edition (#423 F7)", () => {
     const origError = console.error;
     const origWrite = process.stderr.write.bind(process.stderr);
     console.error = (...a: unknown[]) => void lines.push(a.map(String).join(" "));
-    process.stderr.write = ((chunk: string | Uint8Array) => {
+    process.stderr.write = (chunk: string | Uint8Array) => {
       lines.push(String(chunk));
       return true;
-    });
+    };
     try {
       await homeScope.run(tenant, () =>
         withDream({ trigger: "idle" }, async () => {
