@@ -14,11 +14,21 @@
  * `allowed: false` for a cloud caller WITHOUT an account (shared token), which
  * would otherwise land in the operator's global home.
  *
+ * Who (the Warden's trust model, `wardenTrust` in warden-api.ts):
+ *  - every route, reads included (records hold memory and KB text), refuses a
+ *    cross-site browser request and, when the caller is trusted only because
+ *    it connected from loopback, a non-loopback Host (DNS rebinding);
+ *  - revert and reconsider change state, so they also need a caller allowed
+ *    to approve: the loopback owner on the Mac edition or a signed-in account.
+ *    A shared web token or a paired device can read the log, not act on it
+ *    (a reconsider note is user text that lands in an unattended run).
+ *
  * Sovereignty: revert accepts user parts only; "soul" is refused (400) — the
  * user's lever over Lisa's soul is reconsider, which never writes soul files.
  */
 import type http from "node:http";
 import { BodyTooLargeError, readCappedText } from "./http-body.js";
+import { crossSiteProblem } from "./warden-api.js";
 import { clampDays, metricsSeries } from "../reve/metrics.js";
 import { ReconsiderError, listReconsiderRequests, requestReconsider } from "../reve/reconsider.js";
 import { RevertConflictError, RevertInputError, revertDream } from "../reve/revert.js";
@@ -33,6 +43,10 @@ import {
 export interface ReveApiOptions {
   /** False for a cloud caller that is not scoped to an account. */
   allowed: boolean;
+  /** May revert / reconsider: the loopback owner or a signed-in account (`wardenTrust`). */
+  allowApproval: boolean;
+  /** Trusted only because it is on loopback: the Host header must name loopback too. */
+  loopbackTrust: boolean;
   /** Recorded in the audit log for reverts (e.g. "uid:abc" or "local"). */
   actor?: string;
   now?: () => Date;
@@ -94,6 +108,15 @@ export async function handleReveApi(
     return true;
   }
   const method = req.method ?? "GET";
+  const problem = crossSiteProblem(req, opts.loopbackTrust);
+  if (problem) {
+    json(res, 403, { error: problem });
+    return true;
+  }
+  if (method !== "GET" && method !== "HEAD" && !opts.allowApproval) {
+    json(res, 403, { error: "trusted_local_confirmation_required" });
+    return true;
+  }
   const parts = pathname.split("/").slice(3); // after /api/reve
   try {
     if (parts[0] === "dreams" && parts.length === 1) {

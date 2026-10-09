@@ -2586,10 +2586,13 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       return;
     }
     // W9 auditable Dream log. lisaHome() is already this account's subtree on
-    // the cloud edition; a cloud caller with no account is refused.
+    // the cloud edition; a cloud caller with no account is refused. Same
+    // trust as the Warden: cross-site / rebinding refused, and only the
+    // loopback owner or a signed-in account may revert or reconsider.
     if (
       await handleReveApi(req, res, url, {
         allowed: !cloud || accountUid !== null,
+        ...wardenTrust({ cloud, loopback: isLoopbackAddress(remoteAddr), accountUid }),
         actor: accountUid ? `uid:${accountUid}` : "local",
       })
     ) {
