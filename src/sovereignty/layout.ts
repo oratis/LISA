@@ -1,0 +1,84 @@
+/**
+ * What a Lisa export carries — and, just as important, what it never does.
+ * Shared by export (what to write) and import (what to accept), so a crafted
+ * archive can't plant anything an honest export would not contain.
+ *
+ * Inclusion is an ALLOWLIST of top-level areas of a home; everything else in a
+ * home (config.env, accounts, devices, billing, warden/, mail credentials,
+ * push/relay/channel config, the session secret, logs, caches…) is never even
+ * visited. Inside the allowed areas a DENYLIST strips infrastructure state and
+ * anything secret-shaped. Both apply on export and again on import.
+ */
+
+/** Top-level areas of a home that an export may carry. */
+export const EXPORT_ROOTS = ["soul", "memory", "kb", "skills", "sessions", "tasks"] as const;
+export type ExportRoot = (typeof EXPORT_ROOTS)[number];
+
+/** `memory/` holds caches and locks too; only the two stores are user data. */
+const MEMORY_FILES = new Set(["MEMORY.md", "USER.md"]);
+
+/**
+ * Human-readable statement of the exclusions, written into every manifest so
+ * the person holding an archive can see what it deliberately lacks.
+ */
+export const EXPORT_EXCLUSIONS: readonly string[] = [
+  "everything outside soul/, memory/MEMORY.md, memory/USER.md, kb/, skills/, sessions/ (opt-in) and tasks/",
+  "config.env, accounts, devices, billing, session secret, OTPs, push/relay/channel config, mail credentials",
+  "warden/ (encrypted secrets and key, grants, rules, digest key, taint records, approval audit, pending approvals)",
+  "tasks/.leases/, tasks/**/.locks/, tasks/outbox/",
+  "git metadata (.git/), lock files (*.lock), temp files (*.tmp)",
+  "secret-shaped files anywhere (.env, *.env, secrets*.json, *.key, *.pem, *.p8, *.p12)",
+  "symlinks, hard links, devices, sockets and FIFOs",
+];
+
+const SECRET_BASENAME =
+  /^(?:\.env|.*\.env|secrets?(?:\..*)?\.json|.*\.(?:key|pem|p8|p12)|session-secret|devices\.json|accounts\.json|otp\.json)$/i;
+
+/**
+ * Why an (export-root-relative, POSIX) path is excluded, or null when it may
+ * be carried. `rel` includes the root segment, e.g. `tasks/.leases/x.lease`.
+ */
+export function exclusionReason(rel: string): string | null {
+  const segs = rel.split("/");
+  const root = segs[0]!;
+  if (!(EXPORT_ROOTS as readonly string[]).includes(root)) return "outside export areas";
+  const base = segs[segs.length - 1]!;
+  if (segs.includes(".git")) return "git metadata";
+  if (root === "tasks") {
+    if (segs.includes(".leases")) return "task lease";
+    if (segs.includes(".locks")) return "task lock";
+    if (segs[1] === "outbox") return "task outbox";
+  }
+  if (segs.includes(".locks") || segs.includes(".leases")) return "lock";
+  if (root === "memory" && segs.length > 1 && !(segs.length === 2 && MEMORY_FILES.has(base))) {
+    return "memory internals";
+  }
+  if (base.endsWith(".lock")) return "lock file";
+  if (base.endsWith(".tmp")) return "temp file";
+  if (SECRET_BASENAME.test(base)) return "secret material";
+  return null;
+}
+
+export const MANIFEST_PATH = "manifest.json";
+
+/**
+ * Structural validity of an archive path (both directions): relative POSIX,
+ * no `.`/`..`/empty segments, no backslashes, NUL or control characters, no
+ * drive letters, bounded length. Returns a reason or null.
+ */
+export function archivePathProblem(p: string): string | null {
+  if (typeof p !== "string" || p.length === 0) return "empty path";
+  if (Buffer.byteLength(p) > 1024) return "path too long";
+  if (p.startsWith("/")) return "absolute path";
+  if (/^[a-zA-Z]:/.test(p)) return "drive-letter path";
+  if (p.includes("\\")) return "backslash in path";
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f]/.test(p)) return "control character in path";
+  const segs = p.split("/");
+  for (const s of segs) {
+    if (s === "") return "empty path segment";
+    if (s === "." || s === "..") return "path traversal";
+    if (Buffer.byteLength(s) > 255) return "path segment too long";
+  }
+  return null;
+}
