@@ -58,11 +58,7 @@ function schemaErrors(schemaInput: Schema, value: unknown, path = "$"): string[]
   if (schema.enum && !schema.enum.includes(value)) {
     errors.push(`${path} is not in enum`);
   }
-  const allowedTypes = Array.isArray(schema.type)
-    ? schema.type
-    : schema.type
-      ? [schema.type]
-      : [];
+  const allowedTypes = Array.isArray(schema.type) ? schema.type : schema.type ? [schema.type] : [];
   if (allowedTypes.length > 0) {
     const actual =
       value === null
@@ -72,7 +68,9 @@ function schemaErrors(schemaInput: Schema, value: unknown, path = "$"): string[]
           : Number.isInteger(value)
             ? "integer"
             : typeof value;
-    if (!allowedTypes.includes(actual)) {
+    // JSON Schema: every integer is also a "number".
+    const numberOk = actual === "integer" && allowedTypes.includes("number");
+    if (!allowedTypes.includes(actual) && !numberOk) {
       return [`${path} expected ${allowedTypes.join("|")}, got ${actual}`];
     }
   }
@@ -235,6 +233,63 @@ describe("actual server DTOs conform to OpenAPI v1", () => {
     });
     assertContract("ErrorResponse", { error: "rate_limited", retryAfterSec: 60 });
     assertContract("SSEEvent", { type: "agent_session_update", ...dispatch });
+  });
+
+  test("reve dream-log fixtures conform (W9)", async () => {
+    const os = await import("node:os");
+    const nodePath = await import("node:path");
+    const prev = { home: process.env.LISA_HOME, git: process.env.LISA_SOUL_GIT };
+    const home = fs.mkdtempSync(nodePath.join(os.tmpdir(), "lisa-reve-contract-"));
+    process.env.LISA_HOME = home;
+    process.env.LISA_SOUL_GIT = "0";
+    try {
+      const { withDream } = await import("../reve/record.js");
+      const { listDreams, readDream, readDreamsSince } = await import("../reve/store.js");
+      const { requestReconsider, listReconsiderRequests } = await import("../reve/reconsider.js");
+      const { revertDream, RevertConflictError } = await import("../reve/revert.js");
+      const { metricsSeries } = await import("../reve/metrics.js");
+      const { appendMemory } = await import("../memory/store.js");
+      const soul = await import("../soul/store.js");
+      fs.mkdirSync(nodePath.join(home, "memory"), { recursive: true });
+      fs.writeFileSync(nodePath.join(home, "memory", "MEMORY.md"), "- tea\n");
+      await withDream({ trigger: "idle" }, async () => {
+        await appendMemory("memory", "coffee");
+        await soul.writeIdentity("I am Lisa.");
+        await soul.applyEmotionDelta({ emotion: "joy", delta: 0.2, trigger: "t", maxEvents: 5 });
+      });
+      const listing = await listDreams(5);
+      assertContract("ReveDreamListResponse", { ...listing, pendingReconsider: 0 });
+      const id = listing.dreams[0]!.id;
+      const request = await requestReconsider(id, "really?");
+      assertContract("ReveReconsiderResponse", { ok: true, request });
+      assertContract("ReveReconsiderListResponse", { requests: await listReconsiderRequests() });
+      assertContract("ReveDreamResponse", {
+        dream: await readDream(id),
+        reconsider: await listReconsiderRequests(id),
+      });
+      fs.appendFileSync(nodePath.join(home, "memory", "MEMORY.md"), "- later\n");
+      await assert.rejects(revertDream(id, { parts: ["memory"] }), (err: unknown) => {
+        assert.ok(err instanceof RevertConflictError);
+        assertContract("ReveRevertConflict", {
+          error: "revert_conflict",
+          conflicts: err.conflicts,
+        });
+        return true;
+      });
+      const reverted = await revertDream(id, { parts: ["memory"], force: true });
+      assertContract("ReveRevertResponse", { ok: true, ...reverted });
+      const now = new Date();
+      assertContract(
+        "ReveMetricsSeries",
+        metricsSeries(await readDreamsSince(now.getTime() - 86_400_000), { days: 2, now }),
+      );
+    } finally {
+      if (prev.home === undefined) delete process.env.LISA_HOME;
+      else process.env.LISA_HOME = prev.home;
+      if (prev.git === undefined) delete process.env.LISA_SOUL_GIT;
+      else process.env.LISA_SOUL_GIT = prev.git;
+      fs.rmSync(home, { recursive: true, force: true });
+    }
   });
 
   test("incompatible server changes fail validation", () => {
