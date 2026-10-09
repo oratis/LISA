@@ -45,7 +45,7 @@ These cannot be changed by rules, grants or a task envelope.
 | send, publish, delete | ask | ask | preapproved | ask |
 | purchase, credential | handoff | handoff | handoff | handoff |
 
-- **Unsandboxed exec asks for every origin**, the local owner included. A full-access shell can do anything every other tool can, so leaving it `auto` would make every other ask advisory. A user who wants the old behaviour sets a rule (`tools.bash = auto`) knowingly; taint and a remote origin still override it.
+- **Unsandboxed exec asks for every origin**, the local owner included. A full-access shell can do anything every other tool can, so leaving it `auto` would make every other ask advisory. A user who wants the old behaviour sets a rule (`tools.bash = auto`) knowingly; taint and a remote origin still override it, and it applies to the attended chat only unless it names the task origin (see "User rules").
 - **preapproved** means allowed only when the task's envelope covers the action **and the user confirmed that envelope**; otherwise it asks. In a tainted run even a confirmed envelope does not cover exec, delete, send, publish, a network write or a write outside the run's workspace (see "Task envelopes").
 - A web chat from a caller who could not answer an approval (a LAN device token, a shared web token) is treated as a remote origin, not as the owner.
 
@@ -101,6 +101,7 @@ A task's envelope (`tools`, `categories`, `targets`) is a **restriction until th
 `rules.json` sets one of four behaviours per category, tool or target: `auto`, `preapproved`, `ask`, `handoff`.
 
 - Rules can tighten anything. They cannot loosen a system invariant, and an `auto` rule does not survive taint, a remote origin, or a corrupt rules file.
+- **Origin scoping.** A rule that loosens — `auto`, or anything less strict than the default it replaces — applies to the attended chat only, unless `origins` names the task origin for it: `{"tools": {"bash": "auto"}, "origins": {"tools": {"bash": ["chat", "task"]}}}`. So a rule written for chat (`tools.bash = auto`, `categories.send = auto`) never lets an unattended routine run the shell or send. A rule that tightens (`ask`, `handoff`, or `preapproved` where the default is `auto`) applies to every origin, whatever its scope says. `origins` has the same three maps as the rules (`categories`, `tools`, `targets`); each entry is a non-empty list of `chat` / `task` and must name an existing rule, or the whole file is rejected like any invalid rules document. `lisa warden rules show` prints each loosening rule's scope.
 - A target rule loosens only when every target of the request has one; otherwise the stricter of the tool and category rules applies.
 - Rule maps are read by own property only, and a value that is not one of the four behaviours counts as `ask`.
 

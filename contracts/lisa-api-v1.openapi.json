@@ -3159,6 +3159,43 @@
               "type": "string"
             },
             "description": "MCP servers whose results the user vouches for (they do not taint a run)."
+          },
+          "origins": {
+            "type": "object",
+            "properties": {
+              "categories": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "description": "Open set; v1 values: chat, task."
+                  }
+                }
+              },
+              "tools": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "description": "Open set; v1 values: chat, task."
+                  }
+                }
+              },
+              "targets": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "description": "Open set; v1 values: chat, task."
+                  }
+                }
+              }
+            },
+            "additionalProperties": true,
+            "description": "Where each LOOSENING rule applies, by map and key, e.g. {\"tools\": {\"bash\": [\"chat\", \"task\"]}}. A rule that loosens (auto, or less strict than the default it replaces) applies to the attended chat only unless its scope names `task`; a rule that tightens applies to every origin. Every entry must name an existing rule."
           }
         },
         "additionalProperties": true

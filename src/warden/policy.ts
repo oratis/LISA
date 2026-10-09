@@ -19,6 +19,7 @@ import path from "node:path";
 import { matchGrants, scopeProblem, type MatchOptions, type StoredGrant } from "./grants.js";
 import { isInsideProtected } from "./paths.js";
 import {
+  DEFAULT_RULE_ORIGINS,
   LOCKED_CATEGORIES,
   matchRules,
   ownBehavior,
@@ -278,6 +279,23 @@ function finalize(req: ActionRequest, result: PolicyResult): PolicyResult {
 }
 
 /**
+ * Does a user rule apply to this request's origin? A rule that tightens (or
+ * merely restates the default) applies everywhere. One that LOOSENS — `auto`,
+ * or anything less strict than the default it would replace — applies only to
+ * the origins its `origins` scope names, and by default only to the attended
+ * chat: `tools.bash = auto` written for chat is not standing permission for
+ * every unattended routine (#422 review M3). The remote-channel column never
+ * matches a scope, and its floor would ask anyway.
+ */
+function ruleAppliesTo(rule: MatchedRule, req: ActionRequest, fallback: MatchedRule): boolean {
+  const loosens =
+    rule.behavior === "auto" || strictness(rule.behavior) < strictness(fallback.behavior);
+  if (!loosens) return true;
+  const column = columnOf(req);
+  return (rule.origins ?? DEFAULT_RULE_ORIGINS).some((origin) => origin === column);
+}
+
+/**
  * The user's rule for the request, resolved against a fallback. A target rule
  * that covers every target is the most specific and wins outright; one that
  * covers only part of the targets can tighten but never loosen, and then the
@@ -288,7 +306,7 @@ function resolveRule(
   req: ActionRequest,
   fallback: MatchedRule,
 ): MatchedRule & { explicit: boolean } {
-  const match = matchRules(rules, req);
+  const match = matchRules(rules, req, (rule) => ruleAppliesTo(rule, req, fallback));
   if (match.target && match.targetsCovered) return { ...match.target, explicit: true };
   const base = match.target ? match.strictBase : match.base;
   let chosen = base ?? fallback;
