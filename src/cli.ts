@@ -165,6 +165,15 @@ SECRETS (tools get the value through a secret://<name> handle; it is never shown
   lisa secret list             List names and timestamps.
   lisa secret rm <name>        Delete a secret.
 
+YOUR DATA (memory sovereignty)
+  lisa forget "<topic>" [--dry-run] [--yes]
+                               Erase a topic from memory, KB, sessions and
+                               indexes; Lisa's journal gets literal redactions.
+  lisa export [--out F] [--include-sessions]
+                               Export this Lisa as .tar.gz (never secrets).
+  lisa import <file> [--into <home>] [--replace]
+                               Import an export; --replace backs up first.
+
 LISA CLOUD (managed inference — models without a BYO key run key-free)
   lisa login [url] [--password]
                                Sign in. Mails a one-time code by default, and
@@ -483,6 +492,22 @@ async function main(): Promise<void> {
   if (args.subcommand === "secret") {
     const { runSecretCommand } = await import("./cli/secret.js");
     process.exit(await runSecretCommand(args.subargs));
+  }
+
+  if (
+    args.subcommand === "forget" ||
+    args.subcommand === "export" ||
+    args.subcommand === "import"
+  ) {
+    const { runForgetCommand, runExportCommand, runImportCommand } = await import(
+      "./cli/sovereignty.js"
+    );
+    const run = {
+      forget: runForgetCommand,
+      export: runExportCommand,
+      import: runImportCommand,
+    }[args.subcommand];
+    process.exit(await run(args.subargs));
   }
 
   // `lisa tasks run` needs the toolset and is handled further down, next to heartbeat.

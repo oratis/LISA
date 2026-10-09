@@ -56,7 +56,10 @@ export interface ParsedArgs {
     | "upgrade"
     | "tasks"
     | "approvals"
-    | "warden";
+    | "warden"
+    | "forget"
+    | "export"
+    | "import";
   subargs: string[];
   serveWeb: boolean;
   serveImessage: boolean;
@@ -80,7 +83,16 @@ const RAW_SUBCOMMANDS = new Set(["heartbeat", "autostart", "doctor", "upgrade", 
  * global flags (`mail connect --host/--port/--provider …`), which would
  * otherwise be swallowed as global settings and never reach the handler.
  */
-const PASSTHROUGH_SUBCOMMANDS = new Set(["mail", "kb", "billing", "approvals", "warden"]);
+const PASSTHROUGH_SUBCOMMANDS = new Set([
+  "mail",
+  "kb",
+  "billing",
+  "approvals",
+  "warden",
+  "forget",
+  "export",
+  "import",
+]);
 
 /**
  * Is this a debug run? Decided from the raw argv + env rather than ParsedArgs
@@ -234,7 +246,10 @@ export function parseArgs(argv: string[]): ParsedArgs {
       first === "upgrade" ||
       first === "tasks" ||
       first === "approvals" ||
-      first === "warden"
+      first === "warden" ||
+      first === "forget" ||
+      first === "export" ||
+      first === "import"
     ) {
       out.subcommand = first;
       out.subargs = positional.slice(1);
