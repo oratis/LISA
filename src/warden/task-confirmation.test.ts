@@ -127,13 +127,14 @@ test("a paired device retitling a confirmed task unconfirms it: the injected tit
     });
     await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
     const port = (server.address() as { port: number }).port;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const api = async (
       method: string,
       p: string,
       body?: unknown,
       approver = false,
-    ): Promise<any> => {
+      // Test bodies are poked at freely; tasks-api.test.ts checks their shape.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ): Promise<{ status: number; body: any }> => {
       const r = await fetch(`http://127.0.0.1:${port}${p}`, {
         method,
         headers: { "content-type": "application/json", ...(approver ? { "x-approver": "1" } : {}) },
