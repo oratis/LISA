@@ -77,9 +77,11 @@ export function soulChangeLabels(rec: DreamRecord): string[] {
 
 function cleanNote(note: unknown): string {
   // Keep newlines/tabs; drop other control characters.
-  // eslint-disable-next-line no-control-regex
+  const CONTROL_CHARS =
+    // eslint-disable-next-line no-control-regex
+    /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g;
   return String(note ?? "")
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "")
+    .replace(CONTROL_CHARS, "")
     .trim();
 }
 

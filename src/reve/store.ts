@@ -146,9 +146,9 @@ async function idsOnDisk(): Promise<string[]> {
 export function summarizeDream(rec: DreamRecord): DreamSummary {
   const parts = [...new Set<DreamPart>(rec.changes.map((c) => c.part))];
   if (rec.soulCommits.length && !parts.includes("soul")) parts.push("soul");
-  const revertibleParts = USER_PARTS.filter((p) =>
+  const revertibleParts: UserPart[] = USER_PARTS.filter((p) =>
     rec.changes.some((c) => c.part === p && c.revertible),
-  ) as UserPart[];
+  );
   return {
     id: rec.id,
     trigger: rec.trigger,

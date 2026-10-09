@@ -50,7 +50,7 @@ function scripted(text: string, seen: string[] = [], sideEffect?: () => Promise<
       if (sideEffect) await sideEffect();
       return { content: [{ type: "text", text }], stopReason: "end_turn", usage };
     },
-  } as Provider;
+  };
 }
 
 const history = [
