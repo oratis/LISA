@@ -7,7 +7,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import type Anthropic from "@anthropic-ai/sdk";
-import { homeScope } from "../paths.js";
+import { homeScope, lisaHome } from "../paths.js";
 import type { Provider, ProviderResult, ProviderRunOpts } from "../providers/types.js";
 import type { StoredMessage, ToolDefinition } from "../types.js";
 import { listOutbox } from "./outbox.js";
@@ -28,7 +28,7 @@ import {
   updateTask,
   type NewTask,
 } from "./store.js";
-import type { Task, TaskNotice } from "./types.js";
+import type { Task, TaskApprovalContext, TaskNotice } from "./types.js";
 
 // ── harness ──
 
@@ -724,12 +724,37 @@ test("a factory that returns no gate still gets the safe default; one that allow
     await noGate.drain();
     assert.equal(ran, 0, "observe-only handle does not unlock side effects");
     assert.ok(observed.includes("tool_call_start"));
-    assert.deepEqual(seenCtx[0], {
-      taskId: first.id,
-      runId: (await getTask(first.id))!.runs[0],
-      origin: { kind: "routine", id: first.id },
-      uid: null,
-    });
+    const ctx = seenCtx[0] as TaskApprovalContext;
+    const firstRun = (await loadRun(first.id, (await getTask(first.id))!.runs[0]!))!.run;
+    assert.deepEqual(
+      {
+        taskId: ctx.taskId,
+        runId: ctx.runId,
+        runStartedAt: ctx.runStartedAt,
+        origin: ctx.origin,
+        uid: ctx.uid,
+        home: ctx.home,
+        title: ctx.title,
+        tainted: ctx.tainted,
+        cwd: ctx.cwd,
+        tools: ctx.tools.map((t) => t.name),
+      },
+      {
+        taskId: first.id,
+        runId: firstRun.id,
+        runStartedAt: firstRun.startedAt,
+        origin: { kind: "routine", id: first.id },
+        uid: null,
+        home: lisaHome(),
+        title: first.title,
+        tainted: false,
+        cwd: os.tmpdir(),
+        tools: ["bash"],
+      },
+    );
+    assert.equal(typeof ctx.sandboxMode, "string");
+    assert.equal(ctx.signal.aborted, false);
+    assert.equal(typeof ctx.approvalWait.started, "function");
 
     const second = await dueRoutine({ envelope: { tools: ["bash"], categories: ["shell"] } });
     const allowed = makeRunner({

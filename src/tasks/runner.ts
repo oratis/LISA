@@ -35,6 +35,7 @@ import { runAgent, type ApprovalCallback } from "../agent.js";
 import { getAutonomyEnabled } from "../autonomy/state.js";
 import { costMicroUSD } from "../billing/prices.js";
 import { logInfo } from "../log.js";
+import { lisaHome } from "../paths.js";
 import { providerForModel } from "../providers/registry.js";
 import type { Provider, ProviderUsage } from "../providers/types.js";
 import type { SandboxMode } from "../sandbox/mode.js";
@@ -77,6 +78,7 @@ import { tokensSpent } from "./types.js";
 import type {
   Task,
   TaskApprovalFactory,
+  TaskApprovalWait,
   TaskEffect,
   TaskDeliver,
   TaskNotice,
@@ -489,6 +491,10 @@ export class TaskRunner {
 
   private deliver(): TaskDeliver | undefined {
     return this.opts.deliver ?? getTaskDeliver() ?? getDefaultTaskDeliver();
+  }
+
+  private approvalFactory(): TaskApprovalFactory | undefined {
+    return this.opts.approvalFactory ?? getTaskApprovalFactory();
   }
 
   // ── fencing: every write a run makes is conditional on still holding the lease ──
@@ -1157,16 +1163,40 @@ export class TaskRunner {
         untrustedInput: run.input !== undefined,
       });
       const toolMap = new Map(tools.map((t) => [t.name, t]));
+      // Unattended ⇒ the bounded sandbox mode, whatever the process default is.
+      const sandboxMode =
+        this.opts.sandboxMode ?? sandboxModeForProfile(cloud ? "cloud-autonomy" : "local-autonomy");
+      const approvalWait: TaskApprovalWait = {
+        started: async () => {},
+        ended: async () => {},
+      };
 
-      const handle = (this.opts.approvalFactory ?? getTaskApprovalFactory())?.({
+      const handle = await this.approvalFactory()?.({
         taskId: task.id,
         runId: run.id,
+        runStartedAt: run.startedAt,
         origin: {
           kind: task.kind === "routine" ? "routine" : task.kind === "watcher" ? "watcher" : "task",
           id: task.id,
         },
         ...(task.envelope ? { envelope: task.envelope } : {}),
         uid: task.owner,
+        home: lisaHome(),
+        title: task.title,
+        // A run a watcher hit started quotes an outsider's text in its prompt,
+        // and a continued run that was tainted still has that content in its
+        // history: either way it is tainted from its first call.
+        tainted: run.input !== undefined || run.tainted === true,
+        // Recorded on the run; the checkpoint after the call that tainted it
+        // lands before that call's result is in the saved history.
+        onTaint: () => {
+          run.tainted = true;
+        },
+        cwd: this.opts.cwd,
+        sandboxMode,
+        tools,
+        signal: slot.controller.signal,
+        approvalWait,
       });
       // No factory, or a factory that offers no gate ⇒ the safe default.
       const gate: ApprovalCallback = handle?.approval ?? denySideEffects();
@@ -1256,10 +1286,7 @@ export class TaskRunner {
           cwd: this.opts.cwd,
           signal: slot.controller.signal,
           log: (m) => this.log(`${task.id}: ${m}`),
-          // Unattended ⇒ the bounded sandbox mode, whatever the process default is.
-          sandboxMode:
-            this.opts.sandboxMode ??
-            sandboxModeForProfile(cloud ? "cloud-autonomy" : "local-autonomy"),
+          sandboxMode,
         },
         history,
         userMessage,

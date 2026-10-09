@@ -29,6 +29,7 @@ import {
   setDefaultTaskDeliver,
   setTaskEventSink,
 } from "../tasks/wiring.js";
+import type { TaskApprovalFactory } from "../tasks/types.js";
 import type { ToolDefinition } from "../types.js";
 import { cloudTasksEnabled, handleTasksApi } from "./tasks-api.js";
 
@@ -61,6 +62,12 @@ export interface TaskHostOptions {
   /** Hosted edition: billing admission for the tenant's model calls. Required to run cloud tasks. */
   modelGateFor?: (uid: string) => ModelGate;
   checkWatch?: WatchCheck;
+  /**
+   * The approval gate for unattended runs: Warden's task factory when the
+   * server runs in Warden mode, otherwise unset — and then a run may make only
+   * the verified read-only calls of src/tasks/policy.ts.
+   */
+  approvalFactory?: TaskApprovalFactory;
   log?: (msg: string) => void;
   /** Start the 30 s scheduler (Mac edition). Default: true when not hosted. */
   schedule?: boolean;
@@ -116,6 +123,7 @@ export function createTaskHost(opts: TaskHostOptions): TaskHost {
       host: opts.cloud ? "cloud" : "home",
       onEvent,
       ...(opts.checkWatch ? { checkWatch: opts.checkWatch } : {}),
+      ...(opts.approvalFactory ? { approvalFactory: opts.approvalFactory } : {}),
       ...(opts.log ? { log: opts.log } : {}),
       ...(uid && opts.modelGateFor ? { modelGate: opts.modelGateFor(uid) } : {}),
       ...(uid && opts.trackWork

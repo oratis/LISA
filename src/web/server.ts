@@ -197,6 +197,7 @@ import {
   scheduleServerCatchUp,
 } from "./reachout-wiring.js";
 import { createTaskHost } from "./tasks-host.js";
+import { createTaskApprovalFactory } from "../warden/task-approval.js";
 import { cloudTasksEnabled } from "./tasks-api.js";
 import { cloudModelGate, sweepUserTasks } from "../tasks/cloud.js";
 import {
@@ -853,6 +854,19 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // proactive message; the gate decides whether the push channel fires.
     reachOut: reachOutVia,
     pushSink: pushBridge,
+    // Unattended runs get more than verified read-only calls ONLY in Warden
+    // mode: each run then gets its own Warden session on this server's inbox.
+    // Otherwise nothing is installed and the engine's read-only allow-list
+    // applies (src/tasks/policy.ts).
+    ...(warden.enabled
+      ? {
+          approvalFactory: createTaskApprovalFactory({
+            inbox: warden.inbox,
+            surface: policy.surface,
+            log: logWarn,
+          }),
+        }
+      : {}),
     rememberNote: async (note) => {
       const lease = await ctxForRequest();
       try {

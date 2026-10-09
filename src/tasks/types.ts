@@ -11,7 +11,8 @@
  * additive (bump TASK_SCHEMA_VERSION + add a migration in store.ts otherwise).
  */
 import type { ApprovalCallback } from "../agent.js";
-import type { AgentEvent } from "../types.js";
+import type { SandboxMode } from "../sandbox/mode.js";
+import type { AgentEvent, ToolDefinition } from "../types.js";
 
 /** On-disk schema version of a Task file. */
 export const TASK_SCHEMA_VERSION = 1;
@@ -255,6 +256,12 @@ export interface TaskRun {
   trigger?: TaskRunTrigger;
   /** Input handed to the run by a watcher hit, if any. */
   input?: string;
+  /**
+   * Untrusted content has entered this run (the approval gate said so). Kept
+   * on the run so a resumed or retried segment starts tainted: the content is
+   * still in its history.
+   */
+  tainted?: boolean;
   summary?: string;
   artifacts?: TaskArtifact[];
   error?: string;
@@ -298,9 +305,43 @@ export const DEFAULT_TASK_BUDGET: TaskBudget = {
 export interface TaskApprovalContext {
   taskId: string;
   runId: string;
+  /** When the run first started. A task-scoped grant older than this belongs to an earlier run. */
+  runStartedAt: number;
   origin: { kind: "task" | "routine" | "watcher"; id: string };
   envelope?: TaskEnvelope;
   uid: string | null;
+  /** The tenant home the run works in (`lisaHome()` inside the run's scope). */
+  home: string;
+  /** The task's title, for approval cards and notices. */
+  title: string;
+  /**
+   * The run already carries untrusted content: it was started by a watcher hit
+   * (its prompt quotes an outsider's text), or it became tainted before an
+   * interruption or a failed attempt and is being continued.
+   */
+  tainted: boolean;
+  /** Call once when the run becomes tainted; the runner records it on the run. */
+  onTaint: () => void;
+  /** The run's working directory (the workspace root a gate judges paths against). */
+  cwd: string;
+  /** The sandbox mode the run's tools execute under. */
+  sandboxMode: SandboxMode;
+  /** The tools the run is offered. */
+  tools: ToolDefinition[];
+  /** Aborted when the run stops (cancel, shutdown, a lost lease). A pending approval is then a deny. */
+  signal: AbortSignal;
+  /**
+   * What a gate calls while a call waits for a human answer. The runner shows
+   * the run as `awaiting_approval` and stops its wall clock in between.
+   */
+  approvalWait: TaskApprovalWait;
+}
+
+export interface TaskApprovalWait {
+  /** An approval for `tool` is now pending. */
+  started(info: { tool: string; approvalId?: string }): Promise<void>;
+  /** It was answered, expired or cancelled. Called once per `started`. */
+  ended(info: { approved: boolean }): Promise<void>;
 }
 
 export interface TaskApprovalHandle {
@@ -308,12 +349,33 @@ export interface TaskApprovalHandle {
   observe?: (e: AgentEvent) => void;
 }
 
+/** What a factory is told when a run has ended. */
+export interface TaskRunEndContext {
+  taskId: string;
+  runId: string;
+  uid: string | null;
+  home: string;
+}
+
 /**
  * Builds the approval gate for one unattended run. Warden plugs in here. When
  * no factory is wired — or it returns undefined — the runner falls back to a
  * deny-mutating gate: side-effecting tools are refused, never silently allowed.
+ *
+ * A factory that throws (or rejects) fails the attempt like any transient
+ * error: the run is retried later, never run without a gate.
  */
-export type TaskApprovalFactory = (ctx: TaskApprovalContext) => TaskApprovalHandle | undefined;
+export interface TaskApprovalFactory {
+  (
+    ctx: TaskApprovalContext,
+  ): TaskApprovalHandle | undefined | Promise<TaskApprovalHandle | undefined>;
+  /**
+   * Called once a run has ended, whatever the outcome — also when that ending
+   * is completed by a later process after a crash. A throw leaves the ending
+   * incomplete, so it is tried again at the next tick.
+   */
+  runEnded?: (ctx: TaskRunEndContext) => Promise<void>;
+}
 
 export type TaskNoticeKind = "task_result" | "watch_hit" | "task_needs_you" | "task_failed";
 
