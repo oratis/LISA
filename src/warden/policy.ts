@@ -52,6 +52,12 @@ export interface PolicyContext {
   envelope?: TaskEnvelope;
   /** Absolute paths the model may never write — Warden's own state. */
   protectedPaths?: string[];
+  /**
+   * Absolute paths a write, edit or delete there always asks for, once, with
+   * its own reason — whatever the rules or grants say: the task files, which
+   * decide what runs unattended and what it may do without asking (#422 N4).
+   */
+  taskStatePaths?: string[];
   now?: number;
 }
 
@@ -206,13 +212,17 @@ export function taintOverridesEnvelope(req: ActionRequest): boolean {
   }
 }
 
-function touchesProtected(req: ActionRequest, ctx: PolicyContext): boolean {
-  if (!ctx.protectedPaths || ctx.protectedPaths.length === 0) return false;
+function touchesAny(req: ActionRequest, paths: readonly string[] | undefined): boolean {
+  if (!paths || paths.length === 0) return false;
   return req.targets.some(
     (target) =>
       path.isAbsolute(target) &&
-      ctx.protectedPaths!.some((protectedPath) => isInsideProtected(protectedPath, target)),
+      paths.some((protectedPath) => isInsideProtected(protectedPath, target)),
   );
+}
+
+function touchesProtected(req: ActionRequest, ctx: PolicyContext): boolean {
+  return touchesAny(req, ctx.protectedPaths);
 }
 
 function systemInvariant(req: ActionRequest, ctx: PolicyContext): Decision | null {
@@ -333,7 +343,20 @@ function forcedAsk(req: ActionRequest, ctx: PolicyContext): Forced | null {
   if (req.guarded === true || (req.category === "exec" && touchesProtected(req, ctx))) {
     return {
       ruleId: "system:warden-state-guard",
-      reason: "This command refers to Warden's own state files or approval API.",
+      reason:
+        "This command refers to Warden's own state files, its approval API or the task files.",
+      scopes: ["once"],
+      grants: "once",
+    };
+  }
+  if (
+    (req.category === "write" || req.category === "delete" || req.category === "exec") &&
+    touchesAny(req, ctx.taskStatePaths)
+  ) {
+    return {
+      ruleId: "system:task-state-guard",
+      reason:
+        "This changes Lisa's task files — what runs unattended, and what it may do without asking.",
       scopes: ["once"],
       grants: "once",
     };

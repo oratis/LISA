@@ -7,7 +7,7 @@ import { parseArgs } from "../cli-args.js";
 import { homeScope } from "../paths.js";
 import type { Provider } from "../providers/types.js";
 import { TaskRunner } from "../tasks/runner.js";
-import { isEnvelopeConfirmed, taskDigest } from "../tasks/confirmation.js";
+import { confirmationKey, isEnvelopeConfirmed, taskDigest } from "../tasks/confirmation.js";
 import { createTask, getTask, listTasks } from "../tasks/store.js";
 import { runTaskNow, runTasksCommand } from "./tasks.js";
 
@@ -134,7 +134,7 @@ test("show prints what a confirmation would cover, and the digest that confirms 
     );
     const on = (await getTask(task.id))!;
     assert.equal(on.enabled, true);
-    assert.equal(isEnvelopeConfirmed(on), true);
+    assert.equal(isEnvelopeConfirmed(on, await confirmationKey()), true);
     const again = capture();
     await runTasksCommand(["show", task.id], again.io);
     assert.match(again.out.join("\n"), /Confirmed .* \(cli\):/);

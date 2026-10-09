@@ -2350,6 +2350,7 @@
             "type": "object",
             "required": [
               "digest",
+              "mac",
               "at",
               "via"
             ],
@@ -2357,6 +2358,10 @@
               "digest": {
                 "type": "string",
                 "description": "The task's confirmation digest when the user confirmed it."
+              },
+              "mac": {
+                "type": "string",
+                "description": "HMAC of the task id and the digest under the home's Warden key. Only the user's own surface (`lisa tasks enable`, a confirming `PATCH`) can produce it; a confirmation without a valid one counts as unconfirmed."
               },
               "at": {
                 "type": "integer",
@@ -2371,7 +2376,7 @@
               }
             },
             "additionalProperties": true,
-            "description": "The user confirmed the envelope as a pre-approval. It counts only while `digest` equals the task's current digest (`TaskConfirmation.digest`); every edit of the instruction, schedule, trigger, envelope or notify mode, and every enable, clears it. Absent: the envelope only restricts."
+            "description": "The user confirmed the envelope as a pre-approval. It counts only while `digest` equals the task's current digest (`TaskConfirmation.digest`) and `mac` verifies; every edit of the title, instruction, schedule, trigger, host, envelope, notify mode or budget, every edit by Lisa's own task tools, and every enable, clears it. Absent: the envelope only restricts."
           },
           "budget": {
             "$ref": "#/components/schemas/TaskBudget"
@@ -2428,6 +2433,14 @@
           },
           "lastSummary": {
             "type": "string"
+          },
+          "lastSummaryTainted": {
+            "type": "boolean",
+            "description": "`lastSummary` was written by a run that had read outside content: the next run quotes it as data and starts tainted."
+          },
+          "workspaceTainted": {
+            "type": "boolean",
+            "description": "A run that had read outside content made state-changing calls with the task's folder writable to it: every later run starts tainted."
           },
           "activeRunId": {
             "type": "string"
@@ -2522,7 +2535,11 @@
           },
           "tainted": {
             "type": "boolean",
-            "description": "Untrusted content entered the run (Warden mode); a resumed segment starts tainted."
+            "description": "Untrusted content entered the run (Warden said so, or a call to a tool that returns outside text went through); a resumed segment starts tainted."
+          },
+          "inheritedTaint": {
+            "type": "boolean",
+            "description": "The run started tainted because of what an earlier run of the task left: a last summary written by a tainted run, or a folder a tainted run wrote to."
           },
           "toolCalls": {
             "type": "integer"

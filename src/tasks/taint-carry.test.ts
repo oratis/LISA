@@ -23,7 +23,7 @@ import { readAudit } from "../warden/audit.js";
 import { WardenInbox } from "../warden/inbox.js";
 import { createTaskApprovalFactory } from "../warden/task-approval.js";
 import { createWebWarden } from "../web/warden-api.js";
-import { confirmTask } from "./confirmation.js";
+import { confirmationKey, confirmTask } from "./confirmation.js";
 import { createTaskCardDeliver, EXTERNAL_CLOSE } from "./delivery.js";
 import { TaskRunner } from "./runner.js";
 import { checkpointRun, createRun, createTask, getTask, listRuns, updateTask } from "./store.js";
@@ -133,7 +133,8 @@ async function confirmedRoutine(envelope: TaskEnvelope): Promise<Task> {
     state: "scheduled",
     nextRunAt: Date.now() - 1,
   });
-  return (await updateTask(task.id, (t) => confirmTask(t, Date.now(), "cli")))!;
+  const signing = (await confirmationKey({ create: true }))!;
+  return (await updateTask(task.id, (t) => confirmTask(t, Date.now(), "cli", signing)))!;
 }
 
 async function makeDue(id: string): Promise<void> {

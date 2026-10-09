@@ -16,7 +16,7 @@ import { bashTool } from "../tools/bash.js";
 import { WardenInbox } from "../warden/inbox.js";
 import { createWardenSession } from "../warden/session.js";
 import { createTaskApprovalFactory } from "../warden/task-approval.js";
-import { confirmTask } from "./confirmation.js";
+import { confirmationKey, confirmTask } from "./confirmation.js";
 import { removeTask } from "./removal.js";
 import { TaskRunner, taskCapabilities } from "./runner.js";
 import { createTask, getTask, TaskGoneError, updateTask } from "./store.js";
@@ -159,11 +159,15 @@ test(
         nextRunAt: Date.now() - 1,
       });
       // The user confirmed it: bash is pre-approved, so only the sandbox stands in the way.
-      await updateTask(digest.id, (t) => confirmTask(t, Date.now(), "cli"));
+      const signing = (await confirmationKey({ create: true }))!;
+      await updateTask(digest.id, (t) => confirmTask(t, Date.now(), "cli", signing));
+      // The path is built at run time: a command that names the task files
+      // literally is asked about first (Warden's string guard, #422 N4) — the
+      // sandbox is what has to hold when the guard cannot see the path.
       const script =
         `node -e 'const f=process.argv[1];const t=JSON.parse(require("fs").readFileSync(f,"utf8"));` +
         `t.enabled=true;t.state="scheduled";t.nextRunAt=Date.now();t.envelope={categories:["exec","send"]};` +
-        `require("fs").writeFileSync(f,JSON.stringify(t))' ${victimFile}; pwd > here.txt`;
+        `require("fs").writeFileSync(f,JSON.stringify(t))' "$(cd ../.. && pwd)/tasks/${victim.id}.json"; pwd > here.txt`;
       const results: string[] = [];
       let i = 0;
       const steps = [

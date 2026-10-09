@@ -13,11 +13,19 @@
  * the digest stop matching, so a confirmation never covers a task it was not
  * given for (#422 review N1).
  *
- * Pure: no I/O. The callers that may confirm are the user's own surfaces —
- * `lisa tasks enable` and `PATCH /api/tasks/{id}` from a caller who may
- * approve. No model tool calls `confirmTask`.
+ * The stored confirmation is an HMAC of that digest (and the task id) under
+ * the per-home key in `<lisaHome>/warden/` — the key Warden's approval digests
+ * use, which no tool call can read without asking or write at all. A task file
+ * written by anything but the user's own surface therefore cannot carry a
+ * valid confirmation: a missing or wrong MAC reads as unconfirmed (#422
+ * review N4).
+ *
+ * Pure but for `confirmationKey`. The callers that may confirm are the user's
+ * own surfaces — `lisa tasks enable` and `PATCH /api/tasks/{id}` from a caller
+ * who may approve. No model tool calls `confirmTask`.
  */
-import { createHash } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { loadDigestKey, readDigestKey } from "../warden/store.js";
 import {
   DEFAULT_APPROVAL_WAIT_MS,
   DEFAULT_MAX_APPROVALS,
@@ -85,16 +93,56 @@ export function envelopeCouldPreapprove(task: Pick<Task, "envelope">): boolean {
 }
 
 /** True when the user confirmed the task exactly as it is now. */
+/**
+ * The key a confirmation is signed with: the home's Warden digest key
+ * (`<home>/warden/digest.key`). `create` only where the user is confirming —
+ * a check never creates it, so it never brings a deleted home back; with no
+ * key, nothing is confirmed. An unreadable or malformed key is null too: it
+ * can only cost a pre-approval, never grant one.
+ */
+export async function confirmationKey(
+  opts: { create?: boolean; home?: string } = {},
+): Promise<Buffer | null> {
+  try {
+    return opts.create ? await loadDigestKey(opts.home) : await readDigestKey(opts.home);
+  } catch {
+    if (opts.create) throw new Error("the confirmation key could not be read or created");
+    return null;
+  }
+}
+
+function confirmationMac(key: Buffer, taskId: string, digest: string): string {
+  return createHmac("sha256", key)
+    .update("lisa.task-confirmation.mac.v1\n")
+    .update(`${taskId}\n${digest}`)
+    .digest("hex");
+}
+
+/** True when the user confirmed the task exactly as it is now, signed with this home's key. */
 export function isEnvelopeConfirmed(
-  task: Confirmable & Pick<Task, "envelopeConfirmation">,
+  task: Confirmable & Pick<Task, "id" | "envelopeConfirmation">,
+  key: Buffer | null,
 ): boolean {
   const confirmation = task.envelopeConfirmation;
-  return typeof confirmation?.digest === "string" && confirmation.digest === taskDigest(task);
+  if (!key || typeof confirmation?.digest !== "string" || typeof confirmation.mac !== "string") {
+    return false;
+  }
+  const digest = taskDigest(task);
+  if (confirmation.digest !== digest) return false;
+  const expected = Buffer.from(confirmationMac(key, task.id, digest), "hex");
+  const stored = Buffer.from(confirmation.mac, "hex");
+  return stored.length === expected.length && timingSafeEqual(stored, expected);
 }
 
 /** Record the user's confirmation of the task as it is now. */
-export function confirmTask(task: Task, now: number, via: TaskEnvelopeConfirmation["via"]): void {
-  task.envelopeConfirmation = { digest: taskDigest(task), at: now, via };
+export function confirmTask(
+  task: Task,
+  now: number,
+  via: TaskEnvelopeConfirmation["via"],
+  key: Buffer,
+): void {
+  const digest = taskDigest(task);
+  task.envelopeConfirmation = { digest, mac: confirmationMac(key, task.id, digest), at: now, via };
 }
 
 /** A stored confirmation, if it has the right shape; anything else is dropped (it can only grant). */
@@ -102,9 +150,11 @@ export function parseConfirmation(value: unknown): TaskEnvelopeConfirmation | un
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const v = value as Record<string, unknown>;
   if (typeof v.digest !== "string" || !/^[0-9a-f]{64}$/.test(v.digest)) return undefined;
+  // No MAC (a confirmation from before it was signed, or a hand-written one): not a confirmation.
+  if (typeof v.mac !== "string" || !/^[0-9a-f]{64}$/.test(v.mac)) return undefined;
   if (typeof v.at !== "number" || !Number.isFinite(v.at)) return undefined;
   if (v.via !== "cli" && v.via !== "api") return undefined;
-  return { digest: v.digest, at: v.at, via: v.via };
+  return { digest: v.digest, mac: v.mac, at: v.at, via: v.via };
 }
 
 // ── what the user is shown ──
@@ -242,10 +292,10 @@ export interface TaskConfirmationView {
   summary: string[];
 }
 
-export function confirmationView(task: Task): TaskConfirmationView {
+export function confirmationView(task: Task, key: Buffer | null): TaskConfirmationView {
   return {
     digest: taskDigest(task),
-    confirmed: isEnvelopeConfirmed(task),
+    confirmed: isEnvelopeConfirmed(task, key),
     preapproves: envelopeCouldPreapprove(task),
     summary: describeForConfirmation(task),
   };

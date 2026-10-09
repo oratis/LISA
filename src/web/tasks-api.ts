@@ -17,7 +17,12 @@
  * client shows before asking the user.
  */
 import type http from "node:http";
-import { confirmationView, confirmTask, taskDigest } from "../tasks/confirmation.js";
+import {
+  confirmationKey,
+  confirmationView,
+  confirmTask,
+  taskDigest,
+} from "../tasks/confirmation.js";
 import { disableTask, enableTask } from "../tasks/lifecycle.js";
 import type { TaskEngineEvent, TaskRunner } from "../tasks/runner.js";
 import { removeTask } from "../tasks/removal.js";
@@ -182,7 +187,8 @@ export async function handleTasksApi(
     if (sub === undefined) {
       if (method === "GET") {
         const task = await getTask(id);
-        if (task) json(res, 200, { task, confirmation: confirmationView(task) });
+        if (task)
+          json(res, 200, { task, confirmation: confirmationView(task, await confirmationKey()) });
         else json(res, 404, { error: "not_found" });
         return true;
       }
@@ -210,6 +216,9 @@ export async function handleTasksApi(
             return true;
           }
         }
+        // The key a confirmation is signed with (made on the first one).
+        const signing =
+          confirmEnvelope !== undefined ? await confirmationKey({ create: true }) : null;
         let problem: string | null = null;
         let mismatch = false;
         const task = await updateTask(
@@ -233,7 +242,7 @@ export async function handleTasksApi(
             }
             // An edited schedule on an enabled task takes effect at once.
             else if (rescheduled && t.enabled) enableTask(t, now());
-            if (confirmEnvelope !== undefined) confirmTask(t, now(), "api");
+            if (signing) confirmTask(t, now(), "api", signing);
             return;
           },
           now(),
@@ -244,11 +253,14 @@ export async function handleTasksApi(
           json(res, 409, {
             error: "confirmation_mismatch",
             message: "the task is not what that digest describes; nothing was changed",
-            confirmation: confirmationView(task),
+            confirmation: confirmationView(task, signing ?? (await confirmationKey())),
           });
         } else {
           opts.emit?.({ type: "task_updated", task });
-          json(res, 200, { task, confirmation: confirmationView(task) });
+          json(res, 200, {
+            task,
+            confirmation: confirmationView(task, signing ?? (await confirmationKey())),
+          });
         }
         return true;
       }

@@ -27,6 +27,7 @@ import { isCloud } from "../edition.js";
 import { lisaHome, scopedUid } from "../paths.js";
 import { revokeGrantsOfRemovedTask } from "../warden/task-approval.js";
 import {
+  confirmationKey,
   confirmTask,
   describeForConfirmation,
   envelopeCouldPreapprove,
@@ -160,8 +161,9 @@ export async function runTasksCommand(args: string[], io: TasksCommandIo = {}): 
     if (task.envelope?.tools) out(`    tools: ${task.envelope.tools.join(", ")}`);
     if (task.trigger) out(`    trigger: ${JSON.stringify(task.trigger)}`);
     out(`\n${task.instruction}\n`);
+    const confirmedNow = isEnvelopeConfirmed(task, await confirmationKey());
     out(
-      isEnvelopeConfirmed(task)
+      confirmedNow
         ? `Confirmed ${when(task.envelopeConfirmation!.at)} (${task.envelopeConfirmation!.via}):`
         : envelopeCouldPreapprove(task)
           ? "Not confirmed — its envelope only restricts, every action with a side effect asks:"
@@ -169,7 +171,7 @@ export async function runTasksCommand(args: string[], io: TasksCommandIo = {}): 
     );
     for (const l of describeForConfirmation(task)) out(`  ${l}`);
     out(`digest ${taskDigest(task)}`);
-    if (envelopeCouldPreapprove(task) && !isEnvelopeConfirmed(task)) {
+    if (envelopeCouldPreapprove(task) && !confirmedNow) {
       out(`(to pre-approve: lisa tasks enable ${task.id} --confirm ${taskDigest(task)})`);
     }
     out("");
@@ -223,6 +225,8 @@ export async function runTasksCommand(args: string[], io: TasksCommandIo = {}): 
       );
       confirmed = /^\s*y(es)?\s*$/i.test(answer);
     }
+    // The key a confirmation is signed with (made on the first one).
+    const signing = confirmed ? await confirmationKey({ create: true }) : null;
     let changed = false;
     const updated = await updateTask(
       task.id,
@@ -233,7 +237,7 @@ export async function runTasksCommand(args: string[], io: TasksCommandIo = {}): 
           return false;
         }
         enableTask(t, now());
-        if (confirmed) confirmTask(t, now(), "cli");
+        if (signing) confirmTask(t, now(), "cli", signing);
         return;
       },
       now(),

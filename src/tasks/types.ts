@@ -137,6 +137,12 @@ export interface TaskEnvelope {
 export interface TaskEnvelopeConfirmation {
   /** `taskDigest()` of the task as the user confirmed it. */
   digest: string;
+  /**
+   * HMAC of the task id and that digest under the home's Warden key
+   * (confirmation.ts): only the user's own surface can produce it, so a task
+   * file written any other way loads unconfirmed.
+   */
+  mac: string;
   /** When they confirmed it. */
   at: number;
   /** Where: the terminal (`lisa tasks enable`) or the HTTP API. */

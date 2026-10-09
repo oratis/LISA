@@ -47,7 +47,7 @@ import { validateToolInput } from "../tools/validate.js";
 import { isBuiltinTaintSource } from "../warden/classify.js";
 import { stripSensitiveTokens } from "../warden/hygiene.js";
 import type { AgentEvent, StoredMessage, ToolDefinition } from "../types.js";
-import { isEnvelopeConfirmed } from "./confirmation.js";
+import { confirmationKey, isEnvelopeConfirmed } from "./confirmation.js";
 import { runWasTainted } from "./external.js";
 import {
   buildResumeNote,
@@ -1457,7 +1457,9 @@ export class TaskRunner {
         ...(task.envelope ? { envelope: task.envelope } : {}),
         // Only an envelope the user confirmed as they see it now is a
         // pre-approval; a drafted or edited one only restricts the toolset.
-        envelopeConfirmed: isEnvelopeConfirmed(task),
+        // The confirmation must also carry this home's signature (N4): a task
+        // file written by anything but the user's own surface is unconfirmed.
+        envelopeConfirmed: isEnvelopeConfirmed(task, await confirmationKey({ home: lisaHome() })),
         uid: this.tenant(),
         home: lisaHome(),
         title: task.title,
