@@ -230,6 +230,8 @@ export async function readTar(
   let zeroBlocks = 0;
   let done = false;
 
+  const currentBody = (): Body | null => body;
+
   const finishBody = async (): Promise<void> => {
     const b = body!;
     body = null;
@@ -288,13 +290,15 @@ export async function readTar(
     if (consumed > maxConsumed) throw new TarFormatError("archive content too large");
     buf = buf.length ? Buffer.concat([buf, chunk]) : chunk;
     while (!done) {
-      if (body && remaining > 0) {
+      // Read through a call: `body` is reassigned inside the closures above,
+      // which TypeScript's flow analysis can't see.
+      const b = currentBody();
+      if (b && remaining > 0) {
         if (buf.length === 0) break;
         const take = Math.min(remaining, buf.length);
         const piece = buf.subarray(0, take);
         buf = buf.subarray(take);
         remaining -= take;
-        const b: Body = body;
         if (b.kind === "pax") b.parts.push(Buffer.from(piece));
         else if (b.kind === "data") await sink.data(piece);
         if (remaining === 0) await finishBody();
