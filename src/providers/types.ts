@@ -44,9 +44,12 @@ export interface ProviderRunOpts {
    * another. Return false to make no further attempt: the error surfaces.
    *
    * The agent loop's per-run cost cap counts each failed attempt here at what
-   * the call was admitted with, and refuses one more it cannot afford. Every
-   * failed attempt but the one the call finally throws is reported here,
-   * exactly once; that last one the caller counts itself.
+   * the call was admitted with, and refuses one more it cannot afford. Each
+   * failed attempt such a layer makes is reported here at most once, except
+   * the one the call finally throws (the caller counts that one itself).
+   * Retries made INSIDE a provider SDK (its own `maxRetries`) are invisible to
+   * these layers and are never reported — part of the cap's residual bound
+   * (docs/PROVIDERS.md).
    */
   onAttemptFailed?: (attempt: { model: string; error: unknown }) => boolean;
 }
