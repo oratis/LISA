@@ -868,6 +868,38 @@ describe("runAgent — per-run USD cap (costCapMicroUSD)", () => {
     assert.equal(r.stopReason, "budget_exceeded");
   });
 
+  test("a capped run with a 1 MB photo attached is not stopped by the photo's base64 size", async () => {
+    const calls: ProviderRunOpts[] = [];
+    const provider: Provider = {
+      name: "fake",
+      async runTurn(opts: ProviderRunOpts): Promise<ProviderResult> {
+        calls.push(opts);
+        return {
+          content: [textBlock("A cat on a sofa.")],
+          stopReason: "end_turn",
+          usage: { inputTokens: 1_700, outputTokens: 12, cacheReadTokens: 0, cacheWriteTokens: 0 },
+        };
+      },
+    };
+    const r = await runAgent({
+      provider,
+      systemPrompt: "sys",
+      tools: [echoTool],
+      toolCtx: makeToolCtx(),
+      history: [],
+      userMessage: "What is in this photo?",
+      userFiles: [
+        { name: "cat.jpg", mediaType: "image/jpeg", data: "/9j/".padEnd(1_398_104, "A") },
+      ],
+      model: "claude-sonnet-4-6",
+      maxTokens: 4_000,
+      costCapMicroUSD: 500_000, // $0.50
+    });
+    assert.equal(r.stopReason, "end_turn");
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]!.maxTokens, 4_000, "the photo did not eat the output ceiling");
+  });
+
   test("no cap → unchanged behaviour", async () => {
     const { result, calls } = run(undefined, { maxIterations: 3 });
     const r = await result;

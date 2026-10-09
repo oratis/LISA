@@ -212,6 +212,66 @@ export function reservePromptTokensForText(parts: readonly string[]): number {
   return digits + reservePromptTokens(bytes - digits);
 }
 
+// ── Inline images ──
+
+/**
+ * Prompt tokens one inline image is reserved at, by provider family: what a
+ * single image can cost at most, from each family's published rules — not its
+ * base64 size, which at three bytes a token made a 1 MB JPEG ~444k tokens
+ * (~$1.90 a call at Sonnet rates) and stopped capped runs with an image at
+ * once (#407 review R4).
+ *
+ *  - Claude: images are downscaled to 2576 px on the long edge on the
+ *    high-resolution models (Opus 4.7+, Sonnet 5+, Fable), at most ~4,784
+ *    tokens; 1568 px / ~1,600 tokens on earlier ones. 4,784 covers both.
+ *  - OpenAI: high detail is at most 85 + 170 × 8 tiles = 1,445 tokens on the
+ *    gpt-4o family and ~3,780 on the patch-based models (1,536 patches × the
+ *    model's multiplier); gpt-4o-mini counts 2,833 + 5,667 × 8 tiles = 48,169
+ *    (priced so that its cost matches gpt-4o's).
+ *  - Gemini: 258 tokens per 768 px tile; 16 tiles (a 3072 px square) = 4,128.
+ *  - Anything else: 5,000, above every figure above but one.
+ *
+ * These are estimates. An image a provider bills above them is part of the
+ * cap's residual bound (RunCostCap).
+ */
+export function imageReserveTokens(model: string): number {
+  const id = model.trim().toLowerCase();
+  if (id.startsWith("local://")) return 0;
+  if (id.includes("claude")) return 4_784;
+  if (id.includes("gemini")) return 4_128;
+  if (id.includes("gpt-4o-mini")) return 48_169;
+  if (/^(gpt-|chatgpt|o[1-9])/.test(id)) return 3_800;
+  return 5_000;
+}
+
+/**
+ * A transcript as the cap sizes it: inline base64 image data left out of the
+ * text (the images counted instead), everything else exactly as sent. Pass
+ * `text` in `RunCostCap.admit`'s prompt and `images` as its image count.
+ */
+export function sizeMessagesForCap(messages: unknown): { text: string; images: number } {
+  let images = 0;
+  const text =
+    JSON.stringify(messages, (_key, value: unknown) => {
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        const block = value as { type?: unknown; source?: unknown };
+        const source = block.source as { type?: unknown; data?: unknown } | undefined;
+        if (
+          block.type === "image" &&
+          source &&
+          typeof source === "object" &&
+          source.type === "base64" &&
+          typeof source.data === "string"
+        ) {
+          images++;
+          return { ...block, source: { ...source, data: "" } };
+        }
+      }
+      return value;
+    }) ?? "";
+  return { text, images };
+}
+
 /**
  * The model a call runs on — or, when it may be served by any of several (a
  * fallback chain), all of them: the cap then reserves and charges at the
@@ -509,8 +569,25 @@ export class RunCostCap {
    * and, once a provider has reported a prompt size, that size plus the
    * estimate for what was added since.
    */
-  admit(next: { prompt: readonly string[]; maxTokens: number }): CostCapVerdict {
-    const promptEstimate = reservePromptTokensForText(next.prompt);
+  admit(next: {
+    prompt: readonly string[];
+    maxTokens: number;
+    /**
+     * Inline images in the request, whose data is NOT in `prompt` (see
+     * `sizeMessagesForCap`). Each is reserved at its provider family's
+     * per-image ceiling (`imageReserveTokens`), at the dearest family a call
+     * may be served by.
+     */
+    images?: number;
+  }): CostCapVerdict {
+    const images = Math.max(0, Math.floor(next.images ?? 0));
+    const perImage =
+      images === 0
+        ? 0
+        : this.models.length > 0
+          ? Math.max(...this.models.map(imageReserveTokens))
+          : imageReserveTokens("");
+    const promptEstimate = reservePromptTokensForText(next.prompt) + images * perImage;
     const promptBytes = next.prompt.reduce((sum, part) => sum + Buffer.byteLength(part), 0);
     const promptTokens = Math.max(
       promptEstimate + PROMPT_FRAMING_TOKENS,

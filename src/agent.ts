@@ -1,7 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { AgentEvent, StoredMessage, ToolContext, ToolDefinition } from "./types.js";
 import { failedWithoutSpend, type Provider } from "./providers/types.js";
-import { RunCostCap } from "./model/cost.js";
+import { RunCostCap, sizeMessagesForCap } from "./model/cost.js";
 import { moodBus, withMoodOrigin } from "./mood-bus.js";
 import { validateToolInput } from "./tools/validate.js";
 
@@ -308,11 +308,15 @@ async function runAgentLoop(opts: RunAgentOptions): Promise<RunAgentResult> {
     // USD cap (same clean stop point as the token breaker, but also applied to
     // the first call). The next request re-sends the system prompt, the tool
     // definitions and the whole transcript, so its prompt is sized from exactly
-    // those bytes; the provider is then held to the output ceiling that fits.
+    // those bytes — except inline images, which are reserved at a per-image
+    // ceiling for the provider family rather than by their base64 size; the
+    // provider is then held to the output ceiling that fits.
     let turnMaxTokens = maxTokens;
     if (costCap) {
+      const transcript = sizeMessagesForCap(messages);
       const verdict = costCap.admit({
-        prompt: [currentSystemPrompt, toolsJson, JSON.stringify(messages)],
+        prompt: [currentSystemPrompt, toolsJson, transcript.text],
+        images: transcript.images,
         maxTokens,
       });
       if (!verdict.proceed) {
