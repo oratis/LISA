@@ -749,10 +749,12 @@ test("a factory that returns no gate still gets the safe default; one that allow
         home: lisaHome(),
         title: first.title,
         tainted: false,
-        cwd: os.tmpdir(),
+        // The task's own folder, never the runner's (server's) cwd.
+        cwd: await fsp.realpath(path.join(lisaHome(), "task-workspaces", first.id)),
         tools: ["bash"],
       },
     );
+    assert.equal(ctx.envelopeConfirmed, false);
     assert.equal(typeof ctx.sandboxMode, "string");
     assert.equal(ctx.signal.aborted, false);
     assert.equal(typeof ctx.approvalWait.started, "function");

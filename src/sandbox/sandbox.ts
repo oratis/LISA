@@ -19,6 +19,13 @@ export interface SandboxSpec {
   mode: SandboxMode;
   allowNetwork: boolean;
   cwd: string;
+  /**
+   * Directories no write may land in, whatever the mode allows — except under
+   * `except`, which lies inside one of them. A task run uses it to keep the
+   * whole Lisa home read-only but for the task's own workspace (#422 H2).
+   * Absolute, symlink-resolved paths.
+   */
+  denyWrites?: { paths: string[]; except?: string };
 }
 
 export interface SandboxedCommand {
@@ -73,6 +80,7 @@ async function wrapProgram(spec: SandboxSpec, program: string[]): Promise<Sandbo
       mode: spec.mode,
       denyPaths: protections.paths,
       denyTcpPorts: protections.tcpPorts,
+      ...(spec.denyWrites ? { denyWrites: spec.denyWrites } : {}),
     });
     const tmp = path.join(os.tmpdir(), `lisa-seatbelt-${crypto.randomBytes(4).toString("hex")}.sb`);
     await fs.writeFile(tmp, policy, "utf8");
@@ -167,6 +175,13 @@ function bwrapArgs(spec: SandboxSpec): string[] {
   if (spec.mode === "workspace-write") {
     args.push("--bind", spec.cwd, spec.cwd);
     args.push("--bind", os.tmpdir(), os.tmpdir());
+    // Later mounts cover earlier ones: the denied directories go back to
+    // read-only, then the one exception inside them is writable again.
+    for (const dir of spec.denyWrites?.paths ?? []) {
+      if (existsSync(dir)) args.push("--ro-bind", dir, dir);
+    }
+    const except = spec.denyWrites?.except;
+    if (except && existsSync(except)) args.push("--bind", except, except);
   }
   if (!spec.allowNetwork) args.push("--unshare-net");
   // Hide Warden's state: an empty tmpfs over each protected directory. (bwrap

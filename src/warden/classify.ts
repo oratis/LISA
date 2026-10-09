@@ -11,7 +11,8 @@
 import path from "node:path";
 import type { ToolDefinition } from "../types.js";
 import type { SandboxMode } from "../sandbox/mode.js";
-import { isInsideReal, isSensitivePath, realPath } from "./paths.js";
+import { lisaGlobalHome } from "../paths.js";
+import { isBroadWorkspace, isInsideReal, isSensitivePath, realPath } from "./paths.js";
 import { detectDataClasses } from "./preview.js";
 import type { ActionCategory, DataClass } from "./types.js";
 
@@ -25,8 +26,13 @@ export interface ClassifyContext {
   trustedMcpServers?: readonly string[];
   /** Extra paths whose reads always ask (Warden state, provider keys). */
   sensitivePaths?: readonly string[];
-  /** Home directory for credential locations (tests). */
+  /** Home directory for credential locations and the broad-workspace check (tests). */
   homeDir?: string;
+  /**
+   * Lisa homes (the tenant's and the operator's): a workspace that contains
+   * one is too broad to count as a sandbox. Default: the operator home.
+   */
+  lisaHomes?: readonly string[];
 }
 
 export interface Classification {
@@ -691,7 +697,14 @@ export function classifyToolCall(
     sensitivePath: false,
     primaryKeys: primaryKeysFor(name, rec),
   };
-  const confined = ctx.sandboxMode !== "danger-full-access";
+  // A bounded mode confines writes to the workspace — which means nothing when
+  // the workspace is "/", the user's home or a directory holding the Lisa home.
+  const confined =
+    ctx.sandboxMode !== "danger-full-access" &&
+    !isBroadWorkspace(ctx.workspaceRoot, {
+      ...(ctx.homeDir !== undefined ? { homeDir: ctx.homeDir } : {}),
+      lisaHomes: ctx.lisaHomes ?? [lisaGlobalHome()],
+    });
   const sensitive = (p: string) => isSensitivePath(p, ctx.sensitivePaths, ctx.homeDir);
 
   if (name.startsWith(MCP_PREFIX)) return classifyMcp(name, rec, tool, base, ctx);

@@ -243,6 +243,8 @@ export function createWardenSession(opts: WardenSessionOptions): WardenSession {
         // A corrupt rules file trusts no server.
         trustedMcpServers: rules.corrupt ? [] : rules.rules.trustedMcpServers,
         sensitivePaths,
+        // A workspace holding either home confines nothing (classify.ts).
+        lisaHomes: [home, lisaGlobalHome()],
         digestKey,
         isKnownUrl: (url) => knownUrls.has(url),
         now: started,

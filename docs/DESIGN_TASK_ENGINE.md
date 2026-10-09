@@ -16,6 +16,8 @@ Everything is under `<lisaHome>/tasks/`, so on the hosted edition each tenant ha
 | `.leases/task-<id>.lease` | Who is running the task right now |
 | `.locks/`, `outbox/.locks/` | Short-held write locks |
 
+Each task also has a working folder, `<lisaHome>/task-workspaces/<taskId>/` (see "Approval": the run's workspace).
+
 - A task file that does not parse or validate is renamed to `<id>.json.<ts>.corrupt` and skipped. A file written by a newer build is skipped and left in place.
 - A task whose schedule cannot be used (an invalid time zone, an unknown expression) loads switched off with `pausedReason` set. Reading never writes.
 - `LISA_TZ` (the zone for schedules that name none) is checked when a runner is built: an invalid value is reported once and the system zone is used.
@@ -117,7 +119,8 @@ The runner asks an injected `TaskApprovalFactory` for a gate per run (the runner
 - **Origin** `task`, `routine` or `watcher`, with the task id. The default matrix's task column applies: a write, sandboxed exec, network write, send, publish or delete is *preapproved* — allowed when the task's envelope covers it and the user confirmed that envelope, asked about otherwise. Purchases and credentials are handed back to the user.
 - **Envelope.** Only a confirmed envelope (see "Confirming what a task may do") reaches Warden, with categories Warden does not know (informational labels such as `web`) dropped. An unconfirmed one has done its whole job once it narrowed the toolset. In a tainted run even a confirmed envelope does not cover exec, delete, send, publish, network writes or writes outside the run's workspace: they ask.
 - **Taint.** A run a watcher hit started is tainted from its first call: its prompt quotes an outsider's text. A run that became tainted (Warden saw a taint-source call allowed) records it on the run (`tainted`), so a resumed or retried segment starts tainted too — the content is still in its history.
-- **Tenant.** The task's uid and the home the run works in; the run's working directory is the workspace root.
+- **Tenant.** The task's uid and the home the run works in.
+- **Workspace.** Each task works in its own folder, `<lisaHome>/task-workspaces/<taskId>/` (`src/tasks/workspace.ts`) — never the server's working directory, which under Lisa.app or launchd is `/`. It is the tools' working directory and the workspace root Warden judges paths against. Under a bounded sandbox mode the run's profile makes the whole Lisa home read-only except that folder, for the shell (Seatbelt / bubblewrap) and the file tools alike; Warden's own directory and the server's port stay denied as for every bounded profile. The folder persists between runs and is removed with the task; it is never created for a home that no longer exists.
 
 ### Waiting for an approval
 

@@ -16,6 +16,11 @@ export function buildMacosSeatbeltPolicy(opts: {
   denyPaths?: string[];
   /** TCP ports the command may not connect to, on any host. */
   denyTcpPorts?: number[];
+  /**
+   * Directories writes may not land in even where the mode allows them,
+   * except under `except` (see SandboxSpec.denyWrites).
+   */
+  denyWrites?: { paths: string[]; except?: string };
 }): string {
   const mode: SandboxMode = opts.mode ?? "workspace-write";
   const lines: string[] = [
@@ -39,6 +44,16 @@ export function buildMacosSeatbeltPolicy(opts: {
       '(allow file-write* (subpath "/private/var/folders"))',
       `(allow file-write* (subpath ${jsonString(opts.cwd)}))`,
     );
+    // The last matching rule wins: these deny writes the lines above allowed
+    // (a workspace or temp directory that contains the Lisa home, say), and
+    // the exception after them re-opens only the one directory meant to be
+    // writable inside them.
+    for (const dir of opts.denyWrites?.paths ?? []) {
+      lines.push(`(deny file-write* (subpath ${jsonString(dir)}))`);
+    }
+    if (opts.denyWrites?.except) {
+      lines.push(`(allow file-write* (subpath ${jsonString(opts.denyWrites.except)}))`);
+    }
   } else {
     // read-only: writing to /dev/null is what "no writes" means in practice —
     // countless tools redirect there and would otherwise die on startup.

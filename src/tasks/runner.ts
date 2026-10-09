@@ -31,14 +31,17 @@
  */
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomBytes } from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+import { createSandboxedCapabilities, type Capabilities } from "../capabilities/index.js";
 import { runAgent, type ApprovalCallback } from "../agent.js";
 import { getAutonomyEnabled } from "../autonomy/state.js";
 import { costMicroUSD } from "../billing/prices.js";
 import { logInfo } from "../log.js";
-import { lisaHome } from "../paths.js";
+import { lisaGlobalHome, lisaHome } from "../paths.js";
 import { providerForModel } from "../providers/registry.js";
 import { notSent, type Provider, type ProviderUsage } from "../providers/types.js";
-import type { SandboxMode } from "../sandbox/mode.js";
+import { modeIsBounded, type SandboxMode } from "../sandbox/mode.js";
 import { sandboxModeForProfile } from "../sandbox/sandbox.js";
 import { validateToolInput } from "../tools/validate.js";
 import { stripSensitiveTokens } from "../warden/hygiene.js";
@@ -61,6 +64,7 @@ import { isRecurring, nextRunAfter, pauseTask, restingState } from "./lifecycle.
 import { drainOutbox, enqueueNotice, noticeId } from "./outbox.js";
 import { denySideEffects, digestCall, isSideEffectingCall, taskToolset } from "./policy.js";
 import { defaultTimeZone, isOneShot } from "./schedule.js";
+import { ensureTaskWorkspace } from "./workspace.js";
 import {
   appendRunEvent,
   appendRunMessage,
@@ -96,6 +100,35 @@ import { getDefaultTaskDeliver, getTaskApprovalFactory, getTaskDeliver } from ".
  */
 function startedByUser(run: TaskRun): boolean {
   return run.trigger !== undefined ? run.trigger === "manual" : !!run.manual;
+}
+
+/**
+ * The execution world of a task run under a bounded sandbox mode: writes go
+ * to the task's own workspace (and the temp directories), and the whole Lisa
+ * home is read-only to it but for that workspace — in the OS profile and in
+ * the file tools alike. Unbounded (`danger-full-access`): undefined, the plain
+ * local world, where Warden treats every write and command as unconfined.
+ */
+export function taskCapabilities(workspace: string, mode: SandboxMode): Capabilities | undefined {
+  if (!modeIsBounded(mode)) return undefined;
+  const homes = new Set<string>();
+  for (const home of [lisaHome(), lisaGlobalHome()]) {
+    homes.add(path.resolve(home));
+    try {
+      homes.add(fs.realpathSync.native(home));
+    } catch {
+      // not there (yet): the literal path is denied
+    }
+  }
+  return createSandboxedCapabilities({
+    root: workspace,
+    spec: {
+      mode,
+      allowNetwork: process.env.LISA_SANDBOX_NETWORK !== "0",
+      cwd: workspace,
+      denyWrites: { paths: [...homes], except: workspace },
+    },
+  });
 }
 
 /** Marks a side-effecting call that was started but whose result was never recorded. */
@@ -166,6 +199,11 @@ export interface TaskRunnerOptions {
   /** The surface's capability-profile tools; narrowed per task by its envelope. */
   tools: ToolDefinition[] | (() => ToolDefinition[] | Promise<ToolDefinition[]>);
   model: string | (() => string);
+  /**
+   * The host's working directory — used for Lisa's system prompt only. A run's
+   * tools never work here: each task works in its own folder under the Lisa
+   * home (workspace.ts), whatever directory the server was started from.
+   */
   cwd: string;
   /** Lisa's normal system prompt. The task rules are appended to it. */
   buildSystemPrompt?: () => Promise<string> | string;
@@ -1264,6 +1302,10 @@ export class TaskRunner {
       // Unattended ⇒ the bounded sandbox mode, whatever the process default is.
       const sandboxMode =
         this.opts.sandboxMode ?? sandboxModeForProfile(cloud ? "cloud-autonomy" : "local-autonomy");
+      // The task's own folder, never the server's cwd; under a bounded mode
+      // nothing else in the Lisa home is writable from the run.
+      const workspace = await ensureTaskWorkspace(task.id);
+      const caps = taskCapabilities(workspace, sandboxMode);
 
       const handle = await this.approvalFactory()?.({
         taskId: task.id,
@@ -1289,7 +1331,7 @@ export class TaskRunner {
         onTaint: () => {
           run.tainted = true;
         },
-        cwd: this.opts.cwd,
+        cwd: workspace,
         sandboxMode,
         tools,
         signal: slot.controller.signal,
@@ -1392,10 +1434,11 @@ export class TaskRunner {
         systemPrompt: `${basePrompt}\n\n${TASK_SYSTEM_ADDENDUM}`,
         tools,
         toolCtx: {
-          cwd: this.opts.cwd,
+          cwd: workspace,
           signal: slot.controller.signal,
           log: (m) => this.log(`${task.id}: ${m}`),
           sandboxMode,
+          ...(caps ? { caps } : {}),
         },
         history,
         userMessage,
