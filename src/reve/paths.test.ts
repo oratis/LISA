@@ -13,7 +13,13 @@ describe("reve paths", () => {
   });
 
   test("path-traversal and malformed ids are rejected", () => {
-    for (const bad of ["../x", "d-20261009T010203-zzzzzzzz", "", "d-1-2", "d-20261009T010203-0123456/"]) {
+    for (const bad of [
+      "../x",
+      "d-20261009T010203-zzzzzzzz",
+      "",
+      "d-1-2",
+      "d-20261009T010203-0123456/",
+    ]) {
       assert.equal(isValidDreamId(bad), false, bad);
       assert.throws(() => dreamFile(bad));
     }

@@ -17,7 +17,12 @@ export const DREAM_RECORD_VERSION = 1 as const;
 /** Which reflective mechanism produced the dream. */
 export type DreamTrigger = "idle" | "reflect" | "examen" | "desire-review";
 
-export const DREAM_TRIGGERS: readonly DreamTrigger[] = ["idle", "reflect", "examen", "desire-review"];
+export const DREAM_TRIGGERS: readonly DreamTrigger[] = [
+  "idle",
+  "reflect",
+  "examen",
+  "desire-review",
+];
 
 /** Parts of the home the user owns and may revert from a dream. */
 export type UserPart = "memory" | "kb" | "skills";
@@ -66,6 +71,9 @@ export interface FileChange {
   afterHash: string | null;
   bytesBefore: number;
   bytesAfter: number;
+  /** Lines added / removed (counted before the diff text is capped). */
+  linesAdded: number;
+  linesRemoved: number;
   /** Compact line diff ("+ " / "- " lines), capped. */
   diff: string;
   diffTruncated: boolean;

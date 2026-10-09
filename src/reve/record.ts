@@ -1,0 +1,459 @@
+/**
+ * Dream capture: wrap one reflective pass, diff what it changed, persist a
+ * record. See docs/DESIGN_REVE_DREAMS.md.
+ *
+ *   const dream = await beginDream({ trigger: "idle" });
+ *   try { await dream.run(() => thePass()); } finally { await dream.end(); }
+ *
+ * or simply `await withDream({ trigger: "reflect" }, () => thePass())`.
+ *
+ * Capture never breaks the pass: every failure degrades to "no record" with a
+ * warning. A pass that changed nothing writes nothing (unless the user's
+ * reconsider notes were injected into it — then the record shows she saw them).
+ */
+import { atomicWrite, ensureDir } from "../fs-utils.js";
+import { logWarn } from "../log.js";
+import { flushSoulCommits, soulCommitPatch, soulCommitsBetween, soulGitHead } from "../soul/git.js";
+import type { AutonomyKind, AutonomyOutcome } from "../autonomy/runs.js";
+import { newDreamId } from "./ids.js";
+import { dreamSnapshotFile, dreamSummaryFile, dreamsDir } from "./paths.js";
+import { releaseReconsider } from "./reconsider.js";
+import { currentDream, dreamScope, parseDreamTrailer, type DreamScope } from "./scope.js";
+import {
+  desireChanges,
+  diffSnapshots,
+  emotionDelta,
+  takeSnapshot,
+  type Snapshot,
+} from "./snapshot.js";
+import { applyRetention, lockReve, writeDreamRecord, type DreamSnapshotSidecar } from "./store.js";
+import {
+  DREAM_RECORD_VERSION,
+  type DesireChanges,
+  type DreamMetrics,
+  type DreamPart,
+  type DreamRecord,
+  type DreamTrigger,
+  type EmotionDelta,
+  type FileChange,
+  type SoulCommit,
+} from "./types.js";
+
+/** Whole-record cap; diffs are trimmed (largest first) to fit. */
+export const MAX_RECORD_BYTES = 512 * 1024;
+/** Revert sidecar cap; files past it are recorded as not revertible. */
+export const MAX_SIDECAR_BYTES = 4 * 1024 * 1024;
+const MAX_COMMIT_DIFF_CHARS = 4 * 1024;
+const MAX_COMMITS_WITH_DIFF = 50;
+const FLUSH_TIMEOUT_MS = 20_000;
+
+/** Which parts each trigger may touch (reflection never writes the KB). */
+const PARTS_BY_TRIGGER: Record<DreamTrigger, DreamPart[]> = {
+  idle: ["memory", "kb", "skills", "soul"],
+  reflect: ["memory", "skills", "soul"],
+  examen: ["memory", "kb", "skills", "soul"],
+  "desire-review": ["memory", "soul"],
+};
+
+export function dreamsEnabled(): boolean {
+  const v = process.env.LISA_REVE_DREAMS?.trim().toLowerCase();
+  return !(v === "0" || v === "false" || v === "off");
+}
+
+export interface DreamEndOptions {
+  /** The pass threw. Claimed reconsider notes are released. */
+  error?: unknown;
+  /** Outcome override; defaults to the last autonomy run recorded in the pass. */
+  outcome?: AutonomyOutcome;
+}
+
+export interface DreamHandle {
+  /** null when dreams are disabled, nested, or capture failed to start. */
+  readonly id: string | null;
+  /** Run `fn` inside this dream's scope (commit stamps, run links, reconsider). */
+  run<T>(fn: () => Promise<T>): Promise<T>;
+  /** Finish capture and persist the record. Idempotent; never throws. */
+  end(opts?: DreamEndOptions): Promise<DreamRecord | null>;
+}
+
+const NOOP_HANDLE: DreamHandle = {
+  id: null,
+  run: (fn) => fn(),
+  end: () => Promise.resolve(null),
+};
+
+/** Map an AutonomyRun kind to a dream trigger (null = not a reflective pass). */
+export function dreamTriggerForKind(kind: AutonomyKind | string): DreamTrigger | null {
+  if (kind === "idle" || kind === "reflect" || kind === "examen" || kind === "desire-review") {
+    return kind;
+  }
+  return null;
+}
+
+/** Heartbeat convenience: a real dream for examen / desire review, a no-op otherwise. */
+export async function beginDreamForKind(kind: AutonomyKind, task?: string): Promise<DreamHandle> {
+  const trigger = dreamTriggerForKind(kind);
+  return trigger ? await beginDream({ trigger, task }) : NOOP_HANDLE;
+}
+
+export async function beginDream(opts: {
+  trigger: DreamTrigger;
+  task?: string;
+  now?: () => Date;
+}): Promise<DreamHandle> {
+  if (!dreamsEnabled()) return NOOP_HANDLE;
+  // A pass nested inside another dream is part of that dream.
+  if (currentDream()) return NOOP_HANDLE;
+  const now = opts.now ?? (() => new Date());
+  const start = now();
+  const id = newDreamId(start);
+  const parts = PARTS_BY_TRIGGER[opts.trigger];
+  let before: Snapshot;
+  let headBefore: string | null;
+  try {
+    // Pending soul commits from before the window belong to someone else.
+    await withTimeout(flushSoulCommits(), FLUSH_TIMEOUT_MS);
+    [before, headBefore] = await Promise.all([takeSnapshot(parts, start), soulGitHead()]);
+  } catch (err) {
+    logWarn(`[reve] dream capture could not start: ${(err as Error).message.slice(0, 200)}`);
+    return NOOP_HANDLE;
+  }
+  const scope: DreamScope = {
+    id,
+    trigger: opts.trigger,
+    runIds: [],
+    runOutcomes: [],
+    reconsiderIds: [],
+  };
+  let ended: Promise<DreamRecord | null> | null = null;
+  return {
+    id,
+    run: (fn) => dreamScope.run(scope, fn),
+    end: (endOpts = {}) => {
+      ended ??= finishDream({
+        scope,
+        trigger: opts.trigger,
+        task: opts.task,
+        parts,
+        before,
+        headBefore,
+        start,
+        end: now(),
+        endOpts,
+      }).catch((err) => {
+        logWarn(`[reve] dream capture failed: ${(err as Error).message.slice(0, 200)}`);
+        return null;
+      });
+      return ended;
+    },
+  };
+}
+
+/** Wrap one pass. Rethrows the pass's own error after recording. */
+export async function withDream<T>(
+  opts: { trigger: DreamTrigger; task?: string },
+  fn: () => Promise<T>,
+): Promise<T> {
+  const dream = await beginDream(opts);
+  let result: T;
+  try {
+    result = await dream.run(fn);
+  } catch (err) {
+    await dream.end({ error: err });
+    throw err;
+  }
+  await dream.end();
+  return result;
+}
+
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | undefined> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => resolve(undefined), ms);
+    t.unref?.();
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e: unknown) => {
+        clearTimeout(t);
+        reject(e instanceof Error ? e : new Error(String(e)));
+      },
+    );
+  });
+}
+
+async function captureSoulCommits(
+  id: string,
+  headBefore: string | null,
+): Promise<{ commits: SoulCommit[]; headAfter?: string }> {
+  if (!headBefore) return { commits: [] };
+  const headAfter = await soulGitHead();
+  if (!headAfter || headAfter === headBefore)
+    return { commits: [], headAfter: headAfter ?? undefined };
+  const infos = await soulCommitsBetween(headBefore, headAfter);
+  const commits: SoulCommit[] = [];
+  for (const info of infos) {
+    const { base, dreamId, reconsider } = parseDreamTrailer(info.subject);
+    // A commit stamped by ANOTHER dream (a concurrent pass) is that dream's.
+    if (dreamId && dreamId !== id) continue;
+    const m = /^([^:]+):\s.*\svia\s(\S+)$/.exec(base);
+    const patch =
+      commits.length < MAX_COMMITS_WITH_DIFF
+        ? await soulCommitPatch(info.sha, MAX_COMMIT_DIFF_CHARS)
+        : { text: "", truncated: true };
+    commits.push({
+      sha: info.sha,
+      at: info.at,
+      subject: info.subject,
+      opKind: m?.[1] ?? "unknown",
+      caller: m?.[2] ?? "unknown",
+      ...(dreamId ? { dreamId } : {}),
+      ...(reconsider?.length ? { reconsider } : {}),
+      files: info.files,
+      diff: patch.text,
+      diffTruncated: patch.truncated,
+    });
+  }
+  return { commits, headAfter };
+}
+
+/** Deterministic drift indicators (pure function of the record's own data). */
+export function computeMetrics(input: {
+  changes: FileChange[];
+  soulCommits: SoulCommit[];
+  desires: DesireChanges;
+  emotions: EmotionDelta | null;
+  skillsTouched: string[];
+}): DreamMetrics {
+  const patches = (file: string) => {
+    const viaCommits = input.soulCommits.filter((c) => c.files.some((f) => f.path === file)).length;
+    const viaSnapshot = input.changes.some((c) => c.path === `soul/${file}`) ? 1 : 0;
+    return Math.max(viaCommits, viaSnapshot);
+  };
+  const churn = (dir: string) =>
+    input.changes
+      .filter((c) => c.path.startsWith(`soul/${dir}/`))
+      .reduce((n, c) => n + c.linesAdded + c.linesRemoved, 0);
+  const volatility = input.emotions
+    ? Object.values(input.emotions.delta).reduce((n, d) => n + Math.abs(d), 0)
+    : 0;
+  const memory = input.changes.filter((c) => c.part === "memory");
+  return {
+    identityPatches: patches("identity.md"),
+    purposePatches: patches("purpose.md"),
+    constitutionPatches: patches("constitution.md"),
+    valuesChurn: churn("values"),
+    opinionsChurn: churn("opinions"),
+    desireChurn:
+      input.desires.added.length + input.desires.revised.length + input.desires.closed.length,
+    emotionVolatility: Math.round(volatility * 10_000) / 10_000,
+    memoryEntriesAdded: memory.reduce((n, c) => n + (c.entriesAdded?.length ?? 0), 0),
+    memoryEntriesRemoved: memory.reduce((n, c) => n + (c.entriesRemoved?.length ?? 0), 0),
+    kbFilesChanged: input.changes.filter((c) => c.part === "kb").length,
+    skillsTouched: input.skillsTouched.length,
+  };
+}
+
+const TRIGGER_LABEL: Record<DreamTrigger, string> = {
+  idle: "Idle (Reve) pass",
+  reflect: "Session reflection",
+  examen: "Weekly examen",
+  "desire-review": "Desire review",
+};
+
+export function renderSummary(rec: Omit<DreamRecord, "summary">): string {
+  const bits: string[] = [];
+  const m = rec.metrics;
+  if (m.memoryEntriesAdded || m.memoryEntriesRemoved) {
+    bits.push(`memory +${m.memoryEntriesAdded}/-${m.memoryEntriesRemoved} entries`);
+  } else if (rec.changes.some((c) => c.part === "memory")) bits.push("memory edited");
+  if (m.kbFilesChanged) bits.push(`knowledge base: ${m.kbFilesChanged} page(s)`);
+  if (rec.skillsTouched.length) bits.push(`skills: ${rec.skillsTouched.join(", ")}`);
+  const soulFiles = new Set<string>();
+  for (const c of rec.changes) if (c.part === "soul") soulFiles.add(c.path.replace(/^soul\//, ""));
+  for (const c of rec.soulCommits) for (const f of c.files) soulFiles.add(f.path);
+  soulFiles.delete("emotions.json");
+  if (soulFiles.size) {
+    const list = [...soulFiles].sort();
+    bits.push(
+      `soul: ${list.slice(0, 5).join(", ")}${list.length > 5 ? ` (+${list.length - 5})` : ""}`,
+    );
+  }
+  const d = rec.desires;
+  if (d.added.length || d.revised.length || d.closed.length) {
+    bits.push(`desires +${d.added.length} ~${d.revised.length} x${d.closed.length}`);
+  }
+  if (rec.emotions) {
+    const top = Object.entries(rec.emotions.delta)
+      .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]) || a[0].localeCompare(b[0]))
+      .slice(0, 3)
+      .map(([k, v]) => `${k} ${v > 0 ? "+" : ""}${v.toFixed(2)}`);
+    bits.push(`feelings: ${top.join(", ")}`);
+  }
+  if (rec.reconsiderDelivered.length) {
+    bits.push(`considered ${rec.reconsiderDelivered.length} reconsider request(s)`);
+  }
+  const head = `${TRIGGER_LABEL[rec.trigger]}${rec.task ? ` (${rec.task})` : ""} — ${rec.outcome}`;
+  return bits.length ? `${head}: ${bits.join("; ")}.` : `${head}: no changes.`;
+}
+
+function renderMarkdown(rec: DreamRecord): string {
+  const lines = [
+    `# Dream ${rec.id}`,
+    "",
+    rec.summary,
+    "",
+    `- trigger: ${rec.trigger}${rec.task ? ` (${rec.task})` : ""}`,
+    `- window: ${rec.windowStart} → ${rec.windowEnd}`,
+    `- outcome: ${rec.outcome}`,
+    `- capture: ${rec.capture}`,
+  ];
+  if (rec.changes.length) {
+    lines.push("", "## Changes");
+    for (const c of rec.changes) {
+      const tag = c.part === "soul" ? "Lisa's" : c.revertible ? "revertible" : "not revertible";
+      lines.push(
+        `- [${c.part}] ${c.path} — ${c.status}, +${c.linesAdded}/-${c.linesRemoved} (${tag})`,
+      );
+    }
+  }
+  if (rec.soulCommits.length) {
+    lines.push("", "## Soul commits");
+    for (const c of rec.soulCommits) lines.push(`- ${c.sha.slice(0, 10)} ${c.subject}`);
+  }
+  return lines.join("\n") + "\n";
+}
+
+/** Trim diffs (largest first) until the record fits MAX_RECORD_BYTES. */
+function fitRecord(rec: DreamRecord): DreamRecord {
+  const size = () => Buffer.byteLength(JSON.stringify(rec), "utf8");
+  if (size() <= MAX_RECORD_BYTES) return rec;
+  rec.truncated = true;
+  const diffs: Array<{ get: () => string; set: (s: string) => void }> = [
+    ...rec.changes.map((c) => ({
+      get: () => c.diff,
+      set: (s: string) => {
+        c.diff = s;
+        c.diffTruncated = true;
+      },
+    })),
+    ...rec.soulCommits.map((c) => ({
+      get: () => c.diff,
+      set: (s: string) => {
+        c.diff = s;
+        c.diffTruncated = true;
+      },
+    })),
+  ].sort((a, b) => b.get().length - a.get().length);
+  for (const cap of [1024, 128, 0]) {
+    for (const d of diffs) {
+      const text = d.get();
+      if (text.length > cap)
+        d.set(cap ? text.slice(0, cap) + "\n… [trimmed to fit the record]" : "");
+      if (size() <= MAX_RECORD_BYTES) return rec;
+    }
+  }
+  // Still too big (thousands of files): keep the first N changes.
+  while (size() > MAX_RECORD_BYTES && rec.changes.length > 1) rec.changes.pop();
+  return rec;
+}
+
+async function finishDream(ctx: {
+  scope: DreamScope;
+  trigger: DreamTrigger;
+  task?: string;
+  parts: DreamPart[];
+  before: Snapshot;
+  headBefore: string | null;
+  start: Date;
+  end: Date;
+  endOpts: DreamEndOptions;
+}): Promise<DreamRecord | null> {
+  const { scope, endOpts } = ctx;
+  const failed = endOpts.error !== undefined || scope.runOutcomes.at(-1) === "error";
+  if (failed) {
+    await releaseReconsider(scope.reconsiderIds, scope.id).catch(() => undefined);
+  }
+  const reconsiderDelivered = failed ? [] : [...scope.reconsiderIds];
+
+  await withTimeout(flushSoulCommits(), FLUSH_TIMEOUT_MS);
+  const after = await takeSnapshot(ctx.parts, ctx.start);
+  const changes = diffSnapshots(ctx.before, after);
+  const { commits, headAfter } = await captureSoulCommits(scope.id, ctx.headBefore);
+  const desires = desireChanges(changes, ctx.before, after);
+  const emotions = emotionDelta(ctx.before, after);
+  const skillsTouched = [
+    ...new Set(
+      changes
+        .filter((c) => c.part === "skills")
+        .map((c) => /^skills\/([^/]+)\/SKILL\.md$/.exec(c.path)?.[1])
+        .filter((n): n is string => !!n),
+    ),
+  ].sort();
+
+  if (
+    changes.length === 0 &&
+    commits.length === 0 &&
+    !emotions &&
+    reconsiderDelivered.length === 0
+  ) {
+    return null;
+  }
+
+  // Revert sidecar: pre-pass content of changed USER files, within the cap.
+  const sidecar: DreamSnapshotSidecar = { version: 1, id: scope.id, files: {} };
+  let sidecarBytes = 0;
+  for (const c of changes) {
+    if (c.part === "soul" || !c.revertible) continue;
+    const content = ctx.before.get(c.path)?.content ?? null;
+    const bytes = content ? Buffer.byteLength(content, "utf8") : 0;
+    if (sidecarBytes + bytes > MAX_SIDECAR_BYTES) {
+      c.revertible = false;
+      continue;
+    }
+    sidecarBytes += bytes;
+    sidecar.files[c.path] = content;
+  }
+
+  const outcome: DreamRecord["outcome"] =
+    endOpts.outcome ??
+    (endOpts.error !== undefined
+      ? "error"
+      : ((scope.runOutcomes.at(-1) as AutonomyOutcome | undefined) ?? "unknown"));
+  const base: Omit<DreamRecord, "summary"> = {
+    version: DREAM_RECORD_VERSION,
+    id: scope.id,
+    trigger: ctx.trigger,
+    ...(ctx.task ? { task: ctx.task } : {}),
+    windowStart: ctx.start.toISOString(),
+    windowEnd: ctx.end.toISOString(),
+    autonomyRunIds: [...scope.runIds],
+    outcome,
+    capture: ctx.headBefore ? "git" : "snapshot",
+    soulCommits: commits,
+    ...(ctx.headBefore ? { soulHeadBefore: ctx.headBefore } : {}),
+    ...(headAfter ? { soulHeadAfter: headAfter } : {}),
+    changes,
+    desires,
+    emotions,
+    skillsTouched,
+    metrics: computeMetrics({ changes, soulCommits: commits, desires, emotions, skillsTouched }),
+    reconsiderDelivered,
+    reverts: [],
+    truncated: changes.some((c) => c.diffTruncated) || commits.some((c) => c.diffTruncated),
+  };
+  const rec = fitRecord({ ...base, summary: renderSummary(base) });
+
+  await ensureDir(dreamsDir());
+  await lockReve(async () => {
+    // Sidecar first: a record must never point at revert data that is missing.
+    if (Object.keys(sidecar.files).length) {
+      await atomicWrite(dreamSnapshotFile(rec.id), JSON.stringify(sidecar) + "\n");
+    }
+    await writeDreamRecord(rec);
+    await atomicWrite(dreamSummaryFile(rec.id), renderMarkdown(rec));
+    await applyRetention(ctx.end.getTime());
+  });
+  return rec;
+}

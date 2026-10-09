@@ -7,6 +7,8 @@ import { sandboxModeForProfile } from "../sandbox/sandbox.js";
 import { recordAutonomyRun, type AutonomyOutcome } from "../autonomy/runs.js";
 import { getAutonomyEnabled } from "../autonomy/state.js";
 import { readIndex } from "../kb/store.js";
+import { withDream } from "../reve/record.js";
+import { takeReconsiderBlock } from "../reve/reconsider.js";
 import type { ToolDefinition } from "../types.js";
 
 function idleRunLock(): string {
@@ -124,7 +126,9 @@ export async function runIdleOnce(opts: {
   try {
     return await withFileLock(
       idleRunLock(),
-      () => runIdleInner(opts, idleMin, opts.userLanguageSample),
+      // W9: each idle (Reve) run is an audited dream (src/reve).
+      () =>
+        withDream({ trigger: "idle" }, () => runIdleInner(opts, idleMin, opts.userLanguageSample)),
       {
         timeoutMs: 0,
         staleMs: 2 * 60 * 60_000, // 2h: an idle run older than this is a crashed holder
@@ -156,9 +160,11 @@ async function runIdleInner(
   const kbLine = kbIndex
     ? `\n\nYour knowledge base right now:\n${kbIndex.slice(0, 1200)}\n\nIf the user has captured sources that aren't yet reflected in your wiki, distilling them (kb_write) — synthesized with your memory + journal — is a genuinely useful way to spend this window.`
     : "";
+  // W9: the user's "please reconsider" notes, claimed into this run once.
+  const reconsiderBlock = await takeReconsiderBlock();
   try {
     const result = await runSubagent({
-      prompt: `You have been idle for about ${idleMin} minute${idleMin === 1 ? "" : "s"}. The user is away. Decide what you want to do, then do it. Remember: end with "(no update)" if it's internal, or a brief honest message if you did something the user might want to know about.${langLine}${kbLine}`,
+      prompt: `You have been idle for about ${idleMin} minute${idleMin === 1 ? "" : "s"}. The user is away. Decide what you want to do, then do it. Remember: end with "(no update)" if it's internal, or a brief honest message if you did something the user might want to know about.${langLine}${kbLine}${reconsiderBlock}`,
       systemPrompt: buildIdleSystemPrompt(),
       // Idle is fully self-driven and unattended — no shell / fs-mutation /
       // process-spawning tools by default (see AUTONOMOUS_BLOCKED_TOOL_NAMES).
