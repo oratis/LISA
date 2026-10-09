@@ -2440,6 +2440,15 @@
           "costMicros": {
             "type": "integer"
           },
+          "capSpentMicros": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "What the run's spend ceiling (budget.usdMicros) has counted against it, across its segments, including calls that failed after they were sent (counted at their worst case)."
+          },
+          "tainted": {
+            "type": "boolean",
+            "description": "Untrusted content entered the run (Warden mode); a resumed segment starts tainted."
+          },
           "toolCalls": {
             "type": "integer"
           },
@@ -2475,7 +2484,7 @@
         "properties": {
           "type": {
             "type": "string",
-            "description": "tool_call | tool_result | replayed | denied | info | error | resume"
+            "description": "tool_call | tool_result | replayed | denied | info | error | resume | approval"
           },
           "at": {
             "type": "integer"
