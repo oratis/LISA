@@ -7,7 +7,12 @@
  *     caps enforced as bytes arrive — a gzip bomb stops early);
  *  2. every path must be structurally safe (no absolute, `..`, backslash,
  *     control chars) AND something an honest export could contain — a planted
- *     `warden/…`, `config.env`, `.git/hooks/…` or lock rejects the archive;
+ *     `warden/…`, `config.env`, `.git/hooks/…`, lock or skill approval
+ *     rejects the archive in any letter case or Unicode spelling (APFS is
+ *     case- and normalisation-insensitive, so `.GIT` IS `.git` there), and
+ *     so do two paths that would land on the same file after case folding;
+ *     once staged, the tree on disk is checked again (reserved names, entry
+ *     types, git repository layouts) before anything goes live;
  *  3. entries land in a private staging dir inside the target home; the
  *     manifest must list exactly the files present with matching sizes and
  *     sha256 before anything goes live;
@@ -29,7 +34,14 @@ import zlib from "node:zlib";
 import { lisaGlobalHome } from "../paths.js";
 import { appendSovereigntyAudit } from "./audit.js";
 import { EXPORT_FORMAT, EXPORT_FORMAT_VERSION } from "./export.js";
-import { archivePathProblem, EXPORT_ROOTS, exclusionReason, MANIFEST_PATH } from "./layout.js";
+import {
+  archivePathProblem,
+  EXPORT_ROOTS,
+  exclusionReason,
+  foldPath,
+  foldSegment,
+  MANIFEST_PATH,
+} from "./layout.js";
 import { readTar, TarFormatError, type TarEntryHeader } from "./tar.js";
 
 export interface ImportLimits {
@@ -128,6 +140,23 @@ async function unpackToStaging(
   limits: ImportLimits,
 ): Promise<{ written: Map<string, Written>; manifest: Buffer | null }> {
   const written = new Map<string, Written>();
+  /** Folded path (and every folded parent) → the spelling that claimed it. */
+  const claimed = new Map<string, string>();
+  const claim = (p: string): void => {
+    const segs = p.split("/");
+    for (let i = 1; i <= segs.length; i++) {
+      const raw = segs.slice(0, i).join("/");
+      const key = foldPath(raw);
+      const prev = claimed.get(key);
+      if (prev === undefined) claimed.set(key, raw);
+      else if (prev !== raw) {
+        throw new ImportError(
+          "bad_path",
+          `${JSON.stringify(raw.slice(0, 200))} and ${JSON.stringify(prev.slice(0, 200))} would be the same file on a case-insensitive filesystem`,
+        );
+      }
+    }
+  };
   let manifest: Buffer | null = null;
   let manifestParts: Buffer[] | null = null;
   let receiving: "none" | "manifest" | "file" = "none";
@@ -136,6 +165,7 @@ async function unpackToStaging(
   const sink = {
     async begin(h: TarEntryHeader) {
       rejectPath(h.path);
+      if (h.path !== MANIFEST_PATH) claim(h.path);
       receiving = "none";
       if (h.type === "directory") {
         if (h.path === MANIFEST_PATH)
@@ -205,6 +235,51 @@ async function unpackToStaging(
     if (open) await open.fh.close().catch(() => {});
   }
   return { written, manifest };
+}
+
+/**
+ * Does a directory (its entries keyed by folded name) look like a git
+ * repository to git's discovery? A bare layout — HEAD next to objects/ or
+ * refs/ — is one even without a `.git` name, and git reads its `config`.
+ */
+function looksLikeGitDir(entries: Map<string, fs.Dirent>): boolean {
+  const head = entries.get("head");
+  if (!head?.isFile()) return false;
+  return Boolean(entries.get("objects")?.isDirectory() || entries.get("refs")?.isDirectory());
+}
+
+/**
+ * Defence in depth: walk what actually landed in staging, by the names the
+ * filesystem reports, and refuse anything that is not a plain file or
+ * directory, anything excluded (reserved names, folded) and any git
+ * repository layout. Nothing has gone live yet when this runs.
+ */
+export async function assertStagedTreeClean(staging: string): Promise<void> {
+  const walk = async (abs: string, rel: string): Promise<void> => {
+    const dirents = await fsp.readdir(abs, { withFileTypes: true });
+    const byFolded = new Map(dirents.map((d) => [foldSegment(d.name), d] as const));
+    if (looksLikeGitDir(byFolded)) {
+      throw new ImportError(
+        "forbidden_entry",
+        `archive carries a git repository layout: ${JSON.stringify(rel.slice(0, 200) || ".")}`,
+      );
+    }
+    for (const d of dirents) {
+      const r = rel ? `${rel}/${d.name}` : d.name;
+      if (!d.isFile() && !d.isDirectory()) {
+        throw new ImportError("invalid_archive", `unexpected entry on disk: ${JSON.stringify(r)}`);
+      }
+      const excluded = exclusionReason(r);
+      if (excluded) {
+        throw new ImportError(
+          "forbidden_entry",
+          `archive carries something an export never contains (${excluded}): ${JSON.stringify(r.slice(0, 200))}`,
+        );
+      }
+      if (d.isDirectory()) await walk(path.join(abs, d.name), r);
+    }
+  };
+  await walk(staging, "");
 }
 
 function parseManifest(raw: Buffer | null): ManifestShape {
@@ -398,6 +473,7 @@ export async function importLisa(archive: string, opts: ImportOptions = {}): Pro
     const { written, manifest: rawManifest } = await unpackToStaging(archive, staging, limits);
     const manifest = parseManifest(rawManifest);
     verify(manifest, written);
+    await assertStagedTreeClean(staging);
 
     const roots = EXPORT_ROOTS.filter((r) =>
       [...written.keys()].some((p) => p.startsWith(`${r}/`)),

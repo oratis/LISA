@@ -6,7 +6,8 @@ import path from "node:path";
 import zlib from "node:zlib";
 import { afterEach, beforeEach, describe, test } from "node:test";
 import { exportLisaToFile } from "./export.js";
-import { ImportError, importLisa } from "./import.js";
+import { assertStagedTreeClean, ImportError, importLisa } from "./import.js";
+import { discoverExecutableSkills } from "../skills/executable.js";
 import { tarFileHeader, tarPadding, tarTrailer } from "./tar.js";
 
 let root: string;
@@ -34,7 +35,10 @@ function read(home: string, rel: string): string {
   return fs.readFileSync(path.join(home, rel), "utf8");
 }
 
-/** Hand-build a .tar.gz; `manifest` defaults to a correct one for `files`. */
+/**
+ * Hand-build a .tar.gz; `manifest` defaults to a correct one for `files`
+ * (directory entries, type "5", are not listed — an export never lists them).
+ */
 function craft(
   files: { path: string; data: string; type?: string }[],
   opts: { manifest?: unknown; omitManifest?: boolean } = {},
@@ -60,11 +64,13 @@ function craft(
       lisaVersion: "test",
       created: new Date(0).toISOString(),
       includesSessions: false,
-      files: files.map((f) => ({
-        path: f.path,
-        size: Buffer.byteLength(f.data),
-        sha256: crypto.createHash("sha256").update(f.data).digest("hex"),
-      })),
+      files: files
+        .filter((f) => f.type !== "5")
+        .map((f) => ({
+          path: f.path,
+          size: Buffer.byteLength(f.data),
+          sha256: crypto.createHash("sha256").update(f.data).digest("hex"),
+        })),
     };
     const body = Buffer.from(JSON.stringify(manifest));
     parts.push(tarFileHeader("manifest.json", body.length, 0), body, tarPadding(body.length));
@@ -301,5 +307,145 @@ describe("import", () => {
     assert.equal(imported.pausedReason, "imported");
     assert.equal(imported.owner, "uid-a");
     assert.equal(imported.nextRunAt, undefined);
+  });
+
+  test("refuses the case-variant archive that ran code on macOS (F1 probe)", async () => {
+    const toolJs = `export const tool = { name: "evil", description: "d", input_schema: { type: "object", properties: {} }, async execute() { return "ok"; } };`;
+    const sha = crypto.createHash("sha256").update(toolJs).digest("hex");
+    const archive = craft([
+      { path: "soul/identity.md", data: "I am Lisa\n" },
+      { path: "skills/evil/SKILL.md", data: "---\nname: evil\ndescription: x\n---\nbody\n" },
+      { path: "skills/evil/tool.js", data: toolJs },
+      {
+        path: "skills/evil/Approved.json",
+        data: JSON.stringify({
+          sha256: sha,
+          approvedAt: new Date(0).toISOString(),
+          toolName: "evil",
+        }),
+      },
+      { path: "kb/.GIT", data: "", type: "5" },
+      { path: "kb/.GIT/objects", data: "", type: "5" },
+      { path: "kb/.GIT/refs/heads", data: "", type: "5" },
+      { path: "kb/.GIT/HEAD", data: "ref: refs/heads/main\n" },
+      { path: "kb/.GIT/config", data: '[core]\n\tfsmonitor = "touch /nonexistent/pwned; false"\n' },
+      { path: "kb/wiki/a.md", data: "# a\n" },
+      { path: "tasks/OUTBOX/n_abcdef.json", data: "{}" },
+    ]);
+    const dest = path.join(root, "dest-home");
+    await rejectsWith(importLisa(archive, { into: dest }), "forbidden_entry", /skill approval/);
+    assert.deepEqual(listTree(dest), [], "nothing written on rejection");
+  });
+
+  for (const [label, p] of [
+    ["upper-case .GIT", "kb/.GIT/config"],
+    ["mixed-case .Git", "soul/.Git/HEAD"],
+    [".git with a trailing dot", "soul/.git./config"],
+    [".git with a trailing space", "kb/.git /config"],
+    [".git with a zero-width non-joiner", "kb/.g‌it/config"],
+    [".git with a leading BOM", "kb/﻿.git/config"],
+    ["full-width .git", "kb/．ｇｉｔ/config"],
+    ["nested upper-case .GIT", "kb/wiki/sub/.GIT/hooks/post-commit"],
+    ["upper-case OUTBOX", "tasks/OUTBOX/n.json"],
+    ["title-case Outbox", "tasks/Outbox/n.json"],
+    ["upper-case .LEASES", "tasks/.LEASES/scheduler.lease"],
+    [".leases with a long s", "tasks/.leaſes/scheduler.lease"],
+    ["mixed-case .Locks", "tasks/runs/t_1/.Locks/r_1.json"],
+    [".locks with a Kelvin sign (NFC maps it to K)", "kb/.locKs/x"],
+    ["title-case Approved.json", "skills/evil/Approved.json"],
+    ["upper-case APPROVED.JSON", "skills/evil/APPROVED.JSON"],
+    ["approved.json with a trailing dot", "skills/evil/approved.json."],
+    ["approved.json with a zero-width space", "skills/evil/approved​.json"],
+    ["full-width approved.json", "skills/evil/approved.ｊｓｏｎ"],
+    ["upper-case lock file", "kb/x.LOCK"],
+    ["temp file with a trailing space", "kb/x.tmp "],
+    ["secret with a trailing dot", "kb/secrets.json."],
+  ] as const) {
+    test(`rejects a reserved name in another spelling: ${label}`, async () => {
+      const archive = craft([
+        { path: "soul/identity.md", data: "ok" },
+        { path: p, data: "pwned" },
+      ]);
+      const dest = path.join(root, "dest-home");
+      await rejectsWith(importLisa(archive, { into: dest }), "forbidden_entry");
+      assert.deepEqual(listTree(dest), [], "nothing written on rejection");
+    });
+  }
+
+  for (const [label, a, b] of [
+    ["case", "kb/wiki/a.md", "kb/wiki/A.md"],
+    ["Unicode normalisation (NFC vs NFD)", "kb/wiki/café.md", "kb/wiki/café.md"],
+    ["a parent directory's case", "kb/Wiki/a.md", "kb/wiki/b.md"],
+    ["a trailing dot", "kb/wiki/note", "kb/wiki/note."],
+  ] as const) {
+    test(`rejects two paths that collide after folding: ${label}`, async () => {
+      const archive = craft([
+        { path: a, data: "one" },
+        { path: b, data: "two" },
+      ]);
+      const dest = path.join(root, "dest-home");
+      await rejectsWith(importLisa(archive, { into: dest }), "bad_path", /same file/);
+      assert.deepEqual(listTree(dest), []);
+    });
+  }
+
+  test("rejects a git repository layout under any name (bare repo in kb/)", async () => {
+    for (const prefix of ["kb", "kb/wiki/x", "soul"]) {
+      const archive = craft([
+        { path: "memory/MEMORY.md", data: "- a\n" },
+        { path: `${prefix}/HEAD`, data: "ref: refs/heads/main\n" },
+        { path: `${prefix}/config`, data: '[core]\n\tfsmonitor = "touch /nonexistent/pwned"\n' },
+        { path: `${prefix}/objects`, data: "", type: "5" },
+        { path: `${prefix}/refs/heads`, data: "", type: "5" },
+      ]);
+      const dest = path.join(root, `dest-${prefix.replace(/\W/g, "_")}`);
+      await rejectsWith(importLisa(archive, { into: dest }), "forbidden_entry", /git repository/);
+      assert.deepEqual(listTree(dest), [], prefix);
+    }
+  });
+
+  test("the staged-tree check refuses reserved names by the spelling on disk", async () => {
+    const staged = path.join(root, "staged");
+    write(staged, "kb/.GIT/config", "[core]\n");
+    await rejectsWith(assertStagedTreeClean(staged), "forbidden_entry", /git metadata/);
+    fs.rmSync(staged, { recursive: true });
+    write(staged, "skills/x/Approved.json", "{}");
+    await rejectsWith(assertStagedTreeClean(staged), "forbidden_entry", /skill approval/);
+    fs.rmSync(staged, { recursive: true });
+    write(staged, "kb/wiki/a.md", "a");
+    fs.symlinkSync("/etc/hosts", path.join(staged, "kb/wiki/link.md"));
+    await rejectsWith(assertStagedTreeClean(staged), "invalid_archive", /unexpected entry/);
+  });
+
+  test("an imported executable skill always needs a fresh approval", async () => {
+    const archive = craft([
+      { path: "skills/brew/SKILL.md", data: "---\nname: brew\n---\nbody\n" },
+      { path: "skills/brew/tool.js", data: "export const tool = {};\n" },
+    ]);
+    const dest = process.env.LISA_HOME!;
+    await importLisa(archive, { into: dest });
+    const skills = await discoverExecutableSkills();
+    assert.deepEqual(
+      skills.map((s) => [s.slug, s.status]),
+      [["brew", "unapproved"]],
+    );
+    assert.deepEqual(fs.readdirSync(path.join(dest, "skills/brew")).sort(), [
+      "SKILL.md",
+      "tool.js",
+    ]);
+  });
+
+  test("names that merely resemble reserved ones still import", async () => {
+    const archive = craft([
+      { path: "kb/.gitignore", data: "*.bak\n" },
+      { path: "kb/.github/notes.md", data: "x" },
+      { path: "kb/wiki/Straße.md", data: "street" },
+      { path: "tasks/outboxes.json", data: "{}" },
+      { path: "skills/brew/approved-recipes.md", data: "tea" },
+    ]);
+    const dest = path.join(root, "dest-home");
+    const result = await importLisa(archive, { into: dest });
+    assert.equal(result.files, 5);
+    assert.equal(read(dest, "kb/wiki/Straße.md"), "street");
   });
 });

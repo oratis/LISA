@@ -202,4 +202,25 @@ describe("export", () => {
     assert.match(audit, /"action":"export"/);
     assert.ok(!audit.includes("private fact"));
   });
+
+  test("skips reserved names in any letter case or Unicode spelling", async () => {
+    plant("soul/identity.md");
+    const variants = [
+      "kb/.GIT/HEAD",
+      "soul/.Git/config",
+      "kb/.g‌it/config",
+      "tasks/OUTBOX/o_1.json",
+      "tasks/.LEASES/scheduler.lease",
+      "tasks/runs/t_1/.Locks/r_1.lock",
+      "skills/brew/Approved.json",
+      "skills/brew/APPROVED.JSON",
+      "kb/x.LOCK",
+      "memory/MEMORY.md.Abc.TMP",
+    ];
+    for (const rel of variants) plant(rel, "TOP-SECRET-PLANTED\n");
+    const file = path.join(out, "v.tar.gz");
+    await exportLisaToFile({ home }, file);
+    const entries = await listArchive(file);
+    assert.deepEqual([...entries.keys()].sort(), ["manifest.json", "soul/identity.md"]);
+  });
 });
