@@ -105,13 +105,14 @@ function raw(
         let text = "";
         res.on("data", (c: Buffer) => (text += c.toString("utf8")));
         res.on("end", () => {
-          let parsed: Record<string, unknown> = {};
-          try {
-            parsed = text ? (JSON.parse(text) as Record<string, unknown>) : {};
-          } catch {
-            parsed = { raw: text.slice(0, 200) };
-          }
-          resolve({ status: res.statusCode ?? 0, body: parsed });
+          const parse = (): Record<string, unknown> => {
+            try {
+              return text ? (JSON.parse(text) as Record<string, unknown>) : {};
+            } catch {
+              return { raw: text.slice(0, 200) };
+            }
+          };
+          resolve({ status: res.statusCode ?? 0, body: parse() });
         });
       },
     );
