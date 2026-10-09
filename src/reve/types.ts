@@ -82,6 +82,16 @@ export interface FileChange {
   entriesRemoved?: string[];
   /** True when the pre-pass content is stored and a user revert is possible. */
   revertible: boolean;
+  /** Why a user-part change cannot be reverted, when it cannot. */
+  notRevertibleReason?: string;
+}
+
+/** A part the capture left out (so its changes are not in the record). */
+export interface UncapturedPartInfo {
+  part: DreamPart;
+  reason: "too_many_files";
+  /** Tracked files the part had when it was left out. */
+  files: number;
 }
 
 export interface DesireChanges {
@@ -149,6 +159,13 @@ export interface DreamRecord {
   summary: string;
   /** True when diffs were trimmed to respect the record byte cap. */
   truncated: boolean;
+  /**
+   * True when a snapshot cap was hit (a part left out, or some file's content
+   * not kept). Absent on records written before the field existed.
+   */
+  capped?: boolean;
+  /** Parts not captured at all, and why. Their changes are not listed. */
+  uncaptured?: UncapturedPartInfo[];
 }
 
 /** List-view projection of a dream. */

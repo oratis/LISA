@@ -20,10 +20,12 @@ import { dreamSnapshotFile, dreamSummaryFile, dreamsDir } from "./paths.js";
 import { releaseReconsider } from "./reconsider.js";
 import { currentDream, dreamScope, parseDreamTrailer, type DreamScope } from "./scope.js";
 import {
+  MAX_SNAPSHOT_FILES,
   desireChanges,
   diffSnapshots,
   emotionDelta,
   takeSnapshot,
+  uncapturedParts,
   type Snapshot,
 } from "./snapshot.js";
 import { applyRetention, lockReve, writeDreamRecord, type DreamSnapshotSidecar } from "./store.js";
@@ -294,6 +296,10 @@ export function renderSummary(rec: Omit<DreamRecord, "summary">): string {
   if (rec.reconsiderDelivered.length) {
     bits.push(`considered ${rec.reconsiderDelivered.length} reconsider request(s)`);
   }
+  if (rec.uncaptured?.length) {
+    const list = rec.uncaptured.map((u) => `${u.part} (${u.files} files)`).join(", ");
+    bits.push(`not captured: ${list}, over the ${MAX_SNAPSHOT_FILES}-file cap`);
+  }
   const head = `${TRIGGER_LABEL[rec.trigger]}${rec.task ? ` (${rec.task})` : ""} — ${rec.outcome}`;
   return bits.length ? `${head}: ${bits.join("; ")}.` : `${head}: no changes.`;
 }
@@ -312,9 +318,22 @@ function renderMarkdown(rec: DreamRecord): string {
   if (rec.changes.length) {
     lines.push("", "## Changes");
     for (const c of rec.changes) {
-      const tag = c.part === "soul" ? "Lisa's" : c.revertible ? "revertible" : "not revertible";
+      const tag =
+        c.part === "soul"
+          ? "Lisa's"
+          : c.revertible
+            ? "revertible"
+            : `not revertible${c.notRevertibleReason ? `: ${c.notRevertibleReason}` : ""}`;
       lines.push(
         `- [${c.part}] ${c.path} — ${c.status}, +${c.linesAdded}/-${c.linesRemoved} (${tag})`,
+      );
+    }
+  }
+  if (rec.uncaptured?.length) {
+    lines.push("", "## Not captured");
+    for (const u of rec.uncaptured) {
+      lines.push(
+        `- ${u.part}: ${u.files} tracked files, over the ${MAX_SNAPSHOT_FILES}-file cap; its changes are not in this record`,
       );
     }
   }
@@ -378,8 +397,11 @@ async function finishDream(ctx: {
   const reconsiderDelivered = failed ? [] : [...scope.reconsiderIds];
 
   await withTimeout(flushSoulCommits(), FLUSH_TIMEOUT_MS);
-  const after = await takeSnapshot(ctx.parts, ctx.start);
+  // Exactly the parts the pre-pass snapshot captured, so nothing is compared
+  // against a listing that was never taken.
+  const after = await takeSnapshot(ctx.parts, ctx.start, { only: ctx.before.captured });
   const changes = diffSnapshots(ctx.before, after);
+  const uncaptured = uncapturedParts(ctx.before, after);
   const { commits, headAfter } = await captureSoulCommits(scope.id, ctx.headBefore);
   const desires = desireChanges(changes, ctx.before, after);
   const emotions = emotionDelta(ctx.before, after);
@@ -396,7 +418,10 @@ async function finishDream(ctx: {
     changes.length === 0 &&
     commits.length === 0 &&
     !emotions &&
-    reconsiderDelivered.length === 0
+    reconsiderDelivered.length === 0 &&
+    // A pass that ran while a part could not be captured is recorded, so the
+    // log never claims "no changes" about a part it did not look at.
+    (uncaptured.length === 0 || scope.runIds.length === 0)
   ) {
     return null;
   }
@@ -406,10 +431,11 @@ async function finishDream(ctx: {
   let sidecarBytes = 0;
   for (const c of changes) {
     if (c.part === "soul" || !c.revertible) continue;
-    const content = ctx.before.get(c.path)?.content ?? null;
+    const content = ctx.before.files.get(c.path)?.content ?? null;
     const bytes = content ? Buffer.byteLength(content, "utf8") : 0;
     if (sidecarBytes + bytes > MAX_SIDECAR_BYTES) {
       c.revertible = false;
+      c.notRevertibleReason = "the pre-dream copy did not fit the revert sidecar cap";
       continue;
     }
     sidecarBytes += bytes;
@@ -442,6 +468,8 @@ async function finishDream(ctx: {
     reconsiderDelivered,
     reverts: [],
     truncated: changes.some((c) => c.diffTruncated) || commits.some((c) => c.diffTruncated),
+    capped: ctx.before.capped || after.capped,
+    uncaptured,
   };
   const rec = fitRecord({ ...base, summary: renderSummary(base) });
 

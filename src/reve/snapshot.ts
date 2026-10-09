@@ -14,6 +14,13 @@
  *   skills  skills/<name>/SKILL.md                         (Lisa's own skills)
  *   soul    identity/purpose/constitution/name, values/, opinions/, desires/,
  *           relationships/, journal/ (last few days), emotions.json
+ *
+ * Caps never hide a file silently. A part whose tracked set would take the
+ * pass past MAX_SNAPSHOT_FILES is left out WHOLE and named in `uncaptured`,
+ * so within a captured part a path missing from the snapshot really did not
+ * exist (a missing path is never mistaken for one the pass added). A file
+ * that is listed but cannot be read is kept as "unknown": present, state
+ * unknown, never "added" or "deleted", never revertible.
  */
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
@@ -25,7 +32,7 @@ import type { DesireChanges, DreamPart, EmotionDelta, FileChange } from "./types
 export const MAX_SNAPSHOT_FILE_BYTES = 256 * 1024;
 /** Total content held in memory for one pass. */
 export const MAX_SNAPSHOT_TOTAL_BYTES = 16 * 1024 * 1024;
-/** Hard bound on files walked per pass. */
+/** Hard bound on files read per pass; a part that would pass it is left out whole. */
 export const MAX_SNAPSHOT_FILES = 5000;
 /** Per-file diff text cap in a dream record. */
 export const MAX_DIFF_CHARS = 8 * 1024;
@@ -40,8 +47,29 @@ export interface SnapFile {
   content?: string;
 }
 
-/** relPath (POSIX, relative to the home) → file state. */
-export type Snapshot = Map<string, SnapFile>;
+/** A part left out of a snapshot, and why. */
+export interface UncapturedPart {
+  part: DreamPart;
+  reason: "too_many_files";
+  /** Tracked files the part had when it was left out. */
+  files: number;
+}
+
+export interface Snapshot {
+  /** relPath (POSIX, relative to the home) → file state. */
+  files: Map<string, SnapFile>;
+  /** Parts whose every tracked file was listed: a path's absence is known. */
+  captured: DreamPart[];
+  /** Parts left out whole (the file cap); nothing about them is compared. */
+  uncaptured: UncapturedPart[];
+  /** relPath → part, for files that were listed but could not be read. */
+  unknown: Map<string, DreamPart>;
+  /** Any cap was hit: a part left out, or some file's content not kept. */
+  capped: boolean;
+}
+
+/** Order parts are captured in when the file cap is tight: the small, important ones first. */
+const CAPTURE_ORDER: readonly DreamPart[] = ["memory", "skills", "soul", "kb"];
 
 export function sha256(text: string): string {
   return crypto.createHash("sha256").update(text, "utf8").digest("hex");
@@ -126,34 +154,62 @@ async function fileExists(p: string): Promise<boolean> {
   }
 }
 
-/** Snapshot every tracked file of the given parts. Never throws on a single unreadable file. */
+/**
+ * Snapshot every tracked file of the given parts (`only` narrows them, so the
+ * post-pass snapshot covers exactly what the pre-pass one captured). Never
+ * throws on a single unreadable file.
+ */
 export async function takeSnapshot(
   parts: readonly DreamPart[],
   now: Date = new Date(),
+  opts: { only?: readonly DreamPart[] } = {},
 ): Promise<Snapshot> {
-  const snap: Snapshot = new Map();
+  const snap: Snapshot = {
+    files: new Map(),
+    captured: [],
+    uncaptured: [],
+    unknown: new Map(),
+    capped: false,
+  };
   let budget = MAX_SNAPSHOT_TOTAL_BYTES;
   let count = 0;
-  for (const part of parts) {
-    for (const abs of await trackedFiles(part, now)) {
-      if (count >= MAX_SNAPSHOT_FILES) return snap;
+  const wanted = CAPTURE_ORDER.filter(
+    (p) => parts.includes(p) && (!opts.only || opts.only.includes(p)),
+  );
+  for (const part of wanted) {
+    const list = await trackedFiles(part, now);
+    if (count + list.length > MAX_SNAPSHOT_FILES) {
+      // Leave the whole part out rather than a silent tail of it.
+      snap.uncaptured.push({ part, reason: "too_many_files", files: list.length });
+      snap.capped = true;
+      continue;
+    }
+    count += list.length;
+    for (const abs of list) {
       let content: string;
       try {
         content = await fs.readFile(abs, "utf8");
-      } catch {
-        continue; // vanished between readdir and read
+      } catch (err) {
+        // Vanished between readdir and read: it is simply not there now.
+        // Anything else: it exists, but its state is unknown.
+        if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+          snap.unknown.set(toRel(abs), part);
+          snap.capped = true;
+        }
+        continue;
       }
-      count++;
       const bytes = Buffer.byteLength(content, "utf8");
       const keep = bytes <= MAX_SNAPSHOT_FILE_BYTES && bytes <= budget;
       if (keep) budget -= bytes;
-      snap.set(toRel(abs), {
+      else snap.capped = true;
+      snap.files.set(toRel(abs), {
         part,
         hash: sha256(content),
         bytes,
         content: keep ? content : undefined,
       });
     }
+    snap.captured.push(part);
   }
   return snap;
 }
@@ -274,16 +330,57 @@ function capEntries(list: string[]): string[] {
     .map((e) => (e.length > MAX_ENTRY_CHARS ? e.slice(0, MAX_ENTRY_CHARS) + "…" : e));
 }
 
-/** Diff two snapshots into per-file changes. emotions.json is summarized separately. */
+const UNKNOWN_BEFORE = "changed during the dream; its state before could not be read";
+const UNKNOWN_AFTER = "changed during the dream; its state after could not be read";
+
+/**
+ * Diff two snapshots into per-file changes. emotions.json is summarized
+ * separately. Only parts captured in BOTH snapshots are compared.
+ */
 export function diffSnapshots(before: Snapshot, after: Snapshot): FileChange[] {
-  const paths = new Set<string>([...before.keys(), ...after.keys()]);
+  const comparable = new Set(before.captured.filter((p) => after.captured.includes(p)));
+  const partOf = (rel: string): DreamPart | undefined =>
+    before.files.get(rel)?.part ??
+    after.files.get(rel)?.part ??
+    before.unknown.get(rel) ??
+    after.unknown.get(rel);
+  const paths = new Set<string>([
+    ...before.files.keys(),
+    ...after.files.keys(),
+    ...before.unknown.keys(),
+    ...after.unknown.keys(),
+  ]);
   const out: FileChange[] = [];
   for (const rel of [...paths].sort()) {
     if (rel === "soul/emotions.json") continue;
-    const b = before.get(rel);
-    const a = after.get(rel);
+    const part = partOf(rel)!;
+    if (!comparable.has(part)) continue;
+    const bUnknown = before.unknown.has(rel);
+    const aUnknown = after.unknown.has(rel);
+    if (bUnknown && aUnknown) continue; // nothing can be said about it
+    const b = before.files.get(rel);
+    const a = after.files.get(rel);
+    if (bUnknown || aUnknown) {
+      // Listed but unreadable on one side: it existed, so it is never "added"
+      // (and never "deleted" from a side we could not read), and never revertible.
+      out.push({
+        part,
+        path: rel,
+        status: bUnknown && !a ? "deleted" : "modified",
+        beforeHash: b?.hash ?? null,
+        afterHash: a?.hash ?? null,
+        bytesBefore: b?.bytes ?? 0,
+        bytesAfter: a?.bytes ?? 0,
+        linesAdded: 0,
+        linesRemoved: 0,
+        diff: "(not diffable: the file could not be read)",
+        diffTruncated: true,
+        revertible: false,
+        notRevertibleReason: bUnknown ? UNKNOWN_BEFORE : UNKNOWN_AFTER,
+      });
+      continue;
+    }
     if (b && a && b.hash === a.hash) continue;
-    const part = (a ?? b)!.part;
     const status: FileChange["status"] = !b ? "added" : !a ? "deleted" : "modified";
     const haveBefore = !b || b.content !== undefined;
     const haveAfter = !a || a.content !== undefined;
@@ -306,6 +403,9 @@ export function diffSnapshots(before: Snapshot, after: Snapshot): FileChange[] {
       // A user part is revertible when its pre-pass content (or absence) is known.
       revertible: part !== "soul" && haveBefore,
     };
+    if (part !== "soul" && !haveBefore) {
+      change.notRevertibleReason = "too large: its content before the dream was not kept";
+    }
     if (part === "memory" && haveBefore && haveAfter) {
       const { added, removed } = multisetDiff(
         memoryEntries(b?.content ?? ""),
@@ -317,6 +417,16 @@ export function diffSnapshots(before: Snapshot, after: Snapshot): FileChange[] {
     out.push(change);
   }
   return out;
+}
+
+/** Parts left out of either snapshot (each part once, the larger count). */
+export function uncapturedParts(before: Snapshot, after: Snapshot): UncapturedPart[] {
+  const byPart = new Map<DreamPart, UncapturedPart>();
+  for (const u of [...before.uncaptured, ...after.uncaptured]) {
+    const prev = byPart.get(u.part);
+    if (!prev || u.files > prev.files) byPart.set(u.part, u);
+  }
+  return [...byPart.values()].sort((x, y) => x.part.localeCompare(y.part));
 }
 
 const CLOSED_RE = /^closed:\s*yes\s*$/im;
@@ -336,8 +446,9 @@ export function desireChanges(
       out.added.push(slug);
       continue;
     }
-    const wasClosed = CLOSED_RE.test(before.get(c.path)?.content ?? "");
-    const isClosed = c.status === "deleted" || CLOSED_RE.test(after.get(c.path)?.content ?? "");
+    const wasClosed = CLOSED_RE.test(before.files.get(c.path)?.content ?? "");
+    const isClosed =
+      c.status === "deleted" || CLOSED_RE.test(after.files.get(c.path)?.content ?? "");
     if (isClosed && !wasClosed) out.closed.push(slug);
     else out.revised.push(slug);
   }
@@ -362,8 +473,9 @@ const round4 = (n: number) => Math.round(n * 10_000) / 10_000;
 
 /** Emotion before/after/delta from emotions.json, or null when unchanged/unknown. */
 export function emotionDelta(before: Snapshot, after: Snapshot): EmotionDelta | null {
-  const b = before.get("soul/emotions.json");
-  const a = after.get("soul/emotions.json");
+  if (!before.captured.includes("soul") || !after.captured.includes("soul")) return null;
+  const b = before.files.get("soul/emotions.json");
+  const a = after.files.get("soul/emotions.json");
   if (b?.hash === a?.hash) return null;
   const bv = emotionValues(b) ?? {};
   const av = emotionValues(a) ?? {};

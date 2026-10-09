@@ -15,6 +15,8 @@ const { appendMemory } = await import("../memory/store.js");
 const soulStore = await import("../soul/store.js");
 const { initSoulRepo, withSoulCaller, _resetGitAvailableCache } = await import("../soul/git.js");
 const { EMOTION_EVENTS_MAX } = await import("../soul/types.js");
+const { revertDream } = await import("./revert.js");
+const { MAX_SNAPSHOT_FILES } = await import("./snapshot.js");
 
 let home: string;
 const saved = { home: process.env.LISA_HOME, git: process.env.LISA_SOUL_GIT };
@@ -248,6 +250,80 @@ describe("dream capture (soul git on)", () => {
       ["purpose.md"],
     );
   });
+});
+
+describe("snapshot caps never invent changes (#423 F5)", () => {
+  test("a part past the file cap is left out whole and named; revert never deletes an untouched page", async () => {
+    const wiki = path.join(home, "kb", "wiki");
+    fs.mkdirSync(wiki, { recursive: true });
+    const n = MAX_SNAPSHOT_FILES + 1;
+    for (let i = 0; i < n; i++) {
+      fs.writeFileSync(path.join(wiki, `p${String(i).padStart(5, "0")}.md`), `# page ${i}\n`);
+    }
+    const last = path.join(wiki, `p${String(n - 1).padStart(5, "0")}.md`);
+    await withDream({ trigger: "idle" }, async () => {
+      fs.rmSync(path.join(wiki, "p00000.md")); // Lisa prunes one stale page
+      await appendMemory("memory", "pruned a stale page");
+    });
+    const rec = await onlyDream();
+    assert.ok(!rec.changes.some((c) => c.part === "kb"), "no KB change is claimed");
+    assert.deepEqual(rec.uncaptured, [{ part: "kb", reason: "too_many_files", files: n }]);
+    assert.equal(rec.capped, true);
+    assert.match(rec.summary, /not captured: kb \(5001 files\)/);
+    // The parts that fit are still captured.
+    assert.ok(rec.changes.some((c) => c.path === "memory/MEMORY.md"));
+
+    const res = await revertDream(rec.id, { parts: ["kb"] });
+    assert.deepEqual(res.reverted, []);
+    assert.ok(fs.existsSync(last), "a page the dream never touched is never deleted");
+  });
+
+  test("a pass that ran while a part was left out is recorded, never shown as 'no changes'", async () => {
+    const wiki = path.join(home, "kb", "wiki");
+    fs.mkdirSync(wiki, { recursive: true });
+    for (let i = 0; i <= MAX_SNAPSHOT_FILES; i++)
+      fs.writeFileSync(path.join(wiki, `p${i}.md`), "x\n");
+    await withDream({ trigger: "idle" }, async () => {
+      fs.writeFileSync(path.join(wiki, "p1.md"), "rewritten\n");
+      await recordAutonomyRun({
+        kind: "idle",
+        startedAt: new Date().toISOString(),
+        durationMs: 1,
+        inputTokens: 1,
+        outputTokens: 1,
+        outcome: "no-update",
+      });
+    });
+    const rec = await onlyDream();
+    assert.deepEqual(rec.changes, []);
+    assert.equal(rec.uncaptured![0]!.part, "kb");
+  });
+
+  test(
+    "a file that could not be read before the pass is never 'added' and never revertible",
+    { skip: process.getuid?.() === 0 ? "root can read a 000 file" : false },
+    async () => {
+      const notes = path.join(home, "memory", "notes.md");
+      fs.writeFileSync(notes, "- the user's own notes\n");
+      fs.chmodSync(notes, 0o000);
+      try {
+        await withDream({ trigger: "idle" }, async () => {
+          fs.chmodSync(notes, 0o644);
+          fs.appendFileSync(notes, "- Lisa added this\n");
+        });
+      } finally {
+        fs.chmodSync(notes, 0o644);
+      }
+      const rec = await onlyDream();
+      const c = rec.changes.find((x) => x.path === "memory/notes.md")!;
+      assert.equal(c.status, "modified", "it existed before the pass");
+      assert.equal(c.revertible, false);
+      assert.match(c.notRevertibleReason!, /before could not be read/);
+      assert.equal(rec.capped, true);
+      await assert.rejects(revertDream(rec.id, { parts: ["memory"] }));
+      assert.ok(fs.existsSync(notes), "revert never deletes it");
+    },
+  );
 });
 
 describe("dream storage robustness", () => {

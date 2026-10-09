@@ -3900,6 +3900,10 @@
           "revertible": {
             "type": "boolean",
             "description": "Always false for soul files."
+          },
+          "notRevertibleReason": {
+            "type": "string",
+            "description": "Why a user-part change cannot be reverted, when it cannot."
           }
         },
         "additionalProperties": true
@@ -4187,6 +4191,44 @@
           },
           "truncated": {
             "type": "boolean"
+          },
+          "capped": {
+            "type": "boolean",
+            "description": "A snapshot cap was hit: a part left out, or some file's content not kept."
+          },
+          "uncaptured": {
+            "type": "array",
+            "description": "Parts the capture left out whole (over the file cap); their changes are not listed.",
+            "items": {
+              "type": "object",
+              "required": [
+                "part",
+                "reason",
+                "files"
+              ],
+              "properties": {
+                "part": {
+                  "type": "string",
+                  "enum": [
+                    "memory",
+                    "kb",
+                    "skills",
+                    "soul"
+                  ]
+                },
+                "reason": {
+                  "type": "string",
+                  "enum": [
+                    "too_many_files"
+                  ]
+                },
+                "files": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "additionalProperties": false
+            }
           }
         },
         "additionalProperties": true
