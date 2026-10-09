@@ -27,6 +27,7 @@
  * Lisa's own self (identity, values, opinions, desires) is never edited; any
  * mentions there are reported as `untouched`.
  */
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { atomicWrite } from "../fs-utils.js";
@@ -324,7 +325,7 @@ async function forgetInSession(file: string, m: Matcher, apply: boolean): Promis
       return r.line;
     });
     if (!apply || hits === 0) return hits;
-    const tmp = `${file}.${process.pid}.forget.tmp`;
+    const tmp = `${file}.${process.pid}.${crypto.randomBytes(4).toString("hex")}.forget.tmp`;
     await fs.writeFile(tmp, out.join("\n"), { mode: 0o600 });
     const now = await fs.stat(file);
     if (now.size !== before.size || now.mtimeMs !== before.mtimeMs) {
