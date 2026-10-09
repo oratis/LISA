@@ -198,6 +198,7 @@ import {
 } from "./reachout-wiring.js";
 import { createTaskHost } from "./tasks-host.js";
 import { createTaskApprovalFactory } from "../warden/task-approval.js";
+import { createReachOutTransports } from "../reachout/deliver.js";
 import { cloudTasksEnabled } from "./tasks-api.js";
 import { cloudModelGate, sweepUserTasks } from "../tasks/cloud.js";
 import {
@@ -863,6 +864,16 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           approvalFactory: createTaskApprovalFactory({
             inbox: warden.inbox,
             surface: policy.surface,
+            // "An approval is waiting" reaches the user through the gate
+            // (source `approval`), on its generic in-app note and push.
+            reachOut: (notice) =>
+              reachOutVia(
+                notice,
+                createReachOutTransports({
+                  inapp: { emit: (event, uid) => broadcast(event, uid) },
+                  push: pushBridge,
+                }),
+              ),
             log: logWarn,
           }),
         }

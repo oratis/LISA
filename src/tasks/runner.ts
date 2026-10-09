@@ -109,6 +109,9 @@ export const MAX_BLOCKED = 3;
 /** A one-off this far past its time is expired instead of run. */
 export const EXPIRE_ONEOFF_AFTER_MS = 24 * 3_600_000;
 
+/** While a run waits for an approval, how often it checks for a cancel made by another process. */
+export const APPROVAL_CANCEL_POLL_MS = 5_000;
+
 const RETRY_BACKOFF_MS = [60_000, 5 * 60_000];
 const MAX_RECORDED_RESULT = 8_000;
 const MAX_SUMMARY = 8_000;
@@ -192,6 +195,8 @@ export interface TaskRunnerOptions {
   leaseTtlMs?: number;
   /** Lease renewal period (tests). Default ttl/3. */
   leaseRenewEveryMs?: number;
+  /** Cancel check while awaiting an approval (tests). Default APPROVAL_CANCEL_POLL_MS. */
+  approvalCancelPollMs?: number;
   now?: () => number;
   log?: (msg: string) => void;
 }
@@ -808,7 +813,16 @@ export class TaskRunner {
 
       if (task.activeRunId) {
         const loaded = await loadRun(task.id, task.activeRunId);
-        if (loaded && (loaded.run.state === "running" || loaded.run.state === "interrupted")) {
+        // A run left `awaiting_approval` is one whose process stopped while it
+        // waited. The approval died with that process (the inbox keeps the
+        // payload in memory only), so the resumed run issues the call again
+        // and asks again.
+        if (
+          loaded &&
+          (loaded.run.state === "running" ||
+            loaded.run.state === "interrupted" ||
+            loaded.run.state === "awaiting_approval")
+        ) {
           await this.resume(task, loaded, slot);
           return;
         }
@@ -1099,8 +1113,16 @@ export class TaskRunner {
     const budget = task.budget;
     const segmentStart = this.now();
     const elapsedBefore = run.elapsedMs ?? 0;
+    // Time spent waiting for a human answer does not count against the run's
+    // wall-clock budget (or its elapsed time): the clock is paused for it.
+    let pausedMs = 0;
+    let pausedAt: number | null = null;
+    const activeMs = (): number => {
+      const now = this.now();
+      return now - segmentStart - pausedMs - (pausedAt !== null ? now - pausedAt : 0);
+    };
     const touch = (): void => {
-      run.elapsedMs = elapsedBefore + (this.now() - segmentStart);
+      run.elapsedMs = elapsedBefore + activeMs();
     };
 
     // Side effects recorded before this segment, per call, in the order they
@@ -1146,13 +1168,74 @@ export class TaskRunner {
       return false;
     };
 
-    const remainingMs = budget.wallclockMs - elapsedBefore;
-    if (remainingMs <= 0) stopWith("budget_wallclock");
     // Deliberately NOT unref'd: while a run is in flight this breaker must be
     // able to fire even if nothing else is keeping the event loop alive (a
     // provider or tool waiting on a promise with no handle behind it). It is
     // cleared in the finally below, so it never outlives the run.
-    const wallclock = setTimeout(() => stopWith("budget_wallclock"), Math.max(0, remainingMs));
+    let wallclock: NodeJS.Timeout | undefined;
+    const armWallclock = (): void => {
+      const remainingMs = budget.wallclockMs - elapsedBefore - activeMs();
+      if (remainingMs <= 0) stopWith("budget_wallclock");
+      wallclock = setTimeout(() => stopWith("budget_wallclock"), Math.max(0, remainingMs));
+    };
+    armWallclock();
+
+    // ── waiting for a human ──
+    // While a call waits for an approval the run is `awaiting_approval` (task
+    // and run, visible in the API and over SSE): its wall clock is paused, its
+    // lease keeps renewing on the lease's own timer, and a cancel from another
+    // process is still noticed — it aborts the run, which turns the pending
+    // approval into a deny. The ask itself, its answer and its expiry are the
+    // gate's (Warden's inbox).
+    let waiting = 0;
+    let cancelPoll: NodeJS.Timeout | undefined;
+    const approvalWait: TaskApprovalWait = {
+      started: async ({ tool }) => {
+        waiting += 1;
+        if (waiting > 1) return;
+        if (pausedAt === null) {
+          clearTimeout(wallclock);
+          pausedAt = this.now();
+        }
+        cancelPoll = setInterval(
+          () => void cancelRequested(),
+          this.opts.approvalCancelPollMs ?? APPROVAL_CANCEL_POLL_MS,
+        );
+        logEvent({ type: "approval", toolName: tool, summary: "waiting for approval" });
+        run.state = "awaiting_approval";
+        touch();
+        await this.saveRun(run, this.now());
+        const parked = await this.saveTask(task.id, (t) => {
+          if (t.activeRunId !== run.id) return false;
+          t.state = "awaiting_approval";
+        });
+        if (parked) this.emit({ type: "task_updated", task: parked });
+      },
+      ended: async ({ approved }) => {
+        if (waiting === 0) return;
+        waiting -= 1;
+        if (waiting > 0) return;
+        clearInterval(cancelPoll);
+        cancelPoll = undefined;
+        if (pausedAt !== null) {
+          pausedMs += this.now() - pausedAt;
+          pausedAt = null;
+          if (!slot.stop) armWallclock();
+        }
+        logEvent({ type: "approval", summary: approved ? "approved" : "not approved" });
+        // A run that is stopping (cancelled, shut down, lease lost) writes
+        // nothing more here: how it ends is recorded by whoever ends it.
+        if (slot.leaseLost || slot.controller.signal.aborted) return;
+        run.state = "running";
+        touch();
+        await this.saveRun(run, this.now());
+        const back = await this.saveTask(task.id, (t) => {
+          if (t.activeRunId !== run.id) return false;
+          t.state = "running";
+        });
+        if (back) this.emit({ type: "task_updated", task: back });
+      },
+    };
 
     try {
       const surface =
@@ -1166,10 +1249,6 @@ export class TaskRunner {
       // Unattended ⇒ the bounded sandbox mode, whatever the process default is.
       const sandboxMode =
         this.opts.sandboxMode ?? sandboxModeForProfile(cloud ? "cloud-autonomy" : "local-autonomy");
-      const approvalWait: TaskApprovalWait = {
-        started: async () => {},
-        ended: async () => {},
-      };
 
       const handle = await this.approvalFactory()?.({
         taskId: task.id,
@@ -1206,7 +1285,18 @@ export class TaskRunner {
         if (isSideEffectingCall(name, input) && replayable(digestCall(name, input))) {
           return { allow: true };
         }
-        return await gate(name, input);
+        const decision = await gate(name, input);
+        // The run is being stopped under this call — shutdown, a lost lease,
+        // an outcome that could not be recorded — and that is what ended a
+        // pending approval: nobody answered it. That refusal must not reach
+        // the model, and must not be saved in the run's history: the resumed
+        // run issues the call again and asks again. (A cancel or a breaker is
+        // a real ending: its refusal is told as usual and the run then stops.)
+        if (!decision.allow && slot.controller.signal.aborted && !slot.stop) {
+          if (slot.leaseLost) throw lostLease(slot);
+          throw new Interrupted();
+        }
+        return decision;
       };
 
       const inner = this.opts.provider ?? providerForModel(model);
@@ -1462,6 +1552,7 @@ export class TaskRunner {
       };
     } finally {
       clearTimeout(wallclock);
+      clearInterval(cancelPoll);
       touch();
     }
   }

@@ -166,6 +166,12 @@ export interface RequestOptions {
   timeoutMs?: number;
   /** Cancels the wait (turn aborted / client gone). Cancellation is a deny. */
   signal?: AbortSignal;
+  /**
+   * Called once the item is pending and announced — never for a request that
+   * is refused before it is queued (capacity, size, a cancelled turn). A throw
+   * is logged and changes nothing.
+   */
+  onQueued?: (item: InboxItemView) => void;
 }
 
 function pendingFile(home: string): string {
@@ -338,7 +344,14 @@ export class WardenInbox {
       return await outcome;
     }
     await this.persist(tenant);
-    if (tenant.items.get(item.id) === item) this.announce(item);
+    if (tenant.items.get(item.id) === item) {
+      this.announce(item);
+      try {
+        opts.onQueued?.(view(item));
+      } catch (err) {
+        logWarn(`[warden] onQueued threw: ${(err as Error).message}`);
+      }
+    }
     return await outcome;
   }
 

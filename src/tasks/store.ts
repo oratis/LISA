@@ -376,7 +376,8 @@ export async function deleteTask(id: string): Promise<boolean> {
 // ── runs ──
 
 export interface RunEvent {
-  type: "tool_call" | "tool_result" | "replayed" | "denied" | "info" | "error" | "resume";
+  type:
+    "tool_call" | "tool_result" | "replayed" | "denied" | "info" | "error" | "resume" | "approval";
   toolName?: string;
   summary?: string;
   isError?: boolean;

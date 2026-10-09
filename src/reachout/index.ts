@@ -69,4 +69,5 @@ export {
   kbBriefNotice,
   mailAlertNotice,
   mailDigestNotice,
+  taskApprovalNotice,
 } from "./senders.js";

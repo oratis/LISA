@@ -115,6 +115,17 @@ The runner asks an injected `TaskApprovalFactory` for a gate per run (the runner
 - **Taint.** A run a watcher hit started is tainted from its first call: its prompt quotes an outsider's text. A run that became tainted (Warden saw a taint-source call allowed) records it on the run (`tainted`), so a resumed or retried segment starts tainted too — the content is still in its history.
 - **Tenant.** The task's uid and the home the run works in; the run's working directory is the workspace root.
 
+### Waiting for an approval
+
+When Warden answers `ask` during an unattended run, the call waits in the approval inbox; the run does not fail.
+
+- **Visible.** While the item is pending, the task and the run are `awaiting_approval` (the API, `lisa tasks`, and a `task_updated` event over SSE); the run log records `approval` events ("waiting for approval", then "approved" / "not approved").
+- **Not on the clock.** The wait does not count against the run's wall-clock budget or its elapsed time. The lease keeps renewing on its own timer. A cancel — from this process or another (`cancelRequestedAt`, checked every 5 s while waiting) — aborts the run, and an aborted run's pending approval is a deny.
+- **The user is told** through `reachOut()`, source `approval` (`taskApprovalNotice`): which task, which tool, and how long the approval stays open — never the payload, which only the approval card shows. The gate's decision is final: it delivers approvals in-app and by push even in quiet hours (silently); a notice it withholds (no channel, a duplicate) leaves the item pending in the inbox, where the user can still answer it.
+- **The answer.** Approve, and the call runs (and enters the ledger like any side effect). Deny or expiry — about 10 minutes, then deny (`docs/THREAT_MODEL.md`) — and the model is told the call did not run, and the run continues.
+- **A restart.** The inbox keeps the payload in memory only, so an item pending when the process stopped can never be approved: the next process expires it from `pending.json` and audits it as orphaned. A clean shutdown that cancels a pending approval does not record that refusal in the run's history. The run, left `awaiting_approval`, is resumed like an interrupted one: the model issues the call again and Warden asks again. A call that was approved and had started when the process died is in the ledger, so the resumed run is answered from it ("outcome unknown; not executed again") and nothing is asked twice.
+- An awaiting run holds its concurrency slot (2 at home) for as long as it waits.
+
 The CLI drivers (`lisa heartbeat run`, `lisa tasks run`) have no approval inbox anyone could answer, so they install nothing: a run they pick up gets the read-only allow-list even when the server runs in Warden mode. A task that needs approvals runs with the server up.
 
 With no factory wired — or one that returns no `approval` — the default applies, and it is an **allow-list**: a run may make only the calls in `UNATTENDED_READ_ONLY` (`policy.ts`), each verified to change nothing, some only for specific inputs (`github` for its read actions with a numeric id). Everything else is denied: every other builtin, every plugin, skill and MCP tool, and any tool added later. That includes writes to Lisa's own soul, memory and knowledge base — without an approval layer there is no decision record for them.

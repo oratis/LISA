@@ -19,7 +19,7 @@ import { logWarn } from "../log.js";
 import path from "node:path";
 import { auditDecision, auditQuietly } from "./audit.js";
 import { loadGrants, useGrants, type LoadedGrants } from "./grants.js";
-import type { WardenInbox } from "./inbox.js";
+import type { ApprovalOutcome, InboxItemView, WardenInbox } from "./inbox.js";
 import { evaluate, type PolicyResult } from "./policy.js";
 import { buildActionRequest } from "./request.js";
 import { defaultRules, loadRules, type LoadedRules } from "./rules.js";
@@ -105,6 +105,14 @@ export interface WardenSessionOptions {
   approvalTimeoutMs?: number;
   /** Aborting cancels any pending approval (a cancel is a deny). */
   signal?: AbortSignal;
+  /**
+   * An "ask" is now pending in the inbox (the item exists and was announced).
+   * Each call is followed by exactly one `onApprovalSettled`, after this one's
+   * promise has settled. Hooks never change a decision: a throw is logged.
+   */
+  onApprovalPending?: (item: InboxItemView, req: ActionRequest) => void | Promise<void>;
+  /** The pending approval was answered, expired or cancelled. */
+  onApprovalSettled?: (outcome: ApprovalOutcome, req: ActionRequest) => void | Promise<void>;
   dataClassHints?: DataClass[];
   log?: (msg: string) => void;
   now?: () => number;
@@ -160,6 +168,15 @@ export function createWardenSession(opts: WardenSessionOptions): WardenSession {
   /** Names of taint-source tools this session allowed and has not yet seen finish. */
   const armed = new Map<string, number>();
   let tainted = opts.initialTaint === true;
+
+  /** Run a host hook; a throw is logged and never reaches the decision. */
+  const quietly = async (fn: () => unknown, name: string): Promise<void> => {
+    try {
+      await fn();
+    } catch (err) {
+      log(`[warden] ${name} threw: ${(err as Error).message}`);
+    }
+  };
 
   const taint = (): void => {
     if (tainted) return;
@@ -297,6 +314,7 @@ export function createWardenSession(opts: WardenSessionOptions): WardenSession {
         return deny(handoffInstruction(req));
       }
       case "ask": {
+        let pending: Promise<void> | undefined;
         const outcome = await opts.inbox.request(req, {
           home,
           reason: result.reason,
@@ -306,7 +324,18 @@ export function createWardenSession(opts: WardenSessionOptions): WardenSession {
           bindTargets: result.bindTargets,
           timeoutMs: opts.approvalTimeoutMs,
           signal: opts.signal,
+          ...(opts.onApprovalPending
+            ? {
+                onQueued: (item: InboxItemView) => {
+                  pending = quietly(() => opts.onApprovalPending!(item, req), "onApprovalPending");
+                },
+              }
+            : {}),
         });
+        if (pending) {
+          await pending;
+          await quietly(() => opts.onApprovalSettled?.(outcome, req), "onApprovalSettled");
+        }
         if (outcome.approved) return allow();
         if (outcome.expired) {
           return deny(
