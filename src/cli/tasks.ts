@@ -35,6 +35,7 @@ import {
   taskDigest,
 } from "../tasks/confirmation.js";
 import { describeMigration, migrateHeartbeatTasks } from "../tasks/heartbeat-migration.js";
+import { envelopeProblem } from "../tasks/envelope.js";
 import { disableTask, enableTask } from "../tasks/lifecycle.js";
 import type { TaskRunner } from "../tasks/runner.js";
 import { removeTask } from "../tasks/removal.js";
@@ -45,6 +46,7 @@ import {
   tokensSpent,
   type Task,
 } from "../tasks/types.js";
+import { visible } from "../tasks/visible.js";
 
 const USAGE =
   "usage: lisa tasks [list]\n" +
@@ -63,15 +65,23 @@ function when(ms: number | undefined): string {
 }
 
 function cadence(task: Task): string {
-  if (task.schedule) return task.schedule.expr + (task.schedule.tz ? ` (${task.schedule.tz})` : "");
-  if (task.trigger) return `watch ${task.trigger.kind} ${task.trigger.every ?? "every:30m"}`;
+  if (task.schedule) {
+    return visible(task.schedule.expr + (task.schedule.tz ? ` (${task.schedule.tz})` : ""));
+  }
+  if (task.trigger)
+    return visible(`watch ${task.trigger.kind} ${task.trigger.every ?? "every:30m"}`);
   return "once";
+}
+
+/** A task's title on one line, as it is: nothing in it can redraw the screen (#422 review NEW-1). */
+function titleOf(task: Pick<Task, "title">): string {
+  return visible(task.title);
 }
 
 function line(task: Task): string {
   const status = task.enabled ? task.state : `${task.state}, off`;
   return (
-    `${task.id}  ${task.kind.padEnd(7)}  ${status.padEnd(16)}  ${task.title}\n` +
+    `${task.id}  ${task.kind.padEnd(7)}  ${status.padEnd(16)}  ${titleOf(task)}\n` +
     `    ${cadence(task)} · next ${when(task.nextRunAt)} · last ${when(task.lastRunAt)}`
   );
 }
@@ -129,8 +139,15 @@ export interface TasksCommandIo {
 }
 
 export async function runTasksCommand(args: string[], io: TasksCommandIo = {}): Promise<number> {
-  const out = io.out ?? ((l: string) => console.log(l));
-  const err = io.err ?? ((l: string) => console.error(l));
+  // Everything printed passes through visible(): a task's text (its title,
+  // instruction, envelope, a run's summary) may hold control, bidi or
+  // invisible characters, and none of them may reach the terminal raw — not
+  // only in the lines being confirmed (#422 review NEW-1). Line breaks this
+  // command prints itself are kept; text quoted from a task escapes its own.
+  const rawOut = io.out ?? ((l: string) => console.log(l));
+  const rawErr = io.err ?? ((l: string) => console.error(l));
+  const out: Out = (l) => rawOut(visible(l, { newlines: true }));
+  const err: Out = (l) => rawErr(visible(l, { newlines: true }));
   const now = io.now ?? Date.now;
   const { positional, confirm } = splitConfirm(args);
   const [sub = "list", id] = positional;
@@ -153,16 +170,17 @@ export async function runTasksCommand(args: string[], io: TasksCommandIo = {}): 
     const task = await resolve(id, err);
     if (!task) return 2;
     out(line(task));
-    out(`    notify ${task.notify} · host ${task.host} · origin ${task.origin.kind}`);
+    out(`    notify ${task.notify} · host ${task.host} · origin ${visible(task.origin.kind)}`);
     out(
       `    budget ${task.budget.tokens} tokens, ${Math.round(task.budget.wallclockMs / 60_000)} min, ` +
         `${task.budget.maxToolCalls} tool calls; at most ` +
         `${task.budget.maxApprovals ?? DEFAULT_MAX_APPROVALS} approvals and ` +
         `${Math.round((task.budget.approvalWaitMs ?? DEFAULT_APPROVAL_WAIT_MS) / 60_000)} min waiting for them`,
     );
-    if (task.envelope?.tools) out(`    tools: ${task.envelope.tools.join(", ")}`);
-    if (task.trigger) out(`    trigger: ${JSON.stringify(task.trigger)}`);
-    out(`\n${task.instruction}\n`);
+    if (task.pausedReason) out(`    switched off: ${visible(task.pausedReason)}`);
+    if (task.envelope?.tools) out(`    tools: ${visible(task.envelope.tools.join(", "))}`);
+    if (task.trigger) out(`    trigger: ${visible(JSON.stringify(task.trigger))}`);
+    out(`\n${visible(task.instruction, { newlines: true })}\n`);
     const confirmedNow = isEnvelopeConfirmed(task, await confirmationKey());
     out(
       confirmedNow
@@ -186,7 +204,7 @@ export async function runTasksCommand(args: string[], io: TasksCommandIo = {}): 
           `${tokensSpent(run)} tokens · ${run.toolCalls} tool calls${cost}`,
       );
       const note = run.summary ?? run.error;
-      if (note) out(`    ${note.replace(/\s+/g, " ").slice(0, 240)}`);
+      if (note) out(`    ${visible(note.replace(/\s+/g, " ").slice(0, 240))}`);
     }
     return 0;
   }
@@ -196,13 +214,23 @@ export async function runTasksCommand(args: string[], io: TasksCommandIo = {}): 
     if (!task) return 2;
     const updated = await updateTask(task.id, (t) => disableTask(t), now());
     if (!updated) return 2;
-    out(`"${updated.title}" is off.`);
+    out(`"${titleOf(updated)}" is off.`);
     return 0;
   }
 
   if (sub === "enable") {
     const task = await resolve(id, err);
     if (!task) return 2;
+    // An envelope that cannot be shown as it is cannot be confirmed — or
+    // switched on (#422 review NEW-1).
+    const envelopeIssue = envelopeProblem(task.envelope);
+    if (envelopeIssue) {
+      err(
+        `this task's ${envelopeIssue}. Nothing was changed; ` +
+          "fix or remove its envelope (PATCH /api/tasks/{id}) or remove the task.",
+      );
+      return 2;
+    }
     // What the user is confirming, in plain words, before anything changes —
     // all of it: on a terminal it is paged, never cut (#422 review N6).
     const digest = taskDigest(task);
@@ -250,7 +278,7 @@ export async function runTasksCommand(args: string[], io: TasksCommandIo = {}): 
       task.id,
       (t) => {
         // Under the lock: the task must still be the one that was shown.
-        if (taskDigest(t) !== digest) {
+        if (taskDigest(t) !== digest || envelopeProblem(t.envelope)) {
           changed = true;
           return false;
         }
@@ -269,8 +297,8 @@ export async function runTasksCommand(args: string[], io: TasksCommandIo = {}): 
     }
     out(
       updated.nextRunAt !== undefined
-        ? `"${updated.title}" is on — next run ${when(updated.nextRunAt)}.`
-        : `"${updated.title}" is on.`,
+        ? `"${titleOf(updated)}" is on — next run ${when(updated.nextRunAt)}.`
+        : `"${titleOf(updated)}" is on.`,
     );
     if (confirmed) out("Its envelope is confirmed: the actions above run without asking.");
     else if (preapproves) {
@@ -291,7 +319,7 @@ export async function runTasksCommand(args: string[], io: TasksCommandIo = {}): 
     const { waited, stillRunning } = await removeTask(task.id, { now });
     // No runner (or Warden factory) here: end the task's grants directly.
     await revokeGrantsOfRemovedTask({ taskId: task.id, uid: scopedUid(), home: lisaHome() }, now);
-    out(`removed "${task.title}" (${task.id})`);
+    out(`removed "${titleOf(task)}" (${task.id})`);
     if (stillRunning) err("(a run was still in flight; it stops at its next step)");
     else if (waited) err("(waited for its run to stop)");
     return 0;
@@ -329,16 +357,19 @@ export async function runTaskNow(
   runner: TaskRunner,
   io: { out?: Out; err?: Out } = {},
 ): Promise<number> {
-  const out = io.out ?? ((l: string) => console.log(l));
-  const err = io.err ?? ((l: string) => console.error(l));
+  // A run's summary is model text that may quote a page: shown as it is (#422 review NEW-1).
+  const rawOut = io.out ?? ((l: string) => console.log(l));
+  const rawErr = io.err ?? ((l: string) => console.error(l));
+  const out: Out = (l) => rawOut(visible(l, { newlines: true }));
+  const err: Out = (l) => rawErr(visible(l, { newlines: true }));
   const task = await resolve(idOrPrefix, err);
   if (!task) return 2;
   const queued = await runner.runNow(task.id);
   if (!queued.ok) {
     err(
       queued.reason === "already_running"
-        ? `"${task.title}" is already running (the web server may have it).`
-        : `cannot run "${task.title}": ${queued.reason}`,
+        ? `"${titleOf(task)}" is already running (the web server may have it).`
+        : `cannot run "${titleOf(task)}": ${queued.reason}`,
     );
     return 1;
   }
@@ -347,7 +378,7 @@ export async function runTaskNow(
   const runId = after?.runs.at(-1);
   const run = runId ? (await loadRun(task.id, runId))?.run : undefined;
   if (!run || (run.state !== "succeeded" && run.state !== "failed" && run.state !== "cancelled")) {
-    err(`"${task.title}" did not start — another process holds it. Try again in a moment.`);
+    err(`"${titleOf(task)}" did not start — another process holds it. Try again in a moment.`);
     return 1;
   }
   err(

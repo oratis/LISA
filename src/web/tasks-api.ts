@@ -23,6 +23,7 @@ import {
   confirmTask,
   taskDigest,
 } from "../tasks/confirmation.js";
+import { envelopeProblem } from "../tasks/envelope.js";
 import { disableTask, enableTask } from "../tasks/lifecycle.js";
 import type { TaskEngineEvent, TaskRunner } from "../tasks/runner.js";
 import { removeTask } from "../tasks/removal.js";
@@ -226,6 +227,13 @@ export async function handleTasksApi(
           (t) => {
             problem = applyTaskEdit(t, body, ctx);
             if (problem) return false;
+            // An envelope that cannot be shown as it is (a task file found so on
+            // disk) is neither switched on nor confirmed (#422 review NEW-1).
+            const envelopeIssue = body.enabled === true ? envelopeProblem(t.envelope) : null;
+            if (envelopeIssue) {
+              problem = envelopeIssue;
+              return false;
+            }
             // The digest names the task as the user saw it — after this
             // request's own edits. Anything else confirms nothing and changes
             // nothing.

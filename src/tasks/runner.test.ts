@@ -759,7 +759,7 @@ test("a factory that returns no gate still gets the safe default; one that allow
     assert.equal(ctx.signal.aborted, false);
     assert.equal(typeof ctx.approvalWait.started, "function");
 
-    const second = await dueRoutine({ envelope: { tools: ["bash"], categories: ["shell"] } });
+    const second = await dueRoutine({ envelope: { tools: ["bash"], categories: ["exec"] } });
     const allowed = makeRunner({
       provider: scripted([turn([call("bash", { command: "ls" })]), say("x")]).provider,
       tools,
@@ -773,7 +773,7 @@ test("a factory that returns no gate still gets the safe default; one that allow
     assert.equal(ran, 1);
     assert.deepEqual((seenCtx[1] as { envelope: unknown }).envelope, {
       tools: ["bash"],
-      categories: ["shell"],
+      categories: ["exec"],
     });
     assert.equal((await getTask(second.id))!.state, "scheduled");
   });

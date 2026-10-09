@@ -26,6 +26,7 @@
  */
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { loadDigestKey, readDigestKey } from "../warden/store.js";
+import { visible } from "./visible.js";
 import {
   DEFAULT_APPROVAL_WAIT_MS,
   DEFAULT_MAX_APPROVALS,
@@ -187,26 +188,6 @@ const TOOL_WORDS: Readonly<Record<string, string>> = Object.freeze({
   takoapi: "call remote agents",
 });
 
-/**
- * Characters that would change what the user sees without being seen: other
- * control characters (a carriage return, an escape sequence that clears the
- * line), bidi controls, zero-width and other invisible format characters, line
- * separators. Shown escaped instead, so the screen is the text.
- */
-const UNSEEN = /[\p{Cc}\p{Cf}\u2028\u2029]/gu;
-
-function visible(text: string, opts: { newlines?: boolean } = {}): string {
-  return text.replace(UNSEEN, (ch) =>
-    opts.newlines && (ch === "\n" || ch === "\t")
-      ? ch
-      : ch === "\n"
-        ? "\\n"
-        : ch === "\t"
-          ? "\\t"
-          : `\\u{${ch.codePointAt(0)!.toString(16).padStart(4, "0")}}`,
-  );
-}
-
 const HOST_WORDS: Readonly<Record<Task["host"], string>> = Object.freeze({
   home: "this Mac only",
   cloud: "the hosted edition only",
@@ -273,20 +254,22 @@ export function describeForConfirmation(task: Confirmable): string[] {
     lines.push(
       "Nothing is pre-approved: every action with a side effect asks you first (with Warden on) or is not run.",
     );
-    if (envelope?.tools?.length) lines.push(`It may only use: ${envelope.tools.join(", ")}.`);
-    return lines;
+    if (envelope?.tools?.length) {
+      lines.push(`It may only use: ${visible(envelope.tools.join(", "))}.`);
+    }
+    return lines.map((line) => visible(line));
   }
   lines.push("If you confirm, these actions will run without asking:");
   for (const tool of envelope!.tools ?? []) {
     const words = Object.hasOwn(TOOL_WORDS, tool) ? TOOL_WORDS[tool] : undefined;
-    lines.push(`  - the tool ${tool}${words ? ` (${words})` : ""}`);
+    lines.push(`  - the tool ${visible(tool)}${words ? ` (${words})` : ""}`);
   }
   for (const category of envelope!.categories ?? []) {
     const words = Object.hasOwn(CATEGORY_WORDS, category) ? CATEGORY_WORDS[category] : undefined;
     lines.push(
       words
-        ? `  - any "${category}" action: ${words}`
-        : `  - "${category}" (a label, not a permission: it pre-approves nothing)`,
+        ? `  - any "${visible(category)}" action: ${words}`
+        : `  - "${visible(category)}" (a label, not a permission: it pre-approves nothing)`,
     );
   }
   lines.push(
@@ -294,14 +277,19 @@ export function describeForConfirmation(task: Confirmable): string[] {
       ? `  …only on: ${visible(envelope!.targets.join(", "))}`
       : "  …on any target.",
   );
-  if (envelope!.tools?.length) lines.push(`It may only use: ${envelope!.tools.join(", ")}.`);
+  if (envelope!.tools?.length) {
+    lines.push(`It may only use: ${visible(envelope!.tools.join(", "))}.`);
+  }
   lines.push(
     "Even then it asks first before it runs a command, sends, publishes, deletes, makes another " +
       "network write or writes outside its own folder once the run has read outside content " +
       "(a web page, a mail, a watcher hit). Purchases and credentials are always handed back to you.",
     "This applies only while the server runs with Warden on; otherwise an unattended run makes read-only calls only.",
   );
-  return lines;
+  // Every line, whatever it quotes (a schedule, a budget from a task file), is
+  // shown as it is: nothing in it can move the cursor or redraw the screen
+  // the user confirms from (#422 review NEW-1). visible() is idempotent.
+  return lines.map((line) => visible(line));
 }
 
 export interface TaskConfirmationView {

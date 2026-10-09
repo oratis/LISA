@@ -713,7 +713,7 @@ describe("tasks API — contract", () => {
   test("responses and SSE events conform to their schemas", async () => {
     const created = await api("POST", "/api/tasks", {
       ...routine,
-      envelope: { tools: ["web_fetch"], categories: ["web"] },
+      envelope: { tools: ["web_fetch"], categories: ["network"] },
       budget: { tokens: 50_000 },
     });
     conforms("TaskResponse", created.body);

@@ -52,6 +52,7 @@ import { heartbeatRunLockPath, HEARTBEAT_RUN_LOCK_STALE_MS } from "../heartbeat/
 import { lisaGlobalHome } from "../paths.js";
 import { withFileLock } from "../soul/lock.js";
 import { enableTask } from "./lifecycle.js";
+import { HEARTBEAT_LEGACY_CATEGORY } from "./envelope.js";
 import { MIN_EVERY_MS_LOCAL, parseSchedule, validateSchedule } from "./schedule.js";
 import { createTask, getTask, updateTask } from "./store.js";
 import { DEFAULT_TASK_BUDGET, type ScheduleSpec, type Task, type TaskBudget } from "./types.js";
@@ -61,7 +62,7 @@ import { LIMITS } from "./validate.js";
 export const DEFAULT_HEARTBEAT_INTERVAL_SEC = 1800;
 
 /** Envelope category marking a routine that came from heartbeat.json (for the Warden wiring). */
-export const HEARTBEAT_LEGACY_CATEGORY = "heartbeat-legacy";
+export { HEARTBEAT_LEGACY_CATEGORY };
 
 /** The heartbeat's own default per-tick token ceiling (heartbeat/config.ts). */
 const HEARTBEAT_DEFAULT_BUDGET_TOKENS = 500_000;
