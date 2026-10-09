@@ -189,7 +189,9 @@ export async function handleMemoryApi(
     }
 
     if (path.startsWith("/api/memory/entries/")) {
-      const id = decodeURIComponent(path.slice("/api/memory/entries/".length));
+      // Ids are [mu]_<hex>: nothing to percent-decode, and a malformed escape
+      // must be a 404 rather than a URIError.
+      const id = path.slice("/api/memory/entries/".length);
       if (!/^[mu]_[0-9a-f]{16}$/.test(id)) {
         json(res, 404, { error: "not_found" });
         return true;

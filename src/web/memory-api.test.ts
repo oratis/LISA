@@ -171,6 +171,7 @@ describe("memory entries API (Mac edition)", () => {
     // A stale id (its entry changed) is a 404, not a silent overwrite.
     assert.equal((await call("PUT", `/api/memory/entries/${two.id}`, { text: "x" })).status, 404);
     assert.equal((await call("DELETE", "/api/memory/entries/%2e%2e%2fsoul")).status, 404);
+    assert.equal((await call("DELETE", "/api/memory/entries/%zz")).status, 404);
   });
 
   test("validates bodies and enforces the byte caps", async () => {
