@@ -5100,5 +5100,7 @@ self.addEventListener('fetch', (event) => {
       resolve();
     });
   });
+  // Dream-log retention on startup (then at most hourly, from the passes).
+  void import("../reve/store.js").then((m) => m.maybeApplyRetention()).catch(() => undefined);
   return server;
 }

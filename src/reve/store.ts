@@ -29,9 +29,13 @@ import {
 /** Retention: keep the newest KEEP_COUNT dreams or the last KEEP_DAYS, whichever is larger… */
 export const RETENTION_KEEP_COUNT = 60;
 export const RETENTION_KEEP_DAYS = 90;
+/** …never more than MAX_COUNT dreams in all (20-minute idle runs make ~6500 in 90 days)… */
+export const RETENTION_MAX_COUNT = 500;
 /** …bounded by total bytes on disk (never pruning below RETENTION_FLOOR). */
 export const RETENTION_MAX_BYTES = 64 * 1024 * 1024;
 export const RETENTION_FLOOR = 10;
+/** Retention runs at most this often per home and process (and on the first chance after start). */
+export const RETENTION_INTERVAL_MS = 60 * 60_000;
 
 export class DreamNotFoundError extends Error {
   constructor(id: string) {
@@ -142,20 +146,25 @@ export async function writeDreamRecord(rec: DreamRecord): Promise<void> {
   await atomicWrite(dreamFile(rec.id), JSON.stringify(rec, null, 2) + "\n");
 }
 
-/** Dream ids present on disk (any of the three files), newest first. */
-export async function idsOnDisk(): Promise<string[]> {
+/** One readdir of the dreams dir: ids (newest first) and the file names present. */
+async function listDreamsDir(): Promise<{ ids: string[]; names: Set<string> }> {
   let names: string[];
   try {
     names = await fs.readdir(dreamsDir());
   } catch {
-    return [];
+    return { ids: [], names: new Set() };
   }
   const ids = new Set<string>();
   for (const n of names) {
     const id = n.replace(/\.(before\.json|json|md)$/, "");
     if (id !== n && isValidDreamId(id)) ids.add(id);
   }
-  return [...ids].sort().reverse();
+  return { ids: [...ids].sort().reverse(), names: new Set(names) };
+}
+
+/** Dream ids present on disk (any of the three files), newest first. */
+export async function idsOnDisk(): Promise<string[]> {
+  return (await listDreamsDir()).ids;
 }
 
 export function summarizeDream(rec: DreamRecord): DreamSummary {
@@ -246,29 +255,32 @@ async function deleteDreamFiles(id: string): Promise<void> {
 
 /**
  * Apply retention. Caller holds the reve lock. Keeps a dream when it is among
- * the newest RETENTION_KEEP_COUNT OR younger than RETENTION_KEEP_DAYS; then,
- * oldest first, prunes kept dreams while total bytes exceed the cap (never
- * below RETENTION_FLOOR). Orphan files (no .json) are removed.
+ * the newest RETENTION_KEEP_COUNT OR younger than RETENTION_KEEP_DAYS, but
+ * never more than the newest RETENTION_MAX_COUNT; then, oldest first, prunes
+ * kept dreams while total bytes exceed the cap (never below
+ * RETENTION_FLOOR). Orphan files (no .json) are removed.
  */
 export async function applyRetention(
   now: number = Date.now(),
-  limits: { keepCount?: number; keepDays?: number; maxBytes?: number; floor?: number } = {},
+  limits: {
+    keepCount?: number;
+    keepDays?: number;
+    maxCount?: number;
+    maxBytes?: number;
+    floor?: number;
+  } = {},
 ): Promise<string[]> {
   const keepCount = limits.keepCount ?? RETENTION_KEEP_COUNT;
   const keepDays = limits.keepDays ?? RETENTION_KEEP_DAYS;
+  const maxCount = limits.maxCount ?? RETENTION_MAX_COUNT;
   const maxBytes = limits.maxBytes ?? RETENTION_MAX_BYTES;
   const floor = limits.floor ?? RETENTION_FLOOR;
-  const ids = await idsOnDisk(); // newest first
+  const { ids, names } = await listDreamsDir(); // newest first; one readdir, no per-id stat
   const removed: string[] = [];
   const kept: string[] = [];
   const cutoff = now - keepDays * 24 * 60 * 60_000;
-  for (const [i, id] of ids.entries()) {
-    let hasRecord = true;
-    try {
-      await fs.access(dreamFile(id));
-    } catch {
-      hasRecord = false;
-    }
+  for (const id of ids) {
+    const hasRecord = names.has(`${id}.json`);
     // An orphan sidecar / summary whose record never landed (crash mid-write)
     // is garbage — unless it is brand new and its record is being written now.
     if (!hasRecord && now - dreamIdTime(id) > 10 * 60_000) {
@@ -276,8 +288,9 @@ export async function applyRetention(
       removed.push(id);
       continue;
     }
-    if (i < keepCount || dreamIdTime(id) >= cutoff) kept.push(id);
-    else {
+    if ((kept.length < keepCount || dreamIdTime(id) >= cutoff) && kept.length < maxCount) {
+      kept.push(id);
+    } else {
       await deleteDreamFiles(id);
       removed.push(id);
     }
@@ -296,4 +309,26 @@ export async function applyRetention(
     removed.push(oldest);
   }
   return removed;
+}
+
+/** Last retention run per reve dir, in this process. */
+const lastRetention = new Map<string, number>();
+
+/**
+ * Run retention when it is due for the active home: at most once per
+ * RETENTION_INTERVAL_MS per process, and on the first call after start.
+ * Takes the reve lock itself (a short, separate critical section, not the
+ * one a dream's record write holds). Never throws; returns what it removed,
+ * or null when it was not due.
+ */
+export async function maybeApplyRetention(now: number = Date.now()): Promise<string[] | null> {
+  const key = dreamsDir();
+  const last = lastRetention.get(key);
+  if (last !== undefined && now - last < RETENTION_INTERVAL_MS && now >= last) return null;
+  lastRetention.set(key, now);
+  try {
+    return await lockReve(() => applyRetention(now));
+  } catch {
+    return null; // best-effort; the next due run tries again
+  }
 }

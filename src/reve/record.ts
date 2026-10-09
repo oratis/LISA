@@ -37,7 +37,12 @@ import {
   uncapturedParts,
   type Snapshot,
 } from "./snapshot.js";
-import { applyRetention, lockReve, writeDreamRecord, type DreamSnapshotSidecar } from "./store.js";
+import {
+  lockReve,
+  maybeApplyRetention,
+  writeDreamRecord,
+  type DreamSnapshotSidecar,
+} from "./store.js";
 import {
   DREAM_RECORD_VERSION,
   type DesireChanges,
@@ -177,7 +182,7 @@ export async function beginDream(opts: {
 
 /** Wrap one pass. Rethrows the pass's own error after recording. */
 export async function withDream<T>(
-  opts: { trigger: DreamTrigger; task?: string },
+  opts: { trigger: DreamTrigger; task?: string; now?: () => Date },
   fn: () => Promise<T>,
 ): Promise<T> {
   const dream = await beginDream(opts);
@@ -520,7 +525,8 @@ async function finishDream(ctx: {
     }
     await writeDreamRecord(rec);
     await atomicWrite(dreamSummaryFile(rec.id), renderMarkdown(rec));
-    await applyRetention(ctx.end.getTime());
   });
+  // Not on every pass, and not inside the record write's critical section.
+  await maybeApplyRetention(ctx.end.getTime());
   return rec;
 }

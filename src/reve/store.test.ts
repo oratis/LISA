@@ -4,7 +4,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const { applyRetention, listDreams, dreamIdTime } = await import("./store.js");
+const { applyRetention, listDreams, dreamIdTime, RETENTION_MAX_COUNT, RETENTION_INTERVAL_MS } =
+  await import("./store.js");
+const { withDream } = await import("./record.js");
+const { appendMemory } = await import("../memory/store.js");
 
 let home: string;
 const savedHome = process.env.LISA_HOME;
@@ -100,5 +103,41 @@ describe("dream retention", () => {
       fs.existsSync(path.join(dir, `${fresh}.before.json`)),
       "a record still being written is kept",
     );
+  });
+});
+
+describe("retention cost (#423 F6)", () => {
+  test("a hard count cap holds even when every dream is younger than 90 days", async () => {
+    // 20-minute idle runs: 600 dreams in ~8 days.
+    const ids = Array.from({ length: 600 }, (_, i) => idAt(NOW - i * 20 * 60_000, i));
+    for (const id of ids) fakeDream(id);
+    const removed = await applyRetention(NOW);
+    assert.equal(RETENTION_MAX_COUNT, 500);
+    assert.equal(removed.length, 100);
+    assert.deepEqual(removed.sort(), ids.slice(500).sort(), "the oldest go");
+    assert.equal((await listDreams(500)).dreams.length, 500);
+  });
+
+  test("retention runs at most once an hour, not on every pass", async () => {
+    process.env.LISA_KB_NO_GIT = "1";
+    process.env.LISA_SOUL_GIT = "0";
+    const dir = path.join(home, "reve", "dreams");
+    const t0 = Date.now();
+    const pass = async (at: number) => {
+      await withDream({ trigger: "idle", now: () => new Date(at) }, async () => {
+        await appendMemory("memory", `entry ${at}`);
+      });
+    };
+    await pass(t0); // first pass after start: retention runs
+    // An orphan sidecar (its record never landed) that retention would remove.
+    const orphan = idAt(t0 - DAY, 7);
+    fs.writeFileSync(path.join(dir, `${orphan}.before.json`), "{}");
+    await pass(t0 + 60_000);
+    assert.ok(
+      fs.existsSync(path.join(dir, `${orphan}.before.json`)),
+      "not run again within the hour",
+    );
+    await pass(t0 + RETENTION_INTERVAL_MS + 120_000);
+    assert.equal(fs.existsSync(path.join(dir, `${orphan}.before.json`)), false, "due again");
   });
 });
