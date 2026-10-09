@@ -41,6 +41,11 @@ export interface SubagentOptions {
    * makes is decided by it (and it is handed further down to nested runs).
    */
   approval?: ToolContext["approval"];
+  /**
+   * The parent turn's execution world (ToolContext `caps`): a task run's
+   * folder-only filesystem and sandbox. Unset ⇒ the host's own (H1).
+   */
+  caps?: ToolContext["caps"];
 }
 
 export interface SubagentResult {
@@ -66,6 +71,7 @@ export async function runSubagent(opts: SubagentOptions): Promise<SubagentResult
       log: opts.log ?? (() => {}),
       sandboxMode: opts.sandboxMode,
       approval: opts.approval,
+      ...(opts.caps ? { caps: opts.caps } : {}),
     },
     approval: opts.approval,
     history: [],

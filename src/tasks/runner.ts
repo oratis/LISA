@@ -1512,6 +1512,18 @@ export class TaskRunner {
         return decision;
       };
 
+      // What a tool that starts a nested agent run hands down (ToolContext
+      // `approval`): the run's own gate — the same Warden session, taint and
+      // all — with the taint the nested calls bring recorded on this run. Not
+      // the ledger shortcut above: a nested run has no exactly-once hook, so
+      // nothing it does may be waved through as "already executed". (The
+      // `task` subagent itself is never offered to a task run: policy.ts.)
+      const nestedApproval: ApprovalCallback = async (name, input) => {
+        const decision = await gate(name, input);
+        if (decision.allow && isBuiltinTaintSource(name)) markTainted();
+        return decision;
+      };
+
       const inner = this.opts.provider ?? providerForModel(model);
       const provider: Provider = {
         name: inner.name,
@@ -1592,6 +1604,7 @@ export class TaskRunner {
           log: (m) => this.log(`${task.id}: ${m}`),
           sandboxMode,
           ...(caps ? { caps } : {}),
+          approval: nestedApproval,
         },
         history,
         userMessage,
