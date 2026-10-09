@@ -67,7 +67,9 @@ export function lisaPackageVersion(): string {
   if (cachedVersion !== null) return cachedVersion;
   try {
     const here = path.dirname(fileURLToPath(import.meta.url));
-    const pkg = JSON.parse(readFileSync(path.resolve(here, "..", "..", "package.json"), "utf8")) as {
+    const pkg = JSON.parse(
+      readFileSync(path.resolve(here, "..", "..", "package.json"), "utf8"),
+    ) as {
       version?: string;
     };
     cachedVersion = pkg.version ?? "unknown";
@@ -216,10 +218,7 @@ export async function writeExport(opts: ExportOptions, out: Writable): Promise<E
 }
 
 /** Export to a file, written to a temp name and renamed into place (0600). */
-export async function exportLisaToFile(
-  opts: ExportOptions,
-  file: string,
-): Promise<ExportManifest> {
+export async function exportLisaToFile(opts: ExportOptions, file: string): Promise<ExportManifest> {
   const tmp = `${file}.${crypto.randomBytes(6).toString("hex")}.partial`;
   const stream = fs.createWriteStream(tmp, { mode: 0o600, flags: "wx" });
   try {

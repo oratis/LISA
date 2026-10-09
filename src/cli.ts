@@ -499,9 +499,8 @@ async function main(): Promise<void> {
     args.subcommand === "export" ||
     args.subcommand === "import"
   ) {
-    const { runForgetCommand, runExportCommand, runImportCommand } = await import(
-      "./cli/sovereignty.js"
-    );
+    const { runForgetCommand, runExportCommand, runImportCommand } =
+      await import("./cli/sovereignty.js");
     const run = {
       forget: runForgetCommand,
       export: runExportCommand,

@@ -58,11 +58,7 @@ function schemaErrors(schemaInput: Schema, value: unknown, path = "$"): string[]
   if (schema.enum && !schema.enum.includes(value)) {
     errors.push(`${path} is not in enum`);
   }
-  const allowedTypes = Array.isArray(schema.type)
-    ? schema.type
-    : schema.type
-      ? [schema.type]
-      : [];
+  const allowedTypes = Array.isArray(schema.type) ? schema.type : schema.type ? [schema.type] : [];
   if (allowedTypes.length > 0) {
     const actual =
       value === null

@@ -138,7 +138,8 @@ async function unpackToStaging(
       rejectPath(h.path);
       receiving = "none";
       if (h.type === "directory") {
-        if (h.path === MANIFEST_PATH) throw new ImportError("bad_path", "manifest.json is a directory");
+        if (h.path === MANIFEST_PATH)
+          throw new ImportError("bad_path", "manifest.json is a directory");
         const abs = path.join(staging, h.path);
         if (!within(staging, abs)) throw new ImportError("bad_path", "path escapes the target");
         await fsp.mkdir(abs, { recursive: true, mode: 0o700 });
@@ -148,7 +149,8 @@ async function unpackToStaging(
         throw new ImportError("invalid_archive", `duplicate entry: ${h.path}`);
       }
       if (h.path === MANIFEST_PATH) {
-        if (h.size > MAX_MANIFEST_BYTES) throw new ImportError("manifest_invalid", "manifest too large");
+        if (h.size > MAX_MANIFEST_BYTES)
+          throw new ImportError("manifest_invalid", "manifest too large");
         manifestParts = [];
         receiving = "manifest";
         return;
@@ -191,7 +193,10 @@ async function unpackToStaging(
     if (e instanceof ImportError) throw e;
     if (e instanceof TarFormatError) throw new ImportError("invalid_archive", e.message);
     const code = (e as NodeJS.ErrnoException).code ?? "";
-    if (code.startsWith("Z_") || /incorrect header check|unexpected end/i.test((e as Error).message)) {
+    if (
+      code.startsWith("Z_") ||
+      /incorrect header check|unexpected end/i.test((e as Error).message)
+    ) {
       throw new ImportError("invalid_archive", "not a valid gzip archive");
     }
     throw e;
@@ -220,9 +225,13 @@ function parseManifest(raw: Buffer | null): ManifestShape {
     o.formatVersion < 1 ||
     o.formatVersion > EXPORT_FORMAT_VERSION
   ) {
-    throw new ImportError("manifest_invalid", `unsupported export format version ${String(o.formatVersion)}`);
+    throw new ImportError(
+      "manifest_invalid",
+      `unsupported export format version ${String(o.formatVersion)}`,
+    );
   }
-  if (!Array.isArray(o.files)) throw new ImportError("manifest_invalid", "manifest has no file list");
+  if (!Array.isArray(o.files))
+    throw new ImportError("manifest_invalid", "manifest has no file list");
   for (const f of o.files as unknown[]) {
     const e = f as { path?: unknown; size?: unknown; sha256?: unknown };
     if (
@@ -237,7 +246,8 @@ function parseManifest(raw: Buffer | null): ManifestShape {
       throw new ImportError("manifest_invalid", "malformed manifest file entry");
     }
     rejectPath(e.path);
-    if (e.path === MANIFEST_PATH) throw new ImportError("manifest_invalid", "manifest lists itself");
+    if (e.path === MANIFEST_PATH)
+      throw new ImportError("manifest_invalid", "manifest lists itself");
   }
   return o as ManifestShape;
 }
@@ -245,7 +255,8 @@ function parseManifest(raw: Buffer | null): ManifestShape {
 function verify(manifest: ManifestShape, written: Map<string, Written>): void {
   const listed = new Map<string, { size: number; sha256: string }>();
   for (const f of manifest.files) {
-    if (listed.has(f.path)) throw new ImportError("manifest_invalid", `duplicate manifest entry: ${f.path}`);
+    if (listed.has(f.path))
+      throw new ImportError("manifest_invalid", `duplicate manifest entry: ${f.path}`);
     listed.set(f.path, f);
   }
   for (const [p, w] of written) {
@@ -256,10 +267,17 @@ function verify(manifest: ManifestShape, written: Map<string, Written>): void {
     }
   }
   for (const p of listed.keys()) {
-    if (!written.has(p)) throw new ImportError("hash_mismatch", `manifest lists a missing file: ${p}`);
+    if (!written.has(p))
+      throw new ImportError("hash_mismatch", `manifest lists a missing file: ${p}`);
   }
-  if (manifest.includesSessions !== true && [...written.keys()].some((p) => p.startsWith("sessions/"))) {
-    throw new ImportError("manifest_invalid", "sessions present but the manifest says they were not exported");
+  if (
+    manifest.includesSessions !== true &&
+    [...written.keys()].some((p) => p.startsWith("sessions/"))
+  ) {
+    throw new ImportError(
+      "manifest_invalid",
+      "sessions present but the manifest says they were not exported",
+    );
   }
 }
 
@@ -279,7 +297,10 @@ async function areaHasData(into: string, root: string): Promise<boolean> {
   try {
     names = await fsp.readdir(path.join(into, root));
   } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === "ENOENT" || (e as NodeJS.ErrnoException).code === "ENOTDIR") {
+    if (
+      (e as NodeJS.ErrnoException).code === "ENOENT" ||
+      (e as NodeJS.ErrnoException).code === "ENOTDIR"
+    ) {
       return (e as NodeJS.ErrnoException).code === "ENOTDIR";
     }
     throw e;
@@ -291,7 +312,9 @@ async function areaHasData(into: string, root: string): Promise<boolean> {
 function ownerFor(into: string): string | null {
   const users = path.join(lisaGlobalHome(), "users");
   const rel = path.relative(users, into);
-  return rel && !rel.startsWith("..") && !path.isAbsolute(rel) && !rel.includes(path.sep) ? rel : null;
+  return rel && !rel.startsWith("..") && !path.isAbsolute(rel) && !rel.includes(path.sep)
+    ? rel
+    : null;
 }
 
 const ACTIVE_TASK_STATES = new Set([
@@ -363,7 +386,10 @@ export async function importLisa(archive: string, opts: ImportOptions = {}): Pro
   const st = await fsp.stat(archive);
   if (!st.isFile()) throw new ImportError("invalid_archive", "archive is not a regular file");
   if (st.size > limits.maxArchiveBytes) {
-    throw new ImportError("archive_too_large", `archive is larger than ${limits.maxArchiveBytes} bytes`);
+    throw new ImportError(
+      "archive_too_large",
+      `archive is larger than ${limits.maxArchiveBytes} bytes`,
+    );
   }
 
   await fsp.mkdir(into, { recursive: true, mode: 0o700 });
@@ -373,7 +399,9 @@ export async function importLisa(archive: string, opts: ImportOptions = {}): Pro
     const manifest = parseManifest(rawManifest);
     verify(manifest, written);
 
-    const roots = EXPORT_ROOTS.filter((r) => [...written.keys()].some((p) => p.startsWith(`${r}/`)));
+    const roots = EXPORT_ROOTS.filter((r) =>
+      [...written.keys()].some((p) => p.startsWith(`${r}/`)),
+    );
     for (const root of roots) {
       if (await areaHasData(into, root)) {
         if (opts.replace) continue;
@@ -395,9 +423,7 @@ export async function importLisa(archive: string, opts: ImportOptions = {}): Pro
       : 0;
 
     // ── swap (rollback-able) ──
-    const backupRoot = opts.replace
-      ? path.join(into, "import-backups", stampOf(now))
-      : null;
+    const backupRoot = opts.replace ? path.join(into, "import-backups", stampOf(now)) : null;
     const trash = path.join(staging, ".replaced");
     const done: Move[] = [];
     const move = async (from: string, to: string): Promise<void> => {
@@ -435,7 +461,10 @@ export async function importLisa(archive: string, opts: ImportOptions = {}): Pro
       for (const m of done.reverse()) {
         await fsp.rename(m.to, m.from).catch(() => {});
       }
-      throw new ImportError("swap_failed", `import could not be completed and was rolled back: ${(e as Error).message}`);
+      throw new ImportError(
+        "swap_failed",
+        `import could not be completed and was rolled back: ${(e as Error).message}`,
+      );
     }
 
     const bytes = [...written.values()].reduce((n, w) => n + w.size, 0);

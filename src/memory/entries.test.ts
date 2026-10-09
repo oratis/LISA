@@ -60,7 +60,11 @@ describe("memory entries parsing", () => {
     assert.equal(new Set(entries.map((e) => e.id)).size, entries.length);
     // Ids survive an unrelated edit elsewhere in the file.
     const again = parseMemoryEntries("memory", `- new first\n${md}`);
-    for (const e of entries) assert.ok(again.some((a) => a.id === e.id), e.text);
+    for (const e of entries)
+      assert.ok(
+        again.some((a) => a.id === e.id),
+        e.text,
+      );
   });
 
   test("duplicate entries get distinct ids by ordinal", () => {
@@ -88,10 +92,16 @@ describe("memory entries edit/delete", () => {
     assert.equal(readStoreFile("MEMORY.md"), "# Notes\n- edited\n- appended\n");
 
     // The old id no longer resolves (content-addressed).
-    await assert.rejects(replaceMemoryEntry(edit.id, "x"), (e: MemoryEditError) => e.code === "not_found");
+    await assert.rejects(
+      replaceMemoryEntry(edit.id, "x"),
+      (e: MemoryEditError) => e.code === "not_found",
+    );
 
     const audit = fs.readFileSync(path.join(home, "sovereignty", "audit.jsonl"), "utf8");
-    const lines = audit.trim().split("\n").map((l) => JSON.parse(l) as { action: string });
+    const lines = audit
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as { action: string });
     assert.deepEqual(
       lines.map((l) => l.action),
       ["memory.replace", "memory.append", "memory.delete"],
@@ -110,8 +120,14 @@ describe("memory entries edit/delete", () => {
     );
     const multi = await replaceMemoryEntry(item!.id, "first line\nsecond line");
     assert.equal(multi.text, "first line\nsecond line");
-    assert.equal(readStoreFile("MEMORY.md"), "### Projects\nsome prose\n- first line\n  second line\n");
-    await assert.rejects(appendMemoryEntry("memory", "bad\u0007bell"), (e: MemoryEditError) => e.code === "invalid_entry");
+    assert.equal(
+      readStoreFile("MEMORY.md"),
+      "### Projects\nsome prose\n- first line\n  second line\n",
+    );
+    await assert.rejects(
+      appendMemoryEntry("memory", "bad\u0007bell"),
+      (e: MemoryEditError) => e.code === "invalid_entry",
+    );
   });
 
   test("byte caps are enforced and an oversize file can still shrink", async () => {
@@ -123,13 +139,19 @@ describe("memory entries edit/delete", () => {
     writeStoreFile("USER.md", `- ${"a".repeat(1500)}\n- ${"b".repeat(1500)}\n`);
     const parsed = await readMemoryStore("user");
     assert.ok(parsed.warnings.some((w) => /over its 2048-byte cap/.test(w)));
-    await assert.rejects(appendMemoryEntry("user", "more"), (e: MemoryEditError) => e.code === "memory_full");
+    await assert.rejects(
+      appendMemoryEntry("user", "more"),
+      (e: MemoryEditError) => e.code === "memory_full",
+    );
     await deleteMemoryEntry(parsed.entries[0]!.id);
     assert.equal(readStoreFile("USER.md"), `- ${"b".repeat(1500)}\n`);
   });
 
   test("a corrupt file (NUL / invalid UTF-8) is listed but never rewritten", async () => {
-    const bad = Buffer.concat([Buffer.from("- ok\n- nul\u0000here\n"), Buffer.from([0xff, 0xfe, 0x0a])]);
+    const bad = Buffer.concat([
+      Buffer.from("- ok\n- nul\u0000here\n"),
+      Buffer.from([0xff, 0xfe, 0x0a]),
+    ]);
     writeStoreFile("MEMORY.md", bad);
     const parsed = await readMemoryStore("memory");
     assert.equal(parsed.corrupt, true);

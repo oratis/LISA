@@ -153,9 +153,9 @@ describe("import", () => {
     assert.equal(read(dest, "soul/identity.md"), "new soul\n");
     assert.equal(read(dest, "memory/MEMORY.md"), "- new memory\n");
     assert.ok(result.backup);
-    assert.equal(read(result.backup!, "soul/identity.md"), "old soul\n");
-    assert.equal(read(result.backup!, "soul/.git/HEAD"), "ref: refs/heads/main\n");
-    assert.equal(read(result.backup!, "memory/MEMORY.md"), "- old memory\n");
+    assert.equal(read(result.backup, "soul/identity.md"), "old soul\n");
+    assert.equal(read(result.backup, "soul/.git/HEAD"), "ref: refs/heads/main\n");
+    assert.equal(read(result.backup, "memory/MEMORY.md"), "- old memory\n");
   });
 
   test("refuses other existing areas without replace", async () => {

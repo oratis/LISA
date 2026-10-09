@@ -60,10 +60,7 @@ const callerStore = new AsyncLocalStorage<CallerContext>();
  * caller label. Used at tool-execute boundaries (soul_patch, soul_journal, ...)
  * and at reflect / birth entry points.
  */
-export async function withSoulCaller<T>(
-  caller: SoulCaller,
-  fn: () => Promise<T>,
-): Promise<T> {
+export async function withSoulCaller<T>(caller: SoulCaller, fn: () => Promise<T>): Promise<T> {
   return await callerStore.run({ caller }, fn);
 }
 
@@ -123,9 +120,7 @@ function runGitRaw(args: string[], cwd: string): Promise<GitResult> {
     child.stdout.on("data", (b: Buffer) => (stdout += b.toString("utf8")));
     child.stderr.on("data", (b: Buffer) => (stderr += b.toString("utf8")));
     child.on("close", (code) => resolve({ code: code ?? 1, stdout, stderr }));
-    child.on("error", (err) =>
-      resolve({ code: 1, stdout, stderr: stderr || String(err) }),
-    );
+    child.on("error", (err) => resolve({ code: 1, stdout, stderr: stderr || String(err) }));
   });
 }
 
@@ -178,14 +173,10 @@ export async function initSoulRepo(): Promise<void> {
       "--allow-empty",
     ]);
     if (commit.code !== 0) {
-      console.warn(
-        `[soul-git] initial commit failed: ${commit.stderr.trim().slice(0, 200)}`,
-      );
+      console.warn(`[soul-git] initial commit failed: ${commit.stderr.trim().slice(0, 200)}`);
     }
   } catch (err) {
-    console.warn(
-      `[soul-git] init failed: ${(err as Error).message.slice(0, 200)}`,
-    );
+    console.warn(`[soul-git] init failed: ${(err as Error).message.slice(0, 200)}`);
   }
 }
 
@@ -198,10 +189,7 @@ export async function initSoulRepo(): Promise<void> {
  * shouldn't block the agent loop. We serialize commits via a tiny in-process
  * queue so concurrent writes don't race on the index.lock.
  */
-export function commitSoulChange(
-  relPath: string,
-  opKind: string,
-): Promise<void> {
+export function commitSoulChange(relPath: string, opKind: string): Promise<void> {
   const caller = currentCaller();
   return enqueueCommit(async () => {
     if (!(await checkGitAvailable())) return;
@@ -240,11 +228,7 @@ export function commitSoulChange(
   });
 }
 
-function formatCommitMessage(
-  relPath: string,
-  opKind: string,
-  caller: SoulCaller,
-): string {
+function formatCommitMessage(relPath: string, opKind: string, caller: SoulCaller): string {
   return `${opKind}: ${relPath} via ${caller}`;
 }
 

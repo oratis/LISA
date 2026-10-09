@@ -62,7 +62,10 @@ describe("lisa forget", () => {
     assert.equal(await runForgetCommand(["project falcon", "--dry-run"], t), 0);
     assert.ok(t.lines.some((l) => /dry run/.test(l)));
     assert.ok(t.lines.some((l) => /memory\s+1/.test(l)));
-    assert.ok(t.lines.some((l) => /provider/i.test(l)), "residuals are listed");
+    assert.ok(
+      t.lines.some((l) => /provider/i.test(l)),
+      "residuals are listed",
+    );
     assert.match(fs.readFileSync(path.join(home, "memory/MEMORY.md"), "utf8"), /Falcon/);
   });
 

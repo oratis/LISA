@@ -48,11 +48,7 @@ export interface ParsedMemoryStore {
 }
 
 export type MemoryEditErrorCode =
-  | "invalid_entry"
-  | "invalid_store"
-  | "not_found"
-  | "memory_full"
-  | "memory_corrupt";
+  "invalid_entry" | "invalid_store" | "not_found" | "memory_full" | "memory_corrupt";
 
 export class MemoryEditError extends Error {
   constructor(
@@ -127,9 +123,7 @@ function parseBlocks(content: string): Block[] {
   for (const b of blocks) {
     if (b.kind !== "bullet") continue;
     const [first, ...rest] = b.lines;
-    b.text = [first!.replace(BULLET, "").trimEnd(), ...rest.map((l) => l.trim())]
-      .join("\n")
-      .trim();
+    b.text = [first!.replace(BULLET, "").trimEnd(), ...rest.map((l) => l.trim())].join("\n").trim();
   }
   return blocks;
 }
@@ -299,7 +293,10 @@ function locate(store: MemoryStore, content: string, text: string, kind: MemoryE
   return all[all.length - 1];
 }
 
-export async function appendMemoryEntry(store: MemoryStore, rawText: unknown): Promise<MemoryEntry> {
+export async function appendMemoryEntry(
+  store: MemoryStore,
+  rawText: unknown,
+): Promise<MemoryEntry> {
   if (!isMemoryStore(store)) throw new MemoryEditError("invalid_store", "unknown store");
   const text = normalizeEntryText(rawText, "bullet");
   return withMemoryLock(async () => {

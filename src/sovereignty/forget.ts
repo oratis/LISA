@@ -268,7 +268,11 @@ function redactContent(content: unknown, m: Matcher): { content: unknown; change
   return { content: out, changed };
 }
 
-function redactSessionLine(line: string, m: Matcher, isHeader: boolean): { line: string; hit: boolean } {
+function redactSessionLine(
+  line: string,
+  m: Matcher,
+  isHeader: boolean,
+): { line: string; hit: boolean } {
   if (!m.test(line)) return { line, hit: false };
   let entry: Record<string, unknown>;
   try {
@@ -293,7 +297,10 @@ function redactSessionLine(line: string, m: Matcher, isHeader: boolean): { line:
     return { line: JSON.stringify({ ...entry, text: redactLines(entry.text, m) }), hit: true };
   }
   if (entry.type === "reflection" && typeof entry.summary === "string") {
-    return { line: JSON.stringify({ ...entry, summary: redactLines(entry.summary, m) }), hit: true };
+    return {
+      line: JSON.stringify({ ...entry, summary: redactLines(entry.summary, m) }),
+      hit: true,
+    };
   }
   const r = redactStrings(entry, m);
   return { line: JSON.stringify(r.value), hit: r.changed > 0 };
@@ -373,7 +380,8 @@ async function scanUntouched(m: Matcher, report: ForgetReport): Promise<void> {
       continue;
     }
     const n = m.count(text);
-    if (n > 0) report.untouched.push({ layer: "soul", location: rel(file), matches: n, action: "none" });
+    if (n > 0)
+      report.untouched.push({ layer: "soul", location: rel(file), matches: n, action: "none" });
   }
 }
 
@@ -526,7 +534,12 @@ async function run(m: Matcher, apply: boolean): Promise<ForgetReport> {
       const n = await forgetInSession(file, m, apply);
       if (n === 0) continue;
       report.counts.sessions += n;
-      report.locations.push({ layer: "sessions", location: rel(file), matches: n, action: "redact" });
+      report.locations.push({
+        layer: "sessions",
+        location: rel(file),
+        matches: n,
+        action: "redact",
+      });
     } catch {
       report.errors.push({ layer: "sessions", error: `session_busy:${path.basename(file)}` });
     }
@@ -541,7 +554,12 @@ async function run(m: Matcher, apply: boolean): Promise<ForgetReport> {
     const r = redactStrings(parsed, m);
     if (r.changed === 0) continue;
     report.counts.reflections += r.changed;
-    report.locations.push({ layer: "reflections", location: rel(file), matches: r.changed, action: "redact" });
+    report.locations.push({
+      layer: "reflections",
+      location: rel(file),
+      matches: r.changed,
+      action: "redact",
+    });
     if (apply) await atomicWrite(file, JSON.stringify(r.value, null, 2));
   }
 
@@ -550,12 +568,25 @@ async function run(m: Matcher, apply: boolean): Promise<ForgetReport> {
   const embedDir = path.join(lisaHome(), "embeddings");
   const embedFiles = await listFiles(embedDir, ".json");
   const touched =
-    report.counts.sessions + report.counts.kb + report.counts.memory_kb_links + report.counts.reflections;
+    report.counts.sessions +
+    report.counts.kb +
+    report.counts.memory_kb_links +
+    report.counts.reflections;
   if (touched > 0 || embedFiles.length > 0) {
     report.counts.search_index = embedFiles.length + 1;
-    report.locations.push({ layer: "search_index", location: "(in-memory indexes)", matches: 1, action: "evict" });
+    report.locations.push({
+      layer: "search_index",
+      location: "(in-memory indexes)",
+      matches: 1,
+      action: "evict",
+    });
     for (const f of embedFiles) {
-      report.locations.push({ layer: "search_index", location: rel(f), matches: 1, action: "evict" });
+      report.locations.push({
+        layer: "search_index",
+        location: rel(f),
+        matches: 1,
+        action: "evict",
+      });
     }
   }
   if (apply) {
@@ -581,7 +612,9 @@ async function applyMemory(store: MemoryStore, m: Matcher, links: RegExp | null)
   await rewriteMemoryEntries(store, (entry) => {
     if (m.test(entry.text)) return null;
     if (countLinks(entry.text, links) === 0) return entry.text;
-    const stripped = stripLinks(entry.text, links, "").replace(/[ \t]{2,}/g, " ").trim();
+    const stripped = stripLinks(entry.text, links, "")
+      .replace(/[ \t]{2,}/g, " ")
+      .trim();
     return /[\p{L}\p{N}]/u.test(stripped) ? stripped : null;
   });
 }

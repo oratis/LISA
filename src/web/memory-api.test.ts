@@ -151,7 +151,10 @@ describe("memory entries API (Mac edition)", () => {
       ["likes tea"],
     );
 
-    const added = await call("POST", "/api/memory/entries", { store: "user", text: "prefers mornings" });
+    const added = await call("POST", "/api/memory/entries", {
+      store: "user",
+      text: "prefers mornings",
+    });
     assert.equal(added.status, 201);
     assert.equal((added.json.entry as Entry).text, "prefers mornings");
 
@@ -171,18 +174,33 @@ describe("memory entries API (Mac edition)", () => {
   });
 
   test("validates bodies and enforces the byte caps", async () => {
-    assert.equal((await call("POST", "/api/memory/entries", { store: "nope", text: "x" })).status, 400);
-    assert.equal((await call("POST", "/api/memory/entries", { store: "memory", text: "  " })).status, 400);
-    assert.equal((await call("POST", "/api/memory/entries", { store: "memory", text: 5 })).status, 400);
+    assert.equal(
+      (await call("POST", "/api/memory/entries", { store: "nope", text: "x" })).status,
+      400,
+    );
+    assert.equal(
+      (await call("POST", "/api/memory/entries", { store: "memory", text: "  " })).status,
+      400,
+    );
+    assert.equal(
+      (await call("POST", "/api/memory/entries", { store: "memory", text: 5 })).status,
+      400,
+    );
     const plain = await fetch(`${origin}/api/memory/entries`, {
       method: "POST",
       headers: { "content-type": "text/plain" },
       body: JSON.stringify({ store: "memory", text: "csrf" }),
     });
     assert.equal(plain.status, 415);
-    const huge = await call("POST", "/api/memory/entries", { store: "memory", text: "x".repeat(70_000) });
+    const huge = await call("POST", "/api/memory/entries", {
+      store: "memory",
+      text: "x".repeat(70_000),
+    });
     assert.equal(huge.status, 413);
-    const full = await call("POST", "/api/memory/entries", { store: "user", text: "y".repeat(2100) });
+    const full = await call("POST", "/api/memory/entries", {
+      store: "user",
+      text: "y".repeat(2100),
+    });
     assert.equal(full.status, 413);
     assert.equal(full.json.error, "memory_full");
   });
@@ -216,14 +234,22 @@ describe("memory entries API (Mac edition)", () => {
   test("a remote device is read-only; cross-site and rebinding requests are refused", async () => {
     write("memory/MEMORY.md", "- one\n");
     assert.equal((await entries({ remote: true }))[0]!.entries.length, 1);
-    const w = await call("POST", "/api/memory/entries", { store: "memory", text: "x" }, { remote: true });
+    const w = await call(
+      "POST",
+      "/api/memory/entries",
+      { store: "memory", text: "x" },
+      { remote: true },
+    );
     assert.equal(w.status, 403);
     assert.equal(w.json.error, "owner_required");
     assert.equal(
       (await call("POST", "/api/memory/forget", { query: "one" }, { remote: true })).status,
       403,
     );
-    assert.equal((await fetch(`${origin}/api/export`, { headers: headersFor({ remote: true }) })).status, 403);
+    assert.equal(
+      (await fetch(`${origin}/api/export`, { headers: headersFor({ remote: true }) })).status,
+      403,
+    );
 
     const cross = await call(
       "POST",
@@ -278,7 +304,9 @@ describe("memory entries API (Mac edition)", () => {
     write("config.env", "SECRET=1\n");
     write("warden/secrets.enc.json", "{}");
     const plain = await exportFiles("/api/export");
-    assert.ok(plain.has("memory/MEMORY.md") && plain.has("soul/identity.md") && plain.has("manifest.json"));
+    assert.ok(
+      plain.has("memory/MEMORY.md") && plain.has("soul/identity.md") && plain.has("manifest.json"),
+    );
     assert.ok(!plain.has("sessions/s1.jsonl"));
     assert.ok(![...plain.keys()].some((p) => p.includes("config.env") || p.startsWith("warden/")));
     const withSessions = await exportFiles("/api/export?sessions=1");
@@ -322,9 +350,18 @@ describe("memory sovereignty API — cloud tenant isolation", () => {
     );
     const [bMem] = await entries({ cloud: true, uid: B, remote: true });
     const bobId = bMem!.entries[0]!.id;
-    const put = await call("PUT", `/api/memory/entries/${bobId}`, { text: "hijacked" }, { cloud: true, uid: A, remote: true });
+    const put = await call(
+      "PUT",
+      `/api/memory/entries/${bobId}`,
+      { text: "hijacked" },
+      { cloud: true, uid: A, remote: true },
+    );
     assert.equal(put.status, 404);
-    const del = await call("DELETE", `/api/memory/entries/${bobId}`, undefined, { cloud: true, uid: A, remote: true });
+    const del = await call("DELETE", `/api/memory/entries/${bobId}`, undefined, {
+      cloud: true,
+      uid: A,
+      remote: true,
+    });
     assert.equal(del.status, 404);
     const add = await call(
       "POST",
@@ -339,7 +376,12 @@ describe("memory sovereignty API — cloud tenant isolation", () => {
   });
 
   test("uid A can't forget B's data", async () => {
-    const r = await call("POST", "/api/memory/forget", { query: "secret plan" }, { cloud: true, uid: A, remote: true });
+    const r = await call(
+      "POST",
+      "/api/memory/forget",
+      { query: "secret plan" },
+      { cloud: true, uid: A, remote: true },
+    );
     assert.equal(r.status, 200);
     assert.equal(read("memory/MEMORY.md", homeOf(A)), "\n");
     assert.equal(read("memory/MEMORY.md", homeOf(B)), "- bob secret plan\n");

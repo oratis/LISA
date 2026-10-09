@@ -14,12 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline/promises";
 import { lisaGlobalHome, lisaHome } from "../paths.js";
-import {
-  forget,
-  ForgetError,
-  FORGET_LAYERS,
-  type ForgetReport,
-} from "../sovereignty/forget.js";
+import { forget, ForgetError, FORGET_LAYERS, type ForgetReport } from "../sovereignty/forget.js";
 import { exportFileName, exportLisaToFile } from "../sovereignty/export.js";
 import { ImportError, importLisa } from "../sovereignty/import.js";
 
@@ -81,7 +76,8 @@ function summarize(report: ForgetReport, io: CliIo): void {
   if (total === 0) io.out("  (no mentions found)");
   if (report.locations.length) {
     io.out("Locations:");
-    for (const l of report.locations) io.out(`  ${l.action.padEnd(7)} ${l.location} (${l.matches})`);
+    for (const l of report.locations)
+      io.out(`  ${l.action.padEnd(7)} ${l.location} (${l.matches})`);
   }
   if (report.untouched.length) {
     io.out("Mentioned in Lisa's own soul files (hers — not edited):");
@@ -90,7 +86,11 @@ function summarize(report: ForgetReport, io: CliIo): void {
   for (const e of report.errors) io.err(`  ! ${e.layer}: ${e.error}`);
   if (report.remaining) {
     const left = FORGET_LAYERS.filter((l) => report.remaining![l] > 0);
-    io.out(left.length ? `Still matching after forget: ${left.join(", ")}` : "Verified: no layer still matches.");
+    io.out(
+      left.length
+        ? `Still matching after forget: ${left.join(", ")}`
+        : "Verified: no layer still matches.",
+    );
   }
   io.out("What forget cannot reach:");
   for (const r of report.residuals) io.out(`  - ${r}`);
@@ -182,7 +182,9 @@ export async function runExportCommand(args: string[], io: CliIo = defaultIo()):
       : "Session transcripts not included (pass --include-sessions).",
   );
   if (manifest.skipped) io.out(`Skipped ${manifest.skipped} link(s)/special file(s).`);
-  io.out("Never exported: secrets, keys, accounts, devices, billing, warden/, task leases/locks/outbox.");
+  io.out(
+    "Never exported: secrets, keys, accounts, devices, billing, warden/, task leases/locks/outbox.",
+  );
   return 0;
 }
 
@@ -202,9 +204,12 @@ export async function runImportCommand(args: string[], io: CliIo = defaultIo()):
   const into = path.resolve(p.values.get("--into") ?? lisaGlobalHome());
   try {
     const r = await importLisa(path.resolve(file), { into, replace: p.flags.has("--replace") });
-    io.out(`Imported ${r.files} file(s), ${humanBytes(r.bytes)} into ${r.into} (${r.roots.join(", ")}).`);
+    io.out(
+      `Imported ${r.files} file(s), ${humanBytes(r.bytes)} into ${r.into} (${r.roots.join(", ")}).`,
+    );
     if (r.backup) io.out(`Previous data backed up to ${r.backup}`);
-    if (r.tasksDisabled) io.out(`${r.tasksDisabled} task(s) imported disabled — review and re-enable them.`);
+    if (r.tasksDisabled)
+      io.out(`${r.tasksDisabled} task(s) imported disabled — review and re-enable them.`);
     io.out("Restart Lisa (lisa serve) so she picks up the imported soul.");
     return 0;
   } catch (e) {

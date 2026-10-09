@@ -42,24 +42,16 @@ export async function readMemory(store: MemoryStore): Promise<string> {
   return await readTextOrEmpty(fileFor(store));
 }
 
-export async function writeMemory(
-  store: MemoryStore,
-  content: string,
-): Promise<void> {
+export async function writeMemory(store: MemoryStore, content: string): Promise<void> {
   await ensureDir(memoryDir());
   const trimmed = content.replace(/\s+$/g, "") + "\n";
   if (Buffer.byteLength(trimmed, "utf8") > MAX_BYTES[store]) {
-    throw new Error(
-      `memory "${store}" exceeds ${MAX_BYTES[store]} bytes. Trim or split entries.`,
-    );
+    throw new Error(`memory "${store}" exceeds ${MAX_BYTES[store]} bytes. Trim or split entries.`);
   }
   await atomicWrite(fileFor(store), trimmed);
 }
 
-export async function appendMemory(
-  store: MemoryStore,
-  entry: string,
-): Promise<void> {
+export async function appendMemory(store: MemoryStore, entry: string): Promise<void> {
   await withMemoryLock(async () => {
     const current = await readMemory(store);
     const sep = current && !current.endsWith("\n") ? "\n" : "";
@@ -93,10 +85,7 @@ async function replaceInMemoryUnlocked(
   await writeMemory(store, current.replace(oldString, newString));
 }
 
-export async function removeFromMemory(
-  store: MemoryStore,
-  fragment: string,
-): Promise<void> {
+export async function removeFromMemory(store: MemoryStore, fragment: string): Promise<void> {
   await withMemoryLock(() => removeFromMemoryUnlocked(store, fragment));
 }
 

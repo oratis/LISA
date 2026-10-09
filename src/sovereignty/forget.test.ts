@@ -54,9 +54,26 @@ function seed(): void {
   );
   write("kb/wiki/tea.md", "---\ntitle: Tea\n---\nOolong is nice.\n");
   const lines = [
-    { type: "session", id: SESSION, version: 2, startedAt: "2026-10-01T10:00:00Z", cwd: "/x", model: "m" },
-    { type: "prompt", ts: "t", fingerprint: "f", reason: "initial", text: "## Memory\n- Sam's sister Alice lives in Oslo\n- likes tea" },
-    { type: "message", ts: "t", message: { role: "user", content: "Tell me what you know about Alice" } },
+    {
+      type: "session",
+      id: SESSION,
+      version: 2,
+      startedAt: "2026-10-01T10:00:00Z",
+      cwd: "/x",
+      model: "m",
+    },
+    {
+      type: "prompt",
+      ts: "t",
+      fingerprint: "f",
+      reason: "initial",
+      text: "## Memory\n- Sam's sister Alice lives in Oslo\n- likes tea",
+    },
+    {
+      type: "message",
+      ts: "t",
+      message: { role: "user", content: "Tell me what you know about Alice" },
+    },
     {
       type: "message",
       ts: "t",
@@ -65,7 +82,12 @@ function seed(): void {
         content: [
           { type: "thinking", thinking: "The user asks about Alice.", signature: "sig" },
           { type: "text", text: "Alice is in Oslo." },
-          { type: "tool_use", id: "tu1", name: "memory_search", input: { query: "Alice Oslo", k: 3 } },
+          {
+            type: "tool_use",
+            id: "tu1",
+            name: "memory_search",
+            input: { query: "Alice Oslo", k: 3 },
+          },
         ],
       },
     },
@@ -81,7 +103,10 @@ function seed(): void {
     { type: "reflection", ts: "t", summary: "Talked about Alice.\nAlso tea." },
   ];
   write(`sessions/${SESSION}.jsonl`, lines.map((l) => JSON.stringify(l)).join("\n") + "\n");
-  write(`reflections/${SESSION}.json`, JSON.stringify({ summary: "Sam's sister Alice", operations: [] }));
+  write(
+    `reflections/${SESSION}.json`,
+    JSON.stringify({ summary: "Sam's sister Alice", operations: [] }),
+  );
   write("embeddings/ollama_nomic.json", JSON.stringify({ abc: [0.1, 0.2] }));
   write("soul/seed.json", "{}\n");
   write("soul/identity.md", "I once met an Alice in a story.\n");
@@ -99,9 +124,13 @@ describe("forget", () => {
   test("dry-run counts every layer, changes nothing, and reports no content", async () => {
     seed();
     const before = new Map(
-      ["memory/MEMORY.md", "memory/USER.md", "kb/wiki/travel.md", `sessions/${SESSION}.jsonl`, "soul/journal/2026-10-01.md"].map(
-        (r) => [r, read(r)],
-      ),
+      [
+        "memory/MEMORY.md",
+        "memory/USER.md",
+        "kb/wiki/travel.md",
+        `sessions/${SESSION}.jsonl`,
+        "soul/journal/2026-10-01.md",
+      ].map((r) => [r, read(r)]),
     );
     const report = await forget("alice", { dryRun: true });
     assert.equal(report.dryRun, true);
@@ -153,7 +182,9 @@ describe("forget", () => {
     // (c) sessions: same number of lines, same entry types, text redacted.
     const lines = read(`sessions/${SESSION}.jsonl`).trim().split("\n");
     assert.equal(lines.length, 7);
-    const entries = lines.map((l) => JSON.parse(l) as { type: string; message?: { content: unknown } });
+    const entries = lines.map(
+      (l) => JSON.parse(l) as { type: string; message?: { content: unknown } },
+    );
     assert.deepEqual(
       entries.map((e) => e.type),
       ["session", "prompt", "message", "message", "message", "message", "reflection"],
@@ -219,6 +250,9 @@ describe("forget", () => {
     }
     await homeScope.run(a, () => forget("alice"));
     assert.equal(fs.readFileSync(path.join(a, "memory", "MEMORY.md"), "utf8"), "\n");
-    assert.equal(fs.readFileSync(path.join(b, "memory", "MEMORY.md"), "utf8"), "- Alice is a friend\n");
+    assert.equal(
+      fs.readFileSync(path.join(b, "memory", "MEMORY.md"), "utf8"),
+      "- Alice is a friend\n",
+    );
   });
 });

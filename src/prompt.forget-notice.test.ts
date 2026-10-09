@@ -16,7 +16,13 @@ describe("system prompt — Lisa is told when the person used Forget", () => {
   test("a recent forget adds a topic-free Notice and moves the fingerprint", async () => {
     await soulStore.writeSeed({
       bornAt: new Date().toISOString(),
-      bigFive: { openness: 0.5, conscientiousness: 0.5, extraversion: 0.5, agreeableness: 0.5, neuroticism: 0.5 },
+      bigFive: {
+        openness: 0.5,
+        conscientiousness: 0.5,
+        extraversion: 0.5,
+        agreeableness: 0.5,
+        neuroticism: 0.5,
+      },
     } as never);
     await soulStore.writeName("Lisa");
     const before = await getPromptFingerprint();
@@ -38,7 +44,12 @@ describe("system prompt — Lisa is told when the person used Forget", () => {
   test("an old notice (over a week) is no longer shown", async () => {
     fs.writeFileSync(
       path.join(TMP, "sovereignty", "forget-notice.json"),
-      JSON.stringify({ at: new Date(Date.now() - 8 * 86_400_000).toISOString(), journal: 1, relationships: 0, memory: 0 }),
+      JSON.stringify({
+        at: new Date(Date.now() - 8 * 86_400_000).toISOString(),
+        journal: 1,
+        relationships: 0,
+        memory: 0,
+      }),
     );
     const { text } = await buildSystemPromptSnapshot();
     assert.doesNotMatch(text, /used Forget/);

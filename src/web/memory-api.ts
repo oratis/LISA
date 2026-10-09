@@ -94,7 +94,8 @@ async function readJson(
   }
   try {
     const parsed: unknown = text ? JSON.parse(text) : {};
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("not an object");
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+      throw new Error("not an object");
     return parsed as Record<string, unknown>;
   } catch {
     json(res, 400, { error: "invalid_json" });
@@ -216,7 +217,9 @@ export async function handleMemoryApi(
       }
       const body = await readJson(req, res);
       if (!body) return true;
-      const report = await run(() => forget(body.query as string, { dryRun: body.dryRun === true }));
+      const report = await run(() =>
+        forget(body.query as string, { dryRun: body.dryRun === true }),
+      );
       json(res, 200, { report });
       return true;
     }
