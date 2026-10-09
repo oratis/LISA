@@ -357,6 +357,31 @@ export async function updateTask(
   });
 }
 
+/**
+ * Rewrite a task file's JSON under the task's lock, without validating it:
+ * the user-initiated forget, which edits content fields only and must reach
+ * every file listTasks would read. `fn` returns the new value, or null to
+ * leave the file as it is. True when the file was rewritten.
+ */
+export async function rewriteTaskJson(
+  id: string,
+  fn: (value: unknown) => unknown,
+): Promise<boolean> {
+  if (!isSafeId(id) || !(await pathExists(taskFile(id)))) return false;
+  return await withTaskLock(id, async () => {
+    let value: unknown;
+    try {
+      value = JSON.parse(await fsp.readFile(taskFile(id), "utf8"));
+    } catch {
+      return false;
+    }
+    const next = fn(value);
+    if (next === null) return false;
+    await writeInPlace(taskFile(id), JSON.stringify(next, null, 2), `task ${id}`);
+    return true;
+  });
+}
+
 /** Remove a task and its run logs. True when the task existed. */
 export async function deleteTask(id: string): Promise<boolean> {
   if (!isSafeId(id)) return false;

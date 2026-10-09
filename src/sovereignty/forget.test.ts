@@ -549,6 +549,113 @@ describe("forget", () => {
       delete process.env.LISA_KB_NO_GIT;
     }
   });
+
+  test("tasks: specs, run transcripts and pending notices lose the topic, keep their structure", async () => {
+    const {
+      createTask,
+      createRun,
+      appendRunMessage,
+      appendRunEvent,
+      checkpointRun,
+      getTask,
+      loadRun,
+    } = await import("../tasks/store.js");
+    const { enqueueNotice, listOutbox, noticeId } = await import("../tasks/outbox.js");
+    const task = await createTask({
+      id: "task_ann01",
+      kind: "watcher",
+      title: "Remind Ann",
+      instruction: "email Ann about the party",
+      origin: { kind: "chat" },
+      trigger: {
+        kind: "mail",
+        from: "ann@example.com",
+        subject: "party",
+        mode: "appears",
+      } as never,
+    });
+    const run = await createRun(task.id, { input: "Ann replied" });
+    await appendRunMessage(task.id, run.id, { role: "user", content: "Ann's address is 5 Elm St" });
+    await appendRunEvent(task.id, run.id, { type: "info", summary: "wrote to Ann" });
+    await checkpointRun({
+      ...run,
+      summary: "Told Ann",
+      artifacts: [{ kind: "text", value: "Ann: yes" }],
+    });
+    await enqueueNotice({
+      id: noticeId(run.id, "task_result"),
+      uid: null,
+      taskId: task.id,
+      runId: run.id,
+      title: "Ann answered",
+      summary: "Ann says yes",
+      status: "succeeded",
+      priority: "normal",
+      kind: "task_result",
+    });
+    const preview = await forget("Ann", { dryRun: true });
+    assert.ok(preview.counts.tasks >= 4, `tasks counted: ${preview.counts.tasks}`);
+    assert.ok(preview.locations.some((l) => l.layer === "tasks" && l.snippet === "Remind Ann"));
+    const report = await forget("Ann", { digest: preview.digest });
+    assert.equal(report.remaining!.tasks, 0);
+    // Every file under tasks/ is free of the topic…
+    const walk = (d: string): string[] =>
+      fs
+        .readdirSync(d, { withFileTypes: true })
+        .flatMap((e) => (e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]));
+    for (const f of walk(path.join(home, "tasks"))) {
+      assert.ok(
+        !/\bann\b/i.test(fs.readFileSync(f, "utf8")),
+        `${path.relative(home, f)} still names it`,
+      );
+    }
+    // …and the store still reads it all: ids, kinds, states and the watcher kept.
+    const after = await getTask(task.id);
+    assert.ok(after, "spec still validates");
+    assert.equal(after.title, FORGOTTEN);
+    assert.equal(after.instruction, FORGOTTEN);
+    assert.equal(after.kind, "watcher");
+    assert.equal(after.trigger?.kind, "mail");
+    assert.deepEqual(after.runs, [run.id]);
+    const loaded = await loadRun(task.id, run.id);
+    assert.ok(loaded, "run log still loads");
+    assert.equal(loaded.run.id, run.id);
+    assert.equal(loaded.run.summary, FORGOTTEN);
+    assert.equal(loaded.messages.length, 1);
+    assert.equal(loaded.messages[0]!.content, FORGOTTEN);
+    assert.equal(loaded.events[0]!.summary, FORGOTTEN);
+    const [notice] = await listOutbox();
+    assert.equal(notice!.notice.title, FORGOTTEN);
+    assert.equal(notice!.notice.taskId, task.id);
+    assert.equal(notice!.state, "pending");
+  });
+
+  test("names what it did not scan, and never claims more than it verified", async () => {
+    write("memory/MEMORY.md", "- Ann is my cousin\n");
+    write("skills/party/SKILL.md", "---\nname: party\n---\nInvite Ann.\n");
+    write("mail/latest-digest.json", '{"items":[{"subject":"Ann"}]}');
+    write("history", "tell me about Ann\n");
+    write("soul/emotions.json", '{"events":[{"trigger":"Ann called"}]}');
+    write("reachout/ledger.jsonl", "{}\n");
+    write("brand-new-store.json", '{"x":"Ann"}');
+    const preview = await forget("Ann", { dryRun: true });
+    const names = preview.notScanned.map((n) => n.split(" — ")[0]);
+    assert.deepEqual(names, [
+      "brand-new-store.json",
+      "history",
+      "mail",
+      "skills",
+      "soul/emotions.json",
+    ]);
+    assert.match(preview.notScanned[0]!, /not classified/);
+    for (const n of preview.notScanned) {
+      assert.ok(preview.residuals.includes(`Not scanned: ${n}`), n);
+    }
+    assert.ok(preview.scanned.some((a) => a.startsWith("tasks/")));
+    const report = await forget("Ann", { digest: preview.digest });
+    assert.deepEqual(report.notScanned, preview.notScanned);
+    assert.ok(Object.values(report.remaining!).every((n) => n === 0));
+  });
 });
 
 function escape(s: string): string {

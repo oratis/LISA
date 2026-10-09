@@ -129,6 +129,36 @@ export async function enqueueNotice(notice: TaskNotice, now = Date.now()): Promi
   );
 }
 
+/**
+ * Rewrite one entry under its lock (the user-initiated forget, which edits
+ * the notice's text only). `fn` returns the new entry, or null to leave it.
+ * True when the entry was rewritten.
+ */
+export async function rewriteOutboxEntry(
+  id: string,
+  fn: (entry: OutboxEntry) => OutboxEntry | null,
+): Promise<boolean> {
+  let file: string;
+  try {
+    file = entryFile(id);
+  } catch {
+    return false;
+  }
+  if (!(await pathExists(file))) return false;
+  return await withFileLock(
+    lockFor(id),
+    async () => {
+      const entry = await readEntry(id);
+      if (!entry) return false;
+      const next = fn(entry);
+      if (!next) return false;
+      await writeEntry(next);
+      return true;
+    },
+    { createDir: false },
+  );
+}
+
 export async function listOutbox(): Promise<OutboxEntry[]> {
   let names: string[];
   try {

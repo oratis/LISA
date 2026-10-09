@@ -82,7 +82,24 @@ describe("lisa forget", () => {
     const yes = io(null);
     assert.equal(await runForgetCommand(["project falcon", "--yes"], yes), 0);
     assert.equal(fs.readFileSync(path.join(home, "memory/MEMORY.md"), "utf8"), "- likes tea\n");
-    assert.ok(yes.lines.some((l) => /Verified: no layer still matches/.test(l)));
+    // Says what the re-scan covered and what it did not — never a blanket "verified".
+    assert.ok(
+      yes.lines.some((l) =>
+        /Re-scan after forget finds nothing left in the areas it covers/.test(l),
+      ),
+    );
+    assert.ok(yes.lines.some((l) => /✓ tasks\//.test(l)));
+    assert.ok(!yes.lines.some((l) => /no layer still matches/i.test(l)));
+  });
+
+  test("lists the places it did not scan after applying", async () => {
+    write("memory/MEMORY.md", "- Project Falcon ships in May\n");
+    write("skills/falcon/SKILL.md", "Project Falcon notes\n");
+    const t = io(null);
+    assert.equal(await runForgetCommand(["project falcon", "--yes"], t), 0);
+    const i = t.lines.findIndex((l) => /Not scanned, so it may still be mentioned in/.test(l));
+    assert.ok(i > 0);
+    assert.match(t.lines[i + 1]!, /\? skills — skill instructions/);
   });
 
   test("rejects a too-short topic", async () => {

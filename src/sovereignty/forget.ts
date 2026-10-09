@@ -33,6 +33,9 @@
  *                       touched, so every transcript still loads
  *  reflections          per-session reflection records: matching content
  *                       strings (kinds, stores, slugs kept)
+ *  tasks                task specs (title, instruction, summary, watcher
+ *                       match text), run transcripts and pending notices —
+ *                       content fields only, under each file's own lock
  *  search_index         drop the in-memory session + KB indexes and the
  *                       persisted embedding cache (vectors of the old text)
  *  relationships        literal matches only, soul-git commit `user-forget`
@@ -42,7 +45,9 @@
  *                       told (a prompt Notice) that the person used forget.
  *
  * Lisa's own self (identity, values, opinions, desires) is never edited; any
- * mentions there are reported as `untouched`.
+ * mentions there are reported as `untouched`. Everything else in the home
+ * that can hold user text but is not scanned is named in `notScanned` (see
+ * coverage.ts), so the re-scan after apply verifies only what it says.
  */
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
@@ -61,7 +66,11 @@ import { forgetInEntry, listFullEntries, type KbEntry } from "../kb/store.js";
 import { commitSoulChange, withSoulCaller } from "../soul/git.js";
 import { withSoulLock } from "../soul/lock.js";
 import { soulDir, soulJournalDir, soulRelationshipsDir } from "../soul/paths.js";
+import { rewriteTaskJson, tasksDir } from "../tasks/store.js";
+import { isSafeId } from "../tasks/types.js";
+import { rewriteOutboxEntry, type OutboxEntry } from "../tasks/outbox.js";
 import { appendSovereigntyAudit, sovereigntyDir } from "./audit.js";
+import { notScannedIn, scannedAreas } from "./coverage.js";
 
 export const FORGOTTEN = "[forgotten by user]";
 export const FORGET_MIN_CHARS = 3;
@@ -74,6 +83,7 @@ export type ForgetLayer =
   | "memory_kb_links"
   | "sessions"
   | "reflections"
+  | "tasks"
   | "search_index"
   | "relationships"
   | "journal";
@@ -85,6 +95,7 @@ export const FORGET_LAYERS: readonly ForgetLayer[] = [
   "memory_kb_links",
   "sessions",
   "reflections",
+  "tasks",
   "search_index",
   "relationships",
   "journal",
@@ -136,7 +147,17 @@ export interface ForgetReport {
   errors: { layer: ForgetLayer; error: string }[];
   /** Things that cannot be erased from here, stated honestly. */
   residuals: string[];
-  /** Apply only: a re-scan after the writes; every count should be 0. */
+  /** What forget searches (and an applied forget re-scans), as "area — what". */
+  scanned: string[];
+  /**
+   * Entries present in this home that can hold user text and that forget
+   * does not scan ("path — what"); each is also a "Not scanned: …" residual.
+   */
+  notScanned: string[];
+  /**
+   * Apply only: a re-scan of the `scanned` areas after the writes; every
+   * count should be 0. It says nothing about `notScanned`.
+   */
   remaining?: Record<ForgetLayer, number>;
 }
 
@@ -524,12 +545,20 @@ function redactSessionLine(
   return none;
 }
 
+type LineRedactor = (line: string, m: Matcher) => { line: string; hit: boolean; sample?: string };
+
 /**
- * Plan (and with `ctx.apply`, perform) the redaction of one transcript, one
- * item per affected line. Re-checks the file's size right before the rename
- * so a turn appended meanwhile isn't lost (retried; reported if it persists).
+ * Plan (and with `ctx.apply`, perform) the redaction of one append-only JSONL
+ * file — a transcript or a task run log — one item per affected line.
+ * Re-checks the file's size right before the rename so a record appended
+ * meanwhile isn't lost (retried; reported if it persists).
  */
-async function forgetInSession(file: string, ctx: Ctx): Promise<void> {
+async function forgetInJsonl(
+  file: string,
+  layer: "sessions" | "tasks",
+  redactLine: LineRedactor,
+  ctx: Ctx,
+): Promise<void> {
   const location = rel(file);
   for (let attempt = 0; attempt < 3; attempt++) {
     const before = await fs.stat(file);
@@ -539,18 +568,12 @@ async function forgetInSession(file: string, ctx: Ctx): Promise<void> {
     const items: { item: Item; text?: string }[] = [];
     const out = lines.map((line, i) => {
       if (!line) return line;
-      const r = redactSessionLine(line, ctx.m);
+      const r = redactLine(line, ctx.m);
       if (!r.hit) return line;
-      const id = itemId("sessions", "redact", location, String(i + 1), sha(line));
+      const id = itemId(layer, "redact", location, String(i + 1), sha(line));
       if (!allowed(ctx, id)) return line;
       items.push({
-        item: {
-          id,
-          layer: "sessions",
-          location: `${location}:${i + 1}`,
-          matches: 1,
-          action: "redact",
-        },
+        item: { id, layer, location: `${location}:${i + 1}`, matches: 1, action: "redact" },
         text: r.sample,
       });
       return r.line;
@@ -568,7 +591,208 @@ async function forgetInSession(file: string, ctx: Ctx): Promise<void> {
     for (const { item, text } of items) addItem(ctx, item, text, 1);
     return;
   }
-  throw new Error("session kept changing during forget");
+  throw new Error("file kept changing during forget");
+}
+
+// ── tasks ────────────────────────────────────────────────────────────────
+//
+// Like transcripts, only content fields change. A task spec keeps its id,
+// kind, state, schedule, watcher URL / selector / regex, envelope, budget and
+// timestamps; its title, instruction, last summary, queued input and the
+// watcher's match text are what forget redacts.
+
+const TASK_SPEC_TEXT: readonly string[][] = [
+  ["title"],
+  ["instruction"],
+  ["lastSummary"],
+  ["queued", "input"],
+  ["trigger", "contains"],
+  ["trigger", "keywords"],
+  ["trigger", "from"],
+  ["trigger", "subject"],
+];
+const TASK_RUN_TEXT: readonly string[][] = [
+  ["input"],
+  ["summary"],
+  ["error"],
+  ["lastError"],
+  ["artifacts", "*", "title"],
+  ["artifacts", "*", "value"],
+  ["effects", "*", "r"],
+  ["executedDigests", "*"],
+];
+const TASK_NOTICE_TEXT: readonly string[][] = [
+  ["notice", "title"],
+  ["notice", "summary"],
+  ["notice", "artifacts", "*", "title"],
+  ["notice", "artifacts", "*", "value"],
+];
+
+/**
+ * Replace matching strings at `paths` ("*" = every element / value) in a
+ * copy of `value`; a string array at a path is redacted element-wise.
+ */
+function redactAt(
+  value: unknown,
+  paths: readonly string[][],
+  m: Matcher,
+): { value: unknown; matched: string[] } {
+  const root = structuredClone(value);
+  const matched: string[] = [];
+  const visit = (node: unknown, p: readonly string[]): void => {
+    if (!node || typeof node !== "object") return;
+    const obj = node as Record<string, unknown>;
+    const [head, ...rest] = p;
+    for (const k of head === "*" ? Object.keys(obj) : [head!]) {
+      const child = obj[k];
+      if (rest.length > 0) {
+        visit(child, rest);
+      } else if (typeof child === "string" && m.test(child)) {
+        matched.push(child);
+        obj[k] = FORGOTTEN;
+      } else if (Array.isArray(child)) {
+        child.forEach((c, i) => {
+          if (typeof c === "string" && m.test(c)) {
+            matched.push(c);
+            child[i] = FORGOTTEN;
+          }
+        });
+      }
+    }
+  };
+  for (const p of paths) visit(root, p);
+  return { value: root, matched };
+}
+
+/** One record of a task run log: { t: "run" | "msg" | "event" | "reset", … }. */
+function redactRunLine(line: string, m: Matcher): { line: string; hit: boolean; sample?: string } {
+  const none = { line, hit: false };
+  if (!m.test(line)) return none;
+  let rec: Record<string, unknown>;
+  try {
+    rec = JSON.parse(line) as Record<string, unknown>;
+  } catch {
+    return { line: JSON.stringify({ t: "forgotten" }), hit: true, sample: line };
+  }
+  if (!rec || typeof rec !== "object") return none;
+  if (rec.t === "msg" && rec.message && typeof rec.message === "object") {
+    const msg = rec.message as Record<string, unknown>;
+    const r = redactContent(msg.content, m);
+    if (!r.changed) return none;
+    return {
+      line: JSON.stringify({ ...rec, message: { ...msg, content: r.content } }),
+      hit: true,
+      sample: r.sample,
+    };
+  }
+  const key = rec.t === "run" ? "run" : rec.t === "event" ? "event" : null;
+  if (!key) return none;
+  const r = redactAt(rec[key], key === "run" ? TASK_RUN_TEXT : [["summary"]], m);
+  if (r.matched.length === 0) return none;
+  return { line: JSON.stringify({ ...rec, [key]: r.value }), hit: true, sample: r.matched[0] };
+}
+
+async function listDirs(dir: string): Promise<string[]> {
+  try {
+    return (await fs.readdir(dir, { withFileTypes: true }))
+      .filter((d) => d.isDirectory())
+      .map((d) => path.join(dir, d.name))
+      .sort();
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw e;
+  }
+}
+
+/**
+ * A JSON document (task spec / outbox entry): one item per file, keyed on the
+ * matched text, so unrelated updates (state, timestamps) between preview and
+ * apply don't change the id. Apply re-reads under the owner's lock.
+ */
+async function forgetInTaskJson(
+  file: string,
+  paths: readonly string[][],
+  rewrite: (fn: (value: unknown) => unknown) => Promise<boolean>,
+  ctx: Ctx,
+): Promise<void> {
+  const location = rel(file);
+  let value: unknown;
+  try {
+    const raw = await fs.readFile(file, "utf8");
+    if (!ctx.m.test(raw)) return;
+    value = JSON.parse(raw);
+  } catch {
+    ctx.report.errors.push({ layer: "tasks", error: `task_unreadable:${path.basename(file)}` });
+    return;
+  }
+  const idOf = (matched: string[]) =>
+    itemId("tasks", "redact", location, sha(JSON.stringify(matched)));
+  let r = redactAt(value, paths, ctx.m);
+  if (r.matched.length === 0 || !allowed(ctx, idOf(r.matched))) return;
+  if (ctx.apply) {
+    const done: { r: typeof r | null } = { r: null };
+    await rewrite((fresh) => {
+      const fr = redactAt(fresh, paths, ctx.m);
+      if (fr.matched.length === 0 || !allowed(ctx, idOf(fr.matched))) return null;
+      done.r = fr;
+      return fr.value;
+    });
+    if (!done.r) return;
+    r = done.r;
+  }
+  addItem(
+    ctx,
+    { id: idOf(r.matched), layer: "tasks", location, matches: r.matched.length, action: "redact" },
+    r.matched[0],
+    1,
+  );
+}
+
+/**
+ * A file the task store would never write (its name is not a valid id) has
+ * no lock to take; rewrite it atomically as it is.
+ */
+function unlockedRewrite(file: string): (fn: (value: unknown) => unknown) => Promise<boolean> {
+  return async (fn) => {
+    let value: unknown;
+    try {
+      value = JSON.parse(await fs.readFile(file, "utf8"));
+    } catch {
+      return false;
+    }
+    const next = fn(value);
+    if (next === null) return false;
+    await atomicWrite(file, JSON.stringify(next, null, 2));
+    return true;
+  };
+}
+
+async function forgetInTasks(ctx: Ctx): Promise<void> {
+  const dir = tasksDir();
+  for (const file of await listFiles(dir, ".json")) {
+    const id = path.basename(file, ".json");
+    const rewrite = isSafeId(id)
+      ? (fn: (value: unknown) => unknown) => rewriteTaskJson(id, fn)
+      : unlockedRewrite(file);
+    await forgetInTaskJson(file, TASK_SPEC_TEXT, rewrite, ctx);
+  }
+  for (const taskDir of await listDirs(path.join(dir, "runs"))) {
+    for (const file of await listFiles(taskDir, ".jsonl")) {
+      try {
+        await forgetInJsonl(file, "tasks", redactRunLine, ctx);
+      } catch {
+        ctx.report.errors.push({ layer: "tasks", error: `run_busy:${path.basename(file)}` });
+      }
+    }
+  }
+  for (const file of await listFiles(path.join(dir, "outbox"), ".json")) {
+    const id = path.basename(file, ".json");
+    const rewrite = /^[a-z0-9][a-z0-9_-]{5,120}$/.test(id)
+      ? (fn: (value: unknown) => unknown) =>
+          rewriteOutboxEntry(id, (entry) => (fn(entry) as OutboxEntry | null) ?? null)
+      : unlockedRewrite(file);
+    await forgetInTaskJson(file, TASK_NOTICE_TEXT, rewrite, ctx);
+  }
 }
 
 // ── soul (journal / relationships / untouched) ───────────────────────────
@@ -976,8 +1200,11 @@ async function run(
       untouched: [],
       errors: [],
       residuals: [...FORGET_RESIDUALS],
+      scanned: scannedAreas(),
+      notScanned: await notScannedIn(lisaHome()),
     },
   };
+  for (const n of ctx.report.notScanned) ctx.report.residuals.push(`Not scanned: ${n}`);
   // (b) KB first: which pages go entirely decides which links dangle.
   const links = await forgetInKb(ctx);
   // (a) memory + user entries, and their pointers to deleted pages.
@@ -985,12 +1212,14 @@ async function run(
   // (c) session transcripts and reflection records.
   for (const file of await listFiles(sessionsDir(), ".jsonl")) {
     try {
-      await forgetInSession(file, ctx);
+      await forgetInJsonl(file, "sessions", redactSessionLine, ctx);
     } catch {
       ctx.report.errors.push({ layer: "sessions", error: `session_busy:${path.basename(file)}` });
     }
   }
   await forgetInReflections(ctx);
+  // (c') tasks: specs, run transcripts, pending notices.
+  await forgetInTasks(ctx);
   // (d) search indexes.
   await evictSearchIndex(ctx);
   // (e) relationships, (f) journal — Lisa's soul: literal matches only.

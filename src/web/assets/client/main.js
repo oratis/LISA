@@ -1719,7 +1719,12 @@ async function showMemory() {
           const left = Object.keys(done.report.remaining || {}).filter(k => done.report.remaining[k] > 0);
           showMemory().then(() => {
             const out = document.getElementById('memForgetOut');
-            if (out) out.textContent = left.length ? 'Forgotten, but still matching in: ' + left.join(', ') : 'Forgotten. Nothing still matches.';
+            if (!out) return;
+            const scanned = (done.report.scanned || []).map(a => a.split(' — ')[0]).join(', ');
+            const notScanned = done.report.notScanned || [];
+            out.textContent = (left.length ? 'Forgotten, but a re-scan still finds it in: ' + left.join(', ') + '.'
+              : 'Forgotten. A re-scan of ' + scanned + ' finds nothing left.') +
+              (notScanned.length ? ' Not scanned, so it may still be mentioned in: ' + notScanned.join('; ') + '.' : '');
           });
         } catch (e) { fail(e); }
       });

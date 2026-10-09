@@ -91,15 +91,23 @@ function summarize(report: ForgetReport, io: CliIo): void {
   }
   for (const e of report.errors) io.err(`  ! ${e.layer}: ${e.error}`);
   if (report.remaining) {
+    // Say exactly what the re-scan covered, and what it did not.
     const left = FORGET_LAYERS.filter((l) => report.remaining![l] > 0);
     io.out(
       left.length
-        ? `Still matching after forget: ${left.join(", ")}`
-        : "Verified: no layer still matches.",
+        ? `Re-scan after forget still finds it in: ${left.join(", ")}`
+        : "Re-scan after forget finds nothing left in the areas it covers:",
     );
+    for (const a of report.scanned) io.out(`  ✓ ${a}`);
+    if (report.notScanned.length) {
+      io.out("Not scanned, so it may still be mentioned in:");
+      for (const n of report.notScanned) io.out(`  ? ${n}`);
+    }
   }
   io.out("What forget cannot reach:");
-  for (const r of report.residuals) io.out(`  - ${r}`);
+  for (const r of report.residuals) {
+    if (!(report.remaining && r.startsWith("Not scanned: "))) io.out(`  - ${r}`);
+  }
 }
 
 export async function runForgetCommand(args: string[], io: CliIo = defaultIo()): Promise<number> {
