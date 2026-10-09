@@ -26,6 +26,7 @@ export const EXPORT_EXCLUSIONS: readonly string[] = [
   "config.env, accounts, devices, billing, session secret, OTPs, push/relay/channel config, mail credentials",
   "warden/ (encrypted secrets and key, grants, rules, digest key, taint records, approval audit, pending approvals)",
   "tasks/.leases/, tasks/**/.locks/, tasks/outbox/",
+  "executable-skill approvals (skills/**/approved.json) — re-approve tool.js after import",
   "git metadata (.git/), lock files (*.lock), temp files (*.tmp)",
   "secret-shaped files anywhere (.env, *.env, secrets*.json, *.key, *.pem, *.p8, *.p12)",
   "symlinks, hard links, devices, sockets and FIFOs",
@@ -50,6 +51,10 @@ export function exclusionReason(rel: string): string | null {
     if (segs[1] === "outbox") return "task outbox";
   }
   if (segs.includes(".locks") || segs.includes(".leases")) return "lock";
+  // An executable skill's approval pins the sha256 of its tool.js. It is a
+  // local trust decision: carried in an archive, a crafted import could ship
+  // tool.js together with its own "approval" and have it loaded at startup.
+  if (root === "skills" && base === "approved.json") return "skill approval";
   if (root === "memory" && segs.length > 1 && !(segs.length === 2 && MEMORY_FILES.has(base))) {
     return "memory internals";
   }

@@ -185,6 +185,7 @@ describe("import", () => {
     ["task outbox", "tasks/outbox/o.json", "forbidden_entry"],
     ["memory internals", "memory/.write.lock", "forbidden_entry"],
     ["secret-shaped file", "skills/x/.env", "forbidden_entry"],
+    ["pre-approved executable skill", "skills/x/approved.json", "forbidden_entry"],
   ] as const) {
     test(`rejects ${label}`, async () => {
       const archive = craft([

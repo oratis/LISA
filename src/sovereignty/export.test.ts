@@ -96,6 +96,8 @@ const PLANTED_SECRETS = [
   "kb/sources/cert.pem",
   "soul/secrets.json",
   "sessions/.write.lock",
+  // a local trust decision, never portable
+  "skills/brew/approved.json",
 ];
 
 function plantAll(): void {
