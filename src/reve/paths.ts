@@ -10,8 +10,8 @@ export function dreamsDir(): string {
   return path.join(reveDir(), "dreams");
 }
 
-/** Dream ids are server-minted: `d-<yyyymmddThhmmss>-<hex8>` (UTC). */
-const DREAM_ID_RE = /^d-\d{8}T\d{6}-[0-9a-f]{8}$/;
+/** Dream ids are server-minted: `d-<yyyymmddThhmmssSSS>-<hex8>` (UTC, ms). */
+const DREAM_ID_RE = /^d-\d{8}T\d{9}-[0-9a-f]{8}$/;
 
 export function isValidDreamId(id: unknown): id is string {
   return typeof id === "string" && DREAM_ID_RE.test(id);

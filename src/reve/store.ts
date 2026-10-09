@@ -206,9 +206,9 @@ export async function readDreamsSince(sinceMs: number): Promise<DreamRecord[]> {
 
 /** Time encoded in the id (UTC, second precision). */
 export function dreamIdTime(id: string): number {
-  const m = /^d-(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})-/.exec(id);
+  const m = /^d-(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(\d{3})-/.exec(id);
   if (!m) return 0;
-  return Date.UTC(+m[1]!, +m[2]! - 1, +m[3]!, +m[4]!, +m[5]!, +m[6]!);
+  return Date.UTC(+m[1]!, +m[2]! - 1, +m[3]!, +m[4]!, +m[5]!, +m[6]!, +m[7]!);
 }
 
 async function dreamBytes(id: string): Promise<number> {

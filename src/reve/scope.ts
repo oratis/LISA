@@ -51,7 +51,7 @@ export function dreamCommitTrailer(): string {
   return ` [dream:${scope.id}${rc}]`;
 }
 
-const TRAILER_RE = /\s\[dream:(d-\d{8}T\d{6}-[0-9a-f]{8})(?:\sreconsider:([a-z0-9,-]+))?\]$/;
+const TRAILER_RE = /\s\[dream:(d-\d{8}T\d{9}-[0-9a-f]{8})(?:\sreconsider:([a-z0-9,-]+))?\]$/;
 
 /** Parse the trailer back out of a commit subject. */
 export function parseDreamTrailer(subject: string): {

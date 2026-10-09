@@ -233,14 +233,14 @@ describe("dream storage robustness", () => {
     await withDream({ trigger: "idle" }, async () => {
       await appendMemory("memory", "ok");
     });
-    const bad = "d-20261001T000000-deadbeef";
+    const bad = "d-20261001T000000000-deadbeef";
     fs.writeFileSync(path.join(home, "reve", "dreams", `${bad}.json`), "{not json");
     const listing = await listDreams();
     assert.equal(listing.dreams.length, 1);
     assert.deepEqual(listing.corrupt, [bad]);
     await assert.rejects(readDream(bad), CorruptDreamError);
     // A structurally wrong record (valid JSON) is corrupt too.
-    const wrong = "d-20261001T000001-deadbeef";
+    const wrong = "d-20261001T000001000-deadbeef";
     fs.writeFileSync(
       path.join(home, "reve", "dreams", `${wrong}.json`),
       JSON.stringify({ version: 1, id: wrong, trigger: "idle" }),
