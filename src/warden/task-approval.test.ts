@@ -36,7 +36,9 @@ import {
 } from "./task-approval.js";
 import type { WardenEvent } from "./types.js";
 import type { ReachOutNotice } from "../reachout/types.js";
+import { createReachOutTransports } from "../reachout/deliver.js";
 import { reachOut } from "../reachout/gate.js";
+import type { PushEvent } from "../web/push.js";
 import { readLedger } from "../reachout/ledger.js";
 import { defaultReachOutSettings, saveReachOutSettings } from "../reachout/settings.js";
 
@@ -1139,6 +1141,48 @@ test("deleting a task through the API path or `lisa tasks rm` revokes a grant it
       .filter((e) => e.kind === "grant_revoked")
       .map((e) => e.note);
     assert.deepEqual(notes, ["the task was deleted", "the task was deleted"]);
+    await inbox.shutdown();
+  });
+});
+
+// ── review of #422, L6: the push says nothing about the task ──
+
+test("the approval push is content-free; the task title and tool stay in the in-app note", async () => {
+  await withHome(async (home, ws) => {
+    await dueRoutine({ title: "Wire $5,000 to ACME (model-written title)" });
+    const pushes: PushEvent[] = [];
+    const notes: string[] = [];
+    const { inbox } = wardenInbox({ approveAfterMs: 20 });
+    const runner = makeRunner(ws, {
+      provider: writeScript(ws).provider,
+      deliver: collector().deliver,
+      tools: [writeTool([])],
+      approvalFactory: factoryOn(inbox, {
+        reachOut: (notice) =>
+          reachOut(notice, {
+            home,
+            now: () => new Date("2026-10-09T12:00:00Z"),
+            proactiveMode: () => true,
+            // The server's real generic transports, with the push bridge stubbed.
+            transports: createReachOutTransports({
+              inapp: { emit: (event) => notes.push(String(event.text)) },
+              push: { notify: (event) => void pushes.push(event) },
+            }),
+          }),
+      }),
+    });
+    await runner.tick();
+    await runner.drain();
+    assert.equal(pushes.length, 1);
+    assert.deepEqual(
+      { title: pushes[0]!.title, body: pushes[0]!.body },
+      { title: "Lisa — Approval needed", body: "Lisa needs your approval for a task." },
+    );
+    // Nothing model-written and no tool name anywhere in what goes to the push service.
+    assert.doesNotMatch(JSON.stringify(pushes[0]), /ACME|\bwrite\b|5,000/i);
+    assert.equal(notes.length, 1);
+    assert.match(notes[0]!, /Wire \$5,000 to ACME/);
+    assert.match(notes[0]!, /wants to use write/);
     await inbox.shutdown();
   });
 });

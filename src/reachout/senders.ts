@@ -117,9 +117,10 @@ export function idleNoteNotice(text: string): ReachOutNotice {
  * Source `approval`: the gate always delivers it (in-app, plus push where the
  * user has one), silently in quiet hours.
  *
- * The body says which task and which tool, and until when — never the
- * payload. The payload is shown only by the approval card itself, to a caller
- * who may approve, and a push goes through a third-party service.
+ * The in-app body says which task and which tool, and until when — never the
+ * payload, which only the approval card shows, to a caller who may approve.
+ * The PUSH says none of it: it goes through a third-party service (ntfy), and
+ * the task title is model-written text. It only says an approval is waiting.
  */
 export function taskApprovalNotice(input: {
   uid: string | null;
@@ -142,6 +143,7 @@ export function taskApprovalNotice(input: {
     body:
       `Your ${input.kind} "${title}" wants to use ${input.tool}. Review it in Lisa's approvals ` +
       `within ${minutes} minute${minutes === 1 ? "" : "s"}; if nobody answers, it is not run.`,
+    push: { title: "Approval needed", body: "Lisa needs your approval for a task." },
     priority: "high",
     actionable: true,
     dedupeKey: `approval:${input.approvalId}`,
