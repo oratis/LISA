@@ -124,6 +124,8 @@ export interface TasksCommandIo {
   interactive?: boolean;
   /** Ask that person a question (tests). Default: readline on stdin. */
   ask?: (question: string) => Promise<string>;
+  /** Terminal height, for paging what is being confirmed. Default: stdout's rows. */
+  rows?: number;
 }
 
 export async function runTasksCommand(args: string[], io: TasksCommandIo = {}): Promise<number> {
@@ -201,11 +203,30 @@ export async function runTasksCommand(args: string[], io: TasksCommandIo = {}): 
   if (sub === "enable") {
     const task = await resolve(id, err);
     if (!task) return 2;
-    // What the user is confirming, in plain words, before anything changes.
+    // What the user is confirming, in plain words, before anything changes —
+    // all of it: on a terminal it is paged, never cut (#422 review N6).
     const digest = taskDigest(task);
     const preapproves = envelopeCouldPreapprove(task);
-    out(`"${task.title}" (${task.id})`);
-    for (const l of describeForConfirmation(task)) out(`  ${l}`);
+    const interactive = io.interactive ?? (!!process.stdin.isTTY && !!process.stdout.isTTY);
+    const ask = io.ask ?? askOnTerminal;
+    const screen = [`(${task.id})`, ...describeForConfirmation(task).map((l) => `  ${l}`)];
+    if (interactive && preapproves && confirm === undefined) {
+      const page = Math.max(5, (io.rows ?? process.stdout.rows ?? 24) - 2);
+      for (let at = 0; at < screen.length; at += page) {
+        for (const l of screen.slice(at, at + page)) out(l);
+        const shown = Math.min(at + page, screen.length);
+        if (shown >= screen.length) break;
+        const more = await ask(
+          `-- ${shown}/${screen.length} lines; Enter for more, q to stop (nothing is changed) -- `,
+        );
+        if (/^\s*q/i.test(more)) {
+          err("Stopped before the end of what it would do. Nothing was changed.");
+          return 1;
+        }
+      }
+    } else {
+      for (const l of screen) out(l);
+    }
     let confirmed = false;
     if (confirm !== undefined) {
       if (confirm !== digest) {
@@ -216,11 +237,8 @@ export async function runTasksCommand(args: string[], io: TasksCommandIo = {}): 
         return 2;
       }
       confirmed = preapproves;
-    } else if (
-      preapproves &&
-      (io.interactive ?? (!!process.stdin.isTTY && !!process.stdout.isTTY))
-    ) {
-      const answer = await (io.ask ?? askOnTerminal)(
+    } else if (preapproves && interactive) {
+      const answer = await ask(
         "Let it do these without asking? [y/N] (no: it is switched on and asks first) ",
       );
       confirmed = /^\s*y(es)?\s*$/i.test(answer);

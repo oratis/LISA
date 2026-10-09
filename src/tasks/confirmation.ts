@@ -187,9 +187,24 @@ const TOOL_WORDS: Readonly<Record<string, string>> = Object.freeze({
   takoapi: "call remote agents",
 });
 
-function clip(text: string, max: number): string {
-  const flat = text.replace(/\s+/g, " ").trim();
-  return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
+/**
+ * Characters that would change what the user sees without being seen: other
+ * control characters (a carriage return, an escape sequence that clears the
+ * line), bidi controls, zero-width and other invisible format characters, line
+ * separators. Shown escaped instead, so the screen is the text.
+ */
+const UNSEEN = /[\p{Cc}\p{Cf}\u2028\u2029]/gu;
+
+function visible(text: string, opts: { newlines?: boolean } = {}): string {
+  return text.replace(UNSEEN, (ch) =>
+    opts.newlines && (ch === "\n" || ch === "\t")
+      ? ch
+      : ch === "\n"
+        ? "\\n"
+        : ch === "\t"
+          ? "\\t"
+          : `\\u{${ch.codePointAt(0)!.toString(16).padStart(4, "0")}}`,
+  );
 }
 
 const HOST_WORDS: Readonly<Record<Task["host"], string>> = Object.freeze({
@@ -218,10 +233,10 @@ function whenWords(task: Confirmable): string {
     const every = (t.every ?? "every:30m").replace("every:", "");
     const what =
       t.kind === "web"
-        ? `the page ${t.url} (${t.mode})`
+        ? `the page ${visible(t.url)} (${t.mode})`
         : t.kind === "rss"
-          ? `the feed ${t.url}${t.keywords?.length ? ` for ${t.keywords.join(", ")}` : ""}`
-          : `your mail${t.from ? ` from "${t.from}"` : ""}${t.subject ? ` with subject "${t.subject}"` : ""}`;
+          ? `the feed ${visible(t.url)}${t.keywords?.length ? ` for ${visible(t.keywords.join(", "))}` : ""}`
+          : `your mail${t.from ? ` from "${visible(t.from)}"` : ""}${t.subject ? ` with subject "${visible(t.subject)}"` : ""}`;
     const onHit =
       t.onHit === "run"
         ? "on a hit it runs the instruction with what it found"
@@ -241,8 +256,13 @@ function whenWords(task: Confirmable): string {
  */
 export function describeForConfirmation(task: Confirmable): string[] {
   const lines = [
-    `Title: ${task.title}`,
-    `Instruction: ${clip(task.instruction, 600)}`,
+    // Everything that is confirmed is shown, whole (#422 review N6): the title
+    // and every line of the instruction, with nothing hidden in them.
+    `Title: ${visible(task.title)}`,
+    "Instruction:",
+    ...visible(task.instruction, { newlines: true })
+      .split("\n")
+      .map((line) => `  | ${line.replace(/\t/g, "    ")}`),
     `When: ${whenWords(task)}`,
     `Runs on: ${HOST_WORDS[task.host]}`,
     `Tells you: ${task.notify}`,
@@ -270,7 +290,9 @@ export function describeForConfirmation(task: Confirmable): string[] {
     );
   }
   lines.push(
-    envelope!.targets?.length ? `  …only on: ${envelope!.targets.join(", ")}` : "  …on any target.",
+    envelope!.targets?.length
+      ? `  …only on: ${visible(envelope!.targets.join(", "))}`
+      : "  …on any target.",
   );
   if (envelope!.tools?.length) lines.push(`It may only use: ${envelope!.tools.join(", ")}.`);
   lines.push(
