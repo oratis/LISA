@@ -4,7 +4,7 @@
  *   GET  /api/reve/dreams?limit=n            newest-first summaries
  *   GET  /api/reve/dreams/{id}               full record (diffs size-capped)
  *   POST /api/reve/dreams/{id}/revert        { parts: ["memory","kb","skills"], force? }
- *   POST /api/reve/dreams/{id}/reconsider    { note }
+ *   POST /api/reve/dreams/{id}/reconsider    { note }   (409 dreams_disabled, 429 queue_full)
  *   GET  /api/reve/reconsider                the reconsider queue
  *   GET  /api/reve/metrics?days=n            coherence time series
  *
@@ -30,7 +30,12 @@ import type http from "node:http";
 import { BodyTooLargeError, readCappedText } from "./http-body.js";
 import { crossSiteProblem } from "./warden-api.js";
 import { clampDays, metricsSeries } from "../reve/metrics.js";
-import { ReconsiderError, listReconsiderRequests, requestReconsider } from "../reve/reconsider.js";
+import {
+  ReconsiderError,
+  listReconsiderRequests,
+  requestReconsider,
+  waitingReconsiderCount,
+} from "../reve/reconsider.js";
 import { RevertConflictError, RevertInputError, revertDream } from "../reve/revert.js";
 import {
   CorruptDreamError,
@@ -125,7 +130,7 @@ export async function handleReveApi(
       const listing = await listDreams(
         Number.isFinite(limit) ? Math.min(100, Math.max(1, limit)) : 20,
       );
-      const pending = (await listReconsiderRequests()).filter((r) => r.status === "pending").length;
+      const pending = await waitingReconsiderCount();
       json(res, 200, {
         dreams: listing.dreams,
         corrupt: listing.corrupt,
@@ -182,10 +187,13 @@ export async function handleReveApi(
     } else if (err instanceof RevertConflictError) {
       json(res, 409, { error: "revert_conflict", conflicts: err.conflicts });
     } else if (err instanceof ReconsiderError) {
-      json(res, err.code === "no_soul_changes" ? 409 : 400, {
-        error: err.code,
-        message: err.message,
-      });
+      const status =
+        err.code === "queue_full"
+          ? 429
+          : err.code === "no_soul_changes" || err.code === "dreams_disabled"
+            ? 409
+            : 400;
+      json(res, status, { error: err.code, message: err.message });
     } else {
       json(res, 500, { error: "reve_request_failed" });
     }

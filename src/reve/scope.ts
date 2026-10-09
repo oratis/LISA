@@ -27,6 +27,24 @@ export interface DreamScope {
 
 export const dreamScope = new AsyncLocalStorage<DreamScope>();
 
+/** The kill switch: LISA_REVE_DREAMS=0 / false / off turns dream capture off. */
+export function dreamsEnabled(): boolean {
+  const v = process.env.LISA_REVE_DREAMS?.trim().toLowerCase();
+  return !(v === "0" || v === "false" || v === "off");
+}
+
+/** Dreams begun in THIS process and not yet ended (reconsider claim recovery). */
+const activeDreams = new Set<string>();
+
+export function markDreamActive(id: string, active: boolean): void {
+  if (active) activeDreams.add(id);
+  else activeDreams.delete(id);
+}
+
+export function dreamIsActive(id: string): boolean {
+  return activeDreams.has(id);
+}
+
 export function currentDream(): DreamScope | undefined {
   return dreamScope.getStore();
 }

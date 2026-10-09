@@ -267,6 +267,18 @@ describe("actual server DTOs conform to OpenAPI v1", () => {
       const request = await requestReconsider(id, "really?");
       assertContract("ReveReconsiderResponse", { ok: true, request });
       assertContract("ReveReconsiderListResponse", { requests: await listReconsiderRequests() });
+      {
+        // A claimed note (shown to a running pass), then the acknowledged one.
+        const { beginDream } = await import("../reve/record.js");
+        const { takeReconsiderBlock } = await import("../reve/reconsider.js");
+        const pass = await beginDream({ trigger: "reflect" });
+        await pass.run(() => takeReconsiderBlock());
+        const claimed = await listReconsiderRequests();
+        assert.equal(claimed[0]!.status, "claimed");
+        assertContract("ReveReconsiderListResponse", { requests: claimed });
+        await pass.end();
+        assertContract("ReveReconsiderListResponse", { requests: await listReconsiderRequests() });
+      }
       assertContract("ReveDreamResponse", {
         dream: await readDream(id),
         reconsider: await listReconsiderRequests(id),

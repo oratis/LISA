@@ -113,6 +113,19 @@ describe("lisa reve", () => {
     );
   });
 
+  test("reconsider with dreams off says so and queues nothing (#423 F3)", async () => {
+    const id = await makeDream();
+    process.env.LISA_REVE_DREAMS = "0";
+    const c = io();
+    try {
+      assert.equal(await runReveCommand(["reconsider", id, "while off"], c.io), 2);
+    } finally {
+      delete process.env.LISA_REVE_DREAMS;
+    }
+    assert.match(c.err.join("\n"), /dreams are turned off/);
+    assert.equal(fs.existsSync(path.join(home, "reve", "reconsider.json")), false);
+  });
+
   test("unknown dream ids fail cleanly", async () => {
     const c = io();
     assert.equal(await runReveCommand(["show", "d-20261009T000000000-00000000"], c.io), 1);

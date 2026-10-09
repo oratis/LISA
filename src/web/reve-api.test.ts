@@ -291,6 +291,44 @@ describe("reve API", () => {
     assert.equal(local.status, 200);
   });
 
+  test("reconsider: 409 dreams_disabled when dreams are off, 429 queue_full at the limit (#423 F3)", async () => {
+    const id = await dreamFor("alice");
+    process.env.LISA_REVE_DREAMS = "0";
+    try {
+      const off = await call("POST", `/api/reve/dreams/${id}/reconsider`, {
+        uid: "alice",
+        body: { note: "while off" },
+      });
+      assert.equal(off.status, 409);
+      assert.equal(off.body.error, "dreams_disabled");
+    } finally {
+      delete process.env.LISA_REVE_DREAMS;
+    }
+    const { MAX_WAITING_NOTES } = await import("../reve/reconsider.js");
+    const queue = path.join(homeForUid("alice"), "reve", "reconsider.json");
+    fs.mkdirSync(path.dirname(queue), { recursive: true });
+    const now = new Date().toISOString();
+    fs.writeFileSync(
+      queue,
+      JSON.stringify({
+        version: 1,
+        requests: Array.from({ length: MAX_WAITING_NOTES ?? 200 }, (_, i) => ({
+          id: `rc-${String(i).padStart(12, "0")}`,
+          dreamId: id,
+          note: `note ${i}`,
+          createdAt: now,
+          status: "pending",
+        })),
+      }),
+    );
+    const full = await call("POST", `/api/reve/dreams/${id}/reconsider`, {
+      uid: "alice",
+      body: { note: "one too many" },
+    });
+    assert.equal(full.status, 429);
+    assert.equal(full.body.error, "queue_full");
+  });
+
   test("a cloud caller without an account is refused", async () => {
     const res = await call("GET", "/api/reve/dreams", { anonCloud: true });
     assert.equal(res.status, 403);

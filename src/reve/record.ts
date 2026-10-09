@@ -17,8 +17,15 @@ import { flushSoulCommits, soulCommitPatch, soulCommitsBetween, soulGitHead } fr
 import type { AutonomyKind, AutonomyOutcome } from "../autonomy/runs.js";
 import { newDreamId } from "./ids.js";
 import { dreamSnapshotFile, dreamSummaryFile, dreamsDir } from "./paths.js";
-import { releaseReconsider } from "./reconsider.js";
-import { currentDream, dreamScope, parseDreamTrailer, type DreamScope } from "./scope.js";
+import { settleReconsider } from "./reconsider.js";
+import {
+  currentDream,
+  dreamScope,
+  dreamsEnabled,
+  markDreamActive,
+  parseDreamTrailer,
+  type DreamScope,
+} from "./scope.js";
 import {
   MAX_SNAPSHOT_FILES,
   desireChanges,
@@ -59,13 +66,10 @@ const PARTS_BY_TRIGGER: Record<DreamTrigger, DreamPart[]> = {
   "desire-review": ["memory", "soul"],
 };
 
-export function dreamsEnabled(): boolean {
-  const v = process.env.LISA_REVE_DREAMS?.trim().toLowerCase();
-  return !(v === "0" || v === "false" || v === "off");
-}
+export { dreamsEnabled };
 
 export interface DreamEndOptions {
-  /** The pass threw. Claimed reconsider notes are released. */
+  /** The pass threw. Its claimed reconsider notes go back to pending. */
   error?: unknown;
   /** Outcome override; defaults to the last autonomy run recorded in the pass. */
   outcome?: AutonomyOutcome;
@@ -130,24 +134,42 @@ export async function beginDream(opts: {
     reconsiderIds: [],
   };
   let ended: Promise<DreamRecord | null> | null = null;
+  markDreamActive(id, true);
   return {
     id,
     run: (fn) => dreamScope.run(scope, fn),
     end: (endOpts = {}) => {
-      ended ??= finishDream({
-        scope,
-        trigger: opts.trigger,
-        task: opts.task,
-        parts,
-        before,
-        headBefore,
-        start,
-        end: now(),
-        endOpts,
-      }).catch((err) => {
-        logWarn(`[reve] dream capture failed: ${(err as Error).message.slice(0, 200)}`);
-        return null;
-      });
+      ended ??= (async () => {
+        const failed = endOpts.error !== undefined || scope.runOutcomes.at(-1) === "error";
+        let rec: DreamRecord | null = null;
+        try {
+          // The record (listing the notes this pass saw) is written first: it
+          // is what claim recovery trusts if the acknowledgement never lands.
+          rec = await finishDream({
+            scope,
+            trigger: opts.trigger,
+            task: opts.task,
+            parts,
+            before,
+            headBefore,
+            start,
+            end: now(),
+            endOpts,
+            failed,
+          });
+        } catch (err) {
+          logWarn(`[reve] dream capture failed: ${(err as Error).message.slice(0, 200)}`);
+        }
+        try {
+          await settleReconsider(scope.reconsiderIds, id, failed ? "release" : "ack");
+        } catch (err) {
+          // The claim stays; the next pass recovers it (delivered per the record, else pending).
+          logWarn(`[reve] reconsider settle failed: ${(err as Error).message.slice(0, 200)}`);
+        } finally {
+          markDreamActive(id, false);
+        }
+        return rec;
+      })();
       return ended;
     },
   };
@@ -394,12 +416,9 @@ async function finishDream(ctx: {
   start: Date;
   end: Date;
   endOpts: DreamEndOptions;
+  failed: boolean;
 }): Promise<DreamRecord | null> {
-  const { scope, endOpts } = ctx;
-  const failed = endOpts.error !== undefined || scope.runOutcomes.at(-1) === "error";
-  if (failed) {
-    await releaseReconsider(scope.reconsiderIds, scope.id).catch(() => undefined);
-  }
+  const { scope, endOpts, failed } = ctx;
   const reconsiderDelivered = failed ? [] : [...scope.reconsiderIds];
 
   await withTimeout(flushSoulCommits(), FLUSH_TIMEOUT_MS);

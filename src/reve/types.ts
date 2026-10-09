@@ -194,8 +194,15 @@ export interface ReconsiderRequest {
   dreamId: string;
   note: string;
   createdAt: string;
-  status: "pending" | "delivered";
+  /**
+   * pending: waiting for a pass; claimed: shown to a pass that is still
+   * running; delivered: acknowledged by a pass that finished.
+   */
+  status: "pending" | "claimed" | "delivered";
+  /** While claimed: when, and by which dream. */
+  claimedAt?: string;
+  claimedIn?: string;
   deliveredAt?: string;
-  /** Dream id of the pass that received the note. */
+  /** Dream id of the pass that received the note and finished. */
   deliveredIn?: string;
 }

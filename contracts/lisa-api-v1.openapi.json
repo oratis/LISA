@@ -1231,7 +1231,7 @@
         },
         "responses": {
           "200": {
-            "description": "Restores the dream's changes to USER-owned data (memory, KB pages, skills Lisa created or patched) to their pre-dream content. Soul files are never reverted by a user action: `soul` in `parts` is a 400 — use reconsider.",
+            "description": "Reverts the dream's changes to the user's own data. Memory is reverted entry by entry against the current file (the dream's added entries taken out, its removed entries put back; never a whole pre-dream file). KB pages and skills are restored file by file only when unchanged since the dream (409 `revert_conflict` otherwise, unless `force`). A path that resolves outside its part's directory (a symlink) is a conflict `unsafe_target`. `soul` is refused (400). 403 for a cross-site request, a non-loopback Host on a loopback-trusted caller, or a caller who may not approve (shared token, paired device).",
             "headers": {
               "X-Lisa-API-Version": {
                 "$ref": "#/components/headers/ApiVersion"
@@ -1305,7 +1305,7 @@
         },
         "responses": {
           "201": {
-            "description": "Queues the user's note for Lisa's next reflective pass, which sees it exactly once and decides for herself. Never edits soul files. 409 `no_soul_changes` when the dream did not touch her soul.",
+            "description": "Queues the user's note for Lisa's next reflective pass (session reflection or an idle run), which decides for herself. Never edits soul files. A note is acknowledged only when a pass that saw it finishes; a pass that fails or dies puts it back, so it is never lost but may be shown again. 409 `no_soul_changes` when the dream did not touch her soul, 409 `dreams_disabled` when dreams are turned off (LISA_REVE_DREAMS), 429 `queue_full` when 200 notes are already waiting. 403 for a cross-site request, a non-loopback Host on a loopback-trusted caller, or a caller who may not approve (shared token, paired device).",
             "headers": {
               "X-Lisa-API-Version": {
                 "$ref": "#/components/headers/ApiVersion"
@@ -1335,6 +1335,9 @@
             "$ref": "#/components/responses/Error"
           },
           "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -4267,8 +4270,10 @@
             "type": "string",
             "enum": [
               "pending",
+              "claimed",
               "delivered"
-            ]
+            ],
+            "description": "pending: waiting for a pass; claimed: shown to a pass that is still running; delivered: acknowledged by a pass that finished."
           },
           "deliveredAt": {
             "type": "string",
@@ -4276,7 +4281,15 @@
           },
           "deliveredIn": {
             "type": "string",
-            "description": "Dream id of the pass that received the note."
+            "description": "Dream id of the pass that received the note and finished."
+          },
+          "claimedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "claimedIn": {
+            "type": "string",
+            "description": "While claimed: the dream id of the running pass."
           }
         },
         "additionalProperties": false
