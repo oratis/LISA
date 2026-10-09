@@ -47,11 +47,26 @@ export class CorruptDreamError extends Error {
   }
 }
 
-/** Sidecar: pre-pass content per relPath; null = the file did not exist. */
+/** The memory entry lines one dream added and removed in one file. */
+export interface MemoryEntryDelta {
+  added: string[];
+  removed: string[];
+}
+
+/**
+ * Revert sidecar.
+ *  - `files`: KB / skills — pre-pass content per relPath; null = the file did
+ *    not exist. Restored file by file, hash-checked.
+ *  - `memory`: per memory file, only the entry lines the dream added and
+ *    removed. A memory revert works entry by entry against the current file
+ *    and never restores a whole pre-dream file, so it can never bring back an
+ *    entry the dream did not remove.
+ */
 export interface DreamSnapshotSidecar {
   version: 1;
   id: string;
   files: Record<string, string | null>;
+  memory?: Record<string, MemoryEntryDelta>;
 }
 
 export function lockReve<T>(fn: () => Promise<T>): Promise<T> {
@@ -128,7 +143,7 @@ export async function writeDreamRecord(rec: DreamRecord): Promise<void> {
 }
 
 /** Dream ids present on disk (any of the three files), newest first. */
-async function idsOnDisk(): Promise<string[]> {
+export async function idsOnDisk(): Promise<string[]> {
   let names: string[];
   try {
     names = await fs.readdir(dreamsDir());

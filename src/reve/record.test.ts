@@ -118,9 +118,15 @@ describe("dream capture (snapshot path, soul git off)", () => {
       assert.ok(rec.metrics.emotionVolatility > 0);
       assert.match(rec.summary, /memory \+1\/-0 entries/);
 
-      // Revert sidecar holds the PRE-pass memory and never soul content.
+      // Revert sidecar: memory keeps only the pass's entry delta (never the
+      // whole pre-pass file), and never soul content.
       const side = await readDreamSidecar(rec.id);
-      assert.equal(side!.files["memory/MEMORY.md"], "- user prefers tea\n");
+      assert.deepEqual(side!.memory!["memory/MEMORY.md"], {
+        added: ["- user is learning Rust"],
+        removed: [],
+      });
+      assert.equal(side!.files["memory/MEMORY.md"], undefined);
+      assert.ok(!JSON.stringify(side).includes("user prefers tea"));
       assert.ok(!Object.keys(side!.files).some((p) => p.startsWith("soul/")));
       assert.ok(fs.existsSync(path.join(home, "reve", "dreams", `${rec.id}.md`)));
     });

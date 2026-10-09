@@ -83,22 +83,21 @@ describe("revert of user-owned data", () => {
     assert.equal(again.alreadyReverted.length, 3);
   });
 
-  test("refuses with a conflict when the file changed since the dream, unless forced", async () => {
+  test("a KB page changed since the dream is a conflict, unless forced", async () => {
     const id = await idleDream(async () => {
-      await appendMemory("memory", "dream entry");
+      write("kb/wiki/rust.md", "# Rust\n\nLisa's version.\n");
     });
-    await appendMemory("memory", "the user added this afterwards");
-    const modified = read("memory/MEMORY.md");
-    await assert.rejects(revertDream(id, { parts: ["memory"] }), (err: unknown) => {
+    write("kb/wiki/rust.md", "# Rust\n\nThe user's version.\n");
+    await assert.rejects(revertDream(id, { parts: ["kb"] }), (err: unknown) => {
       assert.ok(err instanceof RevertConflictError);
-      assert.deepEqual(err.conflicts, [{ path: "memory/MEMORY.md", reason: "modified_since" }]);
+      assert.deepEqual(err.conflicts, [{ path: "kb/wiki/rust.md", reason: "modified_since" }]);
       return true;
     });
-    assert.equal(read("memory/MEMORY.md"), modified, "nothing written on conflict");
-    const forced = await revertDream(id, { parts: ["memory"], force: true });
-    assert.deepEqual(forced.reverted, ["memory/MEMORY.md"]);
+    assert.equal(read("kb/wiki/rust.md"), "# Rust\n\nThe user's version.\n", "nothing written");
+    const forced = await revertDream(id, { parts: ["kb"], force: true });
+    assert.deepEqual(forced.reverted, ["kb/wiki/rust.md"]);
     assert.equal(forced.forced, true);
-    assert.equal(read("memory/MEMORY.md"), "- user prefers tea\n");
+    assert.equal(read("kb/wiki/rust.md"), "# Rust\n\nA systems language.\n");
   });
 
   test("a conflict in one file blocks the whole revert (no partial state)", async () => {
@@ -125,6 +124,62 @@ describe("revert of user-owned data", () => {
     assert.equal(read("skills/deploy/SKILL.md"), before);
     assert.equal(fs.existsSync(path.join(home, "skills/fresh")), false);
     assert.ok(fs.existsSync(path.join(home, "skills/notes/SKILL.md")), "untouched skill kept");
+  });
+
+  test("memory reverts entry by entry and keeps what the user wrote since (#423 F4)", async () => {
+    const id = await idleDream(async () => {
+      await appendMemory("memory", "dream entry");
+    });
+    await appendMemory("memory", "the user added this afterwards");
+    const res = await revertDream(id, { parts: ["memory"] });
+    assert.deepEqual(res.reverted, ["memory/MEMORY.md"]);
+    assert.equal(
+      read("memory/MEMORY.md"),
+      "- user prefers tea\n- the user added this afterwards\n",
+    );
+    // Idempotent, even when the same entry also exists elsewhere.
+    const again = await revertDream(id, { parts: ["memory"] });
+    assert.deepEqual(again.reverted, []);
+    assert.deepEqual(again.alreadyReverted, ["memory/MEMORY.md"]);
+  });
+
+  test("memory revert puts back an entry the dream removed, against the current file", async () => {
+    write("memory/MEMORY.md", "- user prefers tea\n- user's sister is Ann\n");
+    const { removeFromMemory } = await import("../memory/store.js");
+    const id = await idleDream(async () => {
+      await removeFromMemory("memory", "sister is Ann");
+      await appendMemory("memory", "user has a sister");
+    });
+    await appendMemory("memory", "later note");
+    await revertDream(id, { parts: ["memory"] });
+    assert.equal(
+      read("memory/MEMORY.md"),
+      "- user prefers tea\n- later note\n- user's sister is Ann\n",
+    );
+  });
+
+  test("a forced memory revert never brings back an entry the user removed since (#423 F4)", async () => {
+    write("memory/MEMORY.md", "- user's therapist is Dr. Q\n- user likes tea\n");
+    const id = await idleDream(async () => {
+      await appendMemory("memory", "user's API key is sk-live-ABCDEF1234567890");
+    });
+    const side = fs.readFileSync(path.join(home, "reve", "dreams", `${id}.before.json`), "utf8");
+    assert.ok(!side.includes("Dr. Q"), "an entry the dream never touched is never copied");
+    // The user removes both entries afterwards (what forget does to MEMORY.md).
+    write("memory/MEMORY.md", "- user likes tea\n");
+    const plain = await revertDream(id, { parts: ["memory"] });
+    assert.deepEqual(plain.reverted, []);
+    const forced = await revertDream(id, { parts: ["memory"], force: true });
+    assert.deepEqual(forced.reverted, []);
+    assert.equal(read("memory/MEMORY.md"), "- user likes tea\n");
+  });
+
+  test("a memory file the dream created is removed when nothing else is in it", async () => {
+    const id = await idleDream(async () => {
+      write("memory/notes.md", "- a dream note\n");
+    });
+    await revertDream(id, { parts: ["memory"] });
+    assert.equal(fs.existsSync(path.join(home, "memory", "notes.md")), false);
   });
 
   test("soul is never a revertible part", () => {

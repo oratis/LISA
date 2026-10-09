@@ -3,13 +3,20 @@
  * skills Lisa created or patched in that pass. Soul files are never touched
  * here — they are Lisa's (see reconsider.ts for the user's lever over those).
  *
- * Three-way safety: a file is restored to its pre-dream content only when it
- * still holds exactly what the dream left (hash == afterHash). If it changed
- * since, the whole revert is refused (RevertConflictError → HTTP 409) unless
- * `force` is set. A file already back at its pre-dream content is a no-op, so
- * repeating a revert is idempotent. Writes are atomic per file; if a write
- * fails midway, files already written are rolled back to their current
- * content. Every revert is appended to the record and to reve/audit.jsonl.
+ * Memory is reverted ENTRY BY ENTRY against the current file: the entries the
+ * dream added are taken out and the entries it removed are put back; nothing
+ * else in the file changes, and a whole pre-dream file is never restored. So
+ * a revert keeps everything written since, and can never bring back an entry
+ * the dream did not remove (one the user forgot afterwards, say).
+ *
+ * KB pages and skills are restored file by file, three-way safe: a file is
+ * restored to its pre-dream content only when it still holds exactly what
+ * the dream left (hash == afterHash). If it changed since, the whole revert
+ * is refused (RevertConflictError → HTTP 409) unless `force` is set. A file
+ * already back at its pre-dream content is a no-op, so repeating a revert is
+ * idempotent. Writes are atomic per file; if a write fails midway, files
+ * already written are rolled back to their current content. Every revert is
+ * appended to the record and to reve/audit.jsonl.
  */
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -17,8 +24,14 @@ import { appendLine, atomicWrite } from "../fs-utils.js";
 import { lisaHome } from "../paths.js";
 import { withFileLock } from "../soul/lock.js";
 import { reveAuditFile } from "./paths.js";
-import { sha256 } from "./snapshot.js";
-import { lockReve, readDream, readDreamSidecar, writeDreamRecord } from "./store.js";
+import { memoryEntryKey, sha256 } from "./snapshot.js";
+import {
+  lockReve,
+  readDream,
+  readDreamSidecar,
+  writeDreamRecord,
+  type MemoryEntryDelta,
+} from "./store.js";
 import { USER_PARTS, type FileChange, type UserPart } from "./types.js";
 
 export class RevertInputError extends Error {
@@ -119,6 +132,46 @@ async function writeOrRemove(abs: string, content: string | null, part: UserPart
   }
 }
 
+function isDelta(v: unknown): v is MemoryEntryDelta {
+  const d = v as MemoryEntryDelta | undefined;
+  return (
+    !!d &&
+    Array.isArray(d.added) &&
+    Array.isArray(d.removed) &&
+    [...d.added, ...d.removed].every((e) => typeof e === "string")
+  );
+}
+
+/**
+ * Undo one dream's entry delta on the CURRENT memory text: drop one line per
+ * entry it added (if still there), append each entry it removed that is not
+ * there now. Returns null when the dream created the file and nothing is
+ * left in it.
+ */
+export function revertMemoryEntries(
+  current: string | null,
+  delta: MemoryEntryDelta,
+  createdByDream: boolean,
+): string | null {
+  const lines = (current ?? "").split(/\r?\n/);
+  if (lines.at(-1) === "") lines.pop();
+  for (const entry of delta.added) {
+    const key = memoryEntryKey(entry);
+    const at = lines.findIndex((l) => memoryEntryKey(l) === key);
+    if (at >= 0) lines.splice(at, 1);
+  }
+  const present = new Set(lines.map(memoryEntryKey).filter(Boolean));
+  for (const entry of delta.removed) {
+    const key = memoryEntryKey(entry);
+    if (!key || present.has(key)) continue;
+    lines.push(entry);
+    present.add(key);
+  }
+  if (createdByDream && lines.every((l) => !l.trim())) return null;
+  if (current === null && lines.length === 0) return null;
+  return lines.length ? lines.join("\n") + "\n" : "";
+}
+
 interface PlannedWrite {
   change: FileChange;
   abs: string;
@@ -152,6 +205,24 @@ export async function revertDream(
     const conflicts: RevertConflict[] = [];
     for (const c of selected) {
       const abs = safeTarget(c);
+      if (c.part === "memory") {
+        const delta = side?.memory?.[c.path];
+        if (!abs || !c.revertible || !isDelta(delta)) {
+          conflicts.push({ path: c.path, reason: "not_revertible" });
+          continue;
+        }
+        // Entry-level: a second revert would take out a duplicate the user
+        // kept, so a file this dream's revert already handled is done.
+        if (rec.reverts.some((r) => r.files.includes(c.path))) {
+          result.alreadyReverted.push(c.path);
+          continue;
+        }
+        const current = await readOrNull(abs);
+        const next = revertMemoryEntries(current, delta, c.beforeHash === null);
+        if (next === current) result.alreadyReverted.push(c.path);
+        else plan.push({ change: c, abs, restore: next, current });
+        continue;
+      }
       if (
         !abs ||
         !c.revertible ||

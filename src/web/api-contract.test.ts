@@ -252,8 +252,12 @@ describe("actual server DTOs conform to OpenAPI v1", () => {
       const soul = await import("../soul/store.js");
       fs.mkdirSync(nodePath.join(home, "memory"), { recursive: true });
       fs.writeFileSync(nodePath.join(home, "memory", "MEMORY.md"), "- tea\n");
+      const page = nodePath.join(home, "kb", "wiki", "tea.md");
+      fs.mkdirSync(nodePath.dirname(page), { recursive: true });
+      fs.writeFileSync(page, "# Tea\n");
       await withDream({ trigger: "idle" }, async () => {
         await appendMemory("memory", "coffee");
+        fs.writeFileSync(page, "# Tea and coffee\n");
         await soul.writeIdentity("I am Lisa.");
         await soul.applyEmotionDelta({ emotion: "joy", delta: 0.2, trigger: "t", maxEvents: 5 });
       });
@@ -267,8 +271,8 @@ describe("actual server DTOs conform to OpenAPI v1", () => {
         dream: await readDream(id),
         reconsider: await listReconsiderRequests(id),
       });
-      fs.appendFileSync(nodePath.join(home, "memory", "MEMORY.md"), "- later\n");
-      await assert.rejects(revertDream(id, { parts: ["memory"] }), (err: unknown) => {
+      fs.writeFileSync(page, "# Tea, edited later\n");
+      await assert.rejects(revertDream(id, { parts: ["kb"] }), (err: unknown) => {
         assert.ok(err instanceof RevertConflictError);
         assertContract("ReveRevertConflict", {
           error: "revert_conflict",
@@ -276,7 +280,7 @@ describe("actual server DTOs conform to OpenAPI v1", () => {
         });
         return true;
       });
-      const reverted = await revertDream(id, { parts: ["memory"], force: true });
+      const reverted = await revertDream(id, { parts: ["memory", "kb"], force: true });
       assertContract("ReveRevertResponse", { ok: true, ...reverted });
       const now = new Date();
       assertContract(

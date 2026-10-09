@@ -89,11 +89,28 @@ describe("lisa reve", () => {
   });
 
   test("a conflicting revert exits 3 and explains --force", async () => {
+    const page = path.join(home, "kb", "wiki", "tea.md");
+    fs.mkdirSync(path.dirname(page), { recursive: true });
+    fs.writeFileSync(page, "# Tea\n");
+    await withDream({ trigger: "idle" }, async () => {
+      fs.writeFileSync(page, "# Tea, by Lisa\n");
+    });
+    const id = (await listDreams(1)).dreams[0]!.id;
+    fs.writeFileSync(page, "# Tea, edited later\n");
+    const c = io();
+    assert.equal(await runReveCommand(["revert", id, "--parts", "kb"], c.io), 3);
+    assert.match(c.err.join("\n"), /--force/);
+  });
+
+  test("a memory revert is entry-level: the user's later entry is kept, no conflict", async () => {
     const id = await makeDream();
     fs.appendFileSync(path.join(home, "memory", "MEMORY.md"), "- edited later\n");
     const c = io();
-    assert.equal(await runReveCommand(["revert", id, "--parts", "memory"], c.io), 3);
-    assert.match(c.err.join("\n"), /--force/);
+    assert.equal(await runReveCommand(["revert", id, "--parts", "memory"], c.io), 0);
+    assert.equal(
+      fs.readFileSync(path.join(home, "memory", "MEMORY.md"), "utf8"),
+      "- tea\n- edited later\n",
+    );
   });
 
   test("unknown dream ids fail cleanly", async () => {

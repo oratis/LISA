@@ -24,6 +24,7 @@ import {
   desireChanges,
   diffSnapshots,
   emotionDelta,
+  memoryEntryDelta,
   takeSnapshot,
   uncapturedParts,
   type Snapshot,
@@ -426,21 +427,34 @@ async function finishDream(ctx: {
     return null;
   }
 
-  // Revert sidecar: pre-pass content of changed USER files, within the cap.
-  const sidecar: DreamSnapshotSidecar = { version: 1, id: scope.id, files: {} };
+  // Revert sidecar, within the cap: for KB / skills the pre-pass content of
+  // each changed file; for memory only the entry lines the pass added and
+  // removed (an entry the pass never touched is never copied here).
+  const sidecar: DreamSnapshotSidecar = { version: 1, id: scope.id, files: {}, memory: {} };
   let sidecarBytes = 0;
   for (const c of changes) {
     if (c.part === "soul" || !c.revertible) continue;
-    const content = ctx.before.files.get(c.path)?.content ?? null;
-    const bytes = content ? Buffer.byteLength(content, "utf8") : 0;
+    const beforeText = ctx.before.files.get(c.path)?.content ?? null;
+    const delta =
+      c.part === "memory"
+        ? memoryEntryDelta(beforeText ?? "", after.files.get(c.path)?.content ?? "")
+        : null;
+    const bytes = delta
+      ? Buffer.byteLength([...delta.added, ...delta.removed].join("\n"), "utf8")
+      : beforeText
+        ? Buffer.byteLength(beforeText, "utf8")
+        : 0;
     if (sidecarBytes + bytes > MAX_SIDECAR_BYTES) {
       c.revertible = false;
       c.notRevertibleReason = "the pre-dream copy did not fit the revert sidecar cap";
       continue;
     }
     sidecarBytes += bytes;
-    sidecar.files[c.path] = content;
+    if (delta) sidecar.memory![c.path] = delta;
+    else sidecar.files[c.path] = beforeText;
   }
+  const hasSidecar =
+    Object.keys(sidecar.files).length > 0 || Object.keys(sidecar.memory!).length > 0;
 
   const outcome: DreamRecord["outcome"] =
     endOpts.outcome ??
@@ -476,7 +490,7 @@ async function finishDream(ctx: {
   await ensureDir(dreamsDir());
   await lockReve(async () => {
     // Sidecar first: a record must never point at revert data that is missing.
-    if (Object.keys(sidecar.files).length) {
+    if (hasSidecar) {
       await atomicWrite(dreamSnapshotFile(rec.id), JSON.stringify(sidecar) + "\n");
     }
     await writeDreamRecord(rec);

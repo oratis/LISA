@@ -194,19 +194,28 @@ describe("reve API", () => {
   });
 
   test("concurrent modification → 409, then force → 200", async () => {
-    const id = await dreamFor("alice");
-    fs.appendFileSync(path.join(homeForUid("alice"), "memory", "MEMORY.md"), "- user edit\n");
+    const page = path.join(homeForUid("alice"), "kb", "wiki", "a.md");
+    fs.mkdirSync(path.dirname(page), { recursive: true });
+    fs.writeFileSync(page, "# A\n");
+    const id = await homeScope.run(homeForUid("alice"), async () => {
+      await withDream({ trigger: "idle" }, async () => {
+        fs.writeFileSync(page, "# A, by Lisa\n");
+      });
+      return (await listDreams(1)).dreams[0]!.id;
+    });
+    fs.writeFileSync(page, "# A, by the user\n");
     const conflict = await call("POST", `/api/reve/dreams/${id}/revert`, {
       uid: "alice",
-      body: { parts: ["memory"] },
+      body: { parts: ["kb"] },
     });
     assert.equal(conflict.status, 409);
     assert.equal(conflict.body.error, "revert_conflict");
     const forced = await call("POST", `/api/reve/dreams/${id}/revert`, {
       uid: "alice",
-      body: { parts: ["memory"], force: true },
+      body: { parts: ["kb"], force: true },
     });
     assert.equal(forced.status, 200);
+    assert.equal(fs.readFileSync(page, "utf8"), "# A\n");
   });
 
   test("a corrupt dream file is reported, not fatal", async () => {

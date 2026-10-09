@@ -314,11 +314,47 @@ export function multisetDiff(a: string[], b: string[]): { added: string[]; remov
   return { added, removed };
 }
 
+/** The identity of a memory entry line: trimmed, a leading "- " bullet stripped. */
+export function memoryEntryKey(line: string): string {
+  return line.trim().replace(/^-\s+/, "");
+}
+
 /** Memory entries: non-empty lines, a leading "- " bullet stripped. */
 export function memoryEntries(text: string): string[] {
-  return splitLines(text)
-    .map((l) => l.trim().replace(/^-\s+/, ""))
-    .filter(Boolean);
+  return splitLines(text).map(memoryEntryKey).filter(Boolean);
+}
+
+/**
+ * The entry LINES (trimmed, bullet kept) a pass added and removed, compared
+ * by entry key with multiplicity. This — never the whole file — is what a
+ * memory revert works from.
+ */
+export function memoryEntryDelta(
+  before: string,
+  after: string,
+): { added: string[]; removed: string[] } {
+  const lines = (text: string) =>
+    splitLines(text)
+      .map((l) => l.trim())
+      .filter((l) => memoryEntryKey(l));
+  const a = lines(before);
+  const b = lines(after);
+  const count = (list: string[]) => {
+    const m = new Map<string, number>();
+    for (const l of list) m.set(memoryEntryKey(l), (m.get(memoryEntryKey(l)) ?? 0) + 1);
+    return m;
+  };
+  const left = (from: string[], against: Map<string, number>) => {
+    const out: string[] = [];
+    for (const l of from) {
+      const k = memoryEntryKey(l);
+      const c = against.get(k) ?? 0;
+      if (c > 0) against.set(k, c - 1);
+      else out.push(l);
+    }
+    return out;
+  };
+  return { added: left(b, count(a)), removed: left(a, count(b)) };
 }
 
 const MAX_ENTRY_CHARS = 400;
@@ -400,11 +436,12 @@ export function diffSnapshots(before: Snapshot, after: Snapshot): FileChange[] {
       linesRemoved: d.removed,
       diff: d.text,
       diffTruncated: d.truncated,
-      // A user part is revertible when its pre-pass content (or absence) is known.
-      revertible: part !== "soul" && haveBefore,
+      // A user part is revertible when its pre-pass content (or absence) is
+      // known; memory reverts entry by entry, so it needs the after side too.
+      revertible: part !== "soul" && haveBefore && (part !== "memory" || haveAfter),
     };
-    if (part !== "soul" && !haveBefore) {
-      change.notRevertibleReason = "too large: its content before the dream was not kept";
+    if (part !== "soul" && !change.revertible) {
+      change.notRevertibleReason = "too large: its content was not kept";
     }
     if (part === "memory" && haveBefore && haveAfter) {
       const { added, removed } = multisetDiff(
