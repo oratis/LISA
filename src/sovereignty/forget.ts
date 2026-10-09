@@ -27,9 +27,12 @@
  *  memory_kb_links      strip `[[kb:slug]]` / `[[slug]]` pointers (in memory
  *                       and in other pages) to the pages deleted above
  *  sessions             replace matching message text with "[forgotten by
- *                       user]" (structure kept), redact matching lines in
- *                       recorded prompts / reflection summaries
- *  reflections          per-session reflection records: matching strings
+ *                       user]", redact matching lines in recorded prompts /
+ *                       reflection summaries. Content fields only: the
+ *                       header, types, ids, timestamps and roles are never
+ *                       touched, so every transcript still loads
+ *  reflections          per-session reflection records: matching content
+ *                       strings (kinds, stores, slugs kept)
  *  search_index         drop the in-memory session + KB indexes and the
  *                       persisted embedding cache (vectors of the old text)
  *  relationships        literal matches only, soul-git commit `user-forget`
@@ -267,6 +270,19 @@ function redactLines(text: string, m: Matcher): string {
     .join("\n");
 }
 
+const NO_KEYS: ReadonlySet<string> = new Set();
+
+/** Reflection-record keys that name kinds, stores or slugs, never content. */
+const REFLECTION_STRUCTURAL: ReadonlySet<string> = new Set([
+  "kind",
+  "store",
+  "slug",
+  "emotion",
+  "delta",
+  "confidence",
+  "underReflected",
+]);
+
 interface Redacted {
   value: unknown;
   changed: number;
@@ -274,8 +290,16 @@ interface Redacted {
   sample?: string;
 }
 
-/** Replace every matching string value in a JSON-ish value (structure kept). */
-function redactStrings(value: unknown, m: Matcher): Redacted {
+/**
+ * Replace every matching string VALUE in a JSON-ish value. Keys are never
+ * touched, and nor is any value under a key in `structural` (ids, types,
+ * timestamps…), at any depth.
+ */
+function redactStrings(
+  value: unknown,
+  m: Matcher,
+  structural: ReadonlySet<string> = NO_KEYS,
+): Redacted {
   if (typeof value === "string") {
     return m.test(value) ? { value: FORGOTTEN, changed: 1, sample: value } : { value, changed: 0 };
   }
@@ -283,7 +307,7 @@ function redactStrings(value: unknown, m: Matcher): Redacted {
     let changed = 0;
     let sample: string | undefined;
     const out = value.map((v) => {
-      const r = redactStrings(v, m);
+      const r = redactStrings(v, m, structural);
       changed += r.changed;
       sample ??= r.sample;
       return r.value;
@@ -295,7 +319,11 @@ function redactStrings(value: unknown, m: Matcher): Redacted {
     let sample: string | undefined;
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value)) {
-      const r = redactStrings(v, m);
+      if (structural.has(k)) {
+        out[k] = v;
+        continue;
+      }
+      const r = redactStrings(v, m, structural);
       changed += r.changed;
       sample ??= r.sample;
       out[k] = r.value;
@@ -369,6 +397,13 @@ function digestOf(locations: ForgetLocation[]): string {
 }
 
 // ── sessions ─────────────────────────────────────────────────────────────
+//
+// Only content-bearing fields are ever rewritten: message text, thinking
+// (dropped whole — it is signed), tool inputs' string values and tool
+// results, recorded prompt text and reflection summaries. The header line,
+// entry types, ids, timestamps, roles, tool names / ids and every other
+// entry type are left exactly as they are, so a transcript still loads and
+// replays after a forget, whatever the query.
 
 interface Block {
   type?: string;
@@ -398,11 +433,6 @@ function redactContent(
       continue;
     }
     const b: Block = { ...raw };
-    if (typeof b.text === "string" && m.test(b.text)) {
-      sample ??= b.text;
-      b.text = FORGOTTEN;
-      changed = true;
-    }
     if (b.type === "thinking" && typeof b.thinking === "string" && m.test(b.thinking)) {
       // A thinking block carries a provider signature over its text; an
       // edited one would be rejected on replay, so it is dropped instead.
@@ -410,7 +440,13 @@ function redactContent(
       changed = true;
       continue;
     }
-    if (b.input !== undefined) {
+    if (typeof b.text === "string" && m.test(b.text)) {
+      sample ??= b.text;
+      b.text = FORGOTTEN;
+      changed = true;
+    }
+    if ((b.type === "tool_use" || b.type === "server_tool_use") && b.input !== undefined) {
+      // Values only: the input's keys are the tool's schema.
       const r = redactStrings(b.input, m);
       if (r.changed) {
         sample ??= r.sample;
@@ -432,51 +468,47 @@ function redactContent(
   return { content: out, changed, sample };
 }
 
+/** Redact the matching lines of a multi-line content field. */
+function redactField(
+  entry: Record<string, unknown>,
+  key: string,
+  m: Matcher,
+): { line: string; hit: boolean; sample?: string } | null {
+  const v = entry[key];
+  if (typeof v !== "string" || !m.test(v)) return null;
+  return { line: JSON.stringify({ ...entry, [key]: redactLines(v, m) }), hit: true, sample: v };
+}
+
 function redactSessionLine(
   line: string,
   m: Matcher,
-  isHeader: boolean,
 ): { line: string; hit: boolean; sample?: string } {
-  if (!m.test(line)) return { line, hit: false };
-  let entry: Record<string, unknown>;
+  const none = { line, hit: false };
+  if (!m.test(line)) return none;
+  let entry: unknown;
   try {
-    entry = JSON.parse(line) as Record<string, unknown>;
+    entry = JSON.parse(line);
   } catch {
-    // A torn line that still names the topic: keep the line count, drop it.
+    // A torn fragment (a crash mid-append) the reader already skips: when it
+    // names the topic, replace it with a record every reader ignores.
     return { line: JSON.stringify({ type: "forgotten" }), hit: true, sample: line };
   }
-  if (isHeader || !entry || typeof entry !== "object") {
-    const r = redactStrings(entry, m);
-    return { line: JSON.stringify(r.value), hit: r.changed > 0, sample: r.sample };
-  }
-  if (entry.type === "message" && entry.message && typeof entry.message === "object") {
-    const msg = { ...(entry.message as Record<string, unknown>) };
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) return none;
+  const e = entry as Record<string, unknown>;
+  if (e.type === "message" && e.message && typeof e.message === "object") {
+    const msg = e.message as Record<string, unknown>;
     const r = redactContent(msg.content, m);
-    msg.content = r.content;
-    const rest = redactStrings({ ...entry, message: undefined }, m);
-    const out = { ...(rest.value as Record<string, unknown>), message: msg };
+    if (!r.changed) return none;
     return {
-      line: JSON.stringify(out),
-      hit: r.changed || rest.changed > 0,
-      sample: r.sample ?? rest.sample,
-    };
-  }
-  if (entry.type === "prompt" && typeof entry.text === "string") {
-    return {
-      line: JSON.stringify({ ...entry, text: redactLines(entry.text, m) }),
+      line: JSON.stringify({ ...e, message: { ...msg, content: r.content } }),
       hit: true,
-      sample: entry.text,
+      sample: r.sample,
     };
   }
-  if (entry.type === "reflection" && typeof entry.summary === "string") {
-    return {
-      line: JSON.stringify({ ...entry, summary: redactLines(entry.summary, m) }),
-      hit: true,
-      sample: entry.summary,
-    };
-  }
-  const r = redactStrings(entry, m);
-  return { line: JSON.stringify(r.value), hit: r.changed > 0, sample: r.sample };
+  if (e.type === "prompt") return redactField(e, "text", m) ?? none;
+  if (e.type === "reflection") return redactField(e, "summary", m) ?? none;
+  // The header ("session") and every other entry type carry no user content.
+  return none;
 }
 
 /**
@@ -494,7 +526,7 @@ async function forgetInSession(file: string, ctx: Ctx): Promise<void> {
     const items: { item: Item; text?: string }[] = [];
     const out = lines.map((line, i) => {
       if (!line) return line;
-      const r = redactSessionLine(line, ctx.m, i === 0);
+      const r = redactSessionLine(line, ctx.m);
       if (!r.hit) return line;
       const id = itemId("sessions", "redact", location, String(i + 1), sha(line));
       if (!allowed(ctx, id)) return line;
@@ -834,7 +866,7 @@ async function forgetInReflections(ctx: Ctx): Promise<void> {
     } catch {
       continue;
     }
-    const r = redactStrings(parsed, ctx.m);
+    const r = redactStrings(parsed, ctx.m, REFLECTION_STRUCTURAL);
     if (r.changed === 0) continue;
     const id = itemId("reflections", "redact", location, sha(raw));
     if (!allowed(ctx, id)) continue;

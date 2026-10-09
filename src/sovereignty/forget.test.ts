@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, test } from "node:test";
 import { clearIndexCache, buildIndex } from "../memory/vector.js";
 import { searchKb } from "../kb/search.js";
 import { gitLogOneline, initSoulRepo } from "../soul/git.js";
+import { loadSessionMessages } from "../sessions/list.js";
 import { FORGOTTEN, forget, ForgetError, readForgetNotice } from "./forget.js";
 
 let home: string;
@@ -382,6 +383,123 @@ describe("forget", () => {
     assert.equal(again.counts.journal, 2);
     await forget("Ann", { digest: again.digest });
     assert.equal(read("memory/MEMORY.md"), "- likes tea\n");
+  });
+
+  test("never rewrites structure: every transcript still loads, whatever the query", async () => {
+    const lines = [
+      {
+        type: "session",
+        id: "2026-10-01-abc",
+        version: 2,
+        startedAt: "2026-10-01T10:00:00Z",
+        cwd: "/x",
+        model: "claude-x",
+      },
+      {
+        type: "prompt",
+        ts: "2026-10-01T10:00:00Z",
+        fingerprint: "fp1",
+        reason: "initial",
+        text: "Be kind.",
+      },
+      {
+        type: "message",
+        ts: "2026-10-01T10:00:01Z",
+        message: { role: "user", content: "what's the weather" },
+      },
+      {
+        type: "message",
+        ts: "2026-10-01T10:00:02Z",
+        message: {
+          role: "assistant",
+          content: [
+            { type: "thinking", thinking: "Check it.", signature: "sig-abc" },
+            { type: "text", text: "Sunny." },
+            {
+              type: "tool_use",
+              id: "toolu_1",
+              name: "memory_search",
+              input: { query: "weather", k: 3 },
+            },
+          ],
+        },
+      },
+      {
+        type: "message",
+        ts: "2026-10-01T10:00:03Z",
+        message: {
+          role: "user",
+          content: [{ type: "tool_result", tool_use_id: "toolu_1", content: "none" }],
+        },
+      },
+      { type: "model_change", ts: "2026-10-01T10:00:04Z", model: "claude-x" },
+      { type: "reflection", ts: "2026-10-01T10:00:05Z", summary: "Talked." },
+    ];
+    const original = lines.map((l) => JSON.stringify(l)).join("\n") + "\n";
+    for (const query of [
+      "message",
+      "session",
+      "2026-10-01",
+      "2026-10-01-abc",
+      "assistant",
+      "user",
+      "tool_use",
+      "toolu_1",
+      "memory_search",
+      "text",
+      "thinking",
+      "signature",
+      "sig-abc",
+      "model_change",
+      "claude-x",
+      "fingerprint",
+      "initial",
+      "role",
+      "content",
+    ]) {
+      write(`sessions/${SESSION}.jsonl`, original);
+      const preview = await forget(query, { dryRun: true });
+      assert.equal(preview.counts.sessions, 0, `${query}: structure counted as content`);
+      await forget(query, { digest: preview.digest });
+      assert.equal(read(`sessions/${SESSION}.jsonl`), original, `${query} rewrote structure`);
+    }
+    // Content queries redact content and nothing else; the file still loads.
+    write(`sessions/${SESSION}.jsonl`, original);
+    for (const query of ["weather", "Sunny", "Check it", "Be kind", "Talked", "none"]) {
+      await forget(query);
+    }
+    const after = read(`sessions/${SESSION}.jsonl`).trim().split("\n");
+    assert.equal(after[0], JSON.stringify(lines[0]), "header untouched");
+    const parsed = after.map((l) => JSON.parse(l) as Record<string, unknown>);
+    assert.deepEqual(
+      parsed.map((p) => [p.type, p.ts ?? null]),
+      lines.map((l) => [l.type, (l as { ts?: string }).ts ?? null]),
+    );
+    const { header, messages } = await loadSessionMessages(SESSION);
+    assert.equal(header.id, "2026-10-01-abc");
+    assert.deepEqual(
+      messages.map((msg) => msg.role),
+      ["user", "assistant", "user"],
+    );
+    assert.equal(messages[0]!.content, FORGOTTEN);
+    const blocks = messages[1]!.content as {
+      type: string;
+      id?: string;
+      name?: string;
+      input?: unknown;
+    }[];
+    assert.deepEqual(
+      blocks.map((b) => b.type),
+      ["text", "tool_use"],
+      "signed thinking dropped, others kept",
+    );
+    assert.deepEqual(
+      [blocks[1]!.id, blocks[1]!.name, blocks[1]!.input],
+      ["toolu_1", "memory_search", { query: FORGOTTEN, k: 3 }],
+    );
+    const result = (messages[2]!.content as { tool_use_id: string; content: unknown }[])[0]!;
+    assert.deepEqual([result.tool_use_id, result.content], ["toolu_1", FORGOTTEN]);
+    assert.equal(parsed[1]!.fingerprint, "fp1");
   });
 });
 
