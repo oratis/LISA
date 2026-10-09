@@ -539,6 +539,43 @@ test("unanswered, the approval expires as a deny: the write never runs and the r
   });
 });
 
+test("the lease keeps renewing while a run awaits approval: nobody else takes the task", async () => {
+  await withHome(async (_home, ws) => {
+    // Hosted runners judge a lease by expiry alone (a pid proves nothing across
+    // instances), so only renewal keeps the second one out.
+    await dueRoutine({ nextRunAt: Date.now() - 1000, host: "any" });
+    const writes: unknown[] = [];
+    const { inbox } = wardenInbox({ approveAfterMs: 600 });
+    const a = makeRunner(ws, {
+      host: "cloud",
+      provider: writeScript(ws).provider,
+      deliver: collector().deliver,
+      tools: [writeTool(writes)],
+      approvalFactory: factoryOn(inbox),
+      now: Date.now,
+      leaseTtlMs: 150, // the wait is four times the lease's lifetime
+      leaseRenewEveryMs: 40,
+    });
+    const other = scripted([]);
+    const b = makeRunner(ws, {
+      host: "cloud",
+      provider: other.provider,
+      deliver: collector().deliver,
+      tools: [writeTool(writes)],
+      approvalFactory: factoryOn(inbox),
+      now: Date.now,
+    });
+    await a.tick();
+    await new Promise((r) => setTimeout(r, 350));
+    assert.deepEqual((await b.tick()).started, [], "the lease is still held mid-wait");
+    await a.drain();
+    await b.drain();
+    assert.equal(writes.length, 1);
+    assert.equal(other.calls.length, 0);
+    await inbox.shutdown();
+  });
+});
+
 test("the wait for an approval does not count against the run's wall-clock budget", async () => {
   await withHome(async (_home, ws) => {
     const task = await dueRoutine({
