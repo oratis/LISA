@@ -5,7 +5,8 @@
  * `idle_message` broadcast fails here instead of shipping.
  *
  * It is deliberately narrow. It covers the notification paths the gate owns
- * today (idle note, advisor digest, mail digest, mail alert, KB brief). Agent
+ * today (idle note, advisor digest, mail digest, mail alert, KB brief, and the
+ * "an approval is waiting" notice of an unattended task run). Agent
  * done/error/permission pushes and billing alerts are operational events that
  * are not routed through the gate yet — see KNOWN_UNGATED below.
  */
@@ -85,6 +86,51 @@ test("nothing outside the gate's own transport uses PushBridge.notify", () => {
     if (/pushBridge\.notify\(/.test(text)) offenders.push(name);
   }
   assert.deepEqual(offenders, []);
+});
+
+test("an approval notice is only ever built by its sender and handed to the gate", () => {
+  // Who builds a notice with source "approval": the sender in senders.ts, nobody else.
+  const builders: string[] = [];
+  for (const file of sourceFiles(SRC)) {
+    const name = rel(file);
+    if (name === "reachout/senders.ts" || name === "reachout/types.ts") continue;
+    if (/source:\s*"approval"/.test(fs.readFileSync(file, "utf8"))) builders.push(name);
+  }
+  assert.deepEqual(builders, [], "a notice with source approval is built outside senders.ts");
+
+  // Who uses the sender: the Warden task factory, and only as the argument of
+  // its reach-out hook — never a push, a broadcast or a note of its own.
+  const users = sourceFiles(SRC)
+    .map(rel)
+    .filter((name) => name !== "reachout/senders.ts" && name !== "reachout/index.ts")
+    .filter((name) => /taskApprovalNotice\(/.test(fs.readFileSync(path.join(SRC, name), "utf8")));
+  assert.deepEqual(users, ["warden/task-approval.ts"]);
+  const factory = fs.readFileSync(path.join(SRC, "warden", "task-approval.ts"), "utf8");
+  assert.match(factory, /opts\.reachOut\(\s*taskApprovalNotice\(/);
+  assert.equal(
+    (factory.match(/taskApprovalNotice\(/g) ?? []).length,
+    1,
+    "built once, in the reach-out call",
+  );
+  for (const forbidden of [/pushBridge/i, /\.notify\(/, /idle_message/, /broadcast\(/]) {
+    assert.doesNotMatch(
+      factory,
+      forbidden,
+      `the factory must not deliver by itself (${forbidden})`,
+    );
+  }
+});
+
+test("the server hands the approval factory the gate, not a channel", () => {
+  const server = fs.readFileSync(path.join(SRC, "web", "server.ts"), "utf8");
+  const at = server.indexOf("createTaskApprovalFactory({");
+  assert.ok(at > 0, "the server installs the factory");
+  const block = server.slice(at, server.indexOf("}),", at));
+  assert.match(
+    block,
+    /reachOut:\s*\(notice\)\s*=>\s*reachOutVia\(/,
+    "through the server's gate wrapper",
+  );
 });
 
 test("the ungated operational pushes are exactly the known two", () => {
