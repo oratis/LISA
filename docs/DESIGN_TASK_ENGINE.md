@@ -66,9 +66,13 @@ All three drivers take the task's lease before touching it. Whoever loses skips 
 | A retry is a resume | A transient failure does not end the run. It is parked (`task.resumeAt`) and resumed — same run id, same history, same ledger — up to 2 times with backoff, and the model is told the previous attempt failed and why. The resume passes the start gate too |
 | No repeated side effect | See "The ledger" |
 | Finishing is recoverable | See "Finishing a run" |
-| Bounded | Token (cache reads and writes included), spend, wall-clock and tool-call ceilings per run |
+| Bounded | Token (cache reads and writes included), spend, wall-clock and tool-call ceilings per run. See "The spend ceiling" |
 | Stoppable | `AbortSignal` in-process; a flag on the task across processes |
 | Fair | Interrupted runs first, then the task that has waited longest; concurrency 2 at home, 1 per tenant hosted |
+
+### The spend ceiling
+
+A task's `budget.usdMicros` is enforced by the agent loop's per-run cost cap (`costCapMicroUSD`, `src/model/cost.ts`): before every model call the call's worst case — its prompt, estimated, plus the output ceiling handed to the provider, which is clamped to what is left — must fit under what remains, so the run stops *before* the call that would cross the ceiling. A call that fails after it was sent is counted at that worst case too, and a resumed or retried segment starts with what earlier segments counted already off the top (`run.capSpentMicros`). The run then ends `failed` with stop reason `budget_usd` and an error that says so ("spend ceiling reached — …"), and the user is told as for any failed run; it is not retried. After each call the reported cost is also checked against the ceiling, as a backstop. It is an estimate-based circuit breaker; the residual bound is in `docs/PROVIDERS.md`. #407 defines no global cap; a run without `usdMicros` has no spend ceiling (its token, wall-clock and tool-call ceilings still apply).
 
 ### The ledger
 

@@ -1237,7 +1237,21 @@ export class TaskRunner {
       },
     };
 
+    // What this segment may still spend under the run's spend ceiling.
+    const capLeft =
+      budget.usdMicros !== undefined ? budget.usdMicros - (run.capSpentMicros ?? 0) : undefined;
+    let capMessage: string | undefined;
+
     try {
+      if (capLeft !== undefined && !(capLeft > 0)) {
+        // Spent in an earlier segment (a failed attempt counts): not one more call.
+        return {
+          state: "failed",
+          stopReason: "budget_usd",
+          summary: "",
+          error: `spend ceiling reached — $${(budget.usdMicros! / 1_000_000).toFixed(2)} already counted against this run`,
+        };
+      }
       const surface =
         typeof this.opts.tools === "function" ? await this.opts.tools() : this.opts.tools;
       // A run started by a watcher hit carries text an outsider controls: it
@@ -1384,6 +1398,23 @@ export class TaskRunner {
         model,
         maxIterations: Math.max(4, Math.min(64, budget.maxToolCalls + 2)),
         moodOrigin: "a task run",
+        // The spend ceiling, as #407's estimate-based cap: each model call is
+        // admitted only if its worst case still fits in what is left, and a
+        // call that fails after it was sent is counted too. What earlier
+        // segments of this run counted is off the top.
+        ...(capLeft !== undefined
+          ? {
+              costCapMicroUSD: capLeft,
+              onCostCharged: (microUSD: number) => {
+                // Unreadable usage spends the whole ceiling: a resumed
+                // segment must not start with it looking unspent.
+                run.capSpentMicros =
+                  Number.isFinite(microUSD) && microUSD >= 0
+                    ? (run.capSpentMicros ?? 0) + microUSD
+                    : budget.usdMicros;
+              },
+            }
+          : {}),
         approval,
         onMessagePersist: async (message) => {
           await this.saveMessage(task.id, run.id, message, this.now());
@@ -1393,6 +1424,11 @@ export class TaskRunner {
             handle?.observe?.(event);
           } catch {
             // An observer must never break the run it observes.
+          }
+          if (event.type === "info" && /\bcost cap\b/.test(event.message ?? "")) {
+            capMessage = (event.message ?? "")
+              .replace(/^\[agent\]\s*/, "")
+              .replace(/\s*\(stopReason=budget_exceeded\)\s*$/, "");
           }
           if (event.type === "tool_call_start") {
             run.toolCalls += 1;
@@ -1516,6 +1552,17 @@ export class TaskRunner {
           stopReason: "max_iterations",
           summary: text,
           error: "ran out of turns",
+        };
+      }
+      // Only the cost cap stops runAgent this way here (the token ceiling is
+      // the runner's own): the next call would not have fitted under it.
+      if (result.stopReason === "budget_exceeded") {
+        if (slot.leaseLost) throw lostLease(slot);
+        return {
+          state: "failed",
+          stopReason: "budget_usd",
+          summary: text,
+          error: `spend ceiling reached — ${capMessage ?? "the next model call would not fit in what is left"}`,
         };
       }
       if (slot.leaseLost) throw lostLease(slot);

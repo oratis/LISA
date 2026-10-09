@@ -224,6 +224,12 @@ export interface TaskRun {
    */
   tokens: { in: number; out: number; cacheRead?: number; cacheWrite?: number };
   costMicros?: number;
+  /**
+   * What the spend ceiling (`budget.usdMicros`) has counted against this run,
+   * micro-USD, across its segments: every call's charge, and a call that
+   * failed after it was sent at its worst case. Unset on a run without a ceiling.
+   */
+  capSpentMicros?: number;
   toolCalls: number;
   /** sha256(tool + canonical input) → the LAST recorded result of that call (for inspection). */
   executedDigests: Record<string, string>;

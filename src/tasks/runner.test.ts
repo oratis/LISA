@@ -7,6 +7,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import type Anthropic from "@anthropic-ai/sdk";
+import { costMicroUSD } from "../billing/prices.js";
 import { homeScope, lisaHome } from "../paths.js";
 import type { Provider, ProviderResult, ProviderRunOpts } from "../providers/types.js";
 import type { StoredMessage, ToolDefinition } from "../types.js";
@@ -1533,7 +1534,7 @@ test("the wall-clock budget aborts a run that hangs", async () => {
   });
 });
 
-test("the spend budget stops a run once its cost reaches the ceiling", async () => {
+test("a spend ceiling no call fits under stops the run before its first model call", async () => {
   await withHome(async () => {
     const task = await dueRoutine({
       budget: { tokens: 1e9, usdMicros: 1, wallclockMs: 60_000, maxToolCalls: 20 },
@@ -1546,9 +1547,134 @@ test("the spend budget stops a run once its cost reaches the ceiling", async () 
     await runner.tick();
     await runner.drain();
     const run = (await listRuns((await getTask(task.id))!))[0]!;
-    assert.equal(calls.length, 1);
+    assert.equal(calls.length, 0, "not even one call: it would have crossed the ceiling");
+    assert.equal(run.state, "failed");
     assert.equal(run.stopReason, "budget_usd");
-    assert.ok((run.costMicros ?? 0) >= 1);
+    assert.match(run.error ?? "", /^spend ceiling reached — cost cap \$0\.00/);
+  });
+});
+
+/** A model that always wants another tool call, billing 10k prompt tokens and up to 2k output. */
+function spender(model: string) {
+  const calls: ProviderRunOpts[] = [];
+  let truth = 0;
+  const provider: Provider = {
+    name: "spender",
+    async runTurn(o) {
+      calls.push(o);
+      const usage = {
+        inputTokens: 10_000,
+        outputTokens: Math.min(2_000, o.maxTokens ?? 2_000),
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+      };
+      truth += costMicroUSD(model, usage);
+      return { content: [call("read")], stopReason: "tool_use", usage };
+    },
+  };
+  return { provider, calls, truth: () => truth };
+}
+
+test("the spend ceiling stops a run before the call that would cross it, with a clear reason", async () => {
+  await withHome(async () => {
+    // gemini-2.5-flash: one full turn costs ~11k micro-USD; the ceiling is $0.03.
+    const task = await dueRoutine({
+      budget: { tokens: 1e9, usdMicros: 30_000, wallclockMs: 60_000, maxToolCalls: 40 },
+    });
+    const model = "gemini-2.5-flash";
+    const s = spender(model);
+    const { notices, deliver } = collector();
+    const runner = makeRunner({ provider: s.provider, tools: [tool("read")], model, deliver });
+    await runner.tick();
+    await runner.drain();
+
+    const after = (await getTask(task.id))!;
+    const run = (await listRuns(after))[0]!;
+    assert.equal(run.state, "failed");
+    assert.equal(run.stopReason, "budget_usd");
+    assert.match(run.error ?? "", /^spend ceiling reached — cost cap \$0\.03/);
+    assert.ok(s.truth() <= 30_000, `spent ${s.truth()} of a 30000 ceiling`);
+    assert.ok(s.calls.length >= 2, "real work happened first");
+    // The last call was admitted with an output ceiling cut to what was left.
+    assert.ok(s.calls[s.calls.length - 1]!.maxTokens! < 2_000);
+    assert.ok((run.capSpentMicros ?? 0) >= s.truth() - 1, "the counted spend is on the run");
+    assert.equal(after.state, "scheduled", "a routine goes back to its schedule");
+    assert.equal(notices.length, 1);
+    assert.equal(notices[0]!.kind, "task_failed");
+    assert.match(notices[0]!.summary, /spend ceiling reached/);
+  });
+});
+
+test("the spend ceiling holds across a resume: what earlier segments counted is off the top", async () => {
+  await withHome(async () => {
+    const task = await dueRoutine({
+      budget: { tokens: 1e9, usdMicros: 30_000, wallclockMs: 60_000, maxToolCalls: 40 },
+    });
+    const model = "gemini-2.5-flash";
+    // Process 1: two calls, then it dies inside the third.
+    const reached = deferred();
+    let truth = 0;
+    const usage = {
+      inputTokens: 10_000,
+      outputTokens: 2_000,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+    };
+    const paid = (o: ProviderRunOpts) => {
+      const u = { ...usage, outputTokens: Math.min(2_000, o.maxTokens ?? 2_000) };
+      truth += costMicroUSD(model, u);
+      return { content: [call("read")], stopReason: "tool_use", usage: u } as ProviderResult;
+    };
+    const a = makeRunner({
+      provider: scripted([
+        paid,
+        (o) => {
+          reached.resolve();
+          return hang(o.signal);
+        },
+      ]).provider,
+      tools: [tool("read")],
+      model,
+    });
+    await a.tick();
+    await reached.promise;
+    await a.stop();
+    const runId = (await getTask(task.id))!.activeRunId!;
+    const spentBefore = (await loadRun(task.id, runId))!.run.capSpentMicros ?? 0;
+    assert.ok(spentBefore > 0, "the first segment's spend was recorded");
+
+    // Process 2: the resumed segment gets only what is left.
+    const s = spender(model);
+    const b = makeRunner({ provider: s.provider, tools: [tool("read")], model });
+    await b.tick();
+    await b.drain();
+    const run = (await loadRun(task.id, runId))!.run;
+    assert.equal(run.stopReason, "budget_usd");
+    assert.ok(truth + s.truth() <= 30_000, `spent ${truth + s.truth()} across both segments`);
+  });
+});
+
+test("a capped task call that spends and then fails is counted against the ceiling", async () => {
+  await withHome(async () => {
+    const task = await dueRoutine({
+      budget: { tokens: 1e9, usdMicros: 200_000, wallclockMs: 60_000, maxToolCalls: 40 },
+    });
+    const runner = makeRunner({
+      provider: scripted([
+        () => {
+          throw new Error("stream terminated after output");
+        },
+      ]).provider,
+      tools: [tool("read")],
+      model: "gemini-2.5-flash",
+    });
+    await runner.tick();
+    await runner.drain();
+    const parked = (await getTask(task.id))!;
+    const run = (await loadRun(task.id, parked.activeRunId!))!.run;
+    assert.equal(run.state, "interrupted", "a transient failure is parked for a retry");
+    assert.ok((run.capSpentMicros ?? 0) > 0, "…and what the failed call may have cost is counted");
+    assert.equal(run.costMicros ?? 0, 0, "no usage was reported");
   });
 });
 
