@@ -126,6 +126,34 @@ describe("lisa reve", () => {
     assert.equal(fs.existsSync(path.join(home, "reve", "reconsider.json")), false);
   });
 
+  test("show strips terminal escapes from captured text (#423 F7)", async () => {
+    fs.mkdirSync(path.join(home, "kb", "sources"), { recursive: true });
+    await withDream({ trigger: "idle" }, async () => {
+      fs.writeFileSync(
+        path.join(home, "kb", "sources", "page.md"),
+        "# page\n\x1b]52;c;ZWNobyBwd25lZA==\x07\x1b[2J\x1b]0;fake title\x07 tail\u009b31m\n",
+      );
+    });
+    const id = (await listDreams(1)).dreams[0]!.id;
+    const c = io();
+    assert.equal(await runReveCommand(["show", id], c.io), 0);
+    const text = c.out.join("\n");
+    // eslint-disable-next-line no-control-regex
+    assert.equal(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/.test(text), false, "no ESC, BEL or C1 bytes");
+    assert.ok(!text.includes("ZWNobyBwd25lZA"), "the OSC 52 clipboard payload is gone");
+    assert.match(text, /# page/);
+  });
+
+  test("CLI help lines stay aligned (#423 F7)", () => {
+    const help = fs.readFileSync(path.join(import.meta.dirname, "..", "cli.ts"), "utf8");
+    const col = (cmd: string) => {
+      const line = help.split("\n").find((l) => l.startsWith(`  ${cmd}`))!;
+      return line.length - line.slice(2 + cmd.length).trimStart().length;
+    };
+    assert.equal(col("lisa model <sub>"), col("lisa autonomy [days]"));
+    assert.equal(col("lisa reve <sub>"), col("lisa autonomy [days]"));
+  });
+
   test("unknown dream ids fail cleanly", async () => {
     const c = io();
     assert.equal(await runReveCommand(["show", "d-20261009T000000000-00000000"], c.io), 1);

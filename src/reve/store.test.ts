@@ -7,6 +7,7 @@ import path from "node:path";
 const { applyRetention, listDreams, dreamIdTime, RETENTION_MAX_COUNT, RETENTION_INTERVAL_MS } =
   await import("./store.js");
 const { withDream } = await import("./record.js");
+const { readDream, readDreamView, MAX_RECORD_BYTES, AUDIT_MAX_LINES } = await import("./store.js");
 const { appendMemory } = await import("../memory/store.js");
 
 let home: string;
@@ -139,5 +140,90 @@ describe("retention cost (#423 F6)", () => {
     );
     await pass(t0 + RETENTION_INTERVAL_MS + 120_000);
     assert.equal(fs.existsSync(path.join(dir, `${orphan}.before.json`)), false, "due again");
+  });
+});
+
+describe("retention of the rest of reve/, and capped reads (#423 F7)", () => {
+  test("delivered reconsider notes and old audit lines age out with the dreams", async () => {
+    const kept = idAt(NOW - DAY, 1);
+    fakeDream(kept);
+    const gone = idAt(NOW - 200 * DAY, 2); // its dream is not kept
+    const old = new Date(NOW - 100 * DAY).toISOString();
+    const recent = new Date(NOW - DAY).toISOString();
+    const note = (id: string, dreamId: string, status: string, at: string) => ({
+      id,
+      dreamId,
+      note: id,
+      createdAt: at,
+      status,
+      ...(status === "delivered" ? { deliveredAt: at, deliveredIn: dreamId } : {}),
+    });
+    const reve = path.join(home, "reve");
+    fs.writeFileSync(
+      path.join(reve, "reconsider.json"),
+      JSON.stringify({
+        version: 1,
+        requests: [
+          note("rc-old-delivered", kept, "delivered", old),
+          note("rc-recent-delivered", kept, "delivered", recent),
+          note("rc-dream-gone", gone, "delivered", recent),
+          note("rc-waiting-old", gone, "pending", old),
+        ],
+      }),
+    );
+    const audit = [
+      JSON.stringify({ at: old, action: "revert", dreamId: kept }),
+      ...Array.from({ length: AUDIT_MAX_LINES + 10 }, (_, i) =>
+        JSON.stringify({ at: recent, action: "reconsider_requested", requestId: `rc-${i}` }),
+      ),
+    ];
+    fs.writeFileSync(path.join(reve, "audit.jsonl"), audit.join("\n") + "\n");
+
+    await applyRetention(NOW);
+
+    const left = JSON.parse(fs.readFileSync(path.join(reve, "reconsider.json"), "utf8")) as {
+      requests: Array<{ id: string }>;
+    };
+    assert.deepEqual(
+      left.requests.map((r) => r.id).sort(),
+      ["rc-recent-delivered", "rc-waiting-old"],
+      "a waiting note is never dropped",
+    );
+    const lines = fs.readFileSync(path.join(reve, "audit.jsonl"), "utf8").trim().split("\n");
+    assert.equal(lines.length, AUDIT_MAX_LINES);
+    assert.ok(!lines.some((l) => l.includes(old)), "lines past the window are gone");
+    assert.ok(lines.at(-1)!.includes(`rc-${AUDIT_MAX_LINES + 9}`), "the newest stay");
+  });
+
+  test("a record bigger than the cap is shown trimmed, with a flag; stored whole", async () => {
+    const id = idAt(NOW, 3);
+    fakeDream(id);
+    const file = path.join(home, "reve", "dreams", `${id}.json`);
+    const rec = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+    rec.changes = Array.from({ length: 8 }, (_, i) => ({
+      part: "kb",
+      path: `kb/wiki/p${i}.md`,
+      status: "modified",
+      beforeHash: "a",
+      afterHash: "b",
+      bytesBefore: 1,
+      bytesAfter: 1,
+      linesAdded: 1,
+      linesRemoved: 1,
+      diff: "+ " + "x".repeat(200_000),
+      diffTruncated: false,
+      revertible: true,
+    }));
+    fs.writeFileSync(file, JSON.stringify(rec));
+    assert.ok(fs.statSync(file).size > 1_000_000);
+    const view = await readDreamView(id);
+    assert.equal(view.readTruncated, true);
+    assert.ok(Buffer.byteLength(JSON.stringify(view), "utf8") <= MAX_RECORD_BYTES);
+    assert.equal(view.changes.length, 8, "trimming diffs was enough; every change is listed");
+    assert.equal(
+      (await readDream(id)).changes[0]!.diff.length,
+      200_002,
+      "internal reads are whole",
+    );
   });
 });

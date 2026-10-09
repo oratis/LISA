@@ -15,7 +15,14 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { atomicWrite } from "../fs-utils.js";
 import { withFileLock } from "../soul/lock.js";
-import { dreamFile, dreamSnapshotFile, dreamsDir, isValidDreamId, reveLockPath } from "./paths.js";
+import {
+  dreamFile,
+  dreamSnapshotFile,
+  dreamsDir,
+  isValidDreamId,
+  reveAuditFile,
+  reveLockPath,
+} from "./paths.js";
 import {
   DREAM_RECORD_VERSION,
   DREAM_TRIGGERS,
@@ -36,6 +43,13 @@ export const RETENTION_MAX_BYTES = 64 * 1024 * 1024;
 export const RETENTION_FLOOR = 10;
 /** Retention runs at most this often per home and process (and on the first chance after start). */
 export const RETENTION_INTERVAL_MS = 60 * 60_000;
+
+/** Whole-record cap, on write and on read (a bigger record is served trimmed). */
+export const MAX_RECORD_BYTES = 512 * 1024;
+/** A record file bigger than this is not even parsed. */
+export const MAX_READ_BYTES = 16 * 1024 * 1024;
+/** Audit log retention: lines older than the dream retention window go, and at most this many stay. */
+export const AUDIT_MAX_LINES = 5000;
 
 export class DreamNotFoundError extends Error {
   constructor(id: string) {
@@ -108,10 +122,57 @@ export function validateDreamRecord(raw: unknown, id: string): DreamRecord {
   return raw as unknown as DreamRecord;
 }
 
+/** Trim diffs (largest first), then entry lists and changes, until the record fits `cap`. */
+export function fitRecord(rec: DreamRecord, cap: number): DreamRecord {
+  const size = () => Buffer.byteLength(JSON.stringify(rec), "utf8");
+  if (size() <= cap) return rec;
+  rec.truncated = true;
+  const diffs: Array<{ get: () => string; set: (s: string) => void }> = [
+    ...rec.changes.map((c) => ({
+      get: () => (typeof c.diff === "string" ? c.diff : ""),
+      set: (s: string) => {
+        c.diff = s;
+        c.diffTruncated = true;
+      },
+    })),
+    ...rec.soulCommits.map((c) => ({
+      get: () => (typeof c.diff === "string" ? c.diff : ""),
+      set: (s: string) => {
+        c.diff = s;
+        c.diffTruncated = true;
+      },
+    })),
+  ].sort((a, b) => b.get().length - a.get().length);
+  for (const limit of [1024, 128, 0]) {
+    for (const d of diffs) {
+      const text = d.get();
+      if (text.length > limit)
+        d.set(limit ? text.slice(0, limit) + "\n… [trimmed to fit the record]" : "");
+      if (size() <= cap) return rec;
+    }
+  }
+  // Still too big: drop the listed entries, then keep only the first N changes / commits.
+  for (const c of rec.changes) {
+    if (c.entriesAdded) c.entriesAdded = c.entriesAdded.slice(0, 5);
+    if (c.entriesRemoved) c.entriesRemoved = c.entriesRemoved.slice(0, 5);
+  }
+  while (size() > cap && rec.soulCommits.length > 1) rec.soulCommits.pop();
+  while (size() > cap && rec.changes.length > 1) rec.changes.pop();
+  if (size() > cap && typeof rec.summary === "string") rec.summary = rec.summary.slice(0, 2000);
+  return rec;
+}
+
+/**
+ * Read a record as stored. Internal callers (revert, forget) need it whole.
+ * Throws DreamNotFoundError / CorruptDreamError (also for a file past
+ * MAX_READ_BYTES, which is never parsed).
+ */
 export async function readDream(id: string): Promise<DreamRecord> {
   if (!isValidDreamId(id)) throw new DreamNotFoundError(String(id).slice(0, 40));
   let text: string;
   try {
+    const st = await fs.stat(dreamFile(id));
+    if (st.size > MAX_READ_BYTES) throw new CorruptDreamError(id, "record too large to read");
     text = await fs.readFile(dreamFile(id), "utf8");
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") throw new DreamNotFoundError(id);
@@ -124,6 +185,19 @@ export async function readDream(id: string): Promise<DreamRecord> {
     throw new CorruptDreamError(id, "invalid JSON");
   }
   return validateDreamRecord(parsed, id);
+}
+
+/**
+ * A record as SHOWN (API / CLI): capped like a write is. A record bigger than
+ * MAX_RECORD_BYTES (written by something else, or tampered) comes back
+ * trimmed, with `readTruncated: true`.
+ */
+export async function readDreamView(id: string): Promise<DreamRecord> {
+  const rec = await readDream(id);
+  if (Buffer.byteLength(JSON.stringify(rec), "utf8") <= MAX_RECORD_BYTES) return rec;
+  const view = fitRecord(rec, MAX_RECORD_BYTES);
+  view.readTruncated = true;
+  return view;
 }
 
 export async function readDreamSidecar(id: string): Promise<DreamSnapshotSidecar | null> {
@@ -308,7 +382,36 @@ export async function applyRetention(
     await deleteDreamFiles(oldest);
     removed.push(oldest);
   }
+  // The rest of reve/ ages out with the dreams: delivered reconsider notes
+  // (and any whose dream is gone), and the audit log.
+  const maxAgeMs = keepDays * 24 * 60 * 60_000;
+  const { pruneReconsider } = await import("./reconsider.js");
+  await pruneReconsider(now, maxAgeMs, new Set(kept)).catch(() => 0);
+  await pruneAudit(now, maxAgeMs, AUDIT_MAX_LINES).catch(() => 0);
   return removed;
+}
+
+/** Audit-log retention: drop lines older than `maxAgeMs`, keep at most the newest `maxLines`. */
+export async function pruneAudit(now: number, maxAgeMs: number, maxLines: number): Promise<number> {
+  let text: string;
+  try {
+    text = await fs.readFile(reveAuditFile(), "utf8");
+  } catch {
+    return 0;
+  }
+  const lines = text.split("\n").filter((l) => l.trim());
+  const young = lines.filter((l) => {
+    try {
+      const at = Date.parse((JSON.parse(l) as { at?: string }).at ?? "");
+      return !Number.isFinite(at) || now - at <= maxAgeMs;
+    } catch {
+      return true;
+    }
+  });
+  const kept = young.slice(-maxLines);
+  if (kept.length === lines.length) return 0;
+  await atomicWrite(reveAuditFile(), kept.length ? kept.join("\n") + "\n" : "");
+  return lines.length - kept.length;
 }
 
 /** Last retention run per reve dir, in this process. */

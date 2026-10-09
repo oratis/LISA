@@ -15,7 +15,7 @@ import {
   CorruptDreamError,
   DreamNotFoundError,
   listDreams,
-  readDream,
+  readDreamView,
   readDreamsSince,
 } from "../reve/store.js";
 import type { DreamRecord } from "../reve/types.js";
@@ -24,6 +24,21 @@ export interface ReveCliIo {
   log: (line: string) => void;
   error: (line: string) => void;
   now?: () => Date;
+}
+
+/** CSI / OSC / other ESC sequences, then any C0 / C1 control except tab and newline. */
+// eslint-disable-next-line no-control-regex
+const ESC_SEQ = /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)?|[ -/]*[0-~])?/g;
+// eslint-disable-next-line no-control-regex
+const CONTROL = /[\x00-\x08\x0b-\x1f\x7f-\x9f]/g;
+
+/**
+ * Captured text (a web page in kb/sources, a memory line) is shown in a
+ * terminal: take out anything the terminal would act on (cursor moves,
+ * screen clears, title or clipboard writes via OSC 52, bells).
+ */
+export function termSafe(text: string): string {
+  return text.replace(ESC_SEQ, "").replace(CONTROL, "");
 }
 
 const defaultIo: ReveCliIo = {
@@ -69,12 +84,24 @@ function renderDream(
     `${rec.id}`,
     rec.summary,
     `  window:  ${rec.windowStart} → ${rec.windowEnd}`,
-    `  capture: ${rec.capture}${rec.truncated ? " (diffs trimmed)" : ""}`,
+    `  capture: ${rec.capture}${rec.truncated ? " (diffs trimmed)" : ""}${rec.readTruncated ? " (shown trimmed: the record is over the size cap)" : ""}`,
   ];
+  if (rec.uncaptured?.length) {
+    out.push(
+      `  not captured: ${rec.uncaptured.map((u) => `${u.part} (${u.files} files, over the file cap)`).join(", ")}`,
+    );
+  }
+  if (rec.skippedSymlinks?.length)
+    out.push(`  symlinks skipped: ${rec.skippedSymlinks.join(", ")}`);
   if (rec.changes.length) {
     out.push("", "changes:");
     for (const c of rec.changes) {
-      const owner = c.part === "soul" ? "Lisa's" : c.revertible ? "revertible" : "not revertible";
+      const owner =
+        c.part === "soul"
+          ? "Lisa's"
+          : c.revertible
+            ? "revertible"
+            : `not revertible${c.notRevertibleReason ? `: ${c.notRevertibleReason}` : ""}`;
       out.push(
         `  [${c.part}] ${c.path}  ${c.status} +${c.linesAdded}/-${c.linesRemoved}  (${owner})`,
       );
@@ -124,7 +151,7 @@ export async function runReveCommand(argv: string[], io: ReveCliIo = defaultIo):
         const revert = d.revertibleParts.length
           ? `  [revertible: ${d.revertibleParts.join(",")}]`
           : "";
-        io.log(`${d.id}  ${d.summary}${d.reverted ? "  (reverted)" : ""}${revert}`);
+        io.log(termSafe(`${d.id}  ${d.summary}${d.reverted ? "  (reverted)" : ""}${revert}`));
       }
       if (listing.corrupt.length) io.error(`(${listing.corrupt.length} corrupt record(s) skipped)`);
       return 0;
@@ -133,10 +160,12 @@ export async function runReveCommand(argv: string[], io: ReveCliIo = defaultIo):
       const json = takeFlag(args, "json", false) === true;
       const id = args.shift();
       if (!id) throw new Error("show needs a dream id");
-      const rec = await readDream(id);
+      const rec = await readDreamView(id);
       const reconsider = await listReconsiderRequests(id);
       io.log(
-        json ? JSON.stringify({ dream: rec, reconsider }, null, 2) : renderDream(rec, reconsider),
+        json
+          ? JSON.stringify({ dream: rec, reconsider }, null, 2) // JSON escapes control characters
+          : termSafe(renderDream(rec, reconsider)),
       );
       return 0;
     }
@@ -183,7 +212,9 @@ export async function runReveCommand(argv: string[], io: ReveCliIo = defaultIo):
   } catch (err) {
     if (err instanceof RevertConflictError) {
       io.error(`${err.message}:`);
-      for (const c of err.conflicts) io.error(`  ${c.path} — ${c.reason.replace("_", " ")}`);
+      for (const c of err.conflicts) {
+        io.error(termSafe(`  ${c.path} — ${c.reason.replace(/_/g, " ")}`));
+      }
       io.error("Re-run with --force to overwrite files changed since the dream.");
       return 3;
     }

@@ -380,6 +380,24 @@ describe("reve API", () => {
     assert.equal(fs.readFileSync(page, "utf8"), "# A\n");
   });
 
+  test("GET of a record over the size cap serves a trimmed view with a flag (#423 F7)", async () => {
+    const id = await dreamFor("alice");
+    const file = path.join(homeForUid("alice"), "reve", "dreams", `${id}.json`);
+    const rec = JSON.parse(fs.readFileSync(file, "utf8")) as { changes: Array<{ diff: string }> };
+    for (const c of rec.changes) c.diff = "+ " + "y".repeat(400_000);
+    fs.writeFileSync(file, JSON.stringify(rec));
+    const res = await fetch(`${origin}/api/reve/dreams/${id}`, {
+      headers: { "x-test-uid": "alice" },
+    });
+    const text = await res.text();
+    assert.equal(res.status, 200);
+    assert.ok(text.length < 600 * 1024, `served ${text.length} bytes`);
+    assert.equal(
+      (JSON.parse(text) as { dream: { readTruncated?: boolean } }).dream.readTruncated,
+      true,
+    );
+  });
+
   test("a corrupt dream file is reported, not fatal", async () => {
     const id = await dreamFor("alice");
     fs.writeFileSync(path.join(homeForUid("alice"), "reve", "dreams", `${id}.json`), "{oops");

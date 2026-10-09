@@ -347,3 +347,25 @@ export async function settleReconsider(
     await saveRequests(list);
   });
 }
+
+/**
+ * Reconsider-queue retention (caller holds the reve lock): a delivered note
+ * goes when it is older than `maxAgeMs` or its dream is no longer kept. A
+ * waiting note is never dropped (it is shown with "record no longer kept").
+ */
+export async function pruneReconsider(
+  now: number,
+  maxAgeMs: number,
+  keptDreams: ReadonlySet<string>,
+): Promise<number> {
+  const list = await loadRequests();
+  const kept = list.filter((r) => {
+    if (waiting(r)) return true;
+    if (!keptDreams.has(r.dreamId)) return false;
+    const at = Date.parse(r.deliveredAt ?? r.createdAt);
+    return !Number.isFinite(at) || now - at <= maxAgeMs;
+  });
+  if (kept.length === list.length) return 0;
+  await saveRequests(kept);
+  return list.length - kept.length;
+}

@@ -12,7 +12,7 @@
  * reconsider notes were injected into it — then the record shows she saw them).
  */
 import { atomicWrite, ensureDir } from "../fs-utils.js";
-import { logWarn } from "../log.js";
+import { logWarn, redactId } from "../log.js";
 import { flushSoulCommits, soulCommitPatch, soulCommitsBetween, soulGitHead } from "../soul/git.js";
 import type { AutonomyKind, AutonomyOutcome } from "../autonomy/runs.js";
 import { newDreamId } from "./ids.js";
@@ -38,6 +38,8 @@ import {
   type Snapshot,
 } from "./snapshot.js";
 import {
+  MAX_RECORD_BYTES,
+  fitRecord,
   lockReve,
   maybeApplyRetention,
   writeDreamRecord,
@@ -55,8 +57,8 @@ import {
   type SoulCommit,
 } from "./types.js";
 
-/** Whole-record cap; diffs are trimmed (largest first) to fit. */
-export const MAX_RECORD_BYTES = 512 * 1024;
+/** Whole-record cap; diffs are trimmed (largest first) to fit (store.ts holds it: reads cap too). */
+export { MAX_RECORD_BYTES };
 /** Revert sidecar cap; files past it are recorded as not revertible. */
 export const MAX_SIDECAR_BYTES = 4 * 1024 * 1024;
 const MAX_COMMIT_DIFF_CHARS = 4 * 1024;
@@ -95,6 +97,19 @@ const NOOP_HANDLE: DreamHandle = {
   end: () => Promise.resolve(null),
 };
 
+/**
+ * A capture error for the log: short, and with the tenant's uid in any
+ * `users/<uid>/` path redacted like every other tenant log line.
+ */
+export function logSafeError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  return msg
+    .replace(/(^|[\\/])users([\\/])([^\\/\s'"]+)/g, (_m, a: string, b: string, uid: string) => {
+      return `${a}users${b}${redactId(uid)}`;
+    })
+    .slice(0, 200);
+}
+
 /** Map an AutonomyRun kind to a dream trigger (null = not a reflective pass). */
 export function dreamTriggerForKind(kind: AutonomyKind | string): DreamTrigger | null {
   if (kind === "idle" || kind === "reflect" || kind === "examen" || kind === "desire-review") {
@@ -128,7 +143,7 @@ export async function beginDream(opts: {
     await withTimeout(flushSoulCommits(), FLUSH_TIMEOUT_MS);
     [before, headBefore] = await Promise.all([takeSnapshot(parts, start), soulGitHead()]);
   } catch (err) {
-    logWarn(`[reve] dream capture could not start: ${(err as Error).message.slice(0, 200)}`);
+    logWarn(`[reve] dream capture could not start: ${logSafeError(err)}`);
     return NOOP_HANDLE;
   }
   const scope: DreamScope = {
@@ -163,13 +178,13 @@ export async function beginDream(opts: {
             failed,
           });
         } catch (err) {
-          logWarn(`[reve] dream capture failed: ${(err as Error).message.slice(0, 200)}`);
+          logWarn(`[reve] dream capture failed: ${logSafeError(err)}`);
         }
         try {
           await settleReconsider(scope.reconsiderIds, id, failed ? "release" : "ack");
         } catch (err) {
           // The claim stays; the next pass recovers it (delivered per the record, else pending).
-          logWarn(`[reve] reconsider settle failed: ${(err as Error).message.slice(0, 200)}`);
+          logWarn(`[reve] reconsider settle failed: ${logSafeError(err)}`);
         } finally {
           markDreamActive(id, false);
         }
@@ -377,40 +392,6 @@ function renderMarkdown(rec: DreamRecord): string {
   return lines.join("\n") + "\n";
 }
 
-/** Trim diffs (largest first) until the record fits MAX_RECORD_BYTES. */
-function fitRecord(rec: DreamRecord): DreamRecord {
-  const size = () => Buffer.byteLength(JSON.stringify(rec), "utf8");
-  if (size() <= MAX_RECORD_BYTES) return rec;
-  rec.truncated = true;
-  const diffs: Array<{ get: () => string; set: (s: string) => void }> = [
-    ...rec.changes.map((c) => ({
-      get: () => c.diff,
-      set: (s: string) => {
-        c.diff = s;
-        c.diffTruncated = true;
-      },
-    })),
-    ...rec.soulCommits.map((c) => ({
-      get: () => c.diff,
-      set: (s: string) => {
-        c.diff = s;
-        c.diffTruncated = true;
-      },
-    })),
-  ].sort((a, b) => b.get().length - a.get().length);
-  for (const cap of [1024, 128, 0]) {
-    for (const d of diffs) {
-      const text = d.get();
-      if (text.length > cap)
-        d.set(cap ? text.slice(0, cap) + "\n… [trimmed to fit the record]" : "");
-      if (size() <= MAX_RECORD_BYTES) return rec;
-    }
-  }
-  // Still too big (thousands of files): keep the first N changes.
-  while (size() > MAX_RECORD_BYTES && rec.changes.length > 1) rec.changes.pop();
-  return rec;
-}
-
 async function finishDream(ctx: {
   scope: DreamScope;
   trigger: DreamTrigger;
@@ -515,7 +496,7 @@ async function finishDream(ctx: {
     uncaptured,
     skippedSymlinks: skippedSymlinks(ctx.before, after),
   };
-  const rec = fitRecord({ ...base, summary: renderSummary(base) });
+  const rec = fitRecord({ ...base, summary: renderSummary(base) }, MAX_RECORD_BYTES);
 
   await ensureDir(dreamsDir());
   await lockReve(async () => {

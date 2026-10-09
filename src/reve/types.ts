@@ -168,6 +168,8 @@ export interface DreamRecord {
   uncaptured?: UncapturedPartInfo[];
   /** Symlinks met where a tracked file or directory would be; never followed (first 50). */
   skippedSymlinks?: string[];
+  /** Set on a record SHOWN trimmed because it was bigger than the record cap on disk. */
+  readTruncated?: boolean;
 }
 
 /** List-view projection of a dream. */

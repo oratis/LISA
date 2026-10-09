@@ -83,7 +83,7 @@ INSPECTION
   lisa reve <sub>              Dream log of each reflective pass: dreams, show
                                <id>, revert <id> --parts memory,kb,skills,
                                reconsider <id> "<note>", metrics [--days n].
-  lisa model <sub>            Local model lifecycle (Ollama): list, install
+  lisa model <sub>             Local model lifecycle (Ollama): list, install
                                <model>, use local://<model> to switch, health.
                                Also detects coding plans (Claude/Codex/Copilot):
                                use plan://<id> to run coding work on a subscription.

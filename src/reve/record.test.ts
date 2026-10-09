@@ -332,6 +332,38 @@ describe("snapshot caps never invent changes (#423 F5)", () => {
   );
 });
 
+describe("capture failures on the cloud edition (#423 F7)", () => {
+  test("a capture-failure log line redacts the tenant's uid in users/<uid>/ paths", async () => {
+    const { homeScope, homeForUid } = await import("../paths.js");
+    const uid = "uid-abcdef1234567890";
+    const tenant = homeForUid(uid);
+    fs.mkdirSync(path.join(tenant, "memory"), { recursive: true });
+    fs.writeFileSync(path.join(tenant, "reve"), "not a directory"); // the record write fails
+    const lines: string[] = [];
+    const origError = console.error;
+    const origWrite = process.stderr.write.bind(process.stderr);
+    console.error = (...a: unknown[]) => void lines.push(a.map(String).join(" "));
+    process.stderr.write = ((chunk: string | Uint8Array) => {
+      lines.push(String(chunk));
+      return true;
+    });
+    try {
+      await homeScope.run(tenant, () =>
+        withDream({ trigger: "idle" }, async () => {
+          await appendMemory("memory", "tenant memory");
+        }),
+      );
+    } finally {
+      console.error = origError;
+      process.stderr.write = origWrite;
+    }
+    const warn = lines.find((l) => l.includes("[reve] dream capture failed"));
+    assert.ok(warn, "the failure is logged");
+    assert.ok(!warn.includes(uid), `uid redacted: ${warn}`);
+    assert.match(warn, /users\/uid-…7890/);
+  });
+});
+
 describe("dream storage robustness", () => {
   test("corrupt records are skipped in listings and reported, and reading one throws", async () => {
     await withDream({ trigger: "idle" }, async () => {

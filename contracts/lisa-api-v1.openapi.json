@@ -1178,7 +1178,7 @@
         ],
         "responses": {
           "200": {
-            "description": "One full dream record (per-file and per-commit diffs are size-capped) plus the reconsider requests filed against it.",
+            "description": "One full dream record (per-file and per-commit diffs are size-capped) plus the reconsider requests filed against it. A record bigger than the 512 KiB record cap is served trimmed with `readTruncated: true`.",
             "headers": {
               "X-Lisa-API-Version": {
                 "$ref": "#/components/headers/ApiVersion"
@@ -4239,6 +4239,10 @@
               "type": "string"
             },
             "description": "Symlinks met where a tracked file or directory would be; never followed (first 50)."
+          },
+          "readTruncated": {
+            "type": "boolean",
+            "description": "The stored record is over the 512 KiB cap; this view was trimmed (diffs first) to fit."
           }
         },
         "additionalProperties": true

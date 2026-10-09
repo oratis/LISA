@@ -41,7 +41,7 @@ import {
   CorruptDreamError,
   DreamNotFoundError,
   listDreams,
-  readDream,
+  readDreamView,
   readDreamsSince,
 } from "../reve/store.js";
 
@@ -141,7 +141,7 @@ export async function handleReveApi(
     if (parts[0] === "dreams" && parts.length === 2) {
       if (method !== "GET") return methodNotAllowed(res);
       const id = parts[1]!;
-      const dream = await readDream(id);
+      const dream = await readDreamView(id); // capped like a write; readTruncated when trimmed
       json(res, 200, { dream, reconsider: await listReconsiderRequests(id) });
       return true;
     }
