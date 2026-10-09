@@ -7,7 +7,8 @@
  *  - soul-git commits made inside the pass carry a `[dream:<id>]` stamp (and
  *    `reconsider:<ids>` when the user's reconsider notes were injected), so a
  *    dream can tell its own commits from a concurrent chat's;
- *  - the reconsider block is claimed into exactly this pass.
+ *  - the reconsider notes shown to this pass are claimed by it alone, and
+ *    acknowledged when it ends (see reconsider.ts).
  *
  * This module must stay dependency-free: soul/git.ts and autonomy/runs.ts
  * import it, and reve/record.ts imports both of them.

@@ -1,6 +1,7 @@
 /**
- * User revert of USER-owned data from a dream: memory, KB pages, and the
- * skills Lisa created or patched in that pass. Soul files are never touched
+ * User revert of USER-owned data from a dream: memory, KB pages, and any
+ * skills/<name>/SKILL.md that changed during the dream window (whoever changed
+ * it — Lisa in the pass or a concurrent chat). Soul files are never touched
  * here — they are Lisa's (see reconsider.ts for the user's lever over those).
  *
  * Memory is reverted ENTRY BY ENTRY against the current file: the entries the

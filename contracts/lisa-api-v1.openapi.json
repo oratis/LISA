@@ -1141,7 +1141,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Newest-first summaries of the caller's dream records (one per reflective pass that changed something). Cloud: scoped to the signed-in account; a cloud caller without an account gets 403.",
+            "description": "Newest-first summaries of the caller's dream records (one per reflective pass that changed something, saw a reconsider note, or ran while a part could not be captured). `pendingReconsider` counts notes not yet acknowledged. Cloud: scoped to the signed-in account; a cloud caller without an account gets 403.",
             "headers": {
               "X-Lisa-API-Version": {
                 "$ref": "#/components/headers/ApiVersion"
@@ -1255,7 +1255,7 @@
             "$ref": "#/components/responses/Error"
           },
           "409": {
-            "description": "A selected file changed since the dream (or has no pre-dream copy). Nothing was written. Retry with `force: true` to overwrite.",
+            "description": "A selected KB page or skill changed since the dream (`modified_since`), has no pre-dream copy (`not_revertible`), or resolves outside its part's directory (`unsafe_target`). Nothing was written. With `force: true`, changed files are overwritten and the other two are skipped. Memory never conflicts on content (it reverts entry by entry).",
             "headers": {
               "X-Lisa-API-Version": {
                 "$ref": "#/components/headers/ApiVersion"
@@ -1348,7 +1348,7 @@
         "operationId": "listReveReconsider",
         "responses": {
           "200": {
-            "description": "The caller's reconsider queue (pending and delivered).",
+            "description": "The caller's reconsider queue: pending, claimed (shown to a pass still running) and delivered (acknowledged by a pass that finished).",
             "headers": {
               "X-Lisa-API-Version": {
                 "$ref": "#/components/headers/ApiVersion"

@@ -6,7 +6,8 @@
  * reviewable "dream diff" lands in `<lisaHome>/reve/dreams/<id>.json`.
  *
  * Ownership split (the sovereignty decision):
- *  - USER parts (memory, kb, skills Lisa patched) can be reverted by the user.
+ *  - USER parts (memory, kb, skills) can be reverted by the user: memory
+ *    entry by entry, KB pages and skills file by file.
  *  - SOUL parts (identity, purpose, constitution, values, opinions, desires,
  *    journal, emotions) are Lisa's. The user can only ask her to reconsider.
  */
