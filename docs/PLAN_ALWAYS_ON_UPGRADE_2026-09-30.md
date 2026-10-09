@@ -794,14 +794,18 @@
 |---|---|---|
 | [#400](https://github.com/oratis/LISA/pull/400) | 竞品调研、升级方案、附录备忘 | 已合并（2026-10-02） |
 | [#401](https://github.com/oratis/LISA/pull/401) | Reach-out 章程、威胁模型 v0、AUTONOMY / ROADMAP / IDENTITY 决策改写、官网 iOS 文案更正 | 已合并（2026-10-02） |
-| [#406](https://github.com/oratis/LISA/pull/406) | W3 Reach-out 闸门：所有主动消息经 `reachOut()`，来源开关、免打扰、去重、预算 | 已合并（2026-10-02）；随 v0.28.0 发布 |
-| [#405](https://github.com/oratis/LISA/pull/405) | W2b 密钥库（`secret://` 句柄）与入站邮件卫生 | 已合并（2026-10-02）；随 v0.28.0 发布。钥匙串后端待真机验证 |
-| [#402](https://github.com/oratis/LISA/pull/402) | W2a Warden 核心：确定性决策、范围授权、污点、审计、审批收件箱 | 已合并（2026-10-03）；随 v0.28.0 发布，可选开启（`--approval warden`） |
+| [#406](https://github.com/oratis/LISA/pull/406) | W3 Reach-out 闸门：所有主动消息经 `reachOut()`，来源开关、免打扰、去重、预算 | 已合并（2026-10-02）；随 v0.28.1 发布 |
+| [#405](https://github.com/oratis/LISA/pull/405) | W2b 密钥库（`secret://` 句柄）与入站邮件卫生 | 已合并（2026-10-02）；随 v0.28.1 发布。钥匙串后端待真机验证 |
+| [#402](https://github.com/oratis/LISA/pull/402) | W2a Warden 核心：确定性决策、范围授权、污点、审计、审批收件箱 | 已合并（2026-10-03）；随 v0.28.1 发布，可选开启（`--approval warden`） |
 | [#404](https://github.com/oratis/LISA/pull/404) | W12 云端 `web_search` / `web_fetch`（SSRF 防护、租户限额） | 已合并（2026-10-07）；云端已部署，开关关闭 |
-| [#403](https://github.com/oratis/LISA/pull/403) | W1 Task Engine：routine / 一次性任务 / watcher，租约、续跑、账本 | 已合并（2026-10-07）；随 v0.28.0 发布。审批未接线前只允许只读调用；云端任务关闭 |
-| [#407](https://github.com/oratis/LISA/pull/407) | W12 按用途路由、单次运行预算、Gemini 网关 | 已合并（2026-10-07）；云端已部署（`lisa-cloud-00033-meq`） |
+| [#403](https://github.com/oratis/LISA/pull/403) | W1 Task Engine：routine / 一次性任务 / watcher，租约、续跑、账本 | 已合并（2026-10-07）；随 v0.28.1 发布。审批接线（#422）合并前只允许只读调用；云端任务关闭 |
+| [#407](https://github.com/oratis/LISA/pull/407) | W12 按用途路由、单次运行预算、Gemini 网关 | 已合并（2026-10-07）；云端已部署（`lisa-cloud-00033-meq`）。复审 R2（失败调用不计费）、R4（图片按字节预留）在 #422 中修复 |
 | [#415](https://github.com/oratis/LISA/pull/415) | 产品定位改为 AI Personal Assistant（README、官网、包描述） | 已合并（2026-10-07）；官网已部署 |
 | [#416](https://github.com/oratis/LISA/pull/416) | Gemini 微调模型名保持大小写（#407 返修） | 已合并（2026-10-08） |
-| [#417](https://github.com/oratis/LISA/pull/417) | `web_fetch` 恢复 #404 改写丢失的正文，保持线性（#404 返修） | 见 PR |
+| [#417](https://github.com/oratis/LISA/pull/417) | `web_fetch` 恢复 #404 改写丢失的正文，保持线性（#404 返修） | 已合并（2026-10-08） |
 | [#418](https://github.com/oratis/LISA/pull/418) | 入站邮件再识别三种验证码格式（#405 返修） | 已合并（2026-10-08） |
-| v0.28.0 | 发布：GitHub Release、Mac DMG、npm、Homebrew（[发布说明](RELEASE_v0.28.0.md)） | 见发布页 |
+| [#419](https://github.com/oratis/LISA/pull/419) | 发布 v0.28.0：Soft Ink、Tasks & Trust（版本号、发布说明、npm 发布说明） | 已合并（2026-10-08） |
+| v0.28.0 | 发布：打包阶段因依赖重新解析失败，未发布 npm 包和 GitHub Release；标签保留不改写（[发布说明](RELEASE_v0.28.0.md)） | 未发布，由 v0.28.1 取代 |
+| [#420](https://github.com/oratis/LISA/pull/420) | 发布构建改用锁定依赖，发布 v0.28.1 | 已合并（2026-10-08） |
+| v0.28.1 | 发布：GitHub Release（含公证 DMG）、npm、Homebrew（[发布说明](RELEASE_v0.28.1.md)） | 已发布（2026-10-08） |
+| [#422](https://github.com/oratis/LISA/pull/422) | 第一批收尾接线：Task Engine × Warden（每次运行一个 Warden 会话、`awaiting_approval`、任务范围授权随运行结束撤销）、审批通知走 `reachOut()`（来源 `approval`）、`budget.usdMicros` 接入 #407 美元上限（含复审 R2、R4） | 开放；待独立对抗式审查 |
