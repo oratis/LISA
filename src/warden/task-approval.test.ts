@@ -1019,6 +1019,63 @@ test("asks per run are capped: past the ceiling the run stops (approval_limit) w
   });
 });
 
+test("waiting cut off by a shutdown still counts: the cap holds across restarts (#422 review N5, probe r8)", async () => {
+  await withHome(async (_home, ws) => {
+    let clock = Date.now();
+    const task = await dueRoutine({
+      nextRunAt: clock - 1000,
+      budget: {
+        tokens: 1_000_000,
+        wallclockMs: 600_000,
+        maxToolCalls: 40,
+        approvalWaitMs: 60_000,
+        maxApprovals: 20,
+      },
+    });
+    const waits: Array<number | undefined> = [];
+    let announced = 0;
+    for (let segment = 1; segment <= 4; segment++) {
+      // Nobody answers; each process is shut down 50 s (fake clock) into its wait.
+      const { inbox, nextAsk } = wardenInbox("ignore", 3_600_000);
+      const runner = makeRunner(ws, {
+        provider: askingScript(ws, 10),
+        deliver: collector().deliver,
+        tools: [writeTool([])],
+        approvalFactory: factoryOn(inbox, {
+          reachOut: async () => (announced++, { deliver: true, reason: "always-deliver" }),
+        }),
+        now: () => clock,
+      });
+      const asked = nextAsk();
+      await runner.tick();
+      const outcome = await Promise.race([
+        asked.then(() => "asked" as const),
+        runner.drain().then(() => "ended" as const),
+      ]);
+      if (outcome === "asked") {
+        clock += 50_000;
+        await runner.stop();
+      } else await runner.drain();
+      await inbox.shutdown();
+      const current = (await getTask(task.id))!;
+      const runId = current.activeRunId ?? current.runs.at(-1)!;
+      const run = (await loadRun(task.id, runId))!.run;
+      waits.push(run.approvalWaitMs);
+      if (!current.activeRunId) {
+        assert.equal(run.stopReason, "approval_limit");
+        assert.match(run.error ?? "", /waited 1 minute for approvals in all/);
+        break;
+      }
+    }
+    assert.deepEqual(
+      waits,
+      [50_000, 100_000, 100_000],
+      "saved at each shutdown; the third ask is refused",
+    );
+    assert.equal(announced, 2, "the ask past the ceiling is not announced");
+  });
+});
+
 test("total waiting per run is capped and configurable per task: past it the run stops", async () => {
   await withHome(async (_home, ws) => {
     const task = await dueRoutine({

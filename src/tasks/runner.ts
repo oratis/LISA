@@ -1379,9 +1379,18 @@ export class TaskRunner {
           if (!slot.stop) armWallclock();
         }
         logEvent({ type: "approval", summary: approved ? "approved" : "not approved" });
-        // A run that is stopping (cancelled, shut down, lease lost) writes
-        // nothing more here: how it ends is recorded by whoever ends it.
-        if (slot.leaseLost || slot.controller.signal.aborted) return;
+        // A run that lost its lease writes nothing more: it is someone else's now.
+        if (slot.leaseLost) return;
+        if (slot.controller.signal.aborted) {
+          // Stopping (cancelled, a breaker, shut down). How it ends is
+          // recorded by whoever ends it — but a shutdown leaves the run
+          // resumable and records nothing more, so the wait it did is saved
+          // here, on every path: a restart must not get the time back
+          // (#422 review N5). The run's state stays as it is on disk.
+          touch();
+          await this.saveRun(run, this.now()).catch(() => {});
+          return;
+        }
         run.state = "running";
         touch();
         await this.saveRun(run, this.now());
