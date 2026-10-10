@@ -242,9 +242,9 @@ catch (e) { document.body.classList.add('rb-collapsed'); }
       </div>
       <button type="button" id="recordBtn" title="Dictate — speak and Lisa drops polished text in the box (hold to record a summary)" aria-label="Dictate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/></svg></button>
       <textarea id="input" placeholder="Talk to Lisa…  (Enter to send · Shift+Enter for newline)" autofocus></textarea>
-      <button type="submit" id="sendBtn">
-        <svg viewBox="0 0 24 24" aria-hidden="true" width="22" height="22"><path d="M12 19V5m-6 6 6-6 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        SEND →
+      <button type="submit" id="sendBtn" aria-label="Send message" title="Send message">
+        <svg viewBox="0 0 24 24" aria-hidden="true" width="18" height="18"><path d="M12 19V5m-6 6 6-6 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>Send</span>
       </button>
     </form>
     </div><!-- /#viewChat -->
