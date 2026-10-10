@@ -183,6 +183,7 @@ import { ScreenSource } from "../sense/screen.js";
 import { VoiceSource } from "../sense/voice.js";
 import { appendSenseEvent, readSenseEvents } from "../sense/log.js";
 import { handleSocialApi } from "./social-api.js";
+import { handleMemoryApi } from "./memory-api.js";
 import { createWebWarden, handleWardenApi, wardenTrust } from "./warden-api.js";
 import { protectFromSandbox } from "../sandbox/protect.js";
 import { handleReachOutApi } from "./reachout-api.js";
@@ -2580,6 +2581,17 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
                 });
               }
             : undefined,
+      })
+    ) {
+      return;
+    }
+    // Memory sovereignty (W8): entries edit/delete, forget, export. Tenant-
+    // scoped in cloud (account session required); owner-only writes on Mac.
+    if (
+      await handleMemoryApi(req, res, url, {
+        cloud,
+        accountUid,
+        loopback: isLoopbackAddress(remoteAddr),
       })
     ) {
       return;
