@@ -9,10 +9,13 @@ export class OpenAIProvider implements Provider {
   readonly name = "openai";
   private client: OpenAI;
 
-  constructor(opts: { apiKey?: string; baseURL?: string } = {}) {
+  constructor(
+    opts: { apiKey?: string; baseURL?: string; defaultHeaders?: Record<string, string> } = {},
+  ) {
     this.client = new OpenAI({
       apiKey: opts.apiKey,
       baseURL: opts.baseURL,
+      defaultHeaders: opts.defaultHeaders,
       fetch: proxyAwareFetch,
     });
   }
