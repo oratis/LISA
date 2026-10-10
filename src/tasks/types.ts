@@ -11,7 +11,8 @@
  * additive (bump TASK_SCHEMA_VERSION + add a migration in store.ts otherwise).
  */
 import type { ApprovalCallback } from "../agent.js";
-import type { AgentEvent } from "../types.js";
+import type { SandboxMode } from "../sandbox/mode.js";
+import type { AgentEvent, ToolDefinition } from "../types.js";
 
 /** On-disk schema version of a Task file. */
 export const TASK_SCHEMA_VERSION = 1;
@@ -111,17 +112,41 @@ export interface WatchState {
 }
 
 /**
- * Capabilities the user approved when the task was created. The runner only
- * hands the model tools inside this envelope; anything outside it is not
- * offered at all (and Warden, once wired, treats it as out-of-envelope).
+ * What a task may use and — once the user has CONFIRMED it — what it may do
+ * without asking.
+ *
+ * Until it is confirmed (`Task.envelopeConfirmation`, confirmation.ts) an
+ * envelope only RESTRICTS: the runner offers the model only the tools inside
+ * it, and nothing is pre-approved. The model can draft one (task_create's
+ * `tools`); only the user's confirmation, given after seeing it in plain
+ * words, makes it a pre-approval — and even then taint overrides it for side
+ * effects (docs/DESIGN_WARDEN.md).
  */
 export interface TaskEnvelope {
-  /** Capability categories (e.g. "read", "web", "mail"). Informational to Warden. */
+  /**
+   * Action categories (Warden's: "write", "exec", "send", …). Labels Warden
+   * does not know ("web", "mail") are informational and pre-approve nothing.
+   */
   categories?: string[];
   /** Exact tool names allowed. Unset ⇒ every non-mutating tool on the surface. */
   tools?: string[];
-  /** Targets (hosts, paths, repos) the task may act on. Informational to Warden. */
+  /** Targets (hosts, paths, repos) a pre-approval is limited to. */
   targets?: string[];
+}
+
+export interface TaskEnvelopeConfirmation {
+  /** `taskDigest()` of the task as the user confirmed it. */
+  digest: string;
+  /**
+   * HMAC of the task id and that digest under the home's Warden key
+   * (confirmation.ts): only the user's own surface can produce it, so a task
+   * file written any other way loads unconfirmed.
+   */
+  mac: string;
+  /** When they confirmed it. */
+  at: number;
+  /** Where: the terminal (`lisa tasks enable`) or the HTTP API. */
+  via: "cli" | "api";
 }
 
 export interface TaskBudget {
@@ -133,7 +158,30 @@ export interface TaskBudget {
   wallclockMs: number;
   /** Tool-call ceiling per run. */
   maxToolCalls: number;
+  /**
+   * How many times a run may ask for an approval (default 5, at most
+   * MAX_APPROVALS_LIMIT). The next ask stops the run (`approval_limit`)
+   * instead of waiting — and is not announced.
+   */
+  maxApprovals?: number;
+  /**
+   * Total time a run may spend waiting for approvals, across its asks and
+   * segments (default 60 minutes, at most MAX_APPROVAL_WAIT_MS — 15 minutes
+   * hosted). Past it the run stops (`approval_limit`).
+   */
+  approvalWaitMs?: number;
 }
+
+/** Asks a run may make when its budget says nothing (#422 review L4). */
+export const DEFAULT_MAX_APPROVALS = 5;
+/** Hard ceiling on `budget.maxApprovals`, whatever a task file says. */
+export const MAX_APPROVALS_LIMIT = 20;
+/** Waiting a run may do when its budget says nothing. */
+export const DEFAULT_APPROVAL_WAIT_MS = 60 * 60_000;
+/** Hard ceiling on `budget.approvalWaitMs` at home… */
+export const MAX_APPROVAL_WAIT_MS = 6 * 3_600_000;
+/** …and hosted, where a waiting run holds its sweep request open. */
+export const MAX_APPROVAL_WAIT_MS_CLOUD = 15 * 60_000;
 
 export interface Task {
   id: string;
@@ -150,6 +198,16 @@ export interface Task {
   trigger?: TriggerSpec;
   watch?: WatchState;
   envelope?: TaskEnvelope;
+  /**
+   * The user confirmed the envelope as a pre-approval. Holds the digest
+   * (confirmation.ts `taskDigest`) of exactly what they were shown: the
+   * instruction, the schedule or trigger, the envelope and the notify mode.
+   * It counts only while that digest still matches the task, every edit of
+   * those fields clears it, and so does every enable. Only the user's own act
+   * sets it (`lisa tasks enable` on a terminal or with `--confirm <digest>`,
+   * `PATCH /api/tasks/{id}` from a caller who may approve); no model tool can.
+   */
+  envelopeConfirmation?: TaskEnvelopeConfirmation;
   budget: TaskBudget;
   notify: TaskNotify;
   state: TaskState;
@@ -176,6 +234,18 @@ export interface Task {
   lastResultFingerprint?: string;
   /** Short summary of the last finished run, fed into the next run's task frame. */
   lastSummary?: string;
+  /**
+   * `lastSummary` was written by a run that read outside content (#422 review
+   * N3). The next run's frame then quotes it inside the external-content
+   * markers, as data, and that run is tainted from its first call.
+   */
+  lastSummaryTainted?: boolean;
+  /**
+   * A run that had read outside content made state-changing calls while the
+   * task's own folder was writable to it: what it left there is outside text
+   * too, so every later run of the task starts tainted. Never cleared.
+   */
+  workspaceTainted?: boolean;
   /**
    * The run currently in flight. Set when a run starts and cleared when it
    * finishes; a value here with no live lease means the run was interrupted
@@ -223,6 +293,12 @@ export interface TaskRun {
    */
   tokens: { in: number; out: number; cacheRead?: number; cacheWrite?: number };
   costMicros?: number;
+  /**
+   * What the spend ceiling (`budget.usdMicros`) has counted against this run,
+   * micro-USD, across its segments: every call's charge, and a call that
+   * failed after it was sent at its worst case. Unset on a run without a ceiling.
+   */
+  capSpentMicros?: number;
   toolCalls: number;
   /** sha256(tool + canonical input) → the LAST recorded result of that call (for inspection). */
   executedDigests: Record<string, string>;
@@ -244,6 +320,10 @@ export interface TaskRun {
   lastError?: string;
   /** Wall-clock time spent executing, summed across resumed segments. */
   elapsedMs?: number;
+  /** Approvals the run has asked for, across its segments (`budget.maxApprovals`). */
+  approvals?: number;
+  /** Time spent waiting for approvals, across its segments (`budget.approvalWaitMs`). */
+  approvalWaitMs?: number;
   /** Started by the user ("run now"/test run) rather than by the schedule. */
   manual?: boolean;
   /**
@@ -255,6 +335,19 @@ export interface TaskRun {
   trigger?: TaskRunTrigger;
   /** Input handed to the run by a watcher hit, if any. */
   input?: string;
+  /**
+   * Untrusted content has entered this run (the approval gate said so, or the
+   * runner saw a call to a tool that returns outside text go through). Kept
+   * on the run so a resumed or retried segment starts tainted: the content is
+   * still in its history.
+   */
+  tainted?: boolean;
+  /**
+   * The run started tainted because of what an earlier run of the task left:
+   * a last summary written by a tainted run (quoted in this run's frame), or
+   * a folder a tainted run wrote to. Written in the run's first record.
+   */
+  inheritedTaint?: boolean;
   summary?: string;
   artifacts?: TaskArtifact[];
   error?: string;
@@ -298,9 +391,53 @@ export const DEFAULT_TASK_BUDGET: TaskBudget = {
 export interface TaskApprovalContext {
   taskId: string;
   runId: string;
+  /** When the run first started. A task-scoped grant older than this belongs to an earlier run. */
+  runStartedAt: number;
   origin: { kind: "task" | "routine" | "watcher"; id: string };
   envelope?: TaskEnvelope;
+  /**
+   * The user confirmed this envelope (confirmation.ts `isEnvelopeConfirmed`).
+   * False ⇒ the envelope only restricts what the run is offered and a gate
+   * must not treat it as a pre-approval of anything.
+   */
+  envelopeConfirmed: boolean;
   uid: string | null;
+  /** The tenant home the run works in (`lisaHome()` inside the run's scope). */
+  home: string;
+  /** The task's title, for approval cards and notices. */
+  title: string;
+  /**
+   * The run already carries untrusted content: it was started by a watcher hit
+   * (its prompt quotes an outsider's text), or it became tainted before an
+   * interruption or a failed attempt and is being continued.
+   */
+  tainted: boolean;
+  /** Call once when the run becomes tainted; the runner records it on the run. */
+  onTaint: () => void;
+  /** The run's working directory (the workspace root a gate judges paths against). */
+  cwd: string;
+  /** The sandbox mode the run's tools execute under. */
+  sandboxMode: SandboxMode;
+  /** The tools the run is offered. */
+  tools: ToolDefinition[];
+  /** Aborted when the run stops (cancel, shutdown, a lost lease). A pending approval is then a deny. */
+  signal: AbortSignal;
+  /**
+   * What a gate calls while a call waits for a human answer. The runner shows
+   * the run as `awaiting_approval` and stops its wall clock in between.
+   */
+  approvalWait: TaskApprovalWait;
+}
+
+export interface TaskApprovalWait {
+  /**
+   * An approval for `tool` is now pending. Resolves false when the run will
+   * not wait for it — it has asked or waited as much as its budget allows and
+   * is stopping (`approval_limit`): the gate must then not tell the user.
+   */
+  started(info: { tool: string; approvalId?: string }): Promise<boolean | void>;
+  /** It was answered, expired or cancelled. Called once per `started`. */
+  ended(info: { approved: boolean }): Promise<void>;
 }
 
 export interface TaskApprovalHandle {
@@ -308,12 +445,38 @@ export interface TaskApprovalHandle {
   observe?: (e: AgentEvent) => void;
 }
 
+/** What a factory is told when a run has ended. */
+export interface TaskRunEndContext {
+  taskId: string;
+  runId: string;
+  uid: string | null;
+  home: string;
+}
+
 /**
  * Builds the approval gate for one unattended run. Warden plugs in here. When
  * no factory is wired — or it returns undefined — the runner falls back to a
  * deny-mutating gate: side-effecting tools are refused, never silently allowed.
+ *
+ * A factory that throws (or rejects) fails the attempt like any transient
+ * error: the run is retried later, never run without a gate.
  */
-export type TaskApprovalFactory = (ctx: TaskApprovalContext) => TaskApprovalHandle | undefined;
+export interface TaskApprovalFactory {
+  (
+    ctx: TaskApprovalContext,
+  ): TaskApprovalHandle | undefined | Promise<TaskApprovalHandle | undefined>;
+  /**
+   * Called once a run has ended, whatever the outcome — also when that ending
+   * is completed by a later process after a crash. A throw leaves the ending
+   * incomplete, so it is tried again at the next tick.
+   */
+  runEnded?: (ctx: TaskRunEndContext) => Promise<void>;
+  /**
+   * Called when a task has been deleted — also mid-run, when its run never
+   * gets to end normally. Whatever the gate granted "for this task" ends.
+   */
+  taskRemoved?: (ctx: Omit<TaskRunEndContext, "runId">) => Promise<void>;
+}
 
 export type TaskNoticeKind = "task_result" | "watch_hit" | "task_needs_you" | "task_failed";
 
@@ -333,6 +496,12 @@ export interface TaskNotice {
   artifacts?: TaskArtifact[];
   priority: "low" | "normal" | "high";
   kind: TaskNoticeKind;
+  /**
+   * The summary carries what a run that read outside content wrote. The card
+   * quotes it inside the external-content markers and taints the
+   * conversation it lands in (delivery.ts).
+   */
+  tainted?: boolean;
 }
 
 /** Hands a finished run's result to the user. The Reach-out gate plugs in here. */

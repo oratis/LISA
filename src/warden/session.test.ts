@@ -723,3 +723,44 @@ test("review 13: a planted secret never reaches the audit log, the pending mirro
   assert.ok((await readAudit({ home, limit: 1000 })).length >= inputs.length);
   await inbox.shutdown();
 });
+
+test("approval hooks: pending once the item exists, settled once after it; a throwing hook changes nothing", async () => {
+  const calls: string[] = [];
+  const approved = await setup(
+    {
+      onApprovalPending: async (item, req) => {
+        await new Promise((r) => setTimeout(r, 10)); // a slow host write
+        calls.push(`pending:${item.id === "" ? "?" : "item"}:${req.tool}`);
+      },
+      onApprovalSettled: (outcome) => {
+        calls.push(`settled:${outcome.approved}`);
+      },
+    },
+    "approve",
+  );
+  const input = { action: "pr_merge", number: 1, repo: "o/r" };
+  assert.deepEqual(await approved.session.approval("github", input), { allow: true });
+  assert.deepEqual(calls, ["pending:item:github", "settled:true"], "in order, once each");
+
+  // No ask, no hooks.
+  calls.length = 0;
+  await approved.session.approval("read", { path: "a.ts" });
+  assert.deepEqual(calls, []);
+
+  const throwing = await setup(
+    {
+      onApprovalPending: () => {
+        throw new Error("host write failed");
+      },
+      onApprovalSettled: () => {
+        throw new Error("host write failed again");
+      },
+    },
+    "deny",
+  );
+  const denied = await throwing.session.approval("github", input);
+  assert.equal(denied.allow, false, "a deny stays a deny");
+  assert.ok(throwing.logs.some((l) => /onApprovalPending threw/.test(l)));
+  await approved.inbox.shutdown();
+  await throwing.inbox.shutdown();
+});

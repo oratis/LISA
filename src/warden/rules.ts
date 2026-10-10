@@ -6,6 +6,11 @@
  * anything, and loosen only what the invariants leave open. A corrupt or
  * unreadable file never degrades to "allow": it falls back to the built-in
  * defaults (no user rules at all) and is reported.
+ *
+ * Origin scoping: a rule that LOOSENS (`auto`, or anything below the default
+ * it replaces) applies to the attended chat only, unless `origins` names the
+ * task origin for it — `tools.bash = auto` written for chat must not let every
+ * unattended routine run the shell. A rule that tightens applies everywhere.
  */
 import path from "node:path";
 import { withFileLock } from "../soul/lock.js";
@@ -22,6 +27,18 @@ import {
 export const RULES_VERSION = 1;
 const MAX_OVERRIDES = 500;
 
+/** Where a loosening rule applies: the attended chat, unattended task runs, or both. */
+export const RULE_ORIGINS = ["chat", "task"] as const;
+export type RuleOrigin = (typeof RULE_ORIGINS)[number];
+/** Where a loosening rule applies when `origins` says nothing about it. */
+export const DEFAULT_RULE_ORIGINS: readonly RuleOrigin[] = ["chat"];
+
+export interface RuleOriginScopes {
+  categories?: Partial<Record<ActionCategory, RuleOrigin[]>>;
+  tools?: Record<string, RuleOrigin[]>;
+  targets?: Record<string, RuleOrigin[]>;
+}
+
 export interface WardenRules {
   version: typeof RULES_VERSION;
   /** Behaviour per category. Absent = the built-in default matrix. */
@@ -35,6 +52,13 @@ export interface WardenRules {
    * result taints the run, whatever the server says about itself.
    */
   trustedMcpServers: string[];
+  /**
+   * Where each LOOSENING rule applies, by the rule's map and key — e.g.
+   * `{ tools: { bash: ["chat", "task"] } }`. A loosening rule not listed here
+   * applies to the chat only (`DEFAULT_RULE_ORIGINS`); tightening rules apply
+   * to every origin whatever this says. Every entry must name an existing rule.
+   */
+  origins?: RuleOriginScopes;
   updatedAt?: string;
 }
 
@@ -113,6 +137,70 @@ function serverList(value: unknown): string[] {
   return [...new Set(value as string[])];
 }
 
+function originList(value: unknown, label: string): RuleOrigin[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 8) {
+    throw new RulesValidationError(
+      `${label} must be a non-empty list of: ${RULE_ORIGINS.join(", ")}`,
+    );
+  }
+  for (const origin of value) {
+    if (typeof origin !== "string" || !(RULE_ORIGINS as readonly string[]).includes(origin)) {
+      throw new RulesValidationError(`${label}: unknown origin (use ${RULE_ORIGINS.join(", ")})`);
+    }
+  }
+  return [...new Set(value as RuleOrigin[])];
+}
+
+function parseOrigins(
+  value: unknown,
+  rules: Pick<WardenRules, "categories" | "tools" | "targets">,
+): RuleOriginScopes | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new RulesValidationError("origins must be an object");
+  }
+  const doc = value as Record<string, unknown>;
+  const out: RuleOriginScopes = {};
+  for (const key of Object.keys(doc)) {
+    if (key !== "categories" && key !== "tools" && key !== "targets") {
+      throw new RulesValidationError(`origins: unknown key "${key.slice(0, 64)}"`);
+    }
+    const scopes = doc[key];
+    if (!scopes || typeof scopes !== "object" || Array.isArray(scopes)) {
+      throw new RulesValidationError(`origins.${key} must be an object`);
+    }
+    const entries = Object.entries(scopes as Record<string, unknown>);
+    if (entries.length > MAX_OVERRIDES) {
+      throw new RulesValidationError(`origins.${key} has too many entries (max ${MAX_OVERRIDES})`);
+    }
+    const map = rules[key] as Readonly<Record<string, unknown>>;
+    const parsed: Array<[string, RuleOrigin[]]> = [];
+    for (const [name, origins] of entries) {
+      // An origin scope for a rule that does not exist is a typo, not a no-op.
+      if (ownBehavior(map, name) === undefined) {
+        throw new RulesValidationError(`origins.${key}.${name.slice(0, 64)} names no rule`);
+      }
+      parsed.push([name, originList(origins, `origins.${key}.${name.slice(0, 64)}`)]);
+    }
+    if (parsed.length > 0) out[key] = Object.fromEntries(parsed);
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/** Own-property lookup of a rule's origin scope; only ever a list of known origins. */
+export function ownOrigins(
+  map: Readonly<Record<string, unknown>> | undefined,
+  key: string,
+): readonly RuleOrigin[] | undefined {
+  if (!map || typeof key !== "string" || !Object.hasOwn(map, key)) return undefined;
+  const value = map[key];
+  if (!Array.isArray(value)) return undefined;
+  const origins = value.filter((o): o is RuleOrigin =>
+    (RULE_ORIGINS as readonly unknown[]).includes(o),
+  );
+  return origins.length > 0 ? origins : undefined;
+}
+
 /**
  * Validate an untrusted rules document. Strict: an unknown category, an unknown
  * behaviour or an attempt to loosen a locked category rejects the WHOLE
@@ -137,12 +225,16 @@ export function parseRules(value: unknown): WardenRules {
       );
     }
   }
+  const tools = behaviorMap(doc.tools, "tools", () => true);
+  const targets = behaviorMap(doc.targets, "targets", () => true);
+  const origins = parseOrigins(doc.origins, { categories, tools, targets });
   return {
     version: RULES_VERSION,
     categories,
-    tools: behaviorMap(doc.tools, "tools", () => true),
-    targets: behaviorMap(doc.targets, "targets", () => true),
+    tools,
+    targets,
     trustedMcpServers: serverList(doc.trustedMcpServers),
+    ...(origins ? { origins } : {}),
     updatedAt: typeof doc.updatedAt === "string" ? doc.updatedAt : undefined,
   };
 }
@@ -204,6 +296,8 @@ export async function setCategoryRule(
 export interface MatchedRule {
   behavior: RuleBehavior;
   ruleId: string;
+  /** Where the rule applies when it loosens (`origins`); absent ⇒ DEFAULT_RULE_ORIGINS. */
+  origins?: readonly RuleOrigin[];
 }
 
 export interface RuleMatch {
@@ -224,27 +318,54 @@ type RuleSubject = {
   targetsComplete?: boolean;
 };
 
-/** Every explicit user rule that bears on a request. */
-export function matchRules(rules: WardenRules, req: RuleSubject): RuleMatch {
+/**
+ * Every explicit user rule that bears on a request. `admit` drops rules that
+ * do not apply to the request's origin (policy.ts: a loosening rule not scoped
+ * to it); a dropped target rule leaves its target uncovered.
+ */
+export function matchRules(
+  rules: WardenRules,
+  req: RuleSubject,
+  admit: (rule: MatchedRule) => boolean = () => true,
+): RuleMatch {
+  const scoped = (
+    map: "categories" | "tools" | "targets",
+    key: string,
+    behavior: RuleBehavior | undefined,
+    ruleId: string,
+  ): MatchedRule | undefined => {
+    if (behavior === undefined) return undefined;
+    const origins = ownOrigins(rules.origins?.[map], key);
+    const rule: MatchedRule = { behavior, ruleId, ...(origins ? { origins } : {}) };
+    return admit(rule) ? rule : undefined;
+  };
   let target: MatchedRule | undefined;
   let covered = req.targets.length > 0 && req.targetsComplete !== false;
   for (const name of req.targets) {
-    const behavior = ownBehavior(rules.targets, name);
-    if (behavior === undefined) {
+    const rule = scoped(
+      "targets",
+      name,
+      ownBehavior(rules.targets, name),
+      `rule:target:${name.slice(0, 80)}`,
+    );
+    if (rule === undefined) {
       covered = false;
       continue;
     }
-    if (!target || strictness(behavior) > strictness(target.behavior)) {
-      target = { behavior, ruleId: `rule:target:${name.slice(0, 80)}` };
-    }
+    if (!target || strictness(rule.behavior) > strictness(target.behavior)) target = rule;
   }
-  const toolBehavior = ownBehavior(rules.tools, req.tool);
-  const tool = toolBehavior && { behavior: toolBehavior, ruleId: `rule:tool:${req.tool}` };
-  const categoryBehavior = ownBehavior(rules.categories, req.category);
-  const category = categoryBehavior && {
-    behavior: categoryBehavior,
-    ruleId: `rule:category:${req.category}`,
-  };
+  const tool = scoped(
+    "tools",
+    req.tool,
+    ownBehavior(rules.tools, req.tool),
+    `rule:tool:${req.tool}`,
+  );
+  const category = scoped(
+    "categories",
+    req.category,
+    ownBehavior(rules.categories, req.category),
+    `rule:category:${req.category}`,
+  );
   const base = tool || category || undefined;
   const strictBase =
     tool && category

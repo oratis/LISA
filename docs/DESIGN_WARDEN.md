@@ -45,8 +45,8 @@ These cannot be changed by rules, grants or a task envelope.
 | send, publish, delete | ask | ask | preapproved | ask |
 | purchase, credential | handoff | handoff | handoff | handoff |
 
-- **Unsandboxed exec asks for every origin**, the local owner included. A full-access shell can do anything every other tool can, so leaving it `auto` would make every other ask advisory. A user who wants the old behaviour sets a rule (`tools.bash = auto`) knowingly; taint and a remote origin still override it.
-- **preapproved** means allowed only when the task's capability envelope covers the action; otherwise it asks.
+- **Unsandboxed exec asks for every origin**, the local owner included. A full-access shell can do anything every other tool can, so leaving it `auto` would make every other ask advisory. A user who wants the old behaviour sets a rule (`tools.bash = auto`) knowingly; taint and a remote origin still override it, and it applies to the attended chat only unless it names the task origin (see "User rules").
+- **preapproved** means allowed only when the task's envelope covers the action **and the user confirmed that envelope**; otherwise it asks. In a tainted run even a confirmed envelope does not cover exec, delete, send, publish, a network write or a write outside the run's workspace (see "Task envelopes").
 - A web chat from a caller who could not answer an approval (a LAN device token, a shared web token) is treated as a remote origin, not as the owner.
 
 ## Forced asks
@@ -58,7 +58,8 @@ These ask whatever the matrix says.
 - **Credential locations.** A read, write or delete under `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.kube`, `~/.netrc` and similar, under `<lisaHome>/warden`, or of the provider-key file asks in every run.
 - **Tainted reads outside the workspace.** In a tainted run, reading a file outside the workspace asks.
 - **Skills.** In a tainted run, `skill_manage` asks: a skill can change what Lisa does later.
-- **Commands that name Warden.** A command that mentions Warden's state directory, its approval API or its CLI asks for that exact command, every time.
+- **Commands that name Warden.** A command that mentions Warden's state directory, the task files (`<lisaHome>/tasks/`), its approval API or its CLI — or the task API and `lisa tasks enable`, which confirm what a task may do without asking — asks for that exact command, every time. It is matched on each string of the input as given and with shell quoting, backslash escapes, backticks and line continuations taken out (`l''isa tasks 'enable'`, `/ap''i/tasks`), and with flags between the words (`lisa --quiet tasks enable`). A string match, not a boundary: a name built at run time (`$x`, `$(…)`) gets through; the sandbox and the signed confirmation (below) are what hold.
+- **The task files.** A write, edit or delete under `<lisaHome>/tasks/` always asks, once (`system:task-state-guard`), whatever the rules or grants say: those files decide what runs unattended and what it may do without asking. A task run's sandbox denies the directory outright.
 
 ## Taint
 
@@ -74,9 +75,20 @@ A run is tainted once a taint-source call is allowed:
 
 On the web surface taint belongs to the conversation. Tainted conversation ids are kept in `<lisaHome>/warden/tainted.json` (ids only, bounded), so taint survives a restart. If that file is corrupt, every conversation that already has history is treated as tainted.
 
+**Taint travels with the text** (#422 review N3). What a tainted run leaves behind carries its taint to whoever reads it next:
+
+- *Its summary.* The task records that its `lastSummary` came from a tainted run; the next run's frame quotes it inside the external-content markers, as data, and that run is tainted from its first call (`inheritedTaint`, in the run's first record).
+- *Its folder.* A tainted run that made state-changing calls marks the task's folder tainted: every later run of the task starts tainted, also when nothing was reported. That mark is never cleared.
+- *Its result card.* A notice carrying what a tainted run wrote (and every watcher hit) is stored in the conversation inside the external-content markers, and the conversation is marked tainted in `tainted.json` before the card is appended — so the next chat turn there is tainted, also after a restart. The mark is written whether or not Warden mode is on.
+- *`task_list`* does not repeat a tainted run's or a watcher hit's text into the chat.
+
+The task runner records a run's taint itself as well (a call to a builtin taint source that went through), so the same holds with Warden off, where the read-only list still lets a fetch through. A subagent started inside a run shares the run's session, so its taint is the run's. The consequence is deliberate: a routine that reads the web taints every later run of itself, and the conversation its cards land in.
+
 ## Grants
 
 `once` (bound to the payload digest, consumed on use), `task`, `target`, `24h`, `always`. Matching is exact on tool, category, method, and the trust column the approval was given in.
+
+- A `task` grant lasts for one run of the task. It is revoked when the run ends, whatever the outcome (succeeded, failed, cancelled — also when that ending is completed by a later process after a crash), and every revocation is audited (`grant_revoked`). Deleting the task revokes them too — also mid-run, when the run never gets to end, and from `lisa tasks rm`. A task grant older than a run's start that is still there when the run starts (an ending recorded while Warden was off) is revoked before the run's first decision. A later run of the same task asks again.
 
 - A `target` grant matches only when every target of the request is covered. If the targets could not be enumerated completely — too many recipients, a nested value, a key the classifier does not know — no `target` scope is offered and no target grant or target rule applies.
 - Tool-wide `always` and `24h` grants do not apply in a tainted run to exec, a write outside the workspace, network, send, publish or delete.
@@ -84,11 +96,23 @@ On the web surface taint belongs to the conversation. Tainted conversation ids a
 - A user rule stricter than a grant wins, whichever is newer. Under an explicit `ask` rule only the approval of that exact payload counts.
 - A command that names Warden's state gets no scope wider than `once`.
 
+## Task envelopes
+
+A task's envelope (`tools`, `categories`, `targets`) is a **restriction until the user confirms it**.
+
+- The model can draft one: `task_create`'s `tools`. A drafted or edited envelope narrows the tools the run is offered and pre-approves nothing; Warden gets no envelope for that run, so every action the matrix leaves to the envelope asks.
+- The user confirms it when they switch the task on. `lisa tasks enable <id>` prints the instruction, when it runs and, in plain words, which actions would run without asking, and asks on a terminal; elsewhere it needs `--confirm <digest>` (printed by `lisa tasks show <id>`). `PATCH /api/tasks/{id}` takes `{enabled: true, confirmEnvelope: <digest>}`, and only from a caller who may answer approvals, in a same-origin request; `GET /api/tasks/{id}` returns the digest and the summary for a client to show. Enabling without confirming is allowed: the envelope then only restricts.
+- The confirmation covers every field that reaches the run's prompt or bounds what a run may do: the title (the prompt's first line), the instruction, the kind, the schedule or trigger, the host, the envelope, the notify mode and the budget (`src/tasks/confirmation.ts`, digest v2). What the user is shown names all of them, whole — the title and every line of the instruction, with control and invisible characters shown escaped; on a terminal `lisa tasks enable` pages it and asks only after the last line.
+- It is stored as an HMAC of the task id and that digest under the home's Warden key (`<lisaHome>/warden/digest.key`), verified on every check: a confirmation in a task file written any other way — a self-computed digest, a copied MAC, a v1 digest — reads as unconfirmed. It counts only while the digest matches the task. Every edit of those fields by a caller who cannot confirm (an API edit from a paired device) clears it; every edit by Lisa's own task tools clears it outright, whatever field changed (a pause too); every enable clears it. No model tool can set it. A manual "run now" of an unconfirmed task gets the envelope as a restriction only, like a scheduled run.
+- **Each task run works in its own folder**, `<lisaHome>/task-workspaces/<taskId>/`, never the server's working directory. That folder is the workspace Warden judges paths against, and under a bounded sandbox mode the run's profile denies writes to the whole Lisa home except it (Seatbelt / bubblewrap and the file tools alike), so a pre-approved shell cannot rewrite task files, rules or settings.
+- **Taint overrides the envelope for side effects.** In a tainted run — watcher-triggered, or after a taint source — a confirmed envelope still does not pre-approve exec, delete, send, publish, a network write or a write outside the run's workspace: they ask (`system:tainted-envelope`). Reads, and writes inside the run's own workspace, stay as the envelope says.
+
 ## User rules
 
 `rules.json` sets one of four behaviours per category, tool or target: `auto`, `preapproved`, `ask`, `handoff`.
 
 - Rules can tighten anything. They cannot loosen a system invariant, and an `auto` rule does not survive taint, a remote origin, or a corrupt rules file.
+- **Origin scoping.** A rule that loosens — `auto`, or anything less strict than the default it replaces — applies to the attended chat only, unless `origins` names the task origin for it: `{"tools": {"bash": "auto"}, "origins": {"tools": {"bash": ["chat", "task"]}}}`. So a rule written for chat (`tools.bash = auto`, `categories.send = auto`) never lets an unattended routine run the shell or send. A rule that tightens (`ask`, `handoff`, or `preapproved` where the default is `auto`) applies to every origin, whatever its scope says. `origins` has the same three maps as the rules (`categories`, `tools`, `targets`); each entry is a non-empty list of `chat` / `task` and must name an existing rule, or the whole file is rejected like any invalid rules document. `lisa warden rules show` prints each loosening rule's scope.
 - A target rule loosens only when every target of the request has one; otherwise the stricter of the tool and category rules applies.
 - Rule maps are read by own property only, and a value that is not one of the four behaviours counts as `ask`.
 
@@ -132,6 +156,7 @@ Sandboxed commands cannot reach any of it: every bounded sandbox profile denies 
 ## Integration points
 
 - `createWardenSession(options)` returns `{ approval, observe, decide, tainted }`. Pass `approval` to `runAgent`, feed `observe` from `onEvent`, and put `approval` on the tool context so nested runs (the `task` subagent) stay gated.
+- **Task Engine runs.** `createTaskApprovalFactory` (`task-approval.ts`) is the Task Engine's gate in Warden mode: one session per unattended run, origin `task` / `routine` / `watcher` with the task id, the task's envelope only if the user confirmed it (so the matrix's "preapproved" cells apply to what they confirmed, and to nothing else), the run's taint (a watcher-triggered run starts tainted), and the uid and home of the scope the run works in — never the task file's `owner` (the runner refuses a task whose file names another account, and the factory a context that does not match its scope). The web server passes it to its task runners only when the approval mode is `warden`. **Unattended runs get more than read-only calls only with Warden on**: without it the engine allows only the verified read-only calls in `src/tasks/policy.ts`, and nothing waits for approval. The CLI drivers (`lisa heartbeat run`, `lisa tasks run`) have no inbox anyone could answer and stay read-only. An "ask" in a task run waits in the inbox like a chat turn's: the session's `onApprovalPending` / `onApprovalSettled` hooks let the engine show the run as `awaiting_approval` (wall clock paused), and the user is told through `reachOut()` with source `approval` — the in-app note names the task and the tool, never the payload, and the push (a third-party service) says only that an approval is waiting. Expiry, restart and cancel behave as for chat (deny); after a restart the resumed run asks again (`docs/DESIGN_TASK_ENGINE.md`, "Waiting for an approval").
 - `WardenInbox` takes an emitter `(event, uid) => void`. The host must deliver each event only to subscribers of that `uid`.
 - HTTP: `/api/approvals`, `/api/approvals/{id}`, `/api/approvals/{id}/approve`, `/api/approvals/{id}/deny`, `/api/warden/rules`, `/api/warden/grants`, `/api/warden/grants/{id}`, `/api/warden/audit`. State-changing routes require the loopback owner or a signed-in per-user session, a JSON content type, and a same-origin request.
 - CLI: `lisa approvals [list | show <id> | approve <id> --digest <digest> | deny <id>]`, `lisa warden rules|grants|audit`.
@@ -139,13 +164,14 @@ Sandboxed commands cannot reach any of it: every bounded sandbox profile denies 
 ## Known limits
 
 - **There is no native approver yet, and that is why Warden is opt-in.** Over HTTP on loopback there is no way to tell the user's browser from a local process. A process the user runs unsandboxed can read `/api/approvals/{id}`, approve with the digest it finds there, or rewrite the rules — and so can a shell command the user approved. Until approvals are signed by a native approver (the Mac app with a Keychain-bound key, or a paired phone with Face ID), Warden protects against a model that has not been given an unconfined shell, not against one that has. That approver is the follow-up that gates flipping the default.
-- **The workspace root is the server's working directory.** Under launchd and Lisa.app that is `/`, which confines nothing: every file write and every tainted read then asks. This must be fixed before the default flips.
+- **A chat's workspace root is the server's working directory.** Under launchd and Lisa.app that is `/`. A workspace that is `/`, the user's home (or above it) or that contains a Lisa home confines nothing, so Warden treats `bash` and file writes there as unsandboxed on every surface — they ask — and every tainted read outside it asks too. Task runs no longer have this problem (each works in its own folder, below); giving chat turns a narrower workspace must still happen before the default flips.
 - **String checks are best effort.** The check for commands that name Warden's state, and the check for shell commands that reach the network, are string matches. `p=approvals; curl …/api/$p` passes the first; an alias or an encoded payload passes the second. They catch the common case and are not a boundary.
 - **Linux.** bubblewrap cannot filter one TCP port. With the network allowed, a sandboxed command on Linux can still connect to the LISA port.
-- **Memory poisoning.** In a tainted run `memory`, `soul_patch`, `kb_write` and `kb_add` are still `auto`, and what they write loads into later, untainted conversations. The audit log marks those writes as made in a tainted run; undoing them is provenance work that is not in this PR.
+- **Memory poisoning.** In a tainted run `memory`, `soul_patch`, `kb_write` and `kb_add` are still `auto`, and what they write loads into later, untainted conversations and task runs. The audit log marks those writes as made in a tainted run; undoing them is provenance work that is not in this PR. (A tainted run's summary, folder and result card no longer carry its text anywhere untainted — "Taint" above; memory is the one channel that still does.)
+- **With Warden off, chat tools are not gated.** Nothing then stops a chat tool from reading `<lisaHome>/warden/digest.key` and signing a task confirmation. Unattended runs make read-only calls only while Warden is off, so such a confirmation does nothing until Warden is switched on.
 - **Reads inside the workspace do not taint.** `read`, `grep` and `kb_read` can return text someone else wrote (a cloned repository, an ingested page). Tainting on them would taint every coding conversation at once, so they are left out, knowingly.
 - **Known URLs are kept in memory.** After a restart a tainted conversation asks again for URLs it had already seen.
 - **The CLI REPL.** `--approval warden` there falls back to the stdin prompt and leaves the `task` subagent ungated, as `ask-mutating` already did.
 - **The inbox is in-process.** A multi-instance deployment needs a shared store before approvals can be answered from another instance.
-- **Only web chat turns are wired.** IM channels, heartbeat and idle runs and managed agents do not go through Warden yet.
+- **Only web chat turns and the web server's Task Engine runs are wired.** IM channels, heartbeat chores and idle runs, managed agents and tasks run by the CLI drivers do not go through Warden yet.
 - **A paired device token cannot approve.** Approving needs loopback or an account session.

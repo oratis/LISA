@@ -5,6 +5,8 @@
  *
  * Everything here is pure: unknown JSON in, a typed value or a short reason out.
  */
+import { taskDigest } from "./confirmation.js";
+import { envelopeProblem } from "./envelope.js";
 import {
   MIN_EVERY_MS_CLOUD,
   MIN_EVERY_MS_LOCAL,
@@ -14,6 +16,9 @@ import {
 import type { NewTask } from "./store.js";
 import {
   DEFAULT_TASK_BUDGET,
+  MAX_APPROVALS_LIMIT,
+  MAX_APPROVAL_WAIT_MS,
+  MAX_APPROVAL_WAIT_MS_CLOUD,
   TASK_HOSTS,
   TASK_KINDS,
   TASK_NOTIFY,
@@ -36,6 +41,8 @@ export const LIMITS = {
   tokens: { min: 1_000, max: 2_000_000, cloudMax: 400_000 },
   wallclockMs: { min: 10_000, max: 60 * 60_000, cloudMax: 15 * 60_000 },
   maxToolCalls: { min: 1, max: 200, cloudMax: 60 },
+  maxApprovals: { min: 0, max: MAX_APPROVALS_LIMIT, cloudMax: MAX_APPROVALS_LIMIT },
+  approvalWaitMs: { min: 60_000, max: MAX_APPROVAL_WAIT_MS, cloudMax: MAX_APPROVAL_WAIT_MS_CLOUD },
 } as const;
 
 export interface ValidateContext {
@@ -223,6 +230,13 @@ export function parseTriggerSpec(v: unknown, ctx: ValidateContext): Result<Trigg
   return fail('trigger.kind must be "web", "rss" or "mail"');
 }
 
+/**
+ * An envelope from any source. Tool names, categories and targets must be
+ * what they look like on the confirmation screen (envelope.ts): a tool name
+ * is a builtin or `mcp__<server>__<tool>` name, a category is one of the fixed
+ * set, a target is printable — never a control, bidi or invisible character
+ * that could redraw the screen the user confirms from (#422 review NEW-1).
+ */
 export function parseEnvelope(v: unknown): Result<TaskEnvelope> {
   if (!isObject(v)) return fail("envelope must be an object");
   const out: TaskEnvelope = {};
@@ -231,7 +245,8 @@ export function parseEnvelope(v: unknown): Result<TaskEnvelope> {
     if (!list.ok) return list;
     if (list.value) out[field] = list.value;
   }
-  return { ok: true, value: out };
+  const problem = envelopeProblem(out);
+  return problem ? fail(problem) : { ok: true, value: out };
 }
 
 export function parseBudget(
@@ -241,7 +256,13 @@ export function parseBudget(
 ): Result<TaskBudget> {
   if (!isObject(v)) return fail("budget must be an object");
   const out: TaskBudget = { ...base };
-  for (const field of ["tokens", "wallclockMs", "maxToolCalls"] as const) {
+  for (const field of [
+    "tokens",
+    "wallclockMs",
+    "maxToolCalls",
+    "maxApprovals",
+    "approvalWaitMs",
+  ] as const) {
     const value = v[field];
     if (value === undefined) continue;
     const { min, max, cloudMax } = LIMITS[field];
@@ -421,9 +442,20 @@ export function applyTaskEdit(task: Task, body: unknown, ctx: ValidateContext): 
   }
   const problem = shapeProblem(next.kind, next.schedule, next.trigger);
   if (problem) return problem;
+  // A task whose envelope cannot be used (found so on disk) takes no other
+  // edit until the envelope is fixed or removed; switching it off still works.
+  if (Object.keys(body).some((key) => key !== "enabled")) {
+    const envelope = envelopeProblem(next.envelope);
+    if (envelope) return envelope;
+  }
+  // A confirmation covers the task as the user saw it. Changing what it runs,
+  // when, with which envelope or how it tells them clears it: the envelope is
+  // a restriction again until they confirm the new version.
+  if (taskDigest(next) !== taskDigest(task)) delete next.envelopeConfirmation;
   Object.assign(task, next);
   if (!next.schedule) delete task.schedule;
   if (!next.envelope) delete task.envelope;
   if (!next.watch) delete task.watch;
+  if (!next.envelopeConfirmation) delete task.envelopeConfirmation;
   return null;
 }

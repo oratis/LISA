@@ -25,6 +25,8 @@ import { randomBytes as randomSuffix } from "node:crypto";
 import { pathExists } from "../fs-utils.js";
 import { lisaHome } from "../paths.js";
 import { withFileLock } from "../soul/lock.js";
+import { parseConfirmation } from "./confirmation.js";
+import { envelopeProblem } from "./envelope.js";
 import { validateSchedule } from "./schedule.js";
 import type { StoredMessage } from "../types.js";
 import {
@@ -143,6 +145,26 @@ export function parseTask(raw: unknown, expectedId?: string): Parsed {
   if (typeof task.authFailureCount !== "number") task.authFailureCount = 0;
   if (!Array.isArray(task.runs)) task.runs = [];
   task.runs = task.runs.filter(isSafeId);
+  // A confirmation of the wrong shape is dropped: it could only ever grant.
+  if (task.envelopeConfirmation !== undefined) {
+    const confirmation = parseConfirmation(task.envelopeConfirmation);
+    if (confirmation) task.envelopeConfirmation = confirmation;
+    else delete task.envelopeConfirmation;
+  }
+  // An envelope that holds anything but tool names, categories and printable
+  // targets (a hand-edited file, one written before they were checked) is not
+  // something the user can be shown faithfully: it confirms nothing and the
+  // task loads switched off, saying why (#422 review NEW-1).
+  const envelopeIssue = envelopeProblem(task.envelope);
+  if (envelopeIssue) {
+    delete task.envelopeConfirmation;
+    if (!task.activeRunId) {
+      task.enabled = false;
+      task.state = "paused";
+      task.pausedReason = `envelope cannot be used: ${envelopeIssue}`.slice(0, 300);
+      delete task.nextRunAt;
+    }
+  }
   // A schedule that cannot be computed (a hand-edited zone, an expression from
   // a newer build) must never reach the scheduler as a live task: it loads
   // switched off, saying why. Nothing is written until the user fixes it.
@@ -292,6 +314,9 @@ export type NewTask = Pick<Task, "kind" | "title" | "instruction" | "origin"> &
 export async function createTask(input: NewTask, now = Date.now()): Promise<Task> {
   const id = input.id ?? newTaskId();
   if (!isSafeId(id)) throw new Error(`invalid task id: ${id}`);
+  // Every way a task comes into being (the API, the tools, the migration) gets the same envelope check.
+  const envelopeIssue = envelopeProblem(input.envelope);
+  if (envelopeIssue) throw new Error(envelopeIssue);
   const enabled = input.enabled ?? false;
   const task: Task = {
     id,
@@ -376,7 +401,8 @@ export async function deleteTask(id: string): Promise<boolean> {
 // ── runs ──
 
 export interface RunEvent {
-  type: "tool_call" | "tool_result" | "replayed" | "denied" | "info" | "error" | "resume";
+  type:
+    "tool_call" | "tool_result" | "replayed" | "denied" | "info" | "error" | "resume" | "approval";
   toolName?: string;
   summary?: string;
   isError?: boolean;
@@ -411,7 +437,7 @@ async function appendRecord(taskId: string, runId: string, rec: RunRecord): Prom
 /** Start a run: write its first checkpoint and link it from the task. */
 export async function createRun(
   taskId: string,
-  init: Partial<Pick<TaskRun, "id" | "input" | "state" | "trigger">> = {},
+  init: Partial<Pick<TaskRun, "id" | "input" | "state" | "trigger" | "inheritedTaint">> = {},
   now = Date.now(),
 ): Promise<TaskRun> {
   if (init.id !== undefined && !isSafeId(init.id)) throw new Error(`invalid run id: ${init.id}`);
@@ -427,6 +453,8 @@ export async function createRun(
     ...(init.trigger !== undefined ? { trigger: init.trigger } : {}),
     ...(init.trigger === "manual" ? { manual: true } : {}),
     ...(init.input !== undefined ? { input: init.input } : {}),
+    // …and so is a taint it inherited: a resumed run can never start clean.
+    ...(init.inheritedTaint === true ? { inheritedTaint: true } : {}),
   };
   // The run's directory is made only for a task that exists, one level at a time.
   if (!(await pathExists(taskFile(taskId)))) throw new TaskGoneError(`task ${taskId}`);

@@ -31,20 +31,28 @@
  */
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomBytes } from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+import { createSandboxedCapabilities, type Capabilities } from "../capabilities/index.js";
 import { runAgent, type ApprovalCallback } from "../agent.js";
 import { getAutonomyEnabled } from "../autonomy/state.js";
 import { costMicroUSD } from "../billing/prices.js";
 import { logInfo } from "../log.js";
+import { lisaGlobalHome, lisaHome, scopedUid } from "../paths.js";
 import { providerForModel } from "../providers/registry.js";
-import type { Provider, ProviderUsage } from "../providers/types.js";
-import type { SandboxMode } from "../sandbox/mode.js";
+import { notSent, type Provider, type ProviderUsage } from "../providers/types.js";
+import { modeIsBounded, type SandboxMode } from "../sandbox/mode.js";
 import { sandboxModeForProfile } from "../sandbox/sandbox.js";
 import { validateToolInput } from "../tools/validate.js";
+import { isBuiltinTaintSource } from "../warden/classify.js";
 import { stripSensitiveTokens } from "../warden/hygiene.js";
 import type { AgentEvent, StoredMessage, ToolDefinition } from "../types.js";
+import { confirmationKey, isEnvelopeConfirmed } from "./confirmation.js";
+import { runWasTainted } from "./external.js";
 import {
   buildResumeNote,
   buildTaskFrame,
+  frameInheritsTaint,
   isNoUpdate,
   planResume,
   TASK_SYSTEM_ADDENDUM,
@@ -59,6 +67,7 @@ import { isRecurring, nextRunAfter, pauseTask, restingState } from "./lifecycle.
 import { drainOutbox, enqueueNotice, noticeId } from "./outbox.js";
 import { denySideEffects, digestCall, isSideEffectingCall, taskToolset } from "./policy.js";
 import { defaultTimeZone, isOneShot } from "./schedule.js";
+import { ensureTaskWorkspace } from "./workspace.js";
 import {
   appendRunEvent,
   appendRunMessage,
@@ -73,10 +82,18 @@ import {
   type LoadedRun,
   type RunEvent,
 } from "./store.js";
-import { tokensSpent } from "./types.js";
+import {
+  DEFAULT_APPROVAL_WAIT_MS,
+  DEFAULT_MAX_APPROVALS,
+  MAX_APPROVALS_LIMIT,
+  MAX_APPROVAL_WAIT_MS,
+  MAX_APPROVAL_WAIT_MS_CLOUD,
+  tokensSpent,
+} from "./types.js";
 import type {
   Task,
   TaskApprovalFactory,
+  TaskApprovalWait,
   TaskEffect,
   TaskDeliver,
   TaskNotice,
@@ -95,6 +112,35 @@ function startedByUser(run: TaskRun): boolean {
   return run.trigger !== undefined ? run.trigger === "manual" : !!run.manual;
 }
 
+/**
+ * The execution world of a task run under a bounded sandbox mode: writes go
+ * to the task's own workspace (and the temp directories), and the whole Lisa
+ * home is read-only to it but for that workspace — in the OS profile and in
+ * the file tools alike. Unbounded (`danger-full-access`): undefined, the plain
+ * local world, where Warden treats every write and command as unconfined.
+ */
+export function taskCapabilities(workspace: string, mode: SandboxMode): Capabilities | undefined {
+  if (!modeIsBounded(mode)) return undefined;
+  const homes = new Set<string>();
+  for (const home of [lisaHome(), lisaGlobalHome()]) {
+    homes.add(path.resolve(home));
+    try {
+      homes.add(fs.realpathSync.native(home));
+    } catch {
+      // not there (yet): the literal path is denied
+    }
+  }
+  return createSandboxedCapabilities({
+    root: workspace,
+    spec: {
+      mode,
+      allowNetwork: process.env.LISA_SANDBOX_NETWORK !== "0",
+      cwd: workspace,
+      denyWrites: { paths: [...homes], except: workspace },
+    },
+  });
+}
+
 /** Marks a side-effecting call that was started but whose result was never recorded. */
 export const IN_FLIGHT = "[in-flight]";
 
@@ -106,6 +152,9 @@ export const MAX_RETRIES = 2;
 export const MAX_BLOCKED = 3;
 /** A one-off this far past its time is expired instead of run. */
 export const EXPIRE_ONEOFF_AFTER_MS = 24 * 3_600_000;
+
+/** While a run waits for an approval, how often it checks for a cancel made by another process. */
+export const APPROVAL_CANCEL_POLL_MS = 5_000;
 
 const RETRY_BACKOFF_MS = [60_000, 5 * 60_000];
 const MAX_RECORDED_RESULT = 8_000;
@@ -160,6 +209,11 @@ export interface TaskRunnerOptions {
   /** The surface's capability-profile tools; narrowed per task by its envelope. */
   tools: ToolDefinition[] | (() => ToolDefinition[] | Promise<ToolDefinition[]>);
   model: string | (() => string);
+  /**
+   * The host's working directory — used for Lisa's system prompt only. A run's
+   * tools never work here: each task works in its own folder under the Lisa
+   * home (workspace.ts), whatever directory the server was started from.
+   */
   cwd: string;
   /** Lisa's normal system prompt. The task rules are appended to it. */
   buildSystemPrompt?: () => Promise<string> | string;
@@ -190,6 +244,8 @@ export interface TaskRunnerOptions {
   leaseTtlMs?: number;
   /** Lease renewal period (tests). Default ttl/3. */
   leaseRenewEveryMs?: number;
+  /** Cancel check while awaiting an approval (tests). Default APPROVAL_CANCEL_POLL_MS. */
+  approvalCancelPollMs?: number;
   now?: () => number;
   log?: (msg: string) => void;
 }
@@ -201,7 +257,8 @@ type StopReason =
   | "budget_wallclock"
   | "budget_tool_calls"
   | "admission_denied"
-  | "settlement_failed";
+  | "settlement_failed"
+  | "approval_limit";
 
 class TaskStop extends Error {
   constructor(
@@ -312,6 +369,8 @@ interface SettledNotice {
   kind: TaskNotice["kind"];
   summary: string;
   priority: TaskNotice["priority"];
+  /** The summary quotes what the run itself wrote (not only the engine's words). */
+  carriesOutput?: boolean;
 }
 
 /**
@@ -341,6 +400,13 @@ function settleTask(t: Task, run: TaskRun, now: number, cloud: boolean): Settled
   delete t.queued;
   t.lastRunAt = now;
   const recurring = isRecurring(t);
+  // Taint travels with what a run leaves behind (#422 review N3): a tainted
+  // run that made state-changing calls may have written into the task's own
+  // folder, which every later run can read — so they all start tainted.
+  const tainted = runWasTainted(run);
+  if (tainted && ((run.effects?.length ?? 0) > 0 || Object.keys(run.executedDigests).length > 0)) {
+    t.workspaceTainted = true;
+  }
 
   /** Back to rest, with the next occurrence — or switched off if there is none to compute. */
   const next = (): void => {
@@ -385,7 +451,12 @@ function settleTask(t: Task, run: TaskRun, now: number, cloud: boolean): Settled
   if (run.state === "succeeded") {
     t.failureCount = 0;
     t.authFailureCount = 0;
-    if (!noop) t.lastSummary = clip(summary, 2000);
+    if (!noop) {
+      t.lastSummary = clip(summary, 2000);
+      // …and so does its summary: the next frame quotes it as data.
+      if (tainted) t.lastSummaryTainted = true;
+      else delete t.lastSummaryTainted;
+    }
     const fingerprint = digestCall("summary", summary);
     const changed = fingerprint !== t.lastResultFingerprint;
     t.lastResultFingerprint = fingerprint;
@@ -400,6 +471,7 @@ function settleTask(t: Task, run: TaskRun, now: number, cloud: boolean): Settled
         kind: "task_result",
         summary: noop ? "Ran. Nothing to report." : summary,
         priority: "normal",
+        carriesOutput: !noop,
       });
     }
     end("succeeded");
@@ -440,6 +512,7 @@ function settleTask(t: Task, run: TaskRun, now: number, cloud: boolean): Settled
     kind: "task_failed",
     summary: `Did not finish: ${why}.${summary ? `\n\nLast output:\n${summary}` : ""}`,
     priority: "normal",
+    carriesOutput: !!summary,
   });
   end("failed");
   return notices;
@@ -475,6 +548,15 @@ export class TaskRunner {
     return this.active.has(taskId);
   }
 
+  /**
+   * The tenant this runner works for: the uid of the home scope it runs in
+   * (null on the Mac edition). Every uid a run hands on — to the approval
+   * gate, to its notices — comes from here, not from the task file.
+   */
+  private tenant(): string | null {
+    return scopedUid();
+  }
+
   private log(msg: string): void {
     (this.opts.log ?? logInfo)(`[tasks] ${msg}`);
   }
@@ -489,6 +571,10 @@ export class TaskRunner {
 
   private deliver(): TaskDeliver | undefined {
     return this.opts.deliver ?? getTaskDeliver() ?? getDefaultTaskDeliver();
+  }
+
+  private approvalFactory(): TaskApprovalFactory | undefined {
+    return this.opts.approvalFactory ?? getTaskApprovalFactory();
   }
 
   // ── fencing: every write a run makes is conditional on still holding the lease ──
@@ -699,6 +785,19 @@ export class TaskRunner {
     return found;
   }
 
+  /**
+   * A task was deleted: end whatever the gate granted "for this task". Called
+   * by the removal path (removal.ts) and by a run that finds its task gone.
+   * Never throws: the task is gone either way.
+   */
+  async taskRemoved(taskId: string): Promise<void> {
+    try {
+      await this.approvalFactory()?.taskRemoved?.({ taskId, uid: scopedUid(), home: lisaHome() });
+    } catch (err) {
+      this.log(`task ${taskId}: its grants could not be revoked: ${(err as Error).message}`);
+    }
+  }
+
   /** Resolve when every run this runner started has finished. */
   async drain(): Promise<void> {
     while (this.inflight.size > 0) await Promise.allSettled([...this.inflight]);
@@ -761,7 +860,7 @@ export class TaskRunner {
     }
     const p = this.current
       .run(slot, () => this.runTask(taskId, slot))
-      .catch((err) => {
+      .catch(async (err) => {
         if (err instanceof Interrupted) {
           if (slot.interrupted) {
             this.log(`task ${taskId}: stopped — ${slot.interrupted}; it resumes at the next tick`);
@@ -770,7 +869,10 @@ export class TaskRunner {
         }
         if (err instanceof TaskGoneError || slot.lease?.gone) {
           // Deleted (or its whole home was) while it ran: nothing is put back.
+          // Its run never ends normally, so what was granted "for this task"
+          // is revoked here (a gone home has no grants left to revoke).
           this.log(`task ${taskId}: removed while running — stopped`);
+          await this.taskRemoved(taskId);
           return;
         }
         if (err instanceof LeaseLost || slot.leaseLost) {
@@ -802,7 +904,16 @@ export class TaskRunner {
 
       if (task.activeRunId) {
         const loaded = await loadRun(task.id, task.activeRunId);
-        if (loaded && (loaded.run.state === "running" || loaded.run.state === "interrupted")) {
+        // A run left `awaiting_approval` is one whose process stopped while it
+        // waited. The approval died with that process (the inbox keeps the
+        // payload in memory only), so the resumed run issues the call again
+        // and asks again.
+        if (
+          loaded &&
+          (loaded.run.state === "running" ||
+            loaded.run.state === "interrupted" ||
+            loaded.run.state === "awaiting_approval")
+        ) {
           await this.resume(task, loaded, slot);
           return;
         }
@@ -885,7 +996,14 @@ export class TaskRunner {
         : "scheduled";
     const run = await this.newRun(
       task.id,
-      { state: "running", trigger, ...(input !== undefined ? { input } : {}) },
+      {
+        state: "running",
+        trigger,
+        ...(input !== undefined ? { input } : {}),
+        // What an earlier tainted run left (its summary in this frame, or its
+        // writes in the folder) taints this run from its first call.
+        ...(frameInheritsTaint(task) ? { inheritedTaint: true } : {}),
+      },
       now,
     );
     const started = await this.saveTask(
@@ -1093,8 +1211,16 @@ export class TaskRunner {
     const budget = task.budget;
     const segmentStart = this.now();
     const elapsedBefore = run.elapsedMs ?? 0;
+    // Time spent waiting for a human answer does not count against the run's
+    // wall-clock budget (or its elapsed time): the clock is paused for it.
+    let pausedMs = 0;
+    let pausedAt: number | null = null;
+    const activeMs = (): number => {
+      const now = this.now();
+      return now - segmentStart - pausedMs - (pausedAt !== null ? now - pausedAt : 0);
+    };
     const touch = (): void => {
-      run.elapsedMs = elapsedBefore + (this.now() - segmentStart);
+      run.elapsedMs = elapsedBefore + activeMs();
     };
 
     // Side effects recorded before this segment, per call, in the order they
@@ -1140,15 +1266,171 @@ export class TaskRunner {
       return false;
     };
 
-    const remainingMs = budget.wallclockMs - elapsedBefore;
-    if (remainingMs <= 0) stopWith("budget_wallclock");
     // Deliberately NOT unref'd: while a run is in flight this breaker must be
     // able to fire even if nothing else is keeping the event loop alive (a
     // provider or tool waiting on a promise with no handle behind it). It is
     // cleared in the finally below, so it never outlives the run.
-    const wallclock = setTimeout(() => stopWith("budget_wallclock"), Math.max(0, remainingMs));
+    let wallclock: NodeJS.Timeout | undefined;
+    const armWallclock = (): void => {
+      const remainingMs = budget.wallclockMs - elapsedBefore - activeMs();
+      if (remainingMs <= 0) stopWith("budget_wallclock");
+      wallclock = setTimeout(() => stopWith("budget_wallclock"), Math.max(0, remainingMs));
+    };
+    armWallclock();
+
+    // ── waiting for a human ──
+    // While a call waits for an approval the run is `awaiting_approval` (task
+    // and run, visible in the API and over SSE): its wall clock is paused, its
+    // lease keeps renewing on the lease's own timer, and a cancel from another
+    // process is still noticed — it aborts the run, which turns the pending
+    // approval into a deny. The ask itself, its answer and its expiry are the
+    // gate's (Warden's inbox).
+    //
+    // Waiting has a ceiling (#422 review L4): a run may ask at most
+    // `budget.maxApprovals` times (default 5) and wait at most
+    // `budget.approvalWaitMs` in all (default 60 minutes), both clamped to a
+    // hard maximum and counted across segments. Past either the run stops
+    // with `approval_limit` — one ordinary failure notice — instead of
+    // holding its slot and lease for hours and announcing ask after ask. The
+    // ask that would go over is not announced at all.
+    const maxApprovals = Math.max(
+      0,
+      Math.min(budget.maxApprovals ?? DEFAULT_MAX_APPROVALS, MAX_APPROVALS_LIMIT),
+    );
+    const waitCapMs = Math.max(
+      0,
+      Math.min(
+        budget.approvalWaitMs ?? DEFAULT_APPROVAL_WAIT_MS,
+        cloud ? MAX_APPROVAL_WAIT_MS_CLOUD : MAX_APPROVAL_WAIT_MS,
+      ),
+    );
+    const duration = (ms: number): string => {
+      const [n, unit] =
+        ms < 60_000
+          ? [Math.max(1, Math.ceil(ms / 1000)), "second"]
+          : [Math.round(ms / 60_000), "minute"];
+      return `${n} ${unit}${n === 1 ? "" : "s"}`;
+    };
+    const waitedTooLong = `it waited ${duration(waitCapMs)} for approvals in all, the most a run may (budget.approvalWaitMs); it stopped instead of waiting longer`;
+    let waiting = 0;
+    /** Asks refused at the ceiling: their `ended` is not a wait ending. */
+    let refused = 0;
+    let waitCeiling: NodeJS.Timeout | undefined;
+    let cancelPoll: NodeJS.Timeout | undefined;
+    const approvalWait: TaskApprovalWait = {
+      started: async ({ tool }) => {
+        const refuse = (why?: string): false => {
+          refused += 1;
+          if (why) stopWith("approval_limit", why);
+          return false;
+        };
+        // Already stopping: nothing to wait for, nobody to tell.
+        if (slot.stop || slot.controller.signal.aborted) return refuse();
+        const asked = (run.approvals ?? 0) + 1;
+        if (asked > maxApprovals) {
+          return refuse(
+            `it asked for approval ${maxApprovals} time${maxApprovals === 1 ? "" : "s"}, the most a run may (budget.maxApprovals); it stopped instead of asking again`,
+          );
+        }
+        if ((run.approvalWaitMs ?? 0) >= waitCapMs) return refuse(waitedTooLong);
+        run.approvals = asked;
+        waiting += 1;
+        if (waiting > 1) return true;
+        if (pausedAt === null) {
+          clearTimeout(wallclock);
+          pausedAt = this.now();
+        }
+        waitCeiling = setTimeout(
+          () => stopWith("approval_limit", waitedTooLong),
+          Math.max(0, waitCapMs - (run.approvalWaitMs ?? 0)),
+        );
+        cancelPoll = setInterval(
+          () => void cancelRequested(),
+          this.opts.approvalCancelPollMs ?? APPROVAL_CANCEL_POLL_MS,
+        );
+        logEvent({ type: "approval", toolName: tool, summary: "waiting for approval" });
+        run.state = "awaiting_approval";
+        touch();
+        await this.saveRun(run, this.now());
+        const parked = await this.saveTask(task.id, (t) => {
+          if (t.activeRunId !== run.id) return false;
+          t.state = "awaiting_approval";
+        });
+        if (parked) this.emit({ type: "task_updated", task: parked });
+        return true;
+      },
+      ended: async ({ approved }) => {
+        if (refused > 0) {
+          refused -= 1;
+          return;
+        }
+        if (waiting === 0) return;
+        waiting -= 1;
+        if (waiting > 0) return;
+        clearInterval(cancelPoll);
+        cancelPoll = undefined;
+        clearTimeout(waitCeiling);
+        waitCeiling = undefined;
+        if (pausedAt !== null) {
+          const waited = this.now() - pausedAt;
+          pausedMs += waited;
+          run.approvalWaitMs = (run.approvalWaitMs ?? 0) + waited;
+          pausedAt = null;
+          if (!slot.stop) armWallclock();
+        }
+        logEvent({ type: "approval", summary: approved ? "approved" : "not approved" });
+        // A run that lost its lease writes nothing more: it is someone else's now.
+        if (slot.leaseLost) return;
+        if (slot.controller.signal.aborted) {
+          // Stopping (cancelled, a breaker, shut down). How it ends is
+          // recorded by whoever ends it — but a shutdown leaves the run
+          // resumable and records nothing more, so the wait it did is saved
+          // here, on every path: a restart must not get the time back
+          // (#422 review N5). The run's state stays as it is on disk.
+          touch();
+          await this.saveRun(run, this.now()).catch(() => {});
+          return;
+        }
+        run.state = "running";
+        touch();
+        await this.saveRun(run, this.now());
+        const back = await this.saveTask(task.id, (t) => {
+          if (t.activeRunId !== run.id) return false;
+          t.state = "running";
+        });
+        if (back) this.emit({ type: "task_updated", task: back });
+      },
+    };
+
+    // What this segment may still spend under the run's spend ceiling.
+    const capLeft =
+      budget.usdMicros !== undefined ? budget.usdMicros - (run.capSpentMicros ?? 0) : undefined;
+    let capMessage: string | undefined;
 
     try {
+      // Whose run this is comes from the scope the runner works in (the
+      // authenticated tenant), never from the task file: a file that names
+      // another account is not run at all — no gate, no model call — and the
+      // task is switched off saying why (#422 review L8).
+      if (task.owner !== this.tenant()) {
+        return {
+          state: "failed",
+          stopReason: "owner_mismatch",
+          summary: "",
+          error: "the task file names a different account than the one running it",
+          blocked: true,
+          pause: true,
+        };
+      }
+      if (capLeft !== undefined && !(capLeft > 0)) {
+        // Spent in an earlier segment (a failed attempt counts): not one more call.
+        return {
+          state: "failed",
+          stopReason: "budget_usd",
+          summary: "",
+          error: `spend ceiling reached — $${(budget.usdMicros! / 1_000_000).toFixed(2)} already counted against this run`,
+        };
+      }
       const surface =
         typeof this.opts.tools === "function" ? await this.opts.tools() : this.opts.tools;
       // A run started by a watcher hit carries text an outsider controls: it
@@ -1156,17 +1438,53 @@ export class TaskRunner {
       const tools = taskToolset(surface, task.envelope, {
         untrustedInput: run.input !== undefined,
       });
+      // The taint an earlier run left is the task's, and it does not change
+      // while a run is active: a run continued from before it was recorded
+      // takes it now (and keeps it, at its next checkpoint).
+      if (frameInheritsTaint(task)) run.inheritedTaint = true;
+      /** Recorded on the run; the next checkpoint persists it. */
+      const markTainted = (): void => {
+        run.tainted = true;
+      };
       const toolMap = new Map(tools.map((t) => [t.name, t]));
+      // Unattended ⇒ the bounded sandbox mode, whatever the process default is.
+      const sandboxMode =
+        this.opts.sandboxMode ?? sandboxModeForProfile(cloud ? "cloud-autonomy" : "local-autonomy");
+      // The task's own folder, never the server's cwd; under a bounded mode
+      // nothing else in the Lisa home is writable from the run.
+      const workspace = await ensureTaskWorkspace(task.id);
+      const caps = taskCapabilities(workspace, sandboxMode);
 
-      const handle = (this.opts.approvalFactory ?? getTaskApprovalFactory())?.({
+      const handle = await this.approvalFactory()?.({
         taskId: task.id,
         runId: run.id,
+        runStartedAt: run.startedAt,
         origin: {
           kind: task.kind === "routine" ? "routine" : task.kind === "watcher" ? "watcher" : "task",
           id: task.id,
         },
         ...(task.envelope ? { envelope: task.envelope } : {}),
-        uid: task.owner,
+        // Only an envelope the user confirmed as they see it now is a
+        // pre-approval; a drafted or edited one only restricts the toolset.
+        // The confirmation must also carry this home's signature (N4): a task
+        // file written by anything but the user's own surface is unconfirmed.
+        envelopeConfirmed: isEnvelopeConfirmed(task, await confirmationKey({ home: lisaHome() })),
+        uid: this.tenant(),
+        home: lisaHome(),
+        title: task.title,
+        // A run a watcher hit started quotes an outsider's text in its prompt,
+        // a continued run that was tainted still has that content in its
+        // history, and a run whose frame or folder carries what a tainted
+        // earlier run wrote reads that text: tainted from its first call.
+        tainted: runWasTainted(run),
+        // Recorded on the run; the checkpoint after the call that tainted it
+        // lands before that call's result is in the saved history.
+        onTaint: markTainted,
+        cwd: workspace,
+        sandboxMode,
+        tools,
+        signal: slot.controller.signal,
+        approvalWait,
       });
       // No factory, or a factory that offers no gate ⇒ the safe default.
       const gate: ApprovalCallback = handle?.approval ?? denySideEffects();
@@ -1176,7 +1494,34 @@ export class TaskRunner {
         if (isSideEffectingCall(name, input) && replayable(digestCall(name, input))) {
           return { allow: true };
         }
-        return await gate(name, input);
+        const decision = await gate(name, input);
+        // The runner keeps its own record of taint, gate or no gate (the
+        // read-only allow-list lets a fetch through with Warden off): the
+        // summary and the folder carry it to the next run either way.
+        if (decision.allow && isBuiltinTaintSource(name)) markTainted();
+        // The run is being stopped under this call — shutdown, a lost lease,
+        // an outcome that could not be recorded — and that is what ended a
+        // pending approval: nobody answered it. That refusal must not reach
+        // the model, and must not be saved in the run's history: the resumed
+        // run issues the call again and asks again. (A cancel or a breaker is
+        // a real ending: its refusal is told as usual and the run then stops.)
+        if (!decision.allow && slot.controller.signal.aborted && !slot.stop) {
+          if (slot.leaseLost) throw lostLease(slot);
+          throw new Interrupted();
+        }
+        return decision;
+      };
+
+      // What a tool that starts a nested agent run hands down (ToolContext
+      // `approval`): the run's own gate — the same Warden session, taint and
+      // all — with the taint the nested calls bring recorded on this run. Not
+      // the ledger shortcut above: a nested run has no exactly-once hook, so
+      // nothing it does may be waved through as "already executed". (The
+      // `task` subagent itself is never offered to a task run: policy.ts.)
+      const nestedApproval: ApprovalCallback = async (name, input) => {
+        const decision = await gate(name, input);
+        if (decision.allow && isBuiltinTaintSource(name)) markTainted();
+        return decision;
       };
 
       const inner = this.opts.provider ?? providerForModel(model);
@@ -1184,32 +1529,33 @@ export class TaskRunner {
         name: inner.name,
         runTurn: async (o) => {
           // Every model call clears the same breakers, in the same order.
-          if (await cancelRequested()) throw new TaskStop("cancelled");
-          if (slot.stop) throw new TaskStop(slot.stop, slot.stopDetail);
+          if (await cancelRequested()) throw notSent(new TaskStop("cancelled"));
+          if (slot.stop) throw notSent(new TaskStop(slot.stop, slot.stopDetail));
           // Stopping (shutdown, a lost lease, an unrecordable outcome): no
           // further model call in this segment, whatever the provider would do
           // with an aborted signal.
-          if (slot.controller.signal.aborted) throw new Interrupted();
+          if (slot.controller.signal.aborted) throw notSent(new Interrupted());
           if (tokensSpent(run) >= budget.tokens) {
             stopWith("budget_tokens");
-            throw new TaskStop("budget_tokens");
+            throw notSent(new TaskStop("budget_tokens"));
           }
           // `>`: after the last allowed call the model still gets a turn to answer.
           if (run.toolCalls > budget.maxToolCalls) {
             stopWith("budget_tool_calls");
-            throw new TaskStop("budget_tool_calls");
+            throw notSent(new TaskStop("budget_tool_calls"));
           }
           if (budget.usdMicros !== undefined && (run.costMicros ?? 0) >= budget.usdMicros) {
             stopWith("budget_usd");
-            throw new TaskStop("budget_usd");
+            throw notSent(new TaskStop("budget_usd"));
           }
           const admission = this.opts.modelGate ? await this.opts.modelGate.admit(model) : null;
           if (admission && !admission.ok) {
             // Busy (the tenant is mid-chat-turn) or rate-limited: an ordinary
             // failure, retried with backoff. No allowance: stop and tell the user.
-            if (admission.transient) throw new Error(`admission busy: ${admission.reason}`);
+            if (admission.transient)
+              throw notSent(new Error(`admission busy: ${admission.reason}`));
             stopWith("admission_denied", admission.reason);
-            throw new TaskStop("admission_denied", admission.reason);
+            throw notSent(new TaskStop("admission_denied", admission.reason));
           }
           try {
             const result = await inner.runTurn(o);
@@ -1253,19 +1599,35 @@ export class TaskRunner {
         systemPrompt: `${basePrompt}\n\n${TASK_SYSTEM_ADDENDUM}`,
         tools,
         toolCtx: {
-          cwd: this.opts.cwd,
+          cwd: workspace,
           signal: slot.controller.signal,
           log: (m) => this.log(`${task.id}: ${m}`),
-          // Unattended ⇒ the bounded sandbox mode, whatever the process default is.
-          sandboxMode:
-            this.opts.sandboxMode ??
-            sandboxModeForProfile(cloud ? "cloud-autonomy" : "local-autonomy"),
+          sandboxMode,
+          ...(caps ? { caps } : {}),
+          approval: nestedApproval,
         },
         history,
         userMessage,
         model,
         maxIterations: Math.max(4, Math.min(64, budget.maxToolCalls + 2)),
         moodOrigin: "a task run",
+        // The spend ceiling, as #407's estimate-based cap: each model call is
+        // admitted only if its worst case still fits in what is left, and a
+        // call that fails after it was sent is counted too. What earlier
+        // segments of this run counted is off the top.
+        ...(capLeft !== undefined
+          ? {
+              costCapMicroUSD: capLeft,
+              onCostCharged: (microUSD: number) => {
+                // Unreadable usage spends the whole ceiling: a resumed
+                // segment must not start with it looking unspent.
+                run.capSpentMicros =
+                  Number.isFinite(microUSD) && microUSD >= 0
+                    ? (run.capSpentMicros ?? 0) + microUSD
+                    : budget.usdMicros;
+              },
+            }
+          : {}),
         approval,
         onMessagePersist: async (message) => {
           await this.saveMessage(task.id, run.id, message, this.now());
@@ -1275,6 +1637,11 @@ export class TaskRunner {
             handle?.observe?.(event);
           } catch {
             // An observer must never break the run it observes.
+          }
+          if (event.type === "info" && /\bcost cap\b/.test(event.message ?? "")) {
+            capMessage = (event.message ?? "")
+              .replace(/^\[agent\]\s*/, "")
+              .replace(/\s*\(stopReason=budget_exceeded\)\s*$/, "");
           }
           if (event.type === "tool_call_start") {
             run.toolCalls += 1;
@@ -1400,6 +1767,17 @@ export class TaskRunner {
           error: "ran out of turns",
         };
       }
+      // Only the cost cap stops runAgent this way here (the token ceiling is
+      // the runner's own): the next call would not have fitted under it.
+      if (result.stopReason === "budget_exceeded") {
+        if (slot.leaseLost) throw lostLease(slot);
+        return {
+          state: "failed",
+          stopReason: "budget_usd",
+          summary: text,
+          error: `spend ceiling reached — ${capMessage ?? "the next model call would not fit in what is left"}`,
+        };
+      }
       if (slot.leaseLost) throw lostLease(slot);
       return { state: "succeeded", stopReason: result.stopReason, summary: text };
     } catch (err) {
@@ -1435,6 +1813,8 @@ export class TaskRunner {
       };
     } finally {
       clearTimeout(wallclock);
+      clearInterval(cancelPoll);
+      clearTimeout(waitCeiling);
       touch();
     }
   }
@@ -1473,7 +1853,11 @@ export class TaskRunner {
    */
   private async completeFinish(taskId: string, run: TaskRun): Promise<void> {
     const before = await getTask(taskId);
-    if (!before) return; // deleted while it ran
+    if (!before) {
+      // Deleted while it ran: its grants end with it.
+      await this.taskRemoved(taskId);
+      return;
+    }
     const now = run.endedAt ?? this.now();
     const cloud = this.host === "cloud";
 
@@ -1483,7 +1867,7 @@ export class TaskRunner {
       await this.saveNotice(
         {
           id: noticeId(run.id, n.kind),
-          uid: before.owner,
+          uid: this.tenant(),
           taskId: before.id,
           runId: run.id,
           title: before.title,
@@ -1492,10 +1876,23 @@ export class TaskRunner {
           ...(run.artifacts ? { artifacts: run.artifacts } : {}),
           priority: n.priority,
           kind: n.kind,
+          // What a tainted run wrote reaches the conversation fenced, and
+          // taints it (delivery.ts).
+          ...(n.carriesOutput && runWasTainted(run) ? { tainted: true } : {}),
         },
         this.now(),
       );
     }
+    // Whatever the gate granted "for this task" ends with the run, whatever
+    // its outcome. Before the write that ends the finish: if this throws, the
+    // task still points at the run and the next tick completes the finish —
+    // and this — again.
+    await this.approvalFactory()?.runEnded?.({
+      taskId: before.id,
+      runId: run.id,
+      uid: this.tenant(),
+      home: lisaHome(),
+    });
     // …then the same transition for real. This write ends the finish.
     const updated = await this.saveTask(
       taskId,
@@ -1532,12 +1929,13 @@ export class TaskRunner {
     kind: TaskNotice["kind"],
     summary: string,
     priority: TaskNotice["priority"],
+    tainted = false,
   ): Promise<void> {
     try {
       await this.saveNotice(
         {
           id: noticeId(run.id, kind),
-          uid: task.owner,
+          uid: this.tenant(),
           taskId: task.id,
           runId: run.id,
           title: task.title,
@@ -1546,6 +1944,7 @@ export class TaskRunner {
           ...(run.artifacts ? { artifacts: run.artifacts } : {}),
           priority,
           kind,
+          ...(tainted ? { tainted: true } : {}),
         },
         this.now(),
       );
@@ -1625,7 +2024,8 @@ export class TaskRunner {
         stopReason: "watch_hit",
         summary: run.summary.slice(0, 500),
       });
-      await this.notify(task, run, "watch_hit", describeHit(hit), "high");
+      // Outside text by definition: fenced on the card, and it taints the conversation.
+      await this.notify(task, run, "watch_hit", describeHit(hit), "high", true);
     }
 
     const updated = await this.saveTask(

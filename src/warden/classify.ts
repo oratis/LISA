@@ -8,10 +8,13 @@
  * hints (src/types.ts): an annotation can only ever make a tool STRICTER, and
  * an MCP server never gets to classify itself as harmless.
  */
+import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ToolDefinition } from "../types.js";
 import type { SandboxMode } from "../sandbox/mode.js";
-import { isInsideReal, isSensitivePath, realPath } from "./paths.js";
+import { lisaGlobalHome } from "../paths.js";
+import { isBroadWorkspace, isInsideReal, isSensitivePath, realPath } from "./paths.js";
 import { detectDataClasses } from "./preview.js";
 import type { ActionCategory, DataClass } from "./types.js";
 
@@ -25,8 +28,13 @@ export interface ClassifyContext {
   trustedMcpServers?: readonly string[];
   /** Extra paths whose reads always ask (Warden state, provider keys). */
   sensitivePaths?: readonly string[];
-  /** Home directory for credential locations (tests). */
+  /** Home directory for credential locations and the broad-workspace check (tests). */
   homeDir?: string;
+  /**
+   * Lisa homes (the tenant's and the operator's): a workspace that contains
+   * one is too broad to count as a sandbox. Default: the operator home.
+   */
+  lisaHomes?: readonly string[];
 }
 
 export interface Classification {
@@ -153,6 +161,15 @@ const TAINT_TOOLS = new Set([
   "agent_recap",
   "transcribe",
 ]);
+
+/**
+ * Is this builtin a taint source — does its result carry text the user did
+ * not write? For hosts that track taint without a Warden session of their own
+ * (the task runner records it on the run either way).
+ */
+export function isBuiltinTaintSource(name: string): boolean {
+  return TAINT_TOOLS.has(name);
+}
 
 /** Reads that talk to a fixed service of the tool's own. */
 const FIXED_EGRESS_READS = new Set(["web_search", "npm_info", "pr_status"]);
@@ -598,6 +615,142 @@ function genericDestinations(input: Record<string, unknown>): Destinations {
   };
 }
 
+// ── paths in the arguments of tools the table does not know ─────────────
+
+/** Free text: a value under one of these keys says something, it does not name a location. */
+const FREE_TEXT_KEYS = new Set([
+  "subject",
+  "title",
+  "body",
+  "text",
+  "message",
+  "content",
+  "html",
+  "markdown",
+  "description",
+  "summary",
+  "note",
+  "query",
+  "q",
+]);
+/** A tool (or its server) whose name says it works on files: its relative paths are paths too. */
+const FILESYSTEM_WORDS = new Set([
+  "file",
+  "fs",
+  "filesystem",
+  "dir",
+  "directory",
+  "folder",
+  "path",
+]);
+/** Keys that name a location, on a filesystem tool. */
+const PATH_KEY_WORDS = new Set([
+  "path",
+  "file",
+  "filename",
+  "filepath",
+  "dir",
+  "directory",
+  "folder",
+  "source",
+  "src",
+  "destination",
+  "dest",
+  "target",
+  "from",
+  "to",
+  "root",
+  "location",
+  "cwd",
+]);
+const MAX_PATH_SCAN = { strings: 256, depth: 8, length: 4096 };
+
+interface PathArguments {
+  /** Every location the arguments name, resolved through symlinks. */
+  paths: string[];
+  /** The argument strings those came from (so they are not listed twice). */
+  raw: Set<string>;
+  /** The input was too large or too deep to look at whole. */
+  truncated: boolean;
+}
+
+/** Does this tool, by its name, its server's or its title, work on files? */
+function isFilesystemTool(...names: (string | undefined)[]): boolean {
+  return names.some((name) => name !== undefined && hasAny(nameTokens(name), FILESYSTEM_WORDS));
+}
+
+/**
+ * Every path an argument names, at any depth of the input (bounded): an
+ * absolute path, `~` or `~/…`, a `file:` URL — whatever the key is called
+ * (`destination`, `filePath`, `target`, an array of them) — and, on a
+ * filesystem tool, a relative path under a key that names a location. A path
+ * hidden in free text (`content`, `body`) is not a location. #422 review
+ * NEW-3: only `path` / `file_path` used to count, so a move's `destination`
+ * never met the checks a builtin write meets.
+ */
+function pathArguments(
+  input: Record<string, unknown>,
+  opts: { filesystem: boolean; workspaceRoot: string; homeDir?: string },
+): PathArguments {
+  const home = opts.homeDir ?? os.homedir();
+  const paths = new Set<string>();
+  const raw = new Set<string>();
+  let scanned = 0;
+  let truncated = false;
+  const locate = (given: string, pathKey: boolean): string | undefined => {
+    // As a server would most likely read it: surrounding whitespace is not part of a path.
+    const value = given.trim();
+    if (!value) return undefined;
+    if (value.length > MAX_PATH_SCAN.length) {
+      // Too long to be a path a filesystem takes; one that starts like a path is not looked at.
+      if (/^(?:[/~]|file:)/i.test(value)) truncated = true;
+      return undefined;
+    }
+    if (value === "~" || value.startsWith("~/")) return path.join(home, value.slice(2));
+    if (/^file:/i.test(value)) {
+      try {
+        return fileURLToPath(new URL(value));
+      } catch {
+        // A file: URL that does not parse still names a file: count it as one.
+        return path.resolve(opts.workspaceRoot || "/", value.replace(/^file:(\/\/)?/i, ""));
+      }
+    }
+    if (path.isAbsolute(value)) return value;
+    if (opts.filesystem && pathKey) return path.resolve(opts.workspaceRoot || "/", value);
+    return undefined;
+  };
+  const visit = (value: unknown, pathKey: boolean, depth: number): void => {
+    if (truncated) return;
+    if (typeof value === "string") {
+      if (++scanned > MAX_PATH_SCAN.strings) {
+        truncated = true;
+        return;
+      }
+      const located = locate(value, pathKey);
+      if (located !== undefined) {
+        paths.add(realPath(located));
+        raw.add(value);
+      }
+      return;
+    }
+    if (!value || typeof value !== "object") return;
+    if (depth >= MAX_PATH_SCAN.depth) {
+      truncated = true;
+      return;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item, pathKey, depth + 1);
+      return;
+    }
+    for (const [childKey, child] of Object.entries(value)) {
+      if (FREE_TEXT_KEYS.has(childKey.toLowerCase())) continue;
+      visit(child, hasAny(nameTokens(childKey), PATH_KEY_WORDS), depth + 1);
+    }
+  };
+  visit(input, false, 0);
+  return { paths: [...paths], raw, truncated };
+}
+
 const FETCHER =
   "curl|wget|nc|ncat|netcat|ssh|scp|sftp|rsync|ftp|telnet|gh|glab|aria2c|httpie|http|https|xh|lynx|w3m|links|npx|bunx|pnpx|uvx|pipx";
 const PACKAGE_MANAGER =
@@ -626,6 +779,39 @@ export function looksLikeNetworkCommand(command: string): boolean {
   return NETWORK_COMMAND.test(command);
 }
 
+/**
+ * The targets of a call the table has no entry for: its recipients and hosts,
+ * and every path its arguments name (resolved, in place of the string that
+ * named it). `sensitive` when one of those paths is a credential location or
+ * Warden's state — or the input was too large to look at whole, so one could
+ * hide there.
+ */
+function locatedTargets(
+  input: Record<string, unknown>,
+  destinations: Destinations,
+  filesystem: boolean,
+  ctx: ClassifyContext,
+): { targets: string[]; truncated: boolean; sensitive: boolean } {
+  const found = pathArguments(input, {
+    filesystem,
+    workspaceRoot: ctx.workspaceRoot,
+    ...(ctx.homeDir !== undefined ? { homeDir: ctx.homeDir } : {}),
+  });
+  const targets = [
+    ...new Set([
+      ...destinations.targets.filter((target) => !found.raw.has(target)),
+      ...found.paths,
+    ]),
+  ];
+  return {
+    targets,
+    truncated: found.truncated,
+    sensitive:
+      found.truncated ||
+      found.paths.some((p) => isSensitivePath(p, ctx.sensitivePaths, ctx.homeDir)),
+  };
+}
+
 function classifyMcp(
   name: string,
   input: Record<string, unknown>,
@@ -649,14 +835,24 @@ function classifyMcp(
     category = "delete";
   }
   const destinations = genericDestinations(input);
+  const located = locatedTargets(
+    input,
+    destinations,
+    isFilesystemTool(server, toolPart, annotations?.title),
+    ctx,
+  );
   const trusted = ctx.trustedMcpServers?.includes(server) === true;
   return {
     ...base,
     category,
     connector: server,
     method: toolPart || undefined,
-    targets: destinations.targets.length > 0 ? destinations.targets : [`mcp:${server}`],
-    targetsComplete: destinations.complete,
+    targets: located.targets.length > 0 ? located.targets : [`mcp:${server}`],
+    targetsComplete: destinations.complete && !located.truncated,
+    // The same checks a builtin file tool meets: a credential location or
+    // Warden's state asks to read (and the task files and Warden's state are
+    // guarded against writes, policy.ts), whatever the server is.
+    sensitivePath: located.sensitive,
     // Whatever the server says about itself, the call leaves this host for a
     // destination its arguments pick, and its result is text nobody vetted —
     // unless the USER marked the server trusted.
@@ -691,7 +887,14 @@ export function classifyToolCall(
     sensitivePath: false,
     primaryKeys: primaryKeysFor(name, rec),
   };
-  const confined = ctx.sandboxMode !== "danger-full-access";
+  // A bounded mode confines writes to the workspace — which means nothing when
+  // the workspace is "/", the user's home or a directory holding the Lisa home.
+  const confined =
+    ctx.sandboxMode !== "danger-full-access" &&
+    !isBroadWorkspace(ctx.workspaceRoot, {
+      ...(ctx.homeDir !== undefined ? { homeDir: ctx.homeDir } : {}),
+      lisaHomes: ctx.lisaHomes ?? [lisaGlobalHome()],
+    });
   const sensitive = (p: string) => isSensitivePath(p, ctx.sensitivePaths, ctx.homeDir);
 
   if (name.startsWith(MCP_PREFIX)) return classifyMcp(name, rec, tool, base, ctx);
@@ -868,12 +1071,14 @@ export function classifyToolCall(
   // Unknown tool (plugin, executable skill, future builtin): a write that asks,
   // tightened further when its name carries a mutating verb. Never a read.
   const destinations = genericDestinations(rec);
+  const located = locatedTargets(rec, destinations, isFilesystemTool(name), ctx);
   const named = categoryFromName(name, false);
   return {
     ...base,
     category: named ?? "write",
-    targets: destinations.targets,
-    targetsComplete: destinations.complete,
+    targets: located.targets,
+    targetsComplete: destinations.complete && !located.truncated,
+    sensitivePath: located.sensitive,
     egress: destinations.targets.length > 0,
     destination: destinations.targets.length > 0 ? "chosen" : undefined,
     url: destinations.url,

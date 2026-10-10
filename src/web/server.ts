@@ -197,6 +197,8 @@ import {
   scheduleServerCatchUp,
 } from "./reachout-wiring.js";
 import { createTaskHost } from "./tasks-host.js";
+import { createTaskApprovalFactory } from "../warden/task-approval.js";
+import { createReachOutTransports } from "../reachout/deliver.js";
 import { cloudTasksEnabled } from "./tasks-api.js";
 import { cloudModelGate, sweepUserTasks } from "../tasks/cloud.js";
 import {
@@ -853,6 +855,29 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // proactive message; the gate decides whether the push channel fires.
     reachOut: reachOutVia,
     pushSink: pushBridge,
+    // Unattended runs get more than verified read-only calls ONLY in Warden
+    // mode: each run then gets its own Warden session on this server's inbox.
+    // Otherwise nothing is installed and the engine's read-only allow-list
+    // applies (src/tasks/policy.ts).
+    ...(warden.enabled
+      ? {
+          approvalFactory: createTaskApprovalFactory({
+            inbox: warden.inbox,
+            surface: policy.surface,
+            // "An approval is waiting" reaches the user through the gate
+            // (source `approval`), on its generic in-app note and push.
+            reachOut: (notice) =>
+              reachOutVia(
+                notice,
+                createReachOutTransports({
+                  inapp: { emit: (event, uid) => broadcast(event, uid) },
+                  push: pushBridge,
+                }),
+              ),
+            log: logWarn,
+          }),
+        }
+      : {}),
     rememberNote: async (note) => {
       const lease = await ctxForRequest();
       try {
@@ -880,6 +905,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
             await ctx.session.appendMessage(message);
             ctx.history.push(message);
           },
+          // A card that carries outside text taints the conversation it
+          // lands in, so the next chat turn that reads it is tainted (N3).
+          markTainted: () => warden.markTainted(ctx.session.id, scopedUid()),
         }),
       );
       ctx.chain = job.then(
@@ -2585,7 +2613,17 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       return;
     }
     if (await handleReachOutApi(req, res, url, reachOutApiOptions(cloud))) return;
-    if (await taskHost.handle(req, res, url, accountUid)) return;
+    if (
+      await taskHost.handle(
+        req,
+        res,
+        url,
+        accountUid,
+        wardenTrust({ cloud, loopback: isLoopbackAddress(remoteAddr), accountUid }),
+      )
+    ) {
+      return;
+    }
 
     if (
       await handleWardenApi(req, res, url, {

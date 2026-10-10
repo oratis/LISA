@@ -19,7 +19,13 @@
 import { Agent, setGlobalDispatcher } from "undici";
 import { readAudit } from "../warden/audit.js";
 import { loadGrants, revokeGrant } from "../warden/grants.js";
-import { LOCKED_CATEGORIES, loadRules, ownBehavior, setCategoryRule } from "../warden/rules.js";
+import {
+  LOCKED_CATEGORIES,
+  loadRules,
+  ownBehavior,
+  ownOrigins,
+  setCategoryRule,
+} from "../warden/rules.js";
 import type { PayloadField } from "../warden/types.js";
 import {
   ACTION_CATEGORIES,
@@ -240,16 +246,24 @@ export async function runWardenCommand(
           "rules.json is corrupt. Until it is fixed or deleted, every side-effecting action asks.",
         );
       }
+      // Where a loosening rule applies (chat only unless it names the task origin).
+      const scope = (map: "categories" | "tools" | "targets", key: string, behavior: string) => {
+        const origins = ownOrigins(rules.origins?.[map], key);
+        if (origins) return ` (when it loosens: ${origins.join(", ")})`;
+        return behavior === "auto" ? " (chat only)" : "";
+      };
       for (const category of ACTION_CATEGORIES) {
         const locked = ownBehavior(LOCKED_CATEGORIES, category);
         const set = ownBehavior(rules.categories, category);
-        out.log(`${category.padEnd(11)} ${locked ? `${locked} (fixed)` : (set ?? "default")}`);
+        out.log(
+          `${category.padEnd(11)} ${locked ? `${locked} (fixed)` : set ? `${set}${scope("categories", category, set)}` : "default"}`,
+        );
       }
       for (const [tool, behavior] of Object.entries(rules.tools)) {
-        out.log(`tool   ${tool}: ${behavior}`);
+        out.log(`tool   ${tool}: ${behavior}${scope("tools", tool, behavior)}`);
       }
       for (const [target, behavior] of Object.entries(rules.targets)) {
-        out.log(`target ${target}: ${behavior}`);
+        out.log(`target ${target}: ${behavior}${scope("targets", target, behavior)}`);
       }
       return corrupt ? 1 : 0;
     }

@@ -3,9 +3,11 @@
  * task_cancel / watch_create).
  *
  * The rule all five follow: the model may DESCRIBE unattended work, never
- * switch it on. Whatever a tool creates or edits ends up disabled; turning it
- * on is the user's act, through the app or `lisa tasks enable`. That is the
- * confirmation step — there is no model-reachable path around it.
+ * switch it on, and never pre-approve anything. Whatever a tool creates or
+ * edits ends up disabled and unconfirmed (an edit clears an earlier
+ * confirmation, validate.ts); turning it on, and confirming what it may do
+ * without asking, is the user's act, through the app or `lisa tasks enable`
+ * (src/tasks/confirmation.ts). There is no model-reachable path around it.
  */
 import { isCloud } from "../edition.js";
 import { scopedUid } from "../paths.js";
@@ -65,9 +67,12 @@ export function confirmationCard(task: Task, verb: "Created" | "Updated"): strin
   lines.push(
     `Notify: ${task.notify}. Budget per run: ${task.budget.tokens} tokens, ${Math.round(task.budget.wallclockMs / 60_000)} min, ${task.budget.maxToolCalls} tool calls.`,
   );
+  if (task.envelope?.tools) lines.push(`May only use: ${task.envelope.tools.join(", ")}.`);
   lines.push(
     `Nothing runs until the user turns it on — in the Tasks view, or with \`lisa tasks enable ${task.id}\`. ` +
-      `You cannot enable it yourself. Tell the user what you set up and that it is waiting for them.`,
+      `You cannot enable it yourself, and nothing you set here is pre-approved: when they turn it on ` +
+      `they decide whether its actions may run without asking. Tell the user what you set up and ` +
+      `that it is waiting for them.`,
   );
   return lines.join("\n");
 }

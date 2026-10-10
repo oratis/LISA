@@ -68,9 +68,10 @@ test("a subagent's tool calls are decided by the parent's Warden session", async
     surface: "local-web",
     uid: null,
     origin: { kind: "chat" },
-    // Confined: an untainted chat may run the shell without asking.
+    // Confined: an untainted chat may run the shell without asking. (A
+    // workspace that contains the Lisa home would confine nothing.)
     sandboxMode: "workspace-write",
-    workspaceRoot: home,
+    workspaceRoot: path.join(home, "ws"),
     inbox,
     home,
   });

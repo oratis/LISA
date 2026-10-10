@@ -255,6 +255,31 @@ export async function revokeGrant(
 }
 
 /**
+ * Revoke the task-scoped grants of one task: when one of its runs ends, and —
+ * for any a run left behind (a crash, Warden off at the time) — when the next
+ * run starts, with `createdBefore` set to that run's start. Reads first and
+ * writes only when there is something to revoke. Returns what was revoked.
+ */
+export async function revokeTaskGrants(
+  taskId: string,
+  home?: string,
+  now: number = Date.now(),
+  opts: { createdBefore?: number } = {},
+): Promise<StoredGrant[]> {
+  const matches = (g: StoredGrant): boolean =>
+    g.scope === "task" &&
+    g.taskId === taskId &&
+    (opts.createdBefore === undefined || Date.parse(g.createdAt) < opts.createdBefore);
+  // A corrupt file holds no grants anyone can use; the next write quarantines it.
+  const current = await loadGrants(home, now);
+  if (!current.grants.some(matches)) return [];
+  return await mutate(home, now, (grants) => ({
+    grants: grants.filter((g) => !matches(g)),
+    result: grants.filter(matches),
+  }));
+}
+
+/**
  * Record that grants were used: bump `uses`, and CONSUME "once" grants. Returns
  * false when a "once" grant had already been consumed by a concurrent caller —
  * the caller must then treat the action as not granted.

@@ -56,6 +56,27 @@ export function isInsideProtected(parent: string, child: string): boolean {
   return relativeInside(path.resolve(parent).toLowerCase(), path.resolve(child).toLowerCase());
 }
 
+/**
+ * A workspace root that confines nothing worth the name: the filesystem root,
+ * the user's home directory or anything above it, or a directory that
+ * contains a Lisa home (whose task files and settings a "confined" write could
+ * then rewrite). Under Lisa.app or launchd a server's cwd is `/`; from a shell
+ * it is often `$HOME`. Nothing that writes under such a root counts as
+ * sandboxed (classify.ts), on any surface (#422 review H2).
+ */
+export function isBroadWorkspace(
+  root: string,
+  opts: { homeDir?: string; lisaHomes?: readonly string[] } = {},
+): boolean {
+  if (!root || !path.isAbsolute(root)) return true;
+  const real = realPath(root);
+  if (real === path.parse(real).root) return true;
+  const home = opts.homeDir ?? os.homedir();
+  // The root is the user's home, or one of its ancestors.
+  if (home && isInsideReal(real, home)) return true;
+  return (opts.lisaHomes ?? []).some((lisa) => isInsideReal(real, lisa));
+}
+
 /** Credential locations under a home directory: reading them always asks. */
 const CREDENTIAL_PATHS = [
   ".ssh",

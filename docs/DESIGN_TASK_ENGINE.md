@@ -16,6 +16,8 @@ Everything is under `<lisaHome>/tasks/`, so on the hosted edition each tenant ha
 | `.leases/task-<id>.lease` | Who is running the task right now |
 | `.locks/`, `outbox/.locks/` | Short-held write locks |
 
+Each task also has a working folder, `<lisaHome>/task-workspaces/<taskId>/` (see "Approval": the run's workspace).
+
 - A task file that does not parse or validate is renamed to `<id>.json.<ts>.corrupt` and skipped. A file written by a newer build is skipped and left in place.
 - A task whose schedule cannot be used (an invalid time zone, an unknown expression) loads switched off with `pausedReason` set. Reading never writes.
 - `LISA_TZ` (the zone for schedules that name none) is checked when a runner is built: an invalid value is reported once and the system zone is used.
@@ -66,9 +68,13 @@ All three drivers take the task's lease before touching it. Whoever loses skips 
 | A retry is a resume | A transient failure does not end the run. It is parked (`task.resumeAt`) and resumed — same run id, same history, same ledger — up to 2 times with backoff, and the model is told the previous attempt failed and why. The resume passes the start gate too |
 | No repeated side effect | See "The ledger" |
 | Finishing is recoverable | See "Finishing a run" |
-| Bounded | Token (cache reads and writes included), spend, wall-clock and tool-call ceilings per run |
+| Bounded | Token (cache reads and writes included), spend, wall-clock and tool-call ceilings per run, and a ceiling on approvals asked and time spent waiting for them. See "The spend ceiling" and "Waiting for an approval" |
 | Stoppable | `AbortSignal` in-process; a flag on the task across processes |
 | Fair | Interrupted runs first, then the task that has waited longest; concurrency 2 at home, 1 per tenant hosted |
+
+### The spend ceiling
+
+A task's `budget.usdMicros` is enforced by the agent loop's per-run cost cap (`costCapMicroUSD`, `src/model/cost.ts`): before every model call the call's worst case — its prompt, estimated, plus the output ceiling handed to the provider, which is clamped to what is left — must fit under what remains, so the run stops *before* the call that would cross the ceiling. A call that fails after it was sent is counted at that worst case too, and a resumed or retried segment starts with what earlier segments counted already off the top (`run.capSpentMicros`). The run then ends `failed` with stop reason `budget_usd` and an error that says so ("spend ceiling reached — …"), and the user is told as for any failed run; it is not retried. After each call the reported cost is also checked against the ceiling, as a backstop. It is an estimate-based circuit breaker; the residual bound is in `docs/PROVIDERS.md`. #407 defines no global cap; a run without `usdMicros` has no spend ceiling (its token, wall-clock and tool-call ceilings still apply).
 
 ### The ledger
 
@@ -106,7 +112,32 @@ A task the engine switched off comes back when the user enables it.
 
 ## Approval
 
-The runner asks an injected `TaskApprovalFactory` for a gate per run (`wiring.ts: setTaskApprovalFactory`).
+**Unattended runs get more than read-only calls only with Warden on.** Warden mode is `lisa serve --web --approval warden` (or `LISA_APPROVAL=warden` for a backend an app launches). Without it, every run — scheduled, watcher-triggered or started by hand — may make only the verified read-only calls below; nothing else runs, nothing waits for approval.
+
+The runner asks an injected `TaskApprovalFactory` for a gate per run (the runner's `approvalFactory` option, or process-wide `wiring.ts: setTaskApprovalFactory`). In Warden mode the web server passes Warden's (`src/warden/task-approval.ts`) to its runners. Each run then gets its own Warden session:
+
+- **Origin** `task`, `routine` or `watcher`, with the task id. The default matrix's task column applies: a write, sandboxed exec, network write, send, publish or delete is *preapproved* — allowed when the task's envelope covers it and the user confirmed that envelope, asked about otherwise. Purchases and credentials are handed back to the user.
+- **Envelope.** Only a confirmed envelope (see "Confirming what a task may do") reaches Warden, with categories Warden does not know (informational labels such as `web`) dropped. An unconfirmed one has done its whole job once it narrowed the toolset. In a tainted run even a confirmed envelope does not cover exec, delete, send, publish, network writes or writes outside the run's workspace: they ask.
+- **Taint.** A run a watcher hit started is tainted from its first call: its prompt quotes an outsider's text. A run that became tainted (Warden saw a taint-source call allowed, or the runner saw a call to a builtin taint source go through — with Warden off too) records it on the run (`tainted`), so a resumed or retried segment starts tainted too — the content is still in its history.
+- **Taint travels with what a run leaves behind** (#422 review N3). A tainted run's summary is recorded as such (`task.lastSummaryTainted`): the next run's "Last run" section quotes it inside the external-content markers (`<<<EXTERNAL-CONTENT source="task-run">>>`), as data, and that run starts tainted (`run.inheritedTaint`, in its first record). A tainted run that made state-changing calls marks the folder (`task.workspaceTainted`, never cleared): every later run starts tainted. Its result card is fenced and taints the conversation it lands in (see "Delivery"), and `task_list` does not repeat its text.
+- **Nested runs.** The `task` subagent is never offered to a task run, whatever the envelope names. A tool that starts a nested agent run anyway gets the run's gate on its tool context (`approval`: the same Warden session and taint, recorded on the run; no ledger shortcut), and the `task` tool runs its subagent in the calling turn's folder, execution world (`caps`), sandbox mode, signal and USD cap.
+- **Tenant.** The uid and home of the scope the runner works in (the authenticated tenant; null on the Mac edition) — never the task file's `owner`. A task whose file names a different account is not run at all (no gate, no model call): the run fails with stop reason `owner_mismatch` and the task is switched off saying why. The run's notices carry the same scope uid.
+- **Workspace.** Each task works in its own folder, `<lisaHome>/task-workspaces/<taskId>/` (`src/tasks/workspace.ts`) — never the server's working directory, which under Lisa.app or launchd is `/`. It is the tools' working directory and the workspace root Warden judges paths against. Under a bounded sandbox mode the run's profile makes the whole Lisa home read-only except that folder, for the shell (Seatbelt / bubblewrap) and the file tools alike; Warden's own directory and the server's port stay denied as for every bounded profile. The folder persists between runs and is removed with the task; it is never created for a home that no longer exists.
+
+### Waiting for an approval
+
+When Warden answers `ask` during an unattended run, the call waits in the approval inbox; the run does not fail.
+
+- **Visible.** While the item is pending, the task and the run are `awaiting_approval` (the API, `lisa tasks`, and a `task_updated` event over SSE); the run log records `approval` events ("waiting for approval", then "approved" / "not approved").
+- **Not on the clock.** The wait does not count against the run's wall-clock budget or its elapsed time. The lease keeps renewing on its own timer. A cancel — from this process or another (`cancelRequestedAt`, checked every 5 s while waiting) — aborts the run, and an aborted run's pending approval is a deny.
+- **The user is told** through `reachOut()`, source `approval` (`taskApprovalNotice`). The in-app note says which task, which tool, and how long the approval stays open — never the payload, which only the approval card shows. The push says only "Lisa needs your approval for a task": it goes through a third-party service (ntfy), and the task title is model-written text (`ReachOutNotice.push`). The gate's decision is final: it delivers approvals in-app and by push even in quiet hours (silently); a notice it withholds (no channel, a duplicate) leaves the item pending in the inbox, where the user can still answer it.
+- **The answer.** Approve, and the call runs (and enters the ledger like any side effect). Deny or expiry — about 10 minutes, then deny (`docs/THREAT_MODEL.md`) — and the model is told the call did not run, and the run continues.
+- **A restart.** The inbox keeps the payload in memory only, so an item pending when the process stopped can never be approved: the next process expires it from `pending.json` and audits it as orphaned. A clean shutdown that cancels a pending approval does not record that refusal in the run's history. The run, left `awaiting_approval`, is resumed like an interrupted one: the model issues the call again and Warden asks again. A call that was approved and had started when the process died is in the ledger, so the resumed run is answered from it ("outcome unknown; not executed again") and nothing is asked twice.
+- **Waiting has a ceiling.** A run may ask at most `budget.maxApprovals` times (default 5, at most 20) and wait at most `budget.approvalWaitMs` in all (default 60 minutes; at most 6 hours, 15 minutes hosted), counted across its segments (`run.approvals`, `run.approvalWaitMs`). Past either the run stops `failed` with stop reason `approval_limit` and the user gets one ordinary failure notice; the ask that would go over is not announced. Both are set per task within those maxima. The time waited is saved when the wait ends on every path but a lost lease — a shutdown that cuts it off included (#422 review N5). A crash records nothing at that moment, so there the bound is the ceiling per segment over at most four segments (a run is given up after 3 interruptions).
+- An awaiting run holds its concurrency slot (2 at home) for as long as it waits — at most its waiting ceiling. On the hosted edition (tasks off unless `LISA_CLOUD_TASKS=1`) a sweep waits for the runs it started, so a run that waits for an approval holds its sweep request open until the approval is answered or expires.
+- **"For this task" means for this run.** An approval given with scope `task` covers the rest of the run. When the run ends — whatever the outcome, and also when a later process completes the ending after a crash — the gate's `runEnded` hook revokes it, before the task update that ends the finish (so a failed revocation leaves the finish to be completed, and the revocation retried, at the next tick). The next run asks again. Deleting the task revokes them as well — through the runner's `taskRemoved` (the factory's hook of the same name), also when the task is deleted mid-run and its run stops with `TaskGoneError` instead of ending, and directly from `lisa tasks rm`.
+
+The CLI drivers (`lisa heartbeat run`, `lisa tasks run`) have no approval inbox anyone could answer, so they install nothing: a run they pick up gets the read-only allow-list even when the server runs in Warden mode. A task that needs approvals runs with the server up.
 
 With no factory wired — or one that returns no `approval` — the default applies, and it is an **allow-list**: a run may make only the calls in `UNATTENDED_READ_ONLY` (`policy.ts`), each verified to change nothing, some only for specific inputs (`github` for its read actions with a numeric id). Everything else is denied: every other builtin, every plugin, skill and MCP tool, and any tool added later. That includes writes to Lisa's own soul, memory and knowledge base — without an approval layer there is no decision record for them.
 
@@ -121,6 +152,8 @@ The model is offered the surface's tools narrowed by the task's envelope, never 
 The outbox is at-least-once with a stable id; the default deliver is idempotent on that id, which makes delivery exactly-once as the user sees it.
 
 The default deliver goes through the reach-out gate (`reachOut()`, source `task` or `watcher`). When the gate allows in-app delivery the result is stored as a card in the conversation and announced over SSE (`task_result`, plus the gate's own note event); the push follows the gate's decision, including quiet hours. A gate refusal is final and recorded on the outbox entry; the result stays in the run history.
+
+A card that carries outside text — a watcher hit, or a notice from a tainted run (`notice.tainted`) — stores that text inside the external-content markers, and the conversation is marked tainted (Warden's `tainted.json`) before the card is appended. If the mark cannot be written the card is not stored (the outbox retries). The next chat turn in that conversation starts tainted, also after a restart.
 
 A process with no conversation (the heartbeat CLI) leaves notices pending for the next process that has one.
 
@@ -142,7 +175,7 @@ Web, RSS and mail checks run without a model call.
 
 Nothing is migrated automatically. `lisa heartbeat run` runs the chores in `heartbeat.json` exactly as before, and additionally runs due tasks.
 
-`lisa tasks migrate-heartbeat [--dry-run]` moves chores into routines on request. It says what will move and that migrated chores can only make read-only calls until the approval layer is wired.
+`lisa tasks migrate-heartbeat [--dry-run]` moves chores into routines on request. It says what will move, and that migrated chores can only make read-only calls unless the server runs in Warden mode (where anything else asks).
 
 - `builtin:*` entries are never moved: they are switches on Lisa's own heartbeat work.
 - A chore switched off in `heartbeat.json` is left there, untouched.
@@ -165,6 +198,14 @@ Every hosted run registers as account work, so account deletion stops it and wai
 
 The task tools (`task_create`, `watch_create`, `task_update`) can draft and edit tasks but have no way to enable one: anything they create or edit ends up off. Enabling is the user's act, through `PATCH /api/tasks/{id}` or `lisa tasks enable`.
 
-This holds for the task tools only. In an attended chat on the Mac edition the model also has `bash` and file tools; `lisa tasks enable <id>` from a shell, or an edit to the task file, would switch a task on. Closing that is the approval layer's job (exec asks), not the engine's.
+### Confirming what a task may do
+
+A task's envelope is a restriction until the user confirms it (`src/tasks/confirmation.ts`). The model may draft one (`task_create`'s `tools`); it narrows the tools a run is offered and pre-approves nothing.
+
+- `lisa tasks enable <id>` prints what would be confirmed — the title, the whole instruction, when it runs, where, how it tells the user, its budget and, in plain words, which actions would run without asking — with control and invisible characters shown escaped. On a terminal it pages that to the terminal's height and asks only after the last line; `y` confirms, anything else switches the task on unconfirmed, and `q` while paging changes nothing. Without a terminal it prints all of it and confirms only with `--confirm <digest>`, the digest `lisa tasks show <id>` prints. A digest that does not match the task changes nothing.
+- `PATCH /api/tasks/{id}` with `{enabled: true, confirmEnvelope: <digest>}` confirms, from a caller who may answer approvals (the loopback owner on the Mac edition or a signed-in session) in a same-origin request; anyone else gets 403 and a stale digest 409, and nothing changes. `GET /api/tasks/{id}` returns `confirmation: {digest, confirmed, preapproves, summary}` for a client to show. `POST /api/tasks` never confirms: a task created `enabled: true` is on, unconfirmed.
+- The confirmation (`task.envelopeConfirmation`) holds the digest (v2) of every field that reaches the run's prompt or bounds what a run may do — the title, the instruction, the kind, the schedule or trigger, the host, the envelope, the notify mode and the budget — and an HMAC of the task id and that digest under the home's Warden key (`<lisaHome>/warden/digest.key`; #422 review N1, N4). It counts only while the digest still matches and the MAC verifies, so a task file written by anything but `lisa tasks enable` or a confirming `PATCH` loads unconfirmed. Every API edit of those fields clears it and leaves the task on, unconfirmed; every `task_update` clears it outright, whatever it changed, and switches the task off; every enable clears it. A manual "run now" of an unconfirmed task gets the envelope as a restriction only.
+
+This holds for the task tools only. In an attended chat on the Mac edition the model also has `bash` and file tools; `lisa tasks enable <id>` from a shell, or an edit to the task file, would switch a task on (unconfirmed: it cannot sign a confirmation without reading Warden's key, which asks). Closing that is the approval layer's job, not the engine's: under Warden a write, edit or delete under `<lisaHome>/tasks/` asks once whatever the rules or grants say, a command that names the task files, `lisa tasks enable` or `/api/tasks` asks for that exact command (a string match that sees through shell quoting — defence in depth, not a boundary), and a confined shell can neither write the Lisa home nor reach the server's port.
 
 `DELETE /api/tasks/{id}` and `lisa tasks rm` cancel a run in flight and wait for it to let go of the lease before deleting. The wait is capped at 10 s; after that the task is deleted anyway. What refuses the run's later writes is the store, not the lease: the task's files are gone, so every write fails with `TaskGoneError` and the run stops at its next write. Every side-effecting call is preceded by a checkpoint write (the ledger's `started` entry), so it cannot act after that point either. Its lease file stays until the run releases it.

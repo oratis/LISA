@@ -91,12 +91,31 @@ export function loadDigestKey(home?: string): Promise<Buffer> {
   return pending;
 }
 
+function parseDigestKey(raw: string): Buffer {
+  const text = raw.trim();
+  if (!/^[0-9a-f]{64}$/.test(text)) throw new Error("warden digest key is malformed");
+  return Buffer.from(text, "hex");
+}
+
+/**
+ * The same key, for a check that must not create anything (verifying a task
+ * confirmation on load, which also runs for a home that is being deleted):
+ * null when there is no key yet. Rejects on an unreadable or malformed file.
+ */
+export async function readDigestKey(home?: string): Promise<Buffer | null> {
+  const file = path.join(wardenDir(home), "digest.key");
+  const pending = digestKeys.get(file);
+  if (pending) return await pending;
+  try {
+    return parseDigestKey(await fs.readFile(file, "utf8"));
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw err;
+  }
+}
+
 async function readOrCreateDigestKey(file: string): Promise<Buffer> {
-  const parse = (raw: string): Buffer => {
-    const text = raw.trim();
-    if (!/^[0-9a-f]{64}$/.test(text)) throw new Error("warden digest key is malformed");
-    return Buffer.from(text, "hex");
-  };
+  const parse = parseDigestKey;
   try {
     return parse(await fs.readFile(file, "utf8"));
   } catch (err) {

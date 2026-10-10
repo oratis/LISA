@@ -27,6 +27,8 @@ export interface RequestContext {
   sensitivePaths?: readonly string[];
   /** Home directory for credential locations (tests). */
   homeDir?: string;
+  /** Lisa homes a workspace must not contain to count as a sandbox (classify.ts). */
+  lisaHomes?: readonly string[];
   /** Per-home HMAC key for the digest. Omitted ⇒ a plain hash (in-memory use only). */
   digestKey?: Buffer;
   /** Has this exact URL already appeared in the conversation? */
@@ -56,6 +58,7 @@ export function buildActionRequest(
     trustedMcpServers: ctx.trustedMcpServers,
     sensitivePaths: ctx.sensitivePaths,
     homeDir: ctx.homeDir,
+    ...(ctx.lisaHomes ? { lisaHomes: ctx.lisaHomes } : {}),
   });
   const req: ActionRequest = {
     id: newId("act"),

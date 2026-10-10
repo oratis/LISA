@@ -1,4 +1,5 @@
 /** task_list — what tasks exist, their state and when they run next. Read-only. */
+import { runWasTainted } from "../tasks/external.js";
 import { getTask, listRuns, listTasks } from "../tasks/store.js";
 import type { ToolDefinition } from "../types.js";
 import { describeTask } from "./task_common.js";
@@ -28,7 +29,12 @@ export const taskListTool: ToolDefinition<TaskListInput, string> = {
       if (task.envelope?.tools) lines.push(`  tools: ${task.envelope.tools.join(", ")}`);
       for (const run of runs) {
         const at = new Date(run.startedAt).toISOString().slice(0, 16).replace("T", " ");
-        const note = run.summary ?? run.error ?? "";
+        // What a run wrote after it read outside content is not repeated into
+        // this conversation unfenced (#422 review N3): its card, fenced, is
+        // what carries it, and that card taints the conversation.
+        const note = runWasTainted(run)
+          ? "(result not shown here: that run read outside content — see its card or the task's history)"
+          : (run.summary ?? run.error ?? "");
         lines.push(
           `  run ${at} — ${run.state}${run.stopReason ? ` (${run.stopReason})` : ""}${note ? `: ${note.slice(0, 200)}` : ""}`,
         );

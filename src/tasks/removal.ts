@@ -12,6 +12,7 @@
 import { taskLeaseHeld } from "./lease.js";
 import type { TaskRunner } from "./runner.js";
 import { deleteTask, getTask, updateTask } from "./store.js";
+import { removeTaskWorkspace } from "./workspace.js";
 
 export const REMOVE_WAIT_MS = 10_000;
 
@@ -40,5 +41,12 @@ export async function removeTask(
     await new Promise((r) => setTimeout(r, 50));
     stillRunning = await taskLeaseHeld(id);
   }
-  return { removed: await deleteTask(id), waited, stillRunning };
+  const removed = await deleteTask(id);
+  if (removed) {
+    // The task's own folder goes with it (best effort: the task is already gone)…
+    await removeTaskWorkspace(id).catch(() => {});
+    // …and so does whatever was granted "for this task".
+    await opts.runner?.taskRemoved(id);
+  }
+  return { removed, waited, stillRunning };
 }

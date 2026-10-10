@@ -19,6 +19,7 @@ import path from "node:path";
 import { matchGrants, scopeProblem, type MatchOptions, type StoredGrant } from "./grants.js";
 import { isInsideProtected } from "./paths.js";
 import {
+  DEFAULT_RULE_ORIGINS,
   LOCKED_CATEGORIES,
   matchRules,
   ownBehavior,
@@ -43,10 +44,20 @@ export interface PolicyContext {
   grants: StoredGrant[];
   /** The rules file existed but could not be trusted: nothing side-effecting is "auto". */
   rulesCorrupt?: boolean;
-  /** What the user pre-approved when the task was created. */
+  /**
+   * What the user CONFIRMED the task may do without asking. A host passes an
+   * envelope here only once the user confirmed it (src/tasks/confirmation.ts);
+   * a drafted one restricts the toolset and is never handed to the policy.
+   */
   envelope?: TaskEnvelope;
   /** Absolute paths the model may never write — Warden's own state. */
   protectedPaths?: string[];
+  /**
+   * Absolute paths a write, edit or delete there always asks for, once, with
+   * its own reason — whatever the rules or grants say: the task files, which
+   * decide what runs unattended and what it may do without asking (#422 N4).
+   */
+  taskStatePaths?: string[];
   now?: number;
 }
 
@@ -147,8 +158,10 @@ export function defaultBehavior(req: ActionRequest): RuleBehavior {
  * The strictest behaviour the context forces regardless of user rules: a
  * tainted run, a remote origin or an untrustworthy rules file never
  * auto-allows a side effect. A tainted TASK is floored at "preapproved" rather
- * than "ask" — tasks read the web as a matter of course, and what keeps them
- * safe is that only the envelope the user approved can cover the action.
+ * than "ask" — tasks read the web as a matter of course — but in a tainted run
+ * the envelope (which the user must have confirmed) still covers only reads
+ * and writes inside the run's workspace: every other side effect asks
+ * (`taintOverridesEnvelope`).
  */
 function floorFor(req: ActionRequest, ctx: PolicyContext): MatchedRule {
   if (isBenign(req.category)) return { behavior: "auto", ruleId: "" };
@@ -178,13 +191,38 @@ export function envelopeCovers(req: ActionRequest, envelope: TaskEnvelope | unde
   return !(offHost && req.tainted);
 }
 
-function touchesProtected(req: ActionRequest, ctx: PolicyContext): boolean {
-  if (!ctx.protectedPaths || ctx.protectedPaths.length === 0) return false;
+/**
+ * In a tainted run, the side effects a confirmed envelope still does NOT
+ * pre-approve: exec, delete, send, publish, a network write, and a write
+ * outside the run's workspace. Reads, and writes inside the run's own
+ * workspace, stay as the envelope says.
+ */
+export function taintOverridesEnvelope(req: ActionRequest): boolean {
+  switch (req.category) {
+    case "exec":
+    case "delete":
+    case "send":
+    case "publish":
+    case "network":
+      return true;
+    case "write":
+      return req.withinWorkspace !== true;
+    default:
+      return false;
+  }
+}
+
+function touchesAny(req: ActionRequest, paths: readonly string[] | undefined): boolean {
+  if (!paths || paths.length === 0) return false;
   return req.targets.some(
     (target) =>
       path.isAbsolute(target) &&
-      ctx.protectedPaths!.some((protectedPath) => isInsideProtected(protectedPath, target)),
+      paths.some((protectedPath) => isInsideProtected(protectedPath, target)),
   );
+}
+
+function touchesProtected(req: ActionRequest, ctx: PolicyContext): boolean {
+  return touchesAny(req, ctx.protectedPaths);
 }
 
 function systemInvariant(req: ActionRequest, ctx: PolicyContext): Decision | null {
@@ -251,6 +289,23 @@ function finalize(req: ActionRequest, result: PolicyResult): PolicyResult {
 }
 
 /**
+ * Does a user rule apply to this request's origin? A rule that tightens (or
+ * merely restates the default) applies everywhere. One that LOOSENS — `auto`,
+ * or anything less strict than the default it would replace — applies only to
+ * the origins its `origins` scope names, and by default only to the attended
+ * chat: `tools.bash = auto` written for chat is not standing permission for
+ * every unattended routine (#422 review M3). The remote-channel column never
+ * matches a scope, and its floor would ask anyway.
+ */
+function ruleAppliesTo(rule: MatchedRule, req: ActionRequest, fallback: MatchedRule): boolean {
+  const loosens =
+    rule.behavior === "auto" || strictness(rule.behavior) < strictness(fallback.behavior);
+  if (!loosens) return true;
+  const column = columnOf(req);
+  return (rule.origins ?? DEFAULT_RULE_ORIGINS).some((origin) => origin === column);
+}
+
+/**
  * The user's rule for the request, resolved against a fallback. A target rule
  * that covers every target is the most specific and wins outright; one that
  * covers only part of the targets can tighten but never loosen, and then the
@@ -261,7 +316,7 @@ function resolveRule(
   req: ActionRequest,
   fallback: MatchedRule,
 ): MatchedRule & { explicit: boolean } {
-  const match = matchRules(rules, req);
+  const match = matchRules(rules, req, (rule) => ruleAppliesTo(rule, req, fallback));
   if (match.target && match.targetsCovered) return { ...match.target, explicit: true };
   const base = match.target ? match.strictBase : match.base;
   let chosen = base ?? fallback;
@@ -288,7 +343,20 @@ function forcedAsk(req: ActionRequest, ctx: PolicyContext): Forced | null {
   if (req.guarded === true || (req.category === "exec" && touchesProtected(req, ctx))) {
     return {
       ruleId: "system:warden-state-guard",
-      reason: "This command refers to Warden's own state files or approval API.",
+      reason:
+        "This command refers to Warden's own state files, its approval API or the task files.",
+      scopes: ["once"],
+      grants: "once",
+    };
+  }
+  if (
+    (req.category === "write" || req.category === "delete" || req.category === "exec") &&
+    touchesAny(req, ctx.taskStatePaths)
+  ) {
+    return {
+      ruleId: "system:task-state-guard",
+      reason:
+        "This changes Lisa's task files — what runs unattended, and what it may do without asking.",
       scopes: ["once"],
       grants: "once",
     };
@@ -456,6 +524,18 @@ export function evaluate(req: ActionRequest, ctx: PolicyContext): PolicyResult {
       return finalize(req, { verdict: "allow", reason: "Allowed by policy.", ruleId });
     case "preapproved":
       if (envelopeCovers(req, ctx.envelope)) {
+        // Taint overrides the envelope for side effects: what a page or a
+        // mail asked for is not what the user confirmed.
+        if (req.tainted && taintOverridesEnvelope(req)) {
+          return finalize(req, {
+            verdict: "ask",
+            reason:
+              "This run has read untrusted external content, so this action needs your " +
+              "approval even though the task pre-approves it.",
+            ruleId: "system:tainted-envelope",
+            scopes: offeredScopes(req, explicitAsk),
+          });
+        }
         return finalize(req, {
           verdict: "allow",
           reason: "Pre-approved by the task's capability envelope.",

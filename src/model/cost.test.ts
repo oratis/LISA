@@ -11,6 +11,8 @@ import {
   estimateRunCost,
   formatCostEstimate,
   formatRoutineEstimate,
+  imageReserveTokens,
+  sizeMessagesForCap,
   reservePromptTokens,
   reservePromptTokensForText,
 } from "./cost.js";
@@ -615,5 +617,104 @@ describe("reservePromptTokens", () => {
     assert.equal(reservePromptTokens(4), 2);
     assert.equal(reservePromptTokens(3_000), 1_000);
     assert.equal(reservePromptTokens(Number.NaN), 0);
+  });
+});
+
+describe("inline images are reserved per image, not by their base64 size (#407 review R4)", () => {
+  /** About a 1 MB JPEG, base64-encoded. */
+  const JPEG = "/9j/".padEnd(1_398_104, "A");
+  const withImage = (n = 1) => [
+    {
+      role: "user",
+      content: [
+        ...Array.from({ length: n }, () => ({
+          type: "image",
+          source: { type: "base64", media_type: "image/jpeg", data: JPEG },
+        })),
+        { type: "text", text: "What is in this photo?" },
+      ],
+    },
+  ];
+
+  test("per-image ceilings by provider family", () => {
+    assert.equal(imageReserveTokens("claude-sonnet-4-6"), 4_784);
+    assert.equal(imageReserveTokens("claude-opus-5-5"), 4_784);
+    assert.equal(imageReserveTokens("gemini-2.5-flash"), 4_128);
+    assert.equal(imageReserveTokens("gpt-4o"), 3_800);
+    assert.equal(imageReserveTokens("o4-mini"), 3_800);
+    assert.equal(imageReserveTokens("gpt-4o-mini"), 48_169);
+    assert.equal(imageReserveTokens("glm-4.6"), 5_000);
+    assert.equal(imageReserveTokens("local://llama3"), 0);
+  });
+
+  test("the transcript is sized without the image data, which is counted instead — nested ones too", () => {
+    const nested = [
+      ...withImage(2),
+      { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "shot", input: {} }] },
+      {
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "t1",
+            content: [
+              { type: "image", source: { type: "base64", media_type: "image/png", data: JPEG } },
+            ],
+          },
+        ],
+      },
+    ];
+    const sized = sizeMessagesForCap(nested);
+    assert.equal(sized.images, 3);
+    assert.ok(sized.text.length < 2_000, `${sized.text.length} bytes`);
+    assert.match(sized.text, /What is in this photo\?/);
+    assert.match(sized.text, /"media_type":"image\/png"/);
+    // A URL image or a non-base64 source is left alone (it has no inline data).
+    assert.equal(
+      sizeMessagesForCap([{ type: "image", source: { type: "url", url: "https://x" } }]).images,
+      0,
+    );
+  });
+
+  test("a capped call with a 1 MB photo is admitted with a useful output ceiling", () => {
+    const cap = new RunCostCap(500_000, "claude-sonnet-4-6");
+    const sized = sizeMessagesForCap(withImage());
+    const verdict = cap.admit({
+      prompt: ["sys", sized.text],
+      images: sized.images,
+      maxTokens: 4_000,
+    });
+    assert.equal(verdict.proceed, true, "the image no longer costs ~$1.90 to reserve");
+    assert.equal(verdict.proceed && verdict.maxTokens, 4_000);
+    // The old sizing — the base64 at three bytes a token — could not even start.
+    const old = new RunCostCap(500_000, "claude-sonnet-4-6").admit({
+      prompt: ["sys", JSON.stringify(withImage())],
+      maxTokens: 4_000,
+    });
+    assert.equal(old.proceed, false);
+  });
+
+  test("each image is reserved at the dearest family a call may be served by", () => {
+    const sized = sizeMessagesForCap(withImage(3));
+    const at = (models: string | string[]) => {
+      const heard: number[] = [];
+      const cap = new RunCostCap(10_000_000, models, (m) => heard.push(m));
+      cap.admit({ prompt: [sized.text], images: sized.images, maxTokens: 1 });
+      cap.chargeFailed(); // charged at exactly what it was admitted with
+      return heard[0]!;
+    };
+    const flashOnly = at("gemini-2.5-flash");
+    const chain = at(["gemini-2.5-flash", "gpt-4o-mini"]);
+    assert.ok(
+      chain > flashOnly,
+      "the chain's link with the larger image count sets the reservation",
+    );
+    // Three images at Sonnet's input rate are reserved, not zero and not 1.4 MB each.
+    const sonnet = priceForModel("claude-sonnet-4-6");
+    const imageMicros = Math.ceil(
+      (3 * 4_784 * Math.max(sonnet.inPerM, sonnet.cacheWritePerM)) / 1_000_000,
+    );
+    assert.ok(at("claude-sonnet-4-6") >= imageMicros);
+    assert.ok(at("claude-sonnet-4-6") < imageMicros * 2);
   });
 });

@@ -19,7 +19,7 @@ import { logWarn } from "../log.js";
 import path from "node:path";
 import { auditDecision, auditQuietly } from "./audit.js";
 import { loadGrants, useGrants, type LoadedGrants } from "./grants.js";
-import type { WardenInbox } from "./inbox.js";
+import type { ApprovalOutcome, InboxItemView, WardenInbox } from "./inbox.js";
 import { evaluate, type PolicyResult } from "./policy.js";
 import { buildActionRequest } from "./request.js";
 import { defaultRules, loadRules, type LoadedRules } from "./rules.js";
@@ -79,7 +79,11 @@ export interface WardenSessionOptions {
   inbox: WardenInbox;
   /** The run's tools, for annotation lookup on MCP tools. */
   tools?: ToolDefinition[];
-  /** What the user pre-approved when the task was created ("preapproved" behaviour). */
+  /**
+   * What the user CONFIRMED the task may do without asking ("preapproved"
+   * behaviour). Pass it only once confirmed; an unconfirmed envelope is not a
+   * pre-approval.
+   */
   envelope?: TaskEnvelope;
   /** Short, host-supplied statement of what the run is for (shown on cards). */
   purpose?: string;
@@ -105,6 +109,14 @@ export interface WardenSessionOptions {
   approvalTimeoutMs?: number;
   /** Aborting cancels any pending approval (a cancel is a deny). */
   signal?: AbortSignal;
+  /**
+   * An "ask" is now pending in the inbox (the item exists and was announced).
+   * Each call is followed by exactly one `onApprovalSettled`, after this one's
+   * promise has settled. Hooks never change a decision: a throw is logged.
+   */
+  onApprovalPending?: (item: InboxItemView, req: ActionRequest) => void | Promise<void>;
+  /** The pending approval was answered, expired or cancelled. */
+  onApprovalSettled?: (outcome: ApprovalOutcome, req: ActionRequest) => void | Promise<void>;
   dataClassHints?: DataClass[];
   log?: (msg: string) => void;
   now?: () => number;
@@ -147,6 +159,11 @@ export function createWardenSession(opts: WardenSessionOptions): WardenSession {
   const rulesLoader = opts.loadRules ?? (() => loadRules(home));
   const grantsLoader = opts.loadGrants ?? (() => loadGrants(home, now()));
   const protectedPaths = [wardenDir(home)];
+  // Writes here always ask (policy.ts `system:task-state-guard`): the task
+  // files decide what runs unattended and what it may do without asking.
+  const taskStatePaths = [
+    ...new Set([path.join(home, "tasks"), path.join(lisaGlobalHome(), "tasks")]),
+  ];
   // Reads of these always ask: Warden's state, and the operator's provider keys.
   const sensitivePaths = [
     wardenDir(home),
@@ -160,6 +177,15 @@ export function createWardenSession(opts: WardenSessionOptions): WardenSession {
   /** Names of taint-source tools this session allowed and has not yet seen finish. */
   const armed = new Map<string, number>();
   let tainted = opts.initialTaint === true;
+
+  /** Run a host hook; a throw is logged and never reaches the decision. */
+  const quietly = async (fn: () => unknown, name: string): Promise<void> => {
+    try {
+      await fn();
+    } catch (err) {
+      log(`[warden] ${name} threw: ${(err as Error).message}`);
+    }
+  };
 
   const taint = (): void => {
     if (tainted) return;
@@ -196,6 +222,7 @@ export function createWardenSession(opts: WardenSessionOptions): WardenSession {
       grants: grants.grants,
       envelope: opts.envelope,
       protectedPaths,
+      taskStatePaths,
       now: now(),
     });
   }
@@ -222,6 +249,8 @@ export function createWardenSession(opts: WardenSessionOptions): WardenSession {
         // A corrupt rules file trusts no server.
         trustedMcpServers: rules.corrupt ? [] : rules.rules.trustedMcpServers,
         sensitivePaths,
+        // A workspace holding either home confines nothing (classify.ts).
+        lisaHomes: [home, lisaGlobalHome()],
         digestKey,
         isKnownUrl: (url) => knownUrls.has(url),
         now: started,
@@ -231,7 +260,10 @@ export function createWardenSession(opts: WardenSessionOptions): WardenSession {
     // CLI is flagged, which makes the policy ask for this exact command
     // whatever grants or rules exist. Defence in depth only: a string match
     // cannot see through a variable or an encoded payload.
-    if (req.category === "exec" && mentionsWardenState(toolInput, protectedPaths[0]!)) {
+    if (
+      req.category === "exec" &&
+      mentionsWardenState(toolInput, [...protectedPaths, ...taskStatePaths])
+    ) {
       req.guarded = true;
     }
     let result = await policyFor(req, rules);
@@ -297,6 +329,7 @@ export function createWardenSession(opts: WardenSessionOptions): WardenSession {
         return deny(handoffInstruction(req));
       }
       case "ask": {
+        let pending: Promise<void> | undefined;
         const outcome = await opts.inbox.request(req, {
           home,
           reason: result.reason,
@@ -306,7 +339,18 @@ export function createWardenSession(opts: WardenSessionOptions): WardenSession {
           bindTargets: result.bindTargets,
           timeoutMs: opts.approvalTimeoutMs,
           signal: opts.signal,
+          ...(opts.onApprovalPending
+            ? {
+                onQueued: (item: InboxItemView) => {
+                  pending = quietly(() => opts.onApprovalPending!(item, req), "onApprovalPending");
+                },
+              }
+            : {}),
         });
+        if (pending) {
+          await pending;
+          await quietly(() => opts.onApprovalSettled?.(outcome, req), "onApprovalSettled");
+        }
         if (outcome.approved) return allow();
         if (outcome.expired) {
           return deny(
@@ -365,17 +409,42 @@ export function createWardenSession(opts: WardenSessionOptions): WardenSession {
 const WARDEN_STATE_PATTERN = new RegExp(
   [
     "warden[\\\\/](?:rules|grants|pending|audit|tainted|digest)",
-    "\\.lisa[\\\\/]warden",
-    "\\/api\\/(?:approvals|warden)\\b",
+    "\\.lisa[\\\\/](?:warden|tasks)\\b",
+    // The approval API, and the task API that confirms what a task may do
+    // without asking.
+    "\\/api\\/(?:approvals|warden|tasks)\\b",
     // The CLI that edits the same state: `lisa warden …`, `lisa approvals …`,
-    // `node dist/cli.js warden …`.
-    "\\b(?:lisa|cli\\.[cm]?[jt]s)[\"']?\\s+(?:warden|approvals)\\b",
+    // `lisa tasks enable …`, `node dist/cli.js warden …` — flags may sit
+    // between the words (`lisa --quiet tasks enable`).
+    "\\b(?:lisa|cli\\.[cm]?[jt]s)(?:\\s+-{1,2}[\\w=.-]+)*\\s+(?:warden|approvals|tasks(?:\\s+-{1,2}[\\w=.-]+)*\\s+enable)\\b",
   ].join("|"),
   "i",
 );
 
 /**
- * Does an exec input name Warden's state files, its approval API or its CLI?
+ * The command as the shell would mostly read it: line continuations joined,
+ * quotes, backslash escapes and backticks taken out, so `l''isa`,
+ * `lisa tasks 'enable'`, `en\able` and `/ap''i/tasks` match like what they
+ * run. Cheap, and still not a boundary: `$x`, `${x}`, `$(…)` and encoded
+ * payloads get through.
+ */
+function unquoteShell(text: string): string {
+  return text.replace(/\\\r?\n/g, "").replace(/[\\'"`]/g, "");
+}
+
+/** Every string in a tool input (bounded), as the tool will see it — not JSON-escaped. */
+function stringsIn(value: unknown, out: string[] = [], depth = 0): string[] {
+  if (typeof value === "string") out.push(value);
+  else if (value && typeof value === "object" && depth < 8 && out.length < 256) {
+    for (const child of Object.values(value)) stringsIn(child, out, depth + 1);
+  }
+  return out;
+}
+
+/**
+ * Does an exec input name Warden's state files, the task files, the approval
+ * or task API or the CLI that edits them? Matched on the input as given and
+ * on each of its strings with shell quoting taken out.
  * DEFENCE IN DEPTH, not a boundary: `p=approvals; curl …/api/$p` passes this
  * check. A confined command is additionally denied the directory and the port
  * by its sandbox profile (src/sandbox/protect.ts), and an unconfined one asks
@@ -383,14 +452,16 @@ const WARDEN_STATE_PATTERN = new RegExp(
  * stops it from approving on loopback. Closing that needs approvals signed by
  * a native approver (docs/DESIGN_WARDEN.md, known limits).
  */
-export function mentionsWardenState(input: unknown, wardenPath: string): boolean {
+export function mentionsWardenState(input: unknown, paths: string | readonly string[]): boolean {
   let text: string;
   try {
     text = typeof input === "string" ? input : (JSON.stringify(input) ?? "");
   } catch {
     return true; // unserialisable exec input: assume the worst
   }
-  return text.includes(wardenPath) || WARDEN_STATE_PATTERN.test(text);
+  const named = typeof paths === "string" ? [paths] : paths;
+  const candidates = [text, ...stringsIn(input).map(unquoteShell)];
+  return candidates.some((t) => named.some((p) => t.includes(p)) || WARDEN_STATE_PATTERN.test(t));
 }
 
 /** A minimal request for the error path, where classification itself may have thrown. */

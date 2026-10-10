@@ -493,7 +493,7 @@
         ],
         "responses": {
           "200": {
-            "description": "One task.",
+            "description": "One task, with `confirmation`: the digest and plain-words summary a client shows before the user confirms what it may do without asking.",
             "headers": {
               "X-Lisa-API-Version": {
                 "$ref": "#/components/headers/ApiVersion"
@@ -562,6 +562,9 @@
           "404": {
             "$ref": "#/components/responses/Error"
           },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
           "413": {
             "$ref": "#/components/responses/Error"
           },
@@ -569,7 +572,7 @@
             "$ref": "#/components/responses/Error"
           }
         },
-        "description": "Requires Content-Type: application/json, also when the body is empty."
+        "description": "Requires Content-Type: application/json, also when the body is empty. Any edit of the instruction, schedule, trigger, envelope or notify mode clears an envelope confirmation; `confirmEnvelope` (with `enabled: true`) records one."
       },
       "delete": {
         "operationId": "deleteTask",
@@ -2192,6 +2195,39 @@
             }
           }
         },
+        "additionalProperties": true,
+        "description": "What a task may use. Until the user confirms it (`envelopeConfirmation`), it only restricts the tools a run is offered and pre-approves nothing. Confirmed, it lets the listed tools / categories run without asking — except, in a run that has read outside content, exec, delete, send, publish, network writes and writes outside the task's own workspace, which ask."
+      },
+      "TaskConfirmation": {
+        "type": "object",
+        "required": [
+          "digest",
+          "confirmed",
+          "preapproves",
+          "summary"
+        ],
+        "properties": {
+          "digest": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "sha256 of the task's instruction, kind, schedule, trigger, envelope and notify mode. Send it back as `confirmEnvelope` to confirm the task as shown."
+          },
+          "confirmed": {
+            "type": "boolean",
+            "description": "The user confirmed the task as it is now."
+          },
+          "preapproves": {
+            "type": "boolean",
+            "description": "The envelope names a tool or category a confirmation would pre-approve."
+          },
+          "summary": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Plain-words lines to show before asking: the instruction, when it runs, and which actions would run without asking."
+          }
+        },
         "additionalProperties": true
       },
       "TaskBudget": {
@@ -2213,6 +2249,18 @@
           },
           "maxToolCalls": {
             "type": "integer"
+          },
+          "maxApprovals": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 20,
+            "description": "How many approvals one run may ask for (default 5). The next ask stops the run with stopReason `approval_limit` instead of waiting, and is not announced."
+          },
+          "approvalWaitMs": {
+            "type": "integer",
+            "minimum": 60000,
+            "maximum": 21600000,
+            "description": "Total time one run may wait for approvals, across its asks and segments (default 60 minutes; at most 6 hours, 15 minutes hosted). Past it the run stops with stopReason `approval_limit`."
           }
         },
         "additionalProperties": true
@@ -2298,6 +2346,38 @@
           "envelope": {
             "$ref": "#/components/schemas/TaskEnvelope"
           },
+          "envelopeConfirmation": {
+            "type": "object",
+            "required": [
+              "digest",
+              "mac",
+              "at",
+              "via"
+            ],
+            "properties": {
+              "digest": {
+                "type": "string",
+                "description": "The task's confirmation digest when the user confirmed it."
+              },
+              "mac": {
+                "type": "string",
+                "description": "HMAC of the task id and the digest under the home's Warden key. Only the user's own surface (`lisa tasks enable`, a confirming `PATCH`) can produce it; a confirmation without a valid one counts as unconfirmed."
+              },
+              "at": {
+                "type": "integer",
+                "description": "Epoch milliseconds."
+              },
+              "via": {
+                "type": "string",
+                "enum": [
+                  "cli",
+                  "api"
+                ]
+              }
+            },
+            "additionalProperties": true,
+            "description": "The user confirmed the envelope as a pre-approval. It counts only while `digest` equals the task's current digest (`TaskConfirmation.digest`) and `mac` verifies; every edit of the title, instruction, schedule, trigger, host, envelope, notify mode or budget, every edit by Lisa's own task tools, and every enable, clears it. Absent: the envelope only restricts."
+          },
           "budget": {
             "$ref": "#/components/schemas/TaskBudget"
           },
@@ -2353,6 +2433,14 @@
           },
           "lastSummary": {
             "type": "string"
+          },
+          "lastSummaryTainted": {
+            "type": "boolean",
+            "description": "`lastSummary` was written by a run that had read outside content: the next run quotes it as data and starts tainted."
+          },
+          "workspaceTainted": {
+            "type": "boolean",
+            "description": "A run that had read outside content made state-changing calls with the task's folder writable to it: every later run starts tainted."
           },
           "activeRunId": {
             "type": "string"
@@ -2440,6 +2528,19 @@
           "costMicros": {
             "type": "integer"
           },
+          "capSpentMicros": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "What the run's spend ceiling (budget.usdMicros) has counted against it, across its segments, including calls that failed after they were sent (counted at their worst case)."
+          },
+          "tainted": {
+            "type": "boolean",
+            "description": "Untrusted content entered the run (Warden said so, or a call to a tool that returns outside text went through); a resumed segment starts tainted."
+          },
+          "inheritedTaint": {
+            "type": "boolean",
+            "description": "The run started tainted because of what an earlier run of the task left: a last summary written by a tainted run, or a folder a tainted run wrote to."
+          },
           "toolCalls": {
             "type": "integer"
           },
@@ -2453,6 +2554,16 @@
           },
           "elapsedMs": {
             "type": "integer"
+          },
+          "approvals": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Approvals the run asked for, across its segments (budget.maxApprovals)."
+          },
+          "approvalWaitMs": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Time the run spent waiting for approvals, across its segments (budget.approvalWaitMs)."
           },
           "manual": {
             "type": "boolean"
@@ -2475,7 +2586,7 @@
         "properties": {
           "type": {
             "type": "string",
-            "description": "tool_call | tool_result | replayed | denied | info | error | resume"
+            "description": "tool_call | tool_result | replayed | denied | info | error | resume | approval"
           },
           "at": {
             "type": "integer"
@@ -2591,6 +2702,10 @@
           },
           "enabled": {
             "type": "boolean"
+          },
+          "confirmEnvelope": {
+            "type": "string",
+            "description": "With `enabled: true`: confirm the envelope as a pre-approval. Must equal the task's current `confirmation.digest` after this request's own edits (409 `confirmation_mismatch` otherwise, and nothing changes). Accepted only from a caller who may answer approvals (the loopback owner or a signed-in session; 403 `trusted_local_confirmation_required`) in a same-origin request. Without it, enabling leaves the envelope a restriction."
           }
         },
         "additionalProperties": false
@@ -2618,6 +2733,9 @@
         "properties": {
           "task": {
             "$ref": "#/components/schemas/Task"
+          },
+          "confirmation": {
+            "$ref": "#/components/schemas/TaskConfirmation"
           }
         },
         "additionalProperties": true
@@ -3080,6 +3198,43 @@
               "type": "string"
             },
             "description": "MCP servers whose results the user vouches for (they do not taint a run)."
+          },
+          "origins": {
+            "type": "object",
+            "properties": {
+              "categories": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "description": "Open set; v1 values: chat, task."
+                  }
+                }
+              },
+              "tools": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "description": "Open set; v1 values: chat, task."
+                  }
+                }
+              },
+              "targets": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "description": "Open set; v1 values: chat, task."
+                  }
+                }
+              }
+            },
+            "additionalProperties": true,
+            "description": "Where each LOOSENING rule applies, by map and key, e.g. {\"tools\": {\"bash\": [\"chat\", \"task\"]}}. A rule that loosens (auto, or less strict than the default it replaces) applies to the attended chat only unless its scope names `task`; a rule that tightens applies to every origin. Every entry must name an existing rule."
           }
         },
         "additionalProperties": true
