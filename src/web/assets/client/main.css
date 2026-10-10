@@ -2569,13 +2569,14 @@
     font-family: inherit;
     font-size: 12.5px;
     font-weight: 700;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 6px;
-    padding: 10px 14px;
+    padding: 10px 12px;
     transition: transform 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
     box-shadow: 0 4px 14px rgba(106, 212, 255, 0.25);
   }
@@ -2585,8 +2586,7 @@
   }
   #sendBtn:active:not(:disabled) { transform: translateY(0); }
   #sendBtn:disabled { opacity: 0.5; cursor: wait; }
-  /* Hide the legacy pixel send icon; the text label is enough in the new theme. */
-  #sendBtn img { display: none; }
+  #sendBtn svg { display: block; flex: none; }
 
   /* ── Manual right-panel collapse (F4, persisted client-side) ────
      Collapsed is the DEFAULT state; the class is only absent once the user
