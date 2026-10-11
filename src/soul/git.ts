@@ -16,6 +16,7 @@ import { isCloud } from "../edition.js";
 import { logWarn } from "../log.js";
 import { withFileLock } from "./lock.js";
 import { soulDir } from "./paths.js";
+import { dreamCommitTrailer } from "../reve/scope.js";
 
 /**
  * Cross-process lock around the add→diff→commit sequence. The in-process
@@ -58,10 +59,7 @@ const callerStore = new AsyncLocalStorage<CallerContext>();
  * caller label. Used at tool-execute boundaries (soul_patch, soul_journal, ...)
  * and at reflect / birth entry points.
  */
-export async function withSoulCaller<T>(
-  caller: SoulCaller,
-  fn: () => Promise<T>,
-): Promise<T> {
+export async function withSoulCaller<T>(caller: SoulCaller, fn: () => Promise<T>): Promise<T> {
   return await callerStore.run({ caller }, fn);
 }
 
@@ -121,9 +119,7 @@ function runGitRaw(args: string[], cwd: string): Promise<GitResult> {
     child.stdout.on("data", (b: Buffer) => (stdout += b.toString("utf8")));
     child.stderr.on("data", (b: Buffer) => (stderr += b.toString("utf8")));
     child.on("close", (code) => resolve({ code: code ?? 1, stdout, stderr }));
-    child.on("error", (err) =>
-      resolve({ code: 1, stdout, stderr: stderr || String(err) }),
-    );
+    child.on("error", (err) => resolve({ code: 1, stdout, stderr: stderr || String(err) }));
   });
 }
 
@@ -176,14 +172,10 @@ export async function initSoulRepo(): Promise<void> {
       "--allow-empty",
     ]);
     if (commit.code !== 0) {
-      console.warn(
-        `[soul-git] initial commit failed: ${commit.stderr.trim().slice(0, 200)}`,
-      );
+      console.warn(`[soul-git] initial commit failed: ${commit.stderr.trim().slice(0, 200)}`);
     }
   } catch (err) {
-    console.warn(
-      `[soul-git] init failed: ${(err as Error).message.slice(0, 200)}`,
-    );
+    console.warn(`[soul-git] init failed: ${(err as Error).message.slice(0, 200)}`);
   }
 }
 
@@ -196,11 +188,12 @@ export async function initSoulRepo(): Promise<void> {
  * shouldn't block the agent loop. We serialize commits via a tiny in-process
  * queue so concurrent writes don't race on the index.lock.
  */
-export function commitSoulChange(
-  relPath: string,
-  opKind: string,
-): Promise<void> {
+export function commitSoulChange(relPath: string, opKind: string): Promise<void> {
   const caller = currentCaller();
+  // W9: commits made inside a Reve dream scope carry `[dream:<id>]` (and the
+  // reconsider ids injected into that pass) so the dream record can tell its
+  // own commits from a concurrent chat's. Captured now, like the caller.
+  const trailer = dreamCommitTrailer();
   return enqueueCommit(async () => {
     if (!(await checkGitAvailable())) return;
     const dotGit = path.join(soulDir(), ".git");
@@ -218,7 +211,7 @@ export function commitSoulChange(
           const diff = await runGit(["diff", "--cached", "--quiet", "--", relPath]);
           // exit 0 = no diff, exit 1 = diff present.
           if (diff.code === 0) return;
-          const msg = formatCommitMessage(relPath, opKind, caller);
+          const msg = formatCommitMessage(relPath, opKind, caller) + trailer;
           const commit = await runGit(["commit", "-q", "-m", msg]);
           if (commit.code !== 0) {
             console.warn(
@@ -238,11 +231,7 @@ export function commitSoulChange(
   });
 }
 
-function formatCommitMessage(
-  relPath: string,
-  opKind: string,
-  caller: SoulCaller,
-): string {
+function formatCommitMessage(relPath: string, opKind: string, caller: SoulCaller): string {
   return `${opKind}: ${relPath} via ${caller}`;
 }
 
@@ -299,6 +288,83 @@ export async function gitDiffPatch(opts: {
     return r.stdout.slice(0, MAX) + `\n\n[…truncated, ${r.stdout.length - MAX} more bytes]`;
   }
   return r.stdout.trim() || "(no diff in range)";
+}
+
+// ── readers used by Reve dream records (src/reve) ─────────────────────────
+
+/** Resolves once every soul commit enqueued so far has settled. */
+export function flushSoulCommits(): Promise<void> {
+  return commitChain;
+}
+
+/** Current soul-git HEAD sha, or null when soul git is off / not initialized. */
+export async function soulGitHead(): Promise<string | null> {
+  if (!(await checkGitAvailable())) return null;
+  if (!(await pathExists(path.join(soulDir(), ".git")))) return null;
+  const r = await runGit(["rev-parse", "--verify", "-q", "HEAD"]);
+  const sha = r.stdout.trim();
+  return r.code === 0 && /^[0-9a-f]{40}$/.test(sha) ? sha : null;
+}
+
+export interface SoulGitCommitInfo {
+  sha: string;
+  at: string;
+  subject: string;
+  files: Array<{ path: string; added: number; removed: number }>;
+}
+
+/**
+ * Commits in `from..to` (oldest first), with numstat. Returns [] on any git
+ * failure — dream capture is best-effort like the rest of soul history.
+ */
+export async function soulCommitsBetween(
+  from: string,
+  to: string,
+  limit = 200,
+): Promise<SoulGitCommitInfo[]> {
+  if (!/^[0-9a-f]{40}$/.test(from) || !/^[0-9a-f]{40}$/.test(to) || from === to) return [];
+  if (!(await checkGitAvailable())) return [];
+  const r = await runGit([
+    "log",
+    "--reverse",
+    "--no-color",
+    `--max-count=${limit}`,
+    "--format=%x1e%H%x1f%aI%x1f%s",
+    "--numstat",
+    `${from}..${to}`,
+  ]);
+  if (r.code !== 0) return [];
+  const out: SoulGitCommitInfo[] = [];
+  for (const block of r.stdout.split("\x1e")) {
+    const lines = block.split("\n");
+    const head = lines.shift()?.split("\x1f");
+    if (!head || head.length < 3 || !head[0]) continue;
+    const files: SoulGitCommitInfo["files"] = [];
+    for (const l of lines) {
+      const m = /^(\d+|-)\t(\d+|-)\t(.+)$/.exec(l);
+      if (m) files.push({ path: m[3]!, added: Number(m[1]) || 0, removed: Number(m[2]) || 0 });
+    }
+    out.push({ sha: head[0], at: head[1] ?? "", subject: head.slice(2).join("\x1f"), files });
+  }
+  return out;
+}
+
+/** Patch text of one commit (no header), capped at `maxChars`. */
+export async function soulCommitPatch(
+  sha: string,
+  maxChars: number,
+): Promise<{ text: string; truncated: boolean }> {
+  if (!/^[0-9a-f]{40}$/.test(sha) || !(await checkGitAvailable())) {
+    return { text: "", truncated: false };
+  }
+  const r = await runGit(["show", "--no-color", "--format=", "--unified=1", sha]);
+  if (r.code !== 0) return { text: "", truncated: false };
+  const text = r.stdout.trim();
+  if (text.length <= maxChars) return { text, truncated: false };
+  return {
+    text: text.slice(0, maxChars) + `\n… [diff truncated, ${text.length - maxChars} more chars]`,
+    truncated: true,
+  };
 }
 
 /** For tests / introspection. */

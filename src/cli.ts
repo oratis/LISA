@@ -80,6 +80,9 @@ INSPECTION
   lisa autonomy [days]         Digest of self-driven runs (idle / heartbeat /
                                desire / examen / reflect): outcome, cost, cadence.
                                Defaults to the last 7 days.
+  lisa reve <sub>              Dream log of each reflective pass: dreams, show
+                               <id>, revert <id> --parts memory,kb,skills,
+                               reconsider <id> "<note>", metrics [--days n].
   lisa model <sub>             Local model lifecycle (Ollama): list, install
                                <model>, use local://<model> to switch, health.
                                Also detects coding plans (Claude/Codex/Copilot):
@@ -432,6 +435,11 @@ async function main(): Promise<void> {
     const sinceMs = (Number.isFinite(days) && days > 0 ? days : 7) * 24 * 60 * 60_000;
     console.log(summarizeAutonomyRuns(await readAutonomyRuns(sinceMs)));
     return;
+  }
+
+  if (args.subcommand === "reve") {
+    const { runReveCommand } = await import("./cli/reve.js");
+    process.exit(await runReveCommand(args.subargs));
   }
 
   if (args.subcommand === "model") {

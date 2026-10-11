@@ -183,6 +183,7 @@ import { ScreenSource } from "../sense/screen.js";
 import { VoiceSource } from "../sense/voice.js";
 import { appendSenseEvent, readSenseEvents } from "../sense/log.js";
 import { handleSocialApi } from "./social-api.js";
+import { handleReveApi } from "./reve-api.js";
 import { createWebWarden, handleWardenApi, wardenTrust } from "./warden-api.js";
 import { protectFromSandbox } from "../sandbox/protect.js";
 import { handleReachOutApi } from "./reachout-api.js";
@@ -2580,6 +2581,19 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
                 });
               }
             : undefined,
+      })
+    ) {
+      return;
+    }
+    // W9 auditable Dream log. lisaHome() is already this account's subtree on
+    // the cloud edition; a cloud caller with no account is refused. Same
+    // trust as the Warden: cross-site / rebinding refused, and only the
+    // loopback owner or a signed-in account may revert or reconsider.
+    if (
+      await handleReveApi(req, res, url, {
+        allowed: !cloud || accountUid !== null,
+        ...wardenTrust({ cloud, loopback: isLoopbackAddress(remoteAddr), accountUid }),
+        actor: accountUid ? `uid:${accountUid}` : "local",
       })
     ) {
       return;
@@ -5086,5 +5100,7 @@ self.addEventListener('fetch', (event) => {
       resolve();
     });
   });
+  // Dream-log retention on startup (then at most hourly, from the passes).
+  void import("../reve/store.js").then((m) => m.maybeApplyRetention()).catch(() => undefined);
   return server;
 }

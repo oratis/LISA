@@ -22,6 +22,7 @@ import { runSubagent } from "../subagent.js";
 import { sandboxModeForProfile } from "../sandbox/sandbox.js";
 import { recordAutonomyRun, type AutonomyKind } from "../autonomy/runs.js";
 import { recentAgentRecap } from "../orchestrator/recent-recap.js";
+import { beginDream, beginDreamForKind } from "../reve/record.js";
 import type { ToolDefinition } from "../types.js";
 import type { Provider } from "../providers/types.js";
 import {
@@ -211,30 +212,38 @@ async function runHeartbeatInner(opts: {
         : task.name === "builtin:weekly_examen"
           ? "examen"
           : "heartbeat";
+    // W9: the examen and the desire review are reflective passes → audited
+    // dream (src/reve). A no-op handle for every other task kind.
+    const dream = await beginDreamForKind(runKind, task.name);
     let result;
     try {
-      result = await runSubagent({
-        prompt: task.prompt,
-        systemPrompt: heartbeatSystem,
-        tools,
-        cwd: opts.cwd,
-        signal: opts.signal,
-        model: opts.model,
-        moodOrigin: `a ${runKind} turn`,
-        // Unattended self-driven run — confine to the untrusted-surface mode. H2.
-        sandboxMode: sandboxModeForProfile("local-autonomy"),
-      });
+      result = await dream.run(() =>
+        runSubagent({
+          prompt: task.prompt,
+          systemPrompt: heartbeatSystem,
+          tools,
+          cwd: opts.cwd,
+          signal: opts.signal,
+          model: opts.model,
+          moodOrigin: `a ${runKind} turn`,
+          // Unattended self-driven run — confine to the untrusted-surface mode. H2.
+          sandboxMode: sandboxModeForProfile("local-autonomy"),
+        }),
+      );
     } catch (err) {
-      await recordAutonomyRun({
-        kind: runKind,
-        task: task.name,
-        startedAt,
-        durationMs: Date.now() - t0,
-        inputTokens: 0,
-        outputTokens: 0,
-        outcome: "error",
-        note: (err as Error).message?.slice(0, 200),
-      });
+      await dream.run(() =>
+        recordAutonomyRun({
+          kind: runKind,
+          task: task.name,
+          startedAt,
+          durationMs: Date.now() - t0,
+          inputTokens: 0,
+          outputTokens: 0,
+          outcome: "error",
+          note: (err as Error).message?.slice(0, 200),
+        }),
+      );
+      await dream.end({ error: err });
       throw err;
     }
     tokensSpent += (result.inputTokens ?? 0) + (result.outputTokens ?? 0);
@@ -262,17 +271,20 @@ async function runHeartbeatInner(opts: {
       }
     }
 
-    await recordAutonomyRun({
-      kind: runKind,
-      task: task.name,
-      startedAt,
-      durationMs: Date.now() - t0,
-      inputTokens: result.inputTokens ?? 0,
-      outputTokens: result.outputTokens ?? 0,
-      toolCalls: result.toolCallCount,
-      outcome: silent ? "no-update" : "done",
-      note: reviewFallback ? "reviewedAt fallback applied" : undefined,
-    });
+    await dream.run(() =>
+      recordAutonomyRun({
+        kind: runKind,
+        task: task.name,
+        startedAt,
+        durationMs: Date.now() - t0,
+        inputTokens: result.inputTokens ?? 0,
+        outputTokens: result.outputTokens ?? 0,
+        toolCalls: result.toolCallCount,
+        outcome: silent ? "no-update" : "done",
+        note: reviewFallback ? "reviewedAt fallback applied" : undefined,
+      }),
+    );
+    await dream.end();
 
     out.push({
       task: task.name,
@@ -310,21 +322,25 @@ export async function runDesireReviewOnce(opts: {
     return await withFileLock(
       desireReviewRunLock(),
       async () => {
+        // W9: a desire review is a reflective pass → audited dream (src/reve).
+        const dream = await beginDream({ trigger: "desire-review", task: "builtin:desire_review" });
         const startedAt = new Date().toISOString();
         const t0 = Date.now();
         try {
-          const result = await runSubagent({
-            prompt,
-            systemPrompt: HEARTBEAT_SYSTEM,
-            tools: desireReviewSubset(opts.tools),
-            cwd: opts.cwd,
-            signal: opts.signal,
-            model: opts.model,
-            budgetTokens: 100_000,
-            provider: opts.provider,
-            sandboxMode: sandboxModeForProfile("local-autonomy"),
-            moodOrigin: "a desire-review turn",
-          });
+          const result = await dream.run(() =>
+            runSubagent({
+              prompt,
+              systemPrompt: HEARTBEAT_SYSTEM,
+              tools: desireReviewSubset(opts.tools),
+              cwd: opts.cwd,
+              signal: opts.signal,
+              model: opts.model,
+              budgetTokens: 100_000,
+              provider: opts.provider,
+              sandboxMode: sandboxModeForProfile("local-autonomy"),
+              moodOrigin: "a desire-review turn",
+            }),
+          );
           const text = result.text
             .trim()
             .replace(/\n*\(\s*no\s+update\s*\)[.。]?\s*$/i, "")
@@ -333,23 +349,26 @@ export async function runDesireReviewOnce(opts: {
           const reviewFallback = reviewSlug
             ? await ensureReviewRecorded(reviewSlug, startedAt)
             : false;
-          await recordAutonomyRun({
-            kind: "desire-review",
-            task: "builtin:desire_review",
-            startedAt,
-            durationMs: Date.now() - t0,
-            inputTokens: result.inputTokens,
-            outputTokens: result.outputTokens,
-            toolCalls: result.toolCallCount,
-            outcome:
-              result.stopReason === "budget_exceeded" ? "blocked" : text ? "done" : "no-update",
-            note:
-              result.stopReason === "budget_exceeded"
-                ? "token budget reached"
-                : reviewFallback
-                  ? "reviewedAt fallback applied"
-                  : undefined,
-          });
+          await dream.run(() =>
+            recordAutonomyRun({
+              kind: "desire-review",
+              task: "builtin:desire_review",
+              startedAt,
+              durationMs: Date.now() - t0,
+              inputTokens: result.inputTokens,
+              outputTokens: result.outputTokens,
+              toolCalls: result.toolCallCount,
+              outcome:
+                result.stopReason === "budget_exceeded" ? "blocked" : text ? "done" : "no-update",
+              note:
+                result.stopReason === "budget_exceeded"
+                  ? "token budget reached"
+                  : reviewFallback
+                    ? "reviewedAt fallback applied"
+                    : undefined,
+            }),
+          );
+          await dream.end();
           return {
             text,
             inputTokens: result.inputTokens,
@@ -358,16 +377,19 @@ export async function runDesireReviewOnce(opts: {
             stopReason: result.stopReason,
           };
         } catch (error) {
-          await recordAutonomyRun({
-            kind: "desire-review",
-            task: "builtin:desire_review",
-            startedAt,
-            durationMs: Date.now() - t0,
-            inputTokens: 0,
-            outputTokens: 0,
-            outcome: "error",
-            note: (error as Error).message.slice(0, 200),
-          });
+          await dream.run(() =>
+            recordAutonomyRun({
+              kind: "desire-review",
+              task: "builtin:desire_review",
+              startedAt,
+              durationMs: Date.now() - t0,
+              inputTokens: 0,
+              outputTokens: 0,
+              outcome: "error",
+              note: (error as Error).message.slice(0, 200),
+            }),
+          );
+          await dream.end({ error });
           throw error;
         }
       },
