@@ -14,7 +14,7 @@
     "astro": "astro"
   },
   "dependencies": {
-    "astro": "^7.3.5"
+    "astro": "^7.3.8"
   },
   "engines": {
     "node": ">=22.19.0"
