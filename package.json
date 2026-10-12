@@ -81,7 +81,7 @@
     "@google/genai": "^2.27.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "imapflow": "^2.0.2",
-    "music-metadata": "^11.14.0",
+    "music-metadata": "^12.1.0",
     "openai": "^7.27.0",
     "qrcode-terminal": "^0.12.0",
     "undici": "^8.11.2"
