@@ -27,11 +27,36 @@ struct ServerConfig: Equatable {
     }
 }
 
+/// Process-wide mirror of the user's third-party-AI agreement (AIDisclosure.swift),
+/// kept here so the TRANSPORT enforces it and not just the buttons: every call
+/// that carries user-written text to an AI service checks this first. Mirrored
+/// from `AppState.aiConsent`, which owns the stored record.
+///
+/// The point is what it makes impossible. A screen added later that forgets to
+/// ask still cannot send — it gets `.aiConsentRequired` instead of a socket.
+final class AIConsentGate {
+    static let shared = AIConsentGate()
+    private let lock = NSLock()
+    private var granted = false
+
+    var isGranted: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return granted
+    }
+
+    func set(_ value: Bool) {
+        lock.lock(); granted = value; lock.unlock()
+    }
+}
+
 enum LisaError: LocalizedError {
     case notConfigured
     case http(Int)
     case decode
     case unsupportedAPIVersion(Int)
+    /// Refused locally: the user hasn't agreed to third-party AI processing yet
+    /// (App Store 5.1.1(i)). Nothing left the device.
+    case aiConsentRequired
 
     var errorDescription: String? {
         switch self {
@@ -47,6 +72,8 @@ enum LisaError: LocalizedError {
         case .decode: return "Couldn't read the server response."
         case .unsupportedAPIVersion(let version):
             return "This Lisa server uses API v\(version). Update Lisa Pocket to reconnect."
+        case .aiConsentRequired:
+            return "Nothing was sent. Agree to AI processing first — Settings › Privacy › AI processing & data sharing."
         }
     }
 }
@@ -388,6 +415,10 @@ final class LisaClient {
     func mailDigest() async throws -> MailDigest? { try await decode("/api/mail/digest", as: MailDigestResponse.self).digest }
     func mailAccounts() async throws -> MailAccountsResponse { try await decode("/api/mail/accounts", as: MailAccountsResponse.self) }
     func controlPolicy() async throws -> ControlPolicy { try await decode("/api/control/policy", as: ControlPolicy.self) }
+    /// Who this backend forwards a turn to (App Store 5.1.1(i)). Unauthenticated
+    /// on the server so the consent screen can name the recipient before sign-in;
+    /// a backend older than the route 404s and the caller keeps the fallback.
+    func aiDisclosure() async throws -> AIDisclosureDTO { try await decode("/api/ai/disclosure", as: AIDisclosureDTO.self) }
 
     // ── proactive mode (autonomy on/off) ──
     func autonomyState() async throws -> Bool { try await decode("/api/autonomy/state", as: AutonomyState.self).enabled }
@@ -418,8 +449,14 @@ final class LisaClient {
     func devices() async throws -> [DeviceInfo] { try await decode("/api/devices", as: DevicesResponse.self).devices }
 
     // ── control: managed agents ──
-    func managedStart(task: String) async throws { try await fire("/api/agents/managed/start", json: ["task": task]) }
-    func managedSend(_ id: String, _ text: String) async throws { try await fire("/api/agents/managed/\(id)/send", json: ["text": text]) }
+    func managedStart(task: String) async throws {
+        try requireAIConsent()
+        try await fire("/api/agents/managed/start", json: ["task": task])
+    }
+    func managedSend(_ id: String, _ text: String) async throws {
+        try requireAIConsent()
+        try await fire("/api/agents/managed/\(id)/send", json: ["text": text])
+    }
     func managedCancel(_ id: String) async throws { try await fire("/api/agents/managed/\(id)/cancel") }
     func managedApprove(_ id: String, allow: Bool) async throws { try await fire("/api/agents/managed/\(id)/approve", json: ["allow": allow]) }
 
@@ -427,9 +464,13 @@ final class LisaClient {
     /// Spawn a fresh real CLI under a PTY (agent = "claude" | "codex"). Returns
     /// the HTTP code (503 ⇒ the PTY spike is off on the Mac: LISA_PTY_AGENTS=1).
     func ptyStart(agent: String, task: String) async throws -> Int {
-        try await fireCode("/api/agents/pty/start", json: ["agent": agent, "task": task])
+        try requireAIConsent()
+        return try await fireCode("/api/agents/pty/start", json: ["agent": agent, "task": task])
     }
-    func ptySend(_ id: String, _ text: String) async throws { try await fire("/api/agents/pty/\(id)/send", json: ["text": text]) }
+    func ptySend(_ id: String, _ text: String) async throws {
+        try requireAIConsent()
+        try await fire("/api/agents/pty/\(id)/send", json: ["text": text])
+    }
     func ptyCancel(_ id: String) async throws { try await fire("/api/agents/pty/\(id)/cancel") }
     func ptyOutput(_ id: String) async throws -> String {
         struct R: Codable { var ok: Bool; var output: String? }
@@ -445,7 +486,10 @@ final class LisaClient {
     /// Adopt an idle claude session by id (resume-adopt). Returns the HTTP code
     /// (409 ⇒ the session is still live; 403 ⇒ remote adoption disabled).
     func adopt(sessionId: String) async throws -> Int {
-        try await fireCode("/api/agents/pty/start", json: ["agent": "claude", "resumeSessionId": sessionId])
+        // Adopting restarts a real AI CLI on the Mac, which resumes sending that
+        // session's transcript onward — same gate as starting one.
+        try requireAIConsent()
+        return try await fireCode("/api/agents/pty/start", json: ["agent": "claude", "resumeSessionId": sessionId])
     }
 
     // ── push ──
@@ -481,12 +525,24 @@ final class LisaClient {
         try await fire("/api/push/unregister", json: ["id": id])
     }
 
+    /// Refuse locally, before a socket is opened, when the user hasn't agreed to
+    /// third-party AI processing. Called by every request that carries
+    /// user-written text onward to an AI service.
+    private func requireAIConsent() throws {
+        guard AIConsentGate.shared.isGranted else { throw LisaError.aiConsentRequired }
+    }
+
     // ── chat ──
     func history(page: Int = 0) async throws -> HistoryResponse {
         try await decode("/api/history?page=\(page)", as: HistoryResponse.self)
     }
     func chatStream(_ message: String) -> AsyncThrowingStream<SSEMessage, Error> {
-        sse("/chat", method: "POST", json: ["message": message])
+        guard AIConsentGate.shared.isGranted else {
+            // Not a socket: a stream that fails immediately, so the transcript
+            // shows the refusal and the message never leaves the device.
+            return AsyncThrowingStream { $0.finish(throwing: LisaError.aiConsentRequired) }
+        }
+        return sse("/chat", method: "POST", json: ["message": message])
     }
     func eventsStream() -> AsyncThrowingStream<SSEMessage, Error> {
         sse("/events")

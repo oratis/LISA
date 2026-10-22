@@ -4,11 +4,16 @@ import Foundation
 // (docs/PLAN_IOS_ONBOARDING_v1.0.md). No SwiftUI / no side effects here, so the
 // copy strings + step logic are unit-testable off the main actor.
 
-/// Steps of the Mac-local wizard. The raw Int drives the progress dots; `.welcome`
-/// and `.mode` sit before the dotted sequence. The LISA Cloud branch reuses
-/// `.connect` directly after a paste, skipping install/start/pair/scan.
+/// Steps of the Mac-local wizard. The raw Int drives the progress dots;
+/// `.welcome`, `.mode` and `.disclosure` sit before the dotted sequence. The
+/// LISA Cloud branch reuses `.connect` directly after a paste, skipping
+/// install/start/pair/scan.
 enum OnboardingStep: Int, CaseIterable {
-    case welcome, mode, install, start, pair, scan, connect
+    /// `.disclosure` is pre-flow like welcome/mode: the third-party AI
+    /// disclosure both branches pass through after picking a mode, so the user
+    /// reads who receives their messages before setup, not after the first send
+    /// (App Store 5.1.1(i) — see Sources/AIDisclosure.swift).
+    case welcome, mode, disclosure, install, start, pair, scan, connect
 
     /// The dotted sub-sequence (install → connect) — welcome/mode are pre-flow.
     static let dotted: [OnboardingStep] = [.install, .start, .pair, .scan, .connect]

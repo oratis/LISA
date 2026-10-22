@@ -498,11 +498,15 @@ struct StatStrip: View {
 struct DelegateSheet: View {
     let client: LisaClient
     var onStarted: () -> Void
+    @EnvironmentObject var app: AppState
     @Environment(\.dismiss) private var dismiss
     @State private var kind = "managed"
     @State private var task = ""
     @State private var status = ""
     @State private var busy = false
+    /// A task description is user-written text bound for an AI service just like
+    /// a chat message, so it passes the same gate (App Store 5.1.1(i)).
+    @State private var showAIConsent = false
 
     var body: some View {
         NavigationStack {
@@ -525,6 +529,15 @@ struct DelegateSheet: View {
             }
             .navigationTitle("Delegate a task")
             .navigationBarTitleDisplayMode(.inline)
+            .sheet(isPresented: $showAIConsent) {
+                AIConsentSheet(
+                    disclosure: app.aiDisclosure,
+                    onAgree: { app.grantAIConsent(); showAIConsent = false; start() },
+                    onDecline: {
+                        showAIConsent = false
+                        status = "Nothing was sent — the task is still here."
+                    })
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
@@ -538,6 +551,8 @@ struct DelegateSheet: View {
     private func start() {
         let t = task.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return }
+        // Ask before the description leaves the phone, not after.
+        if app.needsAIConsent { showAIConsent = true; return }
         busy = true
         status = ""
         Task { @MainActor in

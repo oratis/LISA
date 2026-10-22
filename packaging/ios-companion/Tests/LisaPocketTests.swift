@@ -503,4 +503,124 @@ final class LisaPocketTests: XCTestCase {
             "ai.meetlisa.main.credits.20",
         ])
     }
+
+    // ── Third-party AI consent (App Store 5.1.1(i) / 5.1.2(i)) ──
+    // The gate that fixes the 2026-09-11 rejection. These assert the two things
+    // App Review checks: nothing may be sent before an explicit agreement, and
+    // the agreement covers the destination it was actually given for.
+
+    func testAIConsentIsRequiredUntilItIsGiven() {
+        let dest = AIConsent.destination(mode: .cloud, host: "cloud.meetlisa.ai")
+        XCTAssertTrue(AIConsent.needsConsent(nil, destination: dest))
+        let granted = AIConsentRecord(version: AIConsent.currentVersion,
+                                      destination: dest, grantedAt: Date())
+        XCTAssertFalse(AIConsent.needsConsent(granted, destination: dest))
+    }
+
+    func testAIConsentDoesNotCarryToAnotherBackend() {
+        // Agreeing to send to your own Mac must not silently authorise sending
+        // to LISA Cloud — a different recipient entirely.
+        let mac = AIConsent.destination(mode: .mac, host: "192.168.3.42")
+        let cloud = AIConsent.destination(mode: .cloud, host: "cloud.meetlisa.ai")
+        XCTAssertNotEqual(mac, cloud)
+        let onMac = AIConsentRecord(version: AIConsent.currentVersion,
+                                    destination: mac, grantedAt: Date())
+        XCTAssertTrue(AIConsent.needsConsent(onMac, destination: cloud))
+        // …nor to a different Mac.
+        let otherMac = AIConsent.destination(mode: .mac, host: "192.168.3.99")
+        XCTAssertTrue(AIConsent.needsConsent(onMac, destination: otherMac))
+    }
+
+    func testAIConsentDestinationIgnoresHostCasingAndPadding() {
+        XCTAssertEqual(AIConsent.destination(mode: .cloud, host: " Cloud.MeetLisa.ai "),
+                       AIConsent.destination(mode: .cloud, host: "cloud.meetlisa.ai"))
+    }
+
+    func testAIConsentIsReaskedWhenTheDisclosureVersionMoves() {
+        let dest = AIConsent.destination(mode: .cloud, host: "h")
+        let stale = AIConsentRecord(version: AIConsent.currentVersion - 1,
+                                    destination: dest, grantedAt: Date())
+        XCTAssertTrue(AIConsent.needsConsent(stale, destination: dest))
+    }
+
+    func testAIDisclosureNamesTheRecipientTheServerReported() {
+        let dto = AIDisclosureDTO(edition: "cloud", managed: true,
+                                  recipients: [AIRecipientDTO(name: "Zhipu AI (GLM)",
+                                                              model: "glm-4.6",
+                                                              endpoint: "open.bigmodel.cn",
+                                                              region: "China",
+                                                              policyUrl: "https://example.com/p")],
+                                  policyUrl: "https://meetlisa.ai/privacy", updated: "2026-09-22")
+        let d = AIDisclosure.from(dto, mode: .cloud)
+        XCTAssertFalse(d.recipientsUnknown)
+        XCTAssertEqual(d.recipients.first?.name, "Zhipu AI (GLM)")
+        XCTAssertEqual(d.recipients.first?.detail, "glm-4.6 · open.bigmodel.cn · processed in China")
+        XCTAssertNotNil(d.recipients.first?.policyURL)
+    }
+
+    func testAIDisclosureNeverInventsARecipientForAnOlderBackend() {
+        // A backend without /api/ai/disclosure must leave the app saying "this
+        // server didn't report a provider" — not naming one it guessed.
+        let d = AIDisclosure.from(nil, mode: .cloud)
+        XCTAssertTrue(d.recipientsUnknown)
+        XCTAssertTrue(d.managed)
+        XCTAssertFalse(d.unknownRecipientNote.isEmpty)
+        XCTAssertFalse(AIDisclosure.from(nil, mode: .mac).managed)
+    }
+
+    func testAIDisclosureDropsEmptyFieldsInsteadOfPrintingSeparators() {
+        let d = AIDisclosure.from(AIDisclosureDTO(edition: nil, managed: nil,
+                                                  recipients: [AIRecipientDTO(name: "Custom endpoint",
+                                                                              model: "llama3",
+                                                                              endpoint: "",
+                                                                              region: nil,
+                                                                              policyUrl: "")],
+                                                  policyUrl: nil, updated: nil),
+                                  mode: .mac)
+        XCTAssertEqual(d.recipients.first?.detail, "llama3")
+        XCTAssertNil(d.recipients.first?.policyURL)
+        XCTAssertNil(d.recipients.first?.endpoint)
+    }
+
+    func testAIDisclosureStatesBothWhatIsSentAndWhatIsNot() {
+        // Apple asks for the "what" explicitly; an empty list would be a silent
+        // regression that still compiles.
+        XCTAssertFalse(AIDisclosure.dataSent.isEmpty)
+        XCTAssertFalse(AIDisclosure.dataNotSent.isEmpty)
+        XCTAssertFalse(AIDisclosure.protectionNote.isEmpty)
+        XCTAssertEqual(AIDisclosure.privacyPolicyURL.absoluteString, "https://meetlisa.ai/privacy")
+        // Each mode names its own route — the cloud one goes through us, the
+        // Mac one does not.
+        XCTAssertNotEqual(AIDisclosure.fallback(for: .cloud).route,
+                          AIDisclosure.fallback(for: .mac).route)
+    }
+
+    func testTransportRefusesAISendsUntilTheGateOpens() {
+        let previous = AIConsentGate.shared.isGranted
+        defer { AIConsentGate.shared.set(previous) }
+        AIConsentGate.shared.set(false)
+        let client = LisaClient(config: ServerConfig(host: "h", port: 443, token: "t", scheme: "https"))
+        let expectation = expectation(description: "chat stream fails closed")
+        Task {
+            do {
+                for try await _ in client.chatStream("hello") { XCTFail("a message left the device") }
+                XCTFail("the stream finished without refusing")
+            } catch let error as LisaError {
+                guard case .aiConsentRequired = error else {
+                    return XCTFail("refused with the wrong error: \(error)")
+                }
+                expectation.fulfill()
+            } catch {
+                XCTFail("refused with the wrong error: \(error)")
+            }
+        }
+        wait(for: [expectation], timeout: 2)
+    }
+
+    func testOnboardingShowsTheDisclosureBeforeTheDottedSetup() {
+        XCTAssertLessThan(OnboardingStep.disclosure.rawValue, OnboardingStep.install.rawValue)
+        XCTAssertGreaterThan(OnboardingStep.disclosure.rawValue, OnboardingStep.mode.rawValue)
+        XCTAssertFalse(OnboardingStep.dotted.contains(.disclosure))   // pre-flow, no dot
+    }
+
 }

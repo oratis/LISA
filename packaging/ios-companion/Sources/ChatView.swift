@@ -34,7 +34,8 @@ final class ChatModel: ObservableObject {
     private var moodTask: Task<Void, Never>?
     /// The last thing the user said — replayed by `resend()` when a turn comes
     /// back empty / errored / cancelled.
-    private var lastUserText: String?
+    /// Read by ChatView so a retry can be re-gated by the AI consent sheet.
+    private(set) var lastUserText: String?
 
     // ── history ──
     func loadHistory(_ client: LisaClient) async {
@@ -179,11 +180,23 @@ final class ChatModel: ObservableObject {
     }
 }
 
+/// A message waiting on the third-party AI consent sheet. `isRetry` replays the
+/// last turn instead of appending a second copy of it to the transcript.
+private struct PendingSend: Identifiable {
+    let id = UUID()
+    let text: String
+    var isRetry = false
+}
+
 struct ChatView: View {
     @EnvironmentObject var app: AppState
     @StateObject private var model = ChatModel()
     @State private var input = ""
     @State private var showPaywall = false
+    /// The message the user tried to send before agreeing to third-party AI
+    /// processing. Held HERE, on the phone — `runTurn` never sees it until the
+    /// consent sheet comes back with an agreement (App Store 5.1.1(i)).
+    @State private var pendingSend: PendingSend?
     private static let bottomID = "chat-bottom"
 
     var body: some View {
@@ -209,6 +222,26 @@ struct ChatView: View {
             .task(id: app.config) { model.startMood(app.client); await model.loadHistory(app.client) }
             .onDisappear { model.stopMood() }
             .sheet(isPresented: $showPaywall) { PaywallSheet().environmentObject(app) }
+            .sheet(item: $pendingSend) { text in
+                AIConsentSheet(
+                    disclosure: app.aiDisclosure,
+                    onAgree: {
+                        app.grantAIConsent()
+                        pendingSend = nil
+                        if text.isRetry { model.resend(client: app.client) }
+                        else { model.send(text.text, client: app.client) }
+                    },
+                    onDecline: {
+                        pendingSend = nil
+                        // Nothing was sent. Give a fresh message back to the
+                        // composer; a retry's text is already in the transcript.
+                        if !text.isRetry { input = text.text }
+                        app.notify("Nothing was sent.", ok: false)
+                    })
+            }
+            // Its own task, not folded into the one above: naming the AI
+            // recipient must not wait on the history fetch, nor delay it.
+            .task(id: app.config) { await app.refreshAIDisclosure() }
         }
     }
 
@@ -257,7 +290,7 @@ struct ChatView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: Theme.Space.s) {
                     ForEach(quickCommands, id: \.self) { cmd in
-                        Button { model.send(cmd, client: app.client) } label: {
+                        Button { submit(cmd) } label: {
                             Text(cmd).font(.caption)
                                 .padding(.horizontal, 12).padding(.vertical, 7)
                                 .background(Theme.accent.opacity(0.14), in: Capsule())
@@ -336,7 +369,13 @@ struct ChatView: View {
     private func retryAction(for msg: ChatMessage) -> (() -> Void)? {
         guard !model.sending, msg.role == .lisa, msg.isRetryable,
               msg.id == model.messages.last?.id else { return nil }
-        return { model.resend(client: app.client) }
+        return {
+            if app.needsAIConsent, let text = model.lastUserText {
+                pendingSend = PendingSend(text: text, isRetry: true)   // re-ask, don't replay
+            } else {
+                model.resend(client: app.client)
+            }
+        }
     }
 
     private func scrollToBottom(_ proxy: ScrollViewProxy) {
@@ -373,7 +412,20 @@ struct ChatView: View {
     private func sendCurrent() {
         let text = input
         input = ""
-        model.send(text, client: app.client)
+        submit(text)
+    }
+
+    /// The single door out of this screen. Anything the user typed — composer or
+    /// quick chip — goes through here, and when the third-party AI disclosure
+    /// hasn't been agreed to yet it stops here, on the device, until it has.
+    private func submit(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        if app.needsAIConsent {
+            pendingSend = PendingSend(text: trimmed)
+            return
+        }
+        model.send(trimmed, client: app.client)
     }
 }
 

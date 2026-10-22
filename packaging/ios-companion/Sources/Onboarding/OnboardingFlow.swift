@@ -37,8 +37,9 @@ struct OnboardingFlow: View {
 
     @ViewBuilder private var content: some View {
         switch step {
-        case .welcome: welcomeScreen
-        case .mode:    modeScreen
+        case .welcome:    welcomeScreen
+        case .mode:       modeScreen
+        case .disclosure: disclosureScreen
         case .install: installScreen
         case .start:   startScreen
         case .pair:    pairScreen
@@ -95,17 +96,61 @@ struct OnboardingFlow: View {
                     OnboardingChoiceCard(systemImage: "cloud",
                                          title: "LISA Cloud", subtitle: "Sign in with Apple or email — no Mac, no API key. Free daily allowance included.",
                                          badge: "Recommended", selected: app.connectionMode == .cloud) {
-                        app.setConnectionMode(.cloud); openManual(.cloud)
+                        app.setConnectionMode(.cloud); go(.disclosure)
                     }
                     OnboardingChoiceCard(systemImage: "desktopcomputer",
                                          title: "My Mac", subtitle: "Advanced: private and local — your data never leaves your Mac.",
                                          selected: app.connectionMode == .mac) {
-                        app.setConnectionMode(.mac); go(.install)
+                        app.setConnectionMode(.mac); go(.disclosure)
                     }
                 }
                 .padding(.vertical, 24)
             }
         }
+    }
+
+    // ── 1b · What Lisa sends, and to whom (App Store 5.1.1(i)/5.1.2(i)) ──
+    // Shown before the backend is even configured, so the user agrees knowing
+    // the route — not after a message has already been typed. "Not now" leaves
+    // the gate closed: setup continues, but nothing can be sent until they
+    // agree here or at the composer.
+    private var disclosureScreen: some View {
+        VStack(spacing: 0) {
+            OnboardingTopBar(step: nil, onSkip: skip)
+            ScrollView {
+                VStack(alignment: .leading, spacing: Theme.Space.l) {
+                    OnboardingTitle(title: app.aiDisclosure.headline,
+                                    subtitle: "Lisa can't answer without one. Here's exactly what that involves.")
+                    AIDisclosureBody(disclosure: app.aiDisclosure)
+                        .padding(.horizontal, 24)
+                }
+                .padding(.top, 24)
+                .padding(.bottom, 12)
+            }
+        }
+        // Unlike the other steps this screen's content is long enough to scroll
+        // under the buttons, so the inset gets its own background — a legal
+        // disclosure half-hidden behind an Agree button is worse than useless.
+        .safeAreaInset(edge: .bottom) {
+            VStack(spacing: 8) {
+                OnboardingPrimaryButton(title: "I agree — continue") {
+                    app.grantAIConsent()
+                    afterDisclosure()
+                }
+                OnboardingSecondaryButton(title: "Not now — set up without sending") {
+                    afterDisclosure()
+                }
+            }
+            .padding(.top, 10)
+            .padding(.bottom, 24)
+            .background(.ultraThinMaterial)
+        }
+        .task { await app.refreshAIDisclosure() }
+    }
+
+    /// Resume the branch the mode screen chose.
+    private func afterDisclosure() {
+        if app.connectionMode == .cloud { openManual(.cloud) } else { go(.install) }
     }
 
     // ── 2 · Install on your Mac ─────────────────────────────────

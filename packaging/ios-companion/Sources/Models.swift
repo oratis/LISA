@@ -374,3 +374,37 @@ struct LisaSessionInfo: Codable, Identifiable, Hashable {
 }
 struct LisaSessionsResponse: Codable { var sessions: [LisaSessionInfo] }
 struct LisaSessionMutation: Codable { var ok: Bool; var id: String }
+
+// ── Third-party AI disclosure (/api/ai/disclosure) ──
+// Names the AI service a backend actually forwards a turn to, so the in-app
+// consent screen can identify the real recipient instead of guessing from the
+// build (App Store Guideline 5.1.1(i) / 5.1.2(i)). Unauthenticated on purpose —
+// the user must be able to read it BEFORE signing in or sending anything.
+// Every field is optional: an older backend answers 404 and the app falls back
+// to `AIDisclosure.fallback(for:)`.
+
+struct AIRecipientDTO: Codable, Equatable, Identifiable {
+    /// Company that receives the message, e.g. "Zhipu AI (GLM)".
+    var name: String
+    /// The model the data is sent to, e.g. "glm-4.6".
+    var model: String?
+    /// API host that receives the request, e.g. "open.bigmodel.cn".
+    var endpoint: String?
+    /// Where that host processes it, e.g. "China" — the honest answer to
+    /// "who is the data sent to" includes where they are.
+    var region: String?
+    /// That company's own privacy policy.
+    var policyUrl: String?
+    var id: String { "\(name)/\(model ?? "")" }
+}
+
+struct AIDisclosureDTO: Codable, Equatable {
+    var edition: String?
+    /// true = the operator's key pays (LISA Cloud); false = the user's own key.
+    var managed: Bool?
+    var recipients: [AIRecipientDTO]
+    /// The backend operator's privacy policy.
+    var policyUrl: String?
+    /// ISO date the backend's disclosure content last changed.
+    var updated: String?
+}

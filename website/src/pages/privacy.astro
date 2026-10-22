@@ -3,7 +3,7 @@ import Base from "../layouts/Base.astro";
 ---
 <Base title="Privacy" lang="en" description="Lisa's privacy policy — a local-first AI that collects nothing to our servers.">
   <header class="page-head">
-    <p class="eyebrow"><span class="rule"></span> PRIVACY <b>· updated 2026-07-24</b></p>
+    <p class="eyebrow"><span class="rule"></span> PRIVACY <b>· updated 2026-09-22</b></p>
     <h1>Privacy Policy</h1>
     <p class="lede">
       Lisa is <strong>local-first</strong>. The apps — <strong>Lisa</strong> (macOS) and
@@ -43,13 +43,51 @@ import Base from "../layouts/Base.astro";
     </section>
 
     <section class="pol">
-      <p class="eyebrow"><b>Your backend &amp; LLM providers</b></p>
+      <p class="eyebrow"><b>Third-party AI processing — what is sent, and to whom</b></p>
       <p>
-        When you chat, your messages are processed by the large-language-model provider
-        configured on <em>your</em> backend (e.g. Anthropic, Zhipu/GLM, OpenAI, Google), using
-        <em>your</em> API key. That processing is governed by that provider’s privacy policy.
-        We do not intercept or relay it.
+        Lisa cannot answer without a large-language-model provider, and that provider is a
+        different company from us. <strong>Before your first message is sent, the app shows
+        you who receives it and asks you to agree.</strong> Nothing is transmitted until you
+        do, and you can withdraw that agreement at any time in
+        <em>Settings › Privacy › AI processing &amp; data sharing</em>, which stops transmission
+        immediately.
       </p>
+      <ul>
+        <li>
+          <strong>What is sent</strong> — the messages you write and anything you attach to
+          them; the earlier messages of that conversation, so the reply follows on; the notes
+          Lisa has saved about you when they relate to what you asked; and the results of any
+          tool she runs to answer you.
+        </li>
+        <li>
+          <strong>What is never sent</strong> — your contacts, photo library, calendar,
+          location or health data, and no device or advertising identifier. The apps contain
+          no analytics, advertising or tracking SDK.
+        </li>
+        <li>
+          <strong>Who receives it — LISA Cloud.</strong> Your message goes to our server on
+          Google Cloud (us-central1) and is forwarded to the AI provider that instance is
+          configured with, using our account. That provider is named in the app on the
+          consent screen and in Settings, and the app reads it live from the server, so it is
+          always the current one. <strong>Today it is Zhipu AI (GLM), model
+          <code>glm-4.6</code>, endpoint <code>open.bigmodel.cn</code>, processed in
+          China.</strong>
+        </li>
+        <li>
+          <strong>Who receives it — your own Mac.</strong> Your message goes to the Mac you
+          paired, over your own network, and your Mac forwards it to whichever provider you
+          configured there (Anthropic, OpenAI, Google, Zhipu/GLM, a local model, …) using
+          <em>your</em> API key. We never receive it.
+        </li>
+        <li>
+          <strong>Protection we require.</strong> We only send your messages to providers
+          whose terms commit to protecting them at least as strongly as this policy does: to
+          process them solely to generate your reply, not to sell or disclose them, and not to
+          use them for advertising. Each provider's own privacy policy is linked from the
+          consent screen in the app. We do not sell, rent or share your messages with anyone
+          beyond the provider that generates the reply.
+        </li>
+      </ul>
     </section>
 
     <section class="pol">
@@ -67,10 +105,13 @@ import Base from "../layouts/Base.astro";
           append-only usage ledger (model, token counts, cost) — not message content.
         </li>
         <li>
-          <strong>Sub-processors</strong> — LLM inference (e.g. Zhipu/GLM, Anthropic, OpenAI),
-          Resend (verification &amp; sign-in code emails), Stripe (web top-ups), Apple
-          (Sign in with Apple, iOS purchases), Google (Sign in with Google), Cloudflare
-          (bot-check on signup). Each is governed by its own policy.
+          <strong>Sub-processors</strong> — LLM inference (currently Zhipu/GLM; see the
+          section above for exactly what is sent and where), Resend (verification &amp;
+          sign-in code emails), Stripe (web top-ups), Apple (Sign in with Apple, iOS
+          purchases), Google Cloud (hosting) and Google (Sign in with Google), Cloudflare
+          (bot-check on signup). Each is bound by its own policy and by terms that require
+          protections equivalent to those described here; each processes your data only to
+          provide the function it is used for.
         </li>
         <li>
           <strong>Deletion</strong> — "Delete account" in the app removes the account record

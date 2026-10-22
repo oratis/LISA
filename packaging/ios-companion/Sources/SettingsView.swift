@@ -239,6 +239,20 @@ struct SettingsView: View {
                 }
 
                 Section("Privacy") {
+                    // Third-party AI disclosure + the permission itself (App Store
+                    // 5.1.1(i)/5.1.2(i)). Always reachable, so the agreement can be
+                    // re-read and withdrawn, not just granted once at first send.
+                    NavigationLink { AIDisclosureDetailView() } label: {
+                        Label {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("AI processing & data sharing")
+                                Text(app.needsAIConsent ? "Not agreed — nothing is sent" : "Agreed")
+                                    .font(.caption).foregroundStyle(app.needsAIConsent ? Theme.gold : .secondary)
+                            }
+                        } icon: {
+                            Image(systemName: "sparkles.rectangle.stack")
+                        }
+                    }
                     NavigationLink { DevicesView() } label: { Label("Paired devices", systemImage: "iphone.gen3") }
                     // Sense (ambient-signal consent) — a privacy control, so it
                     // lives in Settings now rather than its own tab (review P4/H1).

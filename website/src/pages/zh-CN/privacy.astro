@@ -3,7 +3,7 @@ import Base from "../../layouts/Base.astro";
 ---
 <Base title="隐私" lang="zh-CN" description="Lisa 隐私政策——本地优先,不向我们的服务器收集任何数据。">
   <header class="page-head">
-    <p class="eyebrow"><span class="rule"></span> 隐私 <b>· 更新于 2026-06-26</b></p>
+    <p class="eyebrow"><span class="rule"></span> 隐私 <b>· 更新于 2026-09-22</b></p>
     <h1>隐私政策</h1>
     <p class="lede">
       Lisa 是<strong>本地优先</strong>的。两个客户端 —— <strong>Lisa</strong>(macOS)和
@@ -40,12 +40,42 @@ import Base from "../../layouts/Base.astro";
     </section>
 
     <section class="pol">
-      <p class="eyebrow"><b>你的后端与大模型提供商</b></p>
+      <p class="eyebrow"><b>第三方 AI 处理 —— 发送什么、发给谁</b></p>
       <p>
-        当你聊天时,消息由配置在<em>你</em>后端上的大语言模型提供商
-        (如 Anthropic、智谱/GLM、OpenAI、Google)用<em>你</em>的 API key 处理,
-        受该提供商的隐私政策约束。我们不拦截、不中转。
+        Lisa 必须借助大语言模型提供商才能回答,而该提供商是与我们不同的另一家公司。
+        <strong>在你的第一条消息发出之前,应用会明确告知接收方是谁,并请你同意。</strong>
+        在你同意之前不会传输任何内容;你也可以随时在
+        <em>设置 › 隐私 › AI 处理与数据共享</em>中撤回同意,撤回后立即停止传输。
       </p>
+      <ul>
+        <li>
+          <strong>会发送什么</strong> —— 你写下的消息及其附带内容;该对话中在先的消息,
+          以便回复能接得上;与你的问题相关时,Lisa 为你保存的记忆;以及她为回答你而
+          运行工具所得的结果。
+        </li>
+        <li>
+          <strong>绝不发送什么</strong> —— 你的通讯录、相册、日历、位置或健康数据,
+          也不发送任何设备标识或广告标识。应用不含任何分析、广告或追踪 SDK。
+        </li>
+        <li>
+          <strong>接收方 —— LISA Cloud。</strong>你的消息先到我们位于 Google Cloud
+          (us-central1)的服务器,再由我们用自己的账号转发给该实例所配置的 AI 提供商。
+          该提供商的名称会显示在应用的同意页与设置中,并由应用从服务器实时读取,
+          因此始终是当前在用的那一家。<strong>目前为智谱 AI(GLM),模型
+          <code>glm-4.6</code>,接口 <code>open.bigmodel.cn</code>,在中国境内处理。</strong>
+        </li>
+        <li>
+          <strong>接收方 —— 你自己的 Mac。</strong>你的消息经你自己的网络发往你配对的 Mac,
+          再由你的 Mac 用<em>你</em>的 API key 转发给你在那里配置的提供商
+          (Anthropic、OpenAI、Google、智谱/GLM、本地模型……)。我们不会收到。
+        </li>
+        <li>
+          <strong>我们要求的保护水平</strong> —— 我们只会把你的消息发送给在条款中承诺提供
+          不低于本政策之保护的提供商:仅为生成你的回复而处理、不出售或披露、不用于广告。
+          各提供商自身的隐私政策可从应用的同意页直接打开。除生成回复的该提供商外,
+          我们不会向任何人出售、出租或共享你的消息。
+        </li>
+      </ul>
     </section>
 
     <section class="pol">
@@ -63,9 +93,11 @@ import Base from "../../layouts/Base.astro";
           不含消息内容。
         </li>
         <li>
-          <strong>子处理者</strong> —— 大模型推理(如智谱/GLM、Anthropic、OpenAI)、
+          <strong>子处理者</strong> —— 大模型推理(目前为智谱/GLM;发送内容与去向详见上节)、
           Resend(验证与登录验证码邮件)、Stripe(网页充值)、Apple(Apple 登录与 iOS 内购)、
-          Google(Google 登录)、Cloudflare(注册时的人机校验)。各自受其隐私政策约束。
+          Google Cloud(托管)与 Google(Google 登录)、Cloudflare(注册时的人机校验)。
+          各自受其隐私政策约束,并受要求其提供与本政策同等保护的条款约束;
+          各方仅为其所承担的功能处理你的数据。
         </li>
         <li>
           <strong>删除</strong> —— 应用内"删除账号"会移除账号记录并<strong>完整抹除</strong>

@@ -16,6 +16,7 @@ import { runIdleOnce } from "../idle/runner.js";
 import { getIdleWatcher } from "../idle/watcher.js";
 import { moodBus } from "../mood-bus.js";
 import { providerForModel } from "../providers/registry.js";
+import { aiDisclosure } from "../providers/disclosure.js";
 import { buildSystemPromptSnapshot, getPromptFingerprint } from "../prompt.js";
 import { readActiveWebSession, writeActiveWebSession } from "../sessions/active.js";
 import { listSessionsOnDisk } from "../sessions/list.js";
@@ -1332,6 +1333,19 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       const body = cloudEdition && !healthAuthed ? publicHealthPayload(full) : full;
       res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
       res.end(JSON.stringify(body));
+      return;
+    }
+
+    // Third-party AI disclosure (pre-gate, unauthenticated, no I/O). Lisa Pocket
+    // reads this to NAME the AI company on its consent screen before the user
+    // signs in or types anything — App Store Guideline 5.1.1(i) / 5.1.2(i), the
+    // 2026-09 rejection. Public on purpose: it states the same fact the privacy
+    // policy does (which provider this deployment forwards to), and carries no
+    // key, no usage and no tenant data. Deriving it from the live model keeps it
+    // true across a provider swap without shipping an app update.
+    if (req.method === "GET" && url === "/api/ai/disclosure") {
+      res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+      res.end(JSON.stringify(aiDisclosure()));
       return;
     }
 

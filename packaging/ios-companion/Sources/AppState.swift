@@ -52,6 +52,14 @@ final class AppState: ObservableObject {
     var pushPrefs = PushPrefs()
     /// Drives the first-run onboarding cover (docs/PLAN_IOS_ONBOARDING_v1.0.md).
     @Published var showOnboarding = false
+    /// The user's recorded agreement to send messages to a third-party AI
+    /// service, per destination (App Store 5.1.1(i)/5.1.2(i) — see
+    /// Sources/AIDisclosure.swift). nil ⇒ nothing may be sent yet.
+    @Published private(set) var aiConsent: AIConsentRecord?
+    /// What that screen says: the route + the AI company this backend actually
+    /// forwards to. Starts as the structural fallback and is refined once
+    /// `/api/ai/disclosure` answers.
+    @Published private(set) var aiDisclosure: AIDisclosure
     /// Transient toast for action feedback (so a failed control/mutation — now
     /// that A1 surfaces non-2xx — lands visibly instead of in a buried status row).
     @Published var toast: ToastMessage?
@@ -93,7 +101,10 @@ final class AppState: ObservableObject {
         #endif
         self.config = cfg
         self.client = LisaClient(config: cfg)
-        self.connectionMode = ConnectionMode(rawValue: d.string(forKey: "lisa.mode") ?? "") ?? .mac
+        let mode = ConnectionMode(rawValue: d.string(forKey: "lisa.mode") ?? "") ?? .mac
+        self.connectionMode = mode
+        self.aiConsent = AppState.loadAIConsent(d)
+        self.aiDisclosure = .fallback(for: mode)
         self.appearance = d.string(forKey: "lisa.appearance") ?? "nebula"
         let lockOn = d.bool(forKey: "lisa.biometricLock")
         self.biometricLockEnabled = lockOn
@@ -118,6 +129,10 @@ final class AppState: ObservableObject {
             Task { @MainActor in self?.onCellular = cell }
         }
         pathMonitor.start(queue: DispatchQueue(label: "ai.meetlisa.pathmonitor"))
+        // Arm the transport gate from the restored record — a fresh launch must
+        // not start out able to send just because a record exists for some other
+        // backend.
+        syncAIConsentGate()
     }
 
     // ── APNs registration (client half; delivery needs the Mac's APNs key) ──
@@ -157,6 +172,11 @@ final class AppState: ObservableObject {
     func setConnectionMode(_ m: ConnectionMode) {
         connectionMode = m
         UserDefaults.standard.set(m.rawValue, forKey: "lisa.mode")
+        // The recipient changes with the data plane, so the disclosure must too —
+        // and `aiDestination` now differs, which re-arms the consent gate.
+        aiDisclosure = .fallback(for: m)
+        syncAIConsentGate()
+        Task { await refreshAIDisclosure() }
     }
 
     /// One-tap escape from an unreachable LAN pairing: flip to the LISA Cloud data
@@ -193,6 +213,11 @@ final class AppState: ObservableObject {
         d.set(port, forKey: "lisa.port")
         d.set(scheme, forKey: "lisa.scheme")
         if let token, !token.isEmpty { TokenStore.save(token) } else { TokenStore.delete() }
+        // New host ⇒ new `aiDestination` ⇒ the consent gate re-arms; re-ask the
+        // new backend who it forwards to so the screen names the right company.
+        aiDisclosure = .fallback(for: connectionMode)
+        syncAIConsentGate()
+        Task { await refreshAIDisclosure() }
     }
 
     /// Apply a pairing string (from QR / paste). Returns false if unparseable.
@@ -332,6 +357,69 @@ final class AppState: ObservableObject {
     func deleteCloudAccount() async throws {
         try await client.deleteAccount()
         signOutCloud()
+    }
+
+    // ── third-party AI consent (App Store 5.1.1(i) / 5.1.2(i)) ──
+    // The gate that made v1.2 compliant: no message reaches an AI company until
+    // the user has read who receives it and tapped Agree. See AIDisclosure.swift
+    // and REVIEW_RESPONSE_5.1.1i.md.
+
+    private static let aiConsentKey = "lisa.aiConsent.v1"
+
+    private static func loadAIConsent(_ d: UserDefaults) -> AIConsentRecord? {
+        guard let data = d.data(forKey: aiConsentKey) else { return nil }
+        return try? JSONDecoder().decode(AIConsentRecord.self, from: data)
+    }
+
+    /// Where this phone's messages currently end up — the scope of an agreement.
+    var aiDestination: String { AIConsent.destination(mode: connectionMode, host: config.host) }
+
+    /// True ⇒ the chat composer and agent controls must ask before sending.
+    var needsAIConsent: Bool { AIConsent.needsConsent(aiConsent, destination: aiDestination) }
+
+    /// Mirror the current answer into the transport gate, which is what actually
+    /// refuses a send (LisaClient.requireAIConsent). Must run after ANYTHING that
+    /// can change the answer — granting, revoking, and every change of
+    /// destination, because an agreement is scoped to one backend.
+    private func syncAIConsentGate() { AIConsentGate.shared.set(!needsAIConsent) }
+
+    /// Record the agreement for the current destination. Called only from the
+    /// consent screen's explicit Agree button — never implied by any other tap.
+    func grantAIConsent() {
+        let record = AIConsentRecord(version: AIConsent.currentVersion,
+                                     destination: aiDestination, grantedAt: Date())
+        aiConsent = record
+        syncAIConsentGate()
+        if let data = try? JSONEncoder().encode(record) {
+            UserDefaults.standard.set(data, forKey: AppState.aiConsentKey)
+        }
+    }
+
+    /// Withdraw it (Settings → Privacy). Sending is blocked again immediately.
+    func revokeAIConsent() {
+        aiConsent = nil
+        syncAIConsentGate()
+        UserDefaults.standard.removeObject(forKey: AppState.aiConsentKey)
+    }
+
+    /// Ask the backend which AI company it actually forwards to, so the consent
+    /// screen names the real recipient. Unauthenticated route: it answers before
+    /// sign-in, and a backend too old to have it leaves the fallback in place.
+    func refreshAIDisclosure() async {
+        if config.isConfigured {
+            aiDisclosure = .from(try? await client.aiDisclosure(), mode: connectionMode)
+            return
+        }
+        // Not paired yet — which is exactly when onboarding shows the screen. In
+        // cloud mode we already know where the user is about to sign in, so ask
+        // THAT server rather than telling a first-run user we don't know who
+        // receives their messages.
+        guard connectionMode == .cloud, let base = AppState.parseCloudBase(AppState.defaultCloudBase) else {
+            aiDisclosure = .fallback(for: connectionMode)
+            return
+        }
+        let probe = LisaClient(config: base)
+        aiDisclosure = .from(try? await probe.aiDisclosure(), mode: .cloud)
     }
 
     // ── first-run onboarding (docs/PLAN_IOS_ONBOARDING_v1.0.md) ──
