@@ -115,6 +115,16 @@ gcloud monitoring uptime create lisa-cloud-health \
   --path /health --project $PROJECT
 ```
 
+手动检查可运行 `python3 scripts/check-cloud-health.py`，无需账号或凭据；它同时检查
+`/health` 与 `/api/auth/config`，仅输出状态及 Cloudflare request ID。
+2026-10-24 的排查确认：Python 默认 `User-Agent` 被 Cloudflare 以 **403 / 1010**
+拦截，curl、Lisa Pocket 客户端标识及原生 URLSession 请求通过。1010 指向浏览器签名
+检查，不等于应用拒绝登录；详见 [Cloudflare 官方说明](https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-1xxx-errors/error-1010/)。
+脚本使用真实的 `LISA-HealthCheck/1.0` 标识，遇到 1010 会明确报
+`cloudflare_browser_signature_block` 并非零退出。排查时应同时记录响应体、`CF-Ray`，
+对照 Cloud Run 日志；不要仅凭一个脚本的 403 就改 IAM 或关闭全站防护。
+公开端点正常不代表登录与 AI 聊天成功，后两项需要独立验收。
+
 日志告警一：异常消费（meter.ts，>$10/天/用户）。实际输出是小写的
 `[billing] ⚠ anomaly: …`（console.error → stderr → textPayload，severity ERROR）
 ——**不是**大写 `ANOMALY`，过滤串照抄下面这条，别凭记忆改：

@@ -22,7 +22,8 @@ const copy = zh ? {
   ],
   boundary: "Cloud 与 Mac 分别保存聊天、记忆和凭据，不会自动同步。使用远程模型时，相关内容会发送给所选供应商。",
   pocketTitle: "Lisa Pocket，随身入口。",
-  pocket: "iPhone 与 iPad app 支持 Cloud 和 My Mac 两套独立连接。当前版本已提交 App Store，等待审核，尚未公开上架。",
+  pocket: "Lisa Pocket 1.2 已在美区 App Store 上架，支持 iPhone 与 iPad、Cloud 与 My Mac 两套独立连接。需要 iOS 17 或更新版本，可用性因地区而异。",
+  pocketDownload: "前往 App Store",
   privacy: "你决定分享什么", privacyText: "Lisa Pocket 在发送 AI 聊天前说明接收方与数据用途，允许取消和撤回同意。云端账号可在设置中删除。AI 可能出错，请核对重要结果。",
   policy: "隐私政策", source: "查看源码与开发状态", demo: "观看产品演示", cta: "从今天想完成的一件事开始。",
 } : {
@@ -44,7 +45,8 @@ const copy = zh ? {
   ],
   boundary: "Cloud and Mac keep separate conversations, memories and credentials. They do not automatically sync. Remote models receive the relevant content you send them.",
   pocketTitle: "Lisa Pocket, your mobile companion.",
-  pocket: "The iPhone and iPad app supports separate Cloud and My Mac connections. The current version has been submitted to the App Store and is waiting for review; it is not publicly available yet.",
+  pocket: "Lisa Pocket 1.2 is available on the US App Store for iPhone and iPad, with separate Cloud and My Mac connections. Requires iOS 17 or later. Availability varies by region.",
+  pocketDownload: "View on the App Store",
   privacy: "Choose what you share", privacyText: "Before AI chat, Lisa Pocket explains the recipients and data use. You can cancel or withdraw permission, and delete your cloud account in Settings. AI can make mistakes; check important results.",
   policy: "Privacy policy", source: "Source & development status", demo: "Watch the product demo", cta: "Start with one thing you want to get done.",
 };
@@ -77,7 +79,7 @@ const copy = zh ? {
     <p class="note boundary">{copy.boundary}</p>
   </section>
   <section class="section mode-grid">
-    <article><h2>{copy.pocketTitle}</h2><p class="lede">{copy.pocket}</p><a href="https://github.com/oratis/LISA">{copy.source} →</a></article>
+    <article><h2>{copy.pocketTitle}</h2><p class="lede">{copy.pocket}</p><div class="actions"><a class="btn-primary" href="https://apps.apple.com/us/app/lisa-pocket/id6784690058">{copy.pocketDownload} →</a><a href="https://github.com/oratis/LISA">{copy.source} →</a></div></article>
     <article><h2>{copy.privacy}</h2><p class="lede">{copy.privacyText}</p><a href={`${prefix}/privacy`}>{copy.policy} →</a></article>
   </section>
   <section class="cta-band">

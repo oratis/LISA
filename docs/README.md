@@ -197,3 +197,4 @@ Smaller, self-contained design write-ups that aren't plans with phases.
 | [SHOW_HN_DRAFT.md](./SHOW_HN_DRAFT.md) | The launch post draft. |
 
 - [2026-10-07 open PR integration and App Store audit](./REVIEW_OPEN_PRS_2026-10-07.md) — per-PR fixes, AI Personal Assistant positioning and release gates.
+- [2026-10-24 Lisa Pocket live verification](./REVIEW_POCKET_LIVE_2026-10-24.md) — confirmed US App Store availability, Cloudflare 1010 diagnosis and production native-client login/chat checks.

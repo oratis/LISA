@@ -20,7 +20,7 @@
 | **Mac app** | Web workspace, menu-bar Island, local tools and agent controls | Download the signed, notarized **Lisa-Suite.dmg** from Releases; Node and the backend are bundled |
 | **CLI / self-hosted web** | Local assistant, configurable providers, knowledge, integrations and development tools | Node **22.19+** and a provider key or local model |
 | **LISA Cloud** | Account-based chat, memory and knowledge tools, without setting up a Mac | [Sign in](https://meetlisa.ai/cloud/); usage allowance and optional credits apply |
-| **Lisa Pocket (iOS)** | Cloud chat or access to your reachable Mac; separate saved connections | Native app has been resubmitted for App Store review; **not yet publicly approved** |
+| **Lisa Pocket (iOS)** | Cloud chat or access to your reachable Mac; separate saved connections | **1.2 is available on the [US App Store](https://apps.apple.com/us/app/lisa-pocket/id6784690058)**; availability varies by region |
 
 Cloud and Mac are **separate instances**: their histories, memories and credentials do not automatically sync. Local tools need your Mac to be running and reachable. Cloud does not expose your Mac's shell, mail, coding agents or host-level push services.
 
@@ -81,7 +81,7 @@ The merged **reach-out gate** applies source controls, quiet hours, deduplicatio
 
 The latest tagged package is **v0.28.1** ([release notes](docs/RELEASE_v0.28.1.md)). Current `main` may include later work; a merged feature is not proof that it has been deployed to Cloud or released in a native binary.
 
-| Workstream | Status on 2026-10-07 |
+| Workstream | Status (iOS availability rechecked 2026-10-24) |
 | --- | --- |
 | Personal-assistant entry, Cloud/Mac isolation, streaming/history fixes | Merged; native and production evidence recorded in the [execution log](docs/EXECUTION_PERSONAL_ASSISTANT_2026-09-27.md) |
 | Warden core / credential broker / reach-out gate | Merged to `main`; Warden web-chat policy requires opt-in |
@@ -89,7 +89,7 @@ The latest tagged package is **v0.28.1** ([release notes](docs/RELEASE_v0.28.1.m
 | Guarded cloud web search / fetch | [PR #404](https://github.com/oratis/LISA/pull/404), merged; off by default and disabled in production |
 | Purpose-based model routing and cost controls | [PR #407](https://github.com/oratis/LISA/pull/407), merged; estimated run budgets are an opt-in API, not a universal spending ceiling |
 | Cross-device memory, tenant-level push, calendar/mail-write connectors, computer use | Planned; not advertised as available |
-| iOS App Store | Fixes for consumable-credit restore and AI disclosure resubmitted October 7 as **1.2 (1791346539)**; **waiting for review** ([evidence](docs/REVIEW_2026-10-07.md)) |
+| iOS App Store | **1.2 is live**; Apple lists the release date as October 14. Production password login and streamed chat passed using the released client's source ([verification and limits](docs/REVIEW_POCKET_LIVE_2026-10-24.md)) |
 
 The [October integration audit](docs/REVIEW_OPEN_PRS_2026-10-07.md) records per-PR fixes, validation and release gates.
 
