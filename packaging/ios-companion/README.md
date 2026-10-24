@@ -1,18 +1,30 @@
 # Lisa Pocket — iOS companion
 
-A native SwiftUI app that turns your phone into a **remote telemetry + control
-terminal for Dispatch**: see every Claude Code / Codex / managed / PTY agent on
-your Mac, steer the controllable ones, adopt idle sessions, chat with Lisa, and
-get push when an agent finishes / errors / needs permission.
+A native SwiftUI personal-assistant app for iPhone and iPad. Sign in to LISA Cloud
+to chat without a Mac, or pair your own Mac to chat with that instance, monitor
+its coding agents, and use permitted controls. Cloud and Mac connections keep
+separate conversations, memories and credentials.
 
-It's a thin client to your Mac's `lisa serve --web` — the design is in
+It connects to LISA Cloud or your Mac's `lisa serve --web` — the original Mac companion design is in
 [docs/IOS_COMPANION_PLAN.md](../../docs/IOS_COMPANION_PLAN.md) and the endpoints it
 uses all live in `src/web/server.ts`.
 
 ## Status
 
-**Compile-verified MVP.** The app builds clean for the iOS Simulator (Xcode 26,
-iOS 17+ target). It covers:
+**Version 1.2 is available on the [US App Store](https://apps.apple.com/us/app/lisa-pocket/id6784690058)**,
+verified October 24, 2026. Apple lists October 14 as its release date. Requires
+iOS/iPadOS 17+; availability varies by region. See the
+[live verification and remaining gaps](../../docs/REVIEW_POCKET_LIVE_2026-10-24.md).
+The October 7 submitted build is **1.2 (1791346539)**; subsequent changes on
+`main`, including the October 8 visual refresh, are not proof of a new store build.
+
+- **Cloud** — account sign-in, streamed replies and conversation history; an
+  explicit AI data-sharing form with named recipients, cancellation and withdrawal.
+- **Credits** — consumable packs and an account-owned **Refresh credit balance**
+  action that does not invoke Apple purchase restoration. Real StoreKit settlement
+  still needs its own end-to-end verification.
+
+Mac-connected features include:
 
 - **Dispatch** — roster from `/api/agents/sessions` + live `/events` SSE (auto-reconnect
   with backoff + a full resync on foreground); rows keyed off `controllable` /
@@ -45,7 +57,7 @@ iOS 17+ target). It covers:
   to the Mac), and the push-bridge refreshes it over APNs (`liveactivity`) as the agent
   updates, ending it on done/error — so it stays fresh while backgrounded.
 
-**Needs an Apple push key** (the only remaining external dependency): APNs alert delivery
+**Mac APNs needs an Apple push key:** APNs alert delivery
 *and* the Live-Activity refresh are wired end-to-end (iOS registration + token capture, a
 token-auth APNs sender) but **inert until `LISA_APNS_*` is set on the Mac**; ntfy works
 today with no Apple infra. Live APNs behavior is therefore unit-/compile-verified here,
@@ -122,8 +134,7 @@ brew install xcodegen     # one-time
 ```
 
 The Xcode project is generated from `project.yml` (not committed). Simulator builds
-need no code signing; App Store release goes through a signing pipeline (out of scope
-here, like the Markup project's EAS flow).
+need no code signing; signed uploads use the [release pipeline](RELEASE.md).
 
 ## Pair it
 
