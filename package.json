@@ -78,27 +78,27 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",
-    "@google/genai": "^2.27.0",
-    "@modelcontextprotocol/sdk": "^1.29.0",
-    "imapflow": "^2.0.2",
+    "@google/genai": "^2.32.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "imapflow": "^2.10.0",
     "music-metadata": "^11.14.0",
-    "openai": "^7.27.0",
+    "openai": "^7.45.1",
     "qrcode-terminal": "^0.12.0",
-    "undici": "^8.11.2"
+    "undici": "^8.12.3"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@playwright/test": "^1.63.0",
+    "@playwright/test": "^1.64.1",
     "@types/node": "^22.20.5",
     "@types/qrcode-terminal": "^0.12.2",
     "c8": "^12.0.0",
-    "eslint": "^10.12.0",
+    "eslint": "^10.13.0",
     "globals": "^17.13.0",
-    "prettier": "^3.9.9",
+    "prettier": "^3.9.10",
     "sharp": "^0.35.5",
     "tsx": "^4.23.15",
     "typescript": "^5.7.0",
-    "typescript-eslint": "^8.71.0"
+    "typescript-eslint": "^8.72.1"
   },
   "optionalDependencies": {
     "node-pty": "^1.1.0"
