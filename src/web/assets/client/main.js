@@ -1740,7 +1740,17 @@ async function startupGate() {
   // bare catch+return left a dead UI with no key prompt, no birth, no message).
   let cfg = null;
   for (let i = 0; i < 6 && !cfg; i++) {
-    try { cfg = await fetch('/api/config/status').then(r => r.json()); }
+    try {
+      // Hosted accounts use the service's model. Its operator configuration
+      // is deliberately inaccessible to cloud-chat; a 403 is not a missing key.
+      const edition = await fetch('/api/edition').then(r => r.ok ? r.json() : null);
+      if (edition && edition.edition === 'cloud') cfg = { configured: true };
+      else {
+        const response = await fetch('/api/config/status');
+        if (!response.ok) throw new Error('Configuration status unavailable');
+        cfg = await response.json();
+      }
+    }
     catch (e) { if (i < 5) await lisaSleep(700); }
   }
   if (!cfg) {
@@ -5743,21 +5753,23 @@ if ('serviceWorker' in navigator) {
     // (UX-1 wave 2). Was an Anthropic-and-OpenAI-only pair of inputs, which
     // made every other provider a config.env edit.
     var provs = window.lisaProviderList(status);
-    html += '<div class="view-sec-label">Model provider</div><div class="set-card">';
-    for (var pi = 0; pi < provs.length; pi++) {
-      var pv = provs[pi];
-      if (!pv.configured && pv.custom) continue;
-      html += '<div class="set-row"><div class="set-main"><div class="set-name">' + esc(pv.label) +
-        '</div><div class="set-sub">' + esc(pv.envKey) + '</div></div>' + chip(pv.configured) + '</div>';
+    if (edName !== 'cloud') {
+      html += '<div class="view-sec-label">Model provider</div><div class="set-card">';
+      for (var pi = 0; pi < provs.length; pi++) {
+        var pv = provs[pi];
+        if (!pv.configured && pv.custom) continue;
+        html += '<div class="set-row"><div class="set-main"><div class="set-name">' + esc(pv.label) +
+          '</div><div class="set-sub">' + esc(pv.envKey) + '</div></div>' + chip(pv.configured) + '</div>';
+      }
+      html += '<div class="set-form">' +
+        '<select class="set-input" id="setProvider"></select>' +
+        '<input class="set-input" id="setKey" type="password" autocomplete="off" spellcheck="false" placeholder="key… (leave blank to keep)">' +
+        '<input class="set-input" id="setBaseUrl" type="text" autocomplete="off" spellcheck="false" placeholder="https://host/v1" style="display:none">' +
+        '<input class="set-input" id="setModel" type="text" autocomplete="off" spellcheck="false" placeholder="model (optional)">' +
+        '<div style="display:flex;gap:10px;align-items:center"><button class="view-act" id="setKeySave">Save</button><span class="set-err" id="setKeyMsg"></span></div>' +
+        '<div class="set-note">Saved to ~/.lisa/config.env (0600), on this machine. Accepted from localhost only.</div></div>';
+      html += '</div>';
     }
-    html += '<div class="set-form">' +
-      '<select class="set-input" id="setProvider"></select>' +
-      '<input class="set-input" id="setKey" type="password" autocomplete="off" spellcheck="false" placeholder="key… (leave blank to keep)">' +
-      '<input class="set-input" id="setBaseUrl" type="text" autocomplete="off" spellcheck="false" placeholder="https://host/v1" style="display:none">' +
-      '<input class="set-input" id="setModel" type="text" autocomplete="off" spellcheck="false" placeholder="model (optional)">' +
-      '<div style="display:flex;gap:10px;align-items:center"><button class="view-act" id="setKeySave">Save</button><span class="set-err" id="setKeyMsg"></span></div>' +
-      '<div class="set-note">Saved to ~/.lisa/config.env (0600), on this machine. Accepted from localhost only.</div></div>';
-    html += '</div>';
     html += '<div class="view-sec-label">Automation</div><div class="set-card">';
     html += '<div class="set-row"><div class="set-main"><div class="set-name">Proactive mode</div><div class="set-sub">Let Lisa watch your agents, tasks and signals and act when you are away</div></div>' + sw('setProactiveToggle', proactiveOn) + '</div>';
     html += '</div>';
@@ -5772,7 +5784,7 @@ if ('serviceWorker' in navigator) {
     // A discoverable entry point for the shortcut list — "press ?" is only
     // findable if you already know it is there (UX-11).
     html += '<div class="set-row"><div class="set-main"><div class="set-name">Keyboard shortcuts</div><div class="set-sub">⌘K switch · ⌘/ focus · ⌘F find · ? this list</div></div><button class="v-toggle" id="setShortcuts">show</button></div>';
-    html += '<div class="set-row"><div class="set-main"><div class="set-name">Anthropic Console</div><div class="set-sub">Manage billing &amp; keys</div></div><a class="set-chip" href="https://console.anthropic.com/" target="_blank" rel="noopener">open ↗</a></div>';
+    if (edName !== 'cloud') html += '<div class="set-row"><div class="set-main"><div class="set-name">Anthropic Console</div><div class="set-sub">Manage billing &amp; keys</div></div><a class="set-chip" href="https://console.anthropic.com/" target="_blank" rel="noopener">open ↗</a></div>';
     html += '</div>';
     scroll.innerHTML = html;
     void window.LisaExpressions.mountSettings(scroll);
@@ -5941,7 +5953,10 @@ if ('serviceWorker' in navigator) {
     views.settings.innerHTML =
       '<div class="view-head"><div><h2>Settings</h2><div class="vh-sub">Keys · automation · display</div></div></div>' +
       '<div class="view-scroll"><div id="settingsScroll"><div class="view-empty">loading…</div></div></div>';
-    Promise.all([getJSON('/api/config/status'), getJSON('/api/edition')]).then(function (res) { renderSettings(res[0], res[1]); });
+    getJSON('/api/edition').then(function (edition) {
+      if (edition && edition.edition === 'cloud') renderSettings(null, edition);
+      else getJSON('/api/config/status').then(function (status) { renderSettings(status, edition); });
+    });
   }
   // ── Knowledge base view (docs/archive/plans/PLAN_KNOWLEDGE_BASE_v1.0.md) ──────────
   function kbRenderList(entries, container) {
