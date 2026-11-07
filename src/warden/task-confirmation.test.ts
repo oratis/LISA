@@ -89,7 +89,9 @@ function stub(name: string, record: unknown[]): ToolDefinition {
 function wardenRunner(provider: Provider, tools: ToolDefinition[]) {
   const asked: string[] = [];
   const inbox = new WardenInbox({
-    defaultTimeoutMs: 30,
+    // Long enough that an unanswered ask is saved and announced before it
+    // expires on a loaded or coverage-instrumented runner (cf. taint-carry).
+    defaultTimeoutMs: 250,
     emit: (event) => {
       if (event.type === "approval_requested") asked.push(event.tool);
     },

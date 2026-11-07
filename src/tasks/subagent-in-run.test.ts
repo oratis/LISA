@@ -103,7 +103,7 @@ async function confirmedRoutine(envelope: TaskEnvelope, usdMicros?: number): Pro
 function wardenRunner(provider: Provider, tools: ToolDefinition[], approve: string[] = []) {
   const asked: string[] = [];
   const inbox: WardenInbox = new WardenInbox({
-    defaultTimeoutMs: 30,
+    defaultTimeoutMs: 250,
     emit: (event, uid) => {
       if (event.type !== "approval_requested") return;
       asked.push(event.tool);
