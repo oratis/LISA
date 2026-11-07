@@ -28,7 +28,9 @@ export {
   RulesValidationError,
 } from "./rules.js";
 export type { WardenRules, LoadedRules } from "./rules.js";
-export { loadGrants, createGrants, revokeGrant, matchGrants } from "./grants.js";
+export { loadGrants, createGrants, revokeGrant, revokeTaskGrants, matchGrants } from "./grants.js";
+export { createTaskApprovalFactory } from "./task-approval.js";
+export type { TaskApprovalFactoryOptions, ApprovalReachOut } from "./task-approval.js";
 export type { StoredGrant, LoadedGrants } from "./grants.js";
 export { readAudit, appendAudit } from "./audit.js";
 export type { AuditEntry } from "./audit.js";

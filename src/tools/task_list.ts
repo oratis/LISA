@@ -1,5 +1,8 @@
 /** task_list — what tasks exist, their state and when they run next. Read-only. */
+import { runWasTainted } from "../tasks/external.js";
+import { runTaintSealed } from "../tasks/seal.js";
 import { getTask, listRuns, listTasks } from "../tasks/store.js";
+import { readDigestKey } from "../warden/store.js";
 import type { ToolDefinition } from "../types.js";
 import { describeTask } from "./task_common.js";
 
@@ -23,12 +26,20 @@ export const taskListTool: ToolDefinition<TaskListInput, string> = {
       const task = await getTask(input.id);
       if (!task) return `(no task with id "${input.id.slice(0, 80)}")`;
       const runs = (await listRuns(task)).slice(0, 5);
+      // A run record whose taint seal does not hold counts as tainted (seal.ts).
+      const key = await readDigestKey().catch(() => null);
       const lines = [describeTask(task), `  instruction: ${task.instruction}`];
       if (task.trigger) lines.push(`  trigger: ${JSON.stringify(task.trigger)}`);
       if (task.envelope?.tools) lines.push(`  tools: ${task.envelope.tools.join(", ")}`);
       for (const run of runs) {
         const at = new Date(run.startedAt).toISOString().slice(0, 16).replace("T", " ");
-        const note = run.summary ?? run.error ?? "";
+        // What a run wrote after it read outside content is not repeated into
+        // this conversation unfenced (#422 review N3): its card, fenced, is
+        // what carries it, and that card taints the conversation.
+        const note =
+          runWasTainted(run) || !runTaintSealed(run, key)
+            ? "(result not shown here: that run read outside content — see its card or the task's history)"
+            : (run.summary ?? run.error ?? "");
         lines.push(
           `  run ${at} — ${run.state}${run.stopReason ? ` (${run.stopReason})` : ""}${note ? `: ${note.slice(0, 200)}` : ""}`,
         );

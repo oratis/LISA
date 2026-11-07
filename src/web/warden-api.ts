@@ -434,6 +434,15 @@ export interface WebWarden {
    * inside the request's home scope.
    */
   turn(opts: WebWardenTurnOptions): Promise<WebWardenTurn | undefined>;
+  /**
+   * Record a conversation as tainted because outside text is about to be put
+   * into it — a task card quoting what a tainted run wrote, or a watcher hit
+   * (#422 review N3). Durable (tainted.json) and seen by the next turn in this
+   * process at once. Throws when it cannot be recorded, so the caller does not
+   * store the text. Recorded whether or not Warden mode is on: switching it on
+   * later must not forget what the conversation already holds.
+   */
+  markTainted(conversationId: string, uid: string | null): Promise<void>;
 }
 
 const MAX_CONVERSATIONS_TRACKED = 500;
@@ -478,6 +487,11 @@ export function createWebWarden(
   return {
     inbox,
     enabled,
+    async markTainted(conversationId, uid) {
+      const key = `${uid ?? ""}\u0000${conversationId}`;
+      taintedNow.add(key);
+      await markConversationTainted(conversationId, lisaHome());
+    },
     async turn(turn) {
       if (!enabled) return undefined;
       const home = lisaHome();
