@@ -275,11 +275,20 @@ export function describeForConfirmation(task: Confirmable): string[] {
         : `  - "${visible(category)}" (a label, not a permission: it pre-approves nothing)`,
     );
   }
-  lines.push(
-    envelope!.targets?.length
-      ? `  …only on: ${visible(envelope!.targets.join(", "))}`
-      : "  …on any target.",
-  );
+  if (envelope!.targets?.length) {
+    // What the targets do and do not limit (policy.ts `envelopeCovers`): an
+    // action that names no target it can be held to is not limited by them —
+    // shown so, not as "only on" (#422 review P3-b).
+    lines.push(
+      `  …only on: ${visible(envelope!.targets.join(", "))} — for actions that name their targets ` +
+        "(a file, a host, a repository).",
+      "  An action that names no target it can be held to — a shell command, for one — is not " +
+        "limited by them: on this Mac the envelope covers it anyway; one that would reach another " +
+        "host asks first.",
+    );
+  } else {
+    lines.push("  …on any target.");
+  }
   if (envelope!.tools?.length) {
     lines.push(`It may only use: ${visible(envelope!.tools.join(", "))}.`);
   }

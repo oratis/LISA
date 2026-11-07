@@ -4,7 +4,9 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { evaluate, type PolicyContext } from "./policy.js";
+import { describeForConfirmation } from "../tasks/confirmation.js";
+import { DEFAULT_TASK_BUDGET } from "../tasks/types.js";
+import { envelopeCovers, evaluate, type PolicyContext } from "./policy.js";
 import { defaultRules, ownBehavior, parseRules, strictness } from "./rules.js";
 import { buildActionRequest } from "./request.js";
 import { grantsFor } from "./grants.js";
@@ -578,5 +580,47 @@ test("review 11: the protected-state check ignores case and follows the spelling
     ).verdict,
     "deny",
     "a sibling directory is not protected",
+  );
+});
+
+test("#422 P3-b: the confirmation screen says what targets limit, and it is what envelopeCovers does", () => {
+  const envelope = { tools: ["bash", "write", "takoapi"], targets: ["/work/project/notes.md"] };
+  const task = { origin: { kind: "task" as const }, taskId: "t1" };
+  // A command names no target it can be held to: not limited by the targets.
+  assert.equal(envelopeCovers(req({ ...task, targets: [] }), envelope), true);
+  // An action that names its targets is held to them.
+  const write = (target: string) =>
+    req({ ...task, tool: "write", category: "write", targets: [target] });
+  assert.equal(envelopeCovers(write("/work/project/notes.md"), envelope), true);
+  assert.equal(envelopeCovers(write("/work/project/other.md"), envelope), false);
+  // One that would reach another host and names nothing to hold it to is not covered.
+  assert.equal(
+    envelopeCovers(req({ ...task, tool: "takoapi", category: "network", targets: [] }), envelope),
+    false,
+  );
+  const screen = describeForConfirmation({
+    kind: "routine",
+    title: "Notes",
+    instruction: "Tidy the notes.",
+    schedule: { expr: "daily:08:00", tz: "UTC" },
+    host: "home",
+    envelope,
+    notify: "always",
+    budget: DEFAULT_TASK_BUDGET,
+  }).join("\n");
+  assert.match(screen, /only on: \/work\/project\/notes\.md — for actions that name their targets/);
+  assert.match(screen, /a shell command, for one — is not limited by them/);
+  assert.match(screen, /would reach another host asks first/);
+  assert.doesNotMatch(
+    describeForConfirmation({
+      kind: "routine",
+      title: "Notes",
+      instruction: "Tidy the notes.",
+      host: "home",
+      envelope: { tools: ["bash"] },
+      notify: "always",
+      budget: DEFAULT_TASK_BUDGET,
+    }).join("\n"),
+    /not limited by them/,
   );
 });
