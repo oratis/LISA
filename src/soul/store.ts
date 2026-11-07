@@ -168,10 +168,7 @@ export async function applyEmotionDelta(opts: {
  * Previously decay only ran on read, so soul_feel added deltas onto a stale
  * (un-decayed) value and the stored intensity could be months out of date.
  */
-export function decayEmotions(
-  state: EmotionState,
-  nowMs: number = Date.now(),
-): EmotionState {
+export function decayEmotions(state: EmotionState, nowMs: number = Date.now()): EmotionState {
   const last = Date.parse(state.updatedAt);
   const days = Math.max(0, (nowMs - last) / (1000 * 60 * 60 * 24));
   if (!Number.isFinite(days) || days === 0) return state;
@@ -203,7 +200,10 @@ export async function writeValue(entry: ValueEntry): Promise<void> {
 function parseValueFile(slug: string, raw: string): ValueEntry {
   const titleMatch = raw.match(/^#\s+(.+)$/m);
   const dateMatch = raw.match(/^birthed:\s*(.+)$/m);
-  const body = raw.replace(/^#.*$/m, "").replace(/^birthed:.*$/m, "").trim();
+  const body = raw
+    .replace(/^#.*$/m, "")
+    .replace(/^birthed:.*$/m, "")
+    .trim();
   return {
     slug,
     title: titleMatch ? titleMatch[1]!.trim() : slug,
@@ -256,11 +256,7 @@ export async function writeDesire(entry: DesireEntry): Promise<void> {
   const horizon = normalizeDesireHorizon(entry.horizon);
   const updatedAt = validIsoOr(entry.updatedAt, entry.bornAt);
   const sources = normalizeDesireSources(entry.sources);
-  const lines = [
-    `# ${entry.what}`,
-    "",
-    `actionable: ${entry.actionable ? "yes" : "no"}`,
-  ];
+  const lines = [`# ${entry.what}`, "", `actionable: ${entry.actionable ? "yes" : "no"}`];
   if (entry.closed) lines.push(`closed: yes`);
   // pursuit/heartbeat are serialized whenever present (not gated on actionable)
   // so closing a desire — which flips actionable off — preserves them for the
@@ -295,12 +291,8 @@ function parseDesireFile(slug: string, raw: string): DesireEntry {
   const born = raw.match(/^born:\s*(.+)$/m)?.[1] ?? new Date(0).toISOString();
   const updatedAt = validIsoOr(raw.match(/^updated:\s*(.+)$/m)?.[1], born);
   const lastReviewedRaw = raw.match(/^reviewed:\s*(.+)$/m)?.[1];
-  const lastReviewedAt = lastReviewedRaw
-    ? validIsoOr(lastReviewedRaw, updatedAt)
-    : undefined;
-  const intensity = normalizeDesireIntensity(
-    Number(raw.match(/^intensity:\s*([\d.]+)\s*$/m)?.[1]),
-  );
+  const lastReviewedAt = lastReviewedRaw ? validIsoOr(lastReviewedRaw, updatedAt) : undefined;
+  const intensity = normalizeDesireIntensity(Number(raw.match(/^intensity:\s*([\d.]+)\s*$/m)?.[1]));
   const horizon = normalizeDesireHorizon(
     raw.match(/^horizon:\s*(spark|season|enduring)\s*$/m)?.[1],
   );
@@ -343,19 +335,13 @@ function desireSection(raw: string, heading: string): string {
 export const DEFAULT_DESIRE_INTENSITY = 0.6;
 export const DEFAULT_DESIRE_HORIZON = "season" as const;
 
-export const DESIRE_HALF_LIFE_DAYS: Record<
-  NonNullable<DesireEntry["horizon"]>,
-  number
-> = {
+export const DESIRE_HALF_LIFE_DAYS: Record<NonNullable<DesireEntry["horizon"]>, number> = {
   spark: 3,
   season: 30,
   enduring: 365,
 };
 
-export const DESIRE_REVIEW_INTERVAL_DAYS: Record<
-  NonNullable<DesireEntry["horizon"]>,
-  number
-> = {
+export const DESIRE_REVIEW_INTERVAL_DAYS: Record<NonNullable<DesireEntry["horizon"]>, number> = {
   spark: 1,
   season: 3,
   enduring: 14,
@@ -419,15 +405,10 @@ export function effectiveDesireIntensity(
 }
 
 /** Whether this open desire is due for deliberate background re-evaluation. */
-export function isDesireReviewDue(
-  desire: DesireEntry,
-  nowMs: number = Date.now(),
-): boolean {
+export function isDesireReviewDue(desire: DesireEntry, nowMs: number = Date.now()): boolean {
   if (desire.closed) return false;
   const horizon = normalizeDesireHorizon(desire.horizon);
-  const last = Date.parse(
-    desire.lastReviewedAt ?? desire.updatedAt ?? desire.bornAt,
-  );
+  const last = Date.parse(desire.lastReviewedAt ?? desire.updatedAt ?? desire.bornAt);
   if (!Number.isFinite(last)) return true;
   return nowMs - last >= DESIRE_REVIEW_INTERVAL_DAYS[horizon] * 24 * 60 * 60_000;
 }
@@ -439,9 +420,7 @@ export function isDesireReviewDue(
  * appends <slug>.progress.md). Feeds pickCurrentDesire so "current" tracks real
  * events instead of filesystem-listing accident.
  */
-export async function desireActivity(
-  desires: DesireEntry[],
-): Promise<Record<string, string>> {
+export async function desireActivity(desires: DesireEntry[]): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
   for (const d of desires) {
     let ms = Date.parse(d.bornAt) || 0;
@@ -488,9 +467,7 @@ export function pickCurrentDesire(
   const recency = (d: DesireEntry): number => {
     const a = activityAt?.[d.slug];
     const fromActivity = a ? Date.parse(a) : NaN;
-    return Number.isNaN(fromActivity)
-      ? Date.parse(d.updatedAt ?? d.bornAt) || 0
-      : fromActivity;
+    return Number.isNaN(fromActivity) ? Date.parse(d.updatedAt ?? d.bornAt) || 0 : fromActivity;
   };
   const actionable = desires.filter((d) => d.actionable);
   const pool = actionable.length > 0 ? actionable : desires;
@@ -541,10 +518,7 @@ export type DesirePatch = Partial<
  * The caller supplies the git-author context (withSoulCaller); this only does
  * the write, matching writeDesire.
  */
-export async function reviseDesire(
-  slug: string,
-  patch: DesirePatch,
-): Promise<DesireEntry> {
+export async function reviseDesire(slug: string, patch: DesirePatch): Promise<DesireEntry> {
   // Read-modify-write under the cross-process soul lock: web idle-reflect and a
   // CLI reflect (both live since #242) can revise the same slug from different
   // processes; without the lock one field edit is lost (last-writer-wins on a
@@ -714,10 +688,7 @@ export async function consolidateDesireProgress(
 const PROGRESS_MAX_BYTES = 16_384;
 const PROGRESS_TAIL_BYTES = 8_192;
 
-export async function appendDesireProgress(
-  slug: string,
-  entry: string,
-): Promise<void> {
+export async function appendDesireProgress(slug: string, entry: string): Promise<void> {
   const file = desireProgressFile(slug);
   // Read-modify-write under the cross-process soul lock: two heartbeat/idle
   // runs (or a heartbeat racing a chat turn) appending to the same progress
@@ -784,12 +755,7 @@ export async function writeRelationship(userKey: string, body: string): Promise<
 
 // ── lock / tamper detection ───────────────────────────────────────────
 
-const LOCKED_FILES = [
-  "name.md",
-  "identity.md",
-  "purpose.md",
-  "constitution.md",
-];
+const LOCKED_FILES = ["name.md", "identity.md", "purpose.md", "constitution.md"];
 
 async function hashFileIfPresent(p: string): Promise<string | null> {
   try {
@@ -882,16 +848,15 @@ export async function readSoulSummary(): Promise<SoulSummary | null> {
   const seed = await readSeed();
   if (!seed) return null;
   await bootstrapSoulRepo();
-  const [name, identity, purpose, constitution, values, opinions, desires] =
-    await Promise.all([
-      readName(),
-      readIdentity(),
-      readPurpose(),
-      readConstitution(),
-      listValues(),
-      listOpinions(),
-      listDesires(),
-    ]);
+  const [name, identity, purpose, constitution, values, opinions, desires] = await Promise.all([
+    readName(),
+    readIdentity(),
+    readPurpose(),
+    readConstitution(),
+    listValues(),
+    listOpinions(),
+    listDesires(),
+  ]);
   const tampered = await detectTampering();
   let emotions = await readEmotions();
   emotions = decayEmotions(emotions);

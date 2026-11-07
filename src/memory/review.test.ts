@@ -89,6 +89,23 @@ test("source-grounded correction has a private snapshot and a reversible history
   assert.equal(await readMemory("user"), review.before);
 });
 
+test("undo restores the exact empty or hand-edited memory bytes", async () => {
+  await fs.mkdir(memoryDir(), { recursive: true });
+  const file = path.join(memoryDir(), "USER.md");
+  for (const before of ["", "- Legacy entry  ", "- Old entry\r\n\r\n"]) {
+    await fs.writeFile(file, before);
+    const review = await createMemoryReview("user", evidence);
+    const result = await applyMemoryReview(review, [
+      { ...change(), kind: "append", new_text: "- Reply in Chinese" },
+    ]);
+    const changed = await readMemory("user");
+    const undo = await restoreMemoryRevision(result.revisionId);
+    assert.equal(await fs.readFile(file, "utf8"), before);
+    await restoreMemoryRevision(undo.revisionId);
+    assert.equal(await readMemory("user"), changed);
+  }
+});
+
 test("a stale proposal and a conflicting undo preserve later writes", async () => {
   await writeMemory("user", "- Reply in English");
   const stale = await createMemoryReview("user", evidence);
@@ -474,4 +491,21 @@ test("undoing and redoing a revision can cycle without replaying a completed und
   assert.equal(one.revisionId, two.revisionId);
   assert.notEqual(one.revisionId, first.revisionId);
   assert.equal([one, two].filter((r) => r.alreadyApplied).length, 1);
+});
+
+test("revision readers reject malformed nested provenance and restore requires an applied revision", async () => {
+  const review = await createMemoryReview("user", evidence);
+  const { revisionId } = await applyMemoryReview(review, []);
+  const file = path.join(memoryDir(), "revisions", revisionId + ".json");
+  const source = JSON.parse(await fs.readFile(file, "utf8"));
+  for (const patch of [
+    { changes: [null] },
+    { changes: [{ kind: "remove", reason: 1, evidence: [] }] },
+    { sources: [{ id: null }] },
+  ]) {
+    await fs.writeFile(file, JSON.stringify({ ...source, ...patch }));
+    await assert.rejects(memoryRevisionHistory("user"), /corrupt/);
+  }
+  await fs.writeFile(file, JSON.stringify({ ...source, status: "prepared" }));
+  await assert.rejects(restoreMemoryRevision(revisionId), /not applied/);
 });

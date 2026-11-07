@@ -499,3 +499,18 @@ describe("import", () => {
     assert.equal(read(dest, "kb/wiki/Straße.md"), "street");
   });
 });
+
+test("a linked revision directory makes replacement fail before touching either home", async () => {
+  const src = path.join(root, "incoming");
+  write(src, "memory/MEMORY.md", "- New memory");
+  const archive = path.join(root, "mem.tar.gz");
+  await exportLisaToFile({ home: src }, archive);
+  const dest = path.join(root, "dest");
+  const foreign = path.join(root, "other-home");
+  write(dest, "memory/MEMORY.md", "- Old memory");
+  write(foreign, "private.json", "foreign");
+  fs.symlinkSync(foreign, path.join(dest, "memory", "revisions"));
+  await assert.rejects(importLisa(archive, { into: dest, replace: true }), /unsafe home directory/);
+  assert.equal(read(dest, "memory/MEMORY.md"), "- Old memory");
+  assert.equal(read(foreign, "private.json"), "foreign");
+});

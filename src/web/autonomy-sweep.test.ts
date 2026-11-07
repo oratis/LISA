@@ -228,6 +228,33 @@ describe("autonomy sweep (S4)", () => {
     }
   });
 
+  test("an interrupted reflection meters a paid upstream call once", async () => {
+    const { ReflectionInterruptedError } = await import("../reflect.js");
+    const { readUsage } = await import("../billing/meter.js");
+    const uid = "u-interrupted";
+    seedAccounts([acct(uid, NOW - 1000)]);
+    await homeScope.run(homeForUid(uid), () => birth({ dreamFn: async () => GOOD }));
+    seedSession(uid);
+    await sweepUserAutonomy({
+      now: NOW,
+      reflectFn: async () => {
+        throw new ReflectionInterruptedError("reflection_invalidated", {
+          inputTokens: 13,
+          outputTokens: 3,
+          cacheReadTokens: 2,
+          cacheWriteTokens: 0,
+        });
+      },
+    });
+    const rows = await homeScope.run(homeForUid(uid), readUsage);
+    assert.deepEqual(
+      rows
+        .filter((r) => r.source === "autonomy")
+        .map((r) => [r.inputTokens, r.outputTokens, r.cacheReadTokens]),
+      [[13, 3, 2]],
+    );
+  });
+
   test("an unchanged session is reflected once even after its cadence becomes due again", async () => {
     seedAccounts([acct("u-idem", NOW - 1000)]);
     await homeScope.run(homeForUid("u-idem"), () => birth({ dreamFn: async () => GOOD }));

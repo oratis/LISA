@@ -3,6 +3,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
+import { withFileLock } from "../soul/lock.js";
 import { memoryDir } from "../paths.js";
 import { assertHomeDirectory, readHomeText, readHomeTextOrEmpty } from "../home-files.js";
 import { evidenceHash, recentMemoryEvidence, type MemoryEvidence } from "./evidence.js";
@@ -10,6 +11,8 @@ import {
   withMemoryLock,
   writeMemoryUnlocked,
   normalizeMemory,
+  assertMemoryFits,
+  memoryMaxBytes,
   readMemory,
   type MemoryStore,
 } from "./store.js";
@@ -62,8 +65,40 @@ async function savePrivate(file: string, value: unknown): Promise<void> {
   }
 }
 
-export function readReviewGeneration(): Promise<string> {
-  return readHomeTextOrEmpty(reviewGenerationFile(), 256);
+const RESET_STALE_MS = 24 * 60 * 60_000;
+const resetFile = () => path.join(memoryDir(), ".review-reset.lock");
+
+export class MemoryResetInProgress extends Error {}
+
+/** The reset lock spans Forget's confirmed plan, cleanup and verification, or
+ * an import swap. Drain writes that passed the generation check before it. */
+export async function withReviewReset<T>(fn: () => Promise<T>): Promise<T> {
+  await assertHomeDirectory(memoryDir());
+  return withFileLock(
+    resetFile(),
+    async () => {
+      await withMemoryLock(async () => {});
+      return fn();
+    },
+    { staleMs: RESET_STALE_MS, pidLiveness: false },
+  );
+}
+
+export async function readReviewGeneration(): Promise<string> {
+  const generation = await readHomeTextOrEmpty(reviewGenerationFile(), 256);
+  let raw: string;
+  try {
+    raw = await readHomeText(resetFile(), 1024);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return generation;
+    throw e;
+  }
+  // An empty lock can be observed on filesystems using O_EXCL instead of link.
+  // The next reset can recover a lock left behind by a crashed process.
+  const ts = Number(raw && JSON.parse(raw).ts);
+  if (!ts || Date.now() - ts <= RESET_STALE_MS)
+    throw new MemoryResetInProgress("memory reset in progress");
+  return generation;
 }
 
 function reviewGenerationFile() {
@@ -224,7 +259,12 @@ async function commitRevision(
     throw new Error("memory changed since review; prepare a new review");
   await savePrivate(file, revision);
   signal?.throwIfAborted();
-  if (revision.after !== current) await writeMemoryUnlocked(revision.store, revision.after);
+  if (revision.after !== current)
+    await writeMemoryUnlocked(
+      revision.store,
+      revision.after,
+      revision.restores ? "snapshot" : "edit",
+    );
   // A crash/failure here leaves a recoverable prepared record. The memory
   // mutation has already succeeded; let a retry finish the provenance write.
   await savePrivate(file, { ...revision, status: "applied" }).catch(() => {});
@@ -250,7 +290,7 @@ export async function applyMemoryReview(
   }
   const cited = new Set(changes.flatMap((c) => c.evidence.map((e) => e.id)));
   return withMemoryLock(async () => {
-    if (review.generation !== (await readHomeTextOrEmpty(reviewGenerationFile(), 256)))
+    if (review.generation !== (await readReviewGeneration()))
       throw new Error("memory changed since review; prepare a new review");
     return commitRevision(
       {
@@ -353,35 +393,72 @@ export async function readMemoryRevision(id: string): Promise<MemoryRevision> {
     typeof revision.before !== "string" ||
     typeof revision.after !== "string" ||
     !Array.isArray(revision.changes) ||
-    !Array.isArray(revision.sources)
+    revision.changes.some(
+      (c) =>
+        !c ||
+        !["append", "replace", "remove"].includes(c.kind) ||
+        typeof c.reason !== "string" ||
+        !Array.isArray(c.evidence) ||
+        !c.evidence.every((e) => !!e && typeof e.id === "string" && typeof e.quote === "string"),
+    ) ||
+    !Array.isArray(revision.sources) ||
+    revision.sources.some(
+      (e) =>
+        !e ||
+        typeof e.id !== "string" ||
+        typeof e.sessionId !== "string" ||
+        !["user", "assistant", "tool"].includes(e.role),
+    ) ||
+    (revision.restores !== undefined &&
+      (typeof revision.restores !== "string" || !/^[a-f0-9]{64}$/.test(revision.restores)))
   ) {
     throw new Error("corrupt memory revision");
   }
   return revision;
 }
 
+export function canRestoreMemoryRevision(
+  revision: MemoryRevision,
+  current: string | null,
+): boolean {
+  return (
+    revision.status === "applied" &&
+    current === revision.after &&
+    Buffer.byteLength(revision.before, "utf8") <= memoryMaxBytes(revision.store)
+  );
+}
+
 export async function restoreMemoryRevision(id: string, signal?: AbortSignal) {
   return withMemoryLock(async () => {
+    await readReviewGeneration();
     const revision = await readMemoryRevision(id);
+    if (revision.status !== "applied") throw new Error("revision is not applied");
     // Restoring an oversized legacy snapshot would violate the current write cap.
-    const after = normalizeMemory(revision.store, revision.before);
+    const after = revision.before;
+    assertMemoryFits(revision.store, after);
     // Repeating an undo while its target is still current is idempotent. If
     // the user subsequently undid that undo, allocate a new recorded step.
     const current = await readMemory(revision.store);
     let restoreId = evidenceHash(["restore", id]);
+    let lastApplied: MemoryRevision | undefined;
     for (;;) {
-      const raw = await readHomeTextOrEmpty(recordFile("revisions", restoreId), 512 * 1024);
-      if (!raw) break;
-      const previous = await readMemoryRevision(restoreId);
-      if (previous.restores !== id) throw new Error("corrupt restore chain");
-      if (current === after && previous.status === "applied") {
-        return {
-          revisionId: restoreId,
-          changed: previous.before !== previous.after,
-          alreadyApplied: true,
-        };
+      let previous: MemoryRevision;
+      try {
+        previous = await readMemoryRevision(restoreId);
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+        if (current === after && lastApplied) {
+          return {
+            revisionId: lastApplied.id,
+            changed: lastApplied.before !== lastApplied.after,
+            alreadyApplied: true,
+          };
+        }
+        break;
       }
+      if (previous.restores !== id) throw new Error("corrupt restore chain");
       if (previous.status === "prepared") break;
+      lastApplied = previous;
       restoreId = evidenceHash(["restore", id, restoreId]);
     }
     return commitRevision(

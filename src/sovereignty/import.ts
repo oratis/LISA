@@ -35,6 +35,8 @@ import path from "node:path";
 import zlib from "node:zlib";
 import { homeScope, lisaGlobalHome } from "../paths.js";
 import { withMemoryLock, memoryMaxBytes, type MemoryStore } from "../memory/store.js";
+import { assertHomeDirectory } from "../home-files.js";
+import { invalidateMemoryReviews, withReviewReset } from "../memory/review.js";
 import { appendSovereigntyAudit } from "./audit.js";
 import { EXPORT_FORMAT, EXPORT_FORMAT_VERSION } from "./export.js";
 import {
@@ -364,17 +366,22 @@ function verify(manifest: ManifestShape, written: Map<string, Written>): void {
 /** Does an area of the target home already hold data (ignoring locks/temp)? */
 async function areaHasData(into: string, root: string): Promise<boolean> {
   if (root === "memory") {
-    for (const f of ["MEMORY.md", "USER.md"]) {
+    let occupied = false;
+    for (const section of ["reviews", "revisions"]) {
+      const dir = path.join(into, "memory", section);
+      await assertHomeDirectory(dir);
+      if (await exists(dir)) occupied = true;
+    }
+    for (const f of ["MEMORY.md", "USER.md", ".review-generation"]) {
       try {
-        if ((await fsp.stat(path.join(into, "memory", f))).size > 0) return true;
-      } catch {
-        // missing
+        const stat = await fsp.lstat(path.join(into, "memory", f));
+        if (!stat.isFile()) throw new Error("unsafe target memory file");
+        if (f !== ".review-generation" && stat.size > 0) occupied = true;
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
       }
     }
-    for (const section of ["reviews", "revisions"]) {
-      if (await exists(path.join(into, "memory", section))) return true;
-    }
-    return false;
+    return occupied;
   }
   let names: string[];
   try {
@@ -504,6 +511,7 @@ export async function importLisa(archive: string, opts: ImportOptions = {}): Pro
     );
   }
 
+  await homeScope.run(into, () => assertHomeDirectory(into));
   await fsp.mkdir(into, { recursive: true, mode: 0o700 });
   const staging = await fsp.mkdtemp(path.join(into, ".import-"));
   try {
@@ -516,7 +524,7 @@ export async function importLisa(archive: string, opts: ImportOptions = {}): Pro
       [...written.keys()].some((p) => p.startsWith(`${r}/`)),
     );
     for (const root of roots) {
-      if (await areaHasData(into, root)) {
+      if (await homeScope.run(into, () => areaHasData(into, root))) {
         if (opts.replace) continue;
         if (root === "soul") {
           throw new ImportError(
@@ -541,6 +549,8 @@ export async function importLisa(archive: string, opts: ImportOptions = {}): Pro
     const trash = path.join(staging, ".replaced");
     const done: Move[] = [];
     const move = async (from: string, to: string): Promise<void> => {
+      await assertHomeDirectory(path.dirname(from));
+      await assertHomeDirectory(path.dirname(to));
       await fsp.mkdir(path.dirname(to), { recursive: true, mode: 0o700 });
       await fsp.rename(from, to);
       done.push({ from, to });
@@ -556,7 +566,7 @@ export async function importLisa(archive: string, opts: ImportOptions = {}): Pro
             // Provenance belongs to the previous memory, including snapshots
             // whose after-text might coincidentally equal the imported store.
             // Stage a new generation so pre-import proposals fail even then.
-            if (!opts.replace && (await areaHasData(into, "memory")))
+            if ((await areaHasData(into, "memory")) && !opts.replace)
               throw new Error("memory changed during import");
             await fsp.writeFile(
               path.join(staging, "memory", ".review-generation"),
@@ -590,6 +600,7 @@ export async function importLisa(archive: string, opts: ImportOptions = {}): Pro
           }
           await move(path.join(staging, root), target);
         }
+        if (!roots.includes("memory")) await invalidateMemoryReviews();
       } catch (e) {
         for (const m of done.reverse()) {
           await fsp.rename(m.to, m.from).catch(() => {});
@@ -600,8 +611,7 @@ export async function importLisa(archive: string, opts: ImportOptions = {}): Pro
         );
       }
     };
-    if (roots.includes("memory")) await homeScope.run(into, () => withMemoryLock(swap));
-    else await swap();
+    if (roots.length) await homeScope.run(into, () => withReviewReset(() => withMemoryLock(swap)));
 
     const bytes = [...written.values()].reduce((n, w) => n + w.size, 0);
     await appendSovereigntyAudit(

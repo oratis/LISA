@@ -4,7 +4,7 @@ import { reflectionsDir } from "../paths.js";
 import { autonomyDir, readAutonomyRuns } from "../autonomy/runs.js";
 import { normalizeAutonomyState, defaultAutonomyState } from "../autonomy/state.js";
 import { readMemory, MEMORY_MAX_BYTES } from "../memory/store.js";
-import { recentMemoryRevisions } from "../memory/review.js";
+import { canRestoreMemoryRevision, recentMemoryRevisions } from "../memory/review.js";
 import { kbGraphFile } from "../kb/paths.js";
 import type { KbGraphJson } from "../kb/links.js";
 import { listDesires, effectiveDesireIntensity } from "../soul/store.js";
@@ -154,7 +154,7 @@ export async function buildReveOverview(days = 7) {
       changeCount: r.changes.length,
       sources: r.sources.length,
       reason: (r.changes[0]?.reason ?? "").slice(0, 300),
-      canRestore: r.status === "applied" && (r.store === "user" ? user : memory) === r.after,
+      canRestore: canRestoreMemoryRevision(r, r.store === "user" ? user : memory),
     })),
     reflections,
     knowledge,

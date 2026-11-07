@@ -46,21 +46,31 @@ export async function readMemory(store: MemoryStore): Promise<string> {
   return await readHomeTextOrEmpty(fileFor(store));
 }
 
+export class MemoryCapacityError extends RangeError {}
+
 /** Compare against the old byte count so an oversized legacy file can always shrink. */
-export function normalizeMemory(store: MemoryStore, content: string, previousBytes = 0): string {
+export function assertMemoryFits(store: MemoryStore, content: string, previousBytes = 0): void {
   fileFor(store);
-  const normalized = content.replace(/\s+$/g, "") + "\n";
-  const bytes = Buffer.byteLength(normalized, "utf8");
+  const bytes = Buffer.byteLength(content, "utf8");
   if (bytes > MEMORY_MAX_BYTES[store] && bytes > previousBytes) {
-    throw new Error(
+    throw new MemoryCapacityError(
       `memory "${store}" exceeds ${MEMORY_MAX_BYTES[store]} bytes. Trim or split entries.`,
     );
   }
+}
+
+export function normalizeMemory(store: MemoryStore, content: string, previousBytes = 0): string {
+  const normalized = content.replace(/\s+$/g, "") + "\n";
+  assertMemoryFits(store, normalized, previousBytes);
   return normalized;
 }
 
 /** Callers hold the shared lock, including direct entry edits, import and reviewed writes. */
-export async function writeMemoryUnlocked(store: MemoryStore, content: string): Promise<void> {
+export async function writeMemoryUnlocked(
+  store: MemoryStore,
+  content: string,
+  format: "edit" | "snapshot" = "edit",
+): Promise<void> {
   const file = fileFor(store);
   await assertHomeDirectory(path.dirname(file));
   const stat = await fs.lstat(file).catch((err: NodeJS.ErrnoException) => {
@@ -68,7 +78,12 @@ export async function writeMemoryUnlocked(store: MemoryStore, content: string): 
     return null;
   });
   if (stat && !stat.isFile()) throw new Error("unsafe memory file");
-  await atomicWrite(file, normalizeMemory(store, content, stat?.size ?? 0));
+  if (format === "snapshot") {
+    assertMemoryFits(store, content);
+    await atomicWrite(file, content);
+  } else {
+    await atomicWrite(file, normalizeMemory(store, content, stat?.size ?? 0));
+  }
 }
 
 export async function writeMemory(store: MemoryStore, content: string): Promise<void> {

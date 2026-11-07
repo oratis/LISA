@@ -265,6 +265,26 @@ describe("T-7 the server honours its RuntimePolicy", () => {
     }
   });
 
+  test("a competing reflection gets a stable conflict without leaking its lock path", async () => {
+    const { withFileLock } = await import("../soul/lock.js");
+    const { reflectionsDir } = await import("../paths.js");
+    const srv = await boot();
+    try {
+      const session = await request(srv.port, "GET", "/session");
+      const { id } = JSON.parse(session.text) as { id: string };
+      const response = await withFileLock(path.join(reflectionsDir(), `${id}.lock`), () =>
+        request(srv.port, "POST", "/reflect", {
+          body: "{}",
+          headers: { "x-lisa-session-id": id },
+        }),
+      );
+      assert.equal(response.status, 409);
+      assert.deepEqual(JSON.parse(response.text), { error: "reflection_busy" });
+    } finally {
+      await srv.close();
+    }
+  });
+
   test("the capability profile in the policy is what filters the tool set", async () => {
     // A cloud profile must not expose host tools even when the process is the
     // mac edition and the caller handed in the full registry (fail closed:

@@ -1,11 +1,13 @@
 import path from "node:path";
-import { atomicWrite, readTextOrEmpty } from "./fs-utils.js";
+import { assertHomeDirectory, readHomeTextOrEmpty } from "./home-files.js";
+import { atomicWrite } from "./fs-utils.js";
 import { DEFAULT_MODEL } from "./llm.js";
 import { withMemoryLock, type MemoryStore } from "./memory/store.js";
 import {
   applyMemoryReview,
   createMemoryReview,
   readReviewGeneration,
+  MemoryResetInProgress,
   type MemoryChange,
 } from "./memory/review.js";
 import { assertSessionId, evidenceFromHistory, evidenceHash } from "./memory/evidence.js";
@@ -15,7 +17,8 @@ import { providerForModel } from "./providers/registry.js";
 import type { Provider, ProviderUsage } from "./providers/types.js";
 import { createSkill, getSkill, patchSkill } from "./skills/manager.js";
 import { withSoulCaller } from "./soul/git.js";
-import { recordAutonomyRun } from "./autonomy/runs.js";
+import { sumUsage } from "./billing/meter.js";
+import { recordAutonomyRun, type AutonomyOutcome } from "./autonomy/runs.js";
 import { recentAgentRecap } from "./orchestrator/recent-recap.js";
 import { withDream } from "./reve/record.js";
 import { takeReconsiderBlock, waitingReconsiderCount } from "./reve/reconsider.js";
@@ -179,12 +182,7 @@ export function detectUnderReflection(opts: {
 }
 
 export function addProviderUsage(a: ProviderUsage, b: ProviderUsage): ProviderUsage {
-  return {
-    inputTokens: a.inputTokens + b.inputTokens,
-    outputTokens: a.outputTokens + b.outputTokens,
-    cacheReadTokens: a.cacheReadTokens + b.cacheReadTokens,
-    cacheWriteTokens: a.cacheWriteTokens + b.cacheWriteTokens,
-  };
+  return sumUsage([a, b]);
 }
 
 type InterruptedCode =
@@ -214,18 +212,12 @@ interface ReflectOptions {
 export async function reflectOnSession(opts: ReflectOptions): Promise<ReflectionResult> {
   assertSessionId(opts.sessionId);
   const meter = {
+    calls: 0,
     usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
   };
-  const generation = await readReviewGeneration();
   const signal = opts.signal
     ? AbortSignal.any([opts.signal, AbortSignal.timeout(90_000)])
     : AbortSignal.timeout(90_000);
-  const checkActive = async () => {
-    signal.throwIfAborted();
-    if ((await readReviewGeneration()) !== generation)
-      throw new ReflectionInterruptedError("reflection_invalidated", meter.usage);
-    signal.throwIfAborted();
-  };
   const fingerprint = evidenceHash(evidenceFromHistory(opts.history, opts.sessionId));
   const checkpoint = path.join(
     reflectionsDir(),
@@ -233,16 +225,43 @@ export async function reflectOnSession(opts: ReflectOptions): Promise<Reflection
     `${opts.sessionId}-${fingerprint}.json`,
   );
   const lockFile = path.join(reflectionsDir(), `${opts.sessionId}.lock`);
+  const interrupted = (cause: unknown): ReflectionInterruptedError => {
+    if (cause instanceof ReflectionInterruptedError) return cause;
+    const busy =
+      cause instanceof Error &&
+      cause.message.startsWith(`timed out acquiring lock ${lockFile} after `);
+    return new ReflectionInterruptedError(
+      signal.aborted
+        ? "reflection_cancelled"
+        : cause instanceof MemoryResetInProgress
+          ? "reflection_invalidated"
+          : busy
+            ? "reflection_busy"
+            : "reflection_failed",
+      meter.usage,
+      cause,
+    );
+  };
   try {
+    await assertHomeDirectory(path.dirname(lockFile));
+    const generation = await readReviewGeneration();
+    const checkActive = async () => {
+      signal.throwIfAborted();
+      if ((await readReviewGeneration()) !== generation)
+        throw new ReflectionInterruptedError("reflection_invalidated", meter.usage);
+      signal.throwIfAborted();
+    };
     return await withFileLock(
       lockFile,
       async () => {
         await checkActive();
-        const prior = await readTextOrEmpty(checkpoint);
+        const prior = await readHomeTextOrEmpty(checkpoint);
+        let priorSummary: string | undefined;
         if (prior) {
           // Fail closed on a corrupt checkpoint; do not replay durable soul ops.
           const saved = JSON.parse(prior) as { summary: string };
           if (typeof saved.summary !== "string") throw new Error("corrupt reflection checkpoint");
+          priorSummary = saved.summary;
           if (!(await waitingReconsiderCount()))
             return {
               summary: saved.summary,
@@ -256,35 +275,56 @@ export async function reflectOnSession(opts: ReflectOptions): Promise<Reflection
         // so its audit records an interrupted pass as an error.
         return withSoulCaller("reflect", () =>
           withDream({ trigger: "reflect" }, async () => {
-            const result = await reflectOnSessionInner(
-              opts,
-              signal,
-              checkActive,
-              Boolean(prior),
-              meter,
-            );
-            if (!result.malformed && opts.history.length >= 2) {
-              await withMemoryLock(async () => {
-                await checkActive();
-                await atomicWrite(checkpoint, JSON.stringify({ summary: result.summary }));
-              });
+            const started = Date.now();
+            let outcome: AutonomyOutcome = "error";
+            let note: string | undefined;
+            try {
+              const result = await reflectOnSessionInner(
+                opts,
+                signal,
+                checkActive,
+                priorSummary,
+                meter,
+              );
+              if (!result.malformed && !result.duplicate && opts.history.length >= 2) {
+                await withMemoryLock(async () => {
+                  await checkActive();
+                  await assertHomeDirectory(path.dirname(checkpoint));
+                  await atomicWrite(checkpoint, JSON.stringify({ summary: result.summary }));
+                });
+              }
+              if (result.malformed) note = "malformed";
+              else {
+                outcome = result.applied.some((a) => !a.startsWith("journal:"))
+                  ? "done"
+                  : "no-update";
+                if (result.underReflected) note = "underreflected";
+              }
+              return result;
+            } catch (cause) {
+              const error = interrupted(cause);
+              note = error.code;
+              throw error;
+            } finally {
+              // A completed upstream call is a run even if cancellation, Forget,
+              // or a checkpoint error prevented local completion.
+              if (meter.calls)
+                await recordAutonomyRun({
+                  kind: "reflect",
+                  startedAt: new Date(started).toISOString(),
+                  durationMs: Date.now() - started,
+                  ...meter.usage,
+                  outcome,
+                  note,
+                });
             }
-            return result;
           }),
         );
       },
       { staleMs: 10 * 60_000, timeoutMs: 1_000, signal, pidLiveness: false },
     );
   } catch (cause) {
-    if (cause instanceof ReflectionInterruptedError) throw cause;
-    const busy =
-      cause instanceof Error &&
-      cause.message.startsWith(`timed out acquiring lock ${lockFile} after `);
-    throw new ReflectionInterruptedError(
-      signal.aborted ? "reflection_cancelled" : busy ? "reflection_busy" : "reflection_failed",
-      meter.usage,
-      cause,
-    );
+    throw interrupted(cause);
   }
 }
 
@@ -292,8 +332,8 @@ async function reflectOnSessionInner(
   opts: ReflectOptions,
   signal: AbortSignal,
   checkActive: () => Promise<void>,
-  reconsiderOnly: boolean,
-  meter: { usage: ProviderUsage },
+  priorSummary: string | undefined,
+  meter: { usage: ProviderUsage; calls: number },
 ): Promise<ReflectionResult> {
   if (opts.history.length < 2) {
     return { summary: "(too short to reflect)", applied: [], skipped: [], raw: "" };
@@ -314,6 +354,10 @@ async function reflectOnSessionInner(
   const desiresBlock = await renderCurrentDesiresBlock();
   // W9: the user's "please reconsider" notes, claimed into this pass once.
   const reconsiderBlock = await takeReconsiderBlock();
+  if (priorSummary !== undefined && !reconsiderBlock) {
+    // Another pass may have claimed the note since the first pending check.
+    return { summary: priorSummary, applied: [], skipped: [], raw: "", duplicate: true };
+  }
   const userText =
     `Here is bounded session evidence (original text with source ids; older or long messages may be omitted). Decide what Lisa should learn from it.\n\n${JSON.stringify(evidence)}` +
     `\n\n## current memory (compare before proposing changes)\n${JSON.stringify({ memory: reviews.memory.before, user: reviews.user.before })}` +
@@ -322,7 +366,7 @@ async function reflectOnSessionInner(
       : "") +
     desiresBlock +
     reconsiderBlock +
-    (reconsiderOnly
+    (priorSummary !== undefined
       ? "\nThis conversation was already reflected on. Address only the newly delivered reconsideration request. Do not repeat earlier operations."
       : "");
   const model = opts.model ?? DEFAULT_MODEL;
@@ -333,12 +377,11 @@ async function reflectOnSessionInner(
       const response = await delegate.runTurn(request);
       // Charge every completed call (including retries and condensation)
       // before checking cancellation or attempting a potentially failing write.
+      meter.calls++;
       meter.usage = addProviderUsage(meter.usage, response.usage);
       return response;
     },
   };
-  const startedAt = new Date().toISOString();
-  const t0 = Date.now();
 
   const runReflector = async (systemPrompt: string): Promise<string> => {
     await checkActive();
@@ -384,27 +427,21 @@ async function reflectOnSessionInner(
     } else {
       const errPath = path.join(reflectionsDir(), `${opts.sessionId}.error.json`);
       try {
-        await atomicWrite(
-          errPath,
-          JSON.stringify({ firstError, retryError: retryParsed.error, raw, retryRaw }, null, 2),
-        );
+        await withMemoryLock(async () => {
+          await checkActive();
+          await assertHomeDirectory(reflectionsDir());
+          await atomicWrite(
+            errPath,
+            JSON.stringify({ firstError, retryError: retryParsed.error, raw, retryRaw }, null, 2),
+          );
+        });
       } catch {
         // best-effort persistence
       }
+      await checkActive();
       console.error(
         `[reflect] unparseable output after retry (${firstError}) — saved ${path.basename(errPath)}`,
       );
-      await recordAutonomyRun({
-        kind: "reflect",
-        startedAt,
-        durationMs: Date.now() - t0,
-        inputTokens: meter.usage.inputTokens,
-        outputTokens: meter.usage.outputTokens,
-        cacheReadTokens: meter.usage.cacheReadTokens,
-        cacheWriteTokens: meter.usage.cacheWriteTokens,
-        outcome: "error",
-        note: `malformed: ${firstError}`.slice(0, 200),
-      });
       return {
         summary: `(reflection produced unparseable output: ${firstError})`,
         applied: [],
@@ -426,9 +463,13 @@ async function reflectOnSessionInner(
   if (payload.journal && payload.journal.trim()) {
     try {
       const { appendJournal } = await import("./soul/store.js");
-      await appendJournal(new Date().toISOString().slice(0, 10), payload.journal);
+      await withMemoryLock(async () => {
+        await checkActive();
+        await appendJournal(new Date().toISOString().slice(0, 10), payload.journal!);
+      });
       applied.push("journal:appended");
     } catch (err) {
+      await checkActive();
       skipped.push(`journal — ${(err as Error).message}`);
     }
   }
@@ -456,106 +497,112 @@ async function reflectOnSessionInner(
           reason: op.reason ?? "",
           evidence: op.source_quotes ?? [],
         });
-      } else if (op.kind === "skill_create") {
-        if (!op.name || !op.description || op.body == null) {
-          throw new Error("skill_create needs name/description/body");
-        }
-        await createSkill({ name: op.name, description: op.description }, op.body);
-        applied.push(`skill_create:${op.name}`);
-      } else if (op.kind === "skill_patch") {
-        if (!op.name || op.old_string == null || op.new_string == null) {
-          throw new Error("skill_patch needs name/old_string/new_string");
-        }
-        const existing = await getSkill(op.name);
-        if (!existing) throw new Error(`skill ${op.name} not found`);
-        await patchSkill(op.name, op.old_string, op.new_string);
-        applied.push(`skill_patch:${op.name}`);
-      } else if (op.kind === "feel") {
-        if (!op.emotion || op.delta == null) throw new Error("feel needs emotion+delta");
-        if (!op.trigger || !op.trigger.trim()) {
-          throw new Error("feel needs trigger (one first-person sentence saying why)");
-        }
-        // Same locked decay-first path as soul_feel — reflect used to skip the
-        // decay and stack the delta on a stale baseline.
-        const { applyEmotionDelta } = await import("./soul/store.js");
-        const { EMOTION_EVENTS_MAX } = await import("./soul/types.js");
-        const { previous, next } = await applyEmotionDelta({
-          emotion: op.emotion,
-          delta: op.delta,
-          trigger: op.trigger,
-          maxEvents: EMOTION_EVENTS_MAX,
-        });
-        applied.push(`feel:${op.emotion} ${previous.toFixed(2)}→${next.toFixed(2)}`);
-      } else if (op.kind === "opinion_form") {
-        if (!op.slug || !op.stance) throw new Error("opinion_form needs slug+stance");
-        const { writeOpinion } = await import("./soul/store.js");
-        const ts = new Date().toISOString();
-        await writeOpinion({
-          slug: op.slug,
-          stance: op.stance,
-          confidence: op.confidence ?? 0.5,
-          evidence: op.evidence ?? [],
-          bornAt: ts,
-          updatedAt: ts,
-        });
-        applied.push(`opinion:${op.slug}`);
-      } else if (op.kind === "desire_add") {
-        if (!op.slug || !op.what || !op.why) throw new Error("desire_add needs slug+what+why");
-        const { writeDesire } = await import("./soul/store.js");
-        const ts = new Date().toISOString();
-        await writeDesire({
-          slug: op.slug,
-          what: op.what,
-          why: op.why,
-          actionable: op.actionable ?? false,
-          heartbeatPrompt: op.heartbeat_prompt,
-          pursuit: op.pursuit,
-          bornAt: ts,
-          updatedAt: ts,
-          intensity: op.intensity,
-          horizon: op.horizon,
-          sources: op.sources,
-        });
-        applied.push(
-          `desire:${op.slug}${op.actionable ? (op.pursuit === "needs-user" ? " (needs-user)" : " (actionable)") : ""}`,
-        );
-      } else if (op.kind === "desire_revise") {
-        if (!op.slug) throw new Error("desire_revise needs slug");
-        const { reviseDesire } = await import("./soul/store.js");
-        // Only the supplied fields change; reviseDesire preserves the rest and
-        // throws if the slug doesn't exist (no accidental create-via-revise).
-        await reviseDesire(op.slug, {
-          what: op.what,
-          why: op.why,
-          actionable: op.actionable,
-          heartbeatPrompt: op.heartbeat_prompt,
-          pursuit: op.pursuit,
-          intensity: op.intensity,
-          horizon: op.horizon,
-          sources: op.sources,
-        });
-        applied.push(`desire_revise:${op.slug}`);
-      } else if (op.kind === "desire_close") {
-        if (!op.slug || !op.outcome) throw new Error("desire_close needs slug+outcome");
-        const { closeDesire } = await import("./soul/store.js");
-        await closeDesire(op.slug, op.outcome, op.reflection ?? "");
-        applied.push(`desire_close:${op.slug} (${op.outcome})`);
-      } else if (
-        op.kind === "patch_identity" ||
-        op.kind === "patch_purpose" ||
-        op.kind === "patch_constitution"
-      ) {
-        if (!op.new_text) throw new Error(`${op.kind} needs new_text`);
-        const { writeIdentity, writePurpose, writeConstitution, recomputeLock, saveLock } =
-          await import("./soul/store.js");
-        if (op.kind === "patch_identity") await writeIdentity(op.new_text);
-        if (op.kind === "patch_purpose") await writePurpose(op.new_text);
-        if (op.kind === "patch_constitution") await writeConstitution(op.new_text);
-        await saveLock(await recomputeLock());
-        applied.push(op.kind);
-      } else {
-        skipped.push(`unknown op kind: ${(op as { kind: string }).kind}`);
+        continue;
       }
+      // Drain this write before a concurrent Forget builds its confirmed plan.
+      await withMemoryLock(async () => {
+        await checkActive();
+        if (op.kind === "skill_create") {
+          if (!op.name || !op.description || op.body == null) {
+            throw new Error("skill_create needs name/description/body");
+          }
+          await createSkill({ name: op.name, description: op.description }, op.body);
+          applied.push(`skill_create:${op.name}`);
+        } else if (op.kind === "skill_patch") {
+          if (!op.name || op.old_string == null || op.new_string == null) {
+            throw new Error("skill_patch needs name/old_string/new_string");
+          }
+          const existing = await getSkill(op.name);
+          if (!existing) throw new Error(`skill ${op.name} not found`);
+          await patchSkill(op.name, op.old_string, op.new_string);
+          applied.push(`skill_patch:${op.name}`);
+        } else if (op.kind === "feel") {
+          if (!op.emotion || op.delta == null) throw new Error("feel needs emotion+delta");
+          if (!op.trigger || !op.trigger.trim()) {
+            throw new Error("feel needs trigger (one first-person sentence saying why)");
+          }
+          // Same locked decay-first path as soul_feel — reflect used to skip the
+          // decay and stack the delta on a stale baseline.
+          const { applyEmotionDelta } = await import("./soul/store.js");
+          const { EMOTION_EVENTS_MAX } = await import("./soul/types.js");
+          const { previous, next } = await applyEmotionDelta({
+            emotion: op.emotion,
+            delta: op.delta,
+            trigger: op.trigger,
+            maxEvents: EMOTION_EVENTS_MAX,
+          });
+          applied.push(`feel:${op.emotion} ${previous.toFixed(2)}→${next.toFixed(2)}`);
+        } else if (op.kind === "opinion_form") {
+          if (!op.slug || !op.stance) throw new Error("opinion_form needs slug+stance");
+          const { writeOpinion } = await import("./soul/store.js");
+          const ts = new Date().toISOString();
+          await writeOpinion({
+            slug: op.slug,
+            stance: op.stance,
+            confidence: op.confidence ?? 0.5,
+            evidence: op.evidence ?? [],
+            bornAt: ts,
+            updatedAt: ts,
+          });
+          applied.push(`opinion:${op.slug}`);
+        } else if (op.kind === "desire_add") {
+          if (!op.slug || !op.what || !op.why) throw new Error("desire_add needs slug+what+why");
+          const { writeDesire } = await import("./soul/store.js");
+          const ts = new Date().toISOString();
+          await writeDesire({
+            slug: op.slug,
+            what: op.what,
+            why: op.why,
+            actionable: op.actionable ?? false,
+            heartbeatPrompt: op.heartbeat_prompt,
+            pursuit: op.pursuit,
+            bornAt: ts,
+            updatedAt: ts,
+            intensity: op.intensity,
+            horizon: op.horizon,
+            sources: op.sources,
+          });
+          applied.push(
+            `desire:${op.slug}${op.actionable ? (op.pursuit === "needs-user" ? " (needs-user)" : " (actionable)") : ""}`,
+          );
+        } else if (op.kind === "desire_revise") {
+          if (!op.slug) throw new Error("desire_revise needs slug");
+          const { reviseDesire } = await import("./soul/store.js");
+          // Only the supplied fields change; reviseDesire preserves the rest and
+          // throws if the slug doesn't exist (no accidental create-via-revise).
+          await reviseDesire(op.slug, {
+            what: op.what,
+            why: op.why,
+            actionable: op.actionable,
+            heartbeatPrompt: op.heartbeat_prompt,
+            pursuit: op.pursuit,
+            intensity: op.intensity,
+            horizon: op.horizon,
+            sources: op.sources,
+          });
+          applied.push(`desire_revise:${op.slug}`);
+        } else if (op.kind === "desire_close") {
+          if (!op.slug || !op.outcome) throw new Error("desire_close needs slug+outcome");
+          const { closeDesire } = await import("./soul/store.js");
+          await closeDesire(op.slug, op.outcome, op.reflection ?? "");
+          applied.push(`desire_close:${op.slug} (${op.outcome})`);
+        } else if (
+          op.kind === "patch_identity" ||
+          op.kind === "patch_purpose" ||
+          op.kind === "patch_constitution"
+        ) {
+          if (!op.new_text) throw new Error(`${op.kind} needs new_text`);
+          const { writeIdentity, writePurpose, writeConstitution, recomputeLock, saveLock } =
+            await import("./soul/store.js");
+          if (op.kind === "patch_identity") await writeIdentity(op.new_text);
+          if (op.kind === "patch_purpose") await writePurpose(op.new_text);
+          if (op.kind === "patch_constitution") await writeConstitution(op.new_text);
+          await saveLock(await recomputeLock());
+          applied.push(op.kind);
+        } else {
+          skipped.push(`unknown op kind: ${(op as { kind: string }).kind}`);
+        }
+      });
     } catch (err) {
       await checkActive();
       const message = err instanceof Error ? err.message : String(err);
@@ -607,6 +654,7 @@ async function reflectOnSessionInner(
 
   await withMemoryLock(async () => {
     await checkActive();
+    await assertHomeDirectory(reflectionsDir());
     await atomicWrite(
       path.join(reflectionsDir(), `${opts.sessionId}.json`),
       JSON.stringify(
@@ -621,21 +669,6 @@ async function reflectOnSessionInner(
         2,
       ),
     );
-  });
-
-  // Observability (R2): record the reflect pass. "done" when at least one
-  // operation beyond the journal landed; "no-update" otherwise.
-  const opsApplied = applied.filter((a) => !a.startsWith("journal")).length;
-  await recordAutonomyRun({
-    kind: "reflect",
-    startedAt,
-    durationMs: Date.now() - t0,
-    inputTokens: meter.usage.inputTokens,
-    outputTokens: meter.usage.outputTokens,
-    cacheReadTokens: meter.usage.cacheReadTokens,
-    cacheWriteTokens: meter.usage.cacheWriteTokens,
-    outcome: opsApplied > 0 ? "done" : "no-update",
-    note: underReflected ? "underreflected" : undefined,
   });
 
   return {
@@ -702,11 +735,13 @@ async function maybeConsolidateOneDesireProgress(
     .join("\n")
     .trim();
   if (!summary) return null;
-  await withSoulCaller("reflect", async () => {
+  await withMemoryLock(async () => {
     await checkActive();
-    await consolidateDesireProgress(target.slug, {
-      condensedSummary: target.preamble ? target.preamble + "\n\n" + summary : summary,
-      keepLatest,
+    await withSoulCaller("reflect", async () => {
+      await consolidateDesireProgress(target.slug, {
+        condensedSummary: target.preamble ? target.preamble + "\n\n" + summary : summary,
+        keepLatest,
+      });
     });
   });
   return { slug: target.slug, usage: result.usage };

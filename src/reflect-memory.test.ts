@@ -211,6 +211,17 @@ test("cancellation after the first durable write stops later soul operations and
   );
   const dream = await readDream((await listDreams(1)).dreams[0]!.id);
   assert.equal(dream.outcome, "error");
+  const { buildReveOverview } = await import("./web/reve-overview.js");
+  const { stats } = await buildReveOverview();
+  assert.equal(stats.runs, 1);
+  assert.equal(stats.issues, 1);
+  assert.deepEqual(stats.usage, {
+    inputTokens: 120,
+    outputTokens: 30,
+    cacheReadTokens: 4,
+    cacheWriteTokens: 5,
+    incompleteCacheRuns: 0,
+  });
 });
 
 test("a concurrent Forget cancels a reflection before stale source text can be written back", async () => {
@@ -247,4 +258,118 @@ test("Forget redacts prior summaries returned by duplicate reflection", async ()
   const repeated = await reflectOnSession({ history, sessionId: "session1", provider });
   assert.equal(repeated.duplicate, true);
   assert.doesNotMatch(repeated.summary, /privatecode/);
+});
+
+test("contended reflection has a safe busy response and a waiting caller can cancel without spending", async () => {
+  const lockDir = path.join(dir, "reflections");
+  await fs.mkdir(lockDir);
+  await fs.writeFile(
+    path.join(lockDir, "session1.lock"),
+    JSON.stringify({ pid: process.pid, ts: Date.now() }),
+  );
+  let calls = 0;
+  const provider = fakeProvider(() => {
+    calls++;
+    return correction();
+  });
+  const busy = reflectOnSession({ history, sessionId: "session1", provider });
+  const cancelled = reflectOnSession({
+    history,
+    sessionId: "session1",
+    provider,
+    signal: AbortSignal.timeout(75),
+  });
+  const other = reflectOnSession({ history, sessionId: "session2", provider });
+  const [busyResult, cancelledResult, otherResult] = await Promise.allSettled([
+    busy,
+    cancelled,
+    other,
+  ]);
+  for (const [r, code] of [
+    [busyResult, "reflection_busy"],
+    [cancelledResult, "reflection_cancelled"],
+  ] as const) {
+    assert.equal(r.status, "rejected");
+    assert.ok(r.reason instanceof ReflectionInterruptedError);
+    assert.equal(r.reason.code, code);
+    assert.equal(r.reason.usage.inputTokens, 0);
+    assert.equal(r.reason.message, code);
+  }
+  assert.equal(otherResult.status, "fulfilled");
+  assert.equal(calls, 1);
+});
+
+test("active privacy reset blocks review, restore, and reflection before any model call", async () => {
+  const { withReviewReset, prepareMemoryReview, restoreMemoryRevision, consolidateMemory } =
+    await import("./memory/review.js");
+  const draft = await prepareMemoryReview("user", []);
+  const applied = await consolidateMemory(draft.id, []);
+  await withReviewReset(async () => {
+    await assert.rejects(prepareMemoryReview("user", []), /reset in progress/);
+    await assert.rejects(restoreMemoryRevision(applied.revisionId), /reset in progress/);
+    await assert.rejects(consolidateMemory(draft.id, []), /reset in progress/);
+    await assert.rejects(
+      reflectOnSession({
+        history,
+        sessionId: "session1",
+        provider: fakeProvider(() => {
+          throw new Error("unexpected call");
+        }),
+      }),
+      (err) =>
+        err instanceof ReflectionInterruptedError &&
+        err.code === "reflection_invalidated" &&
+        err.usage.outputTokens === 0,
+    );
+  });
+});
+
+test("reflection rejects a cross-home processed directory without consuming tokens or following it", async () => {
+  const outside = await fs.mkdtemp(path.join(os.tmpdir(), "other-reflection-"));
+  try {
+    await fs.mkdir(path.join(dir, "reflections"));
+    await fs.symlink(outside, path.join(dir, "reflections", "processed"));
+    await assert.rejects(
+      reflectOnSession({
+        history,
+        sessionId: "session1",
+        provider: fakeProvider(() => {
+          throw new Error("unexpected call");
+        }),
+      }),
+      (err) =>
+        err instanceof ReflectionInterruptedError &&
+        err.code === "reflection_failed" &&
+        err.usage.inputTokens === 0,
+    );
+    assert.deepEqual(await fs.readdir(outside), []);
+  } finally {
+    await fs.rm(outside, { recursive: true, force: true });
+  }
+});
+
+test("a failed completion checkpoint records each incurred token once and marks a single failed run", async (t) => {
+  const { readAutonomyRuns } = await import("./autonomy/runs.js");
+  const rename = fs.rename.bind(fs);
+  t.mock.method(fs, "rename", async (from: string, to: string) => {
+    if (String(to).startsWith(path.join(dir, "reflections", "processed") + path.sep))
+      throw new Error("checkpoint unavailable");
+    await rename(from, to);
+  });
+  const provider = fakeProvider(() => ({ summary: "finished", operations: [] }));
+  await assert.rejects(
+    reflectOnSession({ history, sessionId: "session1", provider }),
+    /reflection_failed/,
+  );
+  assert.deepEqual(
+    (await readAutonomyRuns()).map((r) => [
+      r.outcome,
+      r.note,
+      r.inputTokens,
+      r.outputTokens,
+      r.cacheReadTokens,
+      r.cacheWriteTokens,
+    ]),
+    [["error", "reflection_failed", 120, 30, 4, 5]],
+  );
 });

@@ -131,6 +131,31 @@ test("overview and restore are scoped, audited, owner-only and reject stale writ
       await homeScope.run(path.join(dir, "a"), () => readMemory("user")),
       /A newer fact/,
     );
+    const legacy = await homeScope.run(path.join(dir, "a"), async () => {
+      const oldText = "x".repeat(2200);
+      await fs.writeFile(path.join(memoryDir(), "USER.md"), oldText);
+      const evidence = evidenceFromHistory(
+        [{ role: "user", content: "Please keep the short version." }],
+        "shorten",
+      );
+      return applyMemoryReview(await createMemoryReview("user", evidence), [
+        {
+          kind: "replace",
+          old_text: oldText,
+          new_text: "short version",
+          reason: "The user requested the short version",
+          evidence: [{ id: evidence[0]!.id, quote: evidence[0]!.text }],
+        },
+      ]);
+    });
+    const legacyRoute = `/api/reve/revisions/${legacy.revisionId}`;
+    assert.equal((await (await fetch(base + legacyRoute)).json()).canRestore, false);
+    const revisions = (await (await fetch(base + "/api/reve")).json()).revisions;
+    assert.equal(
+      revisions.find((r: { id: string }) => r.id === legacy.revisionId).canRestore,
+      false,
+    );
+    assert.equal((await post(legacyRoute + "/restore")).status, 409);
     await homeScope.run(path.join(dir, "a"), () =>
       fs.writeFile(path.join(memoryDir(), "revisions", `${revision.revisionId}.json`), "{"),
     );

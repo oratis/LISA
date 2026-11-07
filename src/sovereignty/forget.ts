@@ -80,7 +80,8 @@ import {
   type MemoryEntry,
 } from "../memory/entries.js";
 import { withMemoryLock } from "../memory/store.js";
-import { invalidateMemoryReviews } from "../memory/review.js";
+import { assertHomeDirectory, readHomeText } from "../home-files.js";
+import { invalidateMemoryReviews, withReviewReset } from "../memory/review.js";
 import { forgetInEntry, listFullEntries, type KbEntry } from "../kb/store.js";
 import { commitSoulChange, withSoulCaller } from "../soul/git.js";
 import { withFileLock, withSoulLock } from "../soul/lock.js";
@@ -1429,8 +1430,10 @@ async function forgetInMemoryReviewFiles(ctx: Ctx): Promise<void> {
   ]);
   const scan = async () => {
     for (const section of ["reviews", "revisions"]) {
-      for (const file of await listFiles(path.join(memoryDir(), section), ".json")) {
-        const raw = await fs.readFile(file, "utf8");
+      const sectionDir = path.join(memoryDir(), section);
+      await assertHomeDirectory(sectionDir);
+      for (const file of await listFiles(sectionDir, ".json")) {
+        const raw = await readHomeText(file);
         let result: Redacted;
         try {
           result = redactStrings(JSON.parse(raw), ctx.m, structural);
@@ -1457,7 +1460,6 @@ async function forgetInMemoryReviewFiles(ctx: Ctx): Promise<void> {
         );
       }
     }
-    if (ctx.apply) await invalidateMemoryReviews();
   };
   try {
     if (ctx.apply) await withMemoryLock(scan);
@@ -1468,17 +1470,24 @@ async function forgetInMemoryReviewFiles(ctx: Ctx): Promise<void> {
 }
 
 async function forgetInReflections(ctx: Ctx): Promise<void> {
-  for (const file of [
-    ...(await listFiles(reflectionsDir(), ".json")),
-    ...(await listFiles(path.join(reflectionsDir(), "processed"), ".json")),
-  ]) {
+  const files: string[] = [];
+  for (const dir of [reflectionsDir(), path.join(reflectionsDir(), "processed")]) {
+    try {
+      await assertHomeDirectory(dir);
+      files.push(...(await listFiles(dir, ".json")));
+    } catch {
+      ctx.report.errors.push({ layer: "reflections", error: "reflections_unreadable" });
+    }
+  }
+  for (const file of files) {
     const location = rel(file);
     let raw: string;
     let parsed: unknown;
     try {
-      raw = await fs.readFile(file, "utf8");
+      raw = await readHomeText(file);
       parsed = JSON.parse(raw);
     } catch {
+      ctx.report.errors.push({ layer: "reflections", error: "reflection_unreadable" });
       continue;
     }
     const r = redactStrings(parsed, ctx.m, REFLECTION_STRUCTURAL);
@@ -1487,7 +1496,7 @@ async function forgetInReflections(ctx: Ctx): Promise<void> {
     if (!allowed(ctx, id)) continue;
     if (ctx.apply) {
       // Written once per reflection; re-read so a rewrite meanwhile is not lost.
-      if ((await fs.readFile(file, "utf8").catch(() => null)) !== raw) continue;
+      if ((await readHomeText(file).catch(() => null)) !== raw) continue;
       await atomicWrite(file, JSON.stringify(r.value, null, 2));
     }
     addItem(
@@ -1639,6 +1648,10 @@ export async function forget(query: string, opts: ForgetOptions = {}): Promise<F
     });
     return preview;
   }
+  return withReviewReset(() => applyForget(m, opts));
+}
+
+async function applyForget(m: Matcher, opts: ForgetOptions): Promise<ForgetReport> {
   const plan = await run(m, { apply: false, snippets: false, allowed: null });
   if (opts.digest !== undefined && opts.digest !== plan.digest) {
     throw new ForgetError(
@@ -1646,6 +1659,7 @@ export async function forget(query: string, opts: ForgetOptions = {}): Promise<F
       "what matches has changed since the preview, so nothing was forgotten; preview again",
     );
   }
+  await withMemoryLock(invalidateMemoryReviews);
   const report = await run(m, {
     apply: true,
     snippets: false,

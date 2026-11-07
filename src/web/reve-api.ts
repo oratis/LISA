@@ -46,8 +46,12 @@ import {
 } from "../reve/store.js";
 
 import { buildReveOverview } from "./reve-overview.js";
-import { readMemoryRevision, restoreMemoryRevision } from "../memory/review.js";
-import { readMemory } from "../memory/store.js";
+import {
+  canRestoreMemoryRevision,
+  readMemoryRevision,
+  restoreMemoryRevision,
+} from "../memory/review.js";
+import { MemoryCapacityError, readMemory } from "../memory/store.js";
 
 export interface ReveApiOptions {
   reflectionEnabled?: boolean;
@@ -152,8 +156,7 @@ export async function handleReveApi(
           ...revision,
           canRestore:
             opts.allowApproval &&
-            revision.status === "applied" &&
-            (await readMemory(revision.store)) === revision.after,
+            canRestoreMemoryRevision(revision, await readMemory(revision.store)),
         });
         return true;
       }
@@ -234,6 +237,8 @@ export async function handleReveApi(
             ? 409
             : 400;
       json(res, status, { error: err.code, message: err.message });
+    } else if (err instanceof MemoryCapacityError) {
+      json(res, 409, { error: "memory_capacity_exceeded" });
     } else if (parts[0] === "revisions") {
       const missing = (err as NodeJS.ErrnoException).code === "ENOENT";
       const conflict = err instanceof Error && err.message.includes("changed since review");
