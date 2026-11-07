@@ -44,7 +44,7 @@ function lisaBanner(msg, opts) {
   // that grew while the user typed never ends up covering the toast.
   var composer = document.getElementById('form');
   var lift = (composer && composer.offsetParent)
-    ? Math.round(composer.getBoundingClientRect().height) + 14
+    ? Math.round(window.innerHeight - composer.getBoundingClientRect().top) + 14
     : 18;
   el.style.bottom = lift + 'px';
   el.hidden = false;
@@ -1956,9 +1956,7 @@ function filterLog(q) {
 }
 if (fnSearchBtn && fnFind) {
   fnSearchBtn.addEventListener('click', () => {
-    const show = fnFind.style.display === 'none';
-    fnFind.style.display = show ? '' : 'none';
-    if (show) { fnFind.focus(); } else { fnFind.value = ''; filterLog(''); }
+    if (findIsOpen()) closeFind(); else openFind();
   });
   fnFind.addEventListener('input', () => filterLog(fnFind.value.trim().toLowerCase()));
   fnFind.addEventListener('keydown', (e) => {
@@ -1968,6 +1966,7 @@ if (fnSearchBtn && fnFind) {
 function openFind() {
   if (!fnFind) return;
   fnFind.style.display = '';
+  document.getElementById('fnbar').classList.add('searching');
   fnFind.focus();
   fnFind.select();
 }
@@ -1977,6 +1976,7 @@ function closeFind() {
   fnFind.value = '';
   filterLog('');
   fnFind.style.display = 'none';
+  document.getElementById('fnbar').classList.remove('searching');
 }
 
 // ── Keyboard shortcuts (UX-11) ───────────────────────────────────
@@ -2553,7 +2553,8 @@ async function runChat(message, filesToSend) {
     clearTimeout(waitTimer);
     sendBtn.disabled = false;
     void githubRefresh();
-    input.focus();
+    // A completed reply must not reopen a dismissed phone keyboard.
+    if (!window.matchMedia('(max-width: 720px)').matches) input.focus();
     // F6 — a reply that finished after its session was switched away:
     // refresh if the user is back on that session, else mark it unread.
     if (gen !== chatGeneration && sid) {
@@ -4483,7 +4484,9 @@ if ('serviceWorker' in navigator) {
       items[i].classList.toggle('active', items[i].getAttribute('data-view') === name);
     }
     if (name !== 'chat') loadView(name);
-    else { try { document.getElementById('input').focus(); } catch (e) {} }
+    else if (!window.matchMedia('(max-width: 720px)').matches) { try { document.getElementById('input').focus(); } catch (e) {} }
+    document.body.dataset.view = name;
+    window.dispatchEvent(new CustomEvent('lisa-view-change', { detail: { view: name } }));
     try { history.replaceState(null, '', name === 'chat' ? location.pathname + location.search : '#' + name); } catch (e) {}
   }
   navList.addEventListener('click', function (e) {
@@ -5658,4 +5661,173 @@ if ('serviceWorker' in navigator) {
   }
   loadPending();
   setInterval(loadPending, 30000);
+})();
+
+// Phone shell: reuse the real navigation and tools so their state and handlers
+// stay identical across rotation. Native dialogs supply focus trapping, Escape
+// dismissal, and an inert background without a second navigation implementation.
+(function setupMobileShell() {
+  const narrow = window.matchMedia('(max-width: 720px)');
+  const sidebar = document.querySelector('.sidebar');
+  const menu = document.getElementById('mobileMenu');
+  const tools = document.getElementById('mobileTools');
+  const tabs = document.getElementById('mobileTabs');
+  const more = document.getElementById('mobileMore');
+  const menuButton = document.getElementById('mobileMenuBtn');
+  const toolsButton = document.getElementById('mobileToolsBtn');
+  const actions = document.getElementById('mobileActions');
+  if (!sidebar || !menu || !tools || !tabs || !more || !menuButton || !toolsButton || !actions) return;
+  const sidebarHome = document.createComment('desktop sidebar');
+  sidebar.before(sidebarHome);
+  const actionHomes = ['fnKbSelect', 'fnMail', 'fnTheme'].map(id => {
+    const button = document.getElementById(id);
+    const home = document.createComment(id);
+    button.before(home);
+    return { button, home };
+  });
+
+  const primaryViews = ['chat', 'control', 'room'];
+  primaryViews.forEach(view => {
+    const source = document.querySelector('#navList [data-view="' + view + '"]');
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'mobile-tab';
+    button.dataset.mobileView = view;
+    button.appendChild(source.querySelector('svg').cloneNode(true));
+    const label = document.createElement('span');
+    label.textContent = source.querySelector('.nav-label').textContent;
+    button.appendChild(label);
+    button.addEventListener('click', () => window.lisaShowView(view));
+    tabs.insertBefore(button, more);
+  });
+  function syncTabs() {
+    const view = document.body.dataset.view || 'chat';
+    tabs.querySelectorAll('[data-mobile-view]').forEach(button => {
+      const selected = button.dataset.mobileView === view;
+      button.classList.toggle('active', selected);
+      if (selected) button.setAttribute('aria-current', 'page');
+      else button.removeAttribute('aria-current');
+    });
+    const secondary = !primaryViews.includes(view);
+    more.classList.toggle('active', secondary);
+    if (secondary) more.setAttribute('aria-current', 'page');
+    else more.removeAttribute('aria-current');
+  }
+  window.addEventListener('lisa-view-change', syncTabs);
+  syncTabs();
+
+  function openSheet(dialog, trigger) {
+    if (!narrow.matches || dialog.open) return;
+    // Give native dialog restoration an explicit non-input target. Touch
+    // browsers do not consistently focus a tapped button on their own.
+    trigger.focus({ preventScroll: true });
+    dialog.showModal();
+    if (dialog === menu) {
+      menuButton.setAttribute('aria-expanded', 'true');
+      more.setAttribute('aria-expanded', 'true');
+    } else toolsButton.setAttribute('aria-expanded', 'true');
+  }
+  menuButton.addEventListener('click', () => openSheet(menu, menuButton));
+  more.addEventListener('click', () => openSheet(menu, more));
+  toolsButton.addEventListener('click', () => openSheet(tools, toolsButton));
+  // Native modal sheets make the rest of the document inert. Hand focus back
+  // before the existing global shortcuts open a non-dialog overlay or field.
+  // Capture runs before those document-level bubbling handlers.
+  document.addEventListener('keydown', event => {
+    if (!menu.open && !tools.open) return;
+    const mod = event.metaKey || event.ctrlKey;
+    const globalShortcut = mod && !event.altKey && ['k', 'f', '/'].includes(event.key.toLowerCase());
+    const helpShortcut = event.key === '?' && !mod && !isTypingTarget(event.target);
+    if (globalShortcut || helpShortcut) {
+      menu.close();
+      tools.close();
+    }
+  }, true);
+  [menu, tools].forEach(dialog => {
+    dialog.querySelector('[data-close-sheet]').addEventListener('click', () => dialog.close());
+    // Check coordinates: empty space inside the sheet must not dismiss it.
+    let backdropDown = false;
+    function outside(event) {
+      const box = dialog.getBoundingClientRect();
+      return event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom;
+    }
+    dialog.addEventListener('pointerdown', event => { backdropDown = event.target === dialog && outside(event); });
+    dialog.addEventListener('click', event => {
+      if (backdropDown && event.target === dialog && outside(event)) dialog.close();
+      backdropDown = false;
+    });
+    dialog.addEventListener('close', () => {
+      if (dialog === menu) {
+        menuButton.setAttribute('aria-expanded', 'false');
+        more.setAttribute('aria-expanded', 'false');
+        const contextMenu = dialog.querySelector('.session-context-menu');
+        if (contextMenu) contextMenu.remove();
+      } else toolsButton.setAttribute('aria-expanded', 'false');
+    });
+  });
+  // Close before the existing handler runs, including actions which open a
+  // separate panel. Returning to Chat never summons the keyboard by itself.
+  sidebar.addEventListener('click', event => {
+    if (!narrow.matches || !menu.open) return;
+    if (event.target.closest('.nav-item, .tleaf, #sbNewSession')) {
+      menu.close();
+      if (event.target.closest('.tleaf, #sbNewSession')) window.lisaShowView('chat');
+    }
+  }, true);
+  actions.addEventListener('click', event => {
+    if (event.target.closest('.fbtn')) tools.close();
+  }, true);
+  document.getElementById('mobileNewChat').addEventListener('click', () => {
+    window.lisaShowView('chat');
+    document.getElementById('sbNewSession').click();
+  });
+
+  // Mirror the actual identity; no second mood/name state to drift over time.
+  const portrait = document.getElementById('mascot');
+  const name = document.querySelector('.identity h1');
+  function syncIdentity() {
+    document.getElementById('mobileAvatar').src = portrait.src;
+    document.getElementById('mobileName').textContent = name.textContent;
+  }
+  new MutationObserver(syncIdentity).observe(portrait, { attributes: true, attributeFilter: ['src'] });
+  new MutationObserver(syncIdentity).observe(name, { childList: true, subtree: true, characterData: true });
+  syncIdentity();
+
+  function syncLayout() {
+    if (narrow.matches) {
+      menu.appendChild(sidebar);
+      actionHomes.forEach(({ button }) => actions.appendChild(button));
+    } else {
+      menu.close(); tools.close();
+      sidebarHome.after(sidebar);
+      actionHomes.forEach(({ button, home }) => home.after(button));
+    }
+    syncViewport();
+  }
+  // Safari's visual viewport shrinks for the software keyboard while the
+  // layout viewport can stay tall. Keep the composer above it, preserve pinch
+  // zoom, and give the conversation the tab bar's space while typing.
+  function syncViewport() {
+    const viewport = window.visualViewport;
+    if (!narrow.matches || (viewport && viewport.scale !== 1)) {
+      document.documentElement.style.removeProperty('--mobile-height');
+      document.documentElement.style.removeProperty('--mobile-top');
+      document.body.classList.remove('mobile-keyboard');
+      return;
+    }
+    const height = viewport ? viewport.height : window.innerHeight;
+    document.documentElement.style.setProperty('--mobile-height', height + 'px');
+    document.documentElement.style.setProperty('--mobile-top', (viewport ? viewport.offsetTop : 0) + 'px');
+    const typing = isTypingTarget(document.activeElement);
+    document.body.classList.toggle('mobile-keyboard', typing && window.innerHeight - height > 120);
+  }
+  narrow.addEventListener('change', syncLayout);
+  window.addEventListener('resize', syncViewport);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', syncViewport);
+    window.visualViewport.addEventListener('scroll', syncViewport);
+  }
+  document.addEventListener('focusin', syncViewport);
+  document.addEventListener('focusout', () => requestAnimationFrame(syncViewport));
+  syncLayout();
 })();
