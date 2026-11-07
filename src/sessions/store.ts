@@ -291,6 +291,11 @@ export class SessionStore {
   /**
    * Read a page of message entries (newest-first within the page).
    * page=0 = latest PAGE_SIZE messages, page=1 = older ones, etc.
+   *
+   * `includeExpressions` asks for the client view (/api/history): resolved
+   * expression metadata, and no `reply_expression` tool_use blocks — clients
+   * that list tool names (Lisa Pocket 1.3) would otherwise show a chip for an
+   * internal tool. The model view (default) is the transcript as stored.
    */
   async readMessagePage(
     page: number,
@@ -323,8 +328,11 @@ export class SessionStore {
       }
       if (entry.type !== "message" || !entry.message) continue;
       total++;
-      const expression = includeExpressions ? resolveExpression(entry.expression) : undefined;
-      ring.push(expression ? { ...entry.message, expression } : entry.message);
+      if (includeExpressions) {
+        const expression = resolveExpression(entry.expression);
+        const message = withoutExpressionToolUse(entry.message);
+        ring.push(expression ? { ...message, expression } : message);
+      } else ring.push(entry.message);
       if (ring.length > keep) ring.shift();
     }
     const end = total - page * pageSize;
@@ -334,6 +342,14 @@ export class SessionStore {
     const base = total - ring.length;
     return { messages: ring.slice(start - base, end - base), hasMore: start > 0 };
   }
+}
+
+function withoutExpressionToolUse(message: StoredMessage): StoredMessage {
+  if (message.role !== "assistant" || !Array.isArray(message.content)) return message;
+  const content = message.content.filter(
+    (block) => !(block.type === "tool_use" && block.name === "reply_expression"),
+  );
+  return content.length === message.content.length ? message : { ...message, content };
 }
 
 function stamp(): string {

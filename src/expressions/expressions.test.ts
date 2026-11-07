@@ -158,6 +158,14 @@ test("history restores metadata, pagination and cadence while model/legacy repla
       const store = await SessionStore.create({ cwd: dir, model: "test" });
       assert.equal(await store.turnsSinceExpression(), Infinity);
       await store.appendMessage({ role: "user", content: "hello" });
+      const toolUse = {
+        role: "assistant" as const,
+        content: [
+          { type: "text" as const, text: "Hi!" },
+          { type: "tool_use" as const, id: "t1", name: "reply_expression", input: {} },
+        ],
+      };
+      await store.appendMessage(toolUse);
       const fallback = await store.appendExpression(record);
       assert.equal(typeof fallback.content, "string");
       await store.appendMessage({
@@ -169,9 +177,11 @@ test("history restores metadata, pagination and cadence while model/legacy repla
       assert.equal(await reopened.turnsSinceExpression(), 1);
       const page = await reopened.readMessagePage(1, 2, true);
       assert.equal(page.messages[1]?.expression?.assetId, record.assetId);
-      assert.ok(
-        (await reopened.readMessagePage(0, 20)).messages.every((m) => !("expression" in m)),
-      );
+      // Clients that list tool names (Pocket 1.3) never see the internal tool.
+      assert.deepEqual(page.messages[0]?.content, [{ type: "text", text: "Hi!" }]);
+      const modelView = (await reopened.readMessagePage(0, 20)).messages;
+      assert.ok(modelView.every((m) => !("expression" in m)));
+      assert.deepEqual(modelView[1], toolUse, "the model still sees its own tool call");
       await fs.appendFile(
         store.path,
         JSON.stringify({
