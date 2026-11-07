@@ -106,7 +106,7 @@ final class CloudAccountModel: ObservableObject {
         guard !preview else { return }
         // Going to the inbox and reopening the window must preserve the current
         // login attempt, including its destination and the code/password step.
-        let editingSignIn = busy || step != .email || (loadedConfiguration && !showsAccount)
+        let editingSignIn = busy || applying || step != .email || (loadedConfiguration && !showsAccount)
         if !loadedConfiguration || !editingSignIn {
             if let base = services.read("LISA_MANAGED_BASE"), !base.isEmpty { server = base }
             let token = services.read("LISA_MANAGED_SESSION") ?? ""
@@ -117,8 +117,10 @@ final class CloudAccountModel: ObservableObject {
         }
         loadedConfiguration = true
         connection.start(owner: connectionOwner)
-        needsApply = services.read("LISA_ACCOUNT_PENDING_APPLY") == "1"
-        if needsApply { applicationMessage = signedIn ? "Apply your account to cloud models when you’re ready." : "Apply this change to stop using your account for cloud models." }
+        if !applying {
+            needsApply = services.read("LISA_ACCOUNT_PENDING_APPLY") == "1"
+            if needsApply { applicationMessage = signedIn ? "Apply your account to cloud models when you’re ready." : "Apply this change to stop using your account for cloud models." }
+        }
     }
     func stop() {
         connection.stop(owner: connectionOwner)
@@ -249,15 +251,15 @@ final class CloudAccountModel: ObservableObject {
         Task {
             defer { applying = false }
             do {
-                try services.save(["LISA_ACCOUNT_PENDING_APPLY": "0"])
                 let up = await withCheckedContinuation { continuation in
                     services.restart { continuation.resume(returning: $0) }
                 }
                 guard up else { throw NSError(domain: "LISAAccount", code: 2) }
+                try services.save(["LISA_ACCOUNT_PENDING_APPLY": "0"])
                 needsApply = false; applicationMessage = ""
                 await connection.refresh()
             } catch {
-                applyFailed = true
+                applyFailed = true; needsApply = true
                 try? services.save(["LISA_ACCOUNT_PENDING_APPLY": "1"])
                 applicationMessage = "Your account is saved, but setup couldn't finish. Try again when Lisa is available."
             }

@@ -142,6 +142,25 @@ final class CloudAccountFlowTests: XCTestCase {
         XCTAssertFalse(connection.busy)
     }
 
+    func testReopeningDuringApplyKeepsFailureAndRetryVisible() async {
+        var stored = ["LISA_ACCOUNT_PENDING_APPLY": "1"]
+        var finishRestart: ((Bool) -> Void)?
+        let connection = CloudConnectionModel(); connection.preview = true
+        let model = CloudAccountModel(connection: connection, services: CloudAccountServices(
+            read: { stored[$0] }, save: { stored.merge($0) { _, new in new } },
+            request: { _, _, _ in (200, [:]) }, restart: { finishRestart = $0 }))
+        model.needsApply = true; model.applyAccount()
+        await waitFor { finishRestart != nil }
+        model.stop(); model.start()
+        XCTAssertTrue(model.needsApply)
+        XCTAssertEqual(stored["LISA_ACCOUNT_PENDING_APPLY"], "1")
+        finishRestart?(false)
+        await waitFor { model.applyFailed }
+        XCTAssertTrue(model.needsApply)
+        XCTAssertFalse(model.applicationMessage.isEmpty)
+        model.stop()
+    }
+
     func testInvalidServerCannotReceiveCredentials() async {
         var requests = 0
         let connection = CloudConnectionModel(); connection.preview = true
