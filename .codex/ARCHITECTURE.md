@@ -153,3 +153,13 @@ flowchart TB
 ```
 
 建议保持模块化单体，先建立明确边界，再决定是否需要拆服务。
+
+## Operator console
+
+`src/admin/` provides the opt-in cloud operator console at `/console`, reverse
+proxied by `website/nginx.conf` onto `meetlisa.ai`. It has separate eight-hour
+sessions, verified-email roles, protected deployment-configured owners,
+server-side account/feature/model controls, audited idempotent credit grants,
+internal support tickets and aggregate business reports. Tenant credentials and
+private conversation contents are not exposed. See `docs/ADMIN_CONSOLE.md` for
+data definitions, limits, validation and deployment/rollback details.

@@ -78,6 +78,10 @@ addenv() { # addenv NAME VALUE
   fi
 }
 addenv LISA_WEB_TOKEN        "${LISA_WEB_TOKEN}"
+# Separate operator console. Configure owner emails only in deployment settings.
+addenv LISA_CONSOLE_ENABLED  "${LISA_CONSOLE_ENABLED:-}"
+addenv LISA_CONSOLE_ORIGIN   "${LISA_CONSOLE_ORIGIN:-https://meetlisa.ai}"
+addenv LISA_ADMIN_EMAILS     "${LISA_ADMIN_EMAILS:-}"
 addenv LISA_PUBLIC_ORIGIN     "${LISA_PUBLIC_ORIGIN:-https://cloud.meetlisa.ai}"
 addenv LISA_RELAY_ENABLED     "${LISA_RELAY_ENABLED:-0}"
 # The shared token authorizes nothing in the hosted edition unless this is set
