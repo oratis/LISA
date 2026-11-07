@@ -10,6 +10,11 @@ struct AISharingConsentSheet: View {
     @State private var agreesToSharing = false
 
     private var isTask: Bool { request.purpose == .delegation }
+    /// The coding CLIs the server lists while PTY agents are on (`ptyAgentRecipients`
+    /// in src/web/ai-disclosure.ts). Only then is their own sign-in worth a line.
+    private var listsCodingCLIs: Bool {
+        request.recipients.contains { $0.hasPrefix("Claude Code (") || $0.hasPrefix("Codex CLI (") }
+    }
     /// A relay-paired Mac's host is a placeholder; its name is what the user knows.
     private var serverName: String { request.server.remoteMac?.name ?? request.server.host }
 
@@ -29,7 +34,10 @@ struct AISharingConsentSheet: View {
                 Section("What is sent") {
                     if isTask {
                         Text("Your task or follow-up, and what the agent reads on your Mac while working on it, such as files, command output and tool results. Adopting a session continues its existing conversation. This can include personal information.")
-                        Text("Claude Code and Codex send under their own sign-in on your Mac, to the provider that account uses. Do not include secrets in your task.")
+                        if listsCodingCLIs {
+                            Text("Claude Code and Codex send under their own sign-in on your Mac, to the provider that account uses.")
+                        }
+                        Text("Do not include secrets in your task.")
                     } else {
                         Text("Your message, relevant conversation history, assistant memory, and tool results. This can include personal information you put in a conversation or ask Lisa to use.")
                         Text("LISA does not automatically attach account passwords or payment-card details to AI chat requests. Do not include secrets in your message.")

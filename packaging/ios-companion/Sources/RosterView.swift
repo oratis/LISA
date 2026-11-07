@@ -494,25 +494,78 @@ struct StatStrip: View {
     }
 }
 
-/// Ask the Mac to start a delegated agent. Returns nil once it started, or the
-/// message to show. Only `AISharingGate` calls this, after the user's consent
-/// for `.delegation` covers the connection's current AI recipients.
+/// Every Agents-tab send that hands user text, or a session to resume, to AI on
+/// the Mac. Each runs only through `gate`, under the same consent Chat uses (App
+/// Review 5.1.2(i)); the views call these and never the client's managed/PTY
+/// methods themselves.
 @MainActor
-func startDelegatedTask(kind: String, task: String, client: LisaClient) async -> String? {
-    do {
-        if kind == "managed" {
-            try await client.managedStart(task: task)
-        } else {
-            let code = try await client.ptyStart(agent: kind, task: task)
-            if !(200..<300).contains(code) {
+enum AgentSends {
+    enum Outcome: Equatable {
+        case sent
+        case failed(String)
+        /// Consent was withdrawn while the request was on its way: the Mac may
+        /// have it already, so sending again could start a duplicate.
+        case withdrawn
+    }
+
+    static let withdrawnNotice = "Withdrawn — the Mac may already have started this; check Agents before sending again."
+
+    /// Start a managed agent, or a claude/codex CLI under a PTY.
+    static func delegate(kind: String, task: String, app: AppState, gate: AISharingGate,
+                         client: LisaClient, done: @escaping @MainActor (Outcome) -> Void) {
+        gate.submit(task, purpose: .delegation, app: app) { text in
+            done(outcome(await run {
+                if kind == "managed" { try await client.managedStart(task: text); return nil }
+                let code = try await client.ptyStart(agent: kind, task: text)
+                if (200..<300).contains(code) { return nil }
                 return code == 503
                     ? "PTY agents are disabled on the Mac (set LISA_PTY_AGENTS=1)."
                     : "Couldn't start (HTTP \(code))."
-            }
+            }))
         }
-        return nil
-    } catch {
-        return (error as? LocalizedError)?.errorDescription ?? "\(error)"
+    }
+
+    /// Send a follow-up into a running managed or PTY session.
+    static func followUp(_ text: String, to session: AgentSession, app: AppState, gate: AISharingGate,
+                         client: LisaClient, done: @escaping @MainActor (Outcome) -> Void) {
+        gate.submit(text, purpose: .delegation, app: app) { text in
+            done(outcome(await run {
+                switch session.controllable {
+                case "managed": try await client.managedSend(session.sessionId, text)
+                case "pty": try await client.ptySend(session.sessionId, text)
+                default: return "This session has no control channel."
+                }
+                return nil
+            }))
+        }
+    }
+
+    /// Resume an idle claude session under a PTY (`claude --resume`). It carries
+    /// no new text, but continues that conversation with Claude Code.
+    static func adopt(_ session: AgentSession, app: AppState, gate: AISharingGate,
+                      client: LisaClient, done: @escaping @MainActor (Outcome) -> Void) {
+        gate.submit("", purpose: .delegation, app: app) { _ in
+            done(outcome(await run {
+                switch try await client.adopt(sessionId: session.sessionId) {
+                case 200: return nil
+                case 409: return "That session is live — close it first."
+                case 403: return "Remote adoption is disabled on the Mac."
+                case let code: return "HTTP \(code)"
+                }
+            }))
+        }
+    }
+
+    /// nil on success, else the message to show.
+    private static func run(_ work: () async throws -> String?) async -> String? {
+        do { return try await work() }
+        catch { return (error as? LocalizedError)?.errorDescription ?? "\(error)" }
+    }
+
+    /// Read inside the gate's task: a cancelled send was a withdrawal.
+    private static func outcome(_ failure: String?) -> Outcome {
+        guard let failure else { return .sent }
+        return Task.isCancelled ? .withdrawn : .failed(failure)
     }
 }
 
@@ -565,13 +618,12 @@ struct DelegateSheet: View {
         let t = task.trimmed
         guard !t.isEmpty else { return }
         status = ""
-        let kind = kind
-        aiGate.submit(t, purpose: .delegation, app: app) { text in
-            let failure = await startDelegatedTask(kind: kind, task: text, client: app.client)
-            guard !Task.isCancelled else { return }
-            if let failure { status = failure; return }
-            onStarted()
-            dismiss()
+        AgentSends.delegate(kind: kind, task: t, app: app, gate: aiGate, client: app.client) { outcome in
+            switch outcome {
+            case .sent: onStarted(); dismiss()
+            case .failed(let message): status = message
+            case .withdrawn: status = AgentSends.withdrawnNotice
+            }
         }
     }
 }
@@ -645,7 +697,7 @@ struct SessionDetailView: View {
                             Button("Deny", role: .destructive) { act { try await app.client.managedApprove(session.sessionId, allow: false) } }
                         }
                     }
-                    sendRow { try await app.client.managedSend(session.sessionId, $0) }
+                    sendRow
                     Button("Cancel", role: .destructive) { act { try await app.client.managedCancel(session.sessionId) } }
                     if !canControl { remoteBlockedNote }
                 }
@@ -656,7 +708,7 @@ struct SessionDetailView: View {
                 if isTerminal {
                     Text("This session has finished — no controls.").font(.caption).foregroundStyle(.secondary)
                 } else {
-                    sendRow { try await app.client.ptySend(session.sessionId, $0) }
+                    sendRow
                     Button("Cancel", role: .destructive) { act { try await app.client.ptyCancel(session.sessionId) } }
                     if !canControl { remoteBlockedNote }
                 }
@@ -679,16 +731,8 @@ struct SessionDetailView: View {
                     Text("This session is idle — Lisa can adopt it (claude --resume) to make it controllable.")
                         .font(.caption).foregroundStyle(.secondary)
                     Button("Adopt (resume)") {
-                        aiGate.submit("", purpose: .delegation, app: app) { _ in
-                            _ = await perform {
-                                let code = try await app.client.adopt(sessionId: session.sessionId)
-                                switch code {
-                                case 200: status = "Adopted — it'll reappear as controllable."
-                                case 409: status = "That session is live — close it first."
-                                case 403: status = "Remote adoption is disabled on the Mac."
-                                default: status = "HTTP \(code)"
-                                }
-                            }
+                        AgentSends.adopt(session, app: app, gate: aiGate, client: app.client) { outcome in
+                            show(outcome, sent: "Adopted — it'll reappear as controllable.")
                         }
                     }
                     .disabled(!canAdopt || aiGate.busy)
@@ -706,34 +750,42 @@ struct SessionDetailView: View {
 
     /// The follow-up stays in the field until the Mac accepts it, so cancelling
     /// the consent sheet, withdrawing consent or a failed send all keep it.
-    @ViewBuilder
-    func sendRow(_ action: @escaping (String) async throws -> Void) -> some View {
+    private var sendRow: some View {
         HStack {
             TextField("send a follow-up…", text: $followUp)
             Button("Send") {
-                aiGate.submit(followUp, purpose: .delegation, app: app) { text in
-                    if await perform({ try await action(text) }), followUp == text { followUp = "" }
+                let text = followUp
+                AgentSends.followUp(text, to: session, app: app, gate: aiGate, client: app.client) { outcome in
+                    if outcome == .sent, followUp == text { followUp = "" }
+                    show(outcome, sent: nil)
                 }
             }
             .disabled(followUp.isEmpty || aiGate.busy)
         }
     }
 
-    func act(_ work: @escaping () async throws -> Void) {
-        Task { @MainActor in _ = await perform(work) }
+    private func show(_ outcome: AgentSends.Outcome, sent: String?) {
+        switch outcome {
+        case .sent:
+            Haptics.success()
+            if let sent { status = sent }
+        case .failed(let message):
+            status = message
+            app.notify(message, ok: false)
+        case .withdrawn:
+            status = AgentSends.withdrawnNotice
+        }
     }
 
-    /// Run one control action; true on success. A cancelled action (consent
-    /// withdrawn mid-send) ends quietly — the withdrawal already said so.
-    func perform(_ work: () async throws -> Void) async -> Bool {
-        do { try await work(); Haptics.success(); return true }
-        catch {
-            guard !Task.isCancelled else { return false }
-            // A1 surfaces non-2xx here; make the failure land visibly (J1).
-            let msg = (error as? LocalizedError)?.errorDescription ?? "Action failed."
-            status = msg
-            app.notify(msg, ok: false)
-            return false
+    func act(_ work: @escaping () async throws -> Void) {
+        Task { @MainActor in
+            do { try await work(); Haptics.success() }
+            catch {
+                // A1 surfaces non-2xx here; make the failure land visibly (J1).
+                let msg = (error as? LocalizedError)?.errorDescription ?? "Action failed."
+                status = msg
+                app.notify(msg, ok: false)
+            }
         }
     }
 }

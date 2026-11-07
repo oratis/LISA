@@ -47,7 +47,7 @@ final class LisaPocketTests: XCTestCase {
         XCTAssertTrue(consent.allows(server: server, recipients: ["Anthropic"], purpose: .chat))
         XCTAssertTrue(consent.allows(server: server, recipients: ["Anthropic"], purpose: .delegation))
         // A new recipient (e.g. LISA_PTY_AGENTS=1 adds Claude Code) starts over.
-        let wider = ["Anthropic", "Claude Code (Anthropic, its own sign-in on your Mac)"]
+        let wider = ["Anthropic", "Claude Code (its own sign-in on your Mac; Anthropic by default)"]
         consent.grant(server: server, recipients: wider, purpose: .delegation, isAdult: true, generation: consent.generation)
         XCTAssertTrue(consent.allows(server: server, recipients: wider, purpose: .delegation))
         XCTAssertFalse(consent.allows(server: server, recipients: wider, purpose: .chat))
