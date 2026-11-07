@@ -14,7 +14,7 @@ import {
 } from "../billing/quota.js";
 import { listPaymentTransactions } from "../billing/iap.js";
 import { readAdminState, roleFor } from "./store.js";
-import { PRICES_VERSION, explicitPriceForModel } from "../billing/prices.js";
+import { PRICES_VERSION, explicitPriceForModel, normalizeModelId } from "../billing/prices.js";
 import { firestoreEnabled } from "../cloud/firestore.js";
 
 async function lines(
@@ -91,6 +91,8 @@ export async function consoleSnapshot(days: number, now = Date.now()) {
   }));
   const dayMap = new Map(daily.map((d) => [d.day, d]));
   const activeDays = new Map<string, Set<string>>();
+  const activeUsers = new Set<string>();
+  let totalUsage = 0;
   const models = new Map<
     string,
     { model: string; turns: number; tokens: number; faceMicroUSD: number }
@@ -164,7 +166,13 @@ export async function consoleSnapshot(days: number, now = Date.now()) {
             faceMicroUSD: num(row.microUSD),
             durationMs: num(row.durationMs),
           };
+          totalUsage++;
+          activeUsers.add(acct.uid);
           usage.push(record);
+          if (usage.length >= 2000) {
+            usage.sort((a, b) => b.at.localeCompare(a.at));
+            usage.splice(1000);
+          }
           userTurns++;
           faceMicroUSD += record.faceMicroUSD;
           const tokenCount =
@@ -258,10 +266,11 @@ export async function consoleSnapshot(days: number, now = Date.now()) {
     ...(models.get(model) ?? { turns: 0, tokens: 0, faceMicroUSD: 0 }),
     model,
     price: explicitPriceForModel(model),
-    disabled: state.settings.disabledModels.includes(model),
+    disabled: state.settings.disabledModels.some(
+      (m) => normalizeModelId(m) === normalizeModelId(model),
+    ),
     current: model === currentModel,
   }));
-  const active = new Set(usage.map((u) => u.uid));
   return {
     generatedAt: now,
     range: { days, since, until: now, timezone: "UTC" },
@@ -269,8 +278,8 @@ export async function consoleSnapshot(days: number, now = Date.now()) {
     summary: {
       users: accounts.length,
       registrations: daily.reduce((s, d) => s + d.registrations, 0),
-      active: active.size,
-      turns: usage.length,
+      active: activeUsers.size,
+      turns: totalUsage,
       tokens: daily.reduce((s, d) => s + d.tokens, 0),
       faceMicroUSD: daily.reduce((s, d) => s + d.faceMicroUSD, 0),
       creditMicroUSD: daily.reduce((s, d) => s + d.creditMicroUSD, 0),
@@ -290,7 +299,7 @@ export async function consoleSnapshot(days: number, now = Date.now()) {
     users,
     payments,
     usage: usage.slice(0, 1000),
-    usageTruncated: usage.length > 1000,
+    usageTruncated: totalUsage > 1000,
     models: modelList,
     sources: [...sources.values()],
     autonomy: autonomy.slice(0, 1000),
