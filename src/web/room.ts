@@ -118,7 +118,7 @@ ${MD_RENDER_CSS}
   #shadow.ready { opacity: 1; }
   #foot-shadow {
     position: absolute; left: var(--feet-x); top: var(--feet-y);
-    width: 9%; height: 2.4%; transform: translate(-50%, -35%);
+    width: var(--feet-width, 9%); height: var(--feet-height, 2.4%); transform: translate(-50%, -35%);
     background: radial-gradient(ellipse, rgba(18,17,23,.40), transparent 70%);
     filter: blur(2px); opacity: 0; transition: opacity 220ms ease; pointer-events: none;
   }
@@ -697,15 +697,17 @@ ${renderMarkdown}
       function place() {
         if (request !== characterRevision) return;
         var atlasPositions = { stand: '0% 0%', pjs: '66.666667% 100%', listen: '0% 100%', stretch: '100% 50%', window: '33.333333% 100%' };
-        var width = seated ? seated.width : (pose === 'window' ? 37 : 45);
+        var width = (seated ? seated.width : (pose === 'window' ? 37 : 45)) * ROOM_CHARACTER_SCALE;
         stage.style.setProperty('--actor-x', point[0] + '%');
         stage.style.setProperty('--actor-y', point[1] + '%');
         stage.style.setProperty('--actor-width', width + '%');
         stage.style.setProperty('--actor-aspect', seated ? seated.aspect : '1');
         stage.style.setProperty('--contact-x', (seated ? seated.contact[0] : 50) + '%');
         stage.style.setProperty('--contact-y', (seated ? seated.contact[1] : 98) + '%');
-        stage.style.setProperty('--shadow-width', seated ? '15%' : '11%');
-        stage.style.setProperty('--shadow-height', seated ? '3.8%' : '2.6%');
+        stage.style.setProperty('--shadow-width', (seated ? 15 : 11) * ROOM_CHARACTER_SCALE + '%');
+        stage.style.setProperty('--shadow-height', (seated ? 3.8 : 2.6) * ROOM_CHARACTER_SCALE + '%');
+        stage.style.setProperty('--feet-width', 9 * ROOM_CHARACTER_SCALE + '%');
+        stage.style.setProperty('--feet-height', 2.4 * ROOM_CHARACTER_SCALE + '%');
         stage.style.setProperty('--feet-x', (seated ? point[0] + width * (0.4 - seated.contact[0] / 100) : point[0]) + '%');
         stage.style.setProperty('--feet-y', geometry.feetFloor + '%');
         stage.style.setProperty('--feet-opacity', seated && pose !== 'sleep' ? (state.theme === 'room2' ? '.35' : '.75') : '0');

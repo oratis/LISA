@@ -4,6 +4,9 @@ const seated = JSON.parse(
   readFileSync(new URL("./assets/visuals/soft-ink-room-v2/manifest.json", import.meta.url), "utf8"),
 );
 
+/** Scale around the pose's contact point so smaller figures stay on furniture. */
+export const ROOM_CHARACTER_SCALE = 0.86;
+
 /** Room-space anchors refer to the unscaled background, never the viewport.
  * A character's contact point (hips or soles) is pinned to one of these.
  * The same background pixels are reused as foreground furniture masks.
@@ -55,4 +58,4 @@ export function roomPose(state: {
   return state.tod === "night" ? "pjs" : "stand";
 }
 
-export const ROOM_SCENE_JS = `var ROOM_GEOMETRY = ${JSON.stringify(ROOM_GEOMETRY)};\nvar ROOM_SEATED = ${JSON.stringify(seated)};\nvar roomPose = ${roomPose.toString()};`;
+export const ROOM_SCENE_JS = `var ROOM_CHARACTER_SCALE = ${ROOM_CHARACTER_SCALE};\nvar ROOM_GEOMETRY = ${JSON.stringify(ROOM_GEOMETRY)};\nvar ROOM_SEATED = ${JSON.stringify(seated)};\nvar roomPose = ${roomPose.toString()};`;
