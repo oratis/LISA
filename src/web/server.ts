@@ -1,3 +1,5 @@
+import { handleConsole } from "../admin/http.js";
+import { featureAllowed } from "../admin/store.js";
 import http from "node:http";
 import path from "node:path";
 import fs from "node:fs/promises";
@@ -1526,6 +1528,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // for EVERY request and loopback is not a free pass (the container must never
     // trust its own/proxy loopback). Mac edition: loopback = the local owner.
     const cloud = isCloud();
+    if (await handleConsole(req, res, { secret: cloud ? sessionSecret : null, clientIp: clientIp(req, remoteAddr) })) return;
+    if (cloud && !(await featureAllowed(req.method ?? "GET", url))) {
+      res.writeHead(503, { "content-type": "application/json", "cache-control": "no-store" });
+      res.end(JSON.stringify({ error: "feature_temporarily_disabled" }));
+      return;
+    }
 
     // ── Sign in with Apple (cloud edition) ───────────────────────────────────
     // Public on purpose: this endpoint *mints* access, so it runs BEFORE the
@@ -2047,7 +2055,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           `[sweep] scanned ${report.scanned} active accounts, ran ${report.ran} autonomy action(s)`,
         );
         // Cloud tasks ride the same sweep (LISA_CLOUD_TASKS=1 only; default off).
-        const tasks = cloudTasksEnabled()
+        const tasks = cloudTasksEnabled() && await featureAllowed("POST", "/api/tasks")
           ? await sweepUserTasks({
               runnerFor: (uid) => taskHost.runnerFor(uid),
               beginAccountWork: (uid) => beginAccountWork(uid, () => {}),
@@ -4633,6 +4641,12 @@ self.addEventListener('fetch', (event) => {
         }
         message = parsed.message;
         files = parsed.files;
+        if (cloud && Array.isArray(files) && files.length && !(await featureAllowed("POST", "/api/uploads"))) {
+          res.writeHead(503, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "feature_temporarily_disabled" }));
+          return;
+        }
+
         // F6 — an explicit session target (Mac edition only; validated and
         // resolved after the lease below). Optional: old clients omit it.
         if (typeof parsed.sessionId === "string" && /^[A-Za-z0-9_-]+$/.test(parsed.sessionId)) {

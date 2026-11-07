@@ -29,6 +29,7 @@
  * until the Firestore move (B2), which takes this table with it.
  */
 import fs from "node:fs";
+import { adminAccountAllowed } from "../admin/store.js";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
@@ -560,7 +561,7 @@ export async function deleteAccount(uid: string): Promise<boolean> {
 export async function sessionAccountValid(uid: string, sv: number): Promise<boolean> {
   try {
     const acct = await getAccount(uid);
-    return !!acct && acct.sessionVersion === sv;
+    return !!acct && acct.sessionVersion === sv && await adminAccountAllowed(uid);
   } catch (err) {
     // Authentication must fail closed when the account authority is unreadable.
     // Do not let an async HTTP handler rejection crash the process, and do not
@@ -642,5 +643,14 @@ export async function confirmEmailVerification(
       return acct;
     }
     return null;
+  });
+}
+
+/** Invalidate both app and console sessions, without changing credentials. */
+export async function revokeAccountSessions(uid: string): Promise<void> {
+  await mutateAccounts(list => {
+    const account = list.find(a => a.uid === uid);
+    if (!account) throw new Error("account_not_found");
+    account.sessionVersion++;
   });
 }

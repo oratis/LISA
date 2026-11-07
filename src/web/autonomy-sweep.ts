@@ -1,3 +1,4 @@
+import { inferencePolicy } from "../admin/store.js";
 /**
  * Per-uid autonomy sweep (S4) — the cloud edition's heartbeat substitute.
  *
@@ -242,6 +243,9 @@ async function sweepOne(
     reviewFn?: typeof runDesireReviewOnce;
   },
 ): Promise<SweepOutcome> {
+  if (!(await inferencePolicy(acct.uid, opts.model ?? DEFAULT_MODEL)).ok) {
+    return { uid: acct.uid, action: "skipped", reason: "service_paused" };
+  }
   const guard = await acquireSweepGuard(acct.uid);
   if (!guard) return { uid: acct.uid, action: "skipped", reason: "in_flight" };
   try {
