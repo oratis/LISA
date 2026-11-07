@@ -34,7 +34,7 @@ final class RemoteMacLiveTests: XCTestCase {
             let (_, response) = try await controlSession.data(for: request)
             XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
         }
-        let authorization = try await transport.authorization()
+        let authorization = try await transport.pairingStatus()
         if !authorization.authorized { try await control("/approve", code: authorization.code) }
         await transport.invalidate()
         UserDefaults.standard.removeObject(forKey: cacheKey)

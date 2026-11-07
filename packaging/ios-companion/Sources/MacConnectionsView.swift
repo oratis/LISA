@@ -3,10 +3,17 @@ import SwiftUI
 struct MacConnectionsView: View {
     @EnvironmentObject private var app: AppState
     @Environment(\.dismiss) private var dismiss
+    /// Refuse Macs that only speak pairing v1 (LISA 0.30 and earlier).
+    @AppStorage("lisa.link.requireSecurePairing") private var requireSecurePairing = false
     @State private var hosts: [LisaClient.RelayHost] = []
     @State private var accountUID = ""
     @State private var status = ""
     @State private var code = ""
+    @State private var secure = true
+    @State private var authorized = false
+    /// The user compared the codes on this phone. Pocket pins a Mac's key only after this:
+    /// otherwise a relay could pose as the Mac and simply claim the phone was approved.
+    @State private var confirmed = false
     @State private var selected: RemoteMacTarget?
     @State private var transport: RemoteMacTransport?
     @State private var loading = false
@@ -42,12 +49,24 @@ struct MacConnectionsView: View {
                 Section("Authorize on \(selected.name)") {
                     if !code.isEmpty {
                         Text(code).font(.title2.monospaced()).textSelection(.enabled)
-                        Text("Compare this code with the request on your Mac, then choose Allow. Keep this screen open until connected.")
+                        if !secure {
+                            Label("This Mac uses an older pairing method. A compromised network or relay could fake this code. Update LISA on your Mac to pair securely.",
+                                  systemImage: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                        }
+                        if !secure && requireSecurePairing {
+                            Text("Secure pairing is required, so this Mac can't be added. Update LISA on your Mac, or turn off Require Secure Pairing below.")
+                        } else if confirmed {
+                            Text(authorized ? "Connecting…" : "Now choose Allow on your Mac. Keep this screen open until connected.")
+                        } else if !secure && authorized {
+                            Text("Your Mac already allows this iPhone, but its older LISA can't show a code to compare.")
+                            Button("Connect Anyway") { confirmed = true }
+                        } else {
+                            Text("Check that your Mac shows exactly this code. If it does, tap Codes Match and choose Allow on your Mac. If it doesn't, tap Cancel.")
+                            Button("Codes Match") { confirmed = true }
+                        }
                     } else { ProgressView("Connecting…") }
-                    Button("Cancel", role: .cancel) {
-                        if let transport { Task { await transport.invalidate() } }
-                        self.selected = nil; transport = nil; code = ""
-                    }
+                    Button("Cancel", role: .cancel) { cancelPairing() }
                 }
             }
             if let target = app.config.remoteMac {
@@ -57,31 +76,52 @@ struct MacConnectionsView: View {
                         .font(.footnote).foregroundStyle(.secondary)
                 }
             }
+            Section {
+                Toggle("Require Secure Pairing", isOn: $requireSecurePairing)
+            } footer: {
+                Text("Refuse Macs that only support the older pairing method (LISA 0.30 and earlier), whose code a compromised relay could fake.")
+            }
             if !status.isEmpty { Section { Text(status).font(.footnote).foregroundStyle(.secondary) } }
         }
         .navigationTitle("Connect your Mac")
         .task { await refresh() }
-        .task(id: selected?.id) {
-            guard let target = selected, let transport else { return }
-            while !Task.isCancelled {
-                do {
-                    let authorization = try await transport.authorization()
-                    guard selected == target else { return }
-                    code = authorization.code
-                    if authorization.authorized {
-                        app.connectRemoteMac(target)
-                        self.selected = nil; self.transport = nil
-                        await transport.invalidate()
-                        return
-                    }
-                    status = "Waiting for approval on your Mac."
-                } catch {
-                    if Task.isCancelled { return }
-                    status = error.localizedDescription
+        .task(id: "\(selected?.id ?? "")|\(confirmed)|\(requireSecurePairing)") { await poll() }
+    }
+    private func poll() async {
+        guard let target = selected, let transport else { return }
+        while !Task.isCancelled {
+            do {
+                let pairing = try await transport.pairingStatus()
+                guard selected == target else { return }
+                // A confirmation only ever covers the code the user actually saw.
+                if pairing.code != code { confirmed = false }
+                code = pairing.code; secure = pairing.secure; authorized = pairing.authorized
+                if !pairing.open {
+                    status = "Your Mac has no open request from this iPhone (it was dismissed or expired). Select your Mac to try again."
+                    cancelPairing()
+                    return
                 }
-                do { try await Task.sleep(nanoseconds: 3_000_000_000) } catch { return }
+                if !pairing.secure && requireSecurePairing { status = ""; return }
+                if pairing.authorized && confirmed {
+                    app.connectRemoteMac(target)
+                    self.selected = nil; self.transport = nil
+                    await transport.invalidate()
+                    return
+                }
+                status = pairing.authorized ? "" : "Waiting for approval on your Mac."
+            } catch RemoteLinkError.pairingRestarted {
+                code = ""; confirmed = false
+                status = RemoteLinkError.pairingRestarted.localizedDescription
+            } catch {
+                if Task.isCancelled { return }
+                status = error.localizedDescription
             }
+            do { try await Task.sleep(nanoseconds: 3_000_000_000) } catch { return }
         }
+    }
+    private func cancelPairing() {
+        if let transport { Task { await transport.invalidate() } }
+        selected = nil; transport = nil; code = ""; confirmed = false; authorized = false; secure = true
     }
     private func select(_ host: LisaClient.RelayHost) {
         guard let origin = app.savedCloudConfig.baseURL?.absoluteString, !accountUID.isEmpty else { return }
@@ -89,7 +129,7 @@ struct MacConnectionsView: View {
         let target = RemoteMacTarget(id: host.id, name: host.name, publicKey: host.publicKey,
                                      cloudOrigin: origin, accountUID: accountUID)
         transport = RemoteMacTransport(target: target, pairing: true)
-        selected = target; code = ""; status = ""
+        selected = target; code = ""; status = ""; confirmed = false; authorized = false; secure = true
     }
     private func refresh() async {
         guard app.savedCloudConfig.token != nil else { return }
