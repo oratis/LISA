@@ -26,7 +26,7 @@ import { pathExists } from "../fs-utils.js";
 import { lisaHome } from "../paths.js";
 import { withFileLock } from "../soul/lock.js";
 import { parseConfirmation } from "./confirmation.js";
-import { envelopeProblem } from "./envelope.js";
+import { envelopeProblem, withKnownCategories } from "./envelope.js";
 import { validateSchedule } from "./schedule.js";
 import type { StoredMessage } from "../types.js";
 import {
@@ -151,10 +151,14 @@ export function parseTask(raw: unknown, expectedId?: string): Parsed {
     if (confirmation) task.envelopeConfirmation = confirmation;
     else delete task.envelopeConfirmation;
   }
-  // An envelope that holds anything but tool names, categories and printable
-  // targets (a hand-edited file, one written before they were checked) is not
-  // something the user can be shown faithfully: it confirms nothing and the
-  // task loads switched off, saying why (#422 review NEW-1).
+  // A category Warden does not know — the free-form labels ("web", "mail")
+  // task files from before #422 carry — pre-approves nothing: it is dropped,
+  // and the task loads as it was (#422 review P2-b).
+  if (task.envelope !== undefined) task.envelope = withKnownCategories(task.envelope);
+  // A tool name or target that is not printable (a hand-edited file, one
+  // written before they were checked) is not something the user can be shown
+  // faithfully: it confirms nothing and the task loads switched off, saying
+  // why (#422 review NEW-1).
   const envelopeIssue = envelopeProblem(task.envelope);
   if (envelopeIssue) {
     delete task.envelopeConfirmation;
@@ -314,8 +318,10 @@ export type NewTask = Pick<Task, "kind" | "title" | "instruction" | "origin"> &
 export async function createTask(input: NewTask, now = Date.now()): Promise<Task> {
   const id = input.id ?? newTaskId();
   if (!isSafeId(id)) throw new Error(`invalid task id: ${id}`);
-  // Every way a task comes into being (the API, the tools, the migration) gets the same envelope check.
-  const envelopeIssue = envelopeProblem(input.envelope);
+  // Every way a task comes into being (the API, the tools, the migration) gets
+  // the same envelope check; unknown categories are dropped, not refused.
+  const envelope = input.envelope === undefined ? undefined : withKnownCategories(input.envelope);
+  const envelopeIssue = envelopeProblem(envelope);
   if (envelopeIssue) throw new Error(envelopeIssue);
   const enabled = input.enabled ?? false;
   const task: Task = {
@@ -329,7 +335,7 @@ export async function createTask(input: NewTask, now = Date.now()): Promise<Task
     host: input.host ?? "any",
     ...(input.schedule ? { schedule: input.schedule } : {}),
     ...(input.trigger ? { trigger: input.trigger } : {}),
-    ...(input.envelope ? { envelope: input.envelope } : {}),
+    ...(envelope ? { envelope } : {}),
     budget: input.budget ?? { ...DEFAULT_TASK_BUDGET },
     notify: input.notify ?? (input.kind === "watcher" ? "on_hit" : "always"),
     state: input.state ?? (enabled ? "scheduled" : "draft"),

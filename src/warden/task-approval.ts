@@ -97,9 +97,11 @@ export interface TaskApprovalFactoryOptions {
 }
 
 /**
- * The task's envelope as Warden reads it. Categories Warden does not know
- * ("web", "mail" — informational labels) are dropped rather than guessed at:
- * an envelope can only ever cover what it names exactly.
+ * The task's envelope as Warden reads it: only Warden's own categories. The
+ * migration's `heartbeat-legacy` label is dropped here (it names no action);
+ * any other label was already dropped when the task was created, edited or
+ * loaded (tasks/envelope.ts `withKnownCategories`). An envelope can only ever
+ * cover what it names exactly.
  */
 export function wardenEnvelope(envelope: TaskEngineEnvelope | undefined): TaskEnvelope | undefined {
   if (!envelope) return undefined;

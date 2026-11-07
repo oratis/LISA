@@ -124,13 +124,23 @@ export interface WatchState {
  */
 export interface TaskEnvelope {
   /**
-   * Action categories (Warden's: "write", "exec", "send", …). Labels Warden
-   * does not know ("web", "mail") are informational and pre-approve nothing.
+   * Action categories: Warden's ("write", "exec", "send", …), or the heartbeat
+   * migration's `heartbeat-legacy` label, which pre-approves nothing. Anything
+   * else — such as the free-form "web" / "mail" labels earlier versions
+   * accepted — is dropped wherever the envelope comes from (created, edited
+   * or loaded): it could never pre-approve anything (envelope.ts).
    */
   categories?: string[];
-  /** Exact tool names allowed. Unset ⇒ every non-mutating tool on the surface. */
+  /**
+   * Exact tool names the run is offered (printable, no whitespace). Unset ⇒
+   * every tool of the surface's profile, minus task management.
+   */
   tools?: string[];
-  /** Targets (hosts, paths, repos) a pre-approval is limited to. */
+  /**
+   * Targets (hosts, paths, repos) a pre-approval is limited to — for calls
+   * whose targets can be listed. A call with no listable target (a shell
+   * command) is not limited by them, unless it leaves this machine.
+   */
   targets?: string[];
 }
 

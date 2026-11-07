@@ -3063,19 +3063,22 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Warden's action categories (read, self, draft, write, exec, network, send, publish, purchase, delete, credential) or the migration's `heartbeat-legacy` label. Any other value (such as the `web` / `mail` labels earlier versions accepted) is dropped on create, edit and load: it pre-approves nothing."
           },
           "tools": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Exact tool names the run is offered: printable, no whitespace, at most 199 characters. A task file naming anything else loads switched off; a request naming it is refused."
           },
           "targets": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Targets (hosts, paths, repos) a pre-approval is limited to: printable, at most 200 characters. They limit calls whose targets can be listed; a call with none to list (a shell command) is pre-approved on the tools or categories alone when it stays on this machine, and is not pre-approved when it reaches another host."
           }
         },
         "additionalProperties": true,

@@ -37,7 +37,7 @@ import {
   describeForConfirmation,
   isEnvelopeConfirmed,
 } from "./confirmation.js";
-import { envelopeProblem, isEnvelopeToolName } from "./envelope.js";
+import { envelopeProblem, isEnvelopeToolName, withKnownCategories } from "./envelope.js";
 import { TaskRunner } from "./runner.js";
 import { createTask, getTask, listTasks, updateTask } from "./store.js";
 import type { Task } from "./types.js";
@@ -118,32 +118,51 @@ async function plantRaw(home: string, envelope: unknown, extra: Partial<Task> = 
   return planted;
 }
 
-test("tool names: builtin or mcp__<server>__<tool>, bounded — nothing else", () => {
-  for (const ok of ["bash", "web_fetch", "kb_write", "mcp__fs__read_file", "mcp__my-srv__do-it"]) {
+test("tool names: printable, no whitespace, bounded — an MCP tool's dotted name included", () => {
+  for (const ok of [
+    "bash",
+    "web_fetch",
+    "kb_write",
+    "mcp__fs__read_file",
+    "mcp__my-srv__do-it",
+    // MCP tool names may hold a dot; v0.28.1 envelopes named them as they are.
+    "mcp__fs__read.file",
+    "a".repeat(199),
+  ]) {
     assert.equal(isEnvelopeToolName(ok), true, ok);
   }
   for (const bad of [
     ...FORGED_TOOLS.slice(1),
     "bash\n",
-    "Bash",
     "web fetch",
     "bash\u202e",
     "ba\u200bsh",
-    "mcp__fs",
-    "mcp____x",
-    "mcp__fs__read.file",
-    `mcp__${"a".repeat(65)}__x`,
-    "a".repeat(65),
+    "bash\u00a0",
+    "a".repeat(200),
     "",
   ]) {
     assert.equal(isEnvelopeToolName(bad), false, JSON.stringify(bad));
   }
 });
 
-test("categories come from the fixed set; targets are printable and bounded", () => {
+test("categories outside the fixed set are dropped, not refused; targets are printable and bounded", () => {
   assert.equal(envelopeProblem({ categories: ["exec", "send", "heartbeat-legacy"] }), null);
+  // A free-form label (v0.28.1 accepted "web", "mail"), a typo, an escape
+  // sequence or a non-string pre-approves nothing: it is dropped wherever the
+  // envelope comes from.
+  assert.deepEqual(
+    withKnownCategories({ categories: ["web", "exec", `exec${E}[2J`, 7, "exec"], tools: ["bash"] }),
+    { categories: ["exec"], tools: ["bash"] },
+  );
+  assert.deepEqual(withKnownCategories({ categories: ["web", "mail"] }), {});
+  assert.deepEqual(parseEnvelope({ categories: ["web", "mail", "shell"] }), {
+    ok: true,
+    value: {},
+  });
   assert.equal(envelopeProblem({ targets: ["api.github.com", "~/notes/today.md"] }), null);
   for (const bad of [
+    // envelopeProblem itself still names them: a caller that skipped
+    // withKnownCategories must not pass them on.
     { categories: ["shell"] },
     { categories: [`exec${E}[2J`] },
     { targets: [`api.github.com${E}[2J`] },
@@ -226,13 +245,19 @@ test("the API refuses an envelope that is not what it looks like, on create and 
       };
       for (const envelope of [
         { tools: FORGED_TOOLS },
-        { categories: ["exec", `${E}[2J`] },
         { targets: ["evil.example\u202egro.elpmaxe"] },
       ]) {
         const created = await api("POST", "/api/tasks", { ...base, envelope });
         assert.equal(created.status, 400, JSON.stringify(envelope));
         assert.equal(created.body.error, "invalid_task");
       }
+      // A category that is not one of Warden's is dropped, not refused.
+      const labelled = await api("POST", "/api/tasks", {
+        ...base,
+        envelope: { categories: ["exec", `${E}[2J`, "web"] },
+      });
+      assert.equal(labelled.status, 201);
+      assert.deepEqual(labelled.body.task.envelope, { categories: ["exec"] });
       const ok = await api("POST", "/api/tasks", { ...base, envelope: { tools: ["web_fetch"] } });
       assert.equal(ok.status, 201);
       const edited = await api("PATCH", `/api/tasks/${ok.body.task.id}`, {
@@ -391,6 +416,53 @@ test("show, list and the API summary escape every string a task carries, not onl
       await runTasksCommand(args, { out: (l) => lines.push(l), err: (l) => lines.push(l) });
       assert.ok(lines.length > 0);
       assert.ok(!lines.some((l) => RAW.test(l)), `${args[0]}: ${JSON.stringify(lines)}`);
+    }
+  });
+});
+
+test('a v0.28.1 task with a "web" or "mail" category still loads enabled, and runs (#422 review P2-b)', async () => {
+  await withHome(async (home) => {
+    const ids: string[] = [];
+    for (const label of ["web", "mail"]) {
+      const planted = await plantRaw(
+        home,
+        { categories: [label], tools: ["web_fetch"] },
+        { enabled: true, state: "scheduled", nextRunAt: Date.now() - 1 },
+      );
+      ids.push(planted.id);
+      const loaded = (await getTask(planted.id))!;
+      assert.equal(loaded.enabled, true, label);
+      assert.equal(loaded.state, "scheduled", label);
+      assert.equal(loaded.pausedReason, undefined, label);
+      assert.deepEqual(loaded.envelope, { tools: ["web_fetch"] }, "the label is dropped");
+    }
+    // And the scheduler runs them — read-only, as before (Warden off).
+    const fetched: unknown[] = [];
+    const runner = new TaskRunner({
+      tools: [stub("web_fetch", fetched)],
+      model: "claude-test",
+      cwd: os.tmpdir(),
+      provider: scripted([
+        turn([call("web_fetch", { url: "https://news.example/" })]),
+        say("Headlines."),
+        turn([call("web_fetch", { url: "https://news.example/" })]),
+        say("Headlines."),
+      ]),
+      unattendedAllowed: () => true,
+      sandboxMode: "workspace-write",
+      concurrency: 1,
+      deliver: async () => ({ delivered: true }),
+      log: () => {},
+    });
+    await runner.tick();
+    await runner.drain();
+    await runner.tick();
+    await runner.drain();
+    assert.equal(fetched.length, 2);
+    for (const id of ids) {
+      const task = (await getTask(id))!;
+      assert.equal(task.enabled, true);
+      assert.equal(task.lastSummary, "Headlines.");
     }
   });
 });

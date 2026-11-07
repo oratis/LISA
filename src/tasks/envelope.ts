@@ -7,15 +7,19 @@
  * from a screen that lists its tool names, categories and targets. So the
  * envelope may only hold things that are what they look like:
  *
- *   - a tool name is a builtin name (`bash`, `web_fetch`) or an MCP name
- *     (`mcp__<server>__<tool>`), letters, digits, `_` and `-`, bounded;
+ *   - a tool name is printable (no control, bidi or invisible character), has
+ *     no whitespace, and is bounded — what a builtin (`bash`) or an MCP tool
+ *     (`mcp__<server>__<tool>`, whose tool part may hold a `.`) is called;
  *   - a category is one of Warden's action categories, or the heartbeat
  *     migration's own label;
- *   - a target is printable text (no control, bidi or invisible character),
- *     bounded.
+ *   - a target is printable text, bounded.
  *
- * Anything else is refused on create and edit; a task file that holds it
- * loads switched off, unconfirmed, saying why (store.ts).
+ * A category outside that set is not refused but dropped, wherever the
+ * envelope comes from (`withKnownCategories`): it could never pre-approve
+ * anything, and task files from before #422 hold free-form labels ("web",
+ * "mail") that the API documented as valid. A tool name or target that is not
+ * printable is refused on create and edit; a task file that holds one loads
+ * switched off, unconfirmed, saying why (store.ts).
  */
 import { ACTION_CATEGORIES } from "../warden/types.js";
 import { isPrintable, visible } from "./visible.js";
@@ -36,15 +40,18 @@ export const ENVELOPE_LIMITS = Object.freeze({
   target: 200,
 });
 
-const BUILTIN_TOOL = /^(?!mcp__)[a-z][a-z0-9_]{0,63}$/;
-const MCP_TOOL = /^mcp__[A-Za-z0-9_-]{1,64}__[A-Za-z0-9_-]{1,128}$/;
-
-/** A tool name an envelope may hold: a builtin name or `mcp__<server>__<tool>`. */
+/**
+ * A tool name an envelope may hold: printable, no whitespace, bounded. Whatever
+ * it says, it is shown escaped (visible.ts) and matched exactly against the
+ * tools a run is offered, so a name no tool has grants nothing.
+ */
 export function isEnvelopeToolName(v: unknown): v is string {
   return (
     typeof v === "string" &&
+    v.length > 0 &&
     v.length <= ENVELOPE_LIMITS.toolName &&
-    (BUILTIN_TOOL.test(v) || MCP_TOOL.test(v))
+    !/\s/u.test(v) &&
+    isPrintable(v)
   );
 }
 
@@ -60,6 +67,24 @@ export function isEnvelopeTarget(v: unknown): v is string {
     v.length <= ENVELOPE_LIMITS.target &&
     isPrintable(v)
   );
+}
+
+/**
+ * The envelope with every category outside ENVELOPE_CATEGORIES left out (a
+ * free-form label, a non-string, a typo): it pre-approves nothing either way,
+ * so it is dropped rather than refused. An empty list goes too. Anything that
+ * is not an envelope-shaped object is returned as it is, for
+ * `envelopeProblem` to refuse.
+ */
+export function withKnownCategories<T>(envelope: T): T {
+  if (!envelope || typeof envelope !== "object" || Array.isArray(envelope)) return envelope;
+  const v = envelope as Record<string, unknown>;
+  if (!Array.isArray(v.categories)) return envelope;
+  const out: Record<string, unknown> = { ...v };
+  const kept = [...new Set(v.categories.filter(isEnvelopeCategory))];
+  if (kept.length > 0) out.categories = kept;
+  else delete out.categories;
+  return out as T;
 }
 
 function shown(v: unknown): string {
@@ -78,7 +103,7 @@ export function envelopeProblem(envelope: unknown): string | null {
   }
   const v = envelope as Record<string, unknown>;
   const checks = [
-    ["tools", isEnvelopeToolName, "a builtin tool name or mcp__<server>__<tool>"],
+    ["tools", isEnvelopeToolName, "a tool name: printable, no spaces, at most 199 characters"],
     ["categories", isEnvelopeCategory, `one of ${ENVELOPE_CATEGORIES.join(", ")}`],
     ["targets", isEnvelopeTarget, `printable text of at most ${ENVELOPE_LIMITS.target} characters`],
   ] as const;

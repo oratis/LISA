@@ -6,7 +6,7 @@
  * Everything here is pure: unknown JSON in, a typed value or a short reason out.
  */
 import { taskDigest } from "./confirmation.js";
-import { envelopeProblem } from "./envelope.js";
+import { envelopeProblem, withKnownCategories } from "./envelope.js";
 import {
   MIN_EVERY_MS_CLOUD,
   MIN_EVERY_MS_LOCAL,
@@ -231,14 +231,16 @@ export function parseTriggerSpec(v: unknown, ctx: ValidateContext): Result<Trigg
 }
 
 /**
- * An envelope from any source. Tool names, categories and targets must be
- * what they look like on the confirmation screen (envelope.ts): a tool name
- * is a builtin or `mcp__<server>__<tool>` name, a category is one of the fixed
- * set, a target is printable — never a control, bidi or invisible character
- * that could redraw the screen the user confirms from (#422 review NEW-1).
+ * An envelope from any source. Tool names and targets must be what they look
+ * like on the confirmation screen (envelope.ts): printable — never a control,
+ * bidi or invisible character that could redraw the screen the user confirms
+ * from (#422 review NEW-1). A category outside the fixed set is dropped, not
+ * refused: it pre-approves nothing, and clients of v0.28.1 send labels such as
+ * "web" (#422 review P2-b).
  */
-export function parseEnvelope(v: unknown): Result<TaskEnvelope> {
-  if (!isObject(v)) return fail("envelope must be an object");
+export function parseEnvelope(raw: unknown): Result<TaskEnvelope> {
+  if (!isObject(raw)) return fail("envelope must be an object");
+  const v = withKnownCategories(raw);
   const out: TaskEnvelope = {};
   for (const field of ["categories", "tools", "targets"] as const) {
     const list = stringList(v[field], `envelope.${field}`);
