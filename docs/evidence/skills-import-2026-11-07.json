@@ -27,6 +27,11 @@
     "usedMockProvider": false,
     "finished": true,
     "toolCalls": 10,
+    "toolCallCounts": {
+      "skill_manage": 2,
+      "bash": 7,
+      "set_mood": 1
+    },
     "skillViews": ["wechat-mp-publish", "gcp-os-e2e"],
     "toolErrors": 0,
     "streamErrors": 0,
