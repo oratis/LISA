@@ -36,7 +36,7 @@ final class RemoteDevicesWindow: NSWindowController {
             }
         }
     }
-    static func request(_ path: String, body: [String: String]? = nil) async throws -> [String: Any] {
+    static func request(_ path: String, body: [String: Any]? = nil) async throws -> [String: Any] {
         var request = URLRequest(url: URL(string: "http://127.0.0.1:5757/api/remote/\(path)")!, timeoutInterval: 15)
         if let body {
             request.httpMethod = "POST"
@@ -80,23 +80,42 @@ final class RemoteDevicesWindow: NSWindowController {
             button(enabled ? "Reconnect" : "Enable phone connections", action: #selector(connect))
             if enabled { button("Turn off phone connections", action: #selector(disconnect)) }
         } else { button("Sign in to LISA", action: #selector(signIn)) }
+        if enabled {
+            let strict = NSButton(checkboxWithTitle: "Require secure pairing (refuse older Lisa Pocket versions)",
+                                  target: self, action: #selector(toggleSecurePairing(_:)))
+            strict.state = status["requireSecurePairing"] as? Bool == true ? .on : .off
+            stack.addArrangedSubview(strict)
+        }
+        if let refused = status["legacyRefused"] as? [String: Any] {
+            label("\(refused["name"] as? String ?? "An iPhone") tried to pair using an older Lisa Pocket. Update Lisa Pocket on that phone, or turn off Require secure pairing.")
+        }
         for pending in status["pending"] as? [[String: Any]] ?? [] {
-            guard let id = pending["id"] as? String, let code = pending["code"] as? String else { continue }
-            label("\(pending["name"] as? String ?? "iPhone") wants to connect", bold: true)
+            guard let id = pending["id"] as? String, let code = pending["code"] as? String, !code.isEmpty else { continue }
+            let name = pending["name"] as? String ?? "iPhone"
+            // `secure` is pairing v2 (committed code). v1 codes can be forged by a relay.
+            let secure = pending["secure"] as? Bool == true
+            let known = pending["known"] as? Bool == true
+            label(known ? "\(name) is pairing with this Mac again" : "\(name) wants to connect", bold: true)
             label("Compare with the code on your phone: \(code)")
-            button("Allow this device", action: #selector(approve(_:)), value: "\(id)|\(code)")
-            button("Dismiss request", action: #selector(revoke(_:)), value: id)
+            if !secure {
+                label("⚠︎ Older pairing method. This iPhone runs a Lisa Pocket version whose code a compromised relay could fake. Update Lisa Pocket, then pair again.")
+            }
+            button(known ? "Codes match" : "Allow this device", action: #selector(approve(_:)),
+                   value: "\(secure ? "v2" : "v1")|\(id)|\(code)")
+            button(known ? "Disconnect \(name)" : "Dismiss request", action: #selector(revoke(_:)), value: id)
         }
         let devices = status["devices"] as? [[String: Any]] ?? []
         if !devices.isEmpty { label("Authorized devices", bold: true) }
         for device in devices {
             guard let id = device["id"] as? String else { continue }
-            button("Disconnect \(device["name"] as? String ?? "iPhone")", action: #selector(revoke(_:)), value: id)
+            let older = device["secure"] as? Bool != true
+            button("Disconnect \(device["name"] as? String ?? "iPhone")\(older ? " (older pairing)" : "")",
+                   action: #selector(revoke(_:)), value: id)
         }
         label("Keep this Mac awake and LISA running. Pocket uses your local network when available and cloud relay when you're away.")
         button("Legacy QR pairing…", action: #selector(legacy))
     }
-    private func perform(_ path: String, body: [String: String]) {
+    private func perform(_ path: String, body: [String: Any]) {
         Task {
             do { _ = try await Self.request(path, body: body); message = "" }
             catch { message = error.localizedDescription }
@@ -111,14 +130,19 @@ final class RemoteDevicesWindow: NSWindowController {
     }
     @objc private func disconnect() { perform("disconnect", body: [:]) }
     @objc private func approve(_ sender: NSButton) {
-        let parts = (sender.identifier?.rawValue ?? "").split(separator: "|", maxSplits: 1).map(String.init)
-        guard parts.count == 2 else { return }
+        let parts = (sender.identifier?.rawValue ?? "").split(separator: "|", maxSplits: 2).map(String.init)
+        guard parts.count == 3 else { return }
         let alert = NSAlert()
-        alert.messageText = "Does your phone show \(parts[1])?"
+        alert.messageText = "Does your phone show \(parts[2])?"
         alert.informativeText = "Only allow it if the codes match. This device can access this Mac's LISA and its permitted remote controls."
+            + (parts[0] == "v2" ? "" : "\n\nThis iPhone uses the older pairing method: a compromised relay could make the codes match. Prefer updating Lisa Pocket first.")
+        if parts[0] != "v2" { alert.alertStyle = .warning }
         alert.addButton(withTitle: "Codes match — allow"); alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
-        perform("approve", body: ["id": parts[0], "code": parts[1]])
+        perform("approve", body: ["id": parts[1], "code": parts[2]])
+    }
+    @objc private func toggleSecurePairing(_ sender: NSButton) {
+        perform("policy", body: ["requireSecurePairing": sender.state == .on])
     }
     @objc private func revoke(_ sender: NSButton) { perform("revoke", body: ["id": sender.identifier?.rawValue ?? ""]) }
     @objc private func signIn() { AccountWindowController.shared.show() }
