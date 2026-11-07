@@ -79,6 +79,47 @@ test("turn queue caps one expression, respects spacing, explicit requests, vetoe
   assert.equal(t.pending(), undefined);
 });
 
+test("the system-prompt suffix depends on saved preferences only, never on cadence or wording", async () => {
+  // It is appended to the 1h-cached system prefix and logged as a session
+  // `prompt` entry whenever it changes: a per-turn flip re-writes both.
+  for (const prefs of [
+    auto,
+    { ...auto, frequency: "lively" },
+    { ...auto, display: "static" },
+    { ...auto, display: "off" },
+  ] as const) {
+    const prompts = new Set(
+      [
+        [1, "hello"],
+        [3, "hello"],
+        [Infinity, "发一个表情包"],
+        [3, "不要表情包"],
+        [2, "don't send stickers"],
+      ].map(([distance, text]) => expressionTurn(prefs, distance as number, text as string).prompt),
+    );
+    assert.equal(prompts.size, 1, `${prefs.display}/${prefs.frequency}`);
+  }
+  assert.notEqual(
+    expressionTurn(auto, 1, "hello").prompt,
+    expressionTurn({ ...auto, display: "off" }, 1, "hello").prompt,
+  );
+  // The per-turn decision is still enforced, and explained, by the tool itself.
+  const reasons = await Promise.all(
+    [
+      expressionTurn(auto, 1, "hello"),
+      expressionTurn(auto, 3, "不要表情包"),
+      expressionTurn({ ...auto, display: "off" }, 3, "发一个表情包"),
+    ].map(async (t) => {
+      const result = await t.tool.execute({ assetId: record.assetId, format: "auto" }, ctx);
+      assert.equal(t.pending(), undefined);
+      return result;
+    }),
+  );
+  assert.match(reasons[0]!, /recent reply/);
+  assert.match(reasons[1]!, /asked for no stickers/);
+  assert.match(reasons[2]!, /turned conversation expressions off/);
+});
+
 test("failed work cannot trigger spontaneous celebration", async () => {
   const t = expressionTurn(auto, Infinity, "finish this task");
   await t.tool.execute({ assetId: "sticker-celebrate", format: "auto" }, ctx);

@@ -35,8 +35,12 @@ export function expressionTurn(
       additionalProperties: false,
     },
     async execute(input) {
+      if (prefs.display === "off")
+        return "Expression not queued: the user turned conversation expressions off. Finish the reply without one.";
+      if (veto)
+        return "Expression not queued: the user asked for no stickers or emoji in this reply. Finish it without one, and without decorative emoji.";
       if (!allowed)
-        return "Expression not queued: respect the user's setting or leave a few turns between spontaneous expressions.";
+        return "Expression not queued: a recent reply already had one. Finish this reply without it.";
       if (pending) return "An expression is already queued for this reply. Do not add another.";
       const v = input as { assetId?: unknown; format?: unknown };
       if (!v || !["auto", "animated", "static", "emoji"].includes(String(v.format)))
@@ -62,6 +66,23 @@ export function expressionTurn(
       ["proud", "cheering", "sticker-celebrate", "sticker-well-done"].includes(pending.assetId)
         ? undefined
         : pending,
-    prompt: `\n\nConversation expressions: display=${prefs.display}, frequency=${prefs.frequency}. ${allowed ? "You may optionally use reply_expression once." : "Do not call reply_expression this turn."} ${prefs.display === "off" || veto ? "Avoid decorative emoji too." : "Emoji may also appear naturally in text; keep them sparse."} Never output asset URLs or internal expression JSON.`,
+    prompt: expressionPrompt(prefs),
   };
+}
+
+/**
+ * The system-prompt suffix. It depends on the saved preferences only — never on
+ * this turn's cadence or wording — because it is appended to the 1h-cached
+ * system prefix: a per-turn flip would re-write that cache (and every cached
+ * message after it) and append another full prompt entry to the session log.
+ * Per-turn spacing and "no stickers" requests are enforced by the tool result.
+ */
+export function expressionPrompt(prefs: ExpressionPreferences): string {
+  if (prefs.display === "off")
+    return "\n\nConversation expressions are off: do not call reply_expression, and avoid decorative emoji.";
+  const pacing =
+    prefs.frequency === "lively"
+      ? "Use one only when it suits the moment."
+      : "Keep them occasional: unless the user asks for one, leave at least two replies without one after using it.";
+  return `\n\nConversation expressions: display=${prefs.display}, frequency=${prefs.frequency}. reply_expression optionally adds one sticker or emoji to a reply. ${pacing} If the tool says an expression was not queued, finish the reply without it. Emoji may also appear naturally in text; keep them sparse. Never output asset URLs or internal expression JSON.`;
 }

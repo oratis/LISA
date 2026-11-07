@@ -77,6 +77,33 @@ test.describe("conversation expressions", () => {
     expect(lisa.stub!.requestCount).toBeGreaterThanOrEqual(4);
   });
 
+  test("cadence and veto turns never re-log or re-cache the system prompt", async ({ request }) => {
+    // Turn 1 and 4 may carry an expression, 2 and 3 are spaced out, 5 vetoes.
+    for (const text of [
+      "hello there",
+      "and again",
+      "one more",
+      "fourth hello",
+      "no stickers please",
+    ])
+      await stream(request, text);
+    const history = await (await request.get(lisa.baseURL + "/api/history")).json();
+    expect(history.messages.filter((m: { expression?: object }) => m.expression)).toHaveLength(2);
+    const dir = path.join(lisa.home, "sessions");
+    const files = await Promise.all(
+      (await fs.readdir(dir)).map(async (f) => ({
+        f,
+        mtime: (await fs.stat(path.join(dir, f))).mtimeMs,
+      })),
+    );
+    const newest = files.sort((a, b) => b.mtime - a.mtime)[0]!.f;
+    const entries = (await fs.readFile(path.join(dir, newest), "utf8"))
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as { type: string });
+    expect(entries.filter((e) => e.type === "prompt")).toHaveLength(1);
+  });
+
   test("settings persist and render static, emoji and off across clients", async ({
     page,
     request,
