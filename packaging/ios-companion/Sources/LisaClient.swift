@@ -510,11 +510,17 @@ final class LisaClient {
     }
 
     // ── chat ──
+    func expressionPreferences() async throws -> ExpressionPreferences {
+        try await decode("/api/expressions/preferences", as: ExpressionPreferences.self)
+    }
+    func setExpressionPreferences(_ prefs: ExpressionPreferences) async throws -> ExpressionPreferences {
+        try await decode("/api/expressions/preferences", method: "PUT", json: prefs.json, as: ExpressionPreferences.self)
+    }
     func history(page: Int = 0) async throws -> HistoryResponse {
         try await decode("/api/history?page=\(page)", as: HistoryResponse.self)
     }
     func chatStream(_ message: String) -> AsyncThrowingStream<SSEMessage, Error> {
-        sse("/chat", method: "POST", json: ["message": message])
+        sse("/chat", method: "POST", json: ["message": message, "expressions": true])
     }
     func eventsStream() -> AsyncThrowingStream<SSEMessage, Error> {
         sse("/events")

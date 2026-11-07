@@ -182,7 +182,8 @@ struct HistoryMessage: Decodable {
     var content: String
     var tools: [String]
 
-    private enum CodingKeys: String, CodingKey { case role, content }
+    var expression: ConversationExpression?
+    private enum CodingKeys: String, CodingKey { case role, content, expression }
     private struct Block: Decodable {
         var type: String
         var text: String?
@@ -192,13 +193,15 @@ struct HistoryMessage: Decodable {
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         role = try values.decode(String.self, forKey: .role)
+        expression = try? values.decodeIfPresent(ConversationExpression.self, forKey: .expression)
+        if expression?.valid != true { expression = nil }
         if let text = try? values.decode(String.self, forKey: .content) {
             content = text
             tools = []
         } else {
             let blocks = try values.decode([Block].self, forKey: .content)
             content = blocks.filter { $0.type == "text" }.compactMap(\.text).joined(separator: "\n")
-            tools = blocks.filter { $0.type == "tool_use" }.compactMap(\.name)
+            tools = blocks.filter { $0.type == "tool_use" && $0.name != "reply_expression" }.compactMap(\.name)
         }
     }
 }

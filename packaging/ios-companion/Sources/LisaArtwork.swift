@@ -18,15 +18,36 @@ enum LisaArtwork {
         let slug = URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
         guard path.hasPrefix("/assets/lisa/"), let index = LisaArtCatalog.moods[slug],
               let asset = LisaArtCatalog.motion[index] else { return nil }
-        let request = try client.makeRequest(asset, timeout: 15)
+        return try await animation(client: client, path: asset)
+    }
+
+    static func animation(client: LisaClient, path: String) async throws -> UIImage? {
+        guard path.hasPrefix("/assets/visuals/soft-ink-motion-v1/"), !path.contains(".."), path.hasSuffix(".gif") else { return nil }
+        let request = try client.makeRequest(path, timeout: 15)
         guard let url = request.url else { return nil }
         if let cached = motionCache.object(forKey: url as NSURL) { return cached }
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await client.data(for: request, path: path)
         try Task.checkCancellation()
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
               let decoded = decodeMotion(data) else { return nil }
         motionCache.setObject(decoded.image, forKey: url as NSURL, cost: decoded.cost)
         return decoded.image
+    }
+
+    private static let posterCache: NSCache<NSURL, UIImage> = {
+        let cache = NSCache<NSURL, UIImage>(); cache.totalCostLimit = 4 * 1024 * 1024; cache.countLimit = 16; return cache
+    }()
+    static func expressionPoster(client: LisaClient, path: String) async throws -> UIImage? {
+        guard path.hasPrefix("/assets/visuals/soft-ink-motion-v1/"), !path.contains(".."), path.hasSuffix("-static.webp") else { return nil }
+        let request = try client.makeRequest(path, timeout: 15)
+        guard let url = request.url else { return nil }
+        if let image = posterCache.object(forKey: url as NSURL) { return image }
+        let (data, response) = try await client.data(for: request, path: path)
+        try Task.checkCancellation()
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode), data.count <= 256 * 1024,
+              let image = UIImage(data: data), let cg = image.cgImage, cg.width <= 256, cg.height <= 256 else { return nil }
+        posterCache.setObject(image, forKey: url as NSURL, cost: cg.width * cg.height * 4)
+        return image
     }
 
     static func decodeMotion(_ data: Data) -> (image: UIImage, cost: Int)? {

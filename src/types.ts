@@ -113,7 +113,13 @@ export interface SessionHeader {
 }
 
 export type SessionEntry =
-  | { type: "message"; ts: string; message: StoredMessage; connectorRequestId?: string }
+  | {
+      type: "message";
+      ts: string;
+      message: StoredMessage;
+      connectorRequestId?: string;
+      expression?: import("./expressions/catalog.js").ExpressionRecord;
+    }
   | { type: "connector_trace"; ts: string; requestId: string; message: StoredMessage }
   | { type: "model_change"; ts: string; model: string }
   | { type: "reflection"; ts: string; summary: string }
