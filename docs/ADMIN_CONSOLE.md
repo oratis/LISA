@@ -8,8 +8,7 @@ responses are private/no-store and excluded from indexing.
 ## Access
 
 Enable with `LISA_CONSOLE_ENABLED=1`, set `LISA_CONSOLE_ORIGIN=https://meetlisa.ai`
-and configure the protected owner allowlist with `LISA_ADMIN_EMAILS`. The initial
-production owner is `wangharp@gmail.com`. No account is fabricated or marked
+and configure the protected owner allowlist with `LISA_ADMIN_EMAILS`. Owner addresses are configured only in the deployment environment. No account is fabricated or marked
 verified by this configuration: a verified email/Google account must prove
 ownership via the existing mailed OTP or an existing password. Apple relay
 addresses cannot claim operator privileges.
@@ -107,11 +106,14 @@ Run the account, session, quota, IAP, admission, autonomy and server regression
 suites alongside type checking and build. Browser verification covers all 11
 modules, login, search/detail, ticket save and mobile layout.
 
-Production rollout is based on the exact previously deployed cloud commit
-`0105dbcecb08` (v0.27.1), verified against its Cloud Build source archive. Apply
-only console-related changes to that baseline so unrelated main-branch changes,
-including the newer pricing policy, are not introduced by this release.
+The final production rollout applies only console-related changes to the latest
+already-live cloud commit `349e53c` (v0.30.1-beta.1), retaining its expression and
+hosted-account updates. An earlier build on the old v0.27.1 baseline was discarded
+when a concurrent release promoted the newer cloud version. Verify that traffic
+still points to the inspected baseline immediately before promoting a console
+revision; never overwrite a concurrent production release.
+
 The website image derives from its currently deployed image and changes only
 nginx proxy configuration. First deploy a zero-traffic revision; verify denied
-and authorized read-only endpoints before promoting. Keep the prior cloud
-`lisa-cloud-00033-meq` and website `lisa-web-00029-gej` revisions for rollback.
+and authorized read-only endpoints before promoting. Keep the previous cloud
+`lisa-cloud-expr-349e53c` and website `lisa-web-00029-gej` revisions for rollback.
