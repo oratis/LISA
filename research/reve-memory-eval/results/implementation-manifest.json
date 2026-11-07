@@ -1,0 +1,14 @@
+{
+  "capturedAt": "2026-11-07T15:07:54.244Z",
+  "description": "Final working-tree sources after deterministic bullet formatting fix and code formatting. Live final.json predates only those non-prompt changes.",
+  "sha256": {
+    "src/reflect.ts": "869ad94d2cc603726e21da9396b5a771d5278b025db7d2baf83baae558c7a344",
+    "src/memory/evidence.ts": "5ca5b87ae872164cb50d85f621fd8bcfdb95097745274b498c2e7edafe58f445",
+    "src/memory/review.ts": "3cc816045877ebf4f0a0ae5c1ea95f3553a3b4bbcd361f40b209e153a1b11c25",
+    "src/memory/store.ts": "60ac5a10dd174c776701d37a71384716a717de3a843956099271fc54ce34ffa9",
+    "src/providers/anthropic.ts": "35b0c9b5cbdbef452ade609e9e3a19b8e525cf0f84c455949052ea5818bc14ec",
+    "research/reve-memory-eval/cases.ts": "3edbec1b1d87cb49f2a493c3c63adf3ab5f51d04e06743f1c9bb1d3f80b3d12d",
+    "research/reve-memory-eval/run.ts": "1abbb2fe0e8244974644bec8740cb312b8a38ac824c50c7c4a6c210e05775740",
+    "research/reve-memory-eval/summarize.ts": "d8b2aa4860d4709d36643ebd014f4984bac017f02642a43dae839f6301545f2b"
+  }
+}
