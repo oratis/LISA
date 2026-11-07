@@ -343,7 +343,17 @@ test("session names validate input and survive a server restart", async () => {
         .status,
       415,
     );
-    assert.equal((await post(entry)).status, 200);
+    const saved = await post(entry);
+    assert.equal(saved.status, 200);
+    const savedAt = JSON.parse(saved.text).updatedAt;
+    assert.ok(Number.isSafeInteger(savedAt) && savedAt > 0);
+    for (const origin of ["https://untrusted.example", "null"]) {
+      const foreign = await request(srv.port, "POST", "/api/session-names", {
+        headers: { "content-type": "application/json", origin },
+        body: JSON.stringify(entry),
+      });
+      assert.equal(foreign.status, 403);
+    }
     await srv.close();
     closed = true;
     srv = await boot();
@@ -352,7 +362,7 @@ test("session names validate input and survive a server restart", async () => {
     assert.equal(result.status, 200);
     assert.deepEqual(
       JSON.parse(result.text).names.find((n: { id: string }) => n.id === entry.id),
-      entry,
+      { ...entry, updatedAt: savedAt },
     );
   } finally {
     if (!closed) await srv.close();

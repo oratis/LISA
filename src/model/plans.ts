@@ -20,7 +20,7 @@
 import { accessSync, constants, existsSync, readdirSync, statSync } from "node:fs";
 import { execFile } from "node:child_process";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 
 export type PlanId = "claude" | "codex" | "copilot";
 
@@ -57,6 +57,12 @@ export interface PlanProbe {
   readdir(p: string): string[];
   /** Is `cmd` an executable on PATH (or an existing absolute path)? */
   onPath(cmd: string): boolean;
+  /**
+   * The absolute executable `cmd` resolves to, else null. Optional so simple
+   * fakes can implement only onPath; the real probe always provides it, and
+   * detection then reports the exact file that dispatch and PTY will run.
+   */
+  which?(cmd: string): string | null;
 }
 
 /** The real host probe (filesystem + PATH + env). */
@@ -81,35 +87,57 @@ export function defaultPlanProbe(): PlanProbe {
       }
     },
     onPath: (cmd) => onPath(cmd, env),
+    which: (cmd) => findExecutable(cmd, env),
   };
 }
 
-/** Is `cmd` resolvable on PATH? Absolute/relative paths are checked directly. Pure-ish. */
-export function onPath(cmd: string, env: Record<string, string | undefined>): boolean {
-  if (cmd.includes("/") || cmd.includes("\\")) {
-    try {
-      accessSync(cmd, constants.X_OK);
-      return statSync(cmd).isFile();
-    } catch {
-      return false;
-    }
+function executableFile(file: string): string | null {
+  try {
+    accessSync(file, constants.X_OK);
+    return statSync(file).isFile() ? file : null;
+  } catch {
+    return null;
   }
+}
+
+/**
+ * Resolve `cmd` to the absolute executable that will actually run, else null.
+ *
+ * Detection, the login check, dispatch and the PTY bridge all run this one
+ * path, so it must not depend on the working directory: dispatch and PTY
+ * spawn inside the task's project, where an empty or relative PATH entry
+ * (execvp treats "" as ".") or a relative override would pick up a binary
+ * planted in the repository instead of the one that was checked. Explicit
+ * paths must therefore be absolute, and only absolute PATH entries count.
+ */
+export function findExecutable(
+  cmd: string,
+  env: Record<string, string | undefined>,
+): string | null {
+  if (!cmd) return null;
+  if (cmd.includes("/") || cmd.includes("\\")) return isAbsolute(cmd) ? executableFile(cmd) : null;
   const isWin = process.platform === "win32";
   const sep = isWin ? ";" : ":";
   const exts = isWin ? ["", ".exe", ".cmd", ".bat"] : [""];
   for (const dir of (env.PATH ?? "").split(sep)) {
-    if (!dir) continue;
+    if (!dir || !isAbsolute(dir)) continue;
     for (const ext of exts) {
-      try {
-        const candidate = join(dir, cmd + ext);
-        accessSync(candidate, constants.X_OK);
-        if (statSync(candidate).isFile()) return true;
-      } catch {
-        /* unreadable dir → skip */
-      }
+      const found = executableFile(join(dir, cmd + ext));
+      if (found) return found;
     }
   }
-  return false;
+  return null;
+}
+
+/** Is `cmd` resolvable to an executable (see findExecutable)? */
+export function onPath(cmd: string, env: Record<string, string | undefined>): boolean {
+  return findExecutable(cmd, env) !== null;
+}
+
+/** Where `cmd` resolves through this probe (the bare name for simple fakes). */
+function locate(probe: PlanProbe, cmd: string): string | null {
+  if (probe.which) return probe.which(cmd);
+  return probe.onPath(cmd) ? cmd : null;
 }
 
 /** Parse a `plan://<id>` reference into a known PlanId, else null. Pure. */
@@ -153,10 +181,8 @@ function claudeAppBundle(probe: PlanProbe): string | null {
 function detectClaude(probe: PlanProbe): PlanStatus {
   const override = probe.env.LISA_PTY_CLAUDE_CMD;
   const binary = override
-    ? probe.onPath(override)
-      ? override
-      : null
-    : (claudeAppBundle(probe) ?? (probe.onPath("claude") ? "claude" : null));
+    ? locate(probe, override)
+    : (claudeAppBundle(probe) ?? locate(probe, "claude"));
 
   // Login: token env, else credentials file (Linux/Windows). On macOS the creds
   // live in the Keychain (opaque) → unknown rather than "logged out".
@@ -201,12 +227,8 @@ function codexAppBundle(probe: PlanProbe): string | null {
 function detectCodex(probe: PlanProbe): PlanStatus {
   const override = probe.env.LISA_PTY_CODEX_CMD;
   const binary = override
-    ? probe.onPath(override)
-      ? override
-      : null
-    : probe.onPath("codex")
-      ? "codex"
-      : codexAppBundle(probe);
+    ? locate(probe, override)
+    : (locate(probe, "codex") ?? codexAppBundle(probe));
   const codexHome = probe.env.CODEX_HOME ? probe.env.CODEX_HOME : join(probe.home, ".codex");
   // auth.json exists → logged in. Absent could mean OS-keyring storage → unknown.
   const loggedIn = probe.exists(join(codexHome, "auth.json")) ? true : binary ? null : false;
@@ -225,7 +247,7 @@ function detectCopilot(probe: PlanProbe): PlanStatus {
   // The delegate target is the standalone agentic `copilot` CLI, which runs a
   // task non-interactively via `copilot -p "<task>"`. The older `gh copilot`
   // (suggest/explain) is NOT agentic and can't run a task, so it doesn't count.
-  const binary = probe.onPath("copilot") ? "copilot" : null;
+  const binary = locate(probe, "copilot");
   // Copilot login sits behind GitHub auth — not cheaply checkable without
   // spawning, so: installed → unknown, absent → false.
   const loggedIn = binary ? null : false;

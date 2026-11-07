@@ -26,3 +26,26 @@ test("quoted descriptions round-trip apostrophes, quotes and newlines", () => {
   );
   assert.equal(single?.frontmatter.description, "Lisa's workflow");
 });
+
+test("a hash inside a value is text, not a comment", () => {
+  for (const description of ["Handle PR #12 reviews", "Build C# projects"]) {
+    const built = buildFrontmatter({ name: "hash-skill", description }, "Body\n");
+    assert.equal(parseFrontmatter(built)?.frontmatter.description, description);
+    assert.equal(
+      parseFrontmatter(`---\nname: hash-skill\ndescription: ${description}\n---\nBody\n`)
+        ?.frontmatter.description,
+      description,
+    );
+  }
+  const commented = parseFrontmatter(
+    "---\n# a comment line\nname: commented\ndescription: Real\n---\nBody\n",
+  );
+  assert.equal(commented?.frontmatter.name, "commented");
+});
+
+test("folded descriptions turn a blank line into one line break", () => {
+  const parsed = parseFrontmatter(
+    "---\nname: folded\ndescription: >\n  one\n  more\n\n  two\n\n\n  three\n---\nBody\n",
+  );
+  assert.equal(parsed?.frontmatter.description, "one more\ntwo\n\nthree");
+});

@@ -51,8 +51,9 @@ function parseSimpleYaml(yaml: string): Record<string, unknown> {
   for (let index = 0; index < lines.length; index++) {
     const line = lines[index]!.trimEnd();
     // Only top-level metadata belongs to the skill. Nested keys must not
-    // replace its name or description.
-    if (!line || /^\s|#/.test(line)) continue;
+    // replace its name or description. A "#" is a comment only at the start
+    // of a line: descriptions such as "Fix PR #12" or "Build C# apps" keep it.
+    if (!line || /^[\s#]/.test(line)) continue;
     const colon = line.indexOf(":");
     if (colon < 0) continue;
     const key = line.slice(0, colon).trim();
@@ -70,19 +71,19 @@ function parseSimpleYaml(yaml: string): Record<string, unknown> {
         .map((part) => part.match(/^ */)![0].length);
       const indent = Math.min(...indents);
       const parts = content.map((part) => (part.trim() ? part.slice(indent) : ""));
+      // Literal (|) keeps every line break. Folded (>) joins adjacent text
+      // lines with a space; each blank line becomes one line break, and
+      // more-indented lines keep theirs.
+      const folded = valueRaw.startsWith(">");
       let text = "";
       for (let i = 0; i < parts.length; i++) {
-        text += parts[i];
-        const next = parts[i + 1];
-        if (next !== undefined) {
-          const fold =
-            valueRaw.startsWith(">") &&
-            parts[i] &&
-            next &&
-            !/^\s/.test(parts[i]!) &&
-            !/^\s/.test(next);
-          text += fold ? " " : "\n";
+        const part = parts[i]!;
+        if (i > 0) {
+          const previous = parts[i - 1]!;
+          if (!folded || !part || /^\s/.test(part) || /^\s/.test(previous)) text += "\n";
+          else if (previous) text += " ";
         }
+        text += part;
       }
       out[key] = text.trimEnd();
     } else out[key] = parseYamlValue(valueRaw);

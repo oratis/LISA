@@ -7,7 +7,7 @@ import type { AddressInfo } from "node:net";
 
 const home = await fs.mkdtemp(path.join(os.tmpdir(), "lisa-skills-cloud-"));
 process.env.LISA_HOME = home;
-process.env.CLAUDE_HOME = path.join(home, "claude");
+process.env.CLAUDE_CONFIG_DIR = path.join(home, "claude");
 process.env.CODEX_HOME = path.join(home, "codex");
 process.env.LISA_EDITION = "cloud";
 process.env.LISA_PUBLIC_ORIGIN = "https://lisa.example";
@@ -17,7 +17,7 @@ process.env.LISA_MAIL_POLL_MINUTES = "0";
 const { startWebServer } = await import("./server.js");
 after(() => fs.rm(home, { recursive: true, force: true }));
 
-test("cloud hides the host import catalog and refuses skill creation and import", async () => {
+test("cloud hides the host import catalog, refuses skill writes and token-only session names", async () => {
   const external = path.join(home, "codex/skills/host-only");
   await fs.mkdir(external, { recursive: true });
   await fs.writeFile(
@@ -58,6 +58,27 @@ test("cloud hides the host import catalog and refuses skill creation and import"
       assert.equal(response.status, 403);
       assert.match(await response.text(), /only available on this Mac/);
     }
+    // A shared web token is not an account: it must not read or write
+    // session names in the operator's own home.
+    for (const method of ["GET", "POST"]) {
+      const response = await fetch(base + "/api/session-names", {
+        method,
+        headers,
+        body:
+          method === "POST"
+            ? JSON.stringify({ kind: "agent/codex", id: "x", name: "Operator" })
+            : undefined,
+      });
+      assert.equal(response.status, 403);
+      assert.match(await response.text(), /account_session_required/);
+    }
+    assert.equal(
+      await fs.stat(path.join(home, "sessions/names")).then(
+        () => true,
+        () => false,
+      ),
+      false,
+    );
     assert.equal(
       await fs.stat(path.join(home, "skills/host-only")).then(
         () => true,

@@ -2291,7 +2291,8 @@
                         "required": [
                           "kind",
                           "id",
-                          "name"
+                          "name",
+                          "updatedAt"
                         ],
                         "properties": {
                           "kind": {
@@ -2305,6 +2306,11 @@
                             "type": "string",
                             "minLength": 1,
                             "maxLength": 120
+                          },
+                          "updatedAt": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "Milliseconds; a window applies a name only when it is newer than the one it shows. 0 for names saved before this field existed."
                           }
                         }
                       }
@@ -2313,6 +2319,9 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "Cross-site request, untrusted Host, or (cloud) no account session"
           }
         }
       },
@@ -2358,7 +2367,8 @@
                   "required": [
                     "kind",
                     "id",
-                    "name"
+                    "name",
+                    "updatedAt"
                   ],
                   "properties": {
                     "kind": {
@@ -2372,6 +2382,11 @@
                       "type": "string",
                       "minLength": 1,
                       "maxLength": 120
+                    },
+                    "updatedAt": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "description": "Milliseconds; a window applies a name only when it is newer than the one it shows. 0 for names saved before this field existed."
                     }
                   }
                 }
@@ -2381,8 +2396,14 @@
           "400": {
             "description": "Invalid session name"
           },
+          "403": {
+            "description": "Cross-site request, untrusted Host, or (cloud) no account session"
+          },
           "404": {
             "description": "Session not found"
+          },
+          "409": {
+            "description": "Too many saved names in this home"
           },
           "415": {
             "description": "JSON content type required"

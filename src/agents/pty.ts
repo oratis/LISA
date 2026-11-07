@@ -93,16 +93,16 @@ export function ptyEnabled(): boolean {
   return process.env.LISA_PTY_AGENTS === "1";
 }
 
-/** Map a roster agent-kind to its CLI binary (env-overridable). */
-export function resolveCli(agent: string): string {
+/**
+ * The absolute CLI executable for a roster agent-kind, or null when none was
+ * found. It is the same file Coding plans detected and verified (honouring
+ * LISA_PTY_CLAUDE_CMD / LISA_PTY_CODEX_CMD): never a bare name or relative
+ * path, which the PTY's execvp would resolve inside the task's project.
+ */
+export function resolveCli(agent: string): string | null {
   const id = agent.toLowerCase() === "codex" ? "codex" : "claude";
-  return (
-    detectPlan(id).binary ??
-    (id === "codex" ? process.env.LISA_PTY_CODEX_CMD : process.env.LISA_PTY_CLAUDE_CMD) ??
-    id
-  );
+  return detectPlan(id).binary;
 }
-
 /** Normalize a loose agent label to a roster AgentKind. */
 export function normalizeAgentKind(agent: string): string {
   const a = agent.toLowerCase();
@@ -117,7 +117,7 @@ export function normalizeAgentKind(agent: string): string {
  * PATH `claude`. The app-bundle probe is macOS-specific and silently no-ops
  * elsewhere. Falls back to resolveCli for non-claude agents.
  */
-export function detectClaudeBinary(): string {
+export function detectClaudeBinary(): string | null {
   return resolveCli("claude");
 }
 
@@ -256,6 +256,11 @@ export class PtyAgent {
     }
     const cli =
       opts.cli ?? (kind === "claude-code" ? detectClaudeBinary() : resolveCli(opts.agent));
+    if (!cli) {
+      throw new Error(
+        `No executable found for ${opts.agent}. Check Coding plans and refresh detection.`,
+      );
+    }
     // Adopt an existing session by id: `claude --resume <id>` (claude-only, guarded above).
     const resumeArgs = opts.resumeSessionId ? ["--resume", opts.resumeSessionId] : [];
     const args = [...resumeArgs, ...(opts.args ?? [])];

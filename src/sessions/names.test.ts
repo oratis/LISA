@@ -6,7 +6,13 @@ import path from "node:path";
 
 const temp = await fs.mkdtemp(path.join(os.tmpdir(), "lisa-session-names-"));
 process.env.LISA_HOME = temp;
-const { saveSessionName, listSessionNames, InvalidSessionNameError } = await import("./names.js");
+const {
+  saveSessionName,
+  listSessionNames,
+  InvalidSessionNameError,
+  SessionNameLimitError,
+  MAX_SESSION_NAMES,
+} = await import("./names.js");
 const { homeScope } = await import("../paths.js");
 after(() => fs.rm(temp, { recursive: true, force: true }));
 
@@ -39,7 +45,7 @@ test("names persist independently of transcripts and are isolated by agent and t
 });
 
 test("rejects invalid names, traversal and nonexistent Lisa sessions", async () => {
-  for (const name of ["", "   ", "x".repeat(121), "line\nbreak", null]) {
+  for (const name of ["", "   ", "x".repeat(121), "line\nbreak", "evil\u202egnp.exe", null]) {
     await assert.rejects(
       saveSessionName({ kind: "lisa", id: "test-session", name }),
       InvalidSessionNameError,
@@ -57,4 +63,38 @@ test("rejects invalid names, traversal and nonexistent Lisa sessions", async () 
     code: "ENOENT",
   });
   assert.ok(!(await fs.readdir(temp)).includes("outside"));
+});
+
+test("concurrent renames reach disk in the order their updatedAt was issued", async () => {
+  const saves = await Promise.all(
+    ["first", "second", "third", "fourth"].map((name) =>
+      saveSessionName({ kind: "agent/codex", id: "race-session", name }),
+    ),
+  );
+  const stamps = saves.map((entry) => entry.updatedAt);
+  assert.deepEqual(
+    stamps,
+    [...stamps].sort((a, b) => a - b),
+  );
+  assert.equal(new Set(stamps).size, stamps.length, "updatedAt is strictly increasing");
+  const newest = saves.reduce((a, b) => (b.updatedAt > a.updatedAt ? b : a));
+  const stored = (await listSessionNames()).find((n) => n.id === "race-session");
+  assert.deepEqual(stored, newest);
+});
+
+test("the number of names per home is bounded, renaming an existing one still works", async () => {
+  await homeScope.run(path.join(temp, "bounded-user"), async () => {
+    const dir = path.join(temp, "bounded-user", "sessions", "names");
+    await fs.mkdir(dir, { recursive: true });
+    await saveSessionName({ kind: "agent/codex", id: "kept", name: "Kept" });
+    const existing = (await fs.readdir(dir)).length;
+    for (let i = existing; i < MAX_SESSION_NAMES; i++)
+      await fs.writeFile(path.join(dir, i.toString(16).padStart(64, "0") + ".json"), "{}");
+    await assert.rejects(
+      saveSessionName({ kind: "agent/codex", id: "one-too-many", name: "Nope" }),
+      SessionNameLimitError,
+    );
+    const renamed = await saveSessionName({ kind: "agent/codex", id: "kept", name: "Still ok" });
+    assert.equal(renamed.name, "Still ok");
+  });
 });

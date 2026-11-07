@@ -8,6 +8,9 @@ import { validateSkillName } from "./manager.js";
 import { parseFrontmatter } from "./frontmatter.js";
 
 export type ImportSource = "codex" | "claude";
+/** Files and folders copied for one skill, and their total size. */
+const MAX_IMPORT_ENTRIES = 256;
+const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
 export interface SkillCandidate {
   name: string;
   description: string;
@@ -48,7 +51,12 @@ export async function importSkill(source: ImportSource, name: string): Promise<v
     (s) => s.source === source && s.name === name,
   );
   if (!candidate) throw new Error("Skill is unavailable or incompatible");
-  const sourceRoot = await fs.realpath(path.join(sourceDir(source), name));
+  // The folder itself must still be a real directory: a symlink swapped in
+  // after listing would otherwise make realpath() import whatever it targets.
+  const folder = path.join(sourceDir(source), name);
+  if (!(await fs.lstat(folder)).isDirectory())
+    throw new Error("Skills with symbolic links cannot be imported");
+  const sourceRoot = await fs.realpath(folder);
   const destination = path.join(skillsDir(), name);
   if (
     await fs.lstat(destination).then(
@@ -68,16 +76,31 @@ export async function importSkill(source: ImportSource, name: string): Promise<v
     if (stat.isSymbolicLink() || (real !== sourceRoot && !real.startsWith(sourceRoot + path.sep))) {
       throw new Error("Skills with symbolic links cannot be imported");
     }
+    // Directories count too, so a deep or wide empty tree is bounded as well.
+    if (++count > MAX_IMPORT_ENTRIES) throw new Error("Skill exceeds the import size limit");
     if (stat.isDirectory()) {
       await fs.mkdir(path.join(staging, relative), { recursive: true });
       for (const entry of await fs.readdir(from)) await copy(path.join(relative, entry));
     } else if (stat.isFile()) {
-      if (++count > 256 || (bytes += stat.size) > 10 * 1024 * 1024)
+      if ((bytes += stat.size) > MAX_IMPORT_BYTES)
         throw new Error("Skill exceeds the import size limit");
       const file = await fs.open(from, constants.O_RDONLY | constants.O_NOFOLLOW);
       try {
-        const buffer = await file.readFile();
-        if (buffer.length !== stat.size) throw new Error("Skill changed during import; try again");
+        // Read exactly the size that was checked: a file that grows (or is
+        // swapped) after lstat must not be pulled into memory unbounded.
+        const opened = await file.stat();
+        if (opened.ino !== stat.ino || opened.dev !== stat.dev)
+          throw new Error("Skill changed during import; try again");
+        const buffer = Buffer.alloc(stat.size);
+        let offset = 0;
+        while (offset < stat.size) {
+          const { bytesRead } = await file.read(buffer, offset, stat.size - offset, offset);
+          if (!bytesRead) break;
+          offset += bytesRead;
+        }
+        const extra = await file.read(Buffer.alloc(1), 0, 1, stat.size);
+        if (offset !== stat.size || extra.bytesRead)
+          throw new Error("Skill changed during import; try again");
         await fs.writeFile(path.join(staging, relative), buffer, {
           mode: stat.mode & 0o100 ? 0o700 : 0o600,
           flag: "wx",

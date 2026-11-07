@@ -38,3 +38,47 @@ test("executable validation, login status and dispatch share the explicit binary
     await fs.rm(tmp, { recursive: true, force: true });
   }
 });
+
+test("dispatch never runs a binary planted in the task's project via PATH or a relative override", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "lisa-plan-planted-"));
+  const original = { ...process.env };
+  try {
+    process.env.LISA_HOME = path.join(tmp, "home");
+    const project = path.join(tmp, "project");
+    const bin = path.join(tmp, "bin");
+    await fs.mkdir(path.join(project, "bin"), { recursive: true });
+    await fs.mkdir(bin);
+    const marker = path.join(tmp, "planted-ran");
+    const plant = `#!/bin/sh\ntouch ${JSON.stringify(marker)}\n`;
+    await fs.writeFile(path.join(project, "copilot"), plant, { mode: 0o700 });
+    await fs.writeFile(path.join(project, "bin/copilot"), plant, { mode: 0o700 });
+    // execvp reads "" (and ".") as the spawn's cwd: the project.
+    process.env.PATH = `:${bin}:.`;
+    assert.equal(detectPlan("copilot").binary, null);
+    const refused = await launchAgent("copilot", "fixture", project);
+    assert.match(refused.error ?? "", /No executable found/);
+
+    // A real install elsewhere on PATH is reported (and run) by absolute path.
+    const real = path.join(bin, "copilot");
+    await fs.writeFile(real, "#!/bin/sh\necho REAL\n", { mode: 0o700 });
+    assert.equal(detectPlan("copilot").binary, real);
+    const launched = await launchAgent("copilot", "fixture", project);
+    assert.equal(launched.cmd, real);
+
+    process.env.LISA_PTY_CODEX_CMD = "bin/copilot";
+    assert.equal(detectPlan("codex").binary, null);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    assert.equal(
+      await fs.stat(marker).then(
+        () => true,
+        () => false,
+      ),
+      false,
+      "the planted binary never ran",
+    );
+  } finally {
+    for (const key of Object.keys(process.env)) if (!(key in original)) delete process.env[key];
+    Object.assign(process.env, original);
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});

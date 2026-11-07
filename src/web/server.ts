@@ -4329,11 +4329,21 @@ self.addEventListener('fetch', (event) => {
       return;
     }
 
+    // Same trust shape as the memory routes: every caller is held to
+    // same-origin, a loopback-trusted one also to a loopback Host (DNS
+    // rebinding), and in the cloud only an account session reaches its own
+    // home — a shared web or device token never writes the operator's.
+    const localOwner = !cloud && !accountUid && isLoopbackAddress(remoteAddr);
     if (["/api/session-names", "/api/skills", "/api/skills/import"].includes(url)) {
-      const problem = crossSiteProblem(req, !cloud && isLoopbackAddress(remoteAddr));
+      const problem = crossSiteProblem(req, localOwner);
       if (problem) {
         res.writeHead(403, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: problem }));
+        return;
+      }
+      if (url === "/api/session-names" && cloud && !accountUid) {
+        res.writeHead(403, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "account_session_required" }));
         return;
       }
     }
@@ -4348,7 +4358,8 @@ self.addEventListener('fetch', (event) => {
     if (url === "/api/session-names" && req.method === "POST") {
       const body = await readJsonBody(req, res, 4096);
       if (!body) return;
-      const { saveSessionName, InvalidSessionNameError } = await import("../sessions/names.js");
+      const { saveSessionName, InvalidSessionNameError, SessionNameLimitError } =
+        await import("../sessions/names.js");
       try {
         const entry = await saveSessionName(body);
         broadcast({ type: "session_renamed", ...entry });
@@ -4357,7 +4368,12 @@ self.addEventListener('fetch', (event) => {
       } catch (error) {
         const invalid = error instanceof InvalidSessionNameError;
         const missing = (error as NodeJS.ErrnoException).code === "ENOENT";
-        res.writeHead(invalid ? 400 : missing ? 404 : 500, { "content-type": "application/json" });
+        const limited = error instanceof SessionNameLimitError;
+        if (!invalid && !missing && !limited)
+          logWarn(`[session-names] rename failed: ${(error as Error)?.name ?? "error"}`);
+        res.writeHead(invalid ? 400 : missing ? 404 : limited ? 409 : 500, {
+          "content-type": "application/json",
+        });
         res.end(
           JSON.stringify({
             ok: false,
@@ -4365,7 +4381,9 @@ self.addEventListener('fetch', (event) => {
               ? "invalid_session_name"
               : missing
                 ? "session_not_found"
-                : "rename_failed",
+                : limited
+                  ? "too_many_session_names"
+                  : "rename_failed",
           }),
         );
       }
@@ -4486,7 +4504,7 @@ self.addEventListener('fetch', (event) => {
       const { discoverSkills } = await import("../skills/discovery.js");
       const { findProjectRoot } = await import("../instructions/chain.js");
       const { skillImportCatalog } = await import("../skills/catalog.js");
-      const canManage = !cloud && isLoopbackAddress(remoteAddr);
+      const canManage = localOwner;
       const runtime = await ctxForRequest();
       try {
         const project = cloud ? null : await findProjectRoot(runtime.value.session.header.cwd);
@@ -4511,7 +4529,7 @@ self.addEventListener('fetch', (event) => {
     }
 
     if (req.method === "POST" && (url === "/api/skills" || url === "/api/skills/import")) {
-      if (cloud || !isLoopbackAddress(remoteAddr)) {
+      if (!localOwner) {
         res.writeHead(403, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: "Skill management is only available on this Mac" }));
         return;
@@ -4544,8 +4562,16 @@ self.addEventListener('fetch', (event) => {
         res.writeHead(201, { "content-type": "application/json" });
         res.end(JSON.stringify({ ok: true }));
       } catch (error) {
-        res.writeHead(400, { "content-type": "application/json" });
-        res.end(JSON.stringify({ error: (error as Error).message }));
+        // Validation messages are ours and safe to show; a filesystem error
+        // would echo local paths, so it is logged and answered generically.
+        const systemError = typeof (error as NodeJS.ErrnoException).code === "string";
+        if (systemError) logWarn(`[skills] save failed: ${(error as NodeJS.ErrnoException).code}`);
+        res.writeHead(systemError ? 500 : 400, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            error: systemError ? "Could not save the skill" : (error as Error).message,
+          }),
+        );
       }
       return;
     }
@@ -4740,13 +4766,17 @@ self.addEventListener('fetch', (event) => {
     if (req.method === "GET" && url === "/api/plans") {
       const nowMs = Date.now();
       const sel = selectedPlan();
-      const statuses = await Promise.all(detectPlans().map(verifyPlanLogin));
+      // Asking the CLI about its login runs it, so only for this Mac's own
+      // installs — a hosted tenant never makes the server execute host tools.
+      // The resolved path stays server-side (it names the user's home).
+      const statuses = cloud
+        ? detectPlans()
+        : await Promise.all(detectPlans().map(verifyPlanLogin));
       const plans = statuses.map((p) => {
         const row: Record<string, unknown> = {
           id: p.id,
           label: p.label,
           cli: p.cli,
-          binary: p.binary,
           detail: p.detail,
           available: p.available,
           loggedIn: p.loggedIn,
