@@ -1040,3 +1040,46 @@ describe("forget — matching on parsed text, nested entries, caps and caches", 
     assert.equal(read("sessions/race.jsonl"), "A\nb\nc\n");
   });
 });
+
+describe("forget × the dream log (#423)", () => {
+  test("forget deletes the revert copy that holds the topic, so a later revert cannot bring it back", async () => {
+    const { withDream } = await import("../reve/record.js");
+    const { listDreams, readDream } = await import("../reve/store.js");
+    const { revertDream, RevertConflictError } = await import("../reve/revert.js");
+    const { removeFromMemory } = await import("../memory/store.js");
+    write("memory/MEMORY.md", "- Sam's sister Alice lives in Oslo\n- likes tea\n");
+    // A dream consolidates the entry away: its sidecar now holds it.
+    await withDream({ trigger: "idle" }, () => removeFromMemory("memory", "Alice"));
+    const id = (await listDreams(1)).dreams[0]!.id;
+    const side = `reve/dreams/${id}.before.json`;
+    assert.match(read(side), /Alice/);
+
+    const preview = await forget("Alice", { dryRun: true });
+    assert.ok(preview.counts.reve > 0, "the dream log is part of the preview");
+    const sideItem = preview.locations.find((l) => l.location === side);
+    assert.equal(sideItem?.action, "delete");
+    assert.match(sideItem?.snippet ?? "", /Alice/);
+    assert.ok(preview.locations.some((l) => l.location === `reve/dreams/${id}.json`));
+    assert.match(read(side), /Alice/, "a dry run writes nothing");
+
+    const applied = await forget("Alice", { digest: preview.digest });
+    assert.equal(applied.remaining?.reve, 0, "the re-scan finds nothing left in reve/");
+    assert.equal(fs.existsSync(path.join(home, side)), false, "revert copy deleted");
+    assert.doesNotMatch(read(`reve/dreams/${id}.json`), /Alice/);
+    const rec = await readDream(id);
+    const change = rec.changes.find((c) => c.path === "memory/MEMORY.md");
+    assert.equal(change?.revertible, false);
+
+    await assert.rejects(revertDream(id, { parts: ["memory"] }), RevertConflictError);
+    const forced = await revertDream(id, { parts: ["memory"], force: true });
+    assert.deepEqual(forced.reverted, []);
+    assert.doesNotMatch(read("memory/MEMORY.md"), /Alice/, "the revert brought nothing back");
+  });
+
+  test("reve/ is scanned, not listed as a residual", async () => {
+    write("reve/reconsider.json", JSON.stringify({ version: 1, requests: [] }));
+    const report = await forget("Alice", { dryRun: true });
+    assert.ok(report.scanned.some((s) => s.startsWith("reve")));
+    assert.ok(!report.notScanned.some((s) => s.startsWith("reve")));
+  });
+});

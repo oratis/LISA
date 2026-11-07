@@ -44,6 +44,13 @@
  *  connectors           the copy of the asking chat message each connection
  *                       request keeps (`requests[].prompt`), under the
  *                       connector service's lock; nothing else in its state
+ *  reve                 the dream log (src/reve/forget.ts forgetInReve):
+ *                       matching diff lines, memory entries and summaries in
+ *                       dream records, reconsider notes and audit values are
+ *                       replaced; a revert sidecar that holds the topic is
+ *                       deleted, so no revert can bring it back. Runs FIRST,
+ *                       under the reve lock and outside the memory lock, so a
+ *                       revert racing this forget finds no copy to restore
  *  search_index         when anything above matched: drop the in-memory
  *                       session + KB indexes and the persisted embedding
  *                       cache (vectors of the old text)
@@ -81,6 +88,7 @@ import { isSafeId, type Task, type TaskRun } from "../tasks/types.js";
 import { runTaintSealed, sealRunTaint, sealTaskState, taskStateSealed } from "../tasks/seal.js";
 import { readDigestKey } from "../warden/store.js";
 import { rewriteOutboxEntry, type OutboxEntry } from "../tasks/outbox.js";
+import { forgetInReve } from "../reve/forget.js";
 import { appendSovereigntyAudit, sovereigntyDir } from "./audit.js";
 import { notScannedIn, scannedAreas } from "./coverage.js";
 
@@ -115,6 +123,7 @@ export type ForgetLayer =
   | "reflections"
   | "tasks"
   | "connectors"
+  | "reve"
   | "search_index"
   | "relationships"
   | "journal";
@@ -128,6 +137,7 @@ export const FORGET_LAYERS: readonly ForgetLayer[] = [
   "reflections",
   "tasks",
   "connectors",
+  "reve",
   "search_index",
   "relationships",
   "journal",
@@ -218,6 +228,7 @@ export const FORGET_RESIDUALS: readonly string[] = [
   "Git history: soul/.git and kb/.git keep earlier versions of changed files (that is what keeps this forget auditable); remove those repositories to purge history.",
   "Delivered messages: push notifications, Live Activities, email digests and IM/channel messages already sent can't be recalled.",
   "Open chats: a reply being written while you forget still has the topic in its context. Forget from Lisa's memory panel reloads her open chats from the redacted transcripts; after `lisa forget` on the command line, restart a running Lisa so she does the same.",
+  "Reflective passes still running: a pass's dream record is written when it ends, so text it captured before this forget can still land in the dream log; forget again once it has finished.",
   "Images and attachments inside past messages are not inspected.",
   "Lisa's own soul files (identity, values, opinions, desires) are hers and are never edited; mentions there are listed as untouched.",
   "Knowledge-base file names are not renamed; a page whose file name alone mentions the topic is listed as untouched.",
@@ -1350,6 +1361,49 @@ async function forgetInMemory(ctx: Ctx, links: RegExp | null): Promise<void> {
   }
 }
 
+// ── reve (the dream log) ─────────────────────────────────────────────────
+
+/**
+ * Dream records, summaries, revert sidecars, reconsider notes and the reve
+ * audit log (forgetInReve, which takes the reve lock itself on apply). The
+ * item ids are forgetInReve's own, so `only` passes the confirmed ones back.
+ */
+async function forgetInDreamLog(ctx: Ctx): Promise<void> {
+  try {
+    const r = await forgetInReve((text) => ctx.m.test(text), {
+      apply: ctx.apply,
+      ...(ctx.allowed ? { only: ctx.allowed } : {}),
+    });
+    for (const item of r.items) {
+      addItem(
+        ctx,
+        {
+          id: item.id,
+          layer: "reve",
+          location: item.location,
+          matches: item.matches,
+          action: item.action,
+          ...(item.kind === "sidecars" ? { why: "revert copy" } : {}),
+        },
+        item.sample,
+        item.matches,
+      );
+    }
+    for (const location of r.untouched) {
+      ctx.report.untouched.push({
+        id: itemId("reve", "none", location),
+        layer: "reve",
+        location,
+        matches: 1,
+        action: "none",
+        why: "path or name",
+      });
+    }
+  } catch {
+    ctx.report.errors.push({ layer: "reve", error: "reve_unreadable" });
+  }
+}
+
 // ── reflections + search index ───────────────────────────────────────────
 
 async function forgetInReflections(ctx: Ctx): Promise<void> {
@@ -1469,7 +1523,10 @@ async function run(
     },
   };
   for (const n of ctx.report.notScanned) ctx.report.residuals.push(`Not scanned: ${n}`);
-  // (b) KB first: which pages go entirely decides which links dangle.
+  // (0) The dream log first: once its revert copies are gone, a revert racing
+  // the steps below has nothing to bring back. Outside the memory lock.
+  await forgetInDreamLog(ctx);
+  // (b) KB before memory: which pages go entirely decides which links dangle.
   const links = await forgetInKb(ctx);
   // (a) memory + user entries, and their pointers to deleted pages.
   await forgetInMemory(ctx, links);

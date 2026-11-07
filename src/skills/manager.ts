@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { skillsDir } from "../paths.js";
 import { atomicWrite, ensureDir, pathExists } from "../fs-utils.js";
+import { noteHomeWrite } from "../reve/scope.js";
 import type { Skill, SkillFrontmatter } from "../types.js";
 import { buildFrontmatter, parseFrontmatter } from "./frontmatter.js";
 
@@ -50,10 +51,7 @@ export async function getSkill(name: string): Promise<Skill | null> {
   return { ...parsed, path: file };
 }
 
-export async function createSkill(
-  fm: SkillFrontmatter,
-  body: string,
-): Promise<Skill> {
+export async function createSkill(fm: SkillFrontmatter, body: string): Promise<Skill> {
   validateSkillName(fm.name);
   if (fm.description.length > 1024) {
     throw new Error("skill description too long (max 1024 chars)");
@@ -122,6 +120,7 @@ export async function deleteSkill(name: string): Promise<void> {
   validateSkillName(name);
   const dir = skillDir(name);
   if (!(await pathExists(dir))) throw new Error(`skill "${name}" not found`);
+  noteHomeWrite(skillFile(name)); // a running dream must not offer to revert this (W9)
   await fs.rm(dir, { recursive: true, force: true });
 }
 

@@ -13,8 +13,10 @@
  * line is atomic on POSIX (O_APPEND); the trim runs opportunistically under a
  * cross-process lock.
  */
+import { randomBytes } from "node:crypto";
 import path from "node:path";
 import { lisaHome } from "../paths.js";
+import { noteAutonomyRunInDream } from "../reve/scope.js";
 import { appendLine, atomicWrite, readTextOrEmpty } from "../fs-utils.js";
 import { withFileLock } from "../soul/lock.js";
 
@@ -30,13 +32,7 @@ function runsLock(): string {
 const MAX_RUNS = 2000;
 
 /** Which self-driven mechanism produced the run. */
-export type AutonomyKind =
-  | "idle"
-  | "heartbeat"
-  | "examen"
-  | "desire"
-  | "desire-review"
-  | "reflect";
+export type AutonomyKind = "idle" | "heartbeat" | "examen" | "desire" | "desire-review" | "reflect";
 
 /**
  * What actually happened — replaces the old silent/non-silent binary.
@@ -48,6 +44,10 @@ export type AutonomyKind =
 export type AutonomyOutcome = "done" | "no-update" | "blocked" | "error";
 
 export interface AutonomyRun {
+  /** Stable run id, minted on record when absent (W9: dream records link to it). */
+  id?: string;
+  /** Reve dream this run happened inside, when it was a reflective pass. */
+  dreamId?: string;
   kind: AutonomyKind;
   /** Task name for heartbeat/desire/examen runs (e.g. "desire:learn-rust"). */
   task?: string;
@@ -65,13 +65,18 @@ export interface AutonomyRun {
 
 /** Append one run record; trim the ledger opportunistically. Never throws. */
 export async function recordAutonomyRun(run: AutonomyRun): Promise<void> {
+  const id = run.id ?? `run-${randomBytes(6).toString("hex")}`;
+  const dreamId = run.dreamId ?? noteAutonomyRunInDream(id, run.outcome);
+  const rec: AutonomyRun = dreamId ? { id, dreamId, ...run } : { id, ...run };
   try {
-    await appendLine(runsFile(), JSON.stringify(run));
+    await appendLine(runsFile(), JSON.stringify(rec));
   } catch {
     return; // recording is best-effort; never break the autonomy run on it
   }
   try {
-    const lineCount = (await readTextOrEmpty(runsFile())).split("\n").filter((l) => l.trim()).length;
+    const lineCount = (await readTextOrEmpty(runsFile()))
+      .split("\n")
+      .filter((l) => l.trim()).length;
     if (lineCount > MAX_RUNS) {
       await withFileLock(
         runsLock(),
