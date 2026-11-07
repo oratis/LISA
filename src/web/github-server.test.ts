@@ -212,6 +212,20 @@ test("cloud edition denies connector metadata and authorization before touching 
       { authorization: "Bearer fixture-cloud-gate" },
     );
     assert.equal(authorize.status, 403);
+    for (const route of [
+      "/api/connectors",
+      "/api/connectors/google-calendar/requests?sessionId=test",
+      "/api/connectors/gmail/requests?sessionId=test",
+    ]) {
+      assert.equal(
+        (
+          await fetch(server.base + route, {
+            headers: { authorization: "Bearer fixture-cloud-gate" },
+          })
+        ).status,
+        403,
+      );
+    }
     assert.equal(auths, before);
   } finally {
     await server.close();

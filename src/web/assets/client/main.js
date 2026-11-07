@@ -87,6 +87,26 @@ window.addEventListener('unhandledrejection', function (e) {
 // seam for the rest, not a claim that the whole UI is translated.
 const LISA_STRINGS = {
   en: {
+    "connector.label": "{name} read-only connection",
+    "connector.selectStatus": "Choose what LISA may read",
+    "connector.gmailDetail": "Read headers and bounded snippets in your selected labels, without full bodies or attachments. This task continues after connecting; a new message cancels unfinished work.",
+    "connector.calendarDetail": "Choose primary-calendar availability or event details in selected calendars. No events are created or changed. This task continues after connecting; a new message cancels unfinished work.",
+    "connector.auth.gmail": "Sign in to Google for Gmail",
+    "connector.auth.freebusy": "Connect primary calendar availability",
+    "connector.auth.events": "Connect calendar event details",
+    "connector.authorizeDetail": "Sign in and authorize on Google, then return here to select the read scope. Cancelling stops this task.",
+    "connector.openGoogle": "Open Google authorization",
+    "connector.selectDetail": "Verify the account and select calendars or mail labels to read. Nothing is selected by default. Later read-only tasks use this selection until you disconnect.",
+    "connector.selected": "Selected resources: {n}",
+    "connector.load": "Load more",
+    "connector.error.google_client_not_configured": "Google desktop sign-in is not configured. Complete local Google connector setup first.",
+    "connector.error.google_desktop_client_required": "Google sign-in configuration is unavailable. Use an OAuth client of type Desktop app.",
+    "connector.error.google_reauthorization_required": "Google authorization has expired. Reconnect to continue.",
+    "connector.error.google_access_denied": "Google denied access. Check the selected resources, application permissions and enabled APIs.",
+    "connector.error.google_scope_required": "This authorization cannot read the requested data. Reconnect with the corresponding read-only access.",
+    "connector.error.google_rate_limited": "Google has temporarily limited requests. Try again later.",
+    "connector.error.authorization_cancelled": "Authorization was cancelled. You can connect again.",
+    "connector.error.google_time_range_required": "Use a date range with a timezone, no longer than 31 days.",
     "github.status.waiting": "Waiting to connect",
     "github.status.authorizing": "Authorizing",
     "github.status.selecting": "Choose repositories to read",
@@ -196,6 +216,26 @@ const LISA_STRINGS = {
     'kbd.help': 'This list',
   },
   'zh-CN': {
+    "connector.label": "{name} 只读连接",
+    "connector.selectStatus": "选择可读取的范围",
+    "connector.gmailDetail": "仅读取你选定标签中的邮件头与有限摘要，不读取完整正文或附件。连接完成后自动继续本条任务；发送新消息会取消未完成的任务。",
+    "connector.calendarDetail": "选择仅查看主日历忙闲，或读取选定日历的日程详情。不会创建或修改日程。连接完成后自动继续本条任务；发送新消息会取消未完成的任务。",
+    "connector.auth.gmail": "登录 Google，连接 Gmail",
+    "connector.auth.freebusy": "连接主日历，只看忙闲",
+    "connector.auth.events": "连接日历，读取日程详情",
+    "connector.authorizeDetail": "在 Google 页面登录并授权，然后回到这里选择读取范围。取消后不会继续任务。",
+    "connector.openGoogle": "打开 Google 授权页面",
+    "connector.selectDetail": "请核对账号并选择允许读取的日历或邮件标签。默认不选择任何范围；后续只读任务沿用此选择，直到断开连接。",
+    "connector.selected": "已选 {n} 项",
+    "connector.load": "加载更多",
+    "connector.error.google_client_not_configured": "尚未配置 Google 桌面应用登录，请先完成本机 Google 连接设置。",
+    "connector.error.google_desktop_client_required": "Google 登录配置无法使用。请使用桌面应用类型的 OAuth 配置。",
+    "connector.error.google_reauthorization_required": "Google 登录已失效，请重新连接。",
+    "connector.error.google_access_denied": "Google 拒绝访问，请检查所选范围、应用权限和 API 是否已启用。",
+    "connector.error.google_scope_required": "当前授权不足以读取这些内容，请选择相应的只读授权重新连接。",
+    "connector.error.google_rate_limited": "Google 暂时限制了请求频率，请稍后重试。",
+    "connector.error.authorization_cancelled": "授权已取消，可以重新连接。",
+    "connector.error.google_time_range_required": "请使用带时区且不超过 31 天的日期范围。",
     "github.status.waiting": "等待连接",
     "github.status.authorizing": "正在授权",
     "github.status.selecting": "选择可读取的仓库",
@@ -830,7 +870,7 @@ function connectEvents() {
   es.addEventListener('message', (e) => {
     noteEventBytes();
     const ev = JSON.parse(e.data);
-    if (ev.type === 'github_connection_changed') {
+    if (ev.type === 'github_connection_changed' || ev.type === 'connector_connection_changed') {
       if (ev.sessionId === window.lisaActiveSessionId) void githubRefresh();
       else if (typeof window.lisaMarkUnread === 'function') window.lisaMarkUnread(ev.sessionId);
     } else if (ev.type === 'mood') {

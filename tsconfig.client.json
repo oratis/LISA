@@ -22,7 +22,7 @@
   },
   "include": [
     "src/web/assets/client/main.js",
-    "src/web/assets/client/github-connectors.js",
+    "src/web/assets/client/connectors.js",
     "types/web-client.d.ts"
   ]
 }

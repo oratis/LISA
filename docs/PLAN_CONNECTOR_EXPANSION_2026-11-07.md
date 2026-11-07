@@ -1,6 +1,6 @@
 # LISA 其他连接器调研与接入方案
 
-> 状态：Proposed；尚未实现本文新增连接器。调研日期：2026-11-07。实现基线：PR [#436](https://github.com/oratis/LISA/pull/436) 的本机 GitHub 只读连接卡、授权和原聊天恢复。
+> 状态：C0/C1 本机单账号、单来源切片已实现，详见第 8 节；其余为规划。调研日期：2026-11-07。实现基线：PR [#436](https://github.com/oratis/LISA/pull/436) 的本机 GitHub 只读连接卡、授权和原聊天恢复。
 > 延续：[插件与连接器方案](PLAN_PLUGINS_CONNECTORS_2026-11-07.md)、[Grok Bot / Manus 调研](RESEARCH_PLUGINS_CONNECTORS_2026-11-07.md)。供应商能力来自下列官方文档；优先级、模块设计和工期为 LISA 的建议，不代表供应商承诺。未登录或授权这些服务的真实用户账号。
 
 ## 1 建议先交付什么
@@ -45,9 +45,9 @@ Google 上线评估要覆盖 OAuth 应用状态、scope 验证、用户数据用
 | 代码依据 | 已有能力 | 本期扩展所需变化 |
 |---|---|---|
 | [GitHub 服务](../src/connectors/github.ts)、[Web 接线](../src/web/github-api.ts) | 持久卡片状态、账号 / 仓库绑定、授权尝试隔离、取消、失效、恢复租约 | 从 GitHub 专用状态抽出公共 lifecycle；增加多 provider / 多 account / 多 resource 类型 |
-| [GitHub 卡片](../src/web/assets/client/github-connectors.js) | 原聊天内授权、范围选择、同卡更新、刷新恢复；中英文文案 | 通用 CardView + provider 描述；支持重新选择账号、仅空闲 / 详细日程等能力档位 |
+| [GitHub 卡片](../src/web/assets/client/connectors.js) | 原聊天内授权、范围选择、同卡更新、刷新恢复；中英文文案 | 通用 CardView + provider 描述；支持重新选择账号、仅空闲 / 详细日程等能力档位 |
 | [Gmail OAuth](../src/mail/google-oauth.ts)、[Gmail 读取](../src/mail/connectors/gmail.ts) | 只读 scope、loopback 登录、刷新 token、邮件头与有限 snippet | 接入卡片；抽 OAuth 公共层；补 PKCE、刷新锁、统一出站限制与错误脱敏；不能直接宣称已支持任意全文邮件搜索 |
-| [邮件账户存储](../src/mail/accounts.ts) | 账户与权限为 0600 的 `mail/secrets.json` | 当前不是统一 SecretStore；需可恢复迁移，损坏文件不能当空账户继续覆盖 |
+| [邮件账户存储](../src/mail/accounts.ts) | 账户元数据与 SecretStore 引用 | 已支持旧凭据在访问时迁移：写入、回读验证、原子切换引用；损坏文件拒绝覆盖 |
 | [MCP client](../src/mcp/client.ts) | stdio 连接、工具转换 | 尚无 HTTP transport / OAuth；当前继承整个 process.env。补受控凭据注入、分页工具发现、动态过滤、错误分类与断线处理 |
 | [Slack channel](../src/channels/slack.ts)、[飞书 channel](../src/channels/feishu.ts) | 从聊天平台收消息 / 发回复 | 属于消息渠道适配；不等于用户工作区搜索或云文档的账号连接授权 |
 | [SecretStore](../src/warden/secrets.ts)、[会话存储](../src/sessions/store.ts)、[任务模块](../src/tasks) | 凭据接口、持久结果标记、任务基础 | 复用边界；连接状态仍须从服务端核验，Cloud 必须按认证 UID 隔离 |
@@ -160,4 +160,37 @@ C0 后优先 C1；若 Google 应用资格影响公开测试，先推进 C2，不
 
 ## 8 本轮交付与下一步
 
-PR #436 提交 GitHub 首个切片及本调研方案；本轮额外修复卡片本地化与页面内联资产检查。新增 provider 尚未实现。建议下一项实现任务为 **C0 + C1：统一连接卡与 Google Calendar / Gmail 只读闭环**；C2 随后验证远程 MCP 的可复用性。
+PR #436 已合并。C0/C1 的本机 Web 切片已实现，C2 将验证远程 MCP 的可复用性；多账号、混合来源任务、Cloud 和原生端另行推进。
+
+
+## 8 C0/C1 实现与验收（2026-11-07）
+
+实现入口为 [公共生命周期](../src/connectors/service.ts)、[适配器契约](../src/connectors/types.ts)、[Google 驱动](../src/connectors/google-driver.ts)、[桌面 OAuth](../src/connectors/google-oauth.ts)、[受控传输](../src/connectors/google-http.ts)、[公共卡片](../src/web/assets/client/connectors.js) 和 [HTTP 接口](../src/web/connectors-api.ts)。本切片沿用已有工程结构，没有预建尚无调用者的 catalog/store/resume 文件；目录目前是服务端固定的三项。GitHub 旧 API 保留，新增接口同步到 OpenAPI。
+
+| 来源 | 授权与确认 | 允许读取 | 执行限制 |
+|---|---|---|---|
+| GitHub | 既有登录或设备授权，再选择仓库 | 原有仓库只读操作 | 旧 v1 状态迁移到 v2，保留请求及结果标记 |
+| Google Calendar 忙闲 | `calendar.freebusy`，确认主日历 | 指定日期的忙闲区间 | 无事件标题；每次最多 31 天、200 区间 |
+| Google Calendar 详情 | `calendar.events.readonly`、`calendar.calendarlist.readonly`、`calendar.events.freebusy`，逐项选择日历 | 展开重复事件后的详情、全天日期、时区或忙闲 | 每次最多 31 天、30 事件，提示截断；无创建、改动或邀请 |
+| Gmail | `gmail.readonly`，逐项选择标签 | 发件人、主题、时间、最多 400 字摘要及邮件链接 | 每次最多 31 天、20 封，提示截断；无正文、附件、发送、归档或删除 |
+
+Google 另外请求 `openid` 和 `userinfo.email` 绑定稳定账号 ID 及经验证邮箱。权限请求、实际授予 scope、LISA 资源范围分别保存并复核；已有更宽令牌不能提高本次选择的读取档位。Gmail 的供应商令牌可以读取整个邮箱，标签和字段限制由 LISA 驱动执行，不宣称 Google 提供标签级 OAuth。授权后仍须在卡片确认资源，默认不勾选。
+
+### 本机配置与操作
+
+1. 在 Google Cloud 项目启用 Calendar API 和 Gmail API，配置 OAuth 同意屏幕及允许的测试账号。创建 **桌面应用** OAuth 客户端，下载 JSON；Web 客户端不能用于此回调。
+2. 在本机 `~/.lisa/config.env` 配置 `LISA_GOOGLE_CLIENT_FILE=/absolute/path/to/desktop-client.json`，或使用 `LISA_GOOGLE_CLIENT_ID` 与可选 `LISA_GOOGLE_CLIENT_SECRET`。JSON 和密钥不提交仓库。文件方式仅保存路径；凭据随后进入 SecretStore。
+3. 本机 Web 聊天发送“查看 Google Calendar 今天的忙闲”“查看 Google Calendar 明天日程”或“总结 Gmail 今天邮件”，点击对应登录档位，完成 Google 授权后返回卡片选择范围。确认后自动恢复原聊天。
+4. 卡片支持取消、失败重试、重新授权和断开。断开删除 LISA 保存的凭据、停止未完成任务；不自动撤销同一 Google 应用的其他授权。若要切换已连接账号或日历权限档位，先断开再发起读取请求。
+
+Google 的桌面流程采用 PKCE 与临时 loopback callback；实现依据 [Google 官方桌面 OAuth 文档](https://developers.google.com/identity/protocols/oauth2/native-app)。公开分发前仍需独立配置 LISA 应用品牌与 Google 所要求的审核，不能将测试账号授权等同于公开发布资格。
+
+### 验证范围
+
+自动测试覆盖真实本机 HTTP 回调与 PKCE/state 校验、两档日历 scope、时区/全天事件、标签范围、过期刷新、撤销后停止提交、旧 GitHub/邮件状态迁移、重启去重、Cloud/跨站拒绝和邮件验证码过滤。浏览器测试覆盖 Google Calendar/Gmail 的卡片、授权回调、范围确认、原聊天结果、刷新去重、取消，以及 GitHub 原有路径；供应商响应与模型在自动测试中为测试替身。
+
+真实账号验收使用隔离的本机预览 Home，不启用后台邮箱轮询。Calendar 忙闲已完成真实 OAuth、主日历确认和原任务自动恢复。Gmail 已完成真实 OAuth、INBOX 标签确认和原任务自动恢复，并在结果中正确说明单次 20 封上限及截断。日历详情已通过自动测试，未读取真实日程内容。
+
+### 当前边界
+
+每个来源连接一个账号；每条请求只处理一个来源，混合请求提示分别发送。资源选择会用于后续同来源只读任务，直到断开。新用户消息取消未完成的续跑；授权窗口关闭后可取消或等候十分钟超时。首批仍限本机 local-owner Web，Cloud、远程设备和原生客户端未开放。旧 CLI 邮箱登录入口仍保留，但凭据保存已经迁入 SecretStore；新卡片不自动开启旧邮件分类/轮询，也不继承旧邮箱的读取同意。

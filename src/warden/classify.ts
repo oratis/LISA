@@ -696,6 +696,21 @@ export function classifyToolCall(
 
   if (name.startsWith(MCP_PREFIX)) return classifyMcp(name, rec, tool, base, ctx);
 
+  if (name === "gmail_read" || name === "google_calendar_read") {
+    const operation = str(rec.operation);
+    const allowed = name === "gmail_read" ? ["list", "messages"] : ["list", "events", "freebusy"];
+    return {
+      ...base,
+      category: operation && allowed.includes(operation) ? "read" : "write",
+      connector: name === "gmail_read" ? "gmail" : "google-calendar",
+      method: operation,
+      targets: [str(rec.resourceId) ?? "selected resources"],
+      egress: true,
+      destination: "fixed",
+      taintSource: true,
+    };
+  }
+
   if (name === "github_read") {
     const operation = str(rec.operation);
     const read =

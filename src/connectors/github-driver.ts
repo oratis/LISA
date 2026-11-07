@@ -1,3 +1,4 @@
+import { ConnectorError } from "./types.js";
 /** Local GitHub preview: gh owns interactive login; LISA owns a pinned read grant. */
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
@@ -34,8 +35,8 @@ export const repoName = (s: unknown): s is string =>
   /^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9_.-]{1,100}$/.test(s) &&
   ![".", ".."].includes(s.split("/")[1]!);
 
-export class GitHubError extends Error {
-  constructor(public readonly code: string) {
+export class GitHubError extends ConnectorError {
+  constructor(code: string) {
     super(code);
   }
 }

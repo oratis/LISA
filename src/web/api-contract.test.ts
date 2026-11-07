@@ -147,6 +147,27 @@ describe("API contract source and generated constants", () => {
 });
 
 describe("actual server DTOs conform to OpenAPI v1", () => {
+  test("Google cards expose scope and account without credential handles", () => {
+    const card = {
+      id: "request-1",
+      sessionId: "session-1",
+      status: "selecting",
+      createdAt: 1,
+      expiresAt: 2,
+      account: { id: "123", email: "fixture@example.com" },
+      resources: [{ id: "INBOX", name: "Inbox", access: "metadata" }],
+      connected: false,
+    };
+    assertContract("ConnectorRequestsResponse", { requests: [card] });
+    assertContract("ConnectorConnectionChangedEvent", {
+      type: "connector_connection_changed",
+      sessionId: "session-1",
+      provider: "gmail",
+    });
+    const schema = contract.components.schemas.ConnectorRequest!;
+    assert.ok(schemaErrors(schema, { ...card, credentialRef: "private" }).length > 0);
+    assert.ok(schemaErrors(schema, { ...card, accessToken: "private" }).length > 0);
+  });
   test("GitHub cards exclude credentials and retain stable lifecycle fields", () => {
     const request = {
       id: "request-1",

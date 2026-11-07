@@ -23,4 +23,4 @@ import { readFileSync } from "node:fs";
 export const MAIN_CLIENT_JS =
   readFileSync(new URL("./assets/client/main.js", import.meta.url), "utf8") +
   "\n" +
-  readFileSync(new URL("./assets/client/github-connectors.js", import.meta.url), "utf8");
+  readFileSync(new URL("./assets/client/connectors.js", import.meta.url), "utf8");

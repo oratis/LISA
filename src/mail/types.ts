@@ -6,13 +6,13 @@
  *
  * PRIVACY: classification runs on METADATA + a BOUNDED SNIPPET only — never full
  * bodies. Full bodies are not persisted and not sent to the model. Secrets
- * (IMAP password / OAuth refresh token) live in a separate 0600 file, never in
+ * (IMAP password / OAuth refresh token) live in SecretStore, never in
  * the accounts list. Everything is gated on the `mail` consent signal.
  */
 
 export type MailProvider = "imap" | "gmail";
 
-/** A connected mailbox. NO secrets here (see MailSecret + the 0600 secrets file). */
+/** A connected mailbox. NO secrets here (see MailSecret + SecretStore). */
 export interface MailAccount {
   /** Stable slug, e.g. "qq-3f9a1c". */
   id: string;
@@ -30,7 +30,7 @@ export interface MailAccount {
   enabled: boolean;
 }
 
-/** Per-account secret, stored only in ~/.lisa/mail/secrets.json (mode 0600). */
+/** Per-account secret in SecretStore; mail/secrets.json contains references after migration. */
 export interface MailSecret {
   /** IMAP app-password / authorization code. */
   password?: string;

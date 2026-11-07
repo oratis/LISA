@@ -144,7 +144,10 @@ const CLASSIFIED =
 test("sweepAll: nothing sensitive reaches the model, the items, the digest file or the log", async () => {
   await withHome(async (home) => {
     grant("mail");
-    addAccount({ provider: "imap", email: "me@qq.com", host: "imap.qq.com" }, { password: "pw" });
+    await addAccount(
+      { provider: "imap", email: "me@qq.com", host: "imap.qq.com" },
+      { password: "pw" },
+    );
     const { provider, sent } = recordingProvider(CLASSIFIED);
     const res = await sweepAll({ connectorFactory: fakeConnector(INBOX), provider });
 
@@ -186,7 +189,10 @@ test("sweepAll: nothing sensitive reaches the model, the items, the digest file 
 test("sweepAll: the heuristic fallback (model down) is just as clean", async () => {
   await withHome(async () => {
     grant("mail");
-    addAccount({ provider: "imap", email: "me@qq.com", host: "imap.qq.com" }, { password: "pw" });
+    await addAccount(
+      { provider: "imap", email: "me@qq.com", host: "imap.qq.com" },
+      { password: "pw" },
+    );
     const provider: Provider = {
       name: "down",
       runTurn: () => Promise.reject(new Error("model unavailable")),
@@ -205,7 +211,10 @@ test("sweepAll: the heuristic fallback (model down) is just as clean", async () 
 test("pollNewMail: alerts built from fresh mail are clean, and logged once", async () => {
   await withHome(async (home) => {
     grant("mail");
-    addAccount({ provider: "imap", email: "me@qq.com", host: "imap.qq.com" }, { password: "pw" });
+    await addAccount(
+      { provider: "imap", email: "me@qq.com", host: "imap.qq.com" },
+      { password: "pw" },
+    );
     const { provider, sent } = recordingProvider(CLASSIFIED);
     const fresh = await pollNewMail({ connectorFactory: fakeConnector(INBOX), provider });
     assert.equal(fresh.length, 5);
