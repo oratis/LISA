@@ -29,6 +29,7 @@ import {
   setDefaultTaskDeliver,
   setTaskEventSink,
 } from "../tasks/wiring.js";
+import type { TaskApprovalFactory } from "../tasks/types.js";
 import type { ToolDefinition } from "../types.js";
 import { cloudTasksEnabled, handleTasksApi } from "./tasks-api.js";
 
@@ -61,6 +62,12 @@ export interface TaskHostOptions {
   /** Hosted edition: billing admission for the tenant's model calls. Required to run cloud tasks. */
   modelGateFor?: (uid: string) => ModelGate;
   checkWatch?: WatchCheck;
+  /**
+   * The approval gate for unattended runs: Warden's task factory when the
+   * server runs in Warden mode, otherwise unset — and then a run may make only
+   * the verified read-only calls of src/tasks/policy.ts.
+   */
+  approvalFactory?: TaskApprovalFactory;
   log?: (msg: string) => void;
   /** Start the 30 s scheduler (Mac edition). Default: true when not hosted. */
   schedule?: boolean;
@@ -69,12 +76,17 @@ export interface TaskHostOptions {
 }
 
 export interface TaskHost {
-  /** Route hook: resolves true when the request was a `/api/tasks*` one. */
+  /**
+   * Route hook: resolves true when the request was a `/api/tasks*` one.
+   * `trust` is who the caller is (warden-api.ts `wardenTrust`): only a caller
+   * who may approve can confirm what a task does without asking.
+   */
   handle(
     req: http.IncomingMessage,
     res: http.ServerResponse,
     url: string,
     uid: string | null,
+    trust?: { allowApproval: boolean; loopbackTrust: boolean },
   ): Promise<boolean>;
   /** The runner for a tenant (null uid = the Mac edition's single user). */
   runnerFor(uid: string | null): TaskRunner | null;
@@ -116,6 +128,7 @@ export function createTaskHost(opts: TaskHostOptions): TaskHost {
       host: opts.cloud ? "cloud" : "home",
       onEvent,
       ...(opts.checkWatch ? { checkWatch: opts.checkWatch } : {}),
+      ...(opts.approvalFactory ? { approvalFactory: opts.approvalFactory } : {}),
       ...(opts.log ? { log: opts.log } : {}),
       ...(uid && opts.modelGateFor ? { modelGate: opts.modelGateFor(uid) } : {}),
       ...(uid && opts.trackWork
@@ -166,7 +179,7 @@ export function createTaskHost(opts: TaskHostOptions): TaskHost {
   };
 
   return {
-    handle: async (req, res, url, uid) => {
+    handle: async (req, res, url, uid, trust) => {
       // Cheap exit for the other few hundred routes this hook sits in front of.
       if (!url.startsWith("/api/tasks")) return false;
       return await handleTasksApi(req, res, url, {
@@ -175,6 +188,8 @@ export function createTaskHost(opts: TaskHostOptions): TaskHost {
         uid,
         runner: runnerFor(uid),
         emit: onEvent,
+        allowConfirm: trust?.allowApproval === true,
+        loopbackTrust: trust?.loopbackTrust === true,
         ...(opts.cloudEnabled !== undefined ? { cloudEnabled: opts.cloudEnabled } : {}),
       });
     },

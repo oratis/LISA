@@ -80,6 +80,9 @@ INSPECTION
   lisa autonomy [days]         Digest of self-driven runs (idle / heartbeat /
                                desire / examen / reflect): outcome, cost, cadence.
                                Defaults to the last 7 days.
+  lisa reve <sub>              Dream log of each reflective pass: dreams, show
+                               <id>, revert <id> --parts memory,kb,skills,
+                               reconsider <id> "<note>", metrics [--days n].
   lisa model <sub>             Local model lifecycle (Ollama): list, install
                                <model>, use local://<model> to switch, health.
                                Also detects coding plans (Claude/Codex/Copilot):
@@ -164,6 +167,18 @@ SECRETS (tools get the value through a secret://<name> handle; it is never shown
   lisa secret set <name>       Store a secret (hidden prompt, or pipe it on stdin).
   lisa secret list             List names and timestamps.
   lisa secret rm <name>        Delete a secret.
+
+YOUR DATA (memory sovereignty) — only in exactly these forms; any other line
+starting with these words is a prompt
+  lisa forget "<topic>" [--dry-run] [--yes] [--json]
+                               Preview, then erase a topic (whole words; quote
+                               it) from memory, KB, sessions, tasks and indexes;
+                               Lisa's journal gets literal redactions.
+  lisa export [--out F] [--include-sessions] [--force]
+                               Export this Lisa as an UNENCRYPTED .tar.gz (never
+                               secrets); asks first when there is no --out.
+  lisa import <file> [--into <home>] [--replace]
+                               Import an export; --replace backs up first.
 
 LISA CLOUD (managed inference — models without a BYO key run key-free)
   lisa login [url] [--password]
@@ -434,6 +449,11 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (args.subcommand === "reve") {
+    const { runReveCommand } = await import("./cli/reve.js");
+    process.exit(await runReveCommand(args.subargs));
+  }
+
   if (args.subcommand === "model") {
     const { runModelCommand } = await import("./cli/model.js");
     process.exit(await runModelCommand(args.subargs));
@@ -483,6 +503,21 @@ async function main(): Promise<void> {
   if (args.subcommand === "secret") {
     const { runSecretCommand } = await import("./cli/secret.js");
     process.exit(await runSecretCommand(args.subargs));
+  }
+
+  if (
+    args.subcommand === "forget" ||
+    args.subcommand === "export" ||
+    args.subcommand === "import"
+  ) {
+    const { runForgetCommand, runExportCommand, runImportCommand } =
+      await import("./cli/sovereignty.js");
+    const run = {
+      forget: runForgetCommand,
+      export: runExportCommand,
+      import: runImportCommand,
+    }[args.subcommand];
+    process.exit(await run(args.subargs));
   }
 
   // `lisa tasks run` needs the toolset and is handled further down, next to heartbeat.

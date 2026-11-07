@@ -10,6 +10,7 @@
  */
 import fs from "node:fs/promises";
 import { ensureDir, atomicWrite, pathExists, readTextOrEmpty } from "../fs-utils.js";
+import { noteHomeWrite } from "../reve/scope.js";
 import { withFileLock } from "../soul/lock.js";
 import { assertSafeSlug } from "../soul/slug.js";
 import { kbSlug } from "./slug.js";
@@ -215,9 +216,7 @@ export async function listFullEntries(layer?: KbLayer): Promise<KbEntry[]> {
       }
     }
   }
-  out.sort((a, b) =>
-    (b.updated || b.created || "").localeCompare(a.updated || a.created || ""),
-  );
+  out.sort((a, b) => (b.updated || b.created || "").localeCompare(a.updated || a.created || ""));
   return out;
 }
 
@@ -308,7 +307,10 @@ export function renderIndex(entries: KbEntry[], opts: { now?: number } = {}): st
   // The wiki's to-do list: pages nothing connects to, and links that point at
   // nothing. This is what the idle "tend the wiki" pass acts on.
   if (graph.orphans.length) {
-    const shown = graph.orphans.slice(0, INDEX_LIMITS.orphans).map((k) => `\`${k}\``).join(", ");
+    const shown = graph.orphans
+      .slice(0, INDEX_LIMITS.orphans)
+      .map((k) => `\`${k}\``)
+      .join(", ");
     const more = graph.orphans.length > INDEX_LIMITS.orphans ? ", …" : "";
     lines.push(`_Unlinked pages (worth connecting): ${shown}${more}_`, "");
   }
@@ -419,11 +421,42 @@ export async function writeWiki(opts: {
   });
 }
 
+/**
+ * User-initiated "forget" on one entry — the one sanctioned edit of an
+ * otherwise immutable source. Under the KB write lock the entry is re-read
+ * and handed to `decide`, which sees the CURRENT page and returns "delete",
+ * a new body/extra (metadata otherwise kept), or null to leave it alone.
+ */
+export async function forgetInEntry(
+  layer: KbLayer,
+  slug: string,
+  decide: (entry: KbEntry) => "delete" | { body: string; extra?: Record<string, string> } | null,
+): Promise<"deleted" | "rewritten" | "unchanged" | "missing"> {
+  return withFileLock(kbLockPath(), async () => {
+    const file = entryFile(layer, slug);
+    if (!(await pathExists(file))) return "missing";
+    const entry = parseEntry(layer, slug, await fs.readFile(file, "utf8"));
+    const next = decide(entry);
+    if (next === null) return "unchanged";
+    if (next === "delete") {
+      await fs.rm(file, { force: true });
+      await regenerateIndexLocked();
+      await commitKb(`kb: user-forget remove ${layer}/${slug}`);
+      return "deleted";
+    }
+    await atomicWrite(file, serializeEntry({ ...entry, body: next.body, extra: next.extra }));
+    await regenerateIndexLocked();
+    await commitKb(`kb: user-forget ${layer}/${slug}`);
+    return "rewritten";
+  });
+}
+
 /** Delete an entry (user-initiated). Returns false if it didn't exist. */
 export async function removeEntry(layer: KbLayer, slug: string): Promise<boolean> {
   return withFileLock(kbLockPath(), async () => {
     const file = entryFile(layer, slug);
     if (!(await pathExists(file))) return false;
+    noteHomeWrite(file); // a running dream must not offer to revert this (W9)
     await fs.rm(file, { force: true });
     await regenerateIndexLocked();
     await commitKb(`kb: remove ${layer}/${slug}`);

@@ -3,7 +3,6 @@ import {
   createSkill,
   deleteSkill,
   getSkill,
-  listSkills,
   patchSkill,
   rewriteSkill,
   validateSkillName,
@@ -52,15 +51,13 @@ export const skillManageTool: ToolDefinition<SkillManageInput, string> = {
   async execute(input, ctx) {
     switch (input.action) {
       case "list": {
-        const skills = await listSkills();
+        const { skills } = await discoverSkills(ctx?.cwd ? await findProjectRoot(ctx.cwd) : null);
         if (skills.length === 0) return "No skills saved yet.";
         return skills
           .map(
             (s) =>
-              `- ${s.frontmatter.name} — ${s.frontmatter.description}` +
-              (s.frontmatter.tags?.length
-                ? ` [${s.frontmatter.tags.join(", ")}]`
-                : ""),
+              `- ${s.frontmatter.name} — ${s.frontmatter.description} (${s.scope})` +
+              (s.frontmatter.tags?.length ? ` [${s.frontmatter.tags.join(", ")}]` : ""),
           )
           .join("\n");
       }

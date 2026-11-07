@@ -17,9 +17,10 @@
  * The probe (filesystem / PATH / env) is injectable so detection is unit-testable
  * without a real claude/codex install.
  */
-import { existsSync, readdirSync } from "node:fs";
+import { accessSync, constants, existsSync, readdirSync, statSync } from "node:fs";
+import { execFile } from "node:child_process";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 
 export type PlanId = "claude" | "codex" | "copilot";
 
@@ -56,6 +57,12 @@ export interface PlanProbe {
   readdir(p: string): string[];
   /** Is `cmd` an executable on PATH (or an existing absolute path)? */
   onPath(cmd: string): boolean;
+  /**
+   * The absolute executable `cmd` resolves to, else null. Optional so simple
+   * fakes can implement only onPath; the real probe always provides it, and
+   * detection then reports the exact file that dispatch and PTY will run.
+   */
+  which?(cmd: string): string | null;
 }
 
 /** The real host probe (filesystem + PATH + env). */
@@ -80,32 +87,57 @@ export function defaultPlanProbe(): PlanProbe {
       }
     },
     onPath: (cmd) => onPath(cmd, env),
+    which: (cmd) => findExecutable(cmd, env),
   };
 }
 
-/** Is `cmd` resolvable on PATH? Absolute/relative paths are checked directly. Pure-ish. */
-export function onPath(cmd: string, env: Record<string, string | undefined>): boolean {
-  if (cmd.includes("/") || cmd.includes("\\")) {
-    try {
-      return existsSync(cmd);
-    } catch {
-      return false;
-    }
+function executableFile(file: string): string | null {
+  try {
+    accessSync(file, constants.X_OK);
+    return statSync(file).isFile() ? file : null;
+  } catch {
+    return null;
   }
+}
+
+/**
+ * Resolve `cmd` to the absolute executable that will actually run, else null.
+ *
+ * Detection, the login check, dispatch and the PTY bridge all run this one
+ * path, so it must not depend on the working directory: dispatch and PTY
+ * spawn inside the task's project, where an empty or relative PATH entry
+ * (execvp treats "" as ".") or a relative override would pick up a binary
+ * planted in the repository instead of the one that was checked. Explicit
+ * paths must therefore be absolute, and only absolute PATH entries count.
+ */
+export function findExecutable(
+  cmd: string,
+  env: Record<string, string | undefined>,
+): string | null {
+  if (!cmd) return null;
+  if (cmd.includes("/") || cmd.includes("\\")) return isAbsolute(cmd) ? executableFile(cmd) : null;
   const isWin = process.platform === "win32";
   const sep = isWin ? ";" : ":";
   const exts = isWin ? ["", ".exe", ".cmd", ".bat"] : [""];
   for (const dir of (env.PATH ?? "").split(sep)) {
-    if (!dir) continue;
+    if (!dir || !isAbsolute(dir)) continue;
     for (const ext of exts) {
-      try {
-        if (existsSync(join(dir, cmd + ext))) return true;
-      } catch {
-        /* unreadable dir → skip */
-      }
+      const found = executableFile(join(dir, cmd + ext));
+      if (found) return found;
     }
   }
-  return false;
+  return null;
+}
+
+/** Is `cmd` resolvable to an executable (see findExecutable)? */
+export function onPath(cmd: string, env: Record<string, string | undefined>): boolean {
+  return findExecutable(cmd, env) !== null;
+}
+
+/** Where `cmd` resolves through this probe (the bare name for simple fakes). */
+function locate(probe: PlanProbe, cmd: string): string | null {
+  if (probe.which) return probe.which(cmd);
+  return probe.onPath(cmd) ? cmd : null;
 }
 
 /** Parse a `plan://<id>` reference into a known PlanId, else null. Pure. */
@@ -135,10 +167,13 @@ function cmpVersionDesc(a: string, b: string): number {
 function claudeAppBundle(probe: PlanProbe): string | null {
   if (probe.platform !== "darwin") return null;
   const root = join(probe.home, "Library", "Application Support", "Claude", "claude-code");
-  const versions = probe.readdir(root).filter((v) => /^\d+\.\d+\.\d+/.test(v)).sort(cmpVersionDesc);
+  const versions = probe
+    .readdir(root)
+    .filter((v) => /^\d+\.\d+\.\d+/.test(v))
+    .sort(cmpVersionDesc);
   for (const v of versions) {
     const bin = join(root, v, "claude.app", "Contents", "MacOS", "claude");
-    if (probe.exists(bin)) return bin;
+    if (probe.onPath(bin)) return bin;
   }
   return null;
 }
@@ -146,10 +181,8 @@ function claudeAppBundle(probe: PlanProbe): string | null {
 function detectClaude(probe: PlanProbe): PlanStatus {
   const override = probe.env.LISA_PTY_CLAUDE_CMD;
   const binary = override
-    ? probe.onPath(override)
-      ? override
-      : null
-    : (claudeAppBundle(probe) ?? (probe.onPath("claude") ? "claude" : null));
+    ? locate(probe, override)
+    : (claudeAppBundle(probe) ?? locate(probe, "claude"));
 
   // Login: token env, else credentials file (Linux/Windows). On macOS the creds
   // live in the Keychain (opaque) → unknown rather than "logged out".
@@ -159,7 +192,8 @@ function detectClaude(probe: PlanProbe): PlanStatus {
   let loggedIn: boolean | null;
   if (probe.env.CLAUDE_CODE_OAUTH_TOKEN || probe.env.ANTHROPIC_AUTH_TOKEN) loggedIn = true;
   else if (probe.exists(join(configDir, ".credentials.json"))) loggedIn = true;
-  else if (probe.platform === "darwin") loggedIn = null; // Keychain — can't tell from presence
+  else if (probe.platform === "darwin")
+    loggedIn = null; // Keychain — can't tell from presence
   else loggedIn = false;
 
   return {
@@ -173,9 +207,28 @@ function detectClaude(probe: PlanProbe): PlanStatus {
   };
 }
 
+/** Known app layouts; use executable checks, never infer availability from the app alone. */
+function codexAppBundle(probe: PlanProbe): string | null {
+  if (probe.platform !== "darwin") return null;
+  for (const root of ["/Applications", join(probe.home, "Applications")]) {
+    for (const app of ["ChatGPT.app", "Codex.app"]) {
+      for (const relative of [
+        "Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
+        "Contents/Resources/codex",
+      ]) {
+        const binary = join(root, app, relative);
+        if (probe.onPath(binary)) return binary;
+      }
+    }
+  }
+  return null;
+}
+
 function detectCodex(probe: PlanProbe): PlanStatus {
-  const cli = probe.env.LISA_PTY_CODEX_CMD || "codex";
-  const binary = probe.onPath(cli) ? cli : null;
+  const override = probe.env.LISA_PTY_CODEX_CMD;
+  const binary = override
+    ? locate(probe, override)
+    : (locate(probe, "codex") ?? codexAppBundle(probe));
   const codexHome = probe.env.CODEX_HOME ? probe.env.CODEX_HOME : join(probe.home, ".codex");
   // auth.json exists → logged in. Absent could mean OS-keyring storage → unknown.
   const loggedIn = probe.exists(join(codexHome, "auth.json")) ? true : binary ? null : false;
@@ -194,7 +247,7 @@ function detectCopilot(probe: PlanProbe): PlanStatus {
   // The delegate target is the standalone agentic `copilot` CLI, which runs a
   // task non-interactively via `copilot -p "<task>"`. The older `gh copilot`
   // (suggest/explain) is NOT agentic and can't run a task, so it doesn't count.
-  const binary = probe.onPath("copilot") ? "copilot" : null;
+  const binary = locate(probe, "copilot");
   // Copilot login sits behind GitHub auth — not cheaply checkable without
   // spawning, so: installed → unknown, absent → false.
   const loggedIn = binary ? null : false;
@@ -211,7 +264,12 @@ function detectCopilot(probe: PlanProbe): PlanStatus {
   };
 }
 
-function hint(available: boolean, loggedIn: boolean | null, loginCmd: string, what: string): string {
+function hint(
+  available: boolean,
+  loggedIn: boolean | null,
+  loginCmd: string,
+  what: string,
+): string {
   if (!available) return `install ${what} to enable`;
   if (loggedIn === true) return "ready";
   if (loggedIn === false) return `installed — run \`${loginCmd} login\` to sign in`;
@@ -259,7 +317,8 @@ export interface PlanPreflight {
  * prompt if truly logged out.
  */
 export function planPreflight(status: PlanStatus): PlanPreflight {
-  if (!status.available) return { ok: false, reason: `${status.cli} isn't installed — ${status.detail}` };
+  if (!status.available)
+    return { ok: false, reason: `${status.cli} isn't installed — ${status.detail}` };
   if (status.loggedIn === false)
     return { ok: false, reason: `${status.cli} is installed but not logged in — ${status.detail}` };
   return { ok: true };
@@ -284,4 +343,30 @@ export function planSummaryLine(statuses: PlanStatus[], selected: PlanId | null)
   const bits = statuses.map((s) => `${s.label} ${planMark(s)}${s.id === selected ? " ★" : ""}`);
   const head = selected ? `coding plan → ${selected}` : "coding plan → none selected";
   return `${head}  ·  ${bits.join("  ·  ")}`;
+}
+
+/** Ask the vendor CLI about its own login; never read or expose credential payloads. */
+export async function verifyPlanLogin(status: PlanStatus): Promise<PlanStatus> {
+  if (status.id !== "codex" || !status.binary) return status;
+  const loggedIn = await new Promise<boolean | null>((resolve) => {
+    execFile(
+      status.binary!,
+      ["login", "status"],
+      { timeout: 5000, maxBuffer: 8192, windowsHide: true },
+      (_error, stdout, stderr) => {
+        const text = String(stdout) + String(stderr);
+        resolve(/not logged in/i.test(text) ? false : /logged in/i.test(text) ? true : null);
+      },
+    );
+  });
+  return {
+    ...status,
+    loggedIn,
+    detail:
+      loggedIn === true
+        ? "ready"
+        : loggedIn === false
+          ? "installed — sign in with codex login, then recheck"
+          : "installed — login could not be verified; recheck or run codex login status",
+  };
 }

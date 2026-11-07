@@ -111,12 +111,16 @@ describe("launchAgent captures the exit status (F4)", () => {
     // (or depend on its absence) when testing an ENOENT launch.
     const previousPath = process.env.PATH;
     process.env.PATH = BIN;
+    const override = process.env.LISA_PTY_CODEX_CMD;
+    process.env.LISA_PTY_CODEX_CMD = path.join(TMP, "missing-codex");
     try {
       const res = await launchAgent("codex", "x", TMP);
-      assert.match(res.error ?? "", /not found on PATH|Failed to launch/);
+      assert.match(res.error ?? "", /not found on PATH|Failed to launch|No executable found/);
       assert.equal(res.id, undefined);
     } finally {
       process.env.PATH = previousPath;
+      if (override === undefined) delete process.env.LISA_PTY_CODEX_CMD;
+      else process.env.LISA_PTY_CODEX_CMD = override;
     }
   });
 });

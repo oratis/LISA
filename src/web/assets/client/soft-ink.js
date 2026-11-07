@@ -69,6 +69,31 @@
     indexFor,
     frame,
     paint,
-    portrait: (element, slug, size) => paint(element, 'portraits', indexFor(slug), size || 128),
+    sticker: (element, index, fallback) => {
+      requests.set(element, {}); // A pending portrait/pose must not overwrite this.
+      if (window.LisaMotion) window.LisaMotion.bind(element, window.LisaMotion.stickers[index], fallback);
+      else element.src = fallback;
+    },
+    pose: (element, index, size) => {
+      const ticket = {};
+      requests.set(element, ticket);
+      return frame('poses', index, size || 384).then(url => {
+        if (requests.get(element) !== ticket) return false;
+        if (window.LisaMotion) window.LisaMotion.bind(element, window.LisaMotion.poses[index], url);
+        else element.src = url;
+        return true;
+      }).catch(() => false);
+    },
+    portrait: (element, slug, size) => {
+      const ticket = {};
+      const index = indexFor(slug);
+      requests.set(element, ticket);
+      return frame('portraits', index, size || 128).then(url => {
+        if (requests.get(element) !== ticket) return false;
+        if (window.LisaMotion) window.LisaMotion.bind(element, window.LisaMotion.portraits[index] || null, url);
+        else element.src = url;
+        return true;
+      }).catch(() => false);
+    },
   });
 })();

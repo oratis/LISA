@@ -1,0 +1,18 @@
+{
+  "mode": "built-in image_gen",
+  "reference": "src/web/assets/lisa-app-icon.png",
+  "prompts": [
+    {
+      "name": "lisa",
+      "prompt": "Use case: logo-brand. Asset type: compact LISA session sidebar icon, one square image. Reference image: existing LISA app avatar, use only as character identity reference. Create a polished simplified close-up avatar of the same teal bob-haired, blue-eyed anime assistant in a navy hoodie. Friendly calm small smile. Crisp bold silhouette and clean minimal facial details legible at 24 pixels. Refined softly shaded illustration, restrained tactile satin finish, mint-teal background, centered symmetrical head filling 80 percent of the square. Full bleed square with NO rounded corners baked in; UI applies the clipping. No typography, letters, extra objects, frames, watermark, decorative sparkles, outer drop shadows. The face and hair should be recognizable even at very small size."
+    },
+    {
+      "name": "claude",
+      "prompt": "Use case: logo-brand. Asset type: one compact Claude session sidebar icon, square image. A single recognizable Claude warm cream irregular many-spoke sunburst/asterisk symbol centered on a rich terracotta orange full-bleed square. Tasteful refined satin clay finish, very subtle dimensional bevel and soft top-left illumination; almost flat graphic with high contrast and clean edges, readable at 24 pixels. The sunburst takes 70 percent of the square. Coordinated premium desktop app icon aesthetic. No letters, wordmark, other symbols, extra objects, frames, outer shadows, rounded corners baked in, decorative sparkles or watermark."
+    },
+    {
+      "name": "codex",
+      "prompt": "Use case: logo-brand. Asset type: one compact OpenAI Codex session sidebar icon, square image. A single clean recognizable OpenAI six-fold interwoven knot emblem in warm white centered on a deep graphite navy full-bleed square. Refined satin porcelain finish with very subtle bevel and soft top-left illumination, almost flat graphic, sharp clear openings within the interwoven loop structure. Strong contrast and simple silhouette legible at 24 pixels. The knot takes 72 percent of the square. Coordinated premium desktop app icon aesthetic. No letters, wordmarks, extra symbols or objects, frames, outer drop shadows, rounded corners baked in, decorative sparkles or watermark."
+    }
+  ]
+}

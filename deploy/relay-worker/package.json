@@ -1,0 +1,19 @@
+{
+  "name": "@lisa/relay-worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "wrangler types && tsc --noEmit",
+    "test": "wrangler deploy --dry-run --outdir .tmp/build && node --import tsx --test test/*.test.ts",
+    "deploy": "wrangler deploy",
+    "types": "wrangler types"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "miniflare": "^5.20261104.0-beta",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "wrangler": "^4.158.0"
+  }
+}

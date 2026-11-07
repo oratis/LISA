@@ -3,6 +3,8 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import crypto from "node:crypto";
+import { RelayBroker } from "../remote/broker.js";
+import { RemoteHost } from "../remote/host.js";
 import { fileURLToPath } from "node:url";
 import { listRoomMusic, toPublicTrack } from "./room-music.js";
 import { runAgent } from "../agent.js";
@@ -48,7 +50,14 @@ import { logInfo, logWarn, logError, redactId, redactEmail } from "../log.js";
 import { fireHooks } from "../hooks/runner.js";
 import type { HookSpec } from "../plugins/types.js";
 import { saveConfigEnv } from "../env.js";
-import { detectPlans, selectedPlan, parsePlanRef, planMark, PLAN_IDS } from "../model/plans.js";
+import {
+  detectPlans,
+  verifyPlanLogin,
+  selectedPlan,
+  parsePlanRef,
+  planMark,
+  PLAN_IDS,
+} from "../model/plans.js";
 import { planUsage, formatUsage } from "../model/plan-usage.js";
 import { runIdleOnce } from "../idle/runner.js";
 import { getIdleWatcher } from "../idle/watcher.js";
@@ -140,7 +149,7 @@ import {
 } from "../consent/store.js";
 import { signalAgentTool } from "../tools/signal_agent.js";
 import { managedRegistry } from "../agents/managed.js";
-import { ptyRegistry, ptyEnabled, normalizeAgentKind } from "../agents/pty.js";
+import { ptyRegistry, ptyEnabled, ptyAvailability, normalizeAgentKind } from "../agents/pty.js";
 import { liveClaudeSessionIds } from "../integrations/claude-code/liveness.js";
 import { sweepAll, pollNewMail, probeAccount } from "../mail/service.js";
 import { friendlyMailError } from "../mail/connect-error.js";
@@ -221,6 +230,8 @@ import { ScreenSource } from "../sense/screen.js";
 import { VoiceSource } from "../sense/voice.js";
 import { appendSenseEvent, readSenseEvents } from "../sense/log.js";
 import { handleSocialApi } from "./social-api.js";
+import { handleMemoryApi } from "./memory-api.js";
+import { handleReveApi } from "./reve-api.js";
 import { createWebWarden, handleWardenApi, wardenTrust, crossSiteProblem } from "./warden-api.js";
 import { protectFromSandbox } from "../sandbox/protect.js";
 import { handleReachOutApi } from "./reachout-api.js";
@@ -235,6 +246,8 @@ import {
   scheduleServerCatchUp,
 } from "./reachout-wiring.js";
 import { createTaskHost } from "./tasks-host.js";
+import { createTaskApprovalFactory } from "../warden/task-approval.js";
+import { createReachOutTransports } from "../reachout/deliver.js";
 import { cloudTasksEnabled } from "./tasks-api.js";
 import { cloudModelGate, sweepUserTasks } from "../tasks/cloud.js";
 import {
@@ -546,6 +559,10 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   const host = opts.host ?? "127.0.0.1";
   const webToken = process.env.LISA_WEB_TOKEN?.trim() || null;
   const cloudEdition = isCloud();
+  let remoteHost: RemoteHost | undefined;
+  let relayBroker: RelayBroker | undefined;
+  const remoteAddress = (req: http.IncomingMessage) =>
+    remoteHost?.remoteAddress(req) ?? req.socket.remoteAddress ?? "";
   // Security-sensitive outbound links never derive their origin from Host or
   // forwarding headers. Cloud startup fails until its canonical HTTPS origin
   // is configured; local mode has a deterministic loopback fallback.
@@ -748,6 +765,50 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     return adoptCtxForStore(await SessionStore.open(id));
   };
   const tenantRuntimes = new TenantRuntimeRegistry<ChatCtx>(tenantRuntimeOptions());
+  /**
+   * Re-read a chat's history and latest reflection from its transcript,
+   * THROUGH its turn chain (the same in-place swap the cloud session switch
+   * uses): an idle chat reloads at once, a chat mid-turn right after that
+   * turn has persisted its reply.
+   */
+  const reloadChatFromDisk = (c: ChatCtx): Promise<void> => {
+    const job = c.chain.then(async () => {
+      const [{ messages }, reflectionSummary] = await Promise.all([
+        c.session.readMessagePage(0, 9999),
+        c.session.readLatestReflection(),
+      ]);
+      c.history.length = 0;
+      c.history.push(...messages);
+      c.reflectionSummary = reflectionSummary;
+      c.prompt = undefined;
+    });
+    c.chain = job.then(
+      () => {},
+      () => {},
+    );
+    return job;
+  };
+  /**
+   * After an applied forget (memory-api onForgetApplied): the transcripts were
+   * redacted on disk, but every chat this process holds still has the old
+   * messages in memory and would send them to the model on its next turn.
+   * Reload them — on the Mac every cached session, in the hosted edition only
+   * the calling account's runtime. Idle chats are awaited; a chat with a turn
+   * in flight reloads after it, without holding the forget's response.
+   */
+  const reloadChatsAfterForget = async (): Promise<void> => {
+    const scoped = homeScope.getStore();
+    const ctxs = scoped
+      ? [tenantRuntimes.peek(scoped)].filter((c): c is ChatCtx => c !== undefined)
+      : [...new Set([globalChat, ...sessionCtxs.values()])];
+    const idle: Promise<void>[] = [];
+    for (const c of ctxs) {
+      const job = reloadChatFromDisk(c);
+      if (ctxTurns.has(c)) void job.catch(() => {});
+      else idle.push(job);
+    }
+    await Promise.all(idle);
+  };
   const ctxForRequest = async (): Promise<TenantRuntimeLease<ChatCtx>> => {
     const scoped = homeScope.getStore();
     if (!scoped) return { value: globalChat, release: () => {} };
@@ -1068,6 +1129,29 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // proactive message; the gate decides whether the push channel fires.
     reachOut: reachOutVia,
     pushSink: pushBridge,
+    // Unattended runs get more than verified read-only calls ONLY in Warden
+    // mode: each run then gets its own Warden session on this server's inbox.
+    // Otherwise nothing is installed and the engine's read-only allow-list
+    // applies (src/tasks/policy.ts).
+    ...(warden.enabled
+      ? {
+          approvalFactory: createTaskApprovalFactory({
+            inbox: warden.inbox,
+            surface: policy.surface,
+            // "An approval is waiting" reaches the user through the gate
+            // (source `approval`), on its generic in-app note and push.
+            reachOut: (notice) =>
+              reachOutVia(
+                notice,
+                createReachOutTransports({
+                  inapp: { emit: (event, uid) => broadcast(event, uid) },
+                  push: pushBridge,
+                }),
+              ),
+            log: logWarn,
+          }),
+        }
+      : {}),
     rememberNote: async (note) => {
       const lease = await ctxForRequest();
       try {
@@ -1095,6 +1179,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
             await ctx.session.appendMessage(message);
             ctx.history.push(message);
           },
+          // A card that carries outside text taints the conversation it
+          // lands in, so the next chat turn that reads it is tainted (N3).
+          markTainted: () => warden.markTainted(ctx.session.id, scopedUid()),
         }),
       );
       ctx.chain = job.then(
@@ -1719,7 +1806,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         watchdogLagMs,
       );
       const healthAuthed = isRequestAuthorized(
-        req.socket.remoteAddress ?? "",
+        remoteAddress(req),
         webToken,
         presentedToken(req, url),
         !cloudEdition,
@@ -1736,7 +1823,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // via --host). Anything else must present LISA_WEB_TOKEN; /chat drives a
     // full-tool agent and /api/vision/capture grabs the screen, so an
     // unauthenticated non-loopback request is a remote-code-execution hole.
-    const remoteAddr = req.socket.remoteAddress ?? "";
+    const remoteAddr = remoteAddress(req);
     // In the hosted cloud edition there is no trusted local user — the gate runs
     // for EVERY request and loopback is not a free pass (the container must never
     // trust its own/proxy loopback). Mac edition: loopback = the local owner.
@@ -2372,7 +2459,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     if (cloud || !isLoopbackAddress(remoteAddr)) {
       const presented = presentedToken(req, url);
       // Authorized by the global LISA_WEB_TOKEN OR a non-revoked per-device token.
-      let authed = isRequestAuthorized(remoteAddr, webToken, presented, !cloud);
+      let authed =
+        isRequestAuthorized(remoteAddr, webToken, presented, !cloud) ||
+        remoteHost?.authorized(req) === true;
       // Account session (cheap prefix check first). sv must still match the
       // account record, so deleted accounts lose access immediately.
       if (!authed && presented && sessionSecret && looksLikeSession(presented)) {
@@ -2448,6 +2537,80 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         await fs.mkdir(uidHome, { recursive: true });
         homeScope.enterWith(uidHome);
       }
+    }
+
+    // Account-owned discovery; the relay carries ciphertext, never local API access.
+    if (req.method === "GET" && url === "/api/relay/macs") {
+      res.writeHead(cloud && accountUid && relayBroker ? 200 : 403, {
+        "content-type": "application/json",
+        "cache-control": "no-store",
+      });
+      res.end(
+        JSON.stringify(
+          cloud && accountUid && relayBroker
+            ? { hosts: relayBroker.list(accountUid) }
+            : { error: "account_session_required" },
+        ),
+      );
+      return;
+    }
+    if (url.startsWith("/api/remote/")) {
+      if (cloud || !remoteHost || !isLoopbackAddress(remoteAddr)) {
+        res.writeHead(403, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "local_owner_required" }));
+        return;
+      }
+      // These routes pick the relay and approve phones, i.e. grant full remote
+      // access. Same guard as every other owner surface: a DNS-rebinding page is
+      // "loopback" too, and could otherwise point the Mac at its own relay, read
+      // the pending code and approve its own key.
+      const problem = crossSiteProblem(req, true, null);
+      if (problem) {
+        res.writeHead(403, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: problem }));
+        return;
+      }
+      if (req.method === "GET" && url === "/api/remote/status") {
+        res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+        res.end(JSON.stringify(remoteHost.status()));
+        return;
+      }
+      if (req.method !== "POST") {
+        res.writeHead(405);
+        res.end();
+        return;
+      }
+      const body = await readJsonBody(req, res, 16 * 1024);
+      if (!body) return;
+      try {
+        if (url === "/api/remote/connect") {
+          const base =
+            typeof body.base === "string"
+              ? body.base
+              : (process.env.LISA_MANAGED_BASE ?? "https://cloud.meetlisa.ai");
+          const session =
+            typeof body.session === "string"
+              ? body.session
+              : (process.env.LISA_MANAGED_SESSION ?? "");
+          await remoteHost.connect(base, session);
+        } else if (url === "/api/remote/approve") {
+          remoteHost.approve(String(body.id ?? ""), String(body.code ?? ""));
+        } else if (url === "/api/remote/revoke") {
+          remoteHost.revoke(String(body.id ?? ""));
+        } else if (url === "/api/remote/disconnect") {
+          remoteHost.disable();
+        } else {
+          res.writeHead(404);
+          res.end();
+          return;
+        }
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify(remoteHost.status()));
+      } catch {
+        res.writeHead(409, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "remote_connection_failed" }));
+      }
+      return;
     }
 
     // ── Account introspection + deletion (post-gate; PLAN_ACCOUNTS_BILLING B1) ──
@@ -2750,6 +2913,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         moodBus.forget(accountUid); // keyed by uid, not home path
         eventClients.removeTenant(accountUid, (sink) => sink.end());
         removed = await deleteAccount(accountUid);
+        relayBroker?.revokeAccount(accountUid);
       } catch (e) {
         logError(
           `[auth] account deletion incomplete: ${e instanceof AppleAuthorizationError ? e.code : "cleanup_failed"}`,
@@ -2821,8 +2985,43 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     ) {
       return;
     }
+    // Memory sovereignty (W8): entries edit/delete, forget, export. Tenant-
+    // scoped in cloud (account session required); owner-only writes on Mac.
+    if (
+      await handleMemoryApi(req, res, url, {
+        cloud,
+        accountUid,
+        loopback: isLoopbackAddress(remoteAddr),
+        onForgetApplied: reloadChatsAfterForget,
+      })
+    ) {
+      return;
+    }
+    // W9 auditable Dream log. lisaHome() is already this account's subtree on
+    // the cloud edition; a cloud caller with no account is refused. Same
+    // trust as the Warden: cross-site / rebinding refused, and only the
+    // loopback owner or a signed-in account may revert or reconsider.
+    if (
+      await handleReveApi(req, res, url, {
+        allowed: !cloud || accountUid !== null,
+        ...wardenTrust({ cloud, loopback: isLoopbackAddress(remoteAddr), accountUid }),
+        actor: accountUid ? `uid:${accountUid}` : "local",
+      })
+    ) {
+      return;
+    }
     if (await handleReachOutApi(req, res, url, reachOutApiOptions(cloud))) return;
-    if (await taskHost.handle(req, res, url, accountUid)) return;
+    if (
+      await taskHost.handle(
+        req,
+        res,
+        url,
+        accountUid,
+        wardenTrust({ cloud, loopback: isLoopbackAddress(remoteAddr), accountUid }),
+      )
+    ) {
+      return;
+    }
 
     if (
       await handleWardenApi(req, res, url, {
@@ -2957,7 +3156,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       return;
     }
     if (req.method === "POST" && url === "/api/screen-advisor/config") {
-      const remote = req.socket.remoteAddress ?? "";
+      const remote = remoteAddress(req);
       const isLoopback =
         remote === "127.0.0.1" ||
         remote === "::1" ||
@@ -3766,6 +3965,12 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // Real `claude`/`codex` CLIs LISA spawns under a pseudo-terminal: it types
     // your task + follow-ups and can read the terminal tail. Behind the same
     // auth gate; 503 when the spike flag is off / node-pty is absent.
+    if (req.method === "GET" && url === "/api/agents/pty/status") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify(await ptyAvailability()));
+      return;
+    }
+
     if (req.method === "POST" && url === "/api/agents/pty/start") {
       const pBody = await readRequestText(req, res);
       if (pBody === null) return;
@@ -4008,7 +4213,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // message content must never leave this machine — island / iOS / remote
     // callers keep the structural surfaces.
     if (req.method === "GET" && url.startsWith("/api/agents/transcript")) {
-      const tRemote = req.socket.remoteAddress ?? "";
+      const tRemote = remoteAddress(req);
       if (!isLoopbackAddress(tRemote)) {
         res.writeHead(403, { "content-type": "application/json" });
         res.end(
@@ -4131,8 +4336,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         "service-worker-allowed": "/",
       });
       res.end(`
-const CACHE = 'lisa-v10-soft-ink';
-const ASSET_PATHS = ['/assets/lisa-mascot.png', '/assets/background-tile.png',
+const CACHE = 'lisa-v11-motion';
+const ASSET_PATHS = ['/assets/lisa-mascot.png',
   '/assets/icon-soul.png', '/assets/icon-skill.png', '/assets/icon-memory.png',
   '/assets/icon-tool.png', '/assets/icon-send.png',
   '/assets/icon-192.png', '/assets/icon-512.png', '/assets/icon-512-maskable.png',
@@ -4162,14 +4367,15 @@ self.addEventListener('fetch', (event) => {
       url.pathname === '/reflect') {
     return; // default network behavior
   }
-  // Cache-first for /assets/* (mood portraits 50MB will fill cache lazily).
-  if (url.pathname.startsWith('/assets/')) {
+  // Versioned motion files are loaded only on demand. Ignore query variants
+  // so one asset cannot occupy multiple entries in the offline cache.
+  if (url.origin === self.location.origin && event.request.method === 'GET' && url.pathname.startsWith('/assets/')) {
     event.respondWith(
       caches.open(CACHE).then((cache) =>
-        cache.match(event.request).then((hit) => {
+        cache.match(url.pathname).then((hit) => {
           if (hit) return hit;
           return fetch(event.request).then((res) => {
-            if (res.ok) cache.put(event.request, res.clone());
+            if (res.ok) event.waitUntil(cache.put(url.pathname, res.clone()).catch(() => {}));
             return res;
           });
         })
@@ -4256,6 +4462,67 @@ self.addEventListener('fetch', (event) => {
         res.end(JSON.stringify({ messages, hasMore, page }));
       } finally {
         runtime.release();
+      }
+      return;
+    }
+
+    // Same trust shape as the memory routes: every caller is held to
+    // same-origin, a loopback-trusted one also to a loopback Host (DNS
+    // rebinding), and in the cloud only an account session reaches its own
+    // home — a shared web or device token never writes the operator's.
+    const localOwner = !cloud && !accountUid && isLoopbackAddress(remoteAddr);
+    if (["/api/session-names", "/api/skills", "/api/skills/import"].includes(url)) {
+      const problem = crossSiteProblem(req, localOwner);
+      if (problem) {
+        res.writeHead(403, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: problem }));
+        return;
+      }
+      if (url === "/api/session-names" && cloud && !accountUid) {
+        res.writeHead(403, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "account_session_required" }));
+        return;
+      }
+    }
+
+    if (url === "/api/session-names" && req.method === "GET") {
+      const { listSessionNames } = await import("../sessions/names.js");
+      res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+      res.end(JSON.stringify({ names: await listSessionNames() }));
+      return;
+    }
+
+    if (url === "/api/session-names" && req.method === "POST") {
+      const body = await readJsonBody(req, res, 4096);
+      if (!body) return;
+      const { saveSessionName, InvalidSessionNameError, SessionNameLimitError } =
+        await import("../sessions/names.js");
+      try {
+        const entry = await saveSessionName(body);
+        broadcast({ type: "session_renamed", ...entry });
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true, ...entry }));
+      } catch (error) {
+        const invalid = error instanceof InvalidSessionNameError;
+        const missing = (error as NodeJS.ErrnoException).code === "ENOENT";
+        const limited = error instanceof SessionNameLimitError;
+        if (!invalid && !missing && !limited)
+          logWarn(`[session-names] rename failed: ${(error as Error)?.name ?? "error"}`);
+        res.writeHead(invalid ? 400 : missing ? 404 : limited ? 409 : 500, {
+          "content-type": "application/json",
+        });
+        res.end(
+          JSON.stringify({
+            ok: false,
+            error: invalid
+              ? "invalid_session_name"
+              : missing
+                ? "session_not_found"
+                : limited
+                  ? "too_many_session_names"
+                  : "rename_failed",
+          }),
+        );
       }
       return;
     }
@@ -4370,18 +4637,79 @@ self.addEventListener('fetch', (event) => {
       return;
     }
 
-    if (req.method === "GET" && url === "/api/skills") {
-      const { listSkills } = await import("../skills/manager.js");
-      const skills = await listSkills();
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(
-        JSON.stringify({
-          skills: skills.map((s) => ({
-            name: s.frontmatter.name,
-            description: s.frontmatter.description,
-          })),
-        }),
-      );
+    if (url === "/api/skills" && req.method === "GET") {
+      const { discoverSkills } = await import("../skills/discovery.js");
+      const { findProjectRoot } = await import("../instructions/chain.js");
+      const { skillImportCatalog } = await import("../skills/catalog.js");
+      const canManage = localOwner;
+      const runtime = await ctxForRequest();
+      try {
+        const project = cloud ? null : await findProjectRoot(runtime.value.session.header.cwd);
+        const { skills } = await discoverSkills(project);
+        const imports = canManage ? await skillImportCatalog() : [];
+        res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+        res.end(
+          JSON.stringify({
+            skills: skills.map((s) => ({
+              name: s.frontmatter.name,
+              description: s.frontmatter.description,
+              scope: s.scope,
+            })),
+            imports,
+            canManage,
+          }),
+        );
+      } finally {
+        runtime.release();
+      }
+      return;
+    }
+
+    if (req.method === "POST" && (url === "/api/skills" || url === "/api/skills/import")) {
+      if (!localOwner) {
+        res.writeHead(403, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "Skill management is only available on this Mac" }));
+        return;
+      }
+      const input = await readJsonBody(req, res);
+      if (input === null) return;
+      try {
+        if (typeof input.name !== "string") throw new Error("A skill name is required");
+        if (url === "/api/skills/import") {
+          const { importSkill } = await import("../skills/catalog.js");
+          if (input.source !== "codex" && input.source !== "claude")
+            throw new Error("Unknown skill source");
+          await importSkill(input.source, input.name);
+        } else {
+          const { createSkill } = await import("../skills/manager.js");
+          if (
+            typeof input.description !== "string" ||
+            !input.description.trim() ||
+            typeof input.body !== "string" ||
+            !input.body.trim() ||
+            input.body.length > 100_000
+          ) {
+            throw new Error("Enter a description and instructions (up to 100,000 characters)");
+          }
+          await createSkill(
+            { name: input.name, description: input.description.trim() },
+            input.body,
+          );
+        }
+        res.writeHead(201, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true }));
+      } catch (error) {
+        // Validation messages are ours and safe to show; a filesystem error
+        // would echo local paths, so it is logged and answered generically.
+        const systemError = typeof (error as NodeJS.ErrnoException).code === "string";
+        if (systemError) logWarn(`[skills] save failed: ${(error as NodeJS.ErrnoException).code}`);
+        res.writeHead(systemError ? 500 : 400, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            error: systemError ? "Could not save the skill" : (error as Error).message,
+          }),
+        );
+      }
       return;
     }
 
@@ -4575,7 +4903,13 @@ self.addEventListener('fetch', (event) => {
     if (req.method === "GET" && url === "/api/plans") {
       const nowMs = Date.now();
       const sel = selectedPlan();
-      const plans = detectPlans().map((p) => {
+      // Asking the CLI about its login runs it, so only for this Mac's own
+      // installs — a hosted tenant never makes the server execute host tools.
+      // The resolved path stays server-side (it names the user's home).
+      const statuses = cloud
+        ? detectPlans()
+        : await Promise.all(detectPlans().map(verifyPlanLogin));
+      const plans = statuses.map((p) => {
         const row: Record<string, unknown> = {
           id: p.id,
           label: p.label,
@@ -4644,7 +4978,7 @@ self.addEventListener('fetch', (event) => {
       // if the listener happens to be on a public interface. Writes the key
       // to disk and into process.env, so spoofed remote calls would be
       // very bad.
-      const remote = req.socket.remoteAddress ?? "";
+      const remote = remoteAddress(req);
       const isLoopback =
         remote === "127.0.0.1" ||
         remote === "::1" ||
@@ -4851,6 +5185,7 @@ self.addEventListener('fetch', (event) => {
           ".jpg": "image/jpeg",
           ".jpeg": "image/jpeg",
           ".webp": "image/webp",
+          ".gif": "image/gif",
           ".js": "application/javascript; charset=utf-8",
           ".json": "application/json; charset=utf-8",
           ".txt": "text/plain; charset=utf-8",
@@ -5371,7 +5706,15 @@ self.addEventListener('fetch', (event) => {
   // mood-bus subscriptions. Registered on 'close' rather than exposed as a
   // method so the returned http.Server keeps its ordinary lifecycle — callers
   // (and tests) just server.close(). Idempotent by construction.
+  // Upgraded sockets must close BEFORE http.Server waits for connections to drain.
+  const closeHttp = server.close.bind(server);
+  server.close = (callback) => {
+    remoteHost?.stop();
+    relayBroker?.close();
+    return closeHttp(callback);
+  };
   server.on("close", () => {
+    remoteHost?.stop();
     void githubConnector?.stop();
     for (const service of taskConnectors.values()) void service.stop();
     for (const t of [
@@ -5423,5 +5766,27 @@ self.addEventListener('fetch', (event) => {
   await githubConnector?.start().catch(() => logError("[connectors] GitHub state unavailable"));
   for (const [provider, service] of taskConnectors)
     await service.start().catch(() => logError(`[connectors] ${provider} state unavailable`));
+  if (cloudEdition && sessionSecret && process.env.LISA_RELAY_ENABLED === "1") {
+    relayBroker = new RelayBroker(server, async (token) => {
+      const claims = verifySession(token, sessionSecret);
+      if (
+        !claims ||
+        deletingAccounts.has(claims.uid) ||
+        !(await sessionAccountValid(claims.uid, claims.sv))
+      )
+        return null;
+      return { uid: claims.uid, expiresAt: claims.exp };
+    });
+  } else if (!cloudEdition) {
+    const bound = server.address();
+    if (bound && typeof bound === "object") {
+      remoteHost = new RemoteHost(lisaGlobalHome(), bound.port);
+      void remoteHost
+        .restore(process.env.LISA_MANAGED_BASE, process.env.LISA_MANAGED_SESSION)
+        .catch(() => logWarn("[remote] sign in again to reconnect this Mac"));
+    }
+  }
+  // Dream-log retention on startup (then at most hourly, from the passes).
+  void import("../reve/store.js").then((m) => m.maybeApplyRetention()).catch(() => undefined);
   return server;
 }

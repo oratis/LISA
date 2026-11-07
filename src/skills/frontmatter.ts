@@ -47,14 +47,46 @@ function escapeScalar(s: string): string {
 
 function parseSimpleYaml(yaml: string): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-  for (const rawLine of yaml.split(/\r?\n/)) {
-    const line = rawLine.trimEnd();
-    if (!line || line.startsWith("#")) continue;
+  const lines = yaml.split(/\r?\n/);
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index]!.trimEnd();
+    // Only top-level metadata belongs to the skill. Nested keys must not
+    // replace its name or description. A "#" is a comment only at the start
+    // of a line: descriptions such as "Fix PR #12" or "Build C# apps" keep it.
+    if (!line || /^[\s#]/.test(line)) continue;
     const colon = line.indexOf(":");
     if (colon < 0) continue;
     const key = line.slice(0, colon).trim();
     const valueRaw = line.slice(colon + 1).trim();
-    out[key] = parseYamlValue(valueRaw);
+    if (/^[>|][-+]?$/.test(valueRaw)) {
+      const content: string[] = [];
+      while (
+        index + 1 < lines.length &&
+        (!lines[index + 1]!.trim() || /^\s/.test(lines[index + 1]!))
+      ) {
+        content.push(lines[++index]!);
+      }
+      const indents = content
+        .filter((part) => part.trim())
+        .map((part) => part.match(/^ */)![0].length);
+      const indent = Math.min(...indents);
+      const parts = content.map((part) => (part.trim() ? part.slice(indent) : ""));
+      // Literal (|) keeps every line break. Folded (>) joins adjacent text
+      // lines with a space; each blank line becomes one line break, and
+      // more-indented lines keep theirs.
+      const folded = valueRaw.startsWith(">");
+      let text = "";
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i]!;
+        if (i > 0) {
+          const previous = parts[i - 1]!;
+          if (!folded || !part || /^\s/.test(part) || /^\s/.test(previous)) text += "\n";
+          else if (previous) text += " ";
+        }
+        text += part;
+      }
+      out[key] = text.trimEnd();
+    } else out[key] = parseYamlValue(valueRaw);
   }
   return out;
 }
@@ -69,12 +101,9 @@ function parseYamlValue(raw: string): unknown {
     if (!inner) return [];
     return inner.split(",").map((part) => parseYamlValue(part.trim()));
   }
-  if (
-    (raw.startsWith('"') && raw.endsWith('"')) ||
-    (raw.startsWith("'") && raw.endsWith("'"))
-  ) {
+  if ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("'") && raw.endsWith("'"))) {
     try {
-      return JSON.parse(raw.replaceAll("'", '"'));
+      return raw.startsWith("'") ? raw.slice(1, -1).replaceAll("''", "'") : JSON.parse(raw);
     } catch {
       return raw.slice(1, -1);
     }

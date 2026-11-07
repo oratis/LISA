@@ -102,9 +102,19 @@ function extractFunction(src: string, name: string): string {
 }
 
 describe("sessionLabel names an empty session instead of showing its raw id (UX-4)", () => {
-  const src = extractFunction(MAIN_CLIENT_JS, "sessionLabel");
-  const ctx = i18nContext({ relativeTime: (iso: string) => (iso ? "2m" : "") });
-  runInContext(`${I18N_SRC}\n${src}; globalThis.__label = sessionLabel;`, ctx);
+  const src = [
+    extractFunction(MAIN_CLIENT_JS, "applySessionName"),
+    extractFunction(MAIN_CLIENT_JS, "customSessionName"),
+    extractFunction(MAIN_CLIENT_JS, "sessionLabel"),
+  ].join("\n");
+  const ctx = i18nContext({
+    sessionNames: new Map(),
+    relativeTime: (iso: string) => (iso ? "2m" : ""),
+  });
+  runInContext(
+    `${I18N_SRC}\n${src}; globalThis.__label = sessionLabel; globalThis.__apply = applySessionName;`,
+    ctx,
+  );
   const label = (ctx as { __label: (s: unknown) => string }).__label;
   const ID = "20260905-220846-9f7d58";
 
@@ -126,6 +136,18 @@ describe("sessionLabel names an empty session instead of showing its raw id (UX-
   });
   test("a session with messages but no captured text falls back to the id", () => {
     assert.equal(label({ id: ID, messageCount: 4 }), ID);
+  });
+  test("a custom name wins, and a late older reply never undoes a newer rename", () => {
+    const apply = (ctx as { __apply: (e: unknown) => boolean }).__apply;
+    const session = { id: ID, messageCount: 1, firstUserMessage: "fix the mail sweep" };
+    assert.equal(apply({ kind: "lisa", id: ID, name: "Newer", updatedAt: 20 }), true);
+    assert.equal(label(session), "Newer");
+    // The POST reply for an earlier rename lands after the newer SSE event.
+    assert.equal(apply({ kind: "lisa", id: ID, name: "Older", updatedAt: 10 }), false);
+    assert.equal(label(session), "Newer");
+    assert.equal(apply({ kind: "lisa", id: ID, name: "Newer", updatedAt: 20 }), false);
+    assert.equal(apply({ kind: "lisa", id: ID, name: "Newest", updatedAt: 30 }), true);
+    assert.equal(label(session), "Newest");
   });
 });
 

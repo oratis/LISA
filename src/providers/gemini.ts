@@ -27,7 +27,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import type { Content, FunctionCallingConfigMode, GoogleGenAI, Part } from "@google/genai";
 import type { StoredMessage } from "../types.js";
 import { normalizeModelId } from "../billing/prices.js";
-import { withStreamRetry } from "./stream-retry.js";
+import { streamRetryOpts, withStreamRetry } from "./stream-retry.js";
 import type { Provider, ProviderResult, ProviderRunOpts } from "./types.js";
 
 export interface GeminiProviderOptions {
@@ -102,7 +102,7 @@ export class GeminiProvider implements Provider {
 
     // Per-attempt state lives inside the retry closure so it resets cleanly on
     // a transient empty-stream retry (see withStreamRetry).
-    return withStreamRetry({ signal: opts.signal }, async (markEmitted) => {
+    return withStreamRetry(streamRetryOpts(opts), async (markEmitted) => {
       const stream = await client.models.generateContentStream({
         model: geminiWireModel(opts.model),
         contents,

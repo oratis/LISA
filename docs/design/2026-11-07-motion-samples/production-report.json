@@ -1,0 +1,330 @@
+{
+  "assetsBytes": 8180202,
+  "controllerBytes": 8408,
+  "totalBytes": 8188610,
+  "maxAnimationBytes": 262144,
+  "clips": [
+    {
+      "id": "blink",
+      "animationBytes": 56342,
+      "posterBytes": 11964,
+      "nativeBytes": 87024,
+      "sourceSha256": "d84f665ac6ecd77c2013c68c4f355316a2e927a3bd07d26b4121921d3eebf821"
+    },
+    {
+      "id": "thinking",
+      "animationBytes": 82352,
+      "posterBytes": 12236,
+      "nativeBytes": 123609,
+      "sourceSha256": "7deb3c43a3654f0d3ec8329f0e5381cf1b939e8a90aa9a6dcefd89489aa9f9db"
+    },
+    {
+      "id": "tea",
+      "animationBytes": 139408,
+      "posterBytes": 16434,
+      "nativeBytes": 0,
+      "sourceSha256": "5c0d606f3616cfbcd5e71f3b76ed6662fadfc994f4dd1cb3dea11c04db46b2d2"
+    },
+    {
+      "id": "reading",
+      "animationBytes": 157428,
+      "posterBytes": 18438,
+      "nativeBytes": 0,
+      "sourceSha256": "e8fe37deec8b3c1a6ba2fb69bcb751c0065f320fadd484756457e564de16a9b0"
+    },
+    {
+      "id": "gramophone",
+      "animationBytes": 114308,
+      "posterBytes": 14802,
+      "nativeBytes": 0,
+      "sourceSha256": "459d594353b6dae6f8d406cbda19b1d506b3e5eae1fc06b95ea1bc03ebc80906"
+    },
+    {
+      "id": "happy",
+      "animationBytes": 58682,
+      "posterBytes": 12166,
+      "nativeBytes": 89798,
+      "sourceSha256": "e44573cc443e808ec6f5ca1257a3a0e086dd1b735f3ca58db8e8562fcf7a7398"
+    },
+    {
+      "id": "surprised",
+      "animationBytes": 57908,
+      "posterBytes": 12068,
+      "nativeBytes": 86294,
+      "sourceSha256": "045aa42288f1e0f0f56ee60989acaa6b294fa74de49a4f4c9f026741b7190100"
+    },
+    {
+      "id": "grateful",
+      "animationBytes": 56672,
+      "posterBytes": 12172,
+      "nativeBytes": 87996,
+      "sourceSha256": "ef3c8f7860b38fe802bf56cbc2f890529b22e2e584982f8dfa5dfd5f1e41795b"
+    },
+    {
+      "id": "excited",
+      "animationBytes": 60556,
+      "posterBytes": 12504,
+      "nativeBytes": 89574,
+      "sourceSha256": "9b1097837de23a612a0720c00c7be7578b10ab171eada96e2984b24376fbc381"
+    },
+    {
+      "id": "sleepy",
+      "animationBytes": 57854,
+      "posterBytes": 12286,
+      "nativeBytes": 87877,
+      "sourceSha256": "4e5251e50ceb7454013d86d4d5931061d90388d5082fe9f33f30bdefa2621a90"
+    },
+    {
+      "id": "debugging",
+      "animationBytes": 60514,
+      "posterBytes": 12732,
+      "nativeBytes": 93167,
+      "sourceSha256": "edde0c4ff6740b9d496343da7b0ebdd45cf1011c06f3d9ea23f73f9b00b9f238"
+    },
+    {
+      "id": "typing",
+      "animationBytes": 243806,
+      "posterBytes": 27832,
+      "nativeBytes": 0,
+      "sourceSha256": "c5e8e1371adfead94548f4451627955f0b03912de8a06a1898702786032402aa"
+    },
+    {
+      "id": "stretching",
+      "animationBytes": 134552,
+      "posterBytes": 15024,
+      "nativeBytes": 0,
+      "sourceSha256": "8fc9ff35dadbb498781dfb69428e2dbea6b3349f29845b2b92b3f0ef4cf7bfd4"
+    },
+    {
+      "id": "listening",
+      "animationBytes": 148320,
+      "posterBytes": 17212,
+      "nativeBytes": 0,
+      "sourceSha256": "17c5841c164105fc47c8787c80ca823008226d0ed88c3554124aca55a11c3c2e"
+    },
+    {
+      "id": "sleeping",
+      "animationBytes": 222894,
+      "posterBytes": 26274,
+      "nativeBytes": 0,
+      "sourceSha256": "6fff0c4c966b85cd3a848e200cbba9b06520e71a87e2fda36ef7a69b0385016d"
+    },
+    {
+      "id": "worried",
+      "animationBytes": 60434,
+      "posterBytes": 12590,
+      "nativeBytes": 89405,
+      "sourceSha256": "97924f88f7d3beef744f2b4fb641f4368cd7169e94b9c827c83223282afd8ec1"
+    },
+    {
+      "id": "sticker-thank-you",
+      "animationBytes": 87812,
+      "posterBytes": 18798,
+      "nativeBytes": 147227,
+      "sourceSha256": "832065fa3490de59648e8920ffd3ecfd158be43f1ce927f5c31e6bcf3bff14ec"
+    },
+    {
+      "id": "window",
+      "animationBytes": 73836,
+      "posterBytes": 15226,
+      "nativeBytes": 0,
+      "sourceSha256": "7cd37ff5345d09a9cf09ade9df988bc509074504d226e8d9b45d3584a27106a8"
+    },
+    {
+      "id": "proud",
+      "animationBytes": 63446,
+      "posterBytes": 13020,
+      "nativeBytes": 87803,
+      "sourceSha256": "eb651c07291cdefee0b9dcea62aa84152c4b62bf7c1521b6a5126a49bec13a51"
+    },
+    {
+      "id": "looking-up",
+      "animationBytes": 96194,
+      "posterBytes": 20218,
+      "nativeBytes": 0,
+      "sourceSha256": "64ae76713414ffcad94764dd8ae199753176b6b1a2e55c311426217948e3eee6"
+    },
+    {
+      "id": "research",
+      "animationBytes": 59320,
+      "posterBytes": 12478,
+      "nativeBytes": 93237,
+      "sourceSha256": "82d138a42990b336f6be844104c5562ca6ae8fa35ce982a4397eaee65a4af20a"
+    },
+    {
+      "id": "working",
+      "animationBytes": 63544,
+      "posterBytes": 13312,
+      "nativeBytes": 83119,
+      "sourceSha256": "6d7de46553d33e0925ccee8f71bec20cd973d3d57623c9381b34fde8dc964dc4"
+    },
+    {
+      "id": "confused",
+      "animationBytes": 59326,
+      "posterBytes": 12296,
+      "nativeBytes": 86365,
+      "sourceSha256": "c0fc3c2b094d5886adce348e26ae8f3fe39457452d23841562136d2bb280b261"
+    },
+    {
+      "id": "pajamas",
+      "animationBytes": 80170,
+      "posterBytes": 16904,
+      "nativeBytes": 0,
+      "sourceSha256": "8668b38ebbe90f105c40126cf37a86e9e5fad37ba950f19b4b45655e64ec8fa5"
+    },
+    {
+      "id": "sad",
+      "animationBytes": 55902,
+      "posterBytes": 11786,
+      "nativeBytes": 84730,
+      "sourceSha256": "90c500d5367a8b587e0dfbdb4ecf37ea1bcc7424c950332adf255513b66ea69b"
+    },
+    {
+      "id": "standing",
+      "animationBytes": 87126,
+      "posterBytes": 18274,
+      "nativeBytes": 0,
+      "sourceSha256": "91c954e03bc0d1ef79f3fd5e32b413b1205e3a5b74ba9367472bd997e1dad684"
+    },
+    {
+      "id": "apologetic",
+      "animationBytes": 56274,
+      "posterBytes": 11906,
+      "nativeBytes": 84071,
+      "sourceSha256": "7d3edd0c88ef1d39470735a03f495adb79862182b9d188efef0dda0d13043092"
+    },
+    {
+      "id": "cheering",
+      "animationBytes": 56618,
+      "posterBytes": 11618,
+      "nativeBytes": 80797,
+      "sourceSha256": "e01097afc8656a44a7463d921849e59bf79e283ae4e2e2e7e3dc24af68e3ddd3"
+    },
+    {
+      "id": "sticker-hello",
+      "animationBytes": 100284,
+      "posterBytes": 21622,
+      "nativeBytes": 150552,
+      "sourceSha256": "d56199241488b0d584fe9f45d888a6717f779ef28ec82bee9bab83e2f939e7a2"
+    },
+    {
+      "id": "portrait-reading",
+      "animationBytes": 57850,
+      "posterBytes": 12004,
+      "nativeBytes": 84362,
+      "sourceSha256": "f0d27b9c3e3d5daf7044f4ab0a545201e0706b396d50f306be2f184834d56b49"
+    },
+    {
+      "id": "giggling",
+      "animationBytes": 62700,
+      "posterBytes": 12798,
+      "nativeBytes": 91276,
+      "sourceSha256": "bc81b3f88452a5b8a22ac64f92778fb0fc1989852480df05de1d945e4d71c9b5"
+    },
+    {
+      "id": "determined",
+      "animationBytes": 59160,
+      "posterBytes": 12476,
+      "nativeBytes": 85298,
+      "sourceSha256": "e53f748b96327cef86a9344125265492c6ade5e8571d12f708503bbc28fbb416"
+    },
+    {
+      "id": "writing",
+      "animationBytes": 57450,
+      "posterBytes": 12302,
+      "nativeBytes": 92554,
+      "sourceSha256": "6c0ce06dbdf95ded5e3439d8214188c10f5d5cb23a46c3ff18b96a13b1ac0644"
+    },
+    {
+      "id": "laughing",
+      "animationBytes": 57430,
+      "posterBytes": 12084,
+      "nativeBytes": 87269,
+      "sourceSha256": "1a77f289e93786a085f6515320b5e3934204b586bd529b71c5383dd74fdc1436"
+    },
+    {
+      "id": "seated",
+      "animationBytes": 80178,
+      "posterBytes": 27832,
+      "nativeBytes": 0,
+      "sourceSha256": "c5e8e1371adfead94548f4451627955f0b03912de8a06a1898702786032402aa"
+    },
+    {
+      "id": "portrait-tea",
+      "animationBytes": 56644,
+      "posterBytes": 12084,
+      "nativeBytes": 85078,
+      "sourceSha256": "c99485e7a4dfe38627818560a82e0a0fb203a634adf02798a0e586cc711e3a38"
+    },
+    {
+      "id": "portrait-stretching",
+      "animationBytes": 59862,
+      "posterBytes": 12304,
+      "nativeBytes": 88603,
+      "sourceSha256": "6db07210837653952a84eb5346cfd896226f8c73792a97ed7f85844e5f391578"
+    },
+    {
+      "id": "portrait-napping",
+      "animationBytes": 56696,
+      "posterBytes": 11654,
+      "nativeBytes": 93856,
+      "sourceSha256": "ced22125862c876bd049166be5725abb0343381a3662fdd3687e218f9c2ecf21"
+    },
+    {
+      "id": "sticker-well-done",
+      "animationBytes": 87580,
+      "posterBytes": 18396,
+      "nativeBytes": 146175,
+      "sourceSha256": "8a7513a904a49e9dc7d2f3591b326ced433866e8d0af8d82f1b21845af31042f"
+    },
+    {
+      "id": "sticker-thinking",
+      "animationBytes": 88512,
+      "posterBytes": 18648,
+      "nativeBytes": 144358,
+      "sourceSha256": "5aa7cab32043118dd3881820c380b07f625bc853cc484a7d6913bd4b39a103a6"
+    },
+    {
+      "id": "sticker-celebrate",
+      "animationBytes": 93762,
+      "posterBytes": 20198,
+      "nativeBytes": 147228,
+      "sourceSha256": "d6fdecc18e9c029e25923ea47803636429028b10507df74cad68d6e37b173be4"
+    },
+    {
+      "id": "sticker-here-for-you",
+      "animationBytes": 88344,
+      "posterBytes": 19012,
+      "nativeBytes": 136168,
+      "sourceSha256": "12114f2a0dd5aed4603b2fd8bd262650f564abd982e826b1dd68f4ad3cbbeedf"
+    },
+    {
+      "id": "sticker-make-a-plan",
+      "animationBytes": 86922,
+      "posterBytes": 18888,
+      "nativeBytes": 138300,
+      "sourceSha256": "04f5e35f80f7bc903779aa731fccf25b7c09ede52e60724bd52a6e7d867cca1c"
+    },
+    {
+      "id": "sticker-tea-break",
+      "animationBytes": 86656,
+      "posterBytes": 18338,
+      "nativeBytes": 134681,
+      "sourceSha256": "802bee11d269585c9e4935da116ef5cec8326bef420474dcde6483334869722a"
+    },
+    {
+      "id": "room-reading",
+      "animationBytes": 204364,
+      "posterBytes": 23638,
+      "nativeBytes": 0,
+      "sourceSha256": "ce567281d9913ec13f90d5b8ff06ff009db9388ab7466fb3c94fdeb060e50459"
+    },
+    {
+      "id": "room-tea",
+      "animationBytes": 194180,
+      "posterBytes": 23034,
+      "nativeBytes": 0,
+      "sourceSha256": "0ebed80c3acf3e34f41149df282cbebea05d42e478f5cdb37f7819bb837fb028"
+    }
+  ]
+}

@@ -68,7 +68,9 @@ function schemaErrors(schemaInput: Schema, value: unknown, path = "$"): string[]
           : Number.isInteger(value)
             ? "integer"
             : typeof value;
-    if (!allowedTypes.includes(actual)) {
+    // JSON Schema: every integer is also a "number".
+    const numberOk = actual === "integer" && allowedTypes.includes("number");
+    if (!allowedTypes.includes(actual) && !numberOk) {
       return [`${path} expected ${allowedTypes.join("|")}, got ${actual}`];
     }
   }
@@ -302,6 +304,85 @@ describe("actual server DTOs conform to OpenAPI v1", () => {
     assertContract("SSEEvent", { type: "agent_session_update", ...dispatch });
   });
 
+  test("reve dream-log fixtures conform (W9)", async () => {
+    const os = await import("node:os");
+    const nodePath = await import("node:path");
+    const prev = { home: process.env.LISA_HOME, git: process.env.LISA_SOUL_GIT };
+    const home = fs.mkdtempSync(nodePath.join(os.tmpdir(), "lisa-reve-contract-"));
+    process.env.LISA_HOME = home;
+    process.env.LISA_SOUL_GIT = "0";
+    try {
+      const { withDream } = await import("../reve/record.js");
+      const { listDreams, readDream, readDreamsSince } = await import("../reve/store.js");
+      const { requestReconsider, listReconsiderRequests } = await import("../reve/reconsider.js");
+      const { revertDream, RevertConflictError } = await import("../reve/revert.js");
+      const { metricsSeries } = await import("../reve/metrics.js");
+      const { appendMemory } = await import("../memory/store.js");
+      const soul = await import("../soul/store.js");
+      fs.mkdirSync(nodePath.join(home, "memory"), { recursive: true });
+      fs.writeFileSync(nodePath.join(home, "memory", "MEMORY.md"), "- tea\n");
+      const page = nodePath.join(home, "kb", "wiki", "tea.md");
+      fs.mkdirSync(nodePath.dirname(page), { recursive: true });
+      fs.writeFileSync(page, "# Tea\n");
+      await withDream({ trigger: "idle" }, async () => {
+        await appendMemory("memory", "coffee");
+        fs.writeFileSync(page, "# Tea and coffee\n");
+        await soul.writeIdentity("I am Lisa.");
+        await soul.applyEmotionDelta({ emotion: "joy", delta: 0.2, trigger: "t", maxEvents: 5 });
+      });
+      const listing = await listDreams(5);
+      assertContract("ReveDreamListResponse", { ...listing, pendingReconsider: 0 });
+      const id = listing.dreams[0]!.id;
+      const request = await requestReconsider(id, "really?");
+      assertContract("ReveReconsiderResponse", { ok: true, request });
+      assertContract("ReveReconsiderListResponse", { requests: await listReconsiderRequests() });
+      {
+        // A claimed note (shown to a running pass), then the acknowledged one.
+        const { beginDream } = await import("../reve/record.js");
+        const { takeReconsiderBlock } = await import("../reve/reconsider.js");
+        const pass = await beginDream({ trigger: "reflect" });
+        await pass.run(() => takeReconsiderBlock());
+        const claimed = await listReconsiderRequests();
+        assert.equal(claimed[0]!.status, "claimed");
+        assertContract("ReveReconsiderListResponse", { requests: claimed });
+        await pass.end();
+        assertContract("ReveReconsiderListResponse", { requests: await listReconsiderRequests() });
+      }
+      assertContract("ReveDreamResponse", {
+        dream: await readDream(id),
+        reconsider: await listReconsiderRequests(id),
+      });
+      fs.writeFileSync(page, "# Tea, edited later\n");
+      await assert.rejects(revertDream(id, { parts: ["kb"] }), (err: unknown) => {
+        assert.ok(err instanceof RevertConflictError);
+        assertContract("ReveRevertConflict", {
+          error: "revert_conflict",
+          conflicts: err.conflicts,
+        });
+        return true;
+      });
+      const reverted = await revertDream(id, { parts: ["memory", "kb"], force: true });
+      assertContract("ReveRevertResponse", { ok: true, ...reverted });
+      // A memory file past the store cap: the one conflict force cannot override.
+      const memoryFull: import("../reve/revert.js").RevertConflict = {
+        path: "memory/MEMORY.md",
+        reason: "memory_full",
+      };
+      assertContract("ReveRevertConflict", { error: "revert_conflict", conflicts: [memoryFull] });
+      const now = new Date();
+      assertContract(
+        "ReveMetricsSeries",
+        metricsSeries(await readDreamsSince(now.getTime() - 86_400_000), { days: 2, now }),
+      );
+    } finally {
+      if (prev.home === undefined) delete process.env.LISA_HOME;
+      else process.env.LISA_HOME = prev.home;
+      if (prev.git === undefined) delete process.env.LISA_SOUL_GIT;
+      else process.env.LISA_SOUL_GIT = prev.git;
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  });
+
   test("incompatible server changes fail validation", () => {
     const bad = {
       sessions: [
@@ -320,5 +401,31 @@ describe("actual server DTOs conform to OpenAPI v1", () => {
     const errors = schemaErrors(schema, bad);
     assert.ok(errors.some((error) => error.includes("enum")));
     assert.ok(errors.some((error) => error.includes("expected string")));
+  });
+});
+
+describe("memory sovereignty DTOs conform to OpenAPI v1", () => {
+  test("entries list, entry mutation and forget report match their schemas", async () => {
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const previous = process.env.LISA_HOME;
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "lisa-contract-mem-"));
+    process.env.LISA_HOME = home;
+    try {
+      fs.mkdirSync(path.join(home, "memory"), { recursive: true });
+      fs.writeFileSync(path.join(home, "memory", "MEMORY.md"), "# Notes\n- likes tea\nprose\n");
+      const { appendMemoryEntry, listMemoryEntries } = await import("../memory/entries.js");
+      const { forget } = await import("../sovereignty/forget.js");
+      const entry = await appendMemoryEntry("user", "prefers mornings");
+      assertContract("MemoryEntryResponse", { entry });
+      assertContract("MemoryEntriesResponse", { stores: await listMemoryEntries() });
+      assertContract("MemoryEntryDeleteResponse", { ok: true, id: entry.id });
+      assertContract("ForgetResponse", { report: await forget("likes tea", { dryRun: true }) });
+      assertContract("ForgetResponse", { report: await forget("likes tea") });
+    } finally {
+      if (previous === undefined) delete process.env.LISA_HOME;
+      else process.env.LISA_HOME = previous;
+      fs.rmSync(home, { recursive: true, force: true });
+    }
   });
 });
