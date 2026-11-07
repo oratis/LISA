@@ -33,6 +33,12 @@ flowchart LR
 
 ## Agent 循环
 
+2026-11 GitHub 连接预览：`src/connectors/github.ts` 持久化本机连接请求、仓库授权和恢复租约；`github-driver.ts` 使用固定 GitHub 主机、DNS 固定和 GET 白名单读取，交互登录由 `gh` 提供，Token 经 SecretStore 保存。仅 `local-owner` Web 表面开放 `/api/connectors/github/*`，Cloud/远程设备拒绝。
+
+明确的 GitHub 只读聊天会先保存原文和附件、展示连接卡，再在同一 session 队列自动恢复。恢复重新构造工具集合：仅 `github_read`，原请求明确涉及本机文件时加 `read/ls/grep`；不带 Shell、旧版 GitHub 写工具、插件 Hook 或子代理。正常通用聊天仍沿用原注册表，本预览不代表全局 Shell 只读保证。新用户消息取消未完成的连接任务。
+
+连接状态落在本机 Home 的 `connectors/github/state.json`，文件锁保护变更，每个请求有独立恢复租约。Session 的 `connectorRequestId` 消息标记防止恢复后重复发布结果；`connector_trace` 记录模型/工具诊断过程，历史消息 API 不把系统续跑事件当用户消息。凭据撤销、取消、过期都会在执行边界复核。
+
 `src/agent.ts` 的核心职责：
 
 - 调用统一 Provider 接口并流式输出；

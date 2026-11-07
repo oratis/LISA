@@ -246,6 +246,32 @@ test("review low: apply_patch with a delete is a delete, not a write", () => {
   assert.equal(cat("apply_patch", { patches: [{ path: "a.ts", action: "update" }] }), "write");
 });
 
+test("github_read: only the reviewed read grammar classifies as read", () => {
+  for (const operation of [
+    "list",
+    "repository",
+    "commits",
+    "issues",
+    "pulls",
+    "runs",
+    "releases",
+  ]) {
+    const result = classifyToolCall(
+      "github_read",
+      { operation, repository: "owner/repo" },
+      undefined,
+      sandboxedCtx,
+    );
+    assert.equal(result.category, "read");
+    assert.equal(result.taintSource, true);
+    assert.equal(result.destination, "fixed");
+  }
+  assert.equal(
+    classifyToolCall("github_read", { operation: "merge" }, undefined, sandboxedCtx).category,
+    "write",
+  );
+});
+
 test("github: mutating actions publish, known reads read, unknown actions publish", () => {
   for (const action of DEFAULT_MUTATING_ACTIONS.github!) {
     assert.equal(cat("github", { action }), "publish", action);

@@ -87,6 +87,46 @@ window.addEventListener('unhandledrejection', function (e) {
 // seam for the rest, not a claim that the whole UI is translated.
 const LISA_STRINGS = {
   en: {
+    "github.status.waiting": "Waiting to connect",
+    "github.status.authorizing": "Authorizing",
+    "github.status.selecting": "Choose repositories to read",
+    "github.status.ready": "Connected, waiting to continue",
+    "github.status.resuming": "Connected, continuing your task",
+    "github.status.completed": "Original task completed",
+    "github.status.cancelled": "Task cancelled",
+    "github.status.failed": "Needs attention",
+    "github.status.expired": "Connection request expired",
+    "github.error.github_cli_unavailable": "GitHub CLI was not found. Install gh, then try connecting again.",
+    "github.error.github_login_required": "No GitHub login is available on this machine. Choose Sign in to GitHub.",
+    "github.error.github_secure_storage_required": "GitHub credentials are not in the system keychain. Fix secure storage for gh, then retry.",
+    "github.error.github_reauthorization_required": "Your GitHub login has expired. Please reconnect.",
+    "github.error.github_access_denied_or_rate_limited": "GitHub denied access. Check repository permissions or try again later.",
+    "github.error.authorization_expired": "Authorization timed out. Please sign in again.",
+    "github.error.request_cannot_retry": "This task cannot be retried again. Please send a new request.",
+    "github.error.github_repository_unavailable": "This repository could not be read. Check its name and account permissions.",
+    "github.error.connector_state_corrupt": "Connection records could not be read. This connection has been stopped.",
+    "github.label": "GitHub read-only connection",
+    "github.readonly": "Read only",
+    "github.detail": "Read projects, commits, issues, pull requests and runs only in your selected repositories. This task continues automatically after connecting; a new message cancels any unfinished task.",
+    "github.preview": "This preview uses GitHub CLI login. GitHub may grant that login write access; LISA only allows reads in this flow.",
+    "github.retry": "Retry original task",
+    "github.reconnect": "Reconnect account",
+    "github.existing": "Use local GitHub login",
+    "github.login": "Sign in to GitHub",
+    "github.authorizeDetail": "Complete authorization on GitHub. Cancelling stops this task from continuing.",
+    "github.openDevice": "Open GitHub and enter the code above",
+    "github.selectDetail": "Verify your account, then choose repositories LISA may read. None are selected by default. Later read-only tasks use this selection until you disconnect.",
+    "github.switchAccount": "Sign in with another account",
+    "github.private": " · Private",
+    "github.load": "Load repositories",
+    "github.repoPlaceholder": "Or enter owner/repo",
+    "github.repoLabel": "Repository name",
+    "github.add": "Add repository",
+    "github.confirm": "Connect read-only and continue",
+    "github.cancel": "Cancel this task",
+    "github.disconnect": "Disconnect from LISA",
+    "github.selected": "Selected repositories: {n}",
+    "github.error.unknown": "The operation did not finish. Please try again later ({code}).",
     'session.new': 'New session',
     'chat.thinking': 'Lisa is thinking',
     'chat.replying': 'Lisa is replying',
@@ -156,6 +196,46 @@ const LISA_STRINGS = {
     'kbd.help': 'This list',
   },
   'zh-CN': {
+    "github.status.waiting": "等待连接",
+    "github.status.authorizing": "正在授权",
+    "github.status.selecting": "选择可读取的仓库",
+    "github.status.ready": "已连接，等待继续",
+    "github.status.resuming": "已连接，正在继续原任务",
+    "github.status.completed": "原任务已完成",
+    "github.status.cancelled": "任务已取消",
+    "github.status.failed": "需要处理",
+    "github.status.expired": "连接请求已过期",
+    "github.error.github_cli_unavailable": "未找到 GitHub CLI。请先安装 gh，再重试连接。",
+    "github.error.github_login_required": "本机还没有可用的 GitHub 登录，请选择“登录 GitHub”。",
+    "github.error.github_secure_storage_required": "GitHub 凭据未存入系统钥匙串。请修复 gh 的安全存储后重试。",
+    "github.error.github_reauthorization_required": "GitHub 登录已失效，请重新连接。",
+    "github.error.github_access_denied_or_rate_limited": "GitHub 暂时拒绝访问，请检查仓库权限或稍后重试。",
+    "github.error.authorization_expired": "授权已超时，请重新登录。",
+    "github.error.request_cannot_retry": "本次任务无法再重试，请重新发送任务。",
+    "github.error.github_repository_unavailable": "无法读取这个仓库，请检查仓库名称和账号权限。",
+    "github.error.connector_state_corrupt": "连接记录无法读取，当前连接已停止。",
+    "github.label": "GitHub 只读连接",
+    "github.readonly": "只读",
+    "github.detail": "仅在你选定的仓库中读取项目、提交、Issue、PR 和运行记录。连接完成后自动继续本条任务；发送新消息会取消尚未完成的任务。",
+    "github.preview": "预览版使用 GitHub CLI 登录。GitHub 授予该登录的权限可能包含写入；LISA 此流程只开放读取。",
+    "github.retry": "重试原任务",
+    "github.reconnect": "重新连接账号",
+    "github.existing": "使用本机 GitHub 登录",
+    "github.login": "登录 GitHub",
+    "github.authorizeDetail": "请在 GitHub 页面完成授权；取消后不会继续任务。",
+    "github.openDevice": "打开 GitHub，输入上方代码",
+    "github.selectDetail": "确认账号后，选择允许 LISA 读取的仓库。默认不选择任何仓库；后续只读任务沿用此范围，直到断开连接。",
+    "github.switchAccount": "更换账号登录",
+    "github.private": " · 私有",
+    "github.load": "加载仓库",
+    "github.repoPlaceholder": "也可输入 owner/repo",
+    "github.repoLabel": "仓库名称",
+    "github.add": "添加仓库",
+    "github.confirm": "只读连接并继续",
+    "github.cancel": "取消此任务",
+    "github.disconnect": "断开 LISA 连接",
+    "github.selected": "已选 {n} 个仓库",
+    "github.error.unknown": "操作未完成，请稍后重试（{code}）。",
     'session.new': '新会话',
     'chat.thinking': 'Lisa 正在思考',
     'chat.replying': 'Lisa 正在回复',
@@ -636,6 +716,7 @@ function setActiveSessionUI(id) {
   window.lisaActiveSessionId = id;
   sessionEl.textContent = id;
   updateTitlebarSession();
+  void githubRefresh();
 }
 // UX-4: the title bar used to read "Lisa · 20260905-220846-9f7d58". It shows
 // the session's human label now ("New session · just now" until the first
@@ -749,7 +830,10 @@ function connectEvents() {
   es.addEventListener('message', (e) => {
     noteEventBytes();
     const ev = JSON.parse(e.data);
-    if (ev.type === 'mood') {
+    if (ev.type === 'github_connection_changed') {
+      if (ev.sessionId === window.lisaActiveSessionId) void githubRefresh();
+      else if (typeof window.lisaMarkUnread === 'function') window.lisaMarkUnread(ev.sessionId);
+    } else if (ev.type === 'mood') {
       setMood(ev.slug);
     } else if (ev.type === 'idle_start') {
       if (!idlePulseEl) {
@@ -1454,6 +1538,7 @@ async function loadHistoryPage() {
     historyLoading = false;
     historyFetched = true;
     renderChatEmpty();
+    void githubRefresh();
   }
 }
 
@@ -2399,6 +2484,7 @@ async function runChat(message, filesToSend) {
     // onto a finished (or failed) turn.
     clearTimeout(waitTimer);
     sendBtn.disabled = false;
+    void githubRefresh();
     input.focus();
     // F6 — a reply that finished after its session was switched away:
     // refresh if the user is back on that session, else mark it unread.

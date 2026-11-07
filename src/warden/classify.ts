@@ -696,6 +696,23 @@ export function classifyToolCall(
 
   if (name.startsWith(MCP_PREFIX)) return classifyMcp(name, rec, tool, base, ctx);
 
+  if (name === "github_read") {
+    const operation = str(rec.operation);
+    const read =
+      operation !== undefined &&
+      ["list", "repository", "commits", "issues", "pulls", "runs", "releases"].includes(operation);
+    return {
+      ...base,
+      category: read ? "read" : "write",
+      connector: "github",
+      method: operation,
+      targets: [str(rec.repository) ?? "selected repositories"],
+      egress: true,
+      destination: "fixed",
+      taintSource: true,
+    };
+  }
+
   if (name === "github") {
     const action = str(rec.action);
     const repo = str(rec.repo) ?? str(rec.cwd);
