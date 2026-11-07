@@ -46,7 +46,18 @@ struct SettingsView: View {
                     Text("Sign in to LISA Cloud or connect your own Mac. Each connection is saved separately.")
                 }
 
-                if app.connectionMode == .mac {
+                Section {
+                    NavigationLink { MacConnectionsView() } label: {
+                        Label("Connect your Mac", systemImage: "desktopcomputer")
+                    }
+                    if let target = app.config.remoteMac {
+                        LabeledContent(target.name, value: app.remoteRoute)
+                    }
+                } footer: {
+                    Text("Use the same LISA account on both devices. After approval on your Mac, local and cloud connections switch automatically.")
+                }
+
+                if app.connectionMode == .mac && app.config.remoteMac == nil {
                     Section("Connection") {
                         TextField("Host (IP or tailnet name)", text: $host)
                             .autocorrectionDisabled()
@@ -83,7 +94,7 @@ struct SettingsView: View {
                         Text("Run `lisa pair` on your Mac and scan the QR — over the same Wi-Fi (LAN) or a Tailscale tailnet name.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
-                } else {
+                } else if app.connectionMode == .cloud {
                     // Cloud data plane: LISA accounts are the primary flow (B1) —
                     // signed-in card when we have an account session, the shared
                     // sign-in form (SIWA / email / advanced token link) otherwise.

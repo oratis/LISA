@@ -1,0 +1,26 @@
+name: Relay — account routing
+on:
+  push:
+    branches: [main, "codex/**"]
+    paths: ["deploy/relay-worker/**", ".github/workflows/relay.yml"]
+  pull_request:
+    paths: ["deploy/relay-worker/**", ".github/workflows/relay.yml"]
+permissions:
+  contents: read
+jobs:
+  relay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: deploy/relay-worker
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: deploy/relay-worker/package-lock.json
+      - run: npm ci
+      - run: npm run check
+      - run: npm test

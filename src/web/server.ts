@@ -3,6 +3,8 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import crypto from "node:crypto";
+import { RelayBroker } from "../remote/broker.js";
+import { RemoteHost } from "../remote/host.js";
 import { fileURLToPath } from "node:url";
 import { listRoomMusic, toPublicTrack } from "./room-music.js";
 import { runAgent } from "../agent.js";
@@ -536,6 +538,10 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
   const host = opts.host ?? "127.0.0.1";
   const webToken = process.env.LISA_WEB_TOKEN?.trim() || null;
   const cloudEdition = isCloud();
+  let remoteHost: RemoteHost | undefined;
+  let relayBroker: RelayBroker | undefined;
+  const remoteAddress = (req: http.IncomingMessage) =>
+    remoteHost?.remoteAddress(req) ?? req.socket.remoteAddress ?? "";
   // Security-sensitive outbound links never derive their origin from Host or
   // forwarding headers. Cloud startup fails until its canonical HTTPS origin
   // is configured; local mode has a deterministic loopback fallback.
@@ -1754,7 +1760,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         watchdogLagMs,
       );
       const healthAuthed = isRequestAuthorized(
-        req.socket.remoteAddress ?? "",
+        remoteAddress(req),
         webToken,
         presentedToken(req, url),
         !cloudEdition,
@@ -1771,7 +1777,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // via --host). Anything else must present LISA_WEB_TOKEN; /chat drives a
     // full-tool agent and /api/vision/capture grabs the screen, so an
     // unauthenticated non-loopback request is a remote-code-execution hole.
-    const remoteAddr = req.socket.remoteAddress ?? "";
+    const remoteAddr = remoteAddress(req);
     // In the hosted cloud edition there is no trusted local user — the gate runs
     // for EVERY request and loopback is not a free pass (the container must never
     // trust its own/proxy loopback). Mac edition: loopback = the local owner.
@@ -2407,7 +2413,9 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     if (cloud || !isLoopbackAddress(remoteAddr)) {
       const presented = presentedToken(req, url);
       // Authorized by the global LISA_WEB_TOKEN OR a non-revoked per-device token.
-      let authed = isRequestAuthorized(remoteAddr, webToken, presented, !cloud);
+      let authed =
+        isRequestAuthorized(remoteAddr, webToken, presented, !cloud) ||
+        remoteHost?.authorized(req) === true;
       // Account session (cheap prefix check first). sv must still match the
       // account record, so deleted accounts lose access immediately.
       if (!authed && presented && sessionSecret && looksLikeSession(presented)) {
@@ -2483,6 +2491,80 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         await fs.mkdir(uidHome, { recursive: true });
         homeScope.enterWith(uidHome);
       }
+    }
+
+    // Account-owned discovery; the relay carries ciphertext, never local API access.
+    if (req.method === "GET" && url === "/api/relay/macs") {
+      res.writeHead(cloud && accountUid && relayBroker ? 200 : 403, {
+        "content-type": "application/json",
+        "cache-control": "no-store",
+      });
+      res.end(
+        JSON.stringify(
+          cloud && accountUid && relayBroker
+            ? { hosts: relayBroker.list(accountUid) }
+            : { error: "account_session_required" },
+        ),
+      );
+      return;
+    }
+    if (url.startsWith("/api/remote/")) {
+      if (cloud || !remoteHost || !isLoopbackAddress(remoteAddr)) {
+        res.writeHead(403, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "local_owner_required" }));
+        return;
+      }
+      // These routes pick the relay and approve phones, i.e. grant full remote
+      // access. Same guard as every other owner surface: a DNS-rebinding page is
+      // "loopback" too, and could otherwise point the Mac at its own relay, read
+      // the pending code and approve its own key.
+      const problem = crossSiteProblem(req, true, null);
+      if (problem) {
+        res.writeHead(403, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: problem }));
+        return;
+      }
+      if (req.method === "GET" && url === "/api/remote/status") {
+        res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+        res.end(JSON.stringify(remoteHost.status()));
+        return;
+      }
+      if (req.method !== "POST") {
+        res.writeHead(405);
+        res.end();
+        return;
+      }
+      const body = await readJsonBody(req, res, 16 * 1024);
+      if (!body) return;
+      try {
+        if (url === "/api/remote/connect") {
+          const base =
+            typeof body.base === "string"
+              ? body.base
+              : (process.env.LISA_MANAGED_BASE ?? "https://cloud.meetlisa.ai");
+          const session =
+            typeof body.session === "string"
+              ? body.session
+              : (process.env.LISA_MANAGED_SESSION ?? "");
+          await remoteHost.connect(base, session);
+        } else if (url === "/api/remote/approve") {
+          remoteHost.approve(String(body.id ?? ""), String(body.code ?? ""));
+        } else if (url === "/api/remote/revoke") {
+          remoteHost.revoke(String(body.id ?? ""));
+        } else if (url === "/api/remote/disconnect") {
+          remoteHost.disable();
+        } else {
+          res.writeHead(404);
+          res.end();
+          return;
+        }
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify(remoteHost.status()));
+      } catch {
+        res.writeHead(409, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "remote_connection_failed" }));
+      }
+      return;
     }
 
     // ── Account introspection + deletion (post-gate; PLAN_ACCOUNTS_BILLING B1) ──
@@ -2785,6 +2867,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
         moodBus.forget(accountUid); // keyed by uid, not home path
         eventClients.removeTenant(accountUid, (sink) => sink.end());
         removed = await deleteAccount(accountUid);
+        relayBroker?.revokeAccount(accountUid);
       } catch (e) {
         logError(
           `[auth] account deletion incomplete: ${e instanceof AppleAuthorizationError ? e.code : "cleanup_failed"}`,
@@ -3027,7 +3110,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       return;
     }
     if (req.method === "POST" && url === "/api/screen-advisor/config") {
-      const remote = req.socket.remoteAddress ?? "";
+      const remote = remoteAddress(req);
       const isLoopback =
         remote === "127.0.0.1" ||
         remote === "::1" ||
@@ -4078,7 +4161,7 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
     // message content must never leave this machine — island / iOS / remote
     // callers keep the structural surfaces.
     if (req.method === "GET" && url.startsWith("/api/agents/transcript")) {
-      const tRemote = req.socket.remoteAddress ?? "";
+      const tRemote = remoteAddress(req);
       if (!isLoopbackAddress(tRemote)) {
         res.writeHead(403, { "content-type": "application/json" });
         res.end(
@@ -4715,7 +4798,7 @@ self.addEventListener('fetch', (event) => {
       // if the listener happens to be on a public interface. Writes the key
       // to disk and into process.env, so spoofed remote calls would be
       // very bad.
-      const remote = req.socket.remoteAddress ?? "";
+      const remote = remoteAddress(req);
       const isLoopback =
         remote === "127.0.0.1" ||
         remote === "::1" ||
@@ -5441,7 +5524,15 @@ self.addEventListener('fetch', (event) => {
   // mood-bus subscriptions. Registered on 'close' rather than exposed as a
   // method so the returned http.Server keeps its ordinary lifecycle — callers
   // (and tests) just server.close(). Idempotent by construction.
+  // Upgraded sockets must close BEFORE http.Server waits for connections to drain.
+  const closeHttp = server.close.bind(server);
+  server.close = (callback) => {
+    remoteHost?.stop();
+    relayBroker?.close();
+    return closeHttp(callback);
+  };
   server.on("close", () => {
+    remoteHost?.stop();
     void githubConnector?.stop();
     for (const service of taskConnectors.values()) void service.stop();
     for (const t of [
@@ -5493,6 +5584,26 @@ self.addEventListener('fetch', (event) => {
   await githubConnector?.start().catch(() => logError("[connectors] GitHub state unavailable"));
   for (const [provider, service] of taskConnectors)
     await service.start().catch(() => logError(`[connectors] ${provider} state unavailable`));
+  if (cloudEdition && sessionSecret && process.env.LISA_RELAY_ENABLED === "1") {
+    relayBroker = new RelayBroker(server, async (token) => {
+      const claims = verifySession(token, sessionSecret);
+      if (
+        !claims ||
+        deletingAccounts.has(claims.uid) ||
+        !(await sessionAccountValid(claims.uid, claims.sv))
+      )
+        return null;
+      return { uid: claims.uid, expiresAt: claims.exp };
+    });
+  } else if (!cloudEdition) {
+    const bound = server.address();
+    if (bound && typeof bound === "object") {
+      remoteHost = new RemoteHost(lisaGlobalHome(), bound.port);
+      void remoteHost
+        .restore(process.env.LISA_MANAGED_BASE, process.env.LISA_MANAGED_SESSION)
+        .catch(() => logWarn("[remote] sign in again to reconnect this Mac"));
+    }
+  }
   // Dream-log retention on startup (then at most hourly, from the passes).
   void import("../reve/store.js").then((m) => m.maybeApplyRetention()).catch(() => undefined);
   return server;

@@ -68,7 +68,7 @@ enum LisaArtwork {
             if atlas == nil {
                 // Older servers do not carry this atlas. Fall back to their
                 // original portrait endpoint, still using authentication headers.
-                if let (data, response) = try? await URLSession.shared.data(for: atlasRequest),
+                if let (data, response) = try? await client.data(for: atlasRequest, path: LisaArtCatalog.atlasPath),
                    let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
                    let decoded = UIImage(data: data) {
                     atlas = decoded
@@ -86,7 +86,7 @@ enum LisaArtwork {
             }
         }
         let request = try client.makeRequest(path, timeout: 15)
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await client.data(for: request, path: path)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
         try Task.checkCancellation()
         return UIImage(data: data)
