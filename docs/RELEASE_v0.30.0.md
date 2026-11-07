@@ -1,10 +1,12 @@
 # LISA v0.30.0 — Yours to see, keep and undo
 
-You can now see, edit and delete what Lisa remembers, forget a topic everywhere it is stored after previewing exactly what will change, and take your Lisa with you as a portable archive. Every reflective "dream" pass leaves a record you can audit and undo. Unattended tasks can do real work under Warden approvals. Lisa's portraits, stickers and Room now move. The desktop app finds Codex again, manages Skills and lets you rename sessions. This release also fixes a security problem in the Mac's new remote connections from v0.29.0, so update the Mac app. And it documents two features that already shipped inside v0.29.0 without notes: read-only connections to GitHub, Google Calendar, Gmail and Linear from the chat, and a phone-sized web app.
+You can now see, edit and delete what Lisa remembers, forget a topic everywhere it is stored after previewing exactly what will change, and take your Lisa with you as a portable archive. Every reflective "dream" pass leaves a record you can audit and undo. Unattended tasks can do real work under Warden approvals. Lisa's portraits, stickers and Room now move. The desktop app finds Codex again, manages Skills and lets you rename sessions. It also carries the fix for a security problem in the Mac's remote connections from v0.29.0, which v0.29.1 shipped first: if you are still on v0.29.0, update the Mac app. And it documents two features that already shipped inside v0.29 without notes: read-only connections to GitHub, Google Calendar, Gmail and Linear from the chat, and a phone-sized web app.
 
 ## Security fix for remote connections from v0.29.0
 
-- **Update Lisa on your Mac.** In v0.29.0, a web page you visited could use DNS rebinding to reach the Mac's remote-connection controls. It could then point the Mac at a relay of its choice and approve its own device, which gives it lasting remote access. The controls now refuse any request that is not the Mac app's own, as the other owner-only parts of Lisa already did. Phones you approved keep working. (#441)
+These fixes first shipped in v0.29.1 and are included here.
+
+- **Update Lisa on your Mac if it runs v0.29.0.** In v0.29.0, a web page you visited could use DNS rebinding to reach the Mac's remote-connection controls. It could then point the Mac at a relay of its choice and approve its own device, which gives it lasting remote access. The controls now refuse any request that is not the Mac app's own, as the other owner-only parts of Lisa already did. Phones you approved keep working. (#441)
 - **More reliable relay.**
   - A large response no longer stalls the relay connection that every paired phone shares.
   - Phones on your local network can no longer use up the connection slots the relay needs.
@@ -59,7 +61,7 @@ You can now see, edit and delete what Lisa remembers, forget a topic everywhere 
 - **Session names.** Rename a session from its context menu or with F2. The name is saved and stays in step across windows.
 - **Pasted images and errors.** Pasted images show thumbnails and larger previews. The Skills, Tools and Memory panels recover from loading errors with a Retry.
 
-## Already in v0.29.0: read-only connections from the chat
+## Already in v0.29: read-only connections from the chat
 
 - **Ask, approve, continue.** When you explicitly ask Lisa to read GitHub, Google Calendar, Gmail or Linear, a connection card appears in the same chat. Sign in, choose which repositories, calendars, labels or teams she may read (nothing is selected by default), and Lisa resumes the original request on her own. You can cancel, retry or disconnect from the card. Reloads and restarts neither lose a pending request nor deliver its result twice. (#436, #437, #438)
 - **GitHub.** GitHub uses your GitHub CLI login or a device code. Lisa makes only reviewed read requests, and only to the repositories you picked.
@@ -71,7 +73,7 @@ You can now see, edit and delete what Lisa remembers, forget a topic everywhere 
 - **Linear.** Linear connects through its official read-only MCP endpoint and reads only the teams you confirm.
 - **Credentials.** Credentials are kept by the credential broker. Existing mail passwords move there after a verified write.
 
-## Already in v0.29.0: the web chat on phones
+## Already in v0.29: the web chat on phones
 
 - On phone-sized screens the web app has:
   - a compact header;
