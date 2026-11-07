@@ -9,7 +9,7 @@ const { applyRetention, listDreams, dreamIdTime, RETENTION_MAX_COUNT, RETENTION_
 const { withDream } = await import("./record.js");
 const { readDream, readDreamView, MAX_RECORD_BYTES, AUDIT_MAX_LINES } = await import("./store.js");
 const { appendMemory } = await import("../memory/store.js");
-const { lockReve, UnsafeReveDirError } = await import("./store.js");
+const { lockReve, UnsafeReveDirError, maybeApplyRetention } = await import("./store.js");
 
 let home: string;
 const savedHome = process.env.LISA_HOME;
@@ -61,6 +61,15 @@ afterEach(() => {
 });
 
 describe("dream retention", () => {
+  test("a home that never dreamed is left untouched on startup", async () => {
+    // The web server runs this on every start; it must not create <home>/reve
+    // (a throwaway test home removed right after start raced the lock file).
+    assert.equal(await maybeApplyRetention(NOW), null);
+    assert.equal(fs.existsSync(path.join(home, "reve")), false);
+    fakeDream(idAt(NOW - DAY, 1));
+    assert.deepEqual(await maybeApplyRetention(NOW), []);
+  });
+
   test("keeps the newest 60 even when they are older than 90 days", async () => {
     // 70 dreams, one every 10 days → all but the newest 9 are older than 90 days.
     const ids = Array.from({ length: 70 }, (_, i) => idAt(NOW - i * 10 * DAY, i));

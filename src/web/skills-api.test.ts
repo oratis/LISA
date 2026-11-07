@@ -15,7 +15,7 @@ process.env.LISA_WEB_TOKEN = "fixture-skills-cloud";
 process.env.LISA_SOUL_GIT = "0";
 process.env.LISA_MAIL_POLL_MINUTES = "0";
 const { startWebServer } = await import("./server.js");
-after(() => fs.rm(home, { recursive: true, force: true }));
+after(() => fs.rm(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }));
 
 test("cloud hides the host import catalog, refuses skill writes and token-only session names or expression writes", async () => {
   const external = path.join(home, "codex/skills/host-only");
