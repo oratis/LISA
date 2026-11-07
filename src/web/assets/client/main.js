@@ -87,6 +87,80 @@ window.addEventListener('unhandledrejection', function (e) {
 // seam for the rest, not a claim that the whole UI is translated.
 const LISA_STRINGS = {
   en: {
+    "connector.label": "{name} read-only connection",
+    "connector.selectStatus": "Choose what LISA may read",
+    "connector.gmailDetail": "Read headers and bounded snippets in your selected labels, without full bodies or attachments. This task continues after connecting; a new message cancels unfinished work.",
+    "connector.calendarDetail": "Choose primary-calendar availability or event details in selected calendars. No events are created or changed. This task continues after connecting; a new message cancels unfinished work.",
+    "connector.linearDetail": "Linear grants read access to the chosen workspace; LISA limits reads to the teams you select. No creation, edits, comments or assignments. Connecting continues this task; a new message cancels unfinished work.",
+    "connector.auth.linear": "Sign in to Linear (read only)",
+    "connector.linearAuthorize": "Authorize read-only access on Linear, then return here to choose teams.",
+    "connector.openLinear": "Open Linear authorization",
+    "connector.linearSelect": "Verify the account and select teams. Nothing is selected by default. Later Linear read tasks use this scope until you disconnect.",
+    "connector.error.linear_reauthorization_required": "Linear authorization expired or was removed. Reconnect to continue.",
+    "connector.error.linear_read_scope_required": "Only read permission is supported. Reconnect with read-only access.",
+    "connector.error.linear_resource_mismatch": "Linear returned data outside the selected team. The result was blocked.",
+    "connector.error.mcp_tools_changed": "The remote tools changed. This connector needs a compatibility update.",
+    "connector.error.mcp_metadata_mismatch": "The authorization service changed. Connection was stopped.",
+    "connector.error.mcp_access_denied": "Linear denied access to this resource. Check the account and selected teams.",
+    "connector.error.mcp_unavailable": "Linear is temporarily unavailable. Retry this task.",
+    "connector.error.mcp_tool_failed": "Linear could not complete this read. Retry or reconnect.",
+    "connector.error.mcp_rate_limited": "Linear is rate limited. Retry later.",
+    "connector.auth.gmail": "Sign in to Google for Gmail",
+    "connector.auth.freebusy": "Connect primary calendar availability",
+    "connector.auth.events": "Connect calendar event details",
+    "connector.authorizeDetail": "Sign in and authorize on Google, then return here to select the read scope. Cancelling stops this task.",
+    "connector.openGoogle": "Open Google authorization",
+    "connector.selectDetail": "Verify the account and select calendars or mail labels to read. Nothing is selected by default. Later read-only tasks use this selection until you disconnect.",
+    "connector.selected": "Selected resources: {n}",
+    "connector.load": "Load more",
+    "connector.error.google_client_not_configured": "Google desktop sign-in is not configured. Complete local Google connector setup first.",
+    "connector.error.google_desktop_client_required": "Google sign-in configuration is unavailable. Use an OAuth client of type Desktop app.",
+    "connector.error.google_reauthorization_required": "Google authorization has expired. Reconnect to continue.",
+    "connector.error.google_access_denied": "Google denied access. Check the selected resources, application permissions and enabled APIs.",
+    "connector.error.google_scope_required": "This authorization cannot read the requested data. Reconnect with the corresponding read-only access.",
+    "connector.error.google_rate_limited": "Google has temporarily limited requests. Try again later.",
+    "connector.error.authorization_cancelled": "Authorization was cancelled. You can connect again.",
+    "connector.error.google_time_range_required": "Use a date range with a timezone, no longer than 31 days.",
+    "github.status.waiting": "Waiting to connect",
+    "github.status.authorizing": "Authorizing",
+    "github.status.selecting": "Choose repositories to read",
+    "github.status.ready": "Connected, waiting to continue",
+    "github.status.resuming": "Connected, continuing your task",
+    "github.status.completed": "Original task completed",
+    "github.status.cancelled": "Task cancelled",
+    "github.status.failed": "Needs attention",
+    "github.status.expired": "Connection request expired",
+    "github.error.github_cli_unavailable": "GitHub CLI was not found. Install gh, then try connecting again.",
+    "github.error.github_login_required": "No GitHub login is available on this machine. Choose Sign in to GitHub.",
+    "github.error.github_secure_storage_required": "GitHub credentials are not in the system keychain. Fix secure storage for gh, then retry.",
+    "github.error.github_reauthorization_required": "Your GitHub login has expired. Please reconnect.",
+    "github.error.github_access_denied_or_rate_limited": "GitHub denied access. Check repository permissions or try again later.",
+    "github.error.authorization_expired": "Authorization timed out. Please sign in again.",
+    "github.error.request_cannot_retry": "This task cannot be retried again. Please send a new request.",
+    "github.error.github_repository_unavailable": "This repository could not be read. Check its name and account permissions.",
+    "github.error.connector_state_corrupt": "Connection records could not be read. This connection has been stopped.",
+    "github.label": "GitHub read-only connection",
+    "github.readonly": "Read only",
+    "github.detail": "Read projects, commits, issues, pull requests and runs only in your selected repositories. This task continues automatically after connecting; a new message cancels any unfinished task.",
+    "github.preview": "This preview uses GitHub CLI login. GitHub may grant that login write access; LISA only allows reads in this flow.",
+    "github.retry": "Retry original task",
+    "github.reconnect": "Reconnect account",
+    "github.existing": "Use local GitHub login",
+    "github.login": "Sign in to GitHub",
+    "github.authorizeDetail": "Complete authorization on GitHub. Cancelling stops this task from continuing.",
+    "github.openDevice": "Open GitHub and enter the code above",
+    "github.selectDetail": "Verify your account, then choose repositories LISA may read. None are selected by default. Later read-only tasks use this selection until you disconnect.",
+    "github.switchAccount": "Sign in with another account",
+    "github.private": " · Private",
+    "github.load": "Load repositories",
+    "github.repoPlaceholder": "Or enter owner/repo",
+    "github.repoLabel": "Repository name",
+    "github.add": "Add repository",
+    "github.confirm": "Connect read-only and continue",
+    "github.cancel": "Cancel this task",
+    "github.disconnect": "Disconnect from LISA",
+    "github.selected": "Selected repositories: {n}",
+    "github.error.unknown": "The operation did not finish. Please try again later ({code}).",
     'session.new': 'New session',
     'chat.thinking': 'Lisa is thinking',
     'chat.replying': 'Lisa is replying',
@@ -156,6 +230,80 @@ const LISA_STRINGS = {
     'kbd.help': 'This list',
   },
   'zh-CN': {
+    "connector.label": "{name} 只读连接",
+    "connector.selectStatus": "选择可读取的范围",
+    "connector.gmailDetail": "仅读取你选定标签中的邮件头与有限摘要，不读取完整正文或附件。连接完成后自动继续本条任务；发送新消息会取消未完成的任务。",
+    "connector.calendarDetail": "选择仅查看主日历忙闲，或读取选定日历的日程详情。不会创建或修改日程。连接完成后自动继续本条任务；发送新消息会取消未完成的任务。",
+    "connector.linearDetail": "Linear 授权覆盖所选工作区，LISA 将读取限制在你选定的团队。不创建、修改、评论或分配任务。连接后自动继续此任务；发送新消息会取消未完成的任务。",
+    "connector.auth.linear": "登录 Linear，只读连接",
+    "connector.linearAuthorize": "在 Linear 页面授权只读访问，然后返回这里选择团队。",
+    "connector.openLinear": "打开 Linear 授权页面",
+    "connector.linearSelect": "请核对账号并选择允许读取的团队。默认不勾选；后续 Linear 只读任务沿用此范围，直到断开连接。",
+    "connector.error.linear_reauthorization_required": "Linear 授权已失效或移除，请重新连接。",
+    "connector.error.linear_read_scope_required": "仅支持读取权限，请以只读权限重新授权。",
+    "connector.error.linear_resource_mismatch": "Linear 返回的资料不属于所选团队，已停止返回结果。",
+    "connector.error.mcp_tools_changed": "远程工具发生变化，需要更新连接器适配。",
+    "connector.error.mcp_metadata_mismatch": "授权服务信息发生变化，已停止连接。",
+    "connector.error.mcp_access_denied": "Linear 拒绝读取此范围，请检查账号与所选团队。",
+    "connector.error.mcp_unavailable": "暂时无法连接 Linear，请重试此任务。",
+    "connector.error.mcp_tool_failed": "Linear 未能完成读取，请重试或重新连接。",
+    "connector.error.mcp_rate_limited": "Linear 请求过于频繁，请稍后重试。",
+    "connector.auth.gmail": "登录 Google，连接 Gmail",
+    "connector.auth.freebusy": "连接主日历，只看忙闲",
+    "connector.auth.events": "连接日历，读取日程详情",
+    "connector.authorizeDetail": "在 Google 页面登录并授权，然后回到这里选择读取范围。取消后不会继续任务。",
+    "connector.openGoogle": "打开 Google 授权页面",
+    "connector.selectDetail": "请核对账号并选择允许读取的日历或邮件标签。默认不选择任何范围；后续只读任务沿用此选择，直到断开连接。",
+    "connector.selected": "已选 {n} 项",
+    "connector.load": "加载更多",
+    "connector.error.google_client_not_configured": "尚未配置 Google 桌面应用登录，请先完成本机 Google 连接设置。",
+    "connector.error.google_desktop_client_required": "Google 登录配置无法使用。请使用桌面应用类型的 OAuth 配置。",
+    "connector.error.google_reauthorization_required": "Google 登录已失效，请重新连接。",
+    "connector.error.google_access_denied": "Google 拒绝访问，请检查所选范围、应用权限和 API 是否已启用。",
+    "connector.error.google_scope_required": "当前授权不足以读取这些内容，请选择相应的只读授权重新连接。",
+    "connector.error.google_rate_limited": "Google 暂时限制了请求频率，请稍后重试。",
+    "connector.error.authorization_cancelled": "授权已取消，可以重新连接。",
+    "connector.error.google_time_range_required": "请使用带时区且不超过 31 天的日期范围。",
+    "github.status.waiting": "等待连接",
+    "github.status.authorizing": "正在授权",
+    "github.status.selecting": "选择可读取的仓库",
+    "github.status.ready": "已连接，等待继续",
+    "github.status.resuming": "已连接，正在继续原任务",
+    "github.status.completed": "原任务已完成",
+    "github.status.cancelled": "任务已取消",
+    "github.status.failed": "需要处理",
+    "github.status.expired": "连接请求已过期",
+    "github.error.github_cli_unavailable": "未找到 GitHub CLI。请先安装 gh，再重试连接。",
+    "github.error.github_login_required": "本机还没有可用的 GitHub 登录，请选择“登录 GitHub”。",
+    "github.error.github_secure_storage_required": "GitHub 凭据未存入系统钥匙串。请修复 gh 的安全存储后重试。",
+    "github.error.github_reauthorization_required": "GitHub 登录已失效，请重新连接。",
+    "github.error.github_access_denied_or_rate_limited": "GitHub 暂时拒绝访问，请检查仓库权限或稍后重试。",
+    "github.error.authorization_expired": "授权已超时，请重新登录。",
+    "github.error.request_cannot_retry": "本次任务无法再重试，请重新发送任务。",
+    "github.error.github_repository_unavailable": "无法读取这个仓库，请检查仓库名称和账号权限。",
+    "github.error.connector_state_corrupt": "连接记录无法读取，当前连接已停止。",
+    "github.label": "GitHub 只读连接",
+    "github.readonly": "只读",
+    "github.detail": "仅在你选定的仓库中读取项目、提交、Issue、PR 和运行记录。连接完成后自动继续本条任务；发送新消息会取消尚未完成的任务。",
+    "github.preview": "预览版使用 GitHub CLI 登录。GitHub 授予该登录的权限可能包含写入；LISA 此流程只开放读取。",
+    "github.retry": "重试原任务",
+    "github.reconnect": "重新连接账号",
+    "github.existing": "使用本机 GitHub 登录",
+    "github.login": "登录 GitHub",
+    "github.authorizeDetail": "请在 GitHub 页面完成授权；取消后不会继续任务。",
+    "github.openDevice": "打开 GitHub，输入上方代码",
+    "github.selectDetail": "确认账号后，选择允许 LISA 读取的仓库。默认不选择任何仓库；后续只读任务沿用此范围，直到断开连接。",
+    "github.switchAccount": "更换账号登录",
+    "github.private": " · 私有",
+    "github.load": "加载仓库",
+    "github.repoPlaceholder": "也可输入 owner/repo",
+    "github.repoLabel": "仓库名称",
+    "github.add": "添加仓库",
+    "github.confirm": "只读连接并继续",
+    "github.cancel": "取消此任务",
+    "github.disconnect": "断开 LISA 连接",
+    "github.selected": "已选 {n} 个仓库",
+    "github.error.unknown": "操作未完成，请稍后重试（{code}）。",
     'session.new': '新会话',
     'chat.thinking': 'Lisa 正在思考',
     'chat.replying': 'Lisa 正在回复',
@@ -636,6 +784,7 @@ function setActiveSessionUI(id) {
   window.lisaActiveSessionId = id;
   sessionEl.textContent = id;
   updateTitlebarSession();
+  void githubRefresh();
 }
 // UX-4: the title bar used to read "Lisa · 20260905-220846-9f7d58". It shows
 // the session's human label now ("New session · just now" until the first
@@ -749,7 +898,10 @@ function connectEvents() {
   es.addEventListener('message', (e) => {
     noteEventBytes();
     const ev = JSON.parse(e.data);
-    if (ev.type === 'mood') {
+    if (ev.type === 'github_connection_changed' || ev.type === 'connector_connection_changed') {
+      if (ev.sessionId === window.lisaActiveSessionId) void githubRefresh();
+      else if (typeof window.lisaMarkUnread === 'function') window.lisaMarkUnread(ev.sessionId);
+    } else if (ev.type === 'mood') {
       setMood(ev.slug);
     } else if (ev.type === 'idle_start') {
       if (!idlePulseEl) {
@@ -1454,6 +1606,7 @@ async function loadHistoryPage() {
     historyLoading = false;
     historyFetched = true;
     renderChatEmpty();
+    void githubRefresh();
   }
 }
 
@@ -2399,6 +2552,7 @@ async function runChat(message, filesToSend) {
     // onto a finished (or failed) turn.
     clearTimeout(waitTimer);
     sendBtn.disabled = false;
+    void githubRefresh();
     input.focus();
     // F6 — a reply that finished after its session was switched away:
     // refresh if the user is back on that session, else mark it unread.

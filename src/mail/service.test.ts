@@ -76,7 +76,10 @@ test("sweepAll is blocked when mail consent is not granted", async () => {
 test("sweepAll connects, classifies, builds + saves a digest", async () => {
   await withHome(async () => {
     grant("mail");
-    addAccount({ provider: "imap", email: "me@qq.com", host: "imap.qq.com" }, { password: "pw" });
+    await addAccount(
+      { provider: "imap", email: "me@qq.com", host: "imap.qq.com" },
+      { password: "pw" },
+    );
     const raws = [
       raw("1", { subject: "Invoice due", flags: [] }),
       raw("2", { subject: "Weekly digest", flags: ["\\Seen"] }),
@@ -106,7 +109,10 @@ test("sweepAll connects, classifies, builds + saves a digest", async () => {
 test("a second sweep marks nothing new (seen-uid dedup)", async () => {
   await withHome(async () => {
     grant("mail");
-    addAccount({ provider: "imap", email: "me@qq.com", host: "imap.qq.com" }, { password: "pw" });
+    await addAccount(
+      { provider: "imap", email: "me@qq.com", host: "imap.qq.com" },
+      { password: "pw" },
+    );
     const raws = [raw("1", { subject: "Invoice" })];
     const json = '[{"uid":"1","category":"finance","importance":2,"reason":"x"}]';
     await sweepAll({ connectorFactory: fakeConnector(raws), provider: fakeProvider(json) });
@@ -122,7 +128,10 @@ test("a second sweep marks nothing new (seen-uid dedup)", async () => {
 test("pollNewMail returns only freshly-classified items and is empty on re-poll", async () => {
   await withHome(async () => {
     grant("mail");
-    addAccount({ provider: "imap", email: "me@qq.com", host: "imap.qq.com" }, { password: "pw" });
+    await addAccount(
+      { provider: "imap", email: "me@qq.com", host: "imap.qq.com" },
+      { password: "pw" },
+    );
     const raws = [raw("1", { subject: "Pay invoice" })];
     const json = '[{"uid":"1","category":"finance","importance":3,"reason":"due"}]';
     const first = await pollNewMail({
@@ -152,7 +161,10 @@ test("pollNewMail returns nothing without consent", async () => {
 test("one failing account doesn't sink the sweep", async () => {
   await withHome(async () => {
     grant("mail");
-    addAccount({ provider: "imap", email: "a@x.com", host: "imap.x.com" }, { password: "pw" });
+    await addAccount(
+      { provider: "imap", email: "a@x.com", host: "imap.x.com" },
+      { password: "pw" },
+    );
     const boom: ConnectorFactory = () => ({
       async listSince() {
         throw new Error("auth failed");

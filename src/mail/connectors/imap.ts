@@ -114,9 +114,13 @@ export class ImapConnector implements MailConnector {
           uid: true,
           maxBytes: SNIPPET_FETCH_BYTES,
         });
-        let text = await streamToString(dl.content, SNIPPET_FETCH_BYTES);
-        if (part.html) text = stripHtml(text);
-        snippet = text.replace(/\s+/g, " ").trim().slice(0, SNIPPET_CHARS);
+        // imapflow >= 2.10 resolves without `content` when the part or
+        // message is gone (e.g. expunged between list and fetch).
+        if (dl.content) {
+          let text = await streamToString(dl.content, SNIPPET_FETCH_BYTES);
+          if (part.html) text = stripHtml(text);
+          snippet = text.replace(/\s+/g, " ").trim().slice(0, SNIPPET_CHARS);
+        }
       } catch {
         snippet = "";
       }
