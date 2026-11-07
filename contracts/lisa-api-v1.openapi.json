@@ -2138,7 +2138,7 @@
             "$ref": "#/components/responses/Error"
           },
           "409": {
-            "description": "A selected KB page or skill changed since the dream (`modified_since`), has no pre-dream copy (`not_revertible`), or resolves outside its part's directory (`unsafe_target`). Nothing was written. With `force: true`, changed files are overwritten and the other two are skipped. Memory never conflicts on content (it reverts entry by entry).",
+            "description": "A selected KB page or skill changed since the dream (`modified_since`), has no pre-dream copy or was also changed outside the pass while it ran (`not_revertible`), or resolves outside its part's directory (`unsafe_target`); or a memory revert would push MEMORY.md / USER.md past the memory store's cap (`memory_full`). Nothing was written. With `force: true`, changed files are overwritten and `not_revertible` / `unsafe_target` files are skipped; `memory_full` is refused even then. Memory never conflicts on content (it reverts entry by entry; see `changedSince` in the 200 response).",
             "headers": {
               "X-Lisa-API-Version": {
                 "$ref": "#/components/headers/ApiVersion"
@@ -5644,6 +5644,13 @@
               "type": "string"
             }
           },
+          "changedSince": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Memory files among `reverted` that no longer held exactly what the dream left. Their entries were reverted against the current text; an entry the dream removed was put back even if a later edit had replaced it. A warning, not a refusal."
+          },
           "forced": {
             "type": "boolean"
           }
@@ -5677,9 +5684,10 @@
                   "enum": [
                     "modified_since",
                     "not_revertible",
-                    "unsafe_target"
+                    "unsafe_target",
+                    "memory_full"
                   ],
-                  "description": "modified_since: changed after the dream (KB / skills); not_revertible: no pre-dream copy; unsafe_target: the path resolves outside its part's directory (a symlink on the way, or the file is one)."
+                  "description": "modified_since: changed after the dream (KB / skills); not_revertible: no pre-dream copy, or one that does not match the record, or the file was also changed outside the pass while it ran; unsafe_target: the path resolves outside its part's directory (a symlink on the way, or the file is one); memory_full: the reverted MEMORY.md / USER.md would be larger than the memory store's cap (4096 / 2048 bytes). force overrides modified_since and skips not_revertible / unsafe_target files; memory_full is refused even with force, and nothing is written."
                 }
               },
               "additionalProperties": false

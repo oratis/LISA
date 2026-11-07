@@ -363,6 +363,12 @@ describe("actual server DTOs conform to OpenAPI v1", () => {
       });
       const reverted = await revertDream(id, { parts: ["memory", "kb"], force: true });
       assertContract("ReveRevertResponse", { ok: true, ...reverted });
+      // A memory file past the store cap: the one conflict force cannot override.
+      const memoryFull: import("../reve/revert.js").RevertConflict = {
+        path: "memory/MEMORY.md",
+        reason: "memory_full",
+      };
+      assertContract("ReveRevertConflict", { error: "revert_conflict", conflicts: [memoryFull] });
       const now = new Date();
       assertContract(
         "ReveMetricsSeries",

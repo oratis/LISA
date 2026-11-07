@@ -100,6 +100,27 @@ describe("lisa reve", () => {
     const c = io();
     assert.equal(await runReveCommand(["revert", id, "--parts", "kb"], c.io), 3);
     assert.match(c.err.join("\n"), /--force/);
+    assert.match(c.err.join("\n"), /kb\/wiki\/tea\.md — changed since the dream/);
+  });
+
+  test("a memory revert past the size limit says so in plain words; --force does not help", async () => {
+    const { writeMemory, removeFromMemory } = await import("../memory/store.js");
+    const entry = (tag: string, i: number) => `${tag}${i} ${"x".repeat(90)}`;
+    await writeMemory(
+      "memory",
+      Array.from({ length: 38 }, (_, i) => `- ${entry("old", i)}`).join("\n"),
+    );
+    await withDream({ trigger: "idle" }, async () => {
+      for (let i = 0; i < 20; i++) await removeFromMemory("memory", `old${i} `);
+    });
+    const id = (await listDreams(1)).dreams[0]!.id;
+    for (let i = 0; i < 18; i++) await appendMemory("memory", entry("new", i));
+    const c = io();
+    assert.equal(await runReveCommand(["revert", id, "--parts", "memory", "--force"], c.io), 3);
+    const err = c.err.join("\n");
+    assert.match(err, /memory\/MEMORY\.md — would be over the memory size limit/);
+    assert.match(err, /--force does not override this/);
+    assert.doesNotMatch(err, /memory_full/);
   });
 
   test("a memory revert is entry-level: the user's later entry is kept, no conflict", async () => {
@@ -111,6 +132,7 @@ describe("lisa reve", () => {
       fs.readFileSync(path.join(home, "memory", "MEMORY.md"), "utf8"),
       "- tea\n- edited later\n",
     );
+    assert.match(c.out.join("\n"), /memory\/MEMORY\.md had changed since the dream/);
   });
 
   test("reconsider with dreams off says so and queues nothing (#423 F3)", async () => {

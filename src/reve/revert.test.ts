@@ -7,11 +7,13 @@ import path from "node:path";
 process.env.LISA_KB_NO_GIT = "1";
 process.env.LISA_SOUL_GIT = "0";
 
-const { withDream } = await import("./record.js");
+const { withDream, beginDream, OUTSIDE_WRITE_REASON } = await import("./record.js");
 const { listDreams, readDream } = await import("./store.js");
 const { revertDream, RevertConflictError, RevertInputError, parseRevertParts } =
   await import("./revert.js");
-const { appendMemory } = await import("../memory/store.js");
+const { appendMemory, removeFromMemory, writeMemory, memoryMaxBytes } =
+  await import("../memory/store.js");
+const { writeWiki, removeEntry } = await import("../kb/store.js");
 const { createSkill, patchSkill } = await import("../skills/manager.js");
 const soulStore = await import("../soul/store.js");
 
@@ -58,6 +60,7 @@ describe("revert of user-owned data", () => {
       "kb/wiki/rust.md",
       "memory/MEMORY.md",
     ]);
+    assert.deepEqual(res.changedSince, [], "memory still held what the dream left");
     assert.equal(read("memory/MEMORY.md"), "- user prefers tea\n");
     assert.equal(read("kb/wiki/rust.md"), "# Rust\n\nA systems language.\n");
     assert.equal(fs.existsSync(path.join(home, "kb/wiki/cargo.md")), false, "added page removed");
@@ -133,6 +136,7 @@ describe("revert of user-owned data", () => {
     await appendMemory("memory", "the user added this afterwards");
     const res = await revertDream(id, { parts: ["memory"] });
     assert.deepEqual(res.reverted, ["memory/MEMORY.md"]);
+    assert.deepEqual(res.changedSince, ["memory/MEMORY.md"], "warned: the file moved on");
     assert.equal(
       read("memory/MEMORY.md"),
       "- user prefers tea\n- the user added this afterwards\n",
@@ -276,5 +280,116 @@ describe("revert of user-owned data", () => {
       return true;
     });
     assert.equal(read("soul/identity.md"), "I am Lisa.\n");
+  });
+});
+
+describe("revert guards (#423 review follow-up)", () => {
+  const entry = (tag: string, i: number) => `${tag}${i} ${"x".repeat(90)}`;
+
+  test("a memory revert past the store cap is refused with memory_full, even forced (P1)", async () => {
+    // Nearly full memory; the dream consolidates 20 entries away; chat refills it.
+    await writeMemory(
+      "memory",
+      Array.from({ length: 38 }, (_, i) => `- ${entry("old", i)}`).join("\n"),
+    );
+    const id = await idleDream(async () => {
+      for (let i = 0; i < 20; i++) await removeFromMemory("memory", `old${i} `);
+    });
+    for (let i = 0; i < 18; i++) await appendMemory("memory", entry("new", i));
+    const before = read("memory/MEMORY.md");
+    assert.ok(Buffer.byteLength(before) <= memoryMaxBytes("memory"));
+
+    for (const force of [false, true]) {
+      await assert.rejects(revertDream(id, { parts: ["memory"], force }), (err: unknown) => {
+        assert.ok(err instanceof RevertConflictError);
+        assert.deepEqual(err.conflicts, [{ path: "memory/MEMORY.md", reason: "memory_full" }]);
+        return true;
+      });
+    }
+    assert.equal(read("memory/MEMORY.md"), before, "nothing written");
+    assert.equal((await readDream(id)).reverts.length, 0, "no revert recorded");
+    // The memory tool still works: the file never went past its cap.
+    await appendMemory("memory", "tiny");
+    await removeFromMemory("memory", "new0 ");
+  });
+
+  test("a pre-dream copy that does not match the record is never restored", async () => {
+    const id = await idleDream(async () => {
+      write("kb/wiki/rust.md", "# Rust, by Lisa\n");
+    });
+    const sideFile = path.join(home, "reve", "dreams", `${id}.before.json`);
+    const side = JSON.parse(fs.readFileSync(sideFile, "utf8"));
+    side.files["kb/wiki/rust.md"] = "# Rust\n\nSomething the dream never saw.\n";
+    fs.writeFileSync(sideFile, JSON.stringify(side));
+    await assert.rejects(revertDream(id, { parts: ["kb"] }), (err: unknown) => {
+      assert.ok(err instanceof RevertConflictError);
+      assert.deepEqual(err.conflicts, [{ path: "kb/wiki/rust.md", reason: "not_revertible" }]);
+      return true;
+    });
+    const forced = await revertDream(id, { parts: ["kb"], force: true });
+    assert.deepEqual(forced.skipped, ["kb/wiki/rust.md"]);
+    assert.equal(read("kb/wiki/rust.md"), "# Rust, by Lisa\n");
+  });
+
+  test("a concurrent 'remember X' during the pass is never reverted (P2)", async () => {
+    const dream = await beginDream({ trigger: "idle" });
+    await dream.run(() => appendMemory("memory", "the dream's own entry"));
+    // A chat turn while the pass runs: outside the dream's scope.
+    await appendMemory("memory", "remember X: the user's flight is on Friday");
+    const rec = await dream.end();
+    assert.ok(rec);
+    const change = rec.changes.find((c) => c.path === "memory/MEMORY.md");
+    assert.ok(change);
+    assert.equal(change.revertible, false);
+    assert.equal(change.notRevertibleReason, OUTSIDE_WRITE_REASON);
+    const side = path.join(home, "reve", "dreams", `${rec.id}.before.json`);
+    assert.ok(!fs.existsSync(side) || !fs.readFileSync(side, "utf8").includes("remember X"));
+
+    await assert.rejects(revertDream(rec.id, { parts: ["memory"] }), (err: unknown) => {
+      assert.ok(err instanceof RevertConflictError);
+      assert.deepEqual(err.conflicts, [{ path: "memory/MEMORY.md", reason: "not_revertible" }]);
+      return true;
+    });
+    const forced = await revertDream(rec.id, { parts: ["memory"], force: true });
+    assert.deepEqual(forced.skipped, ["memory/MEMORY.md"]);
+    assert.match(read("memory/MEMORY.md"), /remember X/);
+  });
+
+  test("a concurrent KB edit during the pass is never reverted; the pass's own page still is (P2)", async () => {
+    await writeWiki({ slug: "go", title: "Go", body: "A language." });
+    await writeWiki({ slug: "zig", title: "Zig", body: "Another language." });
+    const dream = await beginDream({ trigger: "idle" });
+    await dream.run(async () => {
+      await writeWiki({ slug: "rust", title: "Rust", body: "Lisa's rewrite." });
+      await writeWiki({ slug: "go", title: "Go", body: "Lisa's take on Go." });
+    });
+    // The user edits one page and deletes another while the pass runs.
+    await writeWiki({ slug: "go", title: "Go", body: "The user's own notes on Go." });
+    await removeEntry("wiki", "zig");
+    const rec = await dream.end();
+    assert.ok(rec);
+    const byPath = new Map(rec.changes.map((c) => [c.path, c]));
+    assert.equal(byPath.get("kb/wiki/rust.md")?.revertible, true, "only the pass wrote it");
+    for (const p of ["kb/wiki/go.md", "kb/wiki/zig.md"]) {
+      assert.equal(byPath.get(p)?.revertible, false, p);
+      assert.equal(byPath.get(p)?.notRevertibleReason, OUTSIDE_WRITE_REASON, p);
+    }
+    const res = await revertDream(rec.id, { parts: ["kb"], force: true });
+    assert.deepEqual(res.reverted, ["kb/wiki/rust.md"]);
+    assert.deepEqual(res.skipped.sort(), ["kb/wiki/go.md", "kb/wiki/zig.md"]);
+    assert.match(read("kb/wiki/go.md"), /The user's own notes on Go/);
+    assert.equal(fs.existsSync(path.join(home, "kb", "wiki", "zig.md")), false);
+    assert.equal(read("kb/wiki/rust.md"), "# Rust\n\nA systems language.\n");
+  });
+
+  test("another pass's write during the window counts as outside too", async () => {
+    const outer = await beginDream({ trigger: "idle" });
+    await outer.run(() => appendMemory("memory", "outer pass entry"));
+    // A second pass (say a session reflection) runs and writes the same file.
+    await withDream({ trigger: "reflect" }, () => appendMemory("memory", "reflection entry"));
+    const rec = await outer.end();
+    assert.ok(rec);
+    const change = rec.changes.find((c) => c.path === "memory/MEMORY.md");
+    assert.equal(change?.revertible, false);
   });
 });

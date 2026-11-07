@@ -11,8 +11,10 @@
  * warning. A pass that changed nothing writes nothing (unless the user's
  * reconsider notes were injected into it — then the record shows she saw them).
  */
+import path from "node:path";
 import { atomicWrite, ensureDir } from "../fs-utils.js";
 import { logWarn, redactId } from "../log.js";
+import { lisaHome } from "../paths.js";
 import { flushSoulCommits, soulCommitPatch, soulCommitsBetween, soulGitHead } from "../soul/git.js";
 import type { AutonomyKind, AutonomyOutcome } from "../autonomy/runs.js";
 import { newDreamId } from "./ids.js";
@@ -24,6 +26,7 @@ import {
   dreamsEnabled,
   markDreamActive,
   parseDreamTrailer,
+  writtenOutsideDream,
   type DreamScope,
 } from "./scope.js";
 import {
@@ -61,6 +64,9 @@ import {
 export { MAX_RECORD_BYTES };
 /** Revert sidecar cap; files past it are recorded as not revertible. */
 export const MAX_SIDECAR_BYTES = 4 * 1024 * 1024;
+/** Why a user-part change that someone else also wrote during the pass is not revertible. */
+export const OUTSIDE_WRITE_REASON =
+  "also changed outside this pass while it ran (a chat, a user edit or another pass), so a revert could undo someone else's change";
 const MAX_COMMIT_DIFF_CHARS = 4 * 1024;
 const MAX_COMMITS_WITH_DIFF = 50;
 const FLUSH_TIMEOUT_MS = 20_000;
@@ -136,13 +142,18 @@ export async function beginDream(opts: {
   const start = now();
   const id = newDreamId(start);
   const parts = PARTS_BY_TRIGGER[opts.trigger];
+  const home = lisaHome();
   let before: Snapshot;
   let headBefore: string | null;
+  // Active from before the pre-pass snapshot: a write made outside this
+  // dream's scope from here on is noted against it (scope.ts noteHomeWrite).
+  markDreamActive(id, true);
   try {
     // Pending soul commits from before the window belong to someone else.
     await withTimeout(flushSoulCommits(), FLUSH_TIMEOUT_MS);
     [before, headBefore] = await Promise.all([takeSnapshot(parts, start), soulGitHead()]);
   } catch (err) {
+    markDreamActive(id, false);
     logWarn(`[reve] dream capture could not start: ${logSafeError(err)}`);
     return NOOP_HANDLE;
   }
@@ -154,7 +165,6 @@ export async function beginDream(opts: {
     reconsiderIds: [],
   };
   let ended: Promise<DreamRecord | null> | null = null;
-  markDreamActive(id, true);
   return {
     id,
     run: (fn) => dreamScope.run(scope, fn),
@@ -169,6 +179,7 @@ export async function beginDream(opts: {
             scope,
             trigger: opts.trigger,
             task: opts.task,
+            home,
             parts,
             before,
             headBefore,
@@ -396,6 +407,8 @@ async function finishDream(ctx: {
   scope: DreamScope;
   trigger: DreamTrigger;
   task?: string;
+  /** The home the pass ran in (the tenant's subtree on the cloud edition). */
+  home: string;
   parts: DreamPart[];
   before: Snapshot;
   headBefore: string | null;
@@ -412,6 +425,15 @@ async function finishDream(ctx: {
   // against a listing that was never taken.
   const after = await takeSnapshot(ctx.parts, ctx.start, { only: ctx.before.captured });
   const changes = diffSnapshots(ctx.before, after);
+  // A user-part file someone else also wrote while the pass ran: its diff
+  // mixes their change with the pass's, so a revert could undo theirs.
+  for (const c of changes) {
+    if (c.part === "soul" || !c.revertible) continue;
+    if (writtenOutsideDream(scope.id, path.resolve(ctx.home, ...c.path.split("/")))) {
+      c.revertible = false;
+      c.notRevertibleReason = OUTSIDE_WRITE_REASON;
+    }
+  }
   const uncaptured = uncapturedParts(ctx.before, after);
   const { commits, headAfter } = await captureSoulCommits(scope.id, ctx.headBefore);
   const desires = desireChanges(changes, ctx.before, after);
@@ -498,8 +520,8 @@ async function finishDream(ctx: {
   };
   const rec = fitRecord({ ...base, summary: renderSummary(base) }, MAX_RECORD_BYTES);
 
-  await ensureDir(dreamsDir());
   await lockReve(async () => {
+    await ensureDir(dreamsDir());
     // Sidecar first: a record must never point at revert data that is missing.
     if (hasSidecar) {
       await atomicWrite(dreamSnapshotFile(rec.id), JSON.stringify(sidecar) + "\n");

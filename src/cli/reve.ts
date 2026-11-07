@@ -10,7 +10,12 @@
  */
 import { metricsSeries, renderMetricsTable, clampDays } from "../reve/metrics.js";
 import { listReconsiderRequests, requestReconsider, ReconsiderError } from "../reve/reconsider.js";
-import { RevertConflictError, RevertInputError, revertDream } from "../reve/revert.js";
+import {
+  RevertConflictError,
+  RevertInputError,
+  revertDream,
+  type RevertConflict,
+} from "../reve/revert.js";
 import {
   CorruptDreamError,
   DreamNotFoundError,
@@ -127,6 +132,15 @@ function renderDream(
   return out.join("\n");
 }
 
+/** Conflict reasons in plain words. */
+const CONFLICT_WORDS: Record<RevertConflict["reason"], string> = {
+  modified_since: "changed since the dream",
+  not_revertible:
+    "cannot be restored (no matching pre-dream copy, or also changed outside that pass)",
+  unsafe_target: "resolves outside its folder (a link); never written",
+  memory_full: "would be over the memory size limit after the revert; nothing was written",
+};
+
 export async function runReveCommand(argv: string[], io: ReveCliIo = defaultIo): Promise<number> {
   const args = [...argv];
   const sub = args.shift() ?? "dreams";
@@ -182,6 +196,12 @@ export async function runReveCommand(argv: string[], io: ReveCliIo = defaultIo):
           (res.skipped.length ? `; skipped (no pre-dream copy): ${res.skipped.join(", ")}` : ""),
       );
       for (const p of res.reverted) io.log(`  ${p}`);
+      for (const p of res.changedSince) {
+        io.log(
+          `Note: ${p} had changed since the dream; its entries were reverted against the ` +
+            `current text, and an entry the dream removed was put back even if you had replaced it. Check the file.`,
+        );
+      }
       return 0;
     }
     if (sub === "reconsider") {
@@ -213,9 +233,17 @@ export async function runReveCommand(argv: string[], io: ReveCliIo = defaultIo):
     if (err instanceof RevertConflictError) {
       io.error(`${err.message}:`);
       for (const c of err.conflicts) {
-        io.error(termSafe(`  ${c.path} — ${c.reason.replace(/_/g, " ")}`));
+        io.error(
+          termSafe(`  ${c.path} — ${CONFLICT_WORDS[c.reason] ?? c.reason.replace(/_/g, " ")}`),
+        );
       }
-      io.error("Re-run with --force to overwrite files changed since the dream.");
+      if (err.conflicts.some((c) => c.reason === "memory_full")) {
+        io.error(
+          "Remove some entries from that memory file first; --force does not override this.",
+        );
+      } else {
+        io.error("Re-run with --force to overwrite files changed since the dream.");
+      }
       return 3;
     }
     if (err instanceof DreamNotFoundError || err instanceof CorruptDreamError) {

@@ -18,13 +18,19 @@
  * idempotent. Writes are atomic per file; if a write fails midway, files
  * already written are rolled back to their current content. Every revert is
  * appended to the record and to reve/audit.jsonl.
+ *
+ * A memory revert never pushes MEMORY.md / USER.md past the memory store's
+ * byte cap: past it the memory tool refuses every write, so such a revert is
+ * refused (`memory_full`), even under `force`, and nothing is written.
  */
 import fs from "node:fs/promises";
 import path from "node:path";
 import { appendLine, atomicWrite } from "../fs-utils.js";
-import { lisaHome } from "../paths.js";
+import { memoryMaxBytes, type MemoryStore } from "../memory/store.js";
+import { lisaHome, memoryFile, userFile } from "../paths.js";
 import { withFileLock } from "../soul/lock.js";
 import { reveAuditFile } from "./paths.js";
+import { noteHomeWrite } from "./scope.js";
 import { memoryEntryKey, sha256 } from "./snapshot.js";
 import {
   lockReve,
@@ -46,11 +52,17 @@ export interface RevertConflict {
   path: string;
   /**
    * modified_since: changed after the dream (KB / skills); not_revertible: no
-   * pre-dream copy; unsafe_target: the path resolves outside its part's
-   * directory (a symlink on the way, or the file itself is one).
+   * pre-dream copy (or one that does not match the record); unsafe_target:
+   * the path resolves outside its part's directory (a symlink on the way, or
+   * the file itself is one); memory_full: the reverted memory file would be
+   * larger than the memory store's cap. `force` overrides modified_since and
+   * skips not_revertible / unsafe_target files; memory_full always blocks.
    */
-  reason: "modified_since" | "not_revertible" | "unsafe_target";
+  reason: "modified_since" | "not_revertible" | "unsafe_target" | "memory_full";
 }
+
+/** Conflict reasons `force` cannot override: the whole revert is refused. */
+const BLOCKS_EVEN_FORCED: ReadonlySet<RevertConflict["reason"]> = new Set(["memory_full"]);
 
 export class RevertConflictError extends Error {
   constructor(readonly conflicts: RevertConflict[]) {
@@ -70,6 +82,13 @@ export interface RevertResult {
   alreadyReverted: string[];
   /** Files skipped under `force`: no pre-dream copy, or an unsafe target. */
   skipped: string[];
+  /**
+   * Memory files among `reverted` that no longer held exactly what the dream
+   * left: their entries were reverted against the current text, and an entry
+   * the dream removed was put back even if a later edit had replaced it. A
+   * warning to look at the file, not a refusal.
+   */
+  changedSince: string[];
   forced: boolean;
 }
 
@@ -115,6 +134,14 @@ function safeTarget(c: FileChange): string | null {
   const home = path.resolve(lisaHome());
   const abs = path.resolve(home, ...c.path.split("/"));
   return abs.startsWith(home + path.sep) ? abs : null;
+}
+
+/** The memory store a memory path belongs to (MEMORY.md / USER.md), or null for other files. */
+function memoryStoreOf(relPath: string): MemoryStore | null {
+  const name = relPath.slice("memory/".length);
+  if (name === path.basename(memoryFile())) return "memory";
+  if (name === path.basename(userFile())) return "user";
+  return null;
 }
 
 class UnsafeTargetError extends Error {
@@ -189,6 +216,7 @@ async function writeOrRemove(
     await atomicWrite(abs, content);
     return;
   }
+  noteHomeWrite(abs); // a running dream must not offer to revert this
   await fs.rm(abs, { force: true });
   if (part === "skills") {
     // A skill the dream created: drop its directory too when nothing else is in it.
@@ -255,6 +283,7 @@ export async function revertDream(
     reverted: [],
     alreadyReverted: [],
     skipped: [],
+    changedSince: [],
     forced: force,
   };
   // Existence first (DreamNotFoundError / CorruptDreamError surface to the caller).
@@ -287,8 +316,26 @@ export async function revertDream(
         }
         const current = await readOrNull(abs);
         const next = revertMemoryEntries(current, delta, c.beforeHash === null);
-        if (next === current) result.alreadyReverted.push(c.path);
-        else plan.push({ change: c, abs, restore: next, current });
+        if (next === current) {
+          result.alreadyReverted.push(c.path);
+          continue;
+        }
+        // Never past the store's cap: the memory tool would then refuse every
+        // write, removals included. (A file already over it may still shrink.)
+        const store = memoryStoreOf(c.path);
+        const nextBytes = next === null ? 0 : Buffer.byteLength(next, "utf8");
+        if (
+          store &&
+          nextBytes > memoryMaxBytes(store) &&
+          nextBytes > Buffer.byteLength(current ?? "", "utf8")
+        ) {
+          conflicts.push({ path: c.path, reason: "memory_full" });
+          continue;
+        }
+        if ((current === null ? null : sha256(current)) !== c.afterHash) {
+          result.changedSince.push(c.path);
+        }
+        plan.push({ change: c, abs, restore: next, current });
         continue;
       }
       if (
@@ -300,7 +347,16 @@ export async function revertDream(
         conflicts.push({ path: c.path, reason: "not_revertible" });
         continue;
       }
-      const restore = side.files[c.path] ?? null;
+      // The pre-dream copy must be what the record says it was.
+      const stored: unknown = side.files[c.path];
+      const restore = typeof stored === "string" ? stored : null;
+      const copyMatches =
+        (stored === null || typeof stored === "string") &&
+        (restore === null ? c.beforeHash === null : sha256(restore) === c.beforeHash);
+      if (!copyMatches) {
+        conflicts.push({ path: c.path, reason: "not_revertible" });
+        continue;
+      }
       const current = await readOrNull(abs);
       const curHash = current === null ? null : sha256(current);
       if (curHash === c.beforeHash) {
@@ -312,6 +368,8 @@ export async function revertDream(
         if (force) plan.push({ change: c, abs, restore, current });
       }
     }
+    const blocking = conflicts.filter((c) => BLOCKS_EVEN_FORCED.has(c.reason));
+    if (blocking.length) throw new RevertConflictError(force ? blocking : conflicts);
     if (conflicts.length && !force) throw new RevertConflictError(conflicts);
     result.skipped = conflicts.filter((c) => c.reason !== "modified_since").map((c) => c.path);
 
@@ -348,6 +406,7 @@ export async function revertDream(
           parts,
           files: result.reverted,
           skipped: result.skipped,
+          ...(result.changedSince.length ? { changedSince: result.changedSince } : {}),
           forced: force,
           ...(opts.actor ? { actor: opts.actor } : {}),
         }),
