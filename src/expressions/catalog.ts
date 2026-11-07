@@ -25,44 +25,50 @@ const art = JSON.parse(
     "utf8",
   ),
 );
-const labels: [string, string][] = [
-  ["Hello · 你好", "👋"],
-  ["Happy · 开心", "😊"],
-  ["Laughing · 大笑", "😄"],
-  ["Amused · 偷笑", "🤭"],
-  ["Thinking · 思考", "🤔"],
-  ["Confused · 疑惑", "😕"],
-  ["Surprised · 惊讶", "😮"],
-  ["Worried · 担心", "😟"],
-  ["Sad · 难过", "😔"],
-  ["Sorry · 抱歉", "🙏"],
-  ["Thank you · 感谢", "💚"],
-  ["Proud · 自豪", "😌"],
-  ["Determined · 坚定", "💪"],
-  ["Excited · 兴奋", "✨"],
-  ["Cheering · 庆祝", "🎉"],
-  ["Sleepy · 困倦", "🥱"],
-  ["Focused · 专注", "💻"],
-  ["Debugging · 排查", "🔧"],
-  ["Researching · 研究", "🔎"],
-  ["Writing · 写作", "✍️"],
-  ["Reading · 阅读", "📖"],
-  ["Tea · 喝茶", "🍵"],
-  ["Stretching · 伸展", "🙆"],
-  ["Resting · 小憩", "😴"],
-  ["Hello · 你好", "👋"],
-  ["Well done · 做得好", "🙌"],
-  ["Let me think · 让我想想", "🤔"],
-  ["Thank you · 谢谢", "💚"],
-  ["Celebrate · 庆祝一下", "🎉"],
-  ["Here for you · 我在这里", "🫶"],
-  ["Make a plan · 写下计划", "📝"],
-  ["Tea break · 喝杯茶", "🍵"],
-];
+// Keyed by asset id, not by manifest position: reordering or extending the
+// motion manifest must never silently give an asset another asset's label.
+const labels: Record<string, [alt: string, emoji: string]> = {
+  blink: ["Hello · 你好", "👋"],
+  happy: ["Happy · 开心", "😊"],
+  laughing: ["Laughing · 大笑", "😄"],
+  giggling: ["Amused · 偷笑", "🤭"],
+  thinking: ["Thinking · 思考", "🤔"],
+  confused: ["Confused · 疑惑", "😕"],
+  surprised: ["Surprised · 惊讶", "😮"],
+  worried: ["Worried · 担心", "😟"],
+  sad: ["Sad · 难过", "😔"],
+  apologetic: ["Sorry · 抱歉", "🙏"],
+  grateful: ["Thank you · 感谢", "💚"],
+  proud: ["Proud · 自豪", "😌"],
+  determined: ["Determined · 坚定", "💪"],
+  excited: ["Excited · 兴奋", "✨"],
+  cheering: ["Cheering · 庆祝", "🎉"],
+  sleepy: ["Sleepy · 困倦", "🥱"],
+  working: ["Focused · 专注", "💻"],
+  debugging: ["Debugging · 排查", "🔧"],
+  research: ["Researching · 研究", "🔎"],
+  writing: ["Writing · 写作", "✍️"],
+  "portrait-reading": ["Reading · 阅读", "📖"],
+  "portrait-tea": ["Tea · 喝茶", "🍵"],
+  "portrait-stretching": ["Stretching · 伸展", "🙆"],
+  "portrait-napping": ["Resting · 小憩", "😴"],
+  "sticker-hello": ["Hello · 你好", "👋"],
+  "sticker-well-done": ["Well done · 做得好", "🙌"],
+  "sticker-thinking": ["Let me think · 让我想想", "🤔"],
+  "sticker-thank-you": ["Thank you · 谢谢", "💚"],
+  "sticker-celebrate": ["Celebrate · 庆祝一下", "🎉"],
+  "sticker-here-for-you": ["Here for you · 我在这里", "🫶"],
+  "sticker-make-a-plan": ["Make a plan · 写下计划", "📝"],
+  "sticker-tea-break": ["Tea break · 喝杯茶", "🍵"],
+};
 export const expressionCatalog = [
   ...Object.values<string>(art.portraits),
   ...(art.stickers as string[]),
-].map((id, i) => ({ id, alt: labels[i]![0], emoji: labels[i]![1] }));
+].map((id) => {
+  const label = labels[id];
+  if (!label) throw new Error(`conversation expression ${id} has no label`);
+  return { id, alt: label[0], emoji: label[1] };
+});
 export function resolveExpression(value: unknown): Expression | undefined {
   if (!value || typeof value !== "object") return;
   const r = value as ExpressionRecord;
