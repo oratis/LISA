@@ -63,8 +63,9 @@ lisa serve --web              # start the backend
 ## Build
 
 ```sh
-cd packaging/mac-client
-bash build.sh
+# From the repository root
+npm ci
+bash packaging/mac-client/build.sh
 ```
 
 Output: `Lisa.app` in this directory. App icon is generated at build

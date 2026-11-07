@@ -29,6 +29,7 @@ for (const buildFails of [false, true]) {
         );
         await fs.writeFile(bundled, "installed backend");
         await fs.writeFile(path.join(root, "dist/cli.js"), "stale backend");
+        await fs.writeFile(path.join(root, "dist/removed.js"), "deleted source");
         await fs.writeFile(path.join(root, "current-source"), "current backend");
         await fs.writeFile(path.join(root, "package.json"), "{}");
         await fs.writeFile(path.join(root, "package-lock.json"), "{}");
@@ -39,6 +40,7 @@ for (const buildFails of [false, true]) {
 printf '%s\\n' "$*" >> "$EMBED_TEST_ROOT/npm-calls"
 if [ "$*" = "run build" ]; then
   if [ "$EMBED_TEST_FAIL" = "1" ]; then exit 17; fi
+  mkdir -p "$EMBED_TEST_ROOT/dist"
   cp "$EMBED_TEST_ROOT/current-source" "$EMBED_TEST_ROOT/dist/cli.js"
   exit 0
 fi
@@ -60,10 +62,13 @@ exit 29
         const calls = (await fs.readFile(path.join(root, "npm-calls"), "utf8")).trim().split("\n");
         assert.equal(calls[0], "run build");
         assert.equal(calls.length, buildFails ? 1 : 2);
-        assert.equal(
-          await fs.readFile(path.join(root, "dist/cli.js"), "utf8"),
-          buildFails ? "stale backend" : "current backend",
-        );
+        await assert.rejects(fs.access(path.join(root, "dist/removed.js")), { code: "ENOENT" });
+        if (!buildFails) {
+          assert.equal(
+            await fs.readFile(path.join(root, "dist/cli.js"), "utf8"),
+            "current backend",
+          );
+        }
         assert.equal(await fs.readFile(bundled, "utf8"), "installed backend");
       } finally {
         await fs.rm(root, { recursive: true, force: true });
