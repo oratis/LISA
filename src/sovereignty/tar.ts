@@ -11,6 +11,8 @@
  * are still streaming (gzip-bomb safe).
  */
 
+import crypto from "node:crypto";
+
 const BLOCK = 512;
 
 export class TarFormatError extends Error {
@@ -96,7 +98,19 @@ function padding(size: number): Buffer {
   return rem === 0 ? Buffer.alloc(0) : Buffer.alloc(BLOCK - rem, 0);
 }
 
-/** Header block(s) for a regular file of `size` bytes at archive path `p`. */
+/** The ustar name field: 100 BYTES, so a fallback name must be plain ASCII. */
+const NAME_FIELD_BYTES = 100;
+
+/**
+ * Header block(s) for a regular file of `size` bytes at archive path `p`.
+ *
+ * A path that does not fit ustar's name/prefix fields gets a pax `path`
+ * record, which is what every reader (ours included) uses. The names in the
+ * pax header and in the entry's own ustar header are then only fallbacks for
+ * readers without pax support, and they are fixed ASCII: a cut of `p` itself
+ * can exceed the 100-byte field as soon as it holds multibyte characters
+ * (40 CJK characters are 120 bytes).
+ */
 export function tarFileHeader(p: string, size: number, mtimeMs: number): Buffer {
   const mtime = Math.max(0, Math.floor(mtimeMs / 1000));
   const split = splitUstar(p);
@@ -105,13 +119,17 @@ export function tarFileHeader(p: string, size: number, mtimeMs: number): Buffer 
   }
   const pax = Buffer.from(paxRecord("path", p), "utf8");
   const paxHeader = rawHeader({
-    name: "PaxHeader/" + p.slice(-80).replace(/^\/+/, ""),
+    name: "PaxHeader/lisa-entry",
     size: pax.length,
     mtime,
     mode: 0o600,
     type: "x",
   });
-  const shortName = p.split("/").pop()!.slice(-100);
+  const base = p.split("/").pop()!;
+  const shortName =
+    /^[\x20-\x7e]+$/.test(base) && base.length <= NAME_FIELD_BYTES
+      ? base
+      : `lisa-long-name-${crypto.createHash("sha256").update(p).digest("hex").slice(0, 16)}`;
   return Buffer.concat([
     paxHeader,
     pax,

@@ -110,6 +110,34 @@ describe("tar writer/reader", () => {
     await assert.rejects(collect(many, { ...LIMITS, maxEntries: 1 }), /too many/);
   });
 
+  test("long multibyte names: header names stay within 100 bytes, the pax path carries the name", async () => {
+    const longBase =
+      "关于我们家庭旅行计划的详细笔记和行程安排以及预算清单整理版本第二稿最终版本确认.md";
+    assert.ok(Buffer.byteLength(longBase) > 100);
+    const deep = `kb/${"深层目录名称".repeat(4)}/${"子目录".repeat(12)}/笔记.md`; // prefix > 155 bytes
+    const paths = [`skills/notes/${longBase}`, deep];
+    const buf = archive(paths.map((p, i) => ({ path: p, data: `file ${i}` })));
+    for (const p of paths) {
+      const header = tarFileHeader(p, 1, 0);
+      assert.equal(header.length % 512, 0);
+      // Every ustar name field (pax header and entry header) is plain ASCII.
+      for (let off = 0; off < header.length; off += 512) {
+        const block = header.subarray(off, off + 512);
+        if (block[156] !== 0x78 /* x */ && block[156] !== 0x30 /* 0 */) continue;
+        const name = block.subarray(0, 100);
+        assert.ok(
+          name.every((b) => b < 0x80),
+          `ASCII name field for ${p}`,
+        );
+      }
+    }
+    const out = await collect(buf);
+    assert.deepEqual(
+      out.map((e) => [e.header.path, e.data.toString()]),
+      paths.map((p, i) => [p, `file ${i}`]),
+    );
+  });
+
   test("rejects a truncated archive", async () => {
     const buf = archive([{ path: "soul/x.md", data: "hello world" }]);
     await assert.rejects(collect(buf.subarray(0, 520)), /truncated/);
