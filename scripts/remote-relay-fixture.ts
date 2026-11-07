@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import http from "node:http";
 import crypto from "node:crypto";
+import type { Duplex } from "node:stream";
 import { RemoteHost } from "../src/remote/host.js";
 const sessionFile = process.env.LISA_RELAY_TEST_SESSION_FILE;
 if (!sessionFile)
@@ -15,9 +16,16 @@ fs.mkdirSync(".tmp/release", { recursive: true, mode: 0o700 });
 const home = fs.mkdtempSync(".tmp/release/live-host-");
 fs.mkdirSync(home, { recursive: true, mode: 0o700 });
 const control = crypto.randomBytes(24).toString("hex");
-let remote: RemoteHost;
-let lanUpgrade: ((...args: any[]) => void) | undefined;
-const api = http.createServer(async (req, res) => {
+const remote = new RemoteHost(home, 18789);
+type UpgradeHandler = (req: http.IncomingMessage, socket: Duplex, head: Buffer) => void;
+let lanUpgrade: UpgradeHandler | undefined;
+const api = http.createServer((req, res) => {
+  void handle(req, res).catch(() => {
+    if (!res.headersSent) res.writeHead(500);
+    res.end();
+  });
+});
+async function handle(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
   if (req.headers["x-fixture-control"] === control) {
     let raw = "";
     for await (const part of req) raw += part;
@@ -31,14 +39,16 @@ const api = http.createServer(async (req, res) => {
       }
       remote.approve(p.id, p.code);
     } else if (req.url === "/lan/off") {
-      for (const ws of (remote as any).lanSockets.clients) ws.terminate();
-      const lan = (remote as any).lan;
-      lanUpgrade ??= lan.listeners("upgrade")[0];
+      for (const ws of remote["lanSockets"]?.clients ?? []) ws.terminate();
+      const lan = remote["lan"];
+      if (!lan) throw new Error("LAN fixture is unavailable");
+      lanUpgrade ??= lan.listeners("upgrade")[0] as UpgradeHandler;
       lan.removeAllListeners("upgrade");
-      lan.on("upgrade", (_req: any, socket: any) => socket.destroy());
+      lan.on("upgrade", (_req: http.IncomingMessage, socket: Duplex) => socket.destroy());
     } else if (req.url === "/lan/on") {
       if (lanUpgrade) {
-        const lan = (remote as any).lan;
+        const lan = remote["lan"];
+        if (!lan) throw new Error("LAN fixture is unavailable");
         lan.removeAllListeners("upgrade");
         lan.on("upgrade", lanUpgrade);
         lanUpgrade = undefined;
@@ -54,9 +64,8 @@ const api = http.createServer(async (req, res) => {
   }
   res.setHeader("Content-Type", "application/json");
   res.end(JSON.stringify({ ok: true, remote: remote.remoteAddress(req) }));
-});
+}
 await new Promise<void>((r) => api.listen(18789, "127.0.0.1", r));
-remote = new RemoteHost(home, 18789);
 await remote.connect(base, body.token);
 for (let n = 0; n < 60 && !remote.status().online; n++)
   await new Promise((r) => setTimeout(r, 1000));
