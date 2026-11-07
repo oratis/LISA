@@ -164,6 +164,11 @@
                     "items": {
                       "type": "object"
                     }
+                  },
+                  "expressions": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Opt in to durable expression SSE events after a successful turn. Omitted/false receives a readable text fallback."
                   }
                 },
                 "additionalProperties": true
@@ -3087,6 +3092,121 @@
           }
         }
       }
+    },
+    "/api/expressions/preferences": {
+      "get": {
+        "operationId": "getExpressionPreferences",
+        "responses": {
+          "200": {
+            "description": "Expression preferences in the authenticated user home. Shared by Web, Mac and iOS.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpressionPreferences"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "setExpressionPreferences",
+        "description": "Same-origin JSON only. In the hosted edition only an account session may write; a shared web or device token gets 403 account_session_required.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpressionPreferences"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Expression preferences in the authenticated user home. Shared by Web, Mac and iOS.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpressionPreferences"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "415": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/history": {
+      "get": {
+        "operationId": "getChatHistory",
+        "description": "Paginated durable messages. An assistant message may carry expression metadata; its content always preserves readable fallback text. Display history expressions as stills until replayed. Unknown metadata must leave content readable.",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "in": "query",
+            "name": "sessionId",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Chronological page of messages, newest page first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "messages",
+                    "hasMore"
+                  ],
+                  "properties": {
+                    "hasMore": {
+                      "type": "boolean"
+                    },
+                    "messages": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "role": {
+                            "type": "string"
+                          },
+                          "content": {},
+                          "expression": {
+                            "$ref": "#/components/schemas/ConversationExpression"
+                          }
+                        },
+                        "additionalProperties": true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3486,10 +3606,13 @@
         "properties": {
           "type": {
             "type": "string"
+          },
+          "expression": {
+            "$ref": "#/components/schemas/ConversationExpression"
           }
         },
         "additionalProperties": true,
-        "description": "Open event envelope. Clients must ignore unknown types and additive fields; known v1 types include agent_session_update, claude_session_update, mood, chat_start, chat_delta, chat_end, idle_message, advisor_suggestions, screen_suggestion, sense_event, reflect_done, approval_requested, approval_resolved, task_updated, task_deleted, task_run_started, task_run_finished, task_result and error. GitHub local preview adds github_connection_changed (sessionId only)."
+        "description": "Open event envelope. Clients must ignore unknown types and additive fields; known v1 types include agent_session_update, claude_session_update, mood, chat_start, chat_delta, chat_end, idle_message, advisor_suggestions, screen_suggestion, sense_event, reflect_done, approval_requested, approval_resolved, task_updated, task_deleted, task_run_started, task_run_finished, task_result and error. GitHub local preview adds github_connection_changed (sessionId only). Chat opt-in also receives expression with a ConversationExpression payload before done. Unknown expression versions use readable history text; no remote asset URLs are accepted."
       },
       "LisaSession": {
         "type": "object",
@@ -7251,6 +7374,87 @@
             "type": "boolean"
           }
         }
+      },
+      "ExpressionPreferences": {
+        "type": "object",
+        "required": [
+          "display",
+          "frequency"
+        ],
+        "properties": {
+          "display": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "static",
+              "emoji",
+              "off"
+            ]
+          },
+          "frequency": {
+            "type": "string",
+            "enum": [
+              "restrained",
+              "lively"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "ConversationExpression": {
+        "type": "object",
+        "required": [
+          "version",
+          "id",
+          "assetId",
+          "format",
+          "alt",
+          "emoji",
+          "animation",
+          "poster",
+          "native",
+          "durationMs"
+        ],
+        "properties": {
+          "version": {
+            "const": 1
+          },
+          "id": {
+            "type": "string"
+          },
+          "assetId": {
+            "type": "string",
+            "description": "Allowlisted core portrait or sticker ID."
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "animated",
+              "static",
+              "emoji"
+            ]
+          },
+          "alt": {
+            "type": "string"
+          },
+          "emoji": {
+            "type": "string"
+          },
+          "animation": {
+            "type": "string"
+          },
+          "poster": {
+            "type": "string"
+          },
+          "native": {
+            "type": "string"
+          },
+          "durationMs": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "additionalProperties": true
       }
     }
   }

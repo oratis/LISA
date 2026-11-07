@@ -212,7 +212,7 @@ struct ServerPortrait: View {
     }
 }
 
-private struct PortraitImage: UIViewRepresentable {
+struct PortraitImage: UIViewRepresentable {
     let image: UIImage
     let animation: UIImage?
     let playing: Bool

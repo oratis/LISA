@@ -25,6 +25,7 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                ExpressionSettingsSection()
                 Section {
                     Picker("Connect to", selection: Binding(
                         get: { app.connectionMode },

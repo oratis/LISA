@@ -1,3 +1,10 @@
+import { expressionTurn } from "../expressions/turn.js";
+import {
+  parseExpressionPreferences,
+  readExpressionPreferences,
+  writeExpressionPreferences,
+} from "../expressions/preferences.js";
+import { resolveExpression, expressionText } from "../expressions/catalog.js";
 import http from "node:http";
 import path from "node:path";
 import fs from "node:fs/promises";
@@ -3827,6 +3834,40 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       return;
     }
 
+    // Shared expression preferences use the authenticated request home. Writes
+    // follow the session-names trust shape: same-origin for everyone, a loopback
+    // Host for a loopback-trusted caller, and in the cloud only an account
+    // session — a shared web or device token never writes the operator's home.
+    if (url === "/api/expressions/preferences" && (req.method === "GET" || req.method === "PUT")) {
+      if (req.method === "GET") {
+        res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+        res.end(JSON.stringify(await readExpressionPreferences()));
+      } else {
+        const problem =
+          crossSiteProblem(req, !cloud && isLoopbackAddress(remoteAddr) && accountUid === null) ??
+          (cloud && !accountUid ? "account_session_required" : null);
+        if (problem) {
+          res.writeHead(403, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: problem }));
+          return;
+        }
+        const body = await readJsonBody(req, res, 4 * 1024);
+        if (!body) return;
+        let prefs;
+        try {
+          prefs = parseExpressionPreferences(body);
+        } catch {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "invalid_expression_preferences" }));
+          return;
+        }
+        const saved = await writeExpressionPreferences(prefs);
+        res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+        res.end(JSON.stringify(saved));
+      }
+      return;
+    }
+
     // Autonomy on/off — the "Proactive mode" master switch surfaced in the web
     // GUI + iOS as the Proactive toggle. GET reports it (any authed caller);
     // POST sets it. Unlike the control policy (loopback-only), this is allowed
@@ -4446,7 +4487,7 @@ self.addEventListener('fetch', (event) => {
       if (sid && /^[A-Za-z0-9_-]+$/.test(sid)) {
         try {
           const s = await SessionStore.open(sid);
-          const { messages, hasMore } = await s.readMessagePage(page, pageSize);
+          const { messages, hasMore } = await s.readMessagePage(page, pageSize, true);
           res.writeHead(200, { "content-type": "application/json" });
           res.end(JSON.stringify({ messages, hasMore, page }));
         } catch {
@@ -4457,7 +4498,11 @@ self.addEventListener('fetch', (event) => {
       }
       const runtime = await ctxForRequest();
       try {
-        const { messages, hasMore } = await runtime.value.session.readMessagePage(page, pageSize);
+        const { messages, hasMore } = await runtime.value.session.readMessagePage(
+          page,
+          pageSize,
+          true,
+        );
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ messages, hasMore, page }));
       } finally {
@@ -5209,6 +5254,7 @@ self.addEventListener('fetch', (event) => {
       let message: string;
       let files: Array<{ name: string; mediaType: string; data: string }> | undefined;
       let targetSessionId: string | undefined;
+      let expressionClient = false;
       try {
         // Every other endpoint guards its JSON.parse — this one used to be the
         // only one that didn't, and a malformed body left the socket hanging.
@@ -5216,7 +5262,9 @@ self.addEventListener('fetch', (event) => {
           message?: unknown;
           files?: Array<{ name: string; mediaType: string; data: string }>;
           sessionId?: unknown;
+          expressions?: unknown;
         };
+        expressionClient = parsed.expressions === true;
         if (typeof parsed.message !== "string" || !parsed.message.trim()) {
           throw new Error("missing message");
         }
@@ -5431,9 +5479,16 @@ self.addEventListener('fetch', (event) => {
           // Use the freshest cached prompt for this chat. If soul / skills /
           // memory changed since the previous chat, rebuildPrompt() picks it up.
           const fresh = await rebuildPrompt();
+          const expressionPrefs = await readExpressionPreferences();
+          const expressions = expressionTurn(
+            expressionPrefs,
+            (await chat.session.turnsSinceExpression()) + 1,
+            message,
+          );
+          const chatTools = [...runtimeTools, expressions.tool];
           const modelContext = selectWebModelContextForTurn({
             history: chat.history,
-            systemPrompt: fresh.text,
+            systemPrompt: fresh.text + expressions.prompt,
             text: message,
             files,
             budgetTokens: webContextBudgetTokens(),
@@ -5449,7 +5504,7 @@ self.addEventListener('fetch', (event) => {
             uid: scopedUid(),
             sandboxMode: chat.session.header.sandboxMode,
             workspaceRoot: process.cwd(),
-            tools: runtimeTools,
+            tools: chatTools,
             signal: AbortSignal.any([abort.signal, turnAbort.signal]),
             conversationId: chat.session.id,
             // Only a caller who could answer an approval gets owner defaults.
@@ -5461,8 +5516,8 @@ self.addEventListener('fetch', (event) => {
           });
           const result = await runAgent({
             provider: getProvider(),
-            systemPrompt: fresh.text + modelContext.systemSuffix,
-            tools: runtimeTools,
+            systemPrompt: fresh.text + modelContext.systemSuffix + expressions.prompt,
+            tools: chatTools,
             toolCtx: {
               cwd: process.cwd(),
               // Abort on server shutdown OR this client disconnecting (Stop).
@@ -5494,18 +5549,21 @@ self.addEventListener('fetch', (event) => {
                 : undefined,
             onEvent: (ev) => {
               wardenTurn?.observe(ev);
+              if (ev.type === "tool_call_end" && ev.isError && ev.toolName !== "reply_expression")
+                expressions.noteToolFailure();
               if (ev.type === "text_delta" && ev.text) {
                 anyText = true;
                 send({ type: "text", text: ev.text });
               }
-              if (ev.type === "tool_call_start") anyTool = true;
-              if (ev.type === "tool_call_start")
+              if (ev.type === "tool_call_start" && ev.toolName !== "reply_expression")
+                anyTool = true;
+              if (ev.type === "tool_call_start" && ev.toolName !== "reply_expression")
                 send({
                   type: "tool_start",
                   name: ev.toolName,
                   input: ev.toolInput,
                 });
-              if (ev.type === "tool_call_end")
+              if (ev.type === "tool_call_end" && ev.toolName !== "reply_expression")
                 send({
                   type: "tool_end",
                   name: ev.toolName,
@@ -5568,7 +5626,7 @@ self.addEventListener('fetch', (event) => {
               rebuild: async () => {
                 const next = await rebuildPrompt();
                 return {
-                  text: next.text + modelContext.systemSuffix,
+                  text: next.text + modelContext.systemSuffix + expressions.prompt,
                   fingerprint: next.fingerprint,
                 };
               },
@@ -5593,6 +5651,26 @@ self.addEventListener('fetch', (event) => {
             // balance, so it remains operator-funded but still audited.
             if (inferencePermit) await inferencePermit.settle("chat", usage);
             else await recordUsage("chat", activeModel, usage);
+          }
+          const queued = expressions.pending();
+          if (
+            queued &&
+            !errorSent &&
+            !turnAbort.signal.aborted &&
+            ["end_turn", "stop_sequence"].includes(result.stopReason)
+          ) {
+            // Re-read settings before commit: turning expressions off mid-turn wins.
+            const latest = await readExpressionPreferences();
+            if (latest.display !== "off" && !turnAbort.signal.aborted && !abort.signal.aborted) {
+              if (latest.display === "emoji") queued.format = "emoji";
+              else if (latest.display === "static" && queued.format !== "emoji")
+                queued.format = "static";
+              const expression = resolveExpression(queued)!;
+              chat.history.push(await chat.session.appendExpression(queued));
+              anyText = true;
+              if (expressionClient) send({ type: "expression", expression });
+              else send({ type: "text", text: "\n" + expressionText(expression) });
+            }
           }
           if (!anyText && !anyTool && !errorSent) send({ type: "empty" });
           send({ type: "done" });

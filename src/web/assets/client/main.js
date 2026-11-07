@@ -87,6 +87,18 @@ window.addEventListener('unhandledrejection', function (e) {
 // seam for the rest, not a claim that the whole UI is translated.
 const LISA_STRINGS = {
   en: {
+    "expressions.replay": "Replay",
+    "expressions.title": "Conversation expressions",
+    "expressions.frequency": "Expression frequency",
+    "expressions.note": "History stays still. Animations pause offscreen and follow Reduce Motion.",
+    "expressions.saved": "Saved",
+    "expressions.error": "Could not save. Try again.",
+    "expressions.auto": "Automatic",
+    "expressions.static": "Still stickers",
+    "expressions.emoji": "Emoji only",
+    "expressions.off": "Off",
+    "expressions.restrained": "Occasionally",
+    "expressions.lively": "More often",
     'pty.disabled': 'Interactive CLI agents are turned off on this Mac. Managed tasks remain available.',
     'pty.missing': 'This installation does not include interactive CLI support. Update Lisa to enable it.',
     "panel.loading": "Loading…",
@@ -296,6 +308,18 @@ const LISA_STRINGS = {
     'kbd.help': 'This list',
   },
   'zh-CN': {
+    "expressions.replay": "重播",
+    "expressions.title": "对话表情",
+    "expressions.frequency": "表情频率",
+    "expressions.note": "历史表情默认静态；切页、离屏会暂停，并遵循减少动态效果设置。",
+    "expressions.saved": "已保存",
+    "expressions.error": "保存失败，请重试。",
+    "expressions.auto": "自动",
+    "expressions.static": "仅静态",
+    "expressions.emoji": "仅 emoji",
+    "expressions.off": "关闭",
+    "expressions.restrained": "克制",
+    "expressions.lively": "活泼",
     'pty.disabled': '此 Mac 尚未开启交互式 CLI 代理，可以使用内置任务。',
     'pty.missing': '当前安装缺少交互式 CLI 支持，请更新 Lisa。',
     "panel.loading": "正在加载…",
@@ -1770,6 +1794,7 @@ function textOfMessage(msg) {
 function prependHistoryMessages(messages) {
   const fragment = document.createDocumentFragment();
   for (const msg of messages) {
+    if (msg.role === 'assistant' && msg.expression) { fragment.appendChild(window.LisaExpressions.create(msg.expression, false)); continue; }
     const text = textOfMessage(msg);
     if (!text) continue;
     // Idle "while you were away" notes are persisted as assistant messages with
@@ -2877,7 +2902,7 @@ async function runChat(message, filesToSend) {
     const res = await fetch('/chat', {
       method: 'POST',
       headers: {'content-type': 'application/json'},
-      body: JSON.stringify({message, files: filesToSend, sessionId: sid}),
+      body: JSON.stringify({message, files: filesToSend, sessionId: sid, expressions: true}),
     });
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
@@ -2933,6 +2958,11 @@ async function runChat(message, filesToSend) {
             }
             pendingTools.delete(ev.name);
           }
+        } else if (ev.type === 'expression') {
+          flushLisaRender();
+          if (ev.expression && !log.querySelector('[data-expression-id="' + CSS.escape(ev.expression.id) + '"]')) log.appendChild(window.LisaExpressions.create(ev.expression, true));
+          void window.LisaExpressions.refresh();
+          log.scrollTop = log.scrollHeight;
         } else if (ev.type === 'mood') {
           setMood(ev.slug);
         } else if (ev.type === 'error') {
@@ -5745,6 +5775,7 @@ if ('serviceWorker' in navigator) {
     html += '<div class="set-row"><div class="set-main"><div class="set-name">Anthropic Console</div><div class="set-sub">Manage billing &amp; keys</div></div><a class="set-chip" href="https://console.anthropic.com/" target="_blank" rel="noopener">open ↗</a></div>';
     html += '</div>';
     scroll.innerHTML = html;
+    void window.LisaExpressions.mountSettings(scroll);
 
     var pt = document.getElementById('setProactiveToggle');
     if (pt) {

@@ -85,6 +85,11 @@ export const HOME_ENTRIES: Readonly<Record<string, HomeEntryCoverage>> = {
   "current-mood.json": { forget: "not_scanned", what: "current mood and its origin label" },
   "import-backups": { forget: "not_scanned", what: "data backed up by `lisa import --replace`" },
 
+  "expression-preferences.json": {
+    forget: "no_user_text",
+    what: "conversation expression display and frequency preferences",
+  },
+
   // ── no user text ──
   reachout: { forget: "no_user_text", what: "reach-out settings and a ledger of hashes" },
   sovereignty: { forget: "no_user_text", what: "content-free audit of export/import/forget" },
