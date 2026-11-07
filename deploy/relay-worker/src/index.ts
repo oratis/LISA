@@ -43,7 +43,10 @@ async function authenticate(token: string, origin: string): Promise<Account | nu
   });
   if (!response.ok) {
     await response.body?.cancel();
-    return null;
+    if (response.status === 401 || response.status === 403) return null;
+    // Preserve retryability: 403 disables Mac remote access until explicit sign-in.
+    // An account-service outage/rate limit must never impersonate revoked consent.
+    throw new Error("account_service_unavailable");
   }
   const body = await response.json<{ signedIn?: boolean; uid?: string }>();
   return body.signedIn === true && typeof body.uid === "string" && body.uid === claims.uid

@@ -23,6 +23,7 @@ test(
   { timeout: 40_000 },
   async () => {
     let revoked = false;
+    let unavailable = false;
     const mf = new Miniflare(
       convertV4MiniflareOptions({
         modules: true,
@@ -33,6 +34,7 @@ test(
         bindings: { AUTH_ORIGIN: "https://account.example" },
         outboundService: async (request) => {
           assert.equal(request.url, "https://account.example/api/auth/me");
+          if (unavailable) return new MFResponse(null, { status: 503 });
           const value = request.headers.get("Authorization")!.slice(7);
           const claims = JSON.parse(Buffer.from(value.split(".")[1], "base64url").toString());
           return MFResponse.json({ signedIn: !revoked, uid: claims.uid });
@@ -46,6 +48,9 @@ test(
       });
     try {
       assert.equal((await call("macs", "bad")).status, 403);
+      unavailable = true;
+      assert.equal((await call("host", token("alice"), { Upgrade: "websocket" })).status, 503);
+      unavailable = false;
       assert.equal((await call("macs", token("alice", 1))).status, 403);
       assert.equal(
         (await call("macs", token("alice"), { Origin: "https://evil.example" })).status,
