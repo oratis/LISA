@@ -37,13 +37,21 @@ interface Pending extends Grant {
 interface Channel {
   send: (frame: unknown) => void;
   close: () => void;
+  /** Bytes queued on the socket carrying this channel (the relay uplink is shared). */
+  buffered: () => number;
   cipher?: LinkCipher;
   deviceId?: string;
   challenge?: string;
   used?: boolean;
   request?: http.ClientRequest;
   deadline: NodeJS.Timeout;
+  drain?: NodeJS.Timeout;
 }
+/** Per-transport cap, so idle LAN sockets can never starve the cloud route (or vice versa). */
+const MAX_CHANNELS = 64;
+/** Response bytes stop flowing into a socket above this queue and resume once it drains. */
+const HIGH_WATER = 1024 * 1024;
+const PAIRING_TTL = 10 * 60_000;
 
 export function cloudBase(raw: string): string {
   const url = new URL(raw);
@@ -81,6 +89,8 @@ export class RemoteHost {
   private failures = 0;
   private readonly bridgeSecret = crypto.randomBytes(32).toString("hex");
   private readonly pending = new Map<string, Pending>();
+  /** Requests the owner dismissed; a phone polling its pairing screen cannot re-raise them. */
+  private readonly dismissed = new Map<string, number>();
   private readonly channels = new Map<string, Channel>();
   private readonly requests = new Map<string, number>();
   private online = false;
@@ -189,6 +199,8 @@ export class RemoteHost {
     this.pending.delete(id);
   }
   revoke(id: string): void {
+    const pending = this.pending.get(id);
+    if (pending) this.dismissed.set(id, pending.expiresAt);
     this.pending.delete(id);
     if (this.stored) {
       this.stored.grants = this.stored.grants.filter((g) => g.id !== id);
@@ -223,6 +235,12 @@ export class RemoteHost {
   }
   private expirePending(): void {
     for (const [id, p] of this.pending) if (p.expiresAt < Date.now()) this.pending.delete(id);
+    for (const [id, until] of this.dismissed) if (until < Date.now()) this.dismissed.delete(id);
+  }
+  private channelCount(kind: "lan" | "cloud"): number {
+    let n = 0;
+    for (const id of this.channels.keys()) if (id.startsWith(`${kind}:`)) n++;
+    return n;
   }
   private async startLan(): Promise<void> {
     const generation = this.generation;
@@ -239,7 +257,7 @@ export class RemoteHost {
     this.lanSockets = wss;
     server.on("upgrade", (req, socket, head) => {
       socket.on("error", () => {});
-      if (req.url !== "/link" || req.headers.origin || this.channels.size >= 64) {
+      if (req.url !== "/link" || req.headers.origin || this.channelCount("lan") >= MAX_CHANNELS) {
         socket.destroy();
         return;
       }
@@ -250,6 +268,7 @@ export class RemoteHost {
           id,
           (frame) => sendFrame(ws, frame),
           () => ws.close(),
+          () => ws.bufferedAmount,
         );
         ws.on("message", (data) => {
           try {
@@ -349,6 +368,7 @@ export class RemoteHost {
             id,
             (payload) => sendFrame(ws, { type: "frame", channel: msg.channel, payload }),
             () => sendFrame(ws, { type: "close", channel: msg.channel }),
+            () => ws.bufferedAmount,
           );
         this.receive(id, msg.payload, true);
       } catch {
@@ -377,14 +397,20 @@ export class RemoteHost {
       this.reconnect.unref();
     });
   }
-  private newChannel(id: string, send: Channel["send"], close: Channel["close"]): void {
-    if (this.channels.size >= 64) {
+  private newChannel(
+    id: string,
+    send: Channel["send"],
+    close: Channel["close"],
+    buffered: Channel["buffered"],
+  ): void {
+    if (this.channelCount(id.startsWith("lan:") ? "lan" : "cloud") >= MAX_CHANNELS) {
       close();
       return;
     }
     this.channels.set(id, {
       send,
       close,
+      buffered,
       deadline: setTimeout(() => this.closeChannel(id), 10_000),
     });
   }
@@ -393,6 +419,7 @@ export class RemoteHost {
     if (!c) return;
     this.channels.delete(id);
     clearTimeout(c.deadline);
+    clearTimeout(c.drain);
     c.request?.destroy();
     c.close();
   }
@@ -413,7 +440,12 @@ export class RemoteHost {
         c.cipher = new LinkCipher(this.stored.identity, frame.publicKey, frame.salt, "host");
         const code = verificationCode(this.stored.identity.publicKey, frame.publicKey);
         this.expirePending();
-        if (!grant && frame.pair === true && !this.pending.has(c.deviceId)) {
+        if (
+          !grant &&
+          frame.pair === true &&
+          !this.pending.has(c.deviceId) &&
+          !this.dismissed.has(c.deviceId)
+        ) {
           if (this.pending.size >= 10) throw new Error();
           this.pending.set(c.deviceId, {
             id: c.deviceId,
@@ -421,7 +453,7 @@ export class RemoteHost {
             name: typeof frame.name === "string" ? frame.name.slice(0, 80) : "Lisa Pocket",
             code,
             createdAt: Date.now(),
-            expiresAt: Date.now() + 10 * 60_000,
+            expiresAt: Date.now() + PAIRING_TTL,
           });
         }
         c.challenge = crypto.randomBytes(32).toString("base64");
@@ -509,13 +541,33 @@ export class RemoteHost {
           if (typeof value === "string") headers[name] = value;
         }
         send({ type: "headers", status: response.statusCode, headers });
+        // Flow control: loopback produces bytes far faster than a phone or relay
+        // drains them. Queue frames per channel, write only while the carrying
+        // socket is below HIGH_WATER, and pause the local response meanwhile, so
+        // a large body never trips sendFrame's overflow guard on the shared uplink.
+        const queue: Buffer[] = [];
+        let ended = false;
+        const flush = () => {
+          c.drain = undefined;
+          while (queue.length && c.buffered() < HIGH_WATER && this.channels.get(id) === c)
+            send({ type: "chunk", body: queue.shift()!.toString("base64") });
+          if (this.channels.get(id) !== c) return;
+          if (queue.length) {
+            response.pause();
+            c.drain = setTimeout(flush, 20);
+          } else if (ended) {
+            send({ type: "end" });
+            this.closeChannel(id);
+          } else response.resume();
+        };
         response.on("data", (chunk: Buffer) => {
           for (let i = 0; i < chunk.length; i += 32 * 1024)
-            send({ type: "chunk", body: chunk.subarray(i, i + 32 * 1024).toString("base64") });
+            queue.push(chunk.subarray(i, i + 32 * 1024));
+          if (!c.drain) flush();
         });
         response.on("end", () => {
-          send({ type: "end" });
-          this.closeChannel(id);
+          ended = true;
+          if (!c.drain) flush();
         });
         response.on("error", () => this.closeChannel(id));
       },
