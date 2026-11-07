@@ -1,9 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  CLAUDE_CODE_RECIPIENT,
+  CODEX_RECIPIENT,
   WEB_FETCH_RECIPIENT,
   WEB_SEARCH_RECIPIENT,
   aiRecipients,
+  ptyAgentRecipients,
   webToolRecipients,
 } from "./ai-disclosure.js";
 
@@ -91,4 +94,37 @@ test("disclosure and capability agree: listed iff the cloud chat profile has the
     if (before === undefined) delete process.env.LISA_CLOUD_WEB_TOOLS;
     else process.env.LISA_CLOUD_WEB_TOOLS = before;
   }
+});
+
+test("PTY agents off (the default): Claude Code and Codex are not disclosed", () => {
+  // Only the exact value ptyEnabled() accepts turns them on, so the disclosure
+  // never names a CLI the server would refuse to start (503).
+  for (const value of [undefined, "", "0", "true", "on", "yes"]) {
+    const env = { LISA_PTY_AGENTS: value };
+    assert.deepEqual(ptyAgentRecipients(env), [], String(value));
+    assert.deepEqual(aiRecipients("claude-sonnet-4-6", env), ["Anthropic", ...WEB].sort());
+  }
+});
+
+test("PTY agents on: Claude Code and Codex are named alongside Lisa's own provider", () => {
+  const env = { LISA_PTY_AGENTS: "1" };
+  assert.deepEqual(ptyAgentRecipients(env), [CLAUDE_CODE_RECIPIENT, CODEX_RECIPIENT]);
+  // Named separately even when Lisa's model is Anthropic too: the CLI sends under
+  // its own sign-in, not the provider key the rest of the list describes.
+  assert.deepEqual(
+    aiRecipients("claude-sonnet-4-6", env),
+    ["Anthropic", CLAUDE_CODE_RECIPIENT, CODEX_RECIPIENT, ...WEB].sort(),
+  );
+  assert.deepEqual(
+    aiRecipients("gemini-2.5-flash", { ...env, LISA_PROVIDER: "gemini" }),
+    [CLAUDE_CODE_RECIPIENT, CODEX_RECIPIENT, "Google Gemini", ...WEB].sort(),
+  );
+});
+
+test("hosted edition never discloses the CLIs: it denies the agent routes outright", async () => {
+  const { isCloudDeniedRoute } = await import("./capabilities.js");
+  const env = { LISA_EDITION: "cloud", LISA_PTY_AGENTS: "1" };
+  assert.equal(isCloudDeniedRoute("/api/agents/pty/start"), true);
+  assert.deepEqual(ptyAgentRecipients(env), []);
+  assert.deepEqual(aiRecipients("gemini-2.5-flash", env), ["Google Gemini"]);
 });

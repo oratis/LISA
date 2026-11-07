@@ -1,3 +1,4 @@
+import { ptyEnabled } from "../agents/pty.js";
 import { isCloud } from "../edition.js";
 import { OPENAI_COMPAT_PRESETS } from "../providers/registry.js";
 import { cloudWebToolsEnabled } from "../tools/cloud_web.js";
@@ -25,6 +26,30 @@ export function webToolRecipients(env: NodeJS.ProcessEnv = process.env): string[
   // variable unset the list is exactly what it was before the tools existed.
   if (isCloud(env) && !cloudWebToolsEnabled(env)) return [];
   return [WEB_SEARCH_RECIPIENT, WEB_FETCH_RECIPIENT];
+}
+
+/**
+ * The coding CLIs a phone can start or adopt from the Agents tab once PTY agents
+ * are on (`POST /api/agents/pty/start`). They are not Lisa's provider: each
+ * sends the task, its follow-ups and whatever it reads in the project to the
+ * service its own sign-in on the Mac uses, which `LISA_MODEL` and the provider
+ * keys below say nothing about. So they are named on their own.
+ *
+ * Off (the default) or on the hosted edition — which denies `/api/agents/` to
+ * every caller (src/web/capabilities.ts) — the list is unchanged, so no
+ * existing consent is invalidated. Switching them on re-prompts, the same rule
+ * as the web tools above.
+ */
+// Vendor only "by default": either CLI can be pointed at Bedrock, Vertex or a
+// custom base URL in its own settings, which this process never sees.
+export const CLAUDE_CODE_RECIPIENT =
+  "Claude Code (its own sign-in on your Mac; Anthropic by default)";
+export const CODEX_RECIPIENT = "Codex CLI (its own sign-in on your Mac; OpenAI by default)";
+
+/** PTY-agent recipients for the server this process runs. */
+export function ptyAgentRecipients(env: NodeJS.ProcessEnv = process.env): string[] {
+  if (isCloud(env) || !ptyEnabled(env)) return [];
+  return [CLAUDE_CODE_RECIPIENT, CODEX_RECIPIENT];
 }
 
 /** Public recipient names only. Never serialize a configured URL's credentials,
@@ -65,5 +90,6 @@ export function aiRecipients(model: string, env: NodeJS.ProcessEnv = process.env
   }
   if (env.LISA_MANAGED_SESSION) recipients.add("LISA Cloud");
   for (const recipient of webToolRecipients(env)) recipients.add(recipient);
+  for (const recipient of ptyAgentRecipients(env)) recipients.add(recipient);
   return [...recipients].sort();
 }

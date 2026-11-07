@@ -396,6 +396,13 @@ final class LisaClient {
         guard (200..<300).contains(code) else { throw LisaError.http(code) }
     }
 
+    /// This connection's AI recipients (`GET /api/auth/config`), fetched over the
+    /// same transport as the send it gates — a relay-paired Mac has no base URL
+    /// of its own (`<id>.lisa.invalid`), so the static `authConfig` can't reach it.
+    func aiDisclosure() async throws -> AuthConfig.DataProcessing? {
+        try await decode("/api/auth/config", as: AuthConfig.self).dataProcessing
+    }
+
     // ── read ──
     func sessions() async throws -> [AgentSession] { try await decode("/api/agents/sessions", as: SessionsResponse.self).sessions }
     /// Lisa's own chat sessions — the roster's LISA group (v1.1).

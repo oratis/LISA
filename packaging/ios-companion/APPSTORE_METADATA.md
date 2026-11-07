@@ -1,5 +1,7 @@
 # Lisa Pocket — App Store metadata (2026-10-07)
 
+> 2026-11-07: the description's data paragraph and review note 6 now describe agent-task consent, which ships in the build after 1.3 (1.3 asks only before chat). Use this text from that build on.
+
 This replaces the obsolete “thin client / collects nothing” listing. Bundle ID stays `ai.meetlisa.main`. The independent LISA brand belongs to the open-source project at https://github.com/oratis/LISA; no affiliation with Meta Muse or other similarly named apps is claimed.
 
 | Field | Value |
@@ -30,7 +32,7 @@ TWO SAVED CONNECTIONS
 Switch between Cloud and My Mac without re-entering the other connection. Each instance has its own conversations and assistant data; switching does not automatically copy them.
 
 YOUR DATA AND CHOICES
-Before sending a chat message, the app explains which configured AI services can process your message and relevant context and asks for permission. Cancel keeps your draft unsent. Withdraw AI consent in Settings to stop an active chat and require permission again. Local mode may also use a remote AI provider, depending on your setup. Read the privacy policy, unpair your Mac, or delete your cloud account from Settings. For adults 18 and older. AI can make mistakes; review important results.
+Before sending a chat message, or a task or follow-up to an agent on your Mac, the app explains which configured AI services can process it and asks for permission; chat and agent tasks ask separately. Cancel keeps your draft or task unsent. Withdraw AI consent in Settings to stop an active request and require permission again. Local mode may also use a remote AI provider, depending on your setup. Read the privacy policy, unpair your Mac, or delete your cloud account from Settings. For adults 18 and older. AI can make mistakes; review important results.
 
 Learn more at meetlisa.ai.
 
@@ -41,7 +43,7 @@ Learn more at meetlisa.ai.
 3. Home offers editable daily-planning, writing and goal-planning starters. Settings shows which connection is active.
 4. To inspect in-app purchases, open Settings → LISA account → Add credits. Starter, Plus and Max packs are consumable credits. This entry does not depend on the allowance request succeeding. Refresh credit balance reads the remaining balance from the LISA account without Apple authentication. Unused credits remain with that account across devices/reinstalls; spent consumables are not restored. Unfinished verified transactions reconcile automatically. The review account must be sandbox-allowlisted on the backend before submission.
 5. Account deletion: Settings → LISA account → Delete account → Delete account and data. Successful deletion removes the cloud account and its data and signs out. Apple authorization is revoked when a saved authorization token is available; earlier Apple sign-ins display the official manual unlinking instructions after Lisa data is deleted. A failed cleanup remains retryable. Mac unpairing is separate.
-6. My Mac features require the user's own reachable Mac. In cloud mode this tab explains the optional setup; it does not attempt unsupported host-control APIs.
+6. My Mac features require the user's own reachable Mac. In cloud mode this tab explains the optional setup; it does not attempt unsupported host-control APIs. With a paired Mac, starting a task from Agents → +, sending an agent a follow-up, or Adopt shows the same AI data sharing sheet, worded for agent tasks, before anything is sent; chat permission alone does not cover it. When the Mac runs coding agents (LISA_PTY_AGENTS=1), Claude Code and Codex are listed as separate recipients.
 
 ## Submission gates
 

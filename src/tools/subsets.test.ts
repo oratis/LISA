@@ -1,13 +1,18 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import type { ToolDefinition } from "../types.js";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   AUTONOMOUS_BLOCKED_TOOL_NAMES,
   CLOUD_ALLOWED_TOOL_NAMES,
+  MANAGED_BLOCKED_TOOL_NAMES,
   REMOTE_BLOCKED_TOOL_NAMES,
   autonomousSubset,
   cloudSafeSubset,
   desireReviewSubset,
+  managedAgentSubset,
   remoteSafeSubset,
 } from "./registry.js";
 
@@ -150,6 +155,51 @@ describe("remoteSafeSubset — IM-channel toolset", () => {
     ]) {
       assert.equal(names.has(kept), true, `${kept} must stay available`);
     }
+  });
+});
+
+describe("managedAgentSubset — a delegated task stays with the consented recipients", () => {
+  test("no tool that hands the task to another agent or AI survives", () => {
+    const names = new Set(managedAgentSubset(SAMPLE).map((t) => t.name));
+    for (const blocked of [
+      "dispatch_agent",
+      "signal_agent",
+      "run_on_plan",
+      "compare_agents",
+      "scheduled_dispatch",
+      "takoapi",
+      "task",
+    ]) {
+      assert.equal(MANAGED_BLOCKED_TOOL_NAMES.has(blocked), true, blocked);
+      assert.equal(names.has(blocked), false, `${blocked} must be blocked`);
+    }
+  });
+
+  test("the agent keeps its working tools (mutating ones still pause for approval)", () => {
+    const names = new Set(managedAgentSubset(SAMPLE).map((t) => t.name));
+    for (const kept of ["read", "grep", "ls", "write", "edit", "bash", "memory", "web_search"]) {
+      assert.equal(names.has(kept), true, `${kept} must stay available`);
+    }
+  });
+
+  test("every builtin that launches or schedules a CLI agent is blocked", () => {
+    // Fails closed for a future launcher: any tool source that calls the shared
+    // launch or schedule path must have its tool name on the block-list.
+    const dir = path.dirname(fileURLToPath(import.meta.url));
+    const launchers: string[] = [];
+    for (const file of fs.readdirSync(dir)) {
+      if (!file.endsWith(".ts") || file.endsWith(".test.ts")) continue;
+      const source = fs.readFileSync(path.join(dir, file), "utf8");
+      if (!/\b(?:launchAgent|addScheduled)\(/.test(source)) continue;
+      for (const m of source.matchAll(/\bname:\s*"([a-z_]+)"/g)) launchers.push(m[1]);
+    }
+    assert.deepEqual([...new Set(launchers)].sort(), [
+      "compare_agents",
+      "dispatch_agent",
+      "run_on_plan",
+      "scheduled_dispatch",
+    ]);
+    for (const name of launchers) assert.equal(MANAGED_BLOCKED_TOOL_NAMES.has(name), true, name);
   });
 });
 
