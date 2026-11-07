@@ -4,6 +4,10 @@
  * tool appends `- entry` bullets — so this module parses them into entries
  * without imposing a schema, and writes back only the block that changed.
  *
+ * A nested list item (an indented `- ` line inside a bullet) is an entry of
+ * its own, so deleting or forgetting one never takes its siblings or its
+ * parent with it; any other indented line continues the bullet above it.
+ *
  * Entry ids are content-addressed: `<m|u>_<hash(store, kind, text, ordinal)>`
  * where `ordinal` counts earlier entries with the identical text (duplicates
  * stay distinguishable). Editing or deleting one entry never changes another
@@ -11,8 +15,9 @@
  * resolving — a natural optimistic-concurrency check (404, not a lost write).
  *
  * Every mutation runs under the same lock the memory tool takes
- * (store.ts withMemoryLock), writes atomically, respects the byte caps, and
- * leaves one content-free audit line.
+ * (store.ts withMemoryLock), writes atomically, respects the byte caps (on
+ * growth: an over-cap file can always shrink), and leaves one content-free
+ * audit line.
  */
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
@@ -76,9 +81,15 @@ interface Block {
   text: string;
   /** Heading level (number of `#`), heading blocks only. */
   level?: number;
+  /** Leading whitespace of a nested list item (bullet blocks only). */
+  indent?: string;
 }
 
 const BULLET = /^[-*+][ \t]+/;
+/** An indented list item: a nested bullet of the list above it. */
+const NESTED_BULLET = /^([ \t]+)[-*+][ \t]+/;
+/** A bullet marker at any indent (for taking it off an entry's first line). */
+const ANY_BULLET = /^[ \t]*[-*+][ \t]+/;
 const HEADING = /^(#{1,6})[ \t]+/;
 
 function splitLines(content: string): string[] {
@@ -99,7 +110,12 @@ function parseBlocks(content: string): Block[] {
       continue;
     }
     if (/^[ \t]/.test(line) && prev?.kind === "bullet") {
-      prev.lines.push(line);
+      const nested = NESTED_BULLET.exec(line);
+      if (nested) {
+        blocks.push({ kind: "bullet", lines: [line], start: i, text: "", indent: nested[1] });
+      } else {
+        prev.lines.push(line);
+      }
       continue;
     }
     const bullet = BULLET.exec(line);
@@ -123,7 +139,9 @@ function parseBlocks(content: string): Block[] {
   for (const b of blocks) {
     if (b.kind !== "bullet") continue;
     const [first, ...rest] = b.lines;
-    b.text = [first!.replace(BULLET, "").trimEnd(), ...rest.map((l) => l.trim())].join("\n").trim();
+    b.text = [first!.replace(ANY_BULLET, "").trimEnd(), ...rest.map((l) => l.trim())]
+      .join("\n")
+      .trim();
   }
   return blocks;
 }
@@ -237,13 +255,14 @@ export function normalizeEntryText(raw: unknown, kind: MemoryEntryKind = "bullet
   return text;
 }
 
-function renderBlock(kind: MemoryEntryKind, text: string, level = 2): string[] {
+function renderBlock(kind: MemoryEntryKind, text: string, level = 2, indent = ""): string[] {
   if (kind === "heading") return [`${"#".repeat(level)} ${text}`];
   if (kind === "text") return [text];
   const [first, ...rest] = text.split("\n");
-  return [`- ${first}`, ...rest.map((l) => (l.trim() ? `  ${l.trim()}` : ""))].filter(
-    (l, i, arr) => !(l === "" && arr[i - 1] === ""),
-  );
+  return [
+    `${indent}- ${first}`,
+    ...rest.map((l) => (l.trim() ? `${indent}  ${l.trim()}` : "")),
+  ].filter((l, i, arr) => !(l === "" && arr[i - 1] === ""));
 }
 
 function serialize(blocks: Block[]): string {
@@ -306,7 +325,7 @@ export async function appendMemoryEntry(
     const next = `${current}${sep}${renderBlock("bullet", text).join("\n")}`;
     await writeStore(store, next);
     const entry = locate(store, next, text, "bullet")!;
-    await appendSovereigntyAudit({ action: "memory.append", store, id: entry.id });
+    await appendSovereigntyAudit({ action: "memory.append", store });
     return entry;
   });
 }
@@ -318,7 +337,7 @@ export async function replaceMemoryEntry(id: string, rawText: unknown): Promise<
     const { block } = findEntry(store, blocks, id);
     const kind = block.kind as MemoryEntryKind;
     const text = normalizeEntryText(rawText, kind);
-    block.lines = renderBlock(kind, text, block.level);
+    block.lines = renderBlock(kind, text, block.level, block.indent);
     const next = serialize(blocks);
     await writeStore(store, next);
     const reparsed = indexEntries(store, parseBlocks(next));
@@ -326,7 +345,7 @@ export async function replaceMemoryEntry(id: string, rawText: unknown): Promise<
     const entry =
       reparsed.find((e) => e.block.start === block.start)?.entry ??
       locate(store, next, text, kind)!;
-    await appendSovereigntyAudit({ action: "memory.replace", store, id, newId: entry.id });
+    await appendSovereigntyAudit({ action: "memory.replace", store });
     return entry;
   });
 }
@@ -338,7 +357,7 @@ export async function deleteMemoryEntry(id: string): Promise<void> {
     const { block } = findEntry(store, blocks, id);
     const next = blocks.filter((b) => b !== block);
     await writeStore(store, serialize(next));
-    await appendSovereigntyAudit({ action: "memory.delete", store, id });
+    await appendSovereigntyAudit({ action: "memory.delete", store });
   });
 }
 
@@ -370,7 +389,7 @@ export async function rewriteMemoryEntries(
       if (next !== entry.text) {
         changed++;
         const text = entry.kind === "bullet" ? next : next.replace(/\n/g, " ");
-        block.lines = renderBlock(entry.kind, text, block.level);
+        block.lines = renderBlock(entry.kind, text, block.level, block.indent);
       }
       kept.push(block);
     }

@@ -1,3 +1,4 @@
+import fs from "node:fs/promises";
 import path from "node:path";
 import { atomicWrite, ensureDir, readTextOrEmpty } from "../fs-utils.js";
 import { memoryDir, memoryFile, userFile } from "../paths.js";
@@ -42,10 +43,26 @@ export async function readMemory(store: MemoryStore): Promise<string> {
   return await readTextOrEmpty(fileFor(store));
 }
 
+async function fileBytes(file: string): Promise<number> {
+  try {
+    return (await fs.stat(file)).size;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Write a store, enforcing its byte cap on GROWTH only. A file can already
+ * be over its cap (a hand edit, an import, an older version); a write that
+ * does not make it bigger — a delete, a forget, a shorter replacement — must
+ * still go through, or the person could never shrink it. Callers hold
+ * withMemoryLock, so the size read here is the file being replaced.
+ */
 export async function writeMemory(store: MemoryStore, content: string): Promise<void> {
   await ensureDir(memoryDir());
   const trimmed = content.replace(/\s+$/g, "") + "\n";
-  if (Buffer.byteLength(trimmed, "utf8") > MAX_BYTES[store]) {
+  const bytes = Buffer.byteLength(trimmed, "utf8");
+  if (bytes > MAX_BYTES[store] && bytes > (await fileBytes(fileFor(store)))) {
     throw new Error(`memory "${store}" exceeds ${MAX_BYTES[store]} bytes. Trim or split entries.`);
   }
   await atomicWrite(fileFor(store), trimmed);

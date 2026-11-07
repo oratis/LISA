@@ -67,6 +67,26 @@ describe("memory entries parsing", () => {
       );
   });
 
+  test("a nested list item is its own entry; other indented lines continue the bullet", () => {
+    const md = [
+      "- Friends:",
+      "  - Ann",
+      "    lives at 5 Elm St",
+      "  * Bob",
+      "- next",
+      "  wrapped text",
+    ].join("\n");
+    assert.deepEqual(
+      parseMemoryEntries("memory", md).map((e) => [e.kind, e.text, e.line]),
+      [
+        ["bullet", "Friends:", 1],
+        ["bullet", "Ann\nlives at 5 Elm St", 2],
+        ["bullet", "Bob", 4],
+        ["bullet", "next\nwrapped text", 5],
+      ],
+    );
+  });
+
   test("duplicate entries get distinct ids by ordinal", () => {
     const entries = parseMemoryEntries("user", "- same\n- same\n");
     assert.equal(entries.length, 2);
@@ -107,6 +127,9 @@ describe("memory entries edit/delete", () => {
       ["memory.replace", "memory.append", "memory.delete"],
     );
     assert.ok(!audit.includes("edited") && !audit.includes("appended"), "audit holds no content");
+    // Nor entry ids: an id is an unsalted hash of the text, so it could
+    // confirm a guess of what a deleted entry said.
+    for (const id of [edit.id, keep.id, replaced.id, added.id]) assert.ok(!audit.includes(id), id);
   });
 
   test("headings keep their level, prose stays single-line, bullets may span lines", async () => {
@@ -128,6 +151,47 @@ describe("memory entries edit/delete", () => {
       appendMemoryEntry("memory", "bad\u0007bell"),
       (e: MemoryEditError) => e.code === "invalid_entry",
     );
+  });
+
+  test("a nested entry is edited in place and deleted without its siblings", async () => {
+    writeStoreFile("MEMORY.md", "- Friends:\n  - Ann\n  - Bob\n  - Carol\n- tea\n");
+    const { entries } = await readMemoryStore("memory");
+    const bob = entries.find((e) => e.text === "Bob")!;
+    const ann = entries.find((e) => e.text === "Ann")!;
+    await replaceMemoryEntry(bob.id, "Robert\nthe dentist");
+    assert.equal(
+      readStoreFile("MEMORY.md"),
+      "- Friends:\n  - Ann\n  - Robert\n    the dentist\n  - Carol\n- tea\n",
+    );
+    await deleteMemoryEntry(ann.id);
+    assert.equal(
+      readStoreFile("MEMORY.md"),
+      "- Friends:\n  - Robert\n    the dentist\n  - Carol\n- tea\n",
+    );
+  });
+
+  test("an over-cap file shrinks even when it stays over the cap; it never grows", async () => {
+    const big = (c: string) => `- ${c.repeat(1100)}`;
+    writeStoreFile("USER.md", `${big("a")}\n${big("b")}\n- small\n`);
+    const { entries } = await readMemoryStore("user");
+    const [a, , small] = entries;
+    // Still 2.2 KB afterwards — over the 2 KB cap, and allowed: it shrank.
+    await deleteMemoryEntry(small!.id);
+    assert.equal(readStoreFile("USER.md"), `${big("a")}\n${big("b")}\n`);
+    await assert.rejects(
+      replaceMemoryEntry(a!.id, "a".repeat(1200)),
+      (e: MemoryEditError) => e.code === "memory_full",
+    );
+    const shorter = await replaceMemoryEntry(a!.id, "a".repeat(1000));
+    assert.equal(shorter.text, "a".repeat(1000));
+    await assert.rejects(
+      appendMemoryEntry("user", "more"),
+      (e: MemoryEditError) => e.code === "memory_full",
+    );
+    // The memory tool's own writes follow the same rule.
+    const { removeFromMemory } = await import("./store.js");
+    await removeFromMemory("user", "aaaa");
+    assert.equal(readStoreFile("USER.md"), `${big("b")}\n`);
   });
 
   test("byte caps are enforced and an oversize file can still shrink", async () => {
