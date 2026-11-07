@@ -120,7 +120,11 @@ test.describe("session names and image attachments", () => {
       )
       .toBe(128);
     await expect(page.locator("#input")).toHaveValue("Please review these images");
+    // One object URL per image, reused across re-renders (no base64 data: URL).
+    const thumb = await page.locator(".attach-image img").getAttribute("src");
+    expect(thumb).toMatch(/^blob:/);
     await page.getByRole("button", { name: "Preview pasted.webp" }).click();
+    await expect(page.locator(".attachment-viewer img")).toHaveAttribute("src", thumb!);
     await expect(page.locator(".attachment-viewer img")).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(page.locator(".attachment-viewer")).toHaveCount(0);
@@ -129,7 +133,23 @@ test.describe("session names and image attachments", () => {
       { name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("notes") },
     ]);
     await expect(page.locator(".attach-chip")).toHaveCount(3);
+    await expect(page.locator(".attach-image img").first()).toHaveAttribute("src", thumb!);
+    const removed = await page.locator(".attach-image img").nth(1).getAttribute("src");
     await page.getByRole("button", { name: "Remove second.webp" }).click();
+    // The removed image's URL is released; the one still attached is not.
+    const probe = (url: string | null) =>
+      page.evaluate(
+        (src) =>
+          new Promise<string>((resolve) => {
+            const img = new Image();
+            img.onload = () => resolve("alive");
+            img.onerror = () => resolve("revoked");
+            img.src = src!;
+          }),
+        url,
+      );
+    expect(await probe(removed)).toBe("revoked");
+    expect(await probe(thumb)).toBe("alive");
     await expect(page.locator(".attach-image")).toHaveCount(1);
     await expect(page.locator(".attach-chip")).toHaveCount(2);
     const sent = page.waitForRequest(

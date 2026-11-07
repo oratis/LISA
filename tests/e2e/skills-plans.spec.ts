@@ -61,16 +61,22 @@ test.describe("skills and coding plans", () => {
     test(`${panel} reports errors and retries without displaying a false empty state`, async ({
       page,
     }) => {
-      const endpoint = "/api/" + panel.toLowerCase();
+      // Memory loads the editable entries first and falls back to the
+      // read-only view; both must fail for the error state to show.
+      const endpoints =
+        panel === "Memory"
+          ? ["/api/memory/entries", "/api/memory"]
+          : ["/api/" + panel.toLowerCase()];
       let injectedFailures = 0;
-      await page.route("**" + endpoint, (route) => {
-        injectedFailures++;
-        return route.fulfill({
-          status: 503,
-          contentType: "application/json",
-          body: '{"error":"offline fixture"}',
+      for (const endpoint of endpoints)
+        await page.route("**" + endpoint, (route) => {
+          injectedFailures++;
+          return route.fulfill({
+            status: 503,
+            contentType: "application/json",
+            body: '{"error":"offline fixture"}',
+          });
         });
-      });
       if (panel === "Memory") {
         await fs.mkdir(path.join(lisa.home, "memory"), { recursive: true });
         await fs.writeFile(path.join(lisa.home, "memory/USER.md"), "Preserved audit memory");
@@ -80,7 +86,7 @@ test.describe("skills and coding plans", () => {
       await expect(page.locator("#modalBody [role=alert]")).toContainText("Could not load");
       expect(injectedFailures).toBeGreaterThan(0);
       await expect(page.locator("#modalBody")).not.toContainText("(empty)");
-      await page.unroute("**" + endpoint);
+      for (const endpoint of endpoints) await page.unroute("**" + endpoint);
       await page.getByRole("button", { name: "Retry", exact: true }).click();
       await expect(page.locator("#modalBody [role=alert]")).toHaveCount(0);
       if (panel === "Memory")
