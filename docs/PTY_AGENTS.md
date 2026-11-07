@@ -94,6 +94,12 @@ adds the `codex resume <id>` form.
 
 Binary resolution is env-overridable: `LISA_PTY_CLAUDE_CMD`, `LISA_PTY_CODEX_CMD`.
 
+With the flag on, the AI disclosure at `GET /api/auth/config` (`dataProcessing.recipients`)
+also names Claude Code and Codex, because they send under their own sign-in rather than
+LISA's provider (`ptyAgentRecipients` in `src/web/ai-disclosure.ts`). Lisa Pocket binds its
+consent to that exact list, so turning the flag on or off asks the phone for permission again
+before the next chat message or agent task.
+
 ## Adopt-at-launch from your terminal (`lisa agents pty`)
 
 The honest way to "control a CLI session LISA didn't start": don't try to attach

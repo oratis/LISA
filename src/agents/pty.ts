@@ -89,8 +89,8 @@ export interface PtyModuleLike {
 }
 
 /** Is the PTY-agent spike enabled? Off unless LISA_PTY_AGENTS=1. */
-export function ptyEnabled(): boolean {
-  return process.env.LISA_PTY_AGENTS === "1";
+export function ptyEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.LISA_PTY_AGENTS === "1";
 }
 
 /**
