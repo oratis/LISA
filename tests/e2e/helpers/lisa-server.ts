@@ -46,6 +46,8 @@ export interface LisaInstance {
   baseURL: string;
   home: string;
   stub: StubServer | null;
+  /** Restart the process with the same home, port and model stub. */
+  restart(): Promise<void>;
   stop(): Promise<void>;
 }
 
@@ -140,31 +142,46 @@ export async function startLisa(opts: StartOptions): Promise<LisaInstance> {
   if (stubServer) env.ANTHROPIC_BASE_URL = stubServer.baseURL;
 
   Object.assign(env, opts.env);
-  const child = spawn(
-    process.execPath,
-    [
-      path.join(REPO_ROOT, "dist", "cli.js"),
-      "serve",
-      "--web",
-      "--port",
-      String(port),
-      "--host",
-      "127.0.0.1",
-      "--no-idle",
-      "--no-reflect",
-      "--no-mcp",
-      "--no-plugins",
-    ],
-    { cwd: opts.cwd ?? REPO_ROOT, env, stdio: ["ignore", "pipe", "pipe"] },
-  );
+  const launch = () => {
+    const child = spawn(
+      process.execPath,
+      [
+        path.join(REPO_ROOT, "dist", "cli.js"),
+        "serve",
+        "--web",
+        "--port",
+        String(port),
+        "--host",
+        "127.0.0.1",
+        "--no-idle",
+        "--no-reflect",
+        "--no-mcp",
+        "--no-plugins",
+      ],
+      { cwd: opts.cwd ?? REPO_ROOT, env, stdio: ["ignore", "pipe", "pipe"] },
+    );
+    child.stdout?.on("data", record);
+    child.stderr?.on("data", record);
+    return child;
+  };
 
   let output = "";
   const record = (b: Buffer) => {
     output += b.toString("utf8");
     if (output.length > 40_000) output = output.slice(-20_000);
   };
-  child.stdout?.on("data", record);
-  child.stderr?.on("data", record);
+  let child = launch();
+
+  async function stopChild(): Promise<void> {
+    if (child.exitCode !== null || child.signalCode !== null) return;
+    const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
+    child.kill("SIGTERM");
+    // A browser may still have SSE connections open during a restart.
+    const timer = setTimeout(() => child.kill("SIGKILL"), 5_000);
+    timer.unref();
+    await exited;
+    clearTimeout(timer);
+  }
 
   const baseURL = `http://127.0.0.1:${port}`;
   try {
@@ -180,20 +197,18 @@ export async function startLisa(opts: StartOptions): Promise<LisaInstance> {
     baseURL,
     home,
     stub: stubServer,
+    async restart() {
+      if (stopped) throw new Error("Cannot restart a stopped Lisa instance");
+      await stopChild();
+      output = "";
+      child = launch();
+      await waitForReady(baseURL, child, () => output);
+    },
     async stop() {
       if (stopped) return;
       stopped = true;
       await stubServer?.close();
-      if (child.exitCode === null) {
-        const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
-        child.kill("SIGTERM");
-        // The server holds SSE connections open; do not wait forever for a
-        // graceful close in a test harness.
-        const timer = setTimeout(() => child.kill("SIGKILL"), 5_000);
-        timer.unref();
-        await exited;
-        clearTimeout(timer);
-      }
+      await stopChild();
       await fs.rm(home, { recursive: true, force: true }).catch(() => {});
     },
   };

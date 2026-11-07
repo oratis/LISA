@@ -7,7 +7,7 @@
 #   2. iconset → .icns from src/web/assets/lisa-mascot.png (1024x1024)
 #   3. assemble Lisa.app bundle (Contents/MacOS, Resources, Info.plist)
 #   3.5 embed the backend + a Node runtime (embed-runtime.sh) so the app is
-#       self-contained — needs dist/ built; LISA_SKIP_EMBED=1 skips it
+#       self-contained — compiles the backend; LISA_SKIP_EMBED=1 skips it
 #   4. ad-hoc codesign so Gatekeeper at least doesn't reject outright
 #
 # Output: packaging/mac-client/Lisa.app
