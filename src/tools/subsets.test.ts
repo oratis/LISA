@@ -65,6 +65,26 @@ describe("autonomousSubset — self-driven runs (desire heartbeats / idle)", () 
     }
   });
 
+  test("self-driven memory writes require evidence, including when the model ignores the schema", async () => {
+    const calls: unknown[] = [];
+    const [tool] = autonomousSubset([
+      {
+        ...fake("memory"),
+        execute: async (input) => {
+          calls.push(input);
+          return "ok";
+        },
+      },
+    ]);
+    const ctx = { cwd: "/tmp", signal: new AbortController().signal, log() {} };
+    for (const action of ["append", "replace", "remove", "restore"]) {
+      await assert.rejects(tool!.execute({ action }, ctx), /require review/);
+    }
+    await tool!.execute({ action: "review" }, ctx);
+    await tool!.execute({ action: "consolidate" }, ctx);
+    assert.deepEqual(calls, [{ action: "review" }, { action: "consolidate" }]);
+  });
+
   test("keeps soul / memory / journal / skill / read tools", () => {
     const names = new Set(autonomousSubset(SAMPLE).map((t) => t.name));
     for (const kept of [

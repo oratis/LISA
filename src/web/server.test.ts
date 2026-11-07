@@ -254,6 +254,12 @@ describe("T-7 the server honours its RuntimePolicy", () => {
     try {
       const r = await request(srv.port, "POST", "/reflect", { body: "{}" });
       assert.notEqual(r.status, 409, "manual must not be refused by the reflection gate");
+      const stale = await request(srv.port, "POST", "/reflect", {
+        headers: { "x-lisa-session-id": "no-longer-selected" },
+        body: "{}",
+      });
+      assert.equal(stale.status, 409);
+      assert.deepEqual(JSON.parse(stale.text), { error: "session_changed" });
     } finally {
       await srv.close();
     }

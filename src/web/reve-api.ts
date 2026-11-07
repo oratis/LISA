@@ -45,7 +45,13 @@ import {
   readDreamsSince,
 } from "../reve/store.js";
 
+import { buildReveOverview } from "./reve-overview.js";
+import { readMemoryRevision, restoreMemoryRevision } from "../memory/review.js";
+import { readMemory } from "../memory/store.js";
+
 export interface ReveApiOptions {
+  reflectionEnabled?: boolean;
+  agentRecapEnabled?: boolean;
   /** False for a cloud caller that is not scoped to an account. */
   allowed: boolean;
   /** May revert / reconsider: the loopback owner or a signed-in account (`wardenTrust`). */
@@ -76,13 +82,16 @@ class BadBody extends Error {
   }
 }
 
-async function bodyObject(req: http.IncomingMessage): Promise<Record<string, unknown>> {
+async function bodyObject(
+  req: http.IncomingMessage,
+  limit = REVE_BODY_LIMIT,
+): Promise<Record<string, unknown>> {
   // CSRF guard (same rule as the server's readJsonBody): require JSON.
   const ctype = String(req.headers["content-type"] ?? "").toLowerCase();
   if (!ctype.includes("application/json")) throw new BadBody(415, "unsupported_media_type");
   let raw: string;
   try {
-    raw = await readCappedText(req, REVE_BODY_LIMIT);
+    raw = await readCappedText(req, limit);
   } catch (err) {
     if (err instanceof BodyTooLargeError) throw new BadBody(413, "body_too_large");
     throw err;
@@ -124,6 +133,37 @@ export async function handleReveApi(
   }
   const parts = pathname.split("/").slice(3); // after /api/reve
   try {
+    if (pathname === "/api/reve") {
+      if (method !== "GET") return methodNotAllowed(res);
+      json(res, 200, {
+        ...(await buildReveOverview(Number(url.searchParams.get("days") ?? 7))),
+        agentRecapEnabled: opts.agentRecapEnabled === true,
+        canRestore: opts.allowApproval,
+        reflectionEnabled: opts.reflectionEnabled === true,
+      });
+      return true;
+    }
+    if (parts[0] === "revisions" && /^[a-f0-9]{64}$/.test(parts[1] ?? "")) {
+      const id = parts[1]!;
+      if (parts.length === 2) {
+        if (method !== "GET") return methodNotAllowed(res);
+        const revision = await readMemoryRevision(id);
+        json(res, 200, {
+          ...revision,
+          canRestore:
+            opts.allowApproval &&
+            revision.status === "applied" &&
+            (await readMemory(revision.store)) === revision.after,
+        });
+        return true;
+      }
+      if (parts.length === 3 && parts[2] === "restore") {
+        if (method !== "POST") return methodNotAllowed(res);
+        await bodyObject(req, 512);
+        json(res, 200, await restoreMemoryRevision(id, AbortSignal.timeout(10_000)));
+        return true;
+      }
+    }
     if (parts[0] === "dreams" && parts.length === 1) {
       if (method !== "GET") return methodNotAllowed(res);
       const limit = parseInt(url.searchParams.get("limit") ?? "20", 10);
@@ -194,6 +234,12 @@ export async function handleReveApi(
             ? 409
             : 400;
       json(res, status, { error: err.code, message: err.message });
+    } else if (parts[0] === "revisions") {
+      const missing = (err as NodeJS.ErrnoException).code === "ENOENT";
+      const conflict = err instanceof Error && err.message.includes("changed since review");
+      json(res, missing ? 404 : conflict ? 409 : 503, {
+        error: missing ? "not_found" : conflict ? "memory_changed" : "reve_unavailable",
+      });
     } else {
       json(res, 500, { error: "reve_request_failed" });
     }

@@ -137,6 +137,8 @@ describe("import", () => {
     write(dest, "memory/MEMORY.md", "- old notes\n");
     write(dest, "memory/USER.md", "- old profile\n");
     write(dest, "memory/embedding-cache.json", "{}");
+    write(dest, "memory/revisions/old.json", "old revision");
+    write(dest, "memory/reviews/old.json", "old draft");
     const result = await importLisa(archive, { into: dest, replace: true });
     assert.equal(read(dest, "memory/MEMORY.md"), "- new notes\n");
     assert.ok(
@@ -144,6 +146,9 @@ describe("import", () => {
       "no USER.md left from the old Lisa",
     );
     assert.ok(result.backup);
+    assert.equal(read(result.backup, "memory/revisions/old.json"), "old revision");
+    assert.ok(!fs.existsSync(path.join(dest, "memory/revisions")));
+    assert.ok(!fs.existsSync(path.join(dest, "memory/reviews")));
     assert.equal(read(result.backup, "memory/USER.md"), "- old profile\n");
     assert.equal(read(result.backup, "memory/MEMORY.md"), "- old notes\n");
     assert.equal(read(dest, "memory/embedding-cache.json"), "{}", "memory infrastructure stays");

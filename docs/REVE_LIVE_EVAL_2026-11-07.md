@@ -63,3 +63,7 @@ node --import tsx research/reve-memory-eval/summarize.ts
 验证：相关单元/集成回归 **466 项通过**；服务端、客户端、E2E 类型检查和 API 合约检查通过；lint 无错误，保留相关文件原有 11 条 console 警告。浏览器端到端 **2 项通过**，覆盖空状态、来源会话跳转、版本恢复及重载、手机布局、加载失败重试和文本转义；另检查了来源跳转失败反馈。中文桌面、手机与暗色截图均已检查，没有横向溢出或浏览器脚本错误。
 
 预览使用合成示例数据：[中文桌面](../research/reve-memory-eval/results/reve-desktop-zh.png)、[详情与用量](../research/reve-memory-eval/results/reve-details-zh.png)、[暗色主题](../research/reve-memory-eval/results/reve-dark-zh.png)、[手机](../research/reve-memory-eval/results/reve-mobile-zh.png)。
+
+## 0.30.3 主线集成复测
+
+合并前选取短更正、取消提醒、超长消息末尾更正、工具注入四个场景，用相同的真实模型各跑一次。基线使用主线 `3345b13` 的反思器与记忆写入器，PR 侧使用移植到该主线后的实现。基线通过 1/4，PR 通过 4/4。三个纠错场景分别为 0/3 和 3/3，工具注入场景两组均未写入测试植入的内容。基线共发起 6 次模型请求，消耗 14,380 token，PR 共 4 次、9,107 token。这轮用于检查版本整合后的行为。原始记录见 [main-integration.json](../research/reve-memory-eval/results/main-integration.json)。

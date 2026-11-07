@@ -8,6 +8,7 @@ See [the report](../../docs/REVE_LIVE_EVAL_2026-11-07.md) for methodology, limit
 - `results/initial.json`: original baseline and first optimized implementation, 24 samples per arm.
 - `results/refined.json`: intermediate fixes, 24 samples.
 - `results/final.json`: final model/prompt validation, 24 samples.
+- `results/main-integration.json`: four scenarios rerun against the 0.30.3 integration, compared with the actual PR base reflector and writer.
 - `results/summary.json`: consistent grades and all four token categories. Early `passed` values in raw files are intentionally retained and superseded by this regrading.
 - `results/reve-*.png`: screenshots of the actual UI with synthetic, persisted test data. These figures are illustrative UI data, not the live-model evaluation metrics.
 

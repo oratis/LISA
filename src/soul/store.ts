@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
+import { assertHomeDirectory, readHomeText } from "../home-files.js";
 import { atomicWrite, ensureDir, pathExists, readTextOrEmpty } from "../fs-utils.js";
 import { commitSoulChange, initSoulRepo } from "./git.js";
 import { withSoulLock } from "./lock.js";
@@ -847,13 +848,15 @@ async function listMarkdownDir<T>(
   dir: string,
   parser: (slug: string, raw: string) => T,
 ): Promise<T[]> {
+  await assertHomeDirectory(dir);
   if (!(await pathExists(dir))) return [];
-  const files = await fs.readdir(dir);
+  const files = await fs.readdir(dir, { withFileTypes: true });
   const out: T[] = [];
-  for (const f of files) {
-    if (!f.endsWith(".md")) continue;
+  for (const entry of files) {
+    const f = entry.name;
+    if (!entry.isFile() || !f.endsWith(".md")) continue;
     const slug = f.slice(0, -3);
-    const raw = await fs.readFile(path.join(dir, f), "utf8");
+    const raw = await readHomeText(path.join(dir, f));
     try {
       out.push(parser(slug, raw));
     } catch {

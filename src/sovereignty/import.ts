@@ -33,8 +33,8 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import zlib from "node:zlib";
-import { lisaGlobalHome } from "../paths.js";
-import { memoryMaxBytes, type MemoryStore } from "../memory/store.js";
+import { homeScope, lisaGlobalHome } from "../paths.js";
+import { withMemoryLock, memoryMaxBytes, type MemoryStore } from "../memory/store.js";
 import { appendSovereigntyAudit } from "./audit.js";
 import { EXPORT_FORMAT, EXPORT_FORMAT_VERSION } from "./export.js";
 import {
@@ -371,6 +371,9 @@ async function areaHasData(into: string, root: string): Promise<boolean> {
         // missing
       }
     }
+    for (const section of ["reviews", "revisions"]) {
+      if (await exists(path.join(into, "memory", section))) return true;
+    }
     return false;
   }
   let names: string[];
@@ -543,42 +546,62 @@ export async function importLisa(archive: string, opts: ImportOptions = {}): Pro
       done.push({ from, to });
     };
     let backedUp = false;
-    try {
-      for (const root of roots) {
-        if (root === "memory") {
-          // One area: both stores are replaced together, so a store the
-          // archive lacks is not left behind from the old Lisa. The rest of
-          // memory/ (caches, the write lock) is infrastructure and stays.
-          for (const { file: f } of MEMORY_STORE_FILES) {
-            const staged = path.join(staging, "memory", f);
-            const target = path.join(into, "memory", f);
-            if (await exists(target)) {
-              await move(target, path.join(backupRoot ?? trash, "memory", f));
-              backedUp ||= Boolean(backupRoot);
+    const swap = async () => {
+      try {
+        for (const root of roots) {
+          if (root === "memory") {
+            // One area: both stores are replaced together, so a store the
+            // archive lacks is not left behind from the old Lisa. The rest of
+            // memory/ (caches, the write lock) is infrastructure and stays.
+            // Provenance belongs to the previous memory, including snapshots
+            // whose after-text might coincidentally equal the imported store.
+            // Stage a new generation so pre-import proposals fail even then.
+            if (!opts.replace && (await areaHasData(into, "memory")))
+              throw new Error("memory changed during import");
+            await fsp.writeFile(
+              path.join(staging, "memory", ".review-generation"),
+              JSON.stringify(crypto.randomUUID()) + "\n",
+              { mode: 0o600 },
+            );
+            const names = [
+              ...MEMORY_STORE_FILES.map((f) => f.file),
+              "reviews",
+              "revisions",
+              ".review-generation",
+            ];
+            for (const f of names) {
+              const staged = path.join(staging, "memory", f);
+              const target = path.join(into, "memory", f);
+              if (await exists(target)) {
+                await move(target, path.join(backupRoot ?? trash, "memory", f));
+                backedUp ||= Boolean(backupRoot);
+              }
+              if (await exists(staged)) await move(staged, target);
             }
-            if (await exists(staged)) await move(staged, target);
+            continue;
           }
-          continue;
+          const target = path.join(into, root);
+          if (await exists(target)) {
+            // Non-empty only reaches here with replace; an empty/lock-only dir
+            // is moved aside into staging and discarded with it.
+            const hasData = await areaHasData(into, root);
+            await move(target, path.join(hasData && backupRoot ? backupRoot : trash, root));
+            backedUp ||= hasData && Boolean(backupRoot);
+          }
+          await move(path.join(staging, root), target);
         }
-        const target = path.join(into, root);
-        if (await exists(target)) {
-          // Non-empty only reaches here with replace; an empty/lock-only dir
-          // is moved aside into staging and discarded with it.
-          const hasData = await areaHasData(into, root);
-          await move(target, path.join(hasData && backupRoot ? backupRoot : trash, root));
-          backedUp ||= hasData && Boolean(backupRoot);
+      } catch (e) {
+        for (const m of done.reverse()) {
+          await fsp.rename(m.to, m.from).catch(() => {});
         }
-        await move(path.join(staging, root), target);
+        throw new ImportError(
+          "swap_failed",
+          `import could not be completed and was rolled back: ${(e as Error).message}`,
+        );
       }
-    } catch (e) {
-      for (const m of done.reverse()) {
-        await fsp.rename(m.to, m.from).catch(() => {});
-      }
-      throw new ImportError(
-        "swap_failed",
-        `import could not be completed and was rolled back: ${(e as Error).message}`,
-      );
-    }
+    };
+    if (roots.includes("memory")) await homeScope.run(into, () => withMemoryLock(swap));
+    else await swap();
 
     const bytes = [...written.values()].reduce((n, w) => n + w.size, 0);
     await appendSovereigntyAudit(

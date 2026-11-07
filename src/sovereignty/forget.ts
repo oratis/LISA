@@ -70,7 +70,7 @@ import fs from "node:fs/promises";
 import type { Stats } from "node:fs";
 import path from "node:path";
 import { atomicWrite } from "../fs-utils.js";
-import { lisaGlobalHome, lisaHome, reflectionsDir, sessionsDir } from "../paths.js";
+import { lisaGlobalHome, lisaHome, memoryDir, reflectionsDir, sessionsDir } from "../paths.js";
 import {
   isMemoryStore,
   MEMORY_STORES,
@@ -79,6 +79,8 @@ import {
   rewriteMemoryEntries,
   type MemoryEntry,
 } from "../memory/entries.js";
+import { withMemoryLock } from "../memory/store.js";
+import { invalidateMemoryReviews } from "../memory/review.js";
 import { forgetInEntry, listFullEntries, type KbEntry } from "../kb/store.js";
 import { commitSoulChange, withSoulCaller } from "../soul/git.js";
 import { withFileLock, withSoulLock } from "../soul/lock.js";
@@ -1410,8 +1412,66 @@ async function forgetInDreamLog(ctx: Ctx): Promise<void> {
 
 // ── reflections + search index ───────────────────────────────────────────
 
+/** A snapshot cannot be partly redacted: its id, CAS and cited quotes all
+ * identify the original bytes. Forget deletes the matching snapshot/draft. */
+async function forgetInMemoryReviewFiles(ctx: Ctx): Promise<void> {
+  const structural = new Set([
+    "id",
+    "sessionId",
+    "store",
+    "status",
+    "role",
+    "kind",
+    "generation",
+    "createdAt",
+    "at",
+    "restores",
+  ]);
+  const scan = async () => {
+    for (const section of ["reviews", "revisions"]) {
+      for (const file of await listFiles(path.join(memoryDir(), section), ".json")) {
+        const raw = await fs.readFile(file, "utf8");
+        let result: Redacted;
+        try {
+          result = redactStrings(JSON.parse(raw), ctx.m, structural);
+        } catch {
+          result = redactStrings(raw, ctx.m);
+        }
+        if (!result.changed) continue;
+        const location = rel(file);
+        const id = itemId("reve", "delete", location, sha(raw));
+        if (!allowed(ctx, id)) continue;
+        if (ctx.apply) await fs.rm(file);
+        addItem(
+          ctx,
+          {
+            id,
+            layer: "reve",
+            location,
+            matches: result.changed,
+            action: "delete",
+            why: "memory review copy",
+          },
+          result.sample,
+          result.changed,
+        );
+      }
+    }
+    if (ctx.apply) await invalidateMemoryReviews();
+  };
+  try {
+    if (ctx.apply) await withMemoryLock(scan);
+    else await scan();
+  } catch {
+    ctx.report.errors.push({ layer: "reve", error: "memory_reviews_unreadable" });
+  }
+}
+
 async function forgetInReflections(ctx: Ctx): Promise<void> {
-  for (const file of await listFiles(reflectionsDir(), ".json")) {
+  for (const file of [
+    ...(await listFiles(reflectionsDir(), ".json")),
+    ...(await listFiles(path.join(reflectionsDir(), "processed"), ".json")),
+  ]) {
     const location = rel(file);
     let raw: string;
     let parsed: unknown;
@@ -1530,6 +1590,7 @@ async function run(
   // (0) The dream log first: once its revert copies are gone, a revert racing
   // the steps below has nothing to bring back. Outside the memory lock.
   await forgetInDreamLog(ctx);
+  await forgetInMemoryReviewFiles(ctx);
   // (b) KB before memory: which pages go entirely decides which links dangle.
   const links = await forgetInKb(ctx);
   // (a) memory + user entries, and their pointers to deleted pages.

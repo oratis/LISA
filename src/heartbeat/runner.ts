@@ -279,6 +279,8 @@ async function runHeartbeatInner(opts: {
         durationMs: Date.now() - t0,
         inputTokens: result.inputTokens ?? 0,
         outputTokens: result.outputTokens ?? 0,
+        cacheReadTokens: result.cacheReadTokens,
+        cacheWriteTokens: result.cacheWriteTokens,
         toolCalls: result.toolCallCount,
         outcome: silent ? "no-update" : "done",
         note: reviewFallback ? "reviewedAt fallback applied" : undefined,
@@ -357,6 +359,8 @@ export async function runDesireReviewOnce(opts: {
               durationMs: Date.now() - t0,
               inputTokens: result.inputTokens,
               outputTokens: result.outputTokens,
+              cacheReadTokens: result.cacheReadTokens,
+              cacheWriteTokens: result.cacheWriteTokens,
               toolCalls: result.toolCallCount,
               outcome:
                 result.stopReason === "budget_exceeded" ? "blocked" : text ? "done" : "no-update",
@@ -373,6 +377,8 @@ export async function runDesireReviewOnce(opts: {
             text,
             inputTokens: result.inputTokens,
             outputTokens: result.outputTokens,
+            cacheReadTokens: result.cacheReadTokens,
+            cacheWriteTokens: result.cacheWriteTokens,
             toolCalls: result.toolCallCount,
             stopReason: result.stopReason,
           };
