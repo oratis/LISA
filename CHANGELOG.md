@@ -7,6 +7,40 @@ Entries from 0.13.0 onward are generated from `docs/RELEASE_v*.md` by
 `npm run changelog` — edit the release note, not this file. See
 [docs/RELEASING.md](docs/RELEASING.md).
 
+## [0.30.0] — 2026-11-07
+
+You can now see, edit and delete what Lisa remembers, forget a topic everywhere it is stored after previewing exactly what will change, and take your Lisa with you as a portable archive. Every reflective "dream" pass leaves a record you can audit and undo. Unattended tasks can do real work under Warden approvals. Lisa's portraits, stickers and Room now move. The desktop app finds Codex again, manages Skills and lets you rename sessions. This release also fixes a security problem in the Mac's new remote connections from v0.29.0, so update the Mac app. And it documents two features that already shipped inside v0.29.0 without notes: read-only connections to GitHub, Google Calendar, Gmail and Linear from the chat, and a phone-sized web app.
+
+- Security fix for remote connections from v0.29.0
+- Your memory, under your control
+- Dreams you can audit and undo
+- Tasks that ask before acting
+- Lisa moves
+- Desktop: Codex, Skills and session names
+- Already in v0.29.0: read-only connections from the chat
+- Already in v0.29.0: the web chat on phones
+- Also in this release
+- Behaviour changes to note
+- Known limits
+- Updating
+
+[Release notes](docs/RELEASE_v0.30.0.md) · [GitHub release](https://github.com/oratis/LISA/releases/tag/v0.30.0)
+
+## [0.29.0] — 2026-11-07
+
+Sign in to the same LISA account on Mac and Lisa Pocket 1.3. In Pocket, choose your Mac and compare the code shown on both devices. Approve on the Mac once, then Pocket prefers your local network and falls back to the encrypted cloud relay when away. No Tailscale installation, manual IP address or router port forwarding is needed.
+
+[Release notes](docs/RELEASE_v0.29.0.md) · [GitHub release](https://github.com/oratis/LISA/releases/tag/v0.29.0)
+
+## [0.28.2] — 2026-11-07
+
+A smaller room character with dedicated seated poses, a clearer Send button, and one pixel-art icon across the Mac app and website.
+
+- Updating
+- Icon source
+
+[Release notes](docs/RELEASE_v0.28.2.md) · [GitHub release](https://github.com/oratis/LISA/releases/tag/v0.28.2)
+
 ## [0.28.1] — 2026-10-09
 
 LISA is an AI Personal Assistant for planning, writing and personal knowledge. This release introduces the Soft Ink visual identity and adds the groundwork for an assistant that works on your behalf while you are away — durable tasks and watchers, a deterministic approval layer, one gate for every proactive message, a credential broker and cost-aware model routing — and fixes a set of first-run, health and privacy issues. Most of the new machinery is off or opt-in; what changes on a default install is listed first.
