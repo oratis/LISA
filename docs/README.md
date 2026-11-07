@@ -155,6 +155,7 @@ Point-in-time assessments. Each names its baseline commit; read the newest first
 
 | Review | Baseline |
 |---|---|
+| [REVIEW_SKILLS_IMPORT_2026-11-07.md](./REVIEW_SKILLS_IMPORT_2026-11-07.md) | Installed Mac backend 0.29.1: 28 personal skill entries deduplicated to 17; two skill executions in one real chat. |
 | [PROJECT_REVIEW_AND_OPTIMIZATION_v0.21.0.md](./PROJECT_REVIEW_AND_OPTIMIZATION_v0.21.0.md) | Whole-project review, 2026-07-26. |
 | [REVIEW_IOS_APP_v1.0.md](./REVIEW_IOS_APP_v1.0.md) | Lisa Pocket layout + functionality. |
 | [PRODUCT_REVIEW_v0.9.md](./PRODUCT_REVIEW_v0.9.md) | Product capability review at v0.9. |
