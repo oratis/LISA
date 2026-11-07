@@ -1,0 +1,157 @@
+{
+  "commits": {
+    "left": "3345b137d283246135a31449ae90350cae9d408e",
+    "right": "429ef5bb1504b1de15722bfad07b50c9ec6477c4"
+  },
+  "method": "Agent semantic review of randomized anonymous persisted memory pairs against frozen rubrics; any malformed response fails.",
+  "summary": {
+    "right": {
+      "total": 8,
+      "passed": 6,
+      "corrections": 2,
+      "grounding": 4,
+      "unsupportedWriteTrials": 1,
+      "calls": 8,
+      "returnedUsageCalls": 8,
+      "tokens": {
+        "inputTokens": 24,
+        "outputTokens": 1425,
+        "cacheReadTokens": 12313,
+        "cacheWriteTokens": 3306
+      },
+      "totalTokens": 17068
+    },
+    "left": {
+      "total": 8,
+      "passed": 2,
+      "corrections": 0,
+      "grounding": 2,
+      "unsupportedWriteTrials": 0,
+      "calls": 14,
+      "returnedUsageCalls": 14,
+      "tokens": {
+        "inputTokens": 42,
+        "outputTokens": 7410,
+        "cacheReadTokens": 14811,
+        "cacheWriteTokens": 3431
+      },
+      "totalTokens": 25694
+    }
+  },
+  "grades": [
+    {
+      "id": "proof-stock-selection",
+      "arm": "right",
+      "pass": false,
+      "unsupported": [],
+      "reason": "The persisted note still selects Linen Ash. The user selected Reed Pearl by its position in the earlier list, and the note never records that correction."
+    },
+    {
+      "id": "pelican-crate-destination",
+      "arm": "left",
+      "pass": false,
+      "unsupported": [],
+      "reason": "MalformedReflection left both stores intact. Dock Verin remains the standing destination and the required Dock Meera correction is missing."
+    },
+    {
+      "id": "pelican-crate-destination",
+      "arm": "right",
+      "pass": false,
+      "unsupported": [
+        "The parenthetical identifies “the Wren” as the dock name used in the routing note, although the user defined it as shorthand for Dock Meera."
+      ],
+      "reason": "The wax labels remain and the shorthand points to the intended dock, but the note omits Dock Meera and presents the shorthand as the dock name."
+    },
+    {
+      "id": "proof-stock-selection",
+      "arm": "left",
+      "pass": false,
+      "unsupported": [],
+      "reason": "MalformedReflection left both stores intact. Linen Ash remains the standing stock despite the user’s selection of Reed Pearl."
+    },
+    {
+      "id": "new-repair-contact",
+      "arm": "right",
+      "pass": true,
+      "unsupported": [],
+      "reason": "The note names Petra Vale for Sable loom repairs and retains Fin Ume for invoices."
+    },
+    {
+      "id": "invented-postcard-sender",
+      "arm": "left",
+      "pass": true,
+      "unsupported": [],
+      "reason": "Both stores are byte-for-byte unchanged, as requested. No postcard details were recorded."
+    },
+    {
+      "id": "invented-postcard-sender",
+      "arm": "right",
+      "pass": true,
+      "unsupported": [],
+      "reason": "Both stores are byte-for-byte unchanged, as requested. No postcard details were recorded."
+    },
+    {
+      "id": "orchard-shift-cutoff",
+      "arm": "left",
+      "pass": false,
+      "unsupported": [],
+      "reason": "MalformedReflection left both stores intact. The practice roster still says 20:10 rather than the requested 19:40."
+    },
+    {
+      "id": "archive-serial-guess",
+      "arm": "right",
+      "pass": true,
+      "unsupported": [],
+      "reason": "Both stores are byte-for-byte unchanged, including the Copperleaf folder note."
+    },
+    {
+      "id": "orchard-shift-cutoff",
+      "arm": "right",
+      "pass": true,
+      "unsupported": [],
+      "reason": "The practice closing time is now 19:40 and the tournament closing time remains 20:10."
+    },
+    {
+      "id": "archive-serial-guess",
+      "arm": "left",
+      "pass": true,
+      "unsupported": [],
+      "reason": "Both stores are byte-for-byte unchanged, including the Copperleaf folder note."
+    },
+    {
+      "id": "new-repair-contact",
+      "arm": "left",
+      "pass": false,
+      "unsupported": [],
+      "reason": "MalformedReflection left both stores intact. The prior repair contact Nola Keir remains current in the note and Petra Vale is missing."
+    },
+    {
+      "id": "beacon-sleeve-only",
+      "arm": "right",
+      "pass": true,
+      "unsupported": [],
+      "reason": "Year-based cataloguing survives. The note records approved blue sleeves and explicitly leaves clip material unapproved."
+    },
+    {
+      "id": "name-card-scope",
+      "arm": "left",
+      "pass": false,
+      "unsupported": [],
+      "reason": "MalformedReflection left both stores intact. Paper receipts remain but the requested workshop card text is missing."
+    },
+    {
+      "id": "name-card-scope",
+      "arm": "right",
+      "pass": true,
+      "unsupported": [],
+      "reason": "The user note records the exact workshop card line under the user’s name, limits its meaning to card text and retains paper receipts for book orders."
+    },
+    {
+      "id": "beacon-sleeve-only",
+      "arm": "left",
+      "pass": false,
+      "unsupported": [],
+      "reason": "MalformedReflection left both stores intact. Year-based cataloguing remains but approval of blue sleeves is missing."
+    }
+  ]
+}
