@@ -8,7 +8,7 @@
  * (PLAN_UI_SESSION_SHELL_v1.0):
  *   - Glass-morphism dark UI ("Nebula") with cyan (#6ad4ff) brand accent,
  *     plus a light "Calm" theme via <body data-theme="calm"> (fnbar toggle)
- *   - 3-column shell: 300px sidebar (identity card · 3×3 nav grid ·
+ *   - 3-column shell: 272px sidebar (identity card · 3×3 nav grid ·
  *     session footer) · main view stack · 320px right panel (currently
  *     wanting · agents monitor · mail · last reflection)
  *
@@ -54,7 +54,7 @@ const MD_RENDER_JS = `function __name(t){return t}\n${renderMarkdown}`;
 /**
  * Content-Security-Policy for the shell (T-4).
  *
- * The page carries two inline <script> blocks, so a policy without
+ * The page carries inline <script> blocks, so a policy without
  * 'unsafe-inline' needs a per-response nonce — which is the point: with a
  * nonce, an injected <script> (from a tool result, a mail subject, an agent's
  * output rendered as Markdown) cannot run, because the attacker cannot guess
@@ -85,7 +85,7 @@ export function mainHtmlCsp(nonce: string): string {
 }
 
 /**
- * Render the shell. `nonce` is stamped on both inline <script> tags so they
+ * Render the shell. `nonce` is stamped on every inline <script> tag so they
  * survive the script-src above; omit it (the MAIN_HTML export below) and the
  * page is byte-identical to the pre-CSP version, which is what the tests and
  * any non-HTTP consumer want.
@@ -108,6 +108,17 @@ export function renderMainHtml(opts: { nonce?: string } = {}): string {
 ${MAIN_CSS}
 </style>
 </head><body>
+<script${nonceAttr}>
+// Apply appearance before any visible content, including first-run overlays.
+(() => {
+  let theme = 'system';
+  try { theme = localStorage.getItem('lisa-theme'); } catch (_) {}
+  const light = theme === 'calm' || (theme !== 'nebula' && !matchMedia('(prefers-color-scheme: dark)').matches);
+  if (light) document.body.dataset.theme = 'calm';
+  document.documentElement.style.colorScheme = light ? 'light' : 'dark';
+  document.querySelector('meta[name="theme-color"]').content = light ? '#f5f6fa' : '#07091a';
+})();
+</script>
 
 <!-- Right-panel default = COLLAPSED. Applied here, before .frame is parsed,
      so a fresh profile never flashes the 3-column layout during the long tail

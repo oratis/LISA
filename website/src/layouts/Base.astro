@@ -67,6 +67,15 @@ const foot = lang === "zh-CN"
     <title>{title} · LISA</title>
     <meta name="description" content={description} />
     <meta name="theme-color" content="#0a0b0d" />
+    <script is:inline>
+      (() => {
+        let preference = 'system';
+        try { preference = localStorage.getItem('lisa-site-theme') || 'system'; } catch (_) {}
+        const light = preference === 'light' || (preference !== 'dark' && !matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.theme = light ? 'light' : 'dark';
+        document.querySelector('meta[name="theme-color"]').content = light ? '#f8f9fc' : '#0a0b0d';
+      })();
+    </script>
     <link rel="preload" href="/fonts/space-grotesk-latin.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="icon" type="image/png" sizes="32x32" href={favicon} />
@@ -88,23 +97,30 @@ const foot = lang === "zh-CN"
     <meta name="twitter:image" content={ogImage} />
   </head>
   <body>
+    <a class="skip-link" href="#main-content">{lang === "zh-CN" ? "跳至正文" : "Skip to content"}</a>
     <header class="topbar">
       <a class="brand" href={homeHref}>
         <img src={appIcon} alt="" />
         <span class="brand-name">LISA</span>
         <span class="brand-badge">AI ASSISTANT</span>
       </a>
-      <nav class="nav">
+      <nav class="nav" aria-label={lang === "zh-CN" ? "主导航" : "Main navigation"}>
         {navItems.map(item => (
           <a
             href={item.href}
             class={isActive(item.href) ? "navlink active" : "navlink"}
+            aria-current={isActive(item.href) ? "page" : null}
             target={item.external ? "_blank" : null}
             rel={item.external ? "noopener" : null}
           >{item.label}{item.external ? " ↗" : ""}</a>
         ))}
       </nav>
       <div class="nav-right">
+        <select id="site-theme" class="theme-picker" aria-label={lang === "zh-CN" ? "外观" : "Appearance"}>
+          <option value="system">{lang === "zh-CN" ? "跟随系统" : "System"}</option>
+          <option value="light">{lang === "zh-CN" ? "浅色" : "Light"}</option>
+          <option value="dark">{lang === "zh-CN" ? "深色" : "Dark"}</option>
+        </select>
         <a class="lang" href={altLangPath}>{lang === "zh-CN" ? "EN" : "中文"}</a>
         <a class="navlink" href="https://cloud.meetlisa.ai">{lang === "zh-CN" ? "登录" : "Sign in"}</a>
         <a class="btn-primary sm" href={downloadHref} target="_blank" rel="noopener">
@@ -113,7 +129,7 @@ const foot = lang === "zh-CN"
       </div>
     </header>
 
-    <main class="main">
+    <main class="main" id="main-content" tabindex="-1">
       <slot />
     </main>
 
@@ -150,8 +166,38 @@ const foot = lang === "zh-CN"
       </div>
     </footer>
 
+    <script>
+      const picker = document.querySelector<HTMLSelectElement>('#site-theme')!;
+      const system = matchMedia('(prefers-color-scheme: dark)');
+      const normalize = (value: string | null) => value === 'light' || value === 'dark' ? value : 'system';
+      let preference = 'system';
+      try { preference = normalize(localStorage.getItem('lisa-site-theme')); } catch (_) {}
+      const apply = () => {
+        const light = preference === 'light' || (preference === 'system' && !system.matches);
+        document.documentElement.dataset.theme = light ? 'light' : 'dark';
+        document.querySelector('meta[name="theme-color"]')?.setAttribute('content', light ? '#f8f9fc' : '#0a0b0d');
+        picker.value = preference;
+      };
+      picker.addEventListener('change', () => {
+        preference = normalize(picker.value);
+        try { localStorage.setItem('lisa-site-theme', preference); } catch (_) {}
+        apply();
+      });
+      system.addEventListener('change', () => { if (preference === 'system') apply(); });
+      window.addEventListener('storage', event => {
+        if (event.key === 'lisa-site-theme' || event.key === null) { preference = normalize(event.newValue); apply(); }
+      });
+      apply();
+    </script>
+
     <style is:global>
       :root {
+        color-scheme: dark;
+        --on-accent: #0a1400;
+        --accent-hover: #b6ef58;
+        --header-bg: rgba(10,11,13,.88);
+        --hero-tint: #173139;
+        --starter-bg: #0a0b0d80;
         --bg: #0a0b0d;
         --bg-elev: #101216;
         --panel: #14171c;
@@ -160,7 +206,7 @@ const foot = lang === "zh-CN"
         --border-lit: #333a44;
         --ink: #e9ebee;
         --muted: #9aa2ac;
-        --faint: #6b7280;
+        --faint: #929baa;
         --accent: #a8e546;        /* lime — primary */
         --accent-dim: #8bc93a;
         --blue: #4da3ff;          /* secondary */
@@ -172,6 +218,31 @@ const foot = lang === "zh-CN"
         --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
         --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
         --maxw: 1080px;
+      }
+      :root[data-theme="light"] {
+        color-scheme: light;
+        --bg: #f8f9fc;
+        --bg-elev: #ffffff;
+        --panel: #ffffff;
+        --panel-2: #f0f3f9;
+        --border: #dde2ec;
+        --border-lit: #b6bfd0;
+        --ink: #202a3b;
+        --muted: #505e72;
+        --faint: #626d7d;
+        --accent: #4f5bd5;
+        --accent-dim: #404bb9;
+        --accent-hover: #404bb9;
+        --on-accent: #ffffff;
+        --blue: #315eaf;
+        --amber: #946000;
+        --good: #147653;
+        --warn: #946000;
+        --err: #c42f48;
+        --header-bg: rgba(248,249,252,.92);
+        --hero-tint: #e9edf9;
+        --starter-bg: #ffffff;
+        --shadow: 0 12px 36px rgba(32,45,70,.08);
       }
 
       /* Self-hosted variable fonts (latin) — no third-party request, edge-cached. */
@@ -231,8 +302,8 @@ const foot = lang === "zh-CN"
         padding: .8rem 1.3rem; border-radius: 10px; border: 1px solid transparent;
         cursor: pointer; transition: transform .12s ease, background .15s, border-color .15s, color .15s;
       }
-      .btn-primary { background: var(--accent); color: #0a1400; }
-      .btn-primary:hover { background: #b6ef58; color: #0a1400; transform: translateY(-1px); }
+      .btn-primary { background: var(--accent); color: var(--on-accent); }
+      .btn-primary:hover { background: var(--accent-hover); color: var(--on-accent); transform: translateY(-1px); }
       .btn-ghost { background: transparent; color: var(--ink); border-color: var(--border-lit); }
       .btn-ghost:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
       .btn-primary.sm, .btn-ghost.sm { padding: .5rem .95rem; font-size: .9rem; border-radius: 8px; }
@@ -242,7 +313,7 @@ const foot = lang === "zh-CN"
         position: sticky; top: 0; z-index: 50;
         display: flex; align-items: center; gap: 1.2rem;
         padding: .75rem clamp(1rem, 4vw, 2.2rem);
-        background: rgba(10,11,13,0.72); backdrop-filter: blur(12px) saturate(1.2);
+        background: var(--header-bg); backdrop-filter: blur(12px) saturate(1.2);
         border-bottom: 1px solid var(--border);
       }
       .brand { display: flex; align-items: center; gap: .6rem; color: var(--ink); }
@@ -379,8 +450,8 @@ const foot = lang === "zh-CN"
       .term-body { padding: 1.1rem 1.2rem; font-family: var(--mono); font-size: .86rem; line-height: 1.7; color: var(--muted); overflow-x: auto; }
       .term-body p { margin: .1rem 0; }
       .term-body .pl { color: var(--accent); } .term-body .ok { color: var(--good); } .term-body .muted { color: var(--faint); } .term-body .err { color: var(--err); }
-      .btn-amber { display: inline-flex; align-items: center; gap: .5rem; font-family: var(--display); font-weight: 600; font-size: 1rem; padding: .8rem 1.3rem; border-radius: 10px; background: var(--accent); color: #0a1400; border: 1px solid transparent; transition: background .15s, transform .12s; }
-      .btn-amber:hover { background: #b6ef58; transform: translateY(-1px); }
+      .btn-amber { display: inline-flex; align-items: center; gap: .5rem; font-family: var(--display); font-weight: 600; font-size: 1rem; padding: .8rem 1.3rem; border-radius: 10px; background: var(--accent); color: var(--on-accent); border: 1px solid transparent; transition: background .15s, transform .12s; }
+      .btn-amber:hover { background: var(--accent-hover); color: var(--on-accent); transform: translateY(-1px); }
       .btn { display: inline-flex; align-items: center; gap: .5rem; font-family: var(--display); font-weight: 600; font-size: 1rem; padding: .8rem 1.3rem; border-radius: 10px; background: var(--panel); color: var(--ink); border: 1px solid var(--border-lit); transition: border-color .15s, color .15s, transform .12s; }
       .btn:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
 
@@ -389,6 +460,30 @@ const foot = lang === "zh-CN"
         .topbar { flex-wrap: wrap; gap: .6rem; }
         .nav { order: 3; width: 100%; margin-left: 0; }
         .navlink.active::after { bottom: -.3rem; }
+      }
+      :focus-visible { outline: 3px solid var(--blue); outline-offset: 4px; }
+      .skip-link { position: fixed; top: 12px; left: 12px; z-index: 100; padding: 12px 18px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; transform: translateY(-160%); }
+      .skip-link:focus { transform: none; }
+      .theme-picker { min-height: 40px; max-width: 110px; font: inherit; font-size: .8rem; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--border); color: var(--muted); background: var(--panel); cursor: pointer; }
+      .navlink, .lang, .btn-primary, .btn-ghost, .btn-amber { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+      :root[data-theme="light"] body { background-image: radial-gradient(900px 600px at 90% 0%, rgba(79,91,213,.05), transparent 65%); }
+      :root[data-theme="light"] .console { box-shadow: var(--shadow); }
+      :root[data-theme="light"] .brand img { filter: none; }
+      :root[data-theme="light"] .brand-badge { border-color: var(--border); background: var(--panel-2); }
+      @media (max-width: 640px) {
+        .topbar { padding: 10px 16px; gap: 8px; }
+        .brand-badge { display: none; }
+        .nav-right { gap: 6px; }
+        .nav-right > .navlink { display: none; }
+        .nav-right .btn-primary { font-size: .8rem; padding: 8px 10px; }
+        .theme-picker { max-width: 88px; min-height: 44px; }
+        .nav { flex-wrap: nowrap; overflow-x: auto; gap: 4px; padding-bottom: 3px; }
+        .navlink { flex: none; font-size: .88rem; padding-inline: 10px; }
+        .navlink.active::after { bottom: 0; }
+        .brand-name { font-size: 1.05rem; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
       }
     </style>
   </body>
