@@ -48,6 +48,9 @@ test.describe("conversation expressions", () => {
     await send(page);
     const bubble = page.locator(".expression-bubble");
     await expect(bubble).toHaveAttribute("data-playback", "playing");
+    // One announcement per sticker, and a replay control that names it.
+    await expect(bubble.locator("figcaption")).toHaveAttribute("aria-hidden", "true");
+    await expect(bubble.getByRole("button", { name: /Hello/ })).toBeVisible();
     const id = await bubble.getAttribute("data-expression-id");
     const history = await (await request.get(lisa.baseURL + "/api/history")).json();
     const expressions = history.messages.filter((m: { expression?: object }) => m.expression);

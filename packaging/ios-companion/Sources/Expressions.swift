@@ -76,11 +76,15 @@ struct ConversationExpressionView: View {
                     else { Text(expression.emoji).font(.system(size: 64)) }
                 }
                 .frame(width: 128, height: 128)
+                .accessibilityElement(children: .ignore)
                 .accessibilityLabel(expression.alt)
-                Text(expression.alt).font(.caption2).foregroundStyle(.secondary)
+                .accessibilityAddTraits(.isImage)
+                // The image above already announces the label once.
+                Text(expression.alt).font(.caption2).foregroundStyle(.secondary).accessibilityHidden(true)
                 if sticker && preferences.display == .auto && expression.format == "animated" && !reduceMotion && !failed {
                     Button("Replay") { remaining = expression.playbackSeconds; replay += 1 }
                         .disabled(playing).frame(minHeight: 44)
+                        .accessibilityLabel("Replay \(expression.alt)")
                 }
             }
             .background(GeometryReader { geometry in Color.clear.preference(key: ExpressionFrameKey.self, value: geometry.frame(in: .global)) })

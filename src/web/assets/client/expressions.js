@@ -120,10 +120,14 @@
     fallback.setAttribute('role', 'img');
     fallback.setAttribute('aria-label', image.alt);
     const caption = document.createElement('figcaption');
-    caption.textContent = expression.alt || 'Lisa';
+    caption.textContent = image.alt;
+    // The image (or emoji fallback) already announces the label once.
+    caption.setAttribute('aria-hidden', 'true');
     const replay = document.createElement('button');
     replay.type = 'button';
     replay.textContent = tr('expressions.replay');
+    // Several stickers may be on screen: name which one replays.
+    replay.setAttribute('aria-label', tr('expressions.replay') + ' · ' + image.alt);
     node.append(image, fallback, caption, replay);
     const duration = Math.min(5000, Math.max(500, Number(expression.durationMs) || 2500) * 2);
     const entry = {
