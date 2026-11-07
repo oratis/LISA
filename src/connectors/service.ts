@@ -66,6 +66,8 @@ export interface ConnectorOptions<A, R> {
   resume: (run: ConnectorResume<A, R>) => Promise<void>;
   changed: (sessionId: string) => void;
   now?: () => number;
+  /** Upper bound on best-effort upstream revocation during disconnect (tests shorten it). */
+  revokeTimeoutMs?: number;
 }
 const terminal = (s: Status) => ["completed", "cancelled", "expired"].includes(s);
 const idOK = (s: unknown): s is string => typeof s === "string" && /^[a-zA-Z0-9_-]{1,100}$/.test(s);
@@ -449,12 +451,25 @@ export class ReadonlyConnector<A, R> {
     this.kick();
   }
   async disconnect() {
+    const revoke = this.options.driver.revoke?.bind(this.options.driver);
+    const tokens: string[] = [];
+    // Read for upstream revocation only; a failed read must never keep a local secret.
+    const take = async (secret: string) => {
+      if (revoke)
+        try {
+          const token = await this.options.secrets.get(secret);
+          if (token) tokens.push(token);
+        } catch {
+          /* best-effort */
+        }
+      await this.options.secrets.remove(secret);
+    };
     const sessions = await this.state(async (s) => {
-      if (s.connection) await this.options.secrets.remove(s.connection.secret);
+      if (s.connection) await take(s.connection.secret);
       delete s.connection;
       for (const r of s.requests) {
         if (!terminal(r.status)) r.status = "cancelled";
-        if (r.stagedSecret) await this.options.secrets.remove(r.stagedSecret);
+        if (r.stagedSecret) await take(r.stagedSecret);
         delete r.stagedSecret;
         delete r.stagedConnectionId;
         delete r.userCode;
@@ -465,6 +480,29 @@ export class ReadonlyConnector<A, R> {
     });
     for (const job of this.jobs.values()) job.abort.abort();
     sessions.forEach(this.options.changed);
+    // The local delete above is already durable; revocation is bounded and its failure ignored.
+    if (revoke && tokens.length) {
+      // A referenced timer, not AbortSignal.timeout(): that one is unref'd, so
+      // in a short-lived process (CLI, test) the event loop could empty before
+      // the bound fires and the await would never settle. Bounded even when a
+      // driver ignores the signal.
+      const controller = new AbortController();
+      let timer: NodeJS.Timeout | undefined;
+      const expired = new Promise<void>((resolve) => {
+        timer = setTimeout(() => {
+          controller.abort(new ConnectorError("revoke_timeout"));
+          resolve();
+        }, this.options.revokeTimeoutMs ?? 5_000);
+      });
+      try {
+        await Promise.race([
+          Promise.allSettled(tokens.map(async (token) => revoke(token, controller.signal))),
+          expired,
+        ]);
+      } finally {
+        clearTimeout(timer);
+      }
+    }
   }
   async retry(id: string) {
     await this.state((s) => {

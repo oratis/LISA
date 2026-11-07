@@ -14,7 +14,7 @@ export async function handleConnectorApi(
 ): Promise<boolean> {
   const url = new URL(rawUrl, "http://localhost");
   const match =
-    /^\/api\/connectors\/(google-calendar|gmail|linear)(?:\/requests(?:\/([a-zA-Z0-9_-]{1,100})\/(authorize|resources|confirm|cancel|retry))?|\/(disconnect))$/.exec(
+    /^\/api\/connectors\/(google-calendar|gmail|linear|google-drive|notion)(?:\/requests(?:\/([a-zA-Z0-9_-]{1,100})\/(authorize|resources|confirm|cancel|retry))?|\/(disconnect))$/.exec(
       url.pathname,
     );
   if (url.pathname !== "/api/connectors" && !match) return false;
