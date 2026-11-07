@@ -2604,6 +2604,8 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
           remoteHost.approve(String(body.id ?? ""), String(body.code ?? ""));
         } else if (url === "/api/remote/revoke") {
           remoteHost.revoke(String(body.id ?? ""));
+        } else if (url === "/api/remote/dismiss") {
+          remoteHost.dismiss(String(body.id ?? ""));
         } else if (url === "/api/remote/policy") {
           remoteHost.setPolicy(body);
         } else if (url === "/api/remote/disconnect") {

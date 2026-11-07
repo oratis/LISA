@@ -117,7 +117,7 @@ test(
       return {
         status: res.status,
         body: (await res.json()) as {
-          pending: Array<{ id: string; code: string; secure: boolean }>;
+          pending: Array<{ id: string; code: string; secure: boolean; waiting: boolean }>;
           devices: Array<{ id: string; secure: boolean }>;
           activeConnections: number;
           enabled: boolean;
@@ -228,7 +228,10 @@ test(
         extra: { v: 2, commit: pairingCommitment(host.publicKey, secure.publicKey, nonce) },
       });
       assert.equal(committed.welcome.code, undefined);
-      assert.equal((await local("status")).body.pending.length, 0);
+      assert.deepEqual(
+        (await local("status")).body.pending.map((p) => [p.code, p.waiting]),
+        [["", true]],
+      );
       committed.ws.send(JSON.stringify(committed.cipher.seal({ type: "pair", nonce })));
       const paired = committed.cipher.open(JSON.parse(await committed.receive()));
       const code = pairingCode(

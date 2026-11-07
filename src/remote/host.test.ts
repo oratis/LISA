@@ -314,8 +314,13 @@ test("negotiation on a v2 Mac: v2 phones get a committed code, Pocket 1.3 the fl
     assert.equal(first.welcome.authorized, false);
     assert.equal(first.welcome.pending, true);
     assert.match(first.welcome.nonce as string, /^[A-Za-z0-9+/]{43}=$/);
-    // Nothing to compare (or approve) until the phone opens its commitment.
-    assert.deepEqual(h.host.status().pending, []);
+    // Nothing to compare (or approve) until the phone opens its commitment; the slot it
+    // holds is visible to the owner as waiting.
+    assert.deepEqual(
+      h.host.status().pending.map((p) => [p.id, p.code, p.waiting]),
+      [[id, "", true]],
+    );
+    assert.throws(() => h.host.approve(id, ""), /pairing_expired/);
     // Retrying the same commitment returns the same Mac nonce: no free re-roll.
     const retry = await h.hello("n2", h.phone, true, { v: 2, commit });
     assert.equal(retry.welcome.nonce, first.welcome.nonce);
@@ -422,8 +427,9 @@ test(
       const opened = await pairV2(h, "x1", cheat, pairingNonce(), pairingNonce());
       assert.equal(opened.code, null);
       assert.equal(
-        h.host.status().pending.some((p) => p.id === keyId(cheat.publicKey)),
-        false,
+        h.host.status().pending.find((p) => p.id === keyId(cheat.publicKey))?.code,
+        "",
+        "no code, nothing to approve",
       );
       // 6. Nor answer a nonce issued to a superseded commitment (a mid-flight re-roll).
       const racer = identity();
@@ -521,6 +527,117 @@ test("requireSecurePairing refuses new v1 pairings and keeps existing devices wo
       h.host.status().pending.find((p) => p.id === keyId(newer.publicKey))?.secure,
       false,
     );
+  } finally {
+    await h.close();
+  }
+});
+
+/** A hello carries no proof of key possession: anyone on the relay can send one. */
+async function forgedHello(h: Harness, channel: string, publicKey: string) {
+  h.send(channel, {
+    type: "hello",
+    publicKey,
+    salt: crypto.randomBytes(32).toString("base64"),
+    name: "Forged",
+    pair: true,
+    v: 2,
+    commit: crypto.randomBytes(32).toString("base64"),
+  });
+  assert.notEqual(await h.nextFrame(channel), "closed");
+}
+
+test("forged hellos cannot replace an opened request or extend its lifetime", async () => {
+  const h = await harness((_req, res) => res.end("ok"));
+  try {
+    const id = keyId(h.phone.publicKey);
+    const paired = await pairV2(h, "f0");
+    const before = h.host.status().pending.find((p) => p.id === id)!;
+    for (let i = 1; i <= 6; i++) await forgedHello(h, `f${i}`, h.phone.publicKey);
+    // The relay used up this request's Mac nonces (its rounds), but the code the phone
+    // opened stays listed, unchanged, with its original expiry, and stays approvable.
+    const after = h.host.status().pending.find((p) => p.id === id)!;
+    assert.deepEqual(
+      [after.code, after.name, after.expiresAt, after.waiting],
+      [paired.code, "Test", before.expiresAt, false],
+    );
+    // A new commitment from the real phone gets no nonce now: a denial of service the
+    // relay could cause anyway by dropping frames, never a changed code.
+    assert.equal((await pairV2(h, "f7")).code, null);
+    h.host.approve(id, paired.code!);
+    assert.equal(h.host.status().devices.find((d) => d.id === id)?.secure, true);
+  } finally {
+    await h.close();
+  }
+});
+
+test("a phone that restarts replaces its own opened code only by opening the new one", async () => {
+  const h = await harness((_req, res) => res.end("ok"));
+  try {
+    const id = keyId(h.phone.publicKey);
+    const first = await pairV2(h, "a1");
+    const np = pairingNonce();
+    const commit = pairingCommitment(h.hostKey, h.phone.publicKey, np);
+    const offer = await h.hello("a2", h.phone, true, { v: 2, commit });
+    // Offered but not yet opened: the earlier code is still the one shown.
+    assert.equal(h.host.status().pending.find((p) => p.id === id)?.code, first.code);
+    h.send("a2", offer.cipher.seal({ type: "pair", nonce: np }));
+    const opened = offer.cipher.open((await h.nextFrame("a2")) as never);
+    assert.equal(opened.code, pairingCode(h.hostKey, h.phone.publicKey, np, offer.welcome.nonce));
+    assert.equal(h.host.status().pending.find((p) => p.id === id)?.code, opened.code);
+    assert.throws(() => h.host.approve(id, first.code!), /pairing_expired/);
+  } finally {
+    await h.close();
+  }
+});
+
+test("waiting requests are listed and clearing one never disconnects a device", async () => {
+  const h = await harness((_req, res) => res.end("ok"));
+  try {
+    const id = keyId(h.phone.publicKey);
+    const first = await pairV2(h, "w1");
+    h.host.approve(id, first.code!);
+    // A re-pair hello (real or forged) that never opens its commitment.
+    await forgedHello(h, "w2", h.phone.publicKey);
+    assert.deepEqual(
+      h.host.status().pending.map((p) => [p.id, p.waiting, p.known]),
+      [[id, true, true]],
+    );
+    h.host.dismiss(id);
+    assert.deepEqual(h.host.status().pending, []);
+    assert.equal(h.host.status().devices.length, 1, "the device stays allowed");
+    // Cleared requests stay cleared for their lifetime.
+    assert.equal((await pairV2(h, "w3")).code, null);
+    const use = await h.hello("w4", h.phone, false, { v: 2 });
+    assert.equal(use.welcome.authorized, true);
+  } finally {
+    await h.close();
+  }
+});
+
+test("downgrade: a key-substituting relay that speaks v1 to the Mac is flagged, or refused", async () => {
+  const h = await harness((_req, res) => res.end("ok"));
+  try {
+    // The relay answers the real (v2) phone itself and introduces its own key to the
+    // Mac as Pocket 1.3, where the code depends on the keys alone.
+    const fakePhone = identity();
+    const asOld = await h.hello("d1", fakePhone);
+    assert.equal(asOld.welcome.v, undefined);
+    assert.deepEqual(
+      h.host.status().pending.map((p) => [p.id, p.secure, p.waiting]),
+      [[keyId(fakePhone.publicKey), false, false]],
+      "lenient Mac: the request is shown, marked as the older method",
+    );
+    h.host.dismiss(keyId(fakePhone.publicKey));
+    // Strict Mac: no request at all, only a note for the owner. Its text must not advise
+    // turning strict mode off (the "old" phone may be a relay).
+    h.host.setPolicy({ requireSecurePairing: true });
+    const refused = identity();
+    const strict = await h.hello("d2", refused);
+    assert.equal(strict.welcome.authorized, false);
+    assert.deepEqual(h.host.status().pending, []);
+    assert.equal(h.host.status().legacyRefused?.name, "Test");
+    // ...while a v2 pairing on the same strict Mac goes through, with its rounds capped.
+    assert.ok((await pairV2(h, "d3", identity())).code);
   } finally {
     await h.close();
   }

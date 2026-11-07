@@ -44,16 +44,21 @@ interface Pending {
   publicKey: string;
   name: string;
   createdAt: number;
+  /** Fixed when the request is created; new commitments never extend it. */
   expiresAt: number;
-  /** v2: empty until the phone opens its commitment; never listed or approvable before. */
+  /** The code to compare. v2: empty until the phone opens a commitment; never approvable before. */
   code: string;
   protocol: 1 | 2;
   /** The device is already allowed: its phone is (re)verifying this Mac's key. */
   known: boolean;
-  /** v2: the phone's commitment and the single Mac nonce ever offered against it. */
+  /** v2: the opened commitment that produced `code`, and its Mac nonce. */
   commit?: string;
   nonce?: string;
-  /** v2: commitments this request has accepted; bounds blind online guesses. */
+  /** v2: the latest commitment not yet opened, and the Mac nonce offered against it. A
+   * hello proves nothing about its key, so it can never replace an opened commitment. */
+  offer?: { commit: string; nonce: string };
+  /** v2: Mac nonces issued for this request. Counted at issue, not at opening: a relay
+   * learns its candidate code as soon as it sees Nm, so every Nm is one guess. */
   rounds: number;
 }
 interface Channel {
@@ -67,6 +72,7 @@ interface Channel {
   /** v2 pairing: the commitment and Mac nonce this channel's welcome answered. */
   commit?: string;
   nonce?: string;
+  name?: string;
   used?: boolean;
   request?: http.ClientRequest;
   deadline: NodeJS.Timeout;
@@ -217,10 +223,11 @@ export class RemoteHost {
         this.legacyRefused && this.legacyRefused.at + PAIRING_TTL > Date.now()
           ? this.legacyRefused
           : null,
-      // `secure: false` marks the v1 code, which a key-substituting relay can forge.
-      pending: [...this.pending.values()]
-        .filter((p) => p.code)
-        .map(({ id, name, code, createdAt, expiresAt, protocol, known }) => ({
+      // `secure` describes this Mac's side only: false marks the v1 code, which a
+      // key-substituting relay can forge. `waiting` requests have no code yet and hold
+      // one of the ten slots; the owner can clear them.
+      pending: [...this.pending.values()].map(
+        ({ id, name, code, createdAt, expiresAt, protocol, known }) => ({
           id,
           name,
           code,
@@ -228,7 +235,9 @@ export class RemoteHost {
           expiresAt,
           secure: protocol === 2,
           known,
-        })),
+          waiting: !code,
+        }),
+      ),
       devices:
         this.stored?.grants.map(({ id, name, createdAt, pairing }) => ({
           id,
@@ -273,6 +282,14 @@ export class RemoteHost {
       for (const [id, p] of this.pending) if (p.protocol === 1) this.pending.delete(id);
     } else this.legacyRefused = undefined;
     this.save();
+  }
+  /** Drop a pairing request (and keep it from coming back for its lifetime) without
+   * touching any grant: clearing a re-pair prompt must not disconnect the device. */
+  dismiss(id: string): void {
+    const pending = this.pending.get(id);
+    if (!pending) return;
+    this.dismissed.set(id, pending.expiresAt);
+    this.pending.delete(id);
   }
   revoke(id: string): void {
     const pending = this.pending.get(id);
@@ -567,11 +584,12 @@ export class RemoteHost {
       // too: their phone must still verify THIS Mac's key against the Mac's screen.
       if (frame.pair === true && fromCloud && frame.commit !== undefined) {
         const commit = nonceBytes(frame.commit).toString("base64");
-        const pending = this.openPairing(deviceId, frame.publicKey, name, commit, !!grant);
-        if (pending) {
+        const nonce = this.openPairing(deviceId, frame.publicKey, name, commit, !!grant);
+        if (nonce) {
           c.commit = commit;
-          c.nonce = pending.nonce;
-          welcome.nonce = pending.nonce;
+          c.nonce = nonce;
+          c.name = name;
+          welcome.nonce = nonce;
         }
       }
       welcome.pending = this.pending.has(deviceId);
@@ -603,48 +621,64 @@ export class RemoteHost {
     }
     c.send(c.cipher.seal(welcome));
   }
-  /** One fresh Mac nonce per phone commitment; a revealed nonce is never offered again. */
+  /** The Mac nonce for this commitment: one fresh nonce per commitment, never reused. */
   private openPairing(
     id: string,
     publicKey: string,
     name: string,
     commit: string,
     known: boolean,
-  ): Pending | undefined {
+  ): string | undefined {
     if (this.dismissed.has(id)) return undefined;
     const existing = this.pending.get(id);
-    if (existing?.protocol === 2 && existing.commit === commit) return existing;
-    // A new commitment: the phone restarted (or upgraded from v1). Bounded per request.
-    if (existing ? existing.rounds >= MAX_PAIRING_ROUNDS : this.pending.size >= 10)
-      return undefined;
+    // The same commitment again (a retry, or a lost reply): the same nonce, no new guess.
+    if (existing?.commit === commit) return existing.nonce;
+    if (existing?.offer?.commit === commit) return existing.offer.nonce;
+    if (existing) {
+      // A new commitment for an open request: the phone restarted, or upgraded from v1.
+      // It waits beside any opened one, which stays listed and approvable until a valid
+      // opening replaces it, and it does not extend the request's lifetime.
+      if (existing.rounds >= MAX_PAIRING_ROUNDS) return undefined;
+      existing.offer = { commit, nonce: pairingNonce() };
+      existing.rounds++;
+      return existing.offer.nonce;
+    }
+    if (this.pending.size >= 10) return undefined;
     const now = Date.now();
-    const pending: Pending = {
+    const offer = { commit, nonce: pairingNonce() };
+    this.pending.set(id, {
       id,
       publicKey,
       name,
       code: "",
       protocol: 2,
       known,
-      commit,
-      nonce: pairingNonce(),
-      rounds: (existing?.rounds ?? 0) + 1,
+      offer,
+      rounds: 1,
       createdAt: now,
       expiresAt: now + PAIRING_TTL,
-    };
-    this.pending.set(id, pending);
-    return pending;
+    });
+    return offer.nonce;
   }
   /** The phone opens its commitment; only now can either side compute the code. */
   private reveal(c: Channel, message: Record<string, unknown>): void {
     const pending = c.deviceId ? this.pending.get(c.deviceId) : undefined;
+    if (!pending || !c.commit || !c.nonce) throw new Error();
     // Bound to the exact commitment and Mac nonce this channel's welcome answered.
-    if (!pending?.nonce || !c.commit || pending.commit !== c.commit || pending.nonce !== c.nonce)
-      throw new Error();
+    const offered = pending.offer?.commit === c.commit && pending.offer.nonce === c.nonce;
+    const opened = pending.commit === c.commit && pending.nonce === c.nonce;
+    if (!offered && !opened) throw new Error();
     const hostKey = this.stored!.identity.publicKey;
     const nonce = nonceBytes(message.nonce).toString("base64");
-    const opened = Buffer.from(pairingCommitment(hostKey, pending.publicKey, nonce), "base64");
-    if (!crypto.timingSafeEqual(opened, Buffer.from(pending.commit, "base64"))) throw new Error();
-    pending.code = pairingCode(hostKey, pending.publicKey, nonce, pending.nonce);
+    const check = Buffer.from(pairingCommitment(hostKey, pending.publicKey, nonce), "base64");
+    if (!crypto.timingSafeEqual(check, Buffer.from(c.commit, "base64"))) throw new Error();
+    // Only a phone holding this key can open a commitment on this channel.
+    pending.protocol = 2;
+    pending.commit = c.commit;
+    pending.nonce = c.nonce;
+    pending.code = pairingCode(hostKey, pending.publicKey, nonce, c.nonce);
+    if (c.name) pending.name = c.name;
+    if (offered) pending.offer = undefined;
     c.used = true;
     c.send(c.cipher!.seal({ type: "paired", code: pending.code }));
   }

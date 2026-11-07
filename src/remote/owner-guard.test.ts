@@ -110,7 +110,11 @@ test(
           (await raw(port, "POST", "/api/remote/approve", headers, { id: "x", code: "y" })).status,
           403,
         );
-        // ...nor relax the Mac's pairing policy to let a v1 (grindable) pairing through.
+        // ...nor clear a real request, or relax the policy to let a v1 (grindable) pairing in.
+        assert.equal(
+          (await raw(port, "POST", "/api/remote/dismiss", headers, { id: "x" })).status,
+          403,
+        );
         assert.equal(
           (
             await raw(port, "POST", "/api/remote/policy", headers, {
