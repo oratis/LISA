@@ -1,7 +1,7 @@
 # LISA 其他连接器调研与接入方案
 
-> 状态：C0/C1 本机单账号、单来源切片已实现，详见第 8 节；其余为规划。调研日期：2026-11-07。实现基线：PR [#436](https://github.com/oratis/LISA/pull/436) 的本机 GitHub 只读连接卡、授权和原聊天恢复。
-> 延续：[插件与连接器方案](PLAN_PLUGINS_CONNECTORS_2026-11-07.md)、[Grok Bot / Manus 调研](RESEARCH_PLUGINS_CONNECTORS_2026-11-07.md)。供应商能力来自下列官方文档；优先级、模块设计和工期为 LISA 的建议，不代表供应商承诺。未登录或授权这些服务的真实用户账号。
+> 状态：C0/C1 已合并；C2 Linear 本机切片已实现并通过真实账号验收，详见第 9 节；其余为规划。调研日期：2026-11-07。实现基线：PR [#436](https://github.com/oratis/LISA/pull/436) 的本机 GitHub 只读连接卡、授权和原聊天恢复。
+> 延续：[插件与连接器方案](PLAN_PLUGINS_CONNECTORS_2026-11-07.md)、[Grok Bot / Manus 调研](RESEARCH_PLUGINS_CONNECTORS_2026-11-07.md)。供应商能力来自下列官方文档；优先级、模块设计和工期为 LISA 的建议，不代表供应商承诺。调研阶段未登录账号；后续实现的真实授权范围和验收结果分别记录在第 8、9 节。
 
 ## 1 建议先交付什么
 
@@ -160,12 +160,12 @@ C0 后优先 C1；若 Google 应用资格影响公开测试，先推进 C2，不
 
 ## 8 本轮交付与下一步
 
-PR #436 已合并。C0/C1 的本机 Web 切片已实现，C2 将验证远程 MCP 的可复用性；多账号、混合来源任务、Cloud 和原生端另行推进。
+PR #436、[#437](https://github.com/oratis/LISA/pull/437) 已合并。C0/C1 的本机 Web 切片已交付，C2 接入 Linear 并复用公共生命周期；多账号、混合来源任务、Cloud 和原生端另行推进。
 
 
 ## 8 C0/C1 实现与验收（2026-11-07）
 
-实现入口为 [公共生命周期](../src/connectors/service.ts)、[适配器契约](../src/connectors/types.ts)、[Google 驱动](../src/connectors/google-driver.ts)、[桌面 OAuth](../src/connectors/google-oauth.ts)、[受控传输](../src/connectors/google-http.ts)、[公共卡片](../src/web/assets/client/connectors.js) 和 [HTTP 接口](../src/web/connectors-api.ts)。本切片沿用已有工程结构，没有预建尚无调用者的 catalog/store/resume 文件；目录目前是服务端固定的三项。GitHub 旧 API 保留，新增接口同步到 OpenAPI。
+实现入口为 [公共生命周期](../src/connectors/service.ts)、[适配器契约](../src/connectors/types.ts)、[Google 驱动](../src/connectors/google-driver.ts)、[桌面 OAuth](../src/connectors/google-oauth.ts)、[受控传输](../src/connectors/google-http.ts)、[公共卡片](../src/web/assets/client/connectors.js) 和 [HTTP 接口](../src/web/connectors-api.ts)。本切片沿用已有工程结构，没有预建尚无调用者的 catalog/store/resume 文件；C0/C1 交付时目录是固定三项，C2 已抽入 `catalog.ts` 并加入 Linear。GitHub 旧 API 保留，新增接口同步到 OpenAPI。
 
 | 来源 | 授权与确认 | 允许读取 | 执行限制 |
 |---|---|---|---|
@@ -194,3 +194,31 @@ Google 的桌面流程采用 PKCE 与临时 loopback callback；实现依据 [Go
 ### 当前边界
 
 每个来源连接一个账号；每条请求只处理一个来源，混合请求提示分别发送。资源选择会用于后续同来源只读任务，直到断开。新用户消息取消未完成的续跑；授权窗口关闭后可取消或等候十分钟超时。首批仍限本机 local-owner Web，Cloud、远程设备和原生客户端未开放。旧 CLI 邮箱登录入口仍保留，但凭据保存已经迁入 SecretStore；新卡片不自动开启旧邮件分类/轮询，也不继承旧邮箱的读取同意。
+
+
+## 9 C2 Linear 实现与验收（2026-11-07）
+
+### 接入方式
+
+[Linear 驱动](../src/connectors/linear-driver.ts) 复用 `ReadonlyConnector` 的持久状态、资源确认、续跑租约、取消和结果去重。`catalog.ts` 保存四个经过审查的来源，Web 接口与卡片使用同一生命周期表面。没有把任意 MCP 服务注册为已授权连接器。
+
+[OAuth](../src/connectors/linear-oauth.ts) 固定发现 `mcp.linear.app` 的资源与授权元数据，经 Dynamic Client Registration 创建公共客户端，只申请 `read`，使用 PKCE S256、随机 state、严格 issuer 校验及临时 `127.0.0.1` 回调。无需用户配置 Linear 客户端 ID 或提交 API key。`oauth-loopback.ts` 封装可复用的单次回调；现有 Google OAuth 保留兼容路径。
+
+[HTTP 传输](../src/mcp/http.ts) 和 [只读 MCP 客户端](../src/mcp/readonly-http.ts) 使用 SDK 的 Streamable HTTP，支持 JSON 和有限 SSE 响应，固定 HTTPS 主机与路径、公共 DNS 地址、禁重定向、单请求 30 秒与 1 MB 上限。关闭不需要的后台通知流；暂时断线最多新建一次连接重做只读查询，权限与数据校验错误不自动重试。令牌刷新由公共凭据锁串行处理，轮换后的 access/refresh token 先保存再读取。
+
+实现依据：[Linear 官方 MCP](https://linear.app/docs/mcp)、[MCP 授权规范](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization)、[Streamable HTTP 规范](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports)。实际公开元数据确认只读资源支持 `read`，授权服务提供注册、S256 与 issuer 参数；忽略未授权响应中较宽的 `read write` challenge，绝不据此扩大权限。
+
+### 资源与操作范围
+
+- Linear 授权绑定所选工作区；LISA 再按稳定团队 ID 限制读取。团队级限制由 LISA 执行，不宣称 OAuth 本身按团队缩小权限。每个来源仍仅一个连接；切换工作区须断开后重新授权。
+- 身份验证和团队清单在授权后用于连接卡，团队默认不选。确认后只恢复原聊天、原请求；后续同来源只读任务复用选定团队，新用户消息取消未完成任务。
+- 模型仅获得 `linear_read` 的 `list`、`issues` 两种操作。内部只允许 `get_user`、`list_teams`、`get_team`、`list_issues`；服务公布的新工具或自称只读的工具均不能扩权。已知工具参数被移除、增加未知必填参数或只读声明改变时停止。
+- 先按所选团队 UUID 核对身份，再用当前团队 key 查询并显式传 `includeSubTeams=false`（官方 UUID 查询会包含子团队）；按更新时间排序，排除已归档工单，可选只看分配给当前账号的工单；每页最多 20 条、最多 5 页。用官方 `fields` 参数只请求 UUID、标题、描述、状态、负责人、时间、链接和团队 ID；兼容人类可读 `id` 与独立 `uuid`。标题最多 400 字、描述最多 1,200 字，只保留已验证的 Linear 来源链接。分页不足或截断明确返回；不声称是全工作区总数。
+- 每次读取核对账号及团队，返回工单的团队 ID 不匹配则整体拒绝。描述等外部内容标为不可信；不提供全局搜索、评论、附件、创建、编辑或分配能力。
+- 只开放本机 `local-owner` Web；Cloud、远程设备仍拒绝。通用 API 的 provider、账号显示名与团队资源类型已同步 OpenAPI。已有 GitHub API 保持兼容。
+
+### 验证记录
+
+自动测试覆盖 DCR/PKCE/state/issuer、只读 scope、令牌轮换、公共 DNS 固定、重定向和响应上限、SDK JSON/SSE、未知工具/参数拒绝、团队与账号隔离、重启恢复、撤销后停止提交，以及 Cloud/跨站拒绝。浏览器测试使用真实本机回调和 SDK，供应商及模型响应为测试替身，覆盖连接卡、默认不选团队、确认后自动恢复、刷新去重、连接复用、取消和混合来源提示。
+
+真实账号验收在隔离的本机预览 Home 进行，仅请求所选团队返回的工单数量。已验证官方 DCR、只读授权、账号与团队清单、默认不选团队、确认后原聊天自动恢复，最终卡片显示任务完成，结果只输出返回数量。真实返回确认了小写 `bearer`、SSE、团队 key、字段选择和 UUID 形态，已补入兼容与范围测试。授权后的服务重启保留了待确认卡片与凭据。没有公开工单内容或账号邮箱；真实撤销和令牌过期轮换仍由自动测试覆盖，未对该账号主动制造失效。

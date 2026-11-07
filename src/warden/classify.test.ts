@@ -750,6 +750,16 @@ test("review 13: audit targets mask email and phone recipients", () => {
   assert.equal(maskEmails("call +1 (415) 555-0100 or bob@example.org").includes("bob@"), false);
 });
 
+test("Linear wrapper classifies reviewed reads as tainted and unknown operations as writes", () => {
+  for (const operation of ["list", "issues"]) {
+    const action = classify("linear_read", { operation });
+    assert.equal(action.category, "read");
+    assert.equal(action.connector, "linear");
+    assert.equal(action.taintSource, true);
+  }
+  assert.equal(cat("linear_read", { operation: "create" }), "write");
+  assert.equal(cat("linear_read", { operation: "unknown" }), "write");
+});
 test("task tools distinguish reads, disabled drafts and cancellation", () => {
   assert.equal(cat("task_list"), "read");
   for (const name of ["task_create", "watch_create", "task_update"]) {
