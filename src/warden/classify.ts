@@ -905,30 +905,35 @@ export function classifyToolCall(
     name === "google_calendar_read" ||
     name === "linear_read" ||
     name === "google_drive_read" ||
-    name === "notion_read"
+    name === "notion_read" ||
+    name === "slack_read"
   ) {
     const operation = str(rec.operation);
     const allowed =
-      name === "google_drive_read" || name === "notion_read"
-        ? ["list", "metadata", "content"]
-        : name === "linear_read"
-          ? ["list", "issues"]
-          : name === "gmail_read"
-            ? ["list", "messages"]
-            : ["list", "events", "freebusy"];
+      name === "slack_read"
+        ? ["list", "messages", "thread"]
+        : name === "google_drive_read" || name === "notion_read"
+          ? ["list", "metadata", "content"]
+          : name === "linear_read"
+            ? ["list", "issues"]
+            : name === "gmail_read"
+              ? ["list", "messages"]
+              : ["list", "events", "freebusy"];
     return {
       ...base,
       category: operation && allowed.includes(operation) ? "read" : "write",
       connector:
-        name === "google_drive_read"
-          ? "google-drive"
-          : name === "notion_read"
-            ? "notion"
-            : name === "linear_read"
-              ? "linear"
-              : name === "gmail_read"
-                ? "gmail"
-                : "google-calendar",
+        name === "slack_read"
+          ? "slack"
+          : name === "google_drive_read"
+            ? "google-drive"
+            : name === "notion_read"
+              ? "notion"
+              : name === "linear_read"
+                ? "linear"
+                : name === "gmail_read"
+                  ? "gmail"
+                  : "google-calendar",
       method: operation,
       targets: [str(rec.resourceId) ?? "selected resources"],
       egress: true,
