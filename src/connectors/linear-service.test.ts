@@ -51,7 +51,7 @@ function driver(
       work({
         call: async (name) => {
           if (name === "get_user") return user;
-          if (name === "get_team") return team;
+          if (name === "get_team") return { ...team, key: "FIX" };
           if (name === "list_teams") return { teams: [team] };
           if (options.revoked?.()) throw new ConnectorError("linear_reauthorization_required");
           return { issues: [] };

@@ -106,9 +106,17 @@ test.describe("Linear read-only connection", () => {
             inputSchema: {
               type: "object",
               properties: Object.fromEntries(
-                ["query", "team", "limit", "cursor", "orderBy", "includeArchived", "assignee"].map(
-                  (key) => [key, {}],
-                ),
+                [
+                  "query",
+                  "team",
+                  "limit",
+                  "cursor",
+                  "orderBy",
+                  "includeArchived",
+                  "assignee",
+                  "includeSubTeams",
+                  "fields",
+                ].map((key) => [key, {}]),
               ),
             },
             annotations: { readOnlyHint: true },
@@ -121,10 +129,11 @@ test.describe("Linear read-only connection", () => {
         else if (message.params.name === "list_teams") data = { teams: [team] };
         else if (message.params.name === "get_team") {
           expect(message.params.arguments.query).toBe(team.id);
-          data = team;
+          data = { ...team, key: "FIX" };
         } else {
           expect(message.params.name).toBe("list_issues");
-          expect(message.params.arguments.team).toBe(team.id);
+          expect(message.params.arguments.team).toBe("FIX");
+          expect(message.params.arguments.includeSubTeams).toBe(false);
           reads++;
           data = {
             issues: [

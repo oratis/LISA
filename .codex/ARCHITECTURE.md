@@ -39,7 +39,7 @@ flowchart LR
 
 状态落在本机 Home 的 `connectors/{provider}/state.json`（v2），GitHub v1 校验后备份并迁移，保留 request ID；文件锁和每请求恢复租约防止并发重复执行。Session 的 `connectorRequestId` 标记防止重复结果；`connector_trace` 留诊断过程，历史 API 不把系统续跑事件当用户消息。Google 桌面授权使用 PKCE、state 和临时 loopback callback；凭据存 SecretStore，刷新串行且先保存再读取。旧邮件 `mail/secrets.json` 在访问时写入同一 SecretStore、回读验证后原子替换为引用，损坏源文件拒绝迁移。Google OAuth 只读 scope 与 LISA 选择的资源范围分开校验；日历忙闲档不会因 Google 令牌已有更宽权限而升级为详情档。邮件头与最多 400 字短摘要经既有敏感内容过滤后才交给模型，不读取正文或附件。凭据撤销、取消、过期均在执行和结果提交边界复核。
 
-Linear 使用官方 `/mcp/readonly`、DCR + PKCE `read` 授权与 issuer 绑定的 loopback 回调。`src/mcp/http.ts` 提供 DNS 固定、禁重定向、有界响应的远程传输；`readonly-http.ts` 仅接受经过审查的工具和参数，不暴露服务端 prompts 或任意工具。驱动只提供 `linear_read` 的团队清单与有限工单读取，核对账号和稳定团队 ID；OAuth 工作区权限与 LISA 团队选择分别约束。`catalog.ts` 是固定来源目录，新增目录项不会授权任意 MCP。
+Linear 使用官方 `/mcp/readonly`、DCR + PKCE `read` 授权与 issuer 绑定的 loopback 回调。`src/mcp/http.ts` 提供 DNS 固定、禁重定向、有界响应的远程传输；`readonly-http.ts` 仅接受经过审查的工具和参数，不暴露服务端 prompts 或任意工具。驱动只提供 `linear_read` 的团队清单与有限工单读取，核对账号和稳定团队 ID，再用当前 key 查询并排除子团队；固定字段选择和返回团队 ID 复核防止扩大范围。OAuth 工作区权限与 LISA 团队选择分别约束。`catalog.ts` 是固定来源目录，新增目录项不会授权任意 MCP。
 
 `src/agent.ts` 的核心职责：
 

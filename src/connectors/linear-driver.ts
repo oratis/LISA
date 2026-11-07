@@ -238,15 +238,31 @@ export class LinearReadonlyDriver implements ReadonlyDriver<LinearAccount, Linea
         throw new ConnectorError("connector_account_changed");
       const verified = record(await mcp.call("get_team", { query: team.id }));
       if (verified.id !== team.id) throw new ConnectorError("resource_not_granted");
+      // Linear's UUID filter also includes descendant teams. Resolve the current
+      // unique key from the selected UUID and explicitly disable subtree expansion.
+      if (typeof verified.key !== "string" || !/^[A-Za-z][A-Za-z0-9_-]{0,49}$/.test(verified.key))
+        throw new ConnectorError("mcp_invalid_response");
       let cursor: string | undefined,
         items: Record<string, unknown>[] = [];
       for (let n = 1; n <= page; n++) {
         const result = rows(
           await mcp.call("list_issues", {
-            team: team.id,
+            team: verified.key,
+            includeSubTeams: false,
             limit: 20,
             orderBy: "updatedAt",
             includeArchived: false,
+            fields: [
+              "uuid",
+              "title",
+              "description",
+              "status",
+              "assignee",
+              "createdAt",
+              "updatedAt",
+              "url",
+              "teamId",
+            ],
             ...(args.assignedToMe ? { assignee: "me" } : {}),
             ...(cursor ? { cursor } : {}),
           }),
@@ -265,8 +281,8 @@ export class LinearReadonlyDriver implements ReadonlyDriver<LinearAccount, Linea
           };
       }
       const issues = items.slice(0, 20).map((r) => {
-        if (r.teamId !== team.id || !uuid(r.id))
-          throw new ConnectorError("linear_resource_mismatch");
+        const id = uuid(r.uuid) ? r.uuid : r.id;
+        if (r.teamId !== team.id || !uuid(id)) throw new ConnectorError("linear_resource_mismatch");
         let url = "";
         try {
           const u = new URL(text(r.url, 2000));
@@ -275,8 +291,8 @@ export class LinearReadonlyDriver implements ReadonlyDriver<LinearAccount, Linea
           /* no fabricated source URL */
         }
         return {
-          id: r.id,
-          identifier: text(r.identifier, 80),
+          id,
+          identifier: text(r.identifier ?? (uuid(r.id) ? "" : r.id), 80),
           title: text(r.title),
           description: text(r.description, 1200),
           status: text(r.status, 100),

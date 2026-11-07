@@ -16,7 +16,8 @@ const team = {
 };
 const another = "00000000-0000-4000-8000-000000000003";
 const issue = {
-  id: "00000000-0000-4000-8000-000000000004",
+  id: "FIX-1",
+  uuid: "00000000-0000-4000-8000-000000000004",
   teamId: team.id,
   identifier: "FIX-1",
   title: "A task",
@@ -88,9 +89,12 @@ test("Linear pins the read endpoint/tools, checks identity and team, bounds and 
             assert.equal(args.query, "me");
             return { ...user, id: changedUser ? another : user.id };
           }
-          if (name === "get_team") return { ...team, id: changedTeam ? another : team.id };
+          if (name === "get_team")
+            return { ...team, key: "FIX", id: changedTeam ? another : team.id };
           assert.equal(name, "list_issues");
-          assert.equal(args.team, team.id);
+          assert.equal(args.team, "FIX");
+          assert.equal(args.includeSubTeams, false);
+          assert.ok((args.fields as string[]).includes("teamId"));
           assert.equal(args.assignee, "me");
           assert.equal(args.limit, 20);
           assert.equal(args.includeArchived, false);
@@ -143,7 +147,7 @@ test("Linear follows bounded cursors internally and refuses mismatched issue tea
       work({
         call: async (name, args) => {
           if (name === "get_user") return user;
-          if (name === "get_team") return team;
+          if (name === "get_team") return { ...team, key: "FIX" };
           if (name === "list_teams") return { teams: [team] };
           cursors.push(args.cursor);
           return {
