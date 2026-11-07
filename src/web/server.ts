@@ -1,5 +1,6 @@
 import { expressionTurn } from "../expressions/turn.js";
 import {
+  parseExpressionPreferences,
   readExpressionPreferences,
   writeExpressionPreferences,
 } from "../expressions/preferences.js";
@@ -3794,31 +3795,36 @@ export async function startWebServer(opts: WebServerOptions): Promise<http.Serve
       return;
     }
 
-    // Shared expression preferences use the authenticated request home.
+    // Shared expression preferences use the authenticated request home. Writes
+    // follow the session-names trust shape: same-origin for everyone, a loopback
+    // Host for a loopback-trusted caller, and in the cloud only an account
+    // session — a shared web or device token never writes the operator's home.
     if (url === "/api/expressions/preferences" && (req.method === "GET" || req.method === "PUT")) {
       if (req.method === "GET") {
         res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
         res.end(JSON.stringify(await readExpressionPreferences()));
       } else {
-        const problem = crossSiteProblem(
-          req,
-          !cloud && isLoopbackAddress(remoteAddr) && accountUid === null,
-        );
+        const problem =
+          crossSiteProblem(req, !cloud && isLoopbackAddress(remoteAddr) && accountUid === null) ??
+          (cloud && !accountUid ? "account_session_required" : null);
         if (problem) {
-          res.writeHead(403).end("cross-site request rejected");
+          res.writeHead(403, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: problem }));
           return;
         }
-        const body = await readRequestText(req, res);
-        if (body === null) return;
+        const body = await readJsonBody(req, res, 4 * 1024);
+        if (!body) return;
         let prefs;
         try {
-          prefs = await writeExpressionPreferences(JSON.parse(body));
+          prefs = parseExpressionPreferences(body);
         } catch {
-          res.writeHead(400).end("invalid expression preferences");
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "invalid_expression_preferences" }));
           return;
         }
+        const saved = await writeExpressionPreferences(prefs);
         res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
-        res.end(JSON.stringify(prefs));
+        res.end(JSON.stringify(saved));
       }
       return;
     }

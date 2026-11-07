@@ -369,6 +369,45 @@ test("session names validate input and survive a server restart", async () => {
   }
 });
 
+test("expression preferences take JSON only and answer with typed v1 errors", async () => {
+  const srv = await boot();
+  try {
+    const put = (body: string, headers: Record<string, string> = {}) =>
+      request(srv.port, "PUT", "/api/expressions/preferences", {
+        headers: { "content-type": "application/json", ...headers },
+        body,
+      });
+    const valid = JSON.stringify({ display: "emoji", frequency: "lively" });
+    const plain = await request(srv.port, "PUT", "/api/expressions/preferences", {
+      headers: { "content-type": "text/plain" },
+      body: valid,
+    });
+    assert.equal(plain.status, 415);
+    const invalid = await put(JSON.stringify({ display: "html", frequency: "lively" }));
+    assert.equal(invalid.status, 400);
+    assert.deepEqual(JSON.parse(invalid.text), { error: "invalid_expression_preferences" });
+    assert.equal((await put("{")).status, 400);
+    assert.equal(
+      (await put(JSON.stringify({ display: "auto", pad: "x".repeat(8192) }))).status,
+      413,
+    );
+    const foreign = await put(valid, { origin: "https://untrusted.example" });
+    assert.equal(foreign.status, 403);
+    assert.deepEqual(JSON.parse(foreign.text), { error: "cross_origin_request" });
+    const rebound = await put(valid, { host: "attacker.example" });
+    assert.equal(rebound.status, 403);
+    assert.deepEqual(JSON.parse(rebound.text), { error: "untrusted_host" });
+    const saved = await put(valid);
+    assert.equal(saved.status, 200);
+    assert.deepEqual(JSON.parse(saved.text), { display: "emoji", frequency: "lively" });
+    const read = await request(srv.port, "GET", "/api/expressions/preferences");
+    assert.deepEqual(JSON.parse(read.text), { display: "emoji", frequency: "lively" });
+  } finally {
+    fs.rmSync(path.join(TMP, "expression-preferences.json"), { force: true });
+    await srv.close();
+  }
+});
+
 describe("T-9 /api/config over the real server", () => {
   const KEY = "sk-test-0123456789abcdefghij";
   const cleanup: string[] = [];
