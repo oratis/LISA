@@ -104,6 +104,26 @@ test.describe("mobile app shell", () => {
     await expect(page.locator("#sessionTree .tleaf").last()).toHaveClass(/active/);
   });
 
+  test("a session can be renamed from inside the navigation sheet", async ({ page }) => {
+    await page.goto(lisa.baseURL);
+    await page.locator("#mobileMenuBtn").click();
+    const sheet = page.getByRole("dialog", { name: "Explore Lisa" });
+    const row = sheet.locator("#sessionTree .tleaf[data-lisa-id]").first();
+    await row.click({ button: "right" });
+    // The menu lives inside the open sheet, so the modal does not make it inert.
+    const item = sheet.getByRole("menuitem", { name: "Rename session" });
+    await expect(item).toBeVisible();
+    await item.click();
+    await page.getByLabel("Session name", { exact: true }).fill("Phone rename <b>");
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(page.locator(".session-rename-dialog")).toHaveCount(0);
+    await expect(row.locator(".tname")).toHaveText("Phone rename <b>");
+    await expect(sheet).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(sheet).not.toBeVisible();
+    await expect(page.locator(".session-context-menu")).toHaveCount(0);
+  });
+
   test("action sheet, search and theme work without hiding conversation controls", async ({
     page,
   }, info) => {

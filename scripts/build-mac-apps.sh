@@ -109,6 +109,12 @@ sign_one() {
         echo "  ↳ embedded node runtime"
         codesign "${args[@]}" "$node"
     fi
+    # Native PTY libraries must have the same Team ID as the hardened Node.
+    local pty="$app/Contents/Resources/backend/node_modules/node-pty/build/Release"
+    if [ -d "$pty" ]; then
+        codesign "${args[@]}" "$pty/pty.node"
+        codesign "${args[@]}" "$pty/spawn-helper"
+    fi
     codesign "${args[@]}" --deep "$app"
     codesign --verify --deep --strict --verbose=1 "$app"
 }
