@@ -19,19 +19,29 @@ final class RemoteMacLiveTests: XCTestCase {
         let fixture = try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
         let cacheKey = "lisa.link.\(fixture.target.id).lanURLs"
         UserDefaults.standard.removeObject(forKey: cacheKey)
-        let transport = RemoteMacTransport(target: fixture.target, pairing: true, credentialProvider: { fixture.token })
+        // This machine's system proxy may be offline. Limit the override to the
+        // opt-in test; production connections retain the user's system settings.
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.connectionProxyDictionary = [:]
+        let controlSession = URLSession(configuration: configuration)
+        var transport = RemoteMacTransport(target: fixture.target, pairing: true,
+            credentialProvider: { fixture.token }, sessionConfiguration: configuration)
         func control(_ path: String, code: String = "") async throws {
             var request = URLRequest(url: URL(string: fixture.controlURL + path)!)
             request.httpMethod = "POST"
             request.setValue(fixture.control, forHTTPHeaderField: "X-Fixture-Control")
             request.httpBody = try JSONSerialization.data(withJSONObject: ["code": code])
-            let (_, response) = try await URLSession.shared.data(for: request)
+            let (_, response) = try await controlSession.data(for: request)
             XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
         }
         let authorization = try await transport.authorization()
         if !authorization.authorized { try await control("/approve", code: authorization.code) }
+        await transport.invalidate()
+        UserDefaults.standard.removeObject(forKey: cacheKey)
+        transport = RemoteMacTransport(target: fixture.target, credentialProvider: { fixture.token },
+            sessionConfiguration: configuration)
         func read(_ route: String) async throws {
-            let expectation = expectation(forNotification: .lisaRemoteRoute, object: fixture.target.id) { notification in
+            let expectation = expectation(forNotification: .lisaRemoteRoute, object: nil) { notification in
                 notification.userInfo?["route"] as? String == route
             }
             let (data, response) = try await transport.data(path: "/api/edition", method: "GET", body: nil)
@@ -40,6 +50,7 @@ final class RemoteMacLiveTests: XCTestCase {
             XCTAssertEqual(result?["ok"] as? Bool, true)
             XCTAssertEqual(result?["remote"] as? String, "remote-link")
             await fulfillment(of: [expectation], timeout: 3)
+            print("Verified remote route: \(route)")
         }
         do {
             try await read("Cloud relay")

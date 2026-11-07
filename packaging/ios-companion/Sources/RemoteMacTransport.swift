@@ -138,7 +138,7 @@ extension Notification.Name { static let lisaRemoteRoute = Notification.Name("li
 
 actor RemoteMacTransport {
     let target: RemoteMacTarget
-    private let session = URLSession(configuration: .ephemeral, delegate: RemoteSessionDelegate(), delegateQueue: nil)
+    private let session: URLSession
     private var lanURLs: [URL] = []
     private var nextLANProbe = Date.distantPast
     private var active: [UUID: any RemoteConnection] = [:]
@@ -148,8 +148,10 @@ actor RemoteMacTransport {
     private let pairing: Bool
 
     init(target: RemoteMacTarget, pairing: Bool = false, credentialProvider: (() throws -> String)? = nil,
+         sessionConfiguration: URLSessionConfiguration = .ephemeral,
          connector: ((URL, String?, UInt64) async throws -> any RemoteConnection)? = nil) {
         self.target = target
+        self.session = URLSession(configuration: sessionConfiguration, delegate: RemoteSessionDelegate(), delegateQueue: nil)
         self.pairing = pairing
         self.credentialProvider = credentialProvider
         self.connector = connector

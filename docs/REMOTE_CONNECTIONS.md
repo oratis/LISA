@@ -105,6 +105,14 @@ invoked through the encrypted tunnel.
 
 ## Validation
 
+On 2026-11-07 the signed iOS simulator passed `RemoteMacLiveTests` against the
+production Worker: Cloud relay → Local network → Cloud relay when LAN was blocked
+→ Local network after recovery. This used real URLSession WebSockets, the actual
+CryptoKit/Node protocol and a private-IP LAN endpoint under the app's ATS settings.
+The test's transport disabled only this development Mac's unavailable proxy.
+Physical Wi-Fi ↔ cellular handoff remains **not tested** (iPhone unavailable).
+
+
 The Node integration tests boot the real Mac HTTP server and real WebSocket peers,
 and separately boot the real Cloud account server. They cover account isolation,
 expired/invalid sessions, explicit approval, cloud/LAN equivalence, SSE, cancellation,
@@ -115,3 +123,22 @@ failed-LAN fallback, network-change reprobes and no mutation replay after uncert
 Release acceptance still requires real iPhone testing over Wi-Fi → cellular → Wi-Fi,
 Mac sleep/wake, firewall denial and the deployed proxy. Local automated tests cannot
 establish the availability or behavior of the production domain or an installed App Store build.
+
+### Reproduce the production URLSession check
+
+Use a dedicated test-account session in a mode-0600 file, then run from the repo root:
+
+```sh
+LISA_RELAY_TEST_SESSION_FILE=/protected/test-session node --import tsx scripts/remote-relay-fixture.ts
+```
+
+The disposable fixture publishes its public identity through the deployed relay and writes
+`.tmp/release/live-fixture.json` (0600). Run `RemoteMacLiveTests` with
+`TEST_RUNNER_LISA_LIVE_RELAY_FIXTURE` set to that file's absolute path. Simulator tests
+must use `CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=-` so Keychain writes work.
+The opt-in test disables the test session's proxy only; normal app sessions retain
+system proxy settings. It verifies real production WSS, CryptoKit/Node encryption,
+private-IP LAN/ATS, failed-LAN fallback, and LAN recovery after a network-change signal.
+The fixture rejects LAN connections while keeping discovery hints, modelling an
+unreachable LAN rather than shutting down the Mac. Stop the fixture after testing;
+its temporary identity and grants are removed. Never commit the session or fixture JSON.
