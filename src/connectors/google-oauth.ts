@@ -15,10 +15,13 @@ export interface GoogleCredential extends GoogleClient {
   expiry: number;
   scopes: string[];
   allowedScopes: string[];
+  /** Only present for the desktop Picker flow; never inferred from a Drive listing. */
+  pickedFileIds?: string[];
 }
 export const GOOGLE_SCOPES = {
   identity: ["openid", "https://www.googleapis.com/auth/userinfo.email"],
   gmail: ["https://www.googleapis.com/auth/gmail.readonly"],
+  driveFile: ["https://www.googleapis.com/auth/drive.file"],
   events: [
     "https://www.googleapis.com/auth/calendar.events.readonly",
     "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
@@ -131,8 +134,12 @@ export async function authorizeGoogle(
   signal: AbortSignal,
   progress: (value: { authorizationUrl: string }) => void,
   httpRequest: GoogleHttp,
+  options: { drivePicker?: boolean } = {},
 ): Promise<GoogleCredential> {
   signal.throwIfAborted();
+  if (options.drivePicker && (scopes.length !== 1 || scopes[0] !== GOOGLE_SCOPES.driveFile[0]))
+    throw new ConnectorError("google_scope_required");
+  let pickedFileIds: string[] | undefined;
   const state = randomBytes(32).toString("base64url"),
     verifier = randomBytes(48).toString("base64url");
   let resolveCode!: (code: string) => void, rejectCode!: (error: Error) => void;
@@ -182,6 +189,21 @@ export async function authorizeGoogle(
       rejectCode(new ConnectorError("google_authorization_failed"));
       return;
     }
+    if (options.drivePicker) {
+      const ids = (url.searchParams.get("picked_file_ids") ?? "").split(",");
+      if (
+        !ids.length ||
+        ids.length > 30 ||
+        ids.some((id) => !/^[A-Za-z0-9_-]{10,200}$/.test(id)) ||
+        new Set(ids).size !== ids.length
+      ) {
+        res.writeHead(400);
+        res.end("No supported files were selected. Return to LISA and choose files again.");
+        rejectCode(new ConnectorError("drive_selection_required"));
+        return;
+      }
+      pickedFileIds = ids;
+    }
     res.end("Google sign-in received. Return to LISA to select the read-only access scope.");
     resolveCode(code);
   });
@@ -210,6 +232,14 @@ export async function authorizeGoogle(
       prompt: "consent select_account",
       include_granted_scopes: "false",
     });
+    if (options.drivePicker) {
+      params.set("trigger_onepick", "true");
+      params.set("allow_multiple", "true");
+      params.set(
+        "mimetypes",
+        "application/vnd.google-apps.document,application/vnd.google-apps.spreadsheet,application/vnd.google-apps.presentation,text/plain,text/markdown,text/csv,text/tab-separated-values,application/json",
+      );
+    }
     progress({ authorizationUrl: `https://accounts.google.com/o/oauth2/v2/auth?${params}` });
     const code = await codeResult;
     signal.throwIfAborted();
@@ -221,11 +251,12 @@ export async function authorizeGoogle(
       grant_type: "authorization_code",
     });
     if (client.clientSecret) form.set("client_secret", client.clientSecret);
-    return tokenResponse(
+    const credential = tokenResponse(
       await httpRequest("https://oauth2.googleapis.com/token", signal, { form }),
       client,
       scopes,
     );
+    return pickedFileIds ? { ...credential, pickedFileIds } : credential;
   } finally {
     clearTimeout(timer);
     signal.removeEventListener("abort", cancel);

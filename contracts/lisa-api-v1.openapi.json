@@ -1519,7 +1519,9 @@
               "enum": [
                 "google-calendar",
                 "gmail",
-                "linear"
+                "linear",
+                "google-drive",
+                "notion"
               ]
             }
           },
@@ -1569,7 +1571,9 @@
               "enum": [
                 "google-calendar",
                 "gmail",
-                "linear"
+                "linear",
+                "google-drive",
+                "notion"
               ]
             }
           },
@@ -1651,7 +1655,9 @@
               "enum": [
                 "google-calendar",
                 "gmail",
-                "linear"
+                "linear",
+                "google-drive",
+                "notion"
               ]
             }
           },
@@ -1734,7 +1740,9 @@
               "enum": [
                 "google-calendar",
                 "gmail",
-                "linear"
+                "linear",
+                "google-drive",
+                "notion"
               ]
             }
           },
@@ -1805,7 +1813,9 @@
               "enum": [
                 "google-calendar",
                 "gmail",
-                "linear"
+                "linear",
+                "google-drive",
+                "notion"
               ]
             }
           },
@@ -1875,7 +1885,9 @@
               "enum": [
                 "google-calendar",
                 "gmail",
-                "linear"
+                "linear",
+                "google-drive",
+                "notion"
               ]
             }
           },
@@ -1971,7 +1983,9 @@
               "enum": [
                 "google-calendar",
                 "gmail",
-                "linear"
+                "linear",
+                "google-drive",
+                "notion"
               ]
             }
           }
@@ -4398,12 +4412,17 @@
           },
           "name": {
             "type": "string",
-            "description": "Linear account display name; stable id remains the identity key."
+            "description": "Display name; stable identity is id plus workspaceId for Notion."
+          },
+          "workspaceId": {
+            "type": "string"
+          },
+          "workspaceName": {
+            "type": "string"
           }
         },
         "required": [
-          "id",
-          "email"
+          "id"
         ],
         "additionalProperties": false
       },
@@ -4421,10 +4440,15 @@
               "events",
               "freebusy",
               "metadata",
-              "team"
+              "team",
+              "file",
+              "page"
             ]
           },
           "timeZone": {
+            "type": "string"
+          },
+          "mimeType": {
             "type": "string"
           }
         },
@@ -4495,7 +4519,7 @@
           },
           "authorizationUrl": {
             "type": "string",
-            "description": "Short-lived trusted Google or Linear authorization URL; no access token or PKCE verifier."
+            "description": "Short-lived trusted Google, Linear or Notion authorization URL; no access token, client secret or PKCE verifier."
           }
         },
         "additionalProperties": false
@@ -4543,7 +4567,9 @@
             "enum": [
               "google-calendar",
               "gmail",
-              "linear"
+              "linear",
+              "google-drive",
+              "notion"
             ]
           }
         },
@@ -4567,7 +4593,9 @@
                     "github",
                     "google-calendar",
                     "gmail",
-                    "linear"
+                    "linear",
+                    "google-drive",
+                    "notion"
                   ]
                 },
                 "name": {

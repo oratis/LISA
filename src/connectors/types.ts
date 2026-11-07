@@ -1,7 +1,10 @@
 import type { ToolDefinition } from "../types.js";
 
 export class ConnectorError extends Error {
-  constructor(public readonly code: string) {
+  constructor(
+    public readonly code: string,
+    public readonly httpStatus?: number,
+  ) {
     super(code);
   }
 }

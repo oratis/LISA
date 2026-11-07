@@ -1,7 +1,7 @@
 # LISA 其他连接器调研与接入方案
 
-> 状态：C0/C1 已合并；C2 Linear 本机切片已实现并通过真实账号验收，详见第 9 节；其余为规划。调研日期：2026-11-07。实现基线：PR [#436](https://github.com/oratis/LISA/pull/436) 的本机 GitHub 只读连接卡、授权和原聊天恢复。
-> 延续：[插件与连接器方案](PLAN_PLUGINS_CONNECTORS_2026-11-07.md)、[Grok Bot / Manus 调研](RESEARCH_PLUGINS_CONNECTORS_2026-11-07.md)。供应商能力来自下列官方文档；优先级、模块设计和工期为 LISA 的建议，不代表供应商承诺。调研阶段未登录账号；后续实现的真实授权范围和验收结果分别记录在第 8、9 节。
+> 状态：C0/C1/C2 已合并；C3 Drive/Notion 本机切片已实现，详见第 10 节；其余为规划。调研日期：2026-11-07。实现基线：PR [#436](https://github.com/oratis/LISA/pull/436) 的本机 GitHub 只读连接卡、授权和原聊天恢复。
+> 延续：[插件与连接器方案](PLAN_PLUGINS_CONNECTORS_2026-11-07.md)、[Grok Bot / Manus 调研](RESEARCH_PLUGINS_CONNECTORS_2026-11-07.md)。供应商能力来自下列官方文档；优先级、模块设计和工期为 LISA 的建议，不代表供应商承诺。调研阶段未登录账号；后续实现的真实授权范围和验收结果分别记录在第 8、9、10 节。
 
 ## 1 建议先交付什么
 
@@ -222,3 +222,32 @@ Google 的桌面流程采用 PKCE 与临时 loopback callback；实现依据 [Go
 自动测试覆盖 DCR/PKCE/state/issuer、只读 scope、令牌轮换、公共 DNS 固定、重定向和响应上限、SDK JSON/SSE、未知工具/参数拒绝、团队与账号隔离、重启恢复、撤销后停止提交，以及 Cloud/跨站拒绝。浏览器测试使用真实本机回调和 SDK，供应商及模型响应为测试替身，覆盖连接卡、默认不选团队、确认后自动恢复、刷新去重、连接复用、取消和混合来源提示。
 
 真实账号验收在隔离的本机预览 Home 进行，仅请求所选团队返回的工单数量。已验证官方 DCR、只读授权、账号与团队清单、默认不选团队、确认后原聊天自动恢复，最终卡片显示任务完成，结果只输出返回数量。真实返回确认了小写 `bearer`、SSE、团队 key、字段选择和 UUID 形态，已补入兼容与范围测试。授权后的服务重启保留了待确认卡片与凭据。没有公开工单内容或账号邮箱；真实撤销和令牌过期轮换仍由自动测试覆盖，未对该账号主动制造失效。
+
+
+## 10 C3 Google Drive / Notion 实现与验收（2026-11-07）
+
+PR [#438](https://github.com/oratis/LISA/pull/438) 已合并。本批复用 `ReadonlyConnector`，固定目录扩为六项，增加 `google_drive_read` / `notion_read` 三种操作：`list`、`metadata`、`content`。Web 连接卡、取消、重新授权、断开、原聊天自动恢复、重启租约与结果去重均复用现有实现；Cloud 和远程设备仍拒绝访问。每个来源仅一个账号/工作区，混合来源仍提示拆开请求。
+
+### Drive
+
+采用 [Google 桌面 Picker OAuth](https://developers.google.com/workspace/drive/picker/guides/desktop-mobile-picker)：只请求 `drive.file`，不叠加 openid/email；以 `about.user.permissionId` 绑定账号。授权使用 PKCE、随机 state、临时 loopback 回调，并验证 `picked_file_ids`（最多 30 个）。不通过全盘列表推断用户选中了什么，不向网页发送 access token。Google 的文件级 scope 包含写能力，连接卡明确披露；LISA 仅实现读取，且再次限制为卡片确认的文件。
+
+仅支持 Docs/Slides 的纯文本导出、Sheets 首个工作表 CSV、普通文本/Markdown/CSV/TSV/JSON。文件类型、选定 ID、账号、下载权限和访问状态均验证；内容最多 1 MB、输出最多 30,000 字。禁止文件夹、快捷方式、PDF、二进制附件、任意 URL 和全盘搜索。来源内容作为不可信数据，正文不成为系统指令。
+
+配置仍使用 `LISA_GOOGLE_CLIENT_FILE` 的桌面应用 JSON。对应 Cloud 项目须启用 **Drive API 与 Google Picker API**；文件类型和导出限制参见 [官方导出表](https://developers.google.com/workspace/drive/api/guides/ref-export-formats)。公开分发须使用正式 LISA 品牌客户端，现有 Luddi 仅用于本次本机验收。
+
+### Notion
+
+采用 [Notion OAuth](https://developers.notion.com/guides/authorization/overview) 和固定 REST API，应用只启用 **Read content**，关闭写入、更新、评论和用户资料权限。每次使用前通过 [token introspection](https://developers.notion.com/reference/introspect-token) 验证 `active=true` 且 scope 仅为 `read_content`；未知/更宽 scope 拒绝。令牌轮换先持久化，再继续读取。身份按工作区 ID 加 users/me 稳定 ID 绑定，兼容 bot/person。
+
+授权采用 confidential Basic token exchange、随机 state 和预注册 `http://localhost:4860/oauth/notion`。Notion 开发者门户拒绝 IP 形式回调；供应商未文档化 PKCE/issuer，本实现不假称支持。回调仅监听 127.0.0.1，严格校验 Host、路径、state 和单次消费，十分钟超时。
+
+创建 OAuth connection 后，把 `clientId`、`clientSecret`、`redirectUri` 写入私有本机 JSON（权限 0600），在 `~/.lisa/config.env` 设置 `LISA_NOTION_CLIENT_FILE` 指向它；也支持 `LISA_NOTION_CLIENT_ID`、`LISA_NOTION_CLIENT_SECRET`、`LISA_NOTION_REDIRECT_URI`。密钥不得放入仓库、聊天或模型上下文。固定回调端口须可用。
+
+页面清单来自连接已获访问的页面，默认不选。确认后读取指定页面的普通内容块，最多 200 块、4 层、12 次 children 请求，另有最多 10 次容器复核和两次页面读取；单块 2,000 字、总计 30,000 字，截断和省略类型明确返回。不深入子页面/数据库，不展开同步块，不下载附件或跟随链接。返回前复核已遍历容器所属关系与根页面权限，越界/移动/撤销时不返回已缓冲的正文。
+
+### 验证范围
+
+自动测试覆盖两种真实本机回调、scope/state/PKCE、Notion Basic 交换、令牌轮换、指定文件/页面范围、错误类型、外部 URL 拒绝、子页面与同步块省略、移动/撤销后停止、截断与导出限制、重启恢复去重、断开与跨站/非 owner 拒绝。浏览器测试覆盖两种连接卡、默认不勾选、刷新、原任务仅完成一次、后续复用、取消及混合来源提示；供应商和模型响应使用测试替身。
+
+真实 Notion OAuth 已验证 `read_content`、页面选择、连接卡确认和原任务自动恢复；所选页面返回 0 个普通块/0 字，无截断。非空页面、嵌套内容、撤销及刷新由自动测试验证，不把空页面验收描述成覆盖所有内容类型。

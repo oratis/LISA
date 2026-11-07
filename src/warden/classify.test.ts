@@ -768,3 +768,20 @@ test("task tools distinguish reads, disabled drafts and cancellation", () => {
   }
   assert.equal(cat("task_cancel"), "self");
 });
+
+test("document wrappers expose only reviewed reads and mark every result as untrusted", () => {
+  for (const [name, connector] of [
+    ["google_drive_read", "google-drive"],
+    ["notion_read", "notion"],
+  ]) {
+    for (const operation of ["list", "metadata", "content"]) {
+      const action = classify(name!, { operation });
+      assert.equal(action.category, "read");
+      assert.equal(action.connector, connector);
+      assert.equal(action.taintSource, true);
+      assert.equal(action.destination, "fixed");
+    }
+    for (const operation of ["create", "delete", "unknown"])
+      assert.equal(cat(name!, { operation }), "write");
+  }
+});

@@ -696,19 +696,35 @@ export function classifyToolCall(
 
   if (name.startsWith(MCP_PREFIX)) return classifyMcp(name, rec, tool, base, ctx);
 
-  if (name === "gmail_read" || name === "google_calendar_read" || name === "linear_read") {
+  if (
+    name === "gmail_read" ||
+    name === "google_calendar_read" ||
+    name === "linear_read" ||
+    name === "google_drive_read" ||
+    name === "notion_read"
+  ) {
     const operation = str(rec.operation);
     const allowed =
-      name === "linear_read"
-        ? ["list", "issues"]
-        : name === "gmail_read"
-          ? ["list", "messages"]
-          : ["list", "events", "freebusy"];
+      name === "google_drive_read" || name === "notion_read"
+        ? ["list", "metadata", "content"]
+        : name === "linear_read"
+          ? ["list", "issues"]
+          : name === "gmail_read"
+            ? ["list", "messages"]
+            : ["list", "events", "freebusy"];
     return {
       ...base,
       category: operation && allowed.includes(operation) ? "read" : "write",
       connector:
-        name === "linear_read" ? "linear" : name === "gmail_read" ? "gmail" : "google-calendar",
+        name === "google_drive_read"
+          ? "google-drive"
+          : name === "notion_read"
+            ? "notion"
+            : name === "linear_read"
+              ? "linear"
+              : name === "gmail_read"
+                ? "gmail"
+                : "google-calendar",
       method: operation,
       targets: [str(rec.resourceId) ?? "selected resources"],
       egress: true,

@@ -5,7 +5,7 @@ import { randomBytes, createHash, timingSafeEqual } from "node:crypto";
 import { ConnectorError } from "./types.js";
 export async function loopbackAuthorization<T>(
   signal: AbortSignal,
-  issuer: string,
+  issuer: string | null,
   work: (attempt: {
     redirect: string;
     state: string;
@@ -13,6 +13,11 @@ export async function loopbackAuthorization<T>(
     verifier: string;
     code: Promise<string>;
   }) => Promise<T>,
+  options: {
+    port?: number;
+    hostname?: "127.0.0.1" | "localhost";
+    pathname?: "/oauth/connector" | "/oauth/notion";
+  } = {},
 ): Promise<T> {
   signal.throwIfAborted();
   const state = randomBytes(32).toString("base64url"),
@@ -42,11 +47,12 @@ export async function loopbackAuthorization<T>(
     if (
       consumed ||
       req.method !== "GET" ||
-      req.headers.host !== `127.0.0.1:${(server.address() as AddressInfo).port}` ||
-      url.pathname !== "/oauth/connector" ||
+      req.headers.host !==
+        `${options.hostname ?? "127.0.0.1"}:${(server.address() as AddressInfo).port}` ||
+      url.pathname !== (options.pathname ?? "/oauth/connector") ||
       !/^[A-Za-z0-9_-]{43}$/.test(received) ||
       !timingSafeEqual(Buffer.from(state), Buffer.from(received)) ||
-      url.searchParams.get("iss") !== issuer
+      (issuer !== null && url.searchParams.get("iss") !== issuer)
     ) {
       res.writeHead(400);
       res.end("Invalid or expired authorization callback.");
@@ -77,11 +83,11 @@ export async function loopbackAuthorization<T>(
   try {
     await new Promise<void>((resolve, reject) => {
       server.once("error", reject);
-      server.listen(0, "127.0.0.1", resolve);
+      server.listen(options.port ?? 0, "127.0.0.1", resolve);
     });
     signal.throwIfAborted();
     return await work({
-      redirect: `http://127.0.0.1:${(server.address() as AddressInfo).port}/oauth/connector`,
+      redirect: `http://${options.hostname ?? "127.0.0.1"}:${(server.address() as AddressInfo).port}${options.pathname ?? "/oauth/connector"}`,
       state,
       verifier,
       challenge: createHash("sha256").update(verifier).digest("base64url"),

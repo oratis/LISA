@@ -9,5 +9,7 @@ export const CONNECTOR_CATALOG = [
   },
   { id: "gmail", name: "Gmail", access: "read", authModes: ["login"] },
   { id: "linear", name: "Linear", access: "read", authModes: ["login"] },
+  { id: "google-drive", name: "Google Drive", access: "read", authModes: ["login"] },
+  { id: "notion", name: "Notion", access: "read", authModes: ["login"] },
 ] as const;
 export type ConnectorProvider = (typeof CONNECTOR_CATALOG)[number]["id"];
