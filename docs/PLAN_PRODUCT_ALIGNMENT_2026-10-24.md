@@ -2,7 +2,7 @@
 
 日期：**2026-10-24**。基线：main **4115c1a**，v0.28.1。
 
-**状态：方案已形成，尚未实施。** 本轮交付调研、产品方案、设计规格和 docs 接入；不代表更改了产品、开启了云能力、提交了商店版本或批准了新的生产权限。旧方案已经批准的范围不因本文失效；本文新增范围按实施 PR 逐步落实。
+**截至 2026-10-24 的方案。** 工作包状态和能力缺口均按 v0.28.1 记录。此后，移动 Web 布局、Mac 远程连接及任务审批已有进展，分别见 [#439](https://github.com/oratis/LISA/pull/439)、[#441](https://github.com/oratis/LISA/pull/441)、[#422](https://github.com/oratis/LISA/pull/422)。
 
 依据：[竞品研究](RESEARCH_PRODUCT_ALIGNMENT_2026-10-24.md)、[源码基线](research/product-alignment-2026-10/lisa-baseline.md)、[三端设计规格](DESIGN_CROSS_PLATFORM_ASSISTANT_v1.0.md)。承接 [Always-on 升级方案](PLAN_ALWAYS_ON_UPGRADE_2026-09-30.md)，不另起一套 Task Engine、Warden 或 Reach-out。
 

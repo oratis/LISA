@@ -1,6 +1,6 @@
 # LISA 三端助手体验设计规格
 
-日期：2026-10-24。**状态：提案，尚未实现。** 适用 Lisa Pocket（iPhone／iPad）、Mac 主窗口与常驻入口、登录后 Web 和官网。本文线框中的任务与数字均为合成示例，不表示已有功能或真实用户数据。
+**2026-10-24 设计提案。** 现状描述使用 v0.28.1 基线，后续实施进展见[方案说明](PLAN_PRODUCT_ALIGNMENT_2026-10-24.md)。 适用 Lisa Pocket（iPhone／iPad）、Mac 主窗口与常驻入口、登录后 Web 和官网。本文线框中的任务与数字均为合成示例，不表示已有功能或真实用户数据。
 
 依据：[研究结论](RESEARCH_PRODUCT_ALIGNMENT_2026-10-24.md)、[实施方案与工作包](PLAN_PRODUCT_ALIGNMENT_2026-10-24.md)、[源码基线](research/product-alignment-2026-10/lisa-baseline.md)。当前实际视觉值仍以 [DESIGN_TOKENS](DESIGN_TOKENS.md) 和 CSS 为准；本文定义下一阶段的目标，不能据此宣称主题或导航已更新。
 
