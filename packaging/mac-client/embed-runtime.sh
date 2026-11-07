@@ -111,8 +111,15 @@ cp -R "$STAGE/node_modules" "$RES/backend/node_modules"
 
 # Optional, explicitly prepared native PTY module. Never bundle a library for
 # the wrong architecture or silently ship an incomplete install.
+#
+# Only the runtime files are copied. An npm-installed node-pty also carries
+# prebuilds/ (per-arch and Windows binaries), and a node-gyp tree carries
+# obj.target/ intermediates: none are loaded (build/Release wins), none are
+# signed by sign_one, and any unsigned Mach-O in the bundle fails notarization.
+PTY_OUT="$RES/backend/node_modules/node-pty"
 if [ -n "${LISA_EMBED_PTY_DIR:-}" ]; then
     PTY="$LISA_EMBED_PTY_DIR"
+    test -f "$PTY/package.json" && test -d "$PTY/lib" || { echo "✗ $PTY is not a node-pty package" >&2; exit 1; }
     for binary in pty.node spawn-helper; do
         test -f "$PTY/build/Release/$binary" || { echo "missing PTY $binary" >&2; exit 1; }
         for arch in $ARCHS; do
@@ -121,7 +128,19 @@ if [ -n "${LISA_EMBED_PTY_DIR:-}" ]; then
             lipo -verify_arch "$macho_arch" "$PTY/build/Release/$binary"
         done
     done
-    cp -R "$PTY" "$RES/backend/node_modules/node-pty"
+    rm -rf "$PTY_OUT"
+    mkdir -p "$PTY_OUT/build/Release"
+    cp "$PTY/package.json" "$PTY_OUT/package.json"
+    cp -R "$PTY/lib" "$PTY_OUT/lib"
+    if [ -f "$PTY/LICENSE" ]; then cp "$PTY/LICENSE" "$PTY_OUT/LICENSE"; fi
+    for binary in pty.node spawn-helper; do
+        cp "$PTY/build/Release/$binary" "$PTY_OUT/build/Release/$binary"
+        # lipo drops the linker's ad-hoc signature, and Apple Silicon will not
+        # load or exec an unsigned Mach-O. sign_one re-signs both with the
+        # Developer ID for releases.
+        codesign --force --sign - "$PTY_OUT/build/Release/$binary"
+    done
+    chmod 755 "$PTY_OUT/build/Release/spawn-helper"
 fi
 
 # ── 2. Node runtime ─────────────────────────────────────────────────
@@ -209,6 +228,13 @@ EMBEDDED_VERSION="$("$NODE_OUT" -v)"
 if ! "$NODE_OUT" "$RES/backend/dist/cli.js" --version >/dev/null 2>&1; then
     echo "✗ embedded backend failed to run:" >&2
     "$NODE_OUT" "$RES/backend/dist/cli.js" --version >&2 || true
+    exit 1
+fi
+# An embedded PTY module must load in the embedded node (ABI, architecture
+# and signature), or the app would silently report it as missing.
+if [ -d "$PTY_OUT/build/Release" ] && ! "$NODE_OUT" -e 'require(process.argv[1])' "$PTY_OUT" >/dev/null 2>&1; then
+    echo "✗ embedded node-pty failed to load:" >&2
+    "$NODE_OUT" -e 'require(process.argv[1])' "$PTY_OUT" >&2 || true
     exit 1
 fi
 
