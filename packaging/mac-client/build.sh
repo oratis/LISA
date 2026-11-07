@@ -112,6 +112,9 @@ cp Resources/Info.plist "$APP/Contents/Info.plist"
 # else the repo's package.json — so the About box tracks the release instead of
 # being stuck at a hardcoded number.
 APP_VERSION="${LISA_APP_VERSION:-$(node -p "require('../../package.json').version" 2>/dev/null || echo "")}"
+# Preview packages keep semver in the backend/DMG; Apple bundle fields use
+# the numeric release component required by notarization.
+APP_VERSION="${APP_VERSION%%-*}"
 if [ -n "$APP_VERSION" ]; then
     /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $APP_VERSION" "$APP/Contents/Info.plist" 2>/dev/null || true
     /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $APP_VERSION" "$APP/Contents/Info.plist" 2>/dev/null || true

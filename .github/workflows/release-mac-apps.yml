@@ -204,6 +204,8 @@ jobs:
         with:
           tag_name: ${{ steps.ver.outputs.tag }}
           name: Lisa ${{ steps.ver.outputs.tag }}
+          prerelease: true
+          make_latest: false
           fail_on_unmatched_files: true
           files: |
             dist-release/Lisa-Suite-v${{ steps.ver.outputs.version }}.dmg
