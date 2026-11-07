@@ -12,15 +12,18 @@ The item author works from the task description without inspecting the implement
 - Keep the automatic assertions alongside a separate semantic grading pass. Inspect **all** new persisted claims, including claims the item author did not anticipate. Use only the supplied conversations and initial state as evidence. Grade each batch without architecture labels. Record disagreements with the matched rules.
 - Report correction passes, grounding passes, trials with unsupported writes (all valid trials as denominator), requests, and input, output, cache-read and cache-write tokens. Add the four mutually exclusive token categories for total consumption. Cache duration subcategories are part of cache writes. Totals measure tokens and do not estimate the bill.
 
-The two batches answer different comparisons. Neither batch is pooled with the earlier development set. The unit of observation is one synthetic scenario per arm. A holdout used to guide a further repair becomes diagnostic and must be labeled accordingly.
+Independent PR review identified an unmarked-legacy-channel ambiguity and an overlapping-session timing hazard in the first candidate. A **third disjoint eight-item publication batch** was frozen at `6e70c0a` before measuring the revised product at `0e76081`. Publication compares that revision against `429ef5b`. It uses native headers from each measured checkout's session writer, plus a deliberately unmarked legacy transcript and an external-channel transcript. Frozen fixture times establish ordering. The last session is loaded from disk in all three batches.
+
+The batches answer different comparisons. Neither batch is pooled with the earlier development set. The unit of observation is one synthetic scenario per arm. A holdout used to guide a further repair becomes diagnostic and must be labeled accordingly.
 
 ## Run and verify
 
-The [evaluation report](../../../docs/REVE_CROSS_SESSION_HOLDOUT_2026-11-08.md) links the two raw ledgers and both anonymous-grading audits. Each measured checkout needs the project's dependencies. Run from the checkout containing this harness, using full checkouts of the named commits and a fresh output filename.
+The [evaluation report](../../../docs/REVE_CROSS_SESSION_HOLDOUT_2026-11-08.md) links the three raw ledgers and their anonymous-grading audits. Each measured checkout needs the project's dependencies. Run from the checkout containing this harness, using full checkouts of the named commits and a fresh output filename.
 
 ```sh
 node --import tsx research/reve-memory-eval/holdout/run.ts --fixtures=research/reve-memory-eval/holdout/confirmation.json --left=../before-fix --right=../candidate --output=/tmp/reve-confirmation-recheck.json --model=claude-sonnet-4-6 --jobs=3
+node --import tsx research/reve-memory-eval/holdout/run.ts --fixtures=research/reve-memory-eval/holdout/publication.json --left=../before-fix --right=../owner-fix --output=/tmp/reve-publication-recheck.json --model=claude-sonnet-4-6 --sessions=native --jobs=3
 node research/reve-memory-eval/holdout/verify.mjs
 ```
 
-The first command consumes real model tokens. The verifier runs offline, checks fixture hashes, paired coverage, response model and recorded request counts, and recomputes the published aggregates.
+Both run.ts commands consume real model tokens. The verifier runs offline, checks fixture hashes, paired coverage, response model and recorded request counts, and recomputes the published aggregates.

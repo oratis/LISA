@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 
 const file = (name) => new URL(name, import.meta.url);
 const json = async (name) => JSON.parse(await readFile(file(name), "utf8"));
-for (const batch of ["discovery", "confirmation"]) {
+for (const batch of ["discovery", "confirmation", "publication"]) {
   const frozen = await readFile(file(batch + ".json"));
   const fixtures = JSON.parse(frozen);
   const raw = await json(batch + "-results.json");

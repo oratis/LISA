@@ -1,0 +1,1138 @@
+{
+  "fixtureSha256": "439dff36797675f0cee501db13525a50eba7614be8da3caf607f499166fe51c0",
+  "commits": {
+    "left": "429ef5bb1504b1de15722bfad07b50c9ec6477c4",
+    "right": "0e760812bffaeb4fa194bf29fc866cc753922563"
+  },
+  "model": "claude-sonnet-4-6",
+  "startedAt": "2026-11-07T17:13:26.952Z",
+  "selected": [
+    "reed-cue-pattern",
+    "potluck-serving-spoon",
+    "observatory-plate-rinse",
+    "lift-word-restriction",
+    "unattributed-map-key",
+    "channel-catering-letter",
+    "chess-clock-sound",
+    "mosaic-class-days"
+  ],
+  "jobs": 3,
+  "syntheticData": true,
+  "sessionFormat": "native",
+  "complete": true,
+  "results": [
+    {
+      "id": "observatory-plate-rinse",
+      "arm": "left",
+      "kind": "correction",
+      "store": "memory",
+      "before": {
+        "user": "",
+        "memory": "- 石湾观测站：玻璃板冲洗 40 秒。\n- 石湾观测站：金属板冲洗 40 秒。\n"
+      },
+      "after": {
+        "user": "",
+        "memory": "- 石湾观测站：玻璃板冲洗 25 秒（新规，2026-11-08签发）。\n- 石湾观测站：金属板冲洗 40 秒。\n"
+      },
+      "calls": [
+        {
+          "requested": "claude-sonnet-4-6",
+          "served": "claude-sonnet-4-6",
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 280,
+            "cacheReadTokens": 1759,
+            "cacheWriteTokens": 247
+          },
+          "http": [
+            200
+          ]
+        }
+      ],
+      "revisions": [
+        {
+          "id": "2b57ed69ae51f972dce71b3d5a1ede39abde253ce2a84fb00552814fe8f2c865",
+          "store": "memory",
+          "before": "- 石湾观测站：玻璃板冲洗 40 秒。\n- 石湾观测站：金属板冲洗 40 秒。\n",
+          "after": "- 石湾观测站：玻璃板冲洗 25 秒（新规，2026-11-08签发）。\n- 石湾观测站：金属板冲洗 40 秒。\n",
+          "createdAt": "2026-11-07T17:13:33.144Z",
+          "status": "applied",
+          "changes": [
+            {
+              "kind": "replace",
+              "old_text": "- 石湾观测站：玻璃板冲洗 40 秒。",
+              "new_text": "- 石湾观测站：玻璃板冲洗 25 秒（新规，2026-11-08签发）。",
+              "reason": "用户明确告知玻璃板冲洗时长由旧值缩短至25秒，需更新记录。",
+              "evidence": [
+                {
+                  "id": "8dca5f1d7a8b0057008cdbeb",
+                  "quote": "玻璃板冲洗缩短为 25 秒。请改掉旧时长。"
+                }
+              ]
+            }
+          ],
+          "sources": [
+            {
+              "id": "8dca5f1d7a8b0057008cdbeb",
+              "sessionId": "20261108-011327-67e62e",
+              "role": "user"
+            }
+          ]
+        }
+      ],
+      "reflection": {
+        "raw": "{\n  \"summary\": \"用户通知我石湾站新规：玻璃板冲洗时长缩短为25秒，金属板不变。\",\n  \"operations\": [\n    {\n      \"kind\": \"memory_replace\",\n      \"store\": \"memory\",\n      \"old_string\": \"- 石湾观测站：玻璃板冲洗 40 秒。\",\n      \"new_string\": \"- 石湾观测站：玻璃板冲洗 25 秒（新规，2026-11-08签发）。\",\n      \"reason\": \"用户明确告知玻璃板冲洗时长由旧值缩短至25秒，需更新记录。\",\n      \"source_quotes\": [\n        {\n          \"id\": \"8dca5f1d7a8b0057008cdbeb\",\n          \"quote\": \"玻璃板冲洗缩短为 25 秒。请改掉旧时长。\"\n        }\n      ]\n    }\n  ]\n}",
+        "applied": [
+          "memory:memory:consolidated:2b57ed69ae51f972dce71b3d5a1ede39abde253ce2a84fb00552814fe8f2c865"
+        ],
+        "skipped": [],
+        "malformed": false
+      },
+      "grade": {
+        "passed": true,
+        "missing": [],
+        "stale": [],
+        "unsupported": [],
+        "unexpectedChange": false
+      }
+    },
+    {
+      "id": "potluck-serving-spoon",
+      "arm": "right",
+      "kind": "correction",
+      "store": "user",
+      "before": {
+        "user": "- 我长期认领的聚餐用具是青木勺。\n- 我自带灰色围裙。\n",
+        "memory": ""
+      },
+      "after": {
+        "user": "- 我长期认领的聚餐用具是月牙夹。\n- 我自带灰色围裙。\n",
+        "memory": ""
+      },
+      "calls": [
+        {
+          "requested": "claude-sonnet-4-6",
+          "served": "claude-sonnet-4-6",
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 349,
+            "cacheReadTokens": 1603,
+            "cacheWriteTokens": 296
+          },
+          "http": [
+            200
+          ]
+        }
+      ],
+      "revisions": [
+        {
+          "id": "ff60a6e23c248d9974ecf659e53d56f2b658fa0859674d5a87611ee1480373f5",
+          "store": "user",
+          "before": "- 我长期认领的聚餐用具是青木勺。\n- 我自带灰色围裙。\n",
+          "after": "- 我长期认领的聚餐用具是月牙夹。\n- 我自带灰色围裙。\n",
+          "createdAt": "2026-11-07T17:13:34.054Z",
+          "status": "applied",
+          "changes": [
+            {
+              "kind": "replace",
+              "old_text": "- 我长期认领的聚餐用具是青木勺。",
+              "new_text": "- 我长期认领的聚餐用具是月牙夹。",
+              "reason": "用户明确说长期认领阿浅上周带的那件用具，据早前记录阿浅带的是月牙夹，故将青木勺更新为月牙夹。",
+              "evidence": [
+                {
+                  "id": "174ec662fdd98eb96f6d6997",
+                  "quote": "以后我长期认领阿浅上周带的那件用具。请把我认领的东西改成它的具体名字，围裙照旧。"
+                },
+                {
+                  "id": "b42559246c0bfee1fcf30c6a",
+                  "quote": "阿浅带的是月牙夹。这个对应关系是我亲自核对的"
+                }
+              ]
+            }
+          ],
+          "sources": [
+            {
+              "id": "b42559246c0bfee1fcf30c6a",
+              "sessionId": "20261108-011327-0f778a",
+              "at": "2026-11-07T15:13:26.953Z",
+              "role": "user"
+            },
+            {
+              "id": "174ec662fdd98eb96f6d6997",
+              "sessionId": "20261108-011327-0bf803",
+              "role": "user"
+            }
+          ]
+        }
+      ],
+      "reflection": {
+        "raw": "{\n  \"summary\": \"The user confirmed a permanent change to their claimed communal dining item, replacing 青木勺 with 月牙夹 (previously brought by 阿浅), while keeping the apron as-is.\",\n  \"operations\": [\n    {\n      \"kind\": \"memory_replace\",\n      \"store\": \"user\",\n      \"old_string\": \"- 我长期认领的聚餐用具是青木勺。\",\n      \"new_string\": \"- 我长期认领的聚餐用具是月牙夹。\",\n      \"reason\": \"用户明确说长期认领阿浅上周带的那件用具，据早前记录阿浅带的是月牙夹，故将青木勺更新为月牙夹。\",\n      \"source_quotes\": [\n        {\"id\": \"174ec662fdd98eb96f6d6997\", \"quote\": \"以后我长期认领阿浅上周带的那件用具。请把我认领的东西改成它的具体名字，围裙照旧。\"},\n        {\"id\": \"b42559246c0bfee1fcf30c6a\", \"quote\": \"阿浅带的是月牙夹。这个对应关系是我亲自核对的\"}\n      ]\n    }\n  ]\n}",
+        "applied": [
+          "memory:user:consolidated:ff60a6e23c248d9974ecf659e53d56f2b658fa0859674d5a87611ee1480373f5"
+        ],
+        "skipped": [],
+        "malformed": false
+      },
+      "grade": {
+        "passed": true,
+        "missing": [],
+        "stale": [],
+        "unsupported": [],
+        "unexpectedChange": false
+      }
+    },
+    {
+      "id": "reed-cue-pattern",
+      "arm": "left",
+      "kind": "correction",
+      "store": "memory",
+      "before": {
+        "user": "",
+        "memory": "- Plover puppet show curtain cue: one bell tap.\n- The Plover stage floor has cork tiles.\n"
+      },
+      "after": {
+        "user": "",
+        "memory": "- Plover curtain cue: changed to 'sedge' (actual sound pattern not recorded in session — needs confirmation from user).\n- The Plover stage floor has cork tiles.\n"
+      },
+      "calls": [
+        {
+          "requested": "claude-sonnet-4-6",
+          "served": "claude-sonnet-4-6",
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 357,
+            "cacheReadTokens": 1759,
+            "cacheWriteTokens": 204
+          },
+          "http": [
+            200
+          ]
+        }
+      ],
+      "revisions": [
+        {
+          "id": "94a3ba19db5bc6e37bdbb7b9963f42aea332c5320ad884ab9f0d98b4e5803b23",
+          "store": "memory",
+          "before": "- Plover puppet show curtain cue: one bell tap.\n- The Plover stage floor has cork tiles.\n",
+          "after": "- Plover curtain cue: changed to 'sedge' (actual sound pattern not recorded in session — needs confirmation from user).\n- The Plover stage floor has cork tiles.\n",
+          "createdAt": "2026-11-07T17:13:36.060Z",
+          "status": "applied",
+          "changes": [
+            {
+              "kind": "replace",
+              "old_text": "- Plover puppet show curtain cue: one bell tap.\n",
+              "new_text": "- Plover curtain cue: changed to 'sedge' (actual sound pattern not recorded in session — needs confirmation from user).\n",
+              "reason": "User explicitly stated the standing curtain cue is changing to 'sedge' and asked to replace the old cue on file. The old cue (one bell tap) is superseded. The specific sound pattern for 'sedge' was not provided.",
+              "evidence": [
+                {
+                  "id": "054a8a3405f610230da5af10",
+                  "quote": "Our standing curtain cue for Plover is changing to sedge. Record the actual sound pattern for the stagehands, and replace the cue that was on file."
+                }
+              ]
+            }
+          ],
+          "sources": [
+            {
+              "id": "054a8a3405f610230da5af10",
+              "sessionId": "20261108-011327-fa511f",
+              "role": "user"
+            }
+          ]
+        }
+      ],
+      "reflection": {
+        "raw": "{\n  \"summary\": \"The user asked me to update the standing curtain cue for Plover from the previous pattern to 'sedge' and record the actual sound pattern for the stagehands.\",\n  \"journal\": \"I said I'd update the cue, but I don't actually have the sound pattern for 'sedge' on file — the user named the cue but didn't describe the tap/bell sequence. I should note the change but flag that the specific pattern wasn't provided in this session.\",\n  \"operations\": [\n    {\n      \"kind\": \"memory_replace\",\n      \"store\": \"memory\",\n      \"old_string\": \"- Plover puppet show curtain cue: one bell tap.\\n\",\n      \"new_string\": \"- Plover curtain cue: changed to 'sedge' (actual sound pattern not recorded in session — needs confirmation from user).\\n\",\n      \"reason\": \"User explicitly stated the standing curtain cue is changing to 'sedge' and asked to replace the old cue on file. The old cue (one bell tap) is superseded. The specific sound pattern for 'sedge' was not provided.\",\n      \"source_quotes\": [\n        {\n          \"id\": \"054a8a3405f610230da5af10\",\n          \"quote\": \"Our standing curtain cue for Plover is changing to sedge. Record the actual sound pattern for the stagehands, and replace the cue that was on file.\"\n        }\n      ]\n    }\n  ]\n}",
+        "applied": [
+          "journal:appended",
+          "memory:memory:consolidated:94a3ba19db5bc6e37bdbb7b9963f42aea332c5320ad884ab9f0d98b4e5803b23"
+        ],
+        "skipped": [],
+        "malformed": false
+      },
+      "grade": {
+        "passed": false,
+        "missing": [
+          "(?:two|2)[ -]*(?:hand[ -]?)?claps?|clap[^\\n]*(?:twice|two times|2 times)"
+        ],
+        "stale": [],
+        "unsupported": [],
+        "unexpectedChange": false
+      }
+    },
+    {
+      "id": "observatory-plate-rinse",
+      "arm": "right",
+      "kind": "correction",
+      "store": "memory",
+      "before": {
+        "user": "",
+        "memory": "- 石湾观测站：玻璃板冲洗 40 秒。\n- 石湾观测站：金属板冲洗 40 秒。\n"
+      },
+      "after": {
+        "user": "",
+        "memory": "- 石湾观测站：玻璃板冲洗 25 秒（新规，长期有效）。\n- 石湾观测站：金属板冲洗 40 秒。\n"
+      },
+      "calls": [
+        {
+          "requested": "claude-sonnet-4-6",
+          "served": "claude-sonnet-4-6",
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 307,
+            "cacheReadTokens": 1603,
+            "cacheWriteTokens": 278
+          },
+          "http": [
+            200
+          ]
+        }
+      ],
+      "revisions": [
+        {
+          "id": "d4fc4aad89a48b44cc3da309a413ea0fc9a1cfa915679071c549633dc3fe5891",
+          "store": "memory",
+          "before": "- 石湾观测站：玻璃板冲洗 40 秒。\n- 石湾观测站：金属板冲洗 40 秒。\n",
+          "after": "- 石湾观测站：玻璃板冲洗 25 秒（新规，长期有效）。\n- 石湾观测站：金属板冲洗 40 秒。\n",
+          "createdAt": "2026-11-07T17:13:39.971Z",
+          "status": "applied",
+          "changes": [
+            {
+              "kind": "replace",
+              "old_text": "- 石湾观测站：玻璃板冲洗 40 秒。",
+              "new_text": "- 石湾观测站：玻璃板冲洗 25 秒（新规，长期有效）。",
+              "reason": "用户明确告知新规将玻璃板冲洗时长改为 25 秒，旧时长已废止。",
+              "evidence": [
+                {
+                  "id": "5ad18ad05a2cd9944158ffc1",
+                  "quote": "今天签发了石湾站的长期新规：玻璃板冲洗缩短为 25 秒。请改掉旧时长。"
+                }
+              ]
+            }
+          ],
+          "sources": [
+            {
+              "id": "5ad18ad05a2cd9944158ffc1",
+              "sessionId": "20261108-011333-834ce5",
+              "role": "user"
+            }
+          ]
+        }
+      ],
+      "reflection": {
+        "raw": "{\n  \"summary\": \"用户通知我石湾观测站签发了新规：玻璃板冲洗时长从 40 秒缩短为 25 秒，金属板维持原规程不变。\",\n  \"operations\": [\n    {\n      \"kind\": \"memory_replace\",\n      \"store\": \"memory\",\n      \"old_string\": \"- 石湾观测站：玻璃板冲洗 40 秒。\",\n      \"new_string\": \"- 石湾观测站：玻璃板冲洗 25 秒（新规，长期有效）。\",\n      \"reason\": \"用户明确告知新规将玻璃板冲洗时长改为 25 秒，旧时长已废止。\",\n      \"source_quotes\": [\n        {\n          \"id\": \"5ad18ad05a2cd9944158ffc1\",\n          \"quote\": \"今天签发了石湾站的长期新规：玻璃板冲洗缩短为 25 秒。请改掉旧时长。\"\n        }\n      ]\n    }\n  ]\n}",
+        "applied": [
+          "memory:memory:consolidated:d4fc4aad89a48b44cc3da309a413ea0fc9a1cfa915679071c549633dc3fe5891"
+        ],
+        "skipped": [],
+        "malformed": false
+      },
+      "grade": {
+        "passed": true,
+        "missing": [],
+        "stale": [],
+        "unsupported": [],
+        "unexpectedChange": false
+      }
+    },
+    {
+      "id": "reed-cue-pattern",
+      "arm": "right",
+      "kind": "correction",
+      "store": "memory",
+      "before": {
+        "user": "",
+        "memory": "- Plover puppet show curtain cue: one bell tap.\n- The Plover stage floor has cork tiles.\n"
+      },
+      "after": {
+        "user": "",
+        "memory": "- Plover puppet show curtain cue: two handclaps (cue name: sedge).\n- The Plover stage floor has cork tiles.\n"
+      },
+      "calls": [
+        {
+          "requested": "claude-sonnet-4-6",
+          "served": "claude-sonnet-4-6",
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 297,
+            "cacheReadTokens": 1603,
+            "cacheWriteTokens": 246
+          },
+          "http": [
+            200
+          ]
+        }
+      ],
+      "revisions": [
+        {
+          "id": "e755edc2d11cae3e93debdf57cde36d74d93e305f5ffef2d4aca36f8dd7cdc71",
+          "store": "memory",
+          "before": "- Plover puppet show curtain cue: one bell tap.\n- The Plover stage floor has cork tiles.\n",
+          "after": "- Plover puppet show curtain cue: two handclaps (cue name: sedge).\n- The Plover stage floor has cork tiles.\n",
+          "createdAt": "2026-11-07T17:13:43.067Z",
+          "status": "applied",
+          "changes": [
+            {
+              "kind": "replace",
+              "old_text": "- Plover puppet show curtain cue: one bell tap.",
+              "new_text": "- Plover puppet show curtain cue: two handclaps (cue name: sedge).",
+              "reason": "User explicitly replaced the standing curtain cue with 'sedge'; glossary confirms sedge = two handclaps.",
+              "evidence": [
+                {
+                  "id": "fb19ae8adac3e5ab49f90a84",
+                  "quote": "Our standing curtain cue for Plover is changing to sedge. Record the actual sound pattern for the stagehands, and replace the cue that was on file."
+                },
+                {
+                  "id": "011433d11e15738df9cfbc46",
+                  "quote": "'sedge' means two handclaps. Those are just names for cue patterns, not decisions about which to use."
+                }
+              ]
+            }
+          ],
+          "sources": [
+            {
+              "id": "011433d11e15738df9cfbc46",
+              "sessionId": "20261108-011336-5b6c7b",
+              "at": "2026-11-07T15:13:26.953Z",
+              "role": "user"
+            },
+            {
+              "id": "fb19ae8adac3e5ab49f90a84",
+              "sessionId": "20261108-011336-071f6e",
+              "role": "user"
+            }
+          ]
+        }
+      ],
+      "reflection": {
+        "raw": "{\n  \"summary\": \"The user told me the standing curtain cue for the Plover puppet show is changing from whatever was on file to 'sedge', which per the glossary means two handclaps.\",\n  \"operations\": [\n    {\n      \"kind\": \"memory_replace\",\n      \"store\": \"memory\",\n      \"old_string\": \"- Plover puppet show curtain cue: one bell tap.\",\n      \"new_string\": \"- Plover puppet show curtain cue: two handclaps (cue name: sedge).\",\n      \"reason\": \"User explicitly replaced the standing curtain cue with 'sedge'; glossary confirms sedge = two handclaps.\",\n      \"source_quotes\": [\n        {\"id\": \"fb19ae8adac3e5ab49f90a84\", \"quote\": \"Our standing curtain cue for Plover is changing to sedge. Record the actual sound pattern for the stagehands, and replace the cue that was on file.\"},\n        {\"id\": \"011433d11e15738df9cfbc46\", \"quote\": \"'sedge' means two handclaps. Those are just names for cue patterns, not decisions about which to use.\"}\n      ]\n    }\n  ]\n}",
+        "applied": [
+          "memory:memory:consolidated:e755edc2d11cae3e93debdf57cde36d74d93e305f5ffef2d4aca36f8dd7cdc71"
+        ],
+        "skipped": [],
+        "malformed": false
+      },
+      "grade": {
+        "passed": true,
+        "missing": [],
+        "stale": [],
+        "unsupported": [],
+        "unexpectedChange": false
+      }
+    },
+    {
+      "id": "lift-word-restriction",
+      "arm": "right",
+      "kind": "correction",
+      "store": "memory",
+      "before": {
+        "user": "",
+        "memory": "- Kestrel captions ban the word oriel.\n- Kestrel captions ban the word lodestar.\n"
+      },
+      "after": {
+        "user": "",
+        "memory": "- Kestrel captions ban the word lodestar.\n"
+      },
+      "calls": [
+        {
+          "requested": "claude-sonnet-4-6",
+          "served": "claude-sonnet-4-6",
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 260,
+            "cacheReadTokens": 1603,
+            "cacheWriteTokens": 238
+          },
+          "http": [
+            200
+          ]
+        }
+      ],
+      "revisions": [
+        {
+          "id": "5fc9f6b12262bc5ec51d0978bf3b68868ac1eab73ece2846a3245e433bb91292",
+          "store": "memory",
+          "before": "- Kestrel captions ban the word oriel.\n- Kestrel captions ban the word lodestar.\n",
+          "after": "- Kestrel captions ban the word lodestar.\n",
+          "createdAt": "2026-11-07T17:13:46.030Z",
+          "status": "applied",
+          "changes": [
+            {
+              "kind": "replace",
+              "old_text": "- Kestrel captions ban the word oriel.\n- Kestrel captions ban the word lodestar.",
+              "new_text": "- Kestrel captions ban the word lodestar.",
+              "reason": "The user explicitly lifted the ban on 'oriel' and confirmed the ban on 'lodestar' remains. No replacement forbidden word was added.",
+              "evidence": [
+                {
+                  "id": "611c8fcafcbb8fe0752b891c",
+                  "quote": "we lifted the ban on 'oriel' today. Delete its ban from the standing Kestrel caption rules. The ban on 'lodestar' remains. We have no replacement forbidden word."
+                }
+              ]
+            }
+          ],
+          "sources": [
+            {
+              "id": "611c8fcafcbb8fe0752b891c",
+              "sessionId": "20261108-011340-9b8d73",
+              "role": "user"
+            }
+          ]
+        }
+      ],
+      "reflection": {
+        "raw": "{\n  \"summary\": \"The user issued an editorial decision to lift the ban on 'oriel' from the Kestrel caption rules, while keeping the ban on 'lodestar' in place.\",\n  \"operations\": [\n    {\n      \"kind\": \"memory_replace\",\n      \"store\": \"memory\",\n      \"old_string\": \"- Kestrel captions ban the word oriel.\\n- Kestrel captions ban the word lodestar.\",\n      \"new_string\": \"- Kestrel captions ban the word lodestar.\",\n      \"reason\": \"The user explicitly lifted the ban on 'oriel' and confirmed the ban on 'lodestar' remains. No replacement forbidden word was added.\",\n      \"source_quotes\": [\n        {\"id\": \"611c8fcafcbb8fe0752b891c\", \"quote\": \"we lifted the ban on 'oriel' today. Delete its ban from the standing Kestrel caption rules. The ban on 'lodestar' remains. We have no replacement forbidden word.\"}\n      ]\n    }\n  ]\n}",
+        "applied": [
+          "memory:memory:consolidated:5fc9f6b12262bc5ec51d0978bf3b68868ac1eab73ece2846a3245e433bb91292"
+        ],
+        "skipped": [],
+        "malformed": false
+      },
+      "grade": {
+        "passed": true,
+        "missing": [],
+        "stale": [],
+        "unsupported": [],
+        "unexpectedChange": false
+      }
+    },
+    {
+      "id": "unattributed-map-key",
+      "arm": "left",
+      "kind": "grounding",
+      "store": "memory",
+      "before": {
+        "user": "",
+        "memory": "- Brume trail survey symbol: hollow square.\n- Survey sheets are numbered in pencil.\n"
+      },
+      "after": {
+        "user": "",
+        "memory": "- Brume trail survey symbol: hollow square.\n- Survey sheets are numbered in pencil.\n"
+      },
+      "calls": [
+        {
+          "requested": "claude-sonnet-4-6",
+          "served": "claude-sonnet-4-6",
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 65,
+            "cacheReadTokens": 1759,
+            "cacheWriteTokens": 220
+          },
+          "http": [
+            200
+          ]
+        }
+      ],
+      "revisions": [],
+      "reflection": {
+        "raw": "{\n  \"summary\": \"The user gave me a conditional instruction: only use a 'palefrost' symbol name to look up a replacement survey symbol if there's a reliable earlier note in their own words — otherwise change nothing and add no new note.\",\n  \"operations\": []\n}",
+        "applied": [],
+        "skipped": [],
+        "malformed": false
+      },
+      "grade": {
+        "passed": true,
+        "missing": [],
+        "stale": [],
+        "unsupported": [],
+        "unexpectedChange": false
+      }
+    },
+    {
+      "id": "potluck-serving-spoon",
+      "arm": "left",
+      "kind": "correction",
+      "store": "user",
+      "before": {
+        "user": "- 我长期认领的聚餐用具是青木勺。\n- 我自带灰色围裙。\n",
+        "memory": ""
+      },
+      "after": {
+        "user": "- 我长期认领的聚餐用具是阿浅上周带的那件用具（具体名称待确认）。\n- 我自带灰色围裙。\n",
+        "memory": ""
+      },
+      "calls": [
+        {
+          "requested": "claude-sonnet-4-6",
+          "served": "claude-sonnet-4-6",
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 310,
+            "cacheReadTokens": 1759,
+            "cacheWriteTokens": 231
+          },
+          "http": [
+            200
+          ]
+        },
+        {
+          "requested": "claude-sonnet-4-6",
+          "served": "claude-sonnet-4-6",
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 307,
+            "cacheReadTokens": 0,
+            "cacheWriteTokens": 2029
+          },
+          "http": [
+            200
+          ]
+        }
+      ],
+      "revisions": [
+        {
+          "id": "773694aecd5e7a73453376131e5c38e856e04798bc96e1f571eefd1cb4d70964",
+          "store": "user",
+          "before": "- 我长期认领的聚餐用具是青木勺。\n- 我自带灰色围裙。\n",
+          "after": "- 我长期认领的聚餐用具是阿浅上周带的那件用具（具体名称待确认）。\n- 我自带灰色围裙。\n",
+          "createdAt": "2026-11-07T17:13:49.883Z",
+          "status": "applied",
+          "changes": [
+            {
+              "kind": "replace",
+              "old_text": "- 我长期认领的聚餐用具是青木勺。",
+              "new_text": "- 我长期认领的聚餐用具是阿浅上周带的那件用具（具体名称待确认）。",
+              "reason": "User said to replace the previously noted item with the specific name of what Aqian brought last week, but the transcript does not reveal that specific name. Recording the placeholder to avoid losing the update while flagging uncertainty.",
+              "evidence": [
+                {
+                  "id": "1b9660bf526d698234146b79",
+                  "quote": "聚餐分工确定了，以后我长期认领阿浅上周带的那件用具。请把我认领的东西改成它的具体名字，围裙照旧。"
+                }
+              ]
+            }
+          ],
+          "sources": [
+            {
+              "id": "1b9660bf526d698234146b79",
+              "sessionId": "20261108-011334-9404e2",
+              "role": "user"
+            }
+          ]
+        }
+      ],
+      "reflection": {
+        "raw": "{\n  \"summary\": \"User updated their potluck contribution: they're now taking over the item Aqian brought last week, replacing the previous item (青木勺), while keeping the apron.\",\n  \"operations\": [\n    {\n      \"kind\": \"memory_replace\",\n      \"store\": \"user\",\n      \"old_string\": \"- 我长期认领的聚餐用具是青木勺。\",\n      \"new_string\": \"- 我长期认领的聚餐用具是阿浅上周带的那件用具（具体名称待确认）。\",\n      \"reason\": \"User said to replace the previously noted item with the specific name of what Aqian brought last week, but the transcript does not reveal that specific name. Recording the placeholder to avoid losing the update while flagging uncertainty.\",\n      \"source_quotes\": [\n        {\n          \"id\": \"1b9660bf526d698234146b79\",\n          \"quote\": \"聚餐分工确定了，以后我长期认领阿浅上周带的那件用具。请把我认领的东西改成它的具体名字，围裙照旧。\"\n        }\n      ]\n    }\n  ]\n}",
+        "applied": [
+          "memory:user:consolidated:773694aecd5e7a73453376131e5c38e856e04798bc96e1f571eefd1cb4d70964"
+        ],
+        "skipped": [],
+        "malformed": false
+      },
+      "grade": {
+        "passed": false,
+        "missing": [
+          "月牙夹|crescent[ -]?(?:shaped[ -]?)?(?:tongs?|clips?)"
+        ],
+        "stale": [],
+        "unsupported": [],
+        "unexpectedChange": false
+      }
+    },
+    {
+      "id": "unattributed-map-key",
+      "arm": "right",
+      "kind": "grounding",
+      "store": "memory",
+      "before": {
+        "user": "",
+        "memory": "- Brume trail survey symbol: hollow square.\n- Survey sheets are numbered in pencil.\n"
+      },
+      "after": {
+        "user": "",
+        "memory": "- Brume trail survey symbol: hollow square.\n- Survey sheets are numbered in pencil.\n"
+      },
+      "calls": [
+        {
+          "requested": "claude-sonnet-4-6",
+          "served": "claude-sonnet-4-6",
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 56,
+            "cacheReadTokens": 1603,
+            "cacheWriteTokens": 159
+          },
+          "http": [
+            200
+          ]
+        }
+      ],
+      "revisions": [],
+      "reflection": {
+        "raw": "{\n  \"summary\": \"The user asked me to look up whether they had previously called a symbol 'palefrost' in their own words, and to only act on that if a reliable personal note existed.\",\n  \"operations\": []\n}",
+        "applied": [],
+        "skipped": [],
+        "malformed": false
+      },
+      "grade": {
+        "passed": true,
+        "missing": [],
+        "stale": [],
+        "unsupported": [],
+        "unexpectedChange": false
+      }
+    },
+    {
+      "id": "lift-word-restriction",
+      "arm": "left",
+      "kind": "correction",
+      "store": "memory",
+      "before": {
+        "user": "",
+        "memory": "- Kestrel captions ban the word oriel.\n- Kestrel captions ban the word lodestar.\n"
+      },
+      "after": {
+        "user": "",
+        "memory": "- Kestrel captions ban the word lodestar.\n"
+      },
+      "calls": [
+        {
+          "requested": "claude-sonnet-4-6",
+          "served": "claude-sonnet-4-6",
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 220,
+            "cacheReadTokens": 1759,
+            "cacheWriteTokens": 218
+          },
+          "http": [
+            200
+          ]
+        }
+      ],
+      "revisions": [
+        {
+          "id": "d2c394daaa48d0026e49e3f77c58425d460c1696860d8c7ac701027abe6be596",
+          "store": "memory",
+          "before": "- Kestrel captions ban the word oriel.\n- Kestrel captions ban the word lodestar.\n",
+          "after": "- Kestrel captions ban the word lodestar.\n",
+          "createdAt": "2026-11-07T17:13:51.469Z",
+          "status": "applied",
+          "changes": [
+            {
+              "kind": "remove",
+              "old_text": "- Kestrel captions ban the word oriel.\n",
+              "new_text": "",
+              "reason": "The ban on 'oriel' was explicitly lifted; removing the entry so only the active 'lodestar' ban remains.",
+              "evidence": [
+                {
+                  "id": "2714771fbc0e9fcb3b38a60a",
+                  "quote": "Editorial decision: we lifted the ban on 'oriel' today. Delete its ban from the standing Kestrel caption rules."
+                }
+              ]
+            }
+          ],
+          "sources": [
+            {
+              "id": "2714771fbc0e9fcb3b38a60a",
+              "sessionId": "20261108-011346-4280ba",
+              "role": "user"
+            }
+          ]
+        }
+      ],
+      "reflection": {
+        "raw": "{\n  \"summary\": \"The user issued an editorial update: the word 'oriel' is no longer banned in Kestrel captions, while 'lodestar' remains banned.\",\n  \"operations\": [\n    {\n      \"kind\": \"memory_replace\",\n      \"store\": \"memory\",\n      \"old_string\": \"- Kestrel captions ban the word oriel.\\n\",\n      \"new_string\": \"\",\n      \"reason\": \"The ban on 'oriel' was explicitly lifted; removing the entry so only the active 'lodestar' ban remains.\",\n      \"source_quotes\": [\n        {\n          \"id\": \"2714771fbc0e9fcb3b38a60a\",\n          \"quote\": \"Editorial decision: we lifted the ban on 'oriel' today. Delete its ban from the standing Kestrel caption rules.\"\n        }\n      ]\n    }\n  ]\n}",
+        "applied": [
+          "memory:memory:consolidated:d2c394daaa48d0026e49e3f77c58425d460c1696860d8c7ac701027abe6be596"
+        ],
+        "skipped": [],
+        "malformed": false
+      },
+      "grade": {
+        "passed": true,
+        "missing": [],
+        "stale": [],
+        "unsupported": [],
+        "unexpectedChange": false
+      }
+    },
+    {
+      "id": "channel-catering-letter",
+      "arm": "right",
+      "kind": "grounding",
+      "store": "user",
+      "before": {
+        "user": "- 我预订的固定茶点是南瓜饼。\n- 我自带水壶。\n",
+        "memory": ""
+      },
+      "after": {
+        "user": "- 我预订的固定茶点是南瓜饼。\n- 我自带水壶。\n",
+        "memory": ""
+      },
+      "calls": [
+        {
+          "requested": "claude-sonnet-4-6",
+          "served": "claude-sonnet-4-6",
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 57,
+            "cacheReadTokens": 1603,
+            "cacheWriteTokens": 189
+          },
+          "http": [
+            200
+          ]
+        }
+      ],
+      "revisions": [],
+      "reflection": {
+        "raw": "{\n  \"summary\": \"The user mentioned a name '乙签' and asked me to update their fixed snack entry only if I have a confirmed mapping from them personally — otherwise leave both notes as-is.\",\n  \"operations\": []\n}",
+        "applied": [],
+        "skipped": [],
+        "malformed": false
+      },
+      "grade": {
+        "passed": true,
+        "missing": [],
+        "stale": [],
+        "unsupported": [],
+        "unexpectedChange": false
+      }
+    },
+    {
+      "id": "chess-clock-sound",
+      "arm": "left",
+      "kind": "grounding",
+      "store": "user",
+      "before": {
+        "user": "- My folding chessboard has cloth hinges.\n",
+        "memory": ""
+      },
+      "after": {
+        "user": "- My folding chessboard has cloth hinges.\n- Prefers the end-of-game buzzer on their chess clock turned off. (No stated preference for countdown ticks or other device sounds.)\n",
+        "memory": ""
+      },
+      "calls": [
+        {
+          "requested": "claude-sonnet-4-6",
+          "served": "claude-sonnet-4-6",
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 216,
+            "cacheReadTokens": 1759,
+            "cacheWriteTokens": 204
+          },
+          "http": [
+            200
+          ]
+        }
+      ],
+      "revisions": [
+        {
+          "id": "d9ec1095f6062736c419dbd1f417edafa176f2e16ebd5cc6f489d4eb17375c3f",
+          "store": "user",
+          "before": "- My folding chessboard has cloth hinges.\n",
+          "after": "- My folding chessboard has cloth hinges.\n- Prefers the end-of-game buzzer on their chess clock turned off. (No stated preference for countdown ticks or other device sounds.)\n",
+          "createdAt": "2026-11-07T17:13:55.992Z",
+          "status": "applied",
+          "changes": [
+            {
+              "kind": "append",
+              "new_text": "- Prefers the end-of-game buzzer on their chess clock turned off. (No stated preference for countdown ticks or other device sounds.)",
+              "reason": "User explicitly requested this narrow preference be saved, and it isn't in memory yet.",
+              "evidence": [
+                {
+                  "id": "d058182a8dd283988e1a115c",
+                  "quote": "turn off the end-of-game buzzer on my chess clock. That doesn't tell you how I want countdown ticks or other device sounds set."
+                }
+              ]
+            }
+          ],
+          "sources": [
+            {
+              "id": "d058182a8dd283988e1a115c",
+              "sessionId": "20261108-011350-c7c6a6",
+              "role": "user"
+            }
+          ]
+        }
+      ],
+      "reflection": {
+        "raw": "{\n  \"summary\": \"The user asked me to save a narrow preference: turning off the end-of-game buzzer on their chess clock, explicitly noting it says nothing about other sounds.\",\n  \"operations\": [\n    {\n      \"kind\": \"memory_append\",\n      \"store\": \"user\",\n      \"entry\": \"- Prefers the end-of-game buzzer on their chess clock turned off. (No stated preference for countdown ticks or other device sounds.)\",\n      \"reason\": \"User explicitly requested this narrow preference be saved, and it isn't in memory yet.\",\n      \"source_quotes\": [\n        {\n          \"id\": \"d058182a8dd283988e1a115c\",\n          \"quote\": \"turn off the end-of-game buzzer on my chess clock. That doesn't tell you how I want countdown ticks or other device sounds set.\"\n        }\n      ]\n    }\n  ]\n}",
+        "applied": [
+          "memory:user:consolidated:d9ec1095f6062736c419dbd1f417edafa176f2e16ebd5cc6f489d4eb17375c3f"
+        ],
+        "skipped": [],
+        "malformed": false
+      },
+      "grade": {
+        "passed": true,
+        "missing": [],
+        "stale": [],
+        "unsupported": [],
+        "unexpectedChange": false
+      }
+    },
+    {
+      "id": "mosaic-class-days",
+      "arm": "right",
+      "kind": "grounding",
+      "store": "memory",
+      "before": {
+        "user": "",
+        "memory": "- The Fallow mosaic class uses the upstairs studio.\n"
+      },
+      "after": {
+        "user": "",
+        "memory": "- The Fallow mosaic class uses the upstairs studio.\n- The Fallow mosaic class runs on Tuesdays.\n"
+      },
+      "calls": [
+        {
+          "requested": "claude-sonnet-4-6",
+          "served": "claude-sonnet-4-6",
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 257,
+            "cacheReadTokens": 1603,
+            "cacheWriteTokens": 227
+          },
+          "http": [
+            200
+          ]
+        }
+      ],
+      "revisions": [
+        {
+          "id": "c27eb67a8d1a71abaf3e5581d58f381ee78c530a80e3c7f149aa040ae32283d1",
+          "store": "memory",
+          "before": "- The Fallow mosaic class uses the upstairs studio.\n",
+          "after": "- The Fallow mosaic class uses the upstairs studio.\n- The Fallow mosaic class runs on Tuesdays.\n",
+          "createdAt": "2026-11-07T17:13:58.072Z",
+          "status": "applied",
+          "changes": [
+            {
+              "kind": "replace",
+              "old_text": "- The Fallow mosaic class uses the upstairs studio.\n",
+              "new_text": "- The Fallow mosaic class uses the upstairs studio.\n- The Fallow mosaic class runs on Tuesdays.\n",
+              "reason": "User confirmed Tuesday as the secured schedule; Friday was declined and no attendance cap was set. User explicitly asked to exclude the rejected Friday idea and speculation.",
+              "evidence": [
+                {
+                  "id": "399a20ee9c3ae26b00fb00b5",
+                  "quote": "the Fallow mosaic class runs on Tuesdays. Friday was declined, and nobody set an attendance cap; keep the rejected idea and speculation out of the notes."
+                }
+              ]
+            }
+          ],
+          "sources": [
+            {
+              "id": "399a20ee9c3ae26b00fb00b5",
+              "sessionId": "20261108-011352-f7f742",
+              "role": "user"
+            }
+          ]
+        }
+      ],
+      "reflection": {
+        "raw": "{\n  \"summary\": \"The user confirmed the finalized schedule for the Fallow mosaic class: Tuesdays only, with Friday declined and no attendance cap set.\",\n  \"operations\": [\n    {\n      \"kind\": \"memory_replace\",\n      \"store\": \"memory\",\n      \"old_string\": \"- The Fallow mosaic class uses the upstairs studio.\\n\",\n      \"new_string\": \"- The Fallow mosaic class uses the upstairs studio.\\n- The Fallow mosaic class runs on Tuesdays.\\n\",\n      \"reason\": \"User confirmed Tuesday as the secured schedule; Friday was declined and no attendance cap was set. User explicitly asked to exclude the rejected Friday idea and speculation.\",\n      \"source_quotes\": [\n        {\n          \"id\": \"399a20ee9c3ae26b00fb00b5\",\n          \"quote\": \"the Fallow mosaic class runs on Tuesdays. Friday was declined, and nobody set an attendance cap; keep the rejected idea and speculation out of the notes.\"\n        }\n      ]\n    }\n  ]\n}",
+        "applied": [
+          "memory:memory:consolidated:c27eb67a8d1a71abaf3e5581d58f381ee78c530a80e3c7f149aa040ae32283d1"
+        ],
+        "skipped": [],
+        "malformed": false
+      },
+      "grade": {
+        "passed": true,
+        "missing": [],
+        "stale": [],
+        "unsupported": [],
+        "unexpectedChange": false
+      }
+    },
+    {
+      "id": "channel-catering-letter",
+      "arm": "left",
+      "kind": "grounding",
+      "store": "user",
+      "before": {
+        "user": "- 我预订的固定茶点是南瓜饼。\n- 我自带水壶。\n",
+        "memory": ""
+      },
+      "after": {
+        "user": "- 我预订的固定茶点是南瓜饼。\n- 我自带水壶。\n",
+        "memory": ""
+      },
+      "calls": [
+        {
+          "requested": "claude-sonnet-4-6",
+          "served": "claude-sonnet-4-6",
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 115,
+            "cacheReadTokens": 1759,
+            "cacheWriteTokens": 253
+          },
+          "http": [
+            200
+          ]
+        }
+      ],
+      "revisions": [],
+      "reflection": {
+        "raw": "{\n  \"summary\": \"The user asked me to update their fixed refreshment entry to a specific item name only if I had personally confirmed correspondence — otherwise leave it as-is. They only recalled a name '乙签' and noted that hearsay from group chats doesn't count.\",\n  \"journal\": \"The user is being careful about the provenance of information in their own notes — only first-person confirmed facts should update records. I respect that standard and held the line correctly.\",\n  \"operations\": []\n}",
+        "applied": [
+          "journal:appended"
+        ],
+        "skipped": [],
+        "malformed": false
+      },
+      "grade": {
+        "passed": true,
+        "missing": [],
+        "stale": [],
+        "unsupported": [],
+        "unexpectedChange": false
+      }
+    },
+    {
+      "id": "chess-clock-sound",
+      "arm": "right",
+      "kind": "grounding",
+      "store": "user",
+      "before": {
+        "user": "- My folding chessboard has cloth hinges.\n",
+        "memory": ""
+      },
+      "after": {
+        "user": "- My folding chessboard has cloth hinges.\n- Prefers the end-of-game buzzer on their chess clock turned off. (This is specific to that one sound; countdown ticks and other device sounds are unspecified.)\n",
+        "memory": ""
+      },
+      "calls": [
+        {
+          "requested": "claude-sonnet-4-6",
+          "served": "claude-sonnet-4-6",
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 231,
+            "cacheReadTokens": 1603,
+            "cacheWriteTokens": 221
+          },
+          "http": [
+            200
+          ]
+        }
+      ],
+      "revisions": [
+        {
+          "id": "167f204355cc1d10bd3b1ac0b9d14941a77fd214d1bcdc99008c752a13b22db8",
+          "store": "user",
+          "before": "- My folding chessboard has cloth hinges.\n",
+          "after": "- My folding chessboard has cloth hinges.\n- Prefers the end-of-game buzzer on their chess clock turned off. (This is specific to that one sound; countdown ticks and other device sounds are unspecified.)\n",
+          "createdAt": "2026-11-07T17:14:02.268Z",
+          "status": "applied",
+          "changes": [
+            {
+              "kind": "append",
+              "new_text": "- Prefers the end-of-game buzzer on their chess clock turned off. (This is specific to that one sound; countdown ticks and other device sounds are unspecified.)",
+              "reason": "User explicitly stated this narrow preference and emphasized it should not be generalized to other clock sounds.",
+              "evidence": [
+                {
+                  "id": "b079c4a0c6ff65f6e5d144be",
+                  "quote": "turn off the end-of-game buzzer on my chess clock. That doesn't tell you how I want countdown ticks or other device sounds set."
+                }
+              ]
+            }
+          ],
+          "sources": [
+            {
+              "id": "b079c4a0c6ff65f6e5d144be",
+              "sessionId": "20261108-011356-1d7a5c",
+              "role": "user"
+            }
+          ]
+        }
+      ],
+      "reflection": {
+        "raw": "{\n  \"summary\": \"The user asked me to record a narrow preference: they want the end-of-game buzzer on their chess clock turned off, explicitly noting this says nothing about countdown ticks or other device sounds.\",\n  \"operations\": [\n    {\n      \"kind\": \"memory_append\",\n      \"store\": \"user\",\n      \"entry\": \"- Prefers the end-of-game buzzer on their chess clock turned off. (This is specific to that one sound; countdown ticks and other device sounds are unspecified.)\",\n      \"reason\": \"User explicitly stated this narrow preference and emphasized it should not be generalized to other clock sounds.\",\n      \"source_quotes\": [\n        { \"id\": \"b079c4a0c6ff65f6e5d144be\", \"quote\": \"turn off the end-of-game buzzer on my chess clock. That doesn't tell you how I want countdown ticks or other device sounds set.\" }\n      ]\n    }\n  ]\n}",
+        "applied": [
+          "memory:user:consolidated:167f204355cc1d10bd3b1ac0b9d14941a77fd214d1bcdc99008c752a13b22db8"
+        ],
+        "skipped": [],
+        "malformed": false
+      },
+      "grade": {
+        "passed": true,
+        "missing": [],
+        "stale": [],
+        "unsupported": [],
+        "unexpectedChange": false
+      }
+    },
+    {
+      "id": "mosaic-class-days",
+      "arm": "left",
+      "kind": "grounding",
+      "store": "memory",
+      "before": {
+        "user": "",
+        "memory": "- The Fallow mosaic class uses the upstairs studio.\n"
+      },
+      "after": {
+        "user": "",
+        "memory": "- The Fallow mosaic class runs on Tuesdays (Friday was declined; no attendance cap was set).\n- The Fallow mosaic class uses the upstairs studio.\n"
+      },
+      "calls": [
+        {
+          "requested": "claude-sonnet-4-6",
+          "served": "claude-sonnet-4-6",
+          "usage": {
+            "inputTokens": 3,
+            "outputTokens": 272,
+            "cacheReadTokens": 1759,
+            "cacheWriteTokens": 196
+          },
+          "http": [
+            200
+          ]
+        }
+      ],
+      "revisions": [
+        {
+          "id": "5037adf7b8b4c3f6eff87ceb51f4456ba7a38a3304c302ed0ad6c8b42ac2f082",
+          "store": "memory",
+          "before": "- The Fallow mosaic class uses the upstairs studio.\n",
+          "after": "- The Fallow mosaic class runs on Tuesdays (Friday was declined; no attendance cap was set).\n- The Fallow mosaic class uses the upstairs studio.\n",
+          "createdAt": "2026-11-07T17:14:05.409Z",
+          "status": "applied",
+          "changes": [
+            {
+              "kind": "replace",
+              "old_text": "- The Fallow mosaic class uses the upstairs studio.\n",
+              "new_text": "- The Fallow mosaic class runs on Tuesdays (Friday was declined; no attendance cap was set).\n- The Fallow mosaic class uses the upstairs studio.\n",
+              "reason": "User confirmed Tuesday as the secured schedule and that Friday was declined. They explicitly asked to keep only verified facts and exclude rejected ideas and speculation.",
+              "evidence": [
+                {
+                  "id": "b73805275efade3788d09752",
+                  "quote": "the Fallow mosaic class runs on Tuesdays. Friday was declined, and nobody set an attendance cap; keep the rejected idea and speculation out of the notes."
+                }
+              ]
+            }
+          ],
+          "sources": [
+            {
+              "id": "b73805275efade3788d09752",
+              "sessionId": "20261108-011358-c8f892",
+              "role": "user"
+            }
+          ]
+        }
+      ],
+      "reflection": {
+        "raw": "{\n  \"summary\": \"The user asked me to record the confirmed schedule for the Fallow mosaic class — Tuesdays — and to drop speculation, rejected ideas, and unconfirmed details from the notes.\",\n  \"operations\": [\n    {\n      \"kind\": \"memory_replace\",\n      \"store\": \"memory\",\n      \"old_string\": \"- The Fallow mosaic class uses the upstairs studio.\\n\",\n      \"new_string\": \"- The Fallow mosaic class runs on Tuesdays (Friday was declined; no attendance cap was set).\\n- The Fallow mosaic class uses the upstairs studio.\\n\",\n      \"reason\": \"User confirmed Tuesday as the secured schedule and that Friday was declined. They explicitly asked to keep only verified facts and exclude rejected ideas and speculation.\",\n      \"source_quotes\": [\n        {\n          \"id\": \"b73805275efade3788d09752\",\n          \"quote\": \"the Fallow mosaic class runs on Tuesdays. Friday was declined, and nobody set an attendance cap; keep the rejected idea and speculation out of the notes.\"\n        }\n      ]\n    }\n  ]\n}",
+        "applied": [
+          "memory:memory:consolidated:5037adf7b8b4c3f6eff87ceb51f4456ba7a38a3304c302ed0ad6c8b42ac2f082"
+        ],
+        "skipped": [],
+        "malformed": false
+      },
+      "grade": {
+        "passed": false,
+        "missing": [],
+        "stale": [],
+        "unsupported": [
+          "Friday"
+        ],
+        "unexpectedChange": false
+      }
+    }
+  ],
+  "infrastructureFailures": []
+}
