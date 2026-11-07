@@ -1,7 +1,7 @@
 # Pocket ↔ Mac: cloud relay and automatic LAN connections
 
 Production relay deployed on 2026-11-07 at `cloud.meetlisa.ai/api/relay/*`
-(Worker version `cdcb209d-ace5-44a8-b378-42f13a9aa5d4`). Requires Mac 0.29.0
+(Worker version `62681223-d843-4da5-b773-6fe8fff4657a`). Requires Mac 0.29.0
 and Pocket 1.3. The existing account service stays on Cloud Run.
 
 ## Connect
