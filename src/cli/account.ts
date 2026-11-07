@@ -226,6 +226,9 @@ export async function cmdBilling(subargs: string[]): Promise<void> {
     const { cmdBillingReconcile } = await import("./billing-reconcile.js");
     return cmdBillingReconcile(subargs.slice(1));
   }
+  // `billing funnel` is also an operator command: it reads the hosted
+  // edition's server-side funnel events from a directory on disk.
+  if (subargs[0] === "funnel") return cmdBillingFunnel(subargs.slice(1));
   const managed = managedConfig();
   if (!managed) {
     console.error("Not signed in. Run `lisa login` first (BYO-key usage isn't metered).");
@@ -250,6 +253,7 @@ export async function cmdBilling(subargs: string[]): Promise<void> {
       spentMicroUSD?: number;
       remainingMicroUSD?: number;
       paidMicroUSD?: number;
+      grantMicroUSD?: number;
       resetAt?: number;
     };
     const usage = (await usageRes.json()) as {
@@ -264,9 +268,12 @@ export async function cmdBilling(subargs: string[]): Promise<void> {
     }
     console.log(`tier:        ${quota.tier}`);
     console.log(
-      `session:     ${formatMicroUSD(quota.remainingMicroUSD ?? 0)} of ${formatMicroUSD(quota.windowMicroUSD ?? 0)} left` +
-        (quota.resetAt ? ` (resets ${new Date(quota.resetAt).toLocaleTimeString()})` : ""),
+      `allowance:   ${formatMicroUSD(quota.remainingMicroUSD ?? 0)} of ${formatMicroUSD(quota.windowMicroUSD ?? 0)} left` +
+        // A 24h window resets on another day, so the date is part of the time.
+        (quota.resetAt ? ` (resets ${new Date(quota.resetAt).toLocaleString()})` : ""),
     );
+    if ((quota.grantMicroUSD ?? 0) > 0)
+      console.log(`welcome:     ${formatMicroUSD(quota.grantMicroUSD ?? 0)} (standard models)`);
     console.log(`credits:     ${formatMicroUSD(Math.max(0, quota.paidMicroUSD ?? 0))}`);
     if (usage.window12h)
       console.log(
@@ -280,4 +287,30 @@ export async function cmdBilling(subargs: string[]): Promise<void> {
     console.error(`✗ could not reach ${managed.base}`);
     process.exitCode = 1;
   }
+}
+
+/**
+ * `lisa billing funnel [--days N] [--dir PATH] [--json]` — the M0 baselines
+ * (sign-in success, first task within 24h, payment success) from the hosted
+ * edition's funnel events. Defaults to this host's `<home>/analytics`; to read
+ * production, copy the bucket's `analytics/` folder down and pass `--dir`.
+ */
+export async function cmdBillingFunnel(args: string[]): Promise<void> {
+  const { readFunnel, summarizeFunnel, formatFunnel, funnelDir } =
+    await import("../billing/funnel.js");
+  const flag = (name: string): string | undefined => {
+    const i = args.indexOf(name);
+    return i >= 0 ? args[i + 1] : undefined;
+  };
+  const days = flag("--days") === undefined ? 30 : Number(flag("--days"));
+  if (!Number.isFinite(days) || days <= 0) {
+    console.error("✗ --days must be a positive number");
+    process.exitCode = 1;
+    return;
+  }
+  const dir = flag("--dir") ?? funnelDir();
+  const summary = summarizeFunnel(readFunnel(dir, Date.now() - days * 24 * 60 * 60 * 1000));
+  console.log(
+    args.includes("--json") ? JSON.stringify(summary, null, 2) : formatFunnel(summary, days),
+  );
 }

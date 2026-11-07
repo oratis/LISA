@@ -666,11 +666,11 @@ describe("usageMetadata metering (v0.27.1 semantics)", () => {
 });
 
 describe("clampGeminiOutput — the output side is held to the admitted budget", () => {
-  const outPerM = priceForModel(MODEL).outPerM; // 3_500_000 micro-USD per M
+  const outPerM = priceForModel(MODEL).outPerM; // 5_000_000 micro-USD per M
 
   test("a small budget sets a ceiling the client did not ask for", () => {
     const body: Record<string, unknown> = { contents: [] };
-    const budget = 35_000; // buys 10_000 output tokens
+    const budget = 50_000; // buys 10_000 output tokens
     assert.equal(clampGeminiOutput(body, MODEL, budget), 10_000);
     assert.deepEqual(body.generationConfig, { maxOutputTokens: 10_000 });
     assert.ok((10_000 * outPerM) / 1_000_000 <= budget);
@@ -680,11 +680,11 @@ describe("clampGeminiOutput — the output side is held to the admitted budget",
     const high: Record<string, unknown> = {
       generationConfig: { maxOutputTokens: 60_000, temperature: 1 },
     };
-    clampGeminiOutput(high, MODEL, 35_000);
+    clampGeminiOutput(high, MODEL, 50_000);
     assert.deepEqual(high.generationConfig, { maxOutputTokens: 10_000, temperature: 1 });
 
     const low: Record<string, unknown> = { generationConfig: { maxOutputTokens: 500 } };
-    assert.equal(clampGeminiOutput(low, MODEL, 35_000), 500);
+    assert.equal(clampGeminiOutput(low, MODEL, 50_000), 500);
     assert.deepEqual(low.generationConfig, { maxOutputTokens: 500 });
   });
 
@@ -694,7 +694,7 @@ describe("clampGeminiOutput — the output side is held to the admitted budget",
       generation_config: { max_output_tokens: 60_000 },
     });
     assert.ok(check.ok);
-    clampGeminiOutput(check.request, MODEL, 35_000);
+    clampGeminiOutput(check.request, MODEL, 50_000);
     assert.deepEqual(check.request.generationConfig, { maxOutputTokens: 10_000 });
     assert.equal("generation_config" in check.request, false);
   });
@@ -707,17 +707,17 @@ describe("clampGeminiOutput — the output side is held to the admitted budget",
       clampGeminiOutput(request, MODEL, budget);
       return (request.generationConfig as Record<string, unknown>).thinkingConfig;
     };
-    // 3_500 micro-USD buys 1_000 output tokens.
-    assert.deepEqual(thinkingAt(24_576, 3_500), { thinkingBudget: 1_000, includeThoughts: true });
-    assert.deepEqual(thinkingAt(-1, 3_500), { thinkingBudget: 1_000, includeThoughts: true });
-    assert.deepEqual(thinkingAt(500, 3_500), { thinkingBudget: 500, includeThoughts: true });
-    assert.deepEqual(thinkingAt(0, 3_500), { thinkingBudget: 0, includeThoughts: true });
+    // 5_000 micro-USD buys 1_000 output tokens.
+    assert.deepEqual(thinkingAt(24_576, 5_000), { thinkingBudget: 1_000, includeThoughts: true });
+    assert.deepEqual(thinkingAt(-1, 5_000), { thinkingBudget: 1_000, includeThoughts: true });
+    assert.deepEqual(thinkingAt(500, 5_000), { thinkingBudget: 500, includeThoughts: true });
+    assert.deepEqual(thinkingAt(0, 5_000), { thinkingBudget: 0, includeThoughts: true });
     // Dynamic thinking whose own limit is under the ceiling is left alone.
     assert.deepEqual(thinkingAt(-1, 200_000), { thinkingBudget: -1, includeThoughts: true });
 
     // The ceiling pays for thoughts and answer together: the meter bills
     // both as output, and a call that uses the whole ceiling fits the budget.
-    const budget = 3_500;
+    const budget = 5_000;
     const request: Record<string, unknown> = {
       generationConfig: { thinkingConfig: { thinkingBudget: 24_576 } },
     };
@@ -1007,8 +1007,8 @@ describe("POST /gw/gemini — streaming", () => {
       assert.deepEqual(adm.settled[0]!.usage, FIXTURE_USAGE);
       assert.equal(adm.settled[0]!.model, MODEL);
       assert.equal(adm.settled[0]!.source, "gw");
-      // 1024 × 0.42 + 553 × 3.5 + 3072 × 0.042 = 430.08 + 1935.5 + 129.02 → 2495
-      assert.equal(costMicroUSD(MODEL, adm.settled[0]!.usage), 2_495);
+      // 1024 × 0.60 + 553 × 5.00 + 3072 × 0.06 = 614.4 + 2765 + 184.32 → 3564
+      assert.equal(costMicroUSD(MODEL, adm.settled[0]!.usage), 3_564);
       assert.deepEqual(adm.log, ["acquire", `precheck:${MODEL}`, "settle", "release"]);
       assert.equal(upstream.calls.length, 1);
       assert.deepEqual(gw.errors, []);
@@ -1223,7 +1223,7 @@ describe("POST /gw/gemini — non-streaming", () => {
 
   test("the output ceiling is clamped to the admitted budget before the upstream call", async () => {
     const adm = admission({
-      precheck: async () => ({ ok: true, budgetMicroUSD: 35_000 }), // buys 10k output tokens
+      precheck: async () => ({ ok: true, budgetMicroUSD: 50_000 }), // buys 10k output tokens
     });
     const { upstream, deps } = setup(() => json(RESPONSE), adm);
     const gw = await gateway(deps);
@@ -1241,7 +1241,7 @@ describe("POST /gw/gemini — non-streaming", () => {
 
   test("a thinking budget above the clamped ceiling reaches Google lowered to it", async () => {
     const adm = admission({
-      precheck: async () => ({ ok: true, budgetMicroUSD: 3_500 }), // buys 1k output tokens
+      precheck: async () => ({ ok: true, budgetMicroUSD: 5_000 }), // buys 1k output tokens
     });
     const { upstream, deps } = setup(() => json(RESPONSE), adm);
     const gw = await gateway(deps);
@@ -1263,7 +1263,7 @@ describe("POST /gw/gemini — non-streaming", () => {
 
   test("a snake_case request reaches Google rebuilt in camelCase, clamped under the one name", async () => {
     const adm = admission({
-      precheck: async () => ({ ok: true, budgetMicroUSD: 35_000 }), // buys 10k output tokens
+      precheck: async () => ({ ok: true, budgetMicroUSD: 50_000 }), // buys 10k output tokens
     });
     const { upstream, deps } = setup(() => json(RESPONSE), adm);
     const gw = await gateway(deps);
@@ -1511,7 +1511,7 @@ describe("POST /gw/gemini — admission", () => {
 
 describe("POST /gw/gemini — settlement failure and reconciliation", () => {
   const T0 = Date.parse("2026-10-02T08:00:00Z");
-  const EXPECTED_COST = 2_495; // the fixture's usage at face value
+  const EXPECTED_COST = 3_564; // the fixture's usage at face value
 
   /** A ledger with the outbox's idempotency contract: an event id is applied at most once. */
   function ledger() {

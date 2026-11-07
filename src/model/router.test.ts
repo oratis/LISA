@@ -296,6 +296,10 @@ describe("resolveRoute — hosted edition never routes to a costlier or unpriced
     assert.equal(billingSafeInCloud("claude-opus-4-8", "claude-sonnet-4-6"), false);
     // the same model is trivially safe.
     assert.equal(billingSafeInCloud("gemini-2.5-flash", "gemini-2.5-flash"), true);
+    // A candidate is judged at its long-context rate too (#447 review): Haiku
+    // 5.5 above 100K prompt tokens costs $0.50 input, more than Flash's $0.30.
+    assert.equal(billingSafeInCloud("claude-haiku-5-5", "gemini-2.5-flash"), false);
+    assert.equal(billingSafeInCloud("claude-haiku-5-5", "claude-sonnet-5-5"), true);
   });
 });
 

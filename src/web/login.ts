@@ -13,9 +13,11 @@
  * The server pins the session cookie on success; a reload lands in the authed
  * island UI.
  *
- * NOTE: one template literal — NO backticks and no "${" inside (see the
+ * NOTE: one template literal — NO backticks inside (see the
  * island.ts trap). String concatenation only.
  */
+import { PAGE_APPEARANCE_CSS, PAGE_APPEARANCE_JS } from "./page-appearance.js";
+
 export const LOGIN_HTML = `<!doctype html>
 <html lang="en">
 <head>
@@ -23,33 +25,33 @@ export const LOGIN_HTML = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>LISA Cloud — Sign in</title>
 <style>
-  :root { color-scheme: dark; }
+  ${PAGE_APPEARANCE_CSS}
   * { box-sizing: border-box; margin: 0; }
   body {
     min-height: 100vh; display: grid; place-items: center;
-    background: #0b0e13; color: #e6e9ef;
+    background: var(--page-bg); color: var(--page-text);
     font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   }
   .card {
     width: min(92vw, 380px); padding: 32px 28px; border-radius: 16px;
-    background: #12161e; border: 1px solid #232a36;
+    background: var(--page-card); border: 1px solid var(--page-border);
   }
   h1 { font-size: 22px; margin-bottom: 4px; }
-  p.sub { color: #8a93a5; font-size: 14px; margin-bottom: 22px; }
-  label { display: block; font-size: 13px; color: #8a93a5; margin: 12px 0 4px; }
+  p.sub { color: var(--page-muted); font-size: 14px; margin-bottom: 22px; }
+  label { display: block; font-size: 13px; color: var(--page-muted); margin: 12px 0 4px; }
   input {
     width: 100%; padding: 10px 12px; border-radius: 10px; font-size: 16px;
-    background: #0b0e13; color: #e6e9ef; border: 1px solid #2a3342; outline: none;
+    background: var(--page-bg); color: var(--page-text); border: 1px solid var(--page-border); outline: none;
   }
-  input:focus { border-color: #5b8cff; }
+  input:focus { border-color: var(--page-accent); }
   button {
     width: 100%; margin-top: 18px; padding: 12px; border: 0; border-radius: 10px;
-    background: #5b8cff; color: #fff; font-size: 16px; font-weight: 600; cursor: pointer;
+    background: var(--page-accent); color: var(--page-on-accent); font-size: 16px; font-weight: 600; cursor: pointer;
   }
-  button.secondary { background: transparent; color: #8a93a5; font-weight: 500; margin-top: 8px; }
+  button.secondary { background: transparent; color: var(--page-muted); font-weight: 500; margin-top: 8px; }
   button:disabled { opacity: .5; cursor: default; }
   input#code { letter-spacing: .35em; font-size: 20px; text-align: center; }
-  .note { color: #7fd6a3; font-size: 13px; margin-top: 12px; min-height: 1.2em; }
+  .note { color: var(--page-success); font-size: 13px; margin-top: 12px; min-height: 1.2em; }
   [hidden] { display: none !important; }
   #apple-wrap { display: none; margin-bottom: 10px; }
   #google-wrap { display: none; margin-bottom: 18px; }
@@ -58,16 +60,17 @@ export const LOGIN_HTML = `<!doctype html>
     width: 100%; padding: 12px; border: 0; border-radius: 10px; cursor: pointer;
     background: #fff; color: #000; font-size: 16px; font-weight: 600;
   }
-  .divider { display: none; align-items: center; gap: 10px; color: #5d6575; font-size: 12px; margin-bottom: 4px; }
-  .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: #232a36; }
-  .err { color: #ff7a7a; font-size: 13px; margin-top: 12px; min-height: 1.2em; }
-  .hint { color: #5d6575; font-size: 12px; margin-top: 18px; }
+  .divider { display: none; align-items: center; gap: 10px; color: var(--page-muted); font-size: 12px; margin-bottom: 4px; }
+  .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--page-border); }
+  .err { color: var(--page-error); font-size: 13px; margin-top: 12px; min-height: 1.2em; }
+  .hint { color: var(--page-muted); font-size: 12px; margin-top: 18px; }
 </style>
+<script>${PAGE_APPEARANCE_JS}</script>
 </head>
 <body>
 <div class="card">
   <h1>LISA Cloud</h1>
-  <p class="sub">Sign in to reach your Lisa. A free usage allowance refreshes every 12 hours.</p>
+  <p class="sub">Sign in to reach your Lisa. A free usage allowance refreshes every day.</p>
   <div id="apple-wrap">
     <button id="apple-btn" type="button"> Sign in with Apple</button>
   </div>
@@ -89,8 +92,8 @@ export const LOGIN_HTML = `<!doctype html>
     <button id="resend" type="button" class="secondary" hidden>Send another code</button>
     <button id="register" type="button" class="secondary" hidden>Create an account</button>
     <button id="mode" type="button" class="secondary">Use a password instead</button>
-    <div class="err" id="err"></div>
-    <div class="note" id="note"></div>
+    <div class="err" id="err" role="alert"></div>
+    <div class="note" id="note" role="status"></div>
   </form>
   <div class="hint">Self-hosted with a shared token? Open this page as /?token=&lt;your token&gt;.</div>
 </div>

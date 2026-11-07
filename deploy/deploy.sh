@@ -80,6 +80,9 @@ addenv() { # addenv NAME VALUE
 addenv LISA_WEB_TOKEN        "${LISA_WEB_TOKEN}"
 addenv LISA_PUBLIC_ORIGIN     "${LISA_PUBLIC_ORIGIN:-https://cloud.meetlisa.ai}"
 addenv LISA_RELAY_ENABLED     "${LISA_RELAY_ENABLED:-0}"
+# The shared token authorizes nothing in the hosted edition unless this is set
+# (operator-funded, unmetered demo access). Leave unset in production.
+addenv LISA_CLOUD_SHARED_TOKEN_OK "${LISA_CLOUD_SHARED_TOKEN_OK:-}"
 # Cloud Run is the single trusted proxy in the default deployment. The resolver
 # walks X-Forwarded-For from the right, so a caller-prepended fake first hop is
 # never treated as the rate-limit identity.
@@ -206,9 +209,10 @@ gcloud run deploy "$SERVICE" \
 URL="$(gcloud run services describe "$SERVICE" --project "$PROJECT" --region "$REGION" --format='value(status.url)' 2>/dev/null || true)"
 echo "✓ deployed${URL:+: $URL}"
 if [ -n "$URL" ]; then
-  if [ "$SECRETS_MODE" = "sm" ]; then
-    # Production (S6): never print the master token into the deploy log — real
-    # users sign in with accounts, and the token-in-URL is a demo-only shortcut.
+  if [ "$SECRETS_MODE" = "sm" ] || [ -z "${LISA_CLOUD_SHARED_TOKEN_OK:-}" ]; then
+    # Production (S6), or any deploy without the shared-token opt-in: never print
+    # the master token into the deploy log — it no longer opens the hosted
+    # edition, and real users sign in with accounts.
     echo "  Console: $URL"
   else
     echo "  Reviewer demo URL (opens authed, pins the cookie):  $URL/?token=$LISA_WEB_TOKEN"

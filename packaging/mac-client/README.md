@@ -1,6 +1,31 @@
 # Lisa.app — native Mac client
 
-**Pocket connection:** sign in to LISA, then open **Connect iPhone…** to approve a phone on the same account. Pocket automatically uses encrypted LAN or cloud relay; no Tailscale is required. See [connection setup and deployment](../../docs/REMOTE_CONNECTIONS.md).
+**Pocket connection:** open **Lisa ▸ Account & Devices…**, sign in, then choose **Connect Lisa Pocket**. The account page shows the saved account and this Mac's live connection status. Pocket automatically uses encrypted LAN or cloud relay; no Tailscale is required. See [connection setup and deployment](../../docs/REMOTE_CONNECTIONS.md).
+
+Email sign-in has separate email and six-digit-code steps, with a resend countdown,
+inline errors, and an optional password route. A custom server is under **Advanced**.
+Signing in connects Pocket immediately; applying the account to cloud models is a
+separate, confirmed reconnect so it cannot silently interrupt a running conversation.
+Sign-out first closes phone connections, then applies the cleared account. Its
+confirmation explains that current responses and tasks will stop.
+
+### Account visual previews
+
+Debug builds can open the real account/device views with inert fixture data. These
+previews never sign in, write account settings, authorize devices, or start a backend.
+The preview entry point is excluded from release builds.
+
+```sh
+cd packaging/mac-client
+swift build
+"$(swift build --show-bin-path)/Lisa" --preview-cloud=connected --dark
+"$(swift build --show-bin-path)/Lisa" --preview-cloud=code --light --compact
+```
+
+Scenes: `email`, `code`, `password`, `error`, `expired`, `connected`, `offline`,
+`busy`, `devices`, `pairing`, `legacy`, `waiting`, and `long-name`.
+`swift test` also runs `LisaCloudTests`, including late-session-verification,
+OTP destination binding, sign-out/reconnect ordering, and retry after failed apply.
 
 Dockable macOS app hosting the LISA chat GUI. The always-on-top notch pill
 ("Lisa Island") is built in — toggle it from **Lisa ▸ Settings… ▸ Show Lisa

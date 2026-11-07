@@ -54,10 +54,10 @@ describe("estimateRunCost — the same numbers the meter bills", () => {
   }
 
   test("worked example: Gemini 2.5 Flash, 1M in + 1M out at face value", () => {
-    // List $0.30 / $2.50 per M, × 1.4 margin = $0.42 + $3.50.
-    assert.equal(estimateRunCost("gemini-2.5-flash", 1_000_000, 1_000_000).microUSD, 3_920_000);
+    // List $0.30 / $2.50 per M, × 2.0 margin = $0.60 + $5.00.
+    assert.equal(estimateRunCost("gemini-2.5-flash", 1_000_000, 1_000_000).microUSD, 5_600_000);
     // Cached prompt tokens are priced at the cache-read rate, not as input.
-    assert.equal(estimateRunCost("gemini-2.5-flash", 0, 0, 1_000_000).microUSD, 42_000);
+    assert.equal(estimateRunCost("gemini-2.5-flash", 0, 0, 1_000_000).microUSD, 60_000);
   });
 
   test("the provider basis removes the margin", () => {
@@ -65,17 +65,20 @@ describe("estimateRunCost — the same numbers the meter bills", () => {
     const provider = estimateRunCost("claude-sonnet-4-6", 1_000_000, 1_000_000, 0, {
       basis: "provider",
     });
-    assert.equal(billed.microUSD, 25_200_000); // ($3 + $15) × 1.4
+    assert.equal(billed.microUSD, 36_000_000); // ($3 + $15) × 2.0
     assert.equal(provider.microUSD, 18_000_000); // $3 + $15
     assert.equal(provider.microUSD, Math.ceil(billed.microUSD / MARGIN));
     assert.equal(provider.basis, "provider");
   });
 
   test("an unpriced model is quoted at the conservative fallback and flagged", () => {
-    const est = estimateRunCost("gemini-2.5-flash-lite", 1_000_000, 0);
+    const est = estimateRunCost("gemini-2.5-flash-lite", 100_000, 0);
     assert.equal(est.priced, false);
-    assert.equal(est.microUSD, 4_200_000); // fallback $3/M × 1.4 — a fallback estimate
-    assert.ok(est.microUSD > estimateRunCost("gemini-2.5-flash", 1_000_000, 0).microUSD);
+    assert.equal(est.microUSD, 2_000_000); // fallback $10/M × 2.0 — a fallback estimate
+    assert.ok(est.microUSD > estimateRunCost("gemini-2.5-flash", 100_000, 0).microUSD);
+    // Above 272K prompt tokens the fallback takes the dearest long-context rate
+    // in the table (GPT-6 Astra, $20/M), so it never prices below a known model.
+    assert.equal(estimateRunCost("gemini-2.5-flash-lite", 1_000_000, 0).microUSD, 40_000_000);
   });
 
   test("a local model costs nothing", () => {
@@ -90,8 +93,8 @@ describe("estimateRunCost — the same numbers the meter bills", () => {
   });
 
   test("rounds up, never down", () => {
-    // 1 output token of Flash = 3.5 micro-USD → 4.
-    assert.equal(estimateRunCost("gemini-2.5-flash", 0, 1).microUSD, 4);
+    // 1 input token of Flash = 0.6 micro-USD → 1.
+    assert.equal(estimateRunCost("gemini-2.5-flash", 1, 0).microUSD, 1);
     assert.equal(estimateRunCost("gemini-2.5-flash", 0, 0).microUSD, 0);
   });
 
@@ -119,7 +122,7 @@ describe("formatCostEstimate", () => {
   test("an unpriced model's figure is shown as a fallback estimate; local as free", () => {
     assert.equal(
       formatCostEstimate(estimateRunCost("mystery-model", 100_000, 10_000)),
-      "~$0.63 (fallback rate; price unknown)",
+      "~$3.00 (fallback rate; price unknown)",
     );
     assert.equal(
       formatCostEstimate(estimateRunCost("mystery-model", 10, 10)),
@@ -145,11 +148,11 @@ describe("estimateRoutineMonthlyCost", () => {
       30,
       "gemini-2.5-flash",
     );
-    // 20k × $0.42/M = 8_400 ; 1.5k × $3.50/M = 5_250 → 13_650 micro-USD
-    assert.equal(est.perRun.microUSD, 13_650);
-    assert.equal(est.monthlyMicroUSD, 409_500);
+    // 20k × $0.60/M = 12_000 ; 1.5k × $5.00/M = 7_500 → 19_500 micro-USD
+    assert.equal(est.perRun.microUSD, 19_500);
+    assert.equal(est.monthlyMicroUSD, 585_000);
     assert.equal(est.runsPerMonth, 30);
-    assert.equal(formatRoutineEstimate(est), "~$0.02/run · ~$0.41/month");
+    assert.equal(formatRoutineEstimate(est), "~$0.02/run · ~$0.59/month");
   });
 
   test("cached tokens in the split are priced at the cache-read rate", () => {
@@ -193,7 +196,7 @@ describe("estimateRoutineMonthlyCost", () => {
 });
 
 describe("checkCostCap — decided before the provider call", () => {
-  const model = "gemini-2.5-flash"; // in $0.42/M, out $3.50/M, cacheWrite $0.42/M (face)
+  const model = "gemini-2.5-flash"; // in $0.60/M, out $5.00/M, cacheWrite $0.60/M (face)
 
   test("a fresh run under its cap proceeds with the output ceiling it asked for", () => {
     const verdict = checkCostCap({
@@ -207,7 +210,7 @@ describe("checkCostCap — decided before the provider call", () => {
   });
 
   test("the output ceiling is clamped to what the cap can still pay for", () => {
-    // cap $0.02, prompt reserve 10k × 0.42 = 4_200 → 15_800 left → 4_514 output tokens.
+    // cap $0.02, prompt reserve 10k × 0.60 = 6_000 → 14_000 left → 2_800 output tokens.
     const verdict = checkCostCap({
       model,
       capMicroUSD: 20_000,
@@ -215,32 +218,32 @@ describe("checkCostCap — decided before the provider call", () => {
       nextPromptTokens: 10_000,
       maxTokens: 16_000,
     });
-    assert.deepEqual(verdict, { proceed: true, maxTokens: 4_514, spentMicroUSD: 0 });
+    assert.deepEqual(verdict, { proceed: true, maxTokens: 2_800, spentMicroUSD: 0 });
     // Worst case of the admitted call fits under the cap.
-    const worst = costMicroUSD(model, { ...ZERO, inputTokens: 10_000, outputTokens: 4_514 });
+    const worst = costMicroUSD(model, { ...ZERO, inputTokens: 10_000, outputTokens: 2_800 });
     assert.ok(worst <= 20_000, `worst case ${worst} exceeds the cap`);
   });
 
   test("stops once the cap is spent", () => {
-    const spent = { ...ZERO, inputTokens: 40_000, outputTokens: 2_000 }; // 16_800 + 7_000
+    const spent = { ...ZERO, inputTokens: 40_000, outputTokens: 2_000 }; // 24_000 + 10_000
     const verdict = checkCostCap({
       model,
-      capMicroUSD: 23_800,
+      capMicroUSD: 34_000,
       spentMicroUSD: costMicroUSD(model, spent),
       nextPromptTokens: 1,
       maxTokens: 16_000,
     });
     assert.equal(verdict.proceed, false);
     assert.ok(!verdict.proceed && verdict.reason === "cap_reached");
-    assert.equal(verdict.spentMicroUSD, 23_800);
+    assert.equal(verdict.spentMicroUSD, 34_000);
   });
 
   test("stops BEFORE the turn that would cross the cap, not after", () => {
-    // 5_000 spent of 10_000; the next prompt alone reserves 42_000.
+    // 7_140 spent of 10_000; the next prompt alone reserves 60_000.
     const verdict = checkCostCap({
       model,
       capMicroUSD: 10_000,
-      spentMicroUSD: costMicroUSD(model, { ...ZERO, outputTokens: 1_428 }), // 4_998
+      spentMicroUSD: costMicroUSD(model, { ...ZERO, outputTokens: 1_428 }), // 7_140
       nextPromptTokens: 100_000,
       maxTokens: 16_000,
     });
@@ -250,7 +253,9 @@ describe("checkCostCap — decided before the provider call", () => {
 
   test("stops when what is left cannot buy a useful answer", () => {
     // After the prompt reserve only ~100 output tokens are affordable.
-    const cap = 4_200 + Math.ceil((100 * priceForModel(model).outPerM) / 1_000_000);
+    const cap =
+      Math.ceil((10_000 * priceForModel(model).inPerM) / 1_000_000) +
+      Math.ceil((100 * priceForModel(model).outPerM) / 1_000_000);
     const verdict = checkCostCap({
       model,
       capMicroUSD: cap,
@@ -318,14 +323,14 @@ describe("checkCostCap — decided before the provider call", () => {
   test("an unpriced model is reserved at the conservative fallback rate", () => {
     const known = checkCostCap({
       model: "gemini-2.5-flash",
-      capMicroUSD: 100_000,
+      capMicroUSD: 1_000_000,
       spentMicroUSD: 0,
       nextPromptTokens: 10_000,
       maxTokens: 1_000_000,
     });
     const unknown = checkCostCap({
       model: "some-unlisted-model",
-      capMicroUSD: 100_000,
+      capMicroUSD: 1_000_000,
       spentMicroUSD: 0,
       nextPromptTokens: 10_000,
       maxTokens: 1_000_000,
@@ -414,7 +419,7 @@ describe("checkCostCap — decided before the provider call", () => {
           maxTokens,
         });
         assert.ok(verdict.proceed);
-        assert.equal(verdict.proceed && verdict.maxTokens, 4_514);
+        assert.equal(verdict.proceed && verdict.maxTokens, 2_800);
       }
     });
   });
@@ -583,7 +588,12 @@ describe("reservePromptTokensForText — dense content is not under-counted", ()
 
 describe("RunCostCap — the prompt reservation", () => {
   const model = "claude-sonnet-4-6";
-  const rate = Math.max(priceForModel(model).inPerM, priceForModel(model).cacheWritePerM);
+  // The whole prompt may be written to a 1-hour cache, Anthropic's dearest prompt rate.
+  const rate = Math.max(
+    priceForModel(model).inPerM,
+    priceForModel(model).cacheWritePerM,
+    priceForModel(model).cacheWrite1hPerM ?? 0,
+  );
   const outRate = priceForModel(model).outPerM;
   const ceilingFor = (cap: number, spent: number, promptTokens: number): number =>
     Math.floor(((cap - spent - Math.ceil((promptTokens * rate) / 1e6)) * 1e6) / outRate);

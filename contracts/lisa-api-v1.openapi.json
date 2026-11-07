@@ -1529,7 +1529,8 @@
                 "gmail",
                 "linear",
                 "google-drive",
-                "notion"
+                "notion",
+                "slack"
               ]
             }
           },
@@ -1581,7 +1582,8 @@
                 "gmail",
                 "linear",
                 "google-drive",
-                "notion"
+                "notion",
+                "slack"
               ]
             }
           },
@@ -1665,7 +1667,8 @@
                 "gmail",
                 "linear",
                 "google-drive",
-                "notion"
+                "notion",
+                "slack"
               ]
             }
           },
@@ -1750,7 +1753,8 @@
                 "gmail",
                 "linear",
                 "google-drive",
-                "notion"
+                "notion",
+                "slack"
               ]
             }
           },
@@ -1823,7 +1827,8 @@
                 "gmail",
                 "linear",
                 "google-drive",
-                "notion"
+                "notion",
+                "slack"
               ]
             }
           },
@@ -1895,7 +1900,8 @@
                 "gmail",
                 "linear",
                 "google-drive",
-                "notion"
+                "notion",
+                "slack"
               ]
             }
           },
@@ -1993,7 +1999,8 @@
                 "gmail",
                 "linear",
                 "google-drive",
-                "notion"
+                "notion",
+                "slack"
               ]
             }
           }
@@ -5768,7 +5775,7 @@
           },
           "name": {
             "type": "string",
-            "description": "Display name; stable identity is id plus workspaceId for Notion."
+            "description": "Display name; stable identity is id plus workspaceId for Notion and Slack."
           },
           "workspaceId": {
             "type": "string"
@@ -5798,7 +5805,8 @@
               "metadata",
               "team",
               "file",
-              "page"
+              "page",
+              "channel"
             ]
           },
           "timeZone": {
@@ -5806,6 +5814,10 @@
           },
           "mimeType": {
             "type": "string"
+          },
+          "isPrivate": {
+            "type": "boolean",
+            "description": "Whether a selected Slack channel is private."
           }
         },
         "required": [
@@ -5925,7 +5937,8 @@
               "gmail",
               "linear",
               "google-drive",
-              "notion"
+              "notion",
+              "slack"
             ]
           }
         },
@@ -5951,7 +5964,8 @@
                     "gmail",
                     "linear",
                     "google-drive",
-                    "notion"
+                    "notion",
+                    "slack"
                   ]
                 },
                 "name": {

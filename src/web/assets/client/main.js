@@ -138,6 +138,25 @@ const LISA_STRINGS = {
     "connector.gmailDetail": "Read headers and bounded snippets in your selected labels, without full bodies or attachments. This task continues after connecting; a new message cancels unfinished work.",
     "connector.calendarDetail": "Choose primary-calendar availability or event details in selected calendars. No events are created or changed. This task continues after connecting; a new message cancels unfinished work.",
     "connector.driveDetail": "Google grants access to files you pick (including write permission); LISA only reads the files you confirm here. Supports text, Docs, Slides and the first sheet of Sheets. No folders, PDFs or attachments. Connecting automatically continues this task.",
+    "connector.slackDetail": "Slack grants access to channel names and history. LISA reads only channels you confirm here. No DMs, shared channels, files or sending messages. Connecting continues the original task.",
+    "connector.slackAuthorize": "Authorize LISA read-only in Slack, then return here to choose channels.",
+    "connector.slackSelect": "Choose channels you belong to in this workspace. Nothing is checked by default. Later Slack tasks use this scope until disconnected.",
+    "connector.auth.slack": "Sign in to Slack (read only)",
+    "connector.openSlack": "Open Slack authorization",
+    "connector.error.slack_client_not_configured": "Configure a Slack app with PKCE and channel read permissions.",
+    "connector.error.slack_reauthorization_required": "Slack authorization expired or was removed. Reconnect to continue.",
+    "connector.error.slack_read_scope_required": "Slack must grant only the requested channel read permissions.",
+    "connector.error.slack_channel_unavailable": "This channel is unavailable, shared, archived, or you are no longer a member.",
+    "connector.error.slack_resource_mismatch": "Slack returned content outside the selected channel or thread. The result was blocked.",
+    "connector.error.slack_access_denied": "Slack denied access. Check workspace approval and channel membership.",
+    "connector.error.slack_rate_limited": "Slack is limiting requests. Try again later.",
+    "connector.error.slack_callback_port_in_use": "Another Slack sign-in is using the callback port. Finish or cancel it before retrying.",
+    "connector.error.slack_request_failed": "Slack could not complete this request. Retry this task.",
+    "connector.error.slack_response_too_large": "The Slack response exceeds the read limit.",
+    "connector.error.slack_invalid_time_range": "Choose a valid time range of at most 31 days.",
+    "connector.error.slack_invalid_thread": "Choose a valid thread timestamp in the selected channel.",
+    "connector.error.slack_invalid_response": "Slack returned an unexpected response. Retry or reconnect.",
+    "connector.error.slack_unavailable": "Slack is temporarily unavailable. Retry this task.",
     "connector.notionDetail": "Use a Notion connection with Read content only, then choose pages here. LISA reads ordinary blocks in those pages; child pages, databases, synced blocks and attachments are not followed. Connecting automatically continues this task.",
     "connector.driveAuthorize": "Sign in to Google and pick up to 30 supported files, then return here to confirm them.",
     "connector.notionAuthorize": "Authorize LISA read-only on Notion, then return here to choose pages.",
@@ -359,6 +378,25 @@ const LISA_STRINGS = {
     "connector.gmailDetail": "仅读取你选定标签中的邮件头与有限摘要，不读取完整正文或附件。连接完成后自动继续本条任务；发送新消息会取消未完成的任务。",
     "connector.calendarDetail": "选择仅查看主日历忙闲，或读取选定日历的日程详情。不会创建或修改日程。连接完成后自动继续本条任务；发送新消息会取消未完成的任务。",
     "connector.driveDetail": "Google 授权可读写你选择的文件；LISA 只提供读取，并限制为此卡确认的文件。支持文本、Docs、Slides 和 Sheets 首个工作表，不读取文件夹、PDF 或附件。连接后自动继续原任务。",
+    "connector.slackDetail": "Slack 授予频道名称和历史读取权限；LISA 仅读取你在此确认的频道。不读取私信、共享频道或附件，不发送消息。连接后自动继续原任务。",
+    "connector.slackAuthorize": "请在 Slack 授权 LISA read-only，然后返回此卡选择频道。",
+    "connector.slackSelect": "选择你在此工作区加入的频道，默认不勾选。后续 Slack 任务沿用此范围，直到断开连接。",
+    "connector.auth.slack": "登录 Slack，只读连接",
+    "connector.openSlack": "打开 Slack 授权页面",
+    "connector.error.slack_client_not_configured": "请先配置启用 PKCE 和频道读取权限的 Slack 应用。",
+    "connector.error.slack_reauthorization_required": "Slack 授权已失效或移除，请重新连接。",
+    "connector.error.slack_read_scope_required": "Slack 必须仅授予请求的频道读取权限。",
+    "connector.error.slack_channel_unavailable": "频道不可用、已共享、已归档，或你已退出该频道。",
+    "connector.error.slack_resource_mismatch": "Slack 返回的内容不属于所选频道或讨论串，已停止返回结果。",
+    "connector.error.slack_access_denied": "Slack 拒绝访问，请检查工作区审批和频道成员身份。",
+    "connector.error.slack_rate_limited": "Slack 请求过于频繁，请稍后重试。",
+    "connector.error.slack_callback_port_in_use": "另一次 Slack 登录正在使用回调端口，请完成或取消后重试。",
+    "connector.error.slack_request_failed": "Slack 未能完成此请求，请重试本条任务。",
+    "connector.error.slack_response_too_large": "Slack 返回的内容超过读取上限。",
+    "connector.error.slack_invalid_time_range": "请选择不超过 31 天的有效时间范围。",
+    "connector.error.slack_invalid_thread": "请提供所选频道中的有效讨论串时间戳。",
+    "connector.error.slack_invalid_response": "Slack 返回了无法识别的响应，请重试或重新连接。",
+    "connector.error.slack_unavailable": "Slack 暂时不可用，请重试本条任务。",
     "connector.notionDetail": "请使用仅有“读取内容”权限的 Notion 连接，再在此卡选择页面。LISA 读取所选页面的普通内容块，不展开子页面、数据库、同步块或附件。连接后自动继续原任务。",
     "connector.driveAuthorize": "请登录 Google 并选择最多 30 个支持的文件，再返回此卡确认。",
     "connector.notionAuthorize": "请在 Notion 授权 LISA read-only，然后返回此卡选择页面。",
@@ -1740,7 +1778,17 @@ async function startupGate() {
   // bare catch+return left a dead UI with no key prompt, no birth, no message).
   let cfg = null;
   for (let i = 0; i < 6 && !cfg; i++) {
-    try { cfg = await fetch('/api/config/status').then(r => r.json()); }
+    try {
+      // Hosted accounts use the service's model. Its operator configuration
+      // is deliberately inaccessible to cloud-chat; a 403 is not a missing key.
+      const edition = await fetch('/api/edition').then(r => r.ok ? r.json() : null);
+      if (edition && edition.edition === 'cloud') cfg = { configured: true };
+      else {
+        const response = await fetch('/api/config/status');
+        if (!response.ok) throw new Error('Configuration status unavailable');
+        cfg = await response.json();
+      }
+    }
     catch (e) { if (i < 5) await lisaSleep(700); }
   }
   if (!cfg) {
@@ -2554,25 +2602,43 @@ document.addEventListener('keydown', function (e) {
   };
 }
 
-// Theme — Nebula (dark, default) vs Calm (light), persisted. The CSS keys off
-// <body data-theme="calm">; the fnbar #fnTheme button toggles, and the
-// moon/sun glyph swap is pure CSS (body[data-theme] show/hide rules).
+// Existing choices survive; new profiles follow the OS, including live changes.
+// The tiny body-start script applies the same preference before the first paint.
 {
-  let theme = 'nebula';
-  try { theme = localStorage.getItem('lisa-theme') === 'calm' ? 'calm' : 'nebula'; } catch (e) {}
+  const systemTheme = window.matchMedia('(prefers-color-scheme: dark)');
+  const normalize = (t) => t === 'calm' || t === 'nebula' ? t : 'system';
+  let preference = 'system';
+  try { preference = normalize(localStorage.getItem('lisa-theme')); } catch (e) {}
+  let theme;
   const applyTheme = () => {
+    theme = preference === 'system' ? (systemTheme.matches ? 'nebula' : 'calm') : preference;
+    document.documentElement.style.colorScheme = theme === 'calm' ? 'light' : 'dark';
     if (theme === 'calm') document.body.setAttribute('data-theme', 'calm');
     else document.body.removeAttribute('data-theme');
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'calm' ? '#f5f6fa' : '#07091a');
+    const picker = document.getElementById('setTheme');
+    if (picker) picker.value = preference;
+    const button = document.getElementById('fnTheme');
+    const label = theme === 'calm' ? 'Switch to dark mode' : 'Switch to light mode';
+    if (button) { button.title = label; button.setAttribute('aria-label', label); }
+    // Keep native window chrome and the offline screen in the same appearance.
+    try { window.webkit?.messageHandlers?.lisa?.postMessage({ type: 'appearance', preference }); } catch (_) {}
   };
   applyTheme();
   window.lisaGetTheme = () => theme;
+  window.lisaGetThemePreference = () => preference;
   window.lisaSetTheme = (t) => {
-    const next = t === 'calm' ? 'calm' : 'nebula';
-    if (next === theme) return;
-    theme = next;
-    try { localStorage.setItem('lisa-theme', theme); } catch (e) {}
+    preference = normalize(t);
+    try { localStorage.setItem('lisa-theme', preference); } catch (e) {}
     applyTheme();
   };
+  systemTheme.addEventListener('change', () => { if (preference === 'system') applyTheme(); });
+  window.addEventListener('storage', (event) => {
+    if (event.key === 'lisa-theme' || event.key === null) {
+      preference = normalize(event.newValue);
+      applyTheme();
+    }
+  });
   const themeBtn = document.getElementById('fnTheme');
   if (themeBtn) themeBtn.addEventListener('click', () => {
     window.lisaSetTheme(theme === 'calm' ? 'nebula' : 'calm');
@@ -5735,48 +5801,56 @@ if ('serviceWorker' in navigator) {
     var chip = function (ok) { return '<span class="set-chip' + (ok ? ' ok' : '') + '">' + (ok ? 'configured' : 'not set') + '</span>'; };
     var compactOn = (typeof window.lisaGetCompact === 'function') ? window.lisaGetCompact() : false;
     var edName = (edition && edition.edition) ? edition.edition : '—';
-    var sw = function (id, on) {
-      return '<div class="set-switch' + (on ? ' on' : '') + '" id="' + id + '" role="switch" aria-checked="' + (on ? 'true' : 'false') + '" tabindex="0"><span class="knob"></span></div>';
+    var sw = function (id, on, label) {
+      return '<div class="set-switch' + (on ? ' on' : '') + '" id="' + id + '" role="switch" aria-label="' + esc(label) + '" aria-checked="' + (on ? 'true' : 'false') + '" tabindex="0"><span class="knob"></span></div>';
     };
     var html = '';
+    html += '<div class="view-sec-label">Display</div><div class="set-card">';
+    html += '<div class="set-row"><div class="set-main"><label class="set-name" for="setTheme">Appearance</label><div class="set-sub">Choose a look, or follow your device automatically</div></div><select class="set-input set-theme" id="setTheme"><option value="system">System</option><option value="calm">Light · Calm</option><option value="nebula">Dark · Nebula</option></select></div>';
+    html += '<div class="set-row"><div class="set-main"><div class="set-name">Compact mode</div><div class="set-sub">Dock Lisa as a narrow stacked panel at any window width</div></div>' + sw('setCompactToggle', compactOn, 'Compact mode') + '</div>';
+    html += '</div>';
     // Provider list + one picker, driven by the same table the key gate uses
     // (UX-1 wave 2). Was an Anthropic-and-OpenAI-only pair of inputs, which
     // made every other provider a config.env edit.
     var provs = window.lisaProviderList(status);
-    html += '<div class="view-sec-label">Model provider</div><div class="set-card">';
-    for (var pi = 0; pi < provs.length; pi++) {
-      var pv = provs[pi];
-      if (!pv.configured && pv.custom) continue;
-      html += '<div class="set-row"><div class="set-main"><div class="set-name">' + esc(pv.label) +
-        '</div><div class="set-sub">' + esc(pv.envKey) + '</div></div>' + chip(pv.configured) + '</div>';
+    if (edName !== 'cloud') {
+      html += '<div class="view-sec-label">Model provider</div><div class="set-card">';
+      for (var pi = 0; pi < provs.length; pi++) {
+        var pv = provs[pi];
+        if (!pv.configured) continue;
+        html += '<div class="set-row"><div class="set-main"><div class="set-name">' + esc(pv.label) +
+          '</div></div>' + chip(pv.configured) + '</div>';
+      }
+      html += '<div class="set-form">' +
+        '<select class="set-input" id="setProvider" aria-label="Model provider"></select>' +
+        '<input class="set-input" id="setKey" aria-label="API key" type="password" autocomplete="off" spellcheck="false" placeholder="key… (leave blank to keep)">' +
+        '<input class="set-input" id="setBaseUrl" aria-label="Provider URL" type="text" autocomplete="off" spellcheck="false" placeholder="https://host/v1" style="display:none">' +
+        '<input class="set-input" id="setModel" aria-label="Model (optional)" type="text" autocomplete="off" spellcheck="false" placeholder="model (optional)">' +
+        '<div style="display:flex;gap:10px;align-items:center"><button class="view-act" id="setKeySave">Save</button><span class="set-err" id="setKeyMsg"></span></div>' +
+        '<div class="set-note">Saved on the machine running Lisa. Leave the key blank to keep your existing connection.</div></div>';
+      html += '</div>';
     }
-    html += '<div class="set-form">' +
-      '<select class="set-input" id="setProvider"></select>' +
-      '<input class="set-input" id="setKey" type="password" autocomplete="off" spellcheck="false" placeholder="key… (leave blank to keep)">' +
-      '<input class="set-input" id="setBaseUrl" type="text" autocomplete="off" spellcheck="false" placeholder="https://host/v1" style="display:none">' +
-      '<input class="set-input" id="setModel" type="text" autocomplete="off" spellcheck="false" placeholder="model (optional)">' +
-      '<div style="display:flex;gap:10px;align-items:center"><button class="view-act" id="setKeySave">Save</button><span class="set-err" id="setKeyMsg"></span></div>' +
-      '<div class="set-note">Saved to ~/.lisa/config.env (0600), on this machine. Accepted from localhost only.</div></div>';
-    html += '</div>';
     html += '<div class="view-sec-label">Automation</div><div class="set-card">';
-    html += '<div class="set-row"><div class="set-main"><div class="set-name">Proactive mode</div><div class="set-sub">Let Lisa watch your agents, tasks and signals and act when you are away</div></div>' + sw('setProactiveToggle', proactiveOn) + '</div>';
+    html += '<div class="set-row"><div class="set-main"><div class="set-name">Proactive mode</div><div class="set-sub">Let Lisa watch your agents, tasks and signals and act when you are away</div></div>' + sw('setProactiveToggle', proactiveOn, 'Proactive mode') + '</div>';
     html += '</div>';
     // Reach-out charter controls (docs/POLICY_REACH_OUT.md): filled in by
     // loadReachOut() once /api/reachout/settings answers.
     html += '<div class="view-sec-label">Proactivity</div><div class="set-card" id="setReachOut"><div class="set-row"><div class="set-note">loading…</div></div></div>';
-    html += '<div class="view-sec-label">Display</div><div class="set-card">';
-    html += '<div class="set-row"><div class="set-main"><div class="set-name">Compact mode</div><div class="set-sub">Dock Lisa as a narrow stacked panel at any window width</div></div>' + sw('setCompactToggle', compactOn) + '</div>';
-    html += '</div>';
     html += '<div class="view-sec-label">About</div><div class="set-card">';
     html += '<div class="set-row"><div class="set-main"><div class="set-name">Edition</div><div class="set-sub">Runtime build</div></div><span class="set-chip">' + esc(edName) + '</span></div>';
     // A discoverable entry point for the shortcut list — "press ?" is only
     // findable if you already know it is there (UX-11).
     html += '<div class="set-row"><div class="set-main"><div class="set-name">Keyboard shortcuts</div><div class="set-sub">⌘K switch · ⌘/ focus · ⌘F find · ? this list</div></div><button class="v-toggle" id="setShortcuts">show</button></div>';
-    html += '<div class="set-row"><div class="set-main"><div class="set-name">Anthropic Console</div><div class="set-sub">Manage billing &amp; keys</div></div><a class="set-chip" href="https://console.anthropic.com/" target="_blank" rel="noopener">open ↗</a></div>';
+    if (edName !== 'cloud') html += '<div class="set-row"><div class="set-main"><div class="set-name">Anthropic Console</div><div class="set-sub">Manage billing &amp; keys</div></div><a class="set-chip" href="https://console.anthropic.com/" target="_blank" rel="noopener">open ↗</a></div>';
     html += '</div>';
     scroll.innerHTML = html;
     void window.LisaExpressions.mountSettings(scroll);
 
+    var themePicker = document.getElementById('setTheme');
+    if (themePicker) {
+      themePicker.value = window.lisaGetThemePreference();
+      themePicker.addEventListener('change', function () { window.lisaSetTheme(themePicker.value); });
+    }
     var pt = document.getElementById('setProactiveToggle');
     if (pt) {
       pt.addEventListener('click', toggleProactive);
@@ -5875,8 +5949,8 @@ if ('serviceWorker' in navigator) {
     if (!box) return;
     if (!view || !view.settings) { box.innerHTML = '<div class="set-row"><div class="set-note">Proactivity settings are unavailable.</div></div>'; return; }
     var s = view.settings, b = view.budget || {}, q = s.quietHours || {}, src = s.sources || {};
-    var sw = function (id, on) {
-      return '<div class="set-switch' + (on ? ' on' : '') + '" id="' + id + '" role="switch" aria-checked="' + (on ? 'true' : 'false') + '" tabindex="0"><span class="knob"></span></div>';
+    var sw = function (id, on, label) {
+      return '<div class="set-switch' + (on ? ' on' : '') + '" id="' + id + '" role="switch" aria-label="' + esc(label) + '" aria-checked="' + (on ? 'true' : 'false') + '" tabindex="0"><span class="knob"></span></div>';
     };
     var row = function (name, sub, control) {
       return '<div class="set-row"><div class="set-main"><div class="set-name">' + esc(name) + '</div><div class="set-sub">' + esc(sub) + '</div></div>' + control + '</div>';
@@ -5891,12 +5965,12 @@ if ('serviceWorker' in navigator) {
     var times = '<span style="display:flex;gap:6px;align-items:center">' +
       '<input class="set-input" id="roQuietStart" type="time" style="width:auto" aria-label="Quiet hours start" value="' + esc(q.start || '22:00') + '">' +
       '<input class="set-input" id="roQuietEnd" type="time" style="width:auto" aria-label="Quiet hours end" value="' + esc(q.end || '08:00') + '">' +
-      sw('roQuietToggle', !!q.enabled) + '</span>';
+      sw('roQuietToggle', !!q.enabled, 'Quiet hours') + '</span>';
     h += row('Quiet hours', (view.quietNow ? 'Quiet now. ' : '') + 'Pushes wait until the window ends' + (q.tz ? ' (' + q.tz + ')' : '') + '.', times);
     for (var j = 0; j < RO_SOURCES.length; j++) {
-      h += row(RO_SOURCES[j][1], RO_SOURCES[j][2], sw('roSrc_' + RO_SOURCES[j][0], src[RO_SOURCES[j][0]] !== false));
+      h += row(RO_SOURCES[j][1], RO_SOURCES[j][2], sw('roSrc_' + RO_SOURCES[j][0], src[RO_SOURCES[j][0]] !== false, RO_SOURCES[j][1]));
     }
-    h += row('Push her own notes', 'Let notes about her own desires use push too', sw('roDesirePush', !!s.desirePush));
+    h += row('Push her own notes', 'Let notes about her own desires use push too', sw('roDesirePush', !!s.desirePush, 'Push her own notes'));
     var note = function (text) { return '<div class="set-row"><div class="set-note">' + esc(text) + '</div></div>'; };
     if (view.channelsAvailable && view.channelsAvailable.push === false) {
       h += note('Push is not available here, so everything stays in the app.');
@@ -5941,7 +6015,10 @@ if ('serviceWorker' in navigator) {
     views.settings.innerHTML =
       '<div class="view-head"><div><h2>Settings</h2><div class="vh-sub">Keys · automation · display</div></div></div>' +
       '<div class="view-scroll"><div id="settingsScroll"><div class="view-empty">loading…</div></div></div>';
-    Promise.all([getJSON('/api/config/status'), getJSON('/api/edition')]).then(function (res) { renderSettings(res[0], res[1]); });
+    getJSON('/api/edition').then(function (edition) {
+      if (edition && edition.edition === 'cloud') renderSettings(null, edition);
+      else getJSON('/api/config/status').then(function (status) { renderSettings(status, edition); });
+    });
   }
   // ── Knowledge base view (docs/archive/plans/PLAN_KNOWLEDGE_BASE_v1.0.md) ──────────
   function kbRenderList(entries, container) {

@@ -785,3 +785,15 @@ test("document wrappers expose only reviewed reads and mark every result as untr
       assert.equal(cat(name!, { operation }), "write");
   }
 });
+
+test("Slack wrapper exposes channel reads only and taints all returned content", () => {
+  for (const operation of ["list", "messages", "thread"]) {
+    const action = classify("slack_read", { operation });
+    assert.equal(action.category, "read");
+    assert.equal(action.connector, "slack");
+    assert.equal(action.taintSource, true);
+    assert.equal(action.destination, "fixed");
+  }
+  for (const operation of ["send", "reply", "join", "delete", "unknown"])
+    assert.equal(cat("slack_read", { operation }), "write");
+});

@@ -3,7 +3,7 @@ import Base from "../layouts/Base.astro";
 ---
 <Base title="Privacy" lang="en" description="How LISA Cloud and local Mac mode process accounts, conversations, and AI requests.">
   <header class="page-head">
-    <p class="eyebrow"><span class="rule"></span> PRIVACY <b>· updated 2026-10-07</b></p>
+    <p class="eyebrow"><span class="rule"></span> PRIVACY <b>· updated 2026-11-07</b></p>
     <h1>Privacy Policy</h1>
     <p class="lede">
       LISA is a personal AI assistant with two modes: <strong>LISA Cloud</strong>, operated
@@ -17,10 +17,11 @@ import Base from "../layouts/Base.astro";
     <p class="eyebrow"><b>What we collect</b></p>
     <p class="big">Local mode: nothing — to us.</p>
     <p>
-      Lisa Pocket and Lisa collect no analytics, no advertising identifiers, and contain no
-      third-party tracking SDKs. Local mode does not require a LISA Cloud account. If you opt into a <strong>LISA Cloud account</strong>, we hold exactly
-      what the section below lists — your email, your sign-in identifier, and your Lisa's
-      data. You can request account deletion within the app.
+      Lisa Pocket and Lisa contain no analytics or third-party tracking SDKs and collect no
+      advertising identifiers. Local mode does not require a LISA Cloud account, and nothing is
+      collected from local or self-hosted installs. If you opt into a <strong>LISA Cloud account</strong>, we hold exactly
+      what the section below lists — your email, your sign-in identifier, your Lisa's
+      data, and server-side billing and account event records. You can request account deletion within the app.
     </p>
   </div>
 
@@ -126,6 +127,18 @@ import Base from "../layouts/Base.astro";
           <strong>What we process</strong> — chat messages pass through the account's metered
           LLM provider to answer you; token counts are metered for billing. We keep an
           append-only usage ledger (model, token counts, cost) — not message content.
+        </li>
+        <li>
+          <strong>Account event records</strong> — LISA Cloud keeps server-side records of
+          account events: sign-in attempts and their results, account creation, completed chat
+          turns, quota exhaustion, and purchases and refunds. They are stored under a
+          pseudonymous account hash and used for billing and product metrics. Our own servers
+          write them; no third-party analytics service or client SDK is involved, and nothing
+          is collected from local or self-hosted installs. Deleting your account removes your
+          balance and usage history; the pseudonymous event records stay as aggregate history,
+          purchase transaction records are kept so refunds and accounting still work, and a
+          one-way hash of your sign-in identity is kept so the one-time welcome credit is not
+          issued again to the same person.
         </li>
         <li>
           <strong>Service providers</strong> — Google Cloud (hosting and storage), Google Gemini (AI inference),

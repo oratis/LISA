@@ -1,18 +1,27 @@
 /**
- * Quota engine — the 12h session window, paid tiers, and debit order
- * (docs/PLAN_ACCOUNTS_BILLING_v1.0.md §5.2/§6.3, milestone B4).
+ * Quota engine — the daily free allowance, paid tiers, and debit order
+ * (docs/PLAN_ACCOUNTS_BILLING_v1.0.md §5.2/§6.3, milestone B4; resized for the
+ * 2026-11 commercialization plan, M0).
  *
- * Model (decisions locked 2026-07-21):
- *  - A signed-in account's first request opens a 12h WINDOW carrying a free
+ * Model:
+ *  - A signed-in account's first request opens a 24h WINDOW carrying a free
  *    face-value allowance. The window expires, the allowance resets — no
- *    carry-over (Claude Code's session model, 5h→12h).
- *  - The allowance depends on account standing: Apple / verified email $5;
- *    unverified email $1. PAYING raises it by tier — 30-day cumulative IAP
- *    purchases ≥ $4.99 → $10, ≥ $19.99 → $20 (the tier is a perk that decays
- *    30 days after the purchases stop; the PAID BALANCE itself never expires —
- *    App Store 3.1.1).
- *  - Debit order: free window first, then paid balance. PREMIUM models
- *    (Claude/GPT — prices.ts tier) never touch the free window: paid only.
+ *    carry-over. (2026-07–11 this was a 12h window of $5; at that size the
+ *    allowance covered any personal use and nothing ever reached a paywall.)
+ *  - The allowance depends on account standing: Apple / Google / verified
+ *    email $0.30; unverified email $0.10. PAYING raises it by tier — 30-day
+ *    cumulative purchases ≥ $4.99 → $0.60, ≥ $19.99 → $1.20 (the tier is a
+ *    perk that decays 30 days after the purchases stop; the PAID BALANCE itself
+ *    never expires — App Store 3.1.1).
+ *  - A verified account gets a one-time WELCOME GRANT ($2 face) the first time
+ *    it is admitted. It is promotional: standard models only, never refunded,
+ *    and not counted toward tiers. It is claimed under the account's sign-in
+ *    identities (grant-claims.ts), so deleting the account and signing in
+ *    again does not issue it a second time.
+ *  - Debit order: free window, then welcome grant, then paid balance. PREMIUM
+ *    models (prices.ts tier — every model but the standard rows such as
+ *    Gemini 2.5 Flash, Claude Haiku 5.5, GPT-6 Luna and GLM) touch neither the
+ *    free window nor the grant: paid only.
  *  - A refund clawback (B5) may push the paid balance negative; standard-model
  *    free-window use keeps working, premium stays locked until topped up.
  *
@@ -35,15 +44,19 @@ import type { AccountRecord } from "../web/accounts.js";
 import { modelTier } from "./prices.js";
 import { billingDir } from "./meter.js";
 import { firestoreEnabled, getDoc, casUpdate } from "../cloud/firestore.js";
+import { claimWelcomeGrant, welcomeGrantClaimed } from "./grant-claims.js";
+import { logError } from "../log.js";
 
-export const WINDOW_MS = 12 * 60 * 60 * 1000;
+export const WINDOW_MS = 24 * 60 * 60 * 1000;
 export const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
 // Face-value allowances, micro-USD.
-export const FREE_WINDOW_FULL = 5_000_000; // Apple / verified email
-export const FREE_WINDOW_UNVERIFIED = 1_000_000; // email before verification (B7 levels it)
-export const TIER1_WINDOW = 10_000_000;
-export const TIER2_WINDOW = 20_000_000;
+export const FREE_WINDOW_FULL = 300_000; // Apple / Google / verified email
+export const FREE_WINDOW_UNVERIFIED = 100_000; // email before verification
+export const TIER1_WINDOW = 600_000;
+export const TIER2_WINDOW = 1_200_000;
+/** One-time welcome grant for a verified account, standard models only. */
+export const SIGNUP_GRANT = 2_000_000;
 export const TIER1_THRESHOLD = 4_990_000; // ≥ $4.99 bought in the last 30d
 export const TIER2_THRESHOLD = 19_990_000; // ≥ $19.99
 
@@ -71,6 +84,10 @@ export interface BalanceState {
   purchases: PurchaseEntry[];
   /** The active free window, if one has been opened. */
   window?: { start: number; spentMicroUSD: number };
+  /** Unspent welcome grant, micro-USD (standard models only; never negative). */
+  grantMicroUSD?: number;
+  /** When the welcome grant was issued; set once, so it is never issued twice. */
+  signupGrantAt?: number;
   /**
    * Recently applied outbox event ids, oldest first. Bounded by SETTLED_MAX
    * and SETTLED_TTL_MS because this document is read on every turn; the
@@ -145,6 +162,13 @@ function parseBalance(parsed: unknown): BalanceState {
     }
     window = { ...raw.window };
   }
+  if (
+    (raw.grantMicroUSD !== undefined &&
+      (!safeInteger(raw.grantMicroUSD) || raw.grantMicroUSD < 0)) ||
+    (raw.signupGrantAt !== undefined && !safeInteger(raw.signupGrantAt))
+  ) {
+    throw new BillingStateError("balance_corrupt", "balance store has an invalid welcome grant");
+  }
   let settled: SettledEntry[] | undefined;
   if (raw.settled !== undefined) {
     // Fail closed on a malformed ring: dropping it silently would let the
@@ -177,6 +201,8 @@ function parseBalance(parsed: unknown): BalanceState {
     paidMicroUSD: raw.paidMicroUSD,
     purchases,
     ...(window ? { window } : {}),
+    ...(raw.grantMicroUSD !== undefined ? { grantMicroUSD: raw.grantMicroUSD } : {}),
+    ...(raw.signupGrantAt !== undefined ? { signupGrantAt: raw.signupGrantAt } : {}),
     ...(settled && settled.length ? { settled } : {}),
   };
 }
@@ -293,6 +319,46 @@ export function windowAllowance(tier: QuotaTier): number {
   }
 }
 
+/** Has this account earned a welcome grant it has not been given yet? */
+function grantPending(acct: AccountRecord, state: BalanceState): boolean {
+  return acct.verified && state.signupGrantAt === undefined;
+}
+
+/**
+ * The outcome of claiming the welcome grant under the account's sign-in
+ * identities (grant-claims.ts): won, already claimed by an earlier account of
+ * the same person, or not known (the claim store could not be reached — the
+ * grant stays pending and is tried again on a later turn).
+ */
+type GrantClaim = "won" | "taken" | "unknown";
+
+/**
+ * Settle a pending welcome grant from its claim (mutates state); returns the
+ * unspent grant. A grant is recorded as issued — `signupGrantAt` — whether or
+ * not it was won, so the claim is made once per balance.
+ */
+function liveGrant(
+  acct: AccountRecord,
+  state: BalanceState,
+  now: number,
+  claim: GrantClaim,
+): number {
+  if (grantPending(acct, state) && claim !== "unknown") {
+    if (claim === "won") state.grantMicroUSD = (state.grantMicroUSD ?? 0) + SIGNUP_GRANT;
+    state.signupGrantAt = now;
+  }
+  return state.grantMicroUSD ?? 0;
+}
+
+async function claimGrant(acct: AccountRecord, now: number): Promise<GrantClaim> {
+  try {
+    return (await claimWelcomeGrant(acct, now)) ? "won" : "taken";
+  } catch (err) {
+    logError(`[billing] welcome-grant claim unavailable: ${(err as Error).message}`);
+    return "unknown";
+  }
+}
+
 export interface QuotaStatus {
   tier: QuotaTier;
   /** Face allowance of the current window. */
@@ -303,6 +369,8 @@ export interface QuotaStatus {
   remainingMicroUSD: number;
   /** Paid balance (may be negative after a refund). */
   paidMicroUSD: number;
+  /** Unspent welcome grant, including one that will be issued on first use. */
+  grantMicroUSD: number;
   /** When the current window resets (ms epoch), or null if none is open. */
   resetAt: number | null;
 }
@@ -322,6 +390,15 @@ export async function quotaStatus(
   const state = await readBalance();
   const tier = tierFor(acct, state, now);
   const allowance = windowAllowance(tier);
+  // A pending grant is shown only if this person has not had one already.
+  let pendingGrant = 0;
+  if (grantPending(acct, state)) {
+    try {
+      pendingGrant = (await welcomeGrantClaimed(acct)) ? 0 : SIGNUP_GRANT;
+    } catch {
+      pendingGrant = 0;
+    }
+  }
   // Read-only view: an expired window shows as fresh (it WILL reset on use).
   const w = state.window && now - state.window.start < WINDOW_MS ? state.window : null;
   const spent = w?.spentMicroUSD ?? 0;
@@ -331,6 +408,7 @@ export async function quotaStatus(
     spentMicroUSD: spent,
     remainingMicroUSD: Math.max(0, allowance - spent),
     paidMicroUSD: state.paidMicroUSD,
+    grantMicroUSD: grantPending(acct, state) ? pendingGrant : (state.grantMicroUSD ?? 0),
     resetAt: w ? w.start + WINDOW_MS : null,
   };
 }
@@ -349,10 +427,31 @@ export async function precheckTurn(
   model: string,
   now: number = Date.now(),
 ): Promise<PrecheckResult> {
-  return updateBalance((state) => {
+  // A pending welcome grant is claimed under the sign-in identities first,
+  // outside the balance update (it is another document). Only the first turn
+  // of a verified balance takes this path.
+  let claim: GrantClaim | null = null;
+  for (;;) {
+    const out = await precheckOnce(acct, model, now, claim);
+    if (out !== NEEDS_GRANT_CLAIM) return out;
+    claim = await claimGrant(acct, now);
+  }
+}
+
+const NEEDS_GRANT_CLAIM = Symbol("needs-grant-claim");
+
+function precheckOnce(
+  acct: AccountRecord,
+  model: string,
+  now: number,
+  claim: GrantClaim | null,
+): Promise<PrecheckResult | typeof NEEDS_GRANT_CLAIM> {
+  return updateBalance((state): PrecheckResult | typeof NEEDS_GRANT_CLAIM => {
+    if (claim === null && grantPending(acct, state)) return NEEDS_GRANT_CLAIM;
     const tier = tierFor(acct, state, now);
+    const grant = liveGrant(acct, state, now, claim ?? "unknown");
     if (modelTier(model) === "premium") {
-      // Premium never draws on the free window.
+      // Premium never draws on the free window or the welcome grant.
       if (state.paidMicroUSD > 0) return { ok: true, budgetMicroUSD: state.paidMicroUSD };
       return { ok: false, error: "premium_requires_balance", tier };
     }
@@ -360,16 +459,16 @@ export async function precheckTurn(
     const allowance = windowAllowance(tier);
     const freeLeft = allowance - w.spentMicroUSD;
     const paid = Math.max(0, state.paidMicroUSD);
-    if (freeLeft <= 0 && paid <= 0) {
+    if (freeLeft <= 0 && grant <= 0 && paid <= 0) {
       return { ok: false, error: "quota_exhausted", resetAt: w.start + WINDOW_MS, tier };
     }
-    return { ok: true, budgetMicroUSD: Math.max(0, freeLeft) + paid };
+    return { ok: true, budgetMicroUSD: Math.max(0, freeLeft) + grant + paid };
   });
 }
 
 /**
  * Debit one metered turn AFTER it ran: free window first (standard models),
- * then paid balance. Premium models bill paid only. A concurrent overshoot may
+ * then the welcome grant, then paid balance. Premium models bill paid only. A concurrent overshoot may
  * push paid slightly negative — absorbed by the next purchase.
  *
  * With `opts.eventId` (the outbox event, T-8) the debit is idempotent: the id
@@ -398,7 +497,10 @@ export async function debitTurn(
       const freeLeft = Math.max(0, allowance - w.spentMicroUSD);
       const fromFree = Math.min(freeLeft, microUSD);
       w.spentMicroUSD += fromFree;
-      const rest = microUSD - fromFree;
+      const grantLeft = state.grantMicroUSD ?? 0;
+      const fromGrant = Math.min(grantLeft, microUSD - fromFree);
+      if (fromGrant > 0) state.grantMicroUSD = grantLeft - fromGrant;
+      const rest = microUSD - fromFree - fromGrant;
       if (rest > 0) state.paidMicroUSD -= rest;
     }
     if (eventId) noteSettled(state, eventId, now);

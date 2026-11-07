@@ -53,14 +53,19 @@ test(
     const sockets: WebSocket[] = [];
     try {
       assert.equal((await fetch(`${base}/api/relay/macs`)).status, 401);
-      assert.equal(
-        (
-          await fetch(`${base}/api/relay/macs`, {
-            headers: { authorization: "Bearer operator-demo-token" },
-          })
-        ).status,
-        403,
-      );
+      const operatorToken = { authorization: "Bearer operator-demo-token" };
+      // The shared token is refused at the gate in the hosted edition…
+      assert.equal((await fetch(`${base}/api/relay/macs`, { headers: operatorToken })).status, 401);
+      // …and even with the reviewer-demo opt-in it is not an account.
+      process.env.LISA_CLOUD_SHARED_TOKEN_OK = "1";
+      try {
+        assert.equal(
+          (await fetch(`${base}/api/relay/macs`, { headers: operatorToken })).status,
+          403,
+        );
+      } finally {
+        delete process.env.LISA_CLOUD_SHARED_TOKEN_OK;
+      }
       const host = new WebSocket(base.replace("http:", "ws:") + "/api/relay/host", { headers });
       sockets.push(host);
       host.on("error", () => {});

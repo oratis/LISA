@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { proxyAwareFetch } from "../proxy-bootstrap.js";
 import { streamRetryOpts, withStreamRetry } from "./stream-retry.js";
-import type { Provider, ProviderResult, ProviderRunOpts } from "./types.js";
+import type { Provider, ProviderResult, ProviderRunOpts, ProviderUsage } from "./types.js";
 
 /**
  * Structural shape shared by `messages.stream` and `beta.messages.stream`.
@@ -127,14 +127,26 @@ export class AnthropicProvider implements Provider {
     return {
       content: message.content,
       stopReason: message.stop_reason ?? "end_turn",
-      usage: {
-        inputTokens: message.usage?.input_tokens ?? 0,
-        outputTokens: message.usage?.output_tokens ?? 0,
-        cacheReadTokens: message.usage?.cache_read_input_tokens ?? 0,
-        cacheWriteTokens: message.usage?.cache_creation_input_tokens ?? 0,
-      },
+      usage: anthropicUsage(message.usage),
     };
   }
+}
+
+/**
+ * Provider usage from an Anthropic `usage` block. The 1-hour share of the
+ * cache writes is carried separately (it bills at 2× input, not 1.25×); it is
+ * left off when there is none so the common shape stays four counters.
+ */
+export function anthropicUsage(usage: Anthropic.Usage | null | undefined): ProviderUsage {
+  const out: ProviderUsage = {
+    inputTokens: usage?.input_tokens ?? 0,
+    outputTokens: usage?.output_tokens ?? 0,
+    cacheReadTokens: usage?.cache_read_input_tokens ?? 0,
+    cacheWriteTokens: usage?.cache_creation_input_tokens ?? 0,
+  };
+  const oneHour = usage?.cache_creation?.ephemeral_1h_input_tokens ?? 0;
+  if (oneHour > 0) out.cacheWrite1hTokens = oneHour;
+  return out;
 }
 
 /**

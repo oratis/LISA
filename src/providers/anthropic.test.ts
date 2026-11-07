@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { AnthropicProvider, modelSupportsEffort } from "./anthropic.js";
+import { AnthropicProvider, anthropicUsage, modelSupportsEffort } from "./anthropic.js";
 import type { ProviderRunOpts } from "./types.js";
 
 /**
@@ -96,10 +96,7 @@ describe("AnthropicProvider — abort signal passthrough", () => {
 });
 
 describe("AnthropicProvider — effort gating by model", () => {
-  function runWithModelAndEffort(
-    model: string,
-    effort?: ProviderRunOpts["effort"],
-  ) {
+  function runWithModelAndEffort(model: string, effort?: ProviderRunOpts["effort"]) {
     const provider = new AnthropicProvider({ apiKey: "test-key" });
     const captured: Captured = {};
     (provider as unknown as { client: unknown }).client = {
@@ -119,10 +116,7 @@ describe("AnthropicProvider — effort gating by model", () => {
     // The exact break: subagents/idle default to effort "low", and Haiku 4.5
     // 400s on output_config.effort. The gate must drop it so the SDK sends a
     // request Haiku accepts — and the turn completes normally.
-    const { captured, result } = await runWithModelAndEffort(
-      "claude-haiku-4-5-20251001",
-      "low",
-    );
+    const { captured, result } = await runWithModelAndEffort("claude-haiku-4-5-20251001", "low");
     assert.equal(captured.params?.output_config, undefined);
     assert.equal(result.stopReason, "end_turn");
   });
@@ -198,5 +192,38 @@ describe("AnthropicProvider — transient empty-stream retry", () => {
 
     assert.equal(calls, 1); // surfaced, not retried — output already streamed
     assert.deepEqual(deltas, ["partial"]);
+  });
+});
+
+describe("anthropicUsage — the 1-hour cache-write share (#447 review)", () => {
+  test("carries the 1-hour writes separately; leaves the field off when there are none", () => {
+    const usage = {
+      input_tokens: 10,
+      output_tokens: 20,
+      cache_read_input_tokens: 30,
+      cache_creation_input_tokens: 40,
+      cache_creation: { ephemeral_5m_input_tokens: 15, ephemeral_1h_input_tokens: 25 },
+    } as unknown as Parameters<typeof anthropicUsage>[0];
+    assert.deepEqual(anthropicUsage(usage), {
+      inputTokens: 10,
+      outputTokens: 20,
+      cacheReadTokens: 30,
+      cacheWriteTokens: 40,
+      cacheWrite1hTokens: 25,
+    });
+    const fiveMinute = {
+      input_tokens: 1,
+      output_tokens: 2,
+      cache_read_input_tokens: 0,
+      cache_creation_input_tokens: 3,
+      cache_creation: { ephemeral_5m_input_tokens: 3, ephemeral_1h_input_tokens: 0 },
+    } as unknown as Parameters<typeof anthropicUsage>[0];
+    assert.equal("cacheWrite1hTokens" in anthropicUsage(fiveMinute), false);
+    assert.deepEqual(anthropicUsage(undefined), {
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+    });
   });
 });

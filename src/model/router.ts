@@ -107,10 +107,17 @@ export function billingSafeInCloud(candidate: string, strong: string): boolean {
   if (!price) return false;
   const strongPrice = priceForModel(strong);
   if (price.tier === "premium" && strongPrice.tier === "standard") return false;
+  // A candidate with prompt-size pricing must stay cheaper at its dearer rate
+  // too: background work can carry a long prompt.
+  const long = price.longContext?.rates;
+  const dearest = {
+    inPerM: Math.max(price.inPerM, long?.inPerM ?? 0),
+    outPerM: Math.max(price.outPerM, long?.outPerM ?? 0),
+  };
   return (
-    price.inPerM <= strongPrice.inPerM &&
-    price.outPerM <= strongPrice.outPerM &&
-    perTokenRate(price) <= perTokenRate(strongPrice)
+    dearest.inPerM <= strongPrice.inPerM &&
+    dearest.outPerM <= strongPrice.outPerM &&
+    dearest.inPerM + dearest.outPerM <= perTokenRate(strongPrice)
   );
 }
 

@@ -13,6 +13,13 @@
 import AppKit
 
 let app = NSApplication.shared
+#if DEBUG
+if MainActor.assumeIsolated({ CloudPreview.launchIfRequested() }) {
+    app.setActivationPolicy(.regular)
+    app.run()
+    exit(0)
+}
+#endif
 let delegate = AppDelegate()
 app.delegate = delegate
 app.setActivationPolicy(.regular)

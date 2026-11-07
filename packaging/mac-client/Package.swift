@@ -28,6 +28,12 @@ let package = Package(
             swiftSettings: strict
         ),
         .testTarget(
+            name: "LisaCloudTests",
+            dependencies: ["Lisa"],
+            path: "Tests/LisaCloudTests",
+            swiftSettings: strict
+        ),
+        .testTarget(
             name: "LisaSetupTests",
             dependencies: ["LisaSetup"],
             path: "Tests/LisaSetupTests",
