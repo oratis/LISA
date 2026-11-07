@@ -34,10 +34,12 @@ final class CloudAccountFlowTests: XCTestCase {
         var stored: [String: String] = [:]
         var verificationURL: URL?
         var verificationEmail: String?
+        var accountVerifications = 0
         var restartCount = 0
         let connection = CloudConnectionModel(request: { _, _ in ["enabled": true, "online": false] })
         let services = CloudAccountServices(read: { stored[$0] }, save: { stored.merge($0) { _, new in new } }, request: { url, _, body in
             if url.path.hasSuffix("/request") { return (200, ["sent": true]) }
+            if url.path == "/api/auth/me" { accountVerifications += 1; return (200, ["signedIn": true, "email": "alex@example.com"]) }
             verificationURL = url; verificationEmail = body?["email"] as? String
             return (200, ["token": "test-session"])
         }, restart: { done in restartCount += 1; done(true) })
@@ -53,6 +55,10 @@ final class CloudAccountFlowTests: XCTestCase {
         XCTAssertEqual(stored["LISA_MANAGED_BASE"], "https://cloud.meetlisa.ai")
         XCTAssertEqual(restartCount, 0)
         XCTAssertFalse(model.applicationMessage.contains("already available"))
+        model.stop(); model.start()
+        await waitFor { accountVerifications == 1 }
+        XCTAssertEqual(model.step, .email)
+        model.stop()
     }
 
     func testReopeningTheWindowPreservesAnExpiredAccountsCodeStep() async {

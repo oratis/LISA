@@ -181,6 +181,7 @@ final class CloudAccountModel: ObservableObject {
                 }
                 accountTask?.cancel()
                 code = ""; password = ""; signedIn = true; needsSignIn = false; accountEmail = address
+                step = .email
                 accountVerified = true; checkingAccount = false; server = base.absoluteString; email = address
                 needsApply = true; notice = nil
                 await connection.connect(base: base.absoluteString, token: token)
