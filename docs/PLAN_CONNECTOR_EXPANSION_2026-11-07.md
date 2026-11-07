@@ -1,6 +1,6 @@
 # LISA 其他连接器调研与接入方案
 
-> 状态：C0/C1/C2 已合并；C3 Drive/Notion 本机切片已实现，详见第 10 节；其余为规划。调研日期：2026-11-07。实现基线：PR [#436](https://github.com/oratis/LISA/pull/436) 的本机 GitHub 只读连接卡、授权和原聊天恢复。
+> 状态：C0/C1/C2/C3 已合并；C4 Slack 本机只读切片已实现，详见第 11 节；其余为规划。调研日期：2026-11-07。实现基线：PR [#436](https://github.com/oratis/LISA/pull/436) 的本机 GitHub 只读连接卡、授权和原聊天恢复。
 > 延续：[插件与连接器方案](PLAN_PLUGINS_CONNECTORS_2026-11-07.md)、[Grok Bot / Manus 调研](RESEARCH_PLUGINS_CONNECTORS_2026-11-07.md)。供应商能力来自下列官方文档；优先级、模块设计和工期为 LISA 的建议，不代表供应商承诺。调研阶段未登录账号；后续实现的真实授权范围和验收结果分别记录在第 8、9、10 节。
 
 ## 1 建议先交付什么
@@ -23,7 +23,7 @@ P1 为下一阶段，P2 为其后，P3 按用户需求推进。表中“只读�
 | P2 · Notion | 总结指定项目页面与需求、会议知识准备 | 严格只读版优先 Notion API connection，仅启用 Read content，按授权页面边界读取 | 官方 MCP 可读写用户可访问内容，不能直接称为供应商侧只读；API 的 Read content 可独立设置。[API capabilities](https://developers.notion.com/reference/capabilities) · [官方 MCP](https://developers.notion.com/guides/mcp/get-started-with-mcp) |
 | P2 · Google Drive / Docs / Sheets / Slides | 选几份资料做摘要、对照表格与文档 | 先 Picker + `drive.file` 的指定文件导入；LISA 只开放读取、下载和导出。全文搜索整个 Drive 作为独立权限档位 | `drive.file` 是较窄的文件范围，却包含写能力；`drive.readonly` 才是只读全盘且属于 Restricted。两种产品承诺须分开。[Drive scopes](https://developers.google.com/workspace/drive/api/guides/api-specific-auth) |
 | P2 · Todoist | 今日 / 逾期待办，与日历合并计划 | REST OAuth `data:read`；官方托管 MCP 可作为后续路线 | 官方已有 MCP；接入时仍需验证它能否使用本期要求的只读 scope，不能默认其完整工具集均可用。[API 与权限](https://developer.todoist.com/api/v1/) · [官方入口](https://developer.todoist.com/) |
-| P2 · Slack | 指定频道近期讨论、决定与待办 | 官方 Streamable HTTP MCP + 注册 Slack app；按需选择搜索 / 历史读取 scopes | 不支持 DCR；只允许内部应用或已发布目录应用使用 MCP，未列出的分发应用不可直接上线；需要用户 token，不能把现有 bot 当全工作区读取权。[官方 MCP、资格与 scopes](https://docs.slack.dev/ai/slack-mcp-server/) |
+| P2 · Slack | 指定频道近期讨论、决定与待办 | 首批为固定 Web API + 桌面 PKCE OAuth；仅指定频道历史和讨论串，官方 MCP 后续单独评审 | 不支持 DCR；只允许内部应用或已发布目录应用使用 MCP，未列出的分发应用不可直接上线；需要用户 token，不能把现有 bot 当全工作区读取权。[官方 MCP、资格与 scopes](https://docs.slack.dev/ai/slack-mcp-server/) |
 | P2 · 飞书 | 指定云文档、项目资料与会议准备 | 优先受控 REST + 用户授权；绑定企业和用户，明确文件 / 知识空间范围 | 官方有远程 MCP 工具文档，但旧远程调用页已标记 Deprecated；新版资格和凭据生命周期需专门验证。应用 scope 与文档访问权限都要满足。[云文档 API](https://open.feishu.cn/document/server-docs/docs/docs-overview?lang=zh-CN) · [MCP 工具](https://open.feishu.cn/document/mcp_open_tools/supported-tools?lang=zh-CN) · [旧调用页](https://open.feishu.cn/document/mcp_open_tools/call-feishu-mcp-server-in-remote-mode) |
 | P2 · Outlook Mail / Calendar | Microsoft 用户的收件箱和日程摘要 | Microsoft Graph delegated OAuth；日历可先 `Calendars.ReadBasic`，邮件可先 `Mail.ReadBasic`，需要正文再增量申请 `Mail.Read` | Mail.ReadBasic 不含正文、预览和附件；Calendar Basic 不含正文、附件等。优先用户委托权限，避免全租户 application 权限。[Graph 权限](https://learn.microsoft.com/en-us/graph/permissions-reference) |
 | P3 · OneDrive / SharePoint | 指定工作文件、团队知识资料 | Graph；个人文件和企业 Selected 授权分两条适配 | Selected 需要资源级授权，不能只加 OAuth scope 就读取目标文件；企业管理员流程单独设计。[Selected permissions](https://learn.microsoft.com/en-us/graph/permissions-selected-overview) |
@@ -36,7 +36,7 @@ P1 为下一阶段，P2 为其后，P3 按用户需求推进。表中“只读�
 
 Google 已提供 Calendar、Gmail、Drive 等官方远程 MCP，当前总览明确标为 **Developer Preview**，需要加入预览计划并启用相关服务。其出现不意味着所有 LISA 用户已经可用。首批复用已有 Gmail API、采用成熟 Calendar API；MCP 作为可替换 transport，在取得资格后评估。[Google Workspace MCP 配置与前置条件](https://developers.google.com/workspace/guides/configure-mcp-servers)
 
-Linear 的只读端点和只读 OAuth scope 能直接匹配首期边界，适合作为第一家远程 MCP 验证对象。Slack 的固定 app、confidential OAuth 与分发资格则能在第二轮检验授权服务是否真正支持供应商差异，不能为所有 MCP 都硬套动态注册。
+Linear 的只读端点和只读 OAuth scope 能直接匹配首期边界，适合作为第一家远程 MCP 验证对象。Slack 的固定 app、桌面 PKCE OAuth 与分发资格则能检验授权服务是否支持供应商差异，不能为所有服务都硬套动态注册或 confidential OAuth。
 
 Google 上线评估要覆盖 OAuth 应用状态、scope 验证、用户数据用途和数据经过的服务。Gmail / Drive 的 Restricted 数据若存储或传输到服务器，会涉及官方安全评估要求；只在 Mac 保存令牌，不足以证明发送到云模型的邮件数据无需评估。审核周期单列，不包含在工程估时中。[Gmail 官方说明](https://developers.google.com/workspace/gmail/api/auth/scopes) · [Drive 官方说明](https://developers.google.com/workspace/drive/api/guides/api-specific-auth)
 
@@ -115,7 +115,7 @@ GitHub 当前的 GET-only 实现可以保留在 GitHub adapter 内；不要推�
 
 先保持 local-owner 范围。将 GitHub v1 状态迁移到公共 store 时保留 request ID、结果标记与幂等关系；备份可验证，损坏或不兼容状态拒绝恢复。邮件迁移采用“读旧记录 → 写 SecretStore → 回读验证 → 原子切换引用”，完成前不删除旧凭据；错误不转成空账户覆盖。
 
-Cloud 作为后续独立交付：按认证 UID 的租户存储、KMS / SecretStore、事务租约和计费路径上线。若业务需要 Slack 这类 confidential OAuth，可先设计受控认证 broker，但不能借此放开 Cloud 的宿主文件、shell 或全局 MCP。Pocket / Mac 跨端卡片绑定原 Home；执行机离线就等待，不把凭据自动迁往其他 Home。
+Cloud 作为后续独立交付：按认证 UID 的租户存储、KMS / SecretStore、事务租约和计费路径上线。若业务需要 Notion 这类 confidential OAuth，可先设计受控认证 broker，但不能借此放开 Cloud 的宿主文件、shell 或全局 MCP。Pocket / Mac 跨端卡片绑定原 Home；执行机离线就等待，不把凭据自动迁往其他 Home。
 
 ## 5 三个首发流程的具体范围
 
@@ -255,3 +255,49 @@ Google 的桌面流程采用 PKCE 与临时 loopback callback；实现依据 [Go
 真实 Drive OAuth 已验证 Picker 选择单个 Google Docs、连接卡默认不勾选、确认文件范围及原任务自动恢复；所选文档返回 237 个字符、无截断，仅输出统计信息。刷新后仍显示已完成且结果只有一份。本机验收项目已启用 Drive API 与 Google Picker API；其他文件类型、内容上限、撤销与刷新令牌行为由自动测试覆盖。
 
 本批提交 PR [#445](https://github.com/oratis/LISA/pull/445)。3,529 项单元/集成测试及覆盖率门槛、13 项连接器浏览器回归、最后一轮 56 项定向测试均通过；服务端/客户端/E2E 类型检查、格式、API 契约和构建通过，lint 仅有既有警告。
+
+
+## 11 C4 Slack 只读实现与验收（2026-11-07）
+
+C3 PR [#445](https://github.com/oratis/LISA/pull/445) 已合并。本批继续复用 `ReadonlyConnector` 的授权尝试隔离、加密凭据、资源确认、原文和附件保存、取消、断开、重启租约及单次结果提交；目录增加第七项 `slack`。仅本机 `local-owner` 开放，Cloud 与远程配对设备拒绝。每个来源一个账号/工作区，每条任务一个来源。
+
+### 接入方式与范围
+
+按照第 4 节的受控 API 方案，首批采用固定 Slack Web API：账号检查 `auth.test`、成员频道列表 `users.conversations`、频道检查 `conversations.info`、历史 `conversations.history`、讨论串 `conversations.replies`。不接入任意 MCP 工具、不搜索全工作区、不读取私信或文件、不发送或修改消息。官方 MCP 仍有独立授权端点和分发资格要求，且需要核验其工具参数与资源边界，留作后续评审，不能把本批描述成已接入官方 MCP。[用户频道列表](https://docs.slack.dev/reference/methods/users.conversations/) · [频道历史](https://docs.slack.dev/reference/methods/conversations.history/) · [讨论串](https://docs.slack.dev/reference/methods/conversations.replies/) · [官方 MCP](https://docs.slack.dev/ai/slack-mcp-server/)
+
+公开和私有频道仅限当前账号已加入、同一工作区、未归档且非共享的频道。Slack OAuth 四项权限本身覆盖账号可读的频道名称和历史，**所选频道限制由 LISA 服务端执行**。授权后可展示成员频道名称，连接卡默认不勾选；确认前不读消息，确认后最多保留 30 个频道。成员列表分页最多扫描 10 页，每页 30 条；过滤共享/归档等频道后补齐展示页，后续确认与读取均重新检查 `is_member`。不根据显示名称猜测工作区身份。
+
+`slack_read` 只暴露 `list`、`messages`、`thread`。默认近 7 天，单次时间跨度最多 31 天；每次一个频道或讨论串，最多 100 条、每条 4,000 字符、总共 40,000 字符。只投影时间戳、作者 ID 和消息文本，不展开 blocks、附件、文件或外部链接。使用供应商分页标志和文本上限明确返回 `truncated`；不自动遍历后续消息页。讨论串结果必须属于指定父时间戳，所有消息须在指定时间范围内，返回频道不匹配则拒绝；读取前后复核账号、权限和频道。正文标记为不可信数据，恢复轮次仅提供 `slack_read`。
+
+### 授权与配置
+
+使用 [Slack 桌面 PKCE](https://docs.slack.dev/authentication/using-pkce/)：预注册应用，开启 PKCE 和 token rotation；`/oauth/v2/authorize` 仅请求 user scopes，`oauth.v2.access` 交换携带 S256 verifier，无桌面 client secret。回调 `http://localhost:4861/oauth/slack` 同时绑定 IPv4/IPv6 loopback，复用 state、Host、路径、单次消费和十分钟超时校验。端口可配置，必须与 Slack 应用注册值完全一致。
+
+精确请求 `channels:read`、`channels:history`、`groups:read`、`groups:history`，拒绝 bot grant、组织级安装和其他内容/写入权限。真实验证发现 `auth.test` 响应头比 OAuth grant 多出基础 `identify`，实时检查仅允许这一项隐式权限；OAuth 返回的内容权限仍必须精确匹配。过期前刷新或明确失效后重试一次，新 token 先串行持久化，再继续操作；工作区与用户 ID 变化即拒绝。断开先删除本地凭据并阻止在途结果提交，再尽力 `auth.revoke`，不宣称卸载了 Slack 应用。[OAuth](https://docs.slack.dev/authentication/installing-with-oauth/) · [token rotation](https://docs.slack.dev/authentication/using-token-rotation/)
+
+本机配置 `LISA_SLACK_CLIENT_FILE` 指向权限为 `0600` 的 JSON 文件，包含 `clientId`、`appId`、`redirectUri`；也支持 `LISA_SLACK_CLIENT_ID`、`LISA_SLACK_APP_ID`、`LISA_SLACK_REDIRECT_URI`。文件中不需要 client secret。应用 manifest 示例（真实客户端 ID 由 Slack 创建后提供）：
+
+```json
+{
+  "display_information": {
+    "name": "LISA read-only",
+    "description": "Read selected Slack channels in LISA"
+  },
+  "oauth_config": {
+    "redirect_urls": ["http://localhost:4861/oauth/slack"],
+    "scopes": {
+      "user": ["channels:read", "channels:history", "groups:read", "groups:history"]
+    },
+    "pkce_enabled": true
+  },
+  "settings": { "token_rotation_enabled": true }
+}
+```
+
+仅内部工作区试点已经验收。向其他工作区分发前需另核验 Slack 审批、应用分发和相应限流政策；本批未开启公开分发。接口遇到限流返回可重试提示，不自动循环请求。
+
+### 验收证据与限制
+
+真实 Slack PKCE 授权已回调，首次实时 scope 检查因隐式 `identify` 被拒绝，修复后用同一已获得的有效授权完成账号检查和频道选择。并修复了 `users.conversations` 成员列表不返回 `is_member` 的兼容问题，确认及读取仍要求 `conversations.info.is_member=true`。在隔离本机预览中选择一个验收频道，原聊天自动返回近七天 **2 条消息、未截断**，未输出正文；刷新后仍仅有一份结果。临时授权诊断数据已移除，正式实现无凭据诊断旁路。
+
+自动测试涵盖真实 loopback state/PKCE 回调（供应商响应为替身）、精确权限和身份、令牌轮换、成员/共享频道、分页、越界参数和响应拒绝、文本截断与附件剥离、读取后权限变化、断开与重启恢复去重。浏览器测试覆盖卡片默认未选、回调后选择频道、同一任务仅完成一次、刷新、后续复用、取消与混合来源提示。真实刷新到期、真实撤权、限流与讨论串正文读取尚未做账号级验收，这些路径由自动测试覆盖；不将此次 2 条频道消息验收扩展为全功能验证。
