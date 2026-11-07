@@ -445,3 +445,30 @@ test("console is opt-in and does not change normal editions when disabled", asyn
   assert.equal((await request("/console/api/me", admin)).response.status, 404);
   assert.equal((await inferencePolicy(regular.uid)).ok, true);
 });
+
+test("bounded usage detail keeps complete totals and distinct active users", async () => {
+  const now = Date.now();
+  for (const [index, acct] of [regular, analyst].entries()) {
+    const dir = path.join(homeForUid(acct.uid), "billing");
+    await fs.mkdir(dir, { recursive: true });
+    const rows = Array.from({ length: 1500 }, (_, i) => ({
+      at: new Date(now - (i + index * 2000 + 1) * 1000).toISOString(),
+      source: "chat",
+      model: "gemini-2.5-flash",
+      inputTokens: 10,
+      outputTokens: 2,
+      microUSD: 100,
+    }));
+    await fs.writeFile(
+      path.join(dir, "usage.jsonl"),
+      rows.map((r) => JSON.stringify(r)).join("\n"),
+    );
+  }
+  const report = await consoleSnapshot(7, now);
+  assert.equal(report.summary.turns, 3000);
+  assert.equal(report.summary.active, 2);
+  assert.equal(report.summary.faceMicroUSD, 300000);
+  assert.equal(report.usage.length, 1000);
+  assert.equal(report.usageTruncated, true);
+  assert.ok(report.usage.every((u) => u.uid === regular.uid));
+});

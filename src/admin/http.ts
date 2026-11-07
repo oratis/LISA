@@ -1,3 +1,4 @@
+import { normalizeModelId } from "../billing/prices.js";
 import type http from "node:http";
 import fs from "node:fs/promises";
 import crypto from "node:crypto";
@@ -217,10 +218,12 @@ async function change(acct: AccountRecord, role: Role, data: Record<string, unkn
       });
     } else if (action === "model") {
       if (role !== "admin") throw new ConsoleError("forbidden", 403);
-      const model = text(data.model, 120);
+      const model = normalizeModelId(text(data.model, 120));
       if (!/^[\w./:-]+$/.test(model) || typeof data.disabled !== "boolean")
         throw new ConsoleError("invalid_model");
-      s.settings.disabledModels = s.settings.disabledModels.filter((m) => m !== model);
+      s.settings.disabledModels = s.settings.disabledModels.filter(
+        (m) => normalizeModelId(m) !== model,
+      );
       if (data.disabled) s.settings.disabledModels.push(model);
       appendAudit(s, {
         actor: actor(acct),
