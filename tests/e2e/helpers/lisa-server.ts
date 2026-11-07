@@ -30,6 +30,8 @@ const TMP_ROOT = path.join(REPO_ROOT, ".tmp", "e2e");
 export const TEST_API_KEY = "sk-ant-test";
 
 export interface StartOptions {
+  cwd?: string;
+  env?: Record<string, string>;
   /** Directory name under .tmp/e2e — also the label in failure output. */
   label: string;
   /** Write a born soul before starting. Default true. */
@@ -137,10 +139,11 @@ export async function startLisa(opts: StartOptions): Promise<LisaInstance> {
   if (apiKey) env.ANTHROPIC_API_KEY = TEST_API_KEY;
   if (stubServer) env.ANTHROPIC_BASE_URL = stubServer.baseURL;
 
+  Object.assign(env, opts.env);
   const child = spawn(
     process.execPath,
     [
-      path.join("dist", "cli.js"),
+      path.join(REPO_ROOT, "dist", "cli.js"),
       "serve",
       "--web",
       "--port",
@@ -152,7 +155,7 @@ export async function startLisa(opts: StartOptions): Promise<LisaInstance> {
       "--no-mcp",
       "--no-plugins",
     ],
-    { cwd: REPO_ROOT, env, stdio: ["ignore", "pipe", "pipe"] },
+    { cwd: opts.cwd ?? REPO_ROOT, env, stdio: ["ignore", "pipe", "pipe"] },
   );
 
   let output = "";

@@ -22,6 +22,7 @@
  * surface (same lesson as the iMessage argv fix).
  */
 
+import { detectPlan } from "../model/plans.js";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -106,7 +107,17 @@ export async function launchAgent(
   cwd: string,
   log?: (m: string) => void,
 ): Promise<LaunchResult> {
-  const { cmd, args } = buildDispatchArgv(agent, task);
+  const invocation = buildDispatchArgv(agent, task);
+  const plan =
+    agent === "codex" || agent === "claude" || agent === "copilot" ? detectPlan(agent) : null;
+  if (plan && !plan.binary) {
+    return {
+      cmd: invocation.cmd,
+      error: `No executable found for ${agent}. Check Coding plans and refresh detection.`,
+    };
+  }
+  const cmd = plan?.binary ?? invocation.cmd;
+  const { args } = invocation;
 
   // Capture the agent's stdout+stderr so dispatch isn't fire-and-forget: LISA
   // can read back what the agent SHE launched produced (D1 feedback). Detached

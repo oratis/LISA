@@ -87,6 +87,40 @@ window.addEventListener('unhandledrejection', function (e) {
 // seam for the rest, not a claim that the whole UI is translated.
 const LISA_STRINGS = {
   en: {
+    'pty.disabled': 'Interactive CLI agents are turned off on this Mac. Managed tasks remain available.',
+    'pty.missing': 'This installation does not include interactive CLI support. Update Lisa to enable it.',
+    "panel.loading": "Loading…",
+    "panel.failed": "Could not load this panel. Please try again.",
+    "panel.retry": "Retry",
+    "panel.refresh": "Refresh",
+    "skills.active": "Available to Lisa",
+    "skills.empty": "No personal or project skills yet. Create one, or import a workflow below.",
+    "skills.home": "Personal",
+    "skills.project": "Project",
+    "skills.create": "Create skill",
+    "skills.imports": "Import from your other apps",
+    "skills.importNote": "Choose a skill to copy into Lisa. Supporting files are included; required tools and services still need to be configured in Lisa.",
+    "skills.noImports": "No compatible skills found in your Codex or Claude skill folders.",
+    "skills.import": "Import {name} from {source}",
+    "skills.imported": "Imported {name}. It is now available to Lisa.",
+    "skills.exists": "Already added",
+    "skills.name": "Name (lowercase letters, digits and hyphens)",
+    "skills.description": "Description",
+    "skills.instructions": "Instructions",
+    "skills.saved": "Skill saved. It is now available to Lisa.",
+    "skills.actionFailed": "Could not save the skill: {error}",
+    "plans.refresh": "Recheck installed tools",
+    'session.rename': 'Rename session',
+    'session.name': 'Session name',
+    'session.renameHint': 'Right-click to rename',
+    'session.save': 'Save',
+    'session.cancel': 'Cancel',
+    'session.invalidName': 'Enter a name of 1–120 characters.',
+    'session.renameFailed': 'Could not save the name. Please try again.',
+    'attachment.preview': 'Preview {name}',
+    'attachment.remove': 'Remove {name}',
+    'attachment.close': 'Close preview',
+
     "connector.label": "{name} read-only connection",
     "connector.selectStatus": "Choose what LISA may read",
     "connector.gmailDetail": "Read headers and bounded snippets in your selected labels, without full bodies or attachments. This task continues after connecting; a new message cancels unfinished work.",
@@ -230,6 +264,40 @@ const LISA_STRINGS = {
     'kbd.help': 'This list',
   },
   'zh-CN': {
+    'pty.disabled': '此 Mac 尚未开启交互式 CLI 代理，可以使用内置任务。',
+    'pty.missing': '当前安装缺少交互式 CLI 支持，请更新 Lisa。',
+    "panel.loading": "正在加载…",
+    "panel.failed": "加载失败，请重试。",
+    "panel.retry": "重试",
+    "panel.refresh": "重新检测",
+    "skills.active": "Lisa 可用的技能",
+    "skills.empty": "还没有个人或项目技能。可以创建一个，或从下面导入已有工作流。",
+    "skills.home": "个人",
+    "skills.project": "项目",
+    "skills.create": "创建技能",
+    "skills.imports": "从其他应用导入",
+    "skills.importNote": "选择要复制到 Lisa 的技能，同时保留附带文件。所需工具和服务仍需在 Lisa 中配置。",
+    "skills.noImports": "Codex 和 Claude 的技能目录中没有找到兼容技能。",
+    "skills.import": "从 {source} 导入 {name}",
+    "skills.imported": "已导入 {name}，Lisa 现在可以使用它。",
+    "skills.exists": "已添加",
+    "skills.name": "名称（小写字母、数字和连字符）",
+    "skills.description": "用途说明",
+    "skills.instructions": "执行说明",
+    "skills.saved": "技能已保存，Lisa 现在可以使用它。",
+    "skills.actionFailed": "技能保存失败：{error}",
+    "plans.refresh": "重新检测已安装工具",
+    'session.rename': '重命名会话',
+    'session.name': '会话名称',
+    'session.renameHint': '右键重命名',
+    'session.save': '保存',
+    'session.cancel': '取消',
+    'session.invalidName': '请输入 1–120 个字符的名称。',
+    'session.renameFailed': '名称保存失败，请重试。',
+    'attachment.preview': '预览 {name}',
+    'attachment.remove': '移除 {name}',
+    'attachment.close': '关闭预览',
+
     "connector.label": "{name} 只读连接",
     "connector.selectStatus": "选择可读取的范围",
     "connector.gmailDetail": "仅读取你选定标签中的邮件头与有限摘要，不读取完整正文或附件。连接完成后自动继续本条任务；发送新消息会取消未完成的任务。",
@@ -423,7 +491,9 @@ function readFileAsBase64(file) {
 function inferMediaType(file) {
   if (file.type) return file.type;
   const ext = file.name.split('.').pop().toLowerCase();
-  const map = { pdf: 'application/pdf', txt: 'text/plain', md: 'text/plain', csv: 'text/csv', json: 'application/json' };
+  // Only the image types the model accepts as image blocks; anything else
+  // would turn a send into a provider error.
+  const map = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', pdf: 'application/pdf', txt: 'text/plain', md: 'text/plain', csv: 'text/csv', json: 'application/json' };
   return map[ext] || 'application/octet-stream';
 }
 
@@ -514,20 +584,103 @@ window.lisaCaptureAndAttach = async function (mode) {
   }
 };
 
+// One object URL per pending image, shared by its thumbnail and the viewer and
+// released once the file leaves the composer: re-rendering the chips never
+// decodes the base64 again, and a removed or sent image is not kept alive.
+const attachmentUrls = new Map();
+// The chat request itself is capped at 20 MiB, so a larger image can never be
+// sent; it gets a plain chip instead of being decoded for a thumbnail.
+const ATTACHMENT_PREVIEW_MAX_BASE64 = 20 * 1024 * 1024;
+function attachmentPreviewUrl(f) {
+  const known = attachmentUrls.get(f);
+  if (known) return known;
+  if (typeof f.data !== 'string' || f.data.length > ATTACHMENT_PREVIEW_MAX_BASE64) return '';
+  let url;
+  try {
+    const binary = atob(f.data);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    url = URL.createObjectURL(new Blob([bytes], { type: f.mediaType }));
+  } catch (e) { return ''; }
+  attachmentUrls.set(f, url);
+  return url;
+}
+function releaseAttachmentPreviews() {
+  for (const [f, url] of attachmentUrls) {
+    if (pendingFiles.includes(f)) continue;
+    URL.revokeObjectURL(url);
+    attachmentUrls.delete(f);
+  }
+}
 function renderAttachPreview() {
+  releaseAttachmentPreviews();
   attachPreview.innerHTML = '';
   pendingFiles.forEach((f, i) => {
     const chip = document.createElement('span');
     chip.className = 'attach-chip';
-    chip.textContent = f.name;
+    chip.title = f.name;
+    const previewUrl = /^image\/[a-z0-9.+-]+$/i.test(f.mediaType) ? attachmentPreviewUrl(f) : '';
+    if (previewUrl) {
+      chip.classList.add('attach-image');
+      const preview = document.createElement('button');
+      preview.type = 'button';
+      preview.className = 'attach-open';
+      preview.setAttribute('aria-label', tr('attachment.preview', { name: f.name }));
+      const img = document.createElement('img');
+      img.src = previewUrl;
+      img.alt = f.name;
+      img.onerror = () => { chip.classList.add('image-unavailable'); };
+      preview.appendChild(img);
+      preview.onclick = () => showAttachmentImage(f);
+      chip.appendChild(preview);
+    }
+    const name = document.createElement('span');
+    name.className = 'attach-name';
+    name.textContent = f.name;
+    chip.appendChild(name);
     const rm = document.createElement('button');
     rm.type = 'button';
     rm.className = 'attach-rm';
     rm.textContent = '×';
-    rm.onclick = () => { pendingFiles.splice(i, 1); renderAttachPreview(); };
+    rm.setAttribute('aria-label', tr('attachment.remove', { name: f.name }));
+    rm.title = tr('attachment.remove', { name: f.name });
+    rm.onclick = () => {
+      pendingFiles.splice(i, 1);
+      renderAttachPreview();
+      const buttons = attachPreview.querySelectorAll('.attach-rm');
+      if (buttons.length) buttons[Math.min(i, buttons.length - 1)].focus();
+      // On a phone, focusing the composer would summon the keyboard.
+      else if (!window.matchMedia('(max-width: 720px)').matches) input.focus();
+    };
     chip.appendChild(rm);
     attachPreview.appendChild(chip);
   });
+}
+
+function showAttachmentImage(file) {
+  const src = attachmentPreviewUrl(file);
+  if (!src) return;
+  const viewer = document.createElement('dialog');
+  viewer.className = 'attachment-viewer';
+  viewer.setAttribute('aria-label', tr('attachment.preview', { name: file.name }));
+  const header = document.createElement('div');
+  header.className = 'attachment-viewer-head';
+  const name = document.createElement('span');
+  name.textContent = file.name;
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.textContent = '×';
+  close.setAttribute('aria-label', tr('attachment.close'));
+  close.onclick = () => viewer.close();
+  header.append(name, close);
+  const img = document.createElement('img');
+  img.src = src;
+  img.alt = file.name;
+  viewer.append(header, img);
+  viewer.addEventListener('click', (event) => { if (event.target === viewer) viewer.close(); });
+  viewer.addEventListener('close', () => viewer.remove());
+  document.body.appendChild(viewer);
+  viewer.showModal();
 }
 
 fileInput.addEventListener('change', async () => {
@@ -933,6 +1086,8 @@ function connectEvents() {
       // "sidebar live wiring" block). Generalized from claude_session_update
       // so codex / opencode / git / … sessions update the sidebar too.
       if (typeof refreshClaudeSessions === 'function') refreshClaudeSessions();
+    } else if (ev.type === 'session_renamed') {
+      if (typeof window.lisaSessionRenamed === 'function') window.lisaSessionRenamed(ev);
     } else if (ev.type === 'session_switched') {
       // Another window (or this one) moved the active web session — converge.
       if (typeof window.lisaSetActiveSession === 'function') window.lisaSetActiveSession(ev.session);
@@ -1745,35 +1900,107 @@ const modalClose = document.getElementById('modalClose');
 function escapeHtml(s) {
   return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 }
+let modalRevision = 0;
 function openModal(title, html) {
+  modalRevision++;
   modalTitle.textContent = title;
   modalBody.innerHTML = html;
   modalBg.classList.add('open');
 }
-function closeModal() { modalBg.classList.remove('open'); }
+function closeModal() { modalRevision++; modalBg.classList.remove('open'); }
 modalClose.addEventListener('click', closeModal);
 modalBg.addEventListener('click', (e) => { if (e.target === modalBg) closeModal(); });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
 
-async function showSkills() {
-  openModal('SKILLS', '<div class="empty">loading…</div>');
-  const data = await fetch('/api/skills').then(r => r.json());
-  if (!data.skills.length) {
-    modalBody.innerHTML = '<div class="empty">No skills saved yet. Lisa will start saving useful workflows as you use her.</div>';
-    return;
-  }
-  modalBody.innerHTML = data.skills.map(s =>
-    '<div class="item"><div class="name">' + escapeHtml(s.name) + '</div><div class="desc">' + escapeHtml(s.description) + '</div></div>'
-  ).join('');
+async function panelRequest(url, options) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    const response = await fetch(url, Object.assign({}, options, { signal: controller.signal }));
+    if (!response.ok) throw new Error(tr('panel.failed'));
+    return await response.json();
+  } finally { clearTimeout(timer); }
 }
-
+async function loadPanel(title, url, render, retry) {
+  openModal(title, '<div class="empty">' + escapeHtml(tr('panel.loading')) + '</div>');
+  const revision = modalRevision;
+  try {
+    const data = await panelRequest(url, undefined);
+    if (revision !== modalRevision) return;
+    render(data);
+  } catch (error) {
+    if (revision !== modalRevision) return;
+    modalBody.innerHTML = '<div role="alert" class="empty">' + escapeHtml(tr('panel.failed')) + '</div><button id="panelRetry">' + escapeHtml(tr('panel.retry')) + '</button>';
+    document.getElementById('panelRetry').addEventListener('click', retry);
+  }
+}
+async function showSkills() {
+  return loadPanel('SKILLS', '/api/skills', function (data) {
+    if (!Array.isArray(data.skills)) throw new Error('Invalid skills response');
+    const names = new Set(data.skills.filter(s => s.scope !== 'project').map(s => s.name));
+    modalBody.innerHTML = '<div class="skills-actions"><button id="skillsRefresh">' + escapeHtml(tr('panel.refresh')) + '</button>' +
+      (data.canManage ? '<button id="skillsCreate">' + escapeHtml(tr('skills.create')) + '</button>' : '') + '</div>' +
+      '<h3>' + escapeHtml(tr('skills.active')) + '</h3>' +
+      (data.skills.length ? data.skills.map(s => '<div class="item"><div class="name">' + escapeHtml(s.name) +
+        ' <span class="skill-scope">' + escapeHtml(tr(s.scope === 'project' ? 'skills.project' : 'skills.home')) + '</span></div><div class="desc">' + escapeHtml(s.description) + '</div></div>').join('') : '<div class="empty">' + escapeHtml(tr('skills.empty')) + '</div>');
+    document.getElementById('skillsRefresh').addEventListener('click', showSkills);
+    if (!data.canManage) return;
+    document.getElementById('skillsCreate').addEventListener('click', showSkillCreate);
+    modalBody.insertAdjacentHTML('beforeend', '<h3>' + escapeHtml(tr('skills.imports')) + '</h3><p class="empty">' + escapeHtml(tr('skills.importNote')) + '</p>');
+    const candidates = Array.isArray(data.imports) ? data.imports : [];
+    if (!candidates.length) modalBody.insertAdjacentHTML('beforeend', '<div class="empty">' + escapeHtml(tr('skills.noImports')) + '</div>');
+    candidates.forEach(function (skill) {
+      const row = document.createElement('div'); row.className = 'item';
+      row.innerHTML = '<div class="name">' + escapeHtml(skill.name) + ' <span class="skill-scope">' + escapeHtml(skill.source) + '</span></div><div class="desc">' + escapeHtml(skill.description) + '</div>';
+      const button = document.createElement('button');
+      button.textContent = names.has(skill.name) ? tr('skills.exists') : tr('skills.import', skill);
+      button.disabled = names.has(skill.name);
+      button.addEventListener('click', async function () {
+        button.disabled = true;
+        const revision = modalRevision;
+        try {
+          await saveSkill('/api/skills/import', { name: skill.name, source: skill.source });
+          if (revision !== modalRevision) return;
+          await showSkills(); lisaBanner(tr('skills.imported', skill), { tone: 'info' });
+        } catch (error) { button.disabled = false; lisaBanner(tr('skills.actionFailed', { error: error.message })); }
+      });
+      row.appendChild(button); modalBody.appendChild(row);
+    });
+  }, showSkills);
+}
+async function saveSkill(url, body) {
+  const response = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || tr('panel.failed'));
+}
+function showSkillCreate() {
+  openModal(tr('skills.create'), '<form id="skillForm" class="skill-form">' +
+    '<label>' + escapeHtml(tr('skills.name')) + '<input name="name" required pattern="[a-z0-9][a-z0-9-]{0,62}" maxlength="63"></label>' +
+    '<label>' + escapeHtml(tr('skills.description')) + '<input name="description" required maxlength="1024"></label>' +
+    '<label>' + escapeHtml(tr('skills.instructions')) + '<textarea name="body" required maxlength="100000" rows="7"></textarea></label>' +
+    '<div role="alert" id="skillError"></div><button type="submit">' + escapeHtml(tr('session.save')) + '</button> <button type="button" id="skillCancel">' + escapeHtml(tr('session.cancel')) + '</button></form>');
+  document.getElementById('skillCancel').addEventListener('click', showSkills);
+  document.getElementById('skillForm').addEventListener('submit', async function (event) {
+    event.preventDefault();
+    const form = /** @type {HTMLFormElement} */ (event.currentTarget);
+    const button = form.querySelector('button[type="submit"]'); button.disabled = true;
+    const revision = modalRevision;
+    try {
+      await saveSkill('/api/skills', Object.fromEntries(new FormData(form)));
+      if (revision !== modalRevision) return;
+      await showSkills(); lisaBanner(tr('skills.saved'), { tone: 'info' });
+    } catch (error) { if (revision !== modalRevision) return; document.getElementById('skillError').textContent = tr('skills.actionFailed', { error: error.message }); button.disabled = false; }
+  });
+}
 async function showMemoryReadOnly() {
-  const data = await fetch('/api/memory').then(r => r.json());
-  modalBody.innerHTML =
-    '<h3>USER.md — what Lisa remembers about you</h3>' +
-    '<pre>' + escapeHtml(data.user || '(empty)') + '</pre>' +
-    '<h3>MEMORY.md — Lisa\'s working notes</h3>' +
-    '<pre>' + escapeHtml(data.memory || '(empty)') + '</pre>';
+  return loadPanel('MEMORY', '/api/memory', function (data) {
+    if (typeof data.user !== 'string' || typeof data.memory !== 'string') throw new Error('Invalid memory response');
+    modalBody.innerHTML =
+      '<h3>USER.md — what Lisa remembers about you</h3>' +
+      '<pre>' + escapeHtml(data.user || '(empty)') + '</pre>' +
+      '<h3>MEMORY.md — Lisa\'s working notes</h3>' +
+      '<pre>' + escapeHtml(data.memory || '(empty)') + '</pre>';
+  }, showMemory);
 }
 
 // Memory sovereignty: view / edit / delete entries, forget a topic, export.
@@ -1790,10 +2017,12 @@ async function memoryApi(method, url, body) {
 }
 
 async function showMemory() {
-  openModal('MEMORY', '<div class="empty">loading…</div>');
+  openModal('MEMORY', '<div class="empty">' + escapeHtml(tr('panel.loading')) + '</div>');
+  const revision = modalRevision;
   let data;
   try { data = await memoryApi('GET', '/api/memory/entries'); }
-  catch (e) { return showMemoryReadOnly(); }
+  catch (e) { return revision === modalRevision ? showMemoryReadOnly() : undefined; }
+  if (revision !== modalRevision) return;
   const labels = { user: 'USER.md — what Lisa remembers about you', memory: 'MEMORY.md — Lisa\'s working notes' };
   let html =
     '<div class="item"><div class="name">Forget a topic</div>' +
@@ -1886,34 +2115,33 @@ async function showMemory() {
 }
 
 async function showTools() {
-  openModal('TOOLS', '<div class="empty">loading…</div>');
-  const data = await fetch('/api/tools').then(r => r.json());
-  modalBody.innerHTML = data.tools.map(t =>
-    '<div class="item"><div class="name">' + escapeHtml(t.name) + '</div><div class="desc">' + escapeHtml(t.description) + '</div></div>'
-  ).join('');
+  return loadPanel('TOOLS', '/api/tools', function (data) {
+    if (!Array.isArray(data.tools)) throw new Error('Invalid tools response');
+    modalBody.innerHTML = data.tools.map(t => '<div class="item"><div class="name">' + escapeHtml(t.name) + '</div><div class="desc">' + escapeHtml(t.description) + '</div></div>').join('');
+  }, showTools);
 }
 
 async function showPlans() {
-  openModal('CODING PLANS', '<div class="empty">loading…</div>');
-  let data;
-  try { data = await fetch('/api/plans').then(r => r.json()); }
-  catch (e) { modalBody.innerHTML = '<div class="empty">failed to load plans</div>'; return; }
+  return loadPanel('CODING PLANS', '/api/plans', function (data) {
+  if (!Array.isArray(data.plans)) throw new Error('Invalid plans response');
   const intro = '<div class="empty">Run coding work on a subscription you already pay for (Claude Pro/Max · ChatGPT/Codex · Copilot) instead of a metered API key. LISA drives the vendor CLI you are logged into, so it bills your plan, not a key. This does not change her own model.</div>';
   const rows = (data.plans || []).map(function (p) {
     const star = p.selected ? ' — selected' : '';
     const usage = p.usage ? '<div class="desc">usage: ' + escapeHtml(p.usage) + '</div>' : '';
     let btn;
     if (p.selected) btn = '<button class="plan-select" data-plan="' + escapeHtml(p.id) + '" disabled>selected</button>';
-    else if (p.available) btn = '<button class="plan-select" data-plan="' + escapeHtml(p.id) + '">use this</button>';
-    else btn = '<button class="plan-select" data-plan="' + escapeHtml(p.id) + '" disabled>not installed</button>';
+    else if (p.available && p.loggedIn !== false) btn = '<button class="plan-select" data-plan="' + escapeHtml(p.id) + '">use this</button>';
+    else btn = '<button class="plan-select" data-plan="' + escapeHtml(p.id) + '" disabled>' + (p.available ? 'sign in first' : 'not installed') + '</button>';
     return '<div class="item"><div class="name">' + escapeHtml(p.mark + ' ' + p.label + star) + '</div><div class="desc">' + escapeHtml(p.detail) + '</div>' + usage + btn + '</div>';
   }).join('');
   const clear = '<div class="item"><button class="plan-select" data-plan="none">clear selection</button></div>';
-  modalBody.innerHTML = intro + rows + clear;
+  modalBody.innerHTML = '<button id="plansRefresh">' + escapeHtml(tr('plans.refresh')) + '</button>' + intro + rows + clear;
+  document.getElementById('plansRefresh').addEventListener('click', showPlans);
   document.querySelectorAll('.plan-select').forEach(function (btn) {
     if (btn.disabled) return;
     btn.addEventListener('click', function () { selectPlan(btn.dataset.plan); });
   });
+  }, showPlans);
 }
 
 async function selectPlan(plan) {
@@ -2938,6 +3166,8 @@ if ('serviceWorker' in navigator) {
   // (String ops, not a regex — a /// here would be mangled by the outer
   // template literal that wraps this client script.)
   function agentLabel(s) {
+    const custom = customSessionName('agent/' + s.agent, s.sessionId);
+    if (custom) return custom;
     let label = s.project;
     if (s.activity && s.activity.gitBranch) {
       const br = String(s.activity.gitBranch);
@@ -2951,9 +3181,24 @@ if ('serviceWorker' in navigator) {
     gemini: 'Gemini', lisa: 'LISA agents', mcp: 'MCP',
   };
   function agentGlyphClass(kind) {
+    if (kind === 'lisa') return 'lisa';
     if (kind === 'claude-code') return 'cc';
     if (kind === 'codex') return 'codex';
     return 'other';
+  }
+
+  function setAgentGlyph(el, kind, fallback) {
+    const icons = { lisa: 'lisa', cc: 'claude', 'claude-code': 'claude', codex: 'codex' };
+    el.textContent = '';
+    el.setAttribute('aria-hidden', 'true');
+    const asset = icons[kind];
+    if (!asset) { el.textContent = fallback || 'A'; return; }
+    const img = document.createElement('img');
+    img.src = '/assets/agents/' + asset + '.webp';
+    img.alt = '';
+    img.draggable = false;
+    img.onerror = () => { el.textContent = fallback || 'A'; };
+    el.appendChild(img);
   }
 
   function setClaudeSessions(sessions) {
@@ -3088,8 +3333,10 @@ if ('serviceWorker' in navigator) {
     leaf.innerHTML = '<span class="pip"></span>' + (withGlyph ? '<span class="agent-glyph mini lisa">L</span>' : '') + '<span class="tname"></span><span class="ttime"></span>';
     if (isActive) leaf.querySelector('.pip').classList.add('live');
     leaf.querySelector('.tname').textContent = sessionLabel(s);
+    if (withGlyph) setAgentGlyph(leaf.querySelector('.agent-glyph'), 'lisa', 'L');
     leaf.querySelector('.ttime').textContent = relativeTime(s.startedAt);
-    leaf.title = s.id + ' · ' + (s.messageCount || 0) + ' msgs';
+    leaf.title = sessionLabel(s) + ' · ' + tr('session.renameHint') + '\n' + s.id;
+    leaf.setAttribute('aria-haspopup', 'menu');
     leaf.setAttribute('data-lisa-id', s.id);
     return leaf;
   }
@@ -3105,13 +3352,14 @@ if ('serviceWorker' in navigator) {
       const g = leaf.querySelector('.agent-glyph');
       const kindName = AGENT_NAMES[s.agent] || s.agent;
       g.classList.add(agentGlyphClass(s.agent));
-      g.textContent = (kindName.charAt(0) || 'A').toUpperCase();
+      setAgentGlyph(g, s.agent, (kindName.charAt(0) || 'A').toUpperCase());
     }
     leaf.querySelector('.tname').textContent = agentLabel(s);
     leaf.querySelector('.ttime').textContent = relativeTime(s.lastMtime);
     leaf.title = (s.stateReason ? s.state + ' · ' + s.stateReason : s.state) + ' · ' + s.project + ' · ' + s.sessionId;
     leaf.setAttribute('data-agent', s.agent);
     leaf.setAttribute('data-session', s.sessionId);
+    leaf.setAttribute('aria-haspopup', 'menu');
     return leaf;
   }
 
@@ -3175,7 +3423,7 @@ if ('serviceWorker' in navigator) {
       const kindName = AGENT_NAMES[kind] || kind;
       const glyph = root.querySelector('.agent-glyph');
       glyph.classList.add(agentGlyphClass(kind));
-      glyph.textContent = (kindName.charAt(0) || 'A').toUpperCase();
+      setAgentGlyph(glyph, kind, (kindName.charAt(0) || 'A').toUpperCase());
       root.querySelector('.tlabel').textContent = kindName;
       root.querySelector('.tcount').textContent = String(byKind[kind].length);
       root.setAttribute('data-toggle', 'agent:' + kind);
@@ -3254,7 +3502,7 @@ if ('serviceWorker' in navigator) {
     head.className = 'insp-head';
     const g = document.createElement('span');
     g.className = 'agent-glyph ' + glyphCls;
-    g.textContent = glyphText;
+    setAgentGlyph(g, glyphCls, glyphText);
     const box = document.createElement('div');
     box.className = 'insp-names';
     const nm = document.createElement('div');
@@ -3509,9 +3757,10 @@ if ('serviceWorker' in navigator) {
         '<label class="dm-label">Agent</label>' +
         '<select id="dmKind" class="dm-kind">' +
           '<option value="managed">managed — LISA runs it (approve each step)</option>' +
-          '<option value="claude">claude — real CLI under a PTY</option>' +
-          '<option value="codex">codex — real CLI under a PTY</option>' +
+          '<option value="claude" disabled>claude — real CLI under a PTY</option>' +
+          '<option value="codex" disabled>codex — real CLI under a PTY</option>' +
         '</select>' +
+        '<p id="dmAvailability" class="empty">' + escapeHtml(tr('panel.loading')) + '</p>' +
         '<label class="dm-label">Task</label>' +
         '<textarea id="dmTask" class="dm-task" rows="5" placeholder="Describe the task… (⌘/Ctrl+Enter to start)"></textarea>' +
         '<div class="dm-actions"><button id="dmStart" class="dm-start" type="button">Start agent →</button></div>' +
@@ -3519,6 +3768,15 @@ if ('serviceWorker' in navigator) {
       '</div>'
     );
     const kindEl = document.getElementById('dmKind');
+    panelRequest('/api/agents/pty/status', undefined).then(function (status) {
+      if (!kindEl.isConnected) return;
+      kindEl.querySelectorAll('option').forEach(function (option) {
+        if (option.value === 'managed') return;
+        option.disabled = !status.available || !status.agents?.some(agent => agent.id === option.value && agent.available);
+      });
+      const note = document.getElementById('dmAvailability');
+      if (note) note.textContent = status.available ? '' : tr(status.installed ? 'pty.disabled' : 'pty.missing');
+    }).catch(function () { const note = document.getElementById('dmAvailability'); if (note) note.textContent = tr('panel.failed'); });
     const taskEl = document.getElementById('dmTask');
     const startEl = document.getElementById('dmStart');
     const errEl = document.getElementById('dmErr');
@@ -3584,11 +3842,50 @@ if ('serviceWorker' in navigator) {
   // client-side notion (which sessions you keep at hand), persisted in
   // localStorage; the tree is the full on-disk list.
   let cachedSessions = [];
+  // key → { name, updatedAt }. Names are never deleted, so every source (the
+  // POST reply, the session_renamed event, a full refresh) merges by
+  // updatedAt: a reply that arrives late cannot undo a newer rename made in
+  // another window.
+  const sessionNames = new Map();
+  function applySessionName(entry) {
+    if (!entry || typeof entry.name !== 'string') return false;
+    const key = JSON.stringify([entry.kind, entry.id]);
+    const stamp = Number(entry.updatedAt) || 0;
+    const known = sessionNames.get(key);
+    if (known && (known.updatedAt > stamp || (known.updatedAt === stamp && known.name === entry.name))) return false;
+    sessionNames.set(key, { name: entry.name, updatedAt: stamp });
+    return true;
+  }
+  function customSessionName(kind, id) {
+    const known = sessionNames.get(JSON.stringify([kind, id]));
+    return known ? known.name : '';
+  }
+  function renderSessionNames() {
+    renderSessionUI();
+    renderInspector();
+    renderNeeds();
+    if (currentAgentTab) renderStreamView();
+  }
+  window.lisaSessionRenamed = function (entry) {
+    if (applySessionName(entry)) renderSessionNames();
+  };
+  async function refreshSessionNames() {
+    try {
+      const response = await fetch('/api/session-names');
+      if (!response.ok) return;
+      const data = await response.json();
+      let changed = false;
+      (Array.isArray(data.names) ? data.names : []).forEach(entry => { if (applySessionName(entry)) changed = true; });
+      if (changed) renderSessionNames();
+    } catch (e) { /* Names retry with the next session refresh. */ }
+  }
   // (确认轮二) Multi-tab strip removed: creating/switching lives in the
   // sidebar tree only, and the strip renders a single CONTEXT CHIP for
   // what the main pane is showing — the active Lisa session, or the
   // observed agent while the stream pane is open.
   function sessionLabel(s) {
+    const custom = s && customSessionName('lisa', s.id);
+    if (custom) return custom;
     // F2 auto-naming: the FIRST user message is the session's name (the
     // opening request describes the task); fall back to the latest one.
     const t = (s && (s.firstUserMessage || s.lastUserMessage) ? (s.firstUserMessage || s.lastUserMessage) : '').trim();
@@ -3724,6 +4021,7 @@ if ('serviceWorker' in navigator) {
     root.type = 'button';
     root.className = 'tnode';
     root.innerHTML = '<span class="twist">▾</span><span class="agent-glyph lisa">L</span><span class="tlabel">LISA</span><span class="tcount"></span>';
+    setAgentGlyph(root.querySelector('.agent-glyph'), 'lisa', 'L');
     root.querySelector('.tcount').textContent = String(cachedSessions.length);
     root.setAttribute('data-toggle', 'lisa');
     group.appendChild(root);
@@ -3755,7 +4053,7 @@ if ('serviceWorker' in navigator) {
       const kindName = AGENT_NAMES[currentAgentTab.agent] || currentAgentTab.agent;
       const g = chip.querySelector('.agent-glyph');
       g.classList.add(agentGlyphClass(currentAgentTab.agent));
-      g.textContent = (kindName.charAt(0) || 'A').toUpperCase();
+      setAgentGlyph(g, currentAgentTab.agent, (kindName.charAt(0) || 'A').toUpperCase());
       const st = s ? (s.state || 'unknown') : 'unknown';
       if (st === 'working' || st === 'waiting' || st === 'error') chip.querySelector('.pip').classList.add(st);
       chip.querySelector('.ctx-name').textContent = s ? agentLabel(s) : (currentAgentTab.label || currentAgentTab.id);
@@ -3816,7 +4114,7 @@ if ('serviceWorker' in navigator) {
     const kindName = AGENT_NAMES[currentAgentTab.agent] || currentAgentTab.agent;
     const g = document.createElement('span');
     g.className = 'agent-glyph ' + agentGlyphClass(currentAgentTab.agent);
-    g.textContent = (kindName.charAt(0) || 'A').toUpperCase();
+    setAgentGlyph(g, currentAgentTab.agent, (kindName.charAt(0) || 'A').toUpperCase());
     head.appendChild(g);
     const nameEl = document.createElement('b');
     nameEl.textContent = s ? agentLabel(s) : (currentAgentTab.label || currentAgentTab.id);
@@ -4072,6 +4370,7 @@ if ('serviceWorker' in navigator) {
       if (!r.ok) throw new Error('http ' + r.status);
       const data = await r.json();
       cachedSessions = Array.isArray(data.sessions) ? data.sessions : [];
+      void refreshSessionNames();
       sbSessionBadge.textContent = String(cachedSessions.length);
       renderSessionUI();
       // The inspector's default target is the active Lisa session — it can
@@ -4378,6 +4677,153 @@ if ('serviceWorker' in navigator) {
     }
   }
   const treeEl = document.getElementById('sessionTree');
+  let sessionMenu = null;
+  function leafTarget(leaf) {
+    const lisaId = leaf.getAttribute('data-lisa-id');
+    return {
+      kind: lisaId ? 'lisa' : 'agent/' + leaf.getAttribute('data-agent'),
+      id: lisaId || leaf.getAttribute('data-session'),
+      name: leaf.querySelector('.tname').textContent,
+    };
+  }
+  function focusSessionLeaf(target) {
+    const leaf = Array.from(treeEl.querySelectorAll('.tleaf')).find(node => {
+      const candidate = leafTarget(node);
+      return candidate.kind === target.kind && candidate.id === target.id;
+    });
+    if (leaf) leaf.focus();
+  }
+  function closeSessionMenu() {
+    if (sessionMenu) sessionMenu.remove();
+    sessionMenu = null;
+  }
+  function renameSession(target) {
+    closeSessionMenu();
+    const dialog = document.createElement('dialog');
+    dialog.className = 'session-rename-dialog';
+    dialog.setAttribute('aria-labelledby', 'sessionRenameTitle');
+    dialog.innerHTML = '<form class="session-rename-form">' +
+      '<h2 id="sessionRenameTitle"></h2><label for="sessionRenameInput"></label>' +
+      '<input id="sessionRenameInput" name="name" type="text" maxlength="120" autocomplete="off" aria-describedby="sessionRenameError" />' +
+      '<p id="sessionRenameError" role="alert"></p><div class="session-rename-actions">' +
+      '<button type="button" class="rename-cancel"></button><button type="submit" class="rename-save"></button></div></form>';
+    dialog.querySelector('h2').textContent = tr('session.rename');
+    dialog.querySelector('label').textContent = tr('session.name');
+    const field = dialog.querySelector('input');
+    field.value = target.name;
+    const cancel = dialog.querySelector('.rename-cancel');
+    const save = dialog.querySelector('.rename-save');
+    const error = dialog.querySelector('#sessionRenameError');
+    cancel.textContent = tr('session.cancel');
+    save.textContent = tr('session.save');
+    let saving = false;
+    cancel.onclick = () => dialog.close();
+    dialog.addEventListener('cancel', event => { if (saving) event.preventDefault(); });
+    dialog.addEventListener('click', event => { if (event.target === dialog && !saving) dialog.close(); });
+    dialog.addEventListener('close', () => { dialog.remove(); focusSessionLeaf(target); });
+    field.addEventListener('keydown', event => {
+      if (event.key === 'Enter' && (event.isComposing || event.keyCode === 229)) event.preventDefault();
+    });
+    dialog.querySelector('form').addEventListener('submit', async event => {
+      event.preventDefault();
+      if (saving) return;
+      const name = field.value.trim();
+      if (!name || name.length > 120 || /[\x00-\x1f\x7f\u202a-\u202e\u2066-\u2069]/.test(name)) {
+        error.textContent = tr('session.invalidName');
+        field.setAttribute('aria-invalid', 'true');
+        field.focus();
+        return;
+      }
+      error.textContent = '';
+      field.removeAttribute('aria-invalid');
+      saving = true;
+      save.disabled = cancel.disabled = field.disabled = true;
+      dialog.setAttribute('aria-busy', 'true');
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 8000);
+      try {
+        const response = await fetch('/api/session-names', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ kind: target.kind, id: target.id, name }), signal: ctrl.signal,
+        });
+        if (!response.ok) throw new Error('rename failed');
+        const entry = await response.json();
+        window.lisaSessionRenamed(entry);
+        dialog.close();
+      } catch (e) {
+        error.textContent = tr('session.renameFailed');
+      } finally {
+        clearTimeout(timer);
+        saving = false;
+        save.disabled = cancel.disabled = field.disabled = false;
+        dialog.removeAttribute('aria-busy');
+        if (dialog.open) field.focus();
+      }
+    });
+    document.body.appendChild(dialog);
+    dialog.showModal();
+    field.focus();
+    field.select();
+  }
+  function openSessionMenu(leaf, x, y) {
+    closeSessionMenu();
+    const target = leafTarget(leaf);
+    const menu = document.createElement('div');
+    menu.className = 'session-context-menu';
+    menu.setAttribute('role', 'menu');
+    menu.setAttribute('aria-label', target.name);
+    const action = document.createElement('button');
+    action.type = 'button';
+    action.setAttribute('role', 'menuitem');
+    action.innerHTML = '<span aria-hidden="true">✎</span><span></span><kbd>F2</kbd>';
+    action.children[1].textContent = tr('session.rename');
+    action.onclick = () => renameSession(target);
+    menu.appendChild(action);
+    menu.addEventListener('keydown', event => {
+      if (event.key === 'Escape') {
+        event.preventDefault(); event.stopPropagation();
+        closeSessionMenu(); focusSessionLeaf(target);
+      } else if (event.key === 'Tab') {
+        closeSessionMenu(); focusSessionLeaf(target);
+      } else if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+        event.preventDefault(); action.focus();
+      }
+    });
+    (leaf.closest('dialog[open]') || document.body).appendChild(menu);
+    sessionMenu = menu;
+    const box = menu.getBoundingClientRect();
+    menu.style.left = Math.max(8, Math.min(x, window.innerWidth - box.width - 8)) + 'px';
+    menu.style.top = Math.max(8, Math.min(y, window.innerHeight - box.height - 8)) + 'px';
+    action.focus({ preventScroll: true });
+  }
+  if (treeEl) {
+    treeEl.addEventListener('contextmenu', event => {
+      const leaf = event.target.closest('.tleaf');
+      if (!leaf || !treeEl.contains(leaf)) return;
+      event.preventDefault();
+      openSessionMenu(leaf, event.clientX, event.clientY);
+    });
+    treeEl.addEventListener('keydown', event => {
+      const leaf = event.target.closest('.tleaf');
+      if (!leaf || !treeEl.contains(leaf)) return;
+      if (event.key === 'F2') {
+        event.preventDefault(); renameSession(leafTarget(leaf));
+      } else if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
+        event.preventDefault();
+        const box = leaf.getBoundingClientRect();
+        openSessionMenu(leaf, box.left + 24, box.bottom);
+      }
+    });
+  }
+  document.addEventListener('pointerdown', event => {
+    if (sessionMenu && !sessionMenu.contains(event.target)) closeSessionMenu();
+  });
+  // Dismiss on user scrolling. A queued scroll from revealing the row or a
+  // roster refresh must not dismiss the menu immediately after right-click.
+  document.addEventListener('wheel', closeSessionMenu, { passive: true });
+  document.addEventListener('touchmove', closeSessionMenu, { passive: true });
+  window.addEventListener('resize', closeSessionMenu);
+  window.addEventListener('blur', closeSessionMenu);
   if (treeEl) treeEl.addEventListener('click', function (e) {
     const t = e.target;
     if (!t || !t.closest) return;
@@ -4714,11 +5160,9 @@ if ('serviceWorker' in navigator) {
         '<span class="pp-tag">owner-routed</span><span class="pp-tag">quiet on waits</span></div></div>';
       html += '<div class="view-sec-label">Focus · currently pursuing</div>';
       if (desire) {
-        html += '<div class="focus-card"><div class="fc-top"><div>' +
-          '<div class="fc-title">' + esc(desire) + '</div>' +
-          '<div class="fc-desc">A self-driven desire Lisa is pursuing on her own time.</div></div>' +
-          '<span class="fc-pill">Active</span></div>' +
-          '<div class="fc-meta"><span>self-driven</span><span>' + sessions.length + ' agents live</span></div></div>';
+        html += '<div class="focus-card"><div class="fc-top">' +
+          '<span class="fc-label">Self-directed</span><span class="fc-pill">Active</span></div>' +
+          '<p class="fc-title">' + esc(desire) + '</p></div>';
       } else {
         html += '<div class="focus-card"><div class="fc-desc">Nothing actively pursued right now.</div></div>';
       }

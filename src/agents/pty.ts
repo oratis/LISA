@@ -19,9 +19,7 @@
  *    folded into the structural cross-agent roster.
  */
 import { EventEmitter } from "node:events";
-import { readdirSync, existsSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { detectPlan } from "../model/plans.js";
 
 export type PtyState = "working" | "waiting" | "error" | "done";
 
@@ -95,14 +93,16 @@ export function ptyEnabled(): boolean {
   return process.env.LISA_PTY_AGENTS === "1";
 }
 
-/** Map a roster agent-kind to its CLI binary (env-overridable). */
-export function resolveCli(agent: string): string {
-  const a = agent.toLowerCase();
-  if (a === "codex") return process.env.LISA_PTY_CODEX_CMD || "codex";
-  // default to claude (covers "claude" / "claude-code")
-  return process.env.LISA_PTY_CLAUDE_CMD || "claude";
+/**
+ * The absolute CLI executable for a roster agent-kind, or null when none was
+ * found. It is the same file Coding plans detected and verified (honouring
+ * LISA_PTY_CLAUDE_CMD / LISA_PTY_CODEX_CMD): never a bare name or relative
+ * path, which the PTY's execvp would resolve inside the task's project.
+ */
+export function resolveCli(agent: string): string | null {
+  const id = agent.toLowerCase() === "codex" ? "codex" : "claude";
+  return detectPlan(id).binary;
 }
-
 /** Normalize a loose agent label to a roster AgentKind. */
 export function normalizeAgentKind(agent: string): string {
   const a = agent.toLowerCase();
@@ -117,30 +117,8 @@ export function normalizeAgentKind(agent: string): string {
  * PATH `claude`. The app-bundle probe is macOS-specific and silently no-ops
  * elsewhere. Falls back to resolveCli for non-claude agents.
  */
-export function detectClaudeBinary(): string {
-  if (process.env.LISA_PTY_CLAUDE_CMD) return process.env.LISA_PTY_CLAUDE_CMD;
-  try {
-    const root = join(homedir(), "Library", "Application Support", "Claude", "claude-code");
-    const versions = readdirSync(root)
-      .filter((v) => /^\d+\.\d+\.\d+/.test(v))
-      .sort((a, b) => cmpVersion(b, a)); // newest first
-    for (const v of versions) {
-      const bin = join(root, v, "claude.app", "Contents", "MacOS", "claude");
-      if (existsSync(bin)) return bin;
-    }
-  } catch {
-    /* not macOS / not installed → fall through */
-  }
-  return "claude";
-}
-
-function cmpVersion(a: string, b: string): number {
-  const pa = a.split(".").map((n) => parseInt(n, 10) || 0);
-  const pb = b.split(".").map((n) => parseInt(n, 10) || 0);
-  for (let i = 0; i < 3; i++) {
-    if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) - (pb[i] || 0);
-  }
-  return 0;
+export function detectClaudeBinary(): string | null {
+  return resolveCli("claude");
 }
 
 // Strip ANSI / VT100 escape sequences so the captured tail is plain-ish text.
@@ -190,6 +168,21 @@ async function loadPty(): Promise<PtyModuleLike | null> {
   } catch {
     return null;
   }
+}
+
+export async function ptyAvailability() {
+  const enabled = ptyEnabled();
+  const installed = !!(await loadPty());
+  return {
+    enabled,
+    installed,
+    available: enabled && installed,
+    reason: !enabled ? "disabled" : !installed ? "missing-module" : null,
+    agents: ["claude", "codex"].map((id) => ({
+      id,
+      available: detectPlan(id as "claude" | "codex").available,
+    })),
+  };
 }
 
 /** One real CLI running under a pseudo-terminal that LISA drives. */
@@ -263,6 +256,11 @@ export class PtyAgent {
     }
     const cli =
       opts.cli ?? (kind === "claude-code" ? detectClaudeBinary() : resolveCli(opts.agent));
+    if (!cli) {
+      throw new Error(
+        `No executable found for ${opts.agent}. Check Coding plans and refresh detection.`,
+      );
+    }
     // Adopt an existing session by id: `claude --resume <id>` (claude-only, guarded above).
     const resumeArgs = opts.resumeSessionId ? ["--resume", opts.resumeSessionId] : [];
     const args = [...resumeArgs, ...(opts.args ?? [])];
