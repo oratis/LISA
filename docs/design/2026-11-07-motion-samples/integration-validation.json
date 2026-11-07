@@ -19,8 +19,8 @@
   },
   "checks": {
     "webUnitAndServer": 56,
-    "chromium": 5,
-    "webkit": 5,
+    "chromium": 11,
+    "webkit": 11,
     "iosMotion": 3,
     "macBuild": "passed",
     "browserVisualQA": {
@@ -29,8 +29,10 @@
       "pausedScreenshots": 1,
       "mobileOverflow": false
     },
-    "allNodeTests": 3512,
-    "macTests": 23
+    "allNodeTests": 3528,
+    "macTests": 23,
+    "allNodePassed": 3527,
+    "allNodeSkipped": 1
   },
   "generation": {
     "mode": "built-in ImageGen reference edits to PNG keyframes, registered and encoded as animated WebP and GIF",
@@ -48,6 +50,7 @@
     "Page/iframe/host visibility, offscreen images, prefers-reduced-motion and load failures are verified.",
     "114 states retain the existing 24-core alias mapping; these are not 114 distinct new drawings.",
     "Room props use texture reuse and CSS effects; structural furniture responds to pointer attention rather than moving continuously.",
-    "Two additional seated reading/tea clips preserve the merged Room v2 contact geometry and furniture masks."
+    "Two additional seated reading/tea clips preserve the merged Room v2 contact geometry and furniture masks.",
+    "After merging the mobile shell, the combined motion/mobile browser suite passed 22 checks. The optional real PTY test is skipped when node-pty cannot spawn in the local environment."
   ]
 }

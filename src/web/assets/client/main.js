@@ -44,7 +44,7 @@ function lisaBanner(msg, opts) {
   // that grew while the user typed never ends up covering the toast.
   var composer = document.getElementById('form');
   var lift = (composer && composer.offsetParent)
-    ? Math.round(composer.getBoundingClientRect().height) + 14
+    ? Math.round(window.innerHeight - composer.getBoundingClientRect().top) + 14
     : 18;
   el.style.bottom = lift + 'px';
   el.hidden = false;
@@ -91,6 +91,20 @@ const LISA_STRINGS = {
     "connector.selectStatus": "Choose what LISA may read",
     "connector.gmailDetail": "Read headers and bounded snippets in your selected labels, without full bodies or attachments. This task continues after connecting; a new message cancels unfinished work.",
     "connector.calendarDetail": "Choose primary-calendar availability or event details in selected calendars. No events are created or changed. This task continues after connecting; a new message cancels unfinished work.",
+    "connector.linearDetail": "Linear grants read access to the chosen workspace; LISA limits reads to the teams you select. No creation, edits, comments or assignments. Connecting continues this task; a new message cancels unfinished work.",
+    "connector.auth.linear": "Sign in to Linear (read only)",
+    "connector.linearAuthorize": "Authorize read-only access on Linear, then return here to choose teams.",
+    "connector.openLinear": "Open Linear authorization",
+    "connector.linearSelect": "Verify the account and select teams. Nothing is selected by default. Later Linear read tasks use this scope until you disconnect.",
+    "connector.error.linear_reauthorization_required": "Linear authorization expired or was removed. Reconnect to continue.",
+    "connector.error.linear_read_scope_required": "Only read permission is supported. Reconnect with read-only access.",
+    "connector.error.linear_resource_mismatch": "Linear returned data outside the selected team. The result was blocked.",
+    "connector.error.mcp_tools_changed": "The remote tools changed. This connector needs a compatibility update.",
+    "connector.error.mcp_metadata_mismatch": "The authorization service changed. Connection was stopped.",
+    "connector.error.mcp_access_denied": "Linear denied access to this resource. Check the account and selected teams.",
+    "connector.error.mcp_unavailable": "Linear is temporarily unavailable. Retry this task.",
+    "connector.error.mcp_tool_failed": "Linear could not complete this read. Retry or reconnect.",
+    "connector.error.mcp_rate_limited": "Linear is rate limited. Retry later.",
     "connector.auth.gmail": "Sign in to Google for Gmail",
     "connector.auth.freebusy": "Connect primary calendar availability",
     "connector.auth.events": "Connect calendar event details",
@@ -220,6 +234,20 @@ const LISA_STRINGS = {
     "connector.selectStatus": "选择可读取的范围",
     "connector.gmailDetail": "仅读取你选定标签中的邮件头与有限摘要，不读取完整正文或附件。连接完成后自动继续本条任务；发送新消息会取消未完成的任务。",
     "connector.calendarDetail": "选择仅查看主日历忙闲，或读取选定日历的日程详情。不会创建或修改日程。连接完成后自动继续本条任务；发送新消息会取消未完成的任务。",
+    "connector.linearDetail": "Linear 授权覆盖所选工作区，LISA 将读取限制在你选定的团队。不创建、修改、评论或分配任务。连接后自动继续此任务；发送新消息会取消未完成的任务。",
+    "connector.auth.linear": "登录 Linear，只读连接",
+    "connector.linearAuthorize": "在 Linear 页面授权只读访问，然后返回这里选择团队。",
+    "connector.openLinear": "打开 Linear 授权页面",
+    "connector.linearSelect": "请核对账号并选择允许读取的团队。默认不勾选；后续 Linear 只读任务沿用此范围，直到断开连接。",
+    "connector.error.linear_reauthorization_required": "Linear 授权已失效或移除，请重新连接。",
+    "connector.error.linear_read_scope_required": "仅支持读取权限，请以只读权限重新授权。",
+    "connector.error.linear_resource_mismatch": "Linear 返回的资料不属于所选团队，已停止返回结果。",
+    "connector.error.mcp_tools_changed": "远程工具发生变化，需要更新连接器适配。",
+    "connector.error.mcp_metadata_mismatch": "授权服务信息发生变化，已停止连接。",
+    "connector.error.mcp_access_denied": "Linear 拒绝读取此范围，请检查账号与所选团队。",
+    "connector.error.mcp_unavailable": "暂时无法连接 Linear，请重试此任务。",
+    "connector.error.mcp_tool_failed": "Linear 未能完成读取，请重试或重新连接。",
+    "connector.error.mcp_rate_limited": "Linear 请求过于频繁，请稍后重试。",
     "connector.auth.gmail": "登录 Google，连接 Gmail",
     "connector.auth.freebusy": "连接主日历，只看忙闲",
     "connector.auth.events": "连接日历，读取日程详情",
@@ -1928,9 +1956,7 @@ function filterLog(q) {
 }
 if (fnSearchBtn && fnFind) {
   fnSearchBtn.addEventListener('click', () => {
-    const show = fnFind.style.display === 'none';
-    fnFind.style.display = show ? '' : 'none';
-    if (show) { fnFind.focus(); } else { fnFind.value = ''; filterLog(''); }
+    if (findIsOpen()) closeFind(); else openFind();
   });
   fnFind.addEventListener('input', () => filterLog(fnFind.value.trim().toLowerCase()));
   fnFind.addEventListener('keydown', (e) => {
@@ -1940,6 +1966,7 @@ if (fnSearchBtn && fnFind) {
 function openFind() {
   if (!fnFind) return;
   fnFind.style.display = '';
+  document.getElementById('fnbar').classList.add('searching');
   fnFind.focus();
   fnFind.select();
 }
@@ -1949,6 +1976,7 @@ function closeFind() {
   fnFind.value = '';
   filterLog('');
   fnFind.style.display = 'none';
+  document.getElementById('fnbar').classList.remove('searching');
 }
 
 // ── Keyboard shortcuts (UX-11) ───────────────────────────────────
@@ -2525,7 +2553,8 @@ async function runChat(message, filesToSend) {
     clearTimeout(waitTimer);
     sendBtn.disabled = false;
     void githubRefresh();
-    input.focus();
+    // A completed reply must not reopen a dismissed phone keyboard.
+    if (!window.matchMedia('(max-width: 720px)').matches) input.focus();
     // F6 — a reply that finished after its session was switched away:
     // refresh if the user is back on that session, else mark it unread.
     if (gen !== chatGeneration && sid) {
@@ -4465,7 +4494,9 @@ if ('serviceWorker' in navigator) {
       items[i].classList.toggle('active', items[i].getAttribute('data-view') === name);
     }
     if (name !== 'chat') loadView(name);
-    else { try { document.getElementById('input').focus(); } catch (e) {} }
+    else if (!window.matchMedia('(max-width: 720px)').matches) { try { document.getElementById('input').focus(); } catch (e) {} }
+    document.body.dataset.view = name;
+    window.dispatchEvent(new CustomEvent('lisa-view-change', { detail: { view: name } }));
     syncRoomVisibility();
     try { history.replaceState(null, '', name === 'chat' ? location.pathname + location.search : '#' + name); } catch (e) {}
   }
@@ -5641,4 +5672,173 @@ if ('serviceWorker' in navigator) {
   }
   loadPending();
   setInterval(loadPending, 30000);
+})();
+
+// Phone shell: reuse the real navigation and tools so their state and handlers
+// stay identical across rotation. Native dialogs supply focus trapping, Escape
+// dismissal, and an inert background without a second navigation implementation.
+(function setupMobileShell() {
+  const narrow = window.matchMedia('(max-width: 720px)');
+  const sidebar = document.querySelector('.sidebar');
+  const menu = document.getElementById('mobileMenu');
+  const tools = document.getElementById('mobileTools');
+  const tabs = document.getElementById('mobileTabs');
+  const more = document.getElementById('mobileMore');
+  const menuButton = document.getElementById('mobileMenuBtn');
+  const toolsButton = document.getElementById('mobileToolsBtn');
+  const actions = document.getElementById('mobileActions');
+  if (!sidebar || !menu || !tools || !tabs || !more || !menuButton || !toolsButton || !actions) return;
+  const sidebarHome = document.createComment('desktop sidebar');
+  sidebar.before(sidebarHome);
+  const actionHomes = ['fnKbSelect', 'fnMail', 'fnTheme'].map(id => {
+    const button = document.getElementById(id);
+    const home = document.createComment(id);
+    button.before(home);
+    return { button, home };
+  });
+
+  const primaryViews = ['chat', 'control', 'room'];
+  primaryViews.forEach(view => {
+    const source = document.querySelector('#navList [data-view="' + view + '"]');
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'mobile-tab';
+    button.dataset.mobileView = view;
+    button.appendChild(source.querySelector('svg').cloneNode(true));
+    const label = document.createElement('span');
+    label.textContent = source.querySelector('.nav-label').textContent;
+    button.appendChild(label);
+    button.addEventListener('click', () => window.lisaShowView(view));
+    tabs.insertBefore(button, more);
+  });
+  function syncTabs() {
+    const view = document.body.dataset.view || 'chat';
+    tabs.querySelectorAll('[data-mobile-view]').forEach(button => {
+      const selected = button.dataset.mobileView === view;
+      button.classList.toggle('active', selected);
+      if (selected) button.setAttribute('aria-current', 'page');
+      else button.removeAttribute('aria-current');
+    });
+    const secondary = !primaryViews.includes(view);
+    more.classList.toggle('active', secondary);
+    if (secondary) more.setAttribute('aria-current', 'page');
+    else more.removeAttribute('aria-current');
+  }
+  window.addEventListener('lisa-view-change', syncTabs);
+  syncTabs();
+
+  function openSheet(dialog, trigger) {
+    if (!narrow.matches || dialog.open) return;
+    // Give native dialog restoration an explicit non-input target. Touch
+    // browsers do not consistently focus a tapped button on their own.
+    trigger.focus({ preventScroll: true });
+    dialog.showModal();
+    if (dialog === menu) {
+      menuButton.setAttribute('aria-expanded', 'true');
+      more.setAttribute('aria-expanded', 'true');
+    } else toolsButton.setAttribute('aria-expanded', 'true');
+  }
+  menuButton.addEventListener('click', () => openSheet(menu, menuButton));
+  more.addEventListener('click', () => openSheet(menu, more));
+  toolsButton.addEventListener('click', () => openSheet(tools, toolsButton));
+  // Native modal sheets make the rest of the document inert. Hand focus back
+  // before the existing global shortcuts open a non-dialog overlay or field.
+  // Capture runs before those document-level bubbling handlers.
+  document.addEventListener('keydown', event => {
+    if (!menu.open && !tools.open) return;
+    const mod = event.metaKey || event.ctrlKey;
+    const globalShortcut = mod && !event.altKey && ['k', 'f', '/'].includes(event.key.toLowerCase());
+    const helpShortcut = event.key === '?' && !mod && !isTypingTarget(event.target);
+    if (globalShortcut || helpShortcut) {
+      menu.close();
+      tools.close();
+    }
+  }, true);
+  [menu, tools].forEach(dialog => {
+    dialog.querySelector('[data-close-sheet]').addEventListener('click', () => dialog.close());
+    // Check coordinates: empty space inside the sheet must not dismiss it.
+    let backdropDown = false;
+    function outside(event) {
+      const box = dialog.getBoundingClientRect();
+      return event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom;
+    }
+    dialog.addEventListener('pointerdown', event => { backdropDown = event.target === dialog && outside(event); });
+    dialog.addEventListener('click', event => {
+      if (backdropDown && event.target === dialog && outside(event)) dialog.close();
+      backdropDown = false;
+    });
+    dialog.addEventListener('close', () => {
+      if (dialog === menu) {
+        menuButton.setAttribute('aria-expanded', 'false');
+        more.setAttribute('aria-expanded', 'false');
+        const contextMenu = dialog.querySelector('.session-context-menu');
+        if (contextMenu) contextMenu.remove();
+      } else toolsButton.setAttribute('aria-expanded', 'false');
+    });
+  });
+  // Close before the existing handler runs, including actions which open a
+  // separate panel. Returning to Chat never summons the keyboard by itself.
+  sidebar.addEventListener('click', event => {
+    if (!narrow.matches || !menu.open) return;
+    if (event.target.closest('.nav-item, .tleaf, #sbNewSession')) {
+      menu.close();
+      if (event.target.closest('.tleaf, #sbNewSession')) window.lisaShowView('chat');
+    }
+  }, true);
+  actions.addEventListener('click', event => {
+    if (event.target.closest('.fbtn')) tools.close();
+  }, true);
+  document.getElementById('mobileNewChat').addEventListener('click', () => {
+    window.lisaShowView('chat');
+    document.getElementById('sbNewSession').click();
+  });
+
+  // Mirror the actual identity; no second mood/name state to drift over time.
+  const portrait = document.getElementById('mascot');
+  const name = document.querySelector('.identity h1');
+  function syncIdentity() {
+    document.getElementById('mobileAvatar').src = portrait.src;
+    document.getElementById('mobileName').textContent = name.textContent;
+  }
+  new MutationObserver(syncIdentity).observe(portrait, { attributes: true, attributeFilter: ['src'] });
+  new MutationObserver(syncIdentity).observe(name, { childList: true, subtree: true, characterData: true });
+  syncIdentity();
+
+  function syncLayout() {
+    if (narrow.matches) {
+      menu.appendChild(sidebar);
+      actionHomes.forEach(({ button }) => actions.appendChild(button));
+    } else {
+      menu.close(); tools.close();
+      sidebarHome.after(sidebar);
+      actionHomes.forEach(({ button, home }) => home.after(button));
+    }
+    syncViewport();
+  }
+  // Safari's visual viewport shrinks for the software keyboard while the
+  // layout viewport can stay tall. Keep the composer above it, preserve pinch
+  // zoom, and give the conversation the tab bar's space while typing.
+  function syncViewport() {
+    const viewport = window.visualViewport;
+    if (!narrow.matches || (viewport && viewport.scale !== 1)) {
+      document.documentElement.style.removeProperty('--mobile-height');
+      document.documentElement.style.removeProperty('--mobile-top');
+      document.body.classList.remove('mobile-keyboard');
+      return;
+    }
+    const height = viewport ? viewport.height : window.innerHeight;
+    document.documentElement.style.setProperty('--mobile-height', height + 'px');
+    document.documentElement.style.setProperty('--mobile-top', (viewport ? viewport.offsetTop : 0) + 'px');
+    const typing = isTypingTarget(document.activeElement);
+    document.body.classList.toggle('mobile-keyboard', typing && window.innerHeight - height > 120);
+  }
+  narrow.addEventListener('change', syncLayout);
+  window.addEventListener('resize', syncViewport);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', syncViewport);
+    window.visualViewport.addEventListener('scroll', syncViewport);
+  }
+  document.addEventListener('focusin', syncViewport);
+  document.addEventListener('focusout', () => requestAnimationFrame(syncViewport));
+  syncLayout();
 })();

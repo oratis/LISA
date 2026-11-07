@@ -1,6 +1,6 @@
 import type http from "node:http";
-import type { ReadonlyConnector } from "../connectors/service.js";
-import type { GoogleAccount, GoogleResource, GoogleProvider } from "../connectors/google-driver.js";
+import type { ConnectorService } from "../connectors/service.js";
+import { CONNECTOR_CATALOG, type ConnectorProvider } from "../connectors/catalog.js";
 import { ConnectorError } from "../connectors/types.js";
 import { crossSiteProblem } from "./warden-api.js";
 import { BodyTooLargeError, readCappedText } from "./http-body.js";
@@ -9,12 +9,12 @@ export async function handleConnectorApi(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   rawUrl: string,
-  services: Map<GoogleProvider, ReadonlyConnector<GoogleAccount, GoogleResource>>,
+  services: Map<ConnectorProvider, ConnectorService>,
   localOwner: boolean,
 ): Promise<boolean> {
   const url = new URL(rawUrl, "http://localhost");
   const match =
-    /^\/api\/connectors\/(google-calendar|gmail)(?:\/requests(?:\/([a-zA-Z0-9_-]{1,100})\/(authorize|resources|confirm|cancel|retry))?|\/(disconnect))$/.exec(
+    /^\/api\/connectors\/(google-calendar|gmail|linear)(?:\/requests(?:\/([a-zA-Z0-9_-]{1,100})\/(authorize|resources|confirm|cancel|retry))?|\/(disconnect))$/.exec(
       url.pathname,
     );
   if (url.pathname !== "/api/connectors" && !match) return false;
@@ -30,20 +30,11 @@ export async function handleConnectorApi(
   try {
     if (req.method === "GET" && url.pathname === "/api/connectors") {
       json(200, {
-        connectors: [
-          { id: "github", name: "GitHub", access: "read", authModes: ["existing", "login"] },
-          {
-            id: "google-calendar",
-            name: "Google Calendar",
-            access: "read",
-            authModes: ["freebusy", "events"],
-          },
-          { id: "gmail", name: "Gmail", access: "read", authModes: ["login"] },
-        ],
+        connectors: CONNECTOR_CATALOG,
       });
       return true;
     }
-    const service = services.get(match?.[1] as GoogleProvider);
+    const service = services.get(match?.[1] as ConnectorProvider);
     if (!match || !service) {
       json(404, { error: "not_found" });
       return true;

@@ -1518,7 +1518,8 @@
             "schema": {
               "enum": [
                 "google-calendar",
-                "gmail"
+                "gmail",
+                "linear"
               ]
             }
           },
@@ -1567,7 +1568,8 @@
             "schema": {
               "enum": [
                 "google-calendar",
-                "gmail"
+                "gmail",
+                "linear"
               ]
             }
           },
@@ -1648,7 +1650,8 @@
             "schema": {
               "enum": [
                 "google-calendar",
-                "gmail"
+                "gmail",
+                "linear"
               ]
             }
           },
@@ -1730,7 +1733,8 @@
             "schema": {
               "enum": [
                 "google-calendar",
-                "gmail"
+                "gmail",
+                "linear"
               ]
             }
           },
@@ -1800,7 +1804,8 @@
             "schema": {
               "enum": [
                 "google-calendar",
-                "gmail"
+                "gmail",
+                "linear"
               ]
             }
           },
@@ -1869,7 +1874,8 @@
             "schema": {
               "enum": [
                 "google-calendar",
-                "gmail"
+                "gmail",
+                "linear"
               ]
             }
           },
@@ -1964,7 +1970,8 @@
             "schema": {
               "enum": [
                 "google-calendar",
-                "gmail"
+                "gmail",
+                "linear"
               ]
             }
           }
@@ -4388,6 +4395,10 @@
           },
           "email": {
             "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "description": "Linear account display name; stable id remains the identity key."
           }
         },
         "required": [
@@ -4409,7 +4420,8 @@
             "enum": [
               "events",
               "freebusy",
-              "metadata"
+              "metadata",
+              "team"
             ]
           },
           "timeZone": {
@@ -4483,7 +4495,7 @@
           },
           "authorizationUrl": {
             "type": "string",
-            "description": "Short-lived trusted Google consent URL; no access token or verifier."
+            "description": "Short-lived trusted Google or Linear authorization URL; no access token or PKCE verifier."
           }
         },
         "additionalProperties": false
@@ -4530,7 +4542,8 @@
           "provider": {
             "enum": [
               "google-calendar",
-              "gmail"
+              "gmail",
+              "linear"
             ]
           }
         },
@@ -4553,7 +4566,8 @@
                   "enum": [
                     "github",
                     "google-calendar",
-                    "gmail"
+                    "gmail",
+                    "linear"
                   ]
                 },
                 "name": {
