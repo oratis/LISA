@@ -13,6 +13,7 @@ import {
   ForgetError,
   OUTSIDE_ACCOUNT_HOME_STORES,
   readForgetNotice,
+  replaceAppendOnly,
 } from "./forget.js";
 
 let home: string;
@@ -691,3 +692,294 @@ describe("forget", () => {
 function escape(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+
+describe("forget — matching on parsed text, nested entries, caps and caches", () => {
+  const header = (id: string) => ({
+    type: "session",
+    id,
+    version: 2,
+    startedAt: "2026-10-02T10:00:00Z",
+    cwd: "/x",
+    model: "m",
+  });
+  const message = (role: string, content: unknown) => ({
+    type: "message",
+    ts: "t",
+    message: { role, content },
+  });
+  function session(id: string, lines: (object | string)[]): void {
+    write(
+      `sessions/${id}.jsonl`,
+      [header(id), ...lines]
+        .map((l) => (typeof l === "string" ? l : JSON.stringify(l)))
+        .join("\n") + "\n",
+    );
+  }
+  function sessionLines(id: string): unknown[] {
+    return read(`sessions/${id}.jsonl`)
+      .trim()
+      .split("\n")
+      .slice(1)
+      .map((l) => {
+        try {
+          return JSON.parse(l) as unknown;
+        } catch {
+          return l; // a torn fragment, as it is on disk
+        }
+      });
+  }
+
+  test("a topic right after a newline or tab is found in transcripts and tasks, redacted and re-scanned", async () => {
+    const id = "2026-10-02-newline";
+    session(id, [
+      message("user", "Friends coming over:\nAnnabel and\nAnn"),
+      message("assistant", [{ type: "text", text: "Sure.\n\nAnn likes tea." }]),
+      message("user", "columns:\tAnn\tBob"),
+      // Escapes before a longer word still don't make it the topic.
+      message("user", "the\nannual report"),
+      // A torn fragment: decided on its decoded text, too.
+      '{"type":"message","message":{"role":"user","content":"note:\\nAnn called',
+      '{"type":"message","message":{"role":"user","content":"note:\\nannual',
+    ]);
+    write(
+      "tasks/task_nl0001.json",
+      JSON.stringify({ id: "task_nl0001", title: "Reminder", instruction: "Call:\nAnn tomorrow" }),
+    );
+    write(
+      "tasks/runs/task_nl0001/run_nl0001.jsonl",
+      JSON.stringify({ t: "msg", message: { role: "user", content: "todo:\nAnn" } }) + "\n",
+    );
+
+    const preview = await forget("Ann", { dryRun: true });
+    assert.equal(preview.counts.sessions, 4, JSON.stringify(preview.locations));
+    assert.equal(preview.counts.tasks, 2);
+    assert.ok(
+      preview.locations.some((l) => l.snippet === "Friends coming over: Annabel and Ann"),
+      "the snippet shows the parsed text, not JSON escapes",
+    );
+
+    const report = await forget("Ann", { digest: preview.digest });
+    assert.equal(report.remaining!.sessions, 0);
+    assert.equal(report.remaining!.tasks, 0);
+    const lines = sessionLines(id) as { message?: { content: unknown }; type: string }[];
+    assert.deepEqual(
+      lines.slice(0, 4).map((l) => l.message!.content),
+      [FORGOTTEN, [{ type: "text", text: FORGOTTEN }], FORGOTTEN, "the\nannual report"],
+    );
+    assert.deepEqual(lines[4], { type: "forgotten" });
+    assert.match(String(lines[5]), /annual$/, "the torn fragment without the word stays");
+    assert.equal(
+      (JSON.parse(read("tasks/task_nl0001.json")) as { instruction: string }).instruction,
+      FORGOTTEN,
+    );
+    assert.ok(read("tasks/runs/task_nl0001/run_nl0001.jsonl").includes(FORGOTTEN));
+    // A fresh scan agrees with the re-scan.
+    const again = await forget("Ann", { dryRun: true });
+    assert.equal(again.counts.sessions + again.counts.tasks, 0);
+  });
+
+  test("the re-scan counts a newline-led match that apply could not change", async () => {
+    if (process.getuid?.() === 0) return; // root ignores the read-only directory
+    const id = "2026-10-02-rescan";
+    session(id, [message("user", "x\nAnn")]);
+    write("memory/MEMORY.md", "- Ann is a friend\n");
+    const preview = await forget("Ann", { dryRun: true });
+    assert.equal(preview.counts.sessions, 1);
+    const dir = path.join(home, "sessions");
+    fs.chmodSync(dir, 0o555); // the transcript can't be rewritten…
+    try {
+      const report = await forget("Ann", { digest: preview.digest });
+      assert.ok(report.errors.some((e) => e.layer === "sessions"));
+      assert.equal(report.remaining!.memory, 0);
+      // …and the re-scan says so instead of reporting it clean.
+      assert.equal(report.remaining!.sessions, 1);
+    } finally {
+      fs.chmodSync(dir, 0o755);
+    }
+  });
+
+  test("connector traces and connection requests lose the topic, nothing else", async () => {
+    const id = "2026-10-02-connector";
+    session(id, [
+      message("user", "summarize my mail"),
+      {
+        type: "connector_trace",
+        ts: "t",
+        requestId: "r1",
+        message: { role: "assistant", content: [{ type: "text", text: "Mail from Ann: lunch?" }] },
+      },
+    ]);
+    const request = (rid: string, prompt: string) => ({
+      id: rid,
+      sessionId: id,
+      prompt,
+      createdAt: 1,
+      expiresAt: 2,
+      status: "succeeded",
+      resources: [],
+      attempts: 0,
+    });
+    const state = {
+      version: 2,
+      requests: [request("r1", "summarize mail\nfrom Ann"), request("r2", "list repos")],
+    };
+    write("connectors/gmail/state.json", JSON.stringify(state));
+    write(
+      "connectors/github/state.json.v1.bak",
+      JSON.stringify({ version: 1, requests: [request("r0", "Ann's repos")] }),
+    );
+
+    const preview = await forget("Ann", { dryRun: true });
+    assert.equal(preview.counts.sessions, 1);
+    assert.equal(preview.counts.connectors, 2);
+    const report = await forget("Ann", { digest: preview.digest });
+    assert.equal(report.remaining!.sessions, 0);
+    assert.equal(report.remaining!.connectors, 0);
+
+    const trace = sessionLines(id)[1] as { type: string; requestId: string; message: unknown };
+    assert.equal(trace.type, "connector_trace");
+    assert.equal(trace.requestId, "r1");
+    assert.deepEqual(trace.message, {
+      role: "assistant",
+      content: [{ type: "text", text: FORGOTTEN }],
+    });
+    const after = JSON.parse(read("connectors/gmail/state.json")) as typeof state;
+    assert.deepEqual(after, {
+      ...state,
+      requests: [{ ...state.requests[0]!, prompt: FORGOTTEN }, state.requests[1]],
+    });
+    assert.ok(!fs.existsSync(path.join(home, "connectors/gmail/state.lock")), "lock released");
+    assert.ok(!read("connectors/github/state.json.v1.bak").includes("Ann"));
+    assert.ok(report.scanned.some((a) => a.startsWith("connectors/")));
+  });
+
+  test("the connector service still reads its state after a forget, with the prompt redacted", async () => {
+    const { ReadonlyConnector } = await import("../connectors/service.js");
+    const { GoogleReadonlyDriver } = await import("../connectors/google-driver.js");
+    const { MemorySecretStore } = await import("../warden/secrets.js");
+    const offline = async (): Promise<never> => {
+      throw new Error("offline test driver");
+    };
+    const service = new ReadonlyConnector({
+      home,
+      secrets: new MemorySecretStore(),
+      driver: new GoogleReadonlyDriver("gmail", {
+        client: async () => ({ clientId: "fixture.apps.googleusercontent.com" }),
+        authorize: offline,
+        http: offline,
+      }),
+      changed: () => {},
+      resume: async () => {},
+    });
+    const sid = "2026-10-02-service";
+    const asked = await service.create(sid, "summarize the mail from Ann");
+    await service.create(sid, "summarize the mail from Bob");
+    const preview = await forget("Ann", { dryRun: true });
+    assert.equal(preview.counts.connectors, 1);
+    await forget("Ann", { digest: preview.digest });
+    const state = JSON.parse(read("connectors/gmail/state.json")) as {
+      requests: { id: string; prompt: string }[];
+    };
+    assert.deepEqual(
+      state.requests.map((r) => [r.id === asked.id, r.prompt]),
+      [
+        [true, FORGOTTEN],
+        [false, "summarize the mail from Bob"],
+      ],
+    );
+    // The service validates every read: it still accepts the state and works on.
+    assert.equal((await service.list(sid)).length, 2);
+    await service.create(sid, "and from Carol");
+    assert.equal((await service.list(sid)).length, 3);
+    await service.stop();
+  });
+
+  test("forgetting a nested list item keeps its siblings and parent; the preview shows whole entries", async () => {
+    const long =
+      "Ann likes jazz and long walks on the beach every single Sunday morning before breakfast, with friends";
+    write(
+      "memory/MEMORY.md",
+      [
+        "## People",
+        "- Friends:",
+        "  - Ann (neighbour)",
+        "  - Bob, dentist on Tue",
+        "  - Carol's kids: Tim, Sue",
+        `- ${long}`,
+        "",
+      ].join("\n"),
+    );
+    const preview = await forget("Ann", { dryRun: true });
+    const memory = preview.locations.filter((l) => l.layer === "memory");
+    assert.deepEqual(
+      memory.map((l) => [l.action, l.snippet]),
+      [
+        ["delete", "Ann (neighbour)"],
+        ["delete", long],
+      ],
+    );
+    await forget("Ann", { digest: preview.digest });
+    assert.equal(
+      read("memory/MEMORY.md"),
+      "## People\n- Friends:\n  - Bob, dentist on Tue\n  - Carol's kids: Tim, Sue\n",
+    );
+  });
+
+  test("a store over its byte cap still loses the topic", async () => {
+    const lines = ["- Ann's phone is 555-0100"];
+    for (let i = 0; i < 60; i++) lines.push(`- filler entry number ${i} about the weather`);
+    write("memory/USER.md", lines.join("\n") + "\n");
+    assert.ok(fs.statSync(path.join(home, "memory/USER.md")).size > 2048);
+    const preview = await forget("Ann", { dryRun: true });
+    const report = await forget("Ann", { digest: preview.digest });
+    assert.deepEqual(report.errors, []);
+    assert.equal(report.remaining!.user, 0);
+    assert.ok(!read("memory/USER.md").includes("Ann"));
+  });
+
+  test("nothing found: no search-index item, no eviction, no notice for Lisa", async () => {
+    write("embeddings/cache.json", "{}");
+    write("memory/MEMORY.md", "- likes tea\n");
+    const preview = await forget("Zanzibar", { dryRun: true });
+    assert.ok(
+      Object.values(preview.counts).every((n) => n === 0),
+      JSON.stringify(preview.counts),
+    );
+    assert.deepEqual(preview.locations, []);
+    await forget("Zanzibar", { digest: preview.digest });
+    assert.equal(await readForgetNotice(), null);
+    assert.ok(fs.existsSync(path.join(home, "embeddings/cache.json")));
+    // With a match the cache is evicted, as before.
+    write("memory/MEMORY.md", "- likes tea with Ann\n");
+    const found = await forget("Ann", { dryRun: true });
+    assert.ok(found.counts.search_index > 0);
+    await forget("Ann", { digest: found.digest });
+    assert.ok(!fs.existsSync(path.join(home, "embeddings/cache.json")));
+    assert.ok(await readForgetNotice());
+  });
+
+  test("an append that races the transcript rewrite is carried over, not lost", async () => {
+    const file = path.join(home, "sessions", "race.jsonl");
+    write("sessions/race.jsonl", "a\n");
+    const tmp = `${file}.tmp-test`;
+    fs.writeFileSync(tmp, "A\n");
+    const before = fs.statSync(file);
+    // A writer that opened the transcript before the rename…
+    const writer = await fs.promises.open(file, "a");
+    const replacing = replaceAppendOnly(file, tmp, before, 200);
+    while (fs.statSync(file).ino === before.ino) await new Promise((r) => setImmediate(r));
+    // …and writes after it.
+    await writer.write("b\n");
+    await writer.close();
+    assert.equal(await replacing, true);
+    assert.equal(read("sessions/race.jsonl"), "A\nb\n");
+
+    // A change before the rename makes it redo instead (and drops the temp file).
+    fs.writeFileSync(tmp, "B\n");
+    const stale = fs.statSync(file);
+    fs.appendFileSync(file, "c\n");
+    assert.equal(await replaceAppendOnly(file, tmp, stale, 0), false);
+    assert.ok(!fs.existsSync(tmp));
+    assert.equal(read("sessions/race.jsonl"), "A\nb\nc\n");
+  });
+});

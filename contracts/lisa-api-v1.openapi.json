@@ -5020,8 +5020,9 @@
         "properties": {
           "query": {
             "type": "string",
-            "minLength": 3,
-            "maxLength": 200
+            "minLength": 2,
+            "maxLength": 200,
+            "description": "At least 3 characters, or 2 when it contains a Chinese, Japanese or Korean character (whitespace collapsed); at most 200."
           },
           "dryRun": {
             "type": "boolean",
@@ -5121,7 +5122,7 @@
           },
           "counts": {
             "type": "object",
-            "description": "Matches per layer: memory, user, kb, memory_kb_links, sessions, reflections, tasks, search_index, relationships, journal.",
+            "description": "Matches per layer: memory, user, kb, memory_kb_links, sessions, reflections, tasks, connectors, search_index, relationships, journal. search_index is non-zero only when another layer is.",
             "additionalProperties": {
               "type": "integer",
               "minimum": 0

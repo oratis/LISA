@@ -37,6 +37,14 @@ export const HOME_ENTRIES: Readonly<Record<string, HomeEntryCoverage>> = {
   sessions: { forget: "scanned", what: "conversation transcripts" },
   reflections: { forget: "scanned", what: "per-conversation reflection records" },
   tasks: { forget: "scanned", what: "task specs, run transcripts and pending notices" },
+  // Each connection request keeps the chat message that asked for it for a
+  // week after it ends — a verbatim copy of transcript text forget redacts —
+  // so leaving it would undo the transcript pass. Only that field is user
+  // text; credentials live in the secret store, not here.
+  connectors: {
+    forget: "scanned",
+    what: "connection requests' copy of the asking message (accounts and selected resources kept)",
+  },
   embeddings: { forget: "scanned", what: "search embedding cache (evicted)" },
 
   // ── can hold user text, not scanned ──

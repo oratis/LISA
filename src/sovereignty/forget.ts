@@ -10,7 +10,9 @@
  * spaces between words (Chinese, Japanese, Korean, Thai…) have no word
  * boundaries; there the query matches as the exact character sequence, also
  * inside longer words, and the report says so (`match`). A minimum query
- * length keeps a stray "a" from wiping a home.
+ * length keeps a stray "a" from wiping a home. The match is always decided
+ * on text — parsed JSON string values, Markdown lines — never on serialized
+ * JSON, where escapes such as `\n` would hide a word's boundary.
  *
  * Preview, then apply. A dry run lists every item it would change, each with
  * a stable id and a short snippet of the text around the match, plus a
@@ -20,13 +22,16 @@
  * nothing the preview did not show is changed. What each layer does:
  *
  *  memory / user        drop every MEMORY.md / USER.md entry that mentions it
+ *                       (a nested list item is its own entry, so its siblings
+ *                       and parent stay); the preview shows the whole entry
  *  kb                   delete a page whose title or a tag names it; elsewhere
  *                       replace matching body lines and provenance values. A
  *                       page is never deleted for its file name alone (listed
  *                       as untouched instead)
  *  memory_kb_links      strip `[[kb:slug]]` / `[[slug]]` pointers (in memory
  *                       and in other pages) to the pages deleted above
- *  sessions             replace matching message text with "[forgotten by
+ *  sessions             replace matching message text (chat messages and
+ *                       connector continuation traces) with "[forgotten by
  *                       user]", redact matching lines in recorded prompts /
  *                       reflection summaries. Content fields only: the
  *                       header, types, ids, timestamps and roles are never
@@ -36,8 +41,12 @@
  *  tasks                task specs (title, instruction, summary, watcher
  *                       match text), run transcripts and pending notices —
  *                       content fields only, under each file's own lock
- *  search_index         drop the in-memory session + KB indexes and the
- *                       persisted embedding cache (vectors of the old text)
+ *  connectors           the copy of the asking chat message each connection
+ *                       request keeps (`requests[].prompt`), under the
+ *                       connector service's lock; nothing else in its state
+ *  search_index         when anything above matched: drop the in-memory
+ *                       session + KB indexes and the persisted embedding
+ *                       cache (vectors of the old text)
  *  relationships        literal matches only, soul-git commit `user-forget`
  *  journal              Lisa's private journal is HERS: only literal matches
  *                       of the user's words are replaced, each file change is
@@ -51,6 +60,7 @@
  */
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
+import type { Stats } from "node:fs";
 import path from "node:path";
 import { atomicWrite } from "../fs-utils.js";
 import { lisaGlobalHome, lisaHome, reflectionsDir, sessionsDir } from "../paths.js";
@@ -64,7 +74,7 @@ import {
 } from "../memory/entries.js";
 import { forgetInEntry, listFullEntries, type KbEntry } from "../kb/store.js";
 import { commitSoulChange, withSoulCaller } from "../soul/git.js";
-import { withSoulLock } from "../soul/lock.js";
+import { withFileLock, withSoulLock } from "../soul/lock.js";
 import { soulDir, soulJournalDir, soulRelationshipsDir } from "../soul/paths.js";
 import { rewriteTaskJson, tasksDir } from "../tasks/store.js";
 import { isSafeId } from "../tasks/types.js";
@@ -102,6 +112,7 @@ export type ForgetLayer =
   | "sessions"
   | "reflections"
   | "tasks"
+  | "connectors"
   | "search_index"
   | "relationships"
   | "journal";
@@ -114,6 +125,7 @@ export const FORGET_LAYERS: readonly ForgetLayer[] = [
   "sessions",
   "reflections",
   "tasks",
+  "connectors",
   "search_index",
   "relationships",
   "journal",
@@ -219,10 +231,54 @@ export interface Matcher {
   redact(s: string): string;
   /** The first match, or null. */
   first(s: string): { index: number; length: number } | null;
+  /**
+   * Loose pre-filter for serialized JSON (a transcript or task line, a task
+   * file): false only when no string value in `raw` can match. Never a
+   * substitute for `test` on the parsed values — see `mayContainIn`.
+   */
+  mayContain(raw: string): boolean;
 }
 
 function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** A UTF-16 surrogate without its partner (JSON.stringify escapes those). */
+const LONE_SURROGATE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
+/** A `\uXXXX` escape: some writer spelled characters out, so raw text can't be trusted. */
+const UNICODE_ESCAPE = /\\u[0-9a-fA-F]{4}/;
+
+/**
+ * The raw pre-filter behind `Matcher.mayContain`. Matching the whole-word
+ * pattern against serialized JSON misses real hits: JSON writes a newline as
+ * `\n`, so a topic at the start of a line follows the letter `n` and fails
+ * its word boundary (and a multi-word topic split by a newline never matches
+ * `\s+`). So the pre-filter has no word boundaries at all, and requires only
+ * the pieces of the query that JSON never escapes — text between spaces,
+ * quotes, backslashes and slashes — each case-insensitively, with the same
+ * regex flags as the real match. Anything a string value matches therefore
+ * passes; the whole-word decision is always made on the parsed values.
+ */
+function mayContainIn(query: string): (raw: string) => boolean {
+  const parts = query
+    .split(/[\s"\\/]+/)
+    .filter(Boolean)
+    .map((p) => new RegExp(escapeRe(p), "iu"));
+  if (parts.length === 0 || LONE_SURROGATE.test(query)) return () => true;
+  return (raw) => UNICODE_ESCAPE.test(raw) || parts.every((re) => re.test(raw));
+}
+
+const JSON_ESCAPES: Record<string, string> = { b: "\b", f: "\f", n: "\n", r: "\r", t: "\t" };
+
+/**
+ * Best-effort text of a torn (unparseable) JSON fragment: its escapes
+ * decoded, so the whole-word match sees the same characters a parsed value
+ * would hold.
+ */
+export function jsonFragmentText(raw: string): string {
+  return raw.replace(/\\(?:u([0-9a-fA-F]{4})|(.))/gs, (_all, hex: string | undefined, c: string) =>
+    hex ? String.fromCharCode(parseInt(hex, 16)) : (JSON_ESCAPES[c] ?? c),
+  );
 }
 
 /** Scripts written without spaces between words: no word boundaries there. */
@@ -268,8 +324,10 @@ export function forgetMatcher(query: string): Matcher {
   const source = lead + query.split(" ").map(escapeRe).join("\\s+") + trail;
   const re = () => new RegExp(source, "giu");
   const pieces = (s: string) => s.split(FORGOTTEN);
+  const mayContain = mayContainIn(query);
   return {
     mode: UNSPACED_RE.test(query) ? "sequence" : "words",
+    mayContain,
     test: (s) => pieces(s).some((p) => re().test(p)),
     count: (s) => pieces(s).reduce((n, p) => n + [...p.matchAll(re())].length, 0),
     redact: (s) =>
@@ -314,6 +372,21 @@ export function snippetAround(text: string, m: Matcher): string {
   if (start > 0 && /[\udc00-\udfff]/.test(flat[start]!)) start--;
   if (end < flat.length && /[\ud800-\udbff]/.test(flat[end - 1]!)) end++;
   return (start > 0 ? "…" : "") + flat.slice(start, end) + (end < flat.length ? "…" : "");
+}
+
+const WHOLE_SNIPPET_MAX = 1000;
+
+/**
+ * The whole text of an item that goes entirely (a memory entry), whitespace
+ * collapsed, so the preview shows everything that will be deleted — not 80
+ * characters around the match. Anything past WHOLE_SNIPPET_MAX characters is
+ * named, never silently cut.
+ */
+export function wholeSnippet(text: string): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  const chars = [...flat];
+  if (chars.length <= WHOLE_SNIPPET_MAX) return flat;
+  return `${chars.slice(0, WHOLE_SNIPPET_MAX).join("")}… (+${chars.length - WHOLE_SNIPPET_MAX} more characters)`;
 }
 
 function redactLines(text: string, m: Matcher): string {
@@ -433,9 +506,17 @@ function allowed(ctx: Ctx, id: string): boolean {
 }
 
 /** Record an item (and count it under `layer`, unless null). */
-function addItem(ctx: Ctx, item: Item, text: string | undefined, count: number): void {
+function addItem(
+  ctx: Ctx,
+  item: Item,
+  text: string | undefined,
+  count: number,
+  whole = false,
+): void {
   const out: ForgetLocation = { ...item };
-  if (ctx.snippets && text !== undefined) out.snippet = snippetAround(text, ctx.m);
+  if (ctx.snippets && text !== undefined) {
+    out.snippet = whole ? wholeSnippet(text) : snippetAround(text, ctx.m);
+  }
   ctx.report.locations.push(out);
   if (item.layer !== "soul") ctx.report.counts[item.layer] += count;
 }
@@ -537,18 +618,26 @@ function redactSessionLine(
   m: Matcher,
 ): { line: string; hit: boolean; sample?: string } {
   const none = { line, hit: false };
-  if (!m.test(line)) return none;
+  if (!m.mayContain(line)) return none;
   let entry: unknown;
   try {
     entry = JSON.parse(line);
   } catch {
     // A torn fragment (a crash mid-append) the reader already skips: when it
     // names the topic, replace it with a record every reader ignores.
-    return { line: JSON.stringify({ type: "forgotten" }), hit: true, sample: line };
+    const text = jsonFragmentText(line);
+    if (!m.test(text)) return none;
+    return { line: JSON.stringify({ type: "forgotten" }), hit: true, sample: text };
   }
   if (!entry || typeof entry !== "object" || Array.isArray(entry)) return none;
   const e = entry as Record<string, unknown>;
-  if (e.type === "message" && e.message && typeof e.message === "object") {
+  // `connector_trace` lines are the agent messages of a connector continuation
+  // (repository files, calendar events, mail, issues it read): same shape.
+  if (
+    (e.type === "message" || e.type === "connector_trace") &&
+    e.message &&
+    typeof e.message === "object"
+  ) {
     const msg = e.message as Record<string, unknown>;
     const r = redactContent(msg.content, m);
     if (!r.changed) return none;
@@ -566,11 +655,56 @@ function redactSessionLine(
 
 type LineRedactor = (line: string, m: Matcher) => { line: string; hit: boolean; sample?: string };
 
+const CARRY_OVER_PAUSE_MS = 25;
+
+/**
+ * Rename `tmp` over the append-only `file` unless it changed since `before`
+ * (then false, `tmp` removed). Bytes appended to the replaced file during the
+ * rename are copied onto the end of the new one.
+ */
+export async function replaceAppendOnly(
+  file: string,
+  tmp: string,
+  before: Stats,
+  pauseMs = CARRY_OVER_PAUSE_MS,
+): Promise<boolean> {
+  const old = await fs.open(file, "r");
+  let renamed = false;
+  try {
+    const now = await old.stat();
+    if (now.size !== before.size || now.mtimeMs !== before.mtimeMs) return false;
+    await fs.rename(tmp, file);
+    renamed = true;
+    let carried = before.size;
+    for (let pass = 0; pass < 2; pass++) {
+      if (pass > 0) await new Promise((r) => setTimeout(r, pauseMs));
+      const size = (await old.stat()).size;
+      if (size <= carried) continue;
+      const tail = Buffer.alloc(size - carried);
+      const { bytesRead } = await old.read(tail, 0, tail.length, carried);
+      await fs.appendFile(file, tail.subarray(0, bytesRead));
+      carried += bytesRead;
+    }
+    return true;
+  } finally {
+    await old.close();
+    if (!renamed) await fs.rm(tmp, { force: true });
+  }
+}
+
 /**
  * Plan (and with `ctx.apply`, perform) the redaction of one append-only JSONL
  * file — a transcript or a task run log — one item per affected line.
- * Re-checks the file's size right before the rename so a record appended
- * meanwhile isn't lost (retried; reported if it persists).
+ *
+ * Writers append without a lock (open, write one line, close), so the
+ * rewrite guards both sides of its rename: a record appended before the
+ * rename shows as a size/mtime change and the pass is redone from the new
+ * contents (retried; reported if it persists); a record appended to the old
+ * file by a writer that opened it just before the rename is read back
+ * through a handle held across the rename and carried over, once at once and
+ * once more after a short pause. What remains is a writer that opened the
+ * old file and then stalled past that pause before writing — not something
+ * an append of one line does.
  */
 async function forgetInJsonl(
   file: string,
@@ -582,7 +716,7 @@ async function forgetInJsonl(
   for (let attempt = 0; attempt < 3; attempt++) {
     const before = await fs.stat(file);
     const raw = await fs.readFile(file, "utf8");
-    if (!ctx.m.test(raw)) return;
+    if (!ctx.m.mayContain(raw)) return;
     const lines = raw.split("\n");
     const items: { item: Item; text?: string }[] = [];
     const out = lines.map((line, i) => {
@@ -600,12 +734,7 @@ async function forgetInJsonl(
     if (ctx.apply && items.length > 0) {
       const tmp = `${file}.${process.pid}.${crypto.randomBytes(4).toString("hex")}.forget.tmp`;
       await fs.writeFile(tmp, out.join("\n"), { mode: 0o600 });
-      const now = await fs.stat(file);
-      if (now.size !== before.size || now.mtimeMs !== before.mtimeMs) {
-        await fs.rm(tmp, { force: true });
-        continue; // appended meanwhile — redo from the new contents
-      }
-      await fs.rename(tmp, file);
+      if (!(await replaceAppendOnly(file, tmp, before))) continue; // appended meanwhile — redo
     }
     for (const { item, text } of items) addItem(ctx, item, text, 1);
     return;
@@ -686,12 +815,14 @@ function redactAt(
 /** One record of a task run log: { t: "run" | "msg" | "event" | "reset", … }. */
 function redactRunLine(line: string, m: Matcher): { line: string; hit: boolean; sample?: string } {
   const none = { line, hit: false };
-  if (!m.test(line)) return none;
+  if (!m.mayContain(line)) return none;
   let rec: Record<string, unknown>;
   try {
     rec = JSON.parse(line) as Record<string, unknown>;
   } catch {
-    return { line: JSON.stringify({ t: "forgotten" }), hit: true, sample: line };
+    const text = jsonFragmentText(line);
+    if (!m.test(text)) return none;
+    return { line: JSON.stringify({ t: "forgotten" }), hit: true, sample: text };
   }
   if (!rec || typeof rec !== "object") return none;
   if (rec.t === "msg" && rec.message && typeof rec.message === "object") {
@@ -733,19 +864,21 @@ async function forgetInTaskJson(
   paths: readonly string[][],
   rewrite: (fn: (value: unknown) => unknown) => Promise<boolean>,
   ctx: Ctx,
+  layer: "tasks" | "connectors" = "tasks",
 ): Promise<void> {
   const location = rel(file);
   let value: unknown;
   try {
     const raw = await fs.readFile(file, "utf8");
-    if (!ctx.m.test(raw)) return;
+    if (!ctx.m.mayContain(raw)) return;
     value = JSON.parse(raw);
   } catch {
-    ctx.report.errors.push({ layer: "tasks", error: `task_unreadable:${path.basename(file)}` });
+    const what = layer === "tasks" ? "task" : "connector";
+    ctx.report.errors.push({ layer, error: `${what}_unreadable:${path.basename(file)}` });
     return;
   }
   const idOf = (matched: string[]) =>
-    itemId("tasks", "redact", location, sha(JSON.stringify(matched)));
+    itemId(layer, "redact", location, sha(JSON.stringify(matched)));
   let r = redactAt(value, paths, ctx.m);
   if (r.matched.length === 0 || !allowed(ctx, idOf(r.matched))) return;
   if (ctx.apply) {
@@ -761,7 +894,7 @@ async function forgetInTaskJson(
   }
   addItem(
     ctx,
-    { id: idOf(r.matched), layer: "tasks", location, matches: r.matched.length, action: "redact" },
+    { id: idOf(r.matched), layer, location, matches: r.matched.length, action: "redact" },
     r.matched[0],
     1,
   );
@@ -811,6 +944,75 @@ async function forgetInTasks(ctx: Ctx): Promise<void> {
           rewriteOutboxEntry(id, (entry) => (fn(entry) as OutboxEntry | null) ?? null)
       : unlockedRewrite(file);
     await forgetInTaskJson(file, TASK_NOTICE_TEXT, rewrite, ctx);
+  }
+}
+
+// ── connectors ───────────────────────────────────────────────────────────
+//
+// `connectors/<provider>/state.json` keeps every connection request together
+// with the chat message that asked for it (`prompt`, up to 32 000 characters)
+// for a week after it finishes: a verbatim copy of text the transcript pass
+// above redacts. Only `requests[].prompt` is content; ids, states, accounts,
+// connections and the selected resources stay exactly as they are. Apply
+// rewrites the file under the connector service's own lock and in the shape
+// it writes, so the running service simply reads the new state on its next
+// operation (it keeps none in memory). A request still waiting for
+// authorization then resumes with the placeholder as its original request —
+// which is what forgetting it means. The one-time `state.json.v1.bak` the
+// GitHub connector keeps from its format migration holds the same prompts.
+
+const CONNECTOR_TEXT: readonly string[][] = [["requests", "*", "prompt"]];
+
+/** Written the way the connector service writes its state. */
+async function writeConnectorState(file: string, value: unknown): Promise<void> {
+  const tmp = `${file}.${crypto.randomUUID()}.tmp`;
+  try {
+    const handle = await fs.open(tmp, "wx", 0o600);
+    try {
+      await handle.writeFile(JSON.stringify(value));
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    await fs.rename(tmp, file);
+  } finally {
+    await fs.rm(tmp, { force: true });
+  }
+}
+
+function connectorRewrite(
+  file: string,
+  lock: string | null,
+): (fn: (value: unknown) => unknown) => Promise<boolean> {
+  const once = async (fn: (value: unknown) => unknown): Promise<boolean> => {
+    let value: unknown;
+    try {
+      value = JSON.parse(await fs.readFile(file, "utf8"));
+    } catch {
+      return false;
+    }
+    const next = fn(value);
+    if (next === null) return false;
+    await writeConnectorState(file, next);
+    return true;
+  };
+  return (fn) => (lock ? withFileLock(lock, () => once(fn)) : once(fn));
+}
+
+async function forgetInConnectors(ctx: Ctx): Promise<void> {
+  for (const dir of await listDirs(path.join(lisaHome(), "connectors"))) {
+    for (const name of ["state.json", "state.json.v1.bak"]) {
+      const file = path.join(dir, name);
+      if (
+        !(await fs.lstat(file).then(
+          (st) => st.isFile(),
+          () => false,
+        ))
+      )
+        continue;
+      const lock = name === "state.json" ? path.join(dir, "state.lock") : null;
+      await forgetInTaskJson(file, CONNECTOR_TEXT, connectorRewrite(file, lock), ctx, "connectors");
+    }
   }
 }
 
@@ -1059,7 +1261,7 @@ async function forgetInKb(ctx: Ctx): Promise<RegExp | null> {
 async function forgetInMemory(ctx: Ctx, links: RegExp | null): Promise<void> {
   for (const store of MEMORY_STORES) {
     const file = `memory/${store === "memory" ? "MEMORY" : "USER"}.md`;
-    const items: { item: Item; text?: string }[] = [];
+    const items: { item: Item; text?: string; whole?: boolean }[] = [];
     /** Decide one entry (records its item); the same rule for preview and apply. */
     const decide = (entry: MemoryEntry): "delete" | "unlink" | null => {
       const location = `${file}#${entry.id}`;
@@ -1069,6 +1271,8 @@ async function forgetInMemory(ctx: Ctx, links: RegExp | null): Promise<void> {
         items.push({
           item: { id, layer: store, location, matches: 1, action: "delete" },
           text: entry.text,
+          // The entry goes entirely: preview all of it.
+          whole: true,
         });
         return "delete";
       }
@@ -1099,7 +1303,7 @@ async function forgetInMemory(ctx: Ctx, links: RegExp | null): Promise<void> {
           return /[\p{L}\p{N}]/u.test(stripped) ? stripped : null;
         });
       }
-      for (const { item, text } of items) addItem(ctx, item, text, item.matches);
+      for (const { item, text, whole } of items) addItem(ctx, item, text, item.matches, whole);
     } catch (e) {
       ctx.report.errors.push({
         layer: store,
@@ -1148,18 +1352,19 @@ async function evictSearchIndex(ctx: Ctx): Promise<void> {
   const embedDir = path.join(lisaHome(), "embeddings");
   const embedFiles = await listFiles(embedDir, ".json");
   const c = ctx.report.counts;
-  const touched = c.sessions + c.kb + c.memory_kb_links + c.reflections;
-  if (touched > 0 || embedFiles.length > 0) {
-    c.search_index = embedFiles.length + 1;
-    for (const location of ["(in-memory indexes)", ...embedFiles.map(rel)]) {
-      ctx.report.locations.push({
-        id: itemId("search_index", "evict", location),
-        layer: "search_index",
-        location,
-        matches: 1,
-        action: "evict",
-      });
-    }
+  // Only when something matched: with nothing to forget there is nothing the
+  // caches could still hold, and an eviction alone is not a "found".
+  const touched = FORGET_LAYERS.reduce((n, l) => (l === "search_index" ? n : n + c[l]), 0);
+  if (touched === 0) return;
+  c.search_index = embedFiles.length + 1;
+  for (const location of ["(in-memory indexes)", ...embedFiles.map(rel)]) {
+    ctx.report.locations.push({
+      id: itemId("search_index", "evict", location),
+      layer: "search_index",
+      location,
+      matches: 1,
+      action: "evict",
+    });
   }
   if (ctx.apply) {
     await fs.rm(embedDir, { recursive: true, force: true });
@@ -1242,12 +1447,14 @@ async function run(
   await forgetInReflections(ctx);
   // (c') tasks: specs, run transcripts, pending notices.
   await forgetInTasks(ctx);
-  // (d) search indexes.
-  await evictSearchIndex(ctx);
+  // (c'') connection requests' copies of the chat message that asked for them.
+  await forgetInConnectors(ctx);
   // (e) relationships, (f) journal — Lisa's soul: literal matches only.
   await forgetInSoulDir(soulRelationshipsDir(), "relationships", ctx);
   await forgetInSoulDir(soulJournalDir(), "journal", ctx);
   await scanUntouched(ctx);
+  // (d) search indexes — last, once every other layer has said what it changes.
+  await evictSearchIndex(ctx);
   ctx.report.digest = digestOf(ctx.report.locations);
   return ctx.report;
 }
@@ -1291,7 +1498,10 @@ export async function forget(query: string, opts: ForgetOptions = {}): Promise<F
   report.remaining = after.counts;
   // search_index "remaining" is the cache we just rebuilt from clean data.
   report.remaining.search_index = 0;
-  const changed = Object.values(counts).reduce((a, b) => a + b, 0);
+  // Evicting a cache is not forgetting anything: only real changes tell Lisa.
+  const changed = Object.entries(counts)
+    .filter(([layer]) => layer !== "search_index")
+    .reduce((a, [, n]) => a + n, 0);
   if (changed > 0) {
     const notice: ForgetNotice = {
       at: new Date().toISOString(),

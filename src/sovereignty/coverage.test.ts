@@ -19,8 +19,12 @@ function sourceFiles(dir: string, out: string[] = []): string[] {
   return out;
 }
 
-/** An expression that evaluates to a home directory. */
-const HOME_CALL = String.raw`(?:lisaHome|lisaGlobalHome)\(\)|homeForUid\([^()]*\)|process\.env\.LISA_HOME\s*\?\?\s*path\.join\(os\.homedir\(\),\s*"\.lisa"\)`;
+/**
+ * An expression that evaluates to a home directory. `options.home` is the
+ * home a store is constructed with (the connector services get
+ * `home: lisaHome()` from the server).
+ */
+const HOME_CALL = String.raw`(?:lisaHome|lisaGlobalHome)\(\)|homeForUid\([^()]*\)|process\.env\.LISA_HOME\s*\?\?\s*path\.join\(os\.homedir\(\),\s*"\.lisa"\)|\boptions\.home\b`;
 
 /**
  * Top-level names the code creates under a home: `join(<home>, "name", …)`
@@ -59,7 +63,17 @@ describe("forget coverage", () => {
   test("every top-level home entry in the code is classified for forget", () => {
     const found = homeEntriesInSource();
     // The scan itself must keep working: these are created by well-known modules.
-    for (const known of ["soul", "memory", "kb", "sessions", "tasks", "mail", "sense", "warden"]) {
+    for (const known of [
+      "soul",
+      "memory",
+      "kb",
+      "sessions",
+      "tasks",
+      "mail",
+      "sense",
+      "warden",
+      "connectors",
+    ]) {
       assert.ok(found.has(known), `source scan no longer finds ${known}/`);
     }
     const missing = [...found]
@@ -78,7 +92,7 @@ describe("forget coverage", () => {
         .filter(([, v]) => v.forget === "scanned")
         .map(([k]) => k)
         .sort(),
-      ["embeddings", "kb", "memory", "reflections", "sessions", "soul", "tasks"],
+      ["connectors", "embeddings", "kb", "memory", "reflections", "sessions", "soul", "tasks"],
     );
   });
 });
