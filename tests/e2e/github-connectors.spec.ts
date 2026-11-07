@@ -10,6 +10,7 @@ import type { GitHubDriver } from "../../src/connectors/github-driver.js";
 import type { Provider } from "../../src/providers/types.js";
 
 test.describe("GitHub connection card", () => {
+  test.use({ locale: "zh-CN" });
   let home: string, base: string, server: http.Server;
   let allowLogin: (() => void) | undefined;
   let reads = 0;
