@@ -101,4 +101,4 @@ LISA 应吸收这一卡片入口，并进一步明确：如果用户已经要求
 | Cloud | [能力边界](../src/web/capabilities.ts)、[Home](../src/paths.ts)、[任务宿主](../src/web/tasks-host.ts) | Cloud 启动不加载宿主插件/MCP，云任务默认关闭；不能通过开放全局配置实现租户连接器 |
 | 特定领域 | [社交连接器](../src/sense/social/connectors/plugin.ts) | 可借鉴 manifest、能力探测、批准后由宿主执行；目前是领域专用协议 |
 
-因此，本次增量应接在现有 产品对齐草案 C01（另行维护） 下，并显式依赖 B01–B03 的权限与任务恢复工作。下一步开发切分、接口、状态与验收见[实现方案](PLAN_PLUGINS_CONNECTORS_2026-11-07.md)。
+因此，本次增量应接在现有 [产品对齐方案 C01](PLAN_PRODUCT_ALIGNMENT_2026-10-24.md) 下，并显式依赖 B01–B03 的权限与任务恢复工作。下一步开发切分、接口、状态与验收见[实现方案](PLAN_PLUGINS_CONNECTORS_2026-11-07.md)。

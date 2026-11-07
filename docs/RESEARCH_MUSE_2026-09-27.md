@@ -1,5 +1,7 @@
 # Muse 调研与 LISA 产品决策
 
+> **2026-10-24 更新：** [三端产品对齐研究](RESEARCH_PRODUCT_ALIGNMENT_2026-10-24.md)补充了 Muse 最新地域、设计及模型发布边界，并与 Manus、Dot 对照。本文保留原调研日期；Lisa Pocket 当前上架和生产验证状态见 [10 月 24 日复核](REVIEW_POCKET_LIVE_2026-10-24.md)。
+
 日期：2026-09-27。LISA 对照基线：`274f535`（main，v0.26.1）。研究对象暂按 Meta Muse（2026-09 发布的 personal agent）识别；如果需求中的 muse 指另一项目，需要重新界定，不能将同名 GitHub 项目当成官方源码。
 
 ## 证据与边界
