@@ -136,6 +136,48 @@ export interface TasksCommandIo {
   ask?: (question: string) => Promise<string>;
   /** Terminal height, for paging what is being confirmed. Default: stdout's rows. */
   rows?: number;
+  /** Terminal width, for wrapping what is being confirmed before it is paged. Default: stdout's columns. */
+  columns?: number;
+}
+
+/** Columns a code point takes on a terminal: 2 for East Asian wide and emoji, else 1. */
+function cellWidth(cp: number): number {
+  return (cp >= 0x1100 && cp <= 0x115f) ||
+    (cp >= 0x2e80 && cp <= 0xa4cf) ||
+    (cp >= 0xac00 && cp <= 0xd7a3) ||
+    (cp >= 0xf900 && cp <= 0xfaff) ||
+    (cp >= 0xfe30 && cp <= 0xfe4f) ||
+    (cp >= 0xff00 && cp <= 0xff60) ||
+    (cp >= 0xffe0 && cp <= 0xffe6) ||
+    (cp >= 0x1f300 && cp <= 0x1faff) ||
+    (cp >= 0x20000 && cp <= 0x3fffd)
+    ? 2
+    : 1;
+}
+
+/**
+ * A line as the terminal will show it: cut into rows of at most `columns`
+ * cells. Paging counts these rows, not lines — an instruction line can be
+ * 8,000 characters, and paged as one line it would scroll the start of the
+ * page off the screen before the prompt (#422 review P3-a).
+ */
+export function wrapForTerminal(line: string, columns: number): string[] {
+  const width = Math.max(1, Math.floor(columns) || 80);
+  const rows: string[] = [];
+  let row = "";
+  let used = 0;
+  for (const ch of line) {
+    const w = cellWidth(ch.codePointAt(0)!);
+    if (used + w > width) {
+      rows.push(row);
+      row = "";
+      used = 0;
+    }
+    row += ch;
+    used += w;
+  }
+  rows.push(row);
+  return rows;
 }
 
 export async function runTasksCommand(args: string[], io: TasksCommandIo = {}): Promise<number> {
@@ -237,8 +279,11 @@ export async function runTasksCommand(args: string[], io: TasksCommandIo = {}): 
     const preapproves = envelopeCouldPreapprove(task);
     const interactive = io.interactive ?? (!!process.stdin.isTTY && !!process.stdout.isTTY);
     const ask = io.ask ?? askOnTerminal;
-    const screen = [`(${task.id})`, ...describeForConfirmation(task).map((l) => `  ${l}`)];
+    const lines = [`(${task.id})`, ...describeForConfirmation(task).map((l) => `  ${l}`)];
     if (interactive && preapproves && confirm === undefined) {
+      // Paged by the rows the terminal shows, so nothing scrolls off before the prompt.
+      const columns = io.columns ?? process.stdout.columns ?? 80;
+      const screen = lines.flatMap((l) => wrapForTerminal(l, columns));
       const page = Math.max(5, (io.rows ?? process.stdout.rows ?? 24) - 2);
       for (let at = 0; at < screen.length; at += page) {
         for (const l of screen.slice(at, at + page)) out(l);
@@ -253,7 +298,7 @@ export async function runTasksCommand(args: string[], io: TasksCommandIo = {}): 
         }
       }
     } else {
-      for (const l of screen) out(l);
+      for (const l of lines) out(l);
     }
     let confirmed = false;
     if (confirm !== undefined) {

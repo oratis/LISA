@@ -20,7 +20,7 @@ import path from "node:path";
 import type Anthropic from "@anthropic-ai/sdk";
 import { homeScope } from "../paths.js";
 import type { Provider, ProviderResult, ProviderRunOpts } from "../providers/types.js";
-import { runTasksCommand } from "../cli/tasks.js";
+import { runTasksCommand, wrapForTerminal } from "../cli/tasks.js";
 import {
   confirmationKey,
   confirmationView,
@@ -554,4 +554,58 @@ test("on a terminal, enable pages what it would do — the y/N question comes af
     assert.equal(now.enabled, true);
     assert.equal(isEnvelopeConfirmed(now, await confirmationKey()), true);
   });
+});
+
+test("the pager counts the rows a long line wraps to, not lines: nothing scrolls off before a prompt (#422 review P3-a)", async () => {
+  await withHome(async () => {
+    const tail = "END-OF-THE-LONG-LINE";
+    const task = await createTask({
+      kind: "routine",
+      title: "Tidy",
+      instruction: `Step one. ${"word ".repeat(400)}${tail}\nStep two.`,
+      origin: { kind: "chat" },
+      schedule: { expr: "daily:08:00", tz: "UTC" },
+      envelope: { tools: ["bash"] },
+    });
+    const events: string[] = [];
+    const columns = 40;
+    const rows = 12;
+    const answers = Array.from({ length: 200 }, () => "");
+    const code = await runTasksCommand(["enable", task.id], {
+      out: (l: string) => events.push(`out:${l}`),
+      err: (l: string) => events.push(`err:${l}`),
+      interactive: true,
+      rows,
+      columns,
+      ask: async (q: string) => {
+        events.push(`ask:${q}`);
+        return q.startsWith("Let it do these") ? "y" : (answers.shift() ?? "");
+      },
+    });
+    assert.equal(code, 0);
+    const question = events.findIndex((e) => e.startsWith("ask:Let it do these without asking?"));
+    assert.ok(question > 0);
+    // Between two prompts at most a screen's worth of rows, none wider than the terminal.
+    let since = 0;
+    for (const e of events.slice(0, question)) {
+      if (e.startsWith("ask:")) {
+        assert.ok(since <= rows - 2, `a page of ${since} rows on a ${rows}-row terminal`);
+        since = 0;
+      } else if (e.startsWith("out:")) {
+        since += 1;
+        assert.ok(e.length - 4 <= columns, `a row of ${e.length - 4} cells`);
+      }
+    }
+    const pages = events.filter((e) => e.startsWith("ask:--")).length;
+    assert.ok(pages >= 6, `the long line alone spans several pages (${pages} prompts)`);
+    const tailAt = events.findIndex((e) => e.includes("Step two."));
+    assert.ok(tailAt >= 0 && question > tailAt, "asked only after the end of the long line");
+    assert.equal(isEnvelopeConfirmed((await getTask(task.id))!, await confirmationKey()), true);
+  });
+});
+
+test("wrapForTerminal cuts by cells: wide characters take two", () => {
+  assert.deepEqual(wrapForTerminal("abcdefghij", 4), ["abcd", "efgh", "ij"]);
+  assert.deepEqual(wrapForTerminal("", 10), [""]);
+  assert.deepEqual(wrapForTerminal("确认这个任务", 4), ["确认", "这个", "任务"]);
 });
